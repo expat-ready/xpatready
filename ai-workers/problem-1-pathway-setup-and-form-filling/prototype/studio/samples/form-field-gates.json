@@ -1,0 +1,163 @@
+{
+  "about": "B107 (QA-296, QA-299, QA-300; C6.11, C7.7; P-319: data, never code): which box of a form takes an answer, and which part of a form a person writes by hand, each from the form's own printed words and scripts, cited (P-170). The configured checkpoint proposes each one as the author and a second person approves it (api/src/features/checkpoint/045-form-field-gates.ts, api/src/form-field-gates.ts); a release then carries it. A gate is a condition in the rules' own language on facts the shared library holds: the form field is written only while it holds, so a question whose every form field on a form is gated off is not asked for that form. The official files are the local copies under official-sources/ircc/ (manifest.json). Every entry is Sample, Unconfirmed: expert (AGENTS rule 4). Legal points: Unconfirmed: no counsel.",
+  "editions": [
+    {
+      "form": "IMM 5476",
+      "edition": "IMM 5476 (11-2021)",
+      "file": "official-sources/ircc/previous-editions/imm5476e-2021.pdf (the edition the configured checkpoint's library reads; manifest: file dated 19 Nov 2021, downloaded 2026-10-19)",
+      "gates": [
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question6[0].questionII[0].ICCRCMember[0]",
+          "gate": { "op": "eq", "field": "representative.licensing_body", "value": "cicc" },
+          "words": "the representative is, or will be, compensated and is a member in good standing of the College of Immigration and Citizenship Consultants (CICC)",
+          "cite": "IMM 5476 (11-2021) p. 1, question 6 (ii): \"(ii) is, or will be, COMPENSATED and is a member in good standing of the College of Immigration and Citizenship Consultants (CICC)\" then \"Membership ID number\"; the form's own script on that tick: \"ICCRCMember.access = 'open'; province.rawValue = null; … membership.rawValue = null; … quebecLaw.rawValue = null\". Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question6[0].questionII[0].membership[0]",
+          "gate": { "op": "eq", "field": "representative.licensing_body", "value": "law_society" },
+          "words": "the representative is, or will be, compensated and is a member in good standing of a Canadian provincial or territorial law society",
+          "cite": "IMM 5476 (11-2021) p. 1, question 6 (ii): \"a Canadian provincial or territorial law society\" then \"Which province or territory?\" and \"Membership ID number\"; the form's own script on that tick: \"ICCRCMember.rawValue = null; … province.access = 'open'; membership.access = 'open'; quebecLaw.rawValue = null\". Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question6[0].questionII[0].province[0]",
+          "gate": { "op": "eq", "field": "representative.licensing_body", "value": "law_society" },
+          "words": "the representative is, or will be, compensated and is a member in good standing of a Canadian provincial or territorial law society",
+          "cite": "IMM 5476 (11-2021) p. 1, question 6 (ii): \"a Canadian provincial or territorial law society\" then \"Which province or territory?\"; the form's own script clears it on the other two ticks: \"province.rawValue = null; province.access = 'protected'\". Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question6[0].questionII[0].quebecLaw[0]",
+          "gate": { "op": "eq", "field": "representative.licensing_body", "value": "chambre_notaires_quebec" },
+          "words": "the representative is, or will be, compensated and is a member in good standing of the Chambre des notaires du Québec",
+          "cite": "IMM 5476 (11-2021) p. 1, question 6 (ii): \"the Chambre des notaires du Québec\" then \"Membership ID number\"; the form's own script on that tick: \"ICCRCMember.rawValue = null; … province.rawValue = null; … membership.rawValue = null; … quebecLaw.access = 'open'\". Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question6[0].questionII[0].compensated[0]",
+          "gate": { "op": "not", "arg": { "op": "exists", "field": "representative.uncompensated_category" } },
+          "words": "the representative is not an uncompensated one (question 6 (i) is not ticked)",
+          "cite": "IMM 5476 (11-2021) p. 1, question 6: \"(i) is UNCOMPENSATED and is a\" … \"OR\" … \"(ii) is, or will be, COMPENSATED\"; the form's own script on a tick in (i): \"questionII.compensated.rawValue = null\". Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question6[0].questionI[0].uncompensated[0]",
+          "gate": { "op": "not", "arg": { "op": "exists", "field": "representative.licensing_body" } },
+          "words": "the representative is not a compensated one (no regulatory body is ticked in question 6 (ii))",
+          "cite": "IMM 5476 (11-2021) p. 1, question 6: \"(i) is UNCOMPENSATED and is a\" … \"OR\" … \"(ii) is, or will be, COMPENSATED and is a member in good standing of\"; the form's own script on a tick in (ii): \"questionI.uncompensated.rawValue = null\". Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question6[0].questionI[0].membership[0]",
+          "gate": { "op": "and", "args": [ { "op": "eq", "field": "representative.uncompensated_category", "value": "licensed_member" }, { "op": "not", "arg": { "op": "exists", "field": "representative.licensing_body" } } ] },
+          "words": "the representative is uncompensated and is a member of the CICC, a Canadian provincial or territorial law society, or the Chambre des notaires du Québec",
+          "cite": "IMM 5476 (11-2021) p. 1, question 6 (i): \"member of the College of Immigration and Citizenship Consultants (CICC), a Canadian provincial or territorial law society, or the Chambre des notaires du Québec\" then \"Membership ID number\"; the form's own script opens it on that tick only (\"membership.access = 'open'\") and clears it on a tick in (ii) (\"questionI.membership.rawValue = null\"). Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question6[0].questionI[0].province[0]",
+          "gate": { "op": "and", "args": [ { "op": "eq", "field": "representative.uncompensated_category", "value": "licensed_member" }, { "op": "not", "arg": { "op": "exists", "field": "representative.licensing_body" } } ] },
+          "words": "the representative is uncompensated and is a member of the CICC, a Canadian provincial or territorial law society, or the Chambre des notaires du Québec",
+          "cite": "IMM 5476 (11-2021) p. 1, question 6 (i): the licensed member's line, then \"Which province or territory?\"; the form's own script opens it on that tick only (\"province.access = 'open'\") and clears it on a tick in (ii) (\"questionI.province.rawValue = null\"). Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question6[0].questionI[0].otherRep[0]",
+          "gate": { "op": "and", "args": [ { "op": "eq", "field": "representative.uncompensated_category", "value": "other" }, { "op": "not", "arg": { "op": "exists", "field": "representative.licensing_body" } } ] },
+          "words": "the representative is uncompensated and is \"other (please specify)\"",
+          "cite": "IMM 5476 (11-2021) p. 1, question 6 (i): \"other (please specify)\"; the form's own script opens it on that tick only (\"otherRep.access = 'open'\") and clears it on a tick in (ii) (\"questionI.otherRep.rawValue = null\"). Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question7[0].lawyer[0]",
+          "gate": { "op": "eq", "field": "representative.licensing_body", "value": "law_society" },
+          "words": "the representative is a member of a Canadian provincial or territorial law society (a student-at-law is one; whether one is a student-at-law is not a fact the shared library holds, so it is asked of every law-society member)",
+          "cite": "IMM 5476 (11-2021) p. 1, question 7: \"If student-at-law, write the name of the supervising lawyer\"; a student-at-law is ticked under \"a Canadian provincial or territorial law society\" in question 6 (the form names no other body for one). Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question7[0].membershipID[0]",
+          "gate": { "op": "eq", "field": "representative.licensing_body", "value": "law_society" },
+          "words": "the representative is a member of a Canadian provincial or territorial law society (a student-at-law is one; whether one is a student-at-law is not a fact the shared library holds, so it is asked of every law-society member)",
+          "cite": "IMM 5476 (11-2021) p. 1, question 7: \"If student-at-law, write the name of the supervising lawyer\" then \"Supervising lawyer membership ID\". Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question7[0].faxCountryCode[0]",
+          "gate": { "op": "exists", "field": "person.fax_number" },
+          "words": "the representative's office has a fax number",
+          "cite": "IMM 5476 (11-2021) p. 1, question 7 \"Your representative's contact information\": \"Fax number\" then \"Country Code\" and \"Area Code and Telephone number\"; the form marks no box of question 7 as required and its own scripts never ask for a fax. Read 7 Nov 2026."
+        },
+        {
+          "box": "IMM_5476[0].Page1[0].SectionB[0].question7[0].faxNumber[0]",
+          "gate": { "op": "exists", "field": "person.fax_number" },
+          "words": "the representative's office has a fax number",
+          "cite": "IMM 5476 (11-2021) p. 1, question 7 \"Your representative's contact information\": \"Fax number\" then \"Area Code and Telephone number\". Read 7 Nov 2026."
+        }
+      ]
+    },
+    {
+      "form": "IMM 5475",
+      "edition": "IMM 5475 (05-2021)",
+      "file": "official-sources/ircc/forms/imm5475e.pdf (the edition the configured checkpoint's library reads) and its canada.ca page official-sources/ircc/web-pages/page-imm5475.html (downloaded 2026-10-19)",
+      "byHand": [
+        {
+          "under": "IMM_5475[0].Page1[0].Five[0].",
+          "words": "the designated individual is someone who will not act as your representative, so the case holds no such person: the applicant writes their name and contact details in parts 5 and 6 by hand",
+          "cite": "canada.ca \"Authority to Release Personal Information to a Designated Individual (IMM 5475)\" (page-imm5475.html, downloaded 2026-10-19): \"Use this form if you want to allow us to give your personal information, such as the status of your application, to someone who will not act as your representative.\" The form itself, p. 1: \"However, they will not be a representative who can conduct business with CIC and CBSA on your behalf. If you wish to be represented, you must complete and submit form Use of a Representative (IMM 5476).\" Read 7 Nov 2026."
+        }
+      ]
+    },
+    {
+      "form": "IMM 5257",
+      "edition": "IMM 5257 (09-2023)",
+      "file": "official-sources/ircc/forms/imm5257e.pdf (the edition the configured checkpoint's library reads; manifest: sha256 0dc03b24…a562e, downloaded 2026-10-19). Found by Adobe Acrobat's own Validate on the finished story's Paper copy (C10.2, 9 Nov 2026): \"7. Current country of residence (status)\" must contain a value, and twice \"not required\"; and on 10 Nov 2026 (the tech lead's Validate on the story's Paper copy 79a7d94f): \"You entered information that is not required, please review\", then \"-Details Of Visit- The following field must contain a value: 1a) Purpose of my visit\". Each Validate shows only the first such message, so every box the same script empties for the story's values is gated here, not only the one Validate showed",
+      "gates": [
+        {
+          "box": "form1[0].Page1[0].PersonalDetails[0].CurrentCOR[0].Row2[0].Other[0]",
+          "gate": { "op": "eq", "field": "person.current_residence_status", "value": "Other" },
+          "words": "the immigration status in the current country of residence is Other",
+          "cite": "IMM 5257 (09-2023) p. 1, question 7, \"Other\" box of the status row (\"If your immigration status is other, please give details\"); the form's own Validate script (validateCOR): \"if (oStatus.rawValue == \"06\" ){  //\"06\" is Other … } else { … if (!oOther.isNull){ … oStatus.rawValue = null;\", so details beside any other status empty the required status box; the form's own message on it: \"You entered information that is not required, please review\"; the form's list of values for status: \"Citizen\" (01), \"Permanent resident\" (02), \"Visitor\" (03), \"Worker\" (04), \"Student\" (05), \"Other\" (06), \"Protected Person\" (07), \"Refugee Claimant\" (08), \"Foreign National\" (09). Read 9 Nov 2026."
+        },
+        {
+          "box": "form1[0].Page1[0].PersonalDetails[0].CurrentCOR[0].Row2[0].FromDate[0]",
+          "gate": { "op": "not", "arg": { "op": "in", "field": "person.current_residence_status", "value": ["Citizen", "Permanent resident", "Protected Person", "Refugee Claimant"] } },
+          "words": "the immigration status in the current country of residence is not Citizen, Permanent resident, Protected Person or Refugee Claimant (the form asks its dates only for the other statuses)",
+          "cite": "IMM 5257 (09-2023) p. 1, question 7 \"Current country or territory of residence\", the \"From\" box of the status row; the form's own Validate script (validateCOR): \"else if ((oStatus.rawValue == \"01\"|| oStatus.rawValue== \"02\"|| oStatus.rawValue== \"07\" || oStatus.rawValue== \"08\" )){ //you are citizn, PR, PP, and RC … if (!oFrom.isNull || !oTo.isNull){ … oStatus.rawValue = null;\", so a date beside one of those statuses empties the required status box; the form's own message on it: \"You entered information that is not required, please review\"; the form's list of values for status: \"Citizen\" (01), \"Permanent resident\" (02), \"Visitor\" (03), \"Worker\" (04), \"Student\" (05), \"Other\" (06), \"Protected Person\" (07), \"Refugee Claimant\" (08), \"Foreign National\" (09). Read 9 Nov 2026."
+        },
+        {
+          "box": "form1[0].Page1[0].PersonalDetails[0].CurrentCOR[0].Row2[0].ToDate[0]",
+          "gate": { "op": "not", "arg": { "op": "in", "field": "person.current_residence_status", "value": ["Citizen", "Permanent resident", "Protected Person", "Refugee Claimant"] } },
+          "words": "the immigration status in the current country of residence is not Citizen, Permanent resident, Protected Person or Refugee Claimant (the form asks its dates only for the other statuses)",
+          "cite": "IMM 5257 (09-2023) p. 1, question 7 \"Current country or territory of residence\", the \"To\" box of the status row; the form's own Validate script (validateCOR): \"else if ((oStatus.rawValue == \"01\"|| oStatus.rawValue== \"02\"|| oStatus.rawValue== \"07\" || oStatus.rawValue== \"08\" )){ //you are citizn, PR, PP, and RC … if (!oFrom.isNull || !oTo.isNull){ … oStatus.rawValue = null;\", so a date beside one of those statuses empties the required status box; the form's own message on it: \"You entered information that is not required, please review\"; the form's list of values for status: \"Citizen\" (01), \"Permanent resident\" (02), \"Visitor\" (03), \"Worker\" (04), \"Student\" (05), \"Other\" (06), \"Protected Person\" (07), \"Refugee Claimant\" (08), \"Foreign National\" (09). Read 9 Nov 2026."
+        },
+        {
+          "box": "form1[0].Page1[0].PersonalDetails[0].CountryWhereApplying[0].Row2[0].Other[0]",
+          "gate": { "op": "eq", "field": "person.applying_from_status", "value": "Other" },
+          "words": "the immigration status in the country from where the person is applying is Other",
+          "cite": "IMM 5257 (09-2023) p. 1, question 9 B, \"Other\" box of the status row (\"If your immigration status is other, please give details\"); the form's own Validate script (validateCWA): \"if (oStatus.rawValue == \"06\" ){  //\"06\" is Other … } else { … if (!oOther.isNull){ … oStatus.rawValue = null;\", so details beside any other status empty the required status box; the form's own message on it: \"You entered information that is not required, please review\"; the form's list of values for status: \"Citizen\" (01), \"Permanent resident\" (02), \"Visitor\" (03), \"Worker\" (04), \"Student\" (05), \"Other\" (06), \"Protected Person\" (07), \"Refugee Claimant\" (08), \"Foreign National\" (09). Read 9 Nov 2026."
+        },
+        {
+          "box": "form1[0].Page3[0].DetailsOfVisit[0].PurposeRow1[0].Other[0].Other[0]",
+          "gate": { "op": "eq", "field": "case.visit_purpose", "value": "Other" },
+          "words": "the purpose of the visit is Other",
+          "cite": "IMM 5257 (09-2023) Details of visit to Canada (the template's subform Page3, which starts a new page; the printed page number was not read here), question 1: \"a) Purpose of my visit\" and \"b) Other\" (\"Question 1 B. If you replied Other to Question 1 A, please provide details.\"); the form's own Validate script (validateDetailsOfVisit): \"if (oPurpose.rawValue == \"03\" ) {  //03 is LIC code other … } else{ //negative Case: if Other has a value and purpose is not other throw an error … if(!oOther.isNull){ … oPurpose.rawValue = null;\", so details beside any other purpose empty the required purpose box (then: \"-Details Of Visit- The following field must contain a value: 1a) Purpose of my visit\"); the form's own message on it: \"You entered information that is not required, please review\"; the form's list of values for purpose (VisitPurposeList): \"Business\" (01), \"Tourism\" (02), \"Short-Term Studies\" (04), \"Returning Student\" (05), \"Returning Worker\" (06), \"Super Visa: For Parents or Grandparents\" (07), \"Other\" (03), \"Family Visit\" (08), \"Visit\" (13). Read 10 Nov 2026."
+        },
+        {
+          "box": "form1[0].Page3[0].BackgroundInfo2[0].Details[0].refusedDetails[0]",
+          "gate": { "op": "or", "args": [{ "op": "eq", "field": "person.overstayed_or_unauthorized_in_canada", "value": true }, { "op": "eq", "field": "person.refused_visa_entry_or_removed", "value": true }, { "op": "eq", "field": "person.previously_applied_to_canada", "value": true }] },
+          "words": "the person answered Yes to Background Information question 2 a), 2 b) or 2 c)",
+          "cite": "IMM 5257 (09-2023) Background Information (the template's subform Page3, which starts a new page; the printed page number was not read here), question 2: \"2 a) Have you ever remained beyond the validity of your status, attended school without authorization or worked without authorization in Canada?\", \"2 b) Have you ever been refused a visa or permit, denied entry or ordered to leave Canada or any other country?\", 2 c) \"Have you previously applied to enter or remain in Canada?\", then \"2 d) If you answered \"yes\" to 2a), 2b or 2C) please provide details.\"; the form's own Validate script (validateBackGroundInformation): \"//Negative case: if notes has a value, make sure Yes has been clicked above somewhere if (!q2D.isNull && (q2A.rawValue == \"N\" && q2B.rawValue == \"N\"  && q2C.rawValue == \"N\" )){ … q2A.No.rawValue = null; q2A.Yes.rawValue = null;\" (and the same for 2 b) and 2 c)), so details beside three No answers empty the three required Yes/No boxes; the form's own message on it: \"You entered information that is not required, please review\". Read 10 Nov 2026."
+        },
+        {
+          "box": "form1[0].Page3[0].PageWrapper[0].BackgroundInfo3[0].details[0]",
+          "gate": { "op": "eq", "field": "person.criminal_history", "value": true },
+          "words": "the person answered Yes to Background Information question 3 a)",
+          "cite": "IMM 5257 (09-2023) Background Information (the template's subform Page3, which starts a new page; the printed page number was not read here), question 3: \"3 a) Have you ever committed, been arrested for, been charged with or convicted of any criminal offence in any country?\", then \"b) If you answered \"yes\" to question 3a) above, please provide details.\"; the form's own Validate script (validateBackGroundInformation): \"//Negative case: if notes has a value, make sure Yes has been clicked above somewhere if (!q3B.isNull && (q3A.rawValue == \"N\")){ … q3A.No.rawValue = null; q3A.Yes.rawValue = null;\", so details beside No empty the required Yes/No box; the form's own message on it: \"You entered information that is not required, please review\". Read 10 Nov 2026."
+        },
+        {
+          "box": "form1[0].Page3[0].PageWrapper[0].Military[0].militaryServiceDetails[0]",
+          "gate": { "op": "eq", "field": "person.military_service", "value": true },
+          "words": "the person answered Yes to Background Information question 4 a) (military, militia, civil defence, security organization or police service)",
+          "cite": "IMM 5257 (09-2023) Background Information (the template's subform Page3, which starts a new page; the printed page number was not read here), question 4: \"4 a) Did you serve in any military, militia, or civil defence unit or serve in a security organization or police force (including non obligatory national service, reserve or volunteer units)?\", then \"4 b) If you answered \"yes\" to question 4 a), please provide dates of service and countries where you served.\"; the form's own Validate script (validateBackGroundInformation): \"//Negative case: if notes has a value, make sure Yes has been clicked above somewhere if (!q4B.isNull && (q4A.rawValue == \"N\")){ … q4A.No.rawValue = null; q4A.Yes.rawValue = null;\", so details beside No empty the required Yes/No box; the form's own message on it: \"You entered information that is not required, please review\". Read 10 Nov 2026."
+        },
+        {
+          "box": "form1[0].Page2[0].MaritalStatus[0].SectionA[0].Languages[0].languages[0].lov[0]",
+          "gate": { "op": "eq", "field": "person.official_language_ability", "value": "Both" },
+          "words": "the person is able to communicate in both English and French",
+          "cite": "IMM 5257 (09-2023) Languages (the template's subform Page2; the printed page number was not read here), question 1: \"*b) Are you able to communicate in English and/or French?\" then \"c) In which language are you most at ease?\"; the form's own Validate script (validateLanguageSection, called by validateCompletedForm): \"if(oAbilityToCommunicate.rawValue == \"Both\"){ util.enableField(oLangUsed.somExpression, true); … } else{ //Other lang util.enableField(oLangUsed.somExpression, false);\", and the form's own util.enableField: \"else { oField.access = \"readOnly\"; color.SetColorDisabled(oField); oField.rawValue = null; }\", so beside any answer to b) but Both, Validate empties c) without a message (the founder's Adobe Validate of the story's Paper copy, 10 Nov: c) read back empty where the product wrote 01); the form's list of values for b) (AbleCommunicateEnglishOrFrenchList): \"English\", \"French\", \"Both\", \"Neither\"; for c) (PreferenceLanguageList): \"English\" (01), \"French\" (02). Read 10 Nov 2026."
+        }
+      ]
+    }
+  ]
+}

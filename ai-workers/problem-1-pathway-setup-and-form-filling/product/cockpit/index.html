@@ -1,0 +1,1038 @@
+<meta charset="utf-8">
+<title>Founder's Progress Board</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+:root{
+  color-scheme:light;
+  --bg:#eef1f4; --panel:#ffffff; --panel2:#f6f8fa; --ink:#111a22; --ink2:#46535f; --ink3:#56636e; --line:#d5dbe1;
+  --accent:#0b5f8a; --accent-soft:#dcebf3;
+  --good:#17703f; --good-soft:#dcf0e3; --prog:#1d5fa8; --prog-soft:#dde8f6;
+  --wait:#9a5b00; --wait-soft:#fbeccf; --bad:#b3261e; --bad-soft:#f8dcd9; --none:#5e6a75; --none-soft:#e7ebee;
+  --hot:#c2410c;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0c1116; --panel:#141b22; --panel2:#19222b; --ink:#e6edf3; --ink2:#a9b6c2; --ink3:#7d8b98; --line:#26313c;
+    --accent:#5fb3e0; --accent-soft:#132c3b;
+    --good:#4cc283; --good-soft:#123222; --prog:#6ea8f0; --prog-soft:#152940; --wait:#e8a740; --wait-soft:#3a2a0e;
+    --bad:#f0726a; --bad-soft:#3d1715; --none:#95a3b0; --none-soft:#222c35; --hot:#fb8b4c;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0c1116; --panel:#141b22; --panel2:#19222b; --ink:#e6edf3; --ink2:#a9b6c2; --ink3:#7d8b98; --line:#26313c;
+  --accent:#5fb3e0; --accent-soft:#132c3b;
+  --good:#4cc283; --good-soft:#123222; --prog:#6ea8f0; --prog-soft:#152940; --wait:#e8a740; --wait-soft:#3a2a0e;
+  --bad:#f0726a; --bad-soft:#3d1715; --none:#95a3b0; --none-soft:#222c35; --hot:#fb8b4c;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--sans);font-variant-numeric:tabular-nums;overflow-x:hidden}
+.wrap{max-width:1120px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-right,0px)) 72px max(16px,env(safe-area-inset-left,0px))}
+.num,td.n,.mono{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:.92em}
+a{color:var(--accent)}
+/* sticky strip */
+.strip{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);margin:0;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px))}
+.strip-in{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
+.tile .k{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .v{font:600 19px/1.15 var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .s{font-size:11px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.alert{border-color:var(--bad);box-shadow:inset 3px 0 0 var(--bad)}
+.tile.warn{box-shadow:inset 3px 0 0 var(--wait)}
+header.top{padding:18px 0 4px}
+header.top h1{font:600 22px/1.2 var(--sans);margin:0}
+header.top p{margin:4px 0 0;color:var(--ink2);font-size:13px}
+/* sections */
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:14px 0;padding:14px 14px 16px;min-width:0}
+section>h2{font:600 16px/1.25 var(--sans);margin:0;display:flex;gap:8px;align-items:baseline}
+section>h2 .no{font:500 11px var(--mono);color:var(--ink3)}
+section>.why{margin:2px 0 12px;color:var(--ink2);font-size:13px}
+h3{font:600 13px/1.3 var(--sans);margin:14px 0 6px;color:var(--ink2);text-transform:uppercase;letter-spacing:.04em}
+.grid2{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:760px){.grid2{grid-template-columns:1fr 1fr}}
+.box{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--ink3);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+td.n,th.n{text-align:right;white-space:nowrap}
+.muted{color:var(--ink3)}
+.small{font-size:12.5px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-width:0}
+.kpi .k{font-size:12px;color:var(--ink2)}
+.kpi .v{font:600 22px/1.2 var(--mono)}
+.kpi .s{font-size:11.5px;color:var(--ink3)}
+/* pills: tone by colour AND by shape mark */
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:1px 8px 1px 6px;font-size:12px;font-weight:500;white-space:nowrap;border:1px solid transparent;line-height:1.5}
+.pill::before{content:"";width:8px;height:8px;flex:none;background:currentColor}
+.t-good{background:var(--good-soft);color:var(--good)} .t-good::before{border-radius:50%}
+.t-prog{background:var(--prog-soft);color:var(--prog)} .t-prog::before{clip-path:polygon(0 0,100% 50%,0 100%)}
+.t-wait{background:var(--wait-soft);color:var(--wait)} .t-wait::before{clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+.t-bad{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)} .t-bad::before{clip-path:polygon(50% 0,100% 100%,0 100%)}
+.t-none{background:var(--none-soft);color:var(--none)} .t-none::before{background:transparent;border:1.5px solid currentColor;width:7px;height:7px}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+/* lists */
+ul.items{list-style:none;margin:0;padding:0}
+ul.items li{padding:8px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:10px;align-items:start}
+ul.items li>.tag{max-width:8.5em;white-space:normal;overflow-wrap:anywhere}
+ul.items li>div{min-width:0;overflow-wrap:anywhere}
+ul.items li:last-child{border-bottom:0}
+.tag{font:500 12px var(--mono);color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 5px;white-space:nowrap}
+.oneline{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.oneline>div{background:var(--panel);padding:8px 10px}
+.oneline .k{font-size:11.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.04em}
+.oneline .v{font:600 17px/1.3 var(--mono)}
+.oneline .s{font-size:12px;color:var(--ink2)}
+svg text{font-family:var(--sans)}
+.svgwrap{width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px;background:var(--panel2)}
+.chip b{font-weight:600}
+.bar{display:flex;height:22px;border-radius:4px;overflow:hidden;border:1px solid var(--line)}
+.bar>span{display:block;height:100%}
+.sq{display:grid;grid-template-columns:repeat(auto-fill,minmax(18px,1fr));gap:3px}
+.sq i{display:block;aspect-ratio:1;border-radius:3px}
+.groupgrid{display:grid;grid-template-columns:1fr;gap:10px}
+@media(min-width:760px){.groupgrid{grid-template-columns:1fr 1fr}}
+.grp{border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.grp h4{margin:0 0 6px;font-size:13.5px;display:flex;justify-content:space-between;gap:8px}
+.grp .row{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;border-top:1px dashed var(--line)}
+.grp .row span:first-child{min-width:0}
+.trend{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.trend>div{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.err{border:2px solid var(--bad);background:var(--bad-soft);color:var(--ink);border-radius:8px;padding:14px;margin:18px 0}
+details#details{margin:14px 0}details#details>summary{cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font:600 15px/1.3 var(--sans);color:var(--ink2)}details#details[open]>summary{color:var(--ink)}
+.goal{margin:10px 0 4px;font-size:14px;color:var(--ink2)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 4px;position:sticky;top:64px;z-index:15;background:var(--bg);padding:6px 0}
+.tabs button{font:500 14px/1 var(--sans);padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.example{display:inline-block;border:1px dashed var(--wait);color:var(--wait);border-radius:4px;padding:0 6px;font-size:11.5px;margin-left:6px}
+.modlist{margin-top:10px}
+.dim{opacity:.55}
+/* A61-A63 (P-596) */
+.strip-in{grid-template-columns:repeat(6,minmax(0,1fr))}
+.lineage{max-width:1120px;margin:3px auto 0;font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:baseline;flex:none}
+.lt-green{background:var(--good)} .lt-amber{background:var(--wait);border-radius:2px;transform:rotate(45deg)} .lt-red{background:var(--bad);border-radius:0;clip-path:polygon(50% 0,100% 100%,0 100%)} .lt-grey{background:transparent;border:1.5px solid var(--none)}
+.tile.hl{cursor:pointer}
+.nm{color:var(--ink3);font-style:italic;font-weight:400}
+.rep{display:inline-block;border:1px solid var(--line);color:var(--ink3);border-radius:4px;padding:0 5px;font-size:10.5px;margin-left:5px;vertical-align:middle;font-style:normal;font-weight:400}
+.banner{border-radius:8px;padding:9px 12px;margin:12px 0 0;font-size:14px;border:1px solid}
+.banner.red{background:var(--bad-soft);border-color:var(--bad);color:var(--ink)} .banner.amber{background:var(--wait-soft);border-color:var(--wait);color:var(--ink)}
+.banner b{font-weight:600}
+#healthPanel{max-height:60vh;overflow:auto;max-width:1120px;margin:6px auto 0;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+#healthPanel[hidden]{display:none}
+#healthPanel li{grid-template-columns:minmax(0,max-content) minmax(0,1fr)}
+.ov{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:960px){.ov{grid-template-columns:1.3fr 1fr}.ov>#top3{grid-column:1/-1}.ov>#top3 .cards3{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1200px){.ov{grid-template-columns:1.35fr 1fr 1fr;align-items:start}.ov>#top3{grid-column:auto}.ov>#top3 .cards3{grid-template-columns:1fr}}
+.ov>section{margin:0;min-width:0}
+.ov .cards3{grid-template-columns:1fr;gap:6px}
+.ov .card{padding:6px 9px}
+.ov .card .w,.ov .card .small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;overflow:hidden}
+.ov .card .w,.ov .card .small.rec{-webkit-line-clamp:2}
+.ovsec{padding:12px 14px 12px}
+.ovsec>h2{font-size:15px}
+.ovsec p.line{margin:6px 0 4px;font-size:14.5px}
+.ovsec p.line b{font-family:var(--mono);font-weight:600}
+.cards3{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}
+@media(min-width:760px){.cards3{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-width:0;font-size:13px}
+.card .k{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3)}
+.card .w{font-weight:600;margin:1px 0}
+.card .small{font-size:12px;line-height:1.35}
+.card.miss{border-color:var(--wait);box-shadow:inset 3px 0 0 var(--wait)}
+.card.bad{border-color:var(--bad);box-shadow:inset 3px 0 0 var(--bad)}
+#tip ul.wnl{margin:2px 0 0;padding-left:16px} #tip ul.wnl li{margin:3px 0}
+details.more{margin:12px 0}
+details.more>summary{cursor:pointer;color:var(--ink2);font-size:13.5px;padding:6px 0}
+details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;display:inline}
+.org{display:grid;gap:10px}
+.org .lvl{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+.org .node{border:1px solid var(--line);border-radius:6px;background:var(--panel2);padding:6px 9px;font-size:12.5px;min-width:0}
+.org .node b{font-weight:600}
+.org .lead{border-color:var(--accent)}
+.org .q{border-style:dashed;border-color:var(--wait)}
+.org .lanes{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
+.wmark{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-left:6px;vertical-align:middle}
+.wmark.rep{background:transparent;border:1.5px solid var(--accent);padding:0;margin-left:6px;width:8px;height:8px;border-radius:50%}
+.workline{font-size:13.5px;margin:0 0 8px}
+/* board v61: the info panel a button opens (click or Enter; a second click, Esc or a click outside closes) */
+#tip{position:fixed;z-index:40;max-height:70vh;overflow:auto;width:max-content;max-width:min(380px,calc(100vw - 16px));background:var(--panel);color:var(--ink);border:1px solid var(--ink3);border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.4;box-shadow:0 6px 24px rgba(0,0,0,.2);display:none}
+#tip.on{display:block}
+#tip.sheet{left:8px;right:8px;bottom:8px;top:auto;max-width:none;width:auto;max-height:60vh;overflow:auto}
+#tip .l{display:block;font-weight:600;font-size:13px;margin-bottom:4px}
+#tip dl{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 8px}
+#tip dt{color:var(--ink3);font-weight:500}
+#tip dd{margin:0;overflow-wrap:anywhere}
+#tip .sep{border-top:1px solid var(--line);margin:7px 0}
+#tip .nmline{margin:0 0 6px;color:var(--wait)}
+/* board v61 (founder 15 Nov): one small info button beside each number or block; click only, hover shows nothing */
+.ib{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin:-4px -2px -4px 2px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--accent);font:600 15px/1 var(--sans);cursor:pointer;vertical-align:middle;flex:none}
+.ib:hover{background:var(--accent-soft)}
+.ib:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ib[aria-expanded="true"]{background:var(--accent);color:var(--bg)}
+.hasib{position:relative;padding-right:26px}
+.hasib>.ib{position:absolute;top:4px;right:3px;margin:0}
+.grpib{margin:2px 0 0}
+.hlbtn{all:unset;display:block;cursor:pointer;width:100%;box-sizing:border-box}
+.hlbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+.hlbtn>span{display:block}
+#tip .glist{margin:0;max-height:40vh;overflow:auto}
+#tip .glist div{padding:1px 0;border-top:1px dashed var(--line)}
+/* board v57: Team tab, the org view by component */
+.orgv{display:grid;gap:10px}
+.orgv .top{display:flex;justify-content:center}
+.orgv .boss{border:1.5px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:7px 14px;text-align:center;font-size:13px}
+.orgv .boss .muted{color:var(--ink2)}
+.orgv .stem{width:2px;height:14px;background:var(--line);margin:0 auto}
+.orgv .leads{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px}
+.orgv .leadbox{border:1px solid var(--accent);border-radius:8px;padding:7px 10px;font-size:12.5px;background:var(--panel2)}
+.orgv .leadbox b{font-size:13.5px}
+.rule{font-size:12.5px;color:var(--ink2);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin:0}
+.comps{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,310px),1fr));gap:10px;border-top:2px solid var(--line);padding-top:12px}
+.comp{margin:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:9px 11px;min-width:0;display:flex;flex-direction:column;gap:6px}
+.comp.lb{box-shadow:inset 4px 0 0 var(--prog)} .comp.tl{box-shadow:inset 4px 0 0 var(--good)}
+.comp h3{margin:0;font-size:14px;color:var(--ink);text-transform:none;letter-spacing:0;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.comp .own{font-size:12.5px} .comp .own b{font-weight:600}
+.comp .job{font-size:12px;color:var(--ink2);margin:0}
+.chain{display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:11.5px;color:var(--ink2)}
+.chain span{border:1px solid var(--line);border-radius:4px;padding:0 5px;background:var(--panel2)}
+.chain i{font-style:normal;color:var(--ink3)}
+.lanerow{border-top:1px dashed var(--line);padding-top:6px;font-size:12.5px;min-width:0}
+.lanerow .nm1{font-weight:600;overflow-wrap:anywhere}
+.lanerow .meta{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:2px;color:var(--ink2)}
+.lanerow .meta>span{white-space:nowrap}
+.lanerow.behind{background:var(--bad-soft);border-radius:4px;padding:6px}
+.comp .serves{font-size:11.5px;color:var(--ink3);margin-top:2px;overflow-wrap:anywhere}
+.orgv .leadbox.lb{box-shadow:inset 4px 0 0 var(--prog)} .orgv .leadbox.tl{box-shadow:inset 4px 0 0 var(--good)}
+.cnt{font:500 12px var(--mono);color:var(--ink2);white-space:nowrap}
+/* board v53 (A69, A70): the three top numbers, one row above the key-number strip */
+.strip-top{max-width:1120px;margin:0 auto 6px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.strip-top .tile{border-color:var(--accent)}
+.strip-top .tile .v{font-size:21px}
+.strip-top .tile .s2{font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabs{top:var(--striph,64px)}
+.reqs{font-size:12px;color:var(--ink2)} .reqs b{font-weight:600;color:var(--ink)}
+@media(max-width:760px){.strip-in{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:520px){
+  .strip-top{gap:4px}.strip-top .tile .v{font-size:16px}.strip-top .tile .s2,.strip-top .rep{display:none}.strip-top .tile .s{display:block;font-size:10px}
+  .strip-in{gap:4px}.tile{padding:4px 5px}.tile .v{font:600 15px/1.2 var(--sans)}.tile .k{font-size:10px;text-transform:none;letter-spacing:0}.tile .s{display:none}
+  section{padding:12px 10px 14px}
+  th,td{padding:5px 6px}
+}
+</style>
+
+<div class="strip" id="strip"><div class="strip-top" id="stripTop">
+  <div class="tile"><div class="k">Works today</div><div class="v">&#x2026;</div></div>
+  <div class="tile"><div class="k">Plan % per capability</div><div class="v">&#x2026;</div></div>
+  <div class="tile"><div class="k">Lanes</div><div class="v">&#x2026;</div></div>
+</div><div class="strip-in" id="stripIn">
+  <div class="tile"><div class="k">Needs you</div><div class="v">&#x2026;</div></div>
+  <div class="tile"><div class="k">Release 1</div><div class="v">&#x2026;</div></div>
+  <div class="tile"><div class="k">Proof of concept</div><div class="v">&#x2026;</div></div>
+  <div class="tile"><div class="k">Next date</div><div class="v">&#x2026;</div></div>
+  <div class="tile"><div class="k">Health</div><div class="v">&#x2026;</div></div>
+  <div class="tile"><div class="k">Plan use</div><div class="v">&#x2026;</div></div>
+</div><div class="lineage" id="lineage"></div><div id="healthPanel" hidden></div></div>
+<div class="wrap" id="app">
+  <header class="top"><h1>Founder's Progress Board</h1><p>Pathway Configurator, Release 1. Every number comes from the data script; press the ⓘ beside a number to see what it counts, its time window and sample, how to read it and its source.</p></header>
+  <div id="body"><p class="muted">Loading data.json&#x2026;</p></div>
+</div>
+<div id="tip" role="region" aria-live="polite" aria-label="About this number"></div>
+
+<script>
+(function(){
+"use strict";
+document.documentElement.lang="en";
+var D=null;
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
+function v(x){return x&&typeof x==="object"&&"v" in x?x.v:x;}
+function src(x){return x&&typeof x==="object"&&x.src?x.src:"";}
+/* board v61: S marks a block whose info is a plain source line; T marks a number by its key(s) in data.json's explain block
+   (window and n come from the data). Neither shows anything on hover: addIcons() puts one ⓘ button beside each. */
+function S(s){return s?' data-info="'+esc(s)+'"':"";}
+function T(k){return k?' data-tip="'+esc(k)+'"':"";}
+function nz(x,suf){return x==null?'<span class="nm" data-nm="no value in data.json">not measured</span>':esc(x)+(suf||"");}
+function fmtDate(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});}
+function short(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short"});}
+var LABEL={"Not shaped":"Not yet specified","Shaped":"Specified, ready to build","In PR":"In development","Merged":"Built","qa Works":"Proven","Works":"Proven","Built, awaiting qa":"Built, not yet proven","Partial":"Partly working","Not tested":"Not yet tested","Not built":"Not yet built"};
+function lab(k){return LABEL[k]||k;}
+function pill(text,tone,s){return '<span class="pill t-'+tone+'"'+S(s)+'>'+esc(lab(text))+'</span>';}
+var TONE={"qa Works":"good","Merged":"prog","In PR":"prog","Shaped":"wait","Not shaped":"none",
+  "Works":"good","Built, awaiting qa":"prog","Partial":"wait","Not tested":"none","Broken":"bad","Not built":"none",
+  "Merge queue":"good","Ready for label":"prog","Building":"prog","Concept":"none","CI running":"prog","CI red":"bad","Question to Lead":"wait",
+  "pushing":"good","quiet":"wait","blocked":"bad","ready":"good","in PR":"prog","merged":"good"};
+function tone(s){return TONE[s]||"none";}
+function toneVar(t){return "var(--"+t+")";}
+function ageText(h){if(h==null)return "n/a";if(h<0)h=0;if(h<1)return Math.round(h*60)+" min";if(h<48)return (Math.round(h*10)/10)+" h";return Math.round(h/24)+" d";}
+function section(no,id,title,why,inner){return '<section id="'+id+'"><h2>'+esc(title)+'</h2><p class="why">'+esc(why)+'</p>'+inner+'</section>';}
+function kpi(label,val,sub,s,cls,key){return '<div class="kpi'+(cls?" "+cls:"")+'"'+(key?T(key):S(s))+'><div class="k">'+esc(label)+'</div><div class="v">'+val+'</div>'+(sub?'<div class="s">'+sub+'</div>':"")+'</div>';}
+
+/* board v61: clicks. Only a ⓘ button opens its panel; tapping a number does nothing; a second click, Esc or a click outside closes */
+document.addEventListener("click",function(e){
+  var b=e.target.closest&&e.target.closest(".ib");
+  if(b){e.preventDefault();if(tipBtn===b)tipHide();else tipShow(b);return;}
+  if(tipBtn&&!tip.contains(e.target))tipHide();
+  var go=e.target.closest("[data-go]");
+  if(go){e.preventDefault();var tb=document.querySelector('.tabs button[data-tab="'+go.getAttribute("data-go")+'"]');if(tb){tb.click();var tg=document.getElementById("trust");if(tg)tg.scrollIntoView();}return;}
+  var mod=e.target.closest("[data-mod]");
+  if(mod){showModule(mod.getAttribute("data-mod"));}
+});
+document.addEventListener("keydown",function(e){
+  if(e.key==="Escape"&&tipBtn){var f=tipBtn;tipHide();if(f.focus)f.focus();return;}
+  if((e.key==="Enter"||e.key===" ")&&e.target.getAttribute&&e.target.getAttribute("data-mod")){e.preventDefault();showModule(e.target.getAttribute("data-mod"));}
+});
+var tip=document.getElementById("tip"),tipBtn=null;
+/* the panel: what it counts, window and sample, how to read it, source and class (FORMULAS.md › Info icons) */
+function oneHTML(el){
+  var keys=(el.getAttribute("data-tip")||"").split(/\s+/).filter(Boolean),E=(D&&D.explain)||{},h="";
+  var nx=el.getAttribute("data-nm")?el:el.querySelector("[data-nm]");
+  if(nx)h+='<p class="nmline"><b>Not measured:</b> '+esc(nx.getAttribute("data-nm"))+'</p>';
+  keys.forEach(function(k,i){var e=E[k];if(i)h+='<div class="sep"></div>';
+    if(!e){h+='<span class="l">'+esc(k)+'</span><p style="margin:0">not measured: data.json has no explanation for this number.</p>';return;}
+    h+='<span class="l">'+esc(e.label)+'</span><dl><dt>Counts</dt><dd>'+esc(e.what)+'</dd><dt>Window</dt><dd>'+esc(e.window)+'</dd>'+
+      '<dt>Sample</dt><dd>'+(e.n==null?'<i>not measured</i> ('+esc(e.n_reason||"no sample in the data")+')':'n = '+esc(e.n)+(e.n_of?' '+esc(e.n_of):""))+'</dd>'+
+      '<dt>Read it</dt><dd>'+esc(e.read||"")+(e.band?' <b>Healthy:</b> '+esc(e.band)+'.':"")+'</dd>'+
+      '<dt>Source</dt><dd>'+esc(e.src)+'</dd><dt>Class</dt><dd>'+esc(e["class"])+(e["class"]==="reported"?" (Lead-reported)":"")+(e.sha?' · sha '+esc(e.sha):"")+(e.as_of?' · as of '+esc(e.as_of):"")+'</dd></dl>';});
+  var info=el.getAttribute("data-info");
+  if(info)h+=(keys.length?'<div class="sep"></div>':'')+'<dl><dt>About</dt><dd>'+esc(info)+'</dd></dl>';
+  if(el.hasAttribute("data-wn"))h+=wnList();
+  return h;}
+/* G-5 (P-611): the weekly what's-new check; the light is re-read with the viewer's clock (FORMULAS.md › What's new this week) */
+function wnLight(W){var t=Date.now(),a=Date.parse(W.amber_at),r=Date.parse(W.red_at),wk=7*86400000;
+  if(W.checked)return t>=r+wk?"red":t>=a+wk?"amber":"green";return t>=r?"red":t>=a?"amber":W.light.state;}
+function wnLink(u){return /^https:\/\//.test(u||"")?' <a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">source</a>':"";}
+function wnList(){var W=D.whats_new;if(!W)return "";
+  var h='<div class="sep"></div><span class="l">Items'+(W.file_week?' ('+esc(W.file_week)+')':'')+'</span>';
+  h+=W.items.length?'<ul class="wnl">'+W.items.map(function(x){return '<li><b>'+esc(x.title)+'</b> · '+esc(short(x.date))+' · adopt <b>'+esc(x.adopt)+'</b><br>'+esc(x.why)+wnLink(x.source)+'</li>';}).join("")+'</ul>':'<p style="margin:0">No items: '+(W.state==="missing"?"the file is missing (not checked).":"none listed.")+'</p>';
+  h+='<div class="sep"></div><span class="l">Actions</span>'+(W.actions.length?'<ul class="wnl">'+W.actions.map(function(x){return '<li>'+esc(x.what)+' · owner '+esc(x.owner)+' · row '+esc(x.row)+'</li>';}).join("")+'</ul>':'<p style="margin:0">None listed.</p>');
+  if(W.problems.length)h+='<div class="sep"></div><p class="nmline"><b>File problems:</b> '+esc(W.problems.join("; "))+'</p>';
+  if(W.coverage)h+='<div class="sep"></div><dl><dt>Coverage</dt><dd>'+esc(W.coverage)+'</dd></dl>';
+  return h;}
+function rWhatsNew(){var W=D.whats_new;
+  if(!W)return '<section class="ovsec" id="whatsnew"><h2>What\'s new this week</h2><div class="card miss"'+S("whats_new missing from data.json: not checked")+'><div class="w">Not checked</div></div></section>';
+  var st=wnLight(W),cls=st==="red"?" bad":st==="amber"?" miss":"",when=W.checked_at?hhmm(W.checked_at):null;
+  var line=W.checked?'Checked: <b>yes</b> · '+esc(short(W.checked_at.slice(0,10)))+(when?' '+esc(when):"")+' by '+esc(W.checked_by):
+    'Checked: <b>no</b> · '+(W.state==="missing"?"no whats-new.json":W.state==="invalid"?"the file could not be read":"last check "+esc(W.file_week||"not dated")+(W.checked_by?" by "+esc(W.checked_by):""));
+  var due=st==="red"?"past Tuesday 12:00 IST":st==="amber"?"past Monday 12:00 IST":W.checked?"":"due Monday 12:00 IST";
+  return '<section class="ovsec" id="whatsnew"><h2>What\'s new this week</h2><div class="cards3"><div class="card'+cls+'" data-wn'+T("whats_new.box")+'>'+
+    '<div class="k">'+dot(st)+'Week '+esc(W.week)+'</div><div class="w">'+line+'</div>'+
+    '<div class="small">Adopt now: '+(W.adopt_yes.value==null?'<span class="nm">not checked</span>':'<b>'+esc(W.adopt_yes.value)+'</b> of '+esc(W.items.length)+' items')+(due?' · '+due:"")+'</div></div></div></section>';}
+function tipHTML(btn){var els=btn._els||[];
+  if(btn._group){var inf=els.filter(function(x){return !x.getAttribute("data-tip");}),tp=els.filter(function(x){return x.getAttribute("data-tip");});
+    return tp.map(oneHTML).join('<div class="sep"></div>')+(inf.length?(tp.length?'<div class="sep"></div>':'')+'<span class="l">'+esc(btn._group)+'</span><div class="glist">'+inf.map(function(x){return '<div>'+esc(x.getAttribute("data-info"))+'</div>';}).join("")+'</div>':"");}
+  return oneHTML(els[0]);}
+function tipPlace(el){var r=el.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight;
+  if(vw<=520){tip.classList.add("sheet");tip.style.left="";tip.style.top="";return;}
+  tip.classList.remove("sheet");var w=tip.offsetWidth,hh=tip.offsetHeight,x=Math.min(Math.max(8,r.left),vw-w-8),y=r.bottom+6;
+  if(y+hh>vh-8)y=Math.max(8,r.top-hh-6);tip.style.left=x+"px";tip.style.top=y+"px";}
+function tipShow(btn){tipHide();tipBtn=btn;tip.innerHTML=tipHTML(btn);tip.setAttribute("aria-label",btn.getAttribute("aria-label"));tip.classList.add("on");btn.setAttribute("aria-expanded","true");tipPlace(btn);}
+function tipHide(){if(tipBtn)tipBtn.setAttribute("aria-expanded","false");tipBtn=null;tip.classList.remove("on");}
+window.addEventListener("scroll",function(){if(tipBtn)tipPlace(tipBtn);},{passive:true});
+/* one ⓘ per marked element: a table row gets it in its last cell, a list item in its text, a tile or card in its corner,
+   an inline number right after it; marks inside one chart (svg) or one square grid share a single button after it */
+var BLOCKIB=".tile,.kpi,.card,.oneline>div,.trend>div";
+function ibLabel(el){var k=(el.getAttribute("data-tip")||"").split(/\s+/)[0],E=(D&&D.explain)||{};
+  if(k&&E[k])return E[k].label;var t=(el.textContent||"").replace(/\s+/g," ").trim();return t?t.slice(0,60):"this item";}
+function mkBtn(label){var b=document.createElement("button");b.type="button";b.className="ib";b.textContent="ⓘ";
+  b.setAttribute("aria-label","About: "+label);b.setAttribute("aria-expanded","false");b.setAttribute("aria-controls","tip");return b;}
+function addIcons(root){
+  var groups=[];
+  (root||document).querySelectorAll("[data-tip],[data-info],[data-nm]").forEach(function(el){
+    if(el.hasAttribute("data-ib"))return;
+    el.setAttribute("data-ib","1");
+    if(el.hasAttribute("data-nm")&&el.parentElement&&el.parentElement.closest("[data-tip],[data-info]"))return;  /* a "not measured" inside a marked block: its reason shows in that block's panel */
+    var svg=el.closest("svg"),sq=el.closest(".sq");
+    if(svg){while(svg.parentElement&&svg.parentElement.closest("svg"))svg=svg.parentElement.closest("svg");}
+    var host=svg||sq;
+    if(host){var g=groups.filter(function(x){return x.host===host;})[0];if(!g){g={host:host,els:[]};groups.push(g);}g.els.push(el);return;}
+    var b=mkBtn(ibLabel(el));b._els=[el];var tag=el.tagName;
+    if(tag==="TR"&&el.lastElementChild)el.lastElementChild.appendChild(b);
+    else if(tag==="TABLE"){var th=el.querySelector("th");(th||el).appendChild(b);}
+    else if(tag==="LI"){var lt=el.lastElementChild||el;(lt.firstElementChild&&lt.firstElementChild.tagName==="DIV"?lt.firstElementChild:lt).appendChild(b);}
+    else if(el.matches(BLOCKIB)){el.classList.add("hasib");el.appendChild(b);}
+    else if(el.matches(".bar")||tag==="svg")el.insertAdjacentElement("afterend",b);
+    else if(tag==="DIV"||tag==="P"||tag==="H4")el.appendChild(b);
+    else el.insertAdjacentElement("afterend",b);});
+  groups.forEach(function(g){var nxt=g.host.nextElementSibling;
+    if(nxt&&nxt.classList.contains("grpib")){nxt._els=nxt._els.concat(g.els);return;}
+    var lab=g.host.getAttribute("aria-label")||(g.host.classList.contains("sq")?"these squares":"this chart");
+    var b=mkBtn(lab);b.classList.add("grpib");b._els=g.els;b._group=g.host.classList.contains("sq")?"Each square":"Details";g.host.insertAdjacentElement("afterend",b);});
+  if(tipBtn&&!document.body.contains(tipBtn))tipHide();
+}
+
+function dataAgeH(){return D?(Date.now()-Date.parse(D.freshness.generated_at))/3600000:null;}
+/* Health item 2, the one number the page computes (spec §0.5): data age from generated_at and the viewer's clock */
+function ageState(h){var r=(D.freshness.page_age_rule||{amber_min:45,red_min:120});return h==null?"amber":h*60>=r.red_min?"red":h*60>=r.amber_min?"amber":"green";}
+function worst(a,b){var o={red:3,amber:2,green:1,grey:0};return (o[a]||0)>=(o[b]||0)?a:b;}
+function dot(st){return '<span class="dot lt-'+esc(st||"grey")+'" aria-hidden="true"></span>';}
+var LIGHTWORD={green:"green",amber:"amber",red:"red",grey:"grey",page:"page"};
+/* a number with lineage {value,src,sha,as_of,class,reason}: "not measured" with its reason, never a guess */
+function srcN(n){if(!n)return "";return [n.src,n.sha?"sha "+n.sha:"",n.as_of?"as of "+n.as_of:"",n["class"]||"",n.reason?"reason: "+n.reason:""].filter(Boolean).join(" · ");}
+function nm(reason,key){return '<span class="nm" data-nm="'+esc(reason||"not measured")+'"'+(key?T(key):S(reason||"not measured"))+'>not measured</span>';}
+function N(n,suf,fmt,key){if(!n)return nm("missing from data.json",key);if(n.value==null)return nm(n.reason,key);var t=fmt?fmt(n.value):esc(n.value)+(suf||"");return '<span'+(key?T(key):S(srcN(n)))+'>'+t+'</span>'+(n["class"]==="reported"?'<span class="rep">Lead-reported</span>':"");}
+function dshort(x){return x&&/^\d{4}-/.test(x)?short(x):esc(x);}
+
+/* lineage of a legacy {v,src,sha,as_of,class} value, for hover and the source bar (principle 3) */
+function srcV(x){if(!x||typeof x!=="object")return "";return [x.src,x.sha?"sha "+x.sha:"",x.as_of?"as of "+x.as_of:"",x["class"]||""].filter(Boolean).join(" \u00b7 ");}
+function relTile(){var P=D.pace;if(!P)return '<div class="tile"><div class="k">Release 1</div><div class="v">n/a</div></div>';
+  var b=P.built,pr=P.proven,diff=((D.trust||{}).status_disagreements||[]).length;
+  return '<div class="tile"'+T("strip.release1 pace.proven")+'><div class="k">Release 1</div><div class="v">'+(b.value==null?'<span class="nm" data-nm="'+esc(b.reason||"not measured")+'">not measured</span>':esc(b.value)+' built')+'</div><div class="s">of '+esc(P.rows_total.value)+' \u00b7 proven: '+(pr.value==null?"not measured":esc(pr.value))+(diff?' \u00b7 records differ':'')+'</div></div>';}
+/* the Lead input's 2 h limit, judged again by the page at viewing time (review Minor 6) */
+function leadInputStale(){var a=D.top3&&D.top3.as_of;if(!a||a==="no Lead input")return true;var t=Date.parse(a);return isNaN(t)||(Date.now()-t)/3600000>2;}
+var PLAIN={parts_merged:"parts merged",parts_total:"Release 1 parts",founder_asks_day:"your asks a day",rules_changes_day:"rule changes a day",target_changes_week:"target changes a week",launch_done:"launch conditions done",launch_total:"launch conditions",counsel_open:"counsel and expert items open",works_on_main:"proof capabilities proven",works_total:"proof capabilities",changes_per_day_window:"changes a day",remaining_scope_changes:"changes left",built_rows:"capabilities built",proven_rows:"capabilities proven",open_app_prs:"open app changes",lanes_working:"lanes working",ready_rows:"rows ready",forecast_p50_date:"50% date",forecast_p85_date:"85% date",mc_daily_counts:"daily changes used for the forecast",mc_remaining_scope:"changes left used for the forecast",plan_pct_used_24h:"weekly plan used in 24 h",span_hours:"hours the readings cover",changes_merged_span:"changes merged over the readings",works_rows_span:"capabilities reaching qa Works over the readings",pct_per_change:"plan % per change",pct_per_works_row:"plan % per capability",rows_done_24h:"capabilities done in 24 h",rows_needed_per_day:"capabilities needed a day",works_today:"capabilities at Works today",works_today_by_size:"sizes of today's Works",capabilities_not_mapped:"capabilities not mapped to a requirement",label_guard_removals_today:"label-guard removals today",ci_rule_failures_today:"check-docs CI failures today",ci_bundle_failures_today:"rules-and-tools CI step failures today"};
+function plain(k){return PLAIN[k]||k.replace(/_/g," ");}
+/* board v53 (A69, A70): three numbers on top, each with its source, sha, time and class on hover; a missing one reads
+   "not measured" with its reason, never a guess. Rules caught stay internal (Health item 4). */
+var SIZES=["S","M","L"];
+function sizeMix(b){if(!b)return "";var t=SIZES.map(function(k){return k+" "+(b[k]||0);}).join(" \u00b7 ");return t+(b["not shaped"]?" \u00b7 not shaped "+b["not shaped"]:"");}
+function renderTop(){
+  var T=D.top_numbers,el=document.getElementById("stripTop");
+  if(!T){el.innerHTML='<div class="tile" style="grid-column:1/-1"><div class="k">Top numbers</div><div class="v">'+nm("missing from data.json")+'</div></div>';return;}
+  var W=T.works_today,P=T.pct_per_works,C=T.pct_per_change,L=T.lanes||{},wk=L.working,st=L.started,id=L.idle;
+  var wv=W.value==null?nm(W.reason):'<b>'+esc(W.value)+'</b><span class="muted"> of '+esc(W.target)+'</span>';
+  var ws=W.value==null?"capabilities at qa Works today":(W.value?sizeMix(W.by_size):"none yet")+' \u00b7 target '+esc(W.target)+' a day';
+  var pv,ps;
+  if(P.value!=null){pv=esc(Number(P.value).toFixed(1))+'%'+(P.at_least?'<span class="muted"> at least</span>':'');ps="of a weekly plan per capability at Works (24 h)";}
+  else if(/^no Works yet/.test(P.reason||"")){pv='<span'+S(srcN(P))+'>no Works yet</span>';ps=esc(P.reason.replace(/^no Works yet: /,""))+" of a weekly plan in 24 h";}
+  else{pv=nm(P.reason);ps="plan % per capability at Works (24 h)";}
+  var cs=C&&C.value!=null?esc(Number(C.value).toFixed(1))+"% per merged change":"per merged change: not measured";
+  var lv=wk&&wk.value!=null?'<b>'+esc(wk.value)+'</b>':nm(wk&&wk.reason);
+  lv+=st&&st.value!=null?'<span class="muted"> of '+esc(st.value)+'</span>':'';
+  var ls=st&&st.value!=null?"started \u00b7 "+esc(id.value)+" idle"+(id.names&&id.names.length?": "+esc(id.names.join(", ")):""):'started: <span class="nm"'+S(st&&st.reason)+'>not measured</span>';
+  var rep='<span class="rep">Lead-reported</span>';
+  el.innerHTML=
+   '<div class="tile"'+S(srcN(W)+(W.maps&&W.maps.length?" · capabilities (map numbers): "+W.maps.join(", "):"")+" · size: "+(W.size_rule||""))+'><div class="k">Works today</div><div class="v">'+wv+'</div><div class="s">'+ws+'</div></div>'+
+   '<div class="tile"'+S(srcN(P)+" | "+srcN(C))+'><div class="k">Plan % per capability at Works</div><div class="v">'+pv+rep+'</div><div class="s">'+ps+'</div><div class="s2">'+cs+'</div></div>'+
+   '<div class="tile"'+S(srcN(wk)+" | started: "+srcN(st)+(st&&st.names?" ("+st.names.join(", ")+")":"")+" | idle: "+srcN(id))+'><div class="k">Lanes working</div><div class="v">'+lv+(st&&st.value!=null?rep:"")+'</div><div class="s">'+ls+'</div></div>';
+  var sh=document.getElementById("strip");if(sh)document.documentElement.style.setProperty("--striph",sh.offsetHeight+"px");
+}
+function renderStrip(){
+  renderTop();
+  var s=D.summary,el=document.getElementById("stripIn");
+  var ny=v(s.needs_you),bu=v(s.burnup_pct),w=v(s.works)||[null,null],nd=v(s.next_date),age=dataAgeH();
+  var H=D.health||{light:"amber"},ast=ageState(age),light=worst(worst(H.light,ast),leadInputStale()&&H.light==="green"?"amber":"green"),R=D.resources||{};
+  var wk=v(R.weekly_pct),bn=v(R.burn_pct_per_h),pd=v(R.paid_usd_today);
+  el.innerHTML=
+   '<div class="tile'+(ny>0?" alert":"")+'"'+T("strip.needs_you")+'><div class="k">Needs you</div><div class="v">'+nz(ny)+'</div><div class="s">'+(ny===0?"nothing from you":"for you to decide or do")+'</div></div>'+
+   relTile()+
+   '<div class="tile"'+T("strip.poc")+'><div class="k">Proof of concept</div><div class="v">'+nz(w[0])+'<span class="muted">/'+nz(w[1])+'</span></div><div class="s">capabilities proven by qa</div></div>'+
+   '<div class="tile"'+T("strip.next_date")+'><div class="k">Next date</div><div class="v">'+(nd?esc(short(nd.date)):"none")+'</div><div class="s">'+(nd?esc(nd.kind)+", in "+nd.days_left+" d":"")+'</div></div>'+
+   '<div class="tile hl'+(light==="red"?" alert":light==="amber"?" warn":"")+'"'+T("strip.health")+'><button type="button" class="hlbtn" id="healthTile" aria-controls="healthPanel" aria-expanded="'+String(!document.getElementById("healthPanel").hidden)+'" aria-label="Health: '+esc(LIGHTWORD[light])+'; press for the seven checks"><span class="k">Health</span><span class="v">'+dot(light)+esc(LIGHTWORD[light])+'</span><span class="s">data '+ageText(age)+' old</span></button></div>'+
+   '<div class="tile"'+T("strip.plan_use")+'><div class="k">Plan use</div><div class="v">'+(wk==null?'<span class="nm" data-nm="'+esc(src(R.weekly_pct))+'">not measured</span>':esc(wk)+"%")+'</div><div class="s">'+(bn==null?"burn not measured":esc(bn)+" %/h")+' · '+(pd==null?"paid not measured":"US$"+esc(pd)+" today")+'</div></div>';
+  var L=D.lineage||{},ah=L.ahead_of_main;
+  document.getElementById("lineage").innerHTML='Records from <span class="mono">'+esc(L.records_branch||"?")+' @'+esc((L.records_sha||"").slice(0,9))+'</span>, '+
+    (ah&&ah.value!=null?esc(ah.value)+' commits not on <span class="mono">main</span>':nm(ah&&ah.reason))+' · main <span class="mono">@'+esc((L.main_sha||"").slice(0,9))+'</span> · snapshot '+esc(L.taken_at||"");
+  renderHealth(ast,age);
+  var t=document.getElementById("healthTile");
+  t.onclick=function(){var p=document.getElementById("healthPanel");p.hidden=!p.hidden;t.setAttribute("aria-expanded",String(!p.hidden));};
+  addIcons(document.getElementById("strip"));
+}
+function renderHealth(ast,age){
+  var H=D.health,p=document.getElementById("healthPanel");if(!H){p.innerHTML='<p class="muted">Health not in data.json.</p>';return;}
+  var h='<ul class="items small">';
+  H.items.forEach(function(i){var st=i.state==="page"?ast:i.state,det=i.state==="page"?"Board data "+ageText(age)+" old (amber at 45 min, red at 2 h); generated "+esc(D.freshness.generated_ist):esc(i.detail);
+    if(i.id===5&&st==="green"&&leadInputStale()){st="amber";det+=" \u2014 the Lead input is now over 2 h old";}
+    h+='<li'+T("health."+i.id)+'><span class="tag">'+i.id+'</span><div>'+dot(st)+'<b>'+esc(i.name)+'</b>'+(i["class"]==="reported"?'<span class="rep">Lead-reported</span>':"")+' — '+det+
+      ((st==="red")?'<div><b>Action:</b> '+esc(i.action||"")+' · <b>Owner:</b> '+esc(i.owner||"")+'</div>':"")+'</div></li>';});
+  p.innerHTML=h+'</ul><p class="small muted">Red if any check fails, amber if any is not measured, else green. Token use and paid US$ are Lead-reported numbers in the strip.</p>';
+}
+
+/* banners (§6.6) */
+function rBanner(){
+  var T=D.trust;if(!T)return '<div class="banner amber"><b>Numbers not checked</b>: the trust block is missing.</div>';
+  if(T.state==="disagree")return '<div class="banner red" role="alert"><b>Numbers disagree: '+esc(T.diffs.map(function(d){return plain(d.name);}).join(", "))+'</b> — the board and the independent check give different numbers; the Lead fixes the script or the record before trusting them. '+
+    T.diffs.map(function(d){return esc(plain(d.name))+": board "+esc(JSON.stringify(d.board))+", check "+esc(JSON.stringify(d.reconcile));}).join("; ")+'</div>';
+  if(T.state==="not checked")return '<div class="banner amber"><b>Numbers not checked</b> — '+esc(T.reason||"the independent reconciliation did not run")+'.</div>';
+  return "";
+}
+
+/* §1 plan and pace */
+function rPace(){
+  var P=D.pace,F=D.forecast;if(!P)return "";
+  var lt=P.light||{state:"grey",why:""},bb=P.built.built_before,Y=P.changes_per_day;
+  var B=function(x){return "<b>"+esc(x)+"</b>";};
+  var h=P.committed_date?'<p class="line small">'+dot(lt.state)+'<span'+T("pace.light")+'>'+esc(lt.state)+'</span><span class="muted"> · '+esc(lt.why)+'</span></p>':"";
+  var pace=Y.value==null?'Pace: <span class="nm" data-nm="'+esc(Y.reason)+'"'+T("pace.changes_per_day")+'>'+esc(Y.reason)+'</span>':
+    'Pace: doing '+N(Y,"",B,"pace.changes_per_day")+' changes a day (last '+esc(Y.window_days)+' days)';
+  if(P.committed_date)h+='<p class="line">'+pace+'; need '+N(P.changes_needed_per_day,"",B,"pace.changes_needed_per_day")+' a day.</p>';
+  else{
+    h+='<p class="line"><span'+T("pace.light")+' aria-label="pace light '+esc(lt.state)+'">'+dot(lt.state)+'</span>No committed date yet (to be set '+esc(dshort(P.committed_set_on))+'). ';
+    h+=(F.p50.value==null?'Forecast: <span class="nm" data-nm="'+esc(F.p50.reason)+'"'+T("forecast.p50 forecast.p85")+'>'+esc(F.p50.reason)+'</span>.':
+      'At the current pace: 50% by '+N(F.p50,"",function(x){return B(dshort(x));},"forecast.p50")+', 85% by '+N(F.p85,"",function(x){return B(dshort(x));},"forecast.p85")+'.')+'</p>';
+    h+='<p class="line small">'+pace+'.</p>';
+  }
+  h+=rEarly(B);
+  h+=rDelivery(B);
+  var dis=((D.trust||{}).status_disagreements||[]);
+  h+='<p class="line">Capabilities: '+N(P.built,"",B,"pace.built")+' of '+N(P.rows_total,"",null,"pace.rows_total")+' built'+(bb&&bb.value?' <span class="small muted"'+T("pace.built_before")+'>(+'+esc(bb.value)+' built before 13 Nov)</span>':"")+', proven: '+N(P.proven,"",B,"pace.proven")+(P.proven&&P.proven.value!=null?' of '+esc(P.rows_total.value):"")+
+    (P.parts_merged?' \u00b7 parts merged: '+N(P.parts_merged,"",B,"pace.parts_merged")+(P.parts_merged.value!=null?' of '+esc(P.parts_merged.total):""):"")+'.'+
+    (dis.length?' <a href="#trust" class="small" data-go="details"'+S("the checklist's hand-kept status and the computed state differ on these capabilities; Details lists them")+'>records differ on capabilities '+esc(dis.map(function(x){return x.map;}).join(", "))+'</a>':"")+'</p>';
+  var R=P.remaining;
+  h+='<p class="small muted" style="margin:2px 0">Changes left: '+N(R,"",null,"pace.remaining")+' ('+esc(R.label)+')'+(P.ratio?'; measured '+N(P.ratio,"",null,"pace.ratio")+' changes per built capability':"")+'. Forecast sample: '+esc(F.sample)+'.</p>';
+  if(P.scope_note)h+='<p class="small" style="color:var(--wait)">'+esc(P.scope_note)+'</p>';
+  h+='<div class="svgwrap" id="burnup"></div>';
+  h+='<details class="inline"><summary>Roadmap timeline</summary><div class="svgwrap" id="timeline" style="margin-top:6px"></div></details>';
+  return '<section class="ovsec" id="pace"><h2>Plan and pace</h2>'+h+'</section>';
+}
+/* board v61 (founder A78, P-609): the early band until the measured forecast, then three daily leading numbers */
+function rEarly(B){
+  var P=D.pace,E=P.early_band,L=P.leading,h="";
+  if(E&&E.value)h+='<p class="line">Early estimate, <strong>low confidence</strong>: all Release 1 built between <span'+T("pace.early_band")+'>'+B(dshort(E.value.low))+' and '+B(dshort(E.value.high))+'</span> at the pace measured so far'+(E.committed?' (committed: '+esc(short(E.committed))+')':'')+'. The measured forecast replaces it after 5 days of history.</p>';
+  else if(E&&!/^replaced/.test(E.reason||""))h+='<p class="line small">Early estimate: '+nm(E.reason,"pace.early_band")+'.</p>';
+  if(!L)return h;
+  var lp=L.parts_merged,lc=L.caps_all_parts,lv=L.first_verdict_works_pct;
+  var nv=function(x,suf){return x.value==null?'<span style="font-size:13px">'+nm(x.reason)+'</span>':esc(x.value)+(suf||"");};
+  h+='<div class="kpis" style="margin:6px 0">'+
+    kpi("Parts merged",nv(lp,""),lp.day?"on "+esc(short(lp.day))+" · today so far "+esc(lp.today_so_far):"today so far "+esc(lp.today_so_far),"","","pace.leading_parts")+
+    kpi("Capabilities with all parts merged",nv(lc,"")+'<span class="muted" style="font-size:13px"> / '+esc(lc.rows_total)+'</span>',(lc.day?"+"+esc(lc.new_on_day)+" on "+esc(short(lc.day))+" · ":"")+"+"+esc(lc.today_so_far)+" today","","","pace.leading_caps")+
+    kpi("Works at the first qa verdict",nv(lv,"%"),esc(lv.works)+" of "+esc(lv.n)+" first verdicts since 13 Nov","","","pace.leading_fv")+'</div>';
+  return h;
+}
+/* P-602 (4): delivery per use over the last 24 h; the divisions use deliveries over the same hours as the readings.
+   "not measured" is said once per line: the figures not measured are listed at the end, each with its reason on hover */
+function rDelivery(B){
+  var X=D.pace.delivery_24h;if(!X)return "";
+  var U=X.plan_pct_used,Cm=X.changes_merged,Wr=X.works_rows,Dn=X.rows_done_per_day,RN=X.rows_needed_per_day,CN=D.pace.changes_needed_per_day,sp=X.span||{};
+  var parts=[],nms=[];
+  var val=function(n,suf,key){return '<span'+T(key)+'><b>'+esc(n.value)+(suf||"")+'</b></span>';};
+  var miss=function(label,n,key){nms.push('<span class="nm" data-nm="'+esc(label+": "+(n&&n.reason||"missing from data.json"))+'"'+T(key)+'>'+esc(label)+'</span>');};
+  var least=U.at_least?"at least ":"";
+  var head=sp.basis==="readings"?'Last '+esc(sp.hours)+' h of readings':'Last 24 h';
+  if(U.value!=null)parts.push(least+val(U,"%","pace.plan_pct_used")+' of a weekly plan used<span class="rep">Lead-reported</span>');else miss("weekly plan used",U,"pace.plan_pct_used");
+  var per=function(cnt,n,one,many,label,key){
+    if(n.value!=null)return ' <span class="muted"'+T(key)+'>('+least+esc(U.value)+'% of plan \u00f7 '+esc(cnt.value)+' '+(cnt.value===1?one:many)+' = '+esc(Number(n.value).toFixed(1))+'% a'+(one==="capability"?" capability":" change")+')</span>';
+    if(cnt.value!==0&&cnt.value!=null&&U.value!=null)miss(label,n,key);
+    return "";};
+  if(Cm.value===0)parts.push('no Release 1 changes merged');
+  else parts.push(val(Cm,"","pace.changes_merged_span")+' Release 1 change'+(Cm.value===1?"":"s")+' merged'+per(Cm,X.pct_per_change,"change","changes","plan % per change","pace.pct_per_change"));
+  if(Wr.value==null)miss("capabilities reaching qa Works",Wr,"pace.works_rows_span");
+  else if(Wr.value===0)parts.push('no capabilities reached qa Works');
+  else parts.push(val(Wr,"","pace.works_rows_span")+' capabilit'+(Wr.value===1?"y":"ies")+' reached qa Works'+per(Wr,X.pct_per_works_row,"capability","capabilities","plan % per capability","pace.pct_per_works_row"));
+  var rd=[];
+  if(Dn.value!=null)rd.push('done '+val(Dn,"","pace.rows_done_per_day"));else miss("capabilities done a day",Dn,"pace.rows_done_per_day");
+  if(RN.value!=null)rd.push('needed '+val(RN,"","pace.rows_needed_per_day"));else miss("capabilities needed a day",RN,"pace.rows_needed_per_day");
+  if(rd.length)parts.push('capabilities a day: '+rd.join(", ")+(CN&&CN.value!=null?' (changes a day: need '+val(CN,"","pace.changes_needed_per_day")+')':""));
+  var bad=(U.bad_lines||[]).length?' <span class="small" style="color:var(--wait)"'+S("lines of the weekly-plan log left out: "+U.bad_lines.map(function(x){return "line "+x.line+" ("+x.why+")";}).join("; "))+'>'+U.bad_lines.length+' log line(s) left out</span>':"";
+  return '<p class="line small">'+head+': '+parts.join(' \u00b7 ')+(nms.length?' \u00b7 not measured: '+nms.join(", "):"")+'.'+bad+'</p>';
+}
+function xScale(d0,d1,W,pad){var a=Date.parse(d0+"T00:00:00Z"),b=Date.parse(d1+"T00:00:00Z");return function(d){return pad+(Date.parse(d+"T00:00:00Z")-a)/Math.max(1,b-a)*(W-2*pad);};}
+function drawBurnup(){
+  var host=document.getElementById("burnup");if(!host||!D.burnup)return;
+  if(D.burnup&&D.burnup.days.length<2){host.innerHTML='<p class="small muted">Burn-up (capabilities): the chart starts when 2 days of history exist.</p>';return;}
+  var B=D.burnup,W=Math.max(300,host.clientWidth||420),Hh=104,pad=26,top=10,d0=B.days[0],d1=B.x_end>B.days[B.days.length-1]?B.x_end:B.days[B.days.length-1];
+  var x=xScale(d0,d1,W,pad),mx=Math.max.apply(null,[1].concat(B.scope.filter(function(z){return z!=null;}),B.built));
+  var y=function(z){return top+(Hh-top-18)*(1-z/mx);};
+  var s='<svg width="100%" viewBox="0 0 '+W+' '+Hh+'" role="img" aria-label="Release 1 burn-up: scope, built and proven capabilities">';
+  if(B.h1&&B.h1.from){var a=x(B.h1.from),b=x(B.h1.to||B.h1.from);s+='<rect x="'+a+'" y="'+top+'" width="'+Math.max(3,b-a)+'" height="'+(Hh-top-18)+'" fill="var(--wait-soft)" stroke="var(--wait)" stroke-dasharray="'+(B.h1.kind==="committed"?"":"3 2")+'"/>';}
+  var f=D.forecast||{};[["p50","50%"],["p85","85%"]].forEach(function(k){var vv=f[k[0]]&&f[k[0]].value;if(vv&&/^\d/.test(vv)){s+='<line x1="'+x(vv)+'" x2="'+x(vv)+'" y1="'+top+'" y2="'+(Hh-18)+'" stroke="var(--prog)" stroke-dasharray="2 3"/><text x="'+(x(vv)+2)+'" y="'+(top+9)+'" font-size="9.5" fill="var(--prog)">'+k[1]+'</text>';}});
+  function path(arr,step){var pts=[],prev=null;arr.forEach(function(z,i){if(z==null)return;var X=x(B.days[i]),Y=y(z);if(step&&prev!=null)pts.push(X+","+y(prev));pts.push(X+","+Y);prev=z;});return pts.join(" ");}
+  s+='<polyline points="'+path(B.scope,true)+'" fill="none" stroke="var(--ink3)" stroke-width="1.5"/>';
+  s+='<polyline points="'+path(B.built,false)+'" fill="none" stroke="var(--prog)" stroke-width="2"/>';
+  if(B.proven.some(function(z){return z!=null;}))s+='<polyline points="'+path(B.proven,false)+'" fill="none" stroke="var(--good)" stroke-width="2"/>';
+  s+='<line x1="'+pad+'" x2="'+(W-pad)+'" y1="'+(Hh-18)+'" y2="'+(Hh-18)+'" stroke="var(--line)"/>';
+  s+='<text x="'+pad+'" y="'+(Hh-4)+'" font-size="10" fill="var(--ink3)">'+esc(short(d0))+'</text><text x="'+(W-pad)+'" y="'+(Hh-4)+'" font-size="10" text-anchor="end" fill="var(--ink3)">'+esc(short(d1))+'</text>';
+  s+='<text x="'+(pad-4)+'" y="'+(y(mx)+4)+'" font-size="10" text-anchor="end" fill="var(--ink3)">'+mx+'</text><text x="'+(pad+2)+'" y="'+(top+8)+'" font-size="9.5" fill="var(--ink3)">capabilities</text>';
+  host.innerHTML=s+'</svg><div class="legend small"'+S(B.src+(B.h1&&B.h1.from?" \u00b7 plan H1 "+B.h1.from+(B.h1.to?" to "+B.h1.to:"")+" ("+B.h1.kind+")":""))+'><span class="pill t-none">scope</span><span class="pill t-prog">built</span><span class="pill t-good">proven</span><span class="pill t-wait">plan H1 (band while a forecast)</span></div>';
+}
+function drawTimeline(){
+  var host=document.getElementById("timeline");if(!host)return;
+  var ds=(D.plan.dates||[]).filter(function(d){return d.date;}).sort(function(a,b){return a.date.localeCompare(b.date);});if(!ds.length){host.innerHTML='<p class="muted small">No dated plan rows.</p>';return;}
+  var today=new Date().toISOString().slice(0,10),d0=[ds[0].date,today].sort()[0],d1=[ds[ds.length-1].date_to||ds[ds.length-1].date,today].sort()[1];
+  var W=Math.max(300,host.clientWidth||420),H=40+ds.length*15,pad=20,x=xScale(d0,d1,W,pad);
+  var s='<svg width="100%" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Roadmap: plan dates by module">';
+  s+='<line x1="'+pad+'" x2="'+(W-pad)+'" y1="20" y2="20" stroke="var(--line)" stroke-width="2"/><line x1="'+x(today)+'" x2="'+x(today)+'" y1="8" y2="'+(H-4)+'" stroke="var(--accent)" stroke-dasharray="3 3"/><text x="'+(x(today)+3)+'" y="12" font-size="10" fill="var(--accent)">today</text>';
+  ds.forEach(function(d,i){var X=x(d.date),c=d.kind==="committed";
+    s+='<circle cx="'+X+'" cy="20" r="5" fill="'+(c?"var(--good)":"var(--panel)")+'" stroke="'+(c?"var(--good)":"var(--wait)")+'" stroke-width="2"/>';
+    s+='<text x="'+Math.min(W-pad,Math.max(pad,X))+'" y="'+(40+i*15)+'" font-size="10.5" text-anchor="'+(X>W*0.7?"end":"start")+'" fill="var(--ink2)">'+esc(d.id+" "+short(d.date)+" · "+d.what.slice(0,60))+'</text>';});
+  host.innerHTML=s+'</svg><div class="legend small"'+S(ds.map(function(d){return d.id+" "+d.date+": "+d.what+" ("+d.kind+", "+d.source+")";}).join("; "))+'>'+pill("committed","good")+pill("forecast","wait")+'</div>';
+}
+
+/* §2 capacity */
+function rCapacity(){
+  var C=D.capacity;if(!C)return "";var lt=C.light||{};
+  var h='<p class="line">'+dot(lt.state)+'<span'+T("capacity.constraint")+'>'+esc(C.constraint.line)+'</span></p>';
+  var A=C.age,o=A.older;
+  h+='<p class="line small">'+(o.value==null?'Changes older than usual: '+nm(o.reason,"capacity.older"):'<b'+T("capacity.older")+'>'+esc(o.value)+'</b> open changes older than usual')+(A.amber_items.length?' · <span style="color:var(--wait)"'+T("capacity.older")+'>'+A.amber_items.length+' far older or with no push for a day</span>':"")+
+    (A.items.length?' <details class="inline"><summary>list</summary><ul class="items small">'+A.items.map(function(i){return '<li><span class="tag">#'+i.pr+'</span><div>'+esc(i.title)+'<div class="muted">open '+esc(i.age_d)+' days · last push '+(i.push_h==null?"n/a":esc(i.push_h)+" h ago")+(i.older?" · older than usual":"")+(i.amber?" · far older, or no push for a day":"")+'</div></div></li>';}).join("")+'</ul></details>':"")+'</p>';
+  h+='<p class="small muted" style="margin:2px 0">Lanes working '+N(C.lanes_working,"",null,"capacity.lanes_working")+' · rows ready with a brief '+N(C.ready_rows,"",null,"capacity.ready_rows")+(C.ready_rows.rows&&C.ready_rows.rows.length?' ('+esc(C.ready_rows.rows.slice(0,8).join(", "))+')':"")+' · free lane slots '+N(C.room,"",null,"capacity.room")+' · open app changes '+N(C.wip,"",null,"capacity.wip")+' · a change usually takes '+N(C.cycle_median_days," days",null,"capacity.cycle_median_days")+' · usual limit '+N(A.p85_days," days",null,"capacity.p85_days")+' · rows held by another row\'s files '+N(C.baton_held,"",null,"capacity.baton_held")+'</p>';
+  var st=C.stages;h+='<p class="small muted" style="margin:2px 0">Waiting: for review '+N(st.review.count,"",null,"capacity.review.count")+' (longest '+N(st.review.wait_h," h",null,"capacity.review.wait_h")+', limit 2 h) · to merge '+N(st.merge.count,"",null,"capacity.merge.count")+' (longest '+N(st.merge.wait_h," h",null,"capacity.merge.wait_h")+', limit 1 h) · for qa '+N(st.qa.count,"",null,"capacity.qa.count")+' (longest '+N(st.qa.wait_h," h",null,"capacity.qa.wait_h")+', limit 24 h)</p>';
+  if(C.idle&&C.idle.length)h+='<p class="small muted" style="margin:2px 0"'+T("capacity.idle")+'>No push in 90 min: '+C.idle.filter(function(i){return !(C.parked||[]).some(function(p){return p.pr===i.pr;});}).slice(0,8).map(function(i){return "#"+i.pr+" "+esc(i.push_h)+" h";}).join(", ")+'</p>';
+  if(C.parked&&C.parked.length)h+='<p class="small muted" style="margin:2px 0"'+T("capacity.parked")+'>Parked (no push for 7 days): '+C.parked.map(function(p){return "#"+p.pr+" ("+esc(p.push_d)+" days)";}).join(", ")+'</p>';
+  return '<section class="ovsec" id="capacity"><h2>Capacity</h2>'+h+'</section>';
+}
+
+/* §3 top 3 */
+function rTop3(){
+  var T=D.top3;if(!T)return "";
+  var stale=leadInputStale(),nm_={today:"Today",week:"This week",month:"This month"},h='<div class="cards3">';
+  ["today","week","month"].forEach(function(k){var c=T.cards[k];
+    if(c.state!=="ok"||stale){h+='<div class="card miss"'+S(T.src+" · "+(c.why||"Lead input over 2 h old now"))+'><div class="k">'+nm_[k]+'</div><div class="w">Lead has not updated this</div><div class="small muted">'+esc(c.state!=="ok"?c.why:"the Lead input is now over 2 h old")+'</div></div>';return;}
+    h+='<div class="card"'+S(c.what+" — "+c.why+" — Lead recommends: "+c.rec+" — owner "+c.owner+" | "+T.src+" · "+T.sha+" · as of "+T.as_of+" · reported")+'><div class="k">'+nm_[k]+'<span class="rep">Lead-reported</span>'+(T.example?'<span class="example">example data</span>':"")+'</div><div class="w">'+esc(c.what)+'</div><div class="small">'+esc(c.why)+'</div><div class="small rec"><b>Lead recommends:</b> '+esc(c.rec)+'</div><div class="small muted">Owner: '+esc(c.owner)+(c.needs_you?' · <a href="#needs">needs you: '+esc(c.needs_you)+'</a>':"")+'</div></div>';});
+  return '<section class="ovsec" id="top3"><h2>Top 3, with the Lead\'s recommendation</h2>'+h+'</div></section>';
+}
+/* board v63 (P-615): the founder's own behaviour numbers and the Customer box; records only, "not measured" where no source */
+function rBehaviour(){
+  var Bh=D.behaviour,Cu=D.customer;if(!Bh&&!Cu)return "";
+  var small=function(r,key){return '<span style="font-size:13px">'+nm(r||"missing from data.json",key)+'</span>';};
+  var cnt=function(x,key){return x&&x.value!=null?'<span>'+esc(x.value)+'</span>':small(x&&x.reason,key);};
+  var h='';
+  if(Bh){var a=Bh.founder_asks_day,r=Bh.rules_changes_day,t=Bh.target_changes_week;
+    h+='<h3>Your numbers</h3><div class="kpis">'+
+      kpi("Your asks a day",cnt(a,"behaviour.asks"),a&&a.value!=null?"on "+esc(short(a.day))+" \u00b7 today so far "+esc(a.today_so_far):"","","","behaviour.asks")+
+      kpi("Rule changes a day",cnt(r,"behaviour.rules"),r&&r.value!=null?"RULES.md on "+esc(short(r.day))+" \u00b7 today so far "+esc(r.today_so_far):"","","","behaviour.rules")+
+      kpi("Target changes a week",cnt(t,"behaviour.targets"),t&&t.value!=null?(t.ids.length?esc(t.ids.join(", ")):"none")+" \u00b7 last 7 days":"","","","behaviour.targets")+'</div>';}
+  if(Cu){var f=Cu.first_firm,j=Cu.journey_walked,c=Cu.counsel_open,l=Cu.launch_done;
+    var fv=f&&f.value?'<span style="font-size:15px">'+esc(f.value.name)+'</span>':small(f&&f.reason,"customer.firm");
+    h+='<h3>Customer</h3><div class="kpis">'+
+      kpi("First firm",fv,f&&f.value?"from "+esc(short(f.value.date)):"named and dated","","","customer.firm")+
+      kpi("Journey steps walked",j&&j.value!=null?esc(j.value):small(j&&j.reason,"customer.journey"),"","","","customer.journey")+
+      kpi("Counsel and expert items open",cnt(c,"customer.counsel"),c&&c.value!=null&&c.ids.length?esc(c.ids.join(", ")):"","","","customer.counsel")+
+      kpi("Launch conditions done",cnt(l,"customer.launch")+(l&&l.value!=null?'<span class="muted" style="font-size:13px"> / '+esc(l.total)+'</span>':""),"checklist section C","","","customer.launch")+'</div>';}
+  return '<section class="ovsec" id="behaviour"><h2>Your numbers and the customer</h2>'+h+'</section>';
+}
+function rOverview(){
+  return '<div class="ov">'+rPace()+rBehaviour()+rCapacity()+rTop3()+rWhatsNew()+'</div>'+
+    '<details class="more" id="ovmore"><summary>More: Release 1 at a glance, on track, plan and dates</summary>'+rGlance()+rStatus()+rPlan()+'</details>';
+}
+
+/* §4 Team tab (board v57, founder 15 Nov): the founder → components → owning Lead, responsibility and escalation → lanes */
+function hhmm(iso){if(!iso)return null;var m=/T(\d{2}):(\d{2})/.exec(iso);return m?m[1]+":"+m[2]+" IST":null;}
+function laneRow(l,O){
+  var q=l.seen!=="both",st=(l.state||"").toLowerCase(),tn=st==="blocked"?"bad":st==="running"||st==="pushing"||st==="working"?"good":st==="done"?"none":"wait";
+  var where=l.kind==="cloud"?"cloud":l.kind==="mac"?"Mac":"cloud or Mac not reported";
+  var push=l.last_push_at?'<span'+T("team.lane.push")+'>push '+esc(hhmm(l.last_push_at)||"")+' ('+esc(ageText(l.push_h))+' ago)</span>':'<span'+T("team.lane.push")+'><span class="nm" data-nm="'+esc(l.push_reason||"no push time in data.json")+'">push not measured</span></span>';
+  var idle=l.idle_min!=null?'<span'+T("team.lane.idle")+'>idle '+esc(l.idle_min)+' min<span class="rep">Lead-reported</span></span>':'<span'+T("team.lane.idle")+'><span class="nm" data-nm="the Lead input gives no idle_min for this lane">idle not reported</span></span>';
+  var h='<div class="lanerow'+(l.behind?" behind":"")+'"><div class="nm1">'+(l.behind?'<span class="pill t-bad">behind</span> ':"")+esc(l.name)+(q?' <span class="rep"'+S("found only in "+(l.seen==="reported only"?"the Lead input":"GitHub (branches and open PRs)")+"; listed in Health item 7")+'>? '+esc(l.seen)+'</span>':"")+'</div>'+
+    '<div class="meta"><span>'+esc(where)+'</span><span>row <b class="mono">'+esc(l.row||"none")+'</b></span><span>'+(l.pr?'PR <b class="mono">#'+esc(l.pr)+'</b>':'no PR')+'</span>'+(l.state?'<span>'+pill(l.state,tn)+'</span>':"")+push+idle+'</div>';
+  if(l.behind)h+='<div class="small" style="color:var(--bad)">'+esc(l.behind)+' → '+esc(l.owner||"its Lead")+' acts</div>';
+  h+='<div class="serves">'+(l.maps&&l.maps.length?'Serves capability '+l.maps.map(function(m){return 'row '+esc(m.map)+' '+esc(m.cap);}).join("; "):'Serves no Release 1 capability row by its row id')+(l.owner_how==="Lead input owner"?' · owner set in the Lead input':"")+'</div></div>';
+  return h;}
+function rTeamTab(){
+  var O=D.org;if(!O||!O.components)return section("","team","Team","The org view needs org.components in data.json.",'<p class="muted">not measured: org.components missing from data.json.</p>');
+  var K=O.components,ex=D.freshness.lead_input_example?'<span class="example">example data</span>':"";
+  var tech=K.tech_lead||"the tech Lead",lb=K.lead_b;
+  var own=function(kind){return K.items.filter(function(c){return c.owner_kind===kind;}).map(function(c){return c.name;}).join(", ");};
+  var h='<div class="orgv"><div class="top"><div class="boss"><b>The founder</b><div class="small muted">product direction only; decides money, a lower bar, or a slip of a day or more</div></div></div><div class="stem"></div>';
+  h+='<div class="leads"><div class="leadbox tl"><b>'+esc(tech)+'</b> · tech Lead, holds the release<div class="small muted">Owns: '+esc(own("tech"))+'</div><div class="small muted">Standbys: '+esc((K.standbys||[]).join(", ")||"none listed")+'</div></div>'+
+    '<div class="leadbox lb"><b>'+(lb?esc(lb):'<span class="nm" data-nm="no session with role lead-b in the Lead input">Lead B not reported</span>')+'</b> · Lead B, platform and front office<div class="small muted">Owns: '+esc(own("lead-b"))+'</div><div class="small muted">Reports to '+esc(tech)+'</div></div></div><p class="small muted" style="margin:0">The coloured edge of each component shows its owner: green the tech Lead, blue Lead B.</p>';
+  h+='<p class="rule"><b>If a lane falls behind</b> ('+esc(K.behind_rule||"rule not in data.json")+'): '+esc(K.escalation_rule)+'.'+ex+'</p>';
+  h+='<div class="comps">';
+  K.items.forEach(function(c){
+    var lanes=c.lanes||[];
+    h+='<section class="comp '+(c.owner_kind==="lead-b"?"lb":"tl")+'" aria-label="'+esc(c.name)+'"><h3><span>'+esc(c.name)+'</span><span class="cnt"'+T("team."+c.id+".lanes")+'>'+lanes.length+' lane'+(lanes.length===1?"":"s")+(c.behind?' · <span style="color:var(--bad)">'+c.behind+' behind</span>':"")+'</span></h3>';
+    h+='<div class="own">Owner: <b>'+(c.owner.name?esc(c.owner.name):'<span class="nm" data-nm="'+esc(c.owner.reason||"not reported")+'">not reported</span>')+'</b> <span class="muted">('+esc(c.owner.role)+')</span></div>';
+    h+='<p class="job">'+esc(c.job)+'</p>';
+    h+='<div class="small"><b>If a lane falls behind:</b> '+esc(c.if_behind)+'.</div>';
+    h+='<div class="chain" aria-label="escalation path">'+c.escalation.map(function(x,i){return (i?'<i aria-hidden="true">→</i>':"")+'<span>'+esc(x)+'</span>';}).join("")+'</div>';
+    if(c.id==="strategy_desk"&&(c.desk||[]).length)h+='<div class="lanerow"><div class="nm1">'+esc(c.desk.join(", "))+'</div><div class="serves">read-only; advises the founder</div></div>';
+    h+=lanes.length?lanes.map(function(l){return laneRow(l,O);}).join(""):'<div class="lanerow muted">No lane working now.</div>';
+    if(c.maps&&c.maps.length)h+='<div class="serves">Capability rows served: '+esc(c.maps.join(", "))+'</div>';
+    h+='</section>';});
+  h+='</div>';
+  if(K.unmapped&&K.unmapped.length)h+='<h3>Lanes not mapped to a component</h3><p class="small muted">No component in the Lead input and no known row prefix; the Lead adds <span class="mono">component</span> to the session.</p><div class="comps">'+K.unmapped.map(function(l){return '<div class="comp">'+laneRow(l,O)+'</div>';}).join("")+'</div>';
+  h+='</div>';
+  var t=D.team,c=v(t.counts)||{};
+  h+='<h3>Sessions in the Lead input</h3><div class="kpis">'+kpi("Cloud lanes pushing",nz(c.cloud_running),"","","","team.cloud_running")+kpi("Cloud lanes quiet or blocked",nz(c.cloud_idle),"","","","team.cloud_idle")+kpi("Mac sessions",nz(c.mac),"Leads, standbys, local lanes","","","team.mac")+'</div>';
+  h+='<p class="small muted">Reviewers: '+esc(O.reviewers)+'. How they work together: '+esc(O.how)+'. A lane marked ? is found by one source only (the Lead input or GitHub) and is listed in Health item 7. Component comes from the Lead input, else from the row id ('+esc(K.prefix_legend||"legend not in data.json")+'), else from the capability row it serves. BACKLOG\'s release holder\'s rows (AUD, the configurator\'s AS rows) are the tech Lead\'s.</p>';
+  return section("","team","Team: who works now, by component","The founder, then each Release 1 component with its owning Lead, what they answer for, who acts when a lane falls behind, and the lanes working in it.",h);
+}
+
+/* data trust (R9): invariants, records that differ, the independent check */
+function rTrust(){
+  var T=D.trust;if(!T)return "";
+  var h='<p class="small">Independent check: <b>'+esc(T.state)+'</b>'+(T.compared?' ('+esc(T.compared)+' numbers compared)':"")+(T.reason?' — '+esc(T.reason):"")+'</p>';
+  if(T.diffs&&T.diffs.length)h+='<ul class="items small">'+T.diffs.map(function(d){return '<li><span class="tag">differs</span><div>'+esc(plain(d.name))+': board '+esc(JSON.stringify(d.board))+', check '+esc(JSON.stringify(d.reconcile))+'</div></li>';}).join("")+'</ul>';
+  h+='<h3>Invariants</h3><ul class="items small">'+(T.invariants||[]).map(function(i){return '<li><span class="tag">'+(i.ok?"holds":"broken")+'</span><div>'+dot(i.ok?"green":"red")+esc(i.name)+'<div class="muted">'+esc(i.detail)+'</div></div></li>';}).join("")+'</ul>';
+  var dis=T.status_disagreements||[];
+  h+='<h3>Records differ ('+dis.length+')</h3>'+(dis.length?'<ul class="items small">'+dis.map(function(x){return '<li><span class="tag">capability '+esc(x.map)+'</span><div>checklist says <b>'+esc(lab(x.checklist))+'</b>; computed from merged changes: <b>'+esc(x.computed)+'</b>'+(x.cause?'<div class="muted">'+esc(x.kind+": "+x.cause)+'</div>':"")+'</div></li>';}).join("")+'</ul>':'<p class="small muted">None.</p>');
+  var ex=T.status_explained||[];
+  if(ex.length)h+='<h3>Differ by rule ('+ex.length+')</h3><p class="small muted">Not counted as records differ: the rule explains the difference.</p><ul class="items small">'+ex.map(function(x){return '<li><span class="tag">capability '+esc(x.map)+'</span><div>checklist says <b>'+esc(lab(x.checklist))+'</b>; computed: <b>'+esc(x.computed)+'</b><div class="muted">'+esc(x.kind+": "+x.cause)+'</div></div></li>';}).join("")+'</ul>';
+  if(T.notes&&T.notes.length)h+='<h3>Notes</h3><ul class="items small">'+T.notes.map(function(n){return '<li>'+esc(n)+'</li>';}).join("")+'</ul>';
+  return section("","trust","Data trust","Whether the numbers can be trusted: the independent check, the invariants, and capabilities where the hand-kept checklist and the computed state differ.",h);
+}
+
+
+function diffOf(map){return ((D.trust||{}).status_disagreements||[]).filter(function(x){return x.map===map;})[0];}
+/* §7 working today */
+function workText(map){var W=D.working_today;if(!W)return "";var r=W.rows[String(map)];if(!r)return "";
+  return r.kind==="pr"?"working today: open PR #"+r.prs.join(", #")+" (measured)":"working today: Lead-reported lane "+r.sessions.join(", ");}
+function workMark(map){var W=D.working_today;if(!W)return "";var r=W.rows[String(map)];if(!r)return "";
+  return '<span class="wmark'+(r.kind==="pr"?"":" rep")+'" role="img" aria-label="'+esc(workText(map))+'"></span>';}
+
+/* 1 needs you (board v61, founder 15 Nov): only what is needed from him, one line each with its date; the tech lead's PR
+   questions stay on the Factory tab (P-602 (1)); nothing open says so in words */
+function rNeeds(){
+  var n=D.needs_you,its=n.items||[];
+  var items=its.map(function(i){return '<li'+S(i.src)+'><span class="tag">'+esc(i.id)+'</span><div><div>'+esc(i.line)+'</div>'+(i.by?'<div class="small"><b>By '+esc(fmtDate(i.by))+'</b></div>':'')+'</div></li>';});
+  var cnt=v(D.summary.needs_you);if(cnt==null)cnt=items.length;
+  var h='<section id="needs" class="ovsec" style="margin:12px 0 0"><h2>Needs you <span class="mono"'+T("strip.needs_you")+'>'+esc(cnt)+'</span></h2><ul class="items">'+(items.join("")||'<li class="muted">Nothing needed from you.</li>')+'</ul>';
+  return h+'</section>';
+}
+
+/* the tech lead's queue (P-602 (1)): PR questions are his to answer, never the founder's */
+function rLeadQueue(){
+  var Q=D.lead_queue;if(!Q)return "";
+  var c=Q.count,cv=v(c),items=Q.items||[];
+  var h='<p class="line">'+(cv==null?nm(c.reason||c.src,"factory.lead_queue"):'<span'+T("factory.lead_queue")+'><b>'+esc(cv)+'</b> open</span>')+'. The tech lead answers these; they are not in Needs you.</p>';
+  if(items.length)h+='<ul class="items">'+items.map(function(q){return '<li'+S(q.src)+'><span class="tag">#'+esc(q.n)+'</span><div><div>Open '+ageText(q.age_h)+'</div><div class="small muted">'+esc(q.title)+'</div></div></li>';}).join("")+'</ul>';
+  return section("04","leadq","Questions waiting on the tech lead","Pull requests where a builder asked the tech lead and has no answer yet.",h);
+}
+
+/* 2 system map + team */
+function rSystem(){
+  var vs=D.value_stream;
+  var h='<div class="svgwrap" id="vsm"></div><p class="small muted"'+S(vs.note)+'>'+esc(vs.note)+' The orange box is the stage taking the most time.</p>';
+  return section("05","map","You are here: the factory","Each row moves left to right. The count is how many sit in that stage now; the time is their median wait.",h);
+}
+function drawVSM(){
+  var host=document.getElementById("vsm");if(!host)return;
+  var st=D.value_stream.stages,bn=D.value_stream.bottleneck,W=host.clientWidth||360;
+  var cols=W<520?2:4,gap=W<520?22:26,bw=(W-gap*(cols-1))/cols,bh=88,rows=Math.ceil(st.length/cols),H=rows*bh+(rows-1)*30+4;
+  var s='<svg width="100%" viewBox="0 0 '+W+' '+H+'" role="group" aria-label="Value stream from shaped rows to Release 1 rows done">';
+  s+='<defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--ink3)"/></marker></defs>';
+  var pos=st.map(function(_,i){var r=Math.floor(i/cols),c=i%cols;if(r%2===1)c=cols-1-c;return {x:c*(bw+gap),y:r*(bh+30),r:r};});
+  for(var i=0;i<st.length-1;i++){var a=pos[i],b=pos[i+1];
+    if(a.r===b.r){var dir=b.x>a.x?1:-1;var x1=dir>0?a.x+bw:a.x,x2=dir>0?b.x-2:b.x+bw+2;s+='<line x1="'+x1+'" y1="'+(a.y+bh/2)+'" x2="'+x2+'" y2="'+(b.y+bh/2)+'" stroke="var(--ink3)" stroke-width="1.5" marker-end="url(#ah)"/>';}
+    else{s+='<line x1="'+(a.x+bw/2)+'" y1="'+(a.y+bh)+'" x2="'+(b.x+bw/2)+'" y2="'+(b.y-2)+'" stroke="var(--ink3)" stroke-width="1.5" marker-end="url(#ah)"/>';}}
+  st.forEach(function(g,i){var p=pos[i],hot=g.id===bn,c=v(g.count),w=v(g.wait_h);
+    s+='<g'+T("vsm."+g.id+".count vsm."+g.id+".wait_h")+' role="img" aria-label="'+esc(g.name+": "+(c==null?"not measured":c)+", "+(w==null?"wait not measured":"median wait "+ageText(w)))+'">';
+    s+='<rect x="'+(p.x+.75)+'" y="'+(p.y+.75)+'" width="'+(bw-1.5)+'" height="'+(bh-1.5)+'" rx="6" fill="'+(hot?"var(--wait-soft)":"var(--panel2)")+'" stroke="'+(hot?"var(--hot)":"var(--line)")+'" stroke-width="'+(hot?2.5:1)+'"/>';
+    s+='<svg x="'+(p.x+8)+'" y="'+p.y+'" width="'+Math.max(0,bw-14)+'" height="'+bh+'">';
+    s+='<text x="0" y="17" font-size="11.5" fill="var(--ink2)">'+esc(g.name)+'</text>';
+    s+='<text x="0" y="44" font-size="24" font-weight="600" fill="var(--ink)" style="font-family:var(--mono)">'+(c==null?"n/a":esc(c))+'</text>';
+    s+='<text x="0" y="64" font-size="11" fill="'+(hot?"var(--hot)":"var(--ink3)")+'">'+(w==null?"wait not measured":"median "+ageText(w))+'</text>'+(hot?'<text x="0" y="80" font-size="11" font-weight="600" fill="var(--hot)">Taking the most time</text>':"")+'</svg></g>';});
+  host.innerHTML=s+'</svg>';
+}
+/* 3 status line */
+function rStatus(){
+  var s=D.status_line,w=v(s.works)||[],r=v(s.rows_done)||[],nc=v(s.next_committed),fc=v(s.build_forecast);
+  var h='<div class="oneline">'+
+   '<div'+S(src(s.works))+'><div class="k">Proof of concept: proven by qa</div><div class="v">'+nz(w[0])+' / '+nz(w[1])+'</div><div class="s">proof-of-concept capabilities</div></div>'+
+   '<div'+S(src(s.rows_done))+'><div class="k">Release 1: proven (checklist)</div><div class="v">'+nz(r[0])+' / '+nz(r[1])+'</div><div class="s">'+nz(v(s.rows_merged_or_better))+' merged or better</div></div>'+
+   '<div'+S(src(s.next_committed))+'><div class="k">Next committed date</div><div class="v">'+(nc?esc(short(nc.date)):"none")+'</div><div class="s">'+(nc?esc(nc.what):"")+'</div></div>'+
+   '<div'+S(src(s.build_forecast))+'><div class="k">Build forecast</div><div class="v">'+(fc&&fc.date?esc(short(fc.date))+(fc.date_to?"\u2013"+esc(short(fc.date_to)):""):"none")+'</div><div class="s">'+(fc?esc(fc.kind)+" \u00b7 "+esc(fc.source):"")+'</div></div>'+
+   '<div'+S("generated "+D.freshness.generated_ist)+'><div class="k">Data age</div><div class="v">'+ageText(dataAgeH())+'</div><div class="s">main '+esc(v(D.freshness.main_sha)||"n/a")+'</div></div></div>';
+  return section("02","status","On track?","Release 1 and the proof of concept, each against its dates. Two numbers, never mixed (P-592).",h);
+}
+
+/* 4 plan */
+function rPlan(){
+  var p=D.plan,h='<div class="legend">'+pill("committed","good")+pill("forecast","wait")+'</div><div class="box"><table><thead><tr><th>Level</th><th>What</th><th>Date</th><th class="n">Days</th><th>Kind</th><th>Source</th></tr></thead><tbody>';
+  var ds=p.dates.slice().sort(function(a,b){if(a.level!==b.level)return a.level==="high"?-1:1;return (a.date||"9999").localeCompare(b.date||"9999");});
+  ds.forEach(function(d){h+='<tr'+S(p.src+" \u00b7 "+d.source+(d.note?" \u00b7 "+d.note:""))+'><td>'+esc(d.level)+'</td><td>'+esc(d.what)+(d.note?'<div class="small muted">'+esc(d.note)+'</div>':"")+'</td><td class="mono" style="white-space:nowrap">'+(d.date?esc(fmtDate(d.date))+(d.date_to?" \u2013 "+esc(fmtDate(d.date_to)):""):'<span class="muted">not dated</span>')+'</td><td class="n">'+(d.days_left==null?"":d.days_left<0?'<span class="muted">past</span>':d.days_left)+'</td><td>'+pill(d.kind,d.kind==="committed"?"good":"wait")+'</td><td class="mono small">'+esc(d.source)+'</td></tr>';});
+  h+='</tbody></table></div><p class="small muted">Dates kept in cockpit/plan.json, as of '+esc(p.as_of)+'; each names the decision that sets it.</p>';
+  return section("06","plan","Plan and dates","High-level and mid-level dates in one table; forecasts stay forecasts until measured.",h);
+}
+
+/* 5 architecture */
+function rArch(){
+  return section("07","arch","Product architecture","Each module, filled by the share of its Release 1 capabilities at qa Works (dark) and merged (light). Tap a module for its capabilities.",
+    '<div class="svgwrap" id="archsvg"></div><div class="legend"><span class="pill t-good">qa Works share</span><span class="pill t-prog">merged share</span></div><div class="modlist" id="modlist"><p class="small muted">Tap a module to list its capabilities.</p></div>');
+}
+function drawArch(){
+  var host=document.getElementById("archsvg");if(!host)return;
+  var M=D.architecture.modules,W=host.clientWidth||360,narrow=W<620;
+  var mods=M.filter(function(m){return m.kind==="module";}),layer=M.filter(function(m){return m.kind==="layer";}),low=M.filter(function(m){return m.kind!=="module"&&m.kind!=="layer";});
+  var cols=narrow?2:mods.length,gap=10,bw=(W-gap*(cols-1))/cols,bh=88,r1=Math.ceil(mods.length/cols);
+  var y=0,s="",H;
+  function box(m,x,y,w,h){var d=m.done_share||0,g=m.merged_share||0,lbl=m.total+" capabilities \u00b7 "+Math.round(d*100)+"% Works";
+    var o='<g data-mod="'+esc(m.id)+'" tabindex="0" role="button" aria-label="'+esc(m.name+", "+lbl+"; press to list its capabilities")+'" style="cursor:pointer">';
+    o+='<rect x="'+(x+.75)+'" y="'+(y+.75)+'" width="'+(w-1.5)+'" height="'+(h-1.5)+'" rx="6" fill="var(--panel2)" stroke="'+(m.kind==="gap"?"var(--wait)":"var(--line)")+'" stroke-dasharray="'+(m.kind==="gap"?"4 3":"")+'"/>';
+    o+='<rect x="'+(x+1)+'" y="'+(y+h-10)+'" width="'+Math.max(0,(w-2)*g)+'" height="9" fill="var(--prog-soft)"/><rect x="'+(x+1)+'" y="'+(y+h-10)+'" width="'+Math.max(0,(w-2)*d)+'" height="9" fill="var(--good)"/>';
+    var c=m.counts||{};o+='<svg x="'+(x+8)+'" y="'+y+'" width="'+Math.max(0,w-14)+'" height="'+(h-10)+'">';
+    o+='<text x="0" y="18" font-size="13" font-weight="600" fill="var(--ink)">'+esc(m.name)+'</text>';
+    o+='<text x="0" y="36" font-size="11.5" fill="var(--ink2)" style="font-family:var(--mono)">'+esc(m.total)+' capabilities \u00b7 '+Math.round(d*100)+'% Works</text>';
+    o+='<text x="0" y="52" font-size="11" fill="var(--ink3)">'+esc(Math.round(g*100)+"% merged \u00b7 "+(c["In PR"]||0)+" in PR")+'</text>';
+    o+='<text x="0" y="67" font-size="11" fill="var(--ink3)">'+esc((c["Shaped"]||0)+" shaped \u00b7 "+(c["Not shaped"]||0)+" not shaped")+'</text></svg></g>';return o;}
+  mods.forEach(function(m,i){var r=Math.floor(i/cols),c=i%cols;s+=box(m,c*(bw+gap),r*(bh+gap),bw,bh);});
+  y=r1*(bh+gap);
+  layer.forEach(function(m){s+=box(m,0,y,W,bh);y+=bh+gap;});
+  var lc=narrow?1:low.length,lw=(W-gap*(lc-1))/lc;
+  low.forEach(function(m,i){var r=Math.floor(i/lc),c=i%lc;s+=box(m,c*(lw+gap),y+r*(bh+gap),lw,bh);});
+  H=y+Math.ceil(low.length/lc)*(bh+gap);
+  host.innerHTML='<svg width="100%" viewBox="0 0 '+W+' '+H+'" role="group" aria-label="Modules of the product and their progress">'+s+'</svg>';
+}
+function showModule(id){
+  var m=D.architecture.modules.filter(function(x){return x.id===id;})[0],el=document.getElementById("modlist");if(!m||!el)return;
+  var h='<h3>'+esc(m.name)+' \u00b7 '+m.total+' capabilities</h3><p class="small muted"'+S(m.src)+'>'+esc(m.what||"")+'</p><div class="box"><table><tbody>';
+  m.rows.forEach(function(r){h+='<tr><td class="mono n">'+r.map+'</td><td>'+esc(r.cap)+'</td><td>'+pill(r.status,tone(r.status))+'</td></tr>';});
+  el.innerHTML=h+'</tbody></table></div>';
+  addIcons(el);
+}
+
+/* board v53 (A70): each capability's size (its backlog row count) and the requirement ids its backlog rows cite (Source:) */
+function rCapTable(){
+  var T=D.capability_table;if(!T)return section("","captable","Sizes and requirements","Not in data.json.",'<p>'+nm("missing from data.json")+'</p>');
+  var b=T.by_size,nmp=T.not_mapped,grp={};((D.capabilities||{}).groups||[]).forEach(function(g){grp[g.id]=g.name;});
+  var h='<p class="line small">By size: <span'+S(srcN(b))+'>'+(b.value?esc(sizeMix(b.value)):nm(b.reason))+'</span> \u00b7 '+
+    '<span'+S(srcN(nmp)+(nmp.maps&&nmp.maps.length?" · map numbers: "+nmp.maps.join(", "):""))+'>not mapped to a requirement: <b>'+esc(nmp.value)+'</b></span></p>';
+  h+='<p class="small muted">Size = how many backlog rows the capability\'s checklist cell names: 1 S, 2-3 M, 4 or more L; none, or not shaped yet: "not shaped". Requirements = the ids in its backlog rows\' Source field, grouped by section.</p>';
+  h+='<div class="box"><table><thead><tr><th class="n">Map</th><th>Capability</th><th>Size</th><th>Requirements</th><th>Status</th></tr></thead><tbody>';
+  var last=null;
+  T.rows.forEach(function(r){
+    if(r.group!==last){last=r.group;h+='<tr><td colspan="5" class="small muted"><b>'+esc(r.group+". "+(grp[r.group]||""))+'</b></td></tr>';}
+    var secs=Object.keys(r.req_by_section||{});
+    var req=secs.length?secs.map(function(k){return '<b>'+esc(k)+'</b> '+esc(r.req_by_section[k].map(function(x){return x.slice(k.length+1);}).join(", "));}).join(" \u00b7 "):'<span class="muted">not mapped</span>';
+    h+='<tr><td class="mono n">'+esc(r.map)+'</td><td>'+esc(r.cap)+'</td><td'+S(r.backlog_rows+" backlog row"+(r.backlog_rows===1?"":"s"))+'>'+esc(r.size)+'</td><td class="reqs"'+S(r.req.join(", "))+'>'+req+'</td><td>'+pill(r.status,tone(r.status))+'</td></tr>';});
+  h+='</tbody></table></div><p class="small muted"'+S(T.source_rule)+'>Source: MVP-CHECKLIST.md §A and BACKLOG.md at the records sha (parsed).</p>';
+  return section("","captable","Sizes and requirements","Each Release 1 capability with its size and the requirement ids its backlog rows cite.",h);
+}
+
+/* 6 capabilities */
+function rCaps(){
+  var C=D.capabilities,cnt=v(C.counts)||{},tot=C.total||1,order=["qa Works","Merged","In PR","Shaped","Not shaped"];
+  var h='<h3>Release 1 burn-up: '+tot+' capabilities</h3><div class="bar" role="img" aria-label="'+esc(order.map(function(k){return lab(k)+" "+(cnt[k]||0);}).join(", "))+'"'+S(order.map(function(k){return lab(k)+": "+(cnt[k]||0);}).join(", ")+" | "+src(C.counts))+'>';
+  order.forEach(function(k){var n=cnt[k]||0;if(n)h+='<span style="width:'+(100*n/tot)+'%;background:'+toneVar(tone(k))+'"></span>';});
+  h+='</div><div class="legend">';order.forEach(function(k){h+=pill(k+" "+(cnt[k]||0),tone(k));});h+='</div>';
+  h+='<div class="groupgrid">';
+  C.groups.forEach(function(g){var rs=C.rows.filter(function(r){return r.group===g.id;});var done=rs.filter(function(r){return r.status==="qa Works";}).length;
+    h+='<div class="grp"><h4><span>'+esc(g.id+". "+g.name)+'</span><span class="mono muted"'+S(src(C.counts))+'>'+done+'/'+rs.length+'</span></h4>';
+    rs.forEach(function(r){var df=diffOf(r.map);h+='<div class="row"'+S("MVP-CHECKLIST.md capability "+r.map+" \u00b7 "+r.module+" \u00b7 "+r.backlog+(workText(r.map)?" \u00b7 "+workText(r.map):"")+(df?" \u00b7 records differ: the checklist says "+lab(df.checklist)+"; computed from merged changes: "+df.computed:""))+'><span>'+esc(r.map+" "+r.cap)+workMark(r.map)+'</span><span>'+pill(r.status,tone(r.status))+(df?' <span class="rep">records differ: '+esc(df.computed)+'</span>':"")+'</span></div>';});h+='</div>';});
+  h+='</div><h3>qa capabilities ('+(v(C.qa)||[]).length+')</h3>';
+  (v(C.qa_by_milestone)||[]).forEach(function(m){h+='<div class="small" style="margin:4px 0"'+S(src(C.qa_by_milestone))+'><b>'+esc(m.milestone)+'</b>: <span class="mono">'+m.works+' of '+m.total+'</span> Works</div>';});
+  var qs=v(C.qa)||[];["M2","M3","T"].forEach(function(ms){var g=qs.filter(function(q){return q.m===ms;});if(!g.length)return;
+    h+='<div class="small muted" style="margin:6px 0 3px">'+esc(ms)+'</div><div class="sq" aria-label="qa capabilities '+esc(ms)+', one square each">';
+    g.forEach(function(q){var t=tone(q.status);h+='<i style="background:'+toneVar(t)+(t==="none"?";background:transparent;border:1.5px solid var(--none)":"")+'"'+S(q.id+" \u00b7 "+q.status+" \u00b7 "+q.name+" \u2014 "+src(C.qa))+'></i>';});h+='</div>';});
+  h+='<div class="legend">'+pill("Works","good")+pill("Built, awaiting qa","prog")+pill("Partial","wait")+pill("Broken","bad")+pill("Not tested or built","none")+'</div>';
+  return section("08","caps","Capabilities","Every Release 1 capability by group with its status, then the qa capabilities as one square each.",h);
+}
+
+/* 7 building */
+function rBuilding(){
+  var B=D.building,h='<div class="legend">';
+  var counts={};B.prs.forEach(function(p){counts[p.station]=(counts[p.station]||0)+1;});
+  Object.keys(counts).forEach(function(k){h+='<span'+T("building.station")+'>'+pill(k+" "+counts[k],tone(k))+'</span>';});
+  h+='</div><div class="box"><table><thead><tr><th>PR</th><th>Title</th><th>Station</th><th class="n">Last push</th><th>CI</th><th>Head</th></tr></thead><tbody>';
+  B.prs.forEach(function(p){h+='<tr'+S(B.src+" \u00b7 labels: "+(p.labels.join(", ")||"none")+(p.reviewer_approve_on_head?" \u00b7 Reviewer Approve on head":""))+(p.records?' class="dim"':"")+'><td class="mono">#'+p.n+'</td><td>'+esc(p.title)+(p.draft?' <span class="small muted">draft</span>':"")+'</td><td>'+pill(p.station,tone(p.station))+'</td><td class="n"><span'+T("building.push")+'>'+ageText(p.push_age_h)+'</span></td><td>'+pill(p.ci,p.ci==="success"?"good":p.ci==="failure"||p.ci==="error"?"bad":p.ci==="pending"?"prog":"none")+'</td><td class="mono small">'+esc(p.sha)+'</td></tr>';});
+  if(!B.prs.length)h+='<tr><td colspan="6" class="muted">No open PRs read.</td></tr>';
+  h+='</tbody></table></div><p class="small muted">Faded rows are records PRs (lead:, qa:).</p>';
+  var ow=v(B.owners)||[];
+  if(ow.length){h+='<h3>Row owners in BACKLOG.md</h3><div class="box"><table'+S(src(B.owners))+'><thead><tr><th>Owner</th><th>Journey</th><th>Rows</th></tr></thead><tbody>';ow.forEach(function(o){h+='<tr><td>'+esc(o.owner)+'</td><td>'+esc(o.journey)+'</td><td class="small">'+esc(o.rows)+'</td></tr>';});h+='</tbody></table></div><p class="small muted">'+esc(src(B.owners))+'</p>';}
+  return section("09","building","Building: who is doing what","Every open pull request, the stage it sits at and how long since its last push. Sessions are in the factory section.",h);
+}
+
+/* 8 quality */
+function rQuality(){
+  var Q=D.quality,sc=v(Q.sev_counts)||{},fl=v(Q.flaky)||{};
+  var h='<div class="kpis">'+kpi("Open Critical",nz(sc.Critical),"",src(Q.sev_counts),"","quality.critical")+kpi("Open Major",nz(sc.Major),"a Major keeps a capability Partial",src(Q.sev_counts),"","quality.major")+kpi("Open Minor",nz(sc.Minor),"",src(Q.sev_counts),"","quality.minor")+
+    kpi("Closed after retest",nz(v(Q.closed_total)),nz(v(Q.closed_7d))+" in the last 7 days",src(Q.closed_total)+" | "+src(Q.closed_7d),"","quality.closed")+
+    kpi("Works demotions",nz((v(Q.demotions)||[]).length),"days Works fell, 14 days",src(Q.demotions),"","quality.demotions")+
+    kpi("Flaky ledger",nz(fl.release_or_hand_lines),"release lines; "+nz(fl.rule_lines)+" rule lines",src(Q.flaky)+" \u2014 "+(fl.note||""),"","quality.flaky")+
+    kpi("Review rounds",v(Q.review_rounds)==null?nm(src(Q.review_rounds)):nz(v(Q.review_rounds)),"",src(Q.review_rounds),"","quality.review_rounds")+'</div>';
+  var mj=Q.open_major||[];
+  h+='<h3>Open Major and Critical ('+mj.length+')</h3><div class="box"><table><thead><tr><th>Bug</th><th>Severity</th><th>Capability</th><th>What happens</th></tr></thead><tbody>';
+  mj.forEach(function(b){h+='<tr'+S(Q.src)+'><td class="mono">'+esc(b.id)+'</td><td>'+pill(b.sev,b.sev==="Critical"?"bad":"wait")+'</td><td class="mono small">'+esc(b.cap)+'</td><td class="small">'+esc(b.what)+'</td></tr>';});
+  if(!mj.length)h+='<tr><td colspan="4" class="muted">None open.</td></tr>';
+  return section("10","quality","Testing and quality","What qa has found and not yet closed, and whether proven capabilities slipped.",h+'</tbody></table></div>');
+}
+
+/* 9 devops */
+function bars(days,a,b,partial,s){
+  var W=640,H=120,n=days.length,bw=W/n,mx=Math.max.apply(null,a.concat([1]));
+  var o='<svg width="100%" viewBox="0 0 '+W+' '+(H+26)+'" role="img" aria-label="Merges per day, 14 days"'+S(s)+'>';
+  for(var i=0;i<n;i++){var ha=H*a[i]/mx,hb=H*b[i]/mx,x=i*bw+3;
+    o+='<rect x="'+x+'" y="'+(H-ha)+'" width="'+(bw-6)+'" height="'+ha+'" fill="var(--prog-soft)" stroke="var(--prog)" stroke-width=".5"/>';
+    o+='<rect x="'+(x+3)+'" y="'+(H-hb)+'" width="'+(bw-12)+'" height="'+hb+'" fill="var(--good)"/>';
+    if(i%2===n%2||n<8)o+='<text x="'+(x+(bw-6)/2)+'" y="'+(H+20)+'" font-size="'+(document.getElementById("body").clientWidth<520?20:12)+'" text-anchor="middle" fill="var(--ink3)">'+esc(days[i].slice(8))+'</text>';}
+  return o+'</svg>';
+}
+function rDevops(){
+  var p=D.pipeline,m=v(D.merges_per_day)||{days:[],all:[],app:[],partial:[]},bt=v(p.batches)||[];
+  var h='<p class="small muted">'+esc(p.band_note)+'</p><div class="kpis">'+
+   kpi(p.deploy_freq.label,nz(v(p.deploy_freq)),"app code "+nz(v(p.deploy_freq.app_code))+" a day",src(p.deploy_freq)+" | "+src(p.deploy_freq.app_code),"","pipeline.deploy_freq")+
+   kpi(p.lead_time_h.label,nz(v(p.lead_time_h)," h"),"median, n="+nz(p.lead_time_h.n),src(p.lead_time_h),"","pipeline.lead_time_h")+
+   kpi(p.change_fail.label,nz(v(p.change_fail),"%"),"reverts "+nz(v(p.change_fail.reverts))+" \u00b7 batch failures "+nz(v(p.change_fail.batch_fail),"%"),src(p.change_fail)+" | "+src(p.change_fail.reverts)+" | "+src(p.change_fail.batch_fail),"","pipeline.change_fail")+
+   kpi(p.restore_h.label,nz(v(p.restore_h)," h"),v(p.restore_h.open_red)?"red since "+esc(v(p.restore_h.open_red)):"main line green",src(p.restore_h),"","pipeline.restore_h")+
+   kpi("Approved to merged",nz(v(p.queue_wait_min)," min"),"median; p90 "+nz(p.queue_wait_min.p90," min")+", n="+nz(p.queue_wait_min.n),src(p.queue_wait_min),"","pipeline.queue_wait_min")+
+   kpi("Merge-queue batches",nz(bt[0]),nz(bt[1])+" failed \u00b7 "+nz(bt[2])+" cancelled",src(p.batches),"","pipeline.batches")+
+   kpi("CI minutes a day",nz(v(p.ci_min_per_day)),"run time (approx), 7-day average",src(p.ci_min_per_day),"","pipeline.ci_min_per_day")+
+   kpi("CI time thrown away",nz(v(p.thrown_share),"%"),"target under 20%",src(p.thrown_share),"","pipeline.thrown_share")+'</div>';
+  h+='<h3>Merges per day, 14 days</h3><div'+T("pipeline.merges_per_day")+(v(D.merges_per_day)==null?'':' data-info="'+esc(m.days.map(function(d,i){return d.slice(5)+": "+m.all[i]+" merges, "+m.app[i]+" app code"+(m.partial[i]?" (not all classified)":"");}).join("; "))+'"')+'>'+(v(D.merges_per_day)==null?'<span class="nm" data-nm="'+esc(D.merges_per_day.reason||"not in data.json")+'">not measured</span>':bars(m.days,m.all,m.app,m.partial,""))+'</div>'+'<div class="legend"><span class="pill t-prog">all merges</span><span class="pill t-good">app-code merges (P-500)</span></div>';
+  return section("11","devops","DevOps: delivery pipeline","How fast and how safely changes reach main. DORA's four keys, with proxies marked.",h);
+}
+
+/* 10 resources */
+function rRes(){
+  var R=D.resources,ex=D.freshness.lead_input_example?'<span class="example">example data</span>':"";
+  function L(x,suf){return v(x)==null?'<span class="muted" style="font-size:13px">Lead input missing</span>':esc(v(x))+(suf||"");}
+  var df=v(R.disk_free_gb);
+  var h='<div class="kpis">'+kpi("Disk free",nz(df," GB"),df!=null&&df<10?pill("below 10 GB","bad"):"floor 10 GB",src(R.disk_free_gb),df!=null&&df<10?"alert":"","resources.disk_free_gb")+
+   kpi("Weekly plan used",L(R.weekly_pct,"%"),v(R.weekly_resets)?"resets "+esc(v(R.weekly_resets)):"",src(R.weekly_pct),"","resources.weekly_pct")+
+   kpi("Burn",L(R.burn_pct_per_h," %/h"),"",src(R.burn_pct_per_h),"","resources.burn_pct_per_h")+
+   kpi("Paid today",v(R.paid_usd_today)==null?L(R.paid_usd_today):"US$"+esc(v(R.paid_usd_today)),"",src(R.paid_usd_today),"","resources.paid_usd_today")+
+   kpi("GitHub API left",nz(v(R.api_left)),"this hour, after the run",src(R.api_left),"","resources.api_left")+'</div>'+(ex?'<p class="small">'+ex+'</p>':"");
+  return section("12","resources","Resources","What we are spending: plan capacity, money and disk.",h);
+}
+
+/* 11 risks */
+function rRisks(){
+  var K=D.risks,h='<div class="box"><table><thead><tr><th>ID</th><th>Risk</th><th>Owner</th><th>By</th><th>Status</th></tr></thead><tbody>';
+  K.items.forEach(function(r){h+='<tr'+S(K.src+" \u00b7 "+r.source+" \u00b7 mitigation: "+r.mitigation)+'><td class="mono">'+esc(r.id)+'</td><td>'+esc(r.risk)+'<div class="small muted">'+esc(r.mitigation)+'</div></td><td class="small">'+esc(r.owner)+'</td><td class="small mono" style="white-space:nowrap">'+(r.trigger_date?esc(short(r.trigger_date)):'<span class="muted">gate</span>')+'</td><td>'+pill(r.status,r.status==="closed"?"good":r.status==="watching"?"wait":"bad")+'</td></tr>';});
+  h+='</tbody></table></div>';
+  var un=v(K.unlisted)||[];
+  if(un.length)h+='<p class="small"'+S(src(K.unlisted))+'>'+pill(un.length+" launch items not in this list","wait")+' '+esc(un.map(function(x){return x.id;}).join(", "))+'</p>';
+  return section("03","risks","Risks","What could stop the first real firm going live, who owns it and by when. \"Gate\" means before the first real firm's data.",h);
+}
+
+/* 12 healing */
+function rHeal(){
+  var H=D.healing,bl=v(H.blocked)||[],cr=v(H.ci_red_prs)||[],qs=v(H.questions);
+  var h='<div class="kpis">'+kpi("Lanes restarted",nz(v(H.restarts)),"",src(H.restarts),"","healing.restarts")+kpi("Lanes nudged",nz(v(H.nudges)),"",src(H.nudges),"","healing.nudges")+
+   kpi("PRs healed after red CI",nz(v(H.healed_prs)),"median red to green "+nz(H.healed_prs.median_h," h"),src(H.healed_prs),"","healing.healed_prs")+
+   kpi("Blocked lanes",nz(bl.length),bl.map(function(b){return esc(b.name);}).join(", "),src(H.blocked),bl.length?"alert":"","healing.blocked")+
+   kpi("PRs red now",nz(cr.length),cr.map(function(c){return "#"+c.n+" "+ageText(c.push_age_h);}).join(", "),src(H.ci_red_prs),"","healing.ci_red")+
+   (qs==null?kpi("Open questions",'<span class="nm" data-nm="'+esc(src(H.questions))+'">not measured</span>',"",src(H.questions),"","healing.questions"):kpi("Open questions",nz(qs.length),qs.map(function(q){return "#"+q.n+" "+ageText(q.age_h);}).join(", "),src(H.questions),"","healing.questions"))+'</div>';
+  return section("13","healing","Is everyone autonomous and healing?","Whether lanes fix themselves or need a push, and what is stuck now.",h);
+}
+
+/* 13 improving */
+function spark(xs,good){
+  var W=200,H=40,pts=[],ys=xs.filter(function(x){return x!=null;});if(ys.length<2)return '<span class="muted small">too few points</span>';
+  var mn=Math.min.apply(null,ys),mx=Math.max.apply(null,ys);if(mx===mn){mx+=1;mn-=1;}
+  xs.forEach(function(x,i){if(x!=null)pts.push((i*W/(xs.length-1)).toFixed(1)+","+(H-3-(x-mn)/(mx-mn)*(H-6)).toFixed(1));});
+  var last=pts[pts.length-1].split(",");
+  return '<svg width="100%" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="height:40px"><line x1="0" x2="'+W+'" y1="'+(H/2)+'" y2="'+(H/2)+'" stroke="var(--line)" stroke-dasharray="2 3"/><polyline points="'+pts.join(" ")+'" fill="none" stroke="var(--accent)" stroke-width="1.8" vector-effect="non-scaling-stroke"/><circle cx="'+last[0]+'" cy="'+last[1]+'" r="3" fill="var(--accent)"/></svg>';
+}
+function rImprove(){
+  var I=D.improving,h='<div class="trend">';
+  ["app_merges","works","lead_h","batch_fail"].forEach(function(k){var t=I.trends[k];
+    var arrow=t.dir==="up"?"rising":t.dir==="down"?"falling":t.dir==="flat"?"flat":"no comparison";
+    var tn=t.better===true?"good":t.better===false?"bad":"none";
+    h+='<div'+T("improving."+k)+'><div class="small">'+esc(t.label)+'</div><div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px"><span class="mono" style="font-size:20px;font-weight:600">'+nz(t.latest)+'</span>'+pill(arrow,tn)+'</div>'+spark(I.series[k],t.better)+'<div class="small muted">7-day average '+nz(t.this_week)+' against '+nz(t.week_before)+'</div></div>';});
+  return section("14","improving","How we are improving","Fourteen days of the measures that matter, this week against the week before.",h+'</div>');
+}
+
+/* 14 learnings */
+function rLearn(){
+  var L=D.learnings,h='<h3>Kept lessons</h3><ul class="items">';
+  L.kept.forEach(function(k){h+='<li'+S("cockpit/learnings.json \u00b7 "+k.source)+'><span class="tag">'+esc(short(k.date))+'</span><div><div>'+esc(k.lesson)+'</div><div class="small muted">Changed: '+esc(k.changed)+' ('+esc(k.source)+')</div></div></li>';});
+  h+='</ul><h3>Newest decisions</h3><ul class="items">';
+  L.decisions.forEach(function(d){h+='<li'+S(d.src)+'><span class="tag">'+esc(d.id)+'</span><div class="small">'+esc(d.title)+'</div></li>';});
+  return section("15","learnings","Learnings","What we learned and what it changed, plus the newest decisions.",h+'</ul>');
+}
+
+/* 15 backlog */
+function rBacklog(){
+  var B=D.backlog,by=v(B.by_lane)||{},h='<div class="box"><table'+S(src(B.by_lane))+'><thead><tr><th>Lane</th><th class="n">Ready</th><th class="n">Blocked</th><th class="n">In PR</th><th class="n">Merged</th></tr></thead><tbody>';
+  Object.keys(by).sort().forEach(function(k){var r=by[k];h+='<tr><td>'+esc(k)+'</td><td class="n">'+r.ready+'</td><td class="n">'+r.blocked+'</td><td class="n">'+r["in PR"]+'</td><td class="n">'+r.merged+'</td></tr>';});
+  h+='</tbody></table></div><p class="small"'+S(src(B.x_rows))+'>After the first build (X rows): <b class="mono">'+nz(v(B.x_rows))+'</b></p><p class="small muted">'+esc(src(B.by_lane))+'</p>';
+  return section("16","backlog","Backlog","Rows waiting to be built, by lane: ready to start, or blocked by another row.",h);
+}
+
+
+/* library: one master per document (P-593); edit this list when a master changes */
+var LIBRARY=[
+ ["Team requirements (the PRD)","What the product must do: the team's requirement rows (AG-*), name-free copy, refreshed from the newest snapshot","Living","../domain/","@../domain/"],
+ ["Capability sourcing map","Release 1 scope baseline, draft 6: 112 capabilities, build or buy (P-586)","Living","published page","https://claude.ai/artifact/8Fr4UUNR8yxwZrQ4nVi6wC"],
+ ["Release 1 checklist","The one tracking page: 101 capabilities and their status, done for a capability, launch readiness (P-592)","Living","MVP-CHECKLIST.md","@MVP-CHECKLIST.md"],
+ ["Backlog","Every row to build, in order, with its Done when","Living","BACKLOG.md","@BACKLOG.md"],
+ ["Contracts between modules","How platform, front office and case side connect: events, ports, firm walls","Living","design/*-contract*","@design/"],
+ ["Rules in force","Every rule once, with the decision that set it","Living","RULES.md","@RULES.md"],
+ ["Decisions","Every founder and Lead decision, newest first","Living","DECISIONS.md","@DECISIONS.md"],
+ ["CRM shell decision","Own build, no open-source CRM shell (P-553, P-563)","Decision record","published page","https://claude.ai/artifact/BReRqAYujJXhKf33Rgt9Vo"],
+ ["Factory plan","How we build: lanes, merges, gates; decisions D1-D6 (P-506)","History (12 Nov)","reference/2-factory-plan/","@reference/2-factory-plan/factory-plan-2026-11-12-LATEST.md"],
+ ["Solution 1 one-pager","The proof of concept's requirements and workflow, draft 4.3 (D249)","History (19 Oct)","reference/1-requirements-and-workflow/","@reference/1-requirements-and-workflow/solution-1-one-pager-v4.3-LATEST.html"],
+ ["Product home (PRODUCT.md)","The proof of concept's words and map","History (2 Nov)","PRODUCT.md","@PRODUCT.md"],
+ ["Pathway Configurator handover","The proof's verdict, how it works, what is left (private: the Mac only)","History (10 Nov)","reference/private/",""]
+];
+function rLibrary(){
+  var h='<div class="box"><table><thead><tr><th>Document</th><th>What it is</th><th>Status</th><th>Up to date?</th><th>Master</th></tr></thead><tbody>';
+  var base=(D.freshness&&D.freshness.library_base)||null,LF={};((D.freshness&&D.freshness.library_freshness)||[]).forEach(function(x){LF[x.name]=x;});
+  var fr=function(n){var x=LF[n];if(!x)return '<span class="muted small">not checked</span>';if(x.state==="behind")return '<span'+S(x.why)+'>'+pill("behind since "+x.since,"wait")+'</span>';if(x.state==="current")return '<span'+S(x.why)+'>'+pill("current","good")+'</span>';return '<span class="muted small"'+S(x.why)+'>'+esc(x.state)+'</span>';};
+  LIBRARY.forEach(function(d){var u=d[4];if(u&&u.charAt(0)==='@')u=base?base+u.slice(1):'';h+='<tr><td>'+(u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(d[0])+'</a>':esc(d[0]))+'</td><td class="small">'+esc(d[1])+'</td><td>'+pill(d[2],d[2]==="Living"?"good":d[2]==="Decision record"?"prog":"none")+'</td><td>'+fr(d[0])+'</td><td class="mono small">' +esc(d[3])+'</td></tr>';});
+  return section("04","library","Library: master documents","One master per document (P-593). Living ones are kept current on need: a master is marked behind when what feeds it changed after it (cockpit/library.json; git history only), and only that one is refreshed. History ones are kept for reference and no longer updated.",h+'</tbody></table></div>');
+}
+
+/* capability heat map (P-595): the 12 business functions against how far each got; colours by written rule */
+
+/* Release 1 at a glance (founder A60): scope, then the standard delivery stages, then who must act */
+function rGlance(){
+  var C=D.capabilities,c=v(C.counts)||{},tot=C.total||101,ny=v(D.summary.needs_you)||0,risks=(D.risks.items||[]).filter(function(r){return r.status!=="closed";});
+  var byOwner={};risks.forEach(function(r){byOwner[r.owner]=(byOwner[r.owner]||0)+1;});
+  var stages=[["Not shaped","Not yet specified","No backlog row with a testable \"done when\" yet"],["Shaped","Specified, ready to build","Backlog row with acceptance criteria; nobody building it yet"],["In PR","In development","A pull request is open for the whole capability"],["Merged","Built","Every part merged into the main line; qa has not proven it yet"],["qa Works","Proven","qa\'s independent Works verdict, with the test run on record"]];
+  var h='<h3>Scope (capability map baseline, P-586)</h3><div class="kpis">'+
+    kpi("Must-have (Release 1)",esc(tot),"built before the first real firm","capability map draft 6: Build rows")+
+    kpi("Optional","8","decided one by one; out of the first build","capability map draft 6: Optional rows (P-572)")+
+    kpi("Held","3","waiting on an outside answer","capability map draft 6: Held rows")+
+    kpi("Deferred to after launch","31","backlog rows X-1 to X-31","BACKLOG.md section \"After the end-to-end production-grade system\" (P-582)")+'</div>';
+  h+='<h3>Delivery stages of the '+tot+' must-have capabilities (the checklist\'s status)</h3><div class="kpis">';
+  stages.forEach(function(st){h+=kpi(st[1],esc(c[st[0]]||0)+'<span class="muted" style="font-size:13px"> / '+tot+'</span>',esc(st[2]),src(C.counts));});
+  h+=kpi("Released to production","0","no production yet: it opens after the launch gate (P-589)","P-589 (3), P-590 (1)")+'</div>';
+  h+='<h3>Who must act</h3><div class="kpis">'+kpi("You",esc(ny),"open items in Needs you, at the top",src(D.summary.needs_you),ny?"alert":"");
+  delete byOwner["founder"];var mine=risks.filter(function(r){return r.owner==="founder";}).length;h=h.replace("open items in Needs you, at the top","open items in Needs you, plus "+mine+" launch risks you own");Object.keys(byOwner).sort().forEach(function(o){h+=kpi(esc(o),esc(byOwner[o]),"open launch risks they own","risks.json")});
+  h+='</div><p class="small muted">Terms: "specified" = has acceptance criteria; "built" = all its parts merged into the main line; "proven" = qa\'s independent Works verdict with a recorded test run; "released" = live for a real firm. The proof of concept\'s own count (qa Works on its 98 capabilities) is a separate number in "On track?".</p>';
+  return section("","glance","Release 1 at a glance","How much we must build, how far it has got in the standard delivery stages, and who must act.",h);
+}
+function rHeat(){
+  var C=D.capabilities,order=["Not shaped","Shaped","In PR","Merged","qa Works"];
+  var W=D.working_today,h=W?'<p class="workline"'+S(W.src+" \u00b7 "+W.sha+" \u00b7 as of "+W.as_of)+'><span class="wmark"></span> '+esc(W.line)+' <span class="small muted">(filled dot: open PR, measured; ring: Lead-reported lane)</span></p>':"";
+  h+='<div class="box"><table><thead><tr><th>Business function</th><th class="n">Capabilities</th>';
+  order.forEach(function(k){h+='<th class="n">'+esc(lab(k))+'</th>';});
+  h+='<th>Where it stands</th></tr></thead><tbody>';
+  C.groups.forEach(function(g){var rs=C.rows.filter(function(r){return r.group===g.id;}),c={};order.forEach(function(k){c[k]=0;});
+    rs.forEach(function(r){c[r.status]=(c[r.status]||0)+1;});
+    var done=c["qa Works"],built=done+c["Merged"],moving=built+c["In PR"],t,word;
+    if(rs.length&&done===rs.length){t="good";word="all proven";}
+    else if(moving>0){t="wait";word=built+" of "+rs.length+" built, "+done+" proven";}
+    else if(c["Shaped"]>0){t="prog";word="specified, not started";}
+    else {t="none";word="not specified yet";}
+    var nd=rs.filter(function(r){return diffOf(r.map);}).length;if(nd)word+=" (records differ on "+nd+")";
+    var wr=W?rs.filter(function(r){return W.rows[String(r.map)];}):[],wt=wr.length?(wr.some(function(r){return W.rows[String(r.map)].kind==="pr";})?"working today on rows ":"Lead-reported lane on rows ")+wr.map(function(r){return r.map;}).join(", "):"",wk=wt?'<span class="wmark'+(/^Lead/.test(wt)?" rep":"")+'" role="img" aria-label="'+esc(wt)+'"></span>':"";
+    h+='<tr'+S(src(C.counts)+(wt?" \u00b7 "+wt:""))+'><td>'+esc(g.id+". "+g.name)+wk+'</td><td class="n">'+rs.length+'</td>';
+    order.forEach(function(k){var n=c[k]||0;h+='<td class="n"'+(n?' style="background:'+toneVar(tone(k))+'-soft"':'')+'>'+(n||'<span class="muted">0</span>')+'</td>';});
+    h+='<td>'+pill(word,t)+'</td></tr>';});
+  h+='</tbody></table></div><p class="small muted">Counts are the checklist\'s hand-kept status; "records differ" marks capabilities whose computed state (from merged changes) is different; Details lists them. Colour rule: green = every capability proven; amber = some built or in a pull request; blue = shaped, not started; grey = not shaped. Customer-experience walk, compliance and risk columns join when TR-1 (requirement sources) and qa\'s Release 1 capabilities land.</p>';
+  return section("","heat","Capability heat map","Each business function of Release 1 and how far its capabilities have got. The capabilities themselves are in the checklist (the Library).",h);
+}
+function rFresh(){
+  var F=D.freshness,R=D.run||{};
+  var h='<div class="kpis">'+kpi("Generated",esc(F.generated_ist),"",F.generated_at)+kpi("main",esc(v(F.main_sha)||"n/a"),"last commit "+esc(F.main_at_ist||"n/a"),src(F.main_sha))+
+   kpi("Records read from",'<span style="font-size:13px">'+esc(v(F.records_copy))+'</span>',"",src(F.records_copy))+
+   kpi("Lead input age",F.lead_input_age_h.v==null?'<span class="muted" style="font-size:13px">Lead input missing</span>':ageText(F.lead_input_age_h.v),F.lead_input_example?"example data":"",src(F.lead_input_age_h))+
+   kpi("Pipeline numbers age",ageText(v(F.flow_measure_age_h)),"",src(F.flow_measure_age_h))+
+   kpi("Script run",nz(R.seconds," s"),nz(R.api_calls)+" API calls","cockpit-data.py")+'</div>';
+  if(R.errors&&R.errors.length)h+='<h3>Notes from the run</h3><ul class="items small">'+R.errors.map(function(e){return '<li>'+esc(e)+'</li>';}).join("")+'</ul>';
+  return section("17","fresh","Freshness","How old each input is.",h);
+}
+
+function render(){
+  renderStrip();
+  var TABS=[["overview","Overview",[rOverview]],["caps","Capabilities",[rHeat,rCaps,rCapTable,rArch]],["team","Team",[rTeamTab]],["factory","Factory",[rLeadQueue,rSystem,rBuilding,rQuality,rDevops,rHeal,rImprove,rRes]],["launch","Launch readiness",[rRisks]],["library","Library",[rLibrary]],["details","Details",[rTrust,rLearn,rBacklog,rFresh]]];
+  var one=function(f){try{return f();}catch(e){return '<section><p class="err">This block could not be drawn: '+esc(e.message)+'</p></section>';}};
+  var cur="overview";try{var sv=localStorage.getItem("board-tab");if(sv&&TABS.some(function(t){return t[0]===sv;}))cur=sv;}catch(e){}
+  var out=one(rBanner)+'<p class="goal">Goal: Release 1 (production grade), complete and end to end, ready for the first real firm\'s data after the launch gate (P-570, P-589, P-594).</p>'+one(rNeeds);
+  out+='<div class="tabs" role="tablist">'+TABS.map(function(t){return '<button role="tab" type="button" data-tab="'+t[0]+'" aria-selected="'+(t[0]===cur)+'">'+esc(t[1])+'</button>';}).join("")+'</div>';
+  TABS.forEach(function(t){out+='<div class="tabpanel" role="tabpanel" data-panel="'+t[0]+'"'+(t[0]===cur?'':' hidden')+'>';t[2].forEach(function(f){out+=one(f);});out+='</div>';});
+  document.getElementById("body").innerHTML=out;
+  addIcons(document.getElementById("body"));
+  /* axe scrollable-region-focusable: a table that scrolls sideways can be reached by keyboard */
+  document.querySelectorAll(".box").forEach(function(b){b.tabIndex=0;b.setAttribute("role","region");var h=b.closest("section");var t=h&&h.querySelector("h2");b.setAttribute("aria-label",(t?t.textContent:"table")+" (scrolls sideways)");});
+  document.querySelectorAll(".tabs button").forEach(function(b){b.addEventListener("click",function(){var id=b.getAttribute("data-tab");
+    document.querySelectorAll(".tabs button").forEach(function(x){x.setAttribute("aria-selected",String(x===b));});
+    document.querySelectorAll(".tabpanel").forEach(function(p){p.hidden=p.getAttribute("data-panel")!==id;});
+    try{localStorage.setItem("board-tab",id);}catch(e){}
+    drawAll();});});
+  document.querySelectorAll("details").forEach(function(dd){dd.addEventListener("toggle",drawAll);});
+  drawAll();
+}
+function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});addIcons(document.getElementById("body"));}
+var rt=null;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){if(D){drawAll();renderTop();}},150);});
+setInterval(function(){if(D)renderStrip();},60000);
+
+fetch("data.json",{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+.then(function(d){D=d;render();})
+.catch(function(e){
+  document.getElementById("stripIn").innerHTML='<div class="tile alert" style="grid-column:1/-1"><div class="k">Data</div><div class="v">not loaded</div></div>';
+  document.getElementById("body").innerHTML='<div class="err"><b>The board could not load its data (data.json).</b><br>'+esc(e.message)+'<br>Run <span class="mono">python3 product/tools/cockpit-data.py --out &lt;folder&gt;/data.json</span> and publish data.json next to this page. Nothing on this page is shown without it.</div>';
+});
+})();
+</script>

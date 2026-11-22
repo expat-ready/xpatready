@@ -1,0 +1,341 @@
+// C6.4 (M3-B, runtime lane; P-171, P-172; M3 case view r5c "checklist per person"): a case's document checklist, one
+// list per person on the case, from the pinned release's document requirements. Each line says whether this person needs
+// it now (Needed), not (Not needed, with the answer that decided it) or cannot tell yet (Answer first, naming the
+// questions still to answer), so the list changes as the case's answers change. A line whose document type has a
+// validity rule in the release (a `document_validity` check, applies_to = the document type key; e.g. the police
+// certificate's 6 months, P-171) carries that rule with its citation: the rule is release data, never an engine constant
+// (STANDARDS §3.1; Lead on #283). Visitor visa (vv.single) only in this slice; others answer "not derived yet". Pure:
+// no database, no clock (the date is passed in). Tests: tests/runtime/check_vv_checklist.ts. Uploads and AI reading are
+// C6.5; waiving (P-171 (6)) and the Express Entry block (P-172) are permanent-residence rules, not this combination's.
+import { ageInYears } from "../../../contracts/rules.ts";
+import { MINOR } from "../../contracts/runtime.ts";
+import { lineCondition, lineHolders, type Known, type Person } from "../render.ts";
+import type { Snapshot } from "../snapshot.ts";
+import { isFilingFact } from "../resolver.ts";
+import { FILING, ROLE } from "../../contracts/resolver.ts";
+import { WHO_WORDS } from "../../contracts/lines-bulk.ts";
+import type { Participant } from "./case.ts";
+import { FEE_TABLE } from "./filings.ts";
+import { lineSet, type LineSet, type SnapSet } from "../document-sets.ts";
+
+/** R2 (P-230 (7)): the combinations whose checklist is worked out are data (samples/fee-table.json "checklist": true),
+ *  so another combination is a data edit once its requirements are checked, never code. */
+export const DERIVED_FOR = new Set(Object.entries(FEE_TABLE.combinations).filter(([, c]) => c.checklist).map(([k]) => k));
+/** The fact a Visitor visa's ages are worked out on (the release's person.age_years uses the same reference). */
+export const APPLICATION_DATE = "case.application_date";
+
+/** A requirement row as the snapshot carries it (engine/snapshot.ts document_requirements). */
+type Req = { lineage: string; document_type: string; document_type_key?: string; who: string; base_or_conditional: string; provided_by: string;
+  condition?: Cond | null; condition_plain?: string | null; source_quote?: string | null; alternatives?: string[] | null; set_name?: string | null };
+type Cond = { subjectKind?: string; [k: string]: unknown };
+type DocType = { key: string; name: string; sets?: SnapSet[]; default_provider_roles?: string[] };
+type Derived = { id: string; calculation?: string; inputs?: string[]; reference?: string };
+
+/** A document validity rule from the release: a `document_validity` check whose condition is
+ *  `{ op: "issued_within_months", months, before, cite: { page, url, read } }` and whose applies_to is a document type key. */
+export type ValidityRule = { kind: "issued_within_months"; check: string; months: number; before: string; text: string; status: string;
+  source: { page: string; url: string; quote: string; read: string } };
+type CheckRow = { id: string; group: string; applies_to: string | null; condition: unknown; message: string | null; source_quote: string | null };
+export const MAX_VALIDITY_MONTHS = 120;
+
+export type Need = "needed" | "not_needed" | "answer_first";
+/** A question to answer first; `answered`: it is answered, but with the others it does not work out (e.g. a birth date
+ *  after the application date), so it is to check rather than to answer. */
+export type Missing = { key: string; question: string; answered: boolean;
+  /** C6.4 (a): whose question it is, so a link reaches it: the case's own (asked once for the application) or a person's,
+   *  and which person (Devin on #1073: the person whose answer decides the line may not be the line's holder). */
+  on: "case" | "person"; subject: string | null };
+/** M3-CONTRACT (pack 4, C6.4): a line's id, document type, label, the team's state (SI-14: storage, requests and file
+ *  status are AG-09's; every derived line is Not requested until C6.4's storage slice), reason and required; plus this
+ *  slice's detail. A line is in `lines` when the person needs it, in `waiting` when an answer decides it first, and in
+ *  `not_needed` with the answer that decided it. */
+export type PersonLine = { id: string; document_type: string; label: string; state: "not_requested"; reason: string; required: boolean; documents: never[];
+  need: Need; lineage: string; also_from: string[]; document: { key: string; name: string }; missing: Missing[]; base: boolean;
+  provided_by: string; alternatives: { key: string; name: string }[]; quote: string | null; rule: ValidityRule | null;
+  /** C6.15 (SA-1B-19, SA-1B-20): the substitute set the line uses, from its type in the release and the set the line
+   *  picks; null when the type has none (its own only member). */
+  set: LineSet | null;
+  /** C6.4 (a), challenge r2 M1: whose line it is (the release's "whose document") and its words, for the Documents panel. */
+  who: string; who_words: string;
+  /** C6.14 (SA-1B-151, SA-1B-214): a line asked once for the application ("case", C3.16's Filing scope) or once for the
+   *  couple ("couple_once", Household) is one item with providers; any other line is per person (null, no providers). */
+  shared: Shared | null; providers: Provider[]; providers_rule: ProvidersRule | null; providers_words: string | null };
+/** C6.14: who provides a shared item, and why this person. */
+export type Provider = { subject: string; label: string; role: string; why: string };
+export type Shared = "application" | "couple";
+/** type_roles: the document type's default roles matched (SA-1B-151 r1); first_applicant: none set or none left, so the
+ *  person the item is for provides it (r1, r3); changed: the case officer's choice (SA-1B-214 r2, the API sets it). */
+export type ProvidersRule = "type_roles" | "first_applicant" | "changed";
+/** B102 (A6, BR-8): a person's age in whole years as the lines read it: on the date the release's worked-out age is
+ *  measured on (the application date), or, when the release works out no age, on the date the 18-or-older lines use.
+ *  `years` is null when it cannot be worked out yet, and `why` then names what to answer or check first. */
+export type PersonAge = { years: number | null; on: string | null; why: string; worked_out: boolean };
+export type PersonChecklist = { subject: string; label: string; role: string; applies: boolean; lines: PersonLine[]; waiting: PersonLine[]; not_needed: PersonLine[]; needed: number; answer_first: number; age: PersonAge;
+  /** C6.14 BR-4: whether this person may provide a shared document today, and why not (the officer's dialog reads it). */
+  may_provide: { ok: boolean; why: string } };
+export type CaseChecklist =
+  | { derived: true; stand_in: "SI-14"; combination: string; people: PersonChecklist[]; basis: string; empty_release: boolean; ages_on: string; ages_on_why: string }
+  | { derived: false; combination: string; why: string };
+
+const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
+const plainText = (x: unknown) => typeof x === "string" && x.trim().length > 0 && !/[<>]/.test(x);
+/** Why a document_validity check cannot be used, or [] when it can. One test for the release check (engine/validate.ts)
+ *  and for the case (validityRules), so a rule the release calls "not used" is never used (break M2). `isField`: is the
+ *  date it is measured to a known field; `types`: the document type keys in the release. */
+export function validityProblems(c: CheckRow, isField: (k: string) => boolean, types: Set<string>): string[] {
+  const k = isObj(c.condition) ? c.condition : {}, cite = isObj(k.cite) ? k.cite : {}, why: string[] = [];
+  if (k.op !== "issued_within_months") why.push("it is not an \"issued within months\" rule");
+  if (!Number.isInteger(k.months) || (k.months as number) < 1 || (k.months as number) > MAX_VALIDITY_MONTHS) why.push(`its months are not a whole number from 1 to ${MAX_VALIDITY_MONTHS}`);
+  if (typeof k.before !== "string" || !isField(k.before)) why.push("the date it is measured to is not a field in the library");
+  if (!c.applies_to || !types.has(c.applies_to)) why.push("it names no document type in this release");
+  if (!plainText(c.source_quote) || !plainText(cite.page) || typeof cite.url !== "string" || !/^https:\/\/[^\s<>"]+$/.test(cite.url) || typeof cite.read !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(cite.read))
+    why.push("it has no source quote, page, https address and date read (P-170)");
+  return why;
+}
+/** The release's usable validity rules by document type key. Two rules for one document type: neither is used (the
+ *  release check says so), so the case never picks one silently (break m1). */
+export function validityRules(s: Snapshot): Map<string, ValidityRule> {
+  const fields = new Set(((s.canonical_fields ?? []) as { id: string }[]).map((f) => f.id)), types = new Set(((s.document_types ?? []) as DocType[]).map((t) => t.key));
+  const rows = ((s.checks ?? []) as CheckRow[]).filter((c) => c.group === "document_validity" && validityProblems(c, (f) => fields.has(f), types).length === 0);
+  const out = new Map<string, ValidityRule>();
+  const twice = new Set(duplicateValidity((s.checks ?? []) as CheckRow[]));
+  for (const c of rows) {
+    if (twice.has(c.applies_to!)) continue;
+    const k = c.condition as { months: number; before: string; cite: { page: string; url: string; read: string } };
+    out.set(c.applies_to!, { kind: "issued_within_months", check: c.id, months: k.months, before: k.before, status: "Sample until the immigration expert confirms (P-171)",
+      text: plainText(c.message) ? c.message! : `Issued no more than ${k.months} months before the application is submitted.`,
+      source: { page: k.cite.page, url: k.cite.url, quote: c.source_quote!, read: k.cite.read } });
+  }
+  return out;
+}
+/** Document types with more than one usable validity rule (the release check warns). */
+export function duplicateValidity(rows: CheckRow[]): string[] {
+  const keys = rows.filter((c) => c.group === "document_validity" && c.applies_to).map((c) => c.applies_to!);
+  return [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
+}
+
+/** Whole months after `from` (calendar months; a day the month does not have falls back to its last day). */
+const addMonths = (d: Date, n: number) => { const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, d.getUTCDate())); if (x.getUTCDate() !== d.getUTCDate()) x.setUTCDate(0); return x; };
+const day = (s: unknown) => { const m = typeof s === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim()) : null; if (!m) return null; const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); return d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3] ? d : null; };
+/** A document issued on `issuedOn` is good for an application submitted on `submitOn` when it was issued no more than the
+ *  rule's months before that date (and not after it). Dates are YYYY-MM-DD. Used by uploads (C6.5). */
+export function issuedWithin(rule: Pick<ValidityRule, "months">, issuedOn: string, submitOn: string): { fresh: boolean; why: string } {
+  const issued = day(issuedOn), submit = day(submitOn);
+  if (!issued || !submit) return { fresh: false, why: "Give both dates as year-month-day." };
+  if (issued > submit) return { fresh: false, why: "The document is dated after the submission date. Check the date." };
+  const last = addMonths(issued, rule.months);
+  return submit <= last
+    ? { fresh: true, why: `Issued ${issuedOn}: good for an application submitted by ${last.toISOString().slice(0, 10)}.` }
+    : { fresh: false, why: `Issued ${issuedOn}: more than ${rule.months} months before ${submitOn}. Ask for a new one.` };
+}
+
+/** Each person's checklist on this case, from the release's requirements and what is known about each person. `known`
+ *  holds only answers without problems (the caller drops the others, B-M2), so a rejected answer never decides a line. */
+export function caseChecklist(s: Snapshot, combinationKey: string, people: Participant[], answers: Known, today: Date): CaseChecklist {
+  if (!DERIVED_FOR.has(combinationKey)) return { derived: false, combination: combinationKey, why: "The document checklist per person is not derived yet for this combination (it is worked out once its requirements are checked). Nothing is guessed." };
+  // Break M1: an answer saved with spaces around it (" 1980-01-01 ") passes its checks, which trim; it is read trimmed.
+  const known: Known = new Map([...answers].map(([k, v]) => [k, typeof v.value === "string" ? { ...v, value: v.value.trim() } : v]));
+  const persons: Person[] = people.filter((p) => p.role !== "case").map((p) => ({ id: p.subjectId, role: p.role as Person["role"], label: p.label, applies: p.applies }));
+  const types = (s.document_types ?? []) as DocType[], reqs = (s.document_requirements ?? []) as Req[], rules = validityRules(s);
+  const derived = (s.derived_fields ?? []) as Derived[];
+  const words = questionWords(s);
+  // Ages are worked out on the application date when it is answered (as the release's person.age_years), else today.
+  const appDate = known.get(`case|${APPLICATION_DATE}`)?.value;
+  const agesOn = day(appDate) ? String(appDate) : today.toISOString().slice(0, 10);
+  const agesOnWhy = day(appDate) ? "Ages are worked out on the application date." : "Until the application date is answered, ages for the 18-or-older lines are worked out on today's date (UTC); a line whose condition reads the release's age asks for the application date first.";
+  const placed = new Map<string, { fact: string; repeats?: string | null }>(); // the first placement of a fact, as render.ts reads it
+  for (const p of (s.placements ?? []) as { fact: string; repeats?: string | null }[]) if (!placed.has(p.fact)) placed.set(p.fact, p);
+  /** The questions to answer first: a calculated field is replaced by the questions it is worked out from (B-M3). */
+  const toAsk = (keys: string[], about: string): Missing[] => {
+    const out = new Map<string, Missing>();
+    for (const k of keys) {
+      const d = derived.find((x) => x.id === k);
+      // SH3 R5 with the placement (C7.7, contract item (c)); an answer saved on the person before its placement became once
+      // per case still counts (Devin on #680, as render's keepAnswered, review r2-m1).
+      const has = (f: string) => known.has(`${isFilingFact(f, placed.get(f)) ? FILING : about}|${f}`) || known.has(`${isFilingFact(f) ? FILING : about}|${f}`);
+      const all = d ? [...(d.inputs ?? []), ...(d.reference ? [d.reference] : [])] : [k];
+      const open = all.filter((f) => !has(f));
+      for (const f of open.length ? open : all) { const onCase = isFilingFact(f, placed.get(f)) || about === FILING; out.set(f, { key: f, question: words(f), answered: !open.length, on: onCase ? "case" : "person", subject: onCase ? null : about }); }
+    }
+    return [...out.values()];
+  };
+  const say = (m: Missing[], what: string) => m.length && m.every((x) => x.answered)
+    ? `${what}: check ${m.map((x) => x.question).join(" and ")}; together they do not give an answer (for example a birth date after the application date).`
+    : `${what}: answer ${m.length ? m.map((x) => x.question).join(", ") : "the questions it depends on"} first.`;
+  // B102 (A6): the release's own worked-out age about a person, if it has one (data: its inputs and reference date).
+  // Break MA1: the age the release's document lines read, never another worked-out age that sorts first; none read → none.
+  const linesRead = new Set(reqs.flatMap((r) => (r.condition ? [...JSON.stringify(r.condition).matchAll(/"field":"([^"]+)"/g)].map((m) => m[1]) : [])));
+  const ageValue = derived.find((d) => d.calculation === "age_in_years" && d.id.startsWith("person.") && d.inputs?.length && d.reference && linesRead.has(d.id));
+  const ageOf = (h: string): PersonAge => {
+    const birthKey = ageValue?.inputs?.[0] ?? MINOR.birthDateField, onKey = ageValue?.reference ?? null;
+    const born = known.get(`${h}|${birthKey}`)?.value;
+    const on = onKey ? known.get(`${FILING}|${onKey}`)?.value : agesOn;
+    if (!day(born)) return { years: null, on: null, why: `Age: answer ${words(birthKey)} first.`, worked_out: !!ageValue };
+    if (!day(on)) return { years: null, on: null, why: `Age: answer ${words(onKey!)} first.`, worked_out: !!ageValue };
+    const years = ageInYears(born, on);
+    if (years === undefined) return { years: null, on: String(on), why: `Age: check ${words(birthKey)} and ${onKey ? words(onKey) : "today's date"}; together they give no age (a birth date after ${on}).`, worked_out: !!ageValue };
+    const which = onKey ? (onKey === APPLICATION_DATE ? "the application date" : words(onKey)) : day(appDate) ? "the application date" : "today: the application date is not answered yet";
+    return { years, on: String(on), why: `Age ${years} on ${on} (${which})`, worked_out: !!ageValue };
+  };
+  const byPerson = new Map<string, PersonLine[]>(persons.map((p) => [p.id, []]));
+  const applying = new Set(persons.filter((p) => p.applies).map((p) => p.id));
+  const principal = persons.find((p) => p.role === "principal")?.id;
+  // C6.14 BR-3: providers are matched among everyone on the case, applying or not; BR-4 (SA-1B-151 r3, SA-1B-75 r4,
+  // challenge M2): their age on the day the checklist is read (UTC), not the application date.
+  const providersOn = today.toISOString().slice(0, 10);
+  const everyone = candidatesOf(people, known, providersOn);
+  for (const r of reqs) {
+    const t = types.find((x) => x.key === r.document_type_key || x.name === r.document_type);
+    const document = { key: t?.key ?? r.document_type_key ?? r.document_type, name: t?.name ?? r.document_type };
+    const kind = r.condition?.subjectKind;
+    // R3 / B-M1: whose list a line goes on is the line's own "whose document"; only a case-level line ("case") goes on
+    // the principal's. The condition's subject says whose answers decide it (below), never whose list it is on.
+    // A person not applying has no filing on a Visitor visa (C6.12), so no lines of their own.
+    const holders = [...new Set(lineHolders(persons, r.who).map((h) => (h === "case" ? principal : h)))].filter((h): h is string => !!h && applying.has(h));
+    for (const h of holders) {
+      const plain = inReason(r.condition_plain);
+      let state: Need = "needed", missing: Missing[] = [];
+      let why = r.base_or_conditional === "base" ? "Always needed for this application." : `Needed: ${plain ?? "its condition holds"}.`;
+      if (r.who === "each_adult_18_plus") {
+        const age = ageInYears(known.get(`${h}|${MINOR.birthDateField}`)?.value, agesOn);
+        if (age === undefined) {
+          state = "answer_first";
+          const born = known.has(`${h}|${MINOR.birthDateField}`);
+          missing = born ? [{ key: MINOR.birthDateField, question: words(MINOR.birthDateField), answered: true, on: "person" as const, subject: h }, ...(day(appDate) ? [{ key: APPLICATION_DATE, question: words(APPLICATION_DATE), answered: true, on: "case" as const, subject: null }] : [])] : toAsk([MINOR.birthDateField], h);
+          why = say(missing, "Needed from age 18");
+        }
+        else if (age < 18) { state = "not_needed"; why = `Only for people 18 or older; this person is ${age} on ${agesOn}.`; }
+      }
+      if (state === "needed" && r.base_or_conditional !== "base" && r.condition) {
+        const c = conditionFor(s, known, r.condition, h, persons);
+        if (c.applies === false) { state = "not_needed"; why = c.why ?? `Not needed: the answers show it is not the case that ${plain ?? "its condition holds"}.`; }
+        else if (c.applies !== true) {
+          state = "answer_first"; missing = c.document ? [] : toAsk(c.missing, c.about ?? h);
+          why = c.document ? `May be needed (${plain ?? "it depends on another document"}): it depends on a document's contents, which are read once uploads arrive; check it by hand for now.`
+            : say(missing, `May be needed (${plain ?? "it depends on an answer"})`);
+        }
+      }
+      const line: PersonLine = { id: `${h}:${r.lineage}`, document_type: document.key, label: document.name, state: "not_requested", reason: why, required: state === "needed", documents: [],
+        need: state, lineage: r.lineage, also_from: [], document, missing, base: r.base_or_conditional === "base", provided_by: r.provided_by,
+        alternatives: (r.alternatives ?? []).map((k) => ({ key: k, name: types.find((x) => x.key === k)?.name ?? k })), quote: r.source_quote ?? null, rule: rules.get(document.key) ?? null,
+        set: lineSet(t, r.set_name, document.name).set, who: r.who, who_words: whoWords(r.who), ...sharedOf(r.who, t?.default_provider_roles ?? [], h, everyone, providersOn) };
+      // Minor: two requirements for the same document on one person (e.g. a case line and the principal's own) are one
+      // line: the strongest state wins and the other requirement is named in also_from.
+      // Break m7: the merged line is "always" when either requirement is.
+      const list = byPerson.get(h)!, same = list.findIndex((x) => x.document.key === line.document.key);
+      if (same < 0) list.push(line);
+      else {
+        const keep = ORDER[line.need] < ORDER[list[same].need] ? line : list[same], drop = keep === line ? list[same] : line; keep.also_from = [...new Set([...keep.also_from, drop.lineage, ...drop.also_from])].sort(); keep.base ||= drop.base;
+        // C6.14: merged with a shared requirement, the one line keeps its providers (a shared item is never lost), but only
+        // when that requirement applies as strongly as the line it joins: a shared requirement not needed (or waiting)
+        // never makes a needed per-person line shared (Devin on #1392).
+        if (!keep.shared && drop.shared && ORDER[drop.need] <= ORDER[keep.need]) Object.assign(keep, { shared: drop.shared, providers: drop.providers, providers_rule: drop.providers_rule, providers_words: drop.providers_words });
+        list[same] = keep;
+      }
+    }
+  }
+  return { derived: true, stand_in: "SI-14", combination: combinationKey, empty_release: reqs.length === 0, ages_on: agesOn, ages_on_why: agesOnWhy,
+    basis: reqs.length === 0 ? "The case's release has no document lines yet: an empty list here does not mean nothing is needed. Ask the configuration team." : "From the case's release; each line rechecked against the case's answers on every read (answers with problems are not used). Sample until the immigration expert confirms.",
+    people: persons.map((p) => {
+      const all = byPerson.get(p.id)!.sort((a, b) => a.document.name.localeCompare(b.document.name) || a.lineage.localeCompare(b.lineage));
+      const of = (n: Need) => all.filter((l) => l.need === n);
+      const cand = everyone.find((x) => x.id === p.id);
+      const may = cand ? mayProvide(cand, providersOn) : { ok: false, why: `A ${roleWords(p.role).replace(/^the /, "")} does not provide documents.` };
+      return { subject: p.id, label: p.label, role: p.role, applies: p.applies, lines: of("needed"), waiting: of("answer_first"), not_needed: of("not_needed"), needed: of("needed").length, answer_first: of("answer_first").length, age: ageOf(p.id), may_provide: may };
+    }) };
+}
+const ORDER: Record<Need, number> = { needed: 0, answer_first: 1, not_needed: 2 };
+
+/** C6.14: a person on the case as provider rules read them (age in whole years on the checklist's date, or null). */
+export type Candidate = Person & { age: number | null };
+/** Roles that never provide a document (concept BR-1): the representative acts for the applicants; their documents are not
+ *  the client's (SA-1B-151 r1: a type with source kind client). Shared by the library's choices and the case's people. */
+export const NEVER_PROVIDES = new Set<string>([ROLE.representative]);
+/** Everyone on the case who may be named (not the case's own record, not a role in NEVER_PROVIDES) with their age on `on`,
+ *  read trimmed from answers without problems. */
+export function candidatesOf(people: Participant[], known: Known, on: string): Candidate[] {
+  const born = (id: string) => { const v = known.get(`${id}|${MINOR.birthDateField}`)?.value; return typeof v === "string" ? v.trim() : v; };
+  return people.filter((p) => p.role !== "case" && !NEVER_PROVIDES.has(p.role)).map((p) => ({ id: p.subjectId, role: p.role as Person["role"], label: p.label, applies: p.applies, age: ageInYears(born(p.subjectId), on) ?? null }));
+}
+/** BR-2: the lines that are one item for the application, by their "whose document" (C3.16's Filing and Household). */
+export const SHARED_WHO: Record<string, Shared> = { case: "application", couple_once: "couple" };
+/** BR-4 (SA-1B-151 r3, SA-1B-214 r5; challenge M2, AG-7-15 r6 "can't check" is never a pass): may this person provide?
+ *  18 or older on the date: yes. Under 18: no. Age not known (no valid date of birth): cannot be checked, so not named. */
+export function mayProvide(p: Candidate, on: string): { ok: boolean; why: string } {
+  if (p.age === null) return { ok: false, why: `${p.label}'s age cannot be checked yet (no date of birth): named once it shows 18 or older.` };
+  return p.age >= MINOR.underAge ? { ok: true, why: `${p.age} on ${on}` } : { ok: false, why: `${p.label} is ${p.age} on ${on}: nobody under ${MINOR.underAge} provides a document.` };
+}
+export const roleWords = (role: string) => WHO_WORDS[role === ROLE.principal ? "principal_applicant" : role] ?? role.replace(/_/g, " ");
+/** BR-3 to BR-5: the providers of a shared item on `holder`'s list: the type's roles in order, each matched among everyone
+ *  on the case (applying or not, on any filing), nobody under 18; none set or none left: the holder (the person the item
+ *  is for, the filing's first applicant on this slice). Pure; no combination key (P-425). */
+export function providersFor(roles: string[], holder: string, everyone: Candidate[], on: string): { providers: Provider[]; rule: ProvidersRule; words: string; skipped: string[] } {
+  const out: Provider[] = [], skipped: string[] = [];
+  for (const role of roles) for (const p of everyone.filter((x) => x.role === role)) {
+    if (out.some((x) => x.subject === p.id)) continue;
+    const m = mayProvide(p, on);
+    if (m.ok) out.push({ subject: p.id, label: p.label, role: p.role, why: `Default from the document type: ${roleWords(role)}${p.applies ? "" : " (not applying, still on the case)"}.` });
+    else skipped.push(m.why);
+  }
+  const names = (xs: Provider[]) => xs.map((x) => x.label).join(" and ");
+  if (out.length) return { providers: out, rule: "type_roles", words: `Provided by ${names(out)}: the document type's default ${roles.length > 1 ? "roles" : "role"}.${skipped.length ? ` ${skipped.join(" ")}` : ""}`, skipped };
+  const h = everyone.find((x) => x.id === holder);
+  const first: Provider[] = h ? [{ subject: h.id, label: h.label, role: h.role, why: "The person the item is for provides it." }] : [];
+  const lead = roles.length ? `No one on the case can provide it by the document type's roles (${roles.map(roleWords).join(", then ")})` : "The document type names no provider";
+  return { providers: first, rule: "first_applicant", words: `${lead}: ${h ? `${h.label}, the person the item is for, provides it` : "the person the item is for provides it"}.${skipped.length ? ` ${skipped.join(" ")}` : ""}`, skipped };
+}
+/** C6.14: the shared fields of a line ({ shared: null, providers: [] } for a per-person line, BR-2). */
+function sharedOf(who: string, roles: string[], holder: string, everyone: Candidate[], on: string): Pick<PersonLine, "shared" | "providers" | "providers_rule" | "providers_words"> {
+  const shared = SHARED_WHO[who] ?? null;
+  if (!shared) return { shared: null, providers: [], providers_rule: null, providers_words: null };
+  const p = providersFor(roles, holder, everyone, on);
+  return { shared, providers: p.providers, providers_rule: p.rule, providers_words: p.words };
+}
+/** BR-6: the officer's choice, read against the case as it is now: a chosen person no longer on the case, or now under 18,
+ *  is dropped (named); none left: null, so the defaults apply and the caller says so. */
+export function chosenProviders(chosen: string[], everyone: Candidate[], on: string): { providers: Provider[]; dropped: string[] } {
+  const providers: Provider[] = [], dropped: string[] = [];
+  for (const id of [...new Set(chosen)]) {
+    const p = everyone.find((x) => x.id === id);
+    if (!p) { dropped.push("A person chosen is no longer on the case."); continue; }
+    const m = mayProvide(p, on);
+    if (!m.ok) { dropped.push(m.why); continue; }
+    providers.push({ subject: p.id, label: p.label, role: p.role, why: "Chosen by the case officer." });
+  }
+  return { providers, dropped };
+}
+
+/** C6.4 (a), challenge r2 M1: a release's plain condition as it reads inside a reason ("Needed: …."): its last full stop
+ *  removed, and its first word lower-cased only when it is a common opening word ("The applicant is married." → "the
+ *  applicant is married"), so the reason never reads "married.." or "the case that The applicant". Any other first word
+ *  (a name, a nationality, IMM, IRCC) is kept as written (review minor 2). */
+const OPENERS = new Set(["The", "A", "An", "This", "That", "These", "Those", "Only", "If", "When", "Each", "Every", "Any", "Applicant", "Applicants", "Person", "Someone", "Anyone"]);
+export function inReason(plain: string | null | undefined): string | null {
+  const t = (plain ?? "").trim().replace(/[.\s]+$/, "");
+  if (!t) return null;
+  const first = t.split(/\s/)[0];
+  return OPENERS.has(first) ? t[0].toLowerCase() + t.slice(1) : t;
+}
+/** Whose line it is, in the words of the Forms and Documents tabs (contracts/lines-bulk.ts WHO_WORDS), as a note
+ *  ("For each applicant", "Once for the couple"); an unknown "who" is named as it is, never hidden. */
+export function whoWords(who: string): string {
+  if (who === "couple_once") return "Once for the couple";
+  if (who === "case") return "Once for the application";
+  const w = WHO_WORDS[who];
+  return w ? `For ${w}` : `For: ${who}`;
+}
+
+/** A condition decided on its own subject, by the one rule Preview and the Documents tab use (render.ts lineCondition;
+ *  Q2 on #325), with the case checklist's words for "nobody on the case". */
+function conditionFor(s: Snapshot, known: Known, tree: Cond, holder: string, persons: Person[]): { applies: boolean | "cannot_tell"; missing: string[]; about?: string; why?: string; document?: true } {
+  const c = lineCondition(s, known, persons, holder, tree);
+  return c.nobody ? { applies: false, missing: [], why: `Not needed: it depends on the ${c.nobody}, and there is none on the case.` } : c;
+}
+
+/** The words a person sees for a fact: its question on the release, else its meaning, else the key. */
+function questionWords(s: Snapshot): (key: string) => string {
+  const q = new Map<string, string>();
+  for (const p of (s.placements ?? []) as { fact: string; question_text?: string | null }[]) if (p.question_text && !q.has(p.fact)) q.set(p.fact, p.question_text);
+  for (const f of (s.canonical_fields ?? []) as { id: string; meaning?: string | null }[]) if (f.meaning && !q.has(f.id)) q.set(f.id, f.meaning);
+  return (key) => { const w = (q.get(key) ?? key).trim().replace(/[.?:]$/, ""); return `"${w}"`; };
+}

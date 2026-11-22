@@ -1,0 +1,625 @@
+{
+ "at": "2026-11-01T03:31:47.245Z",
+ "timings": {
+  "cold_first_view_ms": 517,
+  "first_view_ms": 170,
+  "filter_ms": 42
+ },
+ "pass": 116,
+ "fail": 0,
+ "log": [
+  {
+   "name": "setup: sample inputs load through the form intake",
+   "ok": true,
+   "detail": "6.514"
+  },
+  {
+   "name": "setup: one replay of a saved real AI run on Super visa (no model call, US$0)",
+   "ok": true,
+   "detail": "studio-fieldmap-imm5257e-live-20261021t060247723z.json"
+  },
+  {
+   "name": "setup: one row submitted, then released but not startable (Not ready), by a second person",
+   "ok": true,
+   "detail": "2"
+  },
+  {
+   "name": "performance: first view under 1 s with the sample data (app files cached)",
+   "ok": true,
+   "detail": "170 ms (cold browser 517 ms)"
+  },
+  {
+   "name": "BR-13 / P-180 Q2: All is the default; the chips are All · Not started · In progress · Live, each with a count",
+   "ok": true,
+   "detail": "all:true:All21 | not_started:false:Not started15 | in_progress:false:In progress4 | live:false:Live2"
+  },
+  {
+   "name": "item 4 (card v4 List): sentence-case column headers (Combination · Trail · Progress, then Needs you and Action for screen readers)",
+   "ok": true,
+   "detail": "Combination|Trail|Progress |Needs you|Action / none"
+  },
+  {
+   "name": "P-49: \"Ready\" never appears; the list says n of 5 or Live",
+   "ok": true
+  },
+  {
+   "name": "P-50: no side panel or sheet on Programs",
+   "ok": true
+  },
+  {
+   "name": "AI proposals waiting (card v4): the row's button is Resume setup and it says Needs you",
+   "ok": true,
+   "detail": "Super visa\nRetail › Temporary residence › Visitors\n0 of 5\nNeeds you\nResume setup"
+  },
+  {
+   "name": "item 3 + BR-7 (card v4): the name, then the trail above it, full on hover",
+   "ok": true,
+   "detail": "{\"name\":\"Permanent residence application\",\"trail\":\"Retail › Permanent residence › Economic immigration › Express Entry\",\"title\":\"Retail › Permanent residence › Economic immigration › Express Entry\"}"
+  },
+  {
+   "name": "axe: programs-needs-work-default has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-needs-work-default has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "review #7 (card v4): Tab from the active row reaches its Needs you mark, which says what waits",
+   "ok": true
+  },
+  {
+   "name": "item 5: Super visa is one row, Visitors › Super visa (no Parent / Grandparent)",
+   "ok": true,
+   "detail": "Super visaRetail › Temporary residence › Visitors0 of 5Needs youResume setup"
+  },
+  {
+   "name": "performance: changing the view answers under 200 ms",
+   "ok": true,
+   "detail": "42 ms"
+  },
+  {
+   "name": "F1: Live shows every row that is Live",
+   "ok": true,
+   "detail": "2"
+  },
+  {
+   "name": "axe: programs-live has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-live has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "P-49: the Progress column is sortable (not Live first, then Live, in every Program band) and says so to screen readers",
+   "ok": true,
+   "detail": "ascending [[\"IN_PROGRESS\",\"IN_PROGRESS\",\"NOT_STARTED\"],[\"IN_PROGRESS\",\"NOT_STARTED\"],[\"NOT_STARTED\",\"NOT_STARTED\",\"NOT_STARTED\",\"NOT_STARTED\",\"NOT_STARTED\",\"LIVE\",\"LIVE\"],[\"IN_PROGRESS\",\"NOT_STARTED\",\"NOT_STARTED\"],[\"NOT_STARTED\",\"NOT_STARTED\",\"NOT_STARTED\"],[\"NOT_STARTED\",\"NOT_STARTED\"],[\"NOT_STARTED\"]]"
+  },
+  {
+   "name": "P-49: sorting again puts Live first in every Program band (descending)",
+   "ok": true,
+   "detail": "[[\"LIVE\",\"LIVE\",\"NOT_STARTED\",\"NOT_STARTED\",\"NOT_STARTED\",\"NOT_STARTED\",\"NOT_STARTED\"],[\"NOT_STARTED\",\"IN_PROGRESS\",\"IN_PROGRESS\"],[\"NOT_STARTED\",\"IN_PROGRESS\"],[\"NOT_STARTED\",\"NOT_STARTED\",\"IN_PROGRESS\"],[\"NOT_STARTED\",\"NOT_STARTED\",\"NOT_STARTED\"],[\"NOT_STARTED\",\"NOT_STARTED\"],[\"NOT_STARTED\"]]"
+  },
+  {
+   "name": "axe: programs-all-sorted-by-status has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-all-sorted-by-status has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "Program scope: only Work permits rows, in path order, with a 'Work permits' filter chip (P-128 (4))",
+   "ok": true
+  },
+  {
+   "name": "axe: programs-program-filter-work-permits has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-program-filter-work-permits has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "⌘K search finds a form code and says what matched",
+   "ok": true
+  },
+  {
+   "name": "axe: programs-search-form-code has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-search-form-code has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "nothing matches: an empty state with a way back",
+   "ok": true
+  },
+  {
+   "name": "axe: programs-nothing-matches has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-nothing-matches has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "regression: \"Clear search\" keeps the All view after the search box settles (no stale URL rewrite)",
+   "ok": true,
+   "detail": "http://localhost:4443/"
+  },
+  {
+   "name": "item 5: Corporate shows the demo names (LMIA › High-wage position, Low-wage position, Global Talent Stream, In-home caregiver)",
+   "ok": true,
+   "detail": "High-wage position\nCorporate and employers › Temporary residence › LMIA\n0 of 5\nResume setup"
+  },
+  {
+   "name": "axe: programs-corporate has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-corporate has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "keyboard: one tab stop, ↑/↓/Home/End move, Enter opens the combination page (P-50)",
+   "ok": true,
+   "detail": "Visitor visa → http://localhost:4443/c/41d34a4e-302b-4868-9b2f-74b3ae6b0f82"
+  },
+  {
+   "name": "P-50: Back keeps the view (All), highlights the opened row and restores the scroll",
+   "ok": true,
+   "detail": "{\"url\":\"?f=all&sel=individual.visitors.visitor_visa\",\"sel\":\"Visitor visa\",\"y\":27,\"focus\":\"Visitor visa\",\"scrollBefore\":27}"
+  },
+  {
+   "name": "axe: programs-back-row-highlighted has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-back-row-highlighted has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "review should 5: the browser's Back button returns to the list with the opened row highlighted and focused",
+   "ok": true,
+   "detail": "{\"sel\":\"Super visa\",\"focus\":\"Super visa\",\"url\":\"?f=all&sel=individual.visitors.super_visa\"}"
+  },
+  {
+   "name": "P-50: the page header carries the full path, every level a link (Immigration programs › Temporary residence › Visitors › Visitor visa)",
+   "ok": true,
+   "detail": "Immigration programs › Temporary residence › Visitors › Visitor visa"
+  },
+  {
+   "name": "item 1 P-180 (X1 C3, QA-119): Visitor visa — the row says Resume setup; the header's step is the strip's ● Next item; the Forms row names the one form found; no missing list",
+   "ok": true,
+   "detail": "Resume setup | Confirm the checklist page | ● Step 1, Next: Official pages IRCC's apply page and document checklist; the forms, people and documents are read from them Proposed by the rules, not confirmed Confirm the checklist page | ○ Step 3, To do: Forms 0 forms Add 1 form found · Map 1 form After Who can be in this application"
+  },
+  {
+   "name": "item 3: a combination with no setup shows no warnings (\"no problems\")",
+   "ok": true
+  },
+  {
+   "name": "item 5: the Questions tile names what its number counts",
+   "ok": true
+  },
+  {
+   "name": "item 7: no technical key on the main path",
+   "ok": true
+  },
+  {
+   "name": "item 7: no floating \"AI for this combination\" button (one AI place: the next step)",
+   "ok": true
+  },
+  {
+   "name": "item 7: the facts sit in one muted line under the title",
+   "ok": true,
+   "detail": "Not released yet · cases opened outside Canada · people: Applicant, Spouse or partner (travelling) (optional), Child (travelling) (0–4) · Sample"
+  },
+  {
+   "name": "item 1 → S5: no \"+ Add form\" on the Overview (it only reports)",
+   "ok": true
+  },
+  {
+   "name": "QA-119: the page's next step is the setup checklist's next item (its words and kind), not the catalogue's older step",
+   "ok": true,
+   "detail": "Confirm the checklist page / Confirm the checklist page / old Add 1 form from the library"
+  },
+  {
+   "name": "review #1: a form already mapped in the library is not called unmapped",
+   "ok": true
+  },
+  {
+   "name": "axe: combination-page-overview has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: combination-page-overview has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "S5: the Forms tab offers \"Add a form from the library\" (picks only; no upload on the combination)",
+   "ok": true
+  },
+  {
+   "name": "item 9 / #5: one way in, many files, one card per file (added · older edition not used · already in the library)",
+   "ok": true,
+   "detail": "44 (09-2024) added to the library as a new form (read from the file).Added to the library. | To review; then a second person compares and approves it.Record the IRCC page it came from | y: IMM 5707 (01-2023). Nothing duplicated.Already in the library: nothing was added twice."
+  },
+  {
+   "name": "item 9: what the file says is shown (code, edition and title, read by rules)",
+   "ok": true
+  },
+  {
+   "name": "axe: add-form-panel-intake-results has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: add-form-panel-intake-results has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "item 8: the held edition is not in the library and not attached here (never silently)",
+   "ok": true
+  },
+  {
+   "name": "held for a person: the older edition waits for a person (To review and the Form library; S5: no longer on the combination)",
+   "ok": true,
+   "detail": "[\"IMM 5257 (06-2019):older_edition_held\"]"
+  },
+  {
+   "name": "review #3: no technical words on the page (screen numbers, error names, hashes, user ids, \"inventory\")",
+   "ok": true
+  },
+  {
+   "name": "axe: combination-page-held-new-edition has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: combination-page-held-new-edition has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "P-50: a level in the path opens the list filtered to it, with the combination highlighted",
+   "ok": true
+  },
+  {
+   "name": "#5: an older edition never shows as a new edition on the row",
+   "ok": true
+  },
+  {
+   "name": "axe: programs-filtered-from-path has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-filtered-from-path has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "source-trust: a readable, unapproved IMM 5476 checksum is held before edition impact review",
+   "ok": true,
+   "detail": "[object Object]"
+  },
+  {
+   "name": "source-trust: the held unapproved edition does not change a Live row or expose edition-impact review",
+   "ok": true,
+   "detail": "With an LMIARetail › Temporary residence › Work permits › Employer-specific work permitLiveOpen"
+  },
+  {
+   "name": "axe: programs-live-row-unverified-source-held has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-live-row-unverified-source-held has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "F1: Retail: the Live count equals the rows showing Live, and the Live view lists them",
+   "ok": true,
+   "detail": "2 · chips 2 · shown 2"
+  },
+  {
+   "name": "F1: Corporate: the Live count equals the rows showing Live, and the Live view lists them",
+   "ok": true,
+   "detail": "0 · chips 0 · shown 0"
+  },
+  {
+   "name": "review #3: released version and approver role appear without a technical fingerprint",
+   "ok": true
+  },
+  {
+   "name": "source-trust: unverified upload remains outside the combination's release workflow",
+   "ok": true
+  },
+  {
+   "name": "item 6: the With an LMIA sample note lists the six forms and two checklists the page shows",
+   "ok": true,
+   "detail": "IMM 1295, IMM 5257 SCH1, IMM 5409, IMM 5475, IMM 5476, IMM 5488, IMM 5707, IMM 5905"
+  },
+  {
+   "name": "item 3: the warnings on a Live row are this combination's own and link to Review and release",
+   "ok": true,
+   "detail": "15 shown, 15 own"
+  },
+  {
+   "name": "axe: combination-page-live-unverified-source-held has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: combination-page-live-unverified-source-held has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "?show=missing opens the combination page on the setup strip, five steps",
+   "ok": true,
+   "detail": "● Step 1, Next: Official pages IRCC's apply page and document checklist; the forms, people and documents are read from them Proposed by the rules, not confirmed Confirm the checklist page | ○ Step 2, To do: Who can be in this application 3 person roles, 3 applicant roles Sample Confirm who can apply After Official pages | ○ Step 3, To do: Forms 0 forms Add 1 form found · Map 1 form After Who can b"
+  },
+  {
+   "name": "F2 (X1 C3): one line per step, never a line per person role",
+   "ok": true
+  },
+  {
+   "name": "axe: combination-page-show-missing has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: combination-page-show-missing has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "S2 fix 3 / S3: a not-started row opens no page, says Start setup begins it, and starts nothing by itself",
+   "ok": true
+  },
+  {
+   "name": "axe: combination-page-not-started has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: combination-page-not-started has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "non-author P-180: a not-started row offers Open, never Start setup, and says who starts it",
+   "ok": true,
+   "detail": "Open"
+  },
+  {
+   "name": "axe: programs-non-author has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-non-author has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "review #6: the approver sees People read-only (no Edit), and author steps are not offered",
+   "ok": true
+  },
+  {
+   "name": "item 6: the global draft bar shows total changes and affected combination count, with one release-review link",
+   "ok": true,
+   "detail": "Draft · 102 changes across 1 combinationReview and release (102)"
+  },
+  {
+   "name": "axe: programs-draft-bar has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: programs-draft-bar has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "S3 M2: the New combination page is gone (Page not found, with the way back)",
+   "ok": true
+  },
+  {
+   "name": "QA-1: the shared Release page holds back a combination nobody submitted, saying why",
+   "ok": true,
+   "detail": "Study permitStudy permits › Study permit · first release102Held back: Not submitted for review: submit it on its Review and release tab."
+  },
+  {
+   "name": "QA-1: with nothing reviewed, the approver has nothing to release (button off)",
+   "ok": true
+  },
+  {
+   "name": "axe: release-page-held-not-submitted has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: release-page-held-not-submitted has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "QA-10: the review tab names who submitted (\"Submitted by Configuration author\"), never an internal id",
+   "ok": true,
+   "detail": "Submitted by Configuration author, today at"
+  },
+  {
+   "name": "axe: combination-review-submitted-by-name has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: combination-review-submitted-by-name has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "QA-1: once submitted and signed, the Release page will release it",
+   "ok": true
+  },
+  {
+   "name": "narrow 390 px: the combination's name keeps its width (≥ 200 px), next steps are not clipped, no sideways scroll",
+   "ok": true,
+   "detail": "{\"nameW\":207,\"over\":0,\"clipped\":0}"
+  },
+  {
+   "name": "narrow 512 px: the combination's name keeps its width (≥ 200 px), next steps are not clipped, no sideways scroll",
+   "ok": true,
+   "detail": "{\"nameW\":329,\"over\":0,\"clipped\":0}"
+  },
+  {
+   "name": "C1.6 P-180: the row no longer says how the combination is filed (the Forms tab does)",
+   "ok": true,
+   "detail": "With an LMIARetail › Temporary residence › Work permits › Employer-specific work permitLiveOpen"
+  },
+  {
+   "name": "C1.6: the combination page shows the filing method and each line's channel",
+   "ok": true
+  },
+  {
+   "name": "C1.6: the author sets a line's channel; the line's signature follows and the filing method stays in C1.6's short words",
+   "ok": true
+  },
+  {
+   "name": "C1.6 P-107: the author files a line Online; the line says it needs the browser extension (later wave) and the filing method is Mixed",
+   "ok": true
+  },
+  {
+   "name": "axe: combination-online-later-wave has no WCAG A/AA violation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "1024 px: combination-online-later-wave has no sideways scroll",
+   "ok": true
+  },
+  {
+   "name": "C1.6 P-102: no portal choice and no \"Add an online form\" on the combination page",
+   "ok": true
+  },
+  {
+   "name": "C1.6: someone without the author duty sees the channels but cannot change them",
+   "ok": true,
+   "detail": "{\"boxes\":[],\"pdf\":true,\"add\":0,\"text\":\"Before forms●Official pages: Proposed by the rules, not confirmed · Confirm the checklist page○Who can be in this application · Principal applicant (always) · Spouse or partner (optional) · Child, 0–4 (optional) · Representative (optional) ShowNo form find yetIts forms and checklists come from canada.ca into the Form library and attach here. Nothing was spent"
+  },
+  {
+   "name": "C1.6 P-102: the sources tab no longer offers what drafting reads online",
+   "ok": true
+  },
+  {
+   "name": "C1.6 P-102: the Browser extension page and its menu entry are gone",
+   "ok": true
+  },
+  {
+   "name": "QA-17: a step run on another day shows its date (\"Oct 21, …\"); one run today says \"today\"",
+   "ok": true,
+   "detail": "Oct 21, 5:23 p.m. Ch | today at 3:30 a. | today at 3:30 a."
+  },
+  {
+   "name": "P-63: no page says \"box\" or \"box map\" (form field, field map)",
+   "ok": true,
+   "detail": "none"
+  },
+  {
+   "name": "no console or page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "axe": [
+  {
+   "state": "01-programs-needs-work-default",
+   "violations": []
+  },
+  {
+   "state": "02-programs-live",
+   "violations": []
+  },
+  {
+   "state": "03-programs-all-sorted-by-status",
+   "violations": []
+  },
+  {
+   "state": "04-programs-program-filter-work-permits",
+   "violations": []
+  },
+  {
+   "state": "05-programs-search-form-code",
+   "violations": []
+  },
+  {
+   "state": "06-programs-nothing-matches",
+   "violations": []
+  },
+  {
+   "state": "07-programs-corporate",
+   "violations": []
+  },
+  {
+   "state": "08-programs-back-row-highlighted",
+   "violations": []
+  },
+  {
+   "state": "09-combination-page-overview",
+   "violations": []
+  },
+  {
+   "state": "10-add-form-panel-intake-results",
+   "violations": []
+  },
+  {
+   "state": "11-combination-page-held-new-edition",
+   "violations": []
+  },
+  {
+   "state": "12-programs-filtered-from-path",
+   "violations": []
+  },
+  {
+   "state": "13-programs-live-row-unverified-source-held",
+   "violations": []
+  },
+  {
+   "state": "14-combination-page-live-unverified-source-held",
+   "violations": []
+  },
+  {
+   "state": "15-combination-page-show-missing",
+   "violations": []
+  },
+  {
+   "state": "16-combination-page-not-started",
+   "violations": []
+  },
+  {
+   "state": "17-programs-non-author",
+   "violations": []
+  },
+  {
+   "state": "18-programs-draft-bar",
+   "violations": []
+  },
+  {
+   "state": "19-release-page-held-not-submitted",
+   "violations": []
+  },
+  {
+   "state": "20-combination-review-submitted-by-name",
+   "violations": []
+  },
+  {
+   "state": "21-combination-online-later-wave",
+   "violations": []
+  }
+ ]
+}

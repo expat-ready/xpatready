@@ -1,0 +1,232 @@
+<title>Programme map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@600;700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column of stacked sections; the journey is a wrapping strip of nine step cards; tables scroll inside their own box. */
+:root {
+  --bg: #f6f8fb; --surface: #ffffff; --ink: #0f1d2e; --muted: #556275; --line: #dde3ec;
+  --brand: #0862c5; --brand-soft: #e6f4ff;
+  --ok: #1f7a4d; --ok-soft: #e3f4ea; --warn: #9a5b00; --warn-soft: #fff3e0; --bad: #b42318; --bad-soft: #fde8e6; --none: #6b7686; --none-soft: #eef1f5;
+  --display: "Figtree", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --body: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b1420; --surface: #121e2d; --ink: #e8eef6; --muted: #9aa8ba; --line: #24344a;
+  --brand: #5fb0ff; --brand-soft: #10304f;
+  --ok: #6fd3a0; --ok-soft: #12321f; --warn: #ffc773; --warn-soft: #3a2a10; --bad: #ff8a80; --bad-soft: #3d1714; --none: #9aa8ba; --none-soft: #1b2738;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0b1420; --surface: #121e2d; --ink: #e8eef6; --muted: #9aa8ba; --line: #24344a;
+  --brand: #5fb0ff; --brand-soft: #10304f;
+  --ok: #6fd3a0; --ok-soft: #12321f; --warn: #ffc773; --warn-soft: #3a2a10; --bad: #ff8a80; --bad-soft: #3d1714; --none: #9aa8ba; --none-soft: #1b2738;
+  color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.55 var(--body); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 48px; }
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+h1 { font-size: 24px; } h2 { font-size: 20px; } h3 { font-size: 16px; }
+p { margin: 0; max-width: 72ch; }
+.muted { color: var(--muted); }
+header { display: grid; gap: 6px; }
+.eyebrow { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--brand); font-weight: 600; }
+section { display: grid; gap: 12px; }
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; min-width: 0; }
+.tile b { font-family: var(--display); font-size: 18px; }
+.journey { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 8px; align-content: start; min-width: 0; border-top: 4px solid var(--stripe, var(--line)); }
+.step .num { font-size: 12px; color: var(--muted); font-weight: 600; }
+.step ul { margin: 0; padding-left: 18px; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.s-ok { background: var(--ok-soft); color: var(--ok); } .s-warn { background: var(--warn-soft); color: var(--warn); }
+.s-bad { background: var(--bad-soft); color: var(--bad); } .s-none { background: var(--none-soft); color: var(--none); }
+.s-brand { background: var(--brand-soft); color: var(--brand); }
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; color: var(--muted); font-weight: 600; background: var(--bg); }
+tr:last-child td { border-bottom: 0; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.list { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 6px 16px; }
+.item { padding: 10px 0; border-bottom: 1px solid var(--line); display: grid; gap: 3px; }
+.item:last-child { border-bottom: 0; }
+.item .rec { color: var(--brand); font-weight: 500; }
+code { font-size: 12px; background: var(--none-soft); padding: 1px 5px; border-radius: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+footer { font-size: 12px; color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Pathway Configurator · reference prototype</span>
+    <h1>Programme map</h1>
+    <p class="muted" id="asof"></p>
+  </header>
+
+  <section aria-labelledby="h-now">
+    <h2 id="h-now">Where we are</h2>
+    <div class="summary" id="summary"></div>
+  </section>
+
+  <section aria-labelledby="h-journey">
+    <h2 id="h-journey">The end-to-end journey</h2>
+    <p class="muted">From IRCC forms to a filed application, in nine steps. Each card says what is decided, what is built on main, and what independent testing has shown. Capability IDs (C1.1 …) are the tester's checklist.</p>
+    <div class="legend"><span class="chip s-ok">Works / built</span><span class="chip s-warn">Partial</span><span class="chip s-bad">Defect</span><span class="chip s-none">Not built</span><span class="chip s-brand">In a lane now</span></div>
+    <div class="journey" id="journey"></div>
+  </section>
+
+  <section aria-labelledby="h-sol">
+    <h2 id="h-sol">Decided solutions: where each one is</h2>
+    <p class="muted">Every product decision becomes something a person can see and the tester can check, the same day (P-74). This is the list.</p>
+    <div class="tablebox"><table id="solutions"></table></div>
+  </section>
+
+  <section aria-labelledby="h-ms">
+    <h2 id="h-ms">Milestones and progress</h2>
+    <p class="muted">No dates: everything as soon as possible. Progress is counted from the tester's capability list (product/PLAN.md, tools/progress.sh), never estimated.</p>
+    <div class="tablebox"><table id="milestones"></table></div>
+  </section>
+
+  <section aria-labelledby="h-lanes">
+    <h2 id="h-lanes">Lanes and who owns what</h2>
+    <p class="muted">Each lane is a separate builder session in its own copy of the code. The Lead runs them, checks the work and merges it into main.</p>
+    <div class="tablebox"><table id="lanes"></table></div>
+  </section>
+
+  <div class="two">
+    <section aria-labelledby="h-open">
+      <h2 id="h-open">Open decisions for you</h2>
+      <div class="list" id="open"></div>
+    </section>
+    <section aria-labelledby="h-dec">
+      <h2 id="h-dec">Decisions in force</h2>
+      <div class="list" id="decisions"></div>
+    </section>
+  </div>
+
+  <section aria-labelledby="h-bugs">
+    <h2 id="h-bugs">Open bugs</h2>
+    <div class="tablebox"><table id="bugs"></table></div>
+  </section>
+
+  <section aria-labelledby="h-how">
+    <h2 id="h-how">How we work, day to day</h2>
+    <div class="list" id="how"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+const D = {
+  asof: "Updated 26 Oct 2026. Source files: product/PLAN.md, STATE.md, DEMO.md, qa/CAPABILITIES.md, qa/BUGS.md, DECISIONS.md, BACKLOG.md.",
+  summary: [
+    ["Your priority (26 Oct)", "Ingestion + extension, end to end", "PDF and online forms into shared fields, sections and field maps, tested hard; one portal, APR (P-98); a guided Add a form path (P-99)"],
+    ["M2 progress (counted on main)", "12 of 47 work", "9 partial · 1 not tested · 25 not built; extension and Screen 02 merged 25 Oct, waiting for qa"],
+    ["R1 and M3", "5 of 8 · 0 of 16", "R1 thin slice works; M3 challenge written, the Lead answers it"],
+    ["Lanes", "Blocked by disk space", "The Mac has 1.1 GB free; each lane copy needs 5.4 GB. forms, screens and qa start once space is freed"],
+    ["Merge order", "forms → screens → runtime", "They share the release path; m3 merges after runtime"],
+    ["Open bugs", "0 Critical · 1 Major on main", "QA-38 (fixed on the runtime branch); D-1, D-2 fixed on the runtime branch"]
+  ],
+  solutions: { head: ["Decision", "What it is", "Built", "Where you will see it", "Order"], rows: [
+    ["Portal forms as sources (P-61, P-66)", "Capture each portal screen's structure, never values: extension capture mode (primary), saved blank page or template (fallbacks); a second person approves; builds the portal twin", "<span class='chip s-ok'>Back end merged</span>", "Screen 01: \"Add an online form\" on the combination; Screen 02: review and approve the capture", "Screen 01 now; Screen 02 next"],
+    ["Channel per form and filing method (P-61, P-62)", "Each form is PDF upload, Online with its portal, or Signed PDF upload; the combination is PDF only, Online only or Mixed; lines default to Online where IRCC files online", "<span class='chip s-ok'>Back end merged</span>", "Screen 01 row and combination page; Screen 03 Forms tab", "Screen 01 now"],
+    ["PDF or online as the base for shared fields (P-62 §1)", "Drafting reads the PDF version first, then the online screens for what differs; the author can change it per form; every shared field shows its source", "<span class='chip s-none'>Not built</span>", "Screen 01 sources tab (choice); Screen 02 (per field)", "Screen 01 now; Screen 02 next"],
+    ["Mapping portal questions (P-62, P-65)", "Reuse the PDF version's field map first, then aliases; AI only for leftovers; a person accepts", "<span class='chip s-warn'>Reuse built; AI leftovers in slice 2</span>", "Screen 02 screen-map review", "Forms slice 2 now"],
+    ["Browser extension (P-66, P-90)", "Capture mode for the content team: portal screens read structure only, checked before sending, a second person approves. Fill mode for agents: one portal screen from confirmed facts, read back, never Next or Submit; a changed screen fills nothing and opens Re-capture needed", "<span class='chip s-brand'>Built; merging after its re-score</span>", "Extension side panel; Studio Browser extension page", "Merge now; real portal after the expert's addresses"],
+    ["Application workspace (P-62 §6)", "One Prepare application view per filing; the channel decides what the agent sees: portal sheet, filled PDF with Validate, or print-sign-upload", "<span class='chip s-brand'>Board ready</span>", "Clickable board for PDF, online and mixed", "Walk the board with the Lead; build after R1"],
+    ["Agent view, facts once (P-47, P-72)", "Every fact per person with source and status; only confirmed facts fill; confirm by section", "<span class='chip s-brand'>Runtime lane building</span>", "R1 thin slice on the visitor visa", "Runtime now"],
+    ["Pre-qualification flow (P-76, P-77)", "PQR answers flow into the SQR marked please confirm; staff eligibility page from rules as data with Sample gates", "<span class='chip s-none'>Not built</span>", "Runtime: prospect slice on the visitor visa", "Runtime, after R1"],
+    ["Ready to file (P-71) and wrong mappings (P-73)", "Only Validate and missing or conflicting facts block; AI findings acknowledged; wrong mappings reported, held if confirmed", "<span class='chip s-none'>Not built</span>", "Prepare application", "M3"],
+    ["Never overwrite signed work (P-65)", "A changed fact marks signed, uploaded or submitted items stale", "<span class='chip s-brand'>Runtime lane</span>", "R1 thin slice", "Runtime, third part"],
+    ["Words (P-63)", "Form field, shared field, field map; never \"box\"", "<span class='chip s-bad'>\"Boxes\" still on screen</span>", "Every screen", "Screen 01 now"]
+  ]},
+  journey: [
+    { n: "1", t: "Set up the combination", d: "Pathway › Program › Category › Sub-category, links between combinations", c: [["ok","Catalogue and path builder built"],["none","Links carry no facts yet (Screen 03)"]], caps: "C1.1–C1.4" },
+    { n: "2", t: "Bring in sources", d: "IRCC PDF forms, portal screens, checklists", c: [["ok","PDF intake, unapproved files held"],["brand","Portal capture in forms slice 1"],["none","Approve a held file in the product (P-80)"],["none","Checklists read into proposals"]], caps: "C2.1–C2.6" },
+    { n: "3", t: "Build the shared library", d: "Shared fields, sections, answer lists, document types, rules, checks", c: [["ok","AI maps form fields with reuse / new / conflict"],["brand","Aliases, merges, answer lists (forms)"],["none","AI drafts sections, documents, rules"],["none","Describe what you need; retire"]], caps: "C3.1–C3.8" },
+    { n: "4", t: "Questionnaires per person", d: "PQR and SQR for each person role; preview with a sample family", c: [["warn","SQR section selection, coverage preview"],["brand","Shared renderer in R1 (runtime)"],["none","PQR inside the SQR, AI-drafted, released with the combination (P-76)"]], caps: "C4.1–C4.4" },
+    { n: "5", t: "Review and release", d: "Author submits, expert ticks, a different person releases", c: [["ok","Submit, sign-off, different approver"],["bad","Release page skips expert sign-off (QA-1)"]], caps: "C5.1–C5.2" },
+    { n: "6", t: "Collect facts once", d: "Case, people, client link, agent view, document checklist", c: [["brand","R1 plan under way (visitor visa)"],["none","No case, people or answers on main"]], caps: "C6.1–C6.4" },
+    { n: "7", t: "Fill forms", d: "IRCC PDFs with Validate and barcodes; portal screens", c: [["warn","PDF fill from sample facts"],["ok","IMM 1344 passes Adobe (two person steps)"],["brand","IMM 0008 next (evidence)"],["none","Portal sheet and extension"]], caps: "C7.1–C7.4" },
+    { n: "8", t: "Sign, upload, submit", d: "Signed-PDF states, per-screen ticks, application number and UCI", c: [["none","Not built (M3)"]], caps: "C8.1–C8.2" },
+    { n: "9", t: "Handle changes", d: "New editions, portal changes, changed answers; never overwrite signed work", c: [["warn","New editions held, no way forward yet"],["brand","Stale-never-overwrite in R1"],["none","Impact review, re-capture, form health"]], caps: "C9.1–C9.3" }
+  ],
+  milestones: { head: ["Milestone", "Scope", "Status", "Progress (counted)"], rows: [
+    ["Screen 01 closed", "Programs, path builder, combination page, channels, portal, online sources", "<span class='chip s-ok'>Done</span>", "Founder walked it 25 Oct"],
+    ["M2 · Super Admin setup", "Screens 01–04, forms channels, capture, AI work, release, preview by person", "<span class='chip s-brand'>In progress</span>", "<b>12 of 44</b> work; Screen 02, extension and Screen 03 part 1 in final checks"],
+    ["R1 · thin runtime slice", "Visitor visa: case, people, answers once, renderer, agent view, IMM 5257 from case facts", "<span class='chip s-ok'>Works</span>", "<b>5 of 8</b> work"],
+    ["M3 · case, agent and client", "Prepare application, portal sheet, extension fill, signed PDFs, submission, checklist, client link", "<span class='chip s-brand'>Design starting (m3 lane)</span>", "<b>0 of 15</b> work"],
+    ["Demo story (P-93)", "One Sample family: Visitor visa family of four + LMIA work permit reuse; every mechanism in DEMO.md; reset, configured (M2 gate) and finished story (M3 gate)", "<span class='chip s-none'>Seed after Screen 03 part 2</span>", "Runtime slice D1; every lane adds its row"]
+  ]},
+  lanes: { head: ["Lane", "Owns", "Now", "Who acts", "Next"], rows: [
+    ["forms", "PDF and online forms, capture, extension", "BUILD: small fixes, then the APR pass", "Builder (waits for disk space)", "Then CHECK; then the wizard's ingestion parts"],
+    ["screens", "Milestone 2 screens", "Screen 04 shared library · BUILD slice 1", "Builder (waits for disk space)", "Early look by the Lead"],
+    ["runtime", "Screen 03 workspace, then the demo seed", "Screen 03 part 2 · early look", "Lead", "Then CHECK; demo checkpoints (D1)"],
+    ["m3", "M3 Prepare application (P-94)", "Challenge written (7 Majors)", "Lead", "The Lead answers, then BUILD in new files"],
+    ["qa", "Independent testing of main", "After-merge + ingestion campaign", "Tester (waits for disk space)", "APR rerun after the forms APR pass"],
+    ["scout (Mac, Goose)", "Outside-in exploration", "Next charter ai-draft-review", "Founder starts it", "GOOSE-TASKS.md G2"],
+    ["evidence (Mac)", "Adobe fill trials", "IMM 5476 next", "Builder (Mac)", "Early look by the Lead"]
+  ]},
+  open: [
+    ["Free disk space on the Mac", "1.1 GB free; each lane copy needs 5.4 GB, and the suites fail when the disk fills.", "Free about 5 GB; the four old copies in /private/tmp (1.4 GB, nothing unpushed) can go with your OK."],
+    ["Your APR capture (G3)", "When the forms APR pass merges: check APR offers visitor visa and work permit, send the screens' host, capture blank screens.", "Lead says when it is ready."],
+        ["Devin small fixes", "May Devin fix small verified bugs itself, by PR, under the scout's limits?", "Lead recommends yes; D-1 stays with runtime (its file is busy)."],
+    ["Who sets who fills each question", "Once in the shared library, or per combination?", "Lead recommends once in the library, a change approved by a second person."],
+    ["Screen 02 real AI runs", "Describe it and the AI checklist draft, one run each.", "Lead recommends yes, US$5 for both, run by Goose after Screen 02 merges."],
+    ["Mac work through Goose", "G2: scout charter ai-draft-review. G1 (US$12 PR Portal drafts) on hold under P-98.", "Paste from GOOSE-TASKS.md whenever you like."],
+    ["Questions for the immigration expert", "Portal addresses, which forms are filed online, Schedule A, a structure-only portal capture, sponsor as a person on the case, and more (13).", "Relay in one message; they gate the real-world proof."],
+    ["Starter set and per-combination reset", "BACKLOG B34 and B35.", "Lead recommends later and no."]
+  ],
+  decisions: [
+    ["Live AI off by default (P-175)", "Every copy, :4400 included, refuses live AI at US$0 unless started with an explicit switch the founder sets for a live demo."],
+    ["Asked by forms and rules, not section choice (P-174)", "A question is asked when a form or rule reads it; a combination's section choice sets only order and titles, so no needed fact can go missing (QA-93)."],
+    ["Immigration answers from sources (P-170, P-171, P-172)", "Facts from cited canada.ca pages; the founder answered where IRCC is silent (Validate last, IMM 5409 oath blank, Express Entry IMM 5669/5406 online, sponsorship two filings in one group, child study question, police line for non-accompanying adults, visitor visa family fee cap). On Express Entry missing police or medical documents block Ready to file (P-172). Capabilities C6.4, C6.12, C7.6; runtime lane M3 queue."],
+    ["One portal for the proof: APR (P-98)", "Online ingestion, the portal twin, screen maps and online fill are proven on the Authorized Paid Representatives Portal only; you capture the real blank APR screens with the extension (structure only). PR Portal drafts wait."],
+    ["One guided Add a form path (P-99)", "Read or capture → AI maps → you review → new shared fields and sections → second person → field map complete → online twin reuses the PDF map; each step opens the screen already built; the extension designed with it to a best-in-class bar. No new approval (P-100): a second person approves only new shared fields, a held PDF and the portal capture; the field map goes out in the combination's Review and release. Agreed 26 Oct; forms PLAN next."],
+    ["Pre-qualification inside the client questionnaire", "PQR is part of the SQR, which is part of the agent view; AI drafts each combination's PQR, a person approves, released with the combination; a general PQR is built from released combinations (P-76). Prototype: PQR answers flow into the SQR; a staff eligibility page on the rules engine with Sample gates; no verdict to prospects (P-77)."],
+    ["One demo story (P-93)", "A Visitor visa family of four plus the LMIA work permit shows every mechanism: PDF and online ingestion, AI mapping and review, master data, PDF fill with barcodes, online fill, mixed channels, checklist, new edition. Reset, configured (M2 gate), finished story (M3 gate)."],
+    ["M3 in parallel (P-94)", "A fourth build lane, m3, designs and builds Prepare application while M2 finishes."],
+    ["Facts are the root", "Shared fields; PDF and online forms are outputs; questionnaires built from facts (P-61, P-62, P-63)."],
+    ["Family answers: confirmed by who answered", "One family questionnaire, a section per person; own and minors' answers count as confirmed; an adult's answers given by the principal wait for that adult or the officer (P-78)."],
+    ["One place for approvals", "A To review page first under Configure lists everything waiting for a person or second person, including combinations to release (P-79)."],
+    ["Held PDFs approved in the product", "The uploader records the IRCC page; a different person compares and approves; the file joins the approved list (P-80)."],
+    ["Never overwrite signed work", "A changed fact marks signed, uploaded or submitted items stale (P-65)."],
+    ["AI drafts, people decide", "AI never decides identity, filling or release; a different person approves (P-14, P-15, P-53, P-62)."],
+    ["Portal capture and fill", "One extension: capture structure only, fill in the representative's session; form health (P-66)."],
+    ["Safe validation path", "Fill trial per form edition before direct filling (P-46, P-65)."],
+    ["Full scope, milestone by milestone", "No control is cut; production-quality slices (P-54, P-55, P-60)."],
+    ["Parallel lanes, one chat", "You talk to the Lead; lanes in their own copies; standing merge OK (P-64)."],
+    ["Thin slice and independent tester", "Runtime lane R1; qa lane after every merge; c8 coverage floor (P-67, P-68, P-69)."]
+  ],
+  bugs: { head: ["Bug", "Severity", "What happens", "Lane", "Status"], rows: [
+    ["QA-38", "<span class='chip s-warn'>Major</span>", "Open a case names release 1 while the case opens on release 2", "runtime", "Fixed on the runtime branch; qa retests after merge"],
+    ["D-1", "<span class='chip s-none'>Minor</span>", "A sign-off with no body is a server error", "runtime", "Screen 03 part 2"],
+    ["D-2", "<span class='chip s-none'>Minor</span>", "An approver can submit, then nobody can release", "runtime", "Screen 03 part 2"],
+    ["QA-39–43", "<span class='chip s-none'>Minor</span>", "Words, keyboard focus, an unknown combination", "screens, forms", "Fixed on branches; qa retests"],
+    ["Scout SC-1–5", "<span class='chip s-none'>1 Major idea, 3 Minor</span>", "No starter set; wording", "screens, forms, runtime", "Assigned 25 Oct"]
+  ]},
+  how: [
+    ["You type /lead, nothing else", "I start, continue and check every lane. Every reply opens with the lanes table, then what changed, then at most three things I need from you."],
+    ["Decisions come one at a time", "As selectable questions, my recommendation first, with the reason. Product choices are yours; workflow and technical choices I make and report."],
+    ["Merges", "Standing OK: I merge after my check and rerunning the tests on the exact commit, and tell you what I merged. The tester then retests main."],
+    ["Testing with you", "Ask me for /qa with-me and the tester explores with you, asking you questions as it goes; /qa explore runs on its own and reports."],
+    ["Money and installs", "I state AI cost before any paid run and ask before installing anything."],
+    ["Long chats", "When this chat gets large I tell you, save everything, and you open a new chat with /lead."]
+  ]
+};
+const el = (id) => document.getElementById(id);
+const esc = (s) => String(s);
+el("asof").textContent = D.asof;
+el("summary").innerHTML = D.summary.map(([k, v, s]) => `<div class="tile"><span class="muted">${k}</span><b>${v}</b><span class="muted">${s}</span></div>`).join("");
+const stripe = (c) => c.some(x => x[0] === "bad") ? "var(--bad)" : c.some(x => x[0] === "ok") && !c.some(x => x[0] === "none") ? "var(--ok)" : c.some(x => x[0] === "ok" || x[0] === "warn") ? "var(--warn)" : "var(--none)";
+el("journey").innerHTML = D.journey.map(s => `<article class="step" style="--stripe:${stripe(s.c)}"><span class="num">Step ${s.n} · ${s.caps}</span><h3>${s.t}</h3><p class="muted">${s.d}</p><div class="chips">${s.c.map(([k, t]) => `<span class="chip s-${k}">${t}</span>`).join("")}</div></article>`).join("");
+const table = (id, t) => { el(id).innerHTML = `<thead><tr>${t.head.map(h => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${t.rows.map(r => `<tr>${r.map((c, i) => i === 0 ? `<th scope="row" style="background:transparent;font-size:14px;color:var(--ink)">${c}</th>` : `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>`; };
+table("solutions", D.solutions); table("milestones", D.milestones); table("lanes", D.lanes); table("bugs", D.bugs);
+el("open").innerHTML = D.open.map(([t, d, r]) => `<div class="item"><strong>${t}</strong><span class="muted">${d}</span><span class="rec">Recommendation: ${r}</span></div>`).join("");
+el("decisions").innerHTML = D.decisions.map(([t, d]) => `<div class="item"><strong>${t}</strong><span class="muted">${d}</span></div>`).join("");
+el("how").innerHTML = D.how.map(([t, d]) => `<div class="item"><strong>${t}</strong><span class="muted">${d}</span></div>`).join("");
+el("foot").textContent = "Immigration values are Sample until the immigration expert confirms. Legal points: Unconfirmed, no counsel.";
+</script>

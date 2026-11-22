@@ -1,0 +1,42 @@
+{
+ "filing_method": "PDF only",
+ "account": null,
+ "lines": [
+  {
+   "form": "IMM 5257",
+   "title": "Application for visitor visa (temporary resident visa)",
+   "who": "each_applicant",
+   "status": "always",
+   "channel": "PDF_UPLOAD",
+   "channel_words": "PDF upload",
+   "signature_kind": "NONE",
+   "signature": "No signature",
+   "version": "IMM 5257 (09-2023)"
+  },
+  {
+   "form": "IMM 5707",
+   "title": "Family Information",
+   "who": "each_applicant",
+   "status": "always",
+   "channel": "PDF_UPLOAD",
+   "channel_words": "PDF upload",
+   "signature_kind": "NONE",
+   "signature": "No signature",
+   "version": "IMM 5707 (01-2023)"
+  }
+ ],
+ "problems": [
+  {
+   "level": "warning",
+   "where": "Field map IMM 5257 (09-2023)",
+   "item": "IMM 5257",
+   "message": "IMM 5257: 52 rows of its lists (for example \"Question 8 B Row 1 Country or Territory. If you replied…\") do not say yet what the list holds or where entries go when the form runs out of rows. It does not stop a release; it is set in the form's field map in the Form library."
+  },
+  {
+   "level": "warning",
+   "where": "Field map IMM 5707 (01-2023)",
+   "item": "IMM 5707",
+   "message": "IMM 5707: 9 rows of its lists (for example \"Date of birth\") do not say yet what the list holds or where entries go when the form runs out of rows. It does not stop a release; it is set in the form's field map in the Form library."
+  }
+ ]
+}

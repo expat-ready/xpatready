@@ -1,0 +1,103 @@
+# Experience standards — the bar for UX and UI
+
+[M] must, [S] should. References are the bar: Nielsen's 10 usability heuristics, WCAG 2.2 AA, Microsoft's Human–AI interaction (HAX) guidelines, Carbon and PatternFly data/tree-table guidance, plain-language content design. The team's style guide (`code/ERv2-frontend@<newest>/docs/style-guide/`) wins on look.
+
+## 0. Principle (founder, 21 Oct, P-37)
+* [M] **Persona first, proven patterns, nothing extra.** For each persona (content publisher, approver, case officer, client) use the best proven pattern from leading products (list + detail panel, task-first "Needs you" views, bulk accept with side-by-side review, ⌘K search, progressive disclosure); simple and effective; no novelty for its own sake and no over-engineering. Every screen is seen and agreed in the clickable journey before it is built (P-36).
+* [M] **Modern by default, information first (founder, 27 Oct).** Wherever a screen is built, choose the modern, sleek element over the plain one (cards, inline status, side panels, clear empty states, calm motion), but put scalability, ease of use and the quality and ease of information gathering first, with the look alongside, never instead. Anything complex gets a helpful explanation where it is used (a rich tooltip, an inline hint or a short "how it works" panel) so anyone can use it unaided. Neither over-engineered nor under-engineered: the right amount for the persona and the task.
+
+## 1. Look
+* [M] **Coherent look, free layouts** (`design/TEAM-PATTERNS.md`, P-48): ExpatReady brand kit, tokens, type scale and the team's components keep one look; each screen's layout and flow follow its capability; the team's style guide is a reference, not a template.
+* [M] **Visual system (founder, 27 Oct, R-125; `screens/W1-visual-system/`):** one calm colour per level (Pathway slate, Program teal, Category navy bold, Sub-category navy) used alike in trees, trails, cards and lists (P-128: in the Program structure Tree, names stay in text colour and the level colour marks only the dot and number), never a status colour; a thin accent stripe per Pathway; shared Trail, LevelMark, StatusChip, SetupBar, NextStep and Pathway band; the trail keeps Category › Sub-category together and may wrap to a second line (amends "one line" below for trails). Every screen from S3 on uses it.
+* [M] Team tokens only (colour, type, spacing, radius); Inter for UI text, Proxima Nova headings; 14 px UI text, 12/16/18/24 steps; no one-off values.
+* [M] The current Studio shell: logo, "Product Studio · Pathway Configurator", scoped left menu (`PRODUCT.md` §3), page title + one-line description, white tables on light grey.
+* [M] Status by shape and text, never colour alone; one primary action per area; modern, quiet, dense-but-readable (36–44 px rows; long text one line with full text on hover).
+* [M] Demo chrome visually separate and listed as not for porting.
+
+## 2. Behaviour
+1. [M] **Know where you are:** path on every page below the catalogue.
+2. [M] **One row of tabs at most;** deeper structure uses sections, a lines list, a tree, or a drawer.
+3. [M] **Edit in a drawer or dialog;** the page keeps its scroll, filters, selection and expansion.
+4. [M] **Preview beside the editor** wherever configuration changes what a person sees.
+5. [M] **One next action per status;** statuses are calculated.
+6. [M] **AI in one place per record,** labelled by its next step; AI items marked, with evidence; Accept / Edit / Reject singly and in bulk (HAX: show what AI did and why; support correction).
+7. [M] **Reasons everywhere** ("Asked because Marital status is Married"); counts say what they count.
+8. [M] **Prevent errors** before messaging them: pick from lists, duplicate check before save, in-page confirmation for destructive actions, undo where possible.
+9. [M] **Warn, don't block,** except release checks and the form's own Validate; at filing, also an Express Entry filing without its police certificates or medical exam (P-172, P-315 (2)).
+10. [M] **Tooltips** on every status, icon-only button and number that needs context; errors say what happened and how to fix it, on the field.
+11. [M] **Freshness visible:** when sources were last checked; overdue in orange.
+12. [M] **Accessible:** real buttons/links/labels, visible focus, keyboard path for every task, 4.5:1 contrast, 1024 px and 200 % zoom work.
+
+## 3. Screen patterns (choose one; do not invent)
+| Pattern | Use for | Shape |
+|---|---|---|
+| Catalogue | many records (Programs) | workspace switch, filter chips, tree table with indentation, one program open by default, side panel on select |
+| Workspace | one record in depth (a combination) | header with path + status + next action; lines on the left, live preview on the right |
+| Library list | masters | search + facets + table with "used in" and origin; drawer: Definition · Rules/Checks · Where used · History |
+| Side panel | summary + quick actions | 480–560 px drawer, sections not tabs, link to the full workspace |
+| Dialog / wizard | creating something that must be right first time | ≤3 steps, master pickers, duplicate catch, "will be created as" |
+| Source + proposals | reviewing AI work | source page left, proposals right, selection highlighted in both |
+| Change set | review and release | every change grouped, before/after, AI or person, impact, expert confirmations; approver ≠ author |
+
+## 4. States every screen draws [M]
+Empty (teaches the first action) · loading (skeletons) · normal · long content (long names) · needs work (exactly what is missing, linked) · running (real progress, no invented percentages) · error (on the field, with the fix) · read-only (released or no permission) · conflict (someone else saved: reload or merge). Reduced motion respected.
+
+## 5. Copy
+[M] Plain words from `PRODUCT.md` §4; front-load labels; no hashes, IDs, decision numbers, model names or file paths on the main path ("Details" drawer for admins); empty states and tooltips written in the concept.
+
+## 6. Best-in-class scorecard for case screens (founder, 7 Nov, P-407)
+The founder asked for case screens that are "Best in class aesthetic, best in class capabilities, organization of the capabilities, intuitive, user friendly, tool tips, completeness, non-ambiguity, efficiency", checked "repeatedly". The study behind these checks, with every source and its strength, is `design/best-in-class-m3-case-screens-2026-11-07.md`.
+
+**How it is used**
+* **Scope:** every case-side screen (M3 on), and any configuration screen whose concept chooses to use it.
+* **Concept:** each concept answers every check with how the screen meets it, or "N/A" and why (skill screen-concept, step 4c).
+* **Review:** each review scores every check as Met, Partly, Not met or N/A, with evidence: a screenshot at 1440 and 1024 px, or a step (skill screen-review).
+* **Severity:** a Not met is a Must when it also breaks an [M] line in §1 to §5, and a Should otherwise; a Partly is scored like a Not met for severity. A Should is fixed, or listed with a follow-up row.
+* **Text:** each row below is the study's scorecard row word for word, without its Sources column, so the two cannot drift. The study holds the sources, and a change goes into both in the same PR.
+
+The study's "applies when" column says when a check is N/A. Each check names the founder's words it serves.
+
+| Id | Check | How to test | Applies when | Serves |
+|---|---|---|---|---|
+| BIC-01 | **Ask once.** A fact already known in its scope (a person fact for this person; a filing, household or organisation fact for its owner; P-316 (2)), answered on this case or accepted from a document, is never asked again on another screen, form or application that shares that scope; it shows pre-filled with its source. From the PQR only personal details carry, marked "please confirm" (P-235). | Answer a fact in one place, open every other screen and form that uses it: shown, not asked. A filing fact on a second application is asked again; a non-personal PQR answer is asked fresh in the client questionnaire, and carried personal details show "please confirm" | The screen asks or shows facts | efficiency, completeness |
+| BIC-02 | **Asked for a reason.** Every question on screen is needed by a selected form or rule for this person, and can say why ("Asked because …"); a question whose condition is false is absent, not disabled. | Change the deciding answer: the question appears or disappears; the reason names the deciding fact | The screen asks questions | non-ambiguity, low cognitive load |
+| BIC-03 | **No stale answers.** Changing an answer that other answers depend on flags the dependent answers ("Check again" or "No longer needed"), and no check, signature or filing uses a flagged answer until a person settles it. | Change Marital status from Married to Single: the spouse's answers are flagged "No longer needed" and leave the forms | The screen edits facts used by others | completeness, non-ambiguity |
+| BIC-04 | **Incomplete is normal; invalid is refused.** "Not answered yet" is a visible state, not an error; inputs are marked in words, never by an asterisk alone (client pages: "required" and "(optional)"; staff pages: "(optional)"); "Not known" is offered where valid; a malformed value is refused at the field with its fix. | Leave a required fact blank and save: saved, shown as Not answered yet; type an impossible date: refused at the field | The screen accepts input | user friendly, non-ambiguity |
+| BIC-05 | **Every value from a document shows its source and a confirm action.** Document name, page (and region where available), and Accept / Edit / Reject; nothing becomes a fact until accepted. | Open a proposal: source visible; the fact stays unconfirmed until Accept; Reject leaves it unchanged | The screen shows AI or document values | capabilities, non-ambiguity |
+| BIC-06 | **Confidence is honest and routes attention.** Low-confidence and "not found on the document" items are shown first and in words; bulk Accept never includes them by default; identity fields always need a person's look. | Load a document with one low-confidence value: it sorts first; Accept all skips it, and never accepts name, date of birth or passport number | The screen shows AI proposals | efficiency, non-ambiguity |
+| BIC-07 | **Conflicts are shown, never overwritten.** A document value that differs from a confirmed fact shows both values and both sources, and the person picks; history records the choice. | Upload a passport with a different expiry from the confirmed one: conflict shown; the confirmed value stays until chosen | The screen writes facts from more than one source | non-ambiguity, completeness |
+| BIC-08 | **Case structure at a glance.** Each application shows as a card with its people by name and role, its status and its next step; each person shows which applications they are in. | Case with 3 applications and 4 people: every pairing readable without opening anything | The screen shows more than one application or person | organization, intuitive |
+| BIC-09 | **Principal change and Remove from the case are explicit and safe.** One named action; a preview of what moves (forms, roles, documents) and what stays (facts, each in its scope); a confirmation that names the people and does not default to Yes; a history entry; undo or a reverse path. | Make the spouse the principal: preview lists moves; cancel changes nothing; confirm moves roles only | The screen can change roles or people | completeness, non-ambiguity |
+| BIC-10 | **Task list, not stepper.** Work spanning sections shows as a list of verb-led tasks with calculated statuses (Not started, In progress, Needs you, Done, Cannot start yet with the reason, not linked), doable in any order where the rules allow; no numbered step indicator on nonlinear work. | Read the statuses against the data; try a task out of order | The screen holds several tasks | organization, intuitive |
+| BIC-11 | **One primary action per panel, named for what it does.** At most one filled (primary) button per panel or card; its label names the action ("Send to the client to sign"), never "Next" or "Submit" alone; it is the next step the status calls for. | Count primary buttons per panel; read labels | Always | intuitive, efficiency, aesthetic |
+| BIC-12 | **Check before it leaves.** Before a signature or filing step, a check view per application lists every answer grouped by person, "Not provided" for skipped optional answers, Change links that open the edit in a drawer or dialog (§2.3) and return to the check, and errors apart from warnings, each linked to its field; only a barcode form's own Validate blocks, plus, on an Express Entry filing, a missing police certificate or medical exam (P-172, P-315 (2)); every other filing check is a CRITICAL warning passed with who, when and a reason (§2.9; P-237, P-238). | Open the check, follow a Change link, come back; count errors vs warnings | The screen leads to signing or filing | completeness, non-ambiguity |
+| BIC-13 | **Errors say what and how to fix, where it happened.** Inline on the field and in a summary at the top ("There is a problem") with the same words and links; one reason and one or two fixes; no "invalid" or "required" alone; what was typed is kept; format errors appear only after a value is typed. | Trigger each error the screen can raise; read the words; check focus and kept input | The screen accepts input | non-ambiguity, user friendly |
+| BIC-14 | **Help in place, tooltips where they belong.** Every status chip, icon-only button and number that needs context has a tooltip that opens on hover and keyboard focus and holds nothing needed to act; help needed to act is a visible hint or a specifically titled Details ("Why we ask", "How do I know"). | Tab to every icon and chip; read each tooltip; find any task-critical text hidden in one | Always | tool tips, user friendly |
+| BIC-15 | **Filing channel per form is explicit.** Each form shows its channel (online portal, PDF upload, paper), what that channel needs (signature kind, file types and size from a cited source or marked Sample) and the next step for that channel. | Open an application with forms on two channels: each shows its own needs and step | The screen shows forms for filing | completeness, non-ambiguity |
+| BIC-16 | **Signing and submission are recorded events.** Signed by representative, Signed by client, Submitted and Acknowledgement received are separate, each with who, when, channel and a saved record of exactly what was sent (and the receipt or number); after Submitted the application is read-only with a correction path. | Walk one application to Submitted: each event recorded; the record downloads; editing is blocked | The screen signs, files or records filing | completeness, capabilities |
+| BIC-17 | **Review returns only what needs work.** A reviewer approves, or returns with a comment per item; only the flagged items go back to the person who answered; a configuration change set is never approved by its author; a filing is reviewed by the representative before it is recorded, and when the representative prepared it themself they record the logged self-review step ("Self-reviewed", P-155 (1)); a missing review is a CRITICAL warning that firm staff may pass with a recorded reason (P-237 (4), P-342; Unconfirmed: no counsel); the next viewer sees what changed since their last look. | Return two items to the client: the client sees those two only; a change set's author cannot approve it; a filing the representative prepared themself shows "Self-reviewed" with the logged step; one prepared by the case officer shows "Prepared by: Case officer · Reviewed by: Representative", never Self-reviewed; a filing with neither a review nor a passed warning is not recorded; a passed warning records who, when and the reason, and the Reviewed by line says `Not reviewed: warning passed by <role>, <when>` with the reason, never "Self-reviewed" | The screen has a review or approval step | efficiency, organization |
+| BIC-18 | **States drawn and teaching.** Empty states say what will appear and offer the first action; loading uses skeletons, never "No records" before data; saved, saving and failed-to-save are visible; read-only says why. | Open with no data, slow data, failed save, no permission | Always | user friendly, completeness |
+| BIC-19 | **Low cognitive load by layout.** At 1440 and 1024 px each panel has one heading and at most one primary button; at most three type sizes per panel, all from the team scale; red only for errors; status by shape and text; client pages hold at most five inputs per page; staff pages group by person with sections, not tabs in tabs; no internal ids on the main path; counts say what they count. | Screenshots at both widths; count headings, primary buttons, type sizes, reds and inputs per panel; read every count | Always | aesthetic, low cognitive load, organization |
+| BIC-20 | **Accessible and keyboard-complete.** Every task can be done by keyboard with visible focus; 4.5:1 contrast; 1024 px and 200 % zoom with no sideways page scroll; headings in order; plain words (client copy at about grade 6-8, sentences under 20 words). | Keyboard-only walk; zoom to 200 %; heading outline; read the copy | Always | user friendly, completeness |
+
+## 7. Screen laws, every screen (founder, 22 Nov, P-794; from the team's "UI/UX guide, design laws" of 19 Nov and its UX-laws screen audit)
+The team checks its own screens against 18 UI/UX laws and found 169 issues on ~226 screens, most of them on phones. We adopt its 14-point checklist so our screens arrive already passing it. The style guide still wins on look.
+
+**How it is used:** the concept answers each check (skill screen-concept); the reviewer scores each as Met, Partly, Not met or N/A with a screenshot at **1280 and 375 px** (skill screen-review; journey-test widths include 375); a Not met is a Should, or a Must when it also breaks an [M] line above. qa runs the same list on every screen at each milestone gate.
+
+| Id | Check (law) | How to test |
+|---|---|---|
+| UXL-01 | One primary action per view is clearly the loudest thing (Von Restorff, Hick). | Count filled buttons per panel: at most one. |
+| UXL-02 | Each label sits closer to its own field than to the next field (Proximity). | Squint test; spacing from tokens only. |
+| UXL-03 | Related items share one card or panel; every button clearly belongs to one item (Common Region). | For each button, name its item in one second. |
+| UXL-04 | Same look means same job: one link style, one danger style (Similarity). | Pick a style; every element with it does the same kind of thing. |
+| UXL-05 | Standard patterns for search, menu, dialog and table; primary action right-most in a dialog footer (Jakob). | Find Search, Settings and Sign out in 5 seconds. |
+| UXL-06 | About 7 equal choices at most in one place; the rest grouped or behind "More" (Hick, Miller). | Count equal-weight clickable choices. |
+| UXL-07 | Identifiers longer than 6 characters are chunked (UCI, application, invoice, case numbers) (Miller). | Look for any long id shown as one block. |
+| UXL-08 | First and last items in each list or menu are the important ones; Delete and Sign out set apart (Serial Position). | Read each nav list's ends. |
+| UXL-09 | Touch targets big enough on phones; primary actions in thumb reach; whole row clickable (Fitts). | At 375 px primary buttons are at least 44 px tall (founder, P-795); other targets at least 24 px (WCAG 2.5.8). |
+| UXL-10 | No sideways page scroll at 375 px; wide tables, tab strips and chip rows show they scroll (Continuity). | At 375 px: page width = viewport; overflow visible. |
+| UXL-11 | Multi-pane pages collapse to one pane on phones (Continuity, Prägnanz). | At 375 px each pane is reachable and readable. |
+| UXL-12 | Loading, empty and error states exist; feedback within about 400 ms (Doherty). | Throttle the network; click every action. |
+| UXL-13 | Forms accept messy input (spaces, dashes, lower-case postal codes) and validate in code (Postel). | Paste a phone number with spaces and dashes. |
+| UXL-14 | Colour is never the only signal; both locales (en, fr-CA) carry new text where the screen is bilingual. | Greyscale view; switch locale. |

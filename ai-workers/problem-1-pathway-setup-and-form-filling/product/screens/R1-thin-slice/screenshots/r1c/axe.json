@@ -1,0 +1,74 @@
+[
+ {
+  "state": "01-officer-case-new",
+  "violations": []
+ },
+ {
+  "state": "02-client-overview",
+  "violations": []
+ },
+ {
+  "state": "03-client-part-radio",
+  "violations": []
+ },
+ {
+  "state": "04-client-error-summary",
+  "violations": []
+ },
+ {
+  "state": "05-client-section-checks",
+  "violations": []
+ },
+ {
+  "state": "06-client-group-none-apply",
+  "violations": []
+ },
+ {
+  "state": "07-client-group-remove-confirm",
+  "violations": []
+ },
+ {
+  "state": "08-client-answering-for-spouse",
+  "violations": []
+ },
+ {
+  "state": "09-client-required-named",
+  "violations": []
+ },
+ {
+  "state": "10-client-resume",
+  "violations": []
+ },
+ {
+  "state": "11-case-view-confirmed",
+  "violations": []
+ },
+ {
+  "state": "12-case-view-section-check",
+  "violations": []
+ },
+ {
+  "state": "13-case-view-edit-dialog",
+  "violations": []
+ },
+ {
+  "state": "14-case-view-conflict",
+  "violations": []
+ },
+ {
+  "state": "15-forms-generated",
+  "violations": []
+ },
+ {
+  "state": "16-case-view-group-none-apply",
+  "violations": []
+ },
+ {
+  "state": "17-forms-lock-confirm",
+  "violations": []
+ },
+ {
+  "state": "18-forms-stale",
+  "violations": []
+ }
+]
