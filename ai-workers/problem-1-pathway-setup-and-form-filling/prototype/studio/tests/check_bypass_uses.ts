@@ -1,7 +1,7 @@
 // P-785 (2), step 2: a new bypass use (a use that may cross the firm walls, PF-12) is declared beside its module in its
 // own `<name>.bypass.ts` file (defineBypassUse), and the named list in api/src/platform/firm-scope.ts (BYPASS_USES) is
 // frozen as it stood on 22 Nov. A sweep of api/src; no server, no database, no model call (US$0).
-//   A  firm-scope.ts's BYPASS_USES holds exactly the 14 uses of the freeze (ANCHOR): a use added there is refused, with
+//   A  firm-scope.ts's BYPASS_USES holds exactly the 15 uses of the freeze (ANCHOR): a use added there is refused, with
 //      the place it goes instead; a use removed from it is named too (it may leave only with this check's ANCHOR).
 //   B  defineBypassUse is named only in a file named *.bypass.ts (api/src, ports, engine, contracts; firm-scope.ts defines
 //      it), and such a file only imports the real firm-scope.ts and exports `const X = defineBypassUse("<name>", { ... })`
@@ -21,8 +21,9 @@ import ts from "typescript";
 const STUDIO = join(import.meta.dirname, ".."), SRC = join(STUDIO, "api", "src");
 const SCOPE = join(SRC, "platform", "firm-scope.ts"), WALLS = join(SRC, "features", "platform-firm-walls.ts");
 const FIXTURE = join(STUDIO, "tests", "fixtures", "bypass-uses", "list-with-a-new-use.ts.txt");
-/** The named list at the freeze (main 01841047d, 22 Nov). Nothing is ever added here. */
-const ANCHOR = ["cases.prospect-won.catch-up", "job:messages.outbox_sweep", "job:messages.send", "job:platform.billing.webhook_sweep",
+/** The named list at the freeze (22 Nov: main 01841047d's 14, and PF-5 part 4's exit notices, merged before the freeze
+ *  landed, #3046). Nothing is ever added here. */
+const ANCHOR = ["cases.prospect-won.catch-up", "job:messages.outbox_sweep", "job:messages.send", "job:platform.billing.exit_notices", "job:platform.billing.webhook_sweep",
   "job:platform.entitlements.booking_daily", "job:platform.entitlements.storage_daily", "job:platform.signup.purge", "platform.account.mail",
   "platform.billing.stripe-webhook", "platform.demo.inbox", "platform.demo.reset", "platform.entitlements.limit-change", "platform.firms.signup",
   "platform.web-address.catch-up"];
@@ -164,7 +165,7 @@ const WORK = join(STUDIO, "var", `bypass-uses-check-${process.pid}`);
 try {
   // A: the frozen list.
   const scopeText = readFileSync(SCOPE, "utf8"), now = listFindings(scopeText);
-  ok("P-785 step 2 A pass: BYPASS_USES in firm-scope.ts holds exactly the 14 uses of the freeze", now.findings.length === 0 && now.names.length === 14, now.findings);
+  ok(`P-785 step 2 A pass: BYPASS_USES in firm-scope.ts holds exactly the ${ANCHOR.length} uses of the freeze`, now.findings.length === 0 && now.names.length === ANCHOR.length, now.findings);
   if (now.findings.length) console.log(`      ${WHERE}`);
   const fx = listFindings(readFileSync(FIXTURE, "utf8"));
   ok("P-785 step 2 A fail: the fixture (the list with one use added) is refused, naming the use", fx.findings.some((l) => l.includes('"platform.p785probe.added" added to BYPASS_USES')), fx.findings);
@@ -238,7 +239,7 @@ try {
   const loaded = await fs.loadBypassUseFiles(live);
   ok("P-785 step 2 D pass: loadBypassUseFiles (the API's start-up) loads every *.bypass.ts file under its folder", loaded.length === 2 && fs.bypassUses()["platform.p785probe.run"]?.audit === "per-firm" && fs.bypassUses()["job:p785probe.queue"]?.audit === "platform", loaded);
   const probe = (await import(pathToFileURL(join(live, "run.bypass.ts")).href) as { USE: import("../api/src/platform/firm-scope.ts").BypassUse }).USE;
-  ok("P-785 step 2 D pass: a later import of a loaded file is the same declaration (no second one, no refusal)", probe.name === "platform.p785probe.run" && Object.keys(fs.bypassUses()).length === 16 && Object.keys(fs.BYPASS_USES).length === 14);
+  ok("P-785 step 2 D pass: a later import of a loaded file is the same declaration (no second one, no refusal)", probe.name === "platform.p785probe.run" && Object.keys(fs.bypassUses()).length === ANCHOR.length + 2 && Object.keys(fs.BYPASS_USES).length === ANCHOR.length);
   const was = fs.onBypassLine(() => undefined);
   const refusedAt = async (what: string, f: () => unknown, saying: RegExp) => { let e: unknown; try { await f(); } catch (x) { e = x; } ok(`P-785 step 2 D fail: ${what} is refused (BypassRefused)`, e instanceof fs.BypassRefused && saying.test(String(e)), String(e)); };
   try {
