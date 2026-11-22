@@ -98,8 +98,10 @@ jobs:
             fail=$(node -p 'try{JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).fail??0}catch{1}' "$RUNNER_TEMP/walk/walk.json")
           fi
           scan=0; [ -d "$RUNNER_TEMP/walk" ] && { node "$S/tools/item-proof.mjs" scan "$RUNNER_TEMP/walk" || scan=$?; }
-          v=PASS; { [ "$st" = 0 ] && [ "$fail" = 0 ] && [ "$scan" = 0 ]; } || v=FAIL
-          [ "$v" = PASS ] && ! ls "$RUNNER_TEMP"/walk/video/*.webm >/dev/null 2>&1 && v=FAIL   # a PASS carries its video
+          v=FAIL
+          if [ "$st" = 0 ] && [ "$fail" = 0 ] && [ "$scan" = 0 ]; then v=PASS; fi
+          # A PASS carries its video; an explicit if, never an && chain that hides a red (ci-and-lists.mjs).
+          if [ "$v" = PASS ] && ! ls "$RUNNER_TEMP"/walk/video/*.webm >/dev/null 2>&1; then v=FAIL; fi
           mkdir -p "$RUNNER_TEMP/up" "$RUNNER_TEMP/verdict"
           if [ "$scan" = 0 ] && [ -d "$RUNNER_TEMP/walk" ]; then
             cp "$RUNNER_TEMP"/walk/walk.json "$RUNNER_TEMP"/walk/README.md "$RUNNER_TEMP/up/" 2>/dev/null || true
