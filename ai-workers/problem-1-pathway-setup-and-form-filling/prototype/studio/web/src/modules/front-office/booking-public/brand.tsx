@@ -25,7 +25,7 @@ export function darker(hex: string): string {
   return `#${c(1)}${c(3)}${c(5)}`;
 }
 
-/** The firm's brand for its public pages, only once the page has found the firm (a page that is not found reads nothing). */
+/** The firm's brand for its public pages (the frame draws it only once the page has found the firm). */
 export function usePublicBrand(firmKey: string, enabled: boolean) {
   const q = useQuery({ queryKey: ["public-brand", firmKey], enabled: enabled && !!firmKey, retry: false, refetchOnWindowFocus: false, staleTime: 60_000,
     queryFn: () => publicCall(`firms/${encodeURIComponent(firmKey)}/branding`, PublicBrand) });

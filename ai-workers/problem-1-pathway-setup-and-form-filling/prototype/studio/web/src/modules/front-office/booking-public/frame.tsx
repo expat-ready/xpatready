@@ -10,7 +10,9 @@ import { NOT_AVAILABLE, TRY_LATER, type Problem } from "./contract";
 export function PublicFrame({ firm, title, children }: { firm?: string; title: string; children: React.ReactNode }) {
   React.useEffect(() => { document.title = title; }, [title]);
   const { firmKey = "" } = useParams();
-  const brand = usePublicBrand(firmKey, firm !== undefined);
+  // The read starts with the page's own (the loading frame has no firm yet), so the colour is there at first paint and the
+  // buttons do not change colour in front of the visitor; it is drawn only once the page has found the firm.
+  const read = usePublicBrand(firmKey, true), brand = firm !== undefined ? read : null;
   const logo = samePath(brand?.logo ?? null), banner = samePath(brand?.banner ?? null);
   useFavicon(samePath(brand?.favicon ?? null));
   return (
