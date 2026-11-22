@@ -52,6 +52,7 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-*.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-clients/*.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-deadlines/*.ts"   # card api-cases (CS-DL1 part 2, #2317)
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/search/*.ts"   # card api-cases (CS-S1 part 2, #2913)
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/assessments.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/team.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/person-link.ts"

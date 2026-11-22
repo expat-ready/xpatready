@@ -1,7 +1,7 @@
 // FO-7b part 1a (QA-482; R1.59; brief build-lead-c-briefs/FO-7b-1a.md, with FO-7b.md's rules and the rulings of 18 Nov):
 // draft invoices and their lines. Every input goes through a zod parse (ports/client-money.ts; 422 at the field, PF-28 part 6). The
 // route computes each line's amount and its tax with taxForLine (per line, half to even); a tax sent by the client is
-// ignored; a government fee's tax is 0; the total is money_invoice_total, the sum of the stored lines. A line in another
+// ignored; the rate is the firm's tax default (FO-7g part 1w: taxDefault through lineRatePpm, province by billToProvince); a government fee's tax is 0; the total is money_invoice_total, the sum of the stored lines. A line in another
 // currency is refused with 422 in plain words before the database's own trigger sees it. While the firm has "Prices
 // include tax" on, no draft is made or added to (until FO-7g part 2). Firm-scoped (PF-12's walls and firmScope): another
 // firm's invoice or client is 404. Each write is one transaction with one audit line through AuditPort (fail-closed).
@@ -17,6 +17,8 @@ import { FIELD_ERROR_STATUS, fieldsOf } from "../../platform/http/input.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { dayOf, invoiceFacts } from "./facts.ts";
+import { lineRatePpm, taxDefault } from "../tax/defaults.ts";
+import { billToProvince } from "./bill-to.ts";
 import { taxForLine } from "./tax-round.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -46,6 +48,8 @@ export const notFound = (what: string): never => problem(404, "Not found", `No s
 
 /** Adding to a draft someone else started needs this key (AG-06 C5: "Edit a DRAFT invoice"); one's own draft, :create. */
 export const EDIT_KEY = "agent/invoice:edit";
+/** A rate in parts per million as a person reads it ("13 %", "9.975 %"), from the integer's digits (no float). */
+const percent = (ppm: number) => { const whole = Math.trunc(ppm / 10_000), rest = String(ppm % 10_000).padStart(4, "0").replace(/0+$/, ""); return `${whole}${rest ? `.${rest}` : ""} %`; };
 
 export class InvoiceDrafts {
   /** `tax` is the one rule (taxForLine); a test passes a planted wrong rule to prove its cases catch it, never the app. */
@@ -75,16 +79,31 @@ export class InvoiceDrafts {
     const l = parse(LineIn, body);
     const amountMinor = l.quantity * l.unitMinor;
     if (amountMinor > MINOR_MAX) badField("unitMinor", `The line's amount (quantity × unit amount) is more than one line can hold (${MONEY(MINOR_MAX)}). Nothing was saved.`);
-    const ratePpm = l.kind === "GOVERNMENT_FEE" ? 0 : l.ratePpm;   // a government fee is never taxed (AG-6-4 rule 3)
-    const taxMinor = this.tax(amountMinor, ratePpm);
+    // FO-7g part 1w: the rate is never the client's. A sent ratePpm only says "taxable" (the default) or "not taxable" (0);
+    // nothing sent is the default (LineIn defaults an absent rate to 0, so the body is asked whether it sent one).
+    const sentRate = Object.hasOwn(body as object, "ratePpm") && (body as Record<string, unknown>).ratePpm !== undefined;   // undefined is "not sent" (break m2)
+    if (l.kind === "GOVERNMENT_FEE" && sentRate && l.ratePpm !== 0) badField("ratePpm", "A government fee is never taxed: send no rate, or 0. Nothing was saved.");   // AG-6-4 rule 3, no override
     return this.db.$transaction(async (tx) => {
       await this.settingsOrRefuse(tx, ctx.firmId);
       const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
-      const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
+      const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string; personId: string | null; companyId: string | null }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by, person_id::text as "personId", company_id::text as "companyId" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
       if (inv.by !== `staff:${ctx.staffId}` && !(await holdsKey(tx, firmId, ctx.staffId, EDIT_KEY)))
         problem(403, "Not allowed", "Only the person who started this draft, or someone who may edit invoices, can add to it. Nothing was saved.", { code: "MISSING_PERMISSION", missing: [EDIT_KEY] });
       if (inv.issued) problem(409, "Not possible now", "This invoice is issued: it can't be edited. Use a credit note. Nothing was saved.", { code: "ISSUED" });
+      // The tax default (FO-7g part 1): the firm's tax_registered and its province, read in one statement (one snapshot),
+      // after the lock; the province through billToProvince (P-797). Only this firm's row is read.
+      // "Prices include tax" is asked again here, in the same statement, so a change made while this line waited on the lock
+      // is never taxed on top (break m1; the ruling of 18 Nov).
+      const [facts] = await tx.$queryRaw<{ registered: boolean | null; inclusive: boolean | null; address: unknown }[]>`select s.tax_registered as registered, s.prices_include_tax as inclusive, f.business_address as address from platform_firm f left join money_payment_settings s on s.firm_id = f.id where f.id = ${firmId}::uuid`;
+      if (facts?.inclusive) problem(409, "Not possible now", "Prices that include tax come later: this firm has \"Prices include tax\" on, so an invoice can't be drafted yet. Nothing was saved.", { code: "PRICES_INCLUDE_TAX" });
+      const dflt = taxDefault({ firmProvince: billToProvince({ businessAddress: facts?.address ?? null }, inv.personId ? { kind: "PERSON", id: inv.personId } : inv.companyId ? { kind: "COMPANY", id: inv.companyId } : null), registered: facts?.registered === true });
+      if (l.kind !== "GOVERNMENT_FEE" && sentRate && l.ratePpm !== 0 && l.ratePpm !== dflt.ratePpm)
+        badField("ratePpm", dflt.ratePpm === 0
+          ? "This firm adds no tax to this line (not registered for tax, or its province isn't set): send no rate, or 0. Nothing was saved."
+          : `The tax rate comes from your firm's province (${dflt.taxName} ${percent(dflt.ratePpm)}): send no rate, or ${dflt.ratePpm} (parts per million), for taxable, or 0 for not taxable. Nothing was saved.`);
+      const ratePpm = lineRatePpm({ kind: l.kind, taxable: l.kind === "GOVERNMENT_FEE" ? undefined : !(sentRate && l.ratePpm === 0) }, dflt);
+      const taxMinor = this.tax(amountMinor, ratePpm);
       if (l.currency && l.currency !== inv.currency) badField("currency", `This invoice is in ${inv.currency}; a line in ${l.currency} can't be added. Nothing was saved.`);
       // The database's own text rule, asked first, so a description it would refuse is a 422 at the field, never a 500.
       const [text] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${l.description}, 500) as ok`;

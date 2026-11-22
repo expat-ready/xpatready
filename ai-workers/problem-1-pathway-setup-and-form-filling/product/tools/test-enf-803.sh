@@ -79,7 +79,7 @@ ok "1l git's own temporary index (a pathspec commit uses .git/next-index-*.lock)
 # a merge that brings the other side's own (reasoned) 60-file delete is not a bulk delete of the merge
 git -C "$R" checkout -qb side; for i in $(seq 1 60); do echo "s $i" > "$R/s$i.txt"; done; git -C "$R" add -A; git -C "$R" commit -qm "side files"
 git -C "$R" checkout -q main; git -C "$R" merge -q --no-edit side >/dev/null 2>&1
-git -C "$R" checkout -qb other main; git -C "$R" rm -q s*.txt; git -C "$R" commit -qm "drop side files" -m "BULK-DELETE-OK: test"
+git -C "$R" checkout -qb other main; git -C "$R" rm -q 's*.txt'; git -C "$R" commit -qm "drop side files" -m "BULK-DELETE-OK: test"
 git -C "$R" checkout -q -b lane2 main; echo w > "$R/w.txt"; git -C "$R" add w.txt; git -C "$R" commit -qm w
 out=$(git -C "$R" merge --no-edit other 2>&1); r=$?
 ok "1m merging a branch whose own commit deleted 60 files (with its reason) passes the commit-msg hook" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
