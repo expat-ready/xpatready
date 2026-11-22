@@ -71,3 +71,28 @@ J1, J3 and J4 from round 1 are fixed, so Feedback, Visual quality and the screen
 
 **Verdict: Ship** (no open Blocker or Major). The Minors n1 to n4 go in the next round or become follow-up rows. n1 and n2 are one-line fixes.
 Reviewer: Approve 58c28bc34bf6db3aee918e1671097cc5a1ae6222
+
+## Round 3 (diff-only, a2e1072d2)
+Reviewer: the same fresh agent, 22 Nov 2026. Read only `git diff 58c28bc34..a2e1072d2` of `find-box.tsx`, `find-words.ts` and the check (P-277, A277). Running copy: `local/pf30s-run` (these three files match a2e1072d2, plus PF-30a), `run_pf30s` on :4564. Re-run of the builder's check: **67/67**. Probe (scratchpad `r3/probe.mjs`, not committed): Find or "/", "Le", then Escape ×3 at 375, 700 and 1024 px, and where focus goes after each press.
+
+### Round-2 items: fixed, and a test that fails on 58c28bc34?
+| Item | Fixed (walked) | Test that fails on 58c28bc34 |
+|---|---|---|
+| n1 (≥768 px: 3 Escapes leave) | **Yes at 768 px and wider.** 1024 px: "/", "Le", Escape ×3 → INPUT, INPUT, BODY; the box stays in the header, empty. | Yes. F11 "three Escapes leave" (old code: the third Escape went to `close()`, the input kept focus). |
+| n2 (Escape, Tab, blur cancel a pending Enter) | **Yes.** `enterWaits` is cleared in all three places; `go()` and `reset()` are unchanged. | Yes for Escape (F11, answer held 1.2 s, real lead "Lena…" would open on the old code). Tab and blur have no test. |
+| n3 (cap per finder) | **Yes.** `FINDER_OF` matches PF-30a: one front-office finder returns person, prospect and company and is cut to `FINDER_MAX_HITS` (`api/src/front-office/find.ts:106-140`). Unknown kinds count alone. | Yes. F11 5 person + 4 company → "9 best matches" (old: "9 results"). |
+
+### New in the fix lines
+| # | Must/Should | Issue | Evidence | Fix |
+|---|---|---|---|---|
+| r3-1 | Should (Minor), **regression of review m4** | **Below 768 px the third Escape now drops focus to BODY, not the Find button.** `phone` reads the opener's display, but the opener has the class `hidden` whenever `wide` is true (`find-box.tsx:121`, `wide && "hidden"`). Whenever the Escape handler can run, the opener is `display:none`: at 768 px and wider by `md:hidden`, below that by `hidden`. So `phone` is always false, and the `close()` branch at `:108` can never run. The comment at `:106` is not true. Round 1 m4 named "Close (and the third Escape)". Only the Close button still returns focus. F10 tests only that button, so 67/67 does not see this. | Probe at 375 and 700 px, by Find and by "/": `openerDisplayWhileOpen: "none"`; focus after Escape 1, 2, 3 = INPUT, INPUT, **BODY**. The bar hides and the Find button shows, but it does not get focus. | Decide by the window, not by the opener. For example `const phone = !matchMedia("(min-width: 768px)").matches;`, or read the display of `[data-find-close]` (only `md:hidden`). In the F10 `w < 768` branch, add: Find, type, Escape ×3 → `[data-find-open]` has focus. |
+| r3-2 | Note, not counted | The m6b test now uses 4 person + 3 case = 7 rows. That does not show the finders are kept apart: code that adds up every kind against 8 would also say "7 results". 5 person + 4 case (9 rows, neither finder at 8) would show it. | `check_pf30s_find_box_browser.ts:255-257` | Optional: use 5 + 4. |
+| n4 | Should (Minor), carried | Unchanged by this diff: break m1, break m6 and the PlatformFrame terms clause have no test; review m7 (graph G3) is open. | round 2 | Add them, or list them in the PR. |
+
+Other checks: at 768 px and wider, clicking into the box and pressing Escape ×3 works as before (`wide && phone` is false, so it blurs). The wrapper's `onBlur` still closes the bar. Tab out of the bar (break M3) and Close → Find button (m4) pass at 375, 640 and 700.
+
+### Journey score (reviewer, round 3): **9.5 / 10, pass**
+n1 (≥768) and n2 are fixed. Accessibility and screen sizes stays at **½**: Escape below 768 px loses focus (r3-1) instead of taking 4 presses at 1440. The other criteria are unchanged from round 2.
+
+**Verdict: Ship** (no open Blocker or Major). r3-1 is a one-line fix plus one test, and it brings back a fixed round-1 finding. Fix it in this PR before the label, or list it in the PR with a follow-up row (WAY-OF-WORKING step 4).
+Reviewer: Approve a2e1072d272b61a27b1b41e3ab3e8c563650d922
