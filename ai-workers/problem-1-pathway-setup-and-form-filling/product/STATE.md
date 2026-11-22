@@ -2,7 +2,7 @@
 
 current_lead: local_482034a7-8c90-4496-9b71-2b15d9c111ec Lead 9 · 23 Nov 02:15 IST (took over from Lead 8 (local_82fee93b) at ~360k, past 200k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 02:15 IST: Lead 8 handed over to Lead 9 · milestone: Release 1 proven 46 of 101 on main (R1.102 landing via #3029) · rules: **`RULES.md`** · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-23 02:4x IST: Lead 9 check · see the Lead 9 check line under the hand-over block
 
 
 
@@ -17,6 +17,8 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **qa lanes:** qa Track B 2 (cloud, task_23b41272, started 02:1x) proves R1.58, R1.56, R1.29, R1.76, R1.65 as each merges; qa Track A 2 (session_01Ln6TiU8Pd9VdcB81315egR) told to walk R1.5, R1.92, R1.21. #3043-#3045 (Track B journeys) are approved drafts the old qa lane asked to mark ready.
 **Lanes:** R1.92 lane (session_01Ln6TiPzgv1F4fXY7mcuxqb) takes PF-4c part 2 (licence warning); still open for R1.92: PF-5s S5 firm profile screen. Lead B 2 (local_6d7fefa2) re-reads Track B diffs. Standbys: Lead 10 (local_d4a6b1cd) only: start one more at the founder's next typed turn.
 **Learned:** `/run full` alone on the first line; a relabel after a failed batch needs "Batch failures covered: <run>: <parts>" for every failed batch run and "Lead allows round N:" lines; brief-check reads only the FIRST "Done when" in a PR body; in a claude.ai lane click Send and check the box empties; `waves.py` no longer exists.
+
+**Lead 9 check 02:2x-02:4x IST 23 Nov:** weekly 76%, context 12%, disk 11 GB. #2368 (R1.58) merged. Labelled: #3017 (R1.85, on green ci), #3042 (R1.29, after #2368), #3141 (qa Track A: R1.21 Works, records read). `@mergifyio requeue` #3001 (R1.56). `/run full` on #3041 head b91dc1eb9: label on green. Dispatched walks.yml j_102 on main 884d1a1ec (run 45069874951) for #3136/#3029 (R1.102). Waiting on the founder: R1.92 lane (session_01Ln6TiPzgv1F4fXY7mcuxqb) asks to move to the saved "xpatready" environment (allows www.canada.ca) to read the official licence-number format; a network change, so his call. Next: #3081 label on green; #2999 watch; #3041 label on green.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
