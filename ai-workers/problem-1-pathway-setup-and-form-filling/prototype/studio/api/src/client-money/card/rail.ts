@@ -78,7 +78,7 @@ export type FakeCardRail = CardRail & {
 export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } = {}): FakeCardRail {
   const signing = opts.webhookSecret ?? "fake-rail-signing-value", now = opts.now ?? (() => new Date());
   const accounts = new Map<string, RailAccount>(), byKey = new Map<string, unknown>(), gone = new Set<string>(), log: { name: string; key?: string }[] = [];
-  const payments = new Map<string, { account: string; intent: RailIntent; paid: Date | null }>();
+  const payments = new Map<string, { account: string; intent: RailIntent; created: Date; paid: Date | null }>();
   let n = 0, refusing = false;
   const mac = (s: string, t: number, body: string) => createHmac("sha256", s).update(`${t}.${body}`).digest("hex");
   const once = <T>(name: string, key: string, make: () => T): T => { log.push({ name, key }); if (!byKey.has(`${name}:${key}`)) byKey.set(`${name}:${key}`, make()); return byKey.get(`${name}:${key}`) as T; };
@@ -92,10 +92,11 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
     async readAccount(account) { log.push({ name: "readAccount" }); return { ...have(account) }; },
     async createHostedPayment(input) {
       const i = HostedPaymentInput.parse(input); if (!have(i.account).chargesEnabled) throw new RailRefused("charges are not enabled on this account");
-      return once("createHostedPayment", i.idempotencyKey, () => { const id = `cs_fake_${++n}`, intent: RailIntent = { id: `pi_fake_${n}`, status: "requires_payment_method", amountMinor: i.amountMinor, currency: i.currency, metadata: { ...i.metadata } }; payments.set(id, { account: i.account, intent, paid: null }); return { id, url: `https://pay.fake-rail.example/${id}` }; });
+      return once("createHostedPayment", i.idempotencyKey, () => { const id = `cs_fake_${++n}`, intent: RailIntent = { id: `pi_fake_${n}`, status: "requires_payment_method", amountMinor: i.amountMinor, currency: i.currency, metadata: { ...i.metadata } }; payments.set(id, { account: i.account, intent, created: now(), paid: null }); return { id, url: `https://pay.fake-rail.example/${id}` }; });
     },
     async readPaymentIntent(account, intentId) { have(account); const p = [...payments.values()].find((x) => x.account === account && x.intent.id === intentId); if (!p) throw new Error("no such payment intent on this account"); return { ...p.intent }; },
-    async listSucceededIntents(account, since) { have(account); return [...payments.values()].filter((p) => p.account === account && p.paid && p.paid >= since).map((p) => ({ ...p.intent })); },
+    async listSucceededIntents(account, since) { have(account); return [...payments.values()].filter((p) => p.account === account && p.intent.status === "succeeded" && p.created >= since)   // by creation time, as Stripe lists them (review m6)
+      .map((p) => ({ ...p.intent })); },
     async refund(input) {
       const i = RefundInput.parse(input); have(i.account); if (refusing) throw new RailRefused("the processor refused this refund");
       return once("refund", i.idempotencyKey, () => ({ id: `re_fake_${++n}`, status: "pending" }));

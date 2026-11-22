@@ -61,8 +61,8 @@ ok("FO-7c fixtures: each file says it is not recorded from Stripe and names the 
 const P = { status: "PENDING", chargesEnabled: false, payoutsEnabled: false } as const, on = { chargesEnabled: true, payoutsEnabled: true, requirementsDue: false }, off = { chargesEnabled: false, payoutsEnabled: false, requirementsDue: true };
 ok("FO-7c DW2 rule pass: Connected only once charges are enabled; requirements due with charges on is RESTRICTED and not a break; charges off after that is a break",
   stateFrom(P, on).status === "ACTIVE" && stateFrom(P, { ...on, requirementsDue: true }).status === "RESTRICTED" && !isBroken(stateFrom(P, { ...on, requirementsDue: true })) && isBroken(stateFrom(stateFrom(P, on), off)));
-ok("FO-7c DW2 rule fail: an account that never had charges stays PENDING (not a break); a disconnected account is not revived by an account read",
-  stateFrom(P, off).status === "PENDING" && !isBroken(stateFrom(P, off)) && stateFrom({ status: "DISCONNECTED", chargesEnabled: false, payoutsEnabled: false }, on).status === "DISCONNECTED");
+ok("FO-7c DW2 rule fail: an account that never had charges stays PENDING (not a break), payouts on alone included; a disconnected account is not revived by an account read",
+  stateFrom(P, off).status === "PENDING" && !isBroken(stateFrom(P, off)) && stateFrom(P, { chargesEnabled: false, payoutsEnabled: true, requirementsDue: false }).status === "PENDING" && stateFrom({ status: "DISCONNECTED", chargesEnabled: false, payoutsEnabled: false }, on).status === "DISCONNECTED");
 
 // --------------------------------------------------------------------------------------------- the scratch database
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
@@ -86,11 +86,11 @@ const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
 const local = new LocalIdentity("fo7c-check-signing-key-0123456789abcdef", () => clock.now());
 const rail = fakeCardRail({ webhookSecret: hookSecret }), mail = fakeMail(), notes = fakeNotifications();
-let ahead = 0;   // the service's clock, moved ahead of the sign-in for the step-up case
+let ahead = 0, lookups = 0;   // the service's clock, moved ahead for the step-up case; firm lookups made by the door   // the service's clock, moved ahead of the sign-in for the step-up case
 type Res = { status: number; body: any };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other checks
 let app: { close(): Promise<void> } | null = null;
 try {
-  const accounts = { provide: PaymentAccounts, useFactory: (db: InstanceType<typeof Db>) => new PaymentAccounts(db, { rail, audit: auditEvent, clock: { now: () => new Date(Date.now() + ahead) }, mail, notifications: notes, appUrl: "https://app.example.test", firmOfAccount: firmOfAccount(db) }), inject: [Db] };
+  const accounts = { provide: PaymentAccounts, useFactory: (db: InstanceType<typeof Db>) => new PaymentAccounts(db, { rail, audit: auditEvent, clock: { now: () => new Date(Date.now() + ahead) }, mail, notifications: notes, appUrl: "https://app.example.test", firmOfAccount: (a: string) => { lookups++; return firmOfAccount(db)(a); } }), inject: [Db] };
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
     { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, accounts];
   @Module({ controllers: [PlatformIdentityController, PaymentAccountController, StripeConnectHookController] as never[], providers: providers as never[] }) class TestApp {}
@@ -125,6 +125,9 @@ try {
   ok("FO-7c DW1 fail: the Owner without step-up (the sign-in is 6 minutes old) → 401 STEP_UP_REQUIRED, no account made", stale.status === 401 && stale.body?.code === "STEP_UP_REQUIRED" && row() === "none" && made() === 0, stale.body);
   const officer = await call(tOfficer, "POST", ONB), officerView = await call(tOfficer, "GET", VIEW), anon = await call(undefined, "POST", ONB);
   ok("FO-7c DW1 fail: a person without agent/payment-rail:connect → 403 on connecting and on the status; not signed in → 401; no account made", officer.status === 403 && officerView.status === 403 && anon.status === 401 && row() === "none" && made() === 0, [officer.body, officerView.body]);
+  for (const role of ["ADMIN", "BILLING_FINANCE"]) sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${staff("user-T", A)}', '${role}', 'seed:FO-7c-1')`);
+  const tMoney = await signIn("user-T", "sample-firm"), money = [await call(tMoney, "POST", ONB), await call(tMoney, "GET", VIEW)];
+  ok("FO-7c DW1 fail: an Admin who is also Billing/Finance (holds agent/payment:record, not agent/payment-rail:connect) → 403 on both routes, no account made", money.every((r) => r.status === 403) && row() === "none" && made() === 0, money.map((r) => r.body));
   const first = await call(tOwner, "POST", ONB), acctA = row().split(":")[3];
   ok("FO-7c DW1 pass: the Owner, just signed in → one account (PENDING, an acct_ id), a hosted sign-up link, one audit line by the Owner", first.status === 200 && first.body.status === "PENDING" && /^https:\/\//.test(first.body.url) && /^PENDING:false:false:acct_/.test(row()) && made() === 1
     && sql(`select count(*) || ':' || min(actor) from audit_event where action = 'payment_account.onboarding_started' and firm_id = '${A}'`) === `1:staff:${staff("user-R", A)}`, first.body);
@@ -134,10 +137,14 @@ try {
   ok("FO-7c status pass: GET answers the status, the two switches and the alert only (no account id, no processor object)", v0.status === 200 && JSON.stringify(v0.body) === JSON.stringify({ status: "PENDING", chargesEnabled: false, payoutsEnabled: false, alert: null }), v0.body);
 
   // ----------------------------------------------------------------------------------------- DW3: the webhook door
+  const lookupsBefore = lookups;
   const unsigned = await hook("account.updated.charges-enabled", acctA, "evt_fo7c_unsigned", () => undefined);
   const forged = await hook("account.updated.charges-enabled", acctA, "evt_fo7c_forged", (b) => header(otherSecret, b));
   const old = await hook("account.updated.charges-enabled", acctA, "evt_fo7c_old", (b) => rail.sign(b, hookSecret, new Date(Date.now() - 6 * 60_000)));
-  ok("FO-7c DW3 fail: an unsigned event, one signed with another secret (the platform webhook's) and one signed 6 minutes ago → 400, nothing stored, nothing changed", [unsigned, forged, old].every((r) => r.status === 400 && r.body?.code === "SIGNATURE") && receipts() === 0 && row() === `PENDING:false:false:${acctA}`, [unsigned.body, forged.body]);
+  ok("FO-7c DW3 fail: an unsigned event, one signed with another secret (the platform webhook's) and one signed 6 minutes ago → 400, nothing stored, nothing changed, the firm lookup never asked", [unsigned, forged, old].every((r) => r.status === 400 && r.body?.code === "SIGNATURE") && receipts() === 0 && row() === `PENDING:false:false:${acctA}` && lookups === lookupsBefore, [unsigned.body, forged.body]);
+  const notEvent = await (async () => { const b = JSON.stringify({ id: "evt_fo7c_notevent", object: "charge", account: acctA }); return read(await fetch(`${base}/api/hooks/stripe-connect`, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": rail.sign(b) }, body: b })); })();
+  const notJson = await read(await fetch(`${base}/api/hooks/stripe-connect`, { method: "POST", headers: { "content-type": "text/plain", "stripe-signature": rail.sign("not json") }, body: "not json" }));
+  ok("FO-7c DW3 fail (schema after the signature, PF-28 amendment 1): a correctly signed body that is not an event, or not JSON → 400 NOT_AN_EVENT, nothing stored, no lookup", notEvent.status === 400 && notEvent.body?.code === "NOT_AN_EVENT" && notJson.status === 400 && notJson.body?.code === "NOT_AN_EVENT" && receipts() === 0 && lookups === lookupsBefore, [notEvent.body, notJson.body]);
   const unknown = await hook("account.updated.charges-enabled", "acct_1NobodysAccount", "evt_fo7c_unknown");
   ok("FO-7c DW3 pass: a signed event for an unknown account → 200, nothing written (logged by its id only)", unknown.status === 200 && receipts() === 0 && audits("payment_account.status_changed") === 0 && said.some((l) => l.includes("evt_fo7c_unknown")) && !said.some((l) => l.includes("acct_1NobodysAccount")), unknown.body);
 
@@ -218,6 +225,8 @@ try {
     notified = 10;   // the retry: every item now goes through
     await post("evt_fo7c_m1b", "account.updated");
     ok("FO-7c DW2 pass (breaker m1): the processor's retry of that event records the break once and dispatches one email per Owner after the commit", row() === `RESTRICTED:false:false:${acctA2}` && dispatched === 2 && written === 3, { row: row(), written, dispatched });
+    rail.deauthorize(acctA2); await post("evt_fo7c_m1c", "account.application.deauthorized");
+    ok("FO-7c DW2 fail: Failed then Disconnected with no reconnect between is the same break: DISCONNECTED, no second email", row() === `DISCONNECTED:false:false:${acctA2}` && dispatched === 2 && written === 3, { row: row(), written, dispatched });
   }
 
   // ------------------------------------------------------------------------------------------- DW10: no secret
