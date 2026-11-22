@@ -21,7 +21,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Standbys:** Lead 9 (local_482034a7) first, Lead 10 (local_d4a6b1cd, started 01:3x IST 23 Nov) second.
 **Habits (Lead 7) and the old AWS waiting line:** `history/STATE-2026-11-22-2358-lead7-lead6-handover-block.md`.
 Lead 8 check lines: word for word in `history/STATE-2026-11-23-0021-lead8-check-lines.md`.
-**Lead 8 now (01:57):** #2927 (R1.5) merged 01:5x. Queued #2368 (R1.58), #2602 (nightly fix). Lanes sent next steps: #3041, #3073, #2999 (R1.76), #2933 (R1.10), #3081 (R1.102); each → Approve → Lead read/`/run full` → label. When #2368 merges: label #3042, requeue #3001.
+**Lead 8 now (01:57):** #2927 (R1.5) merged 01:5x. Queued #2368 (R1.58), #2602 (nightly fix). #3041 Approve + Lead B OK on 98bc7e023, `/run full` posted 02:0x (label on green). Lanes sent next steps: #3073, #2999 (R1.76), #2933 (R1.10), #3081 (R1.102); each → Approve → Lead read/`/run full` → label. When #2368 merges: label #3042, requeue #3001.
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
