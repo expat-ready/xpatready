@@ -121,3 +121,22 @@ Cause: the early check treats every retainer status other than CLIENT_SIGNED/SIG
 Expected: only WITHDRAWN and SIGNED_OFFLINE (and perhaps a newer version) are final. SENT and VIEWED answer 409 NOT_READY and keep nothing.
 
 Round 2 verdict: Changes (R2-M1 brings M1's stuck request back for `completed`; everything else from round 1 is fixed except the parallel-only part of m3).
+
+## Round 3 (head 29e8389042589c8950f39423bf389e4f3e40a6f0; diff from e0d769765 only, f2021fe the R2-M1 fix)
+I used the same scratch harness on a fresh scratch DB, plus new cases W1-W5 for the final-vs-not-yet rule (service.ts:165-173).
+- **R2-M1: fixed.**
+  - Y: the first `completed` gives `409 NOT_READY` and keeps nothing. Then the client's `signed` applies, the firm's `signed` applies, and the redelivered `completed` applies. End state: SIGNED, 1 evidence, `prospectWon:true`, 1 completed receipt.
+  - Z (15 requests, the two concurrent batches, then the in-order redelivery): 75 applied, 15 NOT_READY, 6 NOT_YET, 24 duplicates. All 15 end SIGNED, with no deadlock, no CHANGED and no 500.
+- **W1, while SENT and then VIEWED**: `completed` gives 409 NOT_READY both times, with 0 receipts and no files fetched. After both signatures, the redelivery applies (SIGNED, 1 evidence).
+- **W2, Edit to version 2 with no new Send**: version 1 is still signed by both. `completed` gives `200 "a newer version was made"`, then duplicates. 1 receipt, no files. The retainer stays DRAFT v2 and the old request stays CLIENT_SIGNED until FO-5d or part 5 ends it. This is final, as intended.
+- **W3, Edit then Send v2 with the old events held**: the old request is CANCELLED:UPDATED. The held `completed` gives `200 "the request is cancelled"` and is stored once.
+- **W4, withdraw (G) and signed on paper (H)**: both give 200 and are final ("withdrawn", "signed offline"), with no files, then duplicates.
+- **W5, a withdraw racing `completed`**: the withdraw wins. `completed` gives 409 CHANGED, the redelivery gives 200 "the agreement is withdrawn" (final), and there is 0 evidence. Neither side is half-applied.
+- **Still open (Minor, unchanged)**:
+  - m3's parallel case: 6 identical completions at once leave 5 unused file pairs. The code comment acknowledges this.
+  - The W5 race can leave one unused pair.
+  - m6: the rate limit keys on the caller address.
+  - None of these blocks the PR.
+- Held again: D, E (1 evidence, 1 event, 1 win, 1 mail), G, H.
+
+Round 3 verdict: Approve. No Blocker or Major is open.
