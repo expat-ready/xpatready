@@ -1,17 +1,18 @@
 // FO-7b part 1a (QA-482; R1.59; brief build-lead-c-briefs/FO-7b-1a.md, with FO-7b.md's rules and the rulings of 18 Nov):
-// draft invoices and their lines. Every input goes through a zod parse (ports/client-money.ts; 400 at the field). The
+// draft invoices and their lines. Every input goes through a zod parse (ports/client-money.ts; 422 at the field, PF-28 part 6). The
 // route computes each line's amount and its tax with taxForLine (per line, half to even); a tax sent by the client is
 // ignored; a government fee's tax is 0; the total is money_invoice_total, the sum of the stored lines. A line in another
-// currency is refused with 400 in plain words before the database's own trigger sees it. While the firm has "Prices
+// currency is refused with 422 in plain words before the database's own trigger sees it. While the firm has "Prices
 // include tax" on, no draft is made or added to (until FO-7g part 2). Firm-scoped (PF-12's walls and firmScope): another
 // firm's invoice or client is 404. Each write is one transaction with one audit line through AuditPort (fail-closed).
-import { HttpException, HttpStatus } from "@nestjs/common";
+import { HttpException } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import { DraftIn, InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
 import { problemFromZod } from "../../../../contracts/programs.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../../platform/http/input.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { taxForLine } from "./tax-round.ts";
@@ -21,14 +22,23 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Minor units as "1,234.56", from the integer's digits (no float). */
 const MONEY = (n: number) => { const s = String(n).padStart(3, "0"); return `${s.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${s.slice(-2)}`; };
 
+/** PF-28 part 6 (R1.10, Lead B rev 17.21): a field error is FIELD_ERROR_STATUS (422) with `fields` naming each field in
+ *  the one rule's words (an unknown one included), the money schemas' own `errors` list and words kept. A body that is not
+ *  an object (a list, a number) is refused by its shape, "body: This must be an object.", never read as {}. */
 const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => {
-  const r = schema.safeParse(input && typeof input === "object" && !Array.isArray(input) ? input : {});
-  if (!r.success) throw new HttpException(problemFromZod(r.error), HttpStatus.BAD_REQUEST);
+  if (input === null || typeof input !== "object" || Array.isArray(input)) badField("body", "This must be an object.");
+  if (Object.hasOwn(input as object, "__proto__")) badField("__proto__", "This field is not allowed here.");   // never a field of ours (the one rule's break m2), in the money shape
+  const r = schema.safeParse(input);
+  if (!r.success) {
+    // zod's own words name an unknown key in full: each message is cut, as the one rule cuts a name (its break m3).
+    const p = problemFromZod(r.error), errors = (p.errors ?? []).map((e) => ({ field: e.field.slice(0, 64), message: e.message.slice(0, 200) }));
+    throw new HttpException({ ...p, detail: errors.map((e) => e.message).join(" ").slice(0, 600), errors: errors.slice(0, 20), status: FIELD_ERROR_STATUS, code: "INVALID", fields: fieldsOf(r.error) }, FIELD_ERROR_STATUS);
+  }
   return r.data;
 };
-/** 400 naming one field, in the same shape as a zod refusal. */
+/** A field error naming one field (FIELD_ERROR_STATUS), in the same shape as a zod refusal. */
 const badField = (field: string, message: string): never => {
-  throw new HttpException({ type: "https://expatready.local/problems/validation", title: "Some details need fixing", status: 400, detail: message, errors: [{ field, message }] }, HttpStatus.BAD_REQUEST);
+  throw new HttpException({ type: "https://expatready.local/problems/validation", title: "Some details need fixing", status: FIELD_ERROR_STATUS, detail: message, code: "INVALID", errors: [{ field, message }], fields: { [field]: message } }, FIELD_ERROR_STATUS);
 };
 const notFound = (what: string): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
 
@@ -59,8 +69,8 @@ export class InvoiceDrafts {
   /** POST /api/front-office/money/invoices/:id/lines. The invoice row is locked first, so two lines added at once take
    *  positions one after the other and the total stays the sum of both. */
   async addLine(ctx: StaffContext, invoiceId: string, body: unknown): Promise<InvoiceView> {
+    if (!UUID.test(invoiceId)) notFound("invoice");   // PF-28 part 6: a malformed id is the one not-found, before the body
     const l = parse(LineIn, body);
-    if (!UUID.test(invoiceId)) notFound("invoice");
     const amountMinor = l.quantity * l.unitMinor;
     if (amountMinor > MINOR_MAX) badField("unitMinor", `The line's amount (quantity × unit amount) is more than one line can hold (${MONEY(MINOR_MAX)}). Nothing was saved.`);
     const ratePpm = l.kind === "GOVERNMENT_FEE" ? 0 : l.ratePpm;   // a government fee is never taxed (AG-6-4 rule 3)
@@ -74,7 +84,7 @@ export class InvoiceDrafts {
         problem(403, "Not allowed", "Only the person who started this draft, or someone who may edit invoices, can add to it. Nothing was saved.", { code: "MISSING_PERMISSION", missing: [EDIT_KEY] });
       if (inv.issued) problem(409, "Not possible now", "This invoice is issued: it can't be edited. Use a credit note. Nothing was saved.", { code: "ISSUED" });
       if (l.currency && l.currency !== inv.currency) badField("currency", `This invoice is in ${inv.currency}; a line in ${l.currency} can't be added. Nothing was saved.`);
-      // The database's own text rule, asked first, so a description it would refuse is a 400 at the field, never a 500.
+      // The database's own text rule, asked first, so a description it would refuse is a 422 at the field, never a 500.
       const [text] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${l.description}, 500) as ok`;
       if (!text?.ok) badField("description", "The description needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was saved.");
       const last = await tx.moneyInvoiceLine.aggregate({ where: firmScope(ctx.firmId, { invoiceId: id }), _max: { position: true } });

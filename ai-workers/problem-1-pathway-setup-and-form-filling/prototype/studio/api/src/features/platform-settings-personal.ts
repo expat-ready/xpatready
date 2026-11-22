@@ -5,14 +5,14 @@ import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";
 import { OFFICE_CLOCK, OfficeClock } from "../platform/settings/offices/clock.ts";
-import { OfficesController } from "../platform/settings/offices/routes.ts";
+import { OfficesController, StaffOfficeController } from "../platform/settings/offices/routes.ts";
 import { Offices } from "../platform/settings/offices/service.ts";
 import { NOTIFICATION_PREFS, PrismaNotificationPrefs } from "../platform/settings/notifications/prefs.ts";
 import { NotificationSettingsController } from "../platform/settings/notifications/routes.ts";
 import { NotificationSettings } from "../platform/settings/notifications/service.ts";
 
 export default {
-  controllers: [OfficesController, NotificationSettingsController],
+  controllers: [OfficesController, StaffOfficeController, NotificationSettingsController],
   providers: [
     { provide: Offices, useFactory: (db: Db) => new Offices({ db, audit: auditEvent }), inject: [Db] },
     { provide: OFFICE_CLOCK, useFactory: (db: Db) => new OfficeClock(db), inject: [Db] },
