@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 21:5x IST 22 Nov:** no Track B head moved. No Track B merge since #2953 (15:03 UTC); batches #3107 (ci + regression shard failed) and #3110-#3114 cycled; #2955 "not the cause". Seven Track B PRs still queued. Told Lead 7.
+
 **Lead B 2 pass, 21:2x IST 22 Nov** (current Lead: Lead 7, local_d7cc573e, from 21:14): #3048 FO-7g 1w Lead B re-read OK 77f989a10 (own 8 files after #2953), Lead 7 read OK, labelled, queued. Queued: #2955, #2938, #2913, #2368, #3036, #3048. #3073 re-queues after #2913; #3042 slot after #2368.
 
 **Lead B 2 pass, 20:5x IST 22 Nov:** **#2953 FO-7b part 1b merged** (15:03 UTC, 3264e2510). #3036 FO-7b 1c merged main, own 9 files as read, re-approved, queued. #3048 FO-7g 1w now conflicts with main: lane text sent to Lead 6 (merge main, re-run, diff-only Approve, ready, Lead B re-read). Queue checking: #2955, #2938, #2913, #2368, #3036.
