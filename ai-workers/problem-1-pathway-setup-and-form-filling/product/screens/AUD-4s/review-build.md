@@ -63,3 +63,31 @@ A real screen reader; the 1Password and Atlassian lines in §4b (hosts not reach
 Journey test: `journey-test-reviewer-2026-11-22.md`, **8.5/10, pass**.
 
 Reviewer: Approve 4f779ef1d4155ad56a272ea87803220c3d676869
+
+## Round 2 (diff-only: 4f779ef1d..dc006e04e, `prototype/studio`; commit dc006e04e0e4e70922fd785b4e4778656a80a2fd)
+
+**Verdict: Ship (Approve).** No Blocker, no Major. All seven breaker items (M1–M3, m3, m4, m6, m7) and my Minors 1–3 are fixed. One new Minor.
+The diff touches `activity-log-page.tsx`, `contract.ts` and the check only. No API change, no migration.
+
+**Run:** check on a fresh copy rv_aud4s :4444 gave **59/59 PASS, exit 0**. A second fresh copy gave 59/59, and I then probed it myself. Screenshots the check rewrote were restored to the commit.
+
+| Item | Fix | Holds? (evidence) |
+|---|---|---|
+| Review Minor 1, breaker m1 (long chip) | `li min-w-0 max-w-full`, `span min-w-0`; `overflow-wrap:anywhere` on the sentence, the empty heading and the confirm | Yes. Check: 60 CJK characters at 1024 px, 120 at 375 px, 200 at 1440 px, no sideways scroll; its fail side widens the page |
+| Review Minor 2 (focus lost) | `removeChip`/`clear` record a target; an effect on `chips.length` focuses the next chip, else the previous one, else the Filters box (`tabIndex=-1`, focus ring) | Yes. Check: next, previous and last chip, and Clear filters; never `BODY` |
+| Review Minor 3 (tooltip) | `role=tooltip` span linked by `aria-describedby`, shown on `peer-hover`/`peer-focus-visible` | Partly. It now shows on keyboard focus and is the button's description. New Minor R2-1 below |
+| M1 (Who column collapses) | `w-40 min-w-40 max-w-48`, `overflow-wrap:break-word` | Yes. With a Person filter and no pill, the Who column is 160 px at 1440, 1024 and 700 px; hidden below 640 px, as designed (200 % zoom on 1024 is 512 css px). Names wrap at word boundaries (`r2-person-1024`). The check's fail side runs on the old classes |
+| M2 (A's filters survive sign-out) | `ActivityLogPage` empties the address while there is no token | Yes. `useStaffToken` reads sessionStorage synchronously (`session.ts:21,49-52`), so a signed-in load never wipes its filters (DW6 from the address still passes). After a session ends elsewhere, the address is empty and `client-alpha` is not in the DOM. DW1b now asserts that the address is empty and B has no chips or person. Trade-off: a filtered link opened before signing in loses its filters. That is consistent with BR-13 and is not a finding |
+| M3 (31 Dec 9999 crashes) | `isDay` accepts years 1970–9998 | Yes. `?to=9999-12-31`, `?from=9999-06-01&to=9999-12-31`, `?from=0001-01-01` and `?to=275760-09-13` all give "Pick a date." with the frame and Sign out intact, and no page error. `9998-12-31` reads |
+| m3, m6 (stale refusal and status words) | An effect on the read `key` clears `exportError` and `said`; the shortcut's words are deferred through `sayAfter` | Yes. Check: a filter change after a 413 clears both. DW7 still says "Person filter cleared. Done by filter cleared." |
+| m4 (confirm before names load) | `canExport` needs data that is not a placeholder | Yes. Enter on Export while the first read is held opens no dialog (`aria-disabled=true`). After the load, the confirm names "Second representative (Sample)" |
+| m7 (`dayStart` at a skipped midnight) | Steps forward 15 minutes at a time until the zone's day is reached (at most 2 h) | Yes. Santiago on 6 Sep 2026 gives 04:00Z (01:00 local); Toronto is unchanged (pure check) |
+
+**Regression scan of the diff:** nothing else breaks. All 44 round-1 checks still pass, among the 59. axe is clean on every state, including the tip's screenshot `aud4s-15`. There are no page errors. The `key` effect also runs on mount and clears `said`, which is harmless.
+
+**New Minor (Should):**
+* **R2-1. The tip cannot be hovered or dismissed (WCAG 1.4.13).** At `activity-log-page.tsx:191-194` the tip has `pointer-events-none` and is shown only while the button is hovered or focused. Moving the pointer onto the tip hides it, and Escape does not hide it while focus stays on the button (probe: onHover true, onTip false, afterEsc true). It covers nothing important today; it does not overlap the Advanced toggle. Fix: show it on the wrapper's hover (`group`) with pointer events on, and hide it on Escape.
+
+Round-1 items for the Lead are unchanged: the C9 zone field, AUD-4's export name and summary one day past To (breaker m5), and the §4b re-read before the label (C8 Minor 8).
+
+Reviewer: Approve dc006e04e0e4e70922fd785b4e4778656a80a2fd

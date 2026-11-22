@@ -44,3 +44,30 @@ Actual: `RangeError: Invalid time value` is thrown during render. No error bound
 * **N/A here** (read-only page, so these are not in "What gets built"): duplicates, hierarchy, rename or delete, two sessions saving, uploads and planted-instruction PDFs, rules, and the 100-program / 400-combination budgets.
 
 Verdict: Changes 4f779ef1d4155ad56a272ea87803220c3d676869
+
+## Round 2 (head `dc006e04e0e4e70922fd785b4e4778656a80a2fd`)
+Breaker, 22 Nov 2026. I read `git diff 4f779ef1d..dc006e04e -- prototype/studio` only. I ran a fresh copy `br_aud4s` on :4446, stopped afterwards, with Sample lines from a 200-character unbroken name, a name written as an email address, and a firm A line keyed `client-alpha@example.com`. I redid the round-1 steps for M1–M3 and tried to get around each fix. This was not a new sweep. **Round 2 totals: 0 Blocker · 2 Major · 1 Minor.**
+
+**M1 (Who column): fixed, and held.** `:256` now uses `w-40 min-w-40 max-w-48` and `break-word`. With Done by = The system, with a Person set, and on the default list, the Who cell is 160–192 px at 1440 px, 1024 px, 641 px, 700 px, 1280 px at 200 % (640 css px) and 1440 px at 200 % (720 css px). Names read whole. The 200-character name wraps inside 192 px and the email-shaped name inside 171 px, with no sideways scroll. At 1024 px at 200 % (512 css px), 1440 px at 400 % (360 css px) and 375 px the column folds into the line as designed, again with no sideways scroll.
+
+**M3 (dates that throw): fixed, and held.** `contract.ts:55` (years up to 9998). None of these throw; each gets "Pick a date." or a valid read, and the header and Sign out stay:
+* `to=9999-12-31`, `from=9999-06-01&to=9999-12-31`, `275760-09-12`, `+010000-01-01`, `1969-12-31`
+* `2026-11-15T00:00`, `2026-1-5`, full-width digits, `%00` / `%ff`
+* the range `9998-06-01`..`9998-12-31` and 1 Jan 1970 (both read)
+* typing 12/31/9999 into the To picker
+
+**R2-M1. M2 is still reachable: firm A's filters come back to firm B through Back.** `activity-log-page.tsx:298` clears the address only while the Activity log page itself is mounted with no session. Earlier history entries keep A's query.
+Steps: as firm A's Owner, open `?person=<A id>&entityKey=client-alpha@example.com&action=br.hostile&area=team`. Click **Team** in My account and press Sign out there. On that tab's sign-in card, sign in as `sample-solo` / `representative@sample-solo.example.com`, then press the browser's Back.
+Expected (BR-13, DW1b): no firm A text in B's DOM.
+Actual: B lands on A's address. The sentence says "changes by a person not on this list in Team and settings, action br.hostile, record client-alpha@example.com (Advanced) …", and the chips and the Record reference field show the same text. Signing out from Home after A had loaded a filtered address does the same. Only signing out on the Activity log page itself, the round-1 steps, now passes. Leaving the log, signing out and handing over the tab is the ordinary path.
+
+**R2-M2. The fix wipes the filters of every shared or new-tab link before sign-in, and says nothing.** `activity-log-page.tsx:298`
+Steps: in a fresh tab, which starts signed out because the token is kept per tab, open a colleague's link `/platform/activity-log?action=br.hostile`. Sign in as the same firm's Owner.
+Expected: the link's filters show, read back in the sentence and as chips. That is the point of keeping filter state in the address and of DW6 ("an Advanced filter set from the address opens Advanced").
+Actual: the address is stripped to `/platform/activity-log` while the sign-in card shows. After sign-in the page shows "everyone's changes … — 14 lines", with no chip and no word that the link's filters were dropped. Any link opened from mail or chat, or with Ctrl/middle-click, loses its filters. A person checking "what happened to record X" from a link sees the 7-day default and is not told.
+
+**R2-m1 (latent). An unknown `timeZone` in the answer blanks the app.** `contract.ts:26` accepts any string, and `activity-log-page.tsx:85` puts it straight into `Intl`. I used a stand-in answer with `timeZone: "Mars/Olympus_Mons"`. It threw `RangeError: Invalid time zone specified`, and the header and Sign out disappeared. This is the same failure M3 had, through C9's future field. AUD-4 sends no zone today, so nothing happens yet.
+
+Seen in passing, not counted (outside this round's scope): at 1024 px the Person select shows "Everyon" clipped.
+
+Verdict: Changes dc006e04e0e4e70922fd785b4e4778656a80a2fd
