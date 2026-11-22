@@ -8,3 +8,12 @@
 **Earlier Lead 2 lines (AWS recovery, NS, models, usage, #2754 merge, P-789 text):** word for word in `product/history/STATE-2026-11-22-1235-lead2-aws-and-early-lines.md`. P-789 in short: Show more fully expanded every 10-min check, act on every waiting lane, record with the row count.
 **Waiting on the founder:** on-call role address for alarms (P-782) · Stripe test-mode key or a re-worded done-when for R1.21 · FO-9s Q1-Q3 (duplicate people) · Lead B's Q1 bill-to province, Q2 Stripe test Connect account, Q3 signing sandbox · whether to make the `staging.` address prefix a setting (one small row; today's address is `<firm>.staging.lab.expatready.com`, service.ts line 76).
 
+
+
+## Start-here lines moved word for word (covered by the Lead 2 → Lead 3 block)
+
+**P-791 (founder 12:4x IST):** unclog playbook: find the bad PR from Mergify's tested-alone summary; **never merge by hand while batches run** (12:1x #2754 restarted 9 batches, ~30 min lost) unless it unblocks them; drain levers a) green-only labels b) Completes-first priority c) batch size 3-4 d) AWS runners priced. Enforcers owed to `enf-land`.
+
+**AWS proofs 12:3x IST (main 5d866c746, domain mode):** R1.15 Pass (10 secrets by valueFrom ARN, KMS); R1.13 AWS half Pass (9 alarms to SNS, test alarm delivered 2/2; app lines need the running service); TLS valid on *.staging.lab. Blocked: app start on PF-8b-f5 (pf12 grant loop on RDS PG 18; builder started 12:3x IST by the founder, cloud session_01Ln6TiUA3bRfVtQHPp4TFry, branch claude/runtime-pf8bf5, Opus 5.5 Medium checked). Report on branch aws/2026-11-22-staging-proof (2dfa3ea8f): **take it in the next records PR** so qa rates R1.15/R1.13 from main. Two unused older secrets kept (decide with R1.21).
+
+**Next records batch (after #2952 merges):** take Lead B's branch `lead-b/2026-11-22-track-b` commits 64434d1dc (8 briefs, plan, rows FO-7g part 1w, J-61, CS-NT1t) and d84797c45 (BACKLOG PF-F1b, PF-Fw after PF-F1); records only.
