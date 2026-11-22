@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 19:5x IST 22 Nov:** no Track B head moved. Queued with no Track B merge since ~18:50: #2953, #2955, #2938, #2913, #2368; waiting on them: #3036, #3048, #3073.
+
 **Lead B 2 pass, 19:2x IST 22 Nov** (current Lead: Lead 6, local_d4609e9d, from 19:0x): quiet. #2938 FO-7c part 1 re-stamped to 20261122060000 by Lead 6's ask (after #3068's PF-8b F7), SQL byte-identical: no new Lead B read. #2368 queued (slot 1); #3042 next in the slot. #3073 waits #2913's merge.
 
 **Lead B 2 pass, 18:5x IST 22 Nov:** merged since 18:2x: #3046 PF-5 part 4, #3067 records (P-805 on main). #3042 FO-9b part 1 Lead B read OK f05ab1de3 (F4 grant pair present; Lead 5's read OK 18:39; slot after #2368). #3073 dequeued as foreseen; #2913 requeued at 782f481e6; #3073 re-queues after #2913 merges. #2953, #2955, #2938 queued; #3036 and #3048 wait #2953.
