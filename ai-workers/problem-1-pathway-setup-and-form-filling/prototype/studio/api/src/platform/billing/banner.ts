@@ -28,7 +28,7 @@ export class BillingBanner {
   async read(s: StaffContext): Promise<TrialBanner> {
     const sub = await this.db.platformSubscription.findFirst({ where: firmScope(s.firmId, { status: { not: "ENDED" as const } }), orderBy: { createdAt: "desc" }, select: { status: true, trialEndsAt: true, stripeSubscriptionId: true } });
     if (!sub || sub.status !== "TRIAL" || !sub.trialEndsAt) return { show: false };
-    const daysLeft = bannerDaysLeft(sub.trialEndsAt, this.ports.clock.now());
+    const daysLeft = bannerDaysLeft(sub.trialEndsAt, this.ports.clock.now().getTime());
     const cardOnFile = sub.stripeSubscriptionId ? await this.ports.billing.subscription(sub.stripeSubscriptionId).then((l) => l.hasCard, () => null) : false;
     return { show: true, daysLeft, trialEndsAt: sub.trialEndsAt.toISOString(), cardOnFile, tone: daysLeft <= AMBER_DAYS ? "amber" : "neutral" };
   }
