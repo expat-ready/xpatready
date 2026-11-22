@@ -2,7 +2,7 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
-**As of 22 Nov 15:1x IST** (main `68f74620b` read at 14:40; open PRs read at 14:40 and 14:5x).
+**As of 22 Nov 14:4x IST** (main `68f74620b` read at 14:40; open PRs read at 14:40 and 14:5x).
 
 | R1 item | Part (brief) | PR | Stage | Migration | Waits on | Next |
 |---|---|---|---|---|---|---|
@@ -27,5 +27,5 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 | R1.93 console | PF-17 part 1 (`PF-17-1.md`) | — | lane redirected | no | #2927 | build |
 | R1.76 notes | CS-NT1 part 1 | #2320 | draft; owner card waits for the founder | yes | slot | — |
 
-**Migration slot order (Lead 4, 15:0x):** #2968 (AWS) → #2368 FO-7ts part 3 → FO-9b part 1 → PF-21b part 2 → FO-5d.
+**Migration slot order (Lead 4, 14:5x):** #2968 (AWS) → #2368 FO-7ts part 3 → FO-9b part 1 → PF-21b part 2 → FO-5d.
 **Decisions today:** P-797 (tax follows the client's province, Bill-to editable, firm province as fallback; CRA Memorandum 3-3-6 para 20, Example 6); P-799 (payment-hold notices on day 0, then 16, 46 and 83; SA-02 v2.24 line 354).
