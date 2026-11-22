@@ -28,13 +28,16 @@ const DAY_MS = 86_400_000;
 export const PAGE_SIZE = 50;
 /** ATTENTION: the trial ends within this many days (Sample, the brief's). */
 export const TRIAL_SOON_DAYS = 3;
-/** Failed jobs counted over this many days, and ATTENTION when one failed in them (Sample). */
+/** Failed jobs counted over this many days, and ATTENTION when one failed in them (Sample: ours, no requirement gives it;
+ *  Lead 4's ruling 3 keeps the signal). */
 export const FAILED_JOBS_DAYS = 7;
 /** PF-14's dead-letter list reads at most its oldest 10 000 (pgboss-jobs.ts deadLetters). */
 const LETTERS_READ = 10_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const METRICS: readonly EntitlementMetric[] = ["seats", "active_individual_cases", "active_corporate_cases", "storage_mb"];
-export const HEALTH = ["HELD", "ATTENTION", "OK"] as const;
+/** The order of the list too. CLOSED: a deleted firm or an abandoned sign-up (Lead 4's ruling 3, 15:42 IST 22 Nov: shown
+ *  apart, never as a permanent ATTENTION). */
+export const HEALTH = ["HELD", "ATTENTION", "OK", "CLOSED"] as const;
 export type Health = (typeof HEALTH)[number];
 
 /** Where failed jobs are read (PlatformJobs in the app; PF-14's list). */
@@ -66,10 +69,11 @@ const badQuery = (detail: string): never => problem(400, "Check the search", det
 /** The list's query: health (one of HELD, ATTENTION, OK), q (plain text on name or web address), page (from 1). */
 export function parseListQuery(raw: Record<string, unknown>): { health: Health | null; q: string | null; page: number } {
   const unknown = Object.keys(raw).filter((k) => !["health", "q", "page"].includes(k));
-  if (unknown.length) badQuery(`Search by health, q and page only (not ${unknown.slice(0, 3).map((k) => k.slice(0, 20)).join(", ")}).`);
+  // The caller's own keys are never echoed back (break r2 m4): only the allowed ones are named.
+  if (unknown.length) badQuery("Search by health, q and page only.");
   const one = (k: string) => { const v = raw[k]; if (v === undefined) return undefined; if (typeof v !== "string") return badQuery(`Give ${k} once.`); return v; };
   const h = one("health"), q = one("q"), p = one("page");
-  const health = h === undefined || h === "" ? null : (HEALTH as readonly string[]).includes(h.toUpperCase()) ? (h.toUpperCase() as Health) : badQuery("health is one of HELD, ATTENTION or OK.");
+  const health = h === undefined || h === "" ? null : (HEALTH as readonly string[]).includes(h.toUpperCase()) ? (h.toUpperCase() as Health) : badQuery("health is one of HELD, ATTENTION, OK or CLOSED.");
   const text = q === undefined ? null : q.replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
   if (text !== null && text.length > 100) badQuery("Search for at most 100 characters.");
   const page = p === undefined || p === "" ? 1 : /^[1-9]\d{0,5}$/.test(p) ? Number(p) : badQuery("page is a whole number from 1.");
@@ -85,7 +89,7 @@ export class SystemConsoleFirms {
   /** The firms matching `q`, sorted HELD, ATTENTION, OK, then name; one page, after the health filter. */
   async list(query: { health: Health | null; q: string | null; page: number }): Promise<FirmPage> {
     const all = await this.read(query.q ? { q: query.q } : {});
-    const counts = { HELD: 0, ATTENTION: 0, OK: 0 } as Record<Health, number>;
+    const counts = { HELD: 0, ATTENTION: 0, OK: 0, CLOSED: 0 } as Record<Health, number>;
     for (const f of all) counts[f.health]++;
     const rows = all.filter((f) => !query.health || f.health === query.health)
       .sort((a, b) => HEALTH.indexOf(a.health) - HEALTH.indexOf(b.health) || a.name.localeCompare(b.name, "en") || a.id.localeCompare(b.id));
@@ -163,17 +167,21 @@ export class SystemConsoleFirms {
   }
 }
 
-const STATUS_SAY: Record<string, string> = { SECURITY_LOCK: "security lock on", PROVISIONING: "still being set up", ABANDONED: "sign-up abandoned", DELETED: "firm deleted" };
+const STATUS_SAY: Record<string, string> = { SECURITY_LOCK: "security lock on", PROVISIONING: "still being set up" };
+const CLOSED_SAY: Record<string, string> = { ABANDONED: "sign-up abandoned", DELETED: "firm deleted" };
 
 /** HELD: the firm is on payment hold. ATTENTION: a metric over its limit, the trial ending within TRIAL_SOON_DAYS,
- *  overdue, or a failed job in the last FAILED_JOBS_DAYS (R1.93); also a lock, a firm not live, or no live subscription.
- *  OK otherwise. An unreadable failed-job list is said once on the page (failedJobsNote), never against each firm. Each with its plain reasons. */
+ *  overdue, or a failed job in the last FAILED_JOBS_DAYS (R1.93); also a security lock, a firm still being set up, or no
+ *  live subscription. CLOSED: a deleted firm or an abandoned sign-up, with that one reason (Lead 4's ruling 3). OK
+ *  otherwise. Failed jobs that cannot be counted are said once on the page (failedJobsNote) and as a reason on the firm
+ *  that alone never turns it ATTENTION (break r2 m5). Each with its plain reasons. */
 export function healthOf(f: Pick<FirmHealth, "status" | "subscriptionStatus" | "trialEndsAt" | "overdue" | "usage" | "failedJobs">, now: number): { health: Health; reasons: string[] } {
+  if (CLOSED_SAY[f.status]) return { health: "CLOSED", reasons: [CLOSED_SAY[f.status]] };
   const reasons: string[] = [];
   const held = f.status === "PAYMENT_HOLD" || f.subscriptionStatus === "PAYMENT_HOLD";
   if (held) reasons.push("on payment hold");
-  // Beyond the brief's list (review m5, break m2): a firm in any other state than trial, active or held, or with no live
-  // subscription (PF-15 then refuses every hard metric), is never OK.
+  // Beyond the brief's list (review m5, break m2; Lead 4's ruling 3): a security lock, a firm still being set up, or no
+  // live subscription (PF-15 then refuses every hard metric) is never OK.
   if (STATUS_SAY[f.status]) reasons.push(STATUS_SAY[f.status]);
   if (f.subscriptionStatus === null) reasons.push("no live subscription");
   for (const u of f.usage) if (u.over) reasons.push(`${SAY[u.metric]} over the limit`);
@@ -183,5 +191,7 @@ export function healthOf(f: Pick<FirmHealth, "status" | "subscriptionStatus" | "
     if (left >= 0 && left <= TRIAL_SOON_DAYS * DAY_MS) reasons.push(`trial ends within ${TRIAL_SOON_DAYS} days`);
   }
   if (f.failedJobs.count) reasons.push(`${f.failedJobs.count} failed job${f.failedJobs.count === 1 ? "" : "s"} in the last ${FAILED_JOBS_DAYS} days`);
-  return { health: held ? "HELD" : reasons.length ? "ATTENTION" : "OK", reasons };
+  const alarm = reasons.length > 0;
+  if (f.failedJobs.count === null) reasons.push("failed jobs not counted");
+  return { health: held ? "HELD" : alarm ? "ATTENTION" : "OK", reasons };
 }

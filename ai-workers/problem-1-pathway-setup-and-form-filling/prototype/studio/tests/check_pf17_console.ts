@@ -179,6 +179,14 @@ try {
   const lState = await list(), e = rowOf(lState, firmE.id), f = rowOf(lState, firmF.id);
   ok("PF-17 pass (break m2): a security-locked firm shows ATTENTION \"security lock on\"; a firm with no live subscription shows ATTENTION \"no live subscription\" with plan null",
     e.health === "ATTENTION" && e.reasons.includes("security lock on") && f.health === "ATTENTION" && f.reasons.includes("no live subscription") && f.plan === null, { e, f });
+  // Lead 4's ruling 3 (15:42 IST 22 Nov): a deleted firm or an abandoned sign-up is CLOSED, never a permanent ATTENTION.
+  const firmG = await makeFirm("pf17-gone", "Gone Sample Firm"); sql(`update platform_subscription set status = 'ENDED' where firm_id = '${firmG.id}'`); sql(`update platform_firm set status = 'DELETED' where id = '${firmG.id}'`);
+  const firmH = await makeFirm("pf17-left", "Left Sample Firm"); sql(`update platform_subscription set status = 'ENDED' where firm_id = '${firmH.id}'`); sql(`update platform_firm set status = 'ABANDONED' where id = '${firmH.id}'`);
+  const lClosed = await list(), g = rowOf(lClosed, firmG.id), h = rowOf(lClosed, firmH.id), closedOnly = await list("?health=closed");
+  ok("PF-17 pass (Lead 4 ruling 3): a deleted firm shows CLOSED \"firm deleted\" and an abandoned sign-up CLOSED \"sign-up abandoned\", each with that one reason; ?health=closed lists exactly them",
+    g.health === "CLOSED" && g.reasons.join() === "firm deleted" && h.health === "CLOSED" && h.reasons.join() === "sign-up abandoned"
+    && closedOnly.body.firms.map((f: any) => f.id).sort().join() === [firmG.id, firmH.id].sort().join() && closedOnly.body.counts.CLOSED === 2, { g, h, closed: closedOnly.body.total });
+  ok("PF-17 fail (Lead 4 ruling 3): neither closed firm is counted as ATTENTION, nor listed under ?health=attention", !(await list("?health=attention")).body.firms.some((f: any) => f.id === firmG.id || f.id === firmH.id));
   ok("PF-17 fail (break m2): an active firm on a live plan with nothing wrong carries neither reason", !rowOf(lState, firmC.id).reasons.some((r: string) => /lock|subscription/.test(r)));
   // R1.93's failed jobs: one dead letter for C, with a key and an error that must never reach the answer.
   letters.push({ name: "platform.entitlements.storage_daily", key: "pf17-secret-key-client-jane", firmId: firmC.id, error: "pf17-secret-error-passport-123", failedAt: new Date(clock.now() - 86_400_000) },
@@ -190,7 +198,7 @@ try {
   lettersBroken = true;
   const l7 = await list();
   ok("PF-17 fail (review m1): an unreadable job queue is said once on the page in words (count null), never a 500, a made-up 0 or every firm turned ATTENTION",
-    l7.status === 200 && rowOf(l7, firmC.id).failedJobs.count === null && /cannot be read/.test(l7.body.failedJobsNote ?? "") && rowOf(l7, firmC.id).health === "OK" && l1.body.failedJobsNote === null, { c: rowOf(l7, firmC.id), note: l7.body.failedJobsNote });
+    l7.status === 200 && rowOf(l7, firmC.id).failedJobs.count === null && /cannot be read/.test(l7.body.failedJobsNote ?? "") && rowOf(l7, firmC.id).health === "OK" && rowOf(l7, firmC.id).reasons.join() === "failed jobs not counted" && l1.body.failedJobsNote === null, { c: rowOf(l7, firmC.id), note: l7.body.failedJobsNote });
   lettersBroken = false; letters.length = 0;
   // PF-14's list reads its oldest 10 000: at that cap the newest failures could be missed, so nothing is counted (review m2).
   for (let i = 0; i < 10_000; i++) letters.push({ name: "messages.send", key: `k${i}`, firmId: firmA.id, error: "x", failedAt: new Date(clock.now() - 60 * 86_400_000) });
@@ -253,21 +261,22 @@ try {
   for (let i = 0; i < PAGE_SIZE; i++) await makeFirm(`pf17-many-${String(i).padStart(2, "0")}`, `Many Sample Firm ${String(i).padStart(2, "0")}`);
   const total = Number(sql(`select count(*) from platform_firm`));
   const p1 = await list(), p2 = await list("?page=2");
-  const healths = (p1.body.firms as any[]).map((f) => f.health), order = ["HELD", "ATTENTION", "OK"];
-  ok("PF-17 DW8 pass: sorted HELD, then ATTENTION, then OK, then by name; 50 a page, the rest on page 2",
+  const healths = [...p1.body.firms, ...p2.body.firms].map((f: any) => f.health), order = ["HELD", "ATTENTION", "OK", "CLOSED"];
+  ok("PF-17 DW8 pass: sorted HELD, then ATTENTION, then OK, then CLOSED, then by name; 50 a page, the rest on page 2",
     p1.body.firms.length === PAGE_SIZE && p1.body.total === total && p2.body.firms.length === total - PAGE_SIZE && p1.body.pages === 2 && healths[0] === "HELD"
-    && healths.every((h: string, i: number) => i === 0 || order.indexOf(healths[i - 1]) <= order.indexOf(h))
+    && healths.every((h: string, i: number) => order.includes(h) && (i === 0 || order.indexOf(healths[i - 1]) <= order.indexOf(h))) && healths[healths.length - 1] === "CLOSED"
     && new Set([...p1.body.firms, ...p2.body.firms].map((f: any) => f.id)).size === total, { total, p1: p1.body.firms.length, p2: p2.body.firms?.length, healths: healths.slice(0, 6) });
   const held = await list("?health=held"), okOnly = await list("?health=OK"), byName = await list("?q=calm"), byAddress = await list("?q=CALM-SAMP"), sqlish = await list(`?q=${encodeURIComponent("%' or 1=1 --")}`);
   ok("PF-17 DW8 pass: ?health= keeps only that health (any letter case); ?q= finds a firm by name or web address",
     held.body.firms.length === 1 && held.body.firms[0].id === firmB.id && okOnly.body.firms.every((f: any) => f.health === "OK") && okOnly.body.total === okOnly.body.counts.OK
     && byName.body.firms.map((f: any) => f.id).join() === firmC.id && byAddress.body.firms.map((f: any) => f.id).join() === firmC.id, { held: held.body.total, byName: byName.body.total, byAddress: byAddress.body.total });
-  const pct = await list("?q=%25"), und = await list("?q=_"), arr = await list("?health[]=OK"), other = await list("?sort=name");
+  const pct = await list("?q=%25"), und = await list("?q=_"), arr = await list("?health[]=OK"), other = await list("?sort=name"), echo = await list(`?${encodeURIComponent("zelda.secret@leak.example")}=1`);
+  ok("PF-17 DW8 fail (break r2 m4): the 400 for an unknown key names only the allowed keys, never the caller's own", echo.status === 400 && !echo.text.includes("zelda") && /health, q and page/.test(echo.body.detail), echo.body);
   ok("PF-17 DW8 fail (break m3): ?q=% and ?q=_ are plain text (no firm matches), and an unknown or bracketed key is refused 400, never ignored",
     pct.status === 200 && pct.body.total === 0 && und.status === 200 && und.body.total === 0 && arr.status === 400 && other.status === 400, { pct: pct.body.total, und: und.body.total, arr: arr.status, other: other.status });
   const badHealth = await list("?health=GREEN"), badPage = await list("?page=0"), pastEnd = await list("?page=9"), twice = await list("?health=OK&health=HELD");
   ok("PF-17 DW8 fail: a SQL-looking ?q= finds nothing (it is text); a wrong health, page 0 or a repeated filter gets 400 in words; a page past the end is empty",
-    sqlish.status === 200 && sqlish.body.total === 0 && badHealth.status === 400 && badPage.status === 400 && twice.status === 400 && /HELD, ATTENTION or OK/.test(badHealth.body.detail) && pastEnd.status === 200 && pastEnd.body.firms.length === 0,
+    sqlish.status === 200 && sqlish.body.total === 0 && badHealth.status === 400 && badPage.status === 400 && twice.status === 400 && /HELD, ATTENTION, OK or CLOSED/.test(badHealth.body.detail) && pastEnd.status === 200 && pastEnd.body.firms.length === 0,
     { sqlish: sqlish.body.total, badHealth: badHealth.status, badPage: badPage.status, twice: twice.status, pastEnd: pastEnd.body.firms?.length });
 } catch (e) {
   fail++; console.log(`FAIL  the check stopped: ${e instanceof Error ? e.stack : String(e)}`);
