@@ -68,7 +68,9 @@ export function emailOf(v: unknown): string {
 export function rolesOf(v: unknown): PlatformRole[] {
   if (!Array.isArray(v) || !v.length) return problem(FIELD_ERROR_STATUS, "Choose a role", "Give at least one role.", { code: "ROLES_REQUIRED" });
   const bad = v.filter((r) => !ROLES.includes(r as PlatformRole));
-  if (bad.length) return problem(FIELD_ERROR_STATUS, "Choose a role", `Not a role: ${bad.map(String).join(", ").slice(0, 120)}. Roles: ${ROLES.join(", ")}.`, { code: "ROLE_UNKNOWN" });
+  // PF-4c1b break M1: a role that is not text ({"toString":1}) is named as such, never String()-ed (that threw: a 500 that
+  // stopped a whole batch's good rows).
+  if (bad.length) return problem(FIELD_ERROR_STATUS, "Choose a role", `Not a role: ${bad.map((r) => (typeof r === "string" ? r : "a value that is not text")).join(", ").slice(0, 120)}. Roles: ${ROLES.join(", ")}.`, { code: "ROLE_UNKNOWN" });
   if (new Set(v).size !== v.length) return problem(FIELD_ERROR_STATUS, "Choose a role", "Each role once.", { code: "ROLE_TWICE" });
   return v as PlatformRole[];
 }
@@ -431,7 +433,7 @@ export class PlatformIdentity implements OnModuleInit {
         if (r.email && !r.flags.some((f) => f.code === "DUPLICATE_IN_FORM")) try { await this.personCheck(tx, actor, r.email); } catch (e) { r.flags.push(flagOf(e)); }
       }
       const valid = rows.filter((r) => !r.flags.length);
-      const room = await this.seatRoom(tx, actor.firmId, valid.length);   // the one seat check of the form
+      const room = await this.seatRoom(tx, actor.firmId, valid.length);   // the form's one EntitlementPort check (seatRoom)
       const over = overSeatWords(room.limit, room.plan.planName);
       for (const r of valid.slice(room.fit)) r.flags.push({ code: "OVER_SEAT_LIMIT", detail: over });
       const made = [];

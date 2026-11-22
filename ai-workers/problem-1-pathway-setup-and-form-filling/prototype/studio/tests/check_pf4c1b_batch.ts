@@ -173,6 +173,11 @@ try {
   const typo = await batch([row("typo.ok@example.com"), { email: "typo.row@example.com", roles: ["CASE_OFFICER"], nmae: "Client B" }]);
   ok("PF-4c1b DW6 fail: a body that is itself invalid (row 2 has an unknown field) → 422 ROWS_FLAGGED naming row 2 with `fields`, and nothing is sent, not even row 1",
     typo.status === 422 && typo.body.code === "ROWS_FLAGGED" && typo.body.rows?.[0]?.row === 2 && typeof typo.body.fields?.["rows.1"] === "string" && invites() === before.i && mail.sent.length === before.m, typo.body);
+  seatsLeft(5);
+  before = snap();
+  const crafted = await batch([row("crafted.ok@example.com"), { email: "crafted.bad@example.com", roles: [{ toString: 1 }] }, { email: "crafted.num@example.com", roles: [7, null] }]);
+  ok("PF-4c1b break M1 fail: a role that is not text ({\"toString\":1}, a number, null) → that row INVALID_ROLES (never a 500), and the good row is still sent",
+    crafted.status === 200 && invitedRows(crafted.body) === "1" && reasons(crafted.body) === "2:INVALID_ROLES,3:INVALID_ROLES" && /not text/.test(crafted.body.flagged[0]?.detail ?? "") && invites() === before.i + 1, crafted.body);
   await call(base, "PATCH", `/api/platform/staff/${O}/roles`, { token: tR, body: { roles: ["READ_ONLY"], reason: "batch check" } });
   const readOnly = await batch([row("nokey@example.com")], await signIn("user-O"));
   ok("PF-4c1b fail: a person without agent/staff:manage → 403, nothing sent", readOnly.status === 403 && sql(`select count(*) from platform_invitation where email = 'nokey@example.com'`) === "0", readOnly.body);
