@@ -1,124 +1,115 @@
-# PF-18s part 1 (My account → Offices): independent review
+# PF-18s part 2 (the "?" button and Help & support, R1.92): independent review
 
-Commit reviewed: **f5a1ea6c40c2a208d0de5009ce749a280c18fa44** (branch `claude/affectionate-cerf-jw9hv7`, PR #2897). Reviewer: a fresh context that did not build it. Spec: `concept-draft.md` + `challenge.md` on `origin/claude/runtime-pf18s-concept` (#2332, Lead 19: 7 Majors as written, part 1 = Offices + the owed PUT + provinces read (M2) + `officeId` on the staff read (m1); Q1 lines stay in My account). Requirement: AG-16-68 (+ AG-16-75 rule 1, AG-1-74 rule 2). Run on isolated copy :4443 (fresh database per run), live AI off, US$0. Journey test: `journey-test-reviewer-2026-11-22.md` (**7/10, below the pass**, after B1 and M1 below).
+Commit reviewed: **2ed09e077c74d205611195331d49c81bdb50b700** (branch `claude/gallant-pascal-kks7vc`, draft PR #2906). Reviewer: a fresh context that did not build it. Spec: `concept-draft.md` + `challenge.md` on #2332 (`concept-2332`, dcc2e6b3), boards D and E; challenge M3, M4, M5, M6, m4, m6, m7, m9, m10. Requirement: AG-16-63. Run on isolated copy `review_pf18s2` :4731 (fresh database), live AI off, US$0; copy stopped, rewritten screenshots restored. Part 1's review is in git history (4f0705259). Journey test: `journey-test-reviewer-2026-11-22-part2.md`, **7.5/10, below the 8 pass** because of M-1.
 
-## Verdict: Rework (Block) for f5a1ea6c. One Blocker, one Major, seven Minors.
-My own walk found only Minors. The breaker's report (`break-report.md`, same commit, written in parallel) names **B1** and **M1**. I confirmed both in the code at f5a1ea6c (the working tree had moved on, so not in a browser). Both are open at the commit I reviewed. The fixes claimed in the later commit 90f7f5c38 are **not reviewed here**: that head needs its own round before it can be labelled.
+## Verdict: Rework (Block) for 2ed09e07. One Major, five Minors.
+The row's Done-when holds: `check_pf18s_help_browser.ts` exits 0 (25/25, run twice). It opens the "?" from two pages, sends once, stops a second send inside the guard window and shows the error state. The double-send test can fail; I confirmed it myself (below). The frame edit is minimal. What blocks is one element of board E: **an attachment cannot be opened**.
 
-## Blocker and Major (Must)
-* **B1 (Blocker): Offices and Team (and Licences, Availability, Types) share one cache entry with different parsers.** `offices-page.tsx:19` uses `queryKey ["pf","staff","list",token]` with `People.parse`, which strips `email`, `roles` and `seats`. `team-page.tsx:22` uses the same key with `StaffList.parse`, which strips `officeId`. If you open Offices and then click Team, Team reads the stripped rows (`team-page.tsx:39-44, 63` `seats.line`, `p.roles.map`): the page goes blank. The other way round, "Who works where" shows "No office" for people who are placed until a reload, and Save is disabled for taking them out. The first breaks an existing screen one click away; the second shows wrong data on this part's own fact. Fix: give the key its own name (e.g. `["pf","staff","offices",token]`), or parse one shared shape. Add a browser check that goes Offices → Team → Offices by client navigation.
-* **M1 (Major): after a province, choosing "Your firm's time zone" saves the province's zone, and the audit says `province`.** The option's value is `""` (`office-panel.tsx:17, 89`). `:43` sends `timeZone` only `if f.zoneTouched && f.zone`, so the explicit choice is dropped and the server pre-fills from the province again. This breaks challenge M2 (the person confirms or edits the zone, AG-16-75 §10) and the build notes' "chosen when picked". Fix: do not offer the firm option while a province gives a zone, or send the firm's zone explicitly. Add a test that fails on the old line.
+## Major (Must)
+* **M-1 Clicking "Attachment 1" leaves the app for a raw 401 JSON page.** `support-page.tsx:90` does `window.location.assign(l.url)`. That is a plain navigation, so it carries no bearer token. `GET /api/platform/support/files/:token` is behind PF-4's guard (`api/src/platform/support/routes.ts:49`, key `support-ticket:list`), and the session lives in sessionStorage, not a cookie. Walked: raise with a PDF and a text file, open the ticket, click Attachment 1. The browser then shows `{"title":"Sign in again","status":401,…}`. curl gives 401 without the bearer and 200 with it. Board E's "files as links (signed link per click)" and the build notes' "attachments by a short-lived link" therefore do not work, and nothing tests them: the graph shows the link and file routes with no web use. **Fix:** fetch the URL with the bearer and save the blob, as `identity-panel.tsx:56` and `templates-page.tsx:37` already do. Show 410 "Link expired" in words. Add a DW step that waits for Playwright's `download` event, with a fail line: no 401 page.
 
-## Concept fit (part 1's share)
-* **M1 met:** menu line and page keyed `agent/settings:edit` (`account-sections.ts:14`, `offices-contract.ts:24`); Case Officer: no line, refusal in words by address, provinces/PUT/staff read 403 (J5). One office: no list, no zone, only "Add an office" and its line (J3, AG-16-68 "hidden until a second office exists").
-* **M2 met for Canada:** `GET offices/provinces` from `zones.ts` only (`routes.ts:20-21`); zone pre-filled on province pick before saving, editable, `timeZone` sent only when picked (audit `province` vs `chosen`, builder DW3 + my J1). Codes, no typed names (challenge rule). Outside Canada the option reads "Your firm's time zone" without naming it (m-1 below).
-* **Owed PUT met:** `PUT /api/platform/staff/:staffId/office`, strict body, id checked first, `agent/staff:manage` (challenge m1's choice, recorded), 404 for another firm's person/office/bad id, 422 extra field, no-change writes nothing (`service.ts:165`), last-wins without version recorded in build notes (STANDARDS §4 reason given).
-* **m1 met:** `officeId` on `GET /api/platform/staff` rows (`staff-read/service.ts:17, 39`), no new route. **m5 met:** right panel. **m8 met:** "In Settings: Advanced → Offices".
-* **States:** empty (one office teaches Add), loading (text status, the PF-6 pages' pattern), normal, long content (118-char name), error on field + summary, read-only (refusal says why), conflict (409 loads latest). 375 px "tables become stacked rows" not done (m-3).
+## Minors (Should, ranked)
+1. **m-1 A reply into a ticket closed meanwhile vanishes in silence.** The 409 refetch (`support-page.tsx:69`) turns the page Closed and unmounts `Reply` (`:113`), which takes the typed text and the "Not sent" notice with it. Walked: typed a reply, closed the ticket by SQL, pressed Send. Result: Closed notice, no text, no words. This breaks BR-11 "a failure … keeps the text" and concept §5 "409 closed: the service's words". **Fix:** when the answer is a 409, keep the text visible under the Closed notice (or hand it to Raise a ticket), together with the server's words.
+2. **m-2 Field errors are server fragments, in lower case, and use jargon.** On an empty Send the box says "write what you need help with, without control characters" (`api/src/platform/support/support.ts:69`, shown as given by `help-button.tsx:34`). Other examples: "at most 3 attachments" and "the file is not a PDF as its type says". This misses EXPERIENCE §2.10 and BIC-13 (what happened and how to fix it, in plain words). Reply disables an empty Send but Raise does not. **Fix:** words on the web for blank ("Write what you need help with."), start each server message with a capital, or disable Send while the box is blank, as Reply does.
+3. **m-3 Between 640 and 767 px the list has a "Last change" heading over empty cells.** This affects a person who sees only their own tickets, and shows at 200 % zoom on a 1440 screen (reviewer shot `list-zoom200`). `headClass` is fixed by position (`support-page.tsx:39`), but the "Raised by" column is optional, so "Last change" gets `sm:` on the heading and `md:` on its cells (`:45`). When the label wraps ("Waiting on / support"), the status dot squeezes into an oval (`:21`, no `shrink-0`). **Fix:** build `headClass` from the same column list; add `shrink-0` to the dot.
+4. **m-4 Tooltips appear only on mouse hover.** The status (`support-page.tsx:20`, a span that cannot take focus) and the "?" (`help-button.tsx:70`) use only `title`. EXPERIENCE §2.10 and BIC-14 want them on keyboard focus too. Screen readers do get the status tip (sr-only text) and the "?" name (aria-label). **Fix:** use the team's `components/ui/tooltip.tsx` (used in `billing-page.tsx`) on the "?" and the status.
+5. **m-5 The test's words overstate the forced second click.** A disabled button dispatches no click, so the guard's proof rests on `requestSubmit()` (`check_pf18s_help_browser.ts:100, 156`). Behaviour is fine; only the words are wrong. **Fix:** say that in the comment and in the build notes.
 
-## Minors (ranked; Should)
-1. **m-1 Outside Canada the zone is not shown before saving.** A London office saves on America/Toronto; the panel only says "Your firm's time zone" (`office-panel.tsx:87-90`; build-notes deviation). Fix: name the zone in the option ("Your firm's time zone (America/Toronto)"), e.g. from the first office row when two exist, or record it as a follow-up row.
-2. **m-2 Error words below EXPERIENCE §2.10 / BIC-13.** "a country code on the ISO list" (`api/src/platform/settings/offices/service.ts:30`) is a fragment; "This is required." alone (`api/src/platform/http/input.ts:40-42`); duplicate name shown only in the summary, not on Office name (`office-panel.tsx:61`; the 409 has no `fields`). Fix: "Enter a two-letter country code, for example GB"; "Enter the office's name"; map the duplicate to `errors.name`.
-3. **m-3 Narrow widths squeeze tables.** At 400 px and 200 % zoom names break mid-word ("immigratio n firm"); at 1024 px hours wrap to three lines (`offices-page.tsx:127-133`; reviewer screenshot `review-4-1024-at-200pct`). No sideways scroll, so not an [M] break. Fix: stacked rows below ~640 px as concept §4 says; `whitespace-nowrap` on hours.
-4. **m-4 Flaky check.** `check_pf18s_offices_browser.ts:101-103` failed 1 of 3 fresh runs (`backOnAdd:false`); my walk saw focus return every time. Fix: wait for focus (`expect.poll`/`waitForFunction`) after the dialog detaches.
-5. **m-5 Focus after a failed save** lands on the panel, not the summary or first bad field (Notice is `role="alert"`, so it is announced). Fix: focus the summary.
-6. **m-6 Stale title after 409:** panel says "Edit Calgary" while "Calgary downtown" is loaded (`office-panel.tsx:68`). Fix: title from the loaded form/version.
-7. **m-7 Owed PUT tests sit in the browser check,** not the API suite the owed line named; they run on real PostgreSQL with pass/fail pairs, so coverage is real, but the graph cannot see them (below). Fix: none needed beyond the graph note, or mirror the 6 API cases into `check_pf18a_offices`.
+## The double-send guard (owed 2, challenge M3): really can fail
+I removed both `if (sending.current)` guards in the served bundle only: Playwright rewrote the JS asset, and no source was edited. Then I replayed DW2 and DW5 under a held first POST. **Raise: 3 POSTs. Reply: 2.** With the real bundle: 1 and 1. The two clicks and two Enters alone gave 1 POST even without the ref, because the busy button is disabled; the extra submits reached the network. This matches the builder's red run (`seenWhileHeld 3`). The check's API fail line (two direct POSTs make two tickets) shows the server does not deduplicate. m10's residual (a lost answer retried) is recorded in the build notes.
 
-## Graph (P-86)
-`graph.mjs`: G1 0, G2 0. G3 lists `GET /platform/offices/provinces`, `PATCH /platform/offices/:id`, `PUT /platform/staff/:staffId/office` as "no test reaches … no page uses it". Checked by hand: false positives of the tool, which matches only `api(` web calls, `call("M", …)` test calls and App.tsx routes, while the platform module uses `staffApi(` and module routes and this test uses `api(t, "M", …)`. All three are exercised (DW1, DW3, DW5, DW6) and used by `/platform/offices`. Every element serves this screen's capability (R1.92 "office times shown in each office's zone": the Case Officer's needs-you zone becomes America/Edmonton after placement, J7). No scaffolding on the demo path (P-33).
+## Concept fit (part 2's share)
+* **Board D met:** the "?" sits in PF-6's header with the name and tooltip "Get help with this page" and opens the right panel "Ask for help". It has one box, up to 3 files, no priority, and the line "We'll note the page you're on: /account/licence". The query and fragment are dropped (DW1, my walk with `?view=secret-token#frag`). "Ticket sent … Open your ticket" follows. Escape asks "Discard your message?" when text is typed.
+* **Board E met except M-1:** "Raise a ticket" (filled), subject link (M5: first line, 80 with "…"; checked with a French and Japanese first line), Status in words with tips, Waiting on firm in orange, "Raised by" only for Owner/Admin (M4 names from the server: "Raised from /account/licence by Case officer (Sample)"), Last change. The ticket page lists messages oldest first (You / name / ExpatReady support); the Owner can reply on any ticket; a Closed ticket has no box and shows the concept's words.
+* **m4:** Enter makes a new line, and the newline is kept in the saved message. After a reply, focus lands on the new message; after a failure, on the box. **m6:** with a privacy notice pending, the terms page shows and no "?" (walked). **m7:** path only. **m9:** `fields` show on the fields (body, files). **M6:** seeding by SQL is labelled scaffolding in the check only; the demo path uses no scaffolding (P-33).
+* **States:** empty (both texts, walked on `sample-solo`), loading (text status: PF-6's pattern, as part 1, not a skeleton), normal, long (4,923 characters, non-Latin), error on the field plus summary, refused (no key), not found (another person's ticket by address), sending (busy, disabled), failed (text kept). The conflict state is m-1.
 
-## Code (STANDARDS [M])
-Server authorisation on all three new/changed routes, deny by default (met). Concurrency: office change versioned (409); placement under the firm's advisory lock, last-wins accepted with reason (met). Duplicates under race: double click on Add office and on placement Save → one office, one audit line (met; `sending` ref + server name check). Client cache: one key shared by two parsers (B1, not met). Migrations: none. Field errors: 422 `fields` on each field (met, m-2 wording). No per-row requests: one staff read, one offices read, one provinces read per view (met; the staff read's existing per-person two-step call is PF-6's, challenge m1 accepted it). Strict types, no new `any`, contract parsed at the edge (`offices-contract.ts`), module-card rows present, comments cite decisions (met). "A rule's test fails when the rule is removed": reasoned, not mutated (I may not edit code): removing the no-change guard turns DW6's audit count 2 → 3; keying the menu `settings:list` fails DW1; always sending `timeZone` fails DW3's `province` audit; removing the PUT's key fails DW6's 403. Retrofit mapping: the team's code is Mac-only, so, as in the challenge, Unverified.
+## Frame edit and code (STANDARDS [M])
+* **Frame:** `frame.tsx` +3/−1: two imports and one conditional slot in `controls`, nothing else. `help-button.tsx` does not import the frame, so there is no cycle. `session.ts`: `form` is additive (used only here).
+* **Server:** `support.ts` is additive with no migration. The list makes 1 ticket query with `include` (raiser, first message), and a ticket makes 3 queries, with no per-row request and no `GET /staff`. Names come from `firmScope(t.firmId)`, so another firm's names cannot appear. Authorisation stays with PF-18b's guard.
+* **Rules and tests:** strict types, contract parsed at the edge, module-card rows present, comments cite #2064 and challenge points. "A rule's test fails when the rule is removed": met for the guard (above), the path rule (DW1), visibility (DW4, DW5 404) and Closed (DW5).
 
 ## D1–D20 (1–5)
 | D | Score | Evidence |
 |---|---|---|
-| D1 | 3 | AG-16-68 hide-until-second, M1 and the owed PUT behave; challenge M2 broken on the firm-zone path (M1) |
-| D2 | 3 | Duplicate refused; another firm 404; stale 409; double clicks write once; but a zone other than the one chosen is saved (M1) |
-| D3 | 5 | Reuses `allZones`, the staff read, `Panel`/`Table`; provinces only from the pack |
-| D4 | N/A | No dependent questions or rules on this page |
-| D5 | 2 | Moving Offices → Team blanks Team until a reload (B1); one flaky check (m-4) |
-| D6 | 4 | Every add, change, placement audited with from/to and zone origin; no-change no line |
+| D1 | 3 | AG-16-63 raise, own list, Owner sees all and replies all met; attachments cannot be opened (M-1) |
+| D2 | 4 | One ticket and one reply under a held double send; path only; firm-scoped names; server does not deduplicate a retry (m10, recorded) |
+| D3 | 5 | `Panel`, `Table`, `Notice`, PF-18b routes; no new route |
+| D4 | N/A | No dependent questions |
+| D5 | 3 | 500 recovers with text kept; double send safe; 409 loses the reply (m-1) |
+| D6 | N/A | No governance on tickets beyond PF-18b's audit event |
 | D7 | N/A | No AI |
-| D8 | 4 | "My account › Offices" + "In Settings: Advanced → Offices" |
-| D9 | 4 | Add 3 steps; place 3 clicks; unplaced notice points to the next step |
-| D10 | 3 | Codes and IANA ids (accepted gaps); error fragments (m-2) |
-| D11 | 3 | Toasts name the zone; busy; refusal and 409 in words; stale "No office" rows after Team (B1) |
-| D12 | 4 | Team look; mid-word breaks at 200 % (m-3) |
-| D13 | 4 | axe clean every state; keyboard path; focus ring; 1024 px and 200 % no sideways scroll |
-| D14 | 4 | Team components and words; PF-6 frame unchanged |
-| D15 | 5 | 133 ms open, 125 ms add → list (local copy) |
-| D16 | 3 | 25 pass/fail checks on real PostgreSQL, but none catches B1 or M1; 24/25 then 25/25 twice; graph blind spot |
+| D8 | 4 | "My account › Help & support › Ticket", back link, subtitle "In Settings: Help & support" |
+| D9 | 4 | "?" → type → Send → "Open your ticket": 3 steps |
+| D10 | 3 | Subject instead of ids (M5); server fragments (m-2); raw JSON (M-1) |
+| D11 | 3 | Busy, sent, not sent, closed visible; silent 409 (m-1) |
+| D12 | 4 | Team look; column mismatch at 640–767 px (m-3) |
+| D13 | 4 | axe clean (panel, list, ticket at 375/1024/1440); keyboard path; 200 % with no sideways scroll; hover-only tips (m-4) |
+| D14 | 4 | Team components and words; Raise is a right panel |
+| D15 | 5 | List first view 338 ms; check 17 s for 25 checks |
+| D16 | 3 | 25 pass/fail checks, red when the guard is removed; no test opens an attachment (M-1) |
 | D17 | — | Simulated only |
-| D18 | 3 | "Pre-filled from AB", "First office"; the audit says `province` for a person's firm-zone choice (M1) |
-| D19 | — | Not yet evidenced (part 1 of 3); the hand-off to the person's zone holds (J7) |
+| D18 | 4 | Page noted and shown before sending; author names on every message |
+| D19 | — | Part 2 of 3; support's side is PF-17 |
 | D20 | — | Simulated only |
 
 ## Scorecard (EXPERIENCE §6; not case-side, concept §4c)
-BIC-11 Met (one filled button per page and panel: "Add an office", "Add office", "Save") · BIC-13 Partly (field + summary, input kept; m-2, m-5) · BIC-14 Met (no icon-only buttons or chips; "Edit"/"Change" carry full accessible names) · BIC-18 Met (states above; never "no records" before data) · BIC-19 Met (one heading per panel, red only for errors, orange only for the unplaced notice) · BIC-20 Met (keyboard, 200 %, headings h1 → h2) · BIC-04 Partly (Province and Time zone are optional but not marked "(optional)") · BIC-01–03, 05–10, 12, 15–17 N/A (no facts, AI, filing, review or roles here). Evidence: builder screenshots `pf18s-5-offices-list-1440.png`, `pf18s-7-offices-1024.png`; reviewer walk J1–J8.
+BIC-11 Met (one filled button: "Raise a ticket"; panel "Send") · BIC-13 Partly (field plus summary, text kept; m-2, m-1) · BIC-14 Partly (m-4) · BIC-18 Met (states above) · BIC-19 Met at 1440/1024 (orange only for Waiting on firm, red only for errors; m-3 at 640–767) · BIC-20 Met (keyboard: Tab to "?", Enter, type, Send; 200 %) · BIC-01–10, 12, 15–17 N/A (no facts, AI, filing or review). Evidence: builder shots `pf18s-help-1…6`; reviewer shots in the session scratchpad (not committed).
 
-## Could not check
-A real screen reader; an intended user's walk (D17, D20: the founder); an Admin persona (none in the Sample firm); the team's code (retrofit). I restored one tracked screenshot that the builder's check rewrote during my runs. An untracked `break-report.md` in this folder is not mine.
+## Graph (P-86)
+`graph.mjs`: G1 0, G2 0. G3 lists all six `/platform/support/*` routes as untested and unused by the web: the tool's known blind spot for `staffApi(`, as in part 1. Four are exercised by DW1–DW5, but **`POST …/files/:n/link` and `GET …/files/:token` are reached by no browser test**, which is how M-1 got through. Every element serves AG-16-63.
 
-**Verdict: Block** (commit f5a1ea6c40c2a208d0de5009ce749a280c18fa44). To fix: **Blocker** B1 (the shared staff-list cache key); **Major** M1 (the firm-zone choice dropped after a province); **Minor** m-1 to m-7 (fix or list as follow-ups). Re-review the new head (90f7f5c38 or later) before labelling.
+## Not checked
+A real screen reader; files over 10 MB; Safari/Firefox; the team's code (Mac-only, so the retrofit mapping is Unverified, as in the challenge); an intended user's unaided walk (D17/D20 stay with the founder).
 
-Reviewer: Block f5a1ea6c40c2a208d0de5009ce749a280c18fa44
+**Verdict: Block.** To fix: M-1 (Must); m-1 to m-5 (Should, or a follow-up row each).
 
-## Round 2 (df35afdd)
-Commit reviewed: **df35afddccb17e10158aa5f93c07847eca882628**. Scope (P-277): `git diff f5a1ea6c..df35afdd`, i.e. `offices-page.tsx`, `office-panel.tsx`, `place-panel.tsx` and `check_pf18s_offices_browser.ts`, plus the build notes' "Round 1" section. Fresh isolated copy `review2_pf18s` on :4446 (`PLATFORM_IDENTITY=local AI_LIVE=off`), stopped afterwards. US$0. Builder's check: **28/28** (12.7 s). I restored the screenshots it rewrote. Web `tsc --noEmit`: clean. I then walked it with my own headless script in the scratchpad (not committed), reading the database underneath. The breaker's round 2 (`break-report.md`, written in parallel and not mine) agrees on every point below.
+Reviewer: Block 2ed09e077c74d205611195331d49c81bdb50b700
 
-**B1: fixed.** "Who works where" now uses its own key, `["pf","staff","placements",token]` (`offices-page.tsx:20`). No other page uses it. Placing still invalidates the prefix `["pf","staff"]` (`place-panel.tsx:26`), and so do Team's person and invite panels, so both entries refresh.
-* Browser, step (a): Offices, then Team by the menu. The seat line shows straight away and is still there after 2.5 s. No page or console error.
-* Browser, step (b): a fresh load on Team, then Offices within 122 ms. All placements are correct ("Case officer = Calgary downtown", "Representative = Sample immigration firm"), and still correct 3 s later. The notice says "1 person", not 3.
-* Browser, after taking the Case Officer out: the row reads "No office" at once. Team, then back to Offices, still reads "No office". The database has 0 rows.
-* The test would fail without the fix: the new DW6 line waits for `[data-seat-line]` after Offices → Team. The old shared entry crashed Team (`seats.line` undefined), so that wait times out.
+---
+## Round 2 (commit 5ee13db4ec1c158a23db7962793c4ffcdf3976ee): Ship (Approve)
+Scope: `git diff 2ed09e07..5ee13db4` only (support.ts, help-button.tsx, support-page.tsx, support-contract.ts, the check, build notes). Isolated copy `review2_pf18s2` :4732, fresh database, `AI_LIVE=off PLATFORM_IDENTITY=local`, US$0. `check_pf18s_help_browser.ts`: **30/30 twice**, exit 0, 15 s. I also walked it in my own Playwright script (shots in the session scratchpad, not committed). The copy is stopped and the rewritten `pf18s-help-*.png` are restored.
 
-**M1: fixed.** "Your firm's time zone" is offered only on add, and only while no province gives a zone (`office-panel.tsx:83, 100`). A firm choice made before a province is replaced by the province's pre-fill, shown as "Pre-filled from AB" (`:34`). In every state I tried, the zone the panel shows is the zone the server saves:
-* Firm option chosen, then AB: Edmonton, with no firm option left.
-* A zone picked, then the province changed: the picked zone is kept.
-* Province cleared: the firm option comes back, and the picked zone is kept.
-* Abroad (FR): firm option, empty zone, saved as America/Toronto.
-* Edit: no firm option.
-* Saving after picking a zone: audit `chosen`.
-* The test would fail without the fix: the new DW3 line asserts `withProvince === 0`, and the old code always rendered the option. That line does not exercise the "explicit firm choice, then province" branch; my walk covered it.
-
-**No new Blocker or Major.**
-* **Focus:**
-  * A duplicate name on edit (409) and a blank name both put focus on Office name, with `aria-invalid`.
-  * A refusal with no field error focuses the `tabIndex=-1` "Not saved" box.
-  * The place panel opens on the ticked radio ("Calgary downtown"), with Save disabled.
-  * Escape or Close returns focus to the opener (Edit, Change).
-* **375 px:** the page and both table regions are 375/341/341 with no inner scroll, Edit buttons stay inside the viewport, and Where shows under the name. The edit panel with a 120-character name is 374/374.
-* **1024 px:** Hours now stays on one line. Round 1's three-line wrap is gone (scratchpad `r2-offices-1024.png`).
-
-**Minors (Should; none blocks)**
-1. **r2-m1 Hours is hidden below 768 px and shown nowhere else.** `offices-page.tsx:77, 80` (`hidden md:table-cell`). Concept §4 lists Hours in the list, and "375 px: tables become stacked rows". The build notes say "Where and Hours move under the name", but only Where does. Measured at 375 and 700 px: no hours text on the page. Fix: add `hoursLine` under the name with `md:hidden`, as Where already is, or correct the build notes and list it as a follow-up. This is the breaker's m6.
-2. **r2-m2 A 409 that is neither a duplicate name nor a reloaded stale copy lands on the name field.** `office-panel.tsx:67`. This happens when the re-read after a stale 409 fails. It is rare and saves nothing wrong. This is the breaker's m7.
-3. **Carried over, with the build notes' reasons accepted as follow-ups:**
-   * m-1: the firm's zone is not named on add outside Canada.
-   * m-2 (part): the server's words "a country code on the ISO list" and "This is required." remain.
-   * m-7: graph blind spot. I did not re-run `graph.mjs`: no routes changed in this diff.
-   * m-3: the 200 % name breaks are now covered by the stacked Where line, so only r2-m1 remains of it.
-4. m-4, m-5 and m-6 are fixed (focus wait in the check, focus on the field, the "Edit office" title).
-
-**Journey score (reviewer, round 2): 8.5 / 10, pass.** This replaces round 1's 7, and it is put here instead of a new journey file because this round's brief allows one file. It is the reviewer's own score for this check.
-
-| Criterion | Score | Evidence |
+| Round 1 | Fixed? | Evidence (walk + test that fails without the fix) |
 |---|---|---|
-| Task completed | 1 | Add, edit, place, take out |
-| Next step obvious | 1 | One filled button and the unplaced notice |
-| Plain words | ½ | Province codes and IANA ids; the server's field words |
-| Feedback and state | 1 | B1 gone: rows right across Team ↔ Offices |
-| Correct data | 1 | The zone shown is the zone saved; audit origin right |
-| Error recovery | 1 | Focus on the field in error; a duplicate name on the field |
-| Accessibility and screen sizes | 1 | Check: axe clean and no sideways scroll at 375/1024/1440 |
-| Speed | 1 | Offices after Team in 122 ms |
-| Visual quality | ½ | Hours hidden below 768 px (r2-m1) |
-| Trust and sources | ½ | The firm's zone is not named outside Canada (m-1) |
+| **M-1** attachment opened by navigation → 401 | **Yes** | `support-page.tsx:19-34` fetches with the bearer and saves the blob. A 401 ends the session as `staffApi` does. Walked: Attachment 1 saved `support-1.pdf` (`%PDF-`), Attachment 2 saved `support-2.png`, still on the ticket. A 410 shows "File not opened · This download link has expired. Open the ticket again." Test: DW5 waits for Playwright's `download` event and checks the PNG bytes. With `location.assign` no download fires, the wait throws and the check fails (`:225`). The fail line asserts 401 without the bearer. |
+| m-1 reply lost on a 409 Closed | Yes | `Reply` now always mounts (`:133`). While it holds text on a Closed ticket, the box stays read-only with "Not sent · A closed ticket takes no new message: raise a new ticket instead." There is no Send, the hint says "copy your text into a new ticket" and focus is on the box. Axe is clean in that state. A fresh Closed ticket still shows only the Closed notice (1024, axe clean). Test: the new DW5 line (it would time out on `[data-reply-problem]` before the fix). |
+| m-2 field errors were lower-case fragments | Mostly | `fieldOf` makes the server's words sentences and names the refused file ("File 2: The file is not a PDF as its type says."). Raise's Send is disabled on a blank or spaces-only box (walked). Residual below. |
+| m-3 empty "Last change" column at 640–767 px | Yes | `headClass` now follows the columns (`:56`). At 720 px the heads are `[Ticket, Status, Last change:none]` and the cells match. No sideways scroll. The dot has `shrink-0`. |
+| m-4 tips only on hover | Partly | The ticket page shows the tip as visible text ("Closed · No more messages on this ticket."), `aria-hidden` so screen readers do not hear it twice. The list status and the "?" are still `title` only. Residual below. |
+| m-5 test words overstated the second click | Yes | The check's names and comments (`:108, :113, :170-179`) say that only the ref stops the one-moment submits. The guard code is unchanged, so my round 1 red run (3 and 2 POSTs without the ref) still applies. |
+| Breaker m1 to m8 (not mine; checked in passing) | Yes | CRLF transform (`support.ts:70`). Node's FormData sends `\r\n`, so the DW1 4,999-character line goes red without the transform (5,048 > 5,000). Footer Close asks before discarding (DW1). Reopening mid-send keeps the message. Text typed during a send stays. Subjects drop bidi marks, are wrapped in `<bdi>` and cut by grapheme. A 413 shows on the files field. |
 
-**Not checked this round:** a real screen reader, an intended user's walk (D17, D20), and the Admin persona.
+**Nothing broke:**
+* DW1–DW6 hold as in round 1: one POST under the held double send, path only, 500 recovery, visibility 404, keyboard to "?", axe clean at 375/1024/1440.
+* No page errors.
+* The graph still shows G1 0 and G2 0. The support routes appear only in G3 because of `staffApi(`, the blind spot already noted. Both file routes are now reached by DW5.
+* The frame and session files are untouched in this diff.
+* The builder ran `check_pf18b_support` 41/41 and `check_pf28_inputs` 41/41. I did not re-run them: the server change is additive, the CRLF transform plus the subject function.
 
-**Verdict: Approve** (commit df35afddccb17e10158aa5f93c07847eca882628). B1 and M1 are fixed, each with a test that fails without the fix, and there is no open Blocker or Major. Fix the Minors r2-m1 and r2-m2 and the carried m-1, m-2 and m-7, or list them in the PR.
+**Scores that change:** D1 4, D5 4, D10 4, D11 4, D12 5, D16 4. The rest are as in round 1. BIC-13 Partly (file words, below). BIC-14 Partly (m-4 residual). BIC-19 Met at every width.
 
-Reviewer: Approve df35afddccb17e10158aa5f93c07847eca882628
+**Open Minors (Should; a follow-up row each, none blocks):** 1. **m-2 rest.** "The file is not a PDF as its type says." and "At most 3 attachments." say what is wrong but not how to fix it (EXPERIENCE §2.10). A ZWSP-only body still reaches "…without control characters." (`support.ts:70`). Fix: "Attach a real PDF, PNG or JPEG." and "Remove a file: at most 3." 2. **m-4 rest.** The list's status tip and the "?" tip are still hover-only (`support-page.tsx:37`, `help-button.tsx:73`). Fix: the team's `tooltip.tsx`.
+
+Journey (`journey-test-reviewer-2026-11-22-part2.md`, round 2): **9.5/10**, pass.
+
+**Verdict: Approve.** There is no open Blocker or Major at 5ee13db4.
+
+Reviewer: Approve 5ee13db4ec1c158a23db7962793c4ffcdf3976ee
+
+---
+## Merge of main (diff-only), commit c7615519b22230258249853660306fdd308815ef: Approve
+Scope: `git diff bfe94dfd c7615519` on `routes.tsx` and the web `MODULE.rows/PF-18s.md`, and `git show c7615519 --cc` (the P-270 merge of origin/main, conflict with part 3 #2904).
+
+* **routes.tsx:** both sides kept. Part 2's import (`SupportPage, SupportTicketPage`) and its two routes (`/platform/support`, `/platform/support/:id`) are unchanged. Part 3's import (`NotificationsPage`) and its route (`/account/notifications`) follow them. Nothing else in the file moved.
+* **web MODULE.rows/PF-18s.md:** 4 lines (limit 6): part 1 + part 3 entry line, a tests line with both tests, then part 2's entry and tests lines word for word. The api row (4 lines) and the features row (1 line) are not touched by the merge.
+* **build-notes.md:** part 2's section is kept in full, and part 3's section follows it. Records only.
+* **account-sections.ts** (auto-merged): Notifications (part 3, line 10), Offices (part 1, line 15) and Help & support (part 2, line 17) are all present.
+* **Nothing of part 2 lost:** `git diff bfe94dfd c7615519` on help-button.tsx, support-page.tsx, support-contract.ts, frame.tsx, session.ts, `api/src/platform/support/`, and the check is empty. The only change in those paths is part 3's menu line. `git diff ac456c6b c7615519` (what the PR now brings to main) lists exactly part 2's files, plus product records.
+* **Re-run (mine):** `check_pf18s_notifications_browser.ts` on my own copy `review3_pf18s2` :4733 (fresh database, `AI_LIVE=off PLATFORM_IDENTITY=local`, US$0): **40/40**, exit 0. It shows part 3 works in the merged tree next to part 2. The copy is stopped and the 7 rewritten `pf18s-n*.png` are restored. I take the builder's other runs at c7615519 as reported (help 30/30, offices 28/28, pf1 routes 28/28, pf6a frame 52/52).
+
+No new finding. Round 2's two open Minors stand as follow-ups. The journey score is unchanged (9.5/10): the merge changes no behaviour.
+
+**Verdict: Approve.** There is no open Blocker or Major at c7615519.
+
+Reviewer: Approve c7615519b22230258249853660306fdd308815ef
