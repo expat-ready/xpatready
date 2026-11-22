@@ -1,5 +1,6 @@
 // FO-7b part 1b (R1.56, R1.60; AG-6-63 rule 4, AG-6-71 rule 1, AG-6-48): the invoice, the payment receipt and the credit
-// note as text and as a PDF, behind DocumentRenderPort. The wording is the committed Sample text in
+// note as text and as a PDF. A receipt prints its figures as of its own moment, a credit note only its own (a
+// document never changes after it is issued, AG-6-63 rule 8), behind DocumentRenderPort. The wording is the committed Sample text in
 // samples/client-money-wording/; the figures are the stored ones, passed in as text made from whole minor units: nothing
 // here computes a tax or a total (AG-6-4a: one rule across compute, display, receipt and export; R9). The PDF is a plain
 // text page written here (PDF 1.4, the built-in Courier font: no library). Known limit: a character outside Latin-1 (an
@@ -25,8 +26,8 @@ export function documentText(templateKey: string, data: RenderData): string {
 
 /** A rate in parts per million as a percentage, from its digits: 130000 → "13", 99750 → "9.975". */
 const percent = (ppm: number) => { const s = String(ppm).padStart(5, "0"), frac = s.slice(-4).replace(/0+$/, ""); return frac ? `${s.slice(0, -4)}.${frac}` : s.slice(0, -4); };
-export type Letterhead = { firmName: string; taxNumber: string | null; billTo: string };
-const head = (h: Letterhead) => ({ firmName: h.firmName, taxLine: h.taxNumber ? `Tax number: ${h.taxNumber}` : "", billTo: h.billTo });
+export type Letterhead = { firmName: string; firmAddress?: string; taxNumber: string | null; billTo: string };
+const head = (h: Letterhead) => ({ firmName: h.firmName, firmAddress: h.firmAddress ?? "", taxLine: h.taxNumber ? `Tax number: ${h.taxNumber}` : "", billTo: h.billTo });
 
 /** The invoice's names: every figure is the stored row's, printed from its digits. */
 export function invoiceData(v: InvoiceView, h: Letterhead & { issuedOn: string; operatingDetails: string | null }): RenderData {
@@ -43,7 +44,7 @@ export function receiptData(v: InvoiceView, p: { receiptNumber: string; issuedOn
     extra: p.extraMinor ? `${v.currency} ${MONEY(p.extraMinor)} is more than this invoice asked${p.keptInTrust ? ": kept in trust." : ": we will be in touch about it."}\n` : "" };
 }
 export function creditNoteData(v: InvoiceView, c: { number: string; issuedOn: string; amountMinor: number; reason: string }, h: Letterhead): RenderData {
-  return { ...head(h), number: c.number, issuedOn: c.issuedOn, invoiceNumber: v.number ?? "", currency: v.currency, total: MONEY(v.totalMinor), amount: MONEY(c.amountMinor), reason: c.reason, balance: MONEY(v.dueMinor) };
+  return { ...head(h), number: c.number, issuedOn: c.issuedOn, invoiceNumber: v.number ?? "", currency: v.currency, total: MONEY(v.totalMinor), amount: MONEY(c.amountMinor), reason: c.reason };
 }
 
 /** Plain text as a PDF: A4 pages of 60 lines, long lines wrapped at 95 characters. */

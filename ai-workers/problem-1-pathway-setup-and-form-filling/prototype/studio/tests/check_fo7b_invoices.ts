@@ -26,6 +26,8 @@ import { taxForLine } from "../api/src/client-money/invoices/tax-round.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { MONEY_EVENT, fakeClientMoney, invoiceStatus, type ClientMoneyPort, type InvoiceFacts } from "../ports/client-money.ts";
 import { fakeMail } from "../ports/mail.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -61,7 +63,7 @@ const { PlatformIdentityController } = await import("../api/src/platform/identit
 const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
 const { InvoiceDrafts } = await import("../api/src/client-money/invoices/drafts.ts");
 const { InvoiceDraftsController, InvoiceMoneyController } = await import("../api/src/client-money/invoices/routes.ts");
-const { documentText, invoiceData } = await import("../api/src/client-money/invoices/documents.ts");
+const { MoneyDocuments, documentText, invoiceData } = await import("../api/src/client-money/invoices/documents.ts");
 const { ClientMoney } = await import("../api/src/client-money/port.ts");
 const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
 const feature = (await import("../api/src/features/client-money-invoices.ts")).default;
@@ -301,6 +303,8 @@ try {
   ok("FO-7b P pass (amendment 1): 600.00 on 520.00 due is never refused: Paid, 80.00 extra offering Refund · Keep as credit, invoice.paid once; with the trust answer YES no trust entry is made; a later 25.00 is all extra, \"Paid twice?\"",
     over.status === 201 && over.body.appliedMinor === 52000 && over.body.extra?.amountMinor === 8000 && over.body.extra.choices.join() === "REFUND,KEEP_AS_CREDIT" && over.body.extra.note === null && over.body.invoice.statusWord === "Paid" && over.body.invoice.extraMinor === 8000
     && twice.status === 201 && twice.body.appliedMinor === 0 && twice.body.extra?.note === "Paid twice?" && twice.body.invoice.extraMinor === 10500 && events(MONEY_EVENT.INVOICE_PAID, invP.id) === "1" && trustRows() === t0, [over.body, twice.body]);
+  const toTrust = (() => { try { sql(`insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, created_by) values ('${A}', '${PA}', 'DEPOSIT', 8000, 'CAD', '${over.body.id}', 'seed:FO-7b-1b')`); return "written"; } catch (e) { return String((e as { stderr?: string }).stderr ?? e); } })();
+  ok("FO-7b P fail (amendment 1, planted): a rule moving the 80.00 extra from operating into trust by itself (a trust deposit naming the operating payment) is refused by the database, and no trust entry exists", /a deposit comes from a payment received into trust/.test(toTrust) && trustRows() === t0, toTrust);
   const invR = await issued(10000, 0), race = await Promise.all([pay(invR.id, 10000), pay(invR.id, 10000)]);
   ok("FO-7b P pass: two full payments at the same moment → one settles the invoice, the other is all extra (\"Paid twice?\"); paid once", race.every((x) => x.status === 201) && race.map((x) => x.body.appliedMinor).sort().join() === "0,10000" && race.find((x) => x.body.appliedMinor === 0)?.body.extra.note === "Paid twice?" && events(MONEY_EVENT.INVOICE_PAID, invR.id) === "1", race.map((x) => x.body));
 
@@ -336,6 +340,15 @@ try {
   ok("FO-7b P pass (break F1): a client at −50.00 in trust pays 100.00 into trust on a 100.00 invoice → 201: the deposit is recorded (balance 50.00), 50.00 is applied, 50.00 stays due, and the ledger never goes below zero by this payment",
     zPay.status === 201 && zPay.body.trust?.depositedMinor === 10000 && zPay.body.trust.appliedMinor === 5000 && zPay.body.trust.balanceMinor === 0 && zPay.body.invoice.dueMinor === 5000 && zPay.body.invoice.statusWord === "Part paid" && zPay.body.extra?.note === null, zPay.body);
   ok("FO-7b P fail (break F1, stand-in): the old rule (apply all that is due, whatever the ledger holds) would ask the database for a 100.00 withdrawal from 50.00, which it refuses", Math.min(10000, invZ.dueMinor) > 5000 && sql(`select min(balance_after_minor) from money_trust_entry where person_id = '${PZ}' and seq > 3`) === "0");
+  // Review M5 on d6948072e: credit applied to an invoice counts as paid (money_invoice_due), so a trust payment never applies
+  // money the invoice does not owe; credit kept from a payment is no longer waiting extra.
+  const PK = person(A, "k"), invK = await issued(10000, 0, {}, PK), kOver = await pay(invK.id, 13000);
+  sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, created_by) values ('${A}', '${PK}', 'KEPT', 3000, 'CAD', '${kOver.body.id}', 'seed:FO-7b-1b')`);
+  const invK2 = await issued(10000, 0, {}, PK); sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, invoice_id, created_by) values ('${A}', '${PK}', 'APPLIED', -3000, 'CAD', '${invK2.id}', 'seed:FO-7b-1b')`);
+  const gK = await call(tA, "GET", `${M}/${invK.id}`), gK2 = await call(tA, "GET", `${M}/${invK2.id}`), dbDue = sql(`select money_invoice_due('${A}', '${invK2.id}')`), kTrust = await pay(invK2.id, 10000, { receivedInto: "TRUST" });
+  ok("FO-7b credit pass (review M5): 30.00 extra kept as credit is no longer waiting extra; 30.00 of credit applied to a 100.00 invoice leaves 70.00 due (as money_invoice_due), so 100.00 into trust applies 70.00 and leaves 30.00 in trust",
+    gK.body.extraMinor === 0 && gK2.body.dueMinor === 7000 && dbDue === "7000" && kTrust.status === 201 && kTrust.body.trust?.appliedMinor === 7000 && kTrust.body.trust.balanceMinor === 3000 && kTrust.body.invoice.statusWord === "Paid", [gK.body.extraMinor, gK2.body.dueMinor, dbDue, kTrust.status, kTrust.body.trust ?? kTrust.body, kTrust.body.invoice?.statusWord]);
+  ok("FO-7b credit fail (stand-in): read without the credit, the same invoice would show 100.00 due and apply all 100.00 from trust", gK2.body.totalMinor - gK2.body.creditedMinor === 10000 && kTrust.body.trust.appliedMinor !== 10000);
   // Break report F2 (Major): a receipt never changes after it is issued (AG-6-63 rule 8). The cheque's receipt said 630.00
   // due; since then three more payments were recorded on that invoice.
   const recLater = await pdfText(`${invP.id}/payments/${c1.body.id}/receipt.pdf`), recOver = await pdfText(`${invP.id}/payments/${over.body.id}/receipt.pdf`);
@@ -384,6 +397,11 @@ try {
   const adapter = await withFirm(A, () => contract({ hasMoney: (f, p) => (f === A ? new ClientMoney(nest.get(Db)).hasMoney(f, p) : withFirm(f, () => new ClientMoney(nest.get(Db)).hasMoney(f, p))) }));
   ok("FO-7b H pass and fail: hasMoney is true for a party with an invoice or a trust entry, false for a client with none, for the same id in another firm or as a company, and refuses no party; the fake keeps the same contract",
     adapter === "true,true,false,false,false,refused" && adapter === (await contract(fakeClientMoney([{ firmId: A, personId: PA }, { firmId: A, personId: PM }]))), adapter);
+
+  // Review M1 on d6948072e: MoneyDocuments is a DocumentRenderPort adapter, so it runs that port's shared contract (PF-0c).
+  const cn = { firmName: "Sample Firm", firmAddress: "", taxLine: "", billTo: "Client A", number: "CN-0001", issuedOn: today, invoiceNumber: "INV-0001", currency: "CAD", total: "1.13", amount: "0.13", reason: "Goodwill" };
+  const pdfReader = (bytes: Uint8Array) => [...Buffer.from(bytes).toString("latin1").matchAll(/^\((.*)\) Tj T\*$/gm)].map((m) => m[1]).join("\n");
+  await runContract(documentRenderPortContract, "MoneyDocuments", () => ({ render: new MoneyDocuments(), template: "money.credit_note", data: cn, reordered: Object.fromEntries(Object.entries(cn).reverse()), other: { ...cn, amount: "0.14" }, text: pdfReader }), ok);
 
   // ------------------------------------------------------------------------------------- walls, inputs, audit
   const wall = await Promise.all([post(`${invP.id}/payments`, { method: "CASH", amountMinor: 100, idempotencyKey: "fo7b-wall-1" }, tB), post(`${invP.id}/credit-notes`, { full: true, reason: "x" }, tB), post(`${invP.id}/send`, {}, tB), call(tB, "GET", `${M}/${invP.id}/pdf`), call(tA, "GET", `${M}/${invP.id}/payments/${tPay.body.id}/receipt.pdf`), post("not-a-uuid/issue")]);

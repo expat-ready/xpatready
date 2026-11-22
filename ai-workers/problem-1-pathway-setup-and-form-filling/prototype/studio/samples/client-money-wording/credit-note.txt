@@ -1,5 +1,6 @@
 # Sample wording. Unconfirmed: no accountant.
 {{firmName}}
+{{firmAddress}}
 {{taxLine}}
 
 CREDIT NOTE {{number}}
@@ -9,4 +10,3 @@ To: {{billTo}}
 On invoice {{invoiceNumber}} (total {{currency}} {{total}})
 Credited: {{currency}} {{amount}}
 Reason: {{reason}}
-Balance due on {{invoiceNumber}} after this credit note: {{currency}} {{balance}}

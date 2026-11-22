@@ -29,6 +29,9 @@ type Tx = Prisma.TransactionClient;
 type Reader = Tx | PrismaClient;
 type Locked = { issued: boolean; number: string | null; currency: "CAD" | "USD"; personId: string | null; companyId: string | null };
 const refuse = (code: string, detail: string, extra: Record<string, unknown> = {}): never => problem(409, "Not possible now", detail, { code, ...extra });
+/** The firm's business address on one line (samples/firms.json's office shape), or "" when none is saved. */
+const addressOf = (a: unknown): string => { if (!a || typeof a !== "object" || Array.isArray(a)) return ""; const o = a as Record<string, unknown>, t = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : "");
+  return [[t("unit"), [t("street_number"), t("street_name")].filter(Boolean).join(" ")].filter(Boolean).join("-"), t("city"), [t("province_state"), t("postal_code")].filter(Boolean).join(" "), t("country")].filter(Boolean).join(", "); };
 const idOf = (invoiceId: string) => (UUID.test(invoiceId) ? invoiceId.toLowerCase() : notFound("invoice"));
 
 export class InvoiceMoney {
@@ -210,7 +213,8 @@ export class InvoiceMoney {
          from money_payment q left join money_receipt qr on qr.firm_id = q.firm_id and qr.payment_id = q.id
         where q.firm_id = r.firm_id and q.invoice_id = ${p.invoiceId}::uuid and q.received_into = 'OPERATING' and q.id <> ${p.id}::uuid and coalesce(substring(qr.number from '[0-9]+$')::bigint, 0) < ${mine})::text as earlier
       from money_receipt r where r.firm_id = ${firmId}::uuid and r.id = ${p.receipt.id}::uuid`;
-    const left = Number(then.open) - Number(then.trust) - Number(then.earlier);   // before this payment, when it went to operating
+    const [credit] = await tx.$queryRaw<{ applied: string }[]>`select coalesce(-sum(e.amount_minor), 0)::text as applied from money_credit_entry e where e.firm_id = ${firmId}::uuid and (e.invoice_id = ${p.invoiceId}::uuid or e.reverses_entry_id in (select a.id from money_credit_entry a where a.firm_id = ${firmId}::uuid and a.invoice_id = ${p.invoiceId}::uuid and a.kind = 'APPLIED')) and e.kind in ('APPLIED', 'REVERSED') and e.created_at <= ${p.receipt.issuedAt}`;
+    const left = Number(then.open) - Number(then.trust) - Number(then.earlier) - Number(credit.applied);   // before this payment, when it went to operating
     let applied: number, trust: PaymentView["trust"] = null;
     if (p.receivedInto === "TRUST" && p.trustEntry) {
       const e = p.trustEntry, party = e.personId ? { personId: e.personId } : { companyId: e.companyId };
@@ -226,12 +230,12 @@ export class InvoiceMoney {
   }
   /** Who the document is from and to: the firm's name and tax number, the bill-to's name and email (the company's primary contact's). */
   private async letterhead(tx: Reader, firm: string, v: InvoiceView): Promise<Letterhead & { email: string | null; operatingDetails: string | null }> {
-    const f = await tx.platformFirm.findFirst({ where: ownFirm(firm), select: { operatingName: true } }), s = await tx.moneyPaymentSettings.findFirst({ where: firmScope(firm), select: { taxNumber: true, taxRegistered: true, operatingDetails: true } });
+    const f = await tx.platformFirm.findFirst({ where: ownFirm(firm), select: { operatingName: true, businessAddress: true } }), s = await tx.moneyPaymentSettings.findFirst({ where: firmScope(firm), select: { taxNumber: true, taxRegistered: true, operatingDetails: true } });
     const who = v.personId
       ? await tx.foPerson.findFirst({ where: firmScope(firm, { id: v.personId }), select: { givenNames: true, familyName: true, email: true } }).then((x) => ({ name: [x?.givenNames, x?.familyName].filter(Boolean).join(" "), email: x?.email ?? null }))
       : { name: (await tx.foCompany.findFirst({ where: firmScope(firm, { id: v.companyId! }), select: { operatingName: true } }))?.operatingName ?? "",
           email: (await tx.foCompanyContact.findFirst({ where: firmScope(firm, { companyId: v.companyId!, role: "PRIMARY" as const, validTo: null }), select: { person: { select: { email: true } } } }))?.person.email ?? null };
-    return { firmName: f?.operatingName ?? "", taxNumber: s?.taxRegistered ? s.taxNumber : null, billTo: who.name || "Client", email: who.email, operatingDetails: s?.operatingDetails?.trim() || null };
+    return { firmName: f?.operatingName ?? "", firmAddress: addressOf(f?.businessAddress), taxNumber: s?.taxRegistered ? s.taxNumber : null, billTo: who.name || "Client", email: who.email, operatingDetails: s?.operatingDetails?.trim() || null };
   }
   private async invoiceOf(tx: Reader, firm: string, f: Facts): Promise<RenderData> { return invoiceData(f.view, { ...(await this.letterhead(tx, firm, f.view)), issuedOn: f.issuedOn ?? "" }); }
   private async receiptOf(tx: Reader, firm: string, p: Awaited<ReturnType<InvoiceMoney["paymentView"]>>["payment"], extraMinor: number): Promise<RenderData> {
