@@ -182,3 +182,38 @@ CI and the merge batch on 8ef2e0926, which I cannot see from here.
 
 **Verdict: Approve** at 8ef2e0926c23bf2103ae7011b543d47de0a09865. Merge on green CI for this commit.
 Reviewer: Approve 8ef2e0926c23bf2103ae7011b543d47de0a09865
+
+## Round 5 (diff only: 782f481e6bf90dce4dcb7cfafb27ecb138bfcfc2 → d33d518c1788a45a40233ea92d28b90df2777589)
+The tech lead allowed this round. Merge batch run 45042202751, testing on main bc1f39c08, failed `shard (23)`. The failure was in `tests/check_pf30s_find_box_browser.ts`, the find box (PF-30s), which belongs to another lane. It timed out twice at line 210 (`page.waitForFunction: Timeout 15000ms exceeded`), after F9's Enter opened a lead. The builder found that this is the race #3109 later fixed on main (97ee46025). The builder's only change is a merge of origin/main, d33d518c.
+
+### 1. d33d518c is a pure merge
+* **Parents.** The first parent is 782f481e6bf90dce4dcb7cfafb27ecb138bfcfc2, the last approved head. The second parent is 665a89c67 (main, "Merge pull request #3111"). Both 97ee46025 and bc1f39c08 are ancestors of 665a89c67.
+* **No conflict resolutions.** `git show --cc d33d518c` prints the header and no diff.
+* **This PR's files.** Over the listed files, `git diff 782f481e d33d518c --stat` shows one file only: `.mergify.yml`, 4 lines in and 1 out. All of those lines are main's (Lead 4, 22 Nov: `merge_queue.max_parallel_checks` 12 → 4, lines 12-15). This PR's one line in `.mergify.yml`, the `api/src/search/*.ts` scope entry for card api-cases, is untouched; it now sits at line 52 instead of 49. Main did not touch `check_csw3_firm_scope.ts`, the other code files, the contract, the test or the row card. **None of this PR's lines were touched.**
+* **The PR's diff against main is unchanged.** I compared `git diff 73c4e4dcd 782f481e` (old merge base to old head) with `git diff 665a89c67 d33d518c` (main to new head). Both cover the same 13 files, 791 lines in and 4 out, with the same content. They differ only in `.mergify.yml`'s blob ids and hunk offset (`@@ -49` → `@@ -52`). The code reviewed in rounds 1-4 is exactly what would merge.
+
+### 2. The root-cause claim holds
+* **The failing step.** At bc1f39c08, lines 208-210 of the find-box check are:
+  * line 208: after F9's Enter, wait for an `h1` and the find box;
+  * line 209: press "/" and type `Kit<run>`;
+  * line 210: wait up to 15 s for `[data-find-live]` to contain "result".
+* **The race.** 97ee46025's message names this same TimeoutError at line 210. The cause it gives: on a slow runner, Enter changes the address at once, but /home's PlatformFrame, which has its own `h1` and find box, stays drawn. The wait at line 208 therefore matches the old page, and "/" plus the typing land in a box that React then unmounts. The new box never sends `Kit<run>`, so the live region never says "result" and the 15 s wait runs out. That is a page-side race, not a server delay. The fix adds `onSales()`, which waits for `header [aria-label="Sales home"]`, something only the Sales frame carries. It is used at lines 113, 127 and 218 of the test at d33d518c. The test, `web/src/modules/platform/find/`, `ports/find.ts` and `api/src/platform/find/` are byte-identical to main 665a89c67 at d33d518c.
+* **This PR's finder cannot account for a 15 s timeout.** `api/src/search/case-finder.ts:21` registers "case" on the find door. The door's `runFinders` (`ports/find.ts:95-117`) runs every finder at once under `Promise.all`, and each finder is cut off at `FIND_BUDGET_MS = 400` (`ports/find.ts:14`). A slow or failing case finder is dropped and the answer is marked partial; it is never held. So the case finder adds at most about 0.4 s to an answer. For `Kit<run>` the case side has no matching people (the test creates only leads), so it adds a query and no hits. Even if it were dropped, `find-box.tsx:115` still says the count ("2 results") whenever there are hits, partial or not. The "result" text depends only on the front-office leads.
+* **The same query already passed in the same run.** The test reached line 210 only after line 197 had waited for "result" on the identical query `Kit<run>`, through the same door and the same case finder, and passed. What differs at line 210 is the route change just before it, which is the race 97ee46025 closes.
+* **Conclusion.** It is not plausible that the extra finder causes the failure. At worst it adds under 0.4 s on a slow runner, which might make the page-side race slightly more likely to show up, but it cannot cause a 15 s wait. The bc1f39c08 check fails at that step without this PR, as 97ee46025 itself records (two batches on main 5dd56f9; 4 of 5 local runs with the CPU slowed 6x).
+
+### 3. The builder's runs
+On an isolated copy of d33d518c, the builder reports:
+* the old check, slowed 6x, failed once in two runs at that step;
+* the fixed check passed 82/82 twice slowed and three times at normal speed.
+
+This matches 97ee46025's own evidence (3/3 slowed and 3/3 normal after the fix). As allowed, I did not re-run the browser suite.
+
+### Findings
+* None at Blocker, Major or Minor (no file or line: the merge changes none of this PR's lines). The round 4 nit (`tests/check_csw3_firm_scope.ts:267-270`, comment wording) still stands and is not blocking. The code, deviations and journey score (9.4 / 10) from rounds 2-4 still stand: no product file of this PR changed.
+
+### Not checked
+CI and the merge batch on d33d518c, which I cannot see from here.
+
+**Verdict: Approve** at d33d518c1788a45a40233ea92d28b90df2777589. Merge on green CI for this commit.
+Reviewer: Approve d33d518c1788a45a40233ea92d28b90df2777589
