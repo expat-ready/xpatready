@@ -19,6 +19,8 @@ import { PersonMergeRefused, type MergeRefusalCode } from "../ports/person-merge
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { COLUMNS } from "../api/src/front-office/duplicates/merge/columns.ts";
 import { PersonMergeAdapter } from "../api/src/front-office/duplicates/merge/port.ts";
+import { MergeBusy } from "../api/src/front-office/duplicates/merge/service.ts";
+import { isBusy } from "../api/src/busy.ts";
 import { Duplicates, wonDuplicates } from "../api/src/front-office/duplicates/service.ts";
 import { possibleMatch } from "../api/src/front-office/sales/arrival.ts";
 import { Activity } from "../api/src/front-office/sales/calls.ts";
@@ -329,11 +331,15 @@ try {
   // Round 3 M1: writers that lock a record before its rows. Each holder takes its first lock, the merge starts and must
   // queue behind it without taking anything the holder needs next; then the holder takes its second lock and commits.
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  const lockRace = async (what: string, first: string, second: string, run: () => Promise<unknown>) => {
-    const holder = db.$transaction(async (t) => { await t.$queryRawUnsafe(first); await sleep(500); await t.$queryRawUnsafe(second); }, { timeout: 20000 }).then(() => "ok", (e) => String(e));
+  // Lead 5's ruling (round 4): merge and Undo never wait while holding locks (NOWAIT, back-off, then Busy), so the holder
+  // always finishes; the merge either finishes after its back-off or answers Busy and then works when tried again.
+  const outcome = (p: Promise<unknown>) => p.then(() => "ok", (e) => (e instanceof MergeBusy ? "busy" : String(e)));
+  const lockRace = async (what: string, first: string, second: string, run: () => Promise<unknown>, holdMs = 500) => {
+    const holder = db.$transaction(async (t) => { await t.$queryRawUnsafe(first); await sleep(holdMs); await t.$queryRawUnsafe(second); }, { timeout: 20000 }).then(() => "ok", (e) => String(e));
     await sleep(150);
-    const [h, m] = await Promise.all([holder, run().then(() => "ok", (e) => String(e))]);
-    ok(`FO-9b DW4 pass (round 3 M1): ${what}: no deadlock, both finish`, h === "ok" && m === "ok", { holder: h.slice(0, 200), merge: m.slice(0, 200) });
+    const [h, m] = await Promise.all([holder, outcome(run())]);
+    const again = m === "busy" ? await outcome(run()) : m;
+    ok(`FO-9b DW4 pass (rounds 3-4 M1): ${what}: no deadlock; the writer finishes; the merge finishes (at once or after Busy)`, h === "ok" && (m === "ok" || m === "busy") && again === "ok", { holder: h.slice(0, 200), merge: m.slice(0, 200), again: again.slice(0, 200) });
   };
   const cA = randomUUID(), cB = randomUUID(), kA = await pairOf(), kB = await pairOf();
   sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${cA}', '${A}', 'Alder Co (Sample)', 'alder co', 'seed:fo9b', now()), ('${cB}', '${A}', 'Alder Company (Sample)', 'alder company', 'seed:fo9b', now());
@@ -353,6 +359,67 @@ try {
   await lockRace("a person merge while a note on a prospect holds the prospect and then its lead (calls.ts's order)",
     `select 1 from fo_prospect where id = '${prD.id}' for update`, `select 1 from fo_lead where id = '${kD.lLead}' for update`,
     () => merge({ kind: "PERSON", survivor_fo_id: kD.s, loser_fo_id: kD.l }));
+  // Round 4 M1: the Corporate writers whose order no fixed lock order can serve, and Undo against the same holders.
+  const kG = await pairOf(), cG = randomUUID();
+  sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${cG}', '${A}', 'Cedar Co (Sample)', 'cedar co', 'seed:fo9b', now());
+       insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${cG}', '${kG.l}', 'HR', 'seed:fo9b')`);
+  await lockRace("a person merge while Corporate engage holds the loser's lead and then the company it links (engage's order)",
+    `select 1 from fo_lead where id = '${kG.lLead}' for update`, `select 1 from fo_company where id = '${cG}' for update`,
+    () => merge({ kind: "PERSON", survivor_fo_id: kG.s, loser_fo_id: kG.l }));
+  const kH = await pairOf(), cH = randomUUID(), prH = await pros.engage(R, kH.lLead) as { id: string };
+  sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${cH}', '${A}', 'Dogwood Co (Sample)', 'dogwood co', 'seed:fo9b', now());
+       insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${cH}', '${kH.l}', 'HR', 'seed:fo9b')`);
+  await lockRace("a person merge while change-type holds the loser's prospect and then the company (changeType's order)",
+    `select 1 from fo_prospect where id = '${prH.id}' for update`, `select 1 from fo_company where id = '${cH}' for update`,
+    () => merge({ kind: "PERSON", survivor_fo_id: kH.s, loser_fo_id: kH.l }));
+  const kI = await pairOf(), cI = randomUUID();
+  sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${cI}', '${A}', 'Elm Co (Sample)', 'elm co', 'seed:fo9b', now());
+       insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${cI}', '${kI.l}', 'SIGNATORY', 'seed:fo9b')`);
+  const prI = await pros.engage(R, kI.lLead) as { id: string };
+  const { merge_ref: iref } = await merge({ kind: "PERSON", survivor_fo_id: kI.s, loser_fo_id: kI.l });
+  const linkI = sql(`select id from fo_company_contact where company_id = '${cI}'`);
+  await lockRace("an Undo while a contact edit holds the moved link's company and then changes the link",
+    `select 1 from fo_company where id = '${cI}' for update`, `select 1 from fo_company_contact where id = '${linkI}' for update`,
+    () => undo(iref));
+  const kJ = await pairOf(), prJ = await pros.engage(R, kJ.lLead) as { id: string };
+  const { merge_ref: jref } = await merge({ kind: "PERSON", survivor_fo_id: kJ.s, loser_fo_id: kJ.l });
+  await lockRace("an Undo while a note on the moved prospect holds the prospect and then its lead",
+    `select 1 from fo_prospect where id = '${prJ.id}' for update`, `select 1 from fo_lead where id = '${kJ.lLead}' for update`,
+    () => undo(jref));
+  void prI;
+  // A company merge and a person merge of people linked across the two companies, at once (round 4 M2), 10 times.
+  const crossOut: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const x = randomUUID(), y = randomUUID(), kp = await pairOf();
+    sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${x}', '${A}', 'Fir ${i} Co (Sample)', 'fir ${i} co', 'seed:fo9b', now()), ('${y}', '${A}', 'Fir ${i} Company (Sample)', 'fir ${i} company', 'seed:fo9b', now());
+         insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${x}', '${kp.l}', 'HR', 'seed:fo9b'), ('${A}', '${y}', '${kp.s}', 'BILLING', 'seed:fo9b')`);
+    const [first, second] = i % 2 ? [x, y] : [y, x];
+    const r = await Promise.all([outcome(merge({ kind: "COMPANY", survivor_fo_id: first, loser_fo_id: second })), outcome(merge({ kind: "PERSON", survivor_fo_id: kp.s, loser_fo_id: kp.l }))]);
+    crossOut.push(...r);
+  }
+  ok("FO-9b DW4 pass (round 4 M2): 10 company merges racing person merges of people linked across both companies: no deadlock (each finishes or answers Busy)",
+    crossOut.every((o) => o === "ok" || o === "busy"), crossOut.filter((o) => o !== "ok" && o !== "busy").slice(0, 2));
+  // Busy, then the caller's transaction is still usable (the savepoint), and nothing was merged.
+  const kK = await pairOf(), cK = randomUUID();
+  sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${cK}', '${A}', 'Grove Co (Sample)', 'grove co', 'seed:fo9b', now());
+       insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${cK}', '${kK.l}', 'HR', 'seed:fo9b')`);
+  const longHold = db.$transaction(async (t) => { await t.$queryRawUnsafe(`select 1 from fo_company where id = '${cK}' for update`); await sleep(2500); }, { timeout: 20000 });
+  await sleep(150);
+  let busyOut = "", after = "";
+  await inFirm(A, async (t) => {
+    try { await merger.mergePersons(t, R, { kind: "PERSON", survivor_fo_id: kK.s, loser_fo_id: kK.l }); busyOut = "merged"; } catch (e) { busyOut = e instanceof MergeBusy ? "busy" : String(e); }
+    after = (await t.$queryRawUnsafe<{ n: number }[]>(`select count(*)::int as n from fo_person where id = '${kK.l}'`))[0].n === 1 ? "usable" : "?";
+  });
+  await longHold;
+  ok("FO-9b DW4 fail (Lead 5's ruling): a lock held past the back-off → MergeBusy (55P03, busy.ts reads it as try again); the caller's transaction stays usable; nothing merged",
+    busyOut === "busy" && after === "usable" && isBusy(new MergeBusy()) && sql(`select coalesce(merged_into_id::text, 'live') from fo_person where id = '${kK.l}'`) === "live", { busyOut, after });
+  // A crafted standing record for a live loser → a later merge of that loser answers ALREADY_MERGED (no raw P2002).
+  const kL = await pairOf(), kM = await pairOf();
+  const { merge_ref: lref } = await merge({ kind: "PERSON", survivor_fo_id: kM.s, loser_fo_id: kM.l });
+  sql(`insert into fo_dup_merge (firm_id, kind, survivor_id, loser_id, loser_snapshot, survivor_before, choices, by) select firm_id, kind, '${kL.s}', '${kL.l}', loser_snapshot, survivor_before, choices, by from fo_dup_merge where id = '${lref}'`);
+  ok("FO-9b DW4 fail (round 4 m4″): a loser with a standing (crafted) merge record → 409 ALREADY_MERGED before anything is written",
+    (await refusedAs(() => merge({ kind: "PERSON", survivor_fo_id: kL.s, loser_fo_id: kL.l }), "ALREADY_MERGED")) === true && count("fo_lead", `person_id = '${kL.l}'`) === 1);
+
   // An arrival whose possible match is merged while it is in flight (round 2-3 m1): it waits, then flags no tombstone.
   const kE = await pairOf();
   let rel2!: () => void, merged2!: () => void;
