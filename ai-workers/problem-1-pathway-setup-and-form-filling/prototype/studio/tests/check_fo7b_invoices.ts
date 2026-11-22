@@ -315,10 +315,10 @@ try {
     && sql(`select string_agg(kind || ':' || amount_minor || ':' || balance_after_minor, ',' order by seq) from money_trust_entry where person_id = '${PT}'`) === "DEPOSIT:15000:15000,WITHDRAWAL_TO_INVOICE:-11300:3700" && sql(`select kind from money_receipt where payment_id = '${tPay.body.id}'`) === "PAYMENT", tPay.body);
   // Lead 91's read of #2204: a move to a case writes a − half whose own row may be below zero while the pair nets to
   // zero. The figure this part shows (the newest entry's balance) never reads that row as a shortfall.
-  const PM = person(A, "m"), [pa, pb, ea, eb, em, CASE] = Array.from({ length: 6 }, () => randomUUID());
+  const PM = person(A, "m"); let who = PM; const [pa, pb, ea, eb, em, CASE] = Array.from({ length: 6 }, () => randomUUID());
   const dep = (pid: string, eid: string, minor: number, caseId: string | null) => `insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${pid}', '${A}', 'E_TRANSFER', ${minor}, 'CAD', 'TRUST', now(), 'seed-${pid}', 'seed:FO-7b-1b');
-    insert into money_trust_entry (id, firm_id, person_id, case_id, kind, amount_minor, currency, payment_id, created_by) values ('${eid}', '${A}', '${PM}', ${caseId ? `'${caseId}'` : "null"}, 'DEPOSIT', ${minor}, 'CAD', '${pid}', 'seed:FO-7b-1b');`;
-  const entry = (cols: string, vals: string) => `insert into money_trust_entry (firm_id, person_id, currency, created_by, ${cols}) values ('${A}', '${PM}', 'CAD', 'seed:FO-7b-1b', ${vals});`;
+    insert into money_trust_entry (id, firm_id, person_id, case_id, kind, amount_minor, currency, payment_id, created_by) values ('${eid}', '${A}', '${who}', ${caseId ? `'${caseId}'` : "null"}, 'DEPOSIT', ${minor}, 'CAD', '${pid}', 'seed:FO-7b-1b');`;
+  const entry = (cols: string, vals: string) => `insert into money_trust_entry (firm_id, person_id, currency, created_by, ${cols}) values ('${A}', '${who}', 'CAD', 'seed:FO-7b-1b', ${vals});`;
   sql(`begin; ${dep(pa, ea, 10000, null)} ${dep(pb, eb, 5000, CASE)} commit;`);
   sql(entry("case_id, kind, amount_minor, reason", `'${CASE}', 'REFUND_TO_CLIENT', -5000, 'Sample refund'`)); sql(entry("case_id, kind, amount_minor, reason, corrects_entry_id, correction_kind", `'${CASE}', 'CORRECTION', -5000, 'Recorded twice (Sample)', '${eb}', 'RECORDED_BY_MISTAKE'`));
   sql(`begin; ${entry("id, kind, amount_minor", `'${em}', 'MOVE_TO_CASE', -10000`)} ${entry("case_id, kind, amount_minor, moved_from_entry_id", `'${CASE}', 'MOVE_TO_CASE', 10000, '${em}'`)} commit;`);
@@ -328,6 +328,23 @@ try {
     halfRow === -5000 && mPay.status === 201 && mPay.body.trust?.balanceMinor === 5000 && sql(`select count(*) from money_trust_shortfall where person_id = '${PM}'`) === "0", [halfRow, mPay.body]);
   ok("FO-7b ledger fail (planted): a check that reads any one row below zero as a shortfall flags this party, and is caught (the shown figure is not below zero)",
     plantedShort(sql(`select string_agg(balance_after_minor::text, ',') from money_trust_entry where person_id = '${PM}'`).split(",").map(Number)) && !plantedShort([mPay.body.trust.balanceMinor]));
+  // Break report d6948072e F1 (Major): a client already below zero in trust (a reversal, P-634) pays into trust. The money
+  // is recorded and only what the ledger then holds is applied; it was a 409 that recorded nothing.
+  const PZ = person(A, "z"), [pz, ez] = [randomUUID(), randomUUID()]; who = PZ;
+  sql(`begin; ${dep(pz, ez, 5000, null)} commit;`); sql(entry("kind, amount_minor, reason", `'REFUND_TO_CLIENT', -5000, 'Sample refund'`)); sql(entry("kind, amount_minor, reason, corrects_entry_id, correction_kind", `'CORRECTION', -5000, 'Recorded twice (Sample)', '${ez}', 'RECORDED_BY_MISTAKE'`));
+  const invZ = await issued(10000, 0, {}, PZ), zPay = await pay(invZ.id, 10000, { receivedInto: "TRUST" });
+  ok("FO-7b P pass (break F1): a client at −50.00 in trust pays 100.00 into trust on a 100.00 invoice → 201: the deposit is recorded (balance 50.00), 50.00 is applied, 50.00 stays due, and the ledger never goes below zero by this payment",
+    zPay.status === 201 && zPay.body.trust?.depositedMinor === 10000 && zPay.body.trust.appliedMinor === 5000 && zPay.body.trust.balanceMinor === 0 && zPay.body.invoice.dueMinor === 5000 && zPay.body.invoice.statusWord === "Part paid" && zPay.body.extra?.note === null, zPay.body);
+  ok("FO-7b P fail (break F1, stand-in): the old rule (apply all that is due, whatever the ledger holds) would ask the database for a 100.00 withdrawal from 50.00, which it refuses", Math.min(10000, invZ.dueMinor) > 5000 && sql(`select min(balance_after_minor) from money_trust_entry where person_id = '${PZ}' and seq > 3`) === "0");
+  // Break report F2 (Major): a receipt never changes after it is issued (AG-6-63 rule 8). The cheque's receipt said 630.00
+  // due; since then three more payments were recorded on that invoice.
+  const recLater = await pdfText(`${invP.id}/payments/${c1.body.id}/receipt.pdf`), recOver = await pdfText(`${invP.id}/payments/${over.body.id}/receipt.pdf`);
+  ok("FO-7b P pass (break F2): read again after later payments, the cheque's receipt is word for word the one issued (630.00 due after it); the overpaying receipt keeps its own 80.00 extra",
+    recLater.text === recC.text && /CAD 80\.00 is more than this invoice asked/.test(recOver.text) && /after this payment: CAD 0\.00/.test(recOver.text), [recLater.text, recOver.text]);
+  ok("FO-7b P fail (break F2, planted): a receipt printed from today's balance would say 0.00 for the cheque, and the case catches it", invP.id === c1.body.invoiceId && (await call(tA, "GET", `${M}/${invP.id}`)).body.dueMinor === 0 && !/after this payment: CAD 0\.00/.test(recLater.text));
+  // Break report F4, F6, F7 (Minors): a due date before 2000 is 422 (was 500); an invoice of 0.00 is not issued; a cancelled invoice is not sent.
+  const dZero = await draft(); await line(dZero.body.id, fee(0, 0)); const zero = await post(`${dZero.body.id}/issue`), oldDue = await post(`${dZero.body.id}/issue`, { dueDate: "0000-01-01" });
+  ok("FO-7b I fail (break F4, F7): a due date of 0000-01-01 → 422 at dueDate, never 500; an invoice whose total is 0.00 → 409 NOTHING_TO_BILL; it stays a draft", oldDue.status === 422 && zero.status === 409 && zero.body.code === "NOTHING_TO_BILL" && sql(`select issued_at is null from money_invoice where id = '${dZero.body.id}'`) === "t", [oldDue.body, zero.body]);
 
   // ------------------------------------------------------------------------------------ C: credit notes (AG-6-48)
   const invC = await issued(250000);   // 2,825.00
@@ -340,6 +357,8 @@ try {
   const cn2 = await post(`${invC.id}/credit-notes`, { full: true, reason: "Wrong amount" }), cn3 = await post(`${invC.id}/credit-notes`, { full: true, reason: "Again" }), payCancelled = await pay(invC.id, 100);
   ok("FO-7b C pass: a full credit note cancels what is left (CN-0002, 2,542.50): Credited, the number kept, invoice.voided written", cn2.status === 201 && cn2.body.number === "CN-0002" && cn2.body.amountMinor === 254250 && cn2.body.invoice.statusWord === "Credited" && cn2.body.invoice.number === invC.number && events(MONEY_EVENT.INVOICE_VOIDED, invC.id) === "1", cn2.body);
   ok("FO-7b C fail: a credit note on the cancelled invoice → 409 NOTHING_LEFT; a payment on it → 409 CANCELLED; nothing written", cn3.body.code === "NOTHING_LEFT" && payCancelled.body.code === "CANCELLED" && sql(`select count(*) from money_credit_note where invoice_id = '${invC.id}'`) === "2" && sql(`select count(*) from money_payment where invoice_id = '${invC.id}'`) === "0", [cn3.body, payCancelled.body]);
+  const sentCancelled = await post(`${invC.id}/send`), mailsBefore = mail.sent.length;
+  ok("FO-7b E fail (break F6): a cancelled invoice is not sent (409 CANCELLED, no email)", sentCancelled.status === 409 && sentCancelled.body.code === "CANCELLED" && mail.sent.length === mailsBefore, sentCancelled.body);
   const cTrust = await post(`${invT.id}/credit-notes`, { full: true, reason: "Cancel" });
   ok("FO-7b C fail: crediting an invoice paid from trust → 409 TRUST_PAID in words (return the money to trust first), never the database's 500", cTrust.status === 409 && cTrust.body.code === "TRUST_PAID" && /CAD 113\.00 of INV-\d+ was paid from trust/.test(cTrust.body.detail), cTrust.body);
   const invW = await issued(5000, 0); await pay(invW.id, 4900); sql(`insert into money_write_off (firm_id, invoice_id, amount_minor, currency, reason, created_by) values ('${A}', '${invW.id}', 100, 'CAD', 'Small balance (Sample)', 'seed:FO-7b-1b')`);
