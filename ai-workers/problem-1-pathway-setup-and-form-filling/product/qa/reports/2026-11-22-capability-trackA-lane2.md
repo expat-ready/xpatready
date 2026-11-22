@@ -16,7 +16,7 @@ All five were already on main before this lane started (no new journey written; 
 | Row | Merged | Open |
 |---|---|---|
 | R1.10 | PF-28 part 4 #2908 (09:00 UTC) | PF-28 part 5 #2933 (approved, queued) |
-| R1.88 | AUD-4 #2339 | AUD-4s part 2 #2916 (approved, **dequeued**) |
+| R1.88 | AUD-4 #2339, AUD-4s part 2 #2916 (17:18 IST) | — |
 | R1.102 | PF-30a #2884, CS-S1 part 1 #2035 | CS-S1 part 2 #2913, PF-30s #2921 (both approved) |
 | R1.23 | PF-13 parts 1a, 1b, part 2 #2910 (16:34 IST) | — |
 | R1.104 | FO-5 parts 1-2 | FO-3c #2922 |
@@ -37,10 +37,16 @@ Walked within 10 min of #2910's merge (16:34 IST). `j_23` on isolated copies :44
 * **FAIL W4:** the public booking page draws no logo, banner, favicon or brand colour. Done when "client pages … show them" not met → **QA-743** (Gap, Major). PF-13's own Done when names client pages ("a saved logo shows on the client signing page"; FO-3w option (b) leaves the logo and colour on the booking page to PF-13), so this is a gap of the merged parts, not an unbuilt later row.
 * Not run: walks.yml on GitHub (a cloud lane asks the Lead; no Works claim made).
 
+## Verdict R1.88 — Works (22 Nov 17:2x IST, main f198c943b)
+Walked within 10 min of #2916's merge (17:18 IST).
+* GitHub (P-339): walks.yml 45019288306 (job 137198530530) and 45019291303 (job 137198572385), j_88 success twice on f198c943b (this lane dispatched both; the second was a duplicate click, kept as the second run). PR head walk 45011253504 success; merge-queue ci 45015795367 success.
+* Local: `j_88` on fresh isolated copies :4477 and :4478: 26/26 PASS, exit 0, twice.
+* All of the Done when holds: Owner and Admin filter by person, record and date and export (row-by-row match with audit_event, one audit.exported line); the four other roles refused on screen and by API (403); 375/1024/1440 axe clean. Screenshots: `2026-11-22-capability-trackA-lane2/R1.88-f198c943b/`.
+
 ## Questions for the Lead
 1. R1.10: after #2933, j_10 is still red on platform, FO sales and booking routes, run-time schemas (20 > 19), the case side's malformed ids and QA-507. Which parts own these (PF-28 part 2 residue, part 4 follow-up)? Without them R1.10 is Partial, not Works.
 2. R1.23 W4 is now QA-743 (Gap, Major): which lane draws the brand on the public booking page (PF-13 follow-up or FO-3w)? R1.104 W2/W3/W5 (poller, panel, queued reminder) have no part in an open PR. Are they backlog rows, or does the row's Done when accept the email-only / API-only scope?
-3. #2916 was dequeued: is it coming back to the queue?
+3. (answered: #2916 merged 17:18 IST; R1.88 Works.)
 
 ## Suggestions
 * *Needed for the proof · Capability:* a backlog row for the brand on the public booking page (R1.23 W4) and the FO-3c poller + panel (R1.104 W2/W3).
