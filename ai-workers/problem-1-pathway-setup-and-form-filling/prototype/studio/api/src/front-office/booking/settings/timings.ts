@@ -19,6 +19,7 @@ import { firmScope } from "../../../platform/firm-scope.ts";
 import { platformAuditWorkspaceId } from "../../../platform/identity/audit.ts";
 import { forbidden } from "../../../platform/identity/keys.ts";
 import { registerSetting, writeSetting } from "../../../platform/settings.ts";
+import { FIELD_ERROR_STATUS, parseInput } from "../../../platform/http/input.ts";
 
 type Db = Prisma.TransactionClient | PrismaClient;
 const EDIT = "agent/booking-event-type:edit";
@@ -112,8 +113,8 @@ const FirmTimingsBody = z.strictObject({
 
 const invalid = (fields: Record<string, string>) => {
   const [first] = Object.entries(fields);
-  return new HttpException({ type: "https://expatready.local/problems/invalid", title: "Please check the highlighted details", status: 400, detail: first[1], code: "INVALID", fields,
-    issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) }, 400);
+  return new HttpException({ type: "https://expatready.local/problems/invalid", title: "Please check the highlighted details", status: FIELD_ERROR_STATUS, detail: first[1], code: "INVALID", fields,
+    issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) }, FIELD_ERROR_STATUS);
 };
 
 export class FirmTimingsService {
@@ -137,6 +138,7 @@ export class FirmTimingsService {
    *  the settings home (one audit line each, before and after), all in one transaction, so a refusal saves nothing. A
    *  change applies to new slots and bookings only (rule 8). */
   async write(ctx: StaffContext, body: unknown) {
+    parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
     const r = FirmTimingsBody.safeParse(body ?? {});
     if (!r.success) {
       const fields: Record<string, string> = Object.create(null);   // a key such as "constructor" is a field like any other (break m1)

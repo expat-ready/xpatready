@@ -23,7 +23,7 @@ export function PricingPage() {
       <Place />
       <section aria-labelledby="pricing-h" className="mx-auto mt-6 max-w-5xl" data-pricing>
         <h1 id="pricing-h" className="text-xl font-semibold">Plans for immigration firms</h1>
-        <p className="mt-1 text-sm text-text-muted">No card needed. Every plan starts with a free trial. Plan names and prices are Sample.</p>
+        <p className="mt-1 text-sm text-text-muted">No card needed.{plans.length && plans.every((p) => p.trialDays > 0) ? " Every plan starts with a free trial." : ""} Plan names and prices are Sample.</p>
         <fieldset className="mt-4 inline-flex rounded-lg border border-border p-1" data-period>
           <legend className="sr-only">Billing period</legend>
           {(["MONTHLY", "YEARLY"] as const).map((p) => (
@@ -46,8 +46,9 @@ export function PricingPage() {
                         : <p className="mt-2 text-sm text-text-muted" data-price-missing>Price not shown</p>}
                       {price ? <p className="text-xs text-text-muted">{q.data.taxNote}</p> : null}
                       <p className="mt-3 text-sm">{p.seatsLimit === null ? "Unlimited seats" : `Up to ${p.seatsLimit} ${p.seatsLimit === 1 ? "seat" : "seats"}`}</p>
-                      <p className="text-sm text-text-muted">{p.trialDays}-day free trial · no card needed</p>
-                      <Link to={`/sign-up?plan=${encodeURIComponent(p.code)}&period=${period}`} className={cn(buttonVariants({ variant: i === middle ? "default" : "outline", size: "lg" }), "mt-5")} data-start={p.code}>Start free trial</Link>
+                      {/* QA-742: 0 days = no trial (SA-3-46): no trial line and no "free trial" on the button */}
+                      {p.trialDays > 0 ? <p className="text-sm text-text-muted" data-trial>{p.trialDays}-day free trial · no card needed</p> : null}
+                      <Link to={`/sign-up?plan=${encodeURIComponent(p.code)}&period=${period}`} className={cn(buttonVariants({ variant: i === middle ? "default" : "outline", size: "lg" }), "mt-5")} data-start={p.code}>{p.trialDays > 0 ? "Start free trial" : "Sign up"}</Link>
                     </li>
                   );
                 })}
