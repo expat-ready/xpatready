@@ -221,7 +221,11 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 36 batch|../../.github/workflows/ci.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: true/|check-pr-concurrency.sh
 36 stale|../../.github/workflows/walks.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: false/|check-pr-concurrency.sh
 36 group|../../.github/workflows/module-cards.yml|/^  group: module-cards-/d|check-pr-concurrency.sh
-36 comment|../../.github/workflows/review-rounds.yml|s/ .. github.event.issue.number//|check-pr-concurrency.sh
+36 comment|../../.github/workflows/review-rounds.yml|s/github.event.issue.number .. //|check-pr-concurrency.sh
+36 deadlock|../../.github/workflows/review-rounds.yml|s/^jobs:$/concurrency:\n  group: review-rounds-${{ github.event.pull_request.number }}\njobs:/|check-pr-concurrency.sh
+36 kind|../../.github/workflows/ci.yml|/^  kind:$/,/^    if:/{/^    if:/d}|check-pr-concurrency.sh
+36 batchcancel|../../.github/workflows/guards.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: true/|check-pr-concurrency.sh
+36 rerun|product/tools/queue-gate.sh|s/^    \[ "\$now" = "\$head" \] .. {.*/    true/|check-queue-gate.sh
 36 ready|../../.github/workflows/guards.yml|/^    types: \[opened, synchronize, reopened, ready_for_review\]$/d|check-pr-concurrency.sh
 36 draft|../../.github/workflows/trace.yml|/SPD-2 item 5 (b): not on a draft/d|check-pr-concurrency.sh
 35 report|../../.github/workflows/pr-suites.yml|/^        if: steps.setup.outcome == .success.$/{n;d;}|check-pr-suites-job.sh
