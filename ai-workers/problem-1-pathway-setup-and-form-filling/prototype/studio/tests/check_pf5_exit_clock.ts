@@ -79,7 +79,7 @@ try {
 
   {
     const p = (exitFeature.providers ?? []) as { provide?: unknown; inject?: unknown[] }[];
-    ok("feature pass: platform-billing-exit.ts registers ExitNotices (with the billing ports, the messages mail and PF-14's runner) and no route", p.length === 1 && p[0].provide === ExitNotices && (p[0].inject?.length ?? 0) === 4 && !(exitFeature.controllers ?? []).length, p.length);
+    ok("feature pass: platform-billing-exit.ts registers ExitNotices (with the billing ports, the messages mail and PF-14's runner) and no route", p.length === 1 && p[0].provide === ExitNotices && (p[0].inject?.length ?? 0) === 4 && !("controllers" in exitFeature), p.length);
   }
 
   // --------------------------------------------------------------------------- DW24: no clock, no notice
