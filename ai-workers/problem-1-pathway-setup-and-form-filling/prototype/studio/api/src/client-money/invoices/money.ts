@@ -68,7 +68,7 @@ export class InvoiceMoney {
   async record(ctx: StaffContext, invoiceId: string, body: unknown): Promise<PaymentView> {
     const id = idOf(invoiceId), p = parse(PaymentIn, body), into = p.receivedInto ?? "OPERATING", now = this.clock.now(), today = dayOf(now), receivedOn = p.receivedOn ?? today;
     if (into === "TRUST" && p.method === "CARD_TERMINAL") badField("receivedInto", "A card terminal payment goes to the operating account only, never to trust. Nothing was saved.");
-    if (receivedOn > today) badField("receivedOn", "The date received can't be in the future. Nothing was saved.");
+    if (receivedOn > today || receivedOn < "2000-01-01") badField("receivedOn", "The date received can't be in the future, or before the year 2000. Nothing was saved.");
     const firmId = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
     const done = await this.write(async (tx) => {
       const inv = await this.lock(tx, ctx.firmId, id);
@@ -191,7 +191,7 @@ export class InvoiceMoney {
    *  trust balance shown is the party's newest ledger entry's, never one row of a paired move (Lead 91's read of #2204). */
   private async paymentView(tx: Tx, firm: string, paymentId: string, replayed: boolean, today: string) {
     const firmId = firmScope(firm).firmId, p = await tx.moneyPayment.findFirst({ where: firmScope(firm, { id: paymentId }), include: { receipt: true, trustEntry: true } });
-    if (!p?.invoiceId || !p.receipt || p.method === "CARD") return notFound("payment");
+    if (!p?.invoiceId || !p.receipt) return notFound("payment");
     const f = await this.facts(tx, firm, p.invoiceId, today);
     let applied: number, trust: PaymentView["trust"] = null;
     if (p.receivedInto === "TRUST" && p.trustEntry) {
@@ -201,7 +201,12 @@ export class InvoiceMoney {
       applied = next ? -next.amountMinor : 0;
       trust = { depositedMinor: e.amountMinor, appliedMinor: applied, balanceMinor: newest!.balanceAfterMinor };
     } else {
-      const [earlier] = await tx.$queryRaw<{ paid: string }[]>`select coalesce(sum(q.amount_minor), 0)::text as paid from money_payment q where q.firm_id = ${firmId}::uuid and q.invoice_id = ${p.invoiceId}::uuid and q.received_into = 'OPERATING' and (q.created_at, q.id) < (${p.createdAt}, ${p.id}::uuid)`;
+      // Earlier = recorded before this one: the receipt numbers are taken one at a time under the invoice's lock, so
+      // their order is the order of recording (created_at is a transaction's start, which a waiting writer's precedes).
+      const mine = Number(/\d+$/.exec(p.receipt.number!)![0]);
+      const [earlier] = await tx.$queryRaw<{ paid: string }[]>`select coalesce(sum(q.amount_minor - (select coalesce(sum(x.amount_minor), 0) from money_refund x where x.firm_id = q.firm_id and x.payment_id = q.id)), 0)::text as paid
+        from money_payment q left join money_receipt r on r.firm_id = q.firm_id and r.payment_id = q.id
+        where q.firm_id = ${firmId}::uuid and q.invoice_id = ${p.invoiceId}::uuid and q.received_into = 'OPERATING' and q.id <> ${p.id}::uuid and coalesce(substring(r.number from '[0-9]+$')::bigint, 0) < ${mine}`;
       applied = Math.max(0, Math.min(p.amountMinor, f.openMinor - f.trustPaidMinor - Number(earlier.paid)));
     }
     const extraNow = p.amountMinor - applied;
