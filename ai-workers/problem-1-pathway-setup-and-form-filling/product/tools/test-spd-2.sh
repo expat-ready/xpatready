@@ -21,7 +21,7 @@ S=ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio; M="$S/pr
 G="$T/repo"; mkdir -p "$G" && cd "$G" && git init -q -b main && git config user.email t@t && git config user.name t
 mkdir -p "$SC" "$M/20261122033000_qa644_reserve_staging"
 printf 'model MoneyRow {\n  id String @id\n  @@map("money_row")\n}\n' > "$SC/client-money.prisma"
-printf 'model RuntimeCase {\n  id String @id\n  @@map("runtime_case")\n}\n' > "$SC/cases.prisma"
+printf 'model RuntimeCase {\n  id String @id\n  @@map("runtime_case")\n}\nenum CaseKind {\n  A\n}\nview CaseView {\n  id String @unique\n  @@map("case_view")\n}\n' > "$SC/cases.prisma"
 printf 'model Firm {\n  id String @id\n  @@map("platform_firm")\n}\n' > "$SC/base.prisma"
 echo 'CREATE TABLE "money_row" ("id" TEXT);' > "$M/20261122033000_qa644_reserve_staging/migration.sql"
 # a .mergify.yml with the generated slots of these three schema files (the anchors migration-slots.py --write needs)
@@ -91,6 +91,39 @@ w "CREATE TABLE of another area" 'CREATE TABLE runtime_case (id TEXT);' refused
 w "INSERT INTO" 'INSERT INTO runtime_case (id) VALUES (1);' refused
 w "a policy reading another table" 'CREATE POLICY p ON money_row USING (EXISTS (SELECT 1 FROM runtime_case c WHERE c.id = money_row.id));' passes
 w "a foreign key to another table" 'ALTER TABLE money_row ADD CONSTRAINT fk FOREIGN KEY (id) REFERENCES "runtime_case"("id");' passes
+# round 2: R2-M1 (aliases; no write read means every named table counts) and minors 1-3
+w "UPDATE t alias SET (an alias without AS)" 'ALTER TABLE money_row ADD COLUMN a TEXT; UPDATE "runtime_case" c SET id = c.id;' refused
+w "UPDATE t AS \"a\" SET (a quoted alias)" 'ALTER TABLE money_row ADD COLUMN a TEXT; UPDATE runtime_case AS "c" SET id = id;' refused
+w "a migration whose only write the patterns miss (every named table counts)" 'SELECT set_config(...) FROM runtime_case;' refused
+w "dynamic SQL over an ARRAY of tables (EXECUTE format)" "ALTER TABLE money_row ADD COLUMN a TEXT; DO \$\$ DECLARE t text; BEGIN FOREACH t IN ARRAY ARRAY['runtime_case'] LOOP EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t); END LOOP; END \$\$;" refused
+w "an error message naming a table (not a table literal)" "ALTER TABLE money_row ADD COLUMN a TEXT; DO \$\$ BEGIN EXECUTE 'SELECT 1'; RAISE EXCEPTION 'runtime_case: % is missing', 1; END \$\$;" passes
+w "ON CONFLICT DO UPDATE SET (no table there)" 'INSERT INTO money_row (id) VALUES (1) ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id;' passes
+w "GRANT ... ON a, b (the second table)" 'ALTER TABLE money_row ADD COLUMN a TEXT; GRANT SELECT ON money_row, runtime_case TO someone;' refused
+w "COMMENT ON TABLE" 'ALTER TABLE money_row ADD COLUMN a TEXT; COMMENT ON TABLE runtime_case IS $c$x$c$;' refused
+w "CREATE TYPE of another area" 'ALTER TABLE money_row ADD COLUMN a TEXT; CREATE TYPE "CaseKind" AS ENUM (\'"'"'A'"'"');' refused
+w "DROP TYPE a, b (the second type)" 'ALTER TABLE money_row ADD COLUMN a TEXT; DROP TYPE "MoneyKind", "CaseKind";' refused
+w "MERGE INTO" 'ALTER TABLE money_row ADD COLUMN a TEXT; MERGE INTO runtime_case r USING money_row m ON r.id = m.id WHEN MATCHED THEN DELETE;' refused
+w "COPY into a table" 'ALTER TABLE money_row ADD COLUMN a TEXT; COPY runtime_case FROM STDIN;' refused
+w "CREATE RULE ... AS ON ... TO" 'ALTER TABLE money_row ADD COLUMN a TEXT; CREATE RULE r AS ON INSERT TO runtime_case DO INSTEAD NOTHING;' refused
+w "a view of another area" 'ALTER TABLE money_row ADD COLUMN a TEXT; CREATE OR REPLACE VIEW case_view AS SELECT 1 AS id;' refused
+w "PARTITION OF another table" 'ALTER TABLE money_row ADD COLUMN a TEXT; CREATE TABLE money_row_p PARTITION OF runtime_case FOR VALUES IN (1);' refused
+w "a trigger on another schema's qualified name" 'ALTER TABLE money_row ADD COLUMN a TEXT; CREATE TRIGGER t AFTER INSERT ON audit.runtime_case FOR EACH ROW EXECUTE FUNCTION f();' refused
+w "a quoted policy name with spaces" 'ALTER TABLE money_row ADD COLUMN a TEXT; CREATE POLICY "case wall" ON runtime_case USING (true);' refused
+w "ALTER SEQUENCE of the table's sequence" 'ALTER TABLE money_row ADD COLUMN a TEXT; ALTER SEQUENCE runtime_case_id_seq RESTART;' refused
+w "an E'' string with an escaped quote and --" "ALTER TABLE money_row ADD COLUMN a TEXT; SELECT E'\\'--'; ALTER TABLE runtime_case ADD COLUMN b TEXT;" refused
+mig shok 20261122040000_shared__ok 'ALTER TABLE money_row ADD COLUMN s TEXT; ALTER TABLE runtime_case ADD COLUMN s TEXT;'
+out=$(chk main..shok); r=$?
+ok "3. a migration writing two areas passes when it is named shared" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+mig eq 20261122033000_client-money__eq 'ALTER TABLE money_row ADD COLUMN e TEXT;'
+out=$(chk main..eq); r=$?
+ok "3. a stamp equal to main's newest is refused (it must be after)" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+mig keep 20261118150000_client-money__keep 'SELECT 1;' cases.prisma
+out=$(chk main..keep); r=$?
+ok "3. a refusal for the stamp alone keeps the author's area" "$([ $r = 1 ] && grep -qE "Fix: git mv $M/20261118150000_client-money__keep $M/[0-9]{14}_client-money__keep" <<< "$out" && echo 1)" "exit $r: $out"
+git checkout -q -B main4 main; for x in 20991231000000_future 20261340000000_notadate; do mkdir -p "$M/$x"; echo 'SELECT 1;' > "$M/$x/migration.sql"; done; git add -A; git commit -qm main4; git checkout -q main
+git checkout -q -B b4 main4; mkdir -p "$M/20261122040000_client-money__b4"; echo 'ALTER TABLE money_row ADD COLUMN q TEXT;' > "$M/20261122040000_client-money__b4/migration.sql"; git add -A; git commit -qm b4; git checkout -q main
+out=$(chk main4..b4); r=$?
+ok "3. a bad stamp already on main (far ahead, or no date) is not taken as main's newest" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 # M2: a Prisma back-relation in another schema file does not make it shared
 mig back 20261122040000_client-money__back 'CREATE TABLE money_row2 (id TEXT REFERENCES runtime_case(id));' cases.prisma
 out=$(chk main..back); r=$?
@@ -122,6 +155,23 @@ ok "3. M3: ... and passes once mergify --write added mig-case-notes" "$([ $r = 0
 out=$(ROOT="$G" python3 -I "$MS" mergify --check .mergify.yml); r=$?
 ok "3. M3: mergify --write is idempotent and --check passes" "$([ $r = 0 ] && cp .mergify.yml "$T/m1" && ROOT="$G" python3 -I "$MS" mergify --write .mergify.yml >/dev/null && cmp -s .mergify.yml "$T/m1" && echo 1)" "$out"
 git checkout -q main
+mchk() { (cd "$G" && ROOT="$G" python3 -I "$MS" mergify --check "$1" >/dev/null 2>&1); echo $?; }
+grep -v '_base__' "$G/.mergify.yml" > "$T/m-bar.yml"
+ok "3. mergify --check refuses a missing barrier line" "$([ "$(mchk "$T/m-bar.yml")" = 1 ] && echo 1)"
+sed 's/^      pipeline:$/      mig-nosuch:\n        include:\n          - "x"\n      pipeline:/' "$G/.mergify.yml" > "$T/m-stray.yml"
+ok "3. mergify --check refuses a mig- scope with no schema file" "$([ "$(mchk "$T/m-stray.yml")" = 1 ] && echo 1)"
+sed "s#^      pipeline:\$#      migrations:\n        include:\n          - \"$M/**\"\n      pipeline:#" "$G/.mergify.yml" > "$T/m-old.yml"
+ok "3. mergify --check refuses the old one shared migrations scope" "$([ "$(mchk "$T/m-old.yml")" = 1 ] && echo 1)"
+printf 'scopes:\n  source:\n    files: {}\n' > "$T/m-noanchor.yml"; cp "$T/m-noanchor.yml" "$T/m-noanchor.keep"
+(cd "$G" && ROOT="$G" python3 -I "$MS" mergify --write "$T/m-noanchor.yml" >/dev/null 2>&1); r=$?
+# a hand edit inside a generated scope: the rewrite would leave an orphan line and fail its own check, so nothing is written
+# a hand edit inside a generated scope (an exclude:, a comment) goes with the scope: nothing is left behind
+awk '{print} /^      mig-client-money:$/{print "        # a hand note"; print "        exclude:"; print "          - \"x\""}' "$G/.mergify.yml" > "$T/m-hand.yml"
+(cd "$G" && ROOT="$G" python3 -I "$MS" mergify --write "$T/m-hand.yml" >/dev/null 2>&1); r2=$?
+ok "3. mergify --write replaces a generated scope whole (a hand edit inside it leaves nothing behind)" "$([ $r2 = 0 ] && ! grep -q 'exclude:\|a hand note' "$T/m-hand.yml" && cmp -s "$T/m-hand.yml" "$G/.mergify.yml" && echo 1)" "exit $r2"
+sed 's/^      mig-cases:$/      mig-cases:\n        exclude:\n          - "x"/' "$G/.mergify.yml" > "$T/m-excl.yml"
+ok "3. mergify --check refuses a key besides include in a generated scope" "$([ "$(mchk "$T/m-excl.yml")" = 1 ] && echo 1)"
+ok "3. mergify --write without its anchors exits 2 and writes nothing" "$([ $r = 2 ] && cmp -s "$T/m-noanchor.yml" "$T/m-noanchor.keep" && echo 1)" "exit $r"
 # a batch: another area merged first with a later stamp
 git checkout -q -B main2 main; mkdir -p "$M/20261122050000_cases__later"; echo 'ALTER TABLE "runtime_case" ADD COLUMN "q" TEXT;' > "$M/20261122050000_cases__later/migration.sql"; git add -A; git commit -qm later; git checkout -q main
 git checkout -q -B batch main2; git merge -q --no-edit good 2>/dev/null; git checkout -q main
@@ -153,6 +203,10 @@ out=$(chk main..edit); r=$?
 ok "3. ... unless the change re-records its checksum in a new migration" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 git checkout -q -B edit2 main; echo '-- edited' >> "$M/20261122033000_qa644_reserve_staging/migration.sql"; mkdir -p "$M/20261122040000_client-money__fake"
 printf '%s\n' "-- UPDATE _prisma_migrations SET checksum = 'x' WHERE migration_name = '20261122033000_qa644_reserve_staging';" "SELECT count(*) FROM _prisma_migrations; ALTER TABLE money_row ADD COLUMN f TEXT;" > "$M/20261122040000_client-money__fake/migration.sql"; git add -A; git commit -qm fake; git checkout -q main
+git checkout -q -B edit3 main; echo '-- edited' >> "$M/20261122033000_qa644_reserve_staging/migration.sql"; mkdir -p "$M/20261122040000_client-money__other"
+echo "UPDATE _prisma_migrations SET checksum = 'x' WHERE migration_name = '20261122033000_some_other_folder'; ALTER TABLE money_row ADD COLUMN o TEXT;" > "$M/20261122040000_client-money__other/migration.sql"; git add -A; git commit -qm other; git checkout -q main
+out=$(chk main..edit3); r=$?
+ok "3. ... a repair of another folder does not cover this one" "$([ $r = 1 ] && grep -q "already on main and changed here" <<< "$out" && echo 1)" "exit $r: $out"
 out=$(chk main..edit2); r=$?
 ok "3. ... a repair only in a comment, or a mere mention of _prisma_migrations, is not one" "$([ $r = 1 ] && grep -q "already on main and changed here" <<< "$out" && echo 1)" "exit $r: $out"
 

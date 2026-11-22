@@ -60,8 +60,10 @@ def code(sql):
         if sql.startswith("/*", i):
             j = sql.find("*/", i + 2); i = n if j < 0 else j + 2; out.append(" "); continue
         if c in "'\"":
+            esc = c == "'" and i > 0 and sql[i - 1] in "eE" and (i < 2 or not (sql[i - 2].isalnum() or sql[i - 2] == "_"))   # E'...' takes \'
             j = i + 1
             while j < n:
+                if esc and sql[j] == "\\": j += 2; continue
                 if sql[j] == c and sql.startswith(c * 2, j): j += 2; continue
                 if sql[j] == c: break
                 j += 1
@@ -102,28 +104,43 @@ def owners(rev=None):
     return out
 
 
-ID = r'(?:(?:"public"|public)\s*\.\s*)?("[^"]+"|[A-Za-z_]\w*)'
-IDN = r'(?:(?:"public"|public)\s*\.\s*)?(?:"[^"]+"|[A-Za-z_]\w*)'   # the same, without a group
+SCH = r'(?:(?:"[^"]+"|[A-Za-z_]\w*)\s*\.\s*)?'   # any schema qualifier (public., "public"., audit.)
+ID = SCH + r'("[^"]+"|[A-Za-z_]\w*)'
+IDN = SCH + r'(?:"[^"]+"|[A-Za-z_]\w*)'   # the same, without a group
 LIST = IDN + r'(?:\s*,\s*' + IDN + r')*'
+OBJ = r'(?:"[^"]+"|[^\s"]+)'   # an object name (a policy, trigger or rule), quoted names with spaces included
+KW = r'(?!(?:SET|FROM|WHERE|ONLY)\b)'   # an alias is no keyword
 WRITE_FORMS = [   # statement forms whose target table is written (its rows, columns, indexes, triggers, policies or grants)
-    r'\bCREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?' + ID,
+    r'\bCREATE\s+(?:(?:GLOBAL\s+|LOCAL\s+)?(?:TEMP|TEMPORARY|UNLOGGED)\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?' + ID,
+    r'\bPARTITION\s+OF\s+' + ID,
     r'\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?' + ID,
     r'\bINSERT\s+INTO\s+' + ID,
-    r'\bUPDATE\s+(?:ONLY\s+)?' + ID + r'\s+(?:AS\s+\w+\s+)?SET\b',
+    # UPDATE t [[AS] alias] SET; ON CONFLICT DO UPDATE SET never matches (SET is not a table followed by SET)
+    r'\bUPDATE\s+(?:ONLY\s+)?' + ID + r'\s+(?:(?:AS\s+)?' + KW + r'(?:"[^"]+"|[A-Za-z_]\w*)\s+)?SET\b',
     r'\bDELETE\s+FROM\s+(?:ONLY\s+)?' + ID,
     r'\bMERGE\s+INTO\s+' + ID,
     r'\bCOPY\s+' + ID,
-    r'\b(?:CREATE|ALTER|DROP)\s+TYPE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?' + ID,
+    r'\b(?:CREATE|ALTER)\s+TYPE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?' + ID,
+    r'\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?' + ID,
+    r'\bALTER\s+(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+EXISTS\s+)?' + ID,
     r'\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(?:(?!ON\b)\S+\s+)?ON\s+(?:ONLY\s+)?' + ID,
-    r'\b(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?|DROP\s+)TRIGGER\s+(?:IF\s+EXISTS\s+)?\S+\s+(?:(?!\bON\b)[\s\S])*?\bON\s+(?:ONLY\s+)?' + ID,
-    r'\b(?:CREATE|ALTER|DROP)\s+POLICY\s+(?:IF\s+EXISTS\s+)?\S+\s+ON\s+' + ID,
-    r'\b(?:CREATE\s+(?:OR\s+REPLACE\s+)?|DROP\s+)RULE\s+(?:IF\s+EXISTS\s+)?\S+\s+(?:(?!\bON\b)[\s\S])*?\bON\s+' + ID,
-    r'\b(?:GRANT|REVOKE)\s+[\w\s,()"]+?\s+ON\s+(?:TABLE\s+)?' + ID,
-    r'\bCOMMENT\s+ON\s+(?:TABLE|COLUMN|TYPE)\s+' + ID,
-    r'\bALTER\s+SEQUENCE\s+(?:IF\s+EXISTS\s+)?' + ID,
+    r'\b(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?|DROP\s+)TRIGGER\s+(?:IF\s+EXISTS\s+)?' + OBJ + r'\s+(?:(?!\bON\b)[\s\S])*?\bON\s+(?:ONLY\s+)?' + ID,
+    r'\b(?:CREATE|ALTER|DROP)\s+POLICY\s+(?:IF\s+EXISTS\s+)?' + OBJ + r'\s+ON\s+' + ID,
+    r'\bCREATE\s+(?:OR\s+REPLACE\s+)?RULE\s+' + OBJ + r'\s+AS\s+ON\s+\w+\s+TO\s+' + ID,
+    r'\bDROP\s+RULE\s+(?:IF\s+EXISTS\s+)?' + OBJ + r'\s+ON\s+' + ID,
+    r'\bCOMMENT\s+ON\s+(?:TABLE|COLUMN|TYPE|VIEW)\s+' + ID,
 ]
-MULTI_FORMS = [r'\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(' + LIST + ')', r'\bTRUNCATE\s+(?:TABLE\s+)?(?:ONLY\s+)?(' + LIST + ')']
-INDEX_FORMS = [r'\b(?:DROP|ALTER)\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?' + ID]   # an index belongs to its table
+MULTI_FORMS = [   # each name of a list counts
+    r'\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(' + LIST + ')',
+    r'\bTRUNCATE\s+(?:TABLE\s+)?(?:ONLY\s+)?(' + LIST + ')',
+    r'\bDROP\s+TYPE\s+(?:IF\s+EXISTS\s+)?(' + LIST + ')',
+    r'\bDROP\s+(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+EXISTS\s+)?(' + LIST + ')',
+    r'\b(?:GRANT|REVOKE)\s+[\w\s,()"]+?\s+ON\s+(?:TABLE\s+)?(' + LIST + ')',
+]
+PREFIX_FORMS = [   # an index or a sequence belongs to the table its name starts with (<table>_..._idx, <table>_<col>_seq)
+    r'\b(?:DROP|ALTER)\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?' + ID,
+    r'\b(?:ALTER|DROP)\s+SEQUENCE\s+(?:IF\s+EXISTS\s+)?' + ID,
+]
 
 
 def _name(x):
@@ -132,7 +149,9 @@ def _name(x):
 
 def written(sql, own):
     """The areas whose tables or types the SQL writes, outside comments (function and DO bodies are read as code):
-    every form in WRITE_FORMS, each table of DROP TABLE a, b and TRUNCATE a, b, and the table an index name starts with."""
+    every form in WRITE_FORMS, each name of a list in MULTI_FORMS, the table an index or sequence name starts with, and,
+    in a migration that runs dynamic SQL (EXECUTE), every string literal that is exactly a known table name (the repository's
+    FOREACH ... ARRAY['t', ...] ... EXECUTE format('... %I') idiom)."""
     c, out = code(sql), set()
     for rx in WRITE_FORMS:
         for m in re.finditer(rx, c, re.I):
@@ -142,17 +161,22 @@ def written(sql, own):
         for m in re.finditer(rx, c, re.I):
             for t in re.findall(ID, m.group(1)):
                 if _name(t) in own: out.add(own[_name(t)])
-    for rx in INDEX_FORMS:
+    for rx in PREFIX_FORMS:
         for m in re.finditer(rx, c, re.I):
             ix = _name(m.group(m.lastindex))
             best = max((t for t in own if ix.startswith(t + "_")), key=len, default=None)
             if best: out.add(own[best])
+    if re.search(r"\bEXECUTE\b", c, re.I):
+        for lit in re.findall(r"'((?:[^']|'')*)'", c):   # a literal that is exactly a table name (not a message)
+            w = re.fullmatch(r'\s*(?:"?public"?\s*\.\s*)?"?([A-Za-z_]\w*)"?\s*', lit)
+            if w and w.group(1).lower() in own: out.add(own[w.group(1).lower()])
     return out
 
 
 def mentioned(sql, own):
-    """The areas whose tables the SQL names at all (outside comments, foreign-key targets aside): used only to suggest
-    an area for a migration that writes no known table, never to refuse one."""
+    """The areas whose tables the SQL names at all (outside comments, foreign-key targets aside). For a migration in
+    which no write is read, these count as its changes (round 2 R2-M1: a form the patterns miss never passes silently
+    under any area)."""
     c = re.sub(r'\bREFERENCES\s+' + ID, " ", code(sql), flags=re.I)
     names = {_name(w) for w in re.findall(r'"[^"]+"', c)} | {w.lower() for w in re.findall(r"\b[A-Za-z_]\w*\b", c)}
     return {own[w] for w in names if w in own}
@@ -219,7 +243,7 @@ def check(rng, batch=False):
     later = 0
     for d in sorted(new):
         m, s, sql = NAME.match(d), STAMP.match(d), sqls[d]
-        derived = written(sql, own)
+        derived = written(sql, own) or mentioned(sql, own)   # no write read: every known table it names counts (R2-M1)
         repaired = {e for e in edited if repairs(sql, e)}
         hint = (derived or {a for e in repaired for a in written(git("show", f"{head}:{MIGS}{e}/migration.sql", ok=True), own)}
                 or set(touched) or mentioned(sql, own))
@@ -247,6 +271,8 @@ def check(rng, batch=False):
         elif derived and area != "shared" and not (area in BARRIER and area in derived) and not derived <= {area}:
             why.append(f"it names tables of {', '.join(sorted(derived))}, not only '{area}'")
         if why:
+            if m and len(why) == 1 and why[0].startswith("its stamp"):
+                want = area   # only the stamp is wrong: keep the area its author chose (round 2 m5)
             st = s.group(1) if s and stamp_ok(s.group(1)) and s.group(1) > floor else stamp_after(newest, 1 + later)
             later += 1
             note = "" if want != "<area>" else " (no table of a known schema file in its migration.sql: <area> is the schema file whose tables it serves)"
@@ -298,15 +324,16 @@ BAR_ANCHOR = "      # SPD-2: a migration of a barrier schema file is a barrier t
 
 
 def write(path):
-    """Rewrites .mergify.yml's generated lines in place (comments and every other line kept), then checks it."""
+    """Rewrites .mergify.yml's generated lines in place: each mig-<area> scope's whole block, the per-area barrier lines
+    and capacities; every other line is kept. The result is parsed and checked before it replaces the file."""
     scopes, barrier = mergify_block()
     lines = open(path, encoding="utf-8").read().split("\n")
     out, i = [], 0
     while i < len(lines):
         l = lines[i]
-        if re.match(r"^      mig-[\w-]+:$", l):   # a generated scope and its include lines
+        if re.match(r"^      mig-[\w-]+:$", l):   # a generated scope: its whole block (a hand edit inside it goes too)
             i += 1
-            while i < len(lines) and re.match(r"^        (include:|  - )", lines[i]): i += 1
+            while i < len(lines) and (lines[i].startswith("       ") or not lines[i].strip()): i += 1
             continue
         if re.match(r'^      - "' + re.escape(MIGS) + r'\*_[a-z0-9-]+__\*/\*\*"$', l) or re.match(r"^    mig-[\w-]+: 1$", l):
             i += 1; continue
@@ -320,7 +347,19 @@ def write(path):
     m = re.search(r"^  capacities:\n(?:    .*\n)*", text, re.M)
     if not m: raise RuntimeError(".mergify.yml: no capacities block")
     text = text[:m.end()] + "".join(f"    {k}: 1\n" for k in scopes) + text[m.end():]
-    open(path, "w", encoding="utf-8").write(text)
+    tmp = path + ".spd2-new"
+    open(tmp, "w", encoding="utf-8").write(text)
+    import yaml
+    try:
+        yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        os.remove(tmp); raise RuntimeError(f"the rewritten .mergify.yml would not parse ({e}); nothing was written")
+    import contextlib, io
+    with contextlib.redirect_stdout(io.StringIO()):
+        r = mergify(tmp)
+    if r:
+        os.remove(tmp); raise RuntimeError("the rewritten .mergify.yml would still fail mergify --check (a hand edit inside a generated scope?); nothing was written")
+    os.replace(tmp, path)
     return mergify(path)
 
 
@@ -351,6 +390,9 @@ def mergify(check_file=None):
             bad.append(f"scope {k}: not {v}")
         if caps.get(k) != 1:
             bad.append(f"capacities: {k} is not 1")
+        extra = sorted(set(files.get(k) or {}) - {"include"})
+        if extra:
+            bad.append(f"scope {k}: holds {', '.join(extra)} besides its generated include list")
     for k in files:
         if k.startswith("mig-") and k not in scopes:
             bad.append(f"scope {k}: no schema file prisma/schema/{k[4:]}.prisma (or it is a barrier)")
