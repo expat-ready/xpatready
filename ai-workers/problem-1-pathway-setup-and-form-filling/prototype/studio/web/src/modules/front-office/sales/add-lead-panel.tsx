@@ -27,6 +27,8 @@ type Form = typeof EMPTY;
 type Choice = { personId?: string; confirmedNew?: true };
 const KEYS = new Set<keyof Form>(["givenNames", "familyName", "email", "phone"]);
 const NOTE_MAX = 5000;
+/** Break F6: a long name is shortened on the Save button (the full name in its tooltip), so it stays one or two lines at 200 %. */
+const short = (name: string) => (name.length > 40 ? `${[...name].slice(0, 39).join("")}…` : name);
 /** A server refusal on a field in the panel's own words (break m3): "this is required." alone says nothing. */
 const SAID: Record<string, string> = { givenNames: "Enter a first name.", source: "Pick a source.", email: "Add an email or a phone number." };
 const fieldWords = (fields: Record<string, string>) => Object.fromEntries(Object.entries(fields).map(([k, m]) => [k, /required/i.test(m) && SAID[k] ? SAID[k] : `${m.charAt(0).toUpperCase()}${m.slice(1)}`]));
@@ -57,6 +59,12 @@ export function AddLeadPanel({ open, onOpenChange }: { open: boolean; onOpenChan
   const [keep, setKeep] = React.useState(true);
   const choose = (c: DupChoice | null) => { setChoice(c); setKeep(true); };
   const extra = unmatchedDetails(choice, f);
+  // Break F1: the 409 box's "Use existing person" offers the same additions (BR-5b), with the reasons the hint had for
+  // that person; when the hint never ran, both typed details are offered (one of them matched exactly).
+  const reasonsOf = (personId: string) => (dup.state.status === "done" ? dup.state.out.matches.find((m) => m.kind === "PERSON" && m.personId === personId)?.reasons : undefined) ?? [];
+  const extraFor = (personId?: string) => (!personId ? [] : choice?.kind === "person" ? extra : unmatchedDetails({ kind: "person", personId, name: "", reasons: reasonsOf(personId) }, f));
+  const known = matches?.find((m) => m.personId)?.personId ?? undefined;
+  const extra409 = extraFor(known);
   const checkNow = () => { if (!matches && !choice) dup.request(checkBody(f)); };
   // The keyboard lands on the choice (break m5), after the browser has moved focus off the Save lead button it just
   // switched off (that move goes to the dialog, so focusing at once would be undone).
@@ -74,14 +82,16 @@ export function AddLeadPanel({ open, onOpenChange }: { open: boolean; onOpenChan
       onOpenChange(false); go(`/front-office/leads/${l.id}`, { state: { from: "mine" } });
     },
     onError: (e) => {
-      if (e instanceof StaffApiError && e.problem.code === "KNOWN_PERSON") { const m = KnownMatches.safeParse(e.problem.matches); setMatches(m.success ? m.data : [{ personId: null, name: "A person you cannot see" }]); return; }
+      if (e instanceof StaffApiError && e.problem.code === "KNOWN_PERSON") { setKeep(true); const m = KnownMatches.safeParse(e.problem.matches); setMatches(m.success ? m.data : [{ personId: null, name: "A person you cannot see" }]); return; }
+      // Break F3: the picked person can no longer be opened (taken away meanwhile): drop the pick, say so, check again.
+      if (e instanceof StaffApiError && e.status === 404 && choice?.kind === "person") { choose(null); dup.clear(); setErrors({ form: `${choice.name} can no longer be opened. Choose again, or add as new.` }); dup.request(checkBody(f)); return; }
       if (e instanceof StaffApiError && e.problem.fields && Object.keys(e.problem.fields).length) { setErrors(fieldWords(e.problem.fields)); return; }
       setErrors({ form: e instanceof StaffApiError ? e.message : "Could not add the lead. Please try again." });
     },
     onSettled: () => { sending.current = false; },
   });
   // BR-5b: the offered details, kept, go in the first note after anything typed there (one line).
-  const noteOf = (c: Choice) => { const typed = f.note.trim(); return c.personId && choice?.kind === "person" && keep && extra.length ? [typed, keptLine(extra)].filter(Boolean).join("\n\n") : typed; };
+  const noteOf = (c: Choice) => { const typed = f.note.trim(), add = extraFor(c.personId); return c.personId && keep && add.length ? [typed, keptLine(add)].filter(Boolean).join("\n\n") : typed; };
   const send = (given?: Choice) => {
     if (sending.current) return;
     // The hint's choice travels with Save (BR-5): no second question. A 409 box's own buttons pass theirs.
@@ -106,7 +116,7 @@ export function AddLeadPanel({ open, onOpenChange }: { open: boolean; onOpenChan
       confirmClose={() => !save.isPending && (Object.values(f).every((v) => !v.trim()) || window.confirm("Discard this lead? What you typed is not saved."))} title="Add a lead" description="For a phone call, a walk-in or an email. You will own the lead."
       footer={<>
         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={save.isPending}>Cancel</Button>
-        <Button type="button" busy={save.isPending && !matches} disabled={!!matches} title={matches ? "Choose above: use the person on file, or add as new." : undefined} className="h-auto min-h-9 min-w-0 max-w-full shrink whitespace-normal py-1.5 text-left [overflow-wrap:anywhere]" onClick={() => send()}>{choice?.kind === "person" ? `Add lead to ${choice.name}` : "Save lead"}</Button>
+        <Button type="button" busy={save.isPending && !matches} disabled={!!matches}  className="h-auto min-h-9 min-w-0 max-w-full shrink whitespace-normal py-1.5 text-left [overflow-wrap:anywhere]" title={matches ? "Choose above: use the person on file, or add as new." : choice?.kind === "person" && choice.name.length > 40 ? `Add lead to ${choice.name}` : undefined} onClick={() => send()}>{choice?.kind === "person" ? `Add lead to ${short(choice.name)}` : "Save lead"}</Button>
       </>}>
       <form data-add-lead noValidate className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (!matches) send(); }}>
         {/* While a save is out, the details cannot change under it (break m1: a match shown for details no longer there). */}
@@ -134,6 +144,12 @@ export function AddLeadPanel({ open, onOpenChange }: { open: boolean; onOpenChan
                 <Button type="button" size="sm" variant="outline" busy={save.isPending && save.variables?.personId === m.personId} onClick={() => send({ personId: m.personId! })}>Use existing person</Button>
               </div>
             ) : <p key={i} data-match-line className="text-sm text-text-muted">Possible match with a record you cannot open — ask a manager.</p>)}
+            {extra409.length ? (
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" data-dup-keep className="mt-1" checked={keep} disabled={save.isPending} onChange={(e) => { setKeep(e.target.checked); if (errors.note) setErrors({ ...errors, note: "" }); }} />
+                <span className="min-w-0 [overflow-wrap:anywhere]">{keep ? <>With Use existing person, also keep in the lead&apos;s first note: {extra409.join(" · ")}</> : <span className="text-text-warn">Not saved: {extra409.join(" · ")}</span>}</span>
+              </label>
+            ) : null}
             <div className="flex justify-end"><Button type="button" size="sm" busy={save.isPending && !!save.variables?.confirmedNew} onClick={() => send({ confirmedNew: true })}>Add as new</Button></div>
           </div>
         ) : null}

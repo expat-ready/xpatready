@@ -10,7 +10,7 @@ const Reason = z.discriminatedUnion("key", [
   z.object({ key: z.literal("NAME"), similarity: z.number() }),
 ]);
 export type Reason = z.infer<typeof Reason>;
-const PersonMatch = z.object({ kind: z.literal("PERSON"), personId: z.string(), name: z.string(), score: z.number(), reasons: z.array(Reason) });
+const PersonMatch = z.object({ kind: z.literal("PERSON"), personId: z.string(), name: z.string(), score: z.number(), reasons: z.array(Reason), lead: z.string().nullable().optional() });
 const CompanyMatch = z.object({ kind: z.literal("COMPANY"), companyId: z.string(), name: z.string(), score: z.number(), reasons: z.array(Reason) });
 export const DuplicateCheckOut = z.object({
   matches: z.array(z.discriminatedUnion("kind", [PersonMatch, CompanyMatch])),

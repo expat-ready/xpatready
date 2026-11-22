@@ -71,8 +71,8 @@ export function DuplicateHint({ state, choice, onChoose, keep, onKeep, typed, di
       <p className="font-medium">{count ? `${count === 1 ? "1 person" : `${count} people`} on file ${count === 1 ? "looks" : "look"} like this person.` : "Someone on file may be this person."}</p>
       {people.map((m) => (
         <div key={m.personId} data-dup-match className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-2">
-          <div className="min-w-0"><div className="font-medium [overflow-wrap:anywhere]">{m.name}</div><div className="text-xs text-text-muted">{reasonWords(m.reasons)}</div></div>
-          <Button type="button" size="sm" variant="outline" disabled={disabled} aria-label={`Use this person: ${m.name}`} onClick={() => pick({ kind: "person", personId: m.personId, name: m.name, reasons: m.reasons })}>Use this person</Button>
+          <div className="min-w-0"><div className="font-medium [overflow-wrap:anywhere]">{m.name}{m.lead ? <span className="font-normal text-text-muted"> · {m.lead}</span> : null}</div><div className="text-xs text-text-muted">{reasonWords(m.reasons)}</div></div>
+          <Button type="button" size="sm" variant="outline" disabled={disabled} aria-label={`Use this person: ${m.name}${m.lead ? `, ${m.lead}` : ""}`} onClick={() => pick({ kind: "person", personId: m.personId, name: m.name, reasons: m.reasons })}>Use this person</Button>
         </div>
       ))}
       {state.out.hidden ? <p data-dup-hidden className="text-xs text-text-muted">{state.out.hiddenLine ?? "Possible match with a record you cannot open — ask a manager"}</p> : null}

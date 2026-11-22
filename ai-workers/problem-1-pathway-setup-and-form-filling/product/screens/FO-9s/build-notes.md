@@ -1,6 +1,6 @@
 # FO-9s part 1: build notes (the duplicate warning on Add a lead, R1.29)
 
-Branch `claude/screens-fo9s-warn`, PR #2900. Concept r3 and challenge: PR #2896 (`screens/FO-9s/concept.md` BR-1 to BR-5b, board `design/fo9s-boards.html` S1; Lead 19 approved part 1 on #2896). Built by the runtime lane on Lead 19's ask. Web only: no API, schema or shared contract change.
+Branch `claude/screens-fo9s-warn`, PR #2900. Concept r3 and challenge: PR #2896 (`screens/FO-9s/concept.md` BR-1 to BR-5b, board `design/fo9s-boards.html` S1; Lead 19 approved part 1 on #2896). Built by the runtime lane on Lead 19's ask. Web, plus one additive field on FO-9a's check (round 1, break F2): `ports/matching.ts` PersonMatch gains optional `lead` (the newest lead number the caller may open), filled in `duplicates/service.ts`. No schema change.
 
 ## Files
 * New `web/src/modules/front-office/duplicates/`:
@@ -15,6 +15,21 @@ Branch `claude/screens-fo9s-warn`, PR #2900. Concept r3 and challenge: PR #2896 
   * The kept details join the first note, with a 5000-character guard on the field.
 * `web/src/MODULE.rows/FO-9s.md` (the web-shell card's row file).
 * `tests/check_fo9s_duplicates_browser.ts` (D1-D7, 20 checks).
+
+## Review round 1 (reviewer Block, breaker 2 Majors at 4eda1fc4e) → fixed in 20527b379 and the next commit, each with a check
+* **Reviewer:**
+  * M1: long names wrap on Save and in the choice box; Save also shortens them at 40 characters, with a tooltip (F6). Check: D8.
+  * M2: focus goes to Change after a pick, and to the first match after Change. Check: D8.
+  * m1: one always-mounted live region. Check: D8.
+  * m2: new checks for the 400 ms wait, the edit-after-pick clear, the phone offer and the 5000 guard (D8).
+  * m3: unticking clears the note's error. Check: D8.
+  * m4: a failed check retries on the next blur.
+* **Breaker:**
+  * F1: the 409 box's "Use existing person" offers the same additions. Check: D9.
+  * F2: lead numbers on each row and in the accessible names. Check: D9.
+  * F3: a pick that can no longer be opened is dropped with a plain line. Check: D9.
+  * F6: the long-name label is shortened.
+  * F4 (a match created after an "Add as new" choice) and F5 (a zero-width space in Phone gives the server's own 422 on Save) are left as known gaps below.
 
 ## Top 5 production improvements over the board
 1. **Add as new is an outline button**, not the primary one. Save stays the panel's one primary action (EXPERIENCE §1), so the screen does not nudge toward a duplicate.
@@ -37,7 +52,8 @@ All real. The FO-9a check route and FO-2's `POST leads` run on an isolated copy 
 ## Checks run (exit codes; this copy, Linux, isolated copies)
 | Check | Result |
 |---|---|
-| `check_fo9s_duplicates_browser.ts` | 20/20, exit 0, twice (before and after the outline change) |
+| `check_fo9s_duplicates_browser.ts` | 32/32, exit 0 (after round 1; 20/20 before) |
+| `check_fo9a_duplicates.ts`, `check_fo9a_won_duplicates.ts`, `check_fo13c_conflict.ts` (the users of `ports/matching.ts`) | 53/53, 25/25, 46/46 |
 | `check_fo4al_add_lead_browser.ts` (Add a lead, the 409 path kept) | 27/27, exit 0 |
 | `check_fo4_sales_browser.ts` | 45/45, exit 0 |
 | `tests/journeys/j_27.ts` | 11/11, exit 0 |
@@ -59,6 +75,7 @@ D1 job fit 4 · D2 rules 4 · D3 data 5 (no change) · D4 API 5 (reuse) · D5 st
 * **Layout shift:** the hint appears above Source when Phone loses focus, moving Source down while the adder may be heading there. Focus is never moved.
 * **BR-5b keeps the details in the first note, not on the person** (one email column, no email edit route). This is the builder's reading of Lead 19's "offered additions", written in challenge.md's Lead response for the Lead to confirm.
 * The company match (Engage as Corporate, add contact) mounts with FO-4c's screens. People to merge and the guided merge are parts 2-3.
+* **F4:** an "Add as new" choice made before another session adds an exact match is not asked again (the choice stands). **F5:** a zero-width character in Phone gets the server's own 422 on Save, on the field.
 * "Add as new" writes no Kept-separate pair yet: FO-9b part 2 does that (founder question 1, B1).
 
 ## AI cost

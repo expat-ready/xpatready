@@ -236,6 +236,46 @@ try {
   ok("FO-9s D8 M1: a 55-character name wraps at 375 px: the Save button and the choice box stay inside the panel, no sideways scroll", fits.page && fits.button && fits.box, fits);
   await narrow.context().close();
 
+  // ---------------------------------------------------------------- D9: breaker round 1 (F1, F2)
+  // F1: an exact email with no choice → the 409 box offers the typed phone Lena does not have; Use existing person keeps it.
+  await openPanel(o);
+  await typeIn(o, "First name", `Lena${run}`); await typeIn(o, "Email", `lena.${run}@example.org`); await typeIn(o, "Phone", "+1 604 555 0142"); await typeIn(o, "Source", "Phone call");
+  await o.locator("[data-dup-hint]").waitFor({ timeout: 10_000 });
+  await field(o, "First note (optional)").fill(`D9 f1 ${run}`);
+  await o.getByRole("button", { name: "Save lead" }).click();
+  await o.locator("[data-known-person]").waitFor({ timeout: 10_000 });
+  const box409 = await o.locator("[data-known-person]").innerText();
+  await o.screenshot({ path: join(SHOTS, "fo9s-07-409-offered-1440.png"), fullPage: true });
+  await o.getByRole("button", { name: "Use existing person" }).click();
+  await o.getByRole("heading", { level: 1, name: new RegExp(`Lena${run}`) }).waitFor({ timeout: 20_000 });
+  const note409 = sql(`select replace(n.text, E'\\n', ' ') from fo_note n where n.firm_id = '${A}' and n.text like 'D9 f1 ${run}%'`);
+  ok("FO-9s D9 F1 (BR-5b): the 409 box offers the typed phone the person lacks (not the matched email), and Use existing person keeps it in the first note",
+    box409.includes("+1 604 555 0142") && !box409.includes(`also keep in the lead's first note: lena.${run}`) && note409.includes("Also gave: +1 604 555 0142") && personOfLead(`D9 f1 ${run}`) === lena.body?.person?.id, { box409, note409 });
+  // F2: two people with one name read apart by their lead numbers, on screen and to a screen reader.
+  const w1 = await post(tok.O, { requestId: randomUUID(), givenNames: `Wren${run}`, familyName: "Hale", email: `wren.a.${run}@example.org`, source: "Phone call", confirmedNew: true });
+  const w2 = await post(tok.O, { requestId: randomUUID(), givenNames: `Wren${run}`, familyName: "Hale", email: `wren.b.${run}@example.org`, source: "Phone call", confirmedNew: true });
+  await openPanel(o);
+  await typeIn(o, "First name", `Wren${run}`); await typeIn(o, "Last name (optional)", "Hale");
+  await o.locator("[data-dup-hint]").waitFor({ timeout: 10_000 });
+  const labels = await o.locator("[data-dup-hint] button[aria-label^='Use this person']").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
+  const rows = await o.locator("[data-dup-match]").allInnerTexts();
+  ok("FO-9s D9 F2: two Wren Hales show two rows with different lead numbers (L-…), and their buttons have different accessible names",
+    w1.status === 201 && w2.status === 201 && labels.length === 2 && new Set(labels).size === 2 && rows.every((r) => /· L-\d+/.test(r)) && new Set(rows).size === 2, { labels, rows });
+  o.once("dialog", (d) => void d.accept()); await o.keyboard.press("Escape"); await o.waitForTimeout(300);
+
+  // F3: the picked person stops being one the adder may open before Save → the pick is dropped and said, never a 404 loop.
+  const gone = await post(tok.O, { requestId: randomUUID(), givenNames: `Gwen${run}`, familyName: "Moss", email: `gwen.${run}@example.org`, source: "Phone call", confirmedNew: true });
+  await openPanel(o);
+  await typeIn(o, "First name", `Gwen${run}`); await typeIn(o, "Last name (optional)", "Mos"); await typeIn(o, "Source", "Email");
+  await o.locator("[data-dup-hint]").waitFor({ timeout: 10_000 });
+  await o.locator("[data-dup-hint] button[aria-label^='Use this person']").first().click();
+  sql(`update fo_lead set owner_staff_id = '${T.id}' where person_id = '${gone.body?.person?.id}'`);
+  await o.getByRole("button", { name: /^Add lead to Gwen/ }).click();
+  await o.locator("[data-add-lead]").getByText("can no longer be opened").waitFor({ timeout: 10_000 });
+  ok("FO-9s D9 F3: a pick that can no longer be opened is dropped with a plain line; Save reads Save lead again",
+    (await o.locator("[data-dup-choice]").count()) === 0 && (await o.getByRole("button", { name: "Save lead" }).count()) === 1);
+  o.once("dialog", (d) => void d.accept()); await o.keyboard.press("Escape"); await o.waitForTimeout(300);
+
   // ---------------------------------------------------------------- D7: keyboard, axe, widths
   await openPanel(o);
   await typeIn(o, "First name", `Lena${run}`); await typeIn(o, "Last name (optional)", "Parks"); await typeIn(o, "Phone", "416 555 0101");
