@@ -73,3 +73,37 @@ Note: the branch moved to `b8462e6cf` (review round 1) while I worked. Sections 
 * **JS against the database (C and en_US):** 0 mismatches over 628,880 JS-accepted values (the BMP to U+3100, U+FE00 to U+FFFF, tags) apart from B1.
 
 Verdict: Changes 745c6b101b93a8c2c1a5ce563115c2776fad8363
+
+## Round 2 (diff-only: `git diff 745c6b1 a88804987ec30e38e49424da78d66aec4617589d`)
+Same setup, fresh: C, en_US.utf8 and builtin C.UTF-8 scratch databases, all migrations at a888049, `seedSampleFirms`; dropped after. Shipped test at a888049: 39 passed, 0 failed.
+
+**R2-M1 (Major). Past expiry, a request where only one of two clients signed is wrongly refused as EXPIRED, and the request can then never end by itself** (decline.ts, the `r.status !== "CLIENT_SIGNED"` test). The comment says "with no client signature", but the code tests the status. With one of two clients signed, the request is still SENT or VIEWED, and FO-6 never expires it (BR-16).
+* Repro: `envelope()`, then `sign(c2)`, then `declineSigning(c1, "No", at = now + 30 days)` → `{refused:"ended", status:"EXPIRED"}`. State stays SENT, 0 lines.
+* `update … set status='EXPIRED'` on that request → "a request a client signed never expires".
+* `sign(c1)` at the same point → OK.
+* So past the date the remaining client can still sign but cannot decline, and is told "expired" about a request that stays live until the firm withdraws it. Fix: test "any CLIENT signer signed", as FO-6's trigger does. (A builder process was already patching this in the working tree while I ran, as "review R2-M1".)
+
+**R2-m1 (Minor). The explicit list still keeps some invisible-only reasons.** `declineReasonOf` keeps these as reasons, and the database agrees:
+* `"\u{E0020}"`, `"\u{E0001}"` (tags), `"\u{E0100}"` (variation selector), `"\u{1D173}"`, `"￹"`, `"؜"`, `"⁪"`, `""` (private use), `"⁥"` (unassigned);
+* `"a"` followed by tag characters, which can carry hidden text into the Activity log.
+
+This is cosmetic: there is no crash and JS and the database agree.
+
+**R2-m2 (Minor, note). The `at` clamp corrects any early moment silently.** `at = new Date(0)` (1970) declines with `ended_at = sent_at + 0.000902 s`, so a broken clock is never noticed. There is no upper bound either: on a CLIENT_SIGNED request, `at = new Date(8.64e15)` stores `declined_at` = year 275760.
+
+**Held in round 2:**
+* **JS against the database, full sweep:** every code point from U+0001 to U+10FFFF (surrogates aside), alone, leading, trailing and in the middle (4.45 M values JS keeps). JS keeps but the database refuses: 0, 0, 0 on C, en_US and builtin. JS refuses but the database keeps: 0. The database's refuse set is the same 347 in every locale; m3 is fixed.
+* **Characters now refused or blanked:** NUL, lone surrogates, C1 (NEL, CSI), RLO and LRI are refused with `DeclineReasonInvalid`. Hangul filler, soft hyphen, braille blank and LRM alone count as no reason. 500 emoji are kept and 501 refused (code points).
+* **The `at` clamp and expiry:**
+  * `at` equal to sent_at in milliseconds (sent `.054708`) gives ended `.055000`, with no times-check error.
+  * `at` equal to `expires_at` gives EXPIRED.
+  * VIEWED past expiry gives EXPIRED, nothing written.
+  * CLIENT_SIGNED past expiry: the firm may decline.
+* **Ids:** non-uuid, number or space-padded ids answer `unknown`. Upper-case uuids decline normally. An `at` that is a string throws a plain Error, by design.
+* **Races (en_US, after the diff):** unchanged from round 1.
+  * 30 concurrent pairs: one `declined` and one `ended` each, 1 audit line each.
+  * Serializable: P2010 for the losers.
+  * Decline against cancel and decline against sign behave as before; m7 and m8 stay as notes.
+* **The migration:** edited in place under the same stamp. That is acceptable only because 745c6b1 never reached main.
+
+Verdict: Changes a88804987ec30e38e49424da78d66aec4617589d
