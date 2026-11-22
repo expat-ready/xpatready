@@ -66,13 +66,14 @@ ok("PF-30s setup: three Sample leads and one prospect with a P-number", lena.sta
 
 const browser = await chromium.launch(existsSync("/opt/pw-browsers/chromium") && process.platform !== "darwin" ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {});
 const errors: string[] = [], took: number[] = [];
+let stubbed = false;   // the timing leaves out the answers this check makes up itself (review m6c)
 async function pageAs(t: string, width = 1440): Promise<{ p: Page; asks: string[] }> {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: "light", reducedMotion: "reduce" }), p = await ctx.newPage();
   await ctx.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), t);
   p.on("pageerror", (e) => errors.push(String(e)));
   const asks: string[] = [];
   p.on("request", (r) => { if (r.url().includes("/api/platform/find")) asks.push(new URL(r.url()).searchParams.get("q") ?? ""); });
-  p.on("requestfinished", (r) => { if (r.url().includes("/api/platform/find")) { const t = r.timing(); if (t.responseEnd > 0) took.push(t.responseEnd - t.requestStart); } });
+  p.on("requestfinished", (r) => { if (r.url().includes("/api/platform/find")) { const t = r.timing(); if (t.responseEnd > 0 && !stubbed) took.push(t.responseEnd - t.requestStart); } });
   return { p, asks };
 }
 const box = (p: Page) => p.locator("[data-find-input]");
@@ -157,18 +158,19 @@ try {
 
   // ---------------------------------------------------------------- F7 error, then recovery
   await home(o);
+  stubbed = true;
   await o.route("**/api/platform/find**", (r) => r.fulfill({ status: 500, contentType: "application/problem+json", body: JSON.stringify({ title: "Server error", status: 500 }) }));
   await find(o, `Lena${run}`);
   ok("PF-30s F7 pass (BR-6): a failing API shows \"Search is not available right now. Try again.\" and keeps the text",
     (await o.locator("[data-find-line='error']").innerText()) === WORDS.error && (await box(o).inputValue()) === `Lena${run}` && (await hits(o).count()) === 0);
   await o.screenshot({ path: join(SHOTS, "pf30s-04-error-1440.png") });
-  await o.unroute("**/api/platform/find**");
+  await o.unroute("**/api/platform/find**"); stubbed = false;
   await box(o).press("Backspace");
   await o.waitForFunction(() => (document.querySelector("[data-find-live]")?.textContent ?? "").includes("result"), undefined, { timeout: 15_000 }).catch(() => undefined);
   ok("PF-30s F7 fail: once the API answers again, the next key shows results (the error does not stick)", (await o.locator("[data-find-line='error']").count()) === 0 && (await hits(o).count()) >= 1);
 
   // ---------------------------------------------------------------- F8 late answer
-  await home(o);
+  await home(o); stubbed = true;
   await o.route("**/api/platform/find**", async (r) => {
     if (new URL(r.request().url()).searchParams.get("q") === "Om") {
       await new Promise((res) => setTimeout(res, 1500));
@@ -181,7 +183,7 @@ try {
   const texts = await hits(o).allInnerTexts();
   ok("PF-30s F8 pass (BR-7): the late answer for \"Om\" never replaces the answer for the full name", texts.length >= 1 && texts.every((x) => !x.includes("Stale answer")) && texts.some((x) => x.includes(`Omar${run}`)), texts);
   ok("PF-30s F8 fail: the stale row is nowhere on the page", (await o.getByText("Stale answer").count()) === 0);
-  await o.unroute("**/api/platform/find**");
+  await o.unroute("**/api/platform/find**"); stubbed = false;
 
   // ---------------------------------------------------------------- F9 keyboard
   await home(o);
@@ -217,13 +219,77 @@ try {
   await o.goto(`${BASE}/front-office/leads`); await box(o).waitFor({ timeout: 30_000 });
   await find(o, `Lena${run}`);
   ok("PF-30s F10: the Sales frame has the same box, with the same answer", (await hits(o).count()) >= 1 && (await o.locator("header [data-find]").count()) === 1);
+  // ---------------------------------------------------------------- F11 stubbed answers: the rules with no real data for them (review m3)
+  const stub = async (answer: unknown, status = 200) => { stubbed = true; await o.unroute("**/api/platform/find**").catch(() => undefined); await o.route("**/api/platform/find**", (r) => r.fulfill({ status, contentType: "application/json", body: JSON.stringify(answer) })); };
+  const hit = (kind: string, title: string, i = 0) => ({ kind, id: randomUUID(), title, subtitle: null, matched_on: ["NAME"], url: `/home?h=${i}` });
+  await home(o);
+  await stub({ groups: [{ kind: "widget", hits: [hit("widget", "Gadget one")] }], partial: false, message: null });
+  await find(o, "Gadget");
+  ok("PF-30s F11 pass (BR-3): a kind the box has no words for shows under \"Other\", never hidden", (await o.locator("[data-find-group='Other']").count()) === 1 && (await hits(o).count()) === 1);
+  await stub({ groups: [{ kind: "person", hits: [hit("person", "Gadget two")] }], partial: false, message: null });
+  await find(o, "Gadgets");
+  ok("PF-30s F11 fail (BR-3): a known kind shows under its own words, not Other", (await o.locator("[data-find-group='Other']").count()) === 0 && (await o.locator("[data-find-group='Leads and prospects']").count()) === 1);
+  await stub({ groups: [], partial: true, message: "Some results could not be loaded" });
+  await find(o, "Partial");
+  ok("PF-30s F11 pass (BR-6): a partial answer with no hits shows the partial line and \"No matches in what loaded.\"", (await o.locator("[data-find-partial]").innerText()) === "Some results could not be loaded" && (await o.locator("[data-find-line='done']").innerText()) === WORDS.emptyPartial);
+  await stub({ groups: [{ kind: "person", hits: [hit("person", "Partial one")] }], partial: true, message: "Some results could not be loaded" });
+  await find(o, "Partial o");
+  ok("PF-30s F11 fail (BR-6): a partial answer with hits shows the line above them, not \"No matches\"", (await o.locator("[data-find-partial]").count()) === 1 && (await hits(o).count()) === 1 && (await o.locator("[data-find-line='done']").count()) === 0);
+  await stub({ groups: [{ kind: "person", hits: Array.from({ length: 8 }, (_, i) => hit("person", `Many ${i}`, i)) }], partial: false, message: null });
+  await find(o, "Many");
+  ok("PF-30s F11 pass (BR-6): a kind at the finder's cap of 8 says \"8 best matches. Type more to narrow.\"", (await live(o)).includes(WORDS.count(8, true)), await live(o));
+  await stub({ groups: [{ kind: "person", hits: Array.from({ length: 5 }, (_, i) => hit("person", `Many ${i}`, i)) }, { kind: "company", hits: Array.from({ length: 4 }, (_, i) => hit("company", `Many co ${i}`, i)) }], partial: false, message: null });
+  await find(o, "Many c");
+  ok("PF-30s F11 fail (review m6b): 9 rows with no kind at its cap say \"9 results\", not best matches", (await live(o)).includes("9 results") && !(await live(o)).includes("best"), await live(o));
+  await stub({ groups: [{ kind: "person", hits: [hit("person", "Zoë Ångström")] }], partial: false, message: null });
+  await find(o, "zoe");
+  ok("PF-30s F11 pass (BR-4): the highlight ignores case and accents (\"zoe\" marks \"Zoë\")", (await hits(o).first().locator("mark").innerText()) === "Zoë");
+  await stub({ groups: [{ kind: "person", hits: [{ ...hit("person", "Mira Sample"), matched_on: ["EMAIL"] }] }], partial: false, message: null });
+  await find(o, "mira@example.org");
+  ok("PF-30s F11 fail (BR-4): an email match marks nothing in the name", (await hits(o).first().locator("mark").count()) === 0 && (await hits(o).first().innerText()).includes("Matched: Email"));
+  const before = asks.length;
+  await box(o).fill("x".repeat(101)); await o.waitForTimeout(600);
+  ok("PF-30s F11 fail (BR-2): over 100 characters sends nothing and says \"Type 2 to 100 characters to search.\"", asks.length === before && (await o.locator("[data-find-line='tooLong']").innerText()) === WORDS.tooLong);
+  // Enter during the pause opens the first hit of the answer for what was typed (review m5).
+  await o.unroute("**/api/platform/find**"); stubbed = false;
+  await box(o).fill(""); await box(o).pressSequentially(`Lena${run}`, { delay: 10 }); await box(o).press("Enter");
+  await o.waitForURL(`**/front-office/leads/${LENA_LEAD}`, { timeout: 15_000 }).catch(() => undefined);
+  ok("PF-30s F11 pass (review m5): Enter pressed before the answer arrives opens its first hit once it does", o.url().endsWith(`/front-office/leads/${LENA_LEAD}`), o.url());
+  await home(o);
+  await box(o).click(); await box(o).pressSequentially(`Zzqx${run}`, { delay: 10 }); await box(o).press("Enter"); await o.waitForTimeout(900);
+  ok("PF-30s F11 fail (review m5): Enter before an empty answer opens nothing; the empty line shows", new URL(o.url()).pathname === "/home" && (await o.locator("[data-find-line='done']").innerText()) === WORDS.empty);
+  // BR-1: modifier keys and an open dialog keep "/" for the page.
+  await box(o).press("Escape"); await box(o).press("Escape"); await o.locator("main").click({ position: { x: 5, y: 5 } });
+  await o.keyboard.press("Control+/"); await o.keyboard.press("Alt+/");
+  ok("PF-30s F11 fail (BR-1): Ctrl+/ and Alt+/ do not open the box", !(await box(o).evaluate((el) => el === document.activeElement)));
+  await o.evaluate(() => { const d = document.createElement("div"); d.setAttribute("role", "dialog"); d.id = "pf30s-dialog"; const b = document.createElement("button"); b.textContent = "In the dialog"; d.append(b); document.body.append(d); b.focus(); });
+  await o.keyboard.press("/");
+  ok("PF-30s F11 fail (BR-1, review m2): \"/\" while a dialog (role=dialog, no aria-modal, as the team's Dialog) is open does not open the box", !(await box(o).evaluate((el) => el === document.activeElement)) && (await o.locator("[data-find-popup]").count()) === 0);
+  await o.evaluate(() => document.getElementById("pf30s-dialog")?.remove());
+  await o.locator("main").click({ position: { x: 5, y: 5 } }); await o.keyboard.press("/");
+  ok("PF-30s F11 pass (BR-1): with the dialog gone, \"/\" opens the box again", await box(o).evaluate((el) => el === document.activeElement));
+  // A 401 hands over to the sign-in card: no error line on top of it (BR-6). Last, as it ends this browser's session.
+  await stub({ type: "about:blank", title: "Sign in", status: 401, code: "NOT_SIGNED_IN" }, 401);
+  await find(o, "Anyone").catch(() => undefined);
+  await o.locator("[data-sign-in-card]").waitFor({ timeout: 15_000 }).catch(() => undefined);
+  ok("PF-30s F11 (BR-6): a 401 shows the sign-in card and no error line; the box goes with the session", (await o.locator("[data-sign-in-card]").count()) === 1 && (await o.locator("[data-find-line='error']").count()) === 0 && (await o.locator("[data-find]").count()) === 0);
+  stubbed = false;
   await o.context().close();
-  for (const w of [375, 1024, 1440]) {
+  for (const w of [375, 640, 700, 768, 1024, 1440]) {
     const { p } = await pageAs(tok.O, w); await home(p);
     await find(p, `Kit${run}`);
     await p.screenshot({ path: join(SHOTS, `pf30s-05-open-${w}.png`) });
     ok(`PF-30s F10: no sideways page scroll with the list open at ${w} px, and the list fits the window`,
       !(await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) && await p.locator("[data-find-popup]").evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; }));
+    if (w < 768) {
+      await p.locator("[data-find-close]").click();
+      ok(`PF-30s F10 (review m4): at ${w} px Close gives focus back to the Find button`, await p.locator("[data-find-open]").evaluate((el) => el === document.activeElement));
+    } else {
+      // Closed box: the input never covers the person's name (review M1: 640-719 px overlapped it).
+      await box(p).press("Escape"); await box(p).press("Escape");
+      const cover = await p.evaluate(() => { const a = document.querySelector("[data-find-input]")!.getBoundingClientRect(), n = document.querySelector("[data-staff-name]")?.getBoundingClientRect(); return n ? Math.max(0, a.right - n.left) : 0; });
+      ok(`PF-30s F10 (review M1): at ${w} px the box does not cover the staff name`, cover === 0, cover);
+    }
     await p.context().close();
   }
   const sorted = [...took].sort((x, y) => x - y), p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;

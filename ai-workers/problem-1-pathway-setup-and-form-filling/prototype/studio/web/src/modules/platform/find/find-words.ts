@@ -15,8 +15,10 @@ export const OTHER = "Other";
 /** What matched, in words (BR-4). */
 export const MATCHED_WORDS = { NAME: "Name", EMAIL: "Email", PHONE: "Phone", NUMBER: "File number" } as const;
 
-/** One finder answers at most this many hits (PF-30a's FINDER_MAX_HITS): at or over it, the count says "best matches". */
-export const BEST_FROM = 8;
+/** One finder answers at most this many hits (PF-30a's FINDER_MAX_HITS) and one answer at most FIND_MAX_HITS. */
+export const FINDER_CAP = 8, ANSWER_CAP = 20;
+/** True when the answer may have been cut: a kind at a finder's cap, or the whole answer at its cap (review m6b). */
+export const capped = (a: FindAnswer) => a.groups.some((g) => g.hits.length >= FINDER_CAP) || a.groups.reduce((n, g) => n + g.hits.length, 0) >= ANSWER_CAP;
 
 export const WORDS = {
   label: "Find a person, company or file",
@@ -27,7 +29,7 @@ export const WORDS = {
   emptyPartial: "No matches in what loaded.",
   tooLong: "Type 2 to 100 characters to search.",
   error: "Search is not available right now. Try again.",
-  count: (n: number) => (n >= BEST_FROM ? `${n} best matches. Type more to narrow.` : n === 1 ? "1 result" : `${n} results`),
+  count: (n: number, cut = false) => (cut ? `${n} best matches. Type more to narrow.` : n === 1 ? "1 result" : `${n} results`),
 } as const;
 
 /** The text as the box sends it: trimmed; null when it is under 2 or over 100 characters (counted as characters, as PF-30a). */
@@ -62,7 +64,8 @@ export function marked(title: string, typed: string): { before: string; match: s
  *  person types in a field, and not while a modal dialog or drawer is open. */
 export function slashOpens(e: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; isComposing?: boolean; defaultPrevented?: boolean; target: EventTarget | null }, doc?: { querySelector(s: string): unknown }): boolean {
   if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.defaultPrevented) return false;
-  if (doc?.querySelector("[aria-modal='true'], dialog[open]")) return false;
+  // The team's Radix Dialog and Panel set role="dialog" without aria-modal (review m2), so a dialog of either kind counts.
+  if (doc?.querySelector("[aria-modal='true'], dialog[open], [role='dialog'], [role='alertdialog']")) return false;
   const el = e.target as HTMLElement | null;
   if (!el || typeof el.closest !== "function") return true;
   return !el.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']");
