@@ -67,3 +67,29 @@ little. The JSON comes from the global filter (main.ts:180), which is older than
 Not findings (outside "What was built"): the number appears only on the stand-in's page, not on Stripe invoices in
 test or production. The `/api/demo/billing/invoices/:id` route stays open on a server with a Stripe key, and it now answers the
 same HTML page there.
+
+## Round 2 (diff only: 90da148cd → 83a732991)
+
+Copy `brk121c` on :4730 (`PLATFORM_GST_HST_NUMBER=000000001RT0001`), own worktree at 83a732991, stopped at the end; the PR's
+check passed 15/15 against it. US$0. Round 1 missed this: a same-character-length non-ASCII token threw a 500 at 90da148cd;
+the builder found it. I confirmed it: the old compare on `"é".repeat(32)` throws `ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH`.
+
+**r2-m1 (Minor, the rest of m1): the Sample with its digits split by spaces, and other all-zero numbers, still load and print unlabelled.**
+settings.ts:40 `(?!0{9} ?RT ?0{4}$)` allows an optional space only next to `RT`. Steps: `loadPlatformConfig({PLATFORM_ENVIRONMENT:"local",
+PLATFORM_GST_HST_NUMBER: v})` loads `000 000 000 RT 0000`, `000000000 R T 0000`, `000000000 RT 00 00`, `0000000000 RT 0000`,
+`00000000 RT 0000`, `000000000`, `000000000 RT 0001`. The invoice would print "ExpatReady's GST/HST registration number:
+000 000 000 RT 0000" with no Sample label. Expected: compare after removing spaces, or refuse all-zero digits (e.g. `(?![0 RT]*$)`).
+Minor: only whoever sets the server can reach it. A digit among words still loads (`NOT A REAL NUMBER 1`, `TBD TBD TBD 9`), as the plain shape allows (founder's call, m1).
+
+**Held**
+* Refused: the Sample's own forms `000000000 RT 0000`, `000000000RT0000`, `000000000 RT0000`, `000000000RT 0000`, the same with
+  spaces at either end (trimmed first) and with an NBSP inside; `ABCDEFGHI` and `NOT A REAL NUMBER`. Loaded: `123456789 RT 0001`, `123456789RT0001`, `000000001RT0001`.
+* No ReDoS: the first lookahead caps the length at 20, and the space-separated groups cannot match the same text two ways.
+  10 000 000-character inputs took 5–12 ms (linear); the worst of 200 000 random 9–20 character strings from `0A RT` took 0.29 ms.
+* Token compare (stand-in.ts:103, live, 32-character token): `é`×32, `é`×16, the token minus one character plus `é`, `%ED%A0%80`
+  lone surrogates, `%FF`×32, `%00`×32, the token plus `%00`, emoji, and `é`×32 on an unknown id each give the same 404 `text/html`
+  523-byte page, never a 500; the right token still gives 200; api.log has 0 lines with 500, TypeError or RangeError.
+* The line reads `ExpatReady&#39;s GST/HST registration number: 000000001RT0001` (escaped); the Sample keeps its label. The refusal
+  says "9 to 20 characters of capital letters, digits (at least one) and single spaces", with no CRA claim: m2 is closed.
+
+Verdict: Approve 83a73299153bf6020450b2a6ef52dde4048ae233
