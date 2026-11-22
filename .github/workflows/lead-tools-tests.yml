@@ -1,6 +1,7 @@
 # Tests of the Lead's ENF-783a tools (P-783 (1)): review-rounds.py (a third reviewer round fails, the Lead's "Lead allows
 # round 3:" line passes) and lead-pr.sh's label and requeue steps on a stand-in GitHub. Runs only when one of them, a
-# test or this file changes. Advisory (not a Mergify condition). No network, US$0, under 1 minute.
+# test or this file changes. Also ENF-798's self-test of the founder's rules of 22 Nov (P-798 triggers, P-800 flow buffer,
+# P-801 sources). Advisory (not a Mergify condition). No network, US$0, under 1 minute.
 name: lead-tools-tests
 on:
   pull_request:
@@ -10,6 +11,19 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-pr.sh"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-lead-pr.sh"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/guard-test-lib.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test-enf-798.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/sle-watch.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/app-view.js"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/step-age.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/flow-buffer.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/brief-check.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-queue.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/local-lanes.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/source-check.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/app-view-check.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/app-view-save.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/flow-measure.py"
       - ".github/workflows/lead-tools-tests.yml"
       - ".github/workflows/review-rounds.yml"
 permissions:
@@ -29,3 +43,5 @@ jobs:
         run: python3 -I "$T/test_review_rounds.py"
       - name: lead-pr.sh label and requeue
         run: bash "$T/check-lead-pr.sh"
+      - name: ENF-798 founder rules of 22 Nov (P-798, P-800, P-801), twice
+        run: bash "$T/test-enf-798.sh" && bash "$T/test-enf-798.sh"
