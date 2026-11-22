@@ -496,8 +496,8 @@ try {
   ok("FO-5 pass: the prospect's owner reads it too", (await svc.read(R, v.id)).id === v.id);
 
   // Firm walls and download links (BR-15).
-  ok("FO-5 fail: firm B reading firm A's retainer → 404 (and editing, sending, withdrawing it)",
-    await fails(() => svc.read(S, RA1), 404) && await fails(() => ed(svc, S, v.id, {}), 404) && await fails(() => sd(S, v.id), 404) && await fails(() => wdr(S, w.id, { reason: "x" }), 404));
+  ok("FO-5 fail: firm B reading firm A's retainer → 404 (and editing, sending, withdrawing it; PF-28 part 5: each with a valid body, since the body is read before the look-up)",
+    await fails(() => svc.read(S, RA1), 404) && await fails(() => ed(svc, S, v.id, { fees: [] }), 404) && await fails(() => sd(S, v.id), 404) && await fails(() => wdr(S, w.id, { reason: "x" }), 404));
   ok("FO-5 fail: firm B drafting on firm A's prospect → 404", await fails(() => svc.draft(S, PROSB, {}), 404));
   const key = await svc.fileKey(R, RA1, {}), signed = await svc.fileKey(R, RA1, { file: "signed-offline" });
   const l = links.sign(A, R.staffId, key, nowMs);
