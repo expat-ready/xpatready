@@ -100,14 +100,20 @@ try {
   const noSettings = await call(tA, "POST", "/front-office/money/invoices", { personId: PA });
   ok("FO-7b setup fail: before the firm's payment settings exist, a draft is refused in words (409 PAYMENTS_NOT_SET_UP), nothing written",
     noSettings.status === 409 && noSettings.body?.code === "PAYMENTS_NOT_SET_UP" && sql(`select count(*) from money_invoice`) === "0", noSettings.body);
-  for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'seed:FO-7b-1a', now())`);
+  // FO-7g part 1w (Lead B ruling A, 22 Nov): a line's rate is the firm's tax default, so both sample firms are registered
+  // for tax; their province is Ontario (samples/firms.json), whose cited default is 13 %. A case at another rate puts
+  // firm A in the province whose cited rate it is (atRate), then back in Ontario.
+  for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, tax_registered, tax_number, updated_by, updated_at) values ('${f}', true, '123456789RT0001', 'seed:FO-7b-1a', now())`);
+  const PROVINCE_OF: Record<number, string> = { 130000: "ON", 150000: "NB", 140000: "NS", 50000: "AB" };
+  const inProvince = (code: string) => sql(`update platform_firm set business_address = jsonb_set(coalesce(business_address, '{}'::jsonb), '{province_state}', to_jsonb('${code}'::text)) where id = '${A}'`);
+  const atRate = async <T,>(ratePpm: number, run: () => Promise<T>): Promise<T> => { inProvince(PROVINCE_OF[ratePpm]); try { return await run(); } finally { inProvince("ON"); } };
 
   const draft = async (body: Record<string, unknown> = { personId: PA, currency: "CAD" }, t = tA) => call(t, "POST", "/front-office/money/invoices", body);
   const line = (id: string, body: Record<string, unknown>, t = tA) => call(t, "POST", `/front-office/money/invoices/${id}/lines`, body);
   const stored = (id: string) => sql(`select string_agg(position || ':' || kind || ':' || amount_minor || ':' || tax_rate_ppm || ':' || tax_minor || ':' || currency, ',' order by position) from money_invoice_line where invoice_id = '${id}'`);
   const fee = (unitMinor: number, ratePpm: number, extra: Record<string, unknown> = {}) => ({ kind: "FEE", description: "Professional fee (Sample)", unitMinor, ratePpm, ...extra });
   /** One FEE line on a fresh CAD draft: the stored tax read back from money_invoice_line. */
-  const taxOf = async (unitMinor: number, ratePpm: number) => { const d = await draft(); const r = await line(d.body.id, fee(unitMinor, ratePpm)); return { r, tax: Number(sql(`select tax_minor from money_invoice_line where invoice_id = '${d.body.id}'`)) }; };
+  const taxOf = async (unitMinor: number, ratePpm: number) => { const d = await draft(); const r = await atRate(ratePpm, () => line(d.body.id, fee(unitMinor, ratePpm))); return { r, tax: Number(sql(`select tax_minor from money_invoice_line where invoice_id = '${d.body.id}'`)) }; };
 
   // ------------------------------------------------------------------------------------------------- R1: AG-06
   const d1 = await draft();
@@ -148,17 +154,20 @@ try {
   ok("FO-7b R7 fail (planted): tax on the subtotal, as the route itself taxes one 1.00 line (0.13), is caught", sub.status === 201 && sub.body.taxMinor === 13 && !R7(sub.body.taxMinor), sub.body);
 
   // --------------------------------------------------------------------------------------- R8: large and exact
-  const d8 = await draft(); const r8 = await line(d8.body.id, fee(2147483647, 150000));
+  const d8 = await draft(); const r8 = await atRate(150000, () => line(d8.body.id, fee(2147483647, 150000)));
   ok("FO-7b R8 pass: unit 21,474,836.47 at 15 % → 3,221,225.47 exactly (exact 322,122,547.05 cents, down); the total past 2^31 is exact (24,696,061.94)",
     r8.status === 201 && stored(d8.body.id) === "1:FEE:2147483647:150000:322122547:CAD" && r8.body.totalMinor === 2469606194 && sql(`select money_invoice_total('${A}', '${d8.body.id}')`) === "2469606194", r8.body);
   const big = await line(d8.body.id, fee(2147483647, 0, { quantity: 2 }));
   ok("FO-7b R8 fail: a line whose quantity × unit passes 21,474,836.47 → 422 at unitMinor, in words, nothing written", big.status === 422 && big.body.errors?.[0]?.field === "unitMinor" && stored(d8.body.id).split(",").length === 1, big.body);
 
   // ------------------------------------------------------------------------------------- R10: a government fee
-  const d10 = await draft(); await line(d10.body.id, { kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500, ratePpm: 130000 });
+  const d10 = await draft(); await line(d10.body.id, { kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500 });
   const r10 = await line(d10.body.id, fee(100000, 130000));
-  ok("FO-7b R10 pass: a 255.00 GOVERNMENT_FEE line (13 % sent) beside 1,000.00 FEE at 13 % → tax only on the fee (130.00); the fee line's rate and tax are 0",
+  ok("FO-7b R10 pass: a 255.00 GOVERNMENT_FEE line beside 1,000.00 FEE at 13 % → tax only on the fee (130.00); the fee line's rate and tax are 0",
     stored(d10.body.id) === "1:GOVERNMENT_FEE:25500:0:0:CAD,2:FEE:100000:130000:13000:CAD" && r10.body.taxMinor === 13000 && r10.body.totalMinor === 138500, r10.body);
+  const r10g = await line(d10.body.id, { kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500, ratePpm: 130000 });
+  ok("FO-7b R10 fail (FO-7g part 1w): a GOVERNMENT_FEE line sent with 13 % → 422 at ratePpm (never taxed, no override), nothing written",
+    r10g.status === 422 && r10g.body.errors?.[0]?.field === "ratePpm" && stored(d10.body.id).split(",").length === 2, r10g.body);
 
   // ------------------------------------------------------------------------------------- R11: another currency
   const linesNow = () => sql(`select count(*) from money_invoice_line`);
@@ -171,7 +180,8 @@ try {
 
   // ------------------------------------------------------------------------------------ R12: parts per million
   const d12 = await draft(); const r12 = await line(d12.body.id, fee(100000, 1300));
-  ok("FO-7b R12 pass: ratePpm 1300 (13 % typed in basis points) is stored as 1300 ppm, not corrected: 1,000.00 → tax 1.30", r12.status === 201 && stored(d12.body.id) === "1:FEE:100000:1300:130:CAD", r12.body);
+  ok("FO-7b R12 pass (FO-7g part 1w): ratePpm 1300 (13 % typed in basis points) is neither the default nor 0 → 422 at ratePpm, nothing written; the default (130000) is taken",
+    r12.status === 422 && r12.body.errors?.[0]?.field === "ratePpm" && stored(d12.body.id) === "" && (await line(d12.body.id, fee(100000, 130000))).status === 201 && stored(d12.body.id) === "1:FEE:100000:130000:13000:CAD", r12.body);
   n0 = linesNow();
   const bad = await Promise.all([-1, 1_000_001, 1.5, "130000"].map((ratePpm) => line(d12.body.id, fee(100000, 0, { ratePpm }))));
   ok("FO-7b R12 fail: ratePpm −1, 1,000,001, 1.5 and the text \"130000\" → 422 at ratePpm, nothing written",
@@ -258,10 +268,14 @@ try {
   ok("FO-7b I fail: issuing it again → 409 ISSUED (no second number); a line on the issued invoice → 409 \"use a credit note\"; its lines are unchanged",
     again.status === 409 && again.body.code === "ISSUED" && edit.status === 409 && /Use a credit note/.test(edit.body.detail) && stored(inv1.id) === "1:FEE:100000:130000:13000:CAD" && sql(`select next_number from money_number_series where firm_id = '${A}' and kind = 'INVOICE'`) === "2", [again.body, edit.body]);
   const two = await Promise.all([draft(), draft()]); await Promise.all(two.map((d) => line(d.body.id, fee(1000, 0))));
-  const both2 = await Promise.all(two.map((d) => post(`${d.body.id}/issue`, { dueDate: plus(today, 30) })));
+  const both2 = await Promise.all(two.map((d) => post(`${d.body.id}/issue?dueDate=${plus(today, 30)}`)));
   ok("FO-7b I pass: two invoices issued at the same moment take INV-0002 and INV-0003 (no gap, no clash), each with the due date sent",
     both2.map((x) => x.body.invoice?.number).sort().join() === "INV-0002,INV-0003" && both2.every((x) => x.body.invoice.dueDate === plus(today, 30)), both2.map((x) => x.body));
-  ok("FO-7b I fail: a due date that is not a date → 422 at dueDate, the draft stays a draft", await (async () => { const d = await draft(); await line(d.body.id, fee(100, 0)); const r = await post(`${d.body.id}/issue`, { dueDate: "2026-02-30" }); return r.status === 422 && r.body.fields?.dueDate && sql(`select issued_at is null from money_invoice where id = '${d.body.id}'`) === "t"; })());
+  // Batch #3016 (check_pf28_inputs): issue's one input is the query, parsed strictly before the invoice is read.
+  const dQ = await draft(); await line(dQ.body.id, fee(100, 0)); const qUnknown = await post(`${dQ.body.id}/issue?pf28Unknown=x`), qBadId = await post(`not-a-uuid/issue?pf28Unknown=x`);
+  ok("FO-7b I fail (PF-28): an unknown query field on issue → 422 naming it, before anything is read (also for a malformed id); the draft stays a draft",
+    qUnknown.status === 422 && Object.hasOwn(qUnknown.body.fields ?? {}, "pf28Unknown") && qBadId.status === 422 && sql(`select issued_at is null from money_invoice where id = '${dQ.body.id}'`) === "t", [qUnknown.body, qBadId.status]);
+  ok("FO-7b I fail: a due date that is not a date → 422 at dueDate, the draft stays a draft", await (async () => { const d = await draft(); await line(d.body.id, fee(100, 0)); const r = await post(`${d.body.id}/issue?dueDate=2026-02-30`); return r.status === 422 && r.body.fields?.dueDate && sql(`select issued_at is null from money_invoice where id = '${d.body.id}'`) === "t"; })());
 
   // ----------------------------------------------------------------- E: the invoice email waits (AG-6-71 rule 3)
   sql(`update money_payment_settings set operating_details = 'Payee: Sample Firm. Interac e-Transfer: pay@example.org (Sample)' where firm_id = '${A}'`);
@@ -278,7 +292,7 @@ try {
   ok("FO-7b R9 pass: for R2's line (0.50 at 13 %), the invoice PDF, the receipt PDF and the invoice.issued payload show the stored 0.06 and total 0.56",
     row9 === "6:56" && pdf9.status === 200 && pdf9.pdf && pdf9.type === "application/pdf" && rec9.pdf && R9(pdf9.text, rec9.text, ev9), [row9, pdf9, rec9.text, ev9]);
   const refloat = { ...inv9, lines: inv9.lines.map((l: { amountMinor: number; ratePpm: number }) => ({ ...l, taxMinor: halfUp(l.amountMinor, l.ratePpm) })), taxMinor: halfUp(50, 130000), totalMinor: 50 + halfUp(50, 130000) };
-  const planted9 = documentText("money.invoice", invoiceData(refloat, { firmName: "Sample", taxNumber: null, billTo: "Client", issuedOn: today, operatingDetails: null }));
+  const planted9 = documentText("client_money.invoice", invoiceData(refloat, { firmName: "Sample", taxNumber: null, billTo: "Client", issuedOn: today, operatingDetails: null }));
   ok("FO-7b R9 fail (planted): a document whose tax is recomputed from a float (half up) prints 0.07 and 0.57, and the case catches it; so does a payload of 7", /= 0\.07$/m.test(planted9) && !R9(planted9, rec9.text, ev9) && !R9(pdf9.text, rec9.text, { taxMinor: 7, totalMinor: 57 }), planted9);
 
   // ----------------------------------------------------------------------------- P: payments recorded by hand
@@ -380,7 +394,7 @@ try {
   const PF = person(A, "f"), invF1 = await issued(1000, 0), invF2 = await issued(1000, 0, {}, PF), clash = await Promise.all([invF1, invF2].map((i) => post(`${i.id}/payments`, { method: "CASH", amountMinor: 1000, idempotencyKey: "fo7b-clash-key" })));
   ok("FO-7b P fail (break F3): one key on two parties' invoices at once → 201 and 409 KEY_USED (never 500), one payment", clash.map((x) => x.status).sort().join() === "201,409" && clash.some((x) => x.body.code === "KEY_USED") && sql(`select count(*) from money_payment where idempotency_key = 'fo7b-clash-key'`) === "1", clash.map((x) => [x.status, x.body.code]));
   // Break report F4, F6, F7 (Minors): a due date before 2000 is 422 (was 500); an invoice of 0.00 is not issued; a cancelled invoice is not sent.
-  const dZero = await draft(); await line(dZero.body.id, fee(0, 0)); const zero = await post(`${dZero.body.id}/issue`), oldDue = await post(`${dZero.body.id}/issue`, { dueDate: "0000-01-01" });
+  const dZero = await draft(); await line(dZero.body.id, fee(0, 0)); const zero = await post(`${dZero.body.id}/issue`), oldDue = await post(`${dZero.body.id}/issue?dueDate=0000-01-01`);
   ok("FO-7b I fail (break F4, F7): a due date of 0000-01-01 → 422 at dueDate, never 500; an invoice whose total is 0.00 → 409 NOTHING_TO_BILL; it stays a draft", oldDue.status === 422 && zero.status === 409 && zero.body.code === "NOTHING_TO_BILL" && sql(`select issued_at is null from money_invoice where id = '${dZero.body.id}'`) === "t", [oldDue.body, zero.body]);
 
   // ------------------------------------------------------------------------------------ C: credit notes (AG-6-48)
@@ -458,7 +472,7 @@ try {
   // Review M1 on d6948072e: MoneyDocuments is a DocumentRenderPort adapter, so it runs that port's shared contract (PF-0c).
   const cn = { firmName: "Sample Firm", firmAddress: "", taxLine: "", billTo: "Client A", number: "CN-0001", issuedOn: today, invoiceNumber: "INV-0001", currency: "CAD", total: "1.13", amount: "0.13", reason: "Goodwill" };
   const pdfReader = (bytes: Uint8Array) => [...Buffer.from(bytes).toString("latin1").matchAll(/^\((.*)\) Tj T\*$/gm)].map((m) => m[1]).join("\n");
-  await runContract(documentRenderPortContract, "MoneyDocuments", () => ({ render: new MoneyDocuments(), template: "money.credit_note", data: cn, reordered: Object.fromEntries(Object.entries(cn).reverse()), other: { ...cn, amount: "0.14" }, text: pdfReader }), ok);
+  await runContract(documentRenderPortContract, "MoneyDocuments", () => ({ render: new MoneyDocuments(), template: "client_money.credit_note", data: cn, reordered: Object.fromEntries(Object.entries(cn).reverse()), other: { ...cn, amount: "0.14" }, text: pdfReader }), ok);
 
   // ------------------------------------------------------------------------------------- walls, inputs, audit
   const wall = await Promise.all([post(`${invP.id}/payments`, { method: "CASH", amountMinor: 100, idempotencyKey: "fo7b-wall-1" }, tB), post(`${invP.id}/credit-notes`, { full: true, reason: "x" }, tB), post(`${invP.id}/send`, {}, tB), call(tB, "GET", `${M}/${invP.id}/pdf`), call(tA, "GET", `${M}/${invP.id}/payments/${tPay.body.id}/receipt.pdf`), post("not-a-uuid/issue")]);
