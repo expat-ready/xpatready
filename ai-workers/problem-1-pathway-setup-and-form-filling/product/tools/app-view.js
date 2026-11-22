@@ -3,7 +3,7 @@
 // text; the page answers with the lines below. Then save them: bash product/tools/app-view-save.sh <<'EOF' ... EOF
 // It reads the page's own session list (GET /v1/code/sessions, header anthropic-version 2023-06-01) and prints one line
 // per session: title, cloud or mac, status_category, needs_action, status_detail, minutes since last_event_at, context.
-// A line starts FLAG when the session needs the Lead: status need_input, blocked or failed; idle over 90 min with work
+// A line starts FLAG when the session needs the Lead: status need_input, blocked or failed; idle over 10 min with work
 // left (status not completed, or a needs_action); context over 45% (P-565: refresh past about half). Otherwise "ok".
 // Signed out or the call refused: one line "UNREADABLE ..." (ask the founder to sign in; save it all the same).
 // It asks for LIMIT (200) sessions (B204 (4): at 50, the sidebar's "Show more" hid 11 of 45 sessions on 20 Nov); when the
@@ -15,7 +15,7 @@
 // Node (tests): require('./app-view.js').lines(json, nowMs) gives the same text without the network. Test:
 // check-app-view.sh. Read-only: it changes nothing on the page or in any session.
 (function () {
-  const IDLE_MIN = 90, CTX_SHARE = 0.45, WINDOW = 1000000; // WINDOW: assumed context size when the API gives none
+  const IDLE_MIN = 10, CTX_SHARE = 0.45, WINDOW = 1000000; // WINDOW: assumed context size when the API gives none
   const LIMIT = 200;    // harmless: the API answers at most API_CAP whatever is asked
   const API_CAP = 50;   // ENF-761: GET /v1/code/sessions returns at most 50 (20 Nov)
   const WORK_DONE = ['completed'];

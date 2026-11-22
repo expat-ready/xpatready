@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CS-98 LMIA screens — layout</title>
+<!-- Concept boards for CS-98s1 and CS-98s2 (screens/CS-98-lmia/concept.md). Self-contained: no fonts or scripts loaded; the builder
+     uses the app's own components (Table, Pill, Panel, Dialog variant="panel", Skeleton, Tip, StandIn). Every LMIA number
+     here is a Sample (marked "Sample"): no ESDC page was read for this board (P-801; canada.ca is not reachable from the
+     cloud session). Names are Sample people and companies. -->
+<style>
+:root{--blue:#0862C5;--ink:#1d2433;--muted:#5b6475;--line:#d9dee7;--raised:#f6f8fb;--bg:#fff;--orange:#b4540a;--orange-bg:#fff3e6;--red:#b42318;--red-bg:#fdecea;--green:#1b7a3d;--green-bg:#e8f5ec;--sample:#6b4fbb;--sample-bg:#f1edfb}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 Inter,system-ui,sans-serif;color:var(--ink);background:#eef1f5}
+h1{font-size:24px;margin:0}h2{font-size:20px;margin:0 0 8px}h3{font-size:16px;margin:0 0 6px}small,.s{font-size:12px;color:var(--muted)}
+.board-note{max-width:1440px;margin:24px auto 8px;padding:0 16px;font-size:12px;color:var(--muted)}
+.frame{max-width:1440px;margin:0 auto 40px;background:var(--bg);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.top{display:flex;align-items:center;gap:16px;padding:10px 20px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+.top b{color:var(--blue);font-size:16px}
+.head{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 20px 8px}
+.btn{display:inline-block;border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font:inherit;color:var(--ink)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.link{border:0;background:none;color:var(--blue);padding:0;text-decoration:underline}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 20px 12px;border-bottom:1px solid var(--line)}
+.chip{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;background:#fff}.chip.on{background:#e7f0fb;border-color:var(--blue);color:var(--blue)}
+select{font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--line);border-radius:6px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg span{padding:5px 12px}.seg .on{background:#e7f0fb;color:var(--blue);font-weight:600}
+.cols{display:flex;gap:12px;padding:16px 20px;overflow-x:auto}
+.col{flex:0 0 232px;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:8px}
+.col h3{font-size:14px;display:flex;justify-content:space-between}.col .empty{font-size:12px;color:var(--muted);padding:16px 4px;text-align:center}
+.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:8px}
+.card a{color:var(--blue);font-weight:600;text-decoration:none}.card .row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 6px;margin-top:4px;font-size:12px}.pill{white-space:nowrap}
+.pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:12px;border:1px solid transparent}
+.due{background:#eef3fb;color:#1f4f8f}.crit{background:var(--red-bg);color:var(--red);border-color:#f3b8b2}.need{background:var(--orange-bg);color:var(--orange)}
+.ok{background:var(--green-bg);color:var(--green)}.sample{background:var(--sample-bg);color:var(--sample);border:1px dashed var(--sample)}.wait{background:#f0f1f4;color:#3c4454}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}th{font-size:12px;color:var(--muted);font-weight:600}
+.wrap{padding:0 20px 20px}
+.ws{display:grid;grid-template-columns:260px 1fr;min-height:640px}
+.steps{border-right:1px solid var(--line);padding:16px}.steps li{list-style:none;padding:8px 10px;border-radius:8px;margin-bottom:4px;display:flex;justify-content:space-between;gap:8px}
+.steps ul{padding:0;margin:0}.steps .cur{background:#e7f0fb;font-weight:600}.steps .muted{color:var(--muted)}
+.main{padding:16px 20px}
+.panel{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:16px}
+.panel .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.kv{display:grid;grid-template-columns:180px 1fr;gap:6px 16px;font-size:14px}.kv dt{color:var(--muted)}.kv dd{margin:0}
+.warn{border-left:4px solid var(--red);background:var(--red-bg);padding:10px 12px;border-radius:6px;margin-top:8px}
+.warn.maj{border-left-color:var(--orange);background:var(--orange-bg)}
+.next li{margin:6px 0}.next{padding-left:18px;margin:0}
+.clock{display:flex;gap:24px;align-items:center;background:var(--raised);border-radius:8px;padding:10px 14px;margin-bottom:12px}
+.bar{height:8px;width:220px;background:#dfe4ec;border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;width:36%;background:var(--blue)}
+.drawer{width:520px;border:1px solid var(--line);border-radius:10px;background:#fff;margin:16px 20px;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.drawer .dh,.drawer .df{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}.drawer .df{border-top:1px solid var(--line);border-bottom:0}
+.drawer .db{padding:16px}.f{margin-bottom:12px}.f label{display:block;font-weight:600;font-size:12px;margin-bottom:4px}.f .in{border:1px solid var(--line);border-radius:6px;padding:7px 10px;color:var(--muted)}
+.err .in{border-color:var(--red)}.err .msg{color:var(--red);font-size:12px;margin-top:4px}
+.states{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:20px}
+.state{border:1px dashed var(--line);border-radius:10px;padding:16px;min-height:120px}
+.sk{height:12px;background:#e6eaf0;border-radius:4px;margin:8px 0}
+.phone{width:375px;border:1px solid var(--line);border-radius:16px;margin:20px;overflow:hidden}
+.wizard{display:flex;gap:8px;margin-bottom:12px}.wizard span{font-size:12px;padding:3px 8px;border-radius:999px;background:#f0f1f4}.wizard .on{background:var(--blue);color:#fff}
+</style>
+</head>
+<body>
+
+<p class="board-note"><b>Board 1 · LMIA board (1440 px).</b> Library list header + a board of the nine corporate journey steps (AG-17-14, -54). Closed column hidden by default (AG-17-18). Filters in the address (AG-17-55). One filled button. A card moves forward only, by drag or by its "Move to step" menu (the keyboard route), before submission; the card then says "Placed manually" with "Back to automatic" (CS-98b's override route). Owner = the case officer (Lead 61 ruling). Employer onboarding, Employer documents, Preparation &amp; quality check and Compliance are columns now and fill when CS-98s3 builds their items.</p>
+<div class="frame">
+  <div class="top"><b>ExpatReady</b> Cases › LMIA board <span style="margin-left:auto">Signed in: Case officer A (Sample firm)</span></div>
+  <div class="head">
+    <div><h1>LMIA board</h1><div class="s">Every LMIA file of the firm, in the step it has reached. Open a file to see what's next.</div></div>
+    <div style="display:flex;gap:8px;align-items:center"><span class="seg"><span class="on">Board</span><span>List</span></span><span class="btn primary">Open an LMIA file</span></div>
+  </div>
+  <div class="filters" aria-label="Filters">
+    <span class="chip on">Mine</span>
+    <label class="s">Step <select><option>Any step</option></select></label>
+    <span class="btn s">More filters (owner, employer, stream, has CRITICAL, validity expiring, placed manually) ▾</span>
+    <span class="chip">Show Closed (2)</span>
+    <span class="btn link s">Clear filters</span>
+  </div>
+  <div class="filters s" style="border-bottom:0;padding-top:0">More filters, open: Owner (case officer) · Employer · Stream · <label><input type="checkbox"> Has CRITICAL warnings</label> · <label><input type="checkbox"> Validity expiring <span class="pill sample" title="The validity length and its lead time are Samples until ESDC's page is read and cited.">Sample</span></label> · <label><input type="checkbox"> Placed manually</label></div>
+  <div class="cols">
+    <div class="col"><h3>Set-up <span class="s">1</span></h3>
+      <div class="card"><a href="#file">Northern Timber Ltd</a><div class="s">Sawmill machine operator · Prince George site</div>
+        <div class="row"><span>3 requested</span><span>Owner: Case officer A</span></div>
+        <div class="row"><span>High-wage</span><span class="pill crit" title="Open CRITICAL warnings on this file">! 2 CRITICAL</span></div>
+        <div class="row"><span class="pill due">No dated item yet</span><span class="btn link s" title="Move this file to a later step (before submission only)">Move to step ▾</span></div></div>
+      
+    </div>
+    <div class="col"><h3>Employer onboarding <span class="s">1</span></h3><div class="s">Built in CS-98s3: its items come later.</div>
+      <div class="card"><a href="#">Maple Bistro Inc.</a><div class="s">Cook · Toronto (Queen St.)</div>
+        <div class="row"><span>1 requested</span><span>Owner: Case officer B</span></div>
+        <div class="row"><span class="pill due">No dated item yet</span><span class="btn link s">Move to step ▾</span></div>
+        <div class="row s">Placed manually by Case officer B, 20 Nov · <span class="btn link">Back to automatic</span></div></div>
+      <div class="card" style="border-style:dashed"><b class="s">Move to step menu (open, on Maple Bistro)</b><div class="s">Later steps only; the current one and earlier ones are not offered:<br>Employer documents · Advertising &amp; recruitment · Preparation &amp; quality check</div></div></div>
+    <div class="col"><h3>Employer documents <span class="s">0</span></h3><div class="s">Built in CS-98s3.</div><div class="empty">No files in this step.</div></div>
+    <div class="col"><h3>Advertising &amp; recruitment <span class="s">1</span></h3>
+      <div class="card"><a href="#rec">Harbour Care Homes Ltd</a><div class="s">Personal support worker · Halifax</div>
+        <div class="row"><span>4 requested</span><span>Owner: Case officer A</span></div>
+        <div class="row"><span class="pill due" title="The nearest dated item on this file">Next due 10 Dec · advertising minimum met</span><span class="pill sample">Sample</span></div><div class="row"><span>Low-wage</span><span class="btn link s">Move to step ▾</span></div>
+        <div class="row"><span class="pill crit">! 4 CRITICAL</span></div></div>
+    </div>
+    <div class="col"><h3>Preparation &amp; quality check <span class="s">0</span></h3><div class="s">Built in CS-98s3.</div><div class="empty">No files in this step.</div></div>
+    <div class="col"><h3>Submitted <span class="s">1</span></h3>
+      <div class="card"><a href="#">Prairie Grain Co-op</a><div class="s">Farm supervisor · Regina</div>
+        <div class="row"><span>4 requested</span><span>Owner: Case officer B</span></div>
+        <div class="row"><span>High-wage</span><span class="s">Submitted: no moves</span></div><div class="row"><span class="pill wait">Officer request · due 28 Nov</span></div><div class="row"><span class="pill wait">Fee paid</span><span class="pill wait">Awaiting decision</span></div></div>
+    </div>
+    <div class="col"><h3>Decision <span class="s">0</span></h3><div class="empty">No files in this step.</div></div>
+    <div class="col"><h3>Workers &amp; permits <span class="s">0</span></h3><div class="empty">No files in this step.</div></div>
+    <div class="col"><h3>Compliance <span class="s">0</span></h3><div class="s">Built in CS-98s3.</div><div class="empty">No files in this step.</div></div>
+  </div>
+</div>
+
+<p class="board-note"><b>Board 2 · List view (same data, the accessible route; AG-17-54).</b> Same filters and address. Sorted by next due, undated last. The table scrolls inside its box at 1024/375.</p>
+<div class="frame"><div class="wrap" style="padding-top:16px">
+<table><thead><tr><th>Employer</th><th>Occupation · location</th><th>Step</th><th>Stream</th><th>Positions</th><th>Owner</th><th>Next due</th><th>Waiting on</th><th>Warnings</th><th>Actions</th></tr></thead><tbody>
+<tr><td><a href="#rec">Harbour Care Homes Ltd</a></td><td>Personal support worker · Halifax</td><td>Advertising &amp; recruitment</td><td>Low-wage</td><td>4 requested</td><td>Case officer A</td><td>10 Dec · advertising minimum met <span class="pill sample">Sample</span></td><td>—</td><td><span class="pill crit">! 4 CRITICAL</span></td><td><span class="btn link">Move to step ▾</span></td></tr>
+<tr><td><a href="#">Prairie Grain Co-op</a></td><td>Farm supervisor · Regina</td><td>Submitted</td><td>High-wage</td><td>4 requested</td><td>Case officer B</td><td>28 Nov · officer request</td><td>Officer request · due 28 Nov · Fee paid · Awaiting decision</td><td>—</td><td>—</td></tr>
+<tr><td><a href="#">Maple Bistro Inc.</a></td><td>Cook · Toronto</td><td>Employer onboarding<br><span class="s">Placed manually by Case officer B, 20 Nov</span></td><td>High-wage</td><td>1 requested</td><td>Case officer B</td><td>—</td><td>—</td><td>—</td><td><span class="btn link">Move to step ▾</span> · <span class="btn link">Back to automatic</span></td></tr>
+<tr><td><a href="#">Ridge Orchards Ltd</a></td><td>Farm worker · Kelowna</td><td>Workers &amp; permits</td><td>Low-wage</td><td>4 requested · 3 approved</td><td>Case officer A</td><td>30 Jun · permit expires</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td><a href="#file">Northern Timber Ltd</a></td><td>Sawmill machine operator · Prince George site</td><td>Set-up</td><td>High-wage</td><td>3 requested</td><td>Case officer A</td><td>—</td><td>—</td><td><span class="pill crit">! 2 CRITICAL</span></td><td><span class="btn link">Move to step ▾</span></td></tr>
+</tbody></table></div></div>
+
+<p class="board-note"><b>Board 3 · "Open an LMIA file" (Dialog / wizard, ≤3 steps, right panel 520 px).</b> From the board or from a company client's page (client pre-picked). Step 2 shows the stream proposal live from the release's wage table (AG-17-8); the open call itself answers the server's duplicate check (AG-17-95): "Add positions to it" goes to that file; "Open a separate file anyway" resends the open with <code>openSeparate: true</code> (audited). Warns, never blocks. Business number missing → CRITICAL after opening (AG-17-3), never here.</p>
+<div style="display:flex;flex-wrap:wrap">
+<div class="drawer"><div class="dh"><b>Open an LMIA file</b><span class="s">Close</span></div><div class="db">
+  <div class="wizard"><span class="on">1 Employer</span><span>2 Job</span><span>3 Stream and positions</span></div>
+  <div class="f"><label>Employer (company client)</label><div class="in">Northern Timber Ltd (C-0142) — pre-picked when opened from the client's page <code>/clients/:id</code></div></div>
+  <div class="f"><label>Work location</label><div class="in">◉ Prince George site · BC &nbsp; ○ Quesnel yard · BC &nbsp; <span class="btn link">Add a location</span></div></div>
+  <div class="panel" style="margin:0"><b>Add a location</b> (stored once on the employer, AG-17-3)<div class="s">Address · province · region codes picked from the release's list <span class="pill sample">Sample list</span></div>
+  <div class="warn maj"><b>This employer already has this location.</b> Prince George site, 1200 River Rd. <span class="btn">Use it</span> <span class="btn">Add as new</span></div></div>
+</div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Continue to the job</span></div></div>
+<div class="drawer"><div class="dh"><b>Open an LMIA file</b><span class="s">Close</span></div><div class="db">
+  <div class="wizard"><span>1 Employer</span><span class="on">2 Job</span><span>3 Stream and positions</span></div>
+  <div class="f"><label>Employer</label><div class="in">Northern Timber Ltd (company client C-0142)</div></div>
+  <div class="f"><label>Work location</label><div class="in">Prince George site · BC (from the employer's locations)</div></div>
+  <div class="f"><label>Occupation</label><div class="in">Sawmill machine operator <span class="pill sample">Sample list</span></div></div>
+  <div class="f"><label>Hourly wage (CAD)</label><div class="in">31.00</div></div>
+  <div class="f"><label>Hours a week · overtime rule</label><div class="in">40 · after 40 hours at 1.5×</div></div>
+  <div class="f"><label>Duties</label><div class="in">Sets up and runs sawmill machines…</div></div>
+  <div class="f"><label>Expected start · duration in months</label><div class="in">1 Mar 2027 · 24</div></div>
+  <div class="f"><label>Prevailing wage and its source (shown only when the release has none for this occupation and region)</label><div class="in">$ __ /h · source __</div><div class="s">Asked because the table has no prevailing wage for this occupation and region.</div></div>
+  <div class="f"><label>Employees at this location: total · low-wage (shown only for streams the cap applies to)</label><div class="in">48 · 6</div><div class="s"><span class="pill sample">Sample</span> until the pre-filing questionnaire exists.</div></div>
+  <div class="panel" style="margin:0"><b>Proposed stream: High-wage</b><div class="s">$31.00/h is at or above the wage threshold for British Columbia, $29.50/h <span class="pill sample" title="Not read from ESDC yet. Shown so the flow can be tried; the real figure comes from ESDC's page with its date.">Sample</span>, effective on today's date. You confirm the stream in the next step.</div></div>
+</div><div class="df"><span class="btn">Back</span><span class="btn primary">Continue to stream and positions</span></div></div>
+
+<div class="drawer"><div class="dh"><b>Open an LMIA file</b><span class="s">Close</span></div><div class="db">
+  <div class="wizard"><span>1 Employer</span><span>2 Job</span><span class="on">3 Stream and positions</span></div>
+  <div class="f"><label>Stream</label><div class="in">◉ High-wage (proposed by the wage) &nbsp; ○ Low-wage &nbsp; ○ Another stream of the Corporate pathway</div></div>
+  <div class="f err"><label>Why a different stream (needed when you choose one the wage did not propose)</label><div class="in"></div><div class="msg">Say why you chose this stream. It is recorded on the file.</div></div>
+  <div class="f"><label>Positions requested</label><div class="in">3</div></div>
+  <div class="warn maj"><b>An LMIA file for this employer, occupation and location is not submitted yet:</b> L-0031 (Set-up). <span class="btn">Add positions to it</span> <span class="btn">Open a separate file anyway</span> <span class="s">(recorded on both files)</span></div>
+  <div class="s" style="margin-top:6px">The server's other answers, drawn in place of the box above: submitted match → information only, "L-0035 was submitted on 12 Nov" · approved with unfilled positions → "L-0011 has 2 approved positions without a worker, valid until 8 Jul 2027 <span class="pill sample">Sample</span>" · a different stream → "L-0031 is Low-wage: use Change stream there" · a match you can't open → "A matching LMIA file exists that you can't open. Ask a manager." (no number, owner or step).</div>
+  <p class="s">Will be created as: LMIA file for Northern Timber Ltd, High-wage, 3 positions, on the firm's current release of the Corporate pathway.</p>
+</div><div class="df"><span class="btn">Back</span><span class="btn primary">Open the LMIA file</span></div></div>
+</div>
+
+<p class="board-note" id="file"><b>Board 4 · The file, Set-up step (Workspace pattern).</b> Steps on the left show only steps with items (AG-17-15), each with its status (AG-17-17); the current step is computed (AG-17-18). "What's next" on top (AG-17-19). One filled button per panel.</p>
+<div class="frame">
+  <div class="top"><b>ExpatReady</b> Cases › LMIA board › Northern Timber Ltd · L-0042</div>
+  <div class="head"><div><h1>Northern Timber Ltd · Sawmill machine operator</h1><div class="s">LMIA file L-0042 · Prince George site, BC · 3 positions requested · Owner: Case officer A · Current step: Set-up</div></div>
+  <div style="display:flex;gap:8px;align-items:center"><span class="pill wait" style="font-size:14px;padding:4px 12px">High-wage</span><span class="btn">Withdraw the file</span></div></div>
+  <div class="ws">
+    <nav class="steps" aria-label="Steps"><ul>
+      <li class="cur">Set-up <span class="s">In progress</span></li>
+      <li>Advertising &amp; recruitment <span class="s">Not started</span></li>
+    </ul><p class="s">Other steps show once the file has items in them.</p></nav>
+    <div class="main">
+      <div class="panel"><div class="ph"><h2>What's next</h2></div><ol class="next">
+        <li><b>Wage below the prevailing wage</b> · yours · CRITICAL · "The wage is below the prevailing wage for this occupation and region." <span class="btn link">Review the warning</span></li>
+        <li><b>Business number</b> · employer · CRITICAL · "Northern Timber Ltd has no business number on its client record." <span class="btn link">Open the client (/clients/:id)</span></li>
+      </ol></div>
+      <div class="panel"><div class="ph"><h2>Stream</h2><span class="btn" aria-disabled="true" style="opacity:.5">Change stream · built after CS-98b part 2</span></div>
+        <p>High-wage, confirmed when the file was opened (21 Nov, Case officer A). The wage proposed it: $31.00/h at Prince George site, BC is at or above the wage threshold for British Columbia, <b>$29.50/h</b> <span class="pill sample">Sample</span>. Source: not read yet · date checked: —.</p>
+        <p class="s">Change stream (before submission only) closes this file as "Stream changed" and opens a linked file on the other stream; the count of LMIA files does not change and advertising here is not counted there. Built after CS-98b part 2.</p></div>
+      <div class="panel"><div class="ph"><h2>Job details</h2><span class="btn">Edit job details</span></div><p class="s">A changed wage, location or hours re-runs the stream proposal and the checks; a different proposal is shown as a warning, never a silent change.</p>
+        <dl class="kv"><dt>Work location</dt><dd>Prince George site · 1200 River Rd, Prince George, BC (region codes from the employer's location)</dd><dt>Occupation</dt><dd>Sawmill machine operator <span class="pill sample">Sample list</span></dd><dt>Hourly wage</dt><dd>$31.00 · 40 hours a week · overtime after 40 hours at 1.5×</dd><dt>Duties</dt><dd>Sets up and runs sawmill machines…</dd><dt>Start · duration</dt><dd>1 Mar 2027 · 24 months</dd></dl></div>
+      <div class="panel"><div class="ph"><h2>Positions</h2><span class="btn">Add a position</span></div>
+        <table><thead><tr><th>#</th><th>Status</th><th>Worker</th><th></th></tr></thead><tbody>
+        <tr><td>1</td><td>Requested</td><td>—</td><td><span class="btn link">Remove</span></td></tr><tr><td>2</td><td>Requested</td><td>—</td><td><span class="btn link">Remove</span></td></tr><tr><td>3</td><td>Requested with worker</td><td>Worker A (named before filing)</td><td><span class="btn link">Remove</span></td></tr></tbody></table>
+        <p class="s">Positions can be added or removed until the file is submitted.</p></div>
+      <div class="panel"><div class="ph"><h2>Warnings</h2></div>
+        <div class="warn"><b>CRITICAL · Wage below the prevailing wage.</b> $31.00/h is below $32.10/h <span class="pill sample">Sample</span> for Sawmill machine operator in this region. <span class="btn link">Pass with a reason</span></div>
+        <div class="warn"><b>CRITICAL · Missing business number</b> on Northern Timber Ltd's client record. <span class="btn link">Open the client</span> · <span class="btn link">Pass with a reason</span></div>
+        <div class="warn" style="opacity:.8"><b>CRITICAL · Low-wage cap</b> — Passed by Case officer A, 21 Nov: "Employer's figures exclude seasonal staff; checked with the employer."</div>
+        <div class="warn maj"><b>MAJOR · No proof attached for one channel.</b> <span class="btn link">Acknowledge</span></div></div>
+    </div>
+  </div>
+</div>
+
+<p class="board-note" id="rec"><b>Board 5 · The file, Advertising &amp; recruitment step.</b> The clock follows the least-advanced required channel (AG-17-23); the two dates come from the server (AG-17-24). Candidates are staff-only (AG-17-30).</p>
+<div class="frame">
+  <div class="top"><b>ExpatReady</b> Cases › LMIA board › Harbour Care Homes Ltd · L-0039</div>
+  <div class="head"><div><h1>Harbour Care Homes Ltd · Personal support worker</h1><div class="s">LMIA file L-0039 · Halifax, NS · 4 positions requested · Low-wage (confirmed 12 Nov) · Owner: Case officer A · Current step: Advertising &amp; recruitment</div></div><span class="btn">Withdraw the file</span></div>
+  <div class="ws">
+    <nav class="steps"><ul><li>Set-up <span class="s">Done</span></li><li class="cur">Advertising &amp; recruitment <span class="s">In progress</span></li></ul></nav>
+    <div class="main">
+      <div class="clock"><div><b>Advertising: day 10 of 28</b> <span class="pill sample" title="The 28-day minimum is a Sample until ESDC's page is read and cited.">Sample minimum</span><div class="s">Least advanced: Job Bank. Every required channel has to reach its own minimum.</div></div><div class="bar"><i></i></div><div class="s">Earliest recruitment complete: <b>10 Dec 2026</b> <span class="pill sample">Sample</span><br>Latest submission date: <b>18 Feb 2027</b> <span class="pill sample">Sample window</span></div></div>
+      <div class="panel"><div class="ph"><h2>Channels</h2><span class="btn primary">Log a channel</span></div>
+        <table><thead><tr><th>Channel <span class="pill sample">Sample list</span></th><th>Where</th><th>Dates</th><th>Until decision</th><th>Proof</th><th>Status</th></tr></thead><tbody>
+        <tr><td>Job Bank</td><td>Job Bank posting 3021456</td><td>12 Nov – open</td><td>Yes</td><td>1 screenshot</td><td><span class="pill due">Running · day 10 of 28</span> <span class="pill sample">Sample</span></td></tr>
+        <tr><td>Online job board</td><td>Indeed</td><td>5 Nov – open</td><td>Yes</td><td>1 screenshot</td><td><span class="pill due">Running · day 17 of 28</span> <span class="pill sample">Sample</span></td></tr>
+        <tr><td>Local newspaper</td><td>Chronicle Herald</td><td>1 Aug – 29 Aug</td><td>No</td><td>—</td><td><span class="pill crit">! Expired before submission · CRITICAL</span> <span class="pill sample">Sample window</span></td></tr>
+        </tbody></table></div>
+      <div class="panel"><div class="ph"><h2>Candidates</h2><span class="btn">Record a candidate</span></div>
+        <div class="warn"><b>CRITICAL · 2 candidates whose residence status needs a rejection reason have none</b> <span class="pill sample">Sample list</span>: Candidate C, Candidate D. <span class="btn link">Show them</span></div>
+        <table><thead><tr><th>Name</th><th>Received</th><th>Channel</th><th>Residence status <span class="pill sample">Sample list</span></th><th>Outcome</th><th>Rejection reason</th></tr></thead><tbody>
+        <tr><td>Candidate B</td><td>14 Nov</td><td>Job Bank</td><td>Citizen</td><td>Not hired</td><td>Did not meet the licence requirement</td></tr>
+        <tr><td>Candidate C</td><td>15 Nov</td><td>Indeed</td><td>Permanent resident</td><td>Not hired</td><td><span class="pill crit">Missing</span></td></tr>
+        <tr><td>Candidate D</td><td>16 Nov</td><td>Indeed</td><td>Citizen</td><td>Not hired</td><td><span class="pill crit">Missing</span></td></tr>
+        </tbody></table><p class="s">Only staff see candidates; the employer sees nothing about them.</p></div>
+      <div class="panel"><div class="ph"><h2>Job ads and the job offer</h2><span class="btn">Add an ad or the offer</span></div>
+        <table><thead><tr><th>Document</th><th>Wage</th><th>Hours</th><th>Location</th><th>Duties match</th></tr></thead><tbody>
+        <tr><td>Job Bank ad</td><td>$18.50 (as job)</td><td>40 (as job)</td><td>Halifax (as job)</td><td>Yes</td></tr>
+        <tr><td>Indeed ad</td><td><span class="pill crit">! $17.00 — job says $18.50</span></td><td>40</td><td>Halifax</td><td>Yes</td></tr>
+        <tr><td>Job offer</td><td>$18.50</td><td>40</td><td>Halifax</td><td><span class="pill crit">! No</span></td></tr></tbody></table>
+        <p class="s">Pre-filled from the job details; change only what differs. Each difference in wage, hours or location, and each "No" on duties, is a CRITICAL naming the field and the document.</p></div>
+      <div class="panel"><div class="ph"><h2>Recruitment report</h2><span class="btn">Download the recruitment report</span></div><p class="s">A PDF of every channel with its dates and proof, applicant counts by status, outcomes and rejection reasons. Saved on the file each time.</p></div>
+      <div class="panel"><div class="ph"><h2>Submission</h2><span class="btn primary">Record the submission</span></div><p class="s">When the application has gone in through LMIA Online, record it here. (Until Preparation &amp; quality check is built in CS-98s3, this panel closes the last step before submission.)</p></div>
+    </div>
+  </div>
+</div>
+
+<p class="board-note"><b>Board 6 · Drawers and field errors.</b></p>
+<div style="display:flex;flex-wrap:wrap">
+<div class="drawer"><div class="dh"><b>Pass a CRITICAL warning</b><span class="s">Close</span></div><div class="db"><p>Wage below the prevailing wage.</p><div class="f err"><label>Reason (recorded on the file)</label><div class="in"></div><div class="msg">Give a reason to pass this warning.</div></div></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Pass the warning</span></div></div>
+<div class="drawer"><div class="dh"><b>Log a channel</b><span class="s">Close</span></div><div class="db"><div class="f"><label>Kind</label><div class="in">Job Bank <span class="pill sample">Sample list</span></div></div><div class="f"><label>Where posted</label><div class="in">Job Bank posting number</div></div><div class="f"><label>Link</label><div class="in">https://…</div></div><div class="f err"><label>Start date</label><div class="in"></div><div class="msg">Enter the date the ad started.</div></div><div class="f"><label>End date</label><div class="in">☑ Stays active until the decision</div></div><div class="f"><label>Proof</label><div class="in">Add a file</div></div></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Log the channel</span></div></div>
+</div>
+
+<p class="board-note"><b>Board 7 · States.</b> A passed CRITICAL reads "Passed by {name}, {date}: {reason}" (CS-98b's pass record).</p>
+<div class="frame"><div class="states">
+  <div class="state"><h3>Board empty (no files yet)</h3><p>No LMIA files yet. Open one from a company client, or here: it shows in Set-up until advertising starts.</p><span class="btn primary">Open an LMIA file</span></div>
+  <div class="state"><h3>Nothing matches the filters</h3><p>No LMIA files match these filters.</p><span class="btn link">Clear filters</span></div>
+  <div class="state"><h3>Loading</h3><div class="sk" style="width:60%"></div><div class="sk"></div><div class="sk" style="width:80%"></div><span class="s">Loading LMIA files…</span></div>
+  <div class="state"><h3>Could not load</h3><p style="color:var(--red)">Could not load the LMIA board. <span class="btn link">Try again</span></p></div>
+  <div class="state"><h3>No access (403)</h3><p>You can't see LMIA files. Ask an Owner or Admin for access to cases.</p></div>
+  <div class="state"><h3>File not found (404)</h3><p>We can't find this LMIA file. It may not exist, or it may not be one you can see.</p><span class="btn link">Back to the LMIA board</span></div>
+  <div class="state"><h3>After submission (read-only parts)</h3><p>Submitted on 12 Nov. Job details, stream and positions can no longer change. "Change stream" is not offered.</p></div>
+  <div class="state"><h3>Sample marker</h3><p><span class="pill sample">Sample</span> on every LMIA number not yet read from ESDC, with a tooltip: "Not read from ESDC yet. Shown so the flow can be tried; the real figure comes from ESDC's page with its date."</p></div>
+  <div class="state"><h3>Changed by someone else (409)</h3><p>Someone else changed this file. Reload to see it. What you typed is kept in the drawer.</p><span class="btn">Reload</span></div>
+  <div class="state"><h3>Saving · failed to save</h3><p>The drawer's button reads "Saving…" and is disabled; on a failure: "Not saved. {server words}" at the top of the drawer, fields kept.</p></div>
+  <div class="state"><h3>Long content</h3><p>A 120-character employer name wraps on the card (2 lines, then cut with the full name on hover); duties of 4,000 characters wrap in Job details.</p></div>
+</div></div>
+
+<p class="board-note"><b>Board 8 · 375 px.</b> The board scrolls sideways inside its own box (never the page); a one-line hint offers the List. File page: steps become a select above the content.</p>
+<div class="phone"><div class="top"><b>ExpatReady</b></div><div style="padding:12px"><h2>LMIA board</h2><span class="seg"><span class="on">Board</span><span>List</span></span><p class="s">Tip: the List is easier on a small screen.</p><div class="col" style="flex:none;width:100%"><h3>Set-up <span class="s">1</span></h3><div class="card"><a href="#">Northern Timber Ltd</a><div class="s">Sawmill machine operator</div><div class="row"><span>3 requested</span><span class="pill crit">! 2</span></div></div></div></div></div>
+<p class="board-note"><b>Board 9 · CS-98s2: Submitted and Decision steps on the file.</b> Submit asks once when not signed off (server 409 <code>SIGN_OFF_CONFIRM</code>, AG17-D46). Decision: approved count, then which positions are not approved; Save stays off until the counts match (AG-17-39). Withdraw only before a decision (AG-17-89). Validity clock "Sample", no reminder line while Sample (P-412 F13 (b)). Re-apply after a refusal or withdrawal (AG-17-41).</p>
+<div class="frame">
+  <div class="top"><b>ExpatReady</b> Cases › LMIA board › Prairie Grain Co-op · L-0027</div>
+  <div class="head"><div><h1>Prairie Grain Co-op · Farm supervisor</h1><div class="s">LMIA file L-0027 · Regina, SK · 4 positions requested · High-wage · Owner: Case officer B · Current step: Submitted</div></div><span class="btn">Withdraw the file</span></div>
+  <div class="ws">
+    <nav class="steps"><ul><li>Set-up <span class="s">Done</span></li><li>Advertising &amp; recruitment <span class="s">Done</span></li><li class="cur">Submitted <span class="s">In progress</span></li><li class="muted">Decision <span class="s">Not started</span></li></ul></nav>
+    <div class="main">
+      <div class="panel"><div class="ph"><h2>Submission</h2></div><dl class="kv"><dt>Submitted</dt><dd>12 Nov 2026 by Case officer B · LMIA Online</dd><dt>Application number <span class="pill sample">Sample label</span></dt><dd>A-1234567</dd></dl></div>
+      <div class="panel"><div class="ph"><h2>Officer contacts</h2><span class="btn">Record an officer contact</span></div>
+        <table><thead><tr><th>When</th><th>By</th><th>Channel</th><th>Summary</th><th>Respond by</th></tr></thead><tbody><tr><td>21 Nov</td><td>ESDC officer</td><td>Phone</td><td>Asked for proof of the Indeed posting</td><td><span class="pill need">28 Nov · task for Case officer B</span></td></tr></tbody></table></div>
+      <div class="panel"><div class="ph"><h2>Decision</h2><span class="btn primary">Record the decision</span></div><p class="s">Record what ESDC decided, and which positions it approved.</p></div>
+    </div>
+  </div>
+</div>
+<div style="display:flex;flex-wrap:wrap">
+<div class="drawer"><div class="dh"><b>Record the decision</b><span class="s">Close</span></div><div class="db">
+  <div class="f"><label>Outcome</label><div class="in">◉ Approved &nbsp; ○ Refused (then: root cause, optional, and a note)</div></div>
+  <div class="f"><label>Decision letter</label><div class="in">Add a file</div></div>
+  <div class="f"><label>Decision date</label><div class="in">22 Nov 2026</div></div>
+  <div class="f"><label>ESDC's decision number <span class="pill sample">Sample label</span></label><div class="in">(its own field; not the application number)</div></div>
+  <div class="f"><label>Positions approved</label><div class="in">3 of 4</div></div>
+  <div class="f err"><label>Which position was not approved? (choose 1)</label><div class="in">☐ 1 Requested · ☐ 2 Requested · ☐ 3 Requested · ☐ 4 Requested with worker (Worker B)</div><div class="msg">Choose 1 position that was not approved. You have chosen 0.</div></div>
+</div><div class="df"><span class="btn">Cancel</span><span class="btn primary" style="opacity:.5">Save the decision</span></div></div>
+<div class="drawer"><div class="dh"><b>Submit without sign-off?</b></div><div class="db"><p>This file has not been signed off by the representative of record. Submit it anyway? It is recorded that it was submitted without sign-off.</p></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Submit without sign-off</span></div></div>
+</div>
+
+<p class="board-note"><b>Board 10 · CS-98s2: Decision done, Workers &amp; permits</b> (Ridge Orchards Ltd · L-0019, Approved 3 of 4 on 2 Oct). Each position's row: status, worker, milestones (plain dates; only permit expiry and renewal due remind, AG-17-44), "Create work permit case" only on an approved position with a worker (AG-17-45). It lands on the worker's own case with the employer facts shown as copied (C1.3's display).</p>
+<div class="frame"><div class="wrap" style="padding-top:16px">
+  <div class="clock"><div><b>Validity: until 8 Jul 2027</b> <span class="pill sample" title="The validity length is a Sample until ESDC's page is read and cited. No reminder is set while it is a Sample.">Sample</span><div class="s">No reminder while the validity length is a Sample.</div></div></div>
+  <div class="panel"><div class="ph"><h2>Positions and workers</h2><span class="btn">Assign a worker</span></div>
+  <table><thead><tr><th>#</th><th>Status</th><th>Worker</th><th>Milestones</th><th></th></tr></thead><tbody>
+  <tr><td>1</td><td>Worker assigned</td><td>Worker B</td><td>Permit applied —</td><td><span class="btn">Create work permit case</span></td></tr>
+  <tr><td>2</td><td>Case linked</td><td>Worker C · <a href="#">case W-0811</a></td><td>Permit applied 12 Jan · approved —</td><td></td></tr>
+  <tr><td>3</td><td>Approved</td><td>—</td><td>—</td><td><span class="btn link">Assign a worker</span></td></tr>
+  <tr><td>4</td><td>Not approved</td><td>—</td><td>—</td><td></td></tr></tbody></table>
+  <p class="s">A second "Create work permit case" on the same position shows the server's refusal; the worker never sees this file.</p></div>
+  <p class="s">Re-apply shows only on a refused or withdrawn file (its drawer is on board 12).</p>
+</div></div>
+
+<p class="board-note"><b>Board 11 · CS-98s2 part 2: the corporate panels on the staff client screen (AG-17-57, AG-7-86).</b> Panels, not a separate screen. Only what exists is shown; each missing panel says "Not built yet", named. Mounted on the staff client screen <code>/clients/:id</code> (CS-K1s, <code>web/src/runtime/clients.tsx</code>, on main), subject to the tech lead's ruling.</p>
+<div class="frame"><div class="wrap" style="padding-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <div class="panel"><h3>Employer</h3><dl class="kv"><dt>Legal name</dt><dd>Northern Timber Ltd</dd><dt>Business number</dt><dd><span class="pill crit">Missing · CRITICAL on its LMIA files</span></dd><dt>Locations</dt><dd>Prince George site (BC) · Quesnel yard (BC)</dd></dl></div>
+  <div class="panel"><h3>LMIA files</h3><table><tbody><tr><td><a href="#file">L-0042</a></td><td>Sawmill machine operator</td><td>Set-up</td><td>3 requested</td></tr><tr><td><a href="#">L-0031</a></td><td>Sawmill machine operator</td><td>Set-up</td><td>2 requested</td></tr></tbody></table></div>
+  <div class="panel"><h3>Workers</h3><p class="s">No workers yet on Northern Timber Ltd's files: a worker shows here, with milestones, once a position has one.</p></div>
+  <div class="panel"><h3>Contacts and portal seats · Employer documents · Billing summary</h3><p class="s">Not built yet: contacts and seats come from the front office, employer documents with CS-98s3, the billing summary from client money.</p></div>
+</div></div>
+
+<p class="board-note"><b>Board 12 · The remaining drawers (Side panel, 520 px; Cancel left, primary right; server words on refusal).</b> Withdraw sits in the file header on every step until a decision (AG-17-89), including before submission.</p>
+<div style="display:flex;flex-wrap:wrap">
+<div class="drawer"><div class="dh"><b>Record the submission</b><span class="s">Close</span></div><div class="db"><div class="f"><label>Date submitted</label><div class="in">12 Nov 2026</div></div><div class="f"><label>Application number <span class="pill sample">Sample label</span></label><div class="in">A-1234567</div></div><div class="f"><label>Submitted application (upload the copy; never re-typed)</label><div class="in">Add a file</div></div><div class="f"><label>Other documents</label><div class="in">Add files</div></div><div class="f"><label>Submitted by</label><div class="in">Case officer A (you)</div></div><p class="s">Not signed off? You are asked once (board 9's dialog) and it is recorded.</p></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Record the submission</span></div></div>
+<div class="drawer"><div class="dh"><b>Record a candidate</b><span class="s">Close</span></div><div class="db"><div class="f"><label>Name</label><div class="in">Candidate B</div></div><div class="warn maj"><b>Candidate B is already logged</b> (received 14 Nov via Job Bank). Same person? <span class="btn">Yes, update that entry</span> <span class="btn">No, a different person</span></div><div class="f"><label>Received · channel</label><div class="in">16 Nov · Indeed</div></div><div class="f"><label>Residence status <span class="pill sample">Sample list</span> · outcome · rejection reason (asked when the status needs one)</label><div class="in">Citizen · Not hired · Did not meet the licence requirement</div></div><div class="f"><label>Documents</label><div class="in">Add a file</div></div></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Record the candidate</span></div></div>
+<div class="drawer"><div class="dh"><b>Edit job details</b><span class="s">Close</span></div><div class="db"><p class="s">The wizard's job fields, pre-filled. Before submission only; after it the server answers "Job details can no longer change."</p><div class="f"><label>Hourly wage (CAD)</label><div class="in">27.00</div></div><div class="warn maj">The new wage now proposes Low-wage (below the Sample threshold of $29.50/h <span class="pill sample">Sample</span>). This file stays High-wage; to move, use Change stream.</div></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Save job details</span></div></div>
+<div class="drawer"><div class="dh"><b>Add a position</b><span class="s">Close</span></div><div class="db"><div class="f"><label>How many</label><div class="in">1</div></div><div class="f"><label>Worker named before filing (optional)</label><div class="in">—</div></div><p class="s">Re-runs the low-wage cap check; logged on the timeline. After submission: "Positions cannot change after submission."</p></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Add the position</span></div></div>
+<div class="drawer"><div class="dh"><b>Withdraw the file</b><span class="s">Close</span></div><div class="db"><p>Withdraw L-0039 before a decision? It closes as Withdrawn; requested positions become Not approved. Re-apply stays possible.</p><div class="f"><label>Date</label><div class="in">22 Nov 2026</div></div><div class="f err"><label>Reason</label><div class="in"></div><div class="msg">Give a reason to withdraw.</div></div><div class="f"><label>Withdrawal letter (optional)</label><div class="in">Add a file</div></div></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Withdraw the file</span></div></div>
+<div class="drawer"><div class="dh"><b>Record an officer contact</b><span class="s">Close</span></div><div class="db"><div class="f"><label>When · by · channel</label><div class="in">21 Nov · ESDC officer · Phone</div></div><div class="f"><label>Summary</label><div class="in">Asked for proof of the Indeed posting</div></div><div class="f"><label>Respond by (optional)</label><div class="in">28 Nov 2026</div><div class="s">A respond-by date makes a task for the case officer (the card's owner).</div></div></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Record the contact</span></div></div>
+<div class="drawer"><div class="dh"><b>Assign a worker</b><span class="s">Close</span></div><div class="db"><div class="f"><label>Position</label><div class="in">3 · Approved</div></div><div class="f"><label>Worker</label><div class="in">◉ An existing person: search · ○ A new person: name, date of birth</div></div></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Assign the worker</span></div></div>
+<div class="drawer"><div class="dh"><b>Create work permit case</b><span class="s">Close</span></div><div class="db"><div class="f"><label>Worker</label><div class="in">Worker B · position 1</div></div><div class="f"><label>Individual combination</label><div class="in">Work permits › Employer-specific › With an LMIA (pre-chosen; Sample combination)</div></div><p class="s">Copied once into the worker's case (not a live link): the employer facts the worker's release reads, and the shareable employer documents.</p><p class="s">Will be created as: a work permit case for Worker B, client Worker B. It counts as one individual case.</p><div class="warn">If refused: the server's words in place, e.g. a work permit case already exists for this position, or the plan limit is reached.</div></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Create the work permit case</span></div></div>
+<div class="drawer"><div class="dh"><b>Re-apply</b><span class="s">Close</span></div><div class="db"><p>Opens a new LMIA file linked to L-0008 (Refused, 3 Nov). Recruitment is not copied.</p><div class="f"><label>Copy job details and positions from L-0008</label><div class="in">☑ Yes</div></div></div><div class="df"><span class="btn">Cancel</span><span class="btn primary">Open the new file</span></div></div>
+</div>
+
+</body>
+</html>
