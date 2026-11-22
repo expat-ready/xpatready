@@ -128,10 +128,10 @@ c = {k: {"include": [g for g in (v or {}).get("include") or [] if not g.endswith
 if not owners_bad(c, files): bad.append("self-test: web/src/modules/platform/ only partly in platform still passes")
 def mutated(edit):   # a copy of the scopes, changed by edit(c)
     c = {k: {"include": list((v or {}).get("include") or [])} for k, v in src.items()}; edit(c); return c
-for t in ("tests/check_fo0_x.ts", "tests/check_FO3_x.ts", "tests/check_Pf9_x.ts"):   # a new area test that no scope's glob holds (case-blind)
+base = owners_bad(src, files)
+for t in ("tests/check_fo0_x.ts", "tests/check_FO3_x.ts", "tests/check_Pf9_x.ts"):   # a new area test no scope's glob holds (case-blind: break m4)
     n += 1
-    c = mutated(lambda c: [c[k].__setitem__("include", [g for g in c[k]["include"] if not re.search(r"tests/check_(fo|FO|pf|Pf)", g, re.I)]) for k in c])
-    if not any(t.split("/")[-1] in x or "does not hold" in x for x in owners_bad(c, files + [ST + t])): bad.append(f"self-test: a new {t} that no scope holds still passes")
+    if owners_bad(src, files + [ST + t]) == base: bad.append(f"self-test: a new {t} that no scope holds still passes")
 n += 1   # a new area folder only partly in its scope (break round 2 m6, R-G1)
 c = mutated(lambda c: c["money"]["include"].append(ST + "web/src/modules/client-money/index.tsx"))
 if not any("not wholly" in x for x in owners_bad(c, files + [ST + "web/src/modules/client-money/index.tsx", ST + "web/src/modules/client-money/b.tsx"])): bad.append("self-test: client-money/ only partly in money still passes")
