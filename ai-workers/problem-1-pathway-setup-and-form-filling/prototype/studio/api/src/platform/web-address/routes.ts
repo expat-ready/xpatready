@@ -20,6 +20,7 @@ import { parseInput, query } from "../http/input.ts";
 
 /** The suggestion's one query key. */
 const SUGGESTION_QUERY = query("name");
+const AVAILABILITY_QUERY = query("address");
 
 /** The service as the app uses it: the app's database, the interim audit adapter (PF-0p; AUD-1 swaps it), the real clock. */
 export const webAddressesProvider = { provide: WebAddresses, useFactory: (db: Db) => new WebAddresses({ db, audit: auditEvent, clock: systemClock, hostSuffixes: addressHostSuffixes(platformConfig().addressSuffix) }), inject: [Db] };
@@ -58,8 +59,9 @@ export class WebAddressController {
   constructor(private readonly addresses: WebAddresses, private readonly db: Db) {}
 
   /** Is this address free? `{ address, available }`, or the plain reason and a suggestion. */
-  async availability(address: unknown, req: PublicReq, res: PublicRes) {
+  async availability(q: unknown, req: PublicReq, res: PublicRes) {
     if (publicFirmOf(req)) return sendPublicNotFound(req, res);
+    const { address } = parseInput(AVAILABILITY_QUERY, q);   // PF-28 part 4 (listed there by the sweep's path rule): an unknown query key is refused 422, named
     res.setHeader("Cache-Control", "no-store");
     res.json(await this.addresses.availability(address));
   }
@@ -96,6 +98,6 @@ const route = (method: "availability" | "suggestion" | "site", path: string, why
   OpenRead(why)(proto, method, d);
   params.forEach((p, i) => p(proto, method, i));
 };
-route("availability", "web-address/availability", SIGN_UP, [Query("address"), Req(), Res()]);
+route("availability", "web-address/availability", SIGN_UP, [Query(), Req(), Res()]);
 route("suggestion", "web-address/suggestion", SIGN_UP, [Query(), Req(), Res()]);   // PF-28 part 2b: the whole query, read through the rule
 route("site", "site", "someone on a firm's public page, who has no account", [Req(), Res()]);

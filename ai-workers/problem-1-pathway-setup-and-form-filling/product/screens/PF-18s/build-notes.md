@@ -90,3 +90,13 @@ A Case Officer, or anyone without `agent/settings:edit`, has no Offices line. Op
   * graph.mjs does not see `staffApi(` calls, a tool gap.
   * Outside Canada, the firm's zone is not named on add, because no firm-settings read exists on this page.
 * `check_pf18s_offices_browser.ts` now has 28 checks: 28/28 on two fresh copies.
+
+## Part 3: My account → Notifications (22 Nov, PR #2904)
+* **Where:** `/account/notifications`, a My account line for `agent/notification:manage-preferences` (all six roles). API on main: PF-18a part 2 `GET|PUT /api/platform/me/notifications`; no server change.
+* **Checkboxes, one Save (challenge m3):** plain checkboxes named "In app for <group>" / "Email for <group>", the line "Changes apply when you press Save"; Save sends only the changed groups with the view's version.
+* **409 and 422 re-read the latest view:** the shared Problem parser (`sales/contract.ts`, not this row's file) keeps no `current`, so the page reads `GET` again rather than change a shared contract. A role change while the page is open is never a 409 (the version hashes the saved rows only), so a 422 re-reads too (break M1); a group no longer in the view is dropped and named by its label; the person's other changes stay. A failed re-read says "reload the page" (break m2); a 409 that leaves nothing to save says so (break m3).
+* **Overlay per box (review m2):** a box the person changed keeps their value; the other box of the same group takes the latest.
+* **Focus (review m4, break m4):** Save is `aria-disabled` while sending (it keeps focus) and shows "Saving…"; after a save, focus goes to the heading.
+* **Background re-read (break m5):** a newer view read while nothing is unsaved replaces the shown one.
+* **Kept as is:** at 375 px the three-column table stays (it fits with no sideways scroll; no stacked rows: as part 1's m-3); loading is a status line, not a skeleton; no Sample Billing user exists, so Payments is walked with the Sample Case Officer, who holds `agent/invoice:list` (review m6). An in-app menu click with unsaved changes is not blocked (BrowserRouter has no blocker; `beforeunload` only).
+* **Check:** `tests/check_pf18s_notifications_browser.ts` (DN1-DN8), 40/40.

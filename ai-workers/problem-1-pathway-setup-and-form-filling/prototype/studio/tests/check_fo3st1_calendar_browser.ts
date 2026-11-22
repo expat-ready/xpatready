@@ -3,7 +3,7 @@
 // (its build, its routes, PF-4's local sign-in, the system clock). Sample firm `maple` is written to the copy's database
 // with the seeded roles' staff, hours, a type, leads and bookings (Sample rows); the browser signs in as each person.
 // One named case per Done when line, a pass and a fail each: J-S1, J-S2, J-S3, J-S4, J-S9, DW10 (axe, keyboard only,
-// 375/1024/1440, 60 bookings in a week with no overlapping blocks), DW11 (the new paths overlap no APP_ROUTES entry; PF-1's own suite checks every module). US$0, no model call.
+// 375/1024/1440, 60 bookings in a week with no overlapping blocks), QA-743 (R1.39: time off on the calendar), DW11 (the new paths overlap no APP_ROUTES entry; PF-1's own suite checks every module). US$0, no model call.
 //   zsh studio/tools/isolated.sh screens_fo3st1 4541 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo3st1_calendar_browser.ts 4541 xr_studio_screens_fo3st1
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -255,6 +255,83 @@ try {
   const want = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${today}T12:00:00Z`));
   await night.context().close();
   ok("FO-3st1 detail pass/fail (review M4): at 21:30 in Toronto, Today is the office's day, not the next UTC day", dayShown === want, { dayShown, want });
+
+  // --------------------------------------------------------------------------------------------- QA-743 (R1.39: time off)
+  // A day off saved through Availability's own route shows in Week, Day and List in office time (the browser is in
+  // Asia/Dubai); a colleague's is "not available" in Team only; nothing but who and when leaves the feed.
+  const offDay = plus(nextMonday, 2), partDay = plus(nextMonday, 3), mineWeek = `?whose=mine&date=${nextMonday}`;
+  const tokenOf = (p: Page) => p.evaluate(() => JSON.parse(sessionStorage.getItem("xr-staff-session") ?? "{}").token as string);
+  const call = (token: string, path: string, body?: unknown) => fetch(`${BASE}/api/front-office/${path}`, { method: body ? "POST" : "GET", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  type Off = { id: string; staff: { id: string; name: string }; mine: boolean; label: string; startsAt: string; endsAt: string };
+  const feedOf = async (token: string, view: string) => { const r = await call(token, `bookings/feed?view=${view}&from=${nextMonday}T00:00:00Z&to=${plus(nextMonday, 7)}T00:00:00Z`); return { status: r.status, timeOff: r.ok ? ((await r.json()) as { timeOff: Off[] }).timeOff : [] }; };
+  await go(co, `/front-office/bookings${mineWeek}&view=week`);
+  await co.locator("[data-grid]").waitFor({ timeout: 20_000 });
+  const offBefore = await co.locator("[data-off], [data-off-row]").count();
+  const coToken = await tokenOf(co);
+  const savedOff = await call(coToken, "me/time-off", { startsAt: wall(offDay, "00:00").toISOString(), endsAt: wall(plus(offDay, 1), "00:00").toISOString() });
+  const colleagueOff = await db.foTimeOff.create({ data: { firmId: M.id, staffId: I.id, startsAt: wall(partDay, "13:00"), endsAt: wall(partDay, "15:00"), createdBy: `staff:${I.id}` } });
+  const myOff = await db.foTimeOff.findFirstOrThrow({ where: { firmId: M.id, staffId: C.id } });
+  const offText = async (view: string, whose: string, date: string) => {
+    await go(co, `/front-office/bookings?view=${view}&whose=${whose}&date=${date}`);
+    await co.locator("[data-grid], [data-empty], table").first().waitFor({ timeout: 20_000 });
+    return { mine: (await co.locator(view === "list" ? `[data-off-row="${myOff.id}"]` : `[data-off-day="${offDay}"] [data-off="${myOff.id}"]`).allInnerTexts()).join(" ").replace(/\s+/g, " "),
+      other: (await co.locator(view === "list" ? `[data-off-row="${colleagueOff.id}"]` : `[data-off-day="${partDay}"] [data-off="${colleagueOff.id}"]`).allInnerTexts()).join(" ").replace(/\s+/g, " "), all: await co.locator("[data-off]").count() };
+  };
+  const wk = await offText("week", "mine", nextMonday);
+  const shaded = await co.locator(`[data-cell^="${offDay}T"][data-off-hour]`).count(), shadedElsewhere = await co.locator(`[data-off-hour]:not([data-cell^="${offDay}T"])`).count();
+  // Break M1: the shading is seen, not only marked: an off hour's background differs from the same hour the day before.
+  const bg = (sel: string) => co.locator(sel).first().evaluate((e) => getComputedStyle(e).backgroundColor);
+  const [offBg, freeBg] = [await bg(`[data-cell="${offDay}T08"]`), await bg(`[data-cell="${plus(offDay, -1)}T08"]`)];
+  await axe("QA-743 Mine week with a day off", co); await shot(co, "time-off-week-mine-1440");
+  // Not a booking: no button or link in it, and a click opens nothing.
+  const inert = await co.locator("[data-off-row] button, [data-off-row] a, [data-off-row] [role=button]").count();
+  await co.locator(`[data-off="${myOff.id}"]`).click();
+  const openedByClick = (await co.locator("[data-booking-detail]").count()) > 0 || !co.url().endsWith(`date=${nextMonday}`);
+  const dy = await offText("day", "mine", offDay), dyNone = await offText("day", "mine", plus(nextMonday, 1));
+  await shot(co, "time-off-day-mine-1440");
+  const ls = await offText("list", "mine", nextMonday);
+  const listInert = await co.locator("[data-off-row] button, [data-off-row] a").count();
+  await axe("QA-743 Mine list with a day off", co); await shot(co, "time-off-list-mine-1440");
+  ok("QA-743 R1.39 fail (before): with no time off saved, Client C's own week shows none", offBefore === 0, { offBefore });
+  ok("QA-743 R1.39 pass: a day off saved on Availability (201) shows on that day in Mine › Week (\"Time off · all day\", its hours shaded, no other day), Day and List, in office time; it is text, not a booking (a click opens nothing)",
+    savedOff.status === 201 && wk.mine === "Time off · all day" && wk.all === 1 && shaded > 0 && shadedElsewhere === 0 && offBg !== freeBg && dy.mine === "Time off · all day" && dyNone.all === 0 && ls.mine.includes(", all day") && ls.mine.includes("Client C") && ls.mine.includes("Time off") && inert === 0 && listInert === 0 && !openedByClick,
+    { saved: savedOff.status, wk, shaded, shadedElsewhere, offBg, freeBg, dy, dyNone, ls, inert, listInert, openedByClick });
+  const tm = await offText("week", "team", nextMonday);
+  await axe("QA-743 Team week with time off", co); await shot(co, "time-off-week-team-1440");
+  const tl = await offText("list", "team", nextMonday);
+  const teamFeed = await feedOf(coToken, "team"), mineFeed = await feedOf(coToken, "mine");
+  const theirs = teamFeed.timeOff.find((o) => o.id === colleagueOff.id);
+  // Break m6: a deactivated colleague's time off is not listed (Availability treats them as not in the firm).
+  const goneStaff = await db.platformStaff.create({ data: { firmId: M.id, email: "clientx@maple.example", displayName: "Client X", status: "DEACTIVATED" as never } });
+  const goneOff = await db.foTimeOff.create({ data: { firmId: M.id, staffId: goneStaff.id, startsAt: wall(partDay, "09:00"), endsAt: wall(partDay, "10:00"), createdBy: "seed:fo3st1" } });
+  const teamAfter = await feedOf(coToken, "team");
+  ok("QA-743 R1.39 pass: with the list key, Team shows a colleague's time off as \"Client I: not available · 13:00–15:00\" (Week) and \"Not available\" (List); Mine never shows it; a deactivated colleague's is not sent; the feed sends who and when only",
+    tm.other === "Client I: not available · 13:00–15:00" && teamAfter.timeOff.some((o) => o.id === colleagueOff.id) && !teamAfter.timeOff.some((o) => o.id === goneOff.id) && tm.mine === "Time off · all day" && wk.other === "" && tl.other.includes("13:00–15:00") && tl.other.includes("Client I") && tl.other.includes("Not available")
+      && mineFeed.timeOff.length === 1 && mineFeed.timeOff[0].id === myOff.id && !!theirs && theirs.label === "Not available" && !theirs.mine && Object.keys(theirs).sort().join() === "endsAt,id,label,mine,staff,startsAt" && Object.keys(theirs.staff).sort().join() === "id,name",
+    { tm, tl, mineFeed: mineFeed.timeOff.length, theirs });
+  // The host without the list key (Billing and finance): the team feed refuses; their own feed holds no colleague's.
+  const bfToken = ((await (await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "maple", email: BF.email, secondStep: true }) })).json()) as { token: string }).token;
+  const bfTeam = await feedOf(bfToken, "team"), bfMine0 = await feedOf(bfToken, "mine");
+  await db.foTimeOff.create({ data: { firmId: M.id, staffId: BF.id, startsAt: wall(plus(nextMonday, 4), "09:00"), endsAt: wall(plus(nextMonday, 4), "12:00"), createdBy: `staff:${BF.id}` } });
+  const bfMine1 = await feedOf(bfToken, "mine");
+  ok("QA-743 R1.39 fail: a host without the list key never sees a colleague's time off (team feed 403; own feed empty while two colleagues have time off, then only their own once they add one, with no reason field)",
+    bfTeam.status === 403 && bfMine0.status === 200 && bfMine0.timeOff.length === 0 && bfMine1.timeOff.length === 1 && bfMine1.timeOff[0].staff.id === BF.id && bfMine1.timeOff[0].mine && !JSON.stringify(bfMine1.timeOff).toLowerCase().includes("reason"),
+    { team: bfTeam.status, before: bfMine0.timeOff.length, after: bfMine1.timeOff });
+  const offAxe: string[] = [], offFit: Record<number, number> = {}, offCut: string[] = [];
+  for (const w of [400, 1024, 1440]) {
+    const p = await as(C.email, w);
+    for (const v of ["week", "day", "list"]) {
+      await go(p, `/front-office/bookings?view=${v}&whose=team&date=${offDay}`);   // below 768 px the week is a day: the day off's
+      await p.locator("[data-off], [data-off-row]").first().waitFor({ timeout: 20_000 });
+      offAxe.push(...(await axeBad(p)).map((b) => `${v} ${w}: ${b}`));
+      offFit[w] = Math.max(offFit[w] ?? 0, await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth));
+      // Review M1: every time-off label is shown whole (wrapped, never cut to "…").
+      offCut.push(...(await p.locator("[data-off]").evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent ?? ""))).map((t) => `${v} ${w}: ${t}`));
+      if (w === 400 || v === "week") await shot(p, `time-off-${v}-team-${w}`);
+    }
+    await p.context().close();
+  }
+  ok("QA-743 R1.39 pass: Week, Day and List with time off at 400, 1024 and 1440 px: nothing serious or critical from axe, no sideways page scroll, no time-off label cut", offAxe.length === 0 && Object.values(offFit).every((o) => o <= 1) && offCut.length === 0, { offAxe, offFit, offCut });
 
   // --------------------------------------------------------------------------------------------- DW10 (keyboard, widths)
   await go(ow, `/front-office/bookings${week}`);
