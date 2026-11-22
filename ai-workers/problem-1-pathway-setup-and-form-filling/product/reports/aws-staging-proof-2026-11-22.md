@@ -70,3 +70,11 @@ on-call address read from the stack, never printed).
 **Track B (image build):** the founder approved a temporary build project and its service role (relayed by Lead 1, ~11:2x).
 This session's permission check **refused `iam create-role`** because the approval reached it only through another session,
 not typed here. Nothing was created. Waits for the founder's own approval in this session (or his own click).
+* **11:3x IST: the founder approved B typed in this session** ("Approve, delete after"; "I approve: create the temporary CodeBuild
+  role xr-staging-image-build and project, build main, delete both after"). Created from the 21 Nov files (`~/cb`): role
+  `arn:aws:iam::581508167097:role/xr-staging-image-build` (trust codebuild.amazonaws.com, SourceAccount condition; inline policy:
+  its own log group, `ecr:GetAuthorizationToken`, push/pull on `xr-staging-studio` only), project `xr-staging-image-build`
+  (standard:7.0, small, 30 min timeout). Build `xr-staging-image-build:1b240947-3537-4025-a6ed-263b0f336469` started 11:35:57 IST
+  on SHA 5d866c7464957f96551fefa2d7a9fab59e4c7a76. Both are deleted after the build (recorded below).
+* 11:21 IST: stack UPDATE_IN_PROGRESS 18/23, waiting on the certificate; Lead 2 (now current Lead) holds the NS values and adds
+  them in Cloudflare after the founder's approval in its session.
