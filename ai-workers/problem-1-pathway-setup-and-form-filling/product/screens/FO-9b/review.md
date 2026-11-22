@@ -333,3 +333,70 @@ Kept as is, per the brief: the addContact/engage foreign-key errors (a Minor row
 **Verdict: Approve** on `ade4a847c369f4d564e4046620e923ad660a3543`. No Blocker or Major is open. m1 to m4 go in the PR, or get fixed in a follow-up. m1 should go to the tech lead, because it is the one place where the ruling's "never waits" does not hold.
 
 Reviewer: Approve ade4a847c369f4d564e4046620e923ad660a3543
+
+## Round 6 (21a6416c5, re-stamp and F7 lift)
+
+This is a diff-only re-review (Opus 5.5, effort high; round 6 asked for by the tech lead, Lead 9, on PR #3042) of head `21a6416c51eac1f76f7bf82f6e6b9e9f584c0ad2`. I read `git diff 983367ef9 21a6416c5` (it touches only `columns.ts`, the migration folder and its `rollback.sql`, and `check_fo9b_merge.ts`). For context I read `tests/check_pf8b_f7_data_walls.ts` (its `audit()`, `lift()` and EXEMPT list), F7's lift in `20261117030000_fo9a_duplicate_match`, the rest of the new migration, and FO-7ts part 3's four new columns. **Journey test: not applicable, no score.** There is still no screen or route.
+
+**What I ran.** I ran everything from `prototype/`. I used the shared cluster at 127.0.0.1:54329 only through the checks' own scratch databases. It was left running; I never stopped it, and none of the `fo9b` databases were left behind. No app port, never :4400. US$0.
+* **Checks, all exit 0:**
+  * `check_pf8b_f7_data_walls`: 17/17 (41 statements guarded in 14 migrations)
+  * `check_fo9b_merge`: 88/88
+  * `check_fo9b_port`: 20/20
+  * `check_fo1a_sales_schema`: 124/124
+  * `check_pf8b_f4_migrations`: 9/9
+  * `check_pf12_walls`: 110/110
+* **Mutation.** I ran the F7 text rule on a scratchpad copy of the migrations, with the round-5 `migration.sql` placed at the new stamp. It goes **red**: all five keys are unguarded, which is Lead 9's dequeue. With the current file it goes green. So the guard is load-bearing.
+* **Lift run for real.** No check executes the non-BYPASSRLS branch of this block, because F7's database part applies this migration only with BYPASSRLS. So I set up my own throwaway initdb cluster (port 15477), removed afterwards. On it I deployed everything up to `20261122170000` with a BYPASSRLS admin, then seeded rows as the superuser. Then I made the admin NOBYPASSRLS, which hid all six walled tables from it (0 rows seen against 2). After that I deployed this migration alone:
+  * **Valid rows** (2 persons, a company, a lead, a call on the lead): applied.
+    * All five keys are present and validated. The three lead-level keys are ON UPDATE CASCADE; the self keys are RESTRICT.
+    * FORCE is back on all six tables, and `0_pf12_firm_first` is back to `O` on all six.
+  * **A hidden orphan note** (lead L1 with the wrong person): the migration **failed** with P3018 on `fo_note_firm_id_lead_id_person_id_fkey`. So the lifted validation sees hidden rows.
+    * Everything rolled back: no `merged_into_id`, and the old RESTRICT keys are back.
+    * FORCE and the six gates were as before.
+    * So the block restores FORCE and the gate on error too. The DO is one statement inside the migration's transaction, so nothing can be left lifted.
+
+### Lead 9's requirements, checked
+* **The re-stamp is complete.**
+  * The folder is now `20261123010000_fo9b_person_merge`, which is after `20261122170000_fo7ts_part3` (newest on the branch and on origin/main) and after #3017's `20261122180000`.
+  * The `rollback.sql` usage line and its `_prisma_migrations` delete moved with it, and so did the `NEW` constant in `check_fo9b_merge.ts:38`.
+  * No tracked file still names `20261122100000`. The only hit is the ignored `studio/var/suites/selection.tsv`.
+* **The lift matches F7's shape and the check's rule** (`migration.sql:36-56` against fo9a's `:55-74` and `audit():83-94`):
+  * `walls` is declared by an ARRAY literal and names every table that is keyed or referenced.
+  * The lift sits under `IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles …)`.
+  * `LOCK … IN ACCESS EXCLUSIVE MODE` comes before `NO FORCE`, and `INTO lifted FROM pg_class … relforcerowsecurity` fills the list.
+  * The gate steps aside only while it is plainly enabled (`tgenabled = 'O'`).
+  * After the five keys: the gate goes back, then FORCE goes back.
+  * The ACCESS EXCLUSIVE lock is held to commit, so nobody sees the walls lifted.
+  * The superuser or BYPASSRLS path is unchanged.
+  * Lifting `fo_lead` (the referenced table) is harmless, and the rule does not need it, since a key counts only on its own table.
+  * The gate step is not needed for a read-only validation, but it matches F7's shape exactly, as the instruction asked.
+* **Nothing else in the migration needs a lift:**
+  * The DROP CONSTRAINTs read no row.
+  * The ADD COLUMNs are nullable with no default, so there is no rewrite.
+  * The two tombstone CHECKs are validated by a direct heap scan, which RLS does not filter, and the columns are new and NULL anyway.
+  * The `fo_dup_merge` FKs/indexes are on a new, empty table.
+  * The constraint triggers and function bodies run later, as their callers.
+  * The F7 audit agrees: no unguarded mention.
+* **`fo_dup_merge_write`'s firm scope** (`:110-111`) is strictly narrower and uses the `(firm_id, id)` key. The service writes merge records only in the session's firm (`firmScope`), so behaviour is unchanged. Test 88/88 covers the stamp cases (break m4).
+* **STAYS for FO-7ts part 3's four columns is right.**
+  * Moving them would mean writing client money's tables, which this lane does not do. `money_trust_entry` is insert-only, and `money_party_tax_treatment` is unique on (firm, person) and (firm, company), so a move would also collide when both records have a setting.
+  * This is the same treatment as the twelve money columns approved in rounds 1-5.
+  * DW2 compares the live columns to the list exactly (`check_fo9b_merge.ts:103-105`), so leaving out any of the four turns it red.
+
+### Findings
+**Blocker:** none. **Major:** none.
+
+**Minor (follow-up; not this round's diff, recorded for the tech lead):**
+* **r6-m1. `rollback.sql` is not F7-safe.** Its standing-merge guard (`rollback.sql:5-9`, `IF EXISTS (SELECT 1 FROM "fo_person" …)`) is the "blind count" form that F7's self-test flags. On RDS the owner is neither superuser nor BYPASSRLS, so the guard sees no rows and passes even while a merge stands. The `DROP COLUMN "merged_into_id"` that follows then loses the tombstone. Its three key re-adds (`:26-28`) also validate without the lift. F7's check reads only `migration.sql`, so CI cannot see this.
+  * Fix: wrap the guard and the re-adds in the same `$pf8b_f7$` lift, or state at the top that it must run as a BYPASSRLS role.
+  * Low risk: it is a manual script whose precondition says "only while no merge stands".
+* **r6-m2. The reason text overstates P-574 (2).** The reason "a person with money is never merged by itself, P-574 (2)" (`columns.ts:54`, and the round-1 line it copies) does not match P-574 (2). That decision restricts only the *automatic* merge (no case, document, invoice or money); a guided manual merge of such a person is allowed.
+  * Consequence: after a manual merge, the loser's `money_party_tax_treatment` stays on the tombstone. The issue-time lookup (`fo7ts_part3/migration.sql:434`, by the invoice's `person_id`) then gives the survivor's new invoices Taxable, unless the survivor has its own setting.
+  * STAYS is still right for this lane. Fix: reword the reason, and name in the PR who follows `merged_into_id` for client money (the case side's ClientMergePort or the money lane).
+
+Round 5's m1-m4 are unchanged by this diff and still stand as recorded.
+
+**Verdict: Approve** on `21a6416c51eac1f76f7bf82f6e6b9e9f584c0ad2`. No Blocker or Major is open. r6-m1 and r6-m2 go in the PR, or get fixed in a follow-up.
+
+Reviewer: Approve 21a6416c51eac1f76f7bf82f6e6b9e9f584c0ad2
