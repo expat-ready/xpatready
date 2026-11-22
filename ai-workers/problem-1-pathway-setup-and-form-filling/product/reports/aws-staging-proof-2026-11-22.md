@@ -357,3 +357,27 @@ Cost: 2 tasks add about US$0.11/h (about US$0.29/h in all with the database, loa
 * Both app tasks write to `/xr/staging/app` (streams `studio/studio/392dc7d3…`, `…/32ffbfde…`): 192 events in 10 minutes.
 * App-emitted metrics now reach CloudWatch through the metric filters: `ExpatReady/Alarms/staging/Requests` 56 data points, `JobAge` 6 (max 37,506 ms at 13:35Z vs threshold 1,800,000 ms); the other 9 filters had no matching line (no errors, no mail), as expected.
 * All 9 alarms `OK` at 19:10:35 IST; Step 4's test alarm proved delivery to SNS (delivered 2, failed 0). On-call address is still the placeholder (P-782, not decided).
+
+## Step 10: Sample firm seed for R1.24 (Lead 6), 19:12-19:17 IST 22 Nov: **refused by row security; nothing written**
+
+* Lead 6 (19:1x): seed the Sample firms with `api/src/platform/seed-sample-firms.ts`, then `api/src/front-office/firm-seed.ts`, as a one-off
+  task; stop on an environment guard. Reserved names (www, api, app, admin, …) are ExpatReady's own host by design (`rules.ts:12-16`, PF-25), so
+  `admin.` → 200 is correct. HSTS logged as Minor for a fix row.
+* Guards: neither script checks `PLATFORM_ENVIRONMENT` (the "PLATFORM_ENVIRONMENT=local" is a usage comment only).
+* Try 1 (migrate task def, 19:14 IST): exit 1, `ConfigRefused: The app cannot start (PLATFORM_ENVIRONMENT=test). Missing required settings: …`
+  (the migrate task carries only DATABASE_URL; `platformConfig()` needs the app's full settings). Nothing written.
+* Try 2 (app task def `xrstagingAppTask7031B6E4:6`, command override `tsx --tsconfig api/tsconfig.json api/src/platform/seed-sample-firms.ts`,
+  task d9157348…, 19:16 IST): **exit 1**:
+
+```
+originalCode: '42501'
+message: 'new row violates row-level security policy for table "platform_firm"'
+```
+
+* **Root cause (code, same family as PF-8b-f5/f6):** the app task's `DATABASE_URL` is `xr/staging/DATABASE_OWNER_URL` = `xr_admin`
+  (Step 8: not superuser, no BYPASSRLS). `platform_firm` has row security forced, and the seed inserts with no firm context, assuming the
+  local owner `xr_studio` (superuser). One transaction (`seedSampleFirms`), so nothing was written. `firm-seed.ts` was not run (it needs the firms).
+* **Not done, by the rules:** no BYPASSRLS, no session setting or SQL by hand. R1.24's "firm address → 200" stays open on a code fix:
+  the seed needs an RDS-safe path (e.g. insert each firm under its own firm context the walls accept, or a platform-job door like PF-12b's
+  audited bypass role).
+* Service still at 2 tasks (Lead 6: until R1.24 is proven).
