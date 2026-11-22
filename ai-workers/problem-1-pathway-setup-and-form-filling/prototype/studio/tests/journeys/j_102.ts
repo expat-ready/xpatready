@@ -10,13 +10,15 @@
 //     firm A: a lead "Nadia<tag> Sample" with an email (POST leads, by user-O), a case opened on a released combination
 //     whose principal is "Nadia<tag> Sample" (POST /runtime/cases as user-O; the principal's email written as the
 //     client's answer, a stand-in for the questionnaire), and a lead "Hidden<tag> Sample" owned by user-T (Case Manager);
-//     firm B (sample-solo): a lead and a case with the same name "Nadia<tag> Sample" (by user-S).
+//     firm B (sample-solo): a lead with the same name and email and a case with the same name (by user-S).
 //   W0 fails on the fake (P-606): before the records exist the box answers "No matches" for Nadia<tag>.
 //   W1 by name: "/" opens the box; Nadia<tag> lists firm A's lead (Leads and prospects) and firm A's case principal
 //      (People on cases); none of firm B's.
-//   W2 by email: the lead's email lists the lead, "Matched: Email", and the case principal by the same email.
+//   W2 by email: the lead's email lists the lead, "Matched: Email", and the case principal by the same email; firm B's
+//      lead with the same email is never listed to firm A, and firm B's own search finds it.
 //   W3 by file number: firm A's case number (typed in lower case) lists the case, "Matched: File number"; Enter opens the
-//      case page (/cases/<id>), which shows that number: the next capability's first step.
+//      case page (/cases/<id>), which shows that number: the next capability's first step. Firm B's first case has the same number
+//      (numbers are per firm): firm A's search names only firm A's case, firm B's only firm B's.
 //   W4 within the person's rights: user-O never finds Hidden<tag> (user-T's lead; each person sees their own), and the
 //      door answers the same through the API; user-T finds it; firm B's user-S finds only firm B's Nadia<tag>; the
 //      records stay closed by their own routes (user-O on Hidden's lead, user-S on firm A's case).
@@ -26,7 +28,8 @@
 //      error during the walk.
 // What stays a stand-in (said, not hidden): the case principal's email is written as a client answer in SQL (no screen
 // writes it here); the case rule's "own cases only" (agent/case:view.own without view.all) cannot be walked by screens
-// on main's seed, where every role holds view.all (CS-S1 part 2's own check covers it). Sample data only; US$0, no
+// on main's seed, where every role holds view.all: that rule rests on CS-S1 part 2's own check,
+// tests/check_css1_search.ts (#2913), not on this walk. Sample data only; US$0, no
 // model call, live AI off. Screenshots: product/screens/J-102/screenshots/.
 // Run from prototype/ (HEADED=1 opens a visible browser):
 //   zsh studio/tools/isolated.sh j102 4473 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j102 4473 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_102.ts j102 4473
@@ -64,7 +67,11 @@ const api = async (method: string, path: string, o: { token?: string; actor?: st
   return { status: r.status, body: await r.json().catch(() => null) };
 };
 /** What the find door answers as this person: the hits' addresses, or null when there is no door (404). */
-const door = async (token: string, q: string) => { const r = await api("GET", `/platform/find?q=${encodeURIComponent(q)}`, { token }); return r.status === 200 ? (r.body?.groups ?? []).flatMap((g: { hits: { url: string }[] }) => g.hits.map((h) => h.url)) as string[] : null; };
+type Row = { kind: string; title: string; url: string };
+const doorRows = async (token: string, q: string): Promise<Row[] | null> => { const r = await api("GET", `/platform/find?q=${encodeURIComponent(q)}`, { token }); return r.status === 200 ? (r.body?.groups ?? []).flatMap((g: { hits: Row[] }) => g.hits.map((h) => ({ kind: h.kind, title: h.title, url: h.url }))) : null; };
+const door = async (token: string, q: string) => (await doorRows(token, q))?.map((h) => h.url) ?? null;
+/** The box shows exactly the door's rows: the same kinds and titles, one for one (the box draws no addresses). */
+const sameRows = (box: { kind: string; text: string }[], rows: Row[] | null) => !!rows && box.length === rows.length && rows.every((r) => box.some((b) => b.kind === r.kind && b.text.startsWith(r.title)));
 
 const browser = await chromium.launch({ headless: !process.env.HEADED, slowMo: process.env.HEADED ? 150 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errors: string[] = [];
@@ -122,7 +129,7 @@ try {
 
   // Records (Sample).
   const lead = async (token: string, given: string, email: string) => (await api("POST", "/front-office/leads", { token, body: { requestId: randomUUID(), givenNames: given, familyName: "Sample", email, source: "Phone call", confirmedNew: true } }));
-  const la = await lead(tok.O, NADIA, MAIL), lh = await lead(tok.T, HIDDEN, `hidden.${tag}@example.org`), lb = await lead(tok.S, NADIA, `nadia.b.${tag}@example.org`);
+  const la = await lead(tok.O, NADIA, MAIL), lh = await lead(tok.T, HIDDEN, `hidden.${tag}@example.org`), lb = await lead(tok.S, NADIA, MAIL);   // firm B's lead has the same email (W2)
   const LA = String(la.body?.id ?? ""), LH = String(lh.body?.id ?? ""), LB = String(lb.body?.id ?? "");
   // A released combination to open the cases on: Demo › Load's test fixture (no AI step, US$0), on a fresh copy only.
   type Openable = { combination_id: string; startable: boolean; stage?: unknown }[] | null;
@@ -132,35 +139,41 @@ try {
   const open = async (actor: string) => (await api("POST", "/runtime/cases", { actor, body: { combinationId: combo, clientActor: "user-P", principal: { displayName: `${NADIA} Sample` } } }));
   const ca = await open("user-O"), cb = await open("user-S");
   const CA = String(ca.body?.id ?? ""), CB = String(cb.body?.id ?? "");
-  const NUM = sql(`select case_number from runtime_case where id = '${CA}'`);
+  const NUM = sql(`select case_number from runtime_case where id = '${CA}'`), NUMB = sql(`select case_number from runtime_case where id = '${CB}'`);
   // The principal's email, as the client's answer (stand-in for the questionnaire; see the header).
   const subj = sql(`select s.id || '|' || s.party_id || '|' || s.workspace_id from case_participant p join answer_subject s on s.id = p.subject_id where p.case_id = '${CA}' and p.role = 'principal'`).split("|");
   const field = subj[2] ? sql(`select id from canonical_field where workspace_id = '${subj[2]}' and canonical_field_key in ('person.email', 'person.email_address') order by canonical_field_key limit 1`) : "";
   if (field) sql(`insert into client_canonical_answer (id, workspace_id, party_id, subject_id, canonical_field_id, canonical_field_key, value_json, status, source_json)
     values ('${randomUUID()}', '${subj[2]}', '${subj[1]}', '${subj[0]}', '${field}', (select canonical_field_key from canonical_field where id = '${field}'), ${qt(JSON.stringify(MAIL))}::jsonb, 'DECLARED', '{"channel":"questionnaire"}')`);
   const indexed = sql(`select count(*) from case_party_index where case_id in ('${CA}', '${CB}') and name_norm like ${qt(`${NADIA.toLowerCase()}%`)}`);
-  ok(`J-102 setup: firm A has the lead ${NADIA} Sample (user-O's), the lead ${HIDDEN} Sample (user-T's) and case ${NUM || "?"} whose principal is ${NADIA} Sample; firm B has a lead and a case with the same name; both principals are in the case party index`,
-    la.status === 201 && lh.status === 201 && lb.status === 201 && !!CA && !!CB && /^C-\d{4}-\d+$/.test(NUM) && indexed === "2", { leads: [la.status, lh.status, lb.status], cases: [ca.status, cb.status, ca.body?.detail, cb.body?.detail], combo, NUM, indexed, emailField: !!field });
+  ok(`J-102 setup: firm A has the lead ${NADIA} Sample (user-O's), the lead ${HIDDEN} Sample (user-T's) and case ${NUM || "?"} whose principal is ${NADIA} Sample; firm B has a lead with the same name and email and a case with the same name (case number ${NUMB || "?"}${NUMB && NUMB === NUM ? ", the same as firm A's" : ""}); both principals are in the case party index`,
+    la.status === 201 && lh.status === 201 && lb.status === 201 && !!CA && !!CB && /^C-\d{4}-\d+$/.test(NUM) && indexed === "2", { leads: [la.status, lh.status, lb.status], cases: [ca.status, cb.status, ca.body?.detail, cb.body?.detail], combo, NUM, NUMB, indexed, emailField: !!field });
 
   // ------------------------------------------------------------------------------------------------ W1 by name
-  const w1 = await find(o, NADIA), d1 = await door(tok.O, NADIA);
+  const w1 = await find(o, NADIA), r1 = await doorRows(tok.O, NADIA), d1 = r1?.map((h) => h.url) ?? null;
   const caseHere = `/cases/${CA}`, caseThere = `/cases/${CB}`, leadHere = `/front-office/leads/${LA}`, leadThere = `/front-office/leads/${LB}`;
   ok(`J-102 W1: by name, ${NADIA} lists firm A's lead under "Leads and prospects" and firm A's case principal under "People on cases"`,
     !!w1 && w1.hits.some((h) => h.kind === "person" && h.text.includes(NADIA)) && w1.hits.some((h) => h.kind === "case_person" && h.text.includes(NUM)) && has(d1, leadHere) && has(d1, caseHere),
     { box: w1?.hits.map((h) => `${h.kind}: ${h.text.slice(0, 60)}`) ?? "no find box", door: d1 ?? "no find door" });
   // Judged by address: case numbers are per firm, so firm B's case may carry the same number as firm A's.
-  ok("J-102 W1: firm B's lead and case of the same name are never listed (the door names neither; the box shows exactly the door's rows)", !!w1 && d1 !== null && !has(d1, caseThere) && !has(d1, leadThere) && w1.hits.length === d1.length, { door: d1, box: w1?.hits.length ?? "no find box" });
+  ok("J-102 W1: firm B's lead and case of the same name are never listed (the door names firm A's and neither of B's; the box shows the door's rows, kind and name, one for one)",
+    !!w1 && !!d1 && d1.length > 0 && !has(d1, caseThere) && !has(d1, leadThere) && sameRows(w1.hits, r1), { door: r1?.map((h) => `${h.kind}: ${h.title}`) ?? "no find door", box: w1?.hits.map((h) => `${h.kind}: ${h.text.slice(0, 50)}`) ?? "no find box" });
   await shot(o, "w1-by-name-1440");
 
   // ------------------------------------------------------------------------------------------------ W2 by email
   const w2 = await find(o, MAIL), d2 = await door(tok.O, MAIL);
   ok("J-102 W2: by email, the lead is listed with \"Matched: Email\"", !!w2 && w2.hits.some((h) => h.kind === "person" && h.text.includes("Matched: Email")) && has(d2, leadHere), { box: w2?.hits.map((h) => h.text.slice(0, 80)) ?? "no find box", door: d2 ?? "no find door" });
   ok(`J-102 W2: by email, the case principal on ${NUM} is listed too, "Matched: Email" (the answer is the stand-in above)`, !!field && !!w2 && w2.hits.some((h) => h.kind === "case_person" && h.text.includes("Matched: Email")) && has(d2, caseHere), { emailField: !!field, box: w2?.hits.map((h) => h.kind) ?? "no find box" });
+  const d2s = await door(tok.S, MAIL);
+  ok("J-102 W2: firm B's lead with the same email is never listed to firm A, and firm B's own search finds it (and not firm A's)", d2 !== null && d2.length > 0 && !has(d2, leadThere) && has(d2s, leadThere) && !has(d2s, leadHere), { firmA: d2 ?? "no find door", firmB: d2s ?? "no find door" });
   await shot(o, "w2-by-email-1440");
 
   // ------------------------------------------------------------------------------------------------ W3 by file number
-  const w3 = await find(o, NUM.toLowerCase());
+  const w3 = await find(o, NUM.toLowerCase()), d3 = await door(tok.O, NUM), d3s = await door(tok.S, NUMB);
   const first = w3?.hits[0];
+  // Case numbers are per firm: the two Sample firms' first cases carry the same number, so this is a real test of the firm.
+  ok(`J-102 W3: firm A's ${NUM} and firm B's ${NUMB} are the same number; firm A's search names only firm A's case, firm B's search only firm B's`,
+    NUM === NUMB && has(d3, caseHere) && !has(d3, caseThere) && has(d3s, caseThere) && !has(d3s, caseHere), { NUM, NUMB, firmA: d3 ?? "no find door", firmB: d3s ?? "no find door" });
   ok(`J-102 W3: by file number, ${NUM.toLowerCase()} lists case ${NUM} first, "Matched: File number"`, !!first && first.kind === "case" && first.text.includes(NUM) && first.text.includes("Matched: File number"), w3?.hits.map((h) => `${h.kind}: ${h.text.slice(0, 60)}`) ?? "no find box");
   await shot(o, "w3-by-number-1440");
   if (w3 && w3.hits.length) {
@@ -185,15 +198,17 @@ try {
   await o.goto(`${BASE}/home`); await settle(o);
   const w5 = await find(o, NADIA);
   let opened = "", want = "";
+  let at = -1;
   if (w5 && w5.hits.length >= 2) {
     await o.keyboard.press("ArrowDown");
     const marked = await o.locator("[data-find-input]").getAttribute("aria-activedescendant");
-    const urls = await door(tok.O, NADIA) ?? [];
-    want = urls[w5.hits.findIndex((h) => h.id === marked)] ?? "";
+    at = w5.hits.findIndex((h) => h.id === marked);
+    const rows = await doorRows(tok.O, NADIA) ?? [], hit = w5.hits[at];
+    want = hit ? rows.find((r) => r.kind === hit.kind && hit.text.startsWith(r.title))?.url ?? "" : "";
     await o.keyboard.press("Enter"); await o.waitForURL((u) => u.pathname !== "/home", { timeout: 15_000 }).catch(() => undefined);
     opened = new URL(o.url()).pathname;
   }
-  ok("J-102 W5: keyboard only: \"/\" from Home, type the name, ArrowDown marks the second row, Enter opens that row's own address", !!w5 && w5.hits.length >= 2 && !!want && opened === want, { hits: w5?.hits.length ?? "no find box", want, opened });
+  ok("J-102 W5: keyboard only: \"/\" from Home, type the name, ArrowDown marks the second row (index 1), Enter opens that row's own address", !!w5 && w5.hits.length >= 2 && at === 1 && !!want && opened === want, { hits: w5?.hits.length ?? "no find box", at, want, opened });
 
   // ------------------------------------------------------------------------------------------------ W6 sizes and axe
   for (const width of [400, 1024, 1440]) {
