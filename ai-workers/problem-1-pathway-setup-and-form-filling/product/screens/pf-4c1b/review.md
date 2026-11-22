@@ -72,3 +72,23 @@ Journey test: `screens/pf-4c1b/journey-test-reviewer-2026-11-22.md`, **8.5 / 10,
 Verdict: Changes — Major: M1 `id/service.ts:71` (with `id/batch-invite.ts:22`). Minor: m1 `id/service.ts:66`; m2 `tests/check_pf4c1b_batch.ts:148`; m3 `id/service.ts:447`, `MODULE.rows/PF-4c1b.md:1`.
 
 Reviewer: Changes 36113d6983f51c2c1b21913395f23111e49670dc
+
+## Round 2: `4ce9dbb3e429fed610daa05787f4f32197d5070b` (diff from 36113d698 only)
+* **M1 closed.** `rolesOf` (`id/service.ts:73`) now writes "a value that is not text" for anything that is not a string, and never calls `String()` on it.
+  * The new test (`tests/check_pf4c1b_batch.ts:176-180`) sends `{"toString":1}`, `7` and `null` as roles: answer 200, row 1 sent, rows 2 and 3 INVALID_ROLES.
+  * The test fails without the fix: at 36113d698 my probe sent the same input and got a 500.
+  * Nothing else in the batch path turns a row value into text: `emailOf` and `nameOf` check the type first, and unknown keys are already strings.
+  * The single invite was not affected (`list(str(40))`).
+* **m3 closed.** `MODULE.rows/PF-4c1b.md:1` lists every reason code. I checked it against the code: with no target person and Owner rows filtered out, the only code `roleRules` can raise is ROLE_BEYOND_OWN_KEYS, and `personCheck` adds ALREADY_STAFF and ALREADY_INVITED. The list is complete.
+* **Nit closed.** The name comment (`id/batch-invite.ts:7-8`) is now accurate. The new comment on seatRoom (`id/service.ts:436`) is wording only.
+* **Runs at 4ce9dbb3e:**
+  * check_pf4c1b_batch 19/19, check_pf4c_batch_invite 24/24.
+  * check_pf4_identity 111/112; the one failure is the same :4541 copy check as in round 1.
+  * PF-19r and PF-28 not re-run: their inputs did not change except `rolesOf`'s message.
+* **Still open as follow-ups (listed on the PR):** m1 non-ASCII case folding (`id/service.ts:66`, existed before this PR) and m2 the race test not forcing the overlap (`tests/check_pf4c1b_batch.ts:148`). Neither blocks.
+* Journey score at this head: 9 / 10 (error recovery rises from ½ to 1).
+* Not checked: CI on this head.
+
+Verdict: Approve 4ce9dbb3e429fed610daa05787f4f32197d5070b
+
+Reviewer: Approve 4ce9dbb3e429fed610daa05787f4f32197d5070b
