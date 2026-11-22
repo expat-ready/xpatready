@@ -2,8 +2,12 @@
 // last PR, FO-4w, P-728). It adds no feature: it walks the merged parts (FO-2's door, FO-4 part 1's hosted form, FO-4b's
 // embed, FO-4w's settings) on an isolated copy of the running app (its own database and port, never :4400), by screens
 // at 1440 px, and asserts the stored rows underneath with SQL on that copy.
-//   W1 the firm's Owner signs in on the sign-in card, opens Sales › Settings › Web form, adds the firm's own site, saves,
-//      and copies the snippet. Fail: a site with a page is refused on its field and nothing is saved.
+//   W1 the firm's Owner signs in on the sign-in card, opens Sales › Settings › Web form, switches the form on (it starts
+//      off; R1.26 QA-605: by the screen, never SQL; one audit line, before off and after on), adds
+//      the firm's own site, saves, and copies the snippet. Fail: while off the hosted page says "not available"; a site
+//      with a page is refused on its field and nothing is saved.
+//      QA-617: the form has no consent wording, as a new firm's has none; switching it on links the firm's current
+//      wording (its set-up one), so nothing about consent is set underneath. Only the thank-you text still is (no screen).
 //   W2 a visitor reaches the firm's site (a page the journey serves, made of the copied snippet) from a campaign link
 //      (?utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=…) and sends an enquiry through the embedded form:
 //      the firm's thank-you text, one lead (door WEB_FORM) whose attribution reads spring, google, cpc, the click id and
@@ -26,8 +30,6 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
 import { seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
-import { auditEvent } from "../../api/src/platform/audit/audit-event.ts";
-import { ConsentStore } from "../../api/src/platform/messages/consent/consent-store.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { recorder } from "../runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
@@ -49,11 +51,15 @@ await seedSampleFirms(db);
 const fo = await seedSampleFirmsFrontOffice(db);
 const A = sql(`select id from platform_firm where key = 'sample-firm'`);
 ok("J-26 setup: the Sample firm and its front office are seeded", !!A && fo.failed.length === 0, fo.failed);
-const wording = await db.$transaction((tx) => new ConsentStore(auditEvent).publishWording(tx, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "Send me news from Sample Firm by email. I can stop at any time. (Sample; Unconfirmed: no counsel)", by: "seed:J-26-test" }));
+// QA-617: no consent wording is published or linked here. The firm has the wording its set-up gave it (firm-seed.ts
+// ensureBookingWording); the Owner's switch links it in W1.
+const firmWording = sql(`select id from msg_consent_wording where firm_id = '${A}' and channel = 'EMAIL' and purpose = 'MARKETING' order by published_at desc, version desc limit 1`);
 const thanks = `Thank you. We will be in touch within one working day. (Sample ${run})`;
-const formId = sql(`update fo_web_form set enabled = true, allowed_sites = '{}', consent_wording_version_id = '${wording.id}', thank_you_text = '${thanks}' where firm_id = '${A}' returning id`);
+// The form stays OFF here, with no consent wording, as the firm's set-up made it: the Owner switches it on through the
+// screen in W1 (QA-605, QA-617). Only the thank-you text, which has no screen yet, is set underneath.
+const formId = sql(`update fo_web_form set enabled = false, allowed_sites = '{}', thank_you_text = '${thanks}' where firm_id = '${A}' returning id`);
 const OWNER = sql(`select s.email from platform_staff s join platform_role_grant g on g.staff_id = s.id where s.firm_id = '${A}' and g.role = 'OWNER' and s.status = 'ACTIVE' order by s.email limit 1`);
-ok("J-26 setup: the Sample firm's web form is on, with no allowed site yet; an Owner exists", !!formId && !!OWNER);
+ok("J-26 setup: the Sample firm's web form is off, with no allowed site and no consent wording linked; the firm has its set-up wording; an Owner exists", !!formId && !!OWNER && !!firmWording && sql(`select enabled || '|' || coalesce(consent_wording_version_id::text, 'none') from fo_web_form where id = '${formId}'`) === "false|none");
 const leadsOf = (given: string) => Number(sql(`select count(*) from fo_lead l join fo_person p on p.id = l.person_id where l.firm_id = '${A}' and p.given_names = '${given}'`));
 
 // The firm's own site: whatever the Owner copied off the settings page, served as its page.
@@ -86,6 +92,14 @@ await owner.getByRole("button", { name: "Sign in" }).click();
 await owner.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 30_000 });
 await owner.getByRole("navigation", { name: "Sales" }).getByRole("link", { name: "Web form" }).click();
 await owner.getByRole("heading", { name: "Web form", level: 1 }).waitFor({ timeout: 20_000 });
+const hostedOff = await owner.getByLabel("Hosted form page").inputValue();
+const offProbe = await fetch(`${BASE}/api/public/forms/${hostedOff.split("/").pop()}`);
+const offPost = await fetch(`${BASE}/api/public/forms/${hostedOff.split("/").pop()}/submissions`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+ok("J-26 W1 fail: while the form is off the page says so and the public door, read and send, answers \"not available\"", await owner.getByText("This form is off").isVisible() && offProbe.status === 404 && /not available/i.test(await offProbe.text()) && offPost.status === 404, { read: offProbe.status, send: offPost.status });
+await owner.getByRole("button", { name: "Switch the form on" }).click();
+await owner.getByText(/^Switched on\./).waitFor({ timeout: 15_000 });
+ok("J-26 W1: the Owner switches the form on by screens (stored on; one audit line, before false, after true)", sql(`select enabled from fo_web_form where id = '${formId}'`) === "t" && sql(`select concat_ws('|', count(*), min(detail->>'enabled_before'), min(detail->>'enabled_after')) from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}'`) === "1|false|true" && await owner.getByText("This form is off").count() === 0);
+ok("J-26 W1 (QA-617): the switch linked the firm's current consent wording (its set-up one), never a database edit; the audit line names the link", sql(`select consent_wording_version_id from fo_web_form where id = '${formId}'`) === firmWording && sql(`select detail->>'consentWordingVersionId_after' from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}'`) === firmWording);
 await owner.getByLabel("Site 1", { exact: true }).fill(`${SITE}/contact`);
 await owner.getByRole("button", { name: "Save sites" }).click();
 await owner.getByText("Enter only the site, without a page").first().waitFor({ timeout: 15_000 });

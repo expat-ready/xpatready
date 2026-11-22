@@ -17,6 +17,8 @@ import { asBypass, touchFirms, withFirm } from "../platform/firm-scope.ts";
 import { PlatformJobs } from "../platform/jobs/platform-jobs.ts";
 import { linkFirmClients, LINK_JOB, linkJobKey } from "./client-link.ts";
 import { catchUpProspectsWon, type WonCatchUp } from "./prospect-won.ts";
+import { logPort } from "../platform/observability/log.ts";
+import { dbRuleOf } from "../platform/observability/redact.ts";
 
 export const CATCH_UP_USE = "cases.prospect-won.catch-up";
 /** Sample: how often the outbox is read (ms). */
@@ -81,7 +83,7 @@ export class ProspectWonPoll implements OnModuleInit, OnApplicationBootstrap, On
       const waiting = await this.db.caseClient.findMany({ where: { firmId: { not: null }, foPersonId: null, foCompanyId: null }, distinct: ["firmId"], orderBy: [{ firmId: "asc" }, { clientNumber: "asc" }], select: { firmId: true, id: true } });
       for (const c of waiting) await this.jobs.enqueue(LINK_JOB, {}, { key: linkJobKey(c.firmId!, c.id), firmId: c.firmId! });
       if (!waiting.length && !this.validated) this.validated = (await this.db.$queryRaw<{ v: boolean }[]>`select case_client_validate_link_check() as v`)[0].v;   // review m3
-    } catch (e) { console.warn(`FO-8: the won-prospect poll did not run: ${String(e).slice(0, 200)}`); }
+    } catch (e) { logPort.error("won_prospect_poll_failed", e, { rule: dbRuleOf(e) }); }
   }
 }
 // Decorators as calls (this folder is outside api/tsconfig.json's decorator files, as web-address/routes.ts).

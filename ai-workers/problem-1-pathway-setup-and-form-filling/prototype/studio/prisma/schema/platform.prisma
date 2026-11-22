@@ -86,6 +86,7 @@ model PlatformFirm {
 
   // back-relation slot: messages (PF-19a)
   messages MsgFirm? // platform-messages.prisma (the slot's comment stays: check_pf0p_ports keeps every slot line)
+  msgNotifications MsgNotification[] // PF-18n: platform-messages.prisma
 
   // back-relation slot: money (FO-7a)
   moneySettings MoneyPaymentSettings? // client-money.prisma (FO-7a; Lead B's OK on #1758)
@@ -101,6 +102,9 @@ model PlatformFirm {
   foRetainerTemplates FoRetainerTemplate[] // front-office-retainers.prisma (rows rev 16.6: under the slot line)
   foRetainers         FoRetainer[]
 
+  // back-relation slot: signing (FO-6)
+  foSignatureRequests FoSignatureRequest[] // front-office-signing.prisma (FO-6 part 1, under its own slot line, P-600 (2))
+
   // back-relation slot: web address (PF-25)
   webAddress     PlatformFirmWebAddress?      // platform-web-address.prisma
   addressHistory PlatformFirmAddressHistory[]
@@ -111,6 +115,7 @@ model PlatformFirm {
   // back-relation slot: entitlements (PF-15)
   storageOver PlatformStorageOver? // platform-entitlements.prisma
   limitChanges PlatformLimitChangeFirm[] // platform-entitlements.prisma (PF-15 part 2)
+  subscriptionChanges PlatformSubscriptionChange[] // platform-entitlements.prisma (PF-15 part 1b)
 
   // back-relation slot: offices (PF-18a)
   offices PlatformOffice[] // platform-offices.prisma
@@ -174,6 +179,8 @@ model PlatformPlan {
   // back-relation slot: entitlements (PF-15)
   limits PlatformPlanLimit[] // platform-entitlements.prisma
   limitChanges PlatformLimitChange[] // platform-entitlements.prisma (PF-15 part 2)
+  changesFrom PlatformSubscriptionChange[] @relation("changeFrom") // platform-entitlements.prisma (PF-15 part 1b)
+  changesTo   PlatformSubscriptionChange[] @relation("changeTo")
 
   @@map("platform_plan")
 }
@@ -191,9 +198,11 @@ model PlatformSubscription {
   currentPeriodEnd     DateTime?                  @map("current_period_end") @db.Timestamptz
   createdAt            DateTime                   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime                   @updatedAt @map("updated_at") @db.Timestamptz
+  billingPeriod        PlatformBillingPeriod      @default(MONTHLY) @map("billing_period") // PF-5 part 3 (R1.19): the period chosen at sign-up; the trial Checkout's price
 
   firm PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict)
   plan PlatformPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  changes PlatformSubscriptionChange[] // platform-entitlements.prisma (PF-15 part 1b)
 
   @@index([firmId, status])
   @@map("platform_subscription")
@@ -246,6 +255,7 @@ model PlatformStaff {
   foBookings     FoBooking[]
 
   // back-relation slot: messages (PF-19a)
+  msgNotifications MsgNotification[] // PF-18n: platform-messages.prisma (the person's own in-app notifications)
 
   // back-relation slot: money (FO-7a)
 
@@ -259,6 +269,10 @@ model PlatformStaff {
 
   // back-relation slot: retainers (FO-5)
   foRetainersRepresented FoRetainer[] // front-office-retainers.prisma (rows rev 16.6: under the slot line)
+
+  // back-relation slot: signing (FO-6)
+  foSignatureRequestsSent FoSignatureRequest[] @relation("FoSignatureRequestSentBy") // front-office-signing.prisma (FO-6 part 1)
+  foSignersAsFirm         FoSigner[]           @relation("FoSignerStaff")
 
   // back-relation slot: web address (PF-25)
 

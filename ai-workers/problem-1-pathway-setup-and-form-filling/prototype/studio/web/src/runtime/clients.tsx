@@ -5,6 +5,8 @@
 // These are staff routes (PF-4's bearer session and keys, as the case page's Decision and closing panel): every call goes
 // through `staffApi`, never the Studio's simulated person. The server decides: agent/case:show to see, agent/case:create
 // to open; another firm's client is 404. The menu entry is the case area's "Clients", beside "Cases".
+// FO-13s part 2 (QA-610, R1.110): a person client's identity checks, read-only (they are recorded on the lead or prospect
+// page, before the retainer is sent; FO-13s concept).
 import * as React from "react";
 import { Link, NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,6 +23,7 @@ import { SignInCard } from "@/modules/platform/frame";
 import { SignedInElsewhere } from "@/modules/platform/signed-in-elsewhere";
 import type { Me } from "@/modules/front-office/sales/contract";
 import { ClientOfferView } from "../../../contracts/runtime";
+import { IdentityCheckPanel } from "@/modules/front-office/compliance/identity/identity-panel";
 
 const SHOW = "agent/case:show", CREATE = "agent/case:create";
 /** The simulated client login that answers the questionnaire (the opening asks for one; the case dialog's default). */
@@ -37,7 +40,7 @@ const actAs = (actorId: string | null) => { if (actorId && isFirmStaff(actorId) 
 const Line = z.object({ id: z.string(), number: z.string(), display_name: z.string(), display_kind: z.string() });
 const ClientList = z.object({ clients: z.array(Line.extend({ cases: z.number() })), page: z.number(), page_size: z.number(), total: z.number() });
 type ClientRow = z.infer<typeof ClientList>["clients"][number];
-const ClientView = Line.extend({ file_owner: z.object({ staff_id: z.string(), name: z.string() }).nullable(), viewer_actor_id: z.string().nullable(), cases: z.array(z.object({ id: z.string(), case_number: z.string() })) });
+const ClientView = Line.extend({ fo_person_id: z.string().nullable().optional(), file_owner: z.object({ staff_id: z.string(), name: z.string() }).nullable(), viewer_actor_id: z.string().nullable(), cases: z.array(z.object({ id: z.string(), case_number: z.string() })) });
 
 /** The case area's own menu: "Cases" and, for a person who may see cases, "Clients". Hidden from a signed-in staff member
  *  without agent/case:show (the server refuses them anyway); before sign-in it shows, and the page asks to sign in. */
@@ -176,6 +179,7 @@ function ClientPage() {
         : o?.offer ? <OfferCard clientId={c.id} viewer={c.viewer_actor_id} offer={o.offer} canOpen={me.keys.includes(CREATE)} reread={() => { void offer.refetch(); void client.refetch(); }} refreshCases={() => void client.refetch()} />
         : o && (o.reason === "WITHDRAWN" || o.reason === "CHANGED") ? <Notice tone="warn" title="No case to open from this client now" className="max-w-2xl"><span data-offer-gone={o.reason}>{o.detail}</span></Notice>
         : null}
+      {c.fo_person_id ? <div className="max-w-2xl"><IdentityCheckPanel personId={c.fo_person_id} name={c.display_name} me={me} readOnly /></div> : null}
       <section aria-labelledby="client-cases" className="space-y-2">
         <h2 id="client-cases" className="text-lg font-semibold">Cases</h2>
         {c.cases.length ? <ul className="space-y-1" aria-label={`${c.display_name}'s cases`}>{c.cases.map((k) => (

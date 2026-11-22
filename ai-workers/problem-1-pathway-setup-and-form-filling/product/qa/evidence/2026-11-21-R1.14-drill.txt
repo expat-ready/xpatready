@@ -1,0 +1,25 @@
+# R1.14 part 2 cloud drill evidence, transcribed from CloudShell ~/drill-evidence-2026-11-21.txt (script ~/drill.sh) and ~/s3-version-evidence-2026-11-21.txt
+# Counts and timings only; no row data, no personal data.
+== R1.14 drill (PITR to a named moment into a fresh instance), account <account>, ca-central-1
+source=xr-staging-databaseb269d8bb-rzdhp2v9sbgn target=xr-staging-drill-20261121
+named point (UTC)=2026-11-21T07:08:41Z  chosen at=2026-11-21T07:23:41Z  LatestRestorableTime at start=2026-11-21T07:19:25+00:00
+restore started=2026-11-21T07:23:41Z
+creating
+available at=2026-11-21T07:37:46Z  restore seconds=845
+{ "status": "available", "engine": "18.3", "az": "ca-central-1a", "encrypted": true,
+  "kms": "arn:aws:kms:ca-central-1:<account>:key/<id>", "public": false,
+  "subnetGroup": "xr-staging-databasesubnetgroup7d60f180-mbfd9hiwpq84", "params": "xr-staging-dbparameterse9c8f7dd-vcjolvbnhixw",
+  "created": "2026-11-21T07:26:48.455000+00:00" }
+source LatestRestorableTime now=2026-11-21T07:33:27+00:00  now=2026-11-21T07:37:48Z
+== end
+drill instance delete: deleting
+2026-11-21T07:40:23Z
+
+== S3 version restore (runbook 3 step 5), bucket xr-staging-documentsbucket9ec9deb9-6uplyey6pgi9 key drill/2026-11-21/sample.txt
+v1=nAcvvSf_2B7vbe04MHp42nR5l2XtgHyO v2=XUgRVlqJxwzD7_YNcyXTRb7oqrjupcsQ restored-as=MD9sJOEuJImzkA7uWPLbiyy.fWGpyS18
+sha256 v1=e0652e9de801fd43 current=e0652e9de801fd43 match=yes
+
+== Derived
+RTO, restore leg (start → available): 845 s = 14 min 5 s (target ≤ 4 h).
+RPO bound: LatestRestorableTime trailed the clock by 4 min 16 s at start (07:23:41 vs 07:19:25) and 4 min 21 s at end (07:37:48 vs 07:33:27); target ≤ 15 min.
+Not done in this drill (stated, not hidden): (a) the marker-row RPO measure and PF-8r's checks against the restored copy (runbook §3 step 4 runs them "from a one-off task in the private subnets": needs PF-8b's task); the database holds no app schema yet; (b) the ca-west-1 copy: region ca-west-1 is DISABLED in this account (opt-in region), awaiting the Lead's/founder's yes; (c) the switch and smoke (steps 6-7): need PF-8b's service.
