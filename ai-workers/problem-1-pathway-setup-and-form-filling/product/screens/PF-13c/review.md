@@ -97,3 +97,52 @@ I wrote no separate report: the caller asked for this one file only. My journeys
 **Must fix before Approve:** finding 1 (a BB3 client-side-navigation step that fails when the query key or the favicon restore is removed). Should: findings 2 and 3.
 
 **Verdict: Changes**
+
+## Round 2 (diff f29ef2e48..ecad6d883)
+Diff-only re-review at ecad6d8835f94f28369bde7d5fc6b151643c2e8b: `brand.tsx`, `frame.tsx`, `check_pf13c_booking_brand_browser.ts`, and the "Round 1" part of `build-notes.md`.
+
+### What I ran (run-suites copy, never :4400)
+* `run-suites.sh --only "check_pf13c_booking_brand_browser.ts"` at ecad6d883: **PASS 28/28**, 49 s (`lane.sh setup` first; the database was down).
+* Three mutations of `brand.tsx`, each run the same way and then reverted. The prototype tree is clean afterwards (`git status` empty).
+
+| Mutation | Result | Failing test |
+|---|---|---|
+| query key `["public-brand", firmKey]` → `["public-brand"]` | **FAIL**, exit 1 | BB3b |
+| favicon cleanup → `return () => {}` | **FAIL**, exit 1 | BB3b (B's icon stays `/api/public/…/branding/favicon`) |
+| name guard removed (`brand: brand`) | **FAIL**, exit 1 | BB7 |
+
+### Findings
+1. **Breaker M1 / round-1 finding 2: fixed.**
+   * `useDrawnBrand` keeps the read only when `brand.name === firm`. Both names come from `PlatformFirm.operatingName`: `images.ts:94` for the branding read, `booking/service.ts:981` for the page's own reads.
+   * BB7 is a real two-sided test: cross address → `none` with B's name; own address → `brand`. With the guard removed it fails (mutation above).
+   * Residual, already in the build notes: two firms with the same operating name. It needs a token holder who edits the address and two firms that share a name. **Note**, no change asked; returning the firm key from the booking read is the right later fix.
+2. **Breaker M2 (first paint): fixed.** BB8 tests both sides. At 1.5 s: loading, then branded, and the card position and colour are unchanged 3 s later. At 4.5 s: drawn without the brand, and the late answer changes nothing. I checked the decision logic for the three suspected bugs:
+   * **Ref written during render.** The writes are idempotent: the same inputs give the same decision, and the reset happens only when the key or the name changes. React's StrictMode double render (dev only; the copy serves a production build) reuses the same ref, so the second pass returns the same object. No bug found; a `useState` "previous props" form would be more idiomatic. **Note.**
+   * **Leftover `late`.** `late` holds the firmKey it was set for and is compared with `late === firmKey`, so firm A's timeout cannot decide for B. Each firm frame also mounts fresh: `Gate` returns `<PublicFrame>` while loading and `<>{children()}</>` once loaded, which is a different element type, so state starts empty. In one edge, A→B→A→B with B's list cached and B's brand still pending, the second B decides `none` without waiting again. B already waited once and the result fails safe. **Note.**
+   * **Children unmounting when `waiting` flips.** `waiting` is true only between the firm frame's mount and its one decision, so the children mount for the first time after the decision. It never flips back for the same key and name. On the type page the firm frame stays mounted through Times → Details → Confirmation (`Gate` is never pending again once `last.current` is set), so typed details cannot be lost. On the manage page `b.firm.name` survives `setB`.
+   * **Side effects, notes only:**
+     * The banner and logo still drop into the header at the moment of decision, while the skeleton is showing, so the skeleton moves by up to the banner's height (h-20/h-28). The real content draws once, in place.
+     * A firm whose brand answered after the wait on one page shows its brand on the next page (a new frame, cached answer). The brand changes between pages, never within one.
+3. **Round-1 finding 1 (Must; BB3b): fixed.** BB3b now fails with the query key reduced and with the favicon restore removed (mutations above).
+   * With the key reduced, the name guard does hide A's cached brand, as the caller expected. BB3b still fails because B loses its own neutral read (`data-brand-colour` is absent, not #1f4e79). So the cached-brand bug is caught, as a "wrong brand for B" failure rather than a leak.
+4. **Round-1 finding 3 (BB4b): fixed.** The page's own read is routed to 429; the error frame draws nothing although the brand read answers 200 (checked server-side in the same step).
+   * Removing only the `firm !== undefined` guard is masked by the name guard (`undefined !== name`), and the reverse is also true. The behaviour (rule 3) is still covered, and round-1-style code without the guard fails it. **Note.**
+5. **Minors.**
+   * `--color-ring`: fixed. It is used as the team's `ring-ring/50`; the brand colour is already held to ≥4.5:1 on white (`branding.ts:44`).
+   * `dir="auto"` on the name and the tagline: fixed.
+   * m2 (extreme logo shapes): not fixed, and listed in the build notes as the firm's own image. Accepted.
+6. **New in the diff.**
+   * **Minor, possible CI flake:** BB8's early probe is a fixed `wait(800)`. It assumes the page's own read has answered by then; if not, the Gate frame reports `none`, not `waiting`. Better: wait for `[data-brand-state="waiting"]` with a timeout. Not blocking: it passed here and in the builder's runs.
+   * **Note:** `data-brand-state="none"` is also on the Gate's firm-less loading frame, so `branded()` on its own could return before the firm is found. Every call today comes after a firm-specific wait (`data-public-state`, `data-firm-name`, `data-type-card`), so no false pass results.
+   * **Note:** the usage line drops `--ttl 30` and `--tsconfig`. `run-suites.sh` reads it and the run passed; the line now says how to stop the copy by hand.
+
+### Journey test (reviewer role, re-scored on the diff)
+J1–J7 as in round 1.
+* J5 (A's manage link under B's address) now shows no foreign brand (BB7): trust and sources goes from ½ to 1.
+* Speed stays at 1: the up-to-3 s skeleton applies only to a slow brand read, which starts in parallel with the page's own.
+
+**Score 10/10: pass.**
+
+No Blocker or Major is open. The breaker's two Majors (M1 manage link under another firm's address, M2 first paint) are **both fixed**. All three round-1 findings are fixed. The remaining items are a Minor (BB8's fixed 800 ms probe) and notes.
+
+**Verdict: Approve**
