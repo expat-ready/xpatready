@@ -61,9 +61,14 @@ export function chooseFiles(env: FilesEnv = process.env, s3: Pick<S3FilesOptions
 export const RECORDED_S3 = Symbol.for("expatready.pff1b.recordedS3");
 let s3Bound: { settings: string; files: S3Files } | null = null;
 
+/** The settings the binding reads. PLATFORM_ENVIRONMENT comes from the one loader (PF-24w: read once per process, by
+ *  config/settings.ts), never from process.env again; the files settings and NODE_ENV are read here. */
+const FILES_SETTINGS = ["PLATFORM_FILES", "PLATFORM_FILES_BUCKET", "PLATFORM_FILES_KMS_KEY_ID", "PLATFORM_FILES_REGION", "FO_FILES_DIR", "NODE_ENV"] as const;
+const appEnv = (): FilesEnv => ({ ...Object.fromEntries(FILES_SETTINGS.map((n) => [n, process.env[n]])), PLATFORM_ENVIRONMENT: platformConfig().environment });
+
 /** The app's FilesPort, as PLATFORM_FILES names it: a LocalFiles each call (as the features made before), or one S3Files
- *  per process (one client, one connection pool). */
-export function boundFiles(env: FilesEnv = process.env): FilesPort {
+ *  per process (one client, one connection pool). `env` is for tests; the app passes none. */
+export function boundFiles(env: FilesEnv = appEnv()): FilesPort {
   if (filesAdapterOf(env) === "local") return chooseFiles(env);
   const recorded = (globalThis as Record<symbol, unknown>)[RECORDED_S3] as Pick<S3FilesOptions, "requestHandler"> | undefined;
   if (recorded && (isProduction(env.NODE_ENV) || isProduction(env.PLATFORM_ENVIRONMENT))) refuse("a recorded S3 client is a test seam and is refused in production");
