@@ -25,8 +25,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A288 | 22 Nov 14:5x (typed, to Lead 4): implement and enforce everything now (track queues, speed changes, Lead-missed-Track-B rule, no stale information); restore the branch yourself; two standby Leads; one question at a time | 15:00: branch restored (7ea0d81f3); lanes Speed 1 (track queues, qa proof on batch), Speed 2 (migration slots per area, affected tests), Enforcement 2 (ENF-803 stale info, bulk-delete guard) started; P-802, P-803 on #2952; Lead 6 standby started |
-| A287 | 22 Nov 14:4x (typed, to Lead 4): never ask domain questions, settle them from government sources, RCIC documents and industry practice; recommended button first; do the AWS CodeBuild OK yourself; every Track B capability gets lanes now with Track A's step board, qa and proven-by, kept in a shared library; steps 1-4 green fast for both tracks; are the 30/60/90-min triggers measured or blind? | P-797 tax = client's province (CRA 3-3-6); AWS told with his words; 10 lanes started + 3 cards (app cap 10); board `design/board-lead-b-2026-11-22.md`, page `design/two-track-plan-2026-11-22.html`; triggers tightened (P-798 owed: lead-watch.sh enforcer change) |
+| A287-A288 | 22 Nov 14:4x-14:5x | word for word in `history/STATE-2026-11-23-0007-lead8-founder-asks-A287-A288.md` |
 | A283-A286 | 22 Nov 11:0x-14:2x | word for word in `history/STATE-2026-11-22-1500-lead4-founder-asks-A283-A286.md` |
 | A242-A282 | 21-22 Nov (A279 parts: `product/design/A279-parts-2026-11-22.md`) | word for word in `product/history/STATE-2026-11-22-1027-lead21s3-founder-asks-A272-A276.md` | |
 
