@@ -27,7 +27,7 @@
 // and W5 still judge their own clause (the client page and the email), never the page's.
 // Sample data only; US$0, no model call, live AI off, no live mail (the local email adapter, read at GET
 // /api/demo/platform-inbox). Screenshots: product/screens/J-23/screenshots/. Run from prototype/ (HEADED=1: visible):
-//   zsh studio/tools/isolated.sh j23 4423 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j23 4423 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_23.ts j23 4474
+//   zsh studio/tools/isolated.sh j23 4423 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j23 4423 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_23.ts j23 4423
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
