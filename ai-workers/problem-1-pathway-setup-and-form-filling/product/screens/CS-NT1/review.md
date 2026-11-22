@@ -121,3 +121,25 @@ No findings.
 **Verdict: Approve** `6666ac70bceee38feb35f07e27088642a16abccc`.
 
 Reviewer: Approve 6666ac70bceee38feb35f07e27088642a16abccc
+
+## Re-review round 4, 23 Nov 2026 (diff-only): head `c52a871670c8df752b25d74a693997eb49b4dd50`
+One merge commit of origin/main (`0e244033e`). I read `git show --remerge-diff c52a87167`. The four conflicts are each resolved by keeping both sides, and nothing else is touched:
+* the `.mergify.yml` lines for search and case-notes;
+* the cases card glob, `{case-notes,case-clients,case-deadlines,search}`;
+* `CASE_ENTITIES`, which has both "case note" and "case search";
+* CS-W3's `ALLOW`, which has both files, so its count is 49.
+
+The row's code, schema, migration, `check_pf12_walls` line and card rows are byte-identical to `ae8916867`. Only main's `MODULE.cases.rows/CS-S1.md` came in.
+* **Stamp:** confirmed, no re-stamp is needed. Main's newest at the merge is `20261122060000_fo7c1_account_firm_lookup`. On today's `origin/main` (`9787e68ae`, 12 commits later, still a clean merge) it is `20261122060000_pf4s_system_identity`. `20261122110000_csnt1a_case_note` sorts after both.
+* **PF-8b F7:** confirmed, no lift is needed. The migration's only data statement, `DELETE FROM "case_note"`, is inside `case_note_follow_case()`'s body. F7's text rule excludes function and trigger bodies (`check_pf8b_f7_data_walls.ts:5`), and neither `case_note` nor `runtime_case` is forced. The suite passes 17/17.
+* **Reruns on this head:**
+  * `check_csnt1_notes` 56/56 · `check_pf12_walls` 110/110 · `check_pf8b_f7_data_walls` 17/17 (port 15467) · `check_bypass_uses` 52/52 (main's P-785 part 2; `case-notes/` uses no bypass).
+  * `check_csw3_firm_scope` 48/48 on `rv_csw3` :4436 (stopped afterwards).
+  * `check-mergify-scopes` PASS 103 · `module-cards tree` PASS · `module-cards pr` PASS (19 files, PR body, 2 modules).
+  * `typecheck.mjs`: the only 2 new errors are in main's `platform/files/s3-files.ts`, because `@aws-sdk/client-s3` and `s3-request-presigner` are not installed in this cloud copy (environment, not this row). Nothing in this row's files.
+
+**m7 (Minor, comment only):** the census comment at `tests/check_csw3_firm_scope.ts:267` still says "plus six merged on main after the spike". It now names seven (42 + 7 = 49). Fix it with the next touch of the file; this does not block.
+
+**Verdict: Approve** `c52a871670c8df752b25d74a693997eb49b4dd50`.
+
+Reviewer: Approve c52a871670c8df752b25d74a693997eb49b4dd50
