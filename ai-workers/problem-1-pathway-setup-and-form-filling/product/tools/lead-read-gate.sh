@@ -18,11 +18,15 @@
 #       front-office/, client-money/: every route there declares its access, platform/identity/keys.ts). Read from the
 #       patch GitHub gives with the file list: the PR's code is never checked out or run. Such a file whose patch GitHub
 #       does not give (too large) counts, and so does a PR of 3000 files or more (the list is cut there).
+# Rule (b) is a tripwire, not a wall: a key encoded on purpose ("agent\/x", a join, a computed constant) passes it, as a
+# status can be forged (header below); the Lead's read and the reviewer remain the boundary (break round 2 m1).
 # Such a PR is read when a PR comment has a line, alone on it (a trailing full stop allowed), naming the FULL head SHA:
 #   Lead read the diff: <the head's 40 hex characters>      (the in-copy hook's form, lead-read-guard.sh, P-637)
 # ("Lead read: OK <40 hex>" counts the same; a short SHA does not: a commit can be ground
 # to match a 7 or 9 character prefix, break M3). Counted only from a writer (OWNER, MEMBER, COLLABORATOR) and, when the
-# repository variable LEAD_LOGINS (space-separated logins) is set, only from those logins and never the PR's author. An
+# repository variable LEAD_LOGINS (logins, separated by spaces or commas, any case) is set, only from those logins and
+# never the PR's author: a PR opened by a LEAD_LOGINS account can then never be freed by its own comment, so it must be
+# an account only the Lead uses (never today's shared one, which would hold every PR). An
 # edited comment never counts (anyone with write access can edit another's comment, and GitHub keeps its first
 # author's association); a quoted line, a line inside a code fence or an HTML comment is not the Lead's own. A new push
 # needs a new read. Today every session comments as one account (design gap 3): the line proves it was written, not who
@@ -53,7 +57,7 @@ pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
     all=$(jq -s '.[0] + .[1]' <(echo "$all") <(echo "$one")) || return 1; [ "$(echo "$one" | jq length)" -lt 100 ] && break; p=$((p + 1))
   done; echo "$all"; }
 SRC='/prototype/studio/(api/src/.*\.([cm]?[jt]sx?|json)|samples/.*\.json)$'
-WALLED='/prototype/studio/api/src/(platform|front-office|client-money)/'; WHOLE='/(routes|keys|guard)\.[cm]?[jt]sx?$'
+WALLED='/prototype/studio/api/src/(platform|front-office|client-money)/'; WHOLE='/[^/]*(routes|controller|keys|guard)[^/]*\.[cm]?[jt]sx?$'   # matched without regard to case
 Q='["'"'"'`]'
 ACCESS='@(PermissionKeys|AnyStaff|StaffSignIn|OwnOrAll)\s*\(|'"$Q"'(agent|system)/([a-z][a-z0-9-]*:[a-z$]|'"$Q"'|\$\{|[a-z][a-z0-9-]*:?(\$\{|'"$Q"'\s*\+))'
 ROUTE='@(Get|Post|Put|Patch|Delete|All)\s*\('
@@ -86,30 +90,36 @@ judge() {  # PR → verdict (OK|HOLD|SKIP), why, head; returns 0, 1, 0; 2 with w
     # (b) the lines that declare access, from each API source or data file's patch (either name); a missing patch counts
     lines=$(jq -r --arg src "$SRC" --arg walled "$WALLED" --arg whole "$WHOLE" --arg access "$ACCESS" --arg route "$ROUTE" '.[]
       | [.filename, (.previous_filename // empty)] as $n
-      | select(any($n[]; test($src))) | . as $f | (any($n[]; test($walled))) as $w | ($w and any($n[]; test($whole))) as $all
+      | select(any($n[]; test($src))) | . as $f | (any($n[]; test($walled))) as $w | ($w and any($n[]; test($whole; "i"))) as $all
       | if ($f.patch // "") == "" then (if (($f.changes // 0) > 0 or $f.status == "added" or $f.status == "removed") then $f.filename + " (its patch is too large for GitHub to give)" else empty end)
-        else first(($f.patch | split("\n")[] | select(test("^[+-]"))
-               | select($all or test($access) or ($w and test($route)))) | $f.filename + " (a permission key, a guarded route or a walled routes, keys or guard file)") // empty end' <<< "$files" | tick) \
+        else first(
+          # one hunk at a time: a hunk with a changed line counts when any of its lines, context included, declares access
+          # (a decorator split over lines keeps @PermissionKeys( in the context of its changed argument, break round 2 M1)
+          ($f.patch | split("\n") | reduce .[] as $l ([[]]; if ($l | startswith("@@")) then . + [[]] else .[-1] += [$l] end) | .[]
+           | select(any(.[]; test("^[+-]")))
+           | select($all or any(.[]; test($access)) or ($w and any(.[]; test($route)))))
+          | $f.filename + " (a permission key, a guarded route or a walled routes, controller, keys or guard file)") // empty end' <<< "$files" | tick) \
       || { why="its patches cannot be read"; return 2; }
     hit=$(printf '%s %s' "$hit" "$lines" | sed 's/^ *//; s/ *$//')
   fi
   [ -n "$hit" ] || { verdict=OK; why="no path or line that keeps the Lead's read"; return 0; }
   cs=$(pages "repos/$REPO/issues/$PR/comments") || { why="its comments cannot be read"; return 2; }
   # Who counts (header); then code fences and HTML comments are dropped, and markdown marks around the words.
-  if jq -r --arg who "${LEAD_LOGINS:-}" --arg author "$author" '($who | split(" ") | map(select(length > 0))) as $leads | .[]
+  if jq -r --arg who "${LEAD_LOGINS:-}" --arg author "$author" '($who | ascii_downcase | [splits("[\\s,]+")] | map(select(length > 0))) as $leads | ($author | ascii_downcase) as $author | .[]
       | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
-      | select(($leads | length) == 0 or ((.user.login // "") as $l | ($leads | index($l)) != null and $l != $author))
-      | select((.updated_at // .created_at // "") == (.created_at // ""))
+      | select(($leads | length) == 0 or ((.user.login // "" | ascii_downcase) as $l | ($leads | index($l)) != null and $l != $author))
+      | select(.created_at != null and (.updated_at // .created_at) == .created_at)
       | (.body // "") | gsub("<!--[\\s\\S]*?(-->|$)"; "") | gsub("```[\\s\\S]*?(```|$)"; "") | gsub("~~~[\\s\\S]*?(~~~|$)"; "")' <<< "$cs" \
-      | tr -d '*_`\r' | grep -iE '^[[:space:]]*Lead read(: *OK| the diff:?)[[:space:]]+[0-9a-f]{40}[[:space:]]*\.?[[:space:]]*$' | grep -oiE '[0-9a-f]{40}' | tr 'A-F' 'a-f' | grep -x "$head" >/dev/null; then
+      | tr -d '*_`\r' | grep -v -e '^    ' -e "^$(printf '\t')" | grep -iE '^[[:space:]]*Lead read(: *OK| the diff:?)[[:space:]]+[0-9a-f]{40}[[:space:]]*\.?[[:space:]]*$' | grep -oiE '[0-9a-f]{40}' | tr 'A-F' 'a-f' | grep -x "$head" >/dev/null; then
     verdict=OK; why="the Lead read ${head:0:9} ($hit)"; return 0; fi
-  verdict=HOLD; why="waits for the Lead's read (P-423): $hit. A comment line by the Lead, alone on its line: Lead read the diff: $head"; return 1; }
+  # The line to write comes first: a status description keeps only 140 characters (review round 2, R2-2).
+  verdict=HOLD; why="needs the line \"Lead read the diff: $head\" (P-423, alone on its line): $hit"; return 1; }
 
 status() {  # judge, then the status on the head
   local r s; judge; r=$?
   case "$r" in
     0) [ "$verdict" = SKIP ] && { echo "#$PR: SKIP $why"; return 0; }; s=success;;
-    1) if [ "$MODE" = block ]; then s=failure; else s=pending; why="report-only (P-717 (b)), would hold: ${why#waits for }"; fi;;
+    1) if [ "$MODE" = block ]; then s=failure; else s=pending; why="report-only, would hold: $why"; fi;;
     *) echo "#$PR: $why"; [ -n "$head" ] || return 2; s=failure; why="$why, so the Lead's read cannot be checked (fails closed)";;
   esac
   api -X POST "$API/repos/$REPO/statuses/$head" -d "$(jq -n --arg s "$s" --arg d "${why:0:139}" --arg c "$CTX" '{state: $s, description: $d, context: $c}')" >/dev/null \

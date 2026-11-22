@@ -95,3 +95,95 @@ The real code already passes keys as constants, e.g. `@PermissionKeys(LEGAL_SETT
 - A non-numeric PR number in the event payload is refused. The PR's code is never checked out: `ref: main`, sparse checkout, `persist-credentials: false`, no `${{ }}` inside `run:`.
 - The token goes into a mode-600 header file that is removed on exit, and is never echoed. The only write scope is `statuses`.
 - A pure rename, or a change with `changes: 0` and no patch, is correctly not held.
+
+## Round 2 (commit daa2d4e22, diff from 6d7b5a42a only)
+
+**Verdict: Changes.** 1 Major (what is left of M1) and 6 Minors. No Blockers. The PR's own test passes (109 passed, 0 failed).
+
+Same harness as round 1. All 70 round-1 fixtures were re-run (scratchpad `lrg/t1.sh` to `t4.sh`), and 69 new ones were added (`t5.sh`, `t6.sh`).
+
+### Round-1 findings re-run
+- **Now held:**
+  - B1: a `mergify/…` branch name gives `HOLD`; the skip needs `mergify[bot]` and this repository.
+  - B2: all four guard edits (a)–(d) give `HOLD`, through the new paths in the list.
+  - M1 partly: the split decorator in `routes.ts`, the template and concatenation keys, and the seed grant.
+  - M2: `.mts`, `.js`, `.json`, `samples/notification-groups.json`, and a rename to `.mts`.
+  - M3: a 7- or 9-character read of a ground prefix gives `HOLD`.
+  - M4: an edited comment (R6) gives `HOLD`.
+  - m1: trailing "is NOT…", "Verdict: Block", and a missing colon.
+  - m2: HTML comment and code fence.
+  - m3: lines starting `-- ` / `++ ` (headers are no longer excluded).
+  - m4: `BLOCK` is now `failure`.
+  - The m5 withdrawal: an edit or deletion is now judged again.
+- **Accepted as stated, not findings:**
+  - R2: the author can free their own PR while `LEAD_LOGINS` is unset (one shared account, written in the header).
+  - M5 and M6: now stated as conditions for the queue PR. `edited` has been added to the types.
+- **Still `OK`, Minor:** C3, a newline inside a walled file's name (`platform/a\nb/routes.ts`, `+ @Get("x")`).
+
+### Major
+**R2-M1. A split decorator still passes in walled controllers not named `routes|keys|guard`, and in `features/`.**
+- Fixture: the patch `@@ -24,4 +24,4 @@`, context ` @Put("booking-timings")` and ` @PermissionKeys(`, then `-    LIST,` / `+    VIEW,` and context ` )`.
+- Observed `OK no path or line that keeps the Lead's read` for each of these names:
+  - `front-office/booking/settings/timings.controller.ts` (W1)
+  - `platform/messages/staff-routes.ts` (W2)
+  - `routes.helpers.ts` (W3)
+  - `Routes.ts` (W4)
+  - `routes/index.ts` (W5)
+  - `api/src/features/case-close.ts` (W6)
+- Why it matters: 10 of the walled controller files are not named `routes.*`. Examples: `*.controller.ts`, `staff-routes.ts`, `public-routes.ts`, `front-office/sales/public.ts`, `booking/consult/controller.ts`. Three of the `*.controller.ts` files already pass keys as constants (`@PermissionKeys(LIST)`). `features/` also holds guarded routes (`case-close.ts`, `clients.ts`). WHOLE (lead-read-gate.sh:56) is case-sensitive and matches the exact base name only.
+- Smallest fix: judge each hunk, not each line. Hold when a hunk of a SRC file has a changed line and any of its lines, context included, matches ACCESS, or ROUTE in a walled module. The 3 context lines carry the `@PermissionKeys(` of a split decorator. Optionally widen WHOLE to `(?i)/[^/]*(routes|controller|keys|guard)[^/]*\.[cm]?[jt]sx?$`.
+
+### Minors
+- **R2-m1. Deliberate encodings of a key still pass** (all `OK`, file `platform/support/support.ts`, where SUPPORT_KEYS really lives):
+  - `"agent\/support-ticket:list"` (W8)
+  - `"agent/…"` (W9)
+  - `["agent","support-ticket:list"].join("/")` (W10)
+  - `` `${PLANE}/support-ticket:list` `` (W11)
+  - `"agent" + "/support-ticket:list"` (W12)
+  - `Object.assign(SUPPORT_KEYS, { list: SUPPORT_KEYS.create })` (W7)
+  - `notification-groups.json` reformatted so that `"kind"` sits on a line without the key (W16)
+
+  Rule (b) is a tripwire, not a wall. Record that next to M5, and hold every line of `samples/notification-groups.json`.
+- **R2-m2. Template lines in code still count:**
+  - a 4-space or tab-indented code block (`    Lead read the diff: <40 hex>`) → `OK` (F10, F11)
+  - a read on its own line followed by `Changes: B1 still open` on the next → `OK` (F13, line semantics, info)
+
+  Fix: drop lines indented 4 or more spaces, or by a tab.
+- **R2-m3. Stripping eats real reads** (false holds):
+  - `` `<!--` `` in inline code before a genuine line (H3)
+  - inline ```` ``` ```` in prose (H7)
+  - a 4-backtick fence holding ```` ``` ```` (H8)
+
+  In each case everything after it is dropped, because an unmatched opener strips to the end of the comment. The Lead must re-post.
+- **R2-m4. Edited-comment rule edges:**
+  - A missing `updated_at`, or both timestamps missing, counts (D2, D3). GitHub always sends both, so this is a test-data gap only. Fix: require `.created_at != null`.
+  - The same instant written as `08:00:00.000Z` against `08:00:00Z` holds (D5).
+  - An edit in the same second counts (D1). That is not practical to exploit.
+  - The Lead fixing a typo holds (D6, by design).
+- **R2-m5. LEAD_LOGINS edge cases:**
+  - Extra spaces work.
+  - `lead,other`, a tab separator, or `Lead` for login `lead` all hold (fails closed). GitHub logins are case-insensitive.
+  - With it set, the Lead's own PRs can never be freed. Set to today's shared account, it would hold every PR for good.
+  - Fix: split on `[\s,]+` and compare lower-case. State the own-PR rule in the header.
+- **R2-m6. False holds of the widened patterns** (low):
+  - `` `agent/${id}` `` in `api/src/forms.ts` holds (N1). No such line exists in today's code: I ran ACCESS over every `agent/`/`system/` line of `api/src` and `samples`, and the 186 matches are all keys or decorators.
+  - A comment-only edit in a walled `routes.ts` holds (N4, by design).
+  - The list still has no `records-exempt` line, so the C16–C18 screenshots and records are still held.
+
+### Round-2 attacks that failed (the gate held)
+- Full-SHA line:
+  - trailing text (F1)
+  - zero-width space after the SHA or inside the words (F2, F3)
+  - a Cyrillic `а` in the SHA (F4)
+  - a line split by CRLF (F5)
+  - a lone CR before the line or before a verdict (F6, F7)
+  - the SHA in a link, or the whole line a link (F8, F9)
+  - a struck-through SHA (F12)
+- Edited-comment rule: `created_at` missing with `updated_at` present (D4) is ignored.
+- Fence and HTML stripping:
+  - inside an HTML comment (H1), an unterminated fence (H5) and a 3-space indented fence (H6) are all stripped
+  - `<!-->` (H10) and a fake `-- >` closer (H11) are stripped
+  - a closed comment or fence before a real line (H2, H4) correctly frees it
+- Batch skip: a `mergify/merge-queue/x` branch not opened by the bot holds (B1).
+- Widened patterns: no false hold on ordinary sample text (N2) or an ordinary walled service line (N3). `.TS` (W13) and `.JSON` / `.yaml` samples (W14, W15) are not read, but no such files are loaded today.
+- Workflow `if:` (read, not run): created comments still need "Lead read" and a writer. Edits and deletions by writers always re-judge. Outsiders' edits never trigger. `pull_request_target edited` re-judges a PR retargeted onto main. A fork author editing the title can only queue one pending run per PR (concurrency group), and the run only posts a status.

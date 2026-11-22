@@ -234,13 +234,14 @@ CS3 unread|product/tools/queue-depth.py|s/^        if len(found) < N:/        if
 CS3 cancel|product/tools/queue-depth.py|s/ or c not in ("success",) + FAILED:/ or c is None:/|check-queue-depth.sh
 CS3 trace|product/tools/queue-depth.py|s/    except (Unreadable, OSError, TypeError, ValueError, AttributeError) as e:/    except Unreadable as e:/|check-queue-depth.sh
 CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/[ "$qdr" = 9 ] \&\& ACT "queue depth/|check-queue-depth.sh
-LRG access|product/tools/lead-read-gate.sh|s/ or test(\$access) or / or false or /|check-lead-read-gate.sh
-LRG route|product/tools/lead-read-gate.sh|s/ and test(\$route)))/ and false))/|check-lead-read-gate.sh
-LRG whole|product/tools/lead-read-gate.sh|s/(\$w and any(\$n\[\]; test(\$whole))) as \$all/false as $all/|check-lead-read-gate.sh
+LRG access|product/tools/lead-read-gate.sh|s/ or any(.\[\]; test(\$access)) or / or false or /|check-lead-read-gate.sh
+LRG route|product/tools/lead-read-gate.sh|s/(\$w and any(.\[\]; test(\$route)))))/($w and false)))/|check-lead-read-gate.sh
+LRG hunk|product/tools/lead-read-gate.sh|s/else .\[-1\] += \[\$l\] end/else .[-1] += [ if $l[0:1] == " " then empty else $l end ] end/|check-lead-read-gate.sh
+LRG whole|product/tools/lead-read-gate.sh|s/(\$w and any(\$n\[\]; test(\$whole; "i"))) as \$all/false as $all/|check-lead-read-gate.sh
 LRG paths|product/tools/lead-read-gate.sh|s/^    hit=\$(paths <<< "\$names" . tick)$/    hit=""/|check-lead-read-gate.sh
 LRG head|product/tools/lead-read-gate.sh|s/grep -x "\$head" >\/dev\/null; then/grep . >\/dev\/null; then/|check-lead-read-gate.sh
 LRG writer|product/tools/lead-read-gate.sh|s/select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")/select(true)/|check-lead-read-gate.sh
-LRG edited|product/tools/lead-read-gate.sh|s/select((.updated_at \/\/ .created_at \/\/ "") == (.created_at \/\/ ""))/select(true)/|check-lead-read-gate.sh
+LRG edited|product/tools/lead-read-gate.sh|s/select(.created_at != null and (.updated_at \/\/ .created_at) == .created_at)/select(true)/|check-lead-read-gate.sh
 LRG bot|product/tools/lead-read-gate.sh|s/ and .user.login == "mergify\[bot\]" and .head.repo.full_name == \$r//|check-lead-read-gate.sh
 LRG page|product/tools/lead-read-gate.sh|s/-lt 100 \] \&\& break/-lt 100000 ] \&\& break/|check-lead-read-gate.sh
 LRG block|product/tools/lead-read-gate.sh|s/if \[ "\$MODE" = block \]; then s=failure;/if false; then s=failure;/|check-lead-read-gate.sh

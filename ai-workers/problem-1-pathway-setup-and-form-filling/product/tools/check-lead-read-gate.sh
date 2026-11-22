@@ -110,7 +110,7 @@ line "$S/api/src/forms.ts" "+  @Get(\"x\")"
 ok "a route line outside the walled modules is not held" "$(free)" "exit $r: $out"
 line "$S/api/src/platform/settings/offices/service.ts" " // routes use @PermissionKeys(\"agent/settings:edit\")
 +  const zone = office.zone ?? firm.zone;"
-ok "an unchanged (context) line naming a key does not hold a PR" "$(free)" "exit $r: $out"
+ok "a context line naming a key holds its hunk (the hunk rule: a split decorator, break round 2 M1)" "$(held)" "exit $r: $out"
 line "$S/web/src/modules/platform/settings/offices-page.tsx" "+// the route is @PermissionKeys(\"agent/settings:edit\")"
 ok "a web file is not an API source file: not held by a key it shows" "$(free)" "exit $r: $out"
 line "$S/api/src/platform/settings/NOTES.md" "+@PermissionKeys(\"agent/settings:edit\")"
@@ -224,6 +224,51 @@ rm -f "$T/fx/files-7-p2.json" "$T/fx/comments-7-p2.json"; nocmt
 jq -n '[range(0; 2000) | {filename: ("ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/very/long/folder/name/number/\(.)/routes.ts"), status: "modified", changes: 1, patch: "+  @Get(\"x\")"}]' > "$T/fx/files-7.json"; GATE=report run status
 ok "review m4: 2000 held API files are held (pending in report-only), not 'cannot be read'" "$(grep -q 'lead-read pending' <<< "$log" && echo 1)" "exit $r: $out / $log"
 
+# --- the breaker's round 2 (daa2d4e22)
+nocmt
+SPLIT='@@ -24,4 +24,4 @@
+   @Put("booking-timings")
+   @PermissionKeys(
+-    LIST,
++    VIEW,
+   )'
+for p in "$S/api/src/front-office/booking/settings/timings.controller.ts" "$S/api/src/platform/messages/staff-routes.ts" "$S/api/src/platform/x/routes.helpers.ts" \
+         "$S/api/src/platform/x/Routes.ts" "$S/api/src/platform/x/routes/index.ts" "$S/api/src/features/case-close.ts" "$S/api/src/forms.ts"; do
+  f "$p" "$SPLIT"; put; run judge
+  ok "round 2 M1: a split decorator's changed argument is held by its hunk's context: $p" "$(held)" "exit $r: $out"; done
+f "$S/api/src/platform/x/service.ts" '@@ -1,3 +1,3 @@
+ // uses @PermissionKeys("agent/x:y") on the route
+-const a = 1;
++const a = 2;
+@@ -40,3 +40,3 @@
+ const z = 0;
+-const b = 1;
++const b = 2;'; put; run judge
+ok "round 2 M1: ... (a hunk whose context names a key counts; that is the price of the rule)" "$(held)" "exit $r: $out"
+f "$S/api/src/platform/x/service.ts" '@@ -40,3 +40,3 @@
+ const z = 0;
+-const b = 1;
++const b = 2;'; put; run judge
+ok "round 2 M1: a walled service hunk with no access word anywhere is not held" "$(free)" "exit $r: $out"
+for p in "$S/api/src/front-office/booking/settings/timings.controller.ts" "$S/api/src/platform/x/Public-Routes.ts" "$S/api/src/platform/identity-door/keys.mts"; do
+  f "$p" '@@ -40,3 +40,3 @@
+ const z = 0;
+-const b = 1;
++const b = 2;'; put; run judge
+  ok "round 2 M1: any changed line of a walled routes, controller, keys or guard file is held, any case: $p" "$(held)" "exit $r: $out"; done
+f "$S/samples/notification-groups.json" '+  "kind": "everyone",'; put; run judge
+ok "round 2 m1: any line of samples/notification-groups.json is held (a kept path)" "$(held)" "exit $r: $out"
+f ".mergify.yml" "+x"; put
+nocmt; cmt MEMBER "    Lead read the diff: $HEAD1"; run judge
+ok "round 2 m2: a read in a 4-space indented code block does not count" "$(held)" "exit $r: $out"
+nocmt; cmt MEMBER "	Lead read the diff: $HEAD1"; run judge
+ok "round 2 m2: ... nor tab-indented" "$(held)" "exit $r: $out"
+nocmt; CS=$(jq -c --arg b "Lead read the diff: $HEAD1" '[{user: {login: "lead"}, author_association: "MEMBER", body: $b}]' <<< '[]'); echo "$CS" > "$T/fx/comments-7.json"; run judge
+ok "round 2 m4: a comment without its creation time does not count" "$(held)" "exit $r: $out"
+nocmt; cmt MEMBER "Lead read the diff: $HEAD1" Lead; LEADS="lead,other" run judge
+ok "round 2 m5: LEAD_LOGINS split on commas and compared without case" "$(free)" "exit $r: $out"
+nocmt
+
 # --- who is judged
 f ".github/workflows/ci.yml" "+x"; put
 prj 7 mergify/merge-queue/abc main "mergify[bot]"; run judge
@@ -236,7 +281,7 @@ prj 7
 run status
 ok "report-only (the default): a held PR is pending, with what would hold it; never failure" "$(grep -q "^STATUS $HEAD1 lead-read pending report-only" <<< "$log" && echo 1)" "$out / $log"
 GATE=block run status
-ok "LEAD_READ_GATE=block: a held PR is failure, naming the path" "$(grep -q "^STATUS $HEAD1 lead-read failure waits for the Lead's read (P-423): \`.github/workflows/ci.yml\`" <<< "$log" && echo 1)" "$out / $log"
+ok "LEAD_READ_GATE=block: a held PR is failure, the line to write first in the description (R2-2)" "$(grep -q "^STATUS $HEAD1 lead-read failure needs the line \"Lead read the diff: $HEAD1\"" <<< "$log" && echo 1)" "$out / $log"
 cmt MEMBER "Lead read: OK $HEAD1"; GATE=block run status
 ok "... and success once the Lead's read names the head" "$(grep -q "^STATUS $HEAD1 lead-read success" <<< "$log" && echo 1)" "$out / $log"
 nocmt; f "$S/web/src/x.tsx" "+x"; put; GATE=block run status

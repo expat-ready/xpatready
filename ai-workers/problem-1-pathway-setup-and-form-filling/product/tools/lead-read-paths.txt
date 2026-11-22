@@ -19,6 +19,8 @@
 /api/src/core\.ts$
 /api/src/platform/(firm-scope|terms/gate)\.ts$
 /api/src/features/platform-terms\.ts$
+# Who sees which notification group: an access rule kept as data (break round 2 m1)
+/studio/samples/notification-groups\.json$
 # The schema and its migrations (P-423)
 /prisma/migrations/
 /prisma/schema/
