@@ -50,7 +50,7 @@ const api = async (t: string | null, method: string, path: string, body?: unknow
   return { status: r.status, body: j, text };
 };
 const upload = async (t: string, kind: string, bytes: Uint8Array, name: string, type: string): Promise<Ans> => {
-  const form = new FormData(); form.append("file", new Blob([bytes], { type }), name);
+  const form = new FormData(); form.append("file", new Blob([new Uint8Array(bytes)], { type }), name);
   const r = await fetch(`${BASE}/api/platform/branding/${kind}`, { method: "PUT", headers: { authorization: `Bearer ${t}` }, body: form });
   const text = await r.text(); let j: unknown = null; try { j = JSON.parse(text); } catch { /* not JSON */ }
   return { status: r.status, body: j, text };
