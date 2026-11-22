@@ -17,7 +17,7 @@ import { join } from "node:path";
 import pg from "pg";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW3 = "20261122040000_fo7ts_part3";
+const NEW3 = "20261122170000_fo7ts_part3";
 const NEW = "20261118200000_fo7ts_money_settings", STEP2 = "20261118200100_fo7ts_card_terminal_trust", NEW2 = "20261119080000_fo7ts_ledgers", FO7LK = "20261118210000_fo7lk_trust_lock", FO7A2 = "20261116133000_fo7a2_ledger_rules";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const T = `xr_studio_fo7ts_t_${process.pid}`, BAD = `xr_studio_fo7ts_bad_${process.pid}`, EMPTY = `xr_studio_fo7ts_empty_${process.pid}`;

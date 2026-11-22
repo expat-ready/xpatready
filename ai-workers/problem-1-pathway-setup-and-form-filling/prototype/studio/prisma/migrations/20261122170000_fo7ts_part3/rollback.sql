@@ -1,19 +1,33 @@
 -- FO-7ts part 3 rollback (not a migration: Prisma reads only migration.sql). Run from the studio folder, in one
 -- transaction, before any part 3 fact exists that must be kept (it refuses otherwise; Taxable on an issued invoice is
 -- what issuing chose with no party treatment, so it may go):
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261122040000_fo7ts_part3/rollback.sql
+--   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261122170000_fo7ts_part3/rollback.sql
 -- Restores money_trust_entry_write exactly as FO-7ts part 2 left it, money_invoice_write exactly as FO-7ts part 1
 -- left it, and money_credit_note_write, money_move_batch_owed_back and money_move_line_write exactly as FO-7lk left them (each read from its own migration's text, PF-12's reader settings set again), and drops the rest. Then
 -- delete this folder's row from _prisma_migrations.
 DO $$
+DECLARE t text; forced text[] := '{}';
 BEGIN
-  PERFORM set_config('row_security', 'off', true);
+  -- PF-8b F6 (RDS: the runner is neither superuser nor BYPASSRLS): as the tables' owner it sees every row once FORCE is
+  -- lifted inside this one statement, under its lock, and puts FORCE back before the end (an error rolls both back).
+  IF (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
+    PERFORM set_config('row_security', 'off', true);
+  ELSE
+    IF EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ANY (ARRAY['money_trust_entry', 'money_party_tax_treatment', 'money_invoice']::regclass[]) AND NOT pg_has_role(current_user, c.relowner, 'USAGE')) THEN
+      RAISE EXCEPTION 'FO-7ts part 3 rollback stopped, nothing changed: % cannot see every row (row level security): run migrations as a superuser, a BYPASSRLS role or the owner of money_trust_entry, money_party_tax_treatment, money_invoice', current_user
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    LOCK TABLE "money_trust_entry", "money_party_tax_treatment", "money_invoice" IN ACCESS EXCLUSIVE MODE;
+    SELECT coalesce(array_agg(c.relname::text ORDER BY c.relname), '{}') INTO forced FROM pg_class c WHERE c.oid = ANY (ARRAY['money_trust_entry', 'money_party_tax_treatment', 'money_invoice']::regclass[]) AND c.relforcerowsecurity;
+    FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+  END IF;
   IF EXISTS (SELECT 1 FROM "money_trust_entry" WHERE "picked_other_funds_by" IS NOT NULL OR "refund_method" IS NOT NULL) THEN
     RAISE EXCEPTION 'FO-7ts part 3 rollback: picks or trust refunds with their details are recorded; they cannot be rolled back silently';
   END IF;
   IF EXISTS (SELECT 1 FROM "money_party_tax_treatment") OR EXISTS (SELECT 1 FROM "money_invoice" WHERE "tax_treatment" IS NOT NULL AND ("tax_treatment" <> 'TAXABLE' OR "issued_at" IS NULL)) THEN
     RAISE EXCEPTION 'FO-7ts part 3 rollback: tax treatments are recorded; they cannot be rolled back silently';
   END IF;
+  FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
 END $$;
 \set tew `sed -n '/^CREATE OR REPLACE FUNCTION money_trust_entry_write()/,/^END \$\$;/p' prisma/migrations/20261119080000_fo7ts_ledgers/migration.sql`
 \set iw `sed -n '/^CREATE OR REPLACE FUNCTION money_invoice_write()/,/^END \$\$;/p' prisma/migrations/20261118200000_fo7ts_money_settings/migration.sql`

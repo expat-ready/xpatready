@@ -15,11 +15,25 @@
 
 -- Trust refunds recorded before this part carry no method or date; they are never filled in silently.
 DO $refunds$
+DECLARE t text; forced text[] := '{}';
 BEGIN
-  PERFORM set_config('row_security', 'off', true);
+  -- PF-8b F6 (RDS: the runner is neither superuser nor BYPASSRLS): as the tables' owner it sees every row once FORCE is
+  -- lifted inside this one statement, under its lock, and puts FORCE back before the end (an error rolls both back).
+  IF (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
+    PERFORM set_config('row_security', 'off', true);
+  ELSE
+    IF EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ANY (ARRAY['money_trust_entry']::regclass[]) AND NOT pg_has_role(current_user, c.relowner, 'USAGE')) THEN
+      RAISE EXCEPTION 'FO-7ts part 3 stopped, nothing changed: % cannot see every row (row level security): run migrations as a superuser, a BYPASSRLS role or the owner of money_trust_entry', current_user
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    LOCK TABLE "money_trust_entry" IN ACCESS EXCLUSIVE MODE;
+    SELECT coalesce(array_agg(c.relname::text ORDER BY c.relname), '{}') INTO forced FROM pg_class c WHERE c.oid = ANY (ARRAY['money_trust_entry']::regclass[]) AND c.relforcerowsecurity;
+    FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+  END IF;
   IF EXISTS (SELECT 1 FROM "money_trust_entry" WHERE "kind" = 'REFUND_TO_CLIENT') THEN
     RAISE EXCEPTION 'FO-7ts part 3: trust refunds are recorded without a method or date: no route writes these yet, so only a test database holds one: ask the tech lead' USING ERRCODE = 'check_violation';
   END IF;
+  FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
 END
 $refunds$;
 
@@ -71,9 +85,23 @@ ALTER TABLE "money_party_tax_treatment" ADD CONSTRAINT "money_party_tax_treatmen
 -- Invoices issued before this part: what issuing would have chosen (no party treatment exists yet), set while FO-7ts
 -- part 1's freeze does not yet name the column (break m2), so none is left null for good.
 DO $issued$
+DECLARE t text; forced text[] := '{}';
 BEGIN
-  PERFORM set_config('row_security', 'off', true);
+  -- PF-8b F6 (RDS: the runner is neither superuser nor BYPASSRLS): as the tables' owner it sees every row once FORCE is
+  -- lifted inside this one statement, under its lock, and puts FORCE back before the end (an error rolls both back).
+  IF (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
+    PERFORM set_config('row_security', 'off', true);
+  ELSE
+    IF EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ANY (ARRAY['money_invoice']::regclass[]) AND NOT pg_has_role(current_user, c.relowner, 'USAGE')) THEN
+      RAISE EXCEPTION 'FO-7ts part 3 stopped, nothing changed: % cannot see every row (row level security): run migrations as a superuser, a BYPASSRLS role or the owner of money_invoice', current_user
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    LOCK TABLE "money_invoice" IN ACCESS EXCLUSIVE MODE;
+    SELECT coalesce(array_agg(c.relname::text ORDER BY c.relname), '{}') INTO forced FROM pg_class c WHERE c.oid = ANY (ARRAY['money_invoice']::regclass[]) AND c.relforcerowsecurity;
+    FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+  END IF;
   UPDATE "money_invoice" SET "tax_treatment" = 'TAXABLE' WHERE "issued_at" IS NOT NULL AND "tax_treatment" IS NULL;
+  FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
 END
 $issued$;
 
