@@ -2,7 +2,7 @@
 
 current_lead: local_d7cc573e-4ed5-489f-910c-18742632dc7d Lead 7 · 22 Nov 21:14 IST (took over from Lead 6 (local_d4609e9d) at ~302k, ~190k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 23:48 IST: Lead 7 check · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-23 23:54 IST: Lead 7 check · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -16,6 +16,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Goal (founder, P-795, A286):** 12-15 proven per track. RULES from origin/main (as of P-804; P-805, P-806 newer, no new rule). Weekly plan 68% at 21:03 (2.5%/h since 19:04).
 **In flight (Lead 7, 23:5x):** (1) AWS R1.24 proof: founder signs in inside the AWS session's own pane, then message local_3f051647. (2) #2368 labelled → #3042 next. (3) #2913 /run full → gate labels → #3073 merges main. (4) #3104 /run full → relabel. (5) #3041 queued behind #2927: merge main after it lands. (6) #3006 held while batches run (P-791). Lead 6's list and Lead 7's checks: `history/STATE-2026-11-22-2140-lead7-check-lines.md`.
 **Lead 7 23:48 (founder ask, typed):** full status run; plan page updated (Version 4, https://claude.ai/artifact/2aNo4YH89N7CcJG7Jnx2Dn): 46/101 proven (2 on 16 Nov, 12 on 20 Nov, 38 at 00:00 22 Nov; +8 today: R1.4, R1.19, R1.39, R1.42, R1.47, R1.53, R1.88, R1.89). Private founder brief (lab, cost vs team, 20-25 days to 101, risks, AI next): https://claude.ai/artifact/Goncoe7sHwm4wFhofDBfmb (copy in the Lead's private notes; never in this repo, holds the team cost). AWS: founder signs in inside the AWS session's own pane.
+**Lead 7 check 23:54 (23 Nov):** merged #3032 P-785 step 2. #2927 dequeued again (batch 45051614654 shard 7: check_pf8b_f7_data_walls on its migration's plat_system_role INSERT without the F6 FORCE-lift DO block; #3068's new rule): lane told to fix, re-stamp, covered line, then my /run full + read. Dropped 3 idle test DBs (disk 10 GB). Structure 1 (70% ctx) told to write a step 3 hand-over and stop; owed by Lead: add the two `*.bypass.ts` / `firm-scope.ts` lines to `tools/lead-read-paths.txt` (text on #3032). Weekly 72%.
 Earlier Lead 7 check lines: `history/STATE-2026-11-22-2140-lead7-check-lines.md`.
 **Owed rows:** booking-seed Sample consultation type on RDS (`booking-seed.ts` reads platform_firm with no firm; after PF-8b-f9 in the PF-8b lane); FO-8 DW4 client number given back (`check_fo8_prospect_won`, once in batch 45029452456, watch for a repeat); HSTS header missing on staging (Minor); FO-6v Done when and PF-29a/b/c/e + CS-T1 brief lines (from Lead 5's owed list).
 **Lanes:** PF-8b lane (session_01Ln6TiUA3bRfVtQHPp4TFry, ~50% context, hand-over note on #3097) next PF-8b-f9. R1.92 lane (session_01Ln6TiPzgv1F4fXY7mcuxqb) next PF-5fp-2 (version not from billing email, plain error words). R1.102 find-box lane (session_01Ln6TiSeUKZmi9Z3gHk7QVK) on #3109 then #3081 (dequeued on the same check). Structure 1 (session_01Ln6TiTdCTsyPHdQwudqfUq) idle until the #3032 full run. Lead B 2 (local_6d7fefa2) runs Track B passes and sends lane text to type.
