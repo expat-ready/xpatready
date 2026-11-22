@@ -6,18 +6,20 @@
 //   W2 a plan change shows without a deploy: the Team plan's name and trial days are changed and the Firm plan is switched
 //      off in the table; after a reload (no restart, no build) the page shows the new name and trial and no Firm card.
 //      Fails on the fake (P-606): the same judge is read before the change and must not hold.
-//   W3 no number typed into the page: every digit on a plan card is one of that plan's stored values, before and after W2.
+//   W3 no number typed into the page: every digit on a plan card is one of that plan's stored values (seats, trial days,
+//      and its stored monthly and yearly price as the page writes it), before and after W2.
 //   W4 keyboard only: Tab to Billing period, Right arrow to Yearly, Tab to the first plan's Start free trial, Enter:
 //      Sign up opens with that plan and "yearly" on its plan line (the walk ends at R1.90's first step).
 //   W5 400, 1024 and 1440 px: no sideways scroll and no WCAG 2.2 A/AA violation (axe); no page error.
-//   W6 the prices clause, on the copy as it runs: at least one plan card shows a price, and each price shown is the one
-//      GET /api/public/plans answers for that plan and period. Today this FAILS (QA-741): a copy has no Stripe key and
-//      the seeded plans carry no price id, so every card reads "Price not shown"; the plan table's own
-//      monthly_price_cents and yearly_price_cents are not read either (W6b sets them and reloads).
-//   W7 the page's half of the prices clause, on a stand-in (said, not hidden): the browser's GET /api/public/plans is
-//      answered with the copy's own answer plus Sample prices (49.00 and 490.00 CAD on the first plan); the card shows
-//      "$49" per month, CAD, "+ applicable taxes"; Yearly shows "$490" per year; the other plans stay "Price not shown".
-//      This is not proof of R1.89's prices: no price reaches the page from a running server here.
+//   W6 the prices clause, on the copy as it runs (no Stripe key: the plan table's own monthly_price_cents and
+//      yearly_price_cents, QA-741 as ruled on #2912): every card shows its stored Monthly price, then Yearly, with
+//      "+ applicable taxes", and GET /api/public/plans answers the same. W6b a price changed in the table (Sample) shows
+//      after a reload, no deploy; fails on the fake (read before the change).
+//   W7 the page's half alone, on a stand-in (said, not hidden): the browser's GET /api/public/plans is answered with the
+//      copy's own answer, the first plan's price swapped for 1,234.50 CAD (Sample); only that card changes, the others
+//      keep what W6 read.
+//   W8 QA-742: a plan with 0 trial days (SA-3-46 "0 = no trial") shows no trial line, its button reads "Sign up", and
+//      the page's lead no longer says "Every plan starts with a free trial"; fails on the fake (read before the change).
 // Every change to the plan table is put back at the end. Plan names, trial days and prices are Sample. US$0, no model
 // call, no Stripe call, no priced button (Start free trial only opens Sign up; nothing is submitted).
 // Screenshots: product/screens/J-89/screenshots/. Run from prototype/ (HEADED=1 opens a visible browser):
@@ -36,17 +38,20 @@ const SHOTS = join(import.meta.dirname, "..", "..", "..", "..", "product", "scre
 const { ok, summary } = recorder();
 const PSQL = existsSync("/opt/homebrew/opt/postgresql@18/bin/psql") ? "/opt/homebrew/opt/postgresql@18/bin/psql" : "psql";
 const sql = (q: string) => execFileSync(PSQL, [`postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-type Row = { code: string; name: string; seats: number; trial: number };
-const stored = (): Row[] => (sql(`select code || '|' || name || '|' || seats_limit || '|' || trial_days from platform_plan where active order by seats_limit`) || "").split("\n").filter(Boolean)
-  .map((l) => { const [code, name, seats, trial] = l.split("|"); return { code, name, seats: Number(seats), trial: Number(trial) }; });
+type Row = { code: string; name: string; seats: number; trial: number; m: number | null; y: number | null; cur: string };
+const stored = (): Row[] => (sql(`select code || '|' || name || '|' || seats_limit || '|' || trial_days || '|' || coalesce(monthly_price_cents::text, '') || '|' || coalesce(yearly_price_cents::text, '') || '|' || currency from platform_plan where active order by seats_limit`) || "").split("\n").filter(Boolean)
+  .map((l) => { const [code, name, seats, trial, m, y, cur] = l.split("|"); return { code, name, seats: Number(seats), trial: Number(trial), m: m ? Number(m) : null, y: y ? Number(y) : null, cur: cur.trim() }; });
+/** A price as the page writes it (pricing-page.tsx money()). */
+const fmt = (cents: number, currency: string) => new Intl.NumberFormat("en-CA", { style: "currency", currency, maximumFractionDigits: cents % 100 ? 2 : 0 }).format(cents / 100);
 const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
 /** What a person reads on each card. */
 const cards = (p: Page) => p.locator("[data-plan]").evaluateAll((els) => els.map((e) => ({ code: e.getAttribute("data-plan") ?? "", name: e.querySelector("h2")?.textContent ?? "", text: (e as HTMLElement).innerText })));
 const open = async (p: Page) => { await p.goto(`${BASE}/pricing`); await p.locator("[data-plan]").first().waitFor({ timeout: 20_000 }); };
 const matches = (seen: Awaited<ReturnType<typeof cards>>, rows: Row[]) => seen.length === rows.length && rows.every((r, i) => seen[i].code === r.code && seen[i].name === r.name
-  && seen[i].text.includes(`Up to ${r.seats} ${r.seats === 1 ? "seat" : "seats"}`) && seen[i].text.includes(`${r.trial}-day free trial`));
-/** W3: the digits on a card, less the plan's own stored values (its name, seats and trial days). */
-const strayDigits = (seen: Awaited<ReturnType<typeof cards>>, rows: Row[]) => seen.flatMap((c, i) => (c.text.replace(rows[i]?.name ?? "", "").match(/\d+/g) ?? []).filter((d) => ![String(rows[i]?.seats), String(rows[i]?.trial)].includes(d)).map((d) => `${c.code}:${d}`));
+  && seen[i].text.includes(`Up to ${r.seats} ${r.seats === 1 ? "seat" : "seats"}`) && (r.trial > 0 ? seen[i].text.includes(`${r.trial}-day free trial`) : !/free trial/i.test(seen[i].text)));
+/** W3: the digits on a card, less the plan's own stored values (its name, seats, trial days and its stored prices as written). */
+const allowed = (r: Row | undefined) => !r ? [] : [String(r.seats), String(r.trial), ...[r.m, r.y].flatMap((c) => (c === null ? [] : fmt(c, r.cur).match(/\d+/g) ?? []))];
+const strayDigits = (seen: Awaited<ReturnType<typeof cards>>, rows: Row[]) => seen.flatMap((c, i) => (c.text.replace(rows[i]?.name ?? "", "").match(/\d+/g) ?? []).filter((d) => !allowed(rows[i]).includes(d)).map((d) => `${c.code}:${d}`));
 
 const browser = await chromium.launch({ headless: !process.env.HEADED, slowMo: process.env.HEADED ? 200 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errors: string[] = [];
@@ -61,13 +66,14 @@ try {
   const t0 = Date.now(); await open(p); const ms = Date.now() - t0;
   const seen0 = await cards(p);
   ok(`R1.89 W1: Pricing lists exactly the active plans of the plan table, fewest seats first, each with its stored name, seats and trial days (${rows0.map((r) => r.code).join(", ")}); shown in ${ms} ms`, rows0.length > 0 && matches(seen0, rows0) && ms < 3000, { seen: seen0.map((c) => c.code), ms });
-  ok("R1.89 W3: no number typed into the page: every digit on a plan card is that plan's stored seats or trial days", strayDigits(seen0, rows0).length === 0, strayDigits(seen0, rows0));
+  ok("R1.89 W3: no number typed into the page: every digit on a plan card is that plan's stored seats, trial days or price", strayDigits(seen0, rows0).length === 0, strayDigits(seen0, rows0));
   await shot(p, "w1-pricing-1440");
 
   // ------------------------------------------------------------------------------------------ W2: a plan change, no deploy
   const team = rows0.find((r) => r.code === "team") ?? rows0[0], gone = rows0.find((r) => r.code !== team.code && r.code === "firm") ?? rows0[rows0.length - 1];
   const want = rows0.filter((r) => r.code !== gone.code).map((r) => (r.code === team.code ? { ...r, name: "Team Plus (Sample, J-89)", trial: 21 } : r));
-  ok("R1.89 W2 fail (before the change, P-606): the page does not show the changed plans yet", !matches(seen0, want));
+  ok("R1.89 W2 fail (before the change, P-606): the page does not show the changed name or trial yet, and still offers the plan to be switched off",
+    seen0.length > 0 && !seen0.some((c) => c.name === "Team Plus (Sample, J-89)" || c.text.includes("21-day")) && seen0.some((c) => c.code === gone.code), seen0.map((c) => c.name));
   sql(`update platform_plan set name = 'Team Plus (Sample, J-89)', trial_days = 21 where code = '${team.code}'; update platform_plan set active = false where code = '${gone.code}'`);
   await p.reload(); await p.locator("[data-plan]").first().waitFor({ timeout: 20_000 });
   const seen1 = await cards(p);
@@ -105,33 +111,55 @@ try {
   // ------------------------------------------------------------------------------------------ W6: prices, as the copy runs
   const c6 = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   const r = await c6.newPage(); r.on("pageerror", (e) => errors.push(String(e)));
-  const answer = async () => (await (await fetch(`${BASE}/api/public/plans`)).json()) as { plans: { code: string; monthly: { amountCents: number; currency: string } | null; yearly: { amountCents: number; currency: string } | null }[] };
-  const shown = async () => r.locator("[data-plan]").evaluateAll((els) => els.map((e) => ({ code: e.getAttribute("data-plan") ?? "", price: e.querySelector("[data-price]")?.textContent ?? null })));
-  const fmt = (x: { amountCents: number; currency: string }) => new Intl.NumberFormat("en-CA", { style: "currency", currency: x.currency, maximumFractionDigits: x.amountCents % 100 ? 2 : 0 }).format(x.amountCents / 100);
+  type Price = { amountCents: number; currency: string } | null;
+  const answer = async () => (await (await fetch(`${BASE}/api/public/plans`)).json()) as { plans: { code: string; monthly: Price; yearly: Price }[] };
+  const shown = async () => r.locator("[data-plan]").evaluateAll((els) => els.map((e) => ({ code: e.getAttribute("data-plan") ?? "", price: e.querySelector("[data-price]")?.textContent ?? null, text: (e as HTMLElement).innerText })));
+  const pick = async (name: "Monthly" | "Yearly") => { await r.getByRole("radio", { name }).check({ force: true }); await r.waitForTimeout(150); };
   await open(r);
-  const a6 = await answer(), s6 = await shown();
-  ok("R1.89 W6 (QA-741): on the copy as it runs, at least one plan card shows a price, and each price shown is the one GET /api/public/plans answers for that plan (Monthly)",
-    s6.some((c) => c.price !== null) && s6.every((c) => { const m = a6.plans.find((x) => x.code === c.code)?.monthly ?? null; return c.price === (m ? fmt(m) : null); }), { shown: s6, notice: await r.locator("[data-prices-unavailable]").count() });
-  await shot(r, "w6-no-price-1440");
-  sql(`update platform_plan set monthly_price_cents = 4900, yearly_price_cents = 49000 where code = '${rows0[0].code}'`);
+  const rows6 = stored(), a6 = await answer();
+  const priceOk = (s: Awaited<ReturnType<typeof shown>>, key: "m" | "y", word: string) => s.length === rows6.length && s.every((c) => {
+    const row = rows6.find((x) => x.code === c.code), cents = row?.[key] ?? null, api = a6.plans.find((x) => x.code === c.code)?.[key === "m" ? "monthly" : "yearly"] ?? null;
+    return cents !== null && c.price === fmt(cents, row!.cur) && api?.amountCents === cents && c.text.includes(`per ${word}, ${row!.cur}`) && c.text.includes("+ applicable taxes");
+  });
+  const sm = await shown(); await pick("Yearly"); const sy = await shown(); await pick("Monthly");
+  ok(`R1.89 W6 (QA-741): every card shows its plan's stored price, Monthly then Yearly, "+ applicable taxes", the same as GET /api/public/plans (${rows6.map((x) => `${x.code} ${x.m}/${x.y}`).join(", ")}); no "Prices unavailable" notice`,
+    rows6.length > 0 && priceOk(sm, "m", "month") && priceOk(sy, "y", "year") && await r.locator("[data-prices-unavailable]").count() === 0, { monthly: sm.map((c) => `${c.code}:${c.price}`), yearly: sy.map((c) => `${c.code}:${c.price}`) });
+  await shot(r, "w6-prices-1440");
+  const first6 = rows6[0], newCents = first6 && first6.m === 5500 ? 6500 : 5500;
+  ok(`R1.89 W6b fail (before the change, P-606): '${first6?.code}' does not show ${fmt(newCents, first6?.cur ?? "CAD")} yet`, !!first6 && sm[0]?.price !== fmt(newCents, first6.cur), sm[0]?.price);
+  sql(`update platform_plan set monthly_price_cents = ${newCents} where code = '${first6.code}'`);
   await r.reload(); await r.locator("[data-plan]").first().waitFor({ timeout: 20_000 });
   const s6b = await shown();
-  ok(`R1.89 W6b (QA-741): a price stored on the plan table ('${rows0[0].code}': monthly_price_cents 4900, Sample) shows on that plan's card after a reload`, s6b.find((c) => c.code === rows0[0].code)?.price === "$49", s6b);
+  ok(`R1.89 W6b: a price changed in the plan table ('${first6.code}' monthly_price_cents ${newCents}, Sample) shows as ${fmt(newCents, first6.cur)} after a reload, no restart, no build`, s6b[0]?.code === first6.code && s6b[0]?.price === fmt(newCents, first6.cur), s6b.map((c) => `${c.code}:${c.price}`));
   restore();
+  await r.reload(); await r.locator("[data-plan]").first().waitFor({ timeout: 20_000 });
+  const s6c = await shown();
 
   // ------------------------------------------------------------------------------------------ W7: the page's half, stand-in
   await r.route("**/api/public/plans", async (route) => {
     const res = await route.fetch(), body = await res.json();
-    body.plans[0].monthly = { amountCents: 4900, currency: "CAD", interval: "month" }; body.plans[0].yearly = { amountCents: 49000, currency: "CAD", interval: "year" };
+    body.plans[0].monthly = { amountCents: 123450, currency: "CAD", interval: "month" };
     await route.fulfill({ response: res, json: body });
   });
   await r.reload(); await r.locator("[data-plan]").first().waitFor({ timeout: 20_000 });
-  const first = r.locator("[data-plan]").first(), monthly = await first.innerText();
-  await r.getByRole("radio", { name: "Yearly" }).check({ force: true });
-  const yearly = await first.innerText(), others = (await shown()).slice(1);
-  ok("R1.89 W7 (stand-in: the answer's prices are added in the browser, Sample): the card shows \"$49 per month, CAD\" with \"+ applicable taxes\"; Yearly shows \"$490 per year, CAD\"; plans with no price stay \"Price not shown\"; no \"Prices unavailable\" notice",
-    /\$49\s+per month, CAD/.test(monthly) && monthly.includes("+ applicable taxes") && /\$490\s+per year, CAD/.test(yearly) && others.every((c) => c.price === null) && await r.locator("[data-prices-unavailable]").count() === 0, { monthly, yearly });
+  const s7 = await shown();
+  ok("R1.89 W7 (stand-in: the answer's first price swapped in the browser, Sample): only that card changes, to \"$1,234.50 per month, CAD\"; every other card keeps the price W6 read",
+    /\$1,234\.50\s+per month, CAD/.test(s7[0]?.text ?? "") && s7.length === s6c.length && s7.slice(1).every((c, i) => c.price === s6c[i + 1].price && c.price !== null), { first: s7[0]?.price, others: s7.slice(1).map((c) => c.price) });
   await shot(r, "w7-stand-in-price-1440");
+  await r.unroute("**/api/public/plans");
+
+  // ------------------------------------------------------------------------------------------ W8: QA-742, 0 trial days
+  const zero = rows6.find((x) => x.code === "team") ?? rows6[0];
+  await r.reload(); await r.locator("[data-plan]").first().waitFor({ timeout: 20_000 });
+  const lead0 = await r.locator("[data-pricing] > p").first().innerText(), card0 = (await shown()).find((c) => c.code === zero.code)?.text ?? "";
+  ok(`R1.89 W8 fail (before the change, P-606): '${zero.code}' offers a free trial and the page says every plan starts with one`, /free trial/i.test(card0) && lead0.includes("Every plan starts with a free trial"), { lead0 });
+  sql(`update platform_plan set trial_days = 0 where code = '${zero.code}'`);
+  await r.reload(); await r.locator("[data-plan]").first().waitFor({ timeout: 20_000 });
+  const lead1 = await r.locator("[data-pricing] > p").first().innerText(), card1 = (await shown()).find((c) => c.code === zero.code)?.text ?? "", btn = (await r.locator(`[data-start="${zero.code}"]`).innerText()).trim();
+  ok(`R1.89 W8 (QA-742): with 0 trial days '${zero.code}' shows no trial line and no "free trial", its button reads "Sign up", and the lead no longer says "Every plan starts with a free trial"`,
+    !/free trial|0-day/i.test(card1) && btn === "Sign up" && !lead1.includes("Every plan starts with a free trial") && lead1.includes("No card needed."), { btn, lead1, card1: card1.replace(/\s+/g, " ") });
+  await shot(r, "w8-no-trial-1440");
+  restore();
   await c6.close();
   ok("R1.89: no page error during the walk", errors.length === 0, errors);
 } catch (e) {
