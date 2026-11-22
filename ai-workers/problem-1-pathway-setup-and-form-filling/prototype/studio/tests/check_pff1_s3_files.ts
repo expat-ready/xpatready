@@ -156,7 +156,7 @@ try {
     ok("R1.65 PF-F1 case 5 pass: unset outside production is the local adapter; PLATFORM_FILES=local is the local adapter, in production too", chooseFiles({ FO_FILES_DIR: WORK }) instanceof LocalFiles && filesAdapterOf({ NODE_ENV: "test" }) === "local" && filesAdapterOf({ PLATFORM_FILES: "local", NODE_ENV: "production" }) === "local" && filesAdapterOf({}) === "local");
     const env = { NODE_ENV: "production", PLATFORM_FILES: "s3", PLATFORM_FILES_BUCKET: BUCKET, PLATFORM_FILES_KMS_KEY_ID: KMS };
     const chosen = chooseFiles(env, { credentials: creds, requestHandler: fakeS3({ bucket: BUCKET, region: "ca-central-1", requireKmsKeyId: KMS }).handler as never });
-    ok("R1.65 PF-F1 case 5 pass: PLATFORM_FILES=s3 with its bucket and KMS key is the S3 adapter, in ca-central-1 unless the region is set", chosen instanceof S3Files && chosen.region === "ca-central-1" && chosen.bucket === BUCKET && s3SettingsOf({ ...env, PLATFORM_FILES_REGION: "ca-west-1" }).region === "ca-west-1" && await chosen.exists(FIRM_A, "nothing/here.txt") === false);
+    ok("R1.65 PF-F1 case 5 pass: PLATFORM_FILES=s3 with its bucket and KMS key is the S3 adapter, in ca-central-1 unless the region is set", chosen instanceof S3Files && chosen.region === "ca-central-1" && chosen.bucket === BUCKET && s3SettingsOf({ ...env, PLATFORM_FILES_REGION: "ca-west-1", PLATFORM_FILES_KMS_KEY_ID: "alias/expatready-files" }).region === "ca-west-1" && await chosen.exists(FIRM_A, "nothing/here.txt") === false);
     ok("R1.65 PF-F1 case 5 fail: any other value of PLATFORM_FILES refuses to start, in every environment", ["S3", "aws", "local,s3", "none", "fake"].every((v) => /PLATFORM_FILES must be local or s3/.test(said(() => chooseFiles({ PLATFORM_FILES: v })))));
     const without = (name: string) => said(() => chooseFiles({ ...env, [name]: undefined }));
     ok("R1.65 PF-F1 case 5 fail: s3 without its bucket or its KMS key refuses to start, naming the setting; a malformed bucket, key or region too", /PLATFORM_FILES_BUCKET is not set/.test(without("PLATFORM_FILES_BUCKET")) && /PLATFORM_FILES_KMS_KEY_ID is not set/.test(without("PLATFORM_FILES_KMS_KEY_ID")) && /PLATFORM_FILES_BUCKET must be/.test(said(() => chooseFiles({ ...env, PLATFORM_FILES_BUCKET: "Has Spaces" }))) && /PLATFORM_FILES_KMS_KEY_ID must be/.test(said(() => chooseFiles({ ...env, PLATFORM_FILES_KMS_KEY_ID: "a key?" }))) && /PLATFORM_FILES_REGION must be/.test(said(() => chooseFiles({ ...env, PLATFORM_FILES_REGION: "canada" }))));
@@ -174,6 +174,45 @@ try {
     const noRetry = (): FilesPort => { const f = local(); return { put: async (firm, k, b, c) => { if (await f.exists(firm, k)) throw new FileKeyTaken(k); return f.put(firm, k, b, c); }, get: (firm, k) => f.get(firm, k), exists: (firm, k) => f.exists(firm, k), delete: (firm, k) => f.delete(firm, k), usedBytes: (firm) => f.usedBytes(firm) }; };
     const broken = await runContract(filesPortContract, "LocalFiles refusing a retry", noRetry, null);
     ok("R1.65 PF-F1 case 6 fail: a local adapter changed to refuse the same bytes again fails the contract", broken.failed.length >= 1, broken.failed);
+  }
+
+  // Round 1's Minors (review m4; break m1, m3, m6, m7, m8, m9), each with a pass and a fail.
+  {
+    let nowMs = Date.UTC(2026, 10, 22, 12, 0, 0);
+    const { s3, files } = rig({ now: () => nowMs }), sha = await sha256Hex(bytesOf("real bytes"));
+    const kmsHeaders = { "x-amz-server-side-encryption": "aws:kms", "x-amz-server-side-encryption-aws-kms-key-id": KMS };
+    await s3.rawPut(`${FIRM_A}/planted/x.txt`, bytesOf("other bytes"), { "content-type": "text/plain", ...kmsHeaders, "x-amz-meta-sha256": sha });
+    await s3.rawPut(`${FIRM_A}/planted/none.txt`, bytesOf("no sha"), { "content-type": "text/plain", ...kmsHeaders });
+    await files.put(FIRM_A, "planted/ok.txt", bytesOf("real bytes"), "text/plain");
+    ok("R1.65 PF-F1 m4 pass: an object the adapter wrote reads back", (await files.get(FIRM_A, "planted/ok.txt"))?.sha256 === sha);
+    ok("R1.65 PF-F1 m4 fail: an object whose bytes do not match its sha256, or that has none, is never served by get", await refused(() => files.get(FIRM_A, "planted/x.txt"), (e) => /S3 get failed \(IntegrityMismatch\)/.test(String(e))) && await refused(() => files.get(FIRM_A, "planted/none.txt"), (e) => /S3 get failed \(IntegrityMismatch\)/.test(String(e))));
+    const links = new S3FileLinks(files, LINK_KEY, () => nowMs), opened = await links.open(links.sign(FIRM_A, PERSON_1, "planted/ok.txt").token, FIRM_A, PERSON_1);
+    const url = opened.status === 200 ? new URL(opened.url) : null, fetched = opened.status === 200 ? await s3.fetchUrl(opened.url) : null;
+    ok("R1.65 PF-F1 break m1 pass: a link's address makes S3 answer Content-Disposition: attachment and Cache-Control: no-store", url?.searchParams.get("response-content-disposition") === "attachment" && url?.searchParams.get("response-cache-control") === "no-store" && fetched?.headers["content-disposition"] === "attachment" && fetched?.headers["cache-control"] === "no-store", fetched?.headers);
+    const unsigned = url ? new URL(url) : null;
+    unsigned?.searchParams.delete("response-content-disposition");
+    ok("R1.65 PF-F1 break m1 fail: without the override the same object would come back with no Content-Disposition (an HTML upload would render)", !!unsigned && (await s3.fetchUrl(unsigned.toString())).headers["content-disposition"] === undefined);
+    const fresh = links.sign(FIRM_A, PERSON_1, "planted/ok.txt");
+    nowMs = Number.NaN;
+    ok("R1.65 PF-F1 break m9 fail: a clock that gives no time (NaN) opens no link (404)", JSON.stringify(await links.open(fresh.token, FIRM_A, PERSON_1)) === `{"status":404}`);
+    nowMs = Date.UTC(2026, 10, 22, 12, 0, 0);
+    ok("R1.65 PF-F1 break m9 pass: the same link opens once the clock gives the time again", (await links.open(fresh.token, FIRM_A, PERSON_1)).status === 200);
+    const spaced = await files.put(FIRM_A, "types/t.txt", bytesOf("t"), "text/plain; charset=utf-8 ");
+    const again = await files.put(FIRM_A, "types/t.txt", bytesOf("t"), "text/plain; charset=utf-8 ");
+    ok("R1.65 PF-F1 break m3 pass: a type with a space at its end is stored trimmed, and the same put again is a retry", spaced.sha256 === again.sha256 && (await files.get(FIRM_A, "types/t.txt"))?.contentType === "text/plain; charset=utf-8");
+    ok("R1.65 PF-F1 break m3 fail: a type that is not printable ASCII is refused before any request, and another type is still FileKeyTaken", await refused(() => files.put(FIRM_A, "types/u.txt", bytesOf("u"), "text/plain; name=中")) && await files.exists(FIRM_A, "types/u.txt") === false && await refused(() => files.put(FIRM_A, "types/t.txt", bytesOf("t"), "text/csv"), (e) => e instanceof FileKeyTaken));
+    s3.failNext("GET", "NoSuchBucket");
+    let said = "";
+    try { await files.get(FIRM_A, "planted/ok.txt"); } catch (e) { said = (e as Error).message; }
+    ok("R1.65 PF-F1 break m6 fail: a missing bucket (404 NoSuchBucket) is an error, never \"no such file\"", said === "files: S3 get failed (NoSuchBucket 404)", said);
+    ok("R1.65 PF-F1 break m6 pass: a missing key (404 NoSuchKey) is still null", await files.get(FIRM_A, "planted/never.txt") === null);
+    const sayOf = (f: () => unknown) => { try { f(); return ""; } catch (e) { return (e as Error).message; } };
+    const env = { PLATFORM_FILES: "s3", PLATFORM_FILES_BUCKET: BUCKET, PLATFORM_FILES_KMS_KEY_ID: KMS };
+    ok("R1.65 PF-F1 break m7 pass: a Canadian region (ca-west-1 with its own key), an alias and a key id are accepted", s3SettingsOf({ ...env, PLATFORM_FILES_REGION: "ca-west-1", PLATFORM_FILES_KMS_KEY_ID: KMS.replace("ca-central-1", "ca-west-1") }).region === "ca-west-1" && !!s3SettingsOf({ ...env, PLATFORM_FILES_KMS_KEY_ID: "alias/expatready-files" }) && !!s3SettingsOf({ ...env, PLATFORM_FILES_KMS_KEY_ID: "00000000-0000-4000-8000-00000000f1f1" }));
+    const badBuckets = ["a..b", "192.168.1.1", "xn--bucket", "with.dot", "ends-s3alias", "-lead"], badKeys = ["::::", "AKIAPFF1", "arn:aws:kms:ca-central-1:000000000000:key/nope"];
+    ok("R1.65 PF-F1 break m7 fail: a bucket name S3 forbids or a dotted one, a value that is no KMS key, a region outside Canada, or a key in another region, refuses to start", badBuckets.every((b) => /PLATFORM_FILES_BUCKET must be/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_BUCKET: b })))) && badKeys.every((k) => /PLATFORM_FILES_KMS_KEY_ID must be a KMS key/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_KMS_KEY_ID: k })))) && ["us-east-1", "eu-west-1"].every((r) => /must be a region in Canada/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_REGION: r })))) && /in the bucket's region/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_REGION: "ca-west-1" }))) && /stays in Canada/.test(sayOf(() => new S3Files({ bucket: BUCKET, kmsKeyId: KMS, region: "us-east-1" }))));
+    ok("R1.65 PF-F1 break m8 fail: production written in any case, with spaces, or as prod refuses to start when PLATFORM_FILES is unset", [{ NODE_ENV: "Production" }, { NODE_ENV: " production" }, { NODE_ENV: "prod" }, { PLATFORM_ENVIRONMENT: "PRODUCTION" }].every((e) => /PLATFORM_FILES is not set/.test(sayOf(() => filesAdapterOf(e)))));
+    ok("R1.65 PF-F1 break m8 pass: test, development and local still default to the local adapter", ["test", "development", "local", "productionish"].every((v) => filesAdapterOf({ NODE_ENV: v, PLATFORM_ENVIRONMENT: v }) === "local"));
   }
 
   // The port-contract guard sees S3Files and its contract call.

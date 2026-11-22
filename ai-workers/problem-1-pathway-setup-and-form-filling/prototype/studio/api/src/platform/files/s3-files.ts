@@ -26,6 +26,13 @@ export const DEFAULT_FILES_REGION = "ca-central-1";
 /** Sample: how long a download link works (the row's 5 minutes; the same as the local adapter's LINK_SECONDS). */
 export const S3_LINK_SECONDS = 5 * 60;
 export const S3_TIMEOUT_MS = 20_000;
+/** P-559 (data in Canada): the regions the bucket may be in. */
+export const CANADA_REGIONS: readonly string[] = Object.freeze(["ca-central-1", "ca-west-1"]);
+/** A bucket name S3 accepts and serves on its own host over TLS: no dots (a dotted name breaks the certificate of
+ *  `<bucket>.s3.<region>.amazonaws.com`), no IP shape, none of S3's reserved prefixes or suffixes. */
+export const BUCKET_NAME = /^(?!xn--|sthree-|amzn-s3-demo-)(?!.*(-s3alias|--ol-s3|--x-s3|--table-s3)$)[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
+/** A KMS key: its ARN, an alias ARN, an alias, a key id (uuid) or a multi-Region key id. */
+export const KMS_KEY = /^(arn:aws:kms:([a-z]{2}-[a-z]+-[0-9]):[0-9]{12}:(key\/([0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}|mrk-[0-9a-f]{32})|alias\/[A-Za-z0-9/_-]{1,250})|alias\/[A-Za-z0-9/_-]{1,250}|[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}|mrk-[0-9a-f]{32})$/;
 /** How many times a put that S3 answers "a conflicting write is in progress" (409) is asked again. */
 const CONFLICT_TRIES = 4;
 
@@ -48,6 +55,8 @@ class S3FilesError extends Error {
     this.name = "S3FilesError";
   }
 }
+/** An error of the adapter's own (no S3 answer behind it), named so the caller's message says which. */
+const named = (name: string) => Object.assign(new Error(name), { name });
 /** The object key: the firm's prefix, then the key. The only place a key is built; both parts are checked here. */
 export const objectKey = (firmId: string, key: string): string => `${FirmId.parse(firmId).toLowerCase()}/${FileKey.parse(key)}`;
 
@@ -58,10 +67,12 @@ export class S3Files implements FilesPort {
   private readonly client: S3Client;
 
   constructor(o: S3FilesOptions) {
-    if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(o.bucket ?? "")) throw new Error("files: S3 needs a bucket name");
-    if (!/^[A-Za-z0-9:/_-]{1,2048}$/.test(o.kmsKeyId ?? "")) throw new Error("files: S3 needs the KMS key every put is encrypted with");
+    if (!BUCKET_NAME.test(o.bucket ?? "")) throw new Error("files: S3 needs a bucket name");
+    const kms = KMS_KEY.exec(o.kmsKeyId ?? "");
+    if (!kms) throw new Error("files: S3 needs the KMS key every put is encrypted with");
     this.region = o.region ?? DEFAULT_FILES_REGION;
-    if (!/^[a-z]{2}(-[a-z]+)+-[0-9]$/.test(this.region)) throw new Error("files: S3 needs an AWS region such as ca-central-1");
+    if (!CANADA_REGIONS.includes(this.region)) throw new Error("files: S3 stays in Canada (P-559): ca-central-1 or ca-west-1");
+    if (kms[2] && kms[2] !== this.region) throw new Error("files: the KMS key must be in the bucket's region");
     this.bucket = o.bucket; this.kmsKeyId = o.kmsKeyId;
     this.client = new S3Client({
       region: this.region,
@@ -96,6 +107,10 @@ export class S3Files implements FilesPort {
 
   async put(firmId: string, key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string }> {
     const f = FilePut.parse({ firmId, key, bytes, contentType });
+    // An HTTP header carries printable ASCII only, and loses spaces at its ends on the way (break m3): such a type is
+    // stored trimmed, so a retry of it is still a retry.
+    if (!/^[\x20-\x7e]+$/.test(f.contentType)) throw new Error("files: a content type is printable ASCII");
+    f.contentType = f.contentType.trim();
     const body = new Uint8Array(f.bytes), sha256 = await sha256Hex(body), objKey = objectKey(f.firmId, f.key);
     for (let attempt = 1; ; attempt++) {
       if (await this.send("put", objKey, body, f.contentType, { sha256 }, { IfNoneMatch: "*" }) === "stored") return { key: f.key, sha256 };
@@ -106,7 +121,7 @@ export class S3Files implements FilesPort {
         return { key: f.key, sha256 };
       }
       // Taken a moment ago and absent now (only someone working on the bucket itself removes an object): ask once more.
-      if (attempt >= 2) throw new S3FilesError("put", new Error("unsettled"));
+      if (attempt >= 2) throw new S3FilesError("put", named("KeyUnsettled"));
     }
   }
 
@@ -118,9 +133,9 @@ export class S3Files implements FilesPort {
       if (r.Metadata?.retired !== undefined) { (r.Body as { destroy?: () => void } | undefined)?.destroy?.(); return null; }
       bytes = r.Body ? new Uint8Array(await r.Body.transformToByteArray()) : new Uint8Array();
       contentType = r.ContentType; meta = r.Metadata;
-    } catch (e) { if (statusOf(e) === 404) return null; throw new S3FilesError("get", e); }
+    } catch (e) { if (statusOf(e) === 404 && (e as Error).name === "NoSuchKey") return null; throw new S3FilesError("get", e); }   // a missing bucket is an error, never "no such file" (break m6)
     // An object without our sha256, or whose bytes no longer match it, was not written by this adapter: never served.
-    if (!contentType || !meta?.sha256 || meta.sha256 !== await sha256Hex(bytes)) throw new S3FilesError("get", new Error("integrity"));
+    if (!contentType || !meta?.sha256 || meta.sha256 !== await sha256Hex(bytes)) throw new S3FilesError("get", named("IntegrityMismatch"));
     return { key: FileKey.parse(key), bytes, contentType, sha256: meta.sha256 };
   }
 
@@ -148,7 +163,7 @@ export class S3Files implements FilesPort {
       catch (e) { throw new S3FilesError("usedBytes", e); }
       for (const o of page.Contents ?? []) if (o.Key?.startsWith(prefix)) total += o.Size ?? 0;
       next = page.IsTruncated ? page.NextContinuationToken : undefined;
-      if (page.IsTruncated && !next) throw new S3FilesError("usedBytes", new Error("paging"));
+      if (page.IsTruncated && !next) throw new S3FilesError("usedBytes", named("ListWithoutToken"));
     } while (next);
     return total;
   }
@@ -157,7 +172,11 @@ export class S3Files implements FilesPort {
    *  checks: whoever holds the address can read the file until it ends. */
   async signedGetUrl(firmId: string, key: string, nowMs: number, seconds: number): Promise<string> {
     if (!Number.isInteger(seconds) || seconds < 1 || seconds > S3_LINK_SECONDS) throw new Error("files: a signed address lasts 1 second to 5 minutes");
-    return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: objectKey(firmId, key) }), { expiresIn: seconds, signingDate: new Date(nowMs) });
+    return getSignedUrl(this.client, new GetObjectCommand({
+      Bucket: this.bucket, Key: objectKey(firmId, key),
+      // A link always downloads, never renders on the bucket's host (break m1; the local route's `attachment`).
+      ResponseContentDisposition: "attachment", ResponseCacheControl: "no-store",
+    }), { expiresIn: seconds, signingDate: new Date(nowMs) });
   }
 }
 
@@ -195,7 +214,9 @@ export class S3FileLinks {
     try { p = JSON.parse(Buffer.from(m[1]!, "base64url").toString("utf8")); } catch { return { status: 404 }; }
     if (typeof p.f !== "string" || typeof p.p !== "string" || typeof p.k !== "string" || typeof p.e !== "number") return { status: 404 };
     if (p.f !== firmId.toLowerCase() || p.p !== personId.toLowerCase()) return { status: 404 };
-    const nowMs = this.now(), left = p.e - Math.floor(nowMs / 1000);
+    const nowMs = this.now();
+    if (!Number.isFinite(nowMs)) return { status: 404 };
+    const left = p.e - Math.floor(nowMs / 1000);
     if (left < 1 || left > S3_LINK_SECONDS) return { status: 404 };
     if (!await this.files.exists(p.f, p.k)) return { status: 404 };
     return { status: 200, url: await this.files.signedGetUrl(p.f, p.k, nowMs, left), expiresAt: new Date(p.e * 1000).toISOString() };

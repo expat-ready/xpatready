@@ -42,6 +42,8 @@ async function bytesOf(body: unknown): Promise<Uint8Array> {
 
 export function fakeS3(o: FakeS3Options) {
   const objects = new Map<string, Stored>(), seen: SeenRequest[] = [];
+  /** An SSE-KMS object's ETag is not the MD5 of its bytes (break m5): each such put gets its own. */
+  let kmsPuts = 0;
   const now = o.now ?? (() => Date.now()), pageSize = o.pageSize ?? 1000, host = `${o.bucket}.s3.${o.region}.amazonaws.com`;
   /** One-shot failures the test queues: the next request whose method matches is answered with this error instead. */
   const failNext: { method: string; error: keyof typeof ERRORS & string }[] = [];
@@ -59,7 +61,7 @@ export function fakeS3(o: FakeS3Options) {
   });
 
   async function answer(req: HttpRequest): Promise<HttpResponse> {
-    const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), String(v)]));
+    const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), String(v).trim()]));   // header values lose spaces at their ends on the way
     const query = Object.fromEntries(Object.entries(req.query ?? {}).map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : v ?? ""]));
     const key = decodeURIComponent(req.path.replace(/^\//, "")), body = await bytesOf(req.body);
     const rec: SeenRequest = { method: req.method, host: req.hostname, path: req.path, key, query, headers, bodyBytes: body.byteLength };
@@ -88,7 +90,7 @@ export function fakeS3(o: FakeS3Options) {
       const want = headers["x-amz-checksum-sha256"];
       if (want !== undefined && want !== createHash("sha256").update(body).digest("base64")) return error("InternalError", `/${key}`);   // S3 answers 400 BadDigest; any refusal serves here
       const meta = Object.fromEntries(Object.entries(headers).filter(([k]) => k.startsWith("x-amz-meta-")).map(([k, v]) => [k.slice("x-amz-meta-".length), v]));
-      const s: Stored = { bytes: body, contentType: headers["content-type"] ?? "binary/octet-stream", meta, etag: createHash("md5").update(body).digest("hex"), sse, kmsKeyId, lastModified: new Date(now()) };
+      const s: Stored = { bytes: body, contentType: headers["content-type"] ?? "binary/octet-stream", meta, etag: createHash("md5").update(body).update(sse === "aws:kms" ? `kms-${++kmsPuts}` : "").digest("hex"), sse, kmsKeyId, lastModified: new Date(now()) };
       objects.set(key, s);
       return { statusCode: 200, headers: { etag: `"${s.etag}"`, ...(sse ? { "x-amz-server-side-encryption": sse, "x-amz-server-side-encryption-aws-kms-key-id": kmsKeyId ?? "" } : {}) } };
     }
@@ -100,7 +102,8 @@ export function fakeS3(o: FakeS3Options) {
       }
       const s = objects.get(key);
       if (!s) return error("NoSuchKey", `/${key}`, head);
-      return { statusCode: 200, headers: objectHeaders(s), body: head ? undefined : Readable.from([Buffer.from(s.bytes)]) };
+      const override = Object.fromEntries([["response-content-disposition", "content-disposition"], ["response-cache-control", "cache-control"]].filter(([q]) => query[q!] !== undefined).map(([q, h]) => [h!, query[q!]!]));
+      return { statusCode: 200, headers: { ...objectHeaders(s), ...override }, body: head ? undefined : Readable.from([Buffer.from(s.bytes)]) };
     }
     throw new Error(`fake S3: ${req.method} ${req.path} is not a call this fake answers`);
   }
@@ -120,9 +123,9 @@ export function fakeS3(o: FakeS3Options) {
     failNext: (method: string, error: keyof typeof ERRORS & string) => { failNext.push({ method, error }); },
     before: (hook: ((r: SeenRequest) => void | Promise<void>) | null) => { before = hook; },
     /** A presigned URL fetched as a browser would (through the same answers; no network). */
-    async fetchUrl(url: string): Promise<{ status: number; bytes: Uint8Array }> {
+    async fetchUrl(url: string): Promise<{ status: number; bytes: Uint8Array; headers: Record<string, string> }> {
       const u = new URL(url), r = await answer({ method: "GET", hostname: u.hostname, path: u.pathname, query: Object.fromEntries(u.searchParams), headers: { host: u.hostname } });
-      return { status: r.statusCode, bytes: r.statusCode === 200 ? await bytesOf(r.body) : new Uint8Array() };
+      return { status: r.statusCode, bytes: r.statusCode === 200 ? await bytesOf(r.body) : new Uint8Array(), headers: r.headers };
     },
     /** Puts raw bytes under a full key without the adapter (another writer, or an unencrypted put). */
     async rawPut(key: string, bytes: Uint8Array, headers: Record<string, string>): Promise<number> {
