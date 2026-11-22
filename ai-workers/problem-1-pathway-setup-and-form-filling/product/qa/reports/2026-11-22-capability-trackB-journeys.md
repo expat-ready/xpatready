@@ -48,7 +48,7 @@ Minors left as they are:
 1. **Province:** settled as P-797 (CRA GST/HST Memorandum 3-3-6, para 20 and Example 6). The tax follows the client's province, read from the client's Canadian address through an editable Bill-to province, and falls back to the firm's province. The part is FO-7g part 3. j_56's W3 is written to P-797 and names it. The Done-when stands.
 2. **From a signed retainer:** a missing part. j_56's W1 names "invoice from retainer (row to be named by Lead B)".
 3. **FO-7g part 1w:** the Lead posts on #2992 when its PR opens.
-4. **R1.105:** PF-11 and PF-11s are added to checklist row 105 (this PR). "Read-only" vs 402 is Lead B's to settle from SA-02, so j_105's W3 read step fails as the named Conflict until then.
+4. **R1.105:** PF-11 and PF-11s belong on checklist row 105. MVP-CHECKLIST.md is the tech lead's file, so this lane proposes the edit and does not make it: the parts column of row 105 gains `; PF-11, PF-11s ("exported": the firm's data download and its panel)`. "Read-only" vs 402 is Lead B's to settle from SA-02, so j_105's W3 read step fails as the named Conflict until then.
 
 ## Questions for the Lead (as asked, 14:4x IST)
 1. **R1.56 "the client's province":** FO-7g part 1 reads the firm's province only. The client's province is FO-7g part 3, and part 3 waits on a row that gives a person or company an address. The brief says no BACKLOG row adds one. So R1.56 cannot be Works after FO-7b part 1b and FO-7g part 1w alone. Should the address row be shaped, or should the Done-when read "the firm's province" (P-701)? The founder decides.
