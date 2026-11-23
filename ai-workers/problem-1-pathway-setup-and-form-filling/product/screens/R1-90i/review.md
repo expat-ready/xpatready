@@ -133,3 +133,55 @@ Reviewer: Block 0eb3cdb1410f7afcbe97e960cf61cb06e5879a27
 **Verdict round 3: Approve `3b13faf61c560179ea6ae8cbdd04714be51d5067`.**
 
 Reviewer: Approve 3b13faf61c560179ea6ae8cbdd04714be51d5067
+
+## Round 4 (diff only, 35694aca3..2dd912dc0)
+**Scope.** The Lead allowed this round. Three commits of this PR's own, plus two merges of main. Context: Lead B 4's reads, and Lead 10's and Lead 11's rulings on #3040.
+
+**Merges are automatic.**
+* `git show --remerge-diff` prints 0 lines for d8d32b94f and for 92e1721bf, so nothing was edited by hand in either merge.
+* I compared this PR's diff against its merge base, at round 3 and now. The two diffs differ in exactly three ways, and nothing else in its 13 files moved:
+  * the migration folder's name;
+  * the first line of `rollback.sql`;
+  * `createdBy` plus the test's new pass/fail line.
+* `origin/main` is now 4742387cd, 25 commits ahead. `git merge-tree` with it is clean, and main has no migration newer than 20261123200000.
+
+**Own commits.**
+* **fbe9f2065 is a pure rename** to `20261124070000_r190_signup_link_plan` (0 lines changed), which is Lead B 4's stamp.
+  * No other folder shares that timestamp, and it is the newest.
+  * Main's `20261123030000` is now `aud_ourstaff_actor_word`.
+* **137ab4a6f:** the first line of `rollback.sql` now names the new folder. Nothing else changed.
+* **2dd912dc0:** `signup.ts:232` stores `created_by` as `ourstaff:<staffId>`.
+  * This is AUD-3a's word, the same one used by `observability/hook.ts:49`, `holds/service.ts:30` and `web-address/routes.ts:103`.
+  * `platform_signup_link.created_by` is TEXT NOT NULL with no CHECK (`20261114015002_pf3_platform_tables`), so no constraint needed to change.
+  * No code reads the column.
+  * The new pass/fail line (`check_r190_invited_signup.ts:75-76`) compares the column exactly against `ourstaff:${OWNER.id}`. Putting back the `system:` word makes this line fail.
+* **Audit path after AUD-3c (#3296).** `makeLinkWork`'s `touchPlatform` now goes through the port's narrow `OurStaffPlatformEntry` kind (`firm-scope.ts:360-380`), as Lead 10 ruled. This PR adds no exemption and puts no `system:` word on a staff member's act.
+
+**Runs (my copy `rev_r190i` on :4436, both local identity stand-ins, live AI off; stopped afterwards).**
+* `check_r190_invited_signup` **18/18**, exit 0. This includes the new line: `{"by":"ourstaff:3bf42090-…"}`.
+* Database, after the run:
+  * Three links were made: two by the Owner, one by the Admin.
+  * There are three `audit_event` lines with `ourstaff:<id>`, `OUR_STAFF`, `firm_id` null, `platform.bypass` and `plat_bypass_use`.
+  * Each line's `detail.key` is its link's id, with `use` = `platform.firms.signup-link` and `step` = `signup-link.create`. No token appears in any line.
+* The copy's api.log has 0 answers of 500 and 0 `AuditRefused` or `audit_write_error`. This red was the round's starting fault: `audit-event.ts:86` on d8d32b94f.
+* `check_bypass_uses` **52/52**. `check_aud3c_platform_line` **16/16** (it needs `--tsconfig api/tsconfig.json`).
+* The working tree was clean after the run: no screenshot was rewritten.
+
+**#3209's firm-data declaration: I agree it belongs to whichever of #3040 and #3209 lands second.**
+* `audit/access/declare.ts` is only on #3209's branch (`claude/runtime-aud3-lines`, 8c19e203e), so this PR cannot import it today.
+* The rule enforces itself on the second PR to land:
+  * `assertFirmDataDeclared` stops the start-up on any undeclared route our staff call (`audit/access/lines.ts:115,128` on that branch).
+  * `check_aud3_access.ts:192-195` lists every `@NoFirmData` route exactly.
+* So the second PR must add `@NoFirmData(<why>)` on `signup-links.ts`'s POST, and add that route to the list. A link has no firm until it is used, so `@NoFirmData` is the right declaration, not `@ChangesFirm`.
+
+**Findings.**
+* **n1 (Nit, Should, not blocking):** `check_r190_invited_signup.ts:114` seeds the expired link with `created_by` = `staff:${OWNER.id}`, which is a firm staff member's word, for a Platform Owner. It is a fixture only, but the check now states the rule as `ourstaff:<id>`. Use `ourstaff:` there too.
+* **Lead B 4's Minor (`system:` on `created_by`) is closed.** **Lead B 4's fault (the 500 on POST) is closed** by #3296 being on main, with no change from this PR.
+
+**Journey score.** Round 1's reviewer score stands at **8/10, pass** (`journey-test-reviewer-2026-11-23.md`). Not re-walked: this round changes one stored word and a folder name, nothing a person sees. Journeys IS1-IS8 replay green (18/18).
+
+**Could not check:** the full run on this head, which waits on the Lead (stamp steps), and the j_90 browser walk.
+
+**Open:** none at Major or above.
+
+Verdict: Approve at 2dd912dc07a9f825cedf160bcc8abc79b444ccb9
