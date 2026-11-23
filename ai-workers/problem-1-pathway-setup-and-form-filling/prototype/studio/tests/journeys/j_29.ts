@@ -140,7 +140,10 @@ try {
   // ---------------------------------------------------------------------- W4: never automatic with money
   // Omar has money: a draft invoice (FO-7b part 1a). A new lead with Omar's email is then added as new by the Owner.
   sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${A}', 'seed:J-29', now()) on conflict (firm_id) do nothing`);
-  const inv = await api(tR, "POST", "/front-office/money/invoices", { personId: OMAR, currency: "CAD" });
+  // Omar is a lead, not a client the Owner may invoice: FO-7b's draft route is C5-scoped (Lead 14 on #3321: a party outside
+  // the caller's scope is 404), so his money is a fixture row, as the step needs only "a person with money"
+  const invId = sql(`insert into money_invoice (firm_id, person_id, currency, created_by, updated_at) values ('${A}', '${OMAR}', 'CAD', 'seed:J-29', now()) returning id`);
+  const inv = { status: invId ? 201 : 0 };
   const omar2 = await addLead(tR, { givenNames: `Omar${run}`, familyName: "Haddad", email: `omar.haddad.${run}@example.org`, phone: "+1 416 555 0177", confirmedNew: true });
   const OMAR2 = personOf(`omar.haddad.${run}@example.org`);
   await new Promise((r) => setTimeout(r, 1500));   // any automatic merge runs after the add
