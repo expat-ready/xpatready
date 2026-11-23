@@ -1,0 +1,36 @@
+// case-notes.prisma — notes on a case. Owner: the release Lead (case side).
+// One file per area (DB-SPLIT, studio/DEVELOPING.md): a new module adds its own file here; never edit another area's file without its owner.
+// CS-NT1 part 1 (map row 76, the case half; design/briefs/CS-NT1.md, build-lead-c-briefs/CS-NT1-1.md; AG-13-20, -21,
+// -23, -24): plain notes on a case, insert-only and versioned (migration 20261122110000_csnt1a_case_note). No relation
+// fields: the note follows its case through the migration's triggers (the case's firm checked on insert, the case row
+// held for the insert, its notes removed when the case row goes), so no back-relation line is needed on cases.prisma's
+// Case (CS-K1 holds that file next), as case-search.prisma does.
+
+/// One version of one note on a case. A note is every row of its note_key; the current note is its highest version.
+/// An edit, a pin or unpin and a visibility change each write the next version (insert-only: the database refuses
+/// UPDATE, DELETE and TRUNCATE; a case delete takes its notes). firm_id: the case's platform firm (platform_firm by
+/// runtime_case.firm_key, checked by the insert trigger). text: plain, 1-5,000 characters after trim, no control,
+/// direction or hidden character but tab and new line (CHECK; the API also refuses text that only looks blank). visibility: INTERNAL (default) or CLIENT_VISIBLE (AG-13-21).
+/// author: who wrote version 1, the same on every version (trigger); by_actor: who wrote this version. created_at:
+/// the database's clock, never the writer's. idempotency_key and its sha256: STANDARDS §4, on version 1 only.
+model CaseNote {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId                 String   @map("firm_id") @db.Uuid
+  workspaceId            String   @map("workspace_id") @db.Uuid
+  caseId                 String   @map("case_id") @db.Uuid
+  noteKey                String   @map("note_key") @db.Uuid
+  version                Int
+  text                   String
+  visibility             String   @default("INTERNAL")
+  pinned                 Boolean  @default(false)
+  author                 String
+  byActor                String   @map("by_actor")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz
+  idempotencyKey         String?  @map("idempotency_key")
+  idempotencyFingerprint String?  @map("idempotency_fingerprint") @db.VarChar(64)
+
+  @@unique([noteKey, version])
+  @@unique([caseId, idempotencyKey])
+  @@index([caseId, noteKey, version])
+  @@map("case_note")
+}

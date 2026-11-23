@@ -19,7 +19,10 @@ export type AddressValue = z.infer<typeof Address>;
 export const addressOf = (b: Billing): AddressValue | null => { const r = Address.safeParse(b.businessAddress); return r.success ? r.data : null; };
 export const addressLines = (a: AddressValue) => [`${a.unit ? `${a.unit}-` : ""}${a.street_number} ${a.street_name}`, `${a.city} ${a.province_state} ${a.postal_code}`];
 
-export const Invoices = z.object({ invoices: z.array(z.object({ id: z.string(), number: z.string().nullable(), status: z.string().nullable(), amountDueCents: z.number(), currency: z.string(), createdAt: z.string(), hostedUrl: z.string().nullable() })) });
+/** R1.21: each invoice's tax (null: the provider has not said; never shown as 0). */
+export const InvoiceTax = z.object({ name: z.string(), jurisdiction: z.string().nullable(), ratePpm: z.number().nullable(), amountCents: z.number() });
+export const Invoices = z.object({ invoices: z.array(z.object({ id: z.string(), number: z.string().nullable(), status: z.string().nullable(), amountDueCents: z.number(), currency: z.string(), createdAt: z.string(), hostedUrl: z.string().nullable(),
+  subtotalCents: z.number().nullable().default(null), taxCents: z.number().nullable().default(null), taxLines: z.array(InvoiceTax).default([]) })) });
 export const SetAddressAnswer = z.object({ saved: z.literal(true), onStripe: z.boolean().nullable(), next: z.string().optional() });
 export const HandOff = z.object({ url: z.string() });
 
@@ -48,17 +51,18 @@ export function trialLine(b: Billing, now: number, canCard: boolean): { text: st
   const n = daysLeft(b.trialEndsAt, now), end = day(b.trialEndsAt), past = new Date(b.trialEndsAt).getTime() < now;
   const left = past ? `Free trial: ended on ${end}.` : n === 0 ? `Free trial: ends today (${end}).` : `Free trial: ${n} ${n === 1 ? "day" : "days"} left (ends ${end}).`;
   // Break M3: a trial set to cancel takes no payment and needs no card; it says so instead of asking for one.
-  if (b.cancelAtPeriodEnd) return { text: `${left} Your subscription is set to cancel then, so no payment will be taken.`, next: null, card: b.cardOnFile === true };
-  if (b.cardOnFile === true) return { text: `Card saved. Your first payment is on ${end}.`, next: null, card: true };
+  if (b.cancelAtPeriodEnd) return { text: `${left} Your subscription ${past ? "was" : "is"} set to cancel then, so no payment will be taken.`, next: null, card: b.cardOnFile === true };
+  // R2-m1: once the end has passed (the record not yet moved by Stripe's event), nothing is said as if it were ahead.
+  if (b.cardOnFile === true) return { text: past ? `Card saved. The trial ended on ${end}; your first payment is being taken.` : `Card saved. Your first payment is on ${end}.`, next: null, card: true };
   const unknown = b.cardOnFile === null && !b.billingAvailable;
-  return { text: left, next: canCard && !unknown ? "Add a card before then to keep access." : null, card: false };
+  return { text: left, next: canCard && !unknown && !past ? "Add a card before then to keep access." : null, card: false };
 }
 
 /** The dates line under the plan (BR-8). */
-export function datesLine(b: Billing): string | null {
+export function datesLine(b: Billing, now: number = Date.now()): string | null {
   const endOf = b.status === "TRIAL" ? b.trialEndsAt ?? b.currentPeriodEnd : b.currentPeriodEnd;
-  if (b.cancelAtPeriodEnd && endOf) return `Cancels on ${day(endOf)}`;
-  if (b.status === "TRIAL") return b.trialEndsAt ? `Trial ends ${day(b.trialEndsAt)}` : null;
+  if (b.cancelAtPeriodEnd && endOf) return new Date(endOf).getTime() < now ? (b.status === "TRIAL" ? `Trial ended ${day(endOf)} (set to cancel)` : `Set to cancel on ${day(endOf)}`) : `Cancels on ${day(endOf)}`;
+  if (b.status === "TRIAL") return b.trialEndsAt ? `${new Date(b.trialEndsAt).getTime() < now ? "Trial ended" : "Trial ends"} ${day(b.trialEndsAt)}` : null;
   if ((b.status === "ACTIVE" || b.status === "OVERDUE") && b.currentPeriodEnd) return `Next billing date ${day(b.currentPeriodEnd)}`;
   return null;
 }
@@ -79,8 +83,19 @@ export const cardLabel = (b: Billing) => b.status === "TRIAL" && b.cardOnFile !=
 export function stripeUrl(raw: string): string | null {
   try { const u = new URL(raw); return u.protocol === "https:" && /(^|\.)stripe\.com$/.test(u.hostname) ? u.href : null; } catch { return null; }
 }
-/** An invoice's hosted link, https only. */
-export const invoiceUrl = (raw: string | null) => raw ? stripeUrl(raw) : null;
+/** R1.21 (P-796): the billing stand-in's own invoice page, on this app's own address only. */
+export const STAND_IN_INVOICE_PATH = "/api/demo/billing/invoices/";
+export function standInUrl(raw: string, origin: string = globalThis.location?.origin ?? ""): string | null {
+  try { const u = new URL(raw); return origin && u.origin === origin && u.pathname.startsWith(STAND_IN_INVOICE_PATH) && !u.username && !u.password ? u.href : null; } catch { return null; }
+}
+/** An invoice's hosted link: Stripe's own https page, or the stand-in's page on this app's own address. */
+export const invoiceUrl = (raw: string | null) => raw ? stripeUrl(raw) ?? standInUrl(raw) : null;
+/** R1.21: the tax cell's words, e.g. "$6.37 CAD (HST 13 %, ON)"; "Not worked out yet" when the provider has not said. */
+export function taxWords(i: { taxCents: number | null; currency: string; taxLines: { name: string; jurisdiction: string | null; ratePpm: number | null }[] }): string {
+  if (i.taxCents === null) return "Not worked out yet";
+  const named = i.taxLines.map((t) => [t.name, t.ratePpm === null ? "" : `${(t.ratePpm / 10_000).toLocaleString("en-CA", { maximumFractionDigits: 4 })} %`].filter(Boolean).join(" ") + (t.jurisdiction ? `, ${t.jurisdiction}` : "")).join("; ");
+  return `${money(i.taxCents, i.currency)}${named ? ` (${named})` : ""}`;
+}
 /** Break m8: a currency code the browser does not know falls back to plain digits, never a blank page. */
 export const money = (cents: number, currency: string) => { try { return `${(cents / 100).toLocaleString("en-CA", { style: "currency", currency, currencyDisplay: "narrowSymbol" })} ${currency}`; } catch { return `${(cents / 100).toFixed(2)} ${currency}`; } };
 
@@ -90,6 +105,7 @@ export const WORDS = {
   adminOnly: "Only the Owner can change the plan or cancel.",
   addressNeeded: "Needed before your first invoice: we use it to work out tax.",
   beforeCard: "Before you add a card: your business address. We use it to work out tax.",
+  retryStripe: "We couldn't send your address to Stripe last time. Save it again so Stripe has it for tax.",
   stripeDown: "We couldn't open Stripe. Try again.",
   checking: "Checking for changes from Stripe…",
   slow: "This is taking longer than usual. We haven't seen the change from Stripe yet; refresh in a minute.",

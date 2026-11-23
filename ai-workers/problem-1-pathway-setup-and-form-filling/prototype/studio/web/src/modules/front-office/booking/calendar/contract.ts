@@ -15,7 +15,11 @@ export const FeedItem = z.object({
   canAnswerAttendance: z.boolean(), canEdit: z.boolean(), attendanceDue: z.boolean(),
 });
 export type FeedItem = z.infer<typeof FeedItem>;
-export const Feed = z.object({ view: z.enum(["mine", "team"]), from: z.string(), to: z.string(), officeTimeZone: z.string(), items: z.array(FeedItem) });
+/** QA-743: a time-off period on the calendar. `label` is the server's word: "Time off" (the viewer's own) or "Not
+ *  available" (a colleague's, Team only); who and when, never a reason. */
+export const TimeOff = z.object({ id: z.string(), staff: z.object({ id: z.string(), name: z.string() }), mine: z.boolean(), label: z.string(), startsAt: z.string(), endsAt: z.string() });
+export type TimeOff = z.infer<typeof TimeOff>;
+export const Feed = z.object({ view: z.enum(["mine", "team"]), from: z.string(), to: z.string(), officeTimeZone: z.string(), items: z.array(FeedItem), timeOff: z.array(TimeOff).default([]) });
 export type Feed = z.infer<typeof Feed>;
 
 export const BookingType = z.object({ id: z.string(), name: z.string(), minutes: z.number(), modes: z.array(z.string()), hostStaffIds: z.array(z.string()), active: z.boolean() });
@@ -51,7 +55,7 @@ const parts = (iso: string | number, zone: string) => {
 /** "2027-01-11" for the instant in the zone. */
 export const dayOf = (iso: string | number, zone: string) => parts(iso, zone).date;
 export const hourOf = (iso: string | number, zone: string) => parts(iso, zone).hour;
-export const hhmm = (iso: string, zone: string) => { const p = parts(iso, zone); return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`; };
+export const hhmm = (iso: string | number, zone: string) => { const p = parts(iso, zone); return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`; };
 /** "Tue 20 October 14:00" (concept §5's "<Weekday d Month hh:mm>"). */
 export const longWhen = (iso: string, zone: string) => `${new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "short", day: "numeric", month: "long" }).format(new Date(iso))} ${hhmm(iso, zone)}`;
 export const shortDay = (date: string) => new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${date}T12:00:00Z`));
@@ -66,3 +70,16 @@ export function wallToIso(date: string, time: string, zone: string): string {
   for (let i = 0; i < 3; i++) { const p = parts(t, zone); t -= Date.parse(`${p.date}T${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}:00Z`) - want; }
   return new Date(t).toISOString();
 }
+/** QA-743: the part of a time-off period on one office-zone day, in words ("all day", "from 13:00", "until 12:00",
+ *  "13:00–15:00"); null when the period does not touch that day. */
+export function offOn(o: { startsAt: string; endsAt: string }, date: string, zone: string): string | null {
+  const s = Date.parse(wallToIso(date, "00:00", zone)), e = Date.parse(wallToIso(addDays(date, 1), "00:00", zone));
+  const a = Math.max(s, Date.parse(o.startsAt)), b = Math.min(e, Date.parse(o.endsAt));
+  if (!(a < b)) return null;
+  return a === s && b === e ? "all day" : b === e ? `from ${hhmm(a, zone)}` : a === s ? `until ${hhmm(b, zone)}` : `${hhmm(a, zone)}–${hhmm(b, zone)}`;
+}
+/** Whether the period overlaps the office-zone hour that starts at `hour` on `date`. */
+export const offInHour = (o: { startsAt: string; endsAt: string }, date: string, hour: number, zone: string) => {
+  const s = Date.parse(wallToIso(date, `${String(hour).padStart(2, "0")}:00`, zone));
+  return Date.parse(o.startsAt) < s + 3_600_000 && Date.parse(o.endsAt) > s;
+};

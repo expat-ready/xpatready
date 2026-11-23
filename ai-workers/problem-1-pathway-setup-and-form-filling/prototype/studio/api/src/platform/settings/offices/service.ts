@@ -153,7 +153,7 @@ export class Offices {
       return view(after);
     });
   }
-  /** Puts a staff member in one of the firm's offices, or in none (null). No route yet: PF-18s's screen wires it. */
+  /** Puts a staff member in one of the firm's offices, or in none (null): PUT /api/platform/staff/:staffId/office (PF-18s part 1). */
   async setStaffOffice(a: OfficeActor, staffId: string, officeId: string | null): Promise<{ staffId: string; officeId: string | null }> {
     const firmId = firmScope(a.firmId).firmId;
     if (!UUID.test(staffId)) return notInFirm("staff member");
@@ -162,6 +162,7 @@ export class Offices {
       const staff = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: staffId.toLowerCase() }), select: { id: true } });
       if (!staff) return notInFirm("staff member");
       await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended('platform_office:' || ${firmId}, 0))`; const before = await tx.platformStaffOffice.findUnique({ where: { staffId: staff.id } });
+      if ((before?.officeId ?? null) === (officeId?.toLowerCase() ?? null)) return { staffId: staff.id, officeId: before?.officeId ?? null };   // PF-18s (challenge m1): no change, nothing written or audited
       if (officeId === null) {
         if (before) await tx.platformStaffOffice.delete({ where: { staffId: staff.id } });
       } else {
@@ -172,7 +173,7 @@ export class Offices {
       await this.deps.audit.record(tx, { firmId, actor: actor(a), action: "platform.office.staff", entity: "platform_staff_office", entityKey: staff.id,
         summary: officeId ? "Staff member placed in an office" : "Staff member taken out of their office", detail: { fromOffice: before?.officeId ?? null, toOffice: officeId?.toLowerCase() ?? null },
         before: before ? { officeId: before.officeId } : null, after: officeId ? { officeId: officeId.toLowerCase() } : null });
-      return { staffId: staff.id, officeId };
+      return { staffId: staff.id, officeId: officeId?.toLowerCase() ?? null };
     });
   }
 }

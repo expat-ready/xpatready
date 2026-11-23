@@ -385,11 +385,20 @@ def new_measures(since, until, now, merged=None, r1_floor="2026-11-14T00:00:00Z"
     def read_prs():   # (a): every PR opened since the R1 floor
         return paged(f"{API}/pulls?state=all&sort=created&direction=desc", stop=lambda p: t(p["created_at"]) < floor)
 
+    waits = None   # --lead only: approved-to-merged minutes of PRs merged in the window (P-798 step age, step-age.py)
+
     def read_rounds(merged):   # (b): code PRs merged in the window and their verdict comments
+        nonlocal waits
         with ThreadPoolExecutor(16) as ex:
             if merged is None:
                 ps = merged_prs(since, until)
-                merged = list(zip(ps, ex.map(lambda p: [f["filename"] for f in paged(f"{API}/pulls/{p['number']}/files")], ps)))
+                facts = list(ex.map(lambda p: pr_facts(p["number"]), ps))   # files and the "review: approved" label times
+                merged = [(p, fl) for p, (fl, _) in zip(ps, facts)]
+                waits = []
+                for p, (_, labels) in zip(ps, facts):
+                    before = [x for x in labels if x <= t(p["merged_at"])]
+                    if before:
+                        waits.append((t(p["merged_at"]) - before[-1]).total_seconds() / 60)
             prime_kinds([f for _, f in merged])
             code = [p for (p, _), k in zip(merged, ex.map(lambda pf: kind(pf[1]), merged)) if k == "code"]
             per = dict(zip([p["number"] for p in code], ex.map(lambda p: verdicts(paged(f"{API}/issues/{p['number']}/comments")), code)))
@@ -422,7 +431,10 @@ def new_measures(since, until, now, merged=None, r1_floor="2026-11-14T00:00:00Z"
     c["sample"] = f"R1 rows with a qa score (Works, Partial or Broken) in {ref}'s qa/CAPABILITIES.md history"
     d = reverse_plan(hist, now)
     d["sample"] = f"all {d['total']} R1 rows on {ref}; rate = net change of Works rows in the 24 h to {ist(now)}"
-    return {"start_to_proven": a, "review_rounds": b, "first_proof": c, "reverse_plan": d, "queue_bounces": e}
+    out = {"start_to_proven": a, "review_rounds": b, "first_proof": c, "reverse_plan": d, "queue_bounces": e}
+    if waits is not None:   # --lead: the full report computes its own approved_to_merged_min (main())
+        out["approved_to_merged_min"] = {"n": len(waits), "median": round(statistics.median(waits)) if waits else None}
+    return out
 
 
 def _na(v):
@@ -461,7 +473,7 @@ def main():
     if a.lead:
         cache = os.path.join(os.environ.get("TMPDIR", "/tmp"), f"flow-measure-lead-{a.since[:13]}.json")
         age = (time.time() - os.path.getmtime(cache)) / 60 if os.path.exists(cache) else None
-        if age is not None and age < (30 if a.cache_min is None else a.cache_min):
+        if age is not None and age < (int(os.environ.get("FRESH_MAX_MIN") or 30) if a.cache_min is None else a.cache_min):   # lead-watch.sh: 10 (ENF-803)
             m = json.load(open(cache))
         else:
             m = new_measures(since, until, now)

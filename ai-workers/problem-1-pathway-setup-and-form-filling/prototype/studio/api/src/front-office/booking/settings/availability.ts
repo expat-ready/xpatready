@@ -14,6 +14,7 @@ import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
 import { readSetting, TIME_ZONE } from "../../../platform/settings.ts";
 import { copyFirmHoursTo } from "../../booking-seed.ts";
+import { FIELD_ERROR_STATUS, parseInput } from "../../../platform/http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 export type AvailabilityPorts = { audit: AuditPort<Tx>; clock: ClockPort };
@@ -23,7 +24,7 @@ const problem = (status: number, slug: string, title: string, detail: string, ex
   new HttpException({ type: `https://expatready.local/problems/${slug}`, title, status, detail, ...extra }, status);
 const invalid = (fields: Record<string, string>) => {
   const [first] = Object.entries(fields);
-  return problem(400, "invalid", "Please check the highlighted details", first[1], { code: "INVALID", fields, issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) });
+  return problem(FIELD_ERROR_STATUS, "invalid", "Please check the highlighted details", first[1], { code: "INVALID", fields, issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) });
 };
 const nameTaken = (name: string) => problem(409, "conflict", "Please check the highlighted details", HOURS_WORDS.nameTaken(name), { code: "NAME_TAKEN", fields: { name: HOURS_WORDS.nameTaken(name) }, issues: [`name: ${HOURS_WORDS.nameTaken(name)}`] });
 export const HOURS_WORDS = {
@@ -63,6 +64,7 @@ const TimeOffCreate = z.strictObject({ startsAt: When, endsAt: When });
 const HostSet = z.strictObject({ setId: z.uuid(HOURS_WORDS.notTheirSet).transform((v) => v.toLowerCase()).nullable() });
 
 function parse<T extends z.ZodType>(schema: T, body: unknown, what: string): z.output<T> {
+  parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
   const r = schema.safeParse(body ?? {});
   if (r.success) return r.data;
   const fields: Record<string, string> = {};
@@ -72,6 +74,10 @@ function parse<T extends z.ZodType>(schema: T, body: unknown, what: string): z.o
   }
   throw invalid(fields);
 }
+
+/** PF-28 part 4: a malformed person id is the one not-found before the body is read; a well-formed one is looked up after
+ *  it (so a body that breaks the rules is 422 whoever it names, and a 404 never stands for a field error). */
+const shape = (staffId: string) => (staffId === "me" || z.uuid().safeParse(staffId).success ? staffId : notInFirm("staff member"));
 
 type W = { weekday: number; startMinute: number; endMinute: number };
 /** "End must be after start." on the window's end; "These hours overlap." on the later of two windows of one day. */
@@ -114,8 +120,9 @@ export class AvailabilityService {
   }
 
   async createSet(ctx: StaffContext, staffId: string, body: unknown) {
-    const target = await this.target(ctx, staffId);
+    shape(staffId);
     const b = parse(SetCreate, body, "a set of hours");
+    const target = await this.target(ctx, staffId);
     const windows = windowsOf(b.windows ?? []);
     return this.named(b.name, () => this.db.$transaction(async (tx) => {
       await this.ensureDefault(tx, ctx.firmId, target);
@@ -130,8 +137,10 @@ export class AvailabilityService {
   }
 
   async updateSet(ctx: StaffContext, staffId: string, setId: string, body: unknown) {
-    const target = await this.target(ctx, staffId);
+    shape(staffId);
+    if (!z.uuid().safeParse(setId).success) return notInFirm("set of hours");
     const b = parse(SetPatch, body, "a set of hours");
+    const target = await this.target(ctx, staffId);
     const windows = b.windows ? windowsOf(b.windows) : undefined;
     return this.named(b.name, () => this.db.$transaction(async (tx) => {
       await this.lockPerson(tx, ctx.firmId, target);
@@ -170,8 +179,8 @@ export class AvailabilityService {
 
   // -------------------------------------------------------------------------------------------------- host set
   async chooseHostSet(ctx: StaffContext, typeId: string, staffId: string, body: unknown) {
-    const { setId } = parse(HostSet, body, "a host's set");
     if (!z.uuid().safeParse(typeId).success || !z.uuid().safeParse(staffId).success) return notInFirm("booking type");
+    const { setId } = parse(HostSet, body, "a host's set");
     const [tid, sid] = [typeId.toLowerCase(), staffId.toLowerCase()];
     return this.db.$transaction(async (tx) => {
       const type = await tx.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: tid, deletedAt: null }), select: { id: true, hostStaffIds: true } });
@@ -196,8 +205,9 @@ export class AvailabilityService {
   }
 
   async addTimeOff(ctx: StaffContext, staffId: string, body: unknown) {
-    const target = await this.target(ctx, staffId);
+    shape(staffId);
     const b = parse(TimeOffCreate, body, "time off");
+    const target = await this.target(ctx, staffId);
     if (!(b.endsAt > b.startsAt)) throw invalid({ endsAt: HOURS_WORDS.endAfterStart });
     if (b.endsAt.getTime() - b.startsAt.getTime() > 366 * DAY) throw invalid({ endsAt: HOURS_WORDS.timeOffLength });
     return this.db.$transaction(async (tx) => {

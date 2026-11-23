@@ -4,7 +4,13 @@
 # Report-only (P-717 (b), P-772 (a), Lead 8 21 Nov): this check is in no Mergify queue or merge condition and no required
 # check in the ruleset, and it has no merge_group trigger, until it has run clean for 24 h or 10 PR runs; then the tech
 # lead makes it required by its own PR. When: a ready pull request that changes the CDK package, compose.test.yml
-# (the database version the tests compare against) or this file (P-371 (1)).
+# (the database version the tests compare against) or this file (P-371 (1)); and every push to main, with no path
+# filter, so main's head always has its own run for the cloud lines to cite (QA-645, P-339) and a merge combination
+# that breaks the synth shows on main. The push run starts after the merge: it adds nothing to a pull request or to a
+# merge-queue batch, so no batch waits for it. Still no secret, key or token: main's code only, read-only.
+# Known effect: a failed push run is a failed check on main's head, so the board's "main CI" item turns red
+# (cockpit-data.py), though the check stays report-only; the audit step can do that on a newly published advisory with
+# no code change. Re-run the failed part first (P-371); a real break of the synth on main is what this run is for.
 # US$0 (public repository), no model spend.
 name: deploy-synth
 on:
@@ -14,14 +20,18 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/compose.test.yml"
       - ".github/workflows/deploy-synth.yml"
+  push:
+    branches: [main]
 permissions:
   contents: read
 concurrency:
-  group: deploy-synth-${{ github.event.pull_request.number }}
+  # One group per pull request (as before), one per pushed commit: two pushes to main never share a group, so a
+  # waiting push run is never replaced by a newer one (P-371: no run on main is cancelled).
+  group: deploy-synth-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: false
 jobs:
   deploy-synth:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

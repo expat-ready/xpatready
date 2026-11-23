@@ -192,7 +192,7 @@ function CancelDialog({ token, b, onDone, onRefused }: { token: string; b: Answe
     } catch (x) {
       const p = await afterLoss(asProblem(x), token);
       // A refused reason stays in the dialog, on its field (break M1); anything else closes it and shows on the page.
-      if (p.status === 400) setBad(p.detail ?? "Please check the reason.");
+      if (p.status === 422) setBad(p.detail ?? "Please check the reason.");   // a field error (PF-28 part 4: 422, no longer 400)
       else { setOpen(false); onRefused(p); }
     }
     finally { sending.current = false; setBusy(false); }

@@ -9,6 +9,8 @@ import { Body, Controller, Get, Inject, Injectable, Param, Patch, Req } from "@n
 import type { PrismaClient } from "@prisma/client";
 import { centsOf, CURRENCIES, CURRENCY_REFUSED, isCurrency } from "../../../../contracts/currencies.ts";
 import { Db } from "../../core.ts";
+import { z } from "zod";
+import { idParam, parseInput, strict } from "../../platform/http/input.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { CURRENCY, readSetting } from "../../platform/settings.ts";
 import { actorOf, notFound, UUID, visibilityOf } from "./common.ts";
@@ -17,6 +19,8 @@ import { SALES_PORTS, type SalesPorts } from "./public.ts";
 
 /** The audit action of a value edit (an audit line only; not an outbox event name). */
 export const VALUE_SET = "prospect.value_set";
+/** PF-28 part 3b (R1.10): the body through a strict schema (an unknown field 422, named); the value and currency rules stay below. */
+const VALUE = strict({ value: z.union([z.number(), z.string().max(40), z.null()], { error: "The value is an amount, like 1500 or 1500.50, or empty." }).optional(), currency: z.string().max(40).nullish() });
 const refused = (field: string, detail: string) => problem(422, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 
 @Injectable()
@@ -63,5 +67,5 @@ export class ProspectEditController {
   currencies(@Req() r: { platform?: StaffContext }) { return this.edit.currencies(staffOf(r)); }
 
   @Patch("prospects/:id") @PermissionKeys("agent/prospect:edit")
-  value(@Req() r: { platform?: StaffContext }, @Param("id") id: string, @Body() b: Record<string, unknown>) { return this.edit.value(staffOf(r), id, b ?? {}); }
+  value(@Req() r: { platform?: StaffContext }, @Param("id") id: string, @Body() b: Record<string, unknown>) { return this.edit.value(staffOf(r), idParam(id, "prospect"), parseInput(VALUE, b ?? {})); }
 }

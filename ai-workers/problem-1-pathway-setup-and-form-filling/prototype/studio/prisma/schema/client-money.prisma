@@ -42,6 +42,10 @@
 //   <stamp>_fo7ts_ledgers): a pre-case → case move is a MOVE_TO_CASE pair on one party that nets to zero, written in one
 //   transaction, at most the pre-case balance; money_credit_entry, the credit ledger per holder (a case, or the party)
 //   and currency, insert-only, never below zero. Both write under the party lock (money_trust_lock), then any invoice row.
+// * FO-7ts part 3 (AG-6-23 rules 2-3 §7, AG-6-4 rule 2 §7, AG-6-68 rule 4 §7, AG-6-30 rules 2, 4; P-634; migration
+//   <stamp>_fo7ts_part3): a trust refund's offline details and payee (never by card); the tax treatment per party and per
+//   invoice (fixed at issue); another payer's money pays an invoice only as a pick by the writer, with a reason, on one
+//   and the same case, never more than the payer holds on it; the newest-issued index.
 
 /// The two currencies a firm may bill in (AG-6-46 rule 3; X-6). Never converted, never added together.
 enum MoneyCurrency {
@@ -123,6 +127,14 @@ enum MoneyTrustEntryKind {
   REFUND_TO_CLIENT
   CORRECTION
   MOVE_TO_CASE
+}
+
+/// An invoice's tax treatment (AG-6-4 rule 2 §7; R18): per party (money_party_tax_treatment) or per invoice. FO-7g part 2's
+/// rules use it; an invoice's is fixed at issue.
+enum MoneyTaxTreatment {
+  TAXABLE
+  ZERO_RATED
+  EXEMPT
 }
 
 /// A credit ledger entry's kind (FO-7ts part 2; AG-6-21 rules 2-3, 5; AG-6-23 rule 1; Lead 61, ruling 5c): KEPT (+, a
@@ -212,6 +224,7 @@ model MoneyPaymentSettings {
   trustEntries  MoneyTrustEntry[]
   moveBatches   MoneyMoveBatch[]
   creditEntries MoneyCreditEntry[]
+  partyTaxTreatments MoneyPartyTaxTreatment[]
 
   @@map("money_payment_settings")
 }
@@ -279,6 +292,11 @@ model MoneyInvoice {
   /// Staff invoiced on an unsigned retainer (AG-6-42 §7: a warning, never a block): both or neither; fixed once issued.
   unsignedRetainerConfirmedBy String?   @map("unsigned_retainer_confirmed_by") @db.Uuid
   unsignedRetainerConfirmedAt DateTime? @map("unsigned_retainer_confirmed_at") @db.Timestamptz
+  /// Null on a draft = the party's treatment (money_party_tax_treatment), else Taxable; set to that at issue, then fixed.
+  taxTreatment                MoneyTaxTreatment? @map("tax_treatment")
+  /// FO-7g part 3 (P-797): the province the tax follows, one of the 13 codes (a CHECK); filled on a new draft from the
+  /// client's Canadian address, else the firm's province; editable on a draft; fixed at issue. Null = the firm's province.
+  billToProvince              String?            @map("bill_to_province")
 
   settings     MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   lines        MoneyInvoiceLine[]
@@ -294,6 +312,7 @@ model MoneyInvoice {
   @@index([firmId, personId])
   @@index([firmId, companyId])
   @@index([firmId, caseId])
+  @@index([firmId, issuedAt(sort: Desc), id])
   @@map("money_invoice")
 }
 
@@ -506,6 +525,21 @@ model MoneyTrustEntry {
   correctionKind    MoneyCorrectionKind? @map("correction_kind")
   /// The + half of a move to a case names its − half (FO-7ts part 2); null on every other entry.
   movedFromEntryId  String?             @map("moved_from_entry_id") @db.Uuid
+  /// A trust refund's offline details (AG-6-23 rule 2, FO-7ts part 3): required on REFUND_TO_CLIENT (never CARD or
+  /// CARD_TERMINAL), null on every other entry.
+  refundMethod      MoneyPaymentMethod? @map("refund_method")
+  refundedOn        DateTime?           @map("refunded_on") @db.Date
+  refundReference   String?             @map("refund_reference")
+  /// The refund's payee (AG-6-23 rule 3): none = the entry's party; another payee needs payee_reason.
+  payeePersonId     String?             @map("payee_person_id") @db.Uuid
+  payeeCompanyId    String?             @map("payee_company_id") @db.Uuid
+  payeeName         String?             @map("payee_name")
+  payeeReason       String?             @map("payee_reason")
+  /// Another payer's money picked for an invoice on the same case (AG-6-68 rule 4; Lead 61): by the writer, with a
+  /// reason, at the database's time; all three or none, on WITHDRAWAL_TO_INVOICE only.
+  pickedOtherFundsBy     String?        @map("picked_other_funds_by")
+  pickedOtherFundsAt     DateTime?      @map("picked_other_funds_at") @db.Timestamptz
+  pickedOtherFundsReason String?        @map("picked_other_funds_reason")
   reason            String?
   createdBy         String              @map("created_by")
   createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
@@ -531,6 +565,23 @@ model MoneyTrustEntry {
   @@index([firmId, correctsEntryId])
   @@unique([firmId, movedFromEntryId])
   @@map("money_trust_entry")
+}
+
+/// A party's tax treatment (AG-6-4 rule 2 §7; FO-7ts part 3): one row per party; no row = Taxable.
+model MoneyPartyTaxTreatment {
+  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId    String            @map("firm_id") @db.Uuid
+  personId  String?           @map("person_id") @db.Uuid
+  companyId String?           @map("company_id") @db.Uuid
+  treatment MoneyTaxTreatment
+  updatedBy String            @map("updated_by")
+  updatedAt DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  settings MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, personId])
+  @@unique([firmId, companyId])
+  @@map("money_party_tax_treatment")
 }
 
 /// One entry of a holder's credit ledger (FO-7ts part 2; AG-6-21 rules 2-3, 5 §7 CreditEntry; AG-6-23 rules 1, 4). The
