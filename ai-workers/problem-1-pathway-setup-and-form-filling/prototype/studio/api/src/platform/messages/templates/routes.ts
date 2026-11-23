@@ -4,7 +4,8 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query, Req } from "@nestjs/common";
 import { Db } from "../../../core.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../identity/keys.ts";
-import { TEMPLATE_RECORDS, TemplatesService, type TemplateRecords } from "./templates.ts";
+import { parseInput } from "../../http/input.ts";
+import { knownKind, PreviewBody, PublishBody, RecordsQuery, TEMPLATE_RECORDS, TemplatesService, type TemplateRecords } from "./templates.ts";
 
 type R = { platform?: StaffContext };
 
@@ -17,14 +18,14 @@ export class TemplatesController {
   list(@Req() r: R) { return this.t.list(staffOf(r)); }
 
   @Get("records") @PermissionKeys("agent/template:preview", "agent/prospect:show")
-  records(@Req() r: R, @Query() q: unknown) { return this.t.records(staffOf(r), q); }
+  records(@Req() r: R, @Query() q: unknown) { return this.t.records(staffOf(r), parseInput(RecordsQuery, q ?? {})); }   // PF-28: the one input rule at the door (an unknown template key is the one not-found first)
 
   @Get(":key") @PermissionKeys("agent/template:show")
   read(@Req() r: R, @Param("key") key: string) { return this.t.read(staffOf(r), key); }
 
   @Put(":key") @PermissionKeys("agent/template:edit", "agent/template:publish")
-  publish(@Req() r: R, @Param("key") key: string, @Body() b: unknown) { return this.t.publish(staffOf(r), key, b); }
+  publish(@Req() r: R, @Param("key") key: string, @Body() b: unknown) { return this.t.publish(staffOf(r), knownKind(key), parseInput(PublishBody, b ?? {})); }
 
   @Post(":key/preview") @HttpCode(200) @PermissionKeys("agent/template:preview")
-  preview(@Req() r: R, @Param("key") key: string, @Body() b: unknown) { return this.t.preview(staffOf(r), key, b); }
+  preview(@Req() r: R, @Param("key") key: string, @Body() b: unknown) { return this.t.preview(staffOf(r), knownKind(key), parseInput(PreviewBody, b ?? {})); }
 }

@@ -164,6 +164,11 @@ try {
   const stray = await api(TOWNER, "PUT", "/platform/templates/lead.follow_up", { subject: "Hi {{ lead_first_name", body: "Body {{ Lead.Name }}", baseVersion: 0 });
   ok("R1.46 PF-19s T2 fail: a lone {{ in the subject and {{ Lead.Name }} in the message are refused by the API, each named on its field (challenge M3)",
     stray.status === 422 && /lone/.test(stray.body?.fields?.subject ?? "") && /Lead\.Name/.test(stray.body?.fields?.body ?? "") && versions() === 0, stray.body?.fields);
+  const nul = await api(TOWNER, "PUT", "/platform/templates/lead.follow_up", { subject: "Hi", body: "Body\u0000here", baseVersion: 0 });
+  const broken = await api(TOWNER, "PUT", "/platform/templates/lead.follow_up", { subject: "Hi \ud800", body: "Fine", baseVersion: 0 });
+  const nokey = await api(TOWNER, "PUT", "/platform/templates/not-a-key", { pf28Unknown: "x" });
+  ok("R1.46 PF-19s T2 fail: a control character in the message and a broken character in the subject are refused on their field (422, break m1, m3); an unknown key is 404 before the body is read (PF-28)",
+    nul.status === 422 && /control character/.test(nul.body?.fields?.body ?? "") && broken.status === 422 && /broken character/.test(broken.body?.fields?.subject ?? "") && nokey.status === 404 && versions() === 0, { nul: nul.body?.fields, broken: broken.body?.fields, nokey: nokey.status });
   await body.fill(typed);
 
   // ---------------------------------------------------------------------------------------------- T3 preview with a real lead

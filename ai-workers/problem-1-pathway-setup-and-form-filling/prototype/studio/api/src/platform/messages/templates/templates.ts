@@ -8,7 +8,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { auditEvent } from "../../audit/audit-event.ts";
 import { firmScope } from "../../firm-scope.ts";
-import { FIELD_ERROR_STATUS, parseInput, strict } from "../../http/input.ts";
+import { FIELD_ERROR_STATUS, strict } from "../../http/input.ts";
 import { actorWord } from "../../identity/audit.ts";
 import { problem, type StaffContext } from "../../identity/keys.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
@@ -25,11 +25,15 @@ export interface TemplateRecords {
 }
 export const TEMPLATE_RECORDS = Symbol.for("platform.TemplateRecords");
 
-export const PublishBody = strict({ subject: z.string().max(LIMITS.subject + 1000), body: z.string().max(LIMITS.body + 1000), baseVersion: z.number().int().min(0) });
-export const PreviewBody = strict({ subject: z.string().max(LIMITS.subject + 1000), body: z.string().max(LIMITS.body + 1000), leadId: z.string().max(100).optional() });
+export const PublishBody = strict({ subject: z.string().max(LIMITS.subject + 1000), body: z.string().max(2 * LIMITS.body), baseVersion: z.number().int().min(0) });
+export const PreviewBody = strict({ subject: z.string().max(LIMITS.subject + 1000), body: z.string().max(2 * LIMITS.body), leadId: z.string().max(100).optional() });
 export const RecordsQuery = strict({ q: z.string().max(100).optional() });
 
+/** Half of a UTF-16 pair with no other half: a broken character the database would store as U+FFFD. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const notFound = (): never => problem(404, "Not found", "No such template.", { code: "NOT_FOUND" });
+/** The path key, checked before the body (PF-28: a bad key is the one not-found, never a field error). */
+export const knownKind = (key: string): string => kindOf(key)?.key ?? notFound();
 const can = (s: StaffContext, ...keys: string[]) => keys.every((k) => s.keys.includes(k));
 /** Both keys publish here: saving is publishing in this slice (no drafts yet). */
 export const canPublish = (s: StaffContext) => can(s, "agent/template:edit", "agent/template:publish");
@@ -72,9 +76,13 @@ export class TemplatesService {
     const s = subject.trim();
     if (!s) out.subject = "Write a subject.";
     else if (s.length > LIMITS.subject) out.subject = `The subject is ${s.length} characters; at most ${LIMITS.subject}.`;
-    else if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(subject)) out.subject = "The subject must be one line.";
+    else if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(s)) out.subject = "The subject must be one line.";
+    else if (LONE_SURROGATE.test(s)) out.subject = "The subject holds a broken character: retype it.";
     if (!body.trim()) out.body = "Write the message.";
     else if (body.length > LIMITS.body) out.body = `The message is ${body.length} characters; at most ${LIMITS.body}.`;
+    // Line breaks and tabs only (break m1, m3): a control character or a broken one is refused, never stored or mangled.
+    else if (/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(body)) out.body = "The message holds a control character: remove it.";
+    else if (LONE_SURROGATE.test(body)) out.body = "The message holds a broken character: retype it.";
     for (const [field, text] of [["subject", subject], ["body", body]] as const) {
       const bad = unknownFields(kind.recordType, text);
       if (bad.length && !out[field]) out[field] = `${bad.map((f) => `{{ ${f} }}`).join(", ")} ${bad.length === 1 ? "is not a field" : "are not fields"} of this message. Insert fields from the list.`;
@@ -83,9 +91,8 @@ export class TemplatesService {
     return out;
   }
 
-  async publish(s: StaffContext, key: string, input: unknown) {
+  async publish(s: StaffContext, key: string, b: z.output<typeof PublishBody>) {
     const kind = kindOf(key) ?? notFound();
-    const b = parseInput(PublishBody, input);
     const subject = b.subject.trim(), body = b.body.replace(/\r\n?/g, "\n");
     const fields = this.refusals(kind, b.subject, body);
     if (Object.keys(fields).length) problem(FIELD_ERROR_STATUS, "Not published", Object.values(fields)[0], { code: "INVALID", fields });
@@ -108,16 +115,14 @@ export class TemplatesService {
   }
 
   /** The leads the person may preview with (AG-12-89). */
-  async records(s: StaffContext, query: unknown) {
-    const { q } = parseInput(RecordsQuery, query ?? {});
+  async records(s: StaffContext, { q }: z.output<typeof RecordsQuery>) {
     return { records: await this.source.find(s, q ?? "") };
   }
 
   /** The wording on the form, filled from a lead the person may open (else 404) or the Sample lead (AG-12-89, -90); a
    *  missing value is a part with value null (shown marked, never blank); a field the type lacks is marked unknown. */
-  async preview(s: StaffContext, key: string, input: unknown) {
+  async preview(s: StaffContext, key: string, b: z.output<typeof PreviewBody>) {
     const kind = kindOf(key) ?? notFound();
-    const b = parseInput(PreviewBody, input);
     const firm = await this.db.platformFirm.findUnique({ where: { id: firmScope(s.firmId).firmId }, select: { operatingName: true } });
     let record: { label: string; sample: boolean; language: string };
     let values: Record<string, string | null>;

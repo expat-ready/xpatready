@@ -52,9 +52,9 @@ function ListBody() {
 /** One preview line: plain text, values as text, a missing value marked (never blank), a field the message cannot use marked. */
 function Parts({ parts, unknown }: { parts: Part[]; unknown: string[] }) {
   return <>{parts.map((p, i) => "text" in p ? <React.Fragment key={i}>{p.text}</React.Fragment>
-    : unknown.includes(p.field) ? <mark key={i} className="rounded bg-[#fde2e1] px-0.5 text-[#7a1712]" data-preview-unknown={p.field}>[not a field: {`{{ ${p.field} }}`}]</mark>
+    : unknown.includes(p.field) ? <mark key={i} className="rounded bg-danger/12 px-0.5 text-text-danger" data-preview-unknown={p.field}>[not a field: {`{{ ${p.field} }}`}]</mark>
     : p.value !== null ? <span key={i} className="rounded bg-surface px-0.5" data-preview-value={p.field}>{p.value}</span>
-    : <mark key={i} className="rounded bg-[#fdecc8] px-0.5 text-[#5c3c00]" data-preview-missing={p.field}>[missing: {p.label}]</mark>)}</>;
+    : <mark key={i} className="rounded bg-warn/15 px-0.5 text-text-warn" data-preview-missing={p.field}>[missing: {p.label}]</mark>)}</>;
 }
 
 function useDebounced<T>(v: T, ms: number) {
@@ -92,8 +92,8 @@ function PreviewPane({ t, subject, body }: { t: Template; subject: string; body:
         ) : null}
       </div>
       {preview.error ? <Notice tone="danger" title="No preview"><span data-preview-error>{words(preview.error, "The preview could not be made.")}</span></Notice> : !p ? <p role="status" className="text-sm text-text-muted">Making the preview…</p> : (
-        <div className="flex flex-col gap-2 rounded-lg border border-border bg-white p-3 text-sm text-[#1f2933]" aria-live="polite">
-          <p><span className="text-xs text-text-muted">Subject: </span><span className="font-medium" data-preview-subject><Parts parts={p.subject} unknown={p.unknown} /></span></p>
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 text-sm text-text">
+          <p className="[overflow-wrap:anywhere]"><span className="text-xs text-text-muted">Subject: </span><span className="font-medium" data-preview-subject><Parts parts={p.subject} unknown={p.unknown} /></span></p>
           <div className="whitespace-pre-wrap [overflow-wrap:anywhere]" data-preview-body><Parts parts={p.body} unknown={p.unknown} /></div>
           <p className="text-xs text-text-muted">Language: {p.record.language}.</p>
         </div>
