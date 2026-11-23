@@ -22,50 +22,56 @@ h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;margin:0}p.n{color:var(--mute
 .dis{opacity:.55}.links a{color:var(--brand);margin-right:12px;font-size:13px}
 .phone{max-width:375px}
 </style></head><body>
-<h1>FO-6ds draft board: Send for signature</h1>
-<p class="n">Draft for the challenge, not approved. Sample values. Prospect page section plus right panel. Legal points: Unconfirmed: no counsel.</p>
+<h1>FO-6ds draft board r2: Send for signature</h1>
+<p class="n">Draft for the Lead, not approved. Sample values. Corporate prospect "Sample Bakery Ltd (Sample)". Until the client signing page is live nothing says "sent" or "emailed". Legal points: Unconfirmed: no counsel.</p>
 <div class="grid">
  <section class="frame" aria-label="Section on the prospect page, list">
   <div class="lab">1 · Prospect page, under the Retainer card (1440)</div>
   <div class="hd"><h2>Signature requests</h2><button class="btn">Send for signature</button></div>
-  <div class="row"><div class="hd"><strong>Employment offer - Sample Bakery</strong><span class="pill info">Viewed</span></div>
-   <div class="m">0 of 1 signed · Client A (Sample): opened 22 Nov · Sent 21 Nov · Expires 5 Dec</div>
-   <div class="m">Signing emails are not switched on yet: no one has been emailed.</div>
+  <div class="row"><div class="hd"><strong>Employment offer - Sample Worker</strong><span class="pill info" title="Recorded. No one is emailed until the client signing page is live.">Recorded</span></div>
+   <div class="m">0 of 1 signed · Client B (Sample), primary contact · Recorded 21 Nov · Expires 5 Dec</div>
+   <div class="m">No one is emailed yet: signing emails are not switched on.</div>
+   <div class="links"><a href="#">Download original</a></div></div>
+  <div class="row"><div class="hd"><strong>Company letter of support</strong><span class="pill info">Recorded</span></div>
+   <div class="m">0 of 1 signed · Client B (Sample) · Recorded 2 Nov · <strong>Expired on 16 Nov</strong></div>
    <div class="links"><a href="#">Download original</a></div></div>
   <div class="row"><div class="hd"><strong>Reference letter consent</strong><span class="pill ok">Signed</span></div>
-   <div class="m">2 of 2 signed · Client A (Sample): signed 18 Nov · Representative (Sample): signed 19 Nov</div>
+   <div class="m">2 of 2 signed · Client B (Sample): signed 18 Nov · Representative (Sample): signed 19 Nov</div>
    <div class="links"><a href="#">Download original</a><a href="#">Download signed copy</a></div></div>
  </section>
  <section class="frame" aria-label="Empty and loading states">
-  <div class="lab">2 · Empty, loading, error</div>
+  <div class="lab">2 · Empty, loading, load error, Lost</div>
   <div class="hd"><h2>Signature requests</h2><button class="btn">Send for signature</button></div>
-  <p class="m">No documents sent for signature yet. Send a PDF such as an offer letter for this person to sign.</p>
+  <p class="m">No documents sent for signature yet. Upload a PDF such as an offer letter for this person to sign.</p>
   <p class="m">Loading signature requests…</p>
   <p class="m">Could not load the signature requests. <a href="#">Try again</a></p>
+  <p class="m">Lost prospect: the list shows, the button does not (question 2).</p>
  </section>
  <section class="frame" aria-label="Send panel">
-  <div class="lab">3 · Right panel "Send for signature" (filled, with errors)</div>
-  <h2>Send for signature</h2><p class="m">For Client A (Sample). They sign from their own link; nothing is sent until you click Send.</p>
+  <div class="lab">3 · Right panel "Send for signature" (Corporate prospect)</div>
+  <h2>Send for signature</h2><p class="m">For Sample Bakery Ltd (Sample). Nothing is recorded until you click Send.</p>
   <div class="note">Signing emails are not switched on yet: the request is recorded, but no one is emailed until the client signing page is live.</div>
-  <div class="f"><label>File</label><div class="box">Employment offer - Sample Bakery.pdf · 214 KB · <a href="#">Change</a></div><span class="m">PDF, at most 25 MB</span></div>
-  <div class="f"><label>Title</label><div class="box">Employment offer - Sample Bakery</div></div>
+  <div class="f"><label>File</label><div class="box">Employment offer - Sample Worker.pdf · 214 KB · <a href="#">Change</a></div><span class="m">PDF, at most 25 MB</span></div>
+  <div class="f"><label>Title</label><div class="box">Employment offer - Sample Worker</div></div>
   <div class="f"><label>Who signs</label>
-   <div class="box">☑ Client A (Sample)<br><span class="dis">☐ Client B (Sample) · No email: add an email first</span></div></div>
+   <div class="box">☑ Client B (Sample) · Primary contact<br><span class="dis">☐ Client C (Sample) · Company contact · No email: add an email first</span></div></div>
   <div class="f"><label>Firm signer (optional)</label><div class="box">No firm signer ▾</div></div>
   <p class="m">Sending from a client's documents comes later; for now, upload the PDF.</p>
   <div class="foot"><button class="btn">Cancel</button><button class="btn p">Send</button></div>
  </section>
  <section class="frame" aria-label="Errors">
-  <div class="lab">4 · Errors on their field</div>
+  <div class="lab">4 · Errors on their field, and after Send</div>
   <div class="f"><label>File</label><div class="box">offer.docx</div><span class="err">This file is not a PDF. Only a PDF can be sent for signature.</span></div>
+  <div class="f"><label>File</label><div class="box">Offer letter.pdf</div><span class="err">This PDF is protected. Upload an open copy.</span></div>
   <div class="f"><label>File</label><div class="box">IMM5257 sample.pdf</div><span class="err">Government forms are not sent for signature this way. The client signs the form itself on paper or in the government's portal.</span></div>
-  <div class="f"><label>Who signs</label><span class="err">Pick at least one person to sign.</span></div>
-  <p class="m">Sending: Send shows "Sending…" and is busy. Success: panel closes, toast "Sent for signature: Employment offer - Sample Bakery", focus on the new row.</p>
+  <div class="f"><label>Who signs</label><span class="err">Client C (Sample) has no email address. Add an email first.</span></div>
+  <div class="note">We could not confirm the send. Check the list below before sending again.</div>
+  <p class="m">Server error: "Could not send. Nothing was sent; please try again." Sending: Send shows "Recording…". Success: panel closes, toast "Recorded for signature: Employment offer - Sample Worker. No one is emailed yet.", focus on the new row.</p>
  </section>
  <section class="frame phone" aria-label="Phone width">
   <div class="lab">5 · 375 px: rows stacked, Send at least 44 px</div>
   <div class="hd"><h2>Signature requests</h2><button class="btn" style="min-height:44px">Send for signature</button></div>
-  <div class="row"><strong>Employment offer - Sample Bakery</strong><span><span class="pill info">Viewed</span> <span class="m">0 of 1 signed</span></span><span class="m">Expires 5 Dec</span></div>
+  <div class="row"><strong>Employment offer - Sample Worker</strong><span><span class="pill info">Recorded</span> <span class="m">0 of 1 signed</span></span><span class="m">Expires 5 Dec · No one is emailed yet</span></div>
  </section>
 </div>
 </body></html>
