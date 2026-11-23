@@ -12,7 +12,8 @@
 # with a warning, never a failure (fixes still merge, P-214). It holds the only write token here, so it runs main's
 # waves.py from the base commit in a folder of its own, reads the PR's title and body as data only, and keeps no
 # token in .git/config (tools/write-token.py, ALLOW).
-# Test: product/tools/check-g4-rules.sh.
+# Test: product/tools/check-g4-rules.sh. E5 (P-674 to P-677): cleanup-pr-check.sh proves a "Clean-up:" PR is a pure
+# move or deletion and runs the stale-path check on every PR (test: product/tools/check-cleanup-pr.sh).
 name: pr-rules
 on:
   pull_request:
@@ -60,6 +61,9 @@ jobs:
         env:
           TITLE: "${{ github.event.pull_request.title }}"
         run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs claim --title "$TITLE"
+      - name: a "Clean-up:" PR is a pure move or deletion; no live file names a moved path (E5, P-674 to P-677)
+        if: "${{ !cancelled() }}"
+        run: printf '%s\n' "$BODY" | bash "$T/cleanup-pr-check.sh" --base HEAD^1
       - name: under 800 changed lines of code and tests, or a recorded exception
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         env:
@@ -85,6 +89,29 @@ jobs:
       - name: a new package in any package.json carries a "STANDARDS §1:" line (E16)
         if: "${{ !cancelled() }}"
         run: printf '%s\n' "$BODY" | bash "$T/deps-line-check.sh" --base HEAD^1
+  # ENF-782a part 1 (P-782 (2), founder 21 Nov): a PR saying "Completes: R1.n" fails unless every part listed for R1.n
+  # (its focus-list.md line, its J-row's "Parts it joins:", its CAPABILITIES.md packs and suites) has merged on main or
+  # is this PR, and its journey tests/journeys/j_<n>.ts exists on main or in this PR; the failure names each missing
+  # part. Report-only for 2 h after ready-gate.py reaches main, then blocking: the product queue has
+  # "-check-failure = completes-ready" (.mergify.yml), so a failed run keeps the PR out and a missing run stalls nobody.
+  # Kill switch: repository variable READY_GATE=report. A part merging later does not re-run it: edit the body or push.
+  # Reads only, US$0; the body and title reach the script only through env. Test: product/tools/check-ready-gate.sh.
+  completes-ready:
+    if: "${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') && !contains(github.event.pull_request.labels.*.name, 'records') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # main's PR merge commits: which parts have merged, and when the gate reached main
+          filter: blob:none
+          persist-credentials: false
+      - name: every part of a "Completes:" item is on main or this PR, and its journey exists (P-782 (2))
+        env:
+          BODY: "${{ github.event.pull_request.body }}"
+          TITLE: "${{ github.event.pull_request.title }}"
+          READY_GATE: "${{ vars.READY_GATE }}"
+        run: printf '%s\n' "$BODY" | python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/ready-gate.py
   outside-wave:
     if: "${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') && !contains(github.event.pull_request.labels.*.name, 'records') }}"
     runs-on: ubuntu-latest

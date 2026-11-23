@@ -37,7 +37,8 @@ if [ "${1:-}" = gap ]; then
 fi
 mkdir -p "$STATE_DIR"
 act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
-SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN"' EXIT   # B202: lines step 12 reuses
+SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN" "$GH_TLS_NOTE_ONCE"' EXIT   # B202: lines step 12 reuses
+export GH_TLS_NOTE_ONCE="$STATE_DIR/tls-noted.$$"; rm -f "$GH_TLS_NOTE_ONCE"   # ENF-761 part 5: gh.sh's curl notice once per run
 . "$TOOLS/fresh-lib.sh"   # ENF-803 (P-803): every section says when and from where it read; cached answers over 10 min refused
 
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
@@ -78,19 +79,10 @@ appm=$( [ -n "$merged" ] && echo "$merged" | bash "$TOOLS/app-code-prs.sh")
 say "merged in ${SINCE} min: $(echo "$appm" | grep -c .) changed app code (P-500) · $(echo "$merged" | grep -c .) in all (records, docs, tooling, tests included)"; [ -n "$appm" ] && echo "$appm" | sed 's/^/      app  /'
 prs=$(gh pr list --state open --limit 80 --json number,title,labels,isDraft,headRefName,statusCheckRollup,additions,deletions,createdAt)
 fresh "GitHub: PRs merged in the window and open PRs (gh.sh)"
-echo "$prs" | python3 -I -c '
-import json,sys
-prs=[p for p in json.load(sys.stdin) if not p["headRefName"].startswith("mergify/")]
-L=lambda p:[l["name"] for l in p["labels"]]
-red=lambda p:any(c.get("conclusion")=="FAILURE" for c in p["statusCheckRollup"] or [])
-q=[p for p in prs if "queued" in L(p)]
-deq=[p for p in prs if "dequeued" in L(p)]
-appr=[p for p in prs if "review: approved" in L(p) and "queued" not in L(p) and "dequeued" not in L(p)]
-rl=[p for p in prs if "review: approved" in L(p) and red(p)]
-print("queue %d queued · %d approved not queued · %d open without label" % (len(q),len(appr),len([p for p in prs if not L(p) and not p["isDraft"]])))
-for p in deq: print("ACT   #%d dequeued: owner merges main or fixes (%s)" % (p["number"],p["title"][:50]))
-for p in rl:  print("ACT   #%d red after approval (%s)" % (p["number"],p["title"][:50]))
-' | tee "$STATE_DIR/q.txt"
+# ENF-761 part 3: only a REQUIRED check failing on a labelled PR's head is "red after approval" (an ACT); required = the
+# ruleset's required status checks (REST, rules on main) plus ci; failures only in optional checks are one info line.
+req=$(gh api "repos/{owner}/{repo}/rules/branches/main" --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | join(",")' 2>/dev/null)
+echo "$prs" | python3 -I "$TOOLS/queue-red.py" --required "${req:-ci}" | tee "$STATE_DIR/q.txt"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "$SEEN"
 # 2h. Merge-queue batches running (P-791 (2), founder 22 Nov: the Lead's by-hand merge of #2754 at 12:1x IST restarted 9
 # batches): open mergify/ PRs whose checks are not finished, and what a by-hand merge would cost now. By-hand merges go
@@ -165,6 +157,10 @@ act=$((act + $(grep -c '^ACT' "$STATE_DIR/queue.txt")))
 git diff --quiet -- "$TOOLS/../state/items.json" 2>/dev/null || say "queue items.json changed: commit it with the records (P-557)"
 fresh "lead-queue.sh: LANE-REPORT lines on open PRs (GitHub), product/state/items.json"
 
+# 3c (G-4 (5); ENF-761 part 5): branches ahead of main with no PR and no LANE-REPORT: one summary line, the list in
+# $STATE_DIR/stale-branches.txt, an ACT only for a branch pushed in the last 24 h (branch-sweep.sh).
+sw=$(SWEEP_STATE_DIR="$STATE_DIR" bash "$TOOLS/branch-sweep.sh" 2>&1); [ -n "$sw" ] && echo "$sw"; act=$((act + $(grep -c '^ACT' <<<"$sw"))); seen "$sw"
+fresh "branch-sweep.sh: origin branches (git), open and merged PRs (GitHub), product/state/items.json"
 # 4. Lanes alive: branches pushed in the last 90 minutes (a lane is working only if it pushed, lead skill).
 git fetch -q origin 2>/dev/null
 # 1b. Local lanes (founder, 8 Nov, P-420): a Mac lane that stops, or whose messages are paused, makes no GitHub signal.

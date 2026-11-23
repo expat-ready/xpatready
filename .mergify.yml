@@ -252,6 +252,10 @@ queue_rules:
       - or:
           - check-success = queue-fresh
           - -files ~= /prototype/
+      # ENF-782a (P-782 (2), founder 21 Nov; the one exception to P-717 (b)'s 24 h: the founder ruled 2 h): a "Completes:"
+      # PR with a part missing stays out. The check itself is report-only (passes) for 2 h after it reached main, then
+      # fails on a missing part (ready-gate.py), so this line needs no second PR; a PR with no run is never held.
+      - -check-failure = completes-ready
     merge_conditions:
       - check-success = ci
       # QA-449 part 2 (R1.16; P-717 (b), Lead 4 series 3, 20 Nov): skeleton ran clean on 10 merge batches since #2517,
