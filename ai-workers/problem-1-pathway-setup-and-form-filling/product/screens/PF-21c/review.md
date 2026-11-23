@@ -257,3 +257,38 @@ What I reviewed: `git diff c1d7da393..efaf4f5e1` for `breaches/`, `tests/check_p
 - **Journey score:** 8.8/10, carried over. Only the stored actor word on one firm-trail line changes; what anyone sees and every route's status are as in round 3, and the notice works again on the merged code.
 
 Verdict: Approve efaf4f5e12e06ca7ffae68e7d25df17ef6166286 (no open Blocker or Major)
+
+## Merge of main (#3189) (diff-only review; the tech lead's round "this merge of main and its conflicts only")
+
+Head 25ec9dacddf858ff3c374e4b2d9198fdbb91fac5, a merge of fdd89a816 (the last Approve) with origin/main ca06ff268 (#3189, PF-21b part 3 data requests, migration 20261123200000_pf21b_data_requests).
+
+- **Only PF-21c's own files differ from main.** `git diff ca06ff268 HEAD --stat` lists 15 files, all of them PF-21c's: its screen records, the breaches feature, module and route files, its migration, the schema, and its test lines in pf12, pf19a, pf19r and pf4s. The diff has 3 deletions. Each is a PF-21c line replacing a main line: the pf12 OWN list, and the pf19a count check that becomes the seeded-template filter.
+- **Conflict 1, `platform-register.prisma`: both sides are kept whole.**
+  - `git show --cc` shows the breach block (4 enums, `PlatBreach`, `PlatBreachEvent`, `PlatBreachNotice`) followed by #3189's block (3 enums, `PlatDataRequest`, `PlatDataRequestEvent`). The only line that differs from both parents is a blank separator.
+  - `PlatBreachNotice` has its closing brace back. The file has 22 `{` and 22 `}`, and no model or enum name appears twice.
+  - Against fdd89a816 the merge removes no line. Against main the only "-" line is the file's header comment, which PF-21c rewrote and main never touched, so keeping PF-21c's wording is right.
+  - `npx prisma validate` passes.
+- **Conflict 2, `check_pf4s_system_signin.ts`: both sides are kept whole.** Appendix A holds `system/breach:manage` [Own] and `system/breach:read` [Own, Aud], then `system/compliance:dsr-manage` [Own]. Nothing is dropped and nothing appears twice. pf4s: 104/104.
+- **Migration order and names.**
+  - `20261123210000_pf21c_breaches` sorts directly after `20261123200000_pf21b_data_requests`, and the stamp is kept. DW8 passes and reports "newest before: 20261123200000_pf21b_data_requests".
+  - I extracted every table, type, index, function, trigger and permission key each migration creates (21 for #3189, 36 for PF-21c). No name appears in both: every object uses its own `plat_data_request*` or `plat_breach*` prefix, and the keys are `system/compliance:dsr-manage` and `system/breach:*`.
+  - The objects both migrations touch are shared ones: an insert into `plat_system_role_permission`, and GRANT/REVOKE CREATE ON SCHEMA public for `xr_wall_reader`. Both use the same grant-then-revoke pattern, and each leaves the grant as it found it.
+- **Auto-merged files.** Since the merge base, only the two conflicted files were changed on both sides.
+  - The pf12 OWN list keeps main's `plat_data_request` and `plat_legal_hold` and adds `plat_breach_event` and `plat_breach_notice`.
+  - pf19r keeps main's senders and adds the breaches service.
+  - pf19a's seeded-template filter has no conflict with #3189, which seeds no `msg_` row.
+- **Schema matches both migrations.** PF-21c DW8 "prisma migrate diff … is empty" passes, and so does PF-21b DW6's equivalent.
+- **Suites at 25ec9dacd.** `run-suites.sh --only "check_pf21c_breaches.ts check_pf4s_system_signin.ts check_pf21b_requests.ts check_pf12_walls.ts"` exits 0:
+
+  | Suite | Result |
+  |---|---|
+  | check_pf12_walls.ts | 110/0 |
+  | check_pf21b_requests.ts | 27/0 |
+  | check_pf21c_breaches.ts | 48/0 |
+  | check_pf4s_system_signin.ts | 104/104 |
+
+- **Nit (not blocking).** The schema header still reads "complaints, legal holds and breaches (later data requests)", but data requests are now in this file. This is a one-word fix for a later row.
+- **Seen on main, not this PR.** #3189 did not add `plat_data_request_event` to the pf12 OWN list. Its own DW6 does check the table forced with no policy, so this is for the tech lead to note, not a finding here.
+- **Journey score:** 8.8/10, carried over. The merge changes no route, screen or wording of PF-21c.
+
+Verdict: Approve 25ec9dacddf858ff3c374e4b2d9198fdbb91fac5 (no open Blocker or Major)
