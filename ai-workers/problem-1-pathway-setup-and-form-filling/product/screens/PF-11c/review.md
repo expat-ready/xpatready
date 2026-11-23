@@ -142,3 +142,35 @@ Reviewer: Changes 71f3131daf1c8426d0474ec20f6b3e1c6033d7a4
 
 Verdict: Changes 1b4298d062c453e8f6f5dcb2fc8228d631529c5a. Not Approve: Major 6's test must fail without the fix (an Owner as inviter). Majors 1-5 are closed. n1-n4 and m4/m7 are Minors.
 Reviewer: Changes 1b4298d062c453e8f6f5dcb2fc8228d631529c5a
+
+## Round 3 (diff 1b4298d..c234475)
+
+**Head reviewed:** c234475ab4c7e0d8bc0942327ea42679f724c999. Only the app diff is reviewed: `closure.ts` (+3/-1) and `tests/check_pf11c_close.ts` (+12/-3). The commits between the two heads are review records only.
+**Ran:**
+* `check_pf11c_close.ts` on the head: 47/47, exit 0.
+* Three mutations on the working tree, one at a time. Each file was copied to the scratchpad first and copied back afterwards; `git status` was clean at the end.
+
+**Journey score:** 6/10, carried from round 1. There was no new browser walk, because this round reviews the diff only. Nothing a user meets changed: the diff is one transaction option and three tests.
+
+### Major 6: closed
+* The test's inviter is now an active OWNER of firm A, read from `platform_role_grant` with `ended_at is null`. An Owner holds the invite key and every role's keys, so `inviterRefusal` returns null for this invitation. Only the closed-firm guard can refuse it.
+* The new `refused_inviter` count is a real check, not an empty one. The refusal path commits its audit line before it throws the 410 (`session/service.ts:122-127`, "committed"). So a refusal by the inviter check would show up as a count of 1.
+* The test also checks that `ownerA` is a uuid, so an empty query cannot pass silently.
+* Mutation: guard changed to never match (`status === "__NEVER__"`). Result: 46 passed, 1 failed. The failed check is the invitation one, with `acc: {}`, which means the accept succeeded, and `refusedInviter: 0`. Restored.
+
+### New tests: sound
+* **n2 (export existence).** The firm's own key `firms/${A}/export-2027-03-01.zip` is never written to the archive, so only the `archive.get(exp.key)` check can block it. Mutation (the check removed): the n2 check fails, because the firm closes, and 13 later checks fail with it, because the firm is already closed. This matches the builder's "14 failed". Restored.
+* **m4 (close_failed).** The fault is in the audit write, which is the last statement in the close transaction. The firm update and the session revocations have already run inside the transaction by then. So the test's checks prove a real rollback: the firm stays PAYMENT_HOLD, there are 0 `firm-closed` revocations, there are 0 `firm.closed` lines, and exactly one `PF-11c.close_failed` alert is raised. Mutation (the catch replaced by `throw e`): the suite stops with "the audit write fails inside the close". Restored.
+  * Nit: each run of this test leaves one more 7-year write-once copy in the fake archive. That is the n3 behaviour, already recorded; it does no harm in the test.
+
+### Timeout (n4): no Blocker or Major
+* The close transaction now sets `{ timeout: 60_000, maxWait: 60_000 }` through `CLOSE_TX_TIMEOUT_MS`. That is above the billing transaction's 30 s (`billing/webhook.ts:165`), so the close now waits for billing instead of failing. Other services in this codebase use the same 60 s pattern: `holds/service.ts`, `plan-change/service.ts`.
+* `maxWait` is only the wait for a pool connection. Sixty seconds is harmless for a nightly job that handles one firm at a time.
+* An invitation accept that holds the firm row runs under Prisma's default 5 s, so it cannot keep the close waiting longer than that.
+* No test exercises the timeout value itself. That is acceptable for a Minor fix.
+
+### Still open (Minors, none blocking)
+n1 and n3, as recorded in round 2. m7 (the chain verifies; a firm B line dated inside A's range) is not addressed. The recency of the export belongs to PF-11's port contract. n2, n4 and m4 are now closed.
+
+Verdict: Approve c234475ab4c7e0d8bc0942327ea42679f724c999. No open Blocker or Major: Majors 1-6 are closed. The remaining items are Minors.
+Reviewer: Approve c234475ab4c7e0d8bc0942327ea42679f724c999
