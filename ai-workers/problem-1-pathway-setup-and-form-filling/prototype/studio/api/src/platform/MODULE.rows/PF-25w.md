@@ -1,0 +1,2 @@
+Entry points: PF-25w: `POST /api/system/firms/:id/web-address` (`SystemWebAddressController`, `web-address/routes.ts`): ExpatReady's own staff with `system/firm:address` (Platform Owner, Admin) and a reason change a firm's web address through `WebAddresses.change`, inside the firm's scope; its firm-trail line names them `ourstaff:<id>`.
+Tests: tests/check_pf25w_routes.ts (R1.24: a pass per role with the key, a 403 per role without it, 404 for no firm, 401 and the firm's token refused, reason, address, no step-up)
