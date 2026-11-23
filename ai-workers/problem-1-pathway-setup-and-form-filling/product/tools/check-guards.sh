@@ -2,17 +2,33 @@
 # The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-758's queue blocked by checks (guard 37, 20 Nov, P-758), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), ENF-738's constraint section (guard 29, 20 Nov), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) with ENF-761's under-cap ACTs (761c) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
-#   bash product/tools/check-guards.sh [--mutate]
+#   bash product/tools/check-guards.sh [--mutate [--part i/n] [--list]]
+# --part i/n (Lead 5, 23 Nov: 363 rows no longer fit one 45-minute job): the plain tests in part 1 only, and every n-th
+# mutation row starting at row i, so parts 1..n together run each test and each row exactly once (check-guard-parts.sh);
+# guards.yml runs the parts as a matrix. --list prints what the part would run (TEST <file>, ROW <index> <guard>), runs nothing.
 set -u
+mutate=0; part=1; parts=1; list=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mutate) mutate=1; shift;;
+    --list) list=1; shift;;
+    --part) case "${2:-}" in [1-9]*/[1-9]*) part=${2%/*}; parts=${2#*/};; *) echo "check-guards: --part needs i/n with 1 <= i <= n" >&2; exit 2;; esac
+            case "$part$parts" in *[!0-9]*) echo "check-guards: --part needs i/n with 1 <= i <= n" >&2; exit 2;; esac
+            [ "$part" -le "$parts" ] || { echo "check-guards: --part $2: i is over n" >&2; exit 2; }; shift 2;;
+    *) echo "check-guards: unknown argument $1" >&2; exit 2;;
+  esac
+done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh"
-TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (#2597, ENF-772 stack)
-TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate (#2738, ENF-772 stack)
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh"
+TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
+TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
 bad=0
-for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
+if [ "$part" = 1 ]; then
+for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
+fi
 rm -f "${TMPDIR:-/tmp}/guard-$$.log"
-[ "${1:-}" = --mutate ] || exit $bad
+[ "$mutate" = 1 ] || exit $bad
 # guard | file the edit goes in | sed edit that switches the guard off (no | or ' in it: .. stands for || and . for ') | the test that must then fail
 # Rows 36 deadlock and 36 wfname add a line with GNU sed's \n in the replacement (CI runs on ubuntu; BSD sed would not).
 MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-lead.sh
@@ -134,6 +150,12 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
 15 full depth|../../.github/workflows/label-guard.yml|/^          fetch-depth: 0$/d|check-queue-gate.sh
 15 full name|../../.github/workflows/ci.yml|s/format(.full-run PR #{0} {1}., inputs.pr, inputs.head)/inputs.head/|check-queue-gate.sh
+15 lead soft|product/tools/queue-gate.sh|s/^    grep -qiEf "\$H.soft" <<< "\$f" .. continue$/    continue/|check-queue-gate.sh
+15 lead hard|product/tools/queue-gate.sh|s/^    if grep -qiEf "\$H.hard" <<< "\$f"; then printf .%s\\n. "\$f"; continue; fi$/    true/|check-queue-gate.sh
+15 lead rec|product/tools/queue-gate.sh|s/^    \[ "\$rec" = 1 \] \&\& continue$/    continue/|check-queue-gate.sh
+15 lead label|product/tools/queue-gate.sh|s/^  records \&\& rec=1$/  rec=1/|check-queue-gate.sh
+15 lead img|product/tools/queue-gate.sh|/^    grep -qiE .\/product\/tools\/. <<< "\$f" .. ! grep/d|check-queue-gate.sh
+15 lead list|product/tools/queue-gate.sh|s/^  \[ -r "\$all" \] \&\& grep -q .^# --- records-exempt. "\$all" .. {[^}]*}$/  true/|check-queue-gate.sh
 15 start rid|product/tools/queue-gate.sh|s/ \&\& held \&\& \[ "\$held_state" = failed \]; then start/ \&\& held; then start/|check-queue-gate.sh
 15 deq unlabel|product/tools/queue-gate.sh|s/^          api -X DELETE "\$API\/repos\/\$REPO\/issues\/\$PR\/labels\/review%3A%20approved"/          true/|check-queue-gate.sh
 15 proof deq|product/tools/queue-gate.sh|s/ \] .. has dequeued; then/ ]; then/|check-queue-gate.sh
@@ -288,13 +310,22 @@ MUT="$MUT"'
 38 group|product/tools/lead-upkeep.py|s/            os.killpg(p.pid, signal.SIGKILL)/            p.kill()/|check-lead-upkeep.sh
 38 range|product/tools/lead-upkeep.py|s/    if beyond < 0:  /    if False:  /|check-lead-upkeep.sh
 38 fail|product/tools/lead-upkeep.py|s/    if p.returncode == 0:/    if True:/|check-lead-upkeep.sh
-38 notes|product/tools/lead-upkeep.py|s/    if not os.path.isdir(a.notes):/    if False:/|check-lead-upkeep.sh
+38 notes|product/tools/lead-upkeep.py|s/    if not os.path.lexists(a.notes):/    if not os.path.isdir(a.notes):/|check-lead-upkeep.sh
 38 source|product/tools/private-sync.sh|s/^if \[ ! -d "\$NOTES" \] .*then$/if false; then/|check-lead-upkeep.sh
 38 rev-parse|product/tools/private-sync.sh|s/^if ! git rev-parse -q --verify HEAD .*then$/if false; then/|check-lead-upkeep.sh
-38 note file|product/tools/private-sync.sh|s/ -type f ! -name / -name /|check-lead-upkeep.sh
-38 after copy|product/tools/private-sync.sh|s/^if \[ -z "\$(notes_in notes\/side-session-notes)" \]; then$/if false; then/|check-lead-upkeep.sh
-38 origin|product/tools/private-sync.sh|s/^if \[ "\$(git remote get-url origin 2>\/dev\/null)" != "\$REMOTE" \]; then$/if false; then/|check-lead-upkeep.sh
+38 note file|product/tools/private-sync.sh|s/ -type f ! -path / -type f -path /|check-lead-upkeep.sh
+38 after copy|product/tools/private-sync.sh|s/^if \[ -z "\$(git ls-files -s -- notes\/side-session-notes\/ .*then$/if false; then/|check-lead-upkeep.sh
+38 origin|product/tools/private-sync.sh|s/^if ! same_repo .*then$/if false; then/|check-lead-upkeep.sh
 38 pull|product/tools/private-sync.sh|s/^if ! git pull -q --ff-only; then$/if ! git pull -q --ff-only \&\& false; then/|check-lead-upkeep.sh
+38 dot path|product/tools/private-sync.sh|s/ grep -v -E .(^.\/)\[.\]. / cat /|check-lead-upkeep.sh
+38 ahead|product/tools/private-sync.sh|s/ && \[ "\$ahead" = 0 \]; then$/; then/|check-lead-upkeep.sh
+38 stored|product/tools/private-sync.sh|s/git config --get remote.origin.url/git remote get-url origin/|check-lead-upkeep.sh
+38 slash|product/tools/private-sync.sh|s/local a="\${1%\/}" b="\${2%\/}"/local a="$1" b="$2"/|check-lead-upkeep.sh
+38 symlink|product/tools/private-sync.sh|s/\$1 == "100644" .. \$1 == "100755"/$1 != "160000"/|check-lead-upkeep.sh
+38 gitlink|product/tools/private-sync.sh|s/^if \[ -n "\$subs" \]; then$/if false; then/|check-lead-upkeep.sh
+38 undo|product/tools/private-sync.sh|s/^undo() { git reset -q -- notes;/undo() { git reset -q --hard HEAD;/|check-lead-upkeep.sh
+38 pushurl|product/tools/private-sync.sh|s/^  \[ -z "\$u" \] /  true /|check-lead-upkeep.sh
+38 branch|product/tools/private-sync.sh|s/"HEAD:refs\/heads\/\${up#origin\/}"/HEAD/|check-lead-upkeep.sh
 38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
 38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh
 29 machines|product/tools/flow-constraint.py|s/(mc.get("oldest_min") or 0) > BAR\["wait_min"\]/False/|check-flow-constraint.sh
@@ -332,13 +363,21 @@ MUT="$MUT"'
 37 draft|product/tools/queue-blocked.py|s/if p.get("draft") or /if False and p.get("draft") or /|check-queue-blocked.sh
 37 read|product/tools/queue-blocked.py|s/^        if read:$/        if True:/|check-queue-blocked.sh
 37 read who|product/tools/queue-blocked.py|s/ not in TRUSTED or not c.get("created_at"):/ is None:/|check-queue-blocked.sh
-37 read edited|product/tools/queue-blocked.py|s/^        if (c.get("updated_at") or c.get("created_at")) != c.get("created_at"):$/        if False:/|check-queue-blocked.sh
+37 read edited|product/tools/queue-blocked.py|s/^        if (c.get("created_at") if u is None else u) != c.get("created_at"):/        if False:/|check-queue-blocked.sh
 37 read head|product/tools/queue-blocked.py|s/^            if m and m.group(1).lower() == head.lower():$/            if m:/|check-queue-blocked.sh
 37 read drop|product/tools/queue-blocked.py|s/^        for d in DROP:$/        for d in []:/|check-queue-blocked.sh
 37 read code|product/tools/queue-blocked.py|s/^            if line.startswith("    ") or line.startswith(.\\t.):$/            if False:/|check-queue-blocked.sh
-37 read blank|product/tools/queue-blocked.py|s/^LEAD_READ = re.compile(r"^\[ \\t\\v\\f\]\*lead read/LEAD_READ = re.compile(r"^\\s*lead read/|check-queue-blocked.sh
-37 read leads|product/tools/queue-blocked.py|s/^        if leads and (login not in leads or login == str(author or "").lower()):$/        if False:/|check-queue-blocked.sh
-37 read unread|product/tools/queue-blocked.py|s/ll = "" if re.search/ll = "" if True or re.search/|check-queue-blocked.sh
+37 read blank|product/tools/queue-blocked.py|s/^LEAD_READ = re.compile(r"^\[ \\t\\v\\f\]\*lead read/LEAD_READ = re.compile(r"^[\\s\\xa0]*lead read/|check-queue-blocked.sh
+37 read leads|product/tools/queue-blocked.py|s/^        if leads and (login not in leads or login == asc(str(author or ""))):$/        if False:/|check-queue-blocked.sh
+37 read unread|product/tools/queue-blocked.py|s/^                ll = None$/                ll = ""; continue/|check-queue-blocked.sh
+37 read org|product/tools/queue-blocked.py|s/^                    continue$/                    break/|check-queue-blocked.sh
+37 read nul|product/tools/queue-blocked.py|s/^    if any("\\x00" in b for b in counted):/    if False:/|check-queue-blocked.sh
+37 read ascii|product/tools/queue-blocked.py|s/^    return re.sub(r"\[A-Z\]", lambda m: m.group().lower(), x)$/    return x.lower()/|check-queue-blocked.sh
+37 read empty|product/tools/queue-blocked.py|s/os.environ.get("QB_LEAD_LOGINS")/os.environ.get("LEAD_LOGINS")/|check-queue-blocked.sh
+37 read asciire|product/tools/queue-blocked.py|s/, re.I . re.A)   # grep/, re.I)   # grep/|check-queue-blocked.sh
+37 read split|product/tools/queue-blocked.py|s/\[^\\S\\x1c-\\x1f\]/\\s/|check-queue-blocked.sh
+37 read 404|product/tools/queue-blocked.py|s/^                if e.notfound:$/                if True:/|check-queue-blocked.sh
+37 read 404 text|product/tools/queue-blocked.py|s/returned error: 404\\b/never/|check-queue-blocked.sh
 37 count|product/tools/lead-watch.sh|s/; seen "\$qb"; act=\$((act + \$(grep -c .^ACT. <<<"\$qb")))/; seen "$qb"/|check-queue-blocked.sh
 39 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
 39 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh
@@ -368,7 +407,16 @@ LRG block|product/tools/lead-read-gate.sh|s/if \[ "\$MODE" = block \]; then s=fa
 LRG closed|product/tools/lead-read-gate.sh|s/^    \*) echo "#\$PR: \$why"; \[ -n "\$head" \] .. return 2; s=failure;/    *) s=success;/|check-lead-read-gate.sh
 LRG list|product/tools/lead-read-paths.txt|/^\/api\/src\/platform\/identity\/$/d|check-lead-read-gate.sh
 LRG main|../../.github/workflows/lead-read.yml|s/^  pull_request_target:$/  pull_request:/|check-lead-read-gate.sh'
-echo "--- each test without its guard (must FAIL)"
+MUT="$MUT"'
+40 parts round|product/tools/check-guards.sh|s/\$((part - 1)) \] .. continue$/$((part - 1)) ] \&\& true/|check-guard-parts.sh
+40 parts tests|product/tools/check-guards.sh|s/^if \[ "\$part" = 1 \]; then$/if true; then/|check-guard-parts.sh
+40 parts refuse|product/tools/check-guards.sh|s/\[ "\$part" -le "\$parts" \] .. {/false \&\& {/|check-guard-parts.sh
+40 parts matrix|../../.github/workflows/guards.yml|s/^        part: \[1, 2, 3, 4\]$/        part: [1, 2, 3]/|check-guard-parts.sh
+40 parts always|../../.github/workflows/guards.yml|s/always() \&\& //|check-guard-parts.sh
+40 parts result|../../.github/workflows/guards.yml|s/\[ "\$PARTS" = success \]/[ -n "$PARTS" ]/|check-guard-parts.sh
+37 merge read|product/tools/lead-merge.sh|s/; then post "Lead read the diff: <head sha>" (P-423)//|check-lead-merge.sh
+37 merge product|product/tools/lead-merge.sh|s/; a product PR is never merged by hand: it goes through the queue//|check-lead-merge.sh
+37 merge order|product/tools/lead-merge.sh|s/  3\. only after step 1.s "Lead read the diff: <head sha>" line is on that exact head, and only for a tooling or records PR: /  3. /|check-lead-merge.sh'
 MUT="$MUT"'
 E5 pure|product/tools/cleanup-pr-check.sh|s/^  \[ "\$r" = 0 \] .. bad=1$/  true/|check-cleanup-pr.sh
 E5 list|product/tools/cleanup-pr-check.sh|s/^  if \[ "\$lists" -gt 0 \]; then/  if false; then/|check-cleanup-pr.sh
@@ -384,7 +432,11 @@ MUT="$MUT"'
 38 queue|../../.mergify.yml|/-check-failure = completes-ready/d|check-ready-gate.sh
 38 records|product/tools/ready-gate.py|s/    if NOT_A_PART.match(title or \"\"):/    if False:/|check-ready-gate.sh
 38 landed|product/tools/ready-gate.py|s/ \"--first-parent\", \"-m\",//|check-ready-gate.sh'
+[ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
+k=-1
 while IFS='|' read -r g f edit t; do
+  k=$((k + 1)); [ $((k % parts)) = $((part - 1)) ] || continue
+  [ "$list" = 1 ] && { echo "ROW $k $g"; continue; }
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
   cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; mkdir -p "$M/$P/product/design"; cp "$ROOTD/$P/product/design/waves.tsv" "$ROOTD/$P/product/design/waves.md" "$M/$P/product/design/"; cp "$ROOTD/$P/product/focus-list.md" "$M/$P/product/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"

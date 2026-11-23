@@ -82,7 +82,8 @@ def _is_records(files):
     return r.stdout.strip() == "yes"
 
 
-def case(what, files, record, want, title="evidence: something", labels=("review: approved",), checks=("ci",),
+# E6 (P-772): pr-rules runs on every PR, so a case has it green unless it says otherwise.
+def case(what, files, record, want, title="evidence: something", labels=("review: approved",), checks=("ci", "pr-rules"),
          draft=False, base="main", head="claude/keen-maxwell-x1", failed=()):
     return {"what": what, "record": record, "want": want,
             "pr": {"files": list(files), "title": title, "label": list(labels), "check-success": list(checks), "check-failure": list(failed),
@@ -90,7 +91,7 @@ def case(what, files, record, want, title="evidence: something", labels=("review
 
 
 A = f"{P}/prototype/studio"
-F = ("ci", "queue-fresh")  # B194: app code also needs the status queue-fresh (queue-gate.sh)
+F = ("ci", "queue-fresh", "pr-rules")  # B194: app code also needs the status queue-fresh (queue-gate.sh); E6 (P-772): and pr-rules
 CASES = [  # what, files, a record by #1139's definition?, the queue it must join
     case("the daily records PR: STATE, DECISIONS, BACKLOG, RULES", [f"{R}/STATE.md", f"{R}/DECISIONS.md", f"{R}/BACKLOG.md", f"{R}/RULES.md"], True, "records", "lead: records 6 Nov"),
     case("qa notes with screenshots, a run's text and a built note", [f"{R}/qa/BUGS.md", f"{R}/qa/walks/x/shot.png", f"{R}/qa/runs/out.txt", f"{R}/qa/built/C1.3.md"], True, "records", "qa: after-merge"),
@@ -110,6 +111,8 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("records plus one app file, M3 title: product (no title routing)", [f"{R}/qa/built/C7.3.md", f"{A}/web/src/App.tsx"], False, "product", "forms: C7.3 — x", checks=F),
     case("an M3 title on code: product", [f"{A}/web/src/App.tsx"], False, "product", "M3 runtime: C7.5 — x", checks=F),
     case("app code alone: product", [f"{A}/api/src/demo.ts"], False, "product", "runtime: C4.11 — x", checks=F),
+    case("app code with pr-rules not green: no queue (E6, P-772)", [f"{A}/api/src/demo.ts"], False, None, "runtime: C4.11 — x",
+         checks=("ci", "queue-fresh")),
     case("a qa script (.cjs) is not a record", [f"{R}/qa/walks/x/walk.cjs"], False, "product"),
     case("a tool under product/tools/, even a .md: pipeline (P-717 (a))", [f"{R}/tools/README.md"], False, "pipeline"),
     case("this row's checker (.py under screens/)", [f"{R}/screens/B119/check-queue-rules.py"], False, "product"),
@@ -133,7 +136,7 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("code without the review label: no queue", [f"{A}/api/src/core.ts"], False, None, labels=()),
     # B170a (#1545): a change to the XFA engine also needs the xfa-engine workflow's check green (Lead 18, 11 Nov).
     case("an XFA engine change with xfa-engine green: product", ["packages/xfa-engine/src/x.ts"], False, "product",
-         checks=("ci", "xfa-engine")),
+         checks=("ci", "xfa-engine", "pr-rules")),
     case("an XFA engine change without the xfa-engine check: no queue", ["packages/xfa-engine/src/x.ts"], False, None),
     case("the xfa-engine workflow itself without its check: no queue", [".github/workflows/xfa-engine.yml"], False, None),
     # The label alone routes: a hand-added "records" on code joins records (lowest priority; its batch still runs ci,

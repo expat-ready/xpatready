@@ -68,7 +68,7 @@ def sync(a):
         return
     # Lead 9 (21 Nov, #2605): a copy without the side-notes folder (a cloud copy) skips quietly; an ACT only where the
     # folder exists and the sync fails.
-    if not os.path.isdir(a.notes):
+    if not os.path.lexists(a.notes):   # absent only; a file or a dangling link in its place runs the sync, which refuses
         print("private sync skipped: no side-notes folder in this copy (P-678)")
         return
     # Own process group, no stdin, no git credential prompt: on a timeout the whole group (git, rsync) is killed, so
