@@ -182,3 +182,33 @@
   - **Fix:** fall back to `AbortSignal.timeout` alone, or to one controller with a `setTimeout`, when `AbortSignal.any` is missing.
 
 **Verdict: Block.** Fix before Approve: R2-B1 for a server error after the body (reset the delays in `onChunkComplete`), with the test above. r2-n1 and r3-n1 are the builder's call.
+
+---
+
+# Round 4 (the last; Lead 13's scope: the onChunkComplete reset, the hand-built abort signal, the changed-or-deleted-file Minor)
+
+**Reviewed head:** `24a72150ec7bd312c222e7c64408bca9472d6bc6`. Only `git diff 864009b3314a653f45b971a049010e31469bba60..24a72150ec7bd312c222e7c64408bca9472d6bc6` was reviewed: the failing-first tests in `52261c51` and the fixes in `resumable-upload.ts`. **Verdict: Approve.**
+
+**How I checked it.**
+- **The suite:** `tests/check_pff2_resume_browser.ts` passed 31, failed 0.
+- **Probes:** I re-ran my round-3 probe unchanged against this head, in the ignored `studio/var/`, deleted afterwards. In it, the rail's staging write reads the whole body and then throws.
+- **Ports:** the suite and my probe used `listen(0)`, a random local port. Nothing used :4400.
+
+## The three items
+- **R2-B1, fixed.** `failures` resets only in `onChunkComplete`, which tus-js-client calls only after a 2xx PATCH answer.
+  - **R1 (default delays, 8 s):** 939 requests at 61f55036; now **9**. The PATCHes went at 0.3, 1.3 and 4.4 s, following the delay list.
+  - **R2 (delays [0, 150, 300]):** 540 requests at 61f55036; now **9**. The page ends in the server's words ("The upload could not be finished. Try again in a moment; what you sent so far is kept.").
+  - **R3 (finish always fails):** unchanged and correct, 16 requests, then words.
+  - **DW8l:** uses a real 500 after the body (not `route.fulfill`). It allows 2-6 PATCHes and at least 450 ms of back-off, then words. `retry()` then resumes from the offset with no new POST. This is the test round 3 asked for.
+- **r3-n1, fixed.** The confirm uses one `AbortController` and a `setTimeout`. Only a `TypeError` or an `AbortError` counts as "no answer"; any other throw is refused in words.
+  - **DW8m:** deletes `AbortSignal.any` before the page loads and loses the last answer. The upload still ends done with the stored file's id.
+  - **`abort()`** still cancels a confirm in flight.
+- **r2-n1, fixed.** After a no-answer failure, the client reads `file.slice(0, 1).arrayBuffer()` before retrying. Chromium rejects reads of a picked file that changed on disk. **DW8n** rewrites the picked file at 25 % and gets "The file could not be read. Choose it again." within 12 requests, with nothing stored.
+- **Each new test fails without its fix:** DW8l would hit the tight loop (the old reset counted bytes sent), DW8m the `AbortSignal.any` TypeError, and DW8n the endless "paused" retry. This matches what the commit message records for 61f55036.
+
+## Minor (follow-ups, not blocking)
+- **r4-n1. Retries with no answer and server errors share one `failures` count.** A long offline cut with no chunk accepted pushes `failures` past the list. Then the first answered 5xx after reconnecting, for example one 503 during a deploy, refuses at once, without the delay list. The upload is kept for `retry()`, so nothing is lost. **Fix:** count answered errors separately from no-answer retries.
+- **r4-n2. A leftover comment.** `let confirming …` still carries round 3's "the offset this attempt started from" comment. **Fix:** drop it.
+- **From earlier rounds, already recorded as follow-ups in the PR:** while a chunk is in flight, the percent counts bytes sent, not bytes the server kept (in R1 the page said "42%" when the server held 21 %).
+
+**Verdict: Approve.** There is no open Blocker or Major at `24a72150ec7bd312c222e7c64408bca9472d6bc6`.
