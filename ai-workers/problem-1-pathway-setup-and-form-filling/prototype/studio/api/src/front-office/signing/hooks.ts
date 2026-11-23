@@ -9,6 +9,7 @@ import { Controller, HttpCode, Inject, Param, Post, Req } from "@nestjs/common";
 import { z } from "zod";
 import { parseInput } from "../../platform/http/input.ts";
 import { problem } from "../../platform/identity/keys.ts";
+import { signingPort } from "./handlers.ts";
 import { Signing } from "./service.ts";
 
 const WINDOW_MS = 60_000, MAX_PER_WINDOW = 120;   // Sample
@@ -40,11 +41,13 @@ export class SigningHooksController {
   async receive(@Param("provider") provider: string, @Req() req: { ip?: string; headers: Record<string, string | string[] | undefined>; body?: unknown }) {
     const body = req.body;
     if (limited(req.ip ?? "unknown")) problem(429, "Too many requests", "Too many requests. Please wait a minute and try again.", { code: "TOO_MANY_REQUESTS" });
+    // PF-28 (a bad id is 404): a provider this copy does not run is not found, before the body is read.
+    if (typeof provider !== "string" || provider.toUpperCase() !== signingPort().provider) problem(404, "Not found", "No such signing provider here.", { code: "NOT_FOUND" });
     // PF-28: the body is a JSON object or raw bytes, nothing else; its fields are the provider's, checked by the adapter
     // after the signature (port.ts verifyWebhook's strict schema). Nothing is stored before both.
     // Review m1: anything but an object or raw bytes is not the provider's call: 400, as an unverified one.
     if (!Buffer.isBuffer(body) && (body === null || typeof body !== "object" || Array.isArray(body))) problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });
-    // QA-53 (a public write door, no person): an empty body is never the provider's call: 400 before anything is looked up.
+    // QA-53 (a public write door, no person): an empty body to a provider we run is never its call: 400 before any look-up.
     if (!Buffer.isBuffer(body) && Object.keys(body as object).length === 0) problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });
     const bytes = hookBytes(parseInput(HookBody, body));
     if (!bytes?.length) problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });

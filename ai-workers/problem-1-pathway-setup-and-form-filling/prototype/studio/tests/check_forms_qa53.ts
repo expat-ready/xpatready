@@ -226,7 +226,9 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok(`C6.16 fail: each write of the adult's own link (${OWN_GUARD_WRITES.length}) refuses a simulated person (400) and, with no session or a made-up token, answers 401 or 404, never a change`, wrongWrite.length === 0, wrongWrite);
   ok("QA-65: the configuration reads made by POST are exactly the reviewed three (finder plan, AI plan, condition check)", JSON.stringify(configPosts.sort()) === JSON.stringify(["/api/ai/plan", "/api/combinations/:id/forms/find/plan", "/api/conditions/check"]), configPosts);
   ok("QA-65: every other write names its person (none answers nobody by default)", unnamed.length === 0, unnamed);
-  const doorAnswers = await Promise.all(PUBLIC_DOOR_WRITES.map(async (w) => `${w} ${await post(w, null, {})}`));
+  // A door with a path parameter is posted with a value it serves (FO-6 part 3: the signing provider this copy runs, "fake";
+  // an unknown provider is 404 by PF-28's rule, which check_pf28_inputs and check_fo6_signing_api prove).
+  const doorAnswers = await Promise.all(PUBLIC_DOOR_WRITES.map(async (w) => `${w} ${await post(w.replace(":provider", "fake"), null, {})}`));
   ok("PF-5: the public sign-up doors in the code are exactly PUBLIC_DOOR_WRITES, and each refuses an empty body (400) or is shut (503), never a 2xx",
     JSON.stringify([...doorWrites].sort()) === JSON.stringify([...PUBLIC_DOOR_WRITES].sort()) && doorAnswers.every((a) => / (400|503)$/.test(a)), { doorWrites, doorAnswers });
   ok("FO-2: the public writes are exactly PUBLIC_WRITES, and one with an unknown token answers nobody 404 (no change)", JSON.stringify(publicWrites.sort()) === JSON.stringify(PUBLIC_WRITES) && await postStatus(`/api/public/forms/${"x".repeat(30)}/submissions`, null, null) === 404, publicWrites);

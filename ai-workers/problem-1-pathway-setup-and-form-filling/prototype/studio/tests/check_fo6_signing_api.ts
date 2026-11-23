@@ -298,8 +298,13 @@ try {
   let deep: unknown = {}; for (let i = 0; i < 6000; i++) deep = { a: deep };
   const deepR = await refusal(() => hooks.receive("fake", { ip: "10.9.9.9", headers: {}, body: deep }));
   ok("FO-6 B fail (break m1): a 6000-level nested body → 400, never 500", deepR?.status === 400, deepR);
-  const emptyR = await refusal(() => hooks.receive(":provider", { ip: "10.9.9.8", headers: {}, body: {} }));
-  ok("FO-6 B fail (QA-53 public write door): an empty body → 400 before the provider is looked up, nothing stored", emptyR?.status === 400 && emptyR.body.code === "SIGNATURE", emptyR);
+  const emptyR = await refusal(() => hooks.receive("fake", { ip: "10.9.9.8", headers: {}, body: {} }));
+  ok("FO-6 B fail (QA-53 public write door): an empty body to a provider we run → 400 before any look-up, nothing stored", emptyR?.status === 400 && emptyR.body.code === "SIGNATURE", emptyR);
+  const receiptsNow = count("fo_signing_hook_receipt");
+  const unknownP = await Promise.all([":provider", "boldsign", "x"].map((p) => refusal(() => hooks.receive(p, { ip: "10.9.9.7", headers: {}, body: { documentId: "d", eventId: "e" } }))));
+  const unknownEmpty = await refusal(() => hooks.receive("nobody", { ip: "10.9.9.7", headers: {}, body: {} }));
+  ok("FO-6 B fail (PF-28: a bad id is 404): an unknown provider → 404 before the body is read, with a body or an empty one; nothing stored",
+    unknownP.every((r) => r?.status === 404) && unknownEmpty?.status === 404 && count("fo_signing_hook_receipt") === receiptsNow, { unknownP: unknownP.map((r) => r?.status), unknownEmpty: unknownEmpty?.status });
 
   // review Major 1: two different events of one request at once (the lock comes before the receipt): no deadlock, both applied
   const p9 = await prospect("Hal"), r9 = await draft(p9);
