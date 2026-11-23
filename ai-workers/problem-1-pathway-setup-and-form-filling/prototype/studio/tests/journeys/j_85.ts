@@ -96,7 +96,7 @@ try {
   const logged = await j("POST", "/api/system/register/requests", { type: "ACCESS", requester: `Requester${run} Sample`, requesterEmail: `j85.${run}@example.com`, receivedOn: "2026-11-02" }, ourTok);
   const dbReq = table("plat_data_request") ? sql(`select count(*) || '|' || coalesce(max((target_date - received_on)::text), '') from plat_data_request where requester_email = 'j85.${run}@example.com'`) : "no table";
   ok("J-85 W1 (PF-4s part 1, on main; our Owner by SQL, no invite yet): our Platform Owner signs in to the console (a system session token)", !!ourTok, { ourStaff: ourEmail || "no plat_system_staff" });
-  ok("J-85 W1 (PF-21b part 3, on main): the request is logged, stored once with its target date received + 30 days, and one audit line", (logged.status === 200 || logged.status === 201) && dbReq === "1|30", { status: logged.status, dbReq });
+  ok("J-85 W1 (PF-21b part 3, on main): the request is logged, stored once with its target date received + 30 days", (logged.status === 200 || logged.status === 201) && dbReq === "1|30", { status: logged.status, dbReq });
 
   // ---------------------------------------------------------------------------------------------- W2 worked to an outcome
   const reqId = typeof logged.body === "object" ? logged.body?.id : undefined;
@@ -114,8 +114,8 @@ try {
   const lateId = typeof late.body === "object" ? late.body?.id : undefined;
   const lateRead = lateId ? await j("GET", `/api/system/register/requests/${lateId}`, undefined, ourTok) : { status: 0, body: null };
   // The alert's mark: one OVERDUE step, written in the same transaction as the alert it raises (an alert that cannot be
-// raised undoes its mark: requests/service.ts:156-174), so one step means one alert.
-const alerts = lateId ? sql(`select count(*) from plat_data_request_event where request_id = '${lateId}' and to_status = 'OVERDUE'`) : "0";
+  // raised undoes its mark: requests/service.ts:156-174), so one step means one alert.
+  const alerts = lateId ? sql(`select count(*) from plat_data_request_event where request_id = '${lateId}' and to_status = 'OVERDUE'`) : "0";
   ok("J-85 W3 (PF-21b part 3, on main): a request received 40 days ago is past its target date: it reads OVERDUE and raises one alert for that request (NFR5-14)",
     !!lateId && lateRead.body?.status === "OVERDUE" && alerts === "1", { logged: late.status, status: lateRead.body?.status ?? null, alerts });
 
@@ -123,14 +123,19 @@ const alerts = lateId ? sql(`select count(*) from plat_data_request_event where 
   const holdCols = columns("plat_legal_hold");
   ok("J-85 W4 (PF-21b part 2, on main): the hold table exists with scope, target, reason, placed and released by/at", table("plat_legal_hold") && ["scope", "reason", "placed_by", "placed_at", "released_by", "released_at"].every((c) => holdCols.includes(c)), holdCols || "no table");
   const placed = await j("POST", "/api/system/register/holds", { firmId, scope: { kind: "PERSON", id: personId }, reason: "Sample litigation (J-85)" }, ourTok);
-  ok("J-85 W4 (PF-21b part 2, on main): our Platform Owner places a PERSON hold with a reason (one audit line)", placed.status === 200 || placed.status === 201, placed.status);
+  ok("J-85 W4 (PF-21b part 2, on main): our Platform Owner places a PERSON hold, kept with its reason", (placed.status === 200 || placed.status === 201) && sql(`select string_agg(reason, '|') from plat_legal_hold where target_id = '${personId}' and released_at is null`) === "Sample litigation (J-85)", placed.status);
   // The running app's one delete check (AUD-5 part 2): it asks the hold port first; with no adapter wired it refuses.
   const keep = new KeepPeriods(db as never, new PgLegalHolds() as never);   // as the app wires it (features/platform-register-holds.ts)
   let verdict = "";
   try { await db.$transaction(async (tx) => { const r = await keep.check(tx as never, { firmId, class: "client_financial" as never, startedAt: new Date("2020-01-01"), subject: { kind: "PERSON", id: personId } as never, recordDates: [new Date("2020-01-01")] }); verdict = r.verdict; }); }
   catch (e) { verdict = e instanceof KeepCheckNotBuilt ? "KeepCheckNotBuilt" : `${(e as Error).name}: ${(e as Error).message}`.slice(0, 160); }
-  ok("J-85 W4 (PF-21b part 2, on main: the real hold adapter under KEEP_CHECK_HOLDS): the app's delete check (AUD-5's KeepPeriods.check) answers HELD with the reason for the held person", verdict === "HELD", verdict);
-  ok("J-85 W4: the app's delete check never answers a silent OK for the held person: HELD, or KeepCheckNotBuilt while no adapter is wired (no false success, BR-12)", verdict === "KeepCheckNotBuilt" || verdict === "HELD", verdict);
+  ok("J-85 W4 (PF-21b part 2, on main: the real hold adapter under KEEP_CHECK_HOLDS): the app's delete check (AUD-5's KeepPeriods.check) answers HELD for the held person", verdict === "HELD", verdict);
+  // The hold names only its person: the same check for another person of the firm is not HELD.
+  const otherPerson = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firmId}', 'Other${run}', 'Sample', 'j85.other.${run}@example.com', 'test', now()) returning id`);
+  let otherVerdict = "";
+  try { await db.$transaction(async (tx) => { otherVerdict = (await keep.check(tx as never, { firmId, class: "client_financial" as never, startedAt: new Date("2020-01-01"), subject: { kind: "PERSON", id: otherPerson } as never, recordDates: [new Date("2020-01-01")] })).verdict; }); }
+  catch (e) { otherVerdict = `${(e as Error).name}: ${(e as Error).message}`.slice(0, 160); }
+  ok("J-85 W4 fail: the hold stops only its own person: the delete check for another person of the firm is not HELD", !!otherVerdict && otherVerdict !== "HELD" && !/Error|Refused|NotBuilt/.test(otherVerdict), otherVerdict);
   // PF-21b part 1 (merged): the port's rule on its fake, run in this process (a stand-in for the adapter, said, not hidden).
   const holds = fakeLegalHolds(), other = globalThis.crypto.randomUUID();
   const ask = () => holds.transaction((tx) => holds.isHeld(tx, firmId, [{ kind: "PERSON", id: personId }]));
@@ -153,7 +158,7 @@ const alerts = lateId ? sql(`select count(*) from plat_data_request_event where 
 
   // ---------------------------------------------------------------------------------------------- W6 roles
   const firmReg = await j("GET", "/api/system/register/requests", undefined, firmTok), firmHold = await j("POST", "/api/system/register/holds", { firmId, scope: { kind: "FIRM" }, reason: "x" }, firmTok);
-  ok("J-85 W6 (PF-4s part 1, PF-21b parts 2-3, on main): a firm's own Owner is refused on our register and on placing a hold (401 or 403, never 404: the routes exist and refuse)", [401, 403].includes(firmReg.status) && [401, 403].includes(firmHold.status), [firmReg.status, firmHold.status]);
+  ok("J-85 W6 (PF-4s part 1, PF-21b parts 2-3, on main): a firm's own Owner is refused on our register and on placing a hold (403, never 404: the routes exist and refuse)", firmReg.status === 403 && firmHold.status === 403, [firmReg.status, firmHold.status]);
 
   // ---------------------------------------------------------------------------------------------- W7 R1.86's first step
   await p.goto(`${BASE}/system/privacy/breaches`); await p.waitForLoadState("networkidle").catch(() => undefined); await p.waitForTimeout(500);
