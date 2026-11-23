@@ -221,3 +221,5 @@ Lead 4 (22 Nov): P-796 (R1.21 proven without a Stripe key, its Done when re-word
 Lead 4 (22 Nov, later): P-800 (plan 2-3 days of capability ahead per track; every Partial capability on a track board; one lane per open part), P-801 (domain, CRM and technical choices from sources: requirements, official pages, market research; never a founder question), P-802 (track queues, qa proof on the batch, migration slot per area, affected tests), P-803 (never act on stale information: fresh reads with source and time), P-804 (size exceptions #2922, #2919) stand, word for word in DECISIONS.
 
 Added 23 Nov (Lead 4; full rows in DECISIONS): P-805 size exceptions #3042, #2368, #2999, #3017 · P-806 Tasks screen (PF-29f, R1.75): the founder's three choices, see the row · P-807 size exception #3065 only · P-808 size exceptions #3179, #3033, #3035, #2459 · P-809 the ten stacked tooling PRs land as one through #2590.
+
+Added 23 Nov (Lead 10; full rows in DECISIONS): P-810 size exception #3185 · P-811 the four stacked tooling PRs land as one through #2444 (founder) · P-812 size exception #3174 · P-813 size exceptions #3184, #3193.
