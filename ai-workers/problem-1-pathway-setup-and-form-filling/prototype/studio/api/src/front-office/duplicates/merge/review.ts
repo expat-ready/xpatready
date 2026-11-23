@@ -102,6 +102,9 @@ async function seen(tx: Tx | PrismaClient, ctx: StaffContext, ids: string[]): Pr
   return new Set(rows.map((r) => r.id));
 }
 
+/** Whether the viewer may open every one of `ids` (repeats allowed: a merged pair resolves to one survivor). */
+const sees = async (tx: Tx | PrismaClient, ctx: StaffContext, ids: string[]) => { const s = await seen(tx, ctx, ids); return ids.every((id) => s.has(id)); };
+
 type PersonCard = { personId: string; name: string; lead: string | null; mergedIntoId: string | null };
 async function cards(tx: Tx | PrismaClient, firmId: string, ids: string[]): Promise<Map<string, PersonCard>> {
   const people = await tx.foPerson.findMany({ where: firmScope(firmId, { id: { in: ids } }), select: { id: true, givenNames: true, familyName: true, mergedIntoId: true } });
@@ -123,15 +126,19 @@ export class DuplicateReview {
     const [p] = await tx.$queryRaw<{ id: string; low_id: string; high_id: string; status: string; merge_id: string | null; reasons: MatchReason[] }[]>`
       select "id"::text, "low_id"::text, "high_id"::text, "status"::text, "merge_id"::text, "reasons" from "fo_dup_review" where "firm_id" = ${ctx.firmId}::uuid and "id" = ${id}::uuid for update`;
     if (!p) return notFound();
-    if ((await seen(tx, ctx, [p.low_id, p.high_id])).size !== 2) return notFound();
+    // A merged-away side is seen through its survivor (its leads moved there), so a decided pair answers 409, not 404.
+    const live = await tx.foPerson.findMany({ where: firmScope(ctx.firmId, { id: { in: [p.low_id, p.high_id] } }), select: { id: true, mergedIntoId: true } });
+    const ids = [p.low_id, p.high_id].map((id) => live.find((x) => x.id === id)?.mergedIntoId ?? id);
+    if (!(await sees(tx, ctx, ids))) return notFound();
     return p;
   }
 
   async list(ctx: StaffContext, status: "OPEN" | "MERGED" | "KEPT_SEPARATE" = "OPEN") {
     const rows = await this.db.foDupReview.findMany({ where: firmScope(ctx.firmId, { status }), orderBy: [{ score: "desc" }, { firstSeenAt: "asc" }, { id: "asc" }], take: 500 });
     const ids = [...new Set(rows.flatMap((r) => [r.lowId, r.highId]))];
-    const [see, card, cases] = await Promise.all([seen(this.db, ctx, ids), cards(this.db, ctx.firmId, ids), this.db.$transaction((tx) => caseOf(tx, ids))]);
-    const items = rows.filter((r) => see.has(r.lowId) && see.has(r.highId) && (status !== "OPEN" || (!card.get(r.lowId)?.mergedIntoId && !card.get(r.highId)?.mergedIntoId)))
+    const card = await cards(this.db, ctx.firmId, ids), via = (id: string) => card.get(id)?.mergedIntoId ?? id;   // a merged-away side is seen through its survivor
+    const [see, cases] = await Promise.all([seen(this.db, ctx, [...new Set(ids.map(via))]), this.db.$transaction((tx) => caseOf(tx, ids))]);
+    const items = rows.filter((r) => see.has(via(r.lowId)) && see.has(via(r.highId)) && (status !== "OPEN" || (!card.get(r.lowId)?.mergedIntoId && !card.get(r.highId)?.mergedIntoId)))
       .map((r) => ({ id: r.id, kind: r.kind, people: [card.get(r.lowId)!, card.get(r.highId)!].map(({ mergedIntoId: _, ...c }) => c), score: r.score, reasons: r.reasons, firstSeenAt: r.firstSeenAt, status: r.status,
         decidedAt: r.decidedAt, automatic: r.decidedBy === SYSTEM_ACTOR, mergeRef: r.mergeId, needsCaseSide: cases === null || cases.has(r.lowId) || cases.has(r.highId) }));
     return { items, openCount: status === "OPEN" ? items.length : undefined };
@@ -139,7 +146,7 @@ export class DuplicateReview {
 
   /** The Merged tab (concept M6): every merge whose surviving record the viewer may open, newest first. */
   async merges(ctx: StaffContext) {
-    const rows = await this.db.foDupMerge.findMany({ where: firmScope(ctx.firmId, { kind: "PERSON" }), orderBy: [{ at: "desc" }, { id: "asc" }], take: 500 });
+    const rows = await this.db.foDupMerge.findMany({ where: firmScope(ctx.firmId, { kind: "PERSON" as const }), orderBy: [{ at: "desc" }, { id: "asc" }], take: 500 });
     const see = await seen(this.db, ctx, [...new Set(rows.flatMap((m) => [m.survivorId, m.loserId]))]);
     const card = await cards(this.db, ctx.firmId, [...new Set(rows.flatMap((m) => [m.survivorId, m.loserId]))]);
     return { items: rows.filter((m) => see.has(m.survivorId) && (m.undoneAt === null || see.has(m.loserId))).map((m) => ({
@@ -188,7 +195,7 @@ export class DuplicateReview {
   async undo(ctx: StaffContext, mergeRef: string) {
     try {
       return await this.db.$transaction(async (tx) => {
-        const m = await tx.foDupMerge.findFirst({ where: firmScope(ctx.firmId, { id: mergeRef, kind: "PERSON" }), select: { survivorId: true } });
+        const m = await tx.foDupMerge.findFirst({ where: firmScope(ctx.firmId, { id: mergeRef, kind: "PERSON" as const }), select: { survivorId: true } });
         if (!m || !(await seen(tx, ctx, [m.survivorId])).size) return problem(404, "Not found", "No such merge in your firm.", { code: "NOT_FOUND" });
         const out = await unmergeRecords(tx, ctx, mergeRef, this.ports);
         await tx.foDupReview.updateMany({ where: firmScope(ctx.firmId, { mergeId: mergeRef }), data: { status: "OPEN", mergeId: null, decidedBy: null, decidedAt: null } });
