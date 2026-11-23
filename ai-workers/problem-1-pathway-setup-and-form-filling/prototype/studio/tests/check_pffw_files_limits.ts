@@ -131,7 +131,11 @@ try {
     }
     {
       const { files } = make();
-      const buf = new ArrayBuffer(10, { maxByteLength: FILE_MAX_BYTES + 1 }), view = new Uint8Array(buf).fill(0x62);
+      // A resizable ArrayBuffer (Node 20+; ES2024, which this project's TypeScript lib, es2023, does not declare): typed
+      // here, so the case runs as written without raising the lib (PF-Fw CI types, 24d0691).
+      type Resizable = ArrayBuffer & { resize(n: number): void };
+      const ResizableBuffer = ArrayBuffer as unknown as new (n: number, o: { maxByteLength: number }) => Resizable;
+      const buf = new ResizableBuffer(10, { maxByteLength: FILE_MAX_BYTES + 1 }), view = new Uint8Array(buf).fill(0x62);
       const pending = files.put(FIRM_A, "grow/x.bin", view, "application/octet-stream");
       buf.resize(FILE_MAX_BYTES + 1);   // the caller's buffer grows while the put is under way
       const put = await pending, got = await files.get(FIRM_A, "grow/x.bin");
