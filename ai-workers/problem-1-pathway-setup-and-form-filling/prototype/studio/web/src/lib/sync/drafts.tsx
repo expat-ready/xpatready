@@ -5,7 +5,7 @@
 // the version the draft started from (If-Match); after a save every window drops the draft and reads the record again.
 import * as React from "react";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { onStaffChange, sessionEndReason, staffScope } from "@/modules/platform/session";
+import { endSession, onStaffChange, sessionEndReason, staffScope } from "@/modules/platform/session";
 
 // Break B1: every draft and every message names its owner (`who`, staffScope(): the staff member, never the token). A window
 // ignores another owner's messages and stored drafts. Signed out, drafts stay stored but hidden; the same person signing in
@@ -17,7 +17,8 @@ type Entry = { values: unknown; base: unknown; version: string | null; who: stri
 type Msg = { who: string | null } & (
   | { t: "draft"; key: string; entry: Entry | null; from: string }
   | { t: "open" | "close"; key: string; from: string; reply?: boolean }
-  | { t: "saved"; key: string; queryKey: QueryKey | null; from: string });
+  | { t: "saved"; key: string; queryKey: QueryKey | null; from: string }
+  | { t: "signout"; from: string });
 
 const VIEW = Math.random().toString(36).slice(2);
 const STORE = "xr.draft.";
@@ -72,6 +73,7 @@ channel?.addEventListener("message", (ev: MessageEvent<Msg>) => {
   const m = ev.data;
   if (!m || m.from === VIEW || !who || m.who !== who) return;   // break B1: another person's window is never heard
   if (m.t === "draft") { if (m.entry === null || valid(m.entry)) write(m.key, m.entry, m.from); return; }
+  if (m.t === "signout") { forget(); endSession(null); return; }   // this person signed out in another window: here too
   if (m.t === "saved") { write(m.key, null, m.from); if (m.queryKey && invalidate) invalidate(m.queryKey); return; }
   const set = others.get(m.key) ?? new Set<string>();
   if (m.t === "open") {
@@ -109,6 +111,17 @@ let tick = 0;
 listeners.add(() => { tick++; });
 /** Re-renders on any draft change here (the workspace strip's dots). */
 export const useDraftTick = () => React.useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => tick);
+/** Every draft and every staff member's kept tab list in this browser tab ("xr.workspace.v1:<owner>", workspace.tsx; the
+ *  "local" list of the areas without a staff session stays). */
+function forget() {
+  entries.clear(); others.clear();
+  try { for (const k of Object.keys(sessionStorage)) if (k.startsWith(STORE) || (k.startsWith("xr.workspace.v1:") && k !== "xr.workspace.v1:local")) sessionStorage.removeItem(k); } catch { /* memory only */ }
+  emit();
+}
+/** Sign out on purpose (review round 4 Should 2, breaker round 4 m2): call before the server's sign-out. Nothing of the
+ *  person stays in this browser tab whatever the server answers (a 401 too), and the same person's other windows sign out
+ *  and forget too, so a shared computer keeps nothing of them. */
+export function signOutHere() { post({ t: "signout", from: VIEW }); forget(); }
 /** Test and tab-close hook: drop one record's draft here and in every window. */
 export function discardDraft(key: string) { write(key, null, VIEW); }
 

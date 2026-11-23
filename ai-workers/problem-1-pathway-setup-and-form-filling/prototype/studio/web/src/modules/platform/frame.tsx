@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { ACCOUNT_SECTIONS, visibleSections } from "./account-sections";
 import { endSession, staffApi, StaffApiError, useLocalSignIn, useMe, useSessionEnd, useStaffToken } from "./session";
 import { SignedInElsewhere } from "./signed-in-elsewhere";
+import { signOutHere } from "@/lib/sync/drafts";
 import { TermsPage, useTermsPending } from "./terms/terms-gate";
 import { FindBox } from "./find/find-box";
 import { HelpButton } from "./settings/help-button";   // PF-18s part 2: the "?" on every staff page (AG-16-63)
@@ -85,6 +86,7 @@ export function PlatformFrame({ crumbs = [], back = null, area, intro, children 
   if (token) had.current = true;
   const signOut = async () => {
     setLeaving(true);
+    signOutHere();   // PF-31: the person's drafts and tabs go here and in their other windows, whatever the server answers
     try { await staffApi("/platform/session/sign-out", { method: "POST" }); endSession(null); }
     // A 401 has ended the session already, with its reason; anything else still ends it here.
     catch (e) { if (!(e instanceof StaffApiError && e.status === 401)) endSession(null); }

@@ -277,10 +277,24 @@ try {
   await formSignIn(sql("select email from platform_staff where actor_id = 'user-R' limit 1"));
   await pb.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"]`).click();
   ok("round 3: the same person signing in again gets the tab and the typing back", await until(async () => (await nameField(pb).inputValue().catch(() => "")) === typed), await nameField(pb).inputValue().catch(() => "(no panel)"));
+  // Round 5 (breaker round 4 m2): a second window of the same person holds the same draft.
+  const cur = await pb.evaluate(() => sessionStorage.getItem("xr-staff-session"));
+  const pb2 = await page(ctxB);
+  await pb2.addInitScript((v) => { if (v) sessionStorage.setItem("xr-staff-session", v); }, cur);
+  await pb2.goto(`${BASE}${officePath(O2.id)}`);
+  const kept2 = () => pb2.evaluate((v) => Object.values(sessionStorage).some((x) => x.includes(v)), typed);
+  ok("round 5: a second window of the same person shows the draft", await until(async () => (await nameField(pb2).inputValue().catch(() => "")) === typed, 20_000), await nameField(pb2).inputValue().catch(() => "(no panel)"));
   await pb.locator('[data-workspace]:visible [role="tab"]').first().click();
+  // Round 5 (review round 4 Should 2): the server has already ended this session (R signed in elsewhere), so Sign out's own
+  // call answers 401; nothing of the person may stay all the same.
+  await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) });
   await pb.getByRole("button", { name: "Sign out" }).click();
-  await pb.locator("[data-sign-in-card]").waitFor();
-  ok("B1 Sign out on purpose drops the person's drafts and tabs from this browser tab (a shared computer)", !(await kept()) && await pb.evaluate(() => !Object.keys(sessionStorage).some((k) => k.startsWith("xr.workspace.v1:") && !k.endsWith(":local"))), await pb.evaluate(() => Object.keys(sessionStorage)));
+  await pb.locator("[data-sign-in-card], [data-signed-in-elsewhere]").first().waitFor();
+  const staffLists = (p: Page) => p.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith("xr.workspace.v1:") && !k.endsWith(":local")));
+  ok("B1 Sign out (answered 401) drops the person's drafts and tabs from this browser tab (a shared computer)", !(await kept()) && (await staffLists(pb)).length === 0, await pb.evaluate(() => Object.keys(sessionStorage)));
+  ok("round 5: Sign out also empties the same person's other window and signs it out", await until(async () => !(await kept2()) && (await staffLists(pb2)).length === 0 && (await nameField(pb2).count()) === 0, 10_000), await pb2.evaluate(() => Object.keys(sessionStorage)));
+  await pb2.close();
+  if (await pb.locator("[data-signed-in-elsewhere]").count()) await pb.getByRole("button", { name: "Sign in again here" }).click();
   await formSignIn(sql("select email from platform_staff where actor_id = 'user-T' limit 1"));
   await pb.waitForTimeout(500);
   const seen = await nameField(pb).inputValue({ timeout: 2000 }).catch(() => "(no panel)");
