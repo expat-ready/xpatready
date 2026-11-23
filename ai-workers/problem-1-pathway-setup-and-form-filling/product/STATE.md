@@ -2,7 +2,7 @@
 
 current_lead: local_878222c4-fe82-4451-820a-23a2e9705557 Lead 9 · 23 Nov 21:49 IST (took over from Lead 8 (local_9c46a890) at ~381k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 22:20 IST: Lead 9. Merged 22:12: #3222 #3037 #3257; R1.23 automatic proof PASS on 955fd15b3 (45219450747), qa row owed. #3174: round 12 choice (b) allowed. #3189 red is its own (plat_data_request.person_id not classified). #3173: no lane (session unreachable), start waits on him. Still owed: rows for #3179 #3193 size, records #2332 #2896 #3030, #2459.
+updated: 2026-11-23 22:29 IST: Lead 9. #3180 full run red on its own file (census), lane woken; #3189 and #3185 wait on it. #3174 round 12, #3189, #3203, #3035 lanes woken; #3185, #3195 full runs going. qa: R1.57 R1.61 R1.76 NOT ready (parts missing); j_24 walk dispatched on main, R1.23 walked. #3173: no lane. #3218 conflicts, qa lane merges main. Owed: size rows #3179 #3193, records #2332 #2896 #3030, #2459, the 26 in focus-list.
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
