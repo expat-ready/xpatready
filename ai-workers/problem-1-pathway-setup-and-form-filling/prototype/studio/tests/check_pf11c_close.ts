@@ -60,7 +60,7 @@ const alertsFor = (firm: string, rule: string) => alerts.raised.filter((a) => a.
 /** Every table with a firm_id column: the firm's row count in each (the "nothing deleted" check). */
 const firmTables = () => sql(`select c.table_name from information_schema.columns c join information_schema.tables t on t.table_name = c.table_name and t.table_schema = c.table_schema where c.table_schema = 'public' and c.column_name = 'firm_id' and t.table_type = 'BASE TABLE' order by 1`).split("\n").filter(Boolean);
 const countsOf = (firm: string) => Object.fromEntries(firmTables().map((t) => [t, Number(sql(`select count(*) from "${t}" where firm_id = '${firm}'`))]));
-const run = async (fn: () => Promise<unknown>, d: number, h = 1) => { await fake.set(at(d, h)); return fn(); };
+const run = async <T,>(fn: () => Promise<T>, d: number, h = 1): Promise<T> => { await fake.set(at(d, h)); return fn(); };
 
 try {
   await seedSampleFirms(db);
