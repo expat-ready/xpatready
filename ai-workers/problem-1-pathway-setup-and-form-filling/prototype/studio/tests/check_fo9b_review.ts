@@ -7,7 +7,7 @@
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
 import { APP_GUARD, NestFactory } from "@nestjs/core";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -43,7 +43,7 @@ const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { arrive } = await import("../api/src/front-office/sales/arrival.ts");
 const { phone: salesPhone } = await import("../api/src/front-office/sales/common.ts");
 const { ClientMoney } = await import("../api/src/client-money/port.ts");
-const { mergeIfSafe, whyNotSafe, DuplicateReview, SYSTEM_ACTOR, CASE_SIDE_LINE, STALE_LINE, MONEY_LINE } = await import("../api/src/front-office/duplicates/merge/review.ts");
+const { mergeIfSafe, whyNotSafe, DuplicateReview, SYSTEM_ACTOR, CASE_SIDE_LINE, STALE_LINE, MONEY_LINE, MERGED_AWAY_LINE } = await import("../api/src/front-office/duplicates/merge/review.ts");
 const mergeFeature = (await import("../api/src/features/front-office-merge.ts")).default;
 type Ctx = import("../api/src/platform/identity/keys.ts").StaffContext;
 
@@ -260,6 +260,47 @@ try {
   ok("FO-9b n1 fail: after B merges into A, the A-C pair keeps B-C's Kept separate decision and C is never merged by itself",
     !!nm.mergeRef && sql(`select status from fo_dup_review where id = '${nBC}'`) === "KEPT_SEPARATE" && (!nAC || sql(`select status from fo_dup_review where id = '${nAC}'`) === "KEPT_SEPARATE") && !rAC.mergeRef
     && sql(`select merged_into_id is null from fo_person where id = '${nC.person.id}'`) === "t", { nm, nAC, rAC });
+  // R3-1: A (name N, phone P), B (phone P, email E), C (name N, email E): pairs A-B, B-C and A-C (by name). B-C is kept
+  // separate; once B merges into A (guided or by itself), A-C carries that decision and C is never merged by itself.
+  const trio = async (n: string) => {
+    const a = await add(R, { givenNames: "Sami", familyName: `Rivera${n}`, phone: `+1 416 555 01${n}` });
+    const b = await add(R, { givenNames: "Bob", familyName: `Xu${n}`, phone: `+1 416 555 01${n}`, email: `r3.${n}@example.org` });
+    const c = await add(R, { givenNames: "Sami", familyName: `Rivera${n}`, email: `r3.${n}@example.org` });
+    return { a: a.person.id, b: b.person.id, c: c.person.id, ab: pairOf(a.person.id, b.person.id), bc: pairOf(b.person.id, c.person.id), ac: pairOf(a.person.id, c.person.id) };
+  };
+  const g = await trio("61");
+  const r3gk = await call("POST", `/front-office/duplicates/review/${g.bc}/keep-separate`, tR, {});
+  const r3gm = await call("POST", `/front-office/duplicates/review/${g.ab}/merge`, tR, { survivorId: g.a, choices: { email: "LOSER" } });
+  const gAC = g.ac ? await inTx((tx) => mergeIfSafe(tx, A, g.ac, ports)) as { mergeRef?: string; refused?: string[] } : {};
+  ok("FO-9b R3-1 fail: B-C kept separate, then a guided merge of B into A → the A-C pair already listed carries the decision (Kept separate), and C is never merged by itself",
+    !!g.ac && r3gk.status === 200 && r3gm.status === 200 && sql(`select status from fo_dup_review where id = '${g.ac}'`) === "KEPT_SEPARATE" && !gAC.mergeRef
+    && sql(`select merged_into_id is null from fo_person where id = '${g.c}'`) === "t", { ac: g.ac, gk: r3gk.status, gm: r3gm.status, gAC });
+  const h = await trio("62");
+  await call("POST", `/front-office/duplicates/review/${h.bc}/keep-separate`, tR, {});
+  const hm = await inTx((tx) => mergeIfSafe(tx, A, h.ab, ports)) as { mergeRef?: string };
+  const hw = await inTx((tx) => whyNotSafe(tx, A, [h.a, h.c], [{ key: "EMAIL" }]));
+  const hAC = h.ac ? await inTx((tx) => mergeIfSafe(tx, A, h.ac, ports)) as { mergeRef?: string } : {};
+  ok("FO-9b R3-1 fail: B-C kept separate, then B merges into A by itself → A and C are not safe (KEPT_SEPARATE) and C is never merged by itself",
+    !!hm.mergeRef && JSON.stringify(hw) === '["KEPT_SEPARATE"]' && !hAC.mergeRef && sql(`select merged_into_id is null from fo_person where id = '${h.c}'`) === "t", { hm, hw, hAC });
+  const k = await trio("63");
+  const km = await inTx((tx) => mergeIfSafe(tx, A, k.ab, ports)) as { mergeRef?: string };
+  const kk = await call("POST", `/front-office/duplicates/review/${k.bc}/keep-separate`, tR, {});
+  ok("FO-9b R3-1 fail: Keep separate on a pair whose side was merged away since → 409 MERGED_AWAY with the sentence, the pair stays OPEN",
+    !!km.mergeRef && kk.status === 409 && kk.body.code === "MERGED_AWAY" && kk.body.detail === MERGED_AWAY_LINE && sql(`select status from fo_dup_review where id = '${k.bc}'`) === "OPEN", { km, kk });
+  const kw = await inTx((tx) => whyNotSafe(tx, A, [k.a, k.c], [{ key: "EMAIL" }]));
+  ok("FO-9b R3-1 pass: with no Kept separate decision, the survivor and the other person may merge by themselves (the carry never suppresses an undecided pair)", JSON.stringify(kw) === "[]", kw);
+  // R3-3: the newer record's email changes while the merge by itself waits on its lock; the change must not be copied
+  // into the survivor and then match itself. Another session holds the merge's lock, changes the email, then commits.
+  const r3a = await add(R, { givenNames: "Ola", familyName: "Wait", email: "ola.wait@example.org" }), r3b = await add(R, { givenNames: "Ola", familyName: "Waits", email: "ola.wait@example.org" });
+  const PR3 = pairOf(r3a.person.id, r3b.person.id), loser3 = r3b.person.id;
+  const holder = spawn(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-c",
+    `begin; select pg_advisory_xact_lock(hashtextextended('fo_dup_merge:${loser3}', 0)); select pg_sleep(2); update fo_person set email = 'ola.moved@example.org', updated_at = now() + interval '1 second' where id = '${loser3}'; commit;`], { stdio: "ignore" });
+  const held = new Promise<number>((r) => holder.on("exit", (c) => r(c ?? 1)));
+  for (let i = 0; i < 50 && sql(`select count(*) from pg_locks where locktype = 'advisory' and granted`) === "0"; i++) await new Promise((r) => setTimeout(r, 50));
+  const r3 = await inTx((tx) => mergeIfSafe(tx, A, PR3, ports)) as { mergeRef?: string; refused?: string[] };
+  const holderExit = await held;
+  ok("FO-9b R3-3 fail: the newer record's email changed while the merge by itself waited on its lock → refused NOT_EXACT from the keys as locked, nothing merged",
+    holderExit === 0 && !r3.mergeRef && (r3.refused ?? []).includes("NOT_EXACT") && sql(`select count(*) from fo_person where id in ('${r3a.person.id}', '${loser3}') and merged_into_id is null`) === "2", { holderExit, r3 });
   sql(`alter table case_client rename to case_client_away`);
   const wu = await inTx((tx) => whyNotSafe(tx, A, [gp.a, gp.b], [{ key: "PHONE" }]));
   const gu = await call("POST", `/front-office/duplicates/review/${gp.pair}/merge`, tR, { survivorId: gp.a });

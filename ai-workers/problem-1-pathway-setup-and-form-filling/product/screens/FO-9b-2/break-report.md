@@ -97,3 +97,32 @@ Steps: preview, then a session holding the pair lock changes the survivor's emai
 * **Scale (observation):** with no cap before the filter, 10,000 Kept-separate pairs list in 372 ms (R) and 269 ms (O). That is beyond sample data, so it is not a §9 finding. Keep separate and Undo now take no body: a body field is ignored (200), and the PF-28 sweep passes 18/19 (the 19th needs a live copy on :4487).
 
 Verdict: **Changes** on `3168257452e42c1df0b117fe101d9354d891538b` (R2-1 Major open).
+
+## Round 3 (diff `3168257..9db9ca2`, diff only)
+
+Head `9db9ca2d015b3452bd5fb05f5c149d6c3fd2461b`. Breaker, 23 Nov 2026. Method: `check_fo9b_review` 55/55, then a scratch harness copied from its setup (own database `xr_studio_fo9bbrk3_<pid>` on 127.0.0.1:54329, dropped at the end; never :4400). Pairs come through `arrive`; "Add as new" goes through `Leads.add` with `confirmedNew`. A second `psql` session holding `pg_advisory_xact_lock(hashtextextended('fo_dup_merge:<id>',0))` is the other writer. Nothing in the repo was changed.
+
+### Round 2 re-run
+* **R2-1: fixed only when the survivor's pair is new.** The PR's own case (A-C written during the merge) is now KEPT_SEPARATE and `mergeIfSafe` refuses it. An A-C pair that already exists is not fixed (R3-1).
+* **R2-2: half fixed.** If the survivor's email changes while the merge waits on the pair lock → `refused: ["NOT_EXACT"]`. If the loser's email changes → it still merges (R3-3).
+* **R2-5 fixed.** A case client committed at Undo's `person.unmerged` event → 409 `NEEDS_CASE_SIDE`, still merged.
+* **R2-8 fixed.** Each of these → named 422: `updatedAt.__proto__` (object, `null`, the `__proto__` escape, a repeated `updatedAt` key), `updatedAt.constructor`, `updatedAt.survivor: {__proto__:{}}`, `reason: {__proto__:…}`, `choices: [{__proto__:1}]`, `updatedAt: [...]`, an array body and top-level `prototype`. The pair stays OPEN.
+
+### Findings
+**R3-1 Major: a Kept separate decision still loses to a merge when the survivor's pair with the other person already exists.** `notePairs` looks for a decision to carry only on insert. The insert is `on conflict … do nothing` (`review.ts:57-61`), so an A-C row that is already OPEN stays OPEN. `mergeIfSafe` (`review.ts:110-131`) never looks for a Kept separate decision through the merged-away record.
+(a) Steps: A "Sami Rivera", phone p. B "Bob Xu", phone p, email e. C "Sami Rivera", email e. This gives A-B OPEN [PHONE], B-C OPEN [EMAIL] and A-C OPEN (name). `keep-separate` B-C → 200 (KEPT_SEPARATE). Guided merge A-B, survivor A → 200, A's email is now e, and A-C is still `OPEN`. `mergeIfSafe(A-C)` → `{ mergeRef }`: C, kept separate from B, is merged into A (which now holds B). The fully automatic run gives the same result: `mergeIfSafe(A-B)`, then `mergeIfSafe(A-C)` → merged.
+(b) Same outcome by a different order: merge A-B first (A-C written OPEN, because B-C is still OPEN). Then Keep separate on B-C → 200, even though B is already merged away: `keepSeparate` (`review.ts:271-275`) does not check for a merged side, and the pair is reachable from a tab opened before the merge, or through the API. A-C stays OPEN, and `mergeIfSafe(A-C)` → merged. Nothing makes Keep separate and a merge of an overlapping pair wait for each other, so the race ends in the same state.
+This is R2-1's outcome (BR-11, concept §8 B1). It is latent until arrival calls `mergeIfSafe`, as R2-1 was. Fix direction: check for the carried decision under the locks at merge time (in `mergeIfSafe`, and by flipping existing OPEN rows in `notePairs`), not only when a row is first inserted.
+
+**R3-2 Minor: after Undo, a carried Kept separate stays on a pair nobody decided.** `undo` reopens only the rows whose `merge_id` is this merge (`review.ts:264`). The A-C row that `notePairs` wrote as carried stays KEPT_SEPARATE.
+Steps: A (email E). B (email E, phone P). C added with "Add as new" and phone P, so B-C is KEPT_SEPARATE. Guided merge A-B, survivor A → A takes phone P, and A-C is written `KEPT_SEPARATE`, decided by `staff:<R>` (the B-C decider). Undo → 200: A has no phone again, but A-C is still `KEPT_SEPARATE` and is listed on the Kept separate tab. Any later real match between A and C is never shown on To review and never merged by itself. The decision is credited to someone who never saw A-C. A chain (merge, Undo, merge again with B surviving) stays consistent: `mergeIfSafe(A-C)` → `refused: []`.
+
+**R3-3 Minor (R2-2 residual): the re-check under the locks runs after the merge has already copied the loser's values into the survivor.** `review.ts:125` calls `liveReasons` after `mergeRecords` has applied the picks. `defaultPick` (`ports/person-merge.ts:91-94`) takes the newer side. A loser edited during the wait is always newer, so its new email lands on the survivor and then "matches" itself.
+Steps: pair (EMAIL `s4.41@`). A session holds the loser's pair advisory lock, sets the loser's email to `s4.changed.41@` (with `updated_at`), sleeps 1.2 s and commits. `mergeIfSafe` starts 300 ms after that session → `{ mergeRef }`. The survivor's email is now `s4.changed.41@`, so two people whose emails no longer matched were merged by `system:fo-duplicates`. Expected `refused: ["NOT_EXACT"]`. The survivor-side variant is refused correctly. Fix: compare the locked rows (`loserSnapshot.loser` against the survivor's values before the merge), not the rows after the merge. The window is milliseconds.
+
+### What held (round 3)
+* The PR's n1 case. A chain (A-B merged, Undo, merged again with B surviving) keeps A-C Kept separate, and `mergeIfSafe` refuses. A new arrival D matching B and C gets OPEN pairs: a carried decision does not leak onto a person who was never part of it.
+* The carry query matches only through `merged_into_id` of the row's own two people. An undone merge (cleared `merged_into_id`) carries nothing.
+* `check_fo9b_review` 55/55. The new card row file `MODULE.rows/FO-9b-2.md` names a real entry point and test.
+
+Verdict: **Changes** on `9db9ca2d015b3452bd5fb05f5c149d6c3fd2461b` (R3-1 Major: a Kept separate decision can still be merged away by itself through an existing pair).
