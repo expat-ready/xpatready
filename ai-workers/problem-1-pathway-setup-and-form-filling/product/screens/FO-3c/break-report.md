@@ -289,3 +289,49 @@ What held:
 - **Not a finding:** a first run of the copy answered 500 on by-booking (`PrismaClientValidationError`). Another session regenerated the shared Prisma client while the copy was starting (`node_modules/.prisma/client/index.js` stamped 05:24:04). After a restart every call answered as above.
 
 Verdict: Changes f40ebc7e38e0e3d774538626afa28203e29649a1
+
+## Part 2, round 2 (f89c066a6; head e8511e156)
+
+Scope: `git diff f40ebc7e3..f89c066a6`. e8511e156 only re-adds the four J-104 screenshots, and d560df8e0 is test-only, so no code changed after f89c066a6. Tested with a scratch suite at the services, on its own database (dropped afterwards). The poller ran on simulated time: 2 s per run, as the default. No isolated copy this round.
+
+**P2R2-1. The hold can be lifted while the agreement can still be signed, and nothing replaces it. (Major)**
+- Steps:
+  1. "Everyone sees all" is on (the default). Lee's booking has ended and its agreement is SENT. Attended answers 409.
+  2. The Owner calls FO-5's `withdraw` on the agreement (`retainers/:id/withdraw`, reason "skip it"). It answers 200 and the agreement becomes WITHDRAWN.
+  3. Attended answers 200 (COMPLETED), and the consult record answers 200.
+- The client can do the same from their emailed link: they decline, and then Attended and the consult record both answer 200. The screen reads "Agreement ended unsigned".
+- In both cases `send()` refuses a new agreement: ALREADY_SENT before the booking is attended, NOT_SCHEDULED after.
+- From the code, not run: FO-5's `edit` of a SENT agreement on a booking with a prospect sets it to DRAFT (`retainers/service.ts:546`). DRAFT is not in LIVE either. The panel then says "declined, withdrawn or has expired".
+- Expected (R1.104, "cannot start until signed"): either an ended agreement still holds and can be sent again, or this lift is the Lead's explicit ruling. Today one FO-5 click, or a client's decline, means the consultation goes ahead with no agreement.
+- Where: `gate.ts:42` (only LIVE holds). The code calls this "Question for the Lead", and it is still open.
+
+**P2R2-2. The backoff can outlast the meeting, so the agreement is never sent and nothing holds. (Minor)**
+- Steps:
+  1. Firm B's provider refuses every send for 70 minutes.
+  2. A booking starts 100 minutes from now.
+  3. The provider comes back at 70 minutes.
+- Actual:
+  - During the outage there were 8 tries and 8 bypass lines. The wait doubled as designed.
+  - The next try was due about an hour after the provider came back, which is after the meeting. The catch-up only looks at future meetings, so the booking never got an agreement.
+  - A booking with no agreement is not held, so its consultation can start unsigned.
+- Expected: the wait never runs past the time left before the meeting.
+- Where: `live.ts:52-57`, together with `service.ts:122`'s `starts_at > now`.
+
+**P2R2-3. A send that fails without throwing still writes a bypass line on every catch-up. (Minor)**
+- Steps: firm B has an active CONSULTATION template, but its file is missing from the store. A booking is 5 days ahead.
+- Actual: `send()` answers `NO_TEMPLATE` with no error (`service.ts:210`). Only errors start the backoff, so 30 minutes gave 60 bypass lines: one every catch-up, about 2,880 a day until the meeting.
+- Needs a broken store. The other reasons that return without an error are excluded by the catch-up's filter; for example, an empty email is refused by `fo_person_email_check`.
+
+What held:
+- **P2-1, the signer's exception:**
+  - The signer of record reads the agreement, gets the signing link and signs (SIGNED), and gets the signed copy's key.
+  - A colleague in the same firm who is not the signer and does not see the booking gets 404 on read, signing link and copy key, before and after signing.
+  - Firm B's Owner gets 404.
+  - The exception covers only the agreement itself, by id. By-booking stays 404 for the signer and the person's list leaves it out, so nothing wider opens.
+- **P2-3, the idle flood:** 10 minutes idle, with signed copies from the last 7 days, wrote 0 bypass lines in either firm. Re-queued copies are skipped before the firm is touched.
+- **The backoff itself:** a failing row writes one line per try, at 30 s, 60 s, 120 s and so on, up to an hour (8 in 70 minutes).
+- **P2-4:** the reminder skips a type that has been switched off (code read).
+- **P2-5:** PATCH `requireAgreement: null` answers 200, stores NULL, and reads back as `requireAgreement: true, requireAgreementSet: false` (the default). The hint is back under the booker choices.
+- **P2-6:** each lead row names its meeting (`meetingAt`, read only for agreements the viewer can already see). The new-tab 401 and the paper-signed copy are the declared gaps.
+
+Verdict: Changes e8511e15673206e0c9b46a2a6028f78b50f375e4
