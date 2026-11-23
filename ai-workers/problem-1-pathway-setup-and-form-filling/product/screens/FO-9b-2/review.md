@@ -201,3 +201,59 @@ Same reviewer. I read only `review.ts` and `check_fo9b_review.ts`; the screensho
 Minors r4-m1 to r4-m4, r3-m3 and r3-m4 (and n2-n6 from round 2): fix them, or list them in the PR.
 
 Reviewer: Block 744cc791972988285a8b1c3aa865e8dc3135f2e3
+
+## Round 7 (full read, allowed by the tech lead after the pair-rules redesign): `e720342c1`, 23 Nov 2026
+A fresh reviewer (Opus 5.5; did not build it, did not rely on rounds 1-6). I read all of `review.ts`, `routes.ts`, the parts of `service.ts` it relies on (`lockPair`, `lockAll`/`lockPairFor`, `mergeRecords`, `unmergeRecords`), `arrival.ts`, `leads.ts` (`addedAsNew`), `follow.ts`, FO-9a's `duplicates/service.ts` (check, `wonDuplicates`), `people/edit.ts` (phone edit), `arrival-port.ts` (`keepPhone`), the migration and schema, the part-1 migration's `fo_dup_live_party` trigger, the platform `module_event_next_seq` trigger, and both suites.
+* **Suites at the head:** `check_fo9b_review` **64/64**, `check_fo9b_pairs_model` **17/17**, exit 0 (once each, main checkout, own scratch DBs). `graph.mjs` (run in a scratch worktree): G1 0, G2 0, none of the six routes in G3.
+* **13 one-line mutations** in a scratch worktree (removed): 8 turn a suite red, 5 do not (below). **Four probes** (P-A to P-D) in a second scratch worktree (removed), using the model suite's harness; details in `journey-test-reviewer-2026-11-23-r7.md`. Nothing in the shared tree was changed except this file and that report. US$0.
+
+### The design page (`pair-model.md`): complete in substance, gaps in the written argument
+* **No deadlock: the conclusion holds for every writer I found; the proof on the page does not cover every wait.** What I checked writer by writer:
+  * *Arrival* (`arrival.ts:103-108`) holds the `fo_sales_match` advisory locks, `for key share` on its possible match, the receipt key and a new uncommitted person. Its `notePairs` only inserts keys that contain that new person, so no other transaction can hold or insert them: it never waits there. It takes no L1 and no L2. Merges never wait on what it holds: their L3 is NOWAIT, their notes contain only committed people, and no merge waits on a lock the arrival holds. The `existingPersonId` branch calls no `notePairs`.
+  * *FO-9a*: the duplicate check and `wonDuplicates` only read. The phone edit (`people/edit.ts:60-64`) takes `fo_person … for update` and afterwards waits on nothing a merge holds. `keepPhone` waits on the merge's row lock, never the other way round.
+  * *Waits the page leaves out:*
+    * (a) A merge or Undo **does wait at commit.** The deferred `fo_dup_live_party` trigger (part-1 migration `:131-160`) takes `for key share` on every person a moved row names, third parties included. P-C: a guided merge Y into X, where Y's lead flags W, waited 2.2 s behind a session holding W `for update`, then answered 200.
+    * (b) From `emit` (`service.ts:271`) to commit, every merge and Undo holds the **global** `module_event_seq` advisory lock (pf3 migration `:433-437`). That includes the guided merge's work after `mergeRecords` (`caseOf`, `anyMoney`, `notePairs`). P-C2: during (a), an unrelated arrival waited 2.2 s.
+    * (c) Keep separate's `fo_lead` update waits on lead writers, not only on merges.
+    * (d) Undo takes L2 *after* L3 (`review.ts:366-369`), not in the page's L1-L2-L3 order.
+    * (e) A merge's re-noting update (`:123-125`) holds a pair row with the L1 of only one of its people (the survivor).
+
+    None of these closes a cycle. (a) can only wait on a phone edit: another merge cannot hold that person, because the row naming it is in both merges' NOWAIT sets (columns.ts MOVE covers every guarded column). (b) means two merges never reach `notePairs` together, so the "one shared key" bullet (`pair-model.md:69`) cannot even arise. (d) and (e) are safe, because any waiter on that row holds the L1 of a shared person. The page's bullets (`:66-69`) are therefore true, but they do not cover these waits.
+* **"A Kept separate decision is never joined": holds** for this module's merges, including under concurrency. A merge joins exactly the trees of its two roots and holds both roots' L1. Each way the trees or the Kept separate rows could change is shut out while it holds them:
+  * a merge into a tombstone is refused (`ALREADY_MERGED`, `MERGED_AWAY`);
+  * an Undo inside a tree is refused (only the latest merge naming a record can be undone);
+  * Keep separate refuses a merged-away side;
+  * Add as new pairs only with an uncommitted new person.
+
+  The page's three bullets (`:72-74`) name only "either record", not the tombstones in each tree. The case-side port (`port.ts`, not yet called) can still join; §4 says so.
+* **`listed()` = `list()`:** they agree by reading: the same order (decided, withdrawn, merged away, kept, open), the same root rule and the same lowest-id `keptThrough`. P-A: 1,462 pair states over 6 seeds × 30 steps, **0 disagreements**. The only possible divergence is a chain deeper than 64 (`rootsOf`), which cannot happen in practice. No test pins the agreement (R7-1).
+* **States and Undo claims: true as scoped** ("Undo of the last change"; I2 holds, and the m7 and m10 mutations break it). Three things the page does not say:
+  * an Undo after an arrival matched the merged record leaves a wrong list (r7-m2);
+  * a MERGED row whose merge is undone through the port stays MERGED (r7-m5);
+  * `noted_by_merge_id` is "the merge that last re-noted it", not "first wrote" (`:14`; the schema comment says the same).
+
+**Findings**
+* **R7-1 (Major, tests; STANDARDS §7 [M] "a rule's test fails when the rule is removed").** Four rules of the pair model can be removed with **both suites green** (64/64, 17/17):
+  * m1: `listed()` withdrawn → NOT_LISTED (`review.ts:99`). A merge or Keep separate on a pair that is on no list goes through.
+  * m2: `mergeIfSafe`'s `p.withdrawn` (`:189`).
+  * m3: re-noting a pair that an undone merge wrote (`:122-125`). Without it, the pair stays hidden for good.
+  * m6: `list()` hiding an OPEN pair with a merged-away side (`:275`). Without it, B-C stays on To review after B merges into A, and acting on it answers 409 MERGED_AWAY.
+
+  The model's invariants cannot see these: I2 compares only the views before and after an Undo, and m6 shows the same before and after. Also weak: m5 (`mergeIfSafe` without `lockPeople`) fails only 1 of 8 seeds. Pinned: m4, m7, m8, m10, m12, m13, m14. (m11 survives too, but it can only be reached by breaking I1.)
+  * **Fix:** a pass and a fail for each of m1, m2, m3 and m6, and a `listed()` vs `list()` agreement check after every model step. P-A's harness does this through `preview`'s 409 codes.
+* **r7-m1 (minor, design page).** Add the waits (a) to (e) above to §2, with why none closes a cycle. Widen §1's "never joined" bullets to "any record of either tree". Fix "first wrote".
+* **r7-m2 (minor, data; n2's class).** P-D, all through the service:
+  * B merges into A, taking B's email; N then arrives with that email, giving the N-A pair; Undo: 200.
+  * To review then shows **N-A with `[EMAIL]`**, although A's email is back to its own. **N-B, who share an email, is not listed at all.**
+  * Part 1's "something reached the survivor" check (`service.ts:301-306`) does not count a new person whose lead flags the survivor.
+  * **Fix:** refuse that Undo (a pair with the survivor first seen after the merge with `noted_by_merge_id` null), or list it as a limit on the page.
+* **r7-m3 (minor, performance).** Through (b), every merge holds the platform-wide event-order lock while it does its post-merge checks and `notePairs`, and it waits on (a) while holding it. With ~100 firms in one process (P-562), keep that work short. Note it on the page.
+* **r7-m4 (minor).** `mergeIfSafe` (`:184-198`) does not use `listed()`. On a pair with a merged-away side it reaches `mergeRecords` and *throws* 409 `ALREADY_MERGED` (P-B: 27 times) instead of returning `{ refused }`, which part 2b's caller will have to handle. Gate it with `listed()`, as the page says ("only on a pair that is To review"); this also removes the duplicate withdrawn check (m2).
+* **r7-m5 (minor, latent).** Through `PersonMergePort.unmergePersons` (case side, not yet called), an Undo leaves the pair row MERGED and naming an undone merge, a state missing from §1's table. Add it to §4.
+* **Still open from earlier rounds:** n3 (the survivor's `updatedAt` is compared before the lock, `:334-338`), n4 and n5. I did not re-check r3-m3 this round. r4-m2, r4-m3 and r4-m4 are gone with the redesign: no upsert, `kept: false` after the lock, a recursive `keptBetween`.
+
+**D-score changes:** D2 **4** (no rule broken; r7-m2) · D4 **4** · D5 **4** (P-B: 90 mixed bursts with arrivals, Add as new and Undo; 0 errors, 0 deadlocks) · D16 **3** (R7-1) · D18 **4**. Others as in round 4. **Journey: 8/10** (passes, no 0; `journey-test-reviewer-2026-11-23-r7.md`).
+
+**Verdict: Changes (Ship after fixes)** on `e720342c11653968934b356d550514b7792188da`. No Blocker. The code is right by reading and under every probe. To fix: R7-1, with tests that fail when each rule is removed. Minors r7-m1 to r7-m5 (and n3-n5): fix them, or list them in the PR.
+
+Reviewer: Changes e720342c11653968934b356d550514b7792188da
