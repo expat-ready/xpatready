@@ -395,3 +395,51 @@ What held:
 - **Permissions:** the controller and the read rules are not in the diff. `forBooking` now reads the newest agreement, the same one the hold reads.
 
 Verdict: Changes 9f2754207cdd532db0094c26e69e1a6e478821b1
+
+## Part 2, round 3 re-check (8927036b4)
+
+Scope: `git diff 9f2754207..8927036b4`. Tested with a scratch suite at the services, built on the row suite's set-up, on its own database (dropped afterwards). "Everyone sees all" was on, so FO-5's actions could run. The row suite passes 45/45.
+
+**P2R3-1: fixed.**
+- Case 1, re-run:
+  1. FO-5's `edit` puts A1 back to DRAFT, and the catch-up sends A2.
+  2. FO-5's `send` of A1 answers 200, and the client and the firm sign A1. The statuses are SIGNED, then SENT.
+  3. The hold is lifted. By-booking shows A1 "Agreement signed", and a further catch-up sends 0.
+- Case 2, re-run:
+  1. `signedOffline` on A1 answers 200, and the hold lifts at once.
+  2. The firm withdraws A2. The hold stays lifted, and the catch-up sends 0.
+  3. A reschedule event answers ALREADY_SENT, pointing at A1. The panel shows A1 SIGNED_OFFLINE, "Agreement signed".
+- The hold, `send()`, the reschedule event and the catch-up now agree:
+  - The client declines A2 while the re-sent A1 is still waiting (SENT, then DECLINED). No third agreement is sent: the catch-up sends 0, `send()` answers ALREADY_SENT pointing at A1, and the hold is on A1.
+  - A1 and A2 are both signed. The hold is lifted, the panel shows the newer signed one, and the lead page lists both.
+
+**P2R3R-1. When an older agreement is client-signed and a newer one is only sent, the panel shows the newer one and hides that the firm's signature is due. (Minor)**
+- Steps: as case 1, but only the client signs A1 (CLIENT_SIGNED). A2 is SENT.
+- Actual:
+  - `DECIDING_ORDER` puts the waiting agreements newest first, so the hold and by-booking name A2.
+  - The panel reads "Agreement not signed yet" with no "The client signed …: the firm signs next." line.
+  - The signature that would lift the hold, the firm's on A1, appears only in that signer's "Needs you".
+- Where: `gate.ts:30`. All waiting statuses rank the same, so CLIENT_SIGNED does not come before SENT or VIEWED.
+
+**P2R3R-2. Once one agreement is signed, the other that is still open keeps asking for signatures. (Minor)**
+- Steps: as case 1 (A1 SIGNED, A2 SENT).
+- Actual:
+  - A2 stays in the signer's "Needs you" (`service.ts:366`).
+  - At 23 hours before the meeting, the firm's signer gets the reminder "Agreement not signed yet: … tomorrow" for A2 (`service.ts:275` reads only A2's own status).
+  - The client's A2 link stays open. In the double-sign case above, the client signed A2 as well.
+- The hold is right. The noise is in the reminder, "Needs you" and the client's link.
+
+**P2R3R-3. On an Attended booking the waiting text still tells the client to sign from the link. (Minor)**
+- Steps: an Attended booking whose consult record is held, with a waiting agreement (only reachable by switching the type back on, as in P2-4).
+- Actual: the panel reads "The client signs from the link in their email, then … signs. This booking is already marked Attended, so it cannot be rescheduled…" (`agreement.tsx:46`). The client's link answers 404 once the booking is not active (`openAs` `bookingActive`).
+- The server's refusal, `HOLD_WORDS_INACTIVE`, says it correctly.
+
+What held:
+- **P2R3-4:** a cancelled booking's panel says "nothing more is sent for it". The promise of a new agreement now shows only for Scheduled or Rescheduled bookings (`sendsFresh`).
+- **m3-1:** the 409's wording follows the booking's status.
+- **m3-2:** the cap is read again at each check (row suite B12).
+- **m3-3:** only NO_TEMPLATE, NO_LICENSED and NO_CLIENT_EMAIL back off. The catch-up's filter matches `send()`'s reasons, so no other reason repeats every catch-up.
+- **`DECIDING_ORDER`:** built only from constants, through `Prisma.raw`.
+- **Permissions:** unchanged.
+
+Verdict: Approve 8927036b47dc0ed68e25d61b89c8297ac4abf514
