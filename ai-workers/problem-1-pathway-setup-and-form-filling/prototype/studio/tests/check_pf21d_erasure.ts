@@ -74,10 +74,10 @@ wallUnscopedQueries();
 const apps: { close(): Promise<void> }[] = [];
 try {
   // ------------------------------------------------------------------- ErasurePort's contract (fake and registry)
-  for (const [name, make] of [["fakeErasure", () => fakeErasure()], ["ErasureRegistry", () => new ErasureRegistry()]] as const) {
-    const r = await runContract(erasurePortContract, name, make, ok);
-    ok(`PF-21d pass/fail: ErasurePort's contract on ${name} (order kept, a module once, a bad name refused)`, r.failed.length === 0 && r.passed.length === 3, r);
-  }
+  const rFake = await runContract(erasurePortContract, "fakeErasure", () => fakeErasure(), ok);
+  const rReal = await runContract(erasurePortContract, "ErasureRegistry", () => new ErasureRegistry(), ok);
+  ok("PF-21d pass/fail: ErasurePort's contract on fakeErasure and ErasureRegistry (order kept, a module once, a bad name refused)",
+    [rFake, rReal].every((r) => r.failed.length === 0 && r.passed.length === 3), [rFake, rReal]);
   // A scratch table of a person's rows, and the test module's eraser over it (in the order's firm scope only).
   sql(`create table pf21d_rows (id serial primary key, firm_id uuid not null, person_id uuid not null)`);
   const seen: { firm: string; scope: string | undefined; person: string }[] = [];

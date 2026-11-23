@@ -148,15 +148,15 @@ export class Erasure {
     // lock is kept until the erasers are done, so a hold placed meanwhile waits for this order).
     const done = await withFirm(order.firmId, () => this.db.$transaction(async (tx) => {
       const hold = await this.holds.isHeld(tx, order.firmId, [{ kind: "PERSON", id: order.personId }]);
-      if (hold.held) return { held: hold.holds.map((h) => `hold ${h.holdId}: ${h.reason}`) } as const;
+      if (hold.held) return { kind: "held", held: hold.holds.map((h) => `hold ${h.holdId}: ${h.reason}`) } as const;
       const results: { module: string; r: EraseOutcome }[] = [];
       for (const e of this.registry.erasers()) {
         try { results.push({ module: e.module, r: EraseOutcome.parse(await e.erase(tx, order)) }); } catch (err) { throw new EraserFailed(e.module, err); }
       }
-      return { results } as const;
+      return { kind: "ran", results } as const;
     }, { maxWait: 10_000, timeout: 120_000 }));
     return this.db.$transaction(async (tx) => {
-      if ("held" in done) {
+      if (done.kind === "held") {
         await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_HELD', ${`On legal hold; nothing was erased. ${done.held.join("; ")}`.slice(0, 2000)}, ${ERASURE_ACTOR}, true)`;
         await tx.$queryRaw`SELECT plat_data_request_erasure_finish(${order.requestId}::uuid, 'BLOCKED', null, ${today}::date, ${ERASURE_ACTOR})`;
         return "held" as const;
