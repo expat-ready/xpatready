@@ -16,6 +16,7 @@ import { VerifyPage } from "./signup/verify-page";
 import { BillingPage } from "./saas/billing-page";
 import { OfficesPage } from "./settings/offices-page";
 import { BrandingPage } from "./branding/branding-page";
+import { FirmProfilePage } from "./settings/firm-profile-page";
 import { SupportPage, SupportTicketPage } from "./settings/support-page";
 import { NotificationsPage } from "./settings/notifications-page";
 import { ActivityLogPage } from "./audit/activity-log-page";
@@ -38,6 +39,7 @@ export const routes: ModuleRoute[] = [
   { path: "/platform/offices", element: <OfficesPage /> },   // PF-18s part 1: Offices (Owner and Admin)
   { path: "/platform/offices/:id", element: <OfficesPage /> },   // PF-31: one office's edit at its own address (a workspace tab)
   { path: "/platform/branding", element: <BrandingPage /> },   // PF-13 part 2: Branding (Owner and Admin; R1.23)
+  { path: "/platform/firm-profile", element: <FirmProfilePage /> },   // PF-5s S5: Firm profile (R1.92)
   { path: "/platform/support", element: <SupportPage /> },   // PF-18s part 2: Help & support
   { path: "/platform/support/:id", element: <SupportTicketPage /> },   // PF-18s part 2: one ticket
   { path: "/account/notifications", element: <NotificationsPage /> },   // PF-18s part 3: My account → Notifications (everyone's own)

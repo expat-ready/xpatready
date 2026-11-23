@@ -110,6 +110,9 @@ export class PlatformSession {
     return withFirm(firmId, () => this.db.$transaction(async (tx) => {
       const pre = await this.invitation(tx, token, false);   // one lock order with PF-4's resend and revoke: firm, then invitation
       if (pre) await tx.$queryRaw`select id from platform_firm where id = ${pre.firm_id}::uuid for no key update`;   // as inFirm (J-5 B1)
+      // PF-11c (break M3): a firm closed on day 90 takes no new staff member; read under the firm's lock the close also takes.
+      if (pre && (await tx.platformFirm.findFirst({ where: { id: pre.firm_id }, select: { status: true } }))?.status === "DELETED")
+        problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
       const i = await this.invitation(tx, token, true), state = PlatformSession.stateOf(i);
       if (state === "EXPIRED") problem(410, "Invitation expired", INVITE_WORDS.expired(i!.firm_name), { code: "INVITATION_EXPIRED", state });
       if (state !== "VALID") problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state });
