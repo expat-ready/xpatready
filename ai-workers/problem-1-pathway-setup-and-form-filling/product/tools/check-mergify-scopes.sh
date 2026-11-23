@@ -235,6 +235,18 @@ for why, edit in (("the fast step gone", lambda t: re.sub(r"(every PR and batch,
     if t == citext: bad.append(f"self-test: the edit '{why}' changed nothing in ci.yml, so it proves nothing")
     elif not ci_bad(t): bad.append(f"self-test: ci.yml with {why} still passes this check")
 n += 1; bad += ci_bad(citext)
+# E6 (P-772): the product queue waits for a green pr-rules (body and size rules), as a plain top-level condition (inside an
+# "or" another branch could satisfy it), next to ci. Undo with the .mergify.yml line, then this check.
+n += 1
+pc = [c.replace(" ", "") for c in conds.get("product", [])]
+if "check-success=pr-rules" not in pc or "check-success=ci" not in pc:
+    bad.append("the product queue does not wait for both check-success = pr-rules (E6, P-772) and check-success = ci")
+# ... and pr-rules must then run on every PR that can reach that queue: its job never skips on a label read from the event
+# (records-label.yml drops "records" on the same push that adds code; no run follows a GITHUB_TOKEN label change).
+n += 1
+pr = yaml.safe_load(open(os.path.join(root, ".github/workflows/pr-rules.yml"), encoding="utf-8"))
+jif = str(((pr.get("jobs") or {}).get("pr-rules") or {}).get("if", ""))
+if "label" in jif: bad.append(f"pr-rules.yml: the job skips on a label ({jif}), so a product PR can wait for a check that never runs")
 # One source (Lead 4, 22 Nov 16:03 IST, for SPD-1 #3006): the path owners live in .mergify.yml's scopes only. A track
 # list (product/tools/track-paths.txt, read by track-route.py) names a scope by "scope:<name>"; a raw line that repeats a
 # scope's own include pattern is a second copy that can drift, so it is refused. A raw line naming part of a scope (a
