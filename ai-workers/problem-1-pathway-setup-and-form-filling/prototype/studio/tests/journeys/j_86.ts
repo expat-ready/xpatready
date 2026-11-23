@@ -214,7 +214,7 @@ try {
   const page6 = id ? await consolePage(`/system/privacy/breaches/${id}`) : "";
   const sendA = id ? await p.getByRole("button", { name: new RegExp(`(send|notify).*${A.name}`, "i") }).count() : -1;
   const timeShown = (t: string | null) => !!t && [t.slice(0, 10), new Date(t).toLocaleDateString("en-CA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }), new Date(t).toLocaleDateString("en-CA", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })].some((d) => page6.includes(d));
-  ok("J-86 W6 (parts missing: PF-21rs): the breach's page in our console shows the assessment and lists firm A's and firm B's notices, each with its time and the notice's subject; firm C is not listed",
+  ok("J-86 W6 (parts missing: PF-21rs; the words need QA-757): the breach's page in our console shows the assessment and lists firm A's and firm B's notices, each with its time and the notice's subject; firm C is not listed",
     !!id && page6.includes(rec.description) && page6.includes(decision.decisionReason) && page6.includes(A.name) && page6.includes(B.name) && !page6.includes(C.name) && timeShown(timeA.sentAt) && !!eA && page6.includes(eA.subject),
     page6.slice(0, 240) || "no breach to open (PF-21c)");
   ok("J-86 W6 (parts missing: PF-21rs): no second send is offered to a notified firm", !!id && /notice|notified/i.test(page6) && sendA === 0, { sendA });

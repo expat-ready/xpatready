@@ -224,7 +224,7 @@ try {
   });
   // The Done when names notarisation among the flags "that the checklist reads"; CS-D7's own Done when reads only the
   // translation line and the expiry/age warnings, so no part delivers this clause (proposed QA bug row in the qa report).
-  await step("Gap (no part: CS-D7 reads only translation and expiry) W4: notarisation Required and not provided shows on the passport's checklist line (a warning or a line naming notarisation); nothing is blocked", async () => {
+  await step("QA-758 (Ambiguity: CS-D7 reads only translation and expiry) W4: notarisation Required and not provided shows on the passport's checklist line (a warning or a line naming notarisation); nothing is blocked", async () => {
     const v = Number(sql(`select flags_version from case_document where id='${doc}'`) ?? -1);
     const r = await call("POST", `/runtime/documents/${doc}/flags`, { version: v, notarisation: "REQUIRED" }, c.officer);
     const m = await me(), l = m?.lines.find((x) => x.id === passLine?.id);
