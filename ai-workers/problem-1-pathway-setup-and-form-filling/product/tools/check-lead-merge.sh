@@ -48,6 +48,10 @@ ok "no batch running: the steps, no reason needed, exit 0" "$(grep -q '^rc=0' <<
 jq -n '[range(100) as $i | {number: (100 + $i), state: "open", head: {ref: "claude/lane-\($i)", sha: "s50"}}]' > "$T/full.json"
 o=$(lm "$T/full.json" 2754)
 ok "100 open lane PRs (a full page, so a warn line comes first) and no batch: the steps, exit 0" "$(grep -q '^rc=0' <<< "$o" && grep -q '^Steps for #2754' <<< "$o" && grep -q '^warn  100 open PRs read' <<< "$o" && echo 1)" "$o"
+o=$(lm "$T/none.json" 2754)
+ok "step 1 asks for the Lead's read of the diff on that head: post \"Lead read the diff: <head sha>\" (P-423; Lead 5, 23 Nov)" "$(grep -q '^  1\. .*post "Lead read the diff: <head sha>"' <<< "$o" && echo 1)" "$o"
+ok "a product PR is never merged by hand" "$(grep -q 'a product PR is never merged by hand' <<< "$o" && echo 1)" "$o"
+ok "step 3 (a by-hand merge) comes only after step 1's Lead-read line" "$(grep -q '^  3\. only after step 1' <<< "$o" && echo 1)" "$o"
 o=$(lm "$T/bad.json" 2754)
 ok "batches not countable and no --reason: refused (unknown is not safe)" "$(grep -q '^rc=1' <<< "$o" && grep -q 'could not be counted' <<< "$o" && echo 1)" "$o"
 o=$(lm "$T/none.json")

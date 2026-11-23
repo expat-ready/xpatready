@@ -42,7 +42,10 @@ SHA = re.compile(r"\b[0-9a-f]{7,40}\b", re.I)
 
 
 class Unread(Exception):
-    pass
+    notfound = False   # gh's own 404 forms, judged on the whole error text before it is cut to one short line
+
+
+NOTFOUND = re.compile(r"\(HTTP 404\)|^HTTP 404:|returned error: 404\b", re.M)
 
 
 def gh(*args):
@@ -52,7 +55,10 @@ def gh(*args):
     except (OSError, subprocess.TimeoutExpired) as e:
         raise Unread(str(e))
     if r.returncode != 0:
-        raise Unread(((r.stderr or r.stdout).strip().splitlines() or ["exit %d" % r.returncode])[-1][:120])
+        text = (r.stderr or r.stdout).strip()
+        e = Unread((text.splitlines() or ["exit %d" % r.returncode])[-1][:120])
+        e.notfound = bool(NOTFOUND.search(text))
+        raise e
     return r.stdout
 
 
@@ -92,23 +98,33 @@ def check_only(files):
 # The Lead's read exactly as lead-read-gate.sh on main reads it (breaker and reviewer, 23 Nov): HTML comments, ``` and
 # ~~~ blocks dropped, then * _ ` and CR; a line indented by 4 spaces or a tab is code; ASCII blanks only (a no-break space
 # is not one); "Lead read the diff:" (colon optional) or "Lead read: OK", the full head, an optional full stop.
-LEAD_READ = re.compile(r"^[ \t\v\f]*lead read(?:: *ok| the diff:?)[ \t\v\f]+([0-9a-f]{40})[ \t\v\f]*\.?[ \t\v\f]*$", re.I)
+LEAD_READ = re.compile(r"^[ \t\v\f]*lead read(?:: *ok| the diff:?)[ \t\v\f]+([0-9a-f]{40})[ \t\v\f]*\.?[ \t\v\f]*$", re.I | re.A)   # grep -i folds ASCII only
 DROP = [re.compile(r"<!--[\s\S]*?(?:-->|\Z)"), re.compile(r"```[\s\S]*?(?:```|\Z)"), re.compile(r"~~~[\s\S]*?(?:~~~|\Z)")]
+
+
+def asc(x):
+    """Lower-case ASCII letters only, as jq's ascii_downcase (logins are ASCII)."""
+    return re.sub(r"[A-Z]", lambda m: m.group().lower(), x)
 
 
 def lead_read(comments, head, author="", leads=()):
     """The Lead's read of this head, as lead-read-gate.sh judges it: a comment by someone with write access, never
     edited, and, when LEAD_LOGINS names logins, by one of them and never the PR's author; a line alone (above)."""
-    leads = [x.lower() for x in leads]
+    leads = [asc(x) for x in leads]
+    counted = []
     for c in comments:
         if c.get("author_association") not in TRUSTED or not c.get("created_at"):
             continue
-        if (c.get("updated_at") or c.get("created_at")) != c.get("created_at"):
+        u = c.get("updated_at")
+        if (c.get("created_at") if u is None else u) != c.get("created_at"):   # jq's //: only null falls back
             continue
-        login = str((c.get("user") or {}).get("login") or "").lower()
-        if leads and (login not in leads or login == str(author or "").lower()):
+        login = asc(str((c.get("user") or {}).get("login") or ""))
+        if leads and (login not in leads or login == asc(str(author or ""))):
             continue
-        body = c.get("body") or ""
+        counted.append(c.get("body") or "")
+    if any("\x00" in b for b in counted):   # the gate's grep reads the counted comments as binary and finds no line
+        return False
+    for body in counted:
         for d in DROP:
             body = d.sub("", body)
         for line in re.sub(r"[*_`\r]", "", body).split("\n"):
@@ -202,17 +218,25 @@ def main(argv):
         except Unread:
             rv = ""
     who = [repo.split("/")[0]] + rv.split()
-    # LEAD_LOGINS: the repository variable lead-read-gate.sh reads (env first; unset on GitHub = any writer). Any other
+    # LEAD_LOGINS: the variable lead-read-gate.sh reads (unset on GitHub = any writer). Any other
     # read failure: no merge is offered at all (fails safe), said on a warn line.
-    ll = os.environ.get("LEAD_LOGINS")
+    # lead-read.yml reads vars.LEAD_LOGINS, which an organization variable also fills: a 404 on the repository's asks the
+    # organization's; a 404 on both is unset.
+    # The gate reads only vars.LEAD_LOGINS, so the Lead's shell never overrides it; QB_LEAD_LOGINS is the test's stand-in.
+    ll = os.environ.get("QB_LEAD_LOGINS") or None
     if ll is None:
-        try:
-            ll = gh("api", "repos/%s/actions/variables/LEAD_LOGINS" % repo, "-q", ".value")
-        except Unread as e:
-            ll = "" if re.search(r"\b404\b|not found", str(e), re.I) else None
-            if ll is None:
+        for where in ("repos/%s" % repo, "orgs/%s" % repo.split("/")[0]):
+            try:
+                ll = gh("api", "%s/actions/variables/LEAD_LOGINS" % where, "-q", ".value")
+                break
+            except Unread as e:
+                if e.notfound:
+                    ll = ""
+                    continue
+                ll = None
                 print("warn  queue blocked by checks: LEAD_LOGINS unreadable (%s): no merge is offered this check" % e)
-    leads = None if ll is None else [x for x in re.split(r"[\s,]+", ll) if x]
+                break
+    leads = None if ll is None else [x for x in re.split(r"(?:[^\S\x1c-\x1f]|,)+", ll) if x]   # jq's [\s,]+
     for x in note:
         print(x)
     for w in warn:
