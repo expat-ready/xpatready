@@ -74,3 +74,43 @@ Blockers: none · Majors: none · Minors: 1–4 above.
 
 Reviewer: Approve 2d69a9f173734bbd11599202d1edf81335a9f441
 Verdict: Approve 2d69a9f173734bbd11599202d1edf81335a9f441
+
+## Round 2: `2d69a9f17..9ae4fb361` (diff only)
+Reviewed in my own worktree of `9ae4fb3611e65c409be1b6416be0fdaee02985cc`.
+
+**Round 1 Minors:**
+- **m1: fixed.** With an `invoiceId`, the tax route skips the party gate and judges by `seesInvoice` (`tax/routes.ts:38`). New cases: the L4 tax default is 404, and L1's is 200. M1 again (`seesInvoice` removed) now fails 2 cases, S11 and L4 (tax): the line can fail.
+- **m2: fixed.**
+  - `seen` now runs before `lock` in issue, record and credit (`money.ts:54,92,149`).
+  - In refunds and extra it runs on a lock-free `row()` before `lock` (`refunds.ts:42,80`). A missing payment still reaches `lock`'s own 404 "payment".
+  - It runs before the `FOR UPDATE` in lines and bill-to (`drafts.ts:101,146`), and before the view or facts in read, pdf and send.
+  - Each 404 for a missing id keeps its words, because `invoiceInScope` uses the same text as `notFound`.
+  - No new write comes before the check.
+- **m3: fixed.** Port rule 2 and the adapter header name the linked parties. The new `MODULE.rows/FO-7b-C5.md` names the guard and `caseLinks`. `CS-MV1.md` is unchanged, but the new row covers it, so that is acceptable.
+- **m4: fixed.** j_29 asserts `invStored` and reports it as `invoiceFixture`.
+- The suite's `as unknown[]` casts change no behaviour.
+
+**Runs on 9ae4fb361:**
+- `check_fo7b_c5_scope` 36/0;
+- `check_fo7b_refunds` 29/0;
+- `check_fo7b_invoices` 108/0;
+- `check_fo7g3_bill_to` 30/0;
+- `check_fo7g_tax_defaults` 78/0.
+
+Not re-run: tsc, j_29 (a one-line rename), and the FO-7q/CS-MV1 suites (their files are untouched in this diff).
+
+**New, Minor (m5): the m1 fix opened a wording gap on the tax route with an `invoiceId`.** I proved it with a probe in a scratch copy of the suite. User-O called the tax default with a random `invoiceId`:
+
+| Party | Answer |
+|---|---|
+| PX, an existing person outside their scope | 404 "No such invoice for this client in your firm." |
+| An unknown person id | 404 "No such person in your firm." |
+
+In round 1 both answered with the person words. A caller who already holds a person's id can therefore tell whether that person exists in their own firm. No invoice, figure or money fact leaks, and Lead 14 (2) only asks for parity without an invoice. That is why this is Minor.
+- Fix (one line, `tax/routes.ts:38`): when `invoiceId` is sent, a missing party answers the invoice words too (`!found` → "No such invoice for this client in your firm.").
+- Test: compare that answer for PX and for an unknown id, as S12 does.
+
+**Round 2 result:** Blockers none · Majors none · Minors: m5 (new). m1–m4 are closed. The journey score stays 8/10, a pass. The fixes raise no criterion to 1, and m5 does not lower one.
+
+Reviewer: Approve 9ae4fb3611e65c409be1b6416be0fdaee02985cc
+Verdict: Approve 9ae4fb3611e65c409be1b6416be0fdaee02985cc
