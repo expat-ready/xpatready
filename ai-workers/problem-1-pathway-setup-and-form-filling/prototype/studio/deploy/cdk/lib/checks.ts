@@ -177,14 +177,52 @@ export function databaseFindings(t: Template, days = 35): string[] {
   return out;
 }
 
-/** Every bucket blocks all public access, keeps versions, is KMS-encrypted and refuses plain HTTP by its policy. */
+/** PF-F1c: the server access logs are kept this many days (the row's value; the app log group's 90 days, PF-23c). */
+export const ACCESS_LOG_DAYS = 90;
+/** PF-F1c: an upload started and never finished is aborted after this many days (its parts are billed until then). */
+export const ABORT_UPLOAD_DAYS = 1;
+type Rule = { Status?: string; ExpirationInDays?: number; NoncurrentVersionExpiration?: { NoncurrentDays?: number }; AbortIncompleteMultipartUpload?: { DaysAfterInitiation?: number } };
+const rulesOf = (p: Record<string, unknown>) => ((p.LifecycleConfiguration as { Rules?: Rule[] } | undefined)?.Rules) ?? [];
+const logTargetOf = (p: Record<string, unknown>) => (p.LoggingConfiguration as { DestinationBucketName?: { Ref?: string } } | undefined)?.DestinationBucketName?.Ref;
+/** PF-F1c: the stack's access-log buckets: a bucket of this stack that another bucket of it names as its log target, and
+ *  that logs nowhere itself. They hold S3's request log lines, never a firm's file; bucketFindings holds them to their own
+ *  rules, and the backup plan leaves them out (their lines expire after ACCESS_LOG_DAYS anyway). */
+export function accessLogBuckets(t: Template): Set<string> {
+  const ids = new Set(resources(t, "AWS::S3::Bucket").map(([id]) => id));
+  return new Set(resources(t, "AWS::S3::Bucket").map(([, r]) => logTargetOf(r.Properties ?? {})).filter((x): x is string => !!x && ids.has(x) && !logTargetOf(t.Resources![x].Properties ?? {})));
+}
+
+/** Every bucket blocks all public access and refuses plain HTTP by its policy. A data bucket also keeps versions, is
+ *  KMS-encrypted with this stack's key, refuses a put not encrypted with aws:kms (PF-F1c), logs its requests to an
+ *  access-log bucket of this stack (PF-F1c) and aborts an unfinished upload after a day (PF-F1c). An access-log bucket is
+ *  encrypted with S3's own key (aws-cdk-lib 2.275.0 refuses the aws/s3 KMS key for a log target; a customer key would
+ *  need S3's logging service on the data key's policy), keeps its lines ACCESS_LOG_DAYS and aborts unfinished uploads. */
 export function bucketFindings(t: Template): string[] {
   const out: string[] = [];
   const policies = resources(t, "AWS::S3::BucketPolicy").map(([, r]) => r.Properties ?? {});
+  const logs = accessLogBuckets(t);
+  const statementsFor = (id: string) => policies.filter((pp) => json(pp.Bucket).includes(`"${id}"`)).flatMap((pp) => ((pp.PolicyDocument as { Statement?: Record<string, unknown>[] })?.Statement ?? []));
+  const onObjects = (s: Record<string, unknown>, id: string) => json(s.Resource).includes(`"${id}"`) && json(s.Resource).includes('"/*"');
   for (const [id, r] of resources(t, "AWS::S3::Bucket")) {
     const p = r.Properties ?? {};
     const block = (p.PublicAccessBlockConfiguration ?? {}) as Record<string, unknown>;
     for (const k of ["BlockPublicAcls", "BlockPublicPolicy", "IgnorePublicAcls", "RestrictPublicBuckets"]) if (block[k] !== true) out.push(`${id}: ${k} is not true`);
+    const rules = rulesOf(p);
+    if (!rules.some((x) => x.Status === "Enabled" && x.AbortIncompleteMultipartUpload?.DaysAfterInitiation === ABORT_UPLOAD_DAYS)) out.push(`${id}: an unfinished upload is not aborted after ${ABORT_UPLOAD_DAYS} day`);
+    if (logs.has(id)) {
+      if (json(p.BucketEncryption) !== json({ ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: "AES256" } }] })) out.push(`${id}: the access-log bucket is not encrypted with S3's own key (AES256)`);
+      if (!rules.some((x) => x.Status === "Enabled" && x.ExpirationInDays === ACCESS_LOG_DAYS)) out.push(`${id}: access log lines are not kept ${ACCESS_LOG_DAYS} days`);
+      if (rules.some((x) => x.Status === "Enabled" && typeof x.ExpirationInDays === "number" && x.ExpirationInDays < ACCESS_LOG_DAYS)) out.push(`${id}: access log lines expire before ${ACCESS_LOG_DAYS} days`);
+      if (json(p.OwnershipControls) !== json({ Rules: [{ ObjectOwnership: "BucketOwnerEnforced" }] })) out.push(`${id}: the access-log bucket does not enforce the bucket owner (no ACLs)`);
+      if (!statementsFor(id).some((s) => s.Effect === "Deny" && json(s.Condition).includes('"aws:SecureTransport":"false"') && anyone(s.Principal) && (s.Action === "s3:*" || json(s.Action) === '["s3:*"]') && onObjects(s, id))) out.push(`${id}: no policy refusing plain HTTP`);
+      continue;
+    }
+    // PF-F1c: requests to a data bucket are logged to an access-log bucket of this stack
+    if (!logs.has(logTargetOf(p) ?? "")) out.push(`${id}: its requests are not logged to an access-log bucket of this stack`);
+    // PF-F1c: a put sent with another encryption (AES256, aws:kms:dsse) or with none named is refused by the bucket itself
+    const putDeny = (cond: unknown) => statementsFor(id).some((s) => s.Effect === "Deny" && anyone(s.Principal) && (s.Action === "s3:PutObject" || json(s.Action) === '["s3:PutObject"]') && onObjects(s, id) && json(s.Condition) === json(cond));
+    if (!putDeny({ StringNotEquals: { "s3:x-amz-server-side-encryption": "aws:kms" } })) out.push(`${id}: no policy refusing a put encrypted other than with aws:kms`);
+    if (!putDeny({ Null: { "s3:x-amz-server-side-encryption": "true" } })) out.push(`${id}: no policy refusing a put that names no encryption`);
     if ((p.VersioningConfiguration as { Status?: string } | undefined)?.Status !== "Enabled") out.push(`${id}: versioning not enabled`);
     if (!json(p.BucketEncryption).includes('"aws:kms"')) out.push(`${id}: not KMS-encrypted`);
     else {
@@ -198,7 +236,6 @@ export function bucketFindings(t: Template): string[] {
         && json(s.Resource).includes(`"${id}"`) && json(s.Resource).includes('"/*"')));
     if (!tlsOnly) out.push(`${id}: no policy refusing plain HTTP`);
     // PF-8rc: old versions expire after the backups' 35 days (versioning alone would keep every version for ever)
-    const rules = ((p.LifecycleConfiguration as { Rules?: { Status?: string; NoncurrentVersionExpiration?: { NoncurrentDays?: number } }[] } | undefined)?.Rules) ?? [];
     if (!rules.some((r) => r.Status === "Enabled" && r.NoncurrentVersionExpiration?.NoncurrentDays === RETENTION_DAYS)) out.push(`${id}: old versions do not expire after ${RETENTION_DAYS} days`);
   }
   return out;
@@ -270,6 +307,20 @@ const statementsOf = (doc: unknown): { st: Record<string, unknown>[]; unreadable
 };
 const allows = (doc: unknown) => { const r = statementsOf(doc); return r.unreadable !== undefined ? r : { st: r.st.filter((x) => x.Effect === "Allow") }; };
 
+/** PF-F1c: exactly the statement aws-cdk-lib writes for S3 server access logging by bucket policy: the logging service may
+ *  put objects under one prefix of an access-log bucket (the policy's own bucket), only from a bucket of this stack named
+ *  by its ARN and only for this account. Anything wider (another principal, action, resource or a missing condition) is
+ *  not this statement. */
+const logDelivery = (t: Template, policy: Resource, st: Record<string, unknown>) => {
+  const bucket = (policy.Properties?.Bucket as { Ref?: string } | undefined)?.Ref ?? "";
+  const res = (st.Resource as { "Fn::Join"?: [string, unknown[]] } | undefined)?.["Fn::Join"];
+  const source = (st.Condition as { ArnLike?: { "aws:SourceArn"?: { "Fn::GetAtt"?: [string, string] } } } | undefined)?.ArnLike?.["aws:SourceArn"]?.["Fn::GetAtt"];
+  return accessLogBuckets(t).has(bucket) && json(st.Principal) === json({ Service: "logging.s3.amazonaws.com" }) && st.Action === "s3:PutObject"
+    && !!res && res[0] === "" && res[1].length === 2 && json(res[1][0]) === json({ "Fn::GetAtt": [bucket, "Arn"] }) && typeof res[1][1] === "string" && /^\/[a-z]+\/\*$/.test(res[1][1])
+    && !!source && source[1] === "Arn" && t.Resources?.[source[0]]?.Type === "AWS::S3::Bucket" && source[0] !== bucket
+    && json(st.Condition) === json({ ArnLike: { "aws:SourceArn": { "Fn::GetAtt": source } }, StringEquals: { "aws:SourceAccount": { Ref: "AWS::AccountId" } } });
+};
+
 /** PF-8rc break B4 (c), round 2 R2-1/R2-5: every KMS key policy and vault access policy is readable, and every Allow in
  *  it names exactly this account's root (as CDK writes it), never a service, another account or everyone. The account
  *  root's own reach is the governance-mode limit (B1). Every bucket policy is readable and only denies (round 3, R3-2). */
@@ -282,7 +333,8 @@ export function resourcePolicyFindings(stacks: SynthStack[]): string[] {
     const a = allows(doc), at = `${s.name}/${id} (${r.Type})`;
     if (a.unreadable !== undefined) { out.push(`${at}: its policy cannot be read: ${a.unreadable}`); continue; }
     // a bucket policy only denies (the plain-HTTP deny); access comes from IAM in this account (round 3, R3-2)
-    if (r.Type === "AWS::S3::BucketPolicy") { for (const st of a.st) out.push(`${at}: allows ${json(st.Action)} to ${json(st.Principal)}; a bucket policy may only deny`); continue; }
+    // PF-F1c: the one Allow: S3's logging service writing one data bucket's lines under its prefix in an access-log bucket
+    if (r.Type === "AWS::S3::BucketPolicy") { for (const st of a.st) if (!logDelivery(s.template, r, st)) out.push(`${at}: allows ${json(st.Action)} to ${json(st.Principal)}; a bucket policy may only deny`); continue; }
     // PF-8b: an ECS execution role of this stack may decrypt the key only through Secrets Manager here (its own secrets)
     const execIds = new Set(Object.values(s.template.Resources ?? {}).filter((x) => x.Type === "AWS::ECS::TaskDefinition").map((x) => (x.Properties?.ExecutionRoleArn as { "Fn::GetAtt"?: [string] })?.["Fn::GetAtt"]?.[0]));
     const ecsExec = (st: Record<string, unknown>) => { const g = (st.Principal as { AWS?: { "Fn::GetAtt"?: [string] } | { "Fn::GetAtt"?: [string] }[] })?.AWS; if (Object.keys(st.Principal ?? {}).length !== 1) return false;
@@ -328,7 +380,8 @@ export function backupFindings(home: SynthStack, stacks: SynthStack[]): string[]
     if (!planId || t.Resources?.[planId]?.Type !== "AWS::Backup::BackupPlan") out.push(`${home.name}/${id}: the selection is not this stack's plan's`);
   }
   const chosen = json(sels.map(([, r]) => (r.Properties?.BackupSelection as { Resources?: unknown })?.Resources));
-  for (const [id] of [...resources(t, "AWS::RDS::DBInstance"), ...resources(t, "AWS::S3::Bucket")]) if (!chosen.includes(`"${id}"`)) out.push(`${home.name}/${id}: not in the backup selection`);
+  const logs = accessLogBuckets(t); // PF-F1c: S3's request log lines, kept 90 days, are not backed up
+  for (const [id] of [...resources(t, "AWS::RDS::DBInstance"), ...resources(t, "AWS::S3::Bucket").filter(([b]) => !logs.has(b))]) if (!chosen.includes(`"${id}"`)) out.push(`${home.name}/${id}: not in the backup selection`);
   return out;
 }
 
@@ -340,7 +393,9 @@ export const ROLE_ACTIONS = ["kms:Decrypt"];
  *  write its containers' lines to the app log group (the execution role; PF-8b F1; held to that group's ARN alone by
  *  service-checks.ts logFindings), send mail (the task role). A role trusted by AWS Backup keeps ROLE_ACTIONS only. */
 export const ECS_EXEC_ACTIONS = ["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:GetAuthorizationToken", "secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret", "logs:CreateLogStream", "logs:PutLogEvents"];
-export const ECS_TASK_ACTIONS = ["ses:SendEmail", "ses:SendRawEmail"]; // an execution role pulls and reads; a task role only sends (review r1)
+// an execution role pulls and reads; a task role only sends (review r1). PF-F1c: and reads and writes firms' files in its
+// bucket, through the data key (each held to its exact resource and condition by service-checks.ts filesTaskFindings)
+export const ECS_TASK_ACTIONS = ["ses:SendEmail", "ses:SendRawEmail", "s3:GetObject", "s3:PutObject", "s3:ListBucket", "kms:GenerateDataKey", "kms:Decrypt"];
 const SERVICE_ACTIONS: Record<string, string[]> = { "backup.amazonaws.com": ROLE_ACTIONS, "ecs-tasks.amazonaws.com": [] };
 /** The only principals that may assume a role: AWS Backup, and ECS tasks (PF-8b). */
 export const TRUSTED_SERVICES = Object.keys(SERVICE_ACTIONS);
@@ -395,6 +450,8 @@ export function bypassFindings(stacks: SynthStack[]): string[] {
           if (o?.["Fn::GetAtt"]) return !!R[o["Fn::GetAtt"][0]];
           if (typeof o?.Ref === "string") return R[o.Ref]?.Type === "AWS::SecretsManager::Secret" || (inJoin && (!!R[o.Ref] || ["AWS::Partition", "AWS::AccountId", "AWS::Region", "AWS::URLSuffix"].includes(o.Ref)));
           const j = o?.["Fn::Join"];
+          // PF-F1c: a bucket of this stack's firm keys (`<bucket ARN>/*/*`), the one wildcard a resource may end with
+          if (!inJoin && Array.isArray(j) && j[0] === "" && Array.isArray(j[1]) && j[1].length === 2 && j[1][1] === "/*/*") { const b = (j[1][0] as { "Fn::GetAtt"?: [string, string] })?.["Fn::GetAtt"]; return !!b && b[1] === "Arn" && R[b[0]]?.Type === "AWS::S3::Bucket"; }
           return Array.isArray(j) && j[0] === "" && Array.isArray(j[1]) && j[1].every((y) => typeof y === "string" ? !/[*?]|:\d{12}:/.test(y) : own(y, true)) && j[1].some((y) => typeof y === "object" && !(y as { Ref?: string }).Ref?.startsWith("AWS::"));
         };
         const tokenOnly = json(list(st.Action)) === json(["ecr:GetAuthorizationToken"]) && json(st.Resource) === json("*") && ACTIONS === ECS_EXEC_ACTIONS;

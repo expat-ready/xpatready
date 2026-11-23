@@ -353,3 +353,42 @@ export function noDomainFindings(t: Template): string[] {
   for (const [id, lb] of lbs) if (typeof lb.Properties?.Name !== "string" || !/^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/.test(lb.Properties.Name as string)) out.push(`${id}: name ${json(lb.Properties?.Name)} is not fixed lower case`);
   return out;
 }
+
+/** PF-F1c: the service's task uses the cloud FilesPort (api/src/platform/files/choose.ts) on the documents bucket: it
+ *  sets PLATFORM_FILES=s3, the bucket, the bucket's own KMS key and the home region, and takes the link key as a secret;
+ *  its role may get and put firm keys (`<bucket>/*\/*`) of that bucket and list it, and use that key only through S3 in
+ *  the home region. No other S3 or KMS grant (no delete, no other bucket, no key outside S3). */
+export function filesTaskFindings(t: Template, region = "ca-central-1"): string[] {
+  const out: string[] = [];
+  const { service } = taskDefinitions(t);
+  if (!service) return ["no task definition run by the service"];
+  const c = containers(service[1])[0], e = env(c);
+  const bucketId = refId(e.get("PLATFORM_FILES_BUCKET"));
+  const bucket = bucketId ? t.Resources?.[bucketId] : undefined;
+  if (e.get("PLATFORM_FILES") !== "s3") out.push(`PLATFORM_FILES is ${json(e.get("PLATFORM_FILES"))}, not "s3"`);
+  if (!bucket || bucket.Type !== "AWS::S3::Bucket" || !bucketId!.startsWith("DocumentsBucket") || json(e.get("PLATFORM_FILES_BUCKET")) !== json({ Ref: bucketId })) out.push(`PLATFORM_FILES_BUCKET is ${json(e.get("PLATFORM_FILES_BUCKET"))}, not this stack's documents bucket`);
+  const keyId = refId(g(arr(g(bucket?.Properties, "BucketEncryption", "ServerSideEncryptionConfiguration"))[0], "ServerSideEncryptionByDefault", "KMSMasterKeyID"));
+  if (!keyId || json(e.get("PLATFORM_FILES_KMS_KEY_ID")) !== json({ "Fn::GetAtt": [keyId, "Arn"] })) out.push(`PLATFORM_FILES_KMS_KEY_ID is ${json(e.get("PLATFORM_FILES_KMS_KEY_ID"))}, not the bucket's own KMS key`);
+  if (e.get("PLATFORM_FILES_REGION") !== region) out.push(`PLATFORM_FILES_REGION is ${json(e.get("PLATFORM_FILES_REGION"))}, not ${region}`);
+  if (!(c.Secrets ?? []).some((x) => x.Name === "PLATFORM_FILES_LINK_KEY" && secretName(t, x.ValueFrom))) out.push("PLATFORM_FILES_LINK_KEY is not a Secrets Manager secret of this stack (PLATFORM_FILES=s3 refuses to start without it)");
+  const linkSecret = (c.Secrets ?? []).find((x) => x.Name === "PLATFORM_FILES_LINK_KEY");
+  const ls = linkSecret ? t.Resources?.[refId(linkSecret.ValueFrom) ?? ""] : undefined;
+  if (ls && g(ls.Properties, "GenerateSecretString", "SecretStringTemplate") !== undefined) out.push("PLATFORM_FILES_LINK_KEY is made from a template (a JSON placeholder the loader would take as a key), not random");
+  // the role's grants: every S3 or KMS statement is one of the three, and all three are there
+  const role = refId(service[1].Properties?.TaskRoleArn);
+  const want = [
+    { Action: ["s3:GetObject", "s3:PutObject"], Effect: "Allow", Resource: { "Fn::Join": ["", [{ "Fn::GetAtt": [bucketId, "Arn"] }, "/*/*"]] } },
+    { Action: "s3:ListBucket", Effect: "Allow", Resource: { "Fn::GetAtt": [bucketId, "Arn"] } },
+    { Action: ["kms:GenerateDataKey", "kms:Decrypt"], Condition: { StringEquals: { "kms:ViaService": `s3.${region}.amazonaws.com` } }, Effect: "Allow", Resource: { "Fn::GetAtt": [keyId, "Arn"] } },
+  ].map(json);
+  const got: string[] = [];
+  for (const [id, p] of all(t, "AWS::IAM::Policy")) if (arr(p.Properties?.Roles).some((r) => refId(r) === role))
+    for (const st of arr(g(p.Properties, "PolicyDocument", "Statement")) as Record<string, unknown>[]) {
+      const acts = arr(Array.isArray(st.Action) ? st.Action : [st.Action]).map(String);
+      if (!acts.some((a) => /^(s3|kms):/i.test(a))) continue;
+      got.push(json(st));
+      if (!want.includes(json(st))) out.push(`${id}: the task role's grant ${json(st).slice(0, 160)} is not one of the files grants`);
+    }
+  for (const w of want) if (!got.includes(w)) out.push(`the task role lacks ${w.slice(0, 120)}`);
+  return out;
+}
