@@ -7,6 +7,7 @@ import { CASE_DEADLINE_NOTIFICATIONS } from "./case-deadlines.ts";
 import { PrismaNotificationPrefs } from "../platform/settings/notifications/prefs.ts";
 import { MyNotifications, NOTIFICATION_PORT, PrismaNotificationPort } from "../platform/notifications/store.ts";
 import { MyNotificationsController, NeedsYouController } from "../platform/notifications/routes.ts";
+import { NotificationLabels } from "../platform/notifications/labels.ts";
 
 export default {
   controllers: [MyNotificationsController, NeedsYouController],   // PF-18h: Home's Needs you
@@ -16,5 +17,6 @@ export default {
     { provide: NOTIFICATION_PORT, useFactory: () => new PrismaNotificationPort((tx) => new PrismaNotificationPrefs(tx)) },
     { provide: CASE_DEADLINE_NOTIFICATIONS, useExisting: NOTIFICATION_PORT },
     { provide: MyNotifications, useFactory: (db: Db) => new MyNotifications(db), inject: [Db] },
+    NotificationLabels,   // PF-18n part 2: the one registry each module's labeller joins at start-up (front-office-sales.ts: leads)
   ],
 } satisfies Feature;
