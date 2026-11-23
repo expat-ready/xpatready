@@ -20,7 +20,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A323 | 23 Nov ~17:00 | why not Gitea with autoscaling Kubernetes runners | Lead 5 answers in chat (host-research-report, notes folder local_a085acf2); answer not confirmed by Lead 6 |
+| A323 | 23 Nov ~17:00 | why not Gitea with autoscaling Kubernetes runners | answered by Lead 5 in chat (its report, not re-read): Gitea Cloud pricing page 23 Nov: 1,000 CI min per user a month, largest tier 1,000,000 min at $19,000 a month, no minutes add-on, concurrency not stated; our load about 3.12M min a month (relayed by Lead O); recommendation unchanged |
 | A318 | 23 Nov ~14:04 (pressed in Lead 3) | "Yes, pause": NO NEW PRODUCT LABELS until the tooling list lands, 21:00 IST latest; exceptions a main fix or qa Blocker; nothing dequeued | in force; gate self-labels, hold being checked; A317 and this in full: A316 file |
 | A321 | 23 Nov | approves the Lead recommendations above; private repository: one question at a time | recorded: A316 file |
 | A319 | 23 Nov ~14:30 | why so slow while product is paused | answered; stack refresh sent to sprint (b); A320 "Yes, land as one" (#2590, ten PRs, after #2457/#2605 fixes and the Lead read): A316 file |
