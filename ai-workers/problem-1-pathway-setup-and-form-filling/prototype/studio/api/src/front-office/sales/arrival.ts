@@ -10,6 +10,7 @@ import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { conflict, notFound, UUID, written, type Tx } from "./common.ts";
 import { eligible, NO_RULE, placeNewLead, type Placement } from "../assignment/place.ts";
+import { livePersonId } from "../duplicates/merge/follow.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -39,12 +40,16 @@ export type ArrivalIn = {
 };
 export type ArrivalOut = { leadId: string | null; personId: string | null; created: boolean };
 
-/** The possible match: the newest other person of the firm with the same email or the same readable phone. */
+/** The possible match: the newest other live person of the firm (never a merged-away record, FO-9b M3) with the same email or the same readable phone. */
 export async function possibleMatch(tx: Tx | PrismaClient, firmId: string, p: ArrivalIn["person"], except?: string): Promise<string | null> {
   const or = [...(p.email ? [{ email: p.email }] : []), ...(p.phone?.readable ? [{ phone: p.phone.phone, phoneReadable: true }] : [])];
   if (!or.length) return null;
-  const m = await tx.foPerson.findFirst({ where: firmScope(firmId, { OR: or, ...(except ? { id: { not: except } } : {}) }), orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true } });
-  return m?.id ?? null;
+  const m = await tx.foPerson.findFirst({ where: firmScope(firmId, { OR: or, mergedIntoId: null, ...(except ? { id: { not: except } } : {}) }), orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true } });
+  if (!m) return null;
+  // FO-9b (break m1): the match is share-locked and read again, so a merge in flight is waited for and a record it just
+  // merged away is never flagged (it would be refused at commit); a tombstone falls back to the next match.
+  const [still] = await tx.$queryRaw<{ id: string }[]>`select "id"::text as id from "fo_person" where "firm_id" = ${firmScope(firmId).firmId}::uuid and "id" = ${m.id}::uuid and "merged_into_id" is null for key share`;
+  return still ? still.id : possibleMatch(tx, firmId, p, except);
 }
 
 /** How the owner was set, for the lead's arrival line (the timeline shows it). */
@@ -89,7 +94,7 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
 
   let personId: string, match: string | null = null;
   if (a.existingPersonId) {
-    personId = (await tx.foPerson.findFirst({ where: firmScope(firmId, { id: a.existingPersonId }), select: { id: true } }))?.id ?? notFound("person");
+    personId = (await livePersonId(tx, firmId, a.existingPersonId)) ?? notFound("person");   // FO-9b M3: a merged-away id → its survivor
   } else {
     // Two first enquiries with one email or phone are serialised here, so the later one sees the earlier (Devin, #1813).
     for (const k of [a.person.email, a.person.phone?.readable ? a.person.phone.phone : null].filter(Boolean).sort()) await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`fo_sales_match:${firmId}:${k}`}, 0))`;

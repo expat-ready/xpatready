@@ -9,7 +9,7 @@
 // change-plan route calls it.
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
-import { LocalFiles } from "../front-office/files.ts";
+import { boundFiles } from "../platform/files/choose.ts";
 import { PgEntitlements } from "../platform/entitlements/limits.ts";
 import { StorageWatch } from "../platform/entitlements/storage.ts";
 import { PlanBookings } from "../platform/entitlements/plan-booking.ts";
@@ -26,12 +26,12 @@ export const CASE_LIMITS_BOUND = Symbol("CASE_LIMITS_BOUND");
 export default {
   providers: [
     { provide: StorageWatch, useFactory: async (db: Db, clock: PlatformClock, mail: MailPort | undefined, jobs: PlatformJobs) => {
-      const watch = new StorageWatch({ db, files: new LocalFiles(), mail: mail ?? null, now: () => clock.now() });
+      const watch = new StorageWatch({ db, files: boundFiles(), mail: mail ?? null, now: () => clock.now() });
       await watch.register(jobs);
       return watch;
     }, inject: [Db, PlatformClock, { token: MAIL_PORT, optional: true }, PlatformJobs] },
     { provide: PlanBookings, useFactory: async (db: Db, clock: PlatformClock, jobs: PlatformJobs) => {
-      const bookings = new PlanBookings({ db, now: () => clock.now(), files: new LocalFiles(), cases: (firmKey) => new PgCaseCount(db, firmKey) });
+      const bookings = new PlanBookings({ db, now: () => clock.now(), files: boundFiles(), cases: (firmKey) => new PgCaseCount(db, firmKey) });
       await bookings.register(jobs);
       return bookings;
     }, inject: [Db, PlatformClock, PlatformJobs] },

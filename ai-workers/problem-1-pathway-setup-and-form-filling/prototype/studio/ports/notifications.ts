@@ -15,6 +15,7 @@ export const NOTIFICATION_KIND = {
   PORT_SELF_TEST: "port-self-test",
   CASE_STAGE_DEADLINE: "case-stage-deadline", // CS-DL1 part 2: a cited stage deadline's reminder (AG-7-94 r5)
   CASE_MILESTONE_DEADLINE: "case-milestone-deadline", // CS-DL3 part 1: a government step's due date, from IRCC's letter
+  PAYMENT_ACCOUNT_DISCONNECTED: "payment-account-disconnected", // FO-7c part 1: the firm's payment account broke; the Owner's home item (AG-16-16)
 } as const;
 export type NotificationKind = (typeof NOTIFICATION_KIND)[keyof typeof NOTIFICATION_KIND];
 /** Each kind's group, from AG-16 §3.3 "What is in it": a kind without a group fails the type check. */
@@ -22,6 +23,7 @@ export const NOTIFICATION_GROUP: Record<NotificationKind, NotificationGroup> = {
   [NOTIFICATION_KIND.PORT_SELF_TEST]: "NEEDS_YOU",
   [NOTIFICATION_KIND.CASE_STAGE_DEADLINE]: "MY_DEADLINES",
   [NOTIFICATION_KIND.CASE_MILESTONE_DEADLINE]: "MY_DEADLINES",
+  [NOTIFICATION_KIND.PAYMENT_ACCOUNT_DISCONNECTED]: "FIRM_AND_CONNECTIONS",
 };
 /** What a notification points at. Consumers add their own. */
 export const NOTIFICATION_ITEM_KIND = ["case", "firm", "staff", "review-round", "case-stage", "case-milestone"] as const;

@@ -3,9 +3,19 @@
 # Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines (0 = nothing to act on). Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
+#        bash product/tools/lead-watch.sh app-view-read <<'EOF' (app-view.js's answer) EOF   saves the app view (step 10)
 #        bash product/tools/lead-watch.sh gap   (ENF-761 part 4: the standby's watchdog, no GitHub calls; see step 0)
 # Triggers follow the 10-minute check (P-798): steps 2f (flow-buffer.py, P-800), 2g (sle-watch.py) and 5c (step-age.py).
 set -uo pipefail
+# app-view-read (P-789 (2), founder 22 Nov): saves app-view.js's answer through app-view-save.sh, but only a summary whose
+# first line has "rows=N" (the sidebar's rows after every "Show more" was clicked); anything else is refused, exit 2.
+if [ "${1:-}" = app-view-read ]; then
+  body=$(tr -d '\r' | sed -e '/./,$!d'); first=$(printf '%s\n' "$body" | head -1)
+  if ! grep -qE '(^| )rows=[0-9]+' <<<"$first"; then
+    echo "refused: the app view summary has no rows=N (first line: ${first:-empty}); run the current tools/app-view.js, which clicks every \"Show more\" and counts the rows (P-789 (2))" >&2; exit 2
+  fi
+  printf '%s\n' "$body" | bash "$(cd "$(dirname "$0")" && pwd)/app-view-save.sh"; exit $?
+fi
 SINCE="${1:-30}"
 # gh through gh.sh: on a TLS failure the same reads go through curl with gh auth token (P-363; founder, 6 Nov).
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; gh() { bash "$TOOLS/gh.sh" "$@"; }
@@ -89,6 +99,10 @@ fresh "waves.py wip: open PRs from GitHub (gh.sh), design/waves.tsv, the saved a
 # on one "stale" line, never counted, never cancelled (P-371). 20 Nov: "4 waiting" were runs queued since 12 Nov.
 python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS_WAITING_JSON:+--runs "$RUNS_WAITING_JSON"} 2>&1 | tee -a "$SEEN"
 fresh "runs-waiting.py: GitHub Actions runs"
+# 2c2. The nightly (E1, P-772, P-651): one ACT when the newest finished scheduled nightly is not green (20 Nov: cancelled,
+# 3 of 8 parts cut at 59 min; 19 Nov: failure; nothing said so), one when none started in 30 h. Read-only (P-371).
+nw=$(python3 -I "$TOOLS/nightly-watch.py" 2>&1); echo "$nw"; act=$((act + $(grep -c '^ACT' <<<"$nw"))); seen "$nw"
+fresh "nightly-watch.py: the scheduled nightly runs (gh.sh)"
 # 2d. Proof and Lead-read waits (founder 20 Nov 23:1x IST, typed: "make them as a enforced rules and make them live"; STATE
 # hand-over Lead 4 -> Lead 5 item (3)): a merged "Completes:" capability with no qa PR after 30 min (type /qa capability
 # <id> into its qa lane), and an approved PR on a Lead-read path with no "Lead read the diff: <head>" (P-423), with its age.
@@ -97,10 +111,12 @@ pw=$(python3 -I "$TOOLS/proof-read-watch.py" 2>&1); echo "$pw"; act=$((act + $(g
 hs=$(python3 -I "$TOOLS/human-sample.py" 2>&1); echo "$hs"; act=$((act + $(grep -c '^ACT' <<<"$hs"))); seen "$hs"   # 2e. P-782 (1): weekly human sample (ENF-782b): due, Needs you at 7 days, reopen on a "no"
 # 2f. Flow buffer (P-800, ENF-798): each track board holds 2+ days, every open part names a lane, every Partial capability is on a board.
 fb=$(python3 -I "$TOOLS/flow-buffer.py" 2>&1); echo "$fb"; act=$((act + $(grep -c '^ACT' <<<"$fb"))); seen "$fb"
+fresh "flow-buffer.py: design/board-lead-a-*.md and board-lead-b-*.md (newest by date) and qa/CAPABILITIES.md on $(git rev-parse --abbrev-ref HEAD)"
 # 2g. Wait targets at the 10-minute check (P-798, ENF-798): a question 10 min, approved not queued 20 min, a lane quiet
 # 30 min with work left; sle-watch.py's MISS lines become ACT (known-failures.tsv reuses "ACT   SLE ").
 # One ACT per target (Q, A, L, R, B) naming its PRs, the detail on "sle" lines; --dump feeds step-age.py (5c) approval times.
 sl=$(python3 -I "$TOOLS/sle-watch.py" --grouped --dump "$STATE_DIR/sle.json" 2>&1); echo "$sl"; act=$((act + $(grep -c '^ACT' <<<"$sl"))); seen "$sl"
+fresh "sle-watch.py: GitHub open PRs, their comments, label events and ci check runs; cockpit/history.jsonl for the board time"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
@@ -179,6 +195,7 @@ FLOW_TOKEN="${FLOW_TOKEN:-$(gh auth token 2>/dev/null)}" python3 -I "$TOOLS/flow
 # 5c. Step age (P-798, ENF-798): a step older than twice its median today gets a builder added or moved (the same cached answer, as JSON).
 FLOW_TOKEN="${FLOW_TOKEN:-$(gh auth token 2>/dev/null)}" python3 -I "$TOOLS/flow-measure.py" --since today --lead --json > "$STATE_DIR/flow.json" 2>/dev/null
 sa=$(python3 -I "$TOOLS/step-age.py" --flow "$STATE_DIR/flow.json" --prs "$STATE_DIR/prs-body.json" --sle "$STATE_DIR/sle.json" 2>&1); echo "$sa"; act=$((act + $(grep -c '^ACT' <<<"$sa"))); seen "$sa"
+fresh "step-age.py: flow-measure.py --lead --json (GitHub, a cached answer only if under $FRESH_MAX_MIN min), open PRs read in 2b (gh.sh), sle-watch's dump from 2g"
 
 # 6. Private backup (P-589 (1), P-590): the backup repository's last push, read from GitHub (read-only here). Over 24 h:
 # the Lead runs tools/backup-refresh.sh (needs allowed_domains github.com). Unreadable = said, never a silent pass.
@@ -220,7 +237,8 @@ seen "$od"
 fresh "outside-deps-watch.py"
 
 # 10. The app view (B197, founder A110, 16 Nov: "lead keep forgetting"; P-326, P-339): every lane on claude.ai/code, read in
-# the built-in browser with tools/app-view.js and saved by tools/app-view-save.sh. Over 15 min old = ACT (P-798); else one ACT per
+# the built-in browser with tools/app-view.js and saved by "lead-watch.sh app-view-read" (it refuses a summary without rows=N,
+# P-789 (2)). Over 15 min old = ACT (P-798); else one ACT per
 # flagged session (need_input, blocked, failed, idle over 10 min with work left (P-798), context over 45%).
 av=$(bash "$TOOLS/app-view-check.sh" 2>&1); echo "$av"; act=$((act + $(grep -c '^ACT' <<<"$av")))
 seen "$av"

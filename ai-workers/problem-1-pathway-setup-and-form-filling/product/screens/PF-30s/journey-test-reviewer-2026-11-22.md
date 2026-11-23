@@ -50,3 +50,42 @@ Sign-in: a `POST /api/platform/session/local` token in sessionStorage `xr-staff-
 
 ## Not tested
 A real screen reader (live region checked only as DOM text). An intended user's unaided walk (D17 and D20 stay with the founder). Firefox and Safari: "/" quick find was not tested, though `preventDefault` is in place. An input-method composition (code read only: `isComposing` is guarded). A terms-pending person in SalesFrame. Client and case journeys (Not built, concept §6b).
+
+## Follow-up PR (54625b64c), reviewer
+Journeys, walked by script in headless Chromium as user-O on `/home` (scratchpad `walk.mjs`, `probe*.mjs`; isolated copy on 4575):
+1. Phone (375 and 767 px): Find, type "Le", Escape ×3 → focus back on the Find button; the same after "/". **Held.**
+2. Keyboard only (375 px): Tab to Find, Enter, type, Escape ×3 → Find button; Enter opens the box again. **Held.**
+3. Desktop (768, 1023, 1024, 1440 px): "/", type, Escape ×3 → the box is left and cleared (n1), and the Find button stays hidden. **Held.**
+4. Placeholder (768 to 1023 px) is whole (132 of 146 px); from 1024 px the "/" label sits 8.4 px clear of typed text. **Held.**
+5. Larger browser font (20 px default) at 850 px: Find-button layout, but the third Escape leaves focus on BODY. **Failed: r7-1** (`find-box.tsx:108`, use `48rem`).
+Replay: the builder's check 95/95 twice; old `find-box.tsx` 90/95 (the 5 new checks). No page errors.
+
+| Criterion | Score | Change from round 6 |
+|---|---|---|
+| Task completed, next step, plain words, feedback, correct data, error recovery, speed, trust | 1 each | unchanged |
+| Accessibility and screen sizes | ½ | r3-1 fixed at default settings; r7-1 remains at a larger browser font |
+| Visual quality | 1 | r5-2 fixed |
+
+**Score 9.5 / 10, pass.** Not tested: a real screen reader, Firefox and Safari, an intended user's unaided walk.
+
+## Follow-up PR round 2 (a0e830170), reviewer
+Journey 5 was walked again by script in headless Chromium, as user-O on `/home`. It used a persistent profile with the browser's default font set (scratchpad `font20.mjs`) and an isolated copy on 4576.
+5. Larger browser font: at 20 px and 850 or 959 px, and at 24 px and 1100 px, the Find button is shown and Escape ×3 returns focus to it. At 20 px and 960 px the desktop rule applies (the box is left). **Held** (r7-1 fixed).
+1 to 4 were checked again at 16 px, 767 and 768 px: same as before. **Held.**
+Replay: the builder's check 98/98 twice. No page errors.
+
+| Criterion | Score | Change from the follow-up round |
+|---|---|---|
+| Task completed, next step, plain words, feedback, correct data, error recovery, speed, trust, visual quality | 1 each | unchanged |
+| Accessibility and screen sizes | 1 | r7-1 fixed |
+
+**Score 10 / 10, pass.** Not tested: a real screen reader, Firefox and Safari, an intended user's unaided walk.
+
+## Follow-up PR round 3 (029d82322), reviewer
+This round is a merge of origin/main only. The merge brings PF-30s-fix's `onSales()` wait and the `PF30S_CPU_SLOWDOWN` option into the check. No UI change on this screen, so there is no new journey to walk. Replay on an isolated copy on 4578: the builder's check at `PF30S_CPU_SLOWDOWN=6` gave **98/98 three times**, and **98/98** at normal speed. These cover journeys 1 to 5, including the F1, F2 and F9 openings from `/home` into the Sales frame where the batch timed out. No page errors.
+
+| Criterion | Score | Change from round 2 |
+|---|---|---|
+| All ten criteria | 1 each | unchanged |
+
+**Score 10 / 10, pass.** Not tested: a real screen reader, Firefox and Safari, an intended user's unaided walk.
