@@ -88,6 +88,11 @@ for p in deq: print("ACT   #%d dequeued: owner merges main or fixes (%s)" % (p["
 for p in rl:  print("ACT   #%d red after approval (%s)" % (p["number"],p["title"][:50]))
 ' | tee "$STATE_DIR/q.txt"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "$SEEN"
+# 2h. Merge-queue batches running (P-791 (2), founder 22 Nov: the Lead's by-hand merge of #2754 at 12:1x IST restarted 9
+# batches): open mergify/ PRs whose checks are not finished, and what a by-hand merge would cost now. By-hand merges go
+# through tools/lead-merge.sh <PR>, which refuses while a batch runs unless given --reason (P-791 (4)).
+qb=$(python3 -I "$TOOLS/queue-batches.py" ${QB_PULLS:+--pulls "$QB_PULLS"} ${QB_CHECKS:+--checks "$QB_CHECKS"} 2>&1); say "$qb"
+fresh "queue-batches.py: open mergify/ PRs and their check runs (gh.sh)"
 # 2b. WIP against the caps (B204, P-745, founder 20 Nov: "enforceable and ... followed mandatory by the agents through the
 # hooks"): items building (an open non-draft PR or a lane naming the item; lanes from the saved app view) against 8 and
 # Built-not-Proven against 12; ACT over either cap and for each item building outside the open waves (waves.py wip).
@@ -117,6 +122,11 @@ fresh "flow-buffer.py: design/board-lead-a-*.md and board-lead-b-*.md (newest by
 # One ACT per target (Q, A, L, R, B) naming its PRs, the detail on "sle" lines; --dump feeds step-age.py (5c) approval times.
 sl=$(python3 -I "$TOOLS/sle-watch.py" --grouped --dump "$STATE_DIR/sle.json" 2>&1); echo "$sl"; act=$((act + $(grep -c '^ACT' <<<"$sl"))); seen "$sl"
 fresh "sle-watch.py: GitHub open PRs, their comments, label events and ci check runs; cockpit/history.jsonl for the board time"
+# 2h. Queue blocked by checks (ENF-758, P-757, P-758): while main's guards are red, or a merge batch failed or a PR was
+# dequeued in 2 h, one ACT per open check-only PR (tests, CI, Mergify, guard tools) approved on its head with green ci: the
+# Lead merges it in the built-in browser that same check. 20 Nov: #2435 and #2438 held the queue ~4 h, each red without the other.
+qb=$(python3 -I "$TOOLS/queue-blocked.py" 2>&1); echo "$qb"; seen "$qb"; act=$((act + $(grep -c '^ACT' <<<"$qb")))
+fresh "queue-blocked.py: GitHub open PRs, their comments and labels, and the guards and ci runs (gh)"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
@@ -291,4 +301,13 @@ fresh "STATE.md on $(git rev-parse --abbrev-ref HEAD)"
 
 tl=$(python3 -I "$TOOLS/cycle-timeline.py" 2>&1); echo "$tl"; act=$((act + $(grep -c '^ACT' <<<"$tl")))   # 14. Cycle timeline (A244, ENF-783b, P-783 (2)): every check
 fresh "cycle-timeline.py"
+
+# 13b. Ready rows per lane (E11, P-599 (1): at least two ready rows per lane at all times): the board's own count
+# (data.json › backlog.by_lane) for the four /next lanes; one ACT per lane under two, an unread count is an ACT too.
+lr=$(python3 -I "$TOOLS/owed-watch.py" lanes --board "$BOARD" 2>&1); echo "$lr"; act=$((act + $(grep -c '^ACT' <<<"$lr"))); seen "$lr"
+fresh "owed-watch.py lanes: the board's data.json as step 11 accepted it (over 10 min old: /dev/null, an ACT here)"
+# 13c. Starts owed (E19, founder 21 Nov, P-772): STATE sentences saying a start is owed at the founder's next typed turn
+# (a cron or message turn cannot start sessions). One ACT listing them: raise them in his next turn and the push notification.
+so=$(python3 -I "$TOOLS/owed-watch.py" starts --state "$TOOLS/../STATE.md" 2>&1); echo "$so"; act=$((act + $(grep -c '^ACT' <<<"$so"))); seen "$so"
+fresh "owed-watch.py starts: STATE.md in this copy"
 exit "$act"
