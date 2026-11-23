@@ -255,10 +255,15 @@ fresh "outside-deps-watch.py"
 # 10. The app view (B197, founder A110, 16 Nov: "lead keep forgetting"; P-326, P-339): every lane on claude.ai/code, read in
 # the built-in browser with tools/app-view.js and saved by "lead-watch.sh app-view-read" (it refuses a summary without rows=N,
 # P-789 (2)). Over 15 min old = ACT (P-798); else one ACT per
-# flagged session (need_input, blocked, failed, idle over 10 min with work left (P-798), context over 45%).
+# flagged session (need_input, blocked, failed, idle over 10 min with work left (P-798), context over 45%); cloud lanes idle
+# or waiting for the Lead first, oldest first, marked "[idle lane N min ...]" (A334 fix 1).
 av=$(bash "$TOOLS/app-view-check.sh" 2>&1); echo "$av"; act=$((act + $(grep -c '^ACT' <<<"$av")))
 seen "$av"
 fresh "product/state/app-view-latest.txt (app-view-check.sh)"
+# 10b. The night checklist (A334 fix 1, A332 "Keep both"): product items, then operating-system items, one ACT for each
+# not done (done = a PR number merged on main, never prose), and "operating system: n done of m". Data: design/night-checklist.json.
+nc=$(python3 -I "$TOOLS/night-checklist.py" 2>&1); echo "$nc"; act=$((act + $(grep -c '^ACT' <<<"$nc"))); seen "$nc"
+fresh "night-checklist.py: design/night-checklist.json and origin/main's merge subjects (fetched in step 4)"
 
 # 11. What the founder's board shows (B201, founder A117 16 Nov: the check missed six stuck items his board showed; P-639:
 # never take the board's word blindly). The board's own Today card and Stuck panel (cockpit-data.py --watch reads the
