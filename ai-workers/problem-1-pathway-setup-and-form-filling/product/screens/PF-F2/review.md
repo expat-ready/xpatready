@@ -1,6 +1,6 @@
 # PF-F2 part 1 (R1.64, the tus upload rail; API only): review
 
-**Reviewed head:** `ec7565e04b41ea79f0803bcd6fd85df3ef329b96` on `claude/quirky-mayer-g0iinz` (draft PR #3277), `git diff origin/main...HEAD` only: 10 code files, the gate page, the module card row. Reviewer did not build it. **Verdict: Rework (Block).**
+**Reviewed head (round 1):** `ec7565e04b41ea79f0803bcd6fd85df3ef329b96` on `claude/quirky-mayer-g0iinz` (draft PR #3277), `git diff origin/main...HEAD` only: 10 code files, the gate page, the module card row. Reviewer did not build it. **Verdict: Rework (Block).**
 Uncommitted edits to `rail.ts` by another session appeared in the shared working tree at 17:50, after every run below (17:44, 17:47). They are not reviewed here. The next round reviews whatever head is pushed.
 
 **How checked:** I read the diff and `@tus/server` 2.4.7 (`server.js`, `BaseHandler`, `Post/Patch/Head/Get/OptionsHandler`), `srvx` 0.11.22 `NodeRequestURL`, `@tus/file-store` 2.1.2, `ports/files.ts`, `ports/legal-hold.ts`, `entitlements/storage.ts`, `deploy/cdk/lib/service.ts`, the PF-F2 and PF-F3 rows, and the CI check-runs on the head (REST). I ran `tests/check_pff2_uploads.ts`: **32 passed, 0 failed**. Then I ran the same harness again (Nest on an ephemeral 127.0.0.1 port, never :4400; scratch DB on :54329) with attack steps added in a git-ignored scratch file, since deleted. `graph.mjs --check`: G1 0, G2 0.
@@ -70,11 +70,27 @@ Uncommitted edits to `rail.ts` by another session appeared in the shared working
 ## Not checked
 I did not run the deployed two-task stack. I did not run a real tus-js-client (part 2's DW8), so M3's client behaviour is read from tus-js-client 4.x's resume logic, not run. Scorecards are pending (the gate page's own open question).
 
-Reviewer: Block ec7565e04b41ea79f0803bcd6fd85df3ef329b96
+**Round 1 result (ec7565e): Block.** To fix: B1, M1, M2, M3, M4 (and m7's body line).
+## Round 2: head `dc3301c778341d9504c14ecffa2ddd9fca38cef6`
 
-**Verdict: Block**. To fix before Approve:
-1. B1: give tus only the checked id, refuse query strings, and add tests.
-2. M1: shared staging with a shared lock, or a recorded fail-closed rule. Correct the gate page.
-3. M2: `onResponseError` in plain words, plus single-flight, idempotent finish.
-4. M3: a finished tombstone (or staging removed after the answer), plus tests for HEAD after finish and a one-POST upload.
-5. M4: the module card (and m7's body line) so CI is green.
+**Scope:** `git diff ec7565e..dc3301c` only. **Run:** `check_pff2_uploads.ts` gives **40 passed, 0 failed**. I re-ran my round-1 attacks in a git-ignored scratch copy of the harness (since deleted).
+**Attack results:** a 20 MB last chunk plus 40 racing empty PATCHes gave only `204`/`409`: one row, one `onComplete`, one file id, and the only error text is tus's "Upload-Offset conflict". `?/../<id>`, `%3F/<id>` and `/?x=/<id>` all answer 404. Another firm's HEAD on a finished upload answers 404. CI on dc3301c: `module-cards` passes; `pr-rules` is still red (m7, below).
+
+**Round-1 findings:**
+- **B1: closed.** tus now gets only the id the rail checked (`getFileIdFromRequest` from the AsyncLocalStorage), so the URL can no longer choose the id. Any `?` answers 404. DW4 has the two query forms. Either guard alone holds, so the test fails only if both are removed: acceptable defence in depth.
+- **M1: closed. Departure 1 is now accepted.** The rail answers 503 in words when `PLATFORM_FILES=s3`. That is the deployment's own value, enforced by `service-checks.ts:368`, so the rail fails closed on the two-task stack. The gate page is corrected and `@tus/s3-store` is no longer installed (m6 closed). The test checks both the 503 and the feature's switch.
+- **M2: closed.** Finish now runs once per upload: an in-process promise per id, then the existing `plat_file` by firm and key, then a re-read on P2002. `onResponseError` keeps tus's and the rail's refusals, maps `FileKeyTaken` to 409, gives PF-15's `HttpException` its status and detail (409, plan words), and answers anything else 500 in plain words with the cause logged. Tests cover a retry, a burst and a throwing `onComplete`.
+- **M3 (and the breaker's F2): closed.** A finished upload's record stays until the 24 h cleanup, so HEAD reads offset = size and a retry gets the same `Upload-File-Id`. Creation-with-upload answers 201 with Location and `Upload-File-Id`. GET of a finished upload is still 404.
+- **M4: closed.** `features/MODULE.rows/PF-F2.md`; `module-cards` is green.
+- **m1: closed.** The insert uses `SCAN_PENDING` and matches only the trigger's words, so the test now fails without the rule.
+- **Still open, listed in the PR:** m3, m4/F4, m5, F5. Accepted as Minors.
+- **m7 is still open.** The PR body still has no `STANDARDS §1:` line, and pr-rules is red at 17:56:57Z. It must be green before the merge; it is not a code finding.
+
+**New Minors (no Blocker or Major):**
+- **n1. Wrong words for a finished upload after 24 h.** A HEAD or PATCH 24 h after creation answers 410 "it was not finished within 24 hours", even though the file was stored. **Fix:** for an upload at offset = size, say it was finished, or answer 404.
+- **n2. Every empty PATCH at the end re-reads and re-checks the whole staged file** (up to 25 MB) before `#stored` finds the row. Only the uploader can do this, but it multiplies the cost of each request. **Fix:** check `#stored` (or a marker such as `xr_file` in the record) before reading the bytes.
+- **n3. One stale sentence on the gate page.** "Data" still says the staging copy is removed after `FilesPort.put`; it now stays until the cleanup. Finished, unscanned bytes now sit in staging for 24 h. They are never served (GET 404), and their cost belongs to F5.
+
+Reviewer: Approve dc3301c778341d9504c14ecffa2ddd9fca38cef6
+
+**Verdict: Approve** (head `dc3301c778341d9504c14ecffa2ddd9fca38cef6`). No open Blocker or Major. Before the label: m7's body line, so `pr-rules` is green. The Minors (m3, m4, m5, F5, n1-n3) go in the PR's list.
