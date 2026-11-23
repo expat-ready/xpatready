@@ -49,5 +49,9 @@ REVOKE UPDATE, DELETE, TRUNCATE ON "plat_file" FROM xr_data; GRANT UPDATE ("scan
 ALTER TABLE "plat_file" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "plat_file" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "plat_file" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
+-- PF-12: every trigger function on a firm table runs as xr_wall_reader. PF-8b F4: on RDS the reader may be handed a
+-- function only while it holds CREATE on the schema; granted for this hand-over only and taken back right after.
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION plat_file_write() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
 ALTER FUNCTION plat_file_write() OWNER TO xr_wall_reader;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
