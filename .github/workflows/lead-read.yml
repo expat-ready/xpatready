@@ -1,0 +1,58 @@
+# Lead-read gate (P-785 (2) step 1, founder 22 Nov; P-423; design:
+# ai-workers/problem-1-pathway-setup-and-form-filling/product/design/open-contribution-gate-2026-11-22.md).
+# The commit status "lead-read" on every PR into main: a PR that touches a path of product/tools/lead-read-paths.txt
+# (.github/, .mergify.yml, the guards, the schema, migrations, money), or adds or changes a permission key or a guarded
+# route line in the API, is held until a comment by someone with write access says "Lead read the diff: <full head sha>".
+# Measured gap, 22 Nov: #2897 added @PermissionKeys routes, was labelled and queued, and the Lead's read came 14 minutes
+# before the merge; nothing on GitHub's side held the queue.
+# Report-only first (P-717 (b)): no queue condition reads the status, and a held PR is "pending", never "failure". The
+# queue condition (check-success = lead-read, and queue-gate.sh judging it itself: a status can be forged by any job
+# with statuses: write) and LEAD_READ_GATE's switch to "block" are a later PR of their own, after 24 h or 10 clean runs.
+# Every trigger runs the default branch's copy of this file; the job checks out main only and reads the PR's file
+# names, patches and comments through the API as data. The PR's code is never fetched, checked out or run, so a fork's
+# PR is judged safely too. Script and test: product/tools/lead-read-gate.sh, check-lead-read-gate.sh. Seconds, US$0.
+name: lead-read
+on:
+  pull_request_target:
+    branches: [main]
+    # edited: a PR moved onto main from another base gets its status (break M6)
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  issue_comment:
+    # edited and deleted too: a read line that is changed or taken back must be judged again
+    types: [created, edited, deleted]
+  workflow_dispatch:   # every open PR, by hand (the PRs opened before this file reached main)
+permissions: {}
+jobs:
+  # The job is named read-gate, not lead-read: a Mergify check-* condition names the status context alone (review nit).
+  read-gate:
+    # A comment only when it is on a PR and by someone with write access; a new one only when it names the read (an edit
+    # or a deletion is always judged again: a read taken back must not keep its success, break m5).
+    if: >-
+      github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       (github.event.action != 'created' || contains(github.event.comment.body, 'Lead read')) &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # statuses: the one thing written. Reading the PR, its files and its comments needs the two read scopes.
+    permissions: { contents: read, pull-requests: read, issues: read, statuses: write }
+    concurrency:
+      # One group per PR, in order; never cancelled: the newest verdict must be the one that lands.
+      group: lead-read-${{ github.event.pull_request.number || github.event.issue.number || 'sweep' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
+      - name: lead-read (product/tools/lead-read-gate.sh, main's copy)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          LEAD_READ_GATE: ${{ vars.LEAD_READ_GATE }}
+          LEAD_LOGINS: ${{ vars.LEAD_LOGINS }}
+          RUN: ${{ github.event_name == 'workflow_dispatch' && 'sweep' || 'event' }}
+        run: |
+          if [ "$RUN" = sweep ]; then bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-read-gate.sh sweep
+          else bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-read-gate.sh event; fi

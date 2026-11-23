@@ -6,6 +6,7 @@ import { z } from "zod";
 import { parseInput } from "../../http/input.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../identity/keys.ts";
 import { FirmProfile } from "./service.ts";
+import { Versioned } from "../../http/if-match.ts";
 
 type R = { platform?: StaffContext };
 /** PF-28 (the one input rule): the body is an object of named fields, parsed here (an array, a string or a key over 64 characters is
@@ -21,6 +22,6 @@ export class FirmProfileController {
   constructor(@Inject(FirmProfile) private readonly profile: FirmProfile) {}
   @Get() @PermissionKeys("agent/settings:list")
   get(@Req() r: R) { return this.profile.get(staffOf(r)); }
-  @Put() @PermissionKeys("agent/settings:edit")
+  @Put() @PermissionKeys("agent/settings:edit") @Versioned()   // PF-31: the version as If-Match too
   save(@Req() r: R, @Body() b: unknown) { return this.profile.save(staffOf(r), parseInput(ProfileBody, b ?? {})); }
 }
