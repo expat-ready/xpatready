@@ -41,5 +41,6 @@ export function auditContext(): AuditContext | undefined {
 export function actorTypeOfWord(actor: string): AuditActorType {
   if (actor.startsWith("person:") || actor === "user-P" || actor === "user-Q") return "CLIENT";
   if (/^user-[ABCORTS]$/.test(actor)) return "FIRM_STAFF";
+  if (actor.startsWith("ourstaff:")) return "OUR_STAFF";   // AUD-3a: ExpatReady's own staff (PF-4s)
   return actor.startsWith("staff:") ? "FIRM_STAFF" : actor.startsWith("system:") ? "SYSTEM" : "SEED";
 }
