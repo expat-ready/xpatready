@@ -81,3 +81,84 @@ walled `xr_app` role), scratch databases `xr_studio_pf17brk_<pid>` on 127.0.0.1:
 * **Load and text:** 30 list calls at once → all 200. Hindi and upper-case `q` match.
 
 Verdict: Block cb761f977792f5621c406bc41d8a4c3d7f133eed
+
+## Round 2 (diff-only, 1d5c8d550)
+
+Breaker, 23 Nov. Diff `508202bd2..1d5c8d550` only. Harness: a scratch copy of `check_pf17_console.ts`'s setup outside the repo
+(real guards, `FirmWallsInterceptor`, walled `Db`), scratch databases `xr_studio_pf17brk2_<pid>` on 127.0.0.1:54329, dropped
+after. No product edit, no port 4400. On this head: `check_pf17_console.ts` 35/0, `check_bypass_uses.ts` 52/0,
+`check_pf12b_bypass_audit.ts` 70/0.
+
+### Round-1 findings re-tried
+* **B1 fixed.** Both uses are declared in `firms.bypass.ts`. `firm-scope.ts` and `check_pf12b_bypass_audit.ts` have no diff
+  against the merge base 73455f04f. The freeze check passes.
+* **M1 fixed.** `SystemFirmsDeps` has no FilesPort and the feature binds none, so a slow `usedBytes` can no longer be called.
+  Medians of 3 calls, local store:
+
+  | Firms | List p1 | Last page | `?q=` | `?health=HELD` | `?health=OK` | `?health=ATTENTION` | One firm |
+  |---|---|---|---|---|---|---|---|
+  | 400 | 372 ms | 336 ms | 68 ms | 20 ms | 838 ms | 805 ms | 23 ms |
+  | 1,000 | 245 ms | 343 ms | 78 ms | 24 ms | 1,179 ms | 1,101 ms | 19 ms |
+
+  No 500s. Lead 10's bar (400 firms under 2 s) holds. §9 (< 200 ms) is set on the Sample data, and scale is the team's work.
+* **m1 fixed:** DELETED, ABANDONED and PROVISIONING firms now answer NOT_LIVE with "firm deleted", "sign-up abandoned" or "still
+  being set up".
+* **m2 fixed:**
+  * A firm with no subscription → ATTENTION `["no live plan"]`, `plan: null`.
+  * An ENDED-only firm → `plan: null` (also DW3).
+* **m3 fixed:** `?q=` matches in each of these forms: NFC, NFD, upper-case NFD (`ÉCOLE`), `ÜNÏCODE`, Hindi, and with spaces around.
+
+### New findings
+**n1 Minor: under `?health=ATTENTION`, `total` changes from page to page, and page 1's total can hide a page.**
+* Did: built 60 overdue firms (ATTENTION from their rows) and 300 firms that look OK from their rows, every third with no
+  subscription (ATTENTION only once its figures are worked out). Ground truth from one-firm reads: 160 ATTENTION, 202 OK.
+  Then read `?health=ATTENTION` and `?health=OK`, pages 1-7.
+* Actual, ATTENTION:
+  * `total` is 110, then 123, then 126 on pages 1-3; pages return 50, 50 and 26 firms.
+  * No firm appears twice and none is wrong. 34 of the 160 can never be reached, but `complete:false` and the note say so.
+* Actual, OK: `total` is 134 on every page. 68 of the 202 can never be reached, again flagged with `complete:false`.
+* Cause (`firms.ts:128-135`): the figures checked are `open.slice(0, FIGURES_PER_CALL - found.length)`. Page 1 fills with
+  row-ATTENTION firms, so it checks only 150 firms and its total is smaller.
+* Worked case: 50 row-ATTENTION firms, 50 matches in the first 150, 60 in the first 200. Page 1 says `total` 100 (2 pages), but
+  page 3 holds 10 firms. A screen that takes its page count from page 1 never shows them.
+* A page past the end (`page=99999`) still works out 200 firms' figures (990 ms) to return nothing.
+**n2 Minor: a firm's stored storage figure stops updating once it is back under its limit.**
+* Did: ran StorageWatch on Sample firm A (limit 25,600 MB): 5 MB, then over (25,602), then 8 MB, then 25,599 MB.
+* Actual:
+  * The first under-limit measure stores nothing: `used: null`.
+  * Over shows 25,602, with its date.
+  * Back under shows 8 MB, with its date.
+  * The last measure (25,599 MB, 1 MB under the limit) writes nothing (`mark: "none"`, `storage.ts:49`), so the console still
+    shows **8 MB** as of the earlier date.
+* Question 1 in the PR body names only the "never over" case. The comment at `firms.ts:9` ("written by its daily job and each
+  upload") is wrong for every firm under its limit. Widen question 1 to cover a back-under firm's figure going stale.
+
+### What held
+* **Audit (counted per call):**
+  * Each list call, `?health=ATTENTION` and `?health=OK&page=3` adds exactly 1 firm-less `platform.bypass` line (the list's use),
+    0 firm lines and 1 PF-4s line, even though the filtered calls run up to 200 figure transactions.
+  * Opening one firm adds 0 list lines and 1 line on that firm.
+  * A 404 adds 0 bypass lines and 1 PF-4s line.
+  * 30 calls at once add exactly 30 list lines and 0 firm lines.
+* **Paging (unfiltered):** 362 firms over 8 pages, all unique. `page=99999` → 200, empty, 22 ms. HELD and NOT_LIVE totals are
+  exact.
+* **Order:** 100 firms that are ATTENTION only from their figures sort among the OK firms. The PR body names this (question 2).
+* **Concurrency:** 30 calls at once, all 200, at 400 and 1,000 firms:
+  * list: 4.9-6.2 s wall time;
+  * `?health=ATTENTION` / `?health=OK`: 17-21 s wall time, with no pool timeout.
+* **Firm changed mid-call** (the service's db wrapped so the change lands right after the rows transaction):
+  * A firm hard-deleted at that point → 200, shown as its row was read, no 500.
+  * A firm switched to DELETED with its subscription ENDED at that point → 200: status ACTIVE (the row as read), health
+    "no live plan" (from the later figures). The two moments mix, but only in that race.
+* **Bypass reach:** each of these, run under `inRequest`, is refused with BypassRefused:
+  * either use run by its name on its own route;
+  * the list use on the one-firm route, on `/firms/x/staff`, on POST, on `/firmsX` and on `/firms%2F..`;
+  * the one-firm use on the list route;
+  * `svc.list` on `/api/system/plans`;
+  * one use nested in the other;
+  * a spread or `Object.create` look-alike of the use.
+
+  Assigning to `entry.audit`, `entry.inside` or `name`, or pushing onto `entry.routes`, throws a TypeError (frozen); the audit
+  mode stays `platform`.
+
+Verdict: Approve 1d5c8d55066aaae88ba7c98b2042d783a36c6209
