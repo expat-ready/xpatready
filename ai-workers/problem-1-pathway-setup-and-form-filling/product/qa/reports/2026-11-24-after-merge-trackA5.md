@@ -56,3 +56,26 @@ Baseline before the merges: j_92 gave 19/20 on afe9727ee. The only FAIL was W6's
 ## Questions for the tech lead
 1. **QA-758:** should notarisation REQUIRED and not provided show on the checklist? This one ruling settles R1.70. Recommendation: dialog only for Release 1 (CS-D7's own Done when), and qa retires the step.
 2. **Please dispatch** `gh workflow run walks.yml --ref main -f journeys="j_92"` on main's head. It is the P-339 run on the head for R1.92, which a cloud lane cannot start (P-439).
+
+## Round 2: 24 Nov ~03:0x IST, main 4742387cd (after #3296, #3291, #3179 and #2933 merged; #3185 and #2935 at 21:35Z)
+
+| Row | What merged | Status now | Evidence |
+|---|---|---|---|
+| R1.92 | — | **Works**, now with a run on the head | walks **45259785332** ("walk j_92", success) on main 0fede1e00, dispatched by Lead 14 |
+| R1.70 | — | **Partial** | Lead 14 ruled QA-758: **not dialog only.** A REQUIRED, unprovided notarisation shows on its checklist line (a chip or warning, never a block), per AG-9 §3.9 and AG-7. The j_70 step stays until the screen PR the Lead orders |
+| R1.46 | #3179, its last part | **Partial**: waits on #3337 and a GitHub run | item-proof 45269701199 **failed**: j_46 7/22 from journey drift (#3179's last commit renamed the keys to `sales.lead.*`). With the key lined up (#3337), j_46 **22/22 twice**, exit 0 |
+| R1.10 | #2933 (PF-28 part 5), no "Completes" | **Partial**, parts missing | j_10 10/19 once (details in the row) |
+| R1.86 | #3185 (PF-21c) | **Partial** (was Not built), parts missing | still needs PF-21rs (not built) and AUD-3 part 1 (#3209). j_86 is in #3218 |
+| R1.90 | #2935 (PF-16) | **Partial**, parts missing | still needs #3040 and #3202 |
+
+* **R1.46's walk on 4742387cd, once the key is lined up,** holds every Done when clause:
+  * the box saves exactly what was typed, with one version and one audit line that leaves out the wording;
+  * Insert field puts the field at the cursor, and works by keyboard alone;
+  * one character over the 10,000 limit is refused on the field and by the API (422), and exactly 10,000 publishes;
+  * the Case Officer sees it read-only and the API refuses them 403;
+  * there is no WCAG violation at 400, 1024 and 1440 px.
+* Screenshots are in `screens/J-46/` (#3337).
+* **Correction:** I said #3219 used the old keys. It does not: its migration already seeds the `sales.lead.*` keys.
+
+### Questions for the tech lead
+1. Once #3337 merges, please dispatch `gh workflow run walks.yml --ref main -f journeys="j_46"`. That run is R1.46's run on main's head.
