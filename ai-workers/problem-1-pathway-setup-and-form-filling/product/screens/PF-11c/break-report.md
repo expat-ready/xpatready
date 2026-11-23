@@ -84,3 +84,31 @@ This is test-only, but tests that pass through `objects` would not catch an adap
 * **Sign-in for a closed firm:** with a fresh guard token, `authenticate` answers 401 FIRM_CLOSED before any other check (the PR's check; probe5 1b).
 
 Verdict: Changes 71f3131daf1c8426d0474ec20f6b3e1c6033d7a4
+
+## Round 2 (diff 71f3131..1b4298d)
+
+Head `1b4298d062c453e8f6f5dcb2fc8228d631529c5a`. Only the diff was checked. The PR's check passes (45/0). One probe (`r2/probe.mts` in the session scratchpad) built a scratch database on 127.0.0.1:54329 and dropped it afterwards. No app was started and port 4400 was not used.
+
+### Round 1 findings
+* **M1 fixed.** Each run now writes its copy under a fresh key (`closure-<seq>-<time>-<random>`), reads it back and compares it byte for byte with what it wrote and with the store's sha256 (closure.ts:91-100). The close then checks again, under the firm lock, that the copy holds every audit id (closure.ts:113-115). A partial read-back is now `archive_unreadable`, and a line written after the copy gives `changed` (the PR's check). One small window is still open: see m7.
+* **M2 fixed.** Keep-until is now one value (`until` from the job clock), and the read-back compares the store's answer with that value (closure.ts:90, :99). It passes with the store's clock 25 ms ahead. Note for AUD-2's adapter: the comparison is to the millisecond, so a store that rounds keep-until down would leave the firm blocked on every run.
+* **M3 fixed.** `accept` reads the firm's status under `for no key update`, which conflicts with the close's `for update` (session/service.ts:113-115). After the close the answer is 410 and no staff row is added (the PR's check). If an accept and the close run at the same time, either the accept waits and then sees DELETED, or its audit line makes the close return `changed`.
+* **m1 fixed.** `localSignIn` answers 401 FIRM_CLOSED (identity/service.ts:192-194). An upper-case firm key gets no token either (UNKNOWN_STAFF).
+* **m2 fixed.** The fake `put` refuses a keep-until that is now or already past (audit-archive.ts:49). **m3 fixed.** `objects` is private and `get` returns copies. **m4 fixed.** A failed close transaction now raises `firm_closure_blocked` with rule `PF-11c.close_failed` (closure.ts:126-129).
+* **m5 open.** It was not in this fix (exit-clock.ts is unchanged).
+* **m6 open, and now more copies are left behind.** Every run that writes a copy and then does not close leaves its own 7-year copy, which no `firm.closed` line names. That covers a `changed`, a `held` after the write, and a `close_failed`. In the probe, five parallel `runFirm(B)` gave one `closed`, four `changed`, and 5 copies under `firms/<B>/closure-`. Minor: the daily pg-boss job does not run in parallel, but each `changed` day adds one copy.
+
+### New findings
+**m7 (Minor). A line written by a transaction that is open during the close can be missing from the copy.** closure.ts:113. `audit_event.firm_id` has no foreign key (audit.prisma:30), so a writer never waits for the close's `for update`. At READ COMMITTED the `live` read cannot see a line that is not committed yet. Repro: open a raw pg transaction and insert an `audit_event` line for firm A, run `runFirm(A)` and get `closed`, then commit. Result: the line is dated 06:07:18.953, before the `firm.closed` line at 06:07:18.980, yet it is not in the copy. Nothing is deleted in part 1, so the database still holds the line. Part 2's purge must check again before it relies on the copy. The window is milliseconds wide, for example a sign-in (`authenticate` or `localSignIn`, which read the status without a lock) that commits just as the close does.
+
+**m8 (Minor). The full-export gate accepts an export that is empty, old or about to expire.** closure.ts:86 checks only that `archive.get(exp.key)` is not null. Repro: `put("firms/<A>/export-1999-01-01.zip", <0 bytes>, now+1s)`, then `runFirm(A)` gives `closed` and `firm.closed` names it as `exportKey`. Two seconds later `archive.remove(exportKey)` succeeds and the export is gone. The gate does not check the size, the write time against `holdSince`, or that the export's keep-until reaches the copy's. Minor because `fullExport` is `null` in the feature (platform-firm-closure.ts:19), so no firm closes until PF-11 provides the port. Its contract should name these checks.
+
+### What held
+* **Close against a billing action.** The close was paused inside its transaction while holding `plat_billing:<B>`. A refresh-style transaction waited 611 ms for the same lock, then read DELETED. `FIRM_MOVES.DELETED` is `[]` (webhook.ts:52), so Stripe cannot move a closed firm. The lock order matches `refresh` (billing lock, then the firm row), so they cannot deadlock. The reverse order (the PR's `whileLocked`) gives `changed`.
+* **Legal hold placed mid-run.** The PR's check covers a hold inserted after `put`, which gives `held`. The added billing lock does not touch the hold lock. Placement takes only the exclusive hold lock, and its trigger reads `platform_firm` without a row lock (pf21b migration:73), so there is no cycle with the close's `for update`.
+* **Copy tampered or partial between write and close.** The fake's store is private, so the copy cannot be changed after it is written, and the byte-for-byte read-back catches a lying `get` (the PR's check). The close never reads an older object.
+* **Keep-until edges.** `put` refuses a keep-until equal to now or earlier. `remove` succeeds exactly at keep-until. A store clock ahead of the job's (25 ms) passes, and one behind it passes as well.
+* **Sign-in after the close.** A token issued an hour before the close gets FIRM_CLOSED at `authenticate`. Session callback goes through `localSignIn`, so it is refused too.
+* **Full export missing, another firm's, or not in the archive.** Each gives `blocked` with `no_full_export` and an alert (the PR's check). The port is unwired in the feature, so no firm is closed in production.
+
+Verdict: Approve 1b4298d062c453e8f6f5dcb2fc8228d631529c5a
