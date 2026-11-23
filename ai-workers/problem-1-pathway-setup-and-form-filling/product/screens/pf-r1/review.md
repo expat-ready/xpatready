@@ -88,3 +88,31 @@ Journey score after round 2: **9.5 / 10**, a pass (7½ of the 8 criteria that ap
 **Round 2 verdict: Approve.** No Blocker or Major is open. Minors 2, 5 and 6 can follow in later PRs.
 
 Reviewer: Approve 67872c4496ae6f68bf97c1c0675b5b32090563c3
+
+## Round 2 (delta): commit `24417b62c6fb3718d2af16f4ee1bbf534154e062` (code diff from 67872c4 only)
+**What I ran**
+* The row's test: **72 passed, 0 failed**.
+* HTTP on an isolated copy at :4431 (stopped afterwards):
+  - A bad client type, an unknown filter key and a key that is not a plain name all answer 422 QUERY_INVALID. Each field is named in plain words: "this is not one of the allowed values", "This field is not allowed here.", with the third key masked as `(unreadable)`.
+  - An empty list answers 422, and an array body answers 422 "this has the wrong type".
+  - An unknown metric (with or without a body `scope`) answers 400 UNKNOWN_METRIC, and bad JSON answers 400 BODY_NOT_JSON.
+* I did not re-run check_pf28_inputs; the builder reports 48/48 on an isolated copy.
+
+**Findings**
+* **Schema failures are now 422, not 400.** The route checks the report key (403) first, then parses `ReportQuery` itself (PF-28 (a)), and a body or filter that fails is now 422 (PF-28 (b)).
+  - This departs from the row's Done-when ("a filter that fails its schema gives 400 with the message"). It does not depart from the source: AG-14-30 asks for a schema check with a plain message and names no status.
+  - The departure is open, not silent: it is raised as a Question for the tech lead in the PR, and the test names it (DW5 "422 (PF-28; the row says 400)").
+  - The unknown-key line still gives 400. A pass and a fail still stand for every Done-when line.
+  - I agree with 422: it is the platform's one input rule, PF-28's own CI demands it, and the exception list is full. The Lead's answer settles it. If the Lead rules 400, the door needs a PF-28 by-design exception and another review round.
+* **The parse runs twice:** in the route and again in the run rule, on the data the route already parsed. This is harmless: the parsed data parses again unchanged, and the fake still goes through the same `runMetrics`.
+* **`FILTER_NAMES`** is a plain refactor with no change in behaviour.
+* **m5 fixed.** The sweep now also counts files that import `ports/metrics`, and the "coded to MetricsPort" case is a named fail test. This closes the split-file case I probed in round 2.
+* **m6 fixed.** `invalid_value` now answers "this is not one of the allowed values"; the test checks for it and that "Invalid option" is gone.
+* **Breaker r1 fixed.** A LIST with no money treatment whose rows carry `currency` answers UNAVAILABLE, so money cannot skip view-financial; there is a fail test.
+* **No regression** in the scope rule, the firm walls, error words or the shared run rule.
+
+Open: Minor 2 (PF-0c's checker cannot see `ports/fakes/`) is outside this row, as before. The journey score stays 9.5 / 10: the one deduction was the Zod message, now fixed, but I have not re-scored that criterion.
+
+**Round 2 (delta) verdict: Approve.** The 400 vs 422 question is for the Lead, already raised in the PR.
+
+Reviewer: Approve 24417b62c6fb3718d2af16f4ee1bbf534154e062
