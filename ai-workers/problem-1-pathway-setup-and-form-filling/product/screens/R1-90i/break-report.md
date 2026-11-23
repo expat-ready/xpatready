@@ -144,3 +144,62 @@ Author's check: 18/18 on the copy, including the new `created_by` line. Each POS
   - A database that had already applied the branch's old stamp would see the new folder as pending, and its ADD COLUMN would fail. Only throw-away copies of this branch could be in that state.
   - IS4's fixture inserts its expired link with `created_by 'staff:<id>'` (tests/check_r190_invited_signup.ts:114). This is test data only.
 Verdict: Approve at 2dd912dc07a9f825cedf160bcc8abc79b444ccb9
+## Round 5 (diff only): head `97b43aaecc66dcc86841d02099c5081181e3d13f` (diff `b0c13674b..47a0b7635`, 3 files, plus `47a0b7635..97b43aaec`, the re-stamp)
+Setup: a throwaway PostgreSQL 18.3 cluster (initdb, port 15493) with `xr_admin`, the tables' owner, set NOSUPERUSER, as RDS's admin. Copy `brk5_r190i` on :4438. Both were stopped and removed at the end, and no file was left changed. Cost US$0.
+The re-stamp: `migration.sql` is byte-identical at 47a0b7635 and at 97b43aaec (cmp). `rollback.sql` changes only its first line. Every database attack below was run on that SQL, and the ordered run was made with the folder at 97b43aaec.
+### Blockers: none. Majors: none. Minors: none new.
+### What held in round 5
+- **RDS case (owner neither superuser nor BYPASSRLS, rows already in both tables):**
+  - Setup: every migration before R1.90 was deployed. Then 2 links and 2 pending rows were seeded, one of them live and one past its life. The admin then lost BYPASSRLS and saw `0,0` rows.
+  - `prisma migrate deploy` applied the R1.90 migration.
+  - The key `platform_signup_pending_signup_link_id_fkey` has `convalidated = true`.
+  - Both tables are still `relrowsecurity` and `relforcerowsecurity` true. `0_pf12_firm_first` is `O` (enabled) on both, and the other three triggers are unchanged.
+  - An event trigger traced the run. The DO block ran 9 DDL steps: NO FORCE ×2, DISABLE TRIGGER ×2, the key, ENABLE ×2 and FORCE ×2. So the lift branch really ran and put back exactly what it lifted.
+- **The ALTER fails inside the block:**
+  - Can a pending row whose `signup_link_id` points nowhere exist? No. The column is added by the statement just before, in the same implicit transaction, so it is NULL in every row.
+  - So the failure was forced another way: a CHECK constraint with the key's name was planted, giving "already exists" after the lift.
+  - Through `prisma migrate deploy` (P3018): a catalog snapshot was identical before and after. That covers relations, FORCE flags, triggers and their state, constraints, policies, columns and ACLs. Nothing was left: no column, no lift.
+  - Through `psql` in autocommit: the DO statement alone rolled back. FORCE and the triggers were back. Only the earlier statements (the columns) and the index stayed, which is the plain-psql path, not the deploy path.
+- **Superuser, and a BYPASSRLS non-superuser:**
+  - The trace shows only 4 DDL steps (2 ADD COLUMN, the key, the index), with no lift.
+  - Catalog snapshots of the RDS-applied database, the superuser-applied one and the BYPASSRLS-applied one are identical (7,692 lines).
+  - Compared with before the migration, the only differences are the 3 columns, their NOT NULLs, the key and the index.
+- **Rollback and re-apply (non-BYPASSRLS owner, in one transaction each):**
+  - After `rollback.sql`, the catalog equals the pre-migration copy exactly, FORCE and triggers included.
+  - Run a second time, it gives 5 notices only.
+  - Re-applying `migration.sql` gives the same catalog as the superuser run.
+- **Drift:** `prisma migrate diff --from-config-datasource --to-schema prisma/schema` says "No difference detected" on the RDS-applied and the superuser-applied databases.
+- **Order (97b43aaec):**
+  - The sequence is main's newest `20261123210000_pf21c_breaches` (origin/main 1a1db2e75), then #3207's `20261123213000_fo6d_any_document` (head af317d94f), then `20261123220000_r190_signup_link_plan`, which sorts last.
+  - Neither of the other two mentions the sign-up tables.
+  - Fresh-database run: main's folders plus #3207's were deployed (BYPASSRLS), a link and a pending row were seeded, and the admin's BYPASSRLS was then dropped. `prisma migrate deploy` then applied only `20261123220000`.
+  - Result: the key is validated, the set of forced tables is unchanged (98), and `0_pf12_firm_first` is `O` on both tables.
+  - On that merged database, `migrate diff` against the branch's schema lists only pf21c's and fo6d's tables (main's and #3207's schema files, which this branch does not have yet). It lists no sign-up table.
+- **`tests/check_pf8b_f7_data_walls.ts`:** 17/17 on its own cluster (port 15497), including "44 guarded in 17 migrations" and "every walled table is forced again at the end".
+- **`GET /api/public/signup/:token` (one-line mark):** `check_r190_invited_signup.ts` 18/18 on the copy. Each probe came from its own loopback address.
+  - A live link gave 200, and HEAD gave 200.
+  - An unknown token of the right shape gave 404.
+  - `GET signup/verify` gave 404. `POST signup/verify` (`{}` or no body) gave 422 from verify's own check, so verify is still matched first.
+  - These odd tokens each gave the one 404, never a 500: 1 character, 30 `x`, 200 and 6,000 characters, CJK, `%00`, `%2F%2E%2E`, `%25`, `__proto__`, `constructor`, `<live>%20`, `signup/plans`.
+  - A bare `%` gave Express's own 400, as in round 3. `signup/` gave Express's 404.
+  - `<live>/` and `SIGNUP/<live>` gave 200. This is Express's non-strict, case-insensitive routing, the same as every route.
+  - No session was needed for 200, so the open mark still applies. A firm token got 403, the same as on `/api/public/plans`.
+  - No link was used and no firm was made by any of these. The api.log has no 500.
+- **QA-53 / QA-65 (`check_forms_qa53.ts`):**
+  - On a plain copy, without the local identities, as the check's header runs it: 47/47 passed. The new probe passed ("not of the link's shape → 404"), the count was 235 of 235, and FO-2's list matched.
+  - With `PLATFORM_IDENTITY=local` and `PLATFORM_SYSTEM_IDENTITY=local`, 3 door checks fail (PF-5, PF-4t and PF-4s door statuses). This is environmental: the doors are set up on that copy. It does not come from this diff.
+- **Plants (all reverted, `git diff` clean afterwards):**
+  - (a) The GET's text with parentheses, `…offers (R1.90); opening…`: caught twice. The reviewed-list check fails because the route is seen without its mark, and "every configuration read refuses nobody" fails with `/api/public/signup/:token` answering 404 instead of 401.
+  - (b) A new unnamed `@Post("signup/:token/again")` on `api/public`: caught by QA-65 "every other write names its person".
+  - (c) The old two-line form (mark and `@Get` on one line ending at `)`, handler below): caught by "none left unseen" (234 of 235) and by the reviewed list.
+  - The "setup: the demo loads — 409" seen on the planted re-runs is the demo already being loaded on that copy. The first run passed it.
+- **Neither check was loosened:**
+  - `PUBLIC_WRITES` gains one exact path, kept sorted, and the check still compares the whole list. A second controller declaring the same path would make the list unequal.
+  - `REVIEWED` gains one exact path, marked open.
+  - The reader's regexes, the `declared` count and the QA-65 classifier are unchanged.
+### Notes (no finding)
+- This key would also pass without the lift. It is on a column added just before, NULL in every row: a plain ADD CONSTRAINT by the non-BYPASSRLS owner succeeded in a rolled-back try. That is the reason the F7 rule's EXEMPT list gives for two earlier migrations. The lift is harmless and follows Lead 15's ruling.
+- A database that already applied this branch's older stamps (`20261123030000_…` or `20261124070000_…`; only throw-away copies of this branch) would see `20261123220000` as new and fail at ADD COLUMN.
+- QA-53's reader still depends on line shape: a mark text containing `)`, or a mark+route line ending at `)`. Both fail loudly (plants a and c), so this is not a silent hole. It is not changed by this diff.
+- The R1.90 probe asks only a token of the wrong shape. An unknown token of the right shape on POST was asked in round 4 (404).
+Verdict: Approve at 97b43aaecc66dcc86841d02099c5081181e3d13f
