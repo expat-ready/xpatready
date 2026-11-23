@@ -1,6 +1,7 @@
 // PF-21d part 1a: ErasurePort's contract (ports/erasure.ts). Run by fakeErasure and by the real registry ErasureRegistry
-// (api/src/platform/erasure/registry.ts): rules 1 and 2 of the port file. eraserCases: rules 3 to 5 on one eraser, run
-// by each module's own test with a harness that seeds a person in two firms.
+// (api/src/platform/erasure/registry.ts): rules 1 and 2 of the port file. eraserCases: rules 3 and 4 on one eraser (its
+// firm and person only; a second call never ERASED), run by each module's own test with a harness that seeds a person in
+// two firms. A KEPT answer (rule 5) is the module's own test's to prove.
 import { defineContract, expect, expectRefused, type ContractCase } from "./contract.ts";
 import { ErasureRefused, EraseOutcome, type Eraser, type ErasureOrder, type ErasurePort } from "../erasure.ts";
 
@@ -19,7 +20,8 @@ export const erasurePortContract = defineContract("ErasurePort", (make: () => Er
     async run() {
       const p = make(), first = noop("front-office"); p.register(first);
       await expectRefused(() => p.register(noop("front-office")), "second register", (e) => e instanceof ErasureRefused);
-      expect(p.erasers().length === 1 && p.erasers()[0] === first, "the first kept");
+      first.module === "front-office" && Object.assign(first, { module: "renamed" });
+      expect(p.erasers().length === 1 && p.erasers()[0].module === "front-office", "the first kept, its name fixed at registration", p.erasers().map((e) => e.module));
     },
   },
   {
@@ -27,6 +29,7 @@ export const erasurePortContract = defineContract("ErasurePort", (make: () => Er
     async run() {
       const p = make();
       for (const bad of ["", "Front Office", "../x", "a".repeat(61)]) await expectRefused(() => p.register(noop(bad)), `"${bad}"`, (e) => e instanceof ErasureRefused);
+      await expectRefused(() => p.register({ module: "no-erase" } as unknown as Eraser), "no erase function", (e) => e instanceof ErasureRefused);
       expect(p.erasers().length === 0, "nothing registered");
     },
   },
@@ -38,6 +41,7 @@ export type EraserHarness<Tx> = {
   eraser: Eraser<Tx>;
   run<T>(firmId: string, fn: (tx: Tx) => Promise<T>): Promise<T>;
   seed(): Promise<{ order: ErasureOrder; otherFirmOrder: ErasureOrder; otherPersonId: string }>;
+  /** The person's rows in that firm the eraser erases (rows it keeps by a floor are not counted). */
   rowsOf(firmId: string, personId: string): Promise<number>;
 };
 
@@ -55,12 +59,12 @@ export function eraserCases<Tx>(make: () => Promise<EraserHarness<Tx>>): Contrac
       },
     },
     {
-      name: "a second call for the same order answers NOTHING",
+      name: "a second call for the same order never answers ERASED (NOTHING, or KEPT again)",
       async run() {
         const h = await make(), s = await h.seed();
-        await h.run(s.order.firmId, (tx) => h.eraser.erase(tx, s.order));
+        const first = EraseOutcome.parse(await h.run(s.order.firmId, (tx) => h.eraser.erase(tx, s.order)));
         const again = EraseOutcome.parse(await h.run(s.order.firmId, (tx) => h.eraser.erase(tx, s.order)));
-        expect(again.outcome === "NOTHING", "NOTHING the second time", again);
+        expect(again.outcome !== "ERASED" && (first.outcome !== "KEPT" || again.outcome === "KEPT"), "never ERASED twice; a KEPT stays KEPT", { first, again });
       },
     },
   ];
