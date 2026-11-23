@@ -100,3 +100,27 @@ Refused: `'Экспорт'` and `'客户导出'` (non-English export names; `'Э
 - **RDS shape:** every migration applied as the non-superuser admin. All five pf_import functions are owned by `xr_wall_reader` (SECURITY DEFINER). The reader has no CREATE on public afterwards. Attestation and refusal as in round 1.
 
 Verdict: Changes (for 68c32637c62bdd9133933f58f7836a99f37ac6b4)
+
+## Round 3 — commit 5a8665e8f0630c04f9407e5327bc843f457496d9 (diff 68c32637c..5a8665e8f)
+
+**Set-up:** fresh scratch DB `xr_studio_pf10a_break_r3_20194` with the same seed, plus two DBs for the rollback comparison; all dropped. Also run: `check_pf10a_import_schema.ts` (82/82); `tools/rds-shape-check.sh 15491` (all passed); an RDS-shaped probe (attestation; DRY_RUN row written and deleted; RUN row written while RUNNING, all as xr_app). No code edited, nothing committed. **No Blocker or Major.** Four Minor findings, all for PF-10b's engine or a later small row.
+
+**R3-F1 — Minor — R2-F4's freeze can be bypassed by sending the batch back to DRAFT.** Repro [A] on a DRY_RUN_READY batch: `update … set state='DRAFT', mapping='{"Phone":"email"}'; update … set state='DRY_RUN_READY'; update … set state='RUNNING'` → `RUNNING` with the **old** `dry_run_hash` and the new mapping. The new rule (`mig:197-202`) only covers DRY_RUN_READY→DRY_RUN_READY. Clearing `dry_run_hash` on the move to DRAFT, or refusing DRAFT→DRY_RUN_READY with the hash unchanged after a mapping change, would close it. PF-10b's hash recomputation (AG-18-16) is the remaining guard.
+
+**R3-F2 — Minor — FAILED does not mean the run created nothing; only the self-reported counts are checked.** Repro [A]: while RUNNING, insert a RUN `CREATE` row (with record); then `update … set state='FAILED', finished_at=now()` → `FAILED|0|1` (created_count 0, one RUN CREATE row). FAILED cannot move to UNDOING, so undo can never reach that record (`mig:160-164`). The engine must keep counts and rows consistent, or the check would have to look at rows.
+
+**R3-F3 — Minor — the new FOR SHARE makes two concurrent row writers on one batch deadlock.** `mig:255`. Repro: two transactions each `insert … phase 'RUN'` and then `update plat_import_batch set skipped_count = skipped_count + 1` → "deadlock detected … while locking tuple in relation plat_import_batch". One is aborted. Each holds a share lock and then wants the row lock. A single worker (row then count) works. A state change waits for an open row writer (1.2 s), as intended. PF-10b should use one writer per batch, or lock the batch `FOR NO KEY UPDATE` before the row.
+
+**R3-F4 — Minor — names that are entirely invisible still pass.** `mig:154`, `166`. Accepted as `source_name` with nothing else in the name: U+3164, U+FFA0, U+115F (Hangul fillers, which count as letters), U+2800 (braille blank), a lone U+0301. Accepted inside a name: U+180E, U+061C, U+034F, U+FE0F, tag characters U+E0041.
+All the listed ranges (U+200B–200F, U+202E, NBSP, U+2066) are refused. Arabic, Russian and Chinese names are accepted. `file_key` refuses `/./`, `/../`, `//` and a trailing `..`, but accepts `a/b/` and `a/.../b` (harmless).
+
+Not counted: `finished_at` and `undo_deadline` take any values at the finish (`'1990-01-01'` / `'2999-01-01'` accepted). Only "set once" and "shape" were claimed; the 14-day value is PF-10b's (Sample).
+
+### Round 3 — what held
+- **R2-F1 closed.** All six trigger functions have `proacl = {xr_wall_reader=X}`. xr_app gets "permission denied for function" when attaching `pf_import_row_open` or `pf_import_attestation_owner` to a look-alike temp table. With `set local search_path = pg_temp, public` and a temp `plat_import_row`, the real attestation still works: `'public.…'::regclass` is schema-qualified. A row naming firm B's batch is refused by the key, the firm guard means no lock is taken, and B's batch update was not blocked.
+- **R2-F2 closed.** RUN row in DRAFT, DRY_RUN row inserted or deleted while RUNNING, RUN row deleted while RUNNING, RUN row in COMPLETED and in UNDOING: all refused with the row-open message. The round-2 race is closed: the job's state change now waits for an open row writer.
+- **R2-F3 closed.** The legitimate single-UPDATE finish (state, counts, finished_at, undo_deadline) works, and so does counts-then-state in two UPDATEs. Refused: COMPLETED without finished_at, FAILED with an undo deadline, FAILED with created_count 1, counts changed in UNDOING.
+- **Row shape:** a DRY_RUN MERGE with a before-image and a DRY_RUN ERROR naming a record are refused.
+- **Rollback:** after `rollback.sql -1`, the catalogue (relations, functions with owner, ACL and source hash, types including `PlatImportRowPhase`, triggers, policies, constraints, schema ACL, default ACLs, memberships, `_prisma_migrations`) is identical to a database migrated only to the previous migration.
+
+Verdict: Approve (for 5a8665e8f0630c04f9407e5327bc843f457496d9)
