@@ -57,6 +57,11 @@ const ACTOR = "system:sign-up";
 const problem = (status: number, code: string, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code, ...extra }, status);
 const notFound = () => problem(404, "NOT_FOUND", "Not found", "This link is not valid any more. Sign up again, or sign in.");
+/** R1.90 (review m5): a private link's one 404 (unknown, used, expired, malformed alike) points to us, not to self-serve. */
+/** Thrown inside Confirm's transaction when its link was used or expired since the form: the transaction rolls back, then
+ *  the refusal's own line is written and the link's 404 answered (review m3). */
+const LINK_GONE = new Error("the private sign-up link is no longer usable");
+const linkGone = () => problem(404, "NOT_FOUND", "Not found", "This sign-up link is not valid any more. Ask us for a new link, or sign in if you already have an account.");
 /** PF-28 part 2c (R1.10): a field error answers 422 with each field named in `fields`; `errors` ("field: words") stays, the
  *  sign-up page reads it. */
 const fromErrors = (errors: string[]) => Object.fromEntries(errors.map((e) => { const i = e.indexOf(": "); return i > 0 ? [e.slice(0, i).slice(0, 64), e.slice(i + 2)] : ["form", e]; }));
@@ -233,20 +238,29 @@ export class FirmSignUp {
   }
 
   /** The link, if it can still be used; else the one 404 (unknown, used and expired alike). */
+  //   Review/break M2 (verifyDoor's way, Lead 15 on #2814): the read's line is committed before any refusal. A live or
+  //   unknown or expired-unused link's read is one firm-less line (the link's id, else none); a used link's row is its
+  //   firm's, so its read is one line on that firm's trail; then the 404.
   private async liveLink(token: string) {
-    if (!LINK_TOKEN.test(token)) throw notFound();
-    return this.db.$transaction(async (tx) => {
-      const now = await dbNow(tx), row = await tx.platformSignupLink.findUnique({ where: { tokenHash: sha(token) } });
-      await touchPlatform(tx, { step: "signup-link.open", key: row?.id ?? null });
-      if (!row || row.usedAt || row.expiresAt <= now) throw notFound();
-      return row;
+    if (!LINK_TOKEN.test(token)) throw linkGone();
+    const { now, row } = await this.db.$transaction(async (tx) => {
+      const at = await dbNow(tx), found = await tx.platformSignupLink.findUnique({ where: { tokenHash: sha(token) } });
+      if (!found?.firmId) await touchPlatform(tx, { step: "signup-link.open", key: found?.id ?? null });
+      return { now: at, row: found };
     });
+    if (row?.firmId) { await touchFirms(this.db, [row.firmId]); throw linkGone(); }
+    if (!row || row.usedAt || row.expiresAt <= now) throw linkGone();
+    return row;
   }
 
   /** GET /api/public/signup/:token: what the link offers; opening it changes nothing. */
-  invited(token: string) { return asBypass("platform.firms.signup", () => this.invitedWork(token)); }
-  private async invitedWork(token: string) {
+  invited(token: string, ip: string) {
+    if (!LINK_TOKEN.test(token)) throw linkGone();   // review/break M1: the shape before the bypass, whose routes take only a token's characters
+    return asBypass("platform.firms.signup", () => this.invitedWork(token, ip));
+  }
+  private async invitedWork(token: string, ip: string) {
     this.ready();
+    this.limit(`invite-open:${ip}`, this.limits.verifyPerIp);   // review m1 (contracts §0.6): each open writes a line
     const link = await this.liveLink(token);
     const plan = await this.db.platformPlan.findFirst({ where: { code: link.planCode, active: true } });
     if (!plan) throw problem(409, "PLAN_GONE", "This link's plan is not offered", "The plan on this link is no longer offered. Ask us for a new link.");
@@ -255,13 +269,15 @@ export class FirmSignUp {
   }
 
   /** POST /api/public/signup/:token: the invited form starts the provider's email check for the link's email. */
-  signUpInvited(token: string, body: unknown, ip: string) { return asBypass("platform.firms.signup", () => this.signUpInvitedWork(token, body, ip)); }
+  signUpInvited(token: string, body: unknown, ip: string) {
+    if (!LINK_TOKEN.test(token)) throw linkGone();   // review/break M1
+    return asBypass("platform.firms.signup", () => this.signUpInvitedWork(token, body, ip));
+  }
   private async signUpInvitedWork(token: string, body: unknown, ip: string) {
     this.ready();
     this.limit(`signup:${ip}`, this.limits.signupPerIp);
     // PF-28's order (as the booking link's door): the token's shape (else the one 404), then the body (422, fields named),
     // then the link, so a bad body is a field error whichever link it names and says nothing about which links exist.
-    if (!LINK_TOKEN.test(token)) throw notFound();
     const b = parse(InvitedBody, body, (e) => { throw fields([...new Set(e.issues.map(words))], fieldsOf(e)); });
     const link = await this.liveLink(token);
     const terms = await this.currentTerms();
@@ -310,8 +326,8 @@ export class FirmSignUp {
       await touchFirm(tx, firm.id);   // PF-12b: the new firm's platform.bypass line, in the transaction that creates it
       // R1.90: a sign-up from a private link uses the link once, with its firm, here (PF-3's trigger refuses a second use);
       // a link used or expired since the form was sent leaves nothing made (the one 404).
-      if (pending.signupLinkId && (await tx.platformSignupLink.updateMany({ where: { id: pending.signupLinkId, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, firmId: firm.id } })).count !== 1) throw notFound();
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "firm.created", entity: "platform_firm", entityKey: firm.id, summary: "Firm created by self-serve sign-up (setting up)", detail: { status: "PROVISIONING", country: pending.countryCode },
+      if (pending.signupLinkId && (await tx.platformSignupLink.updateMany({ where: { id: pending.signupLinkId, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, firmId: firm.id } })).count !== 1) throw LINK_GONE;
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "firm.created", entity: "platform_firm", entityKey: firm.id, summary: pending.signupLinkId ? "Firm created by invited sign-up, from a private link (setting up)" : "Firm created by self-serve sign-up (setting up)", detail: { status: "PROVISIONING", country: pending.countryCode },
         before: null, after: { key: firm.key, operatingName: firm.operatingName, countryCode: firm.countryCode, status: firm.status, ownerEmail: firm.ownerEmail, contactEmail: firm.contactEmail, billingEmail: firm.billingEmail } });
       const owner = await tx.platformStaff.create({ data: { firmId: firm.id, email: pending.email, displayName: pending.email.split("@")[0], identitySubject: pending.identitySubject } });
       await tx.platformRoleGrant.create({ data: { firmId: firm.id, staffId: owner.id, role: "OWNER", grantedBy: ACTOR, grantedAt: now } });
@@ -327,7 +343,7 @@ export class FirmSignUp {
       await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.created", entity: "platform_subscription", entityKey: sub.id, summary: `Trial subscription on ${plan.name}, ${pending.period.toLowerCase()}`, detail: { plan: plan.code, period: pending.period, trialEndsAt: trialEndsAt.toISOString() }, before: null, after: { plan: plan.code, period: pending.period, status: sub.status, trialEndsAt: trialEndsAt.toISOString() } });
       await tx.moduleEvent.create({ data: { firmId: firm.id, type: EVENT.FIRM_CREATED, subjectId: firm.id, payload: { firmId: firm.id } } });   // last (m8)
       return { firm, owner, sub };
-    });
+    }).catch(async (e) => { if (e !== LINK_GONE) throw e; await refused(pending.id, "signup.verify-link-gone"); throw linkGone(); });
     const checkout = await this.startTrial(made.firm, made.sub.id, plan, made.sub.billingPeriod).catch(() => null);   // PF-5 part 3: the stored period picks the price
     return { firmKey: made.firm.key, status: "PROVISIONING", ownerStaffId: made.owner.id, checkoutUrl: checkout?.url ?? null, ...(checkout ? {} : { next: "Sign in to finish starting your free trial." }) };
   }

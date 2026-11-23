@@ -2,6 +2,7 @@
 -- a private sign-up link names its plan and period, and the pending sign-up it starts names the link, so Confirm marks
 -- the link used with its firm in the transaction that makes the firm. Columns added only; nothing existing changes.
 -- The link's single use stays PF-3's trigger (platform_signup_link_used_once) and check (used with its firm).
+-- Rollback: rollback.sql in this folder (Prisma reads only migration.sql).
 ALTER TABLE "platform_signup_link"
   ADD COLUMN "plan_code" TEXT NOT NULL DEFAULT 'team',
   ADD COLUMN "billing_period" "PlatformBillingPeriod" NOT NULL DEFAULT 'MONTHLY';

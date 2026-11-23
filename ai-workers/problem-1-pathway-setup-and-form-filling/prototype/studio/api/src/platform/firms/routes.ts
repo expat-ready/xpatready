@@ -30,7 +30,7 @@ export class PlatformSignUpController {
 
   // R1.90: a private single-use link (after verify, so "signup/verify" is matched first). Unknown, used and expired → 404.
   @OpenRead("the invited sign-up page: what a private link offers (R1.90); opening it changes nothing") @Get("signup/:token")
-  invited(@Param("token") token: string) { return this.s.invited(token); }
+  invited(@Param("token") token: string, @Req() r: R) { return this.s.invited(token, ipOf(r)); }
 
   @Post("signup/:token") @HttpCode(202)
   signUpInvited(@Param("token") token: string, @Body() b: unknown, @Req() r: R) { return this.s.signUpInvited(token, b, ipOf(r)); }
