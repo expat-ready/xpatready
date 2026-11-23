@@ -62,7 +62,7 @@ export async function labelsOf(db: Reader, firmId: string, rows: { personId: str
 }
 
 const Query = z.strictObject({ q: z.string().trim().min(2, "Type at least 2 letters of the name.").max(100, "At most 100 letters.")
-  .refine((v) => !v.includes("\u0000"), "A name has no NUL character.") });   // breaker m1: never a database 500
+  .refine((v) => !v.includes("\u0000"), "Remove the hidden character from the name.") });   // breaker m1: never a database 500
 
 /** `%` and `_` typed are letters, not patterns. */
 const likeText = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

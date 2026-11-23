@@ -109,6 +109,8 @@ try {
   const X = newCase("COMPANY", CW), Y = newCase("PERSON", PW);
   // review M1: PD is a client opened on the case side (an fo_person with no prospect at all), the client of case D
   const PD = person(A, "Client Wonbee", "Direct", "fo7q3.pd@example.org"), D = newCase("PERSON", PD);
+  // review round 2 r2-m1: CD is a company opened on the case side (no prospect at all), the client of case E
+  const CD = company(A, "Wonbee Direct Co (Sample)"), E = newCase("COMPANY", CD);
   const invoice = (who: { person?: string; company?: string }, caseId: string | null) => { const id = randomUUID();
     rep(`insert into money_invoice (id, firm_id, person_id, company_id, case_id, currency, created_by, updated_at) values ('${id}', '${A}', ${who.person ? `'${who.person}'` : "null"}, ${who.company ? `'${who.company}'` : "null"}, ${caseId ? `'${caseId}'` : "null"}, 'CAD', 'staff:${staff("user-R", A)}', now())`); return id; };
   const IW = invoice({ person: PW }, Y), IN = invoice({ person: PN }, null), IC = invoice({ company: CW }, X);
@@ -125,7 +127,8 @@ try {
   ok("FO-7q P2 fail: an open prospect (PP, and the company CQ) is never found, nor a person with no prospect (PX)", ![PP, CQ, PX].some((x) => ids(wonbee).includes(x)), wonbee.items.map((i) => i.name));
   ok("FO-7q P2 fail: a merged-away party (PM, though won) is never found; its survivor is", !ids(wonbee).includes(PM) && ids(wonbee).includes(PW));
   ok("FO-7q P2 pass (review M1): a client opened on the case side (PD, no prospect) is found, as the linked party of case D", ids(wonbee).includes(PD), wonbee.items.map((i) => i.name));
-  ok("FO-7q P2 pass: exactly the three clients (PW, PD, CW) answer", wonbee.items.length === 3, wonbee.items.map((i) => i.name));
+  ok("FO-7q P2 pass (review r2-m1): a company opened on the case side (CD, no prospect) is found, as the linked party of case E", ids(wonbee).includes(CD), wonbee.items.map((i) => i.name));
+  ok("FO-7q P2 pass: exactly the four clients (PW, PD, CW, CD) answer", wonbee.items.length === 4, wonbee.items.map((i) => i.name));
   ok("FO-7q P2 pass (review m2): people and companies form one list, cut and ordered by the name shown", wonbee.items.every((x, i, a) => i === 0 || a[i - 1]!.name.toLowerCase() <= x.name.toLowerCase()), wonbee.items.map((i) => i.name));
 
   // ---------------------------------------------------------------------------- P1: another firm's party never answers
@@ -149,7 +152,9 @@ try {
   ok("FO-7q P4 pass: a party in the caller's party scope is found; one outside it (CW) is not", ids(onlyPW).length === 1 && ids(onlyPW)[0] === PW, onlyPW.items);
   const viaCase = await scoped({ cases: [X], parties: [] }), viaD = await scoped({ cases: [D], parties: [] }), notD = await scoped({ cases: [X], parties: [PW] });
   ok("FO-7q P4 pass (review M1): the case-side client PD is found through their own case D in scope", ids(viaD).length === 1 && ids(viaD)[0] === PD, viaD.items);
-  ok("FO-7q P4 fail (review M1): PD is a client, but outside the caller's scope (cases X, party PW) is not found", !ids(notD).includes(PD) && ids(notD).length === 2, notD.items);
+  ok("FO-7q P4 fail (review M1): PD is a client, but outside the caller's scope (cases X, party PW) is not found", !ids(notD).includes(PD) && !ids(notD).includes(CD) && ids(notD).length === 2, notD.items);
+  const viaE = await scoped({ cases: [E], parties: [] });
+  ok("FO-7q P4 pass (review r2-m1): the case-side company CD is found through its own case E in scope, and nobody else", ids(viaE).length === 1 && ids(viaE)[0] === CD, viaE.items);
   ok("FO-7q P4 pass: the client of a case in scope (X's company CW) is found, and nobody else", ids(viaCase).length === 1 && ids(viaCase)[0] === CW, viaCase.items);
   const none = await scoped({ cases: [], parties: [] }), prospectInScope = await scoped({ cases: [], parties: [PP, CQ] });
   ok("FO-7q P4 fail: an empty scope finds nobody; an open prospect in scope is still never found", none.items.length === 0 && prospectInScope.items.length === 0, { none: none.items, prospectInScope: prospectInScope.items });
@@ -180,8 +185,8 @@ try {
   const P = "/front-office/money/parties";
   const noSession = await call(undefined, `${P}?q=wonbee`), withSession = await call(tR, `${P}?q=wonbee`);
   ok("FO-7q P7 fail: no session → 401", noSession.status === 401, noSession);
-  ok("FO-7q P7 pass: user-R (holds agent/invoice:list) gets 200 through the app's own scope (PgMoneyVisibility): clients of firm A only (PW, PD, CW), at least one",
-    withSession.status === 200 && withSession.body?.items?.length >= 1 && withSession.body.items.every((i: { id: string }) => [PW, PD, CW].includes(i.id)), withSession);
+  ok("FO-7q P7 pass: user-R (holds agent/invoice:list) gets 200 through the app's own scope (PgMoneyVisibility): clients of firm A only (PW, PD, CW, CD), at least one",
+    withSession.status === 200 && withSession.body?.items?.length >= 1 && withSession.body.items.every((i: { id: string }) => [PW, PD, CW, CD].includes(i.id)), withSession);
   // READ_ONLY is the one seeded role without agent/invoice:list: user-T's grants are ended and READ_ONLY given instead
   ok("setup: READ_ONLY holds no agent/invoice:list", sql(`select count(*) from platform_role_permission where role::text = 'READ_ONLY' and permission_key = 'agent/invoice:list'`) === "0");
   const T = staff("user-T", A);

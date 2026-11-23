@@ -50,3 +50,32 @@ No UI walk, keyboard, 1024 px or zoom (no screen in this row). No real `:44xx` a
 Reviewer: Changes e51fcc3e5bc93f5d0f3489f272729c4a0897c8ed
 
 Verdict: Changes
+
+## Round 2 (diff only: `git diff e51fcc3e5..d7a7a89a2`, code in `reads/parties.ts` and `tests/check_fo7q_parties.ts`)
+Head reviewed: `d7a7a89a28e50bc7746e9d99aae918f1ec4eb023`. The commit also carries the screens/FO-7q-3 records, which I ignored (the round 1 records are unchanged).
+
+**Runs:** `check_fo7q_parties` 38/0, twice. `check_fo7q_reads` 52/0. Mutations in a scratch copy, not the repo:
+* Dropping the case-client branch for people fails 3 checks. That is the M1 fix: P2 PD and P4 via case D.
+* Turning off C5 scope for people fails 6. Turning it off for companies fails 3.
+* Dropping `won_at` fails 4. Dropping the merged filter fails 3. Dropping the NUL refine fails 1 (it gave a 500).
+* Scale probe: 5,000 case-side clients plus the fixtures, user-R through PgMoneyVisibility, so the app scope passes 5,000 case ids. HTTP search takes 59–127 ms end to end, under STANDARDS §9's 200 ms. Order is by the shown name ("Bulk 1 Client | Bulk 10 Client | ...").
+
+**Round 1 items**
+* **M1 closed.** A client is the subject of a won prospect, or the linked party of any case of the firm (`parties.ts:88-89`, `:95`, `:100`). C5 still narrows the result (`in_scope`, `:90`). A party whose only record is an open or lost prospect stays unfound (P2 fail and P4 fail still kill the `won_at` mutation). `case_client.firm_id = runtime_case.firm_id` fails closed on an unfilled firm id. Merges re-point `case_client` through CS-K2, so survivors stay clients. New tests: PD is found (P2), found through its own case D in scope (P4), and not found outside scope (P4 fail).
+* **m1 closed.** `labelsOf` on a row with no ids must give `billTo` null and `caseLabel` null (test :168-169). A wrong kind or a guessed name would fail it.
+* **m2 closed.** One `union all` is ordered and cut by `lower(x.name), x.id` (`:102`), where `x.name` is the very name shown (the `nullif` form for people, `btrim` for companies). The JS re-sort is gone, so the top 20 is the true top 20.
+* **m3 closed** by the rename, which names both guards (SQL firm checks and PF-12 walls).
+* **Breaker M1 (speed):** each set is read once as a materialized CTE. Every CTE filters `firm_id = firmId` (session firm), and RLS sits underneath. Values are bound through `Prisma.sql`, and `${all}` is a bound boolean. Correct, and fast enough at 5,000 (above).
+* **Breaker m1:** a NUL in q gives 422 naming q (test :196; the mutation proves it was a 500).
+
+**New, Minor (Should, non-blocking)**
+* r2-m1: the company case-side branch (`:100`, `c.id in (select cid from on_case ...)`) has no test that can fail. Removing it still passes 38/0, because CW also has a won prospect. Add a company with no prospect as the client of a case (it mirrors PD).
+* r2-m2: "A name has no NUL character." names a control character. Only a crafted request ever sees it, so it is acceptable. "Remove the hidden character from the name." would be plainer (D10).
+
+**Journey score, round 2:** J7 now holds, so "task completed" and "correct data" each go from ½ to 1. The score is 8/8 on the applicable criteria, 10/10 scaled (visual quality and accessibility are N/A: no UI). D1 and D19 rise to 5. D16 is 4 (r2-m1).
+
+No Blocker or Major is open.
+
+Reviewer: Approve d7a7a89a28e50bc7746e9d99aae918f1ec4eb023
+
+Verdict: Approve
