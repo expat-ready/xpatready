@@ -45,10 +45,19 @@ export async function notePairs(tx: Tx, firmId: string, personId: string, addedA
   const ids: string[] = [];
   for (const m of found.matches) {
     const [lo, hi] = pairOf(personId, m.id);
+    // A Kept separate decision already made between these people (or a record merged into either) carries over, so a
+    // merge never reopens it (review round 2 n1).
+    const [kept] = await tx.$queryRaw<{ by: string }[]>`
+      select r."decided_by" as by from "fo_dup_review" r
+       where r."firm_id" = ${firmId}::uuid and r."status" = 'KEPT_SEPARATE'
+         and exists (select 1 from "fo_person" a where a."firm_id" = r."firm_id" and a."id" in (r."low_id", r."high_id") and (a."id" = ${lo}::uuid or a."merged_into_id" = ${lo}::uuid))
+         and exists (select 1 from "fo_person" b where b."firm_id" = r."firm_id" and b."id" in (r."low_id", r."high_id") and (b."id" = ${hi}::uuid or b."merged_into_id" = ${hi}::uuid))
+       limit 1`;
+    const keep = addedAsNew ?? (kept ? { by: kept.by } : null);
     const [row] = await tx.$queryRaw<{ id: string }[]>`
       insert into "fo_dup_review" ("firm_id", "kind", "low_id", "high_id", "score", "reasons", "status", "decided_by", "decided_at")
       values (${firmId}::uuid, 'PERSON', ${lo}::uuid, ${hi}::uuid, ${m.score}, ${JSON.stringify(m.reasons)}::jsonb,
-              ${addedAsNew ? "KEPT_SEPARATE" : "OPEN"}::"FoDupReviewStatus", ${addedAsNew?.by ?? null}, ${addedAsNew ? new Date() : null})
+              ${keep ? "KEPT_SEPARATE" : "OPEN"}::"FoDupReviewStatus", ${keep?.by ?? null}, ${keep ? new Date() : null})
       on conflict ("firm_id", "low_id", "high_id") do nothing returning "id"::text as id`;
     if (row) ids.push(row.id);
   }

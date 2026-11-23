@@ -56,3 +56,44 @@ D1 Requirement fit **3**: every route and rule exists; M1, M2 and M7 are gaps ag
 No screen, so no keyboard, 1024 px, zoom or axe checks (FO-9s). The web form door was not walked: the isolated copy has no enabled form. The shared new-person path in `arrive` covers it by reading. The isolated copy needed `firm-seed.ts` run by hand, because the front-office setup was not seeded on start; that is not this PR. Full CI was not run. D17 and D20 stay with the founder.
 
 Reviewer: Block b0eee18ea9faa8cb3d58e68a95e5265ec7adee55
+
+## Round 2 (diff only, P-277): `b0eee18ea..3168257`, 23 Nov 2026
+Same reviewer. I read only the diff (`review.ts`, `routes.ts`, `arrival.ts`, `leads.ts`, the suite, two `MODULE.rows` files). I ran `check_fo9b_review.ts` from studio: **51/51, exit 0, twice**. I ran 19 one-line mutations in a detached scratch worktree, a probe of my own, and API journeys on an isolated copy on **:4436** (`journey-test-reviewer-2026-11-23-r2.md`; never :4400). `graph.mjs`: G1 0, G2 0. Nothing is committed. US$0.
+
+**Round-1 items**
+* **M1 fixed.** A retainer on either person's prospect (subject or primary contact) now counts (`review.ts:75-76`). The test turns red when the prospect clause is removed.
+* **M2 fixed.** `liveReasons` compares the stored email and E.164 phone from the records (`:85-89`). F1 turns red if the stored reasons are used again.
+* **M3 fixed.** The automatic merge runs `whyNotSafe` again after `mergeRecords`' locks and rolls back to `fo_dup_auto` on a hit (`:111-118`; F2 turns red without it). The guided merge checks case and money again after the locks (`:228-230`; F3 turns red without the case re-check). The money side's later writers are an open question with the tech lead, so not a finding.
+* **M4 fixed.** An optional `updatedAt` is checked: the survivor before the lock and the loser against the merge's locked snapshot. A mismatch gives 409 `STALE_VERSION` (`:220-235`; F4 pass and fail). Residuals are n3 and n4.
+* **M5 fixed.** Undo is refused with 409 `NEEDS_CASE_SIDE` when either side is a case client (`:250-251`; F5 turns red without it).
+* **M6 met, as a question.** The merge gives 409 `HAS_MONEY` when either person has money (before and after the locks), and preview has `hasMoney`. Refusing a survivor that has money goes further than my round-1 fix and deviates from BACKLOG; it is with the tech lead, so not a finding. Preview still lists no consent copies (BR-9): see n5.
+* **M7 fixed.** `leads.ts:167` passes `addedAsNew`, and `notePairs` writes the pair `KEPT_SEPARATE` with the adder as the decider. The test turns red when `addedAsNew` is removed. But n1 reopens the same hole by another path.
+* **M8 partly fixed, still open (Major).** The DOCUMENT line, the prospect clause and the failed case read each turn the suite red now. But removing the identity-copy clause (`:77`) or the new `fo_signer` clause (`:78`) leaves **51/51**. Both are rules that refuse the merge by itself (STANDARDS §7 [M]). Fix: a pass and a fail for an identity check with and without `copy_file_key`, and one for a `fo_signer` row.
+* **m1 fixed.** `choices` is a strict object over `MERGE_FIELDS.PERSON` (`routes.ts:16`), and a JSON-made `__proto__` gets a named 422 (`:35`). My journey also got named 422s for `constructor`, `BOTH` and an array.
+* **m2 fixed.** The Merged tab parses an empty query (F7). **m3 fixed.** The list is filtered before `.slice(0, 500)`. The read itself is no longer capped, which is acceptable at this scale.
+* **m4 fixed.** Busy now answers 503. No test pins it: a mutation back to 409 stays green. **m5 still open.** `graph.mjs` G3 still lists all six routes. The graph matches `call("GET", "/front-office/...")`, without the `/api` prefix, as the other suites write it. The suite now uses `/api/front-office/...`.
+* **m6 fixed.** The failure is logged as `fo9b_note_pairs_failed`. `logPort.error` keeps only the error's class, code and frames, with `correlationId` and `firmId`.
+* **m7 done, but see n1.** No test covers it: removing either `notePairs` call stays green.
+
+**New in this round**
+* **n1 (Major). Re-noting after a merge overrides a Kept separate decision** (concept §8 B1; BR-11). After a merge, `notePairs(tx, firmId, survivor)` (`review.ts:119`, `:237`) writes the survivor's new pairs as `OPEN`. It ignores a `KEPT_SEPARATE` decision on the loser's pair with the same person.
+  * My probe (suite harness): A has email E. B has E and phone P. C has P only and is added with **Add as new**, so B-C is `KEPT_SEPARATE` by the adder. `mergeIfSafe(A-B)` merges, and A takes B's phone by the default pick. A-C is then written **OPEN**, and `mergeIfSafe(A-C)` merges C into A, although the adder had said C is someone new.
+  * Journey J9 shows the same with a guided merge: A-C appears on To review.
+  * This is latent like round-1 M7, because nothing calls `mergeIfSafe` yet, but it is the same rule.
+  * Fix: when re-noting after a merge, write a pair `KEPT_SEPARATE` (carrying that decision and who made it) when the other person has a `KEPT_SEPARATE` pair with the loser, or skip writing it. Add a test with the A/B/C case.
+* **n2 (minor).** Undo leaves the pairs that the merge re-noted. In J9 after Undo, A-C stays on To review with `[PHONE]`, although A no longer has that phone (the merge by itself would refuse it as `NOT_EXACT`). Close or remove the pairs that the merge wrote when it is undone, or list them in the PR.
+* **n3 (minor).** The survivor's `updatedAt` is compared before `mergeRecords` locks it (`:220-224`), so an edit that commits in that gap is not seen. Compare against the survivor row as locked; part 1's `survivorBefore` holds no `updated_at` today.
+* **n4 (minor).** STANDARDS §4 [M] asks for a 409 "with what changed". `STALE_VERSION` says neither which record nor which fields changed. Concept S3's copy is generic, so this is minor: add the changed record and fields to the problem body.
+* **n5 (minor).** Preview's `moves` still has no consent copies (BR-9). Add it before FO-9s builds the preview.
+* **n6 (minor, tests).** Each of these can be removed with the suite still green: the guided merge's money check after the locks, the loser snapshot stale check, and the Undo `CASE_UNKNOWN` branch. In each case its twin check covers the committed case, but no race test pins the guarded path.
+* **Held:** the money check comes before the stale check and before any write, then again under the locks. `notePairs` inside the merge transaction fails closed: a matcher error rolls the merge back, nothing is half-written, and it uses on-conflict-do-nothing. The `__proto__` 422 happens before the service runs.
+
+**D-score changes:** D2 **3** (stale, money and the race are closed; n1) · D4 **3** (M8 rest, n1) · D16 **3** (M8 rest, n6, m5). Others as in round 1. **Journey: 8/10** (passes, no 0; `journey-test-reviewer-2026-11-23-r2.md`).
+
+**Verdict: Block** on `3168257452e42c1df0b117fe101d9354d891538b`. To fix:
+1. n1, with a failing test first.
+2. The rest of M8: tests for the identity-copy and `fo_signer` clauses.
+
+Minors n2-n6 and m5: fix them, or list them in the PR. Open questions with the tech lead (not blockers): the key names, wiring `mergeIfSafe` into arrival, the money side's party check for writers that start after the locks, and M6's refusal.
+
+Reviewer: Block 3168257452e42c1df0b117fe101d9354d891538b
