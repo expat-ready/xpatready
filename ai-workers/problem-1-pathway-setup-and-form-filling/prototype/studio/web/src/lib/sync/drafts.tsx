@@ -7,9 +7,10 @@ import * as React from "react";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { onStaffChange, staffScope } from "@/modules/platform/session";
 
-// Break B1: every draft and every message names its owner (`who`, staffScope(): this session, never the token). A window
-// ignores another owner's messages and stored drafts, and a change of person (sign-out, sign-in, a session ended) drops every
-// draft this window holds, so nothing one person typed reaches, shows to, or is saved by the next.
+// Break B1: every draft and every message names its owner (`who`, staffScope(): the staff member, never the token). A window
+// ignores another owner's messages and stored drafts. Signed out, drafts stay stored but hidden; the same person signing in
+// again gets them back (review round 3: an expiry or "signed in elsewhere" never loses typing); another person signing in
+// drops them, so nothing one person typed shows to, or is saved by, the next.
 // Break M2: a draft remembers the item it was typed on (`at`, the address without query), so a workspace tab that is not
 // mounted (after a reload) still shows its dot and asks before it closes, and the leave-page guard sees stored drafts.
 type Entry = { values: unknown; base: unknown; version: string | null; who: string; at?: string };
@@ -36,7 +37,7 @@ onStaffChange(() => {
   if (now === who) return;
   who = now;
   entries.clear(); others.clear();
-  try { for (const k of stored()) sessionStorage.removeItem(k); } catch { /* memory only */ }
+  if (now) try { for (const k of stored()) { const j: unknown = JSON.parse(sessionStorage.getItem(k) ?? "null"); if ((j as { who?: unknown } | null)?.who !== now) sessionStorage.removeItem(k); } } catch { /* memory only */ }
   emit();
 });
 /** A stored or sent draft is used only when it is well formed and this owner's (break m2: a bad version never reaches If-Match). */

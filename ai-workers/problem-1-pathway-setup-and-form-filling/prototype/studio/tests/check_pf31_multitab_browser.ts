@@ -114,6 +114,11 @@ try {
   ok("T6 a reload restores the open tabs and the active one", t6.length === 4 && t6.find((x) => x.selected)?.path === officePath(O2.id), t6);
   ok("T6 the active tab's draft survives the reload", (await nameField(p1).inputValue()) === B3, await nameField(p1).inputValue());
   ok("T6 a tab not mounted since the reload still shows its dot (break M2)", !!t6.find((x) => x.path === officePath(O1.id))?.dirty, t6);
+  closeAnswer = false;
+  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O1.id)}"] [data-ws-close]`).click();
+  await p1.waitForTimeout(300);
+  ok("T6 closing that tab asks first; No keeps it (break M2, review round 3)", (await tabs(p1)).some((x) => x.path === officePath(O1.id)), await tabs(p1));
+  closeAnswer = true;
 
   // T4: a second view (another window of the same browser) mirrors, one save, the other view refreshes
   const p2 = await page(ctx);
@@ -184,7 +189,7 @@ try {
   await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"] [data-ws-close]`).click();
   ok("T7 Yes closes it, drops its draft and shows the next tab", await until(async () => (await tabs(p1)).length === before - 1) && !(await p1.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith("xr.draft.platform-office:")))), await tabs(p1));
   ok("T7 focus goes to the tab that comes forward (review S4)", await until(async () => p1.evaluate(() => document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true")));
-  await p1.evaluate(() => { const s = JSON.parse(sessionStorage.getItem("xr.workspace.v1")!); for (let i = s.tabs.length; i < 12; i++) s.tabs.push({ id: `cap${i}`, path: `/platform/x${i}`, title: `Item ${i}` }); sessionStorage.setItem("xr.workspace.v1", JSON.stringify(s)); });
+  await p1.evaluate(() => { const k = Object.keys(sessionStorage).find((x) => x.startsWith("xr.workspace.v1:"))!, s = JSON.parse(sessionStorage.getItem(k)!); for (let i = s.tabs.length; i < 12; i++) s.tabs.push({ id: `cap${i}`, path: `/platform/x${i}`, title: `Item ${i}` }); sessionStorage.setItem(k, JSON.stringify(s)); });
   await p1.reload(); await p1.locator('[data-workspace]:visible [role="tablist"]').waitFor({ timeout: 60_000 });
   await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]`).click(); await officeRows(p1);
   await shown(p1).locator('nav[aria-label="My account"] a[href="/platform/security"]').click({ modifiers: ["Control"] });
@@ -194,6 +199,12 @@ try {
   await p1.setViewportSize({ width: 1440, height: 900 });
   await p1.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/x11"] [data-ws-close]').click();
   ok("T7 closing a background tab keeps focus on the strip's active tab (round 2 Should 2)", await until(async () => p1.evaluate(() => document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true")) && (await tabs(p1)).length === 11, await p1.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
+
+  // B1 (review round 3 Should 2): a draft broadcast by another person's window is ignored here
+  const forgedKey = `platform-office:${O2.id}`;
+  await p1.evaluate((k) => new BroadcastChannel("xr-sync").postMessage({ t: "draft", key: k, entry: { values: { name: "forged" }, base: {}, version: null, who: "someone-else" }, from: "forger", who: "someone-else" }), forgedKey);
+  await p1.waitForTimeout(300);
+  ok("B1 a draft broadcast by another person's window is ignored", !(await p1.evaluate((k) => sessionStorage.getItem(`xr.draft.${k}`), forgedKey)));
 
   // T10: axe on the strip; keyboard; 375 px
   const ax = (await new AxeBuilder({ page: p1 }).include("[data-workspace]:not([hidden] *) [data-workspace-strip]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations;
@@ -242,24 +253,47 @@ try {
   ok("T9 a malformed If-Match (\"*\") and a body version that differs from the header are 422; nothing written", bad.status === 422 && differ.status === 422 && officeName(O1.id) === `${O1.name} etag ${run}`, { bad: bad.status, differ: differ.status });
   const staleProfile = await api(T, "PUT", "/platform/firm/profile", { website: "https://pf31.example.ca" }, { "if-match": '"0000"' });
   ok("T9 the firm profile takes If-Match too: a stale one is 409", staleProfile.status === 409, staleProfile.status);
-  // B1 (break): a change of person in the same browser tab never carries the last person's draft or tabs. Last: it signs T out.
+  // B1 (break) and review round 3: drafts and tabs belong to the person. A session that ends by itself keeps them for the
+  // same person; another person signing in here never sees them. Last: it ends T's session. It signs in user-T, so a breaker
+  // running user-T on the same copy at the same time loses its session (one session per person).
   const ctxB = await context(), pb = await page(ctxB), typed = `${O2.name} typed by R ${run}`;
+  const formSignIn = async (email: string) => {
+    await pb.locator("[data-sign-in-card] input").first().fill("sample-firm");
+    await pb.locator('[data-sign-in-card] input[type="email"]').fill(email);
+    await pb.locator('[data-sign-in-card] button[type="submit"]').click();
+    await pb.locator("[data-staff-name]").waitFor({ timeout: 20_000 });
+  };
+  const kept = () => pb.evaluate((v) => Object.values(sessionStorage).some((x) => x.includes(v)), typed);
   await pb.goto(`${BASE}/platform/offices`); await shown(pb).locator(`[data-office-edit][href="${officePath(O2.id)}"]`).click(); await nameField(pb).waitFor({ timeout: 60_000 });
   await nameField(pb).fill(typed);
-  await until(async () => pb.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith("xr.draft."))));
-  await pb.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]').click();   // the list again: Sign out is not behind the panel
+  await until(kept);
+  await pb.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]').click();   // the list again: the header is not behind the panel
+  // The session ends by itself: R signs in elsewhere, so the next call here is refused (401, "signed in elsewhere").
+  await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) });
+  await pb.reload();   // the first call with the old token is refused, so the session ends here (the typing was kept over the reload)
+  await pb.locator("[data-signed-in-elsewhere]").waitFor({ timeout: 60_000 });
+  ok("round 3: a session ended by the server hides the typing but keeps it for the same person", await kept() && (await pb.getByText(typed).count()) === 0);
+  await pb.getByRole("button", { name: "Sign in again here" }).click();
+  await formSignIn(sql("select email from platform_staff where actor_id = 'user-R' limit 1"));
+  await pb.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"]`).click();
+  ok("round 3: the same person signing in again gets the tab and the typing back", await until(async () => (await nameField(pb).inputValue().catch(() => "")) === typed), await nameField(pb).inputValue().catch(() => "(no panel)"));
+  await pb.locator('[data-workspace]:visible [role="tab"]').first().click();
   await pb.getByRole("button", { name: "Sign out" }).click();
   await pb.locator("[data-sign-in-card]").waitFor();
-  ok("B1 sign-out drops this tab's drafts and its other tabs", await pb.evaluate(() => !Object.keys(sessionStorage).some((k) => k.startsWith("xr.draft.")) && (JSON.parse(sessionStorage.getItem("xr.workspace.v1") ?? "{}").tabs ?? []).length <= 1), await pb.evaluate(() => Object.keys(sessionStorage)));
-  const emailO = sql(`select email from platform_staff where actor_id = 'user-O' and firm_id = (select firm_id from platform_office where id = '${O2.id}') limit 1`);
-  await pb.locator("[data-sign-in-card] input").first().fill("sample-firm");
-  await pb.locator('[data-sign-in-card] input[type="email"]').fill(emailO);
-  await pb.locator('[data-sign-in-card] button[type="submit"]').click();
-  await pb.locator("[data-staff-name]").waitFor({ timeout: 20_000 });
+  await formSignIn(sql("select email from platform_staff where actor_id = 'user-T' limit 1"));
   await pb.waitForTimeout(500);
-  const seen = await pb.locator('[role="dialog"] [data-office-name]').inputValue({ timeout: 2000 }).catch(() => "(no panel)");
-  ok("B1 the next person signed in here sees none of the last person's typing", seen !== typed && await pb.evaluate((v) => !Object.values(sessionStorage).some((x) => x.includes(v)), typed), { seen, emailO });
+  const seen = await nameField(pb).inputValue({ timeout: 2000 }).catch(() => "(no panel)");
+  ok("B1 another person signed in here sees none of the last person's typing or tabs", seen !== typed && !(await kept()) && !(await tabs(pb)).some((x) => x.path === officePath(O2.id)), { seen, tabs: await tabs(pb) });
   await ctxB.close();
+  // Break round 3 M2: an area with no staff session (the case area, simulated people) keeps its tabs over a reload too.
+  const ctxS = await browser.newContext({ viewport: { width: 1440, height: 900 } }), pc = await page(ctxS);
+  await pc.goto(`${BASE}/cases`); await pc.locator('[data-workspace]:visible [role="tablist"]').waitFor({ timeout: 60_000 });
+  await pc.locator('[data-workspace]:visible nav a[href^="/"]').nth(1).click({ modifiers: ["Control"] });
+  await until(async () => (await tabs(pc)).length > 1);
+  const beforeS = (await tabs(pc)).length;
+  await pc.reload(); await pc.locator('[data-workspace]:visible [role="tablist"]').waitFor({ timeout: 60_000 });
+  ok("round 3: with no staff session (the case area) the tabs still come back after a reload (break M2)", beforeS > 1 && await until(async () => (await tabs(pc)).length === beforeS), { beforeS, after: await tabs(pc) });
+  await ctxS.close();
   ok("no page errors", errs.length === 0, errs.slice(0, 5));
 } catch (e) { failed = 1; console.error("FAIL  the walk stopped:", e); } finally { await browser.close(); }
 process.exit(summary() + failed ? 1 : 0);

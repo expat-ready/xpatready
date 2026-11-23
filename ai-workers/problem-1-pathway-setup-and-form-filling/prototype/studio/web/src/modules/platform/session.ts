@@ -42,14 +42,16 @@ export function endSession(because: string | null) { ended = because; setStaffTo
 export function clearSessionEnd() { if (ended !== null) { ended = null; changed(); } }
 /** The token, or null when signed out or expired. */
 export const staffToken = () => read()?.token ?? null;
-/** PF-31 break B1: who this tab's shared drafts and workspace tabs belong to: a one-way hash of the session token (never the
- *  token itself, which must not travel to another window), or null when signed out. Another session, even the same person's,
- *  is another owner, so nothing typed or opened by one person reaches the next. */
+/** PF-31 break B1 (round 3: the person, not the session): who this tab's shared drafts and workspace tabs belong to: a
+ *  one-way hash of the token's issuer and subject (the staff member), never the token itself, or null when signed out. The
+ *  same person signing in again after an expiry or "signed in elsewhere" gets their drafts and tabs back; anyone else never. */
 export function staffScope(): string | null {
   const t = staffToken();
   if (!t) return null;
+  let who = t;   // not a JWT: the token itself (a new session is then a new owner)
+  try { const p = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as { iss?: unknown; sub?: unknown }; if (typeof p.sub === "string" && p.sub) who = `${String(p.iss ?? "")}|${p.sub}`; } catch { /* not a JWT */ }
   let a = 0x811c9dc5, b = 0x01000193;
-  for (let i = 0; i < t.length; i++) { const c = t.charCodeAt(i); a = Math.imul(a ^ c, 0x01000193); b = Math.imul(b ^ c, 0x5bd1e995) ^ (b >>> 15); }
+  for (let i = 0; i < who.length; i++) { const c = who.charCodeAt(i); a = Math.imul(a ^ c, 0x01000193); b = Math.imul(b ^ c, 0x5bd1e995) ^ (b >>> 15); }
   return (a >>> 0).toString(36) + (b >>> 0).toString(36);
 }
 /** Runs on every change of the session (sign-in, sign-out, end); `staffScope()` says who it is now. */

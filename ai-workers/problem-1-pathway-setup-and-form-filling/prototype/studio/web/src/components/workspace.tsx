@@ -19,6 +19,11 @@ import { cn } from "@/lib/utils";
 
 export const TAB_CAP = 12;
 const STORE = "xr.workspace.v1";
+/** Whose tabs these are (break B1): the staff member (staffScope()), or "local" where no staff session applies (Product
+ *  Studio and the case area run on simulated people). Each owner keeps its own list (`xr.workspace.v1:<owner>`), so signing
+ *  out never overwrites the person's tabs, and the same person signing in again gets them back. */
+const ownerNow = () => staffScope() ?? "local";
+const storeOf = (owner: string) => `${STORE}:${owner}`;
 type Tab = { id: string; path: string; title: string; nav: number; type: NavigationType; scroll: number; state?: unknown };
 /** The item a tab shows: its address without query or hash ("/platform/offices/abc"). Two tabs never share one. */
 export const itemOf = (path: string) => { const p = parsePath(path).pathname || "/"; return p.length > 1 ? p.replace(/\/+$/, "") : p; };
@@ -53,14 +58,14 @@ export function useTabDirty(dirty: boolean, discard: () => void) {
 /** A kept tab is used only when well formed (break m1: a bad title blanked the app) and an app address (not "//host"). */
 const keptTab = (t: unknown): t is { id: string; path: string; title: string } => {
   const x = t as { id?: unknown; path?: unknown; title?: unknown } | null;
-  return !!x && typeof x.id === "string" && x.id.length <= 40 && typeof x.path === "string" && x.path.startsWith("/") && !x.path.startsWith("//") && x.path.length <= 2000 && typeof x.title === "string";
+  return !!x && typeof x.id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(x.id) && typeof x.path === "string" && x.path.startsWith("/") && !x.path.startsWith("//") && x.path.length <= 2000 && typeof x.title === "string";
 };
 /** The tabs kept in this browser tab, only when they are this session's (break B1: never the last person's). */
 function load(): { tabs: Tab[]; active: string; dropped: boolean } {
   let tabs: Tab[] = [];
   try {
-    const s = JSON.parse(sessionStorage.getItem(STORE) ?? "null") as { who?: unknown; tabs?: unknown } | null;
-    if (s && s.who === staffScope() && staffScope() && Array.isArray(s.tabs))
+    const s = JSON.parse(sessionStorage.getItem(storeOf(ownerNow())) ?? "null") as { tabs?: unknown } | null;
+    if (s && Array.isArray(s.tabs))
       tabs = s.tabs.filter(keptTab).slice(0, TAB_CAP).map((t) => ({ id: t.id, path: t.path, title: t.title.slice(0, 200), nav: 0, type: NavigationType.Pop, scroll: 0 }));
   } catch { /* none kept */ }
   const cur = here(), same = tabs.find((t) => itemOf(t.path) === itemOf(cur));
@@ -85,7 +90,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   now.current = { tabs, active };
 
   React.useEffect(() => {
-    try { sessionStorage.setItem(STORE, JSON.stringify({ who: staffScope(), tabs: tabs.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
+    try { sessionStorage.setItem(storeOf(ownerNow()), JSON.stringify({ tabs: tabs.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
   }, [tabs, active]);
   React.useEffect(() => { setMounted((m) => (m.has(active) ? m : new Set(m).add(active))); }, [active]);
   React.useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(t); }, [notice]);
@@ -181,16 +186,18 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     dirtyOwners.current.set(id, m);
     setDirtySet((s) => { if (s.has(id) === m.size > 0) return s; const c = new Set(s); if (m.size) c.add(id); else c.delete(id); return c; });
   }, []);
-  // Break B1: a change of person (sign-out, another sign-in, a session ended) starts the workspace again on this page alone.
+  // Break B1: a change of person shows that owner's own tabs (none: this page alone); signing in as someone else also drops
+  // every other staff member's kept tabs in this browser tab. Round 3: the same person after an expiry gets theirs back.
   React.useEffect(() => {
-    let was = staffScope();
+    let was = ownerNow();
     return onStaffChange(() => {
-      const scope = staffScope();
-      if (scope === was) return;
-      was = scope;
-      const t: Tab = { id: newId(), path: here(), title: guess(here()), nav: 0, type: NavigationType.Pop, scroll: 0 };
-      now.current = { tabs: [t], active: t.id };
-      dirtyOwners.current.clear(); setDirtySet(new Set()); setMounted(new Set([t.id])); setWs({ tabs: [t], active: t.id });
+      const owner = ownerNow();
+      if (owner === was) return;
+      was = owner;
+      if (owner !== "local") try { for (const k of Object.keys(sessionStorage)) if (k.startsWith(`${STORE}:`) && k !== storeOf(owner) && k !== storeOf("local")) sessionStorage.removeItem(k); } catch { /* none kept */ }
+      const next = load();
+      now.current = { tabs: next.tabs, active: next.active };
+      dirtyOwners.current.clear(); setDirtySet(new Set()); setMounted(new Set([next.active])); setWs({ tabs: next.tabs, active: next.active });
     });
   }, []);
   // Break M2: a tab with a stored draft shows its dot even when it is not mounted.
