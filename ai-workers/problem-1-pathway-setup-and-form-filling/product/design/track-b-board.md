@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 09:5x IST 23 Nov** (current Lead: Lead 10, local_d4a6b1cd): #3065 shard 10 fix re-read OK a255e0321. #3165 queued. #3033 FO-7t part 1 and #3155 PF-17 part 1 drafts.
+
 **Lead B 2 pass, 09:2x IST 23 Nov:** #3065 FO-6 part 3 out of the queue (shard 10: check_forms_qa53 QA-65, the signing webhook not on PUBLIC_DOOR_WRITES); lane text sent (add it as FO-7c did in 2766ef4f0). #3033 FO-7t part 1 now has code (draft; migration 20261123030000). #3165 full run going. #3155 draft.
 
 **Lead B 2 pass, 08:5x IST 23 Nov:** quiet. #3065 queued; #3165 dequeued, full run going. #3033 FO-7t part 1 tests-only since 10:50 UTC 22 Nov (lane may be idle; flagged to Lead 9). #3155 draft.
