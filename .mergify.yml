@@ -21,9 +21,13 @@ merge_queue:
 # Scopes: the fenced modules, as their module cards claim them (.claude/rules/modules, product/tools/module-cards.py),
 # plus each module's own schema file; migrations one at a time (capacity 1: a second migration failed queued PRs 60%
 # of the time, design/merge-queue-causes-2026-11-16.md); pipeline work (checks, workflows, Mergify, tools, agent rules)
-# its own lane, never batched with product (P-717 (a)). A PR in no scope (web, the unfenced api files, tests, engine,
-# unscoped schema files) is batched only with other scope-less PRs, untested on top of the module lanes: the design's
-# largest cross-scope risk.
+# its own lane, never batched with product (P-717 (a)). Path owners (P-785 (2) step 2, founder 22 Nov): each area's own
+# screens (web/src/modules/<area>/**), its tests (tests/check_<area id>*) and its feature files (api/src/features/
+# <area>-*.ts) sit in the area's scope, so two areas' PRs never share a batch; check-mergify-scopes.sh fails a new web
+# module folder, area test or area feature file that its own scope does not own (on every PR once #2445 lands; until
+# then only guards.yml runs it, on tools and .mergify.yml changes). A PR still in no scope (the rest of web, the
+# unfenced configuration, library, demo and AI api files, the other tests, engine, unscoped schema files) is batched
+# only with other scope-less PRs, untested on top of the module lanes: the design's largest cross-scope risk.
 # barrier_files are the seams every module builds on: a PR touching one conflicts with every scope, so the queue
 # serializes at it. A new or changed blocking check, or a stricter step inside ci, starts report-only (P-717 (b)): it
 # joins no queue_conditions or
@@ -37,14 +41,34 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-*.prisma"
+          # P-785 (2) step 2: the area's own screens, tests and feature files (check-mergify-scopes.sh, path owners)
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/platform/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_aud*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/audit-firm-read.ts"
       front-office:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-*.prisma"
+          # P-785 (2) step 2: the area's own screens, tests and feature files (check-mergify-scopes.sh, path owners)
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo1*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo2*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo3*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo4*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo5*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo6*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo8*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo9*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-*.ts"
       money:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/client-money/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/client-money.prisma"
+          # P-785 (2) step 2: the area's own screens, tests and feature files (check-mergify-scopes.sh, path owners)
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo7*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/client-money-*.ts"
       case-side:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts"
@@ -83,6 +107,24 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/evidence.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/submission.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/review.prisma"
+          # P-785 (2) step 2: the area's own screens, tests and feature files (check-mergify-scopes.sh, path owners)
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_cs*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_case_*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/case-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/visitor-visa-filings.ts"   # registers case-checklist, case-filings, case-prepare, filing-changes
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/clients.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/earlier-facts.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/employer-link.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/findings.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/filing-record.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/person-link.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/readiness.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/release-update.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/review-rounds.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/review-runs.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/sign-steps.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/submission-record.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/document-review-counts.ts"
       forms-engine:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/form-*.ts"
@@ -102,6 +144,12 @@ scopes:
           - ".github/workflows/xfa-engine.yml"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/forms.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/answers.prisma"
+          # P-785 (2) step 2: the area's own screens, tests and feature files (check-mergify-scopes.sh, path owners)
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_forms*"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/form-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/field-drafts.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/draft-contract.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/answer-keys.ts"
       migrations:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/**"
@@ -197,6 +245,10 @@ queue_rules:
       - or:
           - check-success = queue-fresh
           - -files ~= /prototype/
+      # ENF-782a (P-782 (2), founder 21 Nov; the one exception to P-717 (b)'s 24 h: the founder ruled 2 h): a "Completes:"
+      # PR with a part missing stays out. The check itself is report-only (passes) for 2 h after it reached main, then
+      # fails on a missing part (ready-gate.py), so this line needs no second PR; a PR with no run is never held.
+      - -check-failure = completes-ready
     merge_conditions:
       - check-success = ci
       # QA-449 part 2 (R1.16; P-717 (b), Lead 4 series 3, 20 Nov): skeleton ran clean on 10 merge batches since #2517,

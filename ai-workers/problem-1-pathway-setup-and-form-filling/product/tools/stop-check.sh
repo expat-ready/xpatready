@@ -77,6 +77,8 @@ else
 fi
 # (4) ENF-763 (P-752/P-763): the Lead's turn does not end asking the founder to click on GitHub, claude.ai or a console.
 [ "$LANE" = lead ] && { fc=$(printf '%s' "$input" | bash "$PH/tools/founder-click-guard.sh" 2>/dev/null | jq -r '.reason // empty' 2>/dev/null); [ -n "$fc" ] && reasons="$reasons$fc"$'\n'; }
+# (5) ENF-771 (P-771): no turn, in any copy, ends blaming machines, runners or capacity without a measured number.
+rc=$(printf '%s' "$input" | bash "$PH/tools/resource-claim-guard.sh" 2>/dev/null | jq -r '.reason // empty' 2>/dev/null); [ -n "$rc" ] && reasons="$reasons$rc"$'\n'
 # Notes only: uncommitted app or product changes, unpushed commits.
 git status --porcelain -- "$PH" "$APP" 2>/dev/null | grep -q . && notes="${notes:+$notes; }uncommitted changes in this copy: commit and push when the piece is done"
 ahead=$(git rev-list --count @{upstream}..HEAD 2>/dev/null) && [ "$ahead" -gt 0 ] && notes="${notes:+$notes; }$ahead unpushed commit(s) on $(git branch --show-current 2>/dev/null)"
