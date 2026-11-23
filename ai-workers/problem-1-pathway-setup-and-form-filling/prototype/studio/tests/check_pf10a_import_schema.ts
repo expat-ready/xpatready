@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261124040000_pf10a_import_tables";
+const NEW = "20261124050000_pf10a_import_tables";
 const TABLES = ["plat_import_batch", "plat_import_row", "plat_import_mapping", "plat_import_attestation"];
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
