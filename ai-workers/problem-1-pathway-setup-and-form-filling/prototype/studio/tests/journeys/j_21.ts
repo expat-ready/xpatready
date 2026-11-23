@@ -2,15 +2,17 @@
 // billing routes: address, invoices, Stripe Tax on at Checkout, #1959) and PF-5s part 2 (Plan and billing with the
 // business address and the invoices list, #2881, #2899), on an isolated copy of the running app (its own database and
 // port, never :4400). Written by the qa lane (22 Nov) because no j_21 was on main.
-// Done when (CAPABILITIES R1.21): a firm's invoice carries its province's tax from the billing provider's test mode
-// (no priced call, P-175); listed and downloadable on the billing page.
+// Done when (CAPABILITIES R1.21, re-worded by P-796, founder 22 Nov): a firm's invoice carries its province's sales tax,
+// worked out from the firm's saved address by the billing stand-in (the fake BillingPort on a local copy); the tax shows
+// on the invoice, its read and the Plan and billing list, and the invoice opens and downloads; no Stripe call, US$0.
 //   W1 (by screens): a new firm's Owner (signed up by the public door) signs in and opens Plan and billing: prices are
 //       said to be plus applicable taxes; the business address is "needed before your first invoice: we use it to
 //       work out tax"; Invoices says "No invoices yet."
 //   W2 (the address the tax is worked out from): Add a card with no address opens the address first (never a card
 //       before the address); an empty address is refused on its fields; an Ontario address saves, is shown on the
 //       page, is stored as typed on the firm and writes one audit line naming the province.
-//   W3 (the invoice with its tax): after the address, an invoice of the firm is listed on Plan and billing with its
+//   W3 (the invoice with its tax): after the address, the billing stand-in issues the period's invoice (as Stripe would
+//       at the trial's end: POST /api/platform/billing/stand-in/invoice, P-796), and an invoice of the firm is listed on Plan and billing with its
 //       number, date, amount, status and a link that opens it (downloadable), and it carries the province's tax (the
 //       tax amount on the row or in the invoices read).
 //   W4 (roles): the invoices read is refused with no session (401).
@@ -108,15 +110,20 @@ try {
   await shot(p, "w2-address-saved-1440");
 
   // ------------------------------------------------------------------------------------------ W3: the invoice and its tax
+  const issued = await j("POST", "/api/platform/billing/stand-in/invoice", {}, tok);   // the provider's act (P-796), not a person's
+  if (issued.status !== 200) console.log(`  the stand-in did not issue the invoice: ${issued.status} ${JSON.stringify(issued.body).slice(0, 300)}`);
   await p.goto(`${BASE}/settings/billing`); await p.locator("[data-billing-summary]").waitFor({ timeout: 30_000 });
   await p.locator("[data-invoice], [data-invoices-empty], [data-invoices-error]").first().waitFor({ timeout: 20_000 }).catch(() => undefined);
   const rows = await p.locator("[data-invoice]").count();
   const invoicesWords = (await p.locator("section[aria-labelledby='pf5s-invoices']").innerText()).replace(/\s+/g, " ");
   ok("R1.21 W3: an invoice of the firm is listed on Plan and billing (number, date, amount, status)", rows >= 1, invoicesWords);
-  ok("R1.21 W3: the listed invoice opens from the page (View: downloadable)", rows >= 1 && (await p.locator("[data-invoice] a[href]").count()) >= 1, `${rows} invoice rows`);
+  const view = rows >= 1 ? await p.locator("[data-invoice] a[href]").first().getAttribute("href") : null;
+  const opened = view ? await fetch(view) : null, openedText = opened ? await opened.text() : "";
+  const saved = view ? await fetch(`${view}&download=1`) : null;
+  ok("R1.21 W3: the listed invoice opens from the page (View: downloadable)", rows >= 1 && opened?.status === 200 && /Invoice SAMPLE-/.test(openedText) && /HST 13 %/.test(openedText) && /attachment/.test(saved?.headers.get("content-disposition") ?? ""), { rows, view, open: opened?.status ?? null, download: saved?.headers.get("content-disposition") ?? null });
   const read = await j("GET", "/api/platform/billing/invoices", undefined, tok);
   const first = read.body?.invoices?.[0];
-  ok("R1.21 W3: the invoice carries the province's tax (Ontario HST on the row or in the invoices read)", !!first && Object.keys(first).some((k) => /tax/i.test(k)) && /tax|hst/i.test(invoicesWords), { status: read.status, invoices: read.body?.invoices?.length ?? null, fields: first ? Object.keys(first) : "no invoice to read", stripeCustomer: sql(`select coalesce(stripe_customer_id, 'none') from platform_subscription where firm_id = ${F}`) });
+  ok("R1.21 W3: the invoice carries the province's tax (Ontario HST on the row or in the invoices read)", !!first && first.taxCents === first.taxLines?.[0]?.amountCents && first.taxLines?.[0]?.name === "HST" && first.taxLines?.[0]?.jurisdiction === "ON" && first.amountDueCents === first.subtotalCents + first.taxCents && /HST 13 %, ON/.test(invoicesWords), { status: read.status, invoices: read.body?.invoices?.length ?? null, fields: first ? Object.keys(first) : "no invoice to read", stripeCustomer: sql(`select coalesce(stripe_customer_id, 'none') from platform_subscription where firm_id = ${F}`) });
   await shot(p, "w3-invoices-1440");
 
   // ------------------------------------------------------------------------------------------ W4: roles

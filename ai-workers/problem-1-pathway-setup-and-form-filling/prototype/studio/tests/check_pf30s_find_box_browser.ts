@@ -71,6 +71,8 @@ async function pageAs(t: string, width = 1440): Promise<{ p: Page; asks: string[
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: "light", reducedMotion: "reduce" }), p = await ctx.newPage();
   await ctx.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), t);
   p.on("pageerror", (e) => errors.push(String(e)));
+  // PF-30s-fix: PF30S_CPU_SLOWDOWN=6 slows the page's CPU like a busy CI runner, to replay the race onSales() closes.
+  if (process.env.PF30S_CPU_SLOWDOWN) await (await ctx.newCDPSession(p)).send("Emulation.setCPUThrottlingRate", { rate: Number(process.env.PF30S_CPU_SLOWDOWN) });
   const asks: string[] = [];
   p.on("request", (r) => { if (r.url().includes("/api/platform/find")) asks.push(new URL(r.url()).searchParams.get("q") ?? ""); });
   p.on("requestfinished", (r) => { if (r.url().includes("/api/platform/find")) { const t = r.timing(); if (t.responseEnd > 0 && !stubbed) took.push(t.responseEnd - t.requestStart); } });
@@ -78,6 +80,14 @@ async function pageAs(t: string, width = 1440): Promise<{ p: Page; asks: string[
 }
 const box = (p: Page) => p.locator("[data-find-input]");
 const hits = (p: Page) => p.locator("[data-find-hit]");
+/** After a hit opens a record: the address changes at once, but the old page (PlatformFrame on /home, with its own h1
+ *  and find box) stays on screen until React draws the new route. Waiting for the URL, an h1 or the box can therefore
+ *  match the old page, and "/" and the typing then land in a box that is about to be unmounted (PF-30s-fix: two merge
+ *  batches on main 5dd56f9 timed out so on slower runners). Wait for the Sales frame itself: only it carries "Sales home". */
+async function onSales(p: Page) {
+  await p.locator('header [aria-label="Sales home"]').waitFor({ state: "attached", timeout: 30_000 });
+  await box(p).waitFor({ timeout: 30_000 });
+}
 async function home(p: Page) { await p.goto(`${BASE}/home`); await p.locator("[data-find]").waitFor({ state: "attached", timeout: 30_000 }); }
 /** Types like a person (key by key) into the box and waits until the answer for this text has been drawn. */
 async function find(p: Page, text: string) {
@@ -87,17 +97,6 @@ async function find(p: Page, text: string) {
   await p.waitForTimeout(150);
 }
 const live = (p: Page) => p.locator("[data-find-live]").innerText();
-/** "/" as a person uses it: press it, see the box take the focus, then type. Right after a page opens, a "/" pressed in the same
- *  instant as its heading can be lost (merge batch for #3037, shard 22, 22 Nov: the box stayed empty and focus on the page,
- *  then the wait for "result" timed out; reproduced locally about 1 run in 8 on main 5dd56f9e7). So the walk waits for the
- *  box to have the focus, presses "/" once more if it did not, and fails loudly if the box never takes it. */
-async function slash(p: Page) {
-  const focused = () => p.waitForFunction(() => document.activeElement?.hasAttribute("data-find-input") === true, undefined, { timeout: 3_000 }).then(() => true, () => false);
-  await p.keyboard.press("/");
-  if (await focused()) return;
-  await p.keyboard.press("/");
-  if (!(await focused())) throw new Error('"/" pressed twice and the find box never took the focus');
-}
 
 try {
   const { p: o, asks } = await pageAs(tok.O);
@@ -111,7 +110,7 @@ try {
     (await hits(o).count()) >= 1 && (await o.locator("[data-find-group='Leads and prospects']").count()) === 1 && (await row.locator("mark").innerText()).toLowerCase() === `lena${run}` && (await row.innerText()).includes("Matched: Name") && (await row.innerText()).includes("Lead L-"), await row.innerText().catch(() => ""));
   await o.screenshot({ path: join(SHOTS, "pf30s-01-by-name-1440.png") });
   await box(o).press("Enter");
-  await o.waitForURL(`**/front-office/leads/${LENA_LEAD}`, { timeout: 15_000 }).catch(() => undefined);
+  await o.waitForURL(`**/front-office/leads/${LENA_LEAD}`, { timeout: 15_000 }).catch(() => undefined); await onSales(o);
   ok("PF-30s F1 pass (BR-5): Enter opens the first row, the lead's page, and the box is cleared", o.url().endsWith(`/front-office/leads/${LENA_LEAD}`) && (await box(o).inputValue()) === "", o.url());
   await find(o, `Zzqx${run}`);
   ok("PF-30s F1 fail: a name nobody has shows \"No matches. Try an email, phone or file number\" and no row",
@@ -125,7 +124,7 @@ try {
   ok("PF-30s F2 pass: the prospect's file number (typed in lower case) lists it, \"Matched: File number\"", (await prow.count()) === 1 && (await prow.innerText()).includes(PNUM) && (await prow.innerText()).includes("Matched: File number"), await prow.innerText().catch(() => ""));
   await o.screenshot({ path: join(SHOTS, "pf30s-03-by-number-1440.png") });
   await prow.click();
-  await o.waitForURL(`**/front-office/prospects/${PID}`, { timeout: 15_000 }).catch(() => undefined);
+  await o.waitForURL(`**/front-office/prospects/${PID}`, { timeout: 15_000 }).catch(() => undefined); await onSales(o);
   ok("PF-30s F2 pass: a click opens the prospect's page", o.url().endsWith(`/front-office/prospects/${PID}`), o.url());
   await find(o, "P-99999999");
   ok("PF-30s F2 fail: a file number nobody has shows the empty line", (await hits(o).count()) === 0 && (await o.locator("[data-find-line='done']").innerText()) === WORDS.empty);
@@ -203,7 +202,7 @@ try {
   // Two people named Kit<run> so the second row can be chosen with the keyboard.
   const k1 = await call(tok.O, "leads", { requestId: randomUUID(), givenNames: `Kit${run}`, familyName: "Alder", email: `kit.a.${run}@example.org`, source: "Phone call", confirmedNew: true });
   const k2 = await call(tok.O, "leads", { requestId: randomUUID(), givenNames: `Kit${run}`, familyName: "Birch", email: `kit.b.${run}@example.org`, source: "Phone call", confirmedNew: true });
-  await slash(o); await o.keyboard.type(`Kit${run}`, { delay: 20 });
+  await o.keyboard.press("/"); await o.keyboard.type(`Kit${run}`, { delay: 20 });
   await o.waitForFunction(() => (document.querySelector("[data-find-live]")?.textContent ?? "").includes("result"), undefined, { timeout: 15_000 });
   const firstMarked = (await hits(o).first().getAttribute("aria-selected")) === "true";
   await o.keyboard.press("ArrowDown");
@@ -216,8 +215,8 @@ try {
   const openedId = o.url().split("/").pop();
   const want = secondTitle.includes("Birch") ? k2.body?.id : k1.body?.id;
   ok("PF-30s F9 pass: Enter opens the marked row, not the first", openedId === want, { openedId, want, secondTitle });
-  await o.getByRole("heading", { level: 1 }).first().waitFor({ timeout: 30_000 }); await box(o).waitFor({ timeout: 30_000 });
-  await slash(o); await o.keyboard.type(`Kit${run}`, { delay: 20 });
+  await onSales(o);
+  await o.keyboard.press("/"); await o.keyboard.type(`Kit${run}`, { delay: 20 });
   await o.waitForFunction(() => (document.querySelector("[data-find-live]")?.textContent ?? "").includes("result"), undefined, { timeout: 15_000 });
   await o.keyboard.press("Escape");
   ok("PF-30s F9 fail: the first Escape closes the list and keeps the text", (await o.locator("[data-find-popup]").count()) === 0 && (await box(o).inputValue()) === `Kit${run}` && (await box(o).getAttribute("aria-expanded")) === "false");
@@ -325,6 +324,13 @@ try {
       await p.locator("[data-find-open]").click(); await box(p).pressSequentially(`Kit${run}`, { delay: 10 });
       await p.locator("[data-find-close]").click(); await p.waitForTimeout(150);
       ok(`PF-30s F10 (review m4): at ${w} px Close gives focus back to the Find button`, await p.locator("[data-find-open]").evaluate((el) => el === document.activeElement));
+      // Review r3-1: three Escapes from the open bar also give focus back to the Find button, never to the page.
+      await p.locator("[data-find-open]").click(); await p.waitForFunction(() => document.activeElement?.matches("[data-find-input]"));
+      await box(p).pressSequentially("Le", { delay: 10 }); await p.waitForTimeout(600);
+      await p.keyboard.press("Escape"); await p.keyboard.press("Escape"); await p.waitForTimeout(60);
+      ok(`PF-30s F10 (review r7-2): at ${w} px two Escapes keep focus in the box (closed list, cleared text)`, await box(p).evaluate((el) => el === document.activeElement) && (await box(p).inputValue()) === "");
+      await p.keyboard.press("Escape"); await p.waitForTimeout(150);
+      ok(`PF-30s F10 (review r3-1): at ${w} px the third Escape gives focus back to the Find button`, await p.locator("[data-find-open]").evaluate((el) => el === document.activeElement));
     } else {
       // Closed box: the input never covers the person's name (review M1: 640-719 px overlapped it).
       await box(p).press("Escape"); await box(p).press("Escape");
@@ -342,6 +348,10 @@ try {
     const { p } = await pageAs(tok.O, w);
     await p.route("**/api/platform/me", async (r) => { const res = await r.fetch(); const j = await res.json() as Record<string, unknown>; await r.fulfill({ response: res, json: { ...j, displayName: LONG } }); });
     await home(p); await p.locator("[data-staff-name], [data-find-open], [data-find-input]").first().waitFor({ state: "attached", timeout: 30_000 });
+    ok(`PF-30s F12 (review r5-1): at ${w} px the help button is in the top bar, so this check covers it`, (await p.locator('header [aria-label="Get help with this page"]').count()) === 1);
+    // Review r5-2: the placeholder fits its box (measured with the input's own font against its text area).
+    const clip = await p.evaluate(() => { const i = document.querySelector<HTMLInputElement>("[data-find-input]"); if (!i || i.getBoundingClientRect().width === 0) return 0; const s = getComputedStyle(i), c = document.createElement("canvas").getContext("2d")!; c.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`; return Math.max(0, Math.ceil(c.measureText(i.placeholder).width - (i.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight)))); });
+    ok(`PF-30s F12 (review r5-2): at ${w} px the placeholder is not cut off`, clip === 0, clip);
     const hidden = await p.evaluate(() => [...document.querySelectorAll("header button, header a, header input")].filter((el) => { const r = el.getBoundingClientRect(); if (r.width === 0 || r.height === 0) return false; const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !(at === el || el.contains(at)) || r.width < 24 || r.height < 24; }).map((el) => el.getAttribute("aria-label") ?? el.getAttribute("placeholder") ?? (el.textContent ?? "").trim()));
     ok(`PF-30s F12 (review r4-1): at ${w} px with a long name every top-bar control is whole and on top (help button, Find, Sign out)`, hidden.length === 0, hidden);
     const axe22 = await new AxeBuilder({ page: p }).include("header").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();

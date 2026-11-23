@@ -29,6 +29,11 @@ export const DraftIn = z.strictObject({
 }).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] });
 export type DraftIn = z.infer<typeof DraftIn>;
 
+/** PUT /api/front-office/money/invoices/:id/bill-to (FO-7g part 3, P-797): the province a draft's tax follows, one of the
+ *  13 codes (the same list as api/src/client-money/tax/canada-gst-hst.ts PROVINCE_CODES and the database's CHECK). */
+export const BILL_TO_PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NT", "NS", "NU", "ON", "PE", "QC", "SK", "YT"] as const;
+export const BillToIn = z.strictObject({ province: z.enum(BILL_TO_PROVINCES, { message: "Choose one of the 13 provinces and territories (a two-letter code such as ON)." }) });
+
 /** POST /api/front-office/money/invoices/:id/lines: one line. The description's last word is the database's own text rule
  *  (money_text_ok: some visible letter, number or punctuation; no bidi or C1 control), which the route asks before writing. The rate is in parts per million (13 % is 130000), 0 when absent;
  *  a government fee is never taxed. The currency, when sent, must be the invoice's. */
@@ -74,7 +79,7 @@ export function invoiceStatus(f: InvoiceFacts): StatusWord {
  *  money received past what the invoice asks (waiting for a person's "Refund · Keep as credit", never moved by itself). */
 export const InvoiceView = z.strictObject({
   id: z.string(), status: z.literal("DRAFT").or(z.literal("ISSUED")), number: z.string().nullable(),
-  personId: z.string().nullable(), companyId: z.string().nullable(), currency: MoneyCurrency, lines: z.array(LineView),
+  personId: z.string().nullable(), companyId: z.string().nullable(), currency: MoneyCurrency, billToProvince: z.enum(BILL_TO_PROVINCES).nullable(), lines: z.array(LineView),
   subtotalMinor: z.number().int(), taxMinor: z.number().int(), totalMinor: z.number().int(),
   statusWord: StatusWord, dueDate: z.string().nullable(), paidMinor: z.number().int(), creditedMinor: z.number().int(),
   writtenOffMinor: z.number().int(), dueMinor: z.number().int(), extraMinor: z.number().int(),
@@ -135,6 +140,8 @@ export const MONEY_EVENT = {
   INVOICE_OVERDUE: "invoice.overdue",
   /** A payment was recorded (AG-6-19 rule 9); `externalId` is a surrogate id for a payment recorded by hand. */
   PAYMENT_SUCCEEDED: "payment.succeeded",
+  /** A payment was refunded (AG-6-23 rule 9; FO-7b part 1c: offline refunds only, card refunds are FO-7c). */
+  PAYMENT_REFUNDED: "payment.refunded",
 } as const;
 const uuid = z.string().regex(UUID);
 /** invoice.*: ids and the stored figures only (no name, no email). The tax and total are the stored lines' sums (R9). */
@@ -157,3 +164,42 @@ export interface ClientMoneyPort {
 export function fakeClientMoney(have: { firmId: string; personId?: string; companyId?: string }[] = []): ClientMoneyPort {
   return { async hasMoney(firmId, party) { const p = MoneyParty.parse(party), id = (p.personId ?? p.companyId)!.toLowerCase(); return have.some((h) => h.firmId.toLowerCase() === firmId.toLowerCase() && (p.personId ? h.personId : h.companyId)?.toLowerCase() === id); } };
 }
+
+// ------------------------------------------------------------------------------------------- FO-7b part 1c (additive)
+/** POST /api/front-office/money/payments/:paymentId/refunds: an offline refund of a payment recorded into operating
+ *  (AG-6-23 rules 2, 4): an amount, how and when it was paid back (today when no date is sent), a reason (required), and
+ *  an idempotency key. The same key again with the same data answers the same refund; with other data, 409. */
+export const RefundIn = z.strictObject({
+  amountMinor: whole("The amount (in cents)", 1, MINOR_MAX), method: HandMethod, reference: words("The reference", 200).optional(),
+  refundedOn: day.optional(), reason: words("The reason", 200), idempotencyKey: z.string().regex(/^[A-Za-z0-9:._-]{8,200}$/, "8 to 200 letters, numbers, or : . _ -"),
+});
+export type RefundIn = z.infer<typeof RefundIn>;
+/** POST …/payments/:paymentId/extra: a person's one choice on a payment's waiting extra (FO-7b amendment 1). Always for
+ *  exactly what is waiting. A Refund needs how it was paid back, a reason and an idempotency key. */
+export const ExtraChoiceIn = z.strictObject({
+  choice: z.enum(["REFUND", "KEEP_AS_CREDIT"], { error: "Choose REFUND or KEEP_AS_CREDIT." }),
+  method: HandMethod.optional(), reference: words("The reference", 200).optional(), refundedOn: day.optional(), reason: words("The reason", 200).optional(),
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9:._-]{8,200}$/, "8 to 200 letters, numbers, or : . _ -").optional(),
+}).superRefine((c, x) => {   // one strict shape, so an unknown field is named whatever the choice (PF-28); each choice's own fields below
+  if (c.choice === "REFUND") {
+    if (!c.method) x.addIssue({ code: "custom", path: ["method"], message: "This is required." });
+    if (!c.reason) x.addIssue({ code: "custom", path: ["reason"], message: "This is required." });
+    if (!c.idempotencyKey) x.addIssue({ code: "custom", path: ["idempotencyKey"], message: "This is required." });
+  } else for (const k of ["method", "reference", "refundedOn", "idempotencyKey"] as const) if (c[k] !== undefined) x.addIssue({ code: "custom", path: [k], message: "Only a Refund takes this." });
+});
+export type ExtraChoiceIn = z.infer<typeof ExtraChoiceIn>;
+/** What a refund answers: the refund as stored and the invoice read back after it. */
+export const RefundView = z.strictObject({
+  id: z.string(), paymentId: z.string(), amountMinor: z.number().int(), currency: MoneyCurrency, route: z.literal("OFFLINE"), reason: z.string(),
+  replayed: z.boolean(), leftToRefundMinor: z.number().int(), invoice: InvoiceView,
+});
+export type RefundView = z.infer<typeof RefundView>;
+/** What a choice answers: what was chosen, for how much, what is still waiting (0), and the invoice after it. */
+export const ExtraChoiceView = z.strictObject({
+  paymentId: z.string(), choice: z.enum(["REFUND", "KEEP_AS_CREDIT"]), amountMinor: z.number().int(), currency: MoneyCurrency,
+  refundId: z.string().nullable(), creditEntryId: z.string().nullable(), waitingMinor: z.number().int(), replayed: z.boolean(), invoice: InvoiceView,
+});
+export type ExtraChoiceView = z.infer<typeof ExtraChoiceView>;
+/** payment.refunded: ids and figures only (no name, no email). */
+export const RefundEventPayload = z.strictObject({ refundId: uuid, paymentId: uuid, invoiceId: uuid, amountMinor: z.number().int(), currency: MoneyCurrency, route: z.literal("OFFLINE"), fromExtra: z.boolean() });
+export type RefundEventPayload = z.infer<typeof RefundEventPayload>;
