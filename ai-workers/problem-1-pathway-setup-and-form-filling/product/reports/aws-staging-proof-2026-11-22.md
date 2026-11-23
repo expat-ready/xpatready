@@ -412,3 +412,44 @@ message: 'new row violates row-level security policy for table "platform_firm"'
   4. R1.5: real-pool staff sign-in needs a person to type a password and a code: the founder, on the staging sign-in page, or it stays with qa per Lead 4's ruling.
   5. R1.1: region pinned in code and every resource in ca-central-1; service healthy over HTTPS.
   6. Scale back to 0.
+
+## Step 14: signed in, account check, build started, R1.65 (PF-F1c) proof, 23 Nov 10:56-10:58 IST
+
+* Founder signed in (root + MFA) in this session's browser pane, 10:5x IST. CloudShell `ca-central-1`: account **581508167097**, `AWS_REGION=ca-central-1`, 05:26:24Z. The 22 Nov scripts are in `~`.
+* Image build on main **8f487df4becc292baf5b722420f60b9ed81c1839** started 10:56 IST: `~/d-build.sh` (temporary role and CodeBuild project `xr-staging-image-build`, deleted by the script at the end, same as 22 Nov under the founder's CodeBuild OK), build `xr-staging-image-build:dfcae20f-a2b6-492d-ae81-45b2385a5e35`.
+
+### R1.65 private storage in Canada (PF-F1c): **Partial: the bucket half passes; three PF-F1c items are missing in code; the app half is not on AWS**
+Read back (`~/r165-read.sh`, 05:27:23Z), the same for all three stack buckets (`documents`, `exports`, `imports`):
+```
+== xr-staging-documentsbucket9ec9deb9-6uplyey6pgi9   (exports…-tfowvdipnskv, imports…-dtmi2f7d6nbs identical)
+region: ca-central-1
+versioning: Enabled
+public-block: {"BlockPublicAcls":true,"IgnorePublicAcls":true,"BlockPublicPolicy":true,"RestrictPublicBuckets":true}
+encryption: aws:kms  arn:aws:kms:ca-central-1:581508167097:key/5719e23a-…  BucketKey True
+policy: [('Deny', 's3:*', {'Bool': {'aws:SecureTransport': 'false'}})]
+lifecycle: Rules [{"ID":"old-versions","Status":"Enabled","NoncurrentVersionExpiration":{"NoncurrentDays":35}}]
+logging: (none)
+```
+Live checks on a test object in `documents` (`~/r165-live.sh`, 05:27:59-05:28:10Z; the two test objects and all their versions removed after):
+```
+key rotation: True 365        key manager: CUSTOMER Enabled
+put no SSE header: aws:kms (bucket default encrypts it; not refused)
+put SSE AES256 (not KMS): AES256  <- accepted, not refused
+anonymous GET https: 403      anonymous LIST https: 403
+plain HTTP GET (presigned, http): 403
+delete -> delete marker; GET after delete: not-found
+restore (remove delete marker) -> GET returns the original version, aws:kms, content-identical
+```
+| PF-F1c check (BACKLOG row) | Result |
+|---|---|
+| in `ca-central-1` | Pass |
+| Block Public Access on; anonymous GET refused | Pass (403, all four blocks true) |
+| refuse plain HTTP | Pass (deny on `aws:SecureTransport=false`; HTTP request 403) |
+| versioning on; a deleted object restored from its version | Pass (delete marker removed, original version and content back) |
+| customer-managed KMS key with rotation | Pass (CUSTOMER, rotation on, 365 days) |
+| **a put without KMS encryption refused** | **Fail: a put with `AES256` is accepted** (no deny statement on `s3:x-amz-server-side-encryption != aws:kms`); a put with no header is encrypted with the KMS key by default |
+| **access log kept 90 days (NFR5-14)** | **Fail: no server access logging** on any bucket |
+| **incomplete multipart uploads aborted after 1 day** | **Fail: no such lifecycle rule** (only `old-versions`, noncurrent 35 days, PF-8rc; the row says 30 days, Sample) |
+| app role may read and write `*/` keys only; cross-firm read through the app → 404 | Not provable on AWS: the app task has no bucket settings (Step 9's env list has no bucket name), so the cloud `FilesPort` adapter is not wired on staging |
+
+Fix row needed (deploy, `deploy/cdk/lib/estate.ts:92-103`): add the deny-non-KMS put statement, server access logs to a log bucket kept 90 days, and `abortIncompleteMultipartUploadAfter: 1 day`; and the app task's bucket settings for the cloud adapter.
