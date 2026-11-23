@@ -43,7 +43,7 @@ jobs:
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 1, persist-credentials: false }
+        with: { fetch-depth: 0, persist-credentials: false }
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc }
       - run: bash "$P/tools/cloud-setup.sh"
