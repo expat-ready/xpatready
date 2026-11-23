@@ -2,7 +2,7 @@
 
 current_lead: local_d4a6b1cd-f814-4a94-b7d3-bb6b0b82ba7a Lead 10 · 23 Nov 09:38 IST (took over from Lead 9 (local_482034a7) at ~440k, ~320k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 09:40 IST: Lead 10 took over (check 0721b6cb created 09:38)
+updated: 2026-11-23 09:50 IST: Lead 10 first check (check 0721b6cb created 09:38)
 
 
 
@@ -17,7 +17,9 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 
 **Do first:** (1) **#3065** FO-6 p3 (R1.54/R1.61): dequeued (shard 10 check_forms_qa53 QA-65, signing webhook not on PUBLIC_DOOR_WRITES): lane told 09:2x to add it as FO-7c's (2766ef4f0) plus a 'Batch failures covered' line; then `/run full` and relabel; Lead B needs no read for a list entry. P-807 size exception is on main and in its body. (2) **#3165** PF-Fw queued after green full run. (3) When #3065 merges: FO-5d (design/briefs/track-b/FO-5d.md, Lead B 2's text) to the FO-6 lane (session_01Ln6TiQQuh9E2zEM4jmnmDc). (4) #3155 PF-17 p1 (R1.93) lane at 83%: answered (audit two uses; pf12b list edit); Lead B reads it. (5) #3033 FO-7t p1 (R1.58) lane at 55% building, hand-over note at ~70%. (6) PF-4s lane (session_01Ln6TiQmVhFyoYNr5KZgjmi) → PF-25w (R1.24).
 
-**At the founder's next typed turn:** start fresh qa Track B lane (cloud; take over draft #3043: j_58 client B ≥250.01 outside CASE2 so #2368's same-case pick rule fires, W1 body as PaymentIn; mark #3043-#3045 ready; rate QA-754 C6.9 focus and the pf4s 403/422 order fault on the shared demo db), fresh FO-9b part 2 lane (cloud; Lead B 2's text: rest of row FO-9b, hasMoney in client-money/port.ts also counts money_party_tax_treatment and trust payees, keys agent/duplicates:review|merge, breaker yes), and the Lead 11 standby card (task_567bcc0b). Lead 9 tried in a founder turn at 09:3x: `start_session` user_asked was refused (his message only approved the env move).
+**Lead 10 check 09:4x-09:50:** #3065 `/run full` posted on a255e0321 (09:4x); #3165 in batch #3172 (checking); #3155 lane ended at ~90% context, Lead answers posted (B1 per hand-over; M1: short transactions, StorageWatch snapshot for storage, 400-firm test under 2 s); #3033 (R1.58) lane answered in claude.ai (migration yes, 422, visibility covers balances and request read, direct read OK for part 1 + follow-up row, size row) and told to finish round 2.
+
+**At the founder's next typed turn:** start a fresh PF-17 part 1 lane (cloud; `/next runtime PF-17 part 1: finish #3155 from its hand-over note and the Lead's 09:4x answers`), fresh qa Track B lane (cloud; take over draft #3043: j_58 client B ≥250.01 outside CASE2 so #2368's same-case pick rule fires, W1 body as PaymentIn; mark #3043-#3045 ready; rate QA-754 C6.9 focus and the pf4s 403/422 order fault on the shared demo db), fresh FO-9b part 2 lane (cloud; Lead B 2's text: rest of row FO-9b, hasMoney in client-money/port.ts also counts money_party_tax_treatment and trust payees, keys agent/duplicates:review|merge, breaker yes), and the Lead 11 standby card (task_567bcc0b). Lead 9 tried in a founder turn at 09:3x: `start_session` user_asked was refused (his message only approved the env move).
 
 **Waiting on the founder:** R1.92 lane (session_01Ln6TiPzgv1F4fXY7mcuxqb) "Move session" to the xpatready env (he said yes; the page ignores an automated press, he must press it); AWS root sign-in in the AWS session's browser + CodeBuild; Lead B 2's records PR (lead-b/2026-11-23-track-b-records @a1c2ce3ae: FO-7q part 2, FO-9b part 1m rows) yes/no; today's goal.
 
