@@ -50,10 +50,13 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       const e = AuditEntry.parse(entry), firmId = e.firmId.toLowerCase();
       if (ctx?.firmId && ctx.firmId !== firmId) throw new AuditRefused(`audit line refused: the line names firm ${firmId}, but this request or job acts for firm ${ctx.firmId} (a line never lands on another firm's trail)`);
       const actorType = actorTypeOfWord(e.actor);
-      // OUR_STAFF has no actor word yet (PF-4s): in a request our staff make, no line is written at all, so none is ever
-      // written as FIRM_STAFF or under another word (breaker M1). In a signed-in request the line's actor is the request's
-      // own, exactly: never another person, a system: or a seed: word (review M1; no caller on main writes one there).
-      if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF), which has no actor word until PF-4s`);
+      // AUD-3a: our staff's line is written under our staff's own word (ourstaff:<id>, OUR_STAFF) and only in our staff's
+      // request: never as FIRM_STAFF or under another word (breaker M1), and that word never outside such a request. In a
+      // signed-in request the line's actor is the request's own, exactly: never another person, a system: or a seed: word
+      // (review M1; no caller on main writes one there).
+      if ((ctx?.actorType === "OUR_STAFF") !== (actorType === "OUR_STAFF")) throw new AuditRefused(ctx?.actorType === "OUR_STAFF"
+        ? `audit line refused: this request is our staff's (OUR_STAFF), so its line names them as ourstaff:<id>, not ${e.actor}`
+        : `audit line refused: ${e.actor} is our staff's word, written only in a request our staff make`);
       if (ctx?.actor && e.actor !== ctx.actor) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);
       const workspaceId = await platformAuditWorkspaceId(tx);
       await tx.auditEvent.create({
@@ -79,7 +82,8 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       const word = (entry as { actor?: unknown })?.actor;
       if (!CaseActor.safeParse(word).success) throw new AuditRefused(`audit line refused: the actor word '${String(word).replace(/'/g, "''").slice(0, 200)}' has no actor type (staff:<id>, person:<id>, system:<door>, seed:<row> or a simulated person's id)`);
       const e = CaseEntry.parse(entry);
-      if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF), which has no actor word until PF-4s`);
+      // AUD-3a: a case-side line has no word for our staff (CaseActor), so our staff's request writes none there.
+      if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF); our staff write no case-side line`);
       if (ctx?.actor && e.actor !== ctx.actor) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);
       const caseFirm = e.caseId ? await caseFirmOf(tx, e.caseId) : undefined;
       const named = e.firmId?.toLowerCase(), scope = ctx?.firmId?.toLowerCase();
