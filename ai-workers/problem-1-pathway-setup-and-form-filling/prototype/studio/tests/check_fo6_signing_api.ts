@@ -93,7 +93,7 @@ try {
   const signerOf = (reqId: string, role: "CLIENT" | "FIRM") => sql(`select id from fo_signer where request_id = '${reqId}' and role = '${role}'`);
   const consent = (reqId: string) => sql(`update fo_signer set consented_at = now(), consent_text_version = '${CONSENT}' where request_id = '${reqId}' and consented_at is null`);
   /** A webhook through the route itself, as the JSON parser hands it over. */
-  const post = (c: SigningHookCall, provider = "fake") => hooks.receive(provider, { ip: `10.0.0.${(n % 200) + 1}`, headers: c.headers }, JSON.parse(new TextDecoder().decode(c.body)));
+  const post = (c: SigningHookCall, provider = "fake") => hooks.receive(provider, { ip: `10.0.0.${(n % 200) + 1}`, headers: c.headers, body: JSON.parse(new TextDecoder().decode(c.body)) });
   const sendIt = (rid: string) => svc.send(R, rid, { expectedVersion: 1 });
 
   // ------------------------------------------------------------- S1: Send makes one request, the client then the firm
@@ -296,8 +296,10 @@ try {
   ok("FO-6 B fail (break m4): a signature on day 20 of a 14-day request with no client signature → refused, unsigned", exp.applied === false && /expired/.test(exp.reason ?? "") && sql(`select signed_at is null from fo_signer where request_id = '${q8}' and role = 'CLIENT'`) === "t", exp);
   // break m1: a hostile body too deep to write back is 400, never 500
   let deep: unknown = {}; for (let i = 0; i < 6000; i++) deep = { a: deep };
-  const deepR = await refusal(() => hooks.receive("fake", { ip: "10.9.9.9", headers: {} }, deep));
+  const deepR = await refusal(() => hooks.receive("fake", { ip: "10.9.9.9", headers: {}, body: deep }));
   ok("FO-6 B fail (break m1): a 6000-level nested body → 400, never 500", deepR?.status === 400, deepR);
+  const emptyR = await refusal(() => hooks.receive(":provider", { ip: "10.9.9.8", headers: {}, body: {} }));
+  ok("FO-6 B fail (QA-53 public write door): an empty body → 400 before the provider is looked up, nothing stored", emptyR?.status === 400 && emptyR.body.code === "SIGNATURE", emptyR);
 
   // review Major 1: two different events of one request at once (the lock comes before the receipt): no deadlock, both applied
   const p9 = await prospect("Hal"), r9 = await draft(p9);

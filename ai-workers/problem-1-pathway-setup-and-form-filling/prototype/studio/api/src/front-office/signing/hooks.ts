@@ -5,7 +5,7 @@
 // The body: the adapter verifies the exact bytes. With no raw-body mount for this path (main.ts is not this part's file),
 // the JSON parser's object is written back with JSON.stringify, which gives the fake's bytes exactly (it writes its body
 // with JSON.stringify); FO-6v mounts express.raw for this path as PF-5 did for Stripe, and a Buffer body is used as is.
-import { Body, Controller, HttpCode, Inject, Param, Post, Req } from "@nestjs/common";
+import { Controller, HttpCode, Inject, Param, Post, Req } from "@nestjs/common";
 import { z } from "zod";
 import { parseInput } from "../../platform/http/input.ts";
 import { problem } from "../../platform/identity/keys.ts";
@@ -36,12 +36,16 @@ export class SigningHooksController {
   constructor(@Inject(Signing) private readonly signing: Signing) {}
 
   @Post(":provider") @HttpCode(200)
-  async receive(@Param("provider") provider: string, @Req() req: { ip?: string; headers: Record<string, string | string[] | undefined> }, @Body() body: unknown) {
+  // The body is read off the request (as Stripe's doors do): it is the provider's signed bytes, never a field form.
+  async receive(@Param("provider") provider: string, @Req() req: { ip?: string; headers: Record<string, string | string[] | undefined>; body?: unknown }) {
+    const body = req.body;
     if (limited(req.ip ?? "unknown")) problem(429, "Too many requests", "Too many requests. Please wait a minute and try again.", { code: "TOO_MANY_REQUESTS" });
     // PF-28: the body is a JSON object or raw bytes, nothing else; its fields are the provider's, checked by the adapter
     // after the signature (port.ts verifyWebhook's strict schema). Nothing is stored before both.
     // Review m1: anything but an object or raw bytes is not the provider's call: 400, as an unverified one.
     if (!Buffer.isBuffer(body) && (body === null || typeof body !== "object" || Array.isArray(body))) problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });
+    // QA-53 (a public write door, no person): an empty body is never the provider's call: 400 before anything is looked up.
+    if (!Buffer.isBuffer(body) && Object.keys(body as object).length === 0) problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });
     const bytes = hookBytes(parseInput(HookBody, body));
     if (!bytes?.length) problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });
     const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), Array.isArray(v) ? undefined : v]));
