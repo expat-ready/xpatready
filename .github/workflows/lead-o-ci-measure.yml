@@ -1,0 +1,48 @@
+# MEASUREMENT ONLY, on branch claude/lead-o-ci-measure, never merged (Lead 3's request, 23 Nov): what CPU and memory a ci
+# shard really uses. Reads /proc/stat and /proc/meminfo every 5 s beside ci.yml's own set-up and suites. Read-only token.
+name: lead-o-ci-measure
+on:
+  push:
+    branches: [claude/lead-o-ci-measure]
+permissions: { contents: read }
+jobs:
+  shard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 12   # leaves the merge queue its machines
+      matrix:
+        run: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: bash "$P/tools/cloud-setup.sh"
+      - run: cd "$S" && ./node_modules/.bin/playwright install chromium
+      - name: suites, sampled
+        run: |
+          python3 - > sample.txt <<'PY' &
+          import time
+          def cpu():
+              v=[int(x) for x in open('/proc/stat').readline().split()[1:9]]; return sum(v), v[3]+v[4]
+          def mem():
+              m={l.split(':')[0]: int(l.split()[1]) for l in open('/proc/meminfo')}; return (m['MemTotal']-m['MemAvailable'])/1048576
+          t,i=cpu()
+          while True:
+              time.sleep(5); a,b=cpu(); print((1-(b-i)/(a-t)), mem(), flush=True); t,i=a,b
+          PY
+          s=$!
+          bash "$P/tools/run-suites.sh" --demo --retry --skip-quarantined --shard "${{ matrix.shard }}/24" > suites.md 2>&1; r=$?
+          kill $s; echo "suites exit $r"
+          python3 - <<'PY'
+          import os
+          n=os.cpu_count(); r=[tuple(map(float,l.split())) for l in open('sample.txt') if len(l.split())==2]
+          c=sorted(x[0]*n for x in r); m=sorted(x[1] for x in r); p=lambda v,q: v[min(len(v)-1,int(q*len(v)))]
+          print(f"MEASURE cpus={n} samples={len(r)} mean={sum(c)/len(c):.2f} p95={p(c,.95):.2f} max={c[-1]:.2f} memmean={sum(m)/len(m):.2f} memp95={p(m,.95):.2f} mempeak={m[-1]:.2f}")
+          PY
