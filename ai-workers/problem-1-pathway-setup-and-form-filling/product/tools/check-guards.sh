@@ -24,6 +24,7 @@ TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-67
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
 TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
+TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 bad=0
 if [ "$part" = 1 ]; then
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
@@ -451,6 +452,17 @@ MUT="$MUT"'
 29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh
 29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
 29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh'
+# OMG (Lead 5 on #2915 and #3035, 23 Nov): the own-migration guard; each row switches one of its rules off.
+MUT="$MUT"'
+OMG mark|product/tools/own-migration-guard.py|s/^MARK = re.compile(.*/MARK = re.compile(r"own-migration-never-marked")/|check-own-migration-guard.sh
+OMG snap|product/tools/own-migration-guard.py|s/^                if before and after and/                if False and/|check-own-migration-guard.sh
+OMG alldb|product/tools/own-migration-guard.py|s/^    every = {i: set(PSQLDB.findall(l))/    every = {} and {i: set(PSQLDB.findall(l))/|check-own-migration-guard.sh
+OMG named|product/tools/own-migration-guard.py|s/^            v = re.escape(m.group(1))/            v = "no-such-list"/|check-own-migration-guard.sh
+OMG counts|product/tools/own-migration-guard.py|s/^                    if not dbs: return True/                    return False/|check-own-migration-guard.sh
+OMG step|product/tools/own-migration-guard.py|s/^                nxt = next((j for j, n2 in own/                nxt = len(lines) if 1 else next((j for j, n2 in own/|check-own-migration-guard.sh
+OMG steploop|product/tools/own-migration-guard.py|s/^                            and any(k > j and d2 \& set(dbs) for k, d2 in loop_lines(lines, n2))), len(lines))/                            ), len(lines))/|check-own-migration-guard.sh
+OMG stepdb|product/tools/own-migration-guard.py|s/^                            and dbs and set(PSQLDB.findall/                            and True or set(PSQLDB.findall/|check-own-migration-guard.sh
+OMG late|product/tools/own-migration-guard.py|s/^                if pre and nxt < len(lines):/                if False:/|check-own-migration-guard.sh'
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
 while IFS='|' read -r g f edit t; do
