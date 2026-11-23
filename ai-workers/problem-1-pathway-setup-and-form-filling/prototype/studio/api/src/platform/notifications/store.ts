@@ -39,9 +39,15 @@ export class PrismaNotificationPort implements NotificationPort<Prisma.Transacti
 /** Home's "Needs you" shows at most this many (PF-18h BR-5). */
 export const NEEDS_YOU_SHOWN = 20;
 /** What a person's list shows of one row. */
-export type NotificationView = { id: string; kind: string; group: string; item: { kind: string; id: string }; link: string | null; createdAt: string; readAt: string | null };
+/** `label` and `link` (PF-18n part 2): the item's words and page, built on read; both null when the item is gone or the
+ *  reader may no longer open it (a lead reassigned away: its module's own view rule, labels.ts). */
+export type NotificationView = { id: string; kind: string; group: string; item: { kind: string; id: string }; label: string | null; link: string | null; createdAt: string; readAt: string | null };
+/** The other modules' labels for a page of rows (labels.ts `NotificationLabels.of`, bound to the reader by the route). */
+export type LabelsOf = (items: { kind: string; id: string }[]) => Promise<Map<string, { label: string; link: string }>>;
 type Row = { id: string; kind: string; group: string; itemKind: string; itemId: string; createdAt: Date; readAt: Date | null };
 
+/** The item kinds this file labels itself (a case, its stages and steps); never handed to another module's labeller. */
+const CASE_KINDS = new Set(["case", "case-stage", "case-milestone"]);
 /** The page each item kind opens, built on read (null: no page yet), and its case's number. Case stages and steps open their case. */
 type Linked = { link: string; caseNumber: string };
 async function linksOf(db: DbOrTx, firmId: string, rows: Row[]): Promise<Map<string, Linked>> {
@@ -65,13 +71,18 @@ async function linksOf(db: DbOrTx, firmId: string, rows: Row[]): Promise<Map<str
 /** The signed-in person's own notifications (routes.ts). Every read and write names the firm and the person. */
 export class MyNotifications {
   constructor(private readonly db: DbOrTx, private readonly now: () => Date = () => systemClock.now()) {}
-  async list(firmId: string, staffId: string, q: { unread?: boolean; page?: number; size?: number }) {
+  async list(firmId: string, staffId: string, q: { unread?: boolean; page?: number; size?: number }, labelsOf?: LabelsOf) {
     const size = Math.min(Math.max(Math.trunc(q.size ?? 20), 1), 100), page = Math.min(Math.max(Math.trunc(q.page ?? 1), 1), 1_000_000);   // clamped, breaker m5
     const where = firmScope(firmId, { staffId, ...(q.unread ? { readAt: null } : {}) });
     const rows: Row[] = await this.db.msgNotification.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * size, take: size + 1,
       select: { id: true, kind: true, group: true, itemKind: true, itemId: true, createdAt: true, readAt: true } });
-    const more = rows.length > size, shown = rows.slice(0, size), links = await linksOf(this.db, where.firmId, shown);
-    const items: NotificationView[] = shown.map((r) => ({ id: r.id, kind: r.kind, group: r.group, item: { kind: r.itemKind, id: r.itemId }, link: links.get(`${r.itemKind}|${r.itemId}`)?.link ?? null, createdAt: r.createdAt.toISOString(), readAt: r.readAt?.toISOString() ?? null }));
+    const more = rows.length > size, shown = rows.slice(0, size);
+    // Case items: this file's own case read (label = the case number); every other kind: its module's labeller, if any.
+    const [links, others] = await Promise.all([linksOf(this.db, where.firmId, shown), labelsOf ? labelsOf(shown.filter((r) => !CASE_KINDS.has(r.itemKind)).map((r) => ({ kind: r.itemKind, id: r.itemId }))) : new Map()]);
+    const items: NotificationView[] = shown.map((r) => {
+      const key = `${r.itemKind}|${r.itemId}`, c = links.get(key), o = CASE_KINDS.has(r.itemKind) ? undefined : others.get(key);
+      return { id: r.id, kind: r.kind, group: r.group, item: { kind: r.itemKind, id: r.itemId }, label: c?.caseNumber ?? o?.label ?? null, link: c?.link ?? o?.link ?? null, createdAt: r.createdAt.toISOString(), readAt: r.readAt?.toISOString() ?? null };
+    });
     return { items, page, size, nextPage: more ? page + 1 : null };
   }
   /** PF-18h (BR-1, BR-5): my unread MY_DEADLINES rows for Home's "Needs you", newest first, at most 20, with the total. */

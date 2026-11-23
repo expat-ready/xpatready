@@ -60,11 +60,13 @@ try {
     const keys = sql(`select string_agg(distinct permission_key, ',') from platform_role_permission where role::text = any(string_to_array('${roles.join(",")}', ','))`).split(",");
     return { staffId: id!, firmId: firmId!, firmKey: firmId === A ? "sample-firm" : "sample-solo", roles, keys, duties: dutiesOf(new Set(keys)), authTime: 0, via: "local" };
   };
-  // R: Owner (assigns; sees own and Unassigned, not all: "everyone sees all" is off). O, T: staff who work leads.
+  // R: Owner (assigns). O, T: staff who work leads. Firm A runs own-only: "everyone sees all" switched off (its default is
+  // on, SA6-D1), so each person sees their own leads (R also Unassigned, by the assign key): the case the M2 rule is for.
+  sql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${A}', 'platform.everyone_sees_all', 'false', 'seed:PF-18n2-test')`);
   const R = ctxOf("user-R"), O = ctxOf("user-O"), T = ctxOf("user-T"), SOLO = ctxOf("user-S");
-  ok("PF-18n2 setup: R holds agent/prospect:assign; O and T hold the sales key and not view.all; the firm's everyone-sees-all is off",
-    R.keys.includes("agent/prospect:assign") && [O, T].every((c) => c.keys.includes("agent/prospect:edit") && !c.keys.includes("agent/prospect:view.all"))
-    && sql(`select count(*) from platform_firm_setting where firm_id = '${A}' and key = 'platform.everyone_sees_all' and value = 'true'::jsonb`) === "0");
+  ok("PF-18n2 setup: R holds agent/prospect:assign; O and T hold the sales key, O not the assign key; firm A's everyone-sees-all is off",
+    R.keys.includes("agent/prospect:assign") && [O, T].every((c) => c.keys.includes("agent/prospect:edit")) && !O.keys.includes("agent/prospect:assign")
+    && sql(`select value::text from platform_firm_setting where firm_id = '${A}' and key = 'platform.everyone_sees_all'`) === "false", { R: R.keys.length, O: O.keys.filter((k) => k.startsWith("agent/prospect")), T: T.keys.filter((k) => k.startsWith("agent/prospect")) });
   sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${B}', 'helper@pf18n2.example.com', 'Helper (Sample)', 'ACTIVE', now())`);   // firm B is no one-user firm (X-4)
 
   const port = new PrismaNotificationPort((tx) => new PrismaNotificationPrefs(tx));
@@ -124,16 +126,25 @@ try {
   ok("PF-18n2 DW2 fail: an Assign refused (the owner changed meanwhile, 409) leaves no notification", refused === 409 && rowsOf(T.staffId, own) === 0, refused);
 
   // ------------------------------------------------------------------------------------------- DW3 reassigned away
+  // Reassigning another person's lead needs to see it: the firm switches everyone-sees-all on for it, R reassigns, and then
+  // O, while it is on, still sees the lead (one rule: named and linked) and, once it is off again, does not.
+  const seeAll = (v: boolean) => sql(`update platform_firm_setting set value = '${v}' where firm_id = '${A}' and key = 'platform.everyone_sees_all'`);
+  seeAll(true);
   await withFirm(A, () => leads.assign(R, ruled, { staffId: T.staffId, expectedOwnerStaffId: O.staffId }));
+  const whileAll = (await itemsOf(O)).find((i) => i.item.id === ruled);
+  seeAll(false);
+  ok("PF-18n2 DW3 fail (one rule, not a second): while everyone sees all, O still sees the reassigned lead, so its row keeps its name and link (as GET leads/:id answers O)",
+    whileAll?.label === `Client A Sample (${number})` && whileAll.link === `/front-office/leads/${ruled}`, whileAll);
   const lost = (await itemsOf(O)).find((i) => i.item.id === ruled), gained = (await itemsOf(T)).find((i) => i.item.id === ruled);
-  ok("PF-18n2 DW3 pass: a lead reassigned from O to T: O's row stays (it happened) but shows neither the lead's name nor its link",
-    !!lost && lost.label === null && lost.link === null && JSON.stringify(lost).indexOf("Client A") === -1, lost);
+  const oNow = await refusal(() => withFirm(A, () => leads.read(O, ruled)));
+  ok("PF-18n2 DW3 pass: a lead reassigned from O to T in an own-only firm: O's row stays (it happened) but shows neither the lead's name nor its link, and O's GET leads/:id is 404",
+    !!lost && lost.label === null && lost.link === null && JSON.stringify(lost).indexOf("Client A") === -1 && oNow === 404, { lost, oNow });
   ok("PF-18n2 DW3 fail: T, who now owns it, sees the name and the link", gained?.label === `Client A Sample (${number})` && gained.link === `/front-office/leads/${ruled}`, gained);
   sql(`update platform_staff set status = 'DEACTIVATED' where id = '${T.staffId}'`);
   const back = (await itemsOf(O)).find((i) => i.item.id === ruled), oRead = await refusal(() => withFirm(A, () => leads.read(O, ruled)));
   sql(`update platform_staff set status = 'ACTIVE' where id = '${T.staffId}'`);
-  ok("PF-18n2 DW3 fail (one rule, the lead page's own): T deactivated makes the lead Unassigned; O (no view.all, no assign key) still sees no name, exactly as GET leads/:id answers O (404)",
-    back?.label === null && back.link === null && oRead === 404, { back, oRead });
+  ok("PF-18n2 DW3 pass (one rule, the lead page's own): T deactivated makes the lead Unassigned, which O (holding view.all) sees: its row names and links it again, exactly as GET leads/:id now answers O",
+    back?.label === `Client A Sample (${number})` && back.link === `/front-office/leads/${ruled}` && oRead === null, { back, oRead });
 
   // ------------------------------------------------------------------------------------------- DW4 another person never sees it
   const rIds = new Set((await itemsOf(R)).map((i) => i.id)), tIds = (await itemsOf(T)).map((i) => i.id);
