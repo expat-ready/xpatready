@@ -50,3 +50,34 @@ Reviewed head **1b9733fd136dd842d024b92698db334aca9faf1d** (branch `claude/runti
 The Minors are at the builder's discretion within the 800-line budget. m1 and m2 matter most.
 
 Verdict: Block 1b9733fd136dd842d024b92698db334aca9faf1d
+
+## Round 2 (23 Nov 2026): head 0cda0efbf27edd1f545f039b021f53fea45ca3a5, diff only
+Read only `git diff 1b9733fd1..0cda0efbf -- …/prototype/studio`: 5 files, +20/−17, covering 3 commits (efbc8e4dd, 9a4bdd6b4, 0cda0efbf). The studio diff against main is now 798 lines, under 800. The records commit 0e8a6610 on top touches only `product/screens/PF-21b-3/` (checked with `git diff --stat`).
+
+**Runs** (a detached worktree at 0cda0efbf, Postgres on :54329, :4400 never used):
+- `check_pf21b_requests.ts` 27/27, `check_pf12_walls.ts` 110/110, `check_pf4s_system_signin.ts` 102/102 (with its one new seed entry), `check_pf8b_f4_migrations.ts` 9/9. All exit 0.
+- `typecheck.mjs`: the 15 errors in `requests/service.ts` are gone. Two errors remain, in `../p2/runner.ts` (`@anthropic-ai/sdk` not found). They come from my worktree's package links, not from this diff: the main checkout at round 1 did not show them, and p2 is untouched.
+- `module-cards.py pr` with the current PR body: PASS (`Card unchanged: api-features …`). On GitHub, `module-cards` is green on 0e8a6610.
+
+**Round 1 items:**
+- **B1 fixed.** `fields` is now a `function … : never` (service.ts:64), and the type narrowing holds.
+- **M1 fixed.** The PR body has the `Card unchanged:` line.
+- **M2 fixed.** `log()` runs `checkOne(id).catch(() => undefined)` (:107), so a saved request answers 201. The `flaky` case now logs a request 31 days late while alerts are down: it gets 201 PENDING, one row, no error, and the next run marks it with one alert. That case would fail if the catch were removed.
+- **M3 fixed.** `sweep()` logs each failure (`logPort.error("data_request_check_failed", e, {})`, :151). The job handler throws when `failed > 0`, so PF-14's job line records a failed run. The marks make a retried run harmless.
+- **Breaker m1 / my m3 fixed.** `REVOKE ALL ON plat_data_request, plat_data_request_event FROM xr_data`. The definers keep their access: per the PF-12 walls migration, xr_wall_reader holds the owner's rights by membership on a superuser cluster, and by its own grants and default privileges on a non-superuser one (RDS), not through xr_data. The suite and `check_pf8b_f4_migrations` pass. The test now proves xr_app with no firm, xr_app in a firm session, and xr_app as `xr_staff_bypass` all get "permission denied".
+- **m5 fixed.** The due read is ordered by `target_date` first only when `p_due_by` is set. The console list stays newest first.
+- **m4 fixed.** `today()` is now Toronto's day (`toLocaleDateString("en-CA", { timeZone: DATA_REQUEST_ZONE })`). It drives the future-date check, `completedOn` and the overdue test. `dueAt` stays end of the target day in UTC; that is harmless, at most a few hours earlier on the near-date alert.
+- **Breaker m3.** The check's transaction now has `timeout: 60_000`.
+- **m8.** The `move` comment is corrected, and the `tx as never` cast is gone.
+- **Left as questions in the PR body (acceptable, Minor):** m1 (actions text overwritten), m2 (firm and person link unchecked; recommended for PF-21d, whose eraser acts on it), m7 (Auditor read), break m4 (some invisible characters), break m6 (Overdue → Held → In progress).
+
+**New, Minor (no change required):**
+- **r2-m1.** `log()`'s catch writes nothing. The request reads PENDING past its target until 07:20 the next day, when the daily check retries and now logs any failure. A `logPort.warn` there would say so at once.
+- **r2-m2.** `sweep()`'s log line carries `{}`. Adding `{ entityKey: r.id }` (an id only) would name the request that failed.
+- **r2-m3.** A slow alert can now hold the row lock for up to 60 s. A staff move on that request runs in Prisma's default 5 s transaction and would time out (500, with a REFUSED line) rather than wait. This happens only with a slow AlertPort, since LogAlerts writes synchronously.
+
+Journey score (round 1: 7.5/10): J7, retry after a 500, now holds. Feedback and state, and error recovery, rise to 1. Correct data stays at ½ (m1, m2). **Round 2: 7 of 8 applicable, 8.75/10, a pass.**
+
+No open Blocker or Major.
+
+Verdict: Approve 0cda0efbf27edd1f545f039b021f53fea45ca3a5
