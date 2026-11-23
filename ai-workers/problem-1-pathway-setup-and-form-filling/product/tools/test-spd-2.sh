@@ -250,6 +250,13 @@ if [ "$REAL" = 1 ]; then
 out=$(python3 -I "$MS" mergify --check "$ROOTD/.mergify.yml"); r=$?
 ok ".mergify.yml holds exactly the generated per-area slots" "$([ $r = 0 ] && echo 1)" "$out"
 fi
+# Fault 2 (Lead 4 on #3035, 23 Nov): the approved set-up's manifest pinned the old one slot ("migrations": 1), so the
+# heartbeat's conformance check would fail the day this merged. The manifest now pins every mig-<area> scope at 1.
+MAN="$ROOTD/ai-workers/problem-1-pathway-setup-and-form-filling/product/design/engineering-approved-setup.json"
+if [ -f "$MAN" ]; then
+out=$(python3 -I "$TOOLS/conformance-check.py" --root "$ROOTD" 2>&1 | grep -E 'mergify\.capacities'); true
+ok "the approved set-up's manifest pins the per-area slots, and this .mergify.yml conforms (mergify.capacities)" "$(grep -q '^PASS mergify.capacities' <<< "$out" && grep -q 'mig-\*' <<< "$out" && echo 1)" "$out"
+fi
 ok "ci.yml runs the check on every PR and batch (fast job; --batch in the queue)" "$(grep -q 'migration-slots.py" check $(\[ "$QUEUE" = true \] && echo --batch) "$RANGE"' "$ROOTD/.github/workflows/ci.yml" && echo 1)"
 ok "queue-gate.sh re-checks only for a migration of the same area (migration-slots.py clash)" "$(grep -q 'migration-slots.py" clash' "$TOOLS/queue-gate.sh" && echo 1)"
 

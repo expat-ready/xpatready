@@ -238,6 +238,26 @@ class Conformance(unittest.TestCase):
             self.assertEqual(status(r, iid), "fail", iid)
         self.assertNotIn("mergify.mode", [x["id"] for x in self.check()["items"]])   # a manifest without them: unchecked
 
+    def test_a_family_of_scopes_is_pinned(self):   # SPD-2 fault 2 (Lead 4 on #3035): "mig-*": 1, every per-area slot at 1
+        m = copy.deepcopy(MANIFEST); g = m["mergify"]
+        g.update({"mode": "parallel", "capacities_required": {"mig-*": 1, "money": 1}})
+        def par(d):
+            d["merge_queue"]["mode"] = "parallel"
+            d["scopes"] = {"source": {"files": {"money": {"include": ["m/**"]}, "mig-cases": {"include": ["c/**"]},
+                                                  "mig-platform": {"include": ["p/**"]}}},
+                           "capacities": {"money": 1, "mig-cases": 1, "mig-platform": 1}}
+        r = self.check(edit(M, par), m)
+        self.assertEqual(status(r, "mergify.capacities"), "pass")
+        for why, fn in (("a slot at 2", lambda d: d["scopes"]["capacities"].update({"mig-cases": 2})),
+                        ("a slot with no capacity", lambda d: d["scopes"]["capacities"].pop("mig-platform")),
+                        ("no per-area slot at all", lambda d: [d["scopes"][k].pop(x) for k in ("capacities",) for x in ("mig-cases", "mig-platform")]
+                                                              + [d["scopes"]["source"]["files"].pop(x) for x in ("mig-cases", "mig-platform")]),
+                        ("the old one slot instead", lambda d: (d["scopes"]["capacities"].pop("mig-cases"), d["scopes"]["capacities"].pop("mig-platform"),
+                                                               d["scopes"]["source"]["files"].pop("mig-cases"), d["scopes"]["source"]["files"].pop("mig-platform"),
+                                                               d["scopes"]["capacities"].update({"migrations": 1})))):
+            r = self.check(lambda f, fn=fn: (edit(M, par)(f), edit(M, fn)(f)), m)
+            self.assertEqual(status(r, "mergify.capacities"), "fail", why)
+
     def test_auto_merge_off_fails(self):
         r = self.check(edit(M, lambda d: d.pop("merge_protections_settings")))
         self.assertEqual(status(r, "mergify.auto_merge_conditions"), "fail")
