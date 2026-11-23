@@ -90,9 +90,9 @@ try {
   const form = { email, password: "Correct-horse-9!", firmName: `Sample Terms Firm ${run}`, countryCode: "CA", planCode: plans.body.plans?.[0]?.code ?? "solo", period: "MONTHLY", acceptedTerms: terms.map((t) => t.id), formStamp: plans.body.formStamp };
   await wait(3300);   // the door's minimum fill time is 3 s
   const none = await j("POST", "/api/public/signup", { ...form, acceptedTerms: [] });
-  ok("R1.100 W1 fail: a sign-up that accepts nothing is refused at the field, in plain words", none.status === 400 && String(none.body.errors?.[0]).startsWith("acceptedTerms: accept the current terms"), none.body.errors);
+  ok("R1.100 W1 fail: a sign-up that accepts nothing is refused at the field, in plain words", none.status === 422 && String(none.body.errors?.[0]).startsWith("acceptedTerms: accept the current terms"), none.body.errors);
   const two = await j("POST", "/api/public/signup", { ...form, acceptedTerms: form.acceptedTerms.slice(0, 2) });
-  ok("R1.100 W1 fail: a sign-up that accepts two of the three current versions is refused", two.status === 400, two.body.errors);
+  ok("R1.100 W1 fail: a sign-up that accepts two of the three current versions is refused", two.status === 422, two.body.errors);
   await wait(1000);
   ok("R1.100 W1 fail: a refused sign-up stores nothing and sends nothing (the inbox is empty; P-606: read before the sign-up)", sql(`select count(*) from platform_signup_pending where email = '${email}'`) === "0" && (await inbox(email)).length === 0);
 
@@ -110,7 +110,7 @@ try {
 
   // ------------------------------------------------------------------------------------------------ W3: confirm, stored
   const wrong = await j("POST", "/api/public/signup/verify", { token, code: code === "000000" ? "111111" : "000000" });
-  ok("R1.100 W3 fail: a wrong code is refused in plain words and makes no firm", wrong.status === 400 && wrong.body.code === "CODE_WRONG" && sql(`select count(*) from platform_firm where owner_email = '${email}'`) === "0", wrong.body);
+  ok("R1.100 W3 fail: a wrong code is refused in plain words and makes no firm", wrong.status === 422 && wrong.body.code === "CODE_WRONG" && sql(`select count(*) from platform_firm where owner_email = '${email}'`) === "0", wrong.body);
   const done = await j("POST", "/api/public/signup/verify", { token, code });
   firmKey = done.body.firmKey ?? ""; ownerId = done.body.ownerStaffId ?? "";
   ok("R1.100 W3: the code from the email confirms the sign-up: one firm and its Owner are made", done.status === 201 || done.status === 200 ? !!firmKey && !!ownerId : false, done.body);

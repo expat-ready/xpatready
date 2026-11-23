@@ -12,13 +12,15 @@
 // the Sample Owner, for a firm with no acceptance yet of the terms of service or the data-processing terms, accepts their
 // current versions (Sample acceptances, also for people a database kept from before PF-5 already holds: break M1). Only a
 // first acceptance of each kind: a later new version stays pending for the person to accept (PF-5t). Unconfirmed: no
-// counsel. Run: PLATFORM_ENVIRONMENT=local tsx api/src/platform/seed-sample-firms.ts
+// counsel. Run: PLATFORM_ENVIRONMENT=local tsx --tsconfig api/tsconfig.json api/src/platform/seed-sample-firms.ts (the settings
+// step loads a NestJS service: decorators; PF-8b F8). Runs as the database owner without superuser or BYPASSRLS too (RDS).
 import type { PlatformRole, Prisma, PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { registeredSettings, syncSettingDefinitions } from "./settings.ts";
-import { touchFirm } from "./firm-scope.ts";
+import { firmInTransaction, firmOfKey, touchFirm } from "./firm-scope.ts";
+import { randomUUID } from "node:crypto";
 
 type Office = { country?: string | null } & Record<string, unknown>;
 type SampleUser = { id: string; name: string; family_name?: string; given_names?: string; email?: string; duties: string[]; licence: { body: string; category: string; number: string } | null };
@@ -49,7 +51,9 @@ const emailOf = (u: SampleUser, firmKey: string) => (u.email ?? `${u.id}@${firmK
 
 export type SeedResult = { firmsAdded: number; staffAdded: number; grantsAdded: number; credentialsAdded: number; subscriptionsAdded: number; settingKeys: number; unmatchedCaseFirmKeys: string[] };
 
-export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = readSampleFirms()): Promise<SeedResult> {
+/** `then` (DEMO-LINK): more Sample rows written in this same transaction after the firms, so a bypass use touches each
+ *  firm once (the demo reset's front-office Sample consultation type, demo.ts). */
+export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = readSampleFirms(), then?: (tx: Prisma.TransactionClient) => Promise<unknown>): Promise<SeedResult> {
   return db.$transaction(async (tx) => {
     const r: SeedResult = { firmsAdded: 0, staffAdded: 0, grantsAdded: 0, credentialsAdded: 0, subscriptionsAdded: 0, settingKeys: 0, unmatchedCaseFirmKeys: [] };
     r.settingKeys = await syncDefinitionsIfChanged(tx);
@@ -60,10 +64,15 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
       const owner = f.users.find((u) => u.duties.includes("firm_admin")) ?? f.users[0];
       const country = COUNTRY[String(f.office?.country ?? "").toLowerCase()];
       if (!country) throw new Error(`seed-sample-firms: firm ${f.key} has no known country (${String(f.office?.country)})`);
-      let firm = await tx.platformFirm.findUnique({ where: { key: f.key } });
+      // PF-8b F8: every row of this firm is read and written as this firm (PF-12's walls), so the seed runs as the
+      // database's owner without superuser or BYPASSRLS (Amazon RDS); a new firm gets its id first, to be that firm.
+      const known = await firmOfKey(tx, f.key, async () => (await tx.platformFirm.findUnique({ where: { key: f.key }, select: { id: true } }))?.id ?? null);
+      const firmId = known ?? randomUUID();
+      await firmInTransaction(tx, firmId);
+      let firm = known ? await tx.platformFirm.findUnique({ where: { id: known } }) : null;
       if (!firm) {
         firm = await tx.platformFirm.create({ data: {
-          key: f.key, operatingName: f.name, countryCode: country, status: "ACTIVE",
+          id: firmId, key: f.key, operatingName: f.name, countryCode: country, status: "ACTIVE",
           ownerName: owner.name, ownerEmail: emailOf(owner, f.key), billingEmail: emailOf(owner, f.key), contactEmail: emailOf(owner, f.key),
           businessAddress: (f.office ?? null) as Prisma.InputJsonValue,
         } });
@@ -71,7 +80,9 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
         // The subscription comes with the firm, once: an ended one is a person's change and is kept (break B-3).
         const plan = await tx.platformPlan.findUnique({ where: { code: f.solo ? "solo" : "team" } });
         if (!plan) throw new Error("seed-sample-firms: the Sample plans are missing (the PF-3 migration adds them)");
-        await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "ACTIVE" } });
+        // Named columns only, so the seed also runs on an earlier schema (PF-12's check seeds one before later columns such as
+        // PF-5 part 3's billing_period, whose default the database gives); same transaction, same walls.
+        await tx.$executeRaw`INSERT INTO platform_subscription (id, firm_id, plan_id, status, updated_at) VALUES (gen_random_uuid(), ${firm.id}::uuid, ${plan.id}::uuid, 'ACTIVE'::"PlatformSubscriptionStatus", now())`;
         r.subscriptionsAdded++;
       }
       // PF-12b: on the demo's bypass use (demo.ts, "platform.demo.reset") this firm's platform.bypass line, in the seed's
@@ -94,6 +105,8 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
         }
       }
     }
+    await firmInTransaction(tx, null);   // PF-8b F8: no firm for what follows (as before the loop)
+    if (then) await then(tx);
     r.unmatchedCaseFirmKeys = await unmatchedCaseFirmKeys(tx);
     return r;
   });
@@ -124,8 +137,13 @@ export async function seedSampleSettings(db: PrismaClient, firms: SampleFirm[] =
   const { seedSampleSettingValues } = await import("./keep-period/service.ts");
   let n = 0;
   for (const f of firms) {
-    const firm = await db.platformFirm.findUnique({ where: { key: f.key }, select: { id: true } });
-    if (firm) n += await db.$transaction((tx) => seedSampleSettingValues(tx, firm.id, SAMPLE_SETTING_VALUES));
+    n += await db.$transaction(async (tx) => {
+      // PF-8b F8: found across the walls by its key, then written as that firm (see seedSampleFirms)
+      const id = await firmOfKey(tx, f.key, async () => (await tx.platformFirm.findUnique({ where: { key: f.key }, select: { id: true } }))?.id ?? null);
+      if (!id) return 0;
+      await firmInTransaction(tx, id);
+      return seedSampleSettingValues(tx, id, SAMPLE_SETTING_VALUES);
+    });
   }
   return n;
 }

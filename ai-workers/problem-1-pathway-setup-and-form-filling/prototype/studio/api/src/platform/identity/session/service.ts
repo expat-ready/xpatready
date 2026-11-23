@@ -11,7 +11,7 @@ import { MessageRefused } from "../../../../../ports/messages.ts";
 import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
 import { mailIn, mailReady } from "../../messages/send/mail.ts";
-import { asBypass, firmScope, notInFirm } from "../../firm-scope.ts";
+import { firmScope, notInFirm, withFirm } from "../../firm-scope.ts";
 import { actorWord } from "../audit.ts";
 import { writeMoneyKeysGranted } from "../money-line.ts";
 import { FIRM_KEY, forbidden, problem, unauthorized, type StaffContext } from "../keys.ts";
@@ -82,11 +82,19 @@ export class PlatformSession {
           from platform_invitation i join platform_firm f on f.id = i.firm_id where i.token_hash = ${hash}`;
     return rows[0] ?? null;
   }
+  /** PF-12b part 2: the invitation's firm through the narrow definer lookup (its id only, by the token's hash), else null. */
+  private async invitationFirm(token: unknown): Promise<string | null> {
+    if (typeof token !== "string" || !TOKEN.test(token)) return null;
+    const hash = createHash("sha256").update(token).digest("hex");
+    return (await this.db.$queryRaw<{ f: string | null }[]>`select platform_invitation_firm(${hash}) as f`)[0]?.f ?? null;
+  }
   private static stateOf(i: InvRow | null) { return !i || i.accepted_at || i.revoked_at ? "NOT_VALID" : i.expired ? "EXPIRED" : "VALID"; }
 
   /** GET /api/public/invitations/:token: valid (firm, email), expired, or no longer valid (used, revoked or unknown: one answer). */
   async invitationState(token: string) {
-    const i = await asBypass("platform.identity.invitation", () => this.invitation(this.db, token, false)), state = PlatformSession.stateOf(i);   // PF-12: the token is the only key
+    // PF-12b part 2: the token is the only key; its firm comes from the narrow lookup, and the invitation is read as that firm.
+    const firmId = await this.invitationFirm(token);
+    const i = firmId ? await withFirm(firmId, () => this.invitation(this.db, token, false)) : null, state = PlatformSession.stateOf(i);
     if (state === "VALID") return { state, firmName: i!.firm_name, email: i!.email, next: "Continue to set your password" };
     if (state === "EXPIRED") return { state, firmName: i!.firm_name, words: INVITE_WORDS.expired(i!.firm_name) };
     return { state, words: INVITE_WORDS.notValid };
@@ -95,9 +103,11 @@ export class PlatformSession {
   /** POST …/accept: one staff member and one provider user (its own email suppressed), the invitation used, the hand-off
    *  to set a password. The invitation row is locked, so a second accept (parallel or later) finds it used. */
   async accept(token: string) {
-    // PF-12: the token is the only key, and the email is checked across every firm (one account, one firm), so the door
-    // runs on the named bypass (BYPASS_USES "platform.identity.invitation").
-    return asBypass("platform.identity.invitation", () => this.db.$transaction(async (tx) => {
+    // PF-12b part 2: the token is the only key. Its firm comes from the narrow lookup and the accept runs as that firm; the
+    // email is checked across every firm (one account, one firm) by the yes-or-no lookup platform_staff_email_taken.
+    const firmId = await this.invitationFirm(token);
+    if (!firmId) problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
+    return withFirm(firmId, () => this.db.$transaction(async (tx) => {
       const pre = await this.invitation(tx, token, false);   // one lock order with PF-4's resend and revoke: firm, then invitation
       if (pre) await tx.$queryRaw`select id from platform_firm where id = ${pre.firm_id}::uuid for no key update`;   // as inFirm (J-5 B1)
       const i = await this.invitation(tx, token, true), state = PlatformSession.stateOf(i);
@@ -117,7 +127,7 @@ export class PlatformSession {
       }
       if (await tx.platformStaff.findFirst({ where: firmScope(inv.firm_id, { email: inv.email }), select: { id: true } })) problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
       // One sign-in account is one firm's staff member (identity_subject is unique): the invitee, who holds the link, is told plainly.
-      if (await tx.platformStaff.findFirst({ where: { email: inv.email }, select: { id: true } })) problem(409, "Use another email", `This email already signs in to another firm. Ask ${inv.firm_name} to invite another address.`, { code: "EMAIL_IN_ANOTHER_FIRM" });
+      if ((await tx.$queryRaw<{ taken: boolean }[]>`select platform_staff_email_taken(${inv.email}) as taken`)[0]?.taken) problem(409, "Use another email", `This email already signs in to another firm. Ask ${inv.firm_name} to invite another address.`, { code: "EMAIL_IN_ANOTHER_FIRM" });
       // PF-4dn: the name the inviter typed, else the part of the email before the @ (as before).
       const staff = await tx.platformStaff.create({ data: { firmId: inv.firm_id, email: inv.email, displayName: inv.display_name ?? inv.email.split("@")[0].slice(0, 100), status: "ACTIVE" } });
       for (const role of inv.roles) await tx.platformRoleGrant.create({ data: { firmId: inv.firm_id, staffId: staff.id, role, grantedBy: inv.invited_by } });
@@ -155,7 +165,7 @@ export class PlatformSession {
   /** POST /api/platform/session/callback { code }: the sign-in code (in the body, never in a URL or a log line) → a session (the local stand-in through PF-4's sign-in,
    *  which also ends any older session: one session at a time). */
   async callback(code: unknown) {
-    if (typeof code !== "string" || !code) return unauthorized("This sign-in link has been used or has expired. Sign in again.", "SIGN_IN_CODE_REFUSED");
+    if (typeof code !== "string" || !code || code.length > 2000) return unauthorized("This sign-in link has been used or has expired. Sign in again.", "SIGN_IN_CODE_REFUSED");
     const who = await this.admin.redeem(code);
     const session = await this.id.localSignIn({ firmKey: who.firmKey, email: who.email, secondStep: true });
     if (this.admin instanceof LocalIdentityAdmin) this.admin.enrolled(session.staffId);

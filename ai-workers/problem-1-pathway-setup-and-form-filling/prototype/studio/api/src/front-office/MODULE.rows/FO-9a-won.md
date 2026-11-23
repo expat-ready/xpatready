@@ -1,0 +1,2 @@
+Entry points: FO-9a duplicate result (R1.29; case-side contract v0.1 §4, F6): `duplicates/service.ts` `wonDuplicates(tx, firmId, subject)`, read by `winProspect` in the win's transaction; every `prospect.won` carries `duplicates.matches` (ids, score, reasons of the firm's other matching people or companies; never the subject; no names); warn only, writes nothing
+Tests: tests/check_fo9a_won_duplicates.ts

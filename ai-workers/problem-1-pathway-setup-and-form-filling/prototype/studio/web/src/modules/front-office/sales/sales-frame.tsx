@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Frame, useWhere, type Crumb } from "@/components/frame";
 import { Button } from "@/components/ui/controls";
 import { SignInCard as SignIn } from "@/modules/platform/frame";
+import { FindBox } from "@/modules/platform/find/find-box";
 import { cn } from "@/lib/utils";
 import { Assignees, can, LeadRows, seesUnassigned, type Me } from "./contract";
 import { Loading } from "./loading";
@@ -38,9 +39,11 @@ function Menu({ me }: { me: Me }) {
       </NavLink>
       <NavLink to="/front-office/pipeline" className={item}>Pipeline</NavLink>
       {/* FO-4w: Settings for the people who may change them (Owner, Admin); the page says so to anyone else. */}
-      {can(me, "agent/prospect:configure-form") ? <>
+      {can(me, "agent/prospect:configure-form") || can(me, "agent/retainer:configure-template") ? <>
         <p className="px-3 pb-2 pt-4 text-xs font-medium text-text-muted">Settings</p>
-        <NavLink to="/front-office/settings/web-form" className={item}>Web form</NavLink>
+        {can(me, "agent/prospect:configure-form") ? <NavLink to="/front-office/settings/web-form" className={item}>Web form</NavLink> : null}
+        {/* FO-5s part 2: the firm's retainer templates (Owner, Admin). */}
+        {can(me, "agent/retainer:configure-template") ? <NavLink to="/front-office/settings/retainer-templates" className={item}>Retainer templates</NavLink> : null}
       </> : null}
     </nav>
   );
@@ -60,7 +63,7 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
     <Frame area="outside" title="Sales" subtitle={who ? who.displayName : undefined} home="/front-office/leads"
-      controls={who ? <Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button> : null}
+      controls={who ? <><FindBox /><Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button></> : null}
       menu={who ? <Menu me={who} /> : null}>
       <Place crumbs={crumbs} back={back ?? null} />
       {!token || (me.isError && !who) ? <SignIn failed={token ? refused : null} />
@@ -68,7 +71,7 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
           : (
             <MeCtx.Provider value={who}>
               {/* The menu column is hidden below 768 px: the same two places as links, so a phone reaches Pipeline. */}
-              <nav aria-label="Sales pages" className="mb-3 flex gap-4 text-sm md:hidden"><NavLink to="/front-office/leads" className="text-text-link hover:underline">Leads</NavLink><NavLink to="/front-office/pipeline" className="text-text-link hover:underline">Pipeline</NavLink>{can(who, "agent/prospect:configure-form") ? <NavLink to="/front-office/settings/web-form" className="text-text-link hover:underline">Web form</NavLink> : null}</nav>
+              <nav aria-label="Sales pages" className="mb-3 flex gap-4 text-sm md:hidden"><NavLink to="/front-office/leads" className="text-text-link hover:underline">Leads</NavLink><NavLink to="/front-office/pipeline" className="text-text-link hover:underline">Pipeline</NavLink>{can(who, "agent/prospect:configure-form") ? <NavLink to="/front-office/settings/web-form" className="text-text-link hover:underline">Web form</NavLink> : null}{can(who, "agent/retainer:configure-template") ? <NavLink to="/front-office/settings/retainer-templates" className="text-text-link hover:underline">Retainer templates</NavLink> : null}</nav>
               {children}
             </MeCtx.Provider>
           )}

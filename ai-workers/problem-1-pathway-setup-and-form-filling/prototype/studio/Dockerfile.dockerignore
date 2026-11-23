@@ -5,6 +5,7 @@
 *
 !ai-workers/problem-1-pathway-setup-and-form-filling/prototype
 !ai-workers/problem-1-pathway-setup-and-form-filling/official-sources
+!AGENTS.md
 **/node_modules
 **/.DS_Store
 **/*.log

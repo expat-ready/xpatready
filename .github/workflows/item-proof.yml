@@ -16,6 +16,7 @@
 #     README.md (each proven journey with its video) committed to the branch auto-verdicts, never main: main takes
 #     changes only through the merge queue. It never edits qa/CAPABILITIES.md and never marks Works: qa reads the
 #     verdict and walks the journey once (gate A, P-339, P-348c).
+# The prove job ends red when its verdict is FAIL or no pack, suite or journey ran, the summary saying why (A274).
 # Start by hand (the Lead; cloud lanes cannot dispatch, P-439): Actions › item-proof › Run workflow, pr = a merged PR's
 # number. Test: studio/tests/check_item_proof.ts (detection, verdict shape, page, scan, and this file's shape).
 # Safety: it runs on a push to main (each merge is its own push, the queue merges with a merge commit) and on a hand
@@ -177,6 +178,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with: { name: "proof-verdict-${{ matrix.item }}", path: "${{ runner.temp }}/verdict", retention-days: 90, overwrite: true }
+      # A274 (21 Nov, run 44921268206): "prove (R1.4)" was green while its verdict said FAIL and nothing ran. Last, so the
+      # verdict is kept and the report job (always()) still posts it; this job is red when the verdict proves nothing.
+      - name: the job fails when the verdict is FAIL or nothing ran (item-proof.mjs gate)
+        if: always()
+        run: |
+          st=0; node "$S/tools/item-proof.mjs" gate "$RUNNER_TEMP/verdict/$ITEM-$SHA.json" > "$RUNNER_TEMP/gate.md" || st=$?
+          cat "$RUNNER_TEMP/gate.md"; cat "$RUNNER_TEMP/gate.md" >> "$GITHUB_STEP_SUMMARY"; exit "$st"
   report:
     needs: [detect, prove]
     if: ${{ always() && needs.detect.outputs.items != '' && needs.detect.outputs.items != '[]' }}

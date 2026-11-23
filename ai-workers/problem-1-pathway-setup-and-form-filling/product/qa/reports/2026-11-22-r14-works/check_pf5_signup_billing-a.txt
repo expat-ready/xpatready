@@ -1,0 +1,577 @@
+<claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
+NOTICE:  database "xr_studio_pf5_9904" does not exist, skipping
+PASS  PF-5 the migration's stamp is later than every migration before it and its own (rows rev 16.7; newest before it: 20261115170000_fo3sa_booking_overlap_confirmed)
+PASS  PF-5 fail: before PF-5's migration the schema differs on its tables
+PASS  PF-5 pass: right after its own migration, migrate diff names none of its tables (measured before any later one)
+PASS  PF-5 pass: three Sample terms versions, one of each kind
+PASS  PF-5 fail: a terms version is never changed or removed
+PASS  PF-5 fail: one live pending sign-up per email (a second is refused)
+PASS  PF-5 fail: a pending sign-up changes only its used_at, once; a live one is never removed
+PASS  PF-5 fail: a pending sign-up lives at most 24 hours, names existing terms and keeps the email in lower case
+PASS  PF-5 pass: no password column anywhere in the pending sign-up
+PASS  PF-0c DW2 BillingPort fakeBilling: prices answer only the ids asked, with amount, currency and interval
+PASS  PF-0c DW2 BillingPort fakeBilling: a firm has one customer (the same firm twice gives the same id)
+PASS  PF-0c DW2 BillingPort fakeBilling: the trial's Checkout asks for no card and pauses at trial end, once per firm and price
+PASS  PF-0c DW2 BillingPort fakeBilling: a signed event is read (firm, customer, subscription); unsigned or changed bytes are refused
+PASS  PF-0c DW2 BillingPort fakeBilling: the subscription as Stripe has it: trialing, no card, the trial's end
+PASS  PF-0c DW2 BillingPort fakeBilling: a malformed input is refused before any call
+PASS  PF-0c DW2 BillingPort fakeBilling: passes its contract (6 of 6 cases)
+PASS  PF-0c DW2 BillingPort StripeBilling: prices answer only the ids asked, with amount, currency and interval
+PASS  PF-0c DW2 BillingPort StripeBilling: a firm has one customer (the same firm twice gives the same id)
+PASS  PF-0c DW2 BillingPort StripeBilling: the trial's Checkout asks for no card and pauses at trial end, once per firm and price
+PASS  PF-0c DW2 BillingPort StripeBilling: a signed event is read (firm, customer, subscription); unsigned or changed bytes are refused
+PASS  PF-0c DW2 BillingPort StripeBilling: the subscription as Stripe has it: trialing, no card, the trial's end
+PASS  PF-0c DW2 BillingPort StripeBilling: a malformed input is refused before any call
+PASS  PF-0c DW2 BillingPort StripeBilling: passes its contract (6 of 6 cases)
+PASS  PF-5 (Lead B, fact 3): the trial's Checkout turns Stripe Tax on and saves the address to the customer
+PASS  PF-5 part 2 fail (Devin on #1959): tax switched off for want of the address (disabled_reason) also reads as "address needed"
+PASS  PF-5 part 2 pass/fail (rows rev 13): the Customer Portal has plan switching off, card, invoices and cancel at period end on
+PASS  PF-5 pass: GET plans reads Stripe's prices through BillingPort, marked "+ applicable taxes", with the current terms
+PASS  PF-5 fail: a plan with no Stripe price shows no price (never an invented one)
+{"time":"2026-11-21T18:47:48.517Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail: a sign-up without accepting every current terms version is refused at the field, nothing stored
+{"time":"2026-11-21T18:47:48.535Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:48.545Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail: the honeypot or a too-fast fill is answered like any other sign-up, nothing stored or sent
+{"time":"2026-11-21T18:47:48.569Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:48.604Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 pass/fail (break M2): a second sign-up for the same email while a link is live → still one live pending sign-up, the newest (the first link ends, so nobody holds another person's address), each with its one email
+{"time":"2026-11-21T18:47:48.635Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail: the replaced sign-up's link → 404
+PASS  PF-5 fail: the password is never stored (not in the pending row, an audit line or an email)
+PASS  PF-5 fail: an unverified sign-up creates no firm
+{"time":"2026-11-21T18:47:48.669Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail: a wrong code is refused and makes no firm
+{"time":"2026-11-21T18:47:48.684Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail: a forced audit failure rolls the whole sign-up back (no firm, no Owner, the link still unused)
+{"time":"2026-11-21T18:47:48.746Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:48.746Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 pass/fail: a double submit of the verification makes one firm (PROVISIONING) and one Owner; the other is the 404
+PASS  PF-5 pass: an acceptance row per current terms version records kind, version, time and who (the Owner)
+PASS  PF-5 pass (A46's weak point, tested): the trial starts through Checkout with no card (if_required), pause at trial end, the plan's 14 days and price, on the firm's own customer
+PASS  PF-5 pass: each change has its audit line in its transaction (PF-12b: the sign-up use's platform.bypass line too), and firm.created is in the outbox once (written last)
+{"time":"2026-11-21T18:47:48.858Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail: a verification link used twice → 404
+{"time":"2026-11-21T18:47:48.865Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 pass/fail: a sign-up for an email that already has an account → the same answer, an email saying "You already have an account. Sign in.", nothing stored
+PASS  PF-5v part 2 (review M1 of #2456): the "already have an account" email is our platform account email (no firm: never the firm's sender or its daily cap) and links to the firm sign-in card
+{"time":"2026-11-21T18:47:48.883Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail (break m3): at most 3 sign-up emails to one address an hour (the 4th sends nothing, same answer)
+{"time":"2026-11-21T18:47:48.886Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail (break m4): a mail failure never changes the answer (no 500 that tells a known email apart)
+{"time":"2026-11-21T18:47:48.907Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:48.911Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail: an expired or unknown verification link → the same 404
+PASS  PF-5 pass/fail (Lead B (3)): the sweep removes expired pending sign-ups (used or not) and keeps the live ones
+{"time":"2026-11-21T18:47:48.937Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 pass: a new email signs up and gets its one verification email
+PASS  PF-5 fail: Stripe unreachable → the plans still show, without prices, saying so
+{"time":"2026-11-21T18:47:48.960Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:48.969Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail: Stripe unreachable after the commit → the firm stays setting up (PROVISIONING), no checkout, a plain next step
+{"time":"2026-11-21T18:47:49.008Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.019Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.027Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.041Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.051Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.060Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.074Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.084Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.094Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.103Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.112Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.113Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 pass/fail: the door's per-IP limit answers 429 after 10 tries in 10 minutes; another address is not held
+{"time":"2026-11-21T18:47:49.124Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.126Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail (break M3): a form older than 2 hours or stamped by another server asks for a reload (never a silent drop)
+{"time":"2026-11-21T18:47:49.129Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.131Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail (break m1, m8): a password of spaces is refused, and each field error names its field
+{"time":"2026-11-21T18:47:49.132Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.140Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.149Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.153Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.157Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.163Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.168Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail (break m5): 5 wrong codes end the link (the right code after them → 404)
+{"time":"2026-11-21T18:47:49.172Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.191Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail (break m7): a plan switched off before the verification → 409, no firm
+PASS  PF-5 fail (break m6): no NULL terms, no date in the future, no TRUNCATE; the end time is the database's now
+{"time":"2026-11-21T18:47:49.288Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.289Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T18:47:49.295Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail: three sign-ups for one email at once → one live pending sign-up
+PASS  PF-5 pass/fail (Lead B (3)): the hourly platform.signup.purge job through JobPort removes an expired sign-up
+{"time":"2026-11-21T18:47:49.370Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-5 fail (review Major 1): a server without the identity provider's sign-up or Stripe answers 503, never a "check your email" that sends nothing; local runs the stand-ins
+PASS  PF-5 fail: the verification is POST only (opening the email's link changes nothing)
+PASS  PF-5 part 2 pass (QA-481): the sign-up stores the trial end, the plan's 14 days from the verification
+{"time":"2026-11-21T18:47:49.394Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+{"time":"2026-11-21T18:47:49.394Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+{"time":"2026-11-21T18:47:49.394Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-28 fail (PF-5 part 2, review r15-1): a correctly signed body that is not an event envelope → 422 from the schema after the signature, nothing stored
+PASS  PF-5 part 2 fail: an unsigned or changed webhook → 400, nothing stored
+{"time":"2026-11-21T18:47:49.413Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 pass (A46's weak point): the trial's Checkout completing → Stripe's trial end stored, the firm in TRIAL, no card
+PASS  PF-12b pass (PF-5 part 2): a handled Stripe event writes one platform.bypass line to the matched firm's trail
+PASS  PF-12b fail (PF-5 part 2): a refused event writes no platform.bypass line anywhere
+{"time":"2026-11-21T18:47:49.508Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 fail: the same event twice → answered, handled once
+{"time":"2026-11-21T18:47:49.546Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+{"time":"2026-11-21T18:47:49.564Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+{"time":"2026-11-21T18:47:49.576Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+{"time":"2026-11-21T18:47:49.601Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 pass/fail: paid-before-created and created-before-paid both end Active (a later trialing event never moves it back)
+{"time":"2026-11-21T18:47:49.684Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+{"time":"2026-11-21T18:47:49.718Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 pass/fail: overdue is an indicator (firm stays Active); paid within grace → Active with the billing date unchanged
+{"time":"2026-11-21T18:47:49.768Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 pass: a trial ending with no card (Stripe pauses) → Payment hold that day, firm.payment_hold and the change in the outbox
+{"time":"2026-11-21T18:47:49.831Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+{"time":"2026-11-21T18:47:49.856Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 pass/fail: a card added to the held subscription resumes it; the hold ends only on a paid invoice (not uncollectible) and starts a new period
+{"time":"2026-11-21T18:47:49.932Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+{"time":"2026-11-21T18:47:49.960Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 fail: a refused move (DELETED → ACTIVE, ENDED → ACTIVE) changes nothing and is audited
+{"time":"2026-11-21T18:47:50.017Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 pass/fail (Lead B, PF-5 DWn): an invoice whose tax needs the address → held "business address needed", the draft kept from finalizing; a taxed one is not
+{"time":"2026-11-21T18:47:50.061Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+[billing] event handling failed (the sweep retries): Error
+{"time":"2026-11-21T18:47:50.107Z","level":"info","event":"platform_bypass","use":"job:platform.billing.webhook_sweep","method":"none"}
+PASS  PF-12b pass/fail (PF-5 part 2): the sweep writes one platform.bypass line to the firm whose event it handled, none to another firm
+PASS  PF-5 part 2 pass/fail: a forced audit failure rolls the change and its event back (the receipt stays unhandled); the sweep handles it once
+PASS  PF-5 part 2 pass: GET billing shows plan, status, trial end, seats used of the limit and the card; a held firm its reason and deletion date (90 days)
+PASS  PF-5 part 2 pass/fail: PUT billing/address saves the business address and puts it on the Stripe customer; a bad postal code is refused at the field
+PASS  PF-5 part 2 pass/fail: GET billing/invoices lists our invoices with Stripe's hosted links, never a draft
+{"time":"2026-11-21T18:47:50.219Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-12b3 pass (PF-5 part 2, the door): an event for a customer we do not know writes one firm-less platform.bypass line, keyed by the event id
+{"time":"2026-11-21T18:47:50.260Z","level":"info","event":"platform_bypass","use":"job:platform.billing.webhook_sweep","method":"none"}
+PASS  PF-12b3 pass (PF-5 part 2, the sweep): a swept event for a customer we do not know writes one firm-less platform.bypass line, keyed by the event id
+PASS  PF-12b3 fail (PF-5 part 2): a matched event writes no firm-less line (only those two events did)
+{"time":"2026-11-21T18:47:50.320Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+[billing] event handling failed (the sweep retries): Error
+{"time":"2026-11-21T18:47:50.330Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 fail (break M1): Stripe's redelivery of an event not yet handled is handled (never dropped as a repeat)
+[billing] sweep: receipt ab36e00d-294c-4cfc-a6ef-f1d66896a8fe failed (Error), try 1
+[billing] sweep: receipt 1e459c32-0d03-4db1-a157-0c69397173ff failed (Error), try 1
+[billing] sweep: receipt e1df92cd-9e52-48b6-af4b-1b90daba6205 failed (Error), try 1
+[billing] sweep: receipt 3a4309f7-1d8c-4f33-9e12-4300e43090a9 failed (Error), try 1
+[billing] sweep: receipt 5530fb07-fb25-43d9-9413-f77bd5fb809f failed (Error), try 1
+[billing] sweep: receipt 162ad1dd-716e-4ce7-ae1a-caa82e1c21b9 failed (Error), try 1
+[billing] sweep: receipt 14e0ba3b-f6c4-4161-a3e5-99f0f722a1de failed (Error), try 1
+[billing] sweep: receipt ba46ce5d-3acd-4b4a-a37f-6e84b916226d failed (Error), try 1
+[billing] sweep: receipt 0a8802d7-e8e6-44b3-939e-b04d402b34f0 failed (Error), try 1
+[billing] sweep: receipt 24048db4-1def-4dfc-8844-35945349709f failed (Error), try 1
+[billing] sweep: receipt 289560b5-0717-41c7-adb2-0beecdde1caf failed (Error), try 1
+[billing] sweep: receipt 6f2d9d38-a0c0-4359-88de-937562870a78 failed (Error), try 1
+[billing] sweep: receipt be067eb0-8b5a-47f3-9473-2f4baa76d469 failed (Error), try 1
+[billing] sweep: receipt 34699f97-bd19-4e99-a4d7-f2be4bfc23f2 failed (Error), try 1
+[billing] sweep: receipt 493c9fca-a985-43a2-9bc1-be7379cd9b62 failed (Error), try 1
+[billing] sweep: receipt 7e068225-9055-435b-a829-0c9a78a27d74 failed (Error), try 1
+[billing] sweep: receipt 29526135-056b-4758-b9e1-639c9df388d1 failed (Error), try 1
+[billing] sweep: receipt c1e440c7-018d-4be9-ba91-965329df0d96 failed (Error), try 1
+[billing] sweep: receipt 47193f32-3899-4002-bc8d-b2ebe4787b86 failed (Error), try 1
+[billing] sweep: receipt de519d4c-a2cd-433b-8319-a332fdffecf3 failed (Error), try 1
+[billing] sweep: receipt 25e7b580-248c-4d54-95b4-85b78a419deb failed (Error), try 1
+[billing] sweep: receipt 96042046-12ca-48e3-a191-972225c7f39d failed (Error), try 1
+[billing] sweep: receipt ca1c462b-e80d-4466-982f-5057f947b149 failed (Error), try 1
+[billing] sweep: receipt 897efc26-31cc-4e18-abbf-7a4cb9f316a5 failed (Error), try 1
+[billing] sweep: receipt 70d9a5a4-80fd-43a0-9409-0f4698fa6a0e failed (Error), try 1
+[billing] sweep: receipt c6b14c6b-f51f-4c3a-9ac0-07542909566f failed (Error), try 1
+[billing] sweep: receipt c4fad991-9248-4417-9ed3-040af4dad328 failed (Error), try 1
+[billing] sweep: receipt dd321b99-44c6-462e-afc3-b1350a6b9cda failed (Error), try 1
+[billing] sweep: receipt 9f37cb73-efd2-4f43-8af1-354a5bbfbd05 failed (Error), try 1
+[billing] sweep: receipt a4288510-622d-4d8a-9807-0a5d3d75061d failed (Error), try 1
+[billing] sweep: receipt 3e750079-14a4-4732-b840-18cd60064a3c failed (Error), try 1
+[billing] sweep: receipt 733494be-5aa0-4d1d-8529-3aa7d71cf372 failed (Error), try 1
+[billing] sweep: receipt 3b78b022-b6e3-4851-911e-ce388d47fcf0 failed (Error), try 1
+[billing] sweep: receipt 6d7f654b-1626-4c19-9a9b-390c9720dbfe failed (Error), try 1
+[billing] sweep: receipt c4d3a596-e9e3-4b21-ae12-12a2a3a21b23 failed (Error), try 1
+[billing] sweep: receipt cc52b951-cf64-48d5-ad94-4589ee584e1c failed (Error), try 1
+[billing] sweep: receipt 3e4c98eb-07c1-49e9-a91d-badcded273d5 failed (Error), try 1
+[billing] sweep: receipt 87eda65a-9b40-4752-99e0-2597ff6f6c35 failed (Error), try 1
+[billing] sweep: receipt 0d55547b-b03e-4580-a6cc-75df52a9717d failed (Error), try 1
+[billing] sweep: receipt 90393279-2ec3-4133-bf5d-a7b12493cfe1 failed (Error), try 1
+[billing] sweep: receipt 501cabc2-be52-4498-b060-18844a53bbd6 failed (Error), try 1
+[billing] sweep: receipt 9f167299-9a83-40fd-82e2-88025e13772c failed (Error), try 1
+[billing] sweep: receipt f9b38b3b-304d-446a-92cc-fe05dacbac84 failed (Error), try 1
+[billing] sweep: receipt c38a3bbf-f14c-4fa4-b7ad-981fddc21cc9 failed (Error), try 1
+[billing] sweep: receipt d1c3308a-e39b-4ce8-ac2b-c21a243554a8 failed (Error), try 1
+[billing] sweep: receipt b8ed299d-2e93-4e54-b5f1-040a01fbb19e failed (Error), try 1
+[billing] sweep: receipt 3c3fa756-02f8-4cd3-82b8-461a71ff682d failed (Error), try 1
+[billing] sweep: receipt d6f7a8ae-8113-462d-89fa-b2e58a464bf3 failed (Error), try 1
+[billing] sweep: receipt 924db9eb-b1f5-45c5-bfc8-7f9c84592dee failed (Error), try 1
+[billing] sweep: receipt f56d5bc0-dbf8-4a0f-bcfd-dba002531e0a failed (Error), try 1
+[billing] sweep: receipt ab36e00d-294c-4cfc-a6ef-f1d66896a8fe failed (Error), try 2
+[billing] sweep: receipt 1e459c32-0d03-4db1-a157-0c69397173ff failed (Error), try 2
+[billing] sweep: receipt e1df92cd-9e52-48b6-af4b-1b90daba6205 failed (Error), try 2
+[billing] sweep: receipt 3a4309f7-1d8c-4f33-9e12-4300e43090a9 failed (Error), try 2
+[billing] sweep: receipt 5530fb07-fb25-43d9-9413-f77bd5fb809f failed (Error), try 2
+[billing] sweep: receipt 162ad1dd-716e-4ce7-ae1a-caa82e1c21b9 failed (Error), try 2
+[billing] sweep: receipt 14e0ba3b-f6c4-4161-a3e5-99f0f722a1de failed (Error), try 2
+[billing] sweep: receipt ba46ce5d-3acd-4b4a-a37f-6e84b916226d failed (Error), try 2
+[billing] sweep: receipt 0a8802d7-e8e6-44b3-939e-b04d402b34f0 failed (Error), try 2
+[billing] sweep: receipt 24048db4-1def-4dfc-8844-35945349709f failed (Error), try 2
+[billing] sweep: receipt 289560b5-0717-41c7-adb2-0beecdde1caf failed (Error), try 2
+[billing] sweep: receipt 6f2d9d38-a0c0-4359-88de-937562870a78 failed (Error), try 2
+[billing] sweep: receipt be067eb0-8b5a-47f3-9473-2f4baa76d469 failed (Error), try 2
+[billing] sweep: receipt 34699f97-bd19-4e99-a4d7-f2be4bfc23f2 failed (Error), try 2
+[billing] sweep: receipt 493c9fca-a985-43a2-9bc1-be7379cd9b62 failed (Error), try 2
+[billing] sweep: receipt 7e068225-9055-435b-a829-0c9a78a27d74 failed (Error), try 2
+[billing] sweep: receipt 29526135-056b-4758-b9e1-639c9df388d1 failed (Error), try 2
+[billing] sweep: receipt c1e440c7-018d-4be9-ba91-965329df0d96 failed (Error), try 2
+[billing] sweep: receipt 47193f32-3899-4002-bc8d-b2ebe4787b86 failed (Error), try 2
+[billing] sweep: receipt de519d4c-a2cd-433b-8319-a332fdffecf3 failed (Error), try 2
+[billing] sweep: receipt 25e7b580-248c-4d54-95b4-85b78a419deb failed (Error), try 2
+[billing] sweep: receipt 96042046-12ca-48e3-a191-972225c7f39d failed (Error), try 2
+[billing] sweep: receipt ca1c462b-e80d-4466-982f-5057f947b149 failed (Error), try 2
+[billing] sweep: receipt 897efc26-31cc-4e18-abbf-7a4cb9f316a5 failed (Error), try 2
+[billing] sweep: receipt 70d9a5a4-80fd-43a0-9409-0f4698fa6a0e failed (Error), try 2
+[billing] sweep: receipt c6b14c6b-f51f-4c3a-9ac0-07542909566f failed (Error), try 2
+[billing] sweep: receipt c4fad991-9248-4417-9ed3-040af4dad328 failed (Error), try 2
+[billing] sweep: receipt dd321b99-44c6-462e-afc3-b1350a6b9cda failed (Error), try 2
+[billing] sweep: receipt 9f37cb73-efd2-4f43-8af1-354a5bbfbd05 failed (Error), try 2
+[billing] sweep: receipt a4288510-622d-4d8a-9807-0a5d3d75061d failed (Error), try 2
+[billing] sweep: receipt 3e750079-14a4-4732-b840-18cd60064a3c failed (Error), try 2
+[billing] sweep: receipt 733494be-5aa0-4d1d-8529-3aa7d71cf372 failed (Error), try 2
+[billing] sweep: receipt 3b78b022-b6e3-4851-911e-ce388d47fcf0 failed (Error), try 2
+[billing] sweep: receipt 6d7f654b-1626-4c19-9a9b-390c9720dbfe failed (Error), try 2
+[billing] sweep: receipt c4d3a596-e9e3-4b21-ae12-12a2a3a21b23 failed (Error), try 2
+[billing] sweep: receipt cc52b951-cf64-48d5-ad94-4589ee584e1c failed (Error), try 2
+[billing] sweep: receipt 3e4c98eb-07c1-49e9-a91d-badcded273d5 failed (Error), try 2
+[billing] sweep: receipt 87eda65a-9b40-4752-99e0-2597ff6f6c35 failed (Error), try 2
+[billing] sweep: receipt 0d55547b-b03e-4580-a6cc-75df52a9717d failed (Error), try 2
+[billing] sweep: receipt 90393279-2ec3-4133-bf5d-a7b12493cfe1 failed (Error), try 2
+[billing] sweep: receipt 501cabc2-be52-4498-b060-18844a53bbd6 failed (Error), try 2
+[billing] sweep: receipt 9f167299-9a83-40fd-82e2-88025e13772c failed (Error), try 2
+[billing] sweep: receipt f9b38b3b-304d-446a-92cc-fe05dacbac84 failed (Error), try 2
+[billing] sweep: receipt c38a3bbf-f14c-4fa4-b7ad-981fddc21cc9 failed (Error), try 2
+[billing] sweep: receipt d1c3308a-e39b-4ce8-ac2b-c21a243554a8 failed (Error), try 2
+[billing] sweep: receipt b8ed299d-2e93-4e54-b5f1-040a01fbb19e failed (Error), try 2
+[billing] sweep: receipt 3c3fa756-02f8-4cd3-82b8-461a71ff682d failed (Error), try 2
+[billing] sweep: receipt d6f7a8ae-8113-462d-89fa-b2e58a464bf3 failed (Error), try 2
+[billing] sweep: receipt 924db9eb-b1f5-45c5-bfc8-7f9c84592dee failed (Error), try 2
+[billing] sweep: receipt f56d5bc0-dbf8-4a0f-bcfd-dba002531e0a failed (Error), try 2
+[billing] sweep: receipt ab36e00d-294c-4cfc-a6ef-f1d66896a8fe failed (Error), try 3
+[billing] sweep: receipt 1e459c32-0d03-4db1-a157-0c69397173ff failed (Error), try 3
+[billing] sweep: receipt e1df92cd-9e52-48b6-af4b-1b90daba6205 failed (Error), try 3
+[billing] sweep: receipt 3a4309f7-1d8c-4f33-9e12-4300e43090a9 failed (Error), try 3
+[billing] sweep: receipt 5530fb07-fb25-43d9-9413-f77bd5fb809f failed (Error), try 3
+[billing] sweep: receipt 162ad1dd-716e-4ce7-ae1a-caa82e1c21b9 failed (Error), try 3
+[billing] sweep: receipt 14e0ba3b-f6c4-4161-a3e5-99f0f722a1de failed (Error), try 3
+[billing] sweep: receipt ba46ce5d-3acd-4b4a-a37f-6e84b916226d failed (Error), try 3
+[billing] sweep: receipt 0a8802d7-e8e6-44b3-939e-b04d402b34f0 failed (Error), try 3
+[billing] sweep: receipt 24048db4-1def-4dfc-8844-35945349709f failed (Error), try 3
+[billing] sweep: receipt 289560b5-0717-41c7-adb2-0beecdde1caf failed (Error), try 3
+[billing] sweep: receipt 6f2d9d38-a0c0-4359-88de-937562870a78 failed (Error), try 3
+[billing] sweep: receipt be067eb0-8b5a-47f3-9473-2f4baa76d469 failed (Error), try 3
+[billing] sweep: receipt 34699f97-bd19-4e99-a4d7-f2be4bfc23f2 failed (Error), try 3
+[billing] sweep: receipt 493c9fca-a985-43a2-9bc1-be7379cd9b62 failed (Error), try 3
+[billing] sweep: receipt 7e068225-9055-435b-a829-0c9a78a27d74 failed (Error), try 3
+[billing] sweep: receipt 29526135-056b-4758-b9e1-639c9df388d1 failed (Error), try 3
+[billing] sweep: receipt c1e440c7-018d-4be9-ba91-965329df0d96 failed (Error), try 3
+[billing] sweep: receipt 47193f32-3899-4002-bc8d-b2ebe4787b86 failed (Error), try 3
+[billing] sweep: receipt de519d4c-a2cd-433b-8319-a332fdffecf3 failed (Error), try 3
+[billing] sweep: receipt 25e7b580-248c-4d54-95b4-85b78a419deb failed (Error), try 3
+[billing] sweep: receipt 96042046-12ca-48e3-a191-972225c7f39d failed (Error), try 3
+[billing] sweep: receipt ca1c462b-e80d-4466-982f-5057f947b149 failed (Error), try 3
+[billing] sweep: receipt 897efc26-31cc-4e18-abbf-7a4cb9f316a5 failed (Error), try 3
+[billing] sweep: receipt 70d9a5a4-80fd-43a0-9409-0f4698fa6a0e failed (Error), try 3
+[billing] sweep: receipt c6b14c6b-f51f-4c3a-9ac0-07542909566f failed (Error), try 3
+[billing] sweep: receipt c4fad991-9248-4417-9ed3-040af4dad328 failed (Error), try 3
+[billing] sweep: receipt dd321b99-44c6-462e-afc3-b1350a6b9cda failed (Error), try 3
+[billing] sweep: receipt 9f37cb73-efd2-4f43-8af1-354a5bbfbd05 failed (Error), try 3
+[billing] sweep: receipt a4288510-622d-4d8a-9807-0a5d3d75061d failed (Error), try 3
+[billing] sweep: receipt 3e750079-14a4-4732-b840-18cd60064a3c failed (Error), try 3
+[billing] sweep: receipt 733494be-5aa0-4d1d-8529-3aa7d71cf372 failed (Error), try 3
+[billing] sweep: receipt 3b78b022-b6e3-4851-911e-ce388d47fcf0 failed (Error), try 3
+[billing] sweep: receipt 6d7f654b-1626-4c19-9a9b-390c9720dbfe failed (Error), try 3
+[billing] sweep: receipt c4d3a596-e9e3-4b21-ae12-12a2a3a21b23 failed (Error), try 3
+[billing] sweep: receipt cc52b951-cf64-48d5-ad94-4589ee584e1c failed (Error), try 3
+[billing] sweep: receipt 3e4c98eb-07c1-49e9-a91d-badcded273d5 failed (Error), try 3
+[billing] sweep: receipt 87eda65a-9b40-4752-99e0-2597ff6f6c35 failed (Error), try 3
+[billing] sweep: receipt 0d55547b-b03e-4580-a6cc-75df52a9717d failed (Error), try 3
+[billing] sweep: receipt 90393279-2ec3-4133-bf5d-a7b12493cfe1 failed (Error), try 3
+[billing] sweep: receipt 501cabc2-be52-4498-b060-18844a53bbd6 failed (Error), try 3
+[billing] sweep: receipt 9f167299-9a83-40fd-82e2-88025e13772c failed (Error), try 3
+[billing] sweep: receipt f9b38b3b-304d-446a-92cc-fe05dacbac84 failed (Error), try 3
+[billing] sweep: receipt c38a3bbf-f14c-4fa4-b7ad-981fddc21cc9 failed (Error), try 3
+[billing] sweep: receipt d1c3308a-e39b-4ce8-ac2b-c21a243554a8 failed (Error), try 3
+[billing] sweep: receipt b8ed299d-2e93-4e54-b5f1-040a01fbb19e failed (Error), try 3
+[billing] sweep: receipt 3c3fa756-02f8-4cd3-82b8-461a71ff682d failed (Error), try 3
+[billing] sweep: receipt d6f7a8ae-8113-462d-89fa-b2e58a464bf3 failed (Error), try 3
+[billing] sweep: receipt 924db9eb-b1f5-45c5-bfc8-7f9c84592dee failed (Error), try 3
+[billing] sweep: receipt f56d5bc0-dbf8-4a0f-bcfd-dba002531e0a failed (Error), try 3
+[billing] sweep: receipt ab36e00d-294c-4cfc-a6ef-f1d66896a8fe failed (Error), try 4
+[billing] sweep: receipt 1e459c32-0d03-4db1-a157-0c69397173ff failed (Error), try 4
+[billing] sweep: receipt e1df92cd-9e52-48b6-af4b-1b90daba6205 failed (Error), try 4
+[billing] sweep: receipt 3a4309f7-1d8c-4f33-9e12-4300e43090a9 failed (Error), try 4
+[billing] sweep: receipt 5530fb07-fb25-43d9-9413-f77bd5fb809f failed (Error), try 4
+[billing] sweep: receipt 162ad1dd-716e-4ce7-ae1a-caa82e1c21b9 failed (Error), try 4
+[billing] sweep: receipt 14e0ba3b-f6c4-4161-a3e5-99f0f722a1de failed (Error), try 4
+[billing] sweep: receipt ba46ce5d-3acd-4b4a-a37f-6e84b916226d failed (Error), try 4
+[billing] sweep: receipt 0a8802d7-e8e6-44b3-939e-b04d402b34f0 failed (Error), try 4
+[billing] sweep: receipt 24048db4-1def-4dfc-8844-35945349709f failed (Error), try 4
+[billing] sweep: receipt 289560b5-0717-41c7-adb2-0beecdde1caf failed (Error), try 4
+[billing] sweep: receipt 6f2d9d38-a0c0-4359-88de-937562870a78 failed (Error), try 4
+[billing] sweep: receipt be067eb0-8b5a-47f3-9473-2f4baa76d469 failed (Error), try 4
+[billing] sweep: receipt 34699f97-bd19-4e99-a4d7-f2be4bfc23f2 failed (Error), try 4
+[billing] sweep: receipt 493c9fca-a985-43a2-9bc1-be7379cd9b62 failed (Error), try 4
+[billing] sweep: receipt 7e068225-9055-435b-a829-0c9a78a27d74 failed (Error), try 4
+[billing] sweep: receipt 29526135-056b-4758-b9e1-639c9df388d1 failed (Error), try 4
+[billing] sweep: receipt c1e440c7-018d-4be9-ba91-965329df0d96 failed (Error), try 4
+[billing] sweep: receipt 47193f32-3899-4002-bc8d-b2ebe4787b86 failed (Error), try 4
+[billing] sweep: receipt de519d4c-a2cd-433b-8319-a332fdffecf3 failed (Error), try 4
+[billing] sweep: receipt 25e7b580-248c-4d54-95b4-85b78a419deb failed (Error), try 4
+[billing] sweep: receipt 96042046-12ca-48e3-a191-972225c7f39d failed (Error), try 4
+[billing] sweep: receipt ca1c462b-e80d-4466-982f-5057f947b149 failed (Error), try 4
+[billing] sweep: receipt 897efc26-31cc-4e18-abbf-7a4cb9f316a5 failed (Error), try 4
+[billing] sweep: receipt 70d9a5a4-80fd-43a0-9409-0f4698fa6a0e failed (Error), try 4
+[billing] sweep: receipt c6b14c6b-f51f-4c3a-9ac0-07542909566f failed (Error), try 4
+[billing] sweep: receipt c4fad991-9248-4417-9ed3-040af4dad328 failed (Error), try 4
+[billing] sweep: receipt dd321b99-44c6-462e-afc3-b1350a6b9cda failed (Error), try 4
+[billing] sweep: receipt 9f37cb73-efd2-4f43-8af1-354a5bbfbd05 failed (Error), try 4
+[billing] sweep: receipt a4288510-622d-4d8a-9807-0a5d3d75061d failed (Error), try 4
+[billing] sweep: receipt 3e750079-14a4-4732-b840-18cd60064a3c failed (Error), try 4
+[billing] sweep: receipt 733494be-5aa0-4d1d-8529-3aa7d71cf372 failed (Error), try 4
+[billing] sweep: receipt 3b78b022-b6e3-4851-911e-ce388d47fcf0 failed (Error), try 4
+[billing] sweep: receipt 6d7f654b-1626-4c19-9a9b-390c9720dbfe failed (Error), try 4
+[billing] sweep: receipt c4d3a596-e9e3-4b21-ae12-12a2a3a21b23 failed (Error), try 4
+[billing] sweep: receipt cc52b951-cf64-48d5-ad94-4589ee584e1c failed (Error), try 4
+[billing] sweep: receipt 3e4c98eb-07c1-49e9-a91d-badcded273d5 failed (Error), try 4
+[billing] sweep: receipt 87eda65a-9b40-4752-99e0-2597ff6f6c35 failed (Error), try 4
+[billing] sweep: receipt 0d55547b-b03e-4580-a6cc-75df52a9717d failed (Error), try 4
+[billing] sweep: receipt 90393279-2ec3-4133-bf5d-a7b12493cfe1 failed (Error), try 4
+[billing] sweep: receipt 501cabc2-be52-4498-b060-18844a53bbd6 failed (Error), try 4
+[billing] sweep: receipt 9f167299-9a83-40fd-82e2-88025e13772c failed (Error), try 4
+[billing] sweep: receipt f9b38b3b-304d-446a-92cc-fe05dacbac84 failed (Error), try 4
+[billing] sweep: receipt c38a3bbf-f14c-4fa4-b7ad-981fddc21cc9 failed (Error), try 4
+[billing] sweep: receipt d1c3308a-e39b-4ce8-ac2b-c21a243554a8 failed (Error), try 4
+[billing] sweep: receipt b8ed299d-2e93-4e54-b5f1-040a01fbb19e failed (Error), try 4
+[billing] sweep: receipt 3c3fa756-02f8-4cd3-82b8-461a71ff682d failed (Error), try 4
+[billing] sweep: receipt d6f7a8ae-8113-462d-89fa-b2e58a464bf3 failed (Error), try 4
+[billing] sweep: receipt 924db9eb-b1f5-45c5-bfc8-7f9c84592dee failed (Error), try 4
+[billing] sweep: receipt f56d5bc0-dbf8-4a0f-bcfd-dba002531e0a failed (Error), try 4
+[billing] sweep: receipt ab36e00d-294c-4cfc-a6ef-f1d66896a8fe failed (Error), try 5
+{"time":"2026-11-21T18:47:50.558Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"ab36e00d-294c-4cfc-a6ef-f1d66896a8fe","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870558,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 1e459c32-0d03-4db1-a157-0c69397173ff failed (Error), try 5
+{"time":"2026-11-21T18:47:50.560Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"1e459c32-0d03-4db1-a157-0c69397173ff","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870560,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt e1df92cd-9e52-48b6-af4b-1b90daba6205 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.561Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"e1df92cd-9e52-48b6-af4b-1b90daba6205","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870561,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 3a4309f7-1d8c-4f33-9e12-4300e43090a9 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.561Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"3a4309f7-1d8c-4f33-9e12-4300e43090a9","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870561,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 5530fb07-fb25-43d9-9413-f77bd5fb809f failed (Error), try 5
+{"time":"2026-11-21T18:47:50.562Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"5530fb07-fb25-43d9-9413-f77bd5fb809f","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870562,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 162ad1dd-716e-4ce7-ae1a-caa82e1c21b9 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.563Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"162ad1dd-716e-4ce7-ae1a-caa82e1c21b9","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870563,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 14e0ba3b-f6c4-4161-a3e5-99f0f722a1de failed (Error), try 5
+{"time":"2026-11-21T18:47:50.564Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"14e0ba3b-f6c4-4161-a3e5-99f0f722a1de","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870564,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt ba46ce5d-3acd-4b4a-a37f-6e84b916226d failed (Error), try 5
+{"time":"2026-11-21T18:47:50.565Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"ba46ce5d-3acd-4b4a-a37f-6e84b916226d","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870565,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 0a8802d7-e8e6-44b3-939e-b04d402b34f0 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.566Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"0a8802d7-e8e6-44b3-939e-b04d402b34f0","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870566,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 24048db4-1def-4dfc-8844-35945349709f failed (Error), try 5
+{"time":"2026-11-21T18:47:50.567Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"24048db4-1def-4dfc-8844-35945349709f","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870567,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 289560b5-0717-41c7-adb2-0beecdde1caf failed (Error), try 5
+{"time":"2026-11-21T18:47:50.568Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"289560b5-0717-41c7-adb2-0beecdde1caf","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870568,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 6f2d9d38-a0c0-4359-88de-937562870a78 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.569Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"6f2d9d38-a0c0-4359-88de-937562870a78","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870569,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt be067eb0-8b5a-47f3-9473-2f4baa76d469 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.569Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"be067eb0-8b5a-47f3-9473-2f4baa76d469","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870569,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 34699f97-bd19-4e99-a4d7-f2be4bfc23f2 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.570Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"34699f97-bd19-4e99-a4d7-f2be4bfc23f2","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870570,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 493c9fca-a985-43a2-9bc1-be7379cd9b62 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.571Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"493c9fca-a985-43a2-9bc1-be7379cd9b62","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870571,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 7e068225-9055-435b-a829-0c9a78a27d74 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.572Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"7e068225-9055-435b-a829-0c9a78a27d74","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870572,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 29526135-056b-4758-b9e1-639c9df388d1 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.573Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"29526135-056b-4758-b9e1-639c9df388d1","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870573,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt c1e440c7-018d-4be9-ba91-965329df0d96 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.573Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"c1e440c7-018d-4be9-ba91-965329df0d96","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870573,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 47193f32-3899-4002-bc8d-b2ebe4787b86 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.574Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"47193f32-3899-4002-bc8d-b2ebe4787b86","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870574,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt de519d4c-a2cd-433b-8319-a332fdffecf3 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.575Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"de519d4c-a2cd-433b-8319-a332fdffecf3","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870575,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 25e7b580-248c-4d54-95b4-85b78a419deb failed (Error), try 5
+{"time":"2026-11-21T18:47:50.576Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"25e7b580-248c-4d54-95b4-85b78a419deb","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870576,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 96042046-12ca-48e3-a191-972225c7f39d failed (Error), try 5
+{"time":"2026-11-21T18:47:50.577Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"96042046-12ca-48e3-a191-972225c7f39d","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870577,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt ca1c462b-e80d-4466-982f-5057f947b149 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.577Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"ca1c462b-e80d-4466-982f-5057f947b149","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870577,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 897efc26-31cc-4e18-abbf-7a4cb9f316a5 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.578Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"897efc26-31cc-4e18-abbf-7a4cb9f316a5","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870578,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 70d9a5a4-80fd-43a0-9409-0f4698fa6a0e failed (Error), try 5
+{"time":"2026-11-21T18:47:50.579Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"70d9a5a4-80fd-43a0-9409-0f4698fa6a0e","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870579,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt c6b14c6b-f51f-4c3a-9ac0-07542909566f failed (Error), try 5
+{"time":"2026-11-21T18:47:50.579Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"c6b14c6b-f51f-4c3a-9ac0-07542909566f","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870579,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt c4fad991-9248-4417-9ed3-040af4dad328 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.580Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"c4fad991-9248-4417-9ed3-040af4dad328","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870580,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt dd321b99-44c6-462e-afc3-b1350a6b9cda failed (Error), try 5
+{"time":"2026-11-21T18:47:50.581Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"dd321b99-44c6-462e-afc3-b1350a6b9cda","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870581,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 9f37cb73-efd2-4f43-8af1-354a5bbfbd05 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.582Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"9f37cb73-efd2-4f43-8af1-354a5bbfbd05","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870582,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt a4288510-622d-4d8a-9807-0a5d3d75061d failed (Error), try 5
+{"time":"2026-11-21T18:47:50.582Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"a4288510-622d-4d8a-9807-0a5d3d75061d","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870582,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 3e750079-14a4-4732-b840-18cd60064a3c failed (Error), try 5
+{"time":"2026-11-21T18:47:50.583Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"3e750079-14a4-4732-b840-18cd60064a3c","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870583,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 733494be-5aa0-4d1d-8529-3aa7d71cf372 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.584Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"733494be-5aa0-4d1d-8529-3aa7d71cf372","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870584,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 3b78b022-b6e3-4851-911e-ce388d47fcf0 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.585Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"3b78b022-b6e3-4851-911e-ce388d47fcf0","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870585,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 6d7f654b-1626-4c19-9a9b-390c9720dbfe failed (Error), try 5
+{"time":"2026-11-21T18:47:50.586Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"6d7f654b-1626-4c19-9a9b-390c9720dbfe","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870586,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt c4d3a596-e9e3-4b21-ae12-12a2a3a21b23 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.586Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"c4d3a596-e9e3-4b21-ae12-12a2a3a21b23","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870586,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt cc52b951-cf64-48d5-ad94-4589ee584e1c failed (Error), try 5
+{"time":"2026-11-21T18:47:50.587Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"cc52b951-cf64-48d5-ad94-4589ee584e1c","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870587,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 3e4c98eb-07c1-49e9-a91d-badcded273d5 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.588Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"3e4c98eb-07c1-49e9-a91d-badcded273d5","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870588,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 87eda65a-9b40-4752-99e0-2597ff6f6c35 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.589Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"87eda65a-9b40-4752-99e0-2597ff6f6c35","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870589,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 0d55547b-b03e-4580-a6cc-75df52a9717d failed (Error), try 5
+{"time":"2026-11-21T18:47:50.590Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"0d55547b-b03e-4580-a6cc-75df52a9717d","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870590,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 90393279-2ec3-4133-bf5d-a7b12493cfe1 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.591Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"90393279-2ec3-4133-bf5d-a7b12493cfe1","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870591,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 501cabc2-be52-4498-b060-18844a53bbd6 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.592Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"501cabc2-be52-4498-b060-18844a53bbd6","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870592,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 9f167299-9a83-40fd-82e2-88025e13772c failed (Error), try 5
+{"time":"2026-11-21T18:47:50.593Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"9f167299-9a83-40fd-82e2-88025e13772c","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870593,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt f9b38b3b-304d-446a-92cc-fe05dacbac84 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.594Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"f9b38b3b-304d-446a-92cc-fe05dacbac84","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870594,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt c38a3bbf-f14c-4fa4-b7ad-981fddc21cc9 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.596Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"c38a3bbf-f14c-4fa4-b7ad-981fddc21cc9","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870596,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt d1c3308a-e39b-4ce8-ac2b-c21a243554a8 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.597Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"d1c3308a-e39b-4ce8-ac2b-c21a243554a8","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870597,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt b8ed299d-2e93-4e54-b5f1-040a01fbb19e failed (Error), try 5
+{"time":"2026-11-21T18:47:50.598Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"b8ed299d-2e93-4e54-b5f1-040a01fbb19e","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870598,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 3c3fa756-02f8-4cd3-82b8-461a71ff682d failed (Error), try 5
+{"time":"2026-11-21T18:47:50.599Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"3c3fa756-02f8-4cd3-82b8-461a71ff682d","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870599,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt d6f7a8ae-8113-462d-89fa-b2e58a464bf3 failed (Error), try 5
+{"time":"2026-11-21T18:47:50.602Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"d6f7a8ae-8113-462d-89fa-b2e58a464bf3","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870602,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 924db9eb-b1f5-45c5-bfc8-7f9c84592dee failed (Error), try 5
+{"time":"2026-11-21T18:47:50.603Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"924db9eb-b1f5-45c5-bfc8-7f9c84592dee","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870603,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt f56d5bc0-dbf8-4a0f-bcfd-dba002531e0a failed (Error), try 5
+{"time":"2026-11-21T18:47:50.604Z","level":"error","event":"alert","alert":"job_stuck","rule":"PF-5.webhook","entity":"webhook_receipt","entityKey":"f56d5bc0-dbf8-4a0f-bcfd-dba002531e0a","queue":"platform.billing.webhook_sweep","AlertKind":"job_stuck","Alerts":1,"_aws":{"Timestamp":1795286870604,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+[billing] sweep: receipt 6f2d9d38-a0c0-4359-88de-937562870a78 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.634Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":65}
+[billing] sweep: receipt c1e440c7-018d-4be9-ba91-965329df0d96 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.636Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":63}
+[billing] sweep: receipt 3e750079-14a4-4732-b840-18cd60064a3c failed (Error), try 6
+{"time":"2026-11-21T18:47:50.637Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":54}
+[billing] sweep: receipt 733494be-5aa0-4d1d-8529-3aa7d71cf372 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.638Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":54}
+[billing] sweep: receipt 3b78b022-b6e3-4851-911e-ce388d47fcf0 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.639Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":54}
+[billing] sweep: receipt 6d7f654b-1626-4c19-9a9b-390c9720dbfe failed (Error), try 6
+{"time":"2026-11-21T18:47:50.640Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":54}
+[billing] sweep: receipt c4d3a596-e9e3-4b21-ae12-12a2a3a21b23 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.641Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":55}
+[billing] sweep: receipt cc52b951-cf64-48d5-ad94-4589ee584e1c failed (Error), try 6
+{"time":"2026-11-21T18:47:50.642Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":55}
+[billing] sweep: receipt 3e4c98eb-07c1-49e9-a91d-badcded273d5 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.644Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":55}
+[billing] sweep: receipt 87eda65a-9b40-4752-99e0-2597ff6f6c35 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.644Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":55}
+[billing] sweep: receipt 0d55547b-b03e-4580-a6cc-75df52a9717d failed (Error), try 6
+{"time":"2026-11-21T18:47:50.645Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":55}
+[billing] sweep: receipt 90393279-2ec3-4133-bf5d-a7b12493cfe1 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.647Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":56}
+[billing] sweep: receipt 501cabc2-be52-4498-b060-18844a53bbd6 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.648Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":56}
+[billing] sweep: receipt 9f167299-9a83-40fd-82e2-88025e13772c failed (Error), try 6
+{"time":"2026-11-21T18:47:50.649Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":56}
+[billing] sweep: receipt f9b38b3b-304d-446a-92cc-fe05dacbac84 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.650Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":56}
+[billing] sweep: receipt c38a3bbf-f14c-4fa4-b7ad-981fddc21cc9 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.651Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":55}
+[billing] sweep: receipt d1c3308a-e39b-4ce8-ac2b-c21a243554a8 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.652Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":55}
+[billing] sweep: receipt b8ed299d-2e93-4e54-b5f1-040a01fbb19e failed (Error), try 6
+{"time":"2026-11-21T18:47:50.653Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":55}
+[billing] sweep: receipt 3c3fa756-02f8-4cd3-82b8-461a71ff682d failed (Error), try 6
+{"time":"2026-11-21T18:47:50.654Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":55}
+[billing] sweep: receipt d6f7a8ae-8113-462d-89fa-b2e58a464bf3 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.655Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":53}
+[billing] sweep: receipt 924db9eb-b1f5-45c5-bfc8-7f9c84592dee failed (Error), try 6
+{"time":"2026-11-21T18:47:50.656Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":53}
+[billing] sweep: receipt f56d5bc0-dbf8-4a0f-bcfd-dba002531e0a failed (Error), try 6
+{"time":"2026-11-21T18:47:50.657Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":53}
+[billing] sweep: receipt ab36e00d-294c-4cfc-a6ef-f1d66896a8fe failed (Error), try 6
+{"time":"2026-11-21T18:47:50.658Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":100}
+[billing] sweep: receipt 1e459c32-0d03-4db1-a157-0c69397173ff failed (Error), try 6
+{"time":"2026-11-21T18:47:50.659Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":99}
+[billing] sweep: receipt e1df92cd-9e52-48b6-af4b-1b90daba6205 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.659Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":98}
+[billing] sweep: receipt 3a4309f7-1d8c-4f33-9e12-4300e43090a9 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.660Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":99}
+[billing] sweep: receipt 5530fb07-fb25-43d9-9413-f77bd5fb809f failed (Error), try 6
+{"time":"2026-11-21T18:47:50.661Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":99}
+[billing] sweep: receipt 162ad1dd-716e-4ce7-ae1a-caa82e1c21b9 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.662Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":99}
+[billing] sweep: receipt 14e0ba3b-f6c4-4161-a3e5-99f0f722a1de failed (Error), try 6
+{"time":"2026-11-21T18:47:50.663Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":99}
+[billing] sweep: receipt ba46ce5d-3acd-4b4a-a37f-6e84b916226d failed (Error), try 6
+{"time":"2026-11-21T18:47:50.663Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":98}
+[billing] sweep: receipt 0a8802d7-e8e6-44b3-939e-b04d402b34f0 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.664Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":98}
+[billing] sweep: receipt 24048db4-1def-4dfc-8844-35945349709f failed (Error), try 6
+{"time":"2026-11-21T18:47:50.665Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":98}
+[billing] sweep: receipt 289560b5-0717-41c7-adb2-0beecdde1caf failed (Error), try 6
+{"time":"2026-11-21T18:47:50.665Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":97}
+[billing] sweep: receipt be067eb0-8b5a-47f3-9473-2f4baa76d469 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.666Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":97}
+[billing] sweep: receipt 34699f97-bd19-4e99-a4d7-f2be4bfc23f2 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.667Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":97}
+[billing] sweep: receipt 493c9fca-a985-43a2-9bc1-be7379cd9b62 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.667Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":96}
+[billing] sweep: receipt 7e068225-9055-435b-a829-0c9a78a27d74 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.668Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":96}
+[billing] sweep: receipt 29526135-056b-4758-b9e1-639c9df388d1 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.669Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":96}
+[billing] sweep: receipt 47193f32-3899-4002-bc8d-b2ebe4787b86 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.670Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":96}
+[billing] sweep: receipt de519d4c-a2cd-433b-8319-a332fdffecf3 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.670Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+[billing] sweep: receipt 25e7b580-248c-4d54-95b4-85b78a419deb failed (Error), try 6
+{"time":"2026-11-21T18:47:50.671Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+[billing] sweep: receipt 96042046-12ca-48e3-a191-972225c7f39d failed (Error), try 6
+{"time":"2026-11-21T18:47:50.672Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+[billing] sweep: receipt ca1c462b-e80d-4466-982f-5057f947b149 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.672Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+[billing] sweep: receipt 897efc26-31cc-4e18-abbf-7a4cb9f316a5 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.673Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+[billing] sweep: receipt 70d9a5a4-80fd-43a0-9409-0f4698fa6a0e failed (Error), try 6
+{"time":"2026-11-21T18:47:50.674Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+[billing] sweep: receipt c6b14c6b-f51f-4c3a-9ac0-07542909566f failed (Error), try 6
+{"time":"2026-11-21T18:47:50.674Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+[billing] sweep: receipt c4fad991-9248-4417-9ed3-040af4dad328 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.675Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+[billing] sweep: receipt dd321b99-44c6-462e-afc3-b1350a6b9cda failed (Error), try 6
+{"time":"2026-11-21T18:47:50.676Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+[billing] sweep: receipt 9f37cb73-efd2-4f43-8af1-354a5bbfbd05 failed (Error), try 6
+{"time":"2026-11-21T18:47:50.676Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":94}
+[billing] sweep: receipt a4288510-622d-4d8a-9807-0a5d3d75061d failed (Error), try 6
+{"time":"2026-11-21T18:47:50.677Z","level":"info","event":"alert_repeat","alert":"job_stuck","rule":"PF-5.webhook","sinceMs":95}
+PASS  PF-5 part 2 fail (break M1, R2): failing receipts keep being retried within Stripe's 3 days (an outage never drops a payment), then are set aside
+{"time":"2026-11-21T18:47:50.699Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 fail (break R2): Stripe's redelivery of a set-aside event is handled again
+{"time":"2026-11-21T18:47:50.719Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 fail (review M2): an event naming a firm with another customer's subscription moves neither firm
+PASS  PF-5 part 2 fail (break M2): an event about another subscription of the same customer never takes over the firm's own
+{"time":"2026-11-21T18:47:50.796Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+{"time":"2026-11-21T18:47:50.819Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"none"}
+PASS  PF-5 part 2 pass/fail (break M3): saving the address releases the held draft, and its payment ends the "business address needed" hold
+PASS  PF-5 part 2 fail (break m5, m6, m4): a server without Stripe answers 503 on the card Checkout (never a made-up link); a postal code Canada never uses is refused
+{"time":"2026-11-21T18:47:51.066Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"POST"}
+{"time":"2026-11-21T18:47:51.072Z","level":"info","event":"platform_bypass","use":"platform.billing.stripe-webhook","method":"POST"}
+PASS  PF-5 part 2 pass/fail: POST /api/hooks/stripe checks the signature on the raw bytes (200 signed, 400 unsigned)
+PASS  PF-5 part 2 fail (review r10, PF-5t): a held firm's Owner with new terms is never locked out: 428 on billing, accepts the terms, then billing 200
+PASS  PF-5 part 2 fail (Lead B, PF-15c break): a held firm's staff opening a case (POST clients/:id/open-case) get 402 and no case row is written
+PASS  PF-5 part 2 pass (Lead B, PF-15c break): an active firm's same call is not refused by the hold (it reaches the case opening)
+PASS  PF-5 part 2 pass/fail: a held firm's staff get 402 on other routes and 200 on billing (address too) and their own identity; Active again → 200
+PASS  PF-5 part 2 fail: a Case Officer gets 403 on billing and the portal
+
+94 passed, 0 failed

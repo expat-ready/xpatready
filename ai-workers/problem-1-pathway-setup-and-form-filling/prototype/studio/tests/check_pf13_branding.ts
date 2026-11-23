@@ -64,11 +64,13 @@ const clock = new (class extends PlatformClock { t = Date.now(); override now() 
 const local = new LocalIdentity("pf13-check-signing-key-0123456789abcdef", () => clock.now());
 let app: { close(): Promise<void> } | null = null;
 try {
-  const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }];
+  const { BrandingImages } = await import("../api/src/platform/branding/images.ts"), { LocalFiles: Files } = await import("../api/src/front-office/files.ts");
+  const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
+    { provide: BrandingImages, useFactory: (d: InstanceType<typeof Db>) => new BrandingImages({ db: d, files: new Files(join(WORK, "files")), publicBase: "https://app.example" }), inject: [Db] }];   // part 1b: the images (the staff read lists them)
   @Module({ controllers: [PlatformIdentityController, BrandingController] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
-  ok("setup: the feature registers the branding controller", feature.controllers.length === 1 && feature.controllers[0] === BrandingController);
+  ok("setup: the feature registers the branding controller", feature.controllers.includes(BrandingController));
   await seedSampleFirms(db);
   const FIRM_A = (await db.platformFirm.findUniqueOrThrow({ where: { key: "sample-firm" } })), FIRM_B = (await db.platformFirm.findUniqueOrThrow({ where: { key: "sample-solo" } }));
   const signIn = async (actorId: string, firmKey = "sample-firm") => { const r = await call(base, "POST", "/api/platform/session/local", { body: { firmKey, actorId, secondStep: true } }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
@@ -96,9 +98,9 @@ try {
   ok("PF-13 DW1 (the ratio): #777777 is about 4.48:1 and #767676 about 4.54:1 on white (WCAG 2.1 relative luminance)", Math.abs(contrastOnWhite("#777777") - 4.478) < 0.001 && Math.abs(contrastOnWhite("#767676") - 4.542) < 0.001 && ratioWords(4.478) === "4.47:1" && ratioWords(3.1) === "3.1:1");
   const l0 = lines(), r777 = await put(owner, { colour: "#777777" });
   ok("PF-13 DW1 fail: #777777 → 400 naming the ratio (\"Contrast 4.47:1 on white; at least 4.5:1 is needed.\"), nothing saved, no audit line",
-    r777.status === 400 && r777.body.detail === "Contrast 4.47:1 on white; at least 4.5:1 is needed." && lines() === l0 && (await get(owner)).body.colour === null, r777.body);
+    r777.status === 422 && r777.body.detail === "Contrast 4.47:1 on white; at least 4.5:1 is needed." && lines() === l0 && (await get(owner)).body.colour === null, r777.body);
   const bad = await Promise.all([{ colour: "transparent" }, { colour: "#fff" }, { accentColour: "#ffff00" }, { colour: 7 }, { logo: "x" }, {}].map((b) => put(owner, b)));
-  ok("PF-13 DW1 fail: transparent, a short hex, a pale accent, a number, an unknown field and an empty body → 400 each", bad.every((r) => r.status === 400), bad.map((r) => [r.status, r.body.detail]));
+  ok("PF-13 DW1 fail: transparent, a short hex, a pale accent, a number, an unknown field and an empty body → 422 each", bad.every((r) => r.status === 422), bad.map((r) => [r.status, r.body.detail]));
   const r767 = await put(owner, { colour: "#767676", senderName: "Maple <Immigration> & \"Co\"" });
   ok("PF-13 DW1 pass: #767676 saves (stored lower case) with a sender name, one audit line per changed key", r767.status === 200 && r767.body.colour === "#767676" && r767.body.senderName === "Maple <Immigration> & \"Co\"" && lines() === l0 + 2, r767.body);
   ok("PF-13 DW1 pass: an upper-case colour is stored lower case", (await put(owner, { accentColour: "#1F4E79" })).body.accentColour === "#1f4e79");
@@ -113,14 +115,14 @@ try {
 
   // ------------------------------------------------------------------------------------------------ DW8 footer and signature
   const f1001 = await put(owner, { footer: "x".repeat(1001) }), s2001 = await put(owner, { emailSignature: "y".repeat(2001) });
-  ok("PF-13 DW8 fail: a 1,001-character footer → 400 naming 1,000; a 2,001-character signature → 400 naming 2,000", f1001.status === 400 && f1001.body.detail.includes("1,000") && s2001.status === 400 && s2001.body.detail.includes("2,000"), [f1001.body, s2001.body]);
+  ok("PF-13 DW8 fail: a 1,001-character footer → 422 naming 1,000; a 2,001-character signature → 422 naming 2,000", f1001.status === 422 && f1001.body.detail.includes("1,000") && s2001.status === 422 && s2001.body.detail.includes("2,000"), [f1001.body, s2001.body]);
   const FOOTER = "12 King St W, Toronto ON\n+1 416 555 0100\nRCIC licence R000000 (Sample)", SIG = "Kind regards,\nThe Maple team (Sample)";
   const saved8 = await put(owner, { footer: FOOTER, emailSignature: SIG, tagline: "Immigration help, plainly" });
   ok("PF-13 DW8 pass: the footer (address, phone, licence text) and the signature save; GET returns the signature", saved8.status === 200 && (await get(owner)).body.emailSignature === SIG && (await get(owner)).body.footer === FOOTER, saved8.body);
 
   // ------------------------------------------------------------------------------------------------ DW10 the tagline (API part)
   const t81 = await put(owner, { tagline: "t".repeat(81) }), tBreak = await put(owner, { tagline: "two\nlines" });
-  ok("PF-13 DW10 fail: an 81-character tagline → 400 naming 80; a line break → 400", t81.status === 400 && t81.body.detail.includes("80") && tBreak.status === 400, [t81.body, tBreak.body]);
+  ok("PF-13 DW10 fail: an 81-character tagline → 422 naming 80; a line break → 422", t81.status === 422 && t81.body.detail.includes("80") && tBreak.status === 422, [t81.body, tBreak.body]);
   ok("PF-13 DW10 pass: \"Immigration help, plainly\" saved comes back; <b>x</b> is kept as those characters (shown as text by the pages)",
     (await get(owner)).body.tagline === "Immigration help, plainly" && (await put(owner, { tagline: "<b>x</b>" })).body.tagline === "<b>x</b>");
   await put(owner, { tagline: "Immigration help, plainly" });
@@ -147,11 +149,11 @@ try {
   const l5 = lines(), same = await put(owner, { emailSignature: SIG2, footer: FOOTER, tagline: "Immigration help, plainly", accentColour: "#1f4e79" });
   ok("m5 fail: re-saving the same values writes no audit line", same.status === 200 && lines() === l5, [lines(), l5]);
   const acc = await put(owner, { accentColour: "#eeeeee" }), white = await put(owner, { colour: "#ffffff" });
-  ok("m4 pass: a pale accent's refusal names the field; white reads \"1:1\"", acc.status === 400 && acc.body.detail.startsWith("Accent colour: Contrast 1.16:1") && white.body.detail === "Contrast 1:1 on white; at least 4.5:1 is needed.", [acc.body.detail, white.body.detail]);
+  ok("m4 pass: a pale accent's refusal names the field; white reads \"1:1\"", acc.status === 422 && acc.body.detail.startsWith("Accent colour: Contrast 1.16:1") && white.body.detail === "Contrast 1:1 on white; at least 4.5:1 is needed.", [acc.body.detail, white.body.detail]);
   const crlf = await put(owner, { footer: "12 King St\r\nToronto" }), emoji = await put(owner, { emailSignature: "\u{1F600}".repeat(600) });
   ok("m1 pass: Windows line endings in the footer are kept as plain line breaks; 600 emoji (600 characters) save", crlf.status === 200 && crlf.body.footer === "12 King St\nToronto" && emoji.status === 200, [crlf.body, emoji.status]);
   const weird = await Promise.all([{ senderName: "Maple \ud800" }, { senderName: "Expat\u202eReady" }, { tagline: "Expat\u200bReady" }, { senderName: "Tab\there" }, { footer: "x".repeat(1001) }].map((b) => put(owner, b)));
-  ok("m1-m3 fail: a lone surrogate, a bidi or zero-width character and a tab → 400 naming the field (no 500)", weird.every((r) => r.status === 400) && weird[0].body.detail.startsWith("Sender name:") && weird[4].body.detail === "Footer: at most 1,000 characters.", weird.map((r) => [r.status, r.body.detail]));
+  ok("m1-m3 fail: a lone surrogate, a bidi or zero-width character and a tab → 422 naming the field (no 500)", weird.every((r) => r.status === 422) && weird[0].body.detail.startsWith("Sender name:") && weird[4].body.detail === "Footer: at most 1,000 characters.", weird.map((r) => [r.status, r.body.detail]));
   sql(`update platform_firm_setting set value = '"#eeeeee"'::jsonb where firm_id = '${FIRM_A.id}' and key = 'platform.branding.colour'`);
   sql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${FIRM_A.id}', 'platform.branding.colour', '"#eeeeee"'::jsonb, 'test') on conflict (firm_id, key) do update set value = excluded.value`);
   const fallback = await mail(FIRM_A.id).catch((e: Error) => ({ html: `THREW ${e.message}`, from: { name: "" } }));

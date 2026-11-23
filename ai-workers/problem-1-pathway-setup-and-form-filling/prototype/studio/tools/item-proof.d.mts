@@ -15,3 +15,5 @@ export function page(vs: Verdict[], now?: string): string;
 export const SECRET_SHAPES: [string, RegExp][];
 export function scanText(text: string, env?: Record<string, string | undefined>): string[];
 export function scan(dir: string, env?: Record<string, string | undefined>): { file: string; kind: string }[];
+export function gate(v: Verdict | null): { ok: boolean; lines: string[] };
+export function claim(title: string, body: string): string[];

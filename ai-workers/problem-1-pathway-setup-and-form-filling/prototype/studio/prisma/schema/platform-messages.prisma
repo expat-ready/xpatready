@@ -231,6 +231,7 @@ model MsgConsentWithdrawal {
   firm MsgFirm @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([firmId, subjectKind, subjectId, channel, purpose, withdrawnAt])
+  @@index([firmId, withdrawnBy])
   @@map("msg_consent_withdrawal")
 }
 
@@ -329,6 +330,7 @@ model MsgOutbox {
   @@unique([firmId, idempotencyKey])
   @@index([firmId, state, createdAt])
   @@index([firmId, providerId])
+  @@index([firmId, channel, address])
   @@map("msg_outbox")
 }
 

@@ -268,8 +268,8 @@ try {
   await q("update msg_notification set read_at = null, created_at = created_at + interval '1 minute' where id = $1", [deadline.id]);   // the 2-day reminder re-surfaces it
   const stale = await call("POST", `/api/platform/me/notifications/${deadline.id}/read?seen=${shown}`, OFF), staleAll = await call("POST", `/api/platform/me/notifications/read-all?seen=${shown}`, OFF);
   const badSeen = await call("POST", `/api/platform/me/notifications/read-all?seen=yesterday`, OFF);
-  ok("PF-18n DW5 fail (review m2): with the createdAt its list showed, a click or mark-all on an old list leaves a re-surfaced reminder unread; a bad seen is 400",
-    stale.status === 200 && stale.body.readAt === null && staleAll.body.marked === 0 && (await rowsOf(OFF)).find((r) => r.id === deadline.id)?.read_at === null && badSeen.status === 400, { stale: stale.body, staleAll: staleAll.body, badSeen: badSeen.status });
+  ok("PF-18n DW5 fail (review m2): with the createdAt its list showed, a click or mark-all on an old list leaves a re-surfaced reminder unread; a bad seen is 422 naming seen (PF-28 part 2b)",
+    stale.status === 200 && stale.body.readAt === null && staleAll.body.marked === 0 && (await rowsOf(OFF)).find((r) => r.id === deadline.id)?.read_at === null && badSeen.status === 422 && badSeen.body?.fields?.seen !== undefined, { stale: stale.body, staleAll: staleAll.body, badSeen: badSeen.status });
   const fresh = (await call("GET", "/api/platform/me/notifications/items?unread=1", OFF)).body.items.find((i: { id: string }) => i.id === deadline.id);
   const now2 = await call("POST", `/api/platform/me/notifications/${deadline.id}/read?seen=${fresh?.createdAt}`, OFF);
   ok("PF-18n DW5 pass (review m2): with the list's own newer createdAt the click marks it read", now2.status === 200 && typeof now2.body.readAt === "string", now2.body);

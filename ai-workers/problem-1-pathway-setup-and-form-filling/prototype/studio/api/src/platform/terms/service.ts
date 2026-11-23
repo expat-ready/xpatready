@@ -16,6 +16,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import { Db } from "../../core.ts";
 import { auditEvent } from "../audit/audit-event.ts";
 import { firmScope } from "../firm-scope.ts";
@@ -75,7 +76,7 @@ export class PlatformTerms implements TermsGate {
    *  and a firm version is recorded once. A replay writes nothing and answers the same. */
   async accept(s: StaffContext, body: unknown) {
     const parsed = AcceptBody.safeParse(body ?? {});
-    if (!parsed.success) return problem(400, "Check the request", "Some answers need changing.", { code: "CHECK_FIELDS", errors: parsed.error.issues.map((i) => i.message) });
+    if (!parsed.success) return problem(FIELD_ERROR_STATUS, "Check the request", "Some answers need changing.", { code: "CHECK_FIELDS", errors: parsed.error.issues.map((i) => i.message), fields: fieldsOf(parsed.error) });   // PF-28 part 2b: 422, fields named
     const ids = [...new Set(parsed.data.versionIds.map((x) => x.toLowerCase()))].sort();
     const firmId = firmScope(s.firmId).firmId;
     return this.db.$transaction(async (tx) => {
@@ -107,11 +108,11 @@ export class PlatformTerms implements TermsGate {
   /** GET /api/platform/terms/acceptances: the firm's acceptances, newest first: who, when and which version. */
   async acceptances(s: StaffContext, q: { cursor?: unknown; limit?: unknown } = {}) {
     const limit = q.limit === undefined ? 50 : Number(q.limit);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return problem(400, "Check the request", "limit: a whole number from 1 to 200.", { code: "CHECK_FIELDS" });
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return problem(FIELD_ERROR_STATUS, "Check the request", "limit: a whole number from 1 to 200.", { code: "CHECK_FIELDS", fields: { limit: "A whole number from 1 to 200." } });
     const cursor = q.cursor === undefined || q.cursor === "" ? null : String(q.cursor);
-    if (cursor !== null && !UUID.test(cursor)) return problem(400, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS" });
+    if (cursor !== null && !UUID.test(cursor)) return problem(FIELD_ERROR_STATUS, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS", fields: { cursor: "The nextCursor of the page before." } });
     const from = cursor ? await this.db.platformTermsAcceptance.findFirst({ where: firmScope(s.firmId, { id: cursor.toLowerCase() }), select: { id: true } }) : null;
-    if (cursor && !from) return problem(400, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS" });
+    if (cursor && !from) return problem(FIELD_ERROR_STATUS, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS", fields: { cursor: "The nextCursor of the page before." } });
     const page = await this.db.platformTermsAcceptance.findMany({
       where: firmScope(s.firmId), orderBy: [{ acceptedAt: "desc" }, { id: "asc" }], take: limit + 1, ...(from ? { cursor: { id: from.id }, skip: 1 } : {}),
       include: { staff: { select: { id: true, displayName: true } }, version: { select: { id: true, kind: true, version: true, url: true } } },

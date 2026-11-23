@@ -4,10 +4,13 @@
 // Reopen come with FO-2 part 2. A lead the viewer may not see reads as not found, like another firm's (AG-2-94 rule 16).
 // FO-4 part 2a (BR-7, AG-2-75): Engage (Individual), a right panel saying what it does; every Engage makes a prospect,
 // and a second one says so. Corporate Engage is FO-4c's.
+// FO-3st1 part 2 (BR-16, AG-4-50): arriving with ?engage=1 (the consult record's "Engage and prepare retainer") opens the
+// Engage panel once, for a person who may engage (else a message says why not); the parameter is then dropped, so a
+// reload does not open it again.
 // FO-9a phone part (R1.33): the Phone row's Edit (key agent/prospect:edit) saves through PATCH people/:personId; "Fix
 // number" opens it. A number the server cannot read shows its sentence under the field and nothing is saved.
 import * as React from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Notice, Panel, Pill } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
@@ -88,6 +91,14 @@ function LeadBody({ id }: { id: string }) {
     onSettled: () => lock.free(),
   });
   const lead = useQuery({ queryKey: ["fo", "leads", "one", id], retry: false, queryFn: async () => Lead.parse(await staffApi(`/front-office/leads/${encodeURIComponent(id)}`)) });
+  const [params, setParams] = useSearchParams(), here = useLocation(), askEngage = params.get("engage") === "1";
+  React.useEffect(() => {
+    if (!askEngage || !lead.data || !owners.settled) return;
+    setParams((p) => { p.delete("engage"); return p; }, { replace: true, state: here.state });
+    if (can(me, KEY.edit) && lead.data.state !== "CLOSED") panel(true);
+    // Never a silent dead end (break M2): say why the Engage panel did not open.
+    else toast.push({ tone: "info", text: lead.data.state === "CLOSED" ? "This lead is closed, so it cannot be engaged." : "Engaging a lead needs a role that works prospects. Ask your firm's Owner or Admin." });
+  }, [askEngage, lead.data, owners.settled]);   // eslint-disable-line react-hooks/exhaustive-deps -- once, when the lead has loaded
   // The rail waits for who may own what (review m2), so its buttons never rearrange under the person.
   if (lead.isPending || !owners.settled) return <Loading label="Loading the lead" rows={2} />;
   if (lead.isError) {

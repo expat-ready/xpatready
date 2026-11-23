@@ -28,11 +28,12 @@ import { sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import type { JobPort } from "../../../../../ports/jobs.ts";
 import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageRefused, MessageRepeated, fillFields, gateReason, isPlatformAccount, PLATFORM_ACCOUNT_NAME, render, type MessageSend, type MessagePort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
 import type { z } from "zod";
-import { firmScope, touchEachFirm } from "../../firm-scope.ts";
+import { BypassNotRecorded, firmScope, touchEachFirm, touchPlatform } from "../../firm-scope.ts";
 import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
 import { logPort } from "../../observability/log.ts";
 import { emailBrandOf, NEUTRAL_COLOUR } from "../../branding/branding.ts";
+import { publicBaseUrl } from "../../branding/image-setting.ts";
 import { emailLayout } from "../layout/email-layout.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -66,7 +67,7 @@ const triesOf = (reason: string | null) => Number(/^send failed: try (\d+) of \d
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
 export type ChannelAdapter = { provider: string; deliver(tx: Tx, r: Rendered): Promise<{ providerId: string }> };
-export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort; log?: (line: string) => void };
+export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort; log?: (line: string) => void; /** PF-13: the base of the logo's public link (default: the app's public address). */ publicBase?: string };
 
 export const fileKeyOf = (firmId: string | null, outboxId: string) => `msg/${firmId ?? "platform"}/outbox/${outboxId}.json`;
 /** PF-19p: the file store space of platform account messages (FilesPort keys files by a uuid; this one is no firm's). */
@@ -90,7 +91,7 @@ export class Messages implements MessagePort<Tx> {
     if (isPlatformAccount(m)) return this.sendPlatform(tx, m);
     const { firmId } = firmScope(m.firmId);
     const address = normaliseAddress(m.channel, m.address);
-    const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { operatingName: true, contactEmail: true } });
+    const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { operatingName: true, contactEmail: true, key: true } });
     if (!firm) throw new MessageRefused(`firm ${firmId} is not a platform firm`);
     await ensureMessagesFirm(tx, firmId);
     // One writer per firm and key: a second send with the key answers the first row (never a second message).
@@ -112,7 +113,7 @@ export class Messages implements MessagePort<Tx> {
     for (const k of m.attachments) if (k.startsWith("msg/") || !(await this.d.files.exists(firmId, k))) throw new MessageRefused(`attachment ${k} is not a file of this firm`);
     const decision = await this.d.consent.allows(tx, { firmId, subject: m.person, channel: m.channel, address, class: m.class });
     // PF-13: the firm's branding (sender name, colour, footer; the logo from part 1b) drawn by the one react-email layout.
-    const brand = await emailBrandOf(tx, firmId, firm.operatingName), id = randomUUID();
+    const brand = await emailBrandOf(tx, firmId, firm.operatingName, { base: this.d.publicBase ?? publicBaseUrl(), firmKey: firm.key }), id = randomUUID();
     const rendered = { ...render(id, { ...m, firmId }, { name: brand.name, replyTo: firm.contactEmail, brand }, words), html: await emailLayout(brand, words) };
     const put = await this.d.files.put(firmId, fileKeyOf(firmId, id), new TextEncoder().encode(JSON.stringify(rendered)), "application/json");
     const state = decision.allowed ? "QUEUED" : "SUPPRESSED", reason = gateReason(decision);
@@ -237,10 +238,18 @@ export class Messages implements MessagePort<Tx> {
    *  (break F1), then throws on, so the job runner retries it; at PLATFORM_SEND_TRIES the row is FAILED "send failed". */
   async deliverPlatform(outboxId: string): Promise<"sent" | "skipped" | "failed"> {
     try { return await this.sendPlatformRow(outboxId); } catch (e) {
-      const row = await this.d.db.msgOutbox.findFirst({ where: { id: outboxId, audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED" }, select: { stateReason: true } });
-      if (!row) throw e;
-      const tries = triesOf(row.stateReason) + 1, last = tries >= PLATFORM_SEND_TRIES;
-      await this.d.db.msgOutbox.updateMany({ where: { id: outboxId, state: "QUEUED", stateReason: row.stateReason }, data: last ? { state: "FAILED", stateReason: "send failed", updatedAt: this.clock.now() } : { stateReason: `send failed: try ${tries} of ${PLATFORM_SEND_TRIES}`, updatedAt: this.clock.now() } });
+      if (e instanceof BypassNotRecorded) throw e;   // PF-12b part 3: nothing was sent and no try is counted; the job is retried
+      // PF-12b part 3: the try is counted in its own transaction with the use's platform.bypass line (fail-closed).
+      const counted = await this.d.db.$transaction(async (tx) => {
+        await touchPlatform(tx);   // first, as sendPlatformRow: every read on the use is lined (review m1, break m1)
+        const row = await tx.msgOutbox.findFirst({ where: { id: outboxId, audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED" }, select: { stateReason: true } });
+        if (!row) return null;
+        const tries = triesOf(row.stateReason) + 1, last = tries >= PLATFORM_SEND_TRIES;
+        await tx.msgOutbox.updateMany({ where: { id: outboxId, state: "QUEUED", stateReason: row.stateReason }, data: last ? { state: "FAILED", stateReason: "send failed", updatedAt: this.clock.now() } : { stateReason: `send failed: try ${tries} of ${PLATFORM_SEND_TRIES}`, updatedAt: this.clock.now() } });
+        return { tries, last };
+      });
+      if (!counted) throw e;
+      const { tries, last } = counted;
       this.d.log?.(`messages: platform account outbox ${outboxId} send failed (${e instanceof Error ? e.name : "error"}), try ${tries} of ${PLATFORM_SEND_TRIES}${last ? ": FAILED" : ""}`);
       if (!last) throw e;
       return "failed";
@@ -249,6 +258,7 @@ export class Messages implements MessagePort<Tx> {
 
   private async sendPlatformRow(outboxId: string): Promise<"sent" | "skipped" | "failed"> {
     return this.d.db.$transaction(async (tx) => {
+      await touchPlatform(tx);   // PF-12b part 3: the send's one platform.bypass line, in its transaction (fail-closed)
       const [row] = await tx.$queryRaw<{ state: string; channel: Channel; address: string; rendered_hash: string }[]>`
         SELECT "state"::text AS state, "channel"::text AS channel, "address", "rendered_hash" FROM "msg_outbox"
         WHERE "firm_id" IS NULL AND "audience" = 'PLATFORM_ACCOUNT' AND "id" = ${outboxId}::uuid FOR UPDATE`;
@@ -298,17 +308,28 @@ export class Messages implements MessagePort<Tx> {
     let n = 0;
     for (const r of rows) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     for (const r of firmDue) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:try:${triesOf(r.reason)}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
-    const due = await this.d.db.msgOutbox.findMany({
-      where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", updatedAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
-      orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: 2000, select: { id: true, stateReason: true, updatedAt: true },
-    });
-    // A row never tried goes first, then the fewest tries, then the least recently tried (break F1: stuck rows never starve a new one).
-    const platform = due.filter((r) => r.updatedAt.getTime() <= now.getTime() - platformRetryAfterMs(triesOf(r.stateReason)))
-      .sort((x, y) => triesOf(x.stateReason) - triesOf(y.stateReason) || x.updatedAt.getTime() - y.updatedAt.getTime()).slice(0, SWEEP_PER_FIRM);
+    // PF-12b part 4 (QA-697, Lead 16 on #2845): the platform rows are firm-less, read on this bypass use too. The read and
+    // its one firm-null platform.bypass line share a transaction; a line that cannot be written queues no platform send,
+    // and the sweep then fails (P-607), after the firms' work, as a firm whose line fails. The line is written when the read
+    // picks a due row (one per sweep at most); a read that picks nothing (an idle minute, rows still in their back-off)
+    // writes none, the firms' rule above. A row picked whose job key this hour already holds queues nothing new but is
+    // still lined: lines can only be added, never missed (break m1).
+    let platformError: unknown = null;
+    const platform = await this.d.db.$transaction(async (tx) => {
+      const due = await tx.msgOutbox.findMany({
+        where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", updatedAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
+        orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: 2000, select: { id: true, stateReason: true, updatedAt: true },
+      });
+      // A row never tried goes first, then the fewest tries, then the least recently tried (break F1: stuck rows never starve a new one).
+      const pick = due.filter((r) => r.updatedAt.getTime() <= now.getTime() - platformRetryAfterMs(triesOf(r.stateReason)))
+        .sort((x, y) => triesOf(x.stateReason) - triesOf(y.stateReason) || x.updatedAt.getTime() - y.updatedAt.getTime()).slice(0, SWEEP_PER_FIRM);
+      if (pick.length) await touchPlatform(tx, { step: "sweep.platform-rows", key: null });
+      return pick;
+    }).catch((e) => { if (!(e instanceof BypassNotRecorded)) throw e; platformError = e; logPort.warn("messages_sweep_platform_skipped", { reason: "bypass_not_recorded" }); return []; });
     // The hour is in the key (as the firm rows'), so a try that failed before it was counted is queued again next hour
     // instead of waiting on a key already used (break R2, review m-r2).
     for (const r of platform) if ((await this.d.jobs.enqueue(SEND_QUEUE, { outboxId: r.id, platform: true }, { key: `${platformJobKey(r.id, triesOf(r.stateReason))}:sweep:${hour}`, platform: true })).queued) n++;
-    if (error) throw error;
+    if (error ?? platformError) throw error ?? platformError;
     return n;
   }
 

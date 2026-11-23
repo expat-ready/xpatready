@@ -12,8 +12,10 @@ import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ConsentPort } from "../../../../ports/consent.ts";
 import { Db, OpenRead } from "../../core.ts";
+import { z } from "zod";
+import { parseInput, strict } from "../../platform/http/input.ts";
 import { problem } from "../../platform/identity/keys.ts";
-import { asBypass, enterFirm } from "../../platform/firm-scope.ts";
+import { enterFirm, withFirm } from "../../platform/firm-scope.ts";
 import { arrive, type Attribution } from "./arrival.ts";
 import { email, phone, text, UUID, type Tx } from "./common.ts";
 
@@ -35,8 +37,15 @@ const badBody = () => problem(400, "Not sent", "We could not read this form. Ple
 const offSite = () => problem(403, "Not sent", "This form cannot be sent from this page.", { code: "SITE_NOT_ALLOWED" });
 const tooBig = () => problem(413, "Too large", "This form is too long. Please shorten your message and try again.", { code: "TOO_LARGE" });
 
-const BODY_KEYS = new Set(["givenNames", "familyName", "email", "phone", "interestedIn", "message", "consent", "submissionId", "loadStamp", "website", "attribution"]);
 const ATTRIBUTION_KEYS = ["utmSource", "utmMedium", "utmCampaign", "utmTerm", "utmContent", "clickId", "clickIdKind", "landingPage", "referrerUrl"] as const;
+/** PF-28 part 3b (R1.10): the post through a strict schema (an unknown field 422, named; outer bounds, the 32 KB parser
+ *  caps the whole), after the door's own limits, form lookup and site check, so a miss is still the one not-found. The
+ *  submission id and load stamp are always needed. `website` (the trap field) takes any value: a bot still learns nothing.
+ *  Attribution is captured, cut and never refused for length (attributionOf). Every other rule stays in submit. */
+const s = (max: number) => z.string().max(max).nullish();
+const PUBLIC_BODY = strict({ givenNames: s(1000), familyName: s(1000), email: s(1000), phone: s(1000), interestedIn: s(100), message: s(20_000),
+  consent: z.boolean().optional(), submissionId: z.string().max(100), loadStamp: z.string().max(500), website: z.unknown().optional(),
+  attribution: strict(Object.fromEntries(ATTRIBUTION_KEYS.map((k) => [k, z.string().max(40_000).nullish()]))).nullish() });   // 40 000 > the 32 KB parser: never refused for length (break m1)
 const CAPTURED_JUNK = /[\u0000-\u001f\u007f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2069\u3164\ufeff\u{e0000}-\u{e007f}]/gu;
 /** At most `max` characters (what text() measures), never splitting one; normalised first so it cannot grow (break M4). */
 const cut = (v: string, max: number) => [...v].slice(0, max).join("");
@@ -89,11 +98,15 @@ export class PublicForms {
     const ip = ipOf(req);
     this.limit(`post:ip:${ip}`, this.limits.postsPerIp);
     this.limit(`post:form:${String(token).slice(0, 100)}`, this.limits.postsPerForm);
-    if (Number(header(req, "content-length") ?? 0) > this.limits.maxBytes || Buffer.byteLength(JSON.stringify(body ?? null)) > this.limits.maxBytes) return tooBig();
+    // A body nested too deep to measure (thousands of [ … ]) overflows JSON.stringify: it is unreadable, never a 500 (PF-28 part 3b, break M1).
+    let bytes: number; try { bytes = Buffer.byteLength(JSON.stringify(body ?? null)); } catch { return badBody(); }
+    if (Number(header(req, "content-length") ?? 0) > this.limits.maxBytes || bytes > this.limits.maxBytes) return tooBig();
     const form = await this.form(token);
     if (!this.corsFor(form, req, res)) return offSite();
-    const b = body as Record<string, unknown>;
-    if (!b || typeof b !== "object" || Array.isArray(b) || Object.keys(b).some((k) => !BODY_KEYS.has(k))) return badBody();
+    // A "__proto__" inside attribution is refused like any other unknown key (the schema's copy would drop it; break m2).
+    const at = (body as { attribution?: unknown } | null)?.attribution;
+    if (at !== null && typeof at === "object" && Object.hasOwn(at, "__proto__")) return problem(422, "Check the details", "One field needs a change: attribution.__proto__: This field is not allowed here. Nothing was saved.", { code: "INVALID", fields: { "attribution.__proto__": "This field is not allowed here." } });
+    const b: Record<string, unknown> = parseInput(PUBLIC_BODY, body ?? {});
     if (typeof b.submissionId !== "string" || !UUID.test(b.submissionId) || typeof b.loadStamp !== "string") return badBody();
     const thanks = { thankYouText: form.thankYouText };
     const person = {
@@ -152,7 +165,9 @@ export class PublicForms {
 
   private async form(token: unknown) {
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{22,100}$/.test(token)) return unavailable();
-    const f = await asBypass("fo.sales.web-form", () => this.db.foWebForm.findUnique({ where: { publicToken: token } }));
+    // PF-12b part 2: the form's firm through the narrow definer lookup (its id only), then the form is read as that firm.
+    const firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select fo_sales_web_form_firm(${token}) as f`)[0]?.f;
+    const f = firmId ? await withFirm(firmId, () => this.db.foWebForm.findUnique({ where: { publicToken: token } })) : null;
     if (f) enterFirm(f.firmId);   // PF-12: the form's firm, for the rest of the request
     const firm = f?.enabled ? await this.db.platformFirm.findUnique({ where: { id: f.firmId }, select: { status: true } }) : null;
     return f && firm && ["TRIAL", "ACTIVE"].includes(firm.status) ? f : unavailable();

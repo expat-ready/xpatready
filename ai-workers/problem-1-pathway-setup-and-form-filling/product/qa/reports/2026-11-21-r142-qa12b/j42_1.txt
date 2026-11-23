@@ -1,0 +1,40 @@
+setup (not through the product): firm j42-mwqc2sr5 in America/Toronto (phone +1 416 555 0100), one host (Case Officer) on every hour, an Admin; the booking type is made in W0 on Settings → Booking types
+PASS  J-42 W0 Settings → Booking types: axe finds no WCAG A/AA violation — []
+PASS  J-42 W0 pass (FO-3st3 part 3a): the Admin adds "Free consultation" (5 minutes, video, Sample host) on Settings → Booking types; it is on the firm's booking page — {"id":"1a30a112-852c-4838-b5eb-ea4f10004017","firmId":"e399e61f-f0db-4a6f-aaef-03234c3a032c","slug":"free-consultation","name":"Free consultation","purpose":"FREE_CONSULT","modes":["VIDEO"],"hostStaffIds":["87c2a423-67d8-45c5-93f2-5e0599eac135"],"minutes":5,"g
+PASS  J-42 W0 pass: Preview as a booker shows the type's times for the week without booking (no booking row) — ["Saturday 21 November 2026\n\n10:40\n10:45\n10:50\n10:55\n11:00\n11:","Sunday 22 November 2026\n\n00:00\n00:05\n00:10\n00:15\n00:20\n00:25","Monday 23 November 2026\n\n00:00\n00:05\n00:10\n00:15\n00:20\n00:25","Tuesday 24 November 2026\n\n00:00\n00:05\n00:10\
+PASS  J-42 W0 pass (FO-3st3b): under Advanced the Admin sets this type's shortest notice to 0 and its self-service limit to 1 hour; both are the type's own values — {"notice":"0 hours (this type)","selfService":"1 hour (this type)","db":[0,60]}
+setup (not through the product): the type offers a time every 5 minutes (slot interval, not on the Timings screen)
+PASS  J-42 W1 the confirmation: axe finds no WCAG A/AA violation — []
+PASS  J-42 W1: A books Saturday 21 November, 08:10 America/Toronto time and B Saturday 21 November, 06:45 America/Toronto time; two bookings underneath — ["2026-11-21T11:45:00.000Z","2026-11-21T13:10:00.000Z"]
+NOTE  B's meeting 2026-11-21T11:45:00.000Z-2026-11-21T11:50:00.000Z; A's 2026-11-21T13:10:00.000Z
+PASS  J-42 W1: A's confirmation carries A's manage link on this copy — "http://localhost:4471/book/j42-mwqc2sr5/manage#<token>"
+PASS  J-42 W2: A's link opens A's own page (Saturday 21 November, 08:10 America/Toronto time) with Reschedule and Cancel (outside the 60-minute limit) — "Your booking Your booking: Saturday 21 November, 08:10 America/Toronto time, with Sample J-42 firm. Free consultation, 5 minutes, Video call Reschedule Cancel"
+PASS  J-42 W2: Choose a new time offers a later time (Saturday 21 November, 08:20 America/Toronto time)
+PASS  J-42 W2 choose a new time: axe finds no WCAG A/AA violation — []
+PASS  J-42 W2 pass: A reschedules by link to Saturday 21 November, 08:20 America/Toronto time: "Booking updated. …"; underneath RESCHEDULED at the new time — {"status":"RESCHEDULED","at":"2026-11-21T13:20:00.000Z"}
+PASS  J-42 DW1: A's confirmation and the reschedule's new mail are outbox rows SENT or DELIVERED by the local adapter, and both reached the demo inbox (fakeMail wrote no row) — {"inbox":["Your Free consultation is booked","Your Free consultation has moved"],"out":[{"state":"DELIVERED","providerId":"local:7b9c2671-6ce3-417c-9426-b3fcfcc5e972"},{"state":"DELIVERED","providerId":"local:b37b64d4-d976-4867-b53d-a32d773b2603"}]}
+PASS  J-42 W3 the used link: axe finds no WCAG A/AA violation — []
+PASS  J-42 W3 fail: A's first link, once used, is refused in words, with no buttons — "This link is no longer valid. Please use the link in your latest email, or reply to it."
+PASS  J-42 W4 pass: A cancels on the same page: "Your booking is cancelled. …"; underneath CANCELLED
+PASS  J-42 W4 the cancelled page: axe finds no WCAG A/AA violation — []
+PASS  J-42 W4 fail: after the cancel, the link that cancelled is refused too, and A's cancel mail arrives (AG-4-36) — {"state":"bad-link","inbox":["Your Free consultation is booked","Your Free consultation has moved","Your Free consultation is cancelled"]}
+PASS  J-42 W5 inside the limit: axe finds no WCAG A/AA violation — []
+PASS  J-42 W5 fail: B's link inside the 60-minute limit is refused in words ("It is less than 1 hour before your meeting. Please reply to this email or call us on +1 416 555 0100."), no Reschedule or Cancel — "Your booking Your booking: Saturday 21 November, 06:45 America/Toronto time, with Sample J-42 firm. Free consultation, 5 minutes, Video call It is less than 1 hour before your meeting. Please reply to this email or call us on +1 416 555 0100."
+NOTE  waiting 663 s for B's meeting to end
+PASS  J-42 W6 fail: after B's meeting ended, B's link is refused (expired) in the same words, with no buttons — "This link is no longer valid. Please use the link in your latest email, or reply to it."
+PASS  J-42 W7 the booking detail: axe finds no WCAG A/AA violation — []
+PASS  J-42 W7: the host opens B on the booking detail, which asks whether Ben attended (Attended, No-show) — "When\n\nSat 21 November 06:45–06:50 America/Toronto · 06:45 for Ben Sample (America/Toronto)\n\nWho\n\nBen Sample · booker-b-mwqc2sr5@j42-client.example · Host: Sample host · Video call\n\nOn lead L-00001\n\nAttendance\n\nDid Ben Sample attend?\n\nAttended\nN
+PASS  J-42 W7 pass / DW2: one click saves Attended: B is COMPLETED, with one audit line naming the host and the time — {"status":"COMPLETED","lines":[["staff:87c2a423-67d8-45c5-93f2-5e0599eac135","2026-11-21T11:50:06.966Z"]]}
+PASS  J-42 W8: after Attended the booking detail shows the Consult record, time spent pre-filled with the booked length (5 min), CAD pre-filled, and no next step before a save
+PASS  J-42 W8 the consult record: axe finds no WCAG A/AA violation — []
+PASS  J-42 W8 fail (J-S6): a fee with no currency is refused in words ("Choose a currency for the quoted fee."), only CAD and USD are offered, and nothing is stored
+PASS  J-42 W8 the saved record and its next step: axe finds no WCAG A/AA violation — []
+PASS  J-42 W8 pass / DW2: Save record says "Saved"; the record is stored as typed (minutes, note, item, 1,500.00 CAD) with who (created and updated by the host) and when, and one audit line names the host without the notes' text — {"rec":{"id":"41cf5114-d32f-4850-a2f9-0a3c5e977f8e","firmId":"e399e61f-f0db-4a6f-aaef-03234c3a032c","bookingId":"caa636dd-400b-4ba2-b99e-807ae031439a","timeSpentMinutes":5,"notes":"Sample: has a job offer; next, an employer check.","recommended":["Express Entr
+PASS  J-42 W8 (route) fail: a quoted fee in EUR is refused (400, on quotedFeeCurrency) and the record is unchanged — {"status":400,"body":{"type":"https://expatready.local/problems/consult-refused","title":"Consult record not saved","status":400,"detail":"Please check the highlighted details.","message":"Please check the highlighted details.","issues":["quotedFeeCurrency: Ch
+PASS  J-42 W9: the Next step offers "Engage and prepare retainer" (B hangs on a lead; the host may draft retainers) — ["Engage and prepare retainer"]
+PASS  J-42 W9: the button opens FO-4's Engage panel on B's lead page (the address carries no engage flag once open) — "http://localhost:4471/front-office/leads/3cb874e5-ebff-44e0-b7ce-a3d9e82edb91"
+PASS  J-42 W9 pass: Engage as Individual starts one prospect for B and opens it; nothing is sent to B on the way (BR-16) — {"url":"http://localhost:4471/front-office/prospects/9ac29ef4-6d72-4f48-b6ef-af6fcda0499b","prospects":1}
+NOTE  J-42 W9: the retainer step goes on in FO-5's draft screen (FO-5s, R1.53's own row), not on main; the walk ends at the prospect it starts from
+PASS  J-42: no page error in any browser during the walk — []
+
+33/33 passed

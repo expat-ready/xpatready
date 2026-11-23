@@ -20,6 +20,7 @@ import { auditEvent } from "../audit-event.ts";
 import { csvRow } from "../csv.ts";
 import { ALL_PREFIXES, AREA_PREFIXES, AREAS, AuditActionNames, caseEntities, configEntities, prefixPattern, type AreaCode } from "./action-names.ts";
 import { CSV_HEADER, csvCells, renderLine, type People, type Row } from "./render.ts";
+import { FIELD_ERROR_STATUS } from "../../http/input.ts";
 
 export const EXPORT_DIR = "aud4-export-";
 export const PAGE = 50, EXPORT_MAX = 100_000, EXPORT_BATCH = 500, EXPORTS_AT_ONCE = 2, EXPORTS_WAITING = 8;
@@ -45,7 +46,8 @@ function realMoment(v: string): Date | undefined {
 
 export type Filter = { from: Date; to: Date; staffId?: string; actorType?: (typeof ACTOR_TYPES)[number]; ours?: boolean; area?: AreaCode; action?: string; entity?: string; entityKey?: string };
 type Q = Record<string, unknown>;
-const bad = (detail: string, code = "BAD_FILTER"): never => problem(400, "Check the filter", detail, { code });
+/** PF-28 part 2b: a filter refusal is a field error (422), the field named from its words ("from", "person" …). */
+const bad = (detail: string, code = "BAD_FILTER", field = /"(\w+)"/.exec(detail)?.[1] ?? "filter"): never => problem(FIELD_ERROR_STATUS, "Check the filter", detail, { code, fields: { [field]: detail } });
 const text = (q: Q, k: string, max = 200): string | undefined => {
   const v = q[k];
   if (v === undefined || v === "") return undefined;
@@ -64,7 +66,7 @@ export function parseFilter(q: Q): Filter {
   const from = moment("from"), to = moment("to");
   if (to <= from) bad(`"to" must be after "from".`);
   const limit = new Date(from); limit.setUTCFullYear(limit.getUTCFullYear() + 1);
-  if (to > limit) bad("The range is longer than one year (the limit, Sample): narrow the dates.", "RANGE_TOO_LONG");
+  if (to > limit) bad("The range is longer than one year (the limit, Sample): narrow the dates.", "RANGE_TOO_LONG", "to");
   const f: Filter = { from, to };
   const person = text(q, "person");
   if (person !== undefined) f.staffId = UUID.test(person) ? person.toLowerCase() : bad(`"person" is a staff id.`);
@@ -86,7 +88,7 @@ function decode(c: unknown): { at: string; id: string } | undefined {
     const [at, id] = JSON.parse(Buffer.from(String(c), "base64url").toString("utf8")) as unknown[];
     if (typeof at === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(at) && realMoment(`${at.slice(0, 23)}Z`) && typeof id === "string" && UUID.test(id)) return { at, id };
   } catch { /* below */ }
-  return bad("The page cursor is not one this log gave: start again from the first page.", "BAD_CURSOR");
+  return bad("The page cursor is not one this log gave: start again from the first page.", "BAD_CURSOR", "cursor");
 }
 
 type Client = Pick<Prisma.TransactionClient, "$queryRaw">;

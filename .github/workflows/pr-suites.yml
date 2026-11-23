@@ -1,0 +1,114 @@
+# PR suites, REPORT ONLY (E2, P-772, B203; enforcement plan 21 Nov, audit item 1). Since P-651 (2) a builder's PR runs
+# no suite in its verdict: a broken suite surfaces only in a merge-queue batch, which bounces the batch's other PRs. This
+# workflow runs the suites a PR's change can affect (run-suites.sh --changed, select-suites.mjs) so the owner sees a red
+# suite on the PR, before the queue. It decides nothing:
+#   * its own workflow, outside ci.yml and its concurrency group, so job "ci" (the one required check, the one Mergify
+#     condition) never waits on it, and a builder's next push never queues behind these suites (E2 review m4);
+#   * no Mergify condition and no ruleset context names it (P-717 (b)): the tech lead decides after 3 green days whether it
+#     becomes one, in its own PR;
+#   * every step after checkout is continue-on-error: a red suite, a failed setup or a step timeout is a ::warning:: and
+#     the summary, never a red check (lead-watch.sh counts any FAILURE on an approved PR as "red after approval").
+# The pick: change-kind.sh says code, else nothing runs; select-suites.mjs, or --direct when it would pick every suite
+# (the importers and namers of the changed files plus the smoke set: the whole set is the queue's job, P-651); split
+# over ceil(units / 25) parts, at most 12, each a fresh copy (as ci.yml's job "shard"). product/tools/pr-suites-plan.sh.
+# Drafts and Mergify's batch PRs run nothing. A newer push cancels the PR's older run (SPD-2 item 5; was: waited, P-371).
+# Read-only token: it runs the PR's code. US$0 (GitHub's machines), no model call. Test: check-pr-suites-job.sh.
+name: pr-suites
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+concurrency:
+  # SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its older run here; a merge-queue
+  # batch (head mergify/...) and a run by hand are never cancelled. P-371's "never cancel" is about cancelling runs by hand.
+  group: pr-suites-${{ github.event.pull_request.number }}
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
+permissions: {}
+jobs:
+  plan:
+    if: ${{ !github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read }
+    outputs:
+      shards: ${{ steps.p.outputs.shards }}
+      n: ${{ steps.p.outputs.n }}
+      direct: ${{ steps.p.outputs.direct }}
+      base: ${{ steps.p.outputs.main }}
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, filter: "blob:none", persist-credentials: false }
+      - id: p
+        name: which suites can this change affect? (pr-suites-plan.sh; report only, a failed plan runs nothing and says so)
+        continue-on-error: true
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}" }
+        run: |
+          main=$(git rev-parse origin/main)
+          st=0; out=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$main") || st=$?
+          if [ "$st" != 0 ]; then echo "::warning title=pr-suites (report only)::pr-base.sh merge exit $st (1: does not merge onto main $main or refused; 2: could not run): no suite ran"; exit 0; fi
+          range=$(tail -1 <<< "$out")
+          kind=$(bash "$P/tools/change-kind.sh" "$range") || kind=unknown
+          if [ "$kind" != code ]; then echo "**pr-suites (report only):** change kind \"$kind\": no suite to run." >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          st=0; plan=$(bash "$P/tools/pr-suites-plan.sh" "$range") || st=$?
+          if [ "$st" != 0 ]; then echo "::warning title=pr-suites (report only)::pr-suites-plan.sh exit $st: no suite ran ($plan)"; exit 0; fi
+          printf '%s\nmain=%s\n' "$plan" "$main" | tee -a "$GITHUB_OUTPUT"
+  parts:
+    needs: plan
+    if: ${{ needs.plan.outputs.shards != '' && needs.plan.outputs.shards != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions: { contents: read }
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+      N: ${{ needs.plan.outputs.n }}
+      DIRECT: ${{ needs.plan.outputs.direct }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        continue-on-error: true
+        with:
+          node-version-file: .nvmrc
+          cache: npm   # pull_request only: never a run of main, so it never saves to main's cache from main's side
+          cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
+      - id: setup
+        name: the test merge on the plan's main, the packages, the web app, Chromium (cloud-setup.sh)
+        continue-on-error: true
+        timeout-minutes: 20
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", MAIN: "${{ needs.plan.outputs.base }}" }
+        run: |
+          out=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$MAIN"); range=$(tail -1 <<< "$out")
+          echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
+          bash "$P/tools/cloud-setup.sh"
+          cd "$S" && ./node_modules/.bin/playwright install chromium
+      - id: s
+        name: the change's suites, part ${{ matrix.shard }} of ${{ needs.plan.outputs.n }} (report only; run-suites.sh --changed; US$0)
+        if: steps.setup.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 50
+        run: |
+          d=""; [ "$DIRECT" = true ] && d="--direct"
+          bash "$P/tools/run-suites.sh" --demo --retry --changed "$RANGE" $d --shard "${{ matrix.shard }}/$N" | tee suites.md
+          exit ${PIPESTATUS[0]}
+      - name: summary (report only)
+        if: always()
+        continue-on-error: true
+        env: { SETUP: "${{ steps.setup.outcome }}", OUTCOME: "${{ steps.s.outcome }}" }
+        run: |
+          { echo "**pr-suites, report only (E2):** part ${{ matrix.shard }} of $N$([ "$DIRECT" = true ] && echo ', --direct (the change would pick every suite; the queue runs them)'). Set-up: $SETUP. Suites: ${OUTCOME:-not run}. The merge queue still decides (P-651)."; echo
+            [ -f suites.md ] && cat suites.md; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$SETUP" = success ] && [ "$OUTCOME" = success ] || echo "::warning title=pr-suites (report only)::part ${{ matrix.shard }} of $N: set-up $SETUP, suites ${OUTCOME:-not run}; read the summary (the queue still decides)"
+      - name: logs (only when a suite failed)
+        if: steps.s.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-suite-logs-part-${{ matrix.shard }}-a${{ github.run_attempt }}
+          path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
+          retention-days: 7
