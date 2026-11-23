@@ -228,6 +228,8 @@ model PlatDataRequest {
   createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz
   /// PF-21d part 1b: the day an approved DELETION is carried out (approval day + 7); cleared by cancel or by the job.
   eraseOn        DateTime?             @map("erase_on") @db.Date
+  /// PF-21d part 1b: the erasure job's claim while it erases (set and cleared by its definers only).
+  erasingSince   DateTime?             @map("erasing_since") @db.Timestamptz
 
   events PlatDataRequestEvent[]
 

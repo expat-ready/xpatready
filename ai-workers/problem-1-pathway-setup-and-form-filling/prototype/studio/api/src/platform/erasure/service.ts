@@ -53,7 +53,7 @@ const addDays = (day: string, n: number) => dayOf(new Date(Date.parse(`${day}T00
 class EraserFailed extends Error { constructor(readonly module: string, readonly cause: unknown) { super(`eraser ${module} failed`); } }
 
 const foPersonCheck = (db: PrismaClient): PersonCheck => (firmId, personId) => withFirm(firmId, async () =>
-  (await db.$queryRaw<{ hit: boolean }[]>`SELECT EXISTS (SELECT 1 FROM fo_person p WHERE p.id = ${personId}::uuid AND p.firm_id = ${firmId}::uuid) AS hit`)[0].hit);
+  (await db.$queryRaw<{ hit: boolean }[]>`SELECT EXISTS (SELECT 1 FROM fo_person p WHERE p.id = ${personId}::uuid AND p.firm_id = ${firmId}::uuid AND p.merged_into_id IS NULL) AS hit`)[0].hit);   // break m7: never a merged-away record
 
 @Injectable()
 export class Erasure {
@@ -115,8 +115,10 @@ export class Erasure {
       if (!UUID.test(id)) notFound();
       const p = NoteBody.safeParse(body ?? {});
       if (!p.success) problem(FIELD_ERROR_STATUS, "Check the highlighted fields", "Some fields need a change.", { code: "ERASURE_FIELDS", fields: fieldsOf(p.error) });
-      const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_erasure_cancel(${id.toLowerCase()}::uuid, ${p.data.note ?? null}, ${`staff:${c.staffId}`}) AS out`;
+      const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_erasure_cancel(${id.toLowerCase()}::uuid, ${p.data.note ?? null}, ${`staff:${c.staffId}`}, ${this.today()}::date) AS out`;
       if (out === "NOT_FOUND") notFound();
+      if (out === "RUNNING") problem(409, "Erasing now", "The erasure is running now and cannot be cancelled.", { code: "ERASURE_RUNNING" });
+      if (out === "WINDOW_ENDED") problem(409, "Too late to cancel", "The 7-day window has ended; the erasure runs today.", { code: "WINDOW_ENDED" });
       if (out !== "CANCELLED") problem(409, "Nothing to cancel", "No erasure is scheduled for this request.", { code: "NOT_SCHEDULED" });
     });
     return this.read(c, id);
@@ -126,16 +128,14 @@ export class Erasure {
     const today = this.today(), out: RunResult = { erased: [], partial: [], held: [], skipped: [], failed: 0 };
     const due = await this.db.$queryRaw<{ id: string; firm_id: string; person_id: string }[]>`SELECT id::text AS id, firm_id::text AS firm_id, person_id::text AS person_id
       FROM plat_data_request_erasure_due(${today}::date, 501)`;
-    if (!due.length) return out;
-    const on = await this.switches.isOn(DATA_ERASURE_SWITCH);
     for (const d of due) {
       try {
-        if (!on) {
-          await this.db.$queryRaw`SELECT plat_data_request_erasure_step(${d.id}::uuid, 'ERASURE_SKIPPED', ${"The Data erasure switch is off; nothing was erased."}, ${ERASURE_ACTOR}, true)`;
+        if (!(await this.switches.isOn(DATA_ERASURE_SWITCH))) {   // read per order (break m6): an emergency stop takes effect at the next order
+          await this.db.$queryRaw`SELECT plat_data_request_erasure_step(${d.id}::uuid, 'ERASURE_SKIPPED', ${"The Data erasure switch is off; nothing was erased."}, ${ERASURE_ACTOR}, true, null::timestamptz)`;
           out.skipped.push(d.id); continue;
         }
         const k = await this.one(ErasureOrder.parse({ requestId: d.id, firmId: d.firm_id, personId: d.person_id }), today);
-        out[k].push(d.id);
+        if (k) out[k].push(d.id);
       } catch (e) {
         out.failed++;
         logPort.error("erasure_order_failed", e instanceof EraserFailed ? e.cause : e, { module: e instanceof EraserFailed ? e.module : "erasure" });
@@ -143,7 +143,17 @@ export class Erasure {
     }
     return out;
   }
-  private async one(order: ErasureOrder, today: string): Promise<"erased" | "partial" | "held"> {
+  /** One order under the job's claim (break B1, B2): claimed first (a cancel or a hand move is then refused), erased in the
+   *  firm's scope, recorded under the same claim; an eraser failing gives the claim back. Null: not claimable now. */
+  private async one(order: ErasureOrder, today: string): Promise<"erased" | "partial" | "held" | null> {
+    const [{ claim }] = await this.db.$queryRaw<{ claim: Date | null }[]>`SELECT plat_data_request_erasure_claim(${order.requestId}::uuid, ${today}::date) AS claim`;
+    if (!claim) return null;
+    try { return await this.erase(order, today, claim); } catch (e) {
+      await this.db.$queryRaw`SELECT plat_data_request_erasure_release(${order.requestId}::uuid, ${claim}::timestamptz)`.catch(() => undefined);   // a stale claim is retaken after 30 minutes anyway
+      throw e;
+    }
+  }
+  private async erase(order: ErasureOrder, today: string, claim: Date): Promise<"erased" | "partial" | "held"> {
     // SA-11-18, SA-11-40: the hold check and every eraser in the order's firm scope and one transaction (the shared hold
     // lock is kept until the erasers are done, so a hold placed meanwhile waits for this order).
     const done = await withFirm(order.firmId, () => this.db.$transaction(async (tx) => {
@@ -156,16 +166,20 @@ export class Erasure {
       return { kind: "ran", results } as const;
     }, { maxWait: 10_000, timeout: 120_000 }));
     return this.db.$transaction(async (tx) => {
+      const finish = async (outcome: string, actions: string | null) => {
+        const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_erasure_finish(${order.requestId}::uuid, ${outcome}, ${actions}, ${today}::date, ${ERASURE_ACTOR}, ${claim}::timestamptz) AS out`;
+        if (out !== "DONE") throw new Error(`erasure finish refused (${out}): the request is no longer under this run's claim`);   // never silent (break B1)
+      };
       if (done.kind === "held") {
-        await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_HELD', ${`On legal hold; nothing was erased. ${done.held.join("; ")}`.slice(0, 2000)}, ${ERASURE_ACTOR}, true)`;
-        await tx.$queryRaw`SELECT plat_data_request_erasure_finish(${order.requestId}::uuid, 'BLOCKED', null, ${today}::date, ${ERASURE_ACTOR})`;
+        await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_HELD', ${`On legal hold; nothing was erased. ${done.held.join("; ")}`.slice(0, 2000)}, ${ERASURE_ACTOR}, true, ${claim}::timestamptz)`;
+        await finish("BLOCKED", null);
         return "held" as const;
       }
       for (const { module, r } of done.results)
-        await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_RESULT', ${`${module}: ${r.outcome} — ${r.note}`}, ${ERASURE_ACTOR}, false)`;
+        await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_RESULT', ${`${module}: ${r.outcome} — ${r.note}`}, ${ERASURE_ACTOR}, false, ${claim}::timestamptz)`;
       const kept = done.results.filter((x) => x.r.outcome === "KEPT");
       const actions = done.results.length ? done.results.map(({ module, r }) => `${module}: ${r.outcome} (${r.note})`).join("; ").slice(0, 2000) : "No module holds data for this person; nothing to erase.";
-      await tx.$queryRaw`SELECT plat_data_request_erasure_finish(${order.requestId}::uuid, ${kept.length ? "PARTIAL" : "COMPLETED"}, ${actions}, ${today}::date, ${ERASURE_ACTOR})`;
+      await finish(kept.length ? "PARTIAL" : "COMPLETED", actions);
       return kept.length ? "partial" as const : "erased" as const;
     });
   }

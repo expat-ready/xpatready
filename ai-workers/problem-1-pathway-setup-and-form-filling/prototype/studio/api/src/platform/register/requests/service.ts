@@ -116,7 +116,11 @@ export class DataRequests {
       const p = MoveBody.safeParse(body ?? {});
       if (!p.success) fields(p.error);
       const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_move(${id.toLowerCase()}::uuid, ${p.data.status}, ${p.data.actionsTaken ?? null},
-        ${p.data.note ?? null}, ${`staff:${c.staffId}`}, ${this.today()}::date) AS out`;
+        ${p.data.note ?? null}, ${`staff:${c.staffId}`}, ${this.today()}::date) AS out`.catch((e: unknown) => {
+        // PF-21d part 1b (break M3): an erasure scheduled or running holds the request; cancel it first.
+        if (/plat_data_request_erasure_guard/.test(String(e))) problem(409, "An erasure holds this request", "An erasure is scheduled or running for this request; cancel it before moving the request by hand.", { code: "ERASURE_SCHEDULED" });
+        throw e;
+      });
       if (out === "NOT_FOUND") notFound();
       if (out === "SAME") problem(409, "Already in that status", "The request is already in that status; nothing was changed.", { code: "SAME_STATUS" });
       if (out !== "MOVED") problem(409, "Not allowed", "That move is not allowed from the request's current status; nothing was changed.", { code: "MOVE_REFUSED" });
