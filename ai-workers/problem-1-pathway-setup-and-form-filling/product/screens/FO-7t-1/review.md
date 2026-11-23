@@ -1,6 +1,110 @@
-Reviewer: Approve cf0f8cd6ec0eb04c921b758b0075c1d4eb4e2214
+Reviewer: Block 60ae8f158b6fa3109767112a70a8e67c9e7b7637
+
+# Build round 1 (60ae8f158, the whole build)
+
+Reviewed 23 Nov by the Opus 5.5 reviewer that approved the check in rounds 1-3. Worktree `/home/user/fo7t`, PR #3033 (draft). I read the PR diff against `origin/main` (`f850b6ff5`), the brief `track-b/FO-7t-1.md` and part 1 of `FO-7t.md`, `ports/money-visibility.ts` and its adapter, FO-7b's `invoices/money.ts`, and the trust trigger in `20261122170000_fo7ts_part3`. Line numbers are those at `60ae8f158`.
+
+**Runs (mine, scratch databases on :54329 named by pid, all dropped; :4400 not touched):**
+* `check_fo7t_trust` 44/0, twice: once as is, once inside my probe copy (built in the scratchpad, see below).
+* `check_fo7a_money_schema` 122/0.
+* `check_ports_events` 31/0.
+* `pf8b_f4` 9/9.
+* `typecheck.mjs`: no new errors (15 known).
+* `pf8b_f7`: only its text half ran (4 PASS). This machine has no PostgreSQL 18 `initdb`, so the throwaway-cluster half failed to start. **Not verified here:** F7's database half.
+* I did not re-run fo7b, fo7mv, pf12 or module-cards.
+
+**Verdict: Block (in the skill's terms, Ship after fixes).** The money core is right. Two Majors are open, both small to fix:
+* M1: a case id is never checked.
+* M2: the running balance leaks past C5.
+
+## Changes to the approved check (cf0f8cd6e → 60ae8f158): honest, no assertion weakened
+* **(a) Event import:** honest. `TRUST_EVENT` lives in `ports/events/client-money-trust.ts`. `ports/events.ts` is frozen, and `check_ports_events` 31/0 confirms the folder rule. The two DW18 assertions are unchanged.
+* **(b) C5 under MoneyVisibilityPort: a faithful model, not a rigged one.**
+  * Under CS-MV1 on main, a party with no prospect and no case is seen by nobody. So without the prospect, even the Owner would read an empty ledger, and DW6 and DW10's positive half could not pass on a correct build.
+  * PF-3 (`20261114015002`, l. 605, 985) gives CASE_OFFICER both `view.all` keys. While it keeps them, "a Case Officer who cannot see a case" cannot exist.
+  * The test takes away only the two `view.all` keys. CASE_OFFICER keeps `agent/case:view.own` and `agent/prospect:view.own` (l. 611, 991), so user-O's empty page comes from the real own-scope path: no team, no prospect.
+  * The same narrowing is already used by `check_fo7q_reads.ts` l. 227-230, `check_css1_search.ts` l. 176 and journeys j_6 and j_30.
+  * The `session_replication_role = replica` inserts for case, client and prospect follow precedent (`check_csc1_*`, `check_aud1*`).
+  * The assertions are unchanged, and they now exercise the real adapter instead of a stand-in, so the check is stronger.
+  * **C5 gating balances and the request read is right.** A balance is the same money as the ledger, and a request names the party, the case and the amount. Lead B's ruling (#1878, comment 6901029156) is that a ledger is visible exactly when its case, or its party with no case, is visible. Leaving either read ungated would leak what the ledger hides.
+  * Residual (m6): only the Owner is shown seeing the entries. DW10's "of any role" half is unproven.
+* **(c) `fo7t-d1` → `fo7t-dep1`:** honest. Both the zod rule (`service.ts:48`, 8-200) and `money_payment_key_check` refuse a 7-character key. This was a harness error that rounds 1-3 missed, and the assertion is the same.
+
+## Migration 20261123030000_fo7t1_evidence_key: verified, correct
+* **The claim holds.** On PostgreSQL 18.3, `select 'a' ~ '^…{0,299}$'` fails with "invalid regular expression: invalid repetition count(s)". A table with that check takes a null and errors on any value. So FO-7a's check (`20261115042334`, l. 600) refuses every non-null key with an error, never a check violation.
+* **Equivalent.** `char_length <= 300 AND ~ '^[A-Za-z0-9][A-Za-z0-9/._-]*$'` accepts exactly the strings of 1-300 characters, first a letter or digit, then the same class. I probed 300 characters → t; 301, '', '/x', 'a b', a newline and 'aé' → f. The class is ASCII, so characters equal bytes.
+* **F4/F7 compliance.** Only `ALTER TABLE … DROP/ADD CONSTRAINT`: no data statement and no owner change. Validation scans the rows unfiltered by RLS, and no row can hold a key.
+* **Stamp and rollback.** The stamp `20261123030000` follows main's newest, `20261123020000_fo7g3_bill_to_province`. Round trip on a scratch database: migrate gives the new definition; `rollback.sql` restores FO-7a's text exactly and removes the `_prisma_migrations` row (12 of 15 rollbacks do the same); re-applying works.
+* **Process (not a defect).** The brief said "No migration". The builder asked openly as PR Question 1 instead of widening silently. The label waits on Lead B's acceptance.
+
+## Findings
+**Major**
+* **M1, `service.ts:35, 103, 165-170, 181`: `caseId` is never checked, so trust money can be recorded where nobody, the Owner included, can see it.**
+  * Probe: the Owner's deposit of CAD 777.00 on a case id that does not exist → 201, an R- receipt, the receipt email and the event. The Owner's balances stay CAD 1,345.00 while the party's entries sum to CAD 2,122.00, and the entry is absent from the ledger (`seen()` matches no visible case).
+  * A request on such a case (→ 201 Sent) is likewise unreadable through `GET /requests/:id`.
+  * The same path takes another firm's case id, or a case of another client. A deposit's `caseId` may also differ from its request's (`:170`, `??=` keeps the given one).
+  * This breaks DW6 ("per-case balances plus before-a-case equal the party's"). It is also the only money writer that takes a case id from the body: FO-7b never does.
+  * **Fix:** refuse a `caseId` that is not in `scopeOf(ctx).cases`. That proves the firm and that the case exists, and it fails closed. Name the case-to-party match as a Contract gap for Lead B. On a request deposit, refuse a `caseId` that differs from the request's. Add one fail case to the check.
+* **M2, `reads.ts:57-64`: the ledger's `balanceAfterMinor` is the party-wide running balance, so it discloses money the caller may not see.**
+  * Probe: user-O put on the case's team (`case_team_member`) sees one entry of 300.00 with a running balance of 1,225.00, while `GET /balances` tells them 300.00.
+  * The pre-case 925.00 is outside their C5 scope but readable from the column.
+  * With `caseId=` the column is still the party's balance, not the case's (AG-6-60 rules 1-2: a balance per case).
+  * **Fix:** compute the running balance over the rows the caller sees and the filters in force (a window sum per currency in `seq` order over the visible, filtered set, before paging). Or withhold the column when the scope does not cover every entry of the party, or when a case filter is set. Pin it in the check with the team-member officer (this also closes m6).
+
+**Minor**
+* **m1, `reads.ts:56, 62`: newest-first ordering uses `created_at`, which is the transaction's start time (`NEW.created_at := now()`, fo7ts_part3 l. 372).**
+  * A deposit that waited on the party lock can carry an earlier time but a higher `seq`, so two rows of one party and currency can show out of balance order.
+  * Paging stays lossless: my probe walked pages of 3 and got every visible row once.
+  * **Fix:** order by `seq` within a party and currency.
+* **m2, `service.ts:155` vs `:158`: `trustOn` runs before the replay check.** After Yes → No, a retry of a deposit already recorded answers 409 TRUST_OFF (probe), not 200 with the payment. FO-7b checks the replay first. **Fix:** look the key up before `trustOn`.
+* **m3, `service.ts:110`: "this request is saved and is sent once they are filled" promises a send that nothing performs.** No route or job sends a Waiting request (grep). **Fix:** say what the person does, or drop the promise until part 4.
+* **m4, `service.ts:89, 228-233`: the Yes → No answer counts balances only.** With only To move lines open, trust stays visible (`trustShows`), but no amount or message is answered. FO-7t.md part 1 says "while any balance or open To move line exists". The builder disclosed this. **Fix:** add `money_to_move`'s open totals per currency, or record the ruling.
+* **m5, `service.ts:157, 174-176`: the duplicate-reference check runs under the party-and-currency lock.** One reference raced in CAD and USD on one party gives two 201s with no warning (probe). The same currency is warned correctly. This is a Nit.
+* **m6 (check):**
+  * DW10's "a person who can see the case, of any role, gets it" is shown only for the Owner.
+  * Round 3's n1 (the trust-off request read probes an id that does not exist) and n4 (`companyId` unused) are still open, though the PR said they would be tightened.
+  * My probes show the build behaves correctly: an officer on the team gets the case's entry; a real request read is 404 with No and nothing held; a company deposit gets 201 and `NO_ADDRESS` with no primary contact.
+  * **Fix:** add these three probes to the check.
+
+**Held, as asked:**
+* **Deposit:** the DEPOSIT entry, the TRUST receipt (via `trust_entry_id`), the audit line and the event are written in one transaction under `money_trust_lock` (`:154-189`).
+* **Replays:** a replay of one key is one payment, concurrently too: the lock serialises it, and a P2002 on another party is retried into KEY_USED (`:136-140, 203`).
+* **Card and duplicates:** `CARD` and `CARD_TERMINAL` are refused by zod (`:39, 45`). A duplicate reference answers 409, and records on confirm.
+* **Answers and keys:** the Owner-only 403 (`:80`). The keys are `agent/payment:record` on writes and `agent/invoice:show` on reads (`routes.ts`). Everything is firm-scoped, and firm B gets 404 on firm A's records.
+* **Mail and numbering:** the mail goes to the party with no Cc, and every message has no link and no "card" (probe: 0 of each). DR- and R- come from the database.
+* **Reads:** the status is derived. Paging is 50 by default, 200 at most, and walks by cursor. Currencies are never summed. The payload holds ids, amount and currency only. Ledger payer = party name, as noted.
+* **Not findings:** the replay ignores `reference`, as FO-7b's does (`money.ts:86`). The trust-off-with-money-held case is 409 for new writes and 200 for reads.
+
+## Scores and scope
+* **D1:** 4 (M1).
+* **D2:** 3 (M1, m5).
+* **D5:** 4 (m2).
+* **D10:** 4 (m3).
+* **D11:** 5.
+* **D15:** 5 (one query per read, no per-row requests).
+* **D16:** 4 (a pass and a fail per DW, but m6).
+* **D18:** 5 (Sample wording, "Unconfirmed: no counsel", the database's words).
+* **N/A:** D3, D4, D6, D7, D19 (no content or rule change) and D8-D14 (no screen).
+* **D17/D20:** simulated only.
+* **BIC-01-20:** N/A (API only, no case-side screen).
+* `graph.mjs` was not run: it rewrites `qa/GRAPH.md`.
+
+## Journey score (reviewer role, API only, simulated): 7.5/10, below the pass bar, no criterion at 0
+Report: `journey-test-reviewer-2026-11-23.md`.
+* **Correct data ½:** M1 and M2.
+* **Error recovery ½:** m2.
+* **Next step ½:** m3.
+* **Accessibility ½ and visual quality ½:** no screen.
+* **Every other criterion 1.**
+* Fixing M1 and M2 raises correct data to 1, giving 8/10.
+
+**Verdict: Block.** To fix: M1 and M2 (the Minors at the builder's choice, m2 and m6 recommended). After the fix, a diff-only re-review.
+
+---
 
 # Round 3 (diff only, 0243e27a7 → cf0f8cd6e)
+
+Round 3 verdict line: `Reviewer: Approve cf0f8cd6ec0eb04c921b758b0075c1d4eb4e2214`
 
 Read diff-only on 22 Nov by the same reviewer (only `tests/check_fo7t_trust.ts` changed under `tests/`). I did not run the check.
 
