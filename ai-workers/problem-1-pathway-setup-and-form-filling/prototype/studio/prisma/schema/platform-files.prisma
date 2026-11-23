@@ -1,0 +1,35 @@
+// PF-F2 part 1 (map row 64; batch 5): the platform's one record of a stored upload. tus keeps its own records of
+// unfinished uploads (the staging store); a row here is written only once every byte has arrived, passed PF-F4's check
+// and been stored through FilesPort, so no row ever names a half-finished file. PF-F3's scan job reads the SCANNING rows
+// (the queue is this table) and moves each to CLEAN, SCAN_PENDING or QUARANTINED. Owner: platform (Lead B's module).
+
+enum PlatFileScanState {
+  SCANNING
+  SCAN_PENDING
+  CLEAN
+  QUARANTINED
+}
+
+model PlatFile {
+  id            String            @id @default(uuid()) @db.Uuid
+  /// The firm (PF-12's wall); no foreign key, as plat_legal_hold.
+  firmId        String            @map("firm_id") @db.Uuid
+  /// The FilesPort key the door chose (firm-relative).
+  key           String
+  /// The upload door that took it (STAFF, CLIENT_LINK, CLIENT_PORTAL, SUPPORT).
+  door          String
+  /// sha256 of the stored bytes, lower-case hex.
+  sha256        String
+  sizeBytes     Int               @map("size_bytes")
+  /// The media type PF-F4 read from the bytes.
+  mediaType     String            @map("media_type")
+  scanState     PlatFileScanState @default(SCANNING) @map("scan_state")
+  scannedAt     DateTime?         @map("scanned_at") @db.Timestamptz
+  /// The scanner's name for what it found (QUARANTINED only).
+  signatureName String?           @map("signature_name")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([firmId, key])
+  @@index([scanState, createdAt])
+  @@map("plat_file")
+}
