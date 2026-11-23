@@ -41,10 +41,13 @@ const call = async (base: string, path: string, token?: string, body?: unknown, 
 const MIGRATION = "20261123060000_pf17_support_keys";
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 const migrations = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
-let beforeOurs = "";
+// Rev 16.7: the seed is measured right before and right after its own migration, never assuming it is the newest.
+const keyRows = () => execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-q", "-Atc", "select count(*) from plat_system_role_permission"], { encoding: "utf8" }).trim();
+let beforeOurs = "", afterOurs = "";
 for (const d of migrations) {
-  if (d === MIGRATION) beforeOurs = execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-q", "-Atc", "select count(*) from plat_system_role_permission"], { encoding: "utf8" }).trim();
+  if (d === MIGRATION) beforeOurs = keyRows();
   execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  if (d === MIGRATION) afterOurs = keyRows();
 }
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of Object.keys(process.env)) if (/^PLATFORM_/.test(k)) delete process.env[k];
@@ -79,7 +82,7 @@ try {
   const seeded = sql(`select permission_key || '=' || string_agg(role_code, ',' order by role_code) from plat_system_role_permission where permission_key like 'system/support:%' group by permission_key order by 1`).split("\n");
   ok("PF-17 DW8 pass (Lead 1's ruling, Sample): the migration seeds system/support:list for Owner, Admin, Support, Auditor and system/support:manage for Owner, Support, and nothing else",
     seeded.join(" ") === "system/support:list=platform-admin,platform-auditor,platform-owner,platform-support system/support:manage=platform-owner,platform-support"
-    && Number(sql(`select count(*) from plat_system_role_permission`)) === Number(beforeOurs) + 6, { seeded, beforeOurs });
+    && Number(afterOurs) === Number(beforeOurs) + 6, { seeded, beforeOurs, afterOurs });
   const text = readFileSync(join(MIG, MIGRATION, "migration.sql"), "utf8");
   ok("PF-17 DW8 fail: the BACKLOG row's system/support:reply is not seeded, Billing and Content publisher hold no support key, and the migration says the mapping is Unconfirmed (SA10-X3 pending)",
     sql(`select count(*) from plat_system_role_permission where permission_key = 'system/support:reply' or (permission_key like 'system/support:%' and role_code in ('platform-billing-ops', 'platform-content-publisher'))`) === "0" && /Unconfirmed: SA10-X3 pending/.test(text) && !/CREATE|ALTER TABLE "plat_system_role_permission" ADD/i.test(text.replace(/--[^\n]*/g, "")));
@@ -123,8 +126,9 @@ try {
   const person = async (name: string, roles: string[]) => (await owner.platSystemStaff.create({ data: { email: `${name.toLowerCase().replace(/\s+/g, ".")}.pf17s@expatready.example`, displayName: `Sample ${name}`, grants: { create: roles.map((roleCode) => ({ roleCode })) } } })).id;
   const tokenOf = async (id: string) => { const email = (await owner.platSystemStaff.findUniqueOrThrow({ where: { id } })).email; const r = await (await fetch(`${base}/api/system/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, secondStep: true }) })).json(); return r.token as string; };
   const roles = { owner: "platform-owner", admin: "platform-admin", support: "platform-support", billing: "platform-billing-ops", auditor: "platform-auditor", publisher: "platform-content-publisher" } as const;
-  const tokens: Record<keyof typeof roles, string> = {} as never;
-  for (const [k, r] of Object.entries(roles)) tokens[k as keyof typeof roles] = await tokenOf(await person(`${k} PF17S`, [r]));
+  const tokens: Record<keyof typeof roles, string> = {} as never, ids: Record<keyof typeof roles, string> = {} as never;
+  for (const [k, r] of Object.entries(roles)) { ids[k as keyof typeof roles] = await person(`${k} PF17S`, [r]); tokens[k as keyof typeof roles] = await tokenOf(ids[k as keyof typeof roles]); }
+  const ticketBypass = (f: string) => Number(sql(`select count(*) from audit_event where firm_id = '${f}' and action = 'platform.bypass' and detail->>'use' = '${SUPPORT_TICKET.name}'`));
   const firmToken = (await (await fetch(`${base}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) })).json()).token as string;
   const sysLines = () => Number(sql(`select count(*) from plat_system_audit`));
   const Q = "/api/system/support/tickets";
@@ -165,7 +169,7 @@ try {
     all.tickets.every((t: any) => sql(`select firm_id from platform_support_ticket where id = '${t.id}'`) === t.firm.id) && byId.get(t2).firm.id !== firmA && byId.get(t1).firm.id !== firmS);
 
   // ---------------------------------------------------------------------------------------- DW5: our reply
-  const s0 = sysLines(), mA = msgs(t1), rA = replied(firmA), rS = replied(firmS);
+  const s0 = sysLines(), mA = msgs(t1), rA = replied(firmA), rS = replied(firmS), bA = ticketBypass(firmA), bS = ticketBypass(firmS);
   const reply = await call(base, `${Q}/${t1}/replies`, tokens.support, { body: "Sample: we have looked at it.\nIt is fixed." });
   const last = JSON.parse(sql(`select row_to_json(a) from (select method, route, outcome from plat_system_audit order by at desc, id desc limit 1) a`));
   const stored = JSON.parse(sql(`select row_to_json(m) from (select author_kind, author_id, body from platform_support_message where ticket_id = '${t1}' order by created_at desc, id desc limit 1) m`));
@@ -174,6 +178,10 @@ try {
     && reply.body.messages.at(-1).authorName === SUPPORT_NAME && reply.body.firm.id === firmA, { reply, stored });
   ok("PF-17 DW5 pass: the reply writes one support.ticket.replied line on firm A's trail, none on firm B's, and one PF-4s line (ALLOWED, the route) for the call",
     replied(firmA) === rA + 1 && replied(firmS) === rS && sysLines() === s0 + 1 && last.method === "POST" && last.route === "/api/system/support/tickets/:id/replies" && last.outcome === "ALLOWED", { rA, now: replied(firmA), s0, s1: sysLines(), last });
+  const line = JSON.parse(sql(`select row_to_json(a) from (select actor, actor_type from audit_event where firm_id = '${firmA}' and action = 'support.ticket.replied' order by at desc, id desc limit 1) a`));
+  ok("PF-17 DW5 pass (AUD-3a): the reply's line on firm A's trail names the Support person, ourstaff:<id> (OUR_STAFF), never system:support",
+    line.actor === `ourstaff:${ids.support}` && line.actor_type === "OUR_STAFF", line);
+  ok("PF-17 DW5 pass (review m1): the reply writes firm A's own platform.bypass line (the ticket use) and none on firm B's", ticketBypass(firmA) === bA + 1 && ticketBypass(firmS) === bS, { bA, now: ticketBypass(firmA), bS });
   const ownerReply = await call(base, `${Q}/${t3}/replies`, tokens.owner, { body: "Sample: the Platform Owner answers" });
   ok("PF-17 DW5 pass: the Platform Owner (system/support:manage) replies too", ownerReply.status === 201 && statusOf(t3) === "WAITING_ON_FIRM", ownerReply.status);
   const m2 = msgs(t2), r2 = replied(firmS);
@@ -250,6 +258,9 @@ try {
     byName && elsewhere && elsewhereReply && unscoped && msgs(t2) === m1, { byName, elsewhere, elsewhereReply, unscoped });
   const noKey = await throwsLike(() => inRequest({ method: "POST", path: `${Q}/${t2}/replies` }, () => svc.reply({ staffId: "pf17s", keys: ["system/support:list"] }, t2, { body: "Sample" })), (e: any) => e?.status === 403);
   ok("PF-17 DW7 fail: the service itself refuses a reply without system/support:manage (403), whatever the route's guard did", noKey && msgs(t2) === m1);
+  const noList = await throwsLike(() => inRequest({ method: "GET", path: Q }, () => svc.list({ staffId: "pf17s", keys: ["system/support:manage"] }, {})), (e: any) => e?.status === 403);
+  const noOne = await throwsLike(() => inRequest({ method: "GET", path: `${Q}/${t2}` }, () => svc.one({ staffId: "pf17s", keys: [] }, t2)), (e: any) => e?.status === 403);
+  ok("PF-17 DW7 fail (review m2): the service itself refuses the queue and one ticket without system/support:list (403), whatever the route's guard did", noList && noOne, { noList, noOne });
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

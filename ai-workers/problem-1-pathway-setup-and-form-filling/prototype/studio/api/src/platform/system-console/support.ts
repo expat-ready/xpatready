@@ -7,11 +7,11 @@
 // file (support.bypass.ts): the queue's (one firm-less line per call) and one ticket's (that ticket's firm's own line, for
 // a read and for a reply). The reply is PF-18b's own SupportService.replyAsSupport, in this use's transaction: it writes
 // the SUPPORT message, moves the ticket to "Waiting on firm" and writes its audit line on the firm's trail; a closed
-// ticket is refused (409) and a blank body is the same 422 the firm gets. PF-4s's guard writes the one line naming the
-// staff member and the route for every call, allowed or refused.
+// ticket is refused (409) and a blank body is the same 422 the firm gets. That line's actor is the staff member's own
+// ourstaff:<id> (AUD-3a). PF-4s's guard writes the one line naming the staff member and the route for every call.
 // Order (SA-10 §3.2; SA-10's WAITING_FOR_CUSTOMER "drops below unanswered tickets in the queue"): tickets waiting on us
 // (OPEN, WAITING_ON_SUPPORT) first, then those waiting on the firm, then closed; inside each, the one waiting longest
-// first (updated_at: a ticket's status and updated_at change with each message, PF-18b's trigger).
+// first (updated_at: Prisma's @updatedAt, set by PF-18b's ticket update with each reply or firm message; review m3).
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -103,7 +103,8 @@ export class SystemSupport {
       const [found] = await tx.$queryRaw<{ firmId: string }[]>`SELECT firm_id::text AS "firmId" FROM platform_support_ticket WHERE id = ${ticketId}::uuid`;
       if (!found) return notFound();
       await touchFirm(tx, found.firmId);
-      await this.d.support.replyAsSupport(tx, { ticketId, body: v.data.body as string });
+      // AUD-3a: in our staff's request the firm's line names the person, ourstaff:<id> (the request scope's own word).
+      await this.d.support.replyAsSupport(tx, { ticketId, body: v.data.body as string }, `ourstaff:${c.staffId}`);
       const [row] = await this.rows(tx, { status: null, firm: null, id: ticketId, offset: 0 });
       return this.ticket(tx, row!);
     }));
