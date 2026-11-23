@@ -1,6 +1,6 @@
 import * as React from "react";
 import { RunChip } from "@/components/run-card";
-import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Activity, BookOpen, Boxes, CheckSquare, ChevronDown, DoorOpen, Scale, Database, FileStack, FileText, Inbox, Layers, ListTree, Moon, RotateCcw, Sparkles, Sun, Upload } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +34,7 @@ import { Frame, PersonNotice, PersonPicker } from "@/components/frame";
 import { SignInPage } from "@/pages/sign-in";
 import { personOf } from "@/lib/simulated-people";
 import { moduleRoutes } from "@/modules";
+import { WorkspaceRouter } from "@/components/workspace";   // PF-31: one router per workspace tab
 
 export default function App() {
   // BK-3: every route renders through the one Frame (components/frame.tsx): the Studio below, the case area (runtime
@@ -41,7 +42,8 @@ export default function App() {
   // simulated people.
   // BK-4a: the sign-in page (P-484 (3): a page, not a gate), one notice for every change of person, and a stored person
   // this workspace does not know goes to the sign-in page (BR-6) instead of a refusal on every screen.
-  return <BrowserRouter><PersonNotice /><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/clients/*" element={<KnownPerson><ClientsApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></BrowserRouter>;
+  // PF-31: the notice sits outside the workspace router, so it is mounted once, not once per open tab.
+  return <><PersonNotice /><WorkspaceRouter><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/clients/*" element={<KnownPerson><ClientsApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></WorkspaceRouter></>;
 }
 
 /** BK-4a BR-6: a person chosen in this browser who is not one of the simulated people opens the sign-in page. A browser
@@ -80,7 +82,7 @@ function Shell() {
   const here = nav.find((n) => n.match ? n.match(loc.pathname) : loc.pathname.startsWith(n.to)) ?? (loc.pathname === "/release" ? { label: "Review and release" } : loc.pathname === "/start" ? { label: "Starting points" } : undefined); // BK-5: Demo › Starting points
   React.useEffect(() => { document.title = here ? `${here.label} · Product Studio` : "Product Studio"; }, [here?.label]);
   return (
-    <Frame area="studio" title="Product Studio" subtitle="Pathway Configurator" home="/" staff={!casePerson}
+    <Frame area="studio" workspace title="Product Studio" subtitle="Pathway Configurator" home="/" staff={!casePerson}
       badge={<Pill tone="warn" className="ml-1 hidden lg:inline-flex" title="Working prototype on a local demo database: simulated people signed in by role, no passwords, not production">Prototype · demo workspace</Pill>}
       controls={<>
         <RunChip />
