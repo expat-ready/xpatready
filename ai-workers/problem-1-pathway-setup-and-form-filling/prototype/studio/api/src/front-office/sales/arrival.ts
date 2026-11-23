@@ -10,6 +10,7 @@ import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { conflict, notFound, UUID, written, type Tx } from "./common.ts";
 import { eligible, NO_RULE, placeNewLead, type Placement } from "../assignment/place.ts";
+import { notePairs } from "../duplicates/merge/review.ts";
 import { livePersonId } from "../duplicates/merge/follow.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
@@ -101,6 +102,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     match = await possibleMatch(tx, firmId, a.person);
     personId = randomUUID();
     await tx.foPerson.create({ data: { id: personId, firmId, givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null, phoneReadable: a.person.phone?.readable ?? true, createdBy: a.actor } });
+    // FO-9b part 2 (concept M8): the new person's pairs go on the duplicate review list; a failure never refuses the arrival.
+    await tx.$executeRaw`savepoint fo_dup_pairs`; try { await notePairs(tx, firmId, personId); await tx.$executeRaw`release savepoint fo_dup_pairs`; } catch { await tx.$executeRaw`rollback to savepoint fo_dup_pairs`; }
   }
   let owner = a.ownerStaffId ?? null, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null = null;
   // FO-10 part 2 (AG-2-85 rules 1(b), 18): a lead born from a one-to-one booking is its host's, whatever any rule says;

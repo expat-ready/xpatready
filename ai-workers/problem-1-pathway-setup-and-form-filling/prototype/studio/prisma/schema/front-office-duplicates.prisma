@@ -6,7 +6,7 @@
 // front-office-sales.prisma). firm_id, survivor_id and loser_id are plain uuids checked by the merge service (so this area
 // edits no other file's back-relations). Rules Prisma cannot say are in the migration (fo_dup_ functions): a merge record
 // is written once; its only change is the Undo stamp (undone_at, undone_by from empty, once); never deleted or truncated.
-// Part 2 adds fo_dup_review (the review list) here.
+// Part 2: fo_dup_review, the review list (one row per pair; never deleted; fo_dup_ function in its migration).
 
 /// Which kind of record a merge joined (AG-2-16 rule 8: two persons or two companies, never one of each).
 enum FoDupKind {
@@ -18,25 +18,58 @@ enum FoDupKind {
 /// full row, the survivor's replaced values and every row the merge moved, copied or changed, so Undo puts back exactly
 /// those. Written once; Undo stamps undone_at and undone_by once.
 model FoDupMerge {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  firmId         String    @map("firm_id") @db.Uuid
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId         String        @map("firm_id") @db.Uuid
   kind           FoDupKind
-  survivorId     String    @map("survivor_id") @db.Uuid
-  loserId        String    @map("loser_id") @db.Uuid
+  survivorId     String        @map("survivor_id") @db.Uuid
+  loserId        String        @map("loser_id") @db.Uuid
   /// The loser's row as it was, and every row moved, copied or changed by table (service.ts MergeSnapshot).
-  loserSnapshot  Json      @map("loser_snapshot")
+  loserSnapshot  Json          @map("loser_snapshot")
   /// The survivor's merge fields before the merge (Undo puts them back).
-  survivorBefore Json      @map("survivor_before")
+  survivorBefore Json          @map("survivor_before")
   /// Field → SURVIVOR | LOSER, as applied (the caller's choices, defaults elsewhere).
   choices        Json
-  automatic      Boolean   @default(false)
+  automatic      Boolean       @default(false)
   reason         String?
   by             String
-  at             DateTime  @default(now()) @db.Timestamptz
-  undoneAt       DateTime? @map("undone_at") @db.Timestamptz
-  undoneBy       String?   @map("undone_by")
+  at             DateTime      @default(now()) @db.Timestamptz
+  undoneAt       DateTime?     @map("undone_at") @db.Timestamptz
+  undoneBy       String?       @map("undone_by")
+  reviews        FoDupReview[]
 
   @@index([firmId, survivorId])
   @@index([firmId, loserId])
   @@map("fo_dup_merge")
+}
+
+/// Where a review pair stands (FO-9b part 2; P-574 (2)): waiting, merged (by a person or by itself), or kept apart.
+enum FoDupReviewStatus {
+  OPEN
+  MERGED
+  KEPT_SEPARATE
+}
+
+/// One pair of records that may be the same person (FO-9b part 2; AG-2-78, AG-2-96; P-574 (2) "a duplicate review list
+/// with a match score"): the pair in id order (unique per firm), the score and reasons of the match, when it was first
+/// seen, and the decision. An Undo of the merge opens the pair again. Never deleted.
+model FoDupReview {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId      String            @map("firm_id") @db.Uuid
+  kind        FoDupKind         @default(PERSON)
+  lowId       String            @map("low_id") @db.Uuid
+  highId      String            @map("high_id") @db.Uuid
+  /// 0-100, ports/matching.ts matchScore.
+  score       Int
+  /// The match's reasons (ports/matching.ts MatchReason[]): EMAIL, PHONE, NAME with its similarity.
+  reasons     Json
+  firstSeenAt DateTime          @default(now()) @map("first_seen_at") @db.Timestamptz
+  status      FoDupReviewStatus @default(OPEN)
+  decidedBy   String?           @map("decided_by")
+  decidedAt   DateTime?         @map("decided_at") @db.Timestamptz
+  mergeId     String?           @map("merge_id") @db.Uuid
+  merge       FoDupMerge?       @relation(fields: [mergeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, lowId, highId])
+  @@index([firmId, status])
+  @@map("fo_dup_review")
 }
