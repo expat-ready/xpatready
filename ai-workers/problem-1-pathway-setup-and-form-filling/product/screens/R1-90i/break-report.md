@@ -1,9 +1,7 @@
 # R1.90 invited sign-up (API only): break report
 
 PR #3040, branch `claude/runtime-r190-invited`, head `bacf188d8a9aa8bf1bdb3afd9f94728775457b9a`. The copy was isolated as `brk_r190i` on :4436 (`PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local`), with the API connecting as `xr_app`. It cost US$0: no Stripe and no live AI. The author's `check_r190_invited_signup.ts` passed 11/11 on that copy before the attacks. The attack scripts were kept outside the repo, and each POST was sent from its own loopback source address (127.0.x.y) so the per-IP limit did not hide results. Paths below are under `prototype/studio/`.
-
 ## Blockers: none
-
 ## Majors
 **M1. A badly formed token gets a 500, not the one 404. This is a PF-28 break on a public door.**
 - How to reproduce:
@@ -24,7 +22,6 @@ PR #3040, branch `claude/runtime-r190-invited`, head `bacf188d8a9aa8bf1bdb3afd9f
   - For comparison, `POST /api/public/signup/verify` with an unknown token adds one line `{step:"signup.verify-refused", key:null}` (143 → 144).
 - Expected: one firm-less line for each bypass read, refused ones included. This is the Lead 15 ruling on #2814 that the verify door follows (signup.ts:285-293). It is also P-607 (3), "no action without its audit line". `liveLink` itself writes `touchPlatform(tx, {step:"signup-link.open", key: row?.id ?? null})` for exactly this case.
 - Why it happens: in `liveLink` (signup.ts:238-243), `throw notFound()` happens inside the same `$transaction` that wrote the line. The rollback removes the line for every unknown, used and expired token, so only live opens are recorded. The operations log line (`platform_bypass` in api.log) remains, but the audit trail has nothing.
-
 ## Minors
 **m1. A failed staff call is logged as ALLOWED, and the line never names the link.**
 - What happens: `POST /api/system/signup-links` from an Owner gets 422 for an unknown planCode, for `period:"WEEKLY"`, for an extra key `firmId`, or for a bad email. Each one still writes `plat_system_audit outcome=ALLOWED, code=null`, though nothing was made. The line written for a real 201 has `target={}`: no link id and no email.
@@ -46,7 +43,6 @@ PR #3040, branch `claude/runtime-r190-invited`, head `bacf188d8a9aa8bf1bdb3afd9f
 **m4. The audit line for a firm made from a link says it came from self-serve, and does not name the link.**
 - What happens: the `firm.created` summary reads "Firm created by self-serve sign-up (setting up)" for a firm made from an invite. No audit line names the link id, or the staff member who made it.
 - Where: signup.ts:314.
-
 ## What held
 - **Who can make links:** of the six PF-4s roles plus a staff member with no role, only Platform Owner and Admin got 201. Support, Billing, Content publisher, Auditor and the no-role member got 403 `MISSING_PERMISSION`.
 - **Other tokens and sessions:** a firm Owner token got 403. No token, a junk token and `x-actor` alone each got 401. Upper-case paths kept the same results. A staff token on `/api/public/signup/:token` got 403 from the wall. Signing in without the second step (`secondStep:false` or missing) got 401 `TWO_STEP_REQUIRED`, so no token was issued.
@@ -62,7 +58,6 @@ PR #3040, branch `claude/runtime-r190-invited`, head `bacf188d8a9aa8bf1bdb3afd9f
 Verdict: Changes bacf188d8a9aa8bf1bdb3afd9f94728775457b9a
 ## Round 2: head `0eb3cdb1410f7afcbe97e960cf61cb06e5879a27`
 Reviewed: the diff since bacf188d only. Copy: `brk2_r190i` on :4436, now stopped and dropped. The author's check passed 17/17 on it.
-
 ### Blockers: none. Majors
 **R2-M1. Round-1 M1 is only partly fixed: a token that decodes to a valid shape still gets a 500.**
 - Reproduce: `GET` or `POST /api/public/signup/%41AAAA…` (`%41` followed by 42 `A`). Also any token made only of `%41`, `AAAA…%2D`, or a **live** token with its first character percent-encoded. Each gives 500, and api.log shows `level:error` at `asBypass (firm-scope.ts:285)`.
@@ -75,13 +70,11 @@ Reviewed: the diff since bacf188d only. Copy: `brk2_r190i` on :4436, now stopped
 - What happens: at line 167, the new `// Lead 6 on #3040…` comment sits in the middle of the `j(...)` call, so the rest of the call (body, `tok`, `)`) is commented out.
 - Reproduce: an esbuild transform fails at 168 `Unexpected "const"`.
 - Result: walks.yml runs the journeys a PR changes, so j_90 stops before W1, not just at W4.
-
 ### Minors
 - **R2-m1. Anyone holding a used link can add lines to the firm's own trail.**
   - What happens: each refused open of a used link now writes a `platform.bypass` line with that firm's `firm_id`. In my runs, 25 timing opens left 29 lines on that firm's trail. The limit is 30 per IP per window, with no cap per link.
   - Risk: low, since the person holding the link is usually that firm's Owner.
 - **Round-1 m1 and m2 stand.** The coordinator chose to leave both as Minors.
-
 ### What held in round 2
 - **Audit lines per refusal (each counted on its own):**
   - Live, unknown and expired-unused links: one firm-less `signup-link.open` line, on both GET and POST.
@@ -97,3 +90,20 @@ Reviewed: the diff since bacf188d only. Copy: `brk2_r190i` on :4436, now stopped
 - **rollback.sql:** applied cleanly on the copy and dropped exactly the 3 added columns, with the FK and the index. Re-applying `migration.sql` restored them.
 
 Verdict: Changes 0eb3cdb1410f7afcbe97e960cf61cb06e5879a27
+## Round 3: head `3b13faf61c560179ea6ae8cbdd04714be51d5067` (diff since 0eb3cdb1; copy `brk3_r190i` on :4436, stopped and dropped)
+Author's check: 17/17, including IS6's two new encoded tokens. `tests/journeys/j_90.ts` parses again (esbuild transform OK), so **R2-M2 is fixed**.
+- **R2-M1 is fixed.** Each case below was sent as both GET and POST.
+  - `%41`+42 `A`, `%41` ×43 and `A…%2D` now get the one 404. **No 500s** appear in api.log for the whole run.
+  - A live token with its first character percent-encoded (upper- or lower-case hex), or fully encoded, now works as the link: GET 200 shows the email, and the form gets 202 and makes 1 pending.
+  - Every round-2 malformed case still gets the 404: 65, 401 and 4000 characters, `%41`×140 (420 raw), dot, tilde, `%00`, `%2F` (inside and splitting a live token), `é`, zero-width characters, `;x`, `%2E%2E`, `..%2Fverify`, an encoded `verify`, and a 43-character token with a trailing slash.
+- **The widened pattern `[^/]{1,400}` lets nothing new through.**
+  - Only signup.ts calls `platform.firms.signup` (sign-up, verify, and the invite page and form). `platform.account.mail` is entered only inside it.
+  - A second segment (`/<tok>/x`, `/<live>/verify`) is answered by Express's own 404 ("Cannot GET"), so no handler and no bypass run.
+  - A verify body POSTed to an encoded `verify` or to `VERIFY` reaches the token door: 404, no firm. `verify/` with a slash is the real verify, as before this PR.
+  - A bare `%` or `%zz` gets Express's own 400 "Failed to decode param". This is the framework's answer on every param route, not this door's, and not a 500.
+- **Round-2 checks re-run with no change:**
+  - Lines per refusal: unknown, expired and live: 1 firm-less line each. Used: 1 line on the firm's trail. Bad body or malformed token: 0. Gone at Confirm: 1 `verify-link-gone` per try, with no firm and the link unused.
+  - Limits: the page limit gives 30 × 404 then 429. Its key does not touch the self-serve or verify limits in either direction.
+  - Timing and words: 404 bodies are identical, with medians of 9.4, 8.8 and 10.1 ms.
+- **Still open, all Minors:** R2-m1 (a used link's lines on the firm's trail, capped per IP), and round-1 m1 and m2. These are the coordinator's decisions.
+Verdict: Approve 3b13faf61c560179ea6ae8cbdd04714be51d5067
