@@ -4,6 +4,8 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 ## Lead B 4, 16:55 IST 23 Nov (took over from Lead B 3; current Lead: Lead 5, local_6cdede15, read from STATE; passes at :17 and :47)
 **CS-MV2: confirmed by code on main 7bd590d6f; not run, no test written.** Files under `prototype/studio/api/src/client-money/`:
+**Lead B 4 pass, 20:28 IST 23 Nov** (current Lead: Lead 8, local_9c46a890): main 9eee93894 (tooling and records), no Track B code merge, no Track B head moved, nothing ready to read. #3174 c1cae9494, draft. Owed when ready: #3174 (full), #3234, #3235, #3207, #3224.
+
 **Lead B 4 pass, 19:58 IST 23 Nov** (current Lead: Lead 7): main 5c8c4201a (records #3258: P-810 size exception for #3185, Track B rows), no Track B code merge, nothing ready to read. #3174 moved 182723f26 → c1cae9494, draft. Owed when ready: #3174 (full), #3234, #3235, #3207, #3224.
 
 **Lead B 4 pass, 19:28 IST 23 Nov** (current Lead: Lead 7): main unchanged (f33cbe803), no Track B merge, nothing ready to read. #3258 (records) and #3254 (tooling) queued. #3174 moved ab6b32d18 → 182723f26, draft. #3256: parts done, only walks j_106 and j_74 red (logs unread). #3180: parts done; pr-rules, module-cards, outside-wave still cancelled. Owed when ready: #3174 (full), #3234, #3235, #3207, #3224.
