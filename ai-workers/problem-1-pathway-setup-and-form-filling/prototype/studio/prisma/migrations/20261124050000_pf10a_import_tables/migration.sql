@@ -224,7 +224,8 @@ BEGIN
   IF NOT EXISTS (
        SELECT 1 FROM "platform_staff" s JOIN "platform_role_grant" g ON g."firm_id" = s."firm_id" AND g."staff_id" = s."id"
         WHERE s."firm_id" = NEW."firm_id" AND s."id" = NEW."owner_staff_id" AND s."status" = 'ACTIVE'
-          AND g."role" = 'OWNER' AND g."ended_at" IS NULL) THEN
+          AND g."role" = 'OWNER' AND g."ended_at" IS NULL
+        FOR SHARE OF s, g) THEN   -- the person and the grant stay as read until this attestation commits (review m5)
     RAISE EXCEPTION 'plat_import_attestation: only an active Owner of the firm records the attestation' USING ERRCODE = 'insufficient_privilege';
   END IF;
   NEW."at" := clock_timestamp();

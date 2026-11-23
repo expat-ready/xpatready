@@ -101,6 +101,17 @@ try {
     refused(`insert into plat_import_attestation (id, firm_id, owner_staff_id, wording_version) values (gen_random_uuid(), '${firmA}', '${notOwnerA}', 'v1')`, /only an active Owner/));
   ok("PF-10a DW3 fail: another firm's Owner cannot attest for firm A (the (firm_id, staff_id) key)",
     refused(`insert into plat_import_attestation (id, firm_id, owner_staff_id, wording_version) values (gen_random_uuid(), '${firmA}', '${ownerB}', 'v1')`, /only an active Owner|foreign key/));
+  const attest = (staff: string) => `insert into plat_import_attestation (id, firm_id, owner_staff_id, wording_version, at) values (gen_random_uuid(), '${firmA}', '${staff}', 'v1', '2000-01-01')`;
+  ok("PF-10a DW3 fail: an Owner who is no longer active (deactivated) cannot record one (review m2)",
+    refused(`begin; update platform_staff set status = 'DEACTIVATED' where id = '${ownerA}'; ${attest(ownerA)}; rollback`, /only an active Owner/));
+  ok("PF-10a DW3 fail: a person whose Owner grant has ended cannot record one (review m2)",
+    refused(`begin; update platform_role_grant set ended_at = now(), ended_by = 'seed:pf10a', end_reason = 'Sample' where firm_id = '${firmA}' and staff_id = '${ownerA}' and role = 'OWNER'; ${attest(ownerA)}; rollback`, /only an active Owner/));
+  ok("PF-10a DW3 pass: a backdated time is replaced by the database's (review m2)",
+    sql(`begin; ${attest(ownerA)} returning (at > now() - interval '1 hour')::text; rollback`).split("\n").includes("true"));
+  ok("PF-10a DW3 pass/fail: as the app in firm A's session the Owner records one; for firm B's firm it is refused (review m2)",
+    (() => { const id = uuid(); asApp(firmA, `insert into plat_import_attestation (id, firm_id, owner_staff_id, wording_version) values ('${id}', '${firmA}', '${ownerA}', 'v1')`);
+      return sql(`select count(*) from plat_import_attestation where id = '${id}'`) === "1"
+        && refusedAsApp(firmA, `insert into plat_import_attestation (id, firm_id, owner_staff_id, wording_version) values (gen_random_uuid(), '${firmB}', '${ownerB}', 'v1')`, /row-level security|firm|permission denied/); })());
   ok("PF-10a DW3 fail: an attestation refuses update", refused(`update plat_import_attestation set wording_version = 'v2' where id = '${attA}'`, /written once, never changed or removed \(UPDATE refused\)/));
   ok("PF-10a DW3 fail: an attestation refuses delete", refused(`delete from plat_import_attestation where id = '${attA}'`, /written once, never changed or removed \(DELETE refused\)/));
   ok("PF-10a DW3 fail: an attestation refuses truncate", refused(`truncate plat_import_attestation cascade`, /never changed or removed \(TRUNCATE refused\)/));
@@ -156,8 +167,9 @@ try {
   // ------------------------------------------------------------------------------- a batch's facts never change
   sql(`update plat_import_batch set state = 'DRY_RUN_READY', dry_run_hash = '${"b".repeat(64)}', error_count = 2, created_count = 1 where id = '${bA}'`);
   ok("PF-10a pass: a batch's state, dry-run hash and counts change", sql(`select state || ':' || error_count from plat_import_batch where id = '${bA}'`) === "DRY_RUN_READY:2");
-  ok("PF-10a fail: a batch's file hash, file key, target or importer never change",
-    ["file_sha256 = '" + "c".repeat(64) + "'", "file_key = 'import/other.csv'", "target_key = 'company'", `importer_staff_id = '${notOwnerA}'`]
+  ok("PF-10a fail: a batch's file hash, file key, target, importer, source, file kind and created time never change",
+    ["file_sha256 = '" + "c".repeat(64) + "'", "file_key = 'import/other.csv'", "target_key = 'company'", `importer_staff_id = '${notOwnerA}'`,
+     "source_name = 'Another export'", "file_kind = 'XLSX'", "created_at = '2020-01-01'"]   // all seven columns the trigger names (review m3)
       .every((set) => refused(`update plat_import_batch set ${set} where id = '${bA}'`, /never change/)));
   ok("PF-10a fail: a hash that is not 64 lower-case hex, a negative count, or a mapping that is not an object is refused",
     refused(`update plat_import_batch set dry_run_hash = '${"B".repeat(64)}' where id = '${bA}'`, /plat_import_batch_facts/)

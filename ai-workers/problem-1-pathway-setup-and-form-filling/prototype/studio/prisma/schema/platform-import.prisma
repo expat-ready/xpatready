@@ -1,6 +1,6 @@
-// platform-import.prisma — import batches: the tables of the one import engine (PF-10b) that every area registers its
-// targets with (PF-10t: people, companies and leads). Owner: Lead B (platform, P-559). Row PF-10a (map row 35; AG-18 §7;
-// AG-18-11, -12, -15, -39, -49, -52, -54, -56).
+// platform-import.prisma — import batches, the tables of the one import engine (PF-10b). Owner: Lead B (platform, P-559).
+// Every area registers its targets with that engine (PF-10t: people, companies and leads). Row PF-10a (map row 35; AG-18
+// §7; AG-18-11, -12, -15, -39, -49, -52, -54, -56).
 //
 // Rules Prisma cannot say are pf_import_ triggers, functions and checks in this row's migration (prisma/migrations/
 // <stamp>_pf10a_import_tables): a row's reasons are a list of {field, rule} names only, never a value (AG-18-12); an
