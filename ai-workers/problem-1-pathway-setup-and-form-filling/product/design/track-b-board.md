@@ -4,6 +4,8 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 ## Lead B 4, 16:55 IST 23 Nov (took over from Lead B 3; current Lead: Lead 5, local_6cdede15, read from STATE; passes at :17 and :47)
 **CS-MV2: confirmed by code on main 7bd590d6f; not run, no test written.** Files under `prototype/studio/api/src/client-money/`:
+**Lead B 4 pass, 00:00 IST 24 Nov** (current Lead: Lead 11): main 5c9b15ed4; #3180, #3189, #3185 queued. Reads: #3207 FO-6d part 1 OK 8f418c028 (contains #3065); #3289 PF-18n part 2 OK cf2d62139 (ci red); #3209 AUD-3 part 1 code OK 8c19e203e, **but its start-up rule stops the app on any staff route with no declaration: #3189, #3185, #3040 add some, so order first**; #3040 137ab4a6f re-stamp clean, still not OK until #3296 AUD-3c. Owed when ready: #3296, #3276 (5a8665e8f), #3174 (2256fb007, full), #3234, #3235, #3224. Disk 7.1 GB.
+
 **Lead B 4, 23:46 IST 23 Nov** (current Lead: Lead 11, local_5f4a7ece): stamp table: **#3207 is 20261123213000 (right after #3185 210000, before #3033 220000; Lead 11)**, read its migration and permissions on the re-stamped head; #3224 and #3220 carry the same folder. #3185 is labelled; #3155's label is off. #3040 is with the R1.90 screen lane; the AUD-3 lane has the touchFirm and workspaceId points.
 
 **Lead B 4, 23:40 IST 23 Nov:** Lead 10 ruled on #3040 (a narrow firm-less audit entry kind, its own PR by the AUD-3 lane, lands first). Lead B adds: `touchFirm` has the same fault. **#3155 (cd306cb67) and #3225 (f1829d063) OKs withdrawn** for the same reason: both call touchPlatform and touchFirm in our staff's requests, bases before AUD-3a (code path, not run). 060000 is free. #3209 808e732a9 waits for its Approve.
