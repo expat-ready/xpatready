@@ -143,3 +143,42 @@
 - **Gate entry 23** meets P-587 (3), with the decision left to the Lead.
 
 **Verdict: Block.** Fix before Approve: R2-B1, with its test. The Minors are the builder's call.
+
+---
+
+# Round 3
+
+**Reviewed head:** `61f5503630d2c935d9a033c225c3104c2b56984f`. Only `git diff 2261b901e9731e989dc5c2fb0837797ce827f7d7..61f5503630d2c935d9a033c225c3104c2b56984f` was reviewed: `resumable-upload.ts` and the suite (+3 tests). The scope is the Lead's round-3 allowance. **Verdict: Block.**
+
+**How I checked it.**
+- **The suite:** `tests/check_pff2_resume_browser.ts` passed 27, failed 0.
+- **Probes:** I ran a probe harness built from the suite's own set-up, in the ignored `studio/var/`, deleted afterwards. For a real server error after the body, it replaced `UploadRail.store.write` with one that reads the PATCH body to the end and then throws, so the rail answers 500. Its results are quoted below.
+- **Ports:** the suite and my probe used `listen(0)`, a random local port. Nothing used :4400.
+
+## R2-B1: fixed for errors at finish, still open for a server error after a PATCH's body was sent
+
+- **Fixed for finish errors (probe R3).** `FilesPort.put` always fails, default delays, a 25 s window. Requests ran at 0.25, 1.3, 4.3, 9.3 and 19.4 s, 16 in all. The page then showed "The upload could not be finished. Try again in a moment; what you sent so far is kept." DW8k proves the same and that `retry()` then completes.
+- **Still open: a real mid-file 5xx.**
+  - **Cause.** `onProgress` resets `failures` when `sent > base`. But `sent` counts bytes the browser has handed to the network (XHR upload progress), not bytes the server accepted. So any PATCH whose body goes out before the server answers 5xx resets the delays, and the loop has no delay again.
+  - **Examples:** a disk-full or staging write error answered 500 by the rail's `#words`; a load balancer's 502 or 504 after the upload.
+- **Reproduced.**
+  - **R1:** every PATCH after the first is read to the end, then answered 500; default delays; an 8 s window. **939 requests**: `HEAD` and `PATCH:262144` about every 10 ms. Each one re-sends a 256 KB chunk, so about 120 MB went in 8 s from one tab. The words stayed "21%" and never showed the server's words.
+  - **R2:** delays [0, 150, 300], a 4 s window. **540 requests**, the same pattern.
+- **Why DW8k misses it.** Its 503 case uses `route.fulfill`, which answers before the browser sends the body. No upload progress fires, so it cannot see this. It is the same scenario as round 2's H2, now with a real server answer.
+- **Fix (one line).**
+  - **The change:** reset `failures` only on the server's own acceptance, that is, in tus-js-client's `onChunkComplete(chunkSize, bytesAccepted)`, which runs only after a 2xx PATCH answer. Drop the reset from `onProgress`. The offset in a HEAD answer above the previous attempt's offset may also count.
+  - **The test:** replace `rail.store.write` with one that reads the body to the end and then throws (a real 500 after the body). Assert at most N requests, a growing gap between attempts, and the server's words at the end. It fails on this head.
+
+## The rest of round 3
+- **r2-n2, fixed.** tus's plain-text 409 is tried again through a fresh HEAD; our problem+json 409 stays final (DW8e).
+- **r2-n3, fixed.** `retry()` returns `latest` when the upload is running, stopped or done.
+- **r2-n4, fixed.** The confirm `fetch` has a stall timeout, and `abort()` cancels it.
+- **The 410 with no body** now gets the expiry words. Right: a HEAD answer has no body.
+- **r2-n1, still open. Minor, not blocking.**
+  - **Why the fix does not reach it:** the new `!e.originalRequest` branch does not catch a browser read failure. tus-js-client's browser `FileSource.slice` only slices the `Blob`, and the bytes are read when the XHR sends it. So a moved or revoked file still fails as a network error with a request (status 0) and loops as "Upload paused: reconnecting".
+  - **Fix:** check the read itself (for example, `await file.slice(offset, offset + 1).arrayBuffer()` after a status-0 failure). If it throws, say "The file could not be read. Choose it again."
+- **New Minor r3-n1: `AbortSignal.any` needs Safari 17.4 or later (March 2024).**
+  - **Failure scenario:** on an older iPhone, `confirm()` throws a TypeError. It is caught as "no answer", so a lost final answer loops forever as "paused".
+  - **Fix:** fall back to `AbortSignal.timeout` alone, or to one controller with a `setTimeout`, when `AbortSignal.any` is missing.
+
+**Verdict: Block.** Fix before Approve: R2-B1 for a server error after the body (reset the delays in `onChunkComplete`), with the test above. r2-n1 and r3-n1 are the builder's call.
