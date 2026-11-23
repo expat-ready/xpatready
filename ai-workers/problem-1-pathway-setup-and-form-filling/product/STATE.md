@@ -6,17 +6,15 @@ updated: 2026-11-23 11:25 IST: Lead 1 on the new account (check 2cc39209), re-br
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
-## Hand-over Lead 9 → Lead 10, 09:3x IST 23 Nov (Lead 9 at ~440k, ~320k beyond its start read, P-446; the Lead 9 block before this: word for word in `history/STATE-2026-11-23-0940-lead9-block.md`)
+## Lead 1 on the new account, 11:31 IST 23 Nov (the block before this, word for word: `history/STATE-2026-11-23-1131-lead1-before-new-account-block.md`)
 
-**Goal (founder, A289-A291):** finished capabilities proven, not merges; he asked 10-15/day; proposed today 8 by 07:00 IST 24 Nov (asked 09:3x, no answer yet). Plan page Version 5 https://claude.ai/artifact/2aNo4YH89N7CcJG7Jnx2Dn (source `design/two-track-plan-2026-11-22.html`; its "09:4x" stamps ran ahead of the clock, data read 09:20-09:37). 48/101 proven, +2 today (R1.102, R1.21); A 5/15, B 0/12; weekly 82% (76% at 02:27).
-
-Lead 10's 10:0x-10:21 work (demo restored, AWS session archived by mistake, lanes answered, #3175): word for word in `history/STATE-2026-11-23-1035-lead10-A291-and-1021-check.md`.
-
-**Started 09:57 IST (founder: "Yes, start them"):** Lead 11 standby (local_3a0c13fa, idle until "take over now"); cloud lanes requested (app creates them, default environment because the xpatready environment could not be read): PF-17 p1 finish #3155 (task_6be512c1), qa Track B 3 (task_6782788f), FO-9b part 2 (task_fab6c6cc). Next check: confirm each appeared in claude.ai/code on Opus 5.5 medium, and that the default environment runs suites (else ask him to Move session).
-
-Lead 9's "Do first", "At the founder's next typed turn", "Learned tonight" and Lead 10's first check: word for word in `history/STATE-2026-11-23-1045-lead10-lead9-handover-lines.md`.
-
-**Waiting on the founder:** restore the archived AWS staging proof session (Archived list) before the AWS sign-in; R1.92 lane (session_01Ln6TiPzgv1F4fXY7mcuxqb) "Move session" to the xpatready env (he said yes; the page ignores an automated press, he must press it); AWS root sign-in in the AWS session's browser + CodeBuild; Lead B 2's records PR (lead-b/2026-11-23-track-b-records @a1c2ce3ae: FO-7q part 2, FO-9b part 1m rows) yes/no; today's goal.
+**Goal (A295-A297):** 18 proven by 11:00 IST 24 Nov from 48/101 (`design/plan-24h-2026-11-23.md`; checkpoints 15:00 ≥3, 19:00 ≥7, 23:00 ≥11). Weekly 0% at 11:24, resets 22:30 IST 29 Nov. Open contribution target 17:00-18:00.
+**Main fault, first:** `check_fo3st3_types_browser` (shard 10) fails on main 8f487df4b on a Monday ("No host hours"): full runs of #3065 and #2935 and batch 45116131668 failed only on it. Fix lane fix-fo3st3; land it ahead (P-214), then /run full on #3065, #2935, #3037, #2933, #3173 and label.
+**Requested 11:26-11:30 as cloud lanes (env xpatready, Opus 5.5 medium; NOT yet confirmed started, read claude.ai with Show more):** fix-fo3st3 · R1.104 #3184 · R1.70 #3180 · R1.86 #3185 · R1.105 #3195 · R1.46 #3179 · R1.92 PF-5s S5 · R1.29 #3174 · R1.24 QA-756 (+#3191) · R1.85 #3189 + PF-21d · R1.54 FO-6d/ds · R1.68 #3188 · R1.69 CS-D6 · R1.87 AUD-3 #3178 · R1.93 PF-17 rest · R1.90 invited screen · R1.56 #3197/#3190 · R1.58 #3033 · qa A4 · qa B4 · UX PF-31 · tool-a (open contribution) · tool-b (merge flow) · tool-c (close list) · R1.65 bucket gaps + web-address catch-up.
+**Local:** Lead B 3 `local_281c4e7e` (Track B reads), standbys Lead 2 `local_2158cd24`, Lead 3 `local_cf20dbb4`. No AWS session on this account: worktree `.claude/worktrees/focused-torvalds-075cb7` @61cd95852.
+**Rulings posted:** #3184 and #3174 round 3 allowed; #3179 starters as platform rows; #3183 qa judges R1.1, R1.13, R1.15 from the AWS report first.
+**Not started:** FO-9s parts 2-3 (the Lead owes 3 answers, #2896), R1.10 #2933 / R1.23 #3037 need only a green run and the label. Queued at 11:25: #3155, #3187, #3043-#3045.
+**Waiting on the founder:** AWS root sign-in for R1.5 (R1.1/13/15 done); RDS idles at ~US$0.18/h; R1.5 link path is the Lead's ruling, owed.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
