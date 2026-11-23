@@ -577,3 +577,70 @@ Could not check: c2f6d13af (it arrived during the review); a real screen reader;
 Reviewer: Block 9f2754207cdd532db0094c26e69e1a6e478821b1
 
 Verdict: Block 9f2754207cdd532db0094c26e69e1a6e478821b1 — fix M1, M2 (and m3-1, m3-2 in the same round if small).
+
+## Part 2, round 3 re-check (8927036b4)
+
+Scope: `git diff 9f2754207..8927036b4` only. Everything was run on a `git archive` copy of 8927036b4.
+
+**Verdict: Ship (Approve).** M1, M2, m3-1, m3-2 and m3-3 are closed, and so is the break report's P2R3-4. What remains is Minor.
+
+### What I ran
+* Row suite: **45/45**.
+* J-104 on isolated copy `rv104d` on :4436 (never :4400): **20/20**.
+* My round-3 probe again. **P3 now goes through FO-5's real `edit` and `signedOffline`**, where B10 writes the status straight to the table:
+  - FO-5 edit → DRAFT, and the catch-up sends A2.
+  - FO-5 records A1 as signed on paper (A1 SIGNED_OFFLINE, A2 SENT).
+  - By-booking shows A1, "Agreement signed", and **Attended answers 200**.
+  - After that the catch-up sends 0.
+  - P1 (the catch-up resends after a decline) and P2 (five at once → one fresh agreement) still hold.
+* Mutations on the copy:
+
+  | Mutation | Result |
+  |---|---|
+  | (C) In-lock re-check off | B11 red |
+  | (E) Catch-up filter back to "no agreement at all" | B2 red |
+  | (J) DRAFT taken out of ENDED_STATUSES | B11 draft red |
+  | `DECIDING_ORDER` back to newest-only | B10 red |
+  | Only the gate newest | B10 red |
+  | Only `ofBooking` newest | B10 red |
+  | Cap at the check off (`live.ts:56`) | B12 red |
+  | `holdWords` back to `HOLD_WORDS` | B7 server words red |
+  | `sendsFresh` always true | B7 other statuses red |
+  | Both caps off | B5 and B12 red |
+  | The cap at failure time alone off (`live.ts:63`) | 45/45 |
+  | `RETRIED` back to "any reason" | 45/45 |
+
+  The cap at failure time is now redundant: the check applies the same formula from `held.at`, so this is not a gap. `RETRIED` is m3-3's harmless-noise rule; see m3r-3.
+
+### Round-3 items
+* **M1: closed.** `DECIDING_ORDER` (signed, then waiting, then newest ended) is the one order for the hold, `ofBooking`, `send()`, the reschedule and the panel. `send()` sends only when the deciding agreement has ended, which is exactly when every agreement has, so it matches the catch-up's filter. Tested by B10 and confirmed through real FO-5 above.
+* **M2: closed.** B2 now gets its fresh agreement from the catch-up. B11 covers the race and the draft case.
+* **m3-1: closed.** The refusal's words follow the booking's status (`holdWords`). On No-show and Attended bookings they say to make a new booking (B7 server words).
+* **m3-2: closed.** The cap is read again at each check with the meeting's current time (B12 pass and fail).
+* **m3-3: closed.** Only NO_TEMPLATE, NO_LICENSED and NO_CLIENT_EMAIL back off.
+* **P2R3-4: closed.** Attended and Cancelled bookings get their own next step, and no promise of a fresh agreement.
+
+### New Minors (not blocking)
+* **m3r-1.** After M1's fix, the duplicate left by FO-5's edit (A2, still SENT once A1 is signed) still gets its own 24-hour reminder ("Agreement not signed yet", `service.ts:275`) and its "Needs you" item (`service.ts:366`). Both read only their own agreement's status. This happens only on that path, which the Lead accepted. Fix: skip both when the booking's deciding agreement is signed.
+* **m3r-2.** On a No-show, Attended or Cancelled booking whose agreement is still waiting, the panel still says "The client signs from the link in their email" (`agreement.tsx:46`). The client's link answers 404 for a booking that is no longer active, and the server's `HOLD_WORDS_INACTIVE` says so correctly. Fix: drop that sentence when `sendsFresh` is false.
+* **m3r-3.** `RETRIED` has no failing test (mutation above). It is low value: the cost of a regression is one warning line per catch-up.
+
+### Journey score, re-check (reviewer): 9.5/10. Pass, no criterion at 0
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J-104 20/20; P3 recovers through FO-5 |
+| Next step obvious | ½ | m3r-2 |
+| Plain words | 1 | |
+| Feedback and state | 1 | |
+| Correct data | 1 | Signed agreement shown and honoured |
+| Error recovery | 1 | |
+| Accessibility and sizes | 1 | W10 axe clean; only words changed |
+| Speed | 1 | |
+| Visual | 1 | |
+| Trust | 1 | |
+
+Could not check: a real screen reader; an intended user's own walk (D17 and D20 stay with the founder).
+
+Reviewer: Approve 8927036b47dc0ed68e25d61b89c8297ac4abf514
+
+Verdict: Approve 8927036b47dc0ed68e25d61b89c8297ac4abf514
