@@ -56,3 +56,43 @@ Breaker (Opus), 23 Nov 2026. Synth only: no AWS account, no UI. **What I tested:
 Reproduction scripts (scratch, not committed): `/tmp/claude-0/-home-user-xpatready/6a2a623c-c453-5d4d-b80e-79ed8ed94eb7/scratchpad/breaker1/{harness,attacks,cdknative,flags,onmain}.mts`.
 
 **Verdict: Block**: B1/B2 (= reviewer M1) and B3 are open Majors. B5–B8 are Minor.
+
+## Round 2: head 339e780ef
+
+**What I tested:** a copy of the committed head (`git archive 339e780ef`); the checkout was clean. I re-ran the same harness, all round-1 attempts, `cdknative.mts` and `flags.mts`, plus ten new attempts and two CDK-native ones aimed at the new rules (`attacks.mts` R2-1 to R2-10, `cdknative2.mts`).
+
+**`npm test` (deploy/cdk, head copy): exit 0 twice, 123 pass, 0 fail.**
+
+**Round-1 findings, re-run:**
+* **B1: fixed.** The migration-role policy gets 3 findings. Both CDK one-liners now get 1 finding each ("only the service's task role may use the files bucket or the data key").
+* **B2: fixed.** The service role's inline `Policies` get 3 findings.
+* **B3/B4: fixed.** B3 gets 9 findings and B4 gets 10. A second bucket named `AccessLogsBucketDEADBEEF` gets "2 access-log buckets, not 1".
+* **B5: fixed.** The prefix-scoped and tag-scoped 90-day rules get 2 findings each. A versioned log bucket gets 1.
+* **B6: fixed.** A prefix filter on the abort rule gets 1 finding per bucket.
+* **B7: fixed.** The split join gets 6 findings; the denies must now be exactly `<bucket>/*` (`checks.ts:210`).
+* **B8: fixed.** On the template synthesized with `cdk.json`'s context, every guard gives 0 findings (`flags.mts`); actions are compared as a set.
+
+**New findings, all Minor:**
+* **R2-1. Minor. The migration task can run as the service's task role and so hold the files grants.**
+  * Reproduction: in CDK, `(migration.node.defaultChild).addPropertyOverride("TaskRoleArn", task.taskRole.roleArn)`; or in the template, set `AppMigrate…`'s `TaskRoleArn` to `AppTaskTaskRole…`. Both pass every guard.
+  * Why: `filesTaskFindings` holds the grants to a *role* (`service-checks.ts:396`), not to the one task definition the service runs. No check says each task definition has its own task role.
+  * Impact is small: the same image by digest, run once per deploy, and it gains nothing the service lacks.
+* **R2-2. Minor. A second bucket policy on a data bucket can wipe the KMS put denies at deploy, and the guards still pass.**
+  * Reproduction: `new s3.BucketPolicy(stack, "Extra", { bucket: buckets.documents })` holding only a TLS deny. It synthesizes two `AWS::S3::BucketPolicy` resources for the documents bucket (`DocumentsBucketPolicy1F991BD4`, `Extra6C4EAC05`) and passes every guard.
+  * Why: S3 keeps one policy per bucket, so whichever CloudFormation writes last replaces the other. `bucketFindings` merges statements from every policy on the bucket (`checks.ts:205-207`).
+  * The TLS deny check has read policies this way since PF-8a; the new put denies inherit it. Suggestion: exactly one `BucketPolicy` per bucket.
+* **R2-3. Minor. The access-log bucket can lose its lines before 90 days.** An extra unfiltered rule `{Status: Enabled, ExpirationDate: "2026-12-01T00:00:00Z"}` on the log bucket passes. The "expire before 90 days" check (`checks.ts:221`) reads only `ExpirationInDays`.
+
+**What held in round 2:**
+* **Not caught, harmless:** an extra log-delivery Allow (B8, round 1) and a weaker link-key generator (B10b).
+* **Refused:**
+  * a new ECS-trusted role named by no task definition (bypass: 5 findings);
+  * a policy attached by a role-name string (6 findings);
+  * an exact files grant repeated with a `Sid` (1 finding);
+  * a filtered 1-day expiry on the log bucket (1 finding);
+  * a literal link-key `SecretString` (1 finding).
+* **Strict, not a gap:** the put denies written as a one-element array get 6 false findings.
+
+**Outside this PR:** an unfiltered `ExpirationInDays: 1` rule on a data bucket passes (R2-8). `bucketFindings` has never checked a data bucket's current-version expiry, and this row does not claim it.
+
+**Verdict: Approve**: no open Blocker or Major at head 339e780efe0c0c74b3c37f08fc1f5c3622d1c1be. R2-1 to R2-3 are Minor and optional.
