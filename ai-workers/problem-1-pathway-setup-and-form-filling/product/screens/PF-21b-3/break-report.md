@@ -95,3 +95,41 @@ data, but the "one person record" link can point at nothing.
 - **Non-English text:** CJK, Arabic and accented names are stored intact.
 
 Verdict: Changes 1b9733fd136dd842d024b92698db334aca9faf1d
+
+## Round 2 — head 0cda0efbf27edd1f545f039b021f53fea45ca3a5 (diff-only)
+
+I read only `git diff 1b9733fd1..0cda0efbf -- …/prototype/studio`. The branch has since moved to 0e8a6610f, a records-only commit that I did not review.
+**Set-up:** a `git archive` copy of the new head in the scratchpad. The row's suite passes: **27 passed, 0 failed**. The suites touched by the change
+also pass: `check_pf12_walls` **110/0** and `check_pf4s_system_signin` **102/102**. I re-ran my round-1 probes against that copy on a new scratch
+database, dropped afterwards. Port 4400 was not used.
+
+**Fixed:**
+- **M1, fixed.** With alerts down, a POST 40 days late and a POST 27 days late → **201 PENDING** each, with one row and one ALLOWED line apiece.
+  The next run with alerts up marks the late one OVERDUE and gives the near one its alert, one alert each, 0 failed.
+- **m1, fixed.** `REVOKE ALL` (migration.sql:106) leaves no table grants for anyone but the owner. Through xr_app, and xr_app → `xr_staff_bypass`,
+  every attempt is now **permission denied**: SELECT on both tables, a forged NEAR_DATE_ALERTED, a hand-set OVERDUE, and a direct INSERT.
+  The definers still work for xr_app (list → 3 rows, move → MOVED). The near alert is raised normally after these attempts.
+- **m2, fixed for the overdue alert.** 505 near-window requests plus 1 that is 15 days late: the late one is marked OVERDUE **on run 1**.
+  The console list still shows newest received first.
+- **m3, fixed for duplicates.** An alert that takes 6.5 s → one alert, the mark kept, nothing more on the next run. A POST log of a late
+  request with that slow alert → 201 OVERDUE after 6.5 s.
+- **m5, fixed.** At 22:30 Toronto on 24 Nov, receivedOn 25 Nov → 422 "cannot be in the future"; a completion gets `completedOn` 2026-11-24.
+  At 23:30 Toronto: a target of 23 Nov → overdue; a target of 24 Nov (today) → near only, not overdue.
+- **m8 comment, fixed.**
+- **The daily job's handler** now throws when a check failed (alerts down → "1 check(s) failed") and resolves when alerts work. Each failure is
+  logged as `data_request_check_failed`.
+
+**New and residual (all Minor, none blocking):**
+- **n1 — Minor.** Because checkOne's transaction now lives up to 60 s, a slow alert keeps the request's row locked. A staff move on that same
+  request, made while the alert is pending, waits on its own default 5 s transaction. It then answers **500** after 6.1 s, with a REFUSED line;
+  the request stays OVERDUE and nothing is half-written. This is the same shape as PF-21b part 2's m2. It needs an adapter slower than 5 s;
+  LogAlerts writes synchronously.
+- **n2 — Minor (m2 residual).** The due read is still capped at 501. Near-window requests that already have their near alert stay in that read,
+  ahead of others with the same target. With 505 in the window, run 1 raised 499 near alerts and run 2 raised 1, so 5 had none after two runs.
+  The overdue alert is never lost: older targets come first, and a marked overdue request leaves the read. This volume is unrealistic for our
+  own register.
+- **n3 — nit.** `log()` swallows checkOne's error without a log line (service.ts:107). The daily check retries it and logs it, so nothing is lost.
+- **Still open (not findings in this round):** m4, m6 and m7 are questions in the PR body. The m1 note about clearing `app.firm_id` inside a firm's
+  transaction is the platform's model, as in PF-21b part 2.
+
+Verdict: Approve 0cda0efbf27edd1f545f039b021f53fea45ca3a5
