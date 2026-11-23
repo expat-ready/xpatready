@@ -2,7 +2,7 @@
 
 current_lead: local_8f15b847-600b-4d76-abad-4545f757bd04 Lead 14 · 24 Nov 01:48 IST (took over from Lead 13 (local_def18400) near its 200k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 01:48 IST: hand-over Lead 13 to Lead 14
+updated: 2026-11-24 01:55 IST: Lead 14 took over, check e6e3f0ce. #3314 merged: RULES as of P-815 here. #3065 in the queue; #2935 waits on queue-fresh (main merged #2921 after its ci). Batches #3316, #3317, #3319 run, no red. #3308 answered: W1 is FO-7w1, no lane. Keep-awake was refused by the classifier in Lead 14's session: the Mac may sleep. Disk 5.7 GB.
 
 ## Hand-over Lead 13 → Lead 14, 01:48 IST 24 Nov (the page before, word for word, still owed where not repeated: `history/STATE-2026-11-24-lead13-before-handover.md`; order of 00:48 still in force: `history/STATE-2026-11-24-lead13-A338-row.md`)
 
@@ -11,7 +11,7 @@ updated: 2026-11-24 01:48 IST: hand-over Lead 13 to Lead 14
 **Queue:** #3314 alone; #3289+#3179, #3296+#3291, #3283+#3280; #3185 #2933 queued. Labelled by me now, watch label guard: #3065 #2935.
 **Next:** #3203 left on a conflict, its lane told · #3193 label off (second main element, cut tabs), lane fixing, then a full run and both batches covered · #3289 was in failed batch #3311 with it: the gate may ask for a covered line · #3296 then #3040 (merge main, R1.90) and #3202 · #3207 54041dca7 read OK, post the line only after #3065 and #3185 land, then its full run, #3224, #3220 · #3306 needs CS-W3 ALLOW (51, or 52 after #3203); FO-7b C5 scope fix (Major on R1.56) is the FO-7q lane's next PR; #3305 ready, counts only after it · #3303 round 4 is the last, then I decide · #3302 waits #3289 · #3219 (20261124090000), #3276, #3234, #3235, #3033, #3184, #3225, #3174, #3277: migration order, after #3185 · pf12 OWN list lacks plat_data_request_event: next PF-21 PR · #3318 answered, records.
 **Lead reads owed:** #3277 (with Scorecards), #3174 review.ts, the tus gate record on #3303, #3219's new head.
-**No lane:** CS-D5 part 2 (pdfjs gate), FO-5s later part, FO-7t parts 2-3; X-rows owed: AG-7-1 r11, AG-5-55, Licence/My account query-key crash, #3302's four follow-ups. Making the two guards (b164, irm) required in ci.yml: after the tooling list (#3313).
+**No lane:** FO-7w1 (R1.56 W1), CS-D5 part 2 (pdfjs gate), FO-5s later part, FO-7t parts 2-3; X-rows owed: AG-7-1 r11, AG-5-55, Licence/My account query-key crash, #3302's four follow-ups. Making the two guards (b164, irm) required in ci.yml: after the tooling list (#3313).
 **Sessions:** standbys Lead 15 local_610436f9, 16 local_c598a0e1, 17 local_e583f067, 18 local_799486c7; Lead B 5 local_bb33cf0e (hand-over in local_6cdede15's notes); Lead O 2 local_f6d6bb60; qa A 5 (session_01MXNda8oJbGMtZ6ov38m3BR), qa B 4 (01MXNda7YhUVUEMkU93gbfaj). My check d87020f3 is deleted. Disk 7-8 GB; 7 GB is the start limit.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
