@@ -423,7 +423,7 @@ export function diff(prev: Snapshot | null, next: Snapshot): Change[] {
   for (const [k, id, label, behaviour] of [["document_types", (x: any) => x.key, "Document type", true], ["derived_fields", (x: any) => x.id, "Derived definition", true]] as const) {
     const a = new Map(((prev?.[k] as any[]) ?? []).map((x) => [id(x), x])), b = new Map(((next[k] as any[]) ?? []).map((x) => [id(x), x]));
     for (const [key, x] of b) if (!a.has(key)) out.push({ kind: label, key, change: "added", needs_sme: behaviour, label: x.name ?? x.plain ?? key });
-      else if (canonical(a.get(key)) !== canonical(x)) out.push({ kind: label, key, change: "changed", needs_sme: behaviour, label: `${x.name ?? x.plain ?? key}: ${label === "Document type" ? `supplies ${(x.supplies_facts ?? []).map(factName).join(", ") || "no facts"}${x.sets?.length ? `; substitute sets: ${(x.sets as SnapSet[]).map((s) => `${s.name} (${setWords({ mode: s.mode, members: s.members })})`).join("; ")}` : ""}${x.default_provider_roles?.length ? `; provided by (when shared): ${(x.default_provider_roles as string[]).map(providerWords).join(", then ")}` : (a.get(key) as { default_provider_roles?: string[] } | undefined)?.default_provider_roles?.length ? "; provided by (when shared): not set (the person the item is for)" : ""}` : `inputs ${(x.inputs ?? []).join(", ") || "none"}`}` });
+      else if (canonical(a.get(key)) !== canonical(x)) out.push({ kind: label, key, change: "changed", needs_sme: behaviour, label: `${x.name ?? x.plain ?? key}: ${label === "Document type" ? `supplies ${(x.supplies_facts ?? []).map(factName).join(", ") || "no facts"}${x.sets?.length ? `; substitute sets: ${(x.sets as SnapSet[]).map((s) => `${s.name} (${setWords({ mode: s.mode, members: s.members })})`).join("; ")}` : ""}${x.default_provider_roles?.length ? `; provided by (when shared): ${(x.default_provider_roles as string[]).map(providerWords).join(", then ")}` : (a.get(key) as { default_provider_roles?: string[] } | undefined)?.default_provider_roles?.length ? "; provided by (when shared): not set (the person the item is for)" : ""}${defaultsLine(x, a.get(key))}` : `inputs ${(x.inputs ?? []).join(", ") || "none"}`}` });
     for (const [key, x] of a) if (!b.has(key)) out.push({ kind: label, key, change: "removed", needs_sme: behaviour, label: x.name ?? x.plain ?? key });
   }
   // W1-15 slice 1 (challenge M5): each choice over the rules' source and each Pre-qualification tick is named on Review,
@@ -470,4 +470,12 @@ export function isDemoSnapshot(raw: unknown): boolean {
 export function sampleContentProblems(s: Snapshot): (Problem & { gate: "sample-content" })[] {
   return s.checks.filter((x) => x.illustrative).map((c) => ({ level: "error" as const, where: "Checks", item: c.id, label: `Check "${String(c.message ?? c.id).trim()}"`, gate: "sample-content" as const,
     message: "Sample (saved without an official source quote). Sample content releases only in the demo workspace, as a Demo release. A real release needs its official source." }));
+}
+
+/** CS-D7c: a release that sets, changes or clears a type's defaults names them in words on the line the expert signs. */
+const RULE_W: Record<string, string> = { NOT_REQUIRED: "not required", REQUIRED_IF_NOT_EN_FR: "required when not in English or French", REQUIRED: "required" };
+function defaultsLine(x: { defaults?: { translation_rule: string | null; notarisation_rule: string | null; has_expiry: boolean | null; max_age_days: number | null; source_file: string | null } }, before: unknown): string {
+  const d = x.defaults;
+  if (!d) return (before as { defaults?: unknown } | undefined)?.defaults ? "; defaults: not set (behaves as before)" : "";
+  return `; defaults: translation ${d.translation_rule ? RULE_W[d.translation_rule] : "not set"}, notarisation ${d.notarisation_rule ? RULE_W[d.notarisation_rule] : "not set"}, ${d.has_expiry === null ? "expiry not set" : d.has_expiry ? "has an expiry date" : "no expiry date"}, ${d.max_age_days === null ? "no age limit set" : `no older than ${d.max_age_days} days`} (source: ${d.source_file ?? "none"})`;
 }
