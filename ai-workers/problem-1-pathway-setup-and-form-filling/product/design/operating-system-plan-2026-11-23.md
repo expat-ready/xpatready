@@ -102,3 +102,23 @@ Baseline, ci.yml, 22 Nov 11:30 to 23 Nov 11:30 IST: 150 batch runs, 84 green, **
 ## Founder answers relayed by Lead 2 (12:4x IST) and the order now
 Stay public until the final solution; **no combined PR: M7 and M8 land separately** (supersedes "Land as ONE" above); #2372 closes (Lead 3). Current Lead: Lead 3 (local_cf20dbb4).
 Order: #3208, #2971, then #2434, #2428, #2370, #2487; then the stack bottom up (#2982, #2598, #2457 fixed, #2483, #2431, #2605 guarded, #2785, #2607, #2599, #2590); then #2597, #2473 fixed, #2738, #2444 fixed; #2915; #2595; #3035 last.
+
+## Replay: what if the queue ran only affected suites? (evidence, no change; a lower gate is the founder's, P-651)
+Sample: 67 red batches, 22 Nov 11:30 to 23 Nov 11:30 IST (67 at this read; 66 earlier), every one with a suite that failed on both tries. Six have an unknown stack and are left out: 61 replayed. Method: `select-suites.mjs` on today's main with the PRs' current file lists (own and stacked); so approximate. 684 suites.
+
+| | Today | Normal pick | Direct pick |
+|---|---|---|---|
+| Red batches still caught | 61 | 56 (42 of them because it runs everything) | 54 |
+| **Escapes: red today, would go through** | 0 | **5** | **7** |
+| of these, the Monday test (main was red, #3208) | | 3 | 4 |
+| others | | 2 (`c69_page_browser`, `c41_section_order_browser`) | 3 (those and `pf30s_find_box_browser`) |
+| Share of suites run, mean over 157 batches | 100% | 55% | 35% |
+
+* Saving is in suites, own PRs only; minutes saved are less (set-up stays, browser suites are longer, stacked PRs add theirs). Not measured in minutes.
+* Escapes are found only among batches that were red: a fault that shows only in combination could be missed more often. The full set on main some hours apart would catch them later, after merge. Whether the 2-3 others are races or real faults is not classified.
+* **No-gate-cost alternative first:** #2938 was in all 12 red batches of its hour; 10 were other PRs' batches (about 5,950 minutes). Other repeat roots by minimum cover: #2987 (7 of 16 `forms_qa53`), #2927 (6 of 7 `pf21_complaints`), #3032 (6 of 7 `bypass_uses`). Cover shows which PRs could explain the failures, not proof of cause; #2938 also failed alone.
+* **Recommendation:** keep the full set in every batch. Cut the cascade (failed PR out until it passes alone; #2434 merged 13:22 IST is the first step) and re-measure over 24 hours before any gate change.
+
+## State 14:29 IST
+Merged (GitHub merged_at, IST): #2971 12:51, #2434 13:22, #3208 13:42, #2370 and #2487 14:19. Open: #2428. CPU measurement: 49 of 72 jobs ended, 2 red suites, 12 running.
+Founder 13:0x (card): B181 is the pilot of the private pack; safety gates answered first; build in M4 after the Bake.
