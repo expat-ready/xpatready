@@ -245,3 +245,51 @@ No Blocker, no Major. Both batch faults are fixed within the lead's limit, with 
 `Reviewer: Approve ec210cac8d71ab09bf588411815ab3f41415877d`
 
 Verdict: Approve
+
+## Round 6 (merge conflict): head `e41cb6200c7b03060f108c055023fabae589c70e` (merge of origin/main `d9954de6e` into the approved `8268c1c36`)
+
+Scope: only the three conflict resolutions and the one test change made with them (`git show e41cb6200 --cc`, each file diffed against both parents). Main's own changes (#3180 CS-D7 and the rest) were not reviewed. The tech lead's rule (comment 7112879070): keep both sides, and the census count must be the true number on the merged tree.
+
+**What I ran (this machine, at `e41cb6200`)**
+* `run-suites.sh --only "check_csw3_firm_scope.ts check_csd6_reads_browser.ts check_csd5_flags_browser.ts check_csd6_reads_keep.ts"`: check_csw3_firm_scope 48/48, check_csd6_reads_browser 18/18, check_csd5_flags_browser 33/33, check_csd6_reads_keep 23/23, all PASS. These match the builder's numbers.
+* `csw3-spike.sh census`: "Files: 52", and 52 rows listed. Compared as sets with the merged `ALLOW`, which has 52 entries, 52 of them unique: none listed but not allowed, none allowed but not listed. `case-document-flags.ts` and `case-document-reads.ts` are both listed.
+* `tsc -p web/tsconfig.json --noEmit`: 0 errors.
+* A reviewer probe, not committed (scratchpad Playwright script, isolated copy `csd6_rvprobe` on :4492, stopped afterwards). It ran three scenarios on a fresh line each, three times each, with identical results every time:
+  * A: the ⋯ menu is opened while the upload runs (the upload request was held 1.5 s; spinner showing). The menu opens, then closes when the upload ends, and focus lands on ⋯.
+  * B: the menu is opened the moment the line shows "Received", which is what the old walk did. The spinner was still showing at that point (`busyAtOpen: 1`). The menu opens and is gone within 500 ms; the "File details…" click times out.
+  * C: the menu is opened 300 ms after "Received". The spinner is already gone (`busyAtOpen: 0`), the menu stays open, and "File details…" opens the dialog.
+* Screenshots the runs overwrote were restored (`git checkout -- product/screens/`).
+
+**1. `tests/check_csw3_firm_scope.ts`: correct, with one nit**
+* `ALLOW` is main's list plus `case-document-reads`. Both sides are kept and no entry is duplicated.
+* The assertion is `ALLOW.length === 52`, and the census on the merged tree really is 52. The label reads "51 with CS-D7, 52 with CS-D6 part 1", which is the order the PRs merge in.
+* The comment keeps main's CS-D7 reason word for word and this PR's CS-D6 reason (Lead 11 on #3203) word for word.
+* n7 (nit): the join left a stray full stop in the comment: `…check_csd5_flags.ts shows a firm-B document refused)., and case-document-reads (…`. It should read `refused), and case-document-reads`. This is comment text only; the assertion is unaffected.
+* n5 from round 5 still stands: the comment says "plus seven merged on main after the spike", but it now names ten. Comment only.
+
+**2. `web/src/runtime/checklist.tsx`: correct**
+* Both imports are kept (`DocumentFlagsDialog` from main, `DocumentReads` from this PR).
+* Both states are kept: `flags: string | null` (main) and `details: boolean` (this PR).
+* Both menu items are kept, main's first. Each current file gets "Document flags…" (or "Flags: <file>…" when there are several), then one "File details…", then "History". Both items depend on the same `currents`, so they appear and disappear together.
+* Both dialogs are mounted. Each closes through its own setter followed by `back()`, so the WCAG 2.4.3 focus return to ⋯ holds for both. Only one menu item can be chosen at a time, so the two dialogs never open together.
+* The two neighbouring lines are byte-identical to each parent's version. The combined diff shows no lost or doubled line.
+* The CS-D7 browser walk (33/33) and the CS-D6 browser walk (18/18) both pass on the merged build, so each dialog still works with the other item in the menu.
+
+**3. The test change in `tests/check_csd6_reads_browser.ts`: a test race. It hides nothing the walk used to prove.**
+* The builder's reading is right. In `run()`, `finally { setBusy(false); back(); }` runs after `await reload()`, and `back()` focuses ⋯ one frame plus one task later. The ⋯ menu is `modal={false}`, so focus moving to the trigger counts as "focus outside" and closes the menu.
+* Probe B shows the old walk opened the menu while the spinner was still on screen, in a gap of a few tens of milliseconds. Probe C shows that 300 ms later, a fast human's reaction time, the menu stays open. A person who waits for the line to settle never hits this.
+* The new waits are what a person sees as "done": the spinner gone and focus on ⋯. They are hard waits with no `.catch`, so if the focus return (M1) ever broke, the walk would fail at that line rather than pass. The change strengthens the walk.
+* Why it only showed after the merge: main's CS-D7 adds work to the same re-render (flag warnings and translation lines), which plausibly widened the gap. I did not measure this.
+* One related real behaviour, which is not new and not in this diff: probe A. The ⋯ button stays enabled while an upload runs, on purpose (M1: aria-busy, not disabled). So a person can open the menu during an upload, and that menu closes by itself when the upload ends. That is a change they did not ask for (WCAG 3.2.2 territory). The cost is small: the menu closes, nothing is lost, they reopen it. The cause is `run()`'s `back()` (round 1 M1, before this PR). It is the same at the merge base, and neither side of this merge touched it. The walk never covered this path, before the change or after, so the new wait does not hide it.
+  * m-pre (pre-existing, for qa/BUGS, not this PR): `back()` should hand focus back only if focus is on `body` or still inside the line. It should not move focus while the person is in this line's open menu or a dialog.
+
+**Findings**
+* No Blocker, no Major.
+* n7 (nit, optional): the stray full stop `refused).,` in the census comment.
+* m-pre (Minor, pre-existing, outside this PR): `run()`'s `back()` closes a ⋯ menu that was opened during an upload. Recommend a qa/BUGS row; it is not a condition for this merge.
+
+**Journey score, round 6: 9/10** (unchanged). On the merged tree, the line's ⋯ menu offers both "Document flags…" and "File details…"; the walk and the probe opened each dialog and returned focus to ⋯. The pre-existing m-pre is the only friction seen, and it already existed.
+
+`Reviewer: Approve e41cb6200c7b03060f108c055023fabae589c70e`
+
+Verdict: Approve
