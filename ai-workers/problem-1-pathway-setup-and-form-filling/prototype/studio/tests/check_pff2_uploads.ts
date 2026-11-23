@@ -89,11 +89,12 @@ try {
   // The test door: PDF and PNG; the target is the person in the metadata (a uuid), else 404.
   const doors = nest.get(UploadDoors), rail = nest.get(UploadRail);
   const completed: string[] = [];
+  const P_FAILS = randomUUID();   // the test door's onComplete throws for this person (break F3)
   doors.register("STAFF", {
     allowedKinds: ["pdf", "png"],
     authorize: async (_ctx, meta) => (meta.personId && /^[0-9a-f-]{36}$/.test(meta.personId) ? { personId: meta.personId } : null),
     keyOf: (t, id) => `uploads/${t.personId}/${id}`,
-    onComplete: async (_tx, f) => { completed.push(f.id); },
+    onComplete: async (_tx, f) => { if (f.target.personId === P_FAILS) throw new Error("door internals: /home/secret/path tx failed"); completed.push(f.id); },
   });
   ok("setup: the feature registers the route, the registry and the rail; the hourly cleanup is on PF-14's runner (UTC)",
     feature.controllers.length === 1 && jobCalls.includes(`handle:${UPLOAD_CLEANUP_QUEUE}`) && jobCalls.includes(`recurring:${UPLOAD_CLEANUP_QUEUE}:17 * * * *:UTC`), jobCalls);
@@ -112,7 +113,7 @@ try {
   const patch = (token: string, id: string, offset: number, chunk: Uint8Array) => tus(token, "PATCH", `/api/platform/files/uploads/${id}`, { "upload-offset": String(offset), "content-type": "application/offset+octet-stream" }, chunk);
   const head = (token: string, id: string) => tus(token, "HEAD", `/api/platform/files/uploads/${id}`);
   const fileRows = () => Number(sql(`select count(*) from plat_file`));
-  const staged = () => readdirSync(join(WORK, "staging")).filter((f) => !f.endsWith(".json")).length;
+  const isStaged = (id: string) => existsSync(join(WORK, "staging", id)) || existsSync(join(WORK, "staging", `${id}.json`));
 
   // ------------------------------------------------------------------------------------ DW1: a cut transfer resumes
   const doc = pdfOf(3 * MB + 12345);
@@ -134,7 +135,22 @@ try {
   const stored1 = await files.get(A, `uploads/${P1}/${id1}`);
   ok("PF-F2 DW1 pass: resumed from the server's offset, the file completes (204), is stored and its sha256 matches the original; plat_file says SCANNING",
     rest.status === 204 && row1 === `${sha(doc)}|${doc.length}|SCANNING|application/pdf|STAFF` && stored1?.sha256 === sha(doc) && stored1.bytes.length === doc.length, { status: rest.status, text: rest.text, row1 });
-  ok("PF-F2 DW1 pass: the door's onComplete ran once, and the staging copy is gone", completed.length === 1 && completed[0] === rest.headers.get("upload-file-id") && staged() === 0, { completed, staged: staged() });
+  ok("PF-F2 DW1 pass: the door's onComplete ran once", completed.length === 1 && completed[0] === rest.headers.get("upload-file-id"), completed);
+  // Review M3, M2: after a lost answer the client asks HEAD and retries; the upload reads complete and the retry gets the same file.
+  const after = await head(tOwner, id1), retry = await patch(tOwner, id1, doc.length, new Uint8Array(0));
+  ok("PF-F2 DW1 pass (review M3): after finish, HEAD answers 200 with the offset at the full size (complete), so a client never sends the file again",
+    after.status === 200 && after.headers.get("upload-offset") === String(doc.length) && after.headers.get("upload-length") === String(doc.length), after.status);
+  ok("PF-F2 DW1 fail (review M2): a retry (an empty PATCH at the end) answers 204 with the same Upload-File-Id; no second plat_file row, no second onComplete",
+    retry.status === 204 && retry.headers.get("upload-file-id") === rest.headers.get("upload-file-id") && sql(`select count(*) from plat_file where key = 'uploads/${P1}/${id1}'`) === "1" && completed.length === 1, { status: retry.status, text: retry.text, completed });
+  const g1 = await tus(tOwner, "GET", `/api/platform/files/uploads/${id1}`);
+  ok("PF-F2 DW0 fail: GET of a finished upload (its staged copy is kept until the cleanup, not yet scanned) is 404 and serves no byte", g1.status === 404 && !g1.text.includes("%PDF"), g1.status);
+
+  // Break F2: tus's creation-with-upload (all bytes in the POST) finishes in one request and answers with the file's id.
+  const one = pdfOf(3000);
+  const c1b = await tus(tOwner, "POST", "/api/platform/files/uploads", { "upload-length": String(one.length), "upload-metadata": meta({ door: "STAFF", personId: P1, filename: "one.pdf" }), "content-type": "application/offset+octet-stream" }, one);
+  const oneId = c1b.headers.get("upload-file-id");
+  ok("PF-F2 DW1 pass (break F2): an upload sent whole in its creation request answers 201 with its Upload-File-Id and is stored once",
+    c1b.status === 201 && !!oneId && sql(`select sha256 from plat_file where id = '${oneId}'`) === sha(one) && completed.filter((x) => x === oneId).length === 1, { status: c1b.status, text: c1b.text });
 
   // ------------------------------------------------------------------------------------ DW2: a repeated chunk stored once
   const doc2 = pdfOf(200_000);
@@ -147,12 +163,19 @@ try {
   const s2 = await files.get(A, `uploads/${P1}/${id2}`);
   ok("PF-F2 DW2 pass: the finished file is exactly the original (size and sha256): the repeated chunk was stored once", last2.status === 204 && s2?.bytes.length === doc2.length && s2.sha256 === sha(doc2), last2);
 
+  // Review M2: the last chunk and ten empty PATCHes at once: one finish, one row, no 500 (nothing internal in any answer).
+  const doc2c = pdfOf(50_000), id2c = idOf(await create(tOwner, doc2c.length));
+  await patch(tOwner, id2c, 0, doc2c.subarray(0, 40_000));
+  const burst = await Promise.all([patch(tOwner, id2c, 40_000, doc2c.subarray(40_000)), ...Array.from({ length: 10 }, () => patch(tOwner, id2c, doc2c.length, new Uint8Array(0)))]);
+  ok("PF-F2 DW2 fail (review M2): the last chunk with ten empty PATCHes racing it gives one plat_file row and one onComplete; every answer is 204 or 409, never 500",
+    sql(`select count(*) from plat_file where key = 'uploads/${P1}/${id2c}'`) === "1" && burst.every((r) => r.status === 204 || r.status === 409) && !burst.some((r) => /prisma|invocation|\/home\//i.test(r.text)), burst.map((r) => `${r.status}:${r.text.slice(0, 60)}`));
+
   // ------------------------------------------------------------------------------------ DW3: the bytes decide
   const fake = enc("MZ\x90\x00 this is not a PDF at all ".repeat(50));
   const id3 = idOf(await create(tOwner, fake.length));
   const rows3 = fileRows(), r3 = await patch(tOwner, id3, 0, fake);
   ok("PF-F2 DW3 fail: bytes declared as a PDF that are no allowed kind are refused at the end (415, PF-F4's words); no plat_file row, no stored file, no staging copy",
-    r3.status === 415 && /Nothing was stored\./.test(r3.text) && fileRows() === rows3 && !(await files.exists(A, `uploads/${P1}/${id3}`)) && staged() === 0, { status: r3.status, text: r3.text, staged: staged() });
+    r3.status === 415 && /Nothing was stored\./.test(r3.text) && fileRows() === rows3 && !(await files.exists(A, `uploads/${P1}/${id3}`)) && !isStaged(id3), { status: r3.status, text: r3.text });
   const id3b = idOf(await create(tOwner, PNG.length, { filename: "scan.pdf", filetype: "application/pdf" }));
   const r3b = await patch(tOwner, id3b, 0, PNG);
   ok("PF-F2 DW3 pass: a PNG named scan.pdf is stored as image/png (an allowed kind; the bytes correct the claim)",
@@ -164,6 +187,12 @@ try {
   await patch(tOwner, id4, 0, half.subarray(0, 2000));
   const otherFirm = [await head(tB, id4), await patch(tB, id4, 2000, half.subarray(2000))];
   const otherPerson = [await head(tManager, id4), await patch(tManager, id4, 2000, half.subarray(2000))];
+  // Break F1: tus reads an id off the whole URL; firm B names its own upload in the path and firm A's in the query.
+  const idB = idOf(await create(tB, 5000));
+  const viaQuery = [await tus(tB, "HEAD", `/api/platform/files/uploads/${idB}?x=/${id4}`), await tus(tB, "HEAD", `/api/platform/files/uploads/${idB}?/${id4}`),
+    await tus(tB, "PATCH", `/api/platform/files/uploads/${idB}?x=/${id4}`, { "upload-offset": "2000", "content-type": "application/offset+octet-stream" }, half.subarray(2000))];
+  ok("PF-F2 DW4 fail (break F1): firm B naming firm A's upload in the query string after its own id gets 404 on HEAD and PATCH; firm A's offset and metadata stay its own",
+    viaQuery.every((r) => r.status === 404 && !r.headers.get("upload-metadata")) && (await head(tOwner, id4)).headers.get("upload-offset") === "2000" && !(await files.exists(A, `uploads/${P1}/${id4}`)), viaQuery.map((r) => r.status));
   const madeUp = [await head(tOwner, "0".repeat(32)), await head(tOwner, "..%2F..%2Fetc%2Fpasswd"), await head(tOwner, id4.toUpperCase())];
   ok("PF-F2 DW4 fail: firm B's staff and another person of firm A get 404 on HEAD and PATCH; an unknown, malformed or path-like id is 404 too",
     [...otherFirm, ...otherPerson, ...madeUp].every((r) => r.status === 404) && (await head(tOwner, id4)).headers.get("upload-offset") === "2000", [...otherFirm, ...otherPerson, ...madeUp].map((r) => r.status));
@@ -183,6 +212,12 @@ try {
   ok("PF-F2 DW0 fail: a client sending xr_* metadata (xr_firm naming another firm) is refused (400), nothing staged", forged.status === 400 && !forged.headers.get("location"), forged);
   const noTarget = await create(tOwner, 5000, { personId: "not-a-person" }), otherDoor = await create(tOwner, 5000, { door: "CLIENT_LINK" });
   ok("PF-F2 DW0 fail: the door's authorize refusing, or a door the session may not use, answers 404", noTarget.status === 404 && otherDoor.status === 404, [noTarget.status, otherDoor.status]);
+
+  // Break F3: a door failing after the bytes are in answers in plain words, never its internals; no plat_file row is kept.
+  const docF = pdfOf(3000), idF = idOf(await create(tOwner, docF.length, { personId: P_FAILS })), rowsF = fileRows();
+  const rF = await patch(tOwner, idF, 0, docF);
+  ok("PF-F2 DW0 fail (break F3): a door's onComplete failing → 500 in plain words (no path, no internal message); the plat_file row rolls back",
+    rF.status === 500 && /could not be finished/.test(rF.text) && !/home|secret|tx failed|Error/.test(rF.text) && fileRows() === rowsF, rF);
 
   // ------------------------------------------------------------------------------------ DW7: the declared size
   const before7 = readdirSync(join(WORK, "staging")).length;
@@ -221,6 +256,14 @@ try {
   ok("PF-F2 DW6 fail: an expired upload of a person not held is removed (its record and its bytes)", !left.includes(id5) && !left.includes(id4) && swept.removed >= 1 && !existsSync(join(WORK, "staging", id5)), { swept, left });
   ok("PF-F2 DW6 pass: an upload not yet expired is never touched (neither removed nor listed)", left.includes(fresh) && !swept.kept.some((k) => k.uploadId === fresh), { fresh, left });
 
+  // ------------------------------------------------------------------------------------ review M1: off on the deployment
+  const offRail = new UploadRail({ db: walled, files, doors, holds: new (await import("../api/src/platform/register/holds/adapter.ts")).PgLegalHolds(), now: () => clock.t, dir: join(WORK, "off"), off: true });
+  const offRes = { statusCode: 0, body: "", setHeader() {}, end(b: string) { this.body = b; } };
+  await offRail.handle({ firmId: A, door: "STAFF", actorId: randomUUID() }, { method: "POST", url: "/api/platform/files/uploads", headers: {} } as never, offRes as never);
+  const featureSrc = readFileSync(join(STUDIO, "api", "src", "features", "platform-files.ts"), "utf8");
+  ok("PF-F2 review M1 fail: a rail switched off (the S3 deployment, two API tasks) answers 503 in words and stages nothing; the feature switches it off by PLATFORM_FILES=s3",
+    offRes.statusCode === 503 && /not switched on here yet/.test(offRes.body) && (!existsSync(join(WORK, "off")) || readdirSync(join(WORK, "off")).length === 0) && /off: process\.env\.PLATFORM_FILES\?\.trim\(\) === "s3"/.test(featureSrc), offRes);
+
   // ------------------------------------------------------------------------------------ DW9: the migration, right after itself
   const NEW_AT = all.indexOf(NEW), before = all.filter((d) => d < NEW);
   ok(`PF-F2 DW9: the migration has its own stamp, later than every one before it and unique (P-600; newest before: ${before.at(-1)})`, NEW_AT >= 0 && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && before.length === NEW_AT);
@@ -230,8 +273,8 @@ try {
     + "|" + sqlOn(EMPTY, `select has_table_privilege('xr_data', 'plat_file', 'DELETE')`);
   ok("PF-F2 DW9 pass: right after its own migration the table is forced with one firm policy, and xr_data cannot delete", shape === "t|1|f", shape);
   let refused = "";
-  try { sqlOn(EMPTY, `set role xr_data; select set_config('app.firm_id', '${A}', false); insert into plat_file (id, firm_id, key, door, sha256, size_bytes, media_type, scan_state) values (gen_random_uuid(), '${A}', 'a/b', 'STAFF', '${"0".repeat(64)}', 10, 'application/pdf', 'CLEAN')`); } catch (e) { refused = String((e as { stderr?: string }).stderr ?? e); }
-  ok("PF-F2 DW9 fail: the database refuses a new row that does not start SCANNING", /starts SCANNING|violates|permission denied/.test(refused), refused.slice(0, 300));
+  try { sqlOn(EMPTY, `set role xr_data; select set_config('app.firm_id', '${A}', false); insert into plat_file (id, firm_id, key, door, sha256, size_bytes, media_type, scan_state) values (gen_random_uuid(), '${A}', 'a/b', 'STAFF', '${"0".repeat(64)}', 10, 'application/pdf', 'SCAN_PENDING')`); } catch (e) { refused = String((e as { stderr?: string }).stderr ?? e); }
+  ok("PF-F2 DW9 fail: the database refuses a new row that does not start SCANNING (SCAN_PENDING passes every other check; review m1)", /a new file starts SCANNING/.test(refused), refused.slice(0, 300));
   ok("PF-F2 DW9: every function the migration creates carries the area prefix plat_file (rows rev 15.2)",
     [...readFileSync(join(MIG, NEW, "migration.sql"), "utf8").replace(/^\s*--.*$/gm, "").matchAll(/CREATE (?:OR REPLACE )?FUNCTION (\w+)/g)].every((m) => m[1].startsWith("plat_file")));
   for (const d of all.filter((x) => x > NEW)) psqlFile(EMPTY, join(MIG, d, "migration.sql"));
