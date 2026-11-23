@@ -90,8 +90,8 @@ try {
   await q.getByLabel("Password").fill("short"); await q.getByLabel("Firm name").fill(`Sample Refused Firm ${run}`);
   await q.locator("[data-signup-submit]").click(); await q.locator("[data-signup-terms-error]").waitFor({ timeout: 10_000 });
   const sum2 = await q.locator("[data-signup-summary]").innerText();
-  ok("PF-5s S8 IV2 fail (BR-3): the tick unticked and a short password → the words on each field and in the summary; no POST leaves the page; nothing stored",
-    (await q.locator("[data-signup-terms-error]").innerText()) === TERMS_REQUIRED && sum2.includes(TERMS_REQUIRED) && sum2.includes("At least 12 characters.") && posts === before && pending(e2) === "0" && firms(e2) === "0", { sum2, posts: posts - before });
+  ok("PF-5s S8 IV2 fail (BR-3): the tick unticked and a short password → the words on each field and in the summary, each summary line naming its field (break m4); no POST leaves the page; nothing stored",
+    (await q.locator("[data-signup-terms-error]").innerText()) === TERMS_REQUIRED && sum2.includes(TERMS_REQUIRED) && sum2.includes("Password: At least 12 characters.") && sum2.includes(`Terms: ${TERMS_REQUIRED}`) && posts === before && pending(e2) === "0" && firms(e2) === "0", { sum2, posts: posts - before });
   await shot(q, "iv2-refused-1280"); await axe("the refused form at 1280 px", q); await noSideways("the refused form at 1280 px", q);
 
   // ------------------------------------------------------------------------------------------ IV1: the link signs up once
@@ -131,7 +131,22 @@ try {
   await deadWords("a malformed token (#token=abc)", "/sign-up/invited#token=abc");
   await deadWords("a malformed token (43 characters with a dot)", `/sign-up/invited#token=${"a".repeat(42)}.`);
   await d.goto(`${BASE}/sign-up/invited`); await dead(d);
-  ok("PF-5s S8 IV3: no token at all → the dead page asks to open the link from the invitation again", (await d.locator("[data-invited-words]").innerText()) === "Open the link from your invitation again.");
+  const noToken = await d.locator("[data-invited='gone']").innerText();
+  ok("PF-5s S8 IV3 (break m1): no token (a reload drops it) → 'Open your invitation link', never the dead link's title nor 'ask for a new link'", noToken.startsWith("Open your invitation link") && noToken.includes("it still works") && !noToken.includes(DEAD) && !/reply to the invitation email/.test(noToken), noToken.slice(0, 200));
+  let reads = 0; const countReads = (r: { url: () => string; method: () => string }) => { if (/\/api\/public\/signup\/[^/]+$/.test(r.url()) && r.method() === "GET") reads++; };
+  d.on("request", countReads);
+  await deadWords("a 20,000-character token (break m3: the shape is checked before any request)", `/sign-up/invited#token=${"a".repeat(20_000)}`);
+  ok("PF-5s S8 IV3 fail (break m3): a token not of the link's shape sends no request (no 431 'could not be read')", reads === 0, { reads });
+  d.off("request", countReads);
+
+  // ------------------------------------------------------------------------------------------ IV4b: a failed first read
+  const e6 = `invited6.pf5si.${run}@example.com`, l6 = await makeLink(e6);
+  const f = await newPage();
+  await f.route(/\/api\/public\/signup\/[^/]+$/, (route) => route.abort("internetdisconnected"));
+  await f.goto(`${BASE}${l6.path}`); await f.locator("[data-invited-retry]").waitFor({ timeout: 20_000 });
+  ok("PF-5s S8 IV4b fail (break M1): the first read fails (no connection) → 'could not be loaded' with Try again, never the dead page", (await f.locator("[data-invited='gone']").count()) === 0 && !f.url().includes("token="));
+  await f.unroute(/\/api\/public\/signup\/[^/]+$/); await f.locator("[data-invited-retry]").click(); await form(f);
+  ok("PF-5s S8 IV4b (break M1): Try again reads the link held in memory → the form with the link's email", (await f.locator("[data-invited-email]").innerText()) === e6);
 
   // ------------------------------------------------------------------------------------------ IV4: dies while open
   const e4 = `invited4.pf5si.${run}@example.com`, l4 = await makeLink(e4);

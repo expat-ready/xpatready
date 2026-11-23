@@ -24,8 +24,15 @@ const Invite = z.object({
 type Invite = z.infer<typeof Invite>;
 /** BR-13 and §5: the one page for a link that cannot be used (unknown, used, expired, malformed). */
 export const DEAD = "This sign-up link doesn't work. It may have been used or expired. Ask us for a new one.";
-const NO_LINK = "Open the link from your invitation again.";
-const SLOW = "Too many tries from here. Wait a minute, then open the link again.";
+/** Break m1: a reload drops the token (it is never stored); the link itself may still be good, so this is not the dead page. */
+const NO_LINK: Gone = { title: "Open your invitation link", words: "Open the link from your invitation email again. If you haven't finished signing up, it still works.", ask: false };
+/** Break m2: the door's limit is per address and lasts some minutes; on the form the typed answers stay, so press again. */
+const SLOW_OPEN = "Too many tries from here. Wait a few minutes, then open the link again.";
+const slowSend = (action: string) => `Too many tries from here. Your answers are kept: wait a few minutes, then press ${action} again.`;
+/** Break m3: the door's token shape; anything else is the dead page without a request. */
+const LINK_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+/** Break m4 (BIC-13): each summary line names its field. */
+const LABEL: Record<string, string> = { password: "Password", firmName: "Firm name", acceptedTerms: "Terms" };
 type Gone = { title: string; words: string; ask: boolean };
 type View = { step: "loading" } | { step: "form"; invite: Invite } | { step: "sent"; invite: Invite } | { step: "gone"; gone: Gone } | { step: "error"; words: string };
 
@@ -41,7 +48,7 @@ function takeToken() {
 const goneOf = (p: Problem): Gone | null =>
   p.status === 404 ? { title: "This sign-up link doesn't work", words: DEAD, ask: true }
     : p.code === "PLAN_GONE" ? { title: "This link's plan is not offered", words: p.detail ?? "The plan on this link is no longer offered. Ask us for a new link.", ask: true }
-      : p.status === 429 ? { title: "Please wait a minute", words: SLOW, ask: false } : null;
+      : p.status === 429 ? { title: "Please wait a few minutes", words: SLOW_OPEN, ask: false } : null;
 
 function Place({ label }: { label: string }) { useWhere([{ label }], null); return null; }
 
@@ -57,7 +64,7 @@ export function InvitedSignUpPage() {
 
 function Invited() {
   const [token] = React.useState(takeToken);
-  const [view, setView] = React.useState<View>(token ? { step: "loading" } : { step: "gone", gone: { title: "This sign-up link doesn't work", words: NO_LINK, ask: true } });
+  const [view, setView] = React.useState<View>(() => !token ? { step: "gone", gone: NO_LINK } : LINK_TOKEN.test(token) ? { step: "loading" } : { step: "gone", gone: { title: "This sign-up link doesn't work", words: DEAD, ask: true } });
   const [v, setV] = React.useState({ password: "", firmName: "", agree: false });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [refused, setRefused] = React.useState<string | null>(null);
@@ -65,14 +72,19 @@ function Invited() {
   const inFlight = React.useRef(false);
   const summary = React.useRef<HTMLDivElement>(null), heading = React.useRef<HTMLHeadingElement>(null);
   const read = React.useCallback(async () => {
-    if (!token) return null;
+    if (!token || !LINK_TOKEN.test(token)) return null;
     try { const invite = Invite.parse(await call(`signup/${encodeURIComponent(token)}`)); return invite; } catch (x) {
       const p = x as Problem, gone = goneOf(p);
       if (gone) { held = null; setView({ step: "gone", gone }); } else setView({ step: "error", words: p.detail ?? "The invitation could not be read. Please try again." });
       return null;
     }
   }, [token]);
-  React.useEffect(() => { let live = true; void read().then((invite) => { if (live && invite) setView({ step: "form", invite }); }); return () => { live = false; }; }, [read]);
+  const shown = view.step === "form" || view.step === "sent" ? view.invite : null;
+  const action = shown?.plan.trialDays === 0 ? "Sign up" : "Start free trial";
+  const [tries, setTries] = React.useState(0);
+  React.useEffect(() => { let live = true; void read().then((invite) => { if (live && invite) setView({ step: "form", invite }); }); return () => { live = false; }; }, [read, tries]);
+  /** Break M1: a failed first read keeps the token in memory, so Try again reads it again (a reload would lose it). */
+  const retry = () => { setView({ step: "loading" }); setTries((n) => n + 1); };
   const title = view.step === "sent" ? "Check your email" : view.step === "gone" ? view.gone.title : "Sign up";
   React.useEffect(() => { document.title = `${title} · Expat Ready`; if (view.step === "sent" || view.step === "gone") heading.current?.focus(); }, [title, view.step]);
   const focusSummary = () => requestAnimationFrame(() => summary.current?.focus());
@@ -87,7 +99,7 @@ function Invited() {
       const fresh = await read();
       if (fresh) setView({ step: "form", invite: fresh });
       setV((x) => ({ ...x, agree: false })); setErrors(f); setRefused("The terms have changed since this page opened. Read the current versions and tick again.");
-    } else { setErrors(f); setRefused(Object.keys(f).length ? null : gone ? SLOW : p.detail ?? "Not sent. Please try again."); }
+    } else { setErrors(f); setRefused(Object.keys(f).length ? null : gone ? slowSend(action) : p.detail ?? "Not sent. Please try again."); }
     focusSummary();
   };
   const send = async (e: React.FormEvent, invite: Invite) => {
@@ -112,7 +124,7 @@ function Invited() {
       const p = x as Problem, gone = goneOf(p);
       if (gone && p.status !== 429) { held = null; setView({ step: "gone", gone }); }
       else if (byField(p.errors).acceptedTerms) { setView({ step: "form", invite }); await refusal(p); }
-      else setRefused(gone ? SLOW : p.detail ?? "Not sent. Please try again.");
+      else setRefused(gone ? slowSend(action) : p.detail ?? "Not sent. Please try again.");
     } finally { inFlight.current = false; setBusy(false); }
   };
 
@@ -141,8 +153,7 @@ function Invited() {
     </Frame>
   );
   const invite = view.step === "form" ? view.invite : null;
-  const action = invite && invite.plan.trialDays === 0 ? "Sign up" : "Start free trial";
-  const list = Object.values(errors);
+  const list = Object.entries(errors).map(([k, m]) => (LABEL[k] ? `${LABEL[k]}: ${m}` : m));
   return (
     <Frame area="outside" title="Sign up">
       <Place label="Sign up" />
@@ -150,7 +161,7 @@ function Invited() {
         <h1 id="invited-h" className="text-lg font-semibold">{action === "Sign up" ? "Sign up" : "Start your free trial"}</h1>
         <p className="mt-1 text-sm text-text-muted">You were invited to Expat Ready. No card needed.{invite && invite.plan.trialDays > 0 ? ` ${invite.plan.trialDays} days free (Sample).` : ""}</p>
         {view.step === "loading" ? <p role="status" className="mt-4 text-sm text-text-muted">Loading your invitation…</p>
-          : view.step === "error" ? <Notice tone="danger" title="The invitation could not be loaded" className="mt-4">{view.words}</Notice>
+          : view.step === "error" ? <Notice tone="danger" title="The invitation could not be loaded" className="mt-4" action={<Button variant="outline" onClick={retry} data-invited-retry>Try again</Button>}>{view.words} Your link is kept on this page: press Try again rather than reloading.</Notice>
             : invite ? (
               <form noValidate method="post" onSubmit={(e) => void send(e, invite)} className="mt-4 flex flex-col gap-4" aria-describedby={list.length || refused ? "invited-summary" : undefined}>
                 {list.length || refused ? (
