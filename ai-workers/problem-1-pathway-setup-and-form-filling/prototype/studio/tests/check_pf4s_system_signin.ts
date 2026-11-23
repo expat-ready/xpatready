@@ -280,6 +280,8 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
     ["system/billing:refund", "Approved-discount list · refunds · monthly written-off report", [Own, Bil]],
     // PF-21b part 2's migration (P-601 (1)): "Place and release legal holds (system/compliance:legal-hold — G-Q5)" — Own (SA7-D74 (a)).
     ["system/compliance:legal-hold", "Place and release legal holds", [Own]],
+    // PF-21b part 3 (P-601 (1)): no Appendix A row; SA-11 v2.16 line 778 "Manage the register of requests made to ExpatReady" — Own, Sample (brief PF-21b).
+    ["system/compliance:dsr-manage", "Manage the register of requests made to ExpatReady (SA-11, Sample)", [Own]],
   ];
   const seeded = new Map(sql(`select permission_key || '=' || string_agg(role_code, ',' order by role_code) from plat_system_role_permission group by permission_key`).split("\n").map((l) => l.split("=") as [string, string]));
   const wrong = APPENDIX_A.filter(([key, , r]) => seeded.get(key) !== [...r].sort().join(","));
