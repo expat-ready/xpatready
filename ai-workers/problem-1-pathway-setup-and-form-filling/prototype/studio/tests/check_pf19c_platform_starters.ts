@@ -1,5 +1,5 @@
 // PF-19c part 2 (R1.46; AG-12-44, -45; SA-05 Appendix A.1 #1 to #3; Lead 1's ruling on #3179, 23 Nov): ExpatReady's three
-// lead starters are PLATFORM template rows (migration 20261123030000_pf19c_platform_starters), so a firm that never edits
+// lead starters are PLATFORM template rows (migration 20261124090000_pf19c_platform_starters), so a firm that never edits
 // one still sends it, and a firm's own published version wins once there is one. Each line has a pass and a fail. One
 // scratch database with every migration and the Sample firms; the local email adapter on a fake clock. No server, no
 // browser, no model call, nothing leaves the machine (US$0). The database and folder are removed at the end.
@@ -23,7 +23,7 @@ import { FakeClock } from "../ports/clock.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import type { MessageSend } from "../ports/messages.ts";
 
-const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SEED = "20261123030000_pf19c_platform_starters";
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SEED = "20261124090000_pf19c_platform_starters";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf19c_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`, WORK = join(STUDIO, "var", `pf19c-check-${process.pid}`);
 let pass = 0, fail = 0;

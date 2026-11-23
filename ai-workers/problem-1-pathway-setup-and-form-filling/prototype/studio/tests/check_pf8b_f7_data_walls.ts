@@ -216,7 +216,7 @@ const windows: { m: string; tbl: string; seedSql: string; want: string; got: str
       INSERT INTO workspace (id, key, label) VALUES ('44444444-4444-4444-4444-444444444444', 'f7-audit', 'f7');
       INSERT INTO audit_event (id, workspace_id, firm_id, actor, actor_type, action, entity, entity_key, summary, detail) VALUES (gen_random_uuid(), '44444444-4444-4444-4444-444444444444', '${FIRM}', 'system:test', 'SYSTEM', 'platform.subscription.created', 'platform_subscription', '33333333-3333-3333-3333-333333333333', 's', '{"period":"YEARLY"}')`,
     got: "select billing_period from platform_subscription", want: "YEARLY" },
-  { m: "20261123030000_pf19c_platform_starters", tbl: "msg_template", what: "pf19c seeds the three lead starters as platform templates beside a firm's hidden one",
+  { m: "20261124090000_pf19c_platform_starters", tbl: "msg_template", what: "pf19c seeds the three lead starters as platform templates beside a firm's hidden one",
     seedSql: `INSERT INTO msg_firm (firm_id) VALUES ('${FIRM}') ON CONFLICT DO NOTHING;
       INSERT INTO msg_template (id, firm_id, owner, key, kind, channel, language, updated_at) VALUES (gen_random_uuid(), '${FIRM}', 'FIRM', 'f7.own', 'library', 'EMAIL', 'en', now())`,
     got: "select (select count(*) from msg_template where firm_id is null and key like 'sales.lead.%') || '|' || (select count(*) from msg_template_version where firm_id is null and published_by = 'seed:sa05-a1')", want: "3|3" },
