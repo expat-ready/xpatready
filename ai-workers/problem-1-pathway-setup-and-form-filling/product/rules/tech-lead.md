@@ -222,4 +222,4 @@ Lead 4 (22 Nov, later): P-800 (plan 2-3 days of capability ahead per track; ever
 
 Added 23 Nov (Lead 4; full rows in DECISIONS): P-805 size exceptions #3042, #2368, #2999, #3017 · P-806 Tasks screen (PF-29f, R1.75): the founder's three choices, see the row · P-807 size exception #3065 only · P-808 size exceptions #3179, #3033, #3035, #2459 · P-809 the ten stacked tooling PRs land as one through #2590.
 
-Added 23 Nov (Lead 10; full rows in DECISIONS): P-810 size exception #3185 · P-811 the four stacked tooling PRs land as one through #2444 (founder) · P-812 size exception #3174 · P-813 size exceptions #3203, #3184, #3193.
+Added 23 Nov (Lead 10; full rows in DECISIONS): P-810 size exception #3185 · P-811 the four stacked tooling PRs land as one through #2444 (founder) · P-812 size exception #3174 · P-813 size exceptions #3184, #3193.
