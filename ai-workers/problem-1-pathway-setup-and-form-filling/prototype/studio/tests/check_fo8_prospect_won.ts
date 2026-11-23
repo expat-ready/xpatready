@@ -3,7 +3,12 @@
 // configured checkpoint): real leads, prospects and Converts through the front office's own services, the subscriber and
 // the catch-up called as a delivery would, and an in-process app with the case opening, PF-4's sign-in and guard and this
 // row's one route. No browser, no model call (US$0).
-//   zsh studio/tools/isolated.sh fo8_won 4642 start && tsx studio/tests/check_fo8_prospect_won.ts 4642 xr_studio_fo8_won
+// The copy's own server delivers `prospect.won` too (CS-K1 part 2's poll, live.ts: at start, then every
+// PROSPECT_WON_POLL_MS, default 10 s), on this same database. Left at 10 s it made this suite's prospects clients between
+// its steps (QA-753: DW4's forced rollback read "1:1:1"; packed runs red, alone green; with the poll at 200 ms it failed
+// DW1, DW2, DW4, DW5 and DW7 every run). So the copy starts with the poll at its 1-hour maximum: its one run at start
+// finds nothing won, and every delivery in this suite is the suite's own. The live poll is checked by check_csk1s_clients_browser.ts.
+//   zsh studio/tools/isolated.sh fo8_won 4642 start PROSPECT_WON_POLL_MS=3600000 && tsx studio/tests/check_fo8_prospect_won.ts 4642 xr_studio_fo8_won
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
 import { APP_GUARD, NestFactory } from "@nestjs/core";

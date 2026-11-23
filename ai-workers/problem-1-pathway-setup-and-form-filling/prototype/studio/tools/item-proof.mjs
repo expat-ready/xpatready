@@ -6,7 +6,7 @@
 // (P-339's green pack on main's head on GitHub's runners, with the run id); qa reads it and walks the journey (gate A).
 //   detect  [--body-file f]   the items on "Completes:" lines of a PR body (stdin by default) as JSON {items, bad}; exit 1
 //           when a "Completes:" line cannot be read (pr-rules.yml: the convention is checked before the merge).
-//   plan    <R1.n> [--caps f]  what proves the item, from its row in qa/CAPABILITIES.md: the acceptance packs of the C ids
+//   plan    <R1.n> [--caps f] [--studio d]  what proves the item, from its row in qa/CAPABILITIES.md: the acceptance packs of the C ids
 //           in its "Case side" and "Done when" cells (works-set.mjs --run, holds in qa/REGRESSION-HELD.md kept), the
 //           studio/tests suites its "Done when" names (run-suites.sh --only), and its journey tests/journeys/j_<n>.ts
 //           (or the J-row SHARED_JOURNEY names, e.g. R1.40 -> j_38.ts).
@@ -211,7 +211,7 @@ function main(argv) {
     for (const b of d.bad) console.error(`Completes: line not read (write "Completes: R1.77" or "Completes: R1.77, R1.78", nothing else on the line): ${b}`);
     return d.bad.length ? 1 : 0;
   }
-  if (cmd === "plan") { console.log(JSON.stringify(plan(pos[0], readFileSync(opt.caps ?? CAPS, "utf8")), null, 2)); return 0; }
+  if (cmd === "plan") { console.log(JSON.stringify(plan(pos[0], readFileSync(opt.caps ?? CAPS, "utf8"), opt.studio ? resolve(opt.studio) : S), null, 2)); return 0; }
   if (cmd === "verdict") {
     const results = existsSync(opt.results) ? readFileSync(opt.results, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
     // No plan (the set-up failed before it): still a verdict, FAIL, so the report always has one (review M1).
