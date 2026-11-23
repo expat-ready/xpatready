@@ -143,3 +143,97 @@ Visual quality returns to full: at 768–900 px nothing covers "?" or the name (
 
 **Verdict: Approve.** There is no open Blocker or Major. r5-1, r5-2 and r3-1 are Minor: fix them in this PR or list them in the PR with a follow-up row (WAY-OF-WORKING step 4).
 Reviewer: Approve aa4f874182eb2c657487d8ab17edb4fc665f3429
+
+## Round 6 (diff-only, 02113a9c6)
+Reviewer: the same fresh agent, 22 Nov 2026. I read only `git show 02113a9c6` (P-277). The merge 739798ce0 brought main's code (#2980), which I did not review; it changed neither `find/` nor `check_bk2_fold_outs.ts`. Runs on this worktree at 02113a9c6: `check_bk2_fold_outs.ts` **16/16**; `static-sweeps.mjs --base origin/main` **16 PASS**. I did not re-run the browser pack (the builder reports pf30s 82/82 and pf6a 52/52 on a fresh copy). Mutation runs used a copy of `web/src` and the check in the reviewer scratchpad (`bk2/`, not committed). The worktree is untouched.
+
+### The three questions
+| Question | Answer | Evidence |
+|---|---|---|
+| Is the fix right and minimal? | **Yes.** BK-2's `elementAt` reads from the last `<` on the aria-expanded line. The input's `<input` is two lines up, so the scan sees the whole aria-expanded line, and before this fix that line had no `role="combobox"`. Moving `role="combobox"` onto that line is a JSX attribute reorder: same element, same one role, same DOM, so nothing changes in behaviour or accessibility. The new `NOT_FOLD_OUTS` entry has the same shape and wording as the two existing comboboxes (`add-to-structure.tsx`, `add-form.tsx`). Two lines of code and one of test. | diff; `check_bk2_fold_outs.ts:23-27, 47-54` |
+| Does it weaken BK-2? | **No.** An entry is keyed by file plus a piece of the element's own text, so it excuses only aria-expanded elements in `find-box.tsx` whose element text contains `role="combobox"`. Mutations: **A**, old layout (role back on the `type` line) with the entry kept, fails 14/16: the "every aria-expanded" check flags `find-box.tsx:130`, and the **stale-entry check fires** because the entry no longer matches. **B**, new layout with the entry removed, fails 15/16 (find-box:130 flagged). **C**, entry kept plus a bare `<button aria-expanded>` with no FoldArrow added to `find-box.tsx`, fails 15/16 (find-box:141 flagged), so the entry does not cover other fold-outs in the file. **D**, entry kept and `find-box.tsx` deleted, fails 15/16 on the stale-entry check. So the stale-entry check still holds both ways. It is as coarse as the existing entries: it would also excuse a new element whose six-line window happens to contain `role="combobox"`. That limit was there before this change and is not made worse by it. | scratchpad mutation runs A–D |
+| Anything new broken? | **No.** `find-box.tsx` has one aria-expanded (line 130), and the list (`role="listbox"`, options, groups) is unchanged. The other 15 sweeps pass. | grep; sweeps |
+
+### Findings
+| # | Must/Should | Issue | Evidence | Fix |
+|---|---|---|---|---|
+| r6-1 | Should (Minor), process | **BK-2 was already red on the commits approved in rounds 1–5.** Neither `find-box.tsx` nor `check_bk2_fold_outs.ts` changed between aa4f874/86aca4354 and the merge: mutation A is the 86aca4354 file, and it fails. So the earlier rounds approved a head whose `fast` job would fail this check. None of them ran `static-sweeps.mjs`. No code fix is needed now. | mutation A; `git diff 86aca4354 739798ce0 -- web/src/modules/platform/find/ tests/check_bk2_fold_outs.ts` is empty | From now on, the reviewer runs `static-sweeps.mjs --base origin/main` in every round, diff-only rounds included. |
+| r5-1, r5-2, n4 | Should (Minor), carried | Unchanged by this diff; they are listed in the PR as follow-ups (86aca4354). | round 5 | As round 5. |
+
+### Journey score (reviewer, round 6): **9.5 / 10, pass**
+The same as round 5. This diff changes no behaviour a person can see, and Accessibility and screen sizes stays at ½ only because of r3-1. Not run: the graph and the browser pack (diff-only round; the builder reports 82/82 and 52/52).
+
+**Verdict: Approve.** There is no open Blocker or Major. r6-1 is a process note, and the carried Minors stay on the PR's follow-up list.
+Reviewer: Approve 02113a9c6c82f19a1a19f0714e63e31cf9487df5
+
+## Follow-up PR (54625b64c)
+Reviewer: a fresh agent that did not build PF-30s, 22 Nov 2026. Diff `git diff origin/main...54625b64c` (`find-box.tsx` 3 lines, `check_pf30s_find_box_browser.ts` 9 lines). `origin/main`'s `find/` folder is identical to 02113a9c6's. Running copy: this worktree, `isolated.sh rv_fu 4575`, PLATFORM_IDENTITY=local. Builder's check on the new code: **95/95**, run twice. `static-sweeps.mjs --base origin/main`: **16 PASS**. Reviewer probes in the scratchpad (`walk.mjs`, `probe.mjs`, `probe2.mjs`, not committed), as user-O on `/home`. Rewritten screenshots restored; worktree clean apart from this section and the journey report.
+
+### The three questions
+| Question | Answer | Evidence |
+|---|---|---|
+| Each fix right and minimal? | **Yes, with one gap in r3-1 (r7-1).** r3-1: `phone` now comes from the window (`find-box.tsx:108`), not from the Find button, which has the class `hidden` whenever the bar is open. That was round 3's root cause, and this is round 3's suggested fix. `close()` (`:55`) still focuses the Find button only when it is displayed, so the change cannot move focus at 768 px and wider. r5-1: one count assertion per F12 width (`check_…:339`). r5-2: `pr-3 lg:pr-8` (`:137`). The 32 px right padding is needed only for the "/" label, which is `hidden … lg:block` (`:139`), so from 768 to 1023 px the text area grows from 126 to 146 px. The placeholder is 132 px (Inter Variable 14 px, canvas). Nothing else changed. | diff; probe `KBD` rows |
+| Does each test fail on the old code? | **Yes: 5 FAILs, the same as the builder's count.** I put 02113a9c6's `find-box.tsx` back, rebuilt the copy and ran the check: **90/95**. FAILs were r3-1 at 375, 640 and 700 px and r5-2 at 768 and 850 px (clip 6 px). Then I restored the file, rebuilt, and got 95/95. r5-1 was checked by reading only: the assertion is `count() === 1` on the help button's aria-label, so it fails if the button is missing. | `run-old.txt`, `run2.txt` (scratchpad) |
+| Anything new broken? | **No regression.** Exactly 768 px: `(min-width: 768px)` and Tailwind's `md` (48rem) both match, and both are off at 767 px. Focus after Escape 1, 2, 3 at 767 px is INPUT, (INPUT), FIND BUTTON. At 768, 800, 1023, 1024 and 1440 px it is INPUT, INPUT, BODY: the box is left and cleared, as round 2 n1 asked and as F11 tests at 1440 px. The Find button stays hidden there. "/" label from 1024 px: input 256 px, `pr` 32 px, and the label starts 8.4 px right of the text area's end. With a 45-character string typed, the text stops before the label (`typed-1024.png`), and at 768 px it runs to the edge with no label (`typed-768.png`). No page errors. Keyboard only at 375 px: Tab to Find, then Enter, type, Escape ×3 returns to the Find button, and Enter opens the box again. | probe `ESC`, `KBD`, `KEYB375` rows; screenshots in the scratchpad `shots/` |
+
+### Findings
+| # | Must/Should | Issue | Evidence | Fix |
+|---|---|---|---|---|
+| r7-1 | Should (Minor), rest of r3-1 | **The query is in px, but Tailwind 4's `md` is `48rem`, which is resolved against the browser's default font size.** If someone sets a larger browser font (Chrome "Large", 20 px), the Find-button layout lasts up to 959 px. In that range `matchMedia("(min-width: 768px)")` already matches, so the third Escape still sends focus to BODY. With the "Very large" (24 px) setting this covers 768 to 1151 px. These are the low-vision users whom focus return protects. Browser zoom is not affected (px and rem scale together). | Persistent profile with `default_font_size: 20`, 850 px: `rootFont 20px`, `mq768 true`, `mq48rem false`, Find button visible. Escape sequence INPUT, BODY, BODY (probe `FONT20`) | `find-box.tsx:108`: `matchMedia("(min-width: 48rem)")`, the exact query behind `md:`. One token. Optional test: a persistent context with `default_font_size: 20` at 850 px. |
+| r7-2 | Should (Minor), test | **The r3-1 check does not pin which Escape closes the bar.** In automation, `pressSequentially` straight after the Find click sometimes loses the first key (700 px, 0 ms gap: the value is "e"; with a 30 ms gap it is always "Le"). The bar then closes on the second Escape and the check still passes, because it asserts only the final focus. It still fails on the old code, so it guards the fix. | `probe.mjs` 767 px, `probe2.mjs` | Optional: wait for the input to have focus before typing, and assert that focus is still in the input after Escape 2. |
+| n4 | Should (Minor), carried | Break m1, break m6 and the PlatformFrame terms clause have no test, and review m7 (graph) is open. This PR does not change them. | round 3 | As round 3. |
+
+### Journey score (reviewer, follow-up): **9.5 / 10, pass**
+r3-1 and r5-2 are fixed at the default settings, and the keyboard-only and 200 % zoom walks now keep focus. Accessibility and screen sizes stays at **½**, only because of r7-1. A one-token fix brings it to 1. Visual quality: 1 (placeholder whole from 768 to 1023 px). The other criteria are as in round 5. Details are in `journey-test-reviewer-2026-11-22.md`, under "Follow-up PR". Not run: the graph (diff-only: no new element, page or route), the pf18s and pf6a suites, and D1–D20 and BIC (unchanged since round 1). Not tested: a real screen reader, Firefox and Safari.
+
+**Verdict: Approve.** No Blocker or Major is open. r7-1 is the one fix worth adding in this PR (one token). Otherwise it becomes a follow-up row with r7-2 and n4.
+Reviewer: Approve 54625b64ca208b5036be91b32e1d80997fb6b7a7
+
+## Follow-up PR round 2 (diff-only, a0e830170)
+Reviewer: a fresh agent that did not build PF-30s, 22 Nov 2026. Diff-only re-review (P-277): `git diff 54625b64c a0e830170 -- '*.tsx' '*.ts'`, which is `find-box.tsx` (1 line) and `check_pf30s_find_box_browser.ts` (5 lines changed). Running copy: `isolated.sh rv2_fu 4576`, PLATFORM_IDENTITY=local. Builder's check: **98/98**, run twice. Reviewer probe `font20.mjs` (scratchpad, not committed): a persistent Chromium profile with `default_font_size` set, as user-O on `/home`. Rewritten screenshots restored, copy stopped, worktree clean apart from this section and the journey report.
+
+### The three questions
+| Question | Answer | Evidence |
+|---|---|---|
+| Each fix right and minimal? | **Yes.** r7-1: `find-box.tsx:108` now uses `matchMedia("(min-width: 48rem)")`, the same query Tailwind 4.3.1's `md:` produces. The Find button (`md:hidden`) and the Escape rule now switch at the same width at any browser font size. That is one token plus a comment. r7-2: the check waits until `[data-find-input]` has focus before typing, which removes the lost first key. It then asserts that focus is in the box and the value is `""` after Escape 2, before Escape 3. That pins the order: Escape 1 closes the list, Escape 2 clears the text, and Escape 3 leaves. No other lines changed. | diff |
+| Does the test catch what it says? | **Yes.** Suppose the list never opens, or the first key is lost and no list is drawn. Then Escape 1 clears the text and Escape 2 closes the bar on a phone width, so focus is on the Find button and the r7-2 assertion fails. Before this change the check passed in that case. The r3-1 assertion is unchanged and still fails on the 02113a9c6 code (round 1: 90/95). | code read; `run.txt` |
+| Anything new broken? | **No.** Focus after Escape 1, 2 and 3 (probe): 16 px font at 767 px gives INPUT, INPUT, FIND. At 768 px it gives INPUT, INPUT, BODY (n1 unchanged). **20 px font at 850 px and at 959 px gives INPUT, INPUT, FIND**, and the Find button is visible (round 1's failing case, now fixed). At 960 px (= 48 × 20) the query matches, the button is hidden, and the sequence is INPUT, INPUT, BODY. 24 px font at 1100 px gives INPUT, INPUT, FIND. Zoom is unaffected: px and rem scale together. No page errors. | probe output |
+
+### Findings
+| # | Must/Should | Issue | Evidence | Fix |
+|---|---|---|---|---|
+| r8-1 | Nit | The comment on `find-box.tsx:106` still says "below 768 px", but the edge is now 48rem (768 px only at the default font). The r7-2 check's label says "closed list", which is implied by focus staying in the box but not asserted on its own. | diff | Optional: "below 48rem (Tailwind's md)". No new row needed. |
+| n4 | Should (Minor), carried | Break m1, break m6 and the PlatformFrame terms clause have no test, and review m7 (graph) is open. This PR does not change them. | round 3 | As round 3. |
+
+### Journey score (reviewer, round 2): **10 / 10, pass**
+Accessibility and screen sizes goes from ½ to **1**: the larger-font walk (journey 5) now holds. All other criteria are unchanged from the follow-up round. Details are in `journey-test-reviewer-2026-11-22.md` under "Follow-up PR round 2". Not run: the graph, the pf18s and pf6a suites, and D1–D20 and BIC. This is a diff-only round with no new element, page or route. Not tested: a real screen reader, Firefox and Safari.
+
+**Verdict: Approve.** No Blocker, Major or open Minor from round 1 remains. r7-1 and r7-2 are fixed, and n4 stays a follow-up row.
+Reviewer: Approve a0e830170852a406c22ad3ad933f1eaab5bb79e2
+
+## Follow-up PR round 3 (diff-only, 029d82322)
+Reviewer: a fresh agent that did not build PF-30s, 22 Nov 2026. Diff-only re-review (P-277). The only new commit is the merge 029d82322 (parents 082e42abd and origin/main 0e244033e, which is still main's tip). The PR body gains a `Card unchanged:` line. I read `git diff 082e42abd 029d82322 -- '*check_pf30s_find_box_browser.ts'` and `git diff origin/main...029d82322`. Running copy: `isolated.sh rv3_fu 4578`, PLATFORM_IDENTITY=local. Rewritten screenshots restored, copy stopped, worktree clean apart from this section and the journey report.
+
+### The three questions
+| Question | Answer | Evidence |
+|---|---|---|
+| Does the merge sit correctly in the check? | **Yes.** Main's PF-30s-fix (#3109) comes in whole and unchanged. It adds the `PF30S_CPU_SLOWDOWN` CDP throttle in `pageAs()` (line 75) and `onSales()` (lines 83-90: waits for `header [aria-label="Sales home"]`, then the box). `onSales()` is called after the three in-app openings: F1 Enter (113), F2 click (127) and F9 Enter (218). At 218 it replaces the old h1-and-box wait, so that wait is replaced, not doubled. All three openings start on `/home` (`home(o)` at 103, 121 and 201). The old page is the PlatformFrame, whose brand link is not labelled "Sales home" (`components/frame.tsx:95` builds `${title} home`), so the wait cannot match the old page. This PR's r3-1 and r7-2 checks (F10 at 327-333) and r5-1 and r5-2 checks (F12 at 351-354) are in different blocks. They open each page with `pageAs` and `home(p)` and never move inside the app, so they do not interact with `onSales()`. No conflict markers, no lost lines. | diff; code read |
+| Is any other in-app opening in the merged file still open to the race? | **No.** The only other in-app opening is F11 review m5 (279-281): Enter opens the lead, and the check reads only `o.url()`. The next step is `home(o)`, a full `goto`, so nothing is typed into a box that is about to unmount. Line 231 is a `goto` too: the whole document is replaced before `box().waitFor`. | code read |
+| Is this PR's diff against main still only its fixes? | **Yes.** `git diff origin/main...029d82322 --stat` lists 4 files: `find-box.tsx` (+3/-2, r3-1 and r7-1 Escape rule, r5-2 padding), `check_pf30s_find_box_browser.ts` (+11: r3-1, r7-2, r5-1, r5-2), `review.md` and the journey report. The merge brings main's `case-finder.ts` and `review-fix.md`. They are not this PR's, and `find/` is unchanged by main. | `--stat` |
+
+Runs: `PF30S_CPU_SLOWDOWN=6` builder's check **98/98 three times out of three**, and **98/98** at normal speed. `static-sweeps.mjs --base origin/main`: **17 PASS**. PR body (REST, head 029d82322): it carries the exact `Card unchanged: web-shell — …` line that module-cards needed. The claim holds: the diff changes no entry point, table, test file or invariant.
+
+### Findings
+| # | Must/Should | Issue | Evidence | Fix |
+|---|---|---|---|---|
+| r8-1 | Nit, carried | The `find-box.tsx:106` comment still says "below 768 px". | round 2 | Optional, as round 2. |
+| n4 | Should (Minor), carried | Break m1, break m6 and the PlatformFrame terms clause have no test, and review m7 (graph) is open. This PR does not change them. | round 3 of the screen | As before. |
+
+The record is over its 100-line guide. Earlier rounds are kept (P-188).
+
+### Journey score (reviewer, round 3): **10 / 10, pass**
+No change from round 2. The merge changes no element, page, route or word on this screen. The replay (journey 1 to 5 as the builder's check) holds under 6x CPU slowdown. Details are in `journey-test-reviewer-2026-11-22.md` under "Follow-up PR round 3". Not tested: a real screen reader, Firefox and Safari.
+
+**Verdict: Approve.** No Blocker, Major or open Minor. The merge closes the batch's timeout race without losing or doubling a wait.
+Batch failures covered: 45033584442: shard (21), ci
+Reviewer: Approve 029d82322382b15191702583faf6e2bfc27761fc
