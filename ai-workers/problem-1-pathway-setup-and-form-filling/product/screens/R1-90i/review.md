@@ -105,3 +105,31 @@ Reviewer: Block bacf188d8a9aa8bf1bdb3afd9f94728775457b9a
 **Verdict round 2: Block `0eb3cdb1410f7afcbe97e960cf61cb06e5879a27`.** One open Major, N1, a one-line fix; nothing else is open.
 
 Reviewer: Block 0eb3cdb1410f7afcbe97e960cf61cb06e5879a27
+
+## Round 3: diff only, 0eb3cdb1 → `3b13faf61c560179ea6ae8cbdd04714be51d5067`
+**Runs.**
+* `check_r190_invited_signup` **17/17** on a fresh copy at 4441 (both local stand-ins).
+* `check_bypass_uses` **52/52**.
+* `j_90.ts`, the R1.90 check and `firm-scope.ts` parse with 0 errors (TypeScript parser).
+* The copy's api.log has **0** answers of 500. The copy is stopped.
+
+**Closed.**
+* **N1 closed.** The j_90 W4 comment is on its own line, and the call is whole again (`j_90.ts:167-168`). I did not run j_90's browser walk; the builder reports 29/32, with W3 and W4's last line red for known reasons.
+* **The breaker's R2-M1 closed.**
+  * Both listed uses now take `[^/]{1,400}` on `/api/public/signup/<token>` (firm-scope.ts:139, :147).
+  * The path tested is `req.path` with the query and trailing slashes removed (`routeOf`, firm-scope.ts:406-408).
+  * The token's decoded shape is still checked before `asBypass`, so only a 43-character token can reach the bypass.
+  * Encoded forms that decode to the shape are under 400 characters (43 × 3 = 129).
+  * Probes on 4441:
+    * `%41%41%2F…`, 140 × `%41`, and `…%00` → 404 on GET and POST.
+    * A valid-shaped token with `?x=a/b`, and one with a trailing `/` → POST 422 (body first, per PF-28), not 500.
+    * The GETs answered 429: the check had used up the per-IP limit, which is m1's limit working.
+  * IS6 now covers `%41`+42 `A` and `%41`×43.
+
+**Observation (not a finding).** The two frozen-list entries now accept any single path segment of up to 400 characters. This is safe only because the two callers (`invited`, `signUpInvited`) check the shape before `asBypass`. A future caller of these uses on this path must keep that order.
+
+**Open:** none at Major or above. m7 (the PR body) is the builder's, and m8 is the graph tool's gap.
+
+**Verdict round 3: Approve `3b13faf61c560179ea6ae8cbdd04714be51d5067`.**
+
+Reviewer: Approve 3b13faf61c560179ea6ae8cbdd04714be51d5067
