@@ -248,9 +248,11 @@ try {
   // and no team) for this one call, then put back.
   sql(`delete from platform_role_permission where role in ('OWNER', 'CASE_MANAGER') and permission_key = 'agent/case:view.all'`);
   const unseen = await dep({ method: "WIRE", amountMinor: 100, caseId: CASE, idempotencyKey: "fo7t-case-unseen" });
+  // Review round 8, M1: no caseId, but a request on that unseen case: the deposit may not take the request's case (PA is still seen).
+  const unseenReq = await dep({ method: "WIRE", amountMinor: 100, trustRequestId: rCase.body.id, idempotencyKey: "fo7t-case-unseen-request" });
   sql(`insert into platform_role_permission (role, permission_key) values ('OWNER', 'agent/case:view.all'), ('CASE_MANAGER', 'agent/case:view.all')`);
-  ok("FO-7t DW6 fail (build round 1, M1): a made-up case, another firm's case, another client's case, a case other than the request's, a request on a made-up case, a case the caller cannot see → 404 or a field error; nothing written",
-    rCase.status === 201 && [...caseBad, unseen].every((r) => r.status === 404 || fieldError(r.status)) && before() === mid && mid !== was, [rCase.body, ...[...caseBad, unseen].map((r) => [r.status, r.body?.code])]);
+  ok("FO-7t DW6 fail (build round 1, M1): a made-up case, another firm's case, another client's case, a case other than the request's, a request on a made-up case, a case the caller cannot see (given, or taken from its request) → 404 or a field error; nothing written",
+    rCase.status === 201 && unseenReq.status === 404 && [...caseBad, unseen].every((r) => r.status === 404 || fieldError(r.status)) && before() === mid && mid !== was, [rCase.body, ...[...caseBad, unseen, unseenReq].map((r) => [r.status, r.body?.code])]);
   // Lead B's money read: with no case, a request or deposit needs a party the writer sees (MoneyVisibilityPort), else 404.
   // user-R (Owner + Case Manager, agent/payment:record) sees PA through its own prospect; with both roles' prospect view
   // keys taken for these two calls (then put back), it sees no party.

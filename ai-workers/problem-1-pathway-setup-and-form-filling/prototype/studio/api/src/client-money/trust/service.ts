@@ -196,15 +196,15 @@ export class TrustMoney {
   }
 
   // ------------------------------------------------------------------------------------------------- helpers
-  /** A case given on a request or deposit: one the caller sees (MoneyVisibilityPort: of this firm, existing, in their C5
-   *  scope; fail closed, 404) and of this client (422). The client is read from case_client's front-office link
-   *  (fo_person_id / fo_company_id, "no foreign key, contract §1 rule 4"): a plain read, no case-side code imported. */
   /** With no case, the party itself must be one the caller sees (MoneyVisibilityPort; Lead B's money read): 404, as an
    *  unseen case, failing closed as the reads do. */
   private async partySeen(ctx: StaffContext, who: Party): Promise<null> {
     if (!(await this.scopeOf(ctx)).parties.includes(who.id)) notFound(who.personId ? "person" : "company");
     return null;
   }
+  /** A case given on a request or deposit: one the caller sees (MoneyVisibilityPort: of this firm, existing, in their C5
+   *  scope; fail closed, 404) and of this client (422). The client is read from case_client's front-office link
+   *  (fo_person_id / fo_company_id, "no foreign key, contract §1 rule 4"): a plain read, no case-side code imported. */
   private async caseOf(tx: Tx, ctx: StaffContext, caseId: string, who: Party): Promise<string> {
     const id = caseId.toLowerCase();
     if (!(await this.scopeOf(ctx)).cases.includes(id)) return notFound("case");

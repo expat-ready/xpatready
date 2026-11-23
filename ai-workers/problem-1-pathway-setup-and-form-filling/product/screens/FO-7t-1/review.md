@@ -1,23 +1,61 @@
-Reviewer: Approve c83d20173c71076ad48a42f5274b96feb68e0585 (diff-only round over 0f1acb674; earlier: 510a9d2a7ebd934b3145aaf8cde5a61f75a1b387)
+Reviewer: Block c83d20173c71076ad48a42f5274b96feb68e0585 (diff-only round over 0738e381814805ccdadd08220485e367ccb4608c..c83d2017; M1 open). Last Approve: 0738e381 (round 7, PR comment).
 
-# Diff-only round on c83d2017 (23 Nov 2026; 0f1acb674 → c83d20173)
+# Diff-only round on c83d2017 (23 Nov 2026; 0738e381 → 0f1acb674 → c83d20173)
 
-Scope: only `git diff 0f1acb674..c83d20173`. The caller says 0f1acb674 was reviewed and approved. This file's last recorded Approve is 510a9d2a7, so the four commits between 510a9d2a7 and 0f1acb674 have no record here (see n2). The change: CI's `fast` job (`tools/check-port-contracts.mjs`) failed with "real adapter TrustDocuments runs no contract". The diff is one file, `tests/check_fo7t_trust.ts`, +8 lines: three imports and one `runContract(documentRenderPortContract, "TrustDocuments", …)` call after the `finally`. It needs no database. No product code, no other test and no records changed.
+Scope: only `git diff 0738e381..c83d20173`, in two parts. The last reviewer Approve on the PR is 0738e381 (round 7, a PR comment; this file had no record of it). Part A is 0f1acb674, Lead B 2's C5-on-writes fix. Lead B read it; I had not. Part B is c83d20173, the DocumentRenderPort contract run for TrustDocuments. Planted breaks were made in a scratch copy only (`scratchpad/studio-breaks`, node_modules linked). After each break the copy was restored, and `diff -r` against the worktree came back empty. Nothing in the worktree changed except this file.
 
-* **Same contract as the other adapters:** yes. `documentRenderPortContract` from `ports/contracts/document-render-port.contract.ts`, the same import used by fakeRender (check_pf0p_ports l. 243), DocxRender (check_fo5_retainers l. 344) and MoneyDocuments (check_fo7b_invoices l. 476). The harness shape is the same as MoneyDocuments' (`reordered` = the keys reversed, `other` = one amount changed by a cent). The contract run reports through the file's own `ok`, so a failed case counts as a fail and exits 1.
-* **The data matches the `trust_receipt` template:** yes. The placeholders in `samples/fo7t-trust-wording.txt` (`== trust_receipt ==`) are firmName, number, issuedOn, party, currency, amount, method, receivedOn, reference, request and cleared. The harness gives exactly those 11 keys, all strings. `fill` throws on a missing key, so a missing key would fail case 1. I checked this: dropping `amount` throws "trust_receipt: no value for amount". All values are Sample (Sample Firm, Client A, no personal name).
-* **The reader is real, so the "same/different document" case is not vacuous:** yes. `textPdf` (invoices/documents.ts) writes every line as `(<escaped>) Tj T*` on its own line. The reader's `/^\((.*)\) Tj T\*$/gm` is byte-identical to FO-7b's `pdfReader`. I ran the adapter and the reader by hand: the read-back is the full 259-character receipt ("Sample Firm … TRUST RECEIPT R-000001 … Received into trust: CAD 600.00 by e-Transfer on 2026-11-23 … We hold this money in trust for Client A …"). 600.00 and 600.01 read back differently. The contract also guards itself: a reader that returned "" for everything would fail its "other data, another document" half.
-* **Evidence:** I re-ran both on this head. `node tools/check-port-contracts.mjs` gives 0 problems, with DocumentRenderPort ×4 (fakeRender, DocxRender, MoneyDocuments, TrustDocuments). `tsx --tsconfig api/tsconfig.json tests/check_fo7t_trust.ts` gives 58 passed, 0 failed, including `PF-0c DW2 DocumentRenderPort TrustDocuments: passes its contract (3 of 3 cases)`.
+## Part A: 0f1acb674 (service.ts +9/-1, check_fo7t_trust.ts +12/-1)
 
-## Nits (non-blocking)
-* **n1:** `pdfText` is the third copy of the text-page reader, after FO-7b's `pdfReader`. A shared `readTextPdf` next to `textPdf` would keep them in step if the page format ever changes. This is the builder's choice; it is not needed for this PR.
-* **n2 (records):** this file has no entry for the 510a9d2a7 → 0f1acb674 commits (PF-19r sender table, CS-W3 ALLOW line, CodeQL text match, party-visibility 404). If that approval was recorded elsewhere, link it here. I did not review those commits in this round.
-* **n3 (contract, not this diff):** the contract's refusal cases accept any error. For TrustDocuments, "Not A Key" is refused because the template is unknown, not because of a key-form check. `{ when: Date }` may be refused because a name is missing, not because the data is not JSON. MoneyDocuments has the same gap. If it matters, it is a PF-0c contract change, outside this row.
+The change:
+* `createRequest` with no `caseId` now calls `partySeen`.
+* `recordDeposit` with no case, on its own or through the request, calls `partySeen`.
+* A deposit on a request whose case the writer cannot see is refused with `notFound("case")`.
+* `partySeen` refuses with 404 when the party is not in `scopeOf(ctx).parties` (MoneyVisibilityPort).
+* The check seeds a prospect for PC. It adds a pass case: a writer who sees the party, with no case, gets 201 for both a request and a deposit. It adds a fail case: the same writer, with the Owner and Case Manager `agent/prospect:view.all` and `view.own` keys removed, gets 404 for both and nothing is written.
 
-Journey score: not applicable to this round. The change is a test-only contract run with no user-facing change. The journey score from build round 1 stands.
+* **Fail closed:** yes. The check is a membership test on the visibility port's party list. An empty or missing scope refuses. It runs inside the writing transaction, before any `create`.
+* **No information leak in the 404:** yes. `notFound("person")` answers "No such person in your firm." with code NOT_FOUND. That is exactly the answer `partyOf` gives for a person that does not exist, so an unseen party and a made-up one cannot be told apart. The same holds for the unseen case ("No such case in your firm.", as `caseOf` gives). In `createRequest`, the purpose check and the details read come after the refusal.
+* **Nothing written on refusal:** yes. The refusal throws an HttpException inside `this.write`'s `$transaction`, so the transaction rolls back. The receipt and request emails are sent only after the transaction returns. The fail case checks the payment, request and audit counts (`before() === was2`).
+* **Each new case fails without the fix (planted, then reverted):**
+  * B1, the request check removed (`: null`): the new fail case FAILS. The request returns 201 with DR-0005. 57/1.
+  * B2, the deposit's `if (!caseId) partySeen` removed: the new fail case FAILS. The deposit returns 201. 57/1.
+  * B4, `partySeen` always refusing: 8 FAIL, from the first DW3 pass onward, and the run aborts. Over-refusal is caught, though by the earlier pass cases before the new pass case is reached. The new pass case adds little on its own. That is acceptable.
+  * B5, the request's-case line (`if (!caseId && q.caseId && !…cases.includes(q.caseId)) notFound("case")`) removed: **58 passed, 0 failed.** This is M1.
+* **Role keys put back even on failure:** not in a `finally`. The delete, the two calls and the insert are straight-line code. In practice this does no harm. `call` returns 4xx and 5xx answers without throwing. Any throw (a network error, or psql) jumps to the outer `catch`, which records "the check ran to the end" as FAIL, and the per-run scratch database is dropped in the `finally`. So no later assertion runs with the keys missing, and nothing persists. The put-back set is exact: PF-3 seeds both `view.all` and `view.own` for OWNER and CASE_MANAGER (migration 20261114015002, lines 982-990). Build round 1's case-key swap uses the same pattern. See n4.
 
-**Verdict: Approve** c83d20173c71076ad48a42f5274b96feb68e0585. No Blocker or Major.
+### Major
+* **M1: the third rule in the fix ships untested.** The rule: a deposit with no `caseId` on a request whose case the writer cannot see is refused with 404 (service.ts l. 174). Planted break B5 removes the line and the check stays fully green. I confirmed the rule is real in the scratch copy with a 6-line probe, run once with the fix and once without it:
+  * With the fix, the probe passes: 404, nothing written. 59/0.
+  * Without the line, it FAILS. The writer, who sees PA but not CASE, gets **201**, receipt R-0010, and the money is booked onto the unseen case (the deposit takes `q.caseId`, and `partySeen` is skipped because a case is now set).
 
+  This is the C5-on-writes boundary this commit exists for, on a PR that merges by itself on green CI. Fix (test only), after the new party cases:
+  ```ts
+  const w3 = before();
+  sql(`delete from platform_role_permission where role in ('OWNER', 'CASE_MANAGER') and permission_key = 'agent/case:view.all'`);
+  const reqCaseUnseen = await dep({ method: "WIRE", amountMinor: 100, trustRequestId: rCase.body.id, idempotencyKey: "fo7t-request-case-unseen" });
+  sql(`insert into platform_role_permission (role, permission_key) values ('OWNER', 'agent/case:view.all'), ('CASE_MANAGER', 'agent/case:view.all')`);
+  ok("FO-7t DW4/DW6 fail (Lead B's money read): a deposit with no case on a request whose case the writer cannot see → 404, nothing written", reqCaseUnseen.status === 404 && before() === w3, reqCaseUnseen.body);
+  ```
+  `rCase` is the existing request on CASE.
+
+### Nits (non-blocking)
+* **n4:** if the builder prefers, wrap each role-key swap in `try { … } finally { insert … }` so that a future edit that continues after a throw cannot run with keys missing. This is not needed today (see above).
+* **n5, service.ts l. 199-206:** `partySeen`'s doc comment was inserted after `caseOf`'s, so `caseOf`'s comment ("A case given on a request or deposit …") now sits above `partySeen`. Move `partySeen`, with its comment, above `caseOf`'s comment.
+* **n6 (pre-existing, not this diff):** in `recordDeposit` the idempotent replay (l. 158-164) runs before any visibility check. A writer who has lost sight of the party, but holds the exact earlier key and details, gets 200 with that payment's receipt number. This needs the original key, so the exposure is small. Lead B may want the visibility check before the replay. It is not a blocker here.
+
+## Part B: c83d20173 (check_fo7t_trust.ts +8)
+
+The change: CI's `fast` job (`tools/check-port-contracts.mjs`) failed with "real adapter TrustDocuments runs no contract". The commit adds three imports and one `runContract(documentRenderPortContract, "TrustDocuments", …)` call after the `finally`. It needs no database. No product code changed.
+
+* **Same contract as the other adapters:** yes. It is `ports/contracts/document-render-port.contract.ts`, the one run by fakeRender (check_pf0p_ports l. 243), DocxRender (check_fo5_retainers l. 344) and MoneyDocuments (check_fo7b_invoices l. 476). The harness shape matches MoneyDocuments' (`reordered` = the keys reversed, `other` = the amount changed by a cent). Results go through the file's own `ok`, so a failure exits 1.
+* **The data matches the `trust_receipt` template:** yes. Its 11 placeholders (firmName, number, issuedOn, party, currency, amount, method, receivedOn, reference, request, cleared) are exactly the harness keys, all strings and all Sample values. `fill` throws on a missing key. I checked: dropping `amount` throws "trust_receipt: no value for amount".
+* **The reader is real, not vacuous:** yes. `textPdf` writes one `(…) Tj T*` line per text line. The reader's regex is byte-identical to FO-7b's `pdfReader`. Run by hand, it reads back the full 259-character receipt, and 600.00 and 600.01 read back differently. A reader that returned "" would fail the contract's "other data, another document" half.
+* **Evidence on this head:** `node tools/check-port-contracts.mjs` gives 0 problems, with DocumentRenderPort ×4. `tsx --tsconfig api/tsconfig.json tests/check_fo7t_trust.ts` gives 58 passed, 0 failed, including "TrustDocuments: passes its contract (3 of 3 cases)".
+* **Nits:** n1, `pdfText` is a third copy of the text-page reader; a shared `readTextPdf` beside `textPdf` would keep them in step. n3, in the contract and not this diff: its refusal cases accept any error, so "Not A Key" is refused as an unknown template, not by a key-form check. MoneyDocuments has the same gap.
+
+Journey score: not applicable to this round. Both commits are a server-side guard and test code, with no user-facing screen change. The journey score from build round 1 stands.
+
+**Verdict: Block** c83d20173c71076ad48a42f5274b96feb68e0585. To fix: M1, a test-only change of about 5 lines (above). Part A's code is correct, and Part B is approved as is. After the fix, a diff-only re-review of the test change.
 
 # Build round 2 (diff only, 795e961ed → 510a9d2a7)
 
