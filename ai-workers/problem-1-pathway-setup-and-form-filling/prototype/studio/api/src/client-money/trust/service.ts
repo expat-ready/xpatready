@@ -12,7 +12,7 @@
 // Every rule the database holds (trust on, a cancelled request takes no money, the request's currency, the never-below-
 // zero balance) is its own: a refusal comes back as 409 in its words. Legal reading: Unconfirmed: no counsel.
 import { HttpException } from "@nestjs/common";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
@@ -27,6 +27,7 @@ import { MONEY, UUID, badField, notFound, parse } from "../invoices/drafts.ts";
 import { dayOf } from "../invoices/facts.ts";
 import { trustShows } from "../reads/common.ts";
 import { TrustDocuments, trustSubject, trustText, type TrustTemplate } from "./documents.ts";
+import type { MoneyVisibility } from "../../../../ports/money-visibility.ts";
 
 type Tx = Prisma.TransactionClient;
 const id = (what: string) => z.string().regex(UUID, `${what} is not an id.`);
@@ -67,7 +68,8 @@ export async function partyOf(tx: Tx | PrismaClient, firm: string, p: { personId
 }
 
 export class TrustMoney {
-  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly clock: ClockPort, private readonly mail: MailPort | null, private readonly docs: DocumentRenderPort = new TrustDocuments()) {}
+  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly clock: ClockPort, private readonly mail: MailPort | null,
+    private readonly scopeOf: (ctx: StaffContext) => Promise<MoneyVisibility>, private readonly docs: DocumentRenderPort = new TrustDocuments()) {}
 
   /** GET /trust/answer: always answers, also with trust off (it is how trust is turned on). */
   async answer(ctx: StaffContext) {
@@ -97,17 +99,17 @@ export class TrustMoney {
     const r = parse(RequestIn, body), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
     const made = await this.write(async (tx) => {
       await this.trustOn(tx, f);
-      const who = await partyOf(tx, f, r);
+      const who = await partyOf(tx, f, r), caseId = r.caseId ? await this.caseOf(tx, ctx, r.caseId, who) : null;
       await textOk(tx, "purpose", r.purpose, 500);
       const details = (await tx.moneyPaymentSettings.findFirst({ where: firmScope(f), select: { trustDetails: true } }))?.trustDetails?.trim() || null;
-      const row = await tx.moneyTrustRequest.create({ data: { firmId: f, personId: who.personId, companyId: who.companyId, caseId: r.caseId?.toLowerCase() ?? null, amountMinor: r.amountMinor, currency: r.currency, purpose: r.purpose, createdBy: by,
+      const row = await tx.moneyTrustRequest.create({ data: { firmId: f, personId: who.personId, companyId: who.companyId, caseId, amountMinor: r.amountMinor, currency: r.currency, purpose: r.purpose, createdBy: by,
         ...(details ? { sentAt: this.clock.now(), sentBy: by } : {}) }, select: { id: true, number: true, sentAt: true } });
       await this.audit.record(tx, { firmId: f, actor: by, action: "trust.request_created", entity: "money_trust_request", entityKey: row.id,
         summary: row.number ? `Trust request ${row.number} sent: ${r.currency} ${MONEY(r.amountMinor)}.` : `Trust request saved unsent (no trust payment details yet): ${r.currency} ${MONEY(r.amountMinor)}.`,
-        detail: { trustRequestId: row.id, sent: !!row.number }, before: null, after: { number: row.number, personId: who.personId, companyId: who.companyId, caseId: r.caseId?.toLowerCase() ?? null, amountMinor: r.amountMinor, currency: r.currency, purpose: r.purpose } });
+        detail: { trustRequestId: row.id, sent: !!row.number }, before: null, after: { number: row.number, personId: who.personId, companyId: who.companyId, caseId, amountMinor: r.amountMinor, currency: r.currency, purpose: r.purpose } });
       return { ...row, who, details };
     });
-    if (!made.number || !made.details) return { id: made.id, number: null, status: "Waiting", email: "HELD", message: "Add your trust payment details in the payment settings: this request is saved and is sent once they are filled." };
+    if (!made.number || !made.details) return { id: made.id, number: null, status: "Waiting", email: "HELD", message: "Add your trust payment details in the payment settings first. This request is saved but not sent: cancel it and make it again once the details are in." };
     const firmName = await this.firmName(f);
     const data = { firmName, number: made.number, sentOn: dayOf(made.sentAt!), party: made.who.name, currency: r.currency, amount: MONEY(r.amountMinor), purpose: r.purpose, trustDetails: made.details };
     return { id: made.id, number: made.number, status: "Sent", email: await this.send(f, made.who, "client_money.trust_request", data, `trust-request:${made.id}`) };
@@ -152,27 +154,29 @@ export class TrustMoney {
   private recordDeposit(ctx: StaffContext, d: z.infer<typeof DepositIn>) {
     const f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`, requestId = d.trustRequestId?.toLowerCase() ?? null;
     return this.write(async (tx) => {
-      await this.trustOn(tx, f);
       const who = await partyOf(tx, f, d);
       await tx.$executeRaw`select money_trust_lock(${f}::uuid, ${who.id}::uuid, ${d.currency}::"MoneyCurrency")`;
       const had = await tx.moneyPayment.findFirst({ where: firmScope(f, { idempotencyKey: d.idempotencyKey }), include: { trustEntry: true } });
       if (had) {   // a double click, or a retry: the one payment, never a second
         const e = had.trustEntry;
-        if (had.receivedInto !== "TRUST" || had.method !== d.method || had.amountMinor !== d.amountMinor || had.currency !== d.currency || had.trustRequestId !== requestId || (e?.personId ?? e?.companyId) !== who.id)
+        if (had.receivedInto !== "TRUST" || had.method !== d.method || had.amountMinor !== d.amountMinor || had.currency !== d.currency || had.trustRequestId !== requestId || (e?.personId ?? e?.companyId) !== who.id
+          || had.reference !== (d.reference ?? null) || had.evidenceFileKey !== (d.evidenceFileKey ?? null) || (d.caseId !== undefined && e?.caseId !== d.caseId.toLowerCase()))
           refuse("KEY_USED", "This idempotency key already recorded a different payment. Nothing was saved.");
         return { paymentId: had.id, replayed: true };
       }
-      let caseId = d.caseId?.toLowerCase() ?? null;
+      await this.trustOn(tx, f);   // after the replay: a retry of money already recorded answers it, also after Yes → No
+      let caseId = d.caseId ? await this.caseOf(tx, ctx, d.caseId, who) : null;
       if (requestId) {
         const q = await tx.moneyTrustRequest.findFirst({ where: firmScope(f, { id: requestId }), select: { personId: true, companyId: true, caseId: true } });
         if (!q) return notFound("trust request");
         if ((q.personId ?? q.companyId) !== who.id) badField("trustRequestId", "This trust request is for another client. Nothing was saved.");
+        if (caseId && q.caseId && caseId !== q.caseId) badField("caseId", "This trust request is for another case: a deposit on it keeps the request's case. Nothing was saved.");
         caseId ??= q.caseId;
       }
       if (d.reference) {
         await textOk(tx, "reference", d.reference, 200);
         const [dup] = await tx.$queryRaw<{ n: bigint }[]>`select count(*) as n from money_payment p join money_trust_entry e on e.firm_id = p.firm_id and e.payment_id = p.id
-          where p.firm_id = ${f}::uuid and p.received_into = 'TRUST' and coalesce(e.person_id, e.company_id) = ${who.id}::uuid and lower(p.reference) = lower(${d.reference})`;
+          where p.firm_id = ${f}::uuid and p.received_into = 'TRUST' and coalesce(e.person_id, e.company_id) = ${who.id}::uuid and ${refKey(Prisma.sql`p.reference`)} = ${refKey(Prisma.sql`${d.reference}`)}`;
         if (dup.n > 0n && !d.duplicateReferenceAcknowledged) refuse("DUPLICATE_REFERENCE", `A trust deposit with reference ${d.reference} is already recorded for ${who.name}. Record anyway?`, { acknowledge: "duplicateReferenceAcknowledged" });
       }
       const cleared = d.method !== "CHEQUE";   // a cheque is "Not yet cleared" until ticked (AG-6-63 rule 7)
@@ -190,6 +194,18 @@ export class TrustMoney {
   }
 
   // ------------------------------------------------------------------------------------------------- helpers
+  /** A case given on a request or deposit: one the caller sees (MoneyVisibilityPort: of this firm, existing, in their C5
+   *  scope; fail closed, 404) and of this client (422). The client is read from case_client's front-office link
+   *  (fo_person_id / fo_company_id, "no foreign key, contract §1 rule 4"): a plain read, no case-side code imported. */
+  private async caseOf(tx: Tx, ctx: StaffContext, caseId: string, who: Party): Promise<string> {
+    const id = caseId.toLowerCase();
+    if (!(await this.scopeOf(ctx)).cases.includes(id)) return notFound("case");
+    const [c] = await tx.$queryRaw<{ party: string | null }[]>`select coalesce(cc.fo_person_id, cc.fo_company_id)::text as party from runtime_case rc join case_client cc on cc.id = rc.client_id
+      where rc.firm_id = ${firmScope(ctx.firmId).firmId}::uuid and rc.id = ${id}::uuid`;
+    if (!c) return notFound("case");
+    if (c.party !== who.id) badField("caseId", "This case is another client's. Nothing was saved.");
+    return id;
+  }
   /** A new request or deposit: 404 while trust does not show at all; 409 while it shows only for money held (rule 6). */
   private async trustOn(tx: Tx, f: string) {
     if (!(await trustShows(tx, f))) notFound("trust record");
@@ -201,6 +217,7 @@ export class TrustMoney {
     try { return await this.db.$transaction(fn); } catch (e) {
       if (e instanceof HttpException) throw e;
       if ((e as { code?: string }).code === "P2002" && /idempotency_key/.test(JSON.stringify((e as { meta?: unknown }).meta ?? ""))) refuse("KEY_USED", "This idempotency key is already in use for another payment. Nothing was saved.");
+      if (/out of range for type integer|integer out of range/.test(e instanceof Error ? e.message : "")) refuse("TOO_LARGE", `This would take a trust balance past the most one balance holds (${MONEY(MINOR_MAX)}). Nothing was saved.`);
       const said = /money_[a-z_]+: ([^\n]{1,300})/.exec(e instanceof Error ? e.message : "");
       return said ? refuse("MONEY_RULE", `The money rules refused this: ${said[1].replace(/\s*\(.*$/, "")}. Nothing was saved.`) : Promise.reject(e);
     }
@@ -224,6 +241,9 @@ async function textOk(tx: Tx, field: string, value: string, max: number) {
   const [t] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${value}, ${max}::int) as ok`;
   if (!t.ok) badField(field, "This needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was saved.");
 }
+/** A reference as a person reads it (AG-6-19's duplicate warning): NFKC (full-width letters, NBSP), no zero-width
+ *  characters, one space for any run of white space, no outer spaces, any letter case. */
+const refKey = (x: Prisma.Sql) => Prisma.sql`btrim(regexp_replace(regexp_replace(lower(normalize(${x}, NFKC)), '[\u200b-\u200d\u2060\ufeff]', '', 'g'), '\\s+', ' ', 'g'))`;
 /** What the firm holds in trust per currency, and on how many cases (or clients before a case) it is held. */
 async function heldOf(tx: Tx, f: string): Promise<Held[]> {
   const rows = await tx.$queryRaw<{ currency: string; amount: string; cases: number }[]>`select currency, sum(b)::text as amount, count(*)::int as cases from (

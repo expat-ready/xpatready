@@ -1,6 +1,6 @@
 // FO-7t part 1 (AG-6-60 rules 1-4, 6, 8, AG-6-61 rule 8, AG-6-37 rule 3; C5 as ruled: Lead B comment 6901029156 on
 // #1878): the trust reads. A request's status is derived from facts (Waiting | Sent | Part paid | Paid | Cancelled), never
-// stored. The ledger is one party's entries, newest first, with the database's running balance (per party and
+// stored. The ledger is one party's entries, newest first in seq order, with a running balance summed over the rows the caller sees (per party and
 // currency), paged on the server (50, at most 200); the balances are per case and before a case, per currency, never
 // summed across currencies. Who sees what is MoneyVisibilityPort's answer (CS-MV1): an entry or request is visible when
 // its case is, or its person or company when it has no case; no role sees trust money firm-wide by its role, and an
@@ -13,7 +13,7 @@ import { firmScope } from "../../platform/firm-scope.ts";
 import { parseInput } from "../../platform/http/input.ts";
 import type { StaffContext } from "../../platform/identity/keys.ts";
 import { MONEY, UUID, notFound } from "../invoices/drafts.ts";
-import { Stamp, bad, cursorOf, cursorText, pageSizeOf, trustShows } from "../reads/common.ts";
+import { bad, cursorOf, cursorText, pageSizeOf, trustShows } from "../reads/common.ts";
 import { partyOf } from "./service.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -22,7 +22,7 @@ const uuid = z.string().regex(UUID);
 const PartyQuery = { personId: uuid.optional(), companyId: uuid.optional() };
 const LedgerQuery = z.strictObject({ ...PartyQuery, caseId: uuid.optional(), currency: MoneyCurrency.optional(), pageSize: z.string().optional(), after: z.string().optional() });
 const BalanceQuery = z.strictObject(PartyQuery);
-const Cursor = z.strictObject({ t: Stamp, seq: z.number().int(), id: uuid });
+const Cursor = z.strictObject({ seq: z.number().int().min(1).max(2_147_483_647), currency: MoneyCurrency });
 /** The C5 condition on a row `x` with case_id, person_id and company_id. */
 const seen = (s: MoneyVisibility, x: string) => Prisma.sql`(${Prisma.raw(x)}.case_id = any(${s.cases}::uuid[]) or (${Prisma.raw(x)}.case_id is null and coalesce(${Prisma.raw(x)}.person_id, ${Prisma.raw(x)}.company_id) = any(${s.parties}::uuid[])))`;
 
@@ -53,16 +53,21 @@ export class TrustReads {
       const who = await partyOf(tx, f, q), c = [Prisma.sql`e.firm_id = ${f}::uuid`, Prisma.sql`coalesce(e.person_id, e.company_id) = ${who.id}::uuid`, seen(scope, "e")];
       if (q.caseId) c.push(Prisma.sql`e.case_id = ${q.caseId.toLowerCase()}::uuid`);
       if (q.currency) c.push(Prisma.sql`e.currency = ${q.currency}::"MoneyCurrency"`);
-      if (after) c.push(Prisma.sql`(e.created_at, e.seq, e.id) < (${after.t}::timestamp at time zone 'UTC', ${after.seq}::int, ${after.id}::uuid)`);
-      const rows = await tx.$queryRaw<{ t: string; seq: number; id: string; kind: string; reference: string | null; amountMinor: number; balanceAfterMinor: number; currency: string; caseId: string | null }[]>`
-        select to_char(e.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as t, e.seq, e.id::text as id, e.kind::text as kind, e.amount_minor as "amountMinor", e.balance_after_minor as "balanceAfterMinor",
-          e.currency::text as currency, e.case_id::text as "caseId", coalesce(p.reference, r.number, i.number) as reference
-        from money_trust_entry e left join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id
-          left join money_trust_request r on r.firm_id = e.firm_id and r.id = e.trust_request_id left join money_invoice i on i.firm_id = e.firm_id and i.id = e.invoice_id
-        where ${Prisma.join(c, " and ")} order by e.created_at desc, e.seq desc, e.id desc limit ${pageSize + 1}`;
+      // Newest first in the ledger's own order: seq, the order writers took the party's lock (never created_at, the
+      // transaction's start: break Major 1). The running balance is summed over the rows this caller may see and the
+      // filters in force (C5: never the party-wide figure when part of it is hidden, review M2; per case with caseId).
+      const rows = await tx.$queryRaw<{ seq: number; id: string; t: string; kind: string; reference: string | null; amountMinor: number; run: string; currency: string; caseId: string | null }[]>`
+        with v as (select e.seq, e.id, e.created_at, e.kind, e.amount_minor, e.currency, e.case_id, e.payment_id, e.trust_request_id, e.invoice_id,
+            sum(e.amount_minor) over (partition by e.currency order by e.seq) as run from money_trust_entry e where ${Prisma.join(c, " and ")})
+        select v.seq, v.id::text as id, to_char(v.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as t, v.kind::text as kind, v.amount_minor as "amountMinor", v.run::text as run,
+          v.currency::text as currency, v.case_id::text as "caseId", coalesce(p.reference, r.number, i.number) as reference
+        from v left join money_payment p on p.firm_id = ${f}::uuid and p.id = v.payment_id
+          left join money_trust_request r on r.firm_id = ${f}::uuid and r.id = v.trust_request_id left join money_invoice i on i.firm_id = ${f}::uuid and i.id = v.invoice_id
+        where ${after ? Prisma.sql`(v.seq < ${after.seq}::int or (v.seq = ${after.seq}::int and v.currency::text > ${after.currency}))` : Prisma.sql`true`}
+        order by v.seq desc, v.currency::text asc limit ${pageSize + 1}`;
       const page = rows.slice(0, pageSize), last = page.at(-1);
-      return { items: page.map((x) => ({ id: x.id, at: `${x.t}Z`, kind: x.kind, reference: x.reference, payer: who.name, amountMinor: x.amountMinor, currency: x.currency, balanceAfterMinor: x.balanceAfterMinor, caseId: x.caseId })),
-        pageSize, next: rows.length > pageSize && last ? cursorText({ t: last.t, seq: last.seq, id: last.id }) : null };
+      return { items: page.map((x) => ({ id: x.id, at: `${x.t}Z`, kind: x.kind, reference: x.reference, payer: who.name, amountMinor: x.amountMinor, currency: x.currency, balanceAfterMinor: Number(x.run), caseId: x.caseId })),
+        pageSize, next: rows.length > pageSize && last ? cursorText({ seq: last.seq, currency: last.currency }) : null };
     });
   }
 

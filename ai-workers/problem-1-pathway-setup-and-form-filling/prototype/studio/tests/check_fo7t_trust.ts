@@ -110,11 +110,20 @@ try {
   // sees only its own (agent/case:view.all and agent/prospect:view.all taken from CASE_OFFICER), with user-O on no team
   // and owning no prospect: "a Case Officer who cannot see a case gets an empty ledger page" (FO-7t.md DW10).
   const CASE = "00000000-0000-4000-8000-0000000f07a1", W = "00000000-0000-4000-8000-0000000f07a2", CLIENT = "00000000-0000-4000-8000-0000000f07a3";
+  // Build round 1 (M1): CASE2, a second case of PA; CASE_C, PC's case; CASE_B, firm B's case on PB.
+  const CASE2 = "00000000-0000-4000-8000-0000000f07a4", CASE_C = "00000000-0000-4000-8000-0000000f07a5", CASE_B = "00000000-0000-4000-8000-0000000f07a6";
+  const CLIENT_C = "00000000-0000-4000-8000-0000000f07a7", CLIENT_B = "00000000-0000-4000-8000-0000000f07a8";
   sql(`set session_replication_role = replica;
     insert into workspace (id, key, label) values ('${W}', 'fo7t-check', 'FO-7t (Sample)');
     insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values ('${CLIENT}', '${W}', 'sample-firm', '${A}', 1, 'Client a (Sample)', 'PERSON', '${PA}', 'seed:FO-7t-1');
     insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status)
-      values ('${CASE}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07001', 'sample-firm', '${A}', '${CLIENT}', 'OPEN');
+      values ('${CASE}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07001', 'sample-firm', '${A}', '${CLIENT}', 'OPEN'),
+             ('${CASE2}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07002', 'sample-firm', '${A}', '${CLIENT}', 'OPEN');
+    insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values
+      ('${CLIENT_C}', '${W}', 'sample-firm', '${A}', 2, 'Client c (Sample)', 'PERSON', '${PC}', 'seed:FO-7t-1'), ('${CLIENT_B}', '${W}', 'sample-solo', '${B}', 1, 'Client b (Sample)', 'PERSON', '${PB}', 'seed:FO-7t-1');
+    insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status)
+      values ('${CASE_C}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07003', 'sample-firm', '${A}', '${CLIENT_C}', 'OPEN'),
+             ('${CASE_B}', '${W}', gen_random_uuid(), 'user-P', 'user-S', 'C-2026-07001', 'sample-solo', '${B}', '${CLIENT_B}', 'OPEN');
     insert into fo_prospect (id, firm_id, number, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
       values (gen_random_uuid(), '${A}', 'P-07001', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${PA}', '${PA}', '${staffR}', 'seed:FO-7t-1', now());
     delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key in ('agent/case:view.all', 'agent/prospect:view.all')`);
@@ -196,6 +205,9 @@ try {
   const dup = await dep({ method: "E_TRANSFER", amountMinor: 5000, reference: "et-0001", idempotencyKey: "fo7t-dup" });
   ok("FO-7t DW4 fail: a duplicate reference (the same party, any case, any letter case) → 409 DUPLICATE_REFERENCE, a warning asking for a confirm; nothing written",
     dup.status === 409 && dup.body.code === "DUPLICATE_REFERENCE" && sql(`select count(*) from money_payment where idempotency_key = 'fo7t-dup'`) === "0", dup.body);
+  const looks = await Promise.all(["ＥＴ-0001", "ET-0001\u200b", " et-0001\u00a0"].map((reference, i) => dep({ method: "E_TRANSFER", amountMinor: 5000, reference, idempotencyKey: `fo7t-look-${i}` })));
+  ok("FO-7t DW4 fail (build round 1): a look-alike reference (full-width letters, a zero-width space, a no-break space) is the same duplicate → 409; nothing written",
+    looks.every((r) => r.status === 409 && r.body.code === "DUPLICATE_REFERENCE") && sql(`select count(*) from money_payment where idempotency_key like 'fo7t-look-%'`) === "0", looks.map((r) => r.body));
   const dupOk = await dep({ method: "E_TRANSFER", amountMinor: 5000, reference: "et-0001", idempotencyKey: "fo7t-dup", duplicateReferenceAcknowledged: true });
   ok("FO-7t DW4 pass: the same duplicate, confirmed → recorded", dupOk.status === 201 && sql(`select count(*) from money_payment where idempotency_key = 'fo7t-dup'`) === "1", dupOk.body);
   const keyReuse = await dep({ method: "WIRE", amountMinor: 7000, idempotencyKey: "fo7t-dep1" });
@@ -220,6 +232,22 @@ try {
   // CASE: firm A's Sample case on PA (set up above, for C5); money_trust_entry.case_id has no key across the module wall.
   const onCase = await dep({ method: "E_TRANSFER", amountMinor: 30000, caseId: CASE, reference: "ET-case", idempotencyKey: "fo7t-case" }), usd = await dep({ method: "WIRE", amountMinor: 12345, currency: "USD", reference: "W-USD", idempotencyKey: "fo7t-usd" });
   ok("FO-7t DW6 setup: a deposit on a case and a deposit in USD are recorded", onCase.status === 201 && usd.status === 201, [onCase.body, usd.body]);
+  // Build round 1, M1: a case is one the caller sees (MoneyVisibilityPort), of this firm, of this client, and a deposit on
+  // a request keeps the request's case. Each refusal leaves nothing written.
+  const before = () => sql(`select (select count(*) from money_payment) || ':' || (select count(*) from money_trust_request) || ':' || (select count(*) from audit_event)`), was = before();
+  const rCase = await call(tR, "POST", "/requests", { ...reqBody, amountMinor: 1000, caseId: CASE }), mid = before();
+  const caseBad = [await dep({ method: "WIRE", amountMinor: 100, caseId: "00000000-0000-4000-8000-00000000dead", idempotencyKey: "fo7t-case-madeup" }),
+    await dep({ method: "WIRE", amountMinor: 100, caseId: CASE_B, idempotencyKey: "fo7t-case-firmb" }),
+    await dep({ method: "WIRE", amountMinor: 100, caseId: CASE_C, idempotencyKey: "fo7t-case-other-client" }),
+    await dep({ method: "WIRE", amountMinor: 100, caseId: CASE2, trustRequestId: rCase.body.id, idempotencyKey: "fo7t-case-not-request" }),
+    await call(tR, "POST", "/requests", { ...reqBody, caseId: "00000000-0000-4000-8000-00000000dead" })];
+  // A case the caller cannot see: user-R's roles (Owner, Case Manager) with their own cases only (CASE has no file owner
+  // and no team) for this one call, then put back.
+  sql(`delete from platform_role_permission where role in ('OWNER', 'CASE_MANAGER') and permission_key = 'agent/case:view.all'`);
+  const unseen = await dep({ method: "WIRE", amountMinor: 100, caseId: CASE, idempotencyKey: "fo7t-case-unseen" });
+  sql(`insert into platform_role_permission (role, permission_key) values ('OWNER', 'agent/case:view.all'), ('CASE_MANAGER', 'agent/case:view.all')`);
+  ok("FO-7t DW6 fail (build round 1, M1): a made-up case, another firm's case, another client's case, a case other than the request's, a request on a made-up case, a case the caller cannot see → 404 or a field error; nothing written",
+    rCase.status === 201 && [...caseBad, unseen].every((r) => r.status === 404 || fieldError(r.status)) && before() === mid && mid !== was, [rCase.body, ...[...caseBad, unseen].map((r) => [r.status, r.body?.code])]);
   const bal = await call(tR, "GET", `/balances?personId=${PA}`);
   const dbBal = (cur: string) => Number(sql(`select coalesce(sum(amount_minor), 0) from money_trust_entry where person_id = '${PA}' and currency = '${cur}'`));
   const sumOf = (cur: string) => (bal.body.balances ?? []).filter((x: { currency: string }) => x.currency === cur).reduce((s: number, x: { amountMinor: number }) => s + x.amountMinor, 0);
@@ -274,6 +302,15 @@ try {
   const officer = await call(tO, "GET", `/ledger?personId=${PA}`), ownerRead = await call(tR, "GET", `/ledger?personId=${PA}`);
   ok("FO-7t DW10 pass (C5 through MoneyVisibilityPort): a Case Officer who sees neither PA's case nor PA gets an empty ledger page; the Owner, who sees both, gets the entries",
     officer.status === 200 && (officer.body.items ?? []).length === 0 && ownerRead.status === 200 && (ownerRead.body.items ?? []).length > 0, [officer.body, ownerRead.status]);
+  // Build round 1, M2: a Case Officer on CASE's team sees CASE's entries only, and their running balance is CASE's own
+  // money (summed over what they see), never the party's whole balance (which includes money outside their view).
+  sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values (gen_random_uuid(), '${W}', '${CASE}', 'user-O', 'OFFICER', 'user-R')`);
+  const caseSum = Number(sql(`select sum(amount_minor) from money_trust_entry where case_id = '${CASE}' and currency = 'CAD'`));
+  const [onTeam, onTeamBal] = await Promise.all([call(tO, "GET", `/ledger?personId=${PA}`), call(tO, "GET", `/balances?personId=${PA}`)]);
+  const ti = onTeam.body.items ?? [];
+  ok("FO-7t DW10 pass (C5, any role; build round 1, M2): a Case Officer on the case's team gets the case's entries only, the newest running balance the case's own (as /balances says), never the party's",
+    onTeam.status === 200 && ti.length > 0 && ti.every((x: { caseId: string }) => x.caseId === CASE) && ti[0].balanceAfterMinor === caseSum && caseSum !== dbBal("CAD")
+    && (onTeamBal.body.totals ?? []).find((x: { currency: string }) => x.currency === "CAD")?.amountMinor === caseSum, [ti, onTeamBal.body, caseSum]);
   ok("FO-7t DW10 pass: one audit line per change, by staff: each trust deposit, each request (held or sent), each cancel",
     audits("trust.deposited") === Number(sql(`select count(*) from money_payment where received_into = 'TRUST'`)) && audits("trust.request_created") === Number(sql(`select count(*) from money_trust_request`))
     && audits("trust.request_cancelled") === Number(sql(`select count(*) from money_trust_request where cancelled_at is not null`))
@@ -288,6 +325,21 @@ try {
     && Object.keys(JSON.parse(evs || "{}")).length > 0 && Object.keys(JSON.parse(evs || "{}")).every((k) => /Id$|^amountMinor$|^currency$/.test(k)), evs);
   ok("FO-7t DW18 fail: no trust event payload carries a name, an email, a reference or a purpose (AG-6-33 §10)",
     sql(`select count(*) from module_event where type like 'trust.%' and payload::text ~* '(given|family|email|reference|purpose|fo7t\\.)'`) === "0");
+
+  // ------------------------------------------------------------------- build round 1: the ledger's order (break Major 1)
+  // A writer that starts first and takes PA's lock last (its entry's created_at is older, its seq newer): the newest row is
+  // the one with the highest seq, carrying the party's balance. The slow writer is a trust refund written by hand (Sample).
+  const late = await owner.$transaction(async (tx) => {
+    await tx.$queryRaw`select now()`;   // the transaction's start: the slow writer's created_at
+    const r = await dep({ method: "WIRE", amountMinor: 500, idempotencyKey: "fo7t-order-late" });   // starts later, commits first
+    await tx.$executeRawUnsafe(`insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, reason, refund_method, refunded_on, created_by)
+      values ('${A}', '${PA}', 'REFUND_TO_CLIENT', -200, 'CAD', 'Sample refund (order probe)', 'E_TRANSFER', current_date, 'seed:FO-7t-1')`);
+    return r;
+  }, { timeout: 20000 });
+  const newest = await call(tR, "GET", `/ledger?personId=${PA}&currency=CAD&pageSize=1`);
+  ok("FO-7t DW6 pass (build round 1, break Major 1): the newest ledger row is the last in the lock's order (seq), with the party's balance, though its transaction started first",
+    late.status === 201 && newest.body.items?.[0]?.kind === "REFUND_TO_CLIENT" && newest.body.items[0].balanceAfterMinor === dbBal("CAD")
+    && sql(`select (select created_at from money_trust_entry where kind = 'REFUND_TO_CLIENT') < (select e.created_at from money_trust_entry e join money_payment p on p.id = e.payment_id where p.idempotency_key = 'fo7t-order-late')`) === "t", [newest.body, late.body]);
 } catch (e) {
   ok("FO-7t: the check ran to the end", false, e instanceof Error ? e.stack : String(e));
 } finally {

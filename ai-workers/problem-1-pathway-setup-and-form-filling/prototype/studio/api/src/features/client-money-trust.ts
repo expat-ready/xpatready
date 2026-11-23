@@ -12,6 +12,8 @@ import type { MailPort } from "../../../ports/mail.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";
 import { PlatformClock } from "../platform/identity/port.ts";
 import { MAIL_PORT } from "../platform/identity/session/mail.ts";
+import type { StaffContext } from "../platform/identity/keys.ts";
+const scopeOf = (db: Db) => { const v = new PgMoneyVisibility(db); return (ctx: StaffContext) => v.scopeOf(ctx); };
 export default { controllers: [TrustController], providers: [
-  { provide: TrustMoney, useFactory: (db: Db, c: PlatformClock, mail?: MailPort) => new TrustMoney(db, auditEvent, { now: () => new Date(c.now()) }, mail ?? null), inject: [Db, PlatformClock, { token: MAIL_PORT, optional: true }] },
-  { provide: TrustReads, useFactory: (db: Db) => { const v = new PgMoneyVisibility(db); return new TrustReads(db, (ctx) => v.scopeOf(ctx)); }, inject: [Db] }] } satisfies Feature;
+  { provide: TrustMoney, useFactory: (db: Db, c: PlatformClock, mail?: MailPort) => new TrustMoney(db, auditEvent, { now: () => new Date(c.now()) }, mail ?? null, scopeOf(db)), inject: [Db, PlatformClock, { token: MAIL_PORT, optional: true }] },
+  { provide: TrustReads, useFactory: (db: Db) => new TrustReads(db, scopeOf(db)), inject: [Db] }] } satisfies Feature;
