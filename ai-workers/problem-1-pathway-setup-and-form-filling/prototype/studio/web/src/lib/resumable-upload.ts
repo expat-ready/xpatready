@@ -1,22 +1,30 @@
 // PF-F2 part 2 (R1.64; map row 64; AG-9-1 resumable, AG-9-3 per-file progress, AG-9-4 the same path on mobile): the
 // browser side of the platform's one upload rail (tus at /api/platform/files/uploads, part 1), through tus-js-client
-// (STANDARDS §1 gate entry 23). A dropped connection pauses the upload and it resumes from the server's offset (HEAD,
-// then PATCH from there), never from the start. tus-js-client on its own gives up while the browser says it is offline;
-// here a failed request is retried on its delays whatever the browser says, and if the delays run out while offline the
-// upload waits for the browser's "online" and resumes. Words (CS-D2): "Upload paused: reconnecting", "Resumed, 62%".
-// The upload's id is the server's; nothing is kept in the browser's storage (a reload starts the file again).
-import { Upload, type DetailedError } from "tus-js-client";
+// (STANDARDS §1 gate entry 23). Words (CS-D2): "Upload paused: reconnecting", "Resumed, 62%".
+// The rules (review and break round 1 on #3303):
+// 1. This file owns the retry loop; tus-js-client makes one attempt at a time (no retries of its own: its own give up
+//    while the browser says offline, and its retry count does not reset). A request that got no answer, a 5xx or a
+//    423 is tried again on RETRY_DELAYS, then every last delay, until it works or abort(), whatever navigator.onLine
+//    says; the browser's "online" only tries again at once. A request with no progress for STALL_MS is cut and tried again.
+// 2. Every attempt after the first resumes the same upload (HEAD, then PATCH from the server's offset), never a new one:
+//    a 404 or 410 then is said in words ("expired", "no longer on the server"), never a silent start from 0.
+// 3. Done only with the stored file's id (Upload-File-Id). An answer without it (a lost final answer: tus-js-client then
+//    reads HEAD) is confirmed with part 1's empty PATCH at the end, which answers with the same file's id or the
+//    server's refusal. A refusal (4xx) is final and said in the server's own words (problem+json's detail, or plain text).
+// 4. A 401 or 403 keeps the upload: retry() resumes it from its offset once the person has signed in again.
+// The upload's address is the server's; nothing is kept in the browser's storage (a reload starts the file again).
+import { Upload, type DetailedError, type HttpResponse } from "tus-js-client";
 
 export const UPLOADS_ENDPOINT = "/api/platform/files/uploads";
-/** Sample: how long to wait before each retry of a failed request (ms); then wait for "online" if offline. */
+/** Sample: wait before each retry (ms); the last is repeated until the upload works or is stopped. */
 export const RETRY_DELAYS = [0, 1000, 3000, 5000, 10000];
-/** Sample: bytes per request; a cut loses at most this much. */
-export const CHUNK_BYTES = 1024 * 1024;
+/** Sample: bytes per request (a cut loses at most this much), and how long a request may make no progress. */
+export const CHUNK_BYTES = 1024 * 1024, STALL_MS = 30_000;
 
 export type UploadPhase = "uploading" | "paused" | "resumed" | "done" | "failed";
 export type UploadState = { phase: UploadPhase; percent: number; fileId?: string; words: string };
 
-/** The words for a state (CS-D2's two; plain progress otherwise; a failure says the server's own words). */
+/** The words for a state (CS-D2's two; plain progress otherwise; a failure in the server's own words). */
 export function uploadWords(phase: UploadPhase, percent: number, failure?: string): string {
   if (phase === "paused") return "Upload paused: reconnecting";
   if (phase === "resumed") return `Resumed, ${percent}%`;
@@ -24,63 +32,118 @@ export function uploadWords(phase: UploadPhase, percent: number, failure?: strin
   return `${percent}%`;
 }
 
+/** A refusal's words: problem+json's detail (else title), a plain-text body, else words for its status. Never markup. */
+export function refusalWords(status: number, body: string | undefined, type: string | null | undefined): string {
+  const t = (type ?? "").toLowerCase(), b = (body ?? "").trim();
+  if (status === 404) return "This upload is no longer on the server. Start it again.";   // the rail's bare "Not found" says too little
+  if (t.includes("json")) { try { const p = JSON.parse(b) as { detail?: unknown; title?: unknown }; const w = typeof p.detail === "string" ? p.detail : typeof p.title === "string" ? p.title : ""; if (w) return w; } catch { /* below */ } }
+  if (t.startsWith("text/plain") && b && b.length <= 500) return b;
+  if (status === 401 || status === 403) return "Your session has ended. Sign in again, then try the upload again.";
+  return "The upload could not be finished.";
+}
+
 export type ResumableUploadOptions = {
   /** The upload door (part 1's UploadDoors); a staff session uses STAFF. */
   door: "STAFF" | "CLIENT_LINK" | "CLIENT_PORTAL" | "SUPPORT";
   /** The door's own metadata (its authorize reads it), e.g. the case and checklist line. */
   meta?: Record<string, string>;
-  /** The session's bearer token, read before every request (a refreshed token is used on resume). */
+  /** The session's bearer token, read before every request (a new token is used on resume). */
   token: () => string | null;
   onState: (s: UploadState) => void;
   endpoint?: string;
   chunkSize?: number;
-  retryDelays?: number[] | null;
+  retryDelays?: number[];
+  stallMs?: number;
 };
+/** `done` is the first try's answer; after a refusal, `retry()` resumes the same upload and answers anew. */
+export type ResumableUploadHandle = { done: Promise<string>; abort: () => void; retry: () => Promise<string> };
 
-const statusOf = (e: unknown): number => (e as DetailedError)?.originalResponse?.getStatus?.() ?? 0;
-/** A request that never got an answer, a server error, or a lock: worth retrying. A refusal (4xx) is final. */
-const retryable = (status: number) => status === 0 || status >= 500 || status === 409 || status === 423;
+const answered = (status: number) => status > 0;
+/** No answer, a server error or a lock: try again. Any other answer is the server's decision. */
+const tryAgain = (status: number) => status === 0 || status >= 500 || status === 423;
 
-/** Starts one file's upload; resolves with the stored file's id (the server's Upload-File-Id), rejects with its words. */
-export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): { done: Promise<string>; abort: () => void } {
-  let percent = 0, paused = false, resumed = false, stopped = false;
+/** Starts one file's upload; `done` resolves with the stored file's id, or rejects with the words shown. */
+export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): ResumableUploadHandle {
+  const delays = o.retryDelays?.length ? o.retryDelays : RETRY_DELAYS, stallMs = o.stallMs ?? STALL_MS;
+  const name = (file as File).name ?? "upload";
+  let percent = 0, failures = 0, paused = false, resumed = false, stopped = false, settled = false;
+  let url: string | null = null, current: Upload | null = null, timer: ReturnType<typeof setTimeout> | undefined, stall: ReturnType<typeof setTimeout> | undefined;
+  let resolve!: (id: string) => void, reject!: (e: Error) => void;
+  const answer = () => new Promise<string>((res, rej) => { resolve = res; reject = rej; });
+  const done = answer();
   const tell = (phase: UploadPhase, extra: { fileId?: string; failure?: string } = {}) =>
     o.onState({ phase, percent, ...(extra.fileId ? { fileId: extra.fileId } : {}), words: uploadWords(phase, percent, extra.failure) });
-  const name = (file as File).name ?? "upload";
-  let upload!: Upload;
-  const done = new Promise<string>((resolve, reject) => {
-    upload = new Upload(file, {
-      endpoint: o.endpoint ?? UPLOADS_ENDPOINT,
+  const quiet = () => { clearTimeout(timer); clearTimeout(stall); window.removeEventListener("online", now); };
+  const finish = (id: string) => { if (settled) return; settled = true; quiet(); percent = 100; tell("done", { fileId: id }); resolve(id); };
+  const refuse = (failure: string) => { if (settled) return; settled = true; quiet(); tell("failed", { failure }); reject(new Error(uploadWords("failed", percent, failure))); };
+  const auth = (): Record<string, string> => { const t = o.token(); return t ? { Authorization: `Bearer ${t}` } : {}; };
+
+  /** Rule 1: one more try after the next delay (or at once on "online"). */
+  function later() {
+    if (settled || stopped) return;
+    const wait = delays[Math.min(failures, delays.length - 1)]; failures++;
+    clearTimeout(timer); timer = setTimeout(now, wait);
+    window.addEventListener("online", now, { once: true });
+  }
+  function now() { clearTimeout(timer); window.removeEventListener("online", now); if (!settled && !stopped) attempt(); }
+  const watch = () => { clearTimeout(stall); stall = setTimeout(() => { if (current && !settled) { void current.abort(); lost(0); } }, stallMs); };
+
+  /** An attempt that ended without the file: try again, or say why not. */
+  function lost(status: number, res?: HttpResponse | null) {
+    current = null; clearTimeout(stall);
+    if (settled || stopped) return;
+    if (tryAgain(status)) { if (!answered(status) && !paused) { paused = true; tell("paused"); } later(); return; }
+    refuse(refusalWords(status, res?.getBody?.(), res?.getHeader?.("Content-Type")));   // rule 3, rule 4 (url kept)
+  }
+
+  /** Rule 3: the upload is complete but the answer named no file: the empty PATCH at the end asks the server for it. */
+  async function confirm() {
+    try {
+      const r = await fetch(url!, { method: "PATCH", headers: { ...auth(), "Tus-Resumable": "1.0.0", "Upload-Offset": String(file.size), "Content-Type": "application/offset+octet-stream" } });
+      const id = r.headers.get("Upload-File-Id");
+      if (r.ok && id) return finish(id);
+      if (tryAgain(r.status)) return lost(r.status);
+      refuse(refusalWords(r.status, await r.text(), r.headers.get("Content-Type")));
+    } catch { lost(0); }
+  }
+
+  function attempt() {
+    const up = new Upload(file, {
+      // Rule 2: once the server has given the upload an address, every attempt resumes it (no endpoint: a 404 or 410
+      // on HEAD is an error, never a new upload).
+      ...(url ? { uploadUrl: url } : { endpoint: o.endpoint ?? UPLOADS_ENDPOINT }),
       metadata: { ...(o.meta ?? {}), door: o.door, filename: name, filetype: file.type || "application/octet-stream" },
       chunkSize: o.chunkSize ?? CHUNK_BYTES,
-      retryDelays: o.retryDelays === undefined ? RETRY_DELAYS : o.retryDelays,
+      retryDelays: null,   // rule 1: the loop is ours
       storeFingerprintForResuming: false,
-      onBeforeRequest: (req) => { const t = o.token(); if (t) req.setHeader("Authorization", `Bearer ${t}`); },
-      onShouldRetry: (err) => { const r = retryable(statusOf(err)); if (r && !paused) { paused = true; tell("paused"); } return r; },
+      onBeforeRequest: (req) => { for (const [k, v] of Object.entries(auth())) req.setHeader(k, v); },
+      onUploadUrlAvailable: () => { url = up.url; },
       onProgress: (sent, total) => {
+        watch();
         percent = total ? Math.floor((sent / total) * 100) : 0;
         if (paused) { paused = false; resumed = true; }
+        failures = 0;
         tell(resumed ? "resumed" : "uploading");   // "Resumed, 62%" stays until the file is done
       },
       onSuccess: ({ lastResponse }) => {
-        const fileId = lastResponse.getHeader("Upload-File-Id") ?? "";
-        percent = 100; tell("done", { fileId }); resolve(fileId);
+        clearTimeout(stall); current = null; url = up.url ?? url;
+        const id = lastResponse.getHeader("Upload-File-Id");
+        if (id) finish(id); else void confirm();
       },
-      onError: (err) => {
-        const status = statusOf(err);
-        // Out of retries while the browser is offline: wait for the connection, then resume from the server's offset.
-        if (!stopped && retryable(status) && typeof navigator !== "undefined" && navigator.onLine === false) {
-          if (!paused) { paused = true; tell("paused"); }
-          window.addEventListener("online", () => { if (!stopped) upload.start(); }, { once: true });
-          return;
-        }
-        const failure = (err as DetailedError)?.originalResponse?.getBody?.()?.trim();
-        tell("failed", { failure: status && failure ? failure : undefined });
-        reject(new Error(uploadWords("failed", percent, status ? failure : undefined)));
-      },
+      onError: (err) => { const res = (err as DetailedError).originalResponse; lost(res?.getStatus?.() ?? 0, res); },
     });
-    tell("uploading");
-    upload.start();
-  });
-  return { done, abort: () => { stopped = true; void upload.abort(); } };
+    current = up; watch(); up.start();
+  }
+
+  tell("uploading");
+  attempt();
+  return {
+    done,
+    abort: () => { if (settled) return; stopped = true; quiet(); void current?.abort(); refuse("Upload stopped."); },
+    retry: () => {
+      if (stopped || !settled) return done;
+      const next = answer(); settled = false; paused = false; failures = 0; attempt();
+      return next;
+    },
+  };
 }

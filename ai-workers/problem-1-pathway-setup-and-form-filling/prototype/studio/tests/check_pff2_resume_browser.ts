@@ -8,7 +8,7 @@
 // slows the upload and cuts the network through its own emulation. No network beyond localhost, US$0.
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pff2_resume_browser.ts
 import "reflect-metadata";
-import { Module } from "@nestjs/common";
+import { HttpException, Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -58,12 +58,15 @@ const MB = 1024 * 1024;
 // The test page's script: the client library, bundled for the browser as the web app's Vite build takes it (browser entry).
 const bundle = (await build({ stdin: { contents: `import { resumableUpload } from "./lib/resumable-upload.ts";
   const w = window as any; w.states = [];
-  w.startUpload = (token: string, retryDelays?: number[] | null) => {
+  const settle = (p: Promise<string>) => p.then((id) => { w.result = id; }, (e) => { w.failed = String(e.message); });
+  w.startUpload = (token: string, o: { retryDelays?: number[]; stallMs?: number } = {}) => {
     const file = (document.getElementById("f") as HTMLInputElement).files![0];
-    w.result = undefined; w.failed = undefined; w.states = [];
-    resumableUpload(file, { door: "STAFF", meta: { personId: w.personId }, token: () => token, chunkSize: 256 * 1024, ...(retryDelays !== undefined ? { retryDelays } : {}),
-      onState: (s) => { w.states.push(s); document.getElementById("words")!.textContent = s.words; } }).done.then((id) => { w.result = id; }, (e) => { w.failed = String(e.message); });
-  };`, resolveDir: join(STUDIO, "web", "src"), loader: "ts" }, bundle: true, format: "iife", platform: "browser", write: false, logLevel: "silent" })).outputFiles[0].text;
+    w.result = undefined; w.failed = undefined; w.states = []; w.token = token;
+    w.handle = resumableUpload(file, { door: "STAFF", meta: { personId: w.personId }, token: () => w.token, chunkSize: 256 * 1024, ...o,
+      onState: (s) => { w.states.push(s); document.getElementById("words")!.textContent = s.words; } });
+    settle(w.handle.done);
+  };
+  w.retryUpload = () => { w.result = undefined; w.failed = undefined; settle(w.handle.retry()); };`, resolveDir: join(STUDIO, "web", "src"), loader: "ts" }, bundle: true, format: "iife", platform: "browser", write: false, logLevel: "silent" })).outputFiles[0].text;
 const PAGE = `<!doctype html><meta charset="utf-8"><title>PF-F2 upload</title><input type="file" id="f"><p id="words" role="status"></p><script src="/pff2-test/app.js"></script>`;
 
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
@@ -84,8 +87,13 @@ try {
   await seedSampleFirms(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`);
   const signIn = async () => (await (await fetch(`${base}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) })).json()).token as string;
-  const P = randomUUID();
-  nest.get(UploadDoors).register("STAFF", { allowedKinds: ["pdf"], authorize: async (_c, m) => (m.personId === P ? { personId: P } : null), keyOf: (t, id) => `uploads/${t.personId}/${id}` });
+  const P = randomUUID(), P_FAIL_ONCE = randomUUID(), P_REFUSE = randomUUID(), people = new Set([P, P_FAIL_ONCE, P_REFUSE]);
+  let failedOnce = false;
+  nest.get(UploadDoors).register("STAFF", { allowedKinds: ["pdf"], authorize: async (_c, m) => (m.personId && people.has(m.personId) ? { personId: m.personId } : null), keyOf: (t, id) => `uploads/${t.personId}/${id}`,
+    onComplete: async (_tx, f) => {
+      if (f.target.personId === P_FAIL_ONCE && !failedOnce) { failedOnce = true; throw new Error("the door's store is down for a moment"); }
+      if (f.target.personId === P_REFUSE) throw new HttpException({ title: "Not stored", status: 409, detail: "Your plan's storage is full. Nothing was stored." }, 409);
+    } });
 
   ok("PF-F2 DW8d: the words are CS-D2's: paused, resumed with its percent; plain progress; a failure in the server's words",
     uploadWords("paused", 40) === "Upload paused: reconnecting" && uploadWords("resumed", 62) === "Resumed, 62%" && uploadWords("uploading", 7) === "7%" && uploadWords("failed", 3, "This file is empty. Nothing was stored.") === "This file is empty. Nothing was stored.");
@@ -94,7 +102,7 @@ try {
   const doc = pdfOf(5 * MB);
   // The third run spends every retry while offline (none at all): the client must wait for "online" and resume itself.
   for (const [label, ctxOpts, retries] of [["desktop 1440 px", { viewport: { width: 1440, height: 900 } }, undefined], ["phone (Pixel 7)", devices["Pixel 7"], undefined],
-    ["desktop, retries spent while offline", { viewport: { width: 1440, height: 900 } }, null]] as const) {
+    ["desktop, every retry delay spent while offline", { viewport: { width: 1440, height: 900 } }, [0, 200]]] as const) {
     const ctx: BrowserContext = await browser.newContext(ctxOpts as never);
     const page = await ctx.newPage();
     const cdp = await ctx.newCDPSession(page);
@@ -103,16 +111,17 @@ try {
     await net(false);
     const seen: { m: string; offset: string | null; status?: number; respOffset?: string | null }[] = [];
     page.on("requestfinished", async (r) => { if (!r.url().includes("/api/platform/files/uploads")) return; const res = await r.response(); seen.push({ m: r.method(), offset: r.headers()["upload-offset"] ?? null, status: res?.status(), respOffset: res?.headers()["upload-offset"] ?? null }); });
+    let inFlightCut = 0; page.on("requestfailed", (r) => { if (r.method() === "PATCH" && r.url().includes("/api/platform/files/uploads")) inFlightCut++; });
     await page.goto(`${base}/pff2-test/`);
     await page.evaluate((p) => { (window as any).personId = p; }, P);
     await page.setInputFiles("#f", { name: "passport.pdf", mimeType: "application/pdf", buffer: doc });
-    await page.evaluate(([t, r]) => (window as any).startUpload(t, r), [await signIn(), retries] as const);
+    await page.evaluate(([t, r]) => (window as any).startUpload(t, r ? { retryDelays: r } : {}), [await signIn(), retries] as const);
     await page.waitForFunction(() => ((window as any).states.at(-1)?.percent ?? 0) >= 25, null, { timeout: 30_000 });
     await net(true);   // the connection drops mid-file
     await page.waitForFunction(() => document.getElementById("words")!.textContent === "Upload paused: reconnecting", null, { timeout: 30_000 });
     const whileCut = await page.evaluate(() => ({ result: (window as any).result, failed: (window as any).failed, words: document.getElementById("words")!.textContent }));
     const rowsCut = sql(`select count(*) from plat_file`);
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(retries ? 5000 : 1500);   // the third run's cut outlasts every delay in its list
     await net(false);   // the connection comes back
     await page.waitForFunction(() => (window as any).result !== undefined || (window as any).failed !== undefined, null, { timeout: 60_000 });
     const end = await page.evaluate(() => ({ result: (window as any).result as string, failed: (window as any).failed, words: (window as any).states.map((s: { words: string }) => s.words) as string[] }));
@@ -122,8 +131,8 @@ try {
       whileCut.words === "Upload paused: reconnecting" && whileCut.result === undefined && whileCut.failed === undefined && rowsCut === String(Number(sql(`select count(*) from plat_file`)) - (end.result ? 1 : 0)), { whileCut, rowsCut });
     ok(`PF-F2 DW8 pass (${label}): after the cut the file completes; the stored bytes' sha256 is the original's, and plat_file says SCANNING`,
       !!end.result && !end.failed && stored?.sha256 === sha(doc) && sql(`select sha256 || '|' || scan_state from plat_file where id = '${end.result}'`) === `${sha(doc)}|SCANNING`, { end: { ...end, words: end.words.slice(-4) } });
-    ok(`PF-F2 DW8 pass (${label}): it resumed from the server's offset: a HEAD after the cut, then a PATCH at exactly that offset (above 0), never the file again from 0`,
-      !!firstPatchAfterHead?.next && Number(firstPatchAfterHead.head.respOffset) > 0 && firstPatchAfterHead.next.offset === firstPatchAfterHead.head.respOffset && seen.filter((x) => x.m === "PATCH" && x.offset === "0").length === 1, { seen: seen.map((x) => `${x.m}:${x.offset}>${x.status}:${x.respOffset}`) });
+    ok(`PF-F2 DW8 pass (${label}): the cut failed a PATCH in flight (review n4), and it resumed from the server's offset: a HEAD after the cut, then a PATCH at exactly that offset (above 0), never the file again from 0`,
+      inFlightCut >= 1 && !!firstPatchAfterHead?.next && Number(firstPatchAfterHead.head.respOffset) > 0 && firstPatchAfterHead.next.offset === firstPatchAfterHead.head.respOffset && seen.filter((x) => x.m === "PATCH" && x.offset === "0").length === 1, { seen: seen.map((x) => `${x.m}:${x.offset}>${x.status}:${x.respOffset}`) });
     ok(`PF-F2 DW8b pass (${label}): the words went "Upload paused: reconnecting", then "Resumed, N%" up to the end`,
       end.words.includes("Upload paused: reconnecting") && end.words.some((w) => /^Resumed, \d+%$/.test(w)) && end.words.indexOf("Upload paused: reconnecting") < end.words.findIndex((w) => /^Resumed/.test(w)), end.words.filter((w, i, a) => a[i - 1] !== w));
     await ctx.close();
@@ -137,12 +146,125 @@ try {
   await page.evaluate((p) => { (window as any).personId = p; }, P);
   const rows = sql(`select count(*) from plat_file`);
   await page.setInputFiles("#f", { name: "scan.pdf", mimeType: "application/pdf", buffer: Buffer.from("MZ not a PDF at all ".repeat(100)) });
-  await page.evaluate((t) => (window as any).startUpload(t), await signIn());
+  await page.evaluate((t) => (window as any).startUpload(t), await signIn());   // DW8c
   await page.waitForFunction(() => (window as any).failed !== undefined || (window as any).result !== undefined, null, { timeout: 30_000 });
   const refused = await page.evaluate(() => ({ failed: (window as any).failed, words: document.getElementById("words")!.textContent }));
   ok("PF-F2 DW8c fail: a refused file ends in PF-F4's own words on the page (\"… Nothing was stored.\"), after one PATCH (no retry), and nothing is stored",
     /Nothing was stored\./.test(refused.words ?? "") && refused.failed === refused.words && patches === 1 && sql(`select count(*) from plat_file`) === rows, { refused, patches });
   await ctx.close();
+
+  // ---------------------------------------------------------------------------------------- review and break round 1
+  type Run = { result?: string; failed?: string; words: string[]; phases: string[]; reqs: string[] };
+  const small = pdfOf(1200 * 1024), smallSha = sha(small);
+  /** One upload on a fresh desktop page; `during` acts on the page mid-upload (once past `at` %). */
+  const run = async (person: string, o: { retryDelays?: number[]; stallMs?: number }, during?: (page: import("playwright").Page, ctx: BrowserContext) => Promise<void>, at = 25, slow = true): Promise<Run & { page: import("playwright").Page; ctx: BrowserContext }> => {
+    const ctx = await browser!.newContext({ viewport: { width: 1440, height: 900 } }), page = await ctx.newPage(), reqs: string[] = [];
+    if (slow) await (await ctx.newCDPSession(page)).send("Network.emulateNetworkConditions", { offline: false, latency: 20, downloadThroughput: -1, uploadThroughput: 256 * 1024 });
+    page.on("request", (r) => { if (r.url().includes("/api/platform/files/uploads")) reqs.push(`${r.method()}:${r.headers()["upload-offset"] ?? ""}`); });
+    await page.goto(`${base}/pff2-test/`);
+    await page.evaluate((p) => { (window as any).personId = p; }, person);
+    await page.setInputFiles("#f", { name: "statement.pdf", mimeType: "application/pdf", buffer: small });
+    await page.evaluate(([t, opts]) => (window as any).startUpload(t, opts), [await signIn(), o] as const);
+    if (during) { await page.waitForFunction((n) => ((window as any).states.at(-1)?.percent ?? 0) >= n, at, { timeout: 30_000 }); await during(page, ctx); }
+    await page.waitForFunction(() => (window as any).result !== undefined || (window as any).failed !== undefined, null, { timeout: 60_000 });
+    const r = await page.evaluate(() => ({ result: (window as any).result, failed: (window as any).failed, words: (window as any).states.map((s: { words: string }) => s.words), phases: (window as any).states.map((s: { phase: string }) => s.phase) as string[] }));
+    return { ...r, reqs, page, ctx };
+  };
+  const rowOf = (id?: string) => (id ? sql(`select sha256 from plat_file where id = '${id}'`) : "");
+  const rowsFor = (p: string) => Number(sql(`select count(*) from plat_file where key like 'uploads/${p}/%'`));
+
+  // B1 (both): the final PATCH's answer is lost after the server stored the file: done only with the stored file's id.
+  let cutFinal = false;
+  const before1 = rowsFor(P);
+  const lostAnswer = await run(P, {}, async (page) => {
+    await page.route("**/api/platform/files/uploads/*", async (route) => {
+      const off = Number(route.request().headers()["upload-offset"] ?? -1);
+      if (!cutFinal && route.request().method() === "PATCH" && off + 256 * 1024 >= small.length) { cutFinal = true; await route.fetch(); return route.abort("connectionreset"); }
+      return route.continue();
+    });
+  }, 0, false);
+  ok("PF-F2 DW8e fail (review B1, break M1): the last answer lost after the server stored the file → the page still ends done with the stored file's id (never an empty id), one file",
+    cutFinal && !!lostAnswer.result && rowOf(lostAnswer.result) === smallSha && rowsFor(P) === before1 + 1, { cutFinal, result: lostAnswer.result, reqs: lostAnswer.reqs });
+  await lostAnswer.ctx.close();
+
+  // B1: the finish fails once on the server (500): the client tries again and ends with the stored file's id.
+  const failOnce = await run(P_FAIL_ONCE, { retryDelays: [0, 200] }, undefined, 25, false);
+  ok("PF-F2 DW8e fail (review B1, break B1): the server's finish failing once (500) → tried again, done with the stored file's id; one file",
+    failedOnce && !!failOnce.result && rowOf(failOnce.result) === smallSha && rowsFor(P_FAIL_ONCE) === 1, { result: failOnce.result, failed: failOnce.failed, reqs: failOnce.reqs });
+  await failOnce.ctx.close();
+
+  // B1: the finish refused (409, PF-15's plan limit's shape): final, in the server's words, never done.
+  const refusedFinish = await run(P_REFUSE, { retryDelays: [0, 200] }, undefined, 25, false);
+  ok("PF-F2 DW8e fail (break B1, M4): a refused finish (409 problem+json) ends failed in its detail words, never done, nothing stored",
+    refusedFinish.result === undefined && refusedFinish.failed === "Your plan's storage is full. Nothing was stored." && !refusedFinish.phases.includes("done") && rowsFor(P_REFUSE) === 0, { failed: refusedFinish.failed, words: refusedFinish.words.slice(-3) });
+  await refusedFinish.ctx.close();
+
+  // Break M2: a cut the browser never notices (navigator.onLine stays true) longer than every retry delay.
+  let blocked = true;
+  const before4 = rowsFor(P);
+  const unseen = await run(P, { retryDelays: [0, 200, 500] }, async (page) => {
+    await page.route("**/api/platform/files/uploads/*", (route) => (blocked ? route.abort("connectionreset") : route.continue()));
+    await page.waitForTimeout(6000);
+    ok("PF-F2 DW8f fail (break M2): during a 6 s cut the browser does not see (navigator.onLine true), the page says paused and has not given up",
+      await page.evaluate(() => navigator.onLine === true && (window as any).failed === undefined && document.getElementById("words")!.textContent === "Upload paused: reconnecting"));
+    blocked = false;
+  });
+  ok("PF-F2 DW8f pass (break M2, M3): when the path comes back the same upload completes from its offset (one POST), sha256 the original's",
+    !!unseen.result && rowOf(unseen.result) === smallSha && rowsFor(P) === before4 + 1 && unseen.reqs.filter((r) => r.startsWith("POST")).length === 1, { result: unseen.result, failed: unseen.failed, posts: unseen.reqs.filter((r) => r.startsWith("POST")).length });
+  await unseen.ctx.close();
+
+  // Review M2, break M4: the token ends during a cut: plain words (not the problem JSON), the upload kept; a new sign-in resumes it.
+  let cut5 = false;
+  const before5 = rowsFor(P);
+  const expired = await run(P, { retryDelays: [0, 200] }, async (page) => {
+    cut5 = true;
+    await page.route("**/api/platform/files/uploads/*", (route) => (cut5 ? route.abort("connectionreset") : route.continue()));
+    await page.evaluate(() => { const w = window as any; w.token = w.personId; });   // a uuid: no session's bearer
+    await page.waitForTimeout(800); cut5 = false;
+  });
+  ok("PF-F2 DW8g fail (review M2, break M4): a refused token on resume says the server's words in plain text (no JSON, no markup); nothing stored yet",
+    expired.result === undefined && !!expired.failed && !/[{}<>]/.test(expired.failed) && rowsFor(P) === before5, expired.failed);
+  const postsBefore = expired.reqs.filter((r) => r.startsWith("POST")).length;
+  await expired.page.evaluate((t) => { (window as any).token = t; (window as any).retryUpload(); }, await signIn());
+  await expired.page.waitForFunction(() => (window as any).result !== undefined || (window as any).failed !== undefined, null, { timeout: 60_000 });
+  const again = await expired.page.evaluate(() => (window as any).result as string | undefined);
+  const afterRetry = expired.reqs.slice(expired.reqs.length - 3);
+  ok("PF-F2 DW8g pass (break M4): signed in again, retry() resumes the same upload from its offset (no new POST, no PATCH from 0 again) and completes",
+    !!again && rowOf(again) === smallSha && expired.reqs.filter((r) => r.startsWith("POST")).length === postsBefore && expired.reqs.filter((r) => r === "PATCH:0").length === 1, { again, reqs: expired.reqs, afterRetry });
+  await expired.ctx.close();
+
+  // Break m2: the upload is gone from the server on resume (404): said in words, never a silent new upload from 0.
+  const gone = await run(P, { retryDelays: [0, 200] }, async (page) => {
+    await page.route("**/api/platform/files/uploads/*", (route) => route.abort("connectionreset"));
+    await page.waitForTimeout(300);
+    for (const f of readdirSync(join(WORK, "staging"))) rmSync(join(WORK, "staging", f), { force: true });   // the cleanup took it
+    await page.unroute("**/api/platform/files/uploads/*");
+  });
+  ok("PF-F2 DW8h fail (break m2): an upload gone from the server on resume (404) ends in words, with no second POST (never restarted from 0 silently)",
+    gone.result === undefined && gone.failed === "This upload is no longer on the server. Start it again." && gone.reqs.filter((r) => r.startsWith("POST")).length === 1, { failed: gone.failed, reqs: gone.reqs });
+  await gone.ctx.close();
+
+  // Review n1, break m1: abort while paused: done rejects in words, no request after it, nothing stored.
+  const before7 = rowsFor(P);
+  const stopped = await run(P, { retryDelays: [0, 200] }, async (page) => {
+    await page.route("**/api/platform/files/uploads/*", (route) => route.abort("connectionreset"));
+    await page.waitForFunction(() => document.getElementById("words")!.textContent === "Upload paused: reconnecting", null, { timeout: 10_000 });
+    await page.evaluate(() => (window as any).handle.abort());
+  });
+  const n7 = stopped.reqs.length; await stopped.page.waitForTimeout(1500);
+  ok("PF-F2 DW8i fail (review n1, break m1): abort() while paused settles the upload as stopped, sends nothing more, stores nothing",
+    stopped.failed === "Upload stopped." && stopped.reqs.length === n7 && rowsFor(P) === before7, { failed: stopped.failed, more: stopped.reqs.length - n7 });
+  await stopped.ctx.close();
+
+  // Break m4: a request that hangs with no answer is cut after stallMs and tried again; the upload completes.
+  let hung = false;
+  const before8 = rowsFor(P);
+  const stalled = await run(P, { retryDelays: [0, 200], stallMs: 2000 }, async (page) => {
+    await page.route("**/api/platform/files/uploads/*", (route) => { if (!hung && route.request().method() === "PATCH") { hung = true; return; } return route.continue(); });   // never answered
+  }, 25);
+  ok("PF-F2 DW8j fail (break m4): a request left hanging is cut after stallMs, shown paused, and the upload completes from its offset",
+    hung && !!stalled.result && rowOf(stalled.result) === smallSha && rowsFor(P) === before8 + 1 && stalled.words.includes("Upload paused: reconnecting"), { result: stalled.result, failed: stalled.failed, reqs: stalled.reqs });
+  await stalled.ctx.close();
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
