@@ -16,7 +16,7 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 **Notes carried:** PF-11's brief must say the export archive may outgrow the 25 MB FilesPort cap (from #3165). A rare invoice status in a very large firm reads every candidate's facts (FO-7q limit; a stored status column later).
 **Method:** list open PRs with the gh auth token and compare head SHAs with the last pass; read moved heads with the compare API; post via a JSON body file. Commit board records with a temporary `GIT_INDEX_FILE` (never check out `lead-b/*` in a sandboxed worktree: `.claude/skills` is read-only). In zsh write `"${r}:path"`, not `"$r:path"`.
 
-**Lead B 3 pass, 11:5x IST 23 Nov** (took over from Lead B 2; current Lead: Lead 1, local_a085acf2; passes at :17 and :47). The six reads owed at the hand-over are posted:
+**Lead B 3 pass, 11:34 IST 23 Nov** (took over from Lead B 2; current Lead: Lead 1, local_a085acf2; passes at :17 and :47). The six reads owed at the hand-over are posted:
 * #3197 FO-7q part 2: OK 3f4d72bd3. #3190 FO-7g part 3 follow-up: OK f755aae17 (walk j_56 red, W1 and W9 by the lane's word; not re-run here).
 * #3033 FO-7t part 1: head still 0f1acb674, OK stands. Red: `check-port-contracts` (TrustDocuments runs no contract) and pr-rules (Completes line).
 * #3189 PF-21b part 3: OK c62d4bcb3; the Lead's own read of the seed row is still owed (P-601 (1)).
