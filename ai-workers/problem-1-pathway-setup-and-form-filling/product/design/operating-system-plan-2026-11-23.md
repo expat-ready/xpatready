@@ -170,3 +170,57 @@ Three runs of 24 shards (run 45131327234, ended): 69 of 72 read, 23 per run. **S
 **Branches:** claude/lead-o-os-plan (this), claude/lead-o-ci-runner 6aeb97eeb (parked, fix the fork and deleted-fork gaps first), claude/lead-o-ci-measure 098d83d9d (never merge).
 **Owed:** 24-hour red-batch re-measure from #2434 (13:22 IST 23 Nov); "operating system complete" to the founder only when every must row is merged or decided.
 **Refused and stopped:** GATE_RUNNER by shell (then browser, founder's words); combined build twice.
+
+## Lead O 2, 17:10 IST 23 Nov (read from GitHub 16:53-17:09)
+**Must list**
+| PR | Head | Exact-head Approve | Checks | State |
+|---|---|---|---|---|
+| #3210, #2595 | | | | merged 15:37 and 16:30 IST |
+| #2590 | c836593b6 (moved 17:03) | 36c342a2b only: Approve owed on the new head | running; full run 45160823502 ended **green** on 36c342a2b, no longer counts | Lead 5: sprint (b) splits guards and adds F1 |
+| #2597 | 2fa9528c0 | yes | guards green; pr-rules red: 2,189 lines over 800 while stacked | waits on #2590; re-Approve after |
+| #2738 | 0eb8e7c84 | yes | guards cut at 45 min; pr-rules red (cause not read to the end); conflicts | same |
+| #2473 | 8441bc45c | yes | guards green; pr-rules red (cause not read); conflicts | same |
+| #2444 | eb9ceaacd | yes | guards cut at 45 min; pr-rules red (cause not read); conflicts | same |
+| #3254 own-migration guard | 0af19d4c9, draft | none | | waits for "Lead allows round 4" |
+| #2915 | 6d1327f6c | no exact-head line found | green, clean | Lead's records read |
+| #3035 | dd06974e2 | yes | conflicts | after #3254 and #2738 (Lead 5) |
+| #2472 | b88460ffa, draft | | conflicts | **closing is supported**: main's app-view.js already reads resume_token and prints "list may be cut (50 of 50): archive ended sessions" (a4eb4f7c4). Not closed: the Lead closes |
+review-rounds is red on the open stack heads (rounds over the limit without the Lead's line). Not a pipeline-queue condition.
+**Faults Lead O listed:** #2473, #2444 and #3035 fixes are claimed in their Approves; NOT verified in the diffs by me.
+
+**Guards limit:** "cancelled" meant the 45-minute limit, on 11 runs at 45-47 min since 09:47Z. 66 rows re-run check-queue-gate.sh: 30.8 of 41.9 mutation minutes (run 45157663648, 306 rows printed, no FAIL line among them, the rest unproven). Sprint (b) builds the split (Lead 5). My branch claude/lead-o2-guards-parts 5bee11f81 was made before I read that ruling: **superseded, never merge**; its full run was not finished.
+
+### Fix 2: failing suites
+Sample: 172 code batches of 203 mergify ci runs, 22-23 Nov UTC, 84 red; 139 red shard logs, 138 read, 1 empty. Any non-PASS row counts (82 failed twice, 57 failed once with no retry: at most 2 retries a run).
+| Suite | Red batches | Reading |
+|---|---|---|
+| forms_qa53 | 16 | in 16, "alone" in 2; cause not separated |
+| b164_no_engine_keys | 15 | never alone, last 23 Nov 06:55Z; not separated |
+| fo3st3_types_browser | 15 | main's Monday test (#3208 landed); last 08:02Z |
+| csdl3_milestones, pf8b_f4_migrations | 12 each | common PR #2938 in all 12 |
+| pf28_inputs 9, bypass_uses 7, pf21_complaints 7, pf30s_find_box 7 | | pf30s fixed on main (Lead O) |
+* **c69**: 2 batches (#3109, #3150), the same single line both times, on both tries: focus after Mark reviewed. Both PRs merged later. **Hypothesis: race** (focus read once after settle). Not proven.
+* **c92**: 1 batch (#3218), both tries, focus "BODY#". The code moves focus in a requestAnimationFrame; the test reads once. Hypothesis: race. #3218 was also in the red 06:55Z batch, which did not list c92 (heads not compared).
+* **c41**: 1 batch (#2979): **a hang to the 20-minute limit** after the 1024 px line, not a wrong answer. Cause unknown.
+* **pf5s1**: 1 batch (#3218 + #3215), both tries: 20 s wait for the check screen at the keyboard step (line 220). Neither PR's later single batch lists it. Cause unknown; needs the server log of a run that fails.
+* Change: branch claude/lead-o2-focus-waits 9b138d265: c69 and c92 wait up to 5 s for focus, then assert as before. **Not run anywhere** (c69 syntax only); no PR. It proves the hypothesis only if the suites stay green; a focus that never lands still fails.
+* Blocker, 23 Nov 21:00 IST: product pause, so no PR from me. Next: PR, then 10 repeats of each suite. Repeat-new-tests: not started.
+
+### Fix 3: batches of up to 4
+From 22 Nov 11:30 IST: 159 code batches, 79 red (50%). By PRs tested (stacked PRs ahead not counted): 1 PR 121 (65 red, 54%); 2 PRs 35 (14 red, 40%); 3 PRs 1 (0). One, two and three sum to 157; two titles unparsed. **Stacked on others 50: 45 red (90%); not stacked 109: 34 red (31%).**
+Reading: the cap of 2 was filled in only about a fifth of batches, so raising it to 4 would rarely act; being stacked on a red batch goes with red far more than size does. These groups differ in time and PRs, so this is association, not cause.
+From #2434 (13:22 IST): 11 code batches, 2 red. Far too few, and the product pause changes the mix.
+**No change now.** Blocker: re-measure due 24 Nov 13:22 IST; if under 100 code batches by then, extend and say so. Any gate change is the founder's.
+
+### Fix 4: set-up time
+3,989 green shard jobs of the same batches, means: suites 1,084 s (p90 1,267); checkout 48 s; cloud-setup 45 s; Playwright 8 s; setup-node 8 s. **Set-up is 109 s of about 1,190 s, 9%.** One log (shard 6, 07:33Z): checkout fetch 37 s of 42 s, with every branch; npm 11 s; apt, Python and database 32 s; migrations and client about 5 s.
+Most a perfect set-up could save: under 2 minutes a shard. Realistic first step, a narrower fetch, at most about 30 s [estimate, untested]; pr-base.sh needs history. **Low value: not the constraint.** Database time inside suites is still unmeasured: blocker, needs a timed run; plan it 25 Nov.
+
+### Private repository: plan to finish the three checks (nothing created or moved)
+Read by me today: nothing new. A combined read that included the repository's settings was denied at about 17:08 IST; I did not retry that part. Figures below are Lead O's, 15:03.
+| Check | Now | To finish | Who | Done when |
+|---|---|---|---|---|
+| 1 logs and artifacts | partly: signed out, names readable, log text 403, download 401; retention 90 days | a second signed-in account with no access tries one log and one artifact on a public run | founder names or makes the account | both outcomes recorded; retention decided |
+| 2 a lane held to one repository | **not met, untested** | one EMPTY repository (a name and nothing in it); a lane limited to this repository tries to read it, then a lane limited to it tries to read this one's settings | founder creates it; Lead starts the lane | refused both ways, refusal text recorded |
+| 3 $300 included | met (unused) | re-read the billing page on the day | Lead | figure and date |
+Order: 2, 1, 3. Estimate 1-2 h once the founder has acted (Lead O's, unmeasured). Check 2 needs the empty repository, so it asks the founder for that one step before the checks have passed; his words were "after the three checks pass". **That conflict is his to settle.** If 2 fails, nothing private is made.
