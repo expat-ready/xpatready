@@ -43,7 +43,7 @@ await seedSampleFirmsFrontOffice(db); await db.$disconnect();   // the lead's fr
 const signIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) }).then((r) => r.json()) as { token?: string };
 if (!signIn.token) { console.error("STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local)"); process.exit(2); }
 const T = signIn.token, run = Date.now().toString(36).slice(-4);
-const offices = async () => (await api(T, "GET", "/platform/offices")).body as { multipleOffices: boolean; offices: { id: string; name: string; version: string }[] };
+const offices = async () => (await api(T, "GET", "/platform/offices")).body as { multipleOffices: boolean; offices: { id: string; name: string; version: string; timeZone: string }[] };
 if (!(await offices()).multipleOffices) await api(T, "POST", "/platform/offices", { name: `Calgary ${run}`, country: "CA", province: "AB" });
 const list = (await offices()).offices;
 const [O1, O2] = list;
@@ -141,7 +141,9 @@ try {
   await editFromList(O1);
   const O1v = (await offices()).offices.find((o) => o.id === O1.id)!, mineName = `${O1.name} only name ${run}`;
   await nameField(p1).fill(mineName);
-  const zoneSave = await api(T, "PATCH", `/platform/offices/${O1.id}`, { timeZone: "America/Halifax" }, { "if-match": `"${O1v.version}"` });
+  // A zone other than the current one, so the save really changes the record (a second run on the same copy starts on Halifax).
+  const theirZone = O1v.timeZone === "America/Halifax" ? "America/Toronto" : "America/Halifax";
+  const zoneSave = await api(T, "PATCH", `/platform/offices/${O1.id}`, { timeZone: theirZone }, { "if-match": `"${O1v.version}"` });
   await p1.locator('[role="dialog"] [data-office-save]').click();
   const box = p1.locator("[data-conflict]");
   await box.waitFor({ timeout: 10_000 });
@@ -149,7 +151,7 @@ try {
   ok("T5b the conflict notice takes focus and is announced (role alert)", await box.evaluate((el) => el === document.activeElement && el.getAttribute("role") === "alert"));
   await box.locator("[data-conflict-keep-mine]").click();
   await p1.locator('[role="dialog"] [data-office-save]').click();
-  ok("T5b Keep mine then Save: my name is written and their time zone stays", await until(async () => officeName(O1.id) === mineName && sql(`select time_zone from platform_office where id = '${O1.id}'`) === "America/Halifax", 5000), { name: officeName(O1.id), zone: sql(`select time_zone from platform_office where id = '${O1.id}'`) });
+  ok("T5b Keep mine then Save: my name is written and their time zone stays", await until(async () => officeName(O1.id) === mineName && sql(`select time_zone from platform_office where id = '${O1.id}'`) === theirZone, 5000), { name: officeName(O1.id), zone: sql(`select time_zone from platform_office where id = '${O1.id}'`) });
 
   // T7: Close; a dirty tab asks before closing; the cap
   await editFromList(O2);
