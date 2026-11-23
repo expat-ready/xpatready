@@ -15,16 +15,16 @@
 //      office's row shows its own zone and its own hours (Vancouver 08:00-16:00, Calgary 09:00-17:00), as the API holds them; the
 //      firm's first office keeps the firm's zone.
 //   W5 a zone not on the list is refused on the office's timeZone field in words (the API's 422; the screen offers only listed zones).
-//   W6 Licence by screens (PF-6 part 2b): My account → Licence; a number in the wrong shape for its body is saved and WARNED on the
-//      field ("doesn't look like …"), never refused. Two parts are missing and the step names both: (a) PF-4c part 2, each body's
-//      `numberPattern` and the save's `warning` (API only, its brief's touch list); (b) the licence form showing that warning on the
-//      field (licence-form.tsx drops the save's answer; no row's touch list holds it yet: a question for the tech lead on #3028). The
-//      wrong value is one the body's pattern refuses (never assumed). The record is saved and read back on Licences either way.
+//   W6 Licence by screens (PF-6 part 2b, PF-4c part 2): My account → Licence; a number in the wrong shape for its body is saved and
+//      WARNED on the field ("doesn't look like …"), never refused, the field not marked invalid, axe clean in that state; it reads
+//      back on Licences; there, the Owner's save of a wrong shape keeps the panel open with the warning on the number. The body is
+//      the first one whose pattern refuses the value (never assumed): the College's "R and 6 numbers", read at college-ic.ca
+//      (23 Nov). Before PF-4c part 2's data and form, this step named both missing parts.
 //   W7 400, 1024 and 1440 px: Offices and Licence have no sideways scroll and no WCAG 2.2 A/AA violation (axe); keyboard only, the
 //      licence is saved (Tab to the number, type, Enter); no page error.
 // Re-runnable on one copy (offices are never removed: each run adds its own names). Sample firms and values only. US$0, no model call,
 // live AI off. Screenshots: product/screens/J-92/screenshots/. Run from prototype/ (HEADED=1 opens a visible browser):
-//   zsh studio/tools/isolated.sh j92 4436 start --ttl 30 AI_LIVE=off PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j92 4436 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_92.ts j92 4436
+//   zsh studio/tools/isolated.sh j92 4783 start --ttl 30 AI_LIVE=off PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j92 4783 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_92.ts j92 4783
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -32,7 +32,7 @@ import { chromium, type Page } from "playwright";
 import { client, recorder } from "../runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
-const NAME = process.argv[2] ?? "j92", PORT = Number(process.argv[3] ?? 4436), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
+const NAME = process.argv[2] ?? "j92", PORT = Number(process.argv[3] ?? 4783), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
 if (PORT === 4400 || DBNAME === "xr_studio_demo") { console.log("refused: never the demo on :4400"); process.exit(2); }
 const STUDIO = join(import.meta.dirname, "..", "..");
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "J-92", "screenshots"); mkdirSync(SHOTS, { recursive: true });
@@ -176,6 +176,9 @@ try {
   await p.waitForFunction(() => !document.querySelector("[data-licence-save][aria-busy='true']"), undefined, { timeout: 30_000 });
   const formText = await p.locator("[data-licence-form]").innerText();
   await shot(p, "w6-licence-wrong-shape-1440");
+  const vWarn = await axe(p);
+  ok("R1.92 W6: with the warning showing, the licence page has no WCAG 2.2 A/AA violation (axe), and the number field is not marked invalid (saved, not refused)",
+    vWarn.length === 0 && (await p.locator("[data-licence-number]").getAttribute("aria-invalid")) === null, vWarn.map((x) => `${x.id}: ${x.nodes[0]?.target}`));
   const saved = sql(`select licence_number from platform_staff_credential where staff_id = '${OWNER}'`);
   ok("R1.92 W6: a number in the wrong shape is saved, never refused (AG-1-34: an input typo check, not a block)", put.status() === 200 && saved === wrong && !/Not saved/.test(formText), { put: put.status(), saved, formText: formText.slice(0, 200) });
   const answer = await put.json().catch(() => null) as { warning?: unknown } | null;
@@ -187,6 +190,14 @@ try {
   await p.goto(`${BASE}/platform/licences`); await p.locator(`[data-licence-row="${OWNER}"]`).waitFor({ timeout: 60_000 });
   ok("R1.92 W6: the record reads back on Licences (screen and API), with its type and body", (await p.locator(`[data-licence-row="${OWNER}"] [data-licence-number-cell]`).innerText()) === wrong
     && (lics.body?.licences ?? []).some((l: { staffId: string; licenceNumber: string; licensingBody: string }) => l.staffId === OWNER && l.licenceNumber === wrong && l.licensingBody === body.name), [lics.status]);
+  // On Licences (the Owner editing a record in the right panel): a wrong shape is saved and the panel stays open with the warning.
+  await p.locator(`[data-licence-row="${OWNER}"] [data-licence-change]`).click();
+  await p.locator('[role="dialog"] [data-licence-number]').fill(`${wrong}9`);
+  const [pput] = await Promise.all([p.waitForResponse((r) => /\/credential$/.test(r.url()) && r.request().method() === "PUT", { timeout: 30_000 }), p.locator('[role="dialog"] [data-licence-save]').click()]);
+  const panelWarn = await p.locator('[role="dialog"] [data-licence-warning]').innerText({ timeout: 10_000 }).catch(() => "");
+  await shot(p, "w6-licences-panel-warning-1440");
+  ok("R1.92 W6: on Licences, the Owner's save of a wrong-shape number is saved (200) and the panel stays open with the warning on the number field",
+    pput.status() === 200 && /doesn.t look like/i.test(panelWarn) && sql(`select licence_number from platform_staff_credential where staff_id = '${OWNER}'`) === `${wrong}9`, { status: pput.status(), panelWarn });
 
   // ------------------------------------------------------------------------------------------ W7 sizes and axe
   for (const width of [400, 1024, 1440]) for (const path of ["/platform/offices", "/account/licence"]) {

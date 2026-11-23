@@ -39,10 +39,13 @@ function Body() {
     // Review MJ-1 / break M1: read again just before the PUT; changed since the panel opened → save nothing, show it as it is.
     const fresh = List.parse(await staffApi("/platform/licences")).licences.find((r) => r.staffId === editing.staffId) ?? null;
     if (!sameLicence(fresh, editing.start)) { void qc.invalidateQueries({ queryKey: ["pf", "licences"] }); setEditing({ ...editing, start: fresh }); throw new LicenceConflict(fresh); }
-    await staffApi(`/platform/staff/${editing.staffId}/credential`, { method: "PUT", json: l });
+    const answer = z.object({ warning: z.string().optional() }).passthrough().parse(await staffApi(`/platform/staff/${editing.staffId}/credential`, { method: "PUT", json: l }));
     await qc.invalidateQueries({ queryKey: ["pf", "licences"] });
     toast.push({ tone: "ok", text: `The licence record for ${editing.name} was saved.` });
-    saved.current = editing.staffId; dirty.current = false; setEditing(null);
+    saved.current = editing.staffId; dirty.current = false;
+    // PF-4c part 2 (AG-1-34): saved with a soft warning → the panel stays open so the warning shows on the number field.
+    if (answer.warning) { setEditing({ ...editing, start: { ...(editing.start ?? { staffId: editing.staffId, displayName: editing.name, status: "ACTIVE" }), ...(l as Licence) } }); return { warning: answer.warning }; }
+    setEditing(null);
   };
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
