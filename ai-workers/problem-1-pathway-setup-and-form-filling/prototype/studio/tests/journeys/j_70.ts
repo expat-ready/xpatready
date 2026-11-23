@@ -20,8 +20,8 @@
 //      affidavit" line linked to the passport, with the type's cited words under Source; the passport line shows the
 //      "Expired on …" warning and keeps its state (never a block); the other line's document, on a type with no rule,
 //      adds no translation line even in Spanish; English (translation back on the type's default) takes the line away.
-//      Needs CS-D7. One step needs a part no row holds: notarisation Required and not provided read by the checklist
-//      (CS-D7 reads only translation and expiry/age): labelled "Gap", it fails on main and on #3180.
+//      Needs CS-D7. One step asks an open question (QA-758, Ambiguity): notarisation Required and not provided read by the checklist
+//      (CS-D7 reads only translation and expiry/age): labelled "QA-758", it fails on main and on #3180 until the Lead rules (a "no warning" ruling deletes the step).
 //   W5 400, 1024 and 1440 px: the Documents panel with the translation line and the dialog, no sideways scroll, axe-core
 //      0 serious or critical (WCAG 2.2 A/AA); no page error. Needs CS-D7.
 //   W6: the walk ends at R1.72's first step: a Sample prospect's card on the Pipeline board opens the prospect's screen,
