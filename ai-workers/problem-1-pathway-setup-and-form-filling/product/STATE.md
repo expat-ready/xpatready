@@ -8,7 +8,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 
 ## Hand-over Lead 12 → Lead 13, 00:48 IST 24 Nov (the block before and Lead 12's last update line, word for word, still owed where not repeated: `history/STATE-2026-11-24-0050-lead12-before-handover.md`)
 
-**🔴 Founder typed 00:37 (A344), may be awake.** Open question in my session: prepare options for the 29 Nov date? Told: 50/101, 4 net in 24 h, forecast 6-7 Dec. Morning, one at a time (AskUserQuestion): P-814 PR (refused twice by auto mode; he must allow it, never sent another way) · RQ-01 with the seven · security test and counsel · case-rule edges · fast-check trial (proofs report: nothing starts before his yes). Keep-awake refused. Never add to or cut the 101.
+**🔴 Founder typed 00:37 (A344), may be awake.** 29 Nov options asked and prepared (A345). Told: 50/101, 4 net in 24 h, forecast 6-7 Dec. Morning, one at a time (AskUserQuestion): P-814 PR (refused twice by auto mode; he must allow it, never sent another way) · RQ-01 with the seven · security test and counsel · case-rule edges · fast-check trial (proofs report: nothing starts before his yes). Keep-awake refused. Never add to or cut the 101.
 **Queue:** #3304 checks #3189 alone (started 00:20); #3296 #3190 #3173 #3180 #3185 #3193 #3289 #3216 queued; #3179 labelled by the gate. Nothing app merged since 23:24.
 **Full runs:** #3291 45245461324, #3065 45246239005 (be4590f45), #2935 45246563349, #2933 45246609181, #3276 45240653180, #3203 45240507116. An old red run re-run stays on the old main: dispatch ci.yml (pr, head) instead.
 **Lead reads owed:** #3207 54041dca7 (IRM fix only; then full run), #3065 be4590f45 (pure merge of main; Lead read OK 7d7979437), #3219 0be57739a (migration), #3277 (with Scorecards), #3174 review.ts. #3276 read OK, label only after the stamp order.
@@ -22,6 +22,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A345 | 24 Nov, typed to Lead 12 | "Yes, prepare them" (options for the 29 Nov date; options only) | prepared, private notes `release-date-options-2026-11-24.md`; his decision is owed, unchecked by a second reader |
 | A344 | 24 Nov 00:37 (Lead 12) | unblock every queue, exceptions allowed; on track? total done? | done in chat; not on track, date to decide |
 | A343 | 24 Nov ~00:0x typed to Lead 11 | script on proofs (pstack, TLA+), set up the new Claude Code mode | proofs report done, unchecked: start nothing before his yes; mode report owed |
 | A342 | 24 Nov ~00:0x typed to Lead 11 | "For the stuff that you're asking me ... I would follow your recommendation ... You have my approval"; research how people merge "11,000 p" and pay for CI | CI-cost report done, unchecked; check the US$62,400 figure before quoting; the content he meant did not arrive: ask |
