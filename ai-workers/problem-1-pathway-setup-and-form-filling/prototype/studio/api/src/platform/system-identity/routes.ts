@@ -4,6 +4,7 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Req } from "
 import { AnySystemStaff, SystemChange, SystemKeys, SystemReason, SystemSignIn, SystemStepUp, systemStaffOf, type SystemStaffContext } from "./keys.ts";
 import { SystemIdentity } from "./service.ts";
 import { SystemStaffAccess, type CallLine } from "./staff.ts";
+import { NoFirmData } from "../audit/access/declare.ts";
 
 type R = { systemStaff?: SystemStaffContext; systemLine?: CallLine; headers: Record<string, string | string[] | undefined> };
 const lineOf = (r: R): CallLine => { if (!r.systemLine) throw new Error("PF-4s: a change route without its guard line"); return r.systemLine; };
@@ -18,7 +19,7 @@ export class SystemIdentityController {
   local(@Req() r: R, @Body() b: unknown) { const ua = r.headers["user-agent"]; return this.id.localSignIn(b, { device: typeof ua === "string" && ua.trim() ? ua.trim().slice(0, 300) : null }); }
 
   /** Who am I: the person, their roles and their system/* keys. */
-  @Get("me") @AnySystemStaff("a person's own identity")
+  @Get("me") @AnySystemStaff("a person's own identity") @NoFirmData("their own identity")
   me(@Req() r: R) { return this.id.me(systemStaffOf(r)); }
 }
 
@@ -26,21 +27,21 @@ export class SystemIdentityController {
 export class SystemStaffController {
   constructor(@Inject(SystemStaffAccess) private readonly s: SystemStaffAccess) {}
 
-  @Post() @SystemKeys(MANAGE) @SystemStepUp() @SystemChange()
+  @Post() @SystemKeys(MANAGE) @SystemStepUp() @SystemChange() @NoFirmData("our own staff\'s access")
   invite(@Req() r: R, @Body() b: unknown) { return this.s.invite(systemStaffOf(r), lineOf(r), b); }
 
-  @Put(":id/roles") @SystemKeys(MANAGE) @SystemStepUp() @SystemChange()
+  @Put(":id/roles") @SystemKeys(MANAGE) @SystemStepUp() @SystemChange() @NoFirmData("our own staff\'s access")
   roles(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.s.changeRoles(systemStaffOf(r), lineOf(r), id, b); }
 
-  @Post(":id/deactivate") @HttpCode(200) @SystemKeys(REMOVE) @SystemStepUp() @SystemReason() @SystemChange()
+  @Post(":id/deactivate") @HttpCode(200) @SystemKeys(REMOVE) @SystemStepUp() @SystemReason() @SystemChange() @NoFirmData("our own staff\'s access")
   deactivate(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.s.deactivate(systemStaffOf(r), lineOf(r), id, b); }
 
-  @Post(":id/reactivate") @HttpCode(200) @SystemKeys(MANAGE) @SystemStepUp() @SystemChange()
+  @Post(":id/reactivate") @HttpCode(200) @SystemKeys(MANAGE) @SystemStepUp() @SystemChange() @NoFirmData("our own staff\'s access")
   reactivate(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.s.reactivate(systemStaffOf(r), lineOf(r), id, b); }
 
-  @Post(":id/end-sessions") @HttpCode(200) @SystemKeys(REMOVE) @SystemStepUp() @SystemChange()
+  @Post(":id/end-sessions") @HttpCode(200) @SystemKeys(REMOVE) @SystemStepUp() @SystemChange() @NoFirmData("our own staff\'s access")
   endSessions(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.s.endAllSessions(systemStaffOf(r), lineOf(r), id, b); }
 
-  @Post(":id/reset-mfa") @HttpCode(200) @SystemKeys(MANAGE) @SystemStepUp() @SystemReason() @SystemChange()
+  @Post(":id/reset-mfa") @HttpCode(200) @SystemKeys(MANAGE) @SystemStepUp() @SystemReason() @SystemChange() @NoFirmData("our own staff\'s access")
   resetMfa(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.s.resetMfa(systemStaffOf(r), lineOf(r), id, b); }
 }
