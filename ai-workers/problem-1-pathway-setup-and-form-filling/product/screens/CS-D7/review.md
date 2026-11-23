@@ -158,3 +158,34 @@ Reviewer: Approve b41fe99098337d25daef71c071761281b0ad4ab5
 
 **#3180:** Verdict: Approve (no Blocker or Major). R3-m1 to R3-m4 go in as follow-up rows, or are fixed in place.
 Reviewer: Approve 366d3ed3bea87675911b1e9b6c62624023fadddd
+
+## Round 4 (CS-W3 census, Lead 9; head 65fbb6e9cba64eeda786e8271352c8ba91313d32; diff `5710b4103..65fbb6e9c`, 2 test files)
+Fresh reviewer, 23 Nov 2026. This is a diff-only review of a permission path: case access across firms. **Suites** (run-suites.sh isolated copies, ports +14000, never :4400; live AI off, US$0): check_csd5_flags 41/41 and check_csw3_firm_scope 48/48. **Mutation:** I removed `|| (officer && c.firmKey !== firmOfActor(actor)?.key)` from `api/src/runtime.ts:171` and check_csd5_flags failed on "CS-W3 fail (flags)". The file was restored with `git checkout` and the tree is clean.
+
+**(1) The pattern: the builder's reading is right.**
+- The census (`tests/fixtures/csw3/csw3-spike.sh:85-103`) lists every file that names a case model or table. "Sets a firm" is only a column in its output, so scoping a file never takes it off the list. `client-money/visibility-adapter` already goes through `caseScope` and is still listed.
+- The rows scoped by `caseScope`/PF-4 (case-notes/service, visibility-adapter, party-search) serve routes that have PF-4's StaffContext (firmId, staffId, keys). This route is an x-actor `/api/runtime/*` route. Its neighbours there (case-documents, case-checklist, case-work and others) all reach their case through `Runtime.reach`.
+- Lines `api/src/case-document-flags.ts:125-128` are the same lookup as `case-documents.ts:402-405`, which is on the list. Switching to `caseScope` here would split one route family across two access rules.
+- The view.own rule (CS-S1) is not applied on any `/api/runtime` route. That gap was there before this PR and is not a finding here.
+
+**(2) The firm is enforced.**
+- `Runtime.reach` (`api/src/runtime.ts:164-173`) returns "No such case." (404) to an officer whose `firmOfActor(actor).key` is not the case's `firmKey`. The flags route maps that to "No such document."
+- Both firms share the one workspace (`ws.id()`), so the firm check is the only thing that refuses. The mutation above confirms it.
+- **Two cases for one subject cannot happen.** `case_participant.subject_id` is unique (`prisma/schema/cases.prisma:340`; index `case_participant_subject_id_key`, migration 20261023220000). `case_document` has no case id, only `subject_id` (`prisma/schema/evidence.prisma:47`). So `findFirst({subjectId})` finds the document's one case or nothing (a removed person gives 404). No other firm's case can be picked, and no wrong refusal can come from it.
+- The door tags the request with the staff member's firm (`features/case-firm-door.ts:78`). `@CaseRead()` is a read-scope tag, not a permission key, so the door does apply to this route.
+
+**(3) The test checks both ways.**
+- `check_csd5_flags.ts:131-143`: firm B (user-S) opens its own case, uploads a file and reads the flags (200, the same document id). SQL confirms the two cases are in different firms (`count(distinct firm_id) = 2`).
+- Firm A's officer gets 404 "No such document." on read and 404 on write. The write sends a valid body, so the 404 comes from reach and not from validation. After it, language and version are unchanged (`none|0`) and there is no audit line.
+- The check fails when the firm rule is removed (mutation above). A failed setup cannot pass silently, because the own-read check needs 200.
+
+**(4) The allow-list reason is accurate** (`check_csw3_firm_scope.ts:269`). It names the route, the door, the reach through `Runtime.reach` with the 404 words, the matching case-documents lookup, Lead 9 and the test. It carries the same kind of facts as the CS-MV1 and CS-NT1 rows. The count moves to 51 in both the check's words and its assertion (`:278`).
+
+**Findings (none Blocker or Major):**
+- **R4-m1 (Minor, Should; comment accuracy):** `tests/check_csw3_firm_scope.ts:267` still says "plus seven merged on main after the spike", but it now lists nine (42 + 9 = 51). CS-MV1 already left it at seven when there were eight. Review m7 (`84d533d71`) had corrected exactly this sentence. Fix: "plus nine merged on main after the spike".
+- **R4-n1 (nit):** `tests/check_csd5_flags.ts:143` checks the words only on the read refusal. Fix (optional): also test `/^No such document\.$/.test(words(bWrite))`, so the write refusal is shown to use the same words as an unknown id.
+
+**Journey (reviewer role, round 4 delta):** no screen changed. The cross-firm wrong-role step (break-it: "wrong role by URL") is now proven for both read and write, with no data changed. The score stays **8.5 / 10 (pass, no 0)**, and the journey-test file is unchanged. **D/BIC:** unchanged. **Not checked:** GitHub CI on this head; the graph (P-86) was not re-run for a diff-only round; a real screen reader; D17/D20.
+
+**#3180:** Verdict: Approve (no Blocker or Major). R4-m1 can be fixed in place or added to the follow-up rows with R3-m1 to R3-m4.
+Reviewer: Approve 65fbb6e9cba64eeda786e8271352c8ba91313d32
