@@ -8,8 +8,8 @@
 //        names the body, never the number
 //   DW6c the pack's patterns: every numberPattern carries its source (url, page, quote, date) and compiles; a pattern
 //        without a source, one that does not compile, or one with a nested repeat (review m1) stops the pack loading
-// The committed pack holds no pattern yet (no body's official page could be read from a cloud lane, P-601 (5)), so the
-// HTTP cases give one body a TEST-ONLY pattern in memory ("R" and 6 digits, marked Sample, never written to the file).
+// The committed pack now holds the College's pattern (read at college-ic.ca 23 Nov 2026, R1.92); the route cases still give one body a
+// TEST-ONLY pattern in memory ("R" and 6 digits, marked Sample, never written to the file).
 // A scratch database (every migration, the Sample firms) and a Nest app of PF-4's classes with the local stand-in, a test
 // clock and the fake MailPort. No server, no browser, no model call (US$0). The database is dropped.
 //   tsx studio/tests/check_pf4c_licence_format.ts
@@ -83,6 +83,18 @@ ok("PF-4c DW6a pass: licenceWarning — no body, or a body with no pattern, give
 ok("PF-4c pass: bodyNamed finds a body by its name in any letter case and spacing, and by the College's or the Chambre's kind; a law society is found only by its name",
   bodyNamed("  college of immigration and citizenship consultants ")?.kind === "CICC" && bodyNamed("CICC")?.kind === "CICC" && bodyNamed("cnq")?.kind === "CNQ"
   && bodyNamed("LAW_SOCIETY") === undefined && bodyNamed("Law Society of Ontario")?.kind === "LAW_SOCIETY" && bodyNamed("Some other body") === undefined);
+
+// ---------------------------------------------- DW6c, the committed College pattern (PF-4c part 2 data, 23 Nov, R1.92)
+// Read at the College's own page (college-ic.ca, "Working with an immigration consultant", tab "Other items to note", last
+// modified 22 Mar 2024, read 23 Nov 2026): "licence number (begins with the letter 'R' and is followed by 6 numbers. For
+// example: R123456)". Every other body: no pattern (the Chambre's and the law societies' pages publish none that a lane read).
+const cicc = LICENSING_BODIES.find((b) => b.kind === "CICC");
+ok("PF-4c DW6c (data): the committed pack gives the College the pattern its own page states (R and 6 numbers), sourced from college-ic.ca with the page's words; no other body has one",
+  cicc?.numberPattern === "R[0-9]{6}" && /^https:\/\/college-ic\.ca\//.test(cicc.source?.url ?? "") && /begins with the letter .R. and is followed by 6 numbers/.test(cicc.source?.quote ?? "") && /^\d{4}-\d{2}-\d{2}$/.test(cicc.source?.date ?? "")
+    && LICENSING_BODIES.filter((b) => b.numberPattern).length === 1, LICENSING_BODIES.filter((b) => b.numberPattern).map((b) => b.name));
+ok("PF-4c DW6c (data) pass: the College's own example R123456 gives no warning, by its name and by CICC", licenceWarning(bodyNamed("College of Immigration and Citizenship Consultants"), "R123456") === null && licenceWarning(bodyNamed("CICC"), "R123456") === null);
+ok("PF-4c DW6c (data) fail: a College number in another shape is warned, never the number in the words ('X-12', 'R12345', '123456', 'R1234567')",
+  ["X-12", "R12345", "123456", "R1234567"].every((n) => licenceWarning(cicc, n) === "This doesn't look like a College of Immigration and Citizenship Consultants licence number. Check it."));
 
 // ------------------------------------------------------------------------------------- DW6a, DW6b over the route
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
