@@ -39,6 +39,8 @@ export const CLOSURE_ACTOR = "system:platform.firm.closure";
 export const CLOSED_ACTION = "firm.closed", HELD_ACTION = "firm.closure_held";
 /** The revocation reason every staff session of a closed firm carries. */
 export const FIRM_CLOSED_REASON = "firm-closed";
+/** The close transaction may wait behind billing's lock, which a Stripe webhook holds for up to 30 s (webhook.ts); 60 s, not Prisma's 5 s (review n4). */
+export const CLOSE_TX_TIMEOUT_MS = 60_000;
 /** The archive copy's keep period: the longest FLOOR in AUD-5's table (the activity log's 7 years, SA-11-14). */
 export const ARCHIVE_YEARS = Math.max(...KEEP_PERIODS.filter((r) => r.kind === "FLOOR" && typeof r.years === "number").map((r) => r.years as number));
 /** One key per run (break M1): the firm, the hold's event seq, the run's time and a random part (two runs in one millisecond). */
@@ -122,7 +124,7 @@ export class FirmClosure {
         detail: { holdSeq: clock.holdSeq, deletionDate: clock.deletionDate.toISOString(), archiveKey: key, exportKey: exp.key, sha256: copy.sha256, keepUntil, staffSessionsEnded: staff.length, closedAt: now.toISOString() },
         before: { status: "PAYMENT_HOLD" }, after: { status: "DELETED", archiveKey: key } });
       return { state: "closed", archiveKey: key, sha256: copy.sha256, staffSessionsEnded: staff.length };
-      });
+      }, { timeout: CLOSE_TX_TIMEOUT_MS, maxWait: CLOSE_TX_TIMEOUT_MS });
     } catch (e) {   // break m4: a close that failed after its copy was written is a person's to look at
       logPort.error("firm_closure_close_failed", e, { firmId: id });
       return this.blocked(id, "PF-11c.close_failed");

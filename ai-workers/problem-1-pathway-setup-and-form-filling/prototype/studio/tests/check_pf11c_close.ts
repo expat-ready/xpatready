@@ -42,7 +42,7 @@ const { ARCHIVE_YEARS, CLOSED_ACTION, CLOSURE_CRON, CLOSURE_QUEUE, CLOSURE_ZONE,
 const { bypassUses, withFirm } = await import("../api/src/platform/firm-scope.ts");
 const { PgLegalHolds } = await import("../api/src/platform/register/holds/adapter.ts");
 const { PlatformIdentity, FIRM_CLOSED } = await import("../api/src/platform/identity/service.ts");
-const { PlatformSession } = await import("../api/src/platform/identity/session/service.ts");
+const { INVITER_REFUSED, PlatformSession } = await import("../api/src/platform/identity/session/service.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
 const closureFeature = (await import("../api/src/features/platform-firm-closure.ts")).default;
 
@@ -137,6 +137,9 @@ try {
     const otherFirms = `firms/${B}/export-2027-03-02.zip`; await archive.put(otherFirms, Buffer.from("PK firm B"), addYears(fake.now(), 7)); exportsDone.set(A, otherFirms);
     const wrong = await withFirm(A, () => closure.runFirm(A));
     ok("M5 fail: an export key of another firm is not the firm's export: blocked", wrong.state === "blocked" && wrong.rule === "PF-11c.no_full_export" && statusOf(A) === "PAYMENT_HOLD", wrong);
+    exportsDone.set(A, `firms/${A}/export-2027-03-01.zip`);   // the firm's own key, never written to the archive
+    const absent = await withFirm(A, () => closure.runFirm(A));
+    ok("M5 fail (review n2): an export named for the firm but not in the archive: blocked", absent.state === "blocked" && absent.rule === "PF-11c.no_full_export" && statusOf(A) === "PAYMENT_HOLD", absent);
     const mine = `firms/${A}/export-2027-03-02.zip`; await archive.put(mine, Buffer.from("PK firm A full export (Sample)"), addYears(fake.now(), 7)); exportsDone.set(A, mine);
     const noB = `firms/${B}/export-none.zip`; exportsDone.set(B, noB);   // B's export is named but not in the archive
   }
@@ -192,6 +195,9 @@ try {
     const row = await whileLocked((tx) => tx.$executeRawUnsafe(`select id from platform_firm where id = '${A}' for no key update`), () => withFirm(A, () => closure.runFirm(A)), (tx) => tx.$executeRawUnsafe(`update platform_firm set status = 'ACTIVE' where id = '${A}'`));
     ok("M4 fail: a staff change holding the firm's row (an invitation accept) makes the close wait (FOR UPDATE); it then sees the change", row.waited && row.result.state === "changed" && statusOf(A) === "ACTIVE" && lines(A, CLOSED_ACTION) === 0, { waited: row.waited, result: row.result });
     onHold();
+    const failingAudit = { ...auditEvent, record: async () => { throw new Error("pf11c-check: the audit write fails inside the close"); } } as unknown as typeof auditEvent;
+    const failed = await withFirm(A, () => new FirmClosure({ ...deps, audit: failingAudit }).runFirm(A));
+    ok("m4 fail (review): a close that fails inside its transaction rolls back (firm on hold, no session ended, no firm.closed) and raises firm_closure_blocked", failed.state === "blocked" && failed.rule === "PF-11c.close_failed" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.close_failed") === 1 && Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}' and reason = '${FIRM_CLOSED_REASON}'`)) === 0 && lines(A, CLOSED_ACTION) === 0, failed);
   }
 
   // ------------------------------------------------------------------------- day 90 (after the release): the close
@@ -225,10 +231,13 @@ try {
     const local2 = await identity.localSignIn({ firmKey: "sample-firm", actorId: staffA[0] }).then(() => ({}), (e) => { const x = e as { getStatus?: () => number; getResponse?: () => { code?: string } }; return { status: x.getStatus?.(), code: x.getResponse?.().code }; });
     ok("sign-in fail (break m1): the local sign-in door issues no token for the closed firm", (local2 as { code?: string }).code === "FIRM_CLOSED", local2);
     const token = randomBytes(32).toString("base64url"), staffBefore = Number(sql(`select count(*) from platform_staff where firm_id = '${A}'`));
-    sql(`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at) values (gen_random_uuid(), '${A}', 'late.invitee@example.test', '{CASE_OFFICER}', encode(sha256('${token}'::bytea), 'hex'), 'staff:${staffA[0]}', now() + interval '48 hours')`);
+    // Review round 2, Major 6: the inviter is an active Owner, who may invite, so only the closed-firm guard can refuse it.
+    const ownerA = sql(`select s.id from platform_staff s join platform_role_grant g on g.staff_id = s.id and g.ended_at is null and g.role = 'OWNER' where s.firm_id = '${A}' and s.status = 'ACTIVE' order by s.id limit 1`);
+    const invId = sql(`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at) values (gen_random_uuid(), '${A}', 'late.invitee@example.test', '{CASE_OFFICER}', encode(sha256('${token}'::bytea), 'hex'), 'staff:${ownerA}', now() + interval '48 hours') returning id`).split("\n")[0];
     const session = new PlatformSession(db, {} as never, mail, { now: () => Date.now() }, identity);
     const acc = await session.accept(token).then(() => ({}), (e) => { const x = e as { getStatus?: () => number; getResponse?: () => { code?: string } }; return { status: x.getStatus?.(), code: x.getResponse?.().code }; });
-    ok("invitation fail (break M3): a pending invitation of the closed firm cannot be accepted (410); no staff member is added", (acc as { status?: number }).status === 410 && (acc as { code?: string }).code === "INVITATION_NOT_VALID" && Number(sql(`select count(*) from platform_staff where firm_id = '${A}'`)) === staffBefore, acc);
+    const refusedInviter = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = '${INVITER_REFUSED}' and entity_key = '${invId}'`));
+    ok("invitation fail (break M3, review Major 6): an Owner's pending invitation of the closed firm cannot be accepted (410) by the closed-firm guard, not the inviter check; no staff member is added", /^[0-9a-f-]{36}$/.test(ownerA) && (acc as { status?: number }).status === 410 && (acc as { code?: string }).code === "INVITATION_NOT_VALID" && refusedInviter === 0 && Number(sql(`select count(*) from platform_staff where firm_id = '${A}'`)) === staffBefore, { acc, ownerA, refusedInviter });
     ok("sign-in pass: firm B's staff still sign in", !(ctxB instanceof Error) && ctxB.firmId === B, ctxB instanceof Error ? ctxB.message : ctxB.firmId);
   }
 
