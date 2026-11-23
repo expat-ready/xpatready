@@ -161,3 +161,71 @@ Steps: the test's trio (A name N, phone P; B phone P, email E; C name N, email E
 * `check_fo9b_review` 61/61.
 
 Verdict: **Changes** on `744cc791972988285a8b1c3aa865e8dc3135f2e3`. R4-1 Major: the new upsert makes two merges that share a person deadlock (500), and Keep separate still deadlocks against a merge. R4-2 Major: the Kept separate carry follows only one merge, so a two-step chain merges a kept pair by itself.
+
+## Round 7 (full read)
+
+Head `e720342c11653968934b356d550514b7792188da` (the branch later gained `ab6b32d18`, review notes only; no code changed). Fresh breaker, 23 Nov 2026. I read `pair-model.md`, `review.ts`, `routes.ts`, `service.ts`, `arrival.ts`, the migration and both tests in full. Every run used its own database on 127.0.0.1:54329 (the test's `xr_studio_fo9bpm_<pid>`, my `xr_studio_brk7_<pid>`), dropped at the end; never :4400. Mutations ran in scratch worktrees at `e720342`, removed afterwards. Nothing in the repo was changed except this section.
+
+### Raised seeds (`S=…/prototype/studio; $S/node_modules/.bin/tsx --tsconfig $S/api/tsconfig.json $S/tests/check_fo9b_pairs_model.ts`)
+* `SEEDS=39 STEPS=50 BURSTS=40` → 3/3 (19 s).
+* `SEEDS=$(seq -s, 40 90) STEPS=50 BURSTS=40` → 103/103 (18 min 25 s). `SEEDS=$(seq -s, 91 140) STEPS=50 BURSTS=40` → 101/101 (14 min 27 s). The two ran in parallel.
+* In total: 102 seeds, 207/207, no 40P01, and the deadlock counter stayed at 0 in every run.
+
+### Mutation table (one change to `review.ts` each; model test at its defaults, seeds 1-8, STEPS=30, BURSTS=12, unless noted)
+| Inv | Mutation | `check_fo9b_pairs_model` | `check_fo9b_review` |
+|---|---|---|---|
+| I1 | `mustBeOpen` ignores derived Kept separate (preview and merge), and `whyNotSafe` drops the KEPT_SEPARATE check | **red**: I1 in steps (seed 4), I1 in bursts (seeds 3, 5, 6) | — |
+| I1 | only the guided merge's check is dropped | **red**, but only in bursts (seeds 1, 3, 6); the steps never catch it | — |
+| I1 | only `whyNotSafe`'s check is dropped (merge by itself) | **NOT caught** at the defaults (17/17); red at seeds 39-70 (STEPS 50, BURSTS 40) in 5 of 32 seeds | **red**, 6 checks (n1, R3-1 ×2, R4-1, R4-2, R4-3) |
+| I1 | `keptBetween` follows one merge only (R4-2 put back) | **red**: I1, seed 3 | — |
+| I1 | `mustBeOpen` drops the MERGED_AWAY check | **red**: I1 in steps and bursts | — |
+| I2 | `listed()` and `list()` ignore `withdrawn` | **red**: I2 in 4 seeds | — |
+| I2 | a merge notes pairs with `mergeRef` null | **red**: I2 in 4 seeds | — |
+| I2 | Undo does not reopen the merged pair | **red**: I2 in 7 seeds | — |
+| I2 | `notePairs` never notes a withdrawn pair again | **NOT caught** (17/17) | **NOT caught** (64/64) |
+| I3 | `pair()` locks the row before the people | not caught; harmless alone (no writer waits on a pair row while holding a person's lock) | — |
+| I3 | `notePairs` uses `on conflict do update … where false` | not caught (17/17) | **red** (R4-1: the merge waited) |
+| I3 | both of the above (744cc79's shape) | **red**: 40P01 in seeds 4, 5, 7; counter 44 | — |
+| I3 | `pair()` takes no people locks | **red**: I1 in bursts (4 seeds); counter 1 | — |
+| I3 | the re-note waits (`for update` without `skip locked`) | not caught; harmless (no cycle) | — |
+| I3 | Undo writes its pair row **before** `unmergeRecords` takes the people's locks | **NOT caught** (17/17) | **NOT caught** (64/64) |
+| I4 | `list()` ignores `keptBy` | **red**: I4 in 5 seeds | — |
+| I4 | `keptBy` keyed by the sides, not their roots | **red**: I4 in 3 seeds | — |
+| I4 | `listed()` ignores `keptBetween` | **red**: I1 (steps and bursts) | — |
+| §1 | `list()` keeps OPEN pairs whose side is merged away on To review | **NOT caught** (17/17) | **NOT caught** (64/64) |
+| §1 | `mergeIfSafe` merges a withdrawn (not listed) pair | **NOT caught** (17/17) | **NOT caught** (64/64) |
+
+### Findings
+**R7-1 Minor: Undo of the earlier merge in a chain answers 404 "No such merge in your firm", for a merge the Merged tab lists with Undo.** `undo` checks `seen(tx, ctx, [m.survivorId])` (`review.ts:362`), while `merges()` checks the survivor's live root (`:293-296`). Once A has been merged into D, A has no leads, so the check fails.
+Steps: A, B, C, D share an email or phone. Merge A-B (survivor A), then merge A-D (survivor D). `merges(R)` lists the first merge, not undone. `undo(R, m1)` → 404 `NOT_FOUND`. Expected: 409 `UNDO_REFUSED`, "A later merge involves one of these records; undo that one first." After the second merge is undone, the first undoes with 200. So BR-10 ("a refused Undo shows the server's reason") gives the wrong reason. Nothing is changed.
+
+**R7-2 Minor: an arrival between a merge and its Undo leaves a stale pair on To review and never lists the real one.** Steps: M (email e, phone p) and P (email e2, phone p). Guided merge M into P with `choices.email: LOSER`, so P's email becomes e. N arrives with email e, which writes the pair N-P (noted by the arrival). Undo → 200. P's email is e2 again. N-P stays To review, still listed under "What matched: EMAIL". Preview → 200, so a guided merge is offered. No M-N row exists, and N's lead still flags P. `mergeIfSafe(N-P)` refuses (`NOT_EXACT`), so nothing is merged by itself. The Undo writes only its own row (`review.ts:369`). An arrival's pairs are never withdrawn (`arrival.ts:108`). §1 promises exactness only when the Undo is of the last change, so this case falls outside it. A person is still shown a reason that is no longer true.
+
+**R7-3 Minor (test): the I3 bursts never run Undo or an arrival, so a broken Undo lock order passes both suites.** `check_fo9b_pairs_model.ts:158` picks only keep, merge or auto. The mutation "Undo writes its pair row before the people's locks" passes 17/17 and 64/64. My harness (`undo` ‖ `keepSeparate` on the just-merged pair, 25 times): mutated, 21 deadlocks, every one answered 503 BUSY; at head, 0 (23 × 409 `DECIDED`, 2 × done after the Undo). Pair-model §2 lists Undo in the lock order, but nothing tests it.
+
+**R7-4 Minor (test): three rules of the pair-model §1 table are not checked by either suite.** Breaking each one passes both suites (table above):
+* To review hides a pair whose side is merged away (`review.ts:275`);
+* a later merge lists a withdrawn pair again (`:121-125`);
+* the merge by itself refuses a withdrawn pair (`:189`).
+The code obeys all three today. Separately, the merge by itself's Kept separate check alone is caught by the model test only at raised seeds; `check_fo9b_review` catches it.
+
+Not findings (noted only):
+* `mergeIfSafe` on a pair with a merged-away side throws 409 `ALREADY_MERGED` and does not return `{ refused }`. This happened 25 times in the stress run. It is latent until part 2b.
+* The skip-locked re-note limit (§4) reproduces as written. With the A-C row held in another session, the next merge leaves A-C off the list, although A and C share a phone. Keep separate → 409 `NOT_LISTED`; the merge by itself → `refused: []`.
+* An owner-only merge-key holder may Undo a merge whose loser's lead they never saw. This follows M6: "every merge whose surviving record the viewer may open".
+
+### What held (round 7)
+* **Stress, every writer at once:** 6 seeds × 40 rounds, 1,066 actions. The actions were Keep separate, guided merge, merge by itself, Undo, FO-2 lead assign, FO-9a phone edit, arrival and Add as new, 3 to 6 at once on worlds that share a phone or email.
+  * 0 deadlocks (counter), 0 errors, 0 joined Kept separate pairs.
+  * 0 disagreements between `list()` and `listed()`. After every round, each OPEN-status pair's tab matched preview's `mustBeOpen` (To review ⇔ no 409; Kept separate ⇔ 409 `KEPT_SEPARATE`).
+* **No deadlock with the other writers (by reading the code, consistent with the stress run):**
+  * The lead change (`fo_lead` FOR UPDATE), the phone edit (`fo_person` FOR UPDATE) and the arrival's key-share never wait on a person's advisory lock or a pair row.
+  * A merge never waits after its advisory locks (NOWAIT).
+  * Keep separate waits only on `fo_lead` rows, and their holders wait on nothing that Keep separate holds.
+* **Undo order:** B into A, then A into D. Undo of the first is refused. Undoing the second gives back exactly the list after the first merge; undoing the first then gives back the starting list (missing row = not listed).
+* **Keep separate racing an Undo of Y into Z** (15 runs): it never decided on a tombstone (11 × 409 `MERGED_AWAY`, 4 × done after the Undo committed).
+* **Re-noting:** a withdrawn A-C is listed again by the next merge (`noted_by_merge_id` = that merge) and hidden again after its Undo.
+* **Visibility:** a viewer who sees one side only gets no list row and 404 on preview, merge and Keep separate. Another firm (`user-S`): list 0, Merged tab 0; Undo, Keep separate and preview → 404.
+* **The new column:** a made-up `noted_by_merge_id` is refused by `fo_dup_review_noted_by_merge_id_fkey`, and deleting a merge it names is refused by the trigger. `prisma migrate diff` (migrations → `prisma/schema`) shows no drift for `fo_dup_review` or `fo_dup_merge`.
+
+Verdict: **Approve** on `e720342c11653968934b356d550514b7792188da`. No Blocker or Major. R7-1 and R7-2 are Minor code findings; R7-3 and R7-4 are Minor test gaps (adding Undo and arrivals to the bursts, and the three §1 rules to the per-step checks, would close them).
