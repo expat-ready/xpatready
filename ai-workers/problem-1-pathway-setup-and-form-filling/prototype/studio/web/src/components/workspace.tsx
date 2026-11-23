@@ -83,13 +83,13 @@ function load(): { tabs: Tab[]; active: string; dropped: boolean } {
     if (s && Array.isArray(s.tabs))
       tabs = s.tabs.filter(keptTab).slice(0, TAB_CAP).map((t) => ({ id: t.id, path: t.path, title: t.title.slice(0, 200), nav: 0, type: NavigationType.Pop, scroll: 0 }));
   } catch { /* none kept */ }
-  const cur = here(), same = tabs.find((t) => itemOf(t.path) === itemOf(cur));
-  if (same) { same.path = cur; return { tabs, active: same.id, dropped: false }; }
+  const cur = here(), same = tabs.find((t) => itemOf(t.path) === itemOf(cur)), usr = (window.history.state as { usr?: unknown } | null)?.usr ?? null;   // a reload keeps the entry's router state
+  if (same) { same.path = cur; same.state = usr; return { tabs, active: same.id, dropped: false }; }
   // Lead 13: an address typed or opened in this browser tab moves the shown tab there, as a browser does (it never stacks a
   // new tab on every page load); a shown tab holding a draft is kept and the address gets a tab of its own.
   const act = tabs.find((t) => t.id === keptActive);
-  if (act && !draftsAt(itemOf(act.path)).length) { act.path = cur; act.title = guess(cur); return { tabs, active: act.id, dropped: false }; }
-  const t: Tab = { id: newId(), path: cur, title: guess(cur), nav: 0, type: NavigationType.Pop, scroll: 0 };
+  if (act && !draftsAt(itemOf(act.path)).length) { act.path = cur; act.title = guess(cur); act.state = usr; return { tabs, active: act.id, dropped: false }; }
+  const t: Tab = { id: newId(), path: cur, title: guess(cur), nav: 0, type: NavigationType.Pop, scroll: 0, state: usr };
   let dropped = false;
   if (tabs.length >= TAB_CAP) {   // break M2: at the cap, a tab without unsaved changes makes room, and the person is told
     const free = tabs.map((x, i) => [x, i] as const).reverse().find(([x]) => !draftsAt(itemOf(x.path)).length);
@@ -116,12 +116,14 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   React.useEffect(() => { setMounted((m) => (m.has(active) ? m : new Set(m).add(active))); }, [active]);
   React.useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(t); }, [notice]);
 
-  const show = React.useCallback((id: string, path?: string, how: "push" | "replace" = "push") => {
+  // Each history entry keeps its router state ({ ws, usr }, as BrowserRouter keeps `usr`): Back and a reload give a page the
+  // state it stamped (Lead 13: the activity log's owner stamp, BR-13, was lost and Back after another sign-in kept filters).
+  const show = React.useCallback((id: string, path?: string, how: "push" | "replace" = "push", state?: unknown) => {
     const { tabs: ts, active: a } = now.current;
     const to = ts.find((t) => t.id === id); if (!to) return;
     const next = path ?? to.path, scroll = window.scrollY;
-    setWs((s) => ({ active: id, tabs: s.tabs.map((t) => (t.id === a && t.id !== id ? { ...t, scroll } : t.id === id ? { ...t, path: next, nav: t.nav + (path ? 1 : 0), type: path ? NavigationType.Push : t.type } : t)) }));
-    if (next !== here()) window.history[how === "push" ? "pushState" : "replaceState"]({ ws: id }, "", next);
+    setWs((s) => ({ active: id, tabs: s.tabs.map((t) => (t.id === a && t.id !== id ? { ...t, scroll } : t.id === id ? { ...t, path: next, ...(path ? { state: state ?? null } : {}), nav: t.nav + (path ? 1 : 0), type: path ? NavigationType.Push : t.type } : t)) }));
+    if (next !== here() || path) window.history[how === "push" && next !== here() ? "pushState" : "replaceState"]({ ws: id, usr: (path ? state : to.state) ?? null }, "", next);
     if (id !== a) requestAnimationFrame(() => window.scrollTo(0, to.scroll));
   }, []);
   const open = React.useCallback((path: string, focus: boolean) => {
@@ -143,7 +145,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
       for (const k of kept) discardDraft(k);
     }
     const i = ts.findIndex((t) => t.id === id), rest = ts.filter((t) => t.id !== id);
-    if (id === a) { const n = rest[Math.min(i, rest.length - 1)]; now.current = { tabs: rest, active: n.id }; setWs({ tabs: rest, active: n.id }); window.history.pushState({ ws: n.id }, "", n.path); requestAnimationFrame(() => window.scrollTo(0, n.scroll)); focusTab(n.id); }
+    if (id === a) { const n = rest[Math.min(i, rest.length - 1)]; now.current = { tabs: rest, active: n.id }; setWs({ tabs: rest, active: n.id }); window.history.pushState({ ws: n.id, usr: n.state ?? null }, "", n.path); requestAnimationFrame(() => window.scrollTo(0, n.scroll)); focusTab(n.id); }
     else { setWs((s) => ({ ...s, tabs: s.tabs.filter((t) => t.id !== id) })); focusTab(a); }   // round 2 Should 2: focus stays on the strip
     setMounted((m) => { const c = new Set(m); c.delete(id); return c; });
   }, []);
@@ -151,9 +153,9 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   const move = React.useCallback((id: string, to: To, how: "push" | "replace", state?: unknown) => {
     const path = typeof to === "string" ? to : createPath(to), { tabs: ts } = now.current;
     const other = ts.find((t) => t.id !== id && itemOf(t.path) === itemOf(path));
-    if (other) { show(other.id, path); return; }
+    if (other) { show(other.id, path, how, state); return; }
     setWs((s) => ({ ...s, tabs: s.tabs.map((t) => (t.id === id ? { ...t, path, state, nav: t.nav + 1, type: how === "push" ? NavigationType.Push : NavigationType.Replace } : t)) }));
-    if (id === now.current.active) window.history[how === "push" ? "pushState" : "replaceState"]({ ws: id }, "", path);
+    if (id === now.current.active) window.history[how === "push" ? "pushState" : "replaceState"]({ ws: id, usr: state ?? null }, "", path);
   }, [show]);
   const leave = React.useCallback((id: string, path: string) => {
     const other = now.current.tabs.find((t) => t.id !== id && itemOf(t.path) === itemOf(path));
@@ -161,9 +163,9 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     // This tab goes and the other comes forward in one step (no neighbour flashes in between).
     const scroll = other.scroll, rest = now.current.tabs.filter((t) => t.id !== id);
     now.current = { tabs: rest, active: other.id };
-    setWs((s) => ({ active: other.id, tabs: s.tabs.filter((t) => t.id !== id).map((t) => (t.id === other.id ? { ...t, path, nav: t.nav + 1, type: NavigationType.Push } : t)) }));
+    setWs((s) => ({ active: other.id, tabs: s.tabs.filter((t) => t.id !== id).map((t) => (t.id === other.id ? { ...t, path, state: null, nav: t.nav + 1, type: NavigationType.Push } : t)) }));
     setMounted((m) => { const c = new Set(m); c.delete(id); return c; });
-    window.history.pushState({ ws: other.id }, "", path);
+    window.history.pushState({ ws: other.id, usr: null }, "", path);
     requestAnimationFrame(() => window.scrollTo(0, scroll));
     focusTab(other.id);   // round 2 Should 1: the closed panel's focus goes to the tab that comes forward, not to <body>
   }, [move]);
@@ -172,7 +174,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     const pop = () => {
       const cur = here(), { tabs: ts, active: a } = now.current, t = ts.find((x) => itemOf(x.path) === itemOf(cur)) ?? ts.find((x) => x.id === a)!;
-      setWs((s) => ({ active: t.id, tabs: s.tabs.map((x) => (x.id === t.id ? { ...x, path: cur, nav: x.nav + 1, type: NavigationType.Pop } : x)) }));
+      setWs((s) => ({ active: t.id, tabs: s.tabs.map((x) => (x.id === t.id ? { ...x, path: cur, state: (window.history.state as { usr?: unknown } | null)?.usr ?? null, nav: x.nav + 1, type: NavigationType.Pop } : x)) }));
     };
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
