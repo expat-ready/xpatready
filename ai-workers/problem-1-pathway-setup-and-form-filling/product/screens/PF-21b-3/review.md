@@ -107,3 +107,40 @@ My runs left no scratch databases. Two others exist, `xr_studio_pf21b3_empty_427
 No new findings. No open Blocker or Major. Round-2 Minors as recorded.
 
 **Verdict: Approve** 18d790159d07f7f4ef546934421a22d452151dd5
+
+## Round 4 (23 Nov 2026): head 7d63314ecaf893f66aa9335bce671b19299097dc, diff only (`3421835e9..7d63314ec`)
+
+Scope: the Lead's full run 45215337825 failed at shard 19. FO-9b DW2 found `plat_data_request.person_id` missing from the merge list (Lead 9 on #3189). Two commits since the approved head 66db561ce. No journey score this round, because one classification row changes nothing a user sees. The round-2 score (8.75/10) stands.
+
+**(1) The merge 3421835e9 is clean.** Its parents are 66db561ce and origin/main 09b3893df.
+- `git show --remerge-diff 3421835e9` is empty, so there are no hand edits and no conflict resolutions.
+- `git diff 3421835e9^2 3421835e9` touches the same 11 files as the PR's own diff at 66db561ce (1091 lines in). The two patches are identical apart from the hunk offset in `check_pf4s_system_signin.ts`, which main also changed.
+
+**(2) The PR's change is one row** at `api/src/front-office/duplicates/merge/columns.ts:39`: `plat_data_request.person_id` is classified STAYS, with its reason. No other file changes.
+
+**(3) STAYS is right, and the reason is true and sourced.**
+- *Source.* SA-11-40 §6 says: "The subject is fixed when the request is created." §5 rule 1 says "A request has one subject: one person record". Both are quoted correctly. This is the specific rule for this record. AG-2-16 rule 2 says to re-parent "every note, task, communication, call, document, assessment, appointment and open lead", which is the person's work at the firm. A request made to ExpatReady is the platform's own register entry, so it is not that kind of work.
+- *The trigger.* "Its trigger refuses a change" is true: `migration.sql:79` raises `plat_data_request_moved` when `NEW.person_id IS DISTINCT FROM OLD.person_id`. A MOVE row would therefore abort every merge of a person who has a request.
+- *A second reason the builder did not state.* The merge runs in the firm's session as xr_app. DW6 shows that a firm session and xr_app cannot read or write this table. MOVE could not run even without the trigger.
+- *The neighbouring rows.* The row matches `plat_complaint.subject_id` ("kept as received") and the evidence rows (`fo_identity_check`, `fo_conflict_check`, `fo_signer`), which all stay because their records refuse a change.
+- *The tombstone tension.* AG-2-16 rule 5 says "No row ever points to a tombstone after the commit", and every STAYS row breaks it. FO-9b already settled this through its file-wide rule: "a reader follows fo_person/fo_company.merged_into_id to the survivor" (`columns.ts:5-6`). That matches AG-2-16 §10: "the tombstoned record stays resolvable, so the merge stays reversible". This row adds nothing new to the tension.
+- *Undo.* "A merge and its Undo leave it" is true. The merge locks and writes only MOVE columns (`service.ts:111`), and Undo writes back only `UNDOABLE` = MOVE plus `fo_company_contact.valid_to` (`service.ts:127`). After an Undo, the request again names a live record, the one it was made about. No move back is needed.
+- *SA-11-40 rule 6.* The rule says "never picks one or merges silently", and it holds. The register never changes the subject, and the merge is a staff decision under AG-2-16 ("Person decides").
+- *Readers.* Nothing reads `person_id` expecting the survivor. The only reader is the register list (`register/requests/service.ts:72, 178`), which returns the id as stored. `j_85.ts` and `j_4.ts` do not join on it.
+- *No question needed.* The sources settle this, so the builder was right not to post one.
+
+**(4) Tests** (worktree at 7d63314ec, node_modules symlinked, Postgres 18 on 127.0.0.1:54329; never :4400):
+- `check_fo9b_merge.ts`, run 1: 88 passed, 0 failed. Run 2: 88 passed, 0 failed. All three DW2 lines pass.
+- `check_pf21b_requests.ts`: 27 passed, 0 failed (DW6 newest before: 20261123140000_csd7c_type_defaults).
+- The test fails when the rule is removed. With the row deleted (in the scratch worktree only), `check_fo9b_merge.ts` gives 87 passed, 1 failed: `FAIL FO-9b DW2 pass … {"unlisted":["plat_data_request.person_id"],"gone":[]}`. I restored the row afterwards.
+- `module-cards.py pr`, run on the 12 changed paths and a body holding both "Card unchanged:" lines: PASS (3 modules touched; platform through its fragment `MODULE.rows/PF-21b-3.md`), with and without `BASE=3421835e9`. A body with no such line fails, so the check bites.
+- Tool note (not this PR): the tool reads only the first "Card unchanged:" line and lets it cover every module. The front-office line is right but never checked.
+- Scratch databases: my runs left none. Only the two older `xr_studio_pf21b3_{empty,demo}_4275` from round 3 remain, left for the cleanup tool.
+
+**New, Minor (no change required):**
+- **r4-m1.** "A legal record of who asked" is loose wording. `person_id` names whom the request is *about*. Under SA-11-40 rule 8 the asker can be someone else, such as the principal asking for a minor. Who asked is `requester_name`/`requester_email`. "A legal record of the request, kept as received" would be exact. The classification is unaffected.
+- **r4-m2 (for PF-21d, not this PR).** After a merge, the loser's moved data sits on the survivor. An exporter or eraser acting on a request's `person_id` must follow `merged_into_id`, or it would touch only the tombstone's data (SA-11-40 rules 2 and 3). This goes with round-2 m2 (the firm and person link is unchecked), which is already queued for PF-21d.
+
+No open Blocker or Major. Minors from earlier rounds stand as recorded.
+
+**Verdict: Approve** 7d63314ecaf893f66aa9335bce671b19299097dc
