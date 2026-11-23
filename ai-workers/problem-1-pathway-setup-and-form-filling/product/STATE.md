@@ -2,7 +2,7 @@
 
 current_lead: local_9c46a890-544e-4779-933b-b6aac41810f3 Lead 8 · 23 Nov 20:02 IST (took over from Lead 7 (local_1117b08b) at ~384k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 20:08 IST: Lead 8 took over, check 468d2319. #3174 round 9 ruled (R8-2, R8-3 code stays; reviewer and breaker on c1cae9494), lane woken 20:05, confirmed sent. #2444: Approve 23b484edf, Lead read of all four parts posted, full run started 20:08; owed: #3261 on main, then "Size exception: P-811" in the body, label. #3215 full run started 20:08 (four in flight with #3256, #3191; both no red yet)
+updated: 2026-11-23 20:24 IST: Lead 8, check 468d2319. #3261 on main 20:13 (9eee93894). #3174: round 9 Major (2b, Undo hides a pair that matches again); RULED remove the Undo crediting step, round 10 allowed, lane told 20:20; P-812 line in body. #2444: GitHub conflicting (two merge bases after #3254; git merge-tree clean, tree ae71d8066): sprint (c) told 20:23 to merge main 9eee93894 only, Approve, stop; then the Lead posts the read and a NEW full run (run 45196174580 is on the old head); P-811 line in body. Lead reads posted: #3256 b41fe9909 (schema, OK), #3257 b8c463035 (label after #2444). #3185 P-810 line in body; its pr-rules stays red until its re-stamp push (stale merge base). Monday fix confirmed on main (for #3188). Full runs #3256 #3191 #3215 in progress, no red 20:20. Contexts read: Lead O 2 43% (hand-over at 45%), Lead B 4 29%. lead-watch exited 142 (alarm) after its ACT lines: look next check. Pilot B: Lead 5 reports after 21:23
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
