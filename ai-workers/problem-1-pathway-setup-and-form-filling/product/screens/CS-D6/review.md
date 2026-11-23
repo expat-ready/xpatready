@@ -185,3 +185,63 @@ No Blocker, no Major.
 `Reviewer: Approve b4bcfcb169f5eef517cbf6b7607666efadbf21ae`
 
 Verdict: Approve
+
+## Round 5 (batch faults): head `ec210cac8d71ab09bf588411815ab3f41415877d` (diff `git show ec210cac8` only; `c44524dfb` is a merge of origin/main and was not reviewed)
+
+The tech lead allowed this round for two faults only (Lead 11, PR comment 7110124442, batch 45230123108). Last approved head: `46fa17409`.
+
+**What I ran**
+* `run-suites.sh --only "check_csv1_inputs.ts check_csw3_firm_scope.ts check_csd6_reads_keep.ts"` at `ec210cac8`. Ports were +14000; :4400 was not used.
+  * `check_csd6_reads_keep.ts`: PASS, 23/23.
+  * `check_csv1_inputs.ts`: PASS, 100 passed, 0 failed.
+  * `check_csw3_firm_scope.ts`: PASS, 48/48.
+* I called the real `ReadsCursor` export directly through tsx with the studio tsconfig, using 13 inputs. Results below.
+* `tsc -p api/tsconfig.json --noEmit`: no error in `case-document-reads.ts`. The only errors are older ones in unrelated `tests/` files.
+* Screenshots: the runs overwrote none, and the working tree stayed clean. I looked at the re-run `w2-owner-read-by-1440.png`: same layout, with the "The file has changed" notice and three "Read by" lines. Only the times changed.
+
+**Fault 1: is the `before` parse correct and complete? Yes.**
+* The schema is `ReadsCursor = z.union([z.undefined(), z.literal(""), z.string().max(36).regex(UUID)])`, and `list()` calls `safeParse(before)`. A failure goes to the same `badCursor()`, so the 400 response has the same words as before: "Check the details" / "The page cursor is not one this list gave." / `fields.before`.
+* Inputs I tried:
+
+  | Input | Result |
+  |---|---|
+  | `undefined`, `""` | accepted, no cursor |
+  | a UUID, the same UUID upper-cased | accepted, then lower-cased by `cur` |
+  | 37 characters, 10,000 characters, `" "`, `"yesterday"`, UUID + `"\n"` | refused (no `m` flag, so `$` does not match before the newline) |
+  | `null`, a number, an array (`?before=a&before=b`), an object | refused |
+
+* Type narrowing: `q.data` is `string | undefined`, so `q.data ? q.data.toLowerCase() : null` is sound. It also stops the old `typeof before === "string"` check from being repeated. `UUID` has no `g` flag, so `.regex()` keeps no `lastIndex` state between calls.
+* Behaviour is unchanged from the old hand-written check. The order is also unchanged: `reach()` runs first, so 404 still wins over 400 and a bad cursor reveals nothing about a document the caller cannot reach.
+* `max(36)` adds nothing beyond the anchored regex, but it is harmless and documents the intent.
+
+**Fault 2: is the firm-scope claim true? Yes. Is the census row's reason accurate? Yes.**
+* What `reach()` does, line by line:
+  * l.55: the id must be a UUID, else 404.
+  * l.56: `caseDocument.findUnique` by id. Not firm-scoped.
+  * l.57: `caseParticipant.findFirst` by `subjectId`. Not firm-scoped, but `CaseParticipant.subjectId` is `@unique` (`prisma/schema/cases.prisma`), so a subject belongs to exactly one case. `findFirst` cannot pick another firm's case for a subject that sits in two cases.
+  * l.58: `caseScope` with the session's `firmId`. It returns no scope unless the staff member belongs to that firm.
+  * l.59: `case.findFirst` with `AND: [{ id, firmKey: ctx.firmKey }, caseScopeWhere(scope)]`. `caseScopeWhere` always sets `firmId: s.firmId` (`case-access.ts:35-39`). So the case lookup is filtered by both firm key and firm id, plus the person's view rule.
+  * l.61-62: the platform firm behind `c.firmKey` must be `ctx.firmId`, else 404.
+* **Do the lookups by id that come before the firm check leak anything? No.**
+  * They return nothing to the caller and write nothing: no audit line, and `checkUnchanged` hashes and logs only after `reach()` succeeds.
+  * Every miss (bad id, unknown document, no participant, another firm's case, out of view, wrong platform firm) ends in the same `gone()` 404 with the same words.
+  * DW2 l.86 asserts that firm B's 404 matches an unknown id's 404 word for word. DW3 l.119 asserts firm B's check is 404 and writes no line.
+  * The only difference is timing: an unknown id costs one query and a known one about four. Ids are random v4 UUIDs, so they cannot be enumerated. This was true in every earlier round and is not new here.
+* **The census row's reason** (`check_csw3_firm_scope.ts`) is "staff routes take their firm from PF-4's session; the document's case is read firm-first … else 404; firm B's refusal is in check_csd6_reads_keep.ts DW2 and DW3". Every part checks out:
+  * `features/case-document-reads.ts` uses `staffOf(r)` behind `@PermissionKeys` and never reads `x-actor`.
+  * The reason says the document's *case* is read firm-first, which is exact. It does not claim the document lookup itself is firm-first.
+  * The cited tests exist and pass.
+  * The lead's "with a firm-B refusal test" is met by those existing tests, so no new test was needed.
+* **Count 51 is right.** At `ec210cac8`, origin/main (`5c9b15ed4`) has not touched the census since `343981ef3`, so main is still at 50 and has no #3180 row. If #3180 lands first, the count must be taken from it, as the lead said.
+
+**Findings**
+* n5 (nit, no change needed for merge): the census comment still says "plus seven merged on main after the spike", but it now names nine files (five + party-search, case-notes, visibility-adapter, case-document-reads). It was already off by one since CS-MV1. Only the comment is affected; the assertion (`ALLOW.length === 51`) is what counts.
+* n6 (nit): no route-level test sends `before=""`, an over-long cursor, or a repeated `before`. Only `"yesterday"` is tested (DW2 l.87). I checked those inputs on the real schema above, and `check_csv1_inputs` now sees the zod parse, so this is optional.
+
+No Blocker, no Major. Both batch faults are fixed within the lead's limit, with no new scope.
+
+**Journey score, round 5: 9/10** (unchanged; this commit changes no screen).
+
+`Reviewer: Approve ec210cac8d71ab09bf588411815ab3f41415877d`
+
+Verdict: Approve
