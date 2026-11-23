@@ -43,7 +43,7 @@ const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { arrive } = await import("../api/src/front-office/sales/arrival.ts");
 const { phone: salesPhone } = await import("../api/src/front-office/sales/common.ts");
 const { ClientMoney } = await import("../api/src/client-money/port.ts");
-const { mergeIfSafe, whyNotSafe, DuplicateReview, SYSTEM_ACTOR, CASE_SIDE_LINE, STALE_LINE, MONEY_LINE, MERGED_AWAY_LINE } = await import("../api/src/front-office/duplicates/merge/review.ts");
+const { mergeIfSafe, whyNotSafe, DuplicateReview, SYSTEM_ACTOR, CASE_SIDE_LINE, STALE_LINE, MONEY_LINE, MERGED_AWAY_LINE, NOT_LISTED_LINE } = await import("../api/src/front-office/duplicates/merge/review.ts");
 const mergeFeature = (await import("../api/src/features/front-office-merge.ts")).default;
 type Ctx = import("../api/src/platform/identity/keys.ts").StaffContext;
 
@@ -338,6 +338,82 @@ try {
   const holderExit = await held;
   ok("FO-9b R3-3 fail: the newer record's email changed while the merge by itself waited on its lock → refused NOT_EXACT from the keys as locked, nothing merged",
     holderExit === 0 && !r3.mergeRef && (r3.refused ?? []).includes("NOT_EXACT") && sql(`select count(*) from fo_person where id in ('${r3a.person.id}', '${loser3}') and merged_into_id is null`) === "2", { holderExit, r3 });
+  // ------------------------------------------------------------------------------- round 7: the pair model's rules, each pinned
+  // (pair-model.md §1, §2; review R7-1, break R7-3/R7-4)
+  {
+  const onList = async (tab: "OPEN" | "KEPT_SEPARATE" | "MERGED", pairId: string) => (await review.list(R, tab)).items.some((it) => it.id === pairId);
+  const p7 = await add(R, { givenNames: "Pia", familyName: "Seven", email: "pia.seven@example.org" });
+  const q7 = await add(R, { givenNames: "Quin", familyName: "Sevenq", email: "pia.seven@example.org", phone: "+1 416 555 0181" });
+  const z7 = await add(R, { givenNames: "Zed", familyName: "Sevenz", phone: "+1 416 555 0181" });
+  const PQ7 = pairOf(p7.person.id, q7.person.id), QZ7 = pairOf(q7.person.id, z7.person.id);
+  const m71 = await call("POST", `/front-office/duplicates/review/${PQ7}/merge`, tR, { survivorId: p7.person.id, choices: { phone: "LOSER" } });
+  const PZ7 = pairOf(p7.person.id, z7.person.id);
+  ok("FO-9b R7 §1 pass: after Q merges into P, the Q-Z pair (a side merged away) is not on To review, and the P-Z pair the merge wrote is",
+    m71.status === 200 && !!PZ7 && !(await onList("OPEN", QZ7)) && (await onList("OPEN", PZ7)), { m71: m71.status, PZ7 });
+  const az7 = await inTx((tx) => mergeIfSafe(tx, A, QZ7, ports)).then((v) => v as { refused?: string[]; mergeRef?: string }, (e: { status?: number }) => ({ threw: e.status }));
+  ok("FO-9b R7 (r7-m4) fail: the merge by itself on a pair with a merged-away side refuses (returns), never throws 409", "refused" in az7 && !("mergeRef" in az7 && az7.mergeRef), az7);
+  const u71 = await call("POST", `/front-office/duplicates/merges/${m71.body.mergeRef}/undo`, tR, {});
+  ok("FO-9b R7 §1 pass: Undo puts Q-Z back on To review and takes P-Z (the merge wrote it) off every tab",
+    u71.status === 200 && (await onList("OPEN", QZ7)) && !(await onList("OPEN", PZ7)) && !(await onList("KEPT_SEPARATE", PZ7)) && !(await onList("MERGED", PZ7)), { u71: u71.status });
+  sql(`update fo_person set phone = (select phone from fo_person where id = '${z7.person.id}'), phone_readable = true where id = '${p7.person.id}'`);   // P and Z match exactly now, by an edit
+  const nl = [await call("POST", `/front-office/duplicates/review/${PZ7}/merge`, tR, { survivorId: p7.person.id }), await call("POST", `/front-office/duplicates/review/${PZ7}/keep-separate`, tR, {}), await call("POST", `/front-office/duplicates/review/${PZ7}/preview`, tR, { survivorId: p7.person.id })];
+  ok("FO-9b R7 §1 fail: a pair its merge's Undo took off the list → guided merge, Keep separate and preview each 409 NOT_LISTED with the sentence, nothing changed",
+    nl.every((r) => r.status === 409 && r.body.code === "NOT_LISTED" && r.body.detail === NOT_LISTED_LINE) && sql(`select status from fo_dup_review where id = '${PZ7}'`) === "OPEN", nl.map((r) => [r.status, r.body.code]));
+  const aw7 = await inTx((tx) => mergeIfSafe(tx, A, PZ7, ports)) as { refused?: string[]; mergeRef?: string };
+  ok("FO-9b R7 §1 fail: the merge by itself never merges a pair taken off the list, even when the two now match exactly", !aw7.mergeRef && sql(`select count(*) from fo_person where id in ('${p7.person.id}', '${z7.person.id}') and merged_into_id is null`) === "2", aw7);
+  const m72 = await call("POST", `/front-office/duplicates/review/${PQ7}/merge`, tR, { survivorId: p7.person.id });
+  ok("FO-9b R7 §1 pass: a later merge that finds the pair again lists it again (it now names that merge)",
+    m72.status === 200 && (await onList("OPEN", PZ7)) && sql(`select noted_by_merge_id from fo_dup_review where id = '${PZ7}'`) === m72.body.mergeRef, { m72: m72.status });
+  // §2 the lock order: while another session holds one person's lock, the action waits for it holding no pair row
+  const holdPerson = async (personId: string, secs: number) => {
+    const h = spawn(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-c", `begin; select pg_advisory_xact_lock(hashtextextended('fo_dup_merge:${personId}', 0)); select pg_sleep(${secs}); commit;`], { stdio: "ignore" });
+    const done = new Promise<number>((r) => h.on("exit", (c) => r(c ?? 1)));
+    for (let i = 0; i < 60 && sql(`select count(*) from pg_locks where locktype = 'advisory' and granted`) === "0"; i++) await new Promise((r) => setTimeout(r, 50));
+    return done;
+  };
+  const rowFree = (pairId: string) => !sqlErr(`begin; select 1 from fo_dup_review where id = '${pairId}' for update nowait; rollback;`);
+  for (const [what, act] of [
+    ["Keep separate", (pid: string) => call("POST", `/front-office/duplicates/review/${pid}/keep-separate`, tR, {})],
+    ["the guided merge", (pid: string, sv: string) => call("POST", `/front-office/duplicates/review/${pid}/merge`, tR, { survivorId: sv })],
+    ["the merge by itself", (pid: string) => inTx((tx) => mergeIfSafe(tx, A, pid, ports))],
+  ] as const) {
+    const n = 191 + ["Keep separate", "the guided merge", "the merge by itself"].indexOf(what);
+    const x = await add(R, { givenNames: "Lou", familyName: `Order${n}`, phone: `+1 416 555 0${n}` }), y = await add(R, { givenNames: "Lou", familyName: `Orders${n}`, phone: `+1 416 555 0${n}` });
+    const pid = pairOf(x.person.id, y.person.id);
+    const held = holdPerson(x.person.id, 1.5), t0 = Date.now();
+    const running = (act as (p: string, s: string) => Promise<unknown>)(pid, x.person.id);
+    await new Promise((r) => setTimeout(r, 500));
+    const free = rowFree(pid);
+    await running; const waited = Date.now() - t0; await held;
+    ok(`FO-9b R7 §2 fail: ${what} waits for the people's locks (another session holds one) and holds no pair row while it waits`, free && waited >= 1000, { free, waited });
+  }
+  {
+    const x = await add(R, { givenNames: "Ula", familyName: "Undo194", phone: "+1 416 555 0194" }), y = await add(R, { givenNames: "Ula", familyName: "Undos194", phone: "+1 416 555 0194" });
+    const pid = pairOf(x.person.id, y.person.id), mm = await call("POST", `/front-office/duplicates/review/${pid}/merge`, tR, { survivorId: x.person.id });
+    const held = holdPerson(x.person.id, 1.5), t0 = Date.now(), running = call("POST", `/front-office/duplicates/merges/${mm.body.mergeRef}/undo`, tR, {});
+    await new Promise((r) => setTimeout(r, 500));
+    const free = rowFree(pid), uo = await running, waited = Date.now() - t0; await held;
+    ok("FO-9b R7 §2 fail: Undo waits for the people's locks and holds no pair row while it waits", mm.status === 200 && uo.status === 200 && free && waited >= 1000, { free, waited, uo: uo.status });
+  }
+  // a chain: B into A, then A into D; Undo of the earlier one is refused (409), never "not found"
+  const cA = await add(R, { givenNames: "Cal", familyName: "Chain7", phone: "+1 416 555 0195" }), cB = await add(R, { givenNames: "Cal", familyName: "Chains7", phone: "+1 416 555 0195" }), cD = await add(R, { givenNames: "Cal", familyName: "Chainz7", phone: "+1 416 555 0195" });
+  const ch1 = await call("POST", `/front-office/duplicates/review/${pairOf(cA.person.id, cB.person.id)}/merge`, tR, { survivorId: cA.person.id });
+  const ch2 = await call("POST", `/front-office/duplicates/review/${pairOf(cA.person.id, cD.person.id)}/merge`, tR, { survivorId: cD.person.id });
+  const chU1 = await call("POST", `/front-office/duplicates/merges/${ch1.body.mergeRef}/undo`, tR, {});
+  const chU2 = await call("POST", `/front-office/duplicates/merges/${ch2.body.mergeRef}/undo`, tR, {}), chU3 = await call("POST", `/front-office/duplicates/merges/${ch1.body.mergeRef}/undo`, tR, {});
+  ok("FO-9b R7 (break R7-1) fail: in a chain (B into A, then A into D) Undo of the earlier merge → 409 UNDO_REFUSED, not 404; in order, both go through",
+    ch1.status === 200 && ch2.status === 200 && chU1.status === 409 && chU1.body.code === "UNDO_REFUSED" && chU2.status === 200 && chU3.status === 200, [ch1.status, ch2.status, chU1.status, chU1.body.code, chU2.status, chU3.status]);
+  // someone arrives between a merge and its Undo (review r7-m2, break R7-2)
+  const sA = await add(R, { givenNames: "Ari", familyName: "Stale7", phone: "+1 416 555 0196" }), sB = await add(R, { givenNames: "Bea", familyName: "Stale7b", phone: "+1 416 555 0196", email: "stale7@example.org" });
+  const sm = await call("POST", `/front-office/duplicates/review/${pairOf(sA.person.id, sB.person.id)}/merge`, tR, { survivorId: sA.person.id, choices: { email: "LOSER" } });
+  const sN = await add(R, { givenNames: "Neo", familyName: "Stale7n", email: "stale7@example.org" });
+  const NA = pairOf(sN.person.id, sA.person.id);
+  const su = await call("POST", `/front-office/duplicates/merges/${sm.body.mergeRef}/undo`, tR, {});
+  const NB = pairOf(sN.person.id, sB.person.id);
+  ok("FO-9b R7 (r7-m2, break R7-2) fail: after the Undo, N's pair with the survivor (it matched only by the merged email) leaves the list, and N's pair with the record the Undo split off is To review",
+    sm.status === 200 && !!NA && su.status === 200 && !(await onList("OPEN", NA)) && !!NB && (await onList("OPEN", NB)), { sm: sm.status, NA, su: su.status, NB });
+  }
+
   sql(`alter table case_client rename to case_client_away`);
   const wu = await inTx((tx) => whyNotSafe(tx, A, [gp.a, gp.b], [{ key: "PHONE" }]));
   const gu = await call("POST", `/front-office/duplicates/review/${gp.pair}/merge`, tR, { survivorId: gp.a });

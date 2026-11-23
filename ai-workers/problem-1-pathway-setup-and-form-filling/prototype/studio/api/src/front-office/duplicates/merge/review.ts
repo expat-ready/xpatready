@@ -102,6 +102,11 @@ async function listed(tx: Tx, firmId: string, p: PairRow): Promise<{ tab: "OPEN"
   return k ? { tab: "KEPT_SEPARATE", keptThrough: k.id } : { tab: "OPEN" };
 }
 
+/** One pair's tab as `listed` derives it, read in its own transaction (tests compare it with `list()`). */
+export async function listedPair(db: PrismaClient, firmId: string, pairId: string): Promise<string> {
+  return db.$transaction(async (tx) => { const p = await pairRow(tx as never, firmId, pairId, false); return p ? (await listed(tx as never, firmId, p)).tab : "NONE"; });
+}
+
 /** Writes every pair the new person makes with a live person of the firm (no-op for a pair already listed). A person
  *  added with "Add as new" (Add a lead's confirmedNew) writes the pair Kept separate, decided by the adder, so the
  *  merge by itself never joins them (concept §8 B1, founder question 1; AG-2-68 rule 16). After a merge (`mergeRef`),
@@ -186,7 +191,9 @@ export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports:
   if (!h) return { refused: [] };
   await lockPeople(tx, h.low_id, h.high_id);   // pair-model.md §2: the people first, then the pair row
   const p = (await pairRow(tx, firmId, pairId, true))!;
-  if (p.status !== "OPEN" || p.withdrawn) return { refused: [] };
+  // Only a pair on To review (pair-model.md §1); anything else is a refusal, never a throw (review r7-m4).
+  const shown = await listed(tx, firmId, p);
+  if (shown.tab !== "OPEN") return { refused: shown.tab === "KEPT_SEPARATE" ? ["KEPT_SEPARATE"] : [] };
   const ids = [p.low_id, p.high_id];
   // The match as the records are now, never as stored when the pair was first seen (break F1). Kept separate is read
   // under the people's locks: no decision on either record and no merge into either can commit until this one ends.
@@ -358,8 +365,10 @@ export class DuplicateReview {
   async undo(ctx: StaffContext, mergeRef: string) {
     try {
       return await this.db.$transaction(async (tx) => {
-        const m = await tx.foDupMerge.findFirst({ where: firmScope(ctx.firmId, { id: mergeRef, kind: "PERSON" as const }), select: { survivorId: true, loserId: true } });
-        if (!m || !(await seen(tx, ctx, [m.survivorId])).size) return problem(404, "Not found", "No such merge in your firm.", { code: "NOT_FOUND" });
+        const m = await tx.foDupMerge.findFirst({ where: firmScope(ctx.firmId, { id: mergeRef, kind: "PERSON" as const }), select: { survivorId: true, loserId: true, at: true } });
+        // The survivor as the Merged tab sees it: through its live root, so an earlier merge of a chain is a 409, never 404 (break R7-1).
+        const sroot = m ? (await rootsOf(tx, ctx.firmId, [m.survivorId])).get(m.survivorId)! : "";
+        if (!m || !(await seen(tx, ctx, [sroot])).size) return problem(404, "Not found", "No such merge in your firm.", { code: "NOT_FOUND" });
         // A person who became a case-side client since the merge is split by the case side only (break F5).
         const cases = await caseOf(tx, [m.survivorId, m.loserId]);
         if (cases === null || cases.size) conflict("This person has a case now; undo the merge from the client record.", "NEEDS_CASE_SIDE");
@@ -367,8 +376,19 @@ export class DuplicateReview {
         const again = await caseOf(tx, [m.survivorId, m.loserId]);   // under Undo's locks too (break R2-5)
         if (again === null || again.size) conflict("This person has a case now; undo the merge from the client record.", "NEEDS_CASE_SIDE");
         await tx.foDupReview.updateMany({ where: firmScope(ctx.firmId, { mergeId: mergeRef }), data: { status: "OPEN", mergeId: null, decidedBy: null, decidedAt: null } });
-        // The pairs this merge first wrote leave the list by themselves (noted_by_merge_id names an undone merge), and a
-        // pair a Kept separate decision blocked only through the merged record is To review again (pair-model.md §1).
+        // The pairs this merge noted leave the list by themselves (noted_by_merge_id names an undone merge), and a pair a
+        // Kept separate decision blocked only through the merged record is To review again (pair-model.md §1). Someone who
+        // arrived while the merge stood (review r7-m2, break R7-2): their pair with the survivor that no longer matches is
+        // credited to this merge, so it leaves the list; their pairs with the record split off are written now.
+        const still = new Set((await wonDuplicates(tx, ctx.firmId, { subject: "PERSON", personId: m.survivorId })).matches.map((x) => x.id));
+        const since = await tx.$queryRaw<{ id: string; other: string }[]>`
+          select r."id"::text, (case when r."low_id" = ${m.survivorId}::uuid then r."high_id" else r."low_id" end)::text as other from "fo_dup_review" r
+           where r."firm_id" = ${ctx.firmId}::uuid and ${m.survivorId}::uuid in (r."low_id", r."high_id") and r."status" = 'OPEN' and r."noted_by_merge_id" is null and r."first_seen_at" > ${m.at}`;
+        const gone = since.filter((r) => !still.has(r.other)).map((r) => r.id);
+        // Only the survivor's lock is held for these rows, so a row another action holds is skipped, never waited on (§2).
+        if (gone.length) await tx.$executeRaw`update "fo_dup_review" set "noted_by_merge_id" = ${mergeRef}::uuid where "id" in (
+            select "id" from "fo_dup_review" where "firm_id" = ${ctx.firmId}::uuid and "id" = any(${gone}::uuid[]) and "status" = 'OPEN' and "noted_by_merge_id" is null for update skip locked)`;
+        await notePairs(tx, ctx.firmId, m.loserId);
         return out;
       });
     } catch (e) { return asRefusal(e); }

@@ -5,7 +5,8 @@
 //   I2  an Undo of the last change gives back exactly what the review list showed before it (every pair's tab, or not
 //       listed) and every person's root;
 //   I3  no deadlock (40P01) and no unexpected error when actions on pairs that share a person run at the same moment;
-//   I4  the To review tab never lists two people a Kept separate decision keeps apart.
+//   I4  the To review tab never lists two people a Kept separate decision keeps apart;
+//   I5  every pair's tab in list() is the one listed() derives for that pair alone (review R7-1).
 // Seeded (mulberry32), so a run repeats; SEEDS=1,2,3 picks seeds. Every value is Sample. US$0, no model call.
 //   tsx studio/tests/check_fo9b_pairs_model.ts
 import "reflect-metadata";
@@ -41,7 +42,7 @@ const { ConsentStore } = await import("../api/src/platform/messages/consent/cons
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { arrive } = await import("../api/src/front-office/sales/arrival.ts");
 const { phone: salesPhone } = await import("../api/src/front-office/sales/common.ts");
-const { mergeIfSafe, DuplicateReview } = await import("../api/src/front-office/duplicates/merge/review.ts");
+const { mergeIfSafe, DuplicateReview, listedPair } = await import("../api/src/front-office/duplicates/merge/review.ts");
 type Ctx = import("../api/src/platform/identity/keys.ts").StaffContext;
 
 try {
@@ -112,6 +113,9 @@ try {
       const listed = (await review.list(R, "OPEN")).items.filter((it) => ps.some((p) => p.id === it.id));
       const bad = listed.filter((it) => { const p = ps.find((x) => x.id === it.id)!; return kept.includes([roots.get(p.lo), roots.get(p.hi)].sort().join("|")); });
       if (bad.length) { ok(`FO-9b pairs I4 fail (seed ${seed}, ${step}): To review lists people a Kept separate decision keeps apart`, false, { bad: bad.map((b) => b.id), log }); return false; }
+      const v = await view(), apart: string[] = [];
+      for (const p of ps) { const one = await listedPair(db, A, p.id); if ((one === "HIDDEN" ? "-" : one) !== v[p.id]) apart.push(`${p.id.slice(0, 8)}: list ${v[p.id]}, listed ${one}`); }
+      if (apart.length) { ok(`FO-9b pairs I5 fail (seed ${seed}, ${step}): list() and listed() disagree`, false, { apart, log }); return false; }
       return true;
     };
 
@@ -155,7 +159,14 @@ try {
         person: { givenNames: `Bu${k}`, familyName: `${tag}b${b}x${k}`, email: null, phone: salesPhone(ph) } }, ports))).personId!);
       const tp = sql(`select id || ':' || low_id || ':' || high_id from fo_dup_review where firm_id = '${A}' and low_id in (${trio.map((x) => `'${x}'`).join(",")}) and high_id in (${trio.map((x) => `'${x}'`).join(",")}) order by id`).split("\n").filter(Boolean).map((l) => { const [id, lo, hi] = l.split(":"); return { id, lo, hi }; });
       if (tp.length < 3) continue;
-      const act = (p: { id: string; lo: string; hi: string }) => { const r = rnd(); return r < 0.3 ? { what: `keep ${p.id.slice(0, 8)}`, f: () => review.keepSeparate(R, p.id) } : r < 0.75 ? { what: `merge ${p.id.slice(0, 8)}`, f: () => review.merge(R, p.id, { survivorId: rnd() < 0.5 ? p.lo : p.hi }) } : { what: `auto ${p.id.slice(0, 8)}`, f: () => db.$transaction((tx) => mergeIfSafe(tx as never, A, p.id, ports)) }; };
+      // Half the trios start with one merge already made, so the burst can race its Undo (break R7-3).
+      let made: string | null = null;
+      if (rnd() < 0.5) { const m0 = await run(() => review.merge(R, tp[2].id, { survivorId: tp[2].lo })); made = m0.kind === "done" ? ((m0.value as { mergeRef?: string }).mergeRef ?? null) : null; }
+      const act = (p: { id: string; lo: string; hi: string }) => { const r = rnd();
+        if (made && r < 0.25) return { what: `undo ${made.slice(0, 8)}`, f: () => review.undo(R, made!) };
+        if (r < 0.35) return { what: "arrive", f: () => db.$transaction((tx) => arrive(tx as never, { firmId: A, door: "MANUAL", intakeKey: `manual:${randomUUID()}`, source: "Phone call", actor: `staff:${R.staffId}`, payloadHash: randomUUID(), ownerStaffId: R.staffId,
+          person: { givenNames: "Bn", familyName: `${tag}b${b}n${Math.floor(rnd() * 1e6)}`, email: null, phone: salesPhone(ph) } }, ports)) };
+        return r < 0.55 ? { what: `keep ${p.id.slice(0, 8)}`, f: () => review.keepSeparate(R, p.id) } : r < 0.85 ? { what: `merge ${p.id.slice(0, 8)}`, f: () => review.merge(R, p.id, { survivorId: rnd() < 0.5 ? p.lo : p.hi }) } : { what: `auto ${p.id.slice(0, 8)}`, f: () => db.$transaction((tx) => mergeIfSafe(tx as never, A, p.id, ports)) }; };
       const chosen = rnd() < 0.5 ? tp : [tp[0], tp[1]], acts = chosen.map(act);
       const outs = await Promise.all(acts.map((a) => run(a.f)));
       log.push(`burst ${acts.map((a) => a.what).join(" + ")} → ${outs.map((o) => o.kind + (o.kind === "refused" ? ` ${o.status} ${o.code ?? ""}` : "")).join(", ")}`);
