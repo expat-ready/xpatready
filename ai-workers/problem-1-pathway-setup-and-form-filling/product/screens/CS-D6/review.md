@@ -293,3 +293,39 @@ Scope: only the three conflict resolutions and the one test change made with the
 `Reviewer: Approve e41cb6200c7b03060f108c055023fabae589c70e`
 
 Verdict: Approve
+
+## Round 7 (merge conflict): head `60693771b4230574793097baadd37cbb76743ced` (merge of origin/main `1a1db2e75`, which holds #3306 FO-7q part 3, into the approved `c0ad9e578`)
+
+Scope: the conflict resolution only. The tech lead allowed a conflict-diff-only review for this merge. Main's own changes were not reviewed.
+
+**What I ran**
+* `git show 60693771b --cc`. The only hand-resolved file is `tests/check_csw3_firm_scope.ts`.
+* `git merge-tree --write-tree c0ad9e578 1a1db2e75`. Git reports one conflict, in `check_csw3_firm_scope.ts`. `web/src/runtime/checklist.tsx` auto-merged. The merge commit's tree differs from git's own merge tree only in `check_csw3_firm_scope.ts`, so `checklist.tsx` is exactly git's merge and was not edited by hand.
+* Word-for-word check (a scratchpad Python difflib script, not committed). It compared the base, main, this PR's head and the result, line by line:
+  * Only lines 268 (the comment), 270 (`ALLOW`) and 277 (the assertion) differ between the three versions.
+  * Line 268, main to result: the only insert is this PR's sentence, exactly as this PR added it from base: `, and case-document-reads (CS-D6 part 1: … ; Lead 11 on #3203).` It sits before ` Paths relative to api/src.`
+  * Line 268, PR to result: the only insert is main's sentence, exactly as main added it from base: `, and client-money/reads/parties (FO-7q part 3: … ; Lead 13's ruling on #3306)`.
+  * Line 270, `ALLOW`: main to result inserts only `case-document-reads`. PR to result inserts only `client-money/reads/parties`.
+  * Line 277: the label is main's label plus `, 53 with CS-D6 part 1`, and the count is `=== 53`. The order follows the merge order: FO-7q part 3 reached main first.
+* `bash prototype/studio/tests/fixtures/csw3/csw3-spike.sh census` on the merged tree:
+  * It prints `Files: 53`: 53 rows, 53 unique.
+  * `ALLOW` parsed from the result has 53 entries, 53 unique.
+  * Census minus ALLOW is empty, and ALLOW minus census is empty.
+  * Both `api/src/case-document-reads.ts` and `api/src/client-money/reads/parties.ts` are in the census.
+  * So the number 53 is true on the merged tree.
+* `run-suites.sh --only "check_csw3_firm_scope.ts check_csd6_reads_keep.ts"` from the repo root: check_csw3_firm_scope **48/48 PASS** (23 s), check_csd6_reads_keep **23/23 PASS** (22 s).
+* `run-suites.sh --only "check_csd6_reads_browser.ts"`: **18/18 PASS** (26 s).
+* All three numbers match the builder's. The runner used isolated `runtime_*` copies on ports +14000, never :4400.
+* The browser run overwrote three screenshots in `screens/CS-D6/screenshots/`. I restored them with `git checkout -- …/product/screens/`, and the tree is clean.
+
+**Findings**
+* No Blocker, no Major, no Minor.
+* n7 (nit, optional, carried from round 6): the stray full stop is still in the comment. It now follows main's sentence: `…Lead 13's ruling on #3306)., and case-document-reads (…`. It should read `#3306), and case-document-reads`.
+  * It comes from this PR's own insert, which begins after the full stop, so keeping both sides word for word carries it over. Comment text only; the assertion is unaffected.
+* n5 (nit, carried): the comment still says "plus seven merged on main after the spike", but it now names eleven. Comment only, and the same on both parents.
+
+**Journey score, round 7: 9/10** (unchanged). The conflict changes no screen or behaviour. The CS-D6 browser walk passes 18/18 on the merged build, and nothing new was seen.
+
+`Reviewer: Approve 60693771b4230574793097baadd37cbb76743ced`
+
+Verdict: Approve
