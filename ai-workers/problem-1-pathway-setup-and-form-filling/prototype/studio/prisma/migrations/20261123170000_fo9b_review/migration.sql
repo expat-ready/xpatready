@@ -2,7 +2,7 @@
 -- the duplicate review list. One row per pair of person records in a firm (the pair in id order, unique), written when a
 -- new person arrives with a match (exact email or phone, or a similar name), with its score and reasons and when it was
 -- first seen. Its status is OPEN, MERGED (names the merge record) or KEPT_SEPARATE; an Undo of the merge opens it again.
--- noted_by_merge_id names the merge that first wrote the pair (the survivor meeting the loser's matches); while that
+-- noted_by_merge_id names the merge that last noted the pair (the survivor meeting the loser's matches); while that
 -- merge is undone the pair is not listed (product/screens/FO-9b-2/pair-model.md).
 -- Never deleted or truncated (fo_dup_review_no_delete). The pair's ids are plain uuids, like fo_dup_merge's: a pair is a
 -- decision record, so a MERGED pair keeps naming the merged-away record (read through merged_into_id).

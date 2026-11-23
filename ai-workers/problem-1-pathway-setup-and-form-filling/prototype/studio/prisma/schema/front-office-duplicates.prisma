@@ -70,7 +70,7 @@ model FoDupReview {
   decidedAt   DateTime?         @map("decided_at") @db.Timestamptz
   mergeId     String?           @map("merge_id") @db.Uuid
   merge       FoDupMerge?       @relation("FoDupReviewMerge", fields: [mergeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  /// The merge that first wrote this pair (the survivor meeting the loser's matches), or null (an arrival).
+  /// The merge that last noted this pair (the survivor meeting the loser's matches), or null (an arrival, or found again by another writer).
   notedByMergeId String?        @map("noted_by_merge_id") @db.Uuid
   notedBy     FoDupMerge?       @relation("FoDupReviewNotedBy", fields: [notedByMergeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 

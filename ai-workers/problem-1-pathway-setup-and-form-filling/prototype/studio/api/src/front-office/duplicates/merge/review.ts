@@ -128,6 +128,12 @@ export async function notePairs(tx: Tx, firmId: string, personId: string, addedA
     await tx.$executeRaw`update "fo_dup_review" set "noted_by_merge_id" = ${mergeRef}::uuid where "id" in (
         select r."id" from "fo_dup_review" r join "fo_dup_merge" um on um."id" = r."noted_by_merge_id" and um."undone_at" is not null
          where r."firm_id" = ${firmId}::uuid and r."low_id" = ${lo}::uuid and r."high_id" = ${hi}::uuid and r."status" = 'OPEN' for update of r skip locked)`;
+    // A pair a different, live merge noted, found again here for a reason of this writer's: the noter cannot hold two
+    // reasons, so it is cleared and the pair is never withdrawn (break B10-1, Lead 8 on #3174). At worst it stays listed stale.
+    await tx.$executeRaw`update "fo_dup_review" set "noted_by_merge_id" = null where "id" in (
+        select r."id" from "fo_dup_review" r join "fo_dup_merge" lm on lm."id" = r."noted_by_merge_id" and lm."undone_at" is null
+         where r."firm_id" = ${firmId}::uuid and r."low_id" = ${lo}::uuid and r."high_id" = ${hi}::uuid and r."status" = 'OPEN'
+           and r."noted_by_merge_id" is distinct from ${mergeRef}::uuid for update of r skip locked)`;
   }
   return ids;
 }

@@ -2,11 +2,14 @@
 // sequences of the pair actions (arrival with and without "Add as new", Keep separate, guided merge, merge by itself,
 // Undo) on 4 to 5 people per world, the invariants checked after every step:
 //   I1  no Kept separate decision is ever joined: for every KEPT_SEPARATE pair the two people have different live roots;
-//   I2  an Undo of the last change gives back exactly what the review list showed before it (every pair's tab, or not
-//       listed) and every person's root;
+//   I2  an Undo of the last change (nothing else changed on these records in between) gives back exactly what the
+//       review list showed before it (every pair's tab, or not listed) and every person's root; a pair that stops
+//       matching after other changes may stay listed (pair-model.md §1, "What an Undo does not withdraw");
 //   I3  no deadlock (40P01) and no unexpected error when actions on pairs that share a person run at the same moment;
 //   I4  the To review tab never lists two people a Kept separate decision keeps apart;
-//   I5  every pair's tab in list() is the one listed() derives for that pair alone (review R7-1).
+//   I5  every pair's tab in list() is the one listed() derives for that pair alone (review R7-1);
+//   I6  a pair is never hidden while its two people are live and still match: every OPEN pair whose two people match
+//       (FO-9a's rule asked of that pair, no 10-match cap) is To review or Kept separate (Lead 8 on #3174, break B10-1).
 // Seeded (mulberry32), so a run repeats; SEEDS=1,2,3 picks seeds. Every value is Sample. US$0, no model call.
 //   tsx studio/tests/check_fo9b_pairs_model.ts
 import "reflect-metadata";
@@ -42,6 +45,7 @@ const { ConsentStore } = await import("../api/src/platform/messages/consent/cons
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { arrive } = await import("../api/src/front-office/sales/arrival.ts");
 const { phone: salesPhone } = await import("../api/src/front-office/sales/common.ts");
+const { NAME_THRESHOLD } = await import("../ports/matching.ts");
 const { mergeIfSafe, DuplicateReview, listedPair } = await import("../api/src/front-office/duplicates/merge/review.ts");
 type Ctx = import("../api/src/platform/identity/keys.ts").StaffContext;
 
@@ -78,6 +82,35 @@ try {
     }
   };
 
+  /** I6: the OPEN pairs between two live people who match (email, E.164 phone or similar name, FO-9a's rule, asked of the
+   *  pair itself) that the list hides: on neither To review nor Kept separate. Firm-wide. */
+  const hiddenValid = async (): Promise<string[]> => {
+    const cand = sql(`select r.id from fo_dup_review r join fo_person a on a.id = r.low_id join fo_person b on b.id = r.high_id
+       where r.firm_id = '${A}' and r.status = 'OPEN' and a.merged_into_id is null and b.merged_into_id is null
+         and ((a.email is not null and a.email = b.email) or (a.phone_e164 is not null and a.phone_e164 = b.phone_e164)
+           or (coalesce(a.name_key, '') <> '' and coalesce(b.name_key, '') <> '' and (
+                ((a.name_key ~ '[0-9]' or b.name_key ~ '[0-9]') and lower(a.name_key) = lower(b.name_key))
+             or (a.name_key !~ '[0-9]' and b.name_key !~ '[0-9]' and extensions.similarity(lower(a.name_key), lower(b.name_key)) >= ${NAME_THRESHOLD}::float8))))`).split("\n").filter(Boolean);
+    if (!cand.length) return [];
+    const shown = new Set([...(await review.list(R, "OPEN")).items, ...(await review.list(R, "KEPT_SEPARATE")).items].map((i) => i.id));
+    return cand.filter((id) => !shown.has(id));
+  };
+  const arriveP = async (givenNames: string, familyName: string, email: string | null, phone: string | null) =>
+    (await db.$transaction((tx) => arrive(tx as never, { firmId: A, door: "MANUAL", intakeKey: `manual:${randomUUID()}`, source: "Phone call", actor: `staff:${R.staffId}`, payloadHash: randomUUID(), ownerStaffId: R.staffId,
+      person: { givenNames, familyName, email, phone: phone ? salesPhone(phone) : null } }, ports))).personId!;
+  const pairId = (a: string, b: string) => sql(`select id from fo_dup_review where firm_id = '${A}' and low_id = least('${a}'::uuid, '${b}'::uuid) and high_id = greatest('${a}'::uuid, '${b}'::uuid)`);
+  {
+    // I6, seeded with break B10-1: a pair Ma noted and Mb found again stays listed after Undo Ma while S and X still match
+    const s0 = await arriveP("Sora", "Quill", null, "+1 416 555 0901"), l0 = await arriveP("Lumi", "Vexa", "b10.e@example.org", "+1 416 555 0901");
+    const x0 = await arriveP("Xeno", "Drap", "b10.e@example.org", "+1 416 555 0902");
+    const ma = await review.merge(R, pairId(s0, l0), { survivorId: s0, choices: { email: "LOSER" } }) as { mergeRef: string };
+    const v0 = await arriveP("Vito", "Hask", "b10.e@example.org", "+1 416 555 0901");
+    await review.merge(R, pairId(x0, v0), { survivorId: x0, choices: { phone: "LOSER" } });
+    await review.undo(R, ma.mergeRef);
+    const sx = pairId(s0, x0), hid = await hiddenValid();
+    ok("FO-9b pairs I6 fail (break B10-1 seeded): after Ma (S takes e, notes S-X), Mb (X takes S's phone, finds S-X) and Undo Ma, S-X still matches and is listed", !!sx && !hid.includes(sx) && hid.length === 0, { sx, hid });
+  }
+
   for (const seed of SEEDS) {
     const rnd = mulberry32(seed), pick = <T,>(xs: T[]): T => xs[Math.floor(rnd() * xs.length)];
     const tag = `s${seed}`, people: string[] = [], log: string[] = [];
@@ -94,7 +127,9 @@ try {
       return { out, what: `arrive${asNew ? " as new" : ""} ${who.givenNames} ${e ?? "-"} ${p ?? "-"}` };
     };
     const ids = () => people.map((p) => `'${p}'`).join(",") || "null";
-    const pairs = () => sql(`select id || ':' || low_id || ':' || high_id || ':' || status from fo_dup_review where firm_id = '${A}' and (low_id in (${ids()}) or high_id in (${ids()})) order by id`).split("\n").filter(Boolean).map((l) => { const [id, lo, hi, st] = l.split(":"); return { id, lo, hi, st }; });
+    const pairs = () => sql(`select id || ':' || low_id || ':' || high_id || ':' || status from fo_dup_review where firm_id = '${A}' and (low_id in (${ids()}) or high_id in (${ids()})) order by id`).split("\n").filter(Boolean).map((l) => { const [id, lo, hi, st] = l.split(":"); return { id, lo, hi, st }; })
+      // by the people's arrival order, never by random ids, so a seed picks the same pairs on every run
+      .sort((x, y) => (people.indexOf(x.lo) - people.indexOf(y.lo)) || (people.indexOf(x.hi) - people.indexOf(y.hi)));
     const root = (id: string) => sql(`with recursive up(id, nxt, d) as (select id, merged_into_id, 0 from fo_person where id = '${id}' union all select p.id, p.merged_into_id, up.d + 1 from fo_person p join up on p.id = up.nxt where up.d < 20) select id from up where nxt is null limit 1`);
     /** What the review list shows for this world's pairs (each pair's tab, else "-") and every person's root. */
     const view = async () => {
@@ -116,6 +151,8 @@ try {
       const v = await view(), apart: string[] = [];
       for (const p of ps) { const one = await listedPair(db, A, p.id); if ((one === "HIDDEN" ? "-" : one) !== v[p.id]) apart.push(`${p.id.slice(0, 8)}: list ${v[p.id]}, listed ${one}`); }
       if (apart.length) { ok(`FO-9b pairs I5 fail (seed ${seed}, ${step}): list() and listed() disagree`, false, { apart, log }); return false; }
+      const hid = await hiddenValid();
+      if (hid.length) { ok(`FO-9b pairs I6 fail (seed ${seed}, ${step}): a pair whose two live people still match is hidden`, false, { hid, log }); return false; }
       return true;
     };
 
@@ -141,14 +178,19 @@ try {
           const top = stack[stack.length - 1], m = what.split(" ")[1];
           if (top?.merge?.startsWith(m)) {
             const after = await view(), diff = Object.keys({ ...top.before, ...after }).filter((k) => (top.before[k] ?? "-") !== (after[k] ?? "-")).map((k) => `${k.slice(0, 13)}: ${top.before[k] ?? "(no row)"} → ${after[k] ?? "(no row)"}`);
-            if (diff.length) { ok(`FO-9b pairs I2 fail (seed ${seed}, step ${s}): Undo of the last change did not give back the list as it was`, false, { diff, log }); good = false; break; }
+            if (diff.length) {
+              const keys = Object.keys({ ...top.before, ...after }).filter((k) => !k.startsWith("root:") && (top.before[k] ?? "-") !== (after[k] ?? "-"));
+              const rows = keys.length ? sql(`select r.id || ' noted=' || coalesce(r.noted_by_merge_id::text, '-') || ' seen=' || r.first_seen_at from fo_dup_review r where r.id = any(array[${keys.map((k) => `'${k}'`).join(",")}]::uuid[])`) : "";
+              const recent = sql(`select id || ' s=' || survivor_id || ' l=' || loser_id || ' undone=' || coalesce(undone_at::text, '-') from fo_dup_merge where firm_id = '${A}' order by at desc limit 4`);
+              ok(`FO-9b pairs I2 fail (seed ${seed}, step ${s}): Undo of the last change did not give back the list as it was`, false, { diff, rows, recent, log }); good = false; break;
+            }
             stack.pop();
           } else stack.length = 0;   // an Undo of an earlier merge: the views between are not comparable
         } else stack.push({ merge: ref, before });
       }
       good = await check(`step ${s}`);
     }
-    if (good) ok(`FO-9b pairs I1 I2 I4 pass (seed ${seed}): ${log.length} actions on ${people.length} people, every step checked`, true);
+    if (good) ok(`FO-9b pairs I1 I2 I4 I5 I6 pass (seed ${seed}): ${log.length} actions on ${people.length} people, every step checked`, true);
 
     // I3: actions on pairs that share a person, at the same moment. Each burst gets a fresh trio X, Y, Z who all match
     // (one phone), so every pair is listed and every action can go ahead; two or three actions start together.
@@ -176,6 +218,7 @@ try {
         const kept = tp.filter((p) => sql(`select status from fo_dup_review where id = '${p.id}'`) === "KEPT_SEPARATE");
         const joined = kept.filter((p) => root(p.lo) === root(p.hi));
         if (joined.length) burstErr = { I1: "a Kept separate pair was joined by actions at the same moment", joined, log: log.slice(-6) };
+        else { const hid = await hiddenValid(); if (hid.length) burstErr = { I6: "a pair whose two live people still match is hidden after actions at the same moment", hid, log: log.slice(-6) }; }
       }
     }
     ok(`FO-9b pairs I3 (seed ${seed}): actions on pairs that share a person at the same moment end done or refused, never in an error or a deadlock`, !burstErr, burstErr);
