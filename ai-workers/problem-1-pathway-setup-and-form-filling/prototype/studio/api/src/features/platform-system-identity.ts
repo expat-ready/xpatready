@@ -5,9 +5,10 @@ import { APP_GUARD } from "@nestjs/core";
 import type { Feature } from "../features.ts";
 import { PlatformClock } from "../platform/identity/port.ts";
 import { SystemGuard, SystemPlaneWall } from "../platform/system-identity/guard.ts";
-import { SystemIdentityController } from "../platform/system-identity/routes.ts";
+import { SystemIdentityController, SystemStaffController } from "../platform/system-identity/routes.ts";
+import { SystemStaffAccess } from "../platform/system-identity/staff.ts";
 import { SYSTEM_IDENTITY_PORT, SystemIdentity, systemIdentityPortFromConfig } from "../platform/system-identity/service.ts";
 export default {
-  controllers: [SystemIdentityController],
-  providers: [PlatformClock, { provide: SYSTEM_IDENTITY_PORT, useFactory: systemIdentityPortFromConfig, inject: [PlatformClock] }, SystemIdentity, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard }],
+  controllers: [SystemIdentityController, SystemStaffController],
+  providers: [PlatformClock, { provide: SYSTEM_IDENTITY_PORT, useFactory: systemIdentityPortFromConfig, inject: [PlatformClock] }, SystemIdentity, SystemStaffAccess, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard }],
 } satisfies Feature;

@@ -56,7 +56,7 @@ try {
   // The port guard passes on this tree and fails when the fake runs no contract; ports/ imports only zod and its own files.
   const guard = (root: string) => spawnSync(process.execPath, [join(root, "tools/check-port-contracts.mjs")], { encoding: "utf8" });
   const here = guard(STUDIO);
-  ok("FO-9b DW0 pass: tools/check-port-contracts.mjs exits 0 and lists PersonMergePort", here.status === 0 && /PersonMergePort ×1/.test(here.stdout), here.stdout);
+  ok("FO-9b DW0 pass: tools/check-port-contracts.mjs exits 0 and lists PersonMergePort (×2 from part 1: the fake and the real adapter, tests/check_fo9b_merge.ts)", here.status === 0 && /PersonMergePort ×2/.test(here.stdout), here.stdout);
   const copy = join(WORK, "tree");
   for (const d of ["ports", "tools"]) cpSync(join(STUDIO, d), join(copy, d), { recursive: true });
   const there = guard(copy);

@@ -27,6 +27,13 @@ export const SystemKeys = (...keys: string[]) => {
 export const AnySystemStaff = (why: string) => declare({ kind: "any-staff", why });
 export const SystemSignIn = (why: string) => declare({ kind: "sign-in", why });
 
+export const SYSTEM_STEP_UP = "platform:system-step-up";
+/** A change that needs a sign-in in the last 5 minutes (SA-7-10; PF-4b's requireStepUp): 401 STEP_UP_REQUIRED otherwise. */
+export const SystemStepUp = () => SetMetadata(SYSTEM_STEP_UP, true);
+/** A staff-access change (staff.ts): when the guard allows it, the change writes the call's one line itself, in its own
+ *  transaction with what changed, or a REFUSED line when its own rules refuse it (SA-7-12, SA-7-20). */
+export const SYSTEM_CHANGE = "platform:system-change";
+export const SystemChange = () => SetMetadata(SYSTEM_CHANGE, true);
 export const SYSTEM_REASON = "platform:system-reason";
 export const SystemReason = () => SetMetadata(SYSTEM_REASON, true);
 /** A reason's length (Sample: no requirement gives one). */
