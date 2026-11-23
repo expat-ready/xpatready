@@ -248,7 +248,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 761c view|product/tools/waves.py|s/^        if re.search(r"^UNREADABLE".*/        if False:/|check-waves.sh
 38 mark|product/tools/own-migration-guard.py|s/^MARK = re.compile(.*/MARK = re.compile(r"own-migration-never-marked")/|check-own-migration-guard.sh
 38 snap|product/tools/own-migration-guard.py|s/^            if before and after:/            if False:/|check-own-migration-guard.sh
-38 alldb|product/tools/own-migration-guard.py|s/^        for i in range(loop, len(lines)):/        for i in range(0):/|check-own-migration-guard.sh
+38 alldb|product/tools/own-migration-guard.py|s/^        for i in range(loop, len(lines)):/        for i in range(0):/|check-own-migration-guard.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 jsparse() { node --check "${@: -1}"; }   # "$sh -n FILE" for a .js (guard 36: app-view.js; bash -n cannot read JavaScript)
 MUT="$MUT"'
