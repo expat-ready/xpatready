@@ -5,7 +5,7 @@
 // firm's seed value of a key is its Sample value (SAMPLE_SETTING_VALUES, AUD-5) or else its registered default. Only the demo calls it
 // (Demo.wipe, one line); a firm that is not seeded is skipped.
 import type { PrismaClient } from "@prisma/client";
-import { asBypass, firmScope } from "../firm-scope.ts";
+import { asBypass, firmScope, touchFirm } from "../firm-scope.ts";
 import { SAMPLE_SETTING_VALUES, readSampleFirms } from "../seed-sample-firms.ts";
 import { registeredSettings, writeSetting } from "../settings.ts";
 import { platformAuditWorkspaceId } from "./audit.ts";
@@ -20,16 +20,24 @@ async function resetSettings(db: PrismaClient, firmKeys: string[]): Promise<{ ch
   const defs = new Map(registeredSettings().map((d) => [d.key, d]));
   const changed: { firmKey: string; key: string }[] = [], unregistered: string[] = [];
   for (const firmKey of firmKeys) {
-    const firm = await db.platformFirm.findUnique({ where: { key: firmKey }, select: { id: true } });
-    if (!firm) continue;
-    for (const row of await db.platformFirmSetting.findMany({ where: firmScope(firm.id), orderBy: { key: "asc" } })) {
-      const def = defs.get(row.key);
-      if (!def) { unregistered.push(`${firmKey}:${row.key}`); continue; }   // another module's key, not loaded here: left as it is
-      const seedValue = Object.hasOwn(SAMPLE_SETTING_VALUES, row.key) ? SAMPLE_SETTING_VALUES[row.key] : def.default;
-      if (JSON.stringify(row.value) === JSON.stringify(seedValue)) continue;
-      await writeSetting(db, { firmId: firm.id, key: row.key, value: seedValue, by: RESET_ACTOR, workspaceId: await platformAuditWorkspaceId(db), reason: RESET_REASON });
-      changed.push({ firmKey, key: row.key });
-    }
+    // PF-12b: each firm's share is one transaction, its platform.bypass line first: a line that cannot be written rolls
+    // that firm's reset back and stops the reset (P-607).
+    const done = await db.$transaction(async (tx) => {
+      const firm = await tx.platformFirm.findUnique({ where: { key: firmKey }, select: { id: true } });
+      if (!firm) return null;
+      await touchFirm(tx, firm.id);
+      const mine: { firmKey: string; key: string }[] = [], skipped: string[] = [];
+      for (const row of await tx.platformFirmSetting.findMany({ where: firmScope(firm.id), orderBy: { key: "asc" } })) {
+        const def = defs.get(row.key);
+        if (!def) { skipped.push(`${firmKey}:${row.key}`); continue; }   // another module's key, not loaded here: left as it is
+        const seedValue = Object.hasOwn(SAMPLE_SETTING_VALUES, row.key) ? SAMPLE_SETTING_VALUES[row.key] : def.default;
+        if (JSON.stringify(row.value) === JSON.stringify(seedValue)) continue;
+        await writeSetting(tx, { firmId: firm.id, key: row.key, value: seedValue, by: RESET_ACTOR, workspaceId: await platformAuditWorkspaceId(tx), reason: RESET_REASON });
+        mine.push({ firmKey, key: row.key });
+      }
+      return { mine, skipped };
+    });
+    if (done) { changed.push(...done.mine); unregistered.push(...done.skipped); }
   }
   if (unregistered.length) console.warn(`demo reset: platform settings of keys not registered in this process were left as they are: ${unregistered.join(", ")}`);
   return { changed, unregistered };

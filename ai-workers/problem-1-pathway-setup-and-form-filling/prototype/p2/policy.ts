@@ -3,9 +3,30 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
-export const PROTOTYPE = join(import.meta.dirname, "..");
-export const ROOT = join(PROTOTYPE, "..", "..", "..");
-export const SOLUTION = join(PROTOTYPE, "..");
+/** The repository root: the nearest folder at or above this file's folder that holds the file AGENTS.md (clean-up
+ *  stage 2a), never a count of folder levels. Same rule as packages/repo-paths and product/tools/repo-root.sh, kept in
+ *  this file on purpose: (1) the drafting and reader processes run under the Node permission model and may read only
+ *  their allow-list (p2/guard.ts isolatedNodeArgs, p5/reader/guard.ts readerNodeArgs: this folder and the root's
+ *  AGENTS.md), so a folder they may not read counts as "no marker here"; (2) this file is in the stub-pass hash
+ *  (pathcode.ts), so a change to the rule needs a new stub pass. REPO_ROOT is NOT honoured here: the spend guard never
+ *  takes its key, ledger or official files from another copy. No marker at all: refuse, never guess. */
+export function findRootFrom(from: string): string {
+  const isMarker = (d: string): boolean => {
+    try { return statSync(join(d, "AGENTS.md")).isFile(); } catch (e) {
+      // Not there, or a folder the permission model hides: no marker here. Anything else (a broken link, a disk error) is
+      // an error, never a reason to walk further up.
+      if (["ENOENT", "ENOTDIR", "ERR_ACCESS_DENIED"].includes((e as NodeJS.ErrnoException).code ?? "")) return false;
+      throw e;
+    }
+  };
+  for (let d = resolve(from); ; d = dirname(d)) {
+    if (isMarker(d)) return d;
+    if (dirname(d) === d) throw new Error(`no AGENTS.md at or above ${from}: the spend guard cannot find the repository root`);
+  }
+}
+export const ROOT = findRootFrom(import.meta.dirname);
+export const SOLUTION = join(ROOT, "ai-workers", "problem-1-pathway-setup-and-form-filling");
+export const PROTOTYPE = join(SOLUTION, "prototype");
 export const OFFICIAL = join(SOLUTION, "official-sources", "ircc");
 export const INVENTORY = join(PROTOTYPE, "p1", "inventory");
 export const KEY_FILE = join(ROOT, ".tools", "solution-1-prototype", "secrets", "anthropic.env");

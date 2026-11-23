@@ -52,19 +52,31 @@ CREATE INDEX "runtime_case_firm_id_created_at_idx" ON "runtime_case"("firm_id", 
 
 -- The lookup's owner (cluster-wide; created only where missing) and the migration role's membership, which ALTER FUNCTION
 -- … OWNER TO needs when the migration role is not a superuser. Retried on "tuple concurrently updated" (other databases on
--- the cluster may migrate at once), as PF-12 does.
+-- the cluster may migrate at once), as PF-12 does. PF-8b F4 (RDS): ALTER names only an attribute that differs from
+-- NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS (a non-superuser may not name SUPERUSER or
+-- REPLICATION at all, PostgreSQL 16+), and the end state is checked.
 DO $$
-DECLARE s text; n int;
+DECLARE s text; n int; r record; fix text;
 BEGIN
-  FOREACH s IN ARRAY ARRAY['CREATE ROLE xr_case_lookup NOLOGIN',
-    'ALTER ROLE xr_case_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS',
-    format('GRANT xr_case_lookup TO %I', current_user)] LOOP
+  FOREACH s IN ARRAY ARRAY['CREATE ROLE xr_case_lookup NOLOGIN', '-- attributes', format('GRANT xr_case_lookup TO %I', current_user)] LOOP
+    IF s = '-- attributes' THEN
+      SELECT * INTO r FROM pg_roles WHERE rolname = 'xr_case_lookup';
+      fix := concat_ws(' ', CASE WHEN r.rolsuper THEN 'NOSUPERUSER' END, CASE WHEN r.rolreplication THEN 'NOREPLICATION' END,
+        CASE WHEN r.rolcreatedb THEN 'NOCREATEDB' END, CASE WHEN r.rolcreaterole THEN 'NOCREATEROLE' END,
+        CASE WHEN r.rolcanlogin THEN 'NOLOGIN' END, CASE WHEN r.rolbypassrls THEN 'NOBYPASSRLS' END);
+      IF fix = '' THEN CONTINUE; END IF;
+      s := 'ALTER ROLE xr_case_lookup ' || fix;
+    END IF;
     n := 0; LOOP
       BEGIN EXECUTE s; EXIT;
       EXCEPTION WHEN duplicate_object THEN EXIT;
         WHEN internal_error OR unique_violation THEN n := n + 1; IF n > 200 THEN RAISE; END IF; PERFORM pg_sleep(0.02 + random() * 0.1);
       END; END LOOP;
   END LOOP;
+  SELECT * INTO r FROM pg_roles WHERE rolname = 'xr_case_lookup';
+  IF r.rolsuper OR r.rolreplication OR r.rolcreatedb OR r.rolcreaterole OR r.rolcanlogin OR r.rolbypassrls THEN
+    RAISE EXCEPTION 'CS-W1 stopped: role xr_case_lookup does not have its required attributes' USING ERRCODE = 'insufficient_privilege';
+  END IF;
 END $$;
 
 CREATE SCHEMA IF NOT EXISTS case_lookup;

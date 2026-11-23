@@ -24,7 +24,9 @@ const files = readdirSync(RUNTIME).filter((f) => /\.tsx?$/.test(f));
 const literal = files.filter((f) => /setActor\(\s*["'`]/.test(read(f)));
 ok("BK-4c (1): no runtime file changes the person to a literal id (targets come from data)", literal.length === 0, literal);
 const sites = Object.fromEntries(files.map((f) => [f, (read(f).match(/\bsetActor\(/g) ?? []).length]).filter(([, n]) => n));
-ok("BK-4c (1): in the case area only the hand-off button and BK-4a's two BR-8 places change the person", JSON.stringify(sites) === JSON.stringify({ "cases.tsx": 2, "hand-off.tsx": 1 }), sites);
+// CS-K1s (breaker M1): clients.tsx acts as the signed-in staff member's own case-side person (from data, the client read's
+// viewer_actor_id) before landing on a client's case; PersonNotice says the change.
+ok("BK-4c (1): in the case area only the hand-off button, BK-4a's two BR-8 places and CS-K1s's landing change the person", JSON.stringify(sites) === JSON.stringify({ "cases.tsx": 2, "clients.tsx": 1, "hand-off.tsx": 1 }), sites);
 const words = files.filter((f) => /switch to|"Act as|>Act as|Open it as/i.test(read(f).replace(/\/\/.*$/gm, "")));
 ok("BK-4c (1): no \"switch to\", \"Act as\" or \"Open it as\" words left in the case area (comments aside)", words.length === 0, words);
 // (1) fail side: the same reading catches a literal id.

@@ -19,6 +19,11 @@
 //   scan    <dir>   exit 1 when a key or secret value appears in what would be uploaded (text files, and the trace zips'
 //           contents through unzip); the video and screenshots are pictures of Sample data, covered by the trace's
 //           DOM snapshots of the same pages. Names the file and the kind found, never the value.
+//   gate    <verdict.json>   the prove job's last step (A274): exit 1 when the verdict is not PASS, when no pack, suite
+//           or journey ran (no exit recorded), or when the file is missing or torn; prints why, for the job summary.
+//   claim   --title t [--strict on]  (body on stdin) a runtime/screens PR whose title names an R1 row ("R1.4", "(R1 row
+//           42)") and whose body has no "Completes:" line prints MISSING: "Completes: R1.n" as a warning; exit 0, exit 1
+//           only with --strict on (pr-rules.yml; the Lead turns it on, A274).
 // No dependency (pr-rules runs detect before any npm install); US$0, no model call.
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -49,6 +54,27 @@ export function detect(body) {
     toks.forEach((t) => items.add(t));
   }
   return { items: [...items].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3))), bad };
+}
+
+/** Why a verdict proves nothing (empty: it proves its item). A run "ran" when it has an exit code. */
+export function gate(v) {
+  if (!v || typeof v.overall !== "string" || !Array.isArray(v.suites)) return { ok: false, lines: ["no verdict: the verdict file is missing or cannot be read (see the verdict step)"] };
+  const planned = v.suites.filter((s) => ["pack", "suite", "journey"].includes(s.kind)), ran = planned.filter((s) => typeof s.exit === "number");
+  const lines = [];
+  if (v.overall !== "PASS") lines.push(`verdict ${v.overall}: ${(v.why ?? []).join("; ") || "no reason given"}`);
+  if (!ran.length) lines.push(`nothing ran: 0 of ${planned.length} planned run(s) (pack, suite, journey) has an exit code`);
+  return { ok: !lines.length, lines: lines.length ? lines : [`verdict PASS: ${ran.length} of ${planned.length} planned run(s) ran and passed`] };
+}
+
+/** The R1 rows a runtime or screens PR's title names, with no "Completes:" line in its body (A274). */
+export function claim(title, body) {
+  const t = String(title ?? "");
+  if (!/\b(runtime|screens):/i.test(t)) return [];
+  const d = detect(body);
+  if (d.items.length || d.bad.length) return [];
+  const ids = new Set([...t.matchAll(/\bR1\.([1-9]\d{0,2})\b/g)].map((m) => `R1.${m[1]}`));
+  for (const m of t.matchAll(/\(R1 row ([1-9]\d{0,2})\)/gi)) ids.add(`R1.${m[1]}`);
+  return [...ids].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
 }
 
 /** A table line's cells as works-set.mjs reads them: a pipe inside a `code span` is not a column; marks dropped. */
@@ -202,6 +228,18 @@ function main(argv) {
     if (!hits.length) console.log(`PASS  secret check: no key or secret value in ${pos[0]}`);
     return hits.length ? 1 : 0;
   }
-  console.error("usage: item-proof.mjs detect|plan|verdict|comment|page|scan (see the header)"); return 2;
+  if (cmd === "gate") {
+    let v = null; try { v = JSON.parse(readFileSync(pos[0], "utf8")); } catch { v = null; }
+    const g = gate(v);
+    console.log(`#### gate: ${g.ok ? "PASS, the job is green" : "FAIL, the job fails: it proved nothing"}`);
+    for (const l of g.lines) console.log(`* ${l}`);
+    return g.ok ? 0 : 1;
+  }
+  if (cmd === "claim") {
+    const miss = claim(opt.title, readFileSync(0, "utf8"));
+    for (const i of miss) console.log(`::warning title=Completes line::MISSING: "Completes: ${i}" (the title names ${i}; if this PR completes it, add the line so item-proof proves it at the merge)`);
+    return miss.length && opt.strict === "on" ? 1 : 0;
+  }
+  console.error("usage: item-proof.mjs detect|plan|verdict|comment|page|scan|gate|claim (see the header)"); return 2;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exit(main(process.argv.slice(2)));

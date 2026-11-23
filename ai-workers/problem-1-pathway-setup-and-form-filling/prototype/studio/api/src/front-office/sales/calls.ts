@@ -97,9 +97,11 @@ export class Activity {
       const first = unanswered.includes(t.leadId);
       const summary = `Staff ${ctx.staffId} logged a${direction === "IN" ? "n incoming" : "n outgoing"} call (${outcome}) on ${t.number}${unanswered.length ? `; the first response of ${unanswered.length} open lead${unanswered.length === 1 ? "" : "s"}` : ""}.`;
       const detail = { callId: call.id, direction, outcome, seconds, startedAt: when.toISOString(), firstResponse: first, firstResponseLeadIds: unanswered.slice(0, 50), leadId: t.leadId };
+      // The call's own values (R1.8, QA-594); its free-text notes stay in fo_call only (FO-2p4: no free text in the trail).
+      const after = { personId: t.personId, direction, outcome, seconds, startedAt: when.toISOString(), notesLength: notes ? [...notes].length : 0 };
       // Each entity named literally (check_case_feed reads AuditPort writes and accepts no dynamic entity).
-      if (t.prospectId) await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.CALL_LOGGED, entity: "fo_prospect", entityKey: t.prospectId, summary, detail });
-      else await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.CALL_LOGGED, entity: "fo_lead", entityKey: t.leadId, summary, detail });
+      if (t.prospectId) await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.CALL_LOGGED, entity: "fo_prospect", entityKey: t.prospectId, summary, detail, before: null, after });
+      else await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.CALL_LOGGED, entity: "fo_lead", entityKey: t.leadId, summary, detail, before: null, after });
       // The answer names only leads the caller may see (review R1, AG-2-64); others are a count. The audit line keeps all ids.
       const seen = answered.filter((l) => l.seen).map((l) => l.id);
       return { id: call.id, direction, outcome, seconds, notes, startedAt: when, firstResponse: first, firstResponseFor: seen, firstResponseOthers: unanswered.length - seen.length };
@@ -115,8 +117,8 @@ export class Activity {
       const note = await tx.foNote.create({ data: { firmId: ctx.firmId, personId: t.personId, leadId: t.prospectId ? null : t.leadId, prospectId: t.prospectId, visibility: "INTERNAL", text: body, byActor: actorOf(ctx) } });
       // The note's words stay in fo_note; the audit line carries ids and the length only (no free text in the trail).
       const summary = `Staff ${ctx.staffId} added a note on ${t.number}.`, detail = { noteId: note.id, length: [...body].length };
-      if (t.prospectId) await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.NOTE_ADDED, entity: "fo_prospect", entityKey: t.prospectId, summary, detail });
-      else await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.NOTE_ADDED, entity: "fo_lead", entityKey: t.leadId, summary, detail });
+      if (t.prospectId) await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.NOTE_ADDED, entity: "fo_prospect", entityKey: t.prospectId, summary, detail, before: null, after: { personId: t.personId, visibility: "INTERNAL", length: detail.length } });
+      else await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.NOTE_ADDED, entity: "fo_lead", entityKey: t.leadId, summary, detail, before: null, after: { personId: t.personId, visibility: "INTERNAL", length: detail.length } });
       return { id: note.id, visibility: "INTERNAL" as const, text: body, createdAt: note.createdAt };
     });
   }

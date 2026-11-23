@@ -21,6 +21,7 @@ WORK=${TMPDIR:-/tmp}/evidence-scoring-set.$$
 trap 'rm -rf $WORK' EXIT
 C=$WORK/ai-workers/problem-1-pathway-setup-and-form-filling
 mkdir -p $C/prototype/p1 $C/official-sources
+cp $ROOT/AGENTS.md $WORK/   # p2/policy.ts finds the copy's root by it (clean-up stage 2a)
 rsync -a $PROTO/p2 $PROTO/tests $PROTO/contracts $PROTO/expected $PROTO/package.json $C/prototype/
 rsync -a $PROTO/p1/inventory $C/prototype/p1/
 rsync -a --exclude results $HERE $C/prototype/evidence-lane/

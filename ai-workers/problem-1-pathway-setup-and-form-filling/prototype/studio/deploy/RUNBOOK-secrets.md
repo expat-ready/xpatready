@@ -10,7 +10,7 @@ The app reads every setting once, at start, from its environment. In the cloud, 
 
 | Setting | Secret? | What it is |
 |---|---|---|
-| `PLATFORM_ENVIRONMENT` | no | `test` or `production` in the cloud (`local` on the Mac and in lane copies, the default) |
+| `PLATFORM_ENVIRONMENT` | no | required, no default: `test` or `production` in the cloud; `local` on the Mac and in lane copies (`start.sh` and `tools/isolated.sh` set it). Unset or blank: the app does not start |
 | `DATABASE_URL` | yes | the PostgreSQL address with its password |
 | `PLATFORM_COGNITO_USER_POOL_ID`, `PLATFORM_COGNITO_CLIENT_ID` | no | the staff user pool and its app client (PF-4) |
 | `PLATFORM_STRIPE_SECRET_KEY` | yes | `sk_…`/`rk_…`; a live key is refused unless `PLATFORM_ENVIRONMENT=production` |
@@ -69,4 +69,4 @@ Rotate it at once by §3 (provider key) or §4 (secret-box key), revoking the ol
 
 ## 6. On the Mac and in lane copies
 
-`PLATFORM_ENVIRONMENT` is unset (local): every setting is optional, and a service whose setting is unset is simply off on that server. A local secret-box key, if a row needs one, is made by §2 and set in the shell that starts the copy; it never goes into a file in the repository. Tests generate their own keys each run (`tests/check_pf24_secrets.ts`).
+`PLATFORM_ENVIRONMENT` is required; `local` on the Mac and in lane copies (`start.sh` and `tools/isolated.sh` set it): every setting is optional, and a service whose setting is unset is simply off on that server. A local secret-box key, if a row needs one, is made by §2 and set in the shell that starts the copy; it never goes into a file in the repository. Tests generate their own keys each run (`tests/check_pf24_secrets.ts`).

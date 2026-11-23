@@ -71,7 +71,7 @@ try {
   await seedSampleFirms(db);
   const R = await db.platformStaff.findFirstOrThrow({ where: { actorId: "user-R" }, select: { id: true, firmId: true, displayName: true, firm: { select: { key: true } } } });
   const ws = await platformAuditWorkspaceId(db);
-  const base = { firmId: R.firmId, firmKey: R.firm.key, actor: actorWord(R.id) };
+  const base = { firmId: R.firmId, firmKey: R.firm.key, actor: actorWord(R.id), before: null, after: null };   // R1.8: the helpers take before and after
 
   // PA1: auditStaff.
   let n = seen.length;

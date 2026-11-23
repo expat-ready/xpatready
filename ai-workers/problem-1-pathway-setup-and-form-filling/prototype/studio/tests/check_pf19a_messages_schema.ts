@@ -311,9 +311,9 @@ try {
   const allClasses = await Promise.all((["TRANSACTIONAL", "SERVICE", "MARKETING"] as const).map((c) => mail(P1, c, "LENA.PARK@example.com")));
   ok("PF-19a fail: a suppressed address → false for every class, transactional included (SUPPRESSED, HARD_BOUNCE)",
     allClasses.every((d) => !d.allowed && d.reason === "SUPPRESSED" && d.suppression === "HARD_BOUNCE"), allClasses);
-  ok("PF-19a pass: the address is kept once in lower case (a second suppression changes nothing) and the audit line carries no address",
+  ok("PF-19a pass: the address is kept once in lower case (a second suppression changes nothing); the audit line holds it only as its after value (R1.8, P-687)",
     s1.created && !s2.created && sql(DEMO, `select address || ':' || reason from msg_suppression where firm_id = '${firmA}'`) === "lena.park@example.com:HARD_BOUNCE"
-    && sql(DEMO, `select count(*) from audit_event where action = 'message.address.suppressed' and detail::text not like '%@%' and summary not like '%@%'`) === "1");
+    && sql(DEMO, `select count(*) from audit_event where action = 'message.address.suppressed' and (select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from jsonb_each(detail) e(k, v) where k !~ '_(before|after)$')::text not like '%@%' and summary not like '%@%' and detail->>'address_after' = 'lena.park@example.com'`) === "1");
   ok("PF-19a pass: the same person at another address is still reachable for transactional mail; firm B's copy of the address is not suppressed",
     (await mail(P1, "TRANSACTIONAL", "lena@work.example.com")).allowed
     && (await store.allows(db as never, { firmId: firmB, channel: "EMAIL", address: "lena.park@example.com", class: "TRANSACTIONAL" })).allowed);

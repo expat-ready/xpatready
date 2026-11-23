@@ -6,10 +6,12 @@
 //   W1 Convert on the prospect's screen, reached from its Pipeline card, by keyboard (FO-4 part 2a);
 //   W2 the client appears with no hand-run command: the app's poll (case-clients/live.ts) takes the won prospect in; the
 //      walk reads the client list with a bounded wait (at most three poll intervals), never a fixed sleep;
-//   W3 API step: the offer has no screen yet. POST /api/runtime/clients/:id/open-case with the staff session;
+//   W3 the client on screen (CS-K1s): the Clients menu entry, a search by name, the client's page and its "Open a case?"
+//      card (program, principal applicant, representative of record), by keyboard; "Open the case" opens one case and
+//      lands on it;
 //   W4 the case page on screen shows the client, the principal applicant, the representative of record and the pinned
 //      release;
-//   W5-W8 the same for a Signed offline win: the paper copy recorded through FO-5's own route (no retainer screen on main),
+//   W5-W8 the same for a Signed offline win (W7 on screen as W3): the paper copy recorded through FO-5's own route (no retainer screen on main),
 //      on a Sample retainer whose sent version names its representative by id; W8 also asserts the case's representative
 //      is the one in that version's merge value `representative.staff_id` (FO-8's first real run of that branch).
 //   DW lines, each a pass and its stand-in that must fail:
@@ -60,7 +62,10 @@ const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql
 const vv = () => sql(`select c.id from combination c where c.combination_key = 'vv.single' and exists (select 1 from config_release r where r.combination_id = c.id)`);
 if (!vv()) await api(null, "POST", "/demo/load", { sample: "configured" }, "user-A");
 const VV = vv();
-ok("J-72 setup: both Sample firms, their front office and a released Visitor visa are on the copy", !!A && !!B && fo.failed.length === 0 && !!VV, fo.failed);
+// CS-K1s: a service of firm A on the released combination, so each lead is "interested in" it and the offer names the program.
+const SERVICE = sql(`select id from fo_service where firm_id = (select id from platform_firm where key = 'sample-firm') and combination_id = '${VV}'`)
+  || sql(`insert into fo_service (firm_id, label, combination_id, sort_order, created_by) select id, 'Sample service', '${VV}', 900, 'seed:J-72' from platform_firm where key = 'sample-firm' returning id`);
+ok("J-72 setup: both Sample firms, their front office, a released Visitor visa and a service on it are on the copy", !!A && !!B && fo.failed.length === 0 && !!VV && !!SERVICE, fo.failed);
 const staff = (actor: string) => { const [id, email] = sql(`select id || '|' || email from platform_staff where actor_id = '${actor}'`).split("|"); return { id, email }; };
 const R = staff("user-R"), S = staff("user-S");
 async function signIn(firmKey: string, email: string): Promise<string> {
@@ -73,8 +78,11 @@ let n = 0;
 /** A Sample lead of firm A, engaged into a prospect through the API (as J-30 makes them). */
 const prospect = async (given: string) => {
   const p = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', '${given}${run}', 'Sample', 'j72.${++n}.${run}@example.org', 'seed:J-72', now()) returning id`);
-  const lead = sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values (gen_random_uuid(), '${A}', '${p}', 'MANUAL', 'Phone call', '${R.id}', 'seed:J-72', now()) returning id`);
+  const lead = sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, interested_in_service_id, created_by, updated_at) values (gen_random_uuid(), '${A}', '${p}', 'MANUAL', 'Phone call', '${R.id}', '${SERVICE}', 'seed:J-72', now()) returning id`);
   const e = await api(TA, "POST", `/front-office/leads/${lead}/engage`);
+  // FO-13c: no client without a recorded conflict check; recorded through its API (the Conflict check panel is FO-13s).
+  const c = await api(TA, "POST", "/front-office/conflict-checks", { prospectId: e.body?.id, requestId: crypto.randomUUID(), result: "NO_CONFLICT" });
+  if (c.status !== 201) throw new Error(`J-72: the conflict check was not recorded (${c.status})`);
   return { id: e.body?.id as string, number: e.body?.number as string, personId: p, name: `${given}${run} Sample` };
 };
 const won = (prospectId: string) => sql(`select count(*) from module_event where type = 'prospect.won' and subject_id = '${prospectId}'`);
@@ -106,6 +114,27 @@ const sizes = async (what: string) => {
 const press = async (p: Page, target: ReturnType<Page["getByRole"]>, max = 120) => {
   for (let i = 0; i < max; i++) { if (await target.evaluate((el) => el === document.activeElement).catch(() => false)) return p.keyboard.press("Enter"); await p.keyboard.press("Tab"); }
   throw new Error("not reached by Tab");
+};
+/** W3/W7 (CS-K1s): the client opened on screen, by keyboard from the case area's Clients entry: a search by name, the
+ *  client's page with its "Open a case?" card, one press of "Open the case"; the walk lands on the new case. */
+const openOnScreen = async (c: { id: string; number: string }, who: string, rep: string | null, tag: string) => {
+  await page.goto(`${BASE}/cases`); await page.locator('[data-nav="clients"]').waitFor({ timeout: 60_000 });
+  await press(page, page.getByRole("link", { name: "Clients", exact: true }));
+  const search = page.getByRole("searchbox", { name: "Search clients" }); await search.waitFor();
+  await search.fill(who); await page.locator(`[data-client-row="${c.number}"]`).waitFor({ timeout: 30_000 });
+  await press(page, page.getByRole("link", { name: who, exact: true }));
+  const card = page.locator("[data-offer-card]"); await card.waitFor({ timeout: 30_000 });
+  const values = [await page.locator("[data-offer-program]").innerText(), await page.locator("[data-offer-principal]").innerText(), await page.locator("[data-offer-representative]").innerText()];
+  await shot(`${tag}-card`); await axe(`${tag} the client page and its card`); await sizes(`${tag} the client page`); await page.setViewportSize({ width: 1440, height: 900 });
+  const before = Number(sql(`select count(*) from runtime_case where client_id = '${c.id}'`));
+  await press(page, page.getByRole("button", { name: "Open the case" }));
+  await page.waitForURL(/\/cases\/[0-9a-f-]{36}$/, { timeout: 60_000 });
+  const caseId = new URL(page.url()).pathname.split("/").pop()!;
+  const label = sql(`select label from combination where id = '${VV}'`);
+  ok(`J-72 ${tag} pass (screen step, CS-K1s): the client's page shows "Open a case?" with the program, ${who} as principal applicant and the representative${rep ? ` (${rep})` : ""}; one press of "Open the case" opens one case for the client, with case.opened, and lands on it`,
+    values[0] === label && values[1] === who && (!rep || values[2] === rep) && before === 0 && sql(`select count(*) from runtime_case where client_id = '${c.id}'`) === "1"
+    && sql(`select client_id from runtime_case where id = '${caseId}'`) === c.id && sql(`select count(*) from module_event where type = 'case.opened' and subject_id = '${caseId}'`) === "1", [values, before, caseId]);
+  return caseId;
 };
 /** W4/W8: the case page shows the client, the principal applicant, the representative of record and the pinned release. */
 const casePage = async (caseId: string, who: string, tag: string) => {
@@ -139,10 +168,8 @@ try {
   ok(`J-72 W2 pass: the client appears with no hand-run command, taken in by the app's poll (${Date.now() - t0} ms; poll ${POLL} ms), a PERSON linked to the prospect's own fo_person`,
     !!anaClient && anaClient.display_kind === "PERSON" && sql(`select fo_person_id from case_client where id = '${anaClient.id}'`) === ana.personId, anaClient);
   const open = (id: string, t: string, body: Record<string, unknown> = {}) => api(t, "POST", `/runtime/clients/${id}/open-case`, { combinationId: VV, clientActor: "user-P", caseOfficers: ["user-O"], ...body });
-  const anaCase = await open(anaClient!.id, TA);
-  ok("J-72 W3 pass (API step: the offer has no screen yet): open-case with the staff session opens one case for the client, with case.opened", anaCase.status === 201 && sql(`select client_id from runtime_case where id = '${anaCase.body?.id}'`) === anaClient!.id
-    && sql(`select count(*) from module_event where type = 'case.opened' and subject_id = '${anaCase.body?.id}'`) === "1", [anaCase.status, anaCase.body?.detail]);
-  await casePage(anaCase.body.id, ana.name, "W4");
+  const anaCaseId = await openOnScreen(anaClient!, ana.name, null, "W3");
+  await casePage(anaCaseId, ana.name, "W4");
 
   // ------------------------------------------------------------------------------------ W5-W8: a Signed offline win
   // Review M2: the signed version names user-T by id, while the retainer row and the firm's default name user-R: only a
@@ -159,9 +186,9 @@ try {
     && sql(`select count(*) from module_event where type = 'prospect.won' and subject_id = '${ben.id}' and payload->>'retainer_id' = '${RET}' and payload->>'won_via' = 'SIGNED_OFFLINE'`) === "1", off);
   const benClient = await appears(ben.name);
   ok("J-72 W6 pass: its client appears by itself too, linked to the prospect's fo_person", !!benClient && sql(`select fo_person_id from case_client where id = '${benClient.id}'`) === ben.personId, benClient);
-  const benCase = await open(benClient!.id, TA);   // no representative in the body: the offer's comes from the signed version
-  ok("J-72 W7 pass (API step: the offer has no screen yet): open-case opens one case for the Signed offline client", benCase.status === 201 && sql(`select client_id from runtime_case where id = '${benCase.body?.id}'`) === benClient!.id, [benCase.status, benCase.body?.detail]);
-  const benRep = await casePage(benCase.body.id, ben.name, "W8");
+  // The screen sends no representative: the offer's comes from the signed version (the card names it).
+  const benCaseId = await openOnScreen(benClient!, ben.name, sql(`select display_name from platform_staff where id = '${T.id}'`), "W7");
+  const benRep = await casePage(benCaseId, ben.name, "W8");
   ok("J-72 W8 pass: the case's representative of record is the one the signed version names by id (merge value representative.staff_id), FO-8's first real run of that branch",
     benRep === "user-T" && benRep === sql(`select actor_id from platform_staff where id = (select (merge_values->>'representative.staff_id')::uuid from fo_retainer_version where retainer_id = '${RET}' and end_reason = 'SIGNED_OFFLINE')`)
     && sql(`select representative_staff_id from fo_retainer where id = '${RET}'`) === R.id, benRep);
@@ -178,7 +205,7 @@ try {
   ok("J-72 DW-b fail (stand-in): firm A's own read of it is 200, with its one case", aRead.status === 200 && aRead.body?.cases?.length === 1, aRead.status);
   const second = await open(anaClient!.id, TA);
   ok("J-72 DW-c pass: a second open-case answers 409 OFFER_USED and opens no second case", second.status === 409 && second.body?.code === "OFFER_USED" && sql(`select count(*) from runtime_case where client_id = '${anaClient!.id}'`) === "1", [second.status, second.body?.code]);
-  ok("J-72 DW-c fail (stand-in): the first open-case answered 201", anaCase.status === 201);
+  ok("J-72 DW-c fail (stand-in): the first opening (W3, on screen) made exactly that one case", sql(`select client_id from runtime_case where id = '${anaCaseId}'`) === anaClient!.id);
   const ret2 = crypto.randomUUID(), ver2 = crypto.randomUUID();
   sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${ret2}', '${A}', 'RETAINER', '${ana.id}', 'PERSON', '${ana.personId}', '${rep.id}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${rep.id}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${ver2}', '${A}', '${ret2}', 1, '{"client.name":"Sample","representative.staff_id":"${rep.id}"}', 'retainers/${ret2}/v1.docx', '${hex}', 'staff:${rep.id}')`);
   sql(`update fo_retainer_version set sent_at = now() where id = '${ver2}'; update fo_retainer set status = 'SENT' where id = '${ret2}'`);

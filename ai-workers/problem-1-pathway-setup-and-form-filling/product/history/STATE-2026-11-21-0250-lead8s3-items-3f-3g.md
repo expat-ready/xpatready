@@ -1,0 +1,4 @@
+# STATE lines moved by Lead 8 (series 3), 21 Nov 02:5x IST (size limit; word for word)
+
+(3g) **02:5x IST:** duplicate cloud lanes (PF-18n1, R1.74 CS-DL3 p2) archived, nothing pushed. **#2596 PF-18n1**: Lead P-423 migration read posted (`Lead read the diff: f93802d25`, OK); pr-rules red only for a missing Done when, added to the description; label when pr-rules is green (if it does not re-run on edit, `lead-pr.sh reopen 2596`). PF-18h is #2621 (Lead B watches). qa Q2 has the R1.38/R1.110 proof ask (Lead B).
+(3f) **02:3x IST:** #2326 (R1.38) and #2568 (R1.110) MERGED; walks j_38 j_110 dispatched twice in the browser (shell dispatch refused by the auto-mode classifier as 'undermining oversight'; browser per P-752/P-770): runs 44818224820, 44818327469; Lead B told for qa. #2556, #2608, #2623 queued. Owed: #2596 migration read + ruling, questions on #2594 #2597 #2602 #2612 #2613 #2621 #2626 #2627; #2591 red check.

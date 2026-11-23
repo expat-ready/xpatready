@@ -3,6 +3,7 @@
 // …/submissions: the limits (30/min per address, 60 per token), 32 KB (also at the door), the token, the site (Origin), a
 // strict body, the honeypot and 2-second fill (answered like anyone, nothing stored; a stamp not ours → reload), then the
 // arrival path; the answer is the thank-you text, known person or not. Limits and stamp key (FO_FORM_STAMP_KEY, else random) in-process.
+// FO-4b: the read, the send and the send's pre-flight (embed.ts) carry CORS headers for the form's allowed sites only (corsFor).
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Param, Post, Req, Res } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
 import type { NestExpressApplication } from "@nestjs/platform-express";
@@ -11,8 +12,10 @@ import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ConsentPort } from "../../../../ports/consent.ts";
 import { Db, OpenRead } from "../../core.ts";
+import { z } from "zod";
+import { parseInput, strict } from "../../platform/http/input.ts";
 import { problem } from "../../platform/identity/keys.ts";
-import { asBypass, enterFirm } from "../../platform/firm-scope.ts";
+import { enterFirm, withFirm } from "../../platform/firm-scope.ts";
 import { arrive, type Attribution } from "./arrival.ts";
 import { email, phone, text, UUID, type Tx } from "./common.ts";
 
@@ -34,8 +37,15 @@ const badBody = () => problem(400, "Not sent", "We could not read this form. Ple
 const offSite = () => problem(403, "Not sent", "This form cannot be sent from this page.", { code: "SITE_NOT_ALLOWED" });
 const tooBig = () => problem(413, "Too large", "This form is too long. Please shorten your message and try again.", { code: "TOO_LARGE" });
 
-const BODY_KEYS = new Set(["givenNames", "familyName", "email", "phone", "interestedIn", "message", "consent", "submissionId", "loadStamp", "website", "attribution"]);
 const ATTRIBUTION_KEYS = ["utmSource", "utmMedium", "utmCampaign", "utmTerm", "utmContent", "clickId", "clickIdKind", "landingPage", "referrerUrl"] as const;
+/** PF-28 part 3b (R1.10): the post through a strict schema (an unknown field 422, named; outer bounds, the 32 KB parser
+ *  caps the whole), after the door's own limits, form lookup and site check, so a miss is still the one not-found. The
+ *  submission id and load stamp are always needed. `website` (the trap field) takes any value: a bot still learns nothing.
+ *  Attribution is captured, cut and never refused for length (attributionOf). Every other rule stays in submit. */
+const s = (max: number) => z.string().max(max).nullish();
+const PUBLIC_BODY = strict({ givenNames: s(1000), familyName: s(1000), email: s(1000), phone: s(1000), interestedIn: s(100), message: s(20_000),
+  consent: z.boolean().optional(), submissionId: z.string().max(100), loadStamp: z.string().max(500), website: z.unknown().optional(),
+  attribution: strict(Object.fromEntries(ATTRIBUTION_KEYS.map((k) => [k, z.string().max(40_000).nullish()]))).nullish() });   // 40 000 > the 32 KB parser: never refused for length (break m1)
 const CAPTURED_JUNK = /[\u0000-\u001f\u007f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2069\u3164\ufeff\u{e0000}-\u{e007f}]/gu;
 /** At most `max` characters (what text() measures), never splitting one; normalised first so it cannot grow (break M4). */
 const cut = (v: string, max: number) => [...v].slice(0, max).join("");
@@ -45,7 +55,7 @@ const CLICK_KINDS = new Set(["GCLID", "FBCLID", "MSCLKID", "TTCLID", "OTHER"]);
 export const siteOf = (s: string): string | null => { try { const u = new URL(s); return /^https?:$/.test(u.protocol) ? u.origin.toLowerCase() : null; } catch { return null; } };
 
 type Req = { ip?: string; socket?: { remoteAddress?: string }; headers: Record<string, string | string[] | undefined> };
-type Res = { setHeader(name: string, value: string): unknown };
+type Res = { setHeader(name: string, value: string): unknown; removeHeader?(name: string): unknown };
 const header = (r: Req, n: string) => { const h = r.headers[n]; return Array.isArray(h) ? h[0] : h; };
 const ipOf = (r: Req) => String(r.ip ?? r.socket?.remoteAddress ?? "unknown").slice(0, 64);
 
@@ -63,10 +73,12 @@ export class PublicForms {
 
   /** The form and its words, for drawing it (open read). Sets `frame-ancestors` to the firm's allowed sites. */
   async read(token: string, req: Req, res?: Res) {
+    openRefusals(res);
     this.limit(`read:ip:${ipOf(req)}`, this.limits.readsPerIp);
     const form = await this.form(token);
     res?.setHeader("Content-Security-Policy", frameAncestors(form.allowedSites, this.ports.publicOrigin));
     res?.setHeader("Cache-Control", "no-store");   // a fresh submissionId and stamp each draw (review m7)
+    this.corsFor(form, req, res);   // FO-4b: the embed script on an allowed site may read it; any other site cannot
     const [services, wording] = await Promise.all([
       this.db.foService.findMany({ where: { firmId: form.firmId, active: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true, label: true } }),
       form.consentWordingVersionId ? this.db.msgConsentWording.findFirst({ where: { firmId: form.firmId, id: form.consentWordingVersionId }, select: { text: true } }) : null,
@@ -81,17 +93,20 @@ export class PublicForms {
   }
 
   /** One enquiry (AG-2-5 rule 10, AG-2-49). */
-  async submit(token: string, body: unknown, req: Req) {
+  async submit(token: string, body: unknown, req: Req, res?: Res) {
+    openRefusals(res);
     const ip = ipOf(req);
     this.limit(`post:ip:${ip}`, this.limits.postsPerIp);
     this.limit(`post:form:${String(token).slice(0, 100)}`, this.limits.postsPerForm);
-    if (Number(header(req, "content-length") ?? 0) > this.limits.maxBytes || Buffer.byteLength(JSON.stringify(body ?? null)) > this.limits.maxBytes) return tooBig();
+    // A body nested too deep to measure (thousands of [ … ]) overflows JSON.stringify: it is unreadable, never a 500 (PF-28 part 3b, break M1).
+    let bytes: number; try { bytes = Buffer.byteLength(JSON.stringify(body ?? null)); } catch { return badBody(); }
+    if (Number(header(req, "content-length") ?? 0) > this.limits.maxBytes || bytes > this.limits.maxBytes) return tooBig();
     const form = await this.form(token);
-    const origin = siteOf(header(req, "origin") ?? "");
-    const allowed = new Set([...form.allowedSites.map(siteOf), siteOf(this.ports.publicOrigin ?? "")].filter(Boolean));
-    if (!origin || !allowed.has(origin)) return offSite();
-    const b = body as Record<string, unknown>;
-    if (!b || typeof b !== "object" || Array.isArray(b) || Object.keys(b).some((k) => !BODY_KEYS.has(k))) return badBody();
+    if (!this.corsFor(form, req, res)) return offSite();
+    // A "__proto__" inside attribution is refused like any other unknown key (the schema's copy would drop it; break m2).
+    const at = (body as { attribution?: unknown } | null)?.attribution;
+    if (at !== null && typeof at === "object" && Object.hasOwn(at, "__proto__")) return problem(422, "Check the details", "One field needs a change: attribution.__proto__: This field is not allowed here. Nothing was saved.", { code: "INVALID", fields: { "attribution.__proto__": "This field is not allowed here." } });
+    const b: Record<string, unknown> = parseInput(PUBLIC_BODY, body ?? {});
     if (typeof b.submissionId !== "string" || !UUID.test(b.submissionId) || typeof b.loadStamp !== "string") return badBody();
     const thanks = { thankYouText: form.thankYouText };
     const person = {
@@ -126,9 +141,33 @@ export class PublicForms {
     return thanks;
   }
 
+  /** FO-4b: a send from the embed script on the firm's own site is pre-flighted by the browser: an allowed site is told
+   *  POST with a JSON body may come (no credentials, ever); any other site is refused like its send would be. */
+  async preflight(token: string, req: Req, res: Res) {
+    this.limit(`read:ip:${ipOf(req)}`, this.limits.readsPerIp);
+    const form = await this.form(token);
+    if (!this.corsFor(form, req, res)) return offSite();
+    res.setHeader("Access-Control-Allow-Methods", "POST");
+    res.setHeader("Access-Control-Allow-Headers", "content-type, accept");
+    res.setHeader("Access-Control-Max-Age", "600");
+  }
+
+  /** The browser's Origin is one of the form's allowed sites or our own (AG-2-49 rule 4). When it is, the answer may be
+   *  read by that site's page (FO-4b's embed script, CORS without credentials); otherwise no CORS header is sent. */
+  private corsFor(form: { allowedSites: string[] }, req: Req, res?: Res): boolean {
+    res?.setHeader("Vary", "Origin");
+    const origin = siteOf(header(req, "origin") ?? "");
+    const allowed = new Set([...form.allowedSites.map(siteOf), siteOf(this.ports.publicOrigin ?? "")].filter(Boolean));
+    if (!origin || !allowed.has(origin)) { res?.removeHeader?.("Access-Control-Allow-Origin"); return false; }
+    res?.setHeader("Access-Control-Allow-Origin", origin);
+    return true;
+  }
+
   private async form(token: unknown) {
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{22,100}$/.test(token)) return unavailable();
-    const f = await asBypass("fo.sales.web-form", () => this.db.foWebForm.findUnique({ where: { publicToken: token } }));
+    // PF-12b part 2: the form's firm through the narrow definer lookup (its id only), then the form is read as that firm.
+    const firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select fo_sales_web_form_firm(${token}) as f`)[0]?.f;
+    const f = firmId ? await withFirm(firmId, () => this.db.foWebForm.findUnique({ where: { publicToken: token } })) : null;
     if (f) enterFirm(f.firmId);   // PF-12: the form's firm, for the rest of the request
     const firm = f?.enabled ? await this.db.platformFirm.findUnique({ where: { id: f.firmId }, select: { status: true } }) : null;
     return f && firm && ["TRIAL", "ACTIVE"].includes(firm.status) ? f : unavailable();
@@ -165,6 +204,12 @@ export function publicFormBodyLimit(app: Pick<express.Express, "use"> | Pick<Nes
   });
 }
 
+/** FO-4b (break R1): the door's generic refusals made before the form is known (too many requests, too large, not
+ *  available: the same words for every firm and token, no credentials, no data) may be read by any page, so the embed
+ *  script tells "the form is off" or "wait a minute" from a lost connection instead of guessing. corsFor takes the
+ *  header away again, or names the one site, once the form is known: a form's own answers stay its allowed sites'. */
+function openRefusals(res?: Res) { res?.setHeader("Access-Control-Allow-Origin", "*"); }
+
 /** Only the allowed sites and our own page may frame the form (AG-2-49 rule 4). */
 export function frameAncestors(sites: string[], own?: string) {
   const list = [...new Set(sites.map(siteOf).filter((s): s is string => !!s))];
@@ -196,5 +241,5 @@ export class PublicFormsController {
   read(@Param("token") token: string, @Req() req: Req, @Res({ passthrough: true }) res: Res) { return this.forms.read(token, req, res); }
 
   @Post(":token/submissions") @HttpCode(201)
-  submit(@Param("token") token: string, @Body() body: unknown, @Req() req: Req) { return this.forms.submit(token, body, req); }
+  submit(@Param("token") token: string, @Body() body: unknown, @Req() req: Req, @Res({ passthrough: true }) res: Res) { return this.forms.submit(token, body, req, res); }
 }

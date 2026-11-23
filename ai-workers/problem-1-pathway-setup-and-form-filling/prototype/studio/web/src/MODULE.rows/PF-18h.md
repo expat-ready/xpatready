@@ -1,0 +1,2 @@
+Entry points: PF-18h: the staff Home `/home` (`modules/platform/home/`, in `modules/platform/routes.tsx`), the first page after sign-in (`callback-page.tsx`), the first entry of the staff menu (`account-sections.ts`) and the frame's brand link; its "Needs you" list reads `GET /api/platform/me/needs-you` and hides or opens through PF-18n's `POST /api/platform/me/notifications/:id/read`. Hooks for J-74: `data-needs-you-item`, `-open`, `-hide`, `-count`.
+Tests: tests/check_pf18h_home_browser.ts

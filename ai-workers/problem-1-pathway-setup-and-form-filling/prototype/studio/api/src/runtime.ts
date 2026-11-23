@@ -26,6 +26,10 @@ import { currentFirm, withFirm } from "./platform/firm-scope.ts";
 import { openCaseFromOffer } from "./case-clients/prospect-won.ts"; // FO-8
 import { auditEvent } from "./platform/audit/audit-event.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "./platform/identity/keys.ts";
+import { ConfigRefused, platformConfig } from "./platform/config/settings.ts";   // QA-621: the loaded configuration's environment
+/** QA-621: whether this process runs a production configuration. A server never starts without a loaded configuration
+ *  (main.ts, PF-24w DW1), so a refused one means an in-process test app with no environment set: never production. */
+const inProduction = () => { try { return platformConfig().environment === "production"; } catch (e) { if (e instanceof ConfigRefused) return false; throw e; } };
 import { aiLive } from "./sources.ts";
 import { FIRM_RECORD, openingTeam, REPRESENTATIVE, representativeAnswers, USES_REPRESENTATIVE, type Member } from "../../engine/runtime/team.ts";
 import { employerLinkOffer } from "../../engine/runtime/employer.ts";
@@ -44,6 +48,7 @@ import type { EntitlementPort } from "../../ports/entitlement.ts"; // CS-C1b
 /** C6.17 (P-78): the channel of an answer written from a stage record (the officer entered it on "Done before we started"). */
 export const STAGE_RECORD = "stage_record";
 import { ASKED_RELATIONS, cellAsked, isListRelation, listWords, relativeKey, relativeOf, SUBJECT_OR_RELATIVE, type Relation } from "../../engine/runtime/relatives.ts";
+import { clientNotesOf } from "./case-notes/service.ts"; // CS-NT1 part 1: the client case read
 
 type H = string | undefined;
 function parse<S extends z.ZodType>(schema: S, input: unknown): z.infer<S> {
@@ -269,6 +274,11 @@ export class Runtime {
   /** `inTx` (FO-8): a step run last inside the opening's transaction; a refusal there leaves nothing written. */
   /** `by` (J-72): the audit actor word of a signed-in request (`staff:<id>`), which AUD-1m requires; else the simulated actor. */
   async createCase(actor: Actor, body: unknown, inTx?: (tx: Prisma.TransactionClient, opened: { id: string; caseNumber: string; combinationId: string }) => Promise<void>, by: string = actor.id) {
+    // QA-621 (R1.108; Lead 11's ruling on #2716, P-294 Option C): the simulated persona door is scaffolding. In a production
+    // configuration (the loaded configuration's environment, never a header) a case opens only on a signed-in staff
+    // member's path (`by` is staff:<id>: openCaseFromOffer, on a client made by FO-13c's gated win), so the persona route
+    // POST /api/runtime/cases and Demo › Sample case cannot make a client with no conflict check. Refused before anything is read.
+    if (!by.startsWith("staff:") && inProduction()) problem(403, "Not in production", "A case is opened by a signed-in staff member, from a client whose conflict check is recorded: the simulated person's door is closed in production.", { code: "SIMULATED_PERSON_REFUSED" });
     need(actor, "case");
     const b = parse(NewCase, body);
     const workspaceId = await this.ws.id();
@@ -409,7 +419,9 @@ export class Runtime {
       can_add: offeredRoles(snapshot).map((p) => ({ role: p.role, label: roleWords(p), max: p.max!, has: c.participants.filter((x) => x.role === p.role).length })),
       // C11.5 (P-106): whether this case may rely on an employer case, read from its pinned release (staff only, as the team; review m3).
       // C1.3: and, once picked, the employer case it relies on (its facts copied then, never updated later).
-      ...(team ? { employer_link: { ...employerLinkOffer(snapshot), linked: await linkedOf(this.db, c.workspaceId, c.id) } } : {}) };
+      ...(team ? { employer_link: { ...employerLinkOffer(snapshot), linked: await linkedOf(this.db, c.workspaceId, c.id) } } : {}),
+      // CS-NT1 part 1 (AG-13-21, BR-4): the case's client reads its CLIENT_VISIBLE current notes only, filtered in SQL.
+      ...(isOfficer(actor) ? {} : { notes: await clientNotesOf(this.db, c.id) }) };
   }
 
   /** V3 B1 (runtime side, P-297 (3)): what the "Open a case" dialog may offer. Each not retired combination's newest

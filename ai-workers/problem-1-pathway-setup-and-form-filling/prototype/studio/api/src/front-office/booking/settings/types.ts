@@ -4,7 +4,7 @@
 //   * Fields (rule 1): name 1-80, description up to 1,000, colour from the closed eight (Sample C1-C8, see the
 //     migration), purpose, length 5-480, active. The words are concept fo-3-booking §5's, so FO-3st3 shows the server's.
 //   * Slug (rule 2): made from the name, lower-case words joined by "-", unique in the firm among not-deleted types; a
-//     clash adds -2, -3; "manage" is reserved (BR-19). An edited slug that is used → 409, reserved → 400.
+//     clash adds -2, -3; "manage" is reserved (BR-19). An edited slug that is used → 409, reserved → 422 (PF-28 part 4).
 //   * Duplicate (rule 3): every field but the id, the slug and the bookings; the name gains " (copy)".
 //   * Switch off (rule 4) and delete (rule 5, soft): neither touches a booking. The public door and staff create read
 //     only active, not-deleted types (service.ts); a booking of either stays readable and changeable by id or link.
@@ -28,6 +28,9 @@ import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../../platform/settings.
 import { type BookingService, SlotsQuery, wallLabel } from "../service.ts";
 import { computeSlots, localDate, wallToUtc, type Slot } from "../slots.ts";
 import { windowsFor } from "./hours.ts";
+import { forbidden } from "../../../platform/identity/keys.ts";
+import { firmTimings, resolveTimings, TIMING_FIELDS, TIMING_RANGES, timingWarnings, timingKey, withTimings, type TimingField } from "./timings.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../../platform/http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 type Row = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
@@ -38,7 +41,7 @@ const MIN = 60_000, DAY = 24 * 60 * MIN;
 const problem = (status: number, slug: string, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.local/problems/${slug}`, title, status, detail, ...extra }, status);
 /** One field's answer: the words go to that field on the screen (`fields`), and to `issues` like the booking service's. */
-const fieldError = (status: 400 | 409, field: string, message: string, code = status === 409 ? "CONFLICT" : "INVALID") =>
+const fieldError = (status: 422 | 409, field: string, message: string, code = status === 409 ? "CONFLICT" : "INVALID") =>
   problem(status, status === 409 ? "conflict" : "invalid", "Please check the highlighted details", message, { code, fields: { [field]: message }, issues: [`${field}: ${message}`] });
 export const WORDS = {
   name: "Name must be 1 to 80 characters.",
@@ -94,16 +97,24 @@ const CreateBody = z.strictObject({ ...Fields, description: Fields.description.o
 const PatchBody = z.strictObject({ ...Object.fromEntries(Object.entries(Fields).map(([k, v]) => [k, v.optional()])) as { [K in keyof typeof Fields]: z.ZodOptional<(typeof Fields)[K]> },
   version: z.number({ error: "Send the version you read." }).int().min(1) });
 
+/** FO-3a1e: a type's five timings, each a value in its range or null (the firm's). */
+const TimingsBody = z.strictObject({ ...Object.fromEntries(TIMING_FIELDS.map((f) => [f, TIMING_RANGES[f].nullable().optional()])) as { [K in TimingField]: z.ZodOptional<z.ZodNullable<(typeof TIMING_RANGES)[K]>> },
+  version: z.number({ error: "Send the version you read." }).int().min(1) });
+
 function parse<T extends z.ZodType>(schema: T, body: unknown): z.output<T> {
+  parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
   const b = (body ?? {}) as Record<string, unknown>;
-  if (b && typeof b === "object" && b.purpose === "PAID_CONSULT") throw fieldError(400, "purpose", WORDS.paid, "PAID_NOT_AVAILABLE");
+  if (b && typeof b === "object" && b.purpose === "PAID_CONSULT") throw fieldError(FIELD_ERROR_STATUS, "purpose", WORDS.paid, "PAID_NOT_AVAILABLE");
   const r = schema.safeParse(b);
   if (r.success) return r.data;
-  const fields: Record<string, string> = {};
+  const fields: Record<string, string> = Object.create(null);   // a key such as "constructor" is a field like any other (FO-3a1e break m1)
   for (const i of r.error.issues) { const f = String(i.path[0] ?? (i.code === "unrecognized_keys" ? (i as { keys?: string[] }).keys?.[0] : "body") ?? "body"); fields[f] ??= i.code === "unrecognized_keys" ? "Not a field of a booking type." : i.message; }
   const [first] = Object.entries(fields);
-  throw problem(400, "invalid", "Please check the highlighted details", first[1], { code: "INVALID", fields, issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) });
+  throw problem(FIELD_ERROR_STATUS, "invalid", "Please check the highlighted details", first[1], { code: "INVALID", fields, issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) });
 }
+
+/** PF-28 part 4: a malformed type id is the one not-found before the body or query is read. */
+const typeIdShape = (id: string) => (z.uuid().safeParse(id).success ? id : notInFirm("booking type"));
 
 /** "Free consultation — Punjabi speakers" → "free-consultation-punjabi-speakers" (AG-4-9 rule 2). At most 72 characters,
  *  so a "-NN" suffix still fits the column's 80; a name with no Latin letter or digit gives "type". */
@@ -138,17 +149,18 @@ const auditValue = (k: string, v: unknown): Scalar => {
   if (typeof v === "string" && EMAILISH.test(v)) return "(not kept: shaped like an email address)";   // the audit port refuses those
   return (Array.isArray(v) ? v.map(String) : v ?? null) as Scalar;
 };
-function diff(before: Row | null, after: Row | null): Record<string, Scalar> {
-  const out: Record<string, Scalar> = {}, changed: string[] = [];
+/** R1.8 (QA-594): the changed fields (detail.fields) and their values before and after, for the line's before and after. */
+function diff(before: Row | null, after: Row | null): { detail: { fields: string[] }; before: Record<string, Scalar> | null; after: Record<string, Scalar> | null } {
+  const b0: Record<string, Scalar> = {}, a0: Record<string, Scalar> = {}, changed: string[] = [];
   for (const k of AUDITED) {
     const b = before ? auditValue(k, before[k]) : null, a = after ? auditValue(k, after[k]) : null;
     if (before && after && JSON.stringify(b) === JSON.stringify(a) && !(FREE_TEXT.has(k) && before[k] !== after[k])) continue;
     if (!before && a === null) continue;
     changed.push(k);
-    if (before) out[`${k}_before`] = b;
-    if (after) out[`${k}_after`] = a;
+    if (before) b0[k] = b;
+    if (after) a0[k] = a;
   }
-  return { fields: changed, ...out };
+  return { detail: { fields: changed }, before: before ? b0 : null, after: after ? a0 : null };
 }
 
 /** The per-firm transaction lock that slug choices take (the same firm's other types are read after it). */
@@ -167,7 +179,8 @@ export class BookingTypesService {
     const t = await this.find(this.db, ctx.firmId, id);
     // Each host's chosen set of hours, null = the host's default (FO-3a 1b-i; Devin review on #2103).
     const chosen = new Map((await this.db.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: t.id }) })).map((h) => [h.staffId, h.setId]));
-    return { ...view(t), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
+    const effectiveTimings = resolveTimings(t, await firmTimings(this.db, ctx.firmId));
+    return { ...view(t), effectiveTimings, warnings: timingWarnings(effectiveTimings), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
   }
 
   async create(ctx: StaffContext, body: unknown) {
@@ -177,9 +190,25 @@ export class BookingTypesService {
   }
 
   async update(ctx: StaffContext, id: string, body: unknown) {
+    typeIdShape(id);
     const { version, ...b } = parse(PatchBody, body);
-    if (b.slug !== undefined && RESERVED.has(b.slug)) throw fieldError(400, "slug", WORDS.slugReserved, "SLUG_RESERVED");
+    if (b.slug !== undefined && RESERVED.has(b.slug)) throw fieldError(FIELD_ERROR_STATUS, "slug", WORDS.slugReserved, "SLUG_RESERVED");
     return view(await this.change(ctx, id, version, b, "booking_type.updated", "edited"));
+  }
+
+  /** FO-3a1e (AG-4-66 rules 2-3, §8): a type's own timings; null = "Reset to firm default". Gaps, notice and window need
+   *  …:configure-availability, the self-service limit …:edit; only the fields that change are checked. Needs the version
+   *  read (rule 7); one audit line with before and after; a booking keeps its own times (AG-4-4 rule 8). */
+  async updateTimings(ctx: StaffContext, id: string, body: unknown) {
+    typeIdShape(id);
+    const { version, ...b } = parse(TimingsBody, body);
+    const t = await this.find(this.db, ctx.firmId, id);
+    const changed = (Object.keys(b) as TimingField[]).filter((k) => b[k] !== t[k]);
+    const missing = [...new Set(changed.map(timingKey))].filter((k) => !ctx.keys.includes(k));
+    if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
+    const after = await this.change(ctx, id, version, b, "booking_type.timings_changed", "timings changed");
+    const effectiveTimings = resolveTimings(after, await firmTimings(this.db, ctx.firmId));
+    return { ...view(after), effectiveTimings, warnings: timingWarnings(effectiveTimings) };
   }
 
   async switchTo(ctx: StaffContext, id: string, active: boolean) {
@@ -202,12 +231,14 @@ export class BookingTypesService {
 
   /** AG-4-8: the slots a visitor would see, in `tz` (the firm's zone by default), and per empty day one reason. Reads only. */
   async preview(ctx: StaffContext, id: string, query: unknown) {
-    const t = await this.find(this.db, ctx.firmId, id);
-    const r = SlotsQuery.safeParse(query ?? {});
-    if (!r.success) throw problem(400, "invalid", "Please check the highlighted details", "Give from and to as times with their offset, and tz as an IANA time zone.", { code: "INVALID", issues: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
+    typeIdShape(id);
+    parseInput(z.unknown(), query);
+    const r = SlotsQuery.safeParse(query ?? {});   // PF-28 part 4: the query is read before the type is looked up
+    if (!r.success) throw problem(FIELD_ERROR_STATUS, "invalid", "Please check the highlighted details", "Give from and to as times with their offset, and tz as an IANA time zone.", { code: "INVALID", fields: fieldsOf(r.error), issues: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
+    const t = await withTimings(this.db, ctx.firmId, await this.find(this.db, ctx.firmId, id));   // FO-3a1e: as the door resolves them
     const [firmZone, closedDays] = await Promise.all([readSetting<string>(this.db, ctx.firmId, TIME_ZONE.key), readSetting<string[]>(this.db, ctx.firmId, CLOSED_DAYS.key)]);
     const now = this.ports.clock.now(), tz = r.data.tz ?? firmZone, from = r.data.from ?? now, to = r.data.to ?? new Date(from.getTime() + 7 * DAY);
-    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw problem(400, "invalid", "Please check the highlighted details", "Ask for at most 62 days of times, from before to.", { code: "INVALID" });
+    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw problem(FIELD_ERROR_STATUS, "invalid", "Please check the highlighted details", "Ask for at most 62 days of times, from before to.", { code: "INVALID", fields: { to: "at most 62 days after from" } });
     const hosts = (await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { id: { in: t.hostStaffIds }, status: "ACTIVE" as const }), select: { id: true } })).map((h) => h.id);
     // The door's own computation (private to the booking service, read by name so the two can never differ).
     const slots: Slot[] = hosts.length ? await this.booking["slotsFor"](this.db, ctx.firmId, t, from, to) : [];
@@ -260,12 +291,12 @@ export class BookingTypesService {
   private async checkHosts(tx: Tx, firmId: string, ids: string[] | undefined) {
     if (!ids?.length) return;
     const n = await tx.platformStaff.count({ where: firmScope(firmId, { id: { in: ids }, status: "ACTIVE" as const }) });
-    if (n !== ids.length) throw fieldError(400, "hostStaffIds", WORDS.hosts);
+    if (n !== ids.length) throw fieldError(FIELD_ERROR_STATUS, "hostStaffIds", WORDS.hosts);
   }
 
-  /** A new type with its slug: the one asked (used → 409, reserved → 400), else made from the name with -2, -3 … */
+  /** A new type with its slug: the one asked (used → 409, reserved → 422), else made from the name with -2, -3 … */
   private async insert(ctx: StaffContext, asked: string | undefined, data: Omit<Prisma.FoConsultationTypeUncheckedCreateInput, "firmId" | "slug">, action: string, summary: string, fromId?: string) {
-    if (asked !== undefined && RESERVED.has(asked)) throw fieldError(400, "slug", WORDS.slugReserved, "SLUG_RESERVED");
+    if (asked !== undefined && RESERVED.has(asked)) throw fieldError(FIELD_ERROR_STATUS, "slug", WORDS.slugReserved, "SLUG_RESERVED");
     for (let attempt = 0; ; attempt++) {
       try {
         return await this.db.$transaction(async (tx) => {
@@ -275,8 +306,9 @@ export class BookingTypesService {
           const row = await tx.foConsultationType.create({ data: { ...data, firmId: firmScope(ctx.firmId).firmId, slug, createdByStaffId: ctx.staffId } });
           // A copy keeps the source's set of hours per host, a child row (AG-4-9 rule 3; FO-3a 1b-i review M1).
           if (fromId) await tx.foTypeHostSet.createMany({ data: (await tx.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: fromId }) })).map((h) => ({ firmId: h.firmId, typeId: row.id, staffId: h.staffId, setId: h.setId })) });
+          const d = diff(null, row);
           await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: row.id, summary,
-            detail: { ...diff(null, row), ...(fromId ? { copiedFrom: fromId } : {}) } });
+            detail: { ...d.detail, ...(fromId ? { copiedFrom: fromId } : {}) }, before: d.before, after: d.after });
           return row;
         });
       } catch (e) {
@@ -305,8 +337,9 @@ export class BookingTypesService {
         const asked = Object.entries(data).filter(([k]) => k !== "deletedAt");
         if (!("deletedAt" in data) && asked.every(([k, v]) => JSON.stringify(v) === JSON.stringify(before[k as keyof Row]))) return before;   // nothing to change (break m5)
         const after = await tx.foConsultationType.update({ where: { id: before.id }, data: { ...data, version: { increment: 1 } } });
+        const d = diff(before, after);
         await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: after.id,
-          summary: `Booking type ${said(after.name)} ${word}.`, detail: diff(before, after) });
+          summary: `Booking type ${said(after.name)} ${word}.`, detail: d.detail, before: d.before, after: d.after });
         return after;
       });
     } catch (e) {

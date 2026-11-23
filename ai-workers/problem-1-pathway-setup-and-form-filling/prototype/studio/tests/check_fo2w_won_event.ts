@@ -15,6 +15,7 @@ import { EVENT, ProspectWonPayload } from "../ports/events.ts";
 import { LocalFiles } from "../api/src/front-office/files.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { Retainers } from "../api/src/front-office/retainers/service.ts";
+import { clearingConflicts } from "./lib/conflict-clear.ts";
 import type { Tx } from "../api/src/front-office/sales/common.ts";
 import { Corporate } from "../api/src/front-office/sales/corporate/service.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
@@ -75,6 +76,7 @@ try {
   const leads = new Leads(db, salesPorts()), pros = new Prospects(db, salesPorts()), corp = new Corporate(db, salesPorts());
   const store = new LocalFiles(join(WORK, "files")), clock = { now: () => Date.now() };
   const svc = new Retainers(db, store, clock);
+  clearingConflicts(db, { prospects: Prospects.prototype, retainers: Retainers.prototype });   // FO-13c: the conflict check first
 
   // A prospect (Individual, Engaged) with a DRAFT retainer on it (FO-5's tables, as FO-2p3's check makes one).
   const TPL = randomUUID(), hex = (k: number) => k.toString(16).padStart(64, "0");
@@ -176,6 +178,7 @@ try {
   writeFileSync(MUTANT, src.slice(0, callAt) + "prospectWon = false;" + src.slice(end));
   try {
     const { Retainers: Mutant } = await import(MUTANT) as { Retainers: typeof Retainers };
+    clearingConflicts(db, { retainers: Mutant.prototype });   // FO-13c: the conflict check first
     const p6 = await prospect("Fay"), r6 = retainer(p6);
     await signOffline(new Mutant(db, store, clock), r6);
     ok("FO-2w W5 fail: with the helper call removed from Signed offline, W1's check fails (no prospect.won, prospect not won)", won(p6.id) === 0 && stageOf(p6.id) === "ACTIVE:-", { won: won(p6.id), stage: stageOf(p6.id) });

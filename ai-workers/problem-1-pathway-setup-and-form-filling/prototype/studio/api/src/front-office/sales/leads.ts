@@ -8,21 +8,20 @@ import { Db } from "../../core.ts";
 import { platformAuditWorkspaceId } from "../../platform/audit/audit-event.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { FirmCalendar } from "../../platform/calendar/working-days.ts";
-import { forbidden, problem, type StaffContext } from "../../platform/identity/keys.ts";
+import { forbidden, type StaffContext } from "../../platform/identity/keys.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { arrive, possibleMatch } from "./arrival.ts";
-import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx, type Visibility } from "./common.ts";
+import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx } from "./common.ts";
 import { openMinutesIn, openWindows } from "./open-minutes.ts";
 import { dayRange, ownerAsked } from "./prospects.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
+import { leadsSeenWhere, sourcesChecked, sourcesSeen } from "./source-filter.ts";
+import { livePersonId } from "../duplicates/merge/follow.ts";
 
 export const VIEWS = ["unassigned", "mine", "all", "closed"] as const;
 type View = (typeof VIEWS)[number];
-/** FO-4sf (AG-2-23 rule 1): `?source=` is the lead's stored source (AG-02 glossary: "where a lead came from … not the
- *  door"), given once or repeated (`source=A&source=B`; a source may hold a comma, so values are never split). Empty = all. */
-export function sourcesAsked(q: unknown): string[] {
-  return [...new Set((Array.isArray(q) ? q : q === undefined || q === null ? [] : [q]).map((x) => String(x).trim()).filter(Boolean))];
-}
+/** FO-4sf (AG-2-23 rule 1): `?source=` is the lead's stored source; the one filter is `source-filter.ts` (R1.30). */
+export { sourcesAsked } from "./source-filter.ts";
 /** How recent an owner change from Unassigned counts as the race that names the winner (Sample, FO-2v brief). */
 const RACE_MINUTES = 10;
 type Staff = { id: string; displayName: string; status: string };
@@ -47,18 +46,14 @@ export class Leads {
     if (v === "unassigned" && !vis.seesUnassigned) return forbidden("Unassigned leads are seen by people who may see all leads or assign them.", "MISSING_PERMISSION");
     const staff = await this.staffOf(ctx.firmId);
     const inactive = [...staff.values()].filter((s) => s.status !== "ACTIVE").map((s) => s.id);
-    const asked = sourcesAsked(source);
-    if (asked.length) {
-      // Only the sources of leads this person may see are known to them (FO-2v): another person's free-text source is never named.
-      const allowed = await this.sourcesSeen(ctx, vis, inactive), bad = asked.filter((x) => !allowed.includes(x));
-      if (bad.length) return problem(400, "Check the filter", `Unknown source: ${bad.join(", ").slice(0, 200)}. Choose from: ${allowed.join(", ").slice(0, 500) || "no source yet"}.`, { code: "UNKNOWN_SOURCE", allowed });
-    }
+    // Only the sources of leads this person may see are known to them (FO-2v): another person's free-text source is never named.
+    const asked = await sourcesChecked(this.db, ctx, vis, source, inactive);
     // FO-2 part 3: the owner (a staff member of the firm) and the arrival day (in the firm's zone) narrow inside the visibility, as the source does.
     const owner = await ownerAsked(this.db, ctx.firmId, f.owner), arrived = await dayRange(this.db, ctx.firmId, f.from, f.to);
     const state: FoLeadState = v === "closed" ? "CLOSED" : "OPEN";
     const where = v === "unassigned" ? { state, OR: [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] }
       : v === "mine" ? { state, ownerStaffId: ctx.staffId }
-      : { state, ...this.seenWhere(ctx, vis, inactive) };   // in the query, before the page cap (review m5)
+      : { state, ...leadsSeenWhere(ctx, vis, inactive) };   // in the query, before the page cap (review m5)
     const rows = await this.db.foLead.findMany({
       // The source filter narrows inside the visibility, never widens it (FO-4sf).
       where: firmScope(ctx.firmId, { AND: [where, asked.length ? { source: { in: asked } } : {}, owner ? { ownerStaffId: owner } : {}, arrived ? { arrivedAt: arrived } : {}] }), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
@@ -77,22 +72,11 @@ export class Leads {
     }));
   }
 
-  /** The leads a person may see, as a query (FO-2v): all, else their own and, when Unassigned is visible, those with no active owner. */
-  private seenWhere(ctx: StaffContext, vis: Visibility, inactive: string[]) {
-    return vis.seesAll ? {} : { OR: [{ ownerStaffId: ctx.staffId }, ...(vis.seesUnassigned ? [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] : [])] };
-  }
-
-  private async sourcesSeen(ctx: StaffContext, vis: Visibility, inactive: string[]): Promise<string[]> {
-    // GROUP BY in the database (review m5): one row per source, never every lead, and no cap that would hide a source.
-    const rows = await this.db.foLead.groupBy({ by: ["source"], where: firmScope(ctx.firmId, this.seenWhere(ctx, vis, inactive)), orderBy: { source: "asc" } });
-    return rows.map((r) => r.source);
-  }
-
   /** The Source filter's choices (FO-4sf, AG-2-23 rule 1): the stored sources of the leads this person may see, A to Z. */
   async sources(ctx: StaffContext) {
     const vis = await visibilityOf(this.db, ctx);
     const inactive = [...(await this.staffOf(ctx.firmId)).values()].filter((s) => s.status !== "ACTIVE").map((s) => s.id);
-    return { sources: await this.sourcesSeen(ctx, vis, inactive) };
+    return { sources: await sourcesSeen(this.db, ctx, vis, inactive) };
   }
 
   /** Who a lead can be assigned to (AG-2-13c rule 11, AG1-D6; Lead B rev 16.29 on #1843): every active staff member of
@@ -165,7 +149,8 @@ export class Leads {
     const activeOf = (o: string | null) => (o && staff.get(o)?.status === "ACTIVE" ? o : null);
     if (existingPersonId) {
       // Only a person the adder may see (review M2, AG-2-4 rule 6): one of their leads is visible to the adder.
-      const theirs = await this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: existingPersonId }), select: { ownerStaffId: true } });
+      const live = (await livePersonId(this.db, ctx.firmId, existingPersonId)) ?? notFound("person");   // FO-9b M3: a merged-away id → its survivor
+      const theirs = await this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: live }), select: { ownerStaffId: true } });
       if (!theirs.some((l) => sees(vis, ctx, activeOf(l.ownerStaffId)))) return notFound("person");
     } else {
       if (!person.email && !person.phone) unprocessable("Add an email or a phone number.", { email: "Add an email or a phone number." });
@@ -275,6 +260,7 @@ export class Leads {
       await written(tx, this.ports.audit, {
         firmId: ctx.firmId, actor: actorOf(ctx), action, entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
         detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id, ...(action === EVENT.LEAD_TAKEN ? { fromUnassigned: activeOf(l.owner_staff_id) === null } : {}), ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}), ...(r.via ? { via: r.via } : {}) },
+        before: { ownerStaffId: l.owner_staff_id, state: l.state }, after: { ownerStaffId: r.owner, state: r.state ?? l.state, ...(r.reasonKey ? { closeReasonKey: r.reasonKey } : {}) },
         event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: r.state ?? l.state, ownerStaffId: r.owner, ...(r.reasonKey ? { closeReasonKey: r.reasonKey } : {}) }) },
       });
     });

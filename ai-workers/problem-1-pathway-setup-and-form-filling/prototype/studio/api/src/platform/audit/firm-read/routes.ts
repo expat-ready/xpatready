@@ -6,19 +6,24 @@ import { Controller, Get, HttpException, Inject, Query, Req, Res } from "@nestjs
 import type { Response } from "express";
 import { PermissionKeys, staffOf, type StaffContext } from "../../identity/keys.ts";
 import { FirmAuditLog } from "./service.ts";
+import { parseInput, query } from "../../http/input.ts";
 
 export const AUDIT_READ = "agent/audit:read";
 type R = { platform?: StaffContext };
+
+/** PF-28 part 2b (R1.10): the activity log's filter keys; an unknown one is refused 422, named, before the filter is read. */
+const AUDIT_QUERY = query("from", "to", "person", "actorType", "ours", "area", "action", "entity", "entityKey", "cursor");
 
 @Controller("api/platform")
 export class FirmAuditController {
   constructor(@Inject(FirmAuditLog) private readonly log: FirmAuditLog) {}
 
   @Get("audit") @PermissionKeys(AUDIT_READ)
-  page(@Req() r: R, @Query() q: Record<string, unknown>) { return this.log.page(staffOf(r), q); }
+  page(@Req() r: R, @Query() q: Record<string, unknown>) { return this.log.page(staffOf(r), parseInput(AUDIT_QUERY, q)); }
 
   @Get("audit/export") @PermissionKeys(AUDIT_READ)
   async export(@Req() r: R, @Query() q: Record<string, unknown>, @Res() res: Response) {
+    parseInput(AUDIT_QUERY, q);   // PF-28 part 2b: before the download starts
     let made: Awaited<ReturnType<FirmAuditLog["exportCsv"]>>;
     let left = false; res.on("close", () => { if (!res.writableEnded) left = true; });
     try { made = await this.log.exportCsv(staffOf(r), q, () => left); } catch (e) {

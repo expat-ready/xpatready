@@ -52,7 +52,7 @@ async function assignIn(tx: Tx, audit: AuditPort<Tx>, firmId: string): Promise<A
   if (!address) return null;
   await tx.$executeRaw`select platform_web_address_lock(${address})`;
   await tx.platformFirmWebAddress.create({ data: { firmId: id, address, setBy: FIRM_CREATED_ACTOR } });
-  await audit.record(tx, { firmId: id, actor: FIRM_CREATED_ACTOR, action: "firm.web_address.set", entity: "platform_firm", entityKey: id, summary: `Web address set to ${address} when the firm was created.`, detail: { address } });
+  await audit.record(tx, { firmId: id, actor: FIRM_CREATED_ACTOR, action: "firm.web_address.set", entity: "platform_firm", entityKey: id, summary: `Web address set to ${address} when the firm was created.`, detail: { address }, before: null, after: { address } });
   return { firmId: id, address, assigned: true };
 }
 

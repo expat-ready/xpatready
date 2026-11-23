@@ -7,6 +7,9 @@
 // Visibility is FO-3vr's filter, called, never written again: `view=team` reads `BookingService.readSeen` (the record
 // rule in SQL, `seenWhere`), `view=mine` the person's own as host (no key, AG-4-67 rule 2), and one booking `staffBooking` (its host,
 // or the list key and the record rule; else the one not-found).
+// QA-743 (R1.39 "own bookings and time off"): the list answer also carries `timeOff`, the Availability time-off periods
+// that overlap the window: `view=mine` the viewer's own ("Time off"), `view=team` (list key) every colleague's too, as
+// "Not available" with the name and the times only. A period has no reason and none is ever sent (`offItems`).
 import { Controller, Get, HttpException, Inject, Injectable, Param, Query, Req } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -18,15 +21,17 @@ import { AnyStaff, staffOf, type StaffContext as Ctx } from "../../platform/iden
 import { Booking, BOOKING_PORTS } from "./public.controller.ts";
 import { partyOf } from "./consult/service.ts";
 import { hostZone, type GivenBookingPorts } from "./service.ts";
+import { firmTimings, resolveTimings } from "./settings/timings.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../platform/http/input.ts";
 
 const MIN = 60_000, DAY = 24 * 60 * MIN, MAX_DAYS = 62;
 const LIST = "agent/booking:list", EDIT = "agent/booking:edit";
 const ACTIVE = ["SCHEDULED", "RESCHEDULED"], PIECE = 10_000;
 const problem = (status: number, slug: string, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.example/problems/${slug}`, title, status, detail, ...extra }, status);
-// The same bounds as FO-3sr's list (service.ts Instant): a year outside 2000-2099 is a 400, never a 500 (break F1).
+// The same bounds as FO-3sr's list (service.ts Instant): a year outside 2000-2099 is a 422 field error, never a 500 (break F1; PF-28 part 4).
 const Instant = z.iso.datetime({ offset: true }).transform((s) => new Date(s)).refine((d) => d.getTime() >= Date.UTC(2000, 0, 1) && d.getTime() < Date.UTC(2100, 0, 1), "a time between 2000 and 2100");
-const FeedQuery = z.object({ from: Instant, to: Instant, view: z.enum(["mine", "team"]).default("mine") });
+const FeedQuery = z.strictObject({ from: Instant, to: Instant, view: z.enum(["mine", "team"]).default("mine") });
 
 type Row = Awaited<ReturnType<PrismaClient["foBooking"]["findFirstOrThrow"]>>;
 export type FeedItem = Awaited<ReturnType<BookingFeed["items"]>>[number];
@@ -37,15 +42,28 @@ export class BookingFeed {
 
   /** `GET bookings/feed?from&to&view=mine|team`: at most 62 days, from before to; `team` needs agent/booking:list. */
   async list(ctx: StaffContext, query: unknown) {
+    parseInput(z.unknown(), query);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
     const p = FeedQuery.safeParse(query ?? {});
-    if (!p.success) throw problem(400, "booking-refused", "Bookings not listed", "Ask with from and to as ISO times, and view mine or team.", { issues: p.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
+    // PF-28 part 4: a field error is 422 with the fields named (an unknown query key among them), the issues as before.
+    if (!p.success) throw problem(FIELD_ERROR_STATUS, "booking-refused", "Bookings not listed", "Ask with from and to as ISO times, and view mine or team.", { code: "INVALID", fields: fieldsOf(p.error), issues: p.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
     const q = p.data;
-    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > MAX_DAYS * DAY) throw problem(400, "booking-refused", "Bookings not listed", `Ask for at most ${MAX_DAYS} days, from before to.`);
+    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > MAX_DAYS * DAY) throw problem(FIELD_ERROR_STATUS, "booking-refused", "Bookings not listed", `Ask for at most ${MAX_DAYS} days, from before to.`, { code: "INVALID", fields: { to: `at most ${MAX_DAYS} days after from` } });
     if (q.view === "team" && !ctx.keys.includes(LIST)) throw problem(403, "forbidden", "Not allowed", `This needs the permission ${LIST}.`, { code: "MISSING_PERMISSION" });
     const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from } };
     const rows = q.view === "team" ? await this.b.readSeen(ctx, Prisma.sql`b.starts_at < ${q.to} AND b.ends_at > ${q.from}`, where, "startsAt")
       : await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { ...where, staffId: ctx.staffId }), orderBy: [{ startsAt: "asc" }, { id: "asc" }] });
-    return { view: q.view, from: q.from.toISOString(), to: q.to.toISOString(), officeTimeZone: await hostZone(this.db, ctx.firmId, ctx.staffId, this.ports.offices), items: await this.items(ctx, rows) };
+    return { view: q.view, from: q.from.toISOString(), to: q.to.toISOString(), officeTimeZone: await hostZone(this.db, ctx.firmId, ctx.staffId, this.ports.offices), items: await this.items(ctx, rows), timeOff: await this.offItems(ctx, q.view, q.from, q.to) };
+  }
+
+  /** QA-743: the time-off periods overlapping the window, oldest first. Mine: the viewer's own. Team (the caller has
+   *  checked the list key): everyone's in the firm but a deactivated person's (break m6, as Availability's `target`); a
+   *  colleague's is "Not available". Only who and when leave here. */
+  async offItems(ctx: StaffContext, view: "mine" | "team", from: Date, to: Date) {
+    const rows = await this.db.foTimeOff.findMany({ where: firmScope(ctx.firmId, { ...(view === "team" ? { staff: { status: { not: "DEACTIVATED" as const } } } : { staffId: ctx.staffId }), startsAt: { lt: to }, endsAt: { gt: from } }), orderBy: [{ startsAt: "asc" }, { id: "asc" }], select: { id: true, staffId: true, startsAt: true, endsAt: true } });
+    if (!rows.length) return [];
+    const staff = await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { id: { in: [...new Set(rows.map((r) => r.staffId))] } }), select: { id: true, displayName: true } });
+    const names = new Map(staff.map((s) => [s.id, s.displayName]));
+    return rows.map((r) => { const mine = r.staffId === ctx.staffId; return { id: r.id, staff: { id: r.staffId, name: names.get(r.staffId) ?? "" }, mine, label: mine ? "Time off" : "Not available", startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString() }; });
   }
 
   /** `GET bookings/feed/:id`: one booking, for its host or within the record rule (Q4); else the one not-found. */
@@ -62,6 +80,7 @@ export class BookingFeed {
     const uniq = (xs: (string | null)[]) => [...new Set(xs.filter((x): x is string => !!x))];
     const pieces = async <T>(xs: string[], read: (part: string[]) => Promise<T[]>) => { const out: T[] = []; for (let i = 0; i < xs.length; i += PIECE) out.push(...await read(xs.slice(i, i + PIECE))); return out; };
     const personIds = uniq(rows.map((r) => r.personId)), leadPeople = uniq(rows.filter((r) => !r.prospectId).map((r) => r.personId));
+    const firm = await firmTimings(this.db, f);   // FO-3a1e: a type's empty self-service limit is the firm's
     const [zones, vis, types, hosts, people, prospects, leads, records, lines] = await Promise.all([
       // PF-18a: each booking's office zone is its host's office's (the firm's when the host has no office), as the host's mail states it.
       Promise.all(uniq(rows.map((r) => r.staffId)).map(async (h) => [h, await hostZone(this.db, f, h, this.ports.offices)] as const)).then((z) => new Map(z)), visibilityOf(this.db, ctx),
@@ -102,7 +121,7 @@ export class BookingFeed {
       const party = partyOf({ personId: r.personId, prospectId: r.prospectId, type: { purpose: type?.purpose ?? "" } });   // 2a's one rule
       const caseCall = party?.kind === "client";
       const warnings = saved.get(r.id)?.warnings, by = cancelled.get(r.id);
-      const limit = type?.selfServiceLimitMinutes ?? 0;
+      const limit = type ? resolveTimings(type, firm).selfServiceLimitMinutes : 0;
       return {
         id: r.id, status: r.status, mode: r.mode, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(),
         officeTimeZone: zones.get(r.staffId) ?? "", bookerTimeZone: r.bookerTimeZone,
