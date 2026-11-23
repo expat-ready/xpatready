@@ -1,0 +1,8 @@
+Mon Nov 23 06:24:50 AM UTC 2026
+PASS  health: GET /api/health 200, status ok
+PASS  first page: GET / 200 with the web app's root
+PASS  first page: its bundle /assets/index-DBSzXgT0.js 200 (text/javascript; charset=utf-8)
+SKIP  me: GET /api/platform/me waits for PF-4 on main (PLATFORM_ME=required runs it)
+skeleton smoke: all steps passed (https://www.staging.lab.expatready.com)
+exit=0
+Mon Nov 23 06:24:50 AM UTC 2026

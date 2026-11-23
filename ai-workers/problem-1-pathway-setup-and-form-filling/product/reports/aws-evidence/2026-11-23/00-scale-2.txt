@@ -1,0 +1,8 @@
+Mon Nov 23 06:23:46 AM UTC 2026
+td=arn:aws:ecs:ca-central-1:581508167097:task-definition/xrstagingAppTask7031B6E4:7
+image=581508167097.dkr.ecr.ca-central-1.amazonaws.com/xr-staging-studio@sha256:75ae532de7f22fb455b754f22d471ecc8a5ccb67632b72c51288b79d6170688a
+bf9ecc796f9ba1e21b79265a903117d08a86ba06
+2
+stable rc=0
+Mon Nov 23 06:24:48 AM UTC 2026
+2	2	COMPLETED

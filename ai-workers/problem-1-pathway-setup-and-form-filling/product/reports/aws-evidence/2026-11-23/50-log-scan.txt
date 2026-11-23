@@ -1,0 +1,26 @@
+Mon Nov 23 06:36:11 AM UTC 2026
+events 1894 streams 21
+personal sample-firm/person1 email hits 0
+personal sample-firm/person1 name hits 0
+personal sample-firm/person1 licence hits 0
+personal sample-firm/person2 email hits 0
+personal sample-firm/person2 name hits 0
+personal sample-firm/person3 email hits 0
+personal sample-firm/person3 name hits 0
+personal sample-firm/person3 licence hits 0
+personal sample-solo/person1 email hits 0
+personal sample-solo/person1 name hits 0
+personal sample-solo/person1 licence hits 0
+any email-shaped text 0
+secret xr/staging/PLATFORM_ZOOM_CLIENT_SECRET parts 1 hits 0
+secret xr/staging/PLATFORM_STRIPE_WEBHOOK_SECRET parts 1 hits 0
+secret xr/staging/DATABASE_OWNER_URL parts 3 hits 0
+secret xr/staging/APP_DATABASE_URL parts 3 hits 0
+secret xr/staging/PLATFORM_SECRET_BOX_KEY_VERSION parts 0 hits 0
+secret xr/staging/PLATFORM_BOLDSIGN_API_KEY parts 1 hits 0
+secret xr/staging/PLATFORM_ZOOM_CLIENT_ID parts 1 hits 0
+secret xr/staging/PLATFORM_STRIPE_SECRET_KEY parts 1 hits 0
+secret xr/staging/PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN parts 1 hits 0
+secret xr/staging/PLATFORM_SECRET_BOX_KEYS parts 2 hits 0
+self-test finds a planted value: True
+exit=0

@@ -1,0 +1,5 @@
+Mon Nov 23 06:31:44 AM UTC 2026
+task=arn:aws:ecs:ca-central-1:581508167097:task/xr-staging-AppCluster68CC0559-GPRhlOZPAdsd/d7dc72dc735d4660bd767af3ca6ef198
+container exit=1
+no SEALPROOF line
+exit=1

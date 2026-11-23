@@ -578,3 +578,23 @@ Cost Explorer net daily: 21 Nov ~0, 22 Nov ~0, 23 Nov 0 (estimated; net unblende
 * **R1.65:** no PR title names PF-F1c (same search), so its code step waits too.
 
 **Next step:** the Lead rules on the R1.5 code rows (PF-4bc, plus: sign-in page and Cognito callback, task-role `cognito-idp` actions with its check, the first Owner on staging). After they merge: post the cost, founder's yes, rebuild, deploy 2, founder's steps, prove a pass and a refused sign-in, deploy 0.
+
+## Step 19: qa's gaps on R1.1, R1.13, R1.15 (PR #3206), one CloudShell pass, 23 Nov 11:53-12:14 IST
+
+* **Yes:** the founder's, asked and answered in this session ("Yes, run it": up to US$0.50; real 503s and a real alarm email; a script that reads the secrets and never prints them).
+* **Ran:** image `sha256:75ae532d…` (main 8f487df4b; no commit to the studio app between it and origin/main 1e89856fc), task def :7, 2 tasks 06:23:46-06:35:10Z, by `update-service` (desired count only; no CDK, no build, no IAM, no SQL).
+* **Evidence (P-557):** scripts and raw outputs in `aws-evidence/` and `aws-evidence/2026-11-23/`. The outputs were copied by hand from the CloudShell screen; `shasum -a 256` of all 13 and of `r11-read.sh` equals CloudShell's. `p23.sh` and `d-proof.sh` (22-23 Nov) are still only in CloudShell.
+
+| Row · qa's gap | Result | File |
+|---|---|---|
+| R1.1 · smoke against the cloud address | **Pass for what runs:** `tools/skeleton-smoke.sh https://www.staging.lab.expatready.com` exit 0: health 200 ok; first page; its bundle. **Not full:** step 3 (`/api/platform/me` signed in) SKIPPED. CI runs it as required, but with the local sign-in, which is off on AWS; it needs R1.5 | `10-` |
+| R1.1 · deploy from CI | **Open:** PF-8c: no `deploy.yml` in `.github/workflows/` on main, so no CI role, deploy job or smoke step after a deploy. `tools/demo-smoke.mjs` (the browser walk) not run: it picks people with the demo's simulated `x-actor` | code read |
+| R1.13 · a real app error reaches the alarm | **Pass:** 40 real 503 answers (`POST …/session/callback`, the refusal in Step 18) and 120 × 401, OK → ALARM 06:32:34Z, SNS action run, published 1, delivered 1, failed 0; no `set-alarm-state`. OK again 06:38:34Z. A handled 503, not an unexpected crash (500). The address is still the placeholder alias (P-782); "delivered" is SNS's count, not a person reading it | `30-` |
+| R1.13 · personal data in the log group | **Pass:** 1,894 events, 21 streams, all that `/xr/staging/app` returned: 0 hits for every seeded Sample email, name and licence number, 0 email-shaped texts; a planted value is found. Not sign-in or case traffic: no staff can sign in yet | `50-` |
+| R1.15 · secret values in logs and image | **Pass:** 0 hits for 9 of the 10 secrets, plus the passwords inside the database addresses, in all 1,894 events and in 1,059,784,911 bytes (image config, history, unpacked file system). The tenth, the key version (a short number), is not searchable. Secret-shaped text in environment and history: none (smoke step 5). Limit: plain values only, not compressed or encoded ones | `50-` `60-` `61-` |
+| R1.15 · a firm key stored sealed | **Partial, blocked by code:** nothing in the app stores a sealed value (no caller of `SecretBoxPort` outside its own adapter, re-encrypt job and tests), so no row exists to read back. Shown instead in the staging image with the real key ring: a Sample value sealed (`sb1.v1`), not readable in the sealed text, opened for its own firm, refused for another firm. This does not close the gap | `22-` |
+
+**Failed tries, kept:** sealed run 1 (`20-`) printed no proof line yet exit 0: not counted, the script then changed to need that line. Run 2 (`21-`) exit 1: my Sample owner was not in the port's form. Smoke step 4 (image not root) **FAIL, not shown**: the container could not start because CloudShell's disk was full; the image's own setting is `user=node`. Step 5 failed in `60-` for the same reason and passed in `61-` with temp files in the home folder.
+
+**End state:** service desired 0, running 0, 0 tasks listed (06:43:49Z); alarm OK. Cost, estimated from list prices, not read from a bill: about US$0.10-0.25. Still costing: about US$0.18/h idle (RDS, NAT, load balancer, public IPv4).
+**These are this session's results, not verdicts: qa decides.** Still open after it: R1.1 (signed-in smoke step, PF-8c), R1.15 (a code row that stores a firm key sealed), R1.13 (real on-call address, P-782).

@@ -1,0 +1,5 @@
+Mon Nov 23 06:36:12 AM UTC 2026
+task=arn:aws:ecs:ca-central-1:581508167097:task/xr-staging-AppCluster68CC0559-GPRhlOZPAdsd/b6359773f57f4a5f8433890798abd5b5
+container exit=0
+SEALPROOF {"scheme":"sb1.v1","parts":5,"containsPlain":false,"opensForOwner":true,"otherFirm":"refused"}
+exit=0

@@ -1,0 +1,18 @@
+Mon Nov 23 06:36:25 AM UTC 2026
+Login Succeeded
+581508167097.dkr.ecr.ca-central-1.amazonaws.com/xr-staging-studio@sha256:75ae532de7f22fb455b754f22d471ecc8a5ccb67632b72c51288b79d6170688a
+user=node size=1016034245
+bytes read 1059784911
+secret xr/staging/PLATFORM_ZOOM_CLIENT_SECRET hits 0
+secret xr/staging/PLATFORM_STRIPE_WEBHOOK_SECRET hits 0
+secret xr/staging/DATABASE_OWNER_URL hits 0
+secret xr/staging/APP_DATABASE_URL hits 0
+secret xr/staging/PLATFORM_SECRET_BOX_KEY_VERSION hits 0
+secret xr/staging/PLATFORM_BOLDSIGN_API_KEY hits 0
+secret xr/staging/PLATFORM_ZOOM_CLIENT_ID hits 0
+secret xr/staging/PLATFORM_STRIPE_SECRET_KEY hits 0
+secret xr/staging/PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN hits 0
+secret xr/staging/PLATFORM_SECRET_BOX_KEYS hits 0
+exit=0
+FAIL  non-root: the image runs as uid '?'
+FAIL  no secret: could not read the image's environment or history
