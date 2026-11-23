@@ -33,8 +33,9 @@ export class TaxDefaults {
       const found = kind === "PERSON"
         ? await tx.foPerson.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } })
         : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } });
-      // C5 (Lead 14, #3321 (2)): a party outside the caller's scope is the same 404 as a missing one
-      if (!found || !partyInScope(scope, found.id)) return problem(404, "Not found", `No such ${kind === "PERSON" ? "person" : "company"} in your firm.`, { code: "NOT_FOUND" });
+      // C5 (Lead 14, #3321 (2)): with no invoice, a party outside the caller's scope is the same 404 as a missing one; with
+      // an invoice, the invoice alone is judged below (an invoice with a case by its case: review m1, breaker m1)
+      if (!found || (rawInvoice === undefined && !partyInScope(scope, found.id))) return problem(404, "Not found", `No such ${kind === "PERSON" ? "person" : "company"} in your firm.`, { code: "NOT_FOUND" });
       let billTo: string | null = null;
       if (rawInvoice !== undefined) {   // this firm's invoice, billed to this very party; else the same 404 as a missing one
         const inv = await tx.moneyInvoice.findFirst({ where: firmScope(ctx.firmId, { id: rawInvoice.toLowerCase(), ...(kind === "PERSON" ? { personId: found.id } : { companyId: found.id }) }), select: { billToProvince: true } });

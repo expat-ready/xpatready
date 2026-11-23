@@ -8,7 +8,9 @@
 //     `agent/prospect:view.all` with the firm's "everyone sees all" → the subjects (person or company) of every prospect
 //     of the firm; else the subjects of the prospects they own (prospects.ts's rule: `seesAll || owner === staffId`).
 //     A person holding neither prospect key sees no party (as caseScope's "neither key"): the money keys alone give
-//     nothing (port rule 3).
+//     nothing (port rule 3). Since Lead 14's ruling on #3321, the party half also holds the linked parties
+//     (case_client.fo_person_id / fo_company_id, same firm; `caseLinks`, the one predicate) of the cases in scope:
+//     scopeSql opens them only for invoices with no case.
 // Firm: `ctx.firmId` from the session, in every query (firmScope / caseScopeWhere); another firm's id is never read.
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { MoneyVisibility, MoneyVisibilityPort } from "../../../ports/money-visibility.ts";

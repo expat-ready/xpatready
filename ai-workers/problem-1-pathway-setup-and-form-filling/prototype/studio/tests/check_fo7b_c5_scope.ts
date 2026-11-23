@@ -68,8 +68,8 @@ let app: { close(): Promise<void> } | null = null;
 try {
   const features = [invoicesFeature, refundsFeature, taxFeature, readsFeature];
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
-    { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: MAIL_PORT, useValue: mail }, ...features.flatMap((f) => f.providers)];
-  @Module({ controllers: [PlatformIdentityController, ...features.flatMap((f) => f.controllers)] as never[], providers: providers as never[] }) class TestApp {}
+    { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: MAIL_PORT, useValue: mail }, ...features.flatMap((f) => f.providers as unknown[])];
+  @Module({ controllers: [PlatformIdentityController, ...features.flatMap((f) => f.controllers as unknown[])] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
   const call = async (token: string, method: string, path: string, body?: unknown): Promise<Res> => {
@@ -210,6 +210,9 @@ try {
   const l4 = await call(tO, "GET", `${M}/${onL.body?.id}`), l4list = await call(tO, "GET", `${M}?pageSize=200`);
   ok("FO-7b C5 L4 fail: an invoice of CS put on case L (not user-O's) stays 404 and off the list, though CS is linked to K, which user-O sees",
     onL.status === 201 && notFound(l4) && !l4list.body.items.some((r: { id: string }) => r.id === onL.body.id), [onL.status, l4.status]);
+  const l4tax = await call(tO, "GET", `${T}?partyKind=PERSON&partyId=${CS}&invoiceId=${onL.body?.id}`), l1taxInv = await call(tO, "GET", `${T}?partyKind=PERSON&partyId=${CS}&invoiceId=${l1.body?.id}`);
+  ok("FO-7b C5 L4 fail (review m1): the tax default for that invoice (case L) is 404, though its party CS is in user-O's scope: judged by the invoice", notFound(l4tax), l4tax.status);
+  ok("FO-7b C5 L1 pass (review m1): the tax default for L1's case-less invoice of CS answers 200", l1taxInv.status === 200, l1taxInv.status);
   const l5 = await call(tR, "POST", M, { personId: CS, currency: "CAD" });
   ok("FO-7b C5 L5 pass: the Owner (every case) reaches CS through case K: a draft (201), with no prospect anywhere", l5.status === 201, l5.status);
 

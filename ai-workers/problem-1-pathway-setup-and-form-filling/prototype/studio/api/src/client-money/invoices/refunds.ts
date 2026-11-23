@@ -39,7 +39,8 @@ export class Refunds {
     const id = UUID.test(paymentId) ? paymentId.toLowerCase() : notFound("payment"), r = parse(RefundIn, body);
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
-      const p = await this.lock(tx, ctx.firmId, id); await this.seen(tx, ctx, p, scope);   // C5, before anything is written
+      const pre = await this.row(tx, ctx.firmId, id); if (pre) await this.seen(tx, ctx, pre, scope);   // C5 before the locks and any write (review m2)
+      const p = await this.lock(tx, ctx.firmId, id);
       const refundedOn = this.day("refundedOn", r.refundedOn);
       const had = await this.replay(tx, ctx.firmId, r.idempotencyKey, { paymentId: id, fromExtra: false, amountMinor: r.amountMinor, reason: r.reason, method: r.method, reference: r.reference ?? null, refundedOn: r.refundedOn ?? null });
       if (had) return this.refundView(tx, ctx.firmId, had, p, true);   // a double click or a retry: the one refund, never a second
@@ -76,7 +77,8 @@ export class Refunds {
       problem(403, "Not allowed", "Refunding money needs the refund permission. Nothing was refunded.", { code: "MISSING_PERMISSION", missing: [REFUND_KEY] });
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
-      const p = await this.lock(tx, ctx.firmId, id); await this.seen(tx, ctx, p, scope);   // C5, before anything is written
+      const pre = await this.row(tx, ctx.firmId, id); if (pre) await this.seen(tx, ctx, pre, scope);   // C5 before the locks and any write (review m2)
+      const p = await this.lock(tx, ctx.firmId, id);
       const refundedOn = c.choice === "REFUND" ? this.day("refundedOn", c.refundedOn) : null;
       if (c.choice === "REFUND") {   // the same key again: the one refund of the extra, answered again (never a plain refund's key)
         const had = await this.replay(tx, ctx.firmId, c.idempotencyKey!, { paymentId: id, fromExtra: true, amountMinor: null, reason: c.reason!, method: c.method!, reference: c.reference ?? null, refundedOn: c.refundedOn ?? null });
