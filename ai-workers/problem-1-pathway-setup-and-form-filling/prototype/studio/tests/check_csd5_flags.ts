@@ -128,6 +128,20 @@ await main("CS-D7", "flags on each document, read by the checklist", async () =>
   me = await list();
   ok("CS-D7 fail: a document in Spanish on a type with no rule adds no translation line (translation not set)", r.status === 200 && r.body?.flags?.translation === null && me.translations.every((t) => t.document_id !== other), [r.body?.flags, me.translations.map((t) => t.document_id)]);
 
+  // Lead 9 on #3180 (CS-W3): a firm-B document. The solo practice (Sample Solo, user-S) opens its own case and uploads a
+  // passport; its staff read the flags; firm A's officer is refused it, read and write, in the same words as an unknown id.
+  const kb = await call("POST", "/runtime/cases", { combinationId: wp, reference: `CSD7-B-${Date.now().toString(36)}`, clientActor: "user-Q", principal: { displayName: "Sample Client B" } }, "user-S");
+  const bLine = ((((await call("GET", `/runtime/cases/${kb.body?.id}/checklist`, undefined, "user-S")).body?.people ?? []) as P[]).flatMap((x) => x.lines)).find((x) => x.document.key === PASSPORT);
+  const fdB = new FormData(); fdB.append("file", new Blob([new Uint8Array(textPdf(["Sample synthetic document firm B"]))]), "passport-b.pdf");
+  const upB = bLine ? await fetch(`http://127.0.0.1:${PORT}/api/runtime/checklist-lines/${bLine.id}/documents`, { method: "POST", headers: { "x-actor": "user-S" }, body: fdB }).then(async (x) => ({ status: x.status, body: await x.json().catch(() => null) })) : { status: 0, body: null };
+  const docB = upB.body?.document?.id as string;
+  ok("setup (firm B): Sample Solo opens its own case and uploads a passport; the case is in the other firm", kb.status === 201 && upB.status < 300 && !!docB && sql(`select count(distinct firm_id) from runtime_case where id in ('${c.id}', '${kb.body?.id}')`) === "2", [kb.status, upB.status]);
+  const bOwn = await call("GET", `/runtime/documents/${docB}/flags`, undefined, "user-S");
+  ok("CS-W3 pass (flags): firm B's own staff read their document's flags", bOwn.status === 200 && bOwn.body?.document?.id === docB, [bOwn.status, words(bOwn)]);
+  const bRead = await call("GET", `/runtime/documents/${docB}/flags`, undefined, c.officer);
+  const bWrite = await call("POST", `/runtime/documents/${docB}/flags`, { version: 0, language: "de" }, c.officer);
+  ok("CS-W3 fail (flags): firm A's officer is refused firm B's document, read and write (404 \"No such document.\", as an unknown id); nothing changed, no audit line", bRead.status === 404 && bWrite.status === 404 && /^No such document\.$/.test(words(bRead)) && sql(`select coalesce(language, 'none') || '|' || flags_version from case_document where id='${docB}'`) === "none|0" && sql(`select count(*) from audit_event where entity_key='${docB}' and action='flag changed'`) === "0", [bRead.status, bWrite.status, words(bRead)]);
+
   // Who may set them, and stale views.
   ok("CS-D7 fail: a client cannot set a document's flags (403)", (await set(doc, { language: "de" }, CLIENT)).status === 403);
   ok("CS-D7 fail: a configuration person cannot set them (403)", (await set(doc, { language: "de" }, AUTHOR)).status === 403);
