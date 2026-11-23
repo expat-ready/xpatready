@@ -2,7 +2,7 @@
 
 current_lead: local_5f4a7ece-2ec5-49ab-8e0e-6c5032e0638d Lead 11 · 23 Nov 23:41 IST (took over from Lead 10 (local_1d7473d3) past 200k after its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 00:02 IST: Lead 11. #3209 label OFF (Lead B: after #3189 + #3185, then declares their routes, round 5); #3296 (bypass line) first; #3040 #3155 #3225 wait on it (#3155 run red: its own PF-17 500s). #3207 Lead read OK, /run full asked. #3289 Approve cf2d62139, Lead B OK; ci running (walks j_74, j_69, j_104 red: 69 and 104 name unbuilt parts, j_74 W7 not read). #3193 #3173 #3292 #3291 #3189 queued. #3203 lane fixing. P-814 PR refused twice: draft in notes. Research on high-volume merging running: notes local_9c46a890 high-volume-merging-ci-cost-2026-11-24.md.
+updated: 2026-11-24 00:02 IST: Lead 11. #3209 label OFF (Lead B: after #3189 + #3185, then declares their routes, round 5); #3296 (bypass line) first; #3040 #3155 #3225 wait on it (#3155 run red: its own PF-17 500s). #3207 Lead read OK, /run full asked; lands after #3065 (idle since 10:36 IST 23 Nov, /run full asked, Lead read owed) and #3185. Lead B 5 to plan (Lead B 4 is long). #3289 Approve cf2d62139, Lead B OK; ci running (walks j_74, j_69, j_104 red: 69 and 104 name unbuilt parts, j_74 W7 not read). #3193 #3173 #3292 #3291 #3189 queued. #3203 lane fixing. P-814 PR refused twice: draft in notes. Research on high-volume merging running: notes local_9c46a890 high-volume-merging-ci-cost-2026-11-24.md.
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
