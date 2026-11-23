@@ -85,6 +85,11 @@ const problem = (status: number, slug: string, title: string, detail: string, ex
 /** The one answer for an unknown firm, an unknown or inactive type, and a bad, used, voided or expired link (AG-4-17, -21
  *  rule 3; AG-4-36): nothing in it tells which. */
 export const notFound = () => problem(404, "not-found", "Not found", "This booking page or link is not available.");
+/** QA-756 (AG-4-17): on firm A's own address, firm B's page or link (the walls refuse it, PF-12 review R2) answers the
+ *  same one not-found as an unknown slug or link, never the walls' own "No such record.". */
+function enterPublicFirm(firmId: string) {
+  try { enterFirm(firmId); } catch (e) { if (e instanceof HttpException && e.getStatus() === HttpStatus.NOT_FOUND) throw notFound(); throw e; }
+}
 /** A refused input (PF-28 part 4, Lead B rev 17.21): 422 with `code: "INVALID"`, each field named in `fields`, and the same
  *  words as "<field>: <words>" in `issues` (the booking pages read those). 400 stays for a body that cannot be parsed. */
 const refused = (detail: string, issues: string[] = [], title = "Not booked", fields: Record<string, string> = Object.fromEntries(issues.map((i) => (i.includes(": ") ? [i.slice(0, i.indexOf(": ")) || "body", i.slice(i.indexOf(": ") + 2)] : ["body", i])))) =>
@@ -248,9 +253,19 @@ export class BookingService {
     // PF-12b part 2: the firm through the narrow definer lookup (its id only), then its row is read as that firm.
     const firmId = (await db.$queryRaw<{ f: string | null }[]>`select platform_firm_of_key(${firmKey}) as f`)[0]?.f;
     const firm = firmId ? await withFirm(firmId, () => db.platformFirm.findUnique({ where: { key: firmKey }, select: FIRM_SELECT })) : null;
-    if (firm) enterFirm(firm.id);   // PF-12: the page's firm, for the rest of the request
+    if (firm) enterPublicFirm(firm.id);   // PF-12: the page's firm, for the rest of the request
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
     return firm;
+  }
+
+  /** QA-756 (R1.24; AG-04 S3): the firm key of the address this request is on (PF-25's `req.publicFirm`), so the booking
+   *  pages served there call the same doors as on ExpatReady's own host; on ExpatReady's own host, or for a firm that is
+   *  not serving, the one 404. The key is the page's public slug already (`/book/<key>`): no id leaves (AG-4-17). */
+  async publicSite(firmId: string | null, ip: string) {
+    this.limit(`slots:ip:${ip}`, this.limits.slotsPerIp);
+    const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { id: firmId }, select: { key: true, status: true } })) : null;
+    if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
+    return { firmKey: firm.key };
   }
 
   /** GET the firm's booking page list (FO-3pa; AG-4-16 rules 1-2, BR-1): its active free-consultation types shown on the
@@ -855,7 +870,7 @@ export class BookingService {
     const firmId = parsed ? (await db.$queryRaw<{ f: string | null }[]>`select fo_booking_token_firm(${parsed.id}::uuid, ${hashVerifier(parsed.verifier)}) as f`)[0]?.f : null;
     const t = firmId ? await withFirm(firmId, () => liveToken(db, token, this.ports.clock.now())) : null;
     if (!t) throw notFound();
-    enterFirm(t.firmId);   // PF-12: the link's firm, for the rest of the request
+    enterPublicFirm(t.firmId);   // PF-12: the link's firm, for the rest of the request
     // A firm on hold or locked answers its links like its page: not found (break B-5).
     const firm = await db.platformFirm.findUnique({ where: { id: t.firmId }, select: FIRM_SELECT });
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();

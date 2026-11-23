@@ -9,10 +9,12 @@
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Optional, Param, Post, Query, Req, Res, type OnModuleInit } from "@nestjs/common";
 import { Db, OpenRead } from "../../core.ts";
 import { PlatformJobs } from "../../platform/jobs/platform-jobs.ts";
+import { publicFirmOf } from "../../platform/web-address/host.ts";
+import "./public-paths.ts";   // QA-756: the booking pages and their doors on a firm's own address
 import { BookingService, bookingPortsWith, type GivenBookingPorts } from "./service.ts";
 
 export const BOOKING_PORTS = "FO3_BOOKING_PORTS";
-type R = { ip?: string; socket?: { remoteAddress?: string } };
+type R = { ip?: string; socket?: { remoteAddress?: string }; publicFirm?: { firmId: string } };
 type Q = Record<string, unknown>;
 const ipOf = (req: R) => String(req.ip ?? req.socket?.remoteAddress ?? "unknown").slice(0, 64);
 
@@ -28,6 +30,7 @@ Optional()(Booking, undefined, 2);
 
 export class BookingPublicController {
   constructor(private readonly b: Booking) {}
+  site(req: R) { return this.b.publicSite(publicFirmOf(req), ipOf(req)); }
   list(firmKey: string, req: R) { return this.b.publicList(firmKey, ipOf(req)); }
   slots(firmKey: string, slug: string, q: Q, req: R) { return this.b.publicSlots(firmKey, slug, q, ipOf(req)); }
   book(firmKey: string, slug: string, body: unknown, req: R) { return this.b.publicBook(firmKey, slug, body, ipOf(req)); }
@@ -55,6 +58,7 @@ function route(name: keyof BookingPublicController, decs: Dec[], args: Arg[]) {
 }
 Controller("api/public")(C);
 Inject(Booking)(C, undefined, 0);
+route("site", [Get("booking-site"), OpenRead("the public booking page on a firm's own address: which firm's page it is (QA-756)")], [Req()]);
 route("list", [Get("firms/:firmKey/book"), OpenRead("the public booking page: a firm's listed consultation types (FO-3pa; contracts §0.6)")], [Param("firmKey"), Req()]);
 route("slots", [Get("firms/:firmKey/book/:slug/slots"), OpenRead("the public booking page: free times of a firm's public consultation type (contracts §0.6)")], [Param("firmKey"), Param("slug"), Query(), Req()]);
 route("book", [Post("firms/:firmKey/book/:slug/bookings")], [Param("firmKey"), Param("slug"), Body(), Req()]);
