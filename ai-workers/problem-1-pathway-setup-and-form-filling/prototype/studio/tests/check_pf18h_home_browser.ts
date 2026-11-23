@@ -160,6 +160,9 @@ try {
   const hide = first.locator("[data-needs-you-hide]");
   await reach(p, hide); await p.keyboard.press("Space");
   await section(p).locator("[data-needs-you-empty]").waitFor({ timeout: 15_000 });
+  // The page moves the focus in an effect once its refetch has finished (home-page.tsx focusAfter), after the list shows:
+  // waited for, at most 5 s, then read (on a busy machine an at-once read ran before it; red packed, green alone).
+  await p.waitForFunction(() => document.activeElement?.id === "needs-you-h", undefined, { timeout: 5_000 }).catch(() => undefined);
   const focusedHeading = await p.evaluate(() => document.activeElement?.id);
   ok("PF-18h DW2: \"Hide until next reminder\" by keyboard marks it read; the list is empty (\"Nothing needs you right now.\") and focus moves to the section heading",
     rowsOf(OFF) === 0 && (await section(p).innerText()).includes("Nothing needs you right now.") && focusedHeading === "needs-you-h", focusedHeading);
@@ -183,9 +186,15 @@ try {
   const mine = items(p).filter({ hasText: NUMBER });
   await mine.locator("[data-needs-you-hide]").click();
   await section(p).getByText("A newer reminder came in for this deadline, so it stays on your list.").waitFor({ timeout: 15_000 });
+  // The notice shows first; the focus goes back to Hide only once the refetch it starts has finished (home-page.tsx
+  // focusAfter), so it is waited for, at most 5 s, and false on a timeout. Read at once it was red packed
+  // ({"told0":2,"unread":1}: the data right, the focus not back yet) and green alone.
+  const hideFocused = await items(p).filter({ hasText: NUMBER }).locator("[data-needs-you-hide]").evaluate((el) => new Promise<boolean>((done) => {
+    const t0 = performance.now(); const tick = () => (el === document.activeElement ? done(true) : performance.now() - t0 > 5_000 ? done(false) : requestAnimationFrame(tick)); tick();
+  })).catch(() => false);
   ok("PF-18h (break m3): Hide on a row whose deadline was reminded again after the page loaded keeps it, says so, and the store keeps it unread (PF-18n's seen)",
-    told0 === 2 && rowsOf(OFF) === 1 && await items(p).filter({ hasText: NUMBER }).count() === 1
-      && await items(p).filter({ hasText: NUMBER }).locator("[data-needs-you-hide]").evaluate((el) => el === document.activeElement), { told0, unread: rowsOf(OFF) });
+    told0 === 2 && rowsOf(OFF) === 1 && await items(p).filter({ hasText: NUMBER }).count() === 1 && hideFocused,
+    { told0, unread: rowsOf(OFF), hideFocused, focused: await p.evaluate(() => document.activeElement?.outerHTML.slice(0, 120) ?? null) });
 
   // ---------------------------------------------------------------------------------------------- BR-6
   await home(p);
