@@ -73,7 +73,8 @@ When the Undo is of the last change, the list is exactly what it was before the 
 **Other waits (review round 7).** None of them closes a cycle, because the transaction that holds the lock never waits on a pair row or on L1 while holding it:
 * a merge or Undo waits at commit in the deferred `fo_dup_live_party` trigger;
 * every merge and Undo holds the platform-wide `module_event_seq` lock from its outbox row to commit, and so does the work after it (the checks under the locks, `notePairs`);
-* Keep separate's update of its leads' match flags waits on any lead writer, which never takes L1 or a pair row.
+* Keep separate's update of its leads' match flags waits on any lead writer, which never takes L1 or a pair row;
+* an arrival first takes FO-2's own advisory locks `fo_sales_match:<firm>:<email or phone>` (sorted; two first enquiries with one key are serialised). That namespace is not L1: no merge, Undo or Keep separate takes it, so nothing that holds L1 waits on it. The part 2b test counts only `fo_dup_merge:<person>` locks for this reason.
 
 **Why a Kept separate decision is never joined.** A merge reads `keptBetween` under L1 of both people. While it holds them:
 * nothing can merge into either live record, nor into any record already merged into it (a merge needs L1 of its survivor, and a merged-away record is never a survivor);

@@ -402,10 +402,23 @@ try {
     const held = await db.$transaction(async (tx) => {
       await arrive(tx as never, { firmId: A, door: "MANUAL", intakeKey: `manual:${randomUUID()}`, source: "Phone call", actor: `staff:${R.staffId}`, payloadHash: randomUUID(), ownerStaffId: R.staffId,
         person: { givenNames: "Ira", familyName: "Arrive7b", email: null, phone: salesPhone("+1 416 555 0197") } }, ports);
-      return Number((await (tx as never as { $queryRaw: (q: TemplateStringsArray) => Promise<{ n: number }[]> }).$queryRaw`select count(*)::int as n from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()`)[0].n);
+      // the person locks only (fo_dup_merge:<person id>, service.ts lockPair), of every person of the firm; FO-2's own
+      // fo_sales_match:<firm>:<email or phone> locks are another namespace no merge takes (pair-model.md §2)
+      return Number((await (tx as never as { $queryRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<{ n: number }[]> }).$queryRaw`
+        select count(*)::int as n from pg_locks l join fo_person p on p.firm_id = ${A}::uuid
+         cross join lateral (select hashtextextended('fo_dup_merge:' || p.id::text, 0) as k) h
+         where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.classid::bigint = ((h.k >> 32) & 4294967295) and l.objid::bigint = (h.k & 4294967295)`)[0].n);
+    });
+    // the test can see a person lock: one taken on purpose in the same kind of transaction is counted
+    const seenLock = await db.$transaction(async (tx) => {
+      await (tx as never as { $executeRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<number> }).$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`fo_dup_merge:${g1.person.id}`}, 0))`;
+      return Number((await (tx as never as { $queryRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<{ n: number }[]> }).$queryRaw`
+        select count(*)::int as n from pg_locks l join fo_person p on p.firm_id = ${A}::uuid
+         cross join lateral (select hashtextextended('fo_dup_merge:' || p.id::text, 0) as k) h
+         where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.classid::bigint = ((h.k >> 32) & 4294967295) and l.objid::bigint = (h.k & 4294967295)`)[0].n);
     });
     ok("FO-9b part 2b limit: an arrival that writes a pair takes no person's lock inside its transaction (the merge by itself at arrival runs after it commits)",
-      held === 0 && sql(`select count(*) from fo_dup_review where '${g1.person.id}' in (low_id, high_id)`) === "1", { held });
+      held === 0 && seenLock === 1 && sql(`select count(*) from fo_dup_review where '${g1.person.id}' in (low_id, high_id)`) === "1", { held, seenLock });
   }
   // a chain: B into A, then A into D; Undo of the earlier one is refused (409), never "not found"
   const cA = await add(R, { givenNames: "Cal", familyName: "Chain7", phone: "+1 416 555 0195" }), cB = await add(R, { givenNames: "Cal", familyName: "Chains7", phone: "+1 416 555 0195" }), cD = await add(R, { givenNames: "Cal", familyName: "Chainz7", phone: "+1 416 555 0195" });
