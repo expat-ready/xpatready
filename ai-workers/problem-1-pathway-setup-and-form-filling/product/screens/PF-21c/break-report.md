@@ -168,3 +168,37 @@ Verdict: Changes 06bc784e1f2ba49eb5645f1df1247852e2a3a5dc
   - A partly suppressed firm, once notified, cannot be re-sent to the suppressed person. The notice records that person as SUPPRESSED.
 
 Verdict: Approve cc7e9a4be2d24bd140e977afde0e6d606c9bfc3f (no Blocker or Major left; R2-1…R2-4 are Minor follow-ups)
+
+## Round 3 (Lead 6): PF-19r's SENDERS entry for the breach notice, head 21adefa9c
+
+Scope: only `git diff 67a552a49..21adefa9c`. That diff adds one line, check_pf19r_every_sender.ts:57, `"platform/register/breaches/service.ts": { counts: { messagePort: 1, anySend: 1 } }`. The tester did not build this. Nothing on :4400 was touched. Every mutation below was made to the working tree, run, and then restored with `cp` from a scratch copy. `cmp` and `git status` confirm the tree is clean.
+
+- **Sweep:** `COPY_PREFIX=brk3pf21c run-suites.sh --only check_pf19r_every_sender.ts` → PASS, 21 passed, 0 failed, 11 s. The default prefix `runtime` was locked by another live run (pid 1400), so a separate prefix was used.
+- **The counts match the file:** service.ts has exactly one `.send(`, at :239 `this.messages.send(tx, …)`. :258 is `this.messages.dispatch(…)`, which is not a send. service.ts has no `outbox`/`demo_message` write and no `INSERT` into a message table.
+- **Mutations of service.ts.** Each was run with the runner's own `tsx --tsconfig api/tsconfig.json`. Plain `npx tsx` crashes with a TransformError even on the unchanged file.
+
+| # | Change | Result |
+|---|---|---|
+| M1 | add a 2nd `this.messages.send(` | FAIL: "2 messagePort … 2 anySend" (expected) |
+| M2 | add `this.mail.send(` | FAIL: "1 mailSend … 2 anySend" (expected) |
+| M3 | route the one send through an alias, `const port = this.messages; port.send(tx,` | FAIL: "0 messagePort" (expected) |
+| M6 | add `new SESv2Client({}).send(…)` through a dynamic import | FAIL: "2 anySend" (expected) |
+| M7 | add a send split over two lines (`this.messages\n .send(`) | FAIL: "2 anySend" (expected) |
+| M8 | add a destructured send (`const { send } = this.messages`) | FAIL: "2 anySend" (expected) |
+| M4 / M5 | add `this.messages["send"](…)` / `this.messages.send.call(…)` | PASS. Still MessagePort, so no bypass, just an uncounted extra send |
+| M9 | add another method on the port (`deliver`) | PASS. Not a send shape |
+| M10 | add `new SESv2Client({})["send"](…)` (a raw transport, bracket access) | PASS: a real unrouted sender is not seen |
+| M11 | M10's line added to platform/support/support.ts | PASS. So the gap is in the checker as a whole and predates this diff, not in this entry |
+
+- **R3-1 Minor (pre-existing, not caused by this diff): the scan misses `x["send"](` and `.send.call(`.** Reproduce: append `await new (await import("@aws-sdk/client-sesv2")).SESv2Client({})["send"]({} as never);` after service.ts:258 and run the suite → 21 passed. The same happens in any listed file (M11). This is the text-scan limit the header already admits (check_pf19r_every_sender.ts:10-12), and `ANY_SEND` at :77 only matches a dotted `.send(`. The new entry does not widen it: its exact counts are no looser than any other row's.
+- **The binding is real:** features/platform-register-breaches.ts:11 has `{ provide: BREACH_MESSAGES, useExisting: MESSAGE_PORT }`. At runtime, importing the feature gives `provider.useExisting === MESSAGE_PORT` → true, with `Symbol(platform.MessagePort)` from features/platform-messages.ts:24. MESSAGE_PORT is the real `Messages` factory (platform-messages.ts:34). The service injects it at service.ts:124 (`@Inject(BREACH_MESSAGES) private readonly messages: MessagePort<Tx>`). The send runs inside `withFirm(firm, () => this.db.$transaction(…))` (service.ts:217), so the route text's "in the firm's transaction, dispatched after commit" is accurate.
+- **R3-2 Minor: PF-19r's S2 does not cover this binding, although the new route text asserts it.**
+  - S2 checks MAIL_PORT, SIGNUP/COMPLAINT/BOOKING_PORTS and person-link's `@Inject(MESSAGE_PORT)` (:212-213). Nothing checks BREACH_MESSAGES.
+  - S1's feature rule (:96) looks only at `provide: MAIL_PORT`.
+  - Reproduce (F1): in platform-register-breaches.ts:11, change the binding to `{ provide: BREACH_MESSAGES, useValue: { send: async () => ({ outboxId: "x", state: "QUEUED" }), dispatch: async () => undefined } }` → check_pf19r → 21 passed, 0 failed. The notice would then skip the layout, the consent gate, the cap and the outbox.
+  - PF-21c's own suite only partly catches this. check_pf21c_breaches.ts:125 tests `"useExisting" in p`, not `=== MESSAGE_PORT`, so `useExisting: MESSAGES_MAIL` or any other token would pass.
+  - Today's code is correct, so this is a regression guard that is missing, not a live bypass.
+  - Possible follow-up: an S2 line like person-link's that asserts the provider for BREACH_MESSAGES has `useExisting === MESSAGE_PORT`.
+- **What held:** the exact counts (M1-M3, M6-M8 all reported), the path key (it matches the walked file, so no "in the table but holds no port" problem), the file being a port holder (`MessagePort` is imported at :23, so every dotted `.send(` is counted), and the accuracy of the route text.
+
+Verdict: Approve 21adefa9c (no Blocker or Major. R3-1 is pre-existing and documented. R3-2 is a Minor follow-up: an S2 assertion for BREACH_MESSAGES → MESSAGE_PORT)
