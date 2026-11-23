@@ -20,6 +20,7 @@ import { PlatformIdentity } from "../service.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./mail.ts";
 import { IDENTITY_ADMIN_PORT, LocalIdentityAdmin, type IdentityAdminPort } from "./provider.ts";
 import { requireStepUp } from "./step-up.ts";
+import { FIRM_TX, lockFirm } from "./firm-lock.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,13 +45,13 @@ export class PlatformSession {
   async inFirm<T>(actor: StaffContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
     const firmId = firmScope(actor.firmId).firmId;
     return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for no key update`;   // as PF-4's inFirm (J-5 B1)
+      await lockFirm(tx, firmId);   // as PF-4's inFirm (J-5 B1); PF-4bc: a bounded wait
       const me = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: actor.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(firmId, { staffId: actor.staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       if (me?.status !== "ACTIVE" || (rev && actor.authTime * 1000 <= rev.revokedAt.getTime())) unauthorized("Your session ended before this change was made. Sign in again.", "SESSION_REVOKED");
       if (me.grants.map((g) => g.role).sort().join() !== [...actor.roles].sort().join()) problem(409, "Your roles changed", "Your roles changed while this was being sent. Nothing was saved; try again.", { code: "ROLES_CHANGED" });
       return fn(tx);
-    });
+    }, FIRM_TX);
   }
 
   private async target(tx: Tx, firmId: string, id: string) {
@@ -109,7 +110,7 @@ export class PlatformSession {
     if (!firmId) problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
     return withFirm(firmId, () => this.db.$transaction(async (tx) => {
       const pre = await this.invitation(tx, token, false);   // one lock order with PF-4's resend and revoke: firm, then invitation
-      if (pre) await tx.$queryRaw`select id from platform_firm where id = ${pre.firm_id}::uuid for no key update`;   // as inFirm (J-5 B1)
+      if (pre) await lockFirm(tx, pre.firm_id);   // as inFirm (J-5 B1); PF-4bc: a bounded wait
       const i = await this.invitation(tx, token, true), state = PlatformSession.stateOf(i);
       if (state === "EXPIRED") problem(410, "Invitation expired", INVITE_WORDS.expired(i!.firm_name), { code: "INVITATION_EXPIRED", state });
       if (state !== "VALID") problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state });
@@ -142,7 +143,7 @@ export class PlatformSession {
       await tx.platformStaff.update({ where: { id: staff.id }, data: { identitySubject: subject } });
       await tx.moduleEvent.create({ data: { firmId: inv.firm_id, type: EVENT.STAFF_JOINED, subjectId: staff.id, payload: StaffJoinedPayload.parse({ staffId: staff.id, invitationId: inv.id }) } });   // last (PF-3 m8)
       return { staffId: staff.id, firmKey: inv.firm_key, roles: inv.roles, handOff: await this.admin.handOff(inv.firm_key, inv.email) };
-    }).then((out) => "refused" in out ? problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" }) : out));
+    }, FIRM_TX).then((out) => "refused" in out ? problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" }) : out));
   }
 
   /** PF-6m2: why the inviter (`invited_by`) may no longer hand this invitation out, else null. The same rule as invite

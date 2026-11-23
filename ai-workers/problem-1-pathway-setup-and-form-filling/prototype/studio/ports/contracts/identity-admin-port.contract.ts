@@ -4,7 +4,8 @@
 // earlier, rolled-back accept left, and returns its subject; handOff gives the set-password page; a sign-in code says who
 // signs in, once, for 5 minutes; twoStep reads the person's second step and resetTwoStep clears it; signOutEverywhere
 // ends the person's provider sessions. The port lives outside ports/ and this folder imports only its own files, so the
-// shape is restated here (as identity-port.contract.ts does).
+// shape is restated here (as identity-port.contract.ts does). Not pinned: two-step state before enrolment (the local
+// stand-in reads TOTP for everyone, PF-4b's rule that it signs in with the second step done; Cognito reads null).
 import { defineContract, expect, expectRefused } from "./contract.ts";
 
 type ProviderUser = { staffId: string; subject: string | null; email: string };

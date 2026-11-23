@@ -3,7 +3,7 @@
 // signs every request and nothing reaches the network). The row's "Done when", a pass and a fail each: the port's contract
 // on both adapters; AdminCreateUser always sends MessageAction=SUPPRESS; a provider error maps to the port's error, never
 // a raw AWS message; no credential in a log line. Plus: not set up → 503 with no call; passkeys; who Cognito is asked
-// about. No AWS account, no network, no database, no server, no model call (US$0).
+// about. One scratch database (two tables) for the firm-lock race. No AWS account, no network, no server, no model call (US$0).
 //   tsx studio/tests/check_pf4bc_cognito_admin.ts
 import { runContract } from "../ports/contracts/contract.ts";
 import { identityAdminPortContract, type IdentityAdminHarness } from "../ports/contracts/identity-admin-port.contract.ts";
@@ -174,6 +174,47 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
   h.handle = (async (req: any, o: any) => { inFlight++; most = Math.max(most, inFlight); try { return await orig(req, o); } finally { inFlight--; } }) as typeof h.handle;
   const all = await Promise.all(people.map((p) => r.admin.twoStep(p)));
   ok("PF-4bc pass (review M2): ten Team rows read with one Cognito request each, at most 4 at a time, all TOTP", all.every((x) => x.method === "TOTP") && r.fake.seen.length - mark === 10 && most <= READS_AT_ONCE, { calls: r.fake.seen.length - mark, most });
+}
+
+{
+  // Break R2-M2: the read deadline counts the queue: 40 rows with Cognito not answering → every row unknown in about 1.5 s.
+  const r = makeCognito(), rows = [];
+  for (let i = 0; i < 40; i++) { const e = `down${i}@example.com`; rows.push({ staffId: `d${i}`, email: e, subject: (await r.admin.createUser(e)).subject }); }
+  r.fake.slow(60_000);
+  const t0 = Date.now(), got = await Promise.all(rows.map((p) => r.admin.twoStep(p).then(() => "read", (e: any) => e?.getStatus?.())));
+  const took = Date.now() - t0;
+  r.fake.slow(0);
+  ok("PF-4bc fail (break R2-M2): 40 Team rows with Cognito not answering → every row refused (503, shown unknown) within about 1.5 s, not one queue of 1.5 s each", got.every((x) => x === 503) && took < 2_500, { took, got: got.slice(0, 3) });
+  const after = await r.admin.twoStep(rows[0]);
+  ok("PF-4bc pass (break R2-M2): after that the queue is empty and the next read answers", after.method === null);
+}
+{
+  // Break R2-M1: two resets in one firm while Cognito is slow, on real PostgreSQL with the service's own lockFirm and
+  // FIRM_TX: never "Cognito changed, our records rolled back"; the second waits at most 1.5 s and gets 409 FIRM_BUSY.
+  const { execFileSync } = await import("node:child_process"); const { join } = await import("node:path");
+  const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"], DB = `xr_studio_pf4bc_scratch_${process.pid}`;
+  const { PrismaPg } = await import("@prisma/adapter-pg"); const { PrismaClient } = await import("@prisma/client");
+  const { lockFirm, FIRM_TX } = await import("../api/src/platform/identity/session/firm-lock.ts");
+  execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
+  const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DB}` }) });
+  try {
+    const FIRM = "00000000-0000-4000-8000-00000000bc01";
+    await db.$executeRawUnsafe("create table platform_firm(id uuid primary key)"); await db.$executeRawUnsafe("create table audit(who text)");
+    await db.$executeRawUnsafe(`insert into platform_firm values ('${FIRM}')`);
+    const c = makeCognito(), ppl: { staffId: string; email: string; subject: string }[] = [];
+    for (const e of ["race.a@example.com", "race.b@example.com"]) { ppl.push({ staffId: e, email: e, subject: (await c.admin.createUser(e)).subject }); c.fake.enrol(e); }
+    c.fake.slow(900);   // a reset is 3 requests: 2.7 s, inside the 3 s deadline, longer than the 1.5 s lock wait
+    const reset = (u: typeof ppl[number]) => problemOf(() => db.$transaction(async (tx) => {
+      await lockFirm(tx as never, FIRM); await c.admin.resetTwoStep(u); await tx.$executeRawUnsafe(`insert into audit values ('${u.email}')`);
+    }, FIRM_TX));
+    const [ra, rb] = await Promise.all([reset(ppl[0]), (async () => { await new Promise((r) => setTimeout(r, 100)); return reset(ppl[1]); })()]);
+    c.fake.slow(0);
+    const audit = ((await db.$queryRawUnsafe("select who from audit")) as { who: string }[]).map((x) => x.who);
+    const consistent = ppl.every((u) => audit.includes(u.email) === !c.fake.users.get(u.email)!.totp);
+    ok("PF-4bc fail (break R2-M1): two resets in one firm with a slow Cognito → the first completes, the second gets 409 FIRM_BUSY before any Cognito call, and for each person Cognito and our audit agree",
+      ra === null && rb?.status === 409 && rb.body.code === "FIRM_BUSY" && consistent && c.fake.users.get(ppl[1].email)!.totp, { ra, rb, audit });
+    ok("PF-4bc pass (break R2-M1): the transaction's limit covers the lock wait, the 3 s provider deadline and the commit", FIRM_TX.timeout >= 1_500 + 3_000 + 2_000);
+  } finally { await db.$disconnect(); try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* prune-test-dbs.sh */ } }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

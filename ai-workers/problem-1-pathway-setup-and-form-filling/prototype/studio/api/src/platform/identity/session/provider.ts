@@ -92,8 +92,8 @@ export type CognitoAdminOptions = {
 };
 const POOL_ID = /^ca-central-1_[0-9A-Za-z]+$/;
 const SUB = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** One port call's whole time with Cognito (break M1): its callers hold a database transaction whose limit is Prisma's
- *  default 5 s (session/service.ts), so every request and retry of one call ends inside 3 s, the rest left to the commit. */
+/** One port call's whole time with Cognito (break M1): its callers hold a database transaction (session/firm-lock.ts
+ *  FIRM_TX: 8 s, covering a bounded 1.5 s wait for the firm's lock, these 3 s and the commit). */
 export const COGNITO_DEADLINE_MS = 3_000;
 const NOT_SET_UP = "SIGN_IN_NOT_SET_UP";
 /** Two-step reads (review M2): at most this many Cognito reads at once per server, each under this deadline. */
@@ -102,14 +102,24 @@ export const READS_AT_ONCE = 4, READ_DEADLINE_MS = 1_500;
 class Gate {
   private held = 0; private readonly waiting: (() => void)[] = [];
   constructor(private readonly size: number) {}
-  async acquire() { if (this.held < this.size) { this.held++; return; } await new Promise<void>((r) => this.waiting.push(r)); }
+  /** Resolves true holding a place, or false (holding none) when `signal` ends first. */
+  async acquire(signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) return false;
+    if (this.held < this.size) { this.held++; return true; }
+    return new Promise<boolean>((resolve) => {
+      const take = () => { signal.removeEventListener("abort", give); resolve(true); };
+      const give = () => { const i = this.waiting.indexOf(take); if (i >= 0) this.waiting.splice(i, 1); resolve(false); };
+      this.waiting.push(take); signal.addEventListener("abort", give, { once: true });
+    });
+  }
   release() { const next = this.waiting.shift(); if (next) next(); else this.held--; }
 }
 /** Error names a log line may print as they are; any other prints as "OtherError" (break m3: a name is provider text). */
 const KNOWN_ERRORS = new Set(["TooManyRequestsException", "LimitExceededException", "AccessDeniedException", "NotAuthorizedException", "ResourceNotFoundException",
   "UnrecognizedClientException", "CredentialsProviderError", "InvalidParameterException", "InternalErrorException", "UserNotFoundException", "UsernameExistsException",
-  "InvalidSignatureException", "ExpiredTokenException", "TimeoutError", "AbortError", "RequestTimeout", "UnknownError"]);
-const NOT_SET_UP_ERRORS = new Set(["AccessDeniedException", "NotAuthorizedException", "ResourceNotFoundException", "UnrecognizedClientException", "CredentialsProviderError", "InvalidSignatureException", "ExpiredTokenException"]);
+  "InvalidSignatureException", "ExpiredTokenException", "TimeoutError", "AbortError", "RequestTimeout", "UnknownError", "InvalidUserPoolConfigurationException",
+  "UserNotConfirmedException", "CredentialsError"]);
+const NOT_SET_UP_ERRORS = new Set(["AccessDeniedException", "NotAuthorizedException", "ResourceNotFoundException", "UnrecognizedClientException", "CredentialsProviderError", "CredentialsError", "InvalidSignatureException", "ExpiredTokenException", "InvalidUserPoolConfigurationException"]);
 type Found = { sub: string; email: string; enabled: boolean };
 
 /**
@@ -205,20 +215,22 @@ export class CognitoIdentityAdmin implements IdentityAdminPort {
     });
   }
   async handOff(firmKey: string, email: string) { this.ready(); return this.codes.issue(firmKey, email); }
-  /** A read for the Team list, a person's panel and My account (review M2: one call per person today, so it is kept to
-   *  one request in the usual case, at most READS_AT_ONCE at a time, under a 1.5 s deadline; a person whose `sub` Cognito
-   *  no longer has is looked up by email, and one held by someone else under that email reads as a refusal). */
+  /** A read for the Team list, a person's panel and My account (review M2: one call per person today). One request in the
+   *  usual case: by our `sub` alone, without the email check (a read; a corrupted row can show another person's state,
+   *  while reset and sign-out on that row are refused). At most READS_AT_ONCE at a time per server, and the 1.5 s deadline
+   *  counts the wait in that queue (break R2-M2), so a slow Cognito costs a list about 1.5 s, its rows "unknown". */
   async twoStep(u: ProviderUser): Promise<TwoStep> {
     this.ready();
-    await this.reads.acquire();
+    const signal = AbortSignal.timeout(Math.min(READ_DEADLINE_MS, this.deadlineMs));   // break R2-M2: the wait in the queue counts
+    if (!(await this.reads.acquire(signal))) return mapProviderError("AbortError");    // too long in the queue: unknown, at once
     try {
-      return await this.within(async (signal) => {
+      return await (async () => {
         if (u.subject) {
           try { return await this.factors(u.subject, signal, ["UserNotFoundException"]); } catch (e) { if (!(e instanceof ProviderSaid)) throw e; }
         }
         const who = await this.find(u, signal);
         return who ? this.factors(who.sub, signal) : { method: null };   // no provider user yet: nothing set up
-      }, READ_DEADLINE_MS);
+      })();
     } finally { this.reads.release(); }
   }
   private async factors(sub: string, signal: AbortSignal, quiet: string[] = []): Promise<TwoStep> {
