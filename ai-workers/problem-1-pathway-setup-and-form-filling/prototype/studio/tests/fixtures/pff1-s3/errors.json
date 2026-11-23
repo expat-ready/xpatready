@@ -1,0 +1,9 @@
+{
+  "PreconditionFailed": { "status": 412, "message": "At least one of the pre-conditions you specified did not hold" },
+  "ConditionalRequestConflict": { "status": 409, "message": "A conflicting conditional operation is currently in progress against this resource. Please try again." },
+  "NoSuchBucket": { "status": 404, "message": "The specified bucket does not exist" },
+  "NoSuchKey": { "status": 404, "message": "The specified key does not exist." },
+  "AccessDenied": { "status": 403, "message": "Access Denied" },
+  "ExpiredRequest": { "status": 403, "code": "AccessDenied", "message": "Request has expired" },
+  "InternalError": { "status": 500, "message": "We encountered an internal error. Please try again." }
+}
