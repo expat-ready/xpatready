@@ -2,7 +2,8 @@
 // #3183): the booking pages are served on a firm's own address. Over real HTTP on an isolated copy of the whole app (its
 // own database and port, the built web app, PF-25's host routing, PF-12's walls), with the Host header set by hand (the
 // local suffix `<address>.localhost`). Every line has a passing and a failing case; on main before QA-756 the D1-D4 pass
-// lines fail (P-606). Sample firms and values only; no browser (j_24 walks the pages), no model call, no mail (US$0).
+// lines fail (P-606). Sample firms and values only; a headless browser for D5 (j_24 walks the whole journey), no model call,
+// no mail (US$0).
 //   D1 the pages and their files: /book, /book/<type>, /book/manage and the bundle the page loads are served on A's
 //      address; /book/<a>/<b>, the studio's own pages and an odd path stay the one plain not-found.
 //   D2 /api/public/booking-site names the firm the Host names (A on A's, B on B's, B whatever X-Forwarded-Host says);
@@ -11,10 +12,14 @@
 //      unknown type (AG-4-17), never B's page and never the walls' own words; on ExpatReady's own host B is unchanged.
 //   D4 a visitor books on A's address and the link works there; the same link on B's address is the one not-found;
 //      on ExpatReady's own host it still works.
+//   D5 (screen) in a browser on A's address: the list, Choose to the type's times, the booker's page by its link; the link
+//      on B's address shows nothing of it; on ExpatReady's own host the pages are as before.
 //   zsh studio/tools/isolated.sh rt_qa756 4486 start && tsx studio/tests/check_qa756_booking_on_address.ts 4486 xr_studio_rt_qa756
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { existsSync } from "node:fs";
 import { request } from "node:http";
+import { chromium } from "playwright";
 import { copyFirmHoursTo } from "../api/src/front-office/booking-seed.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
@@ -38,7 +43,7 @@ const call = (host: string, method: string, path: string, opts: { body?: unknown
   req.on("error", (e) => resolve({ status: 0, body: String(e), text: String(e), type: "" })); if (data) req.write(data); req.end();
 });
 const MAIN = `localhost:${PORT}`, hostOf = (a: string) => `${a}.localhost:${PORT}`;
-const PLAIN = "This page is not available.", DOOR = "This booking page or link is not available.";
+const PLAIN = "This page is not available.", DOOR = PLAIN;   // one text on every address (AG-4-17 rule 3; review M1)
 const plain = (a: Ans) => a.status === 404 && a.text.includes(PLAIN);
 const door404 = (a: Ans) => a.status === 404 && a.body?.detail === DOOR;
 const page = (a: Ans) => a.status === 200 && a.type.startsWith("text/html") && a.text.includes('<div id="root">');
@@ -70,9 +75,13 @@ try {
     { list: list.status, type: type.status, manage: manage.status, files: bundle.map((p, i) => `${p} ${files[i].status}`) });
   const font = await call(hostOf(addrA), "GET", "/fonts/inter/inter-latin-wght-normal.woff2");
   ok("QA-756 D1: the page's font is served on A's address", font.status === 200, font.status);
-  const closed = await Promise.all([`/book/${A.key}/${SLUG}`, "/account", "/platform/branding", "/api/platform/session", "/book/..%2faccount", "/assets/../index.html", "/fonts/other.woff2", "/brand/x.png", "/book/Manage"].map(async (p) => [p, await call(hostOf(addrA), "GET", p)] as const));
-  ok("QA-756 D1 (fail cases): on A's address /book/<a>/<b>, the studio's pages and API, an odd path and an unlisted file stay the one plain not-found",
+  const closed = await Promise.all([`/book/${A.key}/${SLUG}`, "/account", "/platform/branding", "/api/platform/session", "/book/..%2faccount", "/assets/../index.html", "/fonts/other.woff2", "/brand/x.png", "/book/Manage", `/book/no-such-${run}`, `/assets/missing-${run}.js`, `/brand/missing-${run}.svg`, `/fonts/inter/missing-${run}.woff2`].map(async (p) => [p, await call(hostOf(addrA), "GET", p)] as const));
+  ok("QA-756 D1 (fail cases): on A's address /book/<a>/<b>, the studio's pages and API, an odd path, an unlisted file, a type A does not list and a missing built file stay the one plain not-found",
     closed.every(([, a]) => plain(a)), closed.map(([p, a]) => `${p} ${a.status}`));
+  const typeOnA = await call(hostOf(addrA), "GET", `/book/no-such-${run}`), typeNowhere = await call(hostOf(`nobody-${run}`), "GET", `/book/no-such-${run}`);
+  const bType = await call(hostOf(addrA), "GET", `/book/${SLUG}x`);
+  ok("QA-756 D1 (AG-4-17 rule 3): an unknown type on A's address gives the same bytes and status as an unknown address (review M1)",
+    typeOnA.status === 404 && typeOnA.status === typeNowhere.status && typeOnA.text === typeNowhere.text && typeOnA.type === typeNowhere.type && plain(bType), { onA: brief(typeOnA), nowhere: brief(typeNowhere) });
 
   // ---------------------------------------------------------------------------------------------- D2 which firm
   const siteA = await call(hostOf(addrA), "GET", "/api/public/booking-site"), siteB = await call(hostOf(addrB), "GET", "/api/public/booking-site");
@@ -96,6 +105,9 @@ try {
   ok("QA-756 D3 (fail cases): B's key in the path on A's address is the same one not-found as an unknown type (AG-4-17), nothing of B's",
     door404(crossList) && door404(crossSlots) && door404(unknownType) && crossList.text === unknownType.text && !crossList.text.includes(TYPE_B),
     { crossList: brief(crossList), crossSlots: brief(crossSlots), unknownType: brief(unknownType) });
+  const siteNowhere = await call(hostOf(`nobody-${run}`), "GET", `/api/public/firms/${A.key}/book`);
+  ok("QA-756 D3 (AG-4-17 rule 3): the doors' not-found on A's address is the same bytes and type as an unknown address's",
+    crossList.text === siteNowhere.text && unknownType.text === siteNowhere.text && crossList.type === siteNowhere.type, { cross: crossList.text, nowhere: siteNowhere.text, types: [crossList.type, siteNowhere.type] });
   const listBMain = await call(MAIN, "GET", `/api/public/firms/${B.key}/book`);
   ok("QA-756 D3: on ExpatReady's own host B's list is unchanged", listBMain.status === 200 && (listBMain.body?.types ?? []).some((t: { name: string }) => t.name === TYPE_B), listBMain.status);
 
@@ -115,6 +127,35 @@ try {
     { viewB: brief(viewB), slotsB: brief(slotsB), bad: brief(badToken) });
   const viewMain = token ? await call(MAIN, "GET", `/api/public/bookings/${token}`) : booked;
   ok("QA-756 D4: on ExpatReady's own host the same link still opens", viewMain.status === 200 && viewMain.body?.typeName === TYPE_A, viewMain.status);
+
+  // ---------------------------------------------------------------------------------------------- D5 the pages in a browser
+  const browser = await chromium.launch(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {});
+  try {
+    const errors: string[] = [];
+    const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage(); p.on("pageerror", (e) => errors.push(String(e)));
+    await p.goto(`http://${hostOf(addrA)}/book`);
+    const cardA = await p.getByRole("link", { name: `Choose ${TYPE_A}` }).waitFor({ timeout: 20_000 }).then(() => true, () => false);
+    const textA = await p.locator("body").innerText();
+    if (cardA) await p.getByRole("link", { name: `Choose ${TYPE_A}` }).click();
+    const timeSeen = await p.getByRole("heading", { name: "Choose a time" }).waitFor({ timeout: 20_000 }).then(() => true, () => false);
+    ok("QA-756 D5 (screen): on A's address /book lists A's type and nothing of B's; Choose stays on A's address at /book/<type> and shows \"Choose a time\"",
+      cardA && !textA.includes(TYPE_B) && timeSeen && p.url() === `http://${hostOf(addrA)}/book/${SLUG}`, { cardA, timeSeen, url: p.url() });
+    await p.goto(`http://${hostOf(addrA)}/book/manage#${token}`);
+    const manageSeen = await p.getByText(TYPE_A).first().waitFor({ timeout: 20_000 }).then(() => true, () => false);
+    await p.goto(`http://${hostOf(addrB)}/book/manage#${token}`);
+    const manageOnB = await p.getByText(TYPE_A).first().waitFor({ timeout: 6_000 }).then(() => true, () => false);
+    ok("QA-756 D5 (screen): the booker's page /book/manage#<link> on A's address shows the booking; the same link on B's address shows nothing of it",
+      manageSeen && !manageOnB, { manageSeen, manageOnB });
+    await p.goto(`http://${MAIN}/book/${A.key}`);
+    const mainCard = await p.getByRole("link", { name: `Choose ${TYPE_A}` }).waitFor({ timeout: 20_000 }).then(() => true, () => false);
+    if (mainCard) await p.getByRole("link", { name: `Choose ${TYPE_A}` }).click();
+    const mainTime = await p.getByRole("heading", { name: "Choose a time" }).waitFor({ timeout: 20_000 }).then(() => true, () => false), mainUrl = p.url();
+    await p.goto(`http://${MAIN}/book`);
+    const mainBare = await p.getByText(PLAIN).first().waitFor({ timeout: 20_000 }).then(() => true, () => false);
+    ok("QA-756 D5 (screen): on ExpatReady's own host /book/<firm key> still lists and Choose goes to /book/<firm key>/<type>; /book alone is not available",
+      mainCard && mainTime && mainUrl === `http://${MAIN}/book/${A.key}/${SLUG}` && mainBare, { mainCard, mainTime, mainUrl, mainBare });
+    ok("QA-756 D5: no page error", errors.length === 0, errors.slice(0, 3));
+  } finally { await browser.close(); }
 } catch (e) {
   ok("QA-756: the check ran to its end", false, String(e).slice(0, 400));
 } finally {

@@ -10,7 +10,7 @@ import { Body, Controller, Get, HttpCode, Inject, Injectable, Optional, Param, P
 import { Db, OpenRead } from "../../core.ts";
 import { PlatformJobs } from "../../platform/jobs/platform-jobs.ts";
 import { publicFirmOf } from "../../platform/web-address/host.ts";
-import "./public-paths.ts";   // QA-756: the booking pages and their doors on a firm's own address
+import { registerBookingPaths } from "./public-paths.ts";
 import { BookingService, bookingPortsWith, type GivenBookingPorts } from "./service.ts";
 
 export const BOOKING_PORTS = "FO3_BOOKING_PORTS";
@@ -20,7 +20,7 @@ const ipOf = (req: R) => String(req.ip ?? req.socket?.remoteAddress ?? "unknown"
 
 export class Booking extends BookingService implements OnModuleInit {
   constructor(db: Db, ports: GivenBookingPorts, runner?: PlatformJobs | null) { super(db, bookingPortsWith(ports, runner)); }
-  async onModuleInit() { await this.registerJobs(); }
+  async onModuleInit() { registerBookingPaths((firmId, slug) => this.publicPageExists(firmId, slug)); await this.registerJobs(); }   // QA-756: the booking pages on a firm's own address
 }
 Injectable()(Booking);
 Inject(Db)(Booking, undefined, 0);

@@ -84,7 +84,7 @@ const problem = (status: number, slug: string, title: string, detail: string, ex
   new HttpException({ type: `https://expatready.local/problems/${slug}`, title, status, detail, ...extra }, status);
 /** The one answer for an unknown firm, an unknown or inactive type, and a bad, used, voided or expired link (AG-4-17, -21
  *  rule 3; AG-4-36): nothing in it tells which. */
-export const notFound = () => problem(404, "not-found", "Not found", "This booking page or link is not available.");
+export const notFound = () => problem(404, "not-found", "Not found", "This page is not available.");   // QA-756: the page's words and PF-25's, one text on every address
 /** QA-756 (AG-4-17): on firm A's own address, firm B's page or link (the walls refuse it, PF-12 review R2) answers the
  *  same one not-found as an unknown slug or link, never the walls' own "No such record.". */
 function enterPublicFirm(firmId: string) {
@@ -262,10 +262,19 @@ export class BookingService {
    *  pages served there call the same doors as on ExpatReady's own host; on ExpatReady's own host, or for a firm that is
    *  not serving, the one 404. The key is the page's public slug already (`/book/<key>`): no id leaves (AG-4-17). */
   async publicSite(firmId: string | null, ip: string) {
-    this.limit(`slots:ip:${ip}`, this.limits.slotsPerIp);
+    this.limit(`site:ip:${ip}`, this.limits.slotsPerIp);   // its own count: the page's first call never spends the times' (review m2)
     const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { id: firmId }, select: { key: true, status: true } })) : null;
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
     return { firmKey: firm.key };
+  }
+
+  /** QA-756: does `/book/<slug>` on this firm's address name a page? `manage` (the booker's own page), or a type the
+   *  firm's booking page lists (the same rule as `publicType`); anything else is the one plain not-found there. */
+  async publicPageExists(firmId: string, slug: string): Promise<boolean> {
+    if (slug === "manage") return true;
+    if (!SLUG.test(slug)) return false;
+    const type = await withFirm(firmId, () => this.db.foConsultationType.findFirst({ where: firmScope(firmId, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }), select: { id: true } }));
+    return !!type;
   }
 
   /** GET the firm's booking page list (FO-3pa; AG-4-16 rules 1-2, BR-1): its active free-consultation types shown on the
