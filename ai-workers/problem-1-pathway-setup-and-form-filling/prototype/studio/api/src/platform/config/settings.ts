@@ -34,6 +34,11 @@ const s = (service: string, name: string, secret: boolean, rule: z.ZodType<strin
 /** A setting never required, in any environment (unset has a meaning of its own, written in `expects`'s setting). */
 const opt = (service: string, name: string, secret: boolean, rule: z.ZodType<string>, expects: string): Setting => ({ ...s(service, name, secret, rule, expects), optional: true });
 
+/** PLATFORM_GST_HST_NUMBER's plain shape (not the CRA's format rule, which is not yet cited): digits, capital letters and
+ *  single spaces, 9 to 20 characters, at least one digit, and never the invoice's Sample number (break m1: the Sample set
+ *  as the setting would print unlabelled, as if real). */
+export const GST_HST_NUMBER_SHAPE = /^(?=.{9,20}$)(?=.*[0-9])(?!0{9} ?RT ?0{4}$)[0-9A-Z]+(?: [0-9A-Z]+)*$/;
+
 /** Every setting, in the order a refusal lists them. */
 export const SETTINGS: readonly Setting[] = Object.freeze([
   s("database", "DATABASE_URL", true, z.string().regex(/^postgres(ql)?:\/\/\S+$/), "a postgresql:// address"),
@@ -53,11 +58,23 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   opt("identity", "PLATFORM_IDENTITY", false, z.enum(["local", "cognito"]), "local or cognito (unset: no staff sign-in on this server)"),
   opt("identity", "PLATFORM_POOL_MFA_REQUIRED", false, z.enum(["true", "false"]), "true or false (unset: true)"),
   opt("identity", "PLATFORM_LOCAL_SECRET", true, z.string().min(32), "at least 32 characters (unset: a random key per start)"),
+  // PF-4s (SA-7-1, SA-7-2): our own staff's sign-in, a second pool apart from every firm's staff (system-identity/). Unset
+  // identity = no sign-in for our staff on this server (every /api/system route answers 401).
+  opt("system-identity", "PLATFORM_SYSTEM_IDENTITY", false, z.enum(["local", "cognito"]), "local or cognito (unset: no sign-in for our own staff on this server)"),
+  opt("system-identity", "PLATFORM_SYSTEM_COGNITO_USER_POOL_ID", false, z.string().regex(/^[a-z]{2}-[a-z]+-[0-9]_[A-Za-z0-9]{1,55}$/), "our own staff's user pool id such as ca-central-1_AbC123 (never the firm staff's pool)"),
+  opt("system-identity", "PLATFORM_SYSTEM_COGNITO_CLIENT_ID", false, z.string().regex(/^[A-Za-z0-9]{1,128}$/), "our own staff pool's app client id (letters and digits)"),
+  opt("system-identity", "PLATFORM_SYSTEM_LOCAL_SECRET", true, z.string().min(32), "at least 32 characters, never PLATFORM_LOCAL_SECRET's value (unset: a random key per start)"),
   // PF-4 (P-571 (2)): the Sample seed at start-up (identity/sample-seed.ts).
   opt("sample-seed", "PLATFORM_SAMPLE_SEED", false, z.enum(["on", "off"]), "on or off (unset: off)"),
+  opt("files", "PLATFORM_FILES_LINK_KEY", true, z.string().min(32).refine((v) => new Set(v).size >= 10), "at least 32 characters with 10 or more different ones, e.g. openssl rand -base64 32 (unset: no S3 download links; PLATFORM_FILES=s3 then refuses to start, PF-F1b)"),
   // PF-8b F2b: the domain firm addresses live under (`<firm>.<this>`); the deploy sets the stack's domain. `localhost` is
   // always kept as well (web-address/rules.ts).
   opt("web-address", "PLATFORM_ADDRESS_SUFFIX", false, z.string().regex(ADDRESS_SUFFIX_PATTERN), `a lower-case domain of two or more labels such as staging.example.com (unset: ${DEFAULT_ADDRESS_SUFFIX})`),
+  // R1.21 follow-up (Lead 4, 22 Nov): our own GST/HST registration number, printed on our invoices to firms. Unset: the
+  // invoice shows a Sample number, labelled so. Only a plain shape is checked here (digits, capital letters, spaces): the
+  // CRA's own description of the number's format is not yet read and cited (canada.ca is not reachable from a cloud lane;
+  // the Mac reads it, P-601 (5)), so no stricter rule is guessed (AGENTS rule 4).
+  opt("billing", "PLATFORM_GST_HST_NUMBER", false, z.string().regex(GST_HST_NUMBER_SHAPE), "the platform's own GST/HST registration number: 9 to 20 characters of capital letters, digits (at least one) and single spaces, never the invoice's Sample number (the CRA's own format is not checked yet; unset: the invoice shows a Sample number)"),
 ]);
 
 /** The names whose values are secret: PF-23's log redaction drops them by name (and their values, wherever they appear). */
@@ -76,10 +93,15 @@ export type PlatformConfig = Readonly<{
   secretBox: SecretBoxKeys | null;
   /** PF-4's sign-in: which adapter, the pool's two-step rule, the local stand-in's signing key (local only). */
   identity: Readonly<{ via: "local" | "cognito" | "none"; poolMfaRequired: boolean; localSecret: Secret | null }>;
+  /** PF-4s: our own staff's sign-in: which adapter, its own pool and client, the local stand-in's own signing key. */
+  systemIdentity: Readonly<{ via: "local" | "cognito" | "none"; userPoolId: string | null; clientId: string | null; localSecret: Secret | null }>;
   /** PF-4 (P-571 (2)): PLATFORM_SAMPLE_SEED=on (production never seeds; sample-seed.ts says so). */
   sampleSeed: boolean;
   /** PF-8b F2b: the domain firm addresses live under (PLATFORM_ADDRESS_SUFFIX, unset: expatready.com). */
   addressSuffix: string;
+  /** R1.21 follow-up: our own GST/HST registration number (PLATFORM_GST_HST_NUMBER); null: the invoice shows a Sample. */
+  billing: Readonly<{ gstHstNumber: string | null }>;
+  /** PF-F1b: the key the S3 download links are signed with (PLATFORM_FILES_LINK_KEY; null: none). */ files: Readonly<{ linkKey: Secret | null }>;
 }>;
 
 /** The configuration cannot start the app. Holds setting names only, never a value. */
@@ -131,6 +153,14 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
   if (stripeKey && /^(sk|rk)_live_/.test(stripeKey) && environment !== "production") invalid.push({ name: "PLATFORM_STRIPE_SECRET_KEY", expects: `a test-mode key (sk_test_… or rk_test_…): a live key is refused when PLATFORM_ENVIRONMENT=${environment}` });
   // PF-4's rule, here since PF-24w: the local stand-in never runs in the test environment or production.
   if (got.get("PLATFORM_IDENTITY") === "local" && environment !== "local") invalid.push({ name: "PLATFORM_IDENTITY", expects: `cognito, or unset: PLATFORM_IDENTITY=local is refused when PLATFORM_ENVIRONMENT=${environment} (the local stand-in never runs in the test environment or production)` });
+  // PF-4s: the same rule for our own staff's stand-in; and the two sign-in groups never share a pool or a signing key
+  // (SA-7-1: a firm's token must never verify as our staff's, nor ours as a firm's).
+  if (got.get("PLATFORM_SYSTEM_IDENTITY") === "local" && environment !== "local") invalid.push({ name: "PLATFORM_SYSTEM_IDENTITY", expects: `cognito, or unset: PLATFORM_SYSTEM_IDENTITY=local is refused when PLATFORM_ENVIRONMENT=${environment} (the local stand-in never runs in the test environment or production)` });
+  // Cognito for our staff names its own pool and client, or the start-up stops (review m5: never a quiet "not set up").
+  if (got.get("PLATFORM_SYSTEM_IDENTITY") === "cognito") for (const n of ["PLATFORM_SYSTEM_COGNITO_USER_POOL_ID", "PLATFORM_SYSTEM_COGNITO_CLIENT_ID"])
+    if (!got.has(n) && !invalid.some((i) => i.name === n)) missing.push(n);
+  if (got.has("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID") && got.get("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID") === got.get("PLATFORM_COGNITO_USER_POOL_ID")) invalid.push({ name: "PLATFORM_SYSTEM_COGNITO_USER_POOL_ID", expects: "a pool of its own: our own staff never share PLATFORM_COGNITO_USER_POOL_ID's pool with firm staff" });
+  if (got.has("PLATFORM_SYSTEM_LOCAL_SECRET") && got.get("PLATFORM_SYSTEM_LOCAL_SECRET") === got.get("PLATFORM_LOCAL_SECRET")) invalid.push({ name: "PLATFORM_SYSTEM_LOCAL_SECRET", expects: "a key of its own: never the same value as PLATFORM_LOCAL_SECRET" });
   let secretBox: SecretBoxKeys | null = null;
   const keysRaw = got.get("PLATFORM_SECRET_BOX_KEYS"), versionRaw = got.get("PLATFORM_SECRET_BOX_KEY_VERSION");
   if (keysRaw || versionRaw) {
@@ -169,8 +199,11 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     zoom: Object.freeze({ clientId: plain("PLATFORM_ZOOM_CLIENT_ID"), clientSecret: secret("PLATFORM_ZOOM_CLIENT_SECRET"), webhookSecretToken: secret("PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN") }),
     secretBox,
     identity: Object.freeze({ via: (plain("PLATFORM_IDENTITY") ?? "none") as "local" | "cognito" | "none", poolMfaRequired: plain("PLATFORM_POOL_MFA_REQUIRED") !== "false", localSecret: secret("PLATFORM_LOCAL_SECRET") }),
+    systemIdentity: Object.freeze({ via: (plain("PLATFORM_SYSTEM_IDENTITY") ?? "none") as "local" | "cognito" | "none", userPoolId: plain("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID"), clientId: plain("PLATFORM_SYSTEM_COGNITO_CLIENT_ID"), localSecret: secret("PLATFORM_SYSTEM_LOCAL_SECRET") }),
     sampleSeed: plain("PLATFORM_SAMPLE_SEED") === "on",
     addressSuffix: plain("PLATFORM_ADDRESS_SUFFIX") ?? DEFAULT_ADDRESS_SUFFIX,
+    billing: Object.freeze({ gstHstNumber: plain("PLATFORM_GST_HST_NUMBER") }),
+    files: Object.freeze({ linkKey: secret("PLATFORM_FILES_LINK_KEY") }),
   });
 }
 

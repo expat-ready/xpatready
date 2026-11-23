@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { planted, tsFiles } from "./lib/ts-files.ts";
 import { PLATFORM_PATH } from "../api/src/platform/identity/keys.ts";
+import { SYSTEM_PATH } from "../api/src/platform/system-identity/keys.ts";
 
 const PORT = Number(process.argv[2] ?? 4459), DB = process.argv[3] ?? "xr_studio_forms_qa53";
 const API = join(import.meta.dirname, "..", "api", "src");
@@ -83,6 +84,15 @@ const OWN_GUARD: Record<string, "link" | "inbox"> = {
 const PLATFORM_SOURCE = "^\\/api\\/(platform|front-office)(\\/|$)", PLATFORM_FLAGS = "i";
 const exactPlatformPath = (re: RegExp) => re.source === PLATFORM_SOURCE && re.flags === PLATFORM_FLAGS;
 const isPlatform = (path: string) => PLATFORM_PATH.test(path);
+/** PF-4s: routes under /api/system/ belong to our own staff's guard (SystemGuard: a staff session of our own pool, never
+ *  x-actor). Like PF-4t's, they leave QA-53 and QA-65 and are asked instead: no session and x-actor alone 401, never
+ *  data; the one sign-in door its exact status. The exemption is exactly SYSTEM_PATH, pinned. */
+const SYSTEM_SOURCE = "^\\/api\\/system(\\/|$)", SYSTEM_FLAGS = "i";
+const exactSystemPath = (re: RegExp) => re.source === SYSTEM_SOURCE && re.flags === SYSTEM_FLAGS;
+const isSystem = (path: string) => SYSTEM_PATH.test(path);
+/** The doors (@SystemSignIn), reviewed: this copy starts without PLATFORM_SYSTEM_IDENTITY, so the local stand-in's door
+ *  answers a well-formed body 404 STAND_IN_OFF (service.ts localSignIn: the body first, then the stand-in's gate). */
+const SYSTEM_DOORS: Record<string, number> = { "POST /api/system/session/local": 404 };
 /** PF-4f m2: the sign-in doors (@StaffSignIn: no session yet) are a reviewed list, each with the exact status it answers
  *  here (m1). This copy starts without PLATFORM_IDENTITY (the usage line), so the local stand-in's door refuses every
  *  caller with 403 LOCAL_SIGN_IN_OFF (service.ts localSignIn). A new door fails the list check until reviewed. */
@@ -114,7 +124,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok("QA-53: every runtime route is a case read (the guard leaves case people's own routes untouched)", all.filter((x) => x.path.startsWith("/api/runtime/")).every((x) => x.mark === "case") && all.some((x) => x.path.startsWith("/api/runtime/")));
 
   // Pass and fail per configuration read: nobody 401, an unknown name 401, officer 403, client 403; the author is answered.
-  const guarded = all.filter((x) => !x.mark && !isPlatform(x.path));
+  const guarded = all.filter((x) => !x.mark && !isPlatform(x.path) && !isSystem(x.path));
 
   // C6.16: each OWN_GUARD read's own guard. The link's reads: nobody 401 (no session); a simulated person, known or not,
   // 400 (x-actor refused); a made-up session 401; never data. The inbox: a client persona 403; an address that is not
@@ -169,7 +179,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   const post = async (path: string, actor: string | null, body: unknown) => (await fetch(`http://localhost:${PORT}${path}`, { method: "POST", headers: { "content-type": "application/json", ...(actor ? { "x-actor": actor } : {}) }, body: JSON.stringify(body) })).status;
   // B120: api/src's subfolders too.
   const writes = (dir: string) => {
-    const configPosts: string[] = [], unnamed: string[] = [], ownWrites: string[] = [], publicWrites: string[] = [], doorWrites: string[] = [], platformWrites: { path: string; method: string; door: boolean }[] = [];
+    const configPosts: string[] = [], unnamed: string[] = [], ownWrites: string[] = [], publicWrites: string[] = [], doorWrites: string[] = [], platformWrites: { path: string; method: string; door: boolean }[] = [], systemWrites: { path: string; method: string; door: boolean }[] = [];
     for (const f of tsFiles(dir)) {
       const text = readFileSync(join(dir, f), "utf8"), lines = text.split("\n");
       // The controller each line belongs to (C6.16: person-link.ts holds three, so the file's first is not every route's).
@@ -183,14 +193,15 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
           else if (PUBLIC_DOOR_WRITES.includes(path.replace(/\/$/, ""))) doorWrites.push(path.replace(/\/$/, ""));
           else if (PUBLIC_WRITES.includes(path)) publicWrites.push(path);
           else if (isPlatform(path)) platformWrites.push({ path: path.replace(/\/$/, ""), method: m[2].toUpperCase(), door: /@StaffSignIn\(/.test(l) });
+          else if (isSystem(path)) systemWrites.push({ path: path.replace(/\/$/, ""), method: m[2].toUpperCase(), door: /@SystemSignIn\(/.test(l) });
           // CS-C1a (#1818): a case write behind PF-4's guard names its person by the staff session (staffOf), not x-actor.
           else if (!/x-actor|actorOf|readerOf|staffOf\(/.test(lines.slice(i, i + 3).join(" "))) unnamed.push(`${f}: ${path}`);
         }
       });
     }
-    return { configPosts, unnamed, ownWrites, publicWrites, doorWrites, platformWrites };
+    return { configPosts, unnamed, ownWrites, publicWrites, doorWrites, platformWrites, systemWrites };
   };
-  const { configPosts, unnamed, ownWrites, publicWrites, doorWrites, platformWrites } = writes(API);
+  const { configPosts, unnamed, ownWrites, publicWrites, doorWrites, platformWrites, systemWrites } = writes(API);
   const plantedDir = planted({ "features/checkpoint/999-planted.ts": '@Controller("api")\nexport class P {\n  @Get("planted/read") read() {}\n  @Post("planted/write")\n  write() {}\n}\n' });
   ok("QA-53 fail (B120): a GET route planted in a subfolder is found", routes(plantedDir).map((x) => x.path).join() === "/api/planted/read");
   ok("QA-65 fail (B120): a write planted in a subfolder that names nobody is caught", writes(plantedDir).unnamed.join() === "features/checkpoint/999-planted.ts: /api/planted/write");
@@ -237,6 +248,22 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   }
   ok(`PF-4t: the platform guard's routes (${platformReads.length} reads, ${platformWrites.length} writes) answer nobody and x-actor alone 401 (a sign-in door: its exact status in DOORS), never data`,
     platformReads.length >= 2 && platformWrites.length >= 8 && wrongPlatform.length === 0, wrongPlatform);
+  // PF-4s: our own staff's routes, asked like PF-4t's.
+  ok("PF-4s: the exemption is exactly SYSTEM_PATH (source and flags pinned); a widened one fails the pin", exactSystemPath(SYSTEM_PATH) && !exactSystemPath(/^\/api\//i) && !exactSystemPath(/^\/api\/system/i), { source: SYSTEM_PATH.source, flags: SYSTEM_PATH.flags });
+  const systemReads = all.filter((x) => isSystem(x.path)), wrongSystem: string[] = [];
+  for (const r of [...systemReads.map((x) => ({ path: x.path, method: "GET", door: false })), ...systemWrites]) {
+    const path = r.path.replace(/:id\b/g, "00000000-0000-4000-8000-000000000000");
+    const door = r.door ? SYSTEM_DOORS[`${r.method} ${r.path}`] ?? -1 : undefined;   // an unreviewed door has no status: always caught
+    const send = async (actor: string | null) => {
+      const x = await fetch(`http://localhost:${PORT}${path}`, { method: r.method, headers: { "content-type": "application/json", ...(actor ? { "x-actor": actor } : {}) }, body: r.method === "GET" ? undefined : JSON.stringify(r.door ? { email: "nobody@expatready.example", secondStep: true } : {}) });
+      const text = await x.text(); let body: unknown = text; try { body = JSON.parse(text); } catch { /* text */ }
+      return { status: x.status, body };
+    };
+    for (const actor of [null, "user-A", "user-O", "user-P"]) { const a = await send(actor); if (platformWrong(a, door)) wrongSystem.push(`${r.method} ${r.path} as ${actor ?? "nobody"}: ${a.status} ${JSON.stringify(a.body).slice(0, 80)}`); }
+  }
+  ok(`PF-4s: our own staff's routes (${systemReads.length} reads, ${systemWrites.length} writes) answer nobody and x-actor alone 401 (the sign-in door: its exact status in SYSTEM_DOORS), never data`,
+    systemReads.length >= 1 && systemWrites.length >= 1 && wrongSystem.length === 0, wrongSystem);
+  ok("PF-4s: the system sign-in doors in the code are exactly SYSTEM_DOORS", JSON.stringify(systemWrites.filter((w) => w.door).map((w) => `${w.method} ${w.path}`).sort()) === JSON.stringify(Object.keys(SYSTEM_DOORS).sort()), systemWrites);
   // CS-C1s part 2 (#2169): a runtime read that declares permission keys is marked a case read, but ConfigReadGuard leaves
   // it to PF-4's guard (a staff session only), so it is asked here like a platform route: x-actor never opens it.
   const keyedRuntime = all.filter((x) => x.path.startsWith("/api/runtime/") && x.keys), wrongKeyed: string[] = [];
