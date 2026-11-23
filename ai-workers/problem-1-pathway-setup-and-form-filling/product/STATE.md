@@ -2,7 +2,7 @@
 
 current_lead: local_5f4a7ece-2ec5-49ab-8e0e-6c5032e0638d Lead 11 · 23 Nov 23:41 IST (took over from Lead 10 (local_1d7473d3) past 200k after its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 23:56 IST: Lead 11. Batch #3294 (#3189 + #3291) checking; #3180, #3185, #3173, #3292 (Lead read, labelled) after. #3203 OUT of the queue on its own route (csv1, csw3), lane fixing, round 3. #3276 round 3 allowed, stamp ...050000. #3193 waits its verdict line on 74e27fc45. #3289 Approve cf2d62139, ci running, shared contract: needs Lead read. #3207 8f418c028 round 4, stamp 213000. #3209 then bypass-line PR (touchFirm too); #3040 (R1.90 lane), #3155, #3225 wait on it, no labels. #3216 full run going. Lead O 2: K=2, 2 machines, measure only. Keep-awake refused.
+updated: 2026-11-24 00:02 IST: Lead 11. #3209 label OFF (Lead B: after #3189 + #3185, then declares their routes, round 5); #3296 (bypass line) first; #3040 #3155 #3225 wait on it (#3155 run red: its own PF-17 500s). #3207 Lead read OK, /run full asked. #3289 Approve cf2d62139, Lead B OK; ci running (walks j_74, j_69, j_104 red: 69 and 104 name unbuilt parts, j_74 W7 not read). #3193 #3173 #3292 #3291 #3189 queued. #3203 lane fixing. P-814 PR refused twice: draft in notes. Research on high-volume merging running: notes local_9c46a890 high-volume-merging-ci-cost-2026-11-24.md.
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -24,7 +24,8 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A341 | 23 Nov 23:43 (typed to Lead 10) | four of the six answered; founder-decisions-2346-for-lead11.md | NOT recorded: the records PR was refused; draft P-814-draft-records.patch (both in notes local_9c46a890). Ask him first |
+| A342 | 24 Nov ~00:0x typed to Lead 11 | "For the stuff that you're asking me ... I would follow your recommendation ... You have my approval"; research how people merge "11,000 p" and pay for CI | research running; the content he meant did not arrive: ask |
+| A341 | 23 Nov 23:43 (to Lead 10) | four of six answers | P-814 NOT recorded, PR refused twice; draft in notes local_9c46a890 |
 | A338, A340 | 23 Nov 23:4x | (A338 and the page at 23:46 word for word: `history/STATE-2026-11-23-2346-lead11-takeover.md`) GitLab, GitOps, Ultimate trial | answered: no move before 29 Nov (same file) |
 | A339 | 23 Nov 23:2x-23:3x | operating system enforced? cleaning; lanes; competitors and production grade; POC case rule, UI and screens against the 101 | both reports done, his decisions are the six morning questions; word for word `history/STATE-2026-11-23-2341-lead10-before-handover.md` |
 | A337 | 23 Nov 22:4x (typed to Lead 9) | "Yes, run the three-day plan through the night. Start #3173's lane." | in force: the plan runs; #3173 lane STARTED (he pressed start, task_e085a076); #3174 fresh lane requested under the plan |
