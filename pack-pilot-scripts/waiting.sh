@@ -1,0 +1,3 @@
+# prints ci.yml full-run / batch jobs queued over 2 min (waiting for machines)
+S=/private/tmp/claude-501/-Users-ranjansingh-Desktop-Xpatready--claude-worktrees-pensive-easley-382eee/a46fa0a6-24b0-4b00-b7fe-e0619dabd65a/scratchpad; R=repos/expat-ready/xpatready
+for s in in_progress queued; do zsh $S/api.sh "$R/actions/workflows/ci.yml/runs?status=$s&per_page=50" | jq -r '.workflow_runs[]|select(.event=="workflow_dispatch" or (.head_branch|startswith("mergify/")))|.id'; done | sort -u | while read i; do zsh $S/api.sh "$R/actions/runs/$i/jobs?per_page=100" | jq -r --arg i $i '[.jobs[]|select(.status=="queued" and ((now-(.created_at|fromdateiso8601))>120))]|length|"\($i) waiting \(.)"'; done
