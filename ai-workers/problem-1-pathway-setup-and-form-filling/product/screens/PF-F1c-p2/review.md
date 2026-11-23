@@ -40,3 +40,29 @@ Not applicable: there is no screen, only a command. D1-D20, the BIC-01..20 score
 Reviewer: Approve 2c11a5e1e1c3fcb1098b1b7e3a9e4c8c81308f67
 
 **Verdict: Approve.** No open Blocker or Major. The four Minors (m1 row id, m2 header wording, m3 output size, m4 test fixture) can be fixed in this PR or a follow-up.
+
+## Round 3 (head 27195dcf26755ef9580d71f149c5c2528b71e973; the Lead allowed this fix only)
+
+Scope: this round's change only, `git diff 6e7dc1541 27195dcf2` (one file, `tests/check_pff1c_catchup_walls.ts`, function `command`; 6e7dc1541 merges origin/main). No screen, so no journey score.
+
+**The fault, reproduced on the commit before the fix.** Node v24.21.0 from `.tools/node-v24.21.0/bin` first in PATH, Postgres 18 at :54329. I ran it CI's way, from the repository root with run-suites.sh's relative `--tsconfig ai-workers/…/studio/api/tsconfig.json` (`product/tools/run-suites.sh:39-40,138`: `cd "$ROOT"`, `S="$P/prototype/studio"`). The old test was a scratch copy in a shadow studio tree (symlinks to the worktree's studio) under `scratchpad/r3review/`, with the repository left unedited. Result: exit 1, **8 passed, 6 failed**, the same six as CI run 45137359698 (shard 22), each `{"status":1,"out":"Node.js v24.21.0"}` with no address set. Cause confirmed: in cwd `studio`, `TSX_TSCONFIG_PATH=ai-workers/…/api/tsconfig.json tsx api/src/platform/web-address/firm-created.ts` stops with `Error: Cannot resolve tsconfig at path: …/studio/ai-workers/…/studio/api/tsconfig.json` before the command runs. The builder's diagnosis is right.
+
+**The fix, on the head.**
+- From the repository root, CI's way: exit **0**, **14 passed, 0 failed**.
+- From `prototype/studio` with `--tsconfig api/tsconfig.json`: exit **0**, **14 passed, 0 failed**.
+- No `xr_studio_pff1c_*` database or `xr_pff1c_*` role is left behind after the runs.
+
+**Does it hide a real failure?** No.
+- The assertions are unchanged. Every pass still needs `status === 0`, the command's `"failed":[]` line and the addresses in the database. On failure, the new `out` adds stderr's tail (stack lines dropped, at most 600 characters). It can only explain a failure. It cannot turn one into a pass, because the status and database checks do not read `out`. On success `out` is stdout's last line, as before (the old `r.stdout || r.stderr` took stdout whenever the command printed anything).
+- The stricter environment removes only `TSX_TSCONFIG_PATH`. That variable is tsx's own channel to its child, and the explicit `--tsconfig <STUDIO>/api/tsconfig.json` replaces it with the file the suite itself loads. `DATABASE_URL` is still set per run and everything else is inherited. The command sees the same compiler settings and the same database as before. The only change is that it now starts however the suite was launched.
+- To check that the explicit tsconfig does not hide a difference from production's bare form, I ran a scratch variant of the fixed test. It spawns exactly `tsx api/src/platform/web-address/firm-created.ts` in the real `studio` directory, with no `--tsconfig` and no `TSX_TSCONFIG_PATH`. Result: **14 passed, 0 failed**. The command behaves the same with or without api/tsconfig.json.
+
+**Production.** Not affected: the diff touches only a test file. The image runs tsx from `studio` with `--tsconfig api/tsconfig.json` (`Dockerfile:54,58`). A one-off `tsx api/src/platform/web-address/firm-created.ts`, with or without that flag, does not read `TSX_TSCONFIG_PATH` unless someone exports it. The bare form passes (above). The repository has no `d-seed.sh`, so I could not read it. Its invocation is unchanged by this diff either way.
+
+**Nit (not blocking, no change asked for this round).** If tsx could not be started at all (ENOENT), `spawnSync` returns `stdout: undefined`, and `r.stdout.trim()` (`:39`) throws. The outer catch would still report it as `FAIL the check ran to the end` (the old `(r.stdout || r.stderr).trim()` threw the same way), so nothing is hidden. Only the remaining cases would not run.
+
+**CI on this head:** `parts (1-7)`, `fast` and `types` were still running when I wrote this. The merge rule still needs them green.
+
+Reviewer: Approve 27195dcf26755ef9580d71f149c5c2528b71e973
+
+**Verdict: Approve.** No open Blocker or Major. Round 3's fix is correct, minimal and confined to the test. The four earlier Minors (m1-m4) stand as recorded.
