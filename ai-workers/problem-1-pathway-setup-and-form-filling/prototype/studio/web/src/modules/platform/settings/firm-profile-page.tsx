@@ -80,7 +80,7 @@ function ProfileBody() {
         // The staff client keeps only a problem's plain fields, not its `latest`: read the profile again and load it.
         const latest = await staffApi("/platform/firm/profile").then((d) => Profile.parse(d)).catch(() => null);
         if (latest) { qc.setQueryData(key, latest); load(latest); }
-        setProblem({ tone: "danger", title: "Not saved", text: `${x.message}${latest ? ` ${WORDS.conflict}` : " Please reload the page."}` });
+        setProblem({ tone: "danger", title: "Not saved", text: latest ? x.message : `${x.message} We could not load the latest details: please reload the page.` });
       } else if (x instanceof StaffApiError) {
         setErrors(fieldErrors(x.problem.fields));
         const more = otherErrors(x.problem.fields);

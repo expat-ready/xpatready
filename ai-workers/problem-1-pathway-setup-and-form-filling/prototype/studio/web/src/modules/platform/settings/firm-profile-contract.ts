@@ -65,7 +65,6 @@ export const WORDS = {
   ownerOnly: "Only the Owner can change this.",
   addressHere: "Change it on Plan and billing, where it is also used for tax.",
   addressMissing: "Not added yet. Needed before your first invoice: we use it to work out tax.",
-  conflict: "We've loaded the latest details; make your change again and save.",
   saved: "Firm profile saved.",
   nothing: "No changes to save.",
 };
