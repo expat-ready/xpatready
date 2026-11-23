@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 07:2x IST 23 Nov:** **#3159 CS-MV1 binding merged** (01:35 UTC): R1.56's invoice list now scoped by case and prospect on main (j_56 walkable). #3156 FO-7g part 3 queued (types fix only since read). #3065 FO-6 part 3 merged main, needs ready + label; FO-5d waits it. FO-9b lane → FO-9b part 2 (with the hasMoney fix folded in; replaces row 1m). #3165 PF-Fw and #3155 PF-17 part 1 drafts.
+
 **Lead B 2 pass, 06:5x IST 23 Nov:** **#3042 FO-9b part 1 merged.** #3156 FO-7g part 3 takes the slot (Lead 9's read and label). #3159 queued. FO-9b part 1m and FO-7q part 2 wait on the held records branch (founder). Rows on main for free lanes: PF-Fw, FO-5d (after #3156).
 
 **Lead B 2 pass, 06:2x IST 23 Nov:** #3157 merged; #3042 queued again. #3159 (CS-MV1 binding: PgMoneyVisibility in place of failClosed) Lead B read OK bd7d9f531 — R1.56's list walkable once it merges. #3156 waits #3042 (stamp order). #3155 PF-17 part 1 draft.
