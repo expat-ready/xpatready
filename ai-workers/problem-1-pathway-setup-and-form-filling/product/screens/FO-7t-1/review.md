@@ -1,4 +1,17 @@
-Reviewer: Block c83d20173c71076ad48a42f5274b96feb68e0585 (diff-only round over 0738e381814805ccdadd08220485e367ccb4608c..c83d2017; M1 open). Last Approve: 0738e381 (round 7, PR comment).
+Reviewer: Approve 15be06bf0396bf7fefe98c22045cf8d2ba195410 (diff-only rounds over 0738e381814805ccdadd08220485e367ccb4608c..15be06bf; M1 fixed). Earlier: Block c83d2017 (M1); Approve 0738e381 (round 7, PR comment).
+
+# Diff-only round on 15be06bf (23 Nov 2026; c83d20173 → 15be06bf0, review.md excluded)
+
+* **Test (M1):** the fix adds `unseenReq`, a deposit with `trustRequestId: rCase.body.id` and no `caseId`. It runs inside the same window as `unseen` (`agent/case:view.all` removed from OWNER and CASE_MANAGER, put back right after). It is asserted `=== 404` in the existing DW6 fail case, under the same `before() === mid` nothing-written condition, and its status is added to the failure detail. This is what M1 asked for. PA stays visible, so this exercises l. 174 and not `partySeen`.
+* **service.ts:** only n5. `partySeen` and its comment now sit above `caseOf`'s comment, and the text is unchanged. There is no logic change.
+* **Also in the commit:** records only (`break-report.md`, plus my Block section in `review.md`).
+* **My runs on this head** (scratch copy refreshed from the worktree; `diff -r` empty before and after):
+  * `check_fo7t_trust.ts`: 58 passed, 0 failed.
+  * Planted break, l. 174 removed: **56 passed, 2 failed**. The DW6 M1 case FAILS with `unseenReq` at `[201,null]`. The second FAIL (the DW6 per-case balance sum) is a knock-on from the extra 1.00 booked onto CASE.
+  * `check-port-contracts.mjs`: 0 problems.
+* **Left as notes for the tech lead (non-blocking):** n4 (try/finally around the key swaps) and n6 (the replay runs before the visibility check; this predates this PR, and Lead B placed the replay before trust-off on purpose).
+
+**Verdict: Approve** 15be06bf0396bf7fefe98c22045cf8d2ba195410. No Blocker or Major is open.
 
 # Diff-only round on c83d2017 (23 Nov 2026; 0738e381 → 0f1acb674 → c83d20173)
 
