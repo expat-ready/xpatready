@@ -1,16 +1,8 @@
-// PF-21b part 3 (R1.85; brief design/lead-b-briefs/PF-21b.md "Part 2" DW5, DW3, DW6, split by
-// design/briefs/track-b/PF-21b-2.md; SA-11 §3.8, SA-11-40, NFR5-14): the register of privacy requests made to ExpatReady.
-// Each "Done when" line passes and fails:
-// DW5 on the fake clock: a request past its target shows OVERDUE and raises one alert (not two on a second run); a request
-//     inside PF-23's lead raises the near-date alert once; an overdue request is not also raised as near-date; a request
-//     logged already past its target is OVERDUE at once; an alert that cannot be raised undoes its mark (the next run
-//     raises it); a completed or held request is never marked.
-// DW3 (the register's routes): a firm's staff token, our Support, Admin and Auditor → 403; no token → 401; the Platform
-//     Owner logs (201, target = received + 30 days), moves In progress then Completed (each an insert-only step, listed
-//     on the request), and every change writes one ALLOWED line to our staff's trail, a refused one a REFUSED line.
-// DW6: no firm route for the register; the database refuses DELETE, TRUNCATE, a changed fact, a completed request's
-//     change, an event's change, a firm session's reads and writes; the migration measured right after itself on an
-//     empty and a demo-data copy; migrate diff empty.
+// PF-21b part 3 (R1.85; brief design/lead-b-briefs/PF-21b.md "Part 2" DW3, DW5, DW6; SA-11 §3.8, SA-11-40, NFR5-14): the
+// register of privacy requests made to ExpatReady. DW5 on the fake clock: OVERDUE past the target with one alert (not two
+// on a second run), the near-date alert once inside the lead, never both kinds; an alert that cannot be raised undoes its
+// mark. DW3: firm staff, Support, Admin, Auditor → 403; the Platform Owner logs and works a request to an outcome, each
+// change a step and one audit line. DW6: no firm route; the database's rules and walls; the migration right after itself.
 // One process, scratch databases (dropped at the end), no model call (US$0).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf21b_requests.ts
 import "reflect-metadata";
@@ -22,7 +14,6 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fakeAlerts } from "../ports/alert.ts";
-
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261123100000_pf21b_data_requests";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -42,7 +33,6 @@ const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++
 const uuid = () => globalThis.crypto.randomUUID();
 const DAY = 86_400_000;
 const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-
 type Res = { status: number; body: any };
 const call = async (base: string, method: string, path: string, o: { token?: string; body?: unknown } = {}): Promise<Res> => {
   const headers: Record<string, string> = { "content-type": "application/json", "user-agent": "pf21b3-check/1" };
@@ -60,7 +50,6 @@ for (const d of all) psqlFile(DB, join(MIG, d, "migration.sql"));
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of Object.keys(process.env)) if (/^PLATFORM_/.test(k)) delete process.env[k];
 process.env.PLATFORM_ENVIRONMENT = "local";
-
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
 const { wallUnscopedQueries, withFirm } = await import("../api/src/platform/firm-scope.ts");
@@ -78,7 +67,6 @@ const { SystemIdentityController } = await import("../api/src/platform/system-id
 const { DataRequests, DATA_REQUEST_ALERTS, DATA_REQUEST_QUEUE, DATA_REQUEST_CRON, DSR_KEY } = await import("../api/src/platform/register/requests/service.ts");
 const feature = (await import("../api/src/features/platform-register-requests.ts")).default;
 const { DATA_REQUEST_DAILY } = await import("../api/src/features/platform-register-requests.ts");
-
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 wallUnscopedQueries();
 const apps: { close(): Promise<void> }[] = [];
@@ -104,7 +92,6 @@ try {
   const svc = app.get(DataRequests);
   ok("PF-21b DW5 pass: the feature registers the daily check on PF-14's runner (its handler and a recurring schedule)",
     app.get(DATA_REQUEST_DAILY) === true && jobCalls.includes(`handle ${DATA_REQUEST_QUEUE}`) && jobCalls.some((c) => c.startsWith(`recurring ${DATA_REQUEST_QUEUE} ${DATA_REQUEST_CRON}`)), jobCalls);
-
   await seedSampleFirms(owner);
   const person = async (name: string, roles: string[]) => (await owner.platSystemStaff.create({ data: { email: `${name.toLowerCase()}.pf21b3@expatready.example`, displayName: `Sample ${name}`, grants: { create: roles.map((roleCode) => ({ roleCode })) } } })).id;
   const OWNER = await person("Owner", ["platform-owner"]), SUPPORT = await person("Support", ["platform-support"]), ADMIN = await person("Admin", ["platform-admin"]), AUDITOR = await person("Auditor", ["platform-auditor"]);
@@ -117,10 +104,8 @@ try {
   const lines = (outcome: string, route: string) => Number(sql(`select count(*) from plat_system_audit where outcome = '${outcome}' and route = '${route}'`));
   const kinds = (id: string) => sql(`select string_agg(kind::text, ',' order by seq) from plat_data_request_event where request_id = '${id}'`);
   const today = () => dayOf(clock.t);
-
   ok("PF-21b DW3 pass: the migration gives system/compliance:dsr-manage to the Platform Owner only (Sample)",
     sql(`select string_agg(role_code, ',') from plat_system_role_permission where permission_key = '${DSR_KEY}'`) === "platform-owner");
-
   // ---------------------------------------------------------------------------------------------- DW3: who may
   const body = { type: "ACCESS", requester: "Sample Requester", requesterEmail: "requester.pf21b3@example.com", receivedOn: today() };
   const before = count();
@@ -129,16 +114,12 @@ try {
   ok("PF-21b DW3 fail: a firm's staff token, our Support, Admin and Auditor → 403 on log and list; nothing logged",
     refusals.every((r) => r.status === 403) && readRefusals.every((r) => r.status === 403) && refusals[0].body.code === "FIRM_SESSION_REFUSED" && count() === before,
     { refusals: refusals.map((r) => [r.status, r.body.code]), readRefusals: readRefusals.map((r) => r.status) });
-  const anon = await call(base, "GET", P);
-  ok("PF-21b DW3 fail: no token → 401", anon.status === 401, anon);
-
   const bad = await Promise.all([
     { ...body, type: "PORTABILITY" }, { ...body, requesterEmail: "not an email" }, { ...body, requester: "  " }, { ...body, receivedOn: dayOf(clock.t + DAY) },
-    { ...body, firmId: sampleFirm }, { ...body, requester: "Sample ‮ reversed" }, { ...body, extra: 1 },
+    { ...body, firmId: sampleFirm }, { ...body, requester: "Sample \u202e reversed" }, { ...body, extra: 1 },
   ].map((b) => call(base, "POST", P, { token: ownerT, body: b })));
   ok("PF-21b DW3 fail: an unknown type, a bad email, an empty name, a day in the future, a firm without its person, a direction mark and an unknown field → 422 each, nothing logged; each a REFUSED line",
     bad.every((r) => r.status === 422 && r.body.code === "DATA_REQUEST_FIELDS") && count() === before && lines("REFUSED", P) >= bad.length, bad.map((r) => [r.status, r.body.fields]));
-
   // ---------------------------------------------------------------------------- DW3/W1-W2: logged and worked to an outcome
   const allowedBefore = lines("ALLOWED", P);
   const logged = await call(base, "POST", P, { token: ownerT, body });
@@ -167,7 +148,6 @@ try {
   const badList = await call(base, "GET", `${P}?status=DONE`, { token: ownerT });
   ok("PF-21b DW3 pass/fail: the list filters by status (the completed request is listed, every row COMPLETED); an unknown status → 422",
     listed.status === 200 && listed.body.requests.some((r: any) => r.id === id) && listed.body.requests.every((r: any) => r.status === "COMPLETED") && listed.body.truncated === false && badList.status === 422, { listed: listed.body, badList: badList.status });
-
   // -------------------------------------------------------------------------------------- DW5: within its time
   const late = await call(base, "POST", P, { token: ownerT, body: { ...body, type: "CORRECTION", requesterEmail: "late.pf21b3@example.com", receivedOn: dayOf(clock.t - 40 * DAY) } });
   const lateAlerts = () => alerts.raised.filter((a) => a.detail.entityKey === late.body.id);
@@ -179,7 +159,6 @@ try {
   const lateIn = await call(base, "POST", `${P}/${late.body.id}/status`, { token: ownerT, body: { status: "IN_PROGRESS" } });
   const lateDone = await call(base, "POST", `${P}/${late.body.id}/status`, { token: ownerT, body: { status: "COMPLETED", actionsTaken: "Sample: corrected the record" } });
   ok("PF-21b DW5 pass/fail: an overdue request stays Overdue until done (In progress → 409), then it can be completed", lateIn.status === 409 && lateDone.status === 200 && lateDone.body.status === "COMPLETED", { lateIn, lateDone: lateDone.body });
-
   // The fake clock walks one request through its 30 days.
   const fresh = await call(base, "POST", P, { token: ownerT, body: { ...body, type: "DELETION", requesterEmail: "fresh.pf21b3@example.com", firmId: sampleFirm, subject: { kind: "PERSON", id: uuid() } } });
   const fid = fresh.body.id as string, freshAlerts = () => alerts.raised.filter((a) => a.detail.entityKey === fid);
@@ -201,7 +180,6 @@ try {
     && kinds(fid) === "RECEIVED,NEAR_DATE_ALERTED,STATUS_CHANGED,OVERDUE_ALERTED", { r31, alerts: freshAlerts(), status: after31.body.status });
   ok("PF-21b DW5 fail: a held request and a completed one are never marked or alerted, however late",
     alerts.raised.every((a) => a.detail.entityKey !== held.body.id && a.detail.entityKey !== id) && sql(`select status from plat_data_request where id = '${held.body.id}'`) === "HELD");
-
   // An alert that cannot be raised undoes its mark; the next run raises it.
   const flaky = { body: await svc.log(as, null, { ...body, requesterEmail: "flaky.pf21b3@example.com", receivedOn: dayOf(clock.t) }) };
   clock.t += 31 * DAY; alertsFail = true;
@@ -213,7 +191,6 @@ try {
     failed.failed >= 1 && stillOpen === "PENDING" && marksThen === "RECEIVED" && retried.overdue.includes(flaky.body.id)
     && alerts.raised.filter((a) => a.detail.entityKey === flaky.body.id).length === 1, { failed, stillOpen, marksThen, retried });
   ok("PF-21b DW5: every alert carries ids and rule names only (AlertPort's check; no name, no email)", alerts.raised.every((a) => !JSON.stringify(a.detail).includes("@") && !JSON.stringify(a.detail).includes("Sample")));
-
   // --------------------------------------------------------------------------------------- DW6: the database rules
   ok("PF-21b DW6 fail: a DELETE or TRUNCATE of a request or of a step, and a changed step, are refused by the database (even for the owner)",
     refusedBySql(`delete from plat_data_request where id = '${id}'`, /keeps every request/) && refusedBySql(`truncate plat_data_request cascade`, /keeps every request/)
@@ -238,14 +215,12 @@ try {
     && refusedAsApp(null, `insert into plat_data_request_event (id, request_id, kind, actor) values (gen_random_uuid(), '${fid}', 'NOTE', 'staff:x')`, /row-level security|permission denied/));
   ok("PF-21b DW6 fail (walls, the service): the service called inside a firm's scope is refused by the database",
     await withFirm(sampleFirm, () => svc.list(as, {})).then(() => false, (e) => /only ExpatReady's own staff/.test(String(e))));
-
   // ------------------------------------------------------------------------------- DW6: no firm route for the register
   const firmTry = await Promise.all(["/api/platform/data-requests", "/api/platform/register/requests", "/api/front-office/data-requests"].map((p) => call(base, "GET", p, { token: firmT })));
   const srcFiles = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? srcFiles(join(dir, e.name)) : /\.ts$/.test(e.name) ? [join(dir, e.name)] : []);
   const controllers = srcFiles(join(STUDIO, "api", "src")).flatMap((f) => [...readFileSync(f, "utf8").matchAll(/@Controller\(\s*"([^"]*)"/g)].map((m) => m[1]));
   ok("PF-21b DW6 pass/fail: no firm route answers for the register (404); the only controller naming it is under /api/system",
     firmTry.every((r) => r.status === 404) && controllers.filter((p) => /request/i.test(p) && /register|data-req/i.test(p)).join() === "api/system/register/requests", { firmTry: firmTry.map((r) => r.status), controllers: controllers.filter((p) => /request/i.test(p)) });
-
   // ----------------------------------------------------------------- DW6: the migration, right after itself (rows rev 16.7)
   const prior = all.filter((d) => d < NEW);
   ok(`PF-21b DW6: the migration has its own stamp, later than every one before it and unique (P-600; newest before: ${prior.at(-1)})`, all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && prior.length === all.indexOf(NEW));

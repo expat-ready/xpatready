@@ -171,14 +171,10 @@ model PlatLegalHold {
   @@map("plat_legal_hold")
 }
 
-// PF-21b part 3 (map row 85; SA-11 §3.8, SA-11-18, SA-11-40, NFR5-14; brief design/lead-b-briefs/PF-21b.md "Part 2", split
-// by design/briefs/track-b/PF-21b-2.md): the register of privacy requests made to ExpatReady itself (a client's request is
-// the firm's and is not tracked here, Q21). Our console's routes need system/compliance:dsr-manage (SA-11 line 778), seeded
-// for the Platform Owner only (Sample: SA-07 Appendix A names no role for it). The target date is received + 30 days, a
-// code constant and a reminder, never enforced (§3.8; legal reading Unconfirmed: no counsel). Like plat_legal_hold, our own
-// register: row-level security forced with no policy (PF-12's OWN list), reached only through the plat_data_request_*
-// definers of the migration 20261123100000_pf21b_data_requests, which also holds the rules Prisma cannot say (insert-only
-// events, never deleted, the status moves, one alert mark of each kind per request).
+// PF-21b part 3 (map row 85; SA-11 §3.8, SA-11-40, NFR5-14): the register of privacy requests made to ExpatReady itself,
+// worked in our console with system/compliance:dsr-manage. Our own register, forced with no policy (PF-12's OWN list),
+// reached only through the plat_data_request_* definers of 20261123100000_pf21b_data_requests, which also holds the rules
+// Prisma cannot say. The target date (received + 30 days) is a code constant and a reminder (Unconfirmed: no counsel).
 
 /// Access, correction or deletion (§3.8).
 enum PlatDataRequestType {
