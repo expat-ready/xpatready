@@ -9,7 +9,7 @@ import { PlatformFrame } from "../frame";
 import { staffApi, StaffApiError, useStaffToken } from "../session";
 import { Licence, LicenceConflict, LicenceForm, sameLicence } from "./licence-form";
 
-const Mine = z.object({ staffId: z.string(), twoStep: z.object({ method: z.string().nullable() }).passthrough().nullable(), twoStepRequired: z.boolean(), licence: Licence.nullable() });
+const Mine = z.object({ staffId: z.string(), twoStep: z.object({ method: z.string().nullable() }).passthrough().nullable(), twoStepRequired: z.boolean(), licence: Licence.nullable(), warning: z.string().optional() });
 /** The same words as Profile (account-page.tsx; review m4). */
 const METHOD: Record<string, string> = { TOTP: "On (authenticator app)" };
 export const TWO_STEP_LINE = (t: z.infer<typeof Mine>["twoStep"]) => (t === null ? "Could not be read from the sign-in provider. Try again later." : t.method ? METHOD[t.method] ?? `On (${t.method.toLowerCase()})` : "Not set up yet. The sign-in provider asks you to set it up when you next sign in.");
@@ -27,6 +27,7 @@ function MyLicence() {
     const saved = Mine.parse(await staffApi("/platform/me/account", { method: "PUT", json: { licence: l } }));
     qc.setQueryData(["pf", "account", token], saved);
     toast.push({ tone: "ok", text: "Your licence record was saved." });
+    return saved.warning ? { warning: saved.warning } : undefined;   // PF-4c part 2: shown on the number field
   };
   return (
     <div className="flex flex-col gap-6">
