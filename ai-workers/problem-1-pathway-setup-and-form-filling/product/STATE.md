@@ -2,7 +2,7 @@
 
 current_lead: local_cf20dbb4-5f96-4795-8750-74223b01a5fb Lead 3 · 23 Nov 12:47 IST (took over from Lead 2 (local_2158cd24) at 353k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 12:47 IST: Lead 2 → Lead 3 hand-over (new check is Lead 3's)
+updated: 2026-11-23 13:00 IST: Lead 3 took over 12:48 (check 44087c40); #3208 estimated 13:43 IST (batch #3232); earlier page: `history/STATE-2026-11-23-1300-lead3-older-updated-line.md`
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -15,7 +15,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Combined tooling PR:** Lead O's build was refused in its session; Lead 2 did NOT start a lane (its brief arrived by relay). Asked the founder, no answer; Lead O agreed not to retry and to land separately. **#2372:** Lead O relays the founder's close and reversal of P-746 (4); Lead 2 could not confirm it, so not closed or recorded. **GATE_RUNNER** = "ubuntu-latest" since 12:15 (read from the API; Lead O set it, after a refusal in its shell, through the browser).
 **Red suites, 24 h (failed-job logs):** check_forms_qa53 16 batches, check_b164_no_engine_keys 13, check_csdl3_milestones 12, check_pf8b_f4_migrations 12, check_pf28_inputs 9; causes unclassified, with Lead O.
 **Local:** Lead B 3 `local_281c4e7e`, AWS proof 3 `local_f09b5b4c` (done, idle, 0 tasks), desk `local_d92dde4f` (final report in shared notes), standby Lead 4 `local_86bd4439`. qa re-read R1.13: Partial (#3226, records).
-**GitHub API quota (5000/h) is shared:** Lead 2 and Lead O used it up at 12:23; sample less. Disk 7.7 GB. Weekly 13% (12:28 to 12:46). One more standby owed at his next typed turn. RULES stays as of P-795 (P-796 to P-807 on main owed as an IDX row). AWS idles.
+**GitHub API quota (5000/h) is shared:** Lead 2 and Lead O used it up at 12:23; sample less. Disk 7.7 GB. Weekly 13% (12:28 to 12:46). Lead 3, 13:00: answered #3178 (round 4), #3217 (round 3), #3202; records owed: BR-13 text, rows for #3202 answers 2, 3, 5. private-sync fixed (its /tmp copy had lost git files; re-cloned; the script should test `git rev-parse`, owed). One more standby owed at his next typed turn. RULES stays as of P-795 (P-796 to P-807 on main owed as an IDX row). AWS idles.
 **Waiting on the founder:** stay public? combined tooling PR? close #2372?
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
