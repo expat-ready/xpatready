@@ -200,7 +200,9 @@ try {
   ok("FO-7s1 DW10 pass: keyboard only: Tab to the invoice and Enter opens it; Tab to \"Use a credit note\" and Enter opens the panel on its first field; Escape returns focus to the button", onFirst && back, { onFirst, back });
   for (const w of [375, 1024]) {
     const pw = await tab(TOWNER, w);
-    await list(pw); const l = await sideways(pw); axeAll.push(...(await serious(pw)).map((x) => `list-${w}: ${x}`)); await shot(pw, `list-${w}`);
+    await list(pw); const l = await sideways(pw);
+    const small = await pw.locator('nav[aria-label="Money sections"]').isVisible(), side = await pw.locator('nav[aria-label="Money"]').isVisible();
+    ok(`FO-7s1 DW10: at ${w} px the Money menu is ${w < 768 ? "a row at the top of the page, not a side column" : "the side column"}`, w < 768 ? small && !side : side && !small, { small, side }); axeAll.push(...(await serious(pw)).map((x) => `list-${w}: ${x}`)); await shot(pw, `list-${w}`);
     await detail(pw, cad); const d = await sideways(pw); axeAll.push(...(await serious(pw)).map((x) => `detail-${w}: ${x}`)); await shot(pw, `detail-${w}`);
     ok(`FO-7s1 DW10 pass: at ${w} px the list and the detail have no sideways scroll, and the balance and status stay in view`, !l && !d && (await pw.locator("[data-balance]").isVisible()) && (await pw.locator("[data-invoice-status]").isVisible()), { l, d });
   }

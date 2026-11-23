@@ -10,9 +10,9 @@ import { Link, useParams } from "react-router-dom";
 import { Button, Notice, Pill, Table } from "@/components/ui/controls";
 import { problemOf } from "@/modules/front-office/sales/contract";
 import { Loading } from "@/modules/front-office/sales/loading";
-import { PlatformFrame } from "@/modules/platform/frame";
+import { PlatformFrame, usePlatformStaff } from "@/modules/platform/frame";
 import { endSession, setStaffToken, staffApi, StaffApiError, staffToken, useStaffToken } from "@/modules/platform/session";
-import { MONEY_AREA } from "../area";
+import { MONEY_AREA, MoneyMenuSmall } from "../area";
 import { billToWord, day, Detail, INVOICES_HOME, KIND_WORD, money, rateWord, STATUS_HINT, STATUS_TONE } from "./contract";
 import { CreditNotePanel } from "./credit-note-panel";
 
@@ -37,7 +37,7 @@ const Fact = ({ k, v, data }: { k: string; v: React.ReactNode; data?: string }) 
 const when = (iso: string) => day(iso.slice(0, 10));
 
 function DetailBody() {
-  const { id = "" } = useParams(), token = useStaffToken();
+  const { id = "" } = useParams(), token = useStaffToken(), me = usePlatformStaff();
   const q = useQuery({ queryKey: ["fo", "money", "invoice", token, id], enabled: !!token, retry: false, queryFn: async () => Detail.parse(await staffApi(`/front-office/money/invoices/${encodeURIComponent(id)}/detail`)) });
   const [crediting, setCrediting] = React.useState(false), [pdfProblem, setPdfProblem] = React.useState<string | null>(null), [pdfBusy, setPdfBusy] = React.useState(false);
   const opener = React.useRef<HTMLButtonElement>(null);
@@ -57,6 +57,7 @@ function DetailBody() {
   ].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
   return (
     <div className="flex flex-col gap-6">
+      <MoneyMenuSmall keys={me.keys} />
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold"><span data-invoice-number>{number}</span><Pill tone={STATUS_TONE[inv.statusWord]} title={STATUS_HINT[inv.statusWord]}><span data-invoice-status>{inv.statusWord}</span></Pill></h1>

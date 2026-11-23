@@ -10,7 +10,7 @@ import { Button, Field, Input, Notice, Pill, Select, Table } from "@/components/
 import { Loading } from "@/modules/front-office/sales/loading";
 import { PlatformFrame, usePlatformStaff } from "@/modules/platform/frame";
 import { staffApi, StaffApiError, useStaffToken } from "@/modules/platform/session";
-import { MONEY_AREA } from "../area";
+import { MONEY_AREA, MoneyMenuSmall } from "../area";
 import { anyFilter, billToWord, day, filtersOf, LIST_KEY, money, Page, queryOf, STATUS_HINT, STATUS_TONE, STATUSES, type Filters } from "./contract";
 
 function ListBody() {
@@ -25,7 +25,7 @@ function ListBody() {
   });
   const [more, setMore] = React.useState(f.overdue);
   const header = (
-    <header className="flex flex-wrap items-start justify-between gap-3">
+    <header className="flex flex-col gap-2"><MoneyMenuSmall keys={me.keys} />
       <div><h1 className="text-2xl font-semibold">Invoices</h1><p className="mt-1 text-sm text-text-muted">Each amount is in its invoice's own currency.</p></div>
     </header>
   );
@@ -53,7 +53,7 @@ function ListBody() {
               <Table label="Invoices" head={["Number", "Bill to", "Issued", "Due", "Total", "Balance due", "Status"]} headClass={[undefined, "hidden md:table-cell", "hidden lg:table-cell", "hidden sm:table-cell", "hidden md:table-cell", undefined, undefined]}>
                 {rows.map((r) => (
                   <tr key={r.id} data-invoice-row={r.number ?? "Draft"}>
-                    <td className="font-medium"><Link to={`/money/invoices/${r.id}`} className="text-text-link underline underline-offset-2" data-invoice-link>{r.number ?? "Draft"}</Link>
+                    <td className="font-medium"><Link to={`/money/invoices/${r.id}`} className="whitespace-nowrap text-text-link underline underline-offset-2" data-invoice-link>{r.number ?? "Draft"}</Link>
                       <span className="block text-xs font-normal text-text-muted sm:hidden">Due {day(r.dueDate)}</span></td>
                     <td className="hidden md:table-cell">{billToWord(r)}</td>
                     <td className="hidden whitespace-nowrap lg:table-cell">{day(r.issuedOn)}</td>
