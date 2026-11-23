@@ -179,6 +179,9 @@ try {
   const vWarn = await axe(p);
   ok("R1.92 W6: with the warning showing, the licence page has no WCAG 2.2 A/AA violation (axe), and the number field is not marked invalid (saved, not refused)",
     vWarn.length === 0 && (await p.locator("[data-licence-number]").getAttribute("aria-invalid")) === null, vWarn.map((x) => `${x.id}: ${x.nodes[0]?.target}`));
+  await p.locator("[data-licence-number]").press("End"); await p.locator("[data-licence-number]").type("7");
+  ok("R1.92 W6 (review m3): the warning goes as soon as the number changes (it was for the number as saved)", await p.locator("[data-licence-warning]").count() === 0);
+  await p.locator("[data-licence-number]").fill(wrong);
   const saved = sql(`select licence_number from platform_staff_credential where staff_id = '${OWNER}'`);
   ok("R1.92 W6: a number in the wrong shape is saved, never refused (AG-1-34: an input typo check, not a block)", put.status() === 200 && saved === wrong && !/Not saved/.test(formText), { put: put.status(), saved, formText: formText.slice(0, 200) });
   const answer = await put.json().catch(() => null) as { warning?: unknown } | null;
@@ -192,12 +195,20 @@ try {
     && (lics.body?.licences ?? []).some((l: { staffId: string; licenceNumber: string; licensingBody: string }) => l.staffId === OWNER && l.licenceNumber === wrong && l.licensingBody === body.name), [lics.status]);
   // On Licences (the Owner editing a record in the right panel): a wrong shape is saved and the panel stays open with the warning.
   await p.locator(`[data-licence-row="${OWNER}"] [data-licence-change]`).click();
-  await p.locator('[role="dialog"] [data-licence-number]').fill(`${wrong}9`);
+  await p.locator('[role="dialog"] [data-licence-number]').fill(`${wrong}9 `);   // a trailing space: the server keeps it trimmed (review M1)
   const [pput] = await Promise.all([p.waitForResponse((r) => /\/credential$/.test(r.url()) && r.request().method() === "PUT", { timeout: 30_000 }), p.locator('[role="dialog"] [data-licence-save]').click()]);
   const panelWarn = await p.locator('[role="dialog"] [data-licence-warning]').innerText({ timeout: 10_000 }).catch(() => "");
   await shot(p, "w6-licences-panel-warning-1440");
   ok("R1.92 W6: on Licences, the Owner's save of a wrong-shape number is saved (200) and the panel stays open with the warning on the number field",
     pput.status() === 200 && /doesn.t look like/i.test(panelWarn) && sql(`select licence_number from platform_staff_credential where staff_id = '${OWNER}'`) === `${wrong}9`, { status: pput.status(), panelWarn });
+  // Review M1: the panel's record is the stored one, so correcting the number saves (no false "Someone else changed this
+  // licence") and the panel closes.
+  const good = `R${String(100000 + (Date.now() % 900000)).slice(-6)}`;
+  await p.locator('[role="dialog"] [data-licence-number]').fill(good);
+  const [gput] = await Promise.all([p.waitForResponse((r) => /\/credential$/.test(r.url()) && r.request().method() === "PUT", { timeout: 30_000 }), p.locator('[role="dialog"] [data-licence-save]').click()]);
+  const closed = await p.locator('[role="dialog"]').waitFor({ state: "detached", timeout: 10_000 }).then(() => true, () => false);
+  ok("R1.92 W6 (review M1): after a warned save of a number with a trailing space, the corrected number saves (no false conflict) and the panel closes",
+    gput.status() === 200 && closed && sql(`select licence_number from platform_staff_credential where staff_id = '${OWNER}'`) === good, { status: gput.status(), closed });
 
   // ------------------------------------------------------------------------------------------ W7 sizes and axe
   for (const width of [400, 1024, 1440]) for (const path of ["/platform/offices", "/account/licence"]) {

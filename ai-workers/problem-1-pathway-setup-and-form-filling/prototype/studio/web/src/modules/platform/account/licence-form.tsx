@@ -78,8 +78,8 @@ export function LicenceForm({ start, save, onCancel, onDirty, saveLabel = "Save 
       <Field label="Licensing body"><Select value={body} onChange={(e) => { setWarning(null); setBody(e.target.value); }} required data-licence-body>
         <option value="" disabled>Choose a body</option>{options(fits, body, label)}</Select></Field>
       {/* The warning sits in the field's own note (linked to the number by aria-describedby), above the usual hint: saved, not
-          refused, so the field is not marked invalid. Announced when it arrives (role="status"). */}
-      <Field label="Licence number" hint={warning ? <><span role="status" className="block text-sm font-medium text-text-warn" data-licence-warning>{warning} It was saved.</span>{HINT}</> : HINT}>
+          refused, so the field is not marked invalid. The status region stays mounted, empty until a warning arrives, so it is announced. */}
+      <Field label="Licence number" hint={<><span role="status" className={warning ? "block text-sm font-medium text-text-warn" : "sr-only"} data-licence-warning={warning ? "" : undefined}>{warning ? `${warning} It was saved.` : ""}</span>{HINT}</>}>
         <Input value={number} maxLength={100} autoComplete="off" spellCheck={false} onChange={(e) => { setWarning(null); setNumber(e.target.value); }} required data-licence-number /></Field>
       <p className="text-xs text-text-muted">The types and the College and the Chambre are from IRCC's IMM 5476 page; a law society marked Sample is not yet read from its own site.</p>
       {error ? <Notice tone="danger" title="Not saved"><span data-licence-error>{error}</span></Notice> : null}

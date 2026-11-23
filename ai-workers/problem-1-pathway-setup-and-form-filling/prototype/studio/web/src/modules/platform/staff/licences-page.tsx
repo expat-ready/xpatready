@@ -44,7 +44,13 @@ function Body() {
     toast.push({ tone: "ok", text: `The licence record for ${editing.name} was saved.` });
     saved.current = editing.staffId; dirty.current = false;
     // PF-4c part 2 (AG-1-34): saved with a soft warning → the panel stays open so the warning shows on the number field.
-    if (answer.warning) { setEditing({ ...editing, start: { ...(editing.start ?? { staffId: editing.staffId, displayName: editing.name, status: "ACTIVE" }), ...(l as Licence) } }); return { warning: answer.warning }; }
+    // Its start is the record as stored (read again, review M1): the server keeps the number trimmed, so the typed words would
+    // make the next save look like someone else's change.
+    if (answer.warning) {
+      const stored = List.parse(await staffApi("/platform/licences")).licences.find((r) => r.staffId === editing.staffId) ?? null;
+      setEditing({ ...editing, start: stored });
+      return { warning: answer.warning };
+    }
     setEditing(null);
   };
   return (
