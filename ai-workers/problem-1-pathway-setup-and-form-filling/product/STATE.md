@@ -2,7 +2,7 @@
 
 current_lead: local_878222c4-fe82-4451-820a-23a2e9705557 Lead 9 · 23 Nov 21:49 IST (took over from Lead 8 (local_9c46a890) at ~381k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 22:11 IST: Lead 9, check e84192af. MERGED since 21:49: #3215, #3183, #3191. Lead reads posted and full runs asked: #3180 5710b4103 (45217712959), #3185 c1d7da393, #3195 7e12f1222; #3189 45215337825 running. #3174 round 11 running (I6 fails at seed 337, lane reading). In queue: #3222, #3037, #3257.
+updated: 2026-11-23 22:20 IST: Lead 9. Merged 22:12: #3222 #3037 #3257; R1.23 automatic proof PASS on 955fd15b3 (45219450747), qa row owed. #3174: round 12 choice (b) allowed. #3189 red is its own (plat_data_request.person_id not classified). #3173: no lane (session unreachable), start waits on him. Still owed: rows for #3179 #3193 size, records #2332 #2896 #3030, #2459.
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -24,6 +24,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A330 | 23 Nov ~21:08 (typed to Lead 8) | agrees the three test points (keep main working; stay on GitHub, 'secret commands' heard as three at once; 'AWS only while busy': differs from mine, not read as AWS spend); implement; when does real product work start; keep me honest, are we drifting? | answered in chat 21:1x; point 2 is one small PR after Pilot A repeats; any AWS spend still needs his figure |
 | A331 | 23 Nov ~22:0x (typed to Lead 8, relayed; confirm with him before acting outward) | on the AWS pilots: "you have to think that AWS is solving this problem, right? Even not as efficiently as GitHub, right? Even 80% of that, then I'm okay because it will give me a lot of privacy." Also asked the AWS cost; then "Yes, cap US$10" (pressed in Lead 8: one fair test with retries) | Lead 8 holds that test, NOT launched; Lead 9 launches nothing. Midnight proposal to be redone on privacy first, 80% good enough: same suites with --retry on both, r1c cause (Lead 8: perhaps the kit, not confirmed), set-up time, daily cost, private date. Repository is public today; product machines first |
 | A332 | 23 Nov ~22:0x (pressed in Lead 8, relayed) | to "stop operating-system work and go product-first until 29 Nov?": "Keep both" | lifts Lead 8's "no new tooling" hard stop; names no item, order or spend. Lead 9 ruling: product first in every queue and full-run slot, tooling beside it; proven a day at 07:00 and 19:00 |
+| A333 | 23 Nov ~22:2x (pressed in Lead 8, relayed) | "Yes, run it" to the three-day plan (notes folder local_f2d41d71, three-day-plan-lead8 and the-26-parts-map files) | plan only: no AWS spend, private switch, settings or session start; session starts wait for his words here. Lead 9: pipeline, lanes, the 28; Lead 8 read-only drafts |
 | A328, A329 | 23 Nov | A328 in force (scope line above); A329 pilots, answered: word for word `history/STATE-2026-11-23-lead8-ask-rows-A324-A327.md` |
 | A324-A327 | 23 Nov | pilots, "Yes, land as one" (P-811), safe clean-up (A328 approves): word for word `history/STATE-2026-11-23-lead8-ask-rows-A324-A327.md` |
 | A316, A319, A321, A323 | 23 Nov | A316 visual plan owed; the rest answered or recorded | word for word: `history/STATE-2026-11-23-lead6-older-ask-rows-A316-A323.md` |
