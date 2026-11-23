@@ -86,7 +86,7 @@ try {
   @Module({ controllers: [PlatformIdentityController, ...invoicesFeature.controllers, ...readsFeature.controllers, ...refundsFeature.controllers] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
-  ok("setup: the reads feature registers its two controllers and its two services", readsFeature.controllers.length === 2 && readsFeature.controllers[0] === InvoiceReadsController && readsFeature.providers.length === 2);
+  ok("setup: the reads feature registers its three controllers and its three services (part 3 adds the party search)", readsFeature.controllers.length === 3 && readsFeature.controllers[0] === InvoiceReadsController && readsFeature.providers.length === 3);
   const call = async (token: string | undefined, method: string, path: string, body?: unknown): Promise<Res> => {
     const r = await fetch(`${base}/api${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
     const t = await r.text(); let b: unknown = t; try { b = JSON.parse(t); } catch { /* text */ } return { status: r.status, body: b };
