@@ -31,9 +31,10 @@ const UNKNOWN = "00000000-0000-4000-8000-000000000000";
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 0x1f, 0x15, 0xc4, 0x89]);
 
 type Link = { url: string; expires_at: string; media_type: string; file_name: string; size_bytes: number; uploaded_at: string; scan: string; contains_scripts: boolean };
+const PREVIEWS = "/api/runtime/document-previews/";   // GET /runtime/document-previews/:token (named for the graph)
 const link = (doc: string, actor: string) => call("POST", `/runtime/documents/${doc}/preview-link`, {}, actor);
-const fetchBytes = async (url: string, actor: string) => {
-  const res = await fetch(`http://127.0.0.1:${PORT}${url}`, { headers: { "x-actor": actor } });
+const fetchBytes = async (url: string, actor: string, method = "GET") => {
+  const res = await fetch(`http://127.0.0.1:${PORT}${url}`, { method, headers: { "x-actor": actor } });
   const h = (n: string) => res.headers.get(n) ?? "";
   return { status: res.status, bytes: Buffer.from(await res.arrayBuffer()), type: h("content-type"), nosniff: h("x-content-type-options"), csp: h("content-security-policy"), disposition: h("content-disposition"), cache: h("cache-control") };
 };
@@ -62,6 +63,10 @@ await main("CS-D5 preview", "short-lived single-use nameless link, the download'
   ok("CS-D5 DW1 pass: the officer gets a link for the PDF, with its type, name, size, upload date and its scan state said as it is (NOT_SCANNED while case files have no scan, never a false CLEAN)", r.status === 200 && l.media_type === "application/pdf" && l.file_name === name && l.size_bytes > 0 && !!l.uploaded_at && l.scan === "NOT_SCANNED" && typeof l.contains_scripts === "boolean", r.body);
   let b = await fetchBytes(l.url, OFFICER);
   ok("CS-D5 DW1 pass: its bytes come inline with nosniff, the CSP sandbox and no-store", b.status === 200 && b.type.startsWith("application/pdf") && b.nosniff === "nosniff" && /sandbox/.test(b.csp) && /default-src 'none'/.test(b.csp) && b.disposition.startsWith("inline") && /no-store/.test(b.cache) && b.bytes.subarray(0, 5).toString() === "%PDF-", [b.status, b.type, b.csp, b.disposition, b.cache]);
+  ok("CS-D5 DW1 fail: a plain PDF is not flagged as containing scripts", l.contains_scripts === false, l.contains_scripts);
+  r = await upload(PORT, `/runtime/cases/${c.id}/documents`, Buffer.concat([textPdf(["Sample synthetic form with a script"]), Buffer.from("\n% /OpenAction << /S /JavaScript /JS (Sample) >>\n", "latin1")]), "form-sample.pdf", OFFICER, { subjectId: c.caseSubject, documentType: "letter_of_invitation" });
+  const scripted = r.status === 201 ? (await link(r.body?.document?.id as string, OFFICER)).body as Link : null;
+  ok("CS-D5 DW1 pass: a PDF carrying /OpenAction /JavaScript is flagged contains_scripts (PF-F4's byte scan)", scripted?.contains_scripts === true, [r.status, scripted?.contains_scripts]);
   const png = (await link(pngDoc, OFFICER)).body as Link;
   const pb = await fetchBytes(png?.url ?? "/", OFFICER);
   ok("CS-D5 DW1 pass: a clean PNG gets a link and its bytes as image/png", png?.media_type === "image/png" && pb.status === 200 && pb.type.startsWith("image/png") && pb.bytes[1] === 0x50, [png, pb.status]);
@@ -76,9 +81,13 @@ await main("CS-D5 preview", "short-lived single-use nameless link, the download'
   b = await fetchBytes(fresh, OTHER_FIRM);
   ok("CS-D5 DW2 fail: another firm's person gets 404 for the link", b.status === 404, b.status);
   if (colleague) { b = await fetchBytes(fresh, colleague); ok("CS-D5 DW2 fail: another staff member of the same firm gets 404 for the link", b.status === 404, b.status); }
+  const junk = await call("GET", `/runtime/document-previews/${"x".repeat(20)}.${"y".repeat(43)}`, undefined, OFFICER);
+  ok("CS-D5 DW2 fail: a made-up token → 404 in the download's words", junk.status === 404, junk.status);
+  b = await fetchBytes(fresh, OFFICER, "HEAD");
+  ok("CS-D5 DW3 fail: HEAD is refused (405) and does not use the single-use link up", b.status === 405, b.status);
   const altered = fresh.replace(/.$/, (ch) => (ch === "A" ? "B" : "A"));
   b = await fetchBytes(altered, OFFICER);
-  ok("CS-D5 DW2 fail: the link with one character altered → 404", b.status === 404, b.status);
+  ok("CS-D5 DW2 fail: the link with one character altered → 404, not kept by any cache, no bytes' headers", b.status === 404 && /no-store/.test(b.cache) && b.nosniff === "nosniff" && !b.disposition, [b.status, b.cache, b.disposition]);
   b = await fetchBytes(fresh, OFFICER);
   ok("CS-D5 DW2 pass: inside its life the link answers 200 for its own person (after the refused tries)", b.status === 200, b.status);
   const signer = new PreviewLinks("csd5-check-key"), t0 = Date.parse("2026-11-23T10:00:00Z");
@@ -98,5 +107,5 @@ await main("CS-D5 preview", "short-lived single-use nameless link, the download'
   // ---- DW5 nothing that names anyone in the URL
   const u = ((await link(pdfDoc, OFFICER)).body as Link).url, readable = Buffer.from(u.split("/").pop()!.split(".")[0] ?? "", "base64url").toString("utf8");
   const names = [f.firm?.name, "Sample Client A", "passport-scan", name, c.id].filter(Boolean) as string[];
-  ok("CS-D5 DW5 pass: the link is under /api/runtime/document-previews/ and names no firm, person, file or case", u.startsWith("/api/runtime/document-previews/") && names.every((n) => !u.includes(n) && !readable.includes(n)), [u.slice(0, 60), readable.slice(0, 80)]);
+  ok("CS-D5 DW5 pass: the link is under /api/runtime/document-previews/ and names no firm, person, file or case", u.startsWith(PREVIEWS) && names.every((n) => !u.includes(n) && !readable.includes(n)), [u.slice(0, 60), readable.slice(0, 80)]);
 });

@@ -8,7 +8,7 @@
 // when PF-F3 lands (Lead 10's ruling on #3188): case files have no scan state yet, so the answer says NOT_SCANNED and
 // never claims CLEAN. Files are read as they are stored today, through the download's own read path.
 // The signer is `case-preview-links.ts` (pure).
-import { Controller, Get, Headers, HttpCode, HttpStatus, Inject, Injectable, Param, Post, Res } from "@nestjs/common";
+import { Controller, Get, Head, Headers, HttpCode, HttpStatus, Inject, Injectable, Param, Post, Res } from "@nestjs/common";
 import type { Response } from "express";
 import { CaseDocuments } from "./case-documents.ts";
 import { PREVIEW_PATH, PreviewLinks } from "./case-preview-links.ts";
@@ -37,13 +37,14 @@ export class DocumentPreviews {
       uploaded_at: x.document.uploadedAt.toISOString(), scan: SCAN_STATE, contains_scripts: found.ok ? found.activeContent.length > 0 : false };
   }
 
-  /** GET /runtime/document-previews/:token: the token's asker, unaltered, unexpired and unused; the case reached again
-   *  (AG-9-53: every read path); the bytes as the download checks them. Every refusal is the download's 404. */
+  /** GET /runtime/document-previews/:token: the token unaltered, unexpired and unused (checked first, before any
+   *  database read), then the case reached again (AG-9-53: every read path), then the token's asker and firm. Staff who
+   *  may not use it get the download's 404; a client or the configuration author gets the download's 403 (BR-4). */
   async bytes(actor: Actor, token: string) {
-    const claim = this.links.claims(token);
-    if (!claim) fail(GONE, HttpStatus.NOT_FOUND);
-    const x = await this.docs.reachDocument(actor, claim!.documentId);
-    const now = this.clock.now(), t = this.links.check(token, x.workspaceId, actor.id, now);
+    const now = this.clock.now(), v = this.links.verify(token, now);
+    if ("refused" in v) fail(GONE, HttpStatus.NOT_FOUND);
+    const x = await this.docs.reachDocument(actor, (v as { document: string }).document);
+    const t = this.links.check(token, x.workspaceId, actor.id, now);
     if ("refused" in t || t.document !== x.document.id) fail(GONE, HttpStatus.NOT_FOUND);
     const ok = t as { mac: string; exp: number };
     if (!this.links.consume(ok.mac, ok.exp, now)) fail(GONE, HttpStatus.NOT_FOUND);
@@ -58,10 +59,13 @@ type H = string | undefined;
 export class DocumentPreviewsController {
   constructor(@Inject(DocumentPreviews) private readonly x: DocumentPreviews) {}
   @Post("documents/:id/preview-link") @HttpCode(200) link(@Headers("x-actor") a: H, @Param("id") id: string) { return this.x.link(actorOf(a), id); }
+  /** HEAD would use the single-use link up with no bytes sent (Express answers HEAD on a GET route): refused. */
+  @Head("document-previews/:token") head(@Res() res: Response) { res.status(HttpStatus.METHOD_NOT_ALLOWED).setHeader("allow", "GET"); res.end(); }
   @Get("document-previews/:token") async bytes(@Headers("x-actor") a: H, @Param("token") token: string, @Res() res: Response) {
+    res.setHeader("cache-control", "private, no-store"); res.setHeader("x-content-type-options", "nosniff");   // refusals too
     const f = await this.x.bytes(actorOf(a), token);
     // The download's four headers (case-documents.ts file route): inline, its own type, no sniffing, no scripts, not kept.
-    res.setHeader("content-type", f.media); res.setHeader("x-content-type-options", "nosniff"); res.setHeader("content-security-policy", "default-src 'none'; sandbox");
-    res.setHeader("cache-control", "private, no-store"); res.setHeader("content-disposition", `inline; filename*=UTF-8''${encodeURIComponent(f.name)}`); res.end(f.bytes);
+    res.setHeader("content-type", f.media); res.setHeader("content-security-policy", "default-src 'none'; sandbox");
+    res.setHeader("content-disposition", `inline; filename*=UTF-8''${encodeURIComponent(f.name)}`); res.end(f.bytes);
   }
 }

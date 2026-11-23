@@ -13,7 +13,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type Refused = { refused: "invalid" | "expired" | "used" };
 
 /** Short-lived single-use tokens for (workspace, the asker, the document). The readable part holds ids only: never a
- *  firm's, a person's or a file's name (DW5). Used tokens are kept in memory until they expire (one process). */
+ *  firm's, a person's or a file's name (DW5). Used tokens are kept in memory until they expire: single use holds for ONE process. Before a deploy with more than
+ *  one task (deploy/cdk MIN_TASKS = 2), used tokens move to a table with a unique key and the key to PF-24 settings
+ *  (reviewer and breaker, #3188). */
 export class PreviewLinks {
   private readonly macKey: Buffer;
   private readonly used = new Map<string, number>();   // token MAC → expiry (s)
@@ -25,20 +27,27 @@ export class PreviewLinks {
     return { token: `${body}.${this.mac(body)}`, expiresAt: new Date(exp * 1000).toISOString() };
   }
 
-  /** The document a token names for this asker, or why not. Does not use it up: `consume` does. */
-  check(token: string, workspaceId: string, actorId: string, nowMs: number): { document: string; mac: string; exp: number } | Refused {
+  /** A token's own claims when it is unaltered, unexpired and unused, or why not: checked before any database read.
+   *  Does not use it up: `consume` does. */
+  verify(token: string, nowMs: number): { workspace: string; actor: string; document: string; mac: string; exp: number } | Refused {
     const m = /^([A-Za-z0-9_-]{1,600})\.([A-Za-z0-9_-]{43})$/.exec(token ?? "");
     if (!m) return { refused: "invalid" };
     const want = Buffer.from(this.mac(m[1]!)), got = Buffer.from(m[2]!);
     if (want.length !== got.length || !timingSafeEqual(want, got)) return { refused: "invalid" };
     let p: { w?: unknown; a?: unknown; d?: unknown; e?: unknown };
     try { p = JSON.parse(Buffer.from(m[1]!, "base64url").toString("utf8")); } catch { return { refused: "invalid" }; }
-    if (typeof p.w !== "string" || typeof p.a !== "string" || typeof p.d !== "string" || typeof p.e !== "number") return { refused: "invalid" };
-    if (p.w !== workspaceId.toLowerCase() || p.a !== actorId.toLowerCase()) return { refused: "invalid" };
-    const now = Math.floor(nowMs / 1000);
-    if (now >= p.e) return { refused: "expired" };
+    if (typeof p.w !== "string" || typeof p.a !== "string" || typeof p.d !== "string" || typeof p.e !== "number" || !UUID.test(p.d)) return { refused: "invalid" };
+    if (Math.floor(nowMs / 1000) >= p.e) return { refused: "expired" };
     if (this.used.has(m[2]!)) return { refused: "used" };
-    return { document: p.d, mac: m[2]!, exp: p.e };
+    return { workspace: p.w, actor: p.a, document: p.d, mac: m[2]!, exp: p.e };
+  }
+
+  /** The document a token names for this asker in this workspace, or why not. Does not use it up. */
+  check(token: string, workspaceId: string, actorId: string, nowMs: number): { document: string; mac: string; exp: number } | Refused {
+    const v = this.verify(token, nowMs);
+    if ("refused" in v) return v;
+    if (v.workspace !== workspaceId.toLowerCase() || v.actor !== actorId.toLowerCase()) return { refused: "invalid" };
+    return { document: v.document, mac: v.mac, exp: v.exp };
   }
 
   /** Marks a checked token used; false when another request used it first (single use, concept M2). */
@@ -48,12 +57,6 @@ export class PreviewLinks {
     if (this.used.has(mac)) return false;
     this.used.set(mac, exp);
     return true;
-  }
-
-  /** The workspace and asker a token claims, read before the reach check (still verified by `check`). */
-  claims(token: string): { workspaceId: string; documentId: string } | null {
-    try { const p = JSON.parse(Buffer.from((token ?? "").split(".")[0] ?? "", "base64url").toString("utf8")) as { w?: unknown; d?: unknown };
-      return typeof p.w === "string" && typeof p.d === "string" && UUID.test(p.d) ? { workspaceId: p.w, documentId: p.d } : null; } catch { return null; }
   }
 
   private mac(body: string) { return createHmac("sha256", this.macKey).update(`case-preview-link:${body}`).digest("base64url"); }
