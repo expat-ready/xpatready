@@ -144,3 +144,37 @@ Diff `9d717c8ec..68c32637c`: step 5 (the breaker's F1–F6) and step 6 (my round
 Verdict: Block
 
 Reviewer: Block 68c32637c62bdd9133933f58f7836a99f37ac6b4
+
+---
+
+## Round 3 (23 Nov 2026): commit 5a8665e8f0630c04f9407e5327bc843f457496d9
+**Verdict: Approve.** No Blocker or Major is open.
+
+**What I ran**
+* `check_pf10a_import_schema.ts`: **82 passed, 0 failed**.
+* `check_prisma_schema` 8/8, `check_pf12_walls` 110/110, `check_pf8b_f4_migrations` 9/9.
+* The rollback removes every `plat_import`/`pf_import` object, including `PlatImportRowPhase`, and the migration re-applies cleanly.
+
+**PF-10b's flow, replayed as `xr_app` in firm A's session on a scratch database (dropped):**
+* The dry run stores its preview with phase DRY_RUN: a CREATE with no record yet, a MERGE naming its match with no before-image, a SKIP naming its match, an ERROR with reasons.
+* A mapping change with the same hash is refused. A redone dry run deletes and rewrites the preview and sets a new hash.
+* The attestation is set, then the batch moves to RUNNING; the preview is kept beside the run.
+* The run writes its rows with phase RUN, one transaction each. A CREATE names its record and a MERGE carries its before-image. A resumed row 2 with `ON CONFLICT DO NOTHING` writes nothing.
+* The run reaches COMPLETED, then UNDOING. A resumed undo stays in UNDOING, then moves to UNDONE.
+* A second batch with one record created cannot end FAILED (`finish_shape`). It ends PARTIAL, then UNDOING, then UNDONE.
+* Refused, as intended:
+  * deleting the preview while RUNNING;
+  * a RUN row after COMPLETED;
+  * firm B's id in firm A's session;
+  * `xr_app` calling the trigger function directly.
+
+**M3 is resolved** by option (a). R2-F1, m6 (rows follow the batch state under `FOR SHARE`), m7 and m8 are resolved too.
+
+**Notes for PF-10b (not findings)**
+* The attestation must be set in an update before the move to RUNNING, not in the same update. Two statements in one transaction are fine.
+* Every RUN row insert takes `FOR SHARE` on the batch. If parallel workers each insert a row and then update the batch counts in the same transaction, two of them can deadlock. Run the rows from one worker, or lock the batch `FOR UPDATE` before inserting.
+* The counts must be final before or in the finishing update.
+
+Verdict: Approve
+
+Reviewer: Approve 5a8665e8f0630c04f9407e5327bc843f457496d9
