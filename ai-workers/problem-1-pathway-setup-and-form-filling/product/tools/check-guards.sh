@@ -237,7 +237,9 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 761 quiet|product/tools/branch-sweep.sh|/^  \[ "\$t" -ge "\$recent" \] .. continue$/d|check-branch-sweep.sh
 761 one|product/tools/branch-sweep.sh|s/^  stale=\$((stale + 1)); echo "\$b: /  stale=$((stale + 1)); echo "ACT   \$b: /|check-branch-sweep.sh
 761r req|product/tools/queue-red.py|s/n for n in f if n in req/n for n in f/|check-queue-red.sh
-761r ci|product/tools/queue-red.py|s/ . MERGIFY$//|check-queue-red.sh'
+761r ci|product/tools/queue-red.py|s/ . MERGIFY$//|check-queue-red.sh
+761r ready|product/tools/queue-red.py|s/, "completes-ready"}/}/|check-queue-red.sh
+761r skel|product/tools/queue-red.py|s/, "skeleton"//|check-queue-red.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 jsparse() { node --check "${@: -1}"; }   # "$sh -n FILE" for a .js (guard 36: app-view.js; bash -n cannot read JavaScript)
 MUT="$MUT"'

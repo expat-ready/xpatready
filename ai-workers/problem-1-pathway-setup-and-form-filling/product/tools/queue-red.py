@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """lead-watch.sh step 2, the queue (ENF-761 part 3): open PRs (gh pr list --json number,title,labels,isDraft,headRefName,
 statusCheckRollup) on stdin; prints the queue line, one ACT per dequeued PR, and one ACT per labelled PR whose head has a
-FAILED REQUIRED check (--required, comma list: the ruleset's required checks read by lead-watch.sh), plus MERGIFY: ci,
-and xfa-engine, which .mergify.yml's queues require for engine PRs and which runs only on those (review on #2475).
+FAILED REQUIRED check (--required, comma list: the ruleset's required checks read by lead-watch.sh), plus MERGIFY: every
+check a queue_rules condition of .mergify.yml names: ci; xfa-engine (engine PRs, review on #2475); skeleton (the
+product queue's skeleton paths); completes-ready (the product queue holds a PR whose readiness gate failed, #2738).
+check-queue-red.sh reads .mergify.yml and fails when a queue check is missing here (ENF-772).
 A labelled PR red only on other checks (module-cards, walks, CodeQL, pr-rules while not required) gets one info line,
 no ACT: Mergify queues it all the same (20 Nov: 3 of 7 "red after approval" PRs were queued, red only on such checks).
 queue-fresh (required for prototype PRs) is renewed by queue-gate re-running ci, so it stays an info line.
@@ -10,7 +12,7 @@ Test: check-queue-red.sh."""
 import argparse, json, sys
 
 FAILED = {"FAILURE", "TIMED_OUT", "ERROR", "STARTUP_FAILURE"}
-MERGIFY = {"ci", "xfa-engine"}   # .mergify.yml queue conditions: check-success = ci; = xfa-engine for engine paths
+MERGIFY = {"ci", "xfa-engine", "skeleton", "completes-ready"}   # .mergify.yml queue_rules: check-success = ci, xfa-engine, skeleton; -check-failure = completes-ready
 
 
 def failed(p):
