@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 08:5x IST 23 Nov:** quiet. #3065 queued; #3165 dequeued, full run going. #3033 FO-7t part 1 tests-only since 10:50 UTC 22 Nov (lane may be idle; flagged to Lead 9). #3155 draft.
+
 **Lead B 2 pass, 08:2x IST 23 Nov:** #3065 FO-6 part 3 bypass move re-read OK 0c41fa139; queued with #3165 PF-Fw. FO-5d lane text sent (after #3065; replaces the webhook bypass). qa asks answered: R1.76 person timeline = CS-NT1t (BACKLOG line 1086, in scope, after CS-NT1 part 3); j_58 data fix → fresh qa lane. qa verdicts: R1.58, R1.76, R1.65, R1.56, R1.29 Partial.
 
 **Lead B 2 pass, 07:5x IST 23 Nov:** **#3156 FO-7g part 3 merged** (02:23 UTC). #3165 PF-Fw Lead B read OK 24d0691f9 (note for PF-11's brief: the export archive may outgrow the 25 MB port cap). #3065 FO-6 part 3 ready, needs the Lead's read and label; FO-5d after it. #3155 PF-17 part 1 draft.
