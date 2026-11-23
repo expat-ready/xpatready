@@ -224,3 +224,10 @@ Read by me today: nothing new. A combined read that included the repository's se
 | 2 a lane held to one repository | **not met, untested** | one EMPTY repository (a name and nothing in it); a lane limited to this repository tries to read it, then a lane limited to it tries to read this one's settings | founder creates it; Lead starts the lane | refused both ways, refusal text recorded |
 | 3 $300 included | met (unused) | re-read the billing page on the day | Lead | figure and date |
 Order: 2, 1, 3. Estimate 1-2 h once the founder has acted (Lead O's, unmeasured). Check 2 needs the empty repository, so it asks the founder for that one step before the checks have passed; his words were "after the three checks pass". **That conflict is his to settle.** If 2 fails, nothing private is made.
+
+## Lead O 2 state, 18:19 IST 23 Nov (Lead 6 is local_f2d41d71)
+* **Owed, not before the tooling list lands (Lead 6):** one small PR, report-only ACT lines: two batches red on one suite with the same first FAIL line; main red on two runs, naming the fix PR (product files included). No ejection, no queue hold.
+* **Owed:** red-batch re-measure, 24 Nov 13:22 IST; PR for claude/lead-o2-focus-waits 9b138d265 (not run; waits for the pause to end); database time inside suites, 25 Nov.
+* **Pilot A** done: 3 suites at once on 4 CPUs, no red in 3 runs, 2.3 times less wall time; 4 at once red each time; one shard only (claude/lead-o2-pack 49e51683c, run 45169056072). **Pilot B:** run by Lead 5, not by me.
+* #2590, read by 18:14: full run 45170135484 green on c836593b6; labelled and in batch 45175362581 (not read to its end).
+* Never merge: claude/lead-o2-guards-parts, claude/lead-o2-pack. The measurement notes (CI minutes, red batches, slowest suites, repeat-fault design) are in the Mac notes folder local_6cdede15; private-sync carries them.
