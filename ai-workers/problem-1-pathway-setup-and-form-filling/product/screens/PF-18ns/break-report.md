@@ -96,4 +96,23 @@ Re-checked only my findings, on a freshly built copy `pf18nsbrk` on :4751 (stopp
 * Fix: when the row is gone, focus the next row (or the previous one), otherwise the list. When the list is empty, make the empty line (or the heading) `tabIndex=-1` and focus it. For example, pass `onMarked` from `AllBody` so that it chooses the target after the refetch.
 * Fail test: All page → Unread. Keyboard Mark read on row 1, expect `activeElement` to be the new row 1 (or inside the list), not `BODY`. Keyboard Mark all read on Unread, expect focus on the "No unread notifications." line or the heading.
 
-Verdict: Changes c4b62d0aeab5ab076eab5cc34fd6a5814cd73376
+Round 2 verdict: Changes c4b62d0aeab5ab076eab5cc34fd6a5814cd73376
+
+## Round 3 (head `49aeb7896a8ea08eeafe0d8f2862ef0011e4b009`, focus fixes only: `useListFocus`)
+Re-ran the round-2 focus probes on a freshly built copy `pf18nsbrk` on :4751 (stopped at the end). Scratchpad `breaker18ns/r3.ts`, `r3b.ts`; outputs `r3.out`, `r3b.out`. **Result: 0 Blockers, 0 Majors, 1 Minor (m9).**
+* **Held:**
+  * In the Unread filter, keyboard Mark read on row 1 puts focus on the new row 1; on row 6, the new row 6; on the last row, the row before it.
+  * A failed Mark read (routed 500) says "Could not mark this read." and returns focus to its own Mark read button.
+  * Mark all read in the Unread filter puts focus on the "No unread notifications." line; in the All filter, on row 1.
+  * In the panel, Mark read and Mark all read keep focus on a row inside the dialog, and Escape returns focus to the bell.
+  * In the All filter, the marked row keeps focus.
+  * A double click on a row still sends 1 POST. No page errors.
+* **m9 (Minor; the rest of M1 is fixed): focus is lost on the page-back after marking the last row of page 2.**
+  * Steps: 26 unread, Unread filter, Next to page 2 (1 row), then keyboard Mark read.
+  * Evidence: the page goes back to page 1 with 25 rows (m3 holds), but `activeElement` is `BODY` in 4 of 4 runs (`r3b.out` `pageBack`). It lands on a row only when page 1's fetch is slowed by 2 s (`r3.out` `pageBackSlow`).
+  * Cause: on the empty page 2, `useListFocus` counts as settled and focuses the empty line (`bell.tsx:38`). `all-page.tsx:33` then steps back a page, and the empty line it had focused unmounts. The round-3 fail-first tests do not cover this case.
+  * Fix: pass `settled = false` while `page > 1 && items.length === 0` (the page-back is pending), so the wanted focus waits for page 1's rows and lands on its last row.
+  * Fail test: the steps above, then expect `activeElement` to be a `[data-notification]` row on page 1, not `BODY`.
+  * Severity: a keyboard user meets it once per 25 marks at a page boundary, and focus is never trapped. Minor, and it can be a follow-up.
+
+Verdict: Approve 49aeb7896a8ea08eeafe0d8f2862ef0011e4b009
