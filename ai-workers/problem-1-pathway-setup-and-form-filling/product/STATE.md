@@ -2,7 +2,7 @@
 
 current_lead: local_f2d41d71-f0b2-4c38-87ac-53b3fcfa604a Lead 6 · 23 Nov 16:57 IST (took over from Lead 5 (local_6cdede15) at ~336k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 17:30 IST: #2590 head c836593b6: guards 4/4 green (11.5 to 19.5 min), Lead 6 read 36c342a2b..c836593b6 (line not posted until the Approve), `/run full` at 17:27 REFUSED (no Approve line for the head on the PR); sprint (b) asked 17:32 to post it, then /run full again. #3254 Approve 0af19d4c9, held: conflicts with #2590, merges main after it. #3174 round 4 running. #3180 #3185 await a size ruling. CS-MV2 ruled Major
+updated: 2026-11-23 17:28 IST: #2590 head c836593b6: guards 4/4 green (11.5 to 19.5 min), Lead 6 read 36c342a2b..c836593b6 (line not posted until the Approve), `/run full` at 17:27 REFUSED (no Approve line for the head on the PR); sprint (b) asked ~17:28 to post it, then /run full again. #3254 Approve 0af19d4c9, held: conflicts with #2590, merges main after it. #3174 round 4 running. #3180 #3185 await a size ruling. CS-MV2 ruled Major
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
