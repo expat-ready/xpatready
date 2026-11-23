@@ -45,4 +45,46 @@ Tampering is exactly what this check exists to catch, yet in these cases it reco
 ## Not checked
 "read by AI / read by rules" and "previewed" lines: not built here, and #3188 is not merged. Several current files on one line (C6.15 sets): no set line exists on the Visitor visa, so the case of N inline sign-in cards in one dialog was not exercised.
 
-Verdict: Changes
+Round 1 verdict: Changes
+
+## Round 2 (05a75191e, diff `bb13effa0..05a75191e` only)
+
+Fresh isolated copy `brk_csd6` on :4488 at 05a75191e; the web bundle is rebuilt at start. The PR's suite gives 22/22. Each round 1 repro was re-run with curl, psql and Playwright. The copy was stopped at the end. m5 (rate limit) and m6 (index) were set aside by the coordinator and are not re-reported.
+
+**M1 fixed.** Round 1 setup: Case manager without `view.all`, holding the access-log key, on no team.
+- user-T, `GET /reads` and `POST /check-unchanged`: both 404 "No such document." (the same words as an unknown id). No line is written.
+- The positive own-cases paths work: on the team by actor id 200; on the team by staff id 200; as file owner 200.
+- Removing access works: team row ended 404; file owner cleared 404; neither view key 404.
+- The other firm gives 404 with and without a valid cursor. When the role's keys change, the old token gets 401.
+
+**m1 fixed.** Round 1 repro: 48 newer lines, then three lines in one millisecond (.123456, .123400, .123300), plus 60 lines in the same microsecond with no firm.
+- Pages of 50 + 50 + 15 = 115, every line once, equal to the database count.
+- Exactly 50 tied lines: one page, `next: null`. 51 tied lines: 50 + 1.
+- These cursors give 400: another document's line, the other firm's line about this document, this document's "uploaded" line (not a read), an unknown uuid, the round 1 timestamp format, SQL-like text, a repeated `before`, unicode.
+- An upper-case cursor id is accepted.
+
+**m2 fixed.** Each of these answers 200 "found changed", `found_sha256: null`, line "it cannot be read": missing file, a directory.
+- 3 GiB sparse file: 200 "found changed" with its hash (9.2 s). A `GET /reads` during it took 28 ms, so the server is no longer blocked.
+- 30 concurrent checks: 30 × 200, 30 lines, one page of 31.
+
+**m3 fixed.** Keyboard only at 1440 px:
+- Focus lands on "Check the file is unchanged" after the inline sign-in, and stays there after Enter (1 POST).
+- A second click and an Enter while the check runs send no second POST.
+- "Show older" keeps focus while loading. After the last page, focus goes to the first new line (index 50 of 77).
+- axe finds 0 violations; at 390 px, 356 = 356, no sideways scroll.
+
+**m4 fixed.** A sign-in elsewhere during a delayed check shows "You signed in on another device. Sign in again to check the file or see who read it." above the card. Signing in again removes the notice and focuses Check. A Case officer still sees no "Read by". A refused clipboard shows its words visibly.
+
+**New, Minor:**
+- **r2-m1 (Minor): the streamed hash has no size cap and no time limit.** `hashOf` (`api/src/case-document-reads.ts`, `createReadStream` with no limit) reads until the stream ends.
+  1. Replace a stored file with a FIFO (`mkfifo <stored path>`) and press Check: the request never answers (curl gave up at 15 s) and no line is written.
+  2. Replace it with a symlink to `/dev/zero`: the request never answers, and the server keeps hashing at about 250 % CPU after the client has gone. Each further call adds another endless read.
+
+  This needs someone to tamper with storage, the same threat as m2. Expected: stop after `size_bytes + 1` bytes (or a time limit) and record "found changed". The server stays responsive (GET 34 ms meanwhile).
+- **r2-m2 (Minor): a 401 mid-check drops focus to the dialog container.** The Check button unmounts as the sign-in card appears, and focus lands on `div[role=dialog]` (WCAG 2.4.3). Expected: focus on the notice or the card's first field. Steps: Owner, delay `check-unchanged`, sign in as user-R elsewhere, then wait for the 401.
+- **r2-m3 (Minor, words): the dialog says "missing" for any file that cannot be read.** For a file that is unreadable but present (a directory), the dialog still says "The stored file is missing." (`document-reads.tsx`, `found_sha256` null). The audit line now says "it cannot be read". The two should use the same words.
+- **Nit (not counted):** two `click()` calls in one JavaScript task send 2 POSTs. The busy guard reads React state (`if (busy) return` after `setBusy`), not a ref. Real double-clicks and key repeats were guarded.
+
+No Major or Blocker remains in the round 2 diff.
+
+Verdict: Approve
