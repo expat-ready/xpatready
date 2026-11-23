@@ -81,3 +81,29 @@ Journey score (round 1: 7.5/10): J7, retry after a 500, now holds. Feedback and 
 No open Blocker or Major.
 
 Verdict: Approve 0cda0efbf27edd1f545f039b021f53fea45ca3a5
+
+## Round 3 (23 Nov 2026): head 18d790159d07f7f4ef546934421a22d452151dd5, diff only (`c62d4bcb3..18d790159`)
+
+Scope: the Lead's round-3 line on #3189 allows the re-stamp to `20261123200000` only (Lead 8; Lead B 4's order). One commit since the approved c62d4bcb3. No journey score this round: a folder rename changes nothing a user sees, and the round-2 score (8.75/10) stands.
+
+**(1) The diff holds the rename and nothing else.** `git diff -M --stat` shows 4 files, 3 lines in and 3 out:
+- `prisma/migrations/20261123100000_pf21b_data_requests/migration.sql` becomes `20261123200000_pf21b_data_requests/migration.sql`. Git reads this as a 100% rename; the blob is `040d37abc` at both commits, so the file is byte-identical.
+- One-line stamp swaps in `tests/check_pf21b_requests.ts` (`NEW`), `api/src/platform/MODULE.rows/PF-21b-3.md` and the `platform-register.prisma` comment. Each line is otherwise identical.
+- No other file changes.
+
+**(2) No live reference to the old stamp remains.** `git grep 20261123100000 18d790159 -- …/prototype` finds nothing. Across the whole repository, the only hit is `product/screens/PF-21b-3/break-report.md:4`, a record that stays.
+
+**(3) The stamp is unique and later than everything on main.** After `git fetch`, origin/main is at a2e3d48ed and its newest migration is `20261123140000_csd7c_type_defaults` (#3256). `20261123200000` comes after it and is not used anywhere else. The six duplicate 14-digit prefixes in the folder (20261025090000 … 20261122060000) are also on main, so this PR did not add them. #3180's planned 150000 also sorts before 200000.
+- The branch has not taken in main's `20261123030000` and `20261123140000`. To test the real landing order, I merged in a scratch worktree (`origin/main` + 18d790159). The merge was clean (tree `1c5b18ab8`), and the commit was never pushed or given a ref.
+- On that merge, `check_pf21b_requests.ts` passed 27/27. DW6 reads "own stamp, later than every one before it and unique (newest before: 20261123140000_csd7c_type_defaults)", "right after its own migration, on an empty copy and on a demo-data copy" passed, and `prisma migrate diff` is empty. `check_pf8b_f4_migrations.ts` passed 9/9.
+
+**(4) The suites pass.** In a worktree at 18d790159 (node_modules symlinked; Postgres 18 on 127.0.0.1:54329; never :4400):
+- `check_pf21b_requests.ts`, run 1: 27 passed, 0 failed (newest before: 20261123020000_fo7g3_bill_to_province).
+- `check_pf21b_requests.ts`, run 2: 27 passed, 0 failed.
+- `check_pf8b_f4_migrations.ts`: 9/9. This includes the rule that a later migration's wall-reader hand-over is wrapped in a GRANT and REVOKE of CREATE.
+
+My runs left no scratch databases. Two others exist, `xr_studio_pf21b3_empty_4275` and `xr_studio_pf21b3_demo_4275`, created at 02:09 EST, which is hours before this review. They come from an earlier run that did not finish, not from this round. I left them for the cleanup tool. This is not a finding against the PR. Both worktrees were removed.
+
+No new findings. No open Blocker or Major. Round-2 Minors as recorded.
+
+**Verdict: Approve** 18d790159d07f7f4ef546934421a22d452151dd5
