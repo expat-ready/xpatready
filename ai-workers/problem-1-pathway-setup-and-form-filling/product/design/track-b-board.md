@@ -15,7 +15,7 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 **Reads owed when they leave draft (do not read drafts):** #3234 PF-21d part 1a (after #3189), #3235 part 1b (erasure; after #3234), #3180 CS-D7c, #3207 FO-6d part 1 (after #3065), #3224 part 2. Diff-only re-reads for any moved head above.
 
-**Stamps:** #3178, #3033, #3174 all 20261123030000 (#3178 queued first; the other two re-stamp past main's newest). #3184 050000; #3225 060000. #3189, #3185, #3180 all 20261123100000 (Lead 2: #3189 first; #3185 and #3180 re-stamp; #3180's second folder 110000 follows it). #3207 120000. #3185 and #3189 both edit platform-register.prisma.
+**Stamps:** #3178, #3033, #3174 all 20261123030000 (#3178 queued first; the other two re-stamp past main's newest). #3184 050000; #3225 060000. #3189, #3185, #3180 all 20261123100000 (Lead 2: #3189 first; #3185 and #3180 re-stamp; #3180's second folder 110000 follows it). Two more clashes: 110000 is #3234 and #3180 (second folder); 120000 is #3235 and #3207 (#3224 carries #3207's folder). #3185 and #3189 both edit platform-register.prisma.
 
 **Open facts:**
 * #3065's full run 45115724477 was red only on check_fo3st3_types_browser J-T3, the fault #3208 fixed; it needs a fresh full run. #3155 the same (qa), but its batch also failed sweep, unread.
