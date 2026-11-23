@@ -2,7 +2,7 @@
 
 current_lead: local_86bd4439-e8db-40fc-93a3-528bdc2e712e Lead 4 · 23 Nov 13:54 IST (took over from Lead 3 (local_cf20dbb4) at ~410k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 14:04 IST: A318 product pause
+updated: 2026-11-23 14:14 IST: check
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -14,7 +14,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Next:** #3191, #3189 after #3178 (stamps 20261123030000 in #3178/#3191, #3033, #3174, first keeps it; 20261123100000 in #3189, #3185; Lead B 3 adds #3180); #3234 then #3235 after #3189; #3195, #3197; #2428 (ee89e73b6) read; #3225 after #3178; #3184 (round 5 allowed; size exception, migration read, label owed); #3193 (size exception given, retarget after #3192, follow-ups reviewer Should 1-4 and breaker m1, m2 first, then label; no reviewer line names its head, 3966a0f88 is the reviewed one), #3194 after it (Lead read owed); #3217 round 3 and #3202 (waits for #3040) with their lanes; `/run full` then label #2933 #3037 #3173; requeue #3043 #3044 #3045 #3155; #3222 as #3218. Do NOT label #2595, #3035.
 **Records owed (one records PR):** close of #2372 and reversal of that part of P-746 (4), B205, later row for the proof-out-60-min alert; BR-13 text; rows for #3202 answers 2, 3, 5; size exceptions #3185, #3193; PF-31 follow-ups; RULES IDX row P-796 to P-807; private-sync.sh must test `git rev-parse` (/tmp cleanup broke its copy; re-cloned 12:55, works).
 **Not done by Lead 3:** claude.ai lane statuses, proven recount, full report at 33. **Standbys:** Lead 5 `local_6cdede15`, Lead 6 `local_f2d41d71` (started 14:0x). #3193 base: leave until his clear yes (his "go" did not name it; product is paused). **Local:** Lead B 3 `local_281c4e7e`, AWS proof 3 `local_f09b5b4c` (idle), desk `local_d92dde4f` (done). API quota 5000/h shared. Disk ~10 GB. Weekly 14%.
-**Lead 4 (check 19c820b8) to 14:03:** #3192 merged 13:55; #3197 labelled; #3195 is red on its OWN module card (PF-11c.md paths), lane told, label after a new Approve; #3234, #3235 answered (part 2 must allow withdrawal while the erasure switch is off); #3216 full run still running; #3193 retarget refused by the permission check (asked the founder 14:0x, do not route around); #3218 full run red on shard (10) `check_fo3st3_types_browser.ts`, started before #3208 merged: needs a fresh full run. Founder 13:58 (pressed in Lead 3): Lead O may create the private repository AFTER showing him its short plan.
+**Lead 4 (check 19c820b8) to 14:03:** #3192 merged 13:55; #3197 labelled; #3195 is red on its OWN module card (PF-11c.md paths), lane told, label after a new Approve; #3234, #3235 answered (part 2 must allow withdrawal while the erasure switch is off); #3216 full run red (shard 22 its own suite, shard 2 pf4s_system_signin unread), lane told; #3188 full run green (34, before #3208), waits for the pause; #3215 dequeued 14:05 (shard 10, the fault #3208 fixed); #3193 retarget refused by the permission check (asked the founder 14:0x, do not route around); #3218 full run red on shard (10) `check_fo3st3_types_browser.ts`, started before #3208 merged: needs a fresh full run. Founder 13:58 (pressed in Lead 3): Lead O may create the private repository AFTER showing him its short plan.
 **Waiting on the founder:** Lead O's one-pack plan (its short version).
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
