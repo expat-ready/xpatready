@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 05:5x IST 23 Nov:** **#3001 FO-7q merged** (23:56 UTC): R1.56's money reads on main. #3156 FO-7g part 3 fix: Lead B re-read OK c239c2175 (re-rate on Bill-to change). Next row sent: CS-MV1 binding line (adapter in place of failClosed in features/client-money-reads.ts) to the FO-7q or CS-MV1 lane. Slot: #3157 → #3042 → #3156. #3155 PF-17 part 1 draft.
+
 **Lead B 2 pass, 05:2x IST 23 Nov:** **#3073 CS-MV1 merged** (23:26 UTC); its binding line follows #3001. #3157 (PF-21b DW6 test fix) Lead B read OK db799f6fa, queued; #3042 waits it. #3156 FO-7g part 3: one fix before the label (re-rate existing taxed lines on a Bill-to change, or refuse while taxed lines exist); lane text sent. #3155 PF-17 part 1 draft. #3001 queued.
 
 **Lead B 2 pass, 04:5x IST 23 Nov:** **#3041 PF-F1b and #3017 PF-21b part 2 merged** (23:04 UTC). Queued: #3001, #3042, #3073. Next rows sent to Lead 9 for the three free lanes: PF-21b lane → PF-17 part 1 (brief PF-17-1.md, ready); PF-F1b lane → PF-Fw (no migration); FO-7ts part 3 lane → FO-7g part 3 (migration, slot after #3042). Held: FO-7q part 2 (after #3001), FO-9b part 1m (after #3042), both waiting on the records PR decision.
