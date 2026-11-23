@@ -40,7 +40,10 @@ export class TaxDefaults {
       if (rawInvoice !== undefined) {   // this firm's invoice, billed to this very party; else the same 404 as a missing one
         const inv = await tx.moneyInvoice.findFirst({ where: firmScope(ctx.firmId, { id: rawInvoice.toLowerCase(), ...(kind === "PERSON" ? { personId: found.id } : { companyId: found.id }) }), select: { billToProvince: true } });
         // C5 (#3305 M1): an invoice outside the caller's scope is the same 404 as a missing one
-        if (!inv || !(await seesInvoice(tx, firmScope(ctx.firmId).firmId, rawInvoice.toLowerCase(), scope))) return problem(404, "Not found", "No such invoice for this client in your firm.", { code: "NOT_FOUND" });
+        // m5 (round 3, Lead 14): a party outside scope then answers as a missing party, so the words never tell it exists
+        if (!inv || !(await seesInvoice(tx, firmScope(ctx.firmId).firmId, rawInvoice.toLowerCase(), scope))) return partyInScope(scope, found.id)
+          ? problem(404, "Not found", "No such invoice for this client in your firm.", { code: "NOT_FOUND" })
+          : problem(404, "Not found", `No such ${kind === "PERSON" ? "person" : "company"} in your firm.`, { code: "NOT_FOUND" });
         billTo = inv.billToProvince;
       }
       const settings = await tx.moneyPaymentSettings.findFirst({ where: firmScope(ctx.firmId), select: { taxRegistered: true } });

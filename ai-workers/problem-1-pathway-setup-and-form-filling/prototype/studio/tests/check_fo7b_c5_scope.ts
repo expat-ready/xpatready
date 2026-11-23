@@ -172,6 +172,9 @@ try {
   const s11o = await call(tO, "GET", `${T}?partyKind=PERSON&partyId=${PX}&invoiceId=${outD.id}`), s11i = await call(tO, "GET", `${T}?partyKind=PERSON&partyId=${PI}&invoiceId=${inD.id}`);
   ok("FO-7b C5 S11 fail: the tax default for an invoice outside scope → 404", notFound(s11o), s11o.status);
   ok("FO-7b C5 S11 pass: the tax default for an invoice in scope → 200", s11i.status === 200, s11i.status);
+  const s11x = await call(tO, "GET", `${T}?partyKind=PERSON&partyId=${PX}&invoiceId=${randomUUID()}`), s11gone = await call(tO, "GET", `${T}?partyKind=PERSON&partyId=${randomUUID()}&invoiceId=${randomUUID()}`);
+  ok("FO-7b C5 S11 fail (review/breaker m5, round 3): with an invoice id, a person outside scope answers word for word as a person who does not exist",
+    notFound(s11x) && JSON.stringify(s11x.body) === JSON.stringify(s11gone.body), { out: s11x.body, gone: s11gone.body });
 
   // ------------------------------------------------------------- S13 + L1-L5: Lead 14's ruling on #3321
   const B = sql(`select id from platform_firm where key = 'sample-solo'`), WS = randomUUID(); let cn = 0;
