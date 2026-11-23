@@ -8,8 +8,8 @@
 // table; the government fee is its own untaxed line; totals in integer cents".
 //   W1 (an invoice from a signed retainer): a draft started from the client's signed retainer carries its fee rows.
 //   W2 (the cited table): the tax default for the client is read from the cited CRA table (URL, quote, read date).
-//   W3 (the client's province, P-797): a client whose Canadian address is in Nova Scotia gets Nova Scotia's HST (14 %),
-//       not the Ontario firm's 13 %, through the editable Bill-to province; source PARTY_PROVINCE (FO-7g part 3).
+//   W3 (the client's province, P-797): a client billed in Nova Scotia (the invoice's Bill-to province) gets Nova Scotia's HST (14 %),
+//       not the Ontario firm's 13 %, through the editable Bill-to province; source PARTY_PROVINCE (FO-7g part 3, #3156).
 //   W4 (the tax is added): a fee line sent with no rate takes the default; a rate in the request is never used.
 //   W5 (the government fee is its own untaxed line): stored at 0 tax; asking to tax it is refused in words.
 //   W6 (totals in integer cents): every figure on the invoice and in the database is a whole number of cents, and the
@@ -113,14 +113,17 @@ try {
 
   // -------------------------------------------------------------------------------- W3: the client's province
   // P-797 (CRA GST/HST Memorandum 3-3-6, para 20 and Example 6; Unconfirmed: no counsel): the tax follows the client's
-  // province, read from the client's Canadian address on the record through an editable Bill-to province; with no
-  // Canadian address it falls back to the firm's province (W2). FO-7g part 3 adds the Bill-to province (a migration);
-  // the field names below are this journey's reading of P-797, aligned when part 3 merges.
-  const addr = await api(TA, "PATCH", `/front-office/people/${PA}`, { address: { city: "Halifax", provinceState: "NS", postalCode: "B3H 1A1", country: "CA" } });
-  const billTo = await api(TA, "PATCH", `/front-office/money/invoices/${INV}`, { billToProvince: "NS" });
-  const t3 = await api(TA, "GET", `/front-office/money/tax-default?partyKind=PERSON&partyId=${PA}`);
-  ok("R1.56 W3 (part missing: FO-7g part 3, the Bill-to province, P-797): a client whose Canadian address is in Nova Scotia gets Nova Scotia's HST (14 %), not the Ontario firm's 13 %, source PARTY_PROVINCE",
-    t3.body?.ratePpm === NS.ratePpm && t3.body?.source === "PARTY_PROVINCE", { addressSave: addr.status, billToSave: billTo.status, default: t3.body });
+  // province through an editable Bill-to province on the invoice, falling back to the firm's province (W2). Aligned to
+  // FO-7g part 3 as merged (#3156) and its tax-default read: the Bill-to is PUT …/invoices/:id/bill-to { province }, and
+  // the default for this invoice is GET tax-default with its invoiceId. No row gives a person an address yet (the
+  // client's address step), so the Bill-to is set by staff, as P-797 allows.
+  const billTo = await api(TA, "PUT", `/front-office/money/invoices/${INV}/bill-to`, { province: "NS" });
+  const t3 = await api(TA, "GET", `/front-office/money/tax-default?partyKind=PERSON&partyId=${PA}&invoiceId=${INV}`);
+  ok("R1.56 W3: a client billed in Nova Scotia (the invoice's Bill-to province) gets Nova Scotia's HST (14 %), not the Ontario firm's 13 %, source PARTY_PROVINCE",
+    billTo.status === 200 && billTo.body?.billToProvince === "NS" && t3.status === 200 && t3.body?.ratePpm === NS.ratePpm && t3.body?.source === "PARTY_PROVINCE", { billToSave: billTo.status, billTo: billTo.body?.billToProvince ?? billTo.body?.detail, default: t3.body });
+  const t3b = await api(TA, "PUT", `/front-office/money/invoices/${INV}/bill-to`, { province: "ZZ" });
+  ok("R1.56 W3 fail: a Bill-to that is not one of the 13 codes is refused (422), and the Bill-to stays NS",
+    t3b.status === 422 && sql(`select bill_to_province from money_invoice where id = '${INV}'`) === "NS", { status: t3b.status, body: t3b.body });
 
   // ------------------------------------------------------------------------------------- W4: the tax is added
   const w4 = await api(TA, "POST", `/front-office/money/invoices/${INV}/lines`, { kind: "FEE", description: "Professional fee: application (Sample)", unitMinor: 150000 });

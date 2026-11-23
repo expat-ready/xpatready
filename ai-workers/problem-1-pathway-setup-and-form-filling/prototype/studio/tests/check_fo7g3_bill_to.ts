@@ -8,7 +8,8 @@
 //   B3 Bill-to cannot change after issue (the route's 409 and the database's gate);
 //   B4 a code outside the 13 is refused 422;
 //   B5 no address and no edit gives the firm's province (filled on the new draft);
-//   B6 firm A cannot set firm B's invoice's Bill-to (404).
+//   B6 firm A cannot set firm B's invoice's Bill-to (404);
+//   B8 the tax default for one invoice (GET tax-default …&invoiceId=) reads its Bill-to: source PARTY_PROVINCE (j_56 W3).
 // Also: the key (agent/invoice:edit, AG-6-4 §8: a Case Officer may draft but not change it, 403), one audit line per
 // change with before and after, the same value again writes nothing, the column's CHECK, and the 13 codes of the port,
 // the cited table and the database agree. A scratch database (every migration), a Nest app of PF-4's guard, PF-12's
@@ -62,11 +63,12 @@ try {
   const { InvoiceDraftsController } = await import("../api/src/client-money/invoices/routes.ts");
   const { billToProvince } = await import("../api/src/client-money/invoices/bill-to.ts");
   const invoices = (await import("../api/src/features/client-money-invoices.ts")).default;
+  const taxes = (await import("../api/src/features/client-money-tax.ts")).default;
   const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
   const local = new LocalIdentity("fo7g3-check-signing-key-0123456789abcdef", () => clock.now());
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
-    { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, ...invoices.providers];
-  @Module({ controllers: [PlatformIdentityController, InvoiceDraftsController] as never[], providers: providers as never[] }) class TestApp {}
+    { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, ...invoices.providers, ...taxes.providers];
+  @Module({ controllers: [PlatformIdentityController, InvoiceDraftsController, ...taxes.controllers] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
   const call = async (token: string | undefined, method: string, path: string, body?: unknown): Promise<Res> => {
@@ -157,6 +159,26 @@ try {
     dB.status === 201 && dB.body.billToProvince === "AB" && sB.status === 404 && stored(dB.body.id) === "AB" && malformed.status === 404 && audits(dB.body.id) === "0", [sB.body, malformed.status]);
   const own = await setTo(dB.body.id, "NB", tB);
   ok("FO-7g3 B6 pass: firm B's own Owner may set it", own.status === 200 && stored(dB.body.id) === "NB", own.body);
+
+  // ----------------------------- B8: the tax default for one invoice reads its Bill-to (j_56 W3; P-797, source PARTY_PROVINCE)
+  const TD = "/front-office/money/tax-default?partyKind=PERSON";
+  const forInv = (invoiceId: string, t = tA, partyId = PA) => call(t, "GET", `${TD}&partyId=${partyId}&invoiceId=${invoiceId}`);
+  const nb = await forInv(d7.body.id), issuedNb = await forInv(d1.body.id), plain = await call(tA, "GET", `${TD}&partyId=${PA}`), fallback = await forInv(d5.body.id);
+  ok("FO-7g3 B8 pass: the default for an invoice billed to NB is NB's 15 % HST from the table, source PARTY_PROVINCE (an issued one too: its Bill-to is fixed); without invoiceId the firm's ON, as before",
+    nb.status === 200 && nb.body.taxName === T.NB.taxName && nb.body.ratePpm === T.NB.ratePpm && nb.body.source === "PARTY_PROVINCE" && nb.body.registered === true && nb.body.outsideCanada === false
+    && issuedNb.body?.ratePpm === T.NB.ratePpm && issuedNb.body?.source === "PARTY_PROVINCE" && plain.body?.ratePpm === T.ON.ratePpm && plain.body?.source === "FIRM_PROVINCE", [nb.body, issuedNb.body, plain.body]);
+  ok("FO-7g3 B8 pass: a Bill-to that is the firm's own province (a new draft's fallback copy) answers FIRM_PROVINCE at ON's rate, never claimed as the client's",
+    fallback.status === 200 && fallback.body.ratePpm === T.ON.ratePpm && fallback.body.source === "FIRM_PROVINCE", fallback.body);
+  sql(`update money_payment_settings set tax_registered = false, tax_number = null where firm_id = '${A}'`);
+  const unreg = await forInv(d7.body.id);
+  sql(`update money_payment_settings set tax_registered = true, tax_number = '123456789RT0001' where firm_id = '${A}'`);
+  ok("FO-7g3 B8 fail (AG-6-4 rule 5): a firm not registered gets no tax for a Bill-to NB invoice (0, source NONE)", unreg.status === 200 && unreg.body.ratePpm === 0 && unreg.body.source === "NONE" && unreg.body.registered === false, unreg.body);
+  const PA2 = person(A, "a2"), d8 = await draft(tA, PA2);
+  const otherParty = await forInv(d8.body.id), otherFirm = await forInv(dB.body.id), bAsks = await forInv(d7.body.id, tB), nobody = await forInv("00000000-0000-4000-8000-000000000000");
+  const notId = await forInv("not-an-id"), twice = await call(tA, "GET", `${TD}&partyId=${PA}&invoiceId=${d7.body.id}&invoiceId=${d1.body.id}`);
+  ok("FO-7g3 B8 fail (walls): another client's invoice, firm B's invoice, firm B asking with firm A's, and an id nobody has → the same 404, no rate",
+    [otherParty, otherFirm, bAsks, nobody].every((r) => r.status === 404 && r.body.ratePpm === undefined) && otherParty.body.detail === nobody.body.detail && otherFirm.body.detail === nobody.body.detail, [otherParty.body, otherFirm.body, bAsks.body, nobody.body]);
+  ok("FO-7g3 B8 fail (inputs): a malformed or repeated invoiceId → 422, never an answer", notId.status === 422 && twice.status === 422 && notId.body.ratePpm === undefined, [notId.body, twice.body]);
 
   // -------------------------------------------------------------------------------------------- the gate and audit
   ok("FO-7g3 pass: the gate runs as PF-12's wall reader (SECURITY DEFINER, search_path fixed), not executable by PUBLIC",

@@ -4,15 +4,19 @@
 // exist, is the same 404. Read only: nothing is written, so there is no audit line. The request carries no rate and no
 // province: any other field is refused (422), and the answer comes only from the firm's stored province
 // (platform_firm.business_address.province_state), its tax_registered and the cited table (defaults.ts).
+// FO-7g part 3 (P-797, CRA GST/HST Memorandum 3-3-6 para 20, Example 6; Unconfirmed: no accountant): an optional
+// `invoiceId` (an invoice of this firm billed to this party; any other is the same 404) gives the default for that
+// invoice: its stored Bill-to province, the client's province, with source PARTY_PROVINCE. A new draft stores the firm's
+// province as its Bill-to (the fallback), so a Bill-to equal to the firm's province answers FIRM_PROVINCE (the same rate).
 import { Controller, Get, Inject, Query, Req } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { firmScope, ownFirm } from "../../platform/firm-scope.ts";
 import { parseInput, strict } from "../../platform/http/input.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
-import { taxDefault, type TaxDefault } from "./defaults.ts";
+import { provinceCode, taxDefault, type TaxDefault } from "./defaults.ts";
 
-const Ask = strict({ partyKind: z.enum(["PERSON", "COMPANY"]), partyId: z.guid() });   // any uuid shape, as the invoice routes take
+const Ask = strict({ partyKind: z.enum(["PERSON", "COMPANY"]), partyId: z.guid(), invoiceId: z.guid().optional() });   // any uuid shape, as the invoice routes take
 export type TaxDefaultAnswer = TaxDefault & { partyKind: "PERSON" | "COMPANY"; partyId: string };
 
 export class TaxDefaults {
@@ -20,17 +24,25 @@ export class TaxDefaults {
 
   async forParty(ctx: StaffContext, query: unknown): Promise<TaxDefaultAnswer> {
     // Destructured, so no ".party…" text reads as a case-side party model to CS-W3's census (a front-office client is not one).
-    const { partyKind: kind, partyId: rawId } = parseInput(Ask, query), id = rawId.toLowerCase();
+    const { partyKind: kind, partyId: rawId, invoiceId: rawInvoice } = parseInput(Ask, query), id = rawId.toLowerCase();
     // One snapshot: the party, the settings and the address are read as of the same moment.
     return this.db.$transaction(async (tx) => {
       const found = kind === "PERSON"
         ? await tx.foPerson.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } })
         : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } });
       if (!found) return problem(404, "Not found", `No such ${kind === "PERSON" ? "person" : "company"} in your firm.`, { code: "NOT_FOUND" });
+      let billTo: string | null = null;
+      if (rawInvoice !== undefined) {   // this firm's invoice, billed to this very party; else the same 404 as a missing one
+        const inv = await tx.moneyInvoice.findFirst({ where: firmScope(ctx.firmId, { id: rawInvoice.toLowerCase(), ...(kind === "PERSON" ? { personId: found.id } : { companyId: found.id }) }), select: { billToProvince: true } });
+        if (!inv) return problem(404, "Not found", "No such invoice for this client in your firm.", { code: "NOT_FOUND" });
+        billTo = inv.billToProvince;
+      }
       const settings = await tx.moneyPaymentSettings.findFirst({ where: firmScope(ctx.firmId), select: { taxRegistered: true } });
       const firm = await tx.platformFirm.findFirst({ where: ownFirm(ctx.firmId), select: { businessAddress: true } });
       const address = firm?.businessAddress, province = address !== null && typeof address === "object" && !Array.isArray(address) && Object.hasOwn(address, "province_state") ? (address as Record<string, unknown>).province_state : null;
-      return { partyKind: kind, partyId: found.id, ...taxDefault({ firmProvince: typeof province === "string" ? province : null, registered: settings?.taxRegistered === true }) };
+      const firmProvince = typeof province === "string" ? province : null;
+      const partyProvince = billTo !== null && provinceCode(billTo) !== provinceCode(firmProvince) ? billTo : null;   // the fallback copy is the firm's
+      return { partyKind: kind, partyId: found.id, ...taxDefault({ firmProvince, partyProvince, registered: settings?.taxRegistered === true }) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 }
