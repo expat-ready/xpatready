@@ -2,7 +2,7 @@
 
 current_lead: local_def18400-f970-4299-9d3c-ba36f0e0c147 Lead 13 · 24 Nov 00:48 IST (took over from Lead 12 (local_4e13ee93) past 200k after its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 00:48 IST: hand-over Lead 12 to Lead 13
+updated: 2026-11-24 00:53 IST: Lead 13 started, check d87020f3. #3304 no red yet, 8 shards and 2 regression parts running. Lead reads: #3065 be4590f45 posted (label after run 45246239005 and the 45104967343 covered line); #3207 54041dca7's IRM fix read OK, the read line NOT posted on purpose (the gate would label it before #3065 and #3185); #3219 read OK, re-stamp to 20261124090000 asked. Owed: #3277, #3174 review.ts.
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
