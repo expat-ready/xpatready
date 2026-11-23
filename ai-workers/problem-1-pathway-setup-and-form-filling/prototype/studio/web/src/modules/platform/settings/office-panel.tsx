@@ -3,9 +3,15 @@
 // province as soon as one is picked and editable (AG-16-75 §10: the person confirms or edits it), sent only when the person changed
 // it, so the audit keeps "pre-filled from the province". Saved only by Save. Field errors from the 422 on each field; a stale change
 // (409) loads the latest and says so.
+// PF-31 (EXPERIENCE §2.12): an office's edit is its own address (/platform/offices/:id) and its one shared draft: what is typed
+// shows in every view of the office (another workspace tab's list cannot open it twice; another window mirrors it), survives a
+// reload, and is saved once with If-Match. Someone else's save first is the conflict state: both values, take theirs or keep mine.
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Input, Notice, Panel, Select } from "@/components/ui/controls";
+import { useTabDirty } from "@/components/workspace";
+import { ConflictNotice } from "@/lib/sync/conflict";
+import { DraftLine, useSharedDraft } from "@/lib/sync/drafts";
 import { useToast } from "@/lib/api";
 import { allZones } from "@/modules/front-office/booking-public/time";
 import { staffApi, StaffApiError } from "../session";
@@ -19,13 +25,17 @@ const FIRM_ZONE = "";
 export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus, onAdded }: { open: boolean; onOpenChange: (o: boolean) => void; /** null: add a new office. */ office: Office | null;
   provinces: readonly Province[]; returnFocus: () => HTMLElement | null; onAdded: (first: boolean) => void }) {
   const qc = useQueryClient(), toast = useToast();
-  const [f, setF] = React.useState<Form>(blank), [start, setStart] = React.useState<Form>(blank);
-  const [version, setVersion] = React.useState<string | null>(null);
+  const base = React.useMemo(() => (office ? fromOffice(office) : undefined), [office]);
+  const draft = useSharedDraft<Form>(office ? `platform-office:${office.id}` : null, base, office?.version, ["pf", "offices"]);
+  const [local, setLocal] = React.useState<Form>(blank);   // a new office lives in this panel only
+  const f = office ? draft.values ?? blank : local, start = office ? draft.base ?? blank : blank, version = draft.version;
+  const setF = office ? draft.set : setLocal;
+  const [conflict, setConflict] = React.useState<{ latest: Office; message: string } | null>(null);
   const [busy, setBusy] = React.useState(false), [errors, setErrors] = React.useState(fieldErrors(undefined)), [problem, setProblem] = React.useState<string | null>(null);
   const sending = React.useRef(false);
   /** Break m4: after a refusal, focus goes to the first field in error, else to the "Not saved" notice. */
   const focusError = () => requestAnimationFrame(() => { const box = document.getElementById("office-form"); (box?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? box?.querySelector<HTMLElement>("[data-office-problem-box]"))?.focus(); });
-  React.useEffect(() => { if (!open) return; const s = office ? fromOffice(office) : blank; setF(s); setStart(s); setVersion(office?.version ?? null); setErrors(fieldErrors(undefined)); setProblem(null); }, [open, office]);
+  React.useEffect(() => { if (!open) return; if (!office) setLocal(blank); setErrors(fieldErrors(undefined)); setProblem(null); setConflict(null); }, [open, office?.id]);   // eslint-disable-line react-hooks/exhaustive-deps -- a new office, not a new read of it
   const zones = React.useMemo(() => { const all = allZones(); return f.zone && !all.includes(f.zone) ? [f.zone, ...all] : all; }, [f.zone]);
   const set = (p: Partial<Form>) => setF((x) => {
     const n = { ...x, ...p };
@@ -35,6 +45,7 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
     return n;
   });
   const dirty = JSON.stringify({ ...f, zoneTouched: false }) !== JSON.stringify({ ...start, zoneTouched: false });
+  useTabDirty(open && dirty, () => { if (office) draft.discard(); });
   const save = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (sending.current) return;
@@ -50,8 +61,9 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
         toast.push({ tone: "ok", text: `${a.office.name} added (time zone ${a.office.timeZone}).` });
         onAdded(!!a.first);
       } else {
-        const body = { version, ...(f.name !== start.name ? { name: f.name } : {}), ...(f.inCanada !== start.inCanada || f.province !== start.province || f.country !== start.country ? where : {}), ...(f.zone !== start.zone ? { timeZone: f.zone } : {}) };
-        const o = Office.parse(await staffApi(`/platform/offices/${office.id}`, { method: "PATCH", json: body }));
+        const body = { ...(f.name !== start.name ? { name: f.name } : {}), ...(f.inCanada !== start.inCanada || f.province !== start.province || f.country !== start.country ? where : {}), ...(f.zone !== start.zone ? { timeZone: f.zone } : {}) };
+        const o = Office.parse(await staffApi(`/platform/offices/${office.id}`, { method: "PATCH", json: body, headers: { "if-match": `"${version}"` } }));
+        draft.saved();
         toast.push({ tone: "ok", text: `${o.name} saved.` });
       }
       await qc.invalidateQueries({ queryKey: ["pf", "offices"] });
@@ -61,9 +73,10 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
       const cur = office && x instanceof StaffApiError && x.status === 409
         ? await staffApi("/platform/offices").then((r) => OfficeList.parse(r)).then((l) => (l.multipleOffices ? l.offices.find((o) => o.id === office.id) ?? null : null)).catch(() => null) : null;
       if (cur && cur.version !== version) {
-        const s = fromOffice(cur); setF(s); setStart(s); setVersion(cur.version);
-        setProblem(`${(x as StaffApiError).message} We've loaded the latest; make your change again and save.`);
+        setConflict({ latest: cur, message: (x as StaffApiError).message });
         await qc.invalidateQueries({ queryKey: ["pf", "offices"] });
+        requestAnimationFrame(() => document.querySelector<HTMLElement>("#office-form [data-conflict]")?.focus());
+        return;
       } else if (x instanceof StaffApiError && x.status === 409) { setErrors({ ...fieldErrors(undefined), name: x.message }); setProblem(x.message); }   // review m-2: a name in use, on the name field
       else if (x instanceof StaffApiError) { setErrors(fieldErrors(x.problem.fields)); setProblem(x.message); }
       else setProblem("Not saved. Please try again.");
@@ -75,10 +88,13 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
   const pre = office ? null : prefill(provinces, f.inCanada, f.province);
   const fromProvince = !f.zoneTouched && !office && f.zone ? `Pre-filled from ${f.province}. Change it if this office keeps another time.` : null;
   return (
-    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => !dirty || window.confirm("Discard your changes to this office?")}
+    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => { if (!dirty) return true; if (!window.confirm("Discard your changes to this office?")) return false; if (office) draft.discard(); return true; }}
       title={office ? "Edit office" : "Add an office"} description={office ? "Changes apply when you press Save." : "The office keeps its own time zone. Its hours start as the firm's."}
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button type="submit" form="office-form" busy={busy} disabled={!dirty} data-office-save>{office ? "Save" : "Add office"}</Button></>}>
       <form id="office-form" className="flex flex-col gap-4" onSubmit={(e) => void save(e)} noValidate>
+        {conflict ? <ConflictNotice message={conflict.message} onSaved={() => { draft.discard(); setConflict(null); }} onMine={() => { draft.rebase(fromOffice(conflict.latest), conflict.latest.version); setConflict(null); }}
+          rows={[{ label: "Office name", saved: conflict.latest.name, mine: f.name }, { label: "Province or territory", saved: conflict.latest.province ?? "", mine: f.inCanada ? f.province : "" },
+            { label: "Country", saved: conflict.latest.countryCode, mine: f.inCanada ? "CA" : f.country }, { label: "Time zone", saved: conflict.latest.timeZone, mine: f.zone }]} /> : null}
         {problem ? <div tabIndex={-1} data-office-problem-box className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"><Notice tone="danger" title="Not saved"><span data-office-problem>{problem}</span></Notice></div> : null}
         <Field label="Office name" error={errors.name}><Input value={f.name} maxLength={200} onChange={(e) => set({ name: e.target.value })} data-office-name /></Field>
         <fieldset className="flex flex-col gap-2">
@@ -101,6 +117,7 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
             {zones.map((z) => <option key={z} value={z}>{z}</option>)}
           </Select>
         </Field>
+        {office ? <DraftLine draft={draft} what="this office" /> : null}
       </form>
     </Panel>
   );

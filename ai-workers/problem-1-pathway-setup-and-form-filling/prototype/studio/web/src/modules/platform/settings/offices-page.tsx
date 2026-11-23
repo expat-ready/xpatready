@@ -3,9 +3,13 @@
 // firm never sees an office list or a zone: only "Add an office" and what it does. From two offices: the list (name, where, time
 // zone, hours) with Edit, and "Who works where" (each person's office, Change in a right panel). Hours and closed days per office are
 // AG-16-75's, not built here (read-only summary). Everyone else who opens the address sees a plain refusal.
+// PF-31 (EXPERIENCE §2.12): each office's edit has its own address, /platform/offices/:id; its Edit is a real link, so a click
+// opens it in a workspace tab (or focuses the tab that has it) and Ctrl/Cmd-click opens it in the background.
 import * as React from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Notice, Table } from "@/components/ui/controls";
+import { Button, buttonVariants, Notice, Table } from "@/components/ui/controls";
+import { useTabTitle } from "@/components/workspace";
 import { PlatformFrame, usePlatformStaff } from "../frame";
 import { staffApi, StaffApiError, useStaffToken } from "../session";
 import { OfficePanel } from "./office-panel";
@@ -47,10 +51,15 @@ function OfficesBody() {
   const allowed = me.keys.includes(OFFICES_KEY);
   const list = useQuery({ queryKey: ["pf", "offices", token], enabled: !!token && allowed, retry: false, queryFn: async () => OfficeList.parse(await staffApi("/platform/offices")) });
   const provinces = useQuery({ queryKey: ["pf", "offices", "provinces", token], enabled: !!token && allowed, retry: false, staleTime: Infinity, queryFn: async () => Provinces.parse(await staffApi("/platform/offices/provinces")).provinces });
-  const [editing, setEditing] = React.useState<Office | "new" | null>(null);
+  const [adding, setAdding] = React.useState(false);
+  const { id } = useParams(), navigate = useNavigate();
+  const shown = id && list.data?.multipleOffices ? list.data.offices.find((o) => o.id === id) ?? null : null;
+  const editing: Office | "new" | null = adding ? "new" : shown;
+  useTabTitle(shown ? `Office: ${shown.name}` : null);
+  const setEditing = (o: "new" | null) => { if (o === "new") setAdding(true); else { setAdding(false); if (id) navigate("/platform/offices"); } };
   const [firstAdded, setFirstAdded] = React.useState(false);
   const opener = React.useRef<HTMLElement | null>(null), heading = React.useRef<HTMLHeadingElement>(null);
-  const open = (o: Office | "new") => (e: React.MouseEvent<HTMLElement>) => { opener.current = e.currentTarget; setEditing(o); };
+  const open = (o: "new") => (e: React.MouseEvent<HTMLElement>) => { opener.current = e.currentTarget; setEditing(o); };
   const header = (
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div><h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">Offices</h1>
@@ -78,7 +87,7 @@ function OfficesBody() {
             {l.offices.map((o) => <tr key={o.id} data-office-row={o.name}>
               <td className="min-w-32 font-medium [overflow-wrap:anywhere]">{o.name}{o.isFirst ? <span className="block text-xs font-normal text-text-muted">First office</span> : null}<span className="block text-xs font-normal text-text-muted sm:hidden">{whereLine(o)}</span></td>
               <td className="hidden sm:table-cell">{whereLine(o)}</td><td data-office-zone-cell>{o.timeZone.split("/").map((part, i) => <React.Fragment key={i}>{i ? <>/<wbr /></> : null}{part}</React.Fragment>)}</td><td className="hidden text-sm md:table-cell">{hoursLine(o.businessHours)}</td>
-              <td className="text-right"><Button variant="outline" size="sm" aria-label={`Edit ${o.name}`} onClick={open(o)} data-office-edit>Edit</Button></td>
+              <td className="text-right"><Link to={`/platform/offices/${o.id}`} className={buttonVariants({ variant: "outline", size: "sm" })} aria-label={`Edit ${o.name}`} onClick={(e) => { opener.current = e.currentTarget; }} data-office-edit data-workspace-open>Edit</Link></td>
             </tr>)}
           </Table>
           {me.keys.includes(PLACE_KEY) ? <WhoWorksWhere offices={l.offices} /> : null}

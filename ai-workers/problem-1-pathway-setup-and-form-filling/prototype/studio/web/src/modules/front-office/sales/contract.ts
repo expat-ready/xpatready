@@ -24,7 +24,7 @@ export const Lead = z.object({
   id: z.string(), number: z.string(), label: z.string(), state: z.string(), door: z.string(), source: z.string(), sourceDetail: z.string().nullable(),
   interestedIn: z.string().nullable(), ownerStaffId: z.string().nullable(), owner: z.string().nullable(), arrivedAt: z.string(), firstResponseAt: when,
   closeReason: z.string().nullable(), closeNote: z.string().nullable(), closedAt: when,
-  person: z.object({ id: z.string(), givenNames: z.string().nullable(), familyName: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable(), fixNumber: z.boolean() }),
+  person: z.object({ id: z.string(), givenNames: z.string().nullable(), familyName: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable(), fixNumber: z.boolean(), /** PF-31: the person's version, sent as If-Match. */ version: z.string().optional() }),
   possibleMatch: z.object({ personId: z.string().nullable(), line: z.string() }).nullable(),
   attribution: z.record(z.string(), z.unknown()).nullable(),
 });

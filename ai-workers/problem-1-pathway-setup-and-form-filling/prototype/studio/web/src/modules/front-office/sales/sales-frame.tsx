@@ -62,7 +62,7 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
   const who = me.data;
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
-    <Frame area="outside" title="Sales" subtitle={who ? who.displayName : undefined} home="/front-office/leads"
+    <Frame area="outside" workspace={!!who} title="Sales" subtitle={who ? who.displayName : undefined} home="/front-office/leads"
       controls={who ? <><FindBox /><Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button></> : null}
       menu={who ? <Menu me={who} /> : null}>
       <Place crumbs={crumbs} back={back ?? null} />
