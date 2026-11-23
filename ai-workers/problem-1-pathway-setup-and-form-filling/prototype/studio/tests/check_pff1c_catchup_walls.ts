@@ -27,11 +27,17 @@ const psql = (db: string, args: string[], user = "xr_studio") => execFileSync(jo
 const sql = (db: string, q: string, user?: string) => psql(db, ["-Atc", q], user);
 const ADDRESSES = (keys: string[]) => `select string_agg(f.key || '=' || coalesce(w.address, '-'), ',' order by f.key) from platform_firm f left join platform_firm_web_address w on w.firm_id = f.id where f.key in (${keys.map((k) => `'${k}'`).join(",")})`;
 const KEYS = ["firm-m", "firm-n", "firm-gone", "sample-firm", "sample-solo"];
-/** The real command, as the runner: its exit code and its one JSON line. */
+/** The real command, as the runner: its exit code and its one JSON line (with the end of stderr when it fails). Round 3
+ *  (Lead 10, run 45137359698): run-suites starts suites from the repository root with a relative `--tsconfig`, which tsx
+ *  hands to children as TSX_TSCONFIG_PATH; spawned here with cwd STUDIO, that path no longer resolved ("Cannot resolve
+ *  tsconfig at path: …/studio/ai-workers/…/api/tsconfig.json") and tsx stopped before the command ran. So the command
+ *  gets its own absolute --tsconfig (as the seed commands are run, PF-8b F8) and the inherited path is dropped. */
 const command = (db: string, user: string) => {
-  const r = spawnSync(join(STUDIO, "node_modules", ".bin", "tsx"), [join(STUDIO, "api", "src", "platform", "web-address", "firm-created.ts")],
-    { cwd: STUDIO, encoding: "utf8", timeout: 120_000, env: { ...process.env, DATABASE_URL: urlOf(db, user) } });
-  return { status: r.status, out: (r.stdout || r.stderr).trim().split("\n").at(-1) ?? "" };
+  const { TSX_TSCONFIG_PATH: _inherited, ...env } = process.env;
+  const r = spawnSync(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "api", "src", "platform", "web-address", "firm-created.ts")],
+    { cwd: STUDIO, encoding: "utf8", timeout: 120_000, env: { ...env, DATABASE_URL: urlOf(db, user) } });
+  const out = r.stdout.trim().split("\n").at(-1) ?? "";
+  return { status: r.status, out: r.status === 0 ? out : `${out} | stderr: ${r.stderr.split("\n").filter((l) => l.trim() && !/^\s+at /.test(l)).slice(-4).join(" / ").slice(-600)}` };
 };
 const dbs = [BASE, `${BASE}_a`, `${BASE}_b`];
 const roles = [ROLE_A, ROLE_B];
