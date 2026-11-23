@@ -132,6 +132,8 @@ async function change(token: string | undefined, firmId: string, body: unknown):
 }
 const routeMissing = (a: Ans) => a.status === 404 && /Cannot (PUT|PATCH|POST)/.test(JSON.stringify(a.body));
 const audits = () => one(`select count(*)::text as v from audit_event where entity_key like '%${A.id}%' and action ilike '%address%'`).catch(() => "?");
+// The system guard's own line (PF-4s): one ALLOWED row in plat_system_audit per staff call on this firm's address route.
+const sysAudits = () => one(`select count(*)::text as v from plat_system_audit where route like '%web-address%' and target->>'id' = '${A.id}' and outcome = 'ALLOWED'`).catch(() => "?");
 
 try {
   // ---------------------------------------------------------------------------------------------- W0 before the change
@@ -160,6 +162,8 @@ try {
   const v3 = await newPage();
   const b3 = await bookingOn(v3, addrB);
   await shot(v3, "w3-firm-b-address-book-1440");
+  // A negative property: while /book/:slug is not served on a firm's address (QA-756) this holds trivially; it only
+  // proves isolation once the booking pages are registered there.
   const b3key = await bookingOn(v3, addrB, `/book/${A.key}`);
   await v3.context().close();
   const siteA = await call(hostOf(addrA0), "GET", "/api/public/site"), siteB = await call(hostOf(addrB), "GET", "/api/public/site");
@@ -203,10 +207,11 @@ try {
   ok("J-24 W5 (PF-25w): Support (no system/firm:address) is refused 403; the firm's own Owner cannot use the route (401/403); no reason is refused in words naming the reason (PF-4s's guard: 400 REASON_REQUIRED, or 422 on the field); an unknown firm is 404; nothing changes",
     !missing && bySupport.status === 403 && [401, 403].includes(byOwner.status) && [400, 422].includes(noReason.status) && (!!noReason.body?.fields?.reason || /reason/i.test(String(noReason.body?.detail ?? ""))) && unknownFirm.status === 404 && (await addressOf(A.id)) === addrA0,
     missing ? "route missing: PF-25w (PUT|PATCH|POST /api/system/firms/:id/web-address answers Cannot …)" : { support: bySupport.status, owner: byOwner.status, noReason: `${noReason.status} ${JSON.stringify(noReason.body?.fields ?? noReason.body).slice(0, 120)}`, unknown: unknownFirm.status });
+  const sa0 = await sysAudits();
   const made = await change(adminTok, A.id, { address: NEW, reason: `J-24: the firm asked for its new name (${run})` });
-  const changed = (await addressOf(A.id)) === NEW, a1 = await audits();
-  ok(`J-24 W5 (PF-25w): our Platform Admin changes A's address to ${NEW} with a reason (2xx); the database holds it; one audit line`,
-    made.status >= 200 && made.status < 300 && changed && Number(a1) - Number(a0) === 1, routeMissing(made) ? "route missing: PF-25w" : { status: made.status, body: JSON.stringify(made.body).slice(0, 160), changed, audits: `${a0} → ${a1}` });
+  const changed = (await addressOf(A.id)) === NEW, a1 = await audits(), sa1 = await sysAudits();
+  ok(`J-24 W5 (PF-25w): our Platform Admin changes A's address to ${NEW} with a reason (2xx); the database holds it; one firm audit line and one ALLOWED line in our staff audit (plat_system_audit)`,
+    made.status >= 200 && made.status < 300 && changed && Number(a1) - Number(a0) === 1 && Number(sa1) - Number(sa0) === 1, routeMissing(made) ? "route missing: PF-25w" : { status: made.status, body: JSON.stringify(made.body).slice(0, 160), changed, audits: `${a0} → ${a1}`, staffAudit: `${sa0} → ${sa1}` });
   const old = await call(hostOf(addrA0), "GET", "/book?from=j24");
   ok(`J-24 W5: the old address sends the visitor to the new one (301 to ${NEW}.localhost, same path and query)`,
     changed && old.status === 301 && String(old.headers.location ?? "") === `http://${hostOf(NEW)}/book?from=j24`, { status: old.status, location: old.headers.location });
@@ -217,7 +222,8 @@ try {
   const onNew = landed.url.startsWith(`http://${hostOf(NEW)}/`);
   let chooseTime = false;
   if (landed.cards && landed.typeA) {
-    await v6.locator("[data-type-card]", { hasText: TYPE_A }).first().click().catch(() => v6.getByRole("link", { name: new RegExp(TYPE_A) }).first().click().catch(() => undefined));
+    // The card is an <li>; its only link is the "Choose <type>" button (booking-public/list-page.tsx), as j_37 clicks it.
+    await v6.getByRole("link", { name: `Choose ${TYPE_A}` }).first().click().catch(() => undefined);
     chooseTime = await seen(v6.getByRole("heading", { name: "Choose a time" }), 20_000);
   }
   await shot(v6, "w6-choose-a-time-on-new-address-1440");
