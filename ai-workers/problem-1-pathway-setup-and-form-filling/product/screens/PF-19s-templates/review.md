@@ -57,3 +57,29 @@ A real screen reader; an intended user's unaided walk (D17, D20 stay with the fo
 **Verdict: Approve** — no open Blocker or Major. Minors 1–5 are Shoulds: fix or list as follow-up rows.
 
 Reviewer: Approve e263986fc8dc16c794b003d3466e612b9b4eb190
+
+## Re-review (diff e263986..15386831c)
+*Diff-only, 23 Nov. Scope: `git diff e263986 15386831c -- ':!*.png'`. No app started. The builder reports `check_pf28_inputs.ts` 48/48 and `check_pf19s_templates_browser.ts` 29/29 on this head. My `tsc --noEmit -p api/tsconfig.json` shows no errors in `api/src` or `tests/check_pf*`; the errors it does show are in other suites' tests and were there before.*
+
+**Earlier review Minors**
+1. m1 (send-path test): the Lead response in `challenge.md` now says the test runs the send path's own lookup query, not a real send. That is the "or correct the Lead response" option. **Closed** (wording now honest). A test through `MessagePort.send` is still the stronger proof; PF-19c part 2 can take it.
+2. m2 (tokens): `templates-page.tsx` now uses `bg-danger/12 text-text-danger`, `bg-warn/15 text-text-warn`, `bg-surface text-text`. These tokens exist in `tokens.css` and other pages use them (Tailwind 4.3, so `/12` is valid). **Closed.**
+3. m3 (graph naming) and m4 (`window.confirm`): listed as follow-ups for PF-19c part 2 under "Build discoveries". **Accepted as follow-ups**, as the earlier verdict allowed.
+5. m5 (one-line check on the trimmed subject): `refusals` now tests `s`. A trailing tab or newline is trimmed, not refused, and the stored value is what was checked. **Closed.**
+
+**Breaker Minors (break-report.md)**
+* m1 (NUL makes a 404): the body now refuses `[\u0000-\u0008\u000b-\u001f\u007f-\u009f]` as a 422 on `body`. This runs after CRLF is normalised, so line breaks and tabs still pass. A test covers it. **Closed.**
+* m2 (subject does not wrap): `[overflow-wrap:anywhere]` is now on the subject `<p>`. **Closed** (the test does not check this; the breaker can re-check at 1024 px).
+* m3 (lone surrogates stored as U+FFFD): `LONE_SURROGATE` is refused on the subject and the body as a 422. I checked the regex: it matches a high surrogate with no low after it, and a low surrogate with no high before it. A test covers the subject. **Closed.**
+* m6 (limit counted before normalising): the schema cap is now `2 * LIMITS.body`, and the real limit is counted in `refusals` on the normalised body. The breaker's 12,000/8,000 case now passes. **Closed.**
+* m4 (filled subject breaks the send rule) and m5 (a value holding `{{ }}`): listed as follow-ups for PF-19c part 2. **Accepted.**
+
+**PF-28 change**
+* The route now parses the body and query with `parseInput`. `knownKind(key)` runs first, so a bad key is 404 before any field error. The permission guard still runs before both. The service signatures now take the parsed types. The `:key` entry in the REAL map is `lead.follow_up`, a real key in `registry.ts`. The browser test checks for 404 on `PUT /platform/templates/not-a-key` with an unknown field. Nothing new to fix.
+* `challenge.md` "Agreement" now records that the build followed the builder's recommendation after 30 minutes with no objection, and B1's migration stays a question for the tech lead. This fits P-223.
+
+**Note:** the working tree has an uncommitted change to `screenshots/pf19s-3-real-lead-preview.png` that is not mine. PNGs are outside this diff.
+
+**Journey score:** stays 9/10 from the earlier walk. These changes do not alter any journey's flow, and no new walk was needed for a diff this size.
+
+**Verdict: Approve** for `15386831c46378d852a176bde579c0acef6fa8c2`. No Blocker or Major is open. The remaining Minors (review m3, m4; breaker m4, m5) are recorded follow-ups for PF-19c part 2.
