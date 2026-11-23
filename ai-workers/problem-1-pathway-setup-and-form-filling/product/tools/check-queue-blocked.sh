@@ -149,6 +149,26 @@ ok "\"Lead read: OK <full head>.\" from a member counts the same (lead-read-gate
 for c in "$(LR OWNER "Lead read the diff: $OLD")" "$(LR OWNER "Lead read the diff: ${H:0:12}")" "$(LR NONE "Lead read the diff: $H")" "$(LR OWNER "Lead read the diff: $H" 2026-11-20T07:30:00Z)" "$(LR OWNER "I will do the Lead read the diff: $H later")"; do
   put "repos/$R/issues/10/comments?per_page=100&page=1" "[$c]"; out=$(run)
   ok "not a Lead read (older head, short SHA, no write access, edited, or not alone on its line): no merge offered: ${c:0:110}" "$(grep -qxF "$ACT10" <<< "$out" && ! grep -qi 'browser' <<< "$out" && echo 1)" "$out"; done
+# Breaker and reviewer, 23 Nov: the read is judged exactly as lead-read-gate.sh on main judges it.
+NB=$(printf '\302\240')
+for b in 'Next:\n```\nLead read the diff: '$H'\n```' 'Next:\n~~~\nLead read the diff: '$H'\n~~~' '<!--\nLead read the diff: '$H'\n-->' 'Post this:\n\n    Lead read the diff: '$H 'Post this:\n\n\tLead read the diff: '$H "${NB}Lead read the diff: $H" 'Lead read the diff:\n'$H; do
+  put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "$b")]"; out=$(run)
+  ok "the gate does not count it, so no merge is offered: ${b:0:60}" "$(grep -qxF "$ACT10" <<< "$out" && ! grep -qi 'browser' <<< "$out" && echo 1)" "$out"; done
+for b in "**Lead read the diff:** $H" "Lead read the diff $H" "Lead read:OK $H"; do
+  put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "$b")]"; out=$(run)
+  ok "the gate counts it, so the merge is offered: $b" "$(grep -qxF "$MERGE10" <<< "$out" && echo 1)" "$out"; done
+put "repos/$R/pulls?state=open&per_page=100" '[{"number":10,"title":"Hold the clock test until 06:00 IST","draft":false,"user":{"login":"lead1"},"head":{"sha":"'$H'","ref":"fix/test-hold"},"labels":[{"name":"review: approved"}]}]'
+lr() { : > "$D/log"; D="$D" QB_GH="bash $T/gh" REVIEWERS= LEAD_LOGINS="$1" python3 -I "$Q" --repo $R --now $NOW 2>&1; }
+put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read the diff: $H")]"
+out=$(lr "Lead1, lead2"); ok "LEAD_LOGINS set: a read by a writer outside it offers no merge" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+out=$(lr "o"); ok "LEAD_LOGINS set: a read by a login in it offers the merge" "$(grep -qxF "$MERGE10" <<< "$out" && echo 1)" "$out"
+put "repos/$R/issues/10/comments?per_page=100&page=1" '[{"author_association":"OWNER","user":{"login":"lead1"},"created_at":"2026-11-20T07:20:00Z","updated_at":"2026-11-20T07:20:00Z","body":"Lead read the diff: '$H'"}]'
+out=$(lr "o lead1"); ok "LEAD_LOGINS set: the PR's own author never frees it, even when listed" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+put "repos/$R/pulls?state=open&per_page=100" '[{"number":10,"title":"Hold the clock test until 06:00 IST","draft":false,"head":{"sha":"'$H'","ref":"fix/test-hold"},"labels":[{"name":"review: approved"}]}]'
+put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read the diff: $H")]"
+printf '%s\n' 'echo "$*" >> "$D/log"; case "$*" in *LEAD_LOGINS*) echo "HTTP 403: Resource not accessible" >&2; exit 1;; esac; f="$D/$(printf %s "$*" | tr -c A-Za-z0-9 _)"; [ -f "$f" ] && cat "$f" || { echo "HTTP 404: no fake answer for $*" >&2; exit 1; }' > "$T/gh403"
+: > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh403" REVIEWERS= python3 -I "$Q" --repo $R --now $NOW 2>&1)
+ok "LEAD_LOGINS unreadable (not a 404): a warn line and no merge offered, even with a read (fails safe)" "$(grep -q '^warn  queue blocked by checks: LEAD_LOGINS unreadable' <<< "$out" && grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
 ok "no line in queue-blocked.py offers a browser merge outside the read branch" "$(python3 -I - "$Q" <<'PY' && echo 1
 import sys,re
 src=open(sys.argv[1]).read().splitlines()
