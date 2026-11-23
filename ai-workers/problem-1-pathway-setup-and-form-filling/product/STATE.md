@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_d4a6b1cd-f814-4a94-b7d3-bb6b0b82ba7a Lead 10 · 23 Nov 09:38 IST (took over from Lead 9 (local_482034a7) at ~440k, ~320k beyond its start read, P-446; Opus 5.5 medium, P-788)
+current_lead: local_a085acf2-65e4-4f05-922a-a84057c951d1 Lead 1 · 23 Nov 11:24 IST (new account after the 23 Nov switch, weekly 0%; took over from Lead 10 (local_d4a6b1cd), Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 11:23 IST: Lead 10 ended at the switch (check 0721b6cb deleted; AWS hand-over 61cd95852: R1.1, R1.13, R1.15 Pass); was 11:14 IST: stop order at 94%, switch now (RESUME 'Switch of 23 Nov'); was 10:21 IST: Lead 10, A291 analysis, demo restored, lanes answered (check 0721b6cb)
+updated: 2026-11-23 11:25 IST: Lead 1 on the new account (check 2cc39209), re-briefing lanes from RESUME; was 2026-11-23 11:23 IST: Lead 10 ended at the switch (check 0721b6cb deleted; AWS hand-over 61cd95852: R1.1, R1.13, R1.15 Pass); was 11:14 IST: stop order at 94%, switch now (RESUME 'Switch of 23 Nov'); was 10:21 IST: Lead 10, A291 analysis, demo restored, lanes answered (check 0721b6cb)
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -50,6 +50,7 @@ Older Start here pointers (P-754 hold, 19 Nov lines): `product/history/STATE-202
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
+**New account from 23 Nov:** Lead 1 (local_a085acf2, from 23 Nov 11:24 IST).
 **New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST), Lead 2 (local_d718f32a, from 22 Nov 11:17 IST), Lead 3 (local_6efc4ae3, from 22 Nov 13:05 IST), Lead 4 (local_bcc6ed82, from 22 Nov 14:18 IST), Lead 5 (local_fec215ea, from 22 Nov 17:10 IST), Lead 6 (local_d4609e9d, from 22 Nov 19:04 IST), Lead 7 (local_d7cc573e, from 22 Nov 21:14 IST), Lead 8 (local_82fee93b, from 22 Nov 23:59 IST), Lead 9 (local_482034a7, from 23 Nov 02:15 IST), Lead 10 (local_d4a6b1cd, from 23 Nov 09:38 IST).
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
