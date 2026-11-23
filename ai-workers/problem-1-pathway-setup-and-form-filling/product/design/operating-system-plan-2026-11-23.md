@@ -81,3 +81,20 @@ Cost gap: the desk's RunsOn $5,018 is about $167/day; Lead O's AWS line above is
 * **M10 #3035 fix first, last:** `check-mergify-scopes.sh` fails after the merge ("scope migrations is missing"); `engineering-approved-setup.json:184` pins `migrations: 1`; nine open PRs add unnamed migrations; #2915's cross-area evidence (adcf9c105) must be answered; needs P-808.
 * **M12 #2915:** update its stale status, sources and measures, then land. Open after it: lead-read is report-only; #2971; the ruleset asks 0 approvals and every role shares one account (founder).
 * Order: #3210, #3179, #2595, #2971, #3035.
+
+## A304 (founder, relayed by Lead 2): private only if it performs as today at US$100 a month or less; buy nothing, change nothing
+**How far can batch minutes fall without dropping a gate? Not far enough.**
+Baseline, ci.yml, 22 Nov 11:30 to 23 Nov 11:30 IST: 150 batch runs, 84 green, **66 red (44%)**, 3 re-run. Minutes rounded up per job; sample 9 green and 9 red, random. Red: mean 595 (577-621). Green: mean 552, median 596 (2-799; one records batch of 2). Estimate 84 x 552 + 66 x 595 = about 85,600 min/day (Lead 2, its own sample: 84,324). Of sampled minutes shards are about 81%, regression 15%. Set-up: checkout and cloud-setup are about 0.8 min each in a shard of about 20.
+
+| Lever | Upper bound a day | Gate cost |
+|---|---|---|
+| No red batches at all | -39,300 (46% of batch minutes) | none, but cannot reach 0 |
+| Half as many red batches | -19,600 | none |
+| Cheaper checkout and set-up | about -5,000 (8% of a shard, if both went to zero) | none |
+| Two PRs in each batch, always | not measured (PRs per batch not counted) | a red batch bounces two |
+| Run only affected suites in a batch | not measured; needs #2370's map | weakens the one full run: the founder's decision |
+
+**Against US$100:** Ubicloud $0.0025 buys 1,333 min/day, about two full batches. GitHub 2-core with the $300 included buys 2,222 min/day, under four. Even with no red batch and nothing else running, 46,400 min/day remains: about $3,480 on Ubicloud. So $100 is about 3% of that. One fixed machine near $100 carries 4-8 jobs (6-11% of load). **Result: stay public; private is off the must list (M14-M16, M18, M19, P1 to Later) until he changes the ceiling.** Red batches are still worth cutting for speed: they are the next constraint.
+**M1 done 12:27:** newest 20 green gate runs, median wait 0.5 min (was about 13), max 10.1. It was refused in the shell, then set in the browser on the founder's typed words. Way back: https://github.com/expat-ready/xpatready/settings/variables/actions, delete GATE_RUNNER. Nothing else is set this way.
+**M2, M3:** #3208 and #2971 carry the label at 12:27, not merged. **M7/M8:** Lead 2 did not start the lane (a relayed yes is not the founder's word there) and asks the founder itself; PRs stay separate meanwhile.
+**M11:** #2372 close, alert later (founder, card). **M19:** 6aeb97eeb approved only while CI_RUNNER is unset; before any use: a fork's run can name its own label (provider restriction needed), a deleted fork fails open. No PR opened. #2151 merged 18 Nov 20:15 UTC: confirmed.
