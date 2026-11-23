@@ -37,6 +37,8 @@ export const ONLY_OWNER = "This is your firm's only active Owner. Give the Owner
 export const ANOTHER_DEVICE = "You signed in on another device";
 /** A Cognito sign-in that raced the person's deactivation (J-5 B2): refused, in the words a deactivated token gets. */
 const NOT_ACTIVE_NOW = "This staff account has been deactivated. Ask your firm's Owner or Admin.";
+/** PF-11c: the words a closed firm's staff see at sign-in (our own fact only, SA-2-38). */
+export const FIRM_CLOSED = "This firm's ExpatReady account is closed. Sign-in is no longer possible.";
 /** An Owner change needs an identity check this recent (AG-1-42). */
 export { STEP_UP_SECONDS } from "./session/step-up.ts";
 /** PF-28 part 2a: the local sign-in door's body (untrimmed: emailOf reads spaces). Read after the door's gate. */
@@ -132,8 +134,10 @@ export class PlatformIdentity implements OnModuleInit {
 
   /** authenticate, as the person's own firm (PF-12b part 2). */
   private async authenticateIn(firmId: string, where: { id?: string; identitySubject?: string }, id: VerifiedIdentity): Promise<StaffContext> {
-    const staff = await this.db.platformStaff.findFirst({ where: firmScope(firmId, where), include: { firm: { select: { key: true } }, grants: { where: { endedAt: null }, select: { role: true } } } });
+    const staff = await this.db.platformStaff.findFirst({ where: firmScope(firmId, where), include: { firm: { select: { key: true, status: true } }, grants: { where: { endedAt: null }, select: { role: true } } } });
     if (!staff) return unauthorized("This sign-in is not a staff member of any firm here.", "UNKNOWN_STAFF");
+    // PF-11c (SA-2-21): a firm closed on day 90 refuses every sign-in, whatever the session.
+    if (staff.firm.status === "DELETED") return unauthorized(FIRM_CLOSED, "FIRM_CLOSED");
     if (staff.status !== "ACTIVE") return unauthorized(staff.status === "DEACTIVATED" ? "This staff account has been deactivated. Ask your firm's Owner or Admin." : "This staff account is suspended. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     const authMs = id.authTime * 1000;
     // Cognito: a session with a later sign-in time than the last one seen is a new sign-in, which ends the older one.

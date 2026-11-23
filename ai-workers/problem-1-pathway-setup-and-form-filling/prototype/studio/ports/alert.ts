@@ -8,7 +8,7 @@
 // Cross-module port (case-side contract v0.1 §1 rule 3): zod and types only, no app import.
 import { z } from "zod";
 
-export const ALERT_KINDS = ["audit_write_failed", "audit_chain_break", "job_stuck", "privacy_clock_near", "breach_clock_near", "send_cap_reached"] as const;
+export const ALERT_KINDS = ["audit_write_failed", "audit_chain_break", "job_stuck", "privacy_clock_near", "breach_clock_near", "send_cap_reached", "firm_closure_blocked"] as const;
 export const AlertKind = z.enum(ALERT_KINDS);
 export type AlertKind = z.infer<typeof AlertKind>;
 
