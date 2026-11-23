@@ -1,6 +1,6 @@
 # Engineering System
-Version: 1.0
-Updated 17 Nov 2026 · owner: the tech lead · status: living master
+Version: 1.1
+Updated 20 Nov 2026 (v1.0 was 17 Nov 2026) · owner: the tech lead · status: living master
 
 The founder's single page on how the engineering system works end to end: talks, failure modes, target system, models and effort, reconciled conflicts and decision cards. Board Library row: "Engineering system".
 
@@ -8,6 +8,7 @@ The founder's single page on how the engineering system works end to end: talks,
 | Version | Date (IST) | Change |
 |---|---|---|
 | 1.0 | 17 Nov 2026 | First master (public-safety review applied), assembled from Engineering System v1 (17 Nov 2026, revised 10:45-11:15 IST) and its independent critic |
+| 1.1 | 20 Nov 2026 | Refreshed against DECISIONS P-685 to P-755 and the RULES.md register as of P-752: card outcomes of 17 Nov, the org move to Enterprise Cloud, merge-flow and CI changes, automatic proof, roles and operations, work-in-progress caps, the pipeline lock to 22 Nov, environments and the scale baseline. New section 11; superseded lines marked in place. Every v1.0 fact kept |
 
 **The founder's single page.** 17 Nov 2026. First written 10:30-11:00 IST; revised after the critic 10:45-11:15 IST (clock from `TZ=Asia/Kolkata date`). Owner: the tech lead. It joins three reviews written today: the three-talk verdict, the reconciliation of every report, and the decision cards. This was read-only work. Nothing on GitHub, in the repository or in any setting was changed, run or paid for.
 
@@ -18,6 +19,8 @@ The founder's single page on how the engineering system works end to end: talks,
 ---
 
 ## 1. Summary in 10 lines
+
+**Since v1.0 (20 Nov):** the lines below are the 17 Nov morning picture and stay as written. What was decided after them (Enterprise bought and the move done on the night of 17-18 Nov, cards adopted, the merge flow, automatic proof, the WIP caps and the lock to 22 Nov) is in section 11.
 
 1. **Where we are.** 11 of 101 Release 1 capabilities are Proven. At 08:01 IST all 40 CI machines were busy and 116 jobs were waiting. A PR check has taken 91 min at the median (176 at p90) since 16 Nov noon. 23% of merge batches failed this week, and 73% of those failures were clashes. 57% of PR-check minutes are second and later runs. 37% of merges are records PRs. There were 44 tech leads in 5 days. [B-own]
 2. **The honest forecast for 08:00 IST 18 Nov:** most likely **13-16 Proven**. 17-19 only if everything goes right. **21 is the ceiling.** **30 is not reachable** without counting Built as Proven or skipping a re-run, and P-636 and P-651 (2) forbid both. The range leans to its low end: its top (16) assumed the move would finish by 12:00 today, and the move is now tomorrow. [B-own, inf]
@@ -145,9 +148,9 @@ Speakers are named by role only. The full detail is in `a150/out/three-talks-ver
 | **Coding** | One ready row per fresh session. The row has an outcome, numbered rules, examples, "must stay the same", "no open questions" and Done-when. Builders run on Opus 5.5 high, with lint on edited files. At most two CI-fix rounds, then the row goes back to the queue. "Blocked: spec conflict" is a valid result | [A*] rule-following falls as rules pile up; [A] hidden details cost 16 points of success; [B] |
 | **Tests** | Written and frozen by a separate session before the build, and shown red on main first. Property tests on money and rule invariants. Mutation testing on changed rule code, not coverage targets | [A][A*] |
 | **Review** | A fresh-context reviewer at high effort reports defects only and skips style. At most three rounds; re-reviews read only the new diff. The Approve is tied to the reviewed commit. The seven classes below also get their class checks, the breaker and the Lead's read; a breaker on a different model comes only after the trial (L7) | [B-sec] one-round pass rate rose from 65% to 78% and reverts fell over 40% (vendor's internal data via the press; date uncertain); caution [A] reviewers from the same model family favour its output |
-| **qa and proof** | qa runs after merge, independent of the builder. "Proven" only on an independent re-run with a data check per step (gates A and B). Five qa lanes by journey group. Golden fixtures for immigration values | [A] self-report differs from reality; [B-own] qa found 5 of 7 Criticals |
-| **CI** | Cheap checks first. One full PR check after Approve, if you say yes to T6 (it changes P-651 (2)). Container proof inside the required check. One clean pipeline definition. Get more machines (Team now, then Enterprise only by the rule in T2) and cut wasted runs before paying for capacity. No self-hosted runners while the repository is public | [B] GitHub limits and runner security docs; [B-own] 57% of minutes are re-runs |
-| **Merge** | Mergify tests the merged batch. PRs closest to Proven and qa verdict records go first. A fail-closed class job labels the seven classes by path and SQL; an unknown class is blocked. Ordinary changes keep auto-merging on green plus Approve | [B] merge-queue practice; [B] risk tiers by path |
+| **qa and proof** | qa runs after merge, independent of the builder. "Proven" only on an independent re-run with a data check per step (gates A and B). Five qa lanes by journey group. Golden fixtures for immigration values. **Changed since (section 11.3):** proof is automatic when an item's last part merges; qa walks items touching money, permissions, firm walls, schema or IRCC forms and samples the rest (P-732 (2)-(3), P-733 (3)) | [A] self-report differs from reality; [B-own] qa found 5 of 7 Criticals |
+| **CI** | Cheap checks first. One full PR check after Approve, if you say yes to T6 (it changes P-651 (2)). Container proof inside the required check. One clean pipeline definition. Get more machines (Team now, then Enterprise only by the rule in T2) and cut wasted runs before paying for capacity. No self-hosted runners while the repository is public. **Changed since (section 11.2):** Enterprise bought outright (P-657); T6 adopted (P-665), then "full run before the label" (P-731) narrowed to repeat failures only (P-733 (4), P-743); 18 test parts (#2282, P-738) | [B] GitHub limits and runner security docs; [B-own] 57% of minutes are re-runs |
+| **Merge** | Mergify tests the merged batch. PRs closest to Proven and qa verdict records go first. A fail-closed class job labels the seven classes by path and SQL; an unknown class is blocked. Ordinary changes keep auto-merging on green plus Approve. **Changed since (section 11.2):** qa verdict records first (P-664); parallel batches with per-area scopes (#2207, P-715) and six at once (P-739); one emergency hand merge kept for a broken queue (P-691) | [B] merge-queue practice; [B] risk tiers by path |
 | **Main** | Server-side rules: `ci` required, no force-push and no deletion. Two rulesets already exist; their review is card T8. One nightly run a night. Red is judged only from the deciding check. The demo updates within 10 min of a merge | [B] |
 | **Operations** | A heartbeat and check log outside every session. A script starts routines, with a brake on work in progress. The Lead stays on medium with a small context, plus a one-day compaction trial. Plan burn watched hourly. The factory's own settings are listed in a manifest and changed only by tested PRs | [B] vendor long-running harness; [A] LLMs attribute multi-agent failures poorly; [B-own] |
 
@@ -172,9 +175,9 @@ How they merge: a separate queue that needs green CI plus the class checks, the 
 
 | Role | Model | Effort | Ultracode | Fast | Why |
 |---|---|---|---|---|---|
-| Tech lead | Opus 5.5 | **medium** (unchanged) | off | off | Fable as orchestrator gets the same score for 19% more cost [B]. Fable also draws the main weekly plan faster than Opus, up to a 50% share [B], at about 3 times an Opus high call in our data [B-own]. The lever is context size (median peak 333k tokens), not effort [B-own] |
+| Tech lead | Opus 5.5 | **medium** (unchanged). **Changed 19 Nov for one case (P-725):** the Lead on the new account, after a plan switch, runs Fable 5.2 medium in auto mode; builders, reviewers and breakers keep P-608 | off | off | Fable as orchestrator gets the same score for 19% more cost [B]. Fable also draws the main weekly plan faster than Opus, up to a 50% share [B], at about 3 times an Opus high call in our data [B-own]. The lever is context size (median peak 333k tokens), not effort [B-own] |
 | Specifying (shaping) lanes | Fable 5.2 | **medium** (P-608 (3)); the spec template says high for risky rows | off | off | Using high on risky rows would **change P-608 (3)**: your call, in card W6. Fable draws the main plan at about 3 times an Opus high call [B][B-own] |
-| Builder, ordinary row | Opus 5.5 | **high** (a change) | off | off | SWE-bench Pro: 92.8% to 95.3%, a third fewer failures, for +38% cost per task [B]. About +3% per call in our harness [B-own]; about +5-10% overall [inf]; up to about 37% more model time per row [C] |
+| Builder, ordinary row | Opus 5.5 | **high** (a change; adopted 17 Nov, card T10, P-666) | off | off | SWE-bench Pro: 92.8% to 95.3%, a third fewer failures, for +38% cost per task [B]. About +3% per call in our harness [B-own]; about +5-10% overall [inf]; up to about 37% more model time per row [C] |
 | Builder, high-risk row | Opus 5.5 | high; xhigh only if measured | off | off | Above high: +1.4 points for 2.6 times the cost [B] |
 | Reviewer | Opus 5.5 | high | off | off | High beats xhigh on real-bug review [C]. A cheaper-model pilot was a net loss [B-own] |
 | Breaker | Opus 5.5; a different model on money and walls only after a trial | high | trial, small | off | High beats medium on defect search [B] |
@@ -214,9 +217,9 @@ The rule that follows: spend fast only when the model is the bottleneck, plan wo
 | Conflict | Settled as |
 |---|---|
 | Every change today (operating model) vs one change at a time (blank sheet) | Start all today. Changes with their own metric run in parallel. Changes judged only by an overall rate get one per window. Changes that can fail the same way land one after another |
-| "At most one workflow change a week" (P-188) | Superseded by A144, but only with your yes (card T4) |
-| Team (P-652) vs Enterprise now (decision cards) | Buy Team now. Upgrade to Enterprise right after the move is verified **only if** peak jobs wanted in busy hours still exceed about 50 after the demand cuts, **and** the purchase page shows monthly billing, no seat minimum and a step-down path. Otherwise stay on Team |
-| Move at 09:00 or 11:00 today vs the checklist | Move tomorrow from about 09:30 IST: the move takes 5-7 h and stops merges for 3-4 h |
+| "At most one workflow change a week" (P-188) | Superseded by A144, but only with your yes (card T4). **Since 19 Nov:** one change at a time, each measured (P-730 (3)); no new workflow decision before 23 Nov unless it fixes something broken (P-734) |
+| Team (P-652) vs Enterprise now (decision cards) | Buy Team now. Upgrade to Enterprise right after the move is verified **only if** peak jobs wanted in busy hours still exceed about 50 after the demand cuts, **and** the purchase page shows monthly billing, no seat minimum and a step-down path. Otherwise stay on Team. **Superseded 17 Nov:** Enterprise bought outright, no trial (P-657, P-658); no move back to Pro (P-705) |
+| Move at 09:00 or 11:00 today vs the checklist | Move tomorrow from about 09:30 IST: the move takes 5-7 h and stops merges for 3-4 h. **Superseded 17 Nov:** moved the same night once the queue read empty twice 6 min apart, with 09:30 18 Nov as the fallback (P-688, P-689, P-692) |
 | Create a ruleset on main vs one already exists | Two rulesets already exist. Review them (card T8); do not create a duplicate |
 | Self-hosted gate pool vs no self-hosted runners while public | Cut gate runs first. Use Namespace hosted machines for gate jobs only if waits stay long. Never self-hosted for any job an outsider can trigger |
 | Fable Lead (CI D11) vs Opus medium | Opus 5.5 medium; no Fable Lead |
@@ -242,6 +245,8 @@ The rule that follows: spend fast only when the model is the bottleneck, plan wo
 ## 7. The decision cards, in order
 
 "You do" lists only what needs your card details, password, 2FA, a settings paste, a browser click or your word.
+
+**Outcomes (added 20 Nov):** the cards below are kept as proposed on 17 Nov. What was chosen is in section 11.1.
 
 ### Today
 
@@ -391,7 +396,90 @@ None of these spends money, widens a permission, lowers a gate or moves a milest
   * each reading at +2 h, +24 h and +48 h: keep the change or undo it.
 * **Numbers come from scripts, never by hand:** the baseline snapshot, the flow and queue-cause scripts, the hourly metrics workflow, the usage log, and the Proven count from `qa/CAPABILITIES.md`.
 * **Owner:** the tech lead. Builders and qa never edit it. Every step is committed and pushed (P-557).
-* **Version history:** v1, 17 Nov 2026 11:00 IST, from today's three joined reviews. v1 revised the same morning after an independent critic: the seven classes corrected to C1-C7, five grades lowered, the full cost of high effort, the output-per-hour baseline, the target tension, the Enterprise rule, and founder-gated items marked. The next version follows tomorrow's 08:00 report and the move.
+* **Version history:** v1, 17 Nov 2026 11:00 IST, from today's three joined reviews. v1 revised the same morning after an independent critic: the seven classes corrected to C1-C7, five grades lowered, the full cost of high effort, the output-per-hour baseline, the target tension, the Enterprise rule, and founder-gated items marked. The next version follows tomorrow's 08:00 report and the move. v1.1, 20 Nov 2026: refreshed against DECISIONS P-685 to P-755 and RULES.md as of P-752 (section 11).
+* **Feeds as registered (20 Nov):** the Library feed list for this master is RULES.md and DECISIONS.md, not the list in the third bullet above.
+
+---
+
+## 11. What changed since v1.0 (17-20 Nov 2026)
+
+Each line comes from a DECISIONS row (P-NNN) or the RULES.md register as of P-752 (20 Nov 11:15 IST). Product-scope rows are left out. Estimates in those rows are marked as estimates. Lines are grouped by part of the system and listed oldest first within each group.
+
+### 11.1 Card outcomes (17 Nov)
+
+| Card | Outcome | Row |
+|---|---|---|
+| T1 | Adopted as a **ramp**: 5-7 Proven a day 19-20 Nov, 8-10 on 21-23 Nov, 10-15 from 24 Nov; no new capability row while P95 queue wait is over 60 min or batch wait over 15 min; daily checkpoint | P-663 |
+| T2 | **Enterprise bought outright, no trial** (the trial lacks the higher job limit); this reverses P-652's Team. Personal Pro kept at first | P-656, P-657, P-658 |
+| T3 | Moved the same night, 17-18 Nov, not 18 Nov 09:30 (see 11.2) | P-688, P-692 |
+| T5 | qa verdict records PRs first in the merge queue | P-664 |
+| T6 | One full PR check after Approve, plus every suite once in the batch (CI-B); later reshaped (11.2) | P-665 |
+| T7 | 36 more deny lines in `.claude/settings.json` (75 in all), run by the founder at 11:48 IST | P-670 |
+| T10 | Builders on high effort, with a 48 h stop rule | P-666 |
+| T13 | Rules v2 adopted; RULES.md stays the register until the v2 page lands | P-667 |
+| T15 | Contact support; keep the free reset as backup | P-669 |
+| T9, T11, T12, T14, T16, T17, W1, W3-W6 | Adopted as recommended in one batch, including W1's reversal of P-423's "no second account" | P-668 |
+| W2 | The cloud environment reads canada.ca for citations; Limited network, no secrets | P-673 |
+| Apps | Only the Claude, Mergify and Namespace apps on the organization | P-662 |
+
+### 11.2 Account, CI and merge flow
+
+* **Account (RULES.md, 20 Nov):** the repository is on Enterprise Cloud since 18 Nov. The register says "500 jobs documented, 1-6 measured". This replaces "GitHub Pro, 40 Actions jobs at once".
+* **The move:** prepared on 17 Nov and done that night. The rule was to move only when the queue read empty twice, 6 min apart, with no batch in flight (P-688, P-689, P-692).
+* **Machines after the move:** only 1-3 hosted jobs ran at once. Job wait was a median 65.7 min, against 0.1 min before the move (P-695). The Lead switched the enterprise to multi-cloud hosted compute in the browser (change log C26), and the founder said no Support ticket for now (P-693). Later the same day a ticket was filed, with a rollback deadline (P-695). Waits then fell to a median of 0.0 min, and the enterprise runner page showed a 180-job limit (P-696). **No move back to Pro:** the rollback triggers were withdrawn (P-705).
+* **Records PRs:** a PR made only of records is exempt from the 800-line limit (P-686, #2086, change log C19). P-742 (19 Nov) rules that data under `product/qa/reports/` also counts as a record, so qa proof PRs would not pay a full run; not in force yet: #2355 is still open and `tools/records-only.sh` is unchanged since 18 Nov.
+* **Drafts:** a PR is opened non-draft only after Approve (P-683). Older drafts are marked ready by the Lead with `tools/pr-ready.sh`, never by the founder (P-685, change log C18).
+* **Emergency hand merge kept:** the only exception to queue-only merging is a pipeline or CI fix while the queue itself is broken. The Lead may merge it by hand after green `ci` and a review, and logs it in `library/engineering-change-log.md` (P-691).
+* **One-off big batch:** on 18 Nov the product queue's batch size went from 6 to 13 for one night (#2152, manifest 1.2.1). It was set back to 6 on 19 Nov (P-704).
+* **"Run tests once":** #2151 (CI-RUN part 2) was merged by hand on green, ahead of the queue (P-708).
+* **Module cards:** the shared Tables and Tests lines are generated or kept one file per row, so PRs stop conflicting on them. This shipped as #2195 (P-712, P-721).
+* **Merge lanes:** Mergify parallel mode with one files scope per fenced module (P-715). Pipeline PRs get their own lane and are never batched with product PRs. A new blocking check reports only for its first 24 h or 10 runs (P-717 (1)-(2)). Per-area scopes are on main (#2207). Six batches run at once since 19 Nov evening, up from 3 (P-728 (2), P-730, P-739, #2290).
+* **Full run before the label:**
+  * P-731 required one green full run of every suite before `review: approved`, enforced by the label guard and the queue gate (CI-PRE, #2249).
+  * P-733 (4) narrowed this to a PR that failed a merge batch. Such a PR is relabelled only after a green full run, with every failing suite named.
+  * #2249, as merged, required a full run on every PR. It dequeued about 15 PRs, so it was switched back to P-733 (4) with the repository variable `FULL_RUN_FROM` (to 22 Nov 20:00 IST). Every merge batch still runs every suite (P-651, P-743).
+  * Owed: after a failed batch, the full run starts by itself on each dequeued PR (P-751 (2)).
+* **Faster batches:** 18 test parts instead of 8, so batch time falls from about 60 to about 25 min (estimate, P-738, #2282).
+* **Test quality and impact map (B203), an exception to the lock:** per-test coverage with c8, a generated capability → code → test map, PR-stage runs of only the affected suites (the merge batch keeps every suite), and a Stryker mutation pilot on one module. New tools go through the STANDARDS §1 gate first (P-744).
+* **Quarantine:** a date-dependent staff-hours suite is held out of PR and batch runs until its fix lands, which is due 21 Nov (#2435). The nightly full set still runs it (P-754).
+* **Size exceptions** under P-610 are recorded one PR at a time: #2169 (P-711), #2204 (P-720), #2322 (P-748) and #2427 (P-753). P-753 moved the business files to the private repository. The 800-line limit stands, and P-733 (2) dropped the 3,000-line cap.
+
+### 11.3 Proof and qa
+
+* **qa walks on GitHub's machines,** with a replayable video. The Mac keeps 1-2 exploratory sessions. Gate A counts once qa reviews the recording (P-700).
+* **Automatic proof:** when an item's last part merges, GitHub runs its J-test and pack on main and posts the verdict (P-722, P-724 (4), P-728 (3), P-732 (2), P-733 (3); #2233). The J-test merges in the item's last PR (P-728 (1)).
+* **qa audits, a lower bar told to the founder before he chose:** qa walks items that touch money, permissions, firm walls, schema or IRCC forms, plus a daily sample of the others. A failed audit takes the item back to Partial (P-732 (3), P-733 (3)).
+* **Heavy gates only on risk paths:** the breaker and the Lead's read cover money, permissions, firm walls, schema, migrations, IRCC forms and `.github/`; one Opus reviewer covers the rest (P-732 (4)/(7)). Owed: drop screenshots and records from the Lead-read path list (P-751 (3)).
+* **GitHub add-ons:** journey videos kept 90 days; a batch-failure alert (#2234); an evaluation of the Claude Code GitHub Action, with nothing installed (P-729).
+* **Four qa lanes,** up from 2 (P-728 (4), P-740).
+
+### 11.4 Roles and operations
+
+* **Agents do the work.** When a tool path is stuck, the Lead does the step itself in the signed-in built-in browser: no passwords, money, security settings or deletes (P-699). This was made standing for labels, Ready for review and reopens after the Lead's read, never in place of the reviewer's Approve on code (P-752; `tools/lead-pr.sh`). Night labelling and lane restarts were covered by a blanket approval (P-709).
+* **Lead PRs** get an independent Opus reviewer's Approve before the Lead labels them (P-695, A168).
+* **Plan switch:** at 94% of the weekly plan the founder gets the forecast; at 96% lanes push and stop; at 97% the founder switches account and the new Lead resumes from `RESUME-ON-NEW-ACCOUNT.md` (P-714). On that account the Lead runs Fable 5.2 medium, auto mode (P-725). Extra paid usage for lanes is allowed (P-746 (2)).
+* **Bottleneck at every check:** the Lead measures the flow from tools, names the one constraint, applies the simplest fix and re-measures. No cause is claimed unmeasured. A "constraint" section in lead-watch.sh is owed (ENF-738, P-738, P-751 (4)). lead-watch counts only runs under 6 h old as waiting (P-751 (1)).
+* **Product numbers only:** speed means app-code PRs (`tools/app-code-prs.sh`) and qa-confirmed Works. Records, tooling and CI are shown apart (P-703).
+* **One action list:** `design/full-power-plan-2026-11-17.md`, enforced by plan-watch.py (P-690). The changes adopted from the talks are evaluated on 21 Nov by an independent reviewer on measured numbers (P-702).
+* **Session names** read `<role> · <what it works on>`. Lead numbering restarts at Lead 1 (series 3) after Lead 100 (P-749).
+
+### 11.5 Work in progress and the lock
+
+* **Finish to Proven first:** lanes outside the finish list park with a resume note; nothing is deleted (P-707).
+* **The unit of work is one Release 1 item's whole chain:** build parts, J-row, proof (P-719). This is grouped into journeys on two team tracks (P-723, P-724, P-726). From 20 Nov it runs as **waves with enforced caps** in `design/waves.md` (P-745, B204 checks):
+  * at most 8 items building and at most 12 Built-not-Proven;
+  * wave N+1 builds while wave N is proved.
+* **Pipeline freeze** until 30 Proven, except fixes for a red main or a broken queue (P-716). Records and pipeline work take their own lane, so it never blocks product (P-717).
+* **Lock:** P-733 runs unchanged to the evening of 22 Nov. A new workflow row before 23 Nov must be marked as a fix (P-734, ENF-733 owed).
+* **Targets (for the T1 line):** Release 1 stays 29 Nov (P-740). Its core is Waves 1 and 2, about 45-50 items, against 101 (P-746). The target for 20 Nov is 20-25 Proven (P-746 (3)).
+
+### 11.6 Environments and scale baseline
+
+* **Staging, dev and AWS** wait until 30 R1 items are Proven, with 40 as the upper mark. The demo stays on the Mac (:4400) until then (P-718, P-750).
+* **Scale baseline:**
+  * size: 50 firms at launch, 100 at most, 1-10 staff each (about 1,000 staff users plus clients);
+  * hosting: one AWS region in Canada, one managed PostgreSQL with automatic backups, a managed container service, two environments;
+  * out of scope as over-engineering: Kubernetes, several regions, microservices and an operations team (P-755).
 
 ---
 

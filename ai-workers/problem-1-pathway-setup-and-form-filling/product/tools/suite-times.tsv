@@ -1,30 +1,32 @@
-# Seconds per suite on GitHub's 2-core Linux machine, read from the suite tables in the parts' logs (15 Nov, P-436 (7),
-# P-502): the median of the PASS rows of the 8 newest green merge-queue batch runs with 8 parts (43656353002,
-# 43645736915, 43636266010, 43635541282, 43630559987, 43626660842, 43624489080, 43621167714; 14-15 Nov, 481 suites
-# timed there, 1-8 samples each). Suites those batches skipped (on CI's automatic quarantine, B122) take their one PASS
-# row in the finished parts 1-7 of scheduled nightly run 43655888932 (15 Nov, 13 suites). The 5 on run-suites.sh's
-# hand-set QUARANTINE list, which only the nightly runs, take the median of their nightly PASS rows of 6-11 Nov (runs
-# 42142805282, 42318733331, 42428185735, 42537036251, 42933561867; 2-3 rows each), except check_b78_section_names.ts:
-# 1230 s, its measured hang (it passes in 0-1 s, but twice ran into the 1200 s suite limit + 30 s kill, runs
-# 42243001915 and 42377102612; see QUARANTINE). Its nightly part is dealt that time, so the part still ends inside the
-# job limit when it hangs. Set it back to its pass time (0) when it leaves the quarantine.
-# Nightly suites ran at 0.98 x these medians (356 suites in both); one part's sum ran 0.74-1.23 x them (71 parts).
+# Seconds per suite on GitHub's 2-core Linux machine, read from the suite tables in the parts' logs (21 Nov, CI-SPEED-2,
+# founder A253): the median of the PASS rows of 3 green merge-queue batch runs with 18 parts (44874048135, 44873814853,
+# 44872846061; 21 Nov 05:51-06:44 UTC; 54 parts, 628 suites, 3 rows each but 3 suites with 1; no retries, no FAIL).
+# Why: the 15 Nov file timed about 490 of the 628 suites a batch now runs; the other 135 (2727 s measured) counted 30 s
+# each, so parts were dealt unevenly and ran 1097-1971 s (longest 1.33 x mean; part 1 held check_bk5_start_browser.cjs,
+# 617 s, timed 397). The 135 are added at the end; a timed suite takes the new median only where it moved by more than
+# 10 s and 20 % (23 did; the other 357 moved less and keep their row, so this diff stays small). Re-dealing those runs'
+# own times with this file: longest part 1332 s of suites at 18 parts (was 1495; 1257 with every median), 988 s at 24
+# (mean 942); each part also spends about 250 s outside its suites (checkout, set-up, browser).
+# Of the 6 suites on run-suites.sh's hand-set QUARANTINE list, 5 keep their 15 Nov times (batches skip them, so they
+# weigh 0 there and these times count only in the nightly full set); check_fo3st2_availability_browser.ts has none: 30 s.
+# check_b78_section_names.ts: 1230 s is its measured hang, not its pass time (it passes in 0-5 s, but twice ran into the
+# 1200 s suite limit + 30 s kill, runs 42243001915 and 42377102612; see QUARANTINE). Its nightly part is dealt that time,
+# so the part still ends inside the job limit when it hangs. Set it back to its pass time (0) when it leaves the quarantine.
 # run-suites.sh --shard balances the shards by these times (longest first); a suite missing here counts as 30 s; a
 # quarantined suite weighs 0 only where it is skipped (PR and queue checks), its time in the nightly full set.
-# Refresh the same way when many suites are new (15 Nov: 15 suites were untimed, 30 s each, and nightly part 8 stopped
-# at its 59-minute limit twice; earlier: 14 Nov file, 7ca355ba7).
+# Refresh the same way when many suites are new (earlier files: 15 Nov, 8 batches with 8 parts; 14 Nov, 7ca355ba7).
 check_b78_section_names.ts	1230
-check_bk5_start_browser.cjs	397
-check_c102_paper_readback.ts	291
+check_bk5_start_browser.cjs	617
+check_c102_paper_readback.ts	369
 check_bk4c_browser.cjs	288
 check_b152_recorded_fees_api.ts	280
 check_m4_demo_smoke.ts	253
 check_ai_live_switch.ts	252
 check_bk17_recorded_filing_api.ts	243
 check_qa446_confirm_counts_browser.ts	241
-check_checkpoint_sheet_stable.ts	212
+check_checkpoint_sheet_stable.ts	258
 check_bk3_frame_browser.cjs	206
-check_qa427_client_card_browser.cjs	206
+check_qa427_client_card_browser.cjs	150
 check_qa445_every_part_browser.cjs	202
 check_bk3_links_browser.cjs	193
 check_m3_c1_expected_lines.ts	187
@@ -47,10 +49,10 @@ check_runtime_r1c.cjs	138
 check_bk13_zero_code_run.ts	135
 check_c73_parts_checkpoint.ts	134
 check_bk12_sample_case.ts	132
-check_c82_record_api.ts	132
+check_c82_record_api.ts	164
 check_qa145_clean_clone.ts	130
-check_qa317_sheet_browser.ts	126
-check_c612_fees_browser.ts	125
+check_qa317_sheet_browser.ts	165
+check_c612_fees_browser.ts	94
 check_a24_record_reference_browser.ts	124
 check_qa392b_recorded_yes_no.ts	124
 check_bk4a_browser.cjs	123
@@ -63,18 +65,18 @@ check_b124_unconfirmed_browser.cjs	115
 check_bk14_sp_review_api.ts	115
 check_c81_signing_api.ts	114
 check_qa165_readiness_paths_api.ts	112
-check_qa165_taiwan_israel_api.ts	110
+check_qa165_taiwan_israel_api.ts	136
 check_bk2_fold_outs_browser.cjs	109
 check_c10_1_configured.ts	109
 check_qa144_ee_release.ts	108
 check_qa309_online_done.ts	108
 check_qa439_question_order_api.ts	108
-check_forms_b88_qa263.ts	106
+check_forms_b88_qa263.ts	82
 check_b115_add_sponsor.cjs	105
 check_queue_tx.ts	105
 check_k13_names_browser.cjs	104
 check_m3s4_blocking_api.ts	104
-check_bk16_family_forms_api.ts	103
+check_bk16_family_forms_api.ts	74
 check_c91_impact_api.ts	103
 check_qa144_sp_release.ts	103
 check_c10_1_browser.cjs	102
@@ -84,7 +86,7 @@ check_c82_record_browser.ts	100
 check_forms_b116_own_unmapped.ts	100
 check_bk15_study_family_api.ts	99
 check_b104_checkpoint.ts	98
-check_c95_release_update_browser.ts	98
+check_c95_release_update_browser.ts	155
 check_g4_tests_tab_browser.ts	98
 check_qa395_q8a_counts.ts	98
 check_qa400_principal_per_person.ts	98
@@ -98,7 +100,7 @@ check_qa144_place_step.ts	93
 check_qa421_release_submit_first_browser.cjs	93
 check_b78_sp_case_browser.cjs	92
 check_qa144_fs_release.ts	92
-check_c13_employer_link_browser.cjs	91
+check_c13_employer_link_browser.cjs	118
 check_screen01_browser.cjs	91
 check_b107_representative_copies.ts	90
 check_d1_reset_to_six.ts	90
@@ -108,14 +110,14 @@ check_m3s5_online_only_api.ts	87
 check_forms_b114_condition_other_combination.ts	83
 check_c75_live_fake.ts	82
 check_c75_review_runs_api.ts	82
-check_b154_section_background.ts	81
+check_b154_section_background.ts	115
 check_w115_slice3_browser.cjs	81
 check_b52_own_yes_no.ts	80
 check_forms_b88_panel_browser.cjs	76
 check_qa402_case_condition.ts	76
 check_w1_structure_browser.cjs	76
 check_forms_s4_library_browser.cjs	73
-check_pf14_jobs.ts	61
+check_pf14_jobs.ts	124
 check_forms_b88_spread.ts	59
 check_forms_c411_draft_qd.ts	59
 check_forms_tab_refresh_browser.cjs	57
@@ -130,7 +132,7 @@ check_forms_slice2.ts	49
 check_c75_review_page_browser.cjs	48
 check_qa401_person_rights_browser.cjs	48
 check_x2b_dialog_browser.cjs	48
-check_c83_review_browser.cjs	47
+check_c83_review_browser.cjs	69
 check_finder_long_page_browser.cjs	47
 check_w1_programs_s2.cjs	47
 check_w1_before_forms_browser.cjs	46
@@ -148,14 +150,14 @@ check_bk19_validate_browser.ts	39
 check_forms_b86_door.ts	39
 check_forms_b86_panel_browser.cjs	39
 check_c92_out_of_date_browser.ts	38
-check_forms_c47_pqr_picks_browser.cjs	38
+check_forms_c47_pqr_picks_browser.cjs	50
 check_forms_demo.ts	38
 check_c44_part2_browser.cjs	37
 check_c75_findings_api.ts	37
 check_forms_qa237_qa239_held.ts	37
 check_forms_c36_requirement_type_browser.cjs	36
 check_open_cases_at_once.ts	36
-check_s5_slice2_browser.cjs	36
+check_s5_slice2_browser.cjs	49
 check_w1_start_setup_browser.cjs	36
 check_c92_undo_api.ts	35
 check_forms_c212_rail_browser.cjs	35
@@ -185,8 +187,8 @@ check_g1_source_entry_points_browser.cjs	29
 check_pf1_module_routes.ts	29
 check_screen01_smallfix.cjs	29
 check_v3b1_openable.ts	29
-check_b162_no_copy_api.ts	28
-check_c616_privacy_browser.cjs	28
+check_b162_no_copy_api.ts	40
+check_c616_privacy_browser.cjs	39
 check_runtime_r1d.ts	28
 check_setup_card_browser.cjs	28
 check_uxa2_to_review_browser.cjs	28
@@ -196,7 +198,7 @@ check_cost_warning_browser.cjs	27
 check_s7_dialogs_browser.cjs	27
 check_s6_queue_browser.cjs	26
 check_c119_library_items_browser.cjs	25
-check_c42_marking_browser.cjs	25
+check_c42_marking_browser.cjs	41
 check_forms_s4_run_browser.cjs	25
 check_qa172_plain_titles_browser.cjs	25
 check_workspace_first_calls.ts	25
@@ -206,7 +208,7 @@ check_fo1a_sales_schema.ts	24
 check_forms_c118_acceptance.ts	24
 check_forms_focus_landings_browser.cjs	24
 check_w1_s1s2_fix.cjs	24
-check_c41_section_order_browser.cjs	23
+check_c41_section_order_browser.cjs	38
 check_c65_documents_api.ts	23
 check_forms_c47_pqr_picks.ts	23
 check_forms_qa218_saved_masters_browser.cjs	23
@@ -231,6 +233,7 @@ check_c117_intake_edition.ts	20
 check_c46_preview_channels_browser.cjs	20
 check_forms_c34_masters_browser.cjs	20
 check_p2_launch.ts	20
+check_p2_shared_ledger.ts	1
 check_pqr_browser.cjs	20
 check_qa163_listed_form_saved.ts	20
 check_uxa4_details_browser.cjs	20
@@ -284,7 +287,7 @@ check_runtime_r1a.ts	14
 check_s5_leadcheck.ts	14
 check_screen02_fix.ts	14
 check_w1_qa51_52_54.cjs	14
-check_fo5_retainers.ts	13
+check_fo5_retainers.ts	32
 check_forms_c31_acceptance.ts	13
 check_forms_qa53.ts	13
 check_official_pages.ts	13
@@ -394,7 +397,7 @@ check_b164_no_engine_keys.ts	5
 check_c1113_near_release.ts	5
 check_c313_reuse.ts	5
 check_pf0p_ports.ts	5
-check_pf23_observability.ts	5
+check_pf23_observability.ts	78
 check_a24_case_number_migration.ts	4
 check_s6_field_drafts.ts	3
 check_w1_start_setup.ts	3
@@ -511,3 +514,138 @@ check_uxa3_words_rules.ts	0
 check_vv_checklist.ts	0
 check_vv_prepare_store.ts	0
 check_w1_level_tokens.ts	0
+check_csk1s_clients_browser.ts	154
+check_csdl1_deadlines_browser.ts	119
+check_csk1_client.ts	118
+check_fo8_prospect_won.ts	115
+check_csc1_count.ts	107
+check_bk21_pinned_account.ts	102
+check_csc1s_decision_browser.cjs	102
+check_pf18h_home_browser.ts	96
+check_csdl3_milestones_browser.ts	95
+check_pf5s1_signup_browser.ts	94
+check_csw1_firm_id.ts	83
+check_qa621_persona_door_production.ts	76
+check_pf15c_case_limits.ts	73
+check_fo3w_booking_browser.ts	64
+check_fo3st1_calendar_browser.ts	58
+check_csd1t_file_type.ts	54
+check_csv1_inputs.ts	49
+check_pf19b3_panel_browser.ts	44
+check_pf21s_complaints_browser.ts	39
+check_fo4_sales_browser.ts	35
+check_fo7a_money_schema.ts	33
+check_fo3st3_types_browser.ts	31
+check_pf19r_case_links.ts	28
+check_pf23w_jobs_wired.ts	27
+check_aud1a_insert_only.ts	25
+check_pf6_staff_browser.ts	24
+check_csnk1_name_key.ts	23
+check_fo4b_embed_browser.ts	23
+check_fo7lk_lock_order.ts	22
+check_fo3w_manage_browser.ts	21
+check_pf18a_offices.ts	21
+check_pf21v_views.ts	21
+check_pf19a_messages_schema.ts	19
+check_pf12_walls.ts	18
+check_aud4_firm_log.ts	17
+check_cssd1_no_drift.ts	17
+check_fo7ts_money_settings.ts	17
+check_pf19b3_delivery.ts	17
+check_pf24w_environment.ts	17
+check_pf6a_frame_browser.ts	17
+check_fo13_compliance_schema.ts	16
+check_pf6f_callback_browser.ts	16
+check_fo4w_web_form_settings_browser.ts	15
+check_fo7mv_move_list.ts	15
+check_fo4as_assign_browser.ts	14
+check_fo13s_conflict_browser.ts	13
+check_pf5t_terms_browser.ts	13
+check_css1_index.ts	12
+check_fo4sf_source_filter.ts	12
+check_pf19b2_ses.ts	12
+check_pf6b_permission_rules.ts	12
+check_csc1_close.ts	11
+check_fo4al_add_lead_browser.ts	11
+check_fo5f2_template_safety.ts	11
+check_pf18a_notifications.ts	11
+check_fo10_assignment.ts	10
+check_fo13s_identity_browser.ts	10
+check_pf21b_port.ts	10
+check_fo3a_booking_types.ts	9
+check_fo7a2_ledger_rules.ts	9
+check_pf12b_bypass_audit.ts	9
+check_r130_prospect_source.ts	9
+check_aud1b_adapter.ts	8
+check_fo13c_conflict.ts	8
+check_fo2p3b_arrival_port.ts	8
+check_fo3a1c_set_names.ts	8
+check_fo3a_hours_timings.ts	8
+check_fo3vr_visibility.ts	8
+check_fo9a_duplicates.ts	8
+check_pf18n_notifications.ts	8
+check_fo10p2_sharing.ts	7
+check_fo1p_person_port.ts	7
+check_fo2_leads_prospects.ts	7
+check_pf15_limits.ts	7
+check_pf18b_support.ts	7
+check_pf19p_platform_mail.ts	7
+check_pf4b_session_reads.ts	7
+check_pf4c_batch_invite.ts	7
+check_pf5_signup_billing.ts	7
+check_aud5_check.ts	6
+check_fo2p4_calls_timeline.ts	6
+check_fo3a2_feed.ts	6
+check_pf0bp_body_errors.ts	6
+check_pf19b_mail.ts	6
+check_pf21i_idempotent.ts	6
+check_pf5t_terms.ts	6
+check_pffp_pdf.ts	6
+check_aud1m_case_writes.ts	5
+check_aud5_keep_periods.ts	5
+check_csdl1_deadlines.ts	5
+check_csdl3_milestones.ts	5
+check_fo13i_identity.ts	5
+check_fo2b_corporate.ts	5
+check_fo2p3_prospects.ts	5
+check_fo2pv_prospect_value.ts	5
+check_fo2v_lead_visibility.ts	5
+check_fo2w_won_event.ts	5
+check_fo3m_answers.ts	5
+check_fo3sa_any_time.ts	5
+check_fo3sr_routes.ts	5
+check_fo7b_invoices.ts	5
+check_journey_recording.ts	5
+check_pf13_branding.ts	5
+check_pf15_cases.ts	5
+check_pf18bk_keys.ts	5
+check_pf19b_sending.ts	5
+check_pf19r_senders.ts	5
+check_pf21j_handler_key.ts	5
+check_pf6m2_invite_recheck.ts	5
+check_pf6m_money_line.ts	5
+check_pf6r_roles_read.ts	5
+check_csc1s_view.ts	4
+check_fo3a2_consult_record.ts	4
+check_fo3pa_public_answers.ts	4
+check_fo9a_phone_edit.ts	4
+check_fo9b_phone_doors.ts	4
+check_pf21w_routes.ts	4
+check_qa518_unsubscribe_address.ts	4
+check_pf0a_audit_port.ts	3
+check_pf19r_every_sender.ts	3
+check_pf4dn_invite_name.ts	3
+check_aud_values.ts	2
+check_fo9b_port.ts	2
+check_pf18np_port.ts	2
+check_pf4r_lockout_race.ts	2
+check_pf8r_nightly_job.ts	2
+check_pffd_delete.ts	2
+check_pfle_libraries.ts	2
+check_as1m_eligibility_move.ts	1
+check_fo6_signing_port.ts	1
+check_item_proof.ts	1
+check_pf23m_log_calls.ts	1
+check_pf5v_signup_mail.ts	1
+check_pff4_file_type.ts	1
+check_repo_paths.ts	0

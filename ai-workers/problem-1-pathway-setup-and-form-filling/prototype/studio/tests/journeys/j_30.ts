@@ -284,6 +284,8 @@ ok("J-30 W5 pass: the List at 375 px has no sideways page scroll", await noSidew
 await owner.setViewportSize({ width: 1440, height: 900 });
 
 // ------------------------------------------------------------- W6: Convert and Undo convert (DW11, BR-11), keys (BR-10)
+// FO-13c: no client without a recorded conflict check; recorded through its API for Ana and Cyd (the panel is FO-13s).
+for (const id of [anaId, cyd1.id]) { const c = await api(tok.R, "POST", "/conflict-checks", { prospectId: id, requestId: randomUUID(), result: "NO_CONFLICT" }); if (c.status !== 201) throw new Error(`J-30: the conflict check was not recorded (${c.status})`); }
 await owner.goto(`${BASE}/front-office/prospects/${anaId}`);
 await owner.getByRole("button", { name: "Convert to client" }).click();
 const asked = await owner.getByRole("dialog").getByText("Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.").isVisible();

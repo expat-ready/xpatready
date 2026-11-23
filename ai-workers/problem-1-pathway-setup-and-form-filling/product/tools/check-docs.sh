@@ -60,6 +60,11 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         printf '%s\n' "$areas" | grep -qviE '^ *(tooling|qa|records|tech lead|lead) *([(;,:./]|$)' && continue;;
       esac
       printf '%s\n' "$row" | grep -qiE '\bfix(es|ed|ing)?\b' && printf '%s\n' "$row" | grep -qiE '\bbroken: *[^ |]' && continue
+      # Founder exceptions to the P-734 lock (founder 20 Nov 16:0x IST chose "Exception for my approvals"; P-765): the rows
+      # below quote his typed approval (P-760 is a scope ruling, not a workflow change); from P-765 on, a row approved by
+      # him says "Lock: founder exception." and passes by itself. Anything he did not approve stays locked.
+      case " P-754 P-755 P-756 P-757 P-758 P-759 P-760 P-761 P-762 P-763 P-764 " in *" $id "*) continue;; esac
+      printf '%s\n' "$row" | grep -qE 'Lock: founder exception\.' && continue
       echo "WORKFLOW LOCK: $id changes the workflow (it is in decision-impact.sh's EXEMPT, or only tooling, qa, records or Lead backlog rows carry it) and is dated before 23 Nov, while P-733 runs unchanged to the evening of 22 Nov (P-734 (1)). Keep it for 23 Nov, or, if it fixes something broken, say so in the row: the word fix, and \"Broken: <what is broken, with its evidence>\""
     done
   fi
@@ -80,6 +85,33 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         if (c[4] !~ /^((hook|CI|script): [^ ]|prose( |$))/) print "RULES REGISTER: " c[2] " has no enforced-by (hook: <name>, CI: <name>, script: <name> or prose), found \"" c[4] "\""
         if (c[5] == "") print "RULES REGISTER: " c[2] " has no as-of"; next }
       { t = 0 }' "$R"
+  fi
+  # E14 (P-772; IDX-1, -2, -4, -5): an index row stands for DECISIONS rows, so every P-ID an IDX row lists (one by one,
+  # or "P-a to P-b", every number between) is a row of DECISIONS.md or of a side file in decisions/ (struck-through
+  # rows count: the row is still there). IDX rows are read in RULES.md and in rules/*.md, where the moved full lists
+  # live. A lettered ID (P-348c) is found by its own row or its number's. Test: check-idx-integrity.sh.
+  if [ -f "$D" ]; then
+    python3 -I - "$PH" <<'PY' || echo "INDEX: the IDX check stopped with an error (python exit $?), so no index row was checked (E14)"
+import glob, os, re, sys
+ph = sys.argv[1]; have = set()
+for f in [os.path.join(ph, "DECISIONS.md")] + sorted(glob.glob(os.path.join(ph, "decisions", "*.md"))):
+    for l in open(f, encoding="utf-8"):
+        m = re.match(r"^\| *~*(P-[0-9]+[a-z]?)\b", l)
+        if m: have.add(m.group(1))
+for f in [os.path.join(ph, "RULES.md")] + sorted(glob.glob(os.path.join(ph, "rules", "*.md"))):
+    if not os.path.exists(f): continue
+    name = os.path.relpath(f, ph)
+    for n, l in enumerate(open(f, encoding="utf-8"), 1):
+        if not l.startswith("| IDX-"): continue
+        c = l.split("|"); rid = c[1].strip(); txt = c[2] if len(c) > 2 else ""
+        ids = set(re.findall(r"\bP-[0-9]+[a-z]?\b", txt))
+        for a, b in re.findall(r"\bP-([0-9]+) to P-([0-9]+)\b", txt):
+            a, b = int(a), int(b)
+            if b < a or b - a > 200: print(f"INDEX: {name} line {n} ({rid}) has the range P-{a} to P-{b}, which runs backwards or spans over 200 rows (E14)"); continue
+            ids |= {f"P-{i}" for i in range(a, b + 1)}
+        miss = sorted((i for i in ids if i not in have and re.sub(r"[a-z]$", "", i) not in have), key=lambda i: int(re.sub(r"\D", "", i)))
+        if miss: print(f"INDEX: {name} line {n} ({rid}) lists {', '.join(miss)}, not a row of DECISIONS.md or decisions/*.md: fix the ID or the index row (E14)")
+PY
   fi
   # B193 part 5 (P-619 step 6; P-188, P-611): rows moved out of the register are never lost. Each rules/rule-id-map-*.tsv
   # lists every ID the register had before a triage: "kept" is still a RULES.md row; "merged" and "retired" rows sit word
@@ -128,15 +160,32 @@ PY
     done
   done
 } | sort -u > "$out"
-# Times are read, not guessed (6 Nov): a warning, never a failure, when STATE's "updated: YYYY-MM-DD HH:MM IST" is more
-# than 30 minutes from the time it was committed (now, while STATE.md has uncommitted changes). Test: check-state-page.sh.
-if [ -f "$PH/STATE.md" ]; then
-  u=$(sed -nE 's/^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}) IST.*/\1/p' "$PH/STATE.md" | head -1)
-  c=$(cd "$PH" && git diff --quiet HEAD -- STATE.md 2>/dev/null && git log -1 --format=%ct -- STATE.md 2>/dev/null); [ -n "$c" ] || c=$(date +%s)
-  [ -n "$u" ] && python3 -I -c 'import sys, datetime as d
+# Times are read, not guessed (6 Nov; E9, P-302: 17 breaks 13-16 Nov, so now a failure): STATE's "updated: YYYY-MM-DD
+# HH:MM IST" (or "HH:Mx IST", any minute of that ten) must be within 30 minutes of the time it was committed (now, while
+# STATE.md has uncommitted changes); an "updated:" line in neither form fails too. It fails when this branch wrote the
+# time: STATE.md uncommitted, or changed by a commit not yet on STATE_TIME_BASE (default origin/main; none = this branch).
+# A time already on main only warns, so one bad merge never stops every lane. Test: check-state-page.sh.
+if [ -f "$PH/STATE.md" ] && grep -q '^updated:' "$PH/STATE.md"; then
+  ul=$(grep -m1 '^updated:' "$PH/STATE.md")
+  u=$(printf '%s\n' "$ul" | sed -nE 's/^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-5][0-9x]) IST.*/\1/p')
+  mine=1; c=""
+  # The time is judged against this branch's newest STATE commit not yet on the base, merges left out: CI's test merge,
+  # or a merge of main, is never taken for it (it is dated when it is made). None: the time came from the base (warn).
+  if (cd "$PH" && git diff --quiet HEAD -- STATE.md 2>/dev/null); then
+    b="${STATE_TIME_BASE:-origin/main}"
+    if (cd "$PH" && git rev-parse -q --verify "$b^{commit}" >/dev/null); then
+      c=$(cd "$PH" && git log -1 --no-merges --format=%ct "$b..HEAD" -- STATE.md 2>/dev/null)
+      [ -n "$c" ] || { mine=0; c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); }
+    else c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); fi
+  fi
+  [ -n "$c" ] || c=$(date +%s)
+  if [ -z "$u" ]; then msg="STATE TIME: STATE.md's first updated: line cannot be read: write 'updated: YYYY-MM-DD HH:MM IST' (or HH:Mx) from TZ=Asia/Kolkata date"
+  else msg=$(python3 -I -c 'import sys, datetime as d
 ist = d.timezone(d.timedelta(hours=5, minutes=30))
-u = d.datetime.strptime(sys.argv[1], "%Y-%m-%d %H:%M").replace(tzinfo=ist); c = d.datetime.fromtimestamp(int(sys.argv[2]), ist)
-m = abs((c - u).total_seconds()) / 60
-if m > 30: print("WARN  STATE.md says updated %s IST, but it was committed %s IST (%d min apart): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], c.strftime("%Y-%m-%d %H:%M"), m))' "$u" "$c"
+lo = d.datetime.strptime(sys.argv[1].replace("x", "0"), "%Y-%m-%d %H:%M").replace(tzinfo=ist)
+hi = lo + d.timedelta(minutes=9 if sys.argv[1].endswith("x") else 0); c = d.datetime.fromtimestamp(int(sys.argv[2]), ist)
+m = max((lo - c).total_seconds(), (c - hi).total_seconds(), 0) / 60
+if m > 30: print("STATE TIME: STATE.md says updated %s IST, but it was committed %s IST (%d min apart): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], c.strftime("%Y-%m-%d %H:%M"), m))' "$u" "$c"); fi
+  if [ -n "$msg" ]; then [ "$mine" = 1 ] && echo "$msg" >> "$out" || echo "WARN  ${msg#STATE TIME: } (already on ${STATE_TIME_BASE:-origin/main})"; fi
 fi
 cat "$out"; [ -s "$out" ] && exit 1; echo "docs OK"; exit 0

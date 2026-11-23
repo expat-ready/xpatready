@@ -1,0 +1,3 @@
+Entry points: `GET booking-timings` (key `agent/booking-event-type:list`), `PUT booking-timings` and `PATCH booking-types/:id/timings` (with `version`; per changed field gaps/notice/window need `…:configure-availability`, reminders/self-service `…:edit`) under `/api/front-office`; `booking/settings/timings.ts` `resolveTimings(type, firm)` (the type's value, else the firm's `front_office.booking_*` setting, else the default) and `withTimings`, used by every reader of a type's timings (FO-3a part 1b-ii); a type's empty timing is the firm's, and the database's `fo_booking_write` pads by the same rule
+Tables: foConsultationType, platformFirmSetting
+Tests: tests/check_fo3a_hours_timings.ts

@@ -9,7 +9,7 @@ import { captureSchemaErrors, fingerprint, noAnswers, type CaptureRecord } from 
 import { canonical } from "../contracts/rules.ts";
 import {
   approvedSourcesDirOk, BASE_URL, FORBIDDEN, INVENTORY, KEY_FILE, LABEL, MAX_ATTEMPTS, MODELS, OFFICIAL, PARTS_DIR, PRICE_PER_MTOK, PROMPTS_DIR, PROTOTYPE,
-  QUESTION_LISTS, REVIEW_SHEETS, ROUTE_ID, RUN_CAP_USD, RUNS_DIR, SCREEN_INVENTORIES, SOLUTION,
+  QUESTION_LISTS, REVIEW_SHEETS, ROOT, ROUTE_ID, RUN_CAP_USD, RUNS_DIR, SCREEN_INVENTORIES, SOLUTION,
 } from "./policy.ts";
 
 export class PolicyRefusal extends Error {}
@@ -378,7 +378,8 @@ export function assertNoLinksUnder(dir: string): void {
 
 /** Node permission-model arguments for the drafting process: it can read the official files, their
  *  inventories, the runner code, the contracts, the SDK and the key file, write only the spend ledger,
- *  and read nothing else (no answer key, no family values).
+ *  and read nothing else (no answer key, no family values). The root's AGENTS.md (one file): policy.ts finds the root by it
+ *  (clean-up stage 2a).
  *  `--preserve-symlinks` (QA-8): the module loader keeps a package's path as found instead of resolving it with
  *  realpath, which stats every link on the way. In a lane copy `node_modules` is a link whose target runs through a
  *  second link (the copy's `.tools`); resolving it needed read access to that link, which would grant the whole tools
@@ -387,7 +388,7 @@ export function isolatedNodeArgs(ledgerDir: string, approvedDir?: string): strin
   const nodeModules = realpathSync(join(PROTOTYPE, "node_modules"));
   // P-80: one copy's approved-sources folder, only when the launcher names one; never any other part of the Studio's files.
   if (approvedDir !== undefined && !approvedSourcesDirOk(approvedDir)) refuse(`not an approved-sources folder of a Studio copy: ${approvedDir}`);
-  const reads = [OFFICIAL, INVENTORY, join(PROTOTYPE, "p2"), join(PROTOTYPE, "contracts"), join(PROTOTYPE, "package.json"), join(PROTOTYPE, "node_modules"), nodeModules, dirname(KEY_FILE), ledgerDir, ...(approvedDir ? [approvedDir] : [])];
+  const reads = [join(ROOT, "AGENTS.md"), OFFICIAL, INVENTORY, join(PROTOTYPE, "p2"), join(PROTOTYPE, "contracts"), join(PROTOTYPE, "package.json"), join(PROTOTYPE, "node_modules"), nodeModules, dirname(KEY_FILE), ledgerDir, ...(approvedDir ? [approvedDir] : [])];
   return ["--permission", "--preserve-symlinks", ...reads.map((r) => `--allow-fs-read=${r}`), `--allow-fs-write=${ledgerDir}`];
 }
 

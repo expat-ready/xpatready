@@ -3,13 +3,18 @@
 # the first page answer 200, the image runs as a non-root user and holds no secret; then a seeded fail (the database
 # stopped) must make the smoke script fail on health. The Canadian cloud deploy is PF-8.
 # When (B190, CI minutes): only a pull request whose change touches what goes into the image (the paths below), not
-# while it is a draft (P-371 (1): ready runs it), and by hand. A records-only PR matches no path, so no run starts.
+# while it is a draft (P-371 (1): ready runs it; a Mergify batch, a draft by design, runs: below), and by hand. A records-only PR matches no path, so no run starts.
 # GitHub judges `paths` on the PR's whole diff, so a later push to a code PR always starts a run; step "changes" then
 # reads what that one push changed (before..after) against the same list, read from this file, and skips the build in
 # words only when the push touched none of it (records only, say) AND this workflow's run at the earlier head
 # concluded success (checked through the API, never assumed: a red or replaced earlier run means a full run).
 # Keep the `paths` block plain: one `      - "glob"` per line, no comments or blank lines inside it (the step refuses them).
-# Mergify's batch PRs (mergify/*, drafts) do not run it: each PR proved its image; it is not a required check.
+# Merge batches (QA-449, R1.16; ci-pipeline-strategy Q4): Mergify's batch PRs (mergify/merge-queue/*, opened as drafts)
+# run it too when the batch touches the paths, so the container proof runs on the code that lands on main, not only on
+# each PR alone (two PRs each green alone can still break the image together). It is report-only (P-717 (b)): no
+# queue_conditions, merge_conditions or required check names it until it has run clean on 10 batches or 24 h; the tech
+# lead adds it to .mergify.yml then, in its own PR. Main's head by hand: workflow_dispatch on main.
+# Test: product/tools/check-skeleton-scope.sh (which events start the job; run by ci's tools' own checks).
 # A ready head's run is never cancelled (P-371 (2)): a newer push waits. US$0 (public repository), no model spend,
 # no key: the database has no password and live AI is off.
 name: skeleton
@@ -44,7 +49,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   skeleton:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    # A builder's draft skips (P-371 (1)); a ready PR, a Mergify batch (a draft by design) and a dispatch run.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

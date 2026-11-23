@@ -1,0 +1,48 @@
+PASS  FO-4b setup: the Sample firm and its front office are seeded — []
+PASS  FO-4b setup: the form is on, with the test host page's site as its one allowed site
+PASS  FO-4b: the embed script is served by our API as JavaScript any site may load (nosniff, cross-origin resource policy) — {"status":200,"type":"text/javascript; charset=utf-8"}
+PASS  FO-4b: the script sets no cookie and uses no storage (no document.cookie, localStorage, sessionStorage or indexedDB in its source)
+PASS  FO-4b: the form's read may be read by the allowed site's page (Access-Control-Allow-Origin names it, no credentials) — "http://localhost:43785"
+PASS  FO-4b fail: the same read from a site not allowed carries no CORS header, so that page cannot draw the form
+PASS  FO-4b: a send's pre-flight from the allowed site is answered (POST, content-type) — {"status":204,"h":"http://localhost:43785"}
+PASS  FO-4b fail: the pre-flight from a site not allowed is refused in the form door's words, no CORS header — {"status":403}
+PASS  FO-4b fail: a pre-flight for an unknown form is the one not-available answer, nothing about which forms exist — {"status":404}
+PASS  FO-4b: on the allowed site the script draws the firm's form in place of the link, with its words and its list
+PASS  FO-4b: the firm's page around the form is untouched (its heading and its next paragraph still there)
+PASS  FO-4b host page with the form at 375 px: no sideways page scroll
+PASS  FO-4b form drawn on the host page at 375 px: axe finds no WCAG A/AA violation (the shadow root included)
+PASS  FO-4b fail: an empty send says "Enter your first name." and "Enter your email." on each field and in a summary, nothing sent
+PASS  FO-4b field messages: axe finds no WCAG A/AA violation (the shadow root included)
+PASS  FO-4b fail: the server's refusal of a field is shown on that field (a first name with no letter), nothing saved — "this is required."
+PASS  FO-4b: the visitor sees only the firm's thank-you text
+PASS  FO-4b: a double press sends once (one POST) and makes one lead — {"posts":1,"leads":1}
+PASS  FO-4b: the lead's attribution reads campaign spring, source google, medium cpc, click id abc123 (GCLID) — ["google","cpc","spring","abc123","GCLID","http://localhost:43785/host.html?utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=abc123","http://localhost:43785/ref.html?utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=abc123"]
+PASS  FO-4b: the lead's attribution keeps the landing page (the host page with its campaign) and the referring page — ["http://localhost:43785/host.html?utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=abc123","http://localhost:43785/ref.html?utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=abc123"]
+PASS  FO-4b: the lead arrived by the web form door with the form's source, like the hosted form's leads — ["WEB_FORM","WEBSITE","Website enquiry form"]
+PASS  FO-4b: the ticked box wrote one consent row from the form's own wording
+PASS  FO-4b: the same send twice makes one lead (the replay is thanked the same, nothing new) — {"status":201,"body":{"thankYouText":"Thank you. We will be in touch within one working day. (Sample)"}}
+PASS  FO-4b: no request to us after the form is sent (no tracking after the form) — []
+PASS  FO-4b: the browser holds no cookie or storage entry from the script (cookies, localStorage, sessionStorage, indexedDB, caches) — {"cookie":"","local":0,"session":0,"idb":0,"caches":0}
+PASS  FO-4b thank-you on the host page: axe finds no WCAG A/AA violation (the shadow root included)
+PASS  FO-4b: each draw takes a fresh submissionId from the form's read (three draws, three ids) — 3
+PASS  FO-4b host page at 1440 px: no sideways page scroll
+PASS  FO-4b form drawn at 1440 px: axe finds no WCAG A/AA violation (the shadow root included)
+PASS  FO-4b fail: a bot that fills the hidden field through the embed is thanked the same, told nothing of why, and no lead, person or consent exists
+PASS  FO-4b fail: a send under 2 s after the draw, from the allowed site, is thanked the same and nothing is saved — {"status":201,"body":{"thankYouText":"Thank you. We will be in touch within one working day. (Sample)"}}
+PASS  FO-4b fail (break M1): under a strict CSP the hidden field is not visible to a person
+PASS  FO-4b (break M1): under a strict CSP the form keeps its own styles (no inline style for the CSP to block) — []
+PASS  FO-4b (break M1): a person's send from the strict-CSP page makes one lead
+PASS  FO-4b (break m3): a click id of another platform (gbraid) is kept with kind OTHER — "g-777|OTHER"
+PASS  FO-4b fail (break m1): a form switched off after it was drawn says "This form is not available." and saves nothing
+PASS  FO-4b fail (break R1): offline at the send → "Not sent" with a retry line, the answers kept, never "not available"
+PASS  FO-4b (break R1): back online, the same press sends: one lead
+PASS  FO-4b (break R1): the door's generic not-available answer may be read by any page (Access-Control-Allow-Origin *, no credentials) — "*"
+PASS  FO-4b fail: on a site not allowed the form is not drawn; the link to the hosted form stays
+PASS  FO-4b fail: a send from a site not allowed is refused (403, the door's own words, no CORS header) and nothing is saved — {"status":403}
+PASS  FO-4b fail: with the script blocked the page shows the link and nothing broken
+PASS  FO-4b: the link opens the hosted form, which draws
+PASS  FO-4b fail: past the per-address limit the send is refused with "Not sent" and a wait-and-retry line; the answers stay; no lead — {"flood":22}
+PASS  FO-4b: no page error in the browser — []
+
+45/45 passed
+exit 0

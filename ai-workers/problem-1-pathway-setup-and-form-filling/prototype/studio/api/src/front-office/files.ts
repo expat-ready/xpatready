@@ -12,7 +12,7 @@ import { Injectable } from "@nestjs/common";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { FileKey, FileKeyTaken, FilePut, sha256Hex, type FilesPort, type StoredFile } from "../../../ports/files.ts";
+import { FileKey, FileKeyTaken, parseFilePut, sha256Hex, type FilesPort, type StoredFile } from "../../../ports/files.ts";
 import { FirmId } from "../../../ports/audit.ts";
 
 const STUDIO = resolve(import.meta.dirname, "..", "..", "..");
@@ -38,7 +38,7 @@ export class LocalFiles implements FilesPort {
   }
 
   async put(firmId: string, key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string }> {
-    const f = FilePut.parse({ firmId, key, bytes, contentType });
+    const f = parseFilePut({ firmId, key, bytes, contentType });
     const sha256 = await sha256Hex(f.bytes), path = this.pathOf(f.firmId, f.key);
     const had = this.meta(path);
     if (had?.deletedAt) throw new FileKeyTaken(f.key);   // PF-Fd: a deleted key is retired, even for the same bytes

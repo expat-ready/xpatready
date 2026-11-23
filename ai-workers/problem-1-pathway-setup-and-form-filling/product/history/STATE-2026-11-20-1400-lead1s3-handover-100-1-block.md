@@ -1,0 +1,13 @@
+# Hand-over block Lead 100 → Lead 1 (series 3), moved word for word by Lead 1 at 14:0x IST 20 Nov
+
+## Hand-over Lead 100 → Lead 1 (series 3), 12:18 IST 20 Nov (read this first; Lead 100 at ~390k, P-446)
+**Lead 1: rename yourself "Lead 1 · tech lead (current) · from <date> <IST start>", run /lead, create the check (`run lead-watch; read STATE Start here`). Standbys: Lead 2 (series 3, local_daadc134) and Lead 3 (series 3, local_b0640d3f, started by Lead 100 on the founder's 12:2x turn).** Lead 1 took over 12:19 IST; check 1a2349b2 (:23/:53). Founder 12:2x: around for approvals; autonomous, focused work on Waves 1-2. RULES as of P-756; DECISIONS to P-759 (all on branch; P-753 and older on main). Founder today: full power, fix and enforce in code, keep him updated; he applies the reset credit at 98% weekly (93% at 12:15, ~1.4%/h: 96% ~14:20, 98% ~15:45 IST; message him at 96%).
+(1) and (3) of this hand-over (unblock, lanes): done or superseded by the 🌊 and ⏭️ lines in Start here; word for word in `product/history/STATE-2026-11-20-1235-lead1s3-start-here-lines.md`.
+(2) **Labelled, waiting:** #2425 (B206 part 1). **#2427** (commercial/ out of public main, P-753): reopened 12:00 for a fresh pr-rules; get an independent Approve on its head (subagent), Lead read, label. **#2442** library refresh (8 of 9): answer its 3 questions (P-697/P-608 medium is newer than P-666; the sourcing map artifact needs the Mac), Lead read, label.
+(4) **Standing:** P-752 browser fallback for blocked labels; `tools/lead-pr.sh` (reopen, approve-records) is allowed in settings.local.json; gh's TLS fails in the sandbox, use curl with `gh auth token`. Library: `library/engineering-map.md` (P-755 scale) and plan items #225-#237; guard review `design/guard-review-2026-11-20.md` (ASK and MERGE rows wait; guards 18-23 not wired: a settings question for the founder).
+Earlier block (Lead 99 → 100) word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-20-1218-lead100s2-handover-99-100-block.md`.
+
+
+Start here Focus line (13:1x), moved at hand-over:
+
+🌊 **Focus (founder 13:1x 20 Nov: "focused ... always producing proven capabilities"): Wave 1 first, then Wave 2; check every lane start with `waves.py allow`; outside-wave lanes (R1.88, R1.76, R1.3, R1.92) finish their step and stop. Wave 1 not proven (10 of 17), owner each: R1.72 #2406 (Lead C, Approve then relabel; full run covered: FO-3st2 only) · R1.4 #2029 · R1.8 #2423 (dequeued: j_37, j_38 red) · R1.33 #2416 + qa 12 · R1.74 draft #2063 · R1.40 lane "R1.40 · J-38 proof green" · R1.26 lane FO-4b · R1.47 lane PF-19r · R1.100 lane re-check · R1.30 card task_17e00278 (start refused by classifier; founder clicks).**

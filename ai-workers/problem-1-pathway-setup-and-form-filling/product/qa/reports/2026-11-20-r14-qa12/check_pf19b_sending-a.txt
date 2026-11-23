@@ -1,0 +1,43 @@
+PASS  DW0 pass: a local send appears in /api/demo/platform-inbox for its address only, with the stored subject and body, sender and Reply-To
+PASS  DW0 fail: outside the demo workspace the route answers 404; a client persona gets 403; a bad address 400
+PASS  DW1 fail: marketing without consent → SUPPRESSED with the reason, nothing sent (no SENT event, not in the inbox)
+PASS  DW1 pass: with a live consent the marketing message is SENT, naming the consent that allowed it (AG-10-27)
+PASS  DW1 (Devin #1824): consent withdrawn and given again while the message waited → SENT names the new consent that allowed it, never the withdrawn one
+PASS  DW2 fail: transactional to a suppressed address → not sent (SUPPRESSED at send; and an address suppressed after queueing is stopped by the worker)
+PASS  DW2 pass: firm B's suppression of the address never stops firm A (the list is per firm)
+PASS  DW3 fail: a send in a rolled-back transaction never goes out (no row; dispatch and the sweep send nothing; at most an orphan file)
+PASS  DW3 pass: the same message committed goes out
+PASS  DW4 pass: the job run twice → one send (sent, then skipped; one SENT event)
+PASS  DW4 fail→pass: a crash between commit and dispatch (no job) leaves the row QUEUED; the sweep sends it, once
+PASS  DW5 fail: the 51st trial message of the day → held QUEUED, reason "daily limit"; one alert to our team for the firm and day (the 52nd adds none)
+PASS  DW5 pass: an active firm's 51st message of the day is sent (cap 2,000, Sample)
+PASS  DW6 fail: the rendered file changed after commit → FAILED "content changed", a FAILED event, nothing sent
+PASS  DW6 pass: an unchanged file is sent and its hash is the row's
+PASS  DW7 pass: each firm's message carries its own sender name and Reply-To (and firm A's template filled)
+PASS  DW7 fail: firm B cannot use firm A's template (refused, no row)
+PASS  DW8: this row never writes demo_message (the case side's link emails stay as they are; its case-side suites check_c616_privacy and check_forms_qa53 run unchanged apart from listing the new route)
+PASS  DW8 fail: send refuses a bare client in place of the caller's transaction (no row written outside a transaction)
+PASS  break M1 fail→pass: 510 rows another firm's cap holds never hide a row a crash left: the next sweep sends it
+PASS  break m1 fail: a client persona by persona name (client, client-b) also gets 403 from the platform inbox
+PASS  break m3, m5, m7 fail: a subject with a line break, a template subject over 200 characters, a stored message as an attachment and a firm id that is no firm are each refused
+PASS  review m2: 8 parallel sends with one key → one row, the other 7 answer it as repeated (the advisory lock)
+PASS  Lead B #1824 (4): two concurrent sends with one key at REPEATABLE READ → one row; the other gets MessageRepeated (never a raw P2002), and its retry answers the first row
+PASS  review m2: 6 workers on one row at once → one send, one event (the row lock)
+PASS  review m2: 5 workers racing for a trial firm's last place of the day → 1 sent, 4 held, the counter exactly 50 (the counter lock)
+PASS  re-review M2 fail→pass: 505 older rows another firm's cap holds never hide a held row of a firm with room: the next sweep sends it
+PASS  re-review m-a fail→pass: a dispatch naming the wrong firm sends nothing and never uses up the right firm's job key (the right dispatch sends at once)
+PASS  PF-0c DW2 MessagePort Messages: marketing without consent is SUPPRESSED with the reason and never sent
+PASS  PF-0c DW2 MessagePort Messages: a suppressed address gets nothing, transactional included
+PASS  PF-0c DW2 MessagePort Messages: the same idempotency key answers the first row; dispatch twice sends once
+PASS  PF-0c DW2 MessagePort Messages: each firm's message carries its own sender name and Reply-To
+PASS  PF-0c DW2 MessagePort Messages: PF-19p: a platform account message is sent once per key as ExpatReady, no firm's name; with a firm, or as marketing, refused
+PASS  PF-0c DW2 MessagePort Messages: a template field without a value is refused
+PASS  PF-0c DW2 MessagePort Messages: passes its contract (6 of 6 cases)
+PASS  PF-0c DW2 MessagePort fakeMessages: marketing without consent is SUPPRESSED with the reason and never sent
+PASS  PF-0c DW2 MessagePort fakeMessages: a suppressed address gets nothing, transactional included
+PASS  PF-0c DW2 MessagePort fakeMessages: the same idempotency key answers the first row; dispatch twice sends once
+PASS  PF-0c DW2 MessagePort fakeMessages: each firm's message carries its own sender name and Reply-To
+PASS  PF-0c DW2 MessagePort fakeMessages: PF-19p: a platform account message is sent once per key as ExpatReady, no firm's name; with a firm, or as marketing, refused
+PASS  PF-0c DW2 MessagePort fakeMessages: a template field without a value is refused
+PASS  PF-0c DW2 MessagePort fakeMessages: passes its contract (6 of 6 cases)
+42 passed, 0 failed

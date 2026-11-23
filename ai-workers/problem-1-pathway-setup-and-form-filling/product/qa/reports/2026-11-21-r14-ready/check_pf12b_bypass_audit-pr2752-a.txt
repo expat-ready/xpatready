@@ -1,0 +1,150 @@
+PASS  PF-12b DW3 pass: every BYPASS_USES entry names how it audits (per-firm, or none with its reason)
+PASS  PF-12b DW3 fail: a use added without `audit`, or with an empty none, is named by the check
+PASS  PF-12b DW3 pass: the eight cross-firm uses audit per firm; the seven own-firm doors are off the list (PF-12b part 2: narrow lookups, tests/check_pf12b_doors.ts)
+PASS  PF-12b DW3 pass: the two uses that touch no firm say why (the purge: our own register; re-encrypt: every job runs as its firm)
+NOTICE:  database "xr_studio_pf12b_5292" does not exist, skipping
+{"time":"2026-11-21T07:12:34.410Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-12b DW1 fail (QA-499's count before any use runs, and the known limit): a cross-firm read that never calls touchFirm writes no line, so QA-499's count reads 0
+{"time":"2026-11-21T07:12:34.475Z","level":"info","event":"platform_bypass","correlationId":"job:0b12b000-0000-4000-8000-00000000a001","use":"job:messages.outbox_sweep","method":"none"}
+PASS  PF-12b DW1 pass: the outbox sweep writes one platform.bypass line per firm it read, then queues both firms' rows
+PASS  PF-12b DW1 pass: the line names the use, the actor (system:<use>), the firm, the method (none outside a request) and the correlation id
+{"time":"2026-11-21T07:12:34.560Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-12b DW1 pass: the demo reset writes one line per Sample firm, each in its own firm's trail
+{"time":"2026-11-21T07:12:34.611Z","level":"info","event":"platform_bypass","correlationId":"0b12b000-0000-4000-8000-00000000c0de","use":"platform.demo.inbox","method":"GET"}
+PASS  PF-12b DW1 pass: the demo inbox writes one line per firm whose mail it listed, with the method and the request's correlation id
+PASS  PF-12b DW1 pass/fail: firm A's trail shows its own lines only, never firm B's (and B's the same)
+{"time":"2026-11-21T07:12:34.708Z","level":"info","event":"platform_bypass","use":"platform.web-address.catch-up","method":"none"}
+PASS  PF-12b DW1 pass (catch-up): the start-up catch-up writes one line per firm it gave an address, in that firm's own transaction (with its firm.web_address.set line)
+{"time":"2026-11-21T07:12:34.793Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-12b DW1 pass: one line per firm and transaction (a second touch of the same firm adds none); outside a bypass use touchFirm writes nothing
+{"time":"2026-11-21T07:12:34.793Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+{"time":"2026-11-21T07:12:34.794Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-12b fail (AUD-1m's case line): the wrapping port refuses a case-side line on a bypass use (it names no firm to write the line for), passes it through outside one, and still passes a firm's line
+{"time":"2026-11-21T07:12:34.795Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-12b fail (break M1): a bypass use inside another is refused before any query (it would cross under the outer use's lines)
+{"time":"2026-11-21T07:12:34.795Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"POST"}
+{"time":"2026-11-21T07:12:34.795Z","level":"info","event":"platform_bypass","use":"platform.account.mail","method":"POST"}
+PASS  PF-12b pass (the one named exception, PF-19p): platform.account.mail (touches no firm's rows) runs inside platform.firms.signup under its own name, and sign-up's use comes back after it
+{"time":"2026-11-21T07:12:34.795Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T07:12:34.795Z","level":"info","event":"platform_bypass","use":"platform.account.mail","method":"POST"}
+PASS  PF-12b fail (the exception stays narrow): another use inside sign-up, and sign-up inside platform.account.mail, are both refused; only that one pair is named, on a none use
+PASS  PF-12b fail (review m1): a per-firm use that names an outer use may still not run inside it; nor may a none use inside a use it does not name
+{"time":"2026-11-21T07:12:34.795Z","level":"info","event":"platform_bypass","correlationId":"Client.A.passport.lost","use":"platform.demo.reset","method":"none"}
+{"time":"2026-11-21T07:12:34.795Z","level":"info","event":"platform_bypass","correlationId":"job:Client.A.passport.lost","use":"platform.demo.reset","method":"none"}
+{"time":"2026-11-21T07:12:34.796Z","level":"info","event":"platform_bypass","correlationId":"0b12b000-0000-4000-8000-00000000beef","use":"platform.demo.reset","method":"none"}
+{"time":"2026-11-21T07:12:34.796Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+{"time":"2026-11-21T07:12:34.796Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-12b fail (break M2): a caller's X-Request-Id that is not our id shape (free text, or free text after job:) is never kept in the trail (null); a uuid is kept
+PASS  PF-12b fail (break m3): touchFirm refuses the client in place of a transaction (its line would commit alone)
+PASS  PF-12b pass (break m4): three touches of one firm at the same moment in one transaction write one line
+{"time":"2026-11-21T07:12:34.796Z","level":"info","event":"platform_bypass","use":"job:platform.entitlements.storage_daily","method":"none"}
+PASS  PF-12b DW1 pass (PF-15's storage_daily): the daily measure writes one line per firm it listed and measures each, also when asJob already opened its use
+{"time":"2026-11-21T07:12:34.850Z","level":"info","event":"platform_bypass","use":"job:platform.entitlements.storage_daily","method":"none"}
+PASS  PF-12b DW2 fail (PF-15's storage_daily): a firm whose line cannot be written is not measured and counts as failed; the others are measured
+{"time":"2026-11-21T07:12:34.882Z","level":"info","event":"platform_bypass","use":"platform.entitlements.limit-change","method":"none"}
+PASS  PF-12b DW2 fail (PF-15's limit change): when one firm's line cannot be written the change is refused in plain words and nothing is stored (no change row, no line)
+{"time":"2026-11-21T07:12:34.951Z","level":"info","event":"platform_bypass","use":"platform.entitlements.limit-change","method":"none"}
+PASS  PF-12b DW1 pass (PF-15's limit change): one limit change on a plan with two live firms writes one platform.bypass line to each firm, in the change's own transaction (the same transaction id as its plan.limit.lowered lines)
+{"time":"2026-11-21T07:12:35.023Z","level":"info","event":"platform_bypass","use":"platform.entitlements.limit-change","method":"none"}
+PASS  PF-12b DW2 fail (PF-15's limit change): at notice time a firm whose line cannot be written is sent nothing and its Owners are listed as failed; the other firm's Owners are told, and nothing is thrown (the change is already committed)
+{"time":"2026-11-21T07:12:35.030Z","level":"info","event":"platform_bypass","use":"platform.entitlements.limit-change","method":"none"}
+PASS  PF-12b DW1 pass (PF-15's limit change): sending the notices reads both firms' Owners, so each firm gets one more line
+{"time":"2026-11-21T07:12:35.128Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+{"time":"2026-11-21T07:12:35.132Z","level":"info","event":"platform_bypass","use":"job:messages.outbox_sweep","method":"none"}
+{"time":"2026-11-21T07:12:35.137Z","level":"warn","event":"messages_sweep_firm_skipped","firmId":"7096e5e9-ef4f-48a3-a25f-e4b6730c203b","reason":"bypass_not_recorded"}
+{"time":"2026-11-21T07:12:35.137Z","level":"warn","event":"messages_sweep_firm_skipped","firmId":"a7be62d0-4b97-47c9-84cc-c026f2e45af7","reason":"bypass_not_recorded"}
+{"time":"2026-11-21T07:12:35.138Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"GET"}
+PASS  PF-12b DW2 fail: a line that cannot be written refuses the demo reset; firm A's setting is unchanged and no setting line is stored (rolled back)
+PASS  PF-12b DW2 fail: the sweep is refused and queues nothing (a job fails and is retried)
+{"time":"2026-11-21T07:12:35.190Z","level":"info","event":"platform_bypass","use":"job:messages.outbox_sweep","method":"none"}
+{"time":"2026-11-21T07:12:35.198Z","level":"warn","event":"messages_sweep_firm_skipped","firmId":"a7be62d0-4b97-47c9-84cc-c026f2e45af7","reason":"bypass_not_recorded"}
+PASS  PF-12b DW2 fail (break m6): when only firm B's line fails, B's rows are not queued, A's are (with A's line), and the sweep then fails
+PASS  PF-12b DW2 fail: a request (the demo inbox) answers 500 in plain words, and no line was stored for it
+{"time":"2026-11-21T07:12:35.217Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-12b DW2 pass: with the trail writable again the same reset runs (A's setting back to its default, one more line per firm)
+{"time":"2026-11-21T07:12:35.280Z","level":"info","event":"platform_bypass","use":"direct-process","method":"none"}
+{"time":"2026-11-21T07:12:35.284Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T07:12:35.335Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-12b DW4 fail: a refused verify (an unknown link) makes no firm and writes no line
+{"time":"2026-11-21T07:12:35.372Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-12b DW4 fail: when the new firm's line cannot be written, the verify is refused and the firm is not made (the same transaction)
+{"time":"2026-11-21T07:12:35.416Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-12b DW4 pass: a verify writes its one line under the new firm, in the transaction that creates it (the same transaction id as firm.created)
+{"time":"2026-11-21T07:12:35.539Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+PASS  PF-12b DW4 pass: a sign-up with firm A's staff email (the lookup read A's staff) writes A's line before the 'already have an account' email
+{"time":"2026-11-21T07:12:35.610Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-12b DW1 pass (re-review 8 M1): the demo's Sample seed on its bypass use writes one line per Sample firm; the same seed outside a bypass use writes none
+{"time":"2026-11-21T07:12:35.726Z","level":"info","event":"platform_bypass","use":"job:platform.signup.purge","method":"none"}
+PASS  PF-12b DW7 pass: the purge (no firm) adds no line
+PASS  PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2, catch-up 2, storage_daily 2, limit change 2 + its notices 2), no door among them
+PASS  PF-12b1m pass: job:messages.send and platform.account.mail each name audit "none: …" (the row owner's words), and the check reads them as audited
+PASS  PF-12b1m fail: the same two entries with no `audit` are both named by the check
+{"time":"2026-11-21T07:12:35.807Z","level":"info","event":"platform_bypass","use":"platform.account.mail","method":"POST"}
+PASS  PF-12b1m pass (platform.account.mail): a sign-up verification email writes its PLATFORM_ACCOUNT row (no firm), no platform.bypass line, and touches no firm's row
+{"time":"2026-11-21T07:12:35.915Z","level":"info","event":"platform_bypass","use":"job:messages.send","method":"none"}
+PASS  PF-12b1m pass (job:messages.send): the platform job (no firm) sends that PLATFORM_ACCOUNT row, writes no platform.bypass line, and touches no firm's row
+PASS  PF-12b1m fail: a stand-in that says "per-firm" on either use (which calls no touchFirm) is named by the run check, and so is one with no audit
+PASS  PF-12b1m sweep: firm B's line fails, so B is skipped and logged; firm A's row still queues (with A's one line); the PLATFORM_ACCOUNT row is retried as a platform job with no touchFirm; then the sweep throws the first error
+{"time":"2026-11-21T07:12:36.426Z","level":"info","event":"platform_bypass","use":"job:messages.outbox_sweep","method":"none"}
+{"time":"2026-11-21T07:12:36.430Z","level":"warn","event":"messages_sweep_firm_skipped","firmId":"a7be62d0-4b97-47c9-84cc-c026f2e45af7","reason":"bypass_not_recorded"}
+PASS  PF-12b fail (QA-601 retry, merge of main): firm B's line cannot be written, so B's due retry is not queued; firm A's is, after A's one line; the sweep then fails
+{"time":"2026-11-21T07:12:36.450Z","level":"info","event":"platform_bypass","use":"job:messages.outbox_sweep","method":"none"}
+PASS  PF-12b pass (QA-601 retry, merge of main): with both trails writable, each firm with a due retry gets one line and its retry is queued
+{"time":"2026-11-21T07:12:36.472Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+PASS  PF-12b pass (CS-K1 catch-up): one platform.bypass line per firm with a due prospect, once a run (A's two prospects, one line), then each prospect runs
+{"time":"2026-11-21T07:12:36.514Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+PASS  PF-12b fail (CS-K1 catch-up): when firm B's line cannot be written, B's prospects are not taken in (each refused in plain words), A's still are
+PASS  PF-12b pass (CS-K1 catch-up): outside the bypass use (a suite or the tool) the same helper writes no line
+{"time":"2026-11-21T07:12:36.603Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:36.653Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:36.702Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:36.748Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:36.794Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:36.841Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:36.885Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:36.927Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:36.970Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.012Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.061Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.104Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.149Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.189Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.228Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.269Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.312Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.356Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.392Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.430Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.468Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.507Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.547Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.586Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.626Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.668Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.717Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.765Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.820Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.861Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.907Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:37.952Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+PASS  PF-12b pass (break M1): a prospect that never succeeds is retried after a doubling wait capped at one hour, so a day of 10 s polls writes about 33 lines to its firm, not 8,640
+{"time":"2026-11-21T07:12:38.010Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+PASS  PF-12b fail (break M1): while firm A's prospect waits, a poll writes no line for A and does not try it; firm B's healthy prospect is tried (and lined) on its runs, and leaves no backoff
+{"time":"2026-11-21T07:12:38.123Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+FO-8: 1 won prospect(s) not taken in: f3d81f09-0a9c-4b89-be47-da1a736eb566
+{"time":"2026-11-21T07:12:38.163Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+{"time":"2026-11-21T07:12:38.166Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+PASS  PF-12b pass/fail (review m4): the app's poller keeps its backoff across ticks: a prospect it can never take writes its firm's line on the first tick only, not on the next two
+{"time":"2026-11-21T07:12:38.229Z","level":"info","event":"platform_bypass","use":"cases.prospect-won.catch-up","method":"none"}
+PASS  PF-12b pass (break M1): a waiting prospect whose wait is over is tried (with its line) and, once it succeeds, leaves the backoff
+{"time":"2026-11-21T07:12:38.256Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T07:12:38.261Z","level":"info","event":"platform_bypass","use":"platform.account.mail","method":"none"}
+PASS  PF-12b pass (sign-up, real mail): the verification email is written as a PLATFORM_ACCOUNT row (no firm) from inside sign-up's background step, and the pending sign-up is stored
+{"time":"2026-11-21T07:12:38.348Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+{"time":"2026-11-21T07:12:38.354Z","level":"info","event":"platform_bypass","use":"platform.account.mail","method":"none"}
+PASS  PF-12b pass (sign-up, real mail): an email already on firm A's staff gets the "already have an account" platform email, and firm A gets one more platform.bypass line
+{"time":"2026-11-21T07:12:38.429Z","level":"info","event":"platform_bypass","use":"platform.firms.signup","method":"none"}
+[sign-up] background step failed: BypassNotRecorded
+PASS  PF-12b fail (review m2): when firm B's line cannot be written, the known-account lookup sends no "already have an account" email (the line comes first, P-607)
+
+56 passed, 0 failed

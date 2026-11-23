@@ -1,0 +1,28 @@
+# branch d8db83498 (app code = main d07a08fbc), isolated copy :4471
+## WIDTH=1440
+PASS  R1.33 gate A setup: firm A's web form is on and its Owner is signed in
+PASS  R1.33 gate A G1: the lead page shows +442079460958 and no Fix number — "Back\nSales\n›\nLeads\n›\nLead\nGalemwoequk8 Gate\nLead\nOpen\nL-00013\nPerson\nEmail\ngalemwoequk8@qa133.example\nPhone\n+442079460958\nEdit\nEnquiry\nInterested in\nNot given\nSource\nWebsite form · Website enquiry form\nArrived\nNov 20, 2026, 3:16 a.m.\nMe
+PASS  R1.33 gate A G2: Engage makes a prospect in Engaged; its "From lead" link opens the lead, which shows +442079460958 with no Fix number — {"stage":"Engaged","url":"http://localhost:4471/front-office/prospects/fe30e548-1539-4e4f-b989-6b2e508b49ea","t":"Back\nSales\n›\nLeads\n›\nLead\nGalemwoequk8 Gate\nLead\nEngaged\nL-00013\nPerson\nEmail\ngalemwoequk8@qa133.example\nPhone\n+442079460958\nEdit\n
+PASS  R1.33 gate A G3: after Fix number "(416) 555-0100", Engage makes a prospect; "From lead" opens the lead showing +14165550100 with no Fix number — {"stage":"Engaged","t":"Back\nSales\n›\nLeads\n›\nLead\nHalemwoequk8 Gate\nLead\nEngaged\nL-00014\nPerson\nEmail\nhalemwoequk8@qa133.example\nPhone\n+14165550100\nEdit\nEnquiry\nInterested in\nNot given\nSource\nWebsite form · Website enquiry form\nArrived\nNo
+PASS  R1.33 gate A G4: underneath, each engaged person holds the E.164 number, readable, with one prospect — "Galemwoequk8:+442079460958:true:1,Halemwoequk8:+14165550100:true:1"
+PASS  R1.33 gate A: no page error in the walk — []
+
+6/6 passed
+## WIDTH=1024
+PASS  R1.33 gate A setup: firm A's web form is on and its Owner is signed in
+PASS  R1.33 gate A G1: the lead page shows +442079460958 and no Fix number — "Back\nSales\n›\nLeads\n›\nLead\nGalemwoer2mf Gate\nLead\nOpen\nL-00015\n\nPossible match: Galemwoequk8 Gate (L-00013)\n\nSomeone with the same email or phone is already on file. Nothing is linked: this enquiry stays its own lead.\nPerson\nEmail\ngalemwoer2mf@
+PASS  R1.33 gate A G2: Engage makes a prospect in Engaged; its "From lead" link opens the lead, which shows +442079460958 with no Fix number — {"stage":"Engaged","url":"http://localhost:4471/front-office/prospects/0e92e274-74ad-4da3-b6fd-1215b05ba5ef","t":"Back\nSales\n›\nLeads\n›\nLead\nGalemwoer2mf Gate\nLead\nEngaged\nL-00015\n\nPossible match: Galemwoequk8 Gate (L-00013)\n\nSomeone with the same 
+PASS  R1.33 gate A G3: after Fix number "(416) 555-0100", Engage makes a prospect; "From lead" opens the lead showing +14165550100 with no Fix number — {"stage":"Engaged","t":"Back\nSales\n›\nLeads\n›\nLead\nHalemwoer2mf Gate\nLead\nEngaged\nL-00016\nPerson\nEmail\nhalemwoer2mf@qa133.example\nPhone\n+14165550100\nEdit\nEnquiry\nInterested in\nNot given\nSource\nWebsite form · Website enquiry form\nArrived\nNo
+PASS  R1.33 gate A G4: underneath, each engaged person holds the E.164 number, readable, with one prospect — "Galemwoer2mf:+442079460958:true:1,Halemwoer2mf:+14165550100:true:1"
+PASS  R1.33 gate A: no page error in the walk — []
+
+6/6 passed
+## WIDTH=400
+PASS  R1.33 gate A setup: firm A's web form is on and its Owner is signed in
+PASS  R1.33 gate A G1: the lead page shows +442079460958 and no Fix number — "Back\nSales\n›\nLeads\n›\nLead\nLeads\nPipeline\nGalemwoerauy Gate\nLead\nOpen\nL-00017\n\nPossible match: Galemwoer2mf Gate (L-00015)\n\nSomeone with the same email or phone is already on file. Nothing is linked: this enquiry stays its own lead.\nPerson\nEma
+PASS  R1.33 gate A G2: Engage makes a prospect in Engaged; its "From lead" link opens the lead, which shows +442079460958 with no Fix number — {"stage":"Engaged","url":"http://localhost:4471/front-office/prospects/32b09590-17f6-4a97-8714-def7d4515175","t":"Back\nSales\n›\nLeads\n›\nLead\nLeads\nPipeline\nGalemwoerauy Gate\nLead\nEngaged\nL-00017\n\nPossible match: Galemwoer2mf Gate (L-00015)\n\nSomeo
+PASS  R1.33 gate A G3: after Fix number "(416) 555-0100", Engage makes a prospect; "From lead" opens the lead showing +14165550100 with no Fix number — {"stage":"Engaged","t":"Back\nSales\n›\nLeads\n›\nLead\nLeads\nPipeline\nHalemwoerauy Gate\nLead\nEngaged\nL-00018\nPerson\nEmail\nhalemwoerauy@qa133.example\nPhone\n+14165550100\nEdit\nEnquiry\nInterested in\nNot given\nSource\nWebsite form · Website enquiry 
+PASS  R1.33 gate A G4: underneath, each engaged person holds the E.164 number, readable, with one prospect — "Galemwoerauy:+442079460958:true:1,Halemwoerauy:+14165550100:true:1"
+PASS  R1.33 gate A: no page error in the walk — []
+
+6/6 passed

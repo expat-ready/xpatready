@@ -3,7 +3,8 @@
 # "ci", runs from files; POSTs written to a log) and main's history from a scratch git copy, then checks .mergify.yml
 # needs "queue-fresh" for app code and queue-gate.yml runs main's copy. Allowed and refused cases for the label; stale,
 # fresh, queued and capped cases for the status. CI-PRE (P-731): the full run before the label (green, red, missing,
-# stale, forged, records-only, approved before FULL_FROM) and the relabel after a failed merge batch. US$0, no network.
+# stale, forged, records-only, approved before FULL_FROM) and the relabel after a failed merge batch. P-743: the full run
+# is asked only of a PR a failed merge batch held (none, passed, failed). US$0, no network.
 #   bash product/tools/check-queue-gate.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
@@ -18,12 +19,13 @@ p=${u#https://api.test/repos/o/r/}; pg=$(printf '%s' "$u" | sed -n 's/.*[?&]page
 serve() { [ -f "$FX/$1" ] && cat "$FX/$1" || { echo '{"message":"Not Found"}'; exit 22; }; }
 case "$m $p" in
   "GET pulls/"*/files*) n=${p#pulls/}; n=${n%%/*}; [ "${pg:-1}" = 1 ] && serve "files-$n.json" || echo '[]';;
-  "GET pulls/"*) serve "pr-${p#pulls/}.json";;
+  "GET pulls/"*) serve "pr-${p#pulls/}.json"; [ -f "$FX/pr-${p#pulls/}.after.json" ] && mv "$FX/pr-${p#pulls/}.after.json" "$FX/pr-${p#pulls/}.json" || true;;   # .after: the head moves after the first read
   "GET pulls?"*) if [ -f "$FX/pulls-p${pg:-1}.json" ]; then cat "$FX/pulls-p${pg:-1}.json"; elif [ "${pg:-1}" = 1 ] && [ -f "$FX/pulls.json" ]; then cat "$FX/pulls.json"; else echo '[]'; fi;;
   "GET actions/workflows/ci.yml/runs?event=workflow_dispatch"*) [ -n "${FAIL_FULL:-}" ] && { echo '{"message":"Server Error"}'; exit 22; }
     [ "${pg:-1}" = 1 ] && [ -f "$FX/fullruns.json" ] && cat "$FX/fullruns.json" || echo '{"workflow_runs":[]}';;
   "GET actions/runs/"*/jobs*) r=${p#actions/runs/}; serve "jobs-${r%%/*}.json";;
-  "GET issues/"*/comments*) n=${p#issues/}; n=${n%%/*}; [ "${pg:-1}" = 1 ] && serve "comments-$n.json" || echo '[]';;
+  "GET issues/"*/comments*) n=${p#issues/}; n=${n%%/*}; [ "${pg:-1}" = 1 ] || { echo '[]'; exit 0; }
+    if [ -f "$FX/comments-extra-$n.json" ] && [ -f "$FX/comments-$n.json" ]; then jq -s add "$FX/comments-$n.json" "$FX/comments-extra-$n.json"; else serve "comments-$n.json"; fi;;
   "GET issues?"*) [ "${pg:-1}" = 1 ] && serve issues.json || echo '[]';;
   "GET commits/"*/check-runs*) s=${p#commits/}; serve "checks-${s%%/*}.json";;
   "GET actions/runs/"*) serve "run-${p#actions/runs/}.json";;
@@ -153,6 +155,60 @@ ok "eligible: exit 1 for a refused case" "$([ $r = 1 ] && echo 1)" "exit $r: $ou
 REC=ai-workers/problem-1-pathway-setup-and-form-filling/product
 cmt 7 o OWNER "Reviewer: Approve $HEAD1"; files 7 "$S/api/src/form.ts"; prj 7 $HEAD1; cirun $HEAD1 completed success 2026-11-15T13:00:00Z
 nolabel() { ! grep -q '^LABEL' <<< "$log"; }
+BSHA=3333333333333333333333333333333333333333; BOK=4444444444444444444444444444444444444444; BHELD=6666666666666666666666666666666666666666
+batch() {  # batch <n> <head sha> <title> [login] [body] → one PR of pulls.json (newest first)
+  PL=$(jq -c --argjson n "$1" --arg s "$2" --arg t "$3" --arg u "${4:-mergify[bot]}" --arg b "${5:-}" '[{number: $n, title: $t, body: $b, user: {login: $u}, head: {sha: $s, ref: "mergify/merge-queue/abc", repo: {full_name: "o/r"}}}] + .' <<< "${PL:-[]}"); echo "$PL" > "$T/fx/pulls.json"; }
+bci() { jq -n --arg c "$2" --arg id "$3" '{check_runs: [{app: {slug: "github-actions"}, status: "completed", conclusion: $c, started_at: "2026-11-19T04:00:00Z", completed_at: "2026-11-19T04:30:00Z", details_url: ("https://github.test/o/r/actions/runs/" + $id + "/job/1")}]}' > "$T/fx/checks-$1.json"; }
+# P-743 (founder 19 Nov 23:5x IST): the full run is asked only of a PR that a failed merge batch held
+held() {  # held <pr>...: a failed batch 890 (shard (1)) holds them, and a write-access line covers it, so only the full-run rule speaks
+  local n t="merge queue: checking"; for n in "$@"; do t="$t #$n"; done; PL='[]'; batch 890 $BHELD "$t together on main"; bci $BHELD failure 890; jobs 890 "shard (1):failure" "ci:failure"
+  for n in "$@"; do jq -n '[{user: {login: "x"}, author_association: "MEMBER", body: "Batch failures covered: 890: shard (1)"}]' > "$T/fx/comments-extra-$n.json"; done; }
+unheld() { rm -f "$T/fx/pulls.json" "$T/fx/comments-extra-"*.json; PL='[]'; }
+nofull; unheld; run label 7
+ok "P-743: no merge batch ever held the PR: labelled with no full run (every batch runs every suite, P-651)" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+run eligible 7
+ok "P-743: ... and eligible (label-sweep.sh keeps such a label)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+HEADS=$HEAD1 RELABEL=1 run proof 7
+ok "P-743: ... and proof exits 0 (label-guard.sh keeps it)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+batch 891 $BOK "merge queue: checking #7 on main"; bci $BOK success 891; run label 7
+ok "P-743: the newest batch that held it passed: labelled with no full run" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+held 7; TRIG=approve run label 7
+ok "P-743: a failed batch held it and no full run on the head: refused, the comment asks for /run full and names the batch run" "$(nolabel && grep -qF 'no full run on 111111111 yet: comment `/run full`' <<< "$log" && grep -qF 'asked because the merge batch run 890 failed with this PR in it, P-743' <<< "$log" && echo 1)" "$out / $log"
+batch 892 $BOK "merge queue: checking #7 on main"; bci $BOK success 892; run label 7
+ok "P-743: a newer batch holding it passed after the failed one: labelled with no full run" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+held 7; full 51 7 $HEAD1 completed failure; jobs 51 "shard (4):failure" "ci:failure"; run label 7
+ok "P-743: a failed batch held it and the full run is red: refused, naming the full run's failed parts and the batch run" "$(nolabel && grep -qF 'the full run on 111111111 failed: `shard (4)`' <<< "$out" && grep -q 'run 890 failed' <<< "$out" && echo 1)" "$out / $log"
+nofull; held 7; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; rm -f "$T/fx/comments-extra-7.json"; full 52 7 $HEAD1 completed success; run label 7
+ok "P-743: a failed batch held it, the full run is green but no line names the batch's failed parts: refused (P-731 (4) unchanged)" "$(nolabel && grep -qF 'failed merge batch run 890 (failed: `shard (1)`)' <<< "$out" && echo 1)" "$out / $log"
+held 7; run label 7
+ok "P-743: a failed batch held it, the full run is green and the line names its parts: labelled" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+nofull; held 7; mv "$T/fx/checks-$BHELD.json" "$T/fx/checks-hidden.json"; run eligible 7
+ok "P-743: the batches cannot be read: not eligible, exit 3 (label-sweep.sh keeps the label and tries again; never passed)" "$([ $r = 3 ] && echo 1)" "exit $r: $out"
+mv "$T/fx/checks-hidden.json" "$T/fx/checks-$BHELD.json"
+# review M1: no failed batch held it, but a full run on the head ended red: refused, and the run is told (never labelled)
+unheld; nofull; full 53 7 $HEAD1 completed failure; jobs 53 "shard (6):failure" "ci:failure"; TRIG=full run label 7
+ok "P-743 (review M1): no failed batch, but the head's full run is red: refused, the comment names its failed parts" "$(nolabel && grep -qF 'the full run on 111111111 failed: `shard (6)`' <<< "$log" && echo 1)" "$out / $log"
+nofull; FAIL_FULL=1 run eligible 7
+ok "P-743 (review M1): no failed batch and the full runs cannot be read: nothing is asked, eligible exits 0 (not 3)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+nofull; full 54 7 $HEAD1 in_progress ""; run label 7
+ok "P-743 (review M1): no failed batch and a full run still running: labelled (nothing is asked)" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+# review m2: a failed batch whose run id cannot be read is refused, never passed
+nofull; held 7; jq '.check_runs[0].details_url = "https://github.test/elsewhere"' "$T/fx/checks-$BHELD.json" > "$T/fx/x.json" && mv "$T/fx/x.json" "$T/fx/checks-$BHELD.json"; run label 7
+ok "P-743 (review m2): a failed batch whose run id cannot be read: refused" "$(nolabel && grep -q "failed merge batch's run cannot be read" <<< "$out" && echo 1)" "$out / $log"
+# review m3: the incident itself: the sweep and an innocent batch-mate with no full run
+nofull; held 7; LAT=2026-11-19T04:10:00Z run eligible 7
+ok "P-743 (review m3): sweep, labelled before the batch failed, no full run: eligible, the batch-mate keeps its label" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+LAT=2026-11-19T05:00:00Z run eligible 7
+ok "P-743 (review m3): sweep, label put back after the batch failed, no full run: not eligible, the full run is asked" "$([ $r = 1 ] && grep -q '/run full' <<< "$out" && echo 1)" "exit $r: $out"
+# review m1: two PRs in one workflow_run, the held one first: the cache never serves one PR's batch to the other
+prj 9 $HEAD1; files 9 "$S/api/src/form.ts"; cmt 9 o OWNER "Reviewer: Approve $HEAD1"; cirun $HEAD1 completed success 2026-11-15T13:00:00Z
+nofull; held 9; prj 7 $HEAD1; cmt 7 o OWNER "Reviewer: Approve $HEAD1"
+printf '{"workflow_run": {"pull_requests": [{"number": 9}, {"number": 7}]}}' > "$T/fx/ev.json"
+: > "$T/fx/log"; out=$(cd "$T/git" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test MAIN_REF=main GITHUB_EVENT_NAME=workflow_run GITHUB_EVENT_PATH="$T/fx/ev.json" bash "$G" event 2>&1); r=$?; log=$(cat "$T/fx/log")
+ok "P-743 (review m1): one workflow_run naming a held PR (9) then an unheld one (7): 7 labelled, 9 refused" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -qx 'LABEL 9' <<< "$log" && echo 1)" "$out / $log"
+unheld; prj 9 $HEAD1; prj 7 $HEAD1
+# The cases below are CI-PRE's full-run rule itself; since P-743 it applies to a PR a failed batch held, so PR 7 is held.
+held 7; full 41 7 $HEAD1 completed success; full 42 9 $HEAD1 completed success
 run label 7
 ok "full run: green on the exact head: labelled" "$(grep -qx 'LABEL 7' <<< "$log" && grep -q 'green full run' <<< "$out" && echo 1)" "$out / $log"
 nofull; TRIG=approve run label 7
@@ -207,7 +263,7 @@ jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", created
 FROM="2026-11-19 09:00" run label 7
 ok "FULL_FROM: a value that is not a UTC time exempts nothing: refused" "$(nolabel && echo 1)" "$out / $log"
 run label 7
-ok "FULL_FROM unset: every head needs the run: refused" "$(nolabel && echo 1)" "$out / $log"
+ok "FULL_FROM unset: a held head needs the run: refused" "$(nolabel && echo 1)" "$out / $log"
 # proof (label-guard.sh): any commit of the walk back to the approved one may carry the run
 full 49 7 $OLD completed success
 HEADS="$HEAD1 $OLD" run proof 7
@@ -226,10 +282,7 @@ ok "ENF-746a proof: the same PR with one app file (records label or not): exit 1
 prj 7 $HEAD1; files 7 "$S/api/src/form.ts"   # back as the cases below expect
 
 # --- CI-PRE (d): a relabel after a failed merge batch names every failed part of that run
-BSHA=3333333333333333333333333333333333333333; BOK=4444444444444444444444444444444444444444
-batch() {  # batch <n> <head sha> <title> [login] [body] → one PR of pulls.json (newest first)
-  PL=$(jq -c --argjson n "$1" --arg s "$2" --arg t "$3" --arg u "${4:-mergify[bot]}" --arg b "${5:-}" '[{number: $n, title: $t, body: $b, user: {login: $u}, head: {sha: $s, ref: "mergify/merge-queue/abc", repo: {full_name: "o/r"}}}] + .' <<< "${PL:-[]}"); echo "$PL" > "$T/fx/pulls.json"; }
-bci() { jq -n --arg c "$2" --arg id "$3" '{check_runs: [{app: {slug: "github-actions"}, status: "completed", conclusion: $c, started_at: "2026-11-19T04:00:00Z", completed_at: "2026-11-19T04:30:00Z", details_url: ("https://github.test/o/r/actions/runs/" + $id + "/job/1")}]}' > "$T/fx/checks-$1.json"; }
+unheld
 cov() { jq -n --arg h $HEAD1 --arg a "${2:-OWNER}" --arg b "$1" '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)}, {user: {login: "x"}, author_association: $a, body: $b}]' > "$T/fx/comments-7.json"; }
 nofull; full 50 7 $HEAD1 completed success; PL='[]'; batch 900 $BSHA "merge queue: checking #6 + #7 together on main"; bci $BSHA failure 900; jobs 900 "shard (3):failure" "regression (C1.1 C1.2, 2):failure" "ci:failure" "fast:success"
 cov "nothing yet"; TRIG=approve run label 7
@@ -301,6 +354,10 @@ prj 8 $HEAD1 false "review: approved"; files 8 "$S/api/src/form.ts"; cirun $HEAD
 ok "fresh: main merged #501 touching the same file after this ci started: failure, and the labelled PR's ci is re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && grep -qx 'RERUN 77' <<< "$log" && grep -q '#501' <<< "$out" && echo 1)" "$out / $log"
 jq -n --arg n "$S/api/src/form-v2.ts" --arg o "$S/api/src/form.ts" '[{filename: $n, previous_filename: $o}]' > "$T/fx/files-8.json"; run fresh 8
 ok "fresh: a PR that renamed form.ts is stale when main changed form.ts (the old name counts, Devin on #1861)" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
+prj 8 $HEAD1 false "review: approved"; cp "$T/fx/pr-8.json" "$T/fx/pr-8.keep"; prj 8 $OLD false "review: approved"; mv "$T/fx/pr-8.json" "$T/fx/pr-8.after.json"; mv "$T/fx/pr-8.keep" "$T/fx/pr-8.json"
+files 8 "$S/api/src/form.ts"; run fresh 8
+ok "fresh (SPD-2 item 5, m2): the head moved after it was read: failure, but no re-run (it would supersede the new head's ci)" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && ! grep -q RERUN <<< "$log" && grep -q 'head moved' <<< "$out" && echo 1)" "$out / $log"
+prj 8 $HEAD1 false "review: approved"; rm -f "$T/fx/pr-8.after.json"
 files 8 "$S/api/src/other.ts"; run fresh 8
 ok "fresh: no merge since touches its files: success, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
 files 8 "$S/prisma/migrations/9_z/migration.sql"; run fresh 8
@@ -333,9 +390,9 @@ ok "event workflow_run: the PR of a finished ci is labelled and judged" "$([ $r 
 # CI-PRE: a full run that ended (a workflow_dispatch run of ci.yml): its PR comes from the run's name
 prj 9 $HEAD1; printf '{"workflow_run": {"event": "workflow_dispatch", "display_title": "full-run PR #9 %s", "pull_requests": []}}' $HEAD1 > "$T/fx/ev.json"; ev workflow_run
 ok "event workflow_run, a green full run: its PR is judged and labelled" "$([ $r = 0 ] && grep -qx 'LABEL 9' <<< "$log" && echo 1)" "exit $r: $out / $log"
-nofull; full 60 9 $HEAD1 completed failure; jobs 60 "shard (2):failure" "ci:failure"; ev workflow_run
+nofull; full 60 9 $HEAD1 completed failure; jobs 60 "shard (2):failure" "ci:failure"; held 9; ev workflow_run
 ok "event workflow_run, a red full run: the PR is told the failed parts, no label" "$([ $r = 0 ] && ! grep -q '^LABEL' <<< "$log" && grep -qF 'the full run on 111111111 failed: `shard (2)` ' <<< "$log" && grep -q '^COMMENT 9 ' <<< "$log" && echo 1)" "exit $r: $out / $log"
-nofull; full 61 9 $HEAD1 completed success; cmt 9 o OWNER "no verdict yet"; ev workflow_run
+nofull; full 61 9 $HEAD1 completed success; cmt 9 o OWNER "no verdict yet"; ev workflow_run; unheld
 ok "event workflow_run, a green full run before the Approve: the PR is told it is green and what the label waits for" "$(! grep -q '^LABEL' <<< "$log" && grep -q '^COMMENT 9 .*full run 61 green on 111111111; the label waits: .*not an Approve' <<< "$log" && echo 1)" "$out / $log"
 cmt 9 o OWNER "Reviewer: Approve $HEAD1"
 for t in "nightly" "full-run PR #9 $HEAD1; id" "full-run PR #9x $HEAD1" "full-run PR #0 $HEAD1" "x full-run PR #9 $HEAD1"; do

@@ -83,7 +83,7 @@ try {
 } finally { rmSync(out, { recursive: true, force: true }); }
 
 // (4) no code uses the packages yet
-const ALLOWED_IMPORTERS: string[] = []; // the row that first imports a package adds its file here (PF-19s, PF-19c, PF-13 part 1)
+const ALLOWED_IMPORTERS: string[] = ["api/src/platform/messages/layout/email-layout.ts"]; // the row that first imports a package adds its file here (PF-19s, PF-19c; PF-13 part 1a: the email layout, server only)
 const IMPORT = /(from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)["'`](@react-email\/[^"'`]+|react-email(\/[^"'`]*)?|@tiptap\/[^"'`]+)["'`]/;
 const SELF = "tests/check_pfle_libraries.ts";
 // Every code folder of the studio (reviewer Minor 3), plus the prototype's shared contracts/ that the web app imports.

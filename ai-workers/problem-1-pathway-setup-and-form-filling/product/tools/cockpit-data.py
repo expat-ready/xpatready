@@ -725,7 +725,7 @@ SOURCE_TOK = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-]*")     # a token: letters, d
 SOURCE_ID = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+")   # an id token: AG-4-16, SA11-D8, AG-2-8a, P-574 (not P-decision)
 LABEL_GUARD_HEAD = "**Label guard:**"            # tools/label-guard.sh and label-guard.yml start every removal comment so
 RULES_STEP = re.compile(r"check-docs", re.I)       # ci.yml steps whose name names tools/check-docs.sh (the notes run's "notes check 1 of 2 …")
-BUNDLE_STEP = re.compile(r"^rules files", re.I)     # shard 1's "rules files, decision impact, …": check-docs.sh plus 16 other commands
+BUNDLE_STEP = re.compile(r"^(rules files|graph, official PDFs)", re.I)   # job fast's tool-checks step: "rules files, …" until ENF-746c (20 Nov), then "graph, official PDFs, …" (check-docs.sh moved to its own PR-only step, counted by RULES_STEP)
 
 
 def cap_size(r):
@@ -1291,7 +1291,12 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     # created to started (a job still queued counts its wait so far) for the newest CI_SAMPLE_RUNS runs of ci.yml (the test
     # shards; the many quick checks start at once and would hide the wait) created in the last 3 h. Skipped jobs, and jobs held for an approval or another job ("waiting", "pending"), are left out.
     try:
-        qn = gh.get("/actions/runs?status=queued&per_page=1").get("total_count")
+        # B206 part 1 (P-751): only runs created under 6 h ago are waiting for a machine; older ones are stale (runs-waiting.py)
+        qd = gh.get("/actions/runs?status=queued&per_page=100")
+        old6 = (NOW - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        qr = qd.get("workflow_runs") or []
+        stale = [x.get("id") for x in qr if (x.get("created_at") or "9") <= old6]   # exactly 6 h is stale, as runs-waiting.py
+        qn = qd.get("total_count", len(qr)) - len(stale)
         ipn = gh.get("/actions/runs?status=in_progress&per_page=1").get("total_count")
         since = (NOW - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
         rg = gh.get(f"/actions/workflows/ci.yml/runs?created=%3E%3D{since}&per_page=100")   # the test runs, not the quick checks
@@ -1306,7 +1311,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                     waits.append({"min": round(max(0, (datetime.now(timezone.utc) - c).total_seconds()) / 60, 1), "still_queued": True})
                 elif s:
                     waits.append({"min": round(max(0, (s - c).total_seconds()) / 60, 1), "still_queued": False})
-        wj("github/ci_queue.json", {"taken_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "queued_runs": qn, "in_progress_runs": ipn,
+        wj("github/ci_queue.json", {"taken_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "queued_runs": qn, "stale_queued_runs": stale, "in_progress_runs": ipn,
                                     "runs_in_3h": rg.get("total_count", len(rr)), "runs_sampled": min(len(rr), CI_SAMPLE_RUNS), "job_waits": waits})
     except Exception as e:                                   # offline or the API failed: the box says not measured
         wj("github/ci_queue.json", {"error": str(e)[:200]})
@@ -3274,7 +3279,7 @@ def flow_box(d, fc, li, li_src, ci):
              "big": ("approved to merged " + (f"{mm} min" if mm is not None else "not measured") + (f", p90 {p90} min" if p90 is not None else "")),
              "target": f"median {FLOW_MERGE_MIN[0]} min or less; failed batches {FLOW_FAIL_PCT[0]}% or less; a test machine within {FLOW_CI_WAIT_MIN[0]} min",
              "lines": ["Failed merge batches: " + (f"{fp}%" if fp is not None else "not measured"),
-                       ("Waiting for a test machine: " + (f"{cq.get('queued_runs')} runs queued now; median job wait {cw} min over the last 3 h "
+                       ("Waiting for a test machine: " + (f"{cq.get('queued_runs')} runs waiting now (created under 6 h); median job wait {cw} min over the last 3 h "
                         f"({len(ws)} jobs of the newest {cq.get('runs_sampled')} of {cq.get('runs_in_3h')} test runs; {still} still waiting)"
                         if cq and cw is not None else "not measured: " + (
                             "this snapshot has no CI reading" if ci is None else ci.get("error") if isinstance(ci, dict) and ci.get("error")
@@ -3358,7 +3363,7 @@ def stuck_now(d, sc, ci, li, li_src):
          "src": f"main's newest commit time (GitHub commits/main), as lead-watch's jam line (P-646); green to {STUCK_MERGE_MIN[0]} min, red over {STUCK_MERGE_MIN[1]}; " + at},
         {"key": "queue", "light": flow_band(q, *STUCK_QUEUE) or "grey",
          "text": (f"Actions runs waiting for a machine: {q}" if q is not None else "Actions runs waiting for a machine: not measured"),
-         "src": f"GitHub Actions runs with status queued (total_count), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
+         "src": f"GitHub Actions runs with status queued created under 6 h ago (older ones are stale, B206), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
     if isinstance(ss, list):
         names = [f"{x.get('title') or 'untitled'} ({': '.join(str(v) for v in (x.get('state') or 'state not given', x.get('reason')) if v)})"
                  for x in ss if isinstance(x, dict)]
@@ -3844,7 +3849,10 @@ def build_explain(d):
     fl = val(Q["flaky"]) or {}
     put("quality.flaky", "Flaky ledger", "Lines of tools/flaky-ledger.tsv: release or hand lines (big) and rule lines.", now_w,
         (fl.get("rule_lines") or 0) + (fl.get("release_or_hand_lines") or 0) if fl else None, "ledger lines", down, Q["flaky"])
-    put("quality.review_rounds", "Review rounds", "Reviewer rounds per PR.", "not read", None, "PRs", down, Q["review_rounds"])
+    rr = Q["review_rounds"] if isinstance(Q["review_rounds"], dict) else {}
+    put("quality.review_rounds", "Review rounds", "Median \"Reviewer:\" verdict comments per code PR merged (tools/flow-measure.py); the small "
+        "line is the share over 2 rounds.", "flow-measure's 7 days", rr.get("n"), "code PRs merged", down, Q["review_rounds"],
+        band="at most 2 rounds a PR (P-277)", n_reason=rr.get("src"))
     pl = d["pipeline"]
     w7 = "the 7 days to " + t_ist
     put("pipeline.deploy_freq", pl["deploy_freq"]["label"], "PRs merged to main ÷ 7; the small line counts app-code PRs only (P-500).", w7,
@@ -4525,7 +4533,7 @@ def main():
     fm = json.load(open(fm_path)) if os.path.exists(fm_path) else None
     fm_age = hours(ts(fm["_as_of"]), NOW) if fm else None
     if not gh.offline and (fm is None or fm_age > a.flow_max_age_h):
-        if remaining >= 3500:
+        if remaining >= 4200:   # ~3,500 for runs and PRs + ~700 for ENF-782b (verdict comments, queue comments, shard logs)
             since7 = (NOW - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
             env = dict(os.environ, FLOW_TOKEN=gh.token)
             r = subprocess.run(["python3", "-I", os.path.join(HERE, "flow-measure.py"), "--since", since7, "--json"],
@@ -4538,7 +4546,7 @@ def main():
             else:
                 ERRORS.append(f"flow-measure.py exit {r.returncode}: {r.stderr[-200:]}")
         else:
-            ERRORS.append(f"flow-measure.py skipped: {remaining} API calls left this hour (needs ~3,500); last answer kept")
+            ERRORS.append(f"flow-measure.py skipped: {remaining} API calls left this hour (needs ~4,200); last answer kept")
     fm_src = (f"tools/flow-measure.py --json, 7 days, run {ist(ts(fm['_as_of']))}" if fm else "tools/flow-measure.py not run yet")
     if fm and (fm.get("runs_read") or 0) >= 1000:
         fm_src += " (its run figures cover only the newest 1,000 runs: the runs API cap; PR figures cover all 7 days)"
@@ -4924,7 +4932,9 @@ def main():
                     "closed_7d": V(closed7, "qa/BUGS-CLOSED.md: Closed on date within 7 days (best effort)"),
                     "demotions": V(demotions, "Works fell from one day's end to the next (main's qa/CAPABILITIES.md, 14 days)"),
                     "flaky": V(flaky(), f"tools/flaky-ledger.tsv in {copy}"),
-                    "review_rounds": V(None, "not measured: needs every PR's review comments (costly)")},
+                    "review_rounds": (lambda rr: V(rr.get("median"), fm_src + ": review_rounds.median (\"Reviewer:\" verdict comments per code PR merged, ENF-782b)",
+                                                   n=rr.get("n"), mean=rr.get("mean"), over_2_share=rr.get("over_2_share"))
+                                      if fm and rr.get("n") else V(None, fm_src + ": no review_rounds in its answer" if fm else "not measured: tools/flow-measure.py not run yet"))(fmv.get("review_rounds") or {})},
         "pipeline": pipeline,
         "merges_per_day": V(None if not merged_ok else {"days": series["days"], "all": series["merges"], "app": series["app_merges"], "partial": series["app_partial"]},
                             "GitHub merged PRs per IST day; app = tools/app-code-prs.sh" + (f"; {unclassified} PRs not yet classified" if unclassified else ""),

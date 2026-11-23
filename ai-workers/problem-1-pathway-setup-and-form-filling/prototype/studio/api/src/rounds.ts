@@ -15,6 +15,8 @@ import { costBesideLimit, isProviderLimit } from "../../engine/ai-run.ts";
 import { editionOfContextKey, isFinishedRun, isSameSavedRun, jobIdFor, LIVE_RUN, newestFirst, promptOfRun, replayPattern, type SavedRun } from "../../engine/rounds.ts";
 import { PROTOTYPE, SOLUTION } from "./core.ts";
 import type { Sources } from "./sources.ts";
+import { logPort } from "./platform/observability/log.ts";
+import { launcherReason } from "./plain-run-text.ts";
 
 export { LIVE_RUN, newestFirst, type SavedRun };
 export const ROUTE = "anthropic-api/aiw-d261-prototype-exception-aiw-d260", MODEL = "claude-opus-5-5";
@@ -166,7 +168,7 @@ export class StepRunner {
     const sj = last(stub.out);
     if (stub.stopped) return { ok: false, cancelled: true, costUsd: 0, reason: "Stopped during the free stub pass: nothing was sent." };
     // S3 early look (1): the launcher's own words (a stack, an error code, a server path) go to the server log only.
-    if (stub.code !== 0) { console.warn(`${step.kind} ${jobId}: stub refused:`, String(sj?.refused ?? stub.err).trim().slice(-600) || `exit ${stub.code}`); return { ok: false, costUsd: 0, reason: "The AI step could not start on this computer, so nothing was sent and nothing was charged" }; }
+    if (stub.code !== 0) { logPort.warn("ai_stub_refused", { step: step.kind, jobId, exit: stub.code, reason: launcherReason(String(sj?.refused ?? stub.err)) });   /* PF-23m: the launcher's words stay out of the log (SA-11-37 rule 3) */ return { ok: false, costUsd: 0, reason: "The AI step could not start on this computer, so nothing was sent and nothing was charged" }; }
     const live = await this.launcher.launchOnce(jobId, "live", wanted, override);
     if (live.cancelled) return { ok: false, cancelled: true, costUsd: 0, reason: "Stopped before the AI call was sent: nothing was charged." };
     if (live.stopped) return { ok: false, cancelled: true, costUsd: 0, reason: "Stopped while the AI call ran: the call was ended. It stays counted at its reserved worst case (the provider may still bill it); nothing of it is used." };
@@ -175,7 +177,7 @@ export class StepRunner {
     if (!lj?.run_file) {
       const why = String(lj?.refused ?? lj?.error ?? live.err.split("\n").filter(Boolean).slice(-2).join(" ")).trim() || `the launcher stopped (exit ${live.code})`;
       const limit = /usage limit/i.test(why + live.err);
-      if (!limit) console.warn(`${step.kind} ${jobId}: live call did not run:`, why.slice(0, 600));
+      if (!limit) logPort.warn("ai_live_not_run", { step: step.kind, jobId, exit: live.code, reason: launcherReason(why) });   /* PF-23m */
       return { ok: false, blocked: limit, costUsd: 0, reason: limit ? "The AI provider's usage limit refused the call before any processing: nothing was charged. Use saved AI answers or rules only, or try later." : "The AI step did not run, so nothing was charged" };
     }
     const rec = JSON.parse(readFileSync(lj.run_file, "utf8"));
@@ -197,12 +199,12 @@ export class StepRunner {
       return { ok: false, blocked: true, costUsd: kept, reason: `The AI provider's usage limit refused the call before any processing${kept > 0 ? `; an earlier attempt stays counted at US$${kept.toFixed(2)}` : ": nothing was charged"}. Use saved AI answers or rules only, or try later`, ...withDetails };
     }
     if (!isFinishedRun(rec.drafting_run?.status) && attempts.some((a) => a.outcome === "refused_by_provider")) {
-      console.warn(`${step.kind} ${jobId}: the AI service refused the request:`, attempts.map((a) => a.error ?? "").join(" | ").slice(0, 600));
+      logPort.warn("ai_provider_refused", { step: step.kind, jobId, attempts: attempts.length, requestId: details });   /* PF-23m: the service's words stay in the run file */
       return { ok: false, costUsd: cost, reason: `The AI service refused the request (our setup error)${charged || "; nothing was charged"}`, ...withDetails };
     }
     // QA-87, QA-88: busy, or no answer in time, said plainly; the service's own words to the server log only.
     if (!isFinishedRun(rec.drafting_run?.status) && attempts.some((a) => a.outcome === "busy")) {
-      console.warn(`${step.kind} ${jobId}: the AI service was busy:`, attempts.map((a) => a.error ?? "").join(" | ").slice(0, 600));
+      logPort.warn("ai_provider_busy", { step: step.kind, jobId, attempts: attempts.length, requestId: details });   /* PF-23m: the service's words stay in the run file */
       return { ok: false, costUsd: cost, reason: charged ? `The AI service was busy${charged}. Try again in a few minutes` : "The AI service was busy, so nothing was charged. Try again in a few minutes", ...withDetails };
     }
     if (rec.drafting_run?.status === "timed_out") {

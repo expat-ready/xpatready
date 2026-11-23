@@ -21,7 +21,7 @@ case "$m $u" in
   "GET "*/reviews*page=1) cat "$FX/reviews.json";;
   "GET "*) echo '[]';;
   "DELETE "*/labels/review%3A%20approved) echo "DELETE label" >> "$FX/log"; echo '[]';;
-  "POST "*/comments) echo "POST comment $(echo "$d" | jq -r .body | head -1)" >> "$FX/log"; echo '{}';;
+  "POST "*/comments) echo "POST comment $(echo "$d" | jq -r .body | head -1)" >> "$FX/log"; echo "$d" | jq -r .body > "$FX/body"; echo '{}';;
   *) echo "unexpected $m $u" >> "$FX/log"; exit 22;;
 esac
 EOF
@@ -119,6 +119,13 @@ ok "F4: the label added on a pure merge of main over an approved commit stays" "
 echo "1 no full run on ${c2:0:9} yet: comment \`/run full\` on the PR" > "$T/fx/proof"
 guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
 ok "CI-PRE: an approved head with no green full run loses the label, and the comment carries the reason" "$([ $r = 0 ] && grep -q '^DELETE label' <<< "$log" && grep -q '^POST comment \*\*Label guard (CI-PRE, P-731):\*\* `review: approved` removed from the head .*: no full run on .* yet: comment `/run full`' <<< "$log" && echo 1)" "exit $r, $out / $log"
+ok "CI-PRE: ... and says the full run is asked only after a failed merge batch (P-743)" "$(grep -q 'after a failed merge batch held this PR, the label needs one green full run on the head' "$T/fx/body" && grep -q 'a PR no failed batch held needs neither (P-743)' "$T/fx/body" && echo 1)" "$(cat "$T/fx/body")"
+echo "1 no full run on ${c2:0:9} yet: comment \`/run full\` on the PR (asked because the merge batch run 890 failed with this PR in it, P-743)" > "$T/fx/proof"
+guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
+ok "P-743: a PR a failed batch held, with no full run: the label comes off and the comment names the batch run" "$(grep -q '^DELETE label' <<< "$log" && grep -q 'asked because the merge batch run 890 failed with this PR in it, P-743' <<< "$log" && echo 1)" "exit $r, $out / $log"
+rm -f "$T/fx/proof"; guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
+ok "P-743: a reviewed head that no failed batch held (proof exits 0 with no full run): the label stays" "$(kept)" "$out / $log"
+echo "1 no full run on ${c2:0:9} yet: comment \`/run full\` on the PR" > "$T/fx/proof"; guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
 ok "CI-PRE: ... asked for the head alone, not as a relabel (a push)" "$(grep -qx "proof PR=1052 HEADS= $c2 RELABEL=0" "$T/fx/proof.log" && echo 1)" "$(cat "$T/fx/proof.log")"
 guard "$pure" "$pure2" "$label" "$(cm "Reviewer: Approve ${c1:0:9}")"
 ok "CI-PRE: under pure merges of main, the run may be on any commit back to the approved one (P-318 (1) stays exempt)" "$(grep -qx "proof PR=1052 HEADS= $pure2 $pure $c1 RELABEL=0" "$T/fx/proof.log" && echo 1)" "$(cat "$T/fx/proof.log")"

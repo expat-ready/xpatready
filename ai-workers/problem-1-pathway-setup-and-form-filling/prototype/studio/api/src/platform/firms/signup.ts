@@ -13,13 +13,14 @@ import { HttpException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { BillingPort } from "../../../../ports/billing.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
-import { asBypass, firmScope } from "../firm-scope.ts";
+import { asBypass, firmScope, touchFirm, touchFirms, touchPlatform } from "../firm-scope.ts";
 import { writeMoneyKeysGranted } from "../identity/money-line.ts";
 import { emailOf } from "../identity/service.ts";
 import type { SignUpIdentity } from "./signup-identity.ts";
@@ -32,6 +33,9 @@ export type SignUpPorts = {
   limits?: Partial<Limits>; formKey?: Buffer;
   /** Why this server cannot take sign-ups (a provider not set up), or null: the door answers 503 with it. */
   notReady?: string | null;
+  /** QA-741: false on a server with no Stripe key: the plans' Stripe price ids are not read there, and the pricing page
+   *  shows the plan table's own cents. Left out = a billing provider is wired (read its prices). */
+  stripePrices?: boolean;
 };
 type Limits = { signupPerIp: number; verifyPerIp: number; windowMinutes: number; minFillSeconds: number };
 const LIMITS: Limits = { signupPerIp: 10, verifyPerIp: 30, windowMinutes: 10, minFillSeconds: 3 };
@@ -47,7 +51,12 @@ const ACTOR = "system:sign-up";
 const problem = (status: number, code: string, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code, ...extra }, status);
 const notFound = () => problem(404, "NOT_FOUND", "Not found", "This link is not valid any more. Sign up again, or sign in.");
-const fields = (errors: string[]) => problem(400, "CHECK_FIELDS", "Check the form", "Some answers need changing.", { errors });
+/** PF-28 part 2c (R1.10): a field error answers 422 with each field named in `fields`; `errors` ("field: words") stays, the
+ *  sign-up page reads it. */
+const fromErrors = (errors: string[]) => Object.fromEntries(errors.map((e) => { const i = e.indexOf(": "); return i > 0 ? [e.slice(0, i).slice(0, 64), e.slice(i + 2)] : ["form", e]; }));
+const fields = (errors: string[], named: Record<string, string> = fromErrors(errors)) => problem(FIELD_ERROR_STATUS, "CHECK_FIELDS", "Check the form", "Some answers need changing.", { errors, fields: { ...named, ...fromErrors(errors) } });
+/** The door's body through its schema, or `refuse` (the one input rule's shape: never a value, every field named). */
+const parse = <S extends z.ZodType>(schema: S, value: unknown, refuse: (e: z.ZodError) => never): z.output<S> => { const r = schema.safeParse(value ?? {}); return r.success ? r.data : refuse(r.error); };
 
 /** QA-484: an empty field answers in plain words on its field, never the validator's. */
 export const EMPTY = { email: "email: Enter your work email.", password: "password: Choose a password.", firmName: "firmName: Enter your firm's name." } as const;
@@ -95,13 +104,21 @@ export class FirmSignUp {
 
   async plans() {
     const plans = await this.db.platformPlan.findMany({ where: { active: true }, orderBy: { seatsLimit: "asc" } });
-    const ids = plans.flatMap((p) => [p.stripeMonthlyPrice, p.stripeYearlyPrice]).filter((x): x is string => !!x);
-    // Stripe unreachable: the plans show without prices (never an invented one) rather than no page.
+    // QA-741 (the tech lead's ruling on #2912): a plan's price is Stripe's when a key is present and the plan carries a
+    // price id; otherwise the plan table's own cents (monthly_price_cents / yearly_price_cents, in the plan's currency);
+    // neither → no price (never an invented one). Stripe is never asked on a server with no key.
+    const keyed = this.ports.stripePrices !== false;
+    const ids = keyed ? plans.flatMap((p) => [p.stripeMonthlyPrice, p.stripeYearlyPrice]).filter((x): x is string => !!x) : [];
+    // Stripe unreachable: its plans show without prices rather than no page (the table's cents never stand in for a price Stripe holds).
     const got = ids.length ? await this.ports.billing.prices(ids).catch(() => null) : [];
     const prices = new Map((got ?? []).filter((p) => p.active).map((p) => [p.id, p]));
-    const price = (id: string | null) => { const p = id ? prices.get(id) : undefined; return p ? { amountCents: p.unitAmount, currency: p.currency.toUpperCase(), interval: p.interval } : null; };
+    const price = (id: string | null, cents: number | null, currency: string, interval: "month" | "year") => {
+      if (keyed && id) { const p = prices.get(id); return p ? { amountCents: p.unitAmount, currency: p.currency.toUpperCase(), interval: p.interval } : null; }
+      return cents === null ? null : { amountCents: cents, currency: currency.toUpperCase(), interval };
+    };
     return {
-      plans: plans.map((p) => ({ code: p.code, name: p.name, seatsLimit: p.seatsLimit, trialDays: p.trialDays, monthly: price(p.stripeMonthlyPrice), yearly: price(p.stripeYearlyPrice) })),
+      plans: plans.map((p) => ({ code: p.code, name: p.name, seatsLimit: p.seatsLimit, trialDays: p.trialDays,
+        monthly: price(p.stripeMonthlyPrice, p.monthlyPriceCents, p.currency, "month"), yearly: price(p.stripeYearlyPrice, p.yearlyPriceCents, p.currency, "year") })),
       pricesAvailable: got !== null, taxNote: TAX_NOTE, defaultPlan: "team", defaultPeriod: "MONTHLY",
       terms: (await this.currentTerms()).map((t) => ({ id: t.id, kind: t.kind, version: t.version, url: t.url })),
       formStamp: this.stamp(this.ports.clock.now()),
@@ -116,9 +133,7 @@ export class FirmSignUp {
   private async signUpDoor(body: unknown, ip: string) {
     this.ready();
     this.limit(`signup:${ip}`, this.limits.signupPerIp);
-    const parsed = Body.safeParse(body ?? {});
-    if (!parsed.success) throw fields([...new Set(parsed.error.issues.map(words))]);
-    const b = parsed.data;
+    const b = parse(Body, body, (e) => { throw fields([...new Set(e.issues.map(words))], fieldsOf(e)); });
     let email: string;
     try { email = emailOf(b.email); } catch { throw fields(["email: give your work email (name@example.com)"]); }
     const terms = await this.currentTerms();
@@ -139,25 +154,38 @@ export class FirmSignUp {
 
   private async signUpWork(email: string, b: z.output<typeof Body>, planCode: string, termIds: string[]) {
     if (!this.perEmail(email)) return;   // at most 3 emails to one address an hour (break m3)
-    const known = await this.knownAccount(email);
+    const token = randomBytes(32).toString("base64url");
+    // Lead 15 on #2814: the staff lookup and the pending row are one step with one firm-less platform.bypass line (the
+    // pending id, never the email). The provider call stays outside any transaction (re-review 2 M1 of #2814: inside, a
+    // burst of sign-ups held the pool); the lookup is checked again under the email's lock in the pending row's
+    // transaction, which writes the line last: a line that cannot be written leaves no pending row (P-607).
+    let known = await this.knownAccount(email);
+    if (!known) {
+      // The newest sign-up for an email replaces a live one (its link ends), so nobody can hold another person's address
+      // for 24 hours, and a mistyped password is mended by signing up again (break M2). Still one live pending sign-up.
+      const { subject } = await this.ports.identity.register({ email, password: b.password, firmName: b.firmName, link: (code) => `${this.ports.appUrl}/sign-up/verify#token=${token}&code=${code}` });
+      known = await this.db.$transaction(async (tx) => {
+        await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`platform_signup:${email}`}))`;
+        const firm = await this.knownAccount(email, tx);
+        if (firm) return firm;
+        const now = await dbNow(tx);
+        await tx.platformSignupPending.updateMany({ where: { email, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "REPLACED" } });
+        await tx.platformSignupPending.deleteMany({ where: { email, usedAt: null, expiresAt: { lte: now } } });
+        const row = await tx.platformSignupPending.create({ data: {
+          email, firmName: b.firmName, countryCode: b.countryCode, planCode, period: b.period, identitySubject: subject,
+          termsVersionIds: termIds, termsAcceptedAt: now, tokenHash: sha(token), createdAt: now, expiresAt: new Date(now.getTime() + PENDING_HOURS * 3600_000),
+        }, select: { id: true } });
+        await touchPlatform(tx, { step: "signup.new-email", key: row.id });
+        return null;
+      });
+    }
     if (known) {
-      await this.ports.mail.send({ firmId: known, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/sign-in`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
+      await touchFirms(this.db, [known]);   // PF-12b: the lookup read that firm's staff; its line before the email (P-607)
+      // PF-5v part 2 (review M1 of #2456): our own platform account email (PF-19p), never the firm's: as the firm's it
+      // would go From the firm, and anyone repeating the public form would spend the firm's daily email cap.
+      await this.ports.mail.send({ platformAccount: true, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/account`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
       return;
     }
-    const token = randomBytes(32).toString("base64url");
-    // The newest sign-up for an email replaces a live one (its link ends), so nobody can hold another person's address
-    // for 24 hours, and a mistyped password is mended by signing up again (break M2). Still one live pending sign-up.
-    const { subject } = await this.ports.identity.register({ email, password: b.password, firmName: b.firmName, link: (code) => `${this.ports.appUrl}/sign-up/verify#token=${token}&code=${code}` });
-    await this.db.$transaction(async (tx) => {
-      await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`platform_signup:${email}`}))`;
-      const now = await dbNow(tx);
-      await tx.platformSignupPending.updateMany({ where: { email, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "REPLACED" } });
-      await tx.platformSignupPending.deleteMany({ where: { email, usedAt: null, expiresAt: { lte: now } } });
-      await tx.platformSignupPending.create({ data: {
-        email, firmName: b.firmName, countryCode: b.countryCode, planCode, period: b.period, identitySubject: subject,
-        termsVersionIds: termIds, termsAcceptedAt: now, tokenHash: sha(token), createdAt: now, expiresAt: new Date(now.getTime() + PENDING_HOURS * 3600_000),
-      } });
-    });
   }
 
   /** Work started after an answer; its failure is logged without personal data. `settled()` waits for it (tests). */
@@ -172,38 +200,53 @@ export class FirmSignUp {
   private async verifyDoor(body: unknown, ip: string) {
     this.ready();
     this.limit(`verify:${ip}`, this.limits.verifyPerIp);
-    const parsed = VerifyBody.safeParse(body ?? {});
-    if (!parsed.success) throw notFound();
-    const now = await dbNow(this.db);
-    const pending = await this.db.platformSignupPending.findUnique({ where: { tokenHash: sha(parsed.data.token) } });
+    // PF-28 part 2c: a link's body that is not { token, code } is a field error (422, named), told by its shape alone (no
+    // lookup, so it says nothing about which links exist); the verify page shows its "link closed" words for it.
+    const parsed = { data: parse(VerifyBody, body, (e) => { throw problem(FIELD_ERROR_STATUS, "CHECK_FIELDS", "Check the link", "This link is not complete. Open it again from the email.", { fields: fieldsOf(e) }); }) };
+    // Lead 15 on #2814: a refused verify (an unknown, used or expired link, too many wrong codes, a wrong code, a plan that
+    // is gone) reads our pending register with no firm: one firm-less platform.bypass line (the pending id, else none)
+    // in a transaction with the read, before the answer; a line that cannot be written answers 500 and counts nothing.
+    const refused = (key: string | null, step = "signup.verify-refused") => this.db.$transaction(async (tx) => { await touchPlatform(tx, { step, key }); });
+    const { now, pending } = await this.db.$transaction(async (tx) => {
+      const at = await dbNow(tx), row = await tx.platformSignupPending.findUnique({ where: { tokenHash: sha(parsed.data.token) } });
+      if (!row || row.usedAt || row.expiresAt <= at || (this.wrongCodes.get(row.id) ?? 0) >= WRONG_CODES) await touchPlatform(tx, { step: "signup.verify-refused", key: row?.id ?? null });   // 5 wrong codes end the link (break m5)
+      return { now: at, pending: row };
+    });
     if (!pending || pending.usedAt || pending.expiresAt <= now) throw notFound();
-    if ((this.wrongCodes.get(pending.id) ?? 0) >= WRONG_CODES) throw notFound();   // 5 wrong codes end the link (break m5)
+    if ((this.wrongCodes.get(pending.id) ?? 0) >= WRONG_CODES) throw notFound();
     if (!(await this.ports.identity.confirm({ subject: pending.identitySubject, code: parsed.data.code }))) {
+      await refused(pending.id);
       if (this.wrongCodes.size > 50_000) this.wrongCodes.clear();   // links last 24 hours; the cap is per process
       this.wrongCodes.set(pending.id, (this.wrongCodes.get(pending.id) ?? 0) + 1);
-      throw problem(400, "CODE_WRONG", "Check the code", "That code is not the one we sent. Type the 6 digits from the email.");
+      throw problem(FIELD_ERROR_STATUS, "CODE_WRONG", "Check the code", "That code is not the one we sent. Type the 6 digits from the email.", { fields: { code: "That code is not the one we sent." } });
     }
-    if (await this.knownAccount(pending.email)) throw problem(409, "ACCOUNT_EXISTS", "Sign in instead", ALREADY);
+    const existing = await this.knownAccount(pending.email);
+    if (existing) { await touchFirms(this.db, [existing]); throw problem(409, "ACCOUNT_EXISTS", "Sign in instead", ALREADY); }   // PF-12b: that firm's line, then the refusal
     const plan = await this.db.platformPlan.findFirst({ where: { code: pending.planCode, active: true } });
-    if (!plan) throw problem(409, "PLAN_GONE", "Choose a plan again", "The plan you chose is no longer offered. Sign up again and choose one of the plans shown.");   // break m7
+    if (!plan) { await refused(pending.id); throw problem(409, "PLAN_GONE", "Choose a plan again", "The plan you chose is no longer offered. Sign up again and choose one of the plans shown."); }   // break m7
     const made = await this.db.$transaction(async (tx) => {
       const used = await tx.platformSignupPending.updateMany({ where: { id: pending.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "VERIFIED" } });
       if (used.count !== 1) throw notFound();   // a double submit makes one firm (the row's lock orders the two)
       const firm = await tx.platformFirm.create({ data: { key: `${slug(pending.firmName)}-${randomBytes(4).toString("hex")}`, operatingName: pending.firmName, countryCode: pending.countryCode, status: "PROVISIONING", ownerEmail: pending.email, contactEmail: pending.email, billingEmail: pending.email } });
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "firm.created", entity: "platform_firm", entityKey: firm.id, summary: "Firm created by self-serve sign-up (setting up)", detail: { status: "PROVISIONING", country: pending.countryCode } });
+      await touchFirm(tx, firm.id);   // PF-12b: the new firm's platform.bypass line, in the transaction that creates it
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "firm.created", entity: "platform_firm", entityKey: firm.id, summary: "Firm created by self-serve sign-up (setting up)", detail: { status: "PROVISIONING", country: pending.countryCode },
+        before: null, after: { key: firm.key, operatingName: firm.operatingName, countryCode: firm.countryCode, status: firm.status, ownerEmail: firm.ownerEmail, contactEmail: firm.contactEmail, billingEmail: firm.billingEmail } });
       const owner = await tx.platformStaff.create({ data: { firmId: firm.id, email: pending.email, displayName: pending.email.split("@")[0], identitySubject: pending.identitySubject } });
       await tx.platformRoleGrant.create({ data: { firmId: firm.id, staffId: owner.id, role: "OWNER", grantedBy: ACTOR, grantedAt: now } });
       // PF-6m2 (break F4; PF-6b rule (2)): the first Owner's money keys are logged like any other grant, in this transaction.
       await writeMoneyKeysGranted(tx, { firmId: firm.id, firmKey: firm.key, actor: "system:signup", staffId: owner.id, roles: ["OWNER"] });
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.staff.owner_created", entity: "platform_staff", entityKey: owner.id, summary: "The person who signed up is the firm's Owner", detail: { staffId: owner.id } });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.staff.owner_created", entity: "platform_staff", entityKey: owner.id, summary: "The person who signed up is the firm's Owner", detail: { staffId: owner.id }, before: null, after: { email: owner.email, displayName: owner.displayName, roles: ["OWNER"] } });
       for (const versionId of pending.termsVersionIds) await tx.platformTermsAcceptance.create({ data: { firmId: firm.id, staffId: owner.id, versionId, acceptedAt: pending.termsAcceptedAt } });
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.terms.accepted", entity: "platform_terms_acceptance", entityKey: owner.id, summary: "The Owner's acceptance of the current terms recorded", detail: { staffId: owner.id, versions: pending.termsVersionIds.length } });
-      const sub = await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "TRIAL" } });
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.created", entity: "platform_subscription", entityKey: sub.id, summary: `Trial subscription on ${plan.name}, ${pending.period.toLowerCase()}`, detail: { plan: plan.code, period: pending.period } });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.terms.accepted", entity: "platform_terms_acceptance", entityKey: owner.id, summary: "The Owner's acceptance of the current terms recorded", detail: { staffId: owner.id, versions: pending.termsVersionIds.length }, before: null, after: { versionIds: pending.termsVersionIds, acceptedAt: pending.termsAcceptedAt.toISOString() } });
+      // The trial's end is stored from the start (QA-481): the plan's days from now; Stripe's own end replaces it when the
+      // trial's Checkout completes (billing/webhook.ts).
+      const trialEndsAt = new Date(now.getTime() + plan.trialDays * 86_400_000);
+      const sub = await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "TRIAL", trialEndsAt, billingPeriod: pending.period } });   // PF-5 part 3: the period is stored, not only audited
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.created", entity: "platform_subscription", entityKey: sub.id, summary: `Trial subscription on ${plan.name}, ${pending.period.toLowerCase()}`, detail: { plan: plan.code, period: pending.period, trialEndsAt: trialEndsAt.toISOString() }, before: null, after: { plan: plan.code, period: pending.period, status: sub.status, trialEndsAt: trialEndsAt.toISOString() } });
       await tx.moduleEvent.create({ data: { firmId: firm.id, type: EVENT.FIRM_CREATED, subjectId: firm.id, payload: { firmId: firm.id } } });   // last (m8)
       return { firm, owner, sub };
     });
-    const checkout = await this.startTrial(made.firm, made.sub.id, plan, pending.period).catch(() => null);
+    const checkout = await this.startTrial(made.firm, made.sub.id, plan, made.sub.billingPeriod).catch(() => null);   // PF-5 part 3: the stored period picks the price
     return { firmKey: made.firm.key, status: "PROVISIONING", ownerStaffId: made.owner.id, checkoutUrl: checkout?.url ?? null, ...(checkout ? {} : { next: "Sign in to finish starting your free trial." }) };
   }
 
@@ -216,21 +259,22 @@ export class FirmSignUp {
     const customerId = had ?? (await this.ports.billing.ensureCustomer({ firmId: firm.id, email: firm.contactEmail, name: firm.operatingName })).customerId;
     if (!had) await this.db.$transaction(async (tx) => {
       await tx.platformSubscription.updateMany({ where: firmScope(firm.id, { id: subId, stripeCustomerId: null }), data: { stripeCustomerId: customerId } });
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.customer_linked", entity: "platform_subscription", entityKey: subId, summary: "The firm's billing customer was created", detail: { customerId } });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.customer_linked", entity: "platform_subscription", entityKey: subId, summary: "The firm's billing customer was created", detail: { customerId }, before: { stripeCustomerId: null }, after: { stripeCustomerId: customerId } });
     });
     return this.ports.billing.startTrialCheckout({ firmId: firm.id, customerId, priceId, trialDays: plan.trialDays, successUrl: `${this.ports.appUrl}/sign-up/trial-started`, cancelUrl: `${this.ports.appUrl}/sign-up/trial` });
   }
 
   /** Removes the expired pending sign-ups (used or not). */
   async purgeExpired(): Promise<number> {
-    return (await this.db.platformSignupPending.deleteMany({ where: { expiresAt: { lte: await dbNow(this.db) } } })).count;
+    // PF-12b part 3: on its bypass use, the purge's one platform.bypass line is written in the same transaction (fail-closed).
+    return this.db.$transaction(async (tx) => { await touchPlatform(tx); return (await tx.platformSignupPending.deleteMany({ where: { expiresAt: { lte: await dbNow(tx) } } })).count; });
   }
 
   /** The firm of a staff member or firm contact with this email (an account exists), else null. */
-  private async knownAccount(email: string): Promise<string | null> {
-    const staff = await this.db.platformStaff.findFirst({ where: { email }, select: { firmId: true } });
+  private async knownAccount(email: string, db: Tx | PrismaClient = this.db): Promise<string | null> {
+    const staff = await db.platformStaff.findFirst({ where: { email }, select: { firmId: true } });
     if (staff) return staff.firmId;
-    return (await this.db.platformFirm.findUnique({ where: { contactEmail: email }, select: { id: true } }))?.id ?? null;
+    return (await db.platformFirm.findUnique({ where: { contactEmail: email }, select: { id: true } }))?.id ?? null;
   }
 
   private limit(key: string, max: number) {

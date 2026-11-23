@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-748**, 08:22 IST 20 Nov; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-20-0822-lead99s2-as-of-P-744.md`, whose first line lists the older ones)
+# Rule register (Lead keeps it; as of **P-804**, 22 Nov 15:21 IST; earlier: `history/RULES-2026-11-22-1521-lead4-as-of-P-799.md` + older)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -149,13 +149,17 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
 | P-691 | Emergency hand merge stays: only a pipeline/CI fix while the queue is broken; full row `rules/tech-lead.md`. | prose (ruleset bypass; library/engineering-change-log.md) | 17 Nov |
 | P-699 | Agents build, review, test and label; when a tool path is stuck, the Lead does the step in the signed-in browser (safety rules still apply). | prose | 18 Nov |
-| IDX-9 | 18-19 Nov rows stand as recorded: P-703 to P-715 and P-716 (freeze to Proven 30), P-717 (records and pipeline in their own lane), P-718 (queue first, staging at Proven 30), P-721 to P-723, P-725 to P-727, P-729, P-730 (19 Nov proof sprint, tracks, hold); word for word in `rules/tech-lead.md`. | prose | 19 Nov |
+| IDX-9 | Row word for word in `rules/tech-lead.md` › IDX-9. | prose | 19 Nov |
 | P-731 | A PR that failed a batch is relabelled only after a green full run on its head, every failing suite named (P-733 (4)). | CI: label-guard (CI-PRE, owed) | 19 Nov |
 | P-733 | Lanes on the items nearest done first, one lane per item to Proven; PRs near 800 lines; automatic proof on merge; qa walks risky items. | CI: #2233 (owed); prose (focus) | 19 Nov |
 | P-734 | P-733 runs unchanged to 22 Nov evening; no new workflow row before 23 Nov unless a fix; daily number: Proven. | script: ENF-733 (owed) | 19 Nov |
-| IDX-14 | Product rulings P-735 (an expired identity document is refused as the firm's own rule), P-736 (native drag on the sales board), P-737 (a locked PDF is refused as the app's rule), P-741 (R1.31 includes FO-2pv, not QA-531) stand in their DECISIONS rows, each for the founder's review. | prose | 19 Nov |
+| IDX-14 | Product rulings P-735, P-736, P-737, P-741 stand: row word for word in `rules/tech-lead.md` › IDX-14. | prose | 19 Nov |
 | IDX-17 | Test-run rows P-742, P-743 (`FULL_RUN_FROM` to 22 Nov 20:00 IST), P-744 (B203 now): word for word in `rules/tech-lead.md` › Moved 20 Nov. | CI: queue-gate.sh FULL_FROM; script: records-only.sh | 20 Nov |
-| IDX-19 | 20 Nov rows P-739, P-740, P-745 (waves, WIP caps 8/12), P-746 (core = Waves 1-2 by 29 Nov), P-747, P-748: word for word in DECISIONS and `rules/tech-lead.md` › Moved 20 Nov. | script: B204 waves check (part, owed); prose | 20 Nov |
+| IDX-19 | 20 Nov rows P-739, P-740, P-745 to P-748: row word for word in `rules/tech-lead.md` › IDX-19. | script: B204 waves check | 20 Nov |
+| IDX-20 | 20 Nov rows P-749 to P-756 stand: list word for word in `rules/tech-lead.md` › IDX-20 row. | script: lead-pr.sh | 20 Nov |
+| IDX-21 | 20 Nov P-757 to P-765 stand: row word for word in `rules/tech-lead.md` › IDX-21. | script: lead-watch.sh (part), check-docs.sh lock; hook: founder-click-guard | 20 Nov |
+| IDX-23 | P-766 to P-780 stand, word for word in `rules/tech-lead.md` › IDX-23 (P-770, P-778 the Lead does every step; P-780 recovery swap; P-781 Opus 5.5 medium for all, Fable 5.2 medium critical). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5); owed ENF-778a/g | 21 Nov |
+| IDX-25 | P-782-P-804 stand: `rules/tech-lead.md` › IDX-25. | script: ENF-782b (owed) | 22 Nov |
 | P-738 | Each check the Lead measures the flow, names the one constraint, fixes it the simplest way, re-measures; no cause claimed unmeasured. | script: lead-watch.sh constraint section (ENF-738, owed) | 19 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)

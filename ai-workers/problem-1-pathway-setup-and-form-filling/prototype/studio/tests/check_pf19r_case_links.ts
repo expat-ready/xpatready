@@ -6,6 +6,7 @@
 // The check releases the Visitor visa itself (setup_visitor_visa.ts) when its copy has none.
 //   zsh studio/tools/isolated.sh runtime_pf19r 4430 start && tsx studio/tests/check_pf19r_case_links.ts 4430 xr_studio_runtime_pf19r
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -178,9 +179,13 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   try {
     for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(scratch), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
     const { seedSampleOnStart } = await import("../api/src/platform/identity/sample-seed.ts");
-    await seedSampleOnStart({ DATABASE_URL: urlOf(scratch), PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" });
+    // PF-24w: the seed reads PF-24's loader, so a production configuration is a complete one (every value made by this run,
+    // as check_pf4_identity.ts's PROD); an incomplete one would be refused for its missing settings, not by P-710's rule.
+    const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
+    const PROD = { PLATFORM_ENVIRONMENT: "production", DATABASE_URL: urlOf(scratch), PLATFORM_COGNITO_USER_POOL_ID: `ca-central-1_${hex(9)}`, PLATFORM_COGNITO_CLIENT_ID: hex(26), PLATFORM_STRIPE_SECRET_KEY: ["sk", "test", hex(32)].join("_"), PLATFORM_STRIPE_WEBHOOK_SECRET: ["whsec", hex(32)].join("_"), PLATFORM_SES_REGION: "ca-central-1", PLATFORM_BOLDSIGN_API_KEY: hex(40), PLATFORM_ZOOM_CLIENT_ID: hex(22), PLATFORM_ZOOM_CLIENT_SECRET: hex(32), PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN: hex(22), PLATFORM_SECRET_BOX_KEYS: `1:${randomBytes(32).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" };
+    await seedSampleOnStart({ ...PROD, PLATFORM_SAMPLE_SEED: "on" });
     ok("P-710 fail: a production configuration, even with PLATFORM_SAMPLE_SEED=on, leaves no Sample firm", sql(`select count(*) from platform_firm`, scratch) === "0");
-    await seedSampleOnStart({ DATABASE_URL: urlOf(scratch), PLATFORM_SAMPLE_SEED: "on" });   // the seed takes its database from this env (never the demo)
+    await seedSampleOnStart({ DATABASE_URL: urlOf(scratch), PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "local" });   // the seed takes its database from this env (never the demo)
     ok("P-710 pass: the same seed outside production makes the Sample firms (the test copy's setting)", sql(`select count(*) from platform_firm where key in ('sample-firm', 'sample-solo')`, scratch) === "2");
   } finally { try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", scratch]); } catch { /* left */ } }
 

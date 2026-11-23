@@ -37,6 +37,7 @@ const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
 const { Db } = await import("../api/src/core.ts");
 const { registerFeatures } = await import("../api/src/features.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");

@@ -71,7 +71,13 @@ const PART_NAMES = /^(Page wrapper|Nat id|Us card|Contacts row2|Background info2
   await p.getByText(/Decided\. It landed as/).first().waitFor({ timeout: 20000 });
   step("QA-206 pass: it lands under the typed name, waiting for a second person", sql("select count(*) from logical_section where title = 'Applicant and application details' and status = 'DRAFT'") === "1" && Number(sql("select count(*) from library_change where status = 'WAITING' and kind = 'section'")) === w0 + 1);
   // B78 (review M1, m8): the second part, named what the library now holds, joins that section, and the person is told so.
-  await unnamed.first().waitFor({ timeout: 20000 });
+  // The accept closes the panel at once but the list refetches afterwards (useAction: invalidate, then onDone), so until
+  // the refetch lands the decided row still shows as the first "Unnamed section". Opening it then decides an item already
+  // decided and the "joins" words never come (batch of 20 Nov, shard 2: TimeoutError at the wait below, both tries, on a
+  // slow part). Wait for the list to show only the one part still waiting, and the first panel to be gone.
+  await panel.waitFor({ state: "detached", timeout: 20000 });
+  const settled = await (async () => { for (const t = Date.now(); Date.now() - t < 30000; await p.waitForTimeout(250)) if ((await unnamed.count()) === 1) return true; return false; })();
+  step("B78 setup: after the accept, To review shows only the one unnamed part still waiting", settled, await unnamed.count());
   await unnamed.first().getByRole("button", { name: /^Open / }).click();
   const panel2 = p.getByRole("dialog"), w1 = sql("select count(*) from library_change where status = 'WAITING' and kind = 'section'");
   // By keyboard alone: type the name, Tab to Accept, press Enter.

@@ -28,6 +28,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -162,7 +163,8 @@ try {
   ok("PF-21w DW2 pass: the list pages with limit and cursor (2 + 2 = every one, none twice)", page.body.items.length === 2 && page2.body.items.length === 2 && JSON.stringify([...ids(page), ...ids(page2)].sort()) === JSON.stringify(every), [page.body, page2.body]);
   for (const q of ["?view=nope", "?limit=0", "?limit=abc", "?limit=101", "?view=all&view=open", "?cursor=bad"]) {
     const x = await call("GET", q, as.OWNER.token);
-    ok(`PF-21w DW2 fail: list ${q} → the service's field error (422)`, x.status === 422 && x.body.code === "COMPLAINT_FIELDS", x);
+    // A repeated key is refused by the one input rule at the door (PF-28 part 2b: INVALID, the field named), the rest by the service.
+    ok(`PF-21w DW2 fail: list ${q} → a field error (422)`, x.status === 422 && (q.includes("&view=") ? x.body.code === "INVALID" && Object.hasOwn(x.body.fields ?? {}, "view") : x.body.code === "COMPLAINT_FIELDS"), x);
   }
 
   // ---------------------------------------------------------------------------------------------------------- DW3

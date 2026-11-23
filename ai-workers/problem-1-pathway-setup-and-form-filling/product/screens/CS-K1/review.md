@@ -90,3 +90,201 @@ Reviewer: Approve 9bab80a24
 **Verdict: Approve**
 
 Reviewer: Approve 479f23131
+
+## Part 2 review (17b41633f)
+
+The Opus reviewer, fresh context, effort high, 19 Nov. Branch `claude/awesome-allen-4pfgcj` at **17b41633f**. Diff: `git diff origin/main...17b41633f` (17 files, +574 / -26; 522 lines outside `product/screens/`, under 800). Spec, in this order: `build-lead-c-briefs/CS-K1-2.md` on `claude/build-lead-c-647b40`, rulings 1-4 of 20 Nov winning; `RESUME-part-2.md` "Carried over from FO-8"; the builder's three points on #2255 (comment 7019181906). Rules: `STANDARDS.md`, `MODULE.cases.md`, `platform/MODULE.md`, `firm-scope.ts`. I changed no code. Live AI was off and nothing was spent. My copies were `csk1r2` on :4733 and `j72r` on :4734 (never :4400, :4641 or :4472). I stopped both, and removed my scratch worktree.
+
+### What I ran
+| What | Where | Result |
+|---|---|---|
+| `tests/check_csk1_client.ts 4733 xr_studio_csk1r2` | 17b41633f, fresh copy | **62/62** |
+| `tests/journeys/j_72.ts j72r 4734` (`PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500`) | 17b41633f merged with #2321's head 38d96cf3f (clean merge, no schema or web change) | **26/26** |
+| The same J-72, with FO-8's merge-value read switched off (`prospect-won.ts`: `representativeActorId` never set) | same | **26/26: W8 still passes** (M2) |
+| `rollback.sql`, then `migration.sql` again, in one transaction on the validated copy | csk1r2 | Both clean. After the rollback: no column, no check, no function, no `_prisma_migrations` row, and all 12 links kept. After re-applying: the check is back as NOT VALID |
+| The live job: a pending client inserted, then `isolated.sh restart` | csk1r2 | `cases.client_link:<firm>` completed as the firm (xr_app, withFirm). The client was linked, and the check was validated by the definer |
+| The same again with a second pending client of that firm | csk1r2 | **never linked** (the job key is used up), and the validated check accepts it (M1) |
+| After validation: insert a PERSON client of `sample-firm` with no `fo_person_id` and `fo_link_pending = true`; set a linked client's `fo_person_id = null, fo_link_pending = true` | csk1r2 | **both accepted** (M1) |
+| `fo_person.created_by` after a simulated (`x-actor`) opening | j72r | `staff:user-O` (m1) |
+I did not re-run fo1p, pf12, pf25, aud1m, csc1s, c617, `check_fo8_prospect_won` 43, `check_csc1_count` 40 or `check_case_feed` 42; those results are the builder's. I did not run full `ci`.
+
+### Done when: does each pass and fail as named?
+* **DW9: held.** The new client and its `fo_person` share one `xmin`, so they were written in one transaction. A throw forced in `inTx` leaves no client and no party. Both sides fail if the rule is removed.
+* **DW10: held as a function test.** It runs `linkFirmClients` as the suite's bypass role, not as the app does. I ran the app path myself (above), and it works. The fail side ("a re-run links nothing") is real.
+* **DW11: held.** Firm B's opening links to firm B's party. A link asked with firm B's id for firm A's client throws `linked meanwhile`, and B's new party rolls back.
+* **DW12: pass held; the fail side is weak.** "No COMPANY client names an fo_person" is a count over the copy, not an input that must be refused. The check's refusal of a COMPANY client with only `fo_person_id` is in DW13, which covers it.
+* **DW13: held for unflagged rows only.** The rows the builder's point 1 says DW13 tests ("cannot skip the link without setting the flag on purpose") are not tested. `newClient` sets the flag itself. See M1.
+
+### The builder's three points
+* **(a) `fo_link_pending` and `firm_id IS NULL`.** The `firm_id IS NULL` carve-out is sound: a key with no platform firm has no front office to link to. The flag is needed for the two triggers, which cannot call the port. As built, though, it is a permanent escape that any writer can set, so VALIDATE does not mean what the brief says. That is M1.
+* **(b) `withFirm(case_firm_id_of_key(opener's key))`: sound in effect.**
+  * The firm comes from the server's own data (the simulated opener's firm key), never from the body.
+  * A staff scope of another firm gets 403 (`runtime.ts:322`).
+  * The scope covers only the opening's transaction, which is narrower than `enterFirm`.
+  * Two things for the Lead's firm-scope read. First, an `x-actor` request with no session now writes walled `fo_person`/`fo_company` rows and their audit lines; it also seeds the firm's front office when the firm has none (`fo-person-port.ts setup`). Second, `withFirm`'s doc (`firm-scope.ts:73`, "a job's firm; a test") and `platform/MODULE.md:13` (the list of allowed contexts) do not name this use (m5).
+  * No test covers the 403 branch.
+* **(c) SECURITY DEFINER `case_client_validate_link_check()`: sound.**
+  * It takes no arguments, has a pinned `search_path` and no dynamic SQL, and EXECUTE is revoked from PUBLIC and granted to `xr_data` (xr_app inherits it).
+  * VALIDATE takes SHARE UPDATE EXCLUSIVE, so writes go on. Two firms' jobs validating at once queue, which is harmless.
+  * DW8 now pins exactly this one definer.
+* **The `by` parameter (AUD-1m fault): right.** The `opened` and `added` lines now name `staff:<id>` in a signed-in open-case (`runtime.ts:261`). J-72 W3 is its failing case. No unit suite covers it, because `check_fo8` has no AUD-1m request context.
+
+### Concurrency, bypass, poller, rollback
+* **The job against an opening: held.** A new client is invisible to the job until its commit, and by then it is already linked. The job takes `FOR UPDATE`, re-reads, and writes only while both ids are null (`clients.ts:46`). A loser throws, and its port party rolls back.
+* **Two openings at once: held** by CS-C1b's per-firm lock. A direct opening takes no prospect, so the "one prospect twice" race is FO-8's advisory lock plus its unique key.
+* **FO-8's kind change against the job: held.** FO-8's clients are always linked (its update sets one id and nulls the other), so the job never selects them, and the row lock orders any overlap.
+* **Firm scope:** `withFirm` inside `asBypass` drops the bypass, so every write runs as its own firm.
+* **The poller's single-flight: held** (`tick`). `run` catches everything, and the timer is `unref`'d.
+* **The poller's shutdown:** `onApplicationShutdown` clears the timer and waits for the run on `app.close()`. On SIGTERM, PlatformJobs exits the process first, which is harmless because each prospect is its own transaction.
+* **The bypass's scope:** it also wraps the `case_client` query and `jobs.enqueue` (`live.ts:51-53`), which need no bypass (m7).
+* **The rollback file: correct.** The functions match part 1 exactly, the order works, and the links are kept (run above).
+
+### Findings
+* **Major M1: the link check can be bypassed by application code, and pending clients made after a firm's one job are never linked.**
+  * `newClient` writes `foLinkPending: true` (`clients.ts:33`), and the check passes any row with the flag (`migration.sql:21`). So a future caller of `newClient` that forgets `linkClient` passes the check: exactly the bug the check exists to catch.
+  * Any code can also unlink a client by setting the flag; both were accepted after VALIDATE (run above).
+  * The job is queued once per firm for ever (`live.ts:50-53`, the pg-boss key). A trigger-made pending client that comes later stays unlinked even after a restart (run above). Meanwhile `case_client_validate_link_check()` returns false for good.
+  * Fix:
+    1. Make `newClient` link first and insert with the id: call the port, then `create` with `foPersonId`/`foCompanyId` and no flag (`linkClient` keeps its guarded update for the job).
+    2. Add a BEFORE INSERT OR UPDATE trigger on `case_client` that refuses `fo_link_pending = true` when `pg_trigger_depth() < 2` (on insert, or on update from false), so only the two triggers can set it.
+    3. Add DW13 fail cases: an insert with the flag from code, and an update that unlinks with the flag, are both refused.
+    4. Queue the link job again while pending rows exist, e.g. key `cases.client_link:<firm>:<highest pending client number>`, or have the poll's first run link pending rows directly.
+* **Major M2: J-72 W8 does not discriminate (ruling 1).**
+  * The signed version names `rep = R` (`j_72.ts:148, :151`), and user-R is also `sample-firm`'s `defaultRepresentative`, which `openingTeam` uses when the offer gives none.
+  * With FO-8's merge-value read switched off, J-72 still passed 26/26. So "FO-8's first real run of that branch" is unproven.
+  * Fix: have the version's `representative.staff_id` name user-T's staff id (user-T represents and is a platform staff member). Keep `fo_retainer.representative_staff_id` as R, which proves the version is read rather than the row. Then assert `benRep === "user-T"` at `:164`.
+* **Minor m1:** a simulated opener's port actor becomes `staff:user-O` (`runtime.ts:342`), a staff word that names no staff member, on `fo_person.created_by` and on a FIRM_STAFF audit line. Fix: map it to `platform_staff.id` by `actor_id` in the firm, else use a `system:` word (for example `system:runtime.open-case`).
+* **Minor m2:** a client the job fails on is only logged, and the job completes (`live.ts:33-35`), so it never retries. Fix: throw when `r.failed.length` is not zero; the handler is idempotent.
+* **Minor m3:** a database with nothing to link at the first poll never validates the check (`live.ts:50-53`; the j72r copy ended with `convalidated = f`). Fix: call `case_client_validate_link_check()` once when the firm list is empty.
+* **Minor m4, J-72 against ruling 1/2:**
+  * DW-d does not assert `offAfter` (`:182-183`). It was 200 in my run, but a refused signing would pass the step without testing anything.
+  * W2's wait is `3 * POLL + 2_000` (`:84`); the ruling allows at most three intervals.
+  * The prospect screen has axe but no 1024/1440 check.
+  * W5 is FO-5's route, because `web/src` has no Signed offline action (grep). Label it "API step: …" as W3 is.
+* **Minor m5, the cards:**
+  * `MODULE.cases.md:27` still says "Nothing delivers events while the app runs", and `:28` says "`fo_person_id`, `fo_company_id` empty until part 2".
+  * Add the link invariant, the flag, the definer function and the opening's `withFirm`. Invariant lines are not frozen.
+  * Name the case-opening context and the second definer in `platform/MODULE.md:13`, and widen `firm-scope.ts:73`'s doc.
+* **Minor m6:** DW12's fail side is a count, not a refusal. Add a COMPANY client passed with only `fo_person_id` through `linkClient`'s update, or point to DW13.
+* **Minor m7, the bypass's scope:** move the `case_client` query and `enqueue` out of `asBypass` (`live.ts:47-53`). Note for the Lead: one `platform_bypass` line per poll is 8,640 a day at 10 s (310 in my four-minute J-72 run at 500 ms).
+* **Carried over from FO-8: all done.** The `Tests:` line is back (`MODULE.cases.rows/FO-8.md`). The q + U+0301 cut case is in and fails on a code-point cut. The `case.opened` words are reworded. `OFFER_REFUSED.CHANGED` is updated.
+
+### Journey test (reviewer role, the one score for this check)
+Report: `screens/CS-K1/journey-test-reviewer-2026-11-19.md`. Score **8.5 / 10**. No criterion is at 0, so it passes the bar. "Correct data" is ½ because of M1 and M2.
+
+### What I could not check
+* Full `ci` on the head.
+* The suites listed above that I did not re-run.
+* A real screen reader.
+* An intended user's unaided walk (D17 and D20 stay with the founder).
+* J-72 on `main` after #2321 merges: I ran it on a local merge only.
+
+Verdict: Changes needed. Blockers: none. Majors: M1 (`clients.ts:33`, `migration.sql:21`, `live.ts:50-53`), M2 (`j_72.ts:148-164`). Minors: m1-m7 as listed above.
+
+## Part 2 re-review (4715e7873)
+
+Diff only (P-277): `git diff 17b41633f..4715e7873 -- …/prototype` (11 files, +92 / -49). The commits after it touch records only: c25bd2f38 (`qa/built/R1.72.md`) and 19348c3f3 (`screens/CS-K1/`). I changed no code. Live AI was off and nothing was spent. I worked in a scratch worktree at 4715e7873 merged locally with #2321's head (38d96cf3f, a clean merge), with copies `csk1r3` on :4735 and `j72r3` on :4736. I stopped both and removed the worktree afterwards.
+
+### What I ran
+| What | Result |
+|---|---|
+| `check_csk1_client.ts 4735 xr_studio_csk1r3` (fresh copy) | **64/64** |
+| `j_72.ts j72r3 4736` (`PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500`) | **27/27**: W8 reads `"user-T"`, and W2 took 239 ms |
+| The same J-72 with FO-8's merge-value read switched off (the mutation from my first review) | **26/27: W8 now FAILS with "user-R"**, so the test now catches it |
+| On the validated copy: insert an unlinked PERSON client with `fo_link_pending = true`, and unlink a linked one while setting the flag | both refused by `case_client_pending_guard` |
+| Unlink a linked client without setting the flag | refused by `case_client_front_office_link_check` |
+| Live, with no restart: a pending client via a direct case, wait about 20 s, then a second one, wait again | **both linked**: two `cases.client_link` jobs completed, under keys taken from each one's oldest waiting client |
+| `rollback.sql`, then `migration.sql` again, in one transaction | clean. After the rollback there is no column, trigger, function, check or `_prisma_migrations` row, and all 19 links are kept. Re-applying brings the trigger back |
+| `fo_person.created_by` after a simulated opening (j72r3) | `system:runtime.case-opening` |
+| Five breaker-style names `POST`ed as `x-actor` user-O | three answered as expected (two 201, one 400). **Two still answer 500** (see m8) |
+
+I did not re-run fo8 (the builder reports 43/43), the typecheck or full `ci`.
+
+### My findings
+* **M1: closed.**
+  * `newClient` gets the party through the port and inserts the client already linked (`clients.ts:154-160`). It never writes the flag.
+  * `case_client_pending_guard` (`migration.sql:27-35`) refuses the flag below trigger depth 2. App writes run at depth 1, while the two database triggers' writes run at depth 2 or deeper, so the guard tells them apart. It fires only on `UPDATE OF fo_link_pending`, which is enough: the flag can only change if it is named in the SET list.
+  * The new DW13 fail case covers both of my writes and an unlink without the flag.
+  * The job is now queued again on every run while any client waits (`live.ts:107-109`); I watched it link two clients in a row.
+  * One residue, raised to the Lead below as m9: if the oldest waiting client of a firm fails on every retry, its key stays the same, so the clients behind it in that firm wait as well.
+* **M2: closed.** The signed version names user-T, while the retainer row and the firm default name user-R. The assertion is `benRep === "user-T"` together with the retainer row still naming R (`j_72.ts:148-167`), and the mutation now fails it.
+* **m1: closed.** A simulated opener's port actor is now `system:runtime.case-opening`, and a signed-in opener stays `staff:<id>` (`runtime.ts:340`).
+* **m2: closed.** The handler throws on any failure, so pg-boss retries (`live.ts:36`).
+* **m3: closed.** With nothing waiting, the poll validates once (`live.ts:110`). It ended as `convalidated = t` on j72r3.
+* **m4: closed.** W2 waits at most 3 intervals, the prospect screen gets the 1024/1440 check, W5 is labelled as an API step, and DW-d asserts the 200.
+* **m5: closed.** `MODULE.cases.md:27-28`, `platform/MODULE.md:13` and `firm-scope.ts:73` are updated.
+* **m6: closed.** DW12's fail side is now a refusal by the database.
+* **m7: closed.** Only `catchUpProspectsWon` is inside `asBypass` now (`live.ts:105`). The `case_client` query, the enqueue and the validation run with no scope, which is correct: `case_client` is not walled.
+* **Breaker F1: mostly closed.** The Persian ZWNJ name, the soft hyphen and "!!" open and are linked, with the new DW9 case.
+
+### New or remaining
+* **Minor m8, two names still answer 500, with nothing written (F1 residue):**
+  * `"Ab⁥cd Sample"`: U+2065 is unassigned (Cn), so `NOT_KEPT` keeps it. The port's text rule refuses U+2060-U+2069 by range.
+  * `"ாாா"`: combining marks only. `hasWord` (Alphabetic) is true, but the port's `HAS_WORD` (`\p{L}\p{N}`) is false.
+  * The api log shows `FoPersonInvalidInput` both times.
+  * Neither is a realistic name.
+  * Fix (`clients.ts:134-135`): in `partyFor`, catch `FoPersonInvalidInput` and retry once with `Client <code>`. That holds whatever the port's rule becomes. Or test with both `hasWord(v) && /[\p{L}\p{N}]/u.test(v)` and strip `[⁠-⁯]`.
+* **Minor m9, for the Lead (no change needed now):** the job key is taken from the firm's oldest waiting client (`live.ts:108-109`). If that one client fails on every retry, the key stays used, so the clients behind it in that firm wait too, until it is fixed by hand. Recording the dead job in the log is enough for now.
+* **F4 (an `x-actor` request with no session writes front-office rows): rightly left as a firm-scope question for the tech lead.** It is the same point as my first review's note on (b). It does not block this verdict.
+* **Size:** the PR stays well under 800 lines; this diff adds only 43 net.
+
+### Journey score
+The journey score was not re-scored for this diff-only check. "Correct data" was ½ only because of M1 and M2, and both are now closed. My first walk's 8.5 / 10 stands as the score of record.
+
+No Blocker. No Major. Open Minors: m8, m9.
+
+Verdict: Approve
+
+Reviewer: Approve 4715e7873
+
+## Part 2 re-review (40639a2de)
+
+Diff only (P-277): `git diff 4715e7873..40639a2de -- …/prototype`, which changes 2 files: `clients.ts` (+7 / -3) and `check_csk1_client.ts` (+2 / -2). The rest of the commit is records. I changed no code. Live AI was off and nothing was spent. I worked in a scratch worktree at 40639a2de with my copy `csk1r4` on :4737; I stopped the copy and removed the worktree afterwards.
+
+* **m8: closed.**
+  * `partyFor` (`clients.ts:35-43`) asks the port with the cleaned name. On `FoPersonInvalidInput` only, it asks once more with `Client <code>`, and any other error is still thrown.
+  * Carrying on in the same transaction is safe. The port's `parsePersonInput`/`parseCompanyInput` is its first line (`fo-person-port.ts`), so a refusal is a JS throw before any SQL runs, and PostgreSQL never marks the transaction as failed.
+  * The fallback always passes the port's rule: "Client CL-00001" has letters and digits for both the person and the company rule.
+  * The job's `linkClient` goes through the same `partyFor`, so the job is covered too.
+* **What I ran:**
+  * `check_csk1_client.ts 4737 xr_studio_csk1r4` on a fresh copy: **64/64**. The DW9 (breaker F1) case now holds five names, my two included.
+  * My own five names, posted as `x-actor` user-O:
+    * `"Ab⁥cd Sample"` gave 201, and its party is "Client CL-00017".
+    * `"ாாா"` gave 201, and its party is "Client CL-00018".
+    * A tag character gave 201, and its party is "Abcd Sample".
+    * U+2028 gave 400 in words, from the case side's own check.
+    * Two emoji gave 201, and the party is named by its code.
+  * Every client is linked, and none is waiting.
+* **A small gap in the test, not a finding:** the new DW9 names are checked for 201 and a link, not for the party's name. My run above shows both are named by their code.
+* I did not re-run J-72 (this diff does not touch it), `check_fo8`, the typecheck or full `ci`.
+
+No Blocker. No Major. Still open: m9 (the Lead's note on the job key) and F4 (the firm-scope question for the tech lead), as recorded at 4715e7873.
+
+Verdict: Approve
+
+Reviewer: Approve 40639a2de
+
+## Part 2 re-review (c84e1eb08, main merged)
+
+Diff only (P-683, Lead 81's chain). c84e1eb08 has two parents: 0cf50a5cb, the branch, and abf2176ef, main with #2321 (FO-2w). After my Approve at 40639a2de the branch's own commits touch only `screens/CS-K1/*.md` (+121 lines, no code). I changed no code. Live AI was off and nothing was spent. I worked in a scratch worktree at c84e1eb08 with my copy `fo8r5` on :4738; I stopped the copy and removed the worktree afterwards.
+
+* **The row's diff is unchanged by the merge.** I compared `git diff abf2176ef c84e1eb08 -- …/prototype` (the row against today's main) with `git diff 37d1b196d 40639a2de -- …/prototype` (the reviewed row against its old base), using `cmp` on the +/- lines. They are **identical**: 581 changed lines, 18 files, +549 / -32.
+* **Of my touched files, the merge changed only the two you named, and only main's own lines:**
+  * `firm-scope.ts` gains PF-19p's two BYPASS_USES entries (`job:messages.send`, `platform.account.mail`), which sit beside `cases.prospect-won.catch-up` (still exactly one entry).
+  * `runtime.ts` gains CS-V1 part 3's `CaseListQuery`/`QuestionnaireQuery` parsing in `list`, the new `questionnaire` method and two controller lines. None of that touches `createCase`, `by`, `newClient`, the opening's `withFirm` or the FO_PERSON_PORT injection.
+  * Every other file of the row is the same at 40639a2de and c84e1eb08.
+* **The migrations still line up.** Main adds `20261119163000_pf19p_platform_account_mail`, `20261119170000_pf18bk_support_keys`, `20261119173000_pf4dn_invitation_display_name` and `20261119180000_pf18a_notification_prefs`. All four are earlier than `20261120100000_csk1_client_link_check`, which is still the newest and unique, and is the slot Lead 98 confirmed. None of them names `case_client`, `runtime_case`, `case_lookup`, `fo_person`, `fo_company` or the default privileges.
+* **Main adds no new writers or harnesses that this row affects:**
+  * Main's changes outside FO-2w add no `createCase`, `newClient`, `case_client` write, port call or `prospect.won` reader.
+  * No suite that puts `Runtime` in a Nest module is missing the `FO_PERSON_PORT` binding: I grepped every `providers: … Runtime` in `tests/`.
+* **FO-2w's payload matches what FO-8 and J-72 read:**
+  * `winProspect` builds the payload with `wonPayload` (`front-office/sales/prospects.ts:96-112`): `won_via: via`, and `retainer_id` set to the retainer that made the win. For Signed offline that retainer is the one `retainers/service.ts:609` names. Both go through `ProspectWonPayload.parse`, where `won_via` is the enum E_SIGNED/SIGNED_OFFLINE/CONVERTED and `retainer_id` is a nullable uuid.
+  * FO-8's `offerOf` reads `retainer_id` and takes the representative from that retainer's version merge value. It deliberately does not take the payload's `representative_staff_id`, which comes from the retainer row.
+  * J-72 W8 (user-T in the version, user-R on the row) is exactly what tells the two apart. `won_via` goes only into FO-8's audit detail, and J-72 W5 asserts `won_via = SIGNED_OFFLINE` with this `retainer_id`.
+* **What I ran on c84e1eb08** (fresh copy): `check_fo8_prospect_won.ts` **43/43** and `check_fo2w_won_event.ts` **19/19**, the two suites where FO-2w and this row now meet, with the copy's own poll running. `check_csk1_client` and J-72 are being run by the builder (twice each); I did not repeat them. I also did not run full `ci` or the typecheck.
+
+No new finding. No Blocker, no Major. Still open from before: m9 (the job key, a note for the Lead) and F4 (the firm-scope question with the tech lead).
+
+Verdict: Approve
+
+Reviewer: Approve c84e1eb08

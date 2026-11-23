@@ -1,0 +1,144 @@
+<title>How Release 1 Gets Built</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column; a vertical "road" of stations, each tinted by where it runs (cloud, GitHub, Mac, AWS). */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --fg:#17202b; --muted:#5a6676; --line:#d9dee5;
+  --accent:#1f5fbf; --cloud:#6a4fc7; --gh:#2c7a4b; --mac:#b4561c; --aws:#c08a00; --plan:#8a94a3;
+  --warn-bg:#fff4e0; --warn:#8a5a00; --good-bg:#e7f5ec; --good:#1d6b3b;
+  --display:"Space Grotesk",system-ui,sans-serif; --body:"Inter",system-ui,-apple-system,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11161d; --panel:#18202a; --fg:#e7ecf2; --muted:#9aa6b5; --line:#2b3644;
+  --accent:#6ea2ff; --cloud:#a58cff; --gh:#5cc98a; --mac:#ef9a5f; --aws:#e8bd4a; --plan:#7d8898;
+  --warn-bg:#33270f; --warn:#f0c46a; --good-bg:#12301f; --good:#7fd9a2; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161d; --panel:#18202a; --fg:#e7ecf2; --muted:#9aa6b5; --line:#2b3644;
+  --accent:#6ea2ff; --cloud:#a58cff; --gh:#5cc98a; --mac:#ef9a5f; --aws:#e8bd4a; --plan:#7d8898;
+  --warn-bg:#33270f; --warn:#f0c46a; --good-bg:#12301f; --good:#7fd9a2; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:860px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:30px}
+h2{font-size:21px;margin-top:40px;margin-bottom:10px}
+h3{font-size:16px}
+p{margin:8px 0;max-width:68ch}
+.lede{color:var(--muted);font-size:16px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:14px 0 6px;font-size:13px;color:var(--muted)}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.road{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:0}
+.st{display:grid;grid-template-columns:28px 1fr;gap:12px}
+.st .rail{display:flex;flex-direction:column;align-items:center}
+.st .dot{width:16px;height:16px;border-radius:50%;background:var(--c);margin-top:14px;flex:none}
+.st .bar{width:2px;flex:1;background:var(--line)}
+.st:last-child .bar{background:transparent}
+.st .box{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;padding:10px 14px;margin:6px 0;min-width:0}
+.st.planned .box{border-style:dashed;border-left-style:solid;opacity:.92}
+.st .where{font-size:12px;font-weight:600;color:var(--c);letter-spacing:.04em;text-transform:uppercase}
+.st p{margin:4px 0;font-size:14px}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;margin-left:6px;vertical-align:2px;background:var(--warn-bg);color:var(--warn)}
+.tag.ok{background:var(--good-bg);color:var(--good)}
+.tbl{overflow-x:auto;margin-top:8px}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--display);font-weight:600;font-size:13px;color:var(--muted)}
+tr:last-child td{border-bottom:none}
+.callout{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin-top:10px}
+.callout.warn{background:var(--warn-bg);border-color:transparent;color:var(--fg)}
+.num{font-variant-numeric:tabular-nums;font-family:var(--display);font-weight:700}
+.big{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px}
+.big div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:150px;flex:1}
+.big .num{font-size:26px;display:block}
+.big small{color:var(--muted)}
+ul{padding-left:20px;margin:6px 0}
+li{margin:3px 0}
+.foot{margin-top:36px;color:var(--muted);font-size:13px}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Pathway Configurator · for the founder · 19 Nov 2026, 07:5x IST</div>
+  <h1>How Release 1 gets built</h1>
+  <p class="lede">The route one change takes from idea to something you can test, where each step runs, what is still missing (staging), and when you can test Release 1.</p>
+
+  <div class="big">
+    <div><span class="num">11 / 101</span><small>Release 1 items proven by qa (same as on 16 Nov)</small></div>
+    <div><span class="num">:4400</span><small>your demo = latest main, moves by itself after every merge</small></div>
+    <div><span class="num">0</span><small>staging servers today (planned: PF-8a, 8b, 8c)</small></div>
+  </div>
+
+  <h2>1 · The road a change takes</h2>
+  <div class="legend">
+    <span style="--c:var(--accent)">Lead (Mac)</span>
+    <span style="--c:var(--cloud)">Cloud builder</span>
+    <span style="--c:var(--gh)">GitHub machines</span>
+    <span style="--c:var(--mac)">Your Mac</span>
+    <span style="--c:var(--aws)">AWS Canada (planned)</span>
+  </div>
+  <ol class="road">
+    <li class="st" style="--c:var(--accent)"><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="box">
+      <div class="where">1 · Lead · shape</div><h3>A backlog row is made ready</h3>
+      <p>One small piece of a Release 1 item, with what "done" means, your decisions quoted, and the files it may touch, so two builders never edit the same file.</p></div></li>
+    <li class="st" style="--c:var(--cloud)"><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="box">
+      <div class="where">2 · Cloud builder · build</div><h3>A builder writes the code on its own branch</h3>
+      <p>One fresh cloud session per row. It builds on a copy, runs the tests, and opens a pull request (PR). This is the "dev" stage: every builder has its own private copy of the app.</p></div></li>
+    <li class="st" style="--c:var(--gh)"><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="box">
+      <div class="where">3 · GitHub · CI</div><h3>Automatic checks run on every PR</h3>
+      <p>Tests split across many machines, plus guards (no secrets, no team-app detail, size limits). Red means it cannot merge.</p></div></li>
+    <li class="st" style="--c:var(--cloud)"><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="box">
+      <div class="where">4 · Independent reviewer</div><h3>A fresh AI reviewer approves</h3>
+      <p>A separate Opus session that did not write the code reads it against the row. For money, permissions or deletion, a "breaker" also tries to break it. Then it gets the label <em>review: approved</em>. The Lead reads anything touching money, permissions or the database itself.</p></div></li>
+    <li class="st" style="--c:var(--gh)"><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="box">
+      <div class="where">5 · GitHub · merge queue</div><h3>Mergify merges approved PRs in batches</h3>
+      <p>It tests each batch together against the newest main, then merges it. Records (documents) have their own lane. Coming next (P-715): one lane per module, so a failure in one module stops blocking the others.</p></div></li>
+    <li class="st" style="--c:var(--mac)"><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="box">
+      <div class="where">6 · Your Mac · demo</div><h3>The demo at localhost:4400 updates itself</h3>
+      <p>After every merge, a job on your Mac moves the demo to the new main and keeps its data. Today it shows main as of 04:13 IST. <span class="tag ok">working</span></p></div></li>
+    <li class="st" style="--c:var(--mac)"><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="box">
+      <div class="where">7 · qa · prove</div><h3>qa tests it like a person and counts it Proven</h3>
+      <p>qa walks the merged screens and checks the data underneath. Only then does a Release 1 item count. Every night a full run of all tests checks nothing old broke.</p></div></li>
+    <li class="st planned" style="--c:var(--aws)"><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="box">
+      <div class="where">8 · AWS Canada · CD to staging</div><h3>Deploy to a staging server <span class="tag">not built yet</span></h3>
+      <p>PF-8a: the AWS setup written as code. PF-8b: the app running on AWS with its secrets and mail. PF-8c: deploy from GitHub by a button or tag, with a way back to the last good version. Your choice today: get them ready now, start when Proven reaches 30.</p></div></li>
+    <li class="st planned" style="--c:var(--plan)"><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="box">
+      <div class="where">9 · Later · production</div><h3>The same deploy, to the live environment</h3>
+      <p>Same code path as staging. Real firms, real users and the real domain come with it.</p></div></li>
+  </ol>
+
+  <h2>2 · Where each copy of the app lives</h2>
+  <div class="tbl"><table>
+    <tr><th>Place</th><th>Who uses it</th><th>For what</th><th>Today</th></tr>
+    <tr><td>Builder copies</td><td>Each builder</td><td>Writing and testing one row</td><td><span class="tag ok">running</span></td></tr>
+    <tr><td>CI on GitHub</td><td>Machines</td><td>Checking every PR and every batch</td><td><span class="tag ok">running</span></td></tr>
+    <tr><td>Demo, localhost:4400</td><td>You, qa</td><td>Seeing and testing the latest main</td><td><span class="tag ok">running</span> on your Mac only</td></tr>
+    <tr><td>Staging on AWS</td><td>You, the expert, pilot firms, qa</td><td>Testing from any device with real mail, files and sign-in, before production</td><td><span class="tag">planned</span></td></tr>
+    <tr><td>Production</td><td>Real firms and clients</td><td>The live product</td><td><span class="tag">later</span></td></tr>
+  </table></div>
+
+  <h2>3 · Why staging was not raised with you before</h2>
+  <div class="callout warn">
+    <p>That was our miss. The staging rows (PF-8a, 8b, 8c) have been in the backlog since about 15 Nov, and P-625 (16 Nov) settled its web address. But they were ranked behind capability rows, because the plan says critical features first (P-576). No Lead put them to you as "this is where you will test". The Mac demo became the default test place without anyone asking whether that was enough.</p>
+  </div>
+
+  <h2>4 · What a staging server gives us</h2>
+  <ul>
+    <li><strong>Testing from anywhere:</strong> you, the immigration expert or a pilot firm open a web address. Your Mac does not need to be on.</li>
+    <li><strong>Real conditions:</strong> real email, file storage, sign-in and backups in Canada. The Mac demo fakes these.</li>
+    <li><strong>Less load on the Mac:</strong> qa can prove items on staging. Today the Mac is short of disk (6.9 GB free).</li>
+    <li><strong>A safe rehearsal for launch:</strong> the same deploy and roll-back that production will use, proven early. R1.14 (backups) needs it anyway.</li>
+  </ul>
+
+  <h2>5 · The demo at :4400: keep it, or replace it?</h2>
+  <p>It is not a separate old POC. Release 1 is being built <strong>inside the same app</strong>, so what you see there is Release 1 so far. Its first screen is still the configurator from the POC, and it still says "Prototype · demo workspace". New Release 1 parts (cases, money, client portal) are added behind it as they merge.</p>
+  <p><strong>Your safety copy:</strong> git keeps every version. Any earlier day's app can be brought back in minutes. We can also pin today's version under a fixed name, so "the version that worked" is always one step away.</p>
+
+  <h2>6 · When can you test Release 1?</h2>
+  <ul>
+    <li><strong>Now:</strong> the 11 proven items are on :4400, and I can give you a short walk-through list.</li>
+    <li><strong>All 101 items:</strong> the committed date of 29 Nov (P-609) will not be met. On 16 Nov the measured forecast was about 15 Dec (likely) and 4 Dec at best. Proven has not moved since (still 11), so that date is now at risk too. I will re-measure it from today's numbers and bring you one date with its reasons.</li>
+    <li><strong>On staging:</strong> after Proven reaches 30, plus the three staging rows (roughly 2 to 4 days of building once started; an estimate, not yet measured).</li>
+  </ul>
+
+  <p class="foot">Sources: STATE.md and DECISIONS.md (P-576, P-609, P-625, P-715, P-716) on lead/2026-11-07-lead31; BACKLOG rows PF-8a to PF-8rc; design/release1-forecast-2026-11-16.md; .github/workflows/demo-update.yml; demo copy at 9d440b2f4 (= main).</p>
+</div>

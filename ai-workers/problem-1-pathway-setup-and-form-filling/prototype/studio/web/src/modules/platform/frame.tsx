@@ -13,6 +13,9 @@ import { ACCOUNT_SECTIONS, visibleSections } from "./account-sections";
 import { endSession, staffApi, StaffApiError, useLocalSignIn, useMe, useSessionEnd, useStaffToken } from "./session";
 import { SignedInElsewhere } from "./signed-in-elsewhere";
 import { TermsPage, useTermsPending } from "./terms/terms-gate";
+import { FindBox } from "./find/find-box";
+import { HelpButton } from "./settings/help-button";   // PF-18s part 2: the "?" on every staff page (AG-16-63)
+import { SUPPORT_CREATE_KEY } from "./settings/support-contract";
 
 /** FO-4's sign-in card (moved here from sales-frame.tsx): PF-4's local stand-in until the provider's sign-in pages. */
 export function SignInCard({ failed, focus, embedded }: { failed?: string | null; /** Moves focus to the card when it appears in place of a page (break m6). */ focus?: boolean;
@@ -58,13 +61,16 @@ function AccountMenu({ me, small }: { me: Me; small?: boolean }) {
     : <nav aria-label="My account" className="hidden w-52 shrink-0 border-r border-border bg-surface-raised p-3 md:block"><p className="px-3 pb-2 text-xs font-medium text-text-muted">My account</p>{links}</nav>;
 }
 
-function Place({ crumbs, back }: { crumbs: Crumb[]; back: { to: string; label: string } | null }) {
-  useWhere([{ label: "My account", to: "/account" }, ...crumbs], back);
+function Place({ crumbs, back, area }: { crumbs: Crumb[]; back: { to: string; label: string } | null; area?: Area }) {
+  useWhere([area ? { label: area.label, to: area.home } : { label: "My account", to: "/account" }, ...crumbs], back);
   return null;
 }
+/** FO-3st1: a staff area other than My account (Bookings) inside this one session holder: its name on the place line and
+ *  its own side menu (`menu`, given the signed-in person) in place of My account's. */
+export type Area = { label: string; home: string; menu: (me: Me) => React.ReactNode };
 
 /** A staff page: the frame, the place line, and the page once a firm staff member is signed in. */
-export function PlatformFrame({ crumbs = [], back = null, children }: { crumbs?: Crumb[]; back?: { to: string; label: string } | null; children: React.ReactNode }) {
+export function PlatformFrame({ crumbs = [], back = null, area, intro, children }: { crumbs?: Crumb[]; back?: { to: string; label: string } | null; area?: Area; /** DEMO-LINK: shown above the page whether or not someone is signed in. */ intro?: React.ReactNode; children: React.ReactNode }) {
   const token = useStaffToken();
   const because = useSessionEnd();
   const me = useMe();
@@ -88,14 +94,14 @@ export function PlatformFrame({ crumbs = [], back = null, children }: { crumbs?:
   const pending = useTermsPending(token, !!who);   // PF-5t part 2: terms to accept (428 TERMS_PENDING) replace the page
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
-    <Frame area="outside" title={who ? who.firmKey : "Your firm"} home="/account"
-      controls={who ? <><span className="min-w-0 truncate text-sm font-medium" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
-      menu={who ? <AccountMenu me={who} /> : null}>
-      <Place crumbs={crumbs} back={back} />
+    <Frame area="outside" title={who ? who.firmKey : "Your firm"} home="/home"
+      controls={who ? <>{pending.checked && !pending.terms ? <FindBox /> : null}{pending.checked && !pending.terms && who.keys.includes(SUPPORT_CREATE_KEY) ? <HelpButton /> : null}<span className="min-w-0 max-w-[30%] truncate text-sm font-medium max-[359px]:hidden sm:max-w-none" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
+      menu={who ? (area ? area.menu(who) : <AccountMenu me={who} />) : null}>
+      <Place crumbs={crumbs} back={back} area={area} />{intro}
       {!token ? (because === "SIGNED_IN_ELSEWHERE" ? <SignedInElsewhere /> : <SignInCard focus={had.current} />)
         : me.isError && !who ? <SignInCard failed={refused} />
           : !who || !pending.checked ? <p role="status" className="text-sm text-text-muted" data-loading>Checking who is signed in…</p>
-            : <><div hidden={!!pending.terms}><MeCtx.Provider value={who}><AccountMenu me={who} small />{children}</MeCtx.Provider></div>
+            : <><div hidden={!!pending.terms}><MeCtx.Provider value={who}>{area ? null : <AccountMenu me={who} small />}{children}</MeCtx.Provider></div>
               {pending.terms ? <TermsPage token={token} terms={pending.terms} signOut={() => void signOut()} leaving={leaving} /> : null}</>}
     </Frame>
   );

@@ -8,6 +8,6 @@ PORT=${STUDIO_PORT:-4400}
 [[ "$PORT" != 4400 && -z "$DATABASE_URL" ]] && { echo "refused: port $PORT has no database of its own; use tools/isolated.sh <name> $PORT restart"; exit 2; }
 for pid in $(lsof -ti tcp:$PORT -sTCP:LISTEN 2>/dev/null); do kill $pid 2>/dev/null; done
 for i in {1..40}; do lsof -ti tcp:$PORT -sTCP:LISTEN >/dev/null 2>&1 || break; sleep 0.25; done
-nohup ./node_modules/.bin/tsx --tsconfig api/tsconfig.json api/src/main.ts > var/api.log 2>&1 &
+PLATFORM_ENVIRONMENT="${PLATFORM_ENVIRONMENT:-local}" nohup ./node_modules/.bin/tsx --tsconfig api/tsconfig.json api/src/main.ts > var/api.log 2>&1 &
 for i in {1..40}; do curl -s -o /dev/null localhost:$PORT/api/session && { echo "api up"; exit 0; }; sleep 0.5; done
 echo "api did not start"; tail -30 var/api.log; exit 1
