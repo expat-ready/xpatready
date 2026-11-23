@@ -122,3 +122,9 @@ Sample: 67 red batches, 22 Nov 11:30 to 23 Nov 11:30 IST (67 at this read; 66 ea
 ## State 14:29 IST
 Merged (GitHub merged_at, IST): #2971 12:51, #2434 13:22, #3208 13:42, #2370 and #2487 14:19. Open: #2428. CPU measurement: 49 of 72 jobs ended, 2 red suites, 12 running.
 Founder 13:0x (card): B181 is the pilot of the private pack; safety gates answered first; build in M4 after the Bake.
+
+## CPU and memory of a ci shard (Lead 3's request), interim 14:32 IST
+Run 45131327234 (branch claude/lead-o-ci-measure, never merged): 47 shards read, all green: 23 of run 1, 23 of run 2, 1 of run 3; two ended red and are not in (their logs carry no line), the third run still going. **So not yet the three full runs asked for.** 4 vCPU GitHub machine, every 5 s, suites step only (set-up not sampled).
+* CPU: mean **1.22 cores** (weighted; shard means 1.04-1.57). p95 within a shard: median 1.63, worst 2.38.
+* Memory used (total less available): mean 2.2 GB, p95 median 3.0, peak median 3.4, worst **4.5 GB**.
+Reading: a shard uses about 30% of its 4 cores and under a third of 16 GB. By the worst p95 (2.4 cores) a 16-thread 64 GB machine would hold about 6-7 shards, by the mean about 13; neither was run packed, so slow-down from sharing is unmeasured. The earlier "4 jobs per 64 GB machine" was too low.
