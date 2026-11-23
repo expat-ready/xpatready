@@ -6,19 +6,19 @@
 // include tax" on, no draft is made or added to (until FO-7g part 2). Firm-scoped (PF-12's walls and firmScope): another
 // firm's invoice or client is 404. Each write is one transaction with one audit line through AuditPort (fail-closed).
 import { HttpException } from "@nestjs/common";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { MoneyLineKind, Prisma, type PrismaClient } from "@prisma/client";
 import type { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
-import { DraftIn, type InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
+import { BillToIn, DraftIn, type InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
 import { problemFromZod } from "../../../../contracts/programs.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { FIELD_ERROR_STATUS, fieldsOf } from "../../platform/http/input.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { dayOf, invoiceFacts } from "./facts.ts";
-import { lineRatePpm, taxDefault } from "../tax/defaults.ts";
-import { billToProvince } from "./bill-to.ts";
+import { lineRatePpm, provinceCode, taxDefault } from "../tax/defaults.ts";
+import { billToProvince, type BillToParty } from "./bill-to.ts";
 import { taxForLine } from "./tax-round.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -65,9 +65,13 @@ export class InvoiceDrafts {
         : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: d.companyId!.toLowerCase() }), select: { id: true } });
       if (!client) notFound(d.personId ? "person" : "company");
       const currency = d.currency ?? settings.defaultCurrency;
-      const inv = await tx.moneyInvoice.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
+      // FO-7g part 3 (P-797): the Bill-to province starts as the client's Canadian address, else the firm's province, as a
+      // code (null while the firm's province is not one of the 13: the tax default then warns, never guesses).
+      const [firm] = await tx.$queryRaw<{ address: unknown }[]>`select business_address as address from platform_firm where id = ${firmScope(ctx.firmId).firmId}::uuid`;
+      const billTo = provinceCode(billToProvince({ businessAddress: firm?.address ?? null }, d.personId ? { kind: "PERSON", id: client!.id } : { kind: "COMPANY", id: client!.id }));
+      const inv = await tx.moneyInvoice.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, billToProvince: billTo, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
       await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.draft_created", entity: "money_invoice", entityKey: inv.id, summary: `Draft invoice started in ${currency}.`, detail: { invoiceId: inv.id, currency },
-        before: null, after: { personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, status: "DRAFT" } });   // R1.8 (QA-594): the draft as created
+        before: null, after: { personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, billToProvince: billTo, status: "DRAFT" } });   // R1.8 (QA-594): the draft as created
       return this.view(tx, ctx.firmId, inv.id);
     });
   }
@@ -86,7 +90,7 @@ export class InvoiceDrafts {
     return this.db.$transaction(async (tx) => {
       await this.settingsOrRefuse(tx, ctx.firmId);
       const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
-      const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string; personId: string | null; companyId: string | null }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by, person_id::text as "personId", company_id::text as "companyId" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
+      const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string; personId: string | null; companyId: string | null; billTo: string | null }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by, person_id::text as "personId", company_id::text as "companyId", bill_to_province as "billTo" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
       if (inv.by !== `staff:${ctx.staffId}` && !(await holdsKey(tx, firmId, ctx.staffId, EDIT_KEY)))
         problem(403, "Not allowed", "Only the person who started this draft, or someone who may edit invoices, can add to it. Nothing was saved.", { code: "MISSING_PERMISSION", missing: [EDIT_KEY] });
@@ -97,11 +101,11 @@ export class InvoiceDrafts {
       // is never taxed on top (break m1; the ruling of 18 Nov).
       const [facts] = await tx.$queryRaw<{ registered: boolean | null; inclusive: boolean | null; address: unknown }[]>`select s.tax_registered as registered, s.prices_include_tax as inclusive, f.business_address as address from platform_firm f left join money_payment_settings s on s.firm_id = f.id where f.id = ${firmId}::uuid`;
       if (facts?.inclusive) problem(409, "Not possible now", "Prices that include tax come later: this firm has \"Prices include tax\" on, so an invoice can't be drafted yet. Nothing was saved.", { code: "PRICES_INCLUDE_TAX" });
-      const dflt = taxDefault({ firmProvince: billToProvince({ businessAddress: facts?.address ?? null }, inv.personId ? { kind: "PERSON", id: inv.personId } : inv.companyId ? { kind: "COMPANY", id: inv.companyId } : null), registered: facts?.registered === true });
+      const dflt = taxDefault({ firmProvince: billToProvince({ businessAddress: facts?.address ?? null }, inv.personId ? { kind: "PERSON", id: inv.personId } : inv.companyId ? { kind: "COMPANY", id: inv.companyId } : null, inv.billTo), registered: facts?.registered === true });
       if (l.kind !== "GOVERNMENT_FEE" && sentRate && l.ratePpm !== 0 && l.ratePpm !== dflt.ratePpm)
         badField("ratePpm", dflt.ratePpm === 0
           ? "This firm adds no tax to this line (not registered for tax, or its province isn't set): send no rate, or 0. Nothing was saved."
-          : `The tax rate comes from your firm's province (${dflt.taxName} ${percent(dflt.ratePpm)}): send no rate, or ${dflt.ratePpm} (parts per million), for taxable, or 0 for not taxable. Nothing was saved.`);
+          : `The tax rate comes from this invoice's Bill-to province (${dflt.taxName} ${percent(dflt.ratePpm)}): send no rate, or ${dflt.ratePpm} (parts per million), for taxable, or 0 for not taxable. Nothing was saved.`);
       const ratePpm = lineRatePpm({ kind: l.kind, taxable: l.kind === "GOVERNMENT_FEE" ? undefined : !(sentRate && l.ratePpm === 0) }, dflt);
       const taxMinor = this.tax(amountMinor, ratePpm);
       if (l.currency && l.currency !== inv.currency) badField("currency", `This invoice is in ${inv.currency}; a line in ${l.currency} can't be added. Nothing was saved.`);
@@ -115,6 +119,49 @@ export class InvoiceDrafts {
       await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.line_added", entity: "money_invoice_line", entityKey: line.id,
         summary: `Line ${position} added to a draft invoice: ${inv.currency} ${MONEY(amountMinor)}, tax ${MONEY(taxMinor)}.`, detail: { invoiceId: id, position, kind: l.kind, amountMinor, ratePpm, taxMinor },
         before: null, after: { position, kind: l.kind, description: l.description, quantity: l.quantity, unitAmountMinor: l.unitMinor, amountMinor, taxRatePpm: ratePpm, taxMinor, currency: inv.currency } });   // R1.8 (QA-594): the line as added
+      return this.view(tx, ctx.firmId, id);
+    });
+  }
+
+  /** PUT /api/front-office/money/invoices/:id/bill-to (agent/invoice:edit, AG-6-4 §8): the province the draft's tax
+   *  follows (FO-7g part 3, P-797), one of the 13 codes. Lead B's read on #3156: in the same transaction, every line taxed
+   *  at the old Bill-to's default is re-rated to the new default with taxForLine (a line at 0 %, a government fee and a
+   *  line at any other rate stay as they are), and the one audit line carries both rates, how many lines were re-rated and their tax before and after. New
+   *  lines take the new default. An issued invoice's is fixed (409, and the database's gate). */
+  async setBillTo(ctx: StaffContext, invoiceId: string, body: unknown): Promise<InvoiceView> {
+    if (!UUID.test(invoiceId)) notFound("invoice");
+    const b = parse(BillToIn, body);
+    return this.db.$transaction(async (tx) => {
+      const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
+      const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; billTo: string | null; personId: string | null; companyId: string | null; currency: string }[]>`select issued_at is not null as issued, number, bill_to_province as "billTo", person_id::text as "personId", company_id::text as "companyId", currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
+      if (!inv) return notFound("invoice");
+      if (inv.issued) problem(409, "Not possible now", `This invoice is issued (${inv.number}): its Bill-to province is fixed. Nothing was saved.`, { code: "ISSUED" });
+      if (inv.billTo === b.province) return this.view(tx, ctx.firmId, id);
+      // The two defaults, from one read of the firm's facts after the invoice's lock (as addLine reads them).
+      const [facts] = await tx.$queryRaw<{ registered: boolean | null; address: unknown }[]>`select s.tax_registered as registered, f.business_address as address from platform_firm f left join money_payment_settings s on s.firm_id = f.id where f.id = ${firmId}::uuid`;
+      const party: BillToParty = inv.personId ? { kind: "PERSON", id: inv.personId } : inv.companyId ? { kind: "COMPANY", id: inv.companyId } : null;
+      const registered = facts?.registered === true;
+      const from = taxDefault({ firmProvince: billToProvince({ businessAddress: facts?.address ?? null }, party, inv.billTo), registered });
+      const to = taxDefault({ firmProvince: b.province, registered });
+      await tx.moneyInvoice.update({ where: { firmId_id: { firmId, id } }, data: { billToProvince: b.province } });
+      const reRated: { position: number; amountMinor: number; taxBefore: number; taxAfter: number }[] = [];
+      if (from.ratePpm > 0 && from.ratePpm !== to.ratePpm) {
+        const lines = await tx.moneyInvoiceLine.findMany({ where: firmScope(ctx.firmId, { invoiceId: id, taxRatePpm: from.ratePpm, kind: { not: MoneyLineKind.GOVERNMENT_FEE } }), orderBy: { position: "asc" }, select: { id: true, position: true, amountMinor: true, taxMinor: true } });
+        try {
+          for (const l of lines) {
+            const taxAfter = this.tax(l.amountMinor, to.ratePpm);
+            await tx.moneyInvoiceLine.update({ where: { id: l.id }, data: { taxRatePpm: to.ratePpm, taxMinor: taxAfter } });
+            reRated.push({ position: l.position, amountMinor: l.amountMinor, taxBefore: l.taxMinor, taxAfter });
+          }
+        } catch (e) {   // the database's credit rule: re-rating down below credit already applied to this draft
+          if (/of credit is applied to this draft/.test(String((e as Error).message))) problem(409, "Not possible now", "Credit is applied to this draft, more than its lines would leave at the new province's tax: reverse that credit first. Nothing was saved.", { code: "CREDIT_APPLIED" });
+          throw e;
+        }
+      }
+      await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.bill_to_changed", entity: "money_invoice", entityKey: id,
+        summary: `Bill-to province of a draft invoice set to ${b.province}${reRated.length ? `; ${reRated.length} line(s) re-rated from ${percent(from.ratePpm)} to ${percent(to.ratePpm)}` : ""}.`,
+        detail: { invoiceId: id, linesReRated: reRated.length, taxBeforeMinor: reRated.reduce((t, l) => t + l.taxBefore, 0), taxAfterMinor: reRated.reduce((t, l) => t + l.taxAfter, 0) },   // flat facts (AuditDetail)
+        before: { billToProvince: inv.billTo, ratePpm: from.ratePpm }, after: { billToProvince: b.province, ratePpm: to.ratePpm } });
       return this.view(tx, ctx.firmId, id);
     });
   }

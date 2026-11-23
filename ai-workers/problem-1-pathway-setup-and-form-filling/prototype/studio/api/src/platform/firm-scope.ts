@@ -53,6 +53,8 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
 // A query sets app.firm_id (and the role) on its pooled connection before it runs, so no firm can leak from one checkout
 // to the next. A transaction keeps the firm and role of the context that opened it (as SET LOCAL would).
 import { AsyncLocalStorage } from "node:async_hooks";
+import { dirname, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { logPort, requestScope } from "./observability/log.ts";
 import { currentJobFirm } from "./jobs/pgboss-jobs.ts";
@@ -62,7 +64,7 @@ import type { PrismaClient } from "@prisma/client";
 
 /** The role the API connects as (migration pf12_firm_walls). */
 export const APP_ROLE = "xr_app";
-/** Our own staff's bypass role (BYPASSRLS): only asBypass reaches it, for a use on BYPASS_USES. */
+/** Our own staff's bypass role (BYPASSRLS): only asBypass reaches it, for a use on BYPASS_USES or declared (defineBypassUse). */
 export const BYPASS_ROLE = "xr_staff_bypass";
 
 type Scope = { firmId?: string; bypass?: string; route?: string };
@@ -128,7 +130,10 @@ export function enterFirm(firmId: string) {
 export type BypassAudit = "per-firm" | "platform";
 /** `inside`: the only outer uses this use may run within (one bypass use at a time otherwise, break M1). Only a use that
  *  touches no firm's rows ("platform") may name one: it then crosses under its own name, and the outer use's lines stand. */
-export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean; audit: BypassAudit; inside?: readonly string[] }>> = Object.freeze({
+export type BypassEntry = { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean; audit: BypassAudit; inside?: readonly string[] };
+/** The list as it stood when P-785 (2) moved new uses beside their modules (22 Nov). Frozen: a new use is declared with
+ *  defineBypassUse in its module's own `<name>.bypass.ts` file, never added here (tests/check_bypass_uses.ts refuses it). */
+export const BYPASS_USES: Readonly<Record<string, BypassEntry>> = Object.freeze({
   "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true, audit: "per-firm" },
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true, audit: "per-firm" },
   "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true, audit: "per-firm" },
@@ -146,10 +151,94 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
 });
 
-/** A job with no firm (a platform-wide sweep): on the named list as "job:<queue>" it runs on the bypass; otherwise with no
+/** A job with no firm (a platform-wide sweep): on the named list, or declared, as "job:<queue>" it runs on the bypass; otherwise with no
  *  firm, so it reads no firm's rows (platform-jobs.ts). */
 export function asJob<T>(queue: string, fn: () => Promise<T>): Promise<T> {
-  return Object.prototype.hasOwnProperty.call(BYPASS_USES, `job:${queue}`) ? asBypass(`job:${queue}`, fn) : fn();
+  const name = `job:${queue}`, mine = declared.get(name);
+  return Object.prototype.hasOwnProperty.call(BYPASS_USES, name) ? asBypass(name, fn) : mine ? asBypass(mine, fn) : fn();
+}
+
+// ------------------------------------------------------------------- P-785 (2): uses declared beside their modules
+/** A use declared by its module (defineBypassUse): the value its caller hands to asBypass. */
+export type BypassUse = { readonly name: string; readonly entry: Readonly<BypassEntry> };
+const declared = new Map<string, BypassUse>();
+/** A declared use's routes as source and flags (never a RegExp anyone else holds). */
+const routeSpecs = new WeakMap<BypassUse, readonly { source: string; flags: string }[]>();
+let closed = false;
+const USE_NAME = /^(job:)?[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/;
+/** P-785 (2): a module declares its own bypass use in its own `<name>.bypass.ts` file (only there: tests/check_bypass_uses.ts),
+ *  so no lane edits this file to add one. The same rules as the named list: a reason, its routes, how it is audited
+ *  (required, as on the list). Refused (BypassRefused) once the API has started (closeBypassUses), for a name already on
+ *  the list or declared, or a malformed one. A job's use is named "job:<queue>", as on the list (asJob finds it). */
+export function defineBypassUse(name: string, entry: BypassEntry): BypassUse {
+  // Only a <name>.bypass.ts file may declare (review M1): the calling file is read from the call stack, so an alias, a
+  // namespace import or a call through a variable from any other file is refused at run time, not only by the check.
+  const from = callerFile();
+  if (!from || !/\.bypass\.ts$/.test(from) || !from.startsWith(API_SRC)) throw new BypassRefused(`defineBypassUse: "${String(name)}" declared in ${from ?? "an unknown file"}; only a <name>.bypass.ts file under api/src may declare a bypass use`);
+  if (closed) throw new BypassRefused(`defineBypassUse: "${name}" declared after start-up; the list closed when the API started (declare it in a <name>.bypass.ts file its module imports at load)`);
+  if (typeof name !== "string" || !USE_NAME.test(name)) throw new BypassRefused(`defineBypassUse: "${String(name)}" is not a use name (area.what, or job:<queue>)`);
+  if (Object.prototype.hasOwnProperty.call(BYPASS_USES, name) || declared.has(name)) throw new BypassRefused(`defineBypassUse: "${name}" is already a bypass use`);
+  // Read once (breaker M2): a getter answers once, and only the copies below are kept.
+  const given = typeof entry === "object" && entry !== null ? { ...entry } : ({} as Partial<BypassEntry>);
+  if (given.audit !== "per-firm" && given.audit !== "platform") throw new BypassRefused(`defineBypassUse: "${name}" names no audit (per-firm or platform)`);
+  const routes = Array.isArray(given.routes) ? [...given.routes] : null, inside = given.inside === undefined ? undefined : Array.isArray(given.inside) ? [...given.inside] : null;
+  if (typeof given.why !== "string" || !given.why.trim() || !routes || !routes.every((r) => r instanceof RegExp) || inside === null || (inside && !inside.every((u) => typeof u === "string"))) throw new BypassRefused(`defineBypassUse: "${name}" needs a reason and a list of routes`);
+  // The routes are kept as their source and flags, and each check builds its own RegExp (breaker M2): a RegExp handed out
+  // could be recompiled (.compile) to match anything, so nothing anyone holds can widen a declared use.
+  const spec = routes.map((r) => ({ source: r.source, flags: r.flags.replace(/[gy]/g, "") }));
+  const copy: BypassEntry = { why: given.why, routes: Object.freeze(spec.map((x) => new RegExp(x.source, x.flags))), audit: given.audit,
+    ...(given.outside === true ? { outside: true } : {}), ...(given.direct === true ? { direct: true } : {}), ...(inside ? { inside: Object.freeze(inside) } : {}) };
+  const use: BypassUse = Object.freeze({ name, entry: Object.freeze(copy) });
+  declared.set(name, use);
+  routeSpecs.set(use, Object.freeze(spec.map((x) => Object.freeze(x))));
+  return use;
+}
+/** The file that called defineBypassUse: the first stack frame outside this file, read as structured frames (review n1:
+ *  no text parsing, so any path works), or undefined when it cannot be known. A frame of evaluated code (eval, new
+ *  Function: it can name any file it likes) counts as unknown (review n2). */
+function callerFile(): string | undefined {
+  const here = fileURLToPath(import.meta.url);
+  const holder: { stack?: unknown } = {};
+  const keepPrepare = Error.prepareStackTrace, keepLimit = Error.stackTraceLimit;
+  let raw: unknown;
+  try {
+    Error.stackTraceLimit = 20;
+    Error.prepareStackTrace = (_e, frames) => frames;
+    Error.captureStackTrace(holder, callerFile);
+    raw = holder.stack;   // formatted when first read: read it while our prepareStackTrace is in place
+  } finally { Error.prepareStackTrace = keepPrepare; Error.stackTraceLimit = keepLimit; }
+  const frames = Array.isArray(raw) ? (raw as NodeJS.CallSite[]) : [];
+  for (const f of frames) {
+    if (f.isEval()) return undefined;
+    const name = f.getFileName();
+    if (!name) return undefined;
+    const file = name.startsWith("file://") ? fileURLToPath(name) : name;
+    if (file !== here) return file;
+  }
+  return undefined;
+}
+/** The folder whose <name>.bypass.ts files may declare: api/src, worked out from this file's own place (review round 2). */
+const API_SRC = dirname(dirname(fileURLToPath(import.meta.url))) + sep;
+/** The API's start-up loads every <name>.bypass.ts file under `root` (api/src) before it closes the list (review M2): a
+ *  use whose module is imported only later, at request time, is declared all the same. Returns the files loaded. */
+export async function loadBypassUseFiles(root: string): Promise<string[]> {
+  const { readdirSync } = await import("node:fs"), { join } = await import("node:path"), { pathToFileURL } = await import("node:url");
+  const files: string[] = [];
+  const walk = (d: string) => { for (const e of readdirSync(d, { withFileTypes: true })) { if (e.name === "node_modules") continue; const p = join(d, e.name); if (e.isDirectory()) walk(p); else if (e.name.endsWith(".bypass.ts")) files.push(p); } };
+  walk(root);
+  for (const f of files.sort()) await import(pathToFileURL(f).href);
+  return files;
+}
+/** The API's start-up closes the list (features/platform-firm-walls.ts, once every module is loaded): from then on no use
+ *  can be declared, so nothing loaded later grants itself the bypass. */
+export function closeBypassUses() { closed = true; }
+/** Every bypass use: the frozen list and the declared ones (a copy; readers such as the audit check iterate it). */
+export function bypassUses(): Readonly<Record<string, Readonly<BypassEntry>>> {
+  return Object.freeze({ ...BYPASS_USES, ...Object.fromEntries([...declared].map(([k, u]) => [k, u.entry])) });
+}
+/** One use's entry by name, on the list or declared; undefined otherwise. */
+function entryOf(name: string): Readonly<BypassEntry> | undefined {
+  return Object.prototype.hasOwnProperty.call(BYPASS_USES, name) ? BYPASS_USES[name] : declared.get(name)?.entry;
 }
 
 /** What a query with no scope at all runs as. In the API server (FirmWallsInterceptor at start-up: wallUnscopedQueries)
@@ -161,7 +250,7 @@ export function wallUnscopedQueries() { unscoped = "walled"; }
 export const unscopedMode = () => unscoped;
 let saidDirect = false;
 
-/** A bypass use that is not on BYPASS_USES, or not for this route. A programming error: the request stops (500). */
+/** A bypass use that is neither on BYPASS_USES nor declared, or not for this route. A programming error: the request stops (500). */
 export class BypassRefused extends Error {}
 
 /** The operations line for a bypass use (PF-23): one platform_bypass line through the one logger (redacted, with the
@@ -178,15 +267,21 @@ export function onBypassLine(f: (use: string, route: string | undefined) => void
 export function mayRunInside(entry: { audit: BypassAudit; inside?: readonly string[] }, outer: string): boolean {
   return entry.audit === "platform" && (entry.inside ?? []).includes(outer);
 }
-/** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES and
+/** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES (by
+ *  its name) or a declared one (by the value defineBypassUse returned: review m1, a declared use never runs by name), and
  *  a route on that use's list; every use writes its operations line, and a "per-firm" use one platform.bypass audit line
  *  per firm it touches (touchFirm). */
-export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promise<T> {
-  const entry = Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined;
+export async function asBypass<T>(given: string | BypassUse, fn: () => Promise<T> | T): Promise<T> {
+  // A declared use is honoured only as the very value defineBypassUse returned (a look-alike object is refused).
+  if (typeof given !== "string" && (typeof given !== "object" || given === null || declared.get(given.name) !== given)) throw new BypassRefused(`asBypass: "${String((given as { name?: unknown } | null)?.name)}" is not a declared bypass use`);
+  const use = typeof given === "string" ? given : given.name;
+  const entry = typeof given === "string" ? (Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined) : given.entry;
   const store = scope.getStore(), route = store?.route;
-  if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES)`);
+  if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES) nor passed as a declared use (defineBypassUse)`);
   // A direct call (no scope at all) only in a suite or tool process: in the API server every request and job has its scope.
-  const allowed = route !== undefined ? entry.routes.some((r) => r.test(route)) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
+  const spec = typeof given === "string" ? undefined : routeSpecs.get(given);
+  const matches = (r: string) => (spec ? spec.some((x) => new RegExp(x.source, x.flags).test(r)) : entry.routes.some((x) => x.test(r)));
+  const allowed = route !== undefined ? matches(route) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
   if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
   // PF-12b (break M1): one use at a time. A use inside another would cross the walls under the outer use's name, with the
   // outer use's lines only; it is refused before any query runs.
@@ -256,7 +351,7 @@ export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
  *  or email. Without a step, only a "platform" use writes. */
 export async function touchPlatform(tx: unknown, at?: { step: string; key?: string | null }): Promise<void> {
   const s = scope.getStore(), use = s?.bypass;
-  if (!use || (BYPASS_USES[use]?.audit !== "platform" && !at?.step)) return;
+  if (!use || (entryOf(use)?.audit !== "platform" && !at?.step)) return;
   if (typeof tx !== "object" || tx === null || typeof (tx as { $disconnect?: unknown }).$disconnect === "function") throw new FirmScopeError("touchPlatform: give the caller's transaction, not the client");
   if (requestScope.getStore()?.firmId?.() || currentJobFirm()) throw new BypassNotRecorded(use, new FirmScopeError("touchPlatform: a platform use's line names no firm, but this request or job acts for one"));
   const seen = touched.get(tx) ?? new Set<string>();

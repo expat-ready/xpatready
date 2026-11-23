@@ -179,6 +179,8 @@ try {
   if (w3 && w3.hits.length) {
     await o.locator("[data-find-input]").press("Enter");
     await o.waitForURL(`**${caseHere}`, { timeout: 15_000 }).catch(() => undefined); await settle(o);
+    // The case page draws grey placeholders without [data-loading] (settle returns at once), so wait for the number itself.
+    await o.locator("main").getByText(NUM).first().waitFor({ timeout: 15_000 }).catch(() => undefined);
   }
   const caseText = o.url().endsWith(caseHere) ? (await o.locator("main").innerText().catch(() => "")) : "";
   ok(`J-102 W3: Enter opens the case page ${caseHere}, which shows ${NUM} (the next capability's first step)`, o.url().endsWith(caseHere) && caseText.includes(NUM), { url: o.url() });
