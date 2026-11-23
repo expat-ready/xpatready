@@ -1,4 +1,23 @@
-Reviewer: Approve 510a9d2a7ebd934b3145aaf8cde5a61f75a1b387
+Reviewer: Approve c83d20173c71076ad48a42f5274b96feb68e0585 (diff-only round over 0f1acb674; earlier: 510a9d2a7ebd934b3145aaf8cde5a61f75a1b387)
+
+# Diff-only round on c83d2017 (23 Nov 2026; 0f1acb674 → c83d20173)
+
+Scope: only `git diff 0f1acb674..c83d20173`. The caller says 0f1acb674 was reviewed and approved. This file's last recorded Approve is 510a9d2a7, so the four commits between 510a9d2a7 and 0f1acb674 have no record here (see n2). The change: CI's `fast` job (`tools/check-port-contracts.mjs`) failed with "real adapter TrustDocuments runs no contract". The diff is one file, `tests/check_fo7t_trust.ts`, +8 lines: three imports and one `runContract(documentRenderPortContract, "TrustDocuments", …)` call after the `finally`. It needs no database. No product code, no other test and no records changed.
+
+* **Same contract as the other adapters:** yes. `documentRenderPortContract` from `ports/contracts/document-render-port.contract.ts`, the same import used by fakeRender (check_pf0p_ports l. 243), DocxRender (check_fo5_retainers l. 344) and MoneyDocuments (check_fo7b_invoices l. 476). The harness shape is the same as MoneyDocuments' (`reordered` = the keys reversed, `other` = one amount changed by a cent). The contract run reports through the file's own `ok`, so a failed case counts as a fail and exits 1.
+* **The data matches the `trust_receipt` template:** yes. The placeholders in `samples/fo7t-trust-wording.txt` (`== trust_receipt ==`) are firmName, number, issuedOn, party, currency, amount, method, receivedOn, reference, request and cleared. The harness gives exactly those 11 keys, all strings. `fill` throws on a missing key, so a missing key would fail case 1. I checked this: dropping `amount` throws "trust_receipt: no value for amount". All values are Sample (Sample Firm, Client A, no personal name).
+* **The reader is real, so the "same/different document" case is not vacuous:** yes. `textPdf` (invoices/documents.ts) writes every line as `(<escaped>) Tj T*` on its own line. The reader's `/^\((.*)\) Tj T\*$/gm` is byte-identical to FO-7b's `pdfReader`. I ran the adapter and the reader by hand: the read-back is the full 259-character receipt ("Sample Firm … TRUST RECEIPT R-000001 … Received into trust: CAD 600.00 by e-Transfer on 2026-11-23 … We hold this money in trust for Client A …"). 600.00 and 600.01 read back differently. The contract also guards itself: a reader that returned "" for everything would fail its "other data, another document" half.
+* **Evidence:** I re-ran both on this head. `node tools/check-port-contracts.mjs` gives 0 problems, with DocumentRenderPort ×4 (fakeRender, DocxRender, MoneyDocuments, TrustDocuments). `tsx --tsconfig api/tsconfig.json tests/check_fo7t_trust.ts` gives 58 passed, 0 failed, including `PF-0c DW2 DocumentRenderPort TrustDocuments: passes its contract (3 of 3 cases)`.
+
+## Nits (non-blocking)
+* **n1:** `pdfText` is the third copy of the text-page reader, after FO-7b's `pdfReader`. A shared `readTextPdf` next to `textPdf` would keep them in step if the page format ever changes. This is the builder's choice; it is not needed for this PR.
+* **n2 (records):** this file has no entry for the 510a9d2a7 → 0f1acb674 commits (PF-19r sender table, CS-W3 ALLOW line, CodeQL text match, party-visibility 404). If that approval was recorded elsewhere, link it here. I did not review those commits in this round.
+* **n3 (contract, not this diff):** the contract's refusal cases accept any error. For TrustDocuments, "Not A Key" is refused because the template is unknown, not because of a key-form check. `{ when: Date }` may be refused because a name is missing, not because the data is not JSON. MoneyDocuments has the same gap. If it matters, it is a PF-0c contract change, outside this row.
+
+Journey score: not applicable to this round. The change is a test-only contract run with no user-facing change. The journey score from build round 1 stands.
+
+**Verdict: Approve** c83d20173c71076ad48a42f5274b96feb68e0585. No Blocker or Major.
+
 
 # Build round 2 (diff only, 795e961ed → 510a9d2a7)
 
