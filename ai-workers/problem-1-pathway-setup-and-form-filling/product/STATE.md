@@ -2,7 +2,7 @@
 
 current_lead: local_d4a6b1cd-f814-4a94-b7d3-bb6b0b82ba7a Lead 10 · 23 Nov 09:38 IST (took over from Lead 9 (local_482034a7) at ~440k, ~320k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 11:14 IST: stop order at 94%, switch now (RESUME 'Switch of 23 Nov'); was 10:21 IST: Lead 10, A291 analysis, demo restored, lanes answered (check 0721b6cb)
+updated: 2026-11-23 11:23 IST: Lead 10 ended at the switch (check 0721b6cb deleted; AWS hand-over 61cd95852: R1.1, R1.13, R1.15 Pass); was 11:14 IST: stop order at 94%, switch now (RESUME 'Switch of 23 Nov'); was 10:21 IST: Lead 10, A291 analysis, demo restored, lanes answered (check 0721b6cb)
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
