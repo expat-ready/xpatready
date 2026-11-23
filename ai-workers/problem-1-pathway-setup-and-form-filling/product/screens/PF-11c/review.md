@@ -85,3 +85,60 @@ The S3 Object Lock adapter (not built). The client portal sessions (PF-4p not bu
 
 Verdict: Changes 71f3131daf1c8426d0474ec20f6b3e1c6033d7a4. Not Approve: fix Majors 1-6, then a new head for re-review.
 Reviewer: Changes 71f3131daf1c8426d0474ec20f6b3e1c6033d7a4
+
+## Round 2 (diff 71f3131..1b4298d)
+
+**Head reviewed:** 1b4298d062c453e8f6f5dcb2fc8228d631529c5a. Only the diff is reviewed: `closure.ts`, `platform-firm-closure.ts`, `ports/audit-archive.ts`, `identity/service.ts`, `identity/session/service.ts`, `tests/check_pf11c_close.ts` and `challenge.md`.
+**Ran:**
+* `check_pf11c_close.ts`: 45/45, exit 0, on a scratch copy that is byte-identical to the head.
+* 17 mutations on that copy, one at a time, each restored afterwards (the copy diffs clean against the head). Results are below.
+* The other suites listed in the hand-off were already green on this head (aud5 57 and 54, bypass 52, pf4 120, pf4b 57). They were not re-run.
+
+**Journey score:** 6/10, carried from round 1. There was no new browser walk, because this round reviews the diff only. The one change a user would meet is in the sign-in path: the local door now refuses a closed firm, and the refusal is titled "Account closed". The suite covers it (mutation below).
+
+### Round-1 Majors
+1. **The close can never succeed with a real clock. Fixed.**
+   * The check now compares against the date passed to `put` (`until`), not the store's `writtenAt`. The suite's store clock runs 25 ms ahead of the job's clock.
+   * Mutation: restoring the old `addYears(copy.writtenAt, 7)` check fails 8 checks.
+2. **The read-back proves nothing, and an old or partial copy is accepted. Fixed.**
+   * Each run writes to its own new key (hold seq, run time and a random part). The read-back is compared byte for byte with the bundle, and its sha256 is checked against the bundle's.
+   * Inside the close transaction, the live audit ids of the firm must equal the copy's ids.
+   * These mutations are each caught:
+     * byte compare removed;
+     * byte and sha compares removed;
+     * live-ids check removed (the stale test then closes);
+     * fixed key.
+3. **A payment that lands during the close brings a closed firm back. Fixed.**
+   * The close takes `pg_advisory_xact_lock(hashtext('plat_billing:'||id))`. This is the same expression as `billing/webhook.ts:138`. Both ids are lowercase: `firmScope` lowercases on the close side, and the webhook's `row.firmId` comes from the database.
+   * Lock order: both the close and `refresh` take the billing lock first, then the firm row. Only `webhook.ts:156` writes `platform_firm.status`. Invitation accept takes only the firm row. So there is no cycle. The hold lock is taken after the firm row, as in round 1 (unchanged).
+   * Mutation: removing the lock makes the M3 test fail (`waited: false`).
+4. **The race guards in the close transaction are untested. Fixed.** Each mutation is now caught:
+   * `FOR UPDATE` removed;
+   * clock re-check removed;
+   * hold re-check removed.
+5. **The archive gate is weaker than the row's step (2). Fixed.**
+   * The `FullExportPort` gate (`PF-11c.no_full_export`) is in place, with `fullExport: null` wired. The substitute is recorded in `challenge.md` item 2.
+   * Mutations: removing the whole condition is caught, and removing the firm-prefix check is caught. Removing the existence check (`archive.get(exp.key)`) passes 45/45 (n2 below).
+6. **An invitation can be accepted after the close. Code fixed; the test does not prove it. Still open (Major, D16, the same bar as round-1 Major 4).**
+   * The guard at `session/service.ts:113-115` is correct. It reads the status under the firm row lock, which the close's `FOR UPDATE` conflicts with.
+   * The suite's invitation uses `invited_by = staff:${staffA[0]}`, the first staff member by id. In my runs that person was a CASE_OFFICER, and in another run a CASE_MANAGER, without the invite key. So `inviterRefusal` refuses the accept with the same 410 INVITATION_NOT_VALID, revokes the invitation and writes `platform.invitation.refused_inviter`.
+   * Mutation: with the DELETED guard removed, the suite passes 45/45.
+   * Fix (checked on the scratch copy): insert the invitation with an active OWNER of A as the inviter. Then the suite fails without the guard (the accept succeeds and a staff member is added) and passes with it. Also assert that no `platform.invitation.refused_inviter` line was written.
+
+### Round-1 minors
+* m1 (local door): fixed and tested. The mutation is caught (UNKNOWN_STAFF instead of FIRM_CLOSED).
+* m2 (title): fixed, "Account closed". The web keys on `code` only; no client matches the title.
+* m3 (alarm), m5 (missed notice), m6 (hold reading): recorded for the Lead in `challenge.md` items 3, 4 and 1.
+* m4 (alert on close failure): fixed (`PF-11c.close_failed` raises the alert), but untested. Removing the catch passes 45/45.
+* m7 (the chain verifies; a firm B line dated inside A's range): not addressed. Still a Minor.
+* m8: fixed for both points. A keep-until date in the past or now is refused (tested), and the fake no longer exposes `objects` (tested). The suite and fake naming against the row is unchanged.
+
+### New in this diff (Minors, none Major)
+* **n1 `closure.ts` live-ids check.** The transaction is READ COMMITTED, and audit inserts do not take the firm lock. A line committed between the `findMany` and the commit is not in the copy. It is still kept in the database, so the gap is small and nothing is lost.
+* **n2.** The export existence check is untested. B's named but missing export never reaches it, because B stops earlier at `notices_missing`.
+  * Nothing checks that the export is recent (for example, written after the hold began). That belongs to PF-11's port contract; state it there.
+* **n3.** Every run that writes a copy but does not close leaves a 7-year write-once object. This covers `changed`, a hold placed late, `archive_unreadable` and `close_failed`. A firm failing daily gets one copy per day. A `changed` result from a stale copy raises no alert. The content is lines that AUD-5 keeps for 7 years anyway, so this is storage, not privacy.
+* **n4.** The close transaction uses Prisma's default 5 s timeout. `refresh` holds `plat_billing` across a Stripe call, with a 30 s timeout. A slow Stripe call makes the close end `close_failed`, with an alert, and it retries the next day with a new copy. Give the close transaction an explicit timeout above the billing one.
+
+Verdict: Changes 1b4298d062c453e8f6f5dcb2fc8228d631529c5a. Not Approve: Major 6's test must fail without the fix (an Owner as inviter). Majors 1-5 are closed. n1-n4 and m4/m7 are Minors.
+Reviewer: Changes 1b4298d062c453e8f6f5dcb2fc8228d631529c5a
