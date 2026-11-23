@@ -76,14 +76,19 @@ const keptTab = (t: unknown): t is { id: string; path: string; title: string } =
 };
 /** The tabs kept in this browser tab, only when they are this session's (break B1: never the last person's). */
 function load(): { tabs: Tab[]; active: string; dropped: boolean } {
-  let tabs: Tab[] = [];
+  let tabs: Tab[] = [], keptActive: unknown = null;
   try {
     const s = JSON.parse(sessionStorage.getItem(storeOf(ownerNow())) ?? "null") as { tabs?: unknown } | null;
+    keptActive = (s as { active?: unknown } | null)?.active ?? null;
     if (s && Array.isArray(s.tabs))
       tabs = s.tabs.filter(keptTab).slice(0, TAB_CAP).map((t) => ({ id: t.id, path: t.path, title: t.title.slice(0, 200), nav: 0, type: NavigationType.Pop, scroll: 0 }));
   } catch { /* none kept */ }
   const cur = here(), same = tabs.find((t) => itemOf(t.path) === itemOf(cur));
   if (same) { same.path = cur; return { tabs, active: same.id, dropped: false }; }
+  // Lead 13: an address typed or opened in this browser tab moves the shown tab there, as a browser does (it never stacks a
+  // new tab on every page load); a shown tab holding a draft is kept and the address gets a tab of its own.
+  const act = tabs.find((t) => t.id === keptActive);
+  if (act && !draftsAt(itemOf(act.path)).length) { act.path = cur; act.title = guess(cur); return { tabs, active: act.id, dropped: false }; }
   const t: Tab = { id: newId(), path: cur, title: guess(cur), nav: 0, type: NavigationType.Pop, scroll: 0 };
   let dropped = false;
   if (tabs.length >= TAB_CAP) {   // break M2: at the cap, a tab without unsaved changes makes room, and the person is told
