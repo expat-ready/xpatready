@@ -140,3 +140,45 @@ None of the follow-ups is a Blocker or Major against the concept's "What gets bu
 **Open after round 2:** 0 Blockers, 0 Majors, 1 Minor (m3, failure path) plus the recorded follow-ups. The journey score stays at 9 / 10. Feedback and state would now earn the full point. Error recovery stays at ½ until the failure-path focus is fixed.
 
 Verdict: Approve c4b62d0aeab5ab076eab5cc34fd6a5814cd73376
+
+## Re-review round 3 (Lead 13: focus fixes only)
+Head `49aeb7896a8ea08eeafe0d8f2862ef0011e4b009`. Diff `1ae9ad035..49aeb7896`:
+* `7b2f9e79a`: three test lines, written to fail first.
+* `49aeb7896`: `useListFocus` in `bell.tsx`, used by the panel and the All page; the failed Mark read returns focus to its button; build-notes; screenshots.
+
+Nothing else changed. No new scope.
+
+**Acceptance test:** `check_pf18ns_bell_browser.ts` passed **27/27 twice** on my copy `pf18nsrev` (:4741), first on a fresh database and then on the same one reused. No page errors. The copy is stopped. Test-written screenshots were left as they are.
+
+**Focus probes** (keyboard Enter; "focus" is `document.activeElement`):
+| Case | Result |
+|---|---|
+| Unread filter, Mark read on row 1 | The new row 1 (test line DW6, round 3) |
+| Failed Mark read (500) | Back on its Mark read button (DW6 fail line). **My m3 is closed** |
+| Unread filter, Mark all read | The empty line (DW2, round 3) |
+| All filter, Mark read on row 3 (the row stays, now read) | Row 3 itself |
+| Unread filter, Mark read on the last row of page 1 | The previous row, now last (row 23 of 23) |
+| Panel, Mark all read | Row 1, still inside the dialog |
+| Panel, Mark read on row 2 | Row 2 (it stays, now read) |
+| **Unread filter, page 2 holding one row: Mark read on it** | **`BODY`** |
+
+**Still open: one Minor (Should), the step back from an emptied page.**
+* Build-notes say round 3 also fixes "the step back from an emptied page". In the probe it does not.
+* What happens:
+  1. `useListFocus` focuses the empty line of page 2.
+  2. It clears its target (`bell.tsx:41`).
+  3. The step-back effect (`all-page.tsx:33`) moves to page 1, and the empty line unmounts when page 1's rows arrive.
+  4. Focus falls to the page body.
+* It happens once per emptied page, not per row: the breaker's M1 was repeated on every row; this is not.
+* Fix: when stepping back, ask `useListFocus` for the new page's last row (for example `want = { index: PAGE_SIZE - 1 }` before `setPage`). Add one test line: Unread, page 2 with one row, Mark read, then expect focus on a row of page 1.
+* No test covers it today.
+
+**Code reading:**
+* `useListFocus` waits for a settled list: for the All page, not fetching and not placeholder data; for the panel, not fetching.
+* It retries on the next render when its target is not drawn yet, then clears its target. Its effect sets no state, so it cannot loop.
+* The row and empty-line targets have `tabIndex=-1` and a visible focus ring.
+* `useMarkAll` now takes a callback instead of an element, and its two callers were updated together.
+
+**Open after round 3:** 0 Blockers, 0 Majors, 1 Minor (focus after the step back from an emptied page), plus the follow-ups recorded in round 2. Journey score: **9.5 / 10**. Feedback and state (round 2) and error recovery (round 3) now earn full points. Accessibility drops to ½ while the step-back focus edge stays open.
+
+Verdict: Approve 49aeb7896a8ea08eeafe0d8f2862ef0011e4b009

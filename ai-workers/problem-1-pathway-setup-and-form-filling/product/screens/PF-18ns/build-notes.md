@@ -49,7 +49,7 @@ Fixed, each with a test line that fails first:
 * **Comments.** Two comments put on the wrong lines are back in place (review m7, break m8).
 
 ## Round 3 (Lead 13 allowed it on #3302: focus fixes only)
-* After a mark, focus goes to the marked row if it is still listed. Otherwise it goes to the row now in its place, else the previous row, else the list's empty line (`useListFocus`, waiting for the list's fresh answer). This fixes break M1 in the Unread filter, Mark all read in Unread, and the step back from an emptied page.
+* After a mark, focus goes to the marked row if it is still listed. Otherwise it goes to the row now in its place, else the previous row, else the list's empty line (`useListFocus`, waiting for the list's fresh answer). This fixes break M1 in the Unread filter and Mark all read in Unread. Not fixed (review round 3, Minor, a follow-up): when the only row on a later Unread page is marked and the page steps back, focus falls to the page body. The fix: before `setPage`, aim `useListFocus` at the new page's last row.
 * A failed Mark read returns focus to its button (review m3).
 * Three test lines failed first (focus was on BODY in each): 27/27.
 
