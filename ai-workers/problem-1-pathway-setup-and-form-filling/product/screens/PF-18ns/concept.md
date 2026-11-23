@@ -1,11 +1,11 @@
 # PF-18ns — the bell and the notification list: concept (addendum to PF-18s)
 
-Row PF-18ns (BACKLOG, R1.50). Addendum to PF-18s's concept (`screens/PF-18s/concept-draft.md`, records PR #2332, not yet on main). Source: AG-10-29a, AG-10-29b, AG-10-36, AG-16-10, AG-7-39 (`trace-requirements.py --brief PF-18ns`, requirements-2026-11-02). No board (P-223 (4)); layout in `design/draft-layout.html`. Studio paths are under `prototype/studio/`, read on main 09b3893df (23 Nov). No immigration value here. Status: **for the tech lead's approval; not built.**
+Row PF-18ns (BACKLOG, R1.50). Addendum to PF-18s's concept (`screens/PF-18s/concept-draft.md`, records PR #2332, not yet on main). Source: AG-10-29a, AG-10-29b, AG-10-36, AG-16-10, AG-7-39 (`trace-requirements.py --brief PF-18ns`, requirements-2026-11-02). No board (P-223 (4)); layout in `design/draft-layout.html`. Studio paths are under `prototype/studio/`, read on main 09b3893df (23 Nov). No immigration value here. Status: **for the tech lead's approval; not built.** r2: the fresh challenge (`challenge.md`: 0 Blockers, 2 Majors, 5 Minors) is taken in: M1 in BR-8 and DW4, M2 in §6 and DW3, the minors in BR-3, BR-5, BR-7, §4 and §5.
 
 ## 0. What it waits on, on main (step 1 check)
 | Waits on | On main? | Evidence |
 |---|---|---|
-| PF-6's frame | yes | `web/src/modules/platform/frame.tsx:97` (`controls`: FindBox, "?", name, Sign out) |
+| PF-6's frame | yes | `web/src/modules/platform/frame.tsx:98` (`controls`: FindBox, "?", name, Sign out) |
 | PF-18s (Notifications settings) | yes, part 3 | `/account/notifications` (`web/src/modules/platform/routes.tsx:44`, `settings/notifications-page.tsx`) |
 | PF-18n list API | yes, **part 1 only** | `api/src/platform/notifications/routes.ts`: `GET me/notifications/items?unread&page&size`, `GET …/unread-count`, `POST …/read-all?seen`, `POST …/:id/read?seen` |
 
@@ -32,17 +32,17 @@ Row PF-18ns (BACKLOG, R1.50). Addendum to PF-18s's concept (`screens/PF-18s/conc
 ## 3. Business rules (the server decides; the screen shows)
 * BR-1 Own only, firm-scoped; another person's id → 404 (routes.ts; AG-10-29a). The screen sends no person or firm id.
 * BR-2 The Individual/Corporate view never filters, hides or re-orders the bell, count or lists (AG-10-36): no view parameter is sent.
-* BR-3 Count = `unread-count`; refreshed on every navigation (the frame's `loc.key` effect already re-checks `me`) and every 60 s while the tab is visible; no push in Release 1 (row).
+* BR-3 Count = `unread-count`; refreshed by the bell itself on every navigation (`useLocation().key`; SalesFrame has no such effect, PlatformFrame's re-reads `me` only) and every 60 s while the tab is visible; no push in Release 1 (row). A 428 (terms pending) or 401 renders no bell (SalesFrame has no terms gate; challenge m1).
 * BR-4 Panel = `items?size=20`, newest first; unread rows marked by a dot **and** the word "Unread" for screen readers (never colour alone).
-* BR-5 Opening a row: `POST :id/read?seen=<row createdAt>` then navigate to `link`; a re-surfaced reminder stays unread (part 1's `seen` rule, "duplicate beats a miss", AG16-60). `link: null` → the row is text, not a link, with "This item can no longer be opened" and a "Mark read" button.
+* BR-5 Opening a row (reuses Home's flow, `platform/home/home-page.tsx`: a failed mark still opens; a re-surfaced reminder stays with its notice; a new-tab open is marked read): `POST :id/read?seen=<row createdAt>` then navigate to `link`; a re-surfaced reminder stays unread (part 1's `seen` rule, "duplicate beats a miss", AG16-60). `link: null` → the row is text, not a link, with "This item can no longer be opened" (or no line, for kinds that never have a page, e.g. payment-account-disconnected) and a "Mark read" button.
 * BR-6 Mark all read: `POST read-all?seen=<newest createdAt shown>` so a notice arriving meanwhile stays unread; then count refetch.
-* BR-7 Times in the person's zone (M-4); until the zone is answered, the browser's zone is **not** used silently: the time shows with its zone name.
-* BR-8 The count is announced once per change (polite live region updated only when the number differs), never every 60 s (row).
+* BR-7 Times in the person's zone (M-4); The zone name shows once, in the panel heading line, not on every row.
+* BR-8 The count is announced once per change (polite live region updated only when the number differs), never every 60 s and never on a page change: each page mounts its own frame, so the last announced count lives outside the bell (module-level store, one per tab), not in its state (challenge M1).
 * BR-9 "Choose what you get" links to `/account/notifications` (PF-18s); preferences are never edited here (AG-10-29b).
 
 ## 4. Layout (`design/draft-layout.html`)
 * **Bell:** icon button in the frame's `controls`, before "?"; accessible name "Notifications, 3 unread" / "Notifications, none unread"; badge shows 1-99, "99+" above. Shown only to a signed-in person past the terms gate (same guard as FindBox).
-* **Panel (popover, 400 px, anchored under the bell; full-width sheet below 640 px):** heading "Notifications", "Mark all read" (text button; disabled at 0 unread), list of ≤20 rows: what (kind words) · the record (case number or lead name) · time ("21 Nov, 09:00 · America/Toronto") · unread dot. Footer: "See all" and "Choose what you get". Esc or outside click closes; focus is trapped while open and returns to the bell (row).
+* **Panel (modal dialog, `role="dialog"`, on the app's existing Dialog/Panel focus handling; 400 px, anchored under the bell; full-width sheet below 640 px):** heading "Notifications", "Mark all read" (text button; disabled at 0 unread), list of ≤20 rows: what (kind words) · the record (case number or lead name) · time ("21 Nov, 09:00 · America/Toronto") · unread dot. Footer: "See all" and "Choose what you get". Esc or outside click closes; focus is trapped while open and returns to the bell (row).
 * **All page** `/account/notifications/all`: tabs "Settings | All" over PF-18s's page (Q2); filter All / Unread; 25 per page; Previous / Next from `nextPage`; same row as the panel.
 * **States:** loading (3 skeleton rows), empty ("Nothing new. Work handed to you will show here."), unread-filter empty ("No unread notifications."), load failed ("Could not load your notifications." + Try again; the bell stays usable), mark failed (row stays unread, inline "Could not mark this read."), unlinked row (BR-5), long lead name truncated with full text in `title`, 375 px no sideways scroll.
 
@@ -56,15 +56,15 @@ Row PF-18ns (BACKLOG, R1.50). Addendum to PF-18s's concept (`screens/PF-18s/conc
 N/A as a whole (platform screen, not case-side §6 scope). Met in spirit: one primary action per surface, states drawn, colour never alone, keyboard and 375/1024/1440.
 
 ## 5. Copy
-Kind words (contract, one map; an unknown kind reads "Something needs you"): lead assigned → "Lead assigned to you"; case-stage-deadline → "A stage deadline"; case-milestone-deadline → "A government step is due"; payment-account-disconnected → "Payment account disconnected". Empty, failure and unlinked lines as §4.
+Kind words (one map shared with Home's `whatOf`, moved to the notifications contract, so both read the same words; an unknown kind reads "Something needs you"): lead assigned → "Lead assigned to you"; case-stage-deadline → "A stage deadline"; case-milestone-deadline → "A government step is due"; payment-account-disconnected → "Payment account disconnected". Empty, failure and unlinked lines as §4.
 
 ## 6. Contract and tests
-* Reads only the four part-1 routes, plus M-2 to M-4 once PF-18n adds them: proposed additive fields on `GET items`: `label` (case number or lead display name, built on read like `link`, null when gone) and top-level `zone` (OfficeClockPort, as needs-you).
+* Reads only the four part-1 routes, plus M-2 to M-4 once PF-18n adds them: proposed additive fields on `GET items`: `label` (case number or lead display name, built on read like `link`), and `label` and `link` both null when the item is gone **or the person can no longer see it** (a lead reassigned away under own-only visibility: FO-2's lead read rule, never a name leak; challenge M2) and top-level `zone` (OfficeClockPort, as needs-you).
 * `tests/check_pf18ns_bell_browser.ts` (`PF-18ns DWn`, own ports and DB, seeded through the API):
   * DW1 J1 walk: assign a lead to an Agent → bell "1" → panel row with the lead's name → Enter → URL `/front-office/leads/<id>`, count 0. Fail: the Owner's bell stays 0.
   * DW2 Mark all read → 0; a notice created after the panel loaded stays unread (fail without `seen`).
-  * DW3 Another person's notification never shows; their id on `:id/read` → 404.
-  * DW4 Live region changes text once per count change; two 60 s polls with no change → no new announcement (fake timers).
+  * DW3 Another person's notification never shows; their id on `:id/read` → 404. A lead reassigned away from an Agent: their row shows no lead name and no link (M2).
+  * DW4 Live region changes text once per count change; two 60 s polls with no change and a navigation to another page with no change → no new announcement (fake timers).
   * DW5 Keyboard only: Tab to bell, Enter opens, focus inside, Esc returns focus to the bell; axe-core on bell, panel, All page (each state); 375/1024/1440 with no sideways scroll.
   * DW6 All page: Unread filter, page 2 via Next; "Choose what you get" lands on `/account/notifications`.
 
