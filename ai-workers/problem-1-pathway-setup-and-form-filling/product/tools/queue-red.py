@@ -5,7 +5,7 @@ FAILED REQUIRED check (--required, comma list: the ruleset's required checks rea
 check a queue_rules condition of .mergify.yml names: ci; xfa-engine (engine PRs, review on #2475); skeleton (the
 product queue's skeleton paths); completes-ready (the product queue holds a PR whose readiness gate failed, #2738).
 check-queue-red.sh reads .mergify.yml and fails when a queue check is missing here (ENF-772). Also pr-rules (Lead 4,
-23 Nov, ENF-772): not a queue condition today, but a labelled PR red on it is an ACT, ruleset readable or not.
+23 Nov, ENF-772), which #2595 (E6) made a product queue condition: a labelled PR red on it is an ACT, ruleset readable or not.
 A labelled PR red only on other checks (module-cards, walks, CodeQL) gets one info line,
 no ACT: Mergify queues it all the same (20 Nov: 3 of 7 "red after approval" PRs were queued, red only on such checks).
 queue-fresh (required for prototype PRs) is renewed by queue-gate re-running ci, so it stays an info line.
@@ -13,7 +13,7 @@ Test: check-queue-red.sh."""
 import argparse, json, sys
 
 FAILED = {"FAILURE", "TIMED_OUT", "ERROR", "STARTUP_FAILURE"}
-MERGIFY = {"ci", "xfa-engine", "skeleton", "pr-rules", "completes-ready"}   # .mergify.yml queue_rules: check-success = ci, xfa-engine, skeleton; -check-failure = completes-ready; pr-rules: the tech lead's ruling
+MERGIFY = {"ci", "xfa-engine", "skeleton", "pr-rules", "completes-ready"}   # .mergify.yml queue_rules: check-success = ci, xfa-engine, skeleton; -check-failure = completes-ready; pr-rules (#2595, and the tech lead's ruling)
 
 
 def failed(p):
