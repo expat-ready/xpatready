@@ -1,0 +1,2 @@
+Entry points: AUD-3c: the port's firm-less kind `OurStaffPlatformEntry` (firm null, no workspace, `platform.bypass`, `plat_bypass_use`, an `ourstaff:<id>` actor; the adapter's `recordOurStaffPlatform` refuses it outside our staff's request, under another actor, or for a firm); `touchPlatform` writes it in our staff's request, and `touchFirm` writes the request's own `ourstaff:<id>` on the firm's trail; `fakeAudit({ context })` keeps the same refusals.
+Tests: tests/check_aud3c_platform_line.ts
