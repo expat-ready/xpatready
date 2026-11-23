@@ -30,3 +30,7 @@ Open conflict: card at 13:0x "gates answered first, build in M4 after the Bake, 
 # A321 (14:54 IST, typed to Lead 4)
 
 "Yeah, let me know one question at a time with your recommended solution for private repository. If you have to do any configuration change in the GitHub is logged in into the inbuilt browser to yourself. You have my all approval. Anything else, let me know. And you have all my approvals for your all recommended solution above." Read as: approved recommendations (private repository after the short plan, created empty, pack build in M4; drop fix 1 unless a measurement changes it; guards.d follow-up after the list). It does not name a purchase, a permission widening or a permanent deletion. #3193 retarget: refused by the permission check a second time after this; not routed through the browser (P-504), left. Asked: create the empty private repository after the three checks?
+
+# Replay of 87 code batches (Lead O, received by Lead 4, 23 Nov after 15:01 IST; not re-checked)
+
+40 green, 47 red, 22 Nov 18:47 to 23 Nov 13:51 IST. At most 31% of suite-minutes saved; 48 batches pick everything. Bar not met: missed check_fo3st3 in 9 (main red), c69 (#3150), c92 (#3218), pf5s1 (#3218+#3215, log only), unsettled; pff1c (#3216) a replay limit; none shown to be the PR fault. Red split: 11 main red, 3 main red and more, 4 timing, 29 not separated. No shadow. CPU 58 of 72 shards: mean 1.22 cores, worst p95 2.38, peak 4.48 GB. Full: claude/lead-o-os-plan and private notes replay-100-summary.md.
