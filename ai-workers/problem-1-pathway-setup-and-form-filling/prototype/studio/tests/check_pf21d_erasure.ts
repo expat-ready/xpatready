@@ -79,9 +79,10 @@ try {
     const n = await tx.$executeRaw`delete from pf21d_rows where firm_id = ${currentFirm()}::uuid and person_id = ${o.personId}::uuid`;
     return n ? { outcome: "ERASED", note: `${n} row(s)` } : { outcome: "NOTHING", note: "no rows" };
   } };
-  let mode: "nothing" | "throw" | "kept" = "nothing";
+  let mode: "nothing" | "throw" | "kept" | "wait" = "nothing", entered = false, gate: () => void = () => undefined;
   const secondEraser: Eraser<any> = { module: "test.second", async erase() {
     if (mode === "throw") throw new Error("Sample: the second module is down");
+    if (mode === "wait") { entered = true; await new Promise<void>((r) => { gate = r; }); }
     return mode === "kept" ? { outcome: "KEPT", note: "client_financial: 2 rows kept 7 years, name replaced by a reference" } : { outcome: "NOTHING", note: "no rows" };
   } };
   const rowsOf = (firm: string, person: string) => Number(sql(`select count(*) from pf21d_rows where firm_id = '${firm}' and person_id = '${person}'`));
@@ -101,7 +102,6 @@ try {
   await app.listen(0, "127.0.0.1"); apps.push(app);
   const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
   const svc = app.get(Erasure), requests = app.get(DataRequests);
-  app.get(ErasureRegistry).register(testEraser); app.get(ErasureRegistry).register(secondEraser);
   ok("PF-21d pass: the feature registers the daily job on PF-14's runner (handler and schedule)",
     app.get(ERASURE_DAILY) === true && jobCalls.includes(`handle ${ERASURE_QUEUE}`) && jobCalls.includes(`recurring ${ERASURE_QUEUE} ${ERASURE_CRON}`), jobCalls);
   await seedSampleFirms(owner);
@@ -160,7 +160,15 @@ try {
   clock.t = start + 14 * DAY; const skipped = await svc.run(); await svc.run();
   ok("PF-21d fail (SA-11-16 (d)): with the switch off, day 14 erases nothing: one ERASURE_SKIPPED step over two runs; the order stays scheduled",
     again.eraseOn === addDays(addDays(day0, 7), 7) && skipped.skipped.includes(r1) && rowsOf(A, P1) === 2 && (kinds(r1).match(/ERASURE_SKIPPED/g) ?? []).length === 1 && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { skipped, k: kinds(r1) });
+  const lateCancel = await throws(() => svc.cancel(as, null, r1, {}), /WINDOW_ENDED/);
+  const byHand = await throws(() => requests.move(as, null, r1, { status: "COMPLETED", actionsTaken: "Sample: done by hand" }), /ERASURE_SCHEDULED/);
+  ok("PF-21d fail (break M3): on its day the window has ended (cancel → 409); a hand move of a scheduled request → 409 ERASURE_SCHEDULED; the request unchanged",
+    lateCancel && byHand && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { lateCancel, byHand, s: statusOf(r1) });
   const turnedOn = await swOn(); seen.length = 0;
+  const empty = await svc.run();
+  ok("PF-21d fail (review M1, SA-11-28): with no module registered, nothing is erased and nothing reads COMPLETED; the order stays scheduled",
+    empty.skipped.includes(r1) && empty.erased.length === 0 && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { empty, s: statusOf(r1) });
+  app.get(ErasureRegistry).register(testEraser); app.get(ErasureRegistry).register(secondEraser);
   const erased = await svc.run();
   ok("PF-21d pass (SA-11-40): switch on → the next run erases the person's rows in that firm only (a family member's and another firm's stay); each module's result a step; COMPLETED with the actions taken, eraseOn cleared",
     turnedOn && erased.erased.includes(r1) && rowsOf(A, P1) === 0 && rowsOf(A, P1fam) === 2 && rowsOf(B, P1b) === 2 && statusOf(r1) === "COMPLETED|-"
@@ -168,7 +176,8 @@ try {
     && /test\.rows: ERASED/.test(sql(`select actions_taken from plat_data_request where id = '${r1}'`)), { erased, s: statusOf(r1) });
   ok("PF-21d fail: firm A's order never runs an eraser with or in firm B (each call names firm A and runs in its scope)", seen.length === 1 && seen.every((s) => s.firm === A && s.scope === A && s.person === P1), seen);
   const rerun = await svc.run(), late = await throws(() => svc.cancel(as, null, r1, {}), /NOT_SCHEDULED/);
-  ok("PF-21d fail: a done erasure is never run again, and cannot be cancelled (409)", rerun.erased.length === 0 && late, rerun);
+  const reApprove = await throws(() => svc.approve(as, null, r1), /APPROVE_REFUSED/);
+  ok("PF-21d fail: a done erasure is never run again, cannot be cancelled or approved again (409)", rerun.erased.length === 0 && late && reApprove, rerun);
   // -------------------------------------------------------------------------------------------- a legal hold
   const r2 = await deletion(A, P1fam); await svc.approve(as, null, r2);
   const hold = sql(`insert into plat_legal_hold (id, firm_id, scope_kind, target_id, reason, placed_by) values (gen_random_uuid(), '${A}', 'PERSON', '${P1fam}', 'Sample: a court order on the records', 'staff:${OWNER}') returning id`).split("\n")[0];
@@ -184,20 +193,33 @@ try {
   const P3 = person(A); addRows(A, P3);
   const r3 = await deletion(A, P3); await svc.approve(as, null, r3); clock.t += 7 * DAY;
   mode = "throw"; const failed = await svc.run();
-  ok("PF-21d fail (SA-11-40 Failure): the second module failing rolls back the first module's erasure: the rows stay, nothing COMPLETED, still scheduled; counted failed (the job fails and retries)",
-    failed.failed === 1 && rowsOf(A, P3) === 2 && statusOf(r3).startsWith("IN_PROGRESS|2") && !kinds(r3).includes("ERASURE_RESULT"), { failed, s: statusOf(r3) });
+  ok("PF-21d fail (SA-11-40 Failure): the second module failing rolls back the first module's erasure: the rows stay, nothing COMPLETED, still scheduled; the request shows the failure as a step (review M2); counted failed (the job fails and retries)",
+    failed.failed === 1 && rowsOf(A, P3) === 2 && statusOf(r3).startsWith("IN_PROGRESS|2")
+    && sql(`select string_agg(note, ' / ') from plat_data_request_event where request_id = '${r3}' and kind = 'ERASURE_RESULT'`) === "test.second: FAILED — nothing was erased; the next run retries.", { failed, s: statusOf(r3), k: kinds(r3) });
   mode = "kept"; const partial = await svc.run();
   ok("PF-21d pass/fail (SA-11-16 (c), SA-11-28): a module keeping a floor class → HELD (partial), never a false COMPLETED; what was kept and why in the step and the actions taken; eraseOn cleared",
     partial.partial.includes(r3) && rowsOf(A, P3) === 0 && statusOf(r3) === "HELD|-" && /test\.second: KEPT/.test(sql(`select actions_taken from plat_data_request where id = '${r3}'`)), { partial, s: statusOf(r3) });
+  // ----------------------------------------------------------- break B1, B2: a cancel or a hand move during the run
+  const P4 = person(A); addRows(A, P4);
+  const r4 = await deletion(A, P4); await svc.approve(as, null, r4); clock.t += 7 * DAY;
+  mode = "wait"; entered = false;
+  const running = svc.run();
+  for (let i = 0; i < 200 && !entered; i++) await new Promise((r) => setTimeout(r, 25));
+  const midCancel = await throws(() => svc.cancel(as, null, r4, {}), /ERASURE_RUNNING/);
+  const midMove = await throws(() => requests.move(as, null, r4, { status: "HELD" }), /ERASURE_SCHEDULED/);
+  gate(); const ran = await running;
+  ok("PF-21d fail (break B1, B2): while the job erases, a cancel → 409 ERASURE_RUNNING and a hand move → 409; the erasure ends recorded: COMPLETED with each module's result",
+    entered && midCancel && midMove && ran.erased.includes(r4) && rowsOf(A, P4) === 0 && statusOf(r4) === "COMPLETED|-" && !kinds(r4).includes("ERASURE_CANCELLED")
+    && (kinds(r4).match(/ERASURE_RESULT/g) ?? []).length === 2, { entered, midCancel, midMove, ran, s: statusOf(r4), k: kinds(r4) });
   mode = "nothing";
   // -------------------------------------------------------------------------------------- the database's rules
   ok("PF-21d fail (database): an erase day on an access request or not after the day received, a forged mark through the job's step → refused",
     refusedBySql(`update plat_data_request set erase_on = received_on + 7 where id = '${access}'`, /plat_data_request_erase_on_set/)
     && refusedBySql(`update plat_data_request set erase_on = received_on where id = '${r3}'`, /plat_data_request_erase_on_set/)
-    && refusedBySql(`select plat_data_request_erasure_step('${r3}', 'OVERDUE_ALERTED', 'x', 'system:x', false)`, /not an erasure step/));
+    && refusedBySql(`select plat_data_request_erasure_step('${r3}', 'OVERDUE_ALERTED', 'x', 'system:x', false, null)`, /not an erasure step/));
   ok("PF-21d fail (walls): a firm's session cannot approve, cancel, read or run an order (refused by the database)",
     refusedAsApp(A, `select plat_data_request_erasure_approve('${r1}', '2027-01-01', 'staff:x')`, /only ExpatReady's own staff/)
-    && refusedAsApp(A, `select plat_data_request_erasure_cancel('${r1}', null, 'staff:x')`, /only ExpatReady's own staff/)
+    && refusedAsApp(A, `select plat_data_request_erasure_cancel('${r1}', null, 'staff:x', '2027-01-01')`, /only ExpatReady's own staff/)
     && refusedAsApp(A, `select plat_data_request_erasure_of('${r1}')`, /only ExpatReady's own staff/)
     && refusedAsApp(A, `select plat_data_request_erasure_due('2027-01-01', 10)`, /only ExpatReady's own staff/));
   // ------------------------------------------------------------------------------------- the migration right after itself
@@ -210,8 +232,8 @@ try {
   const shape = (d: string) => sqlOn(d, `select count(*) from pg_proc p where p.proname like 'plat_data_request_erasure%' and p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader'`)
     + sqlOn(d, `select count(*) from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'PlatDataRequestEventKind' and e.enumlabel like 'ERASURE_%'`)
     + sqlOn(d, `select count(*) from plat_data_request where erase_on is not null`);
-  ok("PF-21d pass: right after its own migration, on an empty and a demo copy: the six definers xr_wall_reader's, the five step kinds, no request scheduled",
-    shape(EMPTY) === "650" && shape(DEMO) === "650", { empty: shape(EMPTY), demo: shape(DEMO) });
+  ok("PF-21d pass: right after its own migration, on an empty and a demo copy: the eight definers xr_wall_reader's, the five step kinds, no request scheduled",
+    shape(EMPTY) === "850" && shape(DEMO) === "850", { empty: shape(EMPTY), demo: shape(DEMO) });
   ok("PF-21d: every function the migration creates carries the prefix plat_data_request_erasure",
     [...readFileSync(join(MIG, NEW, "migration.sql"), "utf8").replace(/^\s*--.*$/gm, "").matchAll(/CREATE (?:OR REPLACE )?FUNCTION (\w+)/g)].every((m) => m[1].startsWith("plat_data_request_erasure")));
   for (const d of all.filter((x) => x > NEW)) psqlFile(EMPTY, join(MIG, d, "migration.sql"));

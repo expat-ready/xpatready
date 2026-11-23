@@ -18,7 +18,7 @@ ALTER TYPE "PlatDataRequestEventKind" ADD VALUE IF NOT EXISTS 'ERASURE_SKIPPED';
 ALTER TABLE "plat_data_request" ADD COLUMN "erase_on" DATE;
 ALTER TABLE "plat_data_request" ADD COLUMN "erasing_since" TIMESTAMPTZ;
 ALTER TABLE "plat_data_request" ADD CONSTRAINT "plat_data_request_erase_on_set" CHECK ("erase_on" IS NULL OR ("type" = 'DELETION' AND "person_id" IS NOT NULL AND "erase_on" > "received_on")
-  AND ("erasing_since" IS NULL OR "erase_on" IS NOT NULL));
+  AND ("erasing_since" IS NULL OR "erase_on" IS NOT NULL) AND ("status" <> 'COMPLETED' OR "erase_on" IS NULL));   -- review M3
 -- The guard (break B1, B2, M3, m4). Claimed and still claimed (same claim): only the daily check's OVERDUE mark. Scheduled
 -- and not claimed: the status moves only to OVERDUE (the daily check); the job's finish runs under its claim, approve sets
 -- the status before the day, cancel clears the day.
@@ -94,7 +94,7 @@ END $fn$;
 -- is claimed now; returns the claim, or null when it cannot be claimed (cancelled, completed, not due, running).
 CREATE FUNCTION plat_data_request_erasure_claim(p_id uuid, p_today date) RETURNS timestamptz
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
-DECLARE r plat_data_request%ROWTYPE; c timestamptz := clock_timestamp();
+DECLARE r plat_data_request%ROWTYPE; c timestamptz := date_trunc('milliseconds', clock_timestamp());   -- the app's Date carries milliseconds
 BEGIN
   PERFORM plat_data_request_system_only();
   SELECT * INTO r FROM plat_data_request x WHERE x.id = p_id FOR UPDATE;
