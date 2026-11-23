@@ -536,3 +536,9 @@ R1.5  PLATFORM_IDENTITY=cognito; app pool = xr-staging-staff (admin-create-only 
   command), then the founder creates or accepts the user and types the password and TOTP on `https://www.staging.lab.expatready.com/sign-in`.
 
 Cost: 2 tasks ran 05:40-05:49Z (~US$0.02); idle again at ~US$0.18/h (RDS, NAT, load balancer, public IPv4).
+
+## Hand-over (Lead 10's account switch), 23 Nov 11:2x IST
+**R1.1 Pass · R1.13 Pass · R1.15 Pass · R1.65 Partial · R1.5 blocked.** AWS: staging stack only, service at 0 tasks, RDS on (~US$0.18/h idle), no CodeBuild project or role, nothing else running.
+* R1.65 missing (code, `deploy/cdk/lib/estate.ts:92-103`): a deny on puts not encrypted with `aws:kms` (an AES256 put is accepted); server access logs kept 90 days; `abortIncompleteMultipartUploadAfter` 1 day; the app task's bucket settings for the cloud FilesPort.
+* R1.5: firms are no longer 0: the Sample seed ran (2 firms, 4 staff, Step 17). Still 0 pool users, and no staff row has an `identitySubject` (Cognito `sub`). Exact next step: the Lead picks the link path (PF-28 invite on staging to an SES-verified address, or a staging link command that sets one Sample staff member's `identitySubject`); then the founder signs in as root, the agent deploys 2 tasks (`~/xr-setup.sh origin/main`, `npm ci` in deploy/cdk, `~/d-cdk.sh deploy 2 <digest>`), the founder creates or accepts the user in `xr-staging-staff` and types the password and TOTP at `https://www.staging.lab.expatready.com/sign-in`; expect `/api/platform/me` 200; then `deploy 0`.
+* R1.24 (extra): address catch-up `web-address/firm-created.ts` refused by row security on `platform_firm_web_address`; needs a fix like PF-8b F8.
