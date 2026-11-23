@@ -38,27 +38,40 @@ fi
 while IFS= read -r u; do
   [ -z "$u" ] || same_repo "$u" "$REMOTE" || { echo "private-sync: refused, origin's pushurl $u is not $REMOTE: nothing synced" >&2; exit 4; }
 done <<< "$(git config --get-all remote.origin.pushurl 2>/dev/null)"
+# (with no pushurl, a url.<base>.pushInsteadOf rule rewrites the push URL; refused when any rule that applies leads
+# elsewhere, F4; git applies none to an explicit pushurl, which the loop above checks)
+u=$(git config --get remote.origin.url 2>/dev/null || true)
+[ -n "$(git config --get-all remote.origin.pushurl 2>/dev/null)" ] || while read -r k v; do
+  [ -n "$k" ] || continue; base="${k#url.}"; base="${base%.pushinsteadof}"   # an empty value matches every URL in git
+  case "$u" in "$v"*) same_repo "$base${u#"$v"}" "$REMOTE" || { echo "private-sync: refused, a pushInsteadOf rule sends the push for $u to $base${u#"$v"}, not $REMOTE: nothing synced" >&2; exit 4; };; esac
+done <<< "$(git config --get-regexp '^url\..*\.pushinsteadof$' 2>/dev/null)"
 # ...never push from a working copy that holds no history of the mirror (a failed or empty clone).
 if ! git rev-parse -q --verify HEAD >/dev/null 2>&1; then
   echo "private-sync: refused, the working copy $HOME_DIR has no commits (git rev-parse HEAD): nothing synced, the mirror untouched" >&2
   exit 4
 fi
+# The push goes to the branch the working copy tracks (a local branch of another name would create a new one).
+# Asked before the pull, so a copy that tracks nothing is exit 4, not the pull's exit 5 (F4).
+up=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+case "$up" in origin/?*) ;; *) echo "private-sync: refused, the working copy tracks no branch of origin ($up): nothing synced" >&2; exit 4;; esac
 # ...and never report success when GitHub could not be read (a swallowed pull said "nothing new")...
 if ! git pull -q --ff-only; then
   echo "private-sync: the pull from $REMOTE failed: nothing synced" >&2
   exit 5
 fi
-# The push goes to the branch the working copy tracks (a local branch of another name would create a new one).
-up=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
-case "$up" in origin/?*) ;; *) echo "private-sync: refused, the working copy tracks no branch of origin ($up): nothing synced" >&2; exit 4;; esac
 mkdir -p notes
 rsync -a --delete --exclude '.DS_Store' "$NOTES"/ notes/side-session-notes/
 # Checked again after the copy, on what git will commit (breaker round 2): the source can empty while the pull runs, a
 # copied .git folder becomes a gitlink, ignored files are never committed. Nothing is pushed unless a note remains.
 # Only regular files are notes (a symlink, mode 120000, is not); a session folder that is its own git repository would be
 # committed as a gitlink without its notes, so it is refused and named. A refusal resets notes/ only.
-git add -A notes
 undo() { git reset -q -- notes; git checkout -q HEAD -- notes 2>/dev/null || true; git clean -qffdx notes; }
+# A session folder that is a git repository with no commit makes git add fail (exit 128): refused and named (F4).
+if ! adderr=$(git add -A notes 2>&1); then
+  undo
+  echo "private-sync: refused, git add failed (a session folder that is a git repository with no commit?): $(tr "\n" " " <<<"$adderr")nothing pushed, the mirror untouched" >&2
+  exit 4
+fi
 subs=$(git ls-files -s -- notes/side-session-notes | awk '$1 == "160000"' | cut -f2-)
 if [ -n "$subs" ]; then
   undo

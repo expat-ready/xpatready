@@ -16,9 +16,10 @@ EOF
 put() { printf '%s' "$2" > "$D/$(printf '%s' "api $1" | tr -c 'A-Za-z0-9' _)"; }
 run() { : > "$D/log"; D="$D" QB_GH="bash $T/gh" REVIEWERS= python3 -I "$Q" --repo $R --now $NOW 2>&1; }
 # Lead 4 (23 Nov): the advice never suggests a browser merge without the Lead's read of the diff (P-423). Without a
-# "Lead read the diff: <full head>" line it asks for the read (ACT10); with one it offers the merge (MERGE10).
+# "Lead read the diff: <full head>" line it asks for the read (ACT10); with one it offers the merge (MERGE10), naming the
+# full head it judged, so a push between the check and the click is seen (F2, follow-up on #2590, 23 Nov).
 ACT10="ACT   queue blocked by checks: #10 (Hold the clock test until 06:00 IST) is a check-only fix, approved, ci green: read its diff first (P-423), then post \"Lead read the diff: $H\"; the next check offers the merge (P-757, P-758)"
-MERGE10="ACT   queue blocked by checks: #10 (Hold the clock test until 06:00 IST) is a check-only fix, approved, ci green, the Lead's read on its head: merge it in the browser now (P-757, P-758)"
+MERGE10="ACT   queue blocked by checks: #10 (Hold the clock test until 06:00 IST) is a check-only fix, approved, ci green, the Lead's read on head $H: merge it in the browser now, only while its head is still $H (P-757, P-758)"
 LR() { printf '{"author_association":"%s","user":{"login":"o"},"created_at":"2026-11-20T07:20:00Z","updated_at":"%s","body":"%s"}' "$1" "${3:-2026-11-20T07:20:00Z}" "$2"; }
 scene() {  # a fresh world: main's guards red, no batch, no dequeue; PR #10 check-only, approved by label, ci green
   D="$T/$1"; mkdir -p "$D"

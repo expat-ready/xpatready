@@ -18,8 +18,8 @@ naming the head from the repository owner's account or a login in REVIEWERS, wit
         "Lead read the diff: <head>"; the next check offers the merge (P-757, P-758)
 and only once that line is on the PR (alone on its line, the full head, by someone with write access, never edited, as
 lead-read-gate.sh reads it; Lead 4, 23 Nov: never a browser merge without the Lead's read of the diff):
-  ACT   queue blocked by checks: #N (<title>) is a check-only fix, approved, ci green, the Lead's read on its head: merge it in
-        the browser now (P-757, P-758)
+  ACT   queue blocked by checks: #N (<title>) is a check-only fix, approved, ci green, the Lead's read on head <head>: merge it
+        in the browser now, only while its head is still <head> (P-757, P-758)
 Not held: one "checks" line, and no per-PR read. A reading that fails is said on a warn line, never a silent pass: the
 queue then counts as possibly held, so a waiting check-only fix is still shown.
 
@@ -274,8 +274,9 @@ def main(argv):
         title = (p.get("title") or "")[:60]
         # Lead 4 (23 Nov): never a browser merge without the Lead's read of the diff (P-423); check paths keep that read.
         if read:
-            print("ACT   queue blocked by checks: #%s (%s) is a check-only fix, approved, ci green, the Lead's read on its head: merge it in the browser now (P-757, P-758)"
-                  % (n, title))
+            # F2: the full head judged, so a push between this check and the click is seen
+            print("ACT   queue blocked by checks: #%s (%s) is a check-only fix, approved, ci green, the Lead's read on head %s: merge it in the browser now, only while its head is still %s (P-757, P-758)"
+                  % (n, title, head, head))
         else:
             print("ACT   queue blocked by checks: #%s (%s) is a check-only fix, approved, ci green: read its diff first (P-423), then post \"Lead read the diff: %s\"; the next check offers the merge (P-757, P-758)"
                   % (n, title, head))
