@@ -11,8 +11,9 @@
 //    key stays taken and is never written again. With bucket versioning on (PF-F1c) the replaced bytes remain as an
 //    earlier version until the bucket's lifecycle rule removes them: that rule is PF-F1c's;
 //  * size (PF-Fw): a put over the port's FILE_MAX_BYTES is refused by the port's own check before any request; a get
-//    reads the object's size (Content-Length) first and refuses one over the cap, or one with no size, with FileTooLarge
-//    without reading its bytes into memory (the body is destroyed unread);
+//    reads the object's size (Content-Length) first and refuses one over the cap with FileTooLarge, and one with no real
+//    size (missing, not a whole number, negative) as S3FilesError NoObjectSize, without reading its bytes into memory
+//    (the body is destroyed unread); bytes read beyond the stated size are refused too (break m3, m5);
 //  * usedBytes (PF-15): the sizes under the firm's prefix (a tombstone is 0 bytes);
 //  * links: S3FileLinks, below.
 // An S3 error is rethrown with its name and status only (the SDK's own text can quote a request, PF-23). CI and lanes
@@ -145,10 +146,13 @@ export class S3Files implements FilesPort {
       const r = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: objKey }));
       if (r.Metadata?.retired !== undefined) { (r.Body as { destroy?: () => void } | undefined)?.destroy?.(); return null; }
       // PF-Fw: the size before the bytes: an object over the cap (or of no stated size) is never read into memory.
-      if (typeof r.ContentLength !== "number" || r.ContentLength > FILE_MAX_BYTES) { (r.Body as { destroy?: () => void } | undefined)?.destroy?.(); throw new FileTooLarge(r.ContentLength ?? Number.NaN); }
+      const size = r.ContentLength, drop = () => (r.Body as { destroy?: () => void } | undefined)?.destroy?.();
+      if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) { drop(); throw new S3FilesError("get", named("NoObjectSize")); }
+      if (size > FILE_MAX_BYTES) { drop(); throw new FileTooLarge(size); }
       bytes = r.Body ? new Uint8Array(await r.Body.transformToByteArray()) : new Uint8Array();
+      if (bytes.byteLength !== size) throw new S3FilesError("get", named("SizeMismatch"));   // the bytes read are the size checked
       meta = r.Metadata; contentType = meta?.type ? Buffer.from(meta.type, "base64url").toString("utf8") : undefined;
-    } catch (e) { if (e instanceof FileTooLarge) throw e; if (statusOf(e) === 404 && (e as Error).name === "NoSuchKey") return null; throw new S3FilesError("get", e); }   // a missing bucket is an error, never "no such file" (break m6)
+    } catch (e) { if (e instanceof FileTooLarge || e instanceof S3FilesError) throw e; if (statusOf(e) === 404 && (e as Error).name === "NoSuchKey") return null; throw new S3FilesError("get", e); }   // a missing bucket is an error, never "no such file" (break m6)
     // An object without our sha256, or whose bytes no longer match it, was not written by this adapter: never served.
     if (!contentType || !meta?.sha256 || meta.sha256 !== await sha256Hex(bytes)) throw new S3FilesError("get", named("IntegrityMismatch"));
     return { key: FileKey.parse(key), bytes, contentType, sha256: meta.sha256 };
