@@ -55,6 +55,48 @@ out=$(PRIVATE_SYNC=0 $U sync --notes "$T" --cmd "bash $T/bad.sh"); ok "PRIVATE_S
 out=$(env -u PRIVATE_SYNC $U sync --notes "$T/no-such-folder" --cmd "bash $T/bad.sh"); ok "no side-notes folder (a cloud copy): skips quietly, no ACT, the sync is not run (Lead 9, 21 Nov)" "$([ "$(acts "$out")" = 0 ] && grep -q 'skipped: no side-notes folder' <<<"$out" && echo 1)" "$out"
 ok "the default command is this folder's private-sync.sh" "$(grep -q 'os.path.join(here, "private-sync.sh")' "$TOOLS/lead-upkeep.py" && echo 1)"
 
+# --- private-sync.sh never empties the mirror (Lead 4, 23 Nov): it refuses when its source copy is missing or empty, or
+# when its working copy of the private home has no commits (git rev-parse); a local bare repository stands in for GitHub.
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t GIT_CONFIG_GLOBAL=/dev/null
+git init -q --bare "$T/remote.git"; git clone -q "$T/remote.git" "$T/seed" 2>/dev/null
+mkdir -p "$T/seed/notes/side-session-notes"; echo kept > "$T/seed/notes/side-session-notes/a.md"
+git -C "$T/seed" add -A; git -C "$T/seed" commit -qm seed; git -C "$T/seed" push -q origin HEAD 2>/dev/null
+before=$(git --git-dir="$T/remote.git" rev-parse HEAD)
+if ! command -v rsync >/dev/null; then   # a container without rsync: a stand-in for "rsync -a --delete --exclude X src/ dst/"
+  mkdir -p "$T/bin"; printf '#!/bin/sh\nfor d; do :; done; s=""; for a; do [ "$a" = "$d" ] && break; s=$a; done\nrm -rf "$d"; mkdir -p "$d"; cp -a "$s". "$d"\n' > "$T/bin/rsync"; chmod +x "$T/bin/rsync"; PATH="$T/bin:$PATH"
+fi
+ps() { PRIVATE_NOTES_DIR="$1" PRIVATE_HOME_DIR="$2" PRIVATE_REMOTE="file://$T/remote.git" bash "$TOOLS/private-sync.sh" 2>&1; }
+out=$(ps "$T/no-notes" "$T/h1"); r=$?
+ok "private-sync: source folder missing → refused (exit 4), the mirror untouched" "$([ $r = 4 ] && grep -q 'refused' <<<"$out" && [ "$(git --git-dir="$T/remote.git" rev-parse HEAD)" = "$before" ] && echo 1)" "exit $r: $out"
+mkdir -p "$T/empty-notes"; out=$(ps "$T/empty-notes" "$T/h2"); r=$?
+ok "private-sync: source folder empty → refused (exit 4), nothing deleted on the mirror" "$([ $r = 4 ] && grep -q 'refused' <<<"$out" && [ "$(git --git-dir="$T/remote.git" rev-parse HEAD)" = "$before" ] && echo 1)" "exit $r: $out"
+mkdir -p "$T/notes"; echo new > "$T/notes/b.md"; git init -q "$T/h3"; git -C "$T/h3" remote add origin "file://$T/remote.git"
+out=$(ps "$T/notes" "$T/h3"); r=$?
+ok "private-sync: a working copy with no commits (git rev-parse HEAD fails) → refused (exit 4), the mirror untouched" "$([ $r = 4 ] && grep -q 'has no commits (git rev-parse HEAD)' <<<"$out" && [ "$(git --git-dir="$T/remote.git" rev-parse HEAD)" = "$before" ] && echo 1)" "exit $r: $out"
+out=$(ps "$T/notes" "$T/h4"); r=$?
+ok "private-sync: a real source pushes (exit 0) and the mirror gains the note" "$([ $r = 0 ] && grep -q 'private-sync: pushed' <<<"$out" && git --git-dir="$T/remote.git" show HEAD:notes/side-session-notes/b.md 2>/dev/null | grep -q new && echo 1)" "exit $r: $out"
+# Breaker, 23 Nov: folders, .DS_Store and hidden files are not notes; the source can empty during the pull; a working copy
+# of another remote or a failed pull must not report success. Each case: refused, the mirror's HEAD unchanged.
+untouched() { [ "$(git --git-dir="$T/remote.git" rev-parse HEAD)" = "$before" ]; }
+before=$(git --git-dir="$T/remote.git" rev-parse HEAD)
+mkdir -p "$T/n-dirs/local_aaa" "$T/n-dirs/local_bbb"; out=$(ps "$T/n-dirs" "$T/h5"); r=$?
+ok "private-sync: a source of empty session folders only → refused (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
+mkdir -p "$T/n-ds/local_aaa"; : > "$T/n-ds/local_aaa/.DS_Store"; out=$(ps "$T/n-ds" "$T/h6"); r=$?
+ok "private-sync: only .DS_Store inside a session folder → refused (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
+mkdir -p "$T/n-hid"; : > "$T/n-hid/._n1.md"; : > "$T/n-hid/.localized"; out=$(ps "$T/n-hid" "$T/h7"); r=$?
+ok "private-sync: only hidden files → refused (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
+mkdir -p "$T/n-race/local_aaa" "$T/gitw"; echo note > "$T/n-race/local_aaa/r.md"
+printf '#!/bin/sh\ncase "$1" in pull) "%s" "$@"; r=$?; rm -rf "%s"/*; exit $r;; esac\nexec "%s" "$@"\n' "$(command -v git)" "$T/n-race" "$(command -v git)" > "$T/gitw/git"; chmod +x "$T/gitw/git"
+out=$(PATH="$T/gitw:$PATH" ps "$T/n-race" "$T/h8"); r=$?
+ok "private-sync: the source empties during the pull (after the first check) → refused after rsync (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
+git init -q --bare "$T/other.git"; git clone -q "$T/remote.git" "$T/h9" 2>/dev/null; git -C "$T/h9" remote set-url origin "file://$T/other.git"
+out=$(ps "$T/notes" "$T/h9"); r=$?
+ok "private-sync: a working copy whose origin is another repository → refused (exit 4)" "$([ $r = 4 ] && grep -q 'refused' <<<"$out" && echo 1)" "exit $r: $out"
+mv "$T/remote.git" "$T/remote.away"; out=$(ps "$T/notes" "$T/h4"); r=$?; mv "$T/remote.away" "$T/remote.git"
+ok "private-sync: the pull fails (GitHub unreachable) → exit 5, never 'nothing new'" "$([ $r = 5 ] && ! grep -q 'nothing new' <<<"$out" && echo 1)" "exit $r: $out"
+W="$TOOLS/../../../../.claude/skills/lead-watch/SKILL.md"
+ok "skill lead-watch step 1 passes the context to lead-watch.sh (LEAD_CONTEXT, Lead 9 21 Nov)" "$(grep -q 'LEAD_CONTEXT=<k> bash product/tools/lead-watch.sh 30' "$W" && echo 1)" "no LEAD_CONTEXT in $W step 1"
+
 # --- wiring in lead-watch.sh
 L="$TOOLS/lead-watch.sh"
 ok "lead-watch.sh step 1c reads the context against STATE and counts its ACT lines" "$(grep -q 'lead-upkeep.py" context --state "\$TOOLS/../STATE.md"' "$L" && grep -q 'echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))' "$L" && echo 1)" "no 1c wiring in $L"
