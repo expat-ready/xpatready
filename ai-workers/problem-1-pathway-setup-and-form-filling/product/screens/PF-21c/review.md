@@ -148,3 +148,40 @@ Journey score round 2: **8.8/10** (pass; `journey-test-reviewer-2026-11-23.md`, 
 Verdict: Approve cc7e9a4be2d24bd140e977afde0e6d606c9bfc3f (no open Blocker or Major; n1 and n2 are small follow-ups)
 
 Reviewer: Approve cc7e9a4be2d24bd140e977afde0e6d606c9bfc3f
+
+## Round 3 (Lead 6), head 21adefa9c559435864a915c6025aa42a6b0ee341
+
+**Reviewer:** a fresh reviewer. **Scope:** only `git diff 67a552a49..21adefa9c`. That diff is one line, `tests/check_pf19r_every_sender.ts:57`. Commit f36ff9e93, made after it, adds only the breaker's report, so the code at the branch head is the same as at 21adefa9c.
+
+**The entry is correct.**
+- **Counts:** `{ messagePort: 1, anySend: 1 }` matches the file. `service.ts:239` `this.messages.send(tx, …)` is the file's only `.send(`. `:258` `this.messages.dispatch(…)` is not a send.
+- **Route text:** it matches the code. `features/platform-register-breaches.ts:11` binds `{ provide: BREACH_MESSAGES, useExisting: MESSAGE_PORT }`. The notice is written in the firm's transaction (`:217-255`) and dispatched after commit (`:258`).
+- **Suite:** `run-suites.sh --only check_pf19r_every_sender.ts` passed, 21 passed and 0 failed, twice (at 21adefa9c and at f36ff9e93). S1 also passed in a clean worktree at 21adefa9c.
+- **The test fails when the rule is removed:** with the 67a552a49 table on the same code, S1 fails with "platform/register/breaches/service.ts: {"messagePort":1,"anySend":1} send call(s) not in the table".
+- **Replay:** `check_pf21c_breaches.ts` passed 46/46 on its own copy.
+
+**Findings on this diff**
+- **n5 (Minor, follow-up; the same as the breaker's R3-2).** Nothing checks the binding that the new route text states. PF-19r's S2 never loads BREACH_MESSAGES. `check_pf21c_breaches.ts:125` tests `"useExisting" in p`, not `=== MESSAGE_PORT`. Today's binding is correct, so this is a missing regression guard, not a live bypass. Fix: assert `useExisting === MESSAGE_PORT` (one S2 line, like person-link's at `:161`).
+- **The breaker's R3-1** (the scan misses `x["send"](` and `.send.call(`) is older than this diff. It is not a finding on this entry.
+- **Seen during the review:** `service.ts` changed for a moment in the shared working tree (an SES `.send` line, then a `.deliver?.()` line). These were the breaker's round 3 mutations (break-report M6 and M9), and they were gone before both suite runs above. Neither is in any commit. Builders and breakers: run mutations in a separate worktree, not in the shared checkout a reviewer is reading.
+
+**R2-1 ruling: Minor.**
+- **Where it can come from:** the attack needs arbitrary SQL as `xr_app`, and no firm-side path gives that.
+- **The app never writes a chosen key:** the only writer of `msg_outbox` is `MessagePort.send` (`platform/messages/send/messages.ts:99-100`). Every caller in `api/src` builds its key on the server with a fixed prefix (grep of `idempotencyKey`). The keys a user can pick (`ai_batch`, `form_instance`, `case_decision`) are in other tables. Every `$queryRawUnsafe`/`$executeRawUnsafe` call passes its values as parameters.
+- **`app.firm_id` is set only by the server:** `firm-scope.ts:97` and `:459`.
+- **The attacker must also know** the breach id, an ACTIVE manage-key staff id and the notice's template version id. A firm sees none of these before its own notice.
+- **Anyone who could run that SQL already has more:** `xr_app` can already `SET ROLE xr_staff_bypass` (`20261116013000_pf12_firm_walls/migration.sql:109`) and holds `xr_data`'s UPDATE and DELETE rights. So R2-1 adds nothing a database-credential attacker does not already have, inside this firm or across firms.
+- **Impact if reached:** high. An Owner would miss a legally relevant notice. The block form is not silent: the Platform Owner sees 409 `NOT_DELIVERABLE`. The forged-record form is silent (409 `ALREADY_NOTIFIED`).
+- **Against the bar:** STANDARDS.md has no Major/Minor definitions. The nearest bars are §6 "[M] Authorisation on the server for every endpoint" and §8 ASVS L2 authorisation. Both are met, because every endpoint is authorised. QUALITY.md's "data at risk" needs a path to the risk, and there is none.
+- **So:** this is a defence-in-depth gap below the app's own trust boundary. That makes it Minor, not Major.
+- **Follow-up row:** in `plat_breach_notice_record`, require each named outbox row to be `QUEUED`, with `created_at >= now()` (the same transaction), or `xmin = txid_current()`. Also refuse a pre-existing `breach-notice:` key in `send()`'s repeat lookup when its row is not from this breach's sender.
+
+**Journey score (round 3):** 8.8/10, pass, carried over with fresh evidence. This diff changes no app code. The PF-21c replay passed 46/46. The isolated copy `rv21c3` on :4641 answered health 200 (16 ms) and an unsigned breach-register call 401 `NOT_SIGNED_IN` (9 ms), then was stopped and dropped. See `journey-test-reviewer-2026-11-23.md`, Round 3. **Could not check:** S2 in a clean worktree, because `p2/` packages are missing there; the runner's 21/21 on the same code covers it.
+
+**Unchanged:** R2-2…R2-4, n1, n2, m1, m5, m6 (Minor or deferred, as in round 2).
+
+Verdict: Approve 21adefa9c559435864a915c6025aa42a6b0ee341 (no open Blocker or Major; n5 and R2-1 are Minor follow-ups)
+
+R2-1: Minor
+
+Reviewer: Approve 21adefa9c559435864a915c6025aa42a6b0ee341

@@ -121,3 +121,15 @@ Fixes that would raise the low criteria, most valuable first:
 | Trust and sources | 1 | 1 | Sample/Unconfirmed labels kept |
 
 **Score: 7 of 8 applicable = 8.8/10. Pass.** Could not test: SES, a screen reader, an intended user's walk (D17/D20).
+
+## Round 3 (head 21adefa9c559435864a915c6025aa42a6b0ee341)
+
+**What changed:** only `tests/check_pf19r_every_sender.ts` (one SENDERS entry). No app code changed and no journey changed.
+**Copy:** `rv21c3` on :4641 (never :4400), local identities, `--ttl 60`; stopped and dropped in the same command.
+**Probes:**
+- `GET /api/health` → 200 in 16 ms.
+- `GET /api/system/register/breaches` with no session → 401 `NOT_SIGNED_IN` ("Sign in first: this needs an ExpatReady staff member's session") in 9 ms.
+**Replay:** `check_pf21c_breaches.ts` passed 46/46 through `run-suites.sh` (its own copy, ports +14000). `check_pf19r_every_sender.ts` passed 21/21.
+**Data:** the same as round 2. The suite checks one outbox row per recipient keyed `breach-notice:<breach>:<staff>`, and no notice is recorded when every address is suppressed.
+**Score:** the round 2 table stands, 7 of 8 applicable = **8.8/10. Pass.** Nothing this diff touches moves a criterion.
+**Could not test:** SES, a screen reader, an intended user's walk (D17/D20).
