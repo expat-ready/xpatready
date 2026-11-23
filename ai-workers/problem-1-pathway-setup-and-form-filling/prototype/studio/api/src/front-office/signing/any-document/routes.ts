@@ -17,7 +17,7 @@ type F = { buffer: Buffer; size: number; originalname?: string } | undefined;
 const Id = z.uuid({ error: "This is not a valid id." });
 /** Multipart sends text: the signer ids as one comma-separated field or the field repeated. */
 const SEND = strict({
-  title: z.string().trim().min(1).max(200).refine((t) => !/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(t) && /[\p{L}\p{N}]/u.test(t), "This must be plain text on one line."),   // break m1: C0, C1, format and line-separator characters
+  title: z.string().trim().min(1).max(200).refine((t) => !/[\p{Cc}\u2028\u2029]|(?![\u200c\u200d])\p{Cf}/u.test(t) && /[\p{L}\p{N}]/u.test(t), "This must be plain text on one line."),   // break m1: C0, C1, format (ZWNJ and ZWJ kept: Persian, Indic) and line-separator characters
 
   prospectId: Id,
   signerPersonIds: z.union([z.string().max(400), list(z.string().max(40), 9)]).transform((v) => (Array.isArray(v) ? v : v.split(",")).map((x) => x.trim()).filter(Boolean)).pipe(z.array(Id).min(1).max(9)),

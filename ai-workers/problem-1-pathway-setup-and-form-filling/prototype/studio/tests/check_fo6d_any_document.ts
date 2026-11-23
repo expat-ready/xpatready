@@ -185,6 +185,9 @@ try {
   ok("FO-6d S3 fail: sending OTHER documents never moves the prospect or makes a retainer (stage unchanged, no prospect.won)",
     stage() === stage0 && count("fo_retainer", `prospect_id = '${PRO}'`) === 0 && count("audit_event", `firm_id = '${A}' and action = 'prospect.won'`) === 0);
 
+  const certified = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, bytes: Buffer.concat([PDF, Buffer.from("<< /AcroForm << /Fields [] >> /Perms << /DocMDP 7 0 R >> >>")]), title: "قرارداد\u200cنامه (Sample)" }));
+  ok("FO-6d S2 pass: a certified (DocMDP) PDF with a form is not taken for a government form, and a Persian title with a zero-width non-joiner is plain text (201)", certified.status === 201, certified.text.slice(0, 200));
+
   // ------------------------------------------------------------------------------- S4: two people sign; the sealed copy is filed
   const pd1 = sql(`select provider_document_id from fo_signature_request where id = '${Q1}'`), signerOf = (p: string) => sql(`select id from fo_signer where request_id = '${Q1}' and person_id = '${p}'`);
   const [early] = await signing.act(A, pd1, signerOf(PB), "signed");
