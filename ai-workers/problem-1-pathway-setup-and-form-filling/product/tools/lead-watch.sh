@@ -74,7 +74,9 @@ for p in rl:  print("ACT   #%d red after approval (%s)" % (p["number"],p["title"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "$SEEN"
 # 2b. WIP against the caps (B204, P-745, founder 20 Nov: "enforceable and ... followed mandatory by the agents through the
 # hooks"): items building (an open non-draft PR or a lane naming the item; lanes from the saved app view) against 8 and
-# Built-not-Proven against 12; ACT over either cap and for each item building outside the open waves (waves.py wip).
+# Built-not-Proven against 12; ACT over either cap and for each item building outside the open waves (waves.py wip);
+# ENF-761 part 1: an ACT UNDER the caps too, when open-wave items wait with no lane or PR, or under 4 qa lanes run while
+# items wait for qa ("ACT   capacity: ...", counted below with the rest).
 gh pr list --state open --limit 200 --json number,title,body,isDraft,headRefName,createdAt,labels > "$STATE_DIR/prs-body.json" 2>/dev/null
 wp=$(python3 -I "$TOOLS/waves.py" wip --prs "$STATE_DIR/prs-body.json" 2>&1); echo "$wp"; act=$((act + $(grep -c '^ACT' <<<"$wp"))); seen "$wp"
 grep -qE '^(wip   |ACT   wip:)' <<<"$wp" || ACT "wip not counted: waves.py wip did not run ($(head -1 <<<"$wp")): fix design/waves.tsv or qa/CAPABILITIES.md"
