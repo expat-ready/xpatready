@@ -16,9 +16,12 @@
 // At start-up every route our staff call (@SystemKeys or @AnySystemStaff) must declare one; one that does not stops it,
 // as does a read (@ReadsFirm, @ReadsAcrossFirms) that answers through @Res() or @Next(): its answer would leave before
 // its line (review m1), so "no line, no answer" could not hold.
-// Limits, stated (review m2-m5): a changes-firm line is counted when written, not when it commits, so a line written in a
-// transaction that rolls back while the handler still answers success passes the check (the convention is one transaction
-// for the change and its line, as AuditPort asks); a change that commits without a line and then throws is not checked;
+// A changes-firm line counts only once committed: the check reads, among the firms this request wrote lines for, the lines
+// it committed under its own actor and correlation id (round 2; breaker 1, review m2).
+// Limits, stated (review m3-m5, breaker 2): the check does not know which firm the change was for (a route's firm may come
+// from its body), so a line on another firm passes; two requests sharing a client's X-Request-Id, by the same staff member
+// on the same firm at the same moment, could each see the other's line; a change that commits without a line and then
+// throws is not checked;
 // a wrong declaration (@NoFirmData on a route that reads a firm) is caught only in review, which the suite's allow-list of
 // @NoFirmData routes makes visible; @ReadsFirm writes for any well-formed firm id the handler answered for (a real route
 // answers 404 for a firm that does not exist, so it never gets this far).
@@ -29,13 +32,14 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { from, mergeMap, type Observable } from "rxjs";
 import { Db } from "../../../core.ts";
 import { problem } from "../../identity/keys.ts";
+import { logPort } from "../../observability/log.ts";
 import { writeAuditWithAlarm } from "../../observability/alerts.ts";
 import { SYSTEM_ACCESS, SYSTEM_PATH, type SystemAccess } from "../../system-identity/keys.ts";
 import { auditEvent, AuditRefused, platformAuditWorkspaceId } from "../audit-event.ts";
 import { auditContext } from "../context.ts";
 import { AuditActionNames } from "../firm-read/action-names.ts";
 import { FIRM_DATA, type FirmData } from "./declare.ts";
-import { ourStaffLinesInRequest } from "./tracker.ts";
+import { ourStaffFirmsInRequest } from "./tracker.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -88,7 +92,10 @@ export function undeclaredFirmData(controllers: unknown[], reflector: Reflector)
   for (const c of controllers) {
     const ctrl = c as Ctrl | undefined;
     if (!ctrl?.prototype) continue;
-    for (const key of Object.getOwnPropertyNames(ctrl.prototype)) {
+    // Round 2 (breaker 4): the handlers a controller inherits from a base class too, each once (the nearest wins).
+    const keys = new Set<string>();
+    for (let p: object | null = ctrl.prototype; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) for (const k of Object.getOwnPropertyNames(p)) keys.add(k);
+    for (const key of keys) {
       const handler = key === "constructor" ? undefined : (ctrl.prototype as Record<string, unknown>)[key];
       if (typeof handler !== "function" || Reflect.getMetadata(METHOD_METADATA, handler) === undefined) continue;
       const targets = [handler as () => unknown, ctrl];
@@ -129,13 +136,28 @@ export class SystemAccessLines implements NestInterceptor, OnModuleInit {
     const data = this.reflector.getAllAndOverride<FirmData>(FIRM_DATA, targets);
     const base = ([] as string[]).concat(Reflect.getMetadata(PATH_METADATA, ctx.getClass()) ?? "")[0] ?? "", path = ([] as string[]).concat(Reflect.getMetadata(PATH_METADATA, ctx.getHandler()) ?? "")[0] ?? "";
     const call: Call = { method: req.method, route: join(base, path) };
-    return next.handle().pipe(mergeMap((body) => from(this.after(data, req, call).then(() => body))));
+    const res = ctx.switchToHttp().getResponse<{ headersSent?: boolean }>();
+    return next.handle().pipe(mergeMap((body) => from(this.after(data, req, call).then(() => {
+      // Round 2 (breaker A): a handler that reached the response another way (req.res) answered before this step. Its
+      // line is still written above; only "no line, no answer" could not hold, so it is reported loudly, never silent.
+      if (res?.headersSent && data?.kind !== "none") logPort.error("system_answer_before_line", undefined, { method: call.method, route: call.route });
+      return body;
+    }))));
+  }
+
+  /** Round 2 (breaker 1, review m2): the lines this request committed on the trails of the firms it wrote for, under its
+   *  own actor and correlation id. A line written in a transaction that rolled back is not there, so it is not counted. */
+  private async committedLines(): Promise<number> {
+    const firms = ourStaffFirmsInRequest(), ctx = auditContext();
+    if (!firms.length || !ctx?.actor || !ctx.correlationId) return 0;
+    const [row] = await this.db.$queryRaw<{ n: number }[]>`select count(*)::int as n from audit_event where correlation_id = ${ctx.correlationId} and actor = ${ctx.actor} and firm_id::text = any(${firms})`;
+    return row?.n ?? 0;
   }
 
   private async after(data: FirmData | undefined, req: Req, call: Call): Promise<void> {
     if (!data) return missingLine(call);   // the start-up rule makes this unreachable; fail closed all the same
     if (data.kind === "none") return;
-    if (data.kind === "changes-firm") { if (ourStaffLinesInRequest() < 1) await missingLine(call); return; }
+    if (data.kind === "changes-firm") { if (!(await this.committedLines())) await missingLine(call); return; }
     if (data.kind === "reads-firm") {
       const firm = req.params?.[data.param];
       if (typeof firm !== "string" || !UUID.test(firm)) return missingLine(call);   // a firm read answered without a firm id

@@ -64,7 +64,7 @@ export class AuditEventAdapter implements AuditPort<Tx> {
         data: { workspaceId, firmId, caseId: e.caseId?.toLowerCase() ?? null, actorType, correlationId: ctx?.correlationId ?? null, supportSessionId: ctx?.supportSessionId ?? null,
           actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: { ...e.detail, ...flattenValues(e.before, e.after), firmId } as Prisma.InputJsonValue },
       });
-      if (actorType === "OUR_STAFF") noteOurStaffLine();   // AUD-3: the changes-firm check counts it (access/lines.ts)
+      if (actorType === "OUR_STAFF") noteOurStaffLine(firmId);   // AUD-3: the changes-firm check counts it (access/lines.ts)
     }, ids, { attempts: 1 });
   }
 

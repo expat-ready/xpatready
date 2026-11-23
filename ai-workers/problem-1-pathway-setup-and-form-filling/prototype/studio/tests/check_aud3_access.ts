@@ -10,7 +10,7 @@
 // One process, a scratch database (dropped at the end), no model call (US$0).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_aud3_access.ts
 import "reflect-metadata";
-import { Body, Controller, Get, Module, Param, Post, Res } from "@nestjs/common";
+import { Body, Controller, Get, Module, Param, Post, Req, Res } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory, Reflector } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -89,10 +89,21 @@ class Aud3TestController {
     await walled.$transaction((tx) => auditEvent.record(tx as never, { firmId: id, actor, action: "platform.aud3_test.changed", entity: "platform_firm", entityKey: id, summary: "Sample change." }));
     return { changed: id };
   }
+  @Post("firms/:id/rolls-back") @SystemKeys("system/firm:read") @ChangesFirm("a change whose line rolls back")
+  async rollsBack(@Param("id") id: string) {
+    handled++;
+    const actor = (await import("../api/src/platform/audit/context.ts")).auditContext()?.actor ?? "none";
+    await walled.$transaction(async (tx) => { await auditEvent.record(tx as never, { firmId: id, actor, action: "platform.aud3_test.changed", entity: "platform_firm", entityKey: id, summary: "Sample change." }); throw new Error("rolled back"); }).catch(() => undefined);
+    return { changed: id };
+  }
+  @Get("firms/:id/via-req") @SystemKeys("system/firm:read") @ReadsFirm("id")
+  viaReq(@Param("id") id: string, @Req() r: { res: { json(b: unknown): void } }) { handled++; r.res.json({ firm: id }); }
   @Get("mine") @AnySystemStaff("own identity") @NoFirmData("own identity")
   mine() { handled++; return { ok: true }; }
 }
 @Controller("api/system/aud3-undeclared") class UndeclaredController { @Get() @SystemKeys("system/firm:read") thing() { return 1; } }
+class InheritedBase { @Get() @SystemKeys("system/firm:read") thing() { return 1; } }
+@Controller("api/system/aud3-inherited") class InheritedController extends InheritedBase {}
 @Controller("api/system/aud3-raw") class RawReadController { @Get("firms/:id") @SystemKeys("system/firm:read") @ReadsFirm("id") thing(@Res() res: { send(b: unknown): void }) { res.send(1); } }
 
 try {
@@ -133,6 +144,11 @@ try {
   const noFirm = await call(base, "GET", `/api/system/aud3-test/firms/${firmA}/no-uuid`, { token: supportT });
   ok("AUD-3 DW1 fail (fail-closed): a firm read whose declared parameter holds no firm id answers 500 AUDIT_LINE_MISSING, the data never sent",
     noFirm.status === 500 && noFirm.body.code === "AUDIT_LINE_MISSING" && noFirm.body.firm === undefined, noFirm);
+  const a3 = lines(`firm_id = '${firmA}' and action = '${FIRM_READ}'`);
+  const viaReq = await call(base, "GET", `/api/system/aud3-test/firms/${firmA}/via-req`, { token: supportT });
+  await new Promise((r) => setTimeout(r, 300));   // the line step runs after the handler's own answer
+  ok("AUD-3 DW1 pass (round 2, breaker A): a read that answers through req.res still gets its line on the firm's trail",
+    viaReq.status === 200 && lines(`firm_id = '${firmA}' and action = '${FIRM_READ}'`) === a3 + 1, viaReq);
   const aud4 = (await import("../api/src/platform/audit/firm-read/action-names.ts")).AuditActionNames;
   ok("AUD-3 DW1 pass: the firm's own log (AUD-4) names the line in plain words", aud4.label(FIRM_READ) === "ExpatReady staff read the firm's records", aud4.label(FIRM_READ));
 
@@ -155,6 +171,10 @@ try {
   const wrote = await call(base, "POST", `/api/system/aud3-test/firms/${firmA}/writes`, { token: supportT, body: {} });
   ok("AUD-3 DW3 pass: a change route that writes its own line answers 201, with exactly that one line (no read line added)",
     wrote.status === 201 && lines(`firm_id = '${firmA}'`) === a1 + 1, wrote);
+  const a2 = lines(`firm_id = '${firmA}'`);
+  const rolled = await call(base, "POST", `/api/system/aud3-test/firms/${firmA}/rolls-back`, { token: supportT, body: {} });
+  ok("AUD-3 DW3 fail (round 2, breaker 1): a change whose line was written in a transaction that rolled back answers 500 AUDIT_LINE_MISSING (only committed lines count)",
+    rolled.status === 500 && rolled.body.code === "AUDIT_LINE_MISSING" && lines(`firm_id = '${firmA}'`) === a2, rolled);
   const placed = await call(base, "POST", "/api/system/register/holds", { token: ownerT, body: { firmId: firmB, scope: { kind: "FIRM" }, reason: "Sample: regulator's inquiry" } });
   ok("AUD-3 DW3 pass: PF-21b's place (a declared change that writes its own line) answers 201 through the check",
     placed.status === 201 && lines(`firm_id = '${firmB}' and action = 'platform.legal_hold.placed' and actor = 'ourstaff:${OWNER}'`) === 1, placed);
@@ -165,6 +185,8 @@ try {
     await throwsLike(() => assertFirmDataDeclared([UndeclaredController], reflector), (e) => /UndeclaredController\.thing \(\/api\/system\/aud3-undeclared\)/.test(String(e))));
   ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's)",
     await throwsLike(() => assertFirmDataDeclared([...sysFeature.controllers, ...holdsFeature.controllers, Aud3TestController], reflector), () => true) === false);
+  ok("AUD-3 DW3 fail (start-up, round 2, breaker 4): a handler inherited from a base class with no declaration stops the start-up too",
+    await throwsLike(() => assertFirmDataDeclared([InheritedController], reflector), (e) => /InheritedController\.thing \(\/api\/system\/aud3-inherited\)/.test(String(e))));
   ok("AUD-3 DW3 fail (start-up, review m1): a read that answers through @Res() stops the start-up (its answer would leave before its line)",
     await throwsLike(() => assertFirmDataDeclared([RawReadController], reflector), (e) => /RawReadController\.thing .*answers through @Res\(\)/.test(String(e))));
   // Review m4: an opt-out is visible in review. Every route on main that declares @NoFirmData, by name; a new one fails here.
