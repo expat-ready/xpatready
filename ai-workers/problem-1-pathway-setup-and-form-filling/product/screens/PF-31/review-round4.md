@@ -96,3 +96,19 @@ Reviewer:
 * (c) Approve 448664d9961dd8b091ef6366e82c8adc87e0bec1
 * (b) Approve da3ad2497818aabeb5abee37b02bdbfc6575e4e0
 * (a) Approve 1f41ceb83edaf5e8aeb0b0e947723d2078d797e5
+
+## Follow-up: web head `3966a0f8837381ef9ca5a80c3ccef12123f8c34d` (diff only, `git diff 4f20cff18 3966a0f88`)
+Since `da3ad2497` it adds the round-4 report files and one CI-fix commit. I checked it on :4736 (`xr_studio_pf31d`, built from this head) with my own probes `rv4c.mjs` and `rv4d.mjs` (uncommitted, in my scratchpad). I used the Studio picker only (simulated people), with no staff sign-in.
+
+* **PersonNotice outside WorkspaceRouter** (`App.tsx:46`): correct.
+  * The component uses only `useToast` and `onActorChange` (`components/frame.tsx:181-197`) and no router hook, so mounting it outside the router is safe. It is still inside `ToastProvider` (`main.tsx`).
+  * Probe rv4d, Studio with 1 tab and then with 3 tabs: one change of person in the picker pushes **one** notice.
+  * Each tab's frame draws its own toaster (`frame.tsx:116,125`, from before this PR), and all of them read the one toast list. With 3 tabs, exactly one toaster is visible: the shown tab's (`checkVisibility` true). The other two are inside `hidden` panels, so they are neither shown nor announced. The `aria-live` region of a `display:none` panel is out of the accessibility tree.
+  * Probe rv4c: changing the person from the second tab also gives one notice. A second browser window shows its own single notice, and none shows in the first window. No page errors.
+* **check_bk4a's pattern** (`tests/check_bk4a.ts:91`): it accepts `<><PersonNotice /><WorkspaceRouter>` and still fails if the notice moves back inside the router (`<WorkspaceRouter><PersonNotice />` does not match `<(BrowserRouter|)><PersonNotice`). Fine.
+* **"Open items" shows FoldArrow under 768 px** (`workspace.tsx:282`): `FoldArrow open={menu}` next to `aria-expanded`. It is a visual cue only, with no change in behaviour.
+* **`web/src/runtime/MODULE.rows/PF-31.md`**: one line naming the check. Fine.
+* Round-4 Shoulds 1–4 are not in this PR. They are deferred to a follow-up, as the coordinator recorded, and remain open there. None is a Blocker or Major.
+
+**Verdict: Approve** for (b) at this head. (c) and (a) are unchanged and stay approved.
+(b) Approve 3966a0f8837381ef9ca5a80c3ccef12123f8c34d
