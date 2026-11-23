@@ -137,7 +137,7 @@ export class PlatformIdentity implements OnModuleInit {
     const staff = await this.db.platformStaff.findFirst({ where: firmScope(firmId, where), include: { firm: { select: { key: true, status: true } }, grants: { where: { endedAt: null }, select: { role: true } } } });
     if (!staff) return unauthorized("This sign-in is not a staff member of any firm here.", "UNKNOWN_STAFF");
     // PF-11c (SA-2-21): a firm closed on day 90 refuses every sign-in, whatever the session.
-    if (staff.firm.status === "DELETED") return unauthorized(FIRM_CLOSED, "FIRM_CLOSED");
+    if (staff.firm.status === "DELETED") return problem(401, "Account closed", FIRM_CLOSED, { code: "FIRM_CLOSED" });
     if (staff.status !== "ACTIVE") return unauthorized(staff.status === "DEACTIVATED" ? "This staff account has been deactivated. Ask your firm's Owner or Admin." : "This staff account is suspended. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     const authMs = id.authTime * 1000;
     // Cognito: a session with a later sign-in time than the last one seen is a new sign-in, which ends the older one.
@@ -191,7 +191,7 @@ export class PlatformIdentity implements OnModuleInit {
     const key = body.firmKey, firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select platform_firm_of_key(${key}) as f`)[0]?.f;
     const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true, status: true } })) : null;
     // PF-11c (break m1): a closed firm's door issues no token and writes no sign-in line.
-    if (firm?.status === "DELETED") return unauthorized(FIRM_CLOSED, "FIRM_CLOSED");
+    if (firm?.status === "DELETED") return problem(401, "Account closed", FIRM_CLOSED, { code: "FIRM_CLOSED" });
     if (firm) enterFirm(firm.id);   // PF-12: the rest of the sign-in runs as this firm
     const who = typeof body.actorId === "string" && body.actorId ? { actorId: body.actorId } : { email: emailOf(body.email) };
     const staff = firm && await this.db.platformStaff.findFirst({ where: firmScope(firm.id, who) });

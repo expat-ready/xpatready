@@ -5,7 +5,8 @@
 //      the close runs on the first sweep after the hold is released (SA-2-21 "unless under legal hold");
 //   2. every departure notice of the clock (EXIT_NOTICE_DAYS, PF-5) must have been sent, else it waits and raises
 //      firm_closure_blocked (AlertPort): a person looks;
-//   3. the archive copy comes first: the firm's record and every activity-log line of the firm, as JSON Lines, written to
+//   3. PF-11's full export must be in the write-once archive (FullExportPort; none is wired until PF-11 exists), then the
+//      archive copy comes first: the firm's record and every activity-log line of the firm, as JSON Lines, written to
 //      the write-once archive (AuditArchivePort, `firms/<firmId>/closure-<holdSeq>-<run time>-<random>.jsonl`, a fresh key each run) kept for the longest floor of
 //      AUD-5's table (7 years), then read back and compared byte for byte; at the close the copy must still hold every line of the firm. No archive wired, a failed write or a copy that
 //      does not read back → firm_closure_blocked, and the firm stays as it is;
@@ -44,7 +45,11 @@ export const ARCHIVE_YEARS = Math.max(...KEEP_PERIODS.filter((r) => r.kind === "
 export const archiveKeyOf = (firmId: string, holdSeq: string, at: Date, run: string = randomUUID().slice(0, 8)) => `firms/${firmId.toLowerCase()}/closure-${holdSeq}-${at.toISOString().replace(/[-:.]/g, "").toLowerCase()}-${run}.jsonl`;
 export const addYears = (d: Date, years: number) => { const x = new Date(d.getTime()); x.setUTCFullYear(x.getUTCFullYear() + years); return x; };
 
-export type ClosureDeps = { db: PrismaClient; audit: AuditPort<Tx>; archive: AuditArchivePort | null; holds: LegalHoldPort<Tx> | null; alerts: () => AlertPort; now: () => Date };
+/** PF-11's full export of the firm (review M5; row step (2)): the archive key of its `firms/<firmId>/export-<date>.zip`, written
+ *  to the same write-once archive and offered for download, or null when it is not there yet. PF-11 provides it; until then
+ *  nothing is wired and no firm is closed. */
+export type FullExportPort = { archivedExport(firmId: string): Promise<{ key: string } | null> };
+export type ClosureDeps = { db: PrismaClient; audit: AuditPort<Tx>; archive: AuditArchivePort | null; holds: LegalHoldPort<Tx> | null; fullExport: FullExportPort | null; alerts: () => AlertPort; now: () => Date };
 export type ClosureResult =
   | { state: "not_due" | "held" | "changed" }
   | { state: "blocked"; rule: string }
@@ -75,6 +80,10 @@ export class FirmClosure {
     if (missing.length) return this.blocked(id, "PF-11c.notices_missing");
     const archive = this.d.archive;
     if (!archive) return this.blocked(id, "PF-11c.no_archive");
+    // Row step (2): the firm's full export (PF-11) is in the write-once archive before anything else (review M5).
+    if (!this.d.fullExport) return this.blocked(id, "PF-11c.no_full_export");
+    const exp = await this.d.fullExport.archivedExport(id).catch(() => null);
+    if (!exp || !exp.key.startsWith(`firms/${id}/export-`) || !(await archive.get(exp.key).catch(() => null))) return this.blocked(id, "PF-11c.no_full_export");
 
     // The archive copy first (rule 3; break M1, M2): a fresh copy every run under its own key (never one left by an earlier
     // run), read back and compared byte for byte with what was written, kept until exactly the date asked for.
@@ -92,6 +101,9 @@ export class FirmClosure {
 
     try {
       return await this.d.db.$transaction(async (tx): Promise<ClosureResult> => {
+      // Billing's own lock first (review M3: the order webhook.ts takes it, then the firm), so a payment and the close
+      // never interleave: whichever comes second sees the other's status.
+      await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`plat_billing:${id}`}))`;
       await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for update`;
       const again = await exitClock(tx, id);
       if (!again || again.holdSeq !== clock.holdSeq) return { state: "changed" };
@@ -107,7 +119,7 @@ export class FirmClosure {
       const keepUntil = copy.retainUntil.toISOString();
       await this.d.audit.record(tx, { firmId: id, actor: CLOSURE_ACTOR, action: CLOSED_ACTION, entity: "platform_firm", entityKey: id,
         summary: `The firm's account was closed after 90 days on payment hold. Its archive copy was written first and is kept until ${keepUntil.slice(0, 10)}; nothing was deleted.`,
-        detail: { holdSeq: clock.holdSeq, deletionDate: clock.deletionDate.toISOString(), archiveKey: key, sha256: copy.sha256, keepUntil, staffSessionsEnded: staff.length, closedAt: now.toISOString() },
+        detail: { holdSeq: clock.holdSeq, deletionDate: clock.deletionDate.toISOString(), archiveKey: key, exportKey: exp.key, sha256: copy.sha256, keepUntil, staffSessionsEnded: staff.length, closedAt: now.toISOString() },
         before: { status: "PAYMENT_HOLD" }, after: { status: "DELETED", archiveKey: key } });
       return { state: "closed", archiveKey: key, sha256: copy.sha256, staffSessionsEnded: staff.length };
       });

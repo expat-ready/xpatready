@@ -52,7 +52,21 @@ const fake = new FakeClock(T0.toISOString());
 // The store's clock runs 25 ms ahead of the job's (break M2: on real clocks the store writes a little after the job starts).
 const mail = fakeMail(), alerts = fakeAlerts(), archive = fakeAuditArchive(() => new Date(fake.now().getTime() + 25));
 const notices = new ExitNotices({ db, mail, audit: auditEvent, now: () => fake.now(), appUrl: "https://app.example.test" });
-const deps = { db, audit: auditEvent, archive, holds: new PgLegalHolds(), alerts: () => alerts, now: () => fake.now() };
+/** PF-11's full export, faked (review M5): the archive key of the firm's export once a test has written it. */
+const exportsDone = new Map<string, string>();
+const fullExport = { async archivedExport(firm: string) { const k = exportsDone.get(firm.toLowerCase()); return k ? { key: k } : null; } };
+const deps = { db, audit: auditEvent, archive, holds: new PgLegalHolds(), fullExport, alerts: () => alerts, now: () => fake.now() };
+const closureKeys = async (firm: string) => (await archive.list(`firms/${firm}/closure-`)).length;
+/** Runs `fn` while another transaction holds `lock` (SQL run first in it); answers whether fn was still waiting after 400 ms. */
+async function whileLocked<T>(lock: (tx: { $executeRawUnsafe: (q: string) => Promise<number> }) => Promise<unknown>, fn: () => Promise<T>, during?: (tx: { $executeRawUnsafe: (q: string) => Promise<number> }) => Promise<unknown>) {
+  let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+  let locked!: () => void; const held = new Promise<void>((r) => { locked = r; });
+  const other = db.$transaction(async (tx) => { await lock(tx); locked(); await gate; if (during) await during(tx); }, { timeout: 30_000 });
+  await held;
+  let done = false; const p = fn().finally(() => { done = true; });
+  await new Promise((r) => setTimeout(r, 400));
+  const waited = !done; release(); await other; return { waited, result: await p };
+}
 const closure = new FirmClosure(deps);
 const firmOf = (key: string) => sql(`select id from platform_firm where key = '${key}'`);
 const statusOf = (firm: string) => sql(`select status from platform_firm where id = '${firm}'`);
@@ -114,17 +128,29 @@ try {
   const before = countsOf(A), beforeB = countsOf(B), auditBefore = allLines(A);
   const day89 = await run(() => withFirm(A, () => closure.runFirm(A)), 89, 23);
   ok("day 89 pass: nothing happens: the firm stays on payment hold, nothing is archived, no alert", day89.state === "not_due" && statusOf(A) === "PAYMENT_HOLD" && (await archive.list("")).length === 0 && alerts.raised.length === 0, day89);
+  {
+    // Row step (2): PF-11's full export must be in the archive first (review M5).
+    await fake.set(at(90, 2));
+    const unwired = await withFirm(A, () => new FirmClosure({ ...deps, fullExport: null }).runFirm(A));
+    const notYet = await withFirm(A, () => closure.runFirm(A));
+    ok("M5 fail: with no full export (PF-11) wired, or none archived yet, nothing is closed: blocked, alert raised", unwired.state === "blocked" && notYet.state === "blocked" && notYet.rule === "PF-11c.no_full_export" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.no_full_export") === 2 && (await closureKeys(A)) === 0, { unwired, notYet });
+    const otherFirms = `firms/${B}/export-2027-03-02.zip`; await archive.put(otherFirms, Buffer.from("PK firm B"), addYears(fake.now(), 7)); exportsDone.set(A, otherFirms);
+    const wrong = await withFirm(A, () => closure.runFirm(A));
+    ok("M5 fail: an export key of another firm is not the firm's export: blocked", wrong.state === "blocked" && wrong.rule === "PF-11c.no_full_export" && statusOf(A) === "PAYMENT_HOLD", wrong);
+    const mine = `firms/${A}/export-2027-03-02.zip`; await archive.put(mine, Buffer.from("PK firm A full export (Sample)"), addYears(fake.now(), 7)); exportsDone.set(A, mine);
+    const noB = `firms/${B}/export-none.zip`; exportsDone.set(B, noB);   // B's export is named but not in the archive
+  }
 
   // ------------------------------------------------------------------------- day 90, but the conditions are not met
   {
     const r = await run(() => withFirm(B, () => closure.runFirm(B)), 90, 2);
-    ok("day 90 fail: a firm whose notices were not all sent is not closed; it waits and raises firm_closure_blocked", r.state === "blocked" && statusOf(B) === "PAYMENT_HOLD" && alertsFor(B, "PF-11c.notices_missing") === 1 && (await archive.list(`firms/${B}/`)).length === 0, r);
+    ok("day 90 fail: a firm whose notices were not all sent is not closed; it waits and raises firm_closure_blocked", r.state === "blocked" && statusOf(B) === "PAYMENT_HOLD" && alertsFor(B, "PF-11c.notices_missing") === 1 && (await closureKeys(B)) === 0, r);
     const none = await withFirm(A, () => new FirmClosure({ ...deps, archive: null }).runFirm(A));
     ok("day 90 fail: with no write-once archive wired nothing is closed (archive first): blocked, alert raised", none.state === "blocked" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.no_archive") === 1 && lines(A, CLOSED_ACTION) === 0, none);
     archive.failPut = true;
     const broken = await withFirm(A, () => closure.runFirm(A));
     archive.failPut = false;
-    ok("day 90 fail: an archive write that fails closes nothing: the firm stays on hold, no session ends, alert raised", broken.state === "blocked" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.archive_write_failed") === 1 && Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}' and reason = '${FIRM_CLOSED_REASON}'`)) === 0 && (await archive.list("")).length === 0, broken);
+    ok("day 90 fail: an archive write that fails closes nothing: the firm stays on hold, no session ends, alert raised", broken.state === "blocked" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.archive_write_failed") === 1 && Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}' and reason = '${FIRM_CLOSED_REASON}'`)) === 0 && (await closureKeys(A)) === 0, broken);
     const noHolds = await withFirm(A, () => new FirmClosure({ ...deps, holds: null }).runFirm(A));
     ok("day 90 fail: with no legal-hold check wired nothing is closed (BR-7: the hold is asked first)", noHolds.state === "blocked" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.no_hold_check") === 1, noHolds);
   }
@@ -133,7 +159,7 @@ try {
   const holdId = sql(`insert into plat_legal_hold (id, firm_id, scope_kind, reason, placed_by) values (gen_random_uuid(), '${A}', 'FIRM', 'A court order (Sample)', 'staff:platform-owner') returning id`).split("\n")[0];
   {
     const h1 = await withFirm(A, () => closure.runFirm(A)), h2 = await withFirm(A, () => closure.runFirm(A));
-    ok("hold fail: a legal hold on the firm stops the close: nothing archived, the firm stays on hold, one firm.closure_held line a day (run twice)", h1.state === "held" && h2.state === "held" && statusOf(A) === "PAYMENT_HOLD" && (await archive.list("")).length === 0 && lines(A, HELD_ACTION) === 1, { h1, h2, held: lines(A, HELD_ACTION) });
+    ok("hold fail: a legal hold on the firm stops the close: nothing archived, the firm stays on hold, one firm.closure_held line a day (run twice)", h1.state === "held" && h2.state === "held" && statusOf(A) === "PAYMENT_HOLD" && (await closureKeys(A)) === 0 && lines(A, HELD_ACTION) === 1, { h1, h2, held: lines(A, HELD_ACTION) });
     sql(`update plat_legal_hold set released_at = now(), released_by = 'staff:platform-owner', release_reason = 'Order lifted (Sample)' where id = '${holdId}'`);
   }
 
@@ -146,6 +172,26 @@ try {
     const late = { ...archive, put: async (k: string, b: Buffer, u: Date) => { const r = await archive.put(k, b, u); sql(`insert into audit_event (id, workspace_id, actor, action, entity, summary, firm_id) values (gen_random_uuid(), '${ws}', 'system:pf11c-check', 'pf11c.check.late_line', 'platform_firm', 'a line written after the copy', '${A}')`); return r; } };
     const stale = await withFirm(A, () => new FirmClosure({ ...deps, archive: late }).runFirm(A));
     ok("M1 fail: a line written after the copy (the copy is stale) closes nothing; the next run writes a new copy", stale.state === "changed" && statusOf(A) === "PAYMENT_HOLD" && lines(A, CLOSED_ACTION) === 0, stale);
+  }
+
+  // ------------------------------------------------------------------------- the close transaction's guards (review M3, M4)
+  {
+    const onHold = () => sql(`update platform_firm set status = 'PAYMENT_HOLD' where id = '${A}'`);
+    const payingMidway = { ...archive, put: async (k: string, b: Buffer, u: Date) => { const r = await archive.put(k, b, u); sql(`update platform_firm set status = 'ACTIVE' where id = '${A}'`); return r; } };
+    const paid = await withFirm(A, () => new FirmClosure({ ...deps, archive: payingMidway }).runFirm(A));
+    ok("M4 fail: a payment between the checks and the close (the clock ended) closes nothing: the clock is checked again", paid.state === "changed" && statusOf(A) === "ACTIVE" && lines(A, CLOSED_ACTION) === 0, paid);
+    onHold();
+    let lateHold = "";
+    const holding = { ...archive, put: async (k: string, b: Buffer, u: Date) => { const r = await archive.put(k, b, u); lateHold = sql(`insert into plat_legal_hold (id, firm_id, scope_kind, reason, placed_by) values (gen_random_uuid(), '${A}', 'FIRM', 'Placed during the close (Sample)', 'staff:platform-owner') returning id`).split("\n")[0]; return r; } };
+    const heldLate = await withFirm(A, () => new FirmClosure({ ...deps, archive: holding }).runFirm(A));
+    ok("M4 fail: a legal hold placed between the checks and the close stops it: the hold is checked again inside the close", heldLate.state === "held" && statusOf(A) === "PAYMENT_HOLD" && lines(A, CLOSED_ACTION) === 0, heldLate);
+    sql(`update plat_legal_hold set released_at = now(), released_by = 'staff:platform-owner', release_reason = 'Lifted (Sample)' where id = '${lateHold}'`);
+    const billing = await whileLocked((tx) => tx.$executeRawUnsafe(`select pg_advisory_xact_lock(hashtext('plat_billing:${A}'))`), () => withFirm(A, () => closure.runFirm(A)), (tx) => tx.$executeRawUnsafe(`update platform_firm set status = 'ACTIVE' where id = '${A}'`));
+    ok("M3 fail: a payment holding billing's lock (webhook.ts) makes the close wait; it then sees the payment and closes nothing", billing.waited && billing.result.state === "changed" && statusOf(A) === "ACTIVE" && lines(A, CLOSED_ACTION) === 0, { waited: billing.waited, result: billing.result });
+    onHold();
+    const row = await whileLocked((tx) => tx.$executeRawUnsafe(`select id from platform_firm where id = '${A}' for no key update`), () => withFirm(A, () => closure.runFirm(A)), (tx) => tx.$executeRawUnsafe(`update platform_firm set status = 'ACTIVE' where id = '${A}'`));
+    ok("M4 fail: a staff change holding the firm's row (an invitation accept) makes the close wait (FOR UPDATE); it then sees the change", row.waited && row.result.state === "changed" && statusOf(A) === "ACTIVE" && lines(A, CLOSED_ACTION) === 0, { waited: row.waited, result: row.result });
+    onHold();
   }
 
   // ------------------------------------------------------------------------- day 90 (after the release): the close
@@ -199,7 +245,7 @@ try {
     const putAgain = await refusedWith(() => archive.put(key, Buffer.from("{}\n"), addYears(fake.now(), 1)), ArchiveKeyExists);
     ok("keep period fail: the copy cannot be replaced with a shorter keep period", putAgain && (await archive.get(key))!.retainUntil.getTime() === copy!.retainUntil.getTime());
     const afterB = countsOf(B);
-    ok("firm B pass: firm B is untouched (still on hold, no archive copy, no row fewer)", statusOf(B) === "PAYMENT_HOLD" && (await archive.list(`firms/${B}/`)).length === 0 && Object.keys(beforeB).every((t) => (afterB[t] ?? 0) >= beforeB[t]));
+    ok("firm B pass: firm B is untouched (still on hold, no archive copy, no row fewer)", statusOf(B) === "PAYMENT_HOLD" && (await closureKeys(B)) === 0 && Object.keys(beforeB).every((t) => (afterB[t] ?? 0) >= beforeB[t]));
   }
 
   // ------------------------------------------------------------------------- run twice, the same day and later
