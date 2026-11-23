@@ -9,10 +9,10 @@
 //   reads-across  one `cross_tenant.access` line on the platform's own trail (no firm; the platform audit workspace, never
 //                 reset, P-571 (1)), naming the staff member and the scope;
 //   none          nothing (our own staff's sign-in, identity and access, logged on our own table by PF-4s's guard).
-// A recorded departure, as PF-12b part 3's touchPlatform: AuditPort's AuditEntry requires a firm, and the case-side shape
-// refuses our staff, so the firm-less cross_tenant.access line is written here, with the port's rules (the request's own
-// actor word, exactly; OUR_STAFF only; ids only in detail; fail-closed with one alert), not through a port change
-// (a firm-less platform entry on the port is the tech lead's later row, P-423).
+// The firm-less cross_tenant.access line goes through AuditPort as AUD-3c's firm-less kind, its second fixed pair
+// (cross_tenant.access / plat_system_access; round 6, Lead 15's ruling on #3209): the adapter keeps the request's own
+// actor word, OUR_STAFF only, a detail of scope, method, route and declared filters, fail-closed with one alert. No
+// direct audit_event write is left here (AUD-1m CW1).
 // At start-up every route our staff call (@SystemKeys or @AnySystemStaff) must declare one; one that does not stops it,
 // as does a read (@ReadsFirm, @ReadsAcrossFirms) that answers through @Res() or @Next(): its answer would leave before
 // its line (review m1), so "no line, no answer" could not hold.
@@ -35,7 +35,7 @@ import { problem } from "../../identity/keys.ts";
 import { logPort } from "../../observability/log.ts";
 import { writeAuditWithAlarm } from "../../observability/alerts.ts";
 import { SYSTEM_ACCESS, SYSTEM_PATH, type SystemAccess } from "../../system-identity/keys.ts";
-import { auditEvent, AuditRefused, platformAuditWorkspaceId } from "../audit-event.ts";
+import { auditEvent, AuditRefused } from "../audit-event.ts";
 import { auditContext } from "../context.ts";
 import { AuditActionNames } from "../firm-read/action-names.ts";
 import { FIRM_DATA, type FirmData } from "./declare.ts";
@@ -62,14 +62,13 @@ export async function recordFirmRead(tx: Tx, firmId: string, call: Call): Promis
 }
 
 /** One firm-less cross_tenant.access line on the platform's own trail, in `tx`: the staff member (the actor) and the scope. */
-export async function recordCrossTenant(tx: Tx, scope: string, call: Call, filters: Record<string, string | null> = {}): Promise<void> {
-  await writeAuditWithAlarm(async () => {
-    const { actor, correlationId } = ourStaff();
-    const workspaceId = await platformAuditWorkspaceId(tx);
-    await tx.auditEvent.create({ data: { workspaceId, firmId: null, caseId: null, actorType: "OUR_STAFF", correlationId: correlationId ?? null, supportSessionId: null,
-      actor, action: CROSS_TENANT, entity: "plat_system_access", entityKey: call.route.slice(0, 200), summary: `ExpatReady staff read more than one firm's records: ${scope}.`,
-      detail: { scope, method: call.method, route: call.route, ...filters } } });
-  }, { entity: ACCESS_ENTITY, entityKey: call.route.slice(0, 200) }, { attempts: 1 });
+export async function recordCrossTenant(tx: Tx, scope: string, call: Call, filters: Record<string, string> = {}): Promise<void> {
+  // Round 6 (Lead 15's ruling on #3209): through AuditPort as AUD-3c's firm-less kind, its cross_tenant.access pair; the
+  // adapter writes today's row (platform audit workspace, OUR_STAFF, the request's correlation id) with its one attempt and
+  // its alarm. ourStaff() refuses first outside our staff's request, in this file's own words.
+  const { actor } = ourStaff();
+  await auditEvent.record(tx, { firmId: null, actor, action: "cross_tenant.access", entity: "plat_system_access", entityKey: call.route.slice(0, 200),
+    summary: `ExpatReady staff read more than one firm's records: ${scope}.`, detail: { scope, method: call.method, route: call.route, ...filters }, before: null, after: null });   // a read: nothing before or after
 }
 
 /** The changes-firm check's failure: one alert (ids only) and a plain 500. */

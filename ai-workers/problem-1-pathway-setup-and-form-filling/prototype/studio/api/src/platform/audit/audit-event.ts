@@ -14,7 +14,7 @@
 // so the caller's transaction rolls the change back. One try: inside PostgreSQL a failed statement aborts the
 // transaction, so a retry there could never succeed.
 import type { Prisma } from "@prisma/client";
-import { AuditEntry, CaseActor, CaseEntry, flattenValues, isCaseEntry, isOurStaffPlatformEntry, OUR_STAFF_PLATFORM_ENTITY, OurStaffPlatformEntry, ourStaffPlatformRefusal, type AuditPort } from "../../../../ports/audit.ts";
+import { AuditEntry, CaseActor, CaseEntry, flattenValues, isCaseEntry, isOurStaffPlatformEntry, OUR_STAFF_PLATFORM_ENTITIES, OurStaffPlatformEntry, ourStaffPlatformRefusal, type AuditPort } from "../../../../ports/audit.ts";
 import { writeAuditWithAlarm } from "../observability/alerts.ts";
 import { actorTypeOfWord, auditContext } from "./context.ts";
 import { noteOurStaffLine } from "./access/tracker.ts";
@@ -50,7 +50,7 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       const ctx = auditContext();
       if (ctx?.firmId) ids.firmId = ctx.firmId;
       const e = AuditEntry.parse(entry), firmId = e.firmId.toLowerCase();
-      if (e.entity === OUR_STAFF_PLATFORM_ENTITY) throw new AuditRefused(`audit line refused: ${OUR_STAFF_PLATFORM_ENTITY} is the firm-less kind's entity (AUD-3c), never a firm's line`);
+      if (OUR_STAFF_PLATFORM_ENTITIES.has(e.entity)) throw new AuditRefused(`audit line refused: ${e.entity} is the firm-less kind's entity (AUD-3c), never a firm's line`);
       if (ctx?.firmId && ctx.firmId !== firmId) throw new AuditRefused(`audit line refused: the line names firm ${firmId}, but this request or job acts for firm ${ctx.firmId} (a line never lands on another firm's trail)`);
       const actorType = actorTypeOfWord(e.actor);
       // AUD-3a: our staff's line is written under our staff's own word (ourstaff:<id>, OUR_STAFF) and only in our staff's

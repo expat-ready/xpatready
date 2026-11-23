@@ -66,6 +66,7 @@ const accessFeature = (await import("../api/src/features/audit-access.ts")).defa
 const { ReadsFirm, ChangesFirm, NoFirmData } = await import("../api/src/platform/audit/access/declare.ts");
 const { assertFirmDataDeclared, recordCrossTenant, recordFirmRead, SystemAccessLines, FIRM_READ, CROSS_TENANT } = await import("../api/src/platform/audit/access/lines.ts");
 const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
+const port: Record<string, any> = await import("../ports/audit.ts");
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 wallUnscopedQueries();
 const pool = new WalledPool({ connectionString: appDatabaseUrl(urlOf(DB), {}), max: 6, options: "-c TimeZone=UTC" });
@@ -169,6 +170,17 @@ try {
     list.status === 200 && lines(`action = '${CROSS_TENANT}'`) === crossBefore + 1 && cross === `none|OUR_STAFF|ourstaff:${OWNER}|legal holds of every firm|${list.requestId}`, { list: list.status, cross });
   ok("AUD-3 DW2 fail: the list writes no line on any firm's trail", lines("firm_id is not null") === firmLinesBefore);
   const filtered = await call(base, "GET", `/api/system/register/holds?firm=${firmA}`, { token: ownerT });
+  // Round 6 (Lead 15's ruling): the stored row, field by field, is today's row; the same check runs before and after the
+  // line moved onto the port (one attempt, its alarm, the correlation id, the platform audit workspace, no firm or case).
+  const rowOf = (rid: string | null) => JSON.parse(sql(`select json_build_object('workspace', (select key from workspace w where w.id = e.workspace_id), 'firm_id', e.firm_id, 'case_id', e.case_id,
+    'actor_type', e.actor_type, 'correlation_id', e.correlation_id, 'support_session_id', e.support_session_id, 'actor', e.actor, 'action', e.action, 'entity', e.entity, 'entity_key', e.entity_key,
+    'summary', e.summary, 'detail', e.detail, 'combination_id', e.combination_id)::text from audit_event e where e.action = '${CROSS_TENANT}' and e.correlation_id = '${rid}'`) || "null");
+  const want = (rid: string | null, filters: Record<string, string>) => ({ workspace: "platform-audit", firm_id: null, case_id: null, actor_type: "OUR_STAFF", correlation_id: rid, support_session_id: null,
+    actor: `ourstaff:${OWNER}`, action: CROSS_TENANT, entity: "plat_system_access", entity_key: "/api/system/register/holds", summary: "ExpatReady staff read more than one firm's records: legal holds of every firm.",
+    detail: { scope: "legal holds of every firm", method: "GET", route: "/api/system/register/holds", ...filters }, combination_id: null });
+  const sameRow = (a: unknown, b: unknown) => { const norm = (v: any): any => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, norm(v[k])])) : v); return JSON.stringify(norm(a)) === JSON.stringify(norm(b)); };
+  ok("AUD-3 DW2 (round 6): the cross_tenant.access row, field by field, is exactly today's: platform-audit workspace, no firm or case, OUR_STAFF, ourstaff:<id>, the correlation id, no support session, entity plat_system_access, the route as key, the summary, detail = scope, method, route (and the firm filter when given)",
+    sameRow(rowOf(list.requestId), want(list.requestId, {})) && sameRow(rowOf(filtered.requestId), want(filtered.requestId, { firm: firmA })), { plain: rowOf(list.requestId), filtered: rowOf(filtered.requestId) });
   ok("AUD-3 DW2 pass: a list filtered to one firm still names that filter on the line",
     filtered.status === 200 && sql(`select detail->>'firm' from audit_event where action = '${CROSS_TENANT}' order by at desc limit 1`) === firmA);
 
@@ -213,6 +225,28 @@ try {
   ok("AUD-3 DW4 fail: the writers refuse outside our staff's request (no request at all)",
     await throwsLike(() => owner.$transaction((tx) => recordFirmRead(tx as never, firmA, { method: "GET", route: "/x" })), (e) => /only in a request our staff make/.test(String(e)))
     && await throwsLike(() => owner.$transaction((tx) => recordCrossTenant(tx as never, "Sample scope", { method: "GET", route: "/x" })), (e) => /only in a request our staff make/.test(String(e))));
+  // Round 6 (Lead 15's ruling on #3209): AUD-3c's kind is a union of exactly two fixed pairs; neither can cross, and the
+  // cross_tenant.access pair's detail is scope, method, route and declared filters only.
+  const me = `ourstaff:${OWNER}`, route = "/api/system/register/holds";
+  const pair = (action: string, entity: string, detail: Record<string, unknown>) => ({ firmId: null, actor: me, action, entity, entityKey: route, summary: "Sample.", detail });
+  const goodCross = pair("cross_tenant.access", "plat_system_access", { scope: "legal holds of every firm", method: "GET", route });
+  const crossings = [pair("cross_tenant.access", "plat_bypass_use", { scope: "x y", method: "GET", route }), pair("platform.bypass", "plat_system_access", { use: "x" })];
+  const badDetails = [pair("cross_tenant.access", "plat_system_access", { scope: "x y", method: "GET", route, email: "jane.doe@sample.example" }),
+    pair("cross_tenant.access", "plat_system_access", { scope: "x y", method: "GET", route, firmId: firmA }), pair("cross_tenant.access", "plat_system_access", { scope: "x y", method: "GET", route, firm: "not-a-firm" })];
+  ok("AUD-3 DW4 fail (round 6): the schema refuses both crossings (cross_tenant.access with plat_bypass_use; platform.bypass with plat_system_access) and a cross-firm detail with any other key, a firmId key, or a firm that is not a firm id; it takes the good pair",
+    crossings.every((e) => !port.OurStaffPlatformEntry.safeParse(e).success) && badDetails.every((e) => !port.OurStaffPlatformEntry.safeParse(e).success) && port.OurStaffPlatformEntry.safeParse(goodCross).success);
+  ok("AUD-3 DW4 fail (round 6): the real adapter refuses both crossings with nothing written, before any request check",
+    (await Promise.all(crossings.map((e) => throwsLike(() => owner.$transaction((tx) => auditEvent.record(tx as never, e as never)), (err) => !/only in a request our staff make/.test(String(err)))))).every(Boolean));
+  let fctx: any = { actor: me, actorType: "OUR_STAFF" };
+  const fake = port.fakeAudit({ context: () => fctx });
+  await fake.record({}, goodCross);
+  const fakeRefuses = async (e: unknown) => throwsLike(() => fake.record({}, e), () => true);
+  const refusedLikewise = (await Promise.all([...crossings, ...badDetails].map(fakeRefuses))).every(Boolean)
+    && await fakeRefuses({ firmId: firmA, actor: me, action: "platform.read", entity: "plat_system_access", entityKey: route, summary: "x", before: null, after: null });
+  fctx = { actor: "staff:x", actorType: "FIRM_STAFF" };
+  const refusedFirmStaff = await fakeRefuses(goodCross);
+  ok("AUD-3 DW4 (round 6): the port's fake keeps the good cross_tenant.access pair in our staff's context and refuses alike: both crossings, the three bad details, the kind's entity on a firm line, a firm staff context",
+    fake.platformEntries.length === 1 && refusedLikewise && refusedFirmStaff && fake.platformEntries.length === 1);
   // A line that cannot be written: forced at the database for one call, by a trigger refusing the read line's action, then dropped.
   sql(`create function aud3_refuse() returns trigger language plpgsql as $$ begin raise exception 'aud3 test: refused'; end $$;
        create trigger aud3_refuse before insert on audit_event for each row when (new.action = '${FIRM_READ}') execute function aud3_refuse()`);
