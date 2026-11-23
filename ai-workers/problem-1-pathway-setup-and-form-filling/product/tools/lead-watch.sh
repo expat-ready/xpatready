@@ -122,7 +122,7 @@ sl=$(python3 -I "$TOOLS/sle-watch.py" --grouped --dump "$STATE_DIR/sle.json" 2>&
 fresh "sle-watch.py: GitHub open PRs, their comments, label events and ci check runs; cockpit/history.jsonl for the board time"
 # 2h. Queue blocked by checks (ENF-758, P-757, P-758): while main's guards are red, or a merge batch failed or a PR was
 # dequeued in 2 h, one ACT per open check-only PR (tests, CI, Mergify, guard tools) approved on its head with green ci: the
-# Lead merges it in the built-in browser that same check. 20 Nov: #2435 and #2438 held the queue ~4 h, each red without the other.
+# Lead reads its diff, then merges it in the built-in browser (Lead 4, 23 Nov: never before the read). 20 Nov: #2435 and #2438 held the queue ~4 h, each red without the other.
 qb=$(python3 -I "$TOOLS/queue-blocked.py" 2>&1); echo "$qb"; seen "$qb"; act=$((act + $(grep -c '^ACT' <<<"$qb")))
 fresh "queue-blocked.py: GitHub open PRs, their comments and labels, and the guards and ci runs (gh)"
 

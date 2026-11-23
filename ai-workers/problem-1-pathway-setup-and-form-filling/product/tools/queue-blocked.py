@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Queue blocked by checks (ENF-758, P-757, P-758): the check-only fix the Lead merges in the browser at once.
+"""Queue blocked by checks (ENF-758, P-757, P-758): the check-only fix the Lead reads, then merges in the browser at once.
 
 20 Nov 09:0x-13:1x IST the merge queue stood about 4 h on #2435 (a test hold) and #2438 (a Mergify scope), each red
 without the other, and no check told the Lead to merge them by hand. P-758: at the first check that sees checks holding
@@ -14,7 +14,12 @@ other two signals decide. Then every open PR (not a draft, not a Mergify batch)
 that touches only check paths (CHECK_ONLY), is approved on its head (`review: approved`, or the last "Reviewer:" verdict
 naming the head from the repository owner's account or a login in REVIEWERS, with write access, is
 "Reviewer: Approve <head>", queue-gate.sh's rule) and has a green `ci` on its head gets:
-  ACT   queue blocked by checks: #N (<title>) is a check-only fix, approved, ci green: merge it in the browser now (P-757, P-758)
+  ACT   queue blocked by checks: #N (<title>) is a check-only fix, approved, ci green: read its diff first (P-423), then post
+        "Lead read the diff: <head>"; the next check offers the merge (P-757, P-758)
+and only once that line is on the PR (alone on its line, the full head, by someone with write access, never edited, as
+lead-read-gate.sh reads it; Lead 4, 23 Nov: never a browser merge without the Lead's read of the diff):
+  ACT   queue blocked by checks: #N (<title>) is a check-only fix, approved, ci green, the Lead's read on its head: merge it in
+        the browser now (P-757, P-758)
 Not held: one "checks" line, and no per-PR read. A reading that fails is said on a warn line, never a silent pass: the
 queue then counts as possibly held, so a waiting check-only fix is still shown.
 
@@ -82,6 +87,37 @@ def when(s):
 def check_only(files):
     """files: every changed path, both sides of a rename."""
     return bool(files) and all(any(r.search(f) for r in CHECK_ONLY) for f in files)
+
+
+# The Lead's read exactly as lead-read-gate.sh on main reads it (breaker and reviewer, 23 Nov): HTML comments, ``` and
+# ~~~ blocks dropped, then * _ ` and CR; a line indented by 4 spaces or a tab is code; ASCII blanks only (a no-break space
+# is not one); "Lead read the diff:" (colon optional) or "Lead read: OK", the full head, an optional full stop.
+LEAD_READ = re.compile(r"^[ \t\v\f]*lead read(?:: *ok| the diff:?)[ \t\v\f]+([0-9a-f]{40})[ \t\v\f]*\.?[ \t\v\f]*$", re.I)
+DROP = [re.compile(r"<!--[\s\S]*?(?:-->|\Z)"), re.compile(r"```[\s\S]*?(?:```|\Z)"), re.compile(r"~~~[\s\S]*?(?:~~~|\Z)")]
+
+
+def lead_read(comments, head, author="", leads=()):
+    """The Lead's read of this head, as lead-read-gate.sh judges it: a comment by someone with write access, never
+    edited, and, when LEAD_LOGINS names logins, by one of them and never the PR's author; a line alone (above)."""
+    leads = [x.lower() for x in leads]
+    for c in comments:
+        if c.get("author_association") not in TRUSTED or not c.get("created_at"):
+            continue
+        if (c.get("updated_at") or c.get("created_at")) != c.get("created_at"):
+            continue
+        login = str((c.get("user") or {}).get("login") or "").lower()
+        if leads and (login not in leads or login == str(author or "").lower()):
+            continue
+        body = c.get("body") or ""
+        for d in DROP:
+            body = d.sub("", body)
+        for line in re.sub(r"[*_`\r]", "", body).split("\n"):
+            if line.startswith("    ") or line.startswith("\t"):
+                continue
+            m = LEAD_READ.match(line)
+            if m and m.group(1).lower() == head.lower():
+                return True
+    return False
 
 
 def approved_by_comment(comments, head, who):
@@ -166,6 +202,17 @@ def main(argv):
         except Unread:
             rv = ""
     who = [repo.split("/")[0]] + rv.split()
+    # LEAD_LOGINS: the repository variable lead-read-gate.sh reads (env first; unset on GitHub = any writer). Any other
+    # read failure: no merge is offered at all (fails safe), said on a warn line.
+    ll = os.environ.get("LEAD_LOGINS")
+    if ll is None:
+        try:
+            ll = gh("api", "repos/%s/actions/variables/LEAD_LOGINS" % repo, "-q", ".value")
+        except Unread as e:
+            ll = "" if re.search(r"\b404\b|not found", str(e), re.I) else None
+            if ll is None:
+                print("warn  queue blocked by checks: LEAD_LOGINS unreadable (%s): no merge is offered this check" % e)
+    leads = None if ll is None else [x for x in re.split(r"[\s,]+", ll) if x]
     for x in note:
         print(x)
     for w in warn:
@@ -187,15 +234,27 @@ def main(argv):
             if not check_only(files):
                 continue
             labels = [l.get("name") for l in p.get("labels") or []]
-            if "review: approved" not in labels and not approved_by_comment(pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"]), head, who):
-                continue
+            comments = None
+            if "review: approved" not in labels:
+                comments = pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"])
+                if not approved_by_comment(comments, head, who):
+                    continue
             if not ci_green(api("repos/%s/commits/%s/check-runs?check_name=ci&filter=latest&per_page=100" % (repo, head), dict).get("check_runs") or []):
                 continue
+            if comments is None:
+                comments = pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"])
+            read = leads is not None and lead_read(comments, head, (p.get("user") or {}).get("login"), leads)
         except Unread as e:
             print("warn  queue blocked by checks: #%s unreadable (%s)" % (n, e)); continue
         hits += 1
-        print("ACT   queue blocked by checks: #%s (%s) is a check-only fix, approved, ci green: merge it in the browser now (P-757, P-758)"
-              % (n, (p.get("title") or "")[:60]))
+        title = (p.get("title") or "")[:60]
+        # Lead 4 (23 Nov): never a browser merge without the Lead's read of the diff (P-423); check paths keep that read.
+        if read:
+            print("ACT   queue blocked by checks: #%s (%s) is a check-only fix, approved, ci green, the Lead's read on its head: merge it in the browser now (P-757, P-758)"
+                  % (n, title))
+        else:
+            print("ACT   queue blocked by checks: #%s (%s) is a check-only fix, approved, ci green: read its diff first (P-423), then post \"Lead read the diff: %s\"; the next check offers the merge (P-757, P-758)"
+                  % (n, title, head))
     print("checks queue held by checks (%s): %d approved green check-only fix(es) open" % ("; ".join(why) or "possibly", hits))
     return 0
 
