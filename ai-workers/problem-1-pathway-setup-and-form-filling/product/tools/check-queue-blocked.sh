@@ -158,7 +158,7 @@ for b in "**Lead read the diff:** $H" "Lead read the diff $H" "Lead read:OK $H";
   put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "$b")]"; out=$(run)
   ok "the gate counts it, so the merge is offered: $b" "$(grep -qxF "$MERGE10" <<< "$out" && echo 1)" "$out"; done
 put "repos/$R/pulls?state=open&per_page=100" '[{"number":10,"title":"Hold the clock test until 06:00 IST","draft":false,"user":{"login":"lead1"},"head":{"sha":"'$H'","ref":"fix/test-hold"},"labels":[{"name":"review: approved"}]}]'
-lr() { : > "$D/log"; D="$D" QB_GH="bash $T/gh" REVIEWERS= LEAD_LOGINS="$1" python3 -I "$Q" --repo $R --now $NOW 2>&1; }
+lr() { : > "$D/log"; D="$D" QB_GH="bash $T/gh" REVIEWERS= QB_LEAD_LOGINS="$1" python3 -I "$Q" --repo $R --now $NOW 2>&1; }
 put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read the diff: $H")]"
 out=$(lr "Lead1, lead2"); ok "LEAD_LOGINS set: a read by a writer outside it offers no merge" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
 out=$(lr "o"); ok "LEAD_LOGINS set: a read by a login in it offers the merge" "$(grep -qxF "$MERGE10" <<< "$out" && echo 1)" "$out"
@@ -176,16 +176,30 @@ put "repos/$R/pulls?state=open&per_page=100" '[{"number":10,"title":"Hold the cl
 put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read the diff: $H")]"
 printf '%s\n' 'lead-only' > "$D/$(printf '%s' "api orgs/o/actions/variables/LEAD_LOGINS -q .value" | tr -c 'A-Za-z0-9' _)"
 out=$(run); ok "LEAD_LOGINS set only for the organization (repository variable 404): read from the organization, so a read by another writer offers no merge" "$(grep -qxF "$ACT10" <<< "$out" && grep -q 'orgs/o/actions/variables/LEAD_LOGINS' "$D/log" && echo 1)" "$out"
-: > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh" REVIEWERS= LEAD_LOGINS= python3 -I "$Q" --repo $R --now $NOW 2>&1)
-ok "an empty LEAD_LOGINS in the shell does not override the variables" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+: > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh" REVIEWERS= LEAD_LOGINS="o" python3 -I "$Q" --repo $R --now $NOW 2>&1)
+ok "a LEAD_LOGINS in the shell never overrides the variables (the gate reads only vars.LEAD_LOGINS; breaker round 3)" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
 rm -f "$D/$(printf '%s' "api orgs/o/actions/variables/LEAD_LOGINS -q .value" | tr -c 'A-Za-z0-9' _)"
 put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read the diff: $H"),$(LR OWNER 'note\u0000')]"; out=$(run)
 ok "a NUL in another counted comment (the gate's grep reads binary, HOLD): no merge offered" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
 put "repos/$R/issues/10/comments?per_page=100&page=1" '[{"author_association":"OWNER","user":{"login":"o"},"created_at":"2026-11-20T07:20:00Z","updated_at":"","body":"Lead read the diff: '$H'"}]'; out=$(run)
 ok "an empty updated_at is not 'never edited' (as jq's // reads it): no merge offered" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
 put "repos/$R/issues/10/comments?per_page=100&page=1" '[{"author_association":"OWNER","user":{"login":"Ka"},"created_at":"2026-11-20T07:20:00Z","updated_at":"2026-11-20T07:20:00Z","body":"Lead read the diff: '$H'"}]'
-: > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh" REVIEWERS= LEAD_LOGINS="$(printf '\342\204\252a')" python3 -I "$Q" --repo $R --now $NOW 2>&1)
+: > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh" REVIEWERS= QB_LEAD_LOGINS="$(printf '\342\204\252a')" python3 -I "$Q" --repo $R --now $NOW 2>&1)
 ok "logins fold ASCII only (a Kelvin sign is not K, as jq's ascii_downcase): no merge offered" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+# Breaker round 3 (23 Nov): grep -i under C.UTF-8 folds ASCII only; jq's \s does not split on \x1c-\x1f; only gh's real
+# 404 forms mean "unset" (also gh-fallback.py's curl form, whose 404 sits past 120 characters).
+put "repos/$R/pulls?state=open&per_page=100" '[{"number":10,"title":"Hold the clock test until 06:00 IST","draft":false,"head":{"sha":"'$H'","ref":"fix/test-hold"},"labels":[{"name":"review: approved"}]}]'
+for b in "Lead read: O$(printf '\342\204\252') $H" "Lead read the d$(printf '\304\260')ff: $H"; do
+  put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "$b")]"; out=$(run)
+  ok "a Unicode look-alike letter the gate's grep -i does not fold: no merge offered: $b" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"; done
+put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read the diff: $H")]"
+out=$(lr "$(printf 'lead\037o')"); ok "LEAD_LOGINS split as jq splits it (\\x1f is not a separator): no merge offered" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+printf '%s\n' 'echo "$*" >> "$D/log"; case "$*" in *repos/o/r/actions/variables/LEAD_LOGINS*) printf "gh: something (HTTP 502)\nerror: upstream said repository not found in cache\n" >&2; exit 1;; esac; f="$D/$(printf %s "$*" | tr -c A-Za-z0-9 _)"; [ -f "$f" ] && cat "$f" || { echo "HTTP 404: no fake answer for $*" >&2; exit 1; }' > "$T/gh502"
+: > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh502" REVIEWERS= python3 -I "$Q" --repo $R --now $NOW 2>&1)
+ok "an error that merely mentions 'not found' is not a 404: no merge offered" "$(grep -qxF "$ACT10" <<< "$out" && grep -q 'LEAD_LOGINS unreadable' <<< "$out" && echo 1)" "$out"
+printf '%s\n' 'echo "$*" >> "$D/log"; case "$*" in *repos/o/r/actions/variables/LEAD_LOGINS*) echo "gh fallback: GET https://api.github.com/repos/o/r/actions/variables/LEAD_LOGINS failed: curl: (22) The requested URL returned error: 404" >&2; exit 1;; esac; f="$D/$(printf %s "$*" | tr -c A-Za-z0-9 _)"; [ -f "$f" ] && cat "$f" || { echo "HTTP 404: no fake answer for $*" >&2; exit 1; }' > "$T/ghfb"
+: > "$D/log"; out=$(D="$D" QB_GH="bash $T/ghfb" REVIEWERS= python3 -I "$Q" --repo $R --now $NOW 2>&1)
+ok "gh-fallback.py's 404 (past 120 characters) counts as a 404: the organization is asked, then unset, the merge offered" "$(grep -qxF "$MERGE10" <<< "$out" && grep -q 'orgs/o/actions/variables/LEAD_LOGINS' "$D/log" && echo 1)" "$out"
 ok "no line in queue-blocked.py offers a browser merge outside the read branch" "$(python3 -I - "$Q" <<'PY' && echo 1
 import sys,re
 src=open(sys.argv[1]).read().splitlines()
