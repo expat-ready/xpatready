@@ -181,15 +181,18 @@ export function databaseFindings(t: Template, days = 35): string[] {
 export const ACCESS_LOG_DAYS = 90;
 /** PF-F1c: an upload started and never finished is aborted after this many days (its parts are billed until then). */
 export const ABORT_UPLOAD_DAYS = 1;
-type Rule = { Status?: string; ExpirationInDays?: number; NoncurrentVersionExpiration?: { NoncurrentDays?: number }; AbortIncompleteMultipartUpload?: { DaysAfterInitiation?: number } };
+type Rule = { Status?: string; Prefix?: unknown; TagFilters?: unknown; ObjectSizeGreaterThan?: unknown; ObjectSizeLessThan?: unknown; ExpirationInDays?: number; NoncurrentVersionExpiration?: { NoncurrentDays?: number }; AbortIncompleteMultipartUpload?: { DaysAfterInitiation?: number } };
 const rulesOf = (p: Record<string, unknown>) => ((p.LifecycleConfiguration as { Rules?: Rule[] } | undefined)?.Rules) ?? [];
+/** A rule over every object: no prefix, tag or size filter narrows it (break B5, B6). */
+const whole = (x: Rule) => x.Status === "Enabled" && x.Prefix === undefined && x.TagFilters === undefined && x.ObjectSizeGreaterThan === undefined && x.ObjectSizeLessThan === undefined;
 const logTargetOf = (p: Record<string, unknown>) => (p.LoggingConfiguration as { DestinationBucketName?: { Ref?: string } } | undefined)?.DestinationBucketName?.Ref;
-/** PF-F1c: the stack's access-log buckets: a bucket of this stack that another bucket of it names as its log target, and
- *  that logs nowhere itself. They hold S3's request log lines, never a firm's file; bucketFindings holds them to their own
+/** PF-F1c: the stack's access-log bucket (estate.ts's `AccessLogsBucket`): a bucket of this stack with that id, that
+ *  another bucket of it names as its log target and that logs nowhere itself. Any other log target is a data bucket and
+ *  keeps every data rule (break B3: a data bucket logged into cannot pose as one). They hold S3's request log lines, never a firm's file; bucketFindings holds them to their own
  *  rules, and the backup plan leaves them out (their lines expire after ACCESS_LOG_DAYS anyway). */
 export function accessLogBuckets(t: Template): Set<string> {
   const ids = new Set(resources(t, "AWS::S3::Bucket").map(([id]) => id));
-  return new Set(resources(t, "AWS::S3::Bucket").map(([, r]) => logTargetOf(r.Properties ?? {})).filter((x): x is string => !!x && ids.has(x) && !logTargetOf(t.Resources![x].Properties ?? {})));
+  return new Set(resources(t, "AWS::S3::Bucket").map(([, r]) => logTargetOf(r.Properties ?? {})).filter((x): x is string => !!x && ids.has(x) && /^AccessLogsBucket[0-9A-F]{8}$/.test(x) && !logTargetOf(t.Resources![x].Properties ?? {})));
 }
 
 /** Every bucket blocks all public access and refuses plain HTTP by its policy. A data bucket also keeps versions, is
@@ -203,16 +206,21 @@ export function bucketFindings(t: Template): string[] {
   const logs = accessLogBuckets(t);
   const statementsFor = (id: string) => policies.filter((pp) => json(pp.Bucket).includes(`"${id}"`)).flatMap((pp) => ((pp.PolicyDocument as { Statement?: Record<string, unknown>[] })?.Statement ?? []));
   const onObjects = (s: Record<string, unknown>, id: string) => json(s.Resource).includes(`"${id}"`) && json(s.Resource).includes('"/*"');
+  // break B7: the put denies cover exactly every object of the bucket, nothing narrower
+  const allObjects = (s: Record<string, unknown>, id: string) => json(s.Resource) === json({ "Fn::Join": ["", [{ "Fn::GetAtt": [id, "Arn"] }, "/*"]] });
+  if (logs.size > 1) out.push(`${logs.size} access-log buckets, not 1`);
   for (const [id, r] of resources(t, "AWS::S3::Bucket")) {
     const p = r.Properties ?? {};
     const block = (p.PublicAccessBlockConfiguration ?? {}) as Record<string, unknown>;
     for (const k of ["BlockPublicAcls", "BlockPublicPolicy", "IgnorePublicAcls", "RestrictPublicBuckets"]) if (block[k] !== true) out.push(`${id}: ${k} is not true`);
     const rules = rulesOf(p);
-    if (!rules.some((x) => x.Status === "Enabled" && x.AbortIncompleteMultipartUpload?.DaysAfterInitiation === ABORT_UPLOAD_DAYS)) out.push(`${id}: an unfinished upload is not aborted after ${ABORT_UPLOAD_DAYS} day`);
+    if (!rules.some((x) => whole(x) && x.AbortIncompleteMultipartUpload?.DaysAfterInitiation === ABORT_UPLOAD_DAYS)) out.push(`${id}: an unfinished upload is not aborted after ${ABORT_UPLOAD_DAYS} day`);
     if (logs.has(id)) {
       if (json(p.BucketEncryption) !== json({ ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: "AES256" } }] })) out.push(`${id}: the access-log bucket is not encrypted with S3's own key (AES256)`);
-      if (!rules.some((x) => x.Status === "Enabled" && x.ExpirationInDays === ACCESS_LOG_DAYS)) out.push(`${id}: access log lines are not kept ${ACCESS_LOG_DAYS} days`);
+      if (!rules.some((x) => whole(x) && x.ExpirationInDays === ACCESS_LOG_DAYS)) out.push(`${id}: access log lines are not kept ${ACCESS_LOG_DAYS} days`);
       if (rules.some((x) => x.Status === "Enabled" && typeof x.ExpirationInDays === "number" && x.ExpirationInDays < ACCESS_LOG_DAYS)) out.push(`${id}: access log lines expire before ${ACCESS_LOG_DAYS} days`);
+      // break B5: not versioned, so an expired line is gone, not kept as an old version for ever
+      if (p.VersioningConfiguration !== undefined) out.push(`${id}: the access-log bucket is versioned (expired lines would stay as old versions)`);
       if (json(p.OwnershipControls) !== json({ Rules: [{ ObjectOwnership: "BucketOwnerEnforced" }] })) out.push(`${id}: the access-log bucket does not enforce the bucket owner (no ACLs)`);
       if (!statementsFor(id).some((s) => s.Effect === "Deny" && json(s.Condition).includes('"aws:SecureTransport":"false"') && anyone(s.Principal) && (s.Action === "s3:*" || json(s.Action) === '["s3:*"]') && onObjects(s, id))) out.push(`${id}: no policy refusing plain HTTP`);
       continue;
@@ -220,7 +228,7 @@ export function bucketFindings(t: Template): string[] {
     // PF-F1c: requests to a data bucket are logged to an access-log bucket of this stack
     if (!logs.has(logTargetOf(p) ?? "")) out.push(`${id}: its requests are not logged to an access-log bucket of this stack`);
     // PF-F1c: a put sent with another encryption (AES256, aws:kms:dsse) or with none named is refused by the bucket itself
-    const putDeny = (cond: unknown) => statementsFor(id).some((s) => s.Effect === "Deny" && anyone(s.Principal) && (s.Action === "s3:PutObject" || json(s.Action) === '["s3:PutObject"]') && onObjects(s, id) && json(s.Condition) === json(cond));
+    const putDeny = (cond: unknown) => statementsFor(id).some((s) => s.Effect === "Deny" && anyone(s.Principal) && (s.Action === "s3:PutObject" || json(s.Action) === '["s3:PutObject"]') && allObjects(s, id) && json(s.Condition) === json(cond));
     if (!putDeny({ StringNotEquals: { "s3:x-amz-server-side-encryption": "aws:kms" } })) out.push(`${id}: no policy refusing a put encrypted other than with aws:kms`);
     if (!putDeny({ Null: { "s3:x-amz-server-side-encryption": "true" } })) out.push(`${id}: no policy refusing a put that names no encryption`);
     if ((p.VersioningConfiguration as { Status?: string } | undefined)?.Status !== "Enabled") out.push(`${id}: versioning not enabled`);

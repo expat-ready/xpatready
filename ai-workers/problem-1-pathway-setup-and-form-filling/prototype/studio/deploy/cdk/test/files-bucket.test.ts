@@ -89,6 +89,36 @@ test("PF-F1c gap 2 fail: a data bucket logging nowhere or to a bucket outside th
   assert.ok(!accessLogBuckets(chain).has(docId));
 });
 
+test("PF-F1c fail (break B3, B5, B6, B7): a data bucket logged into cannot pose as the access-log bucket; a filtered expiry or abort rule, a versioned log bucket, or a put deny narrowed to some objects, is caught", () => {
+  const t0 = homes[0].template, logId = [...accessLogBuckets(t0)][0];
+  // B3: ExportsBucket stripped (S3's key, unversioned, no denies) and logged into by ImportsBucket: still a data bucket
+  const pose = clone(t0), ids = dataBuckets(pose).map(([id]) => id), exp = ids.find((x) => x.startsWith("ExportsBucket"))!, imp = ids.find((x) => x.startsWith("ImportsBucket"))!;
+  Object.assign(pose.Resources![exp].Properties!, { BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: "AES256" } }] }, VersioningConfiguration: undefined, LifecycleConfiguration: { Rules: [{ Status: "Enabled", ExpirationInDays: 90, AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 } }] } });
+  delete pose.Resources![exp].Properties!.LoggingConfiguration;
+  pose.Resources![imp].Properties!.LoggingConfiguration = { DestinationBucketName: { Ref: exp } };
+  assert.ok(!accessLogBuckets(pose).has(exp));
+  const f = bucketFindings(pose).filter((l) => l.startsWith(exp)).join("\n");
+  for (const w of ["versioning not enabled", "not KMS-encrypted", "not logged to an access-log bucket"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+  assert.ok(!backupFindings({ ...homes[0], template: pose }, all).some((l) => l.includes(exp)), "the posing bucket stays in the backup selection");
+  // B5: the 90-day expiry narrowed by a prefix, or the log bucket versioned
+  const narrow = clone(t0);
+  Object.assign((narrow.Resources![logId].Properties!.LifecycleConfiguration as { Rules: Record<string, unknown>[] }).Rules[0], { Prefix: "unused/" });
+  assert.ok(bucketFindings(narrow).some((l) => l.startsWith(logId) && l.includes("not kept 90 days")));
+  assert.ok(bucketFindings(narrow).some((l) => l.startsWith(logId) && l.includes("not aborted"))); // B6 on the log bucket: the same rule
+  const versioned = clone(t0); versioned.Resources![logId].Properties!.VersioningConfiguration = { Status: "Enabled" };
+  assert.ok(bucketFindings(versioned).some((l) => l.includes("access-log bucket is versioned")));
+  // B6: the abort rule on the data buckets narrowed by a prefix or a tag
+  for (const filter of [{ Prefix: "unused/" }, { TagFilters: [{ Key: "k", Value: "v" }] }]) {
+    const t = clone(t0);
+    for (const [, b] of dataBuckets(t)) for (const r of (b.Properties!.LifecycleConfiguration as { Rules: Record<string, unknown>[] }).Rules) if (r.AbortIncompleteMultipartUpload) Object.assign(r, filter);
+    assert.equal(bucketFindings(t).filter((l) => l.includes("unfinished upload is not aborted")).length, 3, JSON.stringify(filter));
+  }
+  // B7: the denies joined to a narrower resource
+  const deny = clone(t0);
+  for (const st of statements(deny)) if (st.Sid) (st.Resource as { "Fn::Join": [string, unknown[]] })["Fn::Join"][1].push("/nothing");
+  assert.equal(bucketFindings(deny).filter((l) => l.includes("encrypted other than with aws:kms")).length, 3);
+});
+
 test("PF-F1c gap 3 fail: no abort rule, an abort after 7 days, or a disabled rule, on any bucket, is caught", () => {
   for (const edit of [(r: Record<string, unknown>) => { delete r.AbortIncompleteMultipartUpload; }, (r: Record<string, unknown>) => { if (r.AbortIncompleteMultipartUpload) r.AbortIncompleteMultipartUpload = { DaysAfterInitiation: 7 }; }, (r: Record<string, unknown>) => { if (r.AbortIncompleteMultipartUpload) r.Status = "Disabled"; }]) {
     const t = clone(homes[0].template);
