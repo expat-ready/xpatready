@@ -115,7 +115,7 @@ export class TrustMoney {
 
   /** POST /trust/requests/:id/cancel: a reason is required; the request keeps its number. */
   async cancel(ctx: StaffContext, requestId: string, body: unknown) {
-    const c = parse(CancelIn, body), rid = idOf(requestId, "trust request"), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    const rid = idOf(requestId, "trust request"), c = parse(CancelIn, body), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
     return this.write(async (tx) => {
       if (!(await trustShows(tx, f))) notFound("trust request");
       const [r] = await tx.$queryRaw<{ number: string | null; cancelled: boolean }[]>`select number, cancelled_at is not null as cancelled from money_trust_request where firm_id = ${f}::uuid and id = ${rid}::uuid for update`;
