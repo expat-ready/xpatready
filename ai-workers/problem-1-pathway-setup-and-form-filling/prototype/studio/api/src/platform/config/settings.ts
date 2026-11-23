@@ -34,6 +34,11 @@ const s = (service: string, name: string, secret: boolean, rule: z.ZodType<strin
 /** A setting never required, in any environment (unset has a meaning of its own, written in `expects`'s setting). */
 const opt = (service: string, name: string, secret: boolean, rule: z.ZodType<string>, expects: string): Setting => ({ ...s(service, name, secret, rule, expects), optional: true });
 
+/** PLATFORM_GST_HST_NUMBER's plain shape (not the CRA's format rule, which is not yet cited): digits, capital letters and
+ *  single spaces, 9 to 20 characters, at least one digit, and never the invoice's Sample number (break m1: the Sample set
+ *  as the setting would print unlabelled, as if real). */
+export const GST_HST_NUMBER_SHAPE = /^(?=.{9,20}$)(?=.*[0-9])(?!0{9} ?RT ?0{4}$)[0-9A-Z]+(?: [0-9A-Z]+)*$/;
+
 /** Every setting, in the order a refusal lists them. */
 export const SETTINGS: readonly Setting[] = Object.freeze([
   s("database", "DATABASE_URL", true, z.string().regex(/^postgres(ql)?:\/\/\S+$/), "a postgresql:// address"),
@@ -41,6 +46,7 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   s("cognito", "PLATFORM_COGNITO_CLIENT_ID", false, z.string().regex(/^[A-Za-z0-9]{1,128}$/), "an app client id (letters and digits)"),
   s("stripe", "PLATFORM_STRIPE_SECRET_KEY", true, z.string().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]{8,255}$/), "a Stripe secret or restricted key (sk_… or rk_…)"),
   s("stripe", "PLATFORM_STRIPE_WEBHOOK_SECRET", true, z.string().regex(/^whsec_[A-Za-z0-9+/=]{8,255}$/), "a Stripe webhook signing secret (whsec_…)"),
+  opt("stripe", "PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET", true, z.string().regex(/^whsec_[A-Za-z0-9+/=]{8,255}$/), "the signing secret of Stripe's connected-accounts webhook endpoint (whsec_…; FO-7c; unset: card payments are not set up on this server)"),
   s("ses", "PLATFORM_SES_REGION", false, z.string().regex(/^[a-z]{2}-[a-z]+-[0-9]$/), "an AWS region such as ca-central-1 (SES signs with the task's role: no key)"),
   s("boldsign", "PLATFORM_BOLDSIGN_API_KEY", true, z.string().regex(/^[A-Za-z0-9+/=_-]{16,512}$/), "a BoldSign API key (16 or more characters)"),
   s("zoom", "PLATFORM_ZOOM_CLIENT_ID", false, z.string().regex(/^[A-Za-z0-9_-]{8,128}$/), "the Zoom app's client id"),
@@ -60,9 +66,15 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   opt("system-identity", "PLATFORM_SYSTEM_LOCAL_SECRET", true, z.string().min(32), "at least 32 characters, never PLATFORM_LOCAL_SECRET's value (unset: a random key per start)"),
   // PF-4 (P-571 (2)): the Sample seed at start-up (identity/sample-seed.ts).
   opt("sample-seed", "PLATFORM_SAMPLE_SEED", false, z.enum(["on", "off"]), "on or off (unset: off)"),
+  opt("files", "PLATFORM_FILES_LINK_KEY", true, z.string().min(32).refine((v) => new Set(v).size >= 10), "at least 32 characters with 10 or more different ones, e.g. openssl rand -base64 32 (unset: no S3 download links; PLATFORM_FILES=s3 then refuses to start, PF-F1b)"),
   // PF-8b F2b: the domain firm addresses live under (`<firm>.<this>`); the deploy sets the stack's domain. `localhost` is
   // always kept as well (web-address/rules.ts).
   opt("web-address", "PLATFORM_ADDRESS_SUFFIX", false, z.string().regex(ADDRESS_SUFFIX_PATTERN), `a lower-case domain of two or more labels such as staging.example.com (unset: ${DEFAULT_ADDRESS_SUFFIX})`),
+  // R1.21 follow-up (Lead 4, 22 Nov): our own GST/HST registration number, printed on our invoices to firms. Unset: the
+  // invoice shows a Sample number, labelled so. Only a plain shape is checked here (digits, capital letters, spaces): the
+  // CRA's own description of the number's format is not yet read and cited (canada.ca is not reachable from a cloud lane;
+  // the Mac reads it, P-601 (5)), so no stricter rule is guessed (AGENTS rule 4).
+  opt("billing", "PLATFORM_GST_HST_NUMBER", false, z.string().regex(GST_HST_NUMBER_SHAPE), "the platform's own GST/HST registration number: 9 to 20 characters of capital letters, digits (at least one) and single spaces, never the invoice's Sample number (the CRA's own format is not checked yet; unset: the invoice shows a Sample number)"),
 ]);
 
 /** The names whose values are secret: PF-23's log redaction drops them by name (and their values, wherever they appear). */
@@ -73,7 +85,7 @@ export type PlatformConfig = Readonly<{
   environment: PlatformEnvironment;
   databaseUrl: Secret;
   cognito: Readonly<{ userPoolId: string | null; clientId: string | null }>;
-  stripe: Readonly<{ secretKey: Secret | null; webhookSecret: Secret | null }>;
+  stripe: Readonly<{ secretKey: Secret | null; webhookSecret: Secret | null; connectWebhookSecret?: Secret | null }>;
   ses: Readonly<{ region: string | null }>;
   boldsign: Readonly<{ apiKey: Secret | null }>;
   zoom: Readonly<{ clientId: string | null; clientSecret: Secret | null; webhookSecretToken: Secret | null }>;
@@ -87,6 +99,9 @@ export type PlatformConfig = Readonly<{
   sampleSeed: boolean;
   /** PF-8b F2b: the domain firm addresses live under (PLATFORM_ADDRESS_SUFFIX, unset: expatready.com). */
   addressSuffix: string;
+  /** R1.21 follow-up: our own GST/HST registration number (PLATFORM_GST_HST_NUMBER); null: the invoice shows a Sample. */
+  billing: Readonly<{ gstHstNumber: string | null }>;
+  /** PF-F1b: the key the S3 download links are signed with (PLATFORM_FILES_LINK_KEY; null: none). */ files: Readonly<{ linkKey: Secret | null }>;
 }>;
 
 /** The configuration cannot start the app. Holds setting names only, never a value. */
@@ -178,7 +193,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     environment,
     databaseUrl: secret("DATABASE_URL") ?? new Secret("DATABASE_URL", LOCAL_DATABASE_URL),
     cognito: Object.freeze({ userPoolId: plain("PLATFORM_COGNITO_USER_POOL_ID"), clientId: plain("PLATFORM_COGNITO_CLIENT_ID") }),
-    stripe: Object.freeze({ secretKey: secret("PLATFORM_STRIPE_SECRET_KEY"), webhookSecret: secret("PLATFORM_STRIPE_WEBHOOK_SECRET") }),
+    stripe: Object.freeze({ secretKey: secret("PLATFORM_STRIPE_SECRET_KEY"), webhookSecret: secret("PLATFORM_STRIPE_WEBHOOK_SECRET"), connectWebhookSecret: secret("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET") }),
     ses: Object.freeze({ region: plain("PLATFORM_SES_REGION") }),
     boldsign: Object.freeze({ apiKey: secret("PLATFORM_BOLDSIGN_API_KEY") }),
     zoom: Object.freeze({ clientId: plain("PLATFORM_ZOOM_CLIENT_ID"), clientSecret: secret("PLATFORM_ZOOM_CLIENT_SECRET"), webhookSecretToken: secret("PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN") }),
@@ -187,6 +202,8 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     systemIdentity: Object.freeze({ via: (plain("PLATFORM_SYSTEM_IDENTITY") ?? "none") as "local" | "cognito" | "none", userPoolId: plain("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID"), clientId: plain("PLATFORM_SYSTEM_COGNITO_CLIENT_ID"), localSecret: secret("PLATFORM_SYSTEM_LOCAL_SECRET") }),
     sampleSeed: plain("PLATFORM_SAMPLE_SEED") === "on",
     addressSuffix: plain("PLATFORM_ADDRESS_SUFFIX") ?? DEFAULT_ADDRESS_SUFFIX,
+    billing: Object.freeze({ gstHstNumber: plain("PLATFORM_GST_HST_NUMBER") }),
+    files: Object.freeze({ linkKey: secret("PLATFORM_FILES_LINK_KEY") }),
   });
 }
 

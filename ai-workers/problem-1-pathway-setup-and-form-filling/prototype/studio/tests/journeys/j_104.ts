@@ -25,8 +25,8 @@
 //   W4b fails on the fake for "whose type needs it": a Follow-up booking of Client P's, ended, gets no agreement and its
 //      Attended is saved without any signing (red on a build with no per-type switch).
 //   W5 the reminder goes: a booking three days ahead, unsigned: an hour before the 24-hour mark no reminder (fails on the
-//      fake); at the mark the person who booked (Client P) gets it, once (AG-4-15 "the reminders still go"; FO-3c sends it
-//      to the firm's signatory instead: a question for the tech lead). On the running copy, the booking made on screen
+//      fake); at the mark the host who signs for the firm (Client C, licensed) gets it, once, and the client does not
+//      (FO-3c's row: "the host gets … the reminder 24 h before the meeting while it is unsigned"). On the running copy, the booking made on screen
 //      in W1 has its reminder job queued for 24 hours before it, and Client C's GET …/needs-you lists W5's agreement.
 //   W6 the person signs (the client's link with consent, then the fake signer), then the host signs; the agreement is
 //      sealed; the signed copy is emailed to the person once, with the file attached. The stand-in's clock is set to 5
@@ -236,10 +236,10 @@ try {
     await clock5.set(new Date(b4.startsAt.getTime() - DAY + MIN)); dueCount = reminders().length;
     await clock5.set(new Date(b4.startsAt.getTime() - DAY + 2 * HOUR));
   }
-  const rem = reminders() as { to: string; subject: string }[], toClient = rem.filter((m) => m.to === P.email!.toLowerCase());
+  const rem = reminders() as { to: string; subject: string }[], toHost = rem.filter((m) => m.to === C.email.toLowerCase()), toClient = rem.filter((m) => m.to === P.email!.toLowerCase());
   ok("J-104 W5 fail (an hour before the 24-hour mark, P-606): no reminder yet", earlyCount === 0, earlyCount < 0 ? NOT_BUILT : earlyCount);
-  ok("J-104 W5: 24 hours before the unsigned booking the reminder goes to the person who booked (Client P), once (AG-4-15; see the PR's question for the tech lead)",
-    dueCount >= 1 && toClient.length === 1, dueCount < 0 ? NOT_BUILT : rem.map((m) => [m.to, m.subject]));
+  ok("J-104 W5: 24 hours before the unsigned booking the reminder goes to the host who signs for the firm (Client C), once, and not to the client (FO-3c's row)",
+    dueCount >= 1 && toHost.length === 1 && toClient.length === 0, dueCount < 0 ? NOT_BUILT : rem.map((m) => [m.to, m.subject]));
   // The running copy: the booking made on screen (W1) has its reminder queued in the app's own job queue (pg-boss).
   const boss = (await db.$queryRaw<{ s: string }[]>`select table_schema s from information_schema.tables where table_schema = 'platform_jobs' and table_name = 'job' limit 1`)[0]?.s;   // PF-14's JOBS_SCHEMA
   const queued = boss ? Number((await db.$queryRawUnsafe<{ n: bigint }[]>(`select count(*) n from "${boss}".job where name = 'consultation_agreement.reminder' and data::text like $1`, `%${b1.id}%`))[0].n) : 0;

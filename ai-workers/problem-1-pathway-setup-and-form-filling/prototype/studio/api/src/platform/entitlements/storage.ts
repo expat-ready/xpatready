@@ -10,6 +10,7 @@ import type { JobPort } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import { STORAGE_HARD_AFTER_DAYS } from "../../../../ports/entitlement.ts";
 import { LocalFiles } from "../../front-office/files.ts";
+import type { FilesPort, StoredFile } from "../../../../ports/files.ts";
 import { auditEvent } from "../audit/audit-event.ts";
 import { asBypass, firmScope, touchEachFirm, withFirm } from "../firm-scope.ts";
 import { SYSTEM_REPLY_TO } from "../identity/session/mail.ts";
@@ -108,17 +109,33 @@ export class StorageWatch {
   }
 }
 
-/** The FilesPort the modules get (the retainer uploads, and every later upload through this binding). */
-export class EntitledFiles extends LocalFiles {
-  constructor(private readonly db: PrismaClient, private readonly now: () => number, private readonly watch: StorageWatch | null, root?: string) { super(root); }
+/** The FilesPort the modules get (the retainer uploads, and every later upload through this binding). PF-F1b: it wraps
+ *  the store the app binds (PLATFORM_FILES: LocalFiles or S3Files, api/src/platform/files/choose.ts); a folder (or
+ *  nothing) is FO-5's LocalFiles in it, as before. */
+export class EntitledFiles implements FilesPort {
+  readonly store: FilesPort;
+  constructor(private readonly db: PrismaClient, private readonly now: () => number, private readonly watch: StorageWatch | null, store?: string | FilesPort) {
+    this.store = typeof store === "object" ? store : new LocalFiles(store);
+  }
 
-  override async put(firmId: string, key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string }> {
-    if (!this.known(firmId, key)) {   // a retry of a stored key always goes through; a retired one gets FileKeyTaken (break m4)
+  /** The key was ever written for the firm (live or retired): both stores answer it (LocalFiles' own check, S3Files'
+   *  HEAD that also sees a tombstone); a store without one falls back to `exists`. */
+  protected async known(firmId: string, key: string): Promise<boolean> {
+    const k = (this.store as { known?: (f: string, k: string) => boolean | Promise<boolean> }).known;
+    return typeof k === "function" ? !!(await k.call(this.store, firmId, key)) : this.store.exists(firmId, key);
+  }
+  get(firmId: string, key: string): Promise<StoredFile | null> { return this.store.get(firmId, key); }
+  exists(firmId: string, key: string): Promise<boolean> { return this.store.exists(firmId, key); }
+  delete(firmId: string, key: string): Promise<{ deleted: boolean }> { return this.store.delete(firmId, key); }
+  usedBytes(firmId: string): Promise<number> { return this.store.usedBytes(firmId); }
+
+  async put(firmId: string, key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string }> {
+    if (!await this.known(firmId, key)) {   // a retry of a stored key always goes through; a retired one gets FileKeyTaken (break m4)
       const used = await this.usedBytes(firmId);
       const r = await new PgEntitlements(this.db, this.now).check(firmId, "storage_mb", mbOf(used));
       if (!r.allowed) planLimitReached(r, `Your firm has been over its storage limit (${r.limit} MB; ${r.used} MB used) for ${STORAGE_HARD_AFTER_DAYS} days or more, so new uploads are refused. Nothing was saved. Every existing document keeps working; remove documents you no longer need or change the plan.`);
     }
-    const out = await super.put(firmId, key, bytes, contentType);
+    const out = await this.store.put(firmId, key, bytes, contentType);
     if (this.watch) await this.watch.measure(firmId).catch((e) => logPort.error("storage_measure_failed", e, { firmId }));   // the daily job measures again
     return out;
   }
