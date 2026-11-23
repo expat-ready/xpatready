@@ -170,3 +170,80 @@ model PlatLegalHold {
   @@index([firmId, releasedAt])
   @@map("plat_legal_hold")
 }
+
+// PF-21b part 3 (map row 85; SA-11 §3.8, SA-11-18, SA-11-40, NFR5-14; brief design/lead-b-briefs/PF-21b.md "Part 2", split
+// by design/briefs/track-b/PF-21b-2.md): the register of privacy requests made to ExpatReady itself (a client's request is
+// the firm's and is not tracked here, Q21). Our console's routes need system/compliance:dsr-manage (SA-11 line 778), seeded
+// for the Platform Owner only (Sample: SA-07 Appendix A names no role for it). The target date is received + 30 days, a
+// code constant and a reminder, never enforced (§3.8; legal reading Unconfirmed: no counsel). Like plat_legal_hold, our own
+// register: row-level security forced with no policy (PF-12's OWN list), reached only through the plat_data_request_*
+// definers of the migration 20261123100000_pf21b_data_requests, which also holds the rules Prisma cannot say (insert-only
+// events, never deleted, the status moves, one alert mark of each kind per request).
+
+/// Access, correction or deletion (§3.8).
+enum PlatDataRequestType {
+  ACCESS
+  CORRECTION
+  DELETION
+}
+
+/// §3.8's statuses. OVERDUE is set only by the daily check (past its target, still open); COMPLETED is final.
+enum PlatDataRequestStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  HELD
+}
+
+/// One step of a request. RECEIVED is the first; STATUS_CHANGED a move; NOTE a staff note; NEAR_DATE_ALERTED and
+/// OVERDUE_ALERTED the daily check's marks (at most one of each per request: the alert is raised once).
+enum PlatDataRequestEventKind {
+  RECEIVED
+  STATUS_CHANGED
+  NOTE
+  NEAR_DATE_ALERTED
+  OVERDUE_ALERTED
+}
+
+/// A request made to ExpatReady. Never deleted (trigger). The requester is a name and a contact only (no other personal
+/// data); firm_id and person_id name the person record a request is about (SA-11-40), both or neither, another module's
+/// ids, never a foreign key. completed_on is §3.8's response date.
+model PlatDataRequest {
+  id             String                @id @default(uuid()) @db.Uuid
+  type           PlatDataRequestType
+  requesterName  String                @map("requester_name")
+  requesterEmail String                @map("requester_email")
+  receivedOn     DateTime              @map("received_on") @db.Date
+  targetDate     DateTime              @map("target_date") @db.Date
+  status         PlatDataRequestStatus @default(PENDING)
+  actionsTaken   String?               @map("actions_taken")
+  completedOn    DateTime?             @map("completed_on") @db.Date
+  firmId         String?               @map("firm_id") @db.Uuid
+  personId       String?               @map("person_id") @db.Uuid
+  recordedBy     String                @map("recorded_by")
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz
+
+  events PlatDataRequestEvent[]
+
+  @@index([status, targetDate])
+  @@map("plat_data_request")
+}
+
+/// One step of a request: insert-only (a trigger refuses update, delete and truncate); seq orders the steps.
+model PlatDataRequestEvent {
+  id         String                   @id @default(uuid()) @db.Uuid
+  seq        BigInt                   @default(autoincrement())
+  requestId  String                   @map("request_id") @db.Uuid
+  kind       PlatDataRequestEventKind
+  fromStatus PlatDataRequestStatus?   @map("from_status")
+  toStatus   PlatDataRequestStatus?   @map("to_status")
+  note       String?
+  actor      String
+  at         DateTime                 @default(now()) @db.Timestamptz
+
+  request PlatDataRequest @relation(fields: [requestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([requestId, seq])
+  @@map("plat_data_request_event")
+}
