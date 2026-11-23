@@ -135,3 +135,12 @@ Reading: a shard uses about 30% of its 4 cores and under a third of 16 GB. By th
 * `check_c69_page_browser`: likely race [inference]: red once on #3150 (a qa records PR) and once with two other failures; not re-run.
 * `check_c41_section_order_browser`: likely race [inference]: red once on #2979, and not among #2979's failures in its next batch (09:36 UTC).
 So no escape is shown to be a fault of the PR under test, but two rest on inference. Founder's later ruling (relayed by Lead 4, 14:33): the ten of stack B land as one through #2590, by the sprint (b) lane.
+
+## Replay, 100 batches (14:57 IST; detail in private notes replay-100-summary.md and .tsv)
+87 code batches (40 green, 47 red): 31% of suite-minutes saved at most; everything runs in 48. The bar "no failure missed" is **not met**: nine misses were main's own red Monday test; c69, c92 and pf5s1 are unsettled; none is shown to be the PR's fault. Red split: 11 main red, 3 main red and more, 4 timing, 29 PR/conflict/cascade not separated. No shadow, no gate change.
+CPU: 58 of 72 shards read, mean 1.22 cores, worst p95 2.38, peak 4.48 GB; run 3 has 12 of 24.
+
+## Hand-over of Lead O (written 14:57 IST, for whoever takes the seat)
+Truth: 4 of the 21 tooling PRs landed, #3208 too; ten stack-B PRs land as one via #2590 (sprint b, fixes #2457 and #2605 first); lane (c) has #2597 #2738 #2473 #2444, lane (a) #2595 #3035 (proposed to Lead 4, start not confirmed); #2372 and #2472 close; #2915 to refresh and land. Private: stay public; B181 pilot plan waits on the founder's answer to Lead 4; nothing created.
+In flight: branch claude/lead-o-ci-measure (run 45131327234; read it with the MEASURE line in each shard's log; then delete nothing). Refused and stopped: GATE_RUNNER by shell, combined build twice. Set by browser on the founder's words: GATE_RUNNER only.
+Next: read CPU run 3; after #2590 lands, check the order above; 24-hour red-batch re-measure from #2434 (13:22 IST 23 Nov), on the founder's yes only for any gate change; tell him "operating system complete" only when every must row is merged or decided. API: the quota is shared; sample lightly.
