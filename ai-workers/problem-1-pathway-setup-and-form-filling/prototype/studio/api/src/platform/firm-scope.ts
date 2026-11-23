@@ -343,19 +343,20 @@ export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
       summary: `Our platform read or changed this firm's records across the firm walls (${use}).`, detail: { use, method, correlationId } });
   } catch (e) { seen.delete(id); throw new BypassNotRecorded(use, e); }
 }
+/** AUD-3c: the request's own ourstaff:<id> when this is a request our own staff make, else undefined. */
+const ourStaffActor = (): string | undefined => { const c = auditContext(); return c?.actorType === "OUR_STAFF" && c.actor?.startsWith("ourstaff:") ? c.actor : undefined; };
+
 /** PF-12b part 3: inside a "platform" bypass use, one firm-less platform.bypass line in `tx` (once per transaction), on
  *  the platform's own audit workspace (never reset, P-571 (1)): the use, the method (never the path) and the correlation
  *  id. A failed write throws BypassNotRecorded, so `tx` rolls back (P-607). Outside a "platform" use it does nothing.
  *  A recorded departure (review m3): AuditPort's AuditEntry requires a firm, so the line goes through the case/configuration
  *  entry shape (it names the platform workspace, no case, no firm) rather than a port change (P-423; a firm-less platform
- *  entry is the tech lead's later row). That shape takes the request's or job's firm when one is in scope, so a "platform"
- *  use in a firm's scope is refused here (fail-closed) rather than land its line on that firm's trail (break m3). */
+ *  entry is the tech lead's later row; AUD-3c built it for our own staff's requests, below). That shape takes the
+ *  request's or job's firm when one is in scope, so a "platform" use in a firm's scope is refused here (fail-closed)
+ *  rather than land its line on that firm's trail (break m3). */
 /** `step` (Lead 15's ruling on #2814): a per-firm use's step that touches no firm (sign-up's new-email lookup and pending
  *  row; a refused verify) names itself and writes the same firm-less line; `key` is a pending id, never a secret, code
  *  or email. Without a step, only a "platform" use writes. */
-/** AUD-3c: the request's own ourstaff:<id> when this is a request our own staff make, else undefined. */
-const ourStaffActor = (): string | undefined => { const c = auditContext(); return c?.actorType === "OUR_STAFF" && c.actor?.startsWith("ourstaff:") ? c.actor : undefined; };
-
 export async function touchPlatform(tx: unknown, at?: { step: string; key?: string | null }): Promise<void> {
   const s = scope.getStore(), use = s?.bypass;
   if (!use || (entryOf(use)?.audit !== "platform" && !at?.step)) return;
