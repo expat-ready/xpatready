@@ -106,9 +106,9 @@ try {
   const switches = app.get(PlatSwitches);
   await seedSampleFirms(owner);
   const staff = async (name: string, roles: string[]) => (await owner.platSystemStaff.create({ data: { email: `${name.toLowerCase()}.pf21d@expatready.example`, displayName: `Sample ${name}`, grants: { create: roles.map((roleCode) => ({ roleCode })) } } })).id;
-  const OWNER = await staff("Owner", ["platform-owner"]), SUPPORT = await staff("Support", ["platform-support"]), AUDITOR = await staff("Auditor", ["platform-auditor"]);
+  const OWNER = await staff("Owner", ["platform-owner"]), SUPPORT = await staff("Support", ["platform-support"]), ADMIN = await staff("Admin", ["platform-admin"]), AUDITOR = await staff("Auditor", ["platform-auditor"]);
   const tokenOf = async (id: string) => { const email = (await owner.platSystemStaff.findUniqueOrThrow({ where: { id } })).email; const r = await call(base, "POST", "/api/system/session/local", { body: { email, secondStep: true } }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
-  const ownerT = await tokenOf(OWNER), supportT = await tokenOf(SUPPORT), auditorT = await tokenOf(AUDITOR);
+  const ownerT = await tokenOf(OWNER), supportT = await tokenOf(SUPPORT), adminT = await tokenOf(ADMIN), auditorT = await tokenOf(AUDITOR);
   const firmT = (await call(base, "POST", "/api/platform/session/local", { body: { firmKey: "sample-firm", actorId: "user-R", secondStep: true } })).body.token as string;
   const A = sql(`select id from platform_firm where key = 'sample-firm'`);
   const as = { staffId: OWNER, keys: [DSR_KEY] };
@@ -117,15 +117,18 @@ try {
   const SW = "/api/system/switches/platform.data-erasure";
   const listed = await call(base, "GET", "/api/system/switches", { token: ownerT });
   const noReason = await call(base, "POST", SW, { token: ownerT, body: { on: false } });
-  const swWho = await Promise.all([supportT, auditorT, firmT].map((t) => call(base, "POST", SW, { token: t, body: { on: false, reason: "Sample" } })));
+  const refusedBefore = lines("REFUSED", "/api/system/switches/:key");
+  const swWho = await Promise.all([supportT, adminT, auditorT, firmT].map((t) => call(base, "POST", SW, { token: t, body: { on: false, reason: "Sample" } })));
   const off = await call(base, "POST", SW, { token: ownerT, body: { on: false, reason: "Sample: emergency stop while a module is checked" } });
   const offAgain = await call(base, "POST", SW, { token: ownerT, body: { on: false, reason: "Sample" } });
   const unknownSw = await call(base, "POST", "/api/system/switches/platform.nothing", { token: ownerT, body: { on: false, reason: "Sample" } });
-  ok("PF-21d pass/fail (SA-11-16 (d)): \"Data erasure\" is listed on; off without a reason → 422; Support, Auditor, a firm → 403; the Owner turns it off with a reason → one event, one ALLOWED line; off again → 409; an unknown switch → 404",
-    listed.status === 200 && listed.body.switches.some((s: any) => s.key === "platform.data-erasure" && s.name === "Data erasure" && s.on === true) && noReason.status === 422
+  const nulKey = await call(base, "POST", "/api/system/switches/platform.data-erasure%00", { token: ownerT, body: { on: true, reason: "Sample" } });
+  const invisible = await call(base, "POST", SW, { token: ownerT, body: { on: true, reason: "\u200b\u3164..." } });
+  ok("PF-21d pass/fail (SA-11-16 (d)): \"Data erasure\" is listed on; off without a reason, or with no letter or digit → 400 (the guard's rule); Support, Admin, Auditor, a firm → 403 with REFUSED lines; a key with a NUL → 404; the Owner turns it off with a reason → one event, one ALLOWED line; off again → 409; an unknown switch → 404",
+    listed.status === 200 && listed.body.switches.some((s: any) => s.key === "platform.data-erasure" && s.name === "Data erasure" && s.on === true) && noReason.status === 400 && invisible.status === 400 && nulKey.status === 404
     && swWho.every((r) => r.status === 403) && off.status === 200 && off.body.on === false && off.body.changedBy === `staff:${OWNER}`
     && sql(`select count(*) || ':' || bool_and(not is_on) from plat_switch_event`) === "1:true" && lines("ALLOWED", "/api/system/switches/:key") === 1
-    && offAgain.status === 409 && unknownSw.status === 404, { listed: listed.body, noReason: noReason.status, swWho: swWho.map((r) => r.status), off: off.body, offAgain: offAgain.status, unknownSw: unknownSw.status });
+    && offAgain.status === 409 && unknownSw.status === 404 && lines("REFUSED", "/api/system/switches/:key") >= refusedBefore + 3, { nulKey: nulKey.status, invisible: invisible.status, listed: listed.body, noReason: noReason.status, swWho: swWho.map((r) => r.status), off: off.body, offAgain: offAgain.status, unknownSw: unknownSw.status });
   const isOff = !(await switches.isOn("platform.data-erasure"));
   const back = await switches.set(as, null, "platform.data-erasure", { on: true, reason: "Sample: back on" });
   const notStaff = await switches.list({ staffId: SUPPORT, keys: [] }).then(() => false, (e) => /MISSING_PERMISSION/.test(JSON.stringify((e as any)?.response ?? e)));

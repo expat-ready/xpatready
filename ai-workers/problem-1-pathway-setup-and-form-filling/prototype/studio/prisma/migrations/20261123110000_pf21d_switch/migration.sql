@@ -5,8 +5,8 @@
 -- One row per switch, on by default (SA-11-16 (d)); a change needs a reason and is an insert-only event; only our staff
 -- change it (key system/compliance:dsr-manage, the Platform Owner, Sample: SA-12 names no key). Our own tables: forced, no
 -- policy, no grants for xr_data; reached only through the definers, each refused in a firm's session (the register's
--- plat_data_request_system_only, PF-21b part 3). Legal reading Unconfirmed: no counsel.
--- Rollback (by hand): DROP the two definers and both tables.
+-- own plat_switch_system_only). Legal reading Unconfirmed: no counsel.
+-- Rollback (by hand): DROP the three functions, plat_switch_kept() and both tables.
 CREATE TABLE "plat_switch" (
     "key" TEXT NOT NULL,
     "is_on" BOOLEAN NOT NULL DEFAULT true,
@@ -50,11 +50,17 @@ ALTER TABLE "plat_switch" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "plat_switch" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "plat_switch_event" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "plat_switch_event" FORCE ROW LEVEL SECURITY;
--- The switch definers (system plane only).
+-- The switch definers (system plane only: each refused inside a firm's session, review m4).
+CREATE FUNCTION plat_switch_system_only() RETURNS void LANGUAGE plpgsql STABLE SET search_path = pg_catalog, public, pg_temp AS $fn$
+BEGIN
+  IF platform_session_firm() IS NOT NULL THEN
+    RAISE EXCEPTION 'plat_switch: only ExpatReady''s own staff read or change the platform switches' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+END $fn$;
 CREATE FUNCTION plat_switch_list() RETURNS TABLE (key text, is_on boolean, changed_by text, changed_at timestamptz)
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
 BEGIN
-  PERFORM plat_data_request_system_only();
+  PERFORM plat_switch_system_only();
   RETURN QUERY SELECT s.key, s.is_on, s.changed_by, s.changed_at FROM plat_switch s ORDER BY s.key;
 END $fn$;
 -- Sets a switch with its reason: 'NOT_FOUND', 'SAME' (already so; nothing written) or 'SET'. The row is locked first.
@@ -62,7 +68,7 @@ CREATE FUNCTION plat_switch_set(p_key text, p_on boolean, p_reason text, p_by te
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
 DECLARE cur boolean;
 BEGIN
-  PERFORM plat_data_request_system_only();
+  PERFORM plat_switch_system_only();
   SELECT s.is_on INTO cur FROM plat_switch s WHERE s.key = p_key FOR UPDATE;
   IF cur IS NULL THEN RETURN 'NOT_FOUND'; END IF;
   IF cur = p_on THEN RETURN 'SAME'; END IF;
@@ -75,7 +81,7 @@ GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 DO $own$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['plat_switch_list()', 'plat_switch_set(text, boolean, text, text)'] LOOP
+  FOREACH f IN ARRAY ARRAY['plat_switch_system_only()', 'plat_switch_list()', 'plat_switch_set(text, boolean, text, text)'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO xr_data', f);
