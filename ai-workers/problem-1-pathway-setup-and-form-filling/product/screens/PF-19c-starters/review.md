@@ -75,3 +75,30 @@ Journey score: unchanged in method. B1 was the only deduction ("task completed",
 
 Verdict: Approve
 Reviewer: Approve a89c0be7a558c926a94b4826cbf2721720686ff3 (code). The record-only commits 48a29c199 and da069a02d change no code.
+
+## Re-review (diff 0dc59cb1f..843c77e5c, key rename)
+Scope: only `git diff 0dc59cb1f..843c77e5c` (4 files, 16+/16-), checked out at 843c77e5c. I used throwaway databases on :54329 and the F7 cluster on 14491. I did not use :4400.
+
+| Run | Result |
+|---|---|
+| `tsx --tsconfig api/tsconfig.json tests/check_pf19c_platform_starters.ts` | **7 passed, 0 failed** |
+| `PGBIN=/usr/lib/postgresql/18/bin tsx … tests/check_pf8b_f7_data_walls.ts 14491` | **18/18 passed**, including the pf19c window (non-bypass owner, hidden firm row, `3\|3`) |
+| `tsx … tests/check_b164_no_engine_keys.ts` | **67 passed, 0 failed** |
+| `tsx … tests/check_pf19a_messages_schema.ts` | **exit 0**. The "six starter rows aside" line passes (`0\|6`) |
+| A scratch script parses the migration's `VALUES` rows and compares them with `KINDS` at 571636d68 (`registry.ts`) | 3 rows. For all 3 keys, key, kind (`list` lower-cased), subject and body (after `E''` `\n` unescape) are equal |
+
+### Findings
+- **The keys pass the template key check.** `sales.lead.acknowledgement`, `sales.lead.follow_up` and `sales.lead.going_cold` each match `^[a-z0-9]+([._-][a-z0-9]+)*$` (`msg_template_key_check`, pf19a migration line 348), and each is far under 120 characters. The inserts in the starters test and in the F7 window would fail on that constraint otherwise. They also have three segments, so B164's two-segment combination shape (`^[a-z]{2,5}\.[a-z][a-z0-9_]*$`) no longer matches them. `'sales.lead.%'` fails its key shape on the `%`.
+- **No old key remains.** A search of the whole studio tree (minus `node_modules`/`dist`) for `lead.acknowledgement|lead.follow_up|lead.going_cold` without the `sales.` prefix finds nothing. The only `'lead.%'` left is `check_fo2_leads_prospects.ts:380`, the `module_event.type` filter. This diff does not touch it, which is correct.
+- **pf19a still pins exactly six.** The assertion is still `=== "0|6"`. Only the template filter changed: 3 templates by `sales.lead.%` plus 3 versions by `published_by = 'seed:sa05-a1'`. Any extra msg_ row still makes the left side non-zero.
+- **The F7 window still proves the insert.** Only the `got` filter changed. `want: "3|3"` and the hidden-row precheck are unchanged. With a stale `lead.%` filter the window would read `0|3` and fail, so the rename is load-bearing and covered.
+- **The wording and kinds match #3179.** The comparison above shows that. `kind` is `automatic` / `library` / `library`, the same as `list` Automatic / Library / Library at 571636d68.
+
+**Still open, Minor (from earlier rounds, unchanged by this diff):** m1 (no drift guard between the migration and the registry once #3179 merges; today the match is shown only by script). m3 and m4 are unchanged.
+
+**Blocker:** none. **Major:** none.
+
+Journey score: **10/10** for 843c77e5c, unchanged. The rename changes no visible wording or flow. Sends by the new keys fill and deliver in the starters test.
+
+Verdict: Approve
+Reviewer: Approve 843c77e5c021d18918e8c17410320853a1bbee7c
