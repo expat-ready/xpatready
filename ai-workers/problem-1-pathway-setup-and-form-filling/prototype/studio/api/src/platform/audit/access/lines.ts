@@ -150,7 +150,7 @@ export class SystemAccessLines implements NestInterceptor, OnModuleInit {
   private async committedLines(): Promise<number> {
     const firms = ourStaffFirmsInRequest(), ctx = auditContext();
     if (!firms.length || !ctx?.actor || !ctx.correlationId) return 0;
-    const [row] = await this.db.$queryRaw<{ n: number }[]>`select count(*)::int as n from audit_event where correlation_id = ${ctx.correlationId} and actor = ${ctx.actor} and firm_id::text = any(${firms})`;
+    const [row] = await this.db.$queryRaw<{ n: number }[]>`select count(*)::int as n from audit_event where correlation_id = ${ctx.correlationId} and actor = ${ctx.actor} and firm_id::text = any(${firms}) and action <> 'platform.bypass'`;   // round 5 (Lead B): a bypass use's own line (touchFirm, AUD-3c) is not the change's line
     return row?.n ?? 0;
   }
 

@@ -46,7 +46,7 @@ for (const k of Object.keys(process.env)) if (/^PLATFORM_/.test(k)) delete proce
 process.env.PLATFORM_ENVIRONMENT = "local";
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
-const { appDatabaseUrl, wallUnscopedQueries, WalledPool } = await import("../api/src/platform/firm-scope.ts");
+const { appDatabaseUrl, asBypass, touchFirm, wallUnscopedQueries, WalledPool } = await import("../api/src/platform/firm-scope.ts");
 const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
@@ -60,6 +60,8 @@ const { SystemGuard, SystemPlaneWall } = await import("../api/src/platform/syste
 const { SystemKeys, AnySystemStaff } = await import("../api/src/platform/system-identity/keys.ts");
 const sysFeature = (await import("../api/src/features/platform-system-identity.ts")).default;
 const holdsFeature = (await import("../api/src/features/platform-register-holds.ts")).default;
+const breachesFeature = (await import("../api/src/features/platform-register-breaches.ts")).default;   // round 5: PF-21c (#3185)
+const requestsFeature = (await import("../api/src/features/platform-register-requests.ts")).default;   // round 5: PF-21b part 3 (#3189)
 const accessFeature = (await import("../api/src/features/audit-access.ts")).default;
 const { ReadsFirm, ChangesFirm, NoFirmData } = await import("../api/src/platform/audit/access/declare.ts");
 const { assertFirmDataDeclared, recordCrossTenant, recordFirmRead, SystemAccessLines, FIRM_READ, CROSS_TENANT } = await import("../api/src/platform/audit/access/lines.ts");
@@ -104,6 +106,13 @@ class Aud3TestController {
 @Controller("api/system/aud3-undeclared") class UndeclaredController { @Get() @SystemKeys("system/firm:read") thing() { return 1; } }
 class InheritedBase { @Get() @SystemKeys("system/firm:read") thing() { return 1; } }
 @Controller("api/system/aud3-inherited") class InheritedController extends InheritedBase {}
+// Round 5 (Lead B on #3296): a declared change that only crosses into the firm through a bypass use (touchFirm's own
+// platform.bypass line, AUD-3c) and writes no change line of its own; on limit-change's named routes.
+@Controller("api/system/plans/aud3-test")
+class BypassOnlyController {
+  @Post("firms/:id/bypass-only") @SystemKeys("system/firm:read") @ChangesFirm("a change that only touches the firm through a bypass use")
+  async bypassOnly(@Param("id") id: string) { await asBypass("platform.entitlements.limit-change", () => walled.$transaction(async (tx) => { await touchFirm(tx, id); })); return { changed: id }; }
+}
 @Controller("api/system/aud3-raw") class RawReadController { @Get("firms/:id") @SystemKeys("system/firm:read") @ReadsFirm("id") thing(@Res() res: { send(b: unknown): void }) { res.send(1); } }
 
 try {
@@ -111,7 +120,7 @@ try {
   const firmLocal = new LocalIdentity("aud3-firm-standin-key-0123456789abcdefgh", () => clock.now());
   const systemLocal = new SystemLocalIdentity("aud3-system-standin-key-0123456789abcd", () => clock.now());
   const sysProviders = sysFeature.providers.filter((p: any) => p !== PlatformClock && p?.provide !== SYSTEM_IDENTITY_PORT && p?.provide !== APP_GUARD);
-  @Module({ controllers: [PlatformIdentityController, ...sysFeature.controllers, ...holdsFeature.controllers, Aud3TestController] as never[],
+  @Module({ controllers: [PlatformIdentityController, ...sysFeature.controllers, ...holdsFeature.controllers, Aud3TestController, BypassOnlyController] as never[],
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, ...sysProviders, { provide: APP_GUARD, useExisting: SystemGuard },
       ...accessFeature.providers, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, ...holdsFeature.providers] as never[] }) class TestApp {}   // the app's order: features load by file name, audit-access.ts first
@@ -175,6 +184,10 @@ try {
   const rolled = await call(base, "POST", `/api/system/aud3-test/firms/${firmA}/rolls-back`, { token: supportT, body: {} });
   ok("AUD-3 DW3 fail (round 2, breaker 1): a change whose line was written in a transaction that rolled back answers 500 AUDIT_LINE_MISSING (only committed lines count)",
     rolled.status === 500 && rolled.body.code === "AUDIT_LINE_MISSING" && lines(`firm_id = '${firmA}'`) === a2, rolled);
+  const bp0 = lines(`firm_id = '${firmA}' and action = 'platform.bypass'`);
+  const bypassOnly = await call(base, "POST", `/api/system/plans/aud3-test/firms/${firmA}/bypass-only`, { token: supportT, body: {} });
+  ok("AUD-3 DW3 fail (round 5, Lead B on #3296): a declared change whose only firm line is its bypass use's own platform.bypass line answers 500 AUDIT_LINE_MISSING",
+    bypassOnly.status === 500 && bypassOnly.body.code === "AUDIT_LINE_MISSING" && lines(`firm_id = '${firmA}' and action = 'platform.bypass'`) === bp0 + 1, bypassOnly);
   const placed = await call(base, "POST", "/api/system/register/holds", { token: ownerT, body: { firmId: firmB, scope: { kind: "FIRM" }, reason: "Sample: regulator's inquiry" } });
   ok("AUD-3 DW3 pass: PF-21b's place (a declared change that writes its own line) answers 201 through the check",
     placed.status === 201 && lines(`firm_id = '${firmB}' and action = 'platform.legal_hold.placed' and actor = 'ourstaff:${OWNER}'`) === 1, placed);
@@ -183,17 +196,17 @@ try {
   const reflector = new Reflector();
   ok("AUD-3 DW3 fail (start-up): a route our staff call with no firm-data declaration stops the start-up, naming it",
     await throwsLike(() => assertFirmDataDeclared([UndeclaredController], reflector), (e) => /UndeclaredController\.thing \(\/api\/system\/aud3-undeclared\)/.test(String(e))));
-  ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's)",
-    await throwsLike(() => assertFirmDataDeclared([...sysFeature.controllers, ...holdsFeature.controllers, Aud3TestController], reflector), () => true) === false);
+  ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's holds and requests, PF-21c's breaches, PF-25w's)",
+    await throwsLike(() => assertFirmDataDeclared([...sysFeature.controllers, ...holdsFeature.controllers, ...breachesFeature.controllers, ...requestsFeature.controllers, Aud3TestController], reflector), () => true) === false);
   ok("AUD-3 DW3 fail (start-up, round 2, breaker 4): a handler inherited from a base class with no declaration stops the start-up too",
     await throwsLike(() => assertFirmDataDeclared([InheritedController], reflector), (e) => /InheritedController\.thing \(\/api\/system\/aud3-inherited\)/.test(String(e))));
   ok("AUD-3 DW3 fail (start-up, review m1): a read that answers through @Res() stops the start-up (its answer would leave before its line)",
     await throwsLike(() => assertFirmDataDeclared([RawReadController], reflector), (e) => /RawReadController\.thing .*answers through @Res\(\)/.test(String(e))));
   // Review m4: an opt-out is visible in review. Every route on main that declares @NoFirmData, by name; a new one fails here.
   const { FIRM_DATA } = await import("../api/src/platform/audit/access/declare.ts");
-  const optOuts = [...sysFeature.controllers, ...holdsFeature.controllers].flatMap((c: any) => Object.getOwnPropertyNames(c.prototype).filter((k) => k !== "constructor" && (Reflect.getMetadata(FIRM_DATA, c.prototype[k]) as { kind?: string } | undefined)?.kind === "none").map((k) => `${c.name}.${k}`)).sort();
-  ok("AUD-3 DW3 (review m4): the @NoFirmData routes are exactly PF-4s's own: who-am-I and the six staff-access routes (a new opt-out must be added here, in review)",
-    JSON.stringify(optOuts) === JSON.stringify(["SystemIdentityController.me", "SystemStaffController.deactivate", "SystemStaffController.endSessions", "SystemStaffController.invite", "SystemStaffController.reactivate", "SystemStaffController.resetMfa", "SystemStaffController.roles"]), optOuts);
+  const optOuts = [...sysFeature.controllers, ...holdsFeature.controllers, ...breachesFeature.controllers, ...requestsFeature.controllers].flatMap((c: any) => Object.getOwnPropertyNames(c.prototype).filter((k) => k !== "constructor" && (Reflect.getMetadata(FIRM_DATA, c.prototype[k]) as { kind?: string } | undefined)?.kind === "none").map((k) => `${c.name}.${k}`)).sort();
+  ok("AUD-3 DW3 (review m4, round 5): the @NoFirmData routes are exactly PF-4s's who-am-I and six staff-access routes, and the changes to ExpatReady's own breach and request registers (a new opt-out must be added here, in review)",
+    JSON.stringify(optOuts) === JSON.stringify(["BreachController.change", "BreachController.fromAlert", "BreachController.open", "DataRequestController.log", "DataRequestController.move", "SystemIdentityController.me", "SystemStaffController.deactivate", "SystemStaffController.endSessions", "SystemStaffController.invite", "SystemStaffController.reactivate", "SystemStaffController.resetMfa", "SystemStaffController.roles"]), optOuts);
   ok("AUD-3 DW3 fail: a declaration in no plain words is refused", await throwsLike(() => ReadsFirm("1-bad"), () => true) && await throwsLike(() => ChangesFirm(""), () => true));
 
   // --------------------------------------------------------------------------------------- DW4: fail-closed
