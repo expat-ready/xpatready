@@ -4,8 +4,6 @@ current_lead: local_def18400-f970-4299-9d3c-ba36f0e0c147 Lead 13 · 24 Nov 00:48
 
 updated: 2026-11-24 00:53 IST: Lead 13 started, check d87020f3. #3304 no red yet, 8 shards and 2 regression parts running. Lead reads: #3065 be4590f45 posted (label after run 45246239005 and the 45104967343 covered line); #3207 54041dca7's IRM fix read OK, the read line NOT posted on purpose (the gate would label it before #3065 and #3185); #3219 read OK, re-stamp to 20261124090000 asked. Owed: #3277, #3174 review.ts.
 
-Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
-
 ## Hand-over Lead 12 → Lead 13, 00:48 IST 24 Nov (the block before and Lead 12's last update line, word for word, still owed where not repeated: `history/STATE-2026-11-24-0050-lead12-before-handover.md`)
 
 **🔴 Founder typed 00:37 (A344), may be awake.** 29 Nov options asked and prepared (A345). Told: 50/101, 4 net in 24 h, forecast 6-7 Dec. Morning, one at a time (AskUserQuestion): P-814 PR (refused twice by auto mode; he must allow it, never sent another way) · RQ-01 with the seven · security test and counsel · case-rule edges · fast-check trial (proofs report: nothing starts before his yes). Keep-awake refused. Never add to or cut the 101.
@@ -22,12 +20,12 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A345 | 24 Nov, typed to Lead 12 | "Yes, prepare them" (options for the 29 Nov date; options only) | prepared, private notes `release-date-options-2026-11-24.md`; his decision is owed, unchecked by a second reader |
+| A345 | 24 Nov, typed to Lead 12 | "Yes, prepare them" (options for the 29 Nov date; options only) | prepared, in the private home's notes (local_9c46a890); his decision owed; not second-read |
 | A344 | 24 Nov 00:37 (Lead 12) | unblock every queue, exceptions allowed; on track? total done? | done in chat; not on track, date to decide |
 | A343 | 24 Nov ~00:0x typed to Lead 11 | script on proofs (pstack, TLA+), set up the new Claude Code mode | proofs report done, unchecked: start nothing before his yes; mode report owed |
 | A342 | 24 Nov ~00:0x typed to Lead 11 | "For the stuff that you're asking me ... I would follow your recommendation ... You have my approval"; research how people merge "11,000 p" and pay for CI | CI-cost report done, unchecked; check the US$62,400 figure before quoting; the content he meant did not arrive: ask |
 | A341 | 23 Nov 23:43 (to Lead 10) | four of six answers | P-814 NOT recorded, PR refused twice; draft in notes local_9c46a890 |
-| A338, A340 | 23 Nov 23:4x | (A338 and the page at 23:46 word for word: `history/STATE-2026-11-23-2346-lead11-takeover.md`) GitLab, GitOps, Ultimate trial | answered: no move before 29 Nov (same file) |
+| A338, A340 | 23 Nov | GitLab, GitOps: answered, no move before 29 Nov; row word for word `history/STATE-2026-11-24-lead13-A338-row.md` |
 | A339 | 23 Nov 23:2x-23:3x | operating system enforced? cleaning; lanes; competitors and production grade; POC case rule, UI and screens against the 101 | both reports done, his decisions are the six morning questions; word for word `history/STATE-2026-11-23-2341-lead10-before-handover.md` |
 | A337 | 23 Nov 22:4x (typed to Lead 9) | "Yes, run the three-day plan through the night. Start #3173's lane." | in force: the plan runs; #3173 lane STARTED (he pressed start, task_e085a076); #3174 fresh lane requested under the plan |
 | A331-A336 | 23 Nov | AWS pilots on privacy first (US$10 test held, not run); "Keep both"; three-day plan; four fixes beside product (to 25 Nov); ideas and tests only; night set-up and what is NOT approved: word for word `history/STATE-2026-11-23-lead9-ask-rows-A331-A336.md` |
