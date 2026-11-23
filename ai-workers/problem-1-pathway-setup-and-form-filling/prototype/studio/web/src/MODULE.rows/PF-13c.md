@@ -1,0 +1,2 @@
+Entry points: PF-13 part 3 (R1.23): the firm's brand on its public booking pages `/book/:firmKey`, `/book/:firmKey/:slug`, `/book/:firmKey/manage` (`modules/front-office/booking-public/brand.tsx`: `usePublicBrand`, `useDrawnBrand` (waits up to `BRAND_WAIT_MS` behind the loading state, then draws once; only a brand naming the page's own firm), `useFavicon`, `BrandImage`; drawn by FO-3w's `PublicFrame` in `frame.tsx` into `data-brand-slot`; reads `GET /api/public/firms/:firmKey/branding`).
+Tests: tests/check_pf13c_booking_brand_browser.ts, tests/journeys/j_23.ts

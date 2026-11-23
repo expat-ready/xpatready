@@ -300,6 +300,14 @@ jobs:
         # Test: static-sweeps.mjs --self-test (in the tools' checks below).
         if: env.KIND == 'code'
         run: node "$P/tools/static-sweeps.mjs" --base "$(git rev-parse HEAD^1)"
+      - name: own-migration guard, report-only (Lead 5 on #2915 and #3035; P-717 (b); own-migration-guard.py)
+        # A migration-reading suite never compares a catalogue snapshot taken before its own migration with a read after
+        # the later ones: with one migration slot per area (SPD-2), another area's migration would land in that read on
+        # main (adcf9c105, 2cd4d9cd1, 7109eb3ae). Seconds, no database. Report-only for its first 24 h or 10 PR runs:
+        # a later PR drops continue-on-error. Test: check-own-migration-guard.sh (guard 38).
+        if: env.KIND == 'code'
+        continue-on-error: true
+        run: python3 -I "$P/tools/own-migration-guard.py"
       - name: records rules, pull requests only (check-docs.sh, decision-impact.sh; ENF-746c, skipped in a merge-queue batch)
         # ENF-746c (P-746, founder 20 Nov): these judge the records (STATE, RULES, DECISIONS: the P-734 lock note, the rule
         # register, decision impact, skill sizes, links), not the code. Each PR passes them before it is queued; in a batch

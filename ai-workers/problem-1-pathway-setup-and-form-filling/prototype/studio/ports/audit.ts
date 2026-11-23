@@ -8,9 +8,10 @@ import { z } from "zod";
 /** A firm id: the same lenient uuid form firmScope accepts (api/src/platform/firm-scope.ts). */
 export const FirmId = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a firm id (uuid)");
 
-/** Who did it: `staff:<staff id>` (a signed-in staff member, PF-4's actor word), `system:<door>` (a job, a webhook, a
- *  public door) or `seed:<row>` (a seed or a demo loader). */
-export const AuditActor = z.string().regex(/^(staff|system|seed):[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/, "staff:<id>, system:<door> or seed:<row>");
+/** Who did it: `staff:<staff id>` (a firm's signed-in staff member, PF-4's actor word), `ourstaff:<staff id>` (one of
+ *  ExpatReady's own staff, PF-4s; AUD-3a), `system:<door>` (a job, a webhook, a public door) or `seed:<row>` (a seed or
+ *  a demo loader). */
+export const AuditActor = z.string().regex(/^(staff|ourstaff|system|seed):[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/, "staff:<id>, ourstaff:<id>, system:<door> or seed:<row>");
 
 const EMAILISH = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const DetailScalar = z.union([z.string().max(200), z.number(), z.boolean(), z.null()]);

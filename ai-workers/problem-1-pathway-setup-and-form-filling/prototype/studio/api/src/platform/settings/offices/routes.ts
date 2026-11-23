@@ -5,6 +5,7 @@ import { Body, Controller, Get, Inject, Param, Patch, Post, Put, Req } from "@ne
 import { z } from "zod";
 import { idParam, parseInput, strict } from "../../http/input.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../identity/keys.ts";
+import { Versioned } from "../../http/if-match.ts";
 import { Offices } from "./service.ts";
 import { PROVINCES, zoneForProvince } from "./zones.ts";
 
@@ -21,7 +22,7 @@ export class OfficesController {
   provinces() { return { provinces: PROVINCES.map((code) => ({ code, zone: zoneForProvince(code)! })) }; }
   @Post() @PermissionKeys("agent/settings:edit")
   add(@Req() r: R, @Body() b: unknown) { return this.offices.add(staffOf(r), b); }
-  @Patch(":id") @PermissionKeys("agent/settings:edit")
+  @Patch(":id") @PermissionKeys("agent/settings:edit") @Versioned()   // PF-31: the version as If-Match too
   change(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.offices.change(staffOf(r), id, b); }
 }
 

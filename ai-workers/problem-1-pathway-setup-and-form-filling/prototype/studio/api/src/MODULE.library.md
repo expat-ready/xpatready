@@ -1,6 +1,6 @@
 ---
 paths:
-  - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/{library-*,document-providers,document-sets,document-supplies,document-type-names,document-values,must-verify,where-used,change-sets,rename-door,no-free-add}.ts"
+  - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/{library-*,document-providers,document-type-defaults,document-sets,document-supplies,document-type-names,document-values,must-verify,where-used,change-sets,rename-door,no-free-add}.ts"
 ---
 # Module card: api-library (P-615)
 The shared library: fields, sections, document types, and the one guarded change door for all of them. Read this before editing these files; update it in the same PR when an entry point, invariant, table or test below changes (or say `Card unchanged: <reason>` in the PR body).
