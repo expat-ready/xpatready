@@ -50,3 +50,34 @@ Method: the harness from `studio/tests/check_pff2_uploads.ts` (scratch DB on Pos
 - **(h) CORS:** no `Access-Control-Allow-Origin` or `-Credentials` on OPTIONS, POST, HEAD, PATCH, GET or 404 answers, even with a foreign `Origin`.
 
 Verdict: Block
+
+## Round 2: head `dc3301c778341d9504c14ecffa2ddd9fca38cef6`
+
+Scope: only `git diff ec7565e..dc3301c` (`rail.ts`, `platform-files.ts`). Same harness (Nest on :4562, as `xr_app`, real LocalFiles). The test door's `keyOf` was changed for one person only, for R8. Scratch file and databases deleted.
+
+### Retried
+- **F1: fixed.** Firm B's HEAD and PATCH through `D?x=/V`, `D?/V`, `D/?x=/V/`, `D%3Fx=/V`, `D%3F/V`, `U?/V` and `D#/V` all give 404. So does `POST U?x=/V`. V stays at offset 1000 with nothing stored, and B's own D is untouched (offset 0).
+- **F2: fixed.** A POST with the whole body gives 201 with Location and `Upload-File-Id`. HEAD then answers 200 at offset 3000, and an empty PATCH retry gives 204 with the same id. There is 1 row and `onComplete` ran once.
+- **F3: fixed.** A failing `onComplete` gives 500 "The upload could not be finished. Try again in a moment; what you sent so far is kept." No path or internal message appears.
+- **Racing finish: held.**
+  - The last chunk with 20 empty PATCHes at the end, fired 0, 5 and 30 ms after it: all 21 answers are 204, with one `Upload-File-Id`, 1 row, `onComplete` once and no 500.
+  - Two rail instances sharing one staging folder and database (two processes), with 3 finishes of one upload at once: the same file id ×3, 1 row and `onComplete` once. This went through the P2002 re-read.
+- **A finished upload's kept staging copy: held.**
+  - Read: GET is 404 for the owner. HEAD with `X-HTTP-Method-Override: GET` is a plain HEAD (no bytes).
+  - Others: DELETE is 404. Firm B and another person in the same firm get 404 on HEAD and PATCH.
+  - Overwrite: more bytes at the end give 413, PATCH at 0 gives 409, `Upload-Length` on PATCH gives 400, and the offset stays 5000.
+  - Re-finish: an empty PATCH gives the same id with 1 row. After a FilesPort delete (retired key) it returns the same id and does not store the bytes again. After the row goes QUARANTINED it returns the same id, the state is unchanged, and no second file is made.
+
+### New findings
+- **R8. Minor (got quieter since round 1): a door key that repeats now silently answers success for a different file.**
+  - Repro: a door whose `keyOf` leaves out the upload id (`uploads/<person>/passport`). Upload a 3000-byte PDF, then a different 3300-byte PDF for the same person.
+  - Observed: the second upload gives 204 with the **first** file's `Upload-File-Id`. Its bytes are not stored and its `onComplete` does not run. In round 1 this was a loud 500 (`FileKeyTaken`).
+  - Why: `#stored` (`rail.ts`, `#finishOnce`) matches on (firm, key) only, so any upload hitting an existing key is treated as a retry.
+  - Expected: 409 "This file is already stored", or the door contract enforced.
+  - Minor because part 1 registers no door and `keyOf`'s contract says to use the upload id. Fix before CS-D1 registers doors: treat a found row as a retry only when its sha256 matches (else 409), or have `keyFor` refuse a key that does not contain `uploadId`.
+- **R7. Minor: every empty PATCH on a finished upload re-reads and re-checks the whole staged file.** 30 re-finishes of a 5 MB upload took 705 ms (about 23 ms each, so about 115 ms each at 25 MB), plus one database read each, repeatable for 24 h. Fix: keep the finished file id in the staging record's metadata (or a small cache) and answer from it before reading the bytes.
+- Note, not a finding: a finished upload's staged bytes stay on disk for 24 h, even after the stored file is QUARANTINED or deleted. They are never served.
+
+Round-1 F4 (an unrecorded file after a failed `onComplete` until retried) and F5 (no limit on unfinished uploads) were not in this diff and stay open as Minor. No Blocker or Major is open.
+
+Verdict: Approve
