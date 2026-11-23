@@ -59,6 +59,17 @@ function ProfileBody() {
   const load = React.useCallback((p: Profile) => { const s = formOf(p); setStart(s); setF(s); setVersion(p.version); }, []);
   React.useEffect(() => { if (q.data && version === null) load(q.data); }, [q.data, version, load]);
   const zones = React.useMemo(() => { const all = allZones(); return f?.timeZone && !all.includes(f.timeZone) ? [f.timeZone, ...all] : all; }, [f?.timeZone]);
+  // Where the focus goes once a save has answered, run after the render that shows the answer (an effect on a counter): a
+  // requestAnimationFrame asked before that render could run first, while Save was still disabled and the refused fields
+  // not yet marked, and leave the focus on the page (FP3 red on a busy machine: CI shard 18, and 3 of 3 at 30x CPU throttle).
+  // "problem": the first refused field, else the notice. "save": back on Save when the busy button dropped it (break m7).
+  const [focusAsk, setFocusAsk] = React.useState<{ n: number; to: "problem" | "save" }>({ n: 0, to: "save" });
+  React.useEffect(() => {
+    if (!focusAsk.n) return;
+    if (focusAsk.to === "save") { if (document.activeElement === document.body || document.activeElement === null) saveButton.current?.focus(); return; }
+    const box = document.getElementById("profile-form");
+    (box?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? problemBox.current)?.focus();
+  }, [focusAsk]);
 
   const header = (
     <header>
@@ -74,7 +85,6 @@ function ProfileBody() {
   const seesBilling = admin || editOwner;
   const set = (k: FieldName) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => { const v = e.target.value; setF((x) => (x ? { ...x, [k]: v } : x)); setErrors((x) => ({ ...x, [k]: undefined })); };
   const dirty = dirtyNow;
-  const focusProblem = () => requestAnimationFrame(() => { const box = document.getElementById("profile-form"); (box?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? problemBox.current)?.focus(); });
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +99,7 @@ function ProfileBody() {
       const saved = formOf(r.profile); setStart(saved); setF(keepEdits(saved, sent, now.current ?? sent)); setVersion(r.profile.version);
       toast.push({ tone: "ok", text: WORDS.saved });
       // Break m7: Save was disabled while busy, which drops keyboard focus to the page; it goes back to Save.
-      requestAnimationFrame(() => { if (document.activeElement === document.body || document.activeElement === null) saveButton.current?.focus(); });
+      setFocusAsk((a) => ({ n: a.n + 1, to: "save" }));
     } catch (x) {
       if (x instanceof StaffApiError && x.status === 409) {
         // The staff client keeps only a problem's plain fields, not its `latest`: read the profile again and load it.
@@ -108,7 +118,7 @@ function ProfileBody() {
         const named = (Object.keys(fe) as FieldName[]).map((k) => `${LABELS[k][0].toUpperCase()}${LABELS[k].slice(1)}: ${fe[k]}.`);
         setProblem({ tone: "danger", title: "Not saved", text: [x.message, ...named, ...otherErrors(x.problem.fields)].join(" ") });
       } else setProblem({ tone: "danger", title: "Not saved", text: "Please try again." });
-      focusProblem();
+      setFocusAsk((a) => ({ n: a.n + 1, to: "problem" }));
     } finally { sending.current = false; setBusy(false); }
   };
 
