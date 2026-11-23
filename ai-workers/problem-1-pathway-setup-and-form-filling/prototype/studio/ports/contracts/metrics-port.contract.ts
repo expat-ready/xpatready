@@ -36,13 +36,15 @@ export const metricsPortContract = defineContract("MetricsPort", (make: () => Me
     },
   },
   {
-    name: "a money metric is financial with view-financial and answers one figure per currency",
+    name: "a money metric is answered only with view-financial (firm-wide), one figure per currency; without it, WITHHELD",
     async run() {
       const p = make();
       p.register(count("sample.fees", async (ctx) => ({ kind: "MONEY", figures: [{ currency: "CAD", amount: ctx.scope === "financial" ? "42000.00" : "10.00" }, { currency: "USD", amount: "3500.00" }] }), { kind: "MONEY", moneyTreatment: "PER_CURRENCY", aggregation: "SUM" }));
       const r = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.financial), { metrics: ["sample.fees"] });
       const reading = r.metrics[0].reading;
       expect(r.metrics[0].scope === "financial" && reading?.kind === "MONEY" && reading.figures.length === 2 && reading.figures[0].amount === "42000.00", "two figures, firm-wide", r);
+      const noFin = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.all), { metrics: ["sample.fees"] });
+      expect(noFin.metrics[0].status === "WITHHELD" && noFin.metrics[0].reading === null, "view.all without view-financial: WITHHELD (AG-14-35 to -37)", noFin);
     },
   },
   {
@@ -64,7 +66,7 @@ export const metricsPortContract = defineContract("MetricsPort", (make: () => Me
       p.register(count("sample.boom", async () => { throw new Error("Sample secret words"); }));
       p.register(count("sample.summed", async () => ({ kind: "MONEY", figures: [{ currency: "CAD", amount: "1.00" }, { currency: "CAD", amount: "2.00" }] }) as never, { kind: "MONEY", moneyTreatment: "PER_CURRENCY", aggregation: "SUM" }));
       p.register(count("sample.firm", async () => ({ kind: "COUNT", value: 5 }), { scopeAware: false }));
-      const r = await p.query(caller(REPORT_KEYS.own), { metrics: ["sample.ok", "sample.boom", "sample.summed", "sample.firm"] });
+      const r = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.financial), { metrics: ["sample.ok", "sample.boom", "sample.summed", "sample.firm"] });
       expect(r.metrics.map((m) => m.status).join() === "OK,UNAVAILABLE,UNAVAILABLE,WITHHELD" && !JSON.stringify(r).includes("secret"), "statuses", r);
     },
   },

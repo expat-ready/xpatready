@@ -17,7 +17,8 @@ import { join } from "node:path";
 import { runContract } from "../ports/contracts/contract.ts";
 import { metricsPortContract } from "../ports/contracts/metrics-port.contract.ts";
 import { fakeMetrics } from "../ports/fakes/metrics.fake.ts";
-import { overBudget, REPORT_KEYS, type MetricRegistration, type ReportAnswer } from "../ports/metrics.ts";
+import { overBudget, REPORT_KEYS, runMetrics, type MetricRegistration, type ReportAnswer } from "../ports/metrics.ts";
+import { readFileSync } from "node:fs";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { SalesController } from "../api/src/front-office/sales/routes.ts";
 import { firmScope, wallUnscopedQueries, walledPool, withFirm } from "../api/src/platform/firm-scope.ts";
@@ -67,7 +68,7 @@ try {
     const keys = keysOf(r);
     return { staffId: id, firmId, firmKey: firmId === A ? "sample-firm" : "sample-solo", roles: r, keys, duties: dutiesOf(new Set(keys)), authTime: 0, via: "local" };
   };
-  const OWNER = ctxOf("user-R"), OFFICER = ctxOf("user-O"), SOLO = ctxOf("user-S");
+  const OWNER = ctxOf("user-R"), OFFICER = ctxOf("user-O"), SOLO = ctxOf("user-S"), MANAGER = ctxOf("user-T");
   const FINANCE = ctxOf("user-O", ["BILLING_FINANCE"]);   // user-O's id with Billing / Finance's seeded keys
   const without = (c: StaffContext, ...gone: string[]): StaffContext => ({ ...c, keys: c.keys.filter((k) => !gone.includes(k)) });
   ok("PF-R1 setup: user-O is the Sample firm's Case Officer (view.own, no view.all); user-R its Owner (view.all); user-S the solo firm's",
@@ -96,7 +97,8 @@ try {
     key: "sample.leads", module: "sample", label: "Leads (Sample)", source: "Leads that arrived in the period (Sample metric for PF-R1's test)",
     kind: "COUNT", aggregation: "COUNT", moneyTreatment: "NONE", scopeAware: true,
     drillTarget: { path: "/api/front-office/leads", carries: { from: "from", to: "to", staffId: "owner" } },
-    read: async (_ctx, f) => ({ kind: "COUNT", value: await walled.foLead.count({ where: { ...(f.staffId ? { ownerStaffId: f.staffId } : {}), ...(f.from || f.to ? { arrivedAt: { ...(f.from ? { gte: new Date(`${f.from}T00:00:00Z`) } : {}), ...(f.to ? { lt: nextDay(f.to) } : {}) } } : {}) } }) }),
+    // the read counts only leads the viewer may open (AG-14-19, SA6-D6): without agent/prospect:view.all, their own
+    read: async (ctx, f) => ({ kind: "COUNT", value: await walled.foLead.count({ where: { ...(f.staffId ? { ownerStaffId: f.staffId } : !ctx.keys.includes("agent/prospect:view.all") ? { ownerStaffId: ctx.staffId } : {}), ...(f.from || f.to ? { arrivedAt: { ...(f.from ? { gte: new Date(`${f.from}T00:00:00Z`) } : {}), ...(f.to ? { lt: nextDay(f.to) } : {}) } } : {}) } }) }),
   };
   const invoices = [{ currency: "CAD", cents: 4_200_000, owner: OWNER.staffId }, { currency: "USD", cents: 350_000, owner: OWNER.staffId }, { currency: "CAD", cents: 10_000, owner: OFFICER.staffId }];
   const feesMetric: MetricRegistration = {
@@ -137,8 +139,15 @@ try {
   summed.register({ ...feesMetric, key: "sample.total", read: async () => ({ kind: "MONEY", total: "45600.00" }) as never });
   const bad = await withFirm(A, () => new ReportsController(summed).query({ platform: FINANCE }, { metrics: ["sample.fees", "sample.total"] }));
   ok("PF-R1 DW3 fail: a read giving one total, or one currency twice, is never passed on (UNAVAILABLE, no figure)", bad.metrics.every((m) => m.status === "UNAVAILABLE" && m.reading === null), bad);
-  const officerFees = await ask(OFFICER, { metrics: ["sample.fees"] });
-  ok("PF-R1 DW3 fail: the Case Officer (view.own, no view-financial) gets no firm-wide money figure, only their own", officerFees.metrics[0].scope === "own" && JSON.stringify(officerFees.metrics[0].reading) === JSON.stringify({ kind: "MONEY", figures: [{ currency: "CAD", amount: "100.00" }] }), officerFees);
+  const officerFees = await ask(OFFICER, { metrics: ["sample.fees"] }), managerFees = await ask(MANAGER, { metrics: ["sample.fees"] });
+  ok("PF-R1 DW3 fail (review M1; AG-14-35 to -37): without view-financial no money figure at all: the Case Officer (view.own) and the Case Manager (view.all) get WITHHELD",
+    [officerFees, managerFees].every((r) => r.metrics[0].status === "WITHHELD" && r.metrics[0].reading === null) && MANAGER.keys.includes(REPORT_KEYS.all) && !MANAGER.keys.includes(REPORT_KEYS.financial), { officerFees, managerFees });
+  const ageing: MetricRegistration = { key: "sample.ageing", module: "sample", label: "Overdue ageing (Sample)", source: "Sample", kind: "LIST", aggregation: "LIST", moneyTreatment: "PER_CURRENCY", scopeAware: true, drillTarget: null,
+    read: async (ctx) => ({ kind: "LIST", rows: [{ bucket: "1-30", currency: "CAD", amount: ctx.scope === "financial" ? "900.00" : "1.00" }, { bucket: "1-30", currency: "USD", amount: "50.00" }] }) };
+  const lists = new MetricRegistry(); lists.register(ageing); lists.register({ ...ageing, key: "sample.nocurrency", read: async () => ({ kind: "LIST", rows: [{ bucket: "1-30", amount: "950.00" }] }) });
+  const fl = await withFirm(A, () => new ReportsController(lists).query({ platform: FINANCE }, { metrics: ["sample.ageing", "sample.nocurrency"] }));
+  ok("PF-R1 DW3 pass (break M2): a per-currency table (ageing) is read firm-wide for Billing / Finance, a currency on each row", fl.metrics[0].scope === "financial" && fl.metrics[0].status === "OK" && JSON.stringify(fl.metrics[0].reading).includes("900.00"), fl);
+  ok("PF-R1 DW3 fail (break M2): a per-currency table row without its currency is never passed on", fl.metrics[1].status === "UNAVAILABLE", fl.metrics[1]);
 
   // ----------------------------------------------------------------------------------------------- DW4: unknown key
   const unknown = await refusal(() => ask(OWNER, { metrics: ["sample.leads", "sample.nope"] }));
@@ -163,23 +172,67 @@ try {
   ok("PF-R1 DW6 fail: the same read as the owner role (no wall) would count both firms: the wall is what holds", Number(sql("select count(*) from fo_lead")) === inA + inB);
   ok("PF-R1 DW6 pass: a module's own firmScope agrees with the wall", (await withFirm(A, () => walled.foLead.count({ where: firmScope(A) }))) === inA);
 
+  // ----------------------------------------------------------------------------------------------- M1: the viewer's view keys
+  const narrowCM = without(MANAGER, "agent/prospect:view.all");
+  ok("PF-R1 (break M1) pass: a read is given the viewer's keys, so a Case Manager without agent/prospect:view.all counts only the leads they may open",
+    value(await ask(narrowCM, { metrics: ["sample.leads"] })) === Number(sql(`select count(*) from fo_lead where firm_id = '${A}' and owner_staff_id = '${MANAGER.staffId}'`)) && value(await ask(MANAGER, { metrics: ["sample.leads"] })) === inA);
+
   // ----------------------------------------------------------------------------------------------- DW7: read budget
-  const ctxs = [OWNER, OFFICER, SOLO].map((c) => ({ firmId: c.firmId, staffId: c.staffId, scope: c === OFFICER ? "own" as const : "all" as const }));
-  const timed = async () => { const out = []; for (const c of ctxs) out.push(...(await withFirm(c.firmId, () => overBudget(new Map([["sample.leads", leadsMetric]]), [c])))); return out; };
+  const ctxs = [OWNER, OFFICER, SOLO].map((c) => ({ firmId: c.firmId, staffId: c.staffId, keys: c.keys, scope: c === OFFICER ? "own" as const : "all" as const }));
+  const timed = () => overBudget(new Map([["sample.leads", leadsMetric]]), ctxs, withFirm);
   await timed();   // one warm-up: the first query opens the pool
   const late = await timed();
   ok("PF-R1 DW7 pass: the Sample leads metric reads within STANDARDS §9's 200 ms at every scope over ~5,000 rows", late.length === 0, late);
   const slow = new MetricRegistry();
   slow.register({ ...leadsMetric, key: "sample.slow", read: async (c, f) => { await sleep(260); return leadsMetric.read(c, f); } });
   slow.register({ ...leadsMetric, key: "sample.broken", read: async () => { throw new Error("Sample"); } });
-  const over = await withFirm(A, () => overBudget(slow.all(), [ctxs[0]]));
+  const over = await overBudget(slow.all(), [ctxs[0]], withFirm);
   ok("PF-R1 DW7 fail: a registered metric that reads over budget (260 ms) fails the budget test, as does one whose read fails", over.length === 2 && over[0].key === "sample.slow" && (over[0].ms ?? 0) > 200 && over[1].key === "sample.broken" && over[1].ms === null, over);
+
+  const seen: number[] = [];
+  const spy = new Map([["sample.leads", { ...leadsMetric, read: async (c: never, f: never) => { const r = await leadsMetric.read(c, f); if (r.kind === "COUNT") seen.push(r.value); return r; } } as MetricRegistration]]);
+  await overBudget(spy, [ctxs[2]], withFirm);
+  ok("PF-R1 DW7 fail (break M3): the budget reads each context inside its own firm (firm B's context counts firm B's ~5,000 rows, never 0 or firm A's)", seen[0] === inB, seen);
+  ok("PF-R1 DW7 fail: a read answering the wrong shape fails the budget test too", (await overBudget(new Map([["sample.leads", { ...leadsMetric, read: async () => ({ kind: "COUNT", value: -1 }) }]]), [ctxs[0]], withFirm)).length === 1);
+  // review M2: every module that registers metrics on the app's registry has a test that runs overBudget on them
+  const registrants = (files: { path: string; text: string }[]) => files.filter((f) => !f.path.includes("/platform/reports/") && /platform\/reports\/registry/.test(f.text) && /\.register\(/.test(f.text)).map((f) => f.path);
+  const unbudgeted = (src: { path: string; text: string }[], tests: { path: string; text: string }[]) => registrants(src).filter((p) => !tests.some((t) => t.text.includes("overBudget(") && t.text.includes(p.replace(/^.*api\/src\//, "").replace(/\.ts$/, ""))));
+  const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith(".ts") ? [join(d, e.name)] : []));
+  const src = walk(join(STUDIO, "api", "src")).map((path) => ({ path, text: readFileSync(path, "utf8") }));
+  const tests = readdirSync(join(STUDIO, "tests")).filter((f) => f.endsWith(".ts") && f !== "check_pfr1_reports.ts").map((f) => ({ path: f, text: readFileSync(join(STUDIO, "tests", f), "utf8") }));
+  ok("PF-R1 DW7 pass (review M2): every module registering metrics on the app's registry has a test running overBudget on them", unbudgeted(src, tests).length === 0, unbudgeted(src, tests));
+  const planted = [{ path: "/x/api/src/front-office/reports/metrics.ts", text: `import { MetricRegistry } from "../../platform/reports/registry.ts"; registry.register({})` }];
+  ok("PF-R1 DW7 fail (review M2): a module that registers a metric with no budget test is named", JSON.stringify(unbudgeted(planted, tests)) === JSON.stringify([planted[0].path]) && unbudgeted(planted, [...tests, { path: "t.ts", text: "front-office/reports/metrics overBudget(" }]).length === 0);
+
+  // ----------------------------------------------------------------------------------------------- break minors
+  const reg = new MetricRegistry(); reg.register(leadsMetric);
+  const flood = await refusal(() => ask(OWNER, { metrics: ["sample.leads"], filters: Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`k${i}`, "x"])) }));
+  ok("PF-R1 (break m1) fail: 2,000 unknown filter keys give a short 400, never an echo of them", flood?.status === 400 && JSON.stringify(flood.body).length < 1500, JSON.stringify(flood).length);
+  ok("PF-R1 (break m1, review m4) fail: a malformed metric key (control characters, HTML) is a QUERY_INVALID naming the field, not echoed", ((r) => r?.status === 400 && r.body.code === "QUERY_INVALID" && !JSON.stringify(r.body).includes("<b>"))(await refusal(() => ask(OWNER, { metrics: ["<b>x\u202e</b>"] }))));
+  const wide = new Map([["sample.wide", { ...leadsMetric, key: "sample.wide", kind: "LIST", aggregation: "LIST", read: async () => ({ kind: "LIST", rows: [Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`c${i}`, 1]))] }) } as MetricRegistration]]);
+  ok("PF-R1 (break m3) fail: a LIST row over 20 columns is UNAVAILABLE", (await runMetrics(wide, OWNER, { metrics: ["sample.wide"] })).metrics[0].status === "UNAVAILABLE");
+  const stuck = new Map([["sample.stuck", { ...leadsMetric, key: "sample.stuck", read: () => new Promise<never>(() => {}) } as MetricRegistration], ["sample.leads", leadsMetric]]);
+  const t0 = Date.now(), st = await withFirm(A, () => runMetrics(stuck, OWNER, { metrics: ["sample.stuck", "sample.leads"] }, undefined, 100));
+  ok("PF-R1 (break m4, review m1) fail: a read that never answers is UNAVAILABLE at the time limit while the others answer", st.metrics[0].status === "UNAVAILABLE" && st.metrics[1].status === "OK" && Date.now() - t0 < 2000, st);
+  const meddler = new Map([["sample.meddle", { ...leadsMetric, key: "sample.meddle", read: async (_c: never, f: { staffId?: string }) => { f.staffId = OFFICER.staffId; return { kind: "COUNT" as const, value: 0 }; } } as unknown as MetricRegistration], ["sample.leads", leadsMetric]]);
+  const md = await withFirm(A, () => runMetrics(meddler, OWNER, { metrics: ["sample.meddle", "sample.leads"] }));
+  ok("PF-R1 (break m5) fail: a read cannot change the filters another read or its drill link sees", md.metrics[0].status === "UNAVAILABLE" && md.metrics[1].reading?.kind === "COUNT" && md.metrics[1].reading.value === inA && JSON.stringify(md.metrics[1].drill?.query) === "{}", md);
+  const defs = reg.definitions(); (defs[0].drillTarget as { path: string }).path = "/api/elsewhere";
+  ok("PF-R1 (break m5) fail: changing a definition handed out changes nothing registered", reg.definitions()[0].drillTarget?.path === "/api/front-office/leads");
+  ok("PF-R1 (break m6) fail: without a report key the refusal is 403 even for a bad body", (await refusal(() => ask(without(OWNER, REPORT_KEYS.own, REPORT_KEYS.all, REPORT_KEYS.financial), { nope: 1 })))?.status === 403);
+  ok("PF-R1 (break m2) fail: a LIST counted as COUNT, a COUNT treated per currency, and another module's key prefix are refused",
+    [{ kind: "LIST", aggregation: "COUNT" }, { moneyTreatment: "PER_CURRENCY" }, { module: "other" }].every((o) => { try { reg.register({ ...leadsMetric, key: "sample.extra", ...o } as MetricRegistration); return false; } catch { return true; } }));
+  ok("PF-R1 (break m2) pass: the same module adds another key under its prefix", (() => { reg.register({ ...leadsMetric, key: "sample.extra2" }); return reg.has("sample.extra2"); })());
 
   // ----------------------------------------------------------------------------------------------- DW8: drill-through
   const drill = ownerSees.metrics[0].drill;
   const narrowedDrill = (await ask(OWNER, { metrics: ["sample.leads"], filters: { from: "2026-11-01", to: "2026-11-30", staffId: OFFICER.staffId } })).metrics[0].drill;
   ok("PF-R1 DW8 pass: each figure carries its drill target and the exact filter, under the target's parameter names", drill?.path === "/api/front-office/leads" && JSON.stringify(narrowedDrill?.query) === JSON.stringify({ from: "2026-11-01", to: "2026-11-30", owner: OFFICER.staffId }), { drill, narrowedDrill });
   ok("PF-R1 DW8 pass: the Case Officer's drill link carries their own id (own scope)", officerSees.metrics[0].drill?.query.owner === OFFICER.staffId, officerSees.metrics[0].drill);
+  const blunt = new Map([["sample.blunt", { ...leadsMetric, key: "sample.blunt", drillTarget: { path: "/api/front-office/leads", carries: { from: "from", to: "to" } } } as MetricRegistration]]);
+  const bl = await withFirm(A, () => runMetrics(blunt, OFFICER, { metrics: ["sample.blunt"] }));
+  ok("PF-R1 DW8 fail (break M4): a target that cannot carry a filter in effect (the own scope's person) gives no drill link, never a wider one", bl.metrics[0].status === "OK" && bl.metrics[0].drill === null, bl);
+  ok("PF-R1 DW8 fail (break M4): two filters sent to one parameter are refused at registration", (() => { try { new MetricRegistry().register({ ...leadsMetric, drillTarget: { path: "/api/front-office/leads", carries: { from: "d", to: "d" } } }); return false; } catch { return true; } })());
   const guardFor = (who: StaffContext) => new PlatformGuard(new Reflector(), new ModulesContainer(), { authenticate: async () => who, catalogue: async () => [], isLicensed: async () => true } as never);
   const follow = (who: StaffContext) => {
     const req = { method: "GET", path: drill!.path, headers: { authorization: "Bearer sample" } };

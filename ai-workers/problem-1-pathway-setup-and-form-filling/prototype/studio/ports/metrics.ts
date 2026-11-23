@@ -14,12 +14,16 @@ export const REPORT_KEYS = { own: "agent/report:view.own", all: "agent/report:vi
 export const METRIC_READ_BUDGET_MS = 200;
 /** At most this many metrics in one query (AG-14-28: no unbounded answer). */
 export const QUERY_MAX_METRICS = 30;
-/** At most this many rows in a LIST metric (AG-14-28). */
+/** At most this many rows, and columns in a row, in a LIST metric (AG-14-28). */
 export const LIST_MAX_ROWS = 200;
+export const LIST_MAX_COLUMNS = 20;
+/** A read that has not answered by then is UNAVAILABLE (TIMEOUT), so one stuck read never holds the answer (break m4). */
+export const READ_TIMEOUT_MS = 5000;
 
 export const MetricKey = z.string().regex(/^[a-z][a-z_]{0,29}\.[a-z][a-z0-9_]{0,59}$/, "a metric key is module.name, e.g. sales.leads_added");
 export const MetricKind = z.enum(["COUNT", "MONEY", "PERCENT", "LIST"]);
 export type MetricKind = z.infer<typeof MetricKind>;
+const AGGREGATIONS: Record<MetricKind, string[]> = { COUNT: ["COUNT", "SUM"], PERCENT: ["RATIO", "AVG"], MONEY: ["SUM", "AVG", "MEDIAN"], LIST: ["LIST"] };
 /** What the read is told to count: own records, the firm, or the firm's money (AG-14-19). */
 export const MetricScope = z.enum(["own", "all", "financial"]);
 export type MetricScope = z.infer<typeof MetricScope>;
@@ -31,7 +35,7 @@ export const Currency = z.enum(["CAD", "USD"]);
 export const DrillTarget = z.strictObject({
   path: z.string().regex(/^\/api\/[a-z0-9/-]{1,200}$/),
   carries: z.partialRecord(z.enum(["from", "to", "staffId", "clientType"]), z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/)).default({}),
-});
+}).refine((t) => new Set(Object.values(t.carries)).size === Object.values(t.carries).length, "each filter goes to its own parameter (break M4)");
 export type DrillTarget = z.infer<typeof DrillTarget>;
 
 /** CS-R1's `MetricDefinition` (AG-14-4; AG-14 §7), the one shape both sides register (Lead 52's ruling, batch 5). */
@@ -44,10 +48,12 @@ export const MetricDefinition = z.strictObject({
   kind: MetricKind,
   aggregation: z.enum(["COUNT", "SUM", "AVG", "MEDIAN", "RATIO", "LIST"]),
   moneyTreatment: z.enum(["NONE", "PER_CURRENCY"]),
-  /** True when the figure can be counted over the viewer's own records; false: a firm-wide figure only (answered WITHHELD at own scope). */
+  /** True when the figure can be counted over the viewer's own records; false: a firm-wide figure only (answered WITHHELD at own scope).
+   *  A PER_CURRENCY metric (money, or a LIST with a currency on each row) is answered only with view-financial (AG-14-35 to -37). */
   scopeAware: z.boolean(),
   drillTarget: DrillTarget.nullable(),
-}).refine((d) => (d.kind === "MONEY") === (d.moneyTreatment === "PER_CURRENCY"), "a MONEY metric, and only a MONEY metric, is PER_CURRENCY (AG-14-15)");
+}).refine((d) => d.kind === "MONEY" ? d.moneyTreatment === "PER_CURRENCY" : d.kind === "LIST" || d.moneyTreatment === "NONE", "a MONEY metric is PER_CURRENCY; a COUNT or PERCENT is NONE; a LIST may be either (AG-14-15)")
+  .refine((d) => AGGREGATIONS[d.kind].includes(d.aggregation), "the aggregation does not fit the kind (COUNT: COUNT or SUM; PERCENT: RATIO or AVG; MONEY: SUM, AVG or MEDIAN; LIST: LIST)");
 export type MetricDefinition = z.infer<typeof MetricDefinition>;
 
 const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "a date is YYYY-MM-DD").refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v), "not a real date");
@@ -62,7 +68,7 @@ export type MetricFilters = z.infer<typeof MetricFilters>;
 
 /** The door's body (AG-14-30). `scope` is accepted and never read: the scope is the server's (AG-14-19). */
 export const ReportQuery = z.strictObject({
-  metrics: z.array(z.string()).min(1, "name at least one metric").max(QUERY_MAX_METRICS, `at most ${QUERY_MAX_METRICS} metrics`),
+  metrics: z.array(MetricKey).min(1, "name at least one metric").max(QUERY_MAX_METRICS, `at most ${QUERY_MAX_METRICS} metrics`),
   filters: MetricFilters.default({}),
   scope: z.unknown().optional(),
 });
@@ -73,13 +79,14 @@ export const Reading = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("COUNT"), value: z.number().int().min(0) }),
   z.strictObject({ kind: z.literal("PERCENT"), value: z.number().min(0).max(100).nullable() }),
   z.strictObject({ kind: z.literal("MONEY"), figures: z.array(Money).max(2).refine((f) => new Set(f.map((x) => x.currency)).size === f.length, "each currency once") }),
-  z.strictObject({ kind: z.literal("LIST"), rows: z.array(z.record(z.string(), z.union([z.string().max(300), z.number(), z.null()]))).max(LIST_MAX_ROWS) }),
+  z.strictObject({ kind: z.literal("LIST"), rows: z.array(z.record(z.string().max(60), z.union([z.string().max(300), z.number(), z.null()])).refine((r) => Object.keys(r).length <= LIST_MAX_COLUMNS, `at most ${LIST_MAX_COLUMNS} columns`)).max(LIST_MAX_ROWS) }),
 ]);
 export type Reading = z.infer<typeof Reading>;
 
-/** What a module's read is given: the firm, the viewer, the scope the server worked out and the narrowed filters. Under
- *  `own`, `filters.staffId` is always the viewer. */
-export type MetricReadContext = { firmId: string; staffId: string; scope: MetricScope };
+/** What a module's read is given: the firm, the viewer, the viewer's keys (so the read counts only records the viewer may
+ *  open under the area's own view.own / view.all, AG-14-19, SA6-D6: break M1), the scope the server worked out and the
+ *  narrowed filters (a frozen copy per read). Under `own`, `filters.staffId` is always the viewer. */
+export type MetricReadContext = { firmId: string; staffId: string; keys: readonly string[]; scope: MetricScope };
 export type MetricRead = (ctx: MetricReadContext, filters: MetricFilters) => Promise<Reading>;
 export type MetricRegistration = MetricDefinition & { read: MetricRead };
 
@@ -103,50 +110,75 @@ export class ReportRefused extends Error {
 export function baseScope(keys: readonly string[]): "all" | "own" | null {
   return keys.includes(REPORT_KEYS.all) ? "all" : keys.includes(REPORT_KEYS.own) ? "own" : null;
 }
-/** The scope one metric is read at: a money metric is firm-wide with view-financial (Billing / Finance), else the base. */
-export function scopeFor(keys: readonly string[], kind: MetricKind): MetricScope | null {
-  if (kind === "MONEY" && keys.includes(REPORT_KEYS.financial)) return "financial";
+/** The scope one metric is read at: a PER_CURRENCY metric only with view-financial, firm-wide ("financial"; AG-14-35 to
+ *  -37, §2: "firm-wide financial reports come from view-financial, not from view.all"), else none (WITHHELD); any other
+ *  metric at the base scope. */
+export function scopeFor(keys: readonly string[], money: MetricDefinition["moneyTreatment"]): MetricScope | null {
+  if (money === "PER_CURRENCY") return keys.includes(REPORT_KEYS.financial) ? "financial" : null;
   return baseScope(keys);
 }
 /** True when the caller may read any report at all. */
 export const mayReport = (keys: readonly string[]) => baseScope(keys) !== null || keys.includes(REPORT_KEYS.financial);
 
-const fieldsOfIssues = (e: z.ZodError) => Object.fromEntries(e.issues.map((i) => [i.path.join(".") || "body", i.message]));
+/** A plain message per issue (AG-14-30; review m3), never the input itself beyond a known key name, at most 10 fields (break m1). */
+const plain = (i: z.core.$ZodIssue): string => {
+  if (i.code === "unrecognized_keys") return `not a field here: ${i.keys.slice(0, 3).map((k) => (/^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(k) ? k : "(unreadable)")).join(", ")}${i.keys.length > 3 ? ` and ${i.keys.length - 3} more` : ""}`;
+  if (i.code === "invalid_type") return "this has the wrong type";
+  return i.message.slice(0, 200);
+};
+const pathOf = (i: z.core.$ZodIssue) => i.path.slice(0, 4).map((p) => String(p).slice(0, 40)).join(".") || "body";
+const fieldsOfIssues = (e: z.ZodError) => Object.fromEntries(e.issues.slice(0, 10).map((i) => [pathOf(i), plain(i)]));
+const timeout = <T,>(p: Promise<T>, ms: number) => { let t: ReturnType<typeof setTimeout> | undefined; return Promise.race([p, new Promise<"TIMEOUT">((r) => { t = setTimeout(() => r("TIMEOUT"), ms); })]).finally(() => clearTimeout(t)); };
+/** A reading that fits its definition: the kind, and a currency on every row of a PER_CURRENCY list. */
+const fits = (m: MetricDefinition, raw: unknown): Reading | null => {
+  const got = Reading.safeParse(raw);
+  if (!got.success || got.data.kind !== m.kind) return null;
+  if (got.data.kind === "LIST" && m.moneyTreatment === "PER_CURRENCY" && !got.data.rows.every((r) => Currency.safeParse(r.currency).success)) return null;
+  return got.data;
+};
 
 /** The run rule both the registry and the fake use. Refuses (ReportRefused) an ill-shaped body, an unknown metric key, a
  *  caller without a report key, and a person filter naming someone else when the caller sees only their own. Each metric
  *  is read at its server-worked scope, all at once; a read that fails or answers the wrong shape is UNAVAILABLE (its
  *  words never leave the server), a firm-wide-only metric at own scope is WITHHELD. */
-export async function runMetrics(metrics: ReadonlyMap<string, MetricRegistration>, caller: ReportCaller, body: unknown, onFail?: (key: string, reason: "ERROR" | "SHAPE") => void): Promise<ReportAnswer> {
-  const parsed = ReportQuery.safeParse(body ?? {});
-  if (!parsed.success) throw new ReportRefused(400, "QUERY_INVALID", parsed.error.issues[0]?.message ?? "Check the report query", fieldsOfIssues(parsed.error));
-  const { metrics: keys, filters } = parsed.data;
+export async function runMetrics(metrics: ReadonlyMap<string, MetricRegistration>, caller: ReportCaller, body: unknown, onFail?: (key: string, reason: "ERROR" | "SHAPE" | "TIMEOUT") => void, readTimeoutMs = READ_TIMEOUT_MS): Promise<ReportAnswer> {
   if (!mayReport(caller.keys)) throw new ReportRefused(403, "MISSING_PERMISSION", `Your roles include no report permission (${REPORT_KEYS.own}, ${REPORT_KEYS.all} or ${REPORT_KEYS.financial}).`);
+  const parsed = ReportQuery.safeParse(body ?? {});
+  if (!parsed.success) { const first = parsed.error.issues[0]; throw new ReportRefused(400, "QUERY_INVALID", first ? plain(first) : "Check the report query", fieldsOfIssues(parsed.error)); }
+  const { metrics: keys, filters } = parsed.data;
   const unknown = keys.filter((k) => !metrics.has(k));
-  if (unknown.length) throw new ReportRefused(400, "UNKNOWN_METRIC", `No such metric: ${unknown.slice(0, 5).map((k) => k.slice(0, 80)).join(", ")}`);
-  const plans = [...new Set(keys)].map((key) => { const m = metrics.get(key)!; return { key, m, scope: scopeFor(caller.keys, m.kind) }; });
+  if (unknown.length) throw new ReportRefused(400, "UNKNOWN_METRIC", `No such metric: ${unknown.slice(0, 5).join(", ")}`);
+  const plans = [...new Set(keys)].map((key) => { const m = metrics.get(key)!; return { key, m, scope: scopeFor(caller.keys, m.moneyTreatment) }; });
   // checked before any read starts: at own scope the person filter may name only the caller
   if (filters.staffId && filters.staffId.toLowerCase() !== caller.staffId.toLowerCase() && plans.some((p) => p.scope === "own" && p.m.scopeAware)) throw new ReportRefused(403, "OWN_ONLY", "You can see only your own figures.");
   const answers = await Promise.all(plans.map(async ({ key, m, scope }): Promise<MetricAnswer> => {
     const base = { key, label: m.label, kind: m.kind, source: m.source, scope };
     if (scope === null || (scope === "own" && !m.scopeAware)) return { ...base, status: "WITHHELD", reading: null, drill: null };
-    const narrowed: MetricFilters = scope === "own" ? { ...filters, staffId: caller.staffId } : filters;
-    let reading: Reading;
+    const narrowed: MetricFilters = Object.freeze(scope === "own" ? { ...filters, staffId: caller.staffId } : { ...filters });
+    let reading: Reading | null;
     try {
-      const got = Reading.safeParse(await m.read({ firmId: caller.firmId, staffId: caller.staffId, scope }, narrowed));
-      if (!got.success || got.data.kind !== m.kind) { onFail?.(key, "SHAPE"); return { ...base, status: "UNAVAILABLE", reading: null, drill: null }; }
-      reading = got.data;
+      const got = await timeout(Promise.resolve().then(() => m.read(Object.freeze({ firmId: caller.firmId, staffId: caller.staffId, keys: Object.freeze([...caller.keys]), scope }), narrowed)), readTimeoutMs);
+      if (got === "TIMEOUT") { onFail?.(key, "TIMEOUT"); return { ...base, status: "UNAVAILABLE", reading: null, drill: null }; }
+      reading = fits(m, got);
+      if (!reading) { onFail?.(key, "SHAPE"); return { ...base, status: "UNAVAILABLE", reading: null, drill: null }; }
     } catch { onFail?.(key, "ERROR"); return { ...base, status: "UNAVAILABLE", reading: null, drill: null }; }
     return { ...base, status: "OK", reading, drill: drillOf(m.drillTarget, narrowed) };
   }));
   return { metrics: answers, filters };
 }
 
-/** The drill link: the target path and the filters it carries, under the target's own parameter names (AG-14-22). */
+/** The drill link: the target path and the filters it carries, under the target's own parameter names (AG-14-22). A link
+ *  only when the target carries every filter in effect (the own scope's person included), so the drilled list is the
+ *  figure's exact set, never a wider one (break M4); otherwise none. */
 export function drillOf(target: DrillTarget | null, filters: MetricFilters): MetricAnswer["drill"] {
   if (!target) return null;
   const query: Record<string, string> = {};
-  for (const [ours, theirs] of Object.entries(target.carries) as [keyof MetricFilters, string][]) { const v = filters[ours]; if (v) query[theirs] = v; }
+  for (const [ours, v] of Object.entries(filters) as [keyof MetricFilters, string | undefined][]) {
+    if (!v) continue;
+    const theirs = target.carries[ours];
+    if (!theirs) return null;
+    query[theirs] = v;
+  }
   return { path: target.path, query };
 }
 
@@ -154,18 +186,28 @@ export function drillOf(target: DrillTarget | null, filters: MetricFilters): Met
 export function checkRegistration(metrics: ReadonlyMap<string, MetricRegistration>, m: MetricRegistration): MetricRegistration {
   const { read, ...definition } = m;
   if (typeof read !== "function") throw new Error(`MetricRegistry: ${String(m?.key)} has no read`);
-  const def = MetricDefinition.parse(definition);
+  const def = MetricDefinition.parse(structuredClone(definition));
   if (metrics.has(def.key)) throw new Error(`MetricRegistry: ${def.key} is already registered`);
+  const prefix = def.key.slice(0, def.key.indexOf("."));
+  const owner = [...metrics.values()].find((x) => x.key.startsWith(`${prefix}.`) && x.module !== def.module);
+  if (owner) throw new Error(`MetricRegistry: the ${prefix}.* keys are ${owner.module}'s (break m2)`);
   return { ...def, read };
 }
+/** The definitions as copies: a caller can change nothing registered (break m5). */
+export const definitionsOf = (metrics: ReadonlyMap<string, MetricRegistration>): MetricDefinition[] => [...metrics.values()].map(({ read: _read, ...d }) => structuredClone(d));
 
-/** STANDARDS §9's read budget, for CI (row PF-R1 (7)): reads each metric at each given scope and names every one that
- *  took longer than `budgetMs` or failed. A metric on this list fails the budget test. */
-export async function overBudget(metrics: ReadonlyMap<string, MetricRegistration>, contexts: MetricReadContext[], filters: MetricFilters = {}, budgetMs = METRIC_READ_BUDGET_MS): Promise<{ key: string; scope: MetricScope; ms: number | null }[]> {
+/** STANDARDS §9's read budget, for CI (row PF-R1 (7)): reads each metric at each given context, each inside that
+ *  context's firm (`runAs`: the platform's withFirm, so the walls apply and a read outside any firm cannot pass by reading
+ *  nothing: break M3), and names every one that took longer than `budgetMs`, failed, or answered the wrong shape. A metric
+ *  on this list fails the budget test. */
+export async function overBudget(metrics: ReadonlyMap<string, MetricRegistration>, contexts: MetricReadContext[], runAs: <T>(firmId: string, fn: () => Promise<T>) => Promise<T>, filters: MetricFilters = {}, budgetMs = METRIC_READ_BUDGET_MS): Promise<{ key: string; scope: MetricScope; ms: number | null }[]> {
   const out: { key: string; scope: MetricScope; ms: number | null }[] = [];
   for (const m of metrics.values()) for (const ctx of contexts) {
     const started = performance.now();
-    try { await m.read(ctx, ctx.scope === "own" ? { ...filters, staffId: ctx.staffId } : filters); } catch { out.push({ key: m.key, scope: ctx.scope, ms: null }); continue; }
+    try {
+      const got = await runAs(ctx.firmId, () => m.read(ctx, ctx.scope === "own" ? { ...filters, staffId: ctx.staffId } : filters));
+      if (!fits(m, got)) { out.push({ key: m.key, scope: ctx.scope, ms: null }); continue; }
+    } catch { out.push({ key: m.key, scope: ctx.scope, ms: null }); continue; }
     const ms = performance.now() - started;
     if (ms > budgetMs) out.push({ key: m.key, scope: ctx.scope, ms: Math.round(ms) });
   }

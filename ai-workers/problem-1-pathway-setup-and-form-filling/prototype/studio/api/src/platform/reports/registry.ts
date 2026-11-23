@@ -3,7 +3,7 @@
 // with the port's one run rule. It keeps no figure and writes nothing (AG-14-1); a read that fails or answers the wrong
 // shape is logged by metric key and reason word only (PF-23: never the error's words or a figure).
 import { Injectable, Logger } from "@nestjs/common";
-import { checkRegistration, runMetrics, type MetricDefinition, type MetricRegistration, type MetricsPort, type ReportAnswer } from "../../../../ports/metrics.ts";
+import { checkRegistration, definitionsOf, runMetrics, type MetricDefinition, type MetricRegistration, type MetricsPort, type ReportAnswer } from "../../../../ports/metrics.ts";
 import type { StaffContext } from "../identity/keys.ts";
 
 @Injectable()
@@ -11,7 +11,7 @@ export class MetricRegistry implements MetricsPort<StaffContext> {
   private readonly metrics = new Map<string, MetricRegistration>();
   private readonly log = new Logger("reports");
   register(metric: MetricRegistration): void { const ok = checkRegistration(this.metrics, metric); this.metrics.set(ok.key, ok); }
-  definitions(): MetricDefinition[] { return [...this.metrics.values()].map(({ read: _read, ...d }) => d); }
+  definitions(): MetricDefinition[] { return definitionsOf(this.metrics); }
   has(key: string): boolean { return this.metrics.has(key); }
   /** The registrations, for the CI read-budget test (ports/metrics.ts overBudget). */
   all(): ReadonlyMap<string, MetricRegistration> { return this.metrics; }
