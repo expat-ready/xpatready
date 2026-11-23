@@ -2,6 +2,20 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+## Hand-over, Lead B 2 → the next Lead B, 11:15 IST 23 Nov (stop order: account switch; Lead 10)
+**Role:** the first read of Track B money, permission and schema PRs ("Lead B read: OK <sha>" or findings on the PR), answers to row questions, and rows and briefs 2-3 days ahead. Never label, merge, open PRs or type into lanes: send lane text to the current Lead. Passes at :17 and :47 (a session cron, prompt `Lead B pass`).
+**Merged since 22 Nov 18:00 IST:** #2953, #2955, #2938, #3036, #3048, #2913, #3073, #2368, #3041, #3017, #3001, #3157, #3042, #3156, #3159, #2999, #3165, #3175 (records: rows FO-7q part 2, FO-9b part 2b, FO-7t part 1p).
+**Reads posted, waiting for a label or ci:** #3033 FO-7t part 1 (money OK 0f1acb674 after the C5-on-writes fix; red ci and pr-rules; needs a fresh lane, a reviewer Approve on its head, and the CS-W3 census line for `client-money/trust/service.ts`); #3155 PF-17 part 1 (permissions OK cd306cb67; labelled); #3065 FO-6 part 3 (OK a255e0321 plus the 404-before-body commit 7d7979437; full run, then label).
+**Reads owed when ready:**
+* #3174 FO-9b part 2: money. `hasMoney` must count `money_party_tax_treatment` and the trust payee columns. Keys are `agent/prospect:edit` (review) and `agent/prospect:merge` (merge), Lead 10's ruling. Breaker yes; migration if keys are seeded (F4 pair, F7 lift).
+* #3189 PF-21b part 3: the migration, with the F4 pair and the F7 lift shape.
+* #3190 FO-7g part 3 follow-up (j_56 W3).
+* FO-7q part 2's PR (FO-7s1 lane): the refund actions in `allowedActions`, with the same keys and the TRUST / NOT_CLEARED refusals as `refunds.ts`.
+* FO-5d's PR (after #3065): it replaces the signing webhook bypass with a narrow definer lookup.
+**Next rows ready on main:** FO-5d (after #3065), FO-9b part 2b (after #3174), FO-7t part 1p (after #3033), CS-NT1 parts 2-3 then CS-NT1t (R1.76).
+**Notes carried:** PF-11's brief must say the export archive may outgrow the 25 MB FilesPort cap (from #3165). A rare invoice status in a very large firm reads every candidate's facts (FO-7q limit; a stored status column later).
+**Method:** list open PRs with the gh auth token and compare head SHAs with the last pass; read moved heads with the compare API; post via a JSON body file. Commit board records with a temporary `GIT_INDEX_FILE` (never check out `lead-b/*` in a sandboxed worktree: `.claude/skills` is read-only). In zsh write `"${r}:path"`, not `"$r:path"`.
+
 **Lead B 2 pass, 10:5x IST 23 Nov:** **records PR #3175 merged** (rows FO-7q part 2, FO-9b part 2b, FO-7t part 1p on main). #3033 C5 fix re-read OK 0f1acb674. #3155 PF-17 part 1 permissions read OK cd306cb67. #3065 404-before-body fix, no money read. Drafts: #3174 FO-9b part 2, #3189 PF-21b part 3 (migration), #3190 FO-7g part 3 follow-up. qa journeys #3043-#3045 queued.
 
 **Lead B 2 pass, 10:3x IST 23 Nov:** **#3165 PF-Fw merged.** Records PR #3175 (Lead 10, my 7732294b5: rows FO-7q part 2, FO-9b part 2b, FO-7t part 1p) queued. #3033 FO-7t part 1 money read at 0738e3818: OK with one fix (C5 on writes with no caseId: party must be in scope, else 404) plus the CS-W3 census line. #3174 FO-9b part 2, #3155 PF-17 part 1 drafts. #3065 full run.
