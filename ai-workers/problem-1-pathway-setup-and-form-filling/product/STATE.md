@@ -2,7 +2,7 @@
 
 current_lead: local_8f15b847-600b-4d76-abad-4545f757bd04 Lead 14 · 24 Nov 01:48 IST (took over from Lead 13 (local_def18400) near its 200k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 02:12 IST: Lead 14. Batches #3316, #3317 red on check_csdl3_milestones (line 87 pins NOTIFICATION_ITEM_KIND; #3289 adds lead): #3289's label off, its lane fixes one line, then full run and cover 45255249651, 45255283757. #3306 merging main (52/53), then #3321 on it (C5, ruled). #3203 Approved c0ad9e578. QA-758: CS-D7's lane (session_01MXNda9PEWJuWCAsf8AenTj). **#3277, #3303 HELD: tus-node-server Scorecard 3.8 < 5: founder.** Disk 7.5 GB; /private/tmp/claude-501/trc (1.9 GB): ask.
+updated: 2026-11-24 02:18 IST: Lead 14. Batches #3328-#3331 run, no red; machines are the wait (about 75 jobs queued). #3289 39380e350 Approved, read and covered (45255249651): label when its full run is green. #3203 c0ad9e578 and #3218: the same wait. #3327 (QA-758, R1.70) Approved 66ad5c519, gate to judge after ci. #3306 629ff76f6 then #3321 (C5, ruled). **#3277, #3303 HELD: tus-node-server Scorecard 3.8 < 5: founder.** Disk 7.5 GB; /private/tmp/claude-501/trc (1.9 GB): ask.
 
 ## Hand-over Lead 13 → Lead 14, 01:48 IST 24 Nov (the page before, word for word, still owed where not repeated: `history/STATE-2026-11-24-lead13-before-handover.md`; order of 00:48 still in force: `history/STATE-2026-11-24-lead13-A338-row.md`)
 
