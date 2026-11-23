@@ -237,7 +237,10 @@ export class BookingTypesService {
     if (!r.success) throw problem(FIELD_ERROR_STATUS, "invalid", "Please check the highlighted details", "Give from and to as times with their offset, and tz as an IANA time zone.", { code: "INVALID", fields: fieldsOf(r.error), issues: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
     const t = await withTimings(this.db, ctx.firmId, await this.find(this.db, ctx.firmId, id));   // FO-3a1e: as the door resolves them
     const [firmZone, closedDays] = await Promise.all([readSetting<string>(this.db, ctx.firmId, TIME_ZONE.key), readSetting<string[]>(this.db, ctx.firmId, CLOSED_DAYS.key)]);
-    const now = this.ports.clock.now(), tz = r.data.tz ?? firmZone, from = r.data.from ?? now, to = r.data.to ?? new Date(from.getTime() + 7 * DAY);
+    // Unasked, the range is whole days in `tz`: today and the six after. Never now + 7 days, whose eighth day was a sliver
+    // ending at this time of day, offered nothing and so read "No host hours" (FO-3st3 J-T3 on a Monday, R1.42).
+    const midnight = (at: Date, plus: number) => { const l = localDate(at, tz), d = new Date(Date.UTC(l.y, l.m - 1, l.d + plus)), [y, m, dd] = [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()]; return wallToUtc(y, m, dd, 0, tz) ?? wallToUtc(y, m, dd, 60, tz)!; };
+    const now = this.ports.clock.now(), tz = r.data.tz ?? firmZone, from = r.data.from ?? midnight(now, 0), to = r.data.to ?? midnight(from, 7);
     if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw problem(FIELD_ERROR_STATUS, "invalid", "Please check the highlighted details", "Ask for at most 62 days of times, from before to.", { code: "INVALID", fields: { to: "at most 62 days after from" } });
     const hosts = (await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { id: { in: t.hostStaffIds }, status: "ACTIVE" as const }), select: { id: true } })).map((h) => h.id);
     // The door's own computation (private to the booking service, read by name so the two can never differ).
