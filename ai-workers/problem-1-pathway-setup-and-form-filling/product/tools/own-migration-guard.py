@@ -5,21 +5,33 @@ is the newest of all").
 
 Why: with one Mergify migration slot per area (SPD-2, #3035), two areas' migrations are tested side by side, not on
 top of each other. A suite that snapshots the database catalogue before its own migration and compares it with a read
-taken AFTER the later migrations sees the other area's objects as its own and fails on main. This happened in merge
-batches at least three times since 16 Nov (adcf9c105, 2cd4d9cd1, 7109eb3ae; #2915).
+taken AFTER the later migrations sees the other area's objects as its own and fails on main. Merge batches broke this
+way at least twice since 16 Nov (adcf9c105, 2cd4d9cd1; #2915).
 
-What it refuses, in a test that names its own migration (const NEW = "<stamp>_<name>") and applies the later ones
-(a filter "x > NEW" or "x >= NEW" that is not only reading migration text):
+What it refuses, in a test that names a migration (NAME = "<14-digit stamp>_<name>", after const or a comma) and
+applies the later ones: a loop over all.filter((x) => x > NAME) or >= NAME (typed parameter or a bounded range
+"&& x < OTHER" included), over all.slice(all.indexOf(NAME) + 1), or over a name such a filter was assigned to
+(const after = all.filter(…) ... for (const d of after)); a filter that only reads migration text is not a loop:
   a catalogue reader (a function whose body queries pg_proc, pg_policy/pg_policies, pg_trigger, pg_class,
   pg_attribute, pg_constraint, pg_index/pg_indexes, pg_views, pg_type, pg_enum, pg_namespace, pg_roles, pg_depend or
-  information_schema) that is called both before that line and after it, on a database the later migrations went
-  to (psql(X, …) on the loop's line; when the loop names none, every call counts). The before-call is a snapshot; the
-  after-call then holds every later migration's objects too, so the comparison is not about this migration alone.
+  information_schema, or calls such a reader; declared with function, const, let or after a comma) called both before
+  such a loop and after it, on a database the loop's migrations went to: psql(X, …), psql(urlOf(X), …) or
+  "of [X, Y]" on the loop's line (or the next, when the body sits there), plus any database later given every
+  migration ("for (const d of all) psql(X, …)"). Only a call whose argument is another database constant (an
+  upper-case name the loops never fed) is left out: a loop variable, an expression or no argument counts (fails
+  closed); so does every call when a loop names no database (file(d), apply(d)). Every later loop of every name counts.
+  A multi-step suite (FO-7ts's three parts) applies another of its own migrations after the loop: there a plain
+  snapshot before that migration ("const x = fn(db)," or ";") is the next step's baseline, and reads after it are
+  judged against the next step's own loops. With no own migration after the loop, every later read counts.
   Fix: take the second read before the later migrations are applied (as adcf9c105 did), or, when the read after is
   a rule every table must keep whatever migration added it (a whole-catalogue invariant, which should fail on main if
-  another area breaks it), mark that call with a comment "own-migration: whole catalogue (<reason>)" on its line or
-  the line above; a read limited to this area's own tables (another area's migration cannot change them, and one of
-  this area waits in the same Mergify slot) is marked "own-migration: ok (<reason>)".
+  another area breaks it), mark that call "// own-migration: whole catalogue (<reason>)" on its line or on a comment
+  line right above; a read limited to this area's own tables (another area's migration cannot change them, and one of
+  this area waits in the same Mergify slot) is marked "// own-migration: ok (<reason>)".
+
+Not covered (state it in the review of a new suite): a snapshot taken by an inline sql(…pg_proc…) with no reader
+function, a reader imported from another file or called as a method (cat.fns(T)), migrations applied by
+`prisma migrate deploy`, and files other than prototype/studio/tests/*.ts.
 
 Static reading of the test's text only: no database, no network, US$0. Exit 0 clean, 1 refused (each names the file,
 the lines and the fix), 2 could not run.
@@ -31,9 +43,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT = os.path.normpath(os.path.join(HERE, "..", "..", "prototype", "studio", "tests"))
 CAT = re.compile(r"\b(pg_proc|pg_polic(?:y|ies)|pg_trigger|pg_class|pg_attribute|pg_constraint|pg_index(?:es)?|pg_views|"
                  r"pg_type|pg_enum|pg_namespace|pg_roles|pg_depend|information_schema)\b")
-NEWC = re.compile(r'\bconst\s+([A-Z][A-Z0-9_]*)\s*=\s*["\'](\d{14}_[A-Za-z0-9_-]+)["\']')
-DEF = re.compile(r"(?:\bfunction\s+([A-Za-z_]\w*)\s*\(|\b(?:const|let)\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_]\w*)\s*(?::[^=]+)?=>)")
-MARK = re.compile(r"own-migration:\s*(whole catalogue|ok)\b", re.I)
+NEWC = re.compile(r'(?:\bconst\s+|,\s*)([A-Z][A-Z0-9_]*)\s*=\s*["\'](\d{14}_[A-Za-z0-9_-]+)["\']')
+DEF = re.compile(r"(?:\bfunction\s+([A-Za-z_]\w*)\s*\(|(?:\b(?:const|let)\s+|,\s*)([A-Za-z_]\w*)\s*=\s*(?:async\s*)?"
+                 r"(?:\([^()]*\)|[A-Za-z_]\w*)\s*(?::[^=]+)?=>)")
+MARK = re.compile(r"own-migration:\s*(?:whole catalogue|ok)\b", re.I)
+PSQLDB = re.compile(r"\bpsql\(\s*(?:urlOf\(\s*)?([A-Za-z_]\w*)")
 
 
 def body(text, start):
@@ -51,46 +65,92 @@ def body(text, start):
     return text[start:]
 
 
+def readers(text):
+    """Functions that read the catalogue, directly or through another reader (one pass to a fixpoint)."""
+    defs = {}
+    for m in DEF.finditer(text):
+        defs.setdefault(m.group(1) or m.group(2), body(text, m.start()))
+    out = {f for f, b in defs.items() if CAT.search(b)}
+    while True:
+        more = {f for f, b in defs.items() if f not in out and any(re.search(r"(?<![\w.])" + re.escape(r) + r"\(", b) for r in out)}
+        if not more: return out
+        out |= more
+
+
+def loop_lines(lines, name):
+    """(line, databases) of each loop applying the migrations after NAME; databases empty when none can be read."""
+    flt = re.compile(r"(?:filter\(\s*\(?\s*(\w+)\s*(?::\s*\w+)?\s*\)?\s*=>\s*\1\s*>=?\s*" + re.escape(name) + r"\b[^)]*\)"
+                     r"|\.slice\(\s*\w+\.indexOf\(\s*" + re.escape(name) + r"\s*\)\s*\+\s*1\s*\))")
+    found = set()
+    for i, l in enumerate(lines):
+        if not flt.search(l) or "readFileSync" in l or "matchAll" in l: continue
+        if re.search(r"\bfor\s*\(", l) or ".forEach(" in l:
+            found.add(i)
+        f = flt.search(l)
+        m = None
+        for m2 in re.finditer(r"\b(?:const|let)\s+(\w+)\s*=|,\s*(\w+)\s*=", l[:f.start()]): m = m2
+        if m and "(" not in l[m.end():f.start()].replace("all", "", 1).replace(".", "") .strip("( "):   # the list is named here and applied where it is iterated
+            m = type("M", (), {"group": lambda self, k, g=(m.group(1) or m.group(2)): g})()
+            v = re.escape(m.group(1))
+            found |= {j for j, k in enumerate(lines) if j > i and re.search(r"\bof\s+" + v + r"\s*\)|\b" + v + r"\.forEach\(", k)}
+    out = []
+    for i in sorted(found):
+        near = lines[i]
+        if not re.search(r"\bpsql\(|of\s*\[", near) and i + 1 < len(lines): near += "\n" + lines[i + 1]
+        dbs = set(PSQLDB.findall(near))
+        for grp in re.findall(r"of\s*\[([^\]]*)\]", near): dbs |= set(re.findall(r"[A-Za-z_]\w*", grp))
+        out.append((i, dbs))
+    return out
+
+
+def marked(lines, i):
+    if MARK.search(lines[i]): return True
+    return i > 0 and lines[i - 1].strip().startswith("//") and bool(MARK.search(lines[i - 1]))
+
+
 def scan(path):
     text = open(path, encoding="utf-8").read()
     lines = text.split("\n")
-    out = []
-    for name, _stamp in NEWC.findall(text):
-        later = re.compile(r"filter\(\s*\(?\s*(\w+)\s*\)?\s*=>\s*\1\s*>=?\s*" + re.escape(name) + r"\s*\)")
-        loop = next((i for i, l in enumerate(lines) if later.search(l) and "readFileSync" not in l and "matchAll" not in l), None)
-        if loop is None: continue
-        # The databases the later migrations go to: psql(X, …), psql(urlOf(X), …) or "for (const db of [X, Y])" on the
-        # loop's line or the next. None read (file(), apply(d), migrate(d)): every call counts (fails closed).
-        near = lines[loop]
-        if not re.search(r"\bpsql\(|of\s*\[", near) and loop + 1 < len(lines): near += "\n" + lines[loop + 1]   # body on the next line
-        dbs = set(re.findall(r"\bpsql\(\s*(?:urlOf\(\s*)?([A-Za-z_]\w*)", near))
-        for grp in re.findall(r"of\s*\[([^\]]*)\]", near): dbs |= set(re.findall(r"[A-Za-z_]\w*", grp))
-        # A database that takes every migration ("for (const d of all) psql(X, …)") after the snapshot holds the later
-        # ones too (FO-7ts part 3's rollback copy).
-        for i in range(loop, len(lines)):
-            if re.search(r"\bof\s+(?:all|ALL)\s*\)", lines[i]):
-                dbs |= set(re.findall(r"\bpsql\(\s*(?:urlOf\(\s*)?([A-Za-z_]\w*)", lines[i]))
-        dbs.discard("db"); dbs.discard("d")
-        readers = set()
-        for m in DEF.finditer(text):
-            fn = m.group(1) or m.group(2)
-            if CAT.search(body(text, m.start())): readers.add(fn)
-        for fn in sorted(readers):
-            call = re.compile(r"(?<![\w.])" + re.escape(fn) + r"\(")   # a call, not the word in prose ("role (the")
-            at = [i for i, l in enumerate(lines) if call.search(l) and not DEF.search(l.split(fn, 1)[0] + fn + "(")]
-            at = [i for i in at if not re.search(r"\b(function|const|let)\s+" + re.escape(fn) + r"\b", lines[i])]
-            before = [i for i in at if i < loop]
-            def same_db(i):   # the call reads a database the later migrations went to (or one cannot tell: counts)
-                if not dbs: return True
-                arg = re.search(r"(?<![\w.])" + re.escape(fn) + r"\(\s*([^,)]*)", lines[i])
-                a = (arg.group(1).strip() if arg else "")
-                return a == "" or a in dbs or not re.fullmatch(r"[A-Za-z_]\w*", a) and not a[:1] in "\"'`"
-            after = [i for i in at if i > loop and same_db(i) and not (MARK.search(lines[i]) or (i and MARK.search(lines[i - 1])))]
-            if before and after:
-                out.append(f"{os.path.relpath(path)}:{after[0] + 1}: {fn}() reads the catalogue at line {before[0] + 1} (before "
-                           f"{name}'s later migrations, line {loop + 1}) and again after them; the comparison then holds other "
-                           f"migrations' objects. Fix: read before line {loop + 1} (as adcf9c105), or mark a whole-catalogue rule "
-                           f"with \"// own-migration: whole catalogue (<reason>)\"")
+    names = sorted({n for n, _ in NEWC.findall(text)})
+    rd = readers(text)
+    # databases later given every migration (for (const d of all) psql(X, …))
+    every = {i: set(PSQLDB.findall(l)) for i, l in enumerate(lines) if re.search(r"\bof\s+(?:all|ALL)\s*\)", l)}
+    own = sorted(i for i, l in enumerate(lines) if any(re.search(r"\bMIG\s*,\s*" + re.escape(n) + r"\s*,\s*[\"']migration\.sql", l) for n in names))
+    out, seen = [], set()
+    for name in names:
+        for loop, dbs in loop_lines(lines, name):
+            fed = set(dbs) | {d for j, ds in every.items() if j >= loop for d in ds}
+            for fn in sorted(rd):
+                call = re.compile(r"(?<![\w.])" + re.escape(fn) + r"\(\s*([^,)]*)")
+                at = [(i, m) for i, l in enumerate(lines) for m in call.finditer(l)
+                      if not re.search(r"\b(?:function|const|let)\s+" + re.escape(fn) + r"\b|,\s*" + re.escape(fn) + r"\s*=", l)]
+                lcol = lines[loop].find("for")
+                def after_loop(i, m): return i > loop or (i == loop and m.start() > max(lcol, 0) and m.start() > lines[loop].find(")"))
+                def counts(m):   # left out only for another database constant the loops never fed
+                    a = m.group(1).strip()
+                    if not dbs: return True
+                    return not (re.fullmatch(r"[A-Z][A-Z0-9_]*", a) and a not in fed)
+                def snapshot(i, m):   # "const x = fn(db)," or ";": a baseline, not a comparison (fo7ts's fnBefore2 = fns(T), …)
+                    l = lines[i]
+                    if not re.search(r"(?:\b(?:const|let)\s+\w+|,\s*\w+)\s*=\s*$", l[:m.start()]): return False
+                    depth, j = 0, m.end() - len(m.group(1)) - 1
+                    while j < len(l):
+                        depth += {"(": 1, ")": -1}.get(l[j], 0)
+                        if depth == 0: break
+                        j += 1
+                    return re.match(r"\s*(?:[,;]|$)", l[j + 1:]) is not None
+                # The next of the suite's own migrations applied after the loop starts its next step: a plain snapshot
+                # taken before it is that step's baseline; reads after it are judged against that step's own loops.
+                nxt = next((j for j in own if j > loop), len(lines))
+                before = [i for i, m in at if not after_loop(i, m)]
+                after = [i for i, m in at if after_loop(i, m) and i < nxt and counts(m) and not marked(lines, i)
+                         and not (nxt < len(lines) and snapshot(i, m))]
+                if before and after and (path, after[0], fn) not in seen:
+                    seen.add((path, after[0], fn))
+                    out.append(f"{os.path.relpath(path)}:{after[0] + 1}: {fn}() reads the catalogue at line {before[0] + 1} (before "
+                               f"{name}'s later migrations, line {loop + 1}) and again after them; the comparison then holds other "
+                               f"migrations' objects. Fix: read before line {loop + 1} (as adcf9c105), or mark a whole-catalogue rule "
+                               f"with \"// own-migration: whole catalogue (<reason>)\"")
     return out
 
 

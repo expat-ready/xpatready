@@ -849,8 +849,9 @@ try {
     && sql(EMPTY, `select count(*) from information_schema.columns where table_name = 'money_trust_entry' and column_name = 'picked_other_funds_by'`) === "1");
   rb3(EMPTY);
   ok("FO-7ts part 3 rollback: rollback.sql restores money_trust_entry_write as part 2 left it, money_invoice_write as part 1 left it, and money_credit_note_write, money_move_batch_owed_back and money_move_line_write as FO-7lk left them, exactly, and money_trust_entry's checks as before",
-    // own-migration: ok (checksOf reads only money_trust_entry's constraints, a money table: another area's migration cannot change it, and a money one waits in the same slot)
+    // own-migration: ok (checksOf reads only money_trust_entry's constraints and src3 only five money_ functions, a money table: another area's migration cannot change it, and a money one waits in the same slot)
     src3(EMPTY) === srcBefore3 && checksOf(EMPTY) === checksBefore3 && sql(EMPTY, `select count(*) from pg_class where relname in ('money_party_tax_treatment', 'money_invoice_firm_id_issued_at_id_idx')`) === "0"
+    // own-migration: ok (src3 again: only five money_ functions)
     && sql(EMPTY, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_invoice_write', 'money_credit_note_write', 'money_move_batch_owed_back', 'money_move_line_write')`) === "t", { s: src3(EMPTY), srcBefore3 });
   ok("FO-7ts part 3 pass: after its rollback the migration runs again, and rolls back again", (psql(EMPTY, ["-1", "-f", join(MIG, NEW3, "migration.sql")]), sql(EMPTY, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "1") && (rb3(EMPTY), src3(EMPTY) === srcBefore3));
   psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]);

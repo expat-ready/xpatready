@@ -52,6 +52,32 @@ run "$W/prose.ts"; ok "7. the word \"fns (\" in a message is not a call" "$([ $r
 { echo 'const NEW = "20261117090000_x";'; echo 'const rows = (db: string) => sql(db, `select count(*) from money_ledger`);'
   echo 'const a = rows(T);'; echo 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);'; echo 'const b = rows(T);'; } > "$W/rows.ts"
 run "$W/rows.ts"; ok "7. a helper reading a table, not the catalogue, is not held" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+# 10. review round 1 (break): real shapes the first version missed
+suite early 'const after = all.filter((d) => d > NEW);' 'const before = fns(T);' 'psql(T, ["-f", NEW]);' 'for (const d of after) psql(T, ["-f", d]);' 'const added = fns(T);'
+run "$W/early.ts"; ok "10. M1: the later list declared early (const after = all.filter(…)), applied by for (… of after) before the read: refused (CS-K1's shape)" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite earlyok 'const after = all.filter((d) => d > NEW);' 'const before = fns(T);' 'psql(T, ["-f", NEW]);' 'const added = fns(T);' 'for (const d of after) psql(T, ["-f", d]);'
+run "$W/earlyok.ts"; ok "10. M1: ... read before that loop: passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+{ echo 'const NEW = "20261117090000_a", STEP2 = "20261117100000_b", NEW2 = "20261117110000_c";'
+  echo 'const fns = (db: string) => sql(db, `select proname from pg_proc`);'
+  echo 'const b = fns(T);'; echo 'for (const d of all.filter((x) => x > NEW2)) psql(T, ["-f", d]);'; echo 'const c = fns(T);'; } > "$W/comma.ts"
+run "$W/comma.ts"; ok "10. M2: a migration named after a comma (const NEW = …, NEW2 = …): its later loop is read" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite range 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW && x < STOP)) psql(T, ["-f", d]);' 'const after = fns(T);'
+run "$W/range.ts"; ok "10. M3: a bounded range (x > NEW && x < STOP) holds other areas' migrations too: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite loopvar 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) for (const db of [T, P]) psql(db, ["-f", d]);' 'for (const db of [T, P]) { const after = fns(db); }'
+run "$W/loopvar.ts"; ok "10. M4: a read through a loop variable (fns(db)) is counted, never taken as another database" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+{ echo 'const NEW = "20261117090000_a";'; echo 'const x = 1, src3 = (db: string) => sql(db, `select prosrc from pg_proc`);'
+  echo 'const b = src3(T);'; echo 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);'; echo 'const c = src3(T);'; } > "$W/commadef.ts"
+run "$W/commadef.ts"; ok "10. m: a reader declared after a comma is a reader" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite wrap 'const diff = (db: string) => fns(db).sort();' 'const before = diff(T);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'const after = diff(T);'
+run "$W/wrap.ts"; ok "10. m: a wrapper that calls a reader is a reader" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite two 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) psql(DEMO, ["-f", d]);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'const after = fns(T);'
+run "$W/two.ts"; ok "10. m: every later loop counts, not only the first (DEMO first, then T)" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite above 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'const z = 1; // own-migration: ok (about z only)' 'const after = fns(T);'
+run "$W/above.ts"; ok "10. m: a marker on a code line above does not cover the next line's read" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite slice 'const before = fns(T);' 'for (const d of all.slice(all.indexOf(NEW) + 1)) psql(T, ["-f", d]);' 'const after = fns(T);'
+run "$W/slice.ts"; ok "10. m: all.slice(all.indexOf(NEW) + 1) is a later loop" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite typed 'const before = fns(T);' 'for (const d of all.filter((x: string) => x > NEW)) psql(T, ["-f", d]);' 'const after = fns(T);'
+run "$W/typed.ts"; ok "10. m: a typed parameter ((x: string) => x > NEW) is a later loop" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 # 8. a folder: every .ts in it, and a missing path cannot run
 run "$W"; ok "8. a folder is read file by file (the refused fixtures above are all named)" "$([ $r = 1 ] && grep -q 'bug.ts' <<< "$out" && grep -q 'ge.ts' <<< "$out" && ! grep -q 'fixed.ts' <<< "$out" && echo 1)" "exit $r: $out"
 run "$W/nope.ts"; ok "8. a missing path: exit 2, never a pass" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
