@@ -226,3 +226,34 @@ Diff reviewed: `git diff 6a1c683a917c075defbdd2face5620e5cd552351..ccb4ea2d7c1a6
 - **New findings:** none. n5, R2-1 and the other round-3 Minors carry over unchanged.
 
 Verdict: Approve ccb4ea2d7c1a60fd0c0f0c4ce787a83b52c190da (no open Blocker or Major)
+
+## Merge with main fix (Lead 9's full run; diff-only review)
+
+What I reviewed: `git diff c1d7da393..efaf4f5e1` for `breaches/`, `tests/check_pf21c_breaches.ts` and the PF-21c migration, plus `git diff 09b3893df..efaf4f5e1 --stat`. The commits are 30800b7a8 (merges main 09b3893df), 5117f0403 (test) and efaf4f5e1 (fix).
+
+- **The merge is clean.**
+  - `git show --cc 30800b7a8` prints no combined hunk, so every file takes one parent's version as it stands.
+  - `09b3893df..efaf4f5e1 --stat` lists only PF-21c's own files. The four other test files carry the same +/- lines as PF-21c's change from the merge base at c1d7da393, and no other lines.
+  - The migration diff is empty. `20261123210000_pf21c_breaches` still sorts last, after main's `20261123030000_aud_ourstaff_actor_word`, and touches neither `aud_event_actor_type` nor `audit_event`.
+- **The stated cause is right.** In `audit-event.ts:57`, when the request's actor type (`ctx.actorType`) is OUR_STAFF, any line whose word does not map to OUR_STAFF is refused with `AuditRefused`. `hook.ts` `auditOf` sets OUR_STAFF / `ourstaff:<id>` from `req.systemStaff`. PF-21c's `system:platform.register.breach` maps to SYSTEM, so the notice transaction rolled back and the route answered 500. The firm check on `:51` cannot be the cause, because a system request has no `req.platform`, so `ctx.firmId` is unset.
+- **The fix matches the holds pattern and AUD-3a.**
+  - `actorOf` is word for word the same as `holds/service.ts:30`.
+  - `c.staffId` comes from `systemStaffOf(r)`, which is the same `req.systemStaff.staffId` that the hook puts in the request's actor (`ctx.actor`). So the `:60` exact-actor check passes, and the DB function maps the word to OUR_STAFF (DW6 asserts `actor_type`).
+  - The system word is used only when there is no staff member, which no route produces (`BreachCaller.staffId` is required).
+  - The header comment is accurate.
+- **PF-21c has no other firm-trail write.** `notify` is the only `audit.record` call. `MessagePort.send` and `dispatch` write no `audit_event`; I grepped `platform/messages/`.
+- **The `plat_breach*` actor columns are still consistent.** `opened_by`, `decided_by`, the event `actor` and the notice `sent_by` all hold `staff:<id>` and are checked by `plat_breach_actor_ok` (`staff|seed|system`). These are our own registers, not `audit_event`, so AUD-3a's mapping does not reach them. Main made the same choice for holds ("The hold's own `by` column keeps its `staff:<id>` form"). This is not a defect.
+- **Minor (new, carried, not blocking):**
+  - The firm-trail line's `detail.by` and `after.sentBy` still read `staff:<our staff id>` on the firm's own trail. Holds has the same in `detail.by` and `after.placedBy`.
+  - The breaches header, unlike the holds header, does not say that the register's own `by` columns keep the `staff:` form on purpose. One sentence there would stop a later reader from "fixing" the actor column without the CHECK.
+  - If a later row moves those columns to `ourstaff:`, `plat_breach_actor_ok` must widen the way PF-25's checks did.
+- **It fails without the fix.**
+  - **Setup:** a scratch worktree at efaf4f5e1 with only `service.ts` restored from c1d7da393 (`git diff --cached --stat`: that one file, 3+/5-). node_modules was symlinked, and `npx prisma generate` ran in studio. I then ran `tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf21c_breaches.ts` from the worktree's prototype folder.
+  - **Result:** 14 passed, 3 failed, exit 1. Both notice POSTs answered 500, and the log shows `audit_write_failed` / `errorName: AuditRefused` for `plat_breach_notice`.
+  - **What failed:** "DW2 firm A's notice → 201" and "DW2 firm B's notice → 201" fail, and then an unexpected TypeError ends the run before DW6 runs.
+  - **What that proves:** the suite is red on the merge without the fix, which is the same state as 5117f0403. DW6's new actor assertion is not what turns it red. At runtime, any word other than the request's own `ourstaff:<id>` is already refused by the adapter, so DW6 only adds a check on the stored word and type.
+  - **Cleanup:** the worktree was removed and pruned. No `xr_studio_pf21c_*` database is left, and the main checkout is clean at efaf4f5e1.
+- **Suites in the main checkout at efaf4f5e1:** `run-suites.sh --only "check_pf21c_breaches.ts check_pf21b_holds.ts check_aud1b_adapter.ts"` gives check_pf21c_breaches.ts PASS (48 passed, 0 failed), check_pf21b_holds.ts PASS (67/0) and check_aud1b_adapter.ts PASS (44/0).
+- **Journey score:** 8.8/10, carried over. Only the stored actor word on one firm-trail line changes; what anyone sees and every route's status are as in round 3, and the notice works again on the merged code.
+
+Verdict: Approve efaf4f5e12e06ca7ffae68e7d25df17ef6166286 (no open Blocker or Major)
