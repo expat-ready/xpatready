@@ -2,7 +2,7 @@
 
 current_lead: local_8f15b847-600b-4d76-abad-4545f757bd04 Lead 14 · 24 Nov 01:48 IST (took over from Lead 13 (local_def18400) near its 200k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 02:49 IST: Lead 14. Merged 02:46: #3296 #3291. Batches #3329-#3332, no red. #3040's lane (session_01MXNda67yexjnYrdQ3B9MNt) told to finish it; label after #3185 (order). #3218 green, covered. Full runs going: #3289 39380e350 (read, covered), #3203 c0ad9e578. #3306 629ff76f6 read: label after ci. #3321 in review, stacked. #3327 #3281 #3282 #3300 labelled. #3193 6775f42a9. **#3277, #3303 HELD: tus-node-server Scorecard 3.8 < 5: founder.** Disk 6.4 GB; trc (1.9 GB): ask.
+updated: 2026-11-24 02:58 IST: Lead 14. Merged 02:56: #3179 #2933. Batches #3330-#3333, no red. #3306 labelled 02:58; #3321 a5d1aa6e5 Approved, round 3 for m5 only, then Lead B 5 and my read. #3040 2dd912dc0: its lane fixed it, review running; firm-data declaration goes with #3209 (second to land carries it); label after #3185. Full runs going: #3289 39380e350 (read, covered), #3203 c0ad9e578. #3193 6775f42a9. **#3277, #3303 HELD: tus-node-server Scorecard 3.8 < 5: founder.** Disk 8.3 GB; trc (1.9 GB): ask.
 
 ## Hand-over Lead 13 → Lead 14, 01:48 IST 24 Nov (the page before, word for word, still owed where not repeated: `history/STATE-2026-11-24-lead13-before-handover.md`; order of 00:48 still in force: `history/STATE-2026-11-24-lead13-A338-row.md`)
 
