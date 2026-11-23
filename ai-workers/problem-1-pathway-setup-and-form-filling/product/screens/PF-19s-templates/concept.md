@@ -39,12 +39,12 @@ starters for leads, wording **Sample** (no counsel, no expert: P-170). Engine: t
 
 ## 4. Layout (EXPERIENCE §3: list → detail)
 * `/platform/templates` — "Templates" heading, one line ("The wording your firm sends. Fields fill in from the record."), one
-  table "Library": Name · Sent to · Whose wording ("ExpatReady's wording" / "Your wording, version n") · Open. Search box (AG-12-42).
+  table "Lead messages": Name · Kind (Automatic / Library) · Sent to · Whose wording ("ExpatReady's wording" / "Your wording, version n") · Open. Search box (AG-12-42).
 * `/platform/templates/:key` — two columns at ≥1024 px, stacked below: left the editor (Subject input, Body textarea, "Insert
   field" button with a listbox of the record type's fields, inserting `{{ field }}` at the cursor; a short hint "Type the wording;
   add names and numbers with Insert field"); right the Preview (record chooser: "Sample lead" or a lead found by number or name;
   the rendered subject and body, missing values marked "[missing: Lead's first name]"). Footer: "Publish" (Owner/Admin) and the
-  line "Publishing makes this the wording your firm sends from the next message." Read-only roles see a notice instead.
+  line "Publishing makes this the wording used when this message is sent." (challenge B1) Read-only roles see a notice instead.
 * States: loading, list empty (never: starters always exist), unknown field error under the body, conflict notice, saved
   notice "Published: version n", 403 page for a person without `:list`, 404 for an unknown key.
 

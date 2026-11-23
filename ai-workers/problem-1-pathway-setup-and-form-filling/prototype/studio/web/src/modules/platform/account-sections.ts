@@ -14,6 +14,7 @@ export const ACCOUNT_SECTIONS: AccountSection[] = [
   { label: "Terms", path: "/platform/terms", key: "agent/settings:list" },   // PF-5t part 2
   { label: "Offices", path: "/platform/offices", key: "agent/settings:edit" },   // PF-18s part 1: Owner and Admin (challenge M1)
   { label: "Branding", path: "/platform/branding", key: "agent/settings:edit" },   // PF-13 part 2: Owner and Admin (AG-16-2)
+  { label: "Templates", path: "/platform/templates", key: "agent/template:list" },   // PF-19s (R1.46): every role but Billing / Finance (AG-12 §10)
   { label: "Plan and billing", path: "/settings/billing", key: "agent/subscription-invoice:view" },   // PF-5s part 2: Owner, Admin, Billing / Finance
   { label: "Activity log", path: "/platform/activity-log", key: "agent/audit:read" },   // AUD-4s (concept C5): Owner and Admin; PF-11s moves it under Security & your data
   { label: "Help & support", path: "/platform/support", key: "agent/support-ticket:list" },   // PF-18s part 2: everyone's own tickets (AG-16-63)
