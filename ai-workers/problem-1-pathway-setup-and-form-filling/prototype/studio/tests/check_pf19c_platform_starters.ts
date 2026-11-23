@@ -30,7 +30,7 @@ let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
 const psql = (...a: string[]) => execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const sql = (q: string) => psql("-Atc", q);
-const fails = (q: string) => { try { sql(q); return false; } catch { return true; } };
+const refusal = (q: string) => { try { sql(q); return ""; } catch (e) { return String((e as { stderr?: string }).stderr ?? e); } };
 const uuid = () => crypto.randomUUID(), box = (w: string) => `pf19c.${w}.${uuid().slice(0, 6)}@example.com`;
 const KEYS = ["lead.acknowledgement", "lead.follow_up", "lead.going_cold"];
 
@@ -51,7 +51,7 @@ try {
   ok("PF-19c part 2: the starters use only the lead's fields (AG-12-70) and never a passport or financial field (SA-5-63)",
     [...fields].sort().join(",") === "firm_name,lead_first_name,lead_number,owner_name", [...fields]);
   ok("PF-19c part 2 fail: a platform version never changes or goes (write-once trigger)",
-    fails(`update msg_template_version set body = 'x' where firm_id is null and version = 1`) && fails(`delete from msg_template_version where firm_id is null`));
+    [refusal(`update msg_template_version set body = 'x' where firm_id is null and version = 1`), refusal(`delete from msg_template_version where firm_id is null`)].every((m) => /write-once/.test(m)));
 
   // ------------------------------------------------------------------------------------------- the send path
   for (const f of [firmA, firmB]) await db.msgFirm.upsert({ where: { firmId: f }, create: { firmId: f }, update: {} });
