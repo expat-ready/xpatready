@@ -2,7 +2,7 @@
 
 current_lead: local_878222c4-fe82-4451-820a-23a2e9705557 Lead 9 · 23 Nov 21:49 IST (took over from Lead 8 (local_9c46a890) at ~381k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 22:05 IST: Lead 9, check e84192af. #3195 red was its own (node:crypto in ports/): lane fixing from b3496a145. #3185 Lead read found a null gap in plat_breach_decision_whole: lane fixing from 6a1c683a9, then read that diff and full run. #3180 Lead read posted, full run asked. #3174 round 11 running; I6 fails at seed 337 in both variants, lane reading it.
+updated: 2026-11-23 22:10 IST: Lead 9, check e84192af. MERGED since 21:49: #3215, #3183, #3191. Lead reads posted and full runs asked: #3180 5710b4103 (45217712959), #3185 c1d7da393, #3195 7e12f1222; #3189 45215337825 running. #3174 round 11 running (I6 fails at seed 337, lane reading). In queue: #3222, #3037, #3257.
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -22,6 +22,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | # | Ask (IST) | Status |
 |---|---|---|
 | A330 | 23 Nov ~21:08 (typed to Lead 8) | agrees the three test points (keep main working; stay on GitHub, 'secret commands' heard as three at once; 'AWS only while busy': differs from mine, not read as AWS spend); implement; when does real product work start; keep me honest, are we drifting? | answered in chat 21:1x; point 2 is one small PR after Pilot A repeats; any AWS spend still needs his figure |
+| A331 | 23 Nov ~22:0x (typed to Lead 8, relayed; confirm with him before acting outward) | on the AWS pilots: "you have to think that AWS is solving this problem, right? Even not as efficiently as GitHub, right? Even 80% of that, then I'm okay because it will give me a lot of privacy." Also asked the AWS cost; then "Yes, cap US$10" (pressed in Lead 8: one fair test with retries) | Lead 8 holds that test, NOT launched; Lead 9 launches nothing. Midnight proposal to be redone on privacy first, 80% good enough: same suites with --retry on both, r1c cause (Lead 8: perhaps the kit, not confirmed), set-up time, daily cost, private date. Repository is public today; product machines first |
 | A328, A329 | 23 Nov | A328 in force (scope line above); A329 pilots, answered: word for word `history/STATE-2026-11-23-lead8-ask-rows-A324-A327.md` |
 | A324-A327 | 23 Nov | pilots, "Yes, land as one" (P-811), safe clean-up (A328 approves): word for word `history/STATE-2026-11-23-lead8-ask-rows-A324-A327.md` |
 | A316, A319, A321, A323 | 23 Nov | A316 visual plan owed; the rest answered or recorded | word for word: `history/STATE-2026-11-23-lead6-older-ask-rows-A316-A323.md` |
