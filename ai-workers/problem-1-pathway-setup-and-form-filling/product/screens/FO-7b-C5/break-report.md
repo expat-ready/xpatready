@@ -46,3 +46,30 @@ The caller is user-O, a Case Officer given the money keys and own cases only, wi
 - No other caller of `InvoiceDrafts`, `InvoiceMoney`, `Refunds` or `TaxDefaults` skips the guard.
 
 Verdict: Approve 2d69a9f173734bbd11599202d1edf81335a9f441
+
+## Round 2: `2d69a9f17..9ae4fb361` (diff only)
+
+I re-ran from a new worktree at 9ae4fb361 with the same attack suite plus the round 2 attacks below. Every round 1 line that held still holds.
+- PR suites on this head: `check_fo7b_c5_scope` 36/0, `check_fo7b_refunds` 29/0, `check_fo7g_tax_defaults` 78/0.
+- Scratch databases are dropped.
+
+| # | Attack | Expected | Actual | Result |
+|---|---|---|---|---|
+| R1 | Locks: a second psql session holds PX's and PI's trust locks plus `FOR UPDATE` on the rows of out-of-scope invoices outD, outI and outP and in-scope inLock, for 6 s. User-O meanwhile fires 11 out-of-scope calls at once: lines, bill-to, issue, payments, credit, pdf, read, send, refund, extra, and refund on a missing payment | 404 without waiting | all 11 answer 404 in 95–106 ms. The control, an in-scope credit on the locked inLock, waits 5,135 ms. Neither the trust lock nor the row lock is taken before the 404 | Held (m3 fixed) |
+| R2 | Nothing written by R1's calls | no change | outD: still 1 line, Bill-to ON, not issued. outI: 0 credit notes, 0 payments. outP: no new refund, no kept credit | Held |
+| R3 | Refund `pre` null (missing payment) | 404 "No such payment", before any lock | 404 in the same words, fast. A null `pre` skips `seen`, then `lock` → `row` → `notFound` comes before `money_trust_lock` (refunds.ts:42–43, 80–81). A payment's invoice never changes, so the unlocked read is safe | Held |
+| R4 | m3 timing, 60 GETs each, missing vs out of scope | no usable signal | read p50 11.9 vs 11.8 ms, pdf 12.4 vs 9.9 ms; out of scope is now never slower | Held |
+| R5 | tax-default, PX (outside the party half) with its invoice on a case user-O sees | 200, the invoice decides (m1) | 200. The answer is only `partyKind`, `partyId` (already on the invoice) and the default built from the invoice's Bill-to and the firm. The party's own record is not read | Held (m1 fixed) |
+| R6 | Opening PX through an in-scope invoice that is not PX's (CS's case-less invoice) | 404 | 404: the invoice lookup requires `personId = PX` | Held |
+| R7 | PX without `invoiceId`; a new draft for PX | 404 | 404, 404 | Held |
+| R8 | Same words for an out-of-scope party and a missing one, when an `invoiceId` is sent (random, or PX's own out-of-scope invoice) | identical 404 | **different words.** Existing out-of-scope PX: "No such invoice for this client in your firm." Random party id: "No such person in your firm." The same split happens for companies ("No such company…") | **Minor m5** |
+
+**m5 (Minor), introduced by the m1 fix, tax/routes.ts:38 and :43.** With any `invoiceId`, the route no longer judges the party. The missing-party 404 and the out-of-scope-party 404 now differ, so a same-firm caller who already holds a party's UUID learns that the party exists in the firm. This goes against the PR's own claim ("the same words as a missing record"); round 1 had no such split.
+- Why Minor: no party or invoice data is shown, and nothing opens (R5–R7). The ids are random UUIDs that this caller can't list, and no screen calls the route.
+- Cheap fix, for the builder: when the invoice check fails, answer the person/company 404 whenever `!partyInScope(scope, found.id)`. Keep the invoice 404 for a party in scope.
+
+**Seen in passing, not from this diff and not a finding here.** In R1's control, the in-scope credit waited for the other session's lock, then answered **500** after about 5 s (Prisma's interactive transaction timeout), not a 409. That behaviour predates this PR.
+
+m2 (the scope is read before the transaction; A9 still writes 11 → 12 lines) and m4 (20,000 cases: scopeOf about 100 ms, the linked query about 60 ms, routes about 160–170 ms) are unchanged, as expected. Both remain Minor.
+
+Verdict: Approve 9ae4fb3611e65c409be1b6416be0fdaee02985cc
