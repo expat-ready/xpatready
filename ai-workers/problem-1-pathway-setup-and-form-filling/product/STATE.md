@@ -1,23 +1,22 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_2158cd24-6120-467d-ab3f-043acd7b417b Lead 2 · 23 Nov 11:59 IST (took over from Lead 1 (local_a085acf2) at 378k, P-446; Opus 5.5 medium, P-788)
+current_lead: local_cf20dbb4-5f96-4795-8750-74223b01a5fb Lead 3 · 23 Nov 12:47 IST (took over from Lead 2 (local_2158cd24) at 353k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 12:36 IST: Lead 2, A301-A305 (check b5753666)
+updated: 2026-11-23 12:47 IST: Lead 2 → Lead 3 hand-over (new check is Lead 3's)
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
-## Hand-over Lead 1 → Lead 2, 11:59 IST 23 Nov (Lead 1 at 378k, ~260k beyond its start read, P-446; Lead 1 block and A298-A299 in full: `history/STATE-2026-11-23-1155-lead1-block-and-asks.md`)
+## Hand-over Lead 2 → Lead 3, 12:47 IST 23 Nov (Lead 2 at 353k, P-446; the Lead 1 block before this: `history/STATE-2026-11-23-1247-lead2-handover-block-from-lead1.md`, its goal, reads and typed-turn list still owed)
 
-**A300 (12:0x, overrides the order below): operating-system PRs merge first until Lead O reports its list done; product lanes keep building.** #3208 stays first (main fix). **Stamp clashes:** 20261123030000 is in #3178/#3191, #3033, #3174; 20261123100000 in #3189, #3185: land #3178 before #3189, the others re-stamp. Lead 2 read OK: #3178 6c91c1c4e, #3191 7a9614ff5 (after #3178), #3195 eef90d8c8.
-**Goal (A295-A299):** 18 proven by 11:00 IST 24 Nov from 48/101 (`design/plan-24h-2026-11-23.md`; checkpoints 15:00 ≥3 at risk, 19:00 ≥7, 23:00 ≥11); operating system live first; going private is the founder's first priority (detailed report). Weekly 6% at 11:54 (1% at 11:34: ~15%/h, over 3%/h at two checks: find the cause, tell him).
-**FIRST: land #3208** (head 1ea222cfc, Reviewer Approve, Lead read posted, full ci running): when green, ahead of the queue (P-214). THEN label #3197, #3190, #3189 (Lead read lines posted) when green; `/run full` then label #3065, #2935, #2933, #3037, #3173; requeue #3043, #3044, #3183.
-**Tooling (A297):** #2972, #2925 merged 11:49; #2920 in batch (round 4 allowed); next #2971 (read its check-mergify-scopes diff, label), then #3035 (P-808 in #3210), then tool-b's and tool-c's "ready to land" list: #2597 #2473 #2738 #2444 #2370 #2487 #2428 #2434; close asks #2372 #2472 (evidence on each). Lane claims: verify before landing.
-**Reads the Lead owes:** #3185 (R1.86 migration; head moved to 21adefa9c after its Approve: needs a diff-only re-review), #3195 (R1.105, Approve eef90d8c8), #3178 (AUD-3a migration, Approve 6c91c1c4e) and #3191 (PF-25w, Approve 7a9614ff5; one of them carries the shared migration), #3033 (Lead B money re-read asked), #3174 (round 6 allowed; same stamp as #3033).
-**qa:** R1.1, R1.13, R1.15 judged Partial (#3206); AWS proof 3 `local_f09b5b4c` was asked to close them in one pass; it may ask the founder a yes for cost.
-**Desk** `local_d92dde4f` (git host, private, 2x/4x): not done, waits on its run sample; publish its detailed report for the founder when it ends.
-**Local:** Lead B 3 `local_281c4e7e` (asked: #3033 re-read, refund-route visibility check, four rows to shape), standbys Lead 3 `local_cf20dbb4`, Lead 4 `local_86bd4439`. 27 cloud lanes started (25 + PF-4bc + PF-4bs), read claude.ai with Show more: Awaiting input: R1.29, tool-c; many "Unread response" lanes wait on labels.
-**Founder-typed turn owed:** start PF-27 (firm lock, `firmAllows`; two starts failed: environments not readable), FO-7s1 screens lane after #3197, FO-9s parts 2-3 (the Lead's 3 answers, #2896), one standby. #2129 and #3030 ask the Lead (parked; Source cells). RULES still as of P-795 (file at its 25 KB limit): fold P-796 to P-808 into an IDX row.
-**Waiting on the founder:** nothing. AWS idles at ~US$0.18/h.
+**Order (A300):** operating-system PRs merge first until **Lead O** (`local_e02a8803`, own worktree, plan on `claude/lead-o-os-plan`) says complete; product lanes keep building. **Private (A304):** founder cap US$100/month and change nothing unless it performs as today: not possible (GitHub meter, Lead O: mean 103,934 Linux min/day; 150 batches/24 h, 64-66 red, batch ~534-595 min). Nothing bought. He leans to a **split** (A306-A307: map in a new private repository, public shell): Lead O's read-only study and the affected-only replay are running; notes stay in the private notes folder, never in git (P-504). Nothing moves, no gate is lowered without his yes.
+**FIRST: #3208** (main fix, 1ea222cfc) is queued since 12:36, Mergify estimate 14:07 IST; nothing merged since 12:02; batches #3227, #3229, #3230, #3231 (#2971) run, no red part at 12:46. When it lands: label #2370 (a6addba58) and #2487 (f17c1146f), Lead read posted; then #3178 (6c91c1c4e), #3195, #3197, #3189 AFTER #3178 (re-stamp rules below), #3191 after #3178; `/run full` then label #3065 #2935 #2933 #3037 #3173; requeue #3043 #3044 #3045 #3155.
+**Reads:** #2434 (86c3d9c56): label-guard, queue-gate parts read OK, rest of start() unread; needs a `Reviewer: Approve <full sha>` line; #2428 (ee89e73b6) after it. #3225: label removed by Lead 2 (put on 12:19 with no Lead read); migration read OK, route permissions unread, after #3178. #3185: round 3 allowed, must re-stamp, size exception promised (DECISIONS row owed in the next records PR). Lead B read OK #3174, #3184, #3188. Do NOT label #2595, #3035 (Lead O: `check-mergify-scopes.sh` fails after merging main).
+**Stamps:** 20261123030000 in #3178/#3191, #3033, #3174 (first keeps it); 20261123100000 in #3189, #3185; #3225 has 060000.
+**Combined tooling PR:** Lead O's build was refused in its session; Lead 2 did NOT start a lane (its brief arrived by relay). Asked the founder, no answer; Lead O agreed not to retry and to land separately. **#2372:** Lead O relays the founder's close and reversal of P-746 (4); Lead 2 could not confirm it, so not closed or recorded. **GATE_RUNNER** = "ubuntu-latest" since 12:15 (read from the API; Lead O set it, after a refusal in its shell, through the browser).
+**Red suites, 24 h (failed-job logs):** check_forms_qa53 16 batches, check_b164_no_engine_keys 13, check_csdl3_milestones 12, check_pf8b_f4_migrations 12, check_pf28_inputs 9; causes unclassified, with Lead O.
+**Local:** Lead B 3 `local_281c4e7e`, AWS proof 3 `local_f09b5b4c` (done, idle, 0 tasks), desk `local_d92dde4f` (final report in shared notes), standby Lead 4 `local_86bd4439`. qa re-read R1.13: Partial (#3226, records).
+**GitHub API quota (5000/h) is shared:** Lead 2 and Lead O used it up at 12:23; sample less. Disk 7.7 GB. Weekly 13% (12:28 to 12:46). One more standby owed at his next typed turn. RULES stays as of P-795 (P-796 to P-807 on main owed as an IDX row). AWS idles.
+**Waiting on the founder:** stay public? combined tooling PR? close #2372?
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
@@ -51,7 +50,7 @@ Red-row lanes line of 21 Nov (with the AWS root and Node 22 approvals): word for
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 23 Nov:** Lead 1 (local_a085acf2, from 23 Nov 11:24 IST), Lead 2 (local_2158cd24, from 23 Nov 11:59 IST).
+**New account from 23 Nov:** Lead 1 (local_a085acf2, from 23 Nov 11:24 IST), Lead 2 (local_2158cd24, from 23 Nov 11:59 IST), Lead 3 (local_cf20dbb4, from 23 Nov 12:47 IST).
 **New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST), Lead 2 (local_d718f32a, from 22 Nov 11:17 IST), Lead 3 (local_6efc4ae3, from 22 Nov 13:05 IST), Lead 4 (local_bcc6ed82, from 22 Nov 14:18 IST), Lead 5 (local_fec215ea, from 22 Nov 17:10 IST), Lead 6 (local_d4609e9d, from 22 Nov 19:04 IST), Lead 7 (local_d7cc573e, from 22 Nov 21:14 IST), Lead 8 (local_82fee93b, from 22 Nov 23:59 IST), Lead 9 (local_482034a7, from 23 Nov 02:15 IST), Lead 10 (local_d4a6b1cd, from 23 Nov 09:38 IST).
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.

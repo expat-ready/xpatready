@@ -1,0 +1,15 @@
+# Moved from STATE.md, 23 Nov 12:47 IST (Lead 2), word for word
+
+## Hand-over Lead 1 → Lead 2, 11:59 IST 23 Nov (Lead 1 at 378k, ~260k beyond its start read, P-446; Lead 1 block and A298-A299 in full: `history/STATE-2026-11-23-1155-lead1-block-and-asks.md`)
+
+**A300 (12:0x, overrides the order below): operating-system PRs merge first until Lead O reports its list done; product lanes keep building.** #3208 stays first (main fix). **Stamp clashes:** 20261123030000 is in #3178/#3191, #3033, #3174; 20261123100000 in #3189, #3185: land #3178 before #3189, the others re-stamp. Lead 2 read OK: #3178 6c91c1c4e, #3191 7a9614ff5 (after #3178), #3195 eef90d8c8.
+**Goal (A295-A299):** 18 proven by 11:00 IST 24 Nov from 48/101 (`design/plan-24h-2026-11-23.md`; checkpoints 15:00 ≥3 at risk, 19:00 ≥7, 23:00 ≥11); operating system live first; going private is the founder's first priority (detailed report). Weekly 6% at 11:54 (1% at 11:34: ~15%/h, over 3%/h at two checks: find the cause, tell him).
+**FIRST: land #3208** (head 1ea222cfc, Reviewer Approve, Lead read posted, full ci running): when green, ahead of the queue (P-214). THEN label #3197, #3190, #3189 (Lead read lines posted) when green; `/run full` then label #3065, #2935, #2933, #3037, #3173; requeue #3043, #3044, #3183.
+**Tooling (A297):** #2972, #2925 merged 11:49; #2920 in batch (round 4 allowed); next #2971 (read its check-mergify-scopes diff, label), then #3035 (P-808 in #3210), then tool-b's and tool-c's "ready to land" list: #2597 #2473 #2738 #2444 #2370 #2487 #2428 #2434; close asks #2372 #2472 (evidence on each). Lane claims: verify before landing.
+**Reads the Lead owes:** #3185 (R1.86 migration; head moved to 21adefa9c after its Approve: needs a diff-only re-review), #3195 (R1.105, Approve eef90d8c8), #3178 (AUD-3a migration, Approve 6c91c1c4e) and #3191 (PF-25w, Approve 7a9614ff5; one of them carries the shared migration), #3033 (Lead B money re-read asked), #3174 (round 6 allowed; same stamp as #3033).
+**qa:** R1.1, R1.13, R1.15 judged Partial (#3206); AWS proof 3 `local_f09b5b4c` was asked to close them in one pass; it may ask the founder a yes for cost.
+**Desk** `local_d92dde4f` (git host, private, 2x/4x): not done, waits on its run sample; publish its detailed report for the founder when it ends.
+**Local:** Lead B 3 `local_281c4e7e` (asked: #3033 re-read, refund-route visibility check, four rows to shape), standbys Lead 3 `local_cf20dbb4`, Lead 4 `local_86bd4439`. 27 cloud lanes started (25 + PF-4bc + PF-4bs), read claude.ai with Show more: Awaiting input: R1.29, tool-c; many "Unread response" lanes wait on labels.
+**Founder-typed turn owed:** start PF-27 (firm lock, `firmAllows`; two starts failed: environments not readable), FO-7s1 screens lane after #3197, FO-9s parts 2-3 (the Lead's 3 answers, #2896), one standby. #2129 and #3030 ask the Lead (parked; Source cells). RULES still as of P-795 (file at its 25 KB limit): fold P-796 to P-808 into an IDX row.
+**Waiting on the founder:** nothing. AWS idles at ~US$0.18/h.
+
