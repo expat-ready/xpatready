@@ -108,6 +108,7 @@ class Parser:
             if isinstance(a[0], list): return any(eq(x, a[1]) for x in a[0])
             return text(a[1]).lower() in text(a[0]).lower()
         if f == "format": return re.sub(r"\{(\d+)\}", lambda m: text(a[1 + int(m.group(1))]), text(a[0]))
+        if f == "always" and not a: return True   # a status function: the job runs whatever its needs ended with
         raise Unknown(f"function {f}()")
     def ctxval(self, path):
         if path[0] not in ("github", "inputs"): raise Unknown(f"context {'.'.join(path)}")

@@ -9,7 +9,7 @@ import { App, CfnParameter, NestedStack, RemovalPolicy, Stack, aws_s3 as s3 } fr
 import { Template as Assert } from "aws-cdk-lib/assertions";
 import { allStacks, buildApp } from "../lib/app.ts";
 import { EstateStack } from "../lib/estate.ts";
-import { HOME, REGION_ALLOW, availabilityFindings, bucketFindings, databaseFindings, dataRouteFindings, regionFindings, type SynthStack, type Template } from "../lib/checks.ts";
+import { HOME, REGION_ALLOW, accessLogBuckets, availabilityFindings, bucketFindings, databaseFindings, dataRouteFindings, regionFindings, type SynthStack, type Template } from "../lib/checks.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const { app: estate } = buildApp();
@@ -94,8 +94,9 @@ for (const s of real) {
   test(`PF-8a database subnets pass (${s.name}): no route leaves them, no public addresses (review m4)`, () => {
     assert.deepEqual(dataRouteFindings(s.template), []);
   });
-  test(`PF-8a buckets pass (${s.name}): three buckets, public access blocked, versioned, KMS, plain HTTP refused`, () => {
-    assert.equal(Object.values(s.template.Resources ?? {}).filter((r) => r.Type === "AWS::S3::Bucket").length, 3);
+  test(`PF-8a buckets pass (${s.name}): three data buckets (and PF-F1c's access-log bucket), public access blocked, versioned, KMS, plain HTTP refused`, () => {
+    assert.equal(Object.values(s.template.Resources ?? {}).filter((r) => r.Type === "AWS::S3::Bucket").length, 4);
+    assert.equal(accessLogBuckets(s.template).size, 1);
     assert.deepEqual(bucketFindings(s.template), []);
   });
 }
@@ -145,13 +146,13 @@ test("PF-8a buckets fail: a TLS deny narrowed to one action, one principal or an
   for (const narrow of [{ Action: "s3:GetObject" }, { Principal: { AWS: "arn:aws:iam::1:root" } }, { Resource: ["arn:aws:s3:::someone-else/*"] }]) {
     const t = clone(real[0].template);
     for (const r of Object.values(t.Resources ?? {})) if (r.Type === "AWS::S3::BucketPolicy") for (const st of (r.Properties!.PolicyDocument as { Statement: Record<string, unknown>[] }).Statement) Object.assign(st, narrow);
-    assert.equal(bucketFindings(t).filter((l) => l.includes("plain HTTP")).length, 3, JSON.stringify(narrow));
+    assert.equal(bucketFindings(t).filter((l) => l.includes("plain HTTP")).length, 4, JSON.stringify(narrow)); // PF-F1c: the access-log bucket too
   }
 });
 
 test("PF-8a buckets fail: a bucket encrypted with a key the stack does not define is caught (break 8)", () => {
   const t = clone(real[0].template);
-  const enc = firstOf(t, "AWS::S3::Bucket").Properties!.BucketEncryption as { ServerSideEncryptionConfiguration: { ServerSideEncryptionByDefault: Record<string, unknown> }[] };
+  const enc = Object.entries(t.Resources!).find(([id]) => id.startsWith("DocumentsBucket") && t.Resources![id].Type === "AWS::S3::Bucket")![1].Properties!.BucketEncryption as { ServerSideEncryptionConfiguration: { ServerSideEncryptionByDefault: Record<string, unknown> }[] };
   enc.ServerSideEncryptionConfiguration[0].ServerSideEncryptionByDefault.KMSMasterKeyID = "alias/aws/s3";
   assert.equal(bucketFindings(t).filter((l) => l.includes("not one this stack defines")).length, 1);
 });
