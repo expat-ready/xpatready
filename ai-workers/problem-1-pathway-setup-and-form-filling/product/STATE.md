@@ -2,7 +2,7 @@
 
 current_lead: local_1d7473d3-19e5-4eae-8389-bda5780e9d70 Lead 10 · 23 Nov 22:48 IST (took over from Lead 9 (local_878222c4) at ~345k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 22:56 IST: Lead 10, check 7035e229. #3035 read, no fault; label it only AFTER #3180, #3189, #3185 merge (else they need renames, re-review, full runs). Stamps: PF-F2 #3277 20261124040000, PF-10a #3276 20261124050000. #3180 run 45225095516: one regression shard red on npm "aborted" (install): re-run that job alone when the run ends. #3195 and #3272 in batches. #3185 efaf4f5e1: Lead B read OK, reviewer verdict owed. #3203 46fa17409 Approve, full run owed. PF-18ns lane opened on the founder's "Yes, start it" (typed to Lead 9).
+updated: 2026-11-23 23:12 IST: Lead 10, check 7035e229. 50/101 (counted on main). #3035 read, no fault; label only AFTER #3180, #3189, #3185 merge. Stamps: PF-F2 #3277 20261124040000, PF-10a #3276 20261124050000. Full runs, re-run the one red job alone when each ends: #3180 45225095516 (npm install aborted), #3189 45225109348 (shard 18, pf5s firm profile FP3 focus; reliability lane told). #3185 fdd89a816 Approve + Lead B OK (efaf4f5e1), /run full asked 23:1x. #3173 433c95f13 full run 45229595711, round 3 allowed; its batch failures 45118785908 need the "Batch failures covered" line. #3203 queued. #3284 (P-813 for #3184, #3193) approved, gate labels on green ci. OWED: P-814 for #3277, X-row for the bell on case frames. Bell #3279 concept approved, lane builds PF-18n part 2 first (typed in its session).
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
