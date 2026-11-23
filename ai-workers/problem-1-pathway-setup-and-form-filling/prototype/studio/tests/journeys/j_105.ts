@@ -151,7 +151,7 @@ try {
   let sent = "no closing job";
   if (closer.length) { try { sql(`insert into platform_jobs.job (name, data) values ('${closer[0]}', '{}'::jsonb)`); sent = "sent"; } catch (e) { sent = String((e as { stderr?: string }).stderr ?? e).split("\n")[0]; } }
   for (let i = 0; i < 30 && sent === "sent" && sql(`select status from platform_firm where id = '${firmL}'`) !== "DELETED"; i++) await wait(1000);
-  ok("R1.105 W5 (missing: PF-11c, with AUD-2's write-once archive): the closing job, run now, closes a firm whose 90 days ran out, its export archived first; the firm reads closed (DELETED)",
+  ok("R1.105 W5 (missing: AUD-2's S3 write-once archive (CLOSURE_ARCHIVE unset) and PF-11's full export: until both, PF-11c part 1 (#3195) closes no firm and raises firm_closure_blocked, features/platform-firm-closure.ts:3, closure.ts:84-89): the closing job, run now, closes a firm whose 90 days ran out, its export archived first; the firm reads closed (DELETED)",
     closer.length > 0 && sql(`select status from platform_firm where id = '${firmL}'`) === "DELETED", { closingJobs: closer, sent, status: sql(`select status from platform_firm where id = '${firmL}'`) });
 
   // ------------------------------------------------------------------------------------------ W6: sizes, axe, errors
