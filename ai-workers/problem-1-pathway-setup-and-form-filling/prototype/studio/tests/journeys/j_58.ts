@@ -86,7 +86,7 @@ try {
   ok("J-58 setup: both Sample firms with payment settings, firm A's Owner and firm B's Owner signed in, four Sample clients of firm A", !!A && !!B && fo.failed.length === 0 && !!PA && !!PB && !!PC && !!PR && !!TA && !!TB);
 
   // database helpers (reads; and the stand-ins' writes, used only when a route is missing)
-  const hasCol = (t: string, c: string) => sql(`select count(*) from information_schema.columns where table_name = '${t}' and column_name = '${c}'`) === "1";
+  const hasCol = (t: string, c: string) => sql(`select count(*) from information_schema.columns where table_schema = current_schema() and table_name = '${t}' and column_name = '${c}'`) === "1";
   const refundCols = hasCol("money_trust_entry", "refund_method");
   const balance = (pid: string) => Number(sql(`select coalesce((select balance_after_minor from money_trust_entry where firm_id = '${A}' and person_id = '${pid}' and currency = 'CAD' order by seq desc limit 1), 0)`));
   const entries = (pid: string) => Number(sql(`select count(*) from money_trust_entry where firm_id = '${A}' and person_id = '${pid}'`));
@@ -131,8 +131,8 @@ try {
   ok("R1.58 W1 (part missing: FO-7t part 1, POST /trust/deposits): a trust deposit of CAD 1,000.00 recorded through the API is kept as received into TRUST with its DEPOSIT entry; the client's trust balance is 1,000.00",
     d1.viaApi && sql(`select count(*) from money_trust_entry where payment_id = '${d1.id}' and kind = 'DEPOSIT' and amount_minor = 100000`) === "1" && balance(PA) === 100000, { status: d1.r.status, detail: d1.r.body?.detail ?? null });
   const INV0 = await issuedInvoice(PC, 25000);
-  const op = await api(TA, "POST", `${M}/invoices/${INV0}/payments`, { method: "CHEQUE", amountMinor: 25000, currency: "CAD", reference: `J58-${run}-OP`, idempotencyKey: key(), receivedInto: "OPERATING", receivedAt: new Date().toISOString().slice(0, 10) });
-  ok("R1.58 W1 (part missing: FO-7b's offline payment route (route name guessed: POST /invoices/:id/payments)): a cheque on an issued invoice recorded through the API is kept as received into OPERATING, on that invoice, with no trust entry",
+  const op = await api(TA, "POST", `${M}/invoices/${INV0}/payments`, { method: "CHEQUE", amountMinor: 25000, currency: "CAD", reference: `J58-${run}-OP`, idempotencyKey: key(), receivedInto: "OPERATING", receivedOn: new Date().toISOString().slice(0, 10) });   // the PaymentIn body (ports/client-money.ts)
+  ok("R1.58 W1 (FO-7b's offline payment route, on main: POST /invoices/:id/payments with the PaymentIn body): a cheque on an issued invoice recorded through the API is kept as received into OPERATING, on that invoice, with no trust entry",
     (op.status === 201 || op.status === 200) && sql(`select string_agg(received_into::text, ',') from money_payment where firm_id = '${A}' and invoice_id = '${INV0}'`) === "OPERATING"
     && sql(`select count(*) from money_trust_entry e join money_payment p on p.id = e.payment_id where p.invoice_id = '${INV0}'`) === "0", { status: op.status, detail: op.body?.detail ?? null });
   // Underneath (the database's half of the clause): both destinations are accepted, nothing else is.
@@ -180,19 +180,22 @@ try {
     const m = randomUUID(); note("client B's 300.00 moved to the case by SQL (no move route on main)");
     rawSql(`begin; ${entryQ("MOVE_TO_CASE", -30000, PB, { id: m })}; ${entryQ("MOVE_TO_CASE", 30000, PB, { kase: CASE2, from: m })}; commit;`);
   }
+  // Client B also holds 300.00 outside CASE2 (pre-case), so B's whole balance covers every over-pick below and the
+  // refusal that fires is #2368's same-case pick rule, not the general balance rule (which runs first, migration :358).
+  await deposit(PB, 30000);
   const INV2 = await issuedInvoice(PC, 50000, CASE2);
   const bB = balance(PB), nB = entries(PB);
   const pickOver = await api(TA, "POST", `${M}/trust/applications`, { invoiceId: INV2, amountMinor: 30001, otherFundsPick: { personId: PB, caseId: CASE2, reason: `Client B pays for Client C (Sample ${run})` } });
   const pickOk = await api(TA, "POST", `${M}/trust/applications`, { invoiceId: INV2, amountMinor: 20000, otherFundsPick: { personId: PB, caseId: CASE2, reason: `Client B pays for Client C (Sample ${run})` } });
-  ok("R1.58 W3 fail (parts missing: FO-7t part 2's deliberate pick; FO-7ts part 3, #2368): another payer's money on the same case pays at most what that payer holds there: 300.01 refused (\"Only CAD 300.00 is available\"), 200.00 accepted and recorded as a pick with its reason",
-    refusedWords(pickOver, /Only CAD 300\.00 is available/) && (pickOk.status === 201 || pickOk.status === 200) && entries(PB) === nB + 1 && balance(PB) === bB - 20000,
+  ok("R1.58 W3 fail (part missing: FO-7t part 2's deliberate pick; its rule FO-7ts part 3, #2368, on main): another payer's money on the same case pays at most what that payer holds there: 300.01 refused in words (\"Only CAD 300.00 is available\" or the pick rule's), 200.00 accepted and recorded as a pick with its reason",
+    refusedWords(pickOver, /Only CAD 300\.00 is available|a pick takes only what the payer holds on that case/) && (pickOk.status === 201 || pickOk.status === 200) && entries(PB) === nB + 1 && balance(PB) === bB - 20000,
     { over: pickOver.status, within: pickOk.status, detail: pickOk.body?.detail ?? pickOver.body?.detail ?? null });
   const pickQ = (amount: number) => `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, invoice_id, case_id, created_by, picked_other_funds_by, picked_other_funds_at, picked_other_funds_reason) values ('${A}', '${PB}', 'WITHDRAWAL_TO_INVOICE', ${-amount}, 'CAD', '${INV2}', '${CASE2}', 'seed:J-58', 'seed:J-58', now(), 'Client B pays for Client C (Sample)') returning id`;
   const bB2 = balance(PB), openOnCase = Number(sql(`select coalesce(sum(amount_minor), 0) from money_trust_entry where person_id = '${PB}' and case_id = '${CASE2}'`));
   let pickWithin = false;
   if (hasCol("money_trust_entry", "picked_other_funds_by") && openOnCase >= 5000) { try { rawSql(pickQ(5000)); pickWithin = balance(PB) === bB2 - 5000; } catch (e) { console.log(`      (pick within refused: ${String((e as { stderr?: string }).stderr ?? e).split("\n")[0]})`); } }
-  ok("R1.58 W3 underneath (part missing: FO-7ts part 3, #2368): written straight to the ledger, a pick of another payer's money within what they hold on the case is accepted; one of 0.01 more is refused, \"a pick takes only what the payer holds on that case\"",
-    pickWithin && refusedWrite(pickQ(openOnCase - 5000 + 1), /a pick takes only what the payer holds on that case/), { columns: hasCol("money_trust_entry", "picked_other_funds_by"), openOnCase, pickWithin });
+  ok("R1.58 W3 underneath (FO-7ts part 3, #2368, on main): written straight to the ledger, a pick of another payer's money within what they hold on the case is accepted; one of 0.01 more is refused, \"a pick takes only what the payer holds on that case\"",
+    pickWithin && refusedWrite(pickQ(openOnCase - 5000 + 1), /a pick takes only what the payer holds on that case/), { columns: hasCol("money_trust_entry", "picked_other_funds_by"), openOnCase, pickWithin, balance: balance(PB) });
 
   // --------------------------------------------------------------- W4: earned money on To move until moved (and moves)
   const b4 = balance(PA);
