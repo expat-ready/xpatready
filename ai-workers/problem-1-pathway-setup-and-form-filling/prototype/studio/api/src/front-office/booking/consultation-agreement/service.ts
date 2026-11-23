@@ -14,7 +14,7 @@
 // email code before signing (P-564) and expiry. "Needs you" is this module's own read until NotificationPort has a kind
 // for it. Every value is Sample. Every legal reading (s. 23 "signed", e-signature identity): Unconfirmed: no counsel.
 import { HttpException } from "@nestjs/common";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { AuditPort } from "../../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../../ports/clock.ts";
@@ -28,6 +28,7 @@ import { DOCX, renderDocx } from "../../retainers/docx.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent, type SigningPort } from "../../signing/port.ts";
 import { wallLabel } from "../service.ts";
 import { CODE_S23, s23Check } from "./items.ts";
+import { isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
 
 type Tx = Prisma.TransactionClient;
 /** This module's two events (the row's names). `ports/events.ts` is outside the row's touch list: J-104 moves them there. */
@@ -56,7 +57,11 @@ export const PRO_BONO = "No fee: this consultation is provided pro bono.";   // 
 export const WORDS = { signed: "Agreement signed", unsigned: "Agreement not signed yet", none: "No agreement was sent" } as const;
 const SYSTEM = "system:consultation-agreement";
 
-export type AgreementPorts = { audit: AuditPort<Tx>; clock: ClockPort; mail: MailPort; jobs: JobPort; signing: SigningPort; files: FilesPort; publicBaseUrl: string; warn?: (m: string) => void };
+/** FO-3c part 2 (Lead 10, FO-3vr): whether a person sees a booking: the booking service's `staffBooking` (its host, or the
+ *  list key and the record rule), which throws the one not-found otherwise. Not given (a suite or a stand-in): the host
+ *  only, so a read never opens wider than the rule. */
+export type SeeBooking = (ctx: StaffContext, bookingId: string) => Promise<unknown>;
+export type AgreementPorts = { audit: AuditPort<Tx>; clock: ClockPort; mail: MailPort; jobs: JobPort; signing: SigningPort; files: FilesPort; publicBaseUrl: string; warn?: (m: string) => void; seeBooking?: SeeBooking };
 
 const fail = (status: number, title: string, detail: string, code: string): never => { throw new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code }, status); };
 /** The one answer for an agreement, booking or link that is not this firm's, not live or not there. */
@@ -65,7 +70,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const sha = (s: string | Uint8Array) => createHash("sha256").update(s).digest("hex");
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter(Boolean).join(" ").trim();
 
-export type SendResult = { sent: true; agreementId: string } | { sent: false; reason: "NOT_SCHEDULED" | "ALREADY_SENT" | "NO_AGREEMENT" | "NO_TEMPLATE" | "NO_LICENSED" | "NO_CLIENT_EMAIL" | "NO_BOOKING"; agreementId?: string };
+export type SendResult = { sent: true; agreementId: string } | { sent: false; reason: "NOT_SCHEDULED" | "ALREADY_SENT" | "NO_AGREEMENT" | "NO_TEMPLATE" | "NO_LICENSED" | "NO_CLIENT_EMAIL" | "NO_BOOKING" | "NOT_REQUIRED"; agreementId?: string };
 
 export class ConsultationAgreementService {
   private readonly door = new Map<string, number[]>();
@@ -117,6 +122,8 @@ export class ConsultationAgreementService {
                             and (select count(distinct rp.permission_key) from platform_role_grant g join platform_role_permission rp on rp.role = g.role
                                   where g.firm_id = s.firm_id and g.staff_id = s.id and g.ended_at is null and rp.permission_key = any(${[...DUTY_KEYS.represent]})) = ${DUTY_KEYS.represent.length}))
          and exists (select 1 from fo_retainer_template t where t.firm_id = b.firm_id and t.kind = 'CONSULTATION' and t.active)
+         -- part 2 (Lead 10, W4b): only a type that needs the agreement
+         and exists (select 1 from fo_consultation_type t where t.firm_id = b.firm_id and t.id = b.type_id and ${Prisma.raw(NEEDS_AGREEMENT_SQL)})
          and not exists (select 1 from fo_retainer_version v join fo_retainer r on r.firm_id = v.firm_id and r.id = v.retainer_id
                           where v.firm_id = b.firm_id and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = b.id::text)
        order by b.starts_at limit 200`;
@@ -169,6 +176,7 @@ export class ConsultationAgreementService {
     const b = UUID.test(bookingId) ? await this.db.foBooking.findFirst({ where: { firmId, id: bookingId }, include: { type: true } }) : null;
     if (!b || !b.personId) return { sent: false, reason: "NO_BOOKING" };
     if (b.status !== "SCHEDULED" && b.status !== "RESCHEDULED") return { sent: false, reason: "NOT_SCHEDULED" };
+    if (!needsAgreement(b.type)) return { sent: false, reason: "NOT_REQUIRED" };   // part 2 (Lead 10, W4b; QA-751): the type's switch
     const had = await this.ofBooking(this.db, firmId, b.id);
     if (had) return { sent: false, reason: "ALREADY_SENT", agreementId: had.id };
     const t = (await this.db.foRetainerTemplate.findMany({ where: { firmId, kind: "CONSULTATION", active: true }, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], take: 1 }))[0];
@@ -263,7 +271,7 @@ export class ConsultationAgreementService {
     const rep = await this.db.platformStaff.findFirst({ where: { firmId, id: r.representativeStaffId }, select: { displayName: true } });
     const isHost = m["booking.signatory_is_host"] !== false;
     return {
-      id: r.id, bookingId: String(m[BOOKING_ID] ?? ""), personId: r.signerPersonId, status: r.status, signed: r.status === "SIGNED", words: r.status === "SIGNED" ? WORDS.signed : WORDS.unsigned,
+      id: r.id, bookingId: String(m[BOOKING_ID] ?? ""), personId: r.signerPersonId, status: r.status, signed: isSigned(r.status), words: isSigned(r.status) ? WORDS.signed : WORDS.unsigned,
       sentAt: v?.sentAt ?? null, clientSignedAt: of("CLIENT")?.signedAt ?? null, firmSignedAt: of("FIRM")?.signedAt ?? null,
       signatory: { staffId: r.representativeStaffId, name: rep?.displayName ?? null, isHost,
         note: isHost ? null : `The consultation's host holds no licence record: the agreement is with the firm's representative of record, ${rep?.displayName ?? ""}.` },
@@ -271,26 +279,56 @@ export class ConsultationAgreementService {
       legalReading: CODE_S23.legalReading,
     };
   }
+  /** FO-3vr (Lead 10, part 2): whether the person sees the booking (the booking service's rule, else the host only). */
+  private async sees(ctx: StaffContext, bookingId: string): Promise<boolean> {
+    if (!UUID.test(bookingId)) return false;
+    if (this.ports.seeBooking) return this.ports.seeBooking(ctx, bookingId).then(() => true, (e: unknown) => { if (e instanceof HttpException && e.getStatus() === 404) return false; throw e; });
+    return !!(await this.db.foBooking.findFirst({ where: { firmId: ctx.firmId, id: bookingId, staffId: ctx.staffId }, select: { id: true } }));
+  }
+  /** The booking an agreement was sent for (none: an agreement FO-5 drafted on a prospect, shown on FO-5's own page). */
+  private async bookingOf(firmId: string, agreementId: string) {
+    const v = await this.db.foRetainerVersion.findFirst({ where: { firmId, retainerId: agreementId, n: 1 }, select: { mergeValues: true } });
+    return String(((v?.mergeValues ?? {}) as Record<string, unknown>)[BOOKING_ID] ?? "");
+  }
+  /** One agreement of the person's firm whose booking they see; anything else is the one not-found (FO-3vr). */
   private async mine(ctx: StaffContext, id: string) {
     const r = UUID.test(String(id)) ? await this.db.foRetainer.findFirst({ where: { firmId: ctx.firmId, id, kind: "CONSULTATION" } }) : null;
-    return r ?? notFound();
+    if (!r || !(await this.sees(ctx, await this.bookingOf(ctx.firmId, r.id)))) return notFound();
+    return r;
   }
-  /** One agreement of the person's firm (another firm's id: 404). */
+  /** One agreement (another firm's id, or a booking the person does not see: 404). */
   async read(ctx: StaffContext, id: string) { return this.view(ctx.firmId, await this.mine(ctx, id)); }
+  /** The stored signed copy's file key, for a short-lived link (part 2): the agreement as `read` sees it, and signed. */
+  async signedCopyKey(ctx: StaffContext, id: string) {
+    const r = await this.mine(ctx, id);
+    const req = isSigned(r.status) ? await this.db.foSignatureRequest.findFirst({ where: { firmId: ctx.firmId, documentKind: "CONSULTATION", documentId: r.id, status: "SIGNED" }, include: { evidence: true }, orderBy: { sentAt: "desc" } }) : null;
+    if (!req?.evidence) fail(409, "No signed copy", "This agreement has no signed copy stored yet.", "NO_SIGNED_COPY");
+    return req!.evidence!.sealedFileKey;
+  }
+  /** Whether a link's file key is still the signed copy of an agreement the person sees (checked again at download). */
+  async copyVisible(ctx: StaffContext, key: string) {
+    const e = await this.db.foSigningEvidence.findFirst({ where: { firmId: ctx.firmId, sealedFileKey: key }, include: { request: true } });
+    if (!e || e.request.documentKind !== "CONSULTATION") return false;
+    try { await this.mine(ctx, e.request.documentId); return true; } catch { return false; }
+  }
 
   /** The booking's line: "Agreement signed" or "Agreement not signed yet" (or that none was sent). Another firm's booking: 404. */
   async forBooking(ctx: StaffContext, bookingId: string) {
-    const b = UUID.test(String(bookingId)) ? await this.db.foBooking.findFirst({ where: { firmId: ctx.firmId, id: bookingId }, select: { id: true } }) : null;
-    if (!b) return notFound();
-    const a = await this.ofBooking(this.db, ctx.firmId, b.id);
-    return a ? this.read(ctx, a.id) : { id: null, bookingId: b.id, status: "NONE", signed: false, words: WORDS.none };
+    const b = UUID.test(String(bookingId)) ? await this.db.foBooking.findFirst({ where: { firmId: ctx.firmId, id: bookingId }, select: { id: true, type: { select: { requireAgreement: true, purpose: true } } } }) : null;
+    if (!b || !(await this.sees(ctx, b.id))) return notFound();
+    const a = await this.ofBooking(this.db, ctx.firmId, b.id), required = needsAgreement(b.type);
+    // `required`: the booking's type needs it (part 2): an unsigned one holds Attended and the consult record.
+    return a ? { ...(await this.read(ctx, a.id)), required } : { id: null, bookingId: b.id, status: "NONE", signed: false, words: WORDS.none, required };
   }
   /** The person's agreements, newest first. Another firm's person: 404. */
   async forPerson(ctx: StaffContext, personId: string) {
     const p = UUID.test(String(personId)) ? await this.db.foPerson.findFirst({ where: { firmId: ctx.firmId, id: personId }, select: { id: true } }) : null;
     if (!p) return notFound();
     const rows = await this.db.foRetainer.findMany({ where: { firmId: ctx.firmId, kind: "CONSULTATION", signerPersonId: p.id }, orderBy: { createdAt: "desc" }, take: 50 });
-    return { personId: p.id, agreements: await Promise.all(rows.map((r) => this.view(ctx.firmId, r))) };
+    // FO-3vr: only the agreements of bookings the person sees (an agreement with no booking is FO-5's, on its own page).
+    const seen = [];
+    for (const r of rows) if (await this.sees(ctx, await this.bookingOf(ctx.firmId, r.id))) seen.push(r);
+    return { personId: p.id, agreements: await Promise.all(seen.map((r) => this.view(ctx.firmId, r))) };
   }
   /** "Needs you": one item per unsigned agreement the person signs for the firm (it goes when the agreement is signed or ended). */
   async needsYou(ctx: StaffContext) {

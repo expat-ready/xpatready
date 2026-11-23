@@ -31,6 +31,7 @@ import { windowsFor } from "./hours.ts";
 import { forbidden } from "../../../platform/identity/keys.ts";
 import { firmTimings, resolveTimings, TIMING_FIELDS, TIMING_RANGES, timingWarnings, timingKey, withTimings, type TimingField } from "./timings.ts";
 import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../../platform/http/input.ts";
+import { needsAgreement } from "../consultation-agreement/gate.ts";
 
 type Tx = Prisma.TransactionClient;
 type Row = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
@@ -88,12 +89,14 @@ const Fields = {
   showOnBookingPage: z.boolean(),
   allowReschedule: z.boolean(),
   allowCancel: z.boolean(),
+  /** FO-3c part 2 (Lead 10, W4b): the consultation agreement is signed before the consultation starts. */
+  requireAgreement: z.boolean(),
   slotIntervalMinutes: z.number().int().min(5).max(480).nullable(),
   meetingLink: z.string().max(2000).regex(/^https:\/\/[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+$/, "A meeting link starts with https://.").nullable(),
 };
 const CreateBody = z.strictObject({ ...Fields, description: Fields.description.optional(), colour: Fields.colour.optional(), purpose: Fields.purpose.optional(), hostStaffIds: Fields.hostStaffIds.optional(),
   slug: Fields.slug.optional(), active: Fields.active.optional(), showOnBookingPage: Fields.showOnBookingPage.optional(), allowReschedule: Fields.allowReschedule.optional(),
-  allowCancel: Fields.allowCancel.optional(), slotIntervalMinutes: Fields.slotIntervalMinutes.optional(), meetingLink: Fields.meetingLink.optional() });
+  allowCancel: Fields.allowCancel.optional(), requireAgreement: Fields.requireAgreement.optional(), slotIntervalMinutes: Fields.slotIntervalMinutes.optional(), meetingLink: Fields.meetingLink.optional() });
 const PatchBody = z.strictObject({ ...Object.fromEntries(Object.entries(Fields).map(([k, v]) => [k, v.optional()])) as { [K in keyof typeof Fields]: z.ZodOptional<(typeof Fields)[K]> },
   version: z.number({ error: "Send the version you read." }).int().min(1) });
 
@@ -130,13 +133,15 @@ const isPublic = (t: Row) => t.active && t.showOnBookingPage && (PUBLIC_PURPOSES
 const view = (t: Row) => ({
   id: t.id, slug: t.slug, name: t.name, description: t.description, colour: t.colour, purpose: t.purpose, minutes: t.minutes, modes: t.modes,
   hostStaffIds: t.hostStaffIds, active: t.active, showOnBookingPage: t.showOnBookingPage, allowReschedule: t.allowReschedule, allowCancel: t.allowCancel,
+  /** FO-3c part 2: the stored choice, else the purpose's default (gate.ts needsAgreement); `requireAgreementSet` says which. */
+  requireAgreement: needsAgreement(t), requireAgreementSet: t.requireAgreement !== null,
   slotIntervalMinutes: t.slotIntervalMinutes, meetingLink: t.meetingLink,
   timings: { gapBeforeMinutes: t.gapBeforeMinutes, gapAfterMinutes: t.gapAfterMinutes, minNoticeMinutes: t.minNoticeMinutes, windowDays: t.windowDays, selfServiceLimitMinutes: t.selfServiceLimitMinutes },
   /** On the firm's booking page now (AG-4-16 rule 1, AG-4-10 rule 3). */
   onBookingPage: isPublic(t), version: t.version, createdAt: t.createdAt, updatedAt: t.updatedAt,
 });
 /** The type's own fields an audit line compares (no booking, no person). */
-const AUDITED = ["slug", "name", "description", "colour", "purpose", "minutes", "modes", "hostStaffIds", "active", "showOnBookingPage", "allowReschedule", "allowCancel", "slotIntervalMinutes", "meetingLink", "deletedAt",
+const AUDITED = ["slug", "name", "description", "colour", "purpose", "minutes", "modes", "hostStaffIds", "active", "showOnBookingPage", "allowReschedule", "allowCancel", "requireAgreement", "slotIntervalMinutes", "meetingLink", "deletedAt",
   "gapBeforeMinutes", "gapAfterMinutes", "minNoticeMinutes", "windowDays", "selfServiceLimitMinutes"] as const;   // timings too (review m9)
 const FREE_TEXT = new Set(["description", "meetingLink"]);
 type Scalar = string | number | boolean | null | (string | number | boolean | null)[];
@@ -224,7 +229,7 @@ export class BookingTypesService {
     const t = await this.find(this.db, ctx.firmId, id);
     const name = `${[...t.name].slice(0, 73).join("").trimEnd()} (copy)`;
     const copy = { name, description: t.description, colour: t.colour, purpose: t.purpose, minutes: t.minutes, modes: t.modes, hostStaffIds: t.hostStaffIds, active: t.active,
-      showOnBookingPage: t.showOnBookingPage, allowReschedule: t.allowReschedule, allowCancel: t.allowCancel, slotIntervalMinutes: t.slotIntervalMinutes, meetingLink: t.meetingLink,
+      showOnBookingPage: t.showOnBookingPage, allowReschedule: t.allowReschedule, allowCancel: t.allowCancel, requireAgreement: t.requireAgreement, slotIntervalMinutes: t.slotIntervalMinutes, meetingLink: t.meetingLink,
       gapBeforeMinutes: t.gapBeforeMinutes, gapAfterMinutes: t.gapAfterMinutes, minNoticeMinutes: t.minNoticeMinutes, windowDays: t.windowDays, selfServiceLimitMinutes: t.selfServiceLimitMinutes };
     return view(await this.insert(ctx, undefined, copy, "booking_type.duplicated", `Booking type ${said(t.name)} duplicated as ${said(name)}.`, t.id));
   }
