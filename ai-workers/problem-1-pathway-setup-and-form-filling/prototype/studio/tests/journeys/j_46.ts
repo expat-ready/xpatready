@@ -90,7 +90,7 @@ if (sql(`select count(*) from fo_consultation_type where firm_id = '${A}' and sl
   await db.foConsultationType.create({ data: { firmId: A, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [OID], minutes: 30, windowDays: 60 } });
 }
 const versions = () => Number(sql(`select count(*) from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = '${KEY}'`) || "0");
-const newest = () => sql(`select encode(convert_to(v.body, 'UTF8'), 'base64') from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = '${KEY}' order by v.version desc limit 1`);
+const newest = () => sql(`select replace(encode(convert_to(v.body, 'UTF8'), 'base64'), E'\\n', '') from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = '${KEY}' order by v.version desc limit 1`);
 const storedBody = () => { const b = newest(); return b ? Buffer.from(b.replace(/\s/g, ""), "base64").toString("utf8") : null; };
 const publishAudits = () => Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'platform.template.publish' and entity_key = '${A}:${KEY}'`) || "0");
 ok(`J-46 setup: the Sample firm with its front office, the Owner (user-R) and the Case Officer (user-O); the product's limit read from its registry: ${LIMIT ?? "none"} [registry: PF-19c part 1]`,
@@ -103,7 +103,7 @@ const newPage = async (width = 1440, token?: string) => {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 1, colorScheme: "light", reducedMotion: "reduce" });
   if (token) await ctx.addInitScript((t) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, token);
   const p = await ctx.newPage(); p.on("pageerror", (e) => errors.push(String(e)));
-  p.on("dialog", (d) => { void d.dismiss(); });   // a beforeunload prompt (unpublished changes) never blocks the walk
+  p.on("dialog", (d) => { void (d.type() === "beforeunload" ? d.accept() : d.dismiss()); });   // leaving unpublished changes (a refused draft) is the walk's choice
   return p;
 };
 /** A person signs in on the sign-in card (PF-4's local stand-in: firm key and work email). */

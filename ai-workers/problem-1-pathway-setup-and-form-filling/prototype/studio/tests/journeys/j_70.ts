@@ -20,7 +20,8 @@
 //      affidavit" line linked to the passport, with the type's cited words under Source; the passport line shows the
 //      "Expired on …" warning and keeps its state (never a block); the other line's document, on a type with no rule,
 //      adds no translation line even in Spanish; English (translation back on the type's default) takes the line away.
-//      Needs CS-D7.
+//      Needs CS-D7. One step needs a part no row holds: notarisation Required and not provided read by the checklist
+//      (CS-D7 reads only translation and expiry/age): labelled "Gap", it fails on main and on #3180.
 //   W5 400, 1024 and 1440 px: the Documents panel with the translation line and the dialog, no sideways scroll, axe-core
 //      0 serious or critical (WCAG 2.2 A/AA); no page error. Needs CS-D7.
 //   W6: the walk ends at R1.72's first step: a Sample prospect's card on the Pipeline board opens the prospect's screen,
@@ -221,6 +222,15 @@ try {
     const t = (await me())?.translations ?? [];
     return [r.status === 200 && t.length === 1 && t.every((x) => x.document_id === doc), [r.status, words(r), t.map((x) => x.document_id)]];
   });
+  // The Done when names notarisation among the flags "that the checklist reads"; CS-D7's own Done when reads only the
+  // translation line and the expiry/age warnings, so no part delivers this clause (proposed QA bug row in the qa report).
+  await step("Gap (no part: CS-D7 reads only translation and expiry) W4: notarisation Required and not provided shows on the passport's checklist line (a warning or a line naming notarisation); nothing is blocked", async () => {
+    const v = Number(sql(`select flags_version from case_document where id='${doc}'`) ?? -1);
+    const r = await call("POST", `/runtime/documents/${doc}/flags`, { version: v, notarisation: "REQUIRED" }, c.officer);
+    const m = await me(), l = m?.lines.find((x) => x.id === passLine?.id);
+    const reads = [...(l?.flag_warnings ?? []), ...(m?.translations ?? []).map((t) => `${t.label} ${t.state}`)].some((w) => /notari/i.test(w));
+    return [r.status === 200 && reads && l?.state === before.state, [r.status, words(r), l?.flag_warnings, (m?.translations ?? []).map((t) => t.label)]];
+  });
   await step("CS-D7 W4 pass: English, translation back on the type's default, takes the translation line away (screen and API)", async () => {
     await openFlags();
     await p.locator("[data-flag-language]").selectOption("en"); await p.locator("[data-flag-translation]").selectOption(""); await p.locator("[data-flag-translation-detail]").fill(""); await saveFlags();
@@ -265,11 +275,14 @@ try {
   const session = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email: ownerEmail, secondStep: true }) });
   const token = ((await session.json().catch(() => null)) as { token?: string } | null)?.token;
   if (!token) throw new Error(`the Sample firm's Owner could not sign in (${session.status}; start the copy with PLATFORM_IDENTITY=local)`);
-  const service = sql(`insert into fo_service (firm_id, label, combination_id, sort_order, created_by) values ('${firm}', 'Sample service (J-70)', '${WP}', 901, 'seed:J-70') returning id`);
-  const person = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Ana${run}', 'Sample', 'j70.${run}@example.org', 'seed:J-70', now()) returning id`);
-  const lead = sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, interested_in_service_id, created_by, updated_at) values (gen_random_uuid(), '${firm}', '${person}', 'MANUAL', 'Phone call', '${ownerId}', '${service}', 'seed:J-70', now()) returning id`);
+  const one = (q: string) => (sql(q) ?? "").split("\n")[0].trim();   // psql prints "INSERT 0 1" after a returning row
+  const service = one(`select id from fo_service where firm_id = '${firm}' and combination_id = '${WP}'`)
+    || one(`insert into fo_service (firm_id, label, combination_id, sort_order, created_by) values ('${firm}', 'Sample service (J-70)', '${WP}', 901, 'seed:J-70') returning id`);
+  const person = one(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Ana${run}', 'Sample', 'j70.${run}@example.org', 'seed:J-70', now()) returning id`);
+  const lead = one(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, interested_in_service_id, created_by, updated_at) values (gen_random_uuid(), '${firm}', '${person}', 'MANUAL', 'Phone call', '${ownerId}', '${service}', 'seed:J-70', now()) returning id`);
   const engaged = await fetch(`${BASE}/api/front-office/leads/${lead}/engage`, { method: "POST", headers: { authorization: `Bearer ${token}` } });
   const number = ((await engaged.json().catch(() => null)) as { number?: string } | null)?.number;
+  if (!number) throw new Error(`the Sample lead was not engaged into a prospect (${engaged.status}; service ${service || "none"}, lead ${lead || "none"})`);
   const fctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   await fctx.addInitScript((t) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, token);
   const f = await fctx.newPage();
