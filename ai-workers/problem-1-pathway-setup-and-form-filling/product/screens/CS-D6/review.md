@@ -97,3 +97,35 @@ A real screen reader. An intended user's unaided walk (D17, D20 stay with the fo
 `Reviewer: Approve 05a75191ef8e72d808ca3062974cf94af013cb28`
 
 Verdict: Approve
+
+## Round 3: head `6a86d2f90e0963339e0667e8b6eba98b51d6c210` (diff `git show 6a86d2f90` only; `f0bd37b9f` is a merge of main and was not reviewed)
+**Re-run by me:** `check-select-suites.sh` **83 passed, 0 failed**. `check_csd6_reads_keep.ts` (rv3_csd6:4498) **23/23**. `j_69.ts` (rv3_j69:4492) **18/18**. At 390 px it measured dialog 16–374, dialog scroll 356 = client 356, fingerprint right edge 349, page scroll 390. The case page's `table.w-full.text-sm` reaches 496 px behind the dialog but does not scroll the page. My runs overwrote the screenshots; I restored them with `git checkout`. The committed `w3-owner-read-by-390.png` shows the fingerprint wrapped inside the dialog and nothing cut off.
+
+**Fix 1: stored file named, not listed. Correct and honest.**
+* Cause confirmed. On a throwaway worktree at `f0bd37b9f`, `acceptance/C5.1.test.ts` chooses **40** suites. At `6a86d2f90` it chooses **13**. The only change between the two is that `readdirSync` is gone from the two files that also name `acceptance/lib/…`.
+* The new path `workspaces/<STUDIO_WORKSPACE_KEY or "demo">/<path>` resolves the key the same way as `core.ts:27`. The documents are stored under `VAR(WORKSPACE_KEY)` (`case-documents.ts:55`), so the path is the one the server writes to. Neither the isolated runner nor CI sets the key, so both use `demo`. My run found the file at `…/isolated-rv3_csd6/workspaces/demo/people/…/documents/<id>.pdf`.
+* A wrong key cannot pass quietly:
+  * In the suite, the `setup: the stored file is found` line goes red, and so does the "after the stored bytes are altered" line.
+  * If `file2` is not found, it is not deleted, so the check answers unchanged and the "stored file that is gone" line goes red.
+  * In J-69, the line `W2 setup: the stored file is found on this copy` goes red.
+* No assertion was weakened.
+
+**Fix 2: J-69 W3 at 390 px. Stricter than before, with one gap (m1).**
+* The old line was `dialog scrollWidth ≤ clientWidth + 1 && page scrollWidth ≤ 391`. It is now two lines:
+  * The dialog line checks that the dialog sits inside the screen (new), that the dialog has no sideways scroll (as before), and that the fingerprint's right edge is inside the dialog. The old wording claimed the fingerprint wraps but never checked it.
+  * The page line checks that the page has no sideways scroll (as before).
+* Both lines print the widths and the five elements that reach furthest past the screen's right edge, so a CI red names its cause.
+* The retry loop does not hide a real fault. It re-measures every 200 ms, for 5 s at most, only until all four checks hold, then asserts the last measurement. A dialog that is too wide stays too wide and fails. Only a mid-resize layout gets waited out, which is the CI race this commit targets.
+* The fix may not turn CI green. If the CI red was the page line, caused by the case-page table rather than this dialog, the page line will still fail on CI, now with a message that names the table. The commit message claims only the measuring and the split, so this is honest. If it happens, it is a case-page item, not this row's.
+
+**Findings:**
+* **m1 (Minor, not blocking): the 390 px claim is measured against `innerWidth`, but the width itself is never asserted.** The `waitForFunction(() => innerWidth === 390)` swallows its timeout (`.catch(() => undefined)`). The old line had a fixed `≤ 391`; every check is now relative. If the resize ever did not apply, both lines would pass at the old width. `setViewportSize` awaits the resize, so the risk is low. Fix: add `fit.widths.viewport === 390` to the dialog line, or let the wait fail.
+* n3 (nit): the rule that resolves the workspace key now exists in four places (`core.ts`, `prospect-won.ts` and these two tests). It would be better as one shared test helper later. No change needed in this PR.
+
+The screenshot changes in this commit come from re-running the journey (times and line order in "Read by"). They show no change to the layout.
+
+**Journey score, round 3: 9/10** (unchanged; this diff changes no screen).
+
+`Reviewer: Approve 6a86d2f90e0963339e0667e8b6eba98b51d6c210`
+
+Verdict: Approve
