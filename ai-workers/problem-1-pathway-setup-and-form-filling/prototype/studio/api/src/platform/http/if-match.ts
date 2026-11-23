@@ -1,6 +1,9 @@
 // PF-31 part (c) (EXPERIENCE §2.12 "save once, with the version"; RFC 9110 §8.8.3 ETag, §13.1.1 If-Match, §15.5.10 409): one
 // shared optimistic-concurrency door for staff edits.
-//  * A read or a save whose answer carries a top-level `version` string also sends it as a strong ETag ("<version>").
+//  * A save (POST, PUT, PATCH, DELETE) whose answer carries a top-level `version` string also sends it as a strong ETag
+//    ("<version>"). Reads do not (review M3): a read's answer can change while its record's version does not (the firm
+//    profile counts offices), so an ETag there would let a revalidating GET get 304 with stale data. Reads carry the
+//    version in the body.
 //  * A change route marked @Versioned() (its body takes `version`, STANDARDS §4) also takes the version as an If-Match
 //    header: the header fills the body's `version`, so the service's own check under its row lock decides, and a stale one
 //    is 409 with the latest record (the house rule since offices and the firm profile; RFC 9110 §13.1.1 allows 412, and
@@ -45,6 +48,7 @@ export class IfMatchVersion implements NestInterceptor {
         b.version = tag;
       } else if (body === undefined || (typeof body === "object" && body !== null && Object.keys(body).length === 0)) req.body = { version: tag };
     }
+    if (!CHANGES.has(req.method)) return next.handle();
     return next.handle().pipe(map((out: unknown) => {
       const v = out !== null && typeof out === "object" && !Array.isArray(out) ? (out as { version?: unknown }).version : undefined;
       if (typeof v === "string" && tagOf(`"${v}"`) !== null && !res.headersSent) res.setHeader("ETag", `"${v}"`);
