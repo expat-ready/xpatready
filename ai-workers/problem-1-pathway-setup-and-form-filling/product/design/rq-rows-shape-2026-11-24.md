@@ -1,0 +1,163 @@
+# Case rows RQ-01 to RQ-08: shape (P-814), 24 Nov 2026
+
+Design note, records only, no code. Written for the tech lead, who writes the BACKLOG rows (P-314). Row text read from branch `lead/2026-11-24-p814-p815` (PR #3314), `product/BACKLOG.md` › "Case rows RQ-01 to RQ-08". Code read on `origin/main` @ afe9727 (24 Nov). Requirements read in `domain/requirements-2026-11-02/` (the newest name-free snapshot): AG-07 v3.12 (2026-10-28), SA-01B v2.1. Live AI off, US$0, no test run.
+
+**Duplicate check (P-526 (1)):** searched every open PR (titles and the two dependency PRs' file lists), BACKLOG on #3314's branch (RQ, CS-98a, CS-K2, FO-9b, FO-13c, FO-5, FO-6 rows), and main's code (`api/src` routes and services, `prisma/schema`, `web/src/runtime`, `ports`) for: open-case, `clients/:id`, duplicate case, "already open", create anyway, case link, `case_link`, `CaseLink`, retainer on the case, "Retainer not signed", client per person (`fo_person_id`), client kind. **No row is a duplicate.** Partial overlaps, each named in its row below: route stages (C6.17) under RQ-01; the worker-to-employer "relied on" link (C1.3) and CS-98a's unbuilt `corp_case_link` under RQ-07; CS-K2's client merge under RQ-05.
+
+---
+
+## 1. What the code already does, and what it does not (facts, read on main)
+
+| Fact | Where |
+|---|---|
+| A case has **one** `combinationId`, the current stage's; C6.17 route stages give one case several combinations **one after another**, each with its own filings, groups, checklist lines and release pin (`pack_work_pin` is per case and combination). The database keeps **one CURRENT stage per case** and refuses writes on a stage that is not current. | `prisma/schema/cases.prisma` `Case`, `CaseStage`, `PackWorkPin`; `prisma/migrations/20261109130000_c617_case_stages/migration.sql` lines 5-11; `api/src/stage-scope.ts` |
+| In a production configuration a case opens **only** through `POST /api/runtime/clients/:id/open-case` (the won prospect's offer); the persona route is refused (`SIMULATED_PERSON_REFUSED`). | `api/src/runtime.ts` 276-281, 1112 |
+| The offer is single use: a second opening for the same client is refused with "A case was already opened from this offer. Open another case for the client instead." There is no other door for staff, so **a second case for an existing client cannot be opened in production today.** | `api/src/case-clients/prospect-won.ts` 170-175 (the line the row cites as `:174`), 197-200 |
+| An opening given a `clientId` never compares the client's kind (PERSON or COMPANY) with the combination's Pathway (Individual or Corporate). The kind is derived only when the client is made (`case_client_kind_of`). | `runtime.ts` 357-358; `prospect-won.ts` 208-213; `migrations/20261118230000_csk1_case_client/migration.sql` 109-119 |
+| A won prospect finds its client **by prospect id only**; the same person won again through a new prospect gets a new client number. | `prospect-won.ts` 77-79, 94-96; `case_client` unique `(workspace, firm, prospect_id)` |
+| No duplicate-case check, no filing check, no case-to-case link table, no retainer-to-case link and no read port for retainers exist. | grep on main, as listed above |
+| FO-13c's conflict gate is **on main**: `clearance(db, firmId, prospectId)` refuses Send, Signed offline and every win without a clearing, unchanged check; `latestCheck(db, firmId, party)` reads by party. | `api/src/front-office/compliance/conflict/gate.ts` 1-20, 83-86 |
+| Retainer statuses already include `SIGNED` and `SIGNED_OFFLINE`; Signed offline works on main (FO-5); the e-signed `SIGNED` path comes with FO-6 part 3 (#3065). A prospect has at most one live retainer. | `prisma/schema/front-office-retainers.prisma` 28-38, 95-140 |
+
+## 2. What each "waits on" really is today
+
+| Wait named in the row | State on 24 Nov | Effect |
+|---|---|---|
+| **FO-13c gate** (RQ-03) | Built and merged (`gate.ts`). What is open is a **product question**, not code: does a second case for an existing client need a fresh conflict check, or does the party's latest unchanged clearing check suffice? (Question 2 below.) | RQ-03 can be built; the question decides one function. |
+| **FO-9b #3174** (RQ-05) | Open, unmerged. Its 23 files touch only the front office's duplicates area, client money and their tests: **no case-side file**. | Not a blocker for "same person record → same client". It matters only for two person records of one human, which is CS-K2's merge (not built) and out of RQ-05's scope. |
+| **CS-K2** (RQ-05) | Not built, no PR. | Out of scope for RQ-05 (state it in the row). |
+| **FO-6 #3065** (RQ-08) | Open. Touches the front office's signing and `retainers/service.ts` (8 lines); no case-side file. | Soft: RQ-08 links `SIGNED` or `SIGNED_OFFLINE`; its test uses Signed offline now and gains an e-signed case when #3065 merges. Not a blocker. |
+| **FO-5** (RQ-08) | Merged (retainer tables on main). | None. |
+| **CS-98a table made general** (RQ-07) | CS-98a not built, no PR. | RQ-07 builds the general `case_link` itself; CS-98a then drops `corp_case_link` and uses it (Question 4). |
+| **Founder conflicts 1-4** (RQ-02) | Open (P-814 (1) reading). | Not a blocker if the rule is data: ship today's rule (P-492 (2) as worded by P-493 (3)) and the P-814 reading as a warning only (section 4). |
+| **SPD-2 #3035** (one migration slot per schema area) | Open. | If it merges first, RQ-04, RQ-05, RQ-07 and RQ-08 (all case-side migrations) queue on one slot: they merge one at a time even when built in parallel. |
+
+## 3. The eight rows
+
+Test names follow `tests/check_<row>_<subject>.ts`. Sizes: S under a day, M one to two days (P-610: each PR under 800 changed lines).
+
+### RQ-02 · The case rule as data, and a test that states it · S · can start now
+* **Requirements read:** AG-7-5 r1 (client type from the program's Pathway, SA-1B-50, SA-1B-51); AG-7-45 r4 (each filing its own program), r7 (a returning client with a different program gets a new case by default; adding a filing to the open case is also allowed, AG07-D2, AG07-D20(s)); AG-7-1 r9 (the duplicate key: same client, same pathway, program and sub-category). The row's A-1, A-4, A-6 are the A24 analysis's items (`design/case-structure-a24-2026-11-12.md`), not team IDs.
+* **What:** one pure function `caseRule({ caseClientKind, caseCombinations, newCombination, levels })` → `JOIN | NEW_CASE | WARN` with a reason code, reading its rule from data. Shipped values (Sample until the founder confirms): kind mismatch → `NEW_CASE` (RQ-04 refuses it); same client and same Pathway → `JOIN` (P-492 (2), P-493 (3)); a different Program (Temporary residence, Permanent residence, Citizenship) → `WARN` with "usually its own case", never refused (P-814 (1), P-492 "a warning, never a block"). A later decision changes the data file, not code.
+* **Touch:** new `engine/runtime/case-rule.ts`; new `samples/case-rule.json` (Sample, cites P-492, P-493, P-814); new `tests/check_rq02_case_rule.ts`. **No** edit to `runtime.ts`: RQ-04 and RQ-06 call it.
+* **Done when:** `check_rq02_case_rule.ts` passes a pass and a fail per level (Pathway, Program, Category, Sub-category) and per client kind, including the sponsored spouse's open work permit inside a PR case (expected `WARN`, not `NEW_CASE`); changing the data file changes the answer with no code change.
+* **Waits on:** nothing.
+
+### RQ-04 · A case's client kind matches its pathway · S · can start now
+* **Requirements read:** AG-7-5 r1 and §7 (`clientType` from the program's Pathway); P-493 (3) (the case boundary: one client, one client type); CS-5 (A24, Sample).
+* **What:** an opening given a client whose kind does not match the combination's Pathway is refused with a plain message ("This client is a person; this application is for an employer. Open it for the employer's client."). Also in the database: a trigger on `runtime_case` (insert, and update of `client_id` or `combination_id`, which "Start next stage" changes) compares `case_client.display_kind` with `case_client_kind_of(combination_id)`. The migration first checks every existing case and stops, in words, if one fails.
+* **Touch:** `api/src/runtime.ts` (`createCase`, after the client is resolved, about lines 356-358); one migration folder (trigger only, no schema file line); new `tests/check_rq04_client_kind.ts`.
+* **Done when:** `check_rq04_client_kind.ts`: a person client on a Corporate combination → 409 and no case row; the reverse → 409; the same insert straight into the table → refused by the trigger; a matching opening passes; the demo reset and the C10.1 checkpoint load pass unchanged.
+* **Waits on:** nothing (RQ-02 not needed: the check is a fact, not the rule).
+
+### RQ-05 · One client for one person · M · can start now (scoped)
+* **Requirements read:** AG-7-70 r3 (every path applies the duplicate check; never merged unseen), r5 (the client list shows each client once); AG-7-73 r1-r4 (no duplicate clients; a match never links or merges by itself); AG-7-45 r7 (a returning client gets a new case on the same client).
+* **What:** when a prospect is won, look for an existing client of the firm with the **same front-office person or company id** before making one; if found, attach the new prospect to it (no new number). A client can then come from several prospects, so the single `case_client.prospect_id` is not enough: a new table `case_client_prospect` (client, prospect; unique per firm) keeps every won prospect, and `offerOf` reads the offer per prospect. The advisory lock moves from the prospect to the party, so two wins of one person at once make one client. A partial unique index on `case_client (firm_id, fo_person_id)` and `(firm_id, fo_company_id)`; the migration checks existing data first and stops, in words, if two clients share a party (CS-K2 would merge them).
+* **Out of scope (say so in the row):** two person records of the same human (needs FO-9b's merge and CS-K2); a client opened directly from a typed name (always a new person, today's rule).
+* **Touch:** `api/src/case-clients/prospect-won.ts` (`makeClient`, `offerOf`); new `prisma/schema/case-client-prospects.prisma` + one migration folder; new `tests/check_rq05_one_client.ts`; the FO-8 suite `tests/check_fo8_prospect_won.ts` updated with its owner (open fix #3280 touches it: merge that first).
+* **Done when:** `check_rq05_one_client.ts`: a person already a client and won again keeps one client number and gets a second "Open a case?" offer; two wins of one person at once make one client; another firm's person never joins; the backfill moves every `prospect_id` into the new table.
+* **Waits on:** #3280 (same test file). Not on #3174.
+
+### RQ-03 · New case for an existing client (signed-in staff) · M · after RQ-04
+* **Requirements read:** AG-7-78 r3 ("**New case** opens the case wizard with this client already chosen. It needs `agent/case:create`"); AG-7-1 r1(b) (direct: for an existing client); r10 (create-request key); r8-access (`agent/case:create`).
+* **What:** `POST /api/runtime/clients/:id/cases` (staff, `agent/case:create`), through `Runtime.createCase` with the client given, `by = staff:<id>` (so the production guard passes), firm checks as in `openCaseFromOffer`, the plan limit and the create-request key already in `createCase`, `case.opened` with `prospect_id: null` (the payload allows it). The conflict check is kept: the client's party must have a clearing, unchanged check (Question 2 decides whether a fresh one is needed). A **New case** button on the client page.
+* **Touch:** `api/src/runtime.ts` (one controller line and one method, next to line 1112); new `api/src/case-clients/open-for-client.ts`; `api/src/front-office/compliance/conflict/gate.ts` (export a party-based `clearanceOfParty`; Lead B's module, P-558: one line in the PR body for Lead B); `web/src/runtime/clients.tsx` (New case button); new `tests/check_rq03_second_case.ts` (API + browser).
+* **Done when:** `check_rq03_second_case.ts`: in a production configuration a staff member opens a second case from the client page; a client whose party has no clearing check → 409 `CONFLICT_CHECK_REQUIRED`; another firm's client → 404; the plan limit holds; a double click with one key makes one case; keyboard-only, axe-core, 375/1024/1440.
+* **Waits on:** RQ-04 (same function in `runtime.ts`); Question 2.
+
+### RQ-07 · Linked cases for individuals · M (2 PRs)
+* **Requirements read:** AG-7-53 r1-r6 (a link joins two cases of one firm; kinds *worker permit*, *re-application of*, *stream changed*; shown on both with a badge; never across firms; never deleted, it ends ACTIVE → ENDED; by hand with `agent/case:edit`; a user who cannot open the other case sees the number only); AG-7-1 r9(b) (re-application link offered at opening); P-492 (2) (a new engagement = a new linked case); A24 M4-D1.
+* **Gap in the requirements:** AG-7-53 has no kind for P-492 (2)'s "new engagement, same household" (the PR case beside the temporary case). A kind `RELATED` is needed (Question 4).
+* **Part 1 (can start now):** new `prisma/schema/case-links.prisma` (`case_link`: firm, from case, to case, kind, status, ended at and by, created by; composite firm keys, P-600) + one migration folder; new `api/src/case-links.ts` + `api/src/features/case-links.ts` (link, end, list both ways); new `web/src/runtime/case-links.tsx` and one line on the case page (`web/src/runtime/cases.tsx` header); new `tests/check_rq07_case_links.ts`.
+* **Part 2 (after RQ-03):** "New case from this case" on the case page: opens the RQ-03 door with the client chosen and writes the link in the same transaction. Touch: `api/src/case-clients/open-for-client.ts`, `web/src/runtime/cases.tsx`, the same test.
+* **Done when:** `check_rq07_case_links.ts`: link and end a link between two cases of the firm; the badge shows both ways; a link to another firm's case → 404 and nothing written; an ended link stays readable; a user without access sees the number only; (part 2) a new case from a case opens linked.
+* **Waits on:** part 1 nothing; part 2 RQ-03. CS-98a should reuse this table (Question 4).
+
+### RQ-06 · Duplicate-case and open-filing warning · M (row says S) · after RQ-02 and RQ-03
+* **Requirements read:** AG-7-1 r9 (a)-(f) (same client, same pathway, program and sub-category, case not closed, filing open or submitted → banner "C-… is already open for this program. Open it, or create another."; **Create another** audited as "create anyway"; a case the user may not open → "A matching case exists that you can't open. Ask a manager."; Corporate clients skipped); r11 (filing check per person); r10 (two staff at once: the second sees the banner); §10 ("never block").
+* **What:** a read-only `POST /api/runtime/cases/check` (same body as opening) returns the matches (RQ-02's `WARN` included); the opening accepts `createAnyway: { matchedCaseId }` and audits it; the server never refuses on a match. In our model a combination is the whole path, so "same program" = same combination key. **r11 (per person across cases) is not buildable as written:** case people (`Party`) are per case, not per client person; propose an X-row (P-582).
+* **Touch:** `api/src/runtime.ts` (`createCase`: the audit line), contract `contracts/` NewCase schema (one optional field), new `api/src/case-duplicates.ts`, `web/src/runtime/cases.tsx` (Open a case banner) and `web/src/runtime/clients.tsx` (the RQ-03 door's banner), new `tests/check_rq06_duplicate_warning.ts`.
+* **Done when:** `check_rq06_duplicate_warning.ts`: the same client and program with an open case warns with Open it / Create another; Create another opens the case and audits "create anyway" with the matched case; a closed or decided case gives no banner; a matching case the user cannot open shows the nameless line, with no number or name in the response; a Corporate client gets no banner; nothing is ever refused.
+* **Waits on:** RQ-02 (the function), RQ-03 (`runtime.ts`, `clients.tsx`).
+* **Size note:** API, contract, two screens and the audit: M, not S.
+
+### RQ-08 · Retainer on the case · M (2 PRs) · after RQ-05 and RQ-06
+* **Requirements read:** AG-7-1 r14 ("When a case opens, ExpatReady links to it the most recent signed retainer of that client ... that no other case uses. Signed means signed or signed offline (AG-5-39) ... If there is no such retainer, nothing is linked and the case shows 'Retainer not signed' ... **Change retainer** ... the audit records who changed it and when"); §8 (`agent/case:edit` for Change retainer); §9 (audit "retainer linked", "retainer link changed").
+* **What:** new `case_retainer` (case, retainer id; unique per case; **unique per firm on retainer id**, so a retainer is never linked twice, in the database); linking inside the opening transaction (the `inTx` hook already exists); "Retainer not signed" on the case header; `POST /api/runtime/cases/:id/retainer` to change it. The case side reads retainers through a new read port (no foreign key across modules, contracts §1 rule 4): "signed retainers of this client" = retainers whose prospect is one of the client's prospects (RQ-05's table) or whose signer person or company is the client's party; status `SIGNED` or `SIGNED_OFFLINE`.
+* **Touch:** new `ports/retainer-read.ts` + `ports/fakes/retainer-read.fake.ts`; new `api/src/front-office/retainers/read-port.ts` (Lead B's module, P-558); new `prisma/schema/case-retainers.prisma` + one migration folder; `api/src/runtime.ts` (`createCase` inTx call); new `api/src/case-retainer.ts` + features file; `web/src/runtime/cases.tsx` (header line and Change retainer); new `tests/check_rq08_case_retainer.ts`.
+* **Done when:** `check_rq08_case_retainer.ts` states AG-7-1's two rule-14 tests word for word: a retainer signed offline as a prospect is linked at opening, no warning; a second case for the same client finds it used, links nothing, shows "Retainer not signed"; Change retainer clears it and audits who and when; the same retainer on two cases → refused by the database; another firm's retainer → 404.
+* **Waits on:** RQ-05 (the client's prospects); RQ-06 (`runtime.ts`, `cases.tsx`). FO-6 #3065: soft (adds the e-signed case to the test).
+* **Blind spot:** a prospect has at most one live retainer, and RQ-03's second case has no new prospect. A second engagement's retainer then needs a new prospect for the same person (which RQ-05 attaches to the same client) or a retainer prepared on the case (AG-5-55, not built). Question 5.
+
+### RQ-01 · Add another application (its own combination and release) to a case · shape only · L
+* **Requirements read:** AG-7-45 r1 (a case holds one or more filings, each with its own program, questionnaire, checklist, forms, fees, deadlines and decision), r4 (each filing its own program and rules version), the AG-07 glossary "Case" and "Filing" (C-2026-00012 holds an employer-specific work permit, a spouse's open work permit and a study permit), r7; AG-7-5 r3. The row's A-2, A-3, A-21, A-24 and B7 are A24-analysis items.
+* **What exists to build on:** C6.17 stages already give a case several combinations, each with its own filings, groups, checklist lines, findings, tasks and pin (`pack_work_pin` keyed by case and combination). What blocks parallel applications: the **one CURRENT stage** rule in the database and in `stage-scope.ts`; `Case.combinationId` as "the" combination, read directly in 21 files of `api/src` (employer-link, readiness, fill-case, case-checklist, earlier-facts, case-close, case-prepare, review-queue, review-rounds, release-update, where-used, change-sets, runtime, programs, case-filings, release-context and others); about 15 files reading the current stage (grep hit; one or two may be false hits).
+* **Shape (proposal, six PRs, each under 800 lines):** (1) schema: a stage kind `PARALLEL` that may be CURRENT beside another, the database rule changed from "one CURRENT per case" to "one CURRENT per case and route", `Case.combinationId` kept as the first application's (no reader breaks); (2) `stage-scope.ts` and the pin re-checks read the stage of the row being written, not the case's; (3) the 21 readers take a stage (mechanical, with the existing suites as the guard); (4) "Add an application" on the case page and its API, through RQ-02's rule (refused when `NEW_CASE` with "Open a linked case", RQ-07; warned when `WARN`); (5) shared facts asked once (answers already sit on the person, X-2 (3); the questionnaire must not ask twice across two releases); (6) per-application fee and decision screens, and the "one-combination cases byte-identical" regression check over the checkpoint data.
+* **Estimate check:** **45-60 h holds; the low end is not safer than the high.** Stages save the schema work the A24 estimate assumed (filings, pins and checklist per application already exist), but the "one current stage" invariant is in triggers and in every case read, and (5) shared facts across two pinned releases is new engine work with no code today. Plus founder conflicts 1-5 and the expert-free value rule (P-541). Proposed Done when, in tests: `check_rq01_two_applications.ts` (two combinations of the allowed level in one case, each with its own release, forms, fee and decision; shared facts asked once; a not-allowed one refused with "Open a linked case") and `check_rq01_single_unchanged.ts` (every one-combination checkpoint case byte-identical before and after).
+* **Waits on:** the founder's confirmation (P-814 (1)), RQ-02, RQ-07 part 1, the schema baton. Not before RQ-02 to RQ-08.
+
+## 4. The case rule's edge: does a same-Program rule wrongly block a sponsored spouse's open work permit?
+
+### 4.1 What "Program" means (facts)
+| Source | Levels | "Program" is |
+|---|---|---|
+| **P-104** (26 Oct) | Pathway type (Retail · Corporate) › Pathway (Temporary residence, Permanent residence, Citizenship…) › Program › Category › Sub-category | the level **below** Temporary/Permanent residence (e.g. Work permit, Spousal sponsorship) |
+| **P-493 (1)** (12 Nov, "Keep team names") | Pathway (Individual or Corporate) › **Program** (Temporary residence, Permanent residence, Citizenship: the founder's "basket") › Category › Sub-category | the **basket** |
+| Team requirements, SA-01B v2.1 | e.g. `Individual › Temporary residence › Work permit › Open work permit for a spouse` (SA-01B v2.1, line 3374) | the basket (P-493 adopted the team's names) |
+| AG-07 v3.12 AG-7-1 r9, r11; AG-7-45 r4 | "same program" = "same pathway, program and sub-category" (r9's key); `Filing.programRef` | loosely, the **whole path** of one application |
+
+So P-814's "when the program level is the same" read under P-493 means **same basket**; read under P-104 it would mean the next level down (much narrower). P-493 is newer and is the team's own wording; the reading "same basket" is the right one, but the founder's spoken words do not say which, so it stays a reading.
+
+### 4.2 Official sources (quotes, page, date)
+| # | Point | Quote | Source |
+|---|---|---|---|
+| O1 | A sponsored spouse in Canada may get an open work permit **while the PR application is processed** | "If you're applying under the Spouse or Common-Law Partner in-Canada class, you may qualify for an open work permit while your application for permanent residence is being processed." | Guide 5289 (complete guide, sponsor your spouse), section "Open work permits for spouses or common-law partners in Canada"; canada.ca URL in `official-sources/ircc/manifest.json`; local copy `official-sources/ircc/instructions/guide-5289.html`, downloaded 2026-10-27 05:42 UTC, server Last-Modified 2026-10-27; read 24 Nov 2026 |
+| O2 | It is its own application with its own processing | "Note : If you're applying under the Spouse or Common-Law Partner in Canada class and you've submitted an application for an open work permit, your work permit will normally be processed within four months." | Same copy |
+| O3 | IRCC puts the work permit on the **sponsorship's own path**: the sponsorship pages list it as a step | Page navigation: "How to apply · After you apply · Settling in Canada · Optional: Open work permit in Canada" | canada.ca "Sponsor your spouse, partner, or child: How to apply", local copy `official-sources/ircc/canada/pages/immigrate-canada-family-sponsorship-spouse-partner-children-apply.html`, downloaded 2026-10-27 07:08 UTC; read 24 Nov 2026 |
+| O4 | It is filed **after** the PR acknowledgement of receipt, in a different account from the PR filing | Recorded as: apply "once you get your AOR letter", separately in the IRCC secure account, not through the PR Portal; exceptions when status expires within 2 weeks | canada.ca "Spousal open work permit" (`.../spouse-common-law-partner-canada-open-work-permit.html`), Date modified 2026-04-17; recorded in `screens/W1-baseline/immigration-facts-2026-10-29.md` row 18 and `research_notes/Agent view and filing UX/ircc_filing_units.md` row 5b. **Not re-read today:** canada.ca is not reachable from this cloud copy (DNS refused); the only word-for-word quote kept is "once you get your AOR letter" |
+| O5 | Dual intent is lawful | IRPA s. 22(2): "An intention by a foreign national to become a permanent resident does not preclude them from becoming a temporary resident" | `design/case-structure-a24-2026-11-12.md` S14, Justice Laws current to 2026-10-19, read 12 Nov 2026 |
+| O6 | Temporary applications of a family are sent together | "Family members must complete their own application forms. However, you may submit your applications together ... and use one payment receipt for the total amount." | Guide 5269, 5487, 5256 (A24 note S1), saved 19 Oct 2026 |
+| R1 | The team's own case example mixes programs' applications in one case | "Case C-2026-00012 ... holds three filings. They are Client B's employer-specific work permit, Client A's open work permit and Client D's study permit." (all Temporary residence); "Each filing has its own program, its own rules version and its own applicants with roles" | AG-07 v3.12 glossary "Case"; AG-7-45 r4 |
+| R2 | A returning client with a different program gets a new case by default; adding a filing is also allowed | "A returning client who pursues a different program gets a new case on the same client by default, never a mutated old one ... Adding a filing to the open case is also allowed" | AG-7-45 r7 |
+
+### 4.3 Judgment
+* **Yes, a strict same-Program (basket) rule wrongly blocks it.** The spouse's open work permit is a Temporary residence application; the sponsorship is Permanent residence. IRCC presents the permit as a step of the sponsorship (O3), available only because the sponsorship is in process (O1), filed after its acknowledgement (O4). It is the same household, the same engagement and normally the same retainer. A strict basket rule would force a second case, a second retainer and a second client file for one engagement. Confidence: high on the immigration facts (O1-O3 read today from the official copies); medium on "the same engagement and retainer" (a firm practice; firms may price it separately). **Unconfirmed: no counsel** on whether a firm may serve both under one service agreement (Code SOR/2022-128 s. 24(3)(g) asks for "an itemized list of the services", which can list both).
+* The team's requirements do not have the basket rule at all: AG-7-45 r4 and r7 allow any filing in an open case, with "new case" as the default for a different program (R1, R2). P-492 (2) as corrected by P-493 (3) agrees: the boundary is one client, one client type and one engagement.
+
+### 4.4 Recommendation (for the founder, through the Lead; nothing refused until he confirms)
+1. **Join, not block:** applications of the same client and client type may sit in one case; Pathway (Individual or Corporate) and client kind are the only hard boundary (RQ-04).
+2. **Different Program → a warning with two buttons** ("Usually its own case: Open a linked case / Add it here anyway"), audited; P-492 "a warning, never a block" stands.
+3. **The data rule ships with a dependent-application exception:** a Temporary residence application that depends on a Permanent residence application of the same household (the in-Canada spouse's open work permit) joins without the warning, as a later stage (A24 note row 3).
+4. Default when he does not answer: 1 and 2 (safe: nothing is refused).
+
+## 5. Overlaps and build order (P-526b)
+
+| File or area | RQ-02 | RQ-03 | RQ-04 | RQ-05 | RQ-06 | RQ-07 | RQ-08 | RQ-01 |
+|---|---|---|---|---|---|---|---|---|
+| `api/src/runtime.ts` (`createCase`, controller) | | x | x | | x | | x | x |
+| `api/src/case-clients/prospect-won.ts` | | | | x | | | | |
+| `api/src/case-clients/open-for-client.ts` (new) | | x | | | | x (part 2) | | |
+| `web/src/runtime/clients.tsx` | | x | | | x | | | |
+| `web/src/runtime/cases.tsx` | | | | | x | x | x | x |
+| case-side migration folder (slot under SPD-2) | | | x | x | | x | x | x |
+| `gate.ts` / front-office retainers (Lead B, P-558) | | x | | | | | x | |
+| `engine/runtime/case-rule.ts`, `samples/case-rule.json` | x | | | | x (reads) | | | x (reads) |
+
+**Order:**
+1. **At once, in parallel (no shared file):** RQ-02, RQ-04, RQ-05 (after #3280), RQ-07 part 1. (RQ-04, RQ-05 and RQ-07 each add a case-side migration folder: allowed in parallel under P-600 with their own files and later stamps; under SPD-2, if merged, they queue on the slot.)
+2. **Then RQ-03** (after RQ-04: `runtime.ts`).
+3. **Then RQ-06 and RQ-07 part 2** (after RQ-03; RQ-06 also after RQ-02). They share no file except `cases.tsx`: run RQ-06 first, then RQ-07 part 2.
+4. **Then RQ-08** (after RQ-05 and RQ-06).
+5. **RQ-01** only after the founder confirms, and after RQ-02 and RQ-07 part 1.
+
+Lane-days, my estimate against the audit's 7-11: about 9-12 (RQ-06 and RQ-08 are larger than the row says; RQ-07 is two PRs). Critical path: RQ-04 → RQ-03 → RQ-06 → RQ-08, about 5-7 lane-days.
+
+**A builder can start at once (once the Lead writes the row Ready):** RQ-02, RQ-04, RQ-07 part 1; RQ-05 as soon as #3280 merges.
+
+## 6. Questions for the tech lead (also posted on the PR)
+1. **Rule reading:** P-814's "program level" read as P-493's Program (the basket), not P-104's? (Recommended: yes.)
+2. **FO-13c for a second case:** does a second case for an existing client need a fresh conflict check, or does the party's latest clearing, unchanged check suffice? (Recommended: the latest unchanged check suffices; a changed name, email or phone asks for a new one, as `STALE` does. Unconfirmed: no counsel.)
+3. **RQ-06 r11:** the per-person filing check across cases cannot be built while case people are per case; X-row? (Recommended: yes.)
+4. **RQ-07:** add a link kind `RELATED` (the PR case beside a temporary case, P-492 (2)), and amend CS-98a to reuse `case_link` instead of `corp_case_link`? (Recommended: yes to both.)
+5. **RQ-08:** a second engagement's retainer needs a new prospect (one live retainer per prospect); accept that until AG-5-55 (a retainer prepared on the case) is built? (Recommended: yes.)
+6. **Sizes:** RQ-06 is M, not S; RQ-07 and RQ-08 two PRs each.
