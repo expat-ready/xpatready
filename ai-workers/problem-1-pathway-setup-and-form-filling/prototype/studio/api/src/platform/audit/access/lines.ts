@@ -164,7 +164,7 @@ export class SystemAccessLines implements NestInterceptor, OnModuleInit {
       await this.db.$transaction(async (tx) => { await recordFirmRead(tx, firm.toLowerCase(), call); });
       return;
     }
-    const f = req.query?.firm, filters = typeof f === "string" && UUID.test(f) ? { firm: f.toLowerCase() } : {};
+    const f = req.query?.firm, filters: Record<string, string> = typeof f === "string" && UUID.test(f) ? { firm: f.toLowerCase() } : {};
     await this.db.$transaction(async (tx) => { await recordCrossTenant(tx, data.scope, call, filters); });
   }
 }
