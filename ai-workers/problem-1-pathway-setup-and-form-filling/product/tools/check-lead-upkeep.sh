@@ -135,6 +135,21 @@ ok "private-sync: a pushurl pointing elsewhere → refused (exit 4)" "$([ $r = 4
 def=$(git --git-dir="$T/remote.git" symbolic-ref --short HEAD); ps "$T/notes" "$T/h20" >/dev/null 2>&1
 git -C "$T/h20" checkout -q -b work --track "origin/$def"; echo d > "$T/notes/d.md"; out=$(ps "$T/notes" "$T/h20"); r=$?
 ok "private-sync: a working copy on another local branch pushes to the upstream branch ($def), not a new branch" "$([ $r = 0 ] && git --git-dir="$T/remote.git" show "$def:notes/side-session-notes/d.md" >/dev/null 2>&1 && ! git --git-dir="$T/remote.git" rev-parse -q --verify refs/heads/work >/dev/null && echo 1)" "exit $r: $out"
+# F4 (follow-up on #2590, 23 Nov): no upstream is refused (exit 4) before the pull, not exit 5; a pushInsteadOf rule that
+# sends the push to another repository is refused; a session folder that is a git repository with no commit is refused
+# (exit 4, named, notes/ reset), never git add's bare exit 128.
+before=$(git --git-dir="$T/remote.git" rev-parse HEAD); git clone -q "file://$T/remote.git" "$T/h21" 2>/dev/null; git -C "$T/h21" branch -q --unset-upstream;   # a full clone: there git pull fails with no upstream (a --depth 1 one still pulls)
+echo e > "$T/notes/e.md"
+out=$(ps "$T/notes" "$T/h21"); r=$?
+ok "private-sync: a working copy that tracks no branch → refused (exit 4) before the pull, not exit 5" "$([ $r = 4 ] && grep -q 'tracks no branch of origin' <<<"$out" && ! grep -q 'pull from' <<<"$out" && echo 1)" "exit $r: $out"
+ps "$T/notes" "$T/h22" >/dev/null 2>&1; echo f > "$T/notes/f.md"; ob=$(git --git-dir="$T/other.git" for-each-ref | wc -l)
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$T/other.git.pushInsteadOf" GIT_CONFIG_VALUE_0="file://$T/remote.git" ps "$T/notes" "$T/h22"); r=$?
+ok "private-sync: a pushInsteadOf rule that sends the push to another repository → refused (exit 4), nothing pushed there" "$([ $r = 4 ] && grep -q 'pushInsteadOf' <<<"$out" && [ "$(git --git-dir="$T/other.git" for-each-ref | wc -l)" = "$ob" ] && echo 1)" "exit $r: $out"
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$T/remote.git/.pushInsteadOf" GIT_CONFIG_VALUE_0="file://$T/remote.git" ps "$T/notes" "$T/h22"); r=$?
+ok "private-sync: a pushInsteadOf rule that still names the private home (a trailing slash) is not refused" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+mkdir -p "$T/n-sub0/s3"; echo a > "$T/n-sub0/a.md"; echo z > "$T/n-sub0/s3/z.md"; git init -q "$T/n-sub0/s3"
+before=$(git --git-dir="$T/remote.git" rev-parse HEAD); out=$(ps "$T/n-sub0" "$T/h23"); r=$?
+ok "private-sync: a session folder that is a git repository with no commit → refused (exit 4, named), notes/ reset, the mirror untouched" "$([ $r = 4 ] && grep -q 's3' <<<"$out" && untouched && [ -z "$(git -C "$T/h23" status --porcelain 2>&1)" ] && echo 1)" "exit $r: $out; status: $(git -C "$T/h23" status --porcelain 2>&1)"
 : > "$T/afile"; out=$(env -u PRIVATE_SYNC $U sync --notes "$T/afile" --cmd "bash $T/bad.sh"); ok "the side-notes path is a file, not a folder: no quiet skip, the sync runs and its failure is an ACT" "$([ "$(acts "$out")" = 1 ] && echo 1)" "$out"
 ln -s /nonexistent "$T/dangling"; out=$(env -u PRIVATE_SYNC $U sync --notes "$T/dangling" --cmd "bash $T/bad.sh"); ok "the side-notes path is a dangling symlink: no quiet skip, an ACT" "$([ "$(acts "$out")" = 1 ] && echo 1)" "$out"
 W="$TOOLS/../../../../.claude/skills/lead-watch/SKILL.md"

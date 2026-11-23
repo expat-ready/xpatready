@@ -302,6 +302,9 @@ MUT="$MUT"'
 38 undo|product/tools/private-sync.sh|s/^undo() { git reset -q -- notes;/undo() { git reset -q --hard HEAD;/|check-lead-upkeep.sh
 38 pushurl|product/tools/private-sync.sh|s/^  \[ -z "\$u" \] /  true /|check-lead-upkeep.sh
 38 branch|product/tools/private-sync.sh|s/"HEAD:refs\/heads\/\${up#origin\/}"/HEAD/|check-lead-upkeep.sh
+38 F4 upstream|product/tools/private-sync.sh|/^case "\$up" in origin\/?\*) ;; \*) echo "private-sync: refused, the working copy tracks no branch/d|check-lead-upkeep.sh
+38 F4 pushinsteadof|product/tools/private-sync.sh|s/^  case "\$u" in "\$v"\*) same_repo/  case "$u" in nomatch) same_repo/|check-lead-upkeep.sh
+38 F4 add|product/tools/private-sync.sh|s/^if ! adderr=\$(git add -A notes 2>\&1); then$/git add -A notes; if false; then/|check-lead-upkeep.sh
 38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
 38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh
 29 machines|product/tools/flow-constraint.py|s/(mc.get("oldest_min") or 0) > BAR\["wait_min"\]/False/|check-flow-constraint.sh
@@ -354,6 +357,7 @@ MUT="$MUT"'
 37 read split|product/tools/queue-blocked.py|s/\[^\\S\\x1c-\\x1f\]/\\s/|check-queue-blocked.sh
 37 read 404|product/tools/queue-blocked.py|s/^                if e.notfound:$/                if True:/|check-queue-blocked.sh
 37 read 404 text|product/tools/queue-blocked.py|s/returned error: 404\\b/never/|check-queue-blocked.sh
+37 F2 head|product/tools/queue-blocked.py|s/% (n, title, head, head))/% (n, title, head[:7], head[:7]))/|check-queue-blocked.sh
 37 count|product/tools/lead-watch.sh|s/; seen "\$qb"; act=\$((act + \$(grep -c .^ACT. <<<"\$qb")))/; seen "$qb"/|check-queue-blocked.sh
 39 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
 39 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh
