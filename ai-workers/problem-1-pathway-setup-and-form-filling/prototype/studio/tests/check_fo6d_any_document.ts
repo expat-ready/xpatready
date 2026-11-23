@@ -13,7 +13,7 @@ import { mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 import { join } from "node:path";
 
-const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261123120000_fo6d_any_document";
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261123213000_fo6d_any_document";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo6d_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
 const WORK = join(STUDIO, "var", `fo6d-check-${process.pid}`), CONSENT = "sign-electronically-v1";
