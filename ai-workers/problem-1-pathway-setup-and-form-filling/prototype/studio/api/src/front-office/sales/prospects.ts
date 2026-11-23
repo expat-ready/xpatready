@@ -13,6 +13,7 @@ import { wonDuplicates } from "../duplicates/service.ts";
 import { logPort } from "../../platform/observability/log.ts";
 import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
+import { FIELD_ERROR_STATUS } from "../../platform/http/input.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { actorOf, conflict, notFound, sees, text, UUID, visibilityOf, type Tx } from "./common.ts";
@@ -29,11 +30,12 @@ const MERGE_ONLY = ["COMBINED_PROSPECT"];
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 export const WON_REFUSED = "This stage is set when the prospect becomes a client. Use Convert to client, or Signed offline if the client signed on paper.";   // AG-2-26 rule 3
 export const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";   // AG-2-47 rule 16
-const bad = (detail: string, field: string, code = "INVALID") => problem(400, "Check the details", detail, { code, fields: { [field]: detail } });
+/** A field error: 422, the field named (PF-28 part 3a moves it from 400; Lead B rev 17.21). */
+const bad = (detail: string, field: string, code = "INVALID") => problem(FIELD_ERROR_STATUS, "Check the details", detail, { code, fields: { [field]: detail } });
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter(Boolean).join(" ") || "(no name)";
 export type Locked = { id: string; number: string; type: FoPipeline; lead_id: string; owner_staff_id: string | null; stage_id: string; kind: FoStageKind; key: string; label: string; won_via: string | null; subject_person_id: string | null; subject_company_id: string | null; primary_contact_person_id: string };
 
-/** A date filter's day (`YYYY-MM-DD`, years 1900 to 2999, in the firm's zone), or null; anything else → 400 at the field
+/** A date filter's day (`YYYY-MM-DD`, years 1900 to 2999, in the firm's zone), or null; anything else → 422 at the field
  *  (break m2: year 0000 or 9999 reached the database and answered 500). */
 export function dayOf(v: unknown, field: string): string | null {
   if (v === undefined || v === null || v === "") return null;
@@ -52,7 +54,7 @@ export async function dayRange(db: Tx | PrismaClient, firmId: string, from: unkn
   return { ...(r.lo ? { gte: r.lo } : {}), ...(r.hi ? { lt: r.hi } : {}) };
 }
 
-/** The `owner` filter: a staff member of the firm (active or not), or null; another firm's or unknown → 400. */
+/** The `owner` filter: a staff member of the firm (active or not), or null; another firm's or unknown → 422. */
 export async function ownerAsked(db: Tx | PrismaClient, firmId: string, v: unknown): Promise<string | null> {
   if (v === undefined || v === null || v === "") return null;
   const s = typeof v === "string" && UUID.test(v) ? await db.platformStaff.findFirst({ where: firmScope(firmId, { id: v.toLowerCase() }), select: { id: true } }) : null;
@@ -294,7 +296,7 @@ export class Prospects {
   }
 
   /** Mark lost (AG-2-44 rules 1-5; BR-9): from an ACTIVE stage or NURTURE, with a reason from the firm's prospect list
-   *  (a lead-close reason, another firm's, an inactive one or a merge's → 400) and an optional note; status stays open. */
+   *  (a lead-close reason, another firm's, an inactive one or a merge's → 422) and an optional note; status stays open. */
   async lost(ctx: StaffContext, id: string, b: Record<string, unknown>) {
     const pid = this.idOf(id);
     const reason = typeof b.reasonId === "string" && UUID.test(b.reasonId)

@@ -45,4 +45,8 @@ ok("B78 fail: a placeholder, an empty name, an unmarked basis or the same sectio
 ok("B78 AGENTS rule 4: a printed name quotes the form and page and is marked Sample", /"YOUR VISIT" \(Form A \(01-2026\), page 2\) \(Sample\)/.test(namedReason(entry)));
 ok("B78 AGENTS rule 4: a person's wording is marked Sample, Unconfirmed: expert", /\(Sample, Unconfirmed: expert\)/.test(namedReason({ ...entry, basis: "sample" })) && !/Unconfirmed/.test(namedReason(entry)));
 console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+// No process.exit here (the b78 hang, nightly 44966816530): exiting synchronously at the end of this all-synchronous
+// suite deadlocked Node 24 in about 4 runs in 10 — process.exit joins V8's worker threads (NodePlatform::Shutdown)
+// while one of them, mid baseline compile, waits for the main thread to collect garbage (gdb: CollectionBarrier::
+// AwaitCollectionBackground). The suite holds no handle, so setting the exit code and letting it end disposes V8 first.
+process.exitCode = fail ? 1 : 0;
