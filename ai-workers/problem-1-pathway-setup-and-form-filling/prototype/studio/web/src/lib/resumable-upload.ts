@@ -7,8 +7,10 @@
 //    423 is tried again on RETRY_DELAYS. A request that got no answer keeps trying every last delay until it works or
 //    abort(), whatever navigator.onLine says (the browser's "online" only tries again at once); a server that keeps
 //    answering with an error is given the whole list, then its words are shown and the upload kept for retry(). The
-//    delays start again only when the server's offset moves (review round 2: tus-js-client reports progress before a
-//    byte is accepted). A request with no progress for STALL_MS is cut and tried again.
+//    delays start again only when the server has accepted a chunk (tus-js-client's onChunkComplete, after a 2xx PATCH):
+//    bytes the browser sent are not bytes the server kept (review rounds 2 and 3). A request with no progress for
+//    STALL_MS is cut and tried again. A request with no answer first checks the file can still be read: a file moved,
+//    deleted or changed on disk is said in words, never retried for ever.
 // 2. Every attempt after the first resumes the same upload (HEAD, then PATCH from the server's offset), never a new one:
 //    a 404 or 410 then is said in words ("expired", "no longer on the server"), never a silent start from 0.
 // 3. Done only with the stored file's id (Upload-File-Id). An answer without it (a lost final answer: tus-js-client then
@@ -72,7 +74,7 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
   const delays = o.retryDelays?.length ? o.retryDelays : RETRY_DELAYS, stallMs = o.stallMs ?? STALL_MS;
   const name = (file as File).name ?? "upload";
   let percent = 0, failures = 0, paused = false, resumed = false, stopped = false, settled = false, succeeded = false;
-  let base = -1, confirming: AbortController | null = null;   // the offset this attempt started from (its first progress): the delays restart only past it
+  let confirming: AbortController | null = null;   // the offset this attempt started from (its first progress): the delays restart only past it
   let url: string | null = null, current: Upload | null = null, timer: ReturnType<typeof setTimeout> | undefined, stall: ReturnType<typeof setTimeout> | undefined;
   let resolve!: (id: string) => void, reject!: (e: Error) => void;
   const answer = () => new Promise<string>((res, rej) => { resolve = res; reject = rej; });
@@ -102,8 +104,11 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
     const words = () => refusalWords(status, res?.body, res?.type);
     if (tryAgain(status, res?.type)) {
       if (answered(status) && failures >= delays.length) return refuse(words());   // rule 1: a lasting server error is said; the upload is kept for retry()
-      if (!answered(status) && !paused) { paused = true; tell("paused"); }
-      return later();
+      if (answered(status)) return later();
+      if (!paused) { paused = true; tell("paused"); }
+      // No answer: the network, or the file itself? A file that cannot be read fails the same way (break R3-m1).
+      void file.slice(0, 1).arrayBuffer().then(later, () => refuse("The file could not be read. Choose it again."));
+      return;
     }
     refuse(words());   // rule 3, rule 4 (url kept)
   }
@@ -111,12 +116,18 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
   /** Rule 3: the upload is complete but the answer named no file: the empty PATCH at the end asks the server for it. */
   async function confirm() {
     try {
-      confirming = new AbortController();
-      const r = await fetch(url!, { method: "PATCH", signal: AbortSignal.any([confirming.signal, AbortSignal.timeout(stallMs)]), headers: { ...auth(), "Tus-Resumable": "1.0.0", "Upload-Offset": String(file.size), "Content-Type": "application/offset+octet-stream" } });
+      // One controller and a timer (break R3-M1: AbortSignal.any is missing in part of the build target).
+      const ctl = new AbortController(); confirming = ctl;
+      const cut = setTimeout(() => ctl.abort(), stallMs);
+      const r = await fetch(url!, { method: "PATCH", signal: ctl.signal, headers: { ...auth(), "Tus-Resumable": "1.0.0", "Upload-Offset": String(file.size), "Content-Type": "application/offset+octet-stream" } });
+      const body = await r.text().finally(() => clearTimeout(cut));
       const id = r.headers.get("Upload-File-Id");
       if (r.ok && id) return finish(id);
-      lost(r.status, { body: await r.text(), type: r.headers.get("Content-Type") });
-    } catch { lost(0); }
+      lost(r.status, { body, type: r.headers.get("Content-Type") });
+    } catch (e) {
+      // Only a network failure (fetch's TypeError) or our own cut (AbortError) is "no answer"; anything else is a fault said in words.
+      if (e instanceof TypeError || (e as { name?: string })?.name === "AbortError") lost(0); else refuse("The upload could not be finished.");
+    }
   }
 
   function attempt() {
@@ -134,9 +145,9 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
         watch();
         percent = total ? Math.floor((sent / total) * 100) : 0;
         if (paused) { paused = false; resumed = true; }
-        if (base < 0) base = sent; else if (sent > base) failures = 0;   // only bytes really moving restart the delays
         tell(resumed ? "resumed" : "uploading");   // "Resumed, 62%" stays until the file is done
       },
+      onChunkComplete: () => { failures = 0; },   // rule 1: the server accepted a chunk (a 2xx PATCH), so the delays start again
       onSuccess: ({ lastResponse }) => {
         clearTimeout(stall); current = null; url = up.url ?? url;
         const id = lastResponse.getHeader("Upload-File-Id");
@@ -149,7 +160,7 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
         lost(res?.getStatus?.() ?? 0, res ? { body: res.getBody?.(), type: res.getHeader?.("Content-Type") } : undefined);
       },
     });
-    base = -1; current = up; watch(); up.start();
+    current = up; watch(); up.start();
   }
 
   tell("uploading");
