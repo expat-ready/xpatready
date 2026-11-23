@@ -226,6 +226,10 @@ model PlatBreach {
   /// SA-11-24 "Other notifications made" (free text).
   otherNotifications String?            @map("other_notifications")
   openedBy           String             @map("opened_by")
+  /// The Idempotency-Key the breach was opened with (1-255 visible ASCII), unique by a partial index in SQL; set once.
+  requestKey         String?            @map("request_key")
+  /// SHA-256 (hex) of the canonical request body: the same key with another body is refused.
+  requestHash        String?            @map("request_hash")
   createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime           @default(now()) @map("updated_at") @db.Timestamptz
 

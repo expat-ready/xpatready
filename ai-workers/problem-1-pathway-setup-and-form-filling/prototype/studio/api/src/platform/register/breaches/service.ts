@@ -24,6 +24,7 @@ import { fillFields, type MessagePort } from "../../../../../ports/messages.ts";
 import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
 import { withFirm } from "../../firm-scope.ts";
+import { requestHash } from "../../idempotency.ts";
 import { FIELD_ERROR_STATUS, fieldsOf } from "../../http/input.ts";
 import { forbidden, problem } from "../../identity/keys.ts";
 
@@ -54,7 +55,10 @@ export type BreachView = {
 
 /** Ordinary text: control characters (C0 but tab and line breaks, C1) and the invisible direction marks are refused. */
 const plain = (max: number, need: string) => z.string().trim().min(1, need).max(max, `At most ${max} characters.`)
-  .refine((r) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/.test(r), "Write it as ordinary text.");
+  .refine((r) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/.test(r), "Write it as ordinary text.")
+  // Break B6: a lone surrogate (half a character) is refused, never stored as U+FFFD; and the text shows something.
+  .refine((r) => !/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(r), "Write it as ordinary text.")
+  .refine((r) => /[^\s\u200b-\u200d\u2060\ufeff\u00ad]/.test(r), need);
 const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a uuid").transform((s) => s.toLowerCase());
 const Firms = z.array(Uuid).max(200).refine((a) => new Set(a).size === a.length, "Name each firm once.");
 const Categories = z.array(z.enum(BREACH_CATEGORIES)).max(BREACH_CATEGORIES.length).refine((a) => new Set(a).size === a.length, "Name each category once.");
@@ -89,7 +93,8 @@ const refusedByDb = (e: unknown): never => {
   const s = String(e);
   if (/plat_breach: no such firm/.test(s)) problem(404, "Not found", "No such firm.", { code: "FIRM_NOT_FOUND" });
   if (/a firm that was sent a notice stays/.test(s)) problem(409, "Firm was notified", "A firm that was sent a notice stays among the affected firms.", { code: "NOTIFIED_FIRM_KEPT" });
-  if (/notices were sent, so the decision stays/.test(s)) problem(409, "Notices were sent", "Notices were sent, so the decision stays \"notify firms\".", { code: "DECISION_KEPT" });
+  if (/notices were sent, so the decision stays/.test(s)) problem(409, "Notices were sent", "Notices were sent, so the decision, its reason and who made it stay as they are.", { code: "DECISION_KEPT" });
+  if (/plat_breach_open: key reused/.test(s)) problem(FIELD_ERROR_STATUS, "Idempotency-Key reused", "This Idempotency-Key was used for another request; nothing was recorded. Use a new key for a new breach.", { code: "IDEMPOTENCY_KEY_REUSED" });
   throw e;
 };
 
@@ -123,36 +128,41 @@ export class Breaches {
   }
 
   /** POST /api/system/register/breaches: records a breach by hand (RECORDED). 201 with it. */
-  async open(c: BreachCaller, body: unknown): Promise<BreachView> {
+  async open(c: BreachCaller, body: unknown, key: string): Promise<BreachView & { repeated?: true }> {
     this.may(c, BREACH_MANAGE_KEY);
     const p = OpenBody.safeParse(body ?? {});
     if (!p.success) fields(p.error);
     const b = p.data;
-    return this.insert({ status: "RECORDED", source: "MANUAL", alert: null, discoveredAt: b.discoveredAt, description: b.description, firms: b.affectedFirms ?? [], categories: b.dataCategories ?? [],
+    return this.insert(key, body, { status: "RECORDED", source: "MANUAL", alert: null, discoveredAt: b.discoveredAt, description: b.description, firms: b.affectedFirms ?? [], categories: b.dataCategories ?? [],
       rootCause: b.rootCause ?? null, containment: b.containment ?? null, other: b.otherNotifications ?? null, by: `staff:${c.staffId}` });
   }
 
   /** POST /api/system/register/breaches/from-alert { alert: { kind, detail, raisedAt } }: a DRAFT pre-filled from a PF-23
    *  integrity or security alert. Nothing is sent: a draft can get no notice until our staff confirm it and decide. */
-  async fromAlert(c: BreachCaller, body: unknown): Promise<BreachView> {
+  async fromAlert(c: BreachCaller, body: unknown, key: string): Promise<BreachView & { repeated?: true }> {
     this.may(c, BREACH_MANAGE_KEY);
     const p = AlertBody.safeParse(body ?? {});
     if (!p.success) fields(p.error);
     const a = p.data.alert, firm = a.detail.firmId && UUID.test(a.detail.firmId) ? a.detail.firmId.toLowerCase() : null;
     const what = a.kind === "audit_chain_break" ? "the activity log's hash chain did not verify" : "an activity log line could not be written after its retries";
-    const description = `Draft from a ${a.kind} alert (rule ${a.detail.rule}): ${what}${a.detail.entity ? ` (${a.detail.entity}${a.detail.entityKey ? ` ${a.detail.entityKey}` : ""})` : ""}. Confirm or correct this record before it is recorded; nothing has been sent.`;
-    const draft = (firms: string[]) => this.insert({ status: "DRAFT", source: "ALERT", alert: { kind: a.kind, detail: a.detail, raisedAt: a.raisedAt.toISOString() }, discoveredAt: a.raisedAt, description,
+    // Break B7: the alert's ids stay in source_alert only, never in the words a firm may later read.
+    const description = `Draft from an alert (${a.kind}, rule ${a.detail.rule}): ${what}. Write the description firms will read, then confirm; nothing has been sent.`;
+    const draft = (firms: string[]) => this.insert(key, body, { status: "DRAFT", source: "ALERT", alert: { kind: a.kind, detail: a.detail, raisedAt: a.raisedAt.toISOString() }, discoveredAt: a.raisedAt, description,
       firms, categories: [], rootCause: null, containment: null, other: null, by: `staff:${c.staffId}` });
     // The alert's firm, when it names one that exists; otherwise the scope is under investigation (BR-11: still recorded).
     if (!firm) return draft([]);
     return draft([firm]).catch((e: { getResponse?: () => unknown }) => { if ((e?.getResponse?.() as { code?: string } | undefined)?.code === "FIRM_NOT_FOUND") return draft([]); throw e; });
   }
 
-  private async insert(b: { status: string; source: string; alert: unknown; discoveredAt: Date; description: string; firms: string[]; categories: string[]; rootCause: string | null; containment: string | null; other: string | null; by: string }): Promise<BreachView> {
-    const [row] = await this.db.$queryRaw<{ b: Row }[]>`SELECT plat_breach_open(${b.status}, ${b.source}, ${b.alert === null ? null : JSON.stringify(b.alert)}::jsonb, ${b.discoveredAt}::timestamptz, ${b.description},
-      ${b.firms}::uuid[], ${b.categories}::text[], ${b.rootCause}, ${b.containment}, ${b.other}, ${b.by}) AS b`.catch(refusedByDb);
-    return viewOf(row.b);
+  /** Break B4 (STANDARDS §4): the same Idempotency-Key and body by the same person answers the first breach (`repeated`). */
+  private async insert(key: string, body: unknown, b: { status: string; source: string; alert: unknown; discoveredAt: Date; description: string; firms: string[]; categories: string[]; rootCause: string | null; containment: string | null; other: string | null; by: string }): Promise<BreachView & { repeated?: true }> {
+    const hash = requestHash(body);
+    const [row] = await this.db.$queryRaw<{ b: Row & { repeated?: boolean } }[]>`SELECT plat_breach_open(${b.status}, ${b.source}, ${b.alert === null ? null : JSON.stringify(b.alert)}::jsonb, ${b.discoveredAt}::timestamptz, ${b.description},
+      ${b.firms}::uuid[], ${b.categories}::text[], ${b.rootCause}, ${b.containment}, ${b.other}, ${b.by}, ${key}, ${hash}) AS b`.catch(refusedByDb);
+    const v = viewOf(row.b);
+    return row.b.repeated ? { ...v, repeated: true } : v;
   }
+
 
   /** PATCH /api/system/register/breaches/:id: changes the given fields; `status: "RECORDED"` confirms a draft; a decision
    *  names why. 200 with the breach. */
@@ -229,13 +239,21 @@ export class Breaches {
         const out = await this.messages.send(tx, { firmId: firm, person: { kind: "STAFF", id: s.id }, channel: "EMAIL", class: "TRANSACTIONAL", address: s.email, content: words, idempotencyKey: `breach-notice:${breach}:${s.id}` });
         recipients.push({ staffId: s.id, roles: s.roles, outboxId: out.outboxId, state: out.state });
       }
+      // Break B2: a notice nobody can receive (every address suppressed) is not recorded as sent; nothing is kept, so it
+      // can be sent once an address works again.
+      if (recipients.every((x) => x.state === "SUPPRESSED")) problem(409, "Nobody can receive it", "Every Owner and Admin address of this firm is suppressed (bounced or complained); nothing was sent or recorded.", { code: "NOT_DELIVERABLE" });
       const [n] = await tx.$queryRaw<{ id: string; sent_at: Date }[]>`SELECT id::text AS id, sent_at FROM plat_breach_notice_record(${breach}::uuid, ${firm}::uuid, ${JSON.stringify(recipients)}::jsonb, ${v.id}::uuid, ${by})`;
       await this.audit.record(tx, { firmId: firm, actor: BREACH_ACTOR, action: "platform.breach.notice_sent", entity: "plat_breach_notice", entityKey: n.id,
         summary: `ExpatReady sent its Security incident notice about a security incident discovered ${values.discovered_on} to this firm's Owner and Admins (${recipients.length}). The firm decides whether and how to tell its clients.`,
         detail: { breachId: breach, recipients: recipients.length, templateVersionId: v.id, by, staffId: c.staffId }, before: null,
         after: { breachId: breach, channel: "EMAIL", recipients: recipients.map((x) => x.staffId), templateVersionId: v.id, sentBy: by, sentAt: n.sent_at.toISOString() } });
       return { id: n.id, firmId: firm, channel: "EMAIL", recipients, templateVersionId: v.id, sentBy: by, sentAt: n.sent_at.toISOString() };
-    }, { maxWait: 10_000, timeout: 60_000 }));
+    }, { maxWait: 10_000, timeout: 60_000 })).catch((e: unknown) => {
+      // Break B1: a change that withdrew the firm or the decision won the race: nothing was recorded or sent.
+      if (/plat_breach_notice_allowed|a firm that was sent a notice stays|notices were sent, so the decision stays/.test(String(e)))
+        problem(409, "The breach changed", "The breach changed while the notice was being sent; nothing was sent. Open it again.", { code: "BREACH_CHANGED" });
+      throw e;
+    });
     // After the commit: the worker sends; a dispatch that fails is left to the outbox sweep (never sent twice).
     await this.messages.dispatch(firm, sent.recipients.filter((x) => x.state === "QUEUED").map((x) => x.outboxId)).catch(() => undefined);
     return sent;

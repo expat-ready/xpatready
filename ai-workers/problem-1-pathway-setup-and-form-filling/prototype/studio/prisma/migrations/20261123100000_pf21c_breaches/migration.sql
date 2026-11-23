@@ -53,6 +53,8 @@ CREATE TABLE "plat_breach" (
     "decided_at" TIMESTAMPTZ,
     "other_notifications" TEXT,
     "opened_by" TEXT NOT NULL,
+    "request_key" TEXT,
+    "request_hash" TEXT,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -88,6 +90,8 @@ CREATE TABLE "plat_breach_notice" (
 
 -- CreateIndex
 CREATE INDEX "plat_breach_status_discovered_at_idx" ON "plat_breach"("status", "discovered_at");
+-- Break B4 (STANDARDS §4 idempotent creates): one breach per Idempotency-Key (a partial unique index, like PF-21i's).
+CREATE UNIQUE INDEX "plat_breach_request_key" ON "plat_breach"("request_key") WHERE "request_key" IS NOT NULL;
 CREATE UNIQUE INDEX "plat_breach_event_breach_id_seq_key" ON "plat_breach_event"("breach_id", "seq");
 CREATE UNIQUE INDEX "plat_breach_notice_breach_id_firm_id_key" ON "plat_breach_notice"("breach_id", "firm_id");
 CREATE INDEX "plat_breach_notice_firm_id_idx" ON "plat_breach_notice"("firm_id");
@@ -113,7 +117,9 @@ ALTER TABLE "plat_breach" ADD CONSTRAINT "plat_breach_facts_set" CHECK (
   AND plat_breach_actor_ok("opened_by")
   AND plat_breach_set_ok("affected_firms") AND plat_breach_set_ok("data_categories")
   AND "data_categories" <@ ARRAY['identity_documents', 'contact_details', 'immigration_records', 'financial_details', 'sign_in_credentials', 'messages_and_files', 'other']::text[]
-  AND (("source" = 'ALERT') = ("source_alert" IS NOT NULL)));
+  AND (("source" = 'ALERT') = ("source_alert" IS NOT NULL))
+  AND (("request_key" IS NULL) = ("request_hash" IS NULL))
+  AND ("request_key" IS NULL OR ("request_key" ~ '^[!-~]{1,255}$' AND "request_hash" ~ '^[0-9a-f]{64}$')));
 -- The decision: UNDECIDED names nobody; a decision names who, when and why (SA-11-24, BR-11).
 ALTER TABLE "plat_breach" ADD CONSTRAINT "plat_breach_decision_whole" CHECK (
   ("decision" = 'UNDECIDED' AND "decided_by" IS NULL AND "decided_at" IS NULL AND "decision_reason" IS NULL)
@@ -149,7 +155,8 @@ CREATE TRIGGER "plat_breach_opened" BEFORE INSERT ON "plat_breach" FOR EACH ROW 
 CREATE FUNCTION plat_breach_changed() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $fn$
 BEGIN
   IF NEW.id <> OLD.id OR NEW.source <> OLD.source OR NEW.source_alert IS DISTINCT FROM OLD.source_alert OR NEW.discovered_at <> OLD.discovered_at
-     OR NEW.opened_by <> OLD.opened_by OR NEW.created_at <> OLD.created_at THEN
+     OR NEW.opened_by <> OLD.opened_by OR NEW.created_at <> OLD.created_at
+     OR NEW.request_key IS DISTINCT FROM OLD.request_key OR NEW.request_hash IS DISTINCT FROM OLD.request_hash THEN
     RAISE EXCEPTION 'plat_breach_changed: a breach''s discovery time, origin and opener never change' USING ERRCODE = 'check_violation';
   END IF;
   IF OLD.status = 'RECORDED' AND NEW.status = 'DRAFT' THEN
@@ -158,7 +165,8 @@ BEGIN
   IF EXISTS (SELECT 1 FROM plat_breach_notice n WHERE n.breach_id = OLD.id AND NOT (n.firm_id = ANY (NEW.affected_firms))) THEN
     RAISE EXCEPTION 'plat_breach_changed: a firm that was sent a notice stays among the affected firms' USING ERRCODE = 'check_violation';
   END IF;
-  IF EXISTS (SELECT 1 FROM plat_breach_notice n WHERE n.breach_id = OLD.id) AND NEW.decision <> 'NOTIFY_FIRMS' THEN
+  IF EXISTS (SELECT 1 FROM plat_breach_notice n WHERE n.breach_id = OLD.id)
+     AND (NEW.decision <> 'NOTIFY_FIRMS' OR NEW.decision_reason IS DISTINCT FROM OLD.decision_reason OR NEW.decided_by IS DISTINCT FROM OLD.decided_by) THEN
     RAISE EXCEPTION 'plat_breach_changed: notices were sent, so the decision stays "notify firms"' USING ERRCODE = 'check_violation';
   END IF;
   PERFORM plat_breach_firms_exist(NEW.affected_firms);
@@ -248,25 +256,37 @@ END $fn$;
 
 -- One breach as our console shows it: its facts and its notices (never the recipients' addresses: staff ids only).
 CREATE FUNCTION plat_breach_json(b plat_breach) RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS $fn$
-  SELECT to_jsonb(b) || jsonb_build_object('notices', coalesce((SELECT jsonb_agg(jsonb_build_object('id', n.id, 'firm_id', n.firm_id, 'channel', n.channel,
+  SELECT (to_jsonb(b) - 'request_key' - 'request_hash') || jsonb_build_object('notices', coalesce((SELECT jsonb_agg(jsonb_build_object('id', n.id, 'firm_id', n.firm_id, 'channel', n.channel,
     'recipients', n.recipients, 'template_version_id', n.template_version_id, 'sent_by', n.sent_by, 'sent_at', n.sent_at) ORDER BY n.sent_at, n.id)
     FROM plat_breach_notice n WHERE n.breach_id = b.id), '[]'::jsonb))
 $fn$;
 
 -- Opens a breach (DRAFT from an alert, or RECORDED by hand) and writes its first event. Returns the breach.
+-- Break B4: with an Idempotency-Key, the same key and the same request by the same person answer the first breach
+-- (`repeated`: true); the same key with another request or person is refused ('key reused'). Two at once wait on the key.
 CREATE FUNCTION plat_breach_open(p_status text, p_source text, p_alert jsonb, p_discovered timestamptz, p_description text, p_firms uuid[],
-                                 p_categories text[], p_root text, p_containment text, p_other text, p_by text) RETURNS jsonb
+                                 p_categories text[], p_root text, p_containment text, p_other text, p_by text, p_key text, p_hash text) RETURNS jsonb
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
 DECLARE b plat_breach;
 BEGIN
   PERFORM plat_breach_system_only();
-  INSERT INTO plat_breach AS x (id, status, source, source_alert, discovered_at, description, affected_firms, data_categories, root_cause, containment, other_notifications, opened_by)
+  IF p_key IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtext('breach-open:' || p_key));
+    SELECT * INTO b FROM plat_breach x WHERE x.request_key = p_key;
+    IF FOUND THEN
+      IF b.request_hash IS DISTINCT FROM p_hash OR b.opened_by <> p_by THEN
+        RAISE EXCEPTION 'plat_breach_open: key reused' USING ERRCODE = 'unique_violation';
+      END IF;
+      RETURN plat_breach_json(b) || jsonb_build_object('repeated', true);
+    END IF;
+  END IF;
+  INSERT INTO plat_breach AS x (id, status, source, source_alert, discovered_at, description, affected_firms, data_categories, root_cause, containment, other_notifications, opened_by, request_key, request_hash)
     VALUES (gen_random_uuid(), p_status::"PlatBreachStatus", p_source::"PlatBreachSource", p_alert, p_discovered, p_description, coalesce(p_firms, '{}'),
-            coalesce(p_categories, '{}'), p_root, p_containment, p_other, p_by)
+            coalesce(p_categories, '{}'), p_root, p_containment, p_other, p_by, p_key, p_hash)
     RETURNING x.* INTO b;
   INSERT INTO plat_breach_event (id, breach_id, kind, actor, detail)
     VALUES (gen_random_uuid(), b.id, CASE WHEN b.status = 'DRAFT' THEN 'DRAFTED' ELSE 'RECORDED' END::"PlatBreachEventKind", p_by,
-            jsonb_build_object('after', to_jsonb(b) - 'updated_at'));
+            jsonb_build_object('after', to_jsonb(b) - 'updated_at' - 'request_key' - 'request_hash'));
   RETURN plat_breach_json(b);
 END $fn$;
 
@@ -290,10 +310,11 @@ BEGIN
     other_notifications = CASE WHEN p_patch ? 'other_notifications' THEN p_patch->>'other_notifications' ELSE x.other_notifications END,
     decision = CASE WHEN p_patch ? 'decision' THEN (p_patch->>'decision')::"PlatBreachDecision" ELSE x.decision END,
     decision_reason = CASE WHEN p_patch ? 'decision' THEN p_patch->>'decision_reason' ELSE x.decision_reason END,
-    decided_by = CASE WHEN p_patch ? 'decision' THEN (CASE WHEN p_patch->>'decision' = 'UNDECIDED' THEN NULL ELSE p_by END) ELSE x.decided_by END,
+    decided_by = CASE WHEN p_patch ? 'decision' AND (p_patch->>'decision' IS DISTINCT FROM x.decision::text OR p_patch->>'decision_reason' IS DISTINCT FROM x.decision_reason)
+                      THEN (CASE WHEN p_patch->>'decision' = 'UNDECIDED' THEN NULL ELSE p_by END) ELSE x.decided_by END,
     decided_at = CASE WHEN p_patch ? 'decision' AND p_patch->>'decision' <> 'UNDECIDED' THEN clock_timestamp() WHEN p_patch ? 'decision' THEN NULL ELSE x.decided_at END
   WHERE x.id = p_id RETURNING x.* INTO n;
-  FOR k IN SELECT jsonb_object_keys(to_jsonb(n) - 'updated_at' - 'decided_at') LOOP
+  FOR k IN SELECT jsonb_object_keys(to_jsonb(n) - 'updated_at' - 'decided_at' - 'request_key' - 'request_hash') LOOP
     IF to_jsonb(n)->k IS DISTINCT FROM to_jsonb(o)->k THEN
       before := before || jsonb_build_object(k, to_jsonb(o)->k);
       after := after || jsonb_build_object(k, to_jsonb(n)->k);
@@ -362,8 +383,17 @@ CREATE FUNCTION plat_breach_notice_record(p_breach uuid, p_firm uuid, p_recipien
 DECLARE r plat_breach_notice;
 BEGIN
   PERFORM plat_breach_own_firm(p_firm);
-  IF p_by !~ '^staff:[0-9a-f-]{36}$' OR NOT EXISTS (SELECT 1 FROM plat_system_staff s WHERE s.id::text = substr(p_by, 7)) THEN
-    RAISE EXCEPTION 'plat_breach_notice_record: a notice is sent by one of ExpatReady''s own staff' USING ERRCODE = 'insufficient_privilege';
+  -- Break B3: the sender is one of our ACTIVE staff who holds system/breach:manage through an open grant; the template
+  -- version is a published version of the platform's Security incident notice.
+  IF p_by !~ '^staff:[0-9a-f-]{36}$' OR NOT EXISTS (
+       SELECT 1 FROM plat_system_staff s JOIN plat_system_role_grant g ON g.staff_id = s.id AND g.ended_at IS NULL
+         JOIN plat_system_role_permission k ON k.role_code = g.role_code AND k.permission_key = 'system/breach:manage'
+        WHERE s.id::text = substr(p_by, 7) AND s.status = 'ACTIVE') THEN
+    RAISE EXCEPTION 'plat_breach_notice_record: a notice is sent by one of ExpatReady''s own staff who manages the breach register' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM msg_template_version v JOIN msg_template t ON t.id = v.template_id
+                  WHERE v.id = p_template_version AND t.firm_id IS NULL AND t.owner = 'PLATFORM' AND t.key = 'platform.security_incident_notice') THEN
+    RAISE EXCEPTION 'plat_breach_notice_record: the template is a published version of the Security incident notice' USING ERRCODE = 'check_violation';
   END IF;
   PERFORM pg_advisory_xact_lock(hashtext('breach-notice:' || lower(p_breach::text) || ':' || lower(p_firm::text)));
   PERFORM 1 FROM plat_breach b WHERE b.id = p_breach FOR SHARE;
@@ -391,7 +421,7 @@ DO $own$
 DECLARE f text;
 BEGIN
   FOREACH f IN ARRAY ARRAY['plat_breach_system_only()', 'plat_breach_json(plat_breach)',
-                           'plat_breach_open(text, text, jsonb, timestamptz, text, uuid[], text[], text, text, text, text)',
+                           'plat_breach_open(text, text, jsonb, timestamptz, text, uuid[], text[], text, text, text, text, text, text)',
                            'plat_breach_change(uuid, jsonb, text)', 'plat_breach_list(uuid, integer)', 'plat_breach_events(uuid)',
                            'plat_breach_own_firm(uuid)', 'plat_breach_notice_ready(uuid, uuid)',
                            'plat_breach_notice_record(uuid, uuid, jsonb, uuid, text)'] LOOP

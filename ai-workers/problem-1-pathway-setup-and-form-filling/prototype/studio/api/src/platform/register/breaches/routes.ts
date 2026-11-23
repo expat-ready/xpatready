@@ -3,11 +3,15 @@
 // (the Platform Owner only, SA7-D74 (b)) and a written reason (@SystemReason: it lands on the guard's own audit line). No
 // firm route exists: the firm-side breach backend stays dormant with no firm screen (SA-11-35). The controller only reads
 // the request and calls the service.
-import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Patch, Post, Query, Req, Res } from "@nestjs/common";
+import { IDEMPOTENCY_HEADER, readIdempotencyKey } from "../../idempotency.ts";
 import { SystemKeys, SystemReason, systemStaffOf, type SystemStaffContext } from "../../system-identity/keys.ts";
 import { BREACH_MANAGE_KEY, BREACH_READ_KEY, Breaches } from "./service.ts";
 
 type R = { systemStaff?: SystemStaffContext };
+type Status = { status(code: number): unknown };
+/** A repeated create answers 200 with the first breach (no `repeated` field in the body). */
+const repeat = <T extends { repeated?: true }>(res: Status, v: T) => { if (v.repeated) res.status(200); const { repeated: _r, ...rest } = v; return rest; };
 
 @Controller("api/system/register/breaches")
 export class BreachController {
@@ -19,11 +23,16 @@ export class BreachController {
   @Get(":id") @SystemKeys(BREACH_READ_KEY)
   one(@Req() r: R, @Param("id") id: string) { return this.breaches.one(systemStaffOf(r), id); }
 
+  /** Creates need an Idempotency-Key (STANDARDS §4): a repeat answers 200 with the first breach. */
   @Post() @HttpCode(201) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason()
-  open(@Req() r: R, @Body() b: unknown) { return this.breaches.open(systemStaffOf(r), b); }
+  async open(@Req() r: R, @Body() b: unknown, @Headers(IDEMPOTENCY_HEADER) k: unknown, @Res({ passthrough: true }) res: Status) {
+    return repeat(res, await this.breaches.open(systemStaffOf(r), b, readIdempotencyKey(k, "Send an Idempotency-Key header with each new breach.")));
+  }
 
   @Post("from-alert") @HttpCode(201) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason()
-  fromAlert(@Req() r: R, @Body() b: unknown) { return this.breaches.fromAlert(systemStaffOf(r), b); }
+  async fromAlert(@Req() r: R, @Body() b: unknown, @Headers(IDEMPOTENCY_HEADER) k: unknown, @Res({ passthrough: true }) res: Status) {
+    return repeat(res, await this.breaches.fromAlert(systemStaffOf(r), b, readIdempotencyKey(k, "Send an Idempotency-Key header with each new draft (the alert's own id is a good one).")));
+  }
 
   @Patch(":id") @HttpCode(200) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason()
   change(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.breaches.change(systemStaffOf(r), id, b); }

@@ -39,9 +39,12 @@ const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++
 const uuid = () => globalThis.crypto.randomUUID();
 
 type Res = { status: number; body: any };
-const call = async (base: string, method: string, path: string, o: { token?: string; body?: unknown } = {}): Promise<Res> => {
+/** Creates carry an Idempotency-Key (break B4): a new one per call unless the test names it (`key`), or none (`key: null`). */
+const call = async (base: string, method: string, path: string, o: { token?: string; body?: unknown; key?: string | null } = {}): Promise<Res> => {
   const headers: Record<string, string> = { "content-type": "application/json", "user-agent": "pf21c-check/1" };
   if (o.token) headers.authorization = `Bearer ${o.token}`;
+  const creates = method === "POST" && /\/api\/system\/register\/breaches(\/from-alert)?$/.test(path);
+  if (creates && o.key !== null) headers["idempotency-key"] = o.key ?? `pf21c-${globalThis.crypto.randomUUID()}`;
   const r = await fetch(`${base}${path}`, { method, headers, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
   const text = await r.text();
   let body: any = text; try { body = JSON.parse(text); } catch { /* text */ }
@@ -235,6 +238,39 @@ try {
     blocked && raced.status >= 400 && raced.status < 500 && sql(`select count(*) from plat_breach_notice where breach_id = '${race.body.id}'`) === "0" && outboxOf(firmE) === ""
     && sql(`select decision || ':' || cardinality(affected_firms) from plat_breach where id = '${race.body.id}'`) === "NO_NOTICE:0", { blocked, raced: [raced.status, raced.body.code] });
 
+  // Break B4 (STANDARDS §4): idempotent creates.
+  const k4 = `pf21c-b4-${uuid()}`, before4 = Number(sql(`select count(*) from plat_breach`));
+  const first4 = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body, key: k4 });
+  const again4 = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body, key: k4 });
+  const other4 = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, description: "Sample: another breach" }, key: k4 });
+  const none4 = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body, key: null });
+  const ka = `pf21c-alert-${uuid()}`, alertBody = { reason: "Sample: from the alarm", alert: { kind: "audit_write_failed", detail: { rule: "BR-5" }, raisedAt: new Date(Date.now() - 60_000).toISOString() } };
+  const three = await Promise.all([1, 2, 3].map(() => call(base, "POST", "/api/system/register/breaches/from-alert", { token: ownerT, body: alertBody, key: ka })));
+  ok("PF-21c break B4 pass/fail: the same Idempotency-Key and body answers the first breach (201 then 200, one row); three drafts at once with one key make one; another body with the key → 422 IDEMPOTENCY_KEY_REUSED; no key → 400",
+    first4.status === 201 && again4.status === 200 && again4.body.id === first4.body.id && other4.status === 422 && other4.body.code === "IDEMPOTENCY_KEY_REUSED" && none4.status === 400
+    && new Set(three.map((r) => r.body.id)).size === 1 && three.filter((r) => r.status === 201).length === 1 && three.filter((r) => r.status === 200).length === 2
+    && Number(sql(`select count(*) from plat_breach`)) === before4 + 2 && !("requestKey" in first4.body) && !("repeated" in again4.body), { first4: first4.status, again4: again4.status, other4: other4.body.code, none4: none4.status, three: three.map((r) => r.status) });
+
+  // Break B2: every address suppressed → not recorded as sent; once the address works, the notice goes.
+  const firmS = await newFirm("Sample Breach Firm S"); const sOwner = await staff(firmS, "owner", ["OWNER"]);
+  sql(`insert into msg_firm (firm_id) values ('${firmS}') on conflict do nothing; insert into msg_suppression (id, firm_id, channel, address, reason, created_by) values (gen_random_uuid(), '${firmS}', 'EMAIL', '${sOwner.email}', 'HARD_BOUNCE', 'seed:pf21c')`);
+  const sb = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, affectedFirms: [firmS] } });
+  await call(base, "PATCH", `/api/system/register/breaches/${sb.body.id}`, { token: ownerT, body: { reason: "Sample", decision: "NOTIFY_FIRMS", decisionReason: "Sample: tell them" } });
+  const suppressed = await call(base, "POST", `/api/system/register/breaches/${sb.body.id}/notices`, { token: ownerT, body: { reason: "Sample: bounced", firmId: firmS } });
+  const noRow = sql(`select count(*) from plat_breach_notice where breach_id = '${sb.body.id}'`) === "0" && sql(`select count(*) from msg_outbox where firm_id = '${firmS}'`) === "0" && lines(firmS, "platform.breach.notice_sent") === 0;
+  sql(`alter table msg_suppression disable trigger user; delete from msg_suppression where firm_id = '${firmS}'; alter table msg_suppression enable trigger user`);
+  const lifted = await call(base, "POST", `/api/system/register/breaches/${sb.body.id}/notices`, { token: ownerT, body: { reason: "Sample: address fixed", firmId: firmS } });
+  ok("PF-21c break B2 pass/fail: a notice whose every address is suppressed → 409 NOT_DELIVERABLE with no notice, message or trail line; once the address works it is sent (201)",
+    suppressed.status === 409 && suppressed.body.code === "NOT_DELIVERABLE" && noRow && lifted.status === 201 && lifted.body.recipients[0].state === "QUEUED", { suppressed: suppressed.body, lifted: lifted.status });
+
+  // Break B5, B6: the decision's reason after notices; text that shows nothing or carries half a character.
+  const rewrite = await call(base, "PATCH", `/api/system/register/breaches/${id}`, { token: ownerT, body: { reason: "Sample", decision: "NOTIFY_FIRMS", decisionReason: "Sample: a different reason after the fact" } });
+  ok("PF-21c break B5 fail: once notices went, the decision's reason (and who decided) can't be rewritten → 409 DECISION_KEPT", rewrite.status === 409 && rewrite.body.code === "DECISION_KEPT"
+    && /identity documents/.test(sql(`select decision_reason from plat_breach where id = '${id}'`)), rewrite.body);
+  const zw = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, description: "\u200b\u200b\u2060" } });
+  const lone = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, description: "Sample \ud800 half" } });
+  ok("PF-21c break B6 fail: a description of zero-width characters only, and one with a lone surrogate → 422 each", zw.status === 422 && lone.status === 422, [zw.status, lone.status]);
+
   // DW4: insert-only and kept
   const noticeId = a1.body.id as string;
   ok("PF-21c DW4 fail: a notice row can't be changed or deleted, nor the notices table truncated (even by the owner)",
@@ -257,7 +293,7 @@ try {
   const draft = await call(base, "POST", "/api/system/register/breaches/from-alert", { token: ownerT, body: { reason: "Sample: from the alarm", alert } });
   ok("PF-21c DW5 pass: an integrity alert pre-fills a DRAFT (source ALERT, the alert kept, the firm it names, discovered at the alert's time), and sends nothing",
     draft.status === 201 && draft.body.status === "DRAFT" && draft.body.source === "ALERT" && draft.body.sourceAlert.kind === "audit_chain_break" && JSON.stringify(draft.body.affectedFirms) === JSON.stringify([firmC])
-    && draft.body.discoveredAt === alert.raisedAt && /nothing has been sent/.test(draft.body.description) && outboxAll() === outbox1 && Number(sql(`select count(*) from plat_breach where status = 'DRAFT'`)) === drafts0 + 1, draft);
+    && draft.body.discoveredAt === alert.raisedAt && /nothing has been sent/.test(draft.body.description) && !draft.body.description.includes(alert.detail.entityKey) && outboxAll() === outbox1 && Number(sql(`select count(*) from plat_breach where status = 'DRAFT'`)) === drafts0 + 1, draft);
   const notIntegrity = await call(base, "POST", "/api/system/register/breaches/from-alert", { token: ownerT, body: { reason: "Sample", alert: { ...alert, kind: "job_stuck" } } });
   const personal = await call(base, "POST", "/api/system/register/breaches/from-alert", { token: ownerT, body: { reason: "Sample", alert: { ...alert, detail: { rule: "BR-2", entity: "jane@example.com" } } } });
   const ghost = await call(base, "POST", "/api/system/register/breaches/from-alert", { token: ownerT, body: { reason: "Sample", alert: { ...alert, detail: { rule: "BR-5", firmId: uuid() } } } });
@@ -296,7 +332,7 @@ try {
     && refusedAsApp(firmA, `insert into plat_breach (id, status, source, discovered_at, description, opened_by) values (gen_random_uuid(), 'RECORDED', 'MANUAL', now(), 'x', 'staff:x')`, /row-level security|permission denied/));
   ok("PF-21c DW7 fail (firm walls): inside a firm's session the register's definers (open, change, list, events) are refused by the database",
     refusedAsApp(firmA, `select plat_breach_list(null, 10)`, /only ExpatReady's own staff/)
-    && refusedAsApp(firmA, `select plat_breach_open('RECORDED', 'MANUAL', null, now(), 'x', '{}', '{}', null, null, null, 'staff:x')`, /only ExpatReady's own staff/)
+    && refusedAsApp(firmA, `select plat_breach_open('RECORDED', 'MANUAL', null, now(), 'x', '{}', '{}', null, null, null, 'staff:x', null, null)`, /only ExpatReady's own staff/)
     && refusedAsApp(firmA, `select plat_breach_change('${id}', '{"description":"x"}', 'staff:x')`, /only ExpatReady's own staff/)
     && refusedAsApp(firmA, `select * from plat_breach_events('${id}')`, /only ExpatReady's own staff/));
   ok("PF-21c DW7 fail (firm walls): the notice definers run only in the named firm's own session (firm B's session for firm A, and no firm, refused); a firm-named sender is refused",
@@ -306,6 +342,9 @@ try {
   ok("PF-21c review m3 fail: a firm's own session can't record a notice that was never sent (recipients without this notice's outbox rows are refused), even naming a real staff member of ours",
     refusedAsApp(firmC, `select * from plat_breach_notice_record('${draft.body.id}', '${firmC}', '[{"staffId":"${cOwner.id}","outboxId":"${uuid()}"}]', '${tpl}', 'staff:${OWNER}')`, /this notice's message in the outbox/)
     && sql(`select count(*) from plat_breach_notice where firm_id = '${firmC}'`) === "0");
+  ok("PF-21c break B3 fail: in a firm's own session a notice naming the Auditor (no manage key) as sender, or a template that is not the Security incident notice, is refused",
+    refusedAsApp(firmC, `select * from plat_breach_notice_record('${draft.body.id}', '${firmC}', '[{"staffId":"${cOwner.id}","outboxId":"${uuid()}"}]', '${tpl}', 'staff:${AUDITOR}')`, /manages the breach register/)
+    && refusedAsApp(firmC, `select * from plat_breach_notice_record('${draft.body.id}', '${firmC}', '[{"staffId":"${cOwner.id}","outboxId":"${uuid()}"}]', '${uuid()}', 'staff:${OWNER}')`, /published version of the Security incident notice/));
   const firmTry = await Promise.all(["/api/platform/breaches", "/api/platform/register/breaches", "/api/front-office/breaches"].map((p) => call(base, "GET", p, { token: firmT })));
   const srcFiles = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? srcFiles(join(dir, e.name)) : /\.ts$/.test(e.name) ? [join(dir, e.name)] : []);
   const controllers = srcFiles(join(STUDIO, "api", "src")).flatMap((f) => [...readFileSync(f, "utf8").matchAll(/@Controller\(\s*"([^"]*)"/g)].map((m) => m[1]));
