@@ -155,3 +155,37 @@ Scope: only `git diff 2261b90..61f5503` (`resumable-upload.ts`). I tested the he
 - `retry()` returns the running promise.
 
 Verdict: Block
+
+## Round 4: head `24a72150ec7bd312c222e7c64408bca9472d6bc6`
+
+Scope (Lead 13): R3-B1, R3-M1 and R3-m1 only, `git diff 864009b..24a7215` (`resumable-upload.ts`, the suite). I tested the head's own `web/src/lib` with the round-3 harness: Nest on :4584, the HTTP proxy on :4585, and Chromium at 1 MB/s. `867579c`, which landed during the run, changes records only. The scratch file and databases are deleted. No repo file changed except this one.
+
+### Retried
+- **R3-B1: fixed.** I counted requests and the gaps between them after each switch:
+  - **Body-reading proxy 503 on every PATCH:** 11 requests in 21 s. Gaps were 0.28 s (sending the chunk), then 1.28, 3.28, 5.28 and 10.28 s, each followed by a HEAD about 0.02 s later. Then "Busy", with the upload kept. Round 3 had 99 requests in 15 s.
+  - **Trickle (16 KB forwarded, then cut and 500):** the same: 11 requests, delays of 1, 3, 5 and 10 s, then "Proxy cut". The server's offset stayed at 786432 throughout.
+  - **Always-failing finish (repro 1):** 14 requests, gaps of 0, 1, 3, 5 and 10 s, 6 finish runs, then the server's words. It never reports done.
+- **R3-M1: fixed.** With `AbortSignal.any` and `AbortSignal.timeout` deleted and the final answer lost: `HEAD>200:size`, then the empty `PATCH>204` with the id. The page shows done with the stored row's id, and there is 1 row.
+- **R3-m1: fixed.**
+  - A picked disk file rewritten at 25% gives `PATCH>FAILED(ERR_UPLOAD_FILE_CHANGED)`, then within 0.3 s "The file could not be read. Choose it again.". There is no retry loop and 0 rows.
+  - The same file **deleted** at 25% gives `ERR_FILE_NOT_FOUND`, then the same words within 0.3 s.
+
+### New attacks
+- **Server accepting one chunk between body-read 503s (every second PATCH):**
+  - Each accepted chunk restarts the delays, so after each 503 the next HEAD goes out at once (gaps of about 0.27 s and 0.02 s).
+  - The loop is bounded by the file: every two PATCHes advance one chunk. The upload completed in 5.6 s with 28 requests, 1 row and the correct sha256.
+  - This is real progress, not a loop.
+- **A real cut on a healthy disk file:**
+  - CDP offline for 25 s: the page says "Upload paused: reconnecting" throughout, and the read probe never misreports the file. HEADs come at 5, 10, 20 s and so on, the upload resumes at 1048576, and it completes with the correct sha256.
+  - A 12 s proxy hang with stall cuts at 1.5 s gives the same result: paused, completes, sha256 correct.
+- **Stall cuts, then answered errors:**
+  - After a 20 s hang (stall cuts every 1.5 s), the first body-read 503 is final at once ("Busy", 2 requests). The no-answer failures have already used up the delay list that answered errors also count against.
+  - The upload is kept for `retry()` and nothing loops, so this is a Minor follow-up (R4-n1), not a block. To fix it, count answered errors separately, or reset the count after a HEAD that is answered.
+
+### Still open, follow-ups by the Lead's ruling
+- R3-m2 (an abort after the confirm reached the server leaves a file nobody claims).
+- R3-m3 (a 410 after a lost final answer says "Start it again" although the file is stored).
+- m3 (two calls on one file store it twice).
+- R4-n1 above.
+
+Verdict: Approve
