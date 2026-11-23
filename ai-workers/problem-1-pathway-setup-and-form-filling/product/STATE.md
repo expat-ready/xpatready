@@ -8,7 +8,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 
 ## Hand-over Lead 10 → Lead 11, 23:41 IST 23 Nov (the block before, word for word, its **Owed** and **Pilots** lines still owed: `history/STATE-2026-11-23-2341-lead10-before-handover.md`)
 
-**🔴 Founder asleep; nothing open tonight.** Plugged in, lid open. From the morning, one plain question at a time by AskUserQuestion, questions out of report text (his words 22:4x): **(1) case rule:** one combination per case (his words 23:3x, A339) or any mix of the pathway's applications (P-492, A24; AG-7-45 sets no limit) (2) which level is "same" (P-493 says Individual/Corporate only) (3) RQ-02..RQ-08 as launch musts against the 29 Nov date (audit's guess 7-11 lane-days) (4) first firm and its programs (5) book the security test and counsel (6) move R1.52, R1.43, R1.107, R1.95 out of 29 Nov. Never add to or cut the 101 without his yes.
+**🔴 Founder asleep; nothing open tonight.** Plugged in, lid open. Morning, one question at a time (AskUserQuestion): record P-814 (A341)? · RQ-01 with the seven? · book the security test and counsel? · case-rule edges after research. The six earlier questions: history/STATE-2026-11-23-2346-lead11-takeover.md. Never add to or cut the 101 without his yes.
 **Reports (private, notes folder local_f2d41d71):** competitor-and-production-gaps-2026-11-23.md; requirements-vs-101-audit-2026-11-23.md (2,399 ids by script; "no trace" = no citation, not missing; open PRs not read). Verify a claim before acting on it.
 **Proven 50/101** (main, 23:05; 46 at 00:00). Merged since: #3195 #3273 #3284 #3286. **Queue:** #3203, #3180, #3189, #3291, #3185.
 **Full runs:** #3173 45229595711 GREEN, covered line posted, label not on yet: check. #3155 45233389842. #3179 45234837140 (P-808).
@@ -24,6 +24,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A341 | 23 Nov 23:43 (typed to Lead 10) | four of the six answered; founder-decisions-2346-for-lead11.md | NOT recorded: the records PR was refused; draft P-814-draft-records.patch (both in notes local_9c46a890). Ask him first |
 | A338, A340 | 23 Nov 23:4x | (A338 and the page at 23:46 word for word: `history/STATE-2026-11-23-2346-lead11-takeover.md`) GitLab, GitOps, Ultimate trial | answered: no move before 29 Nov (same file) |
 | A339 | 23 Nov 23:2x-23:3x | operating system enforced? cleaning; lanes; competitors and production grade; POC case rule, UI and screens against the 101 | both reports done, his decisions are the six morning questions; word for word `history/STATE-2026-11-23-2341-lead10-before-handover.md` |
 | A337 | 23 Nov 22:4x (typed to Lead 9) | "Yes, run the three-day plan through the night. Start #3173's lane." | in force: the plan runs; #3173 lane STARTED (he pressed start, task_e085a076); #3174 fresh lane requested under the plan |
