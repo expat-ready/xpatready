@@ -67,3 +67,10 @@ Fail, on the missing part: W5, the real bucket's versioning, region and default 
 ## R1.56: re-walked after #3001 (FO-7q) merged
 #3001 merged 23:56Z 22 Nov (05:26 IST 23 Nov); walked on main `bb12f5203` at ~05:30 IST, within 60 min, j_56 (on main), isolated copy `qa_j56`, twice: **13/17 both runs**, the same 4 fails as on 9787e68ae: W1 (invoice from retainer: 422 "Unrecognized key: retainerId"), W3 (FO-7g part 3, the Bill-to province), W9 ×2 (Money › Invoices shows no invoice list and no payment link: FO-7s1, FO-7c). FO-7q's paged reads are API-side; no j_56 step reads them on a screen until FO-7s1.
 **Verdict: Partial, no score (P-606). FO-7q no longer missing.**
+
+## R1.29: walked after #3042 (FO-9b part 1) merged
+#3042 merged 01:11Z 23 Nov (06:41 IST); walked on main `5dc343ad1` at ~06:45 IST, within 60 min. j_29 (on main), isolated copy `qa_j29`, twice: **12/22 both runs**, the same lines.
+Pass: W1 ×6 (the warning before Save names the person and the reason: same phone in another spelling, similar name 85 %, same email in other capitals; it does not block; no warning on a first name alone; axe clean), Add as new keeps a second record, W4's two "never merged by itself" steps (money; a case: vacuous until a merge runs), W6 (no session 401 on the check), W7 (ends at R1.30's first step, the Leads list), no page errors.
+Fail, all on missing parts: W2 the review list (FO-9b part 2 `GET duplicates/review`, 404) and Sales › People to merge (FO-9s part 2); W3 ×2 the merge and its tombstone (FO-9b part 1 has the service and database but no route; the journey drives it through part 2's `POST review/:id/merge`); W4 ×2 the money and case pairs on the review list; W5 ×3 Undo and the Merged tab (FO-9b part 2 `GET duplicates/merges`, FO-9s parts 2-3); W6 the review list's 401/403.
+Underneath: FO-9b part 1's own check `tests/check_fo9b_merge.ts` (own throwaway database) **88/88 twice** on 5dc343ad1.
+**Verdict: Partial, no score (P-606). Parts missing: FO-9b part 2, FO-9s parts 2-3.**
