@@ -2,7 +2,7 @@
 
 current_lead: local_2158cd24-6120-467d-ab3f-043acd7b417b Lead 2 · 23 Nov 11:59 IST (took over from Lead 1 (local_a085acf2) at 378k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 11:59 IST: Lead 1 → Lead 2 hand-over (new check is Lead 2's)
+updated: 2026-11-23 12:36 IST: Lead 2, A301-A305 (check b5753666)
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -24,11 +24,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | # | Ask (IST) | Status |
 |---|---|---|
 | A300 | 23 Nov 12:0x (typed): operating system (pipeline, GitHub, VPS, going private, desk's suggestions) has first priority in the merge queue until complete, product may stop; one dedicated Lead he talks to; product Lead works in parallel; tell him when complete; 'no token optimization, but don't waste'; is it a good thought? | 12:0x: yes with three guards (fixed list, product builds on but merges behind, private is not free: CI then costs money). Lead O `local_e02a8803` started 12:06 (own worktree; labels stay with Lead 2); product 18-by-11:00 target at risk |
-| A301 | 23 Nov 12:0x (typed): VPS speed and scale, US$1,000 AWS credits, scale tests, he buys, Lead does the rest | overtaken by A304 |
-| A302 | 23 Nov 12:1x (typed): go private and switch at once, pipeline first, product in parallel | overtaken by A304 |
-| A303 | 23 Nov 12:1x (typed): managed machines agreed; one name, then buy | Blacksmith, fallback WarpBuild; superseded by A304 |
-| A304 | 23 Nov 12:2x (typed): where do CI minutes come from, move laptop to AWS?, change nothing unless private works at max US$100/month; say if impossible | measured 24 h to 11:17: ~120,000 ±30,000 job-min, 70% queue batches; not possible at US$100; nothing to buy; answered |
-| A305 | 23 Nov 12:3x (typed): what do others do, what are we doing wrong on tests? | answered; replay of affected-only on 64 red batches asked of Lead O; gate change waits for him |
+| A301-A305 | 23 Nov 12:0x-12:3x | private impossible at US$100 (A304): nothing bought; open with him: stay public, combined PR, close #2372; in full: `history/STATE-2026-11-23-1236-lead2-asks-A301-A305.md` |
 | A298-A299 | 23 Nov 11:37-11:45 | going private research, tooling first, AWS signed in, R1.5 cards pressed, money approved; in full: `history/STATE-2026-11-23-1155-lead1-block-and-asks.md` |
 | A297 | 23 Nov 10:5x (typed): unarchive AWS via his computer; remove the two-queue decision from pending; one-time exception: land all agreed tooling/enforcement/open contribution first, estimate, 'fix the car or keep moving' | 10:52: Claude app cannot be controlled by the Lead (fixed rule), claude.ai lists no archived Mac sessions: started AWS · staging proof 2 `local_b9ba7abd` in the same folder/branch; #3006 closed by decision (one queue, split only if measured); enforcement sprint written into RESUME 'Switch of 23 Nov' (3 lanes, 4-6 h, open contribution live ~17:00-18:00) |
 | A292-A296 | 23 Nov | word for word in `history/STATE-2026-11-23-1131-lead1-before-new-account-block.md` |
