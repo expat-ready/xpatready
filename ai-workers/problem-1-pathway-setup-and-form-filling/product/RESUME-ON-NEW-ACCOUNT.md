@@ -3,6 +3,7 @@
 **Tested on a real switch, 5 Nov 19:14 IST; corrected the same evening.** Canary requested and pushed inside 5 minutes; nothing on GitHub lost. The work lives on GitHub (P-82), so an account switch loses at most what a lane has not pushed. Every lane pushes after each step (P-344 (1)).
 
 ## Switch of 23 Nov (Lead 10 → the new account's Lead), written 10:4x IST 23 Nov: READ THIS BLOCK FIRST
+**Stop order sent 11:14 IST at 94%** to the 4 running cloud lanes (qa Track A 3, UX PF-31, R1.70 CS-D7, CS-D5 #3188) and Lead B 2: each pushes and writes a hand-over comment on its newest PR. Also since: #3155 labelled; #3175 records merged (FO-7q part 2, FO-9b part 2b, FO-7t part 1p on main); FO-7s1 lane told to build FO-7q part 2; #3033 needs a fresh lane (red, lane at 85%); R1.55 Low (#3187); CI research `design/ci-options-2026-11-23.md` (stay on GitHub Actions; trial Ubicloud/Blacksmith); AWS · staging proof 2 `local_b9ba7abd` waits for the founder's sign-in.
 **Why:** weekly 84% at 10:10, 88% at 10:37 IST (about 8%/h with the all-in push the founder approved, A292); stop order at 95%, switch before 97%.
 **Truth:** `product/STATE.md` on `lead/2026-11-07-lead31` (Lead 10 lines, founder asks A291-A293). Proven on main: 48/101 at 10:37 (main history: 12 on 20 Nov, 25 on 21, 41 on 22, 46 on 23 at 00:00).
 **The plan to run: `product/design/plan-24h-2026-11-23.md` (target 18, commitment 16 with AWS, checkpoints 15:00 ≥3 · 19:00 ≥6 · 23:00 ≥10 · 03:00 ≥13 · 07:00 ≥15 · 11:00 ≥16; new lanes listed there).**
