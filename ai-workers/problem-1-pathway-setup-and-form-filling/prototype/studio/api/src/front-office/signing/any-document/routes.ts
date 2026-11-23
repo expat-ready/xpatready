@@ -17,7 +17,8 @@ type F = { buffer: Buffer; size: number; originalname?: string } | undefined;
 const Id = z.uuid({ error: "This is not a valid id." });
 /** Multipart sends text: the signer ids as one comma-separated field or the field repeated. */
 const SEND = strict({
-  title: z.string().trim().min(1).max(200).refine((t) => !/[\u0000-\u001f\u007f]/.test(t), "This must be plain text on one line."),
+  title: z.string().trim().min(1).max(200).refine((t) => !/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(t) && /[\p{L}\p{N}]/u.test(t), "This must be plain text on one line."),   // break m1: C0, C1, format and line-separator characters
+
   prospectId: Id,
   signerPersonIds: z.union([z.string().max(400), list(z.string().max(40), 9)]).transform((v) => (Array.isArray(v) ? v : v.split(",")).map((x) => x.trim()).filter(Boolean)).pipe(z.array(Id).min(1).max(9)),
   firmSignerStaffId: z.union([Id, z.literal("")]).nullish().transform((v) => v || null),
@@ -49,10 +50,6 @@ export class AnyDocumentsController {
 
   @Get("signature-requests/:id") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
   state(@Req() r: R, @Param("id") id: string) { return this.svc.state(staffOf(r), idParam(id, "signature request")); }
-
-  /** The signed copies on a person's record (any kind of document). */
-  @Get("people/:personId/documents") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
-  personDocuments(@Req() r: R, @Param("personId") personId: string) { return this.svc.personDocuments(staffOf(r), idParam(personId, "person")); }
 
   /** A short-lived link to the original or the sealed copy (BR-15's pattern). */
   @Post("signature-requests/:id/download-link") @HttpCode(200) @PermissionKeys("agent/document:show") @OwnOrAll("agent/prospect")

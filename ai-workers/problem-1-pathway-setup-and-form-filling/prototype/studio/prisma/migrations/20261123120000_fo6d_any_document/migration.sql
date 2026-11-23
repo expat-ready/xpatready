@@ -3,8 +3,8 @@
 --   * FoSigningDocumentKind gains OTHER: a PDF the firm uploads (the case documents' read port is not built; uploads only).
 --   * fo_signing_document (new): the uploaded PDF a request of kind OTHER names (document_id = document_version_id = its
 --     id, version 1): its title, its FilesPort key under signing/ and sha256, the prospect it was sent from, who uploaded
---     it. Insert-only, never deleted; PF-12's wall. prospect_id and uploaded_by are plain uuids checked by the API (the
---     other areas' files are not edited), as fo_signature_request's document_id is.
+--     it. Insert-only, never deleted; PF-12's wall. firm_id and uploaded_by are keyed as fo_signature_request's (review
+--     m2 on #3207); prospect_id is a plain uuid checked by the API, as fo_signature_request's document_id is.
 --   * The firm signer is optional for OTHER (AG-5-61: "no firm signer unless added"): fo_signing_request_write and
 --     fo_signing_evidence_write ask for the signed firm signer only when the kind is not OTHER. Every other rule of FO-6
 --     part 1 is unchanged (the bodies below are part 1's, with that one condition). OTHER is usable only after this
@@ -26,6 +26,9 @@ CREATE TABLE "fo_signing_document" (
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "fo_signing_document_pkey" PRIMARY KEY ("id")
 );
+-- AddForeignKey (the new table is empty: nothing to validate behind the walls)
+ALTER TABLE "fo_signing_document" ADD CONSTRAINT "fo_signing_document_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "platform_firm"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "fo_signing_document" ADD CONSTRAINT "fo_signing_document_firm_id_uploaded_by_fkey" FOREIGN KEY ("firm_id", "uploaded_by") REFERENCES "platform_staff"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 CREATE UNIQUE INDEX "fo_signing_document_firm_id_id_key" ON "fo_signing_document"("firm_id", "id");
 CREATE INDEX "fo_signing_document_firm_id_prospect_id_idx" ON "fo_signing_document"("firm_id", "prospect_id");
 

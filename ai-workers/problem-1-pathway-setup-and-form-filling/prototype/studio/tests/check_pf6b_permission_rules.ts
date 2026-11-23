@@ -48,6 +48,7 @@ const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { Signing } = await import("../api/src/front-office/signing/service.ts");
 const { SigningController } = await import("../api/src/front-office/signing/routes.ts");
 const { AnyDocuments } = await import("../api/src/front-office/signing/any-document/service.ts");
+const { PersonDocuments } = await import("../api/src/front-office/signing/any-document/person-documents.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
 const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
 const { PlatformGuard, controllerRoutes } = await import("../api/src/platform/identity/guard.ts");
@@ -266,7 +267,7 @@ try {
     "AnyDocumentsController.state": { read: (c, id) => anyDocs.state(live(c), id), ids: [Q1, Q2], expect: byProspect([Q1, Q2]) },
     "AnyDocumentsController.link": { read: (c, id) => anyDocs.fileKey(live(c), id, "original"), ids: [Q1, Q2], expect: byProspect([Q1, Q2]) },
     "AnyDocumentsController.download": { read: async (c, id) => { await anyDocs.assertKeyVisible(live(c), id); return true; }, ids: [K1, K2], expect: byProspect([K1, K2]) },
-    "AnyDocumentsController.personDocuments": { read: (c, id) => anyDocs.personDocuments(live(c), id), ids: [u(600), u(610)], expect: byProspect([u(600), u(610)]) },
+    "PersonDocumentsController.list": { read: (c, id) => new PersonDocuments(db).list(live(c), id), ids: [u(600), u(610)], expect: byProspect([u(600), u(610)]) },
   };
   const sweep = async (entry: Entry) => {
     const wrong: string[] = [];
