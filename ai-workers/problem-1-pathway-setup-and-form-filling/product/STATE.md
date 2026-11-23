@@ -20,8 +20,8 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A343 | 24 Nov ~00:0x typed to Lead 11 | script on proofs (pstack, TLA+), set up the new Claude Code mode | research running, see hand-over |
-| A342 | 24 Nov ~00:0x typed to Lead 11 | "For the stuff that you're asking me ... I would follow your recommendation ... You have my approval"; research how people merge "11,000 p" and pay for CI | research running; the content he meant did not arrive: ask |
+| A343 | 24 Nov ~00:0x typed to Lead 11 | script on proofs (pstack, TLA+), set up the new Claude Code mode | proofs report done, unchecked: start nothing before his yes; mode report owed |
+| A342 | 24 Nov ~00:0x typed to Lead 11 | "For the stuff that you're asking me ... I would follow your recommendation ... You have my approval"; research how people merge "11,000 p" and pay for CI | CI-cost report done, unchecked; check the US$62,400 figure before quoting; the content he meant did not arrive: ask |
 | A341 | 23 Nov 23:43 (to Lead 10) | four of six answers | P-814 NOT recorded, PR refused twice; draft in notes local_9c46a890 |
 | A338, A340 | 23 Nov 23:4x | (A338 and the page at 23:46 word for word: `history/STATE-2026-11-23-2346-lead11-takeover.md`) GitLab, GitOps, Ultimate trial | answered: no move before 29 Nov (same file) |
 | A339 | 23 Nov 23:2x-23:3x | operating system enforced? cleaning; lanes; competitors and production grade; POC case rule, UI and screens against the 101 | both reports done, his decisions are the six morning questions; word for word `history/STATE-2026-11-23-2341-lead10-before-handover.md` |
