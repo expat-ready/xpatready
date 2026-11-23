@@ -151,7 +151,7 @@ try {
     refused(row(bA, firmA, 9, "SKIP", "[]", `, 'person', '${uuid()}', null`), /plat_import_row_outcome_shape/)
     && refused(row(bA, firmA, 9, "CREATE", "[]", `, 'person', null, null`), /plat_import_row_outcome_shape/));
   ok("PF-10a pass/fail: one row per batch and row number (a resumed job never writes row 1 twice; AG-18-20)",
-    refused(row(bA, firmA, 1, "SKIP", "[]"), /plat_import_row_batch_id_row_number_key/));
+    refused(row(bA, firmA, 1, "SKIP", "[]"), /plat_import_row_firm_id_batch_id_row_number_key/));
 
   // ------------------------------------------------------------------------------- a batch's facts never change
   sql(`update plat_import_batch set state = 'DRY_RUN_READY', dry_run_hash = '${"b".repeat(64)}', error_count = 2, created_count = 1 where id = '${bA}'`);
@@ -163,6 +163,49 @@ try {
     refused(`update plat_import_batch set dry_run_hash = '${"B".repeat(64)}' where id = '${bA}'`, /plat_import_batch_facts/)
     && refused(`update plat_import_batch set error_count = -1 where id = '${bA}'`, /plat_import_batch_facts/)
     && refused(`update plat_import_batch set mapping = '[]' where id = '${bA}'`, /plat_import_batch_facts/));
+
+  // ------------------------------------------- round 1's break findings (screens/PF-10a/break-report.md F1, F2, F4-F6)
+  ok("PF-10a F2 fail: a MERGE with no before-image, and a CREATE or MERGE naming no record, are refused (undo could not reverse them)",
+    refused(row(bA, firmA, 9, "MERGE", "[]", `, 'person', '${uuid()}', null`), /plat_import_row_outcome_shape/)
+    && refused(row(bA, firmA, 9, "CREATE", "[]", `, null, null, null`), /plat_import_row_outcome_shape/)
+    && refused(row(bA, firmA, 9, "MERGE", "[]", `, null, null, '{"phone":null}'`), /plat_import_row_outcome_shape/));
+  ok("PF-10a F6 fail: a blank-looking wording version (zero-width space), source name (zero-width space) or file key (a tab) is refused",
+    refused(`insert into plat_import_attestation (id, firm_id, owner_staff_id, wording_version) values (gen_random_uuid(), '${firmA}', '${ownerA}', E'\\u200b')`, /plat_import_attestation_facts/)
+    && refused(batch(uuid(), firmA, ownerA).replace("'Old CRM export'", "E'\\u200b'"), /plat_import_batch_facts/)
+    && refused(batch(uuid(), firmA, ownerA).replace(/'import\/[^']*'/, "E'\\t'"), /plat_import_batch_facts/));
+  ok("PF-10a F4 fail: a batch is created as a DRAFT only (not COMPLETED, not with counts or an undo deadline)",
+    refused(batch(uuid(), firmA, ownerA).replace("attestation_id)", "attestation_id, state)").replace(/, null\)\s*$/, ", null, 'COMPLETED')"), /created as a DRAFT/)
+    && refused(batch(uuid(), firmA, ownerA).replace("attestation_id)", "attestation_id, created_count)").replace(/, null\)\s*$/, ", null, 5)"), /created as a DRAFT/));
+  // The whole forward life of one batch, with each backward or out-of-order move refused on the way.
+  const bL = uuid(), H2 = "d".repeat(64), mv = (set: string) => sql(`update plat_import_batch set ${set} where id = '${bL}'`);
+  const mvRefused = (set: string, like: RegExp) => refused(`update plat_import_batch set ${set} where id = '${bL}'`, like);
+  sql(batch(bL, firmA, ownerA, attA));
+  ok("PF-10a F4 fail: DRAFT cannot jump to RUNNING (no dry run), nor to COMPLETED", mvRefused(`state = 'RUNNING', dry_run_hash = '${H2}'`, /moves forward only/) && mvRefused(`state = 'COMPLETED'`, /moves forward only/));
+  ok("PF-10a F4 fail: DRY_RUN_READY needs no hash, but RUNNING does: a run with the hash cleared is refused",
+    (() => { mv(`state = 'DRY_RUN_READY'`); return mvRefused(`state = 'RUNNING'`, /only after its dry run/); })());
+  sql(row(bL, firmA, 1, "SKIP", "[]")); sql(row(bL, firmA, 2, "SKIP", "[]"));
+  ok("PF-10a F1 pass: before the run, a redone dry run removes its own rows", (() => { sql(`delete from plat_import_row where batch_id = '${bL}' and row_number = 2`); return sql(`select count(*) from plat_import_row where batch_id = '${bL}'`) === "1"; })());
+  mv(`dry_run_hash = '${H2}', state = 'RUNNING'`);
+  ok("PF-10a F1 fail: from the run on, a row cannot be removed", refused(`delete from plat_import_row where batch_id = '${bL}'`, /kept for undo/));
+  ok("PF-10a F4 fail: from the run on, the mapping, the dry-run hash and the attestation never change",
+    mvRefused(`mapping = '{"Phone":"phone"}'`, /from the run on/) && mvRefused(`dry_run_hash = '${"e".repeat(64)}'`, /from the run on/) && mvRefused(`attestation_id = null`, /from the run on/));
+  ok("PF-10a F4 fail: RUNNING cannot go back to DRAFT or DRY_RUN_READY", mvRefused(`state = 'DRAFT'`, /moves forward only/) && mvRefused(`state = 'DRY_RUN_READY'`, /moves forward only/));
+  mv(`created_count = 1, skipped_count = 1`);   // counts as the job goes on (state to itself)
+  mv(`state = 'COMPLETED', finished_at = now(), undo_deadline = now() + interval '14 days'`);
+  ok("PF-10a F4 fail: the finish time and the undo deadline are set once", mvRefused(`finished_at = '1990-01-01'`, /set once/) && mvRefused(`undo_deadline = now() + interval '100 years'`, /set once/));
+  mv(`state = 'UNDOING'`); mv(`state = 'UNDONE'`);
+  ok("PF-10a F4 pass: the forward life DRAFT → DRY_RUN_READY → RUNNING → COMPLETED → UNDOING → UNDONE is taken", sql(`select state || ':' || created_count || skipped_count from plat_import_batch where id = '${bL}'`) === "UNDONE:11");
+  ok("PF-10a F4 fail: UNDONE goes nowhere (not back to DRAFT, not to COMPLETED)", mvRefused(`state = 'DRAFT'`, /moves forward only/) && mvRefused(`state = 'COMPLETED'`, /moves forward only/));
+  ok("PF-10a F1 fail: a row is never changed (its before-image, its batch, its outcome)",
+    refused(`update plat_import_row set before_image = '{"email":"x"}' where batch_id = '${bA}' and row_number = 3`, /kept for undo/)
+    && refused(`update plat_import_row set batch_id = '${bL}' where batch_id = '${bA}' and row_number = 3`, /kept for undo/));
+  ok("PF-10a F1 fail: a batch is never deleted or truncated, even with no rows", refused(`delete from plat_import_batch where id = '${bL}'`, /kept for undo/)
+    && refused(`truncate plat_import_batch cascade`, /kept for undo|TRUNCATE refused/));
+  ok("PF-10a F1 fail: the app's role holds no DELETE or TRUNCATE on batches and no UPDATE or TRUNCATE on rows (INSERT and SELECT kept)",
+    sql(`select has_table_privilege('xr_app', 'plat_import_batch', 'DELETE') or has_table_privilege('xr_app', 'plat_import_batch', 'TRUNCATE') or has_table_privilege('xr_app', 'plat_import_row', 'UPDATE') or has_table_privilege('xr_app', 'plat_import_row', 'TRUNCATE')`) === "f"
+    && sql(`select has_table_privilege('xr_app', 'plat_import_batch', 'INSERT') and has_table_privilege('xr_app', 'plat_import_batch', 'UPDATE') and has_table_privilege('xr_app', 'plat_import_row', 'DELETE')`) === "t");
+  ok("PF-10a F1 fail: as the app, delete-and-reinsert of a batch under the same id with another file is refused",
+    refusedAsApp(firmA, `delete from plat_import_batch where id = '${bA}'`, /kept for undo|permission denied/) && sql(`select file_sha256 from plat_import_batch where id = '${bA}'`) === HASH);
 
   // ------------------------------------------------------------------------------- DW5: PF-12's wall
   sql(`insert into plat_import_mapping (id, firm_id, source_name, target_key, mapping, saved_by) values (gen_random_uuid(), '${firmB}', 'Old CRM export', 'person', '{"Email":"email"}', '${ownerB}')`);
@@ -176,6 +219,8 @@ try {
   ok("PF-10a DW5 fail: firm A's session cannot change firm B's batch (no row reached)",
     asApp(firmA, `with u as (update plat_import_batch set state = 'FAILED' where id = '${bB}' returning 1) select count(*) from u`) === "0"
     && sql(`select state from plat_import_batch where id = '${bB}'`) === "DRAFT");
+  ok("PF-10a F5 fail: firm A naming firm B's batch learns nothing of its rows (row 1 exists in B; the answer is the key pair, never \"duplicate key\")",
+    refusedAsApp(firmA, row(bB, firmA, 1, "SKIP", "[]"), /plat_import_row_firm_id_batch_id_fkey/) && !refusedAsApp(firmA, row(bB, firmA, 1, "SKIP", "[]"), /duplicate key/));
   ok("PF-10a DW5 pass: firm A's session writes and reads its own batch", (() => { const id = uuid(); asApp(firmA, batch(id, firmA, ownerA, attA)); return asApp(firmA, `select count(*) from plat_import_batch where id = '${id}'`) === "1"; })());
 
   // ------------------------------------------------------------------------------- DW6: the keys (PF-3's seed)

@@ -7,8 +7,13 @@
 --     one reason; before_image only on a MERGE; record kind and id together, only on a CREATE or MERGE.
 --   * plat_import_attestation: insert-only (update, delete, truncate refused), and written only for an ACTIVE staff member
 --     of its own firm who holds an open OWNER grant (AG-18-49).
---   * plat_import_batch: its firm, target, source, file key, file hash, file kind, importer and created time never change;
---     hashes are 64 lower-case hex; counts are never negative; the mapping is a JSON object.
+--   * plat_import_batch: born a DRAFT; its firm, target, source, file key, file hash, file kind, importer and created time
+--     never change; its state moves forward only; from the run on its mapping, dry-run hash and attestation are frozen;
+--     never deleted. Hashes are 64 lower-case hex; counts are never negative; the mapping is a JSON object.
+--   * plat_import_row: written once (never updated); deleted only while its batch is before its run (a redone dry run).
+--     The (firm_id, batch_id, row_number) key: a resumed job never writes a row twice (AG-18-20).
+--   * The reasons check holds the SHAPE (names, never free text); that every name is one the target declared is PF-10b's
+--     rule (the engine writes reasons only from the target's registered fields and rules).
 --   * Staff keys are the pair (firm_id, staff_id) → platform_staff(firm_id, id) (PF-3's rule); a batch's attestation and a
 --     row's batch are (firm_id, id) pairs too, so nothing of firm A names anything of firm B.
 --   * PF-12's wall on all four (AG-18-52): a forced policy naming the session's firm and the firm-first gate.
@@ -91,7 +96,7 @@ CREATE TABLE "plat_import_attestation" (
 CREATE INDEX "plat_import_batch_firm_id_created_at_idx" ON "plat_import_batch"("firm_id", "created_at");
 CREATE UNIQUE INDEX "plat_import_batch_firm_id_id_key" ON "plat_import_batch"("firm_id", "id");
 CREATE INDEX "plat_import_row_firm_id_batch_id_outcome_idx" ON "plat_import_row"("firm_id", "batch_id", "outcome");
-CREATE UNIQUE INDEX "plat_import_row_batch_id_row_number_key" ON "plat_import_row"("batch_id", "row_number");
+CREATE UNIQUE INDEX "plat_import_row_firm_id_batch_id_row_number_key" ON "plat_import_row"("firm_id", "batch_id", "row_number");
 CREATE UNIQUE INDEX "plat_import_mapping_firm_id_source_name_target_key_key" ON "plat_import_mapping"("firm_id", "source_name", "target_key");
 CREATE INDEX "plat_import_attestation_firm_id_at_idx" ON "plat_import_attestation"("firm_id", "at");
 CREATE UNIQUE INDEX "plat_import_attestation_firm_id_id_key" ON "plat_import_attestation"("firm_id", "id");
@@ -127,37 +132,91 @@ CREATE FUNCTION pf_import_reasons_ok(r jsonb) RETURNS boolean LANGUAGE sql IMMUT
 $fn$;
 
 ALTER TABLE "plat_import_row" ADD CONSTRAINT "plat_import_row_reasons_shape" CHECK (pf_import_reasons_ok("reasons"));
--- An ERROR names why; a merge keeps what it overwrote and nothing else does; a record is named whole, and only when one was
--- made or merged; row numbers start at 1.
+-- An ERROR names why; a merge keeps what it overwrote (undo restores it, AG-18-40) and nothing else does; a CREATE or a
+-- MERGE names its record (undo removes or restores it), and nothing else does; row numbers start at 1.
 ALTER TABLE "plat_import_row" ADD CONSTRAINT "plat_import_row_outcome_shape" CHECK (
   "row_number" >= 1
   AND ("outcome" <> 'ERROR' OR (CASE WHEN jsonb_typeof("reasons") = 'array' THEN jsonb_array_length("reasons") >= 1 ELSE false END))
-  AND (("before_image" IS NULL) OR ("outcome" = 'MERGE' AND jsonb_typeof("before_image") = 'object'))
-  AND (("record_kind" IS NULL) = ("record_id" IS NULL))
-  AND ("record_kind" IS NULL OR ("outcome" IN ('CREATE', 'MERGE') AND "record_kind" ~ '^[A-Za-z][A-Za-z0-9_.-]{0,63}$')));
+  AND (("before_image" IS NOT NULL) = ("outcome" = 'MERGE'))
+  AND ("before_image" IS NULL OR jsonb_typeof("before_image") = 'object')
+  AND (("record_kind" IS NOT NULL) = ("outcome" IN ('CREATE', 'MERGE'))) AND (("record_id" IS NOT NULL) = ("outcome" IN ('CREATE', 'MERGE')))
+  AND ("record_kind" IS NULL OR "record_kind" ~ '^[A-Za-z][A-Za-z0-9_.-]{0,63}$'));
 ALTER TABLE "plat_import_batch" ADD CONSTRAINT "plat_import_batch_facts" CHECK (
   "target_key" ~ '^[A-Za-z][A-Za-z0-9_.-]{0,63}$'
-  AND btrim("source_name") <> '' AND char_length("source_name") <= 200
-  AND btrim("file_key") <> '' AND char_length("file_key") <= 500
+  AND "source_name" ~ '[A-Za-z0-9]' AND "source_name" !~ '[[:cntrl:]]' AND char_length("source_name") <= 200
+  AND "file_key" ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*$' AND char_length("file_key") <= 500
   AND "file_sha256" ~ '^[0-9a-f]{64}$' AND ("dry_run_hash" IS NULL OR "dry_run_hash" ~ '^[0-9a-f]{64}$')
   AND jsonb_typeof("mapping") = 'object'
   AND "created_count" >= 0 AND "merged_count" >= 0 AND "skipped_count" >= 0 AND "error_count" >= 0);
 ALTER TABLE "plat_import_mapping" ADD CONSTRAINT "plat_import_mapping_facts" CHECK (
-  "target_key" ~ '^[A-Za-z][A-Za-z0-9_.-]{0,63}$' AND btrim("source_name") <> '' AND char_length("source_name") <= 200
-  AND jsonb_typeof("mapping") = 'object');
+  "target_key" ~ '^[A-Za-z][A-Za-z0-9_.-]{0,63}$' AND "source_name" ~ '[A-Za-z0-9]' AND "source_name" !~ '[[:cntrl:]]'
+  AND char_length("source_name") <= 200 AND jsonb_typeof("mapping") = 'object');
 ALTER TABLE "plat_import_attestation" ADD CONSTRAINT "plat_import_attestation_facts" CHECK (
-  btrim("wording_version") <> '' AND char_length("wording_version") <= 40);
+  "wording_version" ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$');
 
--- A batch's facts never change once written: which firm, target, source and file, who imports, when it was made.
+-- A batch's facts never change once written: which firm, target, source and file, who imports, when it was made. Its state
+-- only moves forward (below; a dry run may be redone or sent back to DRAFT before the run). From the run on, the mapping,
+-- the dry-run hash and the attestation it ran under are frozen (AG-18-16: the run is the dry run's file and mapping); a
+-- run needs a dry-run hash; finished_at and undo_deadline are set once.
+--   DRAFT → DRY_RUN_READY · DRY_RUN_READY → DRAFT | RUNNING · RUNNING → COMPLETED | PARTIAL | FAILED
+--   COMPLETED | PARTIAL → UNDOING (AG-18-39) · UNDOING → UNDONE · and any state to itself (counts as a job goes on)
 CREATE FUNCTION pf_import_batch_facts_kept() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
   IF (NEW."id", NEW."firm_id", NEW."target_key", NEW."source_name", NEW."file_key", NEW."file_sha256", NEW."file_kind", NEW."importer_staff_id", NEW."created_at")
      IS DISTINCT FROM (OLD."id", OLD."firm_id", OLD."target_key", OLD."source_name", OLD."file_key", OLD."file_sha256", OLD."file_kind", OLD."importer_staff_id", OLD."created_at") THEN
     RAISE EXCEPTION 'plat_import_batch: a batch''s firm, target, source, file and importer never change' USING ERRCODE = 'check_violation';
   END IF;
+  IF NEW."state" <> OLD."state" AND NOT (OLD."state"::text, NEW."state"::text) IN (
+       ('DRAFT', 'DRY_RUN_READY'), ('DRY_RUN_READY', 'DRAFT'), ('DRY_RUN_READY', 'RUNNING'),
+       ('RUNNING', 'COMPLETED'), ('RUNNING', 'PARTIAL'), ('RUNNING', 'FAILED'),
+       ('COMPLETED', 'UNDOING'), ('PARTIAL', 'UNDOING'), ('UNDOING', 'UNDONE')) THEN
+    RAISE EXCEPTION 'plat_import_batch: a batch moves forward only (% to % refused)', OLD."state", NEW."state" USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW."state" NOT IN ('DRAFT', 'DRY_RUN_READY') AND NEW."dry_run_hash" IS NULL THEN
+    RAISE EXCEPTION 'plat_import_batch: a batch runs only after its dry run (no dry-run hash)' USING ERRCODE = 'check_violation';
+  END IF;
+  IF OLD."state" NOT IN ('DRAFT', 'DRY_RUN_READY')
+     AND (NEW."mapping", NEW."dry_run_hash", NEW."attestation_id") IS DISTINCT FROM (OLD."mapping", OLD."dry_run_hash", OLD."attestation_id") THEN
+    RAISE EXCEPTION 'plat_import_batch: from the run on, the mapping, dry-run hash and attestation never change' USING ERRCODE = 'check_violation';
+  END IF;
+  IF (OLD."finished_at" IS NOT NULL AND NEW."finished_at" IS DISTINCT FROM OLD."finished_at")
+     OR (OLD."undo_deadline" IS NOT NULL AND NEW."undo_deadline" IS DISTINCT FROM OLD."undo_deadline") THEN
+    RAISE EXCEPTION 'plat_import_batch: the finish time and the undo deadline are set once' USING ERRCODE = 'check_violation';
+  END IF;
   RETURN NEW;
 END $fn$;
 CREATE TRIGGER "plat_import_batch_facts_kept" BEFORE UPDATE ON "plat_import_batch" FOR EACH ROW EXECUTE FUNCTION pf_import_batch_facts_kept();
+-- At insert: a batch starts as a DRAFT with nothing counted, run or finished (it reaches the later states only through the
+-- moves above).
+CREATE FUNCTION pf_import_batch_born() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF NEW."state" <> 'DRAFT' OR NEW."finished_at" IS NOT NULL OR NEW."undo_deadline" IS NOT NULL
+     OR NEW."created_count" <> 0 OR NEW."merged_count" <> 0 OR NEW."skipped_count" <> 0 OR NEW."error_count" <> 0 THEN
+    RAISE EXCEPTION 'plat_import_batch: a batch is created as a DRAFT with nothing counted or finished' USING ERRCODE = 'check_violation';
+  END IF;
+  NEW."created_at" := clock_timestamp();
+  RETURN NEW;
+END $fn$;
+CREATE TRIGGER "plat_import_batch_born" BEFORE INSERT ON "plat_import_batch" FOR EACH ROW EXECUTE FUNCTION pf_import_batch_born();
+
+-- A batch is never removed (its rows are what undo reads, AG-18-39, -40; AG-18-56 lists every batch): delete and truncate
+-- refused. Its rows are written once: never changed; removed only while the batch is still before its run (a dry run is
+-- redone, AG-18-15), never from the run on.
+CREATE FUNCTION pf_import_kept() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF TG_TABLE_NAME = 'plat_import_row' AND TG_OP = 'DELETE' THEN   -- nested: only a row's OLD has batch_id
+    IF EXISTS (SELECT 1 FROM "plat_import_batch" b WHERE b."firm_id" = OLD."firm_id" AND b."id" = OLD."batch_id" AND b."state" IN ('DRAFT', 'DRY_RUN_READY')) THEN
+      RETURN OLD;   -- a dry run's rows, before the run
+    END IF;
+  END IF;
+  RAISE EXCEPTION '%: kept for undo and the batch list (% refused)', TG_TABLE_NAME, TG_OP USING ERRCODE = 'insufficient_privilege';
+END $fn$;
+CREATE TRIGGER "plat_import_batch_kept" BEFORE DELETE ON "plat_import_batch" FOR EACH ROW EXECUTE FUNCTION pf_import_kept();
+CREATE TRIGGER "plat_import_batch_no_truncate" BEFORE TRUNCATE ON "plat_import_batch" FOR EACH STATEMENT EXECUTE FUNCTION pf_import_kept();
+CREATE TRIGGER "plat_import_row_kept" BEFORE UPDATE OR DELETE ON "plat_import_row" FOR EACH ROW EXECUTE FUNCTION pf_import_kept();
+CREATE TRIGGER "plat_import_row_no_truncate" BEFORE TRUNCATE ON "plat_import_row" FOR EACH STATEMENT EXECUTE FUNCTION pf_import_kept();
+REVOKE DELETE, TRUNCATE ON "plat_import_batch" FROM xr_data;
+REVOKE UPDATE, TRUNCATE ON "plat_import_row" FROM xr_data;
 
 -- The attestation (AG-18-49): written by an active Owner of its own firm, at the database's time.
 CREATE FUNCTION pf_import_attestation_owner() RETURNS trigger LANGUAGE plpgsql AS $fn$
@@ -202,7 +261,7 @@ GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 DO $readers$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['pf_import_batch_facts_kept()', 'pf_import_attestation_owner()', 'pf_import_attestation_kept()'] LOOP
+  FOREACH f IN ARRAY ARRAY['pf_import_batch_facts_kept()', 'pf_import_batch_born()', 'pf_import_kept()', 'pf_import_attestation_owner()', 'pf_import_attestation_kept()'] LOOP
     EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;
