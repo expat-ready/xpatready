@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-758's queue blocked by checks (guard 37, 20 Nov, P-758), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), the own-migration guard (OMG, 23 Nov, Lead 5), ENF-738's constraint section (guard 29, 20 Nov), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) with ENF-761's under-cap ACTs (761c) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
+# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-758's queue blocked by checks (guard 37, 20 Nov, P-758), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), ENF-738's constraint section (guard 29, 20 Nov), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) with ENF-761's under-cap ACTs (761c) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
 #   bash product/tools/check-guards.sh [--mutate [--part i/n] [--list]]
@@ -19,7 +19,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh check-own-migration-guard.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh"
+TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
+TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
+TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
+TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
+TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 bad=0
 if [ "$part" = 1 ]; then
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
@@ -415,6 +420,38 @@ MUT="$MUT"'
 37 merge read|product/tools/lead-merge.sh|s/; then post "Lead read the diff: <head sha>" (P-423)//|check-lead-merge.sh
 37 merge product|product/tools/lead-merge.sh|s/; a product PR is never merged by hand: it goes through the queue//|check-lead-merge.sh
 37 merge order|product/tools/lead-merge.sh|s/  3\. only after step 1.s "Lead read the diff: <head sha>" line is on that exact head, and only for a tooling or records PR: /  3. /|check-lead-merge.sh'
+MUT="$MUT"'
+E5 pure|product/tools/cleanup-pr-check.sh|s/^  \[ "\$r" = 0 \] .. bad=1$/  true/|check-cleanup-pr.sh
+E5 list|product/tools/cleanup-pr-check.sh|s/^  if \[ "\$lists" -gt 0 \]; then/  if false; then/|check-cleanup-pr.sh
+E5 bulk|product/tools/cleanup-pr-check.sh|s/^  if \[ "\$moved" -ge "\$BULK" \]; then/  if false; then/|check-cleanup-pr.sh
+E5 stale|product/tools/cleanup-pr-check.sh|s/^bash "\$TOOLS\/check-stale-paths.sh"; r=\$?/r=0/|check-cleanup-pr.sh
+E5 ci|../../.github/workflows/pr-rules.yml|/cleanup-pr-check.sh" --base HEAD^1/d|check-cleanup-pr.sh
+E5 move|product/tools/check-pure-move.sh|s/ \&\& { \[ "\$st" != R100 \] .. \[ "\$om" = "\$nm" \]; }//|check-cleanup-checks.sh'
+MUT="$MUT"'
+38 part|product/tools/ready-gate.py|s/            elif p in merged:/            elif True:/|check-ready-gate.sh
+38 pr|product/tools/ready-gate.py|s/        mm = re.match(r"Merge pull request #(\[0-9\]+) from ", lines\[0\]) if lines else None/        mm = re.match(r"(.*)", lines[0]) if lines else None/|check-ready-gate.sh
+38 journey|product/tools/ready-gate.py|s/        if not pl.get("journeyExists"):/        if False:/|check-ready-gate.sh
+38 switch|product/tools/ready-gate.py|s/    if now < until:/    if True:/|check-ready-gate.sh
+38 queue|../../.mergify.yml|/-check-failure = completes-ready/d|check-ready-gate.sh
+38 records|product/tools/ready-gate.py|s/    if NOT_A_PART.match(title or \"\"):/    if False:/|check-ready-gate.sh
+38 landed|product/tools/ready-gate.py|s/ \"--first-parent\", \"-m\",//|check-ready-gate.sh'
+MUT="$MUT"'
+761 tls|product/tools/gh.sh|s/^  if \[ -z "\${GH_TLS_NOTE_ONCE:-}" \] .. .*/  if true; then/|check-gh-fallback.sh
+761 quiet|product/tools/branch-sweep.sh|/^  \[ "\$t" -ge "\$recent" \] .. continue$/d|check-branch-sweep.sh
+761 one|product/tools/branch-sweep.sh|s/^  stale=\$((stale + 1)); echo "\$b: /  stale=$((stale + 1)); echo "ACT   \$b: /|check-branch-sweep.sh
+761r req|product/tools/queue-red.py|s/n for n in f if n in req/n for n in f/|check-queue-red.sh
+761r ci|product/tools/queue-red.py|s/ . MERGIFY$//|check-queue-red.sh
+761r ready|product/tools/queue-red.py|s/, "completes-ready"}/}/|check-queue-red.sh
+761r skel|product/tools/queue-red.py|s/, "skeleton"//|check-queue-red.sh
+761r prr|product/tools/queue-red.py|s/, "pr-rules"//|check-queue-red.sh'
+MUT="$MUT"'
+29 scope|product/tools/stop-check.sh|s/scope=1   # P-756/scope=   # P-756/|check-stop-check.sh
+29 owner|product/tools/stop-check.sh|s/if \[ -z "\$scope" \] .. \[ -z "\$pats" \] .. printf/if false \&\& printf/|check-stop-check.sh
+29 renames|product/tools/stop-check.sh|s/ --no-renames//|check-stop-check.sh
+29 crash|product/tools/stop-check.sh|/a crash blocks (fail closed)/d|check-stop-check.sh
+29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh
+29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
+29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh'
 # OMG (Lead 5 on #2915 and #3035, 23 Nov): the own-migration guard; each row switches one of its rules off.
 MUT="$MUT"'
 OMG mark|product/tools/own-migration-guard.py|s/^MARK = re.compile(.*/MARK = re.compile(r"own-migration-never-marked")/|check-own-migration-guard.sh

@@ -28,7 +28,7 @@ except ImportError:
 P = "ai-workers/problem-1-pathway-setup-and-form-filling"
 R = f"{P}/product"
 COND = re.compile(r"^(-)?([a-z][a-z-]*)\s*(?:(~=|=)\s*(.*))?$")
-LISTS = {"files", "label", "check-success"}
+LISTS = {"files", "label", "check-success", "check-failure"}
 LABEL = "records"   # read from records-only.sh label in main()
 ROOT = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip() or "."
 IS_RECORDS = os.path.join(ROOT, R, "tools", "records-only.sh")
@@ -84,9 +84,9 @@ def _is_records(files):
 
 # E6 (P-772): pr-rules runs on every PR, so a case has it green unless it says otherwise.
 def case(what, files, record, want, title="evidence: something", labels=("review: approved",), checks=("ci", "pr-rules"),
-         draft=False, base="main", head="claude/keen-maxwell-x1"):
+         draft=False, base="main", head="claude/keen-maxwell-x1", failed=()):
     return {"what": what, "record": record, "want": want,
-            "pr": {"files": list(files), "title": title, "label": list(labels), "check-success": list(checks),
+            "pr": {"files": list(files), "title": title, "label": list(labels), "check-success": list(checks), "check-failure": list(failed),
                    "draft": draft, "base": base, "head": head}}
 
 
@@ -143,6 +143,7 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     # and change-kind.sh calls it code, so every suite runs), never a product batch.
     case("a hand-added records label on code: records, behind every product PR", [f"{A}/api/src/core.ts"], None, "records",
          labels=("review: approved", "records")),
+    case("ENF-782a: app code whose completes-ready failed (a part of its Completes: item missing) waits", [f"{A}/api/src/x.ts"], False, None, checks=F, failed=("completes-ready",)),
 ]
 
 
