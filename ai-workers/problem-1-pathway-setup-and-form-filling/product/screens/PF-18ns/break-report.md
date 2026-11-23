@@ -75,7 +75,7 @@ Outside scope (pre-existing on main, not this diff): going from Licence to My ac
 Round 1 verdict: Changes 8d2a5c301f3b370245cadb6ca6843a70e4785c9a
 
 ## Round 2 (head `c4b62d0aeab5ab076eab5cc34fd6a5814cd73376`, code round ca5c03c3b)
-Re-checked only my findings, on a freshly built copy `pf18nsbrk` on :4751 (stopped at the end). Probes: scratchpad `breaker18ns/r2.ts` and `r2b.ts`; outputs in `r2.out` and `r2b.out`.
+Re-checked only my findings, on a freshly built copy `pf18nsbrk` on :4751 (stopped at the end). Probes: scratchpad `breaker18ns/r2.ts` and `r2b.ts`; outputs in `r2.out` and `r2b.out`. **Result: 0 Blockers, 1 Major (M1 in the Unread filter), 0 open Minors (m1 accepted as a follow-up).**
 
 | # | Result | Evidence |
 |---|---|---|
@@ -96,5 +96,4 @@ Re-checked only my findings, on a freshly built copy `pf18nsbrk` on :4751 (stopp
 * Fix: when the row is gone, focus the next row (or the previous one), otherwise the list. When the list is empty, make the empty line (or the heading) `tabIndex=-1` and focus it. For example, pass `onMarked` from `AllBody` so that it chooses the target after the refetch.
 * Fail test: All page → Unread. Keyboard Mark read on row 1, expect `activeElement` to be the new row 1 (or inside the list), not `BODY`. Keyboard Mark all read on Unread, expect focus on the "No unread notifications." line or the heading.
 
-Round 2 result: 0 Blockers, 1 Major (M1 in the Unread filter), 0 open Minors (m1 accepted as a follow-up).
 Verdict: Changes c4b62d0aeab5ab076eab5cc34fd6a5814cd73376
