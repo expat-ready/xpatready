@@ -15,7 +15,7 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 **Reads owed: none ready.** #3234 7d6a7a8fa, #3235 4689c3469, #3180 eab779bad, #3207 639e2514f, #3224 2dae8ebd8 all draft. No head moved on #3033, #3174, #3189, #3185, #3184, #3195, #3225, #3188, #3065, #3155, #3190, so no re-read. #3197 and #3178 are merged.
 
-**Stamp clashes, proposals to the Lead, NOT ruled (Lead 6: noted); nobody re-stamps from this table yet (read from all open PRs' files; main's newest 20261123030000).** Found beyond the hand-over: #3219 and #3040 also carry 030000; #3220 and #3224 carry #3207's folder; #3191 and #3209 show #3178's folder, which main now has (a main merge drops it).
+**Stamp clashes, accepted by Lead 6 (17:29 IST 23 Nov recorded): re-stamp at the next push or when next to land, never a push only for the stamp; one comment posted per re-stamping PR (read from all open PRs' files; main's newest 20261123030000).** Found beyond the hand-over: #3219 and #3040 also carry 030000; #3220 and #3224 carry #3207's folder; #3191 and #3209 show #3178's folder, which main now has (a main merge drops it).
 | Keeps | Re-stamps to |
 |---|---|
 | #3184 050000 · #3225 060000 · #3189 100000 · #3234 110000 · #3235 120000 | #3033 → 070000 · #3185 → 130000 · #3180 → 140000 and 150000 · #3207 (with #3224, #3220) → 160000 · #3174 → 170000 · #3040 → 180000 · #3219 → 190000 |
