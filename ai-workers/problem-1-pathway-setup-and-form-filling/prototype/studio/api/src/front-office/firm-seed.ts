@@ -16,7 +16,7 @@ import { EVENT } from "../../../ports/events.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";
 import { ConsentStore } from "../platform/messages/consent/consent-store.ts";
 import { ensureMessagesFirm } from "../platform/messages/consent/messages-firm.ts";
-import { firmScope } from "../platform/firm-scope.ts";
+import { firmInTransaction, firmOfKey, firmScope } from "../platform/firm-scope.ts";
 
 export const SEED_ACTOR = "seed:FO-1a";
 /** The Sample firms' keys (PF-3's seed-sample-firms.ts writes them, P-559 (4)). */
@@ -158,17 +158,48 @@ export async function onFirmCreated(db: PrismaClient, event: { type: string; fir
 /** Catch-up over the outbox: every firm with a `firm.created` event and no seeded front office (so a missed or failed
  *  delivery is made good by the next run). One firm that fails is named in `failed` and the others still run (break B6). */
 export async function seedCreatedFirms(db: PrismaClient): Promise<FirmSeedResult[] & { failed?: { firmId: string; error: string }[] }> {
-  const firms = await db.$queryRaw<{ firm_id: string }[]>`select distinct e.firm_id::text as firm_id from module_event e
+  const [{ sees }] = await db.$queryRaw<{ sees: boolean }[]>`select r.rolsuper or r.rolbypassrls as sees from pg_roles r where r.rolname = current_user`;
+  const firms = sees ? await db.$queryRaw<{ firm_id: string }[]>`select distinct e.firm_id::text as firm_id from module_event e
     join platform_firm f on f.id = e.firm_id
     where e.type = ${EVENT.FIRM_CREATED} and f.status not in ('DELETED', 'ABANDONED')
       and not exists (select 1 from fo_sales_setup s where s.firm_id = e.firm_id and s.seeded_at is not null)
-    order by 1`;
+    order by 1`
+    // PF-8b F8: a runner the walls apply to (Amazon RDS's owner) sees no firm's platform_firm or fo_sales_setup row from
+    // here, so each firm with the event (module_event has no wall) is read as itself, in its own transaction
+    : await unseededAsEachFirm(db);
   const out: FirmSeedResult[] & { failed?: { firmId: string; error: string }[] } = [];
   const failed: { firmId: string; error: string }[] = [];
   for (const f of firms) {
-    try { out.push((await onFirmCreated(db, { type: EVENT.FIRM_CREATED, firmId: f.firm_id }))!); } catch (e) { failed.push({ firmId: f.firm_id, error: String(e).slice(0, 300) }); }
+    try { out.push(await seedAsFirm(db, f.firm_id)); } catch (e) { failed.push({ firmId: f.firm_id, error: String(e).slice(0, 300) }); }
   }
   if (failed.length) out.failed = failed;
+  return out;
+}
+
+/** PF-8b F8: onFirmCreated as the seed command runs it, each transaction written as that firm (firmInTransaction: a seed
+ *  command only, never the app's own calls of seedFirmFrontOffice or ensureBookingWording, review B1 on #3097). */
+async function seedAsFirm(db: PrismaClient, firmId: string): Promise<FirmSeedResult> {
+  const seeded = await db.$transaction(async (tx) => { await firmInTransaction(tx, firmId); return seedFirmFrontOffice(tx, firmId); });
+  await db.$transaction(async (tx) => { await firmInTransaction(tx, firmId); return ensureBookingWording(tx, firmId); });
+  return seeded;
+}
+
+/** PF-8b F8: the firms with a `firm.created` event whose front office is not seeded and which are not deleted or abandoned,
+ *  each read as itself (see seedCreatedFirms); the same list the cross-firm query gives a runner that sees every row. */
+async function unseededAsEachFirm(db: PrismaClient): Promise<{ firm_id: string }[]> {
+  const events = await db.$queryRaw<{ firm_id: string }[]>`select distinct e.firm_id::text as firm_id from module_event e
+    where e.type = ${EVENT.FIRM_CREATED} and e.firm_id is not null order by 1`;
+  const out: { firm_id: string }[] = [];
+  for (const e of events) {
+    const open = await db.$transaction(async (tx) => {
+      await firmInTransaction(tx, e.firm_id);
+      const [row] = await tx.$queryRaw<{ ok: boolean }[]>`select f.status::text not in ('DELETED', 'ABANDONED')
+        and not exists (select 1 from fo_sales_setup s where s.firm_id = f.id and s.seeded_at is not null) as ok
+        from platform_firm f where f.id = ${e.firm_id}::uuid`;
+      return row?.ok === true;
+    });
+    if (open) out.push(e);
+  }
   return out;
 }
 
@@ -176,11 +207,16 @@ export async function seedCreatedFirms(db: PrismaClient): Promise<FirmSeedResult
  *  there yet is named in `missing`, not an error: run PF-3's seed first. A firm whose seed fails is named in `failed`
  *  and the other still runs (one firm never stops the seed; #1742, Lead B). */
 export async function seedSampleFirmsFrontOffice(db: PrismaClient): Promise<{ results: FirmSeedResult[]; missing: string[]; failed: { firmId: string; error: string }[] }> {
-  const firms = await db.platformFirm.findMany({ where: { key: { in: [...SAMPLE_FIRM_KEYS] } }, select: { id: true, key: true }, orderBy: { key: "asc" } });
+  // PF-8b F8: each found across the walls by its key (PF-12b's narrow lookup), so a runner the walls apply to finds them too
+  const firms: { id: string; key: string }[] = [];
+  for (const key of [...SAMPLE_FIRM_KEYS].sort()) {
+    const id = await db.$transaction((tx) => firmOfKey(tx, key, async () => (await tx.platformFirm.findUnique({ where: { key }, select: { id: true } }))?.id ?? null));
+    if (id) firms.push({ id, key });
+  }
   const results: FirmSeedResult[] = [], failed: { firmId: string; error: string }[] = [];
   for (const f of firms) {
-    try { results.push(await db.$transaction((tx) => seedFirmFrontOffice(tx, f.id))); } catch (e) { failed.push({ firmId: f.id, error: String(e).slice(0, 300) }); }
-    try { await db.$transaction((tx) => ensureBookingWording(tx, f.id)); } catch (e) { failed.push({ firmId: f.id, error: `booking wording: ${String(e).slice(0, 280)}` }); }
+    try { results.push(await db.$transaction(async (tx) => { await firmInTransaction(tx, f.id); return seedFirmFrontOffice(tx, f.id); })); } catch (e) { failed.push({ firmId: f.id, error: String(e).slice(0, 300) }); }
+    try { await db.$transaction(async (tx) => { await firmInTransaction(tx, f.id); return ensureBookingWording(tx, f.id); }); } catch (e) { failed.push({ firmId: f.id, error: `booking wording: ${String(e).slice(0, 280)}` }); }
   }
   return { results, missing: SAMPLE_FIRM_KEYS.filter((k) => !firms.some((f) => f.key === k)), failed };
 }

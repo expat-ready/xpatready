@@ -6,7 +6,7 @@
 // and the staff read GET /api/platform/messages (api/src/platform/messages/staff-routes.ts).
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
-import { LocalFiles } from "../front-office/files.ts";
+import { boundFiles } from "../platform/files/choose.ts";
 import { platformConfig } from "../platform/config/settings.ts";
 import { SesNotices } from "../platform/messages/channels/email/bounces.ts";
 import { connectLocalNotices, LOCAL_PROVIDER } from "../platform/messages/channels/email/local.ts";
@@ -23,7 +23,7 @@ import { PlatformJobs } from "../platform/jobs/platform-jobs.ts";
 
 export const MESSAGE_PORT = Symbol.for("platform.MessagePort");
 export const MESSAGES_MAIL = Symbol.for("platform.MessagesMail");
-const files = new LocalFiles();
+const files = boundFiles();
 const config = platformConfig(), tokens = new UnsubscribeTokens(config.secretBox);
 /** Where the unsubscribe link points (the same address PF-5's sign-up links use). */
 const publicBase = process.env.STUDIO_PUBLIC_URL ?? `http://localhost:${process.env.STUDIO_PORT ?? 4400}`;
