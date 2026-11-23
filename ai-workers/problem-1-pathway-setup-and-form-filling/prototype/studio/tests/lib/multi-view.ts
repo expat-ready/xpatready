@@ -72,5 +72,6 @@ export async function walkStaleSave(w: Omit<SharedRecordWalk, "b"> & { open: () 
     shownConflict ? await box.innerText() : "no conflict box");
   await box.locator("[data-conflict-keep-mine]").click();
   await w.save(a);
-  ok(`${L}: Keep mine, then Save: written once on the newer version`, await until(async () => (await w.stored()) === v.stale, 5000) && sent.filter((s) => s === 200).length === 1, { sent, stored: await w.stored() });
+  // The write is visible in the database a moment before the browser has its 200: wait for both (T8 read `sent` too early).
+  ok(`${L}: Keep mine, then Save: written once on the newer version`, await until(async () => (await w.stored()) === v.stale && sent.includes(200), 5000) && sent.filter((s) => s === 200).length === 1, { sent, stored: await w.stored() });
 }
