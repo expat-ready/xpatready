@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts";
 import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
-import { firmScope, withFirm } from "../../platform/firm-scope.ts";
+import { currentFirm, firmScope, withFirm } from "../../platform/firm-scope.ts";
 import { NOTIFICATION_KIND, type NotificationPort } from "../../../../ports/notifications.ts";
 import { conflict, notFound, UUID, written, type Tx } from "./common.ts";
 import { eligible, NO_RULE, placeNewLead, type Placement } from "../assignment/place.ts";
@@ -150,5 +150,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
  *  port asks the person's In-app switch and skips a person who is not this firm's active staff. No port: nobody is told. */
 export async function tellAssigned(tx: Tx, port: NotificationPort<Tx> | null | undefined, firmId: string, staffId: string, leadId: string): Promise<void> {
   if (!port) return;
+  // Never a silent switch of firm (review m6): inside another firm's scope this is a fault, refused before anything is written.
+  const inScope = currentFirm();
+  if (inScope !== undefined && inScope !== firmId) throw new Error("tellAssigned: called in another firm's scope");
   await withFirm(firmId, () => port.notify(tx, { staffId }, NOTIFICATION_KIND.LEAD_ASSIGNED, { kind: "lead", id: leadId }));
 }

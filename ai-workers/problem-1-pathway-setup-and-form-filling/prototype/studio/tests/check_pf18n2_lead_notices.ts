@@ -16,7 +16,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { AssignmentRules } from "../api/src/front-office/assignment/rules.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
-import { arrive } from "../api/src/front-office/sales/arrival.ts";
+import { arrive, tellAssigned } from "../api/src/front-office/sales/arrival.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
 import { LeadNotificationLabels } from "../api/src/front-office/sales/lead-notification-labels.ts";
 import { SALES_PORTS, type SalesPorts } from "../api/src/front-office/sales/public.ts";
@@ -195,6 +195,29 @@ try {
   const unwired = await db.$transaction((tx) => arrive(tx, { firmId: A, door: "BOOKING", intakeKey: `booking:${randomUUID()}`, bookingHostStaffId: T.staffId, person: { givenNames: "Client C", familyName: "Sample", email: "c@pf18n2.example.org", phone: null }, source: "BOOKING", actor: "system:booking", payloadHash: "hc" }, { audit: ports.audit, consent: ports.consent }));
   ok("PF-18n2 break M1: a booking lead owned by its host tells the host when the port is passed, and nobody without it (today's booking door)",
     ownerOf(booked.leadId!) === T.staffId && rowsOf(T.staffId, booked.leadId!) === 1 && ownerOf(unwired.leadId!) === T.staffId && rowsOf(T.staffId, unwired.leadId!) === 0);
+
+  // ------------------------------------------------------------------------------------------- review round 1
+  // M1: a failure AFTER the notify (Assign writes its audit line after the owner change and the notify) rolls both back.
+  const late = (await arrival()).leadId!, lateOwner = ownerOf(late);
+  const lateLeads = new Leads(db, { ...ports, audit: broken });
+  const lateRefused = await withFirm(A, () => lateLeads.assign(R, late, { staffId: T.staffId, expectedOwnerStaffId: lateOwner === "none" ? null : lateOwner })).then(() => "kept", () => "rolled back");
+  ok("PF-18n2 DW5 fail (review M1): an Assign whose audit line fails after the notify rolls back: no notification for T and the owner unchanged",
+    lateRefused === "rolled back" && rowsOf(T.staffId, late) === 0 && ownerOf(late) === lateOwner, { lateRefused, owner: ownerOf(late), lateOwner });
+  // m7: a one-user firm's one user owns every form lead (X-4) and is told (no one else could be).
+  const helper = sql(`select id from platform_staff where firm_id = '${B}' and email = 'helper@pf18n2.example.com'`);
+  sql(`update platform_staff set status = 'DEACTIVATED' where id = '${helper}'`);
+  const formB = sql(`select id from fo_web_form where firm_id = '${B}' limit 1`);
+  const solo = await db.$transaction((tx) => arrive(tx, { firmId: B, door: "WEB_FORM", intakeKey: `form:${formB}:${randomUUID()}`, webFormId: formB, person: { givenNames: "Client S", familyName: "Sample", email: "s@pf18n2.example.org", phone: null }, source: "WEB_FORM", actor: "system:web-form", payloadHash: "hs" }, ports));
+  sql(`update platform_staff set status = 'ACTIVE' where id = '${helper}'`);
+  const soloRow = (await itemsOf(SOLO)).find((i) => i.item.id === solo.leadId);
+  ok("PF-18n2 DW1 pass (review m7): a one-user firm's form lead goes to its one user, who is told, named and linked in firm B's own list",
+    ownerOf(solo.leadId!) === SOLO.staffId && rowsOf(SOLO.staffId, solo.leadId!) === 1 && soloRow?.link === `/front-office/leads/${solo.leadId}` && !!soloRow.label?.startsWith("Client S Sample"), soloRow);
+  // m6: called inside another firm's scope, the notify is refused (never a silent switch of firm); inside its own, it writes.
+  const other = (await arrival()).leadId!, otherOwner = ownerOf(other);
+  const wrongScope = await withFirm(B, () => db.$transaction((tx) => tellAssigned(tx, port, A, T.staffId, other))).then(() => "written", (e: unknown) => (e instanceof Error ? e.message : String(e)));
+  ok("PF-18n2 review m6 fail: tellAssigned inside firm B's scope for firm A's lead is refused, nothing written", wrongScope !== "written" && rowsOf(T.staffId, other) === 0, { wrongScope, otherOwner });
+  await withFirm(A, () => db.$transaction((tx) => tellAssigned(tx, port, A, T.staffId, other)));
+  ok("PF-18n2 review m6 pass: inside its own firm's scope it writes one row", rowsOf(T.staffId, other) === 1);
 
   // ------------------------------------------------------------------------------------------- DW6 the app's wiring
   const sales = (await import("../api/src/features/front-office-sales.ts")).default as { providers: unknown[] };
