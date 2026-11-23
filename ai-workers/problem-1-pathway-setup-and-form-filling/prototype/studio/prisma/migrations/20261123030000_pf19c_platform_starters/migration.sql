@@ -21,11 +21,11 @@ BEGIN
     FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
   END IF;
   WITH s("key", "kind", "subject", "body") AS (VALUES
-    ('lead.acknowledgement', 'automatic', 'Thank you for contacting {{ firm_name }}',
+    ('sales.lead.acknowledgement', 'automatic', 'Thank you for contacting {{ firm_name }}',
      E'Dear {{ lead_first_name }},\n\nThank you for contacting {{ firm_name }}. We have your enquiry (reference {{ lead_number }}) and a member of our team will be in touch soon.\n\nKind regards,\n{{ firm_name }}'),
-    ('lead.follow_up', 'library', 'Following up on your enquiry',
+    ('sales.lead.follow_up', 'library', 'Following up on your enquiry',
      E'Dear {{ lead_first_name }},\n\nI am following up on your enquiry with {{ firm_name }}. Would you like to arrange a time to talk about your plans?\n\nKind regards,\n{{ owner_name }}\n{{ firm_name }}'),
-    ('lead.going_cold', 'library', 'Are you still planning your move?',
+    ('sales.lead.going_cold', 'library', 'Are you still planning your move?',
      E'Dear {{ lead_first_name }},\n\nWe have not heard from you for a while. If you are still planning your move, reply to this email and we will pick up where we left off.\n\nKind regards,\n{{ owner_name }}\n{{ firm_name }}')
   ), t AS (
     INSERT INTO "msg_template" ("id", "firm_id", "owner", "key", "kind", "channel", "language", "updated_at")

@@ -32,7 +32,7 @@ const psql = (...a: string[]) => execFileSync(join(BIN, "psql"), [URL, "-v", "ON
 const sql = (q: string) => psql("-Atc", q);
 const refusal = (q: string) => { try { sql(q); return ""; } catch (e) { return String((e as { stderr?: string }).stderr ?? e); } };
 const uuid = () => crypto.randomUUID(), box = (w: string) => `pf19c.${w}.${uuid().slice(0, 6)}@example.com`;
-const KEYS = ["lead.acknowledgement", "lead.follow_up", "lead.going_cold"];
+const KEYS = ["sales.lead.acknowledgement", "sales.lead.follow_up", "sales.lead.going_cold"];
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) psql("-f", join(MIG, d, "migration.sql"));
@@ -41,13 +41,13 @@ try {
   await seedSampleFirms(db);
   const firmA = sql(`select id from platform_firm where key='sample-firm'`), firmB = sql(`select id from platform_firm where key='sample-solo'`);
   const platformRows = () => sql(`select t.key || '|' || t.kind || '|' || v.version || '|' || v.published_by from msg_template t join msg_template_version v on v.template_id = t.id
-    where t.owner = 'PLATFORM' and t.firm_id is null and v.firm_id is null and t.channel = 'EMAIL' and t.language = 'en' and t.key like 'lead.%' order by t.key`).split("\n");
+    where t.owner = 'PLATFORM' and t.firm_id is null and v.firm_id is null and t.channel = 'EMAIL' and t.language = 'en' and t.key like 'sales.lead.%' order by t.key`).split("\n");
   const rows = platformRows();
   ok("PF-19c part 2 pass: the three lead starters are PLATFORM email rows in English, version 1 each, kind automatic or library, published by seed:sa05-a1",
-    JSON.stringify(rows) === JSON.stringify(["lead.acknowledgement|automatic|1|seed:sa05-a1", "lead.follow_up|library|1|seed:sa05-a1", "lead.going_cold|library|1|seed:sa05-a1"]), rows);
+    JSON.stringify(rows) === JSON.stringify(["sales.lead.acknowledgement|automatic|1|seed:sa05-a1", "sales.lead.follow_up|library|1|seed:sa05-a1", "sales.lead.going_cold|library|1|seed:sa05-a1"]), rows);
   psql("-f", join(MIG, SEED, "migration.sql"));
   ok("PF-19c part 2 fail: running the migration again adds no second template or version", JSON.stringify(platformRows()) === JSON.stringify(rows), platformRows());
-  const fields = new Set(sql(`select string_agg(v.subject || ' ' || v.body, ' ') from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id is null and t.key like 'lead.%'`).match(/\{\{[^{}]*\}\}/g)?.map((f) => f.slice(2, -2).trim()));
+  const fields = new Set(sql(`select string_agg(v.subject || ' ' || v.body, ' ') from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id is null and t.key like 'sales.lead.%'`).match(/\{\{[^{}]*\}\}/g)?.map((f) => f.slice(2, -2).trim()));
   ok("PF-19c part 2: the starters use only the lead's fields (AG-12-70) and never a passport or financial field (SA-5-63)",
     [...fields].sort().join(",") === "firm_name,lead_first_name,lead_number,owner_name", [...fields]);
   ok("PF-19c part 2 fail: a platform version never changes or goes (write-once trigger)",
@@ -68,17 +68,17 @@ try {
   };
   const sent: Record<string, { subject: string; body: string }> = {};
   for (const k of KEYS) { const to = box(k.replace(/\W/g, "")); await send(firmA, to, k); sent[k] = (await inbox.list(to, undefined)).messages[0]; }
-  const platformFollowUp = sql(`select v.id from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id is null and t.key = 'lead.follow_up'`);
-  const x1 = box("platform"), r1 = await send(firmB, x1, "lead.follow_up");
+  const platformFollowUp = sql(`select v.id from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id is null and t.key = 'sales.lead.follow_up'`);
+  const x1 = box("platform"), r1 = await send(firmB, x1, "sales.lead.follow_up");
   ok("PF-19c part 2 pass: a firm that never edited a starter sends each one, filled (AG-12-44), from the platform's version",
-    KEYS.every((k) => sent[k]?.subject && !sent[k].body.includes("{{")) && sent["lead.acknowledgement"].subject === "Thank you for contacting Maple Immigration"
-    && sent["lead.follow_up"].body.startsWith("Dear Amira,") && r1.templateVersionId === platformFollowUp, { sent, r1: r1.templateVersionId });
-  const refused = await db.$transaction((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "SERVICE", person: { kind: "FO_PERSON", id: uuid() }, address: box("nofield"), content: { templateKey: "lead.follow_up", language: "en", values: { lead_first_name: "A" } }, idempotencyKey: uuid() })).then(() => "", (e: Error) => e.message);
+    KEYS.every((k) => sent[k]?.subject && !sent[k].body.includes("{{")) && sent["sales.lead.acknowledgement"].subject === "Thank you for contacting Maple Immigration"
+    && sent["sales.lead.follow_up"].body.startsWith("Dear Amira,") && r1.templateVersionId === platformFollowUp, { sent, r1: r1.templateVersionId });
+  const refused = await db.$transaction((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "SERVICE", person: { kind: "FO_PERSON", id: uuid() }, address: box("nofield"), content: { templateKey: "sales.lead.follow_up", language: "en", values: { lead_first_name: "A" } }, idempotencyKey: uuid() })).then(() => "", (e: Error) => e.message);
   ok("PF-19c part 2 fail: a send without a value the starter needs is refused, naming the field (nothing half-filled is sent)", /needs the field "(firm_name|owner_name)"/.test(refused), refused);
 
-  const own = await db.msgTemplate.create({ data: { firmId: firmA, owner: "FIRM", key: "lead.follow_up", kind: "library", channel: "EMAIL", language: "en" } });
+  const own = await db.msgTemplate.create({ data: { firmId: firmA, owner: "FIRM", key: "sales.lead.follow_up", kind: "library", channel: "EMAIL", language: "en" } });
   const ownV = await db.msgTemplateVersion.create({ data: { firmId: firmA, templateId: own.id, version: 1, subject: "Checking in, {{ lead_first_name }}", body: "Hello {{ lead_first_name }}, from {{ firm_name }}.", publishedBy: "seed:pf19c" } });
-  const x2 = box("firm"), r2 = await send(firmA, x2, "lead.follow_up"), x3 = box("other"), r3 = await send(firmB, x3, "lead.follow_up");
+  const x2 = box("firm"), r2 = await send(firmA, x2, "sales.lead.follow_up"), x3 = box("other"), r3 = await send(firmB, x3, "sales.lead.follow_up");
   ok("PF-19c part 2 pass: once a firm publishes its own version, its sends use it (AG-12-45); fail: another firm still gets the platform's",
     r2.templateVersionId === ownV.id && (await inbox.list(x2, undefined)).messages[0]?.subject === "Checking in, Amira" && r3.templateVersionId === platformFollowUp, { r2: r2.templateVersionId, r3: r3.templateVersionId });
 } finally {

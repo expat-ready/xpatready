@@ -100,7 +100,7 @@ try {
   ok("PF-19a pass: the migration applies to a demo-data copy (cases, audit, the Sample firms and staff) and leaves its rows as they were", sql(DEMO, demoRows) === was, was);
   ok("PF-19a pass: migrate diff after it on the demo-data copy names no msg_ table or type", msgDiff(DEMO).length === 0, msgDiff(DEMO));
   // PF-19c part 2's later data migration seeds ExpatReady's three lead starters (a template and version 1 each, firm-less).
-  const starters = "(select count(*) from msg_template where firm_id is null and key like 'lead.%') + (select count(*) from msg_template_version where firm_id is null and published_by = 'seed:sa05-a1')";
+  const starters = "(select count(*) from msg_template where firm_id is null and key like 'sales.lead.%') + (select count(*) from msg_template_version where firm_id is null and published_by = 'seed:sa05-a1')";
   ok("PF-19a: no msg_ row exists until the messages code writes one (the migration writes no data; PF-19c part 2's six starter rows aside)",
     sql(DEMO, `select ${MSG_TABLES.map((t) => `(select count(*) from ${t})`).join(" + ")} - (${starters}) || '|' || ${starters}`) === "0|6");
 

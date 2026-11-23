@@ -219,7 +219,7 @@ const windows: { m: string; tbl: string; seedSql: string; want: string; got: str
   { m: "20261123030000_pf19c_platform_starters", tbl: "msg_template", what: "pf19c seeds the three lead starters as platform templates beside a firm's hidden one",
     seedSql: `INSERT INTO msg_firm (firm_id) VALUES ('${FIRM}') ON CONFLICT DO NOTHING;
       INSERT INTO msg_template (id, firm_id, owner, key, kind, channel, language, updated_at) VALUES (gen_random_uuid(), '${FIRM}', 'FIRM', 'f7.own', 'library', 'EMAIL', 'en', now())`,
-    got: "select (select count(*) from msg_template where firm_id is null and key like 'lead.%') || '|' || (select count(*) from msg_template_version where firm_id is null and published_by = 'seed:sa05-a1')", want: "3|3" },
+    got: "select (select count(*) from msg_template where firm_id is null and key like 'sales.lead.%') || '|' || (select count(*) from msg_template_version where firm_id is null and published_by = 'seed:sa05-a1')", want: "3|3" },
 ];
 
 try {
