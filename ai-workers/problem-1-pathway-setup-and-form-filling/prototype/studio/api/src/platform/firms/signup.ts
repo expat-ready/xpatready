@@ -259,8 +259,11 @@ export class FirmSignUp {
   private async signUpInvitedWork(token: string, body: unknown, ip: string) {
     this.ready();
     this.limit(`signup:${ip}`, this.limits.signupPerIp);
-    const link = await this.liveLink(token);
+    // PF-28's order (as the booking link's door): the token's shape (else the one 404), then the body (422, fields named),
+    // then the link, so a bad body is a field error whichever link it names and says nothing about which links exist.
+    if (!LINK_TOKEN.test(token)) throw notFound();
     const b = parse(InvitedBody, body, (e) => { throw fields([...new Set(e.issues.map(words))], fieldsOf(e)); });
+    const link = await this.liveLink(token);
     const terms = await this.currentTerms();
     const given = new Set(b.acceptedTerms.map((t) => t.toLowerCase()));
     if (terms.length === 0 || terms.some((t) => !given.has(t.id)) || given.size !== terms.length) throw fields(["acceptedTerms: accept the current terms of service, privacy notice and data-processing terms"]);
