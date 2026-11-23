@@ -17,25 +17,25 @@ const w = (metricKey: string, visual: Visual = "TILE"): Widget => ({ metricKey: 
 export const DASHBOARDS: Readonly<Record<DashboardRole, Dashboard>> = Object.freeze({
   // Owner: firm-wide, across sales, delivery and money (AG-14 §3.6)
   "owner": { role: "owner", title: "Owner", widgets: [
-    w("sales.leads_added"), w("sales.win_rate"),                                  // PF-R2fo (AG-14-5)
-    w("cases.case_load", "BAR"), w("cases.stage_durations", "TABLE"),             // CS-R1 (AG-14-9, -10)
-    w("money.fees_billed"), w("money.fees_collected"), w("money.overdue_ageing", "AGING"),   // PF-R2cm (AG-14-13, -14)
-    w("cases.overdue_tasks_by_person", "TABLE"),                                  // CS-R1 (AG-13-68)
+    w("reports.sales.leads_added"), w("reports.sales.win_rate"),                                  // PF-R2fo (AG-14-5)
+    w("reports.cases.case_load", "BAR"), w("reports.cases.stage_durations", "TABLE"),             // CS-R1 (AG-14-9, -10)
+    w("reports.money.fees_billed"), w("reports.money.fees_collected"), w("reports.money.overdue_ageing", "AGING"),   // PF-R2cm (AG-14-13, -14)
+    w("reports.cases.overdue_tasks_by_person", "TABLE"),                                  // CS-R1 (AG-13-68)
   ] },
   // Case Manager: funnel, delivery and team (AG-14 §3.6)
   "case-manager": { role: "case-manager", title: "Case Manager", widgets: [
-    w("sales.stage_counts", "BAR"), w("sales.leads_added"),                       // PF-R2fo (AG-14-5)
-    w("cases.case_load", "BAR"), w("cases.stage_durations", "TABLE"), w("cases.open_review_findings"),   // CS-R1 (AG-14-9, -10, -12)
-    w("cases.overdue_tasks_by_person", "TABLE"),                                  // CS-R1 (AG-13-68)
+    w("reports.sales.stage_counts", "BAR"), w("reports.sales.leads_added"),                       // PF-R2fo (AG-14-5)
+    w("reports.cases.case_load", "BAR"), w("reports.cases.stage_durations", "TABLE"), w("reports.cases.open_review_findings"),   // CS-R1 (AG-14-9, -10, -12)
+    w("reports.cases.overdue_tasks_by_person", "TABLE"),                                  // CS-R1 (AG-13-68)
   ] },
   // Billing / Finance: money (AG-14 §3.6; view-financial)
   "billing-finance": { role: "billing-finance", title: "Billing / Finance", widgets: [
-    w("money.fees_billed"), w("money.fees_collected"), w("money.trust_received"),   // PF-R2cm (AG-14-13, -36)
-    w("money.overdue_ageing", "AGING"), w("money.tax_collected", "TABLE"),        // PF-R2cm (AG-14-14, -37)
+    w("reports.money.fees_billed"), w("reports.money.fees_collected"), w("reports.money.trust_received"),   // PF-R2cm (AG-14-13, -36)
+    w("reports.money.overdue_ageing", "AGING"), w("reports.money.tax_collected", "TABLE"),        // PF-R2cm (AG-14-14, -37)
   ] },
   // Case Officer: my caseload (AG-14 §3.6)
   "case-officer": { role: "case-officer", title: "Case Officer", widgets: [
-    w("cases.case_load", "BAR"), w("cases.documents_waiting"), w("cases.overdue_tasks_by_person", "TABLE"),   // CS-R1
+    w("reports.cases.case_load", "BAR"), w("reports.cases.documents_waiting"), w("reports.cases.overdue_tasks_by_person", "TABLE"),   // CS-R1
   ] },
 });
 

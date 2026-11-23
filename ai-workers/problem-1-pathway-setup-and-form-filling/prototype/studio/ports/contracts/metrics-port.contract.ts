@@ -18,20 +18,21 @@ export const metricsPortContract = defineContract("MetricsPort", (make: () => Me
     name: "a metric registers once; an ill-shaped definition is refused",
     async run() {
       const p = make();
-      p.register(count("sample.one", async () => ({ kind: "COUNT", value: 1 })));
-      await expectRefused(() => p.register(count("sample.one", async () => ({ kind: "COUNT", value: 1 }))), "the same key twice");
-      await expectRefused(() => p.register(count("NoDot", async () => ({ kind: "COUNT", value: 1 }))), "a key that is not module.name");
-      await expectRefused(() => p.register(count("sample.money", async () => ({ kind: "COUNT", value: 1 }), { kind: "MONEY" })), "a MONEY metric without PER_CURRENCY");
-      expect(p.definitions().map((d) => d.key).join() === "sample.one" && !("read" in p.definitions()[0]), "definitions without reads", p.definitions());
+      p.register(count("reports.sample.one", async () => ({ kind: "COUNT", value: 1 })));
+      await expectRefused(() => p.register(count("reports.sample.one", async () => ({ kind: "COUNT", value: 1 }))), "the same key twice");
+      await expectRefused(() => p.register(count("NoDot", async () => ({ kind: "COUNT", value: 1 }))), "a key that is not reports.<area>.<name>");
+      await expectRefused(() => p.register(count("sample.one", async () => ({ kind: "COUNT", value: 1 }))), "a one-dot key (B164 reads it as a combination key)");
+      await expectRefused(() => p.register(count("reports.sample.money", async () => ({ kind: "COUNT", value: 1 }), { kind: "MONEY" })), "a MONEY metric without PER_CURRENCY");
+      expect(p.definitions().map((d) => d.key).join() === "reports.sample.one" && !("read" in p.definitions()[0]), "definitions without reads", p.definitions());
     },
   },
   {
     name: "the scope is the server's: view.own reads own with the caller as the person, view.all reads all; a body scope is never read",
     async run() {
       const p = make(); const seen: unknown[] = [];
-      p.register(count("sample.seen", async (ctx, f) => { seen.push([ctx.scope, f.staffId ?? null]); return { kind: "COUNT", value: ctx.scope === "all" ? 9 : 2 }; }));
-      const own = await p.query(caller(REPORT_KEYS.own), { metrics: ["sample.seen"], scope: "all" });
-      const all = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.all), { metrics: ["sample.seen"], scope: "own" });
+      p.register(count("reports.sample.seen", async (ctx, f) => { seen.push([ctx.scope, f.staffId ?? null]); return { kind: "COUNT", value: ctx.scope === "all" ? 9 : 2 }; }));
+      const own = await p.query(caller(REPORT_KEYS.own), { metrics: ["reports.sample.seen"], scope: "all" });
+      const all = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.all), { metrics: ["reports.sample.seen"], scope: "own" });
       expect(own.metrics[0].scope === "own" && JSON.stringify(own.metrics[0].reading) === '{"kind":"COUNT","value":2}' && all.metrics[0].scope === "all" && JSON.stringify(seen) === JSON.stringify([["own", ME], ["all", null]]), "own then all", { own, all, seen });
     },
   },
@@ -39,11 +40,11 @@ export const metricsPortContract = defineContract("MetricsPort", (make: () => Me
     name: "a money metric is answered only with view-financial (firm-wide), one figure per currency; without it, WITHHELD",
     async run() {
       const p = make();
-      p.register(count("sample.fees", async (ctx) => ({ kind: "MONEY", figures: [{ currency: "CAD", amount: ctx.scope === "financial" ? "42000.00" : "10.00" }, { currency: "USD", amount: "3500.00" }] }), { kind: "MONEY", moneyTreatment: "PER_CURRENCY", aggregation: "SUM" }));
-      const r = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.financial), { metrics: ["sample.fees"] });
+      p.register(count("reports.sample.fees", async (ctx) => ({ kind: "MONEY", figures: [{ currency: "CAD", amount: ctx.scope === "financial" ? "42000.00" : "10.00" }, { currency: "USD", amount: "3500.00" }] }), { kind: "MONEY", moneyTreatment: "PER_CURRENCY", aggregation: "SUM" }));
+      const r = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.financial), { metrics: ["reports.sample.fees"] });
       const reading = r.metrics[0].reading;
       expect(r.metrics[0].scope === "financial" && reading?.kind === "MONEY" && reading.figures.length === 2 && reading.figures[0].amount === "42000.00", "two figures, firm-wide", r);
-      const noFin = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.all), { metrics: ["sample.fees"] });
+      const noFin = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.all), { metrics: ["reports.sample.fees"] });
       expect(noFin.metrics[0].status === "WITHHELD" && noFin.metrics[0].reading === null, "view.all without view-financial: WITHHELD (AG-14-35 to -37)", noFin);
     },
   },
@@ -51,22 +52,22 @@ export const metricsPortContract = defineContract("MetricsPort", (make: () => Me
     name: "an unknown key is 400 and a bad filter 422 (PF-28); no report key is 403; another person's figures at own scope are 403",
     async run() {
       const p = make();
-      p.register(count("sample.one", async () => ({ kind: "COUNT", value: 1 })));
-      await expectRefused(() => p.query(caller(REPORT_KEYS.all), { metrics: ["sample.nope"] }), "unknown key", refusedWith(400, "UNKNOWN_METRIC"));
-      await expectRefused(() => p.query(caller(REPORT_KEYS.all), { metrics: ["sample.one"], filters: { from: "2026-13-01" } }), "bad date", refusedWith(422, "QUERY_INVALID"));
-      await expectRefused(() => p.query(caller(), { metrics: ["sample.one"] }), "no report key", refusedWith(403, "MISSING_PERMISSION"));
-      await expectRefused(() => p.query(caller(REPORT_KEYS.own), { metrics: ["sample.one"], filters: { staffId: OTHER } }), "another person", refusedWith(403, "OWN_ONLY"));
+      p.register(count("reports.sample.one", async () => ({ kind: "COUNT", value: 1 })));
+      await expectRefused(() => p.query(caller(REPORT_KEYS.all), { metrics: ["reports.sample.nope"] }), "unknown key", refusedWith(400, "UNKNOWN_METRIC"));
+      await expectRefused(() => p.query(caller(REPORT_KEYS.all), { metrics: ["reports.sample.one"], filters: { from: "2026-13-01" } }), "bad date", refusedWith(422, "QUERY_INVALID"));
+      await expectRefused(() => p.query(caller(), { metrics: ["reports.sample.one"] }), "no report key", refusedWith(403, "MISSING_PERMISSION"));
+      await expectRefused(() => p.query(caller(REPORT_KEYS.own), { metrics: ["reports.sample.one"], filters: { staffId: OTHER } }), "another person", refusedWith(403, "OWN_ONLY"));
     },
   },
   {
     name: "a failing or ill-shaped read is UNAVAILABLE while the others answer; a firm-wide-only metric is WITHHELD at own scope",
     async run() {
       const p = make();
-      p.register(count("sample.ok", async () => ({ kind: "COUNT", value: 3 })));
-      p.register(count("sample.boom", async () => { throw new Error("Sample secret words"); }));
-      p.register(count("sample.summed", async () => ({ kind: "MONEY", figures: [{ currency: "CAD", amount: "1.00" }, { currency: "CAD", amount: "2.00" }] }) as never, { kind: "MONEY", moneyTreatment: "PER_CURRENCY", aggregation: "SUM" }));
-      p.register(count("sample.firm", async () => ({ kind: "COUNT", value: 5 }), { scopeAware: false }));
-      const r = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.financial), { metrics: ["sample.ok", "sample.boom", "sample.summed", "sample.firm"] });
+      p.register(count("reports.sample.ok", async () => ({ kind: "COUNT", value: 3 })));
+      p.register(count("reports.sample.boom", async () => { throw new Error("Sample secret words"); }));
+      p.register(count("reports.sample.summed", async () => ({ kind: "MONEY", figures: [{ currency: "CAD", amount: "1.00" }, { currency: "CAD", amount: "2.00" }] }) as never, { kind: "MONEY", moneyTreatment: "PER_CURRENCY", aggregation: "SUM" }));
+      p.register(count("reports.sample.firm", async () => ({ kind: "COUNT", value: 5 }), { scopeAware: false }));
+      const r = await p.query(caller(REPORT_KEYS.own, REPORT_KEYS.financial), { metrics: ["reports.sample.ok", "reports.sample.boom", "reports.sample.summed", "reports.sample.firm"] });
       expect(r.metrics.map((m) => m.status).join() === "OK,UNAVAILABLE,UNAVAILABLE,WITHHELD" && !JSON.stringify(r).includes("secret"), "statuses", r);
     },
   },

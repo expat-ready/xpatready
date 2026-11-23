@@ -22,7 +22,8 @@ export const READ_TIMEOUT_MS = 5000;
 
 /** The filter bar's names (a plain const: tests/check_pf0p_ports.ts reads an export holding "from" and a quote as an import). */
 const FILTER_NAMES = ["from", "to", "staffId", "clientType"] as const;
-export const MetricKey = z.string().regex(/^[a-z][a-z_]{0,29}\.[a-z][a-z0-9_]{0,59}$/, "a metric key is module.name, e.g. sales.leads_added");
+/** A metric key is reports.<area>.<name> (two dots: a one-dot name reads as a combination key to B164's guard, Lead 12 on #3291). */
+export const MetricKey = z.string().regex(/^reports\.[a-z][a-z_]{0,29}\.[a-z][a-z0-9_]{0,59}$/, "a metric key is reports.<area>.<name>, e.g. reports.sales.leads_added");
 export const MetricKind = z.enum(["COUNT", "MONEY", "PERCENT", "LIST"]);
 export type MetricKind = z.infer<typeof MetricKind>;
 const AGGREGATIONS: Record<MetricKind, string[]> = { COUNT: ["COUNT", "SUM"], PERCENT: ["RATIO", "AVG"], MONEY: ["SUM", "AVG", "MEDIAN"], LIST: ["LIST"] };
@@ -206,7 +207,7 @@ export function checkRegistration(metrics: ReadonlyMap<string, MetricRegistratio
   if (typeof read !== "function") throw new Error(`MetricRegistry: ${String(m?.key)} has no read`);
   const def = MetricDefinition.parse(structuredClone(definition));
   if (metrics.has(def.key)) throw new Error(`MetricRegistry: ${def.key} is already registered`);
-  const prefix = def.key.slice(0, def.key.indexOf("."));
+  const prefix = def.key.split(".").slice(0, 2).join(".");   // reports.<area>
   const owner = [...metrics.values()].find((x) => x.key.startsWith(`${prefix}.`) && x.module !== def.module);
   if (owner) throw new Error(`MetricRegistry: the ${prefix}.* keys are ${owner.module}'s (break m2)`);
   return { ...def, read };
