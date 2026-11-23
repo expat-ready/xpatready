@@ -51,4 +51,10 @@ jobs:
       - name: focus-truth.py's tests (ENF-733b, Sample fixtures, a few seconds)
         run: python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_focus_truth.py
       - name: every guard's test, and each fails without its guard
-        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-guards.sh --mutate
+        # 23 Nov: one at a time the rows passed 45 min (run 45157663648: 306 of 363 done). Four parts side by side, one per
+        # processor, every row in exactly one part; the step fails if any part does.
+        run: |
+          T=ai-workers/problem-1-pathway-setup-and-form-filling/product/tools; pids=(); bad=0
+          for i in 1 2 3 4; do bash "$T/check-guards.sh" --mutate --part "$i/4" > "$RUNNER_TEMP/part$i.log" 2>&1 & pids+=($!); done
+          for i in 1 2 3 4; do wait "${pids[$((i - 1))]}" || { bad=1; echo "::error::guards part $i failed"; }; echo "== part $i"; cat "$RUNNER_TEMP/part$i.log"; done
+          exit $bad

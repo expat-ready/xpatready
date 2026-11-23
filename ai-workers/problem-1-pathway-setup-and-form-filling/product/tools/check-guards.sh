@@ -2,12 +2,19 @@
 # The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-758's queue blocked by checks (guard 37, 20 Nov, P-758), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), ENF-738's constraint section (guard 29, 20 Nov), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) with ENF-761's under-cap ACTs (761c) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
-#   bash product/tools/check-guards.sh [--mutate]
+#   bash product/tools/check-guards.sh [--mutate [--part i/n]]
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
 TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh"
+# --mutate --part i/n runs every n-th row from row i (guards.yml runs the parts side by
+# side on one machine); part 1 also runs the plain tests, and every check-isolated-ttl.sh row (it shares ports and databases).
+I=1; N=1
+if [ "${2:-}" = --part ]; then
+  [[ "${3:-}" =~ ^([1-9])/([1-9])$ ]] || { echo "--part needs i/n, digits 1-9"; exit 2; }
+  I=${BASH_REMATCH[1]}; N=${BASH_REMATCH[2]}; [ "$I" -le "$N" ] || { echo "--part $3: no such part"; exit 2; }
+elif [ -n "${2:-}" ]; then echo "unknown argument: $2"; exit 2; fi
 bad=0
-for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
+[ "$I" = 1 ] && for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
 rm -f "${TMPDIR:-/tmp}/guard-$$.log"
 [ "${1:-}" = --mutate ] || exit $bad
@@ -384,7 +391,10 @@ LRG closed|product/tools/lead-read-gate.sh|s/^    \*) echo "#\$PR: \$why"; \[ -n
 LRG list|product/tools/lead-read-paths.txt|/^\/api\/src\/platform\/identity\/$/d|check-lead-read-gate.sh
 LRG main|../../.github/workflows/lead-read.yml|s/^  pull_request_target:$/  pull_request:/|check-lead-read-gate.sh'
 echo "--- each test without its guard (must FAIL)"
+row=0; ran=0
 while IFS='|' read -r g f edit t; do
+  row=$((row + 1)); mine=$(( (row - 1) % N + 1 )); [ "$t" = check-isolated-ttl.sh ] && mine=1; [ "$mine" = "$I" ] || continue
+  ran=$((ran + 1))
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
   cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; mkdir -p "$M/$P/product/design"; cp "$ROOTD/$P/product/design/waves.tsv" "$ROOTD/$P/product/design/waves.md" "$M/$P/product/design/"; cp "$ROOTD/$P/product/focus-list.md" "$M/$P/product/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"
@@ -398,4 +408,5 @@ while IFS='|' read -r g f edit t; do
   else echo "PASS  guard $g off → $t fails ($(tail -1 "$M/log"); first: $(grep -m1 '^FAIL' "$M/log" | cut -c7-90))"; fi
   rm -rf "$M"
 done <<< "$MUT"
+echo "part $I/$N: $ran of $row rows"; [ "$ran" -gt 0 ] || { echo "FAIL  part $I/$N ran no row"; bad=1; }
 exit $bad
