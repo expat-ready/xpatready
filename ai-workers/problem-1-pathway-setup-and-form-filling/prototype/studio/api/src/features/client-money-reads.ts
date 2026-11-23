@@ -11,4 +11,4 @@ import { PlatformClock } from "../platform/identity/port.ts";
 const scopeOf = (db: Db) => { const v = new PgMoneyVisibility(db); return (ctx: Parameters<PgMoneyVisibility["scopeOf"]>[0]) => v.scopeOf(ctx); };
 export default { controllers: [InvoiceReadsController, PaymentReadsController], providers: [
   { provide: InvoiceReads, useFactory: (db: Db, c: PlatformClock) => new InvoiceReads(db, scopeOf(db), { now: () => new Date(c.now()) }), inject: [Db, PlatformClock] },
-  { provide: PaymentReads, useFactory: (db: Db) => new PaymentReads(db, scopeOf(db)), inject: [Db] }] } satisfies Feature;
+  { provide: PaymentReads, useFactory: (db: Db, c: PlatformClock) => new PaymentReads(db, scopeOf(db), { now: () => new Date(c.now()) }), inject: [Db, PlatformClock] }] } satisfies Feature;

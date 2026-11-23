@@ -4,10 +4,11 @@
 // this service again). The firm a hold covers is the one our staff name: these calls have no firm session, and the
 // database refuses them inside one (the definers' system-only check). Place and release each write one line to the held
 // firm's trail through AuditPort, in the same transaction (a line that cannot be written rolls the change back, P-607).
-// That line's actor is `system:platform.register.legal-hold` with the staff member's id in its detail, because the trail
-// has no actor word for our own staff yet (audit-event.ts: OUR_STAFF "has no actor word until PF-4s"; a `staff:` word
-// would be typed as the firm's own staff); PF-4s's guard also writes its own line naming the person, the route and the
-// reason. Legal reading Unconfirmed: no counsel.
+// AUD-3a: that line's actor is the staff member's own word, `ourstaff:<id>` (OUR_STAFF), the request's actor; with no
+// staff member (the port contract's harness, outside any request) it stays `system:platform.register.legal-hold`. The
+// staff member's id stays in its detail too. PF-4s's guard also writes its own line naming the person, the route and the
+// reason. The hold's own `by` column keeps its `staff:<id>` form (the port's shape; a later row's). Legal reading
+// Unconfirmed: no counsel.
 import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -23,8 +24,10 @@ import { scopeOf, type HoldRow } from "./adapter.ts";
 type Tx = Prisma.TransactionClient;
 /** SA-07 Appendix A "Place and release legal holds" (Platform Owner only). */
 export const LEGAL_HOLD_KEY = "system/compliance:legal-hold";
-/** The audit line's actor (see the header). */
+/** The audit line's actor outside a staff member's request (see the header). */
 export const LEGAL_HOLD_ACTOR = "system:platform.register.legal-hold";
+/** AUD-3a: the line's actor, our staff member's own word when there is one. */
+const actorOf = (staffId?: string) => (staffId ? `ourstaff:${staffId}` : LEGAL_HOLD_ACTOR);
 /** The audit port the service writes through (a test gives its own). */
 export const LEGAL_HOLD_AUDIT = Symbol("LegalHolds.audit");
 
@@ -127,7 +130,7 @@ export class LegalHolds {
         if (/plat_legal_hold_placed: no such firm/.test(String(e))) throw new LegalHoldRefused("NOT_FOUND", "No such firm.");
         throw e;
       }
-      await this.audit.record(tx, { firmId: firm, actor: LEGAL_HOLD_ACTOR, action: "platform.legal_hold.placed", entity: "plat_legal_hold", entityKey: row.id,
+      await this.audit.record(tx, { firmId: firm, actor: actorOf(staffId), action: "platform.legal_hold.placed", entity: "plat_legal_hold", entityKey: row.id,
         summary: `ExpatReady placed a legal hold on ${words(s)}: nothing it covers can be deleted until the hold is released.`,
         detail: { scope: s.kind, by: p.by, ...(staffId ? { staffId } : {}) }, before: null, after: { ...valuesOf(s, p.reason, p.by), active: true, placedAt: row.placed_at.toISOString() } });
       return { holdId: row.id };
@@ -149,7 +152,7 @@ export class LegalHolds {
       const [h] = await this.rows({ firm, active: false, id, limit: 1 }, tx);
       if (!h) throw new LegalHoldRefused("NOT_FOUND", "No such hold.");
       const held = valuesOf(h.scope, h.reason, h.placedBy);
-      await this.audit.record(tx, { firmId: firm, actor: LEGAL_HOLD_ACTOR, action: "platform.legal_hold.released", entity: "plat_legal_hold", entityKey: id,
+      await this.audit.record(tx, { firmId: firm, actor: actorOf(staffId), action: "platform.legal_hold.released", entity: "plat_legal_hold", entityKey: id,
         summary: `ExpatReady released its legal hold on ${words(h.scope)} (placed ${h.placedAt.slice(0, 10)}): what it covered can be deleted again under the usual keep periods.`,
         detail: { by: r.by, ...(staffId ? { staffId } : {}) },
         before: { ...held, active: true, releasedBy: null, releaseReason: null, releasedAt: null },
