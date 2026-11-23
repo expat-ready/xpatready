@@ -124,7 +124,8 @@ try {
       values ('${CASE_C}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07003', 'sample-firm', '${A}', '${CLIENT_C}', 'OPEN'),
              ('${CASE_B}', '${W}', gen_random_uuid(), 'user-P', 'user-S', 'C-2026-07001', 'sample-solo', '${B}', '${CLIENT_B}', 'OPEN');
     insert into fo_prospect (id, firm_id, number, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
-      values (gen_random_uuid(), '${A}', 'P-07001', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${PA}', '${PA}', '${staffR}', 'seed:FO-7t-1', now());
+      values (gen_random_uuid(), '${A}', 'P-07001', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${PA}', '${PA}', '${staffR}', 'seed:FO-7t-1', now()),
+             (gen_random_uuid(), '${A}', 'P-07002', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${PC}', '${PC}', '${staffR}', 'seed:FO-7t-1', now());   -- PC too (Lead B: a write with no case needs a party the writer sees)
     delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key in ('agent/case:view.all', 'agent/prospect:view.all')`);
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'seed:FO-7t-1', now())`);
   const audits = (action: string) => Number(sql(`select count(*) from audit_event where action = '${action}'`));
@@ -247,6 +248,16 @@ try {
   sql(`insert into platform_role_permission (role, permission_key) values ('OWNER', 'agent/case:view.all'), ('CASE_MANAGER', 'agent/case:view.all')`);
   ok("FO-7t DW6 fail (build round 1, M1): a made-up case, another firm's case, another client's case, a case other than the request's, a request on a made-up case, a case the caller cannot see → 404 or a field error; nothing written",
     rCase.status === 201 && [...caseBad, unseen].every((r) => r.status === 404 || fieldError(r.status)) && before() === mid && mid !== was, [rCase.body, ...[...caseBad, unseen].map((r) => [r.status, r.body?.code])]);
+  // Lead B's money read: with no case, a request or deposit needs a party the writer sees (MoneyVisibilityPort), else 404.
+  // user-R (Owner + Case Manager, agent/payment:record) sees PA through its own prospect; with both roles' prospect view
+  // keys taken for these two calls (then put back), it sees no party.
+  const seenReq = await call(tR, "POST", "/requests", { ...reqBody, amountMinor: 700 }), seenDep = await dep({ method: "WIRE", amountMinor: 700, idempotencyKey: "fo7t-party-seen" }), was2 = before();
+  sql(`delete from platform_role_permission where role in ('OWNER', 'CASE_MANAGER') and permission_key in ('agent/prospect:view.all', 'agent/prospect:view.own')`);
+  const unseenParty = [await call(tR, "POST", "/requests", { ...reqBody, amountMinor: 700 }), await dep({ method: "WIRE", amountMinor: 700, idempotencyKey: "fo7t-party-unseen" })];
+  sql(`insert into platform_role_permission (role, permission_key) values ('OWNER', 'agent/prospect:view.all'), ('OWNER', 'agent/prospect:view.own'), ('CASE_MANAGER', 'agent/prospect:view.all'), ('CASE_MANAGER', 'agent/prospect:view.own')`);
+  ok("FO-7t DW3/DW4 pass (Lead B's money read): a writer who sees the party (no case) → request 201 and deposit 201", seenReq.status === 201 && seenDep.status === 201, [seenReq.body, seenDep.body]);
+  ok("FO-7t DW3/DW4 fail (Lead B's money read): the same writer holding agent/payment:record but seeing no party → request 404 and deposit 404, nothing written",
+    unseenParty.every((r) => r.status === 404) && before() === was2, unseenParty.map((r) => r.body));
   const bal = await call(tR, "GET", `/balances?personId=${PA}`);
   const dbBal = (cur: string) => Number(sql(`select coalesce(sum(amount_minor), 0) from money_trust_entry where person_id = '${PA}' and currency = '${cur}'`));
   const sumOf = (cur: string) => (bal.body.balances ?? []).filter((x: { currency: string }) => x.currency === cur).reduce((s: number, x: { amountMinor: number }) => s + x.amountMinor, 0);
