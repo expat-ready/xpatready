@@ -2,7 +2,7 @@
 
 **Ask (founder, 23 Nov ~10:3x IST):** staff work in parallel in several tabs across the whole product; every left-menu item opens in its own tab; the same record open twice must not conflict; a change typed in one place shows everywhere it is shown; the server is written only on Save, with the last value. Industry best practice, on every screen, written into the UX standard and its quality gate.
 
-**Decision path.** The tech lead (Lead 10) first chose real browser tabs. The founder then chose, as a final product decision, **tabs drawn inside the app** (the console pattern), keeping shared drafts and the versioned save. This note records the evidence for both and the standard that follows (`EXPERIENCE.md` §2.12).
+**Decision path.** The tech lead (Lead 10) first chose real browser tabs. The founder then chose, as a final product decision, **tabs drawn inside the app** (the console pattern), keeping shared drafts and the versioned save. This note records the evidence for both and the standard that follows (`EXPERIENCE.md` §2.13).
 
 Sources are official pages. Fetches from this cloud session to tanstack.com, learn.microsoft.com and rfc-editor.org were blocked by the network policy, so some quotes come from the search engine's extract of the cited page; those are marked *(extract)* and should be re-read on the live page before they are quoted elsewhere. Read 23 Nov 2026.
 
@@ -35,14 +35,14 @@ Drafts are kept per browser tab in sessionStorage, so a reload keeps them; they 
 
 ## 3. Save once, safely across people (HTTP)
 
-* Each editable record has a `version` (its `updated_at`, or a hash of when its parts changed). Reads send it as a strong **ETag** (RFC 9110 §8.8.3); the save sends it back as **If-Match** (§13.1.1) or in the body (STANDARDS §4).
+* Each editable record has a `version` (its `updated_at`, or a hash of when its parts changed). Reads carry it in the body; the save sends it back as **If-Match** (§13.1.1) or in the body (STANDARDS §4), and a save's answer carries the new one as a strong **ETag** (§8.8.3). Reads send no version ETag: a read can change while its record's version does not (the firm profile counts offices), so a cache could get 304 with stale data (PF-31 review M3).
 * RFC 9110 §13.1.1 lets a server answer a failed If-Match with **412**; §15.5.10 defines **409** for "a conflict with the current state of the target resource", the user being able to resolve it, with the response describing the conflict. STANDARDS §4 and the existing offices and firm-profile routes already answer **409 with the latest record**; we keep 409 so the screen can show both values without a second read (rfc-editor.org/rfc/rfc9110 §8.8.3, §13.1.1, §15.5.10, §15.5.13 *(extract)*).
-* RFC 6585 §3's **428 Precondition Required** (a server that requires If-Match) is not used yet: routes that take a version already refuse a save without one (422 in words).
+* RFC 6585 §3's **428 Precondition Required** (a server that requires If-Match) is not used yet. Offices and the firm profile refuse a save without a version (422 in words); a person's phone takes one optionally, so older callers keep working, and the screens always send it.
 * One shared Nest interceptor (`api/src/platform/http/if-match.ts`) sets the ETag and maps If-Match onto the version for routes marked `@Versioned()`; a stale version is the service's own 409 under its row lock.
 
-## 4. The standard (copied into EXPERIENCE.md §2.12)
+## 4. The standard (copied into EXPERIENCE.md §2.13)
 
-Workspace tabs (one strip under the header; open-or-focus; own address, scroll and form state; restore after reload; cap 12 with a message; close by ×, middle-click, Delete, Alt+Shift+W, with a question and a dot when unsaved; ARIA tabs; "Open items" menu below 768 px); one shared draft per record (all views at once, a second window through BroadcastChannel, a line "Unsaved changes … also open in N other windows"); save once with the version (If-Match), the other views read it again; a stale save is EXPERIENCE §4's conflict state (both values, take the saved one or keep mine). Applied first to Offices (a platform settings form; the firm profile has no screen yet, it is PF-5s's) and a lead's phone; every other screen follows when it is next touched. Test helper: `prototype/studio/tests/lib/multi-view.ts`; proof: `tests/check_pf31_multitab_browser.ts`.
+Workspace tabs (one strip under the header; open-or-focus; own address, scroll and form state; restore after reload; cap 12 with a message; close by ×, middle-click, Delete, Alt+Shift+W, with a question and a dot when unsaved; ARIA tabs; "Open items" menu below 768 px); one shared draft per record (all views at once, a second window through BroadcastChannel, a line "Unsaved changes … also open in N other windows"); save once with the version (If-Match), the other views read it again; a stale save is EXPERIENCE §4's conflict state (both values, take the saved one or keep mine). "Keep mine" carries only the fields I changed onto the newer record; the rest keep the saved values. Applied first to Offices (a platform settings form; the firm profile has no screen yet, it is PF-5s's) and a lead's phone; every other screen follows when it is next touched. Test helper: `prototype/studio/tests/lib/multi-view.ts`; proof: `tests/check_pf31_multitab_browser.ts`.
 
 ## 5. WAI-ARIA tabs
 
