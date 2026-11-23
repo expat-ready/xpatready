@@ -3,6 +3,7 @@
 // a throwaway folder; S3Files on the recorded fake S3 client, tests/fixtures/pff1-s3/fake-s3.ts), and the shared
 // FilesPort contract, unchanged, on all three. No AWS account, no network, no database, no server (US$0).
 //   tsx --tsconfig api/tsconfig.json studio/tests/check_pffw_files_limits.ts
+import { randomBytes } from "node:crypto";
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -10,6 +11,7 @@ import { runContract } from "../ports/contracts/contract.ts";
 import { filesPortContract } from "../ports/contracts/files-port.contract.ts";
 import { FILE_MAX_BYTES, FileTooLarge, FileTypeMalformed, TYPE_MAX_BYTES, fakeFiles, parseFilePut, sha256Hex, type FilesPort } from "../ports/files.ts";
 import { LocalFiles } from "../api/src/front-office/files.ts";
+import { Secret } from "../api/src/platform/config/secret.ts";
 import { MAX_BYTES } from "../api/src/platform/files/file-type.ts";
 import { DEFAULT_FILES_REGION, objectKey, S3Files } from "../api/src/platform/files/s3-files.ts";
 import { fakeS3, type FakeS3 } from "./fixtures/pff1-s3/fake-s3.ts";
@@ -17,6 +19,10 @@ import { fakeS3, type FakeS3 } from "./fixtures/pff1-s3/fake-s3.ts";
 const STUDIO = join(import.meta.dirname, ".."), WORK = join(STUDIO, "var", `pffw-check-${process.pid}`);
 const FIRM_A = "0c0c0c0c-0000-4000-8000-0000000000a1";
 const BUCKET = "pffw-recorded-bucket", KMS = "arn:aws:kms:ca-central-1:000000000000:key/00000000-0000-4000-8000-00000000f1f1";
+// Made by this run, never real (as check_pff1_s3_files.ts does): the SDK signs with them and the fake never checks a
+// signature. Without them the SDK looks for the machine's own AWS credentials, which GitHub's runner does not have, and
+// every S3 request fails before it reaches the fake (PF-Fw CI, run 45097908341).
+const creds = { accessKeyId: new Secret("PFFW_ACCESS_KEY_ID", `AKIA${randomBytes(8).toString("hex").toUpperCase()}`), secretAccessKey: new Secret("PFFW_SECRET_ACCESS_KEY", randomBytes(30).toString("base64")) };
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail)?.slice(0, 500)}` : ""}`); };
 const refused = async (f: () => unknown, test: (e: unknown) => boolean = () => true) => { try { await f(); return false; } catch (e) { return test(e); } };
@@ -44,7 +50,7 @@ function rig() {
       return out;
     },
   };
-  return { s3, track, files: new S3Files({ bucket: BUCKET, kmsKeyId: KMS, requestHandler: handler as never, credentials: undefined }) };
+  return { s3, track, files: new S3Files({ bucket: BUCKET, kmsKeyId: KMS, requestHandler: handler as never, credentials: creds }) };
 }
 let localN = 0;
 const local = () => new LocalFiles(join(WORK, `local-${++localN}`));
