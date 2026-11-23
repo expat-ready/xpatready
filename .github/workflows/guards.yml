@@ -4,6 +4,8 @@
 name: guards
 on:
   pull_request:
+    # SPD-2 item 5 (b): a draft runs only the light checks (ci's guard, pr-rules, module-cards); this runs on ready-for-review.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".claude/settings.json"
       - ".claude/skills/lead/**"
@@ -27,9 +29,10 @@ permissions:
   contents: read
 concurrency:
   group: guards-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}   # SPD-2 item 5: a newer push supersedes; a merge-queue batch never
 jobs:
   guards:
+    if: "${{ !github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/') }}"   # SPD-2 item 5 (b): not on a draft (a merge-queue batch is a draft and still runs it)
     runs-on: ubuntu-latest
     timeout-minutes: 45   # CI-PRE (19 Nov): about 150 mutation rows, each re-running a test file; the run reached the old limit of 10.
                           # ENF-758 (20 Nov): runs took 20-27 min before its 25 rows (~25 s each on a runner); at 30 the run was cancelled mid-way

@@ -32,6 +32,7 @@ const generated = () => ({
   PLATFORM_COGNITO_USER_POOL_ID: `ca-central-1_${rand(9)}`,
   PLATFORM_COGNITO_CLIENT_ID: rand(26),
   PLATFORM_STRIPE_SECRET_KEY: ["sk", "test", rand(32)].join("_"),
+  PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET: ["whsec", rand(32)].join("_"),   // FO-7c part 1: optional, a secret setting (redacted and scrubbed like the rest)
   PLATFORM_STRIPE_WEBHOOK_SECRET: ["whsec", rand(32)].join("_"),
   PLATFORM_SES_REGION: "ca-central-1",
   PLATFORM_BOLDSIGN_API_KEY: rand(40),
@@ -41,6 +42,8 @@ const generated = () => ({
   PLATFORM_SECRET_BOX_KEYS: `2:${key32()},1:${key32()}`,
   PLATFORM_SECRET_BOX_KEY_VERSION: "2",
   PLATFORM_LOCAL_SECRET: rand(40),   // PF-24w: PF-4's stand-in key is a secret setting of the loader too (optional)
+  PLATFORM_SYSTEM_LOCAL_SECRET: rand(40),   // PF-4s: our own staff's stand-in key, a secret setting too (optional; never PLATFORM_LOCAL_SECRET's value)
+  PLATFORM_FILES_LINK_KEY: key32(),   // PF-F1b: the S3 download links' key is a secret setting of the loader too (optional)
 } as Record<string, string>);
 /** Every secret value in a generated set (each secret-box key on its own), to look for in messages, logs and responses. */
 const secretValues = (env: Record<string, string>) => SECRET_SETTING_NAMES.flatMap((n) => (n === "PLATFORM_SECRET_BOX_KEYS" ? env[n].split(",").map((e) => e.slice(e.indexOf(":") + 1)) : [env[n]])).filter(Boolean);

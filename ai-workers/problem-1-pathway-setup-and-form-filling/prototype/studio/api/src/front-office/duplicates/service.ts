@@ -44,12 +44,18 @@ export class Duplicates {
     // The match runs in two narrow definer functions of the session's firm (FO-9a's migration; break B1: under the firm
     // walls PostgreSQL uses no trigram index for the app role's own query). Visibility is part of the person query, so a
     // caller's own match is never crowded out by records they cannot open.
-    const people = email || phones.length || name ? await this.db.$queryRaw<PersonRow[]>`
+    const found = email || phones.length || name ? await this.db.$queryRaw<PersonRow[]>`
       select id::text, given_names, family_name, by_email, by_phone, sim, seen
         from fo_sales_person_matches(${ctx.firmId}::uuid, ${email}::text, ${phones}::text[], ${name}::text, ${ctx.staffId}::uuid,
                                      ${vis.seesAll}, ${vis.seesUnassigned}, ${NAME_THRESHOLD}::real, 50)` : [];
-    const companies = company ? await this.db.$queryRaw<CompanyRow[]>`
+    const foundCompanies = company ? await this.db.$queryRaw<CompanyRow[]>`
       select id::text, operating_name, sim from fo_sales_company_matches(${ctx.firmId}::uuid, ${company}::text, ${NAME_THRESHOLD}::real, 50)` : [];
+    // FO-9b M3: a merged-away record is never a match, named or counted (its survivor is the record to use).
+    const gone = new Set([
+      ...(found.length ? await this.db.foPerson.findMany({ where: firmScope(ctx.firmId, { id: { in: found.map((p) => p.id) }, mergedIntoId: { not: null } }), select: { id: true } }) : []),
+      ...(foundCompanies.length ? await this.db.foCompany.findMany({ where: firmScope(ctx.firmId, { id: { in: foundCompanies.map((c) => c.id) }, mergedIntoId: { not: null } }), select: { id: true } }) : []),
+    ].map((r) => r.id));
+    const people = found.filter((p) => !gone.has(p.id)), companies = foundCompanies.filter((c) => !gone.has(c.id));
 
     const seer: Seer = { see: (o) => vis.seesAll || o === ctx.staffId, seesAll: vis.seesAll, actor: actorOf(ctx) };
     const seenPeople = new Set(people.filter((p) => p.seen).map((p) => p.id));
@@ -100,7 +106,7 @@ export async function wonDuplicates(tx: Tx | PrismaClient, firmId: string, subje
                (case when ${name}::text = '' then 0 when ${name}::text ~ '[0-9]' or p."name_key" ~ '[0-9]' then (lower(p."name_key") = ${name}::text)::int
                      else extensions.similarity(lower(p."name_key"), ${name}::text) end)::float8 as sim, p."created_at"
           from "fo_person" p
-         where p."firm_id" = ${firmId}::uuid and p."id" <> ${subject.personId}::uuid
+         where p."firm_id" = ${firmId}::uuid and p."id" <> ${subject.personId}::uuid and p."merged_into_id" is null
            and ((${email}::text is not null and p."email" = ${email}::text) or (cardinality(${phones}::text[]) > 0 and p."phone_e164" = any(${phones}::text[]))
              or (${name}::text <> '' and lower(coalesce(p."name_key", '')) <> '' and (${name}::text ~ '[0-9]' or p."name_key" ~ '[0-9]') and lower(p."name_key") = ${name}::text)
              or (${name}::text <> '' and ${name}::text !~ '[0-9]' and p."name_key" !~ '[0-9]' and extensions.similarity(lower(p."name_key"), ${name}::text) >= ${NAME_THRESHOLD}::float8))
@@ -113,7 +119,7 @@ export async function wonDuplicates(tx: Tx | PrismaClient, firmId: string, subje
   const rows = await tx.$queryRaw<Pick<CompanyRow, "id" | "sim">[]>`
     select id::text, sim from (
       select c."id", (case when c."normalised_name" = ${c.normalisedName}::text then 1 else extensions.similarity(lower(c."normalised_name"), ${c.normalisedName}::text) end)::float8 as sim, c."created_at"
-        from "fo_company" c where c."firm_id" = ${firmId}::uuid and c."id" <> ${subject.company.id}::uuid
+        from "fo_company" c where c."firm_id" = ${firmId}::uuid and c."id" <> ${subject.company.id}::uuid and c."merged_into_id" is null
     ) m where sim >= ${NAME_THRESHOLD}::float8 order by sim desc, created_at, id limit ${MAX_MATCHES}`;
   return { matches: rows.map((r) => {
     const reasons: MatchReason[] = [{ key: "NAME", similarity: Math.min(1, Math.round(r.sim * 1000) / 1000) }];
