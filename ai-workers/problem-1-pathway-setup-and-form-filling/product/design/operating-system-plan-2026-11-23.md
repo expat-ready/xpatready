@@ -98,3 +98,7 @@ Baseline, ci.yml, 22 Nov 11:30 to 23 Nov 11:30 IST: 150 batch runs, 84 green, **
 **M1 done 12:27:** newest 20 green gate runs, median wait 0.5 min (was about 13), max 10.1. It was refused in the shell, then set in the browser on the founder's typed words. Way back: https://github.com/expat-ready/xpatready/settings/variables/actions, delete GATE_RUNNER. Nothing else is set this way.
 **M2, M3:** #3208 and #2971 carry the label at 12:27, not merged. **M7/M8:** Lead 2 did not start the lane (a relayed yes is not the founder's word there) and asks the founder itself; PRs stay separate meanwhile.
 **M11:** #2372 close, alert later (founder, card). **M19:** 6aeb97eeb approved only while CI_RUNNER is unset; before any use: a fork's run can name its own label (provider restriction needed), a deleted fork fails open. No PR opened. #2151 merged 18 Nov 20:15 UTC: confirmed.
+
+## Founder answers relayed by Lead 2 (12:4x IST) and the order now
+Stay public until the final solution; **no combined PR: M7 and M8 land separately** (supersedes "Land as ONE" above); #2372 closes (Lead 3). Current Lead: Lead 3 (local_cf20dbb4).
+Order: #3208, #2971, then #2434, #2428, #2370, #2487; then the stack bottom up (#2982, #2598, #2457 fixed, #2483, #2431, #2605 guarded, #2785, #2607, #2599, #2590); then #2597, #2473 fixed, #2738, #2444 fixed; #2915; #2595; #3035 last.
