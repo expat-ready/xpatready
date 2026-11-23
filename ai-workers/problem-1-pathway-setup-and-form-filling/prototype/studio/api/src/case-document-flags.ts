@@ -15,10 +15,10 @@
 //   POST /api/runtime/documents/:id/flags   { language?, translation?, translation_detail?, notarisation?, notarisation_detail?, expires_on?, version } → the same
 import { Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Param, Post } from "@nestjs/common";
 import { z } from "zod";
-import { INVISIBLE, UNSTORABLE } from "../../../contracts/documents.ts";
-import type { SnapTypeDefaults } from "../../../engine/snapshot.ts";
-import { actorOf, Audit, CaseRead, Db, type Actor } from "../core.ts";
-import { Runtime, type Reached } from "../runtime.ts";
+import { INVISIBLE, UNSTORABLE } from "../../contracts/documents.ts";
+import type { SnapTypeDefaults } from "../../engine/snapshot.ts";
+import { actorOf, Audit, CaseRead, Db, type Actor } from "./core.ts";
+import { Runtime, type Reached } from "./runtime.ts";
 
 type H = string | undefined;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

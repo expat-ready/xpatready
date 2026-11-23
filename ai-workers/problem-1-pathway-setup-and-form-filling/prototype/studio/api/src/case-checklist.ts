@@ -26,7 +26,7 @@ import { actorOf, Audit, CaseRead, Db, fail, PY, STUDIO, VAR, WORKSPACE_KEY, typ
 import { privateWords, Runtime, type Reached } from "./runtime.ts";
 import { caseName, releaseLabel } from "../../contracts/runtime.ts";
 import { checkFile, KINDS, NOTHING_STORED, SCRIPTS_FLAG, type Checked, type FileKind, type RefusalReason } from "./platform/files/file-type.ts";
-import { flagsOf, translationLines, type DocFlags, type TranslationLine } from "./case-documents/flags.ts"; // CS-D7
+import { flagsOf, translationLines, type DocFlags, type TranslationLine } from "./case-document-flags.ts"; // CS-D7
 import type { SnapTypeDefaults } from "../../engine/snapshot.ts";
 
 type H = string | undefined;
