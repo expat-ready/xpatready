@@ -21,7 +21,9 @@ applies the later ones: a loop over all.filter((x) => x > NAME) or >= NAME (type
   upper-case name the loops never fed) is left out: a loop variable, an expression or no argument counts (fails
   closed); so does every call when a loop names no database (file(d), apply(d)). Every later loop of every name counts.
   A multi-step suite (FO-7ts's three parts) applies another of its own migrations after the loop: a line, not a
-  comment, applying a later-stamped migration of the suite, to a database the loop fed, that has its own later loop.
+  comment, applying a later-stamped migration of the suite, to a database the loop named and fed, whose own later
+  loop feeds that database too (a loop that names no database never has its step ended); a read naming a pre-loop
+  snapshot is still refused after it.
   There a plain snapshot before it ("const x = fn(db)," or ";", never a chain going on) is the next step's baseline,
   reads after it are judged by that step's loop, and a line naming both that baseline and a pre-loop snapshot is
   refused. Anything else (a rerun of its own migration, another database, a migration with no loop) ends no step.
@@ -33,7 +35,8 @@ applies the later ones: a loop over all.filter((x) => x > NAME) or >= NAME (type
 
 Not covered (state it in the review of a new suite): a snapshot taken by an inline sql(…pg_proc…) with no reader
 function, a reader imported from another file or called as a method (cat.fns(T)), migrations applied by
-`prisma migrate deploy`, a loop header split over two lines, and files other than prototype/studio/tests/*.ts.
+`prisma migrate deploy`, a loop header split over two lines, a step baseline compared with the pre-loop snapshot
+over two lines or through an alias (const b0 = before), and files other than prototype/studio/tests/*.ts.
 
 Static reading of the test's text only: no database, no network, US$0. Exit 0 clean, 1 refused (each names the file,
 the lines and the fix), 2 could not run.
@@ -48,7 +51,7 @@ CAT = re.compile(r"\b(pg_proc|pg_polic(?:y|ies)|pg_trigger|pg_class|pg_attribute
 NEWC = re.compile(r'(?:\bconst\s+|,\s*)([A-Z][A-Z0-9_]*)\s*=\s*["\'](\d{14}_[A-Za-z0-9_-]+)["\']')
 DEF = re.compile(r"(?:\bfunction\s+([A-Za-z_]\w*)\s*\(|(?:\b(?:const|let)\s+|,\s*)([A-Za-z_]\w*)\s*=\s*(?:async\s*)?"
                  r"(?:\([^()]*\)|[A-Za-z_]\w*)\s*(?::[^=]+)?=>)")
-MARK = re.compile(r"own-migration:\s*(?:whole catalogue|ok)\s*\(\s*\S", re.I)   # a reason in brackets is required
+MARK = re.compile(r"own-migration:\s*(?:whole catalogue|ok)\s*\(\s*[^)\s][^)]*\)", re.I)   # a reason in brackets is required
 PSQLDB = re.compile(r"\bpsql\(\s*(?:urlOf\(\s*)?([A-Za-z_]\w*)")
 
 
@@ -99,7 +102,8 @@ def loop_lines(lines, name):
     out = []
     for i in sorted(found):
         near = lines[i]
-        if not re.search(r"\bpsql\(|of\s*\[", near) and i + 1 < len(lines): near += "\n" + lines[i + 1]
+        if not re.search(r"\bpsql\(|of\s*\[", near) and re.search(r"[){]\s*$", near) and i + 1 < len(lines):
+            near += "\n" + lines[i + 1]   # the body on the next line only when the loop line ends at ) or { (round 3)
         dbs = set(PSQLDB.findall(near))
         for grp in re.findall(r"of\s*\[([^\]]*)\]", near): dbs |= set(re.findall(r"[A-Za-z_]\w*", grp))
         out.append((i, dbs))
@@ -119,7 +123,8 @@ def scan(path):
     # databases later given every migration (for (const d of all) psql(X, …))
     every = {i: set(PSQLDB.findall(l)) for i, l in enumerate(lines) if re.search(r"\bof\s+(?:all|ALL)\s*\)", l)}
     stamps = dict(NEWC.findall(text))
-    own = sorted((i, n) for i, l in enumerate(lines) if not l.strip().startswith("//") for n in names
+    code = [re.sub(r"/\*.*?\*/", "", l).split("//")[0] for l in lines]   # comments name no applied migration (round 3)
+    own = sorted((i, n) for i, l in enumerate(code) for n in names
                  if re.search(r"\bMIG\s*,\s*" + re.escape(n) + r"\s*,\s*[\"']migration\.sql", l))
     out, seen = [], set()
     for name in names:
@@ -147,18 +152,24 @@ def scan(path):
                 # The next of the suite's own migrations applied after the loop starts its next step: a plain snapshot
                 # taken before it is that step's baseline; reads after it are judged against that step's own loops.
                 nxt = next((j for j, n2 in own if j > loop and stamps[n2] > stamps[name]
-                            and (not dbs or set(PSQLDB.findall(lines[j])) & set(dbs))
-                            and any(k > j for k, _ in loop_lines(lines, n2))), len(lines))   # round 2 M1
+                            and dbs and set(PSQLDB.findall(lines[j])) & set(dbs)
+                            and any(k > j and d2 & set(dbs) for k, d2 in loop_lines(lines, n2))), len(lines))   # round 2 M1, round 3
                 before = [i for i, m in at if not after_loop(i, m)]
                 after = [i for i, m in at if after_loop(i, m) and i < nxt and counts(m) and not marked(lines, i)
                          and not (nxt < len(lines) and snapshot(i, m))]
                 # A step's baseline later compared with a snapshot from before the loop (round 2 m1): both names on one line.
                 pre = {v for i, m in at if not after_loop(i, m) for v in re.findall(r"(?:\b(?:const|let)\s+|,\s*)(\w+)\s*=\s*$", lines[i][:m.start()])}
                 base = {v for i, m in at if after_loop(i, m) and i < nxt and snapshot(i, m) for v in re.findall(r"(?:\b(?:const|let)\s+|,\s*)(\w+)\s*=\s*$", lines[i][:m.start()])}
+                bare = lambda l: re.sub(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|`[^`]*`', "", l.split("//")[0])   # names, not words in messages
+                # Any read after the next own migration that names a pre-loop snapshot is still compared with it (round 3 MA1).
+                if pre and nxt < len(lines):
+                    after += [i for i, m in at if i >= nxt and counts(m) and not marked(lines, i)
+                              and any(re.search(r"\b" + re.escape(a) + r"\b", bare(lines[i])) for a in pre)]
+                    after = sorted(set(after))
                 if pre and base:
                     first = min((i for i, l in enumerate(lines) if i > loop and not marked(lines, i)
-                                 and any(re.search(r"\b" + re.escape(a) + r"\b", l) for a in pre)
-                                 and any(re.search(r"\b" + re.escape(b) + r"\b", l) for b in base)), default=None)
+                                 and any(re.search(r"\b" + re.escape(a) + r"\b", bare(l)) for a in pre)
+                                 and any(re.search(r"\b" + re.escape(b) + r"\b", bare(l)) for b in base)), default=None)
                     if first is not None: after = sorted(set(after) | {first})
                 if before and after and (path, after[0], fn) not in seen:
                     seen.add((path, after[0], fn))

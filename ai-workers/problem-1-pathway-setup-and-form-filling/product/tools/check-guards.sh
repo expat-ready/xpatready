@@ -252,7 +252,9 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 38 named|product/tools/own-migration-guard.py|s/^            v = re.escape(m.group(1))/            v = "no-such-list"/|check-own-migration-guard.sh
 38 counts|product/tools/own-migration-guard.py|s/^                    if not dbs: return True/                    return False/|check-own-migration-guard.sh
 38 step|product/tools/own-migration-guard.py|s/^                nxt = next((j for j, n2 in own/                nxt = len(lines) if 1 else next((j for j, n2 in own/|check-own-migration-guard.sh
-38 steploop|product/tools/own-migration-guard.py|s/^                            and any(k > j for k, _ in loop_lines(lines, n2))), len(lines))/                            ), len(lines))/|check-own-migration-guard.sh'
+38 steploop|product/tools/own-migration-guard.py|s/^                            and any(k > j and d2 \& set(dbs) for k, d2 in loop_lines(lines, n2))), len(lines))/                            ), len(lines))/|check-own-migration-guard.sh
+38 stepdb|product/tools/own-migration-guard.py|s/^                            and dbs and set(PSQLDB.findall/                            and True or set(PSQLDB.findall/|check-own-migration-guard.sh
+38 late|product/tools/own-migration-guard.py|s/^                if pre and nxt < len(lines):/                if False:/|check-own-migration-guard.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 jsparse() { node --check "${@: -1}"; }   # "$sh -n FILE" for a .js (guard 36: app-view.js; bash -n cannot read JavaScript)
 MUT="$MUT"'

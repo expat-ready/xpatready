@@ -110,6 +110,29 @@ suite e8 'const after = all.filter((d) => d > NEW);' 'const before = fns(T);' 'f
 run "$W/e8.ts"; ok "11. m3: iterating [...after] is applying it" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 suite e12 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'const c = fns(T); // own-migration: ok'
 run "$W/e12.ts"; ok "11. m3: a marker with no reason does not count" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+# 12. review round 3: the step rule, tighter
+step2() {  # step2 <name> <lines after the snapshot and the NEW..NEW2 loop…>
+  local n=$1; shift
+  { echo 'const NEW = "20261117090000_a", NEW2 = "20261117100000_b";'
+    echo 'const fns = (db: string) => sql(db, `select proname from pg_proc`);'
+    echo 'const before = fns(T);'; printf '%s\n' "$@"; } > "$W/$n.ts"; }
+step2 b1 'for (const d of all.filter((x) => x > NEW && x < NEW2)) psql(T, ["-f", d]);' 'psql(T, ["-f", join(MIG, NEW2, "migration.sql")]);' 'const c = fns(T).filter((f) => !before.includes(f));' 'for (const d of all.filter((x) => x > NEW2)) psql(T, ["-f", d]);'
+run "$W/b1.ts"; ok "12. MA1: a read naming the pre-loop snapshot after the next own migration is refused, whatever step it falls in" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+step2 b2 'for (const d of all.filter((x) => x > NEW && x < NEW2)) psql(T, ["-f", d]);' 'psql(T, ["-f", join(MIG, NEW2, "migration.sql")]);' 'for (const d of all.filter((x) => x > NEW2)) psql(EMPTY, ["-f", d]);' 'const c = fns(T).filter((f) => !before.includes(f));'
+run "$W/b2.ts"; ok "12. MA2: the next migration's loop must feed the same database to end the step" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+step2 b3z 'for (const d of all.filter((x) => x > NEW && x < NEW2)) apply(d);' 'const z = 0;' 'psql(EMPTY, ["-f", join(MIG, NEW2, "migration.sql")]);' 'for (const d of all.filter((x) => x > NEW2)) psql(EMPTY, ["-f", d]);' 'const c = fns(T).filter((f) => !before.includes(f));'
+run "$W/b3z.ts"; ok "12. MA3: a loop that names no database never has its step ended (fails closed)" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+step2 b3 'for (const d of all.filter((x) => x > NEW && x < NEW2)) apply(d);' 'psql(EMPTY, ["-f", join(MIG, NEW2, "migration.sql")]);' 'for (const d of all.filter((x) => x > NEW2)) psql(EMPTY, ["-f", d]);' 'const c = fns(T).filter((f) => !before.includes(f));'
+run "$W/b3.ts"; ok "12. MA3: a loop's databases come from the next line only when its body sits there" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite b10 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'const c = fns(T); // own-migration: ok ( )'
+run "$W/b10.ts"; ok "12. mi1: a marker with an empty reason does not count" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite b13 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'const z = 1; /* psql(T, ["-f", join(MIG, NEW2, "migration.sql")]) */' 'const c = fns(T);'
+sed -i '1s/.*/const NEW = "20261117090000_a", NEW2 = "20261117100000_b";/' "$W/b13.ts"
+run "$W/b13.ts"; ok "12. mi4: an own migration named only in a comment ends no step" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+three b12 'ok("the mid step is as before", added2.length === 1);'
+run "$W/b12.ts"; ok "12. mi3: names inside a message are not a comparison (three-step suite still passes)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+step2 e2b 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'psql(T, ["-f", join(MIG, NEW2, "migration.sql")]);' 'const c = fns(T);' 'const gone = c.filter((f) => !before.includes(f));'
+run "$W/e2b.ts"; ok "12. a plain snapshot after an own migration with no loop of its own is no baseline: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 # 8. a folder: every .ts in it, and a missing path cannot run
 run "$W"; ok "8. a folder is read file by file (the refused fixtures above are all named)" "$([ $r = 1 ] && grep -q 'bug.ts' <<< "$out" && grep -q 'ge.ts' <<< "$out" && ! grep -q 'fixed.ts' <<< "$out" && echo 1)" "exit $r: $out"
 run "$W/nope.ts"; ok "8. a missing path: exit 2, never a pass" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
