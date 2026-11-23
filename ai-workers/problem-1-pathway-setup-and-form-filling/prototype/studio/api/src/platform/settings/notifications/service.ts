@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../../http/input.ts";
 import { groupsFor, NotificationGroup, Switches } from "../../../../../ports/notification-prefs.ts";
 import { firmScope } from "../../firm-scope.ts";
 import { GROUPS, RULES, SECURITY_LABEL } from "./groups.ts";
@@ -20,7 +21,8 @@ export type PrefsView = { version: string; groups: GroupView[]; security: { labe
 export const NOT_YOURS = "This group cannot reach you, so it has no switches.";
 export const STALE = "Your notification settings were changed elsewhere since you opened them.";
 const MAX_ISSUES = 20;   // and each line at most 200 characters (review r2 m2: zod lists every unknown key in one line)
-const refused = (detail: string, issues: string[]): never => { throw new HttpException({ type: "https://expatready.local/problems/notification-settings-refused", title: "Notification settings not saved", status: 400, detail, issues: issues.slice(0, MAX_ISSUES).map((i) => i.slice(0, 200)) }, HttpStatus.BAD_REQUEST); };
+/** PF-28 part 2b (R1.10): a refused setting is a field error (422), each field named in `fields`; `issues` stays. */
+const refused = (detail: string, issues: string[], fields?: Record<string, string>): never => { throw new HttpException({ type: "https://expatready.local/problems/notification-settings-refused", title: "Notification settings not saved", status: FIELD_ERROR_STATUS, detail, code: "INVALID", issues: issues.slice(0, MAX_ISSUES).map((i) => i.slice(0, 200)), fields: fields ?? Object.fromEntries(issues.slice(0, MAX_ISSUES).map((x) => { const k = x.indexOf(": "); return k < 0 ? ["body", x.slice(0, 200)] : [x.slice(0, k).slice(0, 64), x.slice(k + 2, k + 202)]; })) }, FIELD_ERROR_STATUS); };
 const Item = z.strictObject({ group: NotificationGroup, inApp: z.boolean(), email: z.boolean() });
 /** The array's length is checked first (at most the eight groups), its items only then (break M1). */
 export const SavePrefs = z.strictObject({ version: z.string().max(64), groups: z.array(z.unknown()).min(1).max(8).pipe(z.array(Item)) });
@@ -48,7 +50,7 @@ export class NotificationSettings {
   async save(a: PrefsActor, body: unknown): Promise<PrefsView> {
     if (protoKey(body)) refused("Please check the highlighted switches.", ["body: __proto__ is not a field"]);
     const r = SavePrefs.safeParse(body ?? {});
-    if (!r.success) return refused("Please check the highlighted switches.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`));
+    if (!r.success) return refused("Please check the highlighted switches.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`), fieldsOf(r.error));
     const named = r.data.groups.map((g) => g.group), mine = new Set(groupsFor(RULES, a));
     if (new Set(named).size !== named.length) refused("Each group may be named once.", ["groups: a group is named twice"]);
     const notMine = named.filter((g) => !mine.has(g));

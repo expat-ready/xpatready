@@ -16,6 +16,6 @@ export async function writeMoneyKeysGranted(tx: Tx, l: { firmId: string; firmKey
   for (const role of l.roles) if ((await moneyKeysOfRoles(tx, [role])).length) moneyRoles.push(role);
   const money = await moneyKeysOfRoles(tx, moneyRoles);
   if (!money.length) return null;
-  await auditStaff(tx, { firmId: l.firmId, firmKey: l.firmKey, actor: l.actor, action: MONEY_KEYS_GRANTED, entityKey: l.staffId, summary: `money permissions given with ${moneyRoles.join(", ")}: ${money.length} keys`, detail: { staffId: l.staffId, roles: moneyRoles, moneyKeys: money } });
+  await auditStaff(tx, { firmId: l.firmId, firmKey: l.firmKey, actor: l.actor, action: MONEY_KEYS_GRANTED, entityKey: l.staffId, summary: `money permissions given with ${moneyRoles.join(", ")}: ${money.length} keys`, detail: { staffId: l.staffId, roles: moneyRoles, moneyKeys: money }, before: null, after: null });   // R1.8: an event of the role change, whose own line holds the roles before and after; this line stays as PF-6m froze it
   return { roles: moneyRoles, moneyKeys: money };
 }

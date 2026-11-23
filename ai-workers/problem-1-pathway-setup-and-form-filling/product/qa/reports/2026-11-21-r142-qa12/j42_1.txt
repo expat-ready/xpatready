@@ -1,0 +1,30 @@
+setup (not through the product): firm j42-mwpvqb7v in America/Toronto (phone +1 416 555 0100), one host (Case Officer) on every hour, type "free" (no notice, 60 min self-service limit, 5 min)
+PASS  J-42 W1 the confirmation: axe finds no WCAG A/AA violation — []
+PASS  J-42 W1: A books Saturday 21 November, 00:35 America/Toronto time and B Friday 20 November, 23:05 America/Toronto time; two bookings underneath — ["2026-11-21T05:35:00.000Z","2026-11-21T04:05:00.000Z"]
+NOTE  B's meeting 2026-11-21T04:05:00.000Z-2026-11-21T04:10:00.000Z; A's 2026-11-21T05:35:00.000Z
+PASS  J-42 W1: A's confirmation carries A's manage link on this copy — "http://localhost:4442/book/j42-mwpvqb7v/manage#<token>"
+PASS  J-42 W2: A's link opens A's own page (Saturday 21 November, 00:35 America/Toronto time) with Reschedule and Cancel (outside the 60-minute limit) — "Your booking Your booking: Saturday 21 November, 00:35 America/Toronto time, with Sample J-42 firm. Free consultation, 5 minutes, Video call Reschedule Cancel"
+PASS  J-42 W2: Choose a new time offers a later time (Saturday 21 November, 00:45 America/Toronto time)
+PASS  J-42 W2 choose a new time: axe finds no WCAG A/AA violation — []
+PASS  J-42 W2 pass: A reschedules by link to Saturday 21 November, 00:45 America/Toronto time: "Booking updated. …"; underneath RESCHEDULED at the new time — {"status":"RESCHEDULED","at":"2026-11-21T05:45:00.000Z"}
+PASS  J-42 DW1: A's confirmation and the reschedule's new mail are outbox rows SENT or DELIVERED by the local adapter, and both reached the demo inbox (fakeMail wrote no row) — {"inbox":["Your Free consultation is booked","Your Free consultation has moved"],"out":[{"state":"DELIVERED","providerId":"local:f6364d6a-1a8c-4439-9324-3d021993c93a"},{"state":"DELIVERED","providerId":"local:3c0f6d60-d8be-415c-b306-0b280c45cdab"}]}
+PASS  J-42 W3 the used link: axe finds no WCAG A/AA violation — []
+PASS  J-42 W3 fail: A's first link, once used, is refused in words, with no buttons — "This link is no longer valid. Please use the link in your latest email, or reply to it."
+PASS  J-42 W4 pass: A cancels on the same page: "Your booking is cancelled. …"; underneath CANCELLED
+PASS  J-42 W4 the cancelled page: axe finds no WCAG A/AA violation — []
+PASS  J-42 W4 fail: after the cancel, the link that cancelled is refused too, and A's cancel mail arrives (AG-4-36) — {"state":"bad-link","inbox":["Your Free consultation is booked","Your Free consultation has moved","Your Free consultation is cancelled"]}
+PASS  J-42 W5 inside the limit: axe finds no WCAG A/AA violation — []
+PASS  J-42 W5 fail: B's link inside the 60-minute limit is refused in words ("It is less than 1 hour before your meeting. Please reply to this email or call us on +1 416 555 0100."), no Reschedule or Cancel — "Your booking Your booking: Friday 20 November, 23:05 America/Toronto time, with Sample J-42 firm. Free consultation, 5 minutes, Video call It is less than 1 hour before your meeting. Please reply to this email or call us on +1 416 555 0100."
+NOTE  waiting 535 s for B's meeting to end
+PASS  J-42 W6 fail: after B's meeting ended, B's link is refused (expired) in the same words, with no buttons — "This link is no longer valid. Please use the link in your latest email, or reply to it."
+PASS  J-42 W7 the booking detail: axe finds no WCAG A/AA violation — []
+PASS  J-42 W7: the host opens B on the booking detail, which asks whether Ben attended (Attended, No-show) — "When\n\nFri 20 November 23:05–23:10 America/Toronto · 23:05 for Ben Sample (America/Toronto)\n\nWho\n\nBen Sample · booker-b-mwpvqb7v@j42-client.example · Host: Sample host · Video call\n\nOn lead L-00001\n\nAttendance\n\nDid Ben Sample attend?\n\nAttended\nN
+PASS  J-42 W7 pass / DW2: one click saves Attended: B is COMPLETED, with one audit line naming the host and the time — {"status":"COMPLETED","lines":[["staff:eacd00b3-c393-405d-8db9-df566326b483","2026-11-21T04:10:06.700Z"]]}
+HELD  J-42 W8 screen: the booking detail has no consult record panel (FO-3st1's consult record part is not on main); W8 is saved through its route with the host's session
+HELD  J-42 W9: row 53's first step (the consult record's next-step button) is not reachable by screens: no consult record panel
+PASS  J-42 W8 (route, no screen yet) pass / DW2: the host records the outcome and a note: the record is stored with who (created and updated by the host) and when, and one audit line names the host — {"status":200,"rec":{"id":"7b821fbf-822c-4d27-b36f-9a8e94ebadac","firmId":"e886ce8d-73b8-472f-ade6-58dcbc1d4701","bookingId":"c6af4833-06af-495d-8603-ef82ed16d5fb","timeSpentMinutes":5,"notes":"Sample: has a job offer; next, an employer check.","recommended":[
+PASS  J-42 W8 (route) fail: a quoted fee in EUR is refused (400, on quotedFeeCurrency) and the record is unchanged — {"status":400,"body":{"type":"https://expatready.local/problems/consult-refused","title":"Consult record not saved","status":400,"detail":"Please check the highlighted details.","message":"Please check the highlighted details.","issues":["quotedFeeCurrency: Ch
+PASS  J-42: no page error in any browser during the walk — []
+
+22/22 passed
+exit 0

@@ -66,4 +66,9 @@ ok "a REPO_ROOT with .. is refused (exit 2)" "$([ "$(REPO_ROOT="$S/a/.." st)" = 
 mkdir -p "$T/nomark"
 ok "a REPO_ROOT without AGENTS.md is refused (exit 2)" "$([ "$(REPO_ROOT="$T/nomark" st)" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
 ok "a REPO_ROOT with a trailing slash is the same root" "$([ "$(REPO_ROOT="$S/" st)" = 1 ] && grep -q 'STALE (old/place/): .github/ci.yml:1' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
+mkdir -p "$S/$P1/prototype/p9"; echo "old/place/tool.sh" > "$S/$P1/prototype/p0-revision-manifest.sha256"; echo "see old/place/" > "$S/$P1/prototype/p1-review-handoff-2026-10-19.md"
+echo "run: bash new/place/tool.sh" > "$S/.github/ci.yml"; git -C "$S" add -A
+ok "the October manifests and hand-over notes at the prototype/ root are records, not read" "$([ "$(st)" = 0 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+echo "import old/place/tool.sh" > "$S/$P1/prototype/p9/run.py"; echo "old/place/" > "$S/$P1/prototype/p9/x-handoff-1.md"; git -C "$S" add -A
+ok "... but prototype code, and a hand-over name below the root, still are" "$([ "$(st)" = 1 ] && grep -q 'prototype/p9/run.py:1' "$T/out" && grep -q 'p9/x-handoff-1.md' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
 finish

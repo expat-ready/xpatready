@@ -24,6 +24,7 @@ import { whoCanBeTrail } from "./people-ai.ts";
 import { insertProposals } from "./proposals.ts";
 import { pairOf, roundBudgetUsd, StepRunner, type AiStep, type RoundContext, type RoundOut } from "./rounds.ts";
 import { aiLive, Sources } from "./sources.ts";
+import { logPort } from "./platform/observability/log.ts";
 
 type H = string | undefined;
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
@@ -197,10 +198,10 @@ export class PqrDrafts {
       else {
         const ctx: RoundContext = { trail: g.trail, contextKey: c.combinationKey, inputs: inputsOf(g), mode: plan.mode, wanted: async () => !(await opts.stopped?.()), batchId: job.id };
         // Review minor (#282): a round that throws ends this job as FAILED, never left running.
-        const safe = async (isCheck: boolean) => { try { return await this.runner.round<PqrAnswer>(PQR_AI, isCheck, ctx); } catch (e) { console.warn(`pqr picks ${job.id}:`, String(e).slice(0, 400)); return { ok: false as const, costUsd: 0, reason: "The AI step stopped on this computer, so nothing of it is used." }; } };
+        const safe = async (isCheck: boolean) => { try { return await this.runner.round<PqrAnswer>(PQR_AI, isCheck, ctx); } catch (e) { logPort.error("pqr_round_failed", e, { jobId: job.id }); return { ok: false as const, costUsd: 0, reason: "The AI step stopped on this computer, so nothing of it is used." }; } };
         // Saved: both rounds of one saved run (break B1). Live: a first round, then a blind checker round.
         let d: RoundOut<PqrAnswer>, k: RoundOut<PqrAnswer> | null;
-        if (plan.mode === "replay") ({ d, k } = await this.savedRounds(c, { ...g, input: g.input }).catch((e) => { console.warn(`pqr picks ${job.id}:`, String(e).slice(0, 400)); return { d: { ok: false as const, costUsd: 0, reason: "The AI step stopped on this computer, so nothing of it is used." }, k: null }; }));
+        if (plan.mode === "replay") ({ d, k } = await this.savedRounds(c, { ...g, input: g.input }).catch((e) => { logPort.error("pqr_saved_rounds_failed", e, { jobId: job.id }); return { d: { ok: false as const, costUsd: 0, reason: "The AI step stopped on this computer, so nothing of it is used." }, k: null }; }));
         else { d = await safe(false); k = d.ok ? await safe(true) : null; }
         out.usd = round2(d.costUsd + (k?.costUsd ?? 0));
         out.run_files = [d.ok ? d.runFile : null, k?.ok ? k.runFile : null].filter((x): x is string => !!x);
@@ -249,7 +250,7 @@ export class PqrDrafts {
     } catch (e) {
       // Review round 2 n2: whatever stops this draft ends its job as FAILED, so "Already drafting" never blocks the
       // combination for a run that is no longer going.
-      await this.db.draftingJob.update({ where: { id: job.id }, data: { status: "FAILED", finishedAt: new Date(), message: "This draft stopped on this computer before it ended; nothing of it is proposed." } }).catch((x) => console.warn(`pqr picks ${job.id}: could not end the job:`, String(x).slice(0, 200)));
+      await this.db.draftingJob.update({ where: { id: job.id }, data: { status: "FAILED", finishedAt: new Date(), message: "This draft stopped on this computer before it ended; nothing of it is proposed." } }).catch((x) => logPort.error("pqr_job_not_ended", x, { jobId: job.id }));
       throw e;
     }
   }

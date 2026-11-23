@@ -85,7 +85,7 @@ function reads(n: ts.Node, name: string, prop: string): boolean {
  *  expression is returned. */
 function parsedArg(c: ts.CallExpression): ts.Expression | null {
   const e = c.expression;
-  if (ts.isIdentifier(e) && (e.text === "parse" || e.text === "parsed") && c.arguments.length >= 2) return c.arguments[1];
+  if (ts.isIdentifier(e) && (e.text === "parse" || e.text === "parsed" || e.text === "parseInput") && c.arguments.length >= 2) return c.arguments[1];
   if (ts.isPropertyAccessExpression(e) && /^(safeP|p)arse(Async)?$/.test(e.name.text)) {
     const s = e.expression;
     const schema = ts.isIdentifier(s) ? /^[A-Z]/.test(s.text) && !/^(JSON|Date|Number)$/.test(s.text) : ts.isCallExpression(s) || ts.isPropertyAccessExpression(s);
@@ -140,6 +140,12 @@ export function follows(dir: string, cls: string, fn: ts.MethodDeclaration, name
         else if (ts.isPropertyAccessExpression(e) && ts.isPropertyAccessExpression(e.expression) && e.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
           const k = fieldClass(here.node, e.expression.name.text);
           if (k) target = [k, e.name.text];
+        }
+        // PF-28 part 2c: a method a class inherits is followed into the class that declares it (PlatformSignUp extends FirmSignUp).
+        if (target) for (let k = 0, c = all.get(target[0]); c && !method(c.node, target[1]) && k < 4; k++) {
+          const base = c.node.heritageClauses?.find((h) => h.token === ts.SyntaxKind.ExtendsKeyword)?.types[0]?.expression;
+          c = base && ts.isIdentifier(base) ? all.get(base.text) : undefined;
+          if (c && method(c.node, target[1])) target = [(c.node.name as ts.Identifier).text, target[1]];
         }
         const into = target && all.get(target[0]) && method(all.get(target[0])!.node, target[1]);
         if (into) n.arguments.forEach((arg, i) => {

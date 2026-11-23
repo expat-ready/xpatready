@@ -1,0 +1,36 @@
+PASS  PF-12b DW5 neither: none of the seven doors is on BYPASS_USES
+PASS  PF-12b DW5 neither: no code calls asBypass with one of the seven doors' names
+PASS  PF-12b DW5 fail: asking the bypass for any of the seven doors by name is now refused (BypassRefused) before any query
+NOTICE:  database "xr_studio_pf12b2_21087" does not exist, skipping
+PASS  PF-12b DW6: the migration has its own stamp, later than every migration before it and unique (rows rev 15.2, 16.7: never "the newest of all"; before it: 20261121110000_fo3a1e_firm_timings)
+PASS  PF-12b DW6: the migration only creates the seven functions and sets their owner and grants (no table, column, policy or row)
+PASS  PF-12b DW6 pass: each of the seven functions is owned by xr_wall_reader, SECURITY DEFINER, search_path pinned (pg_temp last), returns only the firm id (the email check: yes or no); xr_app may run it, and the bypass role (a suite or tool process), and no one else
+PASS  PF-12b DW6 fail: PUBLIC cannot run any of them, and each name has one function only (no overload to slip in)
+PASS  PF-12b DW6 fail: xr_app cannot alter, rename, re-own or drop any of them (it owns none, and may not become xr_wall_reader)
+PASS  PF-12b DW6 pass: as xr_app with no firm, the web form table reads nothing, but the lookup gives the form's firm id (and nothing else)
+PASS  PF-12b DW6 fail (breaker: a guessed key or token): each lookup answers an unknown key with null, the same as not found
+PASS  PF-12b DW6 fail (breaker: another firm's row through a lookup's return): a lookup returns one value only; a row's other columns are not reachable through it
+PASS  PF-12b DW6 pass/fail (review m4): the booking link's lookup gives the firm for the token id with its secret's hash, and null for the same id with a wrong hash (the stored hash is never returned)
+PASS  PF-12b DW5 pass (platform.identity.authenticate): through xr_app with no firm yet, the guard's lookup finds the staff member's firm and reads them as that firm (roles, keys)
+PASS  PF-12b DW5 fail (platform.identity.authenticate): an unknown staff id, or an unknown provider subject, is the same 401 UNKNOWN_STAFF as before
+PASS  PF-12b: the real API started as xr_app on the scratch database and every door was asked
+PASS  PF-12b DW5 pass (platform.identity.sign-in, platform.identity.authenticate): a staff member signs in by the firm key, and their session reads their own firm (who-am-I)
+PASS  PF-12b DW5 fail (platform.identity.sign-in, authenticate): an unknown firm key is 401 UNKNOWN_STAFF; a bad session is 401
+PASS  PF-12b DW5 pass (platform.identity.invitation): the invitation link shows its firm and email, and accepting makes the staff member in that firm
+PASS  PF-12b DW5 fail (platform.identity.invitation): an unknown token shows NOT_VALID; accepting it, or accepting twice, is 410 INVITATION_NOT_VALID
+PASS  PF-12b DW5 fail (platform.identity.invitation, the cross-firm email check): an email that signs in to another firm is 409 EMAIL_IN_ANOTHER_FIRM, and no staff member is made
+PASS  PF-12b DW5 pass (fo.sales.web-form): the firm's enabled enquiry form answers with its words
+PASS  PF-12b DW5 fail (fo.sales.web-form): an unknown token, and a firm's form that is off, answer the same 404 as before; another firm's form on firm A's own address is 404
+PASS  PF-12b DW5 pass (fo.booking.public-page): the firm's booking page answers by its key
+PASS  PF-12b DW5 fail (fo.booking.public-page): an unknown firm key is 404
+PASS  PF-12b DW5 pass (platform.branding.public, PF-12b part 3): the firm's public branding answers by its key, with its name
+PASS  PF-12b DW5 fail (platform.branding.public): an unknown firm key is 404
+PASS  PF-12b DW5 pass (fo.booking.self-service): the booker's own link opens the booking
+PASS  PF-12b DW5 fail (fo.booking.self-service): a wrong secret part and an unknown link both answer the same 404
+PASS  PF-12b DW5 pass (platform.web-address.host): a firm's own web address serves its public site
+PASS  PF-12b DW5 pass (platform.web-address.host, review m5): the firm's old address (changed by our staff, within 90 days) redirects 301 to its current one
+PASS  PF-12b DW5 fail (platform.web-address.host): an unknown address is the one 404
+PASS  PF-12b DW7 pass: all those door calls wrote no platform.bypass audit line (QA-499's count is unchanged by the doors)
+PASS  PF-12b DW7 pass: and no bypass operations line (PF-23) names any of the seven doors
+
+33 passed, 0 failed

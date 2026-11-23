@@ -1,0 +1,34 @@
+PASS  FO-4w setup: the Sample firm and its front office are seeded — []
+PASS  FO-4w setup: the Sample firm has an Owner and a Case Officer — {"OWNER":true,"OFFICER":true}
+PASS  FO-4w fail: nobody signed in → 401; a Case Officer (no agent/prospect:configure-form) → 403 on the read and the save; nothing saved — {"nobody":401,"get":403,"put":403}
+PASS  FO-4w: the Owner reads the firm's form: state, sites, token, hosted page, version; and only the firm's own forms — {"status":200,"n":1}
+PASS  FO-4w fail: another firm's form is the one not-found (404), unchanged — 404
+PASS  FO-4w fail: 21 sites → 422 "at most 20", nothing saved — 422
+PASS  FO-4w (break M1): twenty long sites save at once and are all removed at once (200, 200), one audit line each, its lists cut to fit and marked — {"twenty":200,"cleared":200,"audits":2}
+PASS  FO-4w fail (break M1): one site over 200 characters is refused on its field (422), never a 500 — 422
+PASS  FO-4w fail (break m1): https://*, a wildcard, a quote and a semicolon in the host are each refused on their field; nothing saved — {"sites.0":"Enter a real site address, for example https://www.example.com (no * or other symbols).","sites.1":"Enter a real site address, for example https://www.example.com (no * or other symbols).","sites.2":"Enter a real site address, for example https://w
+PASS  FO-4w fail (review m2): a site with a user name or password is refused on its field; nothing saved — {"sites.0":"Leave out any user name or password."}
+PASS  FO-4w (review m3): saving the same list again changes nothing: same version, no audit line — {"status":200,"audits":2}
+PASS  FO-4w fail: a save naming an old version → 409 STALE in plain words, nothing saved — {"type":"https://expatready.local/problems/stale","title":"Not possible now","status":409,"detail":"Someone else changed this form's sites since you opened it. Reload to see their change, then make yours again.","message":"Someone else changed this form's site
+PASS  FO-4w: the Owner reaches Settings › Web form from the Sales menu
+PASS  FO-4w: the snippet on the screen is embed/snippet.ts's text for this form; the hosted link is the form's page
+PASS  FO-4w: with no site saved the screen says the snippet shows only the link until a site is saved
+PASS  FO-4w settings, no site yet: axe finds no WCAG A/AA violation
+PASS  FO-4w fail: a site with a page, an ftp site and "our website" are each refused on their own field, in plain words; nothing saved
+PASS  FO-4w settings, refused sites: axe finds no WCAG A/AA violation
+PASS  FO-4w fail (break m2, m3): after Remove the messages stay with their own rows (ftp's is now on Site 1, "our website"'s on Site 2) and focus is on a site field — {"v1":"ftp://files.example.com","e1":true,"e2":true,"page":0,"focusedIsSite":true}
+PASS  FO-4w: the site saves by keyboard (Enter), stored once in the browser's form (lower case, no slash): duplicates merged — "http://localhost:35987"
+PASS  FO-4w: one audit line for the save (fo.web_form.sites_changed, by the Owner, naming the added site)
+PASS  FO-4w: Copy snippet puts the exact snippet on the clipboard and says "Copied."
+PASS  FO-4w settings at 1440 px: no sideways page scroll
+PASS  FO-4w settings, saved: axe finds no WCAG A/AA violation
+PASS  FO-4w fail: a save after someone else's is refused in plain words with a Reload; their list is kept
+PASS  FO-4w: Reload shows the newest list and takes the "someone else changed" notice away
+PASS  FO-4w: the copied snippet, pasted on the saved site, draws the firm's form (FO-4b)
+PASS  FO-4w settings at 375 px: no sideways page scroll
+PASS  FO-4w fail: a Case Officer has no Web form menu item; the page says only an Owner or Admin can change it and shows no snippet
+PASS  FO-4w settings, Case Officer: axe finds no WCAG A/AA violation
+PASS  FO-4w: no page error in the browser — []
+
+31/31 passed
+exit 0

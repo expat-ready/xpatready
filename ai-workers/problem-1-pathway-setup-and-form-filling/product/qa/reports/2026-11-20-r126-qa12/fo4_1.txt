@@ -1,0 +1,48 @@
+PASS  FO-4 setup: the Sample firm and its front office are seeded — []
+PASS  FO-4 BR-3: the hosted form shows the firm's consent wording beside the tick
+PASS  FO-4 web form (375 px): axe finds no WCAG A/AA violation
+PASS  FO-4 web form (375 px): no sideways page scroll
+PASS  FO-4 DW1 fail: no first name → refused on the field and in a summary, the email kept, no lead
+PASS  FO-4 DW1 pass: the form sent at 375 px gives the firm's thank-you — "Website enquiry form\n\nThank you. We will be in touch within one working day. (Sample)"
+PASS  FO-4 DW1 pass: the enquiry is one open lead with no owner, and the tick wrote one consent row — "44427feb-6fe0-4147-bef7-658bfda606a4"
+PASS  FO-4 BR-3 pass: a form sent at once is held, thanked and stored (break S3) — "Website enquiry form\n\nThank you. We will be in touch within one working day. (Sample)"
+PASS  FO-4 BR-3 reload: a stale page is redrawn, the answers kept, the consent tick cleared, nothing stored
+PASS  FO-4 BR-3 reload: sent again, it is thanked and stored with no consent row
+PASS  FO-4 DW2 pass: a known person's enquiry gets the same thank-you, word for word — {"first":"Website enquiry form\n\nThank you. We will be in touch within one working day. (Sample)","again":"Website enquiry form\n\nThank you. We will be in touch within one working day. (Sample)"}
+PASS  FO-4 DW2 fail: a form that is off shows "This form is not available" and no fields
+PASS  FO-4 web form off: axe finds no WCAG A/AA violation
+PASS  FO-4 DW2 fail: an unknown token gives the same answer as a form that is off
+PASS  FO-4 DW1 pass: the lead is in Unassigned leads (the first chip for a Case Manager) with its waited time — "Lenamwoxme7y Park\nL-00001\n\tWork permit (Sample)\tWebsite form\tNobody\tjust now since it arrived\tTake it"
+PASS  FO-4 plain words: the source reads "Website form", never the stored code — "Lenamwoxme7y Park\nL-00001\n\tWork permit (Sample)\tWebsite form\tNobody\tjust now since it arrived\tTake it"
+PASS  FO-4 frame: the place line reads Sales › Leads — "Sales\n›\nLeads"
+PASS  FO-4 BR-4: the menu badge counts the unassigned leads
+PASS  FO-4 Leads (1440 px): axe finds no WCAG A/AA violation
+PASS  FO-4 Leads (1024 px): no sideways page scroll
+PASS  FO-4 Leads (375 px): no sideways page scroll
+PASS  FO-4 search pass: the name finds the lead
+PASS  FO-4 search fail: a name nobody has says nothing matches
+PASS  FO-4 DW3 setup: the Case Manager owns the first lead; the repeat is a second, unassigned lead
+PASS  FO-4 DW3 pass: the Case Manager's match line names the person and the lead — "Possible match: Lenamwoxme7y Park (L-00001)\n\nSomeone with the same email or phone is already on file. Nothing is linked: this enquiry stays its own lead."
+PASS  FO-4 BR-1: the lead's screen says Lead and shows no stage
+PASS  FO-4 one lead (1440 px): axe finds no WCAG A/AA violation
+PASS  FO-4 DW3 fail: the Case Officer's match line names nobody — "Possible match with a person you cannot see\n\nSomeone with the same email or phone is already on file. Nothing is linked: this enquiry stays its own lead."
+PASS  FO-4 AG-2-94 rule 16: a lead the viewer may not see reads as not found
+PASS  FO-4 DW4 pass: Take it on a lead just taken names who has it, and the row leaves Unassigned
+PASS  FO-4 DW4 pass (keyboard only): Tab reaches Take it, Enter takes the lead, and it is the Case Officer's
+PASS  FO-4 Mine: the taken lead is under Mine
+PASS  FO-4 DW6 pass: a Read-only person sees the unassigned lead but no Take it anywhere, and is told why
+PASS  FO-4 DW6 pass: on the lead too, no Take it and no Assign for Read-only, with the reason in the rail
+PASS  FO-4 DW6 fail: the server refuses Read-only's Take it (403) and the lead stays unowned — 403
+PASS  FO-4 DW6 pass: a Case Manager (agent/prospect:edit) sees Take it on the same lead and no reason line
+PASS  FO-4 DW7 fail: while its owner is active, the lead is not in Unassigned
+PASS  FO-4 DW7 pass: a deactivated owner's lead is in Unassigned with "(Inactive) Name" and Take it
+PASS  FO-4 break S2: the Case Officer never sees the Case Manager's lead after the switch — 10
+PASS  FO-4 break S1: an expired session shows the sign-in card without a click, and no name or Sign out stays
+PASS  FO-4 storage refused: sign-in still opens Leads (session kept in memory)
+PASS  FO-4 sign-in fail: an unknown email is refused with the server's words
+PASS  FO-4 sign-in card: axe finds no WCAG A/AA violation
+PASS  FO-4 sign-in pass: a Sample staff member signs in (local stand-in) and lands on Leads
+PASS  FO-4: no page error in the browser — []
+
+45/45 passed
+exit 0

@@ -11,6 +11,8 @@ You did not build this screen. Use only saved files, the running app and the tes
 
 **Scope:** flag correctness gaps, standard violations and concept mismatches only. Do not request new features or extra polish beyond the bar.
 
+**End your reply with one line** `Reviewer: <Approve|Changes|Block> <full head SHA>` (Ship → Approve, Ship after fixes → Changes, Rework → Block); the builder posts it on the PR after every round (P-293).
+
 **Write `screens/NN/review.md`** (under 100 lines): Verdict (Ship / Ship after fixes / Rework) · D1–D20 scores with one line of evidence each (D17 and D20 "simulated only" unless an intended user walked it) · the BIC table · issues ranked, each Must or Should, with file:line or screenshot and the fix · what you could not check. Edit nothing else (the Lead check and the founder's walkthrough live in `lead-check.md`).
 
 **Graph (P-86):** run `node ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/graph.mjs` and read `ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/GRAPH.md` for this screen: every element must serve a capability of this screen (else it is scaffolding or misplaced); its pages and API routes without a test, and capabilities it claims that no test names, are findings.

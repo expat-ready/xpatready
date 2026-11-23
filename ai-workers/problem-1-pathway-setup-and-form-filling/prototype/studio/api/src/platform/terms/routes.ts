@@ -3,6 +3,7 @@
 import { Body, Controller, Get, HttpCode, Inject, Post, Query, Req } from "@nestjs/common";
 import { AnyStaff, PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
 import { PlatformTerms } from "./service.ts";
+import { parseInput, query } from "../http/input.ts";
 
 type R = { platform?: StaffContext };
 
@@ -19,5 +20,5 @@ export class PlatformTermsController {
 
   /** The firm's acceptances: who, when and which version, newest first, a page at a time (?limit=1..200, ?cursor=). */
   @Get("terms/acceptances") @PermissionKeys("agent/settings:list")
-  acceptances(@Req() r: R, @Query("cursor") cursor?: string, @Query("limit") limit?: string) { return this.t.acceptances(staffOf(r), { cursor, limit }); }
+  acceptances(@Req() r: R, @Query() q: Record<string, unknown>) { const { cursor, limit } = parseInput(query("cursor", "limit"), q); return this.t.acceptances(staffOf(r), { cursor, limit }); }   // PF-28 part 2b
 }

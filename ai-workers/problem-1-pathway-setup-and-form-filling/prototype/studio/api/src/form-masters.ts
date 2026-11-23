@@ -23,6 +23,7 @@ import { aiLive, Sources } from "./sources.ts";
 
 export const MASTERS_STEP = "masters_edition";
 import { printedChoices, type InvField } from "../../engine/printed-choices.ts";
+import { logPort } from "./platform/observability/log.ts";
 export { printedChoices }; // QA-196: moved to the engine (proposals.ts reads it too, without importing this module)
 /** Review c34 M1: hidden boxes, barcodes and the form's machine parts are not a person's section. A part with an internal
  *  name only ("Five", "Seven") is a real part a person fills: it stays, named from its printed heading or, with none,
@@ -378,10 +379,10 @@ export class FormMasters {
     try {
       const fail0 = { ok: false as const, costUsd: 0, reason: "The AI step stopped on this computer, so nothing of it is used." };
       let d: RoundOut<FormAnswer | GuideAnswer>, k: RoundOut<FormAnswer | GuideAnswer> | null;
-      if (mode === "replay") ({ d, k } = await this.savedRounds<FormAnswer | GuideAnswer>(t).catch((e) => { console.warn(`masters ${job.id}:`, String(e).slice(0, 400)); return { d: fail0, k: null }; }));
+      if (mode === "replay") ({ d, k } = await this.savedRounds<FormAnswer | GuideAnswer>(t).catch((e) => { logPort.error("masters_saved_rounds_failed", e, { jobId: job.id }); return { d: fail0, k: null }; }));
       else {
         const ctx: RoundContext = { trail: t.trail, contextKey: t.contextKey, inputs: [t.input], mode, wanted: async () => true, batchId: job.id };
-        const safe = async (isCheck: boolean): Promise<RoundOut<FormAnswer | GuideAnswer>> => { try { return await this.runner.round(t.step, isCheck, ctx); } catch (e) { console.warn(`masters ${job.id}:`, String(e).slice(0, 400)); return fail0; } };
+        const safe = async (isCheck: boolean): Promise<RoundOut<FormAnswer | GuideAnswer>> => { try { return await this.runner.round(t.step, isCheck, ctx); } catch (e) { logPort.error("masters_round_failed", e, { jobId: job.id }); return fail0; } };
         d = await safe(false); k = d.ok ? await safe(true) : null;
       }
       const usd = round2(d.costUsd + (k?.costUsd ?? 0));
@@ -429,14 +430,14 @@ export class FormMasters {
       }, QUEUE_TX);
       completed = true;
       // The audit line is not part of the money path: its failure is logged, never turned into a failed paid run.
-      await this.audit.log(ws, actor.id, "proposed", "masters draft", t.kind === "form" ? t.edition : t.code, `${actor.name} drafted ${t.kind === "form" ? `${t.edition}'s masters` : `${t.code}'s checks`} with AI (${from === "live" ? "Live" : "Saved"}, US$${usd.toFixed(2)}): ${out.made} to review`, { runId: job.id, mode, run_files: runFiles }, combinationId).catch((x) => console.warn(`masters ${job.id}: audit not written:`, String(x).slice(0, 200)));
+      await this.audit.log(ws, actor.id, "proposed", "masters draft", t.kind === "form" ? t.edition : t.code, `${actor.name} drafted ${t.kind === "form" ? `${t.edition}'s masters` : `${t.code}'s checks`} with AI (${from === "live" ? "Live" : "Saved"}, US$${usd.toFixed(2)}): ${out.made} to review`, { runId: job.id, mode, run_files: runFiles }, combinationId).catch((x) => logPort.error("masters_audit_not_written", x, { jobId: job.id }));
       return { ...out.job, proposals: out.made, group: t.group, usd, from };
     } catch (e) {
       if (completed) throw e;
       // Whatever stops this draft ends its job as FAILED, so "Already drafting" never blocks the source for a run that is gone.
       const cost = paid.usd > 0 ? ` This run cost US$${paid.usd.toFixed(2)} (counted)${paid.runFiles.length === 2 ? "; its recorded answers can be used with Saved (US$0)" : ""}.` : "";
       await this.db.draftingJob.update({ where: { id: job.id }, data: { status: "FAILED", finishedAt: new Date(), costUsd: paid.usd, runFile: paid.runFiles[0] ?? null,
-        message: `This draft stopped on this computer before it ended; nothing of it is proposed.${cost}`, detail: { ...(job.detail as object), run_files: paid.runFiles } } }).catch((x) => console.warn(`masters ${job.id}: could not end the job:`, String(x).slice(0, 200)));
+        message: `This draft stopped on this computer before it ended; nothing of it is proposed.${cost}`, detail: { ...(job.detail as object), run_files: paid.runFiles } } }).catch((x) => logPort.error("masters_job_not_ended", x, { jobId: job.id }));
       throw e;
     }
   }

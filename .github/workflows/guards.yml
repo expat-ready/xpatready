@@ -1,9 +1,11 @@
 # The eight guards of 6 Nov and B134's label sweep (founder, ~03:00 IST: "make them hard rules"): every test passes, and each test fails with
 # its guard switched off (product/tools/check-guards.sh --mutate). Runs only when a guard, its test or a file it reads
-# changes; separate from ci.yml (owned by the flow-fix lane) and not a merge condition. About 20 minutes with the mutation rows (it was about 1 minute on 6 Nov), US$0.
+# changes; separate from ci.yml (owned by the flow-fix lane) and not a merge condition. About 20-35 minutes with the mutation rows (it was about 1 minute on 6 Nov), US$0.
 name: guards
 on:
   pull_request:
+    # SPD-2 item 5 (b): a draft runs only the light checks (ci's guard, pr-rules, module-cards); this runs on ready-for-review.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".claude/settings.json"
       - ".claude/skills/lead/**"
@@ -13,20 +15,26 @@ on:
       - ".github/workflows/label-guard.yml"
       - ".github/workflows/nightly.yml"
       - ".github/workflows/guards.yml"
+      - ".github/workflows/pr-rules.yml"   # E5: check-cleanup-pr.sh reads it
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves.tsv"   # B204 guard 28 (check-waves.sh)
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves.md"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/isolated.sh"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/test-copies.sh"
+      - "CONTRIBUTING.md"   # P-785 (2) step 4: check-contributing.sh reads these three
+      - ".github/pull_request_template.md"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs"
 permissions:
   contents: read
 concurrency:
   group: guards-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}   # SPD-2 item 5: a newer push supersedes; a merge-queue batch never
 jobs:
   guards:
+    if: "${{ !github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/') }}"   # SPD-2 item 5 (b): not on a draft (a merge-queue batch is a draft and still runs it)
     runs-on: ubuntu-latest
-    timeout-minutes: 30   # CI-PRE (19 Nov): about 150 mutation rows, each re-running a test file; the run reached the old limit of 10
+    timeout-minutes: 45   # CI-PRE (19 Nov): about 150 mutation rows, each re-running a test file; the run reached the old limit of 10.
+                          # ENF-758 (20 Nov): runs took 20-27 min before its 25 rows (~25 s each on a runner); at 30 the run was cancelled mid-way
     steps:
       - uses: actions/checkout@v4
       - name: zsh (isolated.sh is a zsh script)

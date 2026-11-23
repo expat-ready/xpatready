@@ -119,7 +119,8 @@ function knownKeys(): Set<string> {
 // "firm" and "fees" head FO-5's retainer placeholder names ({firm.name}, {fees.total}): fields of a document, no program.
 // "legal" heads AUD-5's firm setting key (legal.closed_client_files_years, the settings registry's module.name form): no program.
 // "audit" heads AUD-4's audit action (audit.exported, AuditPort's dotted action form): no program.
-const NOT_KEYS = new Set(["case", "person", "relationship", "expected", "holder", "exempt", "uci", "cited", "firm", "fees", "legal", "audit"]);
+// code.*: the Code of conduct's clause markers and merge value (FO-5b), never a combination
+const NOT_KEYS = new Set(["case", "person", "relationship", "expected", "holder", "exempt", "uci", "cited", "firm", "fees", "legal", "audit", "code"]);
 const FILE_ENDINGS = new Set(["json", "ts", "tsx", "js", "mjs", "cjs", "pdf", "md", "txt", "csv", "html", "py", "xml", "sql", "png"]);
 /** A program by name, in a name or a string. Roles (spouse, child) are not programs; neither are the abbreviations
  *  fact-name.ts upper-cases (LMIA, TRV), which name facts of any program. */
@@ -262,6 +263,9 @@ for (const [what, src, kind] of cases) ok(`fail: ${what} is caught (${src})`, ca
 // AUD-5 part 1: a firm setting key headed "legal" is a setting, no program; a five-letter head that is not on the list still is.
 ok("pass: a firm setting key headed \"legal\" is not taken for a combination (legal.closed_client_files_years)", caught(`const k = "legal.closed_client_files_years";`, "key").length === 0);
 ok("fail: another unknown five-letter head is still caught (lexus.open)", caught(`const k = "lexus.open";`, "key").length === 1);
+// FO-5b (batch #2735): the Code of conduct's clause markers and merge value, headed "code", are no combination; a new program's key still is.
+ok("pass: the Code of conduct's merge value and clause marker are not taken for combinations (code.marked, code.s24_3_k)", caught(`const a = "code.marked"; const b = "code.s24_3_k";`, "key").length === 0);
+ok("fail: a new program's combination is still caught beside them (ee.fsw)", caught(`const a = "code.marked"; const k = "ee.fsw";`, "key").length === 1);
 
 const caughtIn = (file: string, src: string) => judge(scan([...engine, { file, src }], known), entries).unexpected.filter((h) => h.file === file);
 ok("fail: a key in a new API file is caught (P-452)", caughtIn("api/src/new-thing.ts", `if (c.combination_key === "fs.spouse") charge();`).length === 1);

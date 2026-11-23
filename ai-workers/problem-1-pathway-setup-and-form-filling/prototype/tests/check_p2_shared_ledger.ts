@@ -3,12 +3,12 @@
 // Also: where the ledger lives (P2_LEDGER_DIR, absolute only; unset = the main copy's .tools/p2-ledger on the Mac, else the
 // project's own folder as before). US$0.
 // Run: tsx --tsconfig studio/api/tsconfig.json tests/check_p2_shared_ledger.ts
-import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SpendLedger } from "../p2/ledger.ts";
-import { ledgerDirFrom, PROTOTYPE } from "../p2/policy.ts";
+import { findRootFrom, ledgerDirFrom, PROTOTYPE, ROOT } from "../p2/policy.ts";
 import { unionOfLedgers } from "../p2/tools/seed-shared-ledger.ts";
 
 const results: [string, boolean][] = [];
@@ -55,6 +55,22 @@ t("C11.8 QA-90 pass: unset, the main copy and a lane copy both find the main cop
   ledgerDirFrom(undefined, main) === join(main, ".tools", "p2-ledger") && ledgerDirFrom("", lane) === join(main, ".tools", "p2-ledger"));
 t("C11.8 QA-90 fail: unset, a copy with no .tools in its main copy keeps the project's own p2/ledger (CI, cloud)", ledgerDirFrom(undefined, bare) === join(PROTOTYPE, "p2", "ledger"));
 t("C11.8 QA-90 pass: an absolute P2_LEDGER_DIR is the ledger", ledgerDirFrom("/Users/x/.tools/p2-ledger") === "/Users/x/.tools/p2-ledger");
+// Clean-up stage 2a: the spend guard finds the root by AGENTS.md (findRootFrom), not by counting folder levels, so the
+// ledger is the same one wherever the guard sits (here, or moved deeper by a later stage), from the main copy or a lane copy.
+writeFileSync(join(main, "AGENTS.md"), "# root\n"); writeFileSync(join(lane, "AGENTS.md"), "# root\n");
+const deepMain = join(main, "apps", "studio", "x", "y"), deepLane = join(lane, "packages", "ai-spend", "src"); mkdirSync(deepMain, { recursive: true }); mkdirSync(deepLane, { recursive: true });
+t("stage 2a pass: from any depth in the main copy or a lane copy, the guard's root finder gives the main copy's .tools/p2-ledger",
+  findRootFrom(deepMain) === main && findRootFrom(deepLane) === lane && ledgerDirFrom(undefined, findRootFrom(deepMain)) === join(main, ".tools", "p2-ledger")
+  && ledgerDirFrom(undefined, findRootFrom(deepLane)) === join(main, ".tools", "p2-ledger"));
+const noMark = mkdtempSync(join(tmpdir(), "p2-nomark-")); mkdirSync(join(noMark, "a", "b"), { recursive: true }); mkdirSync(join(noMark, "a", "AGENTS.md"));
+const threw = (() => { try { findRootFrom(join(noMark, "a", "b")); return false; } catch (e) { return /no AGENTS\.md/.test((e as Error).message); } })();
+t("stage 2a fail: with no AGENTS.md file above (a folder of that name does not count) the guard refuses, never guesses", threw);
+const loop = mkdtempSync(join(tmpdir(), "p2-loop-")); writeFileSync(join(loop, "AGENTS.md"), "# root\n"); mkdirSync(join(loop, "sub")); symlinkSync("AGENTS.md", join(loop, "sub", "AGENTS.md")); // links to itself
+const loopErr = (() => { try { findRootFrom(join(loop, "sub")); return "walked up"; } catch (e) { return (e as NodeJS.ErrnoException).code ?? "other"; } })();
+t("stage 2a fail: a broken marker (an AGENTS.md link that loops) is an error, never a reason to walk up to a higher root", loopErr === "ELOOP");
+const top = execFileSync("git", ["-C", import.meta.dirname, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+t("stage 2a pass: the guard's ROOT is this checkout's git top level, and PROTOTYPE is what the old folder count gave",
+  ROOT === top && PROTOTYPE === join(import.meta.dirname, ".."));
 const refused = (v: string) => { try { ledgerDirFrom(v); return false; } catch (e) { return /absolute/.test((e as Error).message); } };
 t("C11.8 QA-90 fail: a relative or dotted P2_LEDGER_DIR is refused", refused("p2-ledger") && refused("/Users/x/../y") && refused("./ledger"));
 

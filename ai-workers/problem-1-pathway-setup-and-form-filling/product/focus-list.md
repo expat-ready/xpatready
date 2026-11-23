@@ -34,7 +34,7 @@ Seeded 19 Nov from the two nearest-to-done lists: Lead B's lane order of 19 Nov 
 | R1.100 | PF-19e, PF-5v, J-100 | Lead B | PF-19e, then PF-5v part 2 with J-100 |
 | R1.110 | FO-13i, FO-13i2, FO-13s, FO-13s1, J-110, QA-510 | Lead B | FO-13i part 2 (QA-510), then FO-13s part 1 with J-110 |
 | R1.23 | PF-13 | Lead B | PF-13 part 1, then part 2 |
-| R1.38 | FO-3st1, J-38 | Lead B | FO-3st1, then J-38 extended by its staff-zone step |
+| R1.38 | FO-3st1, J-38, DEMO-LINK | Lead B | FO-3st1, then J-38 extended by its staff-zone step; DEMO-LINK (#2687, founder A245 and A258; reaches the booking page from :4400) fixes its Home target-size failure |
 | R1.92 | PF-18a, PF-18s, PF-18np | Lead B | PF-18a part 2, then PF-18s (PF-18np first if it is not on main) |
 | R1.53 | FO-5, FO-5b, FO-5s, J-53 | Lead B | FO-5b, then FO-5s with J-53 |
 | R1.49 | QA-495, J-49 | Lead B | QA-495's remainder (case-side link emails: Build Lead C), then J-49 |
@@ -42,3 +42,19 @@ Seeded 19 Nov from the two nearest-to-done lists: Lead B's lane order of 19 Nov 
 | R1.8 | AUD-1m, J-8, PF-0a | Build Lead C | AUD-1m part 2a, then 2b with J-8 and PF-0a, after #2214 |
 | R1.72 | FO-8, CS-K1, J-72 | Build Lead C | FO-8, then CS-K1 part 2 with J-72 |
 | R1.10 | CS-V1, PF-28 | Build Lead C (PF-28: Lead B) | CS-V1 PR 3 and PF-28 |
+
+## Track B (case side and client money; Lead B (Track B), P-785; founder A286/A287 22 Nov: one lane per open part)
+| Item | Rows a brief may name | Lead | Parts left |
+|---|---|---|---|
+| R1.56, R1.60 | FO-7b, FO-7g, FO-7q, FO-7s1 | Lead B (Track B) | FO-7b part 1b (#2953), FO-7g parts 1w and 3, FO-7q, FO-7s1 |
+| R1.57 | FO-7c | Lead B (Track B) | FO-7c parts 1-3 |
+| R1.58 | FO-7ts, FO-7t | Lead B (Track B) | FO-7ts part 3 (#2368), FO-7t parts 1-3 |
+| R1.65 | PF-F1 | Lead B (Track B) | PF-F1, PF-F1b, PF-F1c |
+| R1.3 | CS-W2, CS-W3 | Lead B (Track B) | CS-W2 parts, CS-W3 parts 2-3, CS-W4 |
+| R1.29 | FO-9b, FO-9s | Lead B (Track B) | FO-9b parts 1-2, FO-9s parts 2-3 |
+| R1.93 | PF-17 | Lead B (Track B) | PF-17 parts 1-4 |
+| R1.54, R1.61 | FO-6, J-61 | Lead B (Track B) | FO-6 parts 3+, FO-6d, J-61 |
+| R1.55 | FO-5d | Lead B (Track B) | FO-5d part 1 |
+| R1.105 | PF-5 | Lead B (Track B) | PF-5 part 4; AUD-2 and PF-11c blocked (AUD-5 done, #2197) |
+| R1.85 | PF-21b, PF-21d | Lead B (Track B) | PF-21b parts 2-3, PF-21d, PF-21rs |
+| R1.76 | CS-NT1 | Lead B (Track B) | CS-NT1 parts 1-3 (#2320), CS-NT1t |

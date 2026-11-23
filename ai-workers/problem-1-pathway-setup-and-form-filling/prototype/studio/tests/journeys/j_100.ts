@@ -1,10 +1,15 @@
 // J-100 (map row 100, R1.100: recorded acceptance of our terms, privacy notice and data agreement): the join-and-walk
 // for the item, over PF-5 part 1's sign-up door, PF-5t's terms gate and screens, and PF-5v part 2's sign-up mail
-// (QA-481: the verification email reaches the demo inbox), on an isolated copy of the running app (its own database
+// (QA-481: the verification email reaches the demo inbox) and PF-5s part 1's sign-up screens, on an isolated copy of the running app (its own database
 // and port, never :4400), at 1440 px. Wording and versions Sample; legal points Unconfirmed: no counsel. US$0, no model
 // call, no live mail (the local email adapter, read at GET /api/demo/platform-inbox).
+//   W0 (PF-5s part 1, the screen): a person on Sign up presses Start free trial with the terms tick unticked: the screen
+//       refuses in plain words on the tick, nothing leaves the page and nothing is stored or sent; they tick it and
+//       finish: Check your email, the link from the inbox, Confirm my email: the firm, its Owner and the three
+//       acceptances are made, the firm key is shown, and the Owner signs in without being asked again. The screen has
+//       ONE tick for the three documents (concept pf-5s-saas r2 BR-3), so "two of three" is the door's, in W1;
 //   W1: sign-up cannot finish without accepting the current versions: refused with none, with two of three (the public
-//       door; no sign-up screen until PF-5s, so these steps are API calls, as the person's form would send them);
+//       door, as any form or script would send them);
 //   W2: a complete sign-up's verification email reaches the inbox, with the code and the link (QA-481);
 //   W3: the code confirms the sign-up: the firm and its Owner are made, and one acceptance per current version is
 //       stored with who, when and which version; a wrong code is refused and makes nothing;
@@ -43,6 +48,40 @@ const termsPage = (p: Page) => p.locator("[data-terms-page]").waitFor({ timeout:
 const items = (p: Page) => p.locator("[data-terms-item]").evaluateAll((els) => els.map((e) => e.getAttribute("data-terms-item")).sort());
 let firmKey = "", ownerId = "";
 try {
+  // ------------------------------------------------------------------------------- W0: the sign-up screen refuses (PF-5s)
+  const se = `screen.j100.${run}@example.com`;
+  const sctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
+  const sp = await sctx.newPage(); sp.on("pageerror", (e) => errors.push(String(e)));
+  let posts = 0; sp.on("request", (r) => { if (r.method() === "POST" && r.url().endsWith("/api/public/signup")) posts++; });
+  await sp.goto(`${BASE}/sign-up`); await sp.locator("[data-signup-agree]").waitFor({ timeout: 20_000 });
+  await sp.getByLabel("Work email").fill(se); await sp.getByLabel("Password").fill("Correct-horse-9!"); await sp.getByLabel("Firm name").fill(`Sample Screen Firm ${run}`);
+  await sp.locator("[data-signup-submit]").click();
+  await sp.locator("[data-signup-terms-error]").waitFor({ timeout: 10_000 });
+  await wait(3500);   // longer than the door's minimum fill time: a request, had one left, would have been answered
+  ok("R1.100 W0 fail (screen): Start free trial with the terms unticked is refused on the screen, in plain words on the tick: 'Please accept the terms to continue.'",
+    (await sp.locator("[data-signup-terms-error]").innerText()) === "Please accept the terms to continue." && (await sp.locator("[data-signup-check]").count()) === 0, await sp.locator("[data-signup-terms-error]").innerText());
+  ok("R1.100 W0 fail (screen): nothing is created: no request left the page, no pending sign-up, no firm, no email", posts === 0 && sql(`select count(*) from platform_signup_pending where email = '${se}'`) === "0" && sql(`select count(*) from platform_firm where owner_email = '${se}'`) === "0" && (await inbox(se)).length === 0);
+  await shot(sp, "w0-terms-refused-1440");
+  const shown = await sp.locator("[data-signup-term]").allInnerTexts();
+  await sp.locator("[data-signup-agree]").check(); await sp.locator("[data-signup-submit]").click();
+  await sp.locator("[data-signup-check]").waitFor({ timeout: 20_000 });
+  ok("R1.100 W0 (screen): ticked (the tick names the three current versions), Start free trial answers Check your email", shown.length === 3 && posts === 1 && (await sp.locator("[data-signup-sent-to]").innerText()) === se, shown);
+  let smail: { subject: string; body: string } | undefined;
+  for (let i = 0; i < 75 && !smail; i++) { await wait(200); smail = (await inbox(se)).find((m) => m.subject === "Your ExpatReady verification code"); }
+  const slink = smail?.body.match(/\/sign-up\/verify#token=[A-Za-z0-9_-]{43}&code=\d{6}/)?.[0];
+  if (!slink) throw new Error("STOP  no verification link in the screen sign-up's inbox");
+  await sp.goto(`${BASE}${slink}`); await sp.locator("[data-signup-confirm]").click();
+  await sp.locator("[data-signup-firm-key]").waitFor({ timeout: 20_000 });
+  const sKey = (await sp.locator("[data-signup-firm-key]").innerText()).trim();
+  ok("R1.100 W0 (screen): Confirm my email makes the firm and its Owner with one acceptance per current version; the firm key is shown",
+    !!sKey && sql(`select count(*) from platform_terms_acceptance a join platform_firm f on f.id = a.firm_id where f.key = '${sKey}' and f.owner_email = '${se}'`) === "3", sKey);
+  await shot(sp, "w0-confirmed-1440");
+  await sp.locator("[data-signup-sign-in]").click();
+  await sp.getByLabel("Firm key").fill(sKey); await sp.getByLabel("Work email").fill(se); await sp.getByRole("button", { name: "Sign in" }).click();
+  await sp.locator("[data-account], [data-terms-page]").first().waitFor({ timeout: 20_000 });
+  ok("R1.100 W0 (screen): the Owner signs in and is not asked to accept again", (await sp.locator("[data-account]").count()) === 1 && (await sp.locator("[data-terms-page]").count()) === 0);
+  await sctx.close();
+
   // ---------------------------------------------------------------------------------------------- W1: the door refuses
   const plans = await j("GET", "/api/public/plans");
   const terms: { id: string; kind: string; version: string }[] = plans.body.terms ?? [];
@@ -51,9 +90,9 @@ try {
   const form = { email, password: "Correct-horse-9!", firmName: `Sample Terms Firm ${run}`, countryCode: "CA", planCode: plans.body.plans?.[0]?.code ?? "solo", period: "MONTHLY", acceptedTerms: terms.map((t) => t.id), formStamp: plans.body.formStamp };
   await wait(3300);   // the door's minimum fill time is 3 s
   const none = await j("POST", "/api/public/signup", { ...form, acceptedTerms: [] });
-  ok("R1.100 W1 fail: a sign-up that accepts nothing is refused at the field, in plain words", none.status === 400 && String(none.body.errors?.[0]).startsWith("acceptedTerms: accept the current terms"), none.body.errors);
+  ok("R1.100 W1 fail: a sign-up that accepts nothing is refused at the field, in plain words", none.status === 422 && String(none.body.errors?.[0]).startsWith("acceptedTerms: accept the current terms"), none.body.errors);
   const two = await j("POST", "/api/public/signup", { ...form, acceptedTerms: form.acceptedTerms.slice(0, 2) });
-  ok("R1.100 W1 fail: a sign-up that accepts two of the three current versions is refused", two.status === 400, two.body.errors);
+  ok("R1.100 W1 fail: a sign-up that accepts two of the three current versions is refused", two.status === 422, two.body.errors);
   await wait(1000);
   ok("R1.100 W1 fail: a refused sign-up stores nothing and sends nothing (the inbox is empty; P-606: read before the sign-up)", sql(`select count(*) from platform_signup_pending where email = '${email}'`) === "0" && (await inbox(email)).length === 0);
 
@@ -71,7 +110,7 @@ try {
 
   // ------------------------------------------------------------------------------------------------ W3: confirm, stored
   const wrong = await j("POST", "/api/public/signup/verify", { token, code: code === "000000" ? "111111" : "000000" });
-  ok("R1.100 W3 fail: a wrong code is refused in plain words and makes no firm", wrong.status === 400 && wrong.body.code === "CODE_WRONG" && sql(`select count(*) from platform_firm where owner_email = '${email}'`) === "0", wrong.body);
+  ok("R1.100 W3 fail: a wrong code is refused in plain words and makes no firm", wrong.status === 422 && wrong.body.code === "CODE_WRONG" && sql(`select count(*) from platform_firm where owner_email = '${email}'`) === "0", wrong.body);
   const done = await j("POST", "/api/public/signup/verify", { token, code });
   firmKey = done.body.firmKey ?? ""; ownerId = done.body.ownerStaffId ?? "";
   ok("R1.100 W3: the code from the email confirms the sign-up: one firm and its Owner are made", done.status === 201 || done.status === 200 ? !!firmKey && !!ownerId : false, done.body);

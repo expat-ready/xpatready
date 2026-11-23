@@ -79,7 +79,7 @@ try {
   // ------------------------------------------------------------------------------------------------- catalogues (data)
   // Keys later rows add to the catalogue (P-601; Lead B on #1753): Appendix C is asserted exactly for SA-06's own keys, and
   // each adding row asserts its own rows exactly. A row that adds keys extends this list (never a wider filter).
-  const ADDED_BY_LATER_ROWS = ["agent/complaint:", "agent/identity-check:"];   // PF-21: agent/complaint:record, agent/complaint:read; FO-13i: agent/identity-check:record
+  const ADDED_BY_LATER_ROWS = ["agent/complaint:", "agent/identity-check:", "agent/conflict:"];   // PF-21: agent/complaint:record, agent/complaint:read; FO-13i: agent/identity-check:record; FO-13c: agent/conflict:check
   const laterKeys = ADDED_BY_LATER_ROWS.map((p) => `permission_key not like '${p}%'`).join(" and ");
   const perRole = sql(DEMO, `select string_agg(role || ':' || n, ',' order by role) from (select role::text, count(*) n from platform_role_permission where ${laterKeys} group by role) x`);
   ok("PF-3 pass: the starter roles' keys per role equal SA-06 v3.15 Appendix C (Owner 231, Admin 213, Case Manager 145, Case Officer 99, Billing / Finance 46, Read-only 40)",
@@ -88,7 +88,7 @@ try {
     sql(DEMO, `select count(*) from platform_role_permission where permission_key not like 'agent/%'`) === "0"
     && sql(DEMO, `select string_agg(distinct role::text, ',') from platform_role_permission where permission_key in ('agent/subscription:cancel','agent/firm-profile:manage','agent/payment-rail:connect','agent/ai:switch')`) === "OWNER");
   ok("PF-3 fail: a key for a role that is not one of the six is refused", refused(DEMO, `insert into platform_role_permission values ('REPRESENTATIVE', 'agent/case:edit')`, /invalid input value for enum/));
-  ok("PF-3 pass: three Sample plans, trial 14 days, no price set", sql(DEMO, `select string_agg(code || ':' || seats_limit || ':' || trial_days || ':' || coalesce(monthly_price_cents::text, '-'), ',' order by seats_limit) from platform_plan`) === "solo:1:14:-,team:5:14:-,firm:20:14:-");
+  ok("PF-3 pass: three Sample plans, trial 14 days, each with its Sample monthly and yearly price (QA-741's seed)", sql(DEMO, `select string_agg(code || ':' || seats_limit || ':' || trial_days || ':' || coalesce(monthly_price_cents::text, '-') || ':' || coalesce(yearly_price_cents::text, '-'), ',' order by seats_limit) from platform_plan`) === "solo:1:14:4900:49000,team:5:14:9900:99000,firm:20:14:19900:199000");
 
   // ----------------------------------------------------------------------------------------- the seed (row lines 11-13)
   const db = client(DEMO); dbs.push(db);

@@ -24,6 +24,7 @@ import { z } from "zod";
 import { CronSpec, JobKey, JobName, JobOptions, JobPayload, PLATFORM_JOB_QUEUES, type JobHandler, type JobPort } from "../../../../ports/jobs.ts";
 import { firmScope } from "../firm-scope.ts";
 import { jobIdOf } from "./job-key.ts";
+import { logPort } from "../observability/log.ts";
 
 /** pg-boss's schema in our database (created by pg-boss at start, never by Prisma). */
 export const JOBS_SCHEMA = "platform_jobs";
@@ -100,7 +101,7 @@ export class PgBossJobs implements JobPort {
     this.boss = new PgBoss({ connectionString: o.connectionString, schema: this.schema, max: 3, application_name: "xr-studio-jobs", ...o.boss });
     // pg-boss emits "error" for background failures (maintenance, a lost connection); an EventEmitter "error" with no
     // listener would end the process, so it always has one.
-    this.boss.on("error", (e) => (o.onError ?? ((x: Error) => console.error(`jobs: ${x.message}`)))(e));
+    this.boss.on("error", (e) => (o.onError ?? ((x: Error) => logPort.error("jobs_background_error", x)))(e));
   }
 
   get started() { return this.#state === "started"; }

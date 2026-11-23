@@ -1,0 +1,14 @@
+PASS  PF-5v DW2 pass: {} names the work email, the password and the firm's name in plain words
+PASS  PF-5v DW2 pass: blank answers get the same words, one per field
+PASS  PF-5v DW2 pass: a wrong type or an unknown key never answers in the validator's words
+PASS  PF-5v DW2 pass: an unknown key is named as not a field of this form; a wrong type of email, password or firm name answers as empty
+PASS  PF-5v DW2 fail: a short password, a 1-letter firm and a non-CA country keep their words (never the empty words)
+PASS  PF-5v DW2 fail: a bad email answers "give your work email", not the empty words
+PASS  PF-5v DW2 fail: a password of spaces keeps "not only spaces"
+PASS  PF-5v part 2 DW1 pass (QA-481): the verification email goes through MailPort once, to the person, transactional, with no firm (a platform account email)
+PASS  PF-5v part 2 DW1 pass: the code it carries is the one the provider confirms; the password never appears in it
+PASS  PF-5v part 2 DW1 fail: a stand-in with no MailPort keeps the email in memory only
+PASS  PF-5v part 2 DW3 pass: runtimeSignUpPorts passes the given MailPort to the door and the stand-in
+PASS  PF-5v part 2 DW3 fail: with no MailPort given, the ports fall back to their own fakeMail, which is not the app's (so the feature must pass MESSAGES_MAIL, checked below)
+PASS  PF-5v part 2 DW3 pass: the app's feature binds the sign-up ports to MESSAGES_MAIL (MailPort over MessagePort)
+13 passed, 0 failed

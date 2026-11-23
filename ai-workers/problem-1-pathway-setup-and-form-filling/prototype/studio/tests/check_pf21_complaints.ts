@@ -252,7 +252,7 @@ try {
   ok("PF-21 fail (database): a staff member who handles a complaint (and nothing else) cannot be deleted or change id (RESTRICT: 23001)",
     refusedCode(DEMO, `delete from platform_staff where id='${handlerOnly}'`, "23001", /plat_complaint_firm_id_handler_staff_id_fkey/) && refusedCode(DEMO, `update platform_staff set id = gen_random_uuid() where id='${handlerOnly}'`, "23001", /plat_complaint_firm_id_handler_staff_id_fkey/));
   ok("PF-21 pass: the three foreign keys of the register are RESTRICT on delete and on update",
-    sql(DEMO, `select string_agg(conname || ':' || confdeltype::text || confupdtype::text, ',' order by conname) from pg_constraint where contype = 'f' and conrelid::regclass::text like 'plat\\_%'`)
+    sql(DEMO, `select string_agg(conname || ':' || confdeltype::text || confupdtype::text, ',' order by conname) from pg_constraint where contype = 'f' and conrelid::regclass::text like 'plat\\_complaint%'`)
       === "plat_complaint_event_firm_id_complaint_id_fkey:rr,plat_complaint_firm_id_fkey:rr,plat_complaint_firm_id_handler_staff_id_fkey:rr");
 
   // -------------------------------------------------------------------- line 6: every change through AuditPort
@@ -260,8 +260,11 @@ try {
   ok("PF-21 pass (line 6): every change wrote one AuditPort line (record ×3, acknowledge, step, response, close, note, handler, reminder), each on plat_complaint with the complaint's id",
     ["complaint.record", "complaint.acknowledge", "complaint.step", "complaint.response", "complaint.close", "complaint.note", "complaint.handler", "complaint.reminder"].every((a) => actions.includes(a))
     && actions.filter((a) => a === "complaint.record").length === 3 && audit.entries.every((e) => e.entity === "plat_complaint" && e.entityKey === e.detail.complaintId), actions);
-  ok("PF-21 pass: no audit line carries the complaint's words or a person's name (ids only in detail; summaries are fixed phrases)",
-    audit.entries.every((e) => !/study permit|sponsor disputes|Client A|Called the client/.test(JSON.stringify(e))));
+  // R1.8 (QA-594, P-687): the complaint's values are on its lines' before and after in full (AG-13-43); never in the summary
+  // or the ids-only detail.
+  ok("PF-21 pass: no audit line's summary or detail carries the complaint's words or a person's name (ids only in detail; summaries are fixed phrases); before and after carry them (P-687)",
+    audit.entries.every((e) => !/study permit|sponsor disputes|Client A|Called the client/.test(JSON.stringify({ ...e, before: undefined, after: undefined })))
+    && audit.entries.some((e) => /study permit|sponsor disputes|Client A|Called the client/.test(JSON.stringify([e.before, e.after]))));
   ok("PF-21 fail: refused calls wrote no audit line (exactly the changes above)", audit.entries.length === actions.length && actions.length === 10, actions);
   const failing = fakeAudit({ failOn: (e) => e.action === "complaint.record" || e.action === "complaint.close" });
   const svc2 = new ComplaintsService({ db, audit: failing, jobs, clock, mail });
@@ -371,9 +374,12 @@ try {
   const named = await svc3.record(owner, { ...base, subjectKind: "OTHER_PERSON", subjectId: undefined, complainantName: NAME, complainantContact: CONTACT, receivedAt: at3(-1), summary: `Says we ${WORDS}.` });
   ok("PF-21 pass: the named person's name and contact are on the record itself", named.complainantName === NAME && named.complainantContact === CONTACT);
   await clock3.advance(5 * DAY);
-  const leak = JSON.stringify([...audit3.entries, ...mail3.sent, ...jobs3.jobs]);
-  ok("PF-21 fail (no leak): the reminder for it went out, and no audit line, job payload or mail carries the name, the contact or the summary's words",
-    mail3.sent.some((m) => m.text.includes(named.id)) && !leak.includes(NAME) && !leak.includes(CONTACT) && !leak.includes(WORDS), mail3.sent.length);
+  // R1.8 (QA-594, P-687): an audit line's before and after hold the record's values in full; everything else stays clean.
+  const leak = JSON.stringify([...audit3.entries.map((e) => ({ ...e, before: undefined, after: undefined })), ...mail3.sent, ...jobs3.jobs]);
+  const recordLine = audit3.entries.find((e) => e.action === "complaint.record" && e.entityKey === named.id);
+  ok("PF-21 fail (no leak): the reminder for it went out, and no audit summary or detail, job payload or mail carries the name, the contact or the summary's words; the record's line holds them in after (P-687)",
+    mail3.sent.some((m) => m.text.includes(named.id)) && !leak.includes(NAME) && !leak.includes(CONTACT) && !leak.includes(WORDS)
+    && recordLine?.before === null && recordLine?.after?.complainantName === NAME && recordLine?.after?.complainantContact === CONTACT, mail3.sent.length);
   ok("PF-21 pass (break m10): the reminder gives the date in the firm's zone (America/Toronto) and a Reply-To of the firm's contact address",
     mail3.sent.filter((m) => m.text.includes(named.id)).every((m) => m.text.includes("America/Toronto") && m.replyTo === sql(DEMO, `select contact_email from platform_firm where id = '${firmA}'`)));
 

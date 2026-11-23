@@ -8,6 +8,8 @@ import { Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, In
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { problemFromZod } from "../../contracts/programs.ts";
+import type { MilestoneDeadline } from "../../contracts/milestones.ts";
+import { openMilestoneDeadlines } from "./case-deadlines/milestones.ts";
 import { releaseLabel, StageKeyDetails, StartNext, type CaseStages, type CaseStageView, type StartNextPreview } from "../../contracts/runtime.ts";
 import { caseView, checkValue, knownOf, shapeOf, type Participant } from "../../engine/runtime/case.ts";
 import { caseChecklist } from "../../engine/runtime/case-checklist.ts";
@@ -125,12 +127,15 @@ export class CaseStagesService {
     }));
   }
 
-  /** GET /runtime/cases/:id/stages: the case's stages, the current one and the next one (if any). */
-  async stages(actor: Actor, caseId: string): Promise<CaseStages> {
+  /** GET /runtime/cases/:id/stages: the case's stages, the current one and the next one (if any), and (CS-DL3 part 1)
+   *  the case's open government steps with a due date, beside the stage deadline. */
+  async stages(actor: Actor, caseId: string): Promise<CaseStages & { milestones: MilestoneDeadline[] }> {
     const c = await this.reach(actor, caseId);
     const route = c.stage.routeKey ? await this.db.route.findFirst({ where: { workspaceId: c.workspaceId, key: c.stage.routeKey }, select: { key: true, label: true, basis: true } }) : null;
     const { next } = nextOf(c.stages.map((s) => ({ ...s, stage_key: s.stageKey, state: s.state as StageState })));
-    return { case_id: c.id, route: route ?? (c.stage.routeKey ? { key: c.stage.routeKey, label: c.stage.routeKey, basis: "SAMPLE" } : null), stages: await this.views(c), current: c.stage.id, next: next?.id ?? null };
+    const { cal, today } = await deadlineDay(this.db, this.clock, c.firmKey);
+    return { case_id: c.id, route: route ?? (c.stage.routeKey ? { key: c.stage.routeKey, label: c.stage.routeKey, basis: "SAMPLE" } : null), stages: await this.views(c), current: c.stage.id, next: next?.id ?? null,
+      milestones: await openMilestoneDeadlines(this.db, c.id, cal, today) };
   }
 
   /** GET /runtime/cases/:id/stages/:stage: one stage's own record, read only (BR-6, m2): its key details, its filings with

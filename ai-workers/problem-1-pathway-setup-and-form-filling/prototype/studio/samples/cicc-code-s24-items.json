@@ -1,0 +1,358 @@
+{
+  "source": {
+    "title": "Code of Professional Conduct for College of Immigration and Citizenship Consultants Licensees",
+    "instrument": "SOR/2022-128",
+    "section": "24(3)",
+    "leadIn": "The service agreement must include the following information:",
+    "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+    "currentTo": "2026-10-29",
+    "readOn": "2026-11-21",
+    "readNote": "Copied word for word from the Justice Laws Website page (\"Regulations are current to 2026-10-29\"), read 21 Nov 2026 by the FO-5b builder. The paragraph texts are the Code's own words; every howWeCheck note is ours."
+  },
+  "legalReading": "Unconfirmed: no counsel",
+  "items": [
+    {
+      "letter": "a",
+      "section": "24(3)(a)",
+      "text": "the licensee’s name, registration number, address, telephone number and email address;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_a"
+      },
+      "howWeCheck": "Ours: the template can print {representative.name} and {representative.licence_number}; the licensee's address, telephone number and email address have no placeholder, so this item counts as marked only by its clause marker {code.s24_3_a}."
+    },
+    {
+      "letter": "b",
+      "section": "24(3)(b)",
+      "text": "the information referred to in subparagraphs (2)(a)(i) to (iii);",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_b"
+      },
+      "howWeCheck": "Ours: the template can print {client.name}, {client.email} and {client.phone}; the client's home and business addresses have no placeholder, so this item counts as marked only by its clause marker {code.s24_3_b}."
+    },
+    {
+      "letter": "c",
+      "section": "24(3)(c)",
+      "text": "a summary of any preliminary advice given to the client by the licensee;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_c"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_c} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "d",
+      "section": "24(3)(d)",
+      "text": "a statement that the licensee endeavours to provide quality immigration or citizenship consulting services and to adequately supervise any person who assists in the provision of those services;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_d"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_d} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "e",
+      "section": "24(3)(e)",
+      "text": "the names of the people who are likely to assist the licensee in the provision of immigration or citizenship consulting services;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_e"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_e} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "f",
+      "section": "24(3)(f)",
+      "text": "the client’s instructions;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_f"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_f} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "g",
+      "section": "24(3)(g)",
+      "text": "an itemized list of the services to be provided, tailored to the needs of the client, that describes the nature of the services and their scope;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_g"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_g} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "h",
+      "section": "24(3)(h)",
+      "text": "estimated time frames for the delivery of the services;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_h"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_h} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "i",
+      "section": "24(3)(i)",
+      "text": "an estimate of fees, including the hourly rate and the anticipated number of hours, or an agreed fixed fee or, if the services are provided pro bono, a statement to that effect;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [
+          "fees",
+          "fees.total"
+        ],
+        "clauseMarker": "code.s24_3_i"
+      },
+      "howWeCheck": "Ours: counts as marked when the template prints the fee rows ({#fees} … {/fees}) or {fees.total}, or carries {code.s24_3_i}. We do not read whether an hourly rate, hours or a pro bono statement is written."
+    },
+    {
+      "letter": "j",
+      "section": "24(3)(j)",
+      "text": "an estimate of expected disbursements;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_j"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_j} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "k",
+      "section": "24(3)(k)",
+      "text": "any goods and services tax, harmonized sales tax or other tax or levy to be charged to the client;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_k"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_k} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "l",
+      "section": "24(3)(l)",
+      "text": "the terms of payment for fees and disbursements, including any interest payable on unpaid amounts;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_l"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_l} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "m",
+      "section": "24(3)(m)",
+      "text": "any advance payments to be made by the client and the licensee’s refund policy;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_m"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_m} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "n",
+      "section": "24(3)(n)",
+      "text": "an explanation of any additional costs that the client may be required to pay;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_n"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_n} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "o",
+      "section": "24(3)(o)",
+      "text": "if applicable, a description of any conflict of interest or potential conflict of interest relating to the client;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [
+          "conflict.disclosure"
+        ],
+        "clauseMarker": "code.s24_3_o"
+      },
+      "howWeCheck": "Ours: counts as marked when the template prints {conflict.disclosure} (FO-13c fills it from the conflict check) or carries {code.s24_3_o}."
+    },
+    {
+      "letter": "p",
+      "section": "24(3)(p)",
+      "text": "a statement that any original documents provided by the client to the licensee will be returned to the client as soon as the purpose for which the licensee took possession of the documents has been achieved;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_p"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_p} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "q",
+      "section": "24(3)(q)",
+      "text": "a statement that the licensee has an obligation of confidentiality under this Code and a description of the manner in which the licensee will maintain the confidentiality of the client’s information and documents;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_q"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_q} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "r",
+      "section": "24(3)(r)",
+      "text": "the licensee’s complaint-handling procedure;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_r"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_r} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "s",
+      "section": "24(3)(s)",
+      "text": "the official language of Canada in which the services will be provided;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_s"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_s} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "t",
+      "section": "24(3)(t)",
+      "text": "a statement that the licensee will provide timely information related to the status of the client’s case;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_t"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_t} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "u",
+      "section": "24(3)(u)",
+      "text": "a statement that the licensee will obtain assistance, when necessary, including by retaining the services of an interpreter or translator;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_u"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_u} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "v",
+      "section": "24(3)(v)",
+      "text": "a description of the College’s role as the licensee’s regulator and an explanation of the College’s complaints process;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_v"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_v} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "w",
+      "section": "24(3)(w)",
+      "text": "an explanation that the College may require the production of documents in accordance with the Act and any regulations or by-laws made under the Act;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_w"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_w} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "x",
+      "section": "24(3)(x)",
+      "text": "a statement that the licensee has provided a copy of this Code to the client;",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_x"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_x} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "y",
+      "section": "24(3)(y)",
+      "text": "an explanation of what will happen to the client’s file if the licensee becomes incapacitated or is otherwise unable to continue providing services under the agreement; and",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_y"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_y} next to the firm's own wording. We do not read the wording itself."
+    },
+    {
+      "letter": "z",
+      "section": "24(3)(z)",
+      "text": "any other terms agreed to.",
+      "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html#s-24",
+      "currentTo": "2026-10-29",
+      "readOn": "2026-11-21",
+      "marks": {
+        "placeholders": [],
+        "clauseMarker": "code.s24_3_z"
+      },
+      "howWeCheck": "Ours: no placeholder prints this item; it counts as marked when the template carries the clause marker {code.s24_3_z} next to the firm's own wording. We do not read the wording itself."
+    }
+  ]
+}

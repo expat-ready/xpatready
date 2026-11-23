@@ -20,10 +20,14 @@ import type { FilesPort } from "../../../../ports/files.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { DUTY_KEYS, problem, type StaffContext } from "../../platform/identity/keys.ts";
+import { parseInput, strict } from "../../platform/http/input.ts";
+import { z } from "zod";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 import { winProspect } from "../sales/prospects.ts";
+import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf } from "../compliance/conflict/gate.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
+import { CODE_MARKED, checklistFor, draftChecklist, lettersOf, markedLetters } from "./code-checklist.ts";
 
 type Tx = Prisma.TransactionClient;
 const STUDIO = resolve(import.meta.dirname, "..", "..", "..", "..");
@@ -62,6 +66,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const attempt = () => randomBytes(6).toString("hex");
 /** Text that looks blank, hides itself or turns the line around (B-13, B-14 of part 1): refused in names. */
 const HIDDEN = /[\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u3164\ufe00-\ufe0f\ufeff]/;
+/** PF-28 (R1.10): the new-version form's own field (multipart text, or a number from a direct call); its rule is expectedVersionOf's. */
+export const TemplateVersionBody = strict({ expectedVersion: z.union([z.string().max(12), z.number()]).optional() });
 const uuidOf = (v: unknown, field: string): string | null => {
   if (v === undefined || v === null || v === "") return null;
   if (typeof v !== "string" || !UUID.test(v)) return unprocessable(`${field} is not an id.`, { [field]: "Not an id." });
@@ -133,6 +139,10 @@ export function feesOf(v: unknown): FeeIn[] {
 }
 
 /** The service. `audit` defaults to the one trail (AuditEventAdapter until AUD-1); a test passes a failing one. */
+/** R1.8 (QA-594): a retainer's fees as flat words for an audit line's before and after ("Deposit on signing: 150000 ON_SIGNING"). */
+const feeWords = (fees: { label: string; amountMinor: bigint | number | null; when: string; dueOn: string | null }[]) =>
+  fees.map((f) => `${f.label}: ${f.amountMinor === null ? "no amount" : String(f.amountMinor)} ${f.when}${f.dueOn ? ` ${f.dueOn}` : ""}`);
+
 export class Retainers {
   readonly render: DocxRender;
   constructor(private readonly db: PrismaClient, private readonly files: FilesPort, private readonly clock: Clock, private readonly audit: AuditPort<Tx> = auditEvent) {
@@ -209,6 +219,8 @@ export class Retainers {
     await tx.moduleEvent.create({ data: { firmId, type, subjectId: payload.retainerId, payload: RetainerEventPayload.parse(payload) } });   // last (contracts §0.5)
   }
 
+  // R1.8 (QA-594): every line below passes before and after (the retainer's or template's values; null for the side that
+  // does not exist). The fees as one flat list of words, one per fee.
   private line(ctx: StaffContext, action: string, entityKey: string, summary: string, detail: Record<string, string | number | boolean | null> = {}) {
     return { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_retainer", entityKey, summary, detail };
   }
@@ -254,23 +266,35 @@ export class Retainers {
     {
       await this.tx(async (tx) => {
         await tx.foRetainerTemplate.create({ data: { id, firmId: ctx.firmId, name, kind, fileKey: key, fileSha256: stored.sha256, placeholders: c.placeholders, createdBy: `staff:${ctx.staffId}`, updatedBy: `staff:${ctx.staffId}` } });
-        await this.audit.record(tx, { ...this.line(ctx, "retainer.template.uploaded", id, `Template uploaded (${kind.toLowerCase()}, version 1)`, { templateId: id, kind, version: 1, sha256: stored.sha256 }), entity: "fo_retainer_template" });
+        await this.audit.record(tx, { ...this.line(ctx, "retainer.template.uploaded", id, `Template uploaded (${kind.toLowerCase()}, version 1)`, { templateId: id, kind, version: 1, sha256: stored.sha256 }), entity: "fo_retainer_template",
+          before: null, after: { name, kind, version: 1, active: true, fileSha256: stored.sha256, placeholders: c.placeholders } });
       }, { fo_retainer_template_firm_id_name: taken, "(`firm_id`,`name`)": taken, firmId_name: taken });
     }
     return { id, name, kind, version: 1, active: true, placeholders: c.placeholders, warnings: c.warnings };
   }
 
   /** A new file for a template makes version n+1 (BR-1); retainers keep the version they were made from. */
-  async newTemplateVersion(ctx: StaffContext, id: string, file: Upload | undefined) {
+  async newTemplateVersion(ctx: StaffContext, id: string, file: Upload | undefined, body: Record<string, unknown> = {}) {
     if (typeof id !== "string" || !UUID.test(id)) notFound("template");
+    // PF-28 (R1.10): the form's fields through the one input rule, and the file's presence, before the template is looked up
+    // (an unknown field or a wrong type 422 named; no file 422 on its field; a random id's 404 never hides them).
+    parseInput(TemplateVersionBody, body);
+    if (!file?.bytes?.length) unprocessable("Choose a .docx file.", { file: "Choose a .docx file." });
     const t = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id } }) ?? notFound("template");
+    // FO-5s part 2 break M1: the version the page showed (multipart digits); a colleague's newer version is never replaced
+    // silently. Optional, so earlier callers keep working.
+    if (body.expectedVersion !== undefined && body.expectedVersion !== "") {
+      const expected = expectedVersionOf(body, true);   // plain digits or 422 at the field, as the retainer routes (break n4)
+      if (expected !== t.version) conflict(`This template is now at version ${t.version}, not version ${expected}. Open it again.`, "CHANGED");
+    }
     const c = await this.readTemplate(file);
     const version = t.version + 1, key = `retainer-templates/${id}/v${version}-${attempt()}.docx`;
     const stored = await this.files.put(ctx.firmId, key, file!.bytes, DOCX);
     await this.tx(async (tx) => {
       const n = await tx.foRetainerTemplate.updateMany({ where: { firmId: ctx.firmId, id, version: t.version }, data: { version, fileKey: key, fileSha256: stored.sha256, placeholders: c.placeholders, updatedBy: `staff:${ctx.staffId}` } });
       if (n.count !== 1) conflict("Someone changed this template at the same time. Open it again.", "CHANGED");
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.template.new_version", id, `Template version ${version} uploaded`, { templateId: id, version, sha256: stored.sha256 }), entity: "fo_retainer_template" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.template.new_version", id, `Template version ${version} uploaded`, { templateId: id, version, sha256: stored.sha256 }), entity: "fo_retainer_template",
+        before: { version: t.version, fileSha256: t.fileSha256, placeholders: t.placeholders }, after: { version, fileSha256: stored.sha256, placeholders: c.placeholders } });
     });
     return { id, version, placeholders: c.placeholders, warnings: c.warnings };
   }
@@ -285,9 +309,18 @@ export class Retainers {
     const taken = () => conflict("A template with this name already exists.", "NAME_TAKEN");
     await this.tx(async (tx) => {
       await tx.foRetainerTemplate.update({ where: { id: t.id }, data: { ...data, updatedBy: `staff:${ctx.staffId}` } });
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.template.changed", id, `Template ${data.active === false ? "switched off" : data.active ? "switched on" : "renamed"}`, { templateId: id, active: data.active ?? t.active }), entity: "fo_retainer_template" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.template.changed", id, `Template ${data.active === false ? "switched off" : data.active ? "switched on" : "renamed"}`, { templateId: id, active: data.active ?? t.active }), entity: "fo_retainer_template",
+        before: { name: t.name, active: t.active }, after: { name: data.name ?? t.name, active: data.active ?? t.active } });
     }, { fo_retainer_template_firm_id_name: taken, "(`firm_id`,`name`)": taken, firmId_name: taken });
     return { id, ...data };
+  }
+
+  /** FO-5b: the template's Code s. 24(3) checklist (its newest version): each item marked or not, never a refusal. */
+  async templateChecklist(ctx: StaffContext, id: string) {
+    if (typeof id !== "string" || !UUID.test(id)) notFound("template");
+    const t = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id }, select: { id: true, name: true, kind: true, version: true, placeholders: true } }) ?? notFound("template");
+    // s. 24(3) is the service agreement's list: a consultation template's answer says it does not apply (review m3).
+    return { templateId: t.id, name: t.name, kind: t.kind, version: t.version, appliesTo: "RETAINER", applies: t.kind === "RETAINER", ...checklistFor(t.placeholders) };
   }
 
   // ----------------------------------------------------------------------------------------------- retainers
@@ -296,10 +329,10 @@ export class Retainers {
   private signerFor(p: Awaited<ReturnType<Retainers["prospectFor"]>>, given: string | null) {
     if (p.type === "INDIVIDUAL") {
       if (given && given !== p.subjectPersonId) unprocessable("The signer of an Individual prospect is the prospect's person.", { signerPersonId: "Not this prospect's person." });
-      return { signer: p.subjectPerson, warnings: [] as string[], options: [] as { personId: string; name: string; role: string }[] };
+      return { signer: p.subjectPerson, warnings: [] as string[], options: [] as { personId: string; name: string; role: string; email: string | null }[] };
     }
     const contacts = p.subjectCompany?.contacts ?? [];
-    const options = contacts.map((c) => ({ personId: c.personId, name: nameOf(c.person), role: c.role }));
+    const options = contacts.map((c) => ({ personId: c.personId, name: nameOf(c.person), role: c.role, email: c.person.email }));   // FO-5s review n1: with the email, as read() lists them
     if (given) {
       const c = contacts.find((x) => x.personId === given);
       if (!c) unprocessable("The signer must be one of the company's contacts.", { signerPersonId: "Not one of the company's contacts." });
@@ -311,7 +344,8 @@ export class Retainers {
   }
 
   /** The merge values bound into a version (AG-5-3): copied, so a later change to the person never alters it. */
-  private async mergeValues(firmId: string, p: { type: string; subjectPerson: Person | null; subjectCompany: { operatingName: string } | null }, signer: Person | null, repId: string, n: number, fees: FeeIn[]) {
+  private async mergeValues(firmId: string, p: { id: string; type: string; subjectPerson: Person | null; subjectCompany: { operatingName: string } | null }, signer: Person | null, repId: string, n: number, fees: FeeIn[], templatePlaceholders: readonly string[] = []) {
+    const printsDisclosure = templatePlaceholders.includes("conflict.disclosure");
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: firmId }, select: { operatingName: true } });
     const rep = await this.db.platformStaff.findFirst({ where: { firmId, id: repId }, include: { credential: true } });
     const client = p.type === "CORPORATE" ? p.subjectCompany?.operatingName ?? null : (p.subjectPerson ? nameOf(p.subjectPerson) || null : null);
@@ -325,9 +359,13 @@ export class Retainers {
       "firm.name": firm.operatingName, "agreement.date": new Date(this.clock.now()).toISOString().slice(0, 10), "agreement.version": String(n),
       fees: fees.map((f) => ({ label: f.label, amount: f.amountMinor === null ? null : cad(f.amountMinor), when: WHEN_WORDS[f.when], due_on: f.dueOn })),
       "fees.total": amounts.length ? cad(amounts.reduce((a, b) => a + b, 0n)) : null,
+      // FO-13c, s. 24(3)(o): only a version whose template prints it holds it, so the value proves it was printed (break B-1).
+      "conflict.disclosure": printsDisclosure ? await disclosureFor(this.db, firmId, p.id) : null,
       // Who signs and who represents, by id (FO-5f review M-2: a Signed offline copy of this version restores them). Not
       // placeholders: a template naming them is refused.
       [SIGNER_ID]: signer?.id ?? null, [REPRESENTATIVE_ID]: repId,
+      // FO-5b: the Code s. 24(3) items this version's template marks, kept with the version (write-once). Not a placeholder.
+      [CODE_MARKED]: markedLetters(templatePlaceholders),
     };
   }
 
@@ -355,7 +393,7 @@ export class Retainers {
     if (!representativeEligible) blockers.representativeStaffId = "The representative is no longer active, licensed or a case manager. Edit to choose another.";   // B-4
     if (!signerPersonId) blockers.signerPersonId = "Choose who signs.";
     else if (!values["signer.email"] && !values["client.email"]) blockers.signerPersonId = "The signer needs an email.";
-    const missing = placeholders.filter((n) => !n.startsWith("fees") && n in values && (values[n] === null || values[n] === ""));
+    const missing = placeholders.filter((n) => !n.startsWith("fees") && n !== "conflict.disclosure" && n in values && (values[n] === null || values[n] === ""));
     return { blockers, missing };
   }
 
@@ -375,12 +413,13 @@ export class Retainers {
     if (!reps.some((r) => r.staffId === repId)) unprocessable("The representative must be an active person with a licence and the case-manager permissions.", { representativeStaffId: "Not eligible to represent." });
     const s = this.signerFor(p, uuidOf(body.signerPersonId, "signerPersonId"));
     const fees = body.fees === undefined ? [{ label: "Deposit on signing", amountMinor: null, when: "ON_SIGNING" as const, dueOn: null }] : feesOf(body.fees);
-    const id = randomUUID(), values = await this.mergeValues(ctx.firmId, p, s.signer, repId!, 1, fees);
+    const id = randomUUID(), values = await this.mergeValues(ctx.firmId, p, s.signer, repId!, 1, fees, t.placeholders);
     const file = await this.renderVersion(ctx.firmId, id, 1, t.fileKey, values);
     await this.tx(async (tx) => {
       await tx.foRetainer.create({ data: { id, firmId: ctx.firmId, kind, prospectId: p.id, subject: p.type === "CORPORATE" ? "COMPANY" : "PERSON", companyId: p.type === "CORPORATE" ? p.subjectCompanyId : null, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey, createdBy: `staff:${ctx.staffId}` } });
       await this.writeVersion(tx, ctx, id, 1, values, file, fees);
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.drafted", id, `${kind === "RETAINER" ? "Retainer" : "Consultation agreement"} drafted (version 1)`, { retainerId: id, prospectId: p.id, templateId: t.id, templateVersion: t.version, sha256: file.sha256 }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.drafted", id, `${kind === "RETAINER" ? "Retainer" : "Consultation agreement"} drafted (version 1)`, { retainerId: id, prospectId: p.id, templateId: t.id, templateVersion: t.version, sha256: file.sha256 }), entity: "fo_retainer",
+        before: null, after: { kind, status: "DRAFT", version: 1, prospectId: p.id, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, fees: feeWords(fees), fileSha256: file.sha256 } });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_DRAFTED, { retainerId: id, kind, prospectId: p.id, version: 1 });
     }, { fo_retainer_one_live_per_prospect: open });
     return { ...(await this.read(ctx, id)), warnings: s.warnings, signerOptions: s.options };
@@ -405,6 +444,20 @@ export class Retainers {
     return v;
   }
 
+  /** FO-5s (S2): a prospect's retainers for its card, newest first. The prospect's own visibility shows them all; the
+   *  representative of one sees that one (BR-3); anyone else gets the one not-found. */
+  async listForProspect(ctx: StaffContext, prospectId: string) {
+    const id = uuidOf(prospectId, "prospectId") ?? notFound("prospect");
+    const p = await this.db.foProspect.findFirst({ where: { firmId: ctx.firmId, id }, select: { id: true, ownerStaffId: true } });
+    if (!p) return notFound("prospect");
+    const all = p.ownerStaffId === ctx.staffId || (await this.seesAll(ctx));
+    const rows = await this.db.foRetainer.findMany({ where: { firmId: ctx.firmId, prospectId: p.id, ...(all ? {} : { representativeStaffId: ctx.staffId }) }, orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      select: { id: true, kind: true, status: true, currentVersion: true, representativeStaffId: true, updatedAt: true, versions: { where: { sentAt: { not: null } }, select: { n: true }, take: 1 } } });
+    if (!all && !rows.length) return notFound("prospect");
+    // sentBefore: an earlier version was sent, so a Draft means the client cannot sign until the new one is sent (break re-check).
+    return rows.map(({ versions, ...r }) => ({ ...r, mine: r.representativeStaffId === ctx.staffId, sentBefore: versions.length > 0 }));
+  }
+
   /** The retainer page (BR-6): the current version, its fees, what blocks Send and what is missing, the versions. */
   async read(ctx: StaffContext, id: string) {
     const r = await this.visible(ctx, id);
@@ -415,7 +468,8 @@ export class Retainers {
     // The prospect's header (BR-3: the retainer's representative reads it whatever the visibility setting).
     const ph = r.prospectId ? await this.db.foProspect.findFirst({ where: { firmId: ctx.firmId, id: r.prospectId }, select: { id: true, number: true, type: true, stage: { select: { label: true, kind: true } } } }) : null;
     const repOk = (await this.representatives(ctx.firmId)).some((x) => x.staffId === r.representativeStaffId);
-    const c = this.completeness(values, r.signerPersonId, await this.placeholdersMadeFrom(ctx.firmId, r, tpl), repOk);
+    const madeFrom = await this.placeholdersMadeFrom(ctx.firmId, r, tpl);
+    const c = this.completeness(values, r.signerPersonId, madeFrom, repOk);
     const signed = r.status === "SIGNED" || r.status === "SIGNED_OFFLINE";
     const filedFrom = signed ? (versions.find((v) => v.n === r.currentVersion)?.mergeValues as Record<string, unknown> | undefined)?.[COPIED_FROM] : undefined;
     return {
@@ -424,14 +478,22 @@ export class Retainers {
       version: { n: cur.n, sha256: cur.originalSha256, sentAt: cur.sentAt, values: { ...values, "representative.licence_number": undefined } as Record<string, unknown>,
         fees: cur.fees.map((f) => ({ position: f.position, label: f.label, amountMinor: f.amountMinor === null ? null : f.amountMinor.toString(), currency: f.currency, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null })) },
       // break r2-m3: what blocks Send is shown only while the agreement can still be edited (never "Edit to choose another" on a signed one).
+      // FO-5s break M4: whether this person may change it (Edit, Send): the prospect's own visibility, not the
+      // representative's read-only right (BR-3). The screens offer no control the server would refuse.
+      mayChange: await this.visible(ctx, id, true).then(() => true, () => false),
+      // FO-5s review M1 (BR-4, AG-5-50): a company's current contacts, the signer's choices (a signatory first, never a block).
+      signerOptions: r.subject === "COMPANY" && r.companyId ? (await this.db.foCompanyContact.findMany({ where: { firmId: ctx.firmId, companyId: r.companyId, validTo: null }, include: { person: true }, orderBy: { validFrom: "asc" } }))
+        .map((c) => ({ personId: c.personId, name: nameOf(c.person) || "(no name)", role: c.role, email: c.person.email })) : [],
       canSend: r.status === "DRAFT" && !Object.keys(c.blockers).length, blockers: EDITABLE.includes(r.status) ? c.blockers : {}, missing: c.missing,
+      // FO-5b: one quiet line, each Code s. 24(3) item present or missing in this version's template; never a blocker.
+      codeChecklist: r.kind === "RETAINER" ? draftChecklist(lettersOf(values) ?? markedLetters(madeFrom), { id: r.templateId, version: r.templateVersion, currentVersion: tpl?.version ?? null }) : null,
       withdrawn: r.withdrawnAt ? { at: r.withdrawnAt, reason: r.withdrawnReason } : null, signedOffline: r.offlineAt ? { at: r.offlineAt, reason: r.offlineReason, filed: "Signed on paper" } : null,
       // FO-5f item 3: each version's fees (the Signed offline panel shows the chosen version's), whether it is the signed
       // one, and the version a Signed offline copy was made from.
       versions: versions.map((v) => {
         const from = (v.mergeValues as Record<string, unknown>)[COPIED_FROM], copiedFrom = typeof from === "number" ? from : null;
         return {
-          n: v.n, sentAt: v.sentAt, endedAt: v.endedAt, endReason: v.endReason, sha256: v.originalSha256, copiedFrom,
+          n: v.n, sentAt: v.sentAt, endedAt: v.endedAt, endReason: v.endReason, sha256: v.originalSha256, copiedFrom, codeMarked: lettersOf(v.mergeValues as Record<string, unknown>),
           signed: signed ? v.n === r.currentVersion : null,
           note: copiedFrom !== null ? `Copied from version ${copiedFrom}, signed on paper` : !signed || v.n === r.currentVersion ? null
             : v.n === filedFrom ? `Signed on paper; filed as version ${r.currentVersion}` : "Not signed",   // review m-2
@@ -463,7 +525,8 @@ export class Retainers {
     const open = () => conflict("This prospect already has an open retainer. Open it instead.", "RETAINER_OPEN");
     if (r.kind === "RETAINER" && r.status === "EXPIRED" && await this.db.foRetainer.findFirst({ where: { firmId: ctx.firmId, prospectId: p.id, kind: "RETAINER", id: { not: r.id }, status: { notIn: ["WITHDRAWN", "EXPIRED"] } }, select: { id: true } })) open();   // review r2-m2, before rendering
     const cur = await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion }, include: { fees: { orderBy: { position: "asc" } } } });
-    const t = body.templateId !== undefined ? await this.templateFor(ctx.firmId, uuidOf(body.templateId, "templateId"), r.kind) : await this.currentTemplateFile(ctx.firmId, r);
+    const chosen = body.templateId !== undefined ? await this.templateFor(ctx.firmId, uuidOf(body.templateId, "templateId"), r.kind) : null;
+    const t = chosen ?? await this.currentTemplateFile(ctx.firmId, r);
     let repId = r.representativeStaffId;
     if (body.representativeStaffId !== undefined) {
       repId = uuidOf(body.representativeStaffId, "representativeStaffId") ?? unprocessable("Choose the representative.", { representativeStaffId: "Choose the representative." });
@@ -471,7 +534,9 @@ export class Retainers {
     }
     const s = this.signerFor(p, body.signerPersonId !== undefined ? uuidOf(body.signerPersonId, "signerPersonId") : r.signerPersonId);
     const fees = body.fees !== undefined ? feesOf(body.fees) : cur.fees.map((f) => ({ label: f.label, amountMinor: f.amountMinor, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null }));
-    const n = r.currentVersion + 1, values = await this.mergeValues(ctx.firmId, p, s.signer, repId, n, fees);
+    const usedPh = chosen ? chosen.placeholders
+      : await this.placeholdersMadeFrom(ctx.firmId, r, await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id: r.templateId }, select: { placeholders: true, version: true } }));
+    const n = r.currentVersion + 1, values = await this.mergeValues(ctx.firmId, p, s.signer, repId, n, fees, usedPh);
     const file = await this.renderVersion(ctx.firmId, r.id, n, t.fileKey, values);
     await this.tx(async (tx) => {
       const locked = await tx.$queryRaw<{ status: string; current_version: number }[]>(Prisma.sql`select status::text, current_version from fo_retainer where firm_id = ${ctx.firmId}::uuid and id = ${r.id}::uuid for update`);
@@ -480,7 +545,9 @@ export class Retainers {
       if (ends) await tx.foRetainerVersion.update({ where: { id: cur.id }, data: { endedAt: new Date(this.clock.now()), endReason: "UPDATED" } });
       await tx.foRetainer.update({ where: { id: r.id }, data: { status: "DRAFT", currentVersion: n, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey } });
       await this.writeVersion(tx, ctx, r.id, n, values, file, fees);
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.edited", r.id, `Edited: version ${n}${ends ? " (the earlier request ended)" : ""}`, { retainerId: r.id, version: n, endedVersion: ends ? cur.n : null, sha256: file.sha256 }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.edited", r.id, `Edited: version ${n}${ends ? " (the earlier request ended)" : ""}`, { retainerId: r.id, version: n, endedVersion: ends ? cur.n : null, sha256: file.sha256 }), entity: "fo_retainer",
+        before: { status: r.status, version: r.currentVersion, signerPersonId: r.signerPersonId, representativeStaffId: r.representativeStaffId, templateId: r.templateId, templateVersion: r.templateVersion, fees: feeWords(cur.fees.map((f) => ({ ...f, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null }))) },
+        after: { status: "DRAFT", version: n, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId, templateId: t.id, templateVersion: t.version, fees: feeWords(fees) } });
       // FO-5f item 1: the ended request is told outside FO-5 (FO-6 cancels the signing request on it).
       if (ends) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: cur.n, reason: "UPDATED" });
     }, { fo_retainer_one_live_per_prospect: open });
@@ -501,6 +568,7 @@ export class Retainers {
     if (r.status !== "DRAFT") conflict("Only a draft is sent. Edit it to make a new version first.", "NOT_DRAFT");
     const page = await this.read(ctx, id);   // its blockers include the representative's eligibility now (B-4)
     if (Object.keys(page.blockers).length) unprocessable(Object.values(page.blockers).join(" "), page.blockers, { code: "SEND_BLOCKED" });
+    await this.conflictCleared(ctx, r, page.version.values);   // FO-13c
     // FO-13i (Code SOR/2022-128 s. 24(2)(a): "seeking corroboration of the information if possible", current to
     // 2026-10-19, read 16 Nov 2026 by Lead B): a signer with no identity check is a warning on the answer and the audit
     // line, never a block. Unconfirmed: no counsel.
@@ -508,15 +576,30 @@ export class Retainers {
     const noCheck = !!signer && (await this.db.foIdentityCheck.count({ where: { firmId: ctx.firmId, personId: signer.id } })) === 0;
     const warnings = noCheck ? [`No identity check is recorded for ${nameOf(signer!) || "the signer"}.`] : [];
     await this.tx(async (tx) => {
+      if (r.kind === "RETAINER" && r.prospectId) {   // FO-13c (m3, m-3): asked again in the send's transaction, after the party's lock
+        const party = await partyOf(tx, ctx.firmId, r.prospectId);
+        if (party) await lockParty(tx, ctx.firmId, party);
+        assertDisclosurePrinted(await clearance(tx, ctx.firmId, r.prospectId), page.version.values);
+      }
       const now = new Date(this.clock.now());
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: "DRAFT", currentVersion: r.currentVersion }, data: { status: "SENT" } });
       if (n.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion }, data: { sentAt: now } });
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.sent", r.id, `Sent (version ${r.currentVersion})${noCheck ? "; warning: no identity check is recorded for the signer" : ""}`, { retainerId: r.id, version: r.currentVersion, ...(noCheck ? { warning: "NO_IDENTITY_CHECK", signerPersonId: signer!.id } : {}) }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.sent", r.id, `Sent (version ${r.currentVersion})${noCheck ? "; warning: no identity check is recorded for the signer" : ""}`, { retainerId: r.id, version: r.currentVersion, ...(noCheck ? { warning: "NO_IDENTITY_CHECK", signerPersonId: signer!.id } : {}) }), entity: "fo_retainer",
+        before: { status: "DRAFT", sentAt: null }, after: { status: "SENT", sentAt: now.toISOString() } });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SENT, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
     });
     return { ...(await this.read(ctx, id)), warnings };
   }
+
+  /** FO-13c: a retainer is sent or signed only for a party with a recorded conflict check that clears it (gate.ts), and
+   *  with a potential conflict only when the version prints the check's disclosure (s. 24(3)(o)). A consultation
+   *  agreement never makes a client and is not gated. */
+  private async conflictCleared(ctx: StaffContext, r: { kind: string; prospectId: string | null }, values: Record<string, unknown>) {
+    if (r.kind !== "RETAINER" || !r.prospectId) return;
+    assertDisclosurePrinted(await clearance(this.db, ctx.firmId, r.prospectId), values);
+  }
+
 
   /** Withdraw (BR-10; AG-5-34): a reason 1-200, from Sent, Viewed or Client signed; the request ends. */
   async withdraw(ctx: StaffContext, id: string, body: Record<string, unknown>) {
@@ -532,7 +615,8 @@ export class Retainers {
       const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion, endedAt: null }, data: { endedAt: now, endReason: "WITHDRAWN" } });
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: r.status, currentVersion: r.currentVersion }, data: { status: "WITHDRAWN", withdrawnAt: now, withdrawnBy: `staff:${ctx.staffId}`, withdrawnReason: reason } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.withdrawn", r.id, "Withdrawn with a reason", { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.withdrawn", r.id, "Withdrawn with a reason", { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer",
+        before: { status: r.status, withdrawnReason: null }, after: { status: "WITHDRAWN", withdrawnAt: now.toISOString(), withdrawnReason: reason } });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_WITHDRAWN, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
     });
     return this.read(ctx, id);
@@ -560,6 +644,8 @@ export class Retainers {
     if (!OFFLINE_FROM.includes(r.status)) conflict(r.status === "SIGNED_OFFLINE" || r.status === "SIGNED" ? "This agreement is already signed." : `A ${r.status.toLowerCase()} agreement cannot be recorded as signed.`, "NOT_SIGNABLE");
     // The client signed the current version electronically: a new version (the copy) is never made after that (AG-5-65).
     if (k !== r.currentVersion && r.status === "CLIENT_SIGNED") conflict(`The client signed version ${r.currentVersion} electronically: record that version, or withdraw it first.`, "NOT_SIGNABLE");
+    // FO-13c: the conflict gate before any file is stored, on the version signed (winProspect asks again in the transaction).
+    await this.conflictCleared(ctx, r, (await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: k } })).mergeValues as Record<string, unknown>);
     // The copy's file is stored first (write-once, a fresh attempt key), like every other file here.
     let copy: { values: Record<string, unknown>; fees: FeeIn[]; file: { key: string; sha256: string }; signerPersonId: string | null; representativeStaffId: string } | null = null;
     if (k !== r.currentVersion) {
@@ -588,7 +674,13 @@ export class Retainers {
     const stored = await this.files.put(ctx.firmId, offlineKey, file!.bytes, "application/pdf");
     let prospectWon = false;
     const filed = copy ? r.currentVersion + 1 : r.currentVersion;
+    const filedValues = copy ? copy.values : (await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: k } })).mergeValues as Record<string, unknown>;
     await this.tx(async (tx) => {
+      if (r.kind === "RETAINER" && r.prospectId) {   // FO-13c (review r2, r3): the party's lock first, as Send takes it; the gate and the disclosure again
+        const party = await partyOf(tx, ctx.firmId, r.prospectId);
+        if (party) await lockParty(tx, ctx.firmId, party);
+        assertDisclosurePrinted(await clearance(tx, ctx.firmId, r.prospectId), filedValues);
+      }
       const now = new Date(this.clock.now());
       let ended: number | null = null, from = r.status;
       if (copy) {
@@ -606,9 +698,12 @@ export class Retainers {
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: from as never, currentVersion: filed }, data: { status: "SIGNED_OFFLINE", offlineAt: now, offlineBy: `staff:${ctx.staffId}`, offlineReason: reason, offlineFileKey: offlineKey, offlineFileSha256: stored.sha256 } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       // FO-2w: the one win (sales/prospects.ts `winProspect`): moves the prospect and raises `prospect.won`, once per prospect.
-      if (r.kind === "RETAINER" && r.prospectId) prospectWon = (await winProspect(tx, ctx, r.prospectId, { via: "SIGNED_OFFLINE", at: now, retainerId: r.id, audit: () =>
-        this.audit.record(tx, { ...this.line(ctx, "prospect.won", r.prospectId!, "Won: retainer signed on paper", { prospectId: r.prospectId, wonVia: "SIGNED_OFFLINE" }), entity: "fo_prospect" }) })) !== null;
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${copy ? ` (version ${k}, filed as version ${filed}, a copy of it)` : ""}${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: filed, signedVersion: k, copiedFrom: copy ? k : null, endedVersion: ended, sha256: stored.sha256, prospectWon, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId }), entity: "fo_retainer" });
+      if (r.kind === "RETAINER" && r.prospectId) prospectWon = (await winProspect(tx, ctx, r.prospectId, { via: "SIGNED_OFFLINE", at: now, retainerId: r.id, audit: (p) =>
+        this.audit.record(tx, { ...this.line(ctx, "prospect.won", r.prospectId!, "Won: retainer signed on paper", { prospectId: r.prospectId, wonVia: "SIGNED_OFFLINE" }), entity: "fo_prospect",
+          before: { stageKind: p.kind, stage: p.key, wonVia: p.won_via }, after: { stageKind: "WON", wonVia: "SIGNED_OFFLINE", retainerId: r.id } }) })) !== null;
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${copy ? ` (version ${k}, filed as version ${filed}, a copy of it)` : ""}${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: filed, signedVersion: k, copiedFrom: copy ? k : null, endedVersion: ended, sha256: stored.sha256, prospectWon, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId }), entity: "fo_retainer",
+        before: { status: r.status, version: r.currentVersion, signerPersonId: r.signerPersonId, representativeStaffId: r.representativeStaffId },
+        after: { status: "SIGNED_OFFLINE", version: filed, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, offlineAt: now.toISOString(), offlineReason: reason, offlineFileSha256: stored.sha256 } });
       if (ended !== null) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: ended, reason: "UPDATED" });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SIGNED_OFFLINE, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: filed, prospectWon });
     });

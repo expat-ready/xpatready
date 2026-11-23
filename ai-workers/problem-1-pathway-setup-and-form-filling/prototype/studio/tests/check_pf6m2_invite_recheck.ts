@@ -204,7 +204,7 @@ try {
   failAudit = "platform.terms.accepted";
   const rolled = await problemOf(() => s.verify({ token: bad.token, code: bad.code }, "10.9.1.3")); failAudit = null;
   ok("PF-6m2 DW3 fail: a refused signup (a wrong code, or a later step failing in the same transaction) writes no money line and makes no Owner",
-    wrong?.status === 400 && rolled !== null && sql(`select count(*) from platform_staff where email = 'wrong.code@maple.example.com'`) === "0"
+    wrong?.status === 422 && rolled !== null && sql(`select count(*) from platform_staff where email = 'wrong.code@maple.example.com'`) === "0"
     && Number(sql(`select count(*) from audit_event where action = '${MONEY_KEYS_GRANTED}' and actor = 'system:signup'`)) === before, { wrong, rolled, before });
 } finally {
   await app?.close().catch(() => {});

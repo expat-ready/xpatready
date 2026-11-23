@@ -17,6 +17,7 @@ import { StripeBilling } from "../billing/stripe.ts";
 import { platformConfig, type PlatformConfig } from "../config/settings.ts";
 import { identityConfig, type IdentityConfig } from "../identity/port.ts";
 import { LocalSignUp } from "./signup-identity.ts";
+import type { BillingPorts } from "../billing/webhook.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import type { SignUpPorts } from "./signup.ts";
 
@@ -27,7 +28,21 @@ export function runtimeSignUpPorts(config: Pick<PlatformConfig, "environment" | 
     : !key && !local ? "Stripe is not set up on this server (PLATFORM_STRIPE_SECRET_KEY)" : null;
   return {
     audit: auditEvent, clock: systemClock, mail, identity: new LocalSignUp(() => systemClock.now(), mail),
-    billing: key ? StripeBilling.fromKey(key) : fakeBilling(), notReady,
+    billing: key ? StripeBilling.fromKey(key) : fakeBilling(), notReady, stripePrices: !!key,
+    appUrl: env.STUDIO_PUBLIC_URL ?? `http://localhost:${env.STUDIO_PORT ?? 4400}`,
+  };
+}
+
+/** PF-5 part 2: the billing routes' and the webhook's ports. Stripe needs both its key and its webhook secret; a local
+ *  server with neither runs the fake (no network); anything else shuts the webhook door with a reason (503). */
+export function runtimeBillingPorts(config: Pick<PlatformConfig, "environment" | "stripe"> & Partial<Pick<PlatformConfig, "billing">> = platformConfig(), env: NodeJS.ProcessEnv = process.env): BillingPorts {
+  const key = config.stripe.secretKey?.reveal() ?? null, hook = config.stripe.webhookSecret?.reveal() ?? null;
+  const notReady = key && !hook ? "Stripe's webhook secret is not set on this server (PLATFORM_STRIPE_WEBHOOK_SECRET)"
+    : !key && config.environment !== "local" ? "Stripe is not set up on this server (PLATFORM_STRIPE_SECRET_KEY)" : null;
+  // R1.21 (P-796): with no key on a local server the fake is also the billing stand-in (stand-in.ts issues invoices on it).
+  const standIn = !key && config.environment === "local" ? fakeBilling() : null;
+  return {
+    audit: auditEvent, clock: systemClock, billing: key ? StripeBilling.fromKey(key, undefined, hook) : standIn ?? fakeBilling(), notReady, standIn, gstHstNumber: config.billing?.gstHstNumber ?? null,
     appUrl: env.STUDIO_PUBLIC_URL ?? `http://localhost:${env.STUDIO_PORT ?? 4400}`,
   };
 }

@@ -71,6 +71,8 @@ const posts = (p: Page, re: RegExp) => seen.filter((s) => s.page === p && s.meth
 const settle = async (p: Page, re: RegExp, n: number) => { for (let i = 0; i < 100 && posts(p, re).filter((s) => s.status !== undefined).length < n; i++) await p.waitForTimeout(100); };
 const signInCard = (p: Page) => p.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 15_000 });
 const clickProfile = (p: Page) => p.locator('nav[aria-label="My account"] [data-account-section="/account"]').click();
+/** PF-18h: a sign-in hand-off lands on Home; My account (opened from the menu) then shows who signed in. */
+const landedAs = async (p: Page, email: string) => { await p.waitForURL(`${BASE}/home`, { timeout: 20_000 }); await clickProfile(p); await p.locator("[data-account]", { hasText: email }).waitFor({ timeout: 20_000 }); };
 
 const plan = sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id join platform_firm f on f.id = s.firm_id where f.key = 'sample-firm' and s.status <> 'ENDED' limit 1`).split("|");
 const used = () => Number(sql(`select ((select count(*) from platform_staff s join platform_firm f on f.id = s.firm_id where f.key = 'sample-firm' and s.status in ('ACTIVE','SUSPENDED')) + (select count(*) from platform_invitation i join platform_firm f on f.id = i.firm_id where f.key = 'sample-firm' and accepted_at is null and revoked_at is null and expires_at > now()))`));
@@ -97,7 +99,7 @@ ok("PF-6 DW1 fail: Revoke asks first; Cancel leaves the invitation pending", (aw
 await p.locator("[data-act-confirm]").click(); await settle(p, /revoke$/, 1);
 await p.goto(`${BASE}/platform/team?view=invited&invitation=${invY}`); await p.locator("[data-seat-line]").waitFor(); await p.waitForTimeout(500);
 ok("PF-6 DW1 pass: Revoke confirmed revokes it; its address no longer opens a live-looking panel", sql(`select revoked_at is not null from platform_invitation where id = '${invY}'`) === "t" && (await p.locator("[data-person-invitation]").count()) === 0);
-const x = await newPage(); await x.goto(`${BASE}${await accept(invX)}`); await x.locator("[data-account]", { hasText: X }).waitFor({ timeout: 20_000 });
+const x = await newPage(); await x.goto(`${BASE}${await accept(invX)}`); await landedAs(x, X);
 const Xs = staffOf(`email = '${X}'`);
 await team(p); await row(p, X).waitFor({ timeout: 10_000 });
 ok("PF-6 DW1 pass: after the second browser accepts, Team shows the person Active", (await row(p, X).locator("[data-status]").innerText()) === "Active");
@@ -243,7 +245,7 @@ const invite = async (email: string) => (await (await staffCall(r2Tok, "POST", "
 const W = `pf6-w-${run}@example.com`, invW = await invite(W), lW = linkOf(invW);
 const wp = await newPage(); await wp.goto(lW.url); await wp.locator('[data-accept="valid"]').waitFor({ timeout: 20_000 });
 ok("PF-6 DW5/BR-4 pass: a valid link shows the firm, the invitee's email and \"Continue to set your password\"; the token leaves the address", (await wp.locator("[data-accept-email]").innerText()) === W && (await wp.locator("[data-accept-firm]").innerText()).length > 0 && (await wp.locator("[data-accept-continue]").innerText()) === "Continue to set your password" && !wp.url().includes(lW.known));
-await wp.locator("[data-accept-continue]").click(); await wp.locator("[data-account]", { hasText: W }).waitFor({ timeout: 20_000 });
+await wp.locator("[data-accept-continue]").click(); await landedAs(wp, W);
 ok("PF-6 DW5/BR-4 pass: Continue accepts once and the hand-off signs the new person in (My account shows them)", sql(`select count(*) from platform_staff where email = '${W}'`) === "1" && posts(wp, /\/accept$/).length === 1);
 const again = await newPage(); await again.goto(lW.url); await again.locator('[data-accept="closed"]').waitFor({ timeout: 20_000 });
 ok("PF-6 DW5/BR-4 fail: the same link again (used) shows \"This invitation is no longer valid.\" and no Continue", (await again.locator("[data-accept-words]").innerText()) === "This invitation is no longer valid." && (await again.locator("[data-accept-continue]").count()) === 0);
