@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), ENF-738's constraint section (guard 29, 20 Nov), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
+# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-758's queue blocked by checks (guard 37, 20 Nov, P-758), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), ENF-738's constraint section (guard 29, 20 Nov), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
 #   bash product/tools/check-guards.sh [--mutate]
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-flow-constraint.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh"
 bad=0
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
@@ -265,6 +265,48 @@ MUT="$MUT"'
 29 board|product/tools/flow-constraint.py|s/^BOARD_MAX_MIN = int(os.environ.get("FRESH_MAX_MIN") or 10) if .* else 10 /BOARD_MAX_MIN = 45 /|check-flow-constraint.sh
 29 unread|product/tools/flow-constraint.py|s/^    if unmeasured:$/    if False:/|check-flow-constraint.sh
 29 count|product/tools/lead-watch.sh|s/; echo "\$cs"; act=\$((act + \$(grep -c .^ACT. <<<"\$cs")))/; echo "$cs"/|check-flow-constraint.sh'
+MUT="$MUT"'
+761g gap|product/tools/lead-watch.sh|s/GAP_MAX:-15/GAP_MAX:-999/|check-lead-gap.sh
+761g stall|product/tools/lead-watch.sh|s/STALL_MAX:-15/STALL_MAX:-40/|check-lead-gap.sh
+761g guard|product/tools/lead-check-guard.sh|/norm "\$GAP")" \] .. exit 0$/d|check-lead-gap.sh
+37 paths|product/tools/queue-blocked.py|s/^    return bool(files) and all(any(r.search(f) for r in CHECK_ONLY) for f in files)/    return True/|check-queue-blocked.sh
+37 approve|product/tools/queue-blocked.py|s/^    return bool(re.match(.*/    return True/|check-queue-blocked.sh
+37 head|product/tools/queue-blocked.py|s/approve\[sd\]?\\s+%s\\b" % re.escape(head)/approve" % ()/|check-queue-blocked.sh
+37 trusted|product/tools/queue-blocked.py|s/c.get("author_association") not in TRUSTED or //|check-queue-blocked.sh
+37 who|product/tools/queue-blocked.py|s/ or (c.get("user") or {}).get("login") not in who:/:/|check-queue-blocked.sh
+37 source|product/tools/queue-blocked.py|s/ and main_like(r.get("head_branch"))\]/]/|check-queue-blocked.sh
+37 measured|product/tools/queue-blocked.py|s/"" if note else "main.s guards green, "/"main.s guards green, "/|check-queue-blocked.sh
+37 pages|product/tools/queue-blocked.py|s/^        if len(page) < 100 or enough(page):/        if True:/|check-queue-blocked.sh
+37 rename|product/tools/queue-blocked.py|s/, f.get("previous_filename"))/,)/|check-queue-blocked.sh
+37 running|product/tools/queue-blocked.py|s/ or any(r.get("status") != "completed" for r in mine)//|check-queue-blocked.sh
+37 batchpr|product/tools/queue-blocked.py|s/ or str((p.get("head") or {}).get("ref") or "").startswith("mergify\/")//|check-queue-blocked.sh
+37 label|product/tools/queue-blocked.py|s/if "review: approved" not in labels and not /if not /|check-queue-blocked.sh
+37 cancelled|product/tools/queue-blocked.py|s/ and r.get("conclusion") not in ("cancelled", "skipped")//|check-queue-blocked.sh
+37 window red|product/tools/queue-blocked.py|s/ and (r is last or (when(r.get("created_at")) or now) >= since)\]/ and r is last]/|check-queue-blocked.sh
+37 reviewers|product/tools/queue-blocked.py|s/^            rv = gh("api", .*/            rv = ""/|check-queue-blocked.sh
+37 cap|product/tools/queue-blocked.py|s/^    raise Unread("more than %d pages" % cap)/    return out/|check-queue-blocked.sh
+37 ci|product/tools/queue-blocked.py|s/^    return max(mine, .*/    return True/|check-queue-blocked.sh
+37 guards|product/tools/queue-blocked.py|s/^            if red:/            if False:/|check-queue-blocked.sh
+37 batch|product/tools/queue-blocked.py|s/str(r.get("head_branch") or "").startswith("mergify\/merge-queue\/") and/str(r.get("head_branch") or "").startswith("never\/") and/|check-queue-blocked.sh
+37 window|product/tools/queue-blocked.py|s/^WINDOW_H = 2 /WINDOW_H = 999 /|check-queue-blocked.sh
+37 dequeued|product/tools/queue-blocked.py|s/.get("name") == "dequeued"/.get("name") == "never"/|check-queue-blocked.sh
+37 green|product/tools/queue-blocked.py|s/^    if not why and not warn:/    if False:/|check-queue-blocked.sh
+37 unread|product/tools/queue-blocked.py|s/^    if not why and not warn:/    if not why:/|check-queue-blocked.sh
+37 draft|product/tools/queue-blocked.py|s/if p.get("draft") or /if False and p.get("draft") or /|check-queue-blocked.sh
+37 count|product/tools/lead-watch.sh|s/; seen "\$qb"; act=\$((act + \$(grep -c .^ACT. <<<"\$qb")))/; seen "$qb"/|check-queue-blocked.sh
+39 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
+39 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh
+39 board|product/tools/owed-watch.py|s/            raise ValueError("no backlog.by_lane")/            by = {}/|check-owed-watch.sh
+39 done|product/tools/owed-watch.py|s/ and not DONE.search(c):/:/|check-owed-watch.sh
+39 head|product/tools/owed-watch.py|s/^        if h:  /        if False:  /|check-owed-watch.sh
+39 state|product/tools/owed-watch.py|s/^        print(f"ACT   starts owed not measured/        return; print(f"ACT   starts owed not measured/|check-owed-watch.sh
+39 watch|product/tools/lead-watch.sh|s/echo "\$lr"; act=\$((act + \$(grep -c .^ACT. <<<"\$lr")))/echo "$lr"/|check-owed-watch.sh
+39 watch2|product/tools/lead-watch.sh|s/echo "\$so"; act=\$((act + \$(grep -c .^ACT. <<<"\$so")))/echo "$so"/|check-owed-watch.sh
+37 count|product/tools/queue-batches.py|s/ or any(r.get("status") != "completed" for r in runs\["check_runs"\]):/:/|check-lead-merge.sh
+37 refuse|product/tools/lead-merge.sh|s/^if \[ "\$n" != 0 \] \&\& \[ -z "\$blank" \]; then$/if false; then/|check-lead-merge.sh
+37 page|product/tools/queue-batches.py|s/ > len(runs\["check_runs"\]):   # one page only/ < 0:   # one page only/|check-lead-merge.sh
+37 unread|product/tools/queue-batches.py|s/^        return 3$/        return 0/|check-lead-merge.sh
+37 watch|product/tools/lead-watch.sh|s/; say "\$qb"$//|check-lead-merge.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
