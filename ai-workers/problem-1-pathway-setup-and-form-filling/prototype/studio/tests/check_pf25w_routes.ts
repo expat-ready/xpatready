@@ -136,6 +136,9 @@ try {
   const same = await call(base, "POST", path(firmA), { token: owner, body: { address: "pf25w-oak", reason: "The same one" } });
   ok("PF-25w DW4 fail: no reason is 400 REASON_REQUIRED; a bad address 422 naming the field; the same address 409; nothing changed",
     noReason.status === 400 && noReason.body.code === "REASON_REQUIRED" && badAddress.status === 422 && !!badAddress.body.fields?.address && same.status === 409 && addressOf() === "pf25w-oak", { noReason, badAddress, same });
+  const extra = await call(base, "POST", path(firmA), { token: owner, body: { address: "pf25w-cedar", reason: "An extra field", pf28Unknown: "x" } });
+  ok("PF-25w DW4 fail (PF-28; review M1): an unknown field is 422 naming it, nothing changed",
+    extra.status === 422 && Object.hasOwn(extra.body.fields ?? {}, "pf28Unknown") && addressOf() === "pf25w-oak", extra);
   ok("PF-25w DW4 pass: no step-up (SA-7-10 does not list it): a sign-in 6 minutes old still changes the address",
     await (async () => { const t = await tokenOf(staff["platform-owner"]); clock.t += 6 * 60_000; const x = await call(base, "POST", path(firmA), { token: t, body: { address: "pf25w-birch", reason: "Later the same day" } }); return x.status === 200 && addressOf() === "pf25w-birch"; })());
 } catch (e) {

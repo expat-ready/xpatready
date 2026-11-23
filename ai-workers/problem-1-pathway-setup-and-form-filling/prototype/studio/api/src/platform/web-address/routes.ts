@@ -18,7 +18,8 @@ import { asBypass, touchingAudit, withFirm } from "../firm-scope.ts";
 import { SystemKeys, SystemReason, systemStaffOf, type SystemStaffContext } from "../system-identity/keys.ts";
 import { logPort } from "../observability/log.ts";
 import { dbRuleOf } from "../observability/redact.ts";
-import { parseInput, query } from "../http/input.ts";
+import { parseInput, query, strict } from "../http/input.ts";
+import { z } from "zod";
 
 /** The suggestion's one query key. */
 const SUGGESTION_QUERY = query("name");
@@ -87,6 +88,8 @@ export class WebAddressController {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** PF-28: the change's body, strict (an unknown field is 422, named); each field's own rule is PF-25's service's. */
+const ChangeBody = strict({ address: z.unknown().optional(), reason: z.unknown().optional() });
 
 /** PF-25w: ExpatReady's own staff change a firm's web address (SA-2-27). The system guard has checked the key and the
  *  reason and written its line; the change runs inside the firm's own scope (PF-12's walls see that one firm), and its
@@ -96,7 +99,7 @@ export class SystemWebAddressController {
   async change(id: string, body: unknown, req: { systemStaff?: SystemStaffContext }) {
     const staff = systemStaffOf(req);
     if (!UUID.test(id)) throw new HttpException({ type: "https://expatready.local/problems/not-found", title: "Not found", status: 404, detail: "No such firm.", code: "NOT_FOUND" }, 404);
-    const input = (body !== null && typeof body === "object" && !Array.isArray(body) ? body : {}) as { address?: unknown; reason?: unknown };
+    const input = parseInput(ChangeBody, body);   // review M1: PF-28's one rule (the guard has already refused a body that is not an object)
     return withFirm(id, () => this.addresses.change(staff, id, { address: input.address, reason: input.reason }, `ourstaff:${staff.staffId}`));
   }
 }
