@@ -165,3 +165,47 @@ Reviewer: Opus, fresh context, the same reviewer as round 1; I did not build thi
 To fix before Approve: M1-r2 (scan length independent of the page, plus its test). m1-r2 to m3-r2 are Should items.
 
 Verdict: Block 1d5c8d55066aaae88ba7c98b2042d783a36c6209
+
+## Round 3 (diff-only, 8b7b5c347)
+
+Reviewer: Opus, fresh context, the same reviewer as rounds 1 and 2; I did not build this. Scope: `git diff 1d5c8d550 8b7b5c347 -- …/prototype/studio`, which touches 2 files: `firms.ts` (one line of code plus the comment) and `tests/check_pf17_console.ts` (+19). The journey score stays **8 / 10, pass**. The "correct data" criterion now meets the bar, but the 10-point total in the journey report has not been rescored; this round's evidence is the probe below.
+
+### Checks run (local postgres 127.0.0.1:54329, scratch databases; port 4400 not used)
+* `check_pf17_console.ts`: **38 passed, 0 failed**, two runs.
+* Mutations on a scratch worktree, `firms.ts` only:
+  * Round 2's scan (`FIGURES_PER_CALL - found.length`) put back: **caught**. The new M1-r2 check fails with totals 61, 81, 81, 81, as the builder reported.
+  * A scan of `FIGURES_PER_CALL`, i.e. 250 firms' figures in one call: **caught** (the seat-over firms become visible). This mutation survived round 2.
+  * `from = start` in place of `max(0, start - sure.length)`: **still not caught** (m1-r3).
+* My round-2 probe again (`?health=ATTENTION&q=probe`: 71 overdue firms and 193 OK-by-row firms; 3 no-plan firms near position 51, 10 at positions 184-193):
+  * Pages 1-4 show 50, 24, 0 and 0 firms. Every page says total 74 and `complete:false`; 74 firms are shown, none twice.
+  * The 10 firms beyond the scan are honestly left out, and no page says complete any more. **M1-r2 is fixed.**
+* A new probe for `from` across pages (`q=quill`: 71 overdue, 40 no-plan inside the scan, 60 OK):
+  * Pages show 50, 50, 11 and 0 firms. Every page says total 111 and `complete:true`; 111 are shown, none twice.
+  * The same probe with `from = start` shows only 71 of the 111. So the code is right today, and the suite does not guard it.
+
+### What now holds
+* **M1-r2:**
+  * Every page now scans the same first 150 of the OK-by-row firms. So `matches`, `total` and `complete` are the same on every page, and `from` falls exactly where the previous page stopped.
+  * A call still works out at most 50 + 150 = 200 firms' figures.
+  * The new DW9 check holds all of this across 4 pages, with seat-over firms placed past the scan.
+* **m1-r2:**
+  * DW9 now checks exactly one firm-less line for each of 4 filtered calls.
+  * The 250-firm mutation is now caught.
+* **m2-r2:** the comment names the back-under case ("one back under keeps the figure of that measure, dated"), and points to the PR's question 1.
+* **m3-r2:** accepted as recorded in round 2; no change asked.
+
+### Findings
+
+**Blocker**: none. **Major**: none.
+
+**Minor (Should)**
+* **m1-r3. `from` is still untested where the matches run past a page that holds row-ATTENTION firms.**
+  * The new DW9 case has no matches inside the scan, and DW8's single match is on page 1. So `from = start` passes all 38 checks, although my probe shows it hides 40 of 111 firms.
+  * Fix: one check like my `q=quill` probe, i.e. row-ATTENTION firms that end partway through a page, followed by more than one page of figure-ATTENTION firms inside the scan.
+* **n1-r3 (nit). `?health=OK`'s note says "at most 200 a call" but checks 150.** It found 0 row-ATTENTION firms, so the scan's 150 is all it works out. The note says "Checked the figures of 150 of the 768 firms … (at most 200 a call)". The words are true but read oddly. Either name the 150 or let OK use the full 200.
+
+### Could not check
+* CI on 8b7b5c347: the PR is a draft.
+* The other suites: not rerun. The diff touches only `firms.ts`'s list branch and its own suite.
+
+Verdict: Approve 8b7b5c347f5b646df59a966c819a793e5d05826b
