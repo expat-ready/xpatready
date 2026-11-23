@@ -37,7 +37,8 @@ export function NotificationRow({ item, zone, onOpened }: { item: NotificationIt
     try { if (unread) await markRead(item); } catch { /* a failed mark still opens (Home's flow); the row stays unread */ }
     void refresh(); setBusy(false); onOpened?.(); navigate(item.link!);
   };
-  const record = item.label ? <span className="[overflow-wrap:anywhere]">{item.label}</span> : null;
+  // The record's number stays on one line at 375 px: "(L‑00007)" with a non-breaking hyphen (the walk at 375).
+  const record = item.label ? <span className="[overflow-wrap:anywhere]">{item.label.replace(/\(([A-Z]{1,4})-(\d+)\)$/, "($1\u2011$2)")}</span> : null;
   return (
     <li data-notification={item.id} data-unread={unread || undefined} className="flex gap-3 border-t border-border py-3 first:border-t-0">
       <span aria-hidden className={`mt-1.5 size-2 shrink-0 rounded-full ${unread ? "bg-primary" : "bg-transparent"}`} />

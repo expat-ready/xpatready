@@ -21,7 +21,10 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
 import { chromium, type Browser, type Locator, type Page } from "playwright";
+import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
@@ -41,6 +44,10 @@ const api = async (t: string | null, method: string, path: string, body?: unknow
 };
 
 // ------------------------------------------------------------------------------------------------ setup (Sample)
+// The copy seeds the platform's Sample firms; their front office (sales setup, web form, reasons) is seeded here, as the other
+// front-office browser checks do (idempotent).
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, options: "-c TimeZone=UTC" }) });
+await seedSampleFirmsFrontOffice(db); await db.$disconnect();
 const A = sql(`select id from platform_firm where key = 'sample-firm'`);
 const staffOf = (actor: string) => sql(`select id from platform_staff where actor_id = '${actor}' and firm_id = '${A}'`);
 const O = staffOf("user-O"), R = staffOf("user-R");
@@ -100,7 +107,7 @@ try {
   ok("PF-18ns DW1 fail: R, who assigned it, is not told: R's bell stays at 0 (\"none unread\", no badge)", await waitCount(pr, 0) && (await bell(pr).getAttribute("aria-label")) === "Notifications, none unread" && await pr.locator("[data-notifications-badge]").count() === 0);
   await shot(po, "1-bell-one-1440");
   await openPanel(po);
-  const row = rows(po).first(), rowText = await row.innerText();
+  const row = rows(po).first(), rowText = (await row.innerText()).replace(/\u2011/g, "-");   // the number shows with a non-breaking hyphen
   ok("PF-18ns DW1: the panel shows it: \"Lead assigned to you · <name> (<number>)\", unread (dot and word), the time, and the zone once in the heading",
     await rows(po).count() === 1 && rowText.includes(`Lead assigned to you · ${lead.name} (${lead.number})`) && rowText.includes("Unread") && (await row.getAttribute("data-unread")) === "true"
     && (await po.locator('[role="dialog"]').innerText()).includes("Times in America/Toronto"), rowText);
@@ -163,7 +170,11 @@ try {
   const pl = await tab(TO);
   await pl.clock.install();
   await go(pl, "/account"); await waitCount(pl, 0);
-  await pl.evaluate(() => { const el = document.querySelector("[data-notifications-live]")!; (window as unknown as { said: string[] }).said = []; new MutationObserver(() => (window as unknown as { said: string[] }).said.push(el.textContent ?? "")).observe(el, { childList: true, characterData: true, subtree: true }); });
+  // Each page mounts its own frame (and live region), so the whole document is watched: every new text the live region says.
+  await pl.evaluate(() => {
+    const w = window as unknown as { said: string[] }; w.said = []; let last = document.querySelector("[data-notifications-live]")?.textContent ?? "";
+    new MutationObserver(() => { const now = document.querySelector("[data-notifications-live]")?.textContent ?? ""; if (now !== last) { last = now; if (now) w.said.push(now); } }).observe(document.body, { childList: true, characterData: true, subtree: true });
+  });
   await pl.locator('nav[aria-label="My account"] [data-account-section="/account/licence"]').click(); await pl.waitForURL(`${BASE}/account/licence`);
   await pl.clock.runFor(60_000); await pl.clock.runFor(60_000);
   const quiet = await pl.evaluate(() => (window as unknown as { said: string[] }).said.filter(Boolean).length);
@@ -179,7 +190,8 @@ try {
 
   // ---------------------------------------------------------------------------------------------- DW6 the All page
   // 27 rows for O whose leads are gone or not O's (label and link null): the "can no longer be opened" state, and paging.
-  for (let i = 0; i < 27; i++) sql(`insert into msg_notification (id, firm_id, staff_id, kind, "group", item_kind, item_id, created_at) values (gen_random_uuid(), '${A}', '${O}', 'lead-assigned', 'WORK_HANDED_TO_ME', 'lead', gen_random_uuid(), now() - interval '${i + 1} minutes')`);
+  // Millisecond times, as the adapter writes them (a browser's `seen` time has millisecond precision).
+  for (let i = 0; i < 27; i++) sql(`insert into msg_notification (id, firm_id, staff_id, kind, "group", item_kind, item_id, created_at) values (gen_random_uuid(), '${A}', '${O}', 'lead-assigned', 'WORK_HANDED_TO_ME', 'lead', gen_random_uuid(), date_trunc('milliseconds', now()) - interval '${i + 1} minutes')`);
   const pa = await tab(TO);
   await go(pa, "/account/notifications/all");
   const list = pa.locator("section[aria-label='Notifications'] [data-notification]");
