@@ -113,6 +113,7 @@ try {
   const t6 = await tabs(p1);
   ok("T6 a reload restores the open tabs and the active one", t6.length === 4 && t6.find((x) => x.selected)?.path === officePath(O2.id), t6);
   ok("T6 the active tab's draft survives the reload", (await nameField(p1).inputValue()) === B3, await nameField(p1).inputValue());
+  ok("T6 a tab not mounted since the reload still shows its dot (break M2)", !!t6.find((x) => x.path === officePath(O1.id))?.dirty, t6);
 
   // T4: a second view (another window of the same browser) mirrors, one save, the other view refreshes
   const p2 = await page(ctx);
@@ -153,6 +154,20 @@ try {
   await p1.locator('[role="dialog"] [data-office-save]').click();
   ok("T5b Keep mine then Save: my name is written and their time zone stays", await until(async () => officeName(O1.id) === mineName && sql(`select time_zone from platform_office where id = '${O1.id}'`) === theirZone, 5000), { name: officeName(O1.id), zone: sql(`select time_zone from platform_office where id = '${O1.id}'`) });
 
+  // T5c (break M1): I change the province while someone moves the office abroad; "Keep mine" keeps my whole "where"
+  await editFromList(O1);
+  const O1w = (await offices()).offices.find((o) => o.id === O1.id)!;
+  const myProvince = sql(`select coalesce(province, '') from platform_office where id = '${O1.id}'`) === "BC" ? "MB" : "BC";
+  await p1.locator('[role="dialog"] [data-office-in-canada]').check();
+  await p1.locator('[role="dialog"] [data-office-province]').selectOption(myProvince);
+  const abroad = await api(T, "PATCH", `/platform/offices/${O1.id}`, { country: "GB", province: null }, { "if-match": `"${O1w.version}"` });
+  await p1.locator('[role="dialog"] [data-office-save]').click();
+  await box.waitFor({ timeout: 10_000 });
+  await box.locator("[data-conflict-keep-mine]").click();
+  await p1.locator('[role="dialog"] [data-office-save]').click();
+  const whereNow = () => sql(`select country_code || ' ' || coalesce(province, '') from platform_office where id = '${O1.id}'`);
+  ok("T5c Keep mine then Save keeps my province in Canada, not their country (break M1)", abroad.status === 200 && await until(async () => whereNow() === `CA ${myProvince}`, 5000), { abroad: abroad.status, where: whereNow() });
+
   // T7: Close; a dirty tab asks before closing; the cap
   await editFromList(O2);
   await p1.locator('[role="dialog"] [data-office-close]').click();
@@ -174,6 +189,9 @@ try {
   await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]`).click(); await officeRows(p1);
   await shown(p1).locator('nav[aria-label="My account"] a[href="/platform/security"]').click({ modifiers: ["Control"] });
   ok("T7 at 12 open items a 13th is refused with a clear message", (await tabs(p1)).length === 12 && /12 items are open/.test(await p1.locator("[data-workspace]:visible [data-ws-notice]").innerText().catch(() => "")), await tabs(p1));
+  await p1.setViewportSize({ width: 1024, height: 900 });
+  ok("T7 at 1024 px a full strip scrolls inside itself; the page never scrolls sideways (break M3)", await until(async () => p1.evaluate(() => document.documentElement.scrollWidth <= 1024)), await p1.evaluate(() => document.documentElement.scrollWidth));
+  await p1.setViewportSize({ width: 1440, height: 900 });
   await p1.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/x11"] [data-ws-close]').click();
   ok("T7 closing a background tab keeps focus on the strip's active tab (round 2 Should 2)", await until(async () => p1.evaluate(() => document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true")) && (await tabs(p1)).length === 11, await p1.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
 
@@ -224,6 +242,24 @@ try {
   ok("T9 a malformed If-Match (\"*\") and a body version that differs from the header are 422; nothing written", bad.status === 422 && differ.status === 422 && officeName(O1.id) === `${O1.name} etag ${run}`, { bad: bad.status, differ: differ.status });
   const staleProfile = await api(T, "PUT", "/platform/firm/profile", { website: "https://pf31.example.ca" }, { "if-match": '"0000"' });
   ok("T9 the firm profile takes If-Match too: a stale one is 409", staleProfile.status === 409, staleProfile.status);
+  // B1 (break): a change of person in the same browser tab never carries the last person's draft or tabs. Last: it signs T out.
+  const ctxB = await context(), pb = await page(ctxB), typed = `${O2.name} typed by R ${run}`;
+  await pb.goto(`${BASE}/platform/offices`); await shown(pb).locator(`[data-office-edit][href="${officePath(O2.id)}"]`).click(); await nameField(pb).waitFor({ timeout: 60_000 });
+  await nameField(pb).fill(typed);
+  await until(async () => pb.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith("xr.draft."))));
+  await pb.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]').click();   // the list again: Sign out is not behind the panel
+  await pb.getByRole("button", { name: "Sign out" }).click();
+  await pb.locator("[data-sign-in-card]").waitFor();
+  ok("B1 sign-out drops this tab's drafts and its other tabs", await pb.evaluate(() => !Object.keys(sessionStorage).some((k) => k.startsWith("xr.draft.")) && (JSON.parse(sessionStorage.getItem("xr.workspace.v1") ?? "{}").tabs ?? []).length <= 1), await pb.evaluate(() => Object.keys(sessionStorage)));
+  const emailO = sql(`select email from platform_staff where actor_id = 'user-O' and firm_id = (select firm_id from platform_office where id = '${O2.id}') limit 1`);
+  await pb.locator("[data-sign-in-card] input").first().fill("sample-firm");
+  await pb.locator('[data-sign-in-card] input[type="email"]').fill(emailO);
+  await pb.locator('[data-sign-in-card] button[type="submit"]').click();
+  await pb.locator("[data-staff-name]").waitFor({ timeout: 20_000 });
+  await pb.waitForTimeout(500);
+  const seen = await pb.locator('[role="dialog"] [data-office-name]').inputValue({ timeout: 2000 }).catch(() => "(no panel)");
+  ok("B1 the next person signed in here sees none of the last person's typing", seen !== typed && await pb.evaluate((v) => !Object.values(sessionStorage).some((x) => x.includes(v)), typed), { seen, emailO });
+  await ctxB.close();
   ok("no page errors", errs.length === 0, errs.slice(0, 5));
 } catch (e) { failed = 1; console.error("FAIL  the walk stopped:", e); } finally { await browser.close(); }
 process.exit(summary() + failed ? 1 : 0);

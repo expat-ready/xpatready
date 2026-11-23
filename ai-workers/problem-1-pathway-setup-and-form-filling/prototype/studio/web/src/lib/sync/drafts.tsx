@@ -5,12 +5,18 @@
 // the version the draft started from (If-Match); after a save every window drops the draft and reads the record again.
 import * as React from "react";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { onStaffChange, staffScope } from "@/modules/platform/session";
 
-type Entry = { values: unknown; base: unknown; version: string | null };
-type Msg =
+// Break B1: every draft and every message names its owner (`who`, staffScope(): this session, never the token). A window
+// ignores another owner's messages and stored drafts, and a change of person (sign-out, sign-in, a session ended) drops every
+// draft this window holds, so nothing one person typed reaches, shows to, or is saved by the next.
+// Break M2: a draft remembers the item it was typed on (`at`, the address without query), so a workspace tab that is not
+// mounted (after a reload) still shows its dot and asks before it closes, and the leave-page guard sees stored drafts.
+type Entry = { values: unknown; base: unknown; version: string | null; who: string; at?: string };
+type Msg = { who: string | null } & (
   | { t: "draft"; key: string; entry: Entry | null; from: string }
   | { t: "open" | "close"; key: string; from: string; reply?: boolean }
-  | { t: "saved"; key: string; queryKey: QueryKey | null; from: string };
+  | { t: "saved"; key: string; queryKey: QueryKey | null; from: string });
 
 const VIEW = Math.random().toString(36).slice(2);
 const STORE = "xr.draft.";
@@ -21,17 +27,37 @@ const listeners = new Set<() => void>();
 const emit = () => { for (const l of listeners) l(); };
 let channel: BroadcastChannel | null = null;
 try { channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("xr-sync"); } catch { channel = null; }
-const post = (m: Msg) => { try { channel?.postMessage(m); } catch { /* the bridge is best effort; this window still works */ } };
+let who = staffScope();
+type Out = Msg extends infer M ? (M extends Msg ? Omit<M, "who"> : never) : never;
+const post = (m: Out) => { if (who) try { channel?.postMessage({ ...m, who }); } catch { /* the bridge is best effort; this window still works */ } };
+const stored = (): string[] => { try { return Object.keys(sessionStorage).filter((k) => k.startsWith(STORE)); } catch { return []; } };
+onStaffChange(() => {
+  const now = staffScope();
+  if (now === who) return;
+  who = now;
+  entries.clear(); others.clear();
+  try { for (const k of stored()) sessionStorage.removeItem(k); } catch { /* memory only */ }
+  emit();
+});
+/** A stored or sent draft is used only when it is well formed and this owner's (break m2: a bad version never reaches If-Match). */
+const valid = (e: unknown): e is Entry => {
+  if (!e || typeof e !== "object") return false;
+  const x = e as Partial<Entry>;
+  return x.who === who && "values" in x && "base" in x && (x.version === null || (typeof x.version === "string" && /^[\x21\x23-\x7e]{1,100}$/.test(x.version))) && (x.at === undefined || typeof x.at === "string");
+};
+const here = () => { const p = window.location.pathname; return p.length > 1 ? p.replace(/\/+$/, "") : p; };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 function read(key: string): Entry | null {
+  if (!who) return null;
   if (entries.has(key)) return entries.get(key) ?? null;
   let e: Entry | null = null;
-  try { const s = sessionStorage.getItem(STORE + key); if (s) e = JSON.parse(s) as Entry; } catch { /* storage refused: memory only */ }
+  try { const s = sessionStorage.getItem(STORE + key); if (s) { const j: unknown = JSON.parse(s); if (valid(j)) e = j; } } catch { /* storage refused or bad JSON: none */ }
   entries.set(key, e);
   return e;
 }
 function write(key: string, e: Entry | null, from: string) {
+  if (!who) return;   // signed out: no drafts
   if (e && same(e.values, e.base)) e = null;   // a draft equal to the saved record is no draft
   entries.set(key, e);
   try { if (e) sessionStorage.setItem(STORE + key, JSON.stringify(e)); else sessionStorage.removeItem(STORE + key); } catch { /* memory only */ }
@@ -41,8 +67,8 @@ function write(key: string, e: Entry | null, from: string) {
 let invalidate: ((k: QueryKey) => void) | null = null;
 channel?.addEventListener("message", (ev: MessageEvent<Msg>) => {
   const m = ev.data;
-  if (!m || m.from === VIEW) return;
-  if (m.t === "draft") { write(m.key, m.entry, m.from); return; }
+  if (!m || m.from === VIEW || !who || m.who !== who) return;   // break B1: another person's window is never heard
+  if (m.t === "draft") { if (m.entry === null || valid(m.entry)) write(m.key, m.entry, m.from); return; }
   if (m.t === "saved") { write(m.key, null, m.from); if (m.queryKey && invalidate) invalidate(m.queryKey); return; }
   const set = others.get(m.key) ?? new Set<string>();
   if (m.t === "open") {
@@ -61,15 +87,25 @@ export function changedKeys(values: unknown, base: unknown): string[] {
   if (!isObj(values) || !isObj(base)) return same(values, base) ? [] : [""];
   return Object.keys(values).filter((k) => !same(values[k], base[k]));
 }
-/** My changes (values vs my base) carried onto a newer record. */
-export function mineOnto<T>(values: unknown, base: unknown, newer: T): T {
+/** My changes (values vs my base) carried onto a newer record. Fields in one `group` travel together (break M1: "where" is
+ *  in Canada + province + country; my province on their "outside Canada" would be lost, so my whole "where" goes). */
+export function mineOnto<T>(values: unknown, base: unknown, newer: T, groups: readonly (readonly string[])[] = []): T {
   if (!isObj(values) || !isObj(base) || !isObj(newer)) return values as T;
-  const out: Record<string, unknown> = { ...newer };
-  for (const k of changedKeys(values, base)) out[k] = values[k];
+  const out: Record<string, unknown> = { ...newer }, changed = new Set(changedKeys(values, base));
+  for (const g of groups) if (g.some((k) => changed.has(k))) for (const k of g) changed.add(k);
+  for (const k of changed) out[k] = values[k];
   return out as T;
 }
-/** Any unsaved draft in this window (the leave-page guard). */
-export const anyDraft = () => [...entries.values()].some(Boolean);
+/** The keys of this window's drafts, the stored ones too (a tab not mounted since a reload). */
+const allKeys = () => new Set([...[...entries.keys()].filter((k) => entries.get(k)), ...stored().map((k) => k.slice(STORE.length))]);
+/** Any unsaved draft in this window (the leave-page guard), also one only in storage. */
+export const anyDraft = () => [...allKeys()].some((k) => read(k));
+/** The drafts typed on one item (an address without query): a workspace tab's dot and close question when it is not mounted. */
+export const draftsAt = (item: string) => [...allKeys()].filter((k) => read(k)?.at === item);
+let tick = 0;
+listeners.add(() => { tick++; });
+/** Re-renders on any draft change here (the workspace strip's dots). */
+export const useDraftTick = () => React.useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => tick);
 /** Test and tab-close hook: drop one record's draft here and in every window. */
 export function discardDraft(key: string) { write(key, null, VIEW); }
 
@@ -90,7 +126,7 @@ export type SharedDraft<T> = {
   saved: () => void;
   /** After a 409: keep what was typed, on top of the newer record (EXPERIENCE §4 conflict: "keep mine"): only the fields I
    *  changed; the rest take the newer record. */
-  rebase: (base: T, version: string) => void;
+  rebase: (base: T, version: string, groups?: readonly (readonly string[])[]) => void;
   /** The fields this draft changed (a plain value: [""] when changed). The conflict state shows only these as "Yours". */
   mine: () => string[];
 };
@@ -115,7 +151,8 @@ export function useSharedDraft<T>(key: string | null, base: T | undefined, versi
     const cur = read(key);
     const from = (cur ? cur.values : base) as T;
     const values = typeof next === "function" ? (next as (v: T) => T)(from) : next;
-    write(key, { values, base: cur ? cur.base : base, version: cur ? cur.version : version ?? null }, VIEW);
+    if (!who) return;
+    write(key, { values, base: cur ? cur.base : base, version: cur ? cur.version : version ?? null, who, at: cur?.at ?? here() }, VIEW);
   }, [key, base, version]);
   return {
     values: entry ? (entry.values as T) : base,
@@ -127,7 +164,7 @@ export function useSharedDraft<T>(key: string | null, base: T | undefined, versi
     discard: () => { if (key) write(key, null, VIEW); },
     saved: () => { if (!key) return; write(key, null, VIEW); post({ t: "saved", key, queryKey: queryKey ?? null, from: VIEW }); },
     // Review M1: only what I changed rides on the newer record; a field someone else changed and I did not keeps theirs.
-    rebase: (b, v) => { if (key) write(key, { values: entry ? mineOnto(entry.values, entry.base, b) : b, base: b, version: v }, VIEW); },
+    rebase: (b, v, groups) => { if (key && who) write(key, { values: entry ? mineOnto(entry.values, entry.base, b, groups) : b, base: b, version: v, who, at: entry?.at ?? here() }, VIEW); },
     mine: () => (entry ? changedKeys(entry.values, entry.base) : []),
   };
 }

@@ -21,6 +21,8 @@ type Form = { name: string; inCanada: boolean; province: string; country: string
 const blank: Form = { name: "", inCanada: true, province: "", country: "", zone: "", zoneTouched: false };
 const fromOffice = (o: Office): Form => ({ name: o.name, inCanada: o.countryCode === "CA", province: o.province ?? "", country: o.countryCode === "CA" ? "" : o.countryCode, zone: o.timeZone, zoneTouched: false });
 const FIRM_ZONE = "";
+/** "Where" is one choice (in Canada + province, or a country): keep mine moves it whole (break M1). */
+const WHERE_GROUP = [["inCanada", "province", "country"]] as const;
 
 export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus, onAdded }: { open: boolean; onOpenChange: (o: boolean) => void; /** null: add a new office. */ office: Office | null;
   provinces: readonly Province[]; returnFocus: () => HTMLElement | null; onAdded: (first: boolean) => void }) {
@@ -92,7 +94,7 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
       title={office ? "Edit office" : "Add an office"} description={office ? "Changes apply when you press Save." : "The office keeps its own time zone. Its hours start as the firm's."}
       footer={<><Button variant="ghost" onClick={() => { if (dirty && !window.confirm("Discard your changes to this office?")) return; if (dirty && office) draft.discard(); onOpenChange(false); }} data-office-close>Close</Button><Button type="submit" form="office-form" busy={busy} disabled={!dirty} data-office-save>{office ? "Save" : "Add office"}</Button></>}>
       <form id="office-form" className="flex flex-col gap-4" onSubmit={(e) => void save(e)} noValidate>
-        {conflict ? <ConflictNotice message={conflict.message} onSaved={() => { draft.discard(); setConflict(null); }} onMine={() => { draft.rebase(fromOffice(conflict.latest), conflict.latest.version); setConflict(null); }}
+        {conflict ? <ConflictNotice message={conflict.message} onSaved={() => { draft.discard(); setConflict(null); }} onMine={() => { draft.rebase(fromOffice(conflict.latest), conflict.latest.version, WHERE_GROUP); setConflict(null); }}
           rows={[
             ...(mine.includes("name") ? [{ label: "Office name", saved: conflict.latest.name, mine: f.name }] : []),
             ...(mine.some((k) => k === "inCanada" || k === "province" || k === "country") ? [{ label: "Where", saved: whereLine(conflict.latest), mine: whereLine({ countryCode: f.inCanada ? "CA" : f.country.trim().toUpperCase(), province: f.inCanada ? f.province || null : null }) }] : []),

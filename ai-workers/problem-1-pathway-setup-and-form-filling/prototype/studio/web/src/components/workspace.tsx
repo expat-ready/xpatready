@@ -13,7 +13,8 @@
 import * as React from "react";
 import { createPath, NavigationType, parsePath, Router, type To } from "react-router-dom";
 import { X } from "lucide-react";
-import { anyDraft } from "@/lib/sync/drafts";
+import { anyDraft, discardDraft, draftsAt, useDraftTick } from "@/lib/sync/drafts";
+import { onStaffChange, staffScope } from "@/modules/platform/session";
 import { cn } from "@/lib/utils";
 
 export const TAB_CAP = 12;
@@ -49,20 +50,34 @@ export function useTabDirty(dirty: boolean, discard: () => void) {
   React.useEffect(() => { t?.setDirty(owner, dirty, () => d.current()); return () => t?.setDirty(owner, false); }, [t, owner, dirty]);
 }
 
-function load(): { tabs: Tab[]; active: string } {
+/** A kept tab is used only when well formed (break m1: a bad title blanked the app) and an app address (not "//host"). */
+const keptTab = (t: unknown): t is { id: string; path: string; title: string } => {
+  const x = t as { id?: unknown; path?: unknown; title?: unknown } | null;
+  return !!x && typeof x.id === "string" && x.id.length <= 40 && typeof x.path === "string" && x.path.startsWith("/") && !x.path.startsWith("//") && x.path.length <= 2000 && typeof x.title === "string";
+};
+/** The tabs kept in this browser tab, only when they are this session's (break B1: never the last person's). */
+function load(): { tabs: Tab[]; active: string; dropped: boolean } {
   let tabs: Tab[] = [];
-  try { const s = JSON.parse(sessionStorage.getItem(STORE) ?? "null") as { tabs: { id: string; path: string; title: string }[] } | null; tabs = (s?.tabs ?? []).slice(0, TAB_CAP).map((t) => ({ ...t, nav: 0, type: NavigationType.Pop, scroll: 0 })); } catch { /* none kept */ }
+  try {
+    const s = JSON.parse(sessionStorage.getItem(STORE) ?? "null") as { who?: unknown; tabs?: unknown } | null;
+    if (s && s.who === staffScope() && staffScope() && Array.isArray(s.tabs))
+      tabs = s.tabs.filter(keptTab).slice(0, TAB_CAP).map((t) => ({ id: t.id, path: t.path, title: t.title.slice(0, 200), nav: 0, type: NavigationType.Pop, scroll: 0 }));
+  } catch { /* none kept */ }
   const cur = here(), same = tabs.find((t) => itemOf(t.path) === itemOf(cur));
-  if (same) { same.path = cur; return { tabs, active: same.id }; }
+  if (same) { same.path = cur; return { tabs, active: same.id, dropped: false }; }
   const t: Tab = { id: newId(), path: cur, title: guess(cur), nav: 0, type: NavigationType.Pop, scroll: 0 };
-  if (tabs.length >= TAB_CAP) tabs.pop();
-  return { tabs: [...tabs, t], active: t.id };
+  let dropped = false;
+  if (tabs.length >= TAB_CAP) {   // break M2: at the cap, a tab without unsaved changes makes room, and the person is told
+    const free = tabs.map((x, i) => [x, i] as const).reverse().find(([x]) => !draftsAt(itemOf(x.path)).length);
+    tabs.splice(free ? free[1] : tabs.length - 1, 1); dropped = true;
+  }
+  return { tabs: [...tabs, t], active: t.id, dropped };
 }
 
 /** Replaces BrowserRouter: one router per open tab; `children` (the app's routes) render once in each. */
 export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
-  const [{ tabs, active }, setWs] = React.useState(load);
-  const [notice, setNotice] = React.useState<string | null>(null);
+  const [{ tabs, active, dropped }, setWs] = React.useState<{ tabs: Tab[]; active: string; dropped?: boolean }>(load);
+  const [notice, setNotice] = React.useState<string | null>(dropped ? `${TAB_CAP} items were open, the most at once, so one was closed to show this page.` : null);
   const [mounted, setMounted] = React.useState(() => new Set([active]));
   const dirtyOwners = React.useRef(new Map<string, Map<string, () => void>>());
   const [dirty, setDirtySet] = React.useState(new Set<string>());
@@ -70,7 +85,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   now.current = { tabs, active };
 
   React.useEffect(() => {
-    try { sessionStorage.setItem(STORE, JSON.stringify({ tabs: tabs.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
+    try { sessionStorage.setItem(STORE, JSON.stringify({ who: staffScope(), tabs: tabs.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
   }, [tabs, active]);
   React.useEffect(() => { setMounted((m) => (m.has(active) ? m : new Set(m).add(active))); }, [active]);
   React.useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(t); }, [notice]);
@@ -95,10 +110,11 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   const close = React.useCallback((id: string) => {
     const { tabs: ts, active: a } = now.current;
     if (ts.length < 2) return;
-    const owners = dirtyOwners.current.get(id);
-    if (owners?.size) {
+    const owners = dirtyOwners.current.get(id), tab = ts.find((t) => t.id === id), kept = tab ? draftsAt(itemOf(tab.path)) : [];
+    if (owners?.size || kept.length) {   // break M2: a tab not mounted since a reload still has its stored draft
       if (!window.confirm("This tab has unsaved changes. Close it and discard them?")) return;
-      for (const discard of owners.values()) discard();
+      for (const discard of owners?.values() ?? []) discard();
+      for (const k of kept) discardDraft(k);
     }
     const i = ts.findIndex((t) => t.id === id), rest = ts.filter((t) => t.id !== id);
     if (id === a) { const n = rest[Math.min(i, rest.length - 1)]; now.current = { tabs: rest, active: n.id }; setWs({ tabs: rest, active: n.id }); window.history.pushState({ ws: n.id }, "", n.path); requestAnimationFrame(() => window.scrollTo(0, n.scroll)); focusTab(n.id); }
@@ -165,7 +181,22 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     dirtyOwners.current.set(id, m);
     setDirtySet((s) => { if (s.has(id) === m.size > 0) return s; const c = new Set(s); if (m.size) c.add(id); else c.delete(id); return c; });
   }, []);
-  const ws: Ws = { tabs, active, notice, activate: show, close: (id) => close(id), dirty, mounted };
+  // Break B1: a change of person (sign-out, another sign-in, a session ended) starts the workspace again on this page alone.
+  React.useEffect(() => {
+    let was = staffScope();
+    return onStaffChange(() => {
+      const scope = staffScope();
+      if (scope === was) return;
+      was = scope;
+      const t: Tab = { id: newId(), path: here(), title: guess(here()), nav: 0, type: NavigationType.Pop, scroll: 0 };
+      now.current = { tabs: [t], active: t.id };
+      dirtyOwners.current.clear(); setDirtySet(new Set()); setMounted(new Set([t.id])); setWs({ tabs: [t], active: t.id });
+    });
+  }, []);
+  // Break M2: a tab with a stored draft shows its dot even when it is not mounted.
+  const tick = useDraftTick();
+  const dirtyAll = React.useMemo(() => new Set([...dirty, ...tabs.filter((t) => draftsAt(itemOf(t.path)).length).map((t) => t.id)]), [dirty, tabs, tick]);   // eslint-disable-line react-hooks/exhaustive-deps -- tick: any draft change
+  const ws: Ws = { tabs, active, notice, activate: show, close: (id) => close(id), dirty: dirtyAll, mounted };
   return (
     <WsCtx.Provider value={ws}>
       {tabs.filter((t) => mounted.has(t.id)).map((t) => <TabHost key={t.id} tab={t} active={t.id === active} move={move} leave={leave} setDirty={setDirty}
@@ -219,6 +250,7 @@ export function WorkspaceStrip() {
   const name = (t: Tab) => `${t.title}${ws.dirty.has(t.id) ? " (unsaved changes)" : ""}`;
   return (
     <div ref={box} className="pointer-events-auto sticky top-14 z-20 border-b border-border bg-surface" data-workspace-strip>
+      {/* Break M3: each tab is `relative`, so its absolutely placed sr-only text stays inside the strip's own scroll and never widens the page. */}
       <div role="tablist" aria-label="Open items" className="hidden min-w-0 items-end gap-1 overflow-x-auto px-3 pt-1.5 md:flex">
         {tabs.map((t, i) => {
           const on = t.id === active;
@@ -226,7 +258,7 @@ export function WorkspaceStrip() {
             <button key={t.id} ref={(el) => { if (el) refs.current.set(t.id, el); }} type="button" role="tab" id={`ws-${me.id}-${t.id}`} aria-selected={on} aria-controls={ws.mounted.has(t.id) ? `ws-panel-${t.id}` : undefined} tabIndex={on ? 0 : -1} title={t.path}
               aria-keyshortcuts={tabs.length > 1 ? "Delete" : undefined} data-ws-tab={t.id} data-ws-path={t.path}
               onClick={() => ws.activate(t.id)} onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); ws.close(t.id); } }} onKeyDown={(e) => onKey(e, i, t.id)}
-              className={cn("group flex h-9 max-w-56 min-w-24 shrink-0 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              className={cn("group relative flex h-9 max-w-56 min-w-24 shrink-0 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                 on ? "border-border bg-surface-raised font-medium text-text" : "border-transparent text-text-muted hover:bg-text/5")}>
               {ws.dirty.has(t.id) ? <span aria-hidden data-ws-dirty className="size-2 shrink-0 rounded-full bg-primary" /> : null}
               <span className="truncate">{t.title}</span>

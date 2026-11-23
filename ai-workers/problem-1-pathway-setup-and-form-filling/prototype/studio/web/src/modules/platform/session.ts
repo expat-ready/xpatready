@@ -42,6 +42,18 @@ export function endSession(because: string | null) { ended = because; setStaffTo
 export function clearSessionEnd() { if (ended !== null) { ended = null; changed(); } }
 /** The token, or null when signed out or expired. */
 export const staffToken = () => read()?.token ?? null;
+/** PF-31 break B1: who this tab's shared drafts and workspace tabs belong to: a one-way hash of the session token (never the
+ *  token itself, which must not travel to another window), or null when signed out. Another session, even the same person's,
+ *  is another owner, so nothing typed or opened by one person reaches the next. */
+export function staffScope(): string | null {
+  const t = staffToken();
+  if (!t) return null;
+  let a = 0x811c9dc5, b = 0x01000193;
+  for (let i = 0; i < t.length; i++) { const c = t.charCodeAt(i); a = Math.imul(a ^ c, 0x01000193); b = Math.imul(b ^ c, 0x5bd1e995) ^ (b >>> 15); }
+  return (a >>> 0).toString(36) + (b >>> 0).toString(36);
+}
+/** Runs on every change of the session (sign-in, sign-out, end); `staffScope()` says who it is now. */
+export function onStaffChange(l: () => void): () => void { listeners.add(l); return () => { listeners.delete(l); }; }
 function useChanges() {
   const [, force] = React.useState(0);
   React.useEffect(() => { const l = () => force((n) => n + 1); listeners.add(l); return () => { listeners.delete(l); }; }, []);
