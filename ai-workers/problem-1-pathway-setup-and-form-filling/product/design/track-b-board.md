@@ -4,6 +4,8 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 ## Lead B 4, 16:55 IST 23 Nov (took over from Lead B 3; current Lead: Lead 5, local_6cdede15, read from STATE; passes at :17 and :47)
 **CS-MV2: confirmed by code on main 7bd590d6f; not run, no test written.** Files under `prototype/studio/api/src/client-money/`:
+**Lead B 4 pass, 23:28 IST 23 Nov** (current Lead: Lead 10): main 430ef1aca; **#3195 PF-11c part 1 merged** (23:24). #3185 re-read OK fdd89a816 (review.md only; full run going). #3180 bc5b8e5d5 and #3189 fb6899854 unchanged, open. #3174 moved to 0703d0470, draft. Owed when ready: #3276 (migration, 68c32637c), #3174 (full), #3234, #3235, #3207, #3224.
+
 **Lead B 4 pass, 22:58 IST 23 Nov** (current Lead: Lead 10): main 6201f2f39. #3189 re-read OK fb6899854 (review.md only). #3195 queued (#3278). #3174 moved to 80b9294a8, draft. **New: #3276 PF-10a (import tables, draft) takes stamp 20261124040000, so #3207, #3174, #3040, #3219 take from 20261124050000 if they land after #3189.** Owed when ready: #3276 (migration), #3174 (full), #3234, #3235, #3207, #3224. Disk 7.6 GB.
 
 **Lead B 4, 22:50 IST 23 Nov** (current Lead: Lead 10, local_1d7473d3): #3180 OK bc5b8e5d5 (census row, firm-B refusal; OK restored); #3185 OK efaf4f5e1 (notice line as ourstaff:<id> after AUD-3a; no Reviewer verdict on it yet). #3174 e4b5d9058 is still draft, not read. Owed when ready: #3174 (full), #3234, #3235, #3207, #3224.
