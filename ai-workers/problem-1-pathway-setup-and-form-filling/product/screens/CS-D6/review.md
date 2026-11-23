@@ -2,7 +2,7 @@
 
 PR #3203, head `bb13effa0c89df612b53dd8f5f81a46e4e0ec90a` (branch `claude/trusting-keller-t74sqh`), diff `origin/main..bb13effa0` (11 files, +467). Concept = brief `design/briefs/CS-D6.md` part 1 + BACKLOG row CS-D6 (there is no `screens/CS-D6/concept.md`). Reviewer: Opus, fresh context, US$0, live AI off, ports 4498 (`rv_csd6`) and 4492 (`rv_j69`) only.
 
-**Verdict: Ship after fixes.** `Reviewer: Changes bb13effa0c89df612b53dd8f5f81a46e4e0ec90a`. Three Majors, all small. Journey score **8.5/10** (pass), report `journey-test-reviewer-2026-11-23.md`.
+**Round 1 verdict: Ship after fixes.** `Reviewer: Changes bb13effa0c89df612b53dd8f5f81a46e4e0ec90a`. (Round 2 at the end: **Ship**.) Three Majors, all small. Journey score **8.5/10** (pass), report `journey-test-reviewer-2026-11-23.md`.
 
 ## What I ran
 * `check_csd6_reads_keep.ts` on rv_csd6:4498: **18/18**. The "previewed" case is skipped because #3188 is not merged (the test prints a NOTE).
@@ -73,4 +73,27 @@ Screenshots: the builder's `screens/J-69/screenshots/w1…w3` (1440 and 390). My
 ## Could not check
 A real screen reader. An intended user's unaided walk (D17, D20 stay with the founder). "previewed" lines (#3188 not merged). The full `ci` run (skipped on this head). Mutation runs (I may not edit code; m1 is reasoned from the code and the data).
 
-Verdict: Changes
+## Round 2: head `05a75191ef8e72d808ca3062974cf94af013cb28` (diff `bb13effa0..05a75191e`)
+**Re-run by me:** `check_csd6_reads_keep.ts` (rv_csd6:4498) **22/22**; `check_case_feed.ts` **42/42**; `j_69.ts` (rv_j69:4492) **17/17 twice**; my walk again gives axe 0 on officer 1024, error and Owner list 1440, with no sideways scroll at 720/400 px. CI on the head: `module-cards` and `pr-rules` success.
+
+**Round 1 findings:**
+* **M1 fixed.** `reach()` ANDs `caseScopeWhere(caseScope(…))` with the firm (`case-document-reads.ts:55-56`). The new DW2 fail case (a `view.own`-only person off the case gets 404 on both routes, no line written) passes; the role rows are restored after the run (checked).
+* **M2 fixed.** Literal `"case document"` entity, summary `on case <8 hex>`. Check lines with `case_id` on my copy: 3/3 (round 1: 0/11).
+* **M3 fixed.** `api/src/features/MODULE.rows/CS-D6.md`; `module-cards` green.
+* **m1 fixed.** The other-firm line test fails without the `firm_id` filter. The 52-lines-in-one-microsecond test (50 + 50 + 3, each line once) fails if the keyset drops `id`. A missing-file case is added.
+* **m2 fixed.** The cursor is the last line's id, validated as a line of this list (else 400); the keyset `(at, id) < (select at, id …)` runs in SQL at µs.
+* **m3 fixed.** `j_69.ts:103` waits for focus instead of setting it. My walk: focus on Check after the inline sign-in and after a check, on the first new line after the last "Show older", on ⋯ after Escape.
+* **m4 fixed.** "Copied" resets after 4 s; a refusal says how to copy by hand.
+* **m5 fixed.** The comment is reworded.
+* **m6 fixed.** The PR body lists contract gap 1 (the index, AUD-1a's) and the checks and results.
+* **m7 accepted as left.** The check must record "found changed" where `bytesOf` answers 409, and the streamed hash avoids holding a large file. The web-side types stay a follow-up with #3188.
+
+**Breaker fixes in this diff** (streamed hash with unreadable = changed, `aria-busy` instead of `disabled`, session-end notice, focus): no Blocker or Major. Two nits, not blocking:
+* n1: `document-reads.tsx` `check()` sets busy and clears the error before its `if (busy) return` guard. Harmless; reorder.
+* n2: an unreadable file that exists (a directory, no permission) gets the audit words "cannot be read" but the screen words "The stored file is missing." Wording only.
+
+**Journey score, round 2: 9/10** (correct data rises to 1).
+
+`Reviewer: Approve 05a75191ef8e72d808ca3062974cf94af013cb28`
+
+Verdict: Approve

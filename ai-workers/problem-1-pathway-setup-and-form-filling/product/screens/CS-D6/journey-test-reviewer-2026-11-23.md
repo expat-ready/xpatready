@@ -66,3 +66,11 @@ Fixes that raise the low criteria, most valuable first:
 3. Write the empty state as "Openings, previews, AI reads and checks will appear here."
 
 Could not test: a real screen reader; an intended user's unaided walk (D17/D20 stay with the founder); "previewed" (#3188 not merged).
+
+## Round 2 (head 05a75191e)
+* The journeys re-ran: `j_69.ts` 17/17 twice; my walk repeated journeys 1-6 and 9; axe 0 on every state.
+* Journey 8 (a case outside the person's scope) now answers **404** on both routes and writes no line.
+* The check lines now carry their `case_id`.
+* Focus lands on Check after the inline sign-in and on the first new line after the last "Show older".
+* Score **9/10**: correct data rises to 1; next step obvious and trust and sources stay at ½. **Pass.**
+
