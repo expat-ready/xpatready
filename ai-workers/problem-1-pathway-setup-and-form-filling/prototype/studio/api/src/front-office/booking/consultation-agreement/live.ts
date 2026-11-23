@@ -43,18 +43,24 @@ export class AgreementPoll implements OnApplicationBootstrap, OnApplicationShutd
   tick() { if (!this.running) this.running = this.run().finally(() => { this.running = null; }); return this.running; }
 
   /** Rows that failed: not tried again (so no bypass line written for them) until their wait is over; the wait doubles
-   *  from one catch-up to at most an hour (break P2-3, as CS-K1's touchedEach). */
+   *  from one catch-up to at most an hour (break P2-3, as CS-K1's touchedEach). A row with a meeting (`before`) waits at
+   *  most half the time left before it, never less than one catch-up, so it is tried again while the meeting is still
+   *  ahead (break P2R2-2). */
   private readonly backoff = new Map<string, { until: number; wait: number }>();
   /** Each firm's rows run as that firm, once its bypass line of this run is written; a held-back row answers null. */
   private eachOf() {
     const lined = new Map<string, Promise<void>>();
-    return async <T,>(firmId: string, fn: () => Promise<T>, key?: string): Promise<T | null> => {
+    return async <T,>(firmId: string, fn: () => Promise<T>, key?: string, before?: Date): Promise<T | null> => {
       const k = key ? `${firmId}:${key}` : null, held = k ? this.backoff.get(k) : undefined, now = this.now().getTime();
       if (held && held.until > now) return null;
       if (!lined.has(firmId)) lined.set(firmId, touchFirms(this.db, [firmId]));
       await lined.get(firmId)!;
       try { const r = await withFirm(firmId, fn); if (k) this.backoff.delete(k); return r; } catch (e) {
-        if (k) { const wait = held ? Math.min(BACKOFF_MAX_MS, held.wait * 2) : agreementPollMs() * CATCH_UP_EVERY; this.backoff.set(k, { until: now + wait, wait }); }
+        if (k) {
+          const least = agreementPollMs() * CATCH_UP_EVERY, wait = held ? Math.min(BACKOFF_MAX_MS, held.wait * 2) : least;
+          const cap = before ? Math.max(least, Math.floor((before.getTime() - now) / 2)) : wait;
+          this.backoff.set(k, { until: now + Math.min(wait, cap), wait });
+        }
         throw e;
       }
     };

@@ -28,7 +28,7 @@ import { DOCX, renderDocx } from "../../retainers/docx.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent, type SigningPort } from "../../signing/port.ts";
 import { wallLabel } from "../service.ts";
 import { CODE_S23, s23Check } from "./items.ts";
-import { isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
+import { ENDED_STATUSES, isEnded, isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
 
 type Tx = Prisma.TransactionClient;
 /** This module's two events (the row's names). `ports/events.ts` is outside the row's touch list: J-104 moves them there. */
@@ -55,8 +55,6 @@ const DOOR_MAX_KEYS = 50_000;
 const DOOR_PER_IP = 30, DOOR_WINDOW_MS = 10 * 60_000;
 export const PRO_BONO = "No fee: this consultation is provided pro bono.";   // Sample wording
 export const WORDS = { signed: "Agreement signed", unsigned: "Agreement not signed yet", none: "No agreement was sent", ended: "Agreement ended unsigned" } as const;
-/** An agreement no one can sign any more (declined, withdrawn, expired): part 2 (break P2-2) holds nothing on it. */
-export const ENDED_STATUSES = ["DECLINED", "WITHDRAWN", "EXPIRED"] as const;
 const SYSTEM = "system:consultation-agreement";
 
 /** FO-3c part 2 (Lead 10, FO-3vr): whether a person sees a booking: the booking service's `staffBooking` (its host, or the
@@ -64,8 +62,12 @@ const SYSTEM = "system:consultation-agreement";
  *  only, so a read never opens wider than the rule. */
 export type SeeBooking = (ctx: StaffContext, bookingId: string) => Promise<unknown>;
 /** How the catch-up runs one row as its firm: the row's own key lets the poller hold back a row that keeps failing
- *  (answering null: not tried this run). */
-export type CatchUpEach = <T>(firmId: string, fn: () => Promise<T>, key?: string) => Promise<T | null>;
+ *  (answering null: not tried this run); `before` (a booking's meeting) caps that wait so the row is tried again while the
+ *  meeting is still ahead (break P2R2-2). */
+export type CatchUpEach = <T>(firmId: string, fn: () => Promise<T>, key?: string, before?: Date) => Promise<T | null>;
+/** A catch-up send that sent nothing for a reason other than a race (a template whose file is missing): thrown so the
+ *  poller backs the row off like a failure (break P2R2-3). */
+export class NotSent extends Error { constructor(readonly reason: string) { super(`not sent: ${reason}`); } }
 export type AgreementPorts = { audit: AuditPort<Tx>; clock: ClockPort; mail: MailPort; jobs: JobPort; signing: SigningPort; files: FilesPort; publicBaseUrl: string; warn?: (m: string) => void; seeBooking?: SeeBooking };
 
 const fail = (status: number, title: string, detail: string, code: string): never => { throw new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code }, status); };
@@ -104,21 +106,24 @@ export class ConsultationAgreementService {
 
   // ------------------------------------------------------------------------------------------------ the subscriber
   /** A booking event (module_event's envelope). Scheduled → the agreement is sent, once per booking. Rescheduled → no new
-   *  agreement; the 24-hour reminder follows the new time. Any other event changes nothing. At least once is safe. */
+   *  agreement while the latest is waiting (the 24-hour reminder follows the new time); when the latest has ended unsigned,
+   *  a fresh one is sent for the new time (Lead 1's ruling on #3184). Any other event changes nothing. At least once is safe. */
   async onBookingEvent(event: { type: string; firmId: string; payload: unknown }): Promise<SendResult | null> {
     if (event.type !== EVENT.BOOKING_SCHEDULED && event.type !== EVENT.BOOKING_RESCHEDULED) return null;
     const p = BookingEvent.parse(event.payload);
     if (event.type === EVENT.BOOKING_SCHEDULED) return this.send(event.firmId, p.bookingId);
     const a = await this.ofBooking(this.db, event.firmId, p.bookingId);
-    if (a && a.status !== "SIGNED") await this.scheduleReminder(event.firmId, a.id, p.bookingId);
+    if (a && isEnded(a.status)) return this.send(event.firmId, p.bookingId);
+    if (a && !isSigned(a.status)) await this.scheduleReminder(event.firmId, a.id, p.bookingId);
     return a ? { sent: false, reason: "ALREADY_SENT", agreementId: a.id } : { sent: false, reason: "NO_AGREEMENT" };
   }
 
-  /** Every scheduled booking whose event was missed (no agreement yet, the meeting still ahead): made good by the next run.
+  /** Every scheduled booking whose event was missed (no agreement yet, or its latest ended unsigned: Lead 1's ruling on
+   *  #3184; the meeting still ahead): made good by the next run.
    *  The first read crosses firms (the caller's own scope decides what it sees: PF-12); each send runs as its firm. */
   async catchUp(each: CatchUpEach = withFirm): Promise<{ sent: number; failed: number; sealed: number }> {
-    const rows = await this.db.$queryRaw<{ firm_id: string; id: string }[]>`
-      select b.firm_id::text, b.id::text from fo_booking b
+    const rows = await this.db.$queryRaw<{ firm_id: string; id: string; starts_at: Date }[]>`
+      select b.firm_id::text, b.id::text, b.starts_at from fo_booking b
        where b.status in ('SCHEDULED', 'RESCHEDULED') and b.starts_at > ${this.ports.clock.now()}
          -- only a booking that can be sent (its person has an email), so unsendable ones never fill the batch (break m6)
          and exists (select 1 from fo_person p where p.firm_id = b.firm_id and p.id = b.person_id and p.email is not null)
@@ -131,8 +136,10 @@ export class ConsultationAgreementService {
          and exists (select 1 from fo_retainer_template t where t.firm_id = b.firm_id and t.kind = 'CONSULTATION' and t.active)
          -- part 2 (Lead 10, W4b): only a type that needs the agreement
          and exists (select 1 from fo_consultation_type t where t.firm_id = b.firm_id and t.id = b.type_id and ${Prisma.raw(NEEDS_AGREEMENT_SQL)})
+         -- no agreement that is waiting or signed: none at all, or each one ended unsigned (a fresh one is sent, P2R2-1)
          and not exists (select 1 from fo_retainer_version v join fo_retainer r on r.firm_id = v.firm_id and r.id = v.retainer_id
-                          where v.firm_id = b.firm_id and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = b.id::text)
+                          where v.firm_id = b.firm_id and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = b.id::text
+                            and r.status::text <> all(${[...ENDED_STATUSES]}))
        order by b.starts_at limit 200`;
     const out = { sent: 0, failed: 0, sealed: 0 };
     // A seal that failed (every signer signed, no evidence) is tried again, and a signed copy whose job was lost is queued
@@ -152,14 +159,17 @@ export class ConsultationAgreementService {
         else if (await each(q.firm_id, async () => { const d = await this.db.foSignatureRequest.findFirstOrThrow({ where: { firmId: q.firm_id, id: q.id } }); await this.queueCopy(q.firm_id, d.documentId, q.id); return true; }, `copy:${q.id}`)) this.requeued.add(q.id);
       } catch (e) { out.failed++; await this.safe(`catch-up of request ${q.id}`, () => { throw e; }); }
     }
-    for (const r of rows) { try { if ((await each(r.firm_id, () => this.send(r.firm_id, r.id), `send:${r.id}`))?.sent) out.sent++; } catch (e) { out.failed++; await this.safe(`catch-up of booking ${r.id}`, () => { throw e; }); } }
+    // A send that answers a reason (not a race) is thrown, so the row backs off as a failure does (P2R2-3).
+    const sendOrThrow = async (r: { firm_id: string; id: string }) => { const s = await this.send(r.firm_id, r.id); if (!s.sent && s.reason !== "ALREADY_SENT") throw new NotSent(s.reason); return s; };
+    for (const r of rows) { try { if ((await each(r.firm_id, () => sendOrThrow(r), `send:${r.id}`, r.starts_at))?.sent) out.sent++; } catch (e) { out.failed++; await this.safe(`catch-up of booking ${r.id}`, () => { throw e; }); } }
     return out;
   }
 
+  /** The booking's latest agreement (newest first: an ended one is followed by its fresh one). */
   private async ofBooking(q: Tx | PrismaClient, firmId: string, bookingId: string) {
     const rows = await q.$queryRaw<{ id: string; status: string }[]>`
       select r.id::text, r.status::text from fo_retainer r join fo_retainer_version v on v.firm_id = r.firm_id and v.retainer_id = r.id
-       where r.firm_id = ${firmId}::uuid and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = ${bookingId} order by r.created_at limit 1`;
+       where r.firm_id = ${firmId}::uuid and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = ${bookingId} order by r.created_at desc, r.id desc limit 1`;
     return rows[0] ?? null;
   }
 
@@ -180,15 +190,16 @@ export class ConsultationAgreementService {
   }
 
   // ------------------------------------------------------------------------------------------------------- send
-  /** Sends the booking's agreement for signing, once. No active template, no licensed person or no client email: nothing
-   *  is sent and the reason is answered (the booking stays as it is). */
+  /** Sends the booking's agreement for signing, once, and again only when its latest agreement has ended unsigned (declined,
+   *  withdrawn, expired, back to draft: Lead 1's ruling on #3184). No active template, no licensed person or no client
+   *  email: nothing is sent and the reason is answered (the booking stays as it is). */
   async send(firmId: string, bookingId: string): Promise<SendResult> {
     const b = UUID.test(bookingId) ? await this.db.foBooking.findFirst({ where: { firmId, id: bookingId }, include: { type: true } }) : null;
     if (!b || !b.personId) return { sent: false, reason: "NO_BOOKING" };
     if (b.status !== "SCHEDULED" && b.status !== "RESCHEDULED") return { sent: false, reason: "NOT_SCHEDULED" };
     if (!needsAgreement(b.type)) return { sent: false, reason: "NOT_REQUIRED" };   // part 2 (Lead 10, W4b; QA-751): the type's switch
     const had = await this.ofBooking(this.db, firmId, b.id);
-    if (had) return { sent: false, reason: "ALREADY_SENT", agreementId: had.id };
+    if (had && !isEnded(had.status)) return { sent: false, reason: "ALREADY_SENT", agreementId: had.id };
     const t = (await this.db.foRetainerTemplate.findMany({ where: { firmId, kind: "CONSULTATION", active: true }, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], take: 1 }))[0];
     if (!t) return { sent: false, reason: "NO_TEMPLATE" };
     const who = await this.signatory(firmId, b.staffId);
@@ -223,7 +234,7 @@ export class ConsultationAgreementService {
       await this.db.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fo-consultation-agreement:${b.id}`}))`;
         const again = await this.ofBooking(tx, firmId, b.id);
-        if (again) { raced = again.id; return; }
+        if (again && !isEnded(again.status)) { raced = again.id; return; }
         await tx.foRetainer.create({ data: { id, firmId, kind: "CONSULTATION", prospectId: b.prospectId, subject: "PERSON", signerPersonId: person.id, representativeStaffId: who.staff.id, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey, createdBy: SYSTEM } });
         const v = await tx.foRetainerVersion.create({ data: { firmId, retainerId: id, n: 1, mergeValues: values as Prisma.InputJsonValue, fileKey: file.key, originalSha256: file.sha256, createdBy: SYSTEM } });
         await tx.foRetainerVersion.update({ where: { id: v.id }, data: { sentAt: now } });
@@ -282,7 +293,7 @@ export class ConsultationAgreementService {
     const rep = await this.db.platformStaff.findFirst({ where: { firmId, id: r.representativeStaffId }, select: { displayName: true } });
     const isHost = m["booking.signatory_is_host"] !== false;
     return {
-      id: r.id, bookingId: String(m[BOOKING_ID] ?? ""), personId: r.signerPersonId, status: r.status, signed: isSigned(r.status), words: isSigned(r.status) ? WORDS.signed : (ENDED_STATUSES as readonly string[]).includes(r.status) ? WORDS.ended : WORDS.unsigned,
+      id: r.id, bookingId: String(m[BOOKING_ID] ?? ""), personId: r.signerPersonId, status: r.status, signed: isSigned(r.status), words: isSigned(r.status) ? WORDS.signed : isEnded(r.status) ? WORDS.ended : WORDS.unsigned,
       meetingAt: m[BOOKING_ID] && UUID.test(String(m[BOOKING_ID])) ? (await this.db.foBooking.findFirst({ where: { firmId, id: String(m[BOOKING_ID]) }, select: { startsAt: true } }))?.startsAt ?? null : null,
       sentAt: v?.sentAt ?? null, clientSignedAt: of("CLIENT")?.signedAt ?? null, firmSignedAt: of("FIRM")?.signedAt ?? null,
       signatory: { staffId: r.representativeStaffId, name: rep?.displayName ?? null, isHost,

@@ -81,7 +81,7 @@ export function BookingPanel({ id, onClose, onSaved, returnFocus }: { id: string
                 <p><bdi>{who}</bdi>{b.person?.email ? <> · <bdi>{b.person.email}</bdi></> : null} · Host: <bdi>{b.host.name}</bdi> · {MODE_WORDS[b.mode] ?? b.mode}</p>
                 {b.hangsOn ? <p className="text-text-muted">On {b.hangsOn.kind} {b.hangsOn.name}</p> : null}
                 {b.outsideHours ? <p className="text-text-warn" data-outside-hours>Outside {b.host.name}'s hours</p> : null}</section>
-              <BookingAgreement bookingId={b.id} />
+              <BookingAgreement bookingId={b.id} bookingStatus={b.status} />
               {b.canAnswerAttendance ? (
                 <section aria-labelledby="fo-att" className="border-t border-border pt-3"><h3 id="fo-att" className="font-semibold">Attendance</h3>
                   <p className="mb-2"><b>Did {who} attend?</b></p><AttendanceButtons booking={b} /></section>

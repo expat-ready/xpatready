@@ -11,6 +11,11 @@
 //       reminder; each firm read writes its platform.bypass line; a follow-up's event sends none
 //   P5  the reads follow the booking's visibility (FO-3vr): another person's booking is the one not-found
 //   P6  the signed copy's key: refused before signing, given after, and checked again for whoever asks
+//   B2, B6  an agreement that ended unsigned (declined, withdrawn) still holds; a fresh one is sent while the meeting is
+//       ahead (by the send, the catch-up or a reschedule), once; its signature lifts the hold (Lead 1's ruling on #3184)
+//   B5  the poller's backoff: held back, retried after 30 s, doubled; capped by the time left before the meeting (P2R2-2)
+//   B7  the panel's next step on a No-show booking (review r2-2)   B8  NO_TEMPLATE backs off (P2R2-3)
+//   B9  the reminder reads the type's switch (review r2-1)
 //   tsx studio/tests/check_fo3c2_consultation_agreement.ts
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -49,6 +54,7 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, opt
 const { ConsultationAgreementService, WORDS } = await import("../api/src/front-office/booking/consultation-agreement/service.ts");
 const { AgreementPoll } = await import("../api/src/front-office/booking/consultation-agreement/live.ts");
 const { HOLD_WORDS, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
+const { agreementNextStep, NEXT_NO_SHOW, NEXT_RESCHEDULE } = await import("../web/src/modules/front-office/booking/calendar/agreement-words.ts");
 const { BookingService } = await import("../api/src/front-office/booking/service.ts");
 const { ConsultRecordService } = await import("../api/src/front-office/booking/consult/service.ts");
 const { BookingTypesService } = await import("../api/src/front-office/booking/settings/types.ts");
@@ -251,16 +257,50 @@ try {
   ok("FO-3c2 B1 pass (break P2-1): the representative of record, who signs for a host with no licence record, reads the agreement and signs it although the booking is not one they see",
     rep7 === R.staffId && readSigner.status === 200 && seesBooking.status === 404 && signed7 === "SIGNED", { rep7: rep7 === R.staffId, readSigner: readSigner.status, seesBooking: seesBooking.status, signed7 });
   ok("FO-3c2 B1 fail: a colleague who neither signs nor sees the booking still reads the one not-found", (await answer(() => svc.read(Tview, a7))).status === 404);
-  // P2-2: an agreement the client declined can no longer be signed: it holds nothing.
+  // P2R2-1 (Lead 1's ruling on #3184): an agreement that ended unsigned still holds; while the meeting is ahead the
+  // catch-up sends a fresh one, and its signature lifts the hold. A past meeting gets none until it is rescheduled.
+  const latestOf = (bookingId: string) => sql(`select r.id || ':' || r.status from fo_retainer r join fo_retainer_version v on v.retainer_id = r.id and v.n = 1 where r.kind = 'CONSULTATION' and v.merge_values->>'booking.id' = '${bookingId}' order by r.created_at desc, r.id desc limit 1`).split(":");
+  const decline = async (agreementId: string) => {
+    const q = await db.foSignatureRequest.findFirstOrThrow({ where: { documentId: agreementId }, include: { signers: true } });
+    for (const h of await signing.act(q.firmId, q.providerDocumentId, q.signers.find((x) => x.role === "CLIENT")!.id, "declined")) await svc.signingEvent(h);
+  };
   const b8 = await book(A, free, R.staffId, lee, -180);
-  await clock.set(new Date(b8.startsAt.getTime() - 10 * MIN));
+  await clock.set(new Date(b8.startsAt.getTime() - 60 * MIN));   // the meeting an hour ahead
   const s8 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b8)), a8 = s8?.sent ? s8.agreementId : "";
-  const req8 = await db.foSignatureRequest.findFirstOrThrow({ where: { documentId: a8 }, include: { signers: true } });
-  for (const h of await signing.act(A, req8.providerDocumentId, req8.signers.find((x) => x.role === "CLIENT")!.id, "declined")) await svc.signingEvent(h);
+  await decline(a8);
+  const st8 = sql(`select status from fo_retainer where id = '${a8}'`), w8 = await svc.read(R, a8);
+  const again8 = await svc.send(A, b8.id);   // the event's own send: not ALREADY_SENT any more
+  const [fresh8, freshSt8] = latestOf(b8.id);
+  const repeat8 = await svc.send(A, b8.id), cu8 = await svc.catchUp((_f, fn) => fn());   // the fresh one is waiting: none more
+  await clock.set(new Date(b8.startsAt.getTime() + 5 * MIN));
+  const att8 = await answer(() => bookings.recordAttendance(R, b8.id, { outcome: "COMPLETED" }));
+  ok("FO-3c2 B2 pass (P2R2-1; Lead 1's ruling): a declined agreement reads \"Agreement ended unsigned\" and still holds; while the meeting is ahead a fresh one is sent (once), and Attended stays refused until it is signed",
+    ["DECLINED", "WITHDRAWN"].includes(st8) && w8.words === WORDS.ended && again8.sent === true && fresh8 === (again8.sent ? again8.agreementId : "") && freshSt8 === "SENT" && agreementsOf(b8.id) === 2
+    && repeat8.sent === false && repeat8.reason === "ALREADY_SENT" && cu8.sent === 0 && agreementsOf(b8.id) === 2 && att8.status === 409 && /AGREEMENT_NOT_SIGNED/.test(att8.body) && att8.body.includes(fresh8), { st8, words: w8.words, again8, repeat8, cu8, att8: att8.status });
+  const signed8 = await signAll(fresh8, "lee@client.example", R);
   await clock.set(today);
-  const st8 = sql(`select status from fo_retainer where id = '${a8}'`), att8 = await answer(() => bookings.recordAttendance(R, b8.id, { outcome: "COMPLETED" })), w8 = await svc.read(R, a8);
-  ok("FO-3c2 B2 pass (break P2-2): an agreement declined by the client ends unsigned (\"Agreement ended unsigned\") and no longer holds Attended",
-    ["DECLINED", "WITHDRAWN"].includes(st8) && w8.words === WORDS.ended && att8.status === 200 && statusOf(b8.id) === "COMPLETED", { st8, words: w8.words, att8 });
+  const done8 = await answer(() => bookings.recordAttendance(R, b8.id, { outcome: "COMPLETED" }));
+  ok("FO-3c2 B2 fail: once the fresh agreement is signed, the same booking's Attended is saved (the latest agreement decides, not the declined one)",
+    signed8 === "SIGNED" && done8.status === 200 && statusOf(b8.id) === "COMPLETED", { signed8, done8 });
+  // Withdrawn by the firm (FO-5's withdraw) with the meeting already past: held, and no fresh one until it is rescheduled.
+  const b8w = await book(A, free, R.staffId, lee, -180);
+  await clock.set(new Date(b8w.startsAt.getTime() - 60 * MIN));
+  const s8w = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b8w)), a8w = s8w?.sent ? s8w.agreementId : "";
+  await clock.set(today);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });   // FO-5's page reads it so
+  const wd = await answer(() => retainers.withdraw(R, a8w, { reason: "Sample: skip it", expectedVersion: 1, expectedStatus: "SENT" }));
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  const held8w = await answer(() => bookings.recordAttendance(R, b8w.id, { outcome: "COMPLETED" })), cu8w = await svc.catchUp((_f, fn) => fn());
+  ok("FO-3c2 B6 pass (P2R2-1): an agreement the firm withdrew still holds Attended, and with the meeting past the catch-up sends no fresh one",
+    wd.status === 200 && sql(`select status from fo_retainer where id = '${a8w}'`) === "WITHDRAWN" && held8w.status === 409 && /AGREEMENT_NOT_SIGNED/.test(held8w.body) && agreementsOf(b8w.id) === 1 && statusOf(b8w.id) === "SCHEDULED", { wd: wd.status, held8w: held8w.status, cu8w });
+  const moved8w = await db.foBooking.update({ where: { id: b8w.id }, data: { status: "RESCHEDULED", startsAt: new Date(clock.now().getTime() + 9 * 24 * HOUR), endsAt: new Date(clock.now().getTime() + 9 * 24 * HOUR + 30 * MIN), sequence: { increment: 1 } } });
+  const r8w = await svc.onBookingEvent(eventOf(EVENT.BOOKING_RESCHEDULED, moved8w));
+  ok("FO-3c2 B6 fail: rescheduled to a time ahead, the reschedule sends a fresh agreement for the new time (the latest is SENT)",
+    r8w?.sent === true && agreementsOf(b8w.id) === 2 && latestOf(b8w.id)[1] === "SENT", { r8w });
+  // Review r2-2: a No-show booking cannot be rescheduled, so the panel's next step says to make a new booking.
+  ok("FO-3c2 B7 (review r2-2): the panel's next step on a No-show booking says to make a new booking, never to reschedule; on any other booking it says to reschedule",
+    agreementNextStep("NO_SHOW") === NEXT_NO_SHOW && !/reschedule it/.test(agreementNextStep("NO_SHOW")) && agreementNextStep("SCHEDULED") === NEXT_RESCHEDULE && agreementNextStep(undefined) === NEXT_RESCHEDULE
+    && (await answer(() => bookings.staffReschedule(R, b3.id, { startsAt: new Date(clock.now().getTime() + 10 * 24 * HOUR).toISOString(), timeZone: "America/Toronto" }))).status === 409);
   // P2-3: a quiet catch-up (a signed copy already queued, nothing to send) touches no firm: no new bypass line.
   for (let i = 0; i < 16; i++) await poll.tick();   // runs at least one catch-up (every 15th run)
   const quiet0 = lines();
@@ -290,6 +330,64 @@ try {
     s10?.sent === true && held10.status === 409 && free10.status === 200 && statusOf(b10.id) === "COMPLETED", { s10, held10: held10.status, free10: free10.status });
   ok("FO-3c2 R1 download: the signed copy's file is refused to a colleague with the list key outside the record rule (the download's check), and given to its host",
     !(await svc.copyVisible(Tview, k)) && (await svc.copyVisible(R, k)), { k: !!k });
+
+  // ------------------------------------------------------------------- round 3: the backoff (P2R2-2, P2R2-3; review r2-1)
+  // The poller's own backoff, on a stand-in service whose catch-up tries one row of firm B: a provider down for 70
+  // minutes, the meeting 100 minutes ahead, one catch-up every 30 s (the default: 2 s × 15).
+  const linesOf = (firmId: string) => Number(sql(`select count(*) from audit_event where action = 'platform.bypass' and firm_id = '${firmId}' and detail->>'use' = 'front-office.consultation-agreement.poll'`));
+  const outage = async (withMeeting: boolean) => {
+    const t0 = clock.now().getTime(), meeting = t0 + 100 * MIN, downUntil = t0 + 70 * MIN, tries: number[] = [];
+    let on = false, done = false;
+    const stand = { onBookingEvent: async () => null, catchUp: async (each: (f: string, fn: () => Promise<unknown>, key?: string, before?: Date) => Promise<unknown>) => {
+      if (on && !done) await each(B, async () => { tries.push(clock.now().getTime()); if (clock.now().getTime() < downUntil) throw new Error("Sample: the provider is down"); done = true; return { sent: true }; }, "send:sample", withMeeting ? new Date(meeting) : undefined).catch(() => null);
+      return { sent: 0, failed: 0, sealed: 0 };
+    } };
+    const p = new AgreementPoll(db, stand as never, () => clock.now());
+    const catchUpNow = async () => { (p as unknown as { runs: number }).runs = 0; await p.tick(); };
+    await catchUpNow(); on = true;   // the first run sets the cursor and reads the day's events (not counted)
+    await catchUpNow();
+    const l1 = linesOf(B); await catchUpNow(); const skipped = tries.length === 1 && linesOf(B) === l1;   // same time: held back, no line
+    for (let t = t0 + 30_000; t < meeting; t += 30_000) { await clock.set(new Date(t)); await catchUpNow(); }
+    await clock.set(new Date(t0));
+    return { t0, meeting, downUntil, tries: tries.map((x) => (x - t0) / 1000), skipped, linesOf: linesOf(B) - l1 };
+  };
+  const withM = await outage(true), noM = await outage(false);
+  ok("FO-3c2 B5 pass (break P2R2-2): a row with a meeting waits at most half the time left before it, so once the provider is back it is tried, and sent, before the meeting; the wait still doubles meanwhile",
+    withM.tries.some((x) => x >= 70 * 60 && x < 100 * 60) && withM.tries.length <= 14, withM);
+  ok("FO-3c2 B5 fail: the same outage with no meeting given (the old rule) is not tried again before the 100 minutes are up",
+    !noM.tries.some((x) => x >= 70 * 60 && x < 100 * 60), noM);
+  ok("FO-3c2 B5 backoff (review r2-1): after a failure the row is held back at the next catch-up (no try, no bypass line), tried again after 30 s, then after a doubled wait of 60 s",
+    withM.skipped && withM.tries[0] === 0 && withM.tries[1] === 30 && withM.tries[2] === 90, withM.tries.slice(0, 4));
+  // P2R2-3: a send that answers NO_TEMPLATE (the template's file is missing from the store) backs off as a failure does.
+  const b11 = await book(B, await type(B, "p3-solo", [S.staffId]), S.staffId, await person(B, "Sky"), 5 * 24 * 60);
+  const realGet = files.get.bind(files);
+  (files as unknown as { get: typeof files.get }).get = async (f, key) => (f === B ? null : realGet(f, key));
+  const nt = new AgreementPoll(db, svc, () => clock.now());
+  const catchUpNt = async () => { (nt as unknown as { runs: number }).runs = 0; return (await nt.tick())?.caughtUp; };
+  await catchUpNt();   // sets the cursor; its catch-up tries b11 once (NO_TEMPLATE → failed)
+  const l11 = linesOf(B), c2 = await catchUpNt(), held11 = linesOf(B) - l11;
+  await clock.set(new Date(clock.now().getTime() + 31_000));
+  const c3 = await catchUpNt(), retried11 = linesOf(B) - l11, none11 = agreementsOf(b11.id);
+  (files as unknown as { get: typeof files.get }).get = realGet;
+  await clock.set(new Date(clock.now().getTime() + 61_000));
+  const c4 = await catchUpNt();
+  await clock.set(today);
+  ok("FO-3c2 B8 pass (break P2R2-3): a catch-up send answering NO_TEMPLATE is held back like a failure: the next catch-up neither tries it nor writes firm B a bypass line",
+    none11 === 0 && c2?.failed === 0 && held11 === 0, { c2, held11, none11 });
+  ok("FO-3c2 B8 fail: after its wait it is tried again (failed, one line), and once the file is back it is sent",
+    c3?.failed === 1 && retried11 === 1 && c4?.sent === 1 && agreementsOf(b11.id) === 1, { c3, retried11, c4 });
+  // Review r2-1: the 24-hour reminder reads the type's switch when it runs.
+  const repEmail = sql(`select email from platform_staff where id = '${R.staffId}'`);
+  const remOn = await type(A, "p3-rem-on", [R.staffId], "FREE_CONSULT", true), remOff = await type(A, "p3-rem-off", [R.staffId], "FREE_CONSULT", true);
+  const b12 = await book(A, remOn, R.staffId, pat, 3 * 24 * 60), b13 = await book(A, remOff, R.staffId, pat, 3 * 24 * 60);
+  const s12 = await svc.send(A, b12.id), s13 = await svc.send(A, b13.id);
+  await db.foConsultationType.update({ where: { id: remOff.id }, data: { requireAgreement: false } });
+  await clock.set(new Date(Math.max(b12.startsAt.getTime(), b13.startsAt.getTime()) - 23 * HOUR));   // both reminders due
+  const reminded = (s: typeof s12, b: typeof b12) => s.sent && mail.inbox(repEmail).some((m) => m.idempotencyKey === keyOf(b, s.agreementId) && m.templateKey === "consultation_agreement.reminder");
+  const on12 = reminded(s12, b12), off13 = reminded(s13, b13);
+  await clock.set(today);
+  ok("FO-3c2 B9 pass (review r2-1): a type switched off after its agreement was sent gets no 24-hour reminder", s13.sent && !off13, { s13, off13 });
+  ok("FO-3c2 B9 fail: a type still on gets its reminder", s12.sent && on12, { s12, on12 });
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

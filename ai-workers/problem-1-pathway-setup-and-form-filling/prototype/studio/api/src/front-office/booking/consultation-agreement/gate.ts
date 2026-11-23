@@ -3,8 +3,10 @@
 //   * `needsAgreement`: whether a booking type needs the agreement. The type's stored choice, else its purpose's default:
 //     on for every purpose but FOLLOW_UP (a meeting after the first consultation).
 //   * `agreementHold`: the one rule the attendance answer (Attended) and the consult record both ask, inside their own
-//     transaction: the booking's type needs it and the booking's agreement is still waiting for a signature (sent, viewed or
-//     signed by the client only) → refused with the agreement's own words. Signed, or ended unsigned: not held. A booking with no agreement at all (the firm has no active
+//     transaction: the booking's type needs it and the booking's latest agreement is not signed → refused with the agreement's
+//     own words. Waiting (sent, viewed, signed by the client only) or ended unsigned (declined, withdrawn, expired, back to
+//     draft) both hold (Lead 10's W4; Lead 1's ruling on #3184, 23 Nov): an ended one is replaced by a fresh one, which the
+//     catch-up sends while the meeting is still ahead (a past meeting is rescheduled first). A booking with no agreement at all (the firm has no active
 //     consultation template, the person has no email, nobody can sign for the firm: the reasons `send` answers) is not
 //     held: there is nothing to sign, and the template panel and booking settings already warn (FO-3c part 1).
 // Reads only; no lock of its own (the caller holds the booking's row lock).
@@ -15,8 +17,12 @@ type Q = Prisma.TransactionClient | PrismaClient;
 /** The statuses that count as signed: the provider's seal (SIGNED) or FO-5's paper copy (SIGNED_OFFLINE). */
 export const SIGNED_STATUSES = ["SIGNED", "SIGNED_OFFLINE"] as const;
 export const isSigned = (status: string) => (SIGNED_STATUSES as readonly string[]).includes(status);
-/** The statuses still waiting for a signature (the ones that hold). */
-const LIVE = ["SENT", "VIEWED", "CLIENT_SIGNED"];
+/** The statuses still waiting for a signature. */
+export const LIVE_STATUSES = ["SENT", "VIEWED", "CLIENT_SIGNED"] as const;
+/** The statuses of an agreement no one can sign any more (declined, withdrawn, expired, or FO-5's edit put it back to
+ *  draft): it still holds, and the catch-up sends the booking a fresh one (Lead 1's ruling on #3184). */
+export const ENDED_STATUSES = ["DECLINED", "WITHDRAWN", "EXPIRED", "DRAFT"] as const;
+export const isEnded = (status: string) => (ENDED_STATUSES as readonly string[]).includes(status);
 
 /** The type's choice, else by purpose (Lead 10, W4b: "default on for the first consultation"). */
 export function needsAgreement(t: { requireAgreement: boolean | null; purpose: string }) {
@@ -35,11 +41,11 @@ export async function agreementHold(q: Q, firmId: string, bookingId: string): Pr
       join fo_retainer_version v on v.firm_id = b.firm_id and v.n = 1 and v.merge_values->>'booking.id' = b.id::text
       join fo_retainer r on r.firm_id = v.firm_id and r.id = v.retainer_id and r.kind = 'CONSULTATION'
      where b.firm_id = $1::uuid and b.id = $2::uuid and ${NEEDS_AGREEMENT_SQL}
-     order by r.created_at desc limit 1`, firmId, bookingId);
+     order by r.created_at desc, r.id desc limit 1`, firmId, bookingId);
   const r = rows[0];
-  // Only a live agreement holds (break P2-2): one declined, withdrawn or expired can no longer be signed, nor recorded as
-  // signed offline (FO-5 refuses a declined one), so holding on it would hold the booking for good. Question for the Lead.
-  return r && LIVE.includes(r.status) ? { agreementId: r.id, status: r.status } : null;
+  // The latest agreement decides: signed → not held; anything else holds (P2R2-1). An ended one no longer holds for good:
+  // the catch-up sends a fresh one (service.ts `catchUp`, `send`), and its signature lifts the hold.
+  return r && !isSigned(r.status) ? { agreementId: r.id, status: r.status } : null;
 }
 
 /** Refuses (409 AGREEMENT_NOT_SIGNED) when the booking is held; nothing is written by the caller. */
