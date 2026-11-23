@@ -7,8 +7,9 @@
 //   * Business address: shown to Owner and Admin, changed on Plan and billing (one place, used for tax).
 // One form and one Save: the profile has one version, so one save sends it with only the changed fields. A stale version (409)
 // reloads the latest into the form and says so; a refusal (422) shows each field's words on its field.
-// Deviation from the concept (screens/pf-5s-saas/concept.md S5, "edit in a right panel per section"): the API saves the whole
-// profile against one version, so one inline form avoids two panels racing for it; recorded in the PR.
+// Deviation from the concept (screens/pf-5s-saas/concept.md S5, "edit in a right panel per section"; accepted by the reviewer):
+// EXPERIENCE §2.3's drawer keeps a page's scroll, filters and selection; this page has one record and seven fields, none of that to
+// keep, so one inline form with one Save is fewer steps. The concept's trial summary line is Plan and billing's (recorded in the PR).
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -17,7 +18,7 @@ import { useToast } from "@/lib/api";
 import { allZones } from "@/modules/front-office/booking-public/time";
 import { PlatformFrame, usePlatformStaff } from "../frame";
 import { staffApi, StaffApiError, useStaffToken } from "../session";
-import { addressLines, changedWords, changesOf, countryName, CURRENCIES, currencyWord, fieldErrors, formOf, isDirty, keepEdits, LANGUAGES, languageWord, otherErrors, Profile, PROFILE_ADMIN_KEY, PROFILE_READ_KEY, Saved, WORDS, type FieldName, type Form } from "./firm-profile-contract";
+import { addressLines, changedWords, changesOf, countryName, CURRENCIES, currencyWord, fieldErrors, formOf, isDirty, keepEdits, LABELS, LANGUAGES, languageWord, otherErrors, Profile, PROFILE_ADMIN_KEY, PROFILE_READ_KEY, Saved, WORDS, type FieldName, type Form } from "./firm-profile-contract";
 
 const BILLING_KEY = "agent/subscription-invoice:view";
 
@@ -101,9 +102,11 @@ function ProfileBody() {
           setProblem({ tone: "danger", title: "Not saved", text: `Someone else saved the firm profile while you were editing${theirs ? `: they changed the ${theirs}` : ""}. Your changes are kept: check them and press Save again.` });
         } else setProblem({ tone: "danger", title: "Not saved", text: `${x.message} We could not load the latest details: please reload the page.` });
       } else if (x instanceof StaffApiError) {
-        setErrors(fieldErrors(x.problem.fields));
-        const more = otherErrors(x.problem.fields);
-        setProblem({ tone: "danger", title: "Not saved", text: [x.message, ...more].join(" ") });
+        const fe = fieldErrors(x.problem.fields);
+        setErrors(fe);
+        // Review m3 (BIC-13): the notice names each refused field with its words, not only the summary.
+        const named = (Object.keys(fe) as FieldName[]).map((k) => `${LABELS[k][0].toUpperCase()}${LABELS[k].slice(1)}: ${fe[k]}.`);
+        setProblem({ tone: "danger", title: "Not saved", text: [x.message, ...named, ...otherErrors(x.problem.fields)].join(" ") });
       } else setProblem({ tone: "danger", title: "Not saved", text: "Please try again." });
       focusProblem();
     } finally { sending.current = false; setBusy(false); }
@@ -147,7 +150,7 @@ function ProfileBody() {
           <div className="flex flex-wrap items-center justify-end gap-3">
             {dirty ? <span className="text-sm text-text-muted" data-profile-unsaved>You have unsaved changes.</span> : null}
             <Button type="button" variant="ghost" disabled={!dirty || busy} onClick={() => { setF(start); setErrors({}); setProblem(null); }} data-profile-reset>Undo changes</Button>
-            <Button ref={saveButton} type="submit" busy={busy} data-profile-save>Save</Button>
+            <Button ref={saveButton} type="submit" busy={busy} className="max-sm:h-11 max-sm:px-6" data-profile-save>Save</Button>
           </div>
         ) : null}
       </form>

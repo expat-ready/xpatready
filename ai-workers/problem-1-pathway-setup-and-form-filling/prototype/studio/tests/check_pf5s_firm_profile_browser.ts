@@ -184,9 +184,11 @@ try {
     (await field(pa, "billingEmail").count()) === 0 && (await pa.locator('[data-profile-value="billingEmail"]').innerText()) === billing && (await pa.locator("[data-profile-section=billing]").getByText("Only the Owner can change this.").count()) === 1 && (await field(pa, "timeZone").count()) === 1);
   await shot(pa, "admin-1280"); axeAll.push(...ids(await axe(pa)).map((x) => `admin: ${x}`));
   const asite = `https://admin-${run}.example.ca`; t0 = now();
+  const bodies: string[] = []; pa.on("request", (r) => { if (r.method() === "PUT" && r.url().endsWith("/api/platform/firm/profile")) bodies.push(r.postData() ?? ""); });
   await field(pa, "website").fill(asite); await save(pa).click();
   ok("PF-5s S5 FP5 pass: the Admin's own save of the website goes through and never carries the billing email (unchanged, one website line, no billing line)",
-    (await toast(pa, /^Firm profile saved\.$/)) && await wait(() => lines("platform.website", t0) === 1) && sql(`select billing_email from platform_firm where id = '${A}'`) === billing && sql(`select count(*) from audit_event where at > '${t0}' and action = 'platform.firm.billing_email_changed'`) === "0");
+    (await toast(pa, /^Firm profile saved\.$/)) && await wait(() => lines("platform.website", t0) === 1) && sql(`select billing_email from platform_firm where id = '${A}'`) === billing && sql(`select count(*) from audit_event where at > '${t0}' and action = 'platform.firm.billing_email_changed'`) === "0"
+    && bodies.length === 1 && JSON.stringify(Object.keys(JSON.parse(bodies[0])).sort()) === JSON.stringify(["version", "website"]), bodies);
 
   // ---------------------------------------------------------------------------------------------- FP6
   const pk = await tab(TOWNER); await open(pk);
