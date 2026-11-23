@@ -126,3 +126,38 @@ Steps: pair (EMAIL `s4.41@`). A session holds the loser's pair advisory lock, se
 * `check_fo9b_review` 55/55. The new card row file `MODULE.rows/FO-9b-2.md` names a real entry point and test.
 
 Verdict: **Changes** on `9db9ca2d015b3452bd5fb05f5c149d6c3fd2461b` (R3-1 Major: a Kept separate decision can still be merged away by itself through an existing pair).
+
+## Round 4 (diff `9db9ca2..744cc79`, diff only)
+
+Head `744cc791972988285a8b1c3aa865e8dc3135f2e3`. Breaker, 23 Nov 2026. Method: `check_fo9b_review` 61/61, then a scratch harness copied from its setup (own database `xr_studio_fo9bbrk4_<pid>`, dropped at the end; never :4400). For the races, the merge's `emit` port is hooked: when it fires (the end of `mergeRecords`, before `notePairs`), it starts the second action on its own connection and waits 500 ms. The same races were also run against `9db9ca2` (`git archive` into the scratchpad) to tell new behaviour from old. Nothing in the repo was changed.
+
+### Round 3 re-run
+* **R3-1 fixed for one level.** (a) Guided path: Keep separate B-C, merge A-B → A-C is `KEPT_SEPARATE` and `mergeIfSafe(A-C)` refuses. The fully automatic order behaves the same. (b) Merge A-B first, then Keep separate B-C → 409 `MERGED_AWAY` with the sentence, B-C stays OPEN. Racing Keep separate B-C against A-B's merge by itself gives the same 409; no decision is lost silently.
+* **R3-3 fixed.** The loser's email changes under the lock → `refused: ["NOT_EXACT"]`.
+* **R3-2 still open, and now wider** (R4-3).
+
+### Findings
+**R4-1 Major: two actions on pairs that share one person deadlock. The second user gets a 500, not the 503 Busy sentence.** `notePairs` is now `on conflict … do update … where …` (`review.ts:69-70`). PostgreSQL locks every conflicting row, even when the WHERE is false ("all rows will be locked when the ON CONFLICT DO UPDATE action is taken"). So, while holding the merge's advisory locks (`service.ts:121`, blocking), the merge (`review.ts:149`, `:267`) now waits on a row lock on each pair the survivor already has. This breaks Lead 5's ruling (`service.ts:61-66`: "merge and Undo never wait while they hold locks"). Keep separate does the reverse: it locks its pair row (`pair()`, `review.ts:294`), then waits on the advisory locks (`:298`).
+Steps: S (email e, phone p), L (email e), Y (phone p). This gives pairs S-L and S-Y. Start the guided merge S-L (survivor S). While it runs, start one of the following on S-Y:
+* `keepSeparate(S-Y)` → after 1,063 ms: `P2010 40P01 deadlock detected`; HTTP 500 `Internal server error`.
+* a guided merge of S-Y (survivor S) → after 1,049 ms: the same 40P01, HTTP 500. **New in this diff:** at `9db9ca2` both merges succeed (541 ms).
+* `keepSeparate(S-Y)` while `mergeIfSafe(S-L)` runs → the same 40P01.
+In each run the first merge committed, the victim rolled back, and S-Y stayed OPEN, so no data is damaged. Keep separate against a merge on a shared person already deadlocked at `9db9ca2`; the new locks do not fix it, although the new comment at `:296` says the two "take turns". Isolated in SQL: an upsert with `where false` waits 1,710 ms behind a `for update` on the row, while `do nothing` waits 18 ms. Once arrival calls `mergeIfSafe`, the victim can be the arrival's transaction. Fix direction (no scope added): take Keep separate's advisory locks before the pair-row lock, or NOWAIT through `lockAll`. Do not take a row lock in `notePairs` while holding the merge's locks: flip with `do nothing` plus a separate `update … where status = 'OPEN'` under `skip locked`/NOWAIT, or map 40P01 to the Busy 503.
+
+**R4-2 Major: the carry follows only one merge, so a two-step chain still merges a Kept separate decision away by itself.** `keptBetween` (`review.ts:43-52`) matches `a.id = lo or a.merged_into_id = lo`. A merge never repoints earlier losers (`service.ts:257`), so B→A→D is not followed.
+Steps: A "Ann Lee" (email e). B "Bob Xu" (email e, phone p). C "Cal Moon" (phone p). Keep separate B-C → 200. Guided merge A-B, survivor A, with phone/name `SURVIVOR` → 200; no A-C pair. D "Dee Park" (email e, phone p) arrives: pairs A-D, and D-C written `OPEN`. That is correct here, since D is a new person. Guided merge A-D, survivor D → 200; D-C stays `OPEN`. Then `whyNotSafe(D, C)` → `[]`, and `mergeIfSafe(D-C)` → `{ mergeRef }`: D (holding A and B) is merged into C by `system:fo-duplicates`. B and C, kept separate by a person, are now one record. This is R3-1's rule (BR-11, concept §8 B1), latent until arrival calls `mergeIfSafe`. Fix direction: resolve each side to its final survivor transitively (a recursive walk of `merged_into_id`), in `keptBetween` and in its use in `notePairs`.
+
+**R4-3 Minor (R3-2 widened): Undo leaves a pre-existing OPEN pair flipped to Kept separate, with no audit line.** R3-2 hit only new carried rows. The upsert now also flips pairs that were already listed To review.
+Steps: the test's trio (A name N, phone P; B phone P, email E; C name N, email E). A-C is `OPEN` (name match). Keep separate B-C; guided merge A-B → A-C is `KEPT_SEPARATE:staff:<R>`. Undo → 200: A and B are live again, but A-C stays `KEPT_SEPARATE` under R's name, and `audit_event` has 0 rows for it. A real candidate that was on someone's list has moved to Kept separate, with no record of why. Same root as R3-2 (needs a link from the flipped row to the merge). Left as a Minor.
+
+### What held (round 4)
+* The upsert against the table's CHECKs: `decided_by` always comes from a `KEPT_SEPARATE` row (non-null by `fo_dup_review_decided`), `merge_id` stays null, and only OPEN rows flip. MERGED or KEPT rows are never touched.
+* `lockedReasons` in four cases:
+  * a phone-only pair (no email on either side, "+1 416 555 0291" and "416 555 0291") still merges by itself;
+  * the survivor's phone made unreadable under the lock → `NOT_EXACT`;
+  * a missing email gives no EMAIL key;
+  * `fo_sales_phone_e164` is the same function as the column trigger.
+* A never-decided pair is not suppressed. With no Kept separate decision, the survivor and the third person stay OPEN and stay safe (the suite's own case, and the same-survivor run). Both sides of a kept pair merged into different records (C→E, B→A) → A-E is flipped Kept separate, so neither the list nor the merge by itself joins them.
+* `check_fo9b_review` 61/61.
+
+Verdict: **Changes** on `744cc791972988285a8b1c3aa865e8dc3135f2e3`. R4-1 Major: the new upsert makes two merges that share a person deadlock (500), and Keep separate still deadlocks against a merge. R4-2 Major: the Kept separate carry follows only one merge, so a two-step chain merges a kept pair by itself.
