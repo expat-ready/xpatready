@@ -114,3 +114,31 @@ In round 1 both answered with the person words. A caller who already holds a per
 
 Reviewer: Approve 9ae4fb3611e65c409be1b6416be0fdaee02985cc
 Verdict: Approve 9ae4fb3611e65c409be1b6416be0fdaee02985cc
+
+## Round 3: `a5d1aa6e5..17d76d5bf` (diff only; m5, as the Lead allowed in issuecomment-7114515623)
+Reviewed in my own worktree of `17d76d5bfc09fc24f4d7c147dab551c37e5bb579`.
+
+**m5: fixed** (`tax/routes.ts:44-46`). With an `invoiceId`, when the invoice is missing, not billed to this party, or outside scope, the answer depends on the party:
+
+| Party | Answer |
+|---|---|
+| Outside scope | the missing-party words ("No such person/company in your firm.") |
+| In scope | the invoice words |
+
+- Every pair a caller can form now answers alike:
+  - a missing person and an out-of-scope person (with any invoice id);
+  - a missing invoice and an out-of-scope invoice (for an in-scope party, as in L4).
+- An invoice the caller sees through its case still answers 200, whatever the party's scope (m1 holds).
+- The company wording follows `kind`.
+
+**The test can fail.** The new S11 case compares PX + a random invoice with an unknown person + a random invoice, byte for byte.
+- At the head: 37/0.
+- With only `tax/routes.ts` reverted to `a5d1aa6e5`: 36/1, with exactly that case red.
+- `check_fo7g3_bill_to` 30/0 and `check_fo7g_tax_defaults` 78/0 (both assert this route's 404 words).
+
+**MODULE.md:** the new invariant bullet matches the code: 404 before any lock or write, with the scope read before the transaction. It records the milliseconds window as an accepted Minor, per Lead 14. That is a ruling, not a finding.
+
+**Round 3 result:** Blockers none · Majors none · Minors none open (m5 closed; the window is accepted by the Lead). The journey score stays 8/10, a pass.
+
+Reviewer: Approve 17d76d5bfc09fc24f4d7c147dab551c37e5bb579
+Verdict: Approve 17d76d5bfc09fc24f4d7c147dab551c37e5bb579
