@@ -63,7 +63,7 @@ const signIn = async (who: { actorId?: string; email?: string }): Promise<string
 await seedSampleFirms(db);
 const fo = await seedSampleFirmsFrontOffice(db);
 const A = sql(`select id from platform_firm where key = 'sample-firm'`), FIRM = sql(`select operating_name from platform_firm where key = 'sample-firm'`);
-const versions = (key = "lead.follow_up") => Number(sql(`select count(*) from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = '${key}'`));
+const versions = (key = "sales.lead.follow_up") => Number(sql(`select count(*) from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = '${key}'`));
 if (versions() !== 0) { console.error("STOP  sample-firm already has a Follow-up version: start a fresh isolated copy"); process.exit(2); }
 // People this run needs that the seed lacks: a Read-only person and a Billing / Finance person (no template keys, AG-12 §10).
 const person = (role: string) => {
@@ -109,7 +109,7 @@ const tab = async (token: string, width = 1440) => {
   const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push(e.message)); p.on("dialog", (d) => { errs.push(`dialog: ${d.message()}`); void d.dismiss(); }); return p;
 };
 const openList = async (p: Page) => { await p.goto(`${BASE}/platform/templates`); await p.locator("[data-template-row], [data-templates-refused], [data-templates-error]").first().waitFor({ timeout: 60_000 }); };
-const openOne = async (p: Page, key = "lead.follow_up") => { await p.goto(`${BASE}/platform/templates/${key}`); await p.locator("[data-template-form], [data-templates-refused], [data-template-error]").first().waitFor({ timeout: 60_000 }); };
+const openOne = async (p: Page, key = "sales.lead.follow_up") => { await p.goto(`${BASE}/platform/templates/${key}`); await p.locator("[data-template-form], [data-templates-refused], [data-template-error]").first().waitFor({ timeout: 60_000 }); };
 const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `pf19s-${name}.png`), fullPage: true });
 const axe = async (p: Page) => (await p.waitForTimeout(400), await new AxeBuilder({ page: p }).include("main").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations;
 const ids = (v: { id: string; nodes: { target: unknown }[] }[]) => v.map((x) => `${x.id}: ${x.nodes[0]?.target}`);
@@ -128,13 +128,13 @@ try {
   const p = await tab(TOWNER); await openList(p);
   const rows = await p.locator("[data-template-row]").count(), whoseAll = await p.locator("[data-template-whose]").allInnerTexts();
   ok("R1.46 PF-19s T1: the Owner's My account menu has Templates; the list shows the three lead messages (Kind, Sent to) with ExpatReady's wording",
-    await menuHas(p) === 1 && rows === 3 && whoseAll.every((w) => w === "ExpatReady's wording") && (await p.locator('[data-template-row="lead.acknowledgement"]').innerText()).includes("Automatic"), { rows, whoseAll });
+    await menuHas(p) === 1 && rows === 3 && whoseAll.every((w) => w === "ExpatReady's wording") && (await p.locator('[data-template-row="sales.lead.acknowledgement"]').innerText()).includes("Automatic"), { rows, whoseAll });
   await p.locator("[data-templates-search]").fill("cold");
   const searched = await p.locator("[data-template-row]").count();
   await p.locator("[data-templates-search]").fill("");
   await shot(p, "1-list");
-  await p.locator('[data-template-open="lead.follow_up"]').click(); await p.locator("[data-template-form]").waitFor({ timeout: 30_000 });
-  const starter = KINDS.find((k) => k.key === "lead.follow_up")!.starter;
+  await p.locator('[data-template-open="sales.lead.follow_up"]').click(); await p.locator("[data-template-form]").waitFor({ timeout: 30_000 });
+  const starter = KINDS.find((k) => k.key === "sales.lead.follow_up")!.starter;
   ok("R1.46 PF-19s T1: search narrows the list by name; Open shows Follow-up's starter subject and message in a plain text box, marked Sample",
     searched === 1 && await p.locator("[data-template-subject]").inputValue() === starter.subject && await bodyOf(p) === starter.body
     && await p.locator("textarea[data-template-body]").count() === 1 && (await p.locator("header").filter({ hasText: "Follow-up" }).innerText()).includes("Sample"), { searched });
@@ -163,11 +163,11 @@ try {
   const fieldErr = await p.locator('[data-template-form] [role="alert"]').allInnerTexts();
   ok("R1.46 PF-19s T2 fail: a typed {{ passport_number }} is marked in the preview as not a field and refuses the publish on the message, naming it; nothing is stored (AG-12-66, -70)",
     fieldErr.some((t) => t.includes("{{ passport_number }} is not a field")) && versions() === 0 && (await p.locator("[data-preview-unknown='passport_number']").innerText()) === "[not a field: {{ passport_number }}]", fieldErr);
-  const stray = await api(TOWNER, "PUT", "/platform/templates/lead.follow_up", { subject: "Hi {{ lead_first_name", body: "Body {{ Lead.Name }}", baseVersion: 0 });
+  const stray = await api(TOWNER, "PUT", "/platform/templates/sales.lead.follow_up", { subject: "Hi {{ lead_first_name", body: "Body {{ Lead.Name }}", baseVersion: 0 });
   ok("R1.46 PF-19s T2 fail: a lone {{ in the subject and {{ Lead.Name }} in the message are refused by the API, each named on its field (challenge M3)",
     stray.status === 422 && /lone/.test(stray.body?.fields?.subject ?? "") && /Lead\.Name/.test(stray.body?.fields?.body ?? "") && versions() === 0, stray.body?.fields);
-  const nul = await api(TOWNER, "PUT", "/platform/templates/lead.follow_up", { subject: "Hi", body: "Body\u0000here", baseVersion: 0 });
-  const broken = await api(TOWNER, "PUT", "/platform/templates/lead.follow_up", { subject: "Hi \ud800", body: "Fine", baseVersion: 0 });
+  const nul = await api(TOWNER, "PUT", "/platform/templates/sales.lead.follow_up", { subject: "Hi", body: "Body\u0000here", baseVersion: 0 });
+  const broken = await api(TOWNER, "PUT", "/platform/templates/sales.lead.follow_up", { subject: "Hi \ud800", body: "Fine", baseVersion: 0 });
   const nokey = await api(TOWNER, "PUT", "/platform/templates/not-a-key", { pf28Unknown: "x" });
   ok("R1.46 PF-19s T2 fail: a control character in the message and a broken character in the subject are refused on their field (422, break m1, m3); an unknown key is 404 before the body is read (PF-28)",
     nul.status === 422 && /control character/.test(nul.body?.fields?.body ?? "") && broken.status === 422 && /broken character/.test(broken.body?.fields?.subject ?? "") && nokey.status === 404 && versions() === 0, { nul: nul.body?.fields, broken: broken.body?.fields, nokey: nokey.status });
@@ -191,43 +191,43 @@ try {
   const raw = await p.locator("[data-preview-body]").innerText(), ran = await p.evaluate(() => (window as unknown as { __pf19s?: number }).__pf19s ?? 0);
   ok("R1.46 PF-19s T3: a lead whose name holds markup shows it as text in the preview; no element is made and nothing runs (values are data)",
     raw.includes('<img src=x onerror="window.__pf19s=1">Zoe') && ran === 0 && await p.locator("[data-preview-body] img").count() === 0, { raw: raw.slice(0, 120), ran });
-  const gap = await api(TOWNER, "POST", "/platform/templates/lead.follow_up/preview", { subject: "s", body: "Hi {{ owner_name }}", leadId: HADDAD.id });
+  const gap = await api(TOWNER, "POST", "/platform/templates/sales.lead.follow_up/preview", { subject: "s", body: "Hi {{ owner_name }}", leadId: HADDAD.id });
   sql(`update fo_lead set owner_staff_id = null where id = '${HADDAD.id}'`);   // unassigned: the Owner still sees it (assign key)
-  const gapNone = await api(TOWNER, "POST", "/platform/templates/lead.follow_up/preview", { subject: "s", body: "Hi {{ owner_name }}", leadId: HADDAD.id });
+  const gapNone = await api(TOWNER, "POST", "/platform/templates/sales.lead.follow_up/preview", { subject: "s", body: "Hi {{ owner_name }}", leadId: HADDAD.id });
   sql(`update fo_lead set owner_staff_id = '${owner}' where id = '${HADDAD.id}'`);
   ok("R1.46 PF-19s T3: a value the record lacks is a missing part, listed (never blank); with an owner it fills",
     gap.status === 200 && gap.body.body.some((x: any) => x.field === "owner_name" && x.value) && gapNone.status === 200 && gapNone.body.missing.includes("Assigned staff member"), { gap: gap.body?.missing, gapNone: gapNone.body?.missing });   // eslint-disable-line @typescript-eslint/no-explicit-any
   // The same rule as the lead read: for each person and lead, the preview is 404 exactly when the lead read is.
   const pairs: [string, string, { id: string }][] = [["Owner", TOWNER, HADDAD], ["Owner", TOWNER, OFFICERS], ["Case Officer", TOFF, HADDAD], ["Case Officer", TOFF, OFFICERS]];
   const same = await Promise.all(pairs.map(async ([who, t, l]) => {
-    const read = (await api(t, "GET", `/front-office/leads/${l.id}`)).status, prev = (await api(t, "POST", "/platform/templates/lead.follow_up/preview", { subject: "s", body: "b", leadId: l.id })).status;
+    const read = (await api(t, "GET", `/front-office/leads/${l.id}`)).status, prev = (await api(t, "POST", "/platform/templates/sales.lead.follow_up/preview", { subject: "s", body: "b", leadId: l.id })).status;
     return { who, lead: l.id.slice(0, 8), read, prev };
   }));
   ok("R1.46 PF-19s T3 fail: a lead the person may not open is 404 in the preview exactly when the lead read is 404 (the Case Officer and the Owner's lead), and 200 when the read is",
     same.every((x) => (x.read === 404) === (x.prev === 404) && (x.read === 200) === (x.prev === 200)) && same.some((x) => x.prev === 404), same);
-  const noLeadKey = await api(TBILL, "POST", "/platform/templates/lead.follow_up/preview", { subject: "s", body: "b", leadId: HADDAD.id });
-  const foreign = await api(TOWNER, "POST", "/platform/templates/lead.follow_up/preview", { subject: "s", body: "b", leadId: randomUUID() });
+  const noLeadKey = await api(TBILL, "POST", "/platform/templates/sales.lead.follow_up/preview", { subject: "s", body: "b", leadId: HADDAD.id });
+  const foreign = await api(TOWNER, "POST", "/platform/templates/sales.lead.follow_up/preview", { subject: "s", body: "b", leadId: randomUUID() });
   ok("R1.46 PF-19s T3 fail: an unknown lead id is 404; a person without the preview key gets 403", foreign.status === 404 && noLeadKey.status === 403, { foreign: foreign.status, noLeadKey: noLeadKey.status });
 
   // ---------------------------------------------------------------------------------------------- T4 save
   await p.locator("[data-template-subject]").fill("Following up, {{ lead_first_name }}");
   const wording = await bodyOf(p);
   await p.locator("[data-template-publish]").click(); await said(p, "Published: version 1");
-  const v1 = sql(`select v.version || '|' || v.subject || '|' || v.published_by from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = 'lead.follow_up'`);
-  const storedBody = sql(`select replace(v.body, chr(10), '\\n') from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = 'lead.follow_up'`);
-  const audit = sql(`select count(*) || '|' || coalesce(max(summary), '') || '|' || coalesce(max(detail->>'version_before'), 'none') || '|' || coalesce(max(detail->>'version_after'), '') from audit_event where entity = 'msg_template' and entity_key = '${A}:lead.follow_up'`);
+  const v1 = sql(`select v.version || '|' || v.subject || '|' || v.published_by from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = 'sales.lead.follow_up'`);
+  const storedBody = sql(`select replace(v.body, chr(10), '\\n') from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = 'sales.lead.follow_up'`);
+  const audit = sql(`select count(*) || '|' || coalesce(max(summary), '') || '|' || coalesce(max(detail->>'version_before'), 'none') || '|' || coalesce(max(detail->>'version_after'), '') from audit_event where entity = 'msg_template' and entity_key = '${A}:sales.lead.follow_up'`);
   ok("R1.46 PF-19s T4: Publish stores version 1 with the subject and message as typed, by the Owner, and one audit line that names the version (before none, after 1), never the wording (AG-12-95)",
     v1 === `1|Following up, {{ lead_first_name }}|staff:${owner}` && storedBody === wording.replace(/\n/g, "\\n") && audit.startsWith("1|") && audit.includes("version 1") && audit.endsWith("|none|1") && !audit.includes("reference"), { v1, audit });
   await openList(p);
   ok("R1.46 PF-19s T4: the list now says Your wording, version 1 for Follow-up and ExpatReady's wording for the others",
-    (await p.locator('[data-template-row="lead.follow_up"] [data-template-whose]').innerText()) === "Your wording, version 1" && (await p.locator('[data-template-row="lead.going_cold"] [data-template-whose]').innerText()) === "ExpatReady's wording");
+    (await p.locator('[data-template-row="sales.lead.follow_up"] [data-template-whose]').innerText()) === "Your wording, version 1" && (await p.locator('[data-template-row="sales.lead.going_cold"] [data-template-whose]').innerText()) === "ExpatReady's wording");
   // The send path's own lookup (api/src/platform/messages/send/messages.ts: the firm's version first, the newest) picks it.
-  const picked = await db.msgTemplateVersion.findFirst({ where: { OR: [{ firmId: A }, { firmId: null }], template: { key: "lead.follow_up", channel: "EMAIL", language: "en", OR: [{ firmId: A }, { owner: "PLATFORM", firmId: null }] } }, orderBy: [{ template: { owner: "desc" } }, { version: "desc" }], select: { version: true, firmId: true } });
-  ok("R1.46 PF-19s T4: the send path's lookup for lead.follow_up (EMAIL, en) now returns this firm's version 1 (challenge B1: publishing decides the wording used)", picked?.version === 1 && picked.firmId === A, picked);
+  const picked = await db.msgTemplateVersion.findFirst({ where: { OR: [{ firmId: A }, { firmId: null }], template: { key: "sales.lead.follow_up", channel: "EMAIL", language: "en", OR: [{ firmId: A }, { owner: "PLATFORM", firmId: null }] } }, orderBy: [{ template: { owner: "desc" } }, { version: "desc" }], select: { version: true, firmId: true } });
+  ok("R1.46 PF-19s T4: the send path's lookup for sales.lead.follow_up (EMAIL, en) now returns this firm's version 1 (challenge B1: publishing decides the wording used)", picked?.version === 1 && picked.firmId === A, picked);
   let changedRow = "";
   try { await db.$executeRawUnsafe(`update msg_template_version set body = 'changed' where firm_id = '${A}'`); changedRow = "updated"; } catch (e) { changedRow = (e as Error).message.slice(0, 80); }
-  const stale = await api(TOWNER, "PUT", "/platform/templates/lead.follow_up", { subject: "Old", body: "From version 0", baseVersion: 0 });
-  const [x, y] = await Promise.all([1, 2].map((n) => api(TOWNER, "PUT", "/platform/templates/lead.follow_up", { subject: `Race ${n}`, body: `Race ${n} {{ lead_first_name }}`, baseVersion: 1 })));
+  const stale = await api(TOWNER, "PUT", "/platform/templates/sales.lead.follow_up", { subject: "Old", body: "From version 0", baseVersion: 0 });
+  const [x, y] = await Promise.all([1, 2].map((n) => api(TOWNER, "PUT", "/platform/templates/sales.lead.follow_up", { subject: `Race ${n}`, body: `Race ${n} {{ lead_first_name }}`, baseVersion: 1 })));
   ok("R1.46 PF-19s T4 fail: a published version cannot be changed; a publish from version 0 after version 1 is 409 naming version 1; two parallel publishes from version 1 give one 200 and one 409, and exactly version 2 exists (AG-12-69)",
     changedRow !== "updated" && stale.status === 409 && /version 1/.test(stale.body?.detail ?? "") && [x.status, y.status].sort().join() === "200,409" && versions() === 2, { changedRow, stale: stale.status, race: [x.status, y.status], n: versions() });
   await p.context().close();
@@ -237,13 +237,13 @@ try {
   const oReadOnly = await o.locator("[data-template-readonly]").count(), oPublish = await o.locator("[data-template-publish]").count(), oLocked = await o.locator("[data-template-body]").getAttribute("readonly");
   await previewHas(o, "subject", "Following up") .catch(() => false);
   const oPreview = await o.locator("[data-preview-body]").count();
-  const oPut = await api(TOFF, "PUT", "/platform/templates/lead.follow_up", { subject: "x", body: "y", baseVersion: 2 });
+  const oPut = await api(TOFF, "PUT", "/platform/templates/sales.lead.follow_up", { subject: "x", body: "y", baseVersion: 2 });
   ok("R1.46 PF-19s T5: the Case Officer has Templates in the menu, reads the wording in a read-only box with no Publish, previews it, and the API refuses a publish (403); nothing stored",
     await menuHas(o) === 1 && oReadOnly === 1 && oPublish === 0 && oLocked !== null && oPreview === 1 && oPut.status === 403 && versions() === 2, { oReadOnly, oPublish, oPreview, put: oPut.status });
   await shot(o, "5-case-officer-read-only");
   await o.context().close();
   const r = await tab(TREAD); await openOne(r);
-  const rPrev = await api(TREAD, "POST", "/platform/templates/lead.follow_up/preview", { subject: "s", body: "b" });
+  const rPrev = await api(TREAD, "POST", "/platform/templates/sales.lead.follow_up/preview", { subject: "s", body: "b" });
   ok("R1.46 PF-19s T5: a Read-only person reads the wording (no Publish), sees that previewing is not in their role, and the API refuses the preview (403)",
     await r.locator("[data-template-readonly]").count() === 1 && await r.locator("[data-template-publish]").count() === 0 && await r.locator("[data-preview-refused]").count() === 1 && rPrev.status === 403, { prev: rPrev.status });
   await r.context().close();
@@ -255,7 +255,7 @@ try {
   await b.context().close();
 
   // ---------------------------------------------------------------------------------------------- T6 keyboard only
-  const k = await tab(TOWNER); await openOne(k, "lead.going_cold");
+  const k = await tab(TOWNER); await openOne(k, "sales.lead.going_cold");
   await reach(k, k.locator("[data-template-body]"));
   await k.keyboard.press("ControlOrMeta+End"); await k.keyboard.type("\nP.S. Your lead number: ");
   await reach(k, k.locator("[data-template-field-pick]")); await k.keyboard.press("ArrowDown"); await k.keyboard.press("ArrowDown"); await k.keyboard.press("ArrowDown");
@@ -263,20 +263,20 @@ try {
   await reach(k, k.locator("[data-template-field-insert]")); await k.keyboard.press("Enter");
   const kBodyFocused = await k.waitForFunction(() => document.activeElement?.hasAttribute("data-template-body"), undefined, { timeout: 5_000 }).then(() => true, () => false);
   await reach(k, k.locator("[data-template-publish]")); await k.keyboard.press("Enter"); await said(k, "Published: version 1");
-  const kBody = sql(`select v.body from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = 'lead.going_cold'`);
+  const kBody = sql(`select v.body from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = 'sales.lead.going_cold'`);
   ok("R1.46 PF-19s T6: by keyboard only: Tab to the message, type, Tab to Insert field, choose with the arrows, Enter inserts it and focus returns to the message, Tab to Publish, Enter publishes",
-    picked3 === "lead_number" && kBodyFocused && versions("lead.going_cold") === 1, { picked3, kBodyFocused, kBody: kBody.slice(-60) });
+    picked3 === "lead_number" && kBodyFocused && versions("sales.lead.going_cold") === 1, { picked3, kBodyFocused, kBody: kBody.slice(-60) });
   await k.context().close();
 
   // ---------------------------------------------------------------------------------------------- T6 three widths, axe
   for (const w of [375, 1024, 1440]) {
-    const q = await tab(TOWNER, w); await openOne(q, "lead.acknowledgement"); await previewHas(q, "subject", "Thank you");
+    const q = await tab(TOWNER, w); await openOne(q, "sales.lead.acknowledgement"); await previewHas(q, "subject", "Thank you");
     const v = await axe(q), wide = await q.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
     const beside = await q.evaluate(() => { const f = document.querySelector("[data-template-form]")!.getBoundingClientRect(), pr = document.querySelector("[data-preview]")!.getBoundingClientRect(); return pr.left >= f.right - 1; });
     await openList(q); const vList = await axe(q), wideList = await q.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
     ok(`R1.46 PF-19s T6: the editor and the list at ${w} px have no WCAG 2.2 A/AA violation and no sideways scroll; the preview is ${w >= 1024 ? "beside" : "under"} the editor`,
       v.length === 0 && vList.length === 0 && wide && wideList && beside === (w >= 1024), { v: ids(v), vList: ids(vList), wide, wideList, beside });
-    await openOne(q, "lead.acknowledgement"); await previewHas(q, "subject", "Thank you"); await shot(q, `6-editor-${w}`);
+    await openOne(q, "sales.lead.acknowledgement"); await previewHas(q, "subject", "Thank you"); await shot(q, `6-editor-${w}`);
     if (w === 375) {
       await q.evaluate(() => { document.querySelector("[data-template-form]")!.appendChild(document.createElement("button")); });
       const bad = await axe(q);

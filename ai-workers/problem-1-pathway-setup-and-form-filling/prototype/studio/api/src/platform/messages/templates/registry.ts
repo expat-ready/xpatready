@@ -6,29 +6,31 @@
 
 /** The record types a template is filled from. Only leads in this slice (A.1); PF-19c part 2 adds clients and cases. */
 export type RecordType = "lead";
-/** `dictionary`: the SA-05 §3.6.1 key the field stands for (the send path's form allows no dots, so the key differs). */
-export type TemplateField = { key: string; label: string; sample: string; dictionary: string };
+/** Each field's comment names the SA-05 §3.6.1 dictionary key it stands for (the send path's form allows no dots, so the
+ *  key differs; a comment, so B164 never reads a dotted name as a combination). */
+export type TemplateField = { key: string; label: string; sample: string };
 export type TemplateKind = { key: string; name: string; recordType: RecordType; sentTo: string; list: "Automatic" | "Library"; purpose: "Service" | "Marketing"; starter: { subject: string; body: string } };
 
 /** SA-05 §3.6.1's dictionary for a lead, as fields the send path's `{{ name }}` form accepts ([a-z][a-z0-9_]*). Passport
  *  and financial numbers are never offered (SA-5-63). The sample values are the Sample lead of a preview without a record. */
 export const FIELDS: Record<RecordType, TemplateField[]> = {
   lead: [
-    { key: "lead_first_name", dictionary: "lead.firstName", label: "Lead's first name", sample: "Amira" },
-    { key: "lead_full_name", dictionary: "lead.fullName", label: "Lead's full name", sample: "Amira Haddad" },
-    { key: "lead_number", dictionary: "lead.number", label: "Lead number", sample: "L-0042" },
-    { key: "owner_name", dictionary: "lead.ownerName", label: "Assigned staff member", sample: "Jordan Lee" },
-    { key: "firm_name", dictionary: "firm.name", label: "Your firm's name", sample: "Maple Immigration" },
+    { key: "lead_first_name", label: "Lead's first name", sample: "Amira" },        // SA-05: lead.firstName
+    { key: "lead_full_name", label: "Lead's full name", sample: "Amira Haddad" },   // SA-05: lead.fullName
+    { key: "lead_number", label: "Lead number", sample: "L-0042" },                 // SA-05: lead.number
+    { key: "owner_name", label: "Assigned staff member", sample: "Jordan Lee" },    // SA-05: lead.ownerName
+    { key: "firm_name", label: "Your firm's name", sample: "Maple Immigration" },   // SA-05: firm.name
   ],
 };
 
-/** ExpatReady's Library starters for leads (SA-05 Appendix A.1 #1 to #3; #4 needs a booking link field, not built). */
+/** ExpatReady's Library starters for leads (SA-05 Appendix A.1 #1 to #3; #4 needs a booking link field, not built). Keys
+ *  carry their area first, as the other message keys do (identity.invitation, platform.billing.payment_hold). */
 export const KINDS: TemplateKind[] = [
-  { key: "lead.acknowledgement", name: "Lead acknowledgement", recordType: "lead", sentTo: "Lead", list: "Automatic", purpose: "Service",
+  { key: "sales.lead.acknowledgement", name: "Lead acknowledgement", recordType: "lead", sentTo: "Lead", list: "Automatic", purpose: "Service",
     starter: { subject: "Thank you for contacting {{ firm_name }}", body: "Dear {{ lead_first_name }},\n\nThank you for contacting {{ firm_name }}. We have your enquiry (reference {{ lead_number }}) and a member of our team will be in touch soon.\n\nKind regards,\n{{ firm_name }}" } },
-  { key: "lead.follow_up", name: "Follow-up", recordType: "lead", sentTo: "Lead or prospect", list: "Library", purpose: "Service",
+  { key: "sales.lead.follow_up", name: "Follow-up", recordType: "lead", sentTo: "Lead or prospect", list: "Library", purpose: "Service",
     starter: { subject: "Following up on your enquiry", body: "Dear {{ lead_first_name }},\n\nI am following up on your enquiry with {{ firm_name }}. Would you like to arrange a time to talk about your plans?\n\nKind regards,\n{{ owner_name }}\n{{ firm_name }}" } },
-  { key: "lead.going_cold", name: "Going-cold nudge", recordType: "lead", sentTo: "Lead or prospect", list: "Library", purpose: "Service",
+  { key: "sales.lead.going_cold", name: "Going-cold nudge", recordType: "lead", sentTo: "Lead or prospect", list: "Library", purpose: "Service",
     starter: { subject: "Are you still planning your move?", body: "Dear {{ lead_first_name }},\n\nWe have not heard from you for a while. If you are still planning your move, reply to this email and we will pick up where we left off.\n\nKind regards,\n{{ owner_name }}\n{{ firm_name }}" } },
 ];
 
