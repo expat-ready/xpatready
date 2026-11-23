@@ -112,7 +112,7 @@ export class TrustMoney {
     if (!made.number || !made.details) return { id: made.id, number: null, status: "Waiting", email: "HELD", message: "Add your trust payment details in the payment settings first. This request is saved but not sent: cancel it and make it again once the details are in." };
     const firmName = await this.firmName(f);
     const data = { firmName, number: made.number, sentOn: dayOf(made.sentAt!), party: made.who.name, currency: r.currency, amount: MONEY(r.amountMinor), purpose: r.purpose, trustDetails: made.details };
-    return { id: made.id, number: made.number, status: "Sent", email: await this.send(f, made.who, "client_money.trust_request", data, `trust-request:${made.id}`) };
+    return { id: made.id, number: made.number, status: "Sent", email: await this.email(f, made.who, "client_money.trust_request", data, `trust-request:${made.id}`) };
   }
 
   /** POST /trust/requests/:id/cancel: a reason is required; the request keeps its number. */
@@ -147,7 +147,7 @@ export class TrustMoney {
     const who = await partyOf(this.db, f, d);
     const data = { firmName: await this.firmName(f), number: v.receiptNumber, issuedOn: dayOf(v.issuedAt), party: who.name, currency: d.currency, amount: MONEY(d.amountMinor), method: METHOD[d.method] ?? d.method, receivedOn: dayOf(v.receivedAt),
       reference: d.reference ? `, reference ${d.reference}` : "", request: v.requestNumber ? `For trust request ${v.requestNumber}.` : "", cleared: v.cleared ? "" : "Not yet cleared" };
-    const receiptEmail = await this.send(f, who, "client_money.trust_receipt", data, `trust-receipt:${done.paymentId}`, v.receiptNumber);
+    const receiptEmail = await this.email(f, who, "client_money.trust_receipt", data, `trust-receipt:${done.paymentId}`, v.receiptNumber);
     return { paymentId: done.paymentId, entryId: v.entryId, receiptNumber: v.receiptNumber, cleared: v.cleared, receiptEmail, replayed: done.replayed };
   }
 
@@ -224,7 +224,7 @@ export class TrustMoney {
   }
   private async firmName(f: string) { return (await this.db.platformFirm.findFirst({ where: ownFirm(f), select: { operatingName: true } }))?.operatingName ?? ""; }
   /** One email to the party, no Cc (AG-6-63 rule 5), the receipt with its PDF. Never throws: the record is already saved. */
-  private async send(f: string, who: Party, key: TrustTemplate, data: RenderData, idempotencyKey: string, pdfName?: string): Promise<DepositView["receiptEmail"]> {
+  private async email(f: string, who: Party, key: TrustTemplate, data: RenderData, idempotencyKey: string, pdfName?: string): Promise<DepositView["receiptEmail"]> {
     try {
       if (!who.email) return "NO_ADDRESS";
       if (!this.mail) return "NOT_SENT";
