@@ -2,7 +2,7 @@
 
 current_lead: local_9c46a890-544e-4779-933b-b6aac41810f3 Lead 8 · 23 Nov 20:02 IST (took over from Lead 7 (local_1117b08b) at ~384k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 20:02 IST: hand-over Lead 7 to Lead 8
+updated: 2026-11-23 20:08 IST: Lead 8 took over, check 468d2319. #3174 round 9 ruled (R8-2, R8-3 code stays; reviewer and breaker on c1cae9494), lane woken 20:05, confirmed sent. #2444: Approve 23b484edf, Lead read of all four parts posted, full run started 20:08; owed: #3261 on main, then "Size exception: P-811" in the body, label. #3215 full run started 20:08 (four in flight with #3256, #3191; both no red yet)
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
