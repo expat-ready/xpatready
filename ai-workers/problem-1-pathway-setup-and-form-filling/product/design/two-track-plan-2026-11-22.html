@@ -57,12 +57,84 @@ small{color:var(--muted)}
 <div class="wrap">
 
 <header style="display:grid;gap:6px">
-  <div class="eyebrow">Expat Ready · Pathway Configurator · Lead 4 · 22 Nov, 14:29 IST</div>
+  <div class="eyebrow">Expat Ready · Pathway Configurator · Lead 4 · 22 Nov, 14:29 IST · Version 5 by Lead 9, 23 Nov 09:4x IST</div>
   <h1>Two tracks, 12 to 15 capabilities each</h1>
   <p class="sub">Your ask at 14:2x IST: drive Track A and Track B each to 12-15 proven capabilities, put builders and qa lanes where the goal is, and show the whole pipeline, the plan, how we watch it and how we adjust. Numbers come from GitHub, qa's capability board on main and claude.ai/code, read 14:20-14:29 IST. Times marked "Lead estimate" are my forecasts, not measurements.</p>
 </header>
 
 <section class="card" style="border-color:var(--accent)">
+  <div class="eyebrow">Version 5 · Lead 9 · 23 Nov, 09:4x IST · read from qa's board on main, GitHub and claude.ai/code</div>
+  <h2>Where we are this morning</h2>
+  <div class="kpis">
+    <div class="kpi"><b>48 / 101</b><span>Release 1 capabilities proven on main (qa's independent verdict)</span></div>
+    <div class="kpi"><b>+2</b><span>Proven since 00:00 IST: R1.102 find a person or case, R1.21 our invoices with tax · target was 10-15</span></div>
+    <div class="kpi"><b>A 5/15 · B 0/12</b><span>Track A proven: R1.39, R1.88, R1.89, R1.102, R1.21. Track B: all 12 now partly built, none proven</span></div>
+    <div class="kpi"><b>24 · 29</b><span>Partly built · not built yet (53 left)</span></div>
+    <div class="kpi"><b>23</b><span>Pull requests merged since 00:00 IST (code, tests and records)</span></div>
+    <div class="kpi"><b>+5 / day</b><span>Proven in the last 24 h (43 → 48). At this rate all 101 by about 3 Dec (Lead estimate, 5 rows in 24 h)</span></div>
+    <div class="kpi"><b>82%</b><span>Weekly plan used (76% at 02:27) · resets 27 Nov 04:30 IST</span></div>
+    <div class="kpi"><b>Green</b><span>Nightly full run, 06:28 IST: first green after red on 21 and 22 Nov (#2602 fixed it)</span></div>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Day (00:00 IST)</th><th>16 Nov</th><th>17</th><th>18</th><th>19</th><th>20</th><th>21</th><th>22</th><th>23</th><th>now</th></tr></thead>
+    <tbody><tr><td>Proven</td><td class="num">2</td><td class="num">11</td><td class="num">11</td><td class="num">11</td><td class="num">12</td><td class="num">23</td><td class="num">38</td><td class="num">46</td><td class="num"><b>48</b></td></tr></tbody>
+  </table></div>
+
+  <div class="alert red">
+    <strong>Why the night gave 2, not 10-15</strong>
+    <p>Merging was not the limit: 23 PRs landed. Each merge was one <i>part</i> of a capability, and qa walked every Track B row within an hour of its merge: R1.58 6/22, R1.76 20/27, R1.65 12/13, R1.56 13/17, R1.29 12/22. All Partial, each waiting on 1-6 more parts that were not yet built or had no lane. Three hold-ups added about 3 hours: runs on many branches were cancelled together at 02:46 IST (cause unknown; re-run by hand), a test from #3017 failed every PR with a migration (fixed by #3157 at 06:00), and the queue's batches waited about an hour on cancelled jobs.</p>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3>What went well</h3>
+      <ul>
+        <li>Two capabilities proven (R1.102, R1.21) and every Track B row moved from "not built" or idle to Partial with a measured journey score.</li>
+        <li>Faults were caught before they reached main and fixed at the root: a migration that broke the walls check (#3042), a slow invoice list 696 ms → under 300 ms (#3001), a tax re-rate gap (#3156), a test that blocked all migrations (#3157).</li>
+        <li>The nightly full run is green again; Lead B and the Lead read every money and permission change before its label.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>What did not</h3>
+      <ul>
+        <li>The goal counted proven rows, but the night's work was single parts; no row had all its parts in flight together.</li>
+        <li>Lanes went idle after a merge until the next check (up to 10 min) and some stopped at 45-80% context.</li>
+        <li>New sessions can start only in a turn you type, so the qa Track B replacement, FO-9b part 2 and a standby waited all night.</li>
+        <li>AWS is still blocked on your sign-in since 22 Nov 00:3x: R1.1, R1.5 (real pool), R1.13, R1.15, R1.65 cannot be proven without it.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>In flight now (09:4x)</h3>
+  <ul>
+    <li><b>Queue / labelled:</b> #3165 PF-Fw file limits (requeued after a full run), #3065 FO-6 part 3 retainer signing (R1.54/R1.61; one list entry to add, then relabel).</li>
+    <li><b>Building:</b> #3033 FO-7t part 1 trust money in (R1.58), #3155 PF-17 part 1 our team's firms list (R1.93; answered 09:4x), PF-25w firm web address (R1.24; started 09:4x), R1.92 licence warning (waits on your "Move session" press).</li>
+    <li><b>Needs a fresh lane (your next message):</b> qa Track B 3 (the last one ended at 07:5x), FO-9b part 2 (R1.29), one standby Lead (card is up).</li>
+  </ul>
+
+  <h3>Decisions and documents</h3>
+  <ul>
+    <li><b>Live on main:</b> DECISIONS up to P-807 (size exception for #3065, added this morning); RULES.md one page; the DW6 test fix (#3157).</li>
+    <li><b>Not live yet:</b> Lead B 2's records (BACKLOG rows FO-7q part 2 and FO-9b part 1m, Track B board notes) on branch lead-b/2026-11-23-track-b-records: waiting on your yes to open its PR.</li>
+  </ul>
+
+  <div class="alert amber">
+    <strong>🔴 Needs you</strong>
+    <ul>
+      <li><b>R1.92 lane:</b> press <b>Move session</b> yourself at https://claude.ai/code/session_01Ln6TiPzgv1F4fXY7mcuxqb (the page ignores an automated press by design).</li>
+      <li><b>AWS:</b> sign in as root with MFA in the AWS session's built-in browser, then approve CodeBuild there. Five capabilities wait on it.</li>
+    </ul>
+    <strong>🟡 Decide when you can</strong>
+    <ul>
+      <li>Today's goal (below). Lead B 2's records PR: yes or no.</li>
+    </ul>
+  </div>
+
+  <h3>Proposed goal for today (07:00 23 Nov → 07:00 24 Nov)</h3>
+  <p><b>8 proven</b>, counted on finished capabilities, not merges: put every missing part of the nearest rows in flight at once, and let a qa lane walk each one the hour its last part merges. Nearest rows (Lead estimate, to confirm with qa by 11:00): Track A R1.10, R1.104, R1.23, R1.92, R1.90, R1.24; Track B R1.85, R1.105. With AWS today, add R1.13, R1.15, R1.65 (11). Without new lanes today: about 3-4.</p>
+</section>
+
+<section class="card">
   <div class="eyebrow">Update · Lead 7 · 22 Nov, 23:5x IST · read from qa's board on main and GitHub</div>
   <h2>Where we are tonight</h2>
   <div class="kpis">
