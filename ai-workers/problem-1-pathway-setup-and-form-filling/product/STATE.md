@@ -2,7 +2,7 @@
 
 current_lead: local_f2d41d71-f0b2-4c38-87ac-53b3fcfa604a Lead 6 · 23 Nov 16:57 IST (took over from Lead 5 (local_6cdede15) at ~336k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 17:05 IST: Lead 6 took over; CS-MV2 ruled Major; #2590 head c836593b6 (guards in 4 parts) in CI, needs a new Approve, `/run full`, Lead read
+updated: 2026-11-23 17:14 IST: #2590 head c836593b6: ci green, guards parts 1-4 running since 17:03; owes Approve, `/run full`, Lead read. #3254 round 4 and #3174 round 6 allowed and lanes woken 17:12. #3180 #3185 await a size ruling. CS-MV2 ruled Major
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -20,6 +20,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A324 | 23 Nov ~17:13 | can many CI jobs share one machine | Lead 5 answers; findings in the notes folder local_86bd4439 (packed-ci-machines-2026-11-23); Lead 5 asks him about a one-day trial server; nothing bought, created or registered; no approval seen by Lead 6 |
 | A323 | 23 Nov ~17:00 | why not Gitea with autoscaling Kubernetes runners | answered by Lead 5 in chat (its report, not re-read): Gitea Cloud pricing page 23 Nov: 1,000 CI min per user a month, largest tier 1,000,000 min at $19,000 a month, no minutes add-on, concurrency not stated; our load about 3.12M min a month (relayed by Lead O); recommendation unchanged |
 | A318 | 23 Nov ~14:04 (pressed in Lead 3) | "Yes, pause": NO NEW PRODUCT LABELS until the tooling list lands, 21:00 IST latest; exceptions a main fix or qa Blocker; nothing dequeued | in force; gate self-labels, hold being checked; A317 and this in full: A316 file |
 | A321 | 23 Nov | approves the Lead recommendations above; private repository: one question at a time | recorded: A316 file |
