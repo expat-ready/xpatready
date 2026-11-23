@@ -2,8 +2,7 @@
 
 PR #3040, branch `claude/runtime-r190-invited`, head `bacf188d8a9aa8bf1bdb3afd9f94728775457b9a`. The copy was isolated as `brk_r190i` on :4436 (`PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local`), with the API connecting as `xr_app`. It cost US$0: no Stripe and no live AI. The author's `check_r190_invited_signup.ts` passed 11/11 on that copy before the attacks. The attack scripts were kept outside the repo, and each POST was sent from its own loopback source address (127.0.x.y) so the per-IP limit did not hide results. Paths below are under `prototype/studio/`.
 
-## Blockers
-None.
+## Blockers: none
 
 ## Majors
 **M1. A badly formed token gets a 500, not the one 404. This is a PF-28 break on a public door.**
@@ -60,5 +59,41 @@ None.
 - **The body cannot override the link:** `email`, `planCode`, `period`, `countryCode`, `website`, `formStamp` and `signupLinkId` in the body each got 422 "not a field of this form". The firm gets the link's plan and period (S4: MONTHLY from the second link).
 - **Other body checks:** firmName (1 or 121 characters, NUL, bidi, zero-width only, spaces), password (11 characters, 257 characters, spaces only), terms (missing one, or a string), array, null and bad JSON all got the right 422 or 400. A non-English or emoji firm name worked.
 - **Firm walls as `xr_app`:** with no `app.firm_id`, 0 link rows are visible. As `sample-firm`, 0 link rows and 0 pending rows are visible. As the firm a link was used for, only its own link row is visible, and its pending rows are not visible. A direct INSERT is refused by RLS. Clearing `used_at` on a used link is refused by `platform_signup_link_used_once`.
-
 Verdict: Changes bacf188d8a9aa8bf1bdb3afd9f94728775457b9a
+## Round 2: head `0eb3cdb1410f7afcbe97e960cf61cb06e5879a27`
+Reviewed: the diff since bacf188d only. Copy: `brk2_r190i` on :4436, now stopped and dropped. The author's check passed 17/17 on it.
+
+### Blockers: none. Majors
+**R2-M1. Round-1 M1 is only partly fixed: a token that decodes to a valid shape still gets a 500.**
+- Reproduce: `GET` or `POST /api/public/signup/%41AAAA…` (`%41` followed by 42 `A`). Also any token made only of `%41`, `AAAA…%2D`, or a **live** token with its first character percent-encoded. Each gives 500, and api.log shows `level:error` at `asBypass (firm-scope.ts:285)`.
+- Why it happens: Express decodes `:token`, so the new `LINK_TOKEN` check in `invited`/`signUpInvited` (signup.ts, added in this diff) passes. `asBypass` then checks the raw path (`routeOf` → `req.path`, firm-scope.ts:406-408) against `[A-Za-z0-9_-]{1,64}` (firm-scope.ts:139). The `%` fails that check, so the bypass is refused and a 500 follows.
+- What is fixed: 65 characters, 4000 characters, a dot, a tilde, `%00`, `%2F`, `é`, zero-width characters, `;x` and a trailing slash now all get the 404.
+- Why IS6 missed it: its `%41`+40 `A` decodes to 41 characters and fails the shape check first.
+- Rule broken: PF-28 ("never 500").
+
+**R2-M2. `tests/journeys/j_90.ts` no longer parses.**
+- What happens: at line 167, the new `// Lead 6 on #3040…` comment sits in the middle of the `j(...)` call, so the rest of the call (body, `tok`, `)`) is commented out.
+- Reproduce: an esbuild transform fails at 168 `Unexpected "const"`.
+- Result: walks.yml runs the journeys a PR changes, so j_90 stops before W1, not just at W4.
+
+### Minors
+- **R2-m1. Anyone holding a used link can add lines to the firm's own trail.**
+  - What happens: each refused open of a used link now writes a `platform.bypass` line with that firm's `firm_id`. In my runs, 25 timing opens left 29 lines on that firm's trail. The limit is 30 per IP per window, with no cap per link.
+  - Risk: low, since the person holding the link is usually that firm's Owner.
+- **Round-1 m1 and m2 stand.** The coordinator chose to leave both as Minors.
+
+### What held in round 2
+- **Audit lines per refusal (each counted on its own):**
+  - Live, unknown and expired-unused links: one firm-less `signup-link.open` line, on both GET and POST.
+  - Used link: exactly one line on the firm's trail, and no firm-less line.
+  - Invited POST with a bad body: 422 and no read, so no line. A malformed token: 404 and no line.
+  - Gone at Confirm, link expired: 404 in the new words, no firm, link unused, pending still live, one `signup.verify-link-gone` line per try.
+  - Gone at Confirm, link used meanwhile by another firm: 404 with one `verify-link-gone` line.
+  - No `platform.bypass` line points at a firm that does not exist.
+- **The page's limit:** from one IP, 30 × 404 then 429 in the standard problem shape; 60 concurrent GETs gave 30 × 404, 30 × 429 and 30 lines. Another IP is not affected. The key `invite-open:<ip>` is shared with neither self-serve sign-up (`signup:`) nor verify (`verify:`), checked in both directions.
+- **The invited form's POST limit:** it still shares `signup:<ip>` with self-serve. This is unchanged and was accepted in round 1.
+- **The one 404, new words:** unknown, used and expired tokens give identical bodies. Median times are 10.5, 11.9 and 11.0 ms, which is no usable signal.
+- **`firm.created`:** reads "invited sign-up, from a private link".
+- **rollback.sql:** applied cleanly on the copy and dropped exactly the 3 added columns, with the FK and the index. Re-applying `migration.sql` restored them.
+
+Verdict: Changes 0eb3cdb1410f7afcbe97e960cf61cb06e5879a27
