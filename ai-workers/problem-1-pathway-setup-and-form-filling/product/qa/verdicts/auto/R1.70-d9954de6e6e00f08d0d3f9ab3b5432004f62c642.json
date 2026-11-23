@@ -1,0 +1,30 @@
+{
+  "item": "R1.70",
+  "name": "70 Expiry, translation and notarisation flags",
+  "pr": 3180,
+  "sha": "d9954de6e6e00f08d0d3f9ab3b5432004f62c642",
+  "run_id": "45256754488",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45256754488",
+  "at": "2026-11-23T20:15:34.906Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_70.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45256754488/artifacts/14859152699",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.70-d9954de6e6e00f08d0d3f9ab3b5432004f62c642.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
