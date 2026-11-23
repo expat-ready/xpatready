@@ -23,9 +23,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 |---|---|---|
 | A318 | 23 Nov ~14:04 (pressed in Lead 3) | "Yes, pause": NO NEW PRODUCT LABELS until the tooling list lands, 21:00 IST latest; exceptions a main fix or qa Blocker; nothing dequeued | in force; gate self-labels, hold being checked; A317 and this in full: A316 file |
 | A316 | 23 Nov ~13:55 (typed to Lead 3) | make the operating system, four fixes, product targets and the private part live; plan, tracking, parallel work, timelines, visual | Lead O owns the four fixes; visual plan owed: `history/STATE-2026-11-23-lead4-ask-A316.md` |
-| A313 | 23 Nov 13:2x (typed) | still fit nowhere? how do OpenClaw and the Adobe clones manage? | answered: OpenClaw ~300 merges/day, sponsored machines, adaptive test selection cut 158,546 to 21,395 runner-hours a week-ish; Adobe clones not ready; we fit at US$0 while public |
-| A309-A312 | 23 Nov 13:0x-13:2x | stay public safeguards (one-pack plan with Lead O, B181 mechanism pilot only); over-engineering; CI vs industry (metric: CI minutes per merged change, 1,083 today); Google AI 8-vCPU VPS / Shopify answer checked: in full `history/STATE-2026-11-23-1320-lead3-asks-A309-A311.md` |
-| A308 | 23 Nov 12:57 (typed) | pasted a Google AI answer (one 32-core server ₹12-22k/month, or AWS spot ₹2-8k/month, for 100 pipelines) and asks why answers differ | answered in chat by Lead 3: its sums fit its assumed small load, not our measured one |
+| A308-A313 | 23 Nov | answered; rows word for word: `history/STATE-2026-11-23-lead4-asks-A308-A313.md` |
 | A300 | 23 Nov 12:0x | operating system first in the queue until complete; Lead O; in full: `history/STATE-2026-11-23-1305-lead3-asks-A297-A300.md` |
 | A301-A305 | 23 Nov 12:0x-12:3x | private impossible at US$100 (A304): nothing bought; open with him: stay public, combined PR, close #2372; in full: `history/STATE-2026-11-23-1236-lead2-asks-A301-A305.md` |
 | A283-A299 (not A297) | 22-23 Nov | rows word for word in `history/STATE-2026-11-23-1310-lead3-asks-A283-A299.md` |
