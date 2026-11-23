@@ -72,3 +72,5 @@ print("PACK serial=" + ",".join(ser))
 for f in red:
     if f in deal: one(f, "", "ALONE")
     else: print(f"ALONE suite={f} result=NOT_RUN s=0 why=part of a group (its unit is not its own)")
+if red:
+    print("PACK red suites: the job ends red (Lead 6)"); sys.exit(1)

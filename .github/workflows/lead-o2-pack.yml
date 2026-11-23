@@ -1,5 +1,5 @@
 # MEASUREMENT ONLY, branch claude/lead-o2-pack, never merged (founder through Lead 5, 23 Nov; Pilot A, US$0): pack-config.json says
-# which shards, how many suites at once and how many repeats; at most 4 machines at once. Read-only token, no secrets.
+# which shards (8 at most a push), how many suites at once and which repeat; at most 4 machines at once. Read-only token, no secrets.
 # GitHub offers workflow_dispatch only for a workflow file on the default branch, so it runs on a push that changes the
 # marker file pack-go (as claude/lead-o-ci-measure ran on a push).
 name: lead-o2-pack
@@ -22,10 +22,10 @@ jobs:
           python3 - >> "$GITHUB_OUTPUT" <<'PY'
           import json
           c = json.load(open("pack-pilot/pack-config.json"))
-          sh, ks, r = c["shards"], c["at_once"], c["repeats"]
+          sh, ks, r = c["shards"], c["at_once"], c["repeat"]
           assert sh and all(type(x) is int and 1 <= x <= 24 for x in sh) and len(set(sh)) == len(sh)
-          assert ks and all(type(x) is int and 1 <= x <= 3 for x in ks) and type(r) is int and 1 <= r <= 3 and len(sh) * len(ks) * r <= 72
-          print("shards=" + json.dumps(sh)); print("ks=" + json.dumps(ks)); print("runs=" + json.dumps(list(range(1, r + 1))))
+          assert ks and all(type(x) is int and 1 <= x <= 3 for x in ks) and type(r) is int and 1 <= r <= 3 and len(sh) * len(ks) <= 8
+          print("shards=" + json.dumps(sh)); print("ks=" + json.dumps(ks)); print("runs=" + json.dumps([r]))
           PY
   pack:
     needs: plan
