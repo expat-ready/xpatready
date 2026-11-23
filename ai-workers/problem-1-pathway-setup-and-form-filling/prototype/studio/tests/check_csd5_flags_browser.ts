@@ -134,6 +134,23 @@ try {
   const last = sql(`select string_agg(summary, ' | ' order by at) from audit_event where entity_key='${doc}' and action='flag changed' and (detail->>'version')::int = ${v0 + 2}`) ?? "";
   ok("review M1 pass: changing only notarisation sends only notarisation: one audit line (the stored value was not set; Not required only came from the document type), the expiry untouched", /notarisation .*: not set → Required$/.test(last) && !/expiry|language|translation/.test(last) && sql(`select expires_on::text from case_document where id='${doc}'`) === "2031-05-05", last);
 
+  // QA-758 (Lead 14's ruling on #3323; AG-9 3.9's notarisation chip, AG-7 checklist rule 4): a notarisation Required and
+  // not Provided shows on its checklist line as a warning, never a block, like expiry; Provided or Not required shows none.
+  const notWarn = async () => (await line().locator("[data-flag-warning]").allInnerTexts()).filter((w) => /notari/i.test(w));
+  ok("QA-758 fail: notarisation Required and not provided shows a warning on the passport's line naming notarisation", (await notWarn()).some((w) => /^Needs notarisation/.test(w)), await line().locator("[data-flag-warning]").allInnerTexts());
+  ok("QA-758 pass: nothing is blocked: the line keeps its state", (await line().getAttribute("data-state")) === before, [before, await line().getAttribute("data-state")]);
+  await state("notarisation-needed", "[data-documents-panel]", [1440, 400]);
+  await openFlags();
+  await tabTo("[data-flag-notarisation]"); await p.keyboard.type("Provided"); await tabTo("[data-flag-notarisation-detail]");
+  await p.keyboard.type("Sample: notary public, 2026-11-20"); await p.keyboard.press("Enter");
+  await p.locator("[data-flags-form]").waitFor({ state: "detached" }); await settle();
+  ok("QA-758 pass: notarisation Provided (with its detail) shows no notarisation warning", (await notWarn()).length === 0 && sql(`select notarisation from case_document where id='${doc}'`) === "PROVIDED", await notWarn());
+  await openFlags();
+  await tabTo("[data-flag-notarisation]"); await p.keyboard.type("From"); await tabTo("[data-flag-notarisation-detail]");
+  await p.keyboard.press("Control+A"); await p.keyboard.press("Backspace"); await p.keyboard.press("Enter");
+  await p.locator("[data-flags-form]").waitFor({ state: "detached" }); await settle();
+  ok("QA-758 pass: back on the type's default (Not required) shows no notarisation warning", (await notWarn()).length === 0 && sql(`select coalesce(notarisation, 'none') from case_document where id='${doc}'`) === "none", await notWarn());
+
   // English: the translation line goes (Provided stays Provided until staff change it, so clear it to the type's default).
   await openFlags();
   await tabTo("[data-flag-language]"); await p.keyboard.type("English");
@@ -142,7 +159,7 @@ try {
   await p.locator("[data-flags-form]").waitFor({ state: "detached" }); await settle();
   ok("CS-D7 pass: English (translation back on the type's default) takes the translation line away", await p.locator("[data-translation-line]").count() === 0, await p.locator("[data-translations]").innerText().catch(() => "none"));
   const audits = Number(sql(`select count(*) from audit_event where entity='case document' and entity_key='${doc}' and action='flag changed'`));
-  ok("CS-D7 pass: each flag change made on screen or by the other person wrote one audit line (language, translation, its detail, expiry, the other's expiry, notarisation, language, translation, detail: 9)", audits === 9, audits);
+  ok("CS-D7 pass: each flag change made on screen or by the other person wrote one audit line (language, translation, its detail, expiry, the other's expiry, notarisation, notarisation Provided and its detail, notarisation and its detail cleared, language, translation, detail: 13)", audits === 13, audits);
   ok("CS-D7: no page error or console error", errs.length === 0, errs);
 } catch (e) { await p.screenshot({ path: join(SHOTS, "CSD7-crash.png") }).catch(() => undefined); ok(`CS-D7 browser: ran to its end (crashed: ${(e as Error).message}; focus: ${await p.evaluate(() => document.activeElement?.outerHTML.slice(0, 160)).catch(() => "?")}; dialog: ${await p.locator("[role=dialog]").innerText().catch(() => "none")})`, false); }
 await b.close();
