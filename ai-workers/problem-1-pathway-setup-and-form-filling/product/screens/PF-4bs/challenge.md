@@ -112,3 +112,32 @@ refused; task role can do nothing on the own-staff pool.
 - m8. §5's reason for rejecting a console-made user ("its `sub` cannot reach our private database") is contradicted by §5's own one-off task, which can
   write it. The real reason is that the product's own invitation route is what R1.5 must prove. Say that.
 - m9. Step-up (AG-1-42) by a full re-sign-in revokes the current session and starts a new one (recordSignIn). Note this for the step-up row.
+
+## Round 2 (r2)
+Verdict: Approve with changes (r2 read on disk; commit 54afda640)
+
+**What r2 does with each finding**
+- B1 answered: one flow list, `ALLOW_ADMIN_USER_PASSWORD_AUTH` plus refresh, for both modes and both staff pools; `passkeyFindings` and the README follow; every other list is refused in tests.
+- B2 answered: a "Send a new set-password link" door for anyone in FORCE_CHANGE_PASSWORD, `first-owner --resend`, and the first-Owner rule now based on `last_sign_in_at`.
+- M1 answered: the case for our own page is restated honestly, and its costs are named.
+- M2 answered: the attempt is sealed (Session, username, step, expiry). See N2 for what is still missing.
+- M3 partly answered: the advisory lock is the right tool, but r2 has the order wrong (N1).
+- M4 answered: 15-minute challenge lifetime pinned by the check, `ATTEMPT_EXPIRED`, and the set-up card asks for the app first.
+- M5 answered: refused in production, absolute link, seat check, honest audit reason. N5 adds a small point.
+- M6 partly answered: written up as a known breach and put to the founder (question 3). Acceptable only if the follow-up row is in BACKLOG before PR 3 merges.
+- M7 answered: PR 2 split into 2a and 2b, PF-4bc ordered before PRs 3 and 4, and a staging proof list added.
+
+**New problems r2 introduces**
+- N1 (Major). The lock comes before the redeem in §3, but the lock key `hashtext(sub)` is only known after it. Fix the order: unseal or redeem the code (no state), read the staff row's `identitySubject` as that firm (the door is public, so set the firm context first, PF-12b), then take the lock.
+  The lock's transaction stays open across three or four Cognito calls, so give it a short `statement_timeout`/`lock_timeout`, and expect the second post to wait for the first, then get its 401.
+- N2 (Major). The secret box needs an owner `{firmId, purpose}` and binds it into the AAD (`secret-box/aes-gcm.ts:15, :37`), but r2 names neither, and at sign-in step 1 the firm is not known yet.
+  Fix: one fixed platform owner id plus two separate purposes, `sign-in-attempt` and `set-password-code`, so neither sealed value opens as the other. Add a test that swaps them. Keep the expiry inside the sealed value.
+  Check the sealed attempt's length against the doors' input caps: the callback refuses codes over 2000 characters (session/service.ts callback), and a Cognito Session is about 1 KB before sealing.
+- N3 (Minor). The per-IP and per-email limits "in the database" mean a new table, so a migration in PR 2a; say so. A per-email limit is itself a way to lock someone out by email: an attacker can keep the real person out.
+  Count only failed attempts, and let a correct password plus code through from an IP that has passed before, or say plainly that this is accepted.
+- N4 (Minor). The 60-minute code now travels by email, and older codes stay valid next to a new link. That is safe only while FORCE_CHANGE_PASSWORD under the lock is the single proof.
+  The new-link door also sends to the address currently on the staff row, so an admin who changes that email and then sends a link could take over an account whose password was never set. Refuse the new link within 24 h of an email change, or send it to the invitation's address only.
+- N5 (Minor). "Host from the stack" for every invitation link: name the host (staging `www.staging.lab…`, since firm hosts return 404 until R1.24; production: the firm's address). The accept, callback and later sign-in then all happen on the same origin, so the tab session carries over.
+- N6 (Minor). Dropping `USER_AUTH` on the own-staff pool means nobody can sign in there until PF-4s. That is fine, but say it in the README. Cutting client flows while the pool keeps its WebAuthn settings is Unconfirmed live: add it to the staging proof, since the 22 Nov rollback showed Cognito refusing some passkey changes.
+
+Open before build: N1 and N2. Both are fixes in the concept text, not a redesign.

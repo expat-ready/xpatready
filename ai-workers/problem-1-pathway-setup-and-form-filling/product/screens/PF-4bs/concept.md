@@ -1,4 +1,4 @@
-# PF-4bs: staff sign-in on Cognito (password, one-time code, set-password callback, task-role actions, staging's first Owner) — concept r2
+# PF-4bs: staff sign-in on Cognito (password, one-time code, set-password callback, task-role actions, staging's first Owner) — concept r3
 
 Row PF-4bs (R1.5; shaped by the screens lane, 23 Nov). Covers links **1, 4, 5** and **the callback of link 6** in Step 18 of
 `reports/aws-staging-proof-2026-11-22.md` (branch `aws/2026-11-22-staging-proof`). Not here: link 3 and the Cognito half of
@@ -7,7 +7,7 @@ Requirements (`trace-requirements.py --brief PF-4b`, plus `--cite`): AG-1-10 (si
 AG-1-40 as changed by contracts §7 §1.2 (two-step for every staff member; authenticator app; no SMS; no email code),
 AG-1-41 / AG-1-56 / AG1-D20 (sessions revocable; 28 days unused, then sign in again), AG-1-42 (step-up 5 min), AG-1-55 (one session),
 AG-1-13 (seat check), AG-1-70 (staff account emails ours, through the one send path), SA-6-10 / BR-23 (first Owner at provisioning).
-r2 answers `challenge.md` (verdict Rework: B1, B2, M1-M7, m1-m9); each change names the finding.
+r2 answers `challenge.md` round 1 (Rework: B1, B2, M1-M7, m1-m9); r3 answers round 2 (Approve with changes: N1-N6). Each change names its finding.
 
 ## 1. Facts (AWS's own text; not my words)
 `docs.aws.amazon.com` is refused by this lane's network (proxy 403, 23 Nov). The quotes are AWS's API model text as shipped in
@@ -35,27 +35,33 @@ echoed; scanned in tests, m4). The planned custom email sender (`signup-identity
 **Doors (both adapters behind a new `SignInPort`, `session/sign-in.ts`, owned by this row):**
 1. `POST /api/platform/session/sign-in {email, password}` → `200 {step:"code"|"set-up", attempt, key?, otpauth?}`; wrong password and unknown person
    both → `401 SIGN_IN_REFUSED` "That email and password don't match." Limits: per IP (from `X-Forwarded-For` with the load balancer as the one trusted hop)
-   and per email, in the database so both tasks share them (m3); `ContextData` with the IP goes to Cognito.
+   and per email (m3). No migration (N3): kept in each task's memory, each task at half the target so two tasks give the target; a per-email limit only
+   slows (same 401, 10 tries per 15 min, Sample), it never locks the person at Cognito by itself. `ContextData` with the IP goes to Cognito.
 2. `POST /api/platform/session/sign-in/code {attempt, code}` → `200 {token, expiresIn}` (the Cognito access token the guard already verifies); our
    `authenticate` runs before answering (sign-in recorded, older session ended, audit line). Wrong code → `401 CODE_REFUSED` (try again);
    expired → `401 ATTEMPT_EXPIRED` "That took too long. Start again."; tampered → `401 SIGN_IN_REFUSED` (M4).
 3. **`attempt` is sealed** (M2): the existing secret box (`platform/secret-box/aes-gcm.ts`, AES-GCM, keys `PLATFORM_SECRET_BOX_KEYS`, already a
-   service secret) seals {Cognito Session, username, step, expiry}. Stateless, works on either task, the browser never holds Cognito's Session, no new secret.
+   service secret) seals {Cognito Session, username, step, expiry} with owner `{firmId:"platform", purpose:"sign-in-attempt"}`; the set-password code uses
+   `purpose:"set-password-code"`, so neither opens as the other (N2; the owner is the GCM additional data). The sealed attempt's length is tested under the doors' 2000-character cap. Stateless, works on either task, the browser never holds Cognito's Session, no new secret.
 4. Staff client `AuthSessionValidity` 15 minutes (pinned by the check), so a first-time invitee can install the app; the set-up card says
    "Install an authenticator app first" before the password; a restarted set-up warns that the earlier app entry no longer works (M4).
 5. Key as text plus an `otpauth://` link; **no QR** until a STANDARDS §1 entry (question 2).
 6. **Client flows, both modes, both staff pools (B1, m1):** exactly `ALLOW_ADMIN_USER_PASSWORD_AUTH` + `ALLOW_REFRESH_TOKEN_AUTH`; SRP and `USER_AUTH`
    dropped (passkeys are not built: README "the app side that registers passkeys … is not built"); the pool's passkey settings stay for the passkey row.
-   `passkeyFindings` (`service-checks.ts:271, :280`) and the README change to that one list; every other list is refused (tests).
+   `passkeyFindings` (`service-checks.ts:271, :280`) and the README change to that one list, the own-staff pool named too (N6); every other list is refused
+   (tests). The flow change is an in-place client update; it is on the staging proof list, since Cognito refused some passkey changes in the 22 Nov rollback.
 
 ## 3. The callback (link 6) and getting a new link (B2, M3)
 `POST /api/platform/session/callback` keeps its door and its code-in-the-body rule; on `cognito` it never calls the local sign-in.
 `{code}` → `200 {step:"set-password", email}` (nothing used; the page keeps the code in memory for the second post, m5); `{code, password}` →
-under `pg_advisory_xact_lock(hashtext(sub))` (shared by both tasks, no migration): `redeem(code)`, AdminGetUser must say FORCE_CHANGE_PASSWORD
+`redeem(code)` first (it gives firm and email), then the staff row's `identitySubject` read as that firm, then `pg_advisory_xact_lock(hashtext(sub))`
+with `lock_timeout` 5 s (N1; shared by both tasks, no migration); under it AdminGetUser must say FORCE_CHANGE_PASSWORD
 (else `401 SIGN_IN_CODE_REFUSED`), AdminSetUserPassword `Permanent` (a policy refusal → `422` with the rule, code still usable), then §2 step 1 →
 `{step:"set-up", …}`. Two parallel posts: one set-up, one 401 (test).
 **A new link (B2):** a staff member whose provider status is FORCE_CHANGE_PASSWORD gets "Send a new set-password link" (staff page, `agent/staff:manage`;
-`POST /api/platform/staff/:id/set-password-link`, audited, through `MailPort`) and `tools/first-owner.ts --resend`. So a lost tab, an expired code or a slow
+`POST /api/platform/staff/:id/set-password-link`, audited, through `MailPort`) and `tools/first-owner.ts --resend`. The link goes only to the address
+Cognito holds for that `sub` (AdminGetUser), and only when it equals the staff row's email; otherwise 409 (N4: an email changed by an admin cannot
+redirect a never-set password). So a lost tab, an expired code or a slow
 set-up never leaves a person stuck. Forgot-password (m7) uses the same signed-code mail for a CONFIRMED person: named, a later row.
 Contract for PF-4bc (question 1): `handOff` returns an absolute `https://<app host>/sign-in/callback#code=`, the code sealed by the secret box
 (subject, expiry 60 min: it now travels by email too), stateless; `createUser` sets `email_verified=true` (m6). `local` is unchanged.
@@ -72,7 +78,8 @@ an eighth action, `cognito-idp:*`, the own-staff pool, the clients pool, a joine
 `tools/first-owner.ts`, run once as the service's own image (`aws ecs run-task` with a command override): `--firm <key> --email <address>`.
 Refused when `PLATFORM_ENVIRONMENT=production` (tool and accept branch both), when any staff member of the firm has ever signed in (`last_sign_in_at`
 set), or when the seat check refuses (AG-1-13). It writes one Owner invitation, `invited_by = system:first-owner`, 72 h, and mails it with an absolute
-link (`/invitation#t=` today is relative, `identity/service.ts:395`: fixed for all invitations in this PR, host from the stack). Accept allows that
+link (`/invitation#t=` today is relative, `identity/service.ts:395`: fixed for all invitations in this PR). Host (N5): `STUDIO_PUBLIC_URL`, set by the
+stack to the host that answers today (staging: the load balancer's https name while firm hosts return 404, R1.24); unset in production → the mail is refused, never relative. Accept allows that
 inviter only under the same three conditions, checked under the firm's lock; the audit detail says "Staging first Owner (one-off task)" (staging's firm is
 Sample-seeded with Sample Owners, so "Firm created" would be false; grants have no reason column). `--resend` mails a new set-password link (§3).
 Why not a user made by hand in the console: R1.5 must prove the product's own invitation route, and Cognito would send its own email.
@@ -97,4 +104,4 @@ replayed link 401; SRP and USER_PASSWORD at Cognito directly refused; the task r
 ## Questions for the tech lead (recommendation first)
 1. **Our own page (recommended), with the flows cut to the admin password flow in both modes,** and the PF-4bc contract in §3 (sealed absolute code, 60 min; `email_verified`; FORCE_CHANGE_PASSWORD under an advisory lock as the one-use proof): agree, so PF-4bc builds to it?
 2. **QR code:** key + `otpauth://` link now (recommended), a STANDARDS §1 entry for a small QR library as a follow-up row?
-3. **Session length (AG1-D20):** founder ruling needed. Recommend: this row ships with the one-hour gap written in the PR and a follow-up row right after (refresh token in an HttpOnly cookie, 28 days), rather than growing this row.
+3. **Session length (AG1-D20):** founder ruling needed. Recommend: this row ships with the one-hour gap written in the PR, and the follow-up row (refresh token in an HttpOnly cookie, 28 days) is in BACKLOG before PR 3 merges, rather than growing this row.
