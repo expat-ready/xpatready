@@ -25,12 +25,13 @@
 // **Not verified against a real pool:**
 // * that a person whose authenticator app is turned off is asked to set it up again at the next sign-in when the pool requires MFA (the adapter's reset relies on it);
 // * the error name Cognito gives an app whose role lacks `cognito-idp` actions (mapped from `AccessDeniedException` and `NotAuthorizedException` to 503 `SIGN_IN_NOT_SET_UP`);
+// * that turning passkey MFA off (`WebAuthnMfaSettings.Enabled: false`) stops a passkey signing in on a pool that requires MFA (the SDK's words: "When activated, ... passkey sign-in is available when MFA is required"); the passkey itself stays, and this fake keeps it listed in `ConfiguredUserAuthFactors`;
 // * `docs.aws.amazon.com` was not opened from the cloud network; the quotes are the SDK's copies of the API reference.
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 
 export type SeenCall = { op: string; body: Record<string, any>; headers: Record<string, string>; raw: string };
-type User = { sub: string; email: string; enabled: boolean; totp: boolean; passkey: boolean; signOuts: number };
+type User = { sub: string; email: string; enabled: boolean; totp: boolean; passkey: boolean; passkeyMfa: boolean; signOuts: number };
 type HttpRequest = { method: string; hostname: string; path: string; headers: Record<string, string>; body?: unknown };
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
@@ -41,6 +42,7 @@ const error = (status: number, type: string, message: string) => json(status, { 
 export function fakeCognito(poolId: string) {
   const users = new Map<string, User>();   // email → user
   const seen: SeenCall[] = [];
+  let delayMs = 0, override: unknown = null;
   const forced: ({ status: number; type: string; message: string } | "drop")[] = [];
   const find = (username: string) => users.get(username.toLowerCase()) ?? [...users.values()].find((u) => u.sub === username);
   const attrs = (u: User) => [{ Name: "sub", Value: u.sub }, { Name: "email", Value: u.email }, { Name: "email_verified", Value: "true" }];
@@ -50,6 +52,7 @@ export function fakeCognito(poolId: string) {
     const target = req.headers["x-amz-target"] ?? req.headers["X-Amz-Target"] ?? "", op = target.split(".")[1] ?? "";
     const body = raw ? JSON.parse(raw) : {};
     seen.push({ op, body, headers: { ...req.headers }, raw });
+    if (override) { const o = override; override = null; return json(200, o); }
     const f = forced.shift();
     if (f === "drop") throw Object.assign(new Error("socket hang up"), { name: "TimeoutError" });
     if (f) return error(f.status, f.type, f.message);
@@ -59,7 +62,7 @@ export function fakeCognito(poolId: string) {
       case "AdminCreateUser": {
         const email = String(body.Username).toLowerCase();
         if (users.has(email)) return error(400, "UsernameExistsException", "An account with the given email already exists.");
-        const u: User = { sub: randomUUID(), email, enabled: true, totp: false, passkey: false, signOuts: 0 };
+        const u: User = { sub: randomUUID(), email, enabled: true, totp: false, passkey: false, passkeyMfa: false, signOuts: 0 };
         users.set(email, u);
         return json(200, { User: { Username: u.sub, Attributes: attrs(u), Enabled: true, UserStatus: "FORCE_CHANGE_PASSWORD", UserCreateDate: 1795000000, UserLastModifiedDate: 1795000000 } });
       }
@@ -74,7 +77,7 @@ export function fakeCognito(poolId: string) {
       case "AdminSetUserMFAPreference": {
         const u = find(String(body.Username)); if (!u) return notFound();
         if (body.SoftwareTokenMfaSettings?.Enabled === false) u.totp = false;
-        if (body.WebAuthnMfaSettings?.Enabled === false) u.passkey = false;
+        if (body.WebAuthnMfaSettings?.Enabled === false) u.passkeyMfa = false;   // the passkey itself stays (break M3): no admin call deletes one
         return json(200, {});
       }
       case "AdminUserGlobalSignOut": {
@@ -86,11 +89,25 @@ export function fakeCognito(poolId: string) {
   }
   return {
     seen, users,
-    requestHandler: { async handle(req: HttpRequest) { return answer(req); }, updateHttpClientConfig() {}, httpHandlerConfigs() { return {}; }, destroy() {} },
+    requestHandler: {
+      async handle(req: HttpRequest, o: { abortSignal?: AbortSignal } = {}) {
+        if (delayMs) await new Promise<void>((res, rej) => {
+          const t = setTimeout(res, delayMs), stop = () => { clearTimeout(t); rej(Object.assign(new Error("Request aborted"), { name: "AbortError" })); };
+          if (o.abortSignal?.aborted) stop(); else o.abortSignal?.addEventListener?.("abort", stop, { once: true });
+        });
+        if (o.abortSignal?.aborted) throw Object.assign(new Error("Request aborted"), { name: "AbortError" });
+        return answer(req);
+      }, updateHttpClientConfig() {}, httpHandlerConfigs() { return {}; }, destroy() {} },
+    /** The next call answers this body with 200 (a malformed answer). */
+    overrideNext(body: unknown) { override = body; },
+    /** Every answer waits this long first (an abort ends the wait, as the SDK's own handler does). */
+    slow(ms: number) { delayMs = ms; },
+    /** The user is deleted and created again under the same email (a new `sub`), as an operator fixing a stuck user would. */
+    recreate(email: string) { const u = users.get(email.toLowerCase())!; users.set(u.email, { ...u, sub: randomUUID(), totp: false, passkey: false, passkeyMfa: false, signOuts: 0 }); return users.get(u.email)!; },
     /** The next call answers this error (or, with "drop", the connection drops: no HTTP answer); queued, one per call. */
     failNext(f: { status: number; type: string; message: string } | "drop") { forced.push(f); },
     /** The person sets up an authenticator app (or a passkey) at sign-in, as Cognito records it. */
-    enrol(email: string, how: "totp" | "passkey" = "totp") { const u = users.get(email.toLowerCase())!; if (how === "totp") u.totp = true; else { u.totp = true; u.passkey = true; } },
+    enrol(email: string, how: "totp" | "passkey" = "totp") { const u = users.get(email.toLowerCase())!; u.totp = true; if (how === "passkey") { u.passkey = true; u.passkeyMfa = true; } },
     disable(email: string) { users.get(email.toLowerCase())!.enabled = false; },
   };
 }

@@ -96,17 +96,84 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
   const before = await c.admin.twoStep(p);
   await c.admin.resetTwoStep(p); await c.admin.resetTwoStep(t);
   const sets = c.fake.seen.filter((s) => s.op === "AdminSetUserMFAPreference");
-  ok("PF-4bc pass: a passkey (WEB_AUTHN configured) reads PASSKEY; its reset turns passkey MFA and the authenticator app off", before.method === "PASSKEY" && sets[0]?.body.WebAuthnMfaSettings?.Enabled === false && sets[0]?.body.SoftwareTokenMfaSettings?.Enabled === false && (await c.admin.twoStep(p)).method === null, sets.map((s) => s.body));
+  ok("PF-4bc pass: a passkey (WEB_AUTHN configured) reads PASSKEY; its reset turns passkey MFA and the authenticator app off, and two-step reads not set up although the passkey stays listed (break M3)", before.method === "PASSKEY" && sets[0]?.body.WebAuthnMfaSettings?.Enabled === false && sets[0]?.body.SoftwareTokenMfaSettings?.Enabled === false && c.fake.users.get(p.email)!.passkey && !c.fake.users.get(p.email)!.passkeyMfa && (await c.admin.twoStep(p)).method === null, sets.map((s) => s.body));
   ok("PF-4bc fail: an authenticator-app-only reset never sends WebAuthnMfaSettings (refused by a pool without MULTI_FACTOR_WITH_USER_VERIFICATION)", sets[1] && !("WebAuthnMfaSettings" in sets[1].body) && sets[1].body.SoftwareTokenMfaSettings?.Enabled === false, sets[1]?.body);
+  const mark = c.fake.seen.length;
   await c.admin.signOutEverywhere(p); await c.admin.signOutEverywhere({ staffId: "s-x", subject: null, email: t.email });
-  const outs = c.fake.seen.filter((s) => s.op === "AdminUserGlobalSignOut").map((s) => s.body.Username);
-  ok("PF-4bc pass: Cognito is asked about the person by their `sub` when we hold it, else by their email", outs[0] === p.subject && outs[1] === t.email, outs);
+  const after = c.fake.seen.slice(mark), looks = after.filter((x) => x.op === "AdminGetUser").map((x) => x.body.Username), outs = after.filter((x) => x.op === "AdminUserGlobalSignOut").map((x) => x.body.Username);
+  ok("PF-4bc pass: Cognito is looked up by our `sub` when we hold it, else by the email, and the change is made on the `sub` it found", looks[0] === p.subject && looks[1] === t.email && outs[0] === p.subject && outs[1] === t.subject, { looks, outs });
   const code = /#code=(.+)$/.exec((await c.admin.handOff("firm-a", t.email)).url)![1];
   c.fake.disable(t.email);
   const disabled = await problemOf(() => c.admin.redeem(code));
   const code2 = /#code=(.+)$/.exec((await c.admin.handOff("firm-a", "never.created@example.com")).url)![1];
   const missing = await problemOf(() => c.admin.redeem(code2));
   ok("PF-4bc fail: a sign-in code for a person Cognito has disabled, or does not have, is refused (401 SIGN_IN_CODE_REFUSED)", disabled?.status === 401 && disabled.body.code === "SIGN_IN_CODE_REFUSED" && missing?.status === 401 && missing.body.code === "SIGN_IN_CODE_REFUSED", { disabled, missing });
+}
+
+// ---------------------------------------------------------------------------- the break report's findings (round 1)
+{
+  // M1: one deadline for every request and retry of a call, inside the callers' 5 s transaction.
+  const c = makeCognito(); const u = { staffId: "s-slow", email: "slow@example.com", subject: (await c.admin.createUser("slow@example.com")).subject };
+  c.fake.enrol(u.email); c.fake.slow(2_000);
+  const t0 = Date.now(), slow = await problemOf(() => c.admin.resetTwoStep(u)), took = Date.now() - t0;
+  ok("PF-4bc fail (break M1): Cognito answering in 2 s a request → the reset stops at the 3 s deadline (503), well inside the 5 s transaction, and the second step was never turned off", slow?.status === 503 && took < 4_000 && c.fake.users.get(u.email)!.totp && !c.fake.seen.some((x) => x.op === "AdminSetUserMFAPreference"), { slow, took });
+  c.fake.slow(0);
+  const t1 = Date.now(); await c.admin.resetTwoStep(u);
+  ok("PF-4bc pass (break M1): at normal speed the same reset completes", !c.fake.users.get(u.email)!.totp && Date.now() - t1 < 3_000);
+}
+{
+  // M2: a stale or foreign `sub` is refused, never reported done.
+  const c = makeCognito();
+  const a = { staffId: "s-a", email: "a.person@example.com", subject: (await c.admin.createUser("a.person@example.com")).subject };
+  const b = { staffId: "s-b", email: "b.person@example.com", subject: (await c.admin.createUser("b.person@example.com")).subject };
+  c.fake.enrol(a.email); c.fake.enrol(b.email);
+  const live = c.fake.recreate(a.email); c.fake.enrol(a.email);
+  const stale = [await problemOf(() => c.admin.signOutEverywhere(a)), await problemOf(() => c.admin.resetTwoStep(a))];
+  ok("PF-4bc fail (break M2): our stored `sub` is gone and Cognito has another user under that email → 409 SIGN_IN_ACCOUNT_MISMATCH, and that user is not touched", stale.every((x) => x?.status === 409 && x.body.code === "SIGN_IN_ACCOUNT_MISMATCH") && live.signOuts === 0 && live.totp, stale);
+  const foreign = { ...a, subject: b.subject };
+  const fx = [await problemOf(() => c.admin.signOutEverywhere(foreign)), await problemOf(() => c.admin.resetTwoStep(foreign))];
+  ok("PF-4bc fail (break M2): a record holding another person's `sub` → 409 SIGN_IN_ACCOUNT_MISMATCH, and the other person is not signed out or reset", fx.every((x) => x?.status === 409 && x.body.code === "SIGN_IN_ACCOUNT_MISMATCH") && c.fake.users.get(b.email)!.signOuts === 0 && c.fake.users.get(b.email)!.totp, fx);
+  const fixed = { ...a, subject: live.sub }; await c.admin.signOutEverywhere(fixed);
+  ok("PF-4bc pass (break M2): with the right `sub` the same sign-out reaches the live user", c.fake.users.get(a.email)!.signOuts === 1);
+}
+{
+  // m1: Cognito unable to answer at redeem gives the code back; m2: a turned-off existing user is refused at accept.
+  const c = makeCognito(); await c.admin.createUser("m1@example.com");
+  const code = /#code=(.+)$/.exec((await c.admin.handOff("firm-a", "m1@example.com")).url)![1];
+  c.fake.failNext({ status: 400, type: "TooManyRequestsException", message: "x" }); c.fake.failNext({ status: 400, type: "TooManyRequestsException", message: "x" });
+  const busy = await problemOf(() => c.admin.redeem(code)), later = await c.admin.redeem(code).catch(() => null);
+  ok("PF-4bc fail (break m1): a busy Cognito at redeem → 503, and the same code works once it answers", busy?.status === 503 && later?.email === "m1@example.com", { busy, later });
+  c.fake.disable("m1@example.com");
+  const off = await problemOf(() => c.admin.createUser("m1@example.com"));
+  ok("PF-4bc fail (break m2): accept for an email whose Cognito user is turned off → 409 SIGN_IN_ACCOUNT_DISABLED, never an account that cannot sign in", off?.status === 409 && off.body.code === "SIGN_IN_ACCOUNT_DISABLED", off);
+}
+{
+  // m3: an unknown error name is provider text: the log prints OtherError. m4: the `sub` must be exactly one UUID.
+  const c = makeCognito(); c.fake.failNext({ status: 400, type: `Leak${KEY_ID}`, message: "x" });
+  const odd = await problemOf(() => c.admin.createUser("m3@example.com"));
+  ok("PF-4bc fail (break m3): an unknown error name is logged as OtherError, never as given", odd?.status === 502 && /AdminCreateUser refused \(OtherError 400\)/.test(printed) && !printed.includes(`Leak${KEY_ID}`), odd);
+  const bad = await Promise.all([[{ Name: "sub", Value: "-".repeat(128) }], [], [{ Name: "sub", Value: "11111111-1111-4111-8111-111111111111" }, { Name: "sub", Value: "22222222-2222-4222-8222-222222222222" }]].map((attrs) => {
+    const x = makeCognito(); x.fake.overrideNext({ User: { Username: "u", Attributes: attrs, Enabled: true } });
+    return problemOf(() => x.admin.createUser("m4@example.com"));
+  }));
+  ok("PF-4bc fail (break m4): a `sub` that is not a UUID, missing, or given twice → 502 SIGN_IN_PROVIDER_ERROR, nothing stored", bad.every((x) => x?.status === 502 && x.body.code === "SIGN_IN_PROVIDER_ERROR"), bad);
+}
+
+{
+  // Review M1 and m4: the deadline sits inside Prisma's default 5 s transaction; one throttled attempt is retried once.
+  const { COGNITO_DEADLINE_MS, READ_DEADLINE_MS, READS_AT_ONCE } = await import("../api/src/platform/identity/session/provider.ts");
+  ok("PF-4bc pass (review M1): one call's Cognito deadline (3 s) and the read deadline are under the callers' 5 s transaction limit", COGNITO_DEADLINE_MS <= 3_000 && READ_DEADLINE_MS <= COGNITO_DEADLINE_MS);
+  const c = makeCognito(); c.fake.failNext({ status: 400, type: "TooManyRequestsException", message: "x" });
+  const once = await c.admin.createUser("retry@example.com").catch(() => null);
+  ok("PF-4bc pass (review m4): one throttled answer is retried once and the user is created (two attempts, the second succeeds)", !!once && c.fake.seen.filter((x) => x.op === "AdminCreateUser").length === 2, c.fake.seen.map((x) => x.op));
+  // Review M2: the Team list's reads: one request a person in the usual case, at most READS_AT_ONCE at a time.
+  const r = makeCognito(), people = [];
+  for (let i = 0; i < 10; i++) { const e = `team${i}@example.com`; people.push({ staffId: `t${i}`, email: e, subject: (await r.admin.createUser(e)).subject }); r.fake.enrol(e); }
+  r.fake.slow(100); const mark = r.fake.seen.length; let inFlight = 0, most = 0;
+  const h = r.fake.requestHandler, orig = h.handle.bind(h);
+  h.handle = (async (req: any, o: any) => { inFlight++; most = Math.max(most, inFlight); try { return await orig(req, o); } finally { inFlight--; } }) as typeof h.handle;
+  const all = await Promise.all(people.map((p) => r.admin.twoStep(p)));
+  ok("PF-4bc pass (review M2): ten Team rows read with one Cognito request each, at most 4 at a time, all TOTP", all.every((x) => x.method === "TOTP") && r.fake.seen.length - mark === 10 && most <= READS_AT_ONCE, { calls: r.fake.seen.length - mark, most });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
