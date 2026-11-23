@@ -8,7 +8,8 @@
 //      (GET /api/runtime/documents/:id/file, the route the case's "Open the document" button fetches; merged: C6.4 and
 //      challenge M1): exactly one audit line per read ("viewed", entity "case document"), each naming who, when and which
 //      document; a client and another firm read nothing and write no line. On screen, the document is opened from the
-//      Documents panel (missing: CS-D5, R1.68's viewer: no open control on the panel today).
+//      Documents panel: printed as a NOTE, not counted (CS-D5 is R1.68's part, not R1.69's; the read's line is already
+//      proved through the file route above).
 //   W2 (the same clause, the reading side): the "Read by" panel for holders of agent/document:view-access-log lists those
 //      lines for the document, newest first (CS-D6 part 1: GET /api/runtime/documents/:id/reads is this journey's guess;
 //      the brief names the panel, not the path); the case's client gets 403 and another firm 404 (counted only where
@@ -24,8 +25,10 @@
 //      #2008, merged) and KeepPeriodPort.forFirm reads it; the list "Documents past their keep period" shows the closed
 //      case's document and never the open case's (CS-D6 part 1: GET /api/runtime/documents/past-keep-period, a guess).
 //   W6 (the same clause, on the fake clock): CS-D6's weekly reminder (api/src/documents/keep-period.ts, the brief's
-//      file; with PF-14's notifications) run on FakeClock + fakeJobs over 6 days reminds each recipient ONCE (not once a
-//      day) about the closed case's document and never about the open case's.
+//      file; with PF-14's notifications) run on FakeClock + fakeJobs over 14 days (two weekly runs) reminds each
+//      recipient at least once and at most once a week (never once a day) about the closed case's document and never
+//      about the open case's. The service's shape is this journey's guess as well as its file: a class with register(),
+//      built from { db, jobs, notifications, clock, keepPeriods }, register({ sweep: false }); qa aligns it when CS-D6 lands.
 //   W7: the Documents panel at 400, 1024 and 1440 px: nothing cut off sideways, axe clean; no page error.
 //   W8: the walk ends at R1.70's first step: the officer is on the document's line on the Documents panel, where R1.70's
 //      expiry, translation and notarisation flags will show (CS-D7c, CS-D7; not judged here).
@@ -120,11 +123,14 @@ try {
   const panel = p.locator("[data-documents-panel]"), row = p.locator(`[data-line="${lineA.id}"]`);
   const open = async () => { await p.goto(`/cases/${caseA}`); await panel.waitFor({ timeout: 30_000 }); await row.filter({ hasText: "passport.pdf" }).waitFor({ timeout: 30_000 }); };
   await open();
-  const opener = row.getByRole("button", { name: /open|view|preview|download/i }).or(row.getByRole("link", { name: /open|view|preview|download/i }));
-  const n2 = Number(viewed(docA.id));
-  if (await opener.count()) { await opener.first().click(); await p.waitForTimeout(1500); }
-  ok("J-69 W1 (missing: CS-D5, R1.68's viewer on the Documents panel): the representative opens the document from its line on the Documents panel, and that read writes one line",
-    (await opener.count()) > 0 && Number(viewed(docA.id)) === n2 + 1, { controls: await opener.count(), added: Number(viewed(docA.id)) - n2 });
+  // Line actions live in the line's ⋯ menu (checklist.tsx); CS-D5 may put "Open" there, or on the row.
+  const OPEN = /open|view|preview|download/i, menu = row.locator("[data-line-menu]");
+  let opener = row.getByRole("button", { name: OPEN }).or(row.getByRole("link", { name: OPEN }));
+  if (!(await opener.count()) && (await menu.count())) { await menu.first().click(); opener = p.getByRole("menuitem", { name: OPEN }); }
+  const n2 = Number(viewed(docA.id)), controls = await opener.count();
+  if (controls) { await opener.first().click(); await p.waitForTimeout(1500); } else await p.keyboard.press("Escape");
+  // NOTE, not counted: opening from the panel is CS-D5's (R1.68); R1.69's clause is proved by the reads above.
+  console.log(`NOTE  J-69 W1 on screen (CS-D5, R1.68's viewer): open control on the line ${controls ? "found" : "not found"}; lines added by opening it: ${Number(viewed(docA.id)) - n2}`);
   await panel.screenshot({ path: join(SHOTS, "w1-documents-panel-1440.png") });
 
   // ---------------------------------------------------------------------------------------------- W2 the "Read by" panel
@@ -181,11 +187,11 @@ try {
     const Svc = Object.values(mod).find((v) => typeof v === "function" && typeof (v as { prototype?: { register?: unknown } }).prototype?.register === "function") as (new (p: unknown) => { register(o?: unknown): Promise<void> }) | undefined;
     if (Svc) { await new Svc({ db, jobs: watched, notifications, clock, keepPeriods: new KeepPeriods(db, undefined, () => clock.now()) }).register({ sweep: false }); built = "registered"; } else built = "no service with register() in the module";
   } catch (e) { built = `not built: ${String((e as Error).message ?? e).split("\n")[0].slice(0, 120)}`; }
-  for (let d = 0; d < 6; d++) await clock.advance({ days: 1 });
+  for (let d = 0; d < 14; d++) await clock.advance({ days: 1 });
   const aboutB = told.filter((t) => /keep/i.test(t.kind) && [docB.id, caseB].includes(t.id)), aboutA = told.filter((t) => [docA.id, docT.id, caseA].includes(t.id));
   const perPerson = new Map<string, number>(); for (const t of aboutB) perPerson.set(`${t.staffId}|${t.id}`, (perPerson.get(`${t.staffId}|${t.id}`) ?? 0) + 1);
-  ok("J-69 W6 (missing: CS-D6's weekly reminder, with PF-14): on the fake clock over 6 days, the keep-period reminder reaches each recipient ONCE (not once a day) about closed case B's document, never about open case A's",
-    built === "registered" && aboutB.length > 0 && [...perPerson.values()].every((n) => n === 1) && aboutA.length === 0, { built, jobs: watched.jobs.length, aboutB: aboutB.length, perPerson: [...perPerson.values()], aboutA: aboutA.length });
+  ok("J-69 W6 (missing: CS-D6's weekly reminder, with PF-14): on the fake clock over 14 days, the keep-period reminder reaches each recipient at least once and at most once a week (1-2, never once a day) about closed case B's document, never about open case A's",
+    built === "registered" && aboutB.length > 0 && [...perPerson.values()].every((n) => n >= 1 && n <= 2) && aboutA.length === 0, { built, jobs: watched.jobs.length, aboutB: aboutB.length, perPerson: [...perPerson.values()], aboutA: aboutA.length });
   // A redelivered job (the same run handed over again) adds no second reminder.
   const done = jobs.jobs.filter((x) => x.status === "done" && handlers.has(x.name)), before6 = new Set(inner.sent().map((r) => `${r.staffId}|${r.item.id}|${r.kind}`)).size;
   for (const x of done) await handlers.get(x.name)!({ name: x.name, payload: x.payload, key: x.key, firmId: x.firmId, runAt: x.runAt, attempt: x.attempt + 1 } as JobRun).catch(() => undefined);
