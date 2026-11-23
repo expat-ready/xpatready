@@ -97,3 +97,51 @@ Same reviewer. I read only the diff (`review.ts`, `routes.ts`, `arrival.ts`, `le
 Minors n2-n6 and m5: fix them, or list them in the PR. Open questions with the tech lead (not blockers): the key names, wiring `mergeIfSafe` into arrival, the money side's party check for writers that start after the locks, and M6's refusal.
 
 Reviewer: Block 3168257452e42c1df0b117fe101d9354d891538b
+
+## Round 3 (diff only, allowed by the tech lead): `3168257..9db9ca2`, 23 Nov 2026
+Same reviewer. I read only the diff: `review.ts`, `routes.ts`, the suite, and `MODULE.rows/FO-9b-2.md`.
+* **Suite:** `check_fo9b_review.ts` gives **55/55, exit 0**, in a detached scratch worktree at `9db9ca2`.
+* **Mutations:** 9 one-line mutations, and two probes in the suite's harness (`journey-test-reviewer-2026-11-23-r3.md`).
+* **Tools:** `graph.mjs` gives G1 0 and G2 0. `check-module-cards.sh` passes 44 fixtures.
+* **Shared tree:** I made no change to the shared checkout apart from this file and the journey report. Uncommitted edits by someone else to `review.ts`, the suite and `break-report.md` showed up there while I worked. They are not mine, so I neither reverted nor reviewed them.
+* **Cost:** nothing committed, US$0.
+
+**Round-2 items**
+* **n1 fixed for the reported path, but see R3-1.**
+  * `notePairs` now writes a new survivor pair `KEPT_SEPARATE` when a Kept separate row joins the two sides, directly or through a record merged into either (`review.ts:47-56`).
+  * The new n1 test turns red when the carry is removed, and also when the `merged_into_id` clauses are removed.
+  * The guided path (J1) holds too.
+* **M8 fixed.** Each of these now turns the suite red when removed: the identity-copy line (`:86`) and the `fo_signer` line (test `:243-250`). One half is still missing: the "holding a copy" qualifier can go (`and true`) with the suite still green, because no test passes an identity check *without* a copy. That direction only refuses more, so it is minor (r3-m1).
+* **m5 fixed.** `graph.json` lists all six routes as `testedBy: tests/check_fo9b_review.ts`, so they are no longer in G3.
+* **Breaker R2-8 fixed and tested.** Removing `"updatedAt"` from the guard turns R2-8 red. J4 got a named 422 for `__proto__: null`.
+* **Breaker R2-2: changed, but untested and incomplete.**
+  * Reverting `:125` to `[{ key: "EMAIL" }]` leaves 55/55.
+  * The re-check also runs after `mergeRecords` has applied the picks. So a loser email changed during the lock wait is copied onto the survivor and then "matches" itself. I found this by reading; breaker R3-3 shows it. See r3-m2.
+* **Breaker R2-5: changed, but untested.** Removing the Undo re-check (`:262-263`) leaves 55/55. The code is right by reading, and the breaker's R3 re-run confirms it (r3-m3).
+
+**Findings**
+* **R3-1 (Major). A Kept separate decision is still merged away through a pair that already exists** (BR-11; concept §8 B1; the same harm as n1, and the code comment at `:47-48` says "a merge never reopens it").
+  * `notePairs` carries the decision only when it inserts a row; an existing row hits `on conflict … do nothing` (`:61`).
+  * `mergeIfSafe` (`:110-131`) checks only the pair's own status.
+  * **My probe (J3).** A (E, P), B (E, P) and C (P) give A-B, A-C and B-C, all OPEN. The Owner keeps B-C separate (200). `mergeIfSafe(A-B)` then gives `mergeRef`, and A-C stays `OPEN`. `mergeIfSafe(A-C)` then gives `mergeRef`, and B and C are now both `merged_into_id = A`.
+  * Breaker R3-1 (b) reaches the same end by another order: Keep separate on a pair whose side is already merged away (`keepSeparate`, `:271`).
+  * Latent until arrival calls `mergeIfSafe`, as n1 was.
+  * **Fix:** with a failing test first, refuse in `mergeIfSafe` (after the locks) when a Kept separate row links the two sides through `merged_into_id`. In `notePairs`, flip an existing OPEN row to the carried decision.
+* **r3-m1 (minor, tests).** Add the pass half of M8: an identity check with no `copy_file_key` → `[]`.
+* **r3-m2 (minor; R2-2 residual, breaker R3-3).** The check after the locks compares the survivor *after* the picks were applied. Compare the locked rows before the merge instead (`loserSnapshot.loser` against the survivor's values before the merge), and add a test that turns red if `:125` reverts.
+* **r3-m3 (minor, tests).** No test covers the R2-5 Undo re-check (n6's class). Pin it, or list it in the PR.
+* **r3-m4 (minor; breaker R3-2, my J2). A carried decision outlives its Undo.**
+  * Undo reopens only the rows whose `merge_id` is this merge (`:264`).
+  * After A←B is undone, A-C stays `KEPT_SEPARATE`, credited to the B-C decider, who never saw A-C, although A no longer has the shared phone.
+  * Reopen or remove the carried rows on Undo, or record where the decision came from (D18).
+* **r3-m5 (minor, tests).** The n1 test passes vacuously if A-C is never written: `!nAC ||` (`:261`) and the phone fallback at `:257` run after the merge, too late to create the pair. Assert `!!nAC` and drop the fallback.
+* **Held:** the carry query matches only through the row's own two people, so an undone merge carries nothing. A new person D arriving later gets OPEN pairs (breaker). The `__proto__` guard runs before `parseInput` for both nested objects. The new module-card row names a real entry point and test.
+
+**D-score changes:** D2 **3** (R3-1, r3-m2) · D4 **3** (R3-1) · D16 **4** (M8 and m5 closed; r3-m1, m3, m5 and n6 open). Others as in round 2. **Journey: 8/10** (passes, no 0; `journey-test-reviewer-2026-11-23-r3.md`).
+
+**Verdict: Block** on `9db9ca2d015b3452bd5fb05f5c149d6c3fd2461b`. To fix:
+1. R3-1, with a failing test first (the J3 case, and Keep separate on a merged-away side).
+
+Minors r3-m1 to r3-m5 (and n2-n6 from round 2): fix them, or list them in the PR. The open questions with the tech lead are unchanged.
+
+Reviewer: Block 9db9ca2d015b3452bd5fb05f5c149d6c3fd2461b

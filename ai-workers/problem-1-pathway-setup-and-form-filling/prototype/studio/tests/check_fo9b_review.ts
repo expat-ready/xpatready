@@ -244,6 +244,10 @@ try {
     values (gen_random_uuid(), '${A}', '${p}', 'IN_PERSON', '${R.staffId}', '{NAME}', 'PASSPORT', 'CA', '1234', 'identity-copies/${randomUUID()}.pdf', '${"a".repeat(64)}')`));
   const wd3 = await inTx((tx) => whyNotSafe(tx, A, [d3.a, d3.b], [{ key: "PHONE" }]));
   ok("FO-9b M8 fail: an identity check holding a copy is a stored document (DOCUMENT)", JSON.stringify(wd3) === '["DOCUMENT"]', wd3);
+  const d3n = await pairWith("40", (p) => sql(`set session_replication_role = replica; insert into fo_identity_check (id, firm_id, person_id, method, checked_by, details_corroborated, document_type, issuing_country, document_number_last4)
+    values (gen_random_uuid(), '${A}', '${p}', 'IN_PERSON', '${R.staffId}', '{NAME}', 'PASSPORT', 'CA', '1234')`));
+  const wd3n = await inTx((tx) => whyNotSafe(tx, A, [d3n.a, d3n.b], [{ key: "PHONE" }]));
+  ok("FO-9b M8 pass (review r3-m1): an identity check holding no copy is not a stored document (safe)", JSON.stringify(wd3n) === "[]", wd3n);
   const d4 = await pairWith("39", (p) => sql(`set session_replication_role = replica; insert into fo_signer (id, firm_id, request_id, role, person_id, sign_order, link_token_sha256)
     values (gen_random_uuid(), '${A}', gen_random_uuid(), 'CLIENT', '${p}', 1, '${"b".repeat(64)}')`));
   const wd4 = await inTx((tx) => whyNotSafe(tx, A, [d4.a, d4.b], [{ key: "PHONE" }]));
@@ -254,11 +258,10 @@ try {
   const nC = await leads.add(R, { requestId: randomUUID(), source: "Phone call", confirmedNew: true, givenNames: "Cy", familyName: "Gamma", phone: "+1 416 555 0140" }) as { person: { id: string } };
   const nAB = pairOf(nA.person.id, nB.person.id), nBC = pairOf(nB.person.id, nC.person.id);
   const nm = await inTx((tx) => mergeIfSafe(tx, A, nAB, ports)) as { mergeRef?: string };
-  sql(`update fo_person set phone = '+1 416 555 0140', phone_readable = true where id = '${nA.person.id}' and phone is null`);
-  const nAC = pairOf(nA.person.id, nC.person.id);
+  const nAC = pairOf(nA.person.id, nC.person.id);   // written by the merge itself (review r3-m5: no fallback, no skip)
   const rAC = nAC ? await inTx((tx) => mergeIfSafe(tx, A, nAC, ports)) as { mergeRef?: string } : {};
   ok("FO-9b n1 fail: after B merges into A, the A-C pair keeps B-C's Kept separate decision and C is never merged by itself",
-    !!nm.mergeRef && sql(`select status from fo_dup_review where id = '${nBC}'`) === "KEPT_SEPARATE" && (!nAC || sql(`select status from fo_dup_review where id = '${nAC}'`) === "KEPT_SEPARATE") && !rAC.mergeRef
+    !!nm.mergeRef && sql(`select status from fo_dup_review where id = '${nBC}'`) === "KEPT_SEPARATE" && !!nAC && sql(`select status from fo_dup_review where id = '${nAC}'`) === "KEPT_SEPARATE" && !rAC.mergeRef
     && sql(`select merged_into_id is null from fo_person where id = '${nC.person.id}'`) === "t", { nm, nAC, rAC });
   // R3-1: A (name N, phone P), B (phone P, email E), C (name N, email E): pairs A-B, B-C and A-C (by name). B-C is kept
   // separate; once B merges into A (guided or by itself), A-C carries that decision and C is never merged by itself.
