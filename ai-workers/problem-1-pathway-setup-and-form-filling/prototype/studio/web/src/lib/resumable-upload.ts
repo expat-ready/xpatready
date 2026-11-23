@@ -39,6 +39,7 @@ export function uploadWords(phase: UploadPhase, percent: number, failure?: strin
 export function refusalWords(status: number, body: string | undefined, type: string | null | undefined): string {
   const t = (type ?? "").toLowerCase(), b = (body ?? "").trim();
   if (status === 404) return "This upload is no longer on the server. Start it again.";   // the rail's bare "Not found" says too little
+  if (status === 410 && !b) return "This upload expired: it was not finished within 24 hours. Start it again.";   // a HEAD's 410 has no body (break r2-m3)
   if (t.includes("json")) { try { const p = JSON.parse(b) as { detail?: unknown; title?: unknown }; const w = typeof p.detail === "string" ? p.detail : typeof p.title === "string" ? p.title : ""; if (w) return w; } catch { /* below */ } }
   if (t.startsWith("text/plain") && b && b.length <= 500) return b;
   if (status === 401 || status === 403) return "Your session has ended. Sign in again, then try the upload again.";
@@ -71,7 +72,7 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
   const delays = o.retryDelays?.length ? o.retryDelays : RETRY_DELAYS, stallMs = o.stallMs ?? STALL_MS;
   const name = (file as File).name ?? "upload";
   let percent = 0, failures = 0, paused = false, resumed = false, stopped = false, settled = false, succeeded = false;
-  let base = -1;   // the offset this attempt started from (its first progress): the delays restart only past it
+  let base = -1, confirming: AbortController | null = null;   // the offset this attempt started from (its first progress): the delays restart only past it
   let url: string | null = null, current: Upload | null = null, timer: ReturnType<typeof setTimeout> | undefined, stall: ReturnType<typeof setTimeout> | undefined;
   let resolve!: (id: string) => void, reject!: (e: Error) => void;
   const answer = () => new Promise<string>((res, rej) => { resolve = res; reject = rej; });
@@ -110,7 +111,8 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
   /** Rule 3: the upload is complete but the answer named no file: the empty PATCH at the end asks the server for it. */
   async function confirm() {
     try {
-      const r = await fetch(url!, { method: "PATCH", signal: AbortSignal.timeout(stallMs), headers: { ...auth(), "Tus-Resumable": "1.0.0", "Upload-Offset": String(file.size), "Content-Type": "application/offset+octet-stream" } });
+      confirming = new AbortController();
+      const r = await fetch(url!, { method: "PATCH", signal: AbortSignal.any([confirming.signal, AbortSignal.timeout(stallMs)]), headers: { ...auth(), "Tus-Resumable": "1.0.0", "Upload-Offset": String(file.size), "Content-Type": "application/offset+octet-stream" } });
       const id = r.headers.get("Upload-File-Id");
       if (r.ok && id) return finish(id);
       lost(r.status, { body: await r.text(), type: r.headers.get("Content-Type") });
@@ -154,7 +156,7 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
   attempt();
   return {
     done,
-    abort: () => { if (settled) return; stopped = true; quiet(); void current?.abort(); refuse("Upload stopped."); },
+    abort: () => { if (settled) return; stopped = true; quiet(); void current?.abort(); confirming?.abort(); refuse("Upload stopped."); },   // break r2-m1: a confirm in flight too
     retry: () => {
       if (stopped || !settled || succeeded) return latest;   // running, stopped, or done: the answer already in hand
       latest = answer(); settled = false; paused = false; failures = 0; attempt();

@@ -61,3 +61,48 @@ Method: the harness from `studio/tests/check_pff2_resume_browser.ts`, copied int
 - I could not land a CDP cut inside the final PATCH (on localhost it is buffered). The route-based lost final answer (M1) covers that case.
 
 Verdict: Block
+
+## Round 2: head `2261b901e9731e989dc5c2fb0837797ce827f7d7`
+
+Scope: only `git diff 3ff40ec..2261b90`, which is `resumable-upload.ts`, the client's own retry loop. Same harness: Nest on :4582, the TCP proxy on :4583, Chromium. The bundle was a pinned copy of the lib from `git show 2261b90:…`, because a builder was editing this working tree during the run. Since then the branch has moved to `f08d0cb`, which this round did not test. The scratch files and databases are deleted. No repo file changed except this one.
+
+### Retried
+- **B1: fixed.** When the finish fails once with 500, the requests are `PATCH(final)>500`, then `HEAD>200:size`, then the empty `PATCH@size>204` with the id. The page shows done with that id, there is 1 row, and the door's `onComplete` ran twice (the first run rolled back). A finish 409 is final in its detail words ("…no room left… Nothing was stored."), with no second request and 0 rows.
+- **M1: fixed.** After a lost final answer, the HEAD is followed by the empty PATCH, and the page shows done with the stored row's id. There is 1 row.
+- **M2: fixed.** A 25 s cut that `page.route` aborts (`onLine` true): the page says "Upload paused: reconnecting" throughout. HEADs repeat every 10 s, and the upload resumes from offset 1048576 when the path is back. The sha256 matches.
+- **M3: fixed.** Retries spent offline, then the first HEAD after "online" fails: the next try comes 10 s later, the upload resumes and completes, and the sha256 matches.
+- **M4: fixed.** An expired token during the cut ends in "Your session has ended. Sign in again, then try the upload again." After signing in again, `retry()` sends `HEAD>200:1048576` then `PATCH@1048576`. There is no new POST, the upload completes, there is 1 row and the sha256 matches. A 502 HTML page for 12 s is never shown, and the upload completes afterwards.
+- **m1: fixed.** `abort()` in the "online" wait gives "Upload stopped.", and `done` rejects. No request goes out in the 12 s after going back online.
+- **m2: fixed for duplicates, words open (n3).** The case that made two files (lost final answer, then the 24 h expiry) now ends after `HEAD>410`, with no POST and 1 row.
+- **m4: fixed.** Through the frozen proxy with `stallMs` 4000, the request is cut at about 4 s and the page says paused. The HEADs repeat and are cut in turn, then the upload completes when the path is back. The sha256 matches.
+
+### New findings
+**R2-B1. Blocker: any lasting 5xx after the HEAD becomes a retry loop with no wait (about 50 requests a second, forever), and the words never say paused.**
+- **Repro 1:** the door's `onComplete` always throws, so finish answers 500. **Observed:** in 10 s there were 419 requests (`HEAD>200:614387`, then `PATCH@614387>500`, repeated with 0 ms between) and **209 finish runs**. Each run reads the whole staged file, runs PF-F4 and `FilesPort.put`, and opens a transaction. The words stay "100%" (phase `uploading`). It never reports done (held).
+- **Repro 2:** every PATCH answers 503 and HEAD is fine, at 25%. **Observed:** 496 requests in 8 s, and the words stay "25%". When the 503s stop, it completes.
+- **Cause:** `onProgress` sets `failures = 0` (`resumable-upload.ts:125`). tus-js-client calls it before every PATCH (`upload.js:853`) and on a HEAD at offset = length (`upload.js:725`), so every attempt that passes its HEAD retries after `delays[0]` = 0. Also, `lost()` shows paused only when there was no answer at all (`:95`).
+- **Expected:** the delays (0, 1, 3, 5, 10 s, then 10 s forever) and "Upload paused: reconnecting" while the server keeps failing.
+- **Fix:** restart the delays only when the server's confirmed offset grows (`onChunkComplete`, or the HEAD's offset compared with the offset before the attempt), never in `onProgress`. Show paused for every try-again status. Add a fail test: PATCH 503 for 8 s gives at most 6 requests.
+- (`f08d0cb`'s message says it does this. Not tested here.)
+
+**R2-m1. Minor: `confirm()` has no stall watchdog and no abort signal.**
+- **Stall repro:** finish fails once, then the confirm's empty PATCH is never answered (`stallMs` 2000). **Observed:** after 12 s the page still says "100%", phase `uploading`, and never moves on.
+- **Abort repro:** call `abort()` while the confirm is in flight. **Observed:** the page says "Upload stopped." and `done` rejects, but the PATCH still goes out (`route.continue()` succeeded), the file is stored (1 row), and the page never learns its id.
+- **Fix:** give `confirm()`'s `fetch` an `AbortController`. `watch()` should cut it, and `abort()` should cancel it.
+
+**R2-m2. Minor: `retry()` called while a retry is still running returns the first, already-rejected `done`.**
+- **Repro:** after a 401, call `retry()` twice in a row. **Observed:** the second call rejects at once with the old words "Your session has ended…". Meanwhile the first retry completes the upload (1 row, the same id). A caller showing the latest answer would show a failure for an upload that succeeded.
+- **Fix:** keep the running retry's promise and return it.
+- `retry()` after done sent a HEAD and the empty PATCH again, got the same id, and stored no second row. That is harmless, so it is not a finding.
+
+**R2-m3. Minor: a 410 on resume is said in generic words, and can hide a stored file.**
+- A HEAD answer has no body, so `refusalWords(410, "", …)` falls back to "The upload could not be finished.". That holds for a plain expiry mid-file, and also after a lost final answer where the file **was stored** (1 row). In that second case the page says it failed.
+- **Fix:** give 410 its own words, as 404 has: "This upload expired… Start it again.". For a 410 after the last byte was sent, first try the empty PATCH (a stored file still answers with its id) before saying it expired.
+
+### New attacks that held
+- **A stall cut racing a late answer:** the final PATCH is stored, its answer held 4 s, `stallMs` 1500. The request is cut, the HEAD and empty PATCH give the same id, and the late answer arrives and is ignored. 1 row, 1 `onComplete`.
+- **A finish slower than `stallMs`:** finish took 3.5 s, `stallMs` 1500. The request is cut, the empty PATCH waits for the running finish, and gets the same id. 1 row, 1 `onComplete`.
+- `retry()` while the first try is running starts nothing new.
+- The 410 from expiry on resume never starts a new upload.
+
+Verdict: Block
