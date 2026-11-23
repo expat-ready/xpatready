@@ -34,6 +34,10 @@ if ! same_repo "$(git config --get remote.origin.url 2>/dev/null)" "$REMOTE"; th
   echo "private-sync: refused, the working copy $HOME_DIR is not a clone of $REMOTE: nothing synced" >&2
   exit 4
 fi
+# (a pushurl sends the push elsewhere even when the fetch URL is right; breaker round 3)
+while IFS= read -r u; do
+  [ -z "$u" ] || same_repo "$u" "$REMOTE" || { echo "private-sync: refused, origin's pushurl $u is not $REMOTE: nothing synced" >&2; exit 4; }
+done <<< "$(git config --get-all remote.origin.pushurl 2>/dev/null)"
 # ...never push from a working copy that holds no history of the mirror (a failed or empty clone).
 if ! git rev-parse -q --verify HEAD >/dev/null 2>&1; then
   echo "private-sync: refused, the working copy $HOME_DIR has no commits (git rev-parse HEAD): nothing synced, the mirror untouched" >&2
@@ -44,14 +48,26 @@ if ! git pull -q --ff-only; then
   echo "private-sync: the pull from $REMOTE failed: nothing synced" >&2
   exit 5
 fi
+# The push goes to the branch the working copy tracks (a local branch of another name would create a new one).
+up=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+case "$up" in origin/?*) ;; *) echo "private-sync: refused, the working copy tracks no branch of origin ($up): nothing synced" >&2; exit 4;; esac
 mkdir -p notes
 rsync -a --delete --exclude '.DS_Store' "$NOTES"/ notes/side-session-notes/
 # Checked again after the copy, on what git will commit (breaker round 2): the source can empty while the pull runs, a
 # copied .git folder becomes a gitlink, ignored files are never committed. Nothing is pushed unless a note remains.
+# Only regular files are notes (a symlink, mode 120000, is not); a session folder that is its own git repository would be
+# committed as a gitlink without its notes, so it is refused and named. A refusal resets notes/ only.
 git add -A notes
-if [ -z "$(git ls-files -s -- notes/side-session-notes/ | awk '$1 != "160000"' | cut -f2- | grep -v -E '(^|/)[.]' | head -1)" ]; then
-  git reset -q --hard HEAD; git clean -qffdx notes
-  echo "private-sync: refused, no note would be committed after the copy (the source emptied while syncing, or holds only a .git folder, ignored or dot files): nothing pushed, the mirror untouched" >&2
+undo() { git reset -q -- notes; git checkout -q HEAD -- notes 2>/dev/null || true; git clean -qffdx notes; }
+subs=$(git ls-files -s -- notes/side-session-notes | awk '$1 == "160000"' | cut -f2-)
+if [ -n "$subs" ]; then
+  undo
+  echo "private-sync: refused, a session folder is its own git repository, so its notes would not be backed up: $(echo $subs)" >&2
+  exit 4
+fi
+if [ -z "$(git ls-files -s -- notes/side-session-notes/ | awk '$1 == "100644" || $1 == "100755"' | cut -f2- | grep -v -E '(^|/)[.]' | head -1)" ]; then
+  undo
+  echo "private-sync: refused, no note would be committed after the copy (the source emptied while syncing, or holds only a .git folder, symlinks, ignored or dot files): nothing pushed, the mirror untouched" >&2
   exit 4
 fi
 
@@ -70,5 +86,5 @@ if git diff --cached --quiet && [ "$ahead" = 0 ]; then
   exit 0
 fi
 git diff --cached --quiet || git commit -qm "sync: side notes $(TZ=Asia/Kolkata date '+%Y-%m-%d %H:%M IST')"
-git push -q origin HEAD
+git push -q origin "HEAD:refs/heads/${up#origin/}"
 echo "private-sync: pushed $(git rev-parse --short HEAD) ($(git ls-files | wc -l | tr -d ' ') files)"
