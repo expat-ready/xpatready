@@ -83,3 +83,25 @@ Reviewer: Approve e263986fc8dc16c794b003d3466e612b9b4eb190
 **Journey score:** stays 9/10 from the earlier walk. These changes do not alter any journey's flow, and no new walk was needed for a diff this size.
 
 **Verdict: Approve** for `15386831c46378d852a176bde579c0acef6fa8c2`. No Blocker or Major is open. The remaining Minors (review m3, m4; breaker m4, m5) are recorded follow-ups for PF-19c part 2.
+
+## Re-review (diff 7a197a325..b64247632)
+*Diff-only, 23 Nov. Scope: `git diff 7a197a325..b64247632` (3 files: `registry.ts`, `templates.ts`, `check_pf19s_templates_browser.ts`). Head `b64247632268762f5afb277d81442f269b5aa374`.*
+
+**1. Audit line (check_aud_values, `fast`)**
+* `publish` now passes `before: now ? { version: now.version } : null, after: { version }`, and `detail` is `{ key }` only. This fits `AuditEntry` (`ports/audit.ts`): `AuditValues` takes a flat number, `version` is a valid field name and not a secret, and `detail` has no `_before`/`_after` key (the refine passes). `flattenValues` gives a lone `version_after: 1` on the first publish (a create). On a later publish it gives `version_before: n` and `version_after: n+1`; they always differ, so neither is dropped. The template wording is not in the audit line (AG-12-95).
+* No reader used `detail.version`. A grep of `api/src`, `web/src` and `tests` for `detail.version`, `detail->>'version'` and `platform.template.publish` finds only the action name and the T4 check. AUD-4's `changesOf` now shows the line as "version: → 1", which is the intended shape.
+* Static sweeps on my copy (`static-sweeps.mjs --base <merge-base>`): 18/18 PASS, including `check_aud_values.ts`.
+
+**2. Field pattern (CodeQL polynomial-redos) and `replaceAll`**
+* Old: `/\{\{\s*([^{}]*?)\s*\}\}/g`. New: `/\{\{([^{}]*)\}\}/g`, and `fieldsIn` and `partsOf` call `.trim()` on the name. Both match the same spans, because `\s` is a subset of `[^{}]`. JS `\s` and `String.prototype.trim` strip the same set (WhiteSpace plus LineTerminator, ECMA-262), so the trimmed name is what the lazy capture used to give. I tested this with 300,000 random strings over `{ } space tab \n NBSP U+2028 U+FEFF a _ x`. Match index, match length, name and `replace(…, "")` (the `strayBraces` input) were identical every time: 0 mismatches. Timing on my run: the old pattern took 14.2 s on `{{` + 5,000 spaces + `x`. The new pattern took 0.2 ms on 50,000 spaces and 0.2 ms on `{{a` × 30,000. Runs of `[^{}]` cannot overlap, so the total work stays linear.
+* Send path unchanged. `fillFields` (`studio/ports/messages.ts:103`) has its own pattern, `/\{\{\s*([a-z][a-z0-9_]*)\s*\}\}/g`, and this diff does not touch it. That pattern is not polynomial, because its name class cannot match a space. It strips the same `\s` that `trim()` now strips. So a `{{ name }}` that passes `unknownFields` here fills there exactly as before. No other code uses `FIELD_RE`, `fieldsIn` or `partsOf`; the web side has no `{{` pattern of its own.
+* Other patterns in the PR's code (`git diff origin/main...HEAD`, the 11 `.ts`/`.tsx` files): `split(/\s+/)`, `LONE_SURROGATE` (lookarounds on single code units), the control-character classes, `/\r\n?/g`, `/\{\{|\}\}/`, `UUID.test`, and the test-only `/…/.test(...)` checks on short API strings. None has nested or adjacent quantifiers that can match the same text, so I found no other ReDoS-prone pattern. The other two CodeQL alerts may be the second copy of the pattern in the test (now changed too) and the `.replace("_", " ")` that is now `replaceAll`. I could not see the alert list, so I cannot confirm they close. The next CodeQL run on this head shows whether they did.
+
+**3. New checks**
+* The linear-time fail test (`{{` + 50,000 spaces + `x`, under 500 ms, and `strayBraces` still true) does guard the regression. Nit, not scored: the old pattern would hang the suite (about 25 minutes by quadratic extrapolation) instead of printing a FAIL, so the CI step timeout is what reports it. A smaller input (about 3,000) would fail within seconds.
+* The T4 audit check now asserts `|none|1` (no `version_before`, `version_after` 1). Nit, not scored: the second publish's line (`version_before` 1, `version_after` 2) is not asserted. `check_aud_values` already covers the general shape, so this is optional.
+* My isolated copy (`pf19srv` on :4471, `AI_LIVE=off PLATFORM_IDENTITY=local`): `check_pf19s_templates_browser.ts` 30/30, exit 0. The T4 audit line read `1|Template lead.follow_up (Follow-up): version 1 published|none|1`, and the linear-time check took 0.21 ms.
+
+**Journey score:** stays 9/10. This diff does not change what the user sees or does.
+
+**Verdict: Approve** for `b64247632268762f5afb277d81442f269b5aa374`. No Blocker or Major is open. The two nits above are optional, and the earlier follow-ups (review m3, m4; breaker m4, m5) stand for PF-19c part 2.
