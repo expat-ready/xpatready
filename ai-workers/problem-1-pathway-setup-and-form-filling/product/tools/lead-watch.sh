@@ -72,6 +72,11 @@ for p in deq: print("ACT   #%d dequeued: owner merges main or fixes (%s)" % (p["
 for p in rl:  print("ACT   #%d red after approval (%s)" % (p["number"],p["title"][:50]))
 ' | tee "$STATE_DIR/q.txt"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "$SEEN"
+# 2h. Merge-queue batches running (P-791 (2), founder 22 Nov: the Lead's by-hand merge of #2754 at 12:1x IST restarted 9
+# batches): open mergify/ PRs whose checks are not finished, and what a by-hand merge would cost now. By-hand merges go
+# through tools/lead-merge.sh <PR>, which refuses while a batch runs unless given --reason (P-791 (4)).
+qb=$(python3 -I "$TOOLS/queue-batches.py" ${QB_PULLS:+--pulls "$QB_PULLS"} ${QB_CHECKS:+--checks "$QB_CHECKS"} 2>&1); say "$qb"
+fresh "queue-batches.py: open mergify/ PRs and their check runs (gh.sh)"
 # 2b. WIP against the caps (B204, P-745, founder 20 Nov: "enforceable and ... followed mandatory by the agents through the
 # hooks"): items building (an open non-draft PR or a lane naming the item; lanes from the saved app view) against 8 and
 # Built-not-Proven against 12; ACT over either cap and for each item building outside the open waves (waves.py wip).
