@@ -45,7 +45,17 @@ const goneOf = (p: Problem): Gone | null =>
 
 function Place({ label }: { label: string }) { useWhere([{ label }], null); return null; }
 
+/** A second link opened in the same tab changes only the address's hash (no page load): start again from that link. */
 export function InvitedSignUpPage() {
+  const [n, setN] = React.useState(0);
+  React.useEffect(() => {
+    const on = () => { if (new URLSearchParams(window.location.hash.replace(/^#/, "")).has("token")) { takeToken(); setN((x) => x + 1); } };
+    window.addEventListener("hashchange", on); return () => window.removeEventListener("hashchange", on);
+  }, []);
+  return <Invited key={n} />;
+}
+
+function Invited() {
   const [token] = React.useState(takeToken);
   const [view, setView] = React.useState<View>(token ? { step: "loading" } : { step: "gone", gone: { title: "This sign-up link doesn't work", words: NO_LINK, ask: true } });
   const [v, setV] = React.useState({ password: "", firmName: "", agree: false });
