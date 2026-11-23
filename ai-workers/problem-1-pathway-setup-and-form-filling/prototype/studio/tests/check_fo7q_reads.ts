@@ -1,7 +1,7 @@
 // FO-7q (R1.56; brief design/briefs/FO-7q.md): the money reads, paged on the server. DW1 performance and the plan
 // (10,000 invoices in each of two firms; the time is printed, not a gate: AG-6-30's 300 ms is an example), DW2 paging,
 // DW3 the SQL status agrees with FO-7b's invoiceStatus on every word, DW4 allowedActions, DW5 trust off, DW6 currencies
-// never summed, DW7 the firm walls, DW9 C5 fail closed. DW8 (the party money, ledger and To move reads) is not here:
+// never summed, DW7 the firm walls, DW9 C5 through CS-MV1's PgMoneyVisibility (bound in the app; real cases and prospects). DW8 (the party money, ledger and To move reads) is not here:
 // FO-7t and FO-7r are not on main (named in the PR). A pass and a fail each. A scratch database (every migration), a
 // Nest app of PF-4's guard, PF-12's walls, FO-7b's and this row's features; the local sign-in stand-in. No network, no
 // model call (US$0). Dropped at the end.
@@ -14,6 +14,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { fakeMail } from "../ports/mail.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { allowedActions, type ActionFacts } from "../api/src/client-money/reads/actions.ts";
@@ -198,19 +199,47 @@ try {
   const pb = await make(700, PA); void PB;
   ok("FO-7q DW7 fail: the same reads in firm A find A's invoice (so the 404 above is the wall, not a broken read)", (await inA(() => all.detail(ctxR, pb))).invoice.id === pb);
 
-  // ---------------------------------------------------------------------------------------- DW9: C5, fail closed
-  const app1 = await call(tA, "GET", M), app2 = await call(tA, "GET", `${M}/${S.Paid}/detail`), app3 = await call(tA, "GET", "/front-office/money/payments"), app4 = await call(tO, "GET", `/front-office/money/payments/${paidPay.id}`);
-  ok("FO-7q DW9 pass: in the app (no case-visibility port on main) the list is empty and a detail or payment is 404 for every role (fail closed)",
-    app1.status === 200 && app1.body.items.length === 0 && app2.status === 404 && app3.status === 200 && app3.body.items.length === 0 && app4.status === 404, [app1.status, app2.status, app3.status, app4.status]);
-  const C1 = "11111111-1111-4111-8111-111111111111", C2 = "22222222-2222-4222-8222-222222222222";
+  // ------------------------------------------------- DW9: C5 through CS-MV1's adapter (PgMoneyVisibility), real cases
+  // Firm A's cases X (user-O on its team) and Y (user-T's), and a prospect of user-O's whose subject is PA2 (Sample).
+  const WS = randomUUID(); let cn = 0;
+  sql(`insert into workspace (id, key, label) values ('${WS}', 'fo7q-${WS.slice(0, 8)}', 'FO-7q (Sample)')`);
+  const realCase = () => { const id = randomUUID(), client = randomUUID(); cn++;
+    sql(`set session_replication_role = replica;
+      insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values ('${client}', '${WS}', 'sample-firm', '${A}', ${cn}, 'Client ${cn} (Sample)', 'PERSON', '${PA}', 'seed:FO-7q');
+      insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status) values ('${id}', '${WS}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(cn).padStart(5, "0")}', 'sample-firm', '${A}', '${client}', 'OPEN')`);
+    return id; };
+  const team = (caseId: string, userId: string) => sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values ('${randomUUID()}', '${WS}', '${caseId}', '${userId}', 'OFFICER', 'user-R')`);
+  const X = realCase(), Y = realCase(); team(X, "user-O"); team(Y, "user-T");
+  sql(`set session_replication_role = replica; insert into fo_prospect (id, firm_id, number, lead_id, type, stage_id, subject_person_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
+    values ('${randomUUID()}', '${A}', 'P-07001', '${randomUUID()}', 'INDIVIDUAL', '${randomUUID()}', '${PA2}', null, '${PA2}', '${staff("user-O", A)}', 'seed:FO-7q', now())`);
   const onCase = (c: string) => sql(`insert into money_invoice (firm_id, person_id, case_id, currency, created_by, updated_at) values ('${A}', '${PA}', '${c}', 'CAD', 'seed:FO-7q', now()) returning id`);
-  const i1 = onCase(C1), i2 = onCase(C2);
-  const officer = new InvoiceReads(db, async () => ({ cases: [C1], parties: [] }));
-  const oPage = await inA(() => officer.list(ctxO, {})), o2 = await inA(() => officer.detail(ctxO, i2)).then(() => 200, (e) => e.getStatus?.());
-  ok("FO-7q DW9 pass: a scope of one case gives only that case's invoice; another officer's case is 404", oPage.items.length === 1 && oPage.items[0].id === i1 && o2 === 404, oPage.items.map((r) => r.caseId));
-  const parties = await inA(() => new InvoiceReads(db, async () => ({ cases: [], parties: [PA2] })).list(ctxO, {}));
-  ok("FO-7q DW9 fail: a party in scope reaches its invoices with no case only, never a case's invoice of the same person", parties.items.length === 1 && parties.items[0].id === usd
-    && (await inA(() => new InvoiceReads(db, async () => ({ cases: [], parties: [PA] })).list(ctxO, {}))).items.every((r) => r.caseId === null));
+  const iX = onCase(X), iY = onCase(Y);
+  // X's invoice issued with one line and paid in part, so the officer's payments read has something to find (review n2)
+  sql(`insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) values ('${A}', '${iX}', 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD')`);
+  await issue(iX); const xPay = await pay(iX, 300);
+  // the app as wired (features/client-money-reads.ts): user-R holds agent/case:view.all (PF-3's seed)
+  const app1 = await call(tA, "GET", `${M}?pageSize=200`), app2 = await call(tA, "GET", `${M}/${iY}/detail`), app3 = await call(tA, "GET", `${M}/${S.Paid}/detail`);
+  const appIds = (app1.body?.items ?? []).map((r: { id: string }) => r.id);
+  ok("FO-7q DW9 pass (CS-MV1 bound in the app): user-R, who may see every case, lists X's and Y's invoices and opens Y's",
+    app1.status === 200 && appIds.includes(iX) && appIds.includes(iY) && app2.status === 200 && app2.body.invoice.id === iY, { s: app1.status, n: appIds.length, d: app2.status });
+  ok("FO-7q DW9 fail (still fail closed where no rule reaches): an invoice on a person with no case and no prospect is in no one's scope: absent from the list, its detail 404",
+    !appIds.includes(S.Paid) && app3.status === 404, app3.status);
+  // the real reads with the real adapter, for a case officer who may see only their own cases (view.all taken away)
+  const { PgMoneyVisibility } = await import("../api/src/client-money/visibility-adapter.ts");
+  const vis = new PgMoneyVisibility(db), real = new InvoiceReads(db, (c) => vis.scopeOf(c)), realPay = new PaymentReads(db, (c) => vis.scopeOf(c));
+  const own = { ...(ctxO as { keys: string[] }), keys: (ctxO as { keys: string[] }).keys.filter((k) => k !== "agent/case:view.all" && k !== "agent/prospect:view.all").concat("agent/case:view.own", "agent/prospect:view.own") } as never;
+  const oPage = await inA(() => real.list(own, { pageSize: "200" })), oIds = oPage.items.map((r) => r.id);
+  const oY = await inA(() => real.detail(own, iY)).then(() => 200, (e) => e.getStatus?.()), oX = await inA(() => real.detail(own, iX)).then((d) => d.invoice.id, () => null);
+  ok("FO-7q DW9 pass: with the real adapter a case officer limited to their own cases gets X's invoice and their prospect's party's (PA2, no case), and opens X's",
+    oIds.includes(iX) && oIds.includes(usd) && oX === iX, oIds.length);
+  ok("FO-7q DW9 fail: never Y's invoice (another officer's case: 404) nor a case-less invoice of a person they hold no prospect for (PA)", !oIds.includes(iY) && oY === 404 && !oIds.includes(S.Paid), { oY });
+  const oPays = await inA(() => realPay.list(own, {}));
+  ok("FO-7q DW9 pass: payments follow their invoice's scope: the officer sees the payment on X's invoice, and none on PA's case-less invoices",
+    oPays.items.some((x) => x.id === xPay.id) && oPays.items.every((x) => x.invoiceId !== S.Paid && x.invoiceId !== S["Part paid"]), { n: oPays.items.length, xPay: xPay?.id });
+  const bReal = await inB(() => real.list(ctxB, {})), bScope = await inB(() => vis.scopeOf(ctxB));
+  // the adapter's own answer for firm B, not only the list's wall (review n1): a leak of A's ids would show here
+  ok("FO-7q DW9 fail: firm B's widest scope through the adapter names none of firm A's cases or parties, and its list holds none of A's invoices",
+    ![X, Y].some((c) => bScope.cases.includes(c)) && ![PA, PA2].some((p) => bScope.parties.includes(p)) && bReal.items.every((r) => ![iX, iY, usd, S.Paid].includes(r.id)), bScope);
 
   // ------------------------------------------------------------------------- DW1 + DW2: 10,000 invoices per firm
   for (const [f, p] of [[A, PA], [B, PB]]) {
