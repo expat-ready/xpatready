@@ -26,3 +26,7 @@ Open conflict: card at 13:0x "gates answered first, build in M4 after the Bake, 
 # A320 (14:33 IST, pressed by the founder in Lead 4)
 
 "Yes, land as one": the ten stacked tooling PRs (#2982 to #2590) may land as one merge through #2590; replaces "no combined PR" for these ten only. Conditions told to him: the Lead reads the diff; the faults in #2457 and #2605 fixed and reviewed first. #2372 stays closed.
+
+# A321 (14:54 IST, typed to Lead 4)
+
+"Yeah, let me know one question at a time with your recommended solution for private repository. If you have to do any configuration change in the GitHub is logged in into the inbuilt browser to yourself. You have my all approval. Anything else, let me know. And you have all my approvals for your all recommended solution above." Read as: approved recommendations (private repository after the short plan, created empty, pack build in M4; drop fix 1 unless a measurement changes it; guards.d follow-up after the list). It does not name a purchase, a permission widening or a permanent deletion. #3193 retarget: refused by the permission check a second time after this; not routed through the browser (P-504), left. Asked: create the empty private repository after the three checks?
