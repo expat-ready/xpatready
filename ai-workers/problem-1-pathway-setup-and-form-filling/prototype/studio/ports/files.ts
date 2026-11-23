@@ -7,12 +7,24 @@ import { FirmId } from "./audit.ts";
 
 /** A file key: lower-case path segments (`retainers/<id>/v1.pdf`), no `..`, no leading or trailing slash. */
 export const FileKey = z.string().max(300).regex(/^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)*$/, "lower-case path segments").refine((k) => !k.split("/").some((s) => s === ".." || s === "."), "no . or .. segment");
+/** PF-Fw: the largest file the port stores or reads, in bytes: SA-8-58 (SA8-D32, R32), "Upload size limits are built
+ *  constants — 25 MB for documents, 10 MB for images"; the larger of the two, the same number as
+ *  api/src/platform/files/file-type.ts `MAX_BYTES.document` (tests/check_pffw_files_limits.ts keeps them equal). Every
+ *  adapter reads this one constant: a put over it is refused before any adapter stores a byte, and S3's get checks an
+ *  object's size against it before reading the object into memory. */
+export const FILE_MAX_BYTES = 25 * 1024 * 1024;
+/** ES2024's String.prototype.isWellFormed (Node 20+; this project's TypeScript lib is es2023): no lone surrogate. */
+const isWellFormed = (s: string): boolean => (String.prototype as unknown as { isWellFormed(this: string): boolean }).isWellFormed.call(s);
+/** PF-Fw: a content type is well formed: no lone surrogate (it cannot be written as UTF-8, so no adapter could keep it
+ *  exactly) and no control character (C0 or DEL: a header, a log line or a metadata value would carry it). */
+export const wellFormedType = (t: string): boolean => isWellFormed(t) && !/[\u0000-\u001f\u007f]/.test(t);
 export const FilePut = z.strictObject({
   firmId: FirmId,
   key: FileKey,
-  bytes: z.instanceof(Uint8Array),
-  contentType: z.string().regex(/^[\w.+-]+\/[\w.+-]+(;.*)?$/, "a media type"),
+  bytes: z.instanceof(Uint8Array).refine((b) => b.byteLength <= FILE_MAX_BYTES, `at most ${FILE_MAX_BYTES} bytes`),
+  contentType: z.string().regex(/^[\w.+-]+\/[\w.+-]+(;.*)?$/, "a media type").refine(wellFormedType, "well formed: no lone surrogate, no control character"),
 });
+export type FilePut = z.infer<typeof FilePut>;
 
 export type StoredFile = { key: string; bytes: Uint8Array; contentType: string; sha256: string };
 
@@ -41,6 +53,24 @@ export class FileKeyTaken extends Error {
   constructor(readonly key: string) { super(`file key ${key} already holds other content`); this.name = "FileKeyTaken"; }
 }
 
+/** PF-Fw: refused: the bytes are over FILE_MAX_BYTES (a put), or the stored object is (S3's get). Nothing is stored or read. */
+export class FileTooLarge extends Error {
+  constructor(readonly bytes: number, readonly max = FILE_MAX_BYTES) { super(`a file is at most ${max} bytes; this one is ${bytes}`); this.name = "FileTooLarge"; }
+}
+/** PF-Fw: refused: the content type has a lone surrogate or a control character. */
+export class FileTypeMalformed extends Error {
+  constructor() { super("a content type may not hold a lone surrogate or a control character"); this.name = "FileTypeMalformed"; }
+}
+
+/** PF-Fw: the one check of a put, which every adapter (and the fake) calls before it touches its store: an oversized put
+ *  is refused with FileTooLarge and a malformed content type with FileTypeMalformed (named errors); any other bad field
+ *  is refused by FilePut as before (a ZodError). */
+export function parseFilePut(input: { firmId: string; key: string; bytes: Uint8Array; contentType: string }): FilePut {
+  if (input?.bytes instanceof Uint8Array && input.bytes.byteLength > FILE_MAX_BYTES) throw new FileTooLarge(input.bytes.byteLength);
+  if (typeof input?.contentType === "string" && !wellFormedType(input.contentType)) throw new FileTypeMalformed();
+  return FilePut.parse(input);
+}
+
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const d = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
   return Array.from(d, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -52,7 +82,7 @@ export function fakeFiles(): FilesPort & { readonly count: number } {
   const id = (firmId: string, key: string) => `${FirmId.parse(firmId).toLowerCase()}|${FileKey.parse(key)}`;
   return {
     async put(firmId, key, bytes, contentType) {
-      const p = FilePut.parse({ firmId, key, bytes, contentType });
+      const p = parseFilePut({ firmId, key, bytes, contentType });
       const sha256 = await sha256Hex(p.bytes), at = id(p.firmId, p.key), had = store.get(at);
       if (retired.has(at)) throw new FileKeyTaken(p.key);
       if (had && (had.sha256 !== sha256 || had.contentType !== p.contentType)) throw new FileKeyTaken(p.key);

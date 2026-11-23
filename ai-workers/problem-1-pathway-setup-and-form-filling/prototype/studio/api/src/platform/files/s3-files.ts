@@ -10,6 +10,9 @@
 //  * delete (PF-Fd): the object is replaced, only if it is still the one read (If-Match), by an empty tombstone, so the
 //    key stays taken and is never written again. With bucket versioning on (PF-F1c) the replaced bytes remain as an
 //    earlier version until the bucket's lifecycle rule removes them: that rule is PF-F1c's;
+//  * size (PF-Fw): a put over the port's FILE_MAX_BYTES is refused by the port's own check before any request; a get
+//    reads the object's size (Content-Length) first and refuses one over the cap, or one with no size, with FileTooLarge
+//    without reading its bytes into memory (the body is destroyed unread);
 //  * usedBytes (PF-15): the sizes under the firm's prefix (a tombstone is 0 bytes);
 //  * links: S3FileLinks, below.
 // An S3 error is rethrown with its name and status only (the SDK's own text can quote a request, PF-23). CI and lanes
@@ -18,7 +21,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, type HeadObjectCommandOutput, type S3ClientConfig } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { FirmId } from "../../../../ports/audit.ts";
-import { FileKey, FileKeyTaken, FilePut, sha256Hex, type FilesPort, type StoredFile } from "../../../../ports/files.ts";
+import { FILE_MAX_BYTES, FileKey, FileKeyTaken, FileTooLarge, parseFilePut, sha256Hex, type FilesPort, type StoredFile } from "../../../../ports/files.ts";
 import type { Secret } from "../config/secret.ts";
 
 /** AG-9-19: where the bucket is unless the configuration names another region. */
@@ -116,7 +119,7 @@ export class S3Files implements FilesPort {
   }
 
   async put(firmId: string, key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string }> {
-    const f = FilePut.parse({ firmId, key, bytes, contentType });
+    const f = parseFilePut({ firmId, key, bytes, contentType });
     // The port keeps the type exactly as put (a retry compares it, get gives it back). An HTTP header carries printable
     // ASCII only and loses spaces at its ends (break m3, r2-m2), so the exact type is kept in the object's metadata,
     // base64url; the Content-Type header S3 serves is a safe copy of it (or application/octet-stream).
@@ -141,9 +144,11 @@ export class S3Files implements FilesPort {
     try {
       const r = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: objKey }));
       if (r.Metadata?.retired !== undefined) { (r.Body as { destroy?: () => void } | undefined)?.destroy?.(); return null; }
+      // PF-Fw: the size before the bytes: an object over the cap (or of no stated size) is never read into memory.
+      if (typeof r.ContentLength !== "number" || r.ContentLength > FILE_MAX_BYTES) { (r.Body as { destroy?: () => void } | undefined)?.destroy?.(); throw new FileTooLarge(r.ContentLength ?? Number.NaN); }
       bytes = r.Body ? new Uint8Array(await r.Body.transformToByteArray()) : new Uint8Array();
       meta = r.Metadata; contentType = meta?.type ? Buffer.from(meta.type, "base64url").toString("utf8") : undefined;
-    } catch (e) { if (statusOf(e) === 404 && (e as Error).name === "NoSuchKey") return null; throw new S3FilesError("get", e); }   // a missing bucket is an error, never "no such file" (break m6)
+    } catch (e) { if (e instanceof FileTooLarge) throw e; if (statusOf(e) === 404 && (e as Error).name === "NoSuchKey") return null; throw new S3FilesError("get", e); }   // a missing bucket is an error, never "no such file" (break m6)
     // An object without our sha256, or whose bytes no longer match it, was not written by this adapter: never served.
     if (!contentType || !meta?.sha256 || meta.sha256 !== await sha256Hex(bytes)) throw new S3FilesError("get", named("IntegrityMismatch"));
     return { key: FileKey.parse(key), bytes, contentType, sha256: meta.sha256 };
