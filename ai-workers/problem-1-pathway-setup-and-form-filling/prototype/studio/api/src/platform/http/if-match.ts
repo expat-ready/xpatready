@@ -1,4 +1,4 @@
-// PF-31 part (c) (EXPERIENCE §2.12 "save once, with the version"; RFC 9110 §8.8.3 ETag, §13.1.1 If-Match, §15.5.10 409): one
+// PF-31 part (c) (EXPERIENCE §2.13 "save once, with the version"; RFC 9110 §8.8.3 ETag, §13.1.1 If-Match, §15.5.10 409): one
 // shared optimistic-concurrency door for staff edits.
 //  * A save (POST, PUT, PATCH, DELETE) whose answer carries a top-level `version` string also sends it as a strong ETag
 //    ("<version>"). Reads do not (review M3): a read's answer can change while its record's version does not (the firm
