@@ -352,8 +352,10 @@ try {
   ok("FO-6 G pass: the feature file registers the state read and the webhook door and provides the Signing service",
     (signingFeature.controllers as unknown[]).includes(SigningController) && (signingFeature.controllers as unknown[]).includes(SigningHooksController) && JSON.stringify((signingFeature.providers as { provide?: { name?: string } }[]).map((p) => p.provide?.name)) === '["Signing"]');
   // ------------------------------------------------------------- G: retired names, the bypass use
-  const grep = (() => { try { return execFileSync("grep", ["-rlE", "retainer\\.executed|envelope\\.completed", join(STUDIO, "api", "src"), join(STUDIO, "ports"), join(STUDIO, "web", "src"), join(STUDIO, "engine")], { encoding: "utf8" }).trim(); } catch { return ""; } })();
-  ok("FO-6 G pass: no retainer.executed or envelope.completed name anywhere in the code (A51 §12: signing.completed is the one)", grep === "", grep);
+  const grep = (() => { try { return execFileSync("grep", ["-rlE", "retainer\\.executed|envelope\\.completed", join(STUDIO, "api", "src"), join(STUDIO, "ports"), join(STUDIO, "engine"), join(STUDIO, "contracts")], { encoding: "utf8" }).trim(); } catch { return ""; } })();
+  // Event names are written only where events are made and read (the API, the ports, the engine, the contracts); the
+  // browser code never names one, and a scan of the browser code would make every page change choose this suite (chooser self-test).
+  ok("FO-6 G pass: no retainer.executed or envelope.completed name in the API, the ports, the engine or the contracts (A51 §12: signing.completed is the one)", grep === "", grep);
   const { BYPASS_USES } = await import("../api/src/platform/firm-scope.ts");
   const { SIGNING_WEBHOOK } = await import("../api/src/front-office/signing/webhook.bypass.ts");
   const use = SIGNING_WEBHOOK.entry;
