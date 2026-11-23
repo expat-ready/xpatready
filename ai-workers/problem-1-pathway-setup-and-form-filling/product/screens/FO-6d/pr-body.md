@@ -27,7 +27,9 @@ Routes (`/api/front-office`): `POST signature-requests` (multipart) · `GET sign
 * Minors taken: keys on the new table; titles refuse C1/format/line-separator characters; newest 200; stale comments. Left, said: orphan file on a failed send (as retainers); double submit (the screen disables Send); a Read-only staff member as firm signer (AG-5-61 "one firm person"); the database does not check an OTHER request names its firm's document (the API writes it first).
 
 ## Checks and results
-<filled at the end>
+* Suites touched (18, by `run-suites.sh --only`: FO-6d, FO-6 port/signing/API, FO-3c, FO-2w, PF-28 inputs, PF-6b permissions, PF-19r senders, QA-53, PF-12 walls, Prisma schema, CS-SD1 drift, PF-8b F4/F7, features registry, events, PF-1 routes) at 9691d5539: **run 1 exit 0 (18/18), run 2 exit 0 (18/18)**. `--changed` selects ALL (a migration is shared), so the PR's check runs the rest.
+* `tests/check_fo6d_any_document.ts` 26/26; `graph.mjs --check` exit 0; `count-any.mjs` 416 = base 416; `module-cards.py pr` exit 0; size 775 changed lines (P-610).
+* Review: round 1 Changes/Changes at f6d048440, round 2 Changes/Changes at 8162df596 (one Major, fixed at 9691d5539); round 3 asked of the tech lead.
 
 Duplicate check: searched BACKLOG*.md ("FO-6d", "any document", "OTHER", "send for signature"), open PRs (all, records PRs too: none for FO-6d/FO-6ds), main's code (`signature-requests`, `fo_signing_document`, `"OTHER"`), qa/BUGS.md; none.
 
