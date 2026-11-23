@@ -11,5 +11,6 @@ import { RetainersController } from "../front-office/retainers/routes.ts";
 import { Retainers } from "../front-office/retainers/service.ts";
 import { PlatformClock } from "../platform/identity/port.ts";
 import { EntitledFiles, StorageWatch } from "../platform/entitlements/storage.ts";
+import { boundFiles, filesProviders } from "../platform/files/choose.ts";
 [Db, LocalFiles, PlatformClock].forEach((t, i) => Inject(t)(Retainers, undefined, i));
-export default { controllers: [RetainersController], providers: [{ provide: LocalFiles, useFactory: (db: Db, clock: PlatformClock, watch?: StorageWatch) => new EntitledFiles(db, () => clock.now(), watch ?? null), inject: [Db, PlatformClock, { token: StorageWatch, optional: true }] }, FileLinks, Retainers] } satisfies Feature;
+export default { controllers: [RetainersController], providers: [{ provide: LocalFiles, useFactory: (db: Db, clock: PlatformClock, watch?: StorageWatch) => new EntitledFiles(db, () => clock.now(), watch ?? null, boundFiles()), inject: [Db, PlatformClock, { token: StorageWatch, optional: true }] }, filesProviders[1]!, FileLinks, Retainers] } satisfies Feature;

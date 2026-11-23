@@ -19,7 +19,7 @@ p=${u#https://api.test/repos/o/r/}; pg=$(printf '%s' "$u" | sed -n 's/.*[?&]page
 serve() { [ -f "$FX/$1" ] && cat "$FX/$1" || { echo '{"message":"Not Found"}'; exit 22; }; }
 case "$m $p" in
   "GET pulls/"*/files*) n=${p#pulls/}; n=${n%%/*}; [ "${pg:-1}" = 1 ] && serve "files-$n.json" || echo '[]';;
-  "GET pulls/"*) serve "pr-${p#pulls/}.json";;
+  "GET pulls/"*) serve "pr-${p#pulls/}.json"; [ -f "$FX/pr-${p#pulls/}.after.json" ] && mv "$FX/pr-${p#pulls/}.after.json" "$FX/pr-${p#pulls/}.json" || true;;   # .after: the head moves after the first read
   "GET pulls?"*) if [ -f "$FX/pulls-p${pg:-1}.json" ]; then cat "$FX/pulls-p${pg:-1}.json"; elif [ "${pg:-1}" = 1 ] && [ -f "$FX/pulls.json" ]; then cat "$FX/pulls.json"; else echo '[]'; fi;;
   "GET actions/workflows/ci.yml/runs?event=workflow_dispatch"*) [ -n "${FAIL_FULL:-}" ] && { echo '{"message":"Server Error"}'; exit 22; }
     [ "${pg:-1}" = 1 ] && [ -f "$FX/fullruns.json" ] && cat "$FX/fullruns.json" || echo '{"workflow_runs":[]}';;
@@ -330,6 +330,10 @@ prj 8 $HEAD1 false "review: approved"; files 8 "$S/api/src/form.ts"; cirun $HEAD
 ok "fresh: main merged #501 touching the same file after this ci started: failure, and the labelled PR's ci is re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && grep -qx 'RERUN 77' <<< "$log" && grep -q '#501' <<< "$out" && echo 1)" "$out / $log"
 jq -n --arg n "$S/api/src/form-v2.ts" --arg o "$S/api/src/form.ts" '[{filename: $n, previous_filename: $o}]' > "$T/fx/files-8.json"; run fresh 8
 ok "fresh: a PR that renamed form.ts is stale when main changed form.ts (the old name counts, Devin on #1861)" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
+prj 8 $HEAD1 false "review: approved"; cp "$T/fx/pr-8.json" "$T/fx/pr-8.keep"; prj 8 $OLD false "review: approved"; mv "$T/fx/pr-8.json" "$T/fx/pr-8.after.json"; mv "$T/fx/pr-8.keep" "$T/fx/pr-8.json"
+files 8 "$S/api/src/form.ts"; run fresh 8
+ok "fresh (SPD-2 item 5, m2): the head moved after it was read: failure, but no re-run (it would supersede the new head's ci)" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && ! grep -q RERUN <<< "$log" && grep -q 'head moved' <<< "$out" && echo 1)" "$out / $log"
+prj 8 $HEAD1 false "review: approved"; rm -f "$T/fx/pr-8.after.json"
 files 8 "$S/api/src/other.ts"; run fresh 8
 ok "fresh: no merge since touches its files: success, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
 files 8 "$S/prisma/migrations/9_z/migration.sql"; run fresh 8

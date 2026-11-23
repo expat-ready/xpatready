@@ -11,7 +11,7 @@
 import { HttpException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import type { BillingAddress } from "../../../../ports/billing.ts";
+import { standInCustomer, type BillingAddress } from "../../../../ports/billing.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import { firmScope } from "../firm-scope.ts";
 import { parseInput } from "../http/input.ts";
@@ -67,10 +67,15 @@ export class BillingAccount {
 
   async invoices(s: StaffContext) {
     const sub = await this.current(s.firmId);
-    if (!sub.stripeCustomerId) return { invoices: [] };
+    // R1.21 (P-796): on the billing stand-in (a local server with no Stripe key) a firm with no Stripe customer reads its
+    // stand-in customer's invoices (stand-in.ts); anywhere else no customer means no invoices.
+    // Break m1: a firm that also has a stored customer on the stand-in reads both.
+    const customers = [...new Set([sub.stripeCustomerId, this.ports.standIn ? standInCustomer(s.firmId) : null].filter((c): c is string => !!c))];
+    if (!customers.length) return { invoices: [] };
     this.ready();
-    const list = await this.ports.billing.invoices(sub.stripeCustomerId).catch(() => { throw unavailable(); });
-    return { invoices: list.filter((i) => i.status !== "draft").map((i) => ({ id: i.id, number: i.number, status: i.status, amountDueCents: i.amountDueCents, currency: i.currency.toUpperCase(), createdAt: i.createdAt, hostedUrl: i.hostedUrl })) };
+    const list = (await Promise.all(customers.map((c) => this.ports.billing.invoices(c))).catch(() => { throw unavailable(); })).flat();
+    return { invoices: list.filter((i) => i.status !== "draft").map((i) => ({ id: i.id, number: i.number, status: i.status, amountDueCents: i.amountDueCents, currency: i.currency.toUpperCase(), createdAt: i.createdAt, hostedUrl: i.hostedUrl,
+      subtotalCents: i.subtotalCents, taxCents: i.taxCents, taxLines: i.taxLines.map((t) => ({ name: t.name, jurisdiction: t.jurisdiction, ratePpm: t.ratePpm, amountCents: t.amountCents })) })) };
   }
 
   async setAddress(s: StaffContext, body: unknown) {
