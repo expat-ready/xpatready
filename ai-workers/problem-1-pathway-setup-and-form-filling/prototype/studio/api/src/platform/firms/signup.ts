@@ -12,7 +12,7 @@
 //   * R1.90 invited sign-up (P-566 "invited link kept"): our staff make a private single-use link (makeLink, PF-4s's
 //     `system/signup-link:manage`; 14 days, PF-3's table) naming one email, the country, a plan and a period; its token is
 //     shown once and stored as its hash. Opening it (GET) shows those and changes nothing; its form (password, firm name,
-//     the current terms) starts the same provider email check as the self-serve sign-up, for the link's email only; Confirm
+//     the current terms, and another active plan or period if the person changes the link's default) starts the same provider email check as the self-serve sign-up, for the link's email only; Confirm
 //     makes the firm and marks the link used with its firm in that transaction. Unknown, used and expired links are one 404.
 import { HttpException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
@@ -85,8 +85,10 @@ const words = (i: z.core.$ZodIssue) => {
   return i.message.startsWith(`${f}:`) ? i.message : `${f}: check this answer`;
 };
 const VerifyBody = z.strictObject({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), code: z.string().regex(/^\d{6}$/) });
-/** R1.90: the invited form: the link names the email, the country, the plan and the period, so the body cannot. */
-const InvitedBody = Body.pick({ password: true, firmName: true, acceptedTerms: true });
+/** R1.90: the invited form: the link names the email and the country, so the body cannot. Its plan and period are the
+ *  default; the person may pick another active plan or period (SA-2-22 "The sign-up page offers only Active, Public plans";
+ *  concept pf-5s-saas §7b M4; PR #3202 review Major 1). */
+const InvitedBody = Body.pick({ password: true, firmName: true, acceptedTerms: true }).extend({ planCode: z.string().min(1).max(40).optional(), period: z.enum(["MONTHLY", "YEARLY"]).optional() });
 /** R1.90: our staff's request for a private link (PF-4s's guard reads `reason` and writes it on our staff's audit line). */
 export const LinkBody = z.strictObject({
   email: filled(EMPTY.email), countryCode: z.literal("CA", { error: "countryCode: CA only for now" }), planCode: z.string().min(1).max(40), period: z.enum(["MONTHLY", "YEARLY"]).default("MONTHLY"),
@@ -283,11 +285,12 @@ export class FirmSignUp {
     const terms = await this.currentTerms();
     const given = new Set(b.acceptedTerms.map((t) => t.toLowerCase()));
     if (terms.length === 0 || terms.some((t) => !given.has(t.id)) || given.size !== terms.length) throw fields(["acceptedTerms: accept the current terms of service, privacy notice and data-processing terms"]);
-    const plan = await this.db.platformPlan.findFirst({ where: { code: link.planCode, active: true } });
+    const plan = await this.db.platformPlan.findFirst({ where: { code: b.planCode ?? link.planCode, active: true } });
+    if (!plan && b.planCode) throw fields(["planCode: choose one of the plans offered"]);
     if (!plan) throw problem(409, "PLAN_GONE", "This link's plan is not offered", "The plan on this link is no longer offered. Ask us for a new link.");
     // The link's holder knows its email already, so the work runs before the answer (the self-serve door's timing rule
     // protects an unknown email; here there is none to protect).
-    await this.signUpWork(link.email, { password: b.password, firmName: b.firmName, countryCode: link.countryCode as "CA", period: link.billingPeriod }, plan.code, terms.map((t) => t.id), link.id);
+    await this.signUpWork(link.email, { password: b.password, firmName: b.firmName, countryCode: link.countryCode as "CA", period: b.period ?? link.billingPeriod }, plan.code, terms.map((t) => t.id), link.id);
     return { status: "check-email", message: ACCEPTED, sentTo: link.email };
   }
 

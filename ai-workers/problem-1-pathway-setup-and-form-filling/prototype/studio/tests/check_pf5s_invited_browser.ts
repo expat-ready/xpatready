@@ -3,9 +3,11 @@
 // doors (#3040: POST /api/system/signup-links, GET|POST /api/public/signup/:token), the local identity stand-ins, the
 // demo inbox and the fake BillingPort. A pass and a fail each:
 //   IV1 pass: our staff make a link; the invited person opens it: the token leaves the address before anything is sent,
-//       the email, Canada, the plan and the period are shown fixed (no email input, no plan picker); password, firm name
-//       and the tick → Check your email naming the link's email → the inbox's link → Confirm → one firm in TRIAL on the
-//       link's plan and period, the link used with its firm. Opening the page made nothing.
+//       the email and Canada are shown fixed (no email input), the link's plan and period are the default with Change
+//       (§7b M4, SA-2-22); the person changes to another active plan, monthly; password, firm name and the tick → Check
+//       your email naming the link's email → the inbox's link → Confirm → one firm in TRIAL on the chosen plan and
+//       period, the link used with its firm. Opening the page made nothing. Fail: a plan code not offered → 422 on
+//       planCode from the door, nothing stored.
 //   IV2 fail on the form: the tick unticked and the password short → the words on each field and in the summary, no
 //       POST leaves the page, nothing stored.
 //   IV3 the dead link, one page for all four: used (IV1's link again), expired (a link dated past its 14 days in the
@@ -75,6 +77,8 @@ try {
   const session = await j("POST", "/api/system/session/local", { email: staffEmail, secondStep: true });
   if (session.status !== 200 || !session.body?.token) throw new Error(`STOP  our staff's local sign-in refused (start the copy with PLATFORM_SYSTEM_IDENTITY=local): ${JSON.stringify(session.body).slice(0, 200)}`);
   const PLAN = sql("select code from platform_plan where active and trial_days > 0 order by code limit 1"), PLAN_NAME = sql(`select name from platform_plan where code = '${PLAN}'`);
+  const PLAN2 = sql(`select code from platform_plan where active and trial_days > 0 and code <> '${PLAN}' order by code limit 1`), PLAN2_NAME = sql(`select name from platform_plan where code = '${PLAN2}'`);
+  if (!PLAN2) throw new Error("STOP  the copy needs two active plans with trial days");
   const makeLink = async (email: string) => {
     const r = await j("POST", "/api/system/signup-links", { email, countryCode: "CA", planCode: PLAN, period: "YEARLY", reason: "Sales-led firm (Sample)" }, session.body.token);
     const link = String(r.body?.link ?? ""), path = link.match(/\/sign-up\/invited#token=[A-Za-z0-9_-]{43}$/)?.[0];
@@ -93,17 +97,24 @@ try {
   ok("PF-5s S8 IV2 fail (BR-3): the tick unticked and a short password → the words on each field and in the summary, each summary line naming its field (break m4); no POST leaves the page; nothing stored",
     (await q.locator("[data-signup-terms-error]").innerText()) === TERMS_REQUIRED && sum2.includes(TERMS_REQUIRED) && sum2.includes("Password: At least 12 characters.") && sum2.includes(`Terms: ${TERMS_REQUIRED}`) && posts === before && pending(e2) === "0" && firms(e2) === "0", { sum2, posts: posts - before });
   await shot(q, "iv2-refused-1280"); await axe("the refused form at 1280 px", q); await noSideways("the refused form at 1280 px", q);
+  const t2 = l2.path.split("token=")[1], terms = ((await j("GET", "/api/public/plans")).body?.terms ?? []).map((t: { id: string }) => t.id);
+  const notOffered = await j("POST", `/api/public/signup/${t2}`, { password: PASS_WORDS, firmName: `Sample Plan Firm ${run}`, acceptedTerms: terms, planCode: "no-such-plan", period: "MONTHLY" });
+  ok("PF-5s S8 IV2 fail (review Major 1, §7b M4): the door refuses a plan that is not offered → 422 on planCode; nothing stored", notOffered.status === 422 && JSON.stringify(notOffered.body).includes("planCode") && pending(e2) === "0", { status: notOffered.status, body: JSON.stringify(notOffered.body).slice(0, 160) });
 
   // ------------------------------------------------------------------------------------------ IV1: the link signs up once
   const e1 = `invited1.pf5si.${run}@example.com`, l1 = await makeLink(e1);
   const p = await newPage();
   await p.goto(`${BASE}${l1.path}`); await form(p);
   ok("PF-5s S8 IV1: the token leaves the address before anything is sent (no #token in the page's address)", !p.url().includes("token="), p.url());
-  ok("PF-5s S8 IV1 (BR-13): the link's email, Canada, the plan and the period are shown fixed: no email input, no plan picker",
+  await p.locator("[data-invited-plan-change]").waitFor({ timeout: 10_000 });
+  ok("PF-5s S8 IV1 (BR-13, §7b M4): the link's email and Canada are fixed (no email input); the link's plan and period are the default, with Change",
     (await p.locator("[data-invited-email]").innerText()) === e1 && (await p.locator("[data-signup-country]").innerText()) === "Canada" && (await p.locator("[data-invited-plan]").innerText()) === `${PLAN_NAME}, yearly`
       && (await p.getByLabel("Work email").count()) === 0 && (await p.locator("select").count()) === 0, { plan: await p.locator("[data-invited-plan]").innerText() });
   ok("PF-5s S8 IV1 fail: opening the link made nothing (no pending sign-up, no firm, the link unused)", pending(e1) === "0" && firms(e1) === "0" && sql(`select used_at is null from platform_signup_link where id = '${l1.id}'`) === "t");
   await shot(p, "iv1-form-1280"); await axe("the form at 1280 px", p); await noSideways("the form at 1280 px", p);
+  await p.locator("[data-invited-plan-change]").click();
+  await p.getByLabel("Choose a plan").selectOption(PLAN2); await p.getByLabel("Billing").selectOption("MONTHLY"); await p.getByRole("button", { name: "Done" }).click();
+  ok("PF-5s S8 IV1 (§7b M4): Change picks another active plan in place; the line names it and says it changed from the invitation", (await p.locator("[data-invited-plan]").innerText()) === `${PLAN2_NAME}, monthly` && (await p.locator("[data-signup-plan]").innerText()).includes("Changed from your invitation's plan."));
   await p.getByLabel("Password").fill(PASS_WORDS); await p.getByLabel("Firm name").fill(`Sample Invited Firm ${run}`);
   await p.locator("[data-signup-agree]").check(); await p.locator("[data-signup-submit]").click();
   await p.locator("[data-invited='sent']").waitFor({ timeout: 20_000 });
@@ -111,8 +122,8 @@ try {
   await shot(p, "iv1-check-email-1280"); await axe("Check your email at 1280 px", p);
   await p.goto(`${BASE}${await verifyLink(e1)}`); await p.locator("[data-signup-confirm]").click();
   await p.locator("[data-signup-verify='done']").waitFor({ timeout: 30_000 });
-  ok("PF-5s S8 IV1: Confirm makes one firm in TRIAL on the link's plan and period; the link is used with that firm",
-    firms(e1) === "1" && sql(`select s.status || ' ' || s.billing_period || ' ' || p.code from platform_subscription s join platform_firm f on f.id = s.firm_id join platform_plan p on p.id = s.plan_id where f.owner_email = '${e1}'`) === `TRIAL YEARLY ${PLAN}`
+  ok("PF-5s S8 IV1: Confirm makes one firm in TRIAL on the chosen plan and period; the link is used with that firm",
+    firms(e1) === "1" && sql(`select s.status || ' ' || s.billing_period || ' ' || p.code from platform_subscription s join platform_firm f on f.id = s.firm_id join platform_plan p on p.id = s.plan_id where f.owner_email = '${e1}'`) === `TRIAL MONTHLY ${PLAN2}`
       && sql(`select l.firm_id = f.id and l.used_at is not null from platform_signup_link l join platform_firm f on f.owner_email = '${e1}' where l.id = '${l1.id}'`) === "t");
 
   // ------------------------------------------------------------------------------------------ IV3: one dead page for all

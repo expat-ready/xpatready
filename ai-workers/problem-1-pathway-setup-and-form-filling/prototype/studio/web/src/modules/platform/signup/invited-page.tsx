@@ -5,15 +5,16 @@
 // and period fixed: the person adds a password, the firm name and the terms tick. The link's POST starts the same email
 // check as the self-serve sign-up, so the next screen is Check your email, then the email's Confirm (verify-page.tsx).
 // Unknown, used, expired and malformed links are one answer from the door (404) and one page here (BR-13, m8).
-// Deviations from the concept, kept because the door decides (challenge.md): the plan has no Change (M4) since the link
-// names the plan and period and the body cannot; the email check is still asked (BR-13 said not again) since the door
+// The link's plan and period are the default, with S2's in-place Change over the active plans (§7b M4; SA-2-22 "The
+// sign-up page offers only Active, Public plans"). Deviation kept (challenge.md): the email check is still asked (BR-13
+// said not again): our staff hand the link over, so holding it does not prove the mailbox is the person's, and the door
 // sends the provider's code to the link's email.
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { z } from "zod";
 import { Frame, useWhere } from "@/components/frame";
-import { Button, Field, Input, Notice } from "@/components/ui/controls";
-import { byField, call, PASSWORD_RULE, periodWord, TERMS_REQUIRED, type Period, type Problem } from "./api";
+import { Button, Field, Input, Notice, Select } from "@/components/ui/controls";
+import { byField, call, PASSWORD_RULE, periodWord, Plans, TERMS_REQUIRED, type Period, type Problem } from "./api";
 import { Resend, Terms } from "./signup-page";
 
 const Invite = z.object({
@@ -32,7 +33,7 @@ const slowSend = (action: string) => `Too many tries from here. Your answers are
 /** Break m3: the door's token shape; anything else is the dead page without a request. */
 const LINK_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 /** Break m4 (BIC-13): each summary line names its field. */
-const LABEL: Record<string, string> = { password: "Password", firmName: "Firm name", acceptedTerms: "Terms" };
+const LABEL: Record<string, string> = { password: "Password", firmName: "Firm name", planCode: "Plan", period: "Billing", acceptedTerms: "Terms" };
 type Gone = { title: string; words: string; ask: boolean };
 type View = { step: "loading" } | { step: "form"; invite: Invite } | { step: "sent"; invite: Invite } | { step: "gone"; gone: Gone } | { step: "error"; words: string };
 
@@ -79,17 +80,23 @@ function Invited() {
       return null;
     }
   }, [token]);
+  /** Review Major 1 (M4): the plans offered (the public read); the link's plan and period are the default. */
+  const [choices, setChoices] = React.useState<Plans["plans"]>([]);
+  const [pick, setPick] = React.useState<{ plan: string; period: Period } | null>(null), [changing, setChanging] = React.useState(false);
+  React.useEffect(() => { let live = true; call("plans").then((d) => { if (live) setChoices(Plans.parse(d).plans); }, () => undefined); return () => { live = false; }; }, []);   // no list → the link's plan stays, without Change
   const shown = view.step === "form" || view.step === "sent" ? view.invite : null;
-  const action = shown?.plan.trialDays === 0 ? "Sign up" : "Start free trial";
+  const chosen = choices.find((c) => c.code === pick?.plan);
+  const trialDays = chosen?.trialDays ?? shown?.plan.trialDays;
+  const action = trialDays === 0 ? "Sign up" : "Start free trial";
   const [tries, setTries] = React.useState(0);
-  React.useEffect(() => { let live = true; void read().then((invite) => { if (live && invite) setView({ step: "form", invite }); }); return () => { live = false; }; }, [read, tries]);
+  React.useEffect(() => { let live = true; void read().then((invite) => { if (live && invite) { setView({ step: "form", invite }); setPick((x) => x ?? { plan: invite.plan.code, period: invite.period }); } }); return () => { live = false; }; }, [read, tries]);
   /** Break M1: a failed first read keeps the token in memory, so Try again reads it again (a reload would lose it). */
   const retry = () => { setView({ step: "loading" }); setTries((n) => n + 1); };
   const title = view.step === "sent" ? "Check your email" : view.step === "gone" ? view.gone.title : "Sign up";
   React.useEffect(() => { document.title = `${title} · Expat Ready`; if (view.step === "sent" || view.step === "gone") heading.current?.focus(); }, [title, view.step]);
   const focusSummary = () => requestAnimationFrame(() => summary.current?.focus());
 
-  const post = async (invite: Invite) => call(`signup/${encodeURIComponent(token ?? "")}`, { password: v.password, firmName: v.firmName, acceptedTerms: v.agree ? invite.terms.map((t) => t.id) : [] });
+  const post = async (invite: Invite) => call(`signup/${encodeURIComponent(token ?? "")}`, { password: v.password, firmName: v.firmName, acceptedTerms: v.agree ? invite.terms.map((t) => t.id) : [], ...(pick ? { planCode: pick.plan, period: pick.period } : {}) });
   /** A refusal the page must act on: the link gone, the terms changed while the page was open, or a field's words. */
   const refusal = async (p: Problem) => {
     const gone = goneOf(p);
@@ -159,7 +166,7 @@ function Invited() {
       <Place label="Sign up" />
       <section aria-labelledby="invited-h" className={card} data-invited={view.step}>
         <h1 id="invited-h" className="text-lg font-semibold">{action === "Sign up" ? "Sign up" : "Start your free trial"}</h1>
-        <p className="mt-1 text-sm text-text-muted">You were invited to Expat Ready. No card needed.{invite && invite.plan.trialDays > 0 ? ` ${invite.plan.trialDays} days free (Sample).` : ""}</p>
+        <p className="mt-1 text-sm text-text-muted">You were invited to Expat Ready. No card needed.{trialDays ? ` ${trialDays} days free (Sample).` : ""}</p>
         {view.step === "loading" ? <p role="status" className="mt-4 text-sm text-text-muted">Loading your invitation…</p>
           : view.step === "error" ? <Notice tone="danger" title="The invitation could not be loaded" className="mt-4" action={<Button variant="outline" onClick={retry} data-invited-retry>Try again</Button>}>{view.words} Your link is kept on this page: press Try again rather than reloading.</Notice>
             : invite ? (
@@ -177,7 +184,18 @@ function Invited() {
                 <Field label="Password" hint={errors.password ? undefined : PASSWORD_RULE} error={errors.password}><Input type="password" name="password" value={v.password} onChange={(e) => setV((x) => ({ ...x, password: e.target.value }))} autoComplete="new-password" maxLength={256} required /></Field>
                 <Field label="Firm name" error={errors.firmName}><Input name="organization" value={v.firmName} onChange={(e) => setV((x) => ({ ...x, firmName: e.target.value }))} autoComplete="organization" maxLength={120} required /></Field>
                 <div className="text-sm"><p className="text-xs font-medium">Country</p><p data-signup-country>Canada</p><p className="text-xs text-text-muted">Expat Ready is for Canadian immigration work. This can't be changed later.</p></div>
-                <div className="text-sm"><p className="text-xs font-medium">Plan</p><p data-invited-plan>{invite.plan.name}, {periodWord(invite.period as Period)}</p><p className="text-xs text-text-muted">Set by your invitation. You can change it later in Plan and billing.</p></div>
+                <div className="text-sm" data-signup-plan>
+                  <p className="text-xs font-medium">Plan</p>
+                  {changing && pick ? (
+                    <div className="mt-1 flex flex-wrap items-end gap-2">
+                      <Field label="Choose a plan" className="min-w-40 flex-1" error={errors.planCode}><Select value={pick.plan} onChange={(e) => setPick({ ...pick, plan: e.target.value })} data-invited-plan-select>{choices.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}</Select></Field>
+                      <Field label="Billing" className="min-w-32"><Select value={pick.period} onChange={(e) => setPick({ ...pick, period: e.target.value as Period })}><option value="MONTHLY">Monthly</option><option value="YEARLY">Yearly</option></Select></Field>
+                      <Button type="button" variant="outline" onClick={() => setChanging(false)}>Done</Button>
+                    </div>
+                  ) : <p><span data-invited-plan>{chosen?.name ?? invite.plan.name}, {periodWord(pick?.period ?? (invite.period as Period))}</span>{choices.length ? <> <Button type="button" variant="link" className="h-auto px-1 py-0" onClick={() => setChanging(true)} data-invited-plan-change>Change</Button></> : null}</p>}
+                  {!changing ? <p className="text-xs text-text-muted">{pick && (pick.plan !== invite.plan.code || pick.period !== invite.period) ? "Changed from your invitation's plan." : "From your invitation."} You can also change it later in Plan and billing.</p> : null}
+                  {errors.planCode && !changing ? <p role="alert" className="text-xs text-text-danger">{errors.planCode}</p> : null}
+                </div>
                 <Terms terms={invite.terms} agree={v.agree} error={errors.acceptedTerms} onChange={(b) => { setV((x) => ({ ...x, agree: b })); if (b) setErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== "acceptedTerms"))); }} />
                 <Button type="submit" size="lg" busy={busy} className="self-start" data-signup-submit>{action}</Button>
               </form>
