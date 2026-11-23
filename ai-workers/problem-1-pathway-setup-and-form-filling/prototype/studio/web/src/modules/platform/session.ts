@@ -54,6 +54,9 @@ export function staffScope(): string | null {
   for (let i = 0; i < who.length; i++) { const c = who.charCodeAt(i); a = Math.imul(a ^ c, 0x01000193); b = Math.imul(b ^ c, 0x5bd1e995) ^ (b >>> 15); }
   return (a >>> 0).toString(36) + (b >>> 0).toString(36);
 }
+/** Why the last session ended, outside React (null: signed out on purpose, or never signed in). PF-31: a session that ended
+ *  by itself (expiry, signed in elsewhere) keeps the person's drafts and tabs for them; Sign out drops them. */
+export const sessionEndReason = () => ended;
 /** Runs on every change of the session (sign-in, sign-out, end); `staffScope()` says who it is now. */
 export function onStaffChange(l: () => void): () => void { listeners.add(l); return () => { listeners.delete(l); }; }
 function useChanges() {

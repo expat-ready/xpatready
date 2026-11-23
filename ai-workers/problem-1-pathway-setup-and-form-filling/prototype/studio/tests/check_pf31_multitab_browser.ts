@@ -280,6 +280,7 @@ try {
   await pb.locator('[data-workspace]:visible [role="tab"]').first().click();
   await pb.getByRole("button", { name: "Sign out" }).click();
   await pb.locator("[data-sign-in-card]").waitFor();
+  ok("B1 Sign out on purpose drops the person's drafts and tabs from this browser tab (a shared computer)", !(await kept()) && await pb.evaluate(() => !Object.keys(sessionStorage).some((k) => k.startsWith("xr.workspace.v1:") && !k.endsWith(":local"))), await pb.evaluate(() => Object.keys(sessionStorage)));
   await formSignIn(sql("select email from platform_staff where actor_id = 'user-T' limit 1"));
   await pb.waitForTimeout(500);
   const seen = await nameField(pb).inputValue({ timeout: 2000 }).catch(() => "(no panel)");

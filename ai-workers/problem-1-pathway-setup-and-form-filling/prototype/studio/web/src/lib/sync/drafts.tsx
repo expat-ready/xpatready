@@ -5,12 +5,12 @@
 // the version the draft started from (If-Match); after a save every window drops the draft and reads the record again.
 import * as React from "react";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { onStaffChange, staffScope } from "@/modules/platform/session";
+import { onStaffChange, sessionEndReason, staffScope } from "@/modules/platform/session";
 
 // Break B1: every draft and every message names its owner (`who`, staffScope(): the staff member, never the token). A window
 // ignores another owner's messages and stored drafts. Signed out, drafts stay stored but hidden; the same person signing in
-// again gets them back (review round 3: an expiry or "signed in elsewhere" never loses typing); another person signing in
-// drops them, so nothing one person typed shows to, or is saved by, the next.
+// again gets them back (review round 3: an expiry or "signed in elsewhere" never loses typing). Sign out on purpose, or
+// another person signing in, drops them, so nothing one person typed shows to, or is saved by, the next.
 // Break M2: a draft remembers the item it was typed on (`at`, the address without query), so a workspace tab that is not
 // mounted (after a reload) still shows its dot and asks before it closes, and the leave-page guard sees stored drafts.
 type Entry = { values: unknown; base: unknown; version: string | null; who: string; at?: string };
@@ -35,9 +35,11 @@ const stored = (): string[] => { try { return Object.keys(sessionStorage).filter
 onStaffChange(() => {
   const now = staffScope();
   if (now === who) return;
+  const was = who;
   who = now;
   entries.clear(); others.clear();
-  if (now) try { for (const k of stored()) { const j: unknown = JSON.parse(sessionStorage.getItem(k) ?? "null"); if ((j as { who?: unknown } | null)?.who !== now) sessionStorage.removeItem(k); } } catch { /* memory only */ }
+  const keep = now ?? (sessionEndReason() ? was : null);   // ended by itself: kept for the same person; signed out: none kept
+  try { for (const k of stored()) { const j: unknown = JSON.parse(sessionStorage.getItem(k) ?? "null"); if (!keep || (j as { who?: unknown } | null)?.who !== keep) sessionStorage.removeItem(k); } } catch { /* memory only */ }
   emit();
 });
 /** A stored or sent draft is used only when it is well formed and this owner's (break m2: a bad version never reaches If-Match). */

@@ -14,7 +14,7 @@ import * as React from "react";
 import { createPath, NavigationType, parsePath, Router, type To } from "react-router-dom";
 import { X } from "lucide-react";
 import { anyDraft, discardDraft, draftsAt, useDraftTick } from "@/lib/sync/drafts";
-import { onStaffChange, staffScope } from "@/modules/platform/session";
+import { onStaffChange, sessionEndReason, staffScope } from "@/modules/platform/session";
 import { cn } from "@/lib/utils";
 
 export const TAB_CAP = 12;
@@ -193,6 +193,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     return onStaffChange(() => {
       const owner = ownerNow();
       if (owner === was) return;
+      if (owner === "local" && was !== "local" && !sessionEndReason()) try { sessionStorage.removeItem(storeOf(was)); } catch { /* none kept */ }   // signed out on purpose: their tabs go
       was = owner;
       if (owner !== "local") try { for (const k of Object.keys(sessionStorage)) if (k.startsWith(`${STORE}:`) && k !== storeOf(owner) && k !== storeOf("local")) sessionStorage.removeItem(k); } catch { /* none kept */ }
       const next = load();
