@@ -12,6 +12,7 @@ export const ACCOUNT_SECTIONS: AccountSection[] = [
   { label: "Licences", path: "/platform/licences", key: "agent/firm-credential:manage" },   // PF-6 part 2b
   { label: "Security", path: "/platform/security", key: "agent/security-policy:manage" },   // PF-6 part 2b
   { label: "Terms", path: "/platform/terms", key: "agent/settings:list" },   // PF-5t part 2
+  { label: "Firm profile", path: "/platform/firm-profile", key: "agent/settings:list" },   // PF-5s S5 (R1.92): everyone with the settings read; Owner and Admin edit
   { label: "Offices", path: "/platform/offices", key: "agent/settings:edit" },   // PF-18s part 1: Owner and Admin (challenge M1)
   { label: "Branding", path: "/platform/branding", key: "agent/settings:edit" },   // PF-13 part 2: Owner and Admin (AG-16-2)
   { label: "Templates", path: "/platform/templates", key: "agent/template:list" },   // PF-19s (R1.46): every role but Billing / Finance (AG-12 §10)
