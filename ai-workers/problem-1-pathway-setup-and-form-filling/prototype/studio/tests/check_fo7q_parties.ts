@@ -1,8 +1,9 @@
 // FO-7q part 3 (R1.56; asked by FO-7s1 on #3305, agreed by the tech lead): the names on the invoice reads and the
 // won-party search (G2). Named per rule, each with a pass and a fail:
 //   P1 another firm's party never answers: not in the search (either way round), not as a name on a label;
-//   P2 a prospect is never found: only the subject of a won prospect (won_at set) is; open prospects, merged-away parties
-//      and people with no prospect are not;
+//   P2 a prospect is never found: only a client is, the subject of a won prospect (won_at set) or the linked party of a
+//      case (a client opened on the case side has no prospect, review M1); open prospects, merged-away parties and
+//      people who are neither are not;
 //   P3 a name is never guessed: a person with no stored name is never found and shows name null on an invoice, though
 //      their email matches the words searched;
 //   P4 C5 as the invoice reads (AG-6-1 §8): the party scope, or the client of a case in scope; an empty scope, nobody;
@@ -84,9 +85,9 @@ try {
 
   // ---------------------------------------------------------------------------------------------- fixtures (Sample)
   const rep = (q: string) => sql(`set session_replication_role = replica; ${q}`);
-  const person = (firm: string, given: string | null, family: string | null, email: string, merged?: string) => { const id = randomUUID();
+  const person = (firm: string, given: string | null, family: string | null, email: string, merged?: string): string => { const id: string = randomUUID();
     rep(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at${merged ? ", merged_into_id, merged_at" : ""}) values ('${id}', '${firm}', ${given === null ? "null" : `'${given}'`}, ${family === null ? "null" : `'${family}'`}, '${email}', 'seed:FO-7q-3', now()${merged ? `, '${merged}', now()` : ""})`); return id; };
-  const company = (firm: string, name: string) => { const id = randomUUID(); rep(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${id}', '${firm}', '${name}', '${name.toLowerCase()}', 'seed:FO-7q-3', now())`); return id; };
+  const company = (firm: string, name: string): string => { const id: string = randomUUID(); rep(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${id}', '${firm}', '${name}', '${name.toLowerCase()}', 'seed:FO-7q-3', now())`); return id; };
   let pn = 0;
   const prospect = (firm: string, subject: { person?: string; company?: string }, won: boolean) => rep(`insert into fo_prospect (id, firm_id, number, lead_id, type, stage_id, subject_person_id, subject_company_id, primary_contact_person_id, created_by, updated_at, won_via, won_at)
     values ('${randomUUID()}', '${firm}', 'P-${String(++pn).padStart(5, "0")}', '${randomUUID()}', '${subject.company ? "CORPORATE" : "INDIVIDUAL"}', '${randomUUID()}', ${subject.person ? `'${subject.person}'` : "null"}, ${subject.company ? `'${subject.company}'` : "null"}, '${subject.person ?? randomUUID()}', 'seed:FO-7q-3', now(), ${won ? "'CONVERTED', now()" : "null, null"})`);
@@ -106,6 +107,8 @@ try {
       insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status) values ('${id}', '${W}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(n).padStart(5, "0")}', 'sample-firm', '${A}', '${client}', 'OPEN')`);
     return id; };
   const X = newCase("COMPANY", CW), Y = newCase("PERSON", PW);
+  // review M1: PD is a client opened on the case side (an fo_person with no prospect at all), the client of case D
+  const PD = person(A, "Client Wonbee", "Direct", "fo7q3.pd@example.org"), D = newCase("PERSON", PD);
   const invoice = (who: { person?: string; company?: string }, caseId: string | null) => { const id = randomUUID();
     rep(`insert into money_invoice (id, firm_id, person_id, company_id, case_id, currency, created_by, updated_at) values ('${id}', '${A}', ${who.person ? `'${who.person}'` : "null"}, ${who.company ? `'${who.company}'` : "null"}, ${caseId ? `'${caseId}'` : "null"}, 'CAD', 'staff:${staff("user-R", A)}', now())`); return id; };
   const IW = invoice({ person: PW }, Y), IN = invoice({ person: PN }, null), IC = invoice({ company: CW }, X);
@@ -121,14 +124,16 @@ try {
     && wonbee.items.find((i) => i.id === PW)?.kind === "PERSON" && wonbee.items.find((i) => i.id === CW)?.kind === "COMPANY", wonbee.items);
   ok("FO-7q P2 fail: an open prospect (PP, and the company CQ) is never found, nor a person with no prospect (PX)", ![PP, CQ, PX].some((x) => ids(wonbee).includes(x)), wonbee.items.map((i) => i.name));
   ok("FO-7q P2 fail: a merged-away party (PM, though won) is never found; its survivor is", !ids(wonbee).includes(PM) && ids(wonbee).includes(PW));
-  ok("FO-7q P2 pass: exactly the two won, live, named parties answer", wonbee.items.length === 2, wonbee.items.map((i) => i.name));
+  ok("FO-7q P2 pass (review M1): a client opened on the case side (PD, no prospect) is found, as the linked party of case D", ids(wonbee).includes(PD), wonbee.items.map((i) => i.name));
+  ok("FO-7q P2 pass: exactly the three clients (PW, PD, CW) answer", wonbee.items.length === 3, wonbee.items.map((i) => i.name));
+  ok("FO-7q P2 pass (review m2): people and companies form one list, cut and ordered by the name shown", wonbee.items.every((x, i, a) => i === 0 || a[i - 1]!.name.toLowerCase() <= x.name.toLowerCase()), wonbee.items.map((i) => i.name));
 
   // ---------------------------------------------------------------------------- P1: another firm's party never answers
-  ok("FO-7q P1 fail: firm B's won party with the same words (PB) never answers firm A, even with the widest scope", !ids(wonbee).includes(PB));
+  ok("FO-7q P1 fail: firm B's won party with the same words (PB) never answers firm A, even with the widest scope (the SQL firm checks and PF-12's walls both hold it)", !ids(wonbee).includes(PB));
   const fromB = await inB(() => new PartyReads(db, async () => "ALL" as const).search(ctxB, { q: "wonbee" }));
   ok("FO-7q P1 pass: firm B finds its own (PB) and none of firm A's", ids(fromB).length === 1 && ids(fromB)[0] === PB, fromB.items);
   const scopedWithA = await inB(() => new PartyReads(db, async () => ({ cases: [X, Y], parties: [PW, CW] })).search(ctxB, { q: "wonbee" }));
-  ok("FO-7q P1 fail: firm A's party and case ids put into firm B's scope still find nothing of firm A's", ids(scopedWithA).length === 0, scopedWithA.items);
+  ok("FO-7q P1 fail: firm A's party and case ids put into firm B's scope still find nothing of firm A's (SQL firm checks and walls)", ids(scopedWithA).length === 0, scopedWithA.items);
   const crossLabel = await inA(() => labelsOf(db, A, [{ personId: PB, companyId: null, caseId: null }]));
   ok("FO-7q P1 fail: a label read for firm B's person id under firm A gives no name", crossLabel[0]?.billTo?.kind === "PERSON" && crossLabel[0]?.billTo?.name === null, crossLabel);
 
@@ -142,7 +147,9 @@ try {
   const scoped = (s: { cases: string[]; parties: string[] }) => inA(() => new PartyReads(db, async () => s).search(ctxR, { q: "wonbee" }));
   const onlyPW = await scoped({ cases: [], parties: [PW] });
   ok("FO-7q P4 pass: a party in the caller's party scope is found; one outside it (CW) is not", ids(onlyPW).length === 1 && ids(onlyPW)[0] === PW, onlyPW.items);
-  const viaCase = await scoped({ cases: [X], parties: [] });
+  const viaCase = await scoped({ cases: [X], parties: [] }), viaD = await scoped({ cases: [D], parties: [] }), notD = await scoped({ cases: [X], parties: [PW] });
+  ok("FO-7q P4 pass (review M1): the case-side client PD is found through their own case D in scope", ids(viaD).length === 1 && ids(viaD)[0] === PD, viaD.items);
+  ok("FO-7q P4 fail (review M1): PD is a client, but outside the caller's scope (cases X, party PW) is not found", !ids(notD).includes(PD) && ids(notD).length === 2, notD.items);
   ok("FO-7q P4 pass: the client of a case in scope (X's company CW) is found, and nobody else", ids(viaCase).length === 1 && ids(viaCase)[0] === CW, viaCase.items);
   const none = await scoped({ cases: [], parties: [] }), prospectInScope = await scoped({ cases: [], parties: [PP, CQ] });
   ok("FO-7q P4 fail: an empty scope finds nobody; an open prospect in scope is still never found", none.items.length === 0 && prospectInScope.items.length === 0, { none: none.items, prospectInScope: prospectInScope.items });
@@ -158,8 +165,8 @@ try {
   const det = await inA(() => reads.detail(ctxR, IW)), detN = await inA(() => reads.detail(ctxR, IN));
   ok("FO-7q P5 pass: the detail carries the same Bill to and case label as its row", JSON.stringify(det.billTo) === JSON.stringify(row(IW)?.billTo) && det.caseLabel === "C-2026-00002", { billTo: det.billTo, caseLabel: det.caseLabel });
   ok("FO-7q P5 fail: the detail of the unnamed person's invoice shows name null", detN.billTo?.name === null && detN.caseLabel === null, detN.billTo);
-  const emptyLabels = await inA(() => reads.list(ctxR, { status: "PAID" }));
-  ok("FO-7q P5 pass: an empty page reads no labels and answers no items", emptyLabels.items.length === 0);
+  const noIds = await inA(() => labelsOf(db, A, [{ personId: null, companyId: null, caseId: null }]));
+  ok("FO-7q P5 fail: a row with no party and no case gets billTo null and caseLabel null, never a name", noIds[0]?.billTo === null && noIds[0]?.caseLabel === null, noIds);
 
   // --------------------------------------------------------------------------------------------- P6: the province
   ok("FO-7q P6 pass: each hit carries the province a new draft takes (firm A's ON, P-797)", wonbee.items.every((i) => i.province === "ON"), wonbee.items);
@@ -173,8 +180,8 @@ try {
   const P = "/front-office/money/parties";
   const noSession = await call(undefined, `${P}?q=wonbee`), withSession = await call(tR, `${P}?q=wonbee`);
   ok("FO-7q P7 fail: no session → 401", noSession.status === 401, noSession);
-  ok("FO-7q P7 pass: user-R (holds agent/invoice:list) gets 200 through the app's own scope (PgMoneyVisibility): won parties of firm A only, at least one",
-    withSession.status === 200 && withSession.body?.items?.length >= 1 && withSession.body.items.every((i: { id: string }) => [PW, CW].includes(i.id)), withSession);
+  ok("FO-7q P7 pass: user-R (holds agent/invoice:list) gets 200 through the app's own scope (PgMoneyVisibility): clients of firm A only (PW, PD, CW), at least one",
+    withSession.status === 200 && withSession.body?.items?.length >= 1 && withSession.body.items.every((i: { id: string }) => [PW, PD, CW].includes(i.id)), withSession);
   // READ_ONLY is the one seeded role without agent/invoice:list: user-T's grants are ended and READ_ONLY given instead
   ok("setup: READ_ONLY holds no agent/invoice:list", sql(`select count(*) from platform_role_permission where role::text = 'READ_ONLY' and permission_key = 'agent/invoice:list'`) === "0");
   const T = staff("user-T", A);
@@ -185,6 +192,8 @@ try {
   const short = await call(tR, `${P}?q=w`), missing = await call(tR, P), extra = await call(tR, `${P}?q=wonbee&firmId=${B}`), long = await call(tR, `${P}?q=${"a".repeat(101)}`);
   ok("FO-7q P7 fail: q shorter than 2, missing, over 100, or an extra field (a firm id) → 422 naming the field, nothing read",
     [short, missing, extra, long].every((r) => r.status === 422), [short.status, missing.status, extra.status, long.status, extra.body]);
+  const nul = await call(tR, `${P}?q=wo%00nbee`);
+  ok("FO-7q P7 fail (breaker m1): a NUL character in q → 422 naming q, never a database 500", nul.status === 422 && JSON.stringify(nul.body).includes("q"), nul);
   const pct = await inA(() => allA.search(ctxR, { q: "%%" })), under = await inA(() => allA.search(ctxR, { q: "__" }));
   ok("FO-7q P7 fail: % and _ are letters, not patterns: they match no name", pct.items.length === 0 && under.items.length === 0, { pct: pct.items.length, under: under.items.length });
   for (let i = 0; i < PARTY_LIMIT + 5; i++) { const p = person(A, `Client Many${String(i).padStart(2, "0")}`, "Sample", `fo7q3.m${i}@example.org`); prospect(A, { person: p }, true); }

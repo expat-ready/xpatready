@@ -5,10 +5,12 @@
 //     person's name is their given names and family name as stored; with neither stored the name is null: never guessed
 //     from an email, a phone or an id. A company's name is its operating name. The case label is the case number
 //     (C-2026-00042, never changed, A24-1), null with no case.
-//   * PartyReads.search, GET /api/front-office/money/parties?q=: won people and companies only. Won = the subject of a
-//     prospect with won_at set (fo_prospect_won_check pairs it with won_via; FO-2's Convert, Signed offline or FO-6's
-//     signature). A party whose prospects are all open, lost or nurtured is never found; a merged-away party is never
-//     found (its survivor is). By name only (the stored name, as labelsOf builds it), at most 20, by name then id.
+//   * PartyReads.search, GET /api/front-office/money/parties?q=: clients only (won people and companies). A client is
+//     the subject of a prospect with won_at set (fo_prospect_won_check pairs it with won_via; FO-2's Convert, Signed
+//     offline or FO-6's signature), or the linked party of a case of the firm (case_client.fo_person_id / fo_company_id:
+//     a client opened on the case side has no prospect). A party whose prospects are all open, lost or nurtured, and
+//     that is no case's client, is never found; a merged-away party is never
+//     found (its survivor is). By name only (the stored name, as labelsOf builds it), at most 20 of both kinds together, by that name then id.
 //     Firm: the session's (firmScope), never the request's. Who: C5 as the invoice reads (AG-6-1 §8; visibility.ts): a
 //     party is found when it is in the caller's party scope, or is the client of a case in their case scope; an empty
 //     scope finds nobody (fail closed). Each with its province: the province a new draft for it takes (billToProvince,
@@ -59,7 +61,8 @@ export async function labelsOf(db: Reader, firmId: string, rows: { personId: str
   }));
 }
 
-const Query = z.strictObject({ q: z.string().trim().min(2, "Type at least 2 letters of the name.").max(100, "At most 100 letters.") });
+const Query = z.strictObject({ q: z.string().trim().min(2, "Type at least 2 letters of the name.").max(100, "At most 100 letters.")
+  .refine((v) => !v.includes("\u0000"), "A name has no NUL character.") });   // breaker m1: never a database 500
 
 /** `%` and `_` typed are letters, not patterns. */
 const likeText = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -72,31 +75,36 @@ export class PartyReads {
     const { q } = parseInput(Query, query ?? {});
     const firmId = firmScope(ctx.firmId).firmId, scope = await this.scopeOf(ctx), like = likeText(q);
     if (scope !== "ALL" && !scope.cases.length && !scope.parties.length) return { items: [] };
-    // C5 as visibility.ts reads it: the party itself is in scope, or it is the client of a case in scope (same firm).
-    const seen = (col: Prisma.Sql, link: Prisma.Sql) => scope === "ALL" ? Prisma.sql`true` : Prisma.sql`(${col} = any(${scope.parties}::uuid[]) or exists (
-        select 1 from runtime_case k join case_client cc on cc.id = k.client_id and cc.firm_id = k.firm_id
-        where k.firm_id = ${firmId}::uuid and k.id = any(${scope.cases}::uuid[]) and ${link} = ${col}))`;
-    const won = (col: Prisma.Sql) => Prisma.sql`exists (select 1 from fo_prospect w where w.firm_id = ${firmId}::uuid and w.won_at is not null and ${col})`;
+    // Each set is read once, as a materialized CTE, and every party is checked against it by a hashed IN (breaker M1: an
+    // EXISTS per party on fo_prospect, whose subject columns have no index, took 700 ms at 5,000 clients).
+    //   clients: the subject of a won prospect, or the linked party of a case of this firm (a client opened on the case
+    //     side has no prospect: review M1). A party whose only record is an open, lost or nurtured prospect is neither.
+    //   seen (C5, as visibility.ts reads it): the party is in the caller's party scope, or the client of a case in scope.
+    const all = scope === "ALL", parties = all ? [] : scope.parties, cases = all ? [] : scope.cases;
+    const PERSON_NAME = Prisma.sql`btrim(concat_ws(' ', nullif(btrim(p.given_names), ''), nullif(btrim(p.family_name), '')))`;
     const rows = await this.db.$transaction(async (tx) => {
-      const people = await tx.$queryRaw<{ id: string; given: string | null; family: string | null }[]>`
-        select p.id::text as id, p.given_names as given, p.family_name as family from fo_person p
-        where p.firm_id = ${firmId}::uuid and p.merged_into_id is null
-          and btrim(concat_ws(' ', nullif(btrim(p.given_names), ''), nullif(btrim(p.family_name), ''))) ilike ${like}
-          and ${won(Prisma.sql`w.subject_person_id = p.id`)} and ${seen(Prisma.sql`p.id`, Prisma.sql`cc.fo_person_id`)}
-        order by lower(concat_ws(' ', btrim(p.given_names), btrim(p.family_name))), p.id limit ${PARTY_LIMIT}`;
-      const companies = await tx.$queryRaw<{ id: string; name: string }[]>`
-        select c.id::text as id, c.operating_name as name from fo_company c
-        where c.firm_id = ${firmId}::uuid and c.merged_into_id is null and btrim(c.operating_name) ilike ${like}
-          and ${won(Prisma.sql`w.subject_company_id = c.id`)} and ${seen(Prisma.sql`c.id`, Prisma.sql`cc.fo_company_id`)}
-        order by lower(btrim(c.operating_name)), c.id limit ${PARTY_LIMIT}`;
+      // one list, cut at 20 by the very name it shows (review m2): people and companies together, by name, then id
+      const hits = await tx.$queryRaw<{ kind: "PERSON" | "COMPANY"; id: string; name: string }[]>`
+        with won as materialized (select subject_person_id as pid, subject_company_id as cid from fo_prospect where firm_id = ${firmId}::uuid and won_at is not null),
+          on_case as materialized (select k.id as case_id, c.fo_person_id as pid, c.fo_company_id as cid from runtime_case k join case_client c on c.id = k.client_id and c.firm_id = k.firm_id where k.firm_id = ${firmId}::uuid),
+          in_scope as materialized (select unnest(${parties}::uuid[]) as id union select pid from on_case where case_id = any(${cases}::uuid[]) and pid is not null
+            union select cid from on_case where case_id = any(${cases}::uuid[]) and cid is not null)
+        select * from (
+          select 'PERSON' as kind, p.id::text as id, ${PERSON_NAME} as name from fo_person p
+          where p.firm_id = ${firmId}::uuid and p.merged_into_id is null and ${PERSON_NAME} ilike ${like}
+            and (p.id in (select pid from won where pid is not null) or p.id in (select pid from on_case where pid is not null))
+            and (${all} or p.id in (select id from in_scope))
+          union all
+          select 'COMPANY' as kind, c.id::text as id, btrim(c.operating_name) as name from fo_company c
+          where c.firm_id = ${firmId}::uuid and c.merged_into_id is null and btrim(c.operating_name) ilike ${like}
+            and (c.id in (select cid from won where cid is not null) or c.id in (select cid from on_case where cid is not null))
+            and (${all} or c.id in (select id from in_scope))
+        ) x order by lower(x.name), x.id limit ${PARTY_LIMIT}`;
       const [firm] = await tx.$queryRaw<{ address: unknown }[]>`select business_address as address from platform_firm where id = ${firmId}::uuid`;
-      return { people, companies, firm: { businessAddress: firm?.address ?? null } };
+      return { hits, firm: { businessAddress: firm?.address ?? null } };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
-    const hits: PartyHit[] = [
-      ...rows.people.flatMap((p) => { const name = personName(p.given, p.family); return name ? [{ kind: "PERSON" as const, id: p.id, name, province: provinceCode(billToProvince(rows.firm, { kind: "PERSON", id: p.id })) }] : []; }),
-      ...rows.companies.flatMap((c) => { const name = companyName(c.name); return name ? [{ kind: "COMPANY" as const, id: c.id, name, province: provinceCode(billToProvince(rows.firm, { kind: "COMPANY", id: c.id })) }] : []; }),
-    ];
-    hits.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id));
+    // the name filter needs 2 letters, so every name is stored text; personName/companyName keep "never guessed" here too
+    const hits: PartyHit[] = rows.hits.flatMap((h) => { const name = companyName(h.name); return name ? [{ kind: h.kind, id: h.id, name, province: provinceCode(billToProvince(rows.firm, { kind: h.kind, id: h.id })) }] : []; });
     return { items: hits.slice(0, PARTY_LIMIT) };
   }
 }
