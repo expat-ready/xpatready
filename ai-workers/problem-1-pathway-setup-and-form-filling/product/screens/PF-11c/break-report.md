@@ -112,3 +112,38 @@ Head `1b4298d062c453e8f6f5dcb2fc8228d631529c5a`. Only the diff was checked. The 
 * **Full export missing, another firm's, or not in the archive.** Each gives `blocked` with `no_full_export` and an alert (the PR's check). The port is unwired in the feature, so no firm is closed in production.
 
 Verdict: Approve 1b4298d062c453e8f6f5dcb2fc8228d631529c5a
+
+## Round 3 (diff 1b4298d..c234475)
+
+Head `c234475ab4c7e0d8bc0942327ea42679f724c999`. Only the diff was checked: `CLOSE_TX_TIMEOUT_MS` (closure.ts:43, :127) and three new checks. The PR's check passes (47/0). The work ran in a detached worktree in the session scratchpad (`r3/`), now removed: five mutation runs and one probe (`r3/probe_block.ts`, spliced in after the m4 block). Scratch databases were on 127.0.0.1:54329. No app was started and port 4400 was not used.
+
+### Findings
+**m9 (Minor). Nothing tests the new timeout, so reverting it keeps CI green.** closure.ts:127. Mutation: the options were removed (back to Prisma's 5 s). Result: 47/47 still pass. The M3 check holds billing's lock for only 400 ms. The setting does matter. In the probe, billing's lock was held for 8 s, inside the webhook's 30 s. With the options the run gives `closed` after 8.0 s. Without them it gives `blocked` / `PF-11c.close_failed` after 8.0 s, and the firm stays on hold. A check that holds the lock longer than 5 s would catch a revert. It costs about 6 s of run time.
+
+**m10 (Minor; also true before this diff). The 60 s is not a limit on how long the close holds its locks.** The constant's comment reads as one. closure.ts:42, :106-127. Prisma's timeout does not cancel a statement that is waiting on a lock. Its ROLLBACK queues behind that statement on the same connection. The close sets no `lock_timeout` (person-link.ts:63 and form-library.ts:460 do).
+
+Probe P2: a raw session held firm A's row (`for no key update`) for 70 s.
+* At 62 s, `runFirm` had still not returned. `plat_billing:A` was still taken. pg_stat_activity showed the close's backend waiting on `... for update`.
+* It returned only when the row was released, at 70.0 s, with `close_failed` and an alert. The firm was still on PAYMENT_HOLD, with no `firm.closed` line and no revocation.
+
+So a stuck row holder keeps the close, the sweep (one firm at a time) and billing's lock for that firm waiting with no limit. A webhook for that firm waits the same way: its 30 s timeout does not cancel its own wait for the lock.
+
+Probe P2b: a placement in flight took the legal-hold lock after the copy was written. The close then waited inside its transaction with billing's lock and the firm row both taken. An accept-style `for no key update` on the row waited, and was cancelled by the probe's 3 s `lock_timeout`. The close then gave `closed` after 12.5 s.
+
+The 5 s setting behaved the same. The diff does not make any lock wait longer: the wait ends when the other holder lets go, whatever the setting. It only turns a 5-60 s wait from `close_failed` into a real close.
+
+### Hazards checked
+* **Billing's 30 s.** refresh (webhook.ts:136-165) holds `plat_billing:<firm>` while it calls Stripe (10 s timeout, 2 retries). That call runs in JS, not in a SQL statement, so at 30 s Prisma's ROLLBACK goes through and the lock is freed. The close's 60 s covers that with room to spare. Lock order is still billing, then the firm row, the same as refresh.
+* **Pool exhaustion in the sweep.** The sweep runs one firm at a time (closure.ts:165-170), so a close uses at most one connection. `maxWait` is time spent queued for a connection, not time holding one, so it cannot drain the pool.
+* **Worst case against pg-boss's 15 min expiry.** About 60 s per firm, and only when another holder is busy. If the job did expire and run again, round 1 showed that parallel runs close a firm once (the rest give `changed`). The cost is m6's extra copies.
+* **Sign-in.** It is not blocked: `authenticate` and `localSignIn` read the status without a row lock (round 2). Invitation accept waits on the close's `for update` only while the close is blocked after taking the row (P2b), which does not depend on the timeout.
+
+### The new checks can fail
+* **Owner-invited invitation (check_pf11c_close.ts:234-240).** Mutation: the closed-firm guard was disabled (session/service.ts:114). Result: 46/1, and this check fails. `refusedInviter === 0` and the uuid test on `ownerA` stop it passing because of the inviter check or an empty query.
+* **Export named but absent (:140-142).** Mutation: the `archive.get(exp.key)` gate was removed. Result: this check fails with `closed`, and 13 later checks fail with it.
+* **Close failing inside its transaction (:198-200).** Mutation: `close_failed` returned without `blocked()`, so no alert is raised. Result: 46/1. Its rollback assertions (status, revocations, `firm.closed`) cover writes made through `tx`. A `firm.closed` write moved to the root client was not caught (47/47), but the check does not claim to cover that.
+
+### What held
+The rollback and the alert for a close that fails, the export gate, the closed-firm guard at accept, and the lock order against billing. Round 2's m5, m6, m7 and m8 were not in this diff and are unchanged.
+
+Verdict: Approve c234475ab4c7e0d8bc0942327ea42679f724c999
