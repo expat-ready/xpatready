@@ -16,6 +16,7 @@
 //   B5  the poller's backoff: held back, retried after 30 s, doubled; capped by the time left before the meeting (P2R2-2)
 //   B7  the panel's next step on a No-show booking (review r2-2)   B8  NO_TEMPLATE backs off (P2R2-3)
 //   B9  the reminder reads the type's switch (review r2-1)   B10  any signed agreement lifts the hold (P2R3-1)
+//   B11 one fresh agreement under concurrent sends; a draft counts as ended (review M2)   B12 the cap at each check (m3-2)
 //   tsx studio/tests/check_fo3c2_consultation_agreement.ts
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -53,7 +54,7 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, opt
 
 const { ConsultationAgreementService, WORDS } = await import("../api/src/front-office/booking/consultation-agreement/service.ts");
 const { AgreementPoll } = await import("../api/src/front-office/booking/consultation-agreement/live.ts");
-const { HOLD_WORDS, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
+const { HOLD_WORDS, HOLD_WORDS_INACTIVE, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
 const { agreementNextStep, sendsFresh, NEXT_CANCELLED, NEXT_COMPLETED, NEXT_NO_SHOW, NEXT_RESCHEDULE } = await import("../web/src/modules/front-office/booking/calendar/agreement-words.ts");
 const { BookingService } = await import("../api/src/front-office/booking/service.ts");
 const { ConsultRecordService } = await import("../api/src/front-office/booking/consult/service.ts");
@@ -269,14 +270,14 @@ try {
   const s8 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b8)), a8 = s8?.sent ? s8.agreementId : "";
   await decline(a8);
   const st8 = sql(`select status from fo_retainer where id = '${a8}'`), w8 = await svc.read(R, a8);
-  const again8 = await svc.send(A, b8.id);   // the event's own send: not ALREADY_SENT any more
+  const cuFresh8 = await svc.catchUp((_f, fn) => fn());   // the catch-up sends the fresh one (review M2)
   const [fresh8, freshSt8] = latestOf(b8.id);
   const repeat8 = await svc.send(A, b8.id), cu8 = await svc.catchUp((_f, fn) => fn());   // the fresh one is waiting: none more
   await clock.set(new Date(b8.startsAt.getTime() + 5 * MIN));
   const att8 = await answer(() => bookings.recordAttendance(R, b8.id, { outcome: "COMPLETED" }));
   ok("FO-3c2 B2 pass (P2R2-1; Lead 1's ruling): a declined agreement reads \"Agreement ended unsigned\" and still holds; while the meeting is ahead a fresh one is sent (once), and Attended stays refused until it is signed",
-    ["DECLINED", "WITHDRAWN"].includes(st8) && w8.words === WORDS.ended && again8.sent === true && fresh8 === (again8.sent ? again8.agreementId : "") && freshSt8 === "SENT" && agreementsOf(b8.id) === 2
-    && repeat8.sent === false && repeat8.reason === "ALREADY_SENT" && cu8.sent === 0 && agreementsOf(b8.id) === 2 && att8.status === 409 && /AGREEMENT_NOT_SIGNED/.test(att8.body) && att8.body.includes(fresh8), { st8, words: w8.words, again8, repeat8, cu8, att8: att8.status });
+    ["DECLINED", "WITHDRAWN"].includes(st8) && w8.words === WORDS.ended && cuFresh8.sent >= 1 && fresh8 !== a8 && freshSt8 === "SENT" && agreementsOf(b8.id) === 2
+    && repeat8.sent === false && repeat8.reason === "ALREADY_SENT" && cu8.sent === 0 && agreementsOf(b8.id) === 2 && att8.status === 409 && /AGREEMENT_NOT_SIGNED/.test(att8.body) && att8.body.includes(fresh8), { st8, words: w8.words, cuFresh8, repeat8, cu8, att8: att8.status });
   const signed8 = await signAll(fresh8, "lee@client.example", R);
   await clock.set(today);
   const done8 = await answer(() => bookings.recordAttendance(R, b8.id, { outcome: "COMPLETED" }));
@@ -297,6 +298,25 @@ try {
   const r8w = await svc.onBookingEvent(eventOf(EVENT.BOOKING_RESCHEDULED, moved8w));
   ok("FO-3c2 B6 fail: rescheduled to a time ahead, the reschedule sends a fresh agreement for the new time (the latest is SENT)",
     r8w?.sent === true && agreementsOf(b8w.id) === 2 && latestOf(b8w.id)[1] === "SENT", { r8w });
+  // Review M2: three sends at once after a decline make one fresh agreement (the re-check inside the lock); an agreement
+  // put back to draft (FO-5's edit) counts as ended, so the catch-up sends a fresh one.
+  const b15 = await book(A, free, R.staffId, pat, -180);
+  await clock.set(new Date(b15.startsAt.getTime() - 60 * MIN));
+  const s15 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b15));
+  await decline(s15?.sent ? s15.agreementId : "");
+  const race15 = await Promise.all([svc.send(A, b15.id), svc.send(A, b15.id), svc.send(A, b15.id)]);
+  ok("FO-3c2 B11 pass (review M2): three sends at once after a decline make exactly one fresh agreement; the others answer ALREADY_SENT with it",
+    race15.filter((x) => x.sent).length === 1 && agreementsOf(b15.id) === 2 && race15.filter((x) => !x.sent).every((x) => !x.sent && x.reason === "ALREADY_SENT"), race15);
+  const b16 = await book(A, free, R.staffId, pat, -180);
+  await clock.set(new Date(b16.startsAt.getTime() - 60 * MIN));
+  const s16 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b16)), a16 = s16?.sent ? s16.agreementId : "";
+  const before16 = await svc.catchUp((_f, fn) => fn()), n16 = agreementsOf(b16.id);
+  sql(`set session_replication_role = replica; update fo_retainer set status = 'DRAFT' where id = '${a16}'`);   // FO-5's edit of a sent one
+  const cu16 = await svc.catchUp((_f, fn) => fn());
+  await clock.set(today);
+  ok("FO-3c2 B11 draft (review M2): an agreement put back to draft counts as ended: the catch-up sends a fresh one, which is the booking's agreement",
+    cu16.sent >= 1 && agreementsOf(b16.id) === 2 && latestOf(b16.id)[1] === "SENT", { cu16 });
+  ok("FO-3c2 B11 fail: while it was still sent, the catch-up sent the booking none", n16 === 1 && s16?.sent === true, { before16, n16 });
   // Break P2R3-1: any signed agreement of the booking lifts the hold, whichever is newest, and a fresh one is sent only when
   // every agreement has ended. A1 declined, fresh A2 sent; then A1 is filed signed on paper (FO-5's signed offline of an
   // earlier version, written straight to the table here, past FO-5's own rules: the breaker reached it through FO-5).
@@ -321,6 +341,9 @@ try {
   ok("FO-3c2 B7 (review r2-2): the panel's next step on a No-show booking says to make a new booking, never to reschedule; on any other booking it says to reschedule",
     agreementNextStep("NO_SHOW") === NEXT_NO_SHOW && !/reschedule it/.test(agreementNextStep("NO_SHOW")) && agreementNextStep("SCHEDULED") === NEXT_RESCHEDULE && agreementNextStep(undefined) === NEXT_RESCHEDULE
     && (await answer(() => bookings.staffReschedule(R, b3.id, { startsAt: new Date(clock.now().getTime() + 10 * 24 * HOUR).toISOString(), timeZone: "America/Toronto" }))).status === 409);
+  const noShowAtt = await answer(() => bookings.recordAttendance(R, b3.id, { outcome: "COMPLETED" }));
+  ok("FO-3c2 B7 server words (review m3-1): Attended on a No-show booking is refused in words that say to make a new booking, never to reschedule (a Scheduled one's refusal says to reschedule)",
+    noShowAtt.status === 409 && noShowAtt.body.includes(HOLD_WORDS_INACTIVE) && !/reschedule it/.test(noShowAtt.body) && att2.body.includes(HOLD_WORDS), { noShowAtt });
   ok("FO-3c2 B7 other statuses (break P2R3-4): Attended and cancelled bookings are never told to reschedule nor promised a fresh agreement; Scheduled and Rescheduled are",
     agreementNextStep("COMPLETED") === NEXT_COMPLETED && agreementNextStep("CANCELLED") === NEXT_CANCELLED && !sendsFresh("COMPLETED") && !sendsFresh("CANCELLED") && !sendsFresh("NO_SHOW") && sendsFresh("SCHEDULED") && sendsFresh("RESCHEDULED"));
   // P2-3: a quiet catch-up (a signed copy already queued, nothing to send) touches no firm: no new bypass line.
@@ -380,6 +403,27 @@ try {
     !noM.tries.some((x) => x >= 70 * 60 && x < 100 * 60), noM);
   ok("FO-3c2 B5 backoff (review r2-1): after a failure the row is held back at the next catch-up (no try, no bypass line), tried again after 30 s, then after a doubled wait of 60 s",
     withM.skipped && withM.tries[0] === 0 && withM.tries[1] === 30 && withM.tries[2] === 90, withM.tries.slice(0, 4));
+  // Review m3-2: a row whose wait grew while its meeting was days away is tried again before a meeting moved nearer.
+  const movedNear = async (capAtCheck: boolean) => {
+    const t0 = clock.now().getTime(), tries: number[] = [];
+    let mt = t0 + 3 * 24 * HOUR, down = true, on = false, done = false;
+    const stand = { onBookingEvent: async () => null, catchUp: async (each: (f: string, fn: () => Promise<unknown>, key?: string, before?: Date) => Promise<unknown>) => {
+      if (on && !done) await each(B, async () => { tries.push(clock.now().getTime()); if (down) throw new Error("Sample: the provider is down"); done = true; return { sent: true }; }, "send:moved", capAtCheck ? new Date(mt) : new Date(t0 + 3 * 24 * HOUR)).catch(() => null);
+      return { sent: 0, failed: 0, sealed: 0 };
+    } };
+    const p = new AgreementPoll(db, stand as never, () => clock.now());
+    const go = async () => { (p as unknown as { runs: number }).runs = 0; await p.tick(); };
+    await go(); on = true;
+    let t = t0;
+    for (; t < t0 + 70 * MIN; t += 30_000) { await clock.set(new Date(t)); await go(); }   // the wait grows to an hour
+    mt = t + 40 * MIN; down = false;   // moved to 40 minutes ahead; the provider is back
+    for (; t < mt; t += 30_000) { await clock.set(new Date(t)); await go(); }
+    await clock.set(new Date(t0));
+    return { sentBefore: done && tries.at(-1)! < mt, lastTry: (tries.at(-1)! - t0) / 1000, meeting: (mt - t0) / 1000, tries: tries.length };
+  };
+  const mNear = await movedNear(true), mFar = await movedNear(false);
+  ok("FO-3c2 B12 pass (review m3-2): a row whose wait grew to an hour is tried again, and sent, before its meeting once the meeting is moved to 40 minutes ahead (the cap is read at each check)", mNear.sentBefore, mNear);
+  ok("FO-3c2 B12 fail: with the meeting left days away, the same row is not tried in those 40 minutes", !mFar.sentBefore, mFar);
   // P2R2-3: a send that answers NO_TEMPLATE (the template's file is missing from the store) backs off as a failure does.
   const b11 = await book(B, await type(B, "p3-solo", [S.staffId]), S.staffId, await person(B, "Sky"), 5 * 24 * 60);
   const realGet = files.get.bind(files);

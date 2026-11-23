@@ -67,6 +67,7 @@ export type SeeBooking = (ctx: StaffContext, bookingId: string) => Promise<unkno
 export type CatchUpEach = <T>(firmId: string, fn: () => Promise<T>, key?: string, before?: Date) => Promise<T | null>;
 /** A catch-up send that sent nothing for a reason other than a race (a template whose file is missing): thrown so the
  *  poller backs the row off like a failure (break P2R2-3). */
+const RETRIED: string[] = ["NO_TEMPLATE", "NO_LICENSED", "NO_CLIENT_EMAIL"];
 export class NotSent extends Error { constructor(readonly reason: string) { super(`not sent: ${reason}`); } }
 export type AgreementPorts = { audit: AuditPort<Tx>; clock: ClockPort; mail: MailPort; jobs: JobPort; signing: SigningPort; files: FilesPort; publicBaseUrl: string; warn?: (m: string) => void; seeBooking?: SeeBooking };
 
@@ -160,7 +161,8 @@ export class ConsultationAgreementService {
       } catch (e) { out.failed++; await this.safe(`catch-up of request ${q.id}`, () => { throw e; }); }
     }
     // A send that answers a reason (not a race) is thrown, so the row backs off as a failure does (P2R2-3).
-    const sendOrThrow = async (r: { firm_id: string; id: string }) => { const s = await this.send(r.firm_id, r.id); if (!s.sent && s.reason !== "ALREADY_SENT") throw new NotSent(s.reason); return s; };
+    // Only a reason that can come right again backs off; a race (already sent, moved, switched off) is simply passed (m3-3).
+    const sendOrThrow = async (r: { firm_id: string; id: string }) => { const s = await this.send(r.firm_id, r.id); if (!s.sent && RETRIED.includes(s.reason)) throw new NotSent(s.reason); return s; };
     for (const r of rows) { try { if ((await each(r.firm_id, () => sendOrThrow(r), `send:${r.id}`, r.starts_at))?.sent) out.sent++; } catch (e) { out.failed++; await this.safe(`catch-up of booking ${r.id}`, () => { throw e; }); } }
     return out;
   }

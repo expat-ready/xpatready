@@ -26,7 +26,8 @@ export const isEnded = (status: string) => (ENDED_STATUSES as readonly string[])
 /** The one order that picks a booking's deciding agreement, for the hold, the send, the reschedule and the panel alike
  *  (break P2R3-1): a signed one first (any signed agreement lifts the hold), then one still waiting, then the newest that
  *  ended. So a fresh one is sent only when every agreement of the booking has ended, which is also the catch-up's filter. */
-export const DECIDING_ORDER = `order by (r.status::text in ('SIGNED', 'SIGNED_OFFLINE')) desc, (r.status::text not in ('DECLINED', 'WITHDRAWN', 'EXPIRED', 'DRAFT')) desc, r.created_at desc, r.id desc`;
+const list = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
+export const DECIDING_ORDER = `order by (r.status::text in (${list(SIGNED_STATUSES)})) desc, (r.status::text not in (${list(ENDED_STATUSES)})) desc, r.created_at desc, r.id desc`;
 
 /** The type's choice, else by purpose (Lead 10, W4b: "default on for the first consultation"). */
 export function needsAgreement(t: { requireAgreement: boolean | null; purpose: string }) {
@@ -36,12 +37,15 @@ export function needsAgreement(t: { requireAgreement: boolean | null; purpose: s
 export const NEEDS_AGREEMENT_SQL = "coalesce(t.require_agreement, t.purpose::text <> 'FOLLOW_UP')";
 
 export const HOLD_WORDS = "The consultation agreement is not signed yet, so the consultation cannot start. The client signs first, from the link in their email, then the firm. If the meeting time has passed, reschedule it: the client can sign before the new time.";
-export type Hold = { agreementId: string; status: string };
+/** The same refusal for a booking that can no longer be signed for nor rescheduled (No-show, Attended: review m3-1). */
+export const HOLD_WORDS_INACTIVE = "The consultation agreement is not signed yet, so the consultation cannot start, and this booking can no longer be signed for or rescheduled: to meet the client, make a new booking, and a new agreement is sent for it.";
+export const holdWords = (bookingStatus: string) => (bookingStatus === "SCHEDULED" || bookingStatus === "RESCHEDULED" ? HOLD_WORDS : HOLD_WORDS_INACTIVE);
+export type Hold = { agreementId: string; status: string; bookingStatus: string };
 
 /** The booking's deciding agreement when its type needs one and none of its agreements is signed, else null. */
 export async function agreementHold(q: Q, firmId: string, bookingId: string): Promise<Hold | null> {
-  const rows = await q.$queryRawUnsafe<{ id: string; status: string }[]>(`
-    select r.id::text, r.status::text from fo_booking b join fo_consultation_type t on t.firm_id = b.firm_id and t.id = b.type_id
+  const rows = await q.$queryRawUnsafe<{ id: string; status: string; booking_status: string }[]>(`
+    select r.id::text, r.status::text, b.status::text as booking_status from fo_booking b join fo_consultation_type t on t.firm_id = b.firm_id and t.id = b.type_id
       join fo_retainer_version v on v.firm_id = b.firm_id and v.n = 1 and v.merge_values->>'booking.id' = b.id::text
       join fo_retainer r on r.firm_id = v.firm_id and r.id = v.retainer_id and r.kind = 'CONSULTATION'
      where b.firm_id = $1::uuid and b.id = $2::uuid and ${NEEDS_AGREEMENT_SQL}
@@ -49,11 +53,11 @@ export async function agreementHold(q: Q, firmId: string, bookingId: string): Pr
   const r = rows[0];
   // The deciding agreement: any signed one → not held; else held (P2R2-1, P2R3-1). An ended one no longer holds for good:
   // once all have ended the catch-up sends a fresh one (service.ts `catchUp`, `send`), and its signature lifts the hold.
-  return r && !isSigned(r.status) ? { agreementId: r.id, status: r.status } : null;
+  return r && !isSigned(r.status) ? { agreementId: r.id, status: r.status, bookingStatus: r.booking_status } : null;
 }
 
 /** Refuses (409 AGREEMENT_NOT_SIGNED) when the booking is held; nothing is written by the caller. */
 export async function assertAgreementSigned(q: Q, firmId: string, bookingId: string) {
   const h = await agreementHold(q, firmId, bookingId);
-  if (h) throw new HttpException({ type: "https://expatready.local/problems/agreement-not-signed", title: "Agreement not signed yet", status: 409, detail: HOLD_WORDS, code: "AGREEMENT_NOT_SIGNED", agreementId: h.agreementId }, 409);
+  if (h) throw new HttpException({ type: "https://expatready.local/problems/agreement-not-signed", title: "Agreement not signed yet", status: 409, detail: holdWords(h.bookingStatus), code: "AGREEMENT_NOT_SIGNED", agreementId: h.agreementId }, 409);
 }

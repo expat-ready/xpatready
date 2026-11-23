@@ -46,20 +46,21 @@ export class AgreementPoll implements OnApplicationBootstrap, OnApplicationShutd
    *  from one catch-up to at most an hour (break P2-3, as CS-K1's touchedEach). A row with a meeting (`before`) waits at
    *  most half the time left before it, never less than one catch-up, so it is tried again while the meeting is still
    *  ahead (break P2R2-2). */
-  private readonly backoff = new Map<string, { until: number; wait: number }>();
+  private readonly backoff = new Map<string, { until: number; wait: number; at: number }>();
   /** Each firm's rows run as that firm, once its bypass line of this run is written; a held-back row answers null. */
   private eachOf() {
     const lined = new Map<string, Promise<void>>();
     return async <T,>(firmId: string, fn: () => Promise<T>, key?: string, before?: Date): Promise<T | null> => {
       const k = key ? `${firmId}:${key}` : null, held = k ? this.backoff.get(k) : undefined, now = this.now().getTime();
-      if (held && held.until > now) return null;
+      // The cap is read again at each check with the meeting's time now (review m3-2: a booking moved nearer meanwhile).
+      if (held && Math.min(held.until, before ? held.at + Math.max(agreementPollMs() * CATCH_UP_EVERY, Math.floor((before.getTime() - held.at) / 2)) : Infinity) > now) return null;
       if (!lined.has(firmId)) lined.set(firmId, touchFirms(this.db, [firmId]));
       await lined.get(firmId)!;
       try { const r = await withFirm(firmId, fn); if (k) this.backoff.delete(k); return r; } catch (e) {
         if (k) {
           const least = agreementPollMs() * CATCH_UP_EVERY, wait = held ? Math.min(BACKOFF_MAX_MS, held.wait * 2) : least;
           const cap = before ? Math.max(least, Math.floor((before.getTime() - now) / 2)) : wait;
-          this.backoff.set(k, { until: now + Math.min(wait, cap), wait });
+          this.backoff.set(k, { until: now + Math.min(wait, cap), wait, at: now });
         }
         throw e;
       }

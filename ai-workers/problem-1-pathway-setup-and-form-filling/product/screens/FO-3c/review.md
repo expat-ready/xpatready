@@ -482,3 +482,98 @@ The journey-test report stays folded into this file, as I was told to change no 
 Reviewer: Approve e8511e15673206e0c9b46a2a6028f78b50f375e4
 
 Verdict: Approve e8511e15673206e0c9b46a2a6028f78b50f375e4
+
+## Part 2, round 3 (9f2754207)
+
+Scope: `git diff d47aca316..9f2754207` only, under Lead 1's ruling of 23 Nov on #3184. Another session moved this checkout to c2f6d13af while I worked. **Everything below was run on a `git archive` copy of 9f2754207; c2f6d13af is not reviewed here**, though its message says it answers M1 below.
+
+**Verdict: Rework (Block).** Two Majors.
+
+### What I ran
+* Row suite on the copy: **36/36**.
+* J-104 on isolated copy `rv104c` on runtime port :4436 (never :4400), screenshots to scratch: **20/20 PASS**. W4's panel shows the new words; W10 axe is clean.
+* Eleven mutations, each reverting one fix on the copy:
+
+  | Mutation | Result |
+  |---|---|
+  | Gate back to holding only live agreements | B6 red |
+  | `send()` back to "any agreement = ALREADY_SENT" | B2 red |
+  | Reschedule's ended → send removed | B6 fail red |
+  | Backoff cap removed | B5 red |
+  | `sendOrThrow` removed | B8 red |
+  | Gate or `ofBooking` reads the oldest | B2 red |
+  | Reminder's switch check removed | B9 red |
+  | **(C) In-lock re-check off** (`service.ts:237`) | **36/36** |
+  | **(E) Catch-up filter back to "no agreement at all"** (`service.ts:142`) | **36/36** |
+  | **(J) DRAFT taken out of ENDED_STATUSES** | **36/36** |
+
+* Probe (scratch suite, not committed):
+
+  | Case | Result |
+  |---|---|
+  | P1: catch-up after a decline, meeting 12 days ahead | Sends 1, latest SENT. Correct. |
+  | P2: 3 × `send()`, a reschedule event and a catch-up at once, after a decline | Exactly 1 fresh agreement. **With (C) applied: 5 fresh agreements, 6 in all.** So the re-check is what keeps "once", and no suite tests it (part 1's `check_fo3c` is also 42/42 with it weakened). |
+  | P3: FO-5 `edit` puts A1 back to DRAFT → catch-up sends A2 → FO-5 `signedOffline` on A1 (200, SIGNED_OFFLINE) | See M1 |
+
+### Majors
+* **M1. A signed agreement that is not the newest never lifts the hold. The three reads disagree.**
+  - In P3 the statuses are A1 SIGNED_OFFLINE and A2 SENT. Attended answers **409**, and by-booking says "Agreement not signed yet".
+  - The firm then withdraws the duplicate A2. Attended still answers **409** (the hold is now on A2 WITHDRAWN), and `catchUp` sends 0, because its filter sees A1 as not ended.
+  - So the booking is held, a signature is on record, and the panel promises "a new agreement is emailed", which is not true. The only way out is a reschedule followed by a third, e-signed agreement.
+  - Cause:
+    - `gate.ts:44-48` and `ofBooking` (`service.ts:172`) decide on the newest agreement.
+    - The catch-up (`service.ts:142`) decides on "any agreement that is not ended".
+  - Fix: one question for all three. A signed agreement lifts the hold. `send()`, the reschedule and the catch-up send a fresh one only when nothing is signed or waiting. Add a failing test for P3.
+  - The break report's P2R3-1 found the same independently, including the e-signed variant.
+* **M2. The ruling's own mechanism has no failing test (`STANDARDS.md:48` [M]).**
+  - After a decline, withdraw or expiry, no event calls `send()`. The catch-up is the only path to a fresh agreement while the meeting is ahead.
+  - Mutation (E) turns that off and the suite stays 36/36. B2 sends through `svc.send` directly; its comment ("the event's own send") names an event that does not exist. B6 tests only the past-meeting "none" side.
+  - Fix: in B2, decline, then run `catchUp` and expect `sent: 1` and a SENT latest agreement.
+  - Also add failing tests for (C), the concurrent fresh send (P2's shape), and (J), DRAFT counted as ended (Minor on their own, but the same standard).
+
+### Minors (not blocking alone)
+* **m3-1 (r2-2 only half closed).** On a No-show booking, pressing Attended still shows the server's red refusal `HOLD_WORDS` (`gate.ts:34`): "If the meeting time has passed, reschedule it". Reschedule refuses NO_SHOW. The same advice shows on a CANCELLED booking in the agreement paragraph (`agreementNextStep` knows only NO_SHOW); this is the break report's P2R3-4. Fix: the panel shows its own next step, not the raw detail, for statuses that cannot be rescheduled.
+* **m3-2. The backoff cap is applied only when a row fails** (`live.ts:61`), never when a held row is checked (`live.ts:55`).
+  - Example: a booking's first send keeps failing with its meeting days away, so the wait reaches an hour. It is then rescheduled to 40 minutes ahead.
+  - The reschedule event sends nothing, because there is no agreement yet (`NO_AGREEMENT`). The held row's old `until` runs past the new meeting, so no agreement is ever sent and nothing holds.
+  - Fix: also skip only while `held.until <= now + max(one catch-up, (before − now)/2)`.
+* m3-3. `NotSent` is also thrown for race reasons (NOT_SCHEDULED, NOT_REQUIRED after a cancel or a switch-off between the read and the send). The effect is one warn line and a back-off for a row that will not return. Harmless; the comment says "not a race".
+* Noted for the Lead, as the ruling says (not findings):
+  - DRAFT counted as ended means a FO-5 edit gets a duplicate agreement within about 30 s.
+  - A decline is followed by a fresh email at once, with no limit (P2R3-2).
+  - The first email's link stays open after a FO-5 withdraw or edit (P2R3-3; the root is outside the diff).
+
+### What held
+* **The backoff math is right.**
+  - The wait is `min(doubled wait, max(30 s, half the time left))`, and the doubled wait is stored uncapped.
+  - With T left, each try lands by T/2 plus one catch-up, so a row is retried while T ≥ about 60 s.
+  - B5 proves that the row is held back, then tried at 30 s, then at 90 s, and that the provider coming back at 70 minutes is tried before the 100-minute meeting.
+* **NO_TEMPLATE now backs off** (B8 red without `sendOrThrow`).
+* **The reminder reads the type's switch** (B9).
+* **The reschedule sends a fresh agreement when the latest has ended** (B6 fail).
+* **The fresh agreement becomes SENT inside the locked transaction**, so a sender waiting on the lock sees it.
+* **The panel words are true on SCHEDULED, RESCHEDULED and NO_SHOW bookings** in the agreement paragraph. The `held`/`ended` split matches the gate.
+
+### Journey score, round 3 (reviewer): 8.5/10. Pass, no criterion at 0
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J-104 20/20 |
+| Next step obvious | ½ | m3-1: reschedule advice where it cannot work |
+| Plain words | 1 | |
+| Feedback and state | 1 | |
+| Correct data | ½ | M1: "Agreement not signed yet" beside a signed agreement |
+| Error recovery | ½ | M1, m3-1 |
+| Accessibility and sizes | 1 | W10 axe clean; only words changed. 1024 px and 200 % zoom not re-walked |
+| Speed | 1 | |
+| Visual | 1 | |
+| Trust | 1 | |
+
+Raise it by fixing M1 (correct data, recovery), then m3-1 (next step).
+
+The journey-test report stays in this file, as I was told to change no other file.
+
+Could not check: c2f6d13af (it arrived during the review); a real screen reader; an intended user's own walk (D17 and D20 stay with the founder).
+
+Reviewer: Block 9f2754207cdd532db0094c26e69e1a6e478821b1
+
+Verdict: Block 9f2754207cdd532db0094c26e69e1a6e478821b1 — fix M1, M2 (and m3-1, m3-2 in the same round if small).
