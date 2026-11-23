@@ -453,3 +453,34 @@ restore (remove delete marker) -> GET returns the original version, aws:kms, con
 | app role may read and write `*/` keys only; cross-firm read through the app → 404 | Not provable on AWS: the app task has no bucket settings (Step 9's env list has no bucket name), so the cloud `FilesPort` adapter is not wired on staging |
 
 Fix row needed (deploy, `deploy/cdk/lib/estate.ts:92-103`): add the deny-non-KMS put statement, server access logs to a log bucket kept 90 days, and `abortIncompleteMultipartUploadAfter: 1 day`; and the app task's bucket settings for the cloud adapter.
+
+## Step 15: build, deploy and migrate main 8f487df4b, service up with 2 tasks, 23 Nov 10:56-11:10 IST
+
+| Step | Exit / result | Time |
+|---|---|---|
+| CodeBuild `xr-staging-image-build:dfcae20f-a2b6-492d-ae81-45b2385a5e35` on 8f487df4b | SUCCEEDED, digest `sha256:75ae532de7f22fb455b754f22d471ecc8a5ccb67632b72c51288b79d6170688a`; project deleted, role deleted, rc=0 | 10:59:53 IST |
+| `~/xr-setup.sh origin/main` | rc=0, checkout 8f487df4b (CloudShell had wiped `/tmp`) | 11:0x IST |
+| first `cdk diff 0` | rc=1: `npx` asked to download `cdk@2.1149.0` (no `node_modules` after the wipe); cancelled, nothing installed from outside the lockfile | 11:0x IST |
+| `npm ci` in `deploy/cdk` (Node 22.23.5, lockfile) | rc=0, 6 packages | 11:0x IST |
+| `cdk diff 0` | rc=0: only `AppMigrate` and `AppTask` task definitions (replace, new image) and `AppService` | 11:04 IST |
+| `cdk deploy 0` | rc=0, 82.34 s | 05:36:24Z (11:06:24 IST) |
+| `migrate deploy` (task def `xrstagingAppMigrateFE01F052:6`, task 0c4f5617…) | exit 0, 153 migrations found, 8 applied (`20261122050000_pf8b_f7_data_walls_checksums` … `20261123020000_fo7g3_bill_to_province`): "All migrations have been successfully applied." | 11:08 IST |
+| `cdk deploy 2` | rc=0, 131.94 s; desired 2, running 2, task def `xrstagingAppTask7031B6E4:7`, rollout COMPLETED; target group: healthy, healthy | 05:40:20Z (11:10:20 IST) |
+
+Resume note for a later session: after a CloudShell restart run `~/xr-setup.sh origin/main` **and** `npm ci` in `/tmp/xr/…/deploy/cdk` before `~/d-cdk.sh`, and pass `< /dev/null` so a prompt fails instead of hanging.
+
+### R1.1 hosting in Canada: **Pass (staging)**
+Read-only survey of every enabled region (`~/r11-read.sh`, 05:28:57-05:30:06Z):
+```
+ca-central-1 | stacks: xr-staging CDKToolkit | rds: xr-staging-databaseb269d8bb-… | ecs: cluster/xr-staging-AppCluster68CC0559-…
+ca-west-1    | stacks: xr-staging-copy CDKToolkit | rds: (none) | ecs: (none)        <- backup copy vault, also in Canada (PF-8rc)
+(no stack, database or cluster in any other region)
+S3: cdk assets ca-central-1, cdk assets ca-west-1, documents/exports/imports buckets ca-central-1 (no other bucket in the account)
+RDS: ca-central-1a, MultiAZ False, PubliclyAccessible False, StorageEncrypted True, postgres 18.3
+xr-staging: VPC, 6 subnets, NAT, ALB + 2 listeners, ECS cluster/service/2 task defs, ECR, RDS, 3 buckets, KMS key, 10 secrets,
+            3 Cognito pools, ACM cert, Route 53 zone + 7 records, SES identity, 7 alarms, AWS Backup plan
+```
+* Region is pinned in code (`deploy/cdk` stack env `ca-central-1`, PF-8a) and every resource sits in `ca-central-1`; the only other region is `ca-west-1` (Calgary), the backup copy, in Canada.
+* The app on main 8f487df4b serves over HTTPS from that estate (2 healthy tasks behind the load balancer, above).
+* Note for production, not staging: the database is single-zone (`MultiAZ False`) on staging; PF-8b's production setting is for qa to read in code.
+* Not part of this proof: PF-8c's deploy from CI by OpenID Connect (no `deploy.yml` on main; deploys are run from CloudShell).
