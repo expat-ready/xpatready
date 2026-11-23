@@ -400,3 +400,15 @@ message: 'new row violates row-level security policy for table "platform_firm"'
   `~/d-seed.sh resolve api/src/platform/seed-sample-firms.ts` → `~/d-seed.sh resolve api/src/front-office/firm-seed.ts` (logs: `/xr/staging/app`,
   stream `studio/studio/<taskid>`) → curl `https://sample-firm.staging.lab.expatready.com/` (expect 200) and an unknown name (expect 404) →
   `~/d-cdk.sh deploy 0 <digest>`.
+
+## Step 13: resumed in a new session (Lead 10, local_d4a6b1cd), 23 Nov 10:4x IST
+
+* The earlier AWS session (local_3f051647) was archived by mistake; this session continues on the same branch and worktree from f7e583878.
+* Built-in browser pane open on the AWS sign-in page; waiting for the founder's root + MFA sign-in (no password or code typed by the agent).
+* Plan after sign-in (scope as agreed: staging in ca-central-1 only, no IAM users or long-lived keys, no billing or account settings, nothing public beyond `*.staging.lab.expatready.com`):
+  1. Account and region read; build main's head (`~/d-build.sh`, CodeBuild project and role deleted after, as on 22 Nov), `~/d-cdk.sh deploy 2 <digest>`.
+  2. R1.13 and R1.15 re-read on the running service (proof only).
+  3. R1.65 (PF-F1c): read back the `documents`/`exports`/`imports` buckets (region, Block Public Access, versioning, KMS key and rotation, TLS-only policy, lifecycle); anonymous GET refused; put without encryption; delete-and-restore a test object from its version. From the code (`deploy/cdk/lib/estate.ts:92-103`, main 8f487df4b) two PF-F1c items are expected missing: an access log kept 90 days, and the abort-incomplete-multipart rule; a put without KMS is encrypted by the bucket default rather than refused (no deny statement).
+  4. R1.5: real-pool staff sign-in needs a person to type a password and a code: the founder, on the staging sign-in page, or it stays with qa per Lead 4's ruling.
+  5. R1.1: region pinned in code and every resource in ca-central-1; service healthy over HTTPS.
+  6. Scale back to 0.
