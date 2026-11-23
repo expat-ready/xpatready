@@ -10,7 +10,8 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD, NestFactory } from "@nestjs/core";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { deflateSync } from "node:zlib";
 import { join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261123120000_fo6d_any_document";
@@ -141,6 +142,14 @@ try {
   const xfa = await call("POST", "/api/front-office/signature-requests", R.token, form({ bytes: Buffer.concat([PDF, Buffer.from("<< /AcroForm << /XFA 5 0 R >> >>")]) }));
   const imm = await call("POST", "/api/front-office/signature-requests", R.token, form({ name: "imm5257e.pdf" }));
   ok("FO-6d S2 fail: a government form (an XFA form, or named like IMM 5257) → 422 GOVERNMENT_FORM, nothing sent", xfa.status === 422 && imm.status === 422 && xfa.body.code === "GOVERNMENT_FORM" && imm.body.code === "GOVERNMENT_FORM" && requests() === r0, [xfa.text.slice(0, 200), imm.status]);
+  // Review M1 on #3207: a real IRCC form (owner password, its XFA inside encrypted object streams) and an open form whose
+  // /XFA sits only inside a deflated object stream are both named as government forms, never "upload an open copy".
+  const IRCC = join(STUDIO, "..", "..", "official-sources", "ircc", "forms", "imm5257e.pdf");
+  const real = await call("POST", "/api/front-office/signature-requests", R.token, form({ bytes: readFileSync(IRCC), name: "letter.pdf", title: "Letter (Sample)" }));
+  const objStm = Buffer.concat([Buffer.from("%PDF-1.7\n5 0 obj << /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode >>\nstream\n", "latin1"), deflateSync(Buffer.from("1 0 << /Fields [] /XFA 6 0 R >>")), Buffer.from("\nendstream\nendobj\n%%EOF\n", "latin1")]);
+  const open = await call("POST", "/api/front-office/signature-requests", R.token, form({ bytes: objStm, name: "letter.pdf", title: "Letter (Sample)" }));
+  ok("FO-6d S2 fail: a real IRCC form renamed \"letter.pdf\" (imm5257e, protected) and an open form with /XFA only in a deflated stream → 422 GOVERNMENT_FORM, nothing sent",
+    real.status === 422 && real.body.code === "GOVERNMENT_FORM" && open.status === 422 && open.body.code === "GOVERNMENT_FORM" && requests() === r0, [real.text.slice(0, 160), open.text.slice(0, 160)]);
   const locked = await call("POST", "/api/front-office/signature-requests", R.token, form({ bytes: Buffer.concat([PDF, Buffer.from("trailer << /Encrypt 9 0 R >>")]) }));
   ok("FO-6d S2 fail: a password-protected PDF → 422 \"This PDF is protected. Upload an open copy.\" (AG-5-61 §12), nothing sent", locked.status === 422 && locked.body.detail === "This PDF is protected. Upload an open copy." && requests() === r0, locked.text.slice(0, 200));
   sql(`update fo_person set email = null where id = '${PC}'`);
@@ -149,8 +158,9 @@ try {
   ok("FO-6d S2 fail: a signer with no email → 422 SIGNER_NO_EMAIL naming them (\"Add an email first\", AG-5-61 §12), nothing sent", noMail.status === 422 && noMail.body.code === "SIGNER_NO_EMAIL" && /Cy Sample.*Add an email first/.test(noMail.body.detail) && requests() === r0, noMail.text.slice(0, 200));
   const noFile = await call("POST", "/api/front-office/signature-requests", R.token, form({ noFile: true }));
   ok("FO-6d S2 fail: no file → 422 \"Choose a PDF\"", noFile.status === 422 && noFile.body.code === "FILE_REQUIRED", noFile.text.slice(0, 200));
-  const s2 = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, title: "Second addendum (Sample)" }));
-  ok("FO-6d S2 pass: a real PDF to one person is accepted (201, \"0 of 1 signed\")", s2.status === 201 && s2.body.signed === "0 of 1 signed", s2.text.slice(0, 200));
+  const plainZ = Buffer.concat([Buffer.from("%PDF-1.7\n4 0 obj << /Length 20 /Filter /FlateDecode >>\nstream\n", "latin1"), deflateSync(Buffer.from("BT /F1 12 Tf (Sample letter) Tj ET")), Buffer.from("\nendstream\nendobj\n%%EOF\n", "latin1")]);
+  const s2 = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, title: "Second addendum (Sample)", bytes: plainZ }));
+  ok("FO-6d S2 pass: a plain PDF with a deflated page (no form) to one person is accepted (201, \"0 of 1 signed\")", s2.status === 201 && s2.body.signed === "0 of 1 signed", s2.text.slice(0, 200));
 
   // ------------------------------------------------------------------------------- S3: the key and the firm walls
   const ro = await call("POST", "/api/front-office/signature-requests", RO.token, form()), anon = await call("POST", "/api/front-office/signature-requests", null, form());
@@ -206,6 +216,23 @@ try {
   ok("FO-6d S5 pass: once the client signed, the firm's redelivered signature applies", f5b.applied && count("fo_signer", `request_id = '${Q5}' and signed_at is not null`) === 2, f5b);
   const badFirm = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, firm: sql(`select id from platform_staff where firm_id = '${B}' limit 1`) }));
   ok("FO-6d S5 fail: firm B's staff as the firm signer → 422, nothing sent", badFirm.status === 422 && badFirm.body.code === "FIRM_SIGNER_NOT_IN_FIRM", badFirm.text.slice(0, 200));
+
+  // ------------------------------------------------------------------------------- S6: each signed copy follows its own prospect
+  // Review M2 on #3207: Cy is the company's signatory, so Cy is on a second Corporate prospect of the same company, owned by
+  // a Case Officer. A document signed there is listed on Cy's record for that owner only; user-R (own-only: the firm's
+  // "everyone sees all" is off) sees only the copy from user-R's own prospect.
+  sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, state, engaged_at, engaged_by, created_by, updated_at) values (gen_random_uuid(), '${A}', '${PC}', 'MANUAL', 'WEBSITE', '${other.id}', 'ENGAGED', now(), 'test', 'test', now())`);
+  const PRO2 = sql(`insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
+    select gen_random_uuid(), '${A}', l.id, 'CORPORATE', (select id from fo_stage where firm_id = '${A}' and pipeline = 'CORPORATE' and key = 'ENGAGED'), '${co}', '${PC}', '${other.id}', 'test', now() from fo_lead l where l.person_id = '${PC}' returning id`);
+  sql(`insert into fo_stage_move (firm_id, prospect_id, to_stage_id, cause, by_actor) select firm_id, id, stage_id, 'PERSON', 'test' from fo_prospect where id = '${PRO2}'`);
+  const s6 = await call("POST", "/api/front-office/signature-requests", other.token, form({ prospectId: PRO2, signers: PC, title: "Employment offer (Sample, other owner)" }));
+  const Q6 = String(s6.body?.id ?? "00000000-0000-4000-8000-000000000000"), pd6 = sql(`select provider_document_id from fo_signature_request where id = '${Q6}'`);
+  sql(`update fo_signer set consented_at = now(), consent_text_version = '${CONSENT}' where request_id = '${Q6}'`);
+  const [c6, done6] = await signing.act(A, pd6, sql(`select id from fo_signer where request_id = '${Q6}'`), "signed"); await post(c6); await post(done6);
+  const sealed6 = sql(`select coalesce((select sealed_sha256 from fo_signing_evidence where request_id = '${Q6}'), '')`);
+  const asR = await call("GET", `/api/front-office/people/${PC}/documents`, R.token), asOther = await call("GET", `/api/front-office/people/${PC}/documents`, other.token);
+  ok("FO-6d S6 pass: the Case Officer sees, on Cy's record, the copy signed from their own prospect (and not user-R's)", /^[0-9a-f]{64}$/.test(sealed6) && asOther.status === 200 && asOther.text.includes(sealed6) && !asOther.text.includes(ev[1]), { s6: s6.status, other: asOther.text.slice(0, 200) });
+  ok("FO-6d S6 fail: user-R, own-only, does not see on Cy's record the title or hash of the copy from the Case Officer's prospect", asR.status === 200 && asR.text.includes(ev[1]) && !asR.text.includes(sealed6) && !asR.text.includes("other owner"), asR.text.slice(0, 300));
 
   // ------------------------------------------------------------------------------- D: the database keeps the rules
   const doc1 = sql(`select document_id from fo_signature_request where id = '${Q1}'`);

@@ -104,6 +104,7 @@ model PlatformFirm {
 
   // back-relation slot: signing (FO-6)
   foSignatureRequests FoSignatureRequest[] // front-office-signing.prisma (FO-6 part 1, under its own slot line, P-600 (2))
+  foSigningDocuments  FoSigningDocument[]  // front-office-signing.prisma (FO-6d)
 
   // back-relation slot: web address (PF-25)
   webAddress     PlatformFirmWebAddress?      // platform-web-address.prisma
@@ -273,6 +274,7 @@ model PlatformStaff {
   // back-relation slot: signing (FO-6)
   foSignatureRequestsSent FoSignatureRequest[] @relation("FoSignatureRequestSentBy") // front-office-signing.prisma (FO-6 part 1)
   foSignersAsFirm         FoSigner[]           @relation("FoSignerStaff")
+  foSigningDocsUploaded   FoSigningDocument[]  @relation("FoSigningDocumentUploadedBy") // FO-6d
 
   // back-relation slot: web address (PF-25)
 

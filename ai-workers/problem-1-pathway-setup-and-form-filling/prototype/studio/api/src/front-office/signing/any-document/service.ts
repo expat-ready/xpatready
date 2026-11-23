@@ -5,7 +5,7 @@
 // signers are written in one transaction with one audit line (a failure cancels the envelope). The same door, consent,
 // email code, reminders and expiry as FO-6 apply to it as they land (they key on fo_signature_request); this part sends
 // no signing email (FO-6 part 4's door sends every signer's link). The provider's webhook hands OTHER requests to
-// `onHook` (registered in ./hooks.ts): viewed and signed move the signer and the request, the firm signer (when added)
+// `onHook` (registered by features/front-office-signing-any-document.ts): viewed and signed move the signer and the request, the firm signer (when added)
 // signs last, nobody signs without consent; completed stores the sealed and audit files, hashed, moves the request to
 // SIGNED, writes `signing.completed` (kind OTHER) last, then emails each client signer "Your signed document" once. An
 // OTHER request never moves a prospect and never makes a client (no retainer, no win). Government forms are never sent
@@ -16,6 +16,7 @@
 import { HttpException } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { inflateSync } from "node:zlib";
 import type { AuditPort } from "../../../../../ports/audit.ts";
 import { SIGNING_EVENT, SigningCompletedPayload } from "../../../../../ports/events/signing.ts";
 import type { FilesPort } from "../../../../../ports/files.ts";
@@ -42,14 +43,39 @@ export type SendInput = { title: string; prospectId: string; signerPersonIds: st
 export type Upload = { bytes: Uint8Array; size: number; name?: string } | undefined;
 
 /** The file's own checks: a PDF by its first bytes (never by its name or declared type), the size, not a government form. */
+/** Whether a PDF is a government (IRCC) form: AG-5-61 r6 keeps those on AG-07's own path. Signals, any one (review M1 on
+ *  #3207, measured on the committed IRCC forms in official-sources/ircc): an IMM form number in the file name or title;
+ *  `/NeedsRendering` (a dynamic XFA form) or `/XFA` in the raw bytes; a fillable form with Reader usage rights
+ *  (`/AcroForm` and `/Perms`, both dictionary keys that stay readable under an owner password); `/XFA` inside a deflated
+ *  stream (an open form keeps it in an object stream), at most 400 streams and 64 MB inflated. A check of the file,
+ *  not a guarantee (Unconfirmed: no immigration expert). */
+export function isGovernmentForm(bytes: Uint8Array, name: string): boolean {
+  if (/\bIMM[\s_-]?\d{4}/i.test(name)) return true;
+  const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (b.includes("/NeedsRendering") || b.includes("/XFA") || (b.includes("/AcroForm") && b.includes("/Perms"))) return true;
+  if (b.includes("/Encrypt")) return false;   // an encrypted stream cannot be read here
+  let at = 0, streams = 0, out = 0;
+  while (streams < 400 && out < 64 * 1024 * 1024) {
+    const s = b.indexOf("stream", at);
+    if (s < 0) break;
+    const start = s + (b[s + 6] === 0x0d && b[s + 7] === 0x0a ? 8 : 7), end = b.indexOf("endstream", start);
+    if (end < 0) break;
+    at = end + 9; streams++;
+    if (!b.subarray(Math.max(0, s - 400), s).includes("/FlateDecode")) continue;
+    try { const z = inflateSync(b.subarray(start, end), { maxOutputLength: 16 * 1024 * 1024 }); out += z.length; if (z.includes("/XFA")) return true; } catch { /* not a whole zlib stream */ }
+  }
+  return false;
+}
+
+/** The file's own checks: a PDF by its first bytes (never by its name or declared type), the size, not a government form
+ *  (checked before the password, so a protected IRCC form is named as a form, never "upload an open copy"). */
 export function checkPdf(f: Upload, title: string): Uint8Array {
   if (!f || !f.bytes.length) return refuse("Choose a PDF to send.", "FILE_REQUIRED", "file");
   if (f.size > MAX_BYTES || f.bytes.length > MAX_BYTES) return refuse("This file is too large: at most 25 MB.", "FILE_TOO_LARGE", "file");
   if (Buffer.from(f.bytes.subarray(0, 5)).toString("latin1") !== "%PDF-") return refuse("This file is not a PDF. Only a PDF can be sent for signature.", "NOT_PDF", "file");
+  if (isGovernmentForm(f.bytes, `${f.name ?? ""} ${title}`)) return refuse("Government forms are not sent for signature this way. The client signs the form itself on paper or in the government's portal.", "GOVERNMENT_FORM", "file");
   // AG-5-61 §12: a PDF with a password (an encryption dictionary in its trailer) is refused at send.
   if (Buffer.from(f.bytes).includes("/Encrypt")) return refuse("This PDF is protected. Upload an open copy.", "PDF_PROTECTED", "file");
-  const form = /\bIMM[\s_-]?\d{4}/i.test(`${f.name ?? ""} ${title}`) || Buffer.from(f.bytes).includes("/XFA");
-  if (form) return refuse("Government forms are not sent for signature this way. The client signs the form itself on paper or in the government's portal.", "GOVERNMENT_FORM", "file");
   return f.bytes;
 }
 
@@ -168,7 +194,8 @@ export class AnyDocuments {
     await this.state(ctx, q.id);
   }
 
-  /** The signed copies on a person's record (any kind: retainers too), when the person is on a prospect the viewer sees. */
+  /** The signed copies on a person's record (any kind: retainers too), when the person is on a prospect the viewer sees;
+   *  each item only when its own prospect is visible too. */
   async personDocuments(ctx: StaffContext, personId: string) {
     const firmId = ctx.firmId, vis = await visibilityOf(this.db, ctx);
     const person = await this.db.foPerson.findFirst({ where: { firmId, id: personId }, select: { id: true } });
@@ -178,12 +205,17 @@ export class AnyDocuments {
     if (!vis.seesAll && !on.some((p) => sees(vis, ctx, p.ownerStaffId))) return notFound("person");
     const mine = await this.db.foSigner.findMany({ where: { firmId, personId, signedAt: { not: null } }, select: { requestId: true } });
     const qs = await this.db.foSignatureRequest.findMany({ where: { firmId, id: { in: mine.map((m) => m.requestId) }, status: "SIGNED" }, include: { evidence: true }, orderBy: { endedAt: "desc" } });
-    const titles = await this.db.foSigningDocument.findMany({ where: { firmId, id: { in: qs.map((q) => q.documentId) } }, select: { id: true, title: true } });
-    return { documents: qs.filter((q) => q.evidence).map((q) => ({ kind: "SIGNED_COPY", documentKind: q.documentKind, requestId: q.id, title: titles.find((t) => t.id === q.documentId)?.title ?? (q.documentKind === "RETAINER" ? `Retainer agreement (version ${q.documentVersion})` : "Consultation agreement"),
+    const titles = await this.db.foSigningDocument.findMany({ where: { firmId, id: { in: qs.map((q) => q.documentId) } }, select: { id: true, title: true, prospectId: true } });
+    // Review M2 on #3207: each item follows its own prospect's read (a company contact sits on prospects of other owners).
+    const rets = await this.db.foRetainer.findMany({ where: { firmId, id: { in: qs.filter((q) => q.documentKind !== "OTHER").map((q) => q.documentId) } }, select: { id: true, prospectId: true } });
+    const prospectOf = (q: { documentKind: string; documentId: string }) => (q.documentKind === "OTHER" ? titles.find((t) => t.id === q.documentId)?.prospectId : rets.find((r) => r.id === q.documentId)?.prospectId) ?? null;
+    const owners = new Map((await this.db.foProspect.findMany({ where: { firmId, id: { in: qs.map(prospectOf).filter((x): x is string => !!x) } }, select: { id: true, ownerStaffId: true } })).map((p) => [p.id, p.ownerStaffId]));
+    const visible = (q: { documentKind: string; documentId: string }) => { const id = prospectOf(q); return vis.seesAll || (!!id && owners.has(id) && sees(vis, ctx, owners.get(id)!)); };
+    return { documents: qs.filter((q) => q.evidence && visible(q)).map((q) => ({ kind: "SIGNED_COPY", documentKind: q.documentKind, requestId: q.id, title: titles.find((t) => t.id === q.documentId)?.title ?? (q.documentKind === "RETAINER" ? `Retainer agreement (version ${q.documentVersion})` : "Consultation agreement"),
       signedAt: q.endedAt, sealedSha256: q.evidence!.sealedSha256, auditSha256: q.evidence!.auditSha256 })) };
   }
 
-  /** The provider's webhook for a request of kind OTHER, run as its firm (./hooks.ts registers it with the signing module). */
+  /** The provider's webhook for a request of kind OTHER, run as its firm (features/front-office-signing-any-document.ts registers it). */
   async onHook(call: SigningHookCall, firmId: string) {
     const ev = await signingPort().verifyWebhook(call);
     if (!ev) return problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });

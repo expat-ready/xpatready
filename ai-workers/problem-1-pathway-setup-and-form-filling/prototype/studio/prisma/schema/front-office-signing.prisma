@@ -166,7 +166,7 @@ model FoSigningHookReceipt {
 
 /// FO-6d (AG-5-61): a PDF a firm uploads to send for signature (a request of kind OTHER names it: document_id and
 /// document_version_id are its id, version 1). Its FilesPort key under signing/ and sha256, the prospect it was sent from
-/// and who uploaded it (plain uuids checked by the API). Insert-only, never deleted (migration fo6d_any_document).
+/// and who uploaded it (the firm and the uploader keyed as fo_signature_request's; the prospect a plain uuid checked by the API). Insert-only, never deleted (migration fo6d_any_document).
 model FoSigningDocument {
   id         String   @id @default(uuid()) @db.Uuid
   firmId     String   @map("firm_id") @db.Uuid
@@ -176,6 +176,9 @@ model FoSigningDocument {
   prospectId String?  @map("prospect_id") @db.Uuid
   uploadedBy String   @map("uploaded_by") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  firm     PlatformFirm  @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  uploader PlatformStaff @relation("FoSigningDocumentUploadedBy", fields: [firmId, uploadedBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([firmId, id])
   @@index([firmId, prospectId])

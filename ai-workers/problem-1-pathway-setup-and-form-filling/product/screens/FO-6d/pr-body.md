@@ -1,6 +1,6 @@
 migration: `20261123120000_fo6d_any_document` (one enum value `OTHER`; one new table `fo_signing_document`; FO-6 part 1's two trigger bodies `fo_signing_request_write` and `fo_signing_evidence_write` ask for the signed firm signer only when the kind is not OTHER). Shared contract: `SigningPort.send` takes **at most one** firm signer (was exactly one) and at least one client; `ports/events/signing.ts` gains the `OTHER` variant of `signing.completed`.
 
-**Stacked on #3065** (FO-6 part 3, head 7d7979437) as the tech lead asked; nothing pushed to #3065. Until #3065 merges, this diff shows its commits too; this row's own diff is `git diff 7d7979437..HEAD` (about 780 lines, under P-610's 800).
+**Stacked on #3065** (FO-6 part 3, head 7d7979437) as the tech lead asked; nothing pushed to #3065. Until #3065 merges, this diff shows its commits too; this row's own diff is `git diff 7d7979437..HEAD` (see Checks for its measured size).
 
 ## What and why (R1.54, "any uploaded PDF can be sent for signature"; AG-5-61)
 A person with `agent/portal:request-work` uploads a PDF from a prospect they can see, picks one or more people on that prospect (its subject, its primary contact, a live contact of its company) and optionally one active firm person, and clicks Send. One `fo_signature_request` of kind `OTHER` is made on the fake adapter (FO-6v held, P-561), with one audit line in the same transaction. The provider's webhook (FO-6 part 3's door) hands OTHER requests to this row's handler: viewed / signed / completed as FO-6 (consent first, the firm signer when added signs last); completed stores the sealed copy and the audit file, hashed, sets SIGNED, writes `signing.completed` (kind OTHER) last and emails each client signer "Your signed document" once. **OTHER never moves a prospect, never makes a client, never touches a retainer.**
@@ -11,7 +11,7 @@ Routes (`/api/front-office`): `POST signature-requests` (multipart) · `GET sign
 1. Schema: `OTHER`, `fo_signing_document` (insert-only, never deleted, PF-12 wall, firm-first), the two trigger bodies (part 1's text with one condition each).
 2. Port: at most one firm signer; contract case "clients only is accepted and completes once every client signed".
 3. `signing/any-document/service.ts` + `routes.ts`; `features/front-office-signing-any-document.ts` registers the OTHER handler; FO-6 part 3's `receive` hands every non-RETAINER kind to its registered handler (one line).
-4. `tests/check_fo6d_any_document.ts` (30 checks, a pass and a fail per Done-when line).
+4. `tests/check_fo6d_any_document.ts` (33 checks, a pass and a fail per Done-when line).
 
 ## Done when → the test that proves it
 | BACKLOG FO-6d line | check |
@@ -21,7 +21,8 @@ Routes (`/api/front-office`): `POST signature-requests` (multipart) · `GET sign
 | a non-PDF → refused | S2 fail (422 `NOT_PDF` "…not a PDF…", nothing stored) |
 | a person without the key → 403 | S3 fail (Read-only 403; no session 401) |
 | another firm's document id → 404 | S3 fail (read, send, file link: 404) |
-| government forms are never sent this way | S2 fail (XFA form or IMM-numbered name → 422) |
+| government forms are never sent this way | S2 fail ×2 (a real IRCC form renamed letter.pdf; /XFA only in a deflated stream; a raw XFA form or IMM-numbered name) and S2 pass (a plain deflated PDF) |
+| each signed copy on a person follows its own prospect (review M2) | S6 pass/fail |
 | AG-5-61 §12: a PDF with a password refused; a signer with no email cannot be picked | S2 fail ×2 ("This PDF is protected. Upload an open copy."; SIGNER_NO_EMAIL "…Add an email first.") |
 | firm signer optional, signs last | S5 pass/fail |
 | the database keeps part 1's rule for every kind but OTHER | D fail/pass |
@@ -41,6 +42,8 @@ searched BACKLOG*.md ("FO-6d", "any document", "OTHER", "send for signature"), o
 ## Deviations, said
 * **A new table** (`fo_signing_document`) beyond the row's "one enum value": an OTHER request has no FO-5 version to name, so its file key, title and prospect need a home; insert-only, walled. Lead read asked (migration).
 * **Two FO-6 part 1 trigger bodies replaced** in this migration (one condition each) and **the port's signer rule widened**: AG-5-61's "no firm signer unless added" cannot be met otherwise. RETAINER and CONSULTATION keep "exactly one firm signer" in code (`prepareRetainerSigning`) and in the database (test D).
+* **Event kind name `OTHER`, not `DOCUMENT`** (review m1): BACKLOG FO-6 rev 16.16 and AG-5-61 §9 name the non-retainer kind `DOCUMENT`; the code keeps the row's enum word `OTHER` end to end (database, API, `signing.completed`). Consumers (FO-7 and later) read `OTHER`. Lead: rename now if you prefer `DOCUMENT` (one enum value, before any row exists).
+* **Government-form check** (review M1): an IMM number in the name or title; `/NeedsRendering`, `/XFA`, or `/AcroForm` with `/Perms` in the raw bytes; `/XFA` inside a deflated stream. Measured on the 22 committed IRCC forms, their previous editions and two open copies: 27 of 27 caught, and checked before the password so a protected IRCC form is never told "upload an open copy". A Reader-extended fillable PDF that is not a government form is refused too (conservative; Unconfirmed: no immigration expert).
 * **Case documents** (the case side's read port) are not built: uploads only, as the row allows.
 * No signing email in this part (FO-6 part 4 sends every signer's link, retainers too).
 
