@@ -48,3 +48,6 @@ export class PgMoneyVisibility implements MoneyVisibilityPort {
     return uniqueLower(rows.flatMap((r) => [r.subjectPersonId, r.subjectCompanyId]));
   }
 }
+
+/** The app's ScopeOf for client money (FO-7q's reads and, since #3305 M1, every FO-7b route on an existing invoice). */
+export const moneyScopeOf = (db: PrismaClient) => { const v = new PgMoneyVisibility(db); return (ctx: StaffContext) => v.scopeOf(ctx); };

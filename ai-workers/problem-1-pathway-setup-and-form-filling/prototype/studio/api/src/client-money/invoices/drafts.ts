@@ -19,6 +19,7 @@ import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { dayOf, invoiceFacts } from "./facts.ts";
 import { lineRatePpm, provinceCode, taxDefault } from "../tax/defaults.ts";
 import { billToProvince, type BillToParty } from "./bill-to.ts";
+import { failClosed, invoiceInScope, type ScopeOf } from "../reads/visibility.ts";
 import { taxForLine } from "./tax-round.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -53,7 +54,11 @@ const percent = (ppm: number) => { const whole = Math.trunc(ppm / 10_000), rest 
 
 export class InvoiceDrafts {
   /** `tax` is the one rule (taxForLine); a test passes a planted wrong rule to prove its cases catch it, never the app. */
-  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly tax: (amountMinor: number, ratePpm: number) => number = taxForLine, private readonly clock: ClockPort = systemClock) {}
+  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly tax: (amountMinor: number, ratePpm: number) => number = taxForLine, private readonly clock: ClockPort = systemClock,
+    private readonly scopeOf: ScopeOf = failClosed) {}   // C5 (#3305 M1): the app binds PgMoneyVisibility; fail closed otherwise
+
+  /** C5 on an existing invoice (reads/visibility.ts invoiceInScope): out of scope is the same 404, before any write. */
+  private async seen(tx: Tx, ctx: StaffContext, id: string) { await invoiceInScope(tx, firmScope(ctx.firmId).firmId, id, await this.scopeOf(ctx)); }
 
   /** POST /api/front-office/money/invoices. */
   async create(ctx: StaffContext, body: unknown): Promise<InvoiceView> {
@@ -92,6 +97,7 @@ export class InvoiceDrafts {
       const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
       const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string; personId: string | null; companyId: string | null; billTo: string | null }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by, person_id::text as "personId", company_id::text as "companyId", bill_to_province as "billTo" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
+      await this.seen(tx, ctx, id);   // C5, before anything is written
       if (inv.by !== `staff:${ctx.staffId}` && !(await holdsKey(tx, firmId, ctx.staffId, EDIT_KEY)))
         problem(403, "Not allowed", "Only the person who started this draft, or someone who may edit invoices, can add to it. Nothing was saved.", { code: "MISSING_PERMISSION", missing: [EDIT_KEY] });
       if (inv.issued) problem(409, "Not possible now", "This invoice is issued: it can't be edited. Use a credit note. Nothing was saved.", { code: "ISSUED" });
@@ -135,6 +141,7 @@ export class InvoiceDrafts {
       const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
       const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; billTo: string | null; personId: string | null; companyId: string | null; currency: string }[]>`select issued_at is not null as issued, number, bill_to_province as "billTo", person_id::text as "personId", company_id::text as "companyId", currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
+      await this.seen(tx, ctx, id);   // C5, before anything is written
       if (inv.issued) problem(409, "Not possible now", `This invoice is issued (${inv.number}): its Bill-to province is fixed. Nothing was saved.`, { code: "ISSUED" });
       if (inv.billTo === b.province) return this.view(tx, ctx.firmId, id);
       // The two defaults, from one read of the firm's facts after the invoice's lock (as addLine reads them).
@@ -170,7 +177,8 @@ export class InvoiceDrafts {
   async read(ctx: StaffContext, invoiceId: string): Promise<InvoiceView> {
     if (!UUID.test(invoiceId)) notFound("invoice");
     // One snapshot: the lines and the total are read as of the same moment (a line added between them never shows).
-    return this.db.$transaction((tx) => this.view(tx, ctx.firmId, invoiceId.toLowerCase()), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    const id = invoiceId.toLowerCase();
+    return this.db.$transaction(async (tx) => { const v = await this.view(tx, ctx.firmId, id); await this.seen(tx, ctx, id); return v; }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 
   // ------------------------------------------------------------------------------------------------- helpers
