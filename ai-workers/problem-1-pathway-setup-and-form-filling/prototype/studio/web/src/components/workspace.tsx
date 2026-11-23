@@ -1,7 +1,9 @@
 // PF-31 (EXPERIENCE §2.13, the founder's choice of 23 Nov: tabs drawn inside the app, the console pattern of Salesforce's
 // Service Console, Dynamics 365's multisession workspace and Zendesk's agent workspace): the workspace tab strip.
 //  * Each open item is an app tab with its own router: its own address, scroll and form state. Only the active tab is shown;
-//    the others stay mounted, hidden, so nothing typed is lost. The address bar shows the active tab's address, so links,
+//    the others stay mounted, so nothing typed is lost, but out of the document (each tab renders through a portal into its
+//    own box, and only the active box is attached): the page has one main, one heading and one set of page tabs (Lead 13 on
+//    #3193: hidden copies broke every page check that reads `main`, `h1` or a tab list). The address bar shows the active tab's address, so links,
 //    refresh and Back still work.
 //  * A left-menu link or a record link (`data-workspace-open`) opens its item in a tab, or focuses the tab that already shows
 //    it: the same record never opens twice. Ctrl/Cmd-click or middle-click on any link opens a tab in the background. Any
@@ -9,8 +11,11 @@
 //  * Open tabs come back after a reload (sessionStorage, per browser tab); at most 12, with a message at the limit. A tab
 //    closes with its ×, a middle-click, Delete on the focused tab or Alt+Shift+W; a tab with unsaved changes shows a dot and
 //    asks before it closes. Alt+PageDown / Alt+PageUp move between tabs (browsers keep Ctrl+W, Ctrl+Tab and Ctrl+PageDown).
-//  * ARIA tabs (arrow keys, Home, End); below 768 px the strip folds into an "Open items" menu.
+//  * The strip is navigation between addresses, so it is `nav "Open items"` with `aria-current="page"` on the shown item, not
+//    ARIA tabs (APG: tabs switch panels inside one page; a second tablist also collided with every page's own tabs). Arrow
+//    keys, Home and End move along it; below 768 px it folds into an "Open items" menu.
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { createPath, NavigationType, parsePath, Router, type To } from "react-router-dom";
 import { X } from "lucide-react";
 import { FoldArrow } from "@/components/fold-out";
@@ -86,6 +91,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   const [notice, setNotice] = React.useState<string | null>(dropped ? `${TAB_CAP} items were open, the most at once, so one was closed to show this page.` : null);
   const [mounted, setMounted] = React.useState(() => new Set([active]));
   const dirtyOwners = React.useRef(new Map<string, Map<string, () => void>>());
+  const slot = React.useRef<HTMLDivElement>(null);   // where the shown tab's box is attached
   const [dirty, setDirtySet] = React.useState(new Set<string>());
   const now = React.useRef({ tabs, active });
   now.current = { tabs, active };
@@ -208,13 +214,14 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   const ws: Ws = { tabs, active, notice, activate: show, close: (id) => close(id), dirty: dirtyAll, mounted };
   return (
     <WsCtx.Provider value={ws}>
-      {tabs.filter((t) => mounted.has(t.id)).map((t) => <TabHost key={t.id} tab={t} active={t.id === active} move={move} leave={leave} setDirty={setDirty}
+      <div ref={slot} className="contents" data-ws-slot />
+      {tabs.filter((t) => mounted.has(t.id)).map((t) => <TabHost key={t.id} tab={t} active={t.id === active} slot={slot} move={move} leave={leave} setDirty={setDirty}
         setTitle={(title) => setWs((s) => (s.tabs.find((x) => x.id === t.id)?.title === title ? s : { ...s, tabs: s.tabs.map((x) => (x.id === t.id ? { ...x, title } : x)) }))}>{children}</TabHost>)}
     </WsCtx.Provider>
   );
 }
 
-function TabHost({ tab, active, move, leave, setDirty, setTitle, children }: { tab: Tab; active: boolean; move: (id: string, to: To, how: "push" | "replace", state?: unknown) => void; leave: (id: string, path: string) => void;
+function TabHost({ tab, active, slot, move, leave, setDirty, setTitle, children }: { tab: Tab; active: boolean; slot: React.RefObject<HTMLDivElement | null>; move: (id: string, to: To, how: "push" | "replace", state?: unknown) => void; leave: (id: string, path: string) => void;
   setDirty: (id: string, owner: string, d: boolean, discard?: () => void) => void; setTitle: (t: string) => void; children: React.ReactNode }) {
   const p = parsePath(tab.path);
   const location = React.useMemo(() => ({ pathname: p.pathname || "/", search: p.search ?? "", hash: p.hash ?? "", state: tab.state ?? null, key: `${tab.id}-${tab.nav}` }), [tab.path, tab.nav, tab.state]);   // eslint-disable-line react-hooks/exhaustive-deps -- the parsed path is tab.path
@@ -227,11 +234,15 @@ function TabHost({ tab, active, move, leave, setDirty, setTitle, children }: { t
     go: (n: number) => window.history.go(n),
   }), [tab.id, move]);
   const api = React.useMemo<TabApi>(() => ({ id: tab.id, active, leave: (path) => leave(tab.id, path), setTitle: (t, page) => { names.current[page ? "page" : "frame"] = t; const n = names.current.page ?? names.current.frame; if (n) set.current(n); }, setDirty: (o, d, discard) => setDirty(tab.id, o, d, discard) }), [tab.id, active, setDirty, leave]);
-  return (
-    <div hidden={!active} data-ws-panel={tab.id} role="tabpanel" id={`ws-panel-${tab.id}`} aria-label={tab.title}>
-      <TabCtx.Provider value={api}><Router location={location} navigationType={tab.type} navigator={navigator}>{children}</Router></TabCtx.Provider>
-    </div>
-  );
+  // The tab's own box: React keeps everything in it while the tab is hidden, but only the shown tab's box is in the document.
+  const [box] = React.useState(() => { const d = document.createElement("div"); d.dataset.wsPanel = tab.id; return d; });
+  React.useLayoutEffect(() => {
+    const host = slot.current;
+    if (!active || !host) return;
+    host.appendChild(box);
+    return () => { box.remove(); };
+  }, [active, box, slot]);
+  return createPortal(<TabCtx.Provider value={api}><Router location={location} navigationType={tab.type} navigator={navigator}>{children}</Router></TabCtx.Provider>, box);
 }
 
 /** The strip under the header (drawn by Frame for staff areas). Below 768 px: an "Open items" menu. */
@@ -260,11 +271,11 @@ export function WorkspaceStrip() {
   return (
     <div ref={box} className="pointer-events-auto sticky top-14 z-20 border-b border-border bg-surface" data-workspace-strip>
       {/* Break M3: each tab is `relative`, so its absolutely placed sr-only text stays inside the strip's own scroll and never widens the page. */}
-      <div role="tablist" aria-label="Open items" className="hidden min-w-0 items-end gap-1 overflow-x-auto px-3 pt-1.5 md:flex">
+      <nav aria-label="Open items" className="hidden min-w-0 items-end gap-1 overflow-x-auto px-3 pt-1.5 md:flex" data-ws-strip>
         {tabs.map((t, i) => {
           const on = t.id === active;
           return (
-            <button key={t.id} ref={(el) => { if (el) refs.current.set(t.id, el); }} type="button" role="tab" id={`ws-${me.id}-${t.id}`} aria-selected={on} aria-controls={ws.mounted.has(t.id) ? `ws-panel-${t.id}` : undefined} tabIndex={on ? 0 : -1} title={t.path}
+            <button key={t.id} ref={(el) => { if (el) refs.current.set(t.id, el); }} type="button" aria-current={on ? "page" : undefined} tabIndex={on ? 0 : -1} title={t.path}
               aria-keyshortcuts={tabs.length > 1 ? "Delete" : undefined} data-ws-tab={t.id} data-ws-path={t.path}
               onClick={() => ws.activate(t.id)} onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); ws.close(t.id); } }} onKeyDown={(e) => onKey(e, i, t.id)}
               className={cn("group relative flex h-9 max-w-56 min-w-24 shrink-0 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
@@ -277,7 +288,7 @@ export function WorkspaceStrip() {
             </button>
           );
         })}
-      </div>
+      </nav>
       <div className="flex items-center gap-2 px-4 py-1.5 md:hidden">
         <button type="button" aria-expanded={menu} onClick={() => setMenu((m) => !m)} data-ws-menu className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium"><FoldArrow open={menu} />Open items ({tabs.length})</button>
         <span className="min-w-0 truncate text-sm text-text-muted">{tabs.find((t) => t.id === active)?.title}</span>

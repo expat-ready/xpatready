@@ -94,14 +94,14 @@ try {
   // T3: two records, two tabs, each keeps its own state
   const A3 = `${O1.name} draft ${run}`, B3 = `${O2.name} draft ${run}`;
   await nameField(p1).fill(A3);
-  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]`).click();
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="/platform/offices"]`).click();
   await shown(p1).locator(`[data-office-row="${O2.name}"] [data-office-edit]`).click();
   await nameField(p1).waitFor();
   await nameField(p1).fill(B3);
-  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O1.id)}"]`).click();
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="${officePath(O1.id)}"]`).click();
   await nameField(p1).waitFor();
   const backA = await nameField(p1).inputValue();
-  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"]`).click();
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="${officePath(O2.id)}"]`).click();
   await nameField(p1).waitFor();
   const backB = await nameField(p1).inputValue();
   t = await tabs(p1);
@@ -115,7 +115,7 @@ try {
   ok("T6 the active tab's draft survives the reload", (await nameField(p1).inputValue()) === B3, await nameField(p1).inputValue());
   ok("T6 a tab not mounted since the reload still shows its dot (break M2)", !!t6.find((x) => x.path === officePath(O1.id))?.dirty, t6);
   closeAnswer = false;
-  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O1.id)}"] [data-ws-close]`).click();
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="${officePath(O1.id)}"] [data-ws-close]`).click();
   await p1.waitForTimeout(300);
   ok("T6 closing that tab asks first; No keeps it (break M2, review round 3)", (await tabs(p1)).some((x) => x.path === officePath(O1.id)), await tabs(p1));
   closeAnswer = true;
@@ -123,7 +123,7 @@ try {
   // T4: a second view (another window of the same browser) mirrors, one save, the other view refreshes
   const p2 = await page(ctx);
   await p2.goto(`${BASE}${officePath(O1.id)}`); await nameField(p2).waitFor({ timeout: 60_000 });
-  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O1.id)}"]`).click(); await nameField(p1).waitFor();
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="${officePath(O1.id)}"]`).click(); await nameField(p1).waitFor();
   ok("T4 the second window opens with the first window's draft", await until(async () => (await nameField(p2).inputValue()) === A3), await nameField(p2).inputValue());
   ok("T4 the draft line says the record is also open in another window", await until(async () => /also open in 1 other window/.test(await p1.locator('[role="dialog"] [data-draft-line]').innerText().catch(() => ""))), await p1.locator('[role="dialog"] [data-draft-line]').innerText().catch(() => "none"));
   const S4 = `${O1.name} saved ${run}`;
@@ -135,13 +135,13 @@ try {
   // T5: a stale save → 409 and the conflict state (the second office's draft began before someone else saved it)
   const O2v = (await offices()).offices.find((o) => o.id === O2.id)!;
   await walkStaleSave({ label: "T5 office", a: p1, field: nameField, saves: (m, u) => m === "PATCH" && u.includes(`/api/platform/offices/${O2.id}`),
-    open: async () => { await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"]`).click(); await nameField(p1).waitFor(); },
+    open: async () => { await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="${officePath(O2.id)}"]`).click(); await nameField(p1).waitFor(); },
     save: (p) => p.locator('[role="dialog"] [data-office-save]').click(), stored: async () => officeName(O2.id),
     otherSaves: async (v) => { const r = await api(T, "PATCH", `/platform/offices/${O2.id}`, { name: v }, { "if-match": `"${O2v.version}"` }); if (r.status !== 200) throw new Error(`other save ${r.status}`); },
     values: { mirrored: "", last: "", stale: `${O2.name} mine ${run}`, other: `${O2.name} theirs ${run}` } }, ok);
 
   ok("T5 after a save the office's tab closes and the list's tab comes forward (review M2)", await until(async () => urlPath(p1) === "/platform/offices" && !(await tabs(p1)).some((x) => x.path === officePath(O2.id))), { url: p1.url(), tabs: await tabs(p1) });
-  const editFromList = async (o: { id: string }) => { await p1.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]').click(); await shown(p1).locator(`[data-office-edit][href="${officePath(o.id)}"]`).click(); await nameField(p1).waitFor(); };
+  const editFromList = async (o: { id: string }) => { await p1.locator('[data-workspace]:visible [data-ws-tab][data-ws-path="/platform/offices"]').click(); await shown(p1).locator(`[data-office-edit][href="${officePath(o.id)}"]`).click(); await nameField(p1).waitFor(); };
 
   // T5b (review M1): someone changes a detail I did not touch; "Keep mine" keeps only what I changed
   await editFromList(O1);
@@ -177,28 +177,28 @@ try {
   await editFromList(O2);
   await p1.locator('[role="dialog"] [data-office-close]').click();
   ok("T7 Close on an unchanged office closes its tab and shows the list (review M2)", await until(async () => urlPath(p1) === "/platform/offices" && !(await tabs(p1)).some((x) => x.path === officePath(O2.id))), await tabs(p1));
-  ok("T7 after Close, focus is on the tab that comes forward, not lost (round 2 Should 1)", await until(async () => p1.evaluate(() => document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true")), await p1.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
+  ok("T7 after Close, focus is on the tab that comes forward, not lost (round 2 Should 1)", await until(async () => p1.evaluate(() => !!document.activeElement?.hasAttribute("data-ws-tab") && document.activeElement?.getAttribute("aria-current") === "page")), await p1.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
   await editFromList(O2);
   await p1.locator('[role="dialog"] [data-office-name]').fill(`${O2.name} again ${run}`);
   closeAnswer = false;
   const before = (await tabs(p1)).length;
-  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"]`).click({ button: "middle" });
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="${officePath(O2.id)}"]`).click({ button: "middle" });
   await p1.waitForTimeout(300);
   ok("T7 closing a tab with unsaved changes asks; No keeps it", (await tabs(p1)).length === before, await tabs(p1));
   closeAnswer = true;
-  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"] [data-ws-close]`).click();
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="${officePath(O2.id)}"] [data-ws-close]`).click();
   ok("T7 Yes closes it, drops its draft and shows the next tab", await until(async () => (await tabs(p1)).length === before - 1) && !(await p1.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith("xr.draft.platform-office:")))), await tabs(p1));
-  ok("T7 focus goes to the tab that comes forward (review S4)", await until(async () => p1.evaluate(() => document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true")));
+  ok("T7 focus goes to the tab that comes forward (review S4)", await until(async () => p1.evaluate(() => !!document.activeElement?.hasAttribute("data-ws-tab") && document.activeElement?.getAttribute("aria-current") === "page")));
   await p1.evaluate(() => { const k = Object.keys(sessionStorage).find((x) => x.startsWith("xr.workspace.v1:"))!, s = JSON.parse(sessionStorage.getItem(k)!); for (let i = s.tabs.length; i < 12; i++) s.tabs.push({ id: `cap${i}`, path: `/platform/x${i}`, title: `Item ${i}` }); sessionStorage.setItem(k, JSON.stringify(s)); });
-  await p1.reload(); await p1.locator('[data-workspace]:visible [role="tablist"]').waitFor({ timeout: 60_000 });
-  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]`).click(); await officeRows(p1);
+  await p1.reload(); await p1.locator('[data-workspace]:visible [data-ws-strip]').waitFor({ timeout: 60_000 });
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="/platform/offices"]`).click(); await officeRows(p1);
   await shown(p1).locator('nav[aria-label="My account"] a[href="/platform/security"]').click({ modifiers: ["Control"] });
   ok("T7 at 12 open items a 13th is refused with a clear message", (await tabs(p1)).length === 12 && /12 items are open/.test(await p1.locator("[data-workspace]:visible [data-ws-notice]").innerText().catch(() => "")), await tabs(p1));
   await p1.setViewportSize({ width: 1024, height: 900 });
   ok("T7 at 1024 px a full strip scrolls inside itself; the page never scrolls sideways (break M3)", await until(async () => p1.evaluate(() => document.documentElement.scrollWidth <= 1024)), await p1.evaluate(() => document.documentElement.scrollWidth));
   await p1.setViewportSize({ width: 1440, height: 900 });
-  await p1.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/x11"] [data-ws-close]').click();
-  ok("T7 closing a background tab keeps focus on the strip's active tab (round 2 Should 2)", await until(async () => p1.evaluate(() => document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true")) && (await tabs(p1)).length === 11, await p1.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
+  await p1.locator('[data-workspace]:visible [data-ws-tab][data-ws-path="/platform/x11"] [data-ws-close]').click();
+  ok("T7 closing a background tab keeps focus on the strip's active tab (round 2 Should 2)", await until(async () => p1.evaluate(() => !!document.activeElement?.hasAttribute("data-ws-tab") && document.activeElement?.getAttribute("aria-current") === "page")) && (await tabs(p1)).length === 11, await p1.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
 
   // B1 (review round 3 Should 2): a draft broadcast by another person's window is ignored here
   const forgedKey = `platform-office:${O2.id}`;
@@ -207,12 +207,15 @@ try {
   ok("B1 a draft broadcast by another person's window is ignored", !(await p1.evaluate((k) => sessionStorage.getItem(`xr.draft.${k}`), forgedKey)));
 
   // T10: axe on the strip; keyboard; 375 px
+  // Lead 13 on #3193: hidden tabs are out of the document and the strip is navigation, so a page with several items open still
+  // has one main, one heading and only its own tabs (page checks read `main`, `main h1` and `getByRole("tab")`).
+  ok("T10 with several items open the page has one main and one h1, and the strip is nav \"Open items\", not a tab list", (await tabs(p1)).length > 1 && await p1.locator("main").count() === 1 && await p1.locator("main h1").count() <= 1 && await p1.locator('[data-workspace-strip] [role="tablist"], [data-workspace-strip] [role="tab"], [role="tabpanel"][data-ws-panel]').count() === 0 && await p1.getByRole("navigation", { name: "Open items" }).count() === 1, { tabs: (await tabs(p1)).length, main: await p1.locator("main").count(), h1: await p1.locator("main h1").count() });
   const ax = (await new AxeBuilder({ page: p1 }).include("[data-workspace]:not([hidden] *) [data-workspace-strip]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations;
   ok("T10 axe (WCAG 2.2 A/AA) clean on the strip", ax.length === 0, ax.map((v) => `${v.id}: ${v.nodes[0]?.target}`));
-  await p1.locator('[data-workspace]:visible [role="tab"][aria-selected="true"]').focus();
+  await p1.locator('[data-workspace]:visible [data-ws-tab][aria-current="page"]').focus();
   const was = urlPath(p1);
   await p1.keyboard.press("ArrowRight");
-  ok("T10 arrow keys move between tabs (ARIA tabs)", await until(async () => urlPath(p1) !== was), { was, now: urlPath(p1) });
+  ok("T10 arrow keys move between tabs (the strip's roving focus)", await until(async () => urlPath(p1) !== was), { was, now: urlPath(p1) });
   await p1.keyboard.press("Alt+PageUp");
   ok("T10 Alt+PageUp goes back a tab", await until(async () => urlPath(p1) === was), urlPath(p1));
   await ctx.close();
@@ -267,7 +270,7 @@ try {
   await pb.goto(`${BASE}/platform/offices`); await shown(pb).locator(`[data-office-edit][href="${officePath(O2.id)}"]`).click(); await nameField(pb).waitFor({ timeout: 60_000 });
   await nameField(pb).fill(typed);
   await until(kept);
-  await pb.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]').click();   // the list again: the header is not behind the panel
+  await pb.locator('[data-workspace]:visible [data-ws-tab][data-ws-path="/platform/offices"]').click();   // the list again: the header is not behind the panel
   // The session ends by itself: R signs in elsewhere, so the next call here is refused (401, "signed in elsewhere").
   await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) });
   await pb.reload();   // the first call with the old token is refused, so the session ends here (the typing was kept over the reload)
@@ -275,7 +278,7 @@ try {
   ok("round 3: a session ended by the server hides the typing but keeps it for the same person", await kept() && (await pb.getByText(typed).count()) === 0);
   await pb.getByRole("button", { name: "Sign in again here" }).click();
   await formSignIn(sql("select email from platform_staff where actor_id = 'user-R' limit 1"));
-  await pb.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"]`).click();
+  await pb.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="${officePath(O2.id)}"]`).click();
   ok("round 3: the same person signing in again gets the tab and the typing back", await until(async () => (await nameField(pb).inputValue().catch(() => "")) === typed), await nameField(pb).inputValue().catch(() => "(no panel)"));
   // Round 5 (breaker round 4 m2): a second window of the same person holds the same draft.
   const cur = await pb.evaluate(() => sessionStorage.getItem("xr-staff-session"));
@@ -284,7 +287,7 @@ try {
   await pb2.goto(`${BASE}${officePath(O2.id)}`);
   const kept2 = () => pb2.evaluate((v) => Object.values(sessionStorage).some((x) => x.includes(v)), typed);
   ok("round 5: a second window of the same person shows the draft", await until(async () => (await nameField(pb2).inputValue().catch(() => "")) === typed, 20_000), await nameField(pb2).inputValue().catch(() => "(no panel)"));
-  await pb.locator('[data-workspace]:visible [role="tab"]').first().click();
+  await pb.locator('[data-workspace]:visible [data-ws-tab]').first().click();
   // Round 5 (review round 4 Should 2): the server has already ended this session (R signed in elsewhere), so Sign out's own
   // call answers 401; nothing of the person may stay all the same.
   await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) });
@@ -302,11 +305,11 @@ try {
   await ctxB.close();
   // Break round 3 M2: an area with no staff session (the case area, simulated people) keeps its tabs over a reload too.
   const ctxS = await browser.newContext({ viewport: { width: 1440, height: 900 } }), pc = await page(ctxS);
-  await pc.goto(`${BASE}/cases`); await pc.locator('[data-workspace]:visible [role="tablist"]').waitFor({ timeout: 60_000 });
+  await pc.goto(`${BASE}/cases`); await pc.locator('[data-workspace]:visible [data-ws-strip]').waitFor({ timeout: 60_000 });
   await pc.locator('[data-workspace]:visible nav a[href^="/"]').nth(1).click({ modifiers: ["Control"] });
   await until(async () => (await tabs(pc)).length > 1);
   const beforeS = (await tabs(pc)).length;
-  await pc.reload(); await pc.locator('[data-workspace]:visible [role="tablist"]').waitFor({ timeout: 60_000 });
+  await pc.reload(); await pc.locator('[data-workspace]:visible [data-ws-strip]').waitFor({ timeout: 60_000 });
   ok("round 3: with no staff session (the case area) the tabs still come back after a reload (break M2)", beforeS > 1 && await until(async () => (await tabs(pc)).length === beforeS), { beforeS, after: await tabs(pc) });
   await ctxS.close();
   ok("no page errors", errs.length === 0, errs.slice(0, 5));

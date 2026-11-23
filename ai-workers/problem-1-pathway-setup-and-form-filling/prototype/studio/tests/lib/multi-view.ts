@@ -9,8 +9,8 @@ export type Ok = (name: string, cond: unknown, detail?: unknown) => void;
 
 /** The workspace strip's tabs as the person sees them: title, address, selected, unsaved dot. */
 export async function tabs(p: Page) {
-  return p.locator('[data-workspace]:visible [role="tablist"] [role="tab"]').evaluateAll((els) => els.map((e) => ({
-    path: e.getAttribute("data-ws-path") ?? "", title: (e.textContent ?? "").replace(/, unsaved changes$/, "").trim(), selected: e.getAttribute("aria-selected") === "true", dirty: !!e.querySelector("[data-ws-dirty]"),
+  return p.locator('[data-workspace]:visible [data-ws-strip] [data-ws-tab]').evaluateAll((els) => els.map((e) => ({
+    path: e.getAttribute("data-ws-path") ?? "", title: (e.textContent ?? "").replace(/, unsaved changes$/, "").trim(), selected: e.getAttribute("aria-current") === "page", dirty: !!e.querySelector("[data-ws-dirty]"),
   })));
 }
 /** The visible tab's content (hidden tabs stay mounted). */
