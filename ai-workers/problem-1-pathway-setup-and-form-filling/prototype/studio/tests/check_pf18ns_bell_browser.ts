@@ -267,7 +267,7 @@ try {
 
   // ---------------------------------------------------------------------------------------------- round 3 (break M1 round 2, review m3): focus
   const p3 = await tab(TO);
-  const focusedRow = () => p3.evaluate(() => { const a = document.activeElement; return a?.closest("[data-notification]")?.getAttribute("data-notification") ?? (a?.matches("[data-notifications-empty]") ? "empty" : a?.matches("[data-notification-mark]") ? "mark" : a?.tagName ?? null); });
+  const focusedRow = () => p3.evaluate(() => { const a = document.activeElement; return a?.matches("[data-notification-mark]") ? "mark" : a?.matches("[data-notifications-empty]") ? "empty" : a?.closest("[data-notification]")?.getAttribute("data-notification") ?? a?.tagName ?? null; });
   sql(`delete from msg_notification where staff_id = '${O}'`);
   for (let i = 0; i < 3; i++) sql(`insert into msg_notification (id, firm_id, staff_id, kind, "group", item_kind, item_id, created_at) values (gen_random_uuid(), '${A}', '${O}', 'lead-assigned', 'WORK_HANDED_TO_ME', 'lead', gen_random_uuid(), date_trunc('milliseconds', now()) - interval '${i + 1} minutes')`);
   await go(p3, "/account/notifications/all"); await p3.locator('[data-notifications-filter="unread"]').click();

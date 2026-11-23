@@ -48,6 +48,11 @@ Fixed, each with a test line that fails first:
 * **The check (review m8).** It re-runs on a reused copy: it clears O's and R's rows and switches first.
 * **Comments.** Two comments put on the wrong lines are back in place (review m7, break m8).
 
+## Round 3 (Lead 13 allowed it on #3302: focus fixes only)
+* After a mark, focus goes to the marked row if it is still listed. Otherwise it goes to the row now in its place, else the previous row, else the list's empty line (`useListFocus`, waiting for the list's fresh answer). This fixes break M1 in the Unread filter, Mark all read in Unread, and the step back from an emptied page.
+* A failed Mark read returns focus to its button (review m3).
+* Three test lines failed first (focus was on BODY in each): 27/27.
+
 ## Known gaps
 * The bell is not yet on the case pages' frame (`runtime/cases.tsx`, the Studio's simulated person). This is an X-row (Lead 10).
 * The kind words are not yet shared with Home (see Words above).

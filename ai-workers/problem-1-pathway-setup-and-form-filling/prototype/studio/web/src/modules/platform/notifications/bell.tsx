@@ -24,15 +24,43 @@ export function useRefreshAfterMark() {
   return () => Promise.all([qc.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }), qc.invalidateQueries({ queryKey: ["pf", "home", "needs-you"] })]);
 }
 
+/** Where focus goes after a mark (round 3, WCAG 2.4.3): the marked row if it is still listed; else the row now in its place
+ *  (the next), else the previous; else the list's empty line. Waits for the list's fresh answer, so a row about to leave
+ *  is never the target. `row(id, index)` after a row's mark; `all()` after Mark all read (the first row, or the empty line). */
+export function useListFocus(items: NotificationItem[] | undefined, settled: boolean) {
+  const list = React.useRef<HTMLUListElement>(null), empty = React.useRef<HTMLParagraphElement>(null);
+  const want = React.useRef<{ id?: string; index: number } | null>(null);
+  const [, setTick] = React.useState(0);   // a render that tries the focus again
+  React.useEffect(() => {
+    const w = want.current;
+    if (!w || !settled || !items) return;
+    let target: HTMLElement | null;
+    if (!items.length) target = empty.current;
+    else { const at = w.id ? items.findIndex((i) => i.id === w.id) : -1; const i = at >= 0 ? at : Math.min(w.index, items.length - 1); target = list.current?.querySelector<HTMLElement>(`[data-notification="${items[i]!.id}"]`) ?? list.current; }
+    if (!target) return;   // not drawn yet: the next render tries again
+    want.current = null;
+    target.focus();
+  });
+  return {
+    list, empty,
+    row: (id: string, index: number) => { want.current = { id, index }; setTick((t) => t + 1); },
+    all: () => { want.current = { index: 0 }; setTick((t) => t + 1); },
+  };
+}
+
 /** One notification: what, the record, when; unread marked by a dot and the word; opens its page, or offers Mark read. */
-export function NotificationRow({ item, zone, onOpened }: { item: NotificationItem; zone: string; /** After a row is opened (the panel closes). */ onOpened?: () => void }) {
+export function NotificationRow({ item, zone, onOpened, onMarked }: { item: NotificationItem; zone: string; /** After a row is opened (the panel closes). */ onOpened?: () => void;
+  /** After Mark read succeeds: the list moves focus (useListFocus), as the row may leave it (break M1). */ onMarked?: () => void }) {
   const navigate = useNavigate(), refresh = useRefreshAfterMark();
   const [busy, setBusy] = React.useState(false), [failed, setFailed] = React.useState(false);
-  const unread = item.readAt === null, li = React.useRef<HTMLLIElement>(null);
-  // Mark read: the button leaves with the unread state, so focus stays on the row itself (break M1, review m3; WCAG 2.4.3).
+  const unread = item.readAt === null, li = React.useRef<HTMLLIElement>(null), markBtn = React.useRef<HTMLButtonElement>(null);
+  const backToMark = React.useRef(false);
+  // A failed mark: the row stays, says so, and focus goes back to its Mark read (round 3, review m3) once it is enabled again.
+  React.useEffect(() => { if (!busy && backToMark.current) { backToMark.current = false; markBtn.current?.focus(); } }, [busy]);
   const mark = async () => {
     setBusy(true); setFailed(false);
-    try { await markRead(item); await refresh(); requestAnimationFrame(() => li.current?.focus()); } catch { setFailed(true); } finally { setBusy(false); }
+    try { await markRead(item); await refresh(); if (onMarked) onMarked(); else requestAnimationFrame(() => li.current?.focus()); }
+    catch { setFailed(true); backToMark.current = true; } finally { setBusy(false); }
   };
   const open = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) { void markRead(item).then(refresh, () => undefined); return; }   // a new tab: marked too, the browser opens it
@@ -59,19 +87,19 @@ export function NotificationRow({ item, zone, onOpened }: { item: NotificationIt
           {!item.link && !pageless(item) ? <> · {COPY.gone}</> : null}</p>
         {failed ? <p role="alert" className="text-sm text-text-danger">{COPY.markFailed}</p> : null}
       </div>
-      {!item.link && unread ? <Button variant="outline" size="sm" className="self-start" busy={busy} onClick={() => void mark()} aria-label={`${COPY.markRead}: ${whatWords(item)}${item.label ? `, ${item.label}` : ""}, ${when}`} data-notification-mark>{COPY.markRead}</Button> : null}
+      {!item.link && unread ? <Button ref={markBtn} variant="outline" size="sm" className="self-start" busy={busy} onClick={() => void mark()} aria-label={`${COPY.markRead}: ${whatWords(item)}${item.label ? `, ${item.label}` : ""}, ${when}`} data-notification-mark>{COPY.markRead}</Button> : null}
     </li>
   );
 }
 const whatWords = (i: NotificationItem) => whatOf(i.kind);
 
 /** "Mark all read" up to the newest row this list showed (BR-6: a notice that came after stays unread). */
-export function useMarkAll(newest: string | undefined, /** Where focus goes after (the button turns disabled: break M1). */ focusAfter?: () => HTMLElement | null) {
+export function useMarkAll(newest: string | undefined, /** Moves focus after (the button turns disabled: break M1): useListFocus's `all`. */ focusAfter?: () => void) {
   const refresh = useRefreshAfterMark();
   const [busy, setBusy] = React.useState(false), [failed, setFailed] = React.useState(false);
   const run = async () => {
     setBusy(true); setFailed(false);
-    try { await staffApi(`/platform/me/notifications/read-all${newest ? `?seen=${encodeURIComponent(newest)}` : ""}`, { method: "POST" }); await refresh(); requestAnimationFrame(() => focusAfter?.()?.focus()); } catch { setFailed(true); } finally { setBusy(false); }
+    try { await staffApi(`/platform/me/notifications/read-all${newest ? `?seen=${encodeURIComponent(newest)}` : ""}`, { method: "POST" }); await refresh(); focusAfter?.(); } catch { setFailed(true); } finally { setBusy(false); }
   };
   return { run, busy, failed };
 }
@@ -79,8 +107,8 @@ export function useMarkAll(newest: string | undefined, /** Where focus goes afte
 function BellPanel({ open, onOpenChange, returnFocus, onOpen }: { open: boolean; onOpenChange: (o: boolean) => void; returnFocus: () => HTMLElement | null; /** The bell reads its count again (break m2). */ onOpen: () => void }) {
   const q = useQuery({ queryKey: [...NOTIFICATIONS_KEY, "panel"], enabled: open, staleTime: 0, queryFn: async () => NotificationList.parse(await staffApi(`/platform/me/notifications/items?size=${PANEL_SIZE}`)) });
   React.useEffect(() => { if (open) onOpen(); }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- on opening only
-  const list = React.useRef<HTMLUListElement>(null);
-  const all = useMarkAll(q.data?.items[0]?.createdAt, () => list.current);
+  const focus = useListFocus(q.data?.items, !q.isFetching);
+  const all = useMarkAll(q.data?.items[0]?.createdAt, focus.all);
   const anyUnread = !!q.data?.items.some((i) => i.readAt === null);   // Mark all read follows the rows shown, not the bell (review m1, break m2)
   return (
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} title={COPY.title} description={q.data ? zoneLine(q.data.zone) : undefined} bodyLabel="Your notifications"
@@ -93,8 +121,8 @@ function BellPanel({ open, onOpenChange, returnFocus, onOpen }: { open: boolean;
         {all.failed ? <Notice tone="danger" title={COPY.markFailed} /> : null}
         {q.isPending ? <Loading />
           : q.isError ? <Notice tone="danger" title={COPY.loadFailed} action={<Button variant="outline" size="sm" onClick={() => void q.refetch()}>{COPY.retry}</Button>} />
-            : !q.data.items.length ? <p className="text-sm text-text-muted" data-notifications-empty>{COPY.empty}</p>
-              : <ul ref={list} tabIndex={-1} aria-label={COPY.title} className="outline-none">{q.data.items.map((i) => <NotificationRow key={i.id} item={i} zone={q.data.zone} onOpened={() => onOpenChange(false)} />)}</ul>}
+            : !q.data.items.length ? <p ref={focus.empty} tabIndex={-1} className="text-sm text-text-muted outline-none" data-notifications-empty>{COPY.empty}</p>
+              : <ul ref={focus.list} tabIndex={-1} aria-label={COPY.title} className="outline-none">{q.data.items.map((i, n) => <NotificationRow key={i.id} item={i} zone={q.data.zone} onOpened={() => onOpenChange(false)} onMarked={() => focus.row(i.id, n)} />)}</ul>}
       </div>
     </Panel>
   );

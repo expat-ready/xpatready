@@ -9,7 +9,7 @@ import { Button, Notice } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { PlatformFrame } from "../frame";
 import { staffApi } from "../session";
-import { Loading, NOTIFICATIONS_KEY, NotificationRow, useMarkAll } from "./bell";
+import { Loading, NOTIFICATIONS_KEY, NotificationRow, useListFocus, useMarkAll } from "./bell";
 import { COPY, NotificationList, PAGE_SIZE, zoneLine } from "./contract";
 
 /** "Settings | All" over My account → Notifications (one line on PF-18s's page and on this one). */
@@ -27,8 +27,8 @@ function AllBody() {
   const [unread, setUnread] = React.useState(false), [page, setPage] = React.useState(1);
   const q = useQuery({ queryKey: [...NOTIFICATIONS_KEY, "all", unread, page], placeholderData: (prev) => prev,
     queryFn: async () => NotificationList.parse(await staffApi(`/platform/me/notifications/items?size=${PAGE_SIZE}&page=${page}${unread ? "&unread=1" : ""}`)) });
-  const list = React.useRef<HTMLUListElement>(null);
-  const all = useMarkAll(page === 1 ? q.data?.items[0]?.createdAt : undefined, () => list.current);
+  const focus = useListFocus(q.data?.items, !q.isFetching && !q.isPlaceholderData);
+  const all = useMarkAll(page === 1 ? q.data?.items[0]?.createdAt : undefined, focus.all);
   // Break m3: a page left empty (its last unread row marked) goes back one, never an empty page while rows remain before it.
   React.useEffect(() => { if (page > 1 && q.data && !q.isPlaceholderData && !q.data.items.length) setPage((p) => p - 1); }, [page, q.data, q.isPlaceholderData]);
   const show = (u: boolean) => { setUnread(u); setPage(1); };
@@ -46,8 +46,8 @@ function AllBody() {
       <section aria-label="Notifications" className="mt-3 rounded-xl border border-border bg-surface-raised px-4">
         {q.isPending ? <Loading />
           : q.isError ? <div className="py-4"><Notice tone="danger" title={COPY.loadFailed} action={<Button variant="outline" size="sm" onClick={() => void q.refetch()}>{COPY.retry}</Button>} /></div>
-            : !q.data.items.length ? <p className="py-4 text-sm text-text-muted" data-notifications-empty>{unread ? COPY.emptyUnread : COPY.empty}</p>
-              : <ul ref={list} tabIndex={-1} aria-label="Notifications" aria-busy={q.isPlaceholderData || undefined} className={q.isPlaceholderData ? "opacity-60 outline-none" : "outline-none"}>{q.data.items.map((i) => <NotificationRow key={i.id} item={i} zone={q.data.zone} />)}</ul>}
+            : !q.data.items.length ? <p ref={focus.empty} tabIndex={-1} className="py-4 text-sm text-text-muted outline-none" data-notifications-empty>{unread ? COPY.emptyUnread : COPY.empty}</p>
+              : <ul ref={focus.list} tabIndex={-1} aria-label="Notifications" aria-busy={q.isPlaceholderData || undefined} className={q.isPlaceholderData ? "opacity-60 outline-none" : "outline-none"}>{q.data.items.map((i, n) => <NotificationRow key={i.id} item={i} zone={q.data.zone} onMarked={() => focus.row(i.id, n)} />)}</ul>}
       </section>
       {q.data && (page > 1 || q.data.nextPage) ? (
         <nav aria-label="Pages" className="mt-3 flex items-center justify-between">
