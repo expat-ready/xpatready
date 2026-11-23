@@ -2,7 +2,7 @@
 
 current_lead: local_5f4a7ece-2ec5-49ab-8e0e-6c5032e0638d Lead 11 · 23 Nov 23:41 IST (took over from Lead 10 (local_1d7473d3) past 200k after its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 23:41 IST: hand-over Lead 10 to Lead 11
+updated: 2026-11-23 23:46 IST: Lead 11. #3189 queued (waits its migration slot behind #3180: no fault). #3185 full run 45230317014 green, Lead read posted, LABELLED. #3209 round 4 allowed, lane typed and running, then the bypass-line PR (touchFirm too). #3040 taken by the R1.90 screen lane cse_01MXNda67yexjnYrdQ3B9MNt (its own lane is on the old account), typed. #3155 label OFF (Lead B withdrew its OK; waits on the bypass-line PR). #3207 stamp 20261123213000 (after #3185), lane typed, round 4. #3291 questions answered, queued. Lead O 2: K=2 pilot, 2 machines, measurement only. Keep-awake was refused by auto mode. Check 50b3b9aa.
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
