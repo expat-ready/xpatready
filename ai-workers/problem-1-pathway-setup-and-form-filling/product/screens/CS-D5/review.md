@@ -45,3 +45,36 @@ Journey test: `journey-test-reviewer-2026-11-23.md`. **No score out of 10**: the
 **Verdict: Approve**
 
 Reviewer: Approve 1cb23d33c7e49434c3e35461f1d0a34db7c7cb16
+
+## Round 2 (diff only)
+
+Reviewed `git diff 1cb23d33c7e49434c3e35461f1d0a34db7c7cb16..3d47a42b8af656aed891de7a4b4c5870d4fd327c`: the card row, the review and break records, and the round-1 Minor fixes in `case-preview-links.ts`, `case-documents-preview.ts`, `features/case-documents-preview.ts` and `tests/check_csd5_preview.ts`. Own isolated copy `rev2_csd5` on :4473 (`xr_studio_rev2_csd5`), stopped after; Express 5.2.1, Nest 11.1.29.
+
+**Evidence.** `npx tsx tests/check_csd5_preview.ts 4473 xr_studio_rev2_csd5`: **23/23 passed**. `tsc --noEmit -p api`: no error in any CS-D5 file (the errors it prints are older, in other checks). Real requests from a probe script against :4473:
+
+| Request | Status | Headers seen |
+|---|---|---|
+| HEAD, officer, fresh link | 405 | `allow: GET`; no body |
+| HEAD, no `x-actor` | 401 | problem+json (the case guard runs first) |
+| GET, client, the officer's valid link | 403 "Only the case officer can do this." | `private, no-store`, `nosniff`, no CSP, no disposition |
+| GET, another firm's person | 404 | `private, no-store`, `nosniff` |
+| GET, one character altered (officer; client) | 404; 404 | `private, no-store`, `nosniff` |
+| GET, `abc` as the token | 404 | `private, no-store`, `nosniff` |
+| GET, officer, same link after all of the above | **200** `%PDF` | all four bytes headers |
+| GET again (officer; client) | 404; 404 | `private, no-store`, `nosniff` |
+
+**The three things asked.**
+1. **Access logic: no regression.** `verify()` now checks shape, MAC, payload types (incl. UUID `d`), expiry and used before any database read. Then `reachDocument` runs on the verified document id. Then `check()` (built on `verify`) binds the workspace and the asker, and the `t.document !== x.document.id` and `consume` steps are unchanged. Staff refusals stay 404 and a client with a genuine link still gets the download's 403. One status changes on purpose: a client holding a forged or used token now gets 404 instead of 403, because it is refused before the reach. That is the round-1 Minor 2 fix and closes the breaker's m1 (timing) and m3 (comment). The new doc comment says so.
+2. **HEAD is registered ahead of the GET-for-HEAD fallback.** The real HEAD answers 405 with `allow: GET`. The same link then answers GET 200, so HEAD did not use it up (the check's "after the refused tries" line proves the same thing). This works because `@Head` is declared before `@Get` in the class, so Nest registers its layer first.
+3. **Headers set before the throw survive Nest's error response.** Every refusal above carries `cache-control: private, no-store` and `x-content-type-options: nosniff` in the global filter's problem+json, and none carries CSP or `content-disposition`. The check now asserts this for the altered token.
+
+**Round-1 Minors.** Closed: 2 (verify first), 4 (HEAD 405), 5 (`contains_scripts` true and false), 6 (the literal `call("GET", "/runtime/document-previews/…")` and the `PREVIEWS` constant), 8 (comments; `claims()` removed). Partly: 1. The per-process limit and the plan (a table with a unique key and the key in PF-24 settings before more than one task) are now in the class comment. The new `MODULE.rows/CS-D5.md` does not repeat it and there is no backlog line yet. Still open (Should, unchanged, not a block): 3 (`CASE_PREVIEW_LINK_KEY` read raw from `process.env`) and 7 (route-level expiry on the injected clock). Say both in the PR body if they are deferred.
+
+**New in this diff (Nits, no action needed to merge).**
+* The HEAD refusal depends on `@Head` being declared above `@Get`. A one-line comment saying so would stop a later reorder from silently bringing back the round-1 bug (the check's 405 test would catch it anyway).
+* `(v as { document: string }).document` is a cast where narrowing would do, if `fail` were typed `never`. Same pattern as the existing `t as {…}`.
+* The 405 response has no `no-store`/`nosniff`. There is no body, so nothing to cache or sniff.
+
+Blocker: none. Major: none.
+
+Verdict: Approve 3d47a42b8af656aed891de7a4b4c5870d4fd327c
