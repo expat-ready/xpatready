@@ -171,13 +171,9 @@ try {
     for (let i = 0; i < 4; i++) { const a = await arriveOne(false); log.push(`${a.what} → ${a.out.kind}`); }
     // stack of [what, view before] for every change; an Undo of the top one must give back that view exactly (I2)
     const stack: { merge?: string; before: Record<string, string> }[] = [];
-    // I2's one exception (pair-model.md §1): a pair whose live noter a later merge cleared (break B10-1's rule) may stay
-    // listed after the Undos, because one noter cannot remember two reasons. Only rows seen cleared that way are excused.
-    const cleared = new Set<string>();
-    const noters = () => new Map(sql(`select id || ':' || coalesce(noted_by_merge_id::text, '-') || ':' || coalesce((select (undone_at is null)::text from fo_dup_merge m where m.id = r.noted_by_merge_id), '-') from fo_dup_review r where firm_id = '${A}' and status = 'OPEN' and (low_id in (${ids()}) or high_id in (${ids()}))`).split("\n").filter(Boolean).map((l) => { const [id, n, live] = l.split(":"); return [id, { n, live }] as const; }));
     let good = await check("start");
     for (let s = 0; s < STEPS && good; s++) {
-      const ps = pairs(), r = rnd(), before = await view(), notedBefore = noters();
+      const ps = pairs(), r = rnd(), before = await view();
       const merges = sql(`select id from fo_dup_merge where firm_id = '${A}' and undone_at is null and survivor_id in (${ids()}) order by at desc`).split("\n").filter(Boolean);
       let what = "", out: Out;
       if (r < 0.1 && people.length < 5) { const a = await arriveOne(rnd() < 0.4); what = a.what; out = a.out; }
@@ -193,7 +189,7 @@ try {
         if (what.startsWith("undo")) {
           const top = stack[stack.length - 1], m = what.split(" ")[1];
           if (top?.merge?.startsWith(m)) {
-            const after = await view(), diff = Object.keys({ ...top.before, ...after }).filter((k) => (top.before[k] ?? "-") !== (after[k] ?? "-") && !(cleared.has(k) && (top.before[k] ?? "-") === "-" && after[k] === "OPEN")).map((k) => `${k.slice(0, 13)}: ${top.before[k] ?? "(no row)"} → ${after[k] ?? "(no row)"}`);
+            const after = await view(), diff = Object.keys({ ...top.before, ...after }).filter((k) => (top.before[k] ?? "-") !== (after[k] ?? "-")).map((k) => `${k.slice(0, 13)}: ${top.before[k] ?? "(no row)"} → ${after[k] ?? "(no row)"}`);
             if (diff.length) {
               const keys = Object.keys({ ...top.before, ...after }).filter((k) => !k.startsWith("root:") && (top.before[k] ?? "-") !== (after[k] ?? "-"));
               const rows = keys.length ? sql(`select r.id || ' noted=' || coalesce(r.noted_by_merge_id::text, '-') || ' seen=' || r.first_seen_at from fo_dup_review r where r.id = any(array[${keys.map((k) => `'${k}'`).join(",")}]::uuid[])`) : "";
@@ -204,7 +200,6 @@ try {
           } else stack.length = 0;   // an Undo of an earlier merge: the views between are not comparable
         } else {
           stack.push({ merge: ref, before });
-          if (ref) for (const [id, now] of noters()) { const was = notedBefore.get(id); if (was && was.n !== "-" && was.live === "true" && now.n === "-") cleared.add(id); }
         }
       }
       good = await check(`step ${s}`);

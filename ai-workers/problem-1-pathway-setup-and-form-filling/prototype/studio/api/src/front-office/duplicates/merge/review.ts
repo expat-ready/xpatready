@@ -16,9 +16,9 @@
 // * The pair model (product/screens/FO-9b-2/pair-model.md): a row stores only what was decided on that pair; what the
 //   list shows (`listed`) is derived from the rows, the people's live roots and the undone merges. One lock order for
 //   every writer: the people's advisory locks (sorted), then the pair row, then the merge's rows NOWAIT.
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../../ports/audit.ts";
-import { MatchReason, matchScore } from "../../../../../ports/matching.ts";
+import { MatchReason, matchScore, NAME_THRESHOLD } from "../../../../../ports/matching.ts";
 import { MERGE_FIELDS, MERGE_KEY, PersonMergeRefused, resolvePicks, type FieldPick } from "../../../../../ports/person-merge.ts";
 import { ClientMoney } from "../../../client-money/port.ts";
 import { firmScope } from "../../../platform/firm-scope.ts";
@@ -37,7 +37,7 @@ export const CASE_SIDE_LINE = "This person has a case; merge them from the clien
 export type Unsafe = "NOT_EXACT" | "CASE" | "CASE_UNKNOWN" | "DOCUMENT" | "MONEY" | "KEPT_SEPARATE";
 export const MERGED_AWAY_LINE = "One of these people was merged into another record after this pair was listed. Nothing was changed.";
 export const KEPT_LINE = "These people were kept separate (a decision between their records). Nothing was merged.";
-export const NOT_LISTED_LINE = "This pair is no longer on the list (the merge that found it was undone). Nothing was changed.";
+export const NOT_LISTED_LINE = "This pair is no longer on the list (the merge that found it was undone, and these people no longer match). Nothing was changed.";
 
 const notFound = (): never => problem(404, "Not found", "No such pair in your firm.", { code: "NOT_FOUND" });
 const conflict = (detail: string, code: string): never => problem(409, "Not possible now", detail, { code });
@@ -78,21 +78,26 @@ async function keptBetween(tx: Tx | PrismaClient, firmId: string, x: string, y: 
   return kept ?? null;
 }
 
+/** Whether pair row `r` is withdrawn (pair-model.md §1, Lead 9 on #3174): the merge that noted it is undone AND its two
+ *  people no longer match, FO-9a's rule asked of the pair (wonDuplicates' predicate, no 10-match cap: equal email, equal
+ *  E.164 phone, or a similar name, a key with a digit only exactly). The noter alone cannot say it: the other person can
+ *  change while one is merged away. The one fragment `pairRow` and `list()` both read, so they cannot drift (I5). */
+const WITHDRAWN = Prisma.sql`(exists (select 1 from "fo_dup_merge" um where um."id" = r."noted_by_merge_id" and um."undone_at" is not null)
+  and not exists (select 1 from "fo_person" a, "fo_person" b where a."id" = r."low_id" and b."id" = r."high_id"
+    and ((a."email" is not null and a."email" = b."email") or (a."phone_e164" is not null and a."phone_e164" = b."phone_e164")
+      or (coalesce(a."name_key", '') <> '' and coalesce(b."name_key", '') <> '' and (
+           ((a."name_key" ~ '[0-9]' or b."name_key" ~ '[0-9]') and lower(a."name_key") = lower(b."name_key"))
+        or (a."name_key" !~ '[0-9]' and b."name_key" !~ '[0-9]' and extensions.similarity(lower(a."name_key"), lower(b."name_key")) >= ${NAME_THRESHOLD}::float8))))))`;
+
 type PairRow = { id: string; low_id: string; high_id: string; status: string; merge_id: string | null; reasons: MatchReason[]; withdrawn: boolean };
-/** One pair row, with `withdrawn` (the merge that last noted it is undone since); `lock` only under lockPeople. */
+/** One pair row, with `withdrawn` (WITHDRAWN); `lock` only under lockPeople. */
 async function pairRow(tx: Tx, firmId: string, id: string, lock: boolean): Promise<PairRow | undefined> {
-  const q = lock
-    ? tx.$queryRaw<PairRow[]>`select r."id"::text, r."low_id"::text, r."high_id"::text, r."status"::text, r."merge_id"::text, r."reasons",
-        exists (select 1 from "fo_dup_merge" m where m."id" = r."noted_by_merge_id" and m."undone_at" is not null) as withdrawn
-        from "fo_dup_review" r where r."firm_id" = ${firmId}::uuid and r."id" = ${id}::uuid for update of r`
-    : tx.$queryRaw<PairRow[]>`select r."id"::text, r."low_id"::text, r."high_id"::text, r."status"::text, r."merge_id"::text, r."reasons",
-        exists (select 1 from "fo_dup_merge" m where m."id" = r."noted_by_merge_id" and m."undone_at" is not null) as withdrawn
-        from "fo_dup_review" r where r."firm_id" = ${firmId}::uuid and r."id" = ${id}::uuid`;
-  return (await q)[0];
+  return (await tx.$queryRaw<PairRow[]>`select r."id"::text, r."low_id"::text, r."high_id"::text, r."status"::text, r."merge_id"::text, r."reasons", ${WITHDRAWN} as withdrawn
+    from "fo_dup_review" r where r."firm_id" = ${firmId}::uuid and r."id" = ${id}::uuid ${lock ? Prisma.sql`for update of r` : Prisma.empty}`)[0];
 }
 
 /** What the list shows for a pair (pair-model.md §1): its decision (MERGED, KEPT_SEPARATE); an OPEN pair is not listed
- *  (HIDDEN) when its merge's Undo took it off or a side is merged away, is shown Kept separate when a decision between
+ *  (HIDDEN) when it is withdrawn (its noting merge undone and the two no longer match) or a side is merged away, is shown Kept separate when a decision between
  *  the two records keeps them apart (`keptThrough`), else To review (OPEN). */
 async function listed(tx: Tx, firmId: string, p: PairRow): Promise<{ tab: "OPEN" | "KEPT_SEPARATE" | "MERGED" | "HIDDEN"; why?: "WITHDRAWN" | "MERGED_AWAY"; keptThrough?: string }> {
   if (p.status === "MERGED" || p.status === "KEPT_SEPARATE") return { tab: p.status };
@@ -107,13 +112,13 @@ export async function listedPair(db: PrismaClient, firmId: string, pairId: strin
   return db.$transaction(async (tx) => { const p = await pairRow(tx as never, firmId, pairId, false); return p ? (await listed(tx as never, firmId, p)).tab : "NONE"; });
 }
 
-/** Writes every pair the new person makes with a live person of the firm (no-op for a pair already listed). A person
+/** Writes every pair the new person makes with a live person of the firm (no-op for a pair that has a row). A person
  *  added with "Add as new" (Add a lead's confirmedNew) writes the pair Kept separate, decided by the adder, so the
  *  merge by itself never joins them (concept §8 B1, founder question 1; AG-2-68 rule 16). After a merge (`mergeRef`),
- *  the survivor's pairs name that merge, so its Undo takes the ones it wrote off the list (pair-model.md §1). Nothing
- *  here waits on a pair row: an insert that meets one does nothing, and a pair to note again is skipped while another
- *  action holds it (pair-model.md §2). */
-export async function notePairs(tx: Tx, firmId: string, personId: string, addedAsNew: { by: string } | null = null, mergeRef: string | null = null, fromUndo = false): Promise<string[]> {
+ *  a pair it writes names that merge, as history: once it is undone the pair leaves the list only while its two people
+ *  no longer match (WITHDRAWN, pair-model.md §1). Nothing here waits on a pair row: an insert that meets one does
+ *  nothing (pair-model.md §2). */
+export async function notePairs(tx: Tx, firmId: string, personId: string, addedAsNew: { by: string } | null = null, mergeRef: string | null = null): Promise<string[]> {
   const found = await wonDuplicates(tx, firmId, { subject: "PERSON", personId });
   const ids: string[] = [];
   for (const m of found.matches) {
@@ -123,20 +128,7 @@ export async function notePairs(tx: Tx, firmId: string, personId: string, addedA
       values (${firmId}::uuid, 'PERSON', ${lo}::uuid, ${hi}::uuid, ${m.score}, ${JSON.stringify(m.reasons)}::jsonb,
               ${addedAsNew ? "KEPT_SEPARATE" : "OPEN"}::"FoDupReviewStatus", ${addedAsNew?.by ?? null}, ${addedAsNew ? new Date() : null}, ${mergeRef}::uuid)
       on conflict ("firm_id", "low_id", "high_id") do nothing returning "id"::text as id`;
-    if (row) { ids.push(row.id); continue; }
-    // An Undo's loser only gets back the values it had before that merge, so it brings no new reason for a pair that
-    // already has a row: it neither notes it again nor clears its noter (I2).
-    if (fromUndo) continue;
-    // A pair an undone merge wrote is found again: it is listed again, now naming this merge (or this arrival).
-    await tx.$executeRaw`update "fo_dup_review" set "noted_by_merge_id" = ${mergeRef}::uuid where "id" in (
-        select r."id" from "fo_dup_review" r join "fo_dup_merge" um on um."id" = r."noted_by_merge_id" and um."undone_at" is not null
-         where r."firm_id" = ${firmId}::uuid and r."low_id" = ${lo}::uuid and r."high_id" = ${hi}::uuid and r."status" = 'OPEN' for update of r skip locked)`;
-    // A pair a different, live merge noted, found again here for a reason of this writer's: the noter cannot hold two
-    // reasons, so it is cleared and the pair is never withdrawn (break B10-1, Lead 8 on #3174). At worst it stays listed stale.
-    await tx.$executeRaw`update "fo_dup_review" set "noted_by_merge_id" = null where "id" in (
-        select r."id" from "fo_dup_review" r join "fo_dup_merge" lm on lm."id" = r."noted_by_merge_id" and lm."undone_at" is null
-         where r."firm_id" = ${firmId}::uuid and r."low_id" = ${lo}::uuid and r."high_id" = ${hi}::uuid and r."status" = 'OPEN'
-           and r."noted_by_merge_id" is distinct from ${mergeRef}::uuid for update of r skip locked)`;
+    if (row) ids.push(row.id);
   }
   return ids;
 }
@@ -279,8 +271,7 @@ export class DuplicateReview {
   /** The list's tabs, derived as `listed` derives one pair (pair-model.md §1), for every pair of the firm at once. */
   async list(ctx: StaffContext, status: "OPEN" | "MERGED" | "KEPT_SEPARATE" = "OPEN") {
     const rows = await this.db.foDupReview.findMany({ where: firmScope(ctx.firmId, {}), orderBy: [{ score: "desc" }, { firstSeenAt: "asc" }, { id: "asc" }] });
-    const noted = [...new Set(rows.map((r) => r.notedByMergeId).filter((x): x is string => !!x))];
-    const undone = new Set((await this.db.foDupMerge.findMany({ where: firmScope(ctx.firmId, { id: { in: noted }, undoneAt: { not: null } }), select: { id: true } })).map((m) => m.id));
+    const withdrawn = new Set((await this.db.$queryRaw<{ id: string }[]>`select r."id"::text from "fo_dup_review" r where r."firm_id" = ${ctx.firmId}::uuid and r."status" = 'OPEN' and ${WITHDRAWN}`).map((r) => r.id));
     const ids = [...new Set(rows.flatMap((r) => [r.lowId, r.highId]))];
     const roots = await rootsOf(this.db, ctx.firmId, ids), root = (id: string) => roots.get(id) ?? id;
     const key = (a: string, b: string) => [root(a), root(b)].sort().join("|");
@@ -288,7 +279,7 @@ export class DuplicateReview {
     for (const r of [...rows].sort((a, b) => a.id.localeCompare(b.id))) if (r.status === "KEPT_SEPARATE" && root(r.lowId) !== root(r.highId) && !keptBy.has(key(r.lowId, r.highId))) keptBy.set(key(r.lowId, r.highId), r.id);
     const tabOf = (r: (typeof rows)[number]): { tab: string; keptThrough?: string } => {
       if (r.status !== "OPEN") return { tab: r.status };
-      if ((r.notedByMergeId && undone.has(r.notedByMergeId)) || root(r.lowId) !== r.lowId || root(r.highId) !== r.highId) return { tab: "HIDDEN" };
+      if (withdrawn.has(r.id) || root(r.lowId) !== r.lowId || root(r.highId) !== r.highId) return { tab: "HIDDEN" };
       const k = keptBy.get(key(r.lowId, r.highId));
       return k ? { tab: "KEPT_SEPARATE", keptThrough: k } : { tab: "OPEN" };
     };
@@ -385,11 +376,11 @@ export class DuplicateReview {
         const again = await caseOf(tx, [m.survivorId, m.loserId]);   // under Undo's locks too (break R2-5)
         if (again === null || again.size) conflict("This person has a case now; undo the merge from the client record.", "NEEDS_CASE_SIDE");
         await tx.foDupReview.updateMany({ where: firmScope(ctx.firmId, { mergeId: mergeRef }), data: { status: "OPEN", mergeId: null, decidedBy: null, decidedAt: null } });
-        // The pairs this merge noted leave the list by themselves (noted_by_merge_id names an undone merge), and a pair a
+        // A pair this merge noted leaves the list by itself while its two people no longer match (WITHDRAWN), and a pair a
         // Kept separate decision blocked only through the merged record is To review again. Nothing else is withdrawn: a
-        // pair written while the merge stood stays listed even if it no longer matches (pair-model.md §1, Lead 8 on #3174:
-        // a valid pair is never hidden). The loser's pairs are written, so someone who arrived meanwhile meets it too.
-        await notePairs(tx, ctx.firmId, m.loserId, null, null, true);
+        // pair written while the merge stood stays listed even if it no longer matches (pair-model.md §1, Lead 9 on #3174:
+        // a pair that still matches is never hidden). The loser's pairs are written, so someone who arrived meanwhile meets it too.
+        await notePairs(tx, ctx.firmId, m.loserId);
         return out;
       });
     } catch (e) { return asRefusal(e); }

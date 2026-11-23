@@ -355,15 +355,15 @@ try {
   const u71 = await call("POST", `/front-office/duplicates/merges/${m71.body.mergeRef}/undo`, tR, {});
   ok("FO-9b R7 §1 pass: Undo puts Q-Z back on To review and takes P-Z (the merge wrote it) off every tab",
     u71.status === 200 && (await onList("OPEN", QZ7)) && !(await onList("OPEN", PZ7)) && !(await onList("KEPT_SEPARATE", PZ7)) && !(await onList("MERGED", PZ7)), { u71: u71.status });
-  sql(`update fo_person set phone = (select phone from fo_person where id = '${z7.person.id}'), phone_readable = true where id = '${p7.person.id}'`);   // P and Z match exactly now, by an edit
+  // Withdrawn while P and Z no longer match (Lead 9 on #3174: the noting merge undone AND the two no longer match)
   const nl = [await call("POST", `/front-office/duplicates/review/${PZ7}/merge`, tR, { survivorId: p7.person.id }), await call("POST", `/front-office/duplicates/review/${PZ7}/keep-separate`, tR, {}), await call("POST", `/front-office/duplicates/review/${PZ7}/preview`, tR, { survivorId: p7.person.id })];
-  ok("FO-9b R7 §1 fail: a pair its merge's Undo took off the list → guided merge, Keep separate and preview each 409 NOT_LISTED with the sentence, nothing changed",
+  ok("FO-9b R7 §1 fail: a pair its merge's Undo took off the list (the two no longer match) → guided merge, Keep separate and preview each 409 NOT_LISTED with the sentence, nothing changed",
     nl.every((r) => r.status === 409 && r.body.code === "NOT_LISTED" && r.body.detail === NOT_LISTED_LINE) && sql(`select status from fo_dup_review where id = '${PZ7}'`) === "OPEN", nl.map((r) => [r.status, r.body.code]));
   const aw7 = await inTx((tx) => mergeIfSafe(tx, A, PZ7, ports)) as { refused?: string[]; mergeRef?: string };
-  ok("FO-9b R7 §1 fail: the merge by itself never merges a pair taken off the list, even when the two now match exactly", !aw7.mergeRef && sql(`select count(*) from fo_person where id in ('${p7.person.id}', '${z7.person.id}') and merged_into_id is null`) === "2", aw7);
-  const m72 = await call("POST", `/front-office/duplicates/review/${PQ7}/merge`, tR, { survivorId: p7.person.id });
-  ok("FO-9b R7 §1 pass: a later merge that finds the pair again lists it again (it now names that merge)",
-    m72.status === 200 && (await onList("OPEN", PZ7)) && sql(`select noted_by_merge_id from fo_dup_review where id = '${PZ7}'`) === m72.body.mergeRef, { m72: m72.status });
+  ok("FO-9b R7 §1 fail: the merge by itself never merges a pair taken off the list", !aw7.mergeRef && sql(`select count(*) from fo_person where id in ('${p7.person.id}', '${z7.person.id}') and merged_into_id is null`) === "2", aw7);
+  sql(`update fo_person set phone = (select phone from fo_person where id = '${z7.person.id}'), phone_readable = true where id = '${p7.person.id}'`);   // P and Z match exactly now, by an edit
+  ok("FO-9b R7 §1 pass: once the two match again (an edit) the pair is on To review, its undone noter kept only as history",
+    (await onList("OPEN", PZ7)) && sql(`select noted_by_merge_id from fo_dup_review where id = '${PZ7}'`) === m71.body.mergeRef, { noted: sql(`select noted_by_merge_id from fo_dup_review where id = '${PZ7}'`) });
   // §2 the lock order: while another session holds one person's lock, the action waits for it holding no pair row
   const holdPerson = async (personId: string, secs: number) => {
     const h = spawn(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-c", `begin; select pg_advisory_xact_lock(hashtextextended('fo_dup_merge:${personId}', 0)); select pg_sleep(${secs}); commit;`], { stdio: "ignore" });

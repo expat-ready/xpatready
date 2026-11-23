@@ -53,7 +53,7 @@ enum FoDupReviewStatus {
 /// One pair of records that may be the same person (FO-9b part 2; AG-2-78, AG-2-96; P-574 (2) "a duplicate review list
 /// with a match score"): the pair in id order (unique per firm), the score and reasons of the match, when it was first
 /// seen, and the decision. An Undo of the merge opens the pair again. Never deleted. What the list shows is derived
-/// (product/screens/FO-9b-2/pair-model.md): a pair noted by a merge that is undone is not listed.
+/// (product/screens/FO-9b-2/pair-model.md): a pair written by a merge that is undone is not listed while the two no longer match.
 model FoDupReview {
   id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firmId      String            @map("firm_id") @db.Uuid
@@ -70,7 +70,7 @@ model FoDupReview {
   decidedAt   DateTime?         @map("decided_at") @db.Timestamptz
   mergeId     String?           @map("merge_id") @db.Uuid
   merge       FoDupMerge?       @relation("FoDupReviewMerge", fields: [mergeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  /// The merge that last noted this pair (the survivor meeting the loser's matches), or null (an arrival, or found again by another writer).
+  /// The merge that wrote this pair (the survivor meeting the loser's matches), or null (an arrival or an Undo wrote it).
   notedByMergeId String?        @map("noted_by_merge_id") @db.Uuid
   notedBy     FoDupMerge?       @relation("FoDupReviewNotedBy", fields: [notedByMergeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
