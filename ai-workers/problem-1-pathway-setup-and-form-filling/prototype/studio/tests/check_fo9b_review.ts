@@ -278,6 +278,39 @@ try {
   ok("FO-9b R3-1 fail: B-C kept separate, then a guided merge of B into A → the A-C pair already listed carries the decision (Kept separate), and C is never merged by itself",
     !!g.ac && r3gk.status === 200 && r3gm.status === 200 && sql(`select status from fo_dup_review where id = '${g.ac}'`) === "KEPT_SEPARATE" && !gAC.mergeRef
     && sql(`select merged_into_id is null from fo_person where id = '${g.c}'`) === "t", { ac: g.ac, gk: r3gk.status, gm: r3gm.status, gAC });
+  const gu4 = await call("POST", `/front-office/duplicates/merges/${r3gm.body.mergeRef}/undo`, tR, {});
+  ok("FO-9b R4-3 fail: Undo of that merge opens the A-C pair again (a decision nobody made on A-C is not left behind); B-C stays Kept separate",
+    gu4.status === 200 && sql(`select status || ':' || coalesce(decided_by, '-') from fo_dup_review where id = '${g.ac}'`) === "OPEN:-" && sql(`select status from fo_dup_review where id = '${g.bc}'`) === "KEPT_SEPARATE", { gu4: gu4.status });
+  // R4-1: the merge never waits on a pair row another action holds (service.ts: merge and Undo never wait while they
+  // hold locks). Another session holds the A-C row while B merges into A; the carry skips it, and the merge by itself
+  // still refuses A-C (KEPT_SEPARATE).
+  const w = await trio("64");
+  await call("POST", `/front-office/duplicates/review/${w.bc}/keep-separate`, tR, {});
+  const rowHolder = spawn(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-c", `begin; select 1 from fo_dup_review where id = '${w.ac}' for update; select pg_sleep(2.5); commit;`], { stdio: "ignore" });
+  const rowHeld = new Promise<number>((r) => rowHolder.on("exit", (c) => r(c ?? 1)));
+  for (let i = 0; i < 50 && sql(`select count(*) from pg_stat_activity where query like '%pg_sleep(2.5)%' and pid <> pg_backend_pid()`) === "0"; i++) await new Promise((r) => setTimeout(r, 50));
+  const t0 = Date.now();
+  const wm = await inTx((tx) => mergeIfSafe(tx, A, w.ab, ports)) as { mergeRef?: string };
+  const waited = Date.now() - t0;
+  const rowExit = await rowHeld;
+  const wAC = await inTx((tx) => mergeIfSafe(tx, A, w.ac, ports)) as { mergeRef?: string; refused?: string[] };
+  ok("FO-9b R4-1 fail: B merges into A while another session holds the A-C pair row → the merge does not wait on it (under 1.5 s), and A-C is still never merged by itself (KEPT_SEPARATE)",
+    rowExit === 0 && !!wm.mergeRef && waited < 1500 && !wAC.mergeRef && (wAC.refused ?? []).includes("KEPT_SEPARATE") && sql(`select merged_into_id is null from fo_person where id = '${w.c}'`) === "t", { waited, wm, wAC, rowExit });
+  // R4-2: B-C kept separate; B merges into A (A keeps its phone, so no A-C pair); D matches A by email and C by phone;
+  // A merges into D. The decision follows both merges: D and C are not safe, and C is never merged by itself.
+  const q4ca = await add(R, { givenNames: "Ari", familyName: "Chain", email: "ari.chain@example.org", phone: "+1 416 555 0171" });
+  const q4cb = await add(R, { givenNames: "Bo", familyName: "Link", email: "ari.chain@example.org", phone: "+1 416 555 0172" });
+  const q4cc = await add(R, { givenNames: "Cid", familyName: "Ring", phone: "+1 416 555 0172" });
+  const q4cBC = pairOf(q4cb.person.id, q4cc.person.id);
+  const q4ck = await call("POST", `/front-office/duplicates/review/${q4cBC}/keep-separate`, tR, {});
+  const q4cm1 = await call("POST", `/front-office/duplicates/review/${pairOf(q4ca.person.id, q4cb.person.id)}/merge`, tR, { survivorId: q4ca.person.id, choices: { phone: "SURVIVOR" } });
+  const q4cd = await add(R, { givenNames: "Dee", familyName: "Join", email: "ari.chain@example.org", phone: "+1 416 555 0172" });
+  const q4cm2 = await call("POST", `/front-office/duplicates/review/${pairOf(q4ca.person.id, q4cd.person.id)}/merge`, tR, { survivorId: q4cd.person.id });
+  const q4cDC = pairOf(q4cd.person.id, q4cc.person.id);
+  const q4cw = await inTx((tx) => whyNotSafe(tx, A, [q4cd.person.id, q4cc.person.id], [{ key: "PHONE" }]));
+  const q4cr = q4cDC ? await inTx((tx) => mergeIfSafe(tx, A, q4cDC, ports)) as { mergeRef?: string } : {};
+  ok("FO-9b R4-2 fail: a Kept separate decision follows a chain of merges (B into A, then A into D) → D and C are not safe (KEPT_SEPARATE), C is never merged by itself",
+    q4ck.status === 200 && q4cm1.status === 200 && q4cm2.status === 200 && !!q4cDC && q4cw.includes("KEPT_SEPARATE") && !q4cr.mergeRef && sql(`select merged_into_id is null from fo_person where id = '${q4cc.person.id}'`) === "t", { q4ck: q4ck.status, q4cm1: q4cm1.status, q4cm2: q4cm2.status, q4cDC, q4cw, q4cr });
   const h = await trio("62");
   await call("POST", `/front-office/duplicates/review/${h.bc}/keep-separate`, tR, {});
   const hm = await inTx((tx) => mergeIfSafe(tx, A, h.ab, ports)) as { mergeRef?: string };
