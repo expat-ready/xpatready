@@ -47,3 +47,35 @@ Real AWS behaviour of the deny for Backup restore and multipart (no account acce
 
 **Verdict: Block**
 Fix list: M1 (`lib/checks.ts:398`/`413`, `lib/service-checks.ts:378-390`, with fail tests for probes A and B). Minor 2–4 are optional in this round.
+
+## Round 2 (head `339e780efe0c0c74b3c37f08fc1f5c3622d1c1be`, diff `8c9003b5c..339e780ef`), 23 Nov 2026
+Reviewer: Approve 339e780efe0c0c74b3c37f08fc1f5c3622d1c1be
+
+**What I ran**
+* `cd deploy/cdk && npm test`: **123 pass, 0 fail, exit 0**.
+* My round 1 probes, run again on this head:
+  * Probe A (files grants on the migration task role): `filesTaskFindings` now gives 3 findings, "only the service's task role may use the files bucket or the data key". In round 1 it gave none.
+  * Probe B (the same grants as inline `Policies` on the service task role): 2 findings, "not one of the files grants". In round 1, none.
+  * Probe D (a managed policy): caught by `typeFindings`, as before, and now by `filesTaskFindings` too.
+* Synthesized with `cdk.json`'s context (the CLI's template). `filesTaskFindings`, `bucketFindings`, `backupFindings`, `bypassFindings` and `resourcePolicyFindings` all return `[]`. In round 1, `filesTaskFindings` gave 2 false findings here.
+* Extra edge probes:
+  * A mixed `ses:SendEmail` + `kms:Decrypt` statement on the migration role: caught by `filesTaskFindings`.
+  * A `NotAction` statement on the migration role: caught by `bypassFindings`.
+  * The access-log bucket under another logical id: 10 `bucketFindings`, because it is held to the data rules.
+
+**Round 1 findings**
+* **M1, fixed** (`lib/service-checks.ts:377-400`). The check now reads every S3/KMS/`*` statement that reaches any task role of a task definition, by any route: `AWS::IAM::Policy`, `AWS::IAM::ManagedPolicy`, or the role's inline `Policies`. Any such statement on a role other than the service's is a finding. On the service's role, the statements must be exactly the three grants. The `checks.ts:405-406` comment now says the action list is wide and that this check narrows it. New fail test: `files-bucket.test.ts`, "review M1" (probes A and B, `s3:*`, `*`, a second policy).
+* **m2, fixed.** Actions are compared as a sorted set (`norm`). There is a pass test with sorted actions.
+* **m3 and m4, fixed:** README.md:81 and the "Buckets" line, and `lib/service.ts:175-176` ("keys with a folder …; that the folder is the firm id is the adapter's rule … not IAM's").
+
+**Breaker's fixes (B3, B5, B6, B7), read and probed**
+* **B3:** `accessLogBuckets` accepts only `^AccessLogsBucket[0-9A-F]{8}$`, and more than one log bucket is a finding. Any other bucket that receives logs keeps every data rule and stays in the backup selection (test, plus my rename probe).
+* **B5:** a versioned log bucket is a finding. The 90-day expiry must come from a rule over every object (`whole`: Enabled, no `Prefix`, `TagFilters` or size filters).
+* **B6:** the abort rule must be `whole` on every bucket.
+* **B7:** the put denies must be exactly `Fn::Join ["", [GetAtt <bucket>.Arn, "/*"]]`.
+
+Each has a fail test (prefix or tag filter, `/nothing` suffix, versioned, posing bucket). The synthesized template is unchanged apart from comments.
+
+**Open:** no Blocker or Major. Still as recorded in round 1, and not findings: the Unconfirmed AWS Backup restore and multipart behaviour under the strict Null deny (PR question 1, drill planned); the 35 days against the row's 30 (question 2); R1.65 stays Partial until the deployed checks run in the founder's account.
+
+**Verdict: Approve**
