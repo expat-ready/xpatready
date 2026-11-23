@@ -22,3 +22,7 @@ Open conflict: card at 13:0x "gates answered first, build in M4 after the Bake, 
 # A319 (~14:30 IST, typed to Lead 4)
 
 "And why it is taking so much time for this when we have paused the product work to just do this tooling and operating system work?" Answer: measured with git merge-tree, 17 of 18 open tooling PRs conflict with main, 15 on check-guards.sh (one-line TESTS list, MUT block; 57 commits in 3 days); stack B went behind when #2370/#2487 merged 14:19; Lead 4 waited on Lead O instead of going to the lane. Sent 14:32 (the message itself says 14:4x, wrong) to the Enforcement sprint (b) lane (session_01MXNda7Tq2rpWMVbzRGznbw): refresh #2428, then stack B from #2982 up, landing one by one. Follow-up after the list: check-guards.sh reads guards.d/.
+
+# A320 (14:33 IST, pressed by the founder in Lead 4)
+
+"Yes, land as one": the ten stacked tooling PRs (#2982 to #2590) may land as one merge through #2590; replaces "no combined PR" for these ten only. Conditions told to him: the Lead reads the diff; the faults in #2457 and #2605 fixed and reviewed first. #2372 stays closed.
