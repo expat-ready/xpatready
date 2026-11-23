@@ -20,7 +20,8 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { AlertPort } from "../../../../ports/alert.ts";
-import { sha256Of, type AuditArchivePort } from "../../../../ports/audit-archive.ts";
+import type { AuditArchivePort } from "../../../../ports/audit-archive.ts";
+import { sha256Of } from "../audit/write-once/sha256.ts";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import { KEEP_PERIODS } from "../../../../ports/keep-period.ts";
