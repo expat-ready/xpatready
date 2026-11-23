@@ -29,12 +29,18 @@ $lead
 fi
 # (2) Rules files. P-756: outside the Lead's copy a check-docs line blocks only when it is about a file this branch
 # changed against origin/main (or a deleted or renamed file it links to); a line about the Lead's records alone is a
-# warning: the lane may not edit them (rule 1) and CI enforces them on records PRs. A line not recognised here, or no
+# warning: the lane may not edit them (rule 1) and CI enforces them on records PRs. An E7 register line (#2599) about an
+# enforcer file this branch deleted or renamed blocks; E7's "no enforcer file was checked" lines block. A line not recognised here, or no
 # origin/main to compare with, still blocks (fail closed).
 docs_files() {  # $1 a check-docs line -> the paths (extended regexes, from the root) it is about; none when unknown
   case "$1" in
     "WORKFLOW LOCK:"*) printf '%s\n' "^$PH/DECISIONS\.md$" "^$PH/BACKLOG[^/]*\.md$" "^$PH/qa/CAPABILITIES\.md$" "^$PH/tools/decision-impact\.sh$";;
     "RULES LAG:"*) printf '%s\n' "^$PH/RULES\.md$" "^$PH/DECISIONS\.md$";;
+    "RULES REGISTER: "*"no enforcer file was checked"*) ;;   # E7 (#2599) could not run: no paths, so it blocks (fail closed)
+    "RULES REGISTER: "*" is enforced by "*", but no such file"*) f=${1#* is enforced by }; f=${f%%, but no such file*}
+      printf '%s\n' "^$PH/RULES\.md$"
+      printf '^gone:(.*/)?%s$\n' "$(printf '%s' "$f" | sed 's/[.[\*^$()+?{|]/\\&/g')"   # E7: the branch deleted or renamed the enforcer
+      ;;
     "RULES REGISTER:"*|"RULES TOO BIG"*) printf '%s\n' "^$PH/RULES\.md$";;
     "RULE MAP:"*) printf '%s\n' "^$PH/RULES\.md$" "^$PH/rules/";;
     "STATE TOO BIG"*) printf '%s\n' "^$PH/STATE\.md$";;

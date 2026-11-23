@@ -263,7 +263,9 @@ MUT="$MUT"'
 29 owner|product/tools/stop-check.sh|s/if \[ -z "\$scope" \] .. \[ -z "\$pats" \] .. printf/if false \&\& printf/|check-stop-check.sh
 29 renames|product/tools/stop-check.sh|s/ --no-renames//|check-stop-check.sh
 29 crash|product/tools/stop-check.sh|/a crash blocks (fail closed)/d|check-stop-check.sh
-29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh'
+29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh
+29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
+29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
