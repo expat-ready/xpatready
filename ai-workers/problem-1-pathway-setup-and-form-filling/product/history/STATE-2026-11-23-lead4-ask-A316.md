@@ -5,3 +5,11 @@ Word for word: "whatever yours is your final recommendation, right? So let's do 
 Lead 3's reading, told to him: (1) Lead O's landing list first in the queue; (2) four fixes, no gate change: cheap checks first and stop early; failing suites fixed plus new/changed tests repeated for flakes; batches up to 4, singles on red (after the real/flaky/conflict split); ready-made test database / shorter set-up; (3) product builds on in parallel, merges behind; (4) private part: one-pack pilot, his yes on the short plan before a repository is created. Module borders and test selection come after; selection only by replay, two weeks shadow, his decision.
 Estimates told (both unmeasured): list landed by 24 Nov 19:00; four fixes 24-26 Nov.
 Still owed to him: the end-to-end visual plan with tracking and timelines (Lead O's measured dates first), and two standbys at his next typed turn.
+
+# A317 (~14:00 IST, typed to Lead 3, relayed)
+
+Asks why tooling, the four fixes and test selection cannot all be done together in 2-3 hours, parallel with product and the private pack; "final recommendation is yours... Otherwise, let's keep meeting our plan and keep reporting". Lead 3's answer, told to him: build fixes 1, 4 and flake repeat in parallel lanes; fix 3 is configuration after the red-batch split; merges one at a time where files clash; nothing round review or queue; private loader lane once he approves Lead O's plan; selection shadow starts when the replay is clean, seven days including a Monday, enforcing stays his decision; targets told (unmeasured): building tonight, list and fixes 1, 3, 4 landed 24 Nov ~13:00, fix 2 open-ended.
+
+# A318 (~14:04 IST, pressed in Lead 3's session, relayed)
+
+"Pause new product merges until the tooling list lands, 21:00 IST at the latest?": "Yes, pause". No new product labels; batches already testing finish, nothing dequeued, no run cancelled; building and reviews go on; exceptions: a main fix or a qa Blocker; no hand merges (P-691); tooling two at a time where files do not clash; the Lead reads the next five tooling PRs ahead; six faulty ones fixed in parallel; product restarts 21:00 IST or earlier, a few at a time. Estimate told 3.5-4 h, unmeasured. Open: the queue gate self-labels app PRs on a reviewer Approve, so not labelling is not a full hold.

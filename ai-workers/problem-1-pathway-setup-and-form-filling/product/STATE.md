@@ -2,7 +2,7 @@
 
 current_lead: local_86bd4439-e8db-40fc-93a3-528bdc2e712e Lead 4 · 23 Nov 13:54 IST (took over from Lead 3 (local_cf20dbb4) at ~410k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 14:04 IST: A316 recorded
+updated: 2026-11-23 14:04 IST: A318 product pause
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -21,6 +21,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A318 | 23 Nov ~14:04 (pressed in Lead 3) | "Yes, pause": NO NEW PRODUCT LABELS until the tooling list lands, 21:00 IST latest; exceptions a main fix or qa Blocker; nothing dequeued | in force; gate self-labels, hold being checked; A317 and this in full: A316 file |
 | A316 | 23 Nov ~13:55 (typed to Lead 3) | make the operating system, four fixes, product targets and the private part live; plan, tracking, parallel work, timelines, visual | Lead O owns the four fixes; visual plan owed: `history/STATE-2026-11-23-lead4-ask-A316.md` |
 | A313 | 23 Nov 13:2x (typed) | still fit nowhere? how do OpenClaw and the Adobe clones manage? | answered: OpenClaw ~300 merges/day, sponsored machines, adaptive test selection cut 158,546 to 21,395 runner-hours a week-ish; Adobe clones not ready; we fit at US$0 while public |
 | A309-A312 | 23 Nov 13:0x-13:2x | stay public safeguards (one-pack plan with Lead O, B181 mechanism pilot only); over-engineering; CI vs industry (metric: CI minutes per merged change, 1,083 today); Google AI 8-vCPU VPS / Shopify answer checked: in full `history/STATE-2026-11-23-1320-lead3-asks-A309-A311.md` |
