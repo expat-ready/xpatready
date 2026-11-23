@@ -22,10 +22,11 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A300 | 23 Nov 12:0x (typed): operating system (pipeline, GitHub, VPS, going private, desk's suggestions) has first priority in the merge queue until complete, product may stop; one dedicated Lead he talks to; product Lead works in parallel; tell him when complete; 'no token optimization, but don't waste'; is it a good thought? | 12:0x: yes with three guards (fixed list, product builds on but merges behind, private is not free: CI then costs money). Lead O `local_e02a8803` started 12:06 (own worktree; labels stay with Lead 2); product 18-by-11:00 target at risk |
+| A308 | 23 Nov 12:57 (typed) | pasted a Google AI answer (one 32-core server ₹12-22k/month, or AWS spot ₹2-8k/month, for 100 pipelines) and asks why answers differ | answered in chat by Lead 3: its sums fit its assumed small load, not our measured one |
+| A300 | 23 Nov 12:0x | operating system first in the queue until complete; Lead O; in full: `history/STATE-2026-11-23-1305-lead3-asks-A297-A300.md` |
 | A301-A305 | 23 Nov 12:0x-12:3x | private impossible at US$100 (A304): nothing bought; open with him: stay public, combined PR, close #2372; in full: `history/STATE-2026-11-23-1236-lead2-asks-A301-A305.md` |
 | A298-A299 | 23 Nov 11:37-11:45 | going private research, tooling first, AWS signed in, R1.5 cards pressed, money approved; in full: `history/STATE-2026-11-23-1155-lead1-block-and-asks.md` |
-| A297 | 23 Nov 10:5x (typed): unarchive AWS via his computer; remove the two-queue decision from pending; one-time exception: land all agreed tooling/enforcement/open contribution first, estimate, 'fix the car or keep moving' | 10:52: Claude app cannot be controlled by the Lead (fixed rule), claude.ai lists no archived Mac sessions: started AWS · staging proof 2 `local_b9ba7abd` in the same folder/branch; #3006 closed by decision (one queue, split only if measured); enforcement sprint written into RESUME 'Switch of 23 Nov' (3 lanes, 4-6 h, open contribution live ~17:00-18:00) |
+| A297 | 23 Nov 10:5x | tooling first as a one-time exception; in full: same file |
 | A292-A296 | 23 Nov | word for word in `history/STATE-2026-11-23-1131-lead1-before-new-account-block.md` |
 | A291 | 23 Nov 10:0x | word for word in `history/STATE-2026-11-23-1035-lead10-A291-and-1021-check.md` |
 | A289-A290 | 23 Nov 01:4x-02:0x | word for word in `history/STATE-2026-11-23-1015-lead10-founder-asks-A289-A290.md` |
