@@ -14,7 +14,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Local:** Lead B 3 `local_281c4e7e` (Track B reads), standbys Lead 2 `local_2158cd24`, Lead 3 `local_cf20dbb4`. No AWS session on this account: worktree `.claude/worktrees/focused-torvalds-075cb7` @61cd95852.
 **Rulings posted:** #3184 and #3174 round 3 allowed; #3179 starters as platform rows; #3183 qa judges R1.1, R1.13, R1.15 from the AWS report first.
 **Not started:** FO-9s parts 2-3 (the Lead owes 3 answers, #2896), R1.10 #2933 / R1.23 #3037 need only a green run and the label. Queued at 11:25: #3155, #3187, #3043-#3045.
-**Waiting on the founder:** AWS root sign-in for R1.5 (R1.1/13/15 done); RDS idles at ~US$0.18/h; R1.5 link path is the Lead's ruling, owed.
+**R1.5 (11:42): blocked by code, not by the founder** (AWS Step 18, 3c8873d67): PF-4bc plus new PF-4bs (sign-in page, callback, cognito-idp actions, first Owner) proposed as two cloud cards; out of the 24 h set unless both merge. AWS proof 3 idles. RDS, NAT and load balancer idle ~US$0.18/h (about US$4.3/day list). **Waiting on the founder:** press the two R1.5 cards; claude.ai sign-in in the built-in pane.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
