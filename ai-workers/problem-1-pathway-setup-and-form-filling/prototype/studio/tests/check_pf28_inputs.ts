@@ -216,6 +216,7 @@ export function fine(probe: string, withIds: boolean, a: { status: number; body:
  *  here (a booking link's or an invitation's token) is "unreached": on the allow-list until its fix part reaches it. */
 const SAMPLE = "(select id from platform_firm where key = 'sample-firm')";
 const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":kind": "logo",   // :kind: the public branding image door's enum (logo, favicon, banner)
+  ":key": "sales.lead.follow_up",   // PF-19s: a message template's key (api/src/platform/messages/templates/registry.ts KINDS)
   ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = ${SAMPLE} and active and show_on_booking_page and deleted_at is null`) };
 if (all.some((d) => d.path.startsWith("/api/public/forms/:token"))) REAL[":formToken"] = sql(`select coalesce(min(public_token), '') from fo_web_form where firm_id = ${SAMPLE}`);
 // PF-28 part 4: a booking link's token in its own shape (<selector uuid>.<43-character verifier>) that no booking has.
