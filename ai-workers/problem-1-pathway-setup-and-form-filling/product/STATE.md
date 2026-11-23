@@ -2,7 +2,7 @@
 
 current_lead: local_4e13ee93-3937-4ffa-9d90-51555f88580c Lead 12 · 24 Nov 00:05 IST (took over from Lead 11 (local_5f4a7ece) past 200k after its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 00:16 IST: Lead 12. Reads posted at their heads: #3276 3f7be23cf (full run 45240653180 going), #3216, #3289 (queued), #3065 (full run 45115724477 attempt 2 going, shard 10 only). #3179 label OFF: full run 45234837140 red on check_b164 ('lead.*' keys), lane briefed. #3292 merged 00:12. Rows given 00:12-00:15: PF-18ns on #3289, FO-7s1 (lane of #3201), PF-F2 part 2 on #3277. Still idle: PF-R1, PF-F1c (waits #3216), FO-6d (waits #3207), PF-31 (37% context: no new row). #3276 not labelled: check stamp order first. Owed rows: S3 staging + lock, #3277 Minors.
+updated: 2026-11-24 00:16 IST: Lead 12. Reads posted at their heads: #3276 3f7be23cf (full run 45240653180 going), #3216, #3289 (queued), #3065 (full run 45115724477 attempt 2 going, shard 10 only). #3179 label OFF: full run 45234837140 red on check_b164 ('lead.*' keys), lane briefed. #3292 merged 00:12. Rows given 00:12-00:15: PF-18ns on #3289, FO-7s1 (lane of #3201), PF-F2 part 2 on #3277. Still idle: PF-R1, PF-F1c (waits #3216), FO-6d (waits #3207), PF-31 (37% context: no new row). #3276 not labelled: check stamp order first. Owed rows: S3 staging + lock, #3277 Minors. PF-10b: before_image rule (erasure, merge, undo) before the first real MERGE row; PF-10b must require the attestation (AG-18-49), the database does not (Lead B 4 on #3276); PF-21d too.
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
