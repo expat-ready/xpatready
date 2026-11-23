@@ -26,6 +26,8 @@ import { actorOf, Audit, CaseRead, Db, fail, PY, STUDIO, VAR, WORKSPACE_KEY, typ
 import { privateWords, Runtime, type Reached } from "./runtime.ts";
 import { caseName, releaseLabel } from "../../contracts/runtime.ts";
 import { checkFile, KINDS, NOTHING_STORED, SCRIPTS_FLAG, type Checked, type FileKind, type RefusalReason } from "./platform/files/file-type.ts";
+import { flagsOf, translationLines, type DocFlags, type TranslationLine } from "./case-documents/flags.ts"; // CS-D7
+import type { SnapTypeDefaults } from "../../engine/snapshot.ts";
 
 type H = string | undefined;
 type Upload = { fieldname?: string; originalname?: string; mimetype?: string; buffer?: Buffer; size?: number };
@@ -33,7 +35,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const short = (id: string) => id.slice(0, 8);
 /** A checklist line as the API answers it: the derived line with its stored id, state and documents (M3-CONTRACT C6.4). */
 export type StoredLine = Omit<PersonLine, "state" | "documents"> & { state: LineState; state_words: string; state_reason: string | null; state_by: string | null; state_at: string | null;
-  version: number; documents: StoredDocument[]; kept: boolean; derived_id: string;
+  version: number; documents: (StoredDocument & { flags?: DocFlags })[]; kept: boolean; derived_id: string;
+  /** CS-D7 (map row 70): the warnings its current files' flags give (expired, too old): never a block. */
+  flag_warnings: string[];
   /** C6.15: on a line with a substitute set, whether the person's current files meet it, by member, in words. */
   set_status: SetStatus | null;
   /** C6.14 BR-6: the officer's last change of providers on a shared line (also a return to the defaults), else null. */
@@ -161,12 +165,14 @@ export class CaseChecklists {
     const rows = await this.db.checklistLine.findMany({ where: { caseId: c.id, stageId: c.stage.id } });
     const subjects = d.people.map((p) => p.subject);
     const docs = await this.db.caseDocument.findMany({ where: { subjectId: { in: subjects } }, orderBy: [{ uploadedAt: "asc" }, { id: "asc" }] });
-    const types = ((this.r.snapshotOf(c).document_types ?? []) as { key: string; name: string }[]);
+    const types = ((this.r.snapshotOf(c).document_types ?? []) as { key: string; name: string; defaults?: SnapTypeDefaults }[]);
     // C6.15: a set's members are named in the release with the set (they need not be lines of their own).
     const memberNames = new Map(d.people.flatMap((p) => [...p.lines, ...p.waiting, ...p.not_needed]).flatMap((l) => l.set?.members ?? []).map((m) => [m.key, m.name]));
     const typeName = (k: string) => types.find((t) => t.key === k)?.name ?? memberNames.get(k) ?? k;
     const rowOf = new Map(rows.map((x) => [`${x.subjectId}|${x.documentType}`, x]));
-    const docsOf = (subject: string, type: string | string[]): StoredDocument[] => docs.filter((x) => x.subjectId === subject && (Array.isArray(type) ? type.includes(x.documentType) : x.documentType === type)).map((x) => ({
+    const defaultsOf = (k: string) => types.find((t) => t.key === k)?.defaults; // CS-D7c: the type's cited defaults in the release
+    const docsOf = (subject: string, type: string | string[]): (StoredDocument & { flags: DocFlags })[] => docs.filter((x) => x.subjectId === subject && (Array.isArray(type) ? type.includes(x.documentType) : x.documentType === type)).map((x) => ({
+      flags: flagsOf(x, defaultsOf(x.documentType), d.today), // CS-D7: what staff set, else the type's default
       id: x.id, current: x.current, file_name: x.fileName, media_type: x.mediaType, size_bytes: x.sizeBytes, sha256: x.sha256, uploaded_by: x.uploadedBy,
       uploaded_at: x.uploadedAt.toISOString(), superseded_at: x.supersededAt?.toISOString() ?? null,
       // C6.15: on a line with a set, which member the file is.
@@ -199,7 +205,7 @@ export class CaseChecklists {
         const reason = kept ? `${l.reason} Kept on the list: it is ${STATE_WORDS[state]}${documents.length ? " and has a file" : ""}, so it is not dropped when the answers change.` : l.reason;
         // M3-S4 review m1: a kept line no longer needed blocks nothing, so it does not say never waivable either.
         return { ...l, ...providersNow(l, row), ...(kept ? { never_waivable: false, never_if: undefined } : {}), id: row?.id ?? l.id, derived_id: l.id, reason, required: kept || ((state === "not_applicable" || state === "waived") && !l.never_waivable) ? false : l.required, state, state_words: STATE_WORDS[state], state_reason: row?.stateReason ?? null,
-          state_by: row?.stateBy ?? null, state_at: row?.stateAt?.toISOString() ?? null, version: row?.version ?? 0, documents, kept, set_status: setStatusOf(l, currentKeys(p.subject, l)), ...((): { on_file?: NonNullable<ReturnType<typeof onFile>> } => { const f = onFile(p.subject, l.document.key); return f ? { on_file: f } : {}; })() };
+          state_by: row?.stateBy ?? null, state_at: row?.stateAt?.toISOString() ?? null, version: row?.version ?? 0, documents, kept, flag_warnings: documents.filter((x) => x.current).flatMap((x) => x.flags.warnings), set_status: setStatusOf(l, currentKeys(p.subject, l)), ...((): { on_file?: NonNullable<ReturnType<typeof onFile>> } => { const f = onFile(p.subject, l.document.key); return f ? { on_file: f } : {}; })() };
       };
       // A line no longer needed that was acted on (requested, a file, Not applicable) stays on the person's list.
       const acted = (l: PersonLine) => { const row = rowOf.get(`${p.subject}|${l.document.key}`); return !!row && (row.state !== "not_requested" || filesOf(p.subject, l).length > 0); };
@@ -211,7 +217,9 @@ export class CaseChecklists {
           reason: p.applies ? `No longer required: ${d.release_label ?? "the case's release"} no longer asks this person for it; its uploads are kept and listed.` : `${p.label} is not travelling with the application now, so the release asks nothing of them.`,
           need: "not_needed", lineage: x.lineage, also_from: [], document: { key: x.documentType, name: typeName(x.documentType) }, missing: [], base: false, provided_by: "client", alternatives: [], quote: null, rule: null, set: null, waivable: false, never_waivable: false, who: "", who_words: "", shared: null, providers: [], providers_rule: null, providers_words: null }));
       const lines = [...p.lines.map((l) => out(l, false)), ...keptWaiting.map((l) => out(l, true)), ...keptNot.map((l) => out(l, true)), ...orphans.map((l) => out(l, true))];
-      return { ...p, lines, waiting: p.waiting.filter((l) => !acted(l)).map((l) => out(l, false)), not_needed: p.not_needed.filter((l) => !acted(l)).map((l) => out(l, false)) };
+      // CS-D7 (3): one "Translation + translator's affidavit" line per current document that needs one, worked out on read.
+      const translations: TranslationLine[] = translationLines(docs.filter((x) => x.subjectId === p.subject), (k) => { const t = types.find((y) => y.key === k); return t ? { name: t.name, defaults: t.defaults } : undefined; }, d.today);
+      return { ...p, lines, translations, waiting: p.waiting.filter((l) => !acted(l)).map((l) => out(l, false)), not_needed: p.not_needed.filter((l) => !acted(l)).map((l) => out(l, false)) };
     });
     return { ...d, people };
   }
