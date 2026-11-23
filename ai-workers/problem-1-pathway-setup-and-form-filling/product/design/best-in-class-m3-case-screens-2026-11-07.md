@@ -56,7 +56,7 @@ Immigration values: this study names no fee, threshold or document rule. The IRC
 
    GOV.UK and USWDS want a saveable record of what was sent [25][29]. Each state needs its own who, when and record.
 
-The scorecard at the end has 20 checks, BIC-01 to BIC-20. Each one can be tested on a screen and has a source.
+The scorecard at the end has 21 checks, BIC-01 to BIC-21 (BIC-21 added 23 Nov for PF-31, with its own study `ux-multi-tab-2026-11-23.md`). Each one can be tested on a screen and has a source.
 
 ## Our special complex situation
 Five structural facts make our screens harder than any product studied. Each check below must hold under all five.
@@ -145,7 +145,7 @@ Five structural facts make our screens harder than any product studied. Each che
 2. **The source region and confidence beside an AI-read value.** Engines return it [83][16], but no case tool's extract (X) mentions it on screen. BIC-05 and BIC-06 set the bar.
 3. **One filing channel per form, with its own signature and record.** Only the IRCC pages describe the chain (X). Vendors describe autofill and PDF export only. BIC-15 and BIC-16 set the bar.
 
-## Scorecard: BIC-01 to BIC-20
+## Scorecard: BIC-01 to BIC-21
 How to use:
 * Score each check on the running screen at 1440 and 1024 px as **Met**, **Partly**, **Not met** or **N/A**, with evidence (a screenshot or a step).
 * "Applies when" says when a check is N/A.
@@ -173,6 +173,7 @@ How to use:
 | BIC-18 | **States drawn and teaching.** Empty states say what will appear and offer the first action; loading uses skeletons, never "No records" before data; saved, saving and failed-to-save are visible; read-only says why. [user friendly, completeness] | Open with no data, slow data, failed save, no permission | Always | [63][75]; `EXPERIENCE.md` §4 |
 | BIC-19 | **Low cognitive load by layout.** At 1440 and 1024 px each panel has one heading and at most one primary button; at most three type sizes per panel, all from the team scale; red only for errors; status by shape and text; client pages hold at most five inputs per page; staff pages group by person with sections, not tabs in tabs; no internal ids on the main path; counts say what they count. [aesthetic, low cognitive load, organization] | Screenshots at both widths; count headings, primary buttons, type sizes, reds and inputs per panel; read every count | Always | [65][62][80][19][21]; `EXPERIENCE.md` §1, §2.2, §5 |
 | BIC-20 | **Accessible and keyboard-complete.** Every task can be done by keyboard with visible focus; 4.5:1 contrast; 1024 px and 200 % zoom with no sideways page scroll; headings in order; plain words (client copy at about grade 6-8, sentences under 20 words). [user friendly, completeness] | Keyboard-only walk; zoom to 200 %; heading outline; read the copy | Always | [8][36][82]; `EXPERIENCE.md` §2.12 |
+| BIC-21 | **Work in many items at once, safely.** Open items are workspace tabs (one strip under the header): a menu or record link opens the item in a tab or focuses the tab that has it, so the same record never opens twice; Ctrl/Cmd- or middle-click opens it in the background; each tab keeps its own address, scroll and typed values; tabs come back after a reload. What is typed is one shared draft per record, shown at once in every view of it (another window too), kept over a reload, marked by a dot on its tab and "Unsaved changes" under the form, and asked about before its tab closes. Save writes once, with the last value and the version it started from; someone else's save first shows both values, to take the saved one or keep mine; nothing is overwritten. [efficiency, completeness, non-ambiguity] | Open a record from the menu, then again: one tab; type in two records' tabs and switch: both kept; open the record in a second window: the typing shows; Save: one request with If-Match; save a stale copy: 409 and both values; reload: tabs and drafts back | The screen edits a record | `ux-multi-tab-2026-11-23.md`; `EXPERIENCE.md` §2.13 |
 
 **Conflicts between sources, and how the scorecard settles them:**
 * *Validate on leaving a field versus on Continue.* Settled in BIC-13: format errors show once a value is typed; missing-answer errors show only at the check step.

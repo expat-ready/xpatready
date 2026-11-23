@@ -16,7 +16,7 @@
 
 ## 2. Behaviour
 1. [M] **Know where you are:** path on every page below the catalogue.
-2. [M] **One row of tabs at most;** deeper structure uses sections, a lines list, a tree, or a drawer.
+2. [M] **One row of tabs at most** in a page's content; deeper structure uses sections, a lines list, a tree, or a drawer. The workspace strip (13) is a separate layer of the frame, not a page's tabs.
 3. [M] **Edit in a drawer or dialog;** the page keeps its scroll, filters, selection and expansion.
 4. [M] **Preview beside the editor** wherever configuration changes what a person sees.
 5. [M] **One next action per status;** statuses are calculated.
@@ -27,6 +27,12 @@
 10. [M] **Tooltips** on every status, icon-only button and number that needs context; errors say what happened and how to fix it, on the field.
 11. [M] **Freshness visible:** when sources were last checked; overdue in orange.
 12. [M] **Accessible:** real buttons/links/labels, visible focus, keyboard path for every task, 4.5:1 contrast, 1024 px and 200 % zoom work.
+13. [M] **Work in many tabs** (founder, 23 Nov; PF-31; study `design/ux-multi-tab-2026-11-23.md`; the console pattern of Salesforce, Dynamics 365 and Zendesk). Staff areas draw a **workspace tab strip** under the header (`components/workspace.tsx`, `Frame workspace`):
+   * **Open or focus:** a left-menu link or a record link (`data-workspace-open`) opens its item in a tab, or focuses the tab that already shows it: the same record never opens twice. Ctrl/Cmd-click or middle-click opens it in the background. Other links move the current tab, unless another tab shows that item. Every screen and every record keeps its own address (a real link), so refresh, Back and a shared link work.
+   * **Each tab keeps its state:** address, scroll and typed values; open tabs, the active one and drafts come back after a reload (sessionStorage); at most 12, with a plain message at the limit; close by ×, middle-click, Delete on the focused tab or Alt+Shift+W (browsers keep Ctrl+W); Alt+PageDown / Alt+PageUp move between tabs; a tab with unsaved changes shows a dot and asks before it closes. ARIA tabs (arrows, Home, End); below 768 px an "Open items" menu. A side panel starts below the strip.
+   * **One shared draft per record** (`lib/sync/drafts.tsx`, `useSharedDraft`): what is typed shows at once in every view of the record, a second window too (BroadcastChannel); "Unsaved changes …, also open in N other windows" under the form; nothing reaches the server before Save; leaving the page with a draft asks.
+   * **Save once, with the version:** one write with the last value and If-Match (the version read); after it every view reads the record again and the draft clears. A save from an older version is 409, nothing written: the **conflict** state (§4) shows the saved value and mine side by side, "Use the saved version" or "Keep mine, then Save" (`lib/sync/conflict.tsx`; API `@Versioned()`, `platform/http/if-match.ts`).
+   * **Rollout:** the strip is on every staff frame now; a screen with a form adopts drafts and the versioned save when it is next touched (first: Offices, a lead's phone). Test with `prototype/studio/tests/lib/multi-view.ts`.
 
 ## 3. Screen patterns (choose one; do not invent)
 | Pattern | Use for | Shape |
@@ -40,7 +46,7 @@
 | Change set | review and release | every change grouped, before/after, AI or person, impact, expert confirmations; approver ≠ author |
 
 ## 4. States every screen draws [M]
-Empty (teaches the first action) · loading (skeletons) · normal · long content (long names) · needs work (exactly what is missing, linked) · running (real progress, no invented percentages) · error (on the field, with the fix) · read-only (released or no permission) · conflict (someone else saved: reload or merge). Reduced motion respected.
+Empty (teaches the first action) · loading (skeletons) · normal · long content (long names) · needs work (exactly what is missing, linked) · running (real progress, no invented percentages) · error (on the field, with the fix) · read-only (released or no permission) · conflict (someone else saved: both values shown, take the saved one or keep mine and save again; §2.13). Reduced motion respected.
 
 ## 5. Copy
 [M] Plain words from `PRODUCT.md` §4; front-load labels; no hashes, IDs, decision numbers, model names or file paths on the main path ("Details" drawer for admins); empty states and tooltips written in the concept.
@@ -79,6 +85,7 @@ The study's "applies when" column says when a check is N/A. Each check names the
 | BIC-18 | **States drawn and teaching.** Empty states say what will appear and offer the first action; loading uses skeletons, never "No records" before data; saved, saving and failed-to-save are visible; read-only says why. | Open with no data, slow data, failed save, no permission | Always | user friendly, completeness |
 | BIC-19 | **Low cognitive load by layout.** At 1440 and 1024 px each panel has one heading and at most one primary button; at most three type sizes per panel, all from the team scale; red only for errors; status by shape and text; client pages hold at most five inputs per page; staff pages group by person with sections, not tabs in tabs; no internal ids on the main path; counts say what they count. | Screenshots at both widths; count headings, primary buttons, type sizes, reds and inputs per panel; read every count | Always | aesthetic, low cognitive load, organization |
 | BIC-20 | **Accessible and keyboard-complete.** Every task can be done by keyboard with visible focus; 4.5:1 contrast; 1024 px and 200 % zoom with no sideways page scroll; headings in order; plain words (client copy at about grade 6-8, sentences under 20 words). | Keyboard-only walk; zoom to 200 %; heading outline; read the copy | Always | user friendly, completeness |
+| BIC-21 | **Work in many items at once, safely.** Open items are workspace tabs (one strip under the header): a menu or record link opens the item in a tab or focuses the tab that has it, so the same record never opens twice; Ctrl/Cmd- or middle-click opens it in the background; each tab keeps its own address, scroll and typed values; tabs come back after a reload. What is typed is one shared draft per record, shown at once in every view of it (another window too), kept over a reload, marked by a dot on its tab and "Unsaved changes" under the form, and asked about before its tab closes. Save writes once, with the last value and the version it started from; someone else's save first shows both values, to take the saved one or keep mine; nothing is overwritten. | Open a record from the menu, then again: one tab; type in two records' tabs and switch: both kept; open the record in a second window: the typing shows; Save: one request with If-Match; save a stale copy: 409 and both values; reload: tabs and drafts back | The screen edits a record | efficiency, completeness, non-ambiguity |
 
 ## 7. Screen laws, every screen (founder, 22 Nov, P-794; from the team's "UI/UX guide, design laws" of 19 Nov and its UX-laws screen audit)
 The team checks its own screens against 18 UI/UX laws and found 169 issues on ~226 screens, most of them on phones. We adopt its 14-point checklist so our screens arrive already passing it. The style guide still wins on look.

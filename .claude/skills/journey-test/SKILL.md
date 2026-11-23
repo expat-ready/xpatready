@@ -20,7 +20,7 @@ Turn the main and error journeys into a Playwright script (`prototype/studio/tes
 After each journey, read the API or database: the record exists once, values are exactly what was entered, nothing else changed, the audit line is there, roles were enforced on the server.
 
 ## 5. Break it (15 minutes)
-Duplicates, very long and non-English text, wrong role by URL, two tabs saving the same record, a hostile file, reload mid-action. Severity: Blocker / Major / Minor.
+Duplicates, very long and non-English text, wrong role by URL, two workspace tabs and a second window on one record (§2.13: `prototype/studio/tests/lib/multi-view.ts`: open-or-focus, mirrored draft, one save with If-Match, stale save → 409 and the conflict state, reload restores), a hostile file, reload mid-action. Severity: Blocker / Major / Minor.
 
 ## 6. Score out of 10 (each 0, ½ or 1, every score with evidence)
 task completed · next step obvious · plain words · feedback and state · correct data · error recovery · accessibility and screen sizes · speed · visual quality · trust and sources (AI marked, origin shown).
