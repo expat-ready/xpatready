@@ -264,6 +264,33 @@ try {
   ok("PF-18ns DW6 (break m3): marking the last row of the last Unread page goes back to the previous page, never an empty page while unread rows remain",
     await lastPage.getByText("Page 1").isVisible().catch(() => false) || (await lastPage.locator("section[aria-label='Notifications'] [data-notification]").count()) > 0);
   await lastPage.context().close(); await p2.context().close();
+
+  // ---------------------------------------------------------------------------------------------- round 3 (break M1 round 2, review m3): focus
+  const p3 = await tab(TO);
+  const focusedRow = () => p3.evaluate(() => { const a = document.activeElement; return a?.closest("[data-notification]")?.getAttribute("data-notification") ?? (a?.matches("[data-notifications-empty]") ? "empty" : a?.matches("[data-notification-mark]") ? "mark" : a?.tagName ?? null); });
+  sql(`delete from msg_notification where staff_id = '${O}'`);
+  for (let i = 0; i < 3; i++) sql(`insert into msg_notification (id, firm_id, staff_id, kind, "group", item_kind, item_id, created_at) values (gen_random_uuid(), '${A}', '${O}', 'lead-assigned', 'WORK_HANDED_TO_ME', 'lead', gen_random_uuid(), date_trunc('milliseconds', now()) - interval '${i + 1} minutes')`);
+  await go(p3, "/account/notifications/all"); await p3.locator('[data-notifications-filter="unread"]').click();
+  const unreadList = p3.locator("section[aria-label='Notifications'] [data-notification]");
+  await unreadList.nth(2).waitFor();
+  const ids3 = await unreadList.evaluateAll((els) => els.map((e) => e.getAttribute("data-notification")));
+  await unreadList.first().locator("[data-notification-mark]").focus(); await p3.keyboard.press("Enter");
+  await p3.waitForFunction((gone) => !document.querySelector(`[data-notification="${gone}"]`), ids3[0], { timeout: 10_000 }); await p3.waitForTimeout(300);
+  const afterOne = await focusedRow();
+  ok("PF-18ns DW6 (round 3): in the Unread filter, keyboard Mark read on row 1 removes it and puts focus on the new row 1 (never the page body)", afterOne === ids3[1], { afterOne, ids3 });
+  // a failed mark returns focus to that row's Mark read (review m3)
+  await p3.route("**/api/platform/me/notifications/*/read*", (r) => r.fulfill({ status: 500, contentType: "application/problem+json", body: JSON.stringify({ title: "Server error", status: 500 }) }));
+  await unreadList.first().locator("[data-notification-mark]").focus(); await p3.keyboard.press("Enter");
+  await p3.getByText("Could not mark this read.").first().waitFor({ timeout: 10_000 }); await p3.waitForTimeout(300);
+  const afterFail = await focusedRow();
+  ok("PF-18ns DW6 fail (round 3): a failed Mark read keeps the row, says so, and returns focus to its Mark read button", afterFail === "mark", afterFail);
+  await p3.unroute("**/api/platform/me/notifications/*/read*");
+  // Mark all read in the Unread filter: the list empties; focus goes to the empty line
+  await p3.locator("[data-notifications-mark-all]").focus(); await p3.keyboard.press("Enter");
+  await p3.locator("[data-notifications-empty]").waitFor({ timeout: 10_000 }); await p3.waitForTimeout(300);
+  const afterAll = await focusedRow();
+  ok("PF-18ns DW2 (round 3): Mark all read in the Unread filter empties the list and puts focus on its empty line (never the page body)", afterAll === "empty", afterAll);
+  await p3.context().close();
   await pa.context().close(); await po.context().close(); await pr.context().close();
   ok("PF-18ns: no page error in any tab", errs.length === 0, errs);
 } catch (e) {
