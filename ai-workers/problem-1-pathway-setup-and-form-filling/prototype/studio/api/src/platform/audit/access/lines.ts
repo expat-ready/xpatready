@@ -13,9 +13,17 @@
 // refuses our staff, so the firm-less cross_tenant.access line is written here, with the port's rules (the request's own
 // actor word, exactly; OUR_STAFF only; ids only in detail; fail-closed with one alert), not through a port change
 // (a firm-less platform entry on the port is the tech lead's later row, P-423).
-// At start-up every route our staff call (@SystemKeys or @AnySystemStaff) must declare one; one that does not stops it.
+// At start-up every route our staff call (@SystemKeys or @AnySystemStaff) must declare one; one that does not stops it,
+// as does a read (@ReadsFirm, @ReadsAcrossFirms) that answers through @Res() or @Next(): its answer would leave before
+// its line (review m1), so "no line, no answer" could not hold.
+// Limits, stated (review m2-m5): a changes-firm line is counted when written, not when it commits, so a line written in a
+// transaction that rolls back while the handler still answers success passes the check (the convention is one transaction
+// for the change and its line, as AuditPort asks); a change that commits without a line and then throws is not checked;
+// a wrong declaration (@NoFirmData on a route that reads a firm) is caught only in review, which the suite's allow-list of
+// @NoFirmData routes makes visible; @ReadsFirm writes for any well-formed firm id the handler answered for (a real route
+// answers 404 for a firm that does not exist, so it never gets this far).
 import { Inject, Injectable, type CallHandler, type ExecutionContext, type NestInterceptor, type OnModuleInit } from "@nestjs/common";
-import { PATH_METADATA, METHOD_METADATA } from "@nestjs/common/constants.js";
+import { PATH_METADATA, METHOD_METADATA, ROUTE_ARGS_METADATA } from "@nestjs/common/constants.js";
 import { ModulesContainer, Reflector } from "@nestjs/core";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { from, mergeMap, type Observable } from "rxjs";
@@ -71,6 +79,9 @@ async function missingLine(call: Call): Promise<never> {
 type Ctrl = new (...a: never[]) => unknown;
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
 
+/** A handler that takes the response (@Res(), 1) or next (@Next(), 2) answers by itself, before any interceptor's after-step. */
+const answersItself = (ctrl: Ctrl, key: string) => Object.keys((Reflect.getMetadata(ROUTE_ARGS_METADATA, ctrl, key) ?? {}) as object).some((k) => /^(1|2):/.test(k));
+
 /** Every handler our staff call (a route that declares @SystemKeys or @AnySystemStaff) with no firm-data declaration. */
 export function undeclaredFirmData(controllers: unknown[], reflector: Reflector): string[] {
   const out: string[] = [];
@@ -83,9 +94,11 @@ export function undeclaredFirmData(controllers: unknown[], reflector: Reflector)
       const targets = [handler as () => unknown, ctrl];
       const access = reflector.getAllAndOverride<SystemAccess>(SYSTEM_ACCESS, targets);
       if (!access || access.kind === "sign-in") continue;
-      if (!reflector.getAllAndOverride<FirmData>(FIRM_DATA, targets)) {
+      const data = reflector.getAllAndOverride<FirmData>(FIRM_DATA, targets);
+      const raw = data && (data.kind === "reads-firm" || data.kind === "reads-across") && answersItself(ctrl, key);
+      if (!data || raw) {
         const base = ([] as string[]).concat(Reflect.getMetadata(PATH_METADATA, ctrl) ?? "")[0] ?? "", path = ([] as string[]).concat(Reflect.getMetadata(PATH_METADATA, handler) ?? "")[0] ?? "";
-        out.push(`${ctrl.name}.${key} (${join(base, path)})`);
+        out.push(`${ctrl.name}.${key} (${join(base, path)})${raw ? " answers through @Res() or @Next(), before its line" : ""}`);
       }
     }
   }
@@ -94,7 +107,7 @@ export function undeclaredFirmData(controllers: unknown[], reflector: Reflector)
 
 export function assertFirmDataDeclared(controllers: unknown[], reflector: Reflector): void {
   const none = undeclaredFirmData(controllers, reflector);
-  if (none.length) throw new Error(`AUD-3: each of our staff's routes declares what it does with firms' data (@ReadsFirm, @ChangesFirm, @ReadsAcrossFirms or @NoFirmData), so its audit line cannot be forgotten: ${none.join(", ")}`);
+  if (none.length) throw new Error(`AUD-3: each of our staff's routes declares what it does with firms' data (@ReadsFirm, @ChangesFirm, @ReadsAcrossFirms or @NoFirmData), and a read answers through the interceptor, so its audit line cannot be forgotten: ${none.join(", ")}`);
 }
 
 // --------------------------------------------------------------------------------------------- the interceptor

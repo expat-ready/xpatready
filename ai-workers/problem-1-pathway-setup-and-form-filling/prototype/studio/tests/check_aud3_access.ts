@@ -4,13 +4,13 @@
 // firm A's trail, OUR_STAFF, ourstaff:<their id>, the request's correlation id, and none on firm B's; a refused or failed
 // call writes none. DW2 a read across firms (PF-21b's holds list) writes one cross_tenant.access line on the platform's own
 // trail (no firm) naming the staff member and the scope, and no line on any firm's trail. DW3 the guard-level check: a
-// change route that writes no line answers 500 AUDIT_LINE_MISSING; one that writes its line answers 200 (PF-21b's place);
+// change route that writes no line answers 500 AUDIT_LINE_MISSING; one that writes its line answers 201 (PF-21b's place);
 // a route our staff call with no declaration stops the start-up, naming it. DW4 fail-closed: a line that cannot be
 // written answers 500 and the data is never sent; the writers refuse outside our staff's request.
 // One process, a scratch database (dropped at the end), no model call (US$0).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_aud3_access.ts
 import "reflect-metadata";
-import { Body, Controller, Get, Module, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Module, Param, Post, Res } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory, Reflector } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -93,6 +93,7 @@ class Aud3TestController {
   mine() { handled++; return { ok: true }; }
 }
 @Controller("api/system/aud3-undeclared") class UndeclaredController { @Get() @SystemKeys("system/firm:read") thing() { return 1; } }
+@Controller("api/system/aud3-raw") class RawReadController { @Get("firms/:id") @SystemKeys("system/firm:read") @ReadsFirm("id") thing(@Res() res: { send(b: unknown): void }) { res.send(1); } }
 
 try {
   const clock = new (class extends PlatformClock { t = Date.now(); override now() { return this.t; } })();
@@ -102,7 +103,7 @@ try {
   @Module({ controllers: [PlatformIdentityController, ...sysFeature.controllers, ...holdsFeature.controllers, Aud3TestController] as never[],
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, ...sysProviders, { provide: APP_GUARD, useExisting: SystemGuard },
-      { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, ...holdsFeature.providers, ...accessFeature.providers] as never[] }) class TestApp {}
+      ...accessFeature.providers, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, ...holdsFeature.providers] as never[] }) class TestApp {}   // the app's order: features load by file name, audit-access.ts first
   const app = await NestFactory.create(TestApp, { logger: false });
   app.use(requestMiddleware());
   await app.listen(0, "127.0.0.1"); apps.push(app);
@@ -164,6 +165,13 @@ try {
     await throwsLike(() => assertFirmDataDeclared([UndeclaredController], reflector), (e) => /UndeclaredController\.thing \(\/api\/system\/aud3-undeclared\)/.test(String(e))));
   ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's)",
     await throwsLike(() => assertFirmDataDeclared([...sysFeature.controllers, ...holdsFeature.controllers, Aud3TestController], reflector), () => true) === false);
+  ok("AUD-3 DW3 fail (start-up, review m1): a read that answers through @Res() stops the start-up (its answer would leave before its line)",
+    await throwsLike(() => assertFirmDataDeclared([RawReadController], reflector), (e) => /RawReadController\.thing .*answers through @Res\(\)/.test(String(e))));
+  // Review m4: an opt-out is visible in review. Every route on main that declares @NoFirmData, by name; a new one fails here.
+  const { FIRM_DATA } = await import("../api/src/platform/audit/access/declare.ts");
+  const optOuts = [...sysFeature.controllers, ...holdsFeature.controllers].flatMap((c: any) => Object.getOwnPropertyNames(c.prototype).filter((k) => k !== "constructor" && (Reflect.getMetadata(FIRM_DATA, c.prototype[k]) as { kind?: string } | undefined)?.kind === "none").map((k) => `${c.name}.${k}`)).sort();
+  ok("AUD-3 DW3 (review m4): the @NoFirmData routes are exactly PF-4s's own: who-am-I and the six staff-access routes (a new opt-out must be added here, in review)",
+    JSON.stringify(optOuts) === JSON.stringify(["SystemIdentityController.me", "SystemStaffController.deactivate", "SystemStaffController.endSessions", "SystemStaffController.invite", "SystemStaffController.reactivate", "SystemStaffController.resetMfa", "SystemStaffController.roles"]), optOuts);
   ok("AUD-3 DW3 fail: a declaration in no plain words is refused", await throwsLike(() => ReadsFirm("1-bad"), () => true) && await throwsLike(() => ChangesFirm(""), () => true));
 
   // --------------------------------------------------------------------------------------- DW4: fail-closed
