@@ -4,15 +4,18 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 ## Lead B 4, 16:55 IST 23 Nov (took over from Lead B 3; current Lead: Lead 5, local_6cdede15, read from STATE; passes at :17 and :47)
 **CS-MV2: confirmed by code on main 7bd590d6f; not run, no test written.** Files under `prototype/studio/api/src/client-money/`:
+
+**Lead B 4 pass, 17:28 IST 23 Nov** (current Lead: Lead 6, local_f2d41d71): main unchanged (7bd590d6f), no Track B merge, no ready Track B head moved, nothing to read. #3174 moved 744cc7919 → af111ad76, still draft: diff-only re-read owed when ready. Still owed when ready: #3234, #3235, #3180, #3207, #3224. CS-MV2 is Major (Lead 6). Disk stop (Lead 5) stands until Lead 6 lifts it.
+
 * Refund and extra: `invoices/refund-routes.ts:17,21` carry only the permission key; `invoices/refunds.ts:117-131` (`row`, `lock`) find the payment by firm and id; constructor :31 takes no visibility; `features/client-money-refunds.ts:10` gives none.
 * Invoice writes: `invoices/routes.ts:18-25,41-52`; `invoices/money.ts` issue :45, send :69, record :77, credit :136 go through `lock` :192-197 or `facts` :200 (firm and id); `invoices/drafts.ts` create :59-66 (any party of the firm), addLine :81-94 (creator or `invoice:edit`, no client scope), setBillTo :131-137.
 * Reads: `drafts.ts` read :170-174; `money.ts` pdf :161-177 (three PDFs); `tax/routes.ts:21-29` (party). `invoices/facts.ts:17-18` filters by firm and id only.
 * Searched for another layer: `identity/guard.ts` checks keys and firm, and the database walls checked (pf12_firm) are firm walls. Only `reads/invoices.ts:118,134` and `reads/payments.ts:85,95` call scopeOf.
-* Reach: `platform.everyone_sees_all` defaults to true (`platform/settings.ts`) and the starter roles hold prospect and case view.all, so a default firm leaks nothing. With the setting off, the prospect half opens (`front-office/sales/common.ts:60-61`); a role without case view.all opens the case half. Not across firms. Billing / Finance, Owner and Admin hold refund and record keys by default. Critical stays Lead B's grade; the Lead decides.
+* Reach: `platform.everyone_sees_all` defaults to true (`platform/settings.ts`) and the starter roles hold prospect and case view.all, so a default firm leaks nothing. With the setting off, the prospect half opens (`front-office/sales/common.ts:60-61`); a role without case view.all opens the case half. Not across firms. Billing / Finance, Owner and Admin hold refund and record keys by default. **Lead 6 ruled it Major (23 Nov): inside the A318 pause, first after it.**
 
 **Reads owed: none ready.** #3234 7d6a7a8fa, #3235 4689c3469, #3180 eab779bad, #3207 639e2514f, #3224 2dae8ebd8 all draft. No head moved on #3033, #3174, #3189, #3185, #3184, #3195, #3225, #3188, #3065, #3155, #3190, so no re-read. #3197 and #3178 are merged.
 
-**Stamp clashes, settled as proposals to the Lead (read from all open PRs' files; main's newest 20261123030000).** Found beyond the hand-over: #3219 and #3040 also carry 030000; #3220 and #3224 carry #3207's folder; #3191 and #3209 show #3178's folder, which main now has (a main merge drops it).
+**Stamp clashes, proposals to the Lead, NOT ruled (Lead 6: noted); nobody re-stamps from this table yet (read from all open PRs' files; main's newest 20261123030000).** Found beyond the hand-over: #3219 and #3040 also carry 030000; #3220 and #3224 carry #3207's folder; #3191 and #3209 show #3178's folder, which main now has (a main merge drops it).
 | Keeps | Re-stamps to |
 |---|---|
 | #3184 050000 · #3225 060000 · #3189 100000 · #3234 110000 · #3235 120000 | #3033 → 070000 · #3185 → 130000 · #3180 → 140000 and 150000 · #3207 (with #3224, #3220) → 160000 · #3174 → 170000 · #3040 → 180000 · #3219 → 190000 |
