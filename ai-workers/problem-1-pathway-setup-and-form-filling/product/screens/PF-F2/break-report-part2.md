@@ -106,3 +106,52 @@ Scope: only `git diff 3ff40ec..2261b90`, which is `resumable-upload.ts`, the cli
 - The 410 from expiry on resume never starts a new upload.
 
 Verdict: Block
+
+## Round 3: head `61f5503630d2c935d9a033c225c3104c2b56984f`
+
+Scope: only `git diff 2261b90..61f5503` (`resumable-upload.ts`). I tested the head's own `web/src/lib` with the same harness: Nest on :4582, an HTTP proxy on :4583 that can read a body and then answer 503, hang, or cut a PATCH after 16 KB, and Chromium at 1 MB/s. `8ba3bf5`, which landed during the run, changes records only. The scratch file and databases are deleted. No repo file changed except this one.
+
+### Retried
+- **Repro 1 (the finish always fails, 500):** requests go out at gaps of 0, 1.0, 3.0, 5.0 and 10.0 s, then the page shows the server's words ("…what you sent so far is kept."). There are 14 requests and 6 finish runs, and it never reports done. `retry()` while the server is still down runs the same list again (19.3 s, 6 finish runs), then the words. **Held.**
+- **Repro 2a (503 on every PATCH, fulfilled by Playwright):** gaps of 0, 1, 3, 5 and 10 s, then "Busy" after 19.4 s, 15 requests. **Held.**
+- **Repro 2b (the same 503, from a proxy that reads the whole body first):** **not fixed**, see R3-B1.
+- **R2-m2:** fixed in the code (`retry()` returns `latest`). **R2-m3:** a body-less 410 now says "This upload expired: …".
+
+### New findings
+**R3-B1. Blocker: a server that reads the chunk and then answers 5xx still gets an endless retry with no wait, and the page shows progress, not paused.**
+- **Repro:** at 20%, the proxy reads every PATCH body and answers `503 text/plain "Busy"`, as nginx or an ALB does in front of a failing upstream. HEAD passes through.
+- **Observed:** 99 requests in 15 s, repeating PATCH@786432>503 then HEAD>200:786432. The server's offset never moves. The gaps are about 275 ms (the time to send 256 KB at 1 MB/s) and 22 ms (the HEAD); there is no retry delay at all. The words stay "28%", with no paused, no failure and no end.
+- **Same result in two other runs:**
+  - The proxy cuts each PATCH after 16 KB and answers 500: 133 requests in 20 s, offset stuck at 524288, words "60%".
+  - Stall cuts (`stallMs` 1500) followed by the same body-read 503s: the same loop, words "Resumed, 28%".
+- **Cost:** each try re-sends the whole chunk (1 MB by default), on a phone's data too, until the person closes the page.
+- **Cause:** `if (base < 0) base = sent; else if (sent > base) failures = 0` (`resumable-upload.ts:137`). `sent` comes from the XHR upload progress (`upload.js:799`), so it counts bytes sent, not bytes the server accepted. The rule's own comment says the reset should follow the server's offset. Repro 2a passes only because Playwright's fulfil sends no upload progress.
+- **Fix:** reset `failures` only in `onChunkComplete(_, bytesAccepted)` (`upload.js:567`), which fires after the server confirms an offset, or when a HEAD's offset is above the previous attempt's. Add a test with a real body-reading 503 (not `route.fulfill`): at most 6 requests, then the words.
+
+**R3-M1. Major: in browsers within the build target, a confirm never runs, so the page waits forever while the file is stored.**
+- **Background:** `confirm()` calls `AbortSignal.any` (`:115`). Vite 8.1's default target is `chrome111, edge111, firefox114, safari16.4, ios16.4` (`vite.config.ts` sets no target). `AbortSignal.any` only exists from Chrome 116, Firefox 124 and Safari 17.4.
+- **Repro:** an init script deletes `AbortSignal.any`, then the final answer is lost.
+- **Observed:** `HEAD>200:size` every 1, 3, 5 and 10 s, and no PATCH is ever sent: the TypeError is caught as "no answer". The words stay "Upload paused: reconnecting" past 30 s, and nothing settles. The file is stored (1 row) and never reported.
+- **Fix:** build the signal by hand (one `AbortController`, aborted by `confirming` and by a `setTimeout(stallMs)`). Do not treat a thrown non-network error as "no answer".
+
+**R3-m1. Minor: a file that changes or disappears during the upload is retried forever as "paused".**
+- **Repro:** pick a real file from disk and rewrite it at 25%.
+- **Observed:** `PATCH@1048576>FAILED(net::ERR_UPLOAD_FILE_CHANGED)` every 10 s for 40 s or more, with the words "Upload paused: reconnecting". The new branch "The file could not be read. Choose it again." never runs, because tus sets `originalRequest` for these errors.
+- **Fix:** read the chunk before sending (`file.slice(...).arrayBuffer()`, so a read error rejects with no request), or treat repeated failures that happen before any byte is sent at the same offset, with the server answering HEAD, as "could not be read".
+
+**R3-m2. Minor: `abort()` after the confirm has reached the server stores a file the page never claims.**
+- **Repro:** finish fails once. Then the confirm goes out, its finish takes 3.5 s, and `abort()` is called at 1.2 s.
+- **Observed:** "Upload stopped.", but 1 row is stored. The rail has no handle to it, and starting again makes a second file.
+- **Expected:** once the confirm is on the wire, `abort()` waits for its answer and reports the file, or the words say the file may already be stored.
+- An abort before the confirm reaches the server held: the request is aborted (`ERR_ABORTED`) and 0 rows are stored.
+
+**R3-m3 (R2-m3, second half, still open). Minor: a 410 after a lost final answer tells the person to start again although the file is stored.**
+- **Observed:** "This upload expired: … Start it again." with 1 row stored. Following the words makes a second file.
+- **Fix:** as in round 2, try the empty PATCH first when every byte was sent.
+
+### Held
+- An answered 5xx (as in repros 1 and 2a) ends in the server's words after the delay list, and the upload is kept. `retry()` while the server is still down repeats the list once, then the words, with no loop.
+- `abort()` before the confirm reaches the server: aborted, nothing stored.
+- `retry()` returns the running promise.
+
+Verdict: Block
