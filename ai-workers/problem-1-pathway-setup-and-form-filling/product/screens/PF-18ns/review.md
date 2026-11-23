@@ -95,3 +95,48 @@ Recorded deviations accepted:
 **Verdict: Approve**. No open Blocker or Major. Minors m1–m9: fix them in this PR or list them as follow-ups.
 
 Reviewer: Approve 8d2a5c301f3b370245cadb6ca6843a70e4785c9a
+
+## Re-review round 2 (P-277: only the new commits)
+Head `c4b62d0aeab5ab076eab5cc34fd6a5814cd73376`. Diff `8d2a5c301..c4b62d0ae`. Reviewed:
+* The code round, `ca5c03c3b`: `bell.tsx`, `all-page.tsx`, `contract.ts`, `frame.tsx`, `routes.tsx` and the check.
+* The build-notes section "Review round 1 → round 2", checked against this review and `break-report.md`.
+
+`0a7daf7f6` and `c4b62d0ae` are screenshots only, and `defce764e` is the round-1 records.
+
+**Acceptance test:** `check_pf18ns_bell_browser.ts` passed **24/24 twice** on my copy `pf18nsrev` on :4741. The first run was on a fresh database; the second re-ran on the same database without a restart, so m8 is fixed. No page errors. The test-written screenshots were left as they are.
+
+**Probes like a person** (in-app clicks; failures forced with Playwright routes):
+| Finding | Round 2 | Evidence |
+|---|---|---|
+| m1 Stale count after a quick page change | **Fixed** | Two notices, then a tab click within 1 s: the bell reads 2 and the panel's Mark all read is enabled. New DW1 and DW2 lines (`staleTime: 0`, `refetchOnMount: "always"`, re-read when the panel opens) |
+| m2 Loading as text | **Fixed** | `Loading`: 3 skeleton rows plus words for screen readers, in the panel and the All page |
+| m3 Focus after Mark read | **Partly** | Success path fixed: focus stays on the row (`LI` row). After Mark all read, focus moves to the list (`UL`). **Failure path still open:** a 500 on `:id/read` shows "Could not mark this read." but focus falls to `BODY` (`bell.tsx:35`, the catch does not refocus; the button was disabled while busy). Should: in the catch, focus the row's Mark read button again |
+| m4 Failed count read "none unread" | **Fixed** | A 500 answer now reads "Notifications, count not available" (`contract.ts` `bellName(null)`). No test line; probe only |
+| m5 Long names without `title` | **Fixed / recorded** | The full label is in `title`. Wrapping instead of truncating is recorded in build-notes as a deviation, with its reason |
+| m6 Account menu current entry on the All page | **Follow-up** | Recorded on the PR (PF-6's file) |
+| m7 Misplaced comments | **Fixed** | `frame.tsx:17-18` and `routes.tsx:45-46` are back on their own lines |
+| m8 Not re-runnable on a reused copy | **Fixed** | Second run 24/24 on the same database |
+| m9 Kind words differ from Home | **Follow-up** | Recorded (PF-18h's file) |
+
+**Breaker's findings, as landed (spot-checked in the diff and the probes):**
+* M1 Focus after Mark read on success: fixed. DW6 line, and my probe confirms it.
+* m2: fixed (same fix as my m1).
+* m3 Paging past the end: fixed. Steps back one page when a page empties; DW6 line.
+* m4 Only an app path is trusted as a link: fixed in the contract; DW3 line.
+* m5 Screen-reader names: fixed. "(unread)" is in the link name, and each Mark read button names its row and time; DW5 and DW6 lines.
+* m6: fixed (`title`).
+* m7 Filter in the address: partly. `aria-busy` is set and Mark all read waits while a page loads; keeping the filter and page in the address is a follow-up.
+* m8 Comments: fixed.
+* m1 320 px header: follow-up (WCAG reflow; the project bar of 375 px passes).
+
+None of the follow-ups is a Blocker or Major against the concept's "What gets built" or the row's acceptance.
+
+**New code checked:**
+* The link check `^\/(?!\/)[A-Za-z0-9/_-]{1,200}$` passes `/front-office/leads/<uuid>` and `/cases/<uuid>`.
+* The step back to an earlier page cannot loop: it is guarded by `page > 1` and `!isPlaceholderData`.
+* The focus targets (`li` and `ul` with `tabIndex=-1`) show a visible focus ring.
+* Two refetches on panel open (the count and the list) is two requests per view, not one per row.
+
+**Open after round 2:** 0 Blockers, 0 Majors, 1 Minor (m3, failure path) plus the recorded follow-ups. The journey score stays at 9 / 10. Feedback and state would now earn the full point. Error recovery stays at ½ until the failure-path focus is fixed.
+
+Verdict: Approve c4b62d0aeab5ab076eab5cc34fd6a5814cd73376

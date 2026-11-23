@@ -72,4 +72,29 @@ Focus after a row navigates lands on `<body>` of the new page, with the first Ta
 
 Outside scope (pre-existing on main, not this diff): going from Licence to My account in the client crashes ("Cannot read properties of undefined (reading 'length')"). `licence-page.tsx:19` and `account-page.tsx:25` share the query key `["pf","account",token]` with different schemas. This is for the lead.
 
-Verdict: Changes 8d2a5c301f3b370245cadb6ca6843a70e4785c9a
+Round 1 verdict: Changes 8d2a5c301f3b370245cadb6ca6843a70e4785c9a
+
+## Round 2 (head `c4b62d0aeab5ab076eab5cc34fd6a5814cd73376`, code round ca5c03c3b)
+Re-checked only my findings, on a freshly built copy `pf18nsbrk` on :4751 (stopped at the end). Probes: scratchpad `breaker18ns/r2.ts` and `r2b.ts`; outputs in `r2.out` and `r2b.out`.
+
+| # | Result | Evidence |
+|---|---|---|
+| M1 | **Partly fixed, still Major** | See below. |
+| m1 | Not fixed; **accepted as a follow-up** | `scrollWidth` at 320 px is still 357. The project's bar (375 px, 1024 px, 200 %) passes, and build-notes.md:56 records the gap. |
+| m2 | Fixed | A lead assigned after the last count read, then the panel opened with no navigation: badge 1, "Notifications, 1 unread", Mark all read enabled. With the count at 500 the bell says "Notifications, count not available", shows no badge, and the panel's Mark all read follows its rows. A page change 0.5 s after a read re-reads the count (1 read before, 2 after). |
+| m3 | Fixed | Unread page 2 with 1 row, mark it: back to page 1 with 25 rows. |
+| m4 | Fixed | Planted `https://…`, `//host`, `/../..` and `?query` links all render as unlinked rows. `/front-office/leads/ok-id` stays a link. |
+| m5 | Fixed | The link name is "Lead assigned to you · Named Sample (L‑00005) (unread)". The Mark read name carries the time, e.g. "Mark read: Lead assigned to you, 23 Nov, 14:16". |
+| m6 | Fixed | `title` holds the full label; 375 px has no sideways scroll; wrapping is kept and recorded. |
+| m7 | Fixed (URL left as follow-up, accepted) | While the Unread list loads: `ul[aria-busy=true]` and Mark all read disabled. When it ends, `aria-busy` is cleared. |
+| m8 | Fixed | `frame.tsx:17-18` and `routes.tsx:45-46` each carry their own comment. |
+| Regression | Held | A double click on a row sends 1 POST and opens the lead, with no page errors. |
+
+**M1, still Major: focus fixed in the panel and in the All filter, but not in the Unread filter.**
+* Fixed: in the panel, Mark read leaves focus on its row (`LI`) and Mark all read on the list (`UL`); in the All filter, Mark read leaves it on the row. Not fixed: in the Unread filter, which is the filter the concept's J3 walk uses and the steps in round 1 named, the marked row leaves the list. `li.current` is null by the time `requestAnimationFrame` runs (`bell.tsx:35`), so `document.activeElement` is `BODY` after every keyboard Mark read (`r2.out` `M1_unread`).
+* The same happens when m3's page-back fires after marking the last row of page 2 (`m3.focus` = `BODY`), and after Mark all read on the Unread filter, because the empty state replaces the `ul` and `focusAfter()` returns null (`bell.tsx:74`, `all-page.tsx:49-50`; `M1_markAllPage` = `BODY`).
+* Fix: when the row is gone, focus the next row (or the previous one), otherwise the list. When the list is empty, make the empty line (or the heading) `tabIndex=-1` and focus it. For example, pass `onMarked` from `AllBody` so that it chooses the target after the refetch.
+* Fail test: All page → Unread. Keyboard Mark read on row 1, expect `activeElement` to be the new row 1 (or inside the list), not `BODY`. Keyboard Mark all read on Unread, expect focus on the "No unread notifications." line or the heading.
+
+Round 2 result: 0 Blockers, 1 Major (M1 in the Unread filter), 0 open Minors (m1 accepted as a follow-up).
+Verdict: Changes c4b62d0aeab5ab076eab5cc34fd6a5814cd73376
