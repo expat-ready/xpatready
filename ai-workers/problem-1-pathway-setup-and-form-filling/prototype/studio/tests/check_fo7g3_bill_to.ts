@@ -178,6 +178,15 @@ try {
   const notId = await forInv("not-an-id"), twice = await call(tA, "GET", `${TD}&partyId=${PA}&invoiceId=${d7.body.id}&invoiceId=${d1.body.id}`);
   ok("FO-7g3 B8 fail (walls): another client's invoice, firm B's invoice, firm B asking with firm A's, and an id nobody has → the same 404, no rate",
     [otherParty, otherFirm, bAsks, nobody].every((r) => r.status === 404 && r.body.ratePpm === undefined) && otherParty.body.detail === nobody.body.detail && otherFirm.body.detail === nobody.body.detail, [otherParty.body, otherFirm.body, bAsks.body, nobody.body]);
+  const CA = sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Employer Sample Ltd', 'employer sample ltd', 'seed:FO-7g-3', now()) returning id`);
+  const dC = await call(tA, "POST", M, { companyId: CA, currency: "CAD" }); await setTo(dC.body.id, "NB");
+  const coAns = await call(tA, "GET", `/front-office/money/tax-default?partyKind=COMPANY&partyId=${CA}&invoiceId=${dC.body.id}`);
+  const coAsPerson = await call(tA, "GET", `${TD}&partyId=${CA}&invoiceId=${dC.body.id}`), personInvAsCo = await call(tA, "GET", `/front-office/money/tax-default?partyKind=COMPANY&partyId=${CA}&invoiceId=${d7.body.id}`);
+  const upper = await forInv(d7.body.id.toUpperCase());
+  ok("FO-7g3 B8 pass (review m3): a company's invoice billed to NB → NB's rate, PARTY_PROVINCE; an upper-case invoiceId is the same invoice",
+    dC.status === 201 && coAns.status === 200 && coAns.body.ratePpm === T.NB.ratePpm && coAns.body.source === "PARTY_PROVINCE" && upper.status === 200 && upper.body.ratePpm === T.NB.ratePpm && upper.body.source === "PARTY_PROVINCE", [dC.body?.id, coAns.body, upper.body]);
+  ok("FO-7g3 B8 fail (review m3): a company asked as a person, or a person's invoice asked for the company → the same 404, no rate",
+    [coAsPerson, personInvAsCo].every((r) => r.status === 404 && r.body.ratePpm === undefined), [coAsPerson.body, personInvAsCo.body]);
   ok("FO-7g3 B8 fail (inputs): a malformed or repeated invoiceId → 422, never an answer", notId.status === 422 && twice.status === 422 && notId.body.ratePpm === undefined, [notId.body, twice.body]);
 
   // -------------------------------------------------------------------------------------------- the gate and audit

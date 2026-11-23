@@ -2,8 +2,9 @@
 // tax for an invoice to that client. Staff session only (PF-4's guard, default deny), key agent/invoice:create, the same
 // as FO-7b's draft route. The firm is the session's, never the request's; a party of another firm, or one that does not
 // exist, is the same 404. Read only: nothing is written, so there is no audit line. The request carries no rate and no
-// province: any other field is refused (422), and the answer comes only from the firm's stored province
-// (platform_firm.business_address.province_state), its tax_registered and the cited table (defaults.ts).
+// province: any other field is refused (422), and the answer comes only from stored facts: the firm's province
+// (platform_firm.business_address.province_state), with invoiceId that invoice's stored Bill-to province (part 3,
+// below), the firm's tax_registered and the cited table (defaults.ts).
 // FO-7g part 3 (P-797, CRA GST/HST Memorandum 3-3-6 para 20, Example 6; Unconfirmed: no accountant): an optional
 // `invoiceId` (an invoice of this firm billed to this party; any other is the same 404) gives the default for that
 // invoice: its stored Bill-to province, the client's province, with source PARTY_PROVINCE. A new draft stores the firm's
