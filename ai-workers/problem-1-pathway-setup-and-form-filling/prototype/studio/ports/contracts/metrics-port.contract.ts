@@ -19,7 +19,7 @@ export const metricsPortContract = defineContract("MetricsPort", (make: () => Me
     async run() {
       const p = make();
       p.register(count("sample.one", async () => ({ kind: "COUNT", value: 1 })));
-      expectRefused(() => p.register(count("sample.one", async () => ({ kind: "COUNT", value: 1 }))), "the same key twice");
+      await expectRefused(() => p.register(count("sample.one", async () => ({ kind: "COUNT", value: 1 }))), "the same key twice");
       await expectRefused(() => p.register(count("NoDot", async () => ({ kind: "COUNT", value: 1 }))), "a key that is not module.name");
       await expectRefused(() => p.register(count("sample.money", async () => ({ kind: "COUNT", value: 1 }), { kind: "MONEY" })), "a MONEY metric without PER_CURRENCY");
       expect(p.definitions().map((d) => d.key).join() === "sample.one" && !("read" in p.definitions()[0]), "definitions without reads", p.definitions());

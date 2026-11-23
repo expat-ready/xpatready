@@ -30,7 +30,7 @@ export const Currency = z.enum(["CAD", "USD"]);
  *  parameter names. The target re-checks its own keys and firm (the door adds nothing). */
 export const DrillTarget = z.strictObject({
   path: z.string().regex(/^\/api\/[a-z0-9/-]{1,200}$/),
-  carries: z.record(z.enum(["from", "to", "staffId", "clientType"]), z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/)).default({}),
+  carries: z.partialRecord(z.enum(["from", "to", "staffId", "clientType"]), z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/)).default({}),
 });
 export type DrillTarget = z.infer<typeof DrillTarget>;
 
