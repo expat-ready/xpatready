@@ -1,29 +1,26 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_5f4a7ece-2ec5-49ab-8e0e-6c5032e0638d Lead 11 · 23 Nov 23:41 IST (took over from Lead 10 (local_1d7473d3) past 200k after its start read, P-446; Opus 5.5 medium, P-788)
+current_lead: local_4e13ee93-3937-4ffa-9d90-51555f88580c Lead 12 · 24 Nov 00:05 IST (took over from Lead 11 (local_5f4a7ece) past 200k after its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 00:02 IST: Lead 11. #3209 label OFF (Lead B: after #3189 + #3185, then declares their routes, round 5); #3296 (bypass line) first; #3040 #3155 #3225 wait on it (#3155 run red: its own PF-17 500s). #3207 Lead read OK, /run full asked; lands after #3065 (idle since 10:36 IST 23 Nov, /run full asked, Lead read owed) and #3185. Lead B 5 to plan (Lead B 4 is long). #3289 Approve cf2d62139, Lead B OK; ci running (walks j_74, j_69, j_104 red: 69 and 104 name unbuilt parts, j_74 W7 not read). #3193 #3173 #3292 #3291 #3189 queued. #3203 lane fixing. P-814 PR refused twice: draft in notes. Research on high-volume merging running: notes local_9c46a890 high-volume-merging-ci-cost-2026-11-24.md.
+updated: 2026-11-24 00:05 IST: hand-over Lead 11 to Lead 12
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
-## Hand-over Lead 10 → Lead 11, 23:41 IST 23 Nov (the block before, word for word, its **Owed** and **Pilots** lines still owed: `history/STATE-2026-11-23-2341-lead10-before-handover.md`)
+## Hand-over Lead 11 → Lead 12, 00:05 IST 24 Nov (the block before, word for word, its **Owed**, **Reports**, **Stamps** lines still owed: `history/STATE-2026-11-24-0005-lead11-before-handover.md`)
 
-**🔴 Founder asleep; nothing open tonight.** Plugged in, lid open. Morning, one question at a time (AskUserQuestion): record P-814 (A341)? · RQ-01 with the seven? · book the security test and counsel? · case-rule edges after research. The six earlier questions: history/STATE-2026-11-23-2346-lead11-takeover.md. Never add to or cut the 101 without his yes.
-**Reports (private, notes folder local_f2d41d71):** competitor-and-production-gaps-2026-11-23.md; requirements-vs-101-audit-2026-11-23.md (2,399 ids by script; "no trace" = no citation, not missing; open PRs not read). Verify a claim before acting on it.
-**Proven 50/101** (main, 23:05; 46 at 00:00). Merged since: #3195 #3273 #3284 #3286. **Queue:** #3203, #3180, #3189, #3291, #3185.
-**Full runs:** #3173 45229595711 GREEN, covered line posted, label not on yet: check. #3155 45233389842. #3179 45234837140 (P-808).
-**#3035** read by Lead 10, no fault: label it only AFTER #3180, #3189, #3185 merge (else every waiting migration PR needs a rename, re-review, full run).
-**Stamps:** #3277 20261124040000 (Approve 554f31230, Lead B OK; Lead's read and full run owed, after #3189/#3185), #3276 ...050000, 060000 free, #3040 ...070000, rest from 080000. #3033 220000, #3234 230000, #3235 20261124010000, #3184 ...020000, #3225 ...030000.
-**#3040:** see updated line; #3202 waits on it. #3190: walk j_56 red, not read. #3174 round 13 (a) running; #3207 round 3 review; #3193 base main, P-813 line to add to its body (Lead 3's follow-ups first); #3216 fix running; #3289 PF-18n part 2 (bell's back end) in review, #3279 concept approved; #3276 round 2.
-**Operating system n of 4:** (1) alarm and enforced checklist lane running (cse_01MXNda4p8aWF8eyV8RWrdQF, one only) (2) parts list in focus-list, OWED by the Lead (3) #3035 (4) draft test PRs #3280-#3283, #3285, pf5s FP3 added.
-**OWED:** X-row (bell on case frames); RULES on this branch (main is at P-813). RQ rows not recorded in BACKLOG. Disk 6 GB, founder allowed cleaning; mt2, rv, trc under /private/tmp/claude-501 and worktree build-lead-c-647b40 (878 changes) NOT proven saved: not deleted.
-**How:** idle lanes by `fetch('/v1/code/sessions?limit=200')` in the built-in browser on a background tab; `[aria-label="Prompt"]`.focus(), type, Return, confirm running. GitHub job wait is seconds (measured): machines are not the constraint, unanswered lanes are.
-**Sessions:** Lead B 4 local_9e318c45 (long; hand-over note on its board), Lead O 2 local_f6d6bb60 idle, standbys 12 local_4e13ee93, 13 local_def18400. My check 7035e229 is deleted; my subagents have all reported.
+**🔴 Founder going to sleep; he typed "I would follow your recommendation ... You have my approval" (Lead's technical and order decisions; NOT booking counsel or the security test).** Morning, one question at a time (AskUserQuestion): P-814 PR (refused twice by auto mode; draft `P-814-draft-records.patch` in notes local_9c46a890; he must allow it, never sent another way) · RQ-01 with the seven? · security test and counsel · case-rule edges. Never add to or cut the 101 without his yes. Keep-awake was refused.
+**Founder's open asks (A342, A343):** review his script on proofs and 11,000 PRs, and research and set up "the new mode" in Claude Code (unclear: mode or mods). Three checks of Lead 11's run; it answers him in its own session and messages you. Two write to notes local_9c46a890: high-volume-merging-ci-cost-2026-11-24.md, formal-verification-pstack-2026-11-24.md. Nothing installed; pstack goes through the new-technology gate.
+**Queue (00:05):** #3294 checks #3189 + #3291; #3295 #3173; #3180, #3185, #3193, #3292 queued. main last merged #3279 (23:50).
+**Lead reads owed:** #3276 3f7be23cf (Approve; migration, Lead B read too, full run), #3065 7d7979437 (/run full asked 00:03: check it started), #3289 cf2d62139 (Approve, Lead B OK; its ci), #3216 70584eadb (full run; batch 45137143291 covered line).
+**Order:** #3189, #3185 → #3209 (label off, round 5 declarations); #3296 (bypass line, AUD-3 lane) → #3040 (R1.90 lane), #3155, #3225 (no labels). #3065, #3185 → #3207 (stamp ...213000, Lead read OK, run 45239424480). #3035 after #3180, #3189, #3185. #3203 ec210cac8 reviewer running, round 3. #3179 run 45234837140.
+**Idle with nothing to do (give next rows):** PF-R1, PF-F1c, PF-31, PF-18ns (after #3289), tooling alarm, FO-6d. Compare Lead O 2's failing suites with the test-reliability lane. Lead B 5 to start at his next typed turn.
+**Sessions:** Lead B 4 local_9e318c45 (long), Lead O 2 local_f6d6bb60 (K=2 pilot, 2 machines, measure only), standby 13 local_def18400 (top up to two). Disk 8 GB. My check 50b3b9aa is deleted.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A343 | 24 Nov ~00:0x typed to Lead 11 | script on proofs (pstack, TLA+), set up the new Claude Code mode | research running, see hand-over |
 | A342 | 24 Nov ~00:0x typed to Lead 11 | "For the stuff that you're asking me ... I would follow your recommendation ... You have my approval"; research how people merge "11,000 p" and pay for CI | research running; the content he meant did not arrive: ask |
 | A341 | 23 Nov 23:43 (to Lead 10) | four of six answers | P-814 NOT recorded, PR refused twice; draft in notes local_9c46a890 |
 | A338, A340 | 23 Nov 23:4x | (A338 and the page at 23:46 word for word: `history/STATE-2026-11-23-2346-lead11-takeover.md`) GitLab, GitOps, Ultimate trial | answered: no move before 29 Nov (same file) |
@@ -52,7 +49,7 @@ Red-row lanes line of 21 Nov (with the AWS root and Node 22 approvals): word for
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 23 Nov:** Lead 1 (local_a085acf2, from 23 Nov 11:24 IST), Lead 2 (local_2158cd24, from 23 Nov 11:59 IST), Lead 3 (local_cf20dbb4, from 23 Nov 12:47 IST), Lead 4 (local_86bd4439, from 23 Nov 13:54 IST), Lead 5 (local_6cdede15, from 23 Nov 15:13 IST), Lead 6 (local_f2d41d71, from 23 Nov 16:57 IST), Lead 7 (local_1117b08b, from 23 Nov 18:39 IST), Lead 8 (local_9c46a890, from 23 Nov 20:02 IST), Lead 9 (local_878222c4, from 23 Nov 21:49 IST), Lead 10 (local_1d7473d3, from 23 Nov 22:48 IST), Lead 11 (local_5f4a7ece, from 23 Nov 23:41 IST).
+**New account from 23 Nov:** Lead 1 (local_a085acf2, from 23 Nov 11:24 IST), Lead 2 (local_2158cd24, from 23 Nov 11:59 IST), Lead 3 (local_cf20dbb4, from 23 Nov 12:47 IST), Lead 4 (local_86bd4439, from 23 Nov 13:54 IST), Lead 5 (local_6cdede15, from 23 Nov 15:13 IST), Lead 6 (local_f2d41d71, from 23 Nov 16:57 IST), Lead 7 (local_1117b08b, from 23 Nov 18:39 IST), Lead 8 (local_9c46a890, from 23 Nov 20:02 IST), Lead 9 (local_878222c4, from 23 Nov 21:49 IST), Lead 10 (local_1d7473d3, from 23 Nov 22:48 IST), Lead 11 (local_5f4a7ece, from 23 Nov 23:41 IST), Lead 12 (local_4e13ee93, from 24 Nov 00:05 IST).
 **Leads of 22 Nov (account before):** word for word in `history/STATE-2026-11-23-1705-lead6-cs-mv2-and-older-leads.md`.
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
