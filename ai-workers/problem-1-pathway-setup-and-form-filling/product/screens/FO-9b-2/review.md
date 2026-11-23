@@ -145,3 +145,59 @@ Same reviewer. I read only the diff: `review.ts`, `routes.ts`, the suite, and `M
 Minors r3-m1 to r3-m5 (and n2-n6 from round 2): fix them, or list them in the PR. The open questions with the tech lead are unchanged.
 
 Reviewer: Block 9db9ca2d015b3452bd5fb05f5c149d6c3fd2461b
+
+## Round 4 (diff only, allowed by the tech lead): `9db9ca2..744cc79`, 23 Nov 2026
+Same reviewer. I read only `review.ts` and `check_fo9b_review.ts`; the screenshot churn is left out because it nets to zero against main.
+* **Suite:** **61/61, exit 0**, in a detached scratch worktree at `744cc79`, removed afterwards.
+* **Mutations:** 12 one-line mutations.
+* **Probes:** four, in the suite's harness (P1-P4, in `journey-test-reviewer-2026-11-23-r4.md`).
+* **Shared tree:** I changed nothing there except this file and the journey report. Cost: nothing committed, US$0.
+
+**Round-3 items**
+* **R3-1: fixed and pinned.** Each of the following turns the suite red:
+  * the upsert back to `do nothing`;
+  * removing `KEPT_SEPARATE` from `whyNotSafe` (`:100`);
+  * removing the `MERGED_AWAY` check (`:300`), which fails 2 tests;
+  * removing the `merged_into_id` hops in `keptBetween`, which fails 3;
+  * removing `b.id <> a.id`. This one also shows that the guard is what stops the merge refusing itself: under the locks, `nm` came back `refused: KEPT_SEPARATE`;
+  * removing the carry in `notePairs`.
+* **r3-m2 (breaker R3-3): fixed and pinned.** Putting `liveReasons` back at `:146` fails R3-3. Turning either half of `lockedReasons` to null fails tests: the phone half fails 2, the email half fails 8.
+* **The edge cases you asked about all held.**
+  * **Phone normalisation.** Both sides of the comparison come from the same function. The trigger sets `phone_e164 = fo_sales_phone_e164(phone, phone_readable)`, `lockedReasons` applies that function to `survivor_before.phone` and `phoneReadable` (a companion in `valuesOf`), and the loser side is the locked row's own `phone_e164`. So a match that exists only through normalisation still passes. The phone-only trios (h, k) go red when the phone half is removed.
+  * **Nulls.** A missing email or phone gives SQL null, which is falsy, so the check fails closed with `NOT_EXACT`. An unreadable phone gives null on both sides.
+  * **Upsert vs. the CHECK constraints and the unique key.** The conflict target is the unique `(firm_id, low_id, high_id)`. Only an OPEN row is updated, and its `merge_id` is already null. `decided_by` and `decided_at` are either both set (a carry) or the WHERE is false, so `fo_dup_review_decided` and `fo_dup_review_merged` hold.
+  * **Lock order.** Keep separate's advisory locks are sorted the same way as `lockPair`.
+* **r3-m1 and r3-m5: fixed.** Removing `copy_file_key is not null` fails the new pass test. n1 needs `!!nAC`.
+* **Still open: r3-m3 and r3-m4,** as listed. r3-m4 is now wider; see R4-2.
+
+**Findings**
+* **R4-1 (Major). The new upsert deadlocks overlapping merges, and the loser of the deadlock gets a 500** (code check (5), concurrency; the tech lead's ruling on #3042, recorded at `service.ts:60-65`: "merge and Undo never wait while they hold locks").
+  * **Why it happens.**
+    * `on conflict … do update … where …` locks the existing row even when its WHERE is false. The old `do nothing` did not. So `notePairs` (`:65-71`) now waits on another pair's row while the merge holds both people's advisory locks and their row locks.
+    * The guided merge, `mergeIfSafe` and the new Keep separate (`:294-298`) all lock their pair row first and then wait for the advisory locks.
+  * **P2 (real routes).** Two guided merges at once, A←B and A←C. 3/3 runs: A-B answers 200, A-C answers 500 after about 1 s, and `pg_stat_database.deadlocks` goes from 0 to 3. With `do nothing`, both answer 200 in about 100 ms.
+  * **P1.** Keep separate on A-C (emulated with its exact statement order) racing a guided merge of A←B. The guided merge answers 500, and `mergeIfSafe` throws `40P01 deadlock detected`.
+  * The answer is a 500 rather than the 503 `BUSY` the merge uses elsewhere (`asRefusal`, `busy.ts`). Nothing is half-written.
+  * **Fix, with a failing test first (the P2 case):** either take the advisory locks of a pair's two people *before* its row lock, in the merge, `mergeIfSafe` and Keep separate; or lock the existing row NOWAIT inside the `lockAll` retry, so a clash ends in `MergeBusy`. Pin Keep separate's advisory locks too: removing `:298` leaves the suite at 61/61 (r4-m1).
+* **R4-2 (Major). Undo now leaves a pair that was open before the merge stuck as Kept separate, credited to someone who never decided it, with no audit line** (BR-10; D18; this widens r3-m4).
+  * **P4, all on live routes.** A-C is `OPEN`. Keep B-C separate: 200. Guided merge A←B: 200. A-C is now `KEPT_SEPARATE` by the B-C decider, with 0 `audit_event` rows. Undo: 200. A-C stays `KEPT_SEPARATE` and is off To review for good.
+  * In round 3 the carry only created new rows. The flip I asked for in round 3 now changes rows that were reviewable before the merge. I should have asked for the Undo side with it.
+  * **No schema change is needed.** For each carry (insert or flip), write an audit line naming the merge (`mergeRef`) and the source pair. Undo of that merge then reopens the rows its carry lines name that are still `KEPT_SEPARATE`. Add a test: merge, then Undo, then A-C is `OPEN` again.
+* **r4-m1 (minor, tests).** Keep separate's advisory locks (`:298`) are untested; see R4-1.
+* **r4-m2 (minor, tests).** Dropping `and status = 'OPEN'` (`:70`) still passes 61/61. Without it, a carry would overwrite an existing Kept separate row's `decided_by` and `decided_at` (an "Add as new" decision or a direct one). Pin it.
+* **r4-m3 (minor, latent).** The check under the locks evaluates `keptBetween` *after* the tombstone is written.
+  * So a Kept separate row between the loser and a record already merged into the loser refuses the merge under the locks only, although the check before the locks passed.
+  * It is reachable only when an earlier merge overrode a Kept separate. Today that can happen only through `PersonMergePort` (the case side).
+  * Evaluate it on the state before the merge: skip the loser's own new `merged_into_id`.
+* **r4-m4 (minor, latent).** `keptBetween` follows one `merged_into_id` hop. Say E-C is kept separate, E merges into B, and B does not match C. Then no B-C row is carried. Once B merges into A, `keptBetween(A, C)` misses E-C. A recursive hop closes this, or list it.
+* **Held:** the email comparison under the locks uses SQL `lower()`, which folds less on a C-ctype cluster than JS `toLowerCase` does. That direction only refuses more.
+
+**D-score changes:** D2 **3** (R4-1, R4-2) · D4 **3** (R4-2) · D16 **4** (r3-m1 and r3-m5 closed; r4-m1, r4-m2 and r3-m3 open) · D18 **3** (R4-2: a decision change with no audit line). Others as in round 3. **Journey: 7/10** (below 8; Correct data, Error recovery and Trust at ½; `journey-test-reviewer-2026-11-23-r4.md`).
+
+**Verdict: Block** on `744cc791972988285a8b1c3aa865e8dc3135f2e3`. To fix, each with a failing test first:
+1. R4-1: overlapping merges, and Keep separate racing a merge, never deadlock; a clash answers 503 `BUSY`, never a 500.
+2. R4-2: Undo reopens the pairs its merge carried, and each carry writes an audit line.
+
+Minors r4-m1 to r4-m4, r3-m3 and r3-m4 (and n2-n6 from round 2): fix them, or list them in the PR.
+
+Reviewer: Block 744cc791972988285a8b1c3aa865e8dc3135f2e3
