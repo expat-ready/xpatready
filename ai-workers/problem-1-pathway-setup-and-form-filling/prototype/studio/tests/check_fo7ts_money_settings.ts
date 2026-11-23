@@ -853,6 +853,7 @@ try {
     src3(EMPTY) === srcBefore3 && checksOf(EMPTY) === checksBefore3 && sql(EMPTY, `select count(*) from pg_class where relname in ('money_party_tax_treatment', 'money_invoice_firm_id_issued_at_id_idx')`) === "0"
     // own-migration: ok (src3 again: only five money_ functions)
     && sql(EMPTY, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_invoice_write', 'money_credit_note_write', 'money_move_batch_owed_back', 'money_move_line_write')`) === "t", { s: src3(EMPTY), srcBefore3 });
+  // own-migration: ok (src3 reads only five money_ functions; the rerun of its own migration on EMPTY)
   ok("FO-7ts part 3 pass: after its rollback the migration runs again, and rolls back again", (psql(EMPTY, ["-1", "-f", join(MIG, NEW3, "migration.sql")]), sql(EMPTY, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "1") && (rb3(EMPTY), src3(EMPTY) === srcBefore3));
   psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]);
   ok("FO-7ts part 2 rollback: rollback.sql restores money_trust_entry_write exactly as FO-7lk left it and money_trust_entry's checks as before, and drops the credit ledger",

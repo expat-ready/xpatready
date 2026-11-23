@@ -78,6 +78,38 @@ suite slice 'const before = fns(T);' 'for (const d of all.slice(all.indexOf(NEW)
 run "$W/slice.ts"; ok "10. m: all.slice(all.indexOf(NEW) + 1) is a later loop" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 suite typed 'const before = fns(T);' 'for (const d of all.filter((x: string) => x > NEW)) psql(T, ["-f", d]);' 'const after = fns(T);'
 run "$W/typed.ts"; ok "10. m: a typed parameter ((x: string) => x > NEW) is a later loop" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+# 11. review round 2: the multi-step exemption (a plain snapshot before the next own migration is that step's baseline)
+three() {  # three <name> <line after NEW2's loop…>: a Sample three-step suite (FO-7ts's shape)
+  local n=$1; shift
+  { echo 'const NEW = "20261117090000_a", NEW2 = "20261117100000_b";'
+    echo 'const fns = (db: string) => sql(db, `select proname from pg_proc`);'
+    echo 'const before = fns(T);'; echo 'psql(T, ["-f", join(MIG, NEW, "migration.sql")]);'
+    echo 'const added = fns(T).filter((f) => !before.includes(f));'
+    echo 'for (const d of all.filter((x) => x > NEW && x < NEW2)) psql(T, ["-f", join(MIG, d, "migration.sql")]);'
+    echo 'const mid = fns(T);'; echo 'psql(T, ["-f", join(MIG, NEW2, "migration.sql")]);'
+    echo 'const added2 = fns(T).filter((f) => !mid.includes(f));'
+    echo 'for (const d of all.filter((x) => x > NEW2)) psql(T, ["-f", join(MIG, d, "migration.sql")]);'
+    printf '%s\n' "$@"; } > "$W/$n.ts"; }
+three step3; run "$W/step3.ts"; ok "11. a three-step suite re-baselining before each own migration passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+suite e2 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'psql(T, ["-f", join(MIG, NEW2, "migration.sql")]);' 'const c = fns(T).filter((f) => !before.includes(f));'
+sed -i '1s/.*/const NEW = "20261117090000_a", NEW2 = "20261117100000_b";/' "$W/e2.ts"
+run "$W/e2.ts"; ok "11. M1: a later own migration with no loop of its own does not end the step: the read after it is refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite e3 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'psql(T, ["-f", join(MIG, NEW, "rollback.sql")]);' 'psql(T, ["-f", join(MIG, NEW, "migration.sql")]);' 'const c = fns(T);'
+run "$W/e3.ts"; ok "11. M1: re-running its own migration after a rollback does not end the step" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite e6 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' '// later: psql(T, ["-f", join(MIG, NEW2, "migration.sql")]) and its own loop' 'const c = fns(T);'
+run "$W/e6.ts"; ok "11. M1: a comment naming an own migration does not end the step" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+three e4 'const c = fns(T);'; sed -i 's/psql(T, \["-f", join(MIG, NEW2/psql(EMPTY, ["-f", join(MIG, NEW2/' "$W/e4.ts"
+run "$W/e4.ts"; ok "11. M1: an own migration applied to another database does not end the step for T" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+three e7 'const z = 1;'; sed -i 's/^const mid = fns(T);$/const mid = fns(T)\n  .filter((f) => !before.includes(f));/' "$W/e7.ts"
+run "$W/e7.ts"; ok "11. M2: a snapshot whose comparison goes on on the next line is not a baseline" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+three e1b 'const mixed = mid.filter((f) => !before.includes(f));'
+run "$W/e1b.ts"; ok "11. m1: a step's baseline later compared with the pre-loop snapshot is refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite e9 'const before = fns(T);' 'for (const d of all.filter((x) => NEW < x)) psql(T, ["-f", d]);' 'const c = fns(T);'
+run "$W/e9.ts"; ok "11. m3: a reversed comparison (NEW < x) is a later loop" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite e8 'const after = all.filter((d) => d > NEW);' 'const before = fns(T);' 'for (const d of [...after]) psql(T, ["-f", d]);' 'const c = fns(T);'
+run "$W/e8.ts"; ok "11. m3: iterating [...after] is applying it" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+suite e12 'const before = fns(T);' 'for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", d]);' 'const c = fns(T); // own-migration: ok'
+run "$W/e12.ts"; ok "11. m3: a marker with no reason does not count" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 # 8. a folder: every .ts in it, and a missing path cannot run
 run "$W"; ok "8. a folder is read file by file (the refused fixtures above are all named)" "$([ $r = 1 ] && grep -q 'bug.ts' <<< "$out" && grep -q 'ge.ts' <<< "$out" && ! grep -q 'fixed.ts' <<< "$out" && echo 1)" "exit $r: $out"
 run "$W/nope.ts"; ok "8. a missing path: exit 2, never a pass" "$([ $r = 2 ] && echo 1)" "exit $r: $out"

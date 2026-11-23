@@ -20,18 +20,20 @@ applies the later ones: a loop over all.filter((x) => x > NAME) or >= NAME (type
   migration ("for (const d of all) psql(X, …)"). Only a call whose argument is another database constant (an
   upper-case name the loops never fed) is left out: a loop variable, an expression or no argument counts (fails
   closed); so does every call when a loop names no database (file(d), apply(d)). Every later loop of every name counts.
-  A multi-step suite (FO-7ts's three parts) applies another of its own migrations after the loop: there a plain
-  snapshot before that migration ("const x = fn(db)," or ";") is the next step's baseline, and reads after it are
-  judged against the next step's own loops. With no own migration after the loop, every later read counts.
+  A multi-step suite (FO-7ts's three parts) applies another of its own migrations after the loop: a line, not a
+  comment, applying a later-stamped migration of the suite, to a database the loop fed, that has its own later loop.
+  There a plain snapshot before it ("const x = fn(db)," or ";", never a chain going on) is the next step's baseline,
+  reads after it are judged by that step's loop, and a line naming both that baseline and a pre-loop snapshot is
+  refused. Anything else (a rerun of its own migration, another database, a migration with no loop) ends no step.
   Fix: take the second read before the later migrations are applied (as adcf9c105 did), or, when the read after is
   a rule every table must keep whatever migration added it (a whole-catalogue invariant, which should fail on main if
   another area breaks it), mark that call "// own-migration: whole catalogue (<reason>)" on its line or on a comment
   line right above; a read limited to this area's own tables (another area's migration cannot change them, and one of
-  this area waits in the same Mergify slot) is marked "// own-migration: ok (<reason>)".
+  this area waits in the same Mergify slot) is marked "// own-migration: ok (<reason>)". A marker needs its reason.
 
 Not covered (state it in the review of a new suite): a snapshot taken by an inline sql(…pg_proc…) with no reader
 function, a reader imported from another file or called as a method (cat.fns(T)), migrations applied by
-`prisma migrate deploy`, and files other than prototype/studio/tests/*.ts.
+`prisma migrate deploy`, a loop header split over two lines, and files other than prototype/studio/tests/*.ts.
 
 Static reading of the test's text only: no database, no network, US$0. Exit 0 clean, 1 refused (each names the file,
 the lines and the fix), 2 could not run.
@@ -46,7 +48,7 @@ CAT = re.compile(r"\b(pg_proc|pg_polic(?:y|ies)|pg_trigger|pg_class|pg_attribute
 NEWC = re.compile(r'(?:\bconst\s+|,\s*)([A-Z][A-Z0-9_]*)\s*=\s*["\'](\d{14}_[A-Za-z0-9_-]+)["\']')
 DEF = re.compile(r"(?:\bfunction\s+([A-Za-z_]\w*)\s*\(|(?:\b(?:const|let)\s+|,\s*)([A-Za-z_]\w*)\s*=\s*(?:async\s*)?"
                  r"(?:\([^()]*\)|[A-Za-z_]\w*)\s*(?::[^=]+)?=>)")
-MARK = re.compile(r"own-migration:\s*(?:whole catalogue|ok)\b", re.I)
+MARK = re.compile(r"own-migration:\s*(?:whole catalogue|ok)\s*\(\s*\S", re.I)   # a reason in brackets is required
 PSQLDB = re.compile(r"\bpsql\(\s*(?:urlOf\(\s*)?([A-Za-z_]\w*)")
 
 
@@ -79,7 +81,8 @@ def readers(text):
 
 def loop_lines(lines, name):
     """(line, databases) of each loop applying the migrations after NAME; databases empty when none can be read."""
-    flt = re.compile(r"(?:filter\(\s*\(?\s*(\w+)\s*(?::\s*\w+)?\s*\)?\s*=>\s*\1\s*>=?\s*" + re.escape(name) + r"\b[^)]*\)"
+    flt = re.compile(r"(?:filter\(\s*\(?\s*(\w+)\s*(?::\s*\w+)?\s*\)?\s*=>\s*(?:\1\s*>=?\s*" + re.escape(name)
+                     + r"|" + re.escape(name) + r"\s*<=?\s*\1)\b[^)]*\)"
                      r"|\.slice\(\s*\w+\.indexOf\(\s*" + re.escape(name) + r"\s*\)\s*\+\s*1\s*\))")
     found = set()
     for i, l in enumerate(lines):
@@ -92,7 +95,7 @@ def loop_lines(lines, name):
         if m and "(" not in l[m.end():f.start()].replace("all", "", 1).replace(".", "") .strip("( "):   # the list is named here and applied where it is iterated
             m = type("M", (), {"group": lambda self, k, g=(m.group(1) or m.group(2)): g})()
             v = re.escape(m.group(1))
-            found |= {j for j, k in enumerate(lines) if j > i and re.search(r"\bof\s+" + v + r"\s*\)|\b" + v + r"\.forEach\(", k)}
+            found |= {j for j, k in enumerate(lines) if j > i and re.search(r"\bof\s+(?:\[\s*\.\.\.\s*)?" + v + r"\b\s*\]?\s*\)|\b" + v + r"\.forEach\(", k)}
     out = []
     for i in sorted(found):
         near = lines[i]
@@ -115,7 +118,9 @@ def scan(path):
     rd = readers(text)
     # databases later given every migration (for (const d of all) psql(X, …))
     every = {i: set(PSQLDB.findall(l)) for i, l in enumerate(lines) if re.search(r"\bof\s+(?:all|ALL)\s*\)", l)}
-    own = sorted(i for i, l in enumerate(lines) if any(re.search(r"\bMIG\s*,\s*" + re.escape(n) + r"\s*,\s*[\"']migration\.sql", l) for n in names))
+    stamps = dict(NEWC.findall(text))
+    own = sorted((i, n) for i, l in enumerate(lines) if not l.strip().startswith("//") for n in names
+                 if re.search(r"\bMIG\s*,\s*" + re.escape(n) + r"\s*,\s*[\"']migration\.sql", l))
     out, seen = [], set()
     for name in names:
         for loop, dbs in loop_lines(lines, name):
@@ -138,13 +143,23 @@ def scan(path):
                         depth += {"(": 1, ")": -1}.get(l[j], 0)
                         if depth == 0: break
                         j += 1
-                    return re.match(r"\s*(?:[,;]|$)", l[j + 1:]) is not None
+                    return re.match(r"\s*[,;]", l[j + 1:]) is not None   # not end of line: a chain may go on (round 2 M2)
                 # The next of the suite's own migrations applied after the loop starts its next step: a plain snapshot
                 # taken before it is that step's baseline; reads after it are judged against that step's own loops.
-                nxt = next((j for j in own if j > loop), len(lines))
+                nxt = next((j for j, n2 in own if j > loop and stamps[n2] > stamps[name]
+                            and (not dbs or set(PSQLDB.findall(lines[j])) & set(dbs))
+                            and any(k > j for k, _ in loop_lines(lines, n2))), len(lines))   # round 2 M1
                 before = [i for i, m in at if not after_loop(i, m)]
                 after = [i for i, m in at if after_loop(i, m) and i < nxt and counts(m) and not marked(lines, i)
                          and not (nxt < len(lines) and snapshot(i, m))]
+                # A step's baseline later compared with a snapshot from before the loop (round 2 m1): both names on one line.
+                pre = {v for i, m in at if not after_loop(i, m) for v in re.findall(r"(?:\b(?:const|let)\s+|,\s*)(\w+)\s*=\s*$", lines[i][:m.start()])}
+                base = {v for i, m in at if after_loop(i, m) and i < nxt and snapshot(i, m) for v in re.findall(r"(?:\b(?:const|let)\s+|,\s*)(\w+)\s*=\s*$", lines[i][:m.start()])}
+                if pre and base:
+                    first = min((i for i, l in enumerate(lines) if i > loop and not marked(lines, i)
+                                 and any(re.search(r"\b" + re.escape(a) + r"\b", l) for a in pre)
+                                 and any(re.search(r"\b" + re.escape(b) + r"\b", l) for b in base)), default=None)
+                    if first is not None: after = sorted(set(after) | {first})
                 if before and after and (path, after[0], fn) not in seen:
                     seen.add((path, after[0], fn))
                     out.append(f"{os.path.relpath(path)}:{after[0] + 1}: {fn}() reads the catalogue at line {before[0] + 1} (before "
