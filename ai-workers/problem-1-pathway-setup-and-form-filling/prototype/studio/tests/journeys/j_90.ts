@@ -180,7 +180,7 @@ try {
   ip.on("pageerror", (e) => errors.push(String(e)));
   if (linkPath) {
     await ip.goto(`${BASE}${linkPath}`); await ip.locator("[data-invited='form']").waitFor({ timeout: 20_000 });
-    ok("R1.90 W4: the invited person opens the link: the email and plan are fixed, nothing is made by opening it", (await ip.locator("[data-invited-email]").innerText()) === invited && (await ip.getByLabel("Work email").count()) === 0 && firmsOf(invited) === "0");
+    ok("R1.90 W4: the invited person opens the link: the email is fixed, the plan is the link's default, nothing is made by opening it", (await ip.locator("[data-invited-email]").innerText()) === invited && (await ip.getByLabel("Work email").count()) === 0 && firmsOf(invited) === "0");
     await shot(ip, "w4-invited-form-1440");
     await ip.getByLabel("Password").fill("Correct-horse-j90-invited-9!"); await ip.getByLabel("Firm name").fill(`Sample Invited Firm ${run}`);
     await ip.locator("[data-signup-agree]").check(); await ip.locator("[data-signup-submit]").click();

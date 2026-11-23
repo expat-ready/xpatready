@@ -143,7 +143,7 @@ function Invited() {
         <h1 id="invited-h" ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">{view.gone.title}</h1>
         <p className="mt-2 text-sm" data-invited-words>{view.gone.words}</p>
         {view.gone.ask ? <p className="mt-2 text-sm text-text-muted">To ask for a new link, reply to the invitation email.</p> : null}
-        <p className="mt-4 text-sm"><Link className="text-text-link underline" to="/account" data-invited-sign-in>Already set up? Sign in</Link></p>
+        <p className="mt-4 text-sm"><Link className="inline-block py-1 text-text-link underline" to="/account" data-invited-sign-in>Already set up? Sign in</Link></p>
       </section>
     </Frame>
   );

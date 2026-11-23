@@ -150,6 +150,15 @@ try {
   ok("PF-5s S8 IV3 fail (break m3): a token not of the link's shape sends no request (no 431 'could not be read')", reads === 0, { reads });
   d.off("request", countReads);
 
+  // ------------------------------------------------------------------------------------------ IV3b: the link's plan withdrawn
+  const e7 = `invited7.pf5si.${run}@example.com`, l7 = await makeLink(e7);
+  sql(`update platform_plan set active = false where code = '${PLAN}' returning code`);
+  try {
+    await d.goto(`${BASE}${l7.path}`); await dead(d);
+    ok("PF-5s S8 IV3b fail (review m6): the link's plan no longer offered → 'This link's plan is not offered' with the door's words, no form, no firm", (await d.locator("h1").innerText()) === "This link's plan is not offered" && (await d.locator("[data-invited-words]").innerText()).includes("Ask us for a new link") && (await d.locator("form").count()) === 0 && firms(e7) === "0");
+  } finally { sql(`update platform_plan set active = true where code = '${PLAN}' returning code`); }
+  ok("PF-5s S8 IV5 (review m5, WCAG 2.5.8): the standalone 'Already set up? Sign in' link is at least 24 px tall", ((await d.locator("[data-invited-sign-in]").boundingBox())?.height ?? 0) >= 24);
+
   // ------------------------------------------------------------------------------------------ IV4b: a failed first read
   const e6 = `invited6.pf5si.${run}@example.com`, l6 = await makeLink(e6);
   const f = await newPage();
