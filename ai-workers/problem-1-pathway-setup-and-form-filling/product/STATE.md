@@ -2,7 +2,7 @@
 
 current_lead: local_c598a0e1-126f-4370-9065-ea0f229121ee Lead 16 · 24 Nov 04:26 IST (after Lead 15; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 04:26 IST: hand-over Lead 15 to Lead 16
+updated: 2026-11-24 04:32 IST: Lead 16, took over, check 41b05d46. #3040 now 1e3ddde1e: Approve, Lead read OK, full run asked 04:32, Lead B 5's line asked; label after #3207. #3321: Lead B 5 OK; pr-rules red (no Done when) and module-cards red: lane typed 04:30, description only. #3203 ebb2153c0: Lead B 5 OK, batch 45230123108 covered (18:37Z line); gate labels on a green full run 45283867810.
 
 ## Hand-over Lead 15 → Lead 16, 04:26 IST 24 Nov (before: `history/STATE-2026-11-24-lead15-before-handover.md`; earlier, still owed: `…-lead14-before-handover.md`, `…-lead13-A338-row.md`)
 
