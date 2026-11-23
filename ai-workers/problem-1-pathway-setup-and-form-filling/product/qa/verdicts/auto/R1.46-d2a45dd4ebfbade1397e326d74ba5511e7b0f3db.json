@@ -1,0 +1,32 @@
+{
+  "item": "R1.46",
+  "name": "46 Template text editor (a plain text box)",
+  "pr": 3179,
+  "sha": "d2a45dd4ebfbade1397e326d74ba5511e7b0f3db",
+  "run_id": "45269701199",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45269701199",
+  "at": "2026-11-23T21:32:43.074Z",
+  "overall": "FAIL",
+  "why": [
+    "tests/journeys/j_46.ts: fail"
+  ],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_46.ts",
+      "result": "fail",
+      "exit": 1
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": null,
+  "trace": "https://github.com/expat-ready/xpatready/actions/runs/45269701199/artifacts/14865276482",
+  "file": "product/qa/verdicts/auto/R1.46-d2a45dd4ebfbade1397e326d74ba5511e7b0f3db.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
