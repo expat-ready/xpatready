@@ -6,7 +6,7 @@
 // include tax" on, no draft is made or added to (until FO-7g part 2). Firm-scoped (PF-12's walls and firmScope): another
 // firm's invoice or client is 404. Each write is one transaction with one audit line through AuditPort (fail-closed).
 import { HttpException } from "@nestjs/common";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { MoneyLineKind, Prisma, type PrismaClient } from "@prisma/client";
 import type { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
@@ -146,7 +146,7 @@ export class InvoiceDrafts {
       await tx.moneyInvoice.update({ where: { firmId_id: { firmId, id } }, data: { billToProvince: b.province } });
       const reRated: { position: number; amountMinor: number; taxBefore: number; taxAfter: number }[] = [];
       if (from.ratePpm > 0 && from.ratePpm !== to.ratePpm) {
-        const lines = await tx.moneyInvoiceLine.findMany({ where: firmScope(ctx.firmId, { invoiceId: id, taxRatePpm: from.ratePpm, kind: { not: "GOVERNMENT_FEE" } }), orderBy: { position: "asc" }, select: { id: true, position: true, amountMinor: true, taxMinor: true } });
+        const lines = await tx.moneyInvoiceLine.findMany({ where: firmScope(ctx.firmId, { invoiceId: id, taxRatePpm: from.ratePpm, kind: { not: MoneyLineKind.GOVERNMENT_FEE } }), orderBy: { position: "asc" }, select: { id: true, position: true, amountMinor: true, taxMinor: true } });
         try {
           for (const l of lines) {
             const taxAfter = this.tax(l.amountMinor, to.ratePpm);
