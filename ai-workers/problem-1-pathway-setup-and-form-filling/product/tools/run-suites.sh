@@ -229,6 +229,9 @@ if [ "$SHARDS" -gt 1 ] || [ "$LIST" = 1 ]; then
           for (k = 1; k <= n; k++) load[k] = 0
           for (i = 1; i <= NR; i++) { b = 1; for (k = 2; k <= n; k++) if (load[k] < load[b]) b = k; load[b] += w[o[i]]; if (b == me) printf "%s ", u[o[i]] } }') "
 fi
+# PILOT ONLY (claude/lead-o2-pack, never merged): print this shard's deal, or run only the named units of it.
+if [ "${PACK_DEAL:-}" = 1 ]; then for u in $MINE; do echo "$u"; done; exit 0; fi
+if [ -n "${PACK_UNITS:-}" ]; then MINE=" $PACK_UNITS "; fi
 if [ "$LIST" = 1 ]; then
   for u in ${units[@]+"${units[@]}"}; do case " $QUARANTINE " in *" $u "*) { [ -n "$CHANGED" ] || [ "$SKIPQ" = 1 ]; } && continue;; esac; echo "$u"; done; exit 0
 fi

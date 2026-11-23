@@ -1,0 +1,36 @@
+# MEASUREMENT ONLY, branch claude/lead-o2-pack, never merged (founder through Lead 5, 23 Nov; Pilot A, US$0): one ci shard
+# with 1, 2, 3 and 4 suites at once on one GitHub machine, three runs each, at most 4 machines. Read-only token, no secrets.
+# GitHub offers workflow_dispatch only for a workflow file on the default branch, so it runs on a push that changes the
+# marker file pack-go (as claude/lead-o-ci-measure ran on a push).
+name: lead-o2-pack
+on:
+  push:
+    branches: [claude/lead-o2-pack]
+    paths: [pack-pilot/pack-go]
+permissions: { contents: read }
+concurrency: { group: lead-o2-pack, cancel-in-progress: false }
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        run: [1, 2, 3]
+        k: [1, 2, 3, 4]
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 1, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: bash "$P/tools/cloud-setup.sh"
+      - run: cd "$S" && ./node_modules/.bin/playwright install chromium
+      - name: the shard, ${{ matrix.k }} suites at once
+        run: python3 pack-pilot/pack-run.py 7 24 ${{ matrix.k }} "$RUNNER_TEMP/pack"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "pack-k${{ matrix.k }}-run${{ matrix.run }}", path: "${{ runner.temp }}/pack/*.txt", retention-days: 7 }
