@@ -178,7 +178,9 @@ try {
     const git = (...a: string[]) => spawnSync("git", a, { cwd: STUDIO, encoding: "utf8" });
     const own = git("log", "-1", "--format=%H", "--", "tests/check_pff1_s3_files.ts").stdout.trim(), base = own ? git("merge-base", own, "origin/main") : null;
     const diff = own && base?.status === 0 ? git("diff", "--name-only", `${base.stdout.trim()}..${own}`, "--", "api/src/front-office", "ports", "tests/check_fo5_retainers.ts", "tests/check_fo5b_retainer_checklist.ts", "tests/check_pffd_delete.ts", "tests/check_pffp_pdf.ts", "tests/check_pf0p_ports.ts") : null;
-    if (diff?.status === 0) ok("R1.65 PF-F1 case 6 pass: this row changed no file of FO-5, of the ports, or of their tests", diff.stdout.trim() === "", diff.stdout);
+    // review r4-m2: the line names the range it compared, so a failure points at the commit that moved it.
+    const range = own && base?.status === 0 ? `${base.stdout.trim().slice(0, 9)}..${own.slice(0, 9)} (${git("log", "-1", "--format=%s", own).stdout.trim().slice(0, 60)})` : "";
+    if (diff?.status === 0) ok(`R1.65 PF-F1 case 6 pass: the commits ${range} changed no file of FO-5, of the ports, or of their tests`, diff.stdout.trim() === "", diff.stdout);
     else console.log("NOT TESTED  R1.65 PF-F1 case 6: origin/main or this row's history is not in this copy, so the unchanged-files comparison did not run");
     const noRetry = (): FilesPort => { const f = local(); return { put: async (firm, k, b, c) => { if (await f.exists(firm, k)) throw new FileKeyTaken(k); return f.put(firm, k, b, c); }, get: (firm, k) => f.get(firm, k), exists: (firm, k) => f.exists(firm, k), delete: (firm, k) => f.delete(firm, k), usedBytes: (firm) => f.usedBytes(firm) }; };
     const broken = await runContract(filesPortContract, "LocalFiles refusing a retry", noRetry, null);
