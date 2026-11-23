@@ -132,7 +132,7 @@ try {
   await tabTo("[data-flag-notarisation]"); await p.keyboard.type("Required"); await tabTo("[data-flag-notarisation-detail]"); await p.keyboard.press("Enter");
   await p.locator("[data-flags-form]").waitFor({ state: "detached" }); await settle();
   const last = sql(`select string_agg(summary, ' | ' order by at) from audit_event where entity_key='${doc}' and action='flag changed' and (detail->>'version')::int = ${v0 + 2}`) ?? "";
-  ok("review M1 pass: changing only notarisation sends only notarisation: one audit line, the expiry untouched", /notarisation .*: Not required → Required/.test(last) && !/expiry|language|translation/.test(last) && sql(`select expires_on::text from case_document where id='${doc}'`) === "2031-05-05", last);
+  ok("review M1 pass: changing only notarisation sends only notarisation: one audit line (the stored value was not set; Not required only came from the document type), the expiry untouched", /notarisation .*: not set → Required$/.test(last) && !/expiry|language|translation/.test(last) && sql(`select expires_on::text from case_document where id='${doc}'`) === "2031-05-05", last);
 
   // English: the translation line goes (Provided stays Provided until staff change it, so clear it to the type's default).
   await openFlags();
