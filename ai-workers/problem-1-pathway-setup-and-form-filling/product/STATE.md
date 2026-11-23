@@ -2,7 +2,7 @@
 
 current_lead: local_4e13ee93-3937-4ffa-9d90-51555f88580c Lead 12 · 24 Nov 00:05 IST (took over from Lead 11 (local_5f4a7ece) past 200k after its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 00:31 IST: Lead 12. Queue: #3189 alone in #3304, rest behind it; #3216 queued. New heads: #3291 7a47325a0, #3179 571636d68 (verdicts due). #3065 merges main once and #3207 fixes its IRM pattern (run 45239424480 shard 14), both by the FO-6d lane (52% context: hand-over after). #3296 my read posted, Lead B's asked, then label. FO-7q part 3 given (FO-7q lane), #3305 waits on it. Runs: #3276 45240653180, #3203 45240507116. #3174 waits for a re-stamp (080000) with firm-paired keys and frozen facts, then my review.ts read. Building: PF-18ns #3302, FO-7s1 #3305, PF-F2 p2 #3303. Owed rows: S3 staging + lock, #3277 Minors, FO-7q part 3, AUD-3c, audit contract harness; PF-10b: before_image rule and the attestation; PF-21d too.
+updated: 2026-11-24 00:50 IST: Lead 12, founder typed (A344). Proven 50/101. Labelled #3296, #3190. Fresh full runs: #2935 (dispatched), #2933, #3276 45240653180, #3203 45240507116, #3291 45245461324. qa waits: R1.90 (#2935 #3040), R1.10 (#2933), R1.92 (#3173), R1.104 (#3184), R1.70, R1.86, R1.46. qa B walks R1.68, qa A (45%) merges main into #3218. Tooling lane: b164 + irm_editions on every app PR. #3065/#3207/#3179/#3219 new heads: verdicts, reads, then runs; never /run full an old red run (re-runs on old main): dispatch ci.yml. #3174 re-stamp 080000 + ruling. Building: #3302, #3303, #3305, FO-7q p3. Owed rows: S3 staging + lock, #3277 Minors, FO-7q p3, AUD-3c, audit harness, PF-10b rules, PF-21d. Hand over at the next check; Mac disk 6 GB blocks new Mac sessions.
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -20,6 +20,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A344 | 24 Nov 00:37 (Lead 12) | unblock every queue, exceptions allowed; on track? total done? | done in chat; not on track, date to decide |
 | A343 | 24 Nov ~00:0x typed to Lead 11 | script on proofs (pstack, TLA+), set up the new Claude Code mode | proofs report done, unchecked: start nothing before his yes; mode report owed |
 | A342 | 24 Nov ~00:0x typed to Lead 11 | "For the stuff that you're asking me ... I would follow your recommendation ... You have my approval"; research how people merge "11,000 p" and pay for CI | CI-cost report done, unchecked; check the US$62,400 figure before quoting; the content he meant did not arrive: ask |
 | A341 | 23 Nov 23:43 (to Lead 10) | four of six answers | P-814 NOT recorded, PR refused twice; draft in notes local_9c46a890 |
