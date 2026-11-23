@@ -50,6 +50,7 @@ starters for leads, wording **Sample** (no counsel, no expert: P-170). Engine: t
 
 ## 5. Starters (A.1; wording Sample)
 `lead.follow_up` "Follow-up", `lead.going_cold` "Going-cold nudge", `lead.acknowledgement` "Lead acknowledgement". Fields (lead
+> 23 Nov, Lead 12 (option B, #3179): the keys now carry their area first, `sales.lead.follow_up`, `sales.lead.going_cold` and `sales.lead.acknowledgement`, because B164's guard read the one-dot `lead.*` form as a combination key. The text above is kept as written.
 record): `lead_first_name`, `lead_full_name`, `lead_number`, `firm_name`, `owner_name` (the lead's assigned staff member).
 
 ## 6. Contract and tests

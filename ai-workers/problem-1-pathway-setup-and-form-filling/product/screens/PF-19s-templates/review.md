@@ -105,3 +105,26 @@ Reviewer: Approve e263986fc8dc16c794b003d3466e612b9b4eb190
 **Journey score:** stays 9/10. This diff does not change what the user sees or does.
 
 **Verdict: Approve** for `b64247632268762f5afb277d81442f269b5aa374`. No Blocker or Major is open. The two nits above are optional, and the earlier follow-ups (review m3, m4; breaker m4, m5) stand for PF-19c part 2.
+
+
+## Re-review (diff 49fe10df9..571636d68, B164 key rename; fresh Opus reviewer, diff only, 23 Nov)
+
+**Cause:** full run 45234837140 was red on `check_b164_no_engine_keys.ts`. Its fallback rule (`^[a-z]{2,5}\.[a-z][a-z0-9_]*$`, line about 150: one dot, a 2-5 letter first part, read as a new program's combination) caught `lead.number`, `lead.acknowledgement`, `lead.follow_up` and `lead.going_cold` in `registry.ts`. No sample key and no change on main was involved. Lead 12 ruled option B: the guard stays unchanged; the keys get an area prefix, and the SA-05 names move to comments since nothing reads `dictionary`.
+
+**Checked:**
+- Nothing read `dictionary`: the API's `read()` already sent only `{ key, label }`.
+- No old key remains in code, links or MODULE rows; old keys remain only in records (P-188).
+- The keys pass `msg_template_key_check` and work as the `:key` segment, since `encodeURIComponent` leaves them as they are.
+- The guard file is untouched. B164 fails on the parent's registry with exactly the four hits and passes on this commit: 66/66 in a scratch export without git; the builder's 67/67 adds the origin/main ceiling check.
+- Both test files are byte-identical to the parent once `sales.lead.` is mapped back, so no assertion was lost.
+- The keys match the seed in #3219 at 843c77e5; the builder's script also matched the wording byte for byte.
+
+**Findings:**
+- No Blocker, no Major.
+- Minor: `concept.md:52` named the old keys. Fixed with a dated note; the original text is kept.
+- Nit: the SA-05 names now live only in comments.
+- Process note: a scratch export for B164 also needs `packages/xfa-engine`.
+
+**Journey score:** none for this diff (no change on screen besides the template URL); it stays 9/10.
+
+**Verdict: Approve** for `571636d68ef6a6d7a4e4aacdaea873e71521d964`.
