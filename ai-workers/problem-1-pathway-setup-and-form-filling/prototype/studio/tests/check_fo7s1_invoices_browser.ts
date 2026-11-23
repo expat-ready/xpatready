@@ -20,7 +20,10 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
 import { chromium, type Browser, type Locator, type Page } from "playwright";
+import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { money } from "../web/src/modules/client-money/invoices/contract.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
@@ -47,14 +50,27 @@ const M = "/front-office/money/invoices";
 
 // ------------------------------------------------------------------------------------------------ setup (Sample)
 await api(null, "GET", "/platform/me");   // the app seeds the Sample firms at start; this only waits for it
+// The front office's set-up for the Sample firms (people need it), as the other front-office browser checks seed it.
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, options: "-c TimeZone=UTC" }) });
+await seedSampleFirmsFrontOffice(db); await db.$disconnect();
 const A = sql(`select id from platform_firm where key = 'sample-firm'`), run = Date.now().toString(36).slice(-5);
 if (sql(`select count(*) from money_payment_settings where firm_id = '${A}'`) === "0") sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${A}', 'seed:FO-7s1', now())`);
+// An Ontario firm registered for tax (FO-7g's cited HST 13 %, Sample number), with no payment details (the "Email waits" case of part 2).
+sql(`update money_payment_settings set tax_registered = true, tax_number = coalesce(tax_number, '123456789RT0001 (Sample)'), operating_details = null where firm_id = '${A}'`);
+const province = sql(`select business_address->>'province_state' from platform_firm where id = '${A}'`);
 const person = (n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Client ${n}', 'Sample', 'fo7s1.${run}.${n}@example.org', 'seed:FO-7s1', now()) returning id`);
 const TOWNER = await signIn("sample-firm", "user-R"), TOFF = await signIn("sample-firm", "user-O");
 const ADM = sql(`select id from platform_staff where actor_id = 'user-T' and firm_id = '${A}'`);
 const ro = await api(TOWNER, "PATCH", `/platform/staff/${ADM}/roles`, { roles: ["READ_ONLY"], reason: "FO-7s1 check: a person without the invoice list" });
 const TRO = await signIn("sample-firm", "user-T");
+// C5 (CS-MV1): a party is visible when it is the subject of a prospect the person may see. Each run's two people get a prospect
+// owned by the Owner and one by the Case Officer, inserted as FO-7q's own check seeds them (Sample).
 const PB = person("b"), PU = person("u");
+const staffOf = (actor: string) => sql(`select id from platform_staff where actor_id = '${actor}' and firm_id = '${A}'`);
+let pn = 0;
+for (const who of [PB, PU]) for (const owner of ["user-R", "user-O"])
+  sql(`set session_replication_role = replica; insert into fo_prospect (id, firm_id, number, lead_id, type, stage_id, subject_person_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
+    values (gen_random_uuid(), '${A}', 'P-${String(10000 + ((Date.now() + 7919 * ++pn) % 89999))}', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${who}', null, '${who}', '${staffOf(owner)}', 'seed:FO-7s1', now())`);
 const make = async (who: string, currency: string, lines: { kind: string; description: string; unitMinor: number; ratePpm?: number }[]) => {
   const d = await api(TOWNER, "POST", M, { personId: who, currency });
   for (const l of lines) await api(TOWNER, "POST", `${M}/${d.body?.id}/lines`, { ratePpm: 0, ...l });
@@ -62,14 +78,14 @@ const make = async (who: string, currency: string, lines: { kind: string; descri
 };
 // The concept's walk figures (Sample): a Fee of CAD 1,000.00 at 13 % and a Government fee of CAD 255.00, never taxed.
 const cad = await make(PB, "CAD", [{ kind: "FEE", description: `Work permit — LMIA-based ${run}`, unitMinor: 100000, ratePpm: 130000 }, { kind: "GOVERNMENT_FEE", description: "Government fee: work permit (Sample)", unitMinor: 25500 }]);
-const iss = await api(TOWNER, "POST", `${M}/${cad}/issue`);
+await api(TOWNER, "POST", `${M}/${cad}/issue`);
 const usd = await make(PU, "USD", [{ kind: "FEE", description: `Advice ${run}`, unitMinor: 50000 }]);
 await api(TOWNER, "POST", `${M}/${usd}/issue`);
 const draft = await make(PB, "CAD", [{ kind: "FEE", description: `Draft work ${run}`, unitMinor: 1000 }]);
-const cadNo = iss.body?.number as string, usdNo = sql(`select number from money_invoice where id = '${usd}'`);
+const cadNo = sql(`select number from money_invoice where id = '${cad}'`), usdNo = sql(`select number from money_invoice where id = '${usd}'`);
 const trustAnswered = sql(`select trust_answer from money_payment_settings where firm_id = '${A}'`) !== "UNANSWERED";
 ok("FO-7s1 setup: a CAD invoice (Fee 1,000.00 at 13 % and a Government fee 255.00) and a USD invoice issued, a draft; the Owner, the Case Officer and user-T as Read only signed in; trust not answered",
-  /^INV-/.test(cadNo ?? "") && /^INV-/.test(usdNo) && !!draft && ro.status === 200 && !trustAnswered, { cadNo, usdNo, ro: ro.status, trustAnswered });
+  /^INV-/.test(cadNo ?? "") && /^INV-/.test(usdNo) && !!draft && ro.status === 200 && !trustAnswered && province === "ON", { cadNo, usdNo, ro: ro.status, trustAnswered, province });
 
 // ------------------------------------------------------------------------------------------------ the browser
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });

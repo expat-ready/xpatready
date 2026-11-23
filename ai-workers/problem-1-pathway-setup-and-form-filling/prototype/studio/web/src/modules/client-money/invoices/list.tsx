@@ -53,7 +53,7 @@ function ListBody() {
               <Table label="Invoices" head={["Number", "Bill to", "Issued", "Due", "Total", "Balance due", "Status"]} headClass={[undefined, "hidden md:table-cell", "hidden lg:table-cell", "hidden sm:table-cell", "hidden md:table-cell", undefined, undefined]}>
                 {rows.map((r) => (
                   <tr key={r.id} data-invoice-row={r.number ?? "Draft"}>
-                    <td className="font-medium"><Link to={`/money/invoices/${r.id}`} className="text-text-link underline-offset-2 hover:underline" data-invoice-link>{r.number ?? "Draft"}</Link>
+                    <td className="font-medium"><Link to={`/money/invoices/${r.id}`} className="text-text-link underline underline-offset-2" data-invoice-link>{r.number ?? "Draft"}</Link>
                       <span className="block text-xs font-normal text-text-muted sm:hidden">Due {day(r.dueDate)}</span></td>
                     <td className="hidden md:table-cell">{billToWord(r)}</td>
                     <td className="hidden whitespace-nowrap lg:table-cell">{day(r.issuedOn)}</td>
