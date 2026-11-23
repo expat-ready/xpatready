@@ -15,7 +15,11 @@ echo "$*" >> "$D/log"; f="$D/$(printf '%s' "$*" | tr -c 'A-Za-z0-9' _)"
 EOF
 put() { printf '%s' "$2" > "$D/$(printf '%s' "api $1" | tr -c 'A-Za-z0-9' _)"; }
 run() { : > "$D/log"; D="$D" QB_GH="bash $T/gh" REVIEWERS= python3 -I "$Q" --repo $R --now $NOW 2>&1; }
-ACT10="ACT   queue blocked by checks: #10 (Hold the clock test until 06:00 IST) is a check-only fix, approved, ci green: merge it in the browser now (P-757, P-758)"
+# Lead 4 (23 Nov): the advice never suggests a browser merge without the Lead's read of the diff (P-423). Without a
+# "Lead read the diff: <full head>" line it asks for the read (ACT10); with one it offers the merge (MERGE10).
+ACT10="ACT   queue blocked by checks: #10 (Hold the clock test until 06:00 IST) is a check-only fix, approved, ci green: read its diff first (P-423), then post \"Lead read the diff: $H\"; the next check offers the merge (P-757, P-758)"
+MERGE10="ACT   queue blocked by checks: #10 (Hold the clock test until 06:00 IST) is a check-only fix, approved, ci green, the Lead's read on its head: merge it in the browser now (P-757, P-758)"
+LR() { printf '{"author_association":"%s","user":{"login":"o"},"created_at":"2026-11-20T07:20:00Z","updated_at":"%s","body":"%s"}' "$1" "${3:-2026-11-20T07:20:00Z}" "$2"; }
 scene() {  # a fresh world: main's guards red, no batch, no dequeue; PR #10 check-only, approved by label, ci green
   D="$T/$1"; mkdir -p "$D"
   put "repos/$R/actions/workflows/guards.yml/runs?per_page=100" '{"workflow_runs":[{"id":7,"head_branch":"mergify/merge-queue/abc","status":"completed","conclusion":"failure","created_at":"2026-11-20T07:00:00Z"},{"id":6,"head_branch":"main","status":"completed","conclusion":"success","created_at":"2026-11-20T06:00:00Z"},{"id":8,"head_branch":"mergify/merge-queue/def","status":"in_progress","conclusion":null,"created_at":"2026-11-20T07:50:00Z"},{"id":9,"head_branch":"fix/other","status":"completed","conclusion":"success","created_at":"2026-11-20T07:55:00Z"}]}'
@@ -135,6 +139,24 @@ ok "REVIEWERS unset (the Mac): read from the repository variable through gh, and
 put "repos/$R/issues/10/comments?per_page=100&page=1" "$(python3 -c 'import json; print(json.dumps([{"author_association":"OWNER","user":{"login":"o"},"body":"note"}]*100))')"
 put "repos/$R/issues/10/comments?per_page=100&page=2" '[{"author_association":"OWNER","user":{"login":"o"},"body":"Reviewer: Approve '$H'"}]'
 out=$(run); ok "the Approve on the second page of comments: fires" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+
+scene read; out=$(run)
+ok "no Lead read on the head: the ACT asks for the read and never mentions a browser merge (Lead 4, 23 Nov)" "$(grep -qxF "$ACT10" <<< "$out" && ! grep -qi 'browser' <<< "$out" && echo 1)" "$out"
+put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read the diff: $H")]"; out=$(run)
+ok "\"Lead read the diff: <full head>\" from the owner: the merge is offered, word for word" "$(grep -qxF "$MERGE10" <<< "$out" && echo 1)" "$out"
+put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR MEMBER "Lead read: OK $H.")]"; out=$(run)
+ok "\"Lead read: OK <full head>.\" from a member counts the same (lead-read-gate.sh's forms)" "$(grep -qxF "$MERGE10" <<< "$out" && echo 1)" "$out"
+for c in "$(LR OWNER "Lead read the diff: $OLD")" "$(LR OWNER "Lead read the diff: ${H:0:12}")" "$(LR NONE "Lead read the diff: $H")" "$(LR OWNER "Lead read the diff: $H" 2026-11-20T07:30:00Z)" "$(LR OWNER "I will do the Lead read the diff: $H later")"; do
+  put "repos/$R/issues/10/comments?per_page=100&page=1" "[$c]"; out=$(run)
+  ok "not a Lead read (older head, short SHA, no write access, edited, or not alone on its line): no merge offered: ${c:0:110}" "$(grep -qxF "$ACT10" <<< "$out" && ! grep -qi 'browser' <<< "$out" && echo 1)" "$out"; done
+ok "no line in queue-blocked.py offers a browser merge outside the read branch" "$(python3 -I - "$Q" <<'PY' && echo 1
+import sys,re
+src=open(sys.argv[1]).read().splitlines()
+hits=[i for i,l in enumerate(src) if "browser now" in l and l.lstrip().startswith(("print","\"ACT","'ACT"))]
+ok=all(any("if read" in src[j] for j in range(max(0,i-3),i)) for i in hits) and hits
+sys.exit(0 if ok else 1)
+PY
+)" "a merge line not guarded by the read"
 
 # lead-watch.sh runs it each check, prints it and counts its ACT lines; nothing here merges or labels
 L="$TOOLS/lead-watch.sh"
