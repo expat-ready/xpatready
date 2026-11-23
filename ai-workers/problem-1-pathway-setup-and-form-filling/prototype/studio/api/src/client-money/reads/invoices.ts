@@ -17,6 +17,7 @@ import { UUID, notFound } from "../invoices/drafts.ts";
 import { allowedActions, type Action } from "./actions.ts";
 import { DUE_SQL, FACTS_LATERAL, PAID_SQL, STATUS_CODES, type StatusCode, statusSql } from "./status-sql.ts";
 import { failClosed, scopeSql, type ScopeOf } from "./visibility.ts";
+import { labelsOf, type BillTo } from "./parties.ts";
 import { paymentRows, refundsReader, withPaymentActions, type PaymentRow } from "./payments.ts";
 import type { Refunds } from "../invoices/refunds.ts";
 import { Day, Stamp, bad, cursorOf, cursorText, pageSizeOf, trustShows } from "./common.ts";
@@ -30,14 +31,16 @@ const Query = z.strictObject({
 });
 
 export type InvoiceRow = { id: string; number: string | null; statusWord: string; personId: string | null; companyId: string | null; caseId: string | null; currency: "CAD" | "USD";
-  issuedOn: string | null; dueDate: string | null; totalMinor: number; paidMinor: number; dueMinor: number };
+  issuedOn: string | null; dueDate: string | null; totalMinor: number; paidMinor: number; dueMinor: number;
+  /** FO-7q part 3: the party's kind and stored name (null when none is stored: never guessed), and the case number. */
+  billTo: BillTo; caseLabel: string | null };
 export type InvoicePage = { items: InvoiceRow[]; pageSize: number; next: string | null };
-export type InvoiceDetail = { invoice: InvoiceView; caseId: string | null; issuedOn: string | null; creditableMinor: number; allowedActions: Action[];
+export type InvoiceDetail = { invoice: InvoiceView; caseId: string | null; billTo: BillTo; caseLabel: string | null; issuedOn: string | null; creditableMinor: number; allowedActions: Action[];
   payments: PaymentRow[]; creditNotes: { id: string; number: string | null; full: boolean; amountMinor: number; currency: string; reason: string; createdAt: string }[];
   writeOff: { amountMinor: number; currency: string; reason: string; createdAt: string } | null; trustPaidMinor?: number };
 
 type Plan = { pageSize: number; after: { d: 0 | 1; t: string; id: string } | null; want: string[] | null; today: string; firmId: string; where: Prisma.Sql };
-type Row = Omit<InvoiceRow, "totalMinor" | "paidMinor" | "dueMinor"> & { total: bigint; paid: bigint; due: bigint; d: number; t: string; n: bigint };
+type Row = Omit<InvoiceRow, "totalMinor" | "paidMinor" | "dueMinor" | "billTo" | "caseLabel"> & { total: bigint; paid: bigint; due: bigint; d: number; t: string; n: bigint };
 /** A status filter reads candidates 200 at a time, doubling up to 2,000 (Sample sizes, measured on 10,000 invoices). */
 const CHUNK_FIRST = 200, CHUNK_MAX = 2000;
 /** The two halves: newest issued first (issued_at desc, id: FO-7ts part 3's index order), then drafts newest first. */
@@ -91,9 +94,9 @@ export class InvoiceReads {
         if (rows.length >= need) break;
       }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
-    const page = rows.slice(0, p.pageSize), last = page.at(-1);
+    const page = rows.slice(0, p.pageSize), last = page.at(-1), labels = await labelsOf(this.db, p.firmId, page);
     return { pageSize: p.pageSize, next: rows.length > p.pageSize && last ? cursorText({ d: last.d, t: last.t, id: last.id }) : null,
-      items: page.map(({ total, paid, due, d: _d, t: _t, n: _n, ...x }) => ({ ...x, totalMinor: Number(total), paidMinor: Number(paid), dueMinor: Number(due) })) };
+      items: page.map(({ total, paid, due, d: _d, t: _t, n: _n, ...x }, i) => ({ ...x, totalMinor: Number(total), paidMinor: Number(paid), dueMinor: Number(due), ...labels[i]! })) };
   }
 
   /** The first candidate read of the issued half (query A), as list runs it: DW1 EXPLAINs exactly this. Null when the
@@ -133,7 +136,7 @@ export class InvoiceReads {
     if (!UUID.test(invoiceId)) notFound("invoice");
     const id = invoiceId.toLowerCase(), firmId = firmScope(ctx.firmId).firmId, scope = await this.scopeOf(ctx);
     return this.db.$transaction(async (tx) => {
-      const [seen] = await tx.$queryRaw<{ by: string }[]>`select i.created_by as by from money_invoice i where i.firm_id = ${firmId}::uuid and i.id = ${id}::uuid and ${scopeSql(scope)}`;
+      const [seen] = await tx.$queryRaw<{ by: string; personId: string | null; companyId: string | null; caseId: string | null }[]>`select i.created_by as by, i.person_id::text as "personId", i.company_id::text as "companyId", i.case_id::text as "caseId" from money_invoice i where i.firm_id = ${firmId}::uuid and i.id = ${id}::uuid and ${scopeSql(scope)}`;
       if (!seen) return notFound("invoice");
       const f = (await invoiceFacts(tx, ctx.firmId, id, dayOf(this.clock.now()))) ?? notFound("invoice");
       const showTrust = await trustShows(tx, ctx.firmId);
@@ -142,7 +145,7 @@ export class InvoiceReads {
       // what FO-7b's credit route would take: not credited or written off, less what was paid from trust (TRUST_PAID)
       const creditableMinor = f.view.status === "ISSUED" && f.view.statusWord !== "Written off" ? Math.max(0, f.openMinor - f.trustPaidMinor) : 0;
       return {
-        invoice: f.view, caseId: f.caseId, issuedOn: f.issuedOn, creditableMinor,
+        invoice: f.view, caseId: f.caseId, ...(await labelsOf(tx, ctx.firmId, [seen]))[0]!, issuedOn: f.issuedOn, creditableMinor,
         allowedActions: allowedActions({ status: f.view.statusWord, keys: ctx.keys, startedByCaller: seen.by === `staff:${ctx.staffId}`, creditableMinor }),
         payments: await withPaymentActions(tx, this.refunds, ctx.firmId, ctx.keys, (await paymentRows(tx, ctx.firmId, { invoiceId: id }, showTrust)).map(({ t: _t, ...p }) => p)),
         creditNotes: credits.map((c) => ({ ...c, currency: c.currency as string, createdAt: c.createdAt.toISOString() })),
