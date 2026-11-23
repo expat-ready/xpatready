@@ -60,7 +60,8 @@ function PhoneRow({ person, mayEdit, leadId }: { person: Lead["person"]; mayEdit
     onError: async (e) => {
       if (e instanceof StaffApiError && e.status === 409 && e.problem.code === "STALE") {
         const l = await staffApi(`/front-office/leads/${encodeURIComponent(leadId)}`).then((r) => Lead.parse(r)).catch(() => null);
-        if (l) { setConflict({ phone: l.person.phone ?? "", version: l.person.version ?? "", message: e.message }); void qc.invalidateQueries({ queryKey: ["fo", "leads"] }); return; }
+        // The conflict is the answer: this save is over, so "Keep mine, then Save" at once is never swallowed by the one-save guard.
+        if (l) { sending.current = false; setConflict({ phone: l.person.phone ?? "", version: l.person.version ?? "", message: e.message }); void qc.invalidateQueries({ queryKey: ["fo", "leads"] }); return; }
       }
       setError(e instanceof StaffApiError ? e.field("phone") ?? e.message : "Could not save the number. Please try again.");
     },

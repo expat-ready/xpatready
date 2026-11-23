@@ -113,7 +113,11 @@ listeners.add(() => { tick++; });
 export const useDraftTick = () => React.useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => tick);
 /** Every draft and every staff member's kept tab list in this browser tab ("xr.workspace.v1:<owner>", workspace.tsx; the
  *  "local" list of the areas without a staff session stays). */
+const forgotten = new Set<() => void>();
+/** The workspace hears a Sign out on purpose here (it then keeps no tab list until the next sign-in). */
+export function onForget(l: () => void): () => void { forgotten.add(l); return () => { forgotten.delete(l); }; }
 function forget() {
+  for (const l of forgotten) l();
   entries.clear(); others.clear();
   try { for (const k of Object.keys(sessionStorage)) if (k.startsWith(STORE) || (k.startsWith("xr.workspace.v1:") && k !== "xr.workspace.v1:local")) sessionStorage.removeItem(k); } catch { /* memory only */ }
   emit();

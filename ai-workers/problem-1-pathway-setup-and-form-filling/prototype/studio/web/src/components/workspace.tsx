@@ -11,7 +11,7 @@
 //  * Open tabs come back after a reload (sessionStorage, per browser tab); at most 12, with a message at the limit. A tab
 //    closes with its ×, a middle-click, Delete on the focused tab or Alt+Shift+W; a tab with unsaved changes shows a dot and
 //    asks before it closes. Alt+PageDown / Alt+PageUp move between tabs (browsers keep Ctrl+W, Ctrl+Tab and Ctrl+PageDown).
-//  * The strip is navigation between addresses, so it is `nav "Open items"` with `aria-current="page"` on the shown item, not
+//  * The strip shows once two or more items are open. It is navigation between addresses, so it is `nav "Open items"` with `aria-current="page"` on the shown item, not
 //    ARIA tabs (APG: tabs switch panels inside one page; a second tablist also collided with every page's own tabs). Arrow
 //    keys, Home and End move along it; below 768 px it folds into an "Open items" menu.
 import * as React from "react";
@@ -19,7 +19,7 @@ import { createPortal } from "react-dom";
 import { createPath, NavigationType, parsePath, Router, type To } from "react-router-dom";
 import { X } from "lucide-react";
 import { FoldArrow } from "@/components/fold-out";
-import { anyDraft, discardDraft, draftsAt, useDraftTick } from "@/lib/sync/drafts";
+import { anyDraft, discardDraft, draftsAt, onForget, useDraftTick } from "@/lib/sync/drafts";
 import { onStaffChange, sessionEndReason, staffScope } from "@/modules/platform/session";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +30,9 @@ const STORE = "xr.workspace.v1";
  *  out never overwrites the person's tabs, and the same person signing in again gets them back. */
 const ownerNow = () => staffScope() ?? "local";
 const storeOf = (owner: string) => `${STORE}:${owner}`;
+/** After Sign out on purpose and until the next sign-in: no tab list is kept (not even a signed-out one, so no staff page's
+ *  address lands in the "local" list of the areas without a staff session). */
+const NOBODY = "\u0000signed-out";
 type Tab = { id: string; path: string; title: string; nav: number; type: NavigationType; scroll: number; state?: unknown };
 /** The item a tab shows: its address without query or hash ("/platform/offices/abc"). Two tabs never share one. */
 export const itemOf = (path: string) => { const p = parsePath(path).pathname || "/"; return p.length > 1 ? p.replace(/\/+$/, "") : p; };
@@ -103,7 +106,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   now.current = { tabs, active };
 
   React.useEffect(() => {
-    try { sessionStorage.setItem(storeOf(shownOwner.current), JSON.stringify({ tabs: tabs.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
+    if (shownOwner.current !== NOBODY) try { sessionStorage.setItem(storeOf(shownOwner.current), JSON.stringify({ tabs: tabs.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
   }, [tabs, active]);
   React.useEffect(() => { setMounted((m) => (m.has(active) ? m : new Set(m).add(active))); }, [active]);
   React.useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(t); }, [notice]);
@@ -204,7 +207,11 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   // every other staff member's kept tabs in this browser tab. Round 3: the same person after an expiry gets theirs back.
   // Lead 13: a session that ends by itself changes nothing on the screen (each page says the session was lost, in place);
   // the tabs stay that person's, and the next sign-in decides: the same person carries on, anyone else starts afresh.
+  const lastScope = React.useRef(staffScope());
   React.useEffect(() => onStaffChange(() => {
+      const scope = staffScope();
+      if (scope === lastScope.current) return;   // not a change of session (e.g. "Sign in again here" only clears the end reason)
+      lastScope.current = scope;
       const owner = ownerNow(), was = shownOwner.current;
       if (owner === was) return;
       if (owner === "local" && sessionEndReason()) return;   // ended by itself: the screen stays as it is
@@ -215,6 +222,13 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
       now.current = { tabs: next.tabs, active: next.active };
       dirtyOwners.current.clear(); setDirtySet(new Set()); setMounted(new Set([next.active])); setWs({ tabs: next.tabs, active: next.active });
     }), []);
+  // Sign out on purpose (round 5): this page alone, and nothing kept, whatever the server answers (a 401 too).
+  React.useEffect(() => onForget(() => {
+    shownOwner.current = NOBODY;
+    const t: Tab = { id: newId(), path: here(), title: guess(here()), nav: 0, type: NavigationType.Pop, scroll: 0 };
+    now.current = { tabs: [t], active: t.id };
+    dirtyOwners.current.clear(); setDirtySet(new Set()); setMounted(new Set([t.id])); setWs({ tabs: [t], active: t.id });
+  }), []);
   // Break M2: a tab with a stored draft shows its dot even when it is not mounted.
   const tick = useDraftTick();
   const dirtyAll = React.useMemo(() => new Set([...dirty, ...tabs.filter((t) => draftsAt(itemOf(t.path)).length).map((t) => t.id)]), [dirty, tabs, tick]);   // eslint-disable-line react-hooks/exhaustive-deps -- tick: any draft change
@@ -257,16 +271,18 @@ export function WorkspaceStrip() {
   const ws = React.useContext(WsCtx), me = React.useContext(TabCtx);
   const [menu, setMenu] = React.useState(false);
   const refs = React.useRef(new Map<string, HTMLButtonElement>());
-  const box = React.useRef<HTMLDivElement>(null), shownHere = !!me?.active;
+  const box = React.useRef<HTMLDivElement>(null), shownHere = !!me?.active, drawn = !!ws && ws.tabs.length > 1;
   // Side panels start below the strip (controls.tsx Panel reads --ws-top), so a record's panel never hides the open items.
   React.useLayoutEffect(() => {
     const el = box.current, root = document.documentElement;
-    if (!el || !shownHere) return;
+    if (!el || !shownHere || !drawn) return;
     const put = () => root.style.setProperty("--ws-top", `${56 + el.offsetHeight}px`);
     put(); const ro = new ResizeObserver(put); ro.observe(el);
     return () => { ro.disconnect(); root.style.removeProperty("--ws-top"); };
-  }, [shownHere]);
-  if (!ws || !me) return null;
+  }, [shownHere, drawn]);
+  // Lead 13: one open item needs no strip (its one tab could not even close), so a page alone looks as it did before PF-31:
+  // the "where am I" line stays at the top on a phone and nothing sits over the page's own controls. A second item brings it.
+  if (!ws || !me || ws.tabs.length < 2) return null;
   const { tabs, active } = ws;
   const go = (i: number) => { const t = tabs[(i + tabs.length) % tabs.length]; ws.activate(t.id); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-ws-panel="${t.id}"] [data-ws-tab="${t.id}"]`)?.focus()); };
   const onKey = (e: React.KeyboardEvent, i: number, id: string) => {

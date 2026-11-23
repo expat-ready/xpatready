@@ -72,7 +72,8 @@ let failed = 0;
 try {
   const ctx = await context(), p1 = await page(ctx);
   await p1.goto(`${BASE}/platform/offices`); await officeRows(p1);
-  ok("strip: one tab, under the header, named for the page", (await tabs(p1)).length === 1 && (await tabs(p1))[0].title === "Offices", await tabs(p1));
+  // Lead 13: with one item open there is no strip (the page looks as before PF-31); the second item brings it (T1 below).
+  ok("strip: none while only one item is open", (await p1.locator("[data-workspace-strip]").count()) === 0 && (await p1.locator("main").count()) === 1, await tabs(p1));
 
   // T1: Ctrl-click a menu link and a record link → background tabs; the page stays
   await shown(p1).locator('nav[aria-label="My account"] a[href="/platform/team"]').click({ modifiers: ["Control"] });
@@ -221,6 +222,8 @@ try {
   await ctx.close();
   const small = await context(375), ps = await page(small);
   await ps.goto(`${BASE}/platform/offices`); await officeRows(ps);
+  ok("T10 at 375 px with one item open: no strip and no Open items row", (await ps.locator("[data-workspace-strip]").count()) === 0);
+  await shown(ps).locator("[data-office-row] [data-office-edit]").first().click(); await nameField(ps).waitFor();   // a second item
   ok("T10 at 375 px the strip folds into an Open items menu; no sideways scroll", await ps.locator("[data-workspace]:visible [data-ws-menu]").isVisible() && await ps.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await small.close();
 
@@ -305,7 +308,7 @@ try {
   await ctxB.close();
   // Break round 3 M2: an area with no staff session (the case area, simulated people) keeps its tabs over a reload too.
   const ctxS = await browser.newContext({ viewport: { width: 1440, height: 900 } }), pc = await page(ctxS);
-  await pc.goto(`${BASE}/cases`); await pc.locator('[data-workspace]:visible [data-ws-strip]').waitFor({ timeout: 60_000 });
+  await pc.goto(`${BASE}/cases`); await pc.locator('[data-workspace]:visible').first().waitFor({ timeout: 60_000 });
   await pc.locator('[data-workspace]:visible nav a[href^="/"]').nth(1).click({ modifiers: ["Control"] });
   await until(async () => (await tabs(pc)).length > 1);
   const beforeS = (await tabs(pc)).length;
