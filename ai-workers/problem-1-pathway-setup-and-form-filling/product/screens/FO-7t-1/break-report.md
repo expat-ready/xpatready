@@ -100,3 +100,56 @@ Note (not breaker scope): the FO-7t-1 brief says "No migration". The PR adds `20
 * **The PR's own check:** `check_fo7t_trust.ts` passed 44/44.
 
 Verdict: fail
+
+## Round 2 (head 78277d7ae; verdict for 510a9d2a7)
+
+Head `78277d7ae` holds the fix commit, on top of `795e961ed`. `510a9d2a7` changes `tests/check_fo7t_trust.ts` only (checked with `git diff --stat 78277d7ae 510a9d2a7`), so these results stand for it.
+How I ran it: a new scratch harness, `break3.ts`, with the same setup as round 1, on database `xr_studio_fo7t_brk3_<pid>` on :54329, dropped at the end. `check_fo7t_trust.ts` on `510a9d2a7`: 52 passed, 0 failed. The migration is unchanged, so round 1's migration results still stand.
+
+**Round 1 findings, run again**
+* **Major 1 (ledger order): fixed.**
+  * 25 deposits at once: every running balance equals the database's, they fall strictly from the newest row down, and the newest row shows 2800 (the database says 2800).
+  * The slow writer that commits second: the newest row now shows **30000**, the true balance.
+* **Major 2 (`caseId`): fixed.**
+  * A random case → 404. Another firm's case → 404. P2's case on a P1 deposit → 422.
+  * On a request: a random case → 404 and P2's case → 422. P1's own case given in upper case → 201.
+  * The Case Officer who can see only P2's case now gets an empty ledger and empty balances for P1. No entry was written on a foreign or unknown case.
+* **Minor 1: fixed.** After Yes → No with money held, a replay → 200, a new key → 409 `TRUST_OFF`, and a changed replay → 409 `KEY_USED`.
+* **Minor 2: fixed.** Replays with a different reference, evidence key or case, or with the reference left out → 409 `KEY_USED`. The same body, the case left out, or the case id in upper case → 200. The reference typed in lower case → 409 (it is compared exactly; acceptable).
+* **Minor 3: partly fixed (see r2-m1 below).** Now refused with 409 as duplicates of `ET-0001` and `CHQ 104`: lower case, outer spaces, NBSP, full-width, ZWSP, ZWJ, BOM, word joiner, U+2011, two spaces, thin space, narrow NBSP, ideographic space and em space.
+* **Minor 4: fixed.** `amountMinor` 2147483647 on a party that holds money → 409 `TOO_LARGE`, with the limit stated in words; no row is written and no receipt number is used. A cursor `seq` of 2^31, 0 or -1 → 422.
+* **Minors 5-7** (rollback once a key exists, staff text in the email, the evidence key not checked): not part of this round and unchanged.
+
+**New code: what held**
+* **Case checks:**
+  * A company's case works for the company → 201, and for a request on it → 201. The company's contact person depositing on the company's case → 422.
+  * A case whose client has no front-office link yet → 422 (fails closed).
+  * A writer who holds `agent/payment:record` but does not see the case gets 404, for a deposit and for a request. On a case they can see → 201.
+* **Deposits on a request:**
+  * Request on case C: `caseId` left out → the entry is on C. `caseId: null` → 422. Another case of the same client → 422. C itself → 201.
+  * Request with no case: a case of the client → the entry is on that case. Left out → no case.
+* **Case moved P1 → P2:** a new P1 deposit on that case → 422, and a P2 deposit → 201.
+  * Observation, not a part 1 finding: the P1 entry made before the move stays on the case. P2's file owner can then read it in P1's ledger (`BEFORE-MOVE 1111`), which is what "visible when its case is" says. Moving a case is a case-side operation, outside part 1.
+* **Running sum:**
+  * With a case filter it is that case's balance (CAD 34000 and USD 8000 on c5a, matching `/balances`).
+  * A Case Officer on c5a's team only sees c5a's 3 rows with c5a's sums. Asking for c5b gives 0 rows, and balances show c5a only. No hidden amount leaks into a sum.
+  * Page 2 carries on the sums from page 1; they do not restart.
+* **Cursor `{seq, currency}`:**
+  * Walking with `pageSize=1`: Owner 6/6 rows, Owner with the c5a filter 3/3, officer 3/3, none repeated.
+  * Tampered cursors → 422: EUR, no currency, `seq` as a string, `cad`, an extra key, `AAA`, an array, null.
+  * A `seq` past every row only positions the page; the officer still sees only rows they can see.
+
+**Round 2 findings**
+* **r2-m1 (Minor; what is left of Minor 3): references that look the same still slip past the duplicate check.** `refKey` (`service.ts:246`) removes only U+200B-200D, U+2060 and U+FEFF. These pass `money_text_ok` and are recorded as new references, each looking exactly like `ET-0001`:
+  * U+00AD (soft hyphen), U+034F, U+2062, U+180E, U+FE0F, U+E0041 (a tag character), U+3164, U+200E (LRM), and U+1680 (PostgreSQL's `\s` does not match it).
+  * Near look-alikes also pass: U+2010, the en dash, U+2212, Cyrillic `ЕТ`, Arabic-Indic digits.
+  * The same new reference sent at once in CAD and in USD on one party is still recorded twice (201, 201): the lock is per currency, the check is not. In one currency at once: 409, then 201.
+* **r2-m2 (Minor): without a currency filter the ledger is not newest first across currencies.** `reads.ts` sorts by `seq desc, currency`, but `seq` counts each currency separately.
+  * Deposits made in this order: CAD 1000, CAD 2000, CAD 4000, USD 8000, USD 16000, CAD 32000.
+  * The ledger lists: 32000, 4000, 2000, **16000 USD**, 1000, 8000 USD. The USD deposit made fifth is shown below the second and third, and the `at` dates go back and forth.
+  * Each currency's running balance is right. Only the order between currencies is wrong.
+* **r2-m3 (Minor): a replay answers while trust is off and nothing is held.** All of firm A's money was refunded to zero (written as xr_app) and the answer set to No. Then `GET /ledger` → 404 and a new deposit → 404, but replaying a recorded key → **200 with its receipt (R-0068)**. DW1 says every trust route except the answer is 404 in that state. The replay now runs before `trustOn`, and `trustShows` is not asked on that path.
+
+No Blocker or Major remains. r2-m1 to r2-m3 and round 1's Minors 5-7 are left for the Lead to take or defer.
+
+Verdict: pass

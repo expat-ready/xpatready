@@ -1,6 +1,100 @@
-Reviewer: Block 60ae8f158b6fa3109767112a70a8e67c9e7b7637
+Reviewer: Approve 510a9d2a7ebd934b3145aaf8cde5a61f75a1b387
+
+# Build round 2 (diff only, 795e961ed → 510a9d2a7)
+
+Reviewed 23 Nov by the same reviewer, diff only, over two commits:
+* `78277d7ae`, the fix: reads.ts, service.ts, features/client-money-trust.ts and the check (+104/−25).
+* `510a9d2a7`, Lead 10's rulings, test only (+14/−8).
+
+Line numbers in the round 1 findings and the planted breaks are those at `78277d7ae`. No code changed in `510a9d2a7`.
+
+**Runs (in a scratch copy of the studio, on scratch databases on :54329 named by pid and dropped):**
+* The check passed 48/0 at `78277d7ae` and 52/0 at `510a9d2a7`, once each as is.
+* I planted 10 breaks one at a time and reran it after each (table below).
+* I added a probe run with seven probes.
+
+I left alone the breaker's database `xr_studio_fo7t_brk3_*` and `break-report.md`. I did not re-run the builder's other suites.
+
+**Verdict: Approve.** M1 and M2 are fixed, and each new check case fails when its fix is removed. No Blocker or Major is open. The new Minors below do not block.
+
+## Round 1 findings
+* **M1 fixed** (`service.ts:197-208, 102, 168-174`). `caseOf` checks three things:
+  * The case is in the caller's `scopeOf(ctx).cases`. If not, the answer is 404, so the case must exist, belong to this firm and be visible to the caller (fail closed).
+  * Its `case_client` names the same person or company. If not, 422.
+  * A deposit against a request may not name a different case (422). With no case given, it takes the request's case.
+
+  The check (l. 235-250) refuses six cases, each with nothing written: a case that does not exist, firm B's case, another client's case, a case other than the request's, a request on a case that does not exist, and a case the caller cannot see. Planted breaks B1-B3 each turn it red.
+* **M2 fixed** (`reads.ts:59-68`). `balanceAfterMinor` is now a window sum per currency in `seq` order. It is taken over the rows that are both visible and filtered, before paging (the cursor is applied outside the window).
+  * Probe: with `caseId=CASE`, the row reads `30000:30000`.
+  * The new DW10 case (l. 305-313) puts user-O on the case's team and gets that case's own balance, the same figure `/balances` gives. This also proves the "of any role" half of DW10.
+  * Planted break B4 (the party-wide column back) turns it red.
+* **m1 fixed.** Rows are ordered by `seq desc, currency`, with the cursor `{seq, currency}`; a cursor `seq` above the integer range gives 422.
+  * The slow-writer case (l. 329-342) turns red under break B5 (back to `created_at`).
+  * Probe: paging 2 at a time returns 11 of 11 rows once each.
+* **m2 fixed:** a replay is now checked before trust-off. Probe: a replay after the Owner says No → 200, the same payment.
+* **m3 fixed:** the Waiting answer now tells the truth ("cancel it and make it again once the details are in").
+* **m4 and m5:** open, as the builder chose. To move is not counted in the held answer, and a CAD/USD race on one reference is not warned. Both are Minor.
+* **m6:**
+  * The "of any role" half is closed (see M2).
+  * n1 and n4 from round 3 are still open: `companyId` is never used in the check.
+  * Probe: a company with PA's case → 422, which is correct.
+* **Also new and correct:**
+  * A changed replay gives 409 KEY_USED (probe: a different reference).
+  * Look-alike references count as duplicates: full-width, zero-width and no-break space. The check case l. 208-210 fails under break B6. `textOk` already refuses zero-width characters, so that part is belt and braces.
+
+## Planted breaks (scratch copy only; each restored and diffed against the worktree)
+| Break | Result |
+|---|---|
+| B1 scope check removed | red (M1 case, DW6) |
+| B2 client match removed | red (M1 case, DW6) |
+| B3 request-case check removed | red (M1 case, DW6) |
+| B4 party-wide running balance | red (DW10 M2) |
+| B5 order by `created_at` | red (slow writer) |
+| B6 `lower()` only | red (look-alike) |
+| B7 trust-off before replay | **green** |
+| B8 changed-replay comparison removed | **green** |
+| B9 TOO_LARGE mapping removed | **green** |
+| B10 cursor range removed | **green** |
+
+## The test-only commit 510a9d2a7 (Lead 10's rulings): stricter, nothing weakened
+* **Field errors are exactly 422.** `fieldError` no longer takes 400. CARD and CARD_TERMINAL must now be 422; 409 is no longer accepted. This closes round 1's M7 question. Every edited assertion is stricter than before.
+* **C5 is pinned on balances and on the request read** (l. 304-310):
+  * user-O, who sees neither PA nor PA's case, gets no balances and no totals. Both lists default to `[1]`, so a missing key fails the case rather than passing it.
+  * Reading r1, the same officer gets 404.
+  * The Owner gets PA's CAD figure and reads r1.
+  * The team-member case now also requires every balance row to be on CASE.
+* **Planted break:** I removed `seen()` from the balances query and the request read in a scratch copy. 49/3: both new fail cases and the team-member case turn red. Restored afterwards.
+* **Lead 10's rulings close two of my open points:** the evidence-key migration is accepted, and the direct read of `runtime_case`/`case_client` is accepted for part 1 with a follow-up row for a port method. **n6 is therefore closed.** The rulings also confirm that C5 covers the balances and the request read.
+
+## New findings
+**Minor**
+* **n5, `reads.ts:65`: with no currency filter, `seq desc` interleaves the currencies by sequence number, not by time.**
+  * Probe: the USD deposit made mid-run lists last, below the oldest CAD entry. So "newest first" holds only within a currency.
+  * The DW6 test reads a CAD page only.
+  * **Fix:** order `currency, seq desc` (one block per currency, matching the per-currency balance), or require `currency`.
+* **n6, `service.ts:202-203`: client money reads `runtime_case` and `case_client` with plain SQL.**
+  * This is the builder's question. Today only the port adapter (`visibility-adapter.ts`) reads case tables from client money, plus FO-9b's merge columns.
+  * The read is firm-scoped through `rc.firm_id` and imports no case-side code. Contract §1 rule 4 is about imports, so the rule's letter holds. But FO-7t.md says the case check "reaches it through a port (Contract gap)".
+  * **Recommendation:** accept it for now, and record it as a Contract gap in `MODULE.rows/FO-7t-1.md`, which lists neither table. (Ruled by Lead 10: accepted for part 1, follow-up row for a port method.)
+  * The lasting form is a port method, such as `MoneyVisibilityPort.partyOfCase`. That is Lead B's call, because `ports/` is outside this row's touch list.
+* **n7 (check):** four of the round 1 fixes have no test that fails without them (B7-B10 above):
+  * the replay checked before trust-off;
+  * the changed replay → KEY_USED;
+  * TOO_LARGE;
+  * the cursor range.
+
+  My probes show the behaviour is right today. **Fix:** one case each for m2 and KEY_USED, at least.
+* **Process (not a defect):** about 832 code and test lines, over P-610's 800. The builder raised it on the PR; the tech lead rules, by splitting or by accepting.
+
+Journey score: it moves from 7.5 to 8.5/10 (pass, no 0). Correct data, error recovery and next step all go up to 1; the two screen criteria stay at ½. Not re-walked beyond the probes.
+
+**Verdict: Approve** 510a9d2a7ebd934b3145aaf8cde5a61f75a1b387. Lead 10 has ruled on the migration and on n6. Still open, at the builder's choice: n5 and n7, plus m4, m5 and round 3's n1 and n4. The tech lead rules on the 800-line point.
+
+---
 
 # Build round 1 (60ae8f158, the whole build)
+
+Build round 1 verdict line: `Reviewer: Block 60ae8f158b6fa3109767112a70a8e67c9e7b7637`
 
 Reviewed 23 Nov by the Opus 5.5 reviewer that approved the check in rounds 1-3. Worktree `/home/user/fo7t`, PR #3033 (draft). I read the PR diff against `origin/main` (`f850b6ff5`), the brief `track-b/FO-7t-1.md` and part 1 of `FO-7t.md`, `ports/money-visibility.ts` and its adapter, FO-7b's `invoices/money.ts`, and the trust trigger in `20261122170000_fo7ts_part3`. Line numbers are those at `60ae8f158`.
 
