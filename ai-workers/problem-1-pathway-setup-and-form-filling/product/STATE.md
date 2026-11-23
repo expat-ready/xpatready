@@ -2,13 +2,13 @@
 
 current_lead: local_1d7473d3-19e5-4eae-8389-bda5780e9d70 Lead 10 · 23 Nov 22:48 IST (took over from Lead 9 (local_878222c4) at ~345k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 22:48 IST: hand-over Lead 9 to Lead 10
+updated: 2026-11-23 22:56 IST: Lead 10, check 7035e229. #3035 read, no fault; label it only AFTER #3180, #3189, #3185 merge (else they need renames, re-review, full runs). Stamps: PF-F2 #3277 20261124040000, PF-10a #3276 20261124050000. #3180 run 45225095516: one regression shard red on npm "aborted" (install): re-run that job alone when the run ends. #3195 and #3272 in batches. #3185 efaf4f5e1: Lead B read OK, reviewer verdict owed. #3203 46fa17409 Approve, full run owed. PF-18ns lane opened on the founder's "Yes, start it" (typed to Lead 9).
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
 ## Hand-over Lead 9 → Lead 10, 22:48 IST 23 Nov (Lead 9 at ~345k, P-446; the block before, word for word, still owed where not repeated: `history/STATE-2026-11-23-lead9-handover-block-from-lead8.md`)
 
-**🔴 Founder, open:** PF-18ns lane (R1.50 bell, concept first)? Refused in Lead 8's session; only his own words start it.
+**🔴 Founder, open:** nothing. PF-18ns: founder said "Yes, start it" to Lead 9; lane open. His ask then: one question at a time, plain words, as a card he clicks; the Lead does the rest.
 **Merged since 21:49:** #3215 #3183 #3191 (22:0x), #3222 #3037 #3257 (22:12). **R1.23 and R1.24 Works in qa's #3272 (queued in `verdicts`): 50/101 when it lands** (48 counted on main 22:12, status column; Lead 8 said 47, not compared).
 **#3195** 7e12f1222: full run 45218741241 GREEN, `review: approved` put on by Lead 9 22:48; watch the guard keeps it, it queues.
 **Order: #3180 → #3189 → #3185** (stamps 150000, 200000, 210000; then #3033 220000, #3234 230000, #3235 20261124010000, #3184 20261124020000, #3225 20261124030000; PF-F2, PF-10a after). #3180 bc5b8e5d5 run 45225095516, #3189 fb6899854 run 45225109348, both read by the Lead, rounds allowed; label when green. #3185: its suite red merged with main (notice 500), lane reproduced it and is fixing (head 5117f0403): read the new diff, then the full run.
