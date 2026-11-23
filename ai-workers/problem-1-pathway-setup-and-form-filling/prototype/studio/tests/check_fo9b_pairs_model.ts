@@ -3,14 +3,15 @@
 // Undo) on 4 to 5 people per world, the invariants checked after every step:
 //   I1  no Kept separate decision is ever joined: for every KEPT_SEPARATE pair the two people have different live roots;
 //   I2  an Undo of the last change (nothing else changed on these records in between) gives back exactly what the
-//       review list showed before it (every pair's tab, or not listed) and every person's root; a pair that stops
-//       matching after other changes may stay listed (pair-model.md §1, "What an Undo does not withdraw");
+//       review list showed before it (every pair's tab, or not listed) and every person's root, except that a pair
+//       which had no row before and whose two live people match after the Undo is To review (Lead 10 on #3174; the
+//       match asked as I6 asks it); a pair that stops matching after other changes may stay listed (pair-model.md §1);
 //   I3  no deadlock (40P01) and no unexpected error when actions on pairs that share a person run at the same moment;
 //   I4  the To review tab never lists two people a Kept separate decision keeps apart;
 //   I5  every pair's tab in list() is the one listed() derives for that pair alone (review R7-1);
 //   I6  a pair is never hidden while its two people are live and still match: every OPEN pair whose two people match
 //       (FO-9a's rule asked of that pair, no 10-match cap) is To review or Kept separate (Lead 8 on #3174, break B10-1).
-// Seeded (mulberry32), so a run repeats; SEEDS=1,2,3 picks seeds. Every value is Sample. US$0, no model call.
+// Seeded (mulberry32), so a run repeats; SEEDS=1,2,3 picks seeds (472 is in the default: round 12's I2 sequence). Every value is Sample. US$0, no model call.
 //   tsx studio/tests/check_fo9b_pairs_model.ts
 import "reflect-metadata";
 import { execFileSync } from "node:child_process";
@@ -22,7 +23,7 @@ const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "mi
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo9bpm_${process.pid}`, URL_ = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
-const SEEDS = (process.env.SEEDS ?? "1,2,3,4,5,6,7,8").split(",").map(Number);
+const SEEDS = (process.env.SEEDS ?? "1,2,3,4,5,6,7,8,472").split(",").map(Number);
 const STEPS = Number(process.env.STEPS ?? 30), BURSTS = Number(process.env.BURSTS ?? 12);
 
 let pass = 0, fail = 0;
@@ -47,6 +48,7 @@ const { arrive } = await import("../api/src/front-office/sales/arrival.ts");
 const { phone: salesPhone } = await import("../api/src/front-office/sales/common.ts");
 const { NAME_THRESHOLD } = await import("../ports/matching.ts");
 const { mergeIfSafe, DuplicateReview, listedPair } = await import("../api/src/front-office/duplicates/merge/review.ts");
+const { wonDuplicates } = await import("../api/src/front-office/duplicates/service.ts");
 type Ctx = import("../api/src/platform/identity/keys.ts").StaffContext;
 
 try {
@@ -84,13 +86,21 @@ try {
 
   /** I6: the OPEN pairs between two live people who match (email, E.164 phone or similar name, FO-9a's rule, asked of the
    *  pair itself) that the list hides: on neither To review nor Kept separate. Firm-wide. */
-  const hiddenValid = async (): Promise<string[]> => {
-    const cand = sql(`select r.id from fo_dup_review r join fo_person a on a.id = r.low_id join fo_person b on b.id = r.high_id
+  const matchingOpen = () => sql(`select r.id from fo_dup_review r join fo_person a on a.id = r.low_id join fo_person b on b.id = r.high_id
        where r.firm_id = '${A}' and r.status = 'OPEN' and a.merged_into_id is null and b.merged_into_id is null
          and ((a.email is not null and a.email = b.email) or (a.phone_e164 is not null and a.phone_e164 = b.phone_e164)
            or (coalesce(a.name_key, '') <> '' and coalesce(b.name_key, '') <> '' and (
                 ((a.name_key ~ '[0-9]' or b.name_key ~ '[0-9]') and lower(a.name_key) = lower(b.name_key))
              or (a.name_key !~ '[0-9]' and b.name_key !~ '[0-9]' and extensions.similarity(lower(a.name_key), lower(b.name_key)) >= ${NAME_THRESHOLD}::float8))))`).split("\n").filter(Boolean);
+  /** I2's one exception (Lead 10 on #3174): the pairs `before` had no row for that are To review now and whose two live
+   *  people match (asked as I6 asks it). Any other difference between the two views is an I2 failure. */
+  const i2diff = (before: Record<string, string>, after: Record<string, string>) => {
+    const fresh = new Set(matchingOpen());
+    return Object.keys({ ...before, ...after }).filter((k) => (before[k] ?? "-") !== (after[k] ?? "-") && !(!(k in before) && after[k] === "OPEN" && fresh.has(k)))
+      .map((k) => `${k.slice(0, 13)}: ${before[k] ?? "(no row)"} → ${after[k] ?? "(no row)"}`);
+  };
+  const hiddenValid = async (): Promise<string[]> => {
+    const cand = matchingOpen();
     if (!cand.length) return [];
     const shown = new Set([...(await review.list(R, "OPEN")).items, ...(await review.list(R, "KEPT_SEPARATE")).items].map((i) => i.id));
     return cand.filter((id) => !shown.has(id));
@@ -100,7 +110,7 @@ try {
       person: { givenNames, familyName, email, phone: phone ? salesPhone(phone) : null } }, ports))).personId!;
   const pairId = (a: string, b: string) => sql(`select id from fo_dup_review where firm_id = '${A}' and low_id = least('${a}'::uuid, '${b}'::uuid) and high_id = greatest('${a}'::uuid, '${b}'::uuid)`);
   {
-    // I6, seeded with break B10-1: a pair Ma noted and Mb found again stays listed after Undo Ma while S and X still match
+    // I6, seeded with break B10-1: a pair Ma noted, whose row Mb meets and leaves, stays listed after Undo Ma while S and X still match
     const s0 = await arriveP("Sora", "Quill", null, "+1 416 555 0901"), l0 = await arriveP("Lumi", "Vexa", "b10.e@example.org", "+1 416 555 0901");
     const x0 = await arriveP("Xeno", "Drap", "b10.e@example.org", "+1 416 555 0902");
     const ma = await review.merge(R, pairId(s0, l0), { survivorId: s0, choices: { email: "LOSER" } }) as { mergeRef: string };
@@ -108,7 +118,7 @@ try {
     await review.merge(R, pairId(x0, v0), { survivorId: x0, choices: { phone: "LOSER" } });
     await review.undo(R, ma.mergeRef);
     const sx = pairId(s0, x0), hid = await hiddenValid();
-    ok("FO-9b pairs I6 fail (break B10-1 seeded): after Ma (S takes e, notes S-X), Mb (X takes S's phone, finds S-X) and Undo Ma, S-X still matches and is listed", !!sx && !hid.includes(sx) && hid.length === 0, { sx, hid });
+    ok("FO-9b pairs I6 fail (break B10-1 seeded): after Ma (S takes e, notes S-X), Mb (X takes S's phone, meets S-X's row) and Undo Ma, S-X still matches and is listed", !!sx && !hid.includes(sx) && hid.length === 0, { sx, hid });
   }
   {
     // I6, the sequence the round-11 sweep captured (seed 353): the other side of a pair changes while one is merged away
@@ -121,6 +131,62 @@ try {
     await review.undo(R, m2.mergeRef);                                                                // P1 is back and matches P2 by e0
     const p21 = pairId(p1, p2), hid = await hiddenValid();
     ok("FO-9b pairs I6 fail (round-11 sweep, seed 353 captured): after M1 P3→P2 and its Undo, auto P1→P0, auto P3→P2, Undo P1→P0, P2-P1 still matches and is listed", !!p21 && !hid.includes(p21) && hid.length === 0, { p21, hid });
+  }
+  /** Every pair row touching `who`: its tab on the list, or "-" (not listed); the fixed I2 scenarios compare two of these. */
+  const tabsOf = async (who: string[]) => {
+    const tabs: Record<string, string> = {};
+    for (const st of ["OPEN", "KEPT_SEPARATE", "MERGED"] as const) for (const it of (await review.list(R, st)).items) tabs[it.id] = st;
+    const inList = who.map((x) => `'${x}'`).join(",");
+    return Object.fromEntries(sql(`select id from fo_dup_review where firm_id = '${A}' and (low_id in (${inList}) or high_id in (${inList}))`).split("\n").filter(Boolean).map((id) => [id, tabs[id] ?? "-"]));
+  };
+  {
+    // I2's exception, the reviewer's sequence (round 12, Major 1): the survivor meets a match it made while it was split
+    const s = await arriveP("Hollis", "Marchetti", "r13.e1@example.org", "+1 416 555 0921"), l3 = await arriveP("Ignatia", "Roweby", "r13.e2@example.org", "+1 416 555 0921");
+    const l4 = await arriveP("Jasper", "Kintyre", "r13.e1@example.org", "+1 416 555 0922"), y = await arriveP("Kerensa", "Dumont", null, "+1 416 555 0922");
+    const m3 = await review.merge(R, pairId(s, l3), { survivorId: s, choices: { email: "LOSER" } }) as { mergeRef: string };   // S has e2
+    await review.merge(R, pairId(l4, y), { survivorId: y, choices: { email: "LOSER" } });                                   // Y has e1
+    await review.undo(R, m3.mergeRef);                                                                                       // S has e1 again: S and Y match, no row
+    const before = await tabsOf([s, l3, l4, y]), noRow = !pairId(s, y);
+    const m = await review.merge(R, pairId(s, l3), { survivorId: s, choices: { email: "SURVIVOR" } }) as { mergeRef: string };   // notePairs(S) writes S-Y
+    await review.undo(R, m.mergeRef);                                                                                        // the last change
+    const sy = pairId(s, y), diff = i2diff(before, await tabsOf([s, l3, l4, y])), strict = Object.keys(await tabsOf([s, l3, l4, y])).filter((k) => !(k in before));
+    ok("FO-9b pairs I2 exception (round 12 reviewer's sequence): after Undo of the last merge, S-Y (no row before, S and Y match) is To review and nothing else differs",
+      noRow && !!sy && strict.length === 1 && strict[0] === sy && (await listedPair(db, A, sy)) === "OPEN" && diff.length === 0, { noRow, sy, strict, diff });
+  }
+  {
+    // I2's exception, seed 472's shape (round 12 sweep): an Undo gives P2 back a phone P4 arrived with meanwhile
+    const p0 = await arriveP("Leontyne", "Abara", null, "+1 416 555 0930"), p2 = await arriveP("Mordecai", "Feeny", "r13.p2@example.org", "+1 416 555 0930");
+    const x = await arriveP("Nerissa", "Galloway", "r13.p2@example.org", "+1 416 555 0931");
+    const ax = await db.$transaction((tx) => mergeIfSafe(tx as never, A, pairId(p2, x), ports)) as { mergeRef: string };   // X into P2: P2 takes X's phone (newer)
+    const p4 = await arriveP("Octavia", "Haldane", "r13.p4@example.org", "+1 416 555 0930");                                 // matches P0, not P2
+    await review.undo(R, ax.mergeRef);                                                                                       // P2 has phone 0930 again: P2 and P4 match, no row
+    const before = await tabsOf([p0, p2, x, p4]), noRow = !pairId(p2, p4);
+    const m = await review.merge(R, pairId(p0, p4), { survivorId: p4 }) as { mergeRef: string };                            // notePairs(P4) writes P4-P2
+    await review.undo(R, m.mergeRef);
+    const pp = pairId(p2, p4), after = await tabsOf([p0, p2, x, p4]), strict = Object.keys(after).filter((k) => !(k in before));
+    ok("FO-9b pairs I2 exception (seed 472's shape): after Undo of the last merge, P2-P4 (no row before, they match) is To review and nothing else differs",
+      !!ax.mergeRef && noRow && !!pp && strict.length === 1 && strict[0] === pp && after[pp] === "OPEN" && i2diff(before, after).length === 0, { ax, noRow, pp, strict, diff: i2diff(before, after) });
+  }
+  {
+    // WITHDRAWN's name branch (round 12 reviewer, Major 2), asked against FO-9a's own wonDuplicates for the pair
+    const fo9a = async (a: string, b: string) => (await db.$transaction((tx) => wonDuplicates(tx as never, A, { subject: "PERSON", personId: a }))).matches.some((m: { id: string }) => m.id === b);
+    const withdrawnPair = async (n: string) => {   // P-Z noted by a merge, the merge undone, P and Z not matching
+      const pp = await arriveP("Corwin", "Ashby", `r13.${n}@example.org`, null), q = await arriveP("Quillon", "Teague", `r13.${n}@example.org`, `+1 416 555 09${n}`);
+      const z = await arriveP("Zebulon", "Pratt", null, `+1 416 555 09${n}`);
+      const mq = await review.merge(R, pairId(pp, q), { survivorId: pp, choices: { phone: "LOSER" } }) as { mergeRef: string };
+      await review.undo(R, mq.mergeRef);
+      return { pp, z, id: pairId(pp, z) };
+    };
+    const w1 = await withdrawnPair("41"), was1 = await listedPair(db, A, w1.id);
+    sql(`update fo_person set given_names = 'Corwin', family_name = 'Ashbey' where id = '${w1.z}'`);   // a similar name, no digit
+    const now1 = await listedPair(db, A, w1.id), f1 = await fo9a(w1.pp, w1.z);
+    const w2 = await withdrawnPair("42"), was2 = await listedPair(db, A, w2.id);
+    sql(`update fo_person set given_names = 'Corwin', family_name = 'Ashby2' where id = '${w2.z}'`);   // near, but a key with a digit matches only exactly
+    const now2 = await listedPair(db, A, w2.id), f2 = await fo9a(w2.pp, w2.z);
+    sql(`update fo_person set given_names = 'Corwin', family_name = 'Ashby' where id = '${w2.z}'`);    // the exact key
+    const now3 = await listedPair(db, A, w2.id), f3 = await fo9a(w2.pp, w2.z);
+    ok("FO-9b pairs WITHDRAWN name branch: a withdrawn pair is To review once the two match only by a similar name, stays withdrawn for a near name with a digit, and is To review for the exact name — each as FO-9a's wonDuplicates matches it",
+      was1 === "HIDDEN" && now1 === "OPEN" && f1 && was2 === "HIDDEN" && now2 === "HIDDEN" && !f2 && now3 === "OPEN" && f3, { was1, now1, f1, was2, now2, f2, now3, f3 });
   }
 
   for (const seed of SEEDS) {
@@ -189,7 +255,7 @@ try {
         if (what.startsWith("undo")) {
           const top = stack[stack.length - 1], m = what.split(" ")[1];
           if (top?.merge?.startsWith(m)) {
-            const after = await view(), diff = Object.keys({ ...top.before, ...after }).filter((k) => (top.before[k] ?? "-") !== (after[k] ?? "-")).map((k) => `${k.slice(0, 13)}: ${top.before[k] ?? "(no row)"} → ${after[k] ?? "(no row)"}`);
+            const after = await view(), diff = i2diff(top.before, after);
             if (diff.length) {
               const keys = Object.keys({ ...top.before, ...after }).filter((k) => !k.startsWith("root:") && (top.before[k] ?? "-") !== (after[k] ?? "-"));
               const rows = keys.length ? sql(`select r.id || ' noted=' || coalesce(r.noted_by_merge_id::text, '-') || ' seen=' || r.first_seen_at from fo_dup_review r where r.id = any(array[${keys.map((k) => `'${k}'`).join(",")}]::uuid[])`) : "";
@@ -198,9 +264,7 @@ try {
             }
             stack.pop();
           } else stack.length = 0;   // an Undo of an earlier merge: the views between are not comparable
-        } else {
-          stack.push({ merge: ref, before });
-        }
+        } else stack.push({ merge: ref, before });
       }
       good = await check(`step ${s}`);
     }
