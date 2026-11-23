@@ -542,3 +542,39 @@ Cost: 2 tasks ran 05:40-05:49Z (~US$0.02); idle again at ~US$0.18/h (RDS, NAT, l
 * R1.65 missing (code, `deploy/cdk/lib/estate.ts:92-103`): a deny on puts not encrypted with `aws:kms` (an AES256 put is accepted); server access logs kept 90 days; `abortIncompleteMultipartUploadAfter` 1 day; the app task's bucket settings for the cloud FilesPort.
 * R1.5: firms are no longer 0: the Sample seed ran (2 firms, 4 staff, Step 17). Still 0 pool users, and no staff row has an `identitySubject` (Cognito `sub`). Exact next step: the Lead picks the link path (PF-28 invite on staging to an SES-verified address, or a staging link command that sets one Sample staff member's `identitySubject`); then the founder signs in as root, the agent deploys 2 tasks (`~/xr-setup.sh origin/main`, `npm ci` in deploy/cdk, `~/d-cdk.sh deploy 2 <digest>`), the founder creates or accepts the user in `xr-staging-staff` and types the password and TOTP at `https://www.staging.lab.expatready.com/sign-in`; expect `/api/platform/me` 200; then `deploy 0`.
 * R1.24 (extra): address catch-up `web-address/firm-created.ts` refused by row security on `platform_firm_web_address`; needs a fix like PF-8b F8.
+
+## Step 18: session 3 (Lead 1), read-only check, and R1.5's invitation path traced in code, 23 Nov 11:40-11:45 IST
+
+Founder signed in (root; account 581508167097, ca-central-1). Read only; nothing deployed, created or changed. origin/main 1e89856fc.
+```
+Mon Nov 23 06:10:27 AM UTC 2026
+ECS service: desired 0, running 0, pending 0, task def xrstagingAppTask7031B6E4:7; tasks listed 0
+RDS available db.t4g.medium MultiAZ False 50 GB; NAT gateway available (1); load balancer active (1); CodeBuild projects: none
+pools: xr-staging-own-staff MFA ON users 0 | xr-staging-clients OPTIONAL 0 | xr-staging-staff ON 0   (EstimatedNumberOfUsers)
+SES: ProductionAccess False (sandbox), sending True, 200/day; identities: one DOMAIN, SUCCESS; no EMAIL_ADDRESS identity
+task role xr-staging-AppTaskTaskRole…: only ses:SendEmail, ses:SendRawEmail on identity/staging.lab.expatready.com; no cognito-idp action
+Cost Explorer net daily: 21 Nov ~0, 22 Nov ~0, 23 Nov 0 (estimated; net unblended)   rc=0
+```
+* Idle cost: ~US$0.18/h (Step 17's estimate: RDS, NAT, load balancer, public IPv4), about US$4.3 a day at list price. The near-zero net figure is
+  what Cost Explorer shows; likely credits, not confirmed, so it is not proof that nothing is charged later.
+* **Own slip:** a Cost Explorer request (US$0.01 list price) was typed and meant to be cancelled; Ctrl+C did not cancel it and it ran, before a yes.
+
+**R1.5 invitation path: Blocked by code, not by the founder.** Read on origin/main 1e89856fc (code reading, not run on AWS; a deploy would only show the refusals below):
+
+| Link of the chain (invite → accept → password, code → signed in) | On staging (`PLATFORM_IDENTITY=cognito`) | Where |
+|---|---|---|
+| 1. A signed-in staff member with `agent/staff:manage` sends the invitation | Nobody can sign in: 0 pool users, no seeded staff row has an `identitySubject`; the local sign-in answers 403 `LOCAL_SIGN_IN_OFF` | `identity/routes.ts:48`, `identity/service.ts:180`, `seed-sample-firms.ts` |
+| 2. The invitation email reaches an address | Needs the address verified in SES (sandbox); not tested | SES read above |
+| 3. Accept creates the Cognito user and stores its `sub` | `createUser` and `handOff` refuse with 503 `SIGN_IN_NOT_SET_UP`; the whole accept rolls back | `identity/session/provider.ts:71` `CognitoIdentityAdmin`; `session/service.ts:141-145` |
+| 4. The app may call Cognito's admin API | The task role has no `cognito-idp` action; the deploy check allows a task role SES actions only | IAM read above; `deploy/cdk/lib/checks.ts:343` |
+| 5. A page takes the password and the one-time code | None: no Cognito call in `web/src` or `api/src` beyond token checks; the pool client has no hosted page (`disableOAuth: true`). `/sign-in` → 200 in Step 16 is not proof of a sign-in page | `deploy/cdk/lib/service.ts` pool(); `web/src/modules/platform/` |
+| 6. The sign-in code becomes a session | `redeem` refuses (503); past that, `callback` calls the local sign-in, which refuses on cognito (403) | `provider.ts`, `session/service.ts:167-170` |
+| 7. The session works (`/api/platform/me` 200) | Built: the access token is verified and matched by `sub` (`identity/cognito.ts:49`, `service.ts:121`); this is the only link provable today | Step 16 (401 unsigned) |
+
+* Row **PF-4bc** (the Cognito side of `IdentityAdminPort`) is in BACKLOG and waits only on PF-4b and PF-Lc; PF-Lc merged (#1820). No PR title names PF-4bc
+  (GitHub search, 11:4x IST) and nothing imports `@aws-sdk/client-cognito-identity-provider`. PF-4bc alone covers links 3 and part of 6; links 1, 4, 5 and the callback are in no row found.
+* So the ruling (the product's own invitation, not a link command) cannot run until that code merges. Even a link command would leave link 5 missing: no page to type the password on.
+* Not asked of the founder: no SES address verification, no account, no deploy. They would be wasted before the code exists.
+* **R1.65:** no PR title names PF-F1c (same search), so its code step waits too.
+
+**Next step:** the Lead rules on the R1.5 code rows (PF-4bc, plus: sign-in page and Cognito callback, task-role `cognito-idp` actions with its check, the first Owner on staging). After they merge: post the cost, founder's yes, rebuild, deploy 2, founder's steps, prove a pass and a refused sign-in, deploy 0.
