@@ -126,8 +126,8 @@ export class Signing {
     });
     if (!found) return { received: true, applied: false, reason: "unknown document" };
     return withFirm(found.firmId, async () => {
-      if (found.documentKind === "CONSULTATION") {
-        const h = signingHandlerFor("CONSULTATION");
+      if (found.documentKind !== "RETAINER") {   // CONSULTATION (FO-3c) and OTHER (FO-6d) go to their module's handler
+        const h = signingHandlerFor(found.documentKind);
         if (h) { await h(call, found.firmId); return { received: true as const, applied: true, reason: "handed to its module" }; }
         const stored = await this.db.$transaction((tx) => this.receipt(tx, found, ev));
         return { received: true as const, applied: false, duplicate: !stored || undefined, reason: "no handler" };
