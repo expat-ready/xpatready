@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 06:2x IST 23 Nov:** #3157 merged; #3042 queued again. #3159 (CS-MV1 binding: PgMoneyVisibility in place of failClosed) Lead B read OK bd7d9f531 — R1.56's list walkable once it merges. #3156 waits #3042 (stamp order). #3155 PF-17 part 1 draft.
+
 **Lead B 2 pass, 05:5x IST 23 Nov:** **#3001 FO-7q merged** (23:56 UTC): R1.56's money reads on main. #3156 FO-7g part 3 fix: Lead B re-read OK c239c2175 (re-rate on Bill-to change). Next row sent: CS-MV1 binding line (adapter in place of failClosed in features/client-money-reads.ts) to the FO-7q or CS-MV1 lane. Slot: #3157 → #3042 → #3156. #3155 PF-17 part 1 draft.
 
 **Lead B 2 pass, 05:2x IST 23 Nov:** **#3073 CS-MV1 merged** (23:26 UTC); its binding line follows #3001. #3157 (PF-21b DW6 test fix) Lead B read OK db799f6fa, queued; #3042 waits it. #3156 FO-7g part 3: one fix before the label (re-rate existing taxed lines on a Bill-to change, or refuse while taxed lines exist); lane text sent. #3155 PF-17 part 1 draft. #3001 queued.
