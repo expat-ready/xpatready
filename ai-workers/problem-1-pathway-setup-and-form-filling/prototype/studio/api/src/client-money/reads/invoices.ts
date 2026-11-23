@@ -17,7 +17,8 @@ import { UUID, notFound } from "../invoices/drafts.ts";
 import { allowedActions, type Action } from "./actions.ts";
 import { DUE_SQL, FACTS_LATERAL, PAID_SQL, STATUS_CODES, type StatusCode, statusSql } from "./status-sql.ts";
 import { failClosed, scopeSql, type ScopeOf } from "./visibility.ts";
-import { paymentRows, type PaymentRow } from "./payments.ts";
+import { paymentRows, refundsReader, withPaymentActions, type PaymentRow } from "./payments.ts";
+import type { Refunds } from "../invoices/refunds.ts";
 import { Day, Stamp, bad, cursorOf, cursorText, pageSizeOf, trustShows } from "./common.ts";
 export { trustShows };
 
@@ -64,7 +65,8 @@ function statuses(p: Plan, ids: string[]): Prisma.Sql {
 }
 
 export class InvoiceReads {
-  constructor(private readonly db: PrismaClient, private readonly scopeOf: ScopeOf = failClosed, private readonly clock: ClockPort = systemClock) {}
+  private readonly refunds: Refunds;
+  constructor(private readonly db: PrismaClient, private readonly scopeOf: ScopeOf = failClosed, private readonly clock: ClockPort = systemClock) { this.refunds = refundsReader(db, clock); }
 
   /** GET /api/front-office/money/invoices. Each half (issued, then drafts) is read in candidate chunks: query A reads
    *  only ids and sort keys in order (the firm-first index's order; no facts), query B derives the facts and the status
@@ -142,7 +144,7 @@ export class InvoiceReads {
       return {
         invoice: f.view, caseId: f.caseId, issuedOn: f.issuedOn, creditableMinor,
         allowedActions: allowedActions({ status: f.view.statusWord, keys: ctx.keys, startedByCaller: seen.by === `staff:${ctx.staffId}`, creditableMinor }),
-        payments: (await paymentRows(tx, ctx.firmId, { invoiceId: id }, showTrust)).map(({ t: _t, ...p }) => p),
+        payments: await withPaymentActions(tx, this.refunds, ctx.firmId, ctx.keys, (await paymentRows(tx, ctx.firmId, { invoiceId: id }, showTrust)).map(({ t: _t, ...p }) => p)),
         creditNotes: credits.map((c) => ({ ...c, currency: c.currency as string, createdAt: c.createdAt.toISOString() })),
         writeOff: w ? { ...w, currency: w.currency as string, createdAt: w.createdAt.toISOString() } : null,
         ...(showTrust ? { trustPaidMinor: f.trustPaidMinor } : {}),

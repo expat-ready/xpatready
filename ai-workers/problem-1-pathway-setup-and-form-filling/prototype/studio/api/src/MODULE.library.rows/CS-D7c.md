@@ -1,0 +1,3 @@
+Entry points: `GET|POST /api/library/document-types/:key/defaults` (`document-type-defaults.ts`, CS-D7c): a document type's translation, notarisation, expiry and max-age defaults with their official citation, a library change approved by a second person, released with the next release (snapshot `document_types[].defaults` only when set).
+Tables: documentType (CS-D7c: `translation_rule`, `notarisation_rule`, `has_expiry`, `max_age_days`, `defaults_source_quote`, `defaults_source_file`; a non-draft version with a value carries its citation, a check in SQL).
+Tests: tests/check_csd5c_type_defaults.ts.
