@@ -13,8 +13,8 @@
 // so no person is mailed twice. The record's own changes are its insert-only events plus PF-4s's line per call
 // (plat_system_audit); a firm's trail gets a line only when the firm is told (a firm never sees an investigation note).
 // The firm decides about its clients (SA-11-25); ExpatReady mails only its own users, the firm's staff accounts.
-// The audit line's actor is `system:platform.register.breach` with the staff member's id in its detail (PF-21b's reason:
-// the trail has no actor word for our own staff yet).
+// AUD-3a: the audit line's actor is the staff member's own word, `ourstaff:<id>` (OUR_STAFF), the request's actor, as
+// PF-21b's holds; with no staff member it stays `system:platform.register.breach`. Their id stays in its detail too.
 import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -34,6 +34,8 @@ export const BREACH_MANAGE_KEY = "system/breach:manage";
 /** The same row: the Auditor reads only (the key's name is this row's mapping, SA-07 §10). */
 export const BREACH_READ_KEY = "system/breach:read";
 export const BREACH_ACTOR = "system:platform.register.breach";
+/** AUD-3a: the line's actor, our staff member's own word when there is one. */
+const actorOf = (staffId?: string) => (staffId ? `ourstaff:${staffId}` : BREACH_ACTOR);
 export const BREACH_AUDIT = Symbol("Breaches.audit");
 export const BREACH_MESSAGES = Symbol("Breaches.messages");
 /** SA-05 Appendix B.6's ExpatReady-owned email (seeded version 1 with Sample words; the Platform Owner publishes more). */
@@ -243,7 +245,7 @@ export class Breaches {
       // can be sent once an address works again.
       if (recipients.every((x) => x.state === "SUPPRESSED")) problem(409, "Nobody can receive it", "Every Owner and Admin address of this firm is suppressed (bounced or complained); nothing was sent or recorded.", { code: "NOT_DELIVERABLE" });
       const [n] = await tx.$queryRaw<{ id: string; sent_at: Date }[]>`SELECT id::text AS id, sent_at FROM plat_breach_notice_record(${breach}::uuid, ${firm}::uuid, ${JSON.stringify(recipients)}::jsonb, ${v.id}::uuid, ${by})`;
-      await this.audit.record(tx, { firmId: firm, actor: BREACH_ACTOR, action: "platform.breach.notice_sent", entity: "plat_breach_notice", entityKey: n.id,
+      await this.audit.record(tx, { firmId: firm, actor: actorOf(c.staffId), action: "platform.breach.notice_sent", entity: "plat_breach_notice", entityKey: n.id,
         summary: `ExpatReady sent its Security incident notice about a security incident discovered ${values.discovered_on} to this firm's Owner and Admins (${recipients.length}). The firm decides whether and how to tell its clients.`,
         detail: { breachId: breach, recipients: recipients.length, templateVersionId: v.id, by, staffId: c.staffId }, before: null,
         after: { breachId: breach, channel: "EMAIL", recipients: recipients.map((x) => x.staffId), templateVersionId: v.id, sentBy: by, sentAt: n.sent_at.toISOString() } });
