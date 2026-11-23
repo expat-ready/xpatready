@@ -430,52 +430,42 @@ try {
   const chU2 = await call("POST", `/front-office/duplicates/merges/${ch2.body.mergeRef}/undo`, tR, {}), chU3 = await call("POST", `/front-office/duplicates/merges/${ch1.body.mergeRef}/undo`, tR, {});
   ok("FO-9b R7 (break R7-1) fail: in a chain (B into A, then A into D) Undo of the earlier merge → 409 UNDO_REFUSED, not 404; in order, both go through",
     ch1.status === 200 && ch2.status === 200 && chU1.status === 409 && chU1.body.code === "UNDO_REFUSED" && chU2.status === 200 && chU3.status === 200, [ch1.status, ch2.status, chU1.status, chU1.body.code, chU2.status, chU3.status]);
-  // someone arrives between a merge and its Undo (review r7-m2, break R7-2)
+  // After an Undo a pair that still matches is always To review, whatever the order of Undos; a stale one may stay
+  // listed, and the merge by itself refuses it (Lead 8 on #3174: a valid pair is never hidden; pair-model.md §1).
   const sA = await add(R, { givenNames: "Ari", familyName: "Stale7", phone: "+1 416 555 0196" }), sB = await add(R, { givenNames: "Bea", familyName: "Stale7b", phone: "+1 416 555 0196", email: "stale7@example.org" });
   const sm = await call("POST", `/front-office/duplicates/review/${pairOf(sA.person.id, sB.person.id)}/merge`, tR, { survivorId: sA.person.id, choices: { email: "LOSER" } });
   const sN = await add(R, { givenNames: "Neo", familyName: "Stale7n", email: "stale7@example.org" });
   const NA = pairOf(sN.person.id, sA.person.id);
   const su = await call("POST", `/front-office/duplicates/merges/${sm.body.mergeRef}/undo`, tR, {});
-  const NB = pairOf(sN.person.id, sB.person.id);
-  ok("FO-9b R7 (r7-m2, break R7-2) fail: after the Undo, N's pair with the survivor (it matched only by the merged email) leaves the list, and N's pair with the record the Undo split off is To review",
-    sm.status === 200 && !!NA && su.status === 200 && !(await onList("OPEN", NA)) && !!NB && (await onList("OPEN", NB)), { sm: sm.status, NA, su: su.status, NB });
-
-    // round 8: which arrival pairs an Undo takes off the list (review R8-1 to R8-3, break R8-1 to R8-3)
+  const NB = pairOf(sN.person.id, sB.person.id), sr = NA ? await inTx((tx) => mergeIfSafe(tx, A, NA, ports)) as { refused?: string[]; mergeRef?: string } : {};
+  ok("FO-9b Undo limit pass: N arrived while the merge stood; after the Undo N's pair with the survivor may stay listed (stale), the merge by itself refuses it (NOT_EXACT), and N's pair with the record split off is To review",
+    sm.status === 200 && su.status === 200 && !!NA && !sr.mergeRef && (sr.refused ?? []).includes("NOT_EXACT") && !!NB && (await onList("OPEN", NB)), { sm: sm.status, su: su.status, NA, sr, NB });
+  for (const [n, order] of [["11", "M1 then M2"], ["12", "M2 then M1"]] as const) {
+    // break 2b: Y matches S by S's own phone; M2 (Z into Y, Z's phone) makes them stop matching; both Undos give it back
+    const bS = await add(R, { givenNames: "Sol", familyName: `Order${n}`, phone: `+1 416 555 04${n}` }), bL = await add(R, { givenNames: "Lin", familyName: `Order${n}l`, phone: `+1 416 555 04${n}`, email: `order${n}.l@example.org` });
+    const bM1 = await call("POST", `/front-office/duplicates/review/${pairOf(bS.person.id, bL.person.id)}/merge`, tR, { survivorId: bS.person.id, choices: { email: "LOSER" } });
+    const bY = await add(R, { givenNames: "Yul", familyName: `Order${n}y`, phone: `+1 416 555 04${n}`, email: `order${n}.y@example.org` });
+    const bZ = await add(R, { givenNames: "Zia", familyName: `Order${n}z`, phone: `+1 416 555 05${n}`, email: `order${n}.y@example.org` });
+    const bSY = pairOf(bS.person.id, bY.person.id);
+    const bM2 = await call("POST", `/front-office/duplicates/review/${pairOf(bY.person.id, bZ.person.id)}/merge`, tR, { survivorId: bY.person.id, choices: { phone: "LOSER" } });
+    const refs = order === "M1 then M2" ? [bM1.body.mergeRef, bM2.body.mergeRef] : [bM2.body.mergeRef, bM1.body.mergeRef];
+    const us = []; for (const r of refs) us.push((await call("POST", `/front-office/duplicates/merges/${r}/undo`, tR, {})).status);
+    ok(`FO-9b Undo fail (break 2b, ${order}): a pair that still matches after both Undos is To review`,
+      bM1.status === 200 && bM2.status === 200 && us.every((x) => x === 200) && !!bSY && (await onList("OPEN", bSY)), { bM1: bM1.status, bM2: bM2.status, us, bSY });
+  }
+  {
+    // more than 10 matches: every pair with the survivor that was listed is still listed after the Undo
     const u8S = await add(R, { givenNames: "Uma", familyName: "Eight", phone: "+1 416 555 0301" }), u8B = await add(R, { givenNames: "Ben", familyName: "Eightb", phone: "+1 416 555 0301", email: "eight.b@example.org" });
     const u8m = await call("POST", `/front-office/duplicates/review/${pairOf(u8S.person.id, u8B.person.id)}/merge`, tR, { survivorId: u8S.person.id, choices: { email: "LOSER" } });
     const u8X: string[] = [];
     for (let i = 0; i < 11; i++) u8X.push((await add(R, { givenNames: `Xan${"abcdefghijk"[i]}`, familyName: `Many${"lmnopqrstuv"[i]}`, phone: "+1 416 555 0301" })).person.id);
-    // an arrival whose transaction began before a second merge, and which reads the survivor after that merge commits (R8-2)
-    const v8S = await add(R, { givenNames: "Vic", familyName: "Eightv", phone: "+1 416 555 0302" }), v8B = await add(R, { givenNames: "Bob", familyName: "Eightw", phone: "+1 416 555 0302", email: "eight.v@example.org" });
-    let open!: () => void; const gate = new Promise<void>((r) => { open = r; });
-    const early = db.$transaction(async (tx) => {
-      await (tx as never as { $queryRaw: (q: TemplateStringsArray) => Promise<unknown> }).$queryRaw`select 1`;   // the transaction has begun
-      await gate;
-      return (await arrive(tx as never, { firmId: A, door: "MANUAL", intakeKey: `manual:${randomUUID()}`, source: "Phone call", actor: `staff:${R.staffId}`, payloadHash: randomUUID(), ownerStaffId: R.staffId,
-        person: { givenNames: "Nia", familyName: "Earlyn", email: "eight.v@example.org", phone: null } }, ports)).personId!;
-    }, { timeout: 20000 });
-    const v8m = await call("POST", `/front-office/duplicates/review/${pairOf(v8S.person.id, v8B.person.id)}/merge`, tR, { survivorId: v8S.person.id, choices: { email: "LOSER" } });
-    open(); const v8N = await early;
-    const v8SN = pairOf(v8S.person.id, v8N);
-    // a pair a later merge wrote, matching only by the first merge's email (R8-3)
-    const w8S = await add(R, { givenNames: "Wes", familyName: "Eightw", phone: "+1 416 555 0303" }), w8B = await add(R, { givenNames: "Bea", familyName: "Eightx", phone: "+1 416 555 0303", email: "eight.w@example.org" });
-    const w8m1 = await call("POST", `/front-office/duplicates/review/${pairOf(w8S.person.id, w8B.person.id)}/merge`, tR, { survivorId: w8S.person.id, choices: { email: "LOSER" } });
-    const w8Y = await add(R, { givenNames: "Yan", familyName: "Eighty", phone: "+1 416 555 0304" }), w8W = await add(R, { givenNames: "Wim", familyName: "Eightz", phone: "+1 416 555 0304", email: "eight.w@example.org" });
-    const w8m2 = await call("POST", `/front-office/duplicates/review/${pairOf(w8Y.person.id, w8W.person.id)}/merge`, tR, { survivorId: w8Y.person.id, choices: { email: "LOSER" } });
-    const w8SY = pairOf(w8S.person.id, w8Y.person.id);
-    const before8 = { v: v8SN && (await onList("OPEN", v8SN)), w: w8SY && (await onList("OPEN", w8SY)) };
     const listed8: boolean[] = []; for (const x of u8X) { const pid = pairOf(u8S.person.id, x); listed8.push(!!pid && (await onList("OPEN", pid))); }
     const u8u = await call("POST", `/front-office/duplicates/merges/${u8m.body.mergeRef}/undo`, tR, {});
     const kept8: boolean[] = []; for (const x of u8X) { const pid = pairOf(u8S.person.id, x); kept8.push(!!pid && (await onList("OPEN", pid))); }
     // 11 people arrived; each arrival writes at most 10 pairs (FO-9a's cap), so 10 or 11 of them have a pair with S
-    ok("FO-9b R8-1 fail (and break R8-3): after an Undo, every arrival pair with the survivor that still matches stays To review, past the match list's 10",
+    ok("FO-9b Undo fail (more than 10 matches): every pair with the survivor that was To review is still To review after the Undo",
       u8m.status === 200 && u8u.status === 200 && listed8.filter(Boolean).length >= 10 && JSON.stringify(kept8) === JSON.stringify(listed8), { u8m: u8m.status, u8u: u8u.status, listed8, kept8 });
-    const v8u = await call("POST", `/front-office/duplicates/merges/${v8m.body.mergeRef}/undo`, tR, {});
-    ok("FO-9b R8-2 fail: an arrival whose transaction began before the merge, and read the survivor after it, is taken off the list by the Undo when it no longer matches",
-      v8m.status === 200 && !!v8SN && before8.v === true && v8u.status === 200 && !(await onList("OPEN", v8SN)), { v8m: v8m.status, v8SN, before: before8.v, v8u: v8u.status });
-    const w8u = await call("POST", `/front-office/duplicates/merges/${w8m1.body.mergeRef}/undo`, tR, {});
-    ok("FO-9b R8-3 fail: a pair a later merge wrote, matching the survivor only by the undone merge's email, leaves the list on the Undo",
-      w8m1.status === 200 && w8m2.status === 200 && !!w8SY && before8.w === true && w8u.status === 200 && !(await onList("OPEN", w8SY)), { w8m1: w8m1.status, w8m2: w8m2.status, w8SY, before: before8.w, w8u: w8u.status });
+    }
   }
 
   sql(`alter table case_client rename to case_client_away`);

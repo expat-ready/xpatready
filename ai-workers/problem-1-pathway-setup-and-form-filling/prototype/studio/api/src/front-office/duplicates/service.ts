@@ -94,11 +94,8 @@ export class Duplicates {
  *  (break B1). The test pins it equal to the definer function. Every record of the firm counts (a system result for the
  *  case side, ids only, no visibility filter); the subject itself is never its own match. Writes nothing. The threshold
  *  is compared as float8 (review m1: `::real` widens 0.7 to 0.699999988, letting a pair `%` refuses through). */
-export async function wonDuplicates(tx: Tx | PrismaClient, firmId: string, subject: ProspectWonSubject, opts: { among?: string[] } = {}): Promise<WonDuplicates> {
+export async function wonDuplicates(tx: Tx | PrismaClient, firmId: string, subject: ProspectWonSubject): Promise<WonDuplicates> {
   if (subject.subject === "PERSON") {
-    // `among` (FO-9b part 2, review R8-1): only these people, every one that matches, no MAX_MATCHES cap.
-    const among = opts.among ?? null, cap = among ? among.length : MAX_MATCHES;
-    if (among && !among.length) return { matches: [] };
     const p = await tx.foPerson.findFirst({ where: firmScope(firmId, { id: subject.personId }), select: { email: true, phoneE164: true, givenNames: true, familyName: true } });
     if (!p) return { matches: [] };
     const email = normaliseEmail(p.email), phones = p.phoneE164 ? [p.phoneE164] : [], name = personNameKey(p.givenNames, p.familyName);
@@ -110,11 +107,10 @@ export async function wonDuplicates(tx: Tx | PrismaClient, firmId: string, subje
                      else extensions.similarity(lower(p."name_key"), ${name}::text) end)::float8 as sim, p."created_at"
           from "fo_person" p
          where p."firm_id" = ${firmId}::uuid and p."id" <> ${subject.personId}::uuid and p."merged_into_id" is null
-           and (${among}::uuid[] is null or p."id" = any(${among}::uuid[]))
            and ((${email}::text is not null and p."email" = ${email}::text) or (cardinality(${phones}::text[]) > 0 and p."phone_e164" = any(${phones}::text[]))
              or (${name}::text <> '' and lower(coalesce(p."name_key", '')) <> '' and (${name}::text ~ '[0-9]' or p."name_key" ~ '[0-9]') and lower(p."name_key") = ${name}::text)
              or (${name}::text <> '' and ${name}::text !~ '[0-9]' and p."name_key" !~ '[0-9]' and extensions.similarity(lower(p."name_key"), ${name}::text) >= ${NAME_THRESHOLD}::float8))
-      ) m order by by_email desc, by_phone desc, sim desc, created_at, id limit ${cap}`;
+      ) m order by by_email desc, by_phone desc, sim desc, created_at, id limit ${MAX_MATCHES}`;
     const matches = rows.map((r) => ({ kind: "PERSON" as const, id: r.id, reasons: personReasons(r) })).filter((m) => m.reasons.length).map((m) => ({ ...m, score: matchScore(m.reasons) }));
     return { matches: matches.sort((x, y) => y.score - x.score) };
   }
