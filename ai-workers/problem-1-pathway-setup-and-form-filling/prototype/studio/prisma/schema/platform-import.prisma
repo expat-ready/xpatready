@@ -1,0 +1,132 @@
+// platform-import.prisma — import batches: the tables of the one import engine (PF-10b) that every area registers its
+// targets with (PF-10t: people, companies and leads). Owner: Lead B (platform, P-559). Row PF-10a (map row 35; AG-18 §7;
+// AG-18-11, -12, -15, -39, -49, -52, -54, -56).
+//
+// Rules Prisma cannot say are pf_import_ triggers, functions and checks in this row's migration (prisma/migrations/
+// <stamp>_pf10a_import_tables): a row's reasons are a list of {field, rule} names only, never a value (AG-18-12); an
+// attestation is insert-only and is made by an active Owner of its own firm (AG-18-49); a batch's file, target, firm and
+// importer never change once written; every table is firm-scoped with PF-12's forced policy (AG-18-52), and a staff key
+// is the pair (firm_id, staff_id) → platform_staff(firm_id, id), so a batch of firm A never names firm B's staff.
+// The permission keys agent/import:run, agent/import:undo and agent/import:view-report are already catalogue rows (PF-3,
+// Owner and Admin; PF-6b's catalogue): this row adds none.
+
+/// The file's format (AG-18-6: CSV UTF-8 or .xlsx read as values only; macro-enabled files are refused by PF-10b).
+enum PlatImportFileKind {
+  CSV
+  XLSX
+}
+
+/// Where a batch stands (AG-18 §7; AG-18-15 dry run, AG-18-39 undo). PF-10b moves it.
+enum PlatImportBatchState {
+  DRAFT
+  DRY_RUN_READY
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+  UNDOING
+  UNDONE
+}
+
+/// A row's outcome (AG-18-15's totals).
+enum PlatImportRowOutcome {
+  CREATE
+  MERGE
+  SKIP
+  ERROR
+}
+
+/// One import of one file into one target (AG-18-52: scoped to the importer's firm). mapping is the column → field map
+/// the target's schema checked (PF-10b); dryRunHash is the SHA-256 of file and mapping that a run must match (AG-18-16);
+/// undoDeadline is set when the batch completes (AG-18-39, Sample 14 days).
+model PlatImportBatch {
+  id              String               @id @default(uuid()) @db.Uuid
+  firmId          String               @map("firm_id") @db.Uuid
+  targetKey       String               @map("target_key")
+  sourceName      String               @map("source_name")
+  fileKey         String               @map("file_key")
+  fileSha256      String               @map("file_sha256") @db.Char(64)
+  fileKind        PlatImportFileKind   @map("file_kind")
+  mapping         Json
+  state           PlatImportBatchState @default(DRAFT)
+  createdCount    Int                  @default(0) @map("created_count")
+  mergedCount     Int                  @default(0) @map("merged_count")
+  skippedCount    Int                  @default(0) @map("skipped_count")
+  errorCount      Int                  @default(0) @map("error_count")
+  /// The staff member who imports: staff of firm_id (the (firm_id, importer_staff_id) key).
+  importerStaffId String               @map("importer_staff_id") @db.Uuid
+  /// The Owner's attestation this batch runs under (AG-18-49): one of firm_id's own (the (firm_id, attestation_id) key).
+  attestationId   String?              @map("attestation_id") @db.Uuid
+  dryRunHash      String?              @map("dry_run_hash") @db.Char(64)
+  undoDeadline    DateTime?            @map("undo_deadline") @db.Timestamptz
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  finishedAt      DateTime?            @map("finished_at") @db.Timestamptz
+
+  firm        PlatformFirm           @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  importer    PlatformStaff          @relation(fields: [firmId, importerStaffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  attestation PlatImportAttestation? @relation(fields: [firmId, attestationId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  rows        PlatImportRow[]
+
+  @@unique([firmId, id])
+  @@index([firmId, createdAt])
+  @@map("plat_import_batch")
+}
+
+/// One row of a batch's file and what became of it (AG-18-15). reasons is a list of {field, rule} names, never the raw
+/// value (AG-18-12; a check). recordKind and recordId name the record made or merged; beforeImage is the merged record's
+/// fields before the merge, for undo (AG-18-40), and only on a MERGE. One row per batch and row number (a resumed job
+/// never writes a row twice, AG-18-20).
+model PlatImportRow {
+  id          String               @id @default(uuid()) @db.Uuid
+  firmId      String               @map("firm_id") @db.Uuid
+  batchId     String               @map("batch_id") @db.Uuid
+  rowNumber   Int                  @map("row_number")
+  outcome     PlatImportRowOutcome
+  reasons     Json                 @default("[]")
+  recordKind  String?              @map("record_kind")
+  recordId    String?              @map("record_id") @db.Uuid
+  beforeImage Json?                @map("before_image")
+  writtenAt   DateTime             @default(now()) @map("written_at") @db.Timestamptz
+
+  batch PlatImportBatch @relation(fields: [firmId, batchId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([batchId, rowNumber])
+  @@index([firmId, batchId, outcome])
+  @@map("plat_import_row")
+}
+
+/// A saved mapping, reusable per source and target (AG-18-11); PF-10b re-checks it against the current file's columns.
+model PlatImportMapping {
+  id         String   @id @default(uuid()) @db.Uuid
+  firmId     String   @map("firm_id") @db.Uuid
+  sourceName String   @map("source_name")
+  targetKey  String   @map("target_key")
+  mapping    Json
+  /// Who saved it last: staff of firm_id (the (firm_id, saved_by) key).
+  savedBy    String   @map("saved_by") @db.Uuid
+  savedAt    DateTime @default(now()) @map("saved_at") @db.Timestamptz
+
+  firm  PlatformFirm  @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  saver PlatformStaff @relation(fields: [firmId, savedBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, sourceName, targetKey])
+  @@map("plat_import_mapping")
+}
+
+/// The Owner's attestation that the firm may transfer the data (AG-18-49): who, when, which wording. Insert-only (a
+/// trigger refuses update, delete and truncate); made by an active Owner of firm_id (a trigger).
+model PlatImportAttestation {
+  id             String   @id @default(uuid()) @db.Uuid
+  firmId         String   @map("firm_id") @db.Uuid
+  ownerStaffId   String   @map("owner_staff_id") @db.Uuid
+  wordingVersion String   @map("wording_version")
+  at             DateTime @default(now()) @db.Timestamptz
+
+  firm    PlatformFirm      @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  owner   PlatformStaff     @relation(fields: [firmId, ownerStaffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  batches PlatImportBatch[]
+
+  @@unique([firmId, id])
+  @@index([firmId, at])
+  @@map("plat_import_attestation")
+}
