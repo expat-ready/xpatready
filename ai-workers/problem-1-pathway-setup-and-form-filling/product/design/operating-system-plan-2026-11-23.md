@@ -148,3 +148,25 @@ Next: read CPU run 3; after #2590 lands, check the order above; 24-hour red-batc
 ## CPU and memory: closed 15:08 IST
 Three runs of 24 shards (run 45131327234, ended): 69 of 72 read, 23 per run. **Shard 10 is missing in all three**: it is the red Monday test (the branch was cut before #3208 merged) and my step stopped on the red exit before printing its numbers (my fault, `bash -e`). Result: mean 1.22 cores (runs 1.21, 1.22, 1.23), shard means 0.97-1.57, p95 within a shard median 1.63, worst 2.38; memory mean 2.2 GB, p95 median 3.0, peak median 3.4, worst 4.5 of 16 GB. Suites step only; shards alone on their machine. Not measured: shards packed together, regression, packs, pr-suites, walks.
 #2428 merged 14:56. Lanes have pushed new heads on #2597, #2738, #2473, #2444, #2595, #3035 (#3035 still conflicts).
+
+## FINAL hand-over of Lead O, 23 Nov 15:39 IST (replaces the 14:57 one; Lead 5 is local_6cdede15)
+**PRs, read from GitHub at that time (merged_at is UTC):**
+* #2590: open, blocked, head 77975f1de, labels []
+* #2597: open, unstable, head 2fa9528c0, labels []
+* #2738: open, unstable, head 0eb8e7c84, labels []
+* #2473: open, unstable, head 8441bc45c, labels []
+* #2444: open, unstable, head eb9ceaacd, labels []
+* #2595: open, unstable, head 2ff914b3d, labels []
+* #3035: open, dirty, head dd06974e2, labels []
+* #2915: open, unknown, head 6d1327f6c, labels ['records']
+* #2372: closed, dirty, head 098d51530, labels []
+* #2472: open, dirty, head b88460ffa, labels []
+* #3210: merged 2026-11-23T10:07:05Z, unknown, head 8cf3b8a2e, labels ['review: approved', 'records']
+**Landed before:** #2971, #2434, #3208, #2370, #2487, #2428. **Order left:** #2590 (ten as one, founder 14:33 through Lead 4; sprint b), #2597, #2738, #2473, #2444 (sprint c), #2595, #3035 last (sprint a), #2915 refreshed. Verify each claim and the exact-head Approve before the label; I have NOT re-verified the heads the lanes pushed after 14:33.
+**Faults to see fixed (verify, not assumed):** #2457 and #2605 inside #2590; #2473 completes-ready/pr-rules set; #2444 register lines keep blocking; #2595 header and the "skips records PRs" comment, effect on #3179/#3201; #3035 scope check, engineering-approved-setup.json:184, unnamed migrations, adcf9c105, `Size exception: P-808`.
+**Four pipeline fixes (A316):** (1) cheap checks first: dropped by Lead 4 on evidence (fast red in 7 of 67, never alone). (2) failing suites and repeat-new-tests: not started; begin with c69, c92, c41, pf5s1 (unclassified). (3) batches up to 4: not started; needs the red split (25 of 29 placed, see below). (4) set-up time: not started; checkout and cloud-setup about 0.8 min each of about 20, database time inside suites unmeasured. Estimates given 14:35 (24-26 Nov) are unmeasured.
+**Private repository:** nothing created. Founder's two answers conflict (gates first / "Yes, after the plan"); Lead 5 asks. Checks, 15:03: logs partly (signed out: names and artifact list readable, log text 403, download 401; signed-in stranger untested; retention 90 days); lane limit NOT shown (needs a second private repository; do it first, on an empty one); $300 unused. Private notes, folder local_2158cd24: one-pack-plan, stay-public-study, replay-100-summary and .tsv.
+**Red batches:** own PR also red alone 7, PR ahead red alone 3, combination only 13, unknown 2, four later not placed.
+**Branches:** claude/lead-o-os-plan (this), claude/lead-o-ci-runner 6aeb97eeb (parked, fix the fork and deleted-fork gaps first), claude/lead-o-ci-measure 098d83d9d (never merge).
+**Owed:** 24-hour red-batch re-measure from #2434 (13:22 IST 23 Nov); "operating system complete" to the founder only when every must row is merged or decided.
+**Refused and stopped:** GATE_RUNNER by shell (then browser, founder's words); combined build twice.
