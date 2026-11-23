@@ -73,3 +73,30 @@ address, the default is the firm's province"), and the header comment says so. N
 * Journey score: **8/10, pass** (`journey-test-reviewer-2026-11-23-w3.md`).
 
 Reviewer: Approve 267f25dfa54d7d43c8e19d7945d222116de64236
+
+## Round 2 (diff-only)
+
+Reviewer and breaker (Opus 5.5, fresh; I did not build it), 23 Nov. Scope: `git diff 267f25dfa5..f3a72087c1 -- ':!*.md'`
+(`tax/routes.ts` header and 9 lines of B8 in `check_fo7g3_bill_to.ts`). Postgres 127.0.0.1:54329; never :4400; US$0.
+
+| Run | Result |
+|---|---|
+| `check_fo7g3_bill_to.ts` at f3a72087c1 | **30/0** (28 before + 2 new) |
+| Mutant MA (scratch worktree): the invoice lookup drops `companyId: found.id` only | 29/1: the new B8 fail (kind mismatch) catches it; the person-only walls did not cover it |
+| Mutant ME: a COMPANY invoice ignores its stored Bill-to | 29/1: the new B8 pass catches it |
+| Mutant MD: no `toLowerCase()` on `invoiceId` | 30/0: survives, as expected; `money_invoice.id` is a `UUID` column, so Postgres matches either case. The upper-case case pins the behaviour, not that line (n2) |
+Worktree removed; no `xr_studio_fo7g3_scratch*` database left.
+
+* **m2 closed.** The header now says the answer comes only from stored facts, and with `invoiceId` that invoice's stored
+  Bill-to. That matches `forParty`: no rate or province is read from the request, and the Bill-to is the stored one.
+* **m3 closed.** The company case is real: the fo_company row is in firm A, the draft is created through the route (201
+  asserted), and the firm is in ON, so NB with source PARTY_PROVINCE can only come from the stored Bill-to. `personInvAsCo`
+  is the true cross-kind wall (MA). `coAsPerson` stops at the party 404, which is also right.
+* **n2 (Nit):** the label "the same 404" on the kind-mismatch case checks the status only. The two details differ ("No
+  such person…" and "No such invoice…"). Either compare `personInvAsCo.body.detail` with the walls' detail or say "a 404".
+  The `toLowerCase()` on `invoiceId` is redundant with the UUID column; it is harmless.
+* m1 and m4 stay open as Minors (unchanged by this diff); n1 too.
+
+No Blocker, no Major. Journey score unchanged: **8/10** (round 1; this diff touches no journey step).
+
+Verdict: Approve f3a72087c179df337dbe5b0383cc56a7acb306a5
