@@ -16,6 +16,7 @@ export const NOTIFICATION_KIND = {
   CASE_STAGE_DEADLINE: "case-stage-deadline", // CS-DL1 part 2: a cited stage deadline's reminder (AG-7-94 r5)
   CASE_MILESTONE_DEADLINE: "case-milestone-deadline", // CS-DL3 part 1: a government step's due date, from IRCC's letter
   PAYMENT_ACCOUNT_DISCONNECTED: "payment-account-disconnected", // FO-7c part 1: the firm's payment account broke; the Owner's home item (AG-16-16)
+  LEAD_ASSIGNED: "lead-assigned", // PF-18n part 2: a lead handed to me by the firm's rule or by someone's Assign (AG-16-10 test 1, AG-10-29a)
 } as const;
 export type NotificationKind = (typeof NOTIFICATION_KIND)[keyof typeof NOTIFICATION_KIND];
 /** Each kind's group, from AG-16 §3.3 "What is in it": a kind without a group fails the type check. */
@@ -24,9 +25,10 @@ export const NOTIFICATION_GROUP: Record<NotificationKind, NotificationGroup> = {
   [NOTIFICATION_KIND.CASE_STAGE_DEADLINE]: "MY_DEADLINES",
   [NOTIFICATION_KIND.CASE_MILESTONE_DEADLINE]: "MY_DEADLINES",
   [NOTIFICATION_KIND.PAYMENT_ACCOUNT_DISCONNECTED]: "FIRM_AND_CONNECTIONS",
+  [NOTIFICATION_KIND.LEAD_ASSIGNED]: "WORK_HANDED_TO_ME",
 };
 /** What a notification points at. Consumers add their own. */
-export const NOTIFICATION_ITEM_KIND = ["case", "firm", "staff", "review-round", "case-stage", "case-milestone"] as const;
+export const NOTIFICATION_ITEM_KIND = ["case", "firm", "staff", "review-round", "case-stage", "case-milestone", "lead"] as const;   // lead: PF-18n part 2
 export type NotificationItemKind = (typeof NOTIFICATION_ITEM_KIND)[number];
 export const NotificationKindSchema = z.enum(NOTIFICATION_KIND);
 export const NotificationRecipient = z.strictObject({ staffId: Uuid });
