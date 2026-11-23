@@ -15,3 +15,12 @@ CREATE OR REPLACE FUNCTION aud_event_actor_type(actor text) RETURNS "AuditActorT
     WHEN actor IN ('system', 'rules') OR actor ~ '^system:[A-Za-z0-9][A-Za-z0-9._:/-]*$' THEN 'SYSTEM'
     WHEN actor ~ '^seed:[A-Za-z0-9][A-Za-z0-9._:/-]*$' THEN 'SEED'
   END::"AuditActorType" $fn$;
+
+-- The two actor columns of PF-25's address tables (set_by, changed_by) take the same word, for the first system route
+-- that writes them (PF-25w: our staff change a firm's web address). Each check is replaced with one that adds `ourstaff`
+-- to its list of word kinds; the rest of each pattern is unchanged, and every stored value already passes it.
+-- Rollback: the two checks as 20261114230000_pf25_web_address made them, once no row holds an ourstaff: word.
+ALTER TABLE "platform_firm_web_address" DROP CONSTRAINT "platform_firm_web_address_set_by",
+  ADD CONSTRAINT "platform_firm_web_address_set_by" CHECK ("set_by" ~ '^(staff|ourstaff|system|seed):[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$');
+ALTER TABLE "platform_firm_address_history" DROP CONSTRAINT "platform_firm_address_history_changed_by",
+  ADD CONSTRAINT "platform_firm_address_history_changed_by" CHECK ("changed_by" ~ '^(staff|ourstaff|system|seed):[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$');
