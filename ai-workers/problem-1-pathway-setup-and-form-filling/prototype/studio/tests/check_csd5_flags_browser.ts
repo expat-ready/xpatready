@@ -140,6 +140,7 @@ try {
   ok("QA-758 fail: notarisation Required and not provided shows a warning on the passport's line naming notarisation", (await notWarn()).some((w) => /^Needs notarisation/.test(w)), await line().locator("[data-flag-warning]").allInnerTexts());
   ok("QA-758 pass: nothing is blocked: the line keeps its state", (await line().getAttribute("data-state")) === before, [before, await line().getAttribute("data-state")]);
   await state("notarisation-needed", "[data-documents-panel]", [1440, 400]);
+  await p.setViewportSize({ width: 400, height: 768 }); await line().scrollIntoViewIfNeeded(); await line().screenshot({ path: join(SHOTS, "CSD7-05-notarisation-needed-line-400.png") }); await p.setViewportSize({ width: 1440, height: 900 });
   await openFlags();
   await tabTo("[data-flag-notarisation]"); await p.keyboard.type("Provided"); await tabTo("[data-flag-notarisation-detail]");
   await p.keyboard.type("Sample: notary public, 2026-11-20"); await p.keyboard.press("Enter");

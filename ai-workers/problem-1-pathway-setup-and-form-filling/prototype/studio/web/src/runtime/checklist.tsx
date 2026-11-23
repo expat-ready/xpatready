@@ -30,7 +30,7 @@ export type ChecklistLine = { id: string; label: string; lineage: string; reason
   shared?: "application" | "couple" | null; providers?: { subject: string; label: string; role: string; why: string }[];
   providers_rule?: "type_roles" | "first_applicant" | "changed" | null; providers_words?: string | null;
   providers_change?: { reason: string; by: string | null; at: string | null; defaults: boolean } | null;
-  /** CS-D7 (map row 70): warnings from its current files' flags (expired, too old): never a block. */
+  /** CS-D7 (map row 70): warnings from its current files' flags (expired, too old, notarisation needed: QA-758): never a block. */
   flag_warnings?: string[] };
 /** CS-D7 (3): a "Translation + translator's affidavit" line a document gives (api/src/case-document-flags.ts). */
 type TranslationLine = { id: string; label: string; document_id: string; for_document: string; file_name: string; state: "needed" | "provided"; words: string; quote: string; source: string };
