@@ -36,11 +36,13 @@ const NOBODY = "\u0000signed-out";
 type Tab = { id: string; path: string; title: string; nav: number; type: NavigationType; scroll: number; state?: unknown };
 /** The item a tab shows: its address without query or hash ("/platform/offices/abc"). Two tabs never share one. */
 export const itemOf = (path: string) => { const p = parsePath(path).pathname || "/"; return p.length > 1 ? p.replace(/\/+$/, "") : p; };
-/** Who a page runs as (BR-1): the Studio (the simulated configuration person), the case area with its client pages (the
- *  simulated case person), or the firm staff pages (the staff session). A link into another of them changes the person, so
- *  the workspace never opens it as an in-app tab (a background tab would change who you are); Ctrl-click opens a browser
- *  tab, as before PF-31. Sign-in, the link page and the demo inbox are each their own. */
-const personAreaOf = (path: string) => { const p = itemOf(path); return /^\/(cases|clients)(\/|$)/.test(p) ? "cases" : /^\/(platform|front-office)(\/|$)/.test(p) ? "staff" : /^\/(sign-in|link|inbox)(\/|$)/.test(p) ? p : "studio"; };
+/** Who a page runs as (BR-1): the case area with its client pages acts as the simulated case person (its links set it),
+ *  so a link into or out of it changes the person, and the workspace never opens it as an in-app tab (a background tab
+ *  would change who you are); Ctrl-click opens a browser tab, as before PF-31. Sign-in, the link page and the demo inbox
+ *  are each their own. Every other page (the Studio, every firm staff page: /platform, /front-office, /home, /account,
+ *  /settings, …) is one area (review on 2fd5352aa: naming only /platform and /front-office as staff cut My account's links
+ *  out of open-or-focus). */
+const personAreaOf = (path: string) => { const p = itemOf(path); return /^\/(cases|clients)(\/|$)/.test(p) ? "cases" : /^\/(sign-in|link|inbox)(\/|$)/.test(p) ? p : "app"; };
 const here = () => window.location.pathname + window.location.search + window.location.hash;
 const newId = () => Math.random().toString(36).slice(2, 10);
 /** Until a page names itself: the address's last part in words. */
@@ -221,6 +223,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
       lastScope.current = scope;
       const owner = ownerNow(), was = shownOwner.current;
       if (owner === was) return;
+      if (was === NOBODY && owner === "local") return;   // the Sign out this tab just made: keep nothing until the next sign-in
       if (owner === "local" && sessionEndReason()) return;   // ended by itself: the screen stays as it is
       if (owner === "local" && was !== "local") try { sessionStorage.removeItem(storeOf(was)); } catch { /* none kept */ }   // signed out on purpose: their tabs go
       shownOwner.current = owner;

@@ -200,6 +200,10 @@ try {
   await p1.setViewportSize({ width: 1440, height: 900 });
   await p1.locator('[data-workspace]:visible [data-ws-tab][data-ws-path="/platform/x11"] [data-ws-close]').click();
   ok("T7 closing a background tab keeps focus on the strip's active tab (round 2 Should 2)", await until(async () => p1.evaluate(() => !!document.activeElement?.hasAttribute("data-ws-tab") && document.activeElement?.getAttribute("aria-current") === "page")) && (await tabs(p1)).length === 11, await p1.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
+  // Review on 2fd5352aa: My account's own pages (/account, /home, …) are staff pages too, so they open in the workspace.
+  const pagesBefore = ctx.pages().length;
+  await shown(p1).locator('nav[aria-label="My account"] a[href="/account"]').click({ modifiers: ["Control"] });
+  ok("T7 Ctrl-click on My account's Profile opens an app tab in the background, never a browser tab", await until(async () => (await tabs(p1)).some((x) => x.path === "/account" && !x.selected)) && ctx.pages().length === pagesBefore, { tabs: (await tabs(p1)).map((x) => x.path), pages: ctx.pages().length });
 
   // B1 (review round 3 Should 2): a draft broadcast by another person's window is ignored here
   const forgedKey = `platform-office:${O2.id}`;
@@ -305,6 +309,9 @@ try {
   await pb.waitForTimeout(500);
   const seen = await nameField(pb).inputValue({ timeout: 2000 }).catch(() => "(no panel)");
   ok("B1 another person signed in here sees none of the last person's typing or tabs", seen !== typed && !(await kept()) && !(await tabs(pb)).some((x) => x.path === officePath(O2.id)), { seen, tabs: await tabs(pb) });
+  // Review on 2fd5352aa: a Sign out the server answers 200 keeps no tab list either (no staff address in any list).
+  await pb.getByRole("button", { name: "Sign out" }).click(); await pb.locator("[data-sign-in-card]").waitFor();
+  ok("Sign out (answered 200) keeps no tab list with a staff address", await pb.evaluate(() => !Object.entries(sessionStorage).some(([k, v]) => k.startsWith("xr.workspace.v1:") && /\/(platform|front-office|account|home)\b/.test(v))), await pb.evaluate(() => Object.entries(sessionStorage).filter(([k]) => k.startsWith("xr.workspace"))));
   await ctxB.close();
   // Break round 3 M2: an area with no staff session (the case area, simulated people) keeps its tabs over a reload too.
   const ctxS = await browser.newContext({ viewport: { width: 1440, height: 900 } }), pc = await page(ctxS);
