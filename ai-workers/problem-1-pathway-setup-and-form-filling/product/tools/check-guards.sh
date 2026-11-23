@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
+# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) with ENF-761's under-cap ACTs (761c) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
 #   bash product/tools/check-guards.sh [--mutate]
@@ -236,7 +236,10 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 36 draft|../../.github/workflows/trace.yml|/SPD-2 item 5 (b): not on a draft/d|check-pr-concurrency.sh
 35 report|../../.github/workflows/pr-suites.yml|/^        if: steps.setup.outcome == .success.$/{n;d;}|check-pr-suites-job.sh
 35 batch|../../.github/workflows/pr-suites.yml|s/ \&\& !startsWith(github.event.pull_request.head.ref, .mergify\/.)//|check-pr-suites-job.sh
-35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh'
+35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh
+761c build|product/tools/waves.py|s/    if len(building) < CAP_BUILDING and waiting:/    if False:/|check-waves.sh
+761c qa|product/tools/waves.py|s/    if qa is not None and qa < CAP_QA and built:/    if False:/|check-waves.sh
+761c view|product/tools/waves.py|s/^        if re.search(r"^UNREADABLE".*/        if False:/|check-waves.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 jsparse() { node --check "${@: -1}"; }   # "$sh -n FILE" for a .js (guard 36: app-view.js; bash -n cannot read JavaScript)
 MUT="$MUT"'
