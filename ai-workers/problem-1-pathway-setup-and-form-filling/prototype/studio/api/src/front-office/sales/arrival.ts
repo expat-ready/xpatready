@@ -138,8 +138,9 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
       ...(a.existingPersonId ? {} : { givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null }) },
     event: { type: EVENT.LEAD_CREATED, subjectId: lead.id, payload: LeadEventPayload.parse({ leadId: lead.id, personId, door: a.door, state: "OPEN", ownerStaffId: owner, possibleMatchPersonId: match }) },
   });
-  // PF-18n part 2 (AG-16-10 test 1, AG-10-29a): the person the lead was handed to (the firm's rule, a booking's host, a
-  // one-user firm's one user) is told, in this transaction; an adder who owns their own lead (a.ownerStaffId) is not.
+  // PF-18n part 2 (AG-16-10 test 1, AG-10-29a): the person the lead was handed to (the firm's rule, a one-user firm's one
+  // user; a booking's host only once the booking door passes the port: booking/runtime-ports.ts passes none yet, a
+  // follow-up for the booking module) is told, in this transaction; an adder who owns their own lead (a.ownerStaffId) is not.
   if (owner && !a.ownerStaffId) await tellAssigned(tx, ports.notifications, firmId, owner, lead.id);
   return { leadId: lead.id, personId, created: true };
 }

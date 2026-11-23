@@ -39,8 +39,10 @@ export class PrismaNotificationPort implements NotificationPort<Prisma.Transacti
 /** Home's "Needs you" shows at most this many (PF-18h BR-5). */
 export const NEEDS_YOU_SHOWN = 20;
 /** What a person's list shows of one row. */
-/** `label` and `link` (PF-18n part 2): the item's words and page, built on read; both null when the item is gone or the
- *  reader may no longer open it (a lead reassigned away: its module's own view rule, labels.ts). */
+/** `label` and `link` (PF-18n part 2): the item's words and page, built on read; both null when the item is gone (any
+ *  kind) or, for a kind labelled by its module (labels.ts: leads), when the reader may no longer open it by that module's
+ *  view rule. Case kinds are labelled here by the firm's own case only, with no case-scope check (break m4: every starter
+ *  role sees every case today; X-row with the case side's CaseLabelPort). */
 export type NotificationView = { id: string; kind: string; group: string; item: { kind: string; id: string }; label: string | null; link: string | null; createdAt: string; readAt: string | null };
 /** The other modules' labels for a page of rows (labels.ts `NotificationLabels.of`, bound to the reader by the route). */
 export type LabelsOf = (items: { kind: string; id: string }[]) => Promise<Map<string, { label: string; link: string }>>;

@@ -81,10 +81,10 @@ try {
   const rowsOf = (staffId: string, leadId: string) => Number(sql(`select count(*) from msg_notification where staff_id = '${staffId}' and item_kind = 'lead' and item_id = '${leadId}'`));
   const webForm = sql(`select id from fo_web_form where firm_id = '${A}' limit 1`);
   let n = 0;
-  const arrival = (o: { audit?: SalesPorts["audit"]; given?: string } = {}) => {
+  const arrival = (o: { audit?: SalesPorts["audit"]; given?: string; family?: string } = {}) => {
     const i = n++;
     return db.$transaction((tx) => arrive(tx, { firmId: A, door: "WEB_FORM", intakeKey: `form:${webForm}:${randomUUID()}`, webFormId: webForm,
-      person: { givenNames: o.given ?? `Person${i}`, familyName: "Sample", email: `p${i}@pf18n2.example.org`, phone: null }, source: "WEB_FORM", actor: "system:web-form", payloadHash: `h${i}` },
+      person: { givenNames: o.given ?? `Person${i}`, familyName: o.family ?? "Sample", email: `p${i}@pf18n2.example.org`, phone: null }, source: "WEB_FORM", actor: "system:web-form", payloadHash: `h${i}` },
       { ...ports, audit: o.audit ?? ports.audit }));
   };
   const ownerOf = (leadId: string) => sql(`select coalesce(owner_staff_id::text, 'none') from fo_lead where id = '${leadId}'`);
@@ -165,6 +165,36 @@ try {
   const crashed = await arrival({ audit: broken }).then(() => "kept", () => "rolled back");
   ok("PF-18n2 DW5 fail: an arrival whose transaction rolls back (audit fails closed) leaves no lead and no notification",
     crashed === "rolled back" && Number(sql(`select count(*) from msg_notification where staff_id = '${O.staffId}'`)) === before, { crashed });
+
+  // ------------------------------------------------------------------------------------------- break report (r1)
+  // m1: the longest names every door takes (100 + 100 characters) still give the owner a label (at most 200) and the link.
+  sql(`update platform_firm_setting set value = 'true' where firm_id = '${A}' and key = 'platform.everyone_sees_all'`);
+  const longName = "N".repeat(100);
+  const long = (await arrival({ given: longName, family: "F".repeat(100) })).leadId!;
+  await withFirm(A, () => leads.assign(R, long, { staffId: T.staffId, expectedOwnerStaffId: ownerOf(long) === "none" ? null : ownerOf(long) }));
+  const longRow = (await itemsOf(T)).find((i) => i.item.id === long);
+  const longNo = sql(`select number from fo_lead where id = '${long}'`);
+  ok("PF-18n2 break m1 pass: 100-character first and last names (every door's limit) are shortened in the label (at most 200, the number kept) and the link stays",
+    !!longRow?.label && longRow.label.length <= 200 && longRow.label.endsWith(`(${longNo})`) && longRow.label.includes("…") && longRow.link === `/front-office/leads/${long}`, longRow);
+  // m2: the labeller asks the read key GET leads/:id asks (agent/prospect:show); without it nothing is named.
+  const noShow = { ...T, keys: T.keys.filter((k) => k !== "agent/prospect:show") };
+  const lbl = new LeadNotificationLabels(db, new NotificationLabels());
+  ok("PF-18n2 break m2 fail: a reader without agent/prospect:show gets no name and no link for their own lead (GET leads/:id would be 403)",
+    (await withFirm(A, () => lbl.of(noShow, [long]))).size === 0 && (await withFirm(A, () => lbl.of(T, [long]))).size === 1);
+  // m3: a labeller's link must be an app path: "//host/x" (another site to a browser) and "https://…" are dropped.
+  const hostile = new NotificationLabels();
+  hostile.register("staff", async (_r, ids) => new Map(ids.map((id, n) => [id, { label: "x", link: n === 0 ? "//evil-host/x" : n === 1 ? "/\\evil" : "/platform/team" }])));
+  const ids3 = [randomUUID(), randomUUID(), randomUUID()];
+  const got3 = await hostile.of(T, ids3.map((id) => ({ kind: "staff", id })));
+  ok("PF-18n2 break m3 fail: a protocol-relative link (//host) and a backslash link are refused; an app path is kept",
+    !got3.has(`staff|${ids3[0]}`) && !got3.has(`staff|${ids3[1]}`) && got3.get(`staff|${ids3[2]}`)?.link === "/platform/team", [...got3]);
+  // M1: the arrival path tells a booking's host when its caller hands it the port (the booking door's own wiring is a
+  // follow-up: booking/runtime-ports.ts is the booking module's file and passes none yet, so a booking tells nobody today).
+  const hostKey = `booking:${randomUUID()}`;
+  const booked = await db.$transaction((tx) => arrive(tx, { firmId: A, door: "BOOKING", intakeKey: hostKey, bookingHostStaffId: T.staffId, person: { givenNames: "Client B", familyName: "Sample", email: "b@pf18n2.example.org", phone: null }, source: "BOOKING", actor: "system:booking", payloadHash: "hb" }, ports));
+  const unwired = await db.$transaction((tx) => arrive(tx, { firmId: A, door: "BOOKING", intakeKey: `booking:${randomUUID()}`, bookingHostStaffId: T.staffId, person: { givenNames: "Client C", familyName: "Sample", email: "c@pf18n2.example.org", phone: null }, source: "BOOKING", actor: "system:booking", payloadHash: "hc" }, { audit: ports.audit, consent: ports.consent }));
+  ok("PF-18n2 break M1: a booking lead owned by its host tells the host when the port is passed, and nobody without it (today's booking door)",
+    ownerOf(booked.leadId!) === T.staffId && rowsOf(T.staffId, booked.leadId!) === 1 && ownerOf(unwired.leadId!) === T.staffId && rowsOf(T.staffId, unwired.leadId!) === 0);
 
   // ------------------------------------------------------------------------------------------- DW6 the app's wiring
   const sales = (await import("../api/src/features/front-office-sales.ts")).default as { providers: unknown[] };

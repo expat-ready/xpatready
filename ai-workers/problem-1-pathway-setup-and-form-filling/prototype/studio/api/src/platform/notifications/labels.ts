@@ -14,7 +14,8 @@ export type ItemLabel = { label: string; link: string };
 /** One module's labeller: the reader and the ids of its kind (all in the reader's firm) → the ones the reader may open. */
 export type ItemLabeller = (reader: StaffContext, ids: string[]) => Promise<Map<string, ItemLabel>>;
 
-const PAGE = /^\/[A-Za-z0-9/_-]{1,200}$/;
+/** An app path only: one leading slash, never "//" (a browser reads //host as another site; break m3). */
+const PAGE = /^\/(?!\/)[A-Za-z0-9/_-]{1,200}$/;
 
 @Injectable()
 export class NotificationLabels {
