@@ -214,6 +214,9 @@ try {
     values ('${randomUUID()}', '${A}', 'P-07001', '${randomUUID()}', 'INDIVIDUAL', '${randomUUID()}', '${PA2}', null, '${PA2}', '${staff("user-O", A)}', 'seed:FO-7q', now())`);
   const onCase = (c: string) => sql(`insert into money_invoice (firm_id, person_id, case_id, currency, created_by, updated_at) values ('${A}', '${PA}', '${c}', 'CAD', 'seed:FO-7q', now()) returning id`);
   const iX = onCase(X), iY = onCase(Y);
+  // X's invoice issued with one line and paid in part, so the officer's payments read has something to find (review n2)
+  sql(`insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) values ('${A}', '${iX}', 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD')`);
+  await issue(iX); const xPay = await pay(iX, 300);
   // the app as wired (features/client-money-reads.ts): user-R holds agent/case:view.all (PF-3's seed)
   const app1 = await call(tA, "GET", `${M}?pageSize=200`), app2 = await call(tA, "GET", `${M}/${iY}/detail`), app3 = await call(tA, "GET", `${M}/${S.Paid}/detail`);
   const appIds = (app1.body?.items ?? []).map((r: { id: string }) => r.id);
@@ -231,9 +234,12 @@ try {
     oIds.includes(iX) && oIds.includes(usd) && oX === iX, oIds.length);
   ok("FO-7q DW9 fail: never Y's invoice (another officer's case: 404) nor a case-less invoice of a person they hold no prospect for (PA)", !oIds.includes(iY) && oY === 404 && !oIds.includes(S.Paid), { oY });
   const oPays = await inA(() => realPay.list(own, {}));
-  ok("FO-7q DW9 fail: payments follow their invoice's scope (none of PA's case-less invoices' payments reach the officer)", oPays.items.every((x) => x.invoiceId !== S.Paid && x.invoiceId !== S["Part paid"]), oPays.items.length);
-  const bReal = await inB(() => real.list(ctxB, {}));
-  ok("FO-7q DW9 fail: firm B's widest scope through the adapter holds none of firm A's invoices", bReal.items.every((r) => ![iX, iY, usd, S.Paid].includes(r.id)));
+  ok("FO-7q DW9 pass: payments follow their invoice's scope: the officer sees the payment on X's invoice, and none on PA's case-less invoices",
+    oPays.items.some((x) => x.id === xPay.id) && oPays.items.every((x) => x.invoiceId !== S.Paid && x.invoiceId !== S["Part paid"]), { n: oPays.items.length, xPay: xPay?.id });
+  const bReal = await inB(() => real.list(ctxB, {})), bScope = await inB(() => vis.scopeOf(ctxB));
+  // the adapter's own answer for firm B, not only the list's wall (review n1): a leak of A's ids would show here
+  ok("FO-7q DW9 fail: firm B's widest scope through the adapter names none of firm A's cases or parties, and its list holds none of A's invoices",
+    ![X, Y].some((c) => bScope.cases.includes(c)) && ![PA, PA2].some((p) => bScope.parties.includes(p)) && bReal.items.every((r) => ![iX, iY, usd, S.Paid].includes(r.id)), bScope);
 
   // ------------------------------------------------------------------------- DW1 + DW2: 10,000 invoices per firm
   for (const [f, p] of [[A, PA], [B, PB]]) {
