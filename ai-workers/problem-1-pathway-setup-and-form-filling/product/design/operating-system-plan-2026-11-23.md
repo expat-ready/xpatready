@@ -128,3 +128,10 @@ Run 45131327234 (branch claude/lead-o-ci-measure, never merged): 47 shards read,
 * CPU: mean **1.22 cores** (weighted; shard means 1.04-1.57). p95 within a shard: median 1.63, worst 2.38.
 * Memory used (total less available): mean 2.2 GB, p95 median 3.0, peak median 3.4, worst **4.5 GB**.
 Reading: a shard uses about 30% of its 4 cores and under a third of 16 GB. By the worst p95 (2.4 cores) a 16-thread 64 GB machine would hold about 6-7 shards, by the mean about 13; neither was run packed, so slow-down from sharing is unmeasured. The earlier "4 jobs per 64 GB machine" was too low.
+
+## The escapes classified (14:39 IST; from logs and main's history, no re-run)
+* `check_fo3st3_types_browser`: main already red (Monday), fixed by #3208.
+* `check_pf30s_find_box_browser`: the test's own race. Red in 7 batches of 7 different PRs; main's 97ee46025 (22 Nov 15:14 UTC) makes the check wait for the frame. Last red 16:09 UTC, on a batch that may predate it.
+* `check_c69_page_browser`: likely race [inference]: red once on #3150 (a qa records PR) and once with two other failures; not re-run.
+* `check_c41_section_order_browser`: likely race [inference]: red once on #2979, and not among #2979's failures in its next batch (09:36 UTC).
+So no escape is shown to be a fault of the PR under test, but two rest on inference. Founder's later ruling (relayed by Lead 4, 14:33): the ten of stack B land as one through #2590, by the sprint (b) lane.
