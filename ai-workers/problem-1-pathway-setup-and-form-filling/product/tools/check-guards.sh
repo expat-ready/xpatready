@@ -259,16 +259,16 @@ MUT="$MUT"'
 32 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$nw")))/true/|check-nightly-watch.sh
 32 parts|../../.github/workflows/nightly.yml|s/^      N: [0-9]*$/      N: 8/|check-nightly-watch.sh'
 MUT="$MUT"'
-37 hand|product/tools/lead-upkeep.py|s/    if beyond >= HAND_K:/    if False:/|check-lead-upkeep.sh
-37 warn|product/tools/lead-upkeep.py|s/    elif beyond >= WARN_K:/    elif False:/|check-lead-upkeep.sh
-37 given|product/tools/lead-upkeep.py|s/    if now is None:/    if False and now is None:/|check-lead-upkeep.sh
-37 start|product/tools/lead-upkeep.py|s/(kilo(m.group(1)), "STATE current_lead:") if m else/(None, "x") if False else/|check-lead-upkeep.sh
-37 secret|product/tools/lead-upkeep.py|s/    elif p.returncode == 3 and /    elif False and /|check-lead-upkeep.sh
-37 group|product/tools/lead-upkeep.py|s/            os.killpg(p.pid, signal.SIGKILL)/            p.kill()/|check-lead-upkeep.sh
-37 range|product/tools/lead-upkeep.py|s/    if beyond < 0:  /    if False:  /|check-lead-upkeep.sh
-37 fail|product/tools/lead-upkeep.py|s/    if p.returncode == 0:/    if True:/|check-lead-upkeep.sh
-37 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
-37 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh'
+38 hand|product/tools/lead-upkeep.py|s/    if beyond >= HAND_K:/    if False:/|check-lead-upkeep.sh
+38 warn|product/tools/lead-upkeep.py|s/    elif beyond >= WARN_K:/    elif False:/|check-lead-upkeep.sh
+38 given|product/tools/lead-upkeep.py|s/    if now is None:/    if False and now is None:/|check-lead-upkeep.sh
+38 start|product/tools/lead-upkeep.py|s/(kilo(m.group(1)), "STATE current_lead:") if m else/(None, "x") if False else/|check-lead-upkeep.sh
+38 secret|product/tools/lead-upkeep.py|s/    elif p.returncode == 3 and /    elif False and /|check-lead-upkeep.sh
+38 group|product/tools/lead-upkeep.py|s/            os.killpg(p.pid, signal.SIGKILL)/            p.kill()/|check-lead-upkeep.sh
+38 range|product/tools/lead-upkeep.py|s/    if beyond < 0:  /    if False:  /|check-lead-upkeep.sh
+38 fail|product/tools/lead-upkeep.py|s/    if p.returncode == 0:/    if True:/|check-lead-upkeep.sh
+38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
+38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
