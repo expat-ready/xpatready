@@ -103,7 +103,7 @@ CREATE TRIGGER "plat_data_request_kept" BEFORE DELETE ON "plat_data_request" FOR
 CREATE TRIGGER "plat_data_request_no_truncate" BEFORE TRUNCATE ON "plat_data_request" FOR EACH STATEMENT EXECUTE FUNCTION plat_data_request_kept();
 CREATE TRIGGER "plat_data_request_event_kept" BEFORE UPDATE OR DELETE ON "plat_data_request_event" FOR EACH ROW EXECUTE FUNCTION plat_data_request_kept();
 CREATE TRIGGER "plat_data_request_event_no_truncate" BEFORE TRUNCATE ON "plat_data_request_event" FOR EACH STATEMENT EXECUTE FUNCTION plat_data_request_kept();
-REVOKE UPDATE, DELETE, TRUNCATE ON "plat_data_request_event" FROM xr_data; REVOKE DELETE, TRUNCATE ON "plat_data_request" FROM xr_data;
+REVOKE ALL ON "plat_data_request", "plat_data_request_event" FROM xr_data;   -- break m1: not even the bypass role; the definers are the way in
 -- Our own register: forced, no policy (PF-12's OWN list); its events the same.
 ALTER TABLE "plat_data_request" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "plat_data_request" FORCE ROW LEVEL SECURITY;
@@ -194,7 +194,7 @@ BEGIN
   RAISE EXCEPTION 'plat_data_request_mark: unknown mark %', p_kind USING ERRCODE = 'invalid_parameter_value';
 END $fn$;
 -- Requests newest first: by status (p_status, null for all), one request (p_id), open ones due on or before a day
--- (p_due_by: PENDING and IN_PROGRESS only, for the daily check); at most p_limit rows (1 to 501).
+-- (p_due_by: PENDING and IN_PROGRESS only, oldest target first, for the daily check, break m2); at most p_limit rows (1 to 501).
 CREATE FUNCTION plat_data_request_list(p_status text, p_id uuid, p_due_by date, p_limit int)
   RETURNS TABLE (id uuid, type text, requester_name text, requester_email text, received_on date, target_date date, status text, actions_taken text,
                  completed_on date, firm_id uuid, person_id uuid, recorded_by text, created_at timestamptz)
@@ -206,7 +206,7 @@ BEGIN
     FROM plat_data_request r
    WHERE (p_status IS NULL OR r.status::text = p_status) AND (p_id IS NULL OR r.id = p_id)
      AND (p_due_by IS NULL OR (r.status IN ('PENDING', 'IN_PROGRESS') AND r.target_date <= p_due_by))
-   ORDER BY r.received_on DESC, r.created_at DESC, r.id LIMIT least(greatest(coalesce(p_limit, 501), 1), 501);
+   ORDER BY CASE WHEN p_due_by IS NOT NULL THEN r.target_date END, r.received_on DESC, r.created_at DESC, r.id LIMIT least(greatest(coalesce(p_limit, 501), 1), 501);
 END $fn$;
 -- One request's steps, in order.
 CREATE FUNCTION plat_data_request_steps(p_id uuid)

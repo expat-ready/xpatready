@@ -76,7 +76,7 @@ export class DataRequests {
   private allowed(c: RequestCaller) {
     if (!c || !c.keys.includes(DSR_KEY)) forbidden("Only ExpatReady staff who manage the register of requests made to ExpatReady can do this.", "MISSING_PERMISSION");
   }
-  private today() { return dayOf(new Date(this.clock.now())); }
+  private today() { return new Date(this.clock.now()).toLocaleDateString("en-CA", { timeZone: DATA_REQUEST_ZONE }); }   // ExpatReady's day, Toronto (break m5)
   private alertPort() { return this.alerts ?? currentAlerts(); }
   /** One change: the work and its ALLOWED line in one transaction; anything refusing it → one REFUSED line, then the error. */
   private async change<T>(line: CallLine | null, fn: (tx: Tx) => Promise<{ result: T; target: Record<string, unknown> }>): Promise<T> {
@@ -103,11 +103,11 @@ export class DataRequests {
         ${addDays(b.receivedOn, DATA_REQUEST_TARGET_DAYS)}::date, ${b.firmId?.toLowerCase() ?? null}::uuid, ${b.subject?.id ?? null}::uuid, ${`staff:${c.staffId}`})::text AS id`;
       return { result: id, target: { requestId: id, type: b.type } };
     });
-    await this.checkOne(id);
+    await this.checkOne(id).catch(() => undefined);   // break M1: saved is saved (201); a failed alert is the daily check's to retry
     return this.one(id);
   }
   /** POST /api/system/register/requests/:id/status { status, actionsTaken?, note? }: 200 with the request; 409 when the
-   *  move is not allowed (a completed request, Overdue by hand, In progress from Overdue). */
+   *  move is not allowed (a completed request, In progress from Overdue); Overdue by hand → 422. */
   async move(c: RequestCaller, line: CallLine | null, id: string, body: unknown): Promise<RequestView> {
     this.allowed(c);
     await this.change(line, async (tx) => {
@@ -170,7 +170,7 @@ export class DataRequests {
       const raised = await clocksNear("privacy_clock_near", [{ id: r.id, dueAt }], { now: () => new Date(this.clock.now()) }, alerts);
       if (!raised.length) throw new Error("privacy_clock_near could not be raised; the mark is undone and the next run tries again");
       return "near" as const;
-    });
+    }, { maxWait: 10_000, timeout: 60_000 });   // break m3: a slow alert never outlives its mark
   }
   private async rows(status: string | null, id: string | null, dueBy: string | null, limit: number): Promise<RequestView[]> {
     const rows = await this.db.$queryRaw<Row[]>`SELECT id::text AS id, type, requester_name, requester_email, received_on, target_date, status, actions_taken, completed_on,

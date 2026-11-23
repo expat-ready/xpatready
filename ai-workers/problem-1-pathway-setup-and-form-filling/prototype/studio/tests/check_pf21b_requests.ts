@@ -181,14 +181,14 @@ try {
   ok("PF-21b DW5 fail: a held request and a completed one are never marked or alerted, however late",
     alerts.raised.every((a) => a.detail.entityKey !== held.body.id && a.detail.entityKey !== id) && sql(`select status from plat_data_request where id = '${held.body.id}'`) === "HELD");
   // An alert that cannot be raised undoes its mark; the next run raises it.
-  const flaky = { body: await svc.log(as, null, { ...body, requesterEmail: "flaky.pf21b3@example.com", receivedOn: dayOf(clock.t) }) };
-  clock.t += 31 * DAY; alertsFail = true;
+  clock.t += 31 * DAY; alertsFail = true;   // break M1: logged while alerts are down, 31 days late → saved once, PENDING, no error
+  const flaky = { body: await svc.log(as, null, { ...body, requesterEmail: "flaky.pf21b3@example.com", receivedOn: dayOf(clock.t - 31 * DAY) }) };
   const failed = await svc.sweep();
   const stillOpen = sql(`select status from plat_data_request where id = '${flaky.body.id}'`), marksThen = kinds(flaky.body.id);
   alertsFail = false;
   const retried = await svc.sweep();
-  ok("PF-21b DW5 pass/fail: when the alert cannot be raised the request stays open with no mark (counted as failed); the next run moves it to OVERDUE and raises the one alert",
-    failed.failed >= 1 && stillOpen === "PENDING" && marksThen === "RECEIVED" && retried.overdue.includes(flaky.body.id)
+  ok("PF-21b DW5 pass/fail: a request logged while alerts are down is saved (no error) and, like any whose alert cannot be raised, stays open with no mark (counted as failed); the next run moves it to OVERDUE and raises the one alert",
+    flaky.body.status === "PENDING" && failed.failed >= 1 && stillOpen === "PENDING" && marksThen === "RECEIVED" && retried.overdue.includes(flaky.body.id)
     && alerts.raised.filter((a) => a.detail.entityKey === flaky.body.id).length === 1, { failed, stillOpen, marksThen, retried });
   ok("PF-21b DW5: every alert carries ids and rule names only (AlertPort's check; no name, no email)", alerts.raised.every((a) => !JSON.stringify(a.detail).includes("@") && !JSON.stringify(a.detail).includes("Sample")));
   // --------------------------------------------------------------------------------------- DW6: the database rules
@@ -206,12 +206,12 @@ try {
     && refusedBySql(`select plat_data_request_log('ACCESS', 'S', 's@example.com', '2026-01-01', '2026-01-31', '${sampleFirm}', null, 'staff:x')`, /plat_data_request_facts_set/)
     && refusedBySql(`select plat_data_request_log('ACCESS', 'S', 's@example.com', '2026-01-01', '2026-01-31', null, null, 'test')`, /plat_data_request_facts_set/)
     && refusedBySql(`insert into plat_data_request_event (id, request_id, kind, actor) values (gen_random_uuid(), '${fid}', 'OVERDUE_ALERTED', 'system:x')`, /plat_data_request_event_one_mark/));
-  ok("PF-21b DW6 fail (walls): a firm's session cannot log, move, list or read the register (refused by the database); xr_app reads and writes nothing directly",
+  ok("PF-21b DW6 fail (walls): a firm's session cannot log, move, list or read the register (refused by the database); xr_app, and the bypass role it may take, cannot read or write the tables directly (break m1)",
     refusedAsApp(sampleFirm, `select plat_data_request_list(null, null, null, 10)`, /only ExpatReady's own staff/)
     && refusedAsApp(sampleFirm, `select plat_data_request_log('ACCESS', 'S', 's@example.com', '2026-01-01', '2026-01-31', null, null, 'staff:x')`, /only ExpatReady's own staff/)
     && refusedAsApp(sampleFirm, `select plat_data_request_move('${fid}', 'HELD', null, null, 'staff:x', '2026-01-01')`, /only ExpatReady's own staff/)
     && refusedAsApp(sampleFirm, `select plat_data_request_steps('${fid}')`, /only ExpatReady's own staff/)
-    && asApp(sampleFirm, `select count(*) from plat_data_request`) === "0" && asApp(null, `select count(*) from plat_data_request_event`) === "0"
+    && refusedAsApp(sampleFirm, `select count(*) from plat_data_request`, /permission denied/) && refusedAsApp(null, `select count(*) from plat_data_request_event`, /permission denied/) && refusedAsApp(null, `set local role xr_staff_bypass; select count(*) from plat_data_request`, /permission denied/)
     && refusedAsApp(null, `insert into plat_data_request_event (id, request_id, kind, actor) values (gen_random_uuid(), '${fid}', 'NOTE', 'staff:x')`, /row-level security|permission denied/));
   ok("PF-21b DW6 fail (walls, the service): the service called inside a firm's scope is refused by the database",
     await withFirm(sampleFirm, () => svc.list(as, {})).then(() => false, (e) => /only ExpatReady's own staff/.test(String(e))));
