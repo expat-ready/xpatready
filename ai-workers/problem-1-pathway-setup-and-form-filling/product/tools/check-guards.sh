@@ -1,16 +1,32 @@
 #!/usr/bin/env bash
-# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) with ENF-761's under-cap ACTs (761c) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
+# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-758's queue blocked by checks (guard 37, 20 Nov, P-758), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), ENF-738's constraint section (guard 29, 20 Nov), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) with ENF-761's under-cap ACTs (761c) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
-#   bash product/tools/check-guards.sh [--mutate]
+#   bash product/tools/check-guards.sh [--mutate [--part i/n] [--list]]
+# --part i/n (Lead 5, 23 Nov: 363 rows no longer fit one 45-minute job): the plain tests in part 1 only, and every n-th
+# mutation row starting at row i, so parts 1..n together run each test and each row exactly once (check-guard-parts.sh);
+# guards.yml runs the parts as a matrix. --list prints what the part would run (TEST <file>, ROW <index> <guard>), runs nothing.
 set -u
+mutate=0; part=1; parts=1; list=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mutate) mutate=1; shift;;
+    --list) list=1; shift;;
+    --part) case "${2:-}" in [1-9]*/[1-9]*) part=${2%/*}; parts=${2#*/};; *) echo "check-guards: --part needs i/n with 1 <= i <= n" >&2; exit 2;; esac
+            case "$part$parts" in *[!0-9]*) echo "check-guards: --part needs i/n with 1 <= i <= n" >&2; exit 2;; esac
+            [ "$part" -le "$parts" ] || { echo "check-guards: --part $2: i is over n" >&2; exit 2; }; shift 2;;
+    *) echo "check-guards: unknown argument $1" >&2; exit 2;;
+  esac
+done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-lead-read-gate.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh"
 bad=0
-for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
+if [ "$part" = 1 ]; then
+for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
+fi
 rm -f "${TMPDIR:-/tmp}/guard-$$.log"
-[ "${1:-}" = --mutate ] || exit $bad
+[ "$mutate" = 1 ] || exit $bad
 # guard | file the edit goes in | sed edit that switches the guard off (no | or ' in it: .. stands for || and . for ') | the test that must then fail
 # Rows 36 deadlock and 36 wfname add a line with GNU sed's \n in the replacement (CI runs on ubuntu; BSD sed would not).
 MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-lead.sh
@@ -272,6 +288,109 @@ MUT="$MUT"'
 32 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$nw")))/true/|check-nightly-watch.sh
 32 parts|../../.github/workflows/nightly.yml|s/^      N: [0-9]*$/      N: 8/|check-nightly-watch.sh'
 MUT="$MUT"'
+ENF771 stop|product/tools/stop-check.sh|/resource-claim-guard.sh" 2>\/dev\/null/d|check-resource-claim-guard.sh
+ENF771 deny|product/tools/resource-claim-guard.sh|s/    if s and CLAIM.search(s) and not NEG.search(s)/    if s and CLAIM.search(s)/|check-resource-claim-guard.sh
+ENF771 near|product/tools/resource-claim-guard.sh|s/EVID.search(" ".join(sents\[max(0, i - 1):i + 2\]))/EVID.search(text)/|check-resource-claim-guard.sh'
+MUT="$MUT"'
+38 E7|product/tools/check-docs.sh|s/    if rid in stale or re.search/    if True or re.search/|check-rule-register.sh
+38 E7 suffix|product/tools/check-docs.sh|s/        if f.removeprefix("\.\/") not in have:/        if not any(x.endswith(f) for x in files):/|check-rule-register.sh
+38 E7 path|product/tools/check-docs.sh|s/^have = set(files) .*$/have = set(files)/|check-rule-register.sh
+38 E7 stale|product/tools/check-docs.sh|s/^    KNOWN_STALE=" P-690 IDX-23 "/    KNOWN_STALE=" P-1 P-690 IDX-23 "/|check-rule-register.sh
+37 E15 kind|product/tools/decision-impact.sh|s/scope.tooling)/scope.none)/|check-decision-impact.sh
+37 E15 impact|product/tools/decision-impact.sh|s/^done . grep . \&\& bad=1$/done/|check-decision-impact.sh
+37 E15 from|product/tools/decision-impact.sh|s/IMPACT_FROM=808/IMPACT_FROM=99999/|check-decision-impact.sh
+37 E15 frozen|product/tools/decision-impact.sh|s/^EXEMPT_UPTO=764;/EXEMPT_UPTO=999;/|check-decision-impact.sh
+38 hand|product/tools/lead-upkeep.py|s/    if beyond >= HAND_K:/    if False:/|check-lead-upkeep.sh
+38 warn|product/tools/lead-upkeep.py|s/    elif beyond >= WARN_K:/    elif False:/|check-lead-upkeep.sh
+38 given|product/tools/lead-upkeep.py|s/    if now is None:/    if False and now is None:/|check-lead-upkeep.sh
+38 start|product/tools/lead-upkeep.py|s/(kilo(m.group(1)), "STATE current_lead:") if m else/(None, "x") if False else/|check-lead-upkeep.sh
+38 secret|product/tools/lead-upkeep.py|s/    elif p.returncode == 3 and /    elif False and /|check-lead-upkeep.sh
+38 group|product/tools/lead-upkeep.py|s/            os.killpg(p.pid, signal.SIGKILL)/            p.kill()/|check-lead-upkeep.sh
+38 range|product/tools/lead-upkeep.py|s/    if beyond < 0:  /    if False:  /|check-lead-upkeep.sh
+38 fail|product/tools/lead-upkeep.py|s/    if p.returncode == 0:/    if True:/|check-lead-upkeep.sh
+38 notes|product/tools/lead-upkeep.py|s/    if not os.path.lexists(a.notes):/    if not os.path.isdir(a.notes):/|check-lead-upkeep.sh
+38 source|product/tools/private-sync.sh|s/^if \[ ! -d "\$NOTES" \] .*then$/if false; then/|check-lead-upkeep.sh
+38 rev-parse|product/tools/private-sync.sh|s/^if ! git rev-parse -q --verify HEAD .*then$/if false; then/|check-lead-upkeep.sh
+38 note file|product/tools/private-sync.sh|s/ -type f ! -path / -type f -path /|check-lead-upkeep.sh
+38 after copy|product/tools/private-sync.sh|s/^if \[ -z "\$(git ls-files -s -- notes\/side-session-notes\/ .*then$/if false; then/|check-lead-upkeep.sh
+38 origin|product/tools/private-sync.sh|s/^if ! same_repo .*then$/if false; then/|check-lead-upkeep.sh
+38 pull|product/tools/private-sync.sh|s/^if ! git pull -q --ff-only; then$/if ! git pull -q --ff-only \&\& false; then/|check-lead-upkeep.sh
+38 dot path|product/tools/private-sync.sh|s/ grep -v -E .(^.\/)\[.\]. / cat /|check-lead-upkeep.sh
+38 ahead|product/tools/private-sync.sh|s/ && \[ "\$ahead" = 0 \]; then$/; then/|check-lead-upkeep.sh
+38 stored|product/tools/private-sync.sh|s/git config --get remote.origin.url/git remote get-url origin/|check-lead-upkeep.sh
+38 slash|product/tools/private-sync.sh|s/local a="\${1%\/}" b="\${2%\/}"/local a="$1" b="$2"/|check-lead-upkeep.sh
+38 symlink|product/tools/private-sync.sh|s/\$1 == "100644" .. \$1 == "100755"/$1 != "160000"/|check-lead-upkeep.sh
+38 gitlink|product/tools/private-sync.sh|s/^if \[ -n "\$subs" \]; then$/if false; then/|check-lead-upkeep.sh
+38 undo|product/tools/private-sync.sh|s/^undo() { git reset -q -- notes;/undo() { git reset -q --hard HEAD;/|check-lead-upkeep.sh
+38 pushurl|product/tools/private-sync.sh|s/^  \[ -z "\$u" \] /  true /|check-lead-upkeep.sh
+38 branch|product/tools/private-sync.sh|s/"HEAD:refs\/heads\/\${up#origin\/}"/HEAD/|check-lead-upkeep.sh
+38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
+38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh
+29 machines|product/tools/flow-constraint.py|s/(mc.get("oldest_min") or 0) > BAR\["wait_min"\]/False/|check-flow-constraint.sh
+29 culprit|product/tools/flow-constraint.py|s/ if y\["open"\] and not y.get("requeued")})/ if y["open"]})/|check-flow-constraint.sh
+29 stale|product/tools/flow-constraint.py|s/ and age > BOARD_MAX_MIN else$/ and False else/|check-flow-constraint.sh
+29 board|product/tools/flow-constraint.py|s/^BOARD_MAX_MIN = int(os.environ.get("FRESH_MAX_MIN") or 10) if .* else 10 /BOARD_MAX_MIN = 45 /|check-flow-constraint.sh
+29 unread|product/tools/flow-constraint.py|s/^    if unmeasured:$/    if False:/|check-flow-constraint.sh
+29 count|product/tools/lead-watch.sh|s/; echo "\$cs"; act=\$((act + \$(grep -c .^ACT. <<<"\$cs")))/; echo "$cs"/|check-flow-constraint.sh
+761g gap|product/tools/lead-watch.sh|s/GAP_MAX:-15/GAP_MAX:-999/|check-lead-gap.sh
+761g stall|product/tools/lead-watch.sh|s/STALL_MAX:-15/STALL_MAX:-40/|check-lead-gap.sh
+761g guard|product/tools/lead-check-guard.sh|/norm "\$GAP")" \] .. exit 0$/d|check-lead-gap.sh
+37 paths|product/tools/queue-blocked.py|s/^    return bool(files) and all(any(r.search(f) for r in CHECK_ONLY) for f in files)/    return True/|check-queue-blocked.sh
+37 approve|product/tools/queue-blocked.py|s/^    return bool(re.match(.*/    return True/|check-queue-blocked.sh
+37 head|product/tools/queue-blocked.py|s/approve\[sd\]?\\s+%s\\b" % re.escape(head)/approve" % ()/|check-queue-blocked.sh
+37 trusted|product/tools/queue-blocked.py|s/c.get("author_association") not in TRUSTED or //|check-queue-blocked.sh
+37 who|product/tools/queue-blocked.py|s/ or (c.get("user") or {}).get("login") not in who:/:/|check-queue-blocked.sh
+37 source|product/tools/queue-blocked.py|s/ and main_like(r.get("head_branch"))\]/]/|check-queue-blocked.sh
+37 measured|product/tools/queue-blocked.py|s/"" if note else "main.s guards green, "/"main.s guards green, "/|check-queue-blocked.sh
+37 pages|product/tools/queue-blocked.py|s/^        if len(page) < 100 or enough(page):/        if True:/|check-queue-blocked.sh
+37 rename|product/tools/queue-blocked.py|s/, f.get("previous_filename"))/,)/|check-queue-blocked.sh
+37 running|product/tools/queue-blocked.py|s/ or any(r.get("status") != "completed" for r in mine)//|check-queue-blocked.sh
+37 batchpr|product/tools/queue-blocked.py|s/ or str((p.get("head") or {}).get("ref") or "").startswith("mergify\/")//|check-queue-blocked.sh
+37 label|product/tools/queue-blocked.py|s/^            if "review: approved" not in labels:$/            if True:/|check-queue-blocked.sh
+37 cancelled|product/tools/queue-blocked.py|s/ and r.get("conclusion") not in ("cancelled", "skipped")//|check-queue-blocked.sh
+37 window red|product/tools/queue-blocked.py|s/ and (r is last or (when(r.get("created_at")) or now) >= since)\]/ and r is last]/|check-queue-blocked.sh
+37 reviewers|product/tools/queue-blocked.py|s/^            rv = gh("api", .*/            rv = ""/|check-queue-blocked.sh
+37 cap|product/tools/queue-blocked.py|s/^    raise Unread("more than %d pages" % cap)/    return out/|check-queue-blocked.sh
+37 ci|product/tools/queue-blocked.py|s/^    return max(mine, .*/    return True/|check-queue-blocked.sh
+37 guards|product/tools/queue-blocked.py|s/^            if red:/            if False:/|check-queue-blocked.sh
+37 batch|product/tools/queue-blocked.py|s/str(r.get("head_branch") or "").startswith("mergify\/merge-queue\/") and/str(r.get("head_branch") or "").startswith("never\/") and/|check-queue-blocked.sh
+37 window|product/tools/queue-blocked.py|s/^WINDOW_H = 2 /WINDOW_H = 999 /|check-queue-blocked.sh
+37 dequeued|product/tools/queue-blocked.py|s/.get("name") == "dequeued"/.get("name") == "never"/|check-queue-blocked.sh
+37 green|product/tools/queue-blocked.py|s/^    if not why and not warn:/    if False:/|check-queue-blocked.sh
+37 unread|product/tools/queue-blocked.py|s/^    if not why and not warn:/    if not why:/|check-queue-blocked.sh
+37 draft|product/tools/queue-blocked.py|s/if p.get("draft") or /if False and p.get("draft") or /|check-queue-blocked.sh
+37 read|product/tools/queue-blocked.py|s/^        if read:$/        if True:/|check-queue-blocked.sh
+37 read who|product/tools/queue-blocked.py|s/ not in TRUSTED or not c.get("created_at"):/ is None:/|check-queue-blocked.sh
+37 read edited|product/tools/queue-blocked.py|s/^        if (c.get("created_at") if u is None else u) != c.get("created_at"):/        if False:/|check-queue-blocked.sh
+37 read head|product/tools/queue-blocked.py|s/^            if m and m.group(1).lower() == head.lower():$/            if m:/|check-queue-blocked.sh
+37 read drop|product/tools/queue-blocked.py|s/^        for d in DROP:$/        for d in []:/|check-queue-blocked.sh
+37 read code|product/tools/queue-blocked.py|s/^            if line.startswith("    ") or line.startswith(.\\t.):$/            if False:/|check-queue-blocked.sh
+37 read blank|product/tools/queue-blocked.py|s/^LEAD_READ = re.compile(r"^\[ \\t\\v\\f\]\*lead read/LEAD_READ = re.compile(r"^[\\s\\xa0]*lead read/|check-queue-blocked.sh
+37 read leads|product/tools/queue-blocked.py|s/^        if leads and (login not in leads or login == asc(str(author or ""))):$/        if False:/|check-queue-blocked.sh
+37 read unread|product/tools/queue-blocked.py|s/^                ll = None$/                ll = ""; continue/|check-queue-blocked.sh
+37 read org|product/tools/queue-blocked.py|s/^                    continue$/                    break/|check-queue-blocked.sh
+37 read nul|product/tools/queue-blocked.py|s/^    if any("\\x00" in b for b in counted):/    if False:/|check-queue-blocked.sh
+37 read ascii|product/tools/queue-blocked.py|s/^    return re.sub(r"\[A-Z\]", lambda m: m.group().lower(), x)$/    return x.lower()/|check-queue-blocked.sh
+37 read empty|product/tools/queue-blocked.py|s/os.environ.get("QB_LEAD_LOGINS")/os.environ.get("LEAD_LOGINS")/|check-queue-blocked.sh
+37 read asciire|product/tools/queue-blocked.py|s/, re.I . re.A)   # grep/, re.I)   # grep/|check-queue-blocked.sh
+37 read split|product/tools/queue-blocked.py|s/\[^\\S\\x1c-\\x1f\]/\\s/|check-queue-blocked.sh
+37 read 404|product/tools/queue-blocked.py|s/^                if e.notfound:$/                if True:/|check-queue-blocked.sh
+37 read 404 text|product/tools/queue-blocked.py|s/returned error: 404\\b/never/|check-queue-blocked.sh
+37 count|product/tools/lead-watch.sh|s/; seen "\$qb"; act=\$((act + \$(grep -c .^ACT. <<<"\$qb")))/; seen "$qb"/|check-queue-blocked.sh
+39 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
+39 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh
+39 board|product/tools/owed-watch.py|s/            raise ValueError("no backlog.by_lane")/            by = {}/|check-owed-watch.sh
+39 done|product/tools/owed-watch.py|s/ and not DONE.search(c):/:/|check-owed-watch.sh
+39 head|product/tools/owed-watch.py|s/^        if h:  /        if False:  /|check-owed-watch.sh
+39 state|product/tools/owed-watch.py|s/^        print(f"ACT   starts owed not measured/        return; print(f"ACT   starts owed not measured/|check-owed-watch.sh
+39 watch|product/tools/lead-watch.sh|s/echo "\$lr"; act=\$((act + \$(grep -c .^ACT. <<<"\$lr")))/echo "$lr"/|check-owed-watch.sh
+39 watch2|product/tools/lead-watch.sh|s/echo "\$so"; act=\$((act + \$(grep -c .^ACT. <<<"\$so")))/echo "$so"/|check-owed-watch.sh
+37 count|product/tools/queue-batches.py|s/ or any(r.get("status") != "completed" for r in runs\["check_runs"\]):/:/|check-lead-merge.sh
+37 refuse|product/tools/lead-merge.sh|s/^if \[ "\$n" != 0 \] \&\& \[ -z "\$blank" \]; then$/if false; then/|check-lead-merge.sh
+37 page|product/tools/queue-batches.py|s/ > len(runs\["check_runs"\]):   # one page only/ < 0:   # one page only/|check-lead-merge.sh
+37 unread|product/tools/queue-batches.py|s/^        return 3$/        return 0/|check-lead-merge.sh
+37 watch|product/tools/lead-watch.sh|s/; say "\$qb"$//|check-lead-merge.sh'
+MUT="$MUT"'
 LRG access|product/tools/lead-read-gate.sh|s/ or any(.\[\]; test(\$access)) or / or false or /|check-lead-read-gate.sh
 LRG route|product/tools/lead-read-gate.sh|s/(\$w and any(.\[\]; test(\$route)))))/($w and false)))/|check-lead-read-gate.sh
 LRG hunk|product/tools/lead-read-gate.sh|s/else .\[-1\] += \[\$l\] end/else .[-1] += [ if $l[0:1] == " " then empty else $l end ] end/|check-lead-read-gate.sh
@@ -286,8 +405,21 @@ LRG block|product/tools/lead-read-gate.sh|s/if \[ "\$MODE" = block \]; then s=fa
 LRG closed|product/tools/lead-read-gate.sh|s/^    \*) echo "#\$PR: \$why"; \[ -n "\$head" \] .. return 2; s=failure;/    *) s=success;/|check-lead-read-gate.sh
 LRG list|product/tools/lead-read-paths.txt|/^\/api\/src\/platform\/identity\/$/d|check-lead-read-gate.sh
 LRG main|../../.github/workflows/lead-read.yml|s/^  pull_request_target:$/  pull_request:/|check-lead-read-gate.sh'
-echo "--- each test without its guard (must FAIL)"
+MUT="$MUT"'
+40 parts round|product/tools/check-guards.sh|s/\$((part - 1)) \] .. continue$/$((part - 1)) ] \&\& true/|check-guard-parts.sh
+40 parts tests|product/tools/check-guards.sh|s/^if \[ "\$part" = 1 \]; then$/if true; then/|check-guard-parts.sh
+40 parts refuse|product/tools/check-guards.sh|s/\[ "\$part" -le "\$parts" \] .. {/false \&\& {/|check-guard-parts.sh
+40 parts matrix|../../.github/workflows/guards.yml|s/^        part: \[1, 2, 3, 4\]$/        part: [1, 2, 3]/|check-guard-parts.sh
+40 parts always|../../.github/workflows/guards.yml|s/always() \&\& //|check-guard-parts.sh
+40 parts result|../../.github/workflows/guards.yml|s/\[ "\$PARTS" = success \]/[ -n "$PARTS" ]/|check-guard-parts.sh
+37 merge read|product/tools/lead-merge.sh|s/; then post "Lead read the diff: <head sha>" (P-423)//|check-lead-merge.sh
+37 merge product|product/tools/lead-merge.sh|s/; a product PR is never merged by hand: it goes through the queue//|check-lead-merge.sh
+37 merge order|product/tools/lead-merge.sh|s/  3\. only after step 1.s "Lead read the diff: <head sha>" line is on that exact head, and only for a tooling or records PR: /  3. /|check-lead-merge.sh'
+[ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
+k=-1
 while IFS='|' read -r g f edit t; do
+  k=$((k + 1)); [ $((k % parts)) = $((part - 1)) ] || continue
+  [ "$list" = 1 ] && { echo "ROW $k $g"; continue; }
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
   cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; mkdir -p "$M/$P/product/design"; cp "$ROOTD/$P/product/design/waves.tsv" "$ROOTD/$P/product/design/waves.md" "$M/$P/product/design/"; cp "$ROOTD/$P/product/focus-list.md" "$M/$P/product/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"
