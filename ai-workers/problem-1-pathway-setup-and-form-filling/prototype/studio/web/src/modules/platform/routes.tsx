@@ -19,6 +19,7 @@ import { BrandingPage } from "./branding/branding-page";
 import { FirmProfilePage } from "./settings/firm-profile-page";
 import { SupportPage, SupportTicketPage } from "./settings/support-page";
 import { NotificationsPage } from "./settings/notifications-page";
+import { AllNotificationsPage } from "./notifications/all-page";
 import { ActivityLogPage } from "./audit/activity-log-page";
 
 export const routes: ModuleRoute[] = [
@@ -41,6 +42,7 @@ export const routes: ModuleRoute[] = [
   { path: "/platform/firm-profile", element: <FirmProfilePage /> },   // PF-5s S5: Firm profile (R1.92)
   { path: "/platform/support", element: <SupportPage /> },   // PF-18s part 2: Help & support
   { path: "/platform/support/:id", element: <SupportTicketPage /> },   // PF-18s part 2: one ticket
-  { path: "/account/notifications", element: <NotificationsPage /> },   // PF-18s part 3: My account → Notifications (everyone's own)
+  { path: "/account/notifications", element: <NotificationsPage /> },
+  { path: "/account/notifications/all", element: <AllNotificationsPage /> },   // PF-18ns: My account → Notifications → All   // PF-18s part 3: My account → Notifications (everyone's own)
   { path: "/platform/activity-log", element: <ActivityLogPage /> },   // AUD-4s: the firm's Activity log (agent/audit:read)
 ];
