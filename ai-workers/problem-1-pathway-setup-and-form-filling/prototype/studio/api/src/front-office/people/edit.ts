@@ -15,7 +15,8 @@ import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { z } from "zod";
 import { idParam, parseInput, strict } from "../../platform/http/input.ts";
-import { PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
+import { PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
+import { Versioned } from "../../platform/http/if-match.ts";
 import { phoneE164Exact } from "../duplicates/phone.ts";
 import { actorOf, notFound, sees, text, unprocessable, UUID, visibilityOf, type Tx } from "../sales/common.ts";
 import { SALES_PORTS, type SalesPorts } from "../sales/public.ts";
@@ -42,7 +43,7 @@ export class PeopleEdit {
   /** `{ phone }` only: refused before any read, so a refusal never says whether the person exists. */
   private phoneOf(b: unknown): string {
     if (!b || typeof b !== "object" || Array.isArray(b)) return unprocessable("Send the phone number.", { phone: PHONE_REQUIRED });
-    const other = Object.keys(b).filter((k) => k !== "phone");
+    const other = Object.keys(b).filter((k) => k !== "phone" && k !== "version");   // PF-31: the version read, optional
     if (other.length) return unprocessable("Only the phone number can be changed here.", Object.fromEntries(other.slice(0, 10).map((k) => [k.slice(0, 40), "Only the phone number can be changed here."])));
     const v = (b as { phone?: unknown }).phone;
     if (v === undefined || v === null || (typeof v === "string" && !v.trim())) return unprocessable(`Phone: ${PHONE_REQUIRED}`, { phone: PHONE_REQUIRED });
@@ -56,28 +57,32 @@ export class PeopleEdit {
   async editPhone(ctx: StaffContext, personId: string, b: unknown) {
     if (typeof personId !== "string" || !UUID.test(personId)) return notFound("person");
     const phone = this.phoneOf(b), id = personId.toLowerCase();
+    // PF-31: a screen names the version it read (body or If-Match); a stale one is 409 with the latest number, nothing written.
+    const version = (b as { version?: unknown }).version;
+    if (version !== undefined && (typeof version !== "string" || version.length > 100)) return unprocessable("version: the person's version as read.", { version: "The person's version as read." });
     return this.db.$transaction(async (tx) => {
-      const [p] = await tx.$queryRaw<{ id: string; phone: string | null; readable: boolean }[]>`select id::text, phone, phone_readable as readable from fo_person where firm_id = ${firmScope(ctx.firmId).firmId}::uuid and id = ${id}::uuid for update`;
+      const [p] = await tx.$queryRaw<{ id: string; phone: string | null; readable: boolean; updated_at: Date }[]>`select id::text, phone, phone_readable as readable, updated_at from fo_person where firm_id = ${firmScope(ctx.firmId).firmId}::uuid and id = ${id}::uuid for update`;
       if (!p || !(await this.seen(tx, ctx, id))) return notFound("person");
+      if (version !== undefined && version !== p.updated_at.toISOString()) return problem(409, "Changed since you opened it", "Someone changed this person's details since you opened them.", { code: "STALE", current: { phone: p.phone, fixNumber: !p.readable, version: p.updated_at.toISOString() } });
       // The same number again changes nothing: no write, no audit line (breaker F4).
-      if (p.phone === phone && p.readable) return { personId: p.id, phone, fixNumber: false };
-      const after = await tx.foPerson.update({ where: { id }, data: { phone, phoneReadable: true }, select: { id: true, phone: true, phoneReadable: true } });
+      if (p.phone === phone && p.readable) return { personId: p.id, phone, fixNumber: false, version: p.updated_at.toISOString() };
+      const after = await tx.foPerson.update({ where: { id }, data: { phone, phoneReadable: true }, select: { id: true, phone: true, phoneReadable: true, updatedAt: true } });
       await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: PHONE_EDIT_ACTION, entity: "fo_person", entityKey: id,
         summary: `Staff ${ctx.staffId} changed the phone number of person ${id}.`, detail: { foPersonId: id, staffId: ctx.staffId },
         before: { phone: p.phone, phoneReadable: p.readable }, after: { phone: after.phone, phoneReadable: after.phoneReadable } });
-      return { personId: after.id, phone: after.phone, fixNumber: !after.phoneReadable };
+      return { personId: after.id, phone: after.phone, fixNumber: !after.phoneReadable, version: after.updatedAt.toISOString() };
     });
   }
 }
 
 /** PF-28 part 3b (R1.10): `{ phone }` only, through a strict schema (an unknown field 422, named). The phone itself is
  *  left to phoneOf, so any value that is not a readable number gets the field's one sentence (breaker F7). */
-const PHONE = strict({ phone: z.unknown().optional() });
+const PHONE = strict({ phone: z.unknown().optional(), version: z.string().max(100).optional() });
 
 @Controller("api/front-office")
 export class PeopleEditController {
   constructor(@Inject(PeopleEdit) private readonly people: PeopleEdit) {}
 
-  @Patch("people/:personId") @PermissionKeys("agent/prospect:edit")
+  @Patch("people/:personId") @PermissionKeys("agent/prospect:edit") @Versioned()   // PF-31: the version as If-Match too
   edit(@Req() r: { platform?: StaffContext }, @Param("personId") personId: string, @Body() b: unknown) { return this.people.editPhone(staffOf(r), idParam(personId, "person"), parseInput(PHONE, b ?? {})); }   // the id first (404), then the body
 }
