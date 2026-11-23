@@ -37,21 +37,22 @@ mk() { printf '#!/bin/bash\n%s\n' "$2" > "$T/$1"; chmod +x "$T/$1"; }
 mk ok.sh 'echo "private-sync: pushed abc1234 (443 files)"'; mk same.sh 'echo "private-sync: nothing new"'
 mk sec.sh 'echo "private-sync: refused, a file looks like it holds a real secret:" >&2; echo notes/x.md >&2; exit 3'
 mk bad.sh 'echo "fatal: could not read from remote" >&2; exit 128'; mk slow.sh 'sleep 5; echo late'
-out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/ok.sh"); r=$?
+out=$(env -u PRIVATE_SYNC $U sync --notes "$T" --cmd "bash $T/ok.sh"); r=$?
 ok "pushed: one line, no ACT, exit 0" "$([ $r = 0 ] && [ "$(acts "$out")" = 0 ] && grep -q '^private sync pushed abc1234 (443 files) (P-678)' <<<"$out" && echo 1)" "$out"
-out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/same.sh"); ok "nothing new: one line, no ACT" "$([ "$(acts "$out")" = 0 ] && grep -q 'private sync nothing new' <<<"$out" && echo 1)" "$out"
-out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/sec.sh"); ok "exit 3 (a note looks like a real secret): ACT refused, the file named" "$([ "$(acts "$out")" = 1 ] && grep -q '^ACT   private sync refused' <<<"$out" && grep -q 'notes/x.md' <<<"$out" && echo 1)" "$out"
-out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/bad.sh"); ok "any other failure: ACT with the exit code and the error" "$([ "$(acts "$out")" = 1 ] && grep -q '^ACT   private sync failed (exit 128): fatal: could not read from remote' <<<"$out" && echo 1)" "$out"
-out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/slow.sh" --timeout 1); ok "over the time bound: ACT, the check goes on" "$([ "$(acts "$out")" = 1 ] && grep -q 'did not finish in 1 s' <<<"$out" && echo 1)" "$out"
-out=$(env -u PRIVATE_SYNC $U sync --cmd "$T/nothing-here.sh"); ok "the command cannot start: ACT, no traceback" "$([ "$(acts "$out")" = 1 ] && ! grep -q Traceback <<<"$out" && echo 1)" "$out"
+out=$(env -u PRIVATE_SYNC $U sync --notes "$T" --cmd "bash $T/same.sh"); ok "nothing new: one line, no ACT" "$([ "$(acts "$out")" = 0 ] && grep -q 'private sync nothing new' <<<"$out" && echo 1)" "$out"
+out=$(env -u PRIVATE_SYNC $U sync --notes "$T" --cmd "bash $T/sec.sh"); ok "exit 3 (a note looks like a real secret): ACT refused, the file named" "$([ "$(acts "$out")" = 1 ] && grep -q '^ACT   private sync refused' <<<"$out" && grep -q 'notes/x.md' <<<"$out" && echo 1)" "$out"
+out=$(env -u PRIVATE_SYNC $U sync --notes "$T" --cmd "bash $T/bad.sh"); ok "any other failure: ACT with the exit code and the error" "$([ "$(acts "$out")" = 1 ] && grep -q '^ACT   private sync failed (exit 128): fatal: could not read from remote' <<<"$out" && echo 1)" "$out"
+out=$(env -u PRIVATE_SYNC $U sync --notes "$T" --cmd "bash $T/slow.sh" --timeout 1); ok "over the time bound: ACT, the check goes on" "$([ "$(acts "$out")" = 1 ] && grep -q 'did not finish in 1 s' <<<"$out" && echo 1)" "$out"
+out=$(env -u PRIVATE_SYNC $U sync --notes "$T" --cmd "$T/nothing-here.sh"); ok "the command cannot start: ACT, no traceback" "$([ "$(acts "$out")" = 1 ] && ! grep -q Traceback <<<"$out" && echo 1)" "$out"
 mk r3.sh 'echo "rsync error: some files could not be transferred (code 3)" >&2; exit 3'
-out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/r3.sh"); ok "exit 3 without the refusal text (rsync's own 3) is a failure, not a secret" "$(grep -q '^ACT   private sync failed (exit 3)' <<<"$out" && echo 1)" "$out"
+out=$(env -u PRIVATE_SYNC $U sync --notes "$T" --cmd "bash $T/r3.sh"); ok "exit 3 without the refusal text (rsync's own 3) is a failure, not a secret" "$(grep -q '^ACT   private sync failed (exit 3)' <<<"$out" && echo 1)" "$out"
 mk kid.sh "bash -c 'sleep 3; touch $T/survived' & wait"
-out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/kid.sh" --timeout 1); sleep 3
+out=$(env -u PRIVATE_SYNC $U sync --notes "$T" --cmd "bash $T/kid.sh" --timeout 1); sleep 3
 ok "a timeout stops the whole group: a grandchild (git, rsync) does not keep running" "$(grep -q 'did not finish in 1 s (stopped' <<<"$out" && [ ! -e "$T/survived" ] && echo 1)" "$out; survived: $(ls "$T/survived" 2>/dev/null)"
 mk ask.sh 'read -r x || true; echo "GIT_TERMINAL_PROMPT=$GIT_TERMINAL_PROMPT stdin=${x:-empty}"'
-out=$(echo typed | env -u PRIVATE_SYNC $U sync --cmd "bash $T/ask.sh"); ok "no stdin and no git credential prompt for the sync" "$(grep -q 'GIT_TERMINAL_PROMPT=0 stdin=empty' <<<"$out" && echo 1)" "$out"
-out=$(PRIVATE_SYNC=0 $U sync --cmd "bash $T/bad.sh"); ok "PRIVATE_SYNC=0 skips it and says so" "$([ "$(acts "$out")" = 0 ] && grep -q 'skipped (PRIVATE_SYNC=0)' <<<"$out" && echo 1)" "$out"
+out=$(echo typed | env -u PRIVATE_SYNC $U sync --notes "$T" --cmd "bash $T/ask.sh"); ok "no stdin and no git credential prompt for the sync" "$(grep -q 'GIT_TERMINAL_PROMPT=0 stdin=empty' <<<"$out" && echo 1)" "$out"
+out=$(PRIVATE_SYNC=0 $U sync --notes "$T" --cmd "bash $T/bad.sh"); ok "PRIVATE_SYNC=0 skips it and says so" "$([ "$(acts "$out")" = 0 ] && grep -q 'skipped (PRIVATE_SYNC=0)' <<<"$out" && echo 1)" "$out"
+out=$(env -u PRIVATE_SYNC $U sync --notes "$T/no-such-folder" --cmd "bash $T/bad.sh"); ok "no side-notes folder (a cloud copy): skips quietly, no ACT, the sync is not run (Lead 9, 21 Nov)" "$([ "$(acts "$out")" = 0 ] && grep -q 'skipped: no side-notes folder' <<<"$out" && echo 1)" "$out"
 ok "the default command is this folder's private-sync.sh" "$(grep -q 'os.path.join(here, "private-sync.sh")' "$TOOLS/lead-upkeep.py" && echo 1)"
 
 # --- wiring in lead-watch.sh
