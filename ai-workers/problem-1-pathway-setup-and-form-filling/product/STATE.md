@@ -26,13 +26,8 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A308 | 23 Nov 12:57 (typed) | pasted a Google AI answer (one 32-core server ₹12-22k/month, or AWS spot ₹2-8k/month, for 100 pipelines) and asks why answers differ | answered in chat by Lead 3: its sums fit its assumed small load, not our measured one |
 | A300 | 23 Nov 12:0x | operating system first in the queue until complete; Lead O; in full: `history/STATE-2026-11-23-1305-lead3-asks-A297-A300.md` |
 | A301-A305 | 23 Nov 12:0x-12:3x | private impossible at US$100 (A304): nothing bought; open with him: stay public, combined PR, close #2372; in full: `history/STATE-2026-11-23-1236-lead2-asks-A301-A305.md` |
-| A298-A299 | 23 Nov 11:37-11:45 | going private research, tooling first, AWS signed in, R1.5 cards pressed, money approved; in full: `history/STATE-2026-11-23-1155-lead1-block-and-asks.md` |
+| A283-A299 (not A297) | 22-23 Nov | rows word for word in `history/STATE-2026-11-23-1310-lead3-asks-A283-A299.md` |
 | A297 | 23 Nov 10:5x | tooling first as a one-time exception; in full: same file |
-| A292-A296 | 23 Nov | word for word in `history/STATE-2026-11-23-1131-lead1-before-new-account-block.md` |
-| A291 | 23 Nov 10:0x | word for word in `history/STATE-2026-11-23-1035-lead10-A291-and-1021-check.md` |
-| A289-A290 | 23 Nov 01:4x-02:0x | word for word in `history/STATE-2026-11-23-1015-lead10-founder-asks-A289-A290.md` |
-| A287-A288 | 22 Nov 14:4x-14:5x | word for word in `history/STATE-2026-11-23-0007-lead8-founder-asks-A287-A288.md` |
-| A283-A286 | 22 Nov 11:0x-14:2x | word for word in `history/STATE-2026-11-22-1500-lead4-founder-asks-A283-A286.md` |
 | A242-A282 | 21-22 Nov (A279 parts: `product/design/A279-parts-2026-11-22.md`) | word for word in `product/history/STATE-2026-11-22-1027-lead21s3-founder-asks-A272-A276.md` | |
 
 ## Start here (next Lead)
