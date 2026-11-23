@@ -16,6 +16,16 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 **Notes carried:** PF-11's brief must say the export archive may outgrow the 25 MB FilesPort cap (from #3165). A rare invoice status in a very large firm reads every candidate's facts (FO-7q limit; a stored status column later).
 **Method:** list open PRs with the gh auth token and compare head SHAs with the last pass; read moved heads with the compare API; post via a JSON body file. Commit board records with a temporary `GIT_INDEX_FILE` (never check out `lead-b/*` in a sandboxed worktree: `.claude/skills` is read-only). In zsh write `"${r}:path"`, not `"$r:path"`.
 
+**Lead B 3 pass, 11:5x IST 23 Nov** (took over from Lead B 2; current Lead: Lead 1, local_a085acf2; passes at :17 and :47). The six reads owed at the hand-over are posted:
+* #3197 FO-7q part 2: OK 3f4d72bd3. #3190 FO-7g part 3 follow-up: OK f755aae17 (walk j_56 red, W1 and W9 by the lane's word; not re-run here).
+* #3033 FO-7t part 1: head still 0f1acb674, OK stands. Red: `check-port-contracts` (TrustDocuments runs no contract) and pr-rules (Completes line).
+* #3189 PF-21b part 3: OK c62d4bcb3; the Lead's own read of the seed row is still owed (P-601 (1)).
+* #3174 FO-9b part 2: OK 9db9ca2d0 (code read at 15d40b474); reviewer round 3 allowed by Lead 1, diff-only re-read if code moves.
+* #3065 FO-6 part 3: OK 7d7979437; its full run 45115724477 is red on check_fo3st3_types_browser J-T3 ("No host hours", date-driven, not in the PR's paths; cause unproven).
+* **Stamp clash:** #3033 and #3174 both carry 20261123030000; #3189 is 20261123100000. Whichever merges later re-stamps past main's newest.
+* **Rows to write (not yet on main):** PF-21b part 3r (a read key on the register's two GETs for the Owner and the Auditor, SA-11 v2.16 lines 88 and 243; never dsr-manage for the Auditor); FO-9b part 2m (money writers refuse a merged-away party, then re-point money in the merge; **before part 2b** turns the automatic merge on).
+* **To check:** the refund and extra routes on main (FO-7b part 1c) take any payment of the firm by id with no MoneyVisibility scope, unlike FO-7t's writes and FO-7q's reads (seen by grep, no test run); same for GET tax-default by invoiceId (#3190, province only).
+
 **Lead B 2 pass, 10:5x IST 23 Nov:** **records PR #3175 merged** (rows FO-7q part 2, FO-9b part 2b, FO-7t part 1p on main). #3033 C5 fix re-read OK 0f1acb674. #3155 PF-17 part 1 permissions read OK cd306cb67. #3065 404-before-body fix, no money read. Drafts: #3174 FO-9b part 2, #3189 PF-21b part 3 (migration), #3190 FO-7g part 3 follow-up. qa journeys #3043-#3045 queued.
 
 **Lead B 2 pass, 10:3x IST 23 Nov:** **#3165 PF-Fw merged.** Records PR #3175 (Lead 10, my 7732294b5: rows FO-7q part 2, FO-9b part 2b, FO-7t part 1p) queued. #3033 FO-7t part 1 money read at 0738e3818: OK with one fix (C5 on writes with no caseId: party must be in scope, else 404) plus the CS-W3 census line. #3174 FO-9b part 2, #3155 PF-17 part 1 drafts. #3065 full run.
