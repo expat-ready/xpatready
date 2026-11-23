@@ -113,7 +113,7 @@ export async function listedPair(db: PrismaClient, firmId: string, pairId: strin
  *  the survivor's pairs name that merge, so its Undo takes the ones it wrote off the list (pair-model.md §1). Nothing
  *  here waits on a pair row: an insert that meets one does nothing, and a pair to note again is skipped while another
  *  action holds it (pair-model.md §2). */
-export async function notePairs(tx: Tx, firmId: string, personId: string, addedAsNew: { by: string } | null = null, mergeRef: string | null = null): Promise<string[]> {
+export async function notePairs(tx: Tx, firmId: string, personId: string, addedAsNew: { by: string } | null = null, mergeRef: string | null = null, fromUndo = false): Promise<string[]> {
   const found = await wonDuplicates(tx, firmId, { subject: "PERSON", personId });
   const ids: string[] = [];
   for (const m of found.matches) {
@@ -124,6 +124,9 @@ export async function notePairs(tx: Tx, firmId: string, personId: string, addedA
               ${addedAsNew ? "KEPT_SEPARATE" : "OPEN"}::"FoDupReviewStatus", ${addedAsNew?.by ?? null}, ${addedAsNew ? new Date() : null}, ${mergeRef}::uuid)
       on conflict ("firm_id", "low_id", "high_id") do nothing returning "id"::text as id`;
     if (row) { ids.push(row.id); continue; }
+    // An Undo's loser only gets back the values it had before that merge, so it brings no new reason for a pair that
+    // already has a row: it neither notes it again nor clears its noter (I2).
+    if (fromUndo) continue;
     // A pair an undone merge wrote is found again: it is listed again, now naming this merge (or this arrival).
     await tx.$executeRaw`update "fo_dup_review" set "noted_by_merge_id" = ${mergeRef}::uuid where "id" in (
         select r."id" from "fo_dup_review" r join "fo_dup_merge" um on um."id" = r."noted_by_merge_id" and um."undone_at" is not null
@@ -386,7 +389,7 @@ export class DuplicateReview {
         // Kept separate decision blocked only through the merged record is To review again. Nothing else is withdrawn: a
         // pair written while the merge stood stays listed even if it no longer matches (pair-model.md §1, Lead 8 on #3174:
         // a valid pair is never hidden). The loser's pairs are written, so someone who arrived meanwhile meets it too.
-        await notePairs(tx, ctx.firmId, m.loserId);
+        await notePairs(tx, ctx.firmId, m.loserId, null, null, true);
         return out;
       });
     } catch (e) { return asRefusal(e); }
