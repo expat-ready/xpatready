@@ -2,7 +2,7 @@
 
 current_lead: local_c598a0e1-126f-4370-9065-ea0f229121ee Lead 16 · 24 Nov 04:26 IST (after Lead 15; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 04:38 IST: Lead 16, check 41b05d46. #3207 labelled 04:36 (full run green on re-run; cause of shard 3's first red unknown). #3040 1e3ddde1e: Approve, both reads OK, full run 45285176414; label after #3207. #3321 fecba9e81: body fixed; pr-rules red only on size 809: GitHub's file list still counts merged #3306 (true code 439 by git diff); the base toggle to refresh it was refused by the classifier: not worked around, founder's to allow. #3203: gate labels on green 45283867810.
+updated: 2026-11-24 04:38 IST: Lead 16, check 41b05d46. #3207 labelled 04:36 (full run green on re-run; cause of shard 3's first red unknown). #3040 1e3ddde1e: Approve, both reads OK, full run 45285176414; label after #3207. #3321 fecba9e81: body fixed; pr-rules red only on size 809: GitHub's file list still counts merged #3306 (true code 439 by git diff); the base toggle to refresh it was refused by the classifier: founder to allow. #3203: gate labels on green 45283867810.
 
 ## Hand-over Lead 15 → Lead 16, 04:26 IST 24 Nov (before: `history/STATE-2026-11-24-lead15-before-handover.md`; earlier, still owed: `…-lead14-before-handover.md`, `…-lead13-A338-row.md`)
 
