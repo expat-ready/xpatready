@@ -169,6 +169,23 @@ put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read th
 printf '%s\n' 'echo "$*" >> "$D/log"; case "$*" in *LEAD_LOGINS*) echo "HTTP 403: Resource not accessible" >&2; exit 1;; esac; f="$D/$(printf %s "$*" | tr -c A-Za-z0-9 _)"; [ -f "$f" ] && cat "$f" || { echo "HTTP 404: no fake answer for $*" >&2; exit 1; }' > "$T/gh403"
 : > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh403" REVIEWERS= python3 -I "$Q" --repo $R --now $NOW 2>&1)
 ok "LEAD_LOGINS unreadable (not a 404): a warn line and no merge offered, even with a read (fails safe)" "$(grep -q '^warn  queue blocked by checks: LEAD_LOGINS unreadable' <<< "$out" && grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+# Breaker round 2 (23 Nov): LEAD_LOGINS may be an organization variable (lead-read.yml reads vars.LEAD_LOGINS); a NUL in
+# a counted comment makes the gate's grep see binary (HOLD); an empty updated_at is not "never edited" (jq //); logins
+# fold ASCII only; an empty LEAD_LOGINS in the shell does not override the variables.
+put "repos/$R/pulls?state=open&per_page=100" '[{"number":10,"title":"Hold the clock test until 06:00 IST","draft":false,"head":{"sha":"'$H'","ref":"fix/test-hold"},"labels":[{"name":"review: approved"}]}]'
+put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read the diff: $H")]"
+printf '%s\n' 'lead-only' > "$D/$(printf '%s' "api orgs/o/actions/variables/LEAD_LOGINS -q .value" | tr -c 'A-Za-z0-9' _)"
+out=$(run); ok "LEAD_LOGINS set only for the organization (repository variable 404): read from the organization, so a read by another writer offers no merge" "$(grep -qxF "$ACT10" <<< "$out" && grep -q 'orgs/o/actions/variables/LEAD_LOGINS' "$D/log" && echo 1)" "$out"
+: > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh" REVIEWERS= LEAD_LOGINS= python3 -I "$Q" --repo $R --now $NOW 2>&1)
+ok "an empty LEAD_LOGINS in the shell does not override the variables" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+rm -f "$D/$(printf '%s' "api orgs/o/actions/variables/LEAD_LOGINS -q .value" | tr -c 'A-Za-z0-9' _)"
+put "repos/$R/issues/10/comments?per_page=100&page=1" "[$(LR OWNER "Lead read the diff: $H"),$(LR OWNER 'note\u0000')]"; out=$(run)
+ok "a NUL in another counted comment (the gate's grep reads binary, HOLD): no merge offered" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+put "repos/$R/issues/10/comments?per_page=100&page=1" '[{"author_association":"OWNER","user":{"login":"o"},"created_at":"2026-11-20T07:20:00Z","updated_at":"","body":"Lead read the diff: '$H'"}]'; out=$(run)
+ok "an empty updated_at is not 'never edited' (as jq's // reads it): no merge offered" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+put "repos/$R/issues/10/comments?per_page=100&page=1" '[{"author_association":"OWNER","user":{"login":"Ka"},"created_at":"2026-11-20T07:20:00Z","updated_at":"2026-11-20T07:20:00Z","body":"Lead read the diff: '$H'"}]'
+: > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh" REVIEWERS= LEAD_LOGINS="$(printf '\342\204\252a')" python3 -I "$Q" --repo $R --now $NOW 2>&1)
+ok "logins fold ASCII only (a Kelvin sign is not K, as jq's ascii_downcase): no merge offered" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
 ok "no line in queue-blocked.py offers a browser merge outside the read branch" "$(python3 -I - "$Q" <<'PY' && echo 1
 import sys,re
 src=open(sys.argv[1]).read().splitlines()
