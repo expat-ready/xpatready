@@ -18,7 +18,7 @@ Baseline before the merges: j_92 gave 19/20 on afe9727ee. The only FAIL was W6's
 * **W6 (licence number):** the College's pattern is "R and 6 numbers", cited from college-ic.ca with page, quote and date. A number that does not match is saved and warned on the field, never refused, on both My account → Licence and the Owner's Licences panel. The field is not marked invalid, and axe is clean in the warning state. A corrected number saves with no false conflict, and the panel closes.
 * **W7 (sizes and keyboard):** no WCAG violation at 400, 1024 and 1440 px, keyboard-only save works, and there are no page errors.
 * **GitHub run caveat (reader):** item-proof ran on 4ff0fbf67, two merges before the head. Those two merges, #3216 (web address) and #3180 (case documents), touch no office, zone, licence or profile code (`git diff 4ff0fbf67 d9954de6e`). A walks run of j_92 on the head is asked of the tech lead; its run id replaces this one when it lands.
-* **Limits:** only the College publishes a pattern, so law-society numbers are never warned. W4's Vancouver zone check is weak, but W3 checks the zone exactly. Deadlines and bookings in an office's zone were not walked. Evidence: `2026-11-24-after-merge-trackA5/R1.92/` (logs, 11 screenshots).
+* **Limits:** only the College publishes a pattern, so law-society numbers are never warned. W4's Vancouver zone check is weak, but W3 checks the zone exactly. Deadlines and bookings in an office's zone were not walked. Evidence: 11 screenshots in `2026-11-24-after-merge-trackA5/R1.92/`. The run logs are not committed (`*.log` is gitignored); their last lines are: run 1 "24/24 passed", exit 0; run 2 "24/24 passed", exit 0.
 
 ## R1.70: Partial (every part merged)
 * **What holds** in the 29-step walk:
@@ -33,7 +33,7 @@ Baseline before the merges: j_92 gave 19/20 on afe9727ee. The only FAIL was W6's
   * If the tech lead rules "the notarisation flag shows in the dialog only", qa retires the step, and the row is Works on 45256754488 plus a green j_70.
   * If the ruling is "the checklist warns", a small CS-D7 follow-up is needed first.
 * **After #3218 merges,** item-proof for R1.70 runs the 29-step walk, which stays red on the QA-758 step until that ruling.
-* **Limits:** not tested with the type's notarisation default set to REQUIRED (the fixture uses NOT_REQUIRED). How readiness treats notarisation was not checked. Evidence: `2026-11-24-after-merge-trackA5/R1.70/`.
+* **Limits:** not tested with the type's notarisation default set to REQUIRED (the fixture uses NOT_REQUIRED). How readiness treats notarisation was not checked. Evidence: 10 screenshots in `2026-11-24-after-merge-trackA5/R1.70/`. The run logs are not committed (`*.log` is gitignored); each run ends "28/29 passed", exit 1, and the only FAIL line in both is "FAIL  QA-758 (Ambiguity: CS-D7 reads only translation and expiry) W4: notarisation Required and not provided shows on the passport's checklist line (a warning or a line naming notarisation); nothing is blocked".
 
 ## #3218
 #3180 merged first, so `j_70.ts` conflicted add/add again. qa merged main into #3218 at **7298f7eb7**, keeping #3218's 29-step walk. A fresh reviewer approved that merge (comment on #3218).
