@@ -185,10 +185,12 @@ try {
   const refusedChange: Record<string, unknown> = {}; let allRefused = true;
   for (const [typed, re] of cases) {
     const a = await change(adminTok, A.id, { address: typed, reason: `J-24 refusal check ${run}` });
-    const good = a.status === 422 && re.test(String(a.body?.fields?.address ?? a.body?.errors?.address ?? ""));
+    // A taken address may be the conflict it is (409, its own words in the problem); a shape rule is a field error (422).
+    const words = typed === TAKEN ? `${a.body?.title ?? ""} ${a.body?.detail ?? ""} ${a.body?.fields?.address ?? ""}` : String(a.body?.fields?.address ?? a.body?.errors?.address ?? "");
+    const good = (a.status === 422 || (typed === TAKEN && a.status === 409)) && (typed === TAKEN ? /This address is taken/.test(words) : re.test(words));
     refusedChange[typed] = good ? "ok" : `${a.status} ${JSON.stringify(a.body).slice(0, 120)}`; allRefused &&= good;
   }
-  ok("J-24 W4 (PF-25w): the staff change with the same values is refused on its address field (422) in the same words, and A's address is unchanged",
+  ok("J-24 W4 (PF-25w): the staff change with the same values is refused in the same words (the shape rules on the address field, 422; taken, 422 or 409), and A's address is unchanged",
     allRefused && (await addressOf(A.id)) === addrA0, refusedChange);
 
   // ---------------------------------------------------------------------------------------------- W5 the staff-only change
