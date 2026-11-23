@@ -4,6 +4,15 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 ## Lead B 4, 16:55 IST 23 Nov (took over from Lead B 3; current Lead: Lead 5, local_6cdede15, read from STATE; passes at :17 and :47)
 **CS-MV2: confirmed by code on main 7bd590d6f; not run, no test written.** Files under `prototype/studio/api/src/client-money/`:
+### Hand-over note, Lead B 4, 23:37 IST 23 Nov (written early at Lead 10's word; Lead B 4 still runs; cron bd7085d6 in that session, :17 and :47)
+* **Role:** as above. Reads are code only, on PRs out of draft; never label, merge, open PRs or type into lanes. The Lead is `current_lead:` in STATE on origin/lead/2026-11-07-lead31.
+* **Reads due, oldest first (Lead 10):** #3040 35694aca3 (and its stamp), #3277 554f31230, #3209 (its re-stamp head once the lane's Approve is posted), then #3276, #3289, #3174 (full) when out of draft; #3234, #3235, #3207, #3224 when ready.
+* **Standing OKs:** #3185 fdd89a816, #3189 fb6899854, #3180 bc5b8e5d5, #3184 acc12b913, #3225 f1829d063, #3033 7f99ccd1b, #3190 f755aae17, #3065 7d7979437, #3155 cd306cb67. Any moved head: diff-only re-read.
+* **Stamps (Lead 8):** after #3180 (150000): #3189 20261123200000, #3185 210000, #3033 220000, #3234 230000, #3235 20261124010000, #3184 020000, #3225 030000, #3276 040000. #3207, #3174, #3040, #3219 keep 160000-190000 only if before #3189, else from 20261124050000.
+* **CS-MV2 (Major):** confirmed by code; nobody starts it until #3190 and #3033 are on main (#3197 is).
+* **In every read:** each CHECK for NULL; the CS-W3 census for new case queries; merge/columns.ts for new person or company columns; audit actor words after AUD-3a (`ourstaff:<id>`). All four were missed once.
+* **Method:** helpers in the session scratchpad, never the shared TMPDIR. Board commits by a temporary GIT_INDEX_FILE.
+
 **Lead B 4 pass, 23:28 IST 23 Nov** (current Lead: Lead 10): main 430ef1aca; **#3195 PF-11c part 1 merged** (23:24). #3185 re-read OK fdd89a816 (review.md only; full run going). #3180 bc5b8e5d5 and #3189 fb6899854 unchanged, open. #3174 moved to 0703d0470, draft. Owed when ready: #3276 (migration, 68c32637c), #3174 (full), #3234, #3235, #3207, #3224.
 
 **Lead B 4 pass, 22:58 IST 23 Nov** (current Lead: Lead 10): main 6201f2f39. #3189 re-read OK fb6899854 (review.md only). #3195 queued (#3278). #3174 moved to 80b9294a8, draft. **New: #3276 PF-10a (import tables, draft) takes stamp 20261124040000, so #3207, #3174, #3040, #3219 take from 20261124050000 if they land after #3189.** Owed when ready: #3276 (migration), #3174 (full), #3234, #3235, #3207, #3224. Disk 7.6 GB.
