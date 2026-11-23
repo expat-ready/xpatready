@@ -1,4 +1,4 @@
-// PF-31 (EXPERIENCE §2.12, "work in many tabs"): one shared draft per record. Inside the app every workspace tab and every
+// PF-31 (EXPERIENCE §2.13, "work in many tabs"): one shared draft per record. Inside the app every workspace tab and every
 // view reads the same in-memory store, so a change typed in one view shows in every other at once. A second browser window
 // of the same app is reached through a BroadcastChannel (same origin, no server); each window keeps its drafts in its own
 // sessionStorage, so a reload keeps them. Nothing reaches the server until Save, which writes once, with the last value and
@@ -55,6 +55,19 @@ channel?.addEventListener("message", (ev: MessageEvent<Msg>) => {
 });
 if (typeof window !== "undefined") window.addEventListener("pagehide", () => { for (const [key, n] of mine) if (n) post({ t: "close", key, from: VIEW }); });
 
+const isObj = (x: unknown): x is Record<string, unknown> => x !== null && typeof x === "object" && !Array.isArray(x);
+/** The fields `values` changed from `base` ([""] for a plain value that changed). */
+export function changedKeys(values: unknown, base: unknown): string[] {
+  if (!isObj(values) || !isObj(base)) return same(values, base) ? [] : [""];
+  return Object.keys(values).filter((k) => !same(values[k], base[k]));
+}
+/** My changes (values vs my base) carried onto a newer record. */
+export function mineOnto<T>(values: unknown, base: unknown, newer: T): T {
+  if (!isObj(values) || !isObj(base) || !isObj(newer)) return values as T;
+  const out: Record<string, unknown> = { ...newer };
+  for (const k of changedKeys(values, base)) out[k] = values[k];
+  return out as T;
+}
 /** Any unsaved draft in this window (the leave-page guard). */
 export const anyDraft = () => [...entries.values()].some(Boolean);
 /** Test and tab-close hook: drop one record's draft here and in every window. */
@@ -75,8 +88,11 @@ export type SharedDraft<T> = {
   discard: () => void;
   /** After a 200: the draft goes, and every window reads the record again. */
   saved: () => void;
-  /** After a 409: keep what was typed, on top of the newer record (EXPERIENCE §4 conflict: "keep mine"). */
+  /** After a 409: keep what was typed, on top of the newer record (EXPERIENCE §4 conflict: "keep mine"): only the fields I
+   *  changed; the rest take the newer record. */
   rebase: (base: T, version: string) => void;
+  /** The fields this draft changed (a plain value: [""] when changed). The conflict state shows only these as "Yours". */
+  mine: () => string[];
 };
 
 /** One record's shared draft. `key` names the record ("platform-office:<id>"); `base` and `version` are the saved record
@@ -110,11 +126,13 @@ export function useSharedDraft<T>(key: string | null, base: T | undefined, versi
     otherWindows,
     discard: () => { if (key) write(key, null, VIEW); },
     saved: () => { if (!key) return; write(key, null, VIEW); post({ t: "saved", key, queryKey: queryKey ?? null, from: VIEW }); },
-    rebase: (b, v) => { if (key) write(key, { values: entry ? entry.values : b, base: b, version: v }, VIEW); },
+    // Review M1: only what I changed rides on the newer record; a field someone else changed and I did not keeps theirs.
+    rebase: (b, v) => { if (key) write(key, { values: entry ? mineOnto(entry.values, entry.base, b) : b, base: b, version: v }, VIEW); },
+    mine: () => (entry ? changedKeys(entry.values, entry.base) : []),
   };
 }
 
-/** The line under a form with unsaved changes (EXPERIENCE §2.12): what is unsaved, and where else the record is open. */
+/** The line under a form with unsaved changes (EXPERIENCE §2.13): what is unsaved, and where else the record is open. */
 export function DraftLine({ draft, what }: { draft: Pick<SharedDraft<unknown>, "dirty" | "otherWindows">; what: string }) {
   if (!draft.dirty && !draft.otherWindows) return null;
   const elsewhere = draft.otherWindows ? `also open in ${draft.otherWindows} other window${draft.otherWindows === 1 ? "" : "s"}` : "";

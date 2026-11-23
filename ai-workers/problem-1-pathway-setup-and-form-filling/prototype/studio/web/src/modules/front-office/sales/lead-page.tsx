@@ -34,7 +34,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function PhoneRow({ person, mayEdit, leadId }: { person: Lead["person"]; mayEdit: boolean; leadId: string }) {
   const qc = useQueryClient();
   const toast = useToast();
-  // PF-31 (EXPERIENCE §2.12): the number being typed is the person's one shared draft: it shows in every view of this lead
+  // PF-31 (EXPERIENCE §2.13): the number being typed is the person's one shared draft: it shows in every view of this lead
   // (another window mirrors it), survives a reload, opens the field wherever a draft exists, and is saved once with If-Match.
   const draft = useSharedDraft<string>(mayEdit ? `fo-person:${person.id}:phone` : null, person.phone ?? "", person.version ?? null, ["fo", "leads"]);
   const [open, setOpen] = React.useState(false);

@@ -84,7 +84,7 @@ function WhereLine({ area, where, staff }: { area: Area; where: Where; staff: bo
  *  and the main column that starts with the "where am I" line. */
 export function Frame({ area, title, subtitle, home, badge, controls, band, menu, staff = false, workspace = false, children }: {
   area: Area; title: string; subtitle?: string; home?: string; badge?: React.ReactNode; controls?: React.ReactNode; band?: React.ReactNode; menu?: React.ReactNode; staff?: boolean;
-  /** PF-31 (EXPERIENCE §2.12): a staff area's pages open in workspace tabs; the strip sits under the header and the menu's links open or focus a tab. */
+  /** PF-31 (EXPERIENCE §2.13): a staff area's pages open in workspace tabs; the strip sits under the header and the menu's links open or focus a tab. */
   workspace?: boolean; children: React.ReactNode;
 }) {
   const loc = useLocation();

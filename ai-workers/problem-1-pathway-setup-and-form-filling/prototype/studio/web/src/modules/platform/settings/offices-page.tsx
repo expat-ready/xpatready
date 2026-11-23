@@ -3,13 +3,13 @@
 // firm never sees an office list or a zone: only "Add an office" and what it does. From two offices: the list (name, where, time
 // zone, hours) with Edit, and "Who works where" (each person's office, Change in a right panel). Hours and closed days per office are
 // AG-16-75's, not built here (read-only summary). Everyone else who opens the address sees a plain refusal.
-// PF-31 (EXPERIENCE §2.12): each office's edit has its own address, /platform/offices/:id; its Edit is a real link, so a click
+// PF-31 (EXPERIENCE §2.13): each office's edit has its own address, /platform/offices/:id; its Edit is a real link, so a click
 // opens it in a workspace tab (or focuses the tab that has it) and Ctrl/Cmd-click opens it in the background.
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, buttonVariants, Notice, Table } from "@/components/ui/controls";
-import { useTabTitle } from "@/components/workspace";
+import { useLeaveTab, useTabTitle } from "@/components/workspace";
 import { PlatformFrame, usePlatformStaff } from "../frame";
 import { staffApi, StaffApiError, useStaffToken } from "../session";
 import { OfficePanel } from "./office-panel";
@@ -52,11 +52,11 @@ function OfficesBody() {
   const list = useQuery({ queryKey: ["pf", "offices", token], enabled: !!token && allowed, retry: false, queryFn: async () => OfficeList.parse(await staffApi("/platform/offices")) });
   const provinces = useQuery({ queryKey: ["pf", "offices", "provinces", token], enabled: !!token && allowed, retry: false, staleTime: Infinity, queryFn: async () => Provinces.parse(await staffApi("/platform/offices/provinces")).provinces });
   const [adding, setAdding] = React.useState(false);
-  const { id } = useParams(), navigate = useNavigate();
+  const { id } = useParams(), navigate = useNavigate(), leaveTab = useLeaveTab();
   const shown = id && list.data?.multipleOffices ? list.data.offices.find((o) => o.id === id) ?? null : null;
   const editing: Office | "new" | null = adding ? "new" : shown;
   useTabTitle(shown ? `Office: ${shown.name}` : null);
-  const setEditing = (o: "new" | null) => { if (o === "new") setAdding(true); else { setAdding(false); if (id) navigate("/platform/offices"); } };
+  const setEditing = (o: "new" | null) => { if (o === "new") setAdding(true); else { setAdding(false); if (id) { if (leaveTab) leaveTab("/platform/offices"); else navigate("/platform/offices"); } } };   // review M2: a closed office's tab closes when the list has its own
   const [firstAdded, setFirstAdded] = React.useState(false);
   const opener = React.useRef<HTMLElement | null>(null), heading = React.useRef<HTMLHeadingElement>(null);
   const open = (o: "new") => (e: React.MouseEvent<HTMLElement>) => { opener.current = e.currentTarget; setEditing(o); };

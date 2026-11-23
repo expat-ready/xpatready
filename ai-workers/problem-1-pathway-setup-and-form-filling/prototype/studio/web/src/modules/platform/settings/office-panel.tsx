@@ -3,7 +3,7 @@
 // province as soon as one is picked and editable (AG-16-75 §10: the person confirms or edits it), sent only when the person changed
 // it, so the audit keeps "pre-filled from the province". Saved only by Save. Field errors from the 422 on each field; a stale change
 // (409) loads the latest and says so.
-// PF-31 (EXPERIENCE §2.12): an office's edit is its own address (/platform/offices/:id) and its one shared draft: what is typed
+// PF-31 (EXPERIENCE §2.13): an office's edit is its own address (/platform/offices/:id) and its one shared draft: what is typed
 // shows in every view of the office (another workspace tab's list cannot open it twice; another window mirrors it), survives a
 // reload, and is saved once with If-Match. Someone else's save first is the conflict state: both values, take theirs or keep mine.
 import * as React from "react";
@@ -15,7 +15,7 @@ import { DraftLine, useSharedDraft } from "@/lib/sync/drafts";
 import { useToast } from "@/lib/api";
 import { allZones } from "@/modules/front-office/booking-public/time";
 import { staffApi, StaffApiError } from "../session";
-import { Added, fieldErrors, Office, OfficeList, prefill, type Province } from "./offices-contract";
+import { Added, fieldErrors, Office, OfficeList, prefill, whereLine, type Province } from "./offices-contract";
 
 type Form = { name: string; inCanada: boolean; province: string; country: string; zone: string; zoneTouched: boolean };
 const blank: Form = { name: "", inCanada: true, province: "", country: "", zone: "", zoneTouched: false };
@@ -30,6 +30,7 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
   const [local, setLocal] = React.useState<Form>(blank);   // a new office lives in this panel only
   const f = office ? draft.values ?? blank : local, start = office ? draft.base ?? blank : blank, version = draft.version;
   const setF = office ? draft.set : setLocal;
+  const mine = office ? draft.mine() : [];   // the details I changed: only these show as "Yours" in a conflict (review M1)
   const [conflict, setConflict] = React.useState<{ latest: Office; message: string } | null>(null);
   const [busy, setBusy] = React.useState(false), [errors, setErrors] = React.useState(fieldErrors(undefined)), [problem, setProblem] = React.useState<string | null>(null);
   const sending = React.useRef(false);
@@ -75,7 +76,6 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
       if (cur && cur.version !== version) {
         setConflict({ latest: cur, message: (x as StaffApiError).message });
         await qc.invalidateQueries({ queryKey: ["pf", "offices"] });
-        requestAnimationFrame(() => document.querySelector<HTMLElement>("#office-form [data-conflict]")?.focus());
         return;
       } else if (x instanceof StaffApiError && x.status === 409) { setErrors({ ...fieldErrors(undefined), name: x.message }); setProblem(x.message); }   // review m-2: a name in use, on the name field
       else if (x instanceof StaffApiError) { setErrors(fieldErrors(x.problem.fields)); setProblem(x.message); }
@@ -90,11 +90,13 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
   return (
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => { if (!dirty) return true; if (!window.confirm("Discard your changes to this office?")) return false; if (office) draft.discard(); return true; }}
       title={office ? "Edit office" : "Add an office"} description={office ? "Changes apply when you press Save." : "The office keeps its own time zone. Its hours start as the firm's."}
-      footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button type="submit" form="office-form" busy={busy} disabled={!dirty} data-office-save>{office ? "Save" : "Add office"}</Button></>}>
+      footer={<><Button variant="ghost" onClick={() => { if (dirty && !window.confirm("Discard your changes to this office?")) return; if (dirty && office) draft.discard(); onOpenChange(false); }} data-office-close>Close</Button><Button type="submit" form="office-form" busy={busy} disabled={!dirty} data-office-save>{office ? "Save" : "Add office"}</Button></>}>
       <form id="office-form" className="flex flex-col gap-4" onSubmit={(e) => void save(e)} noValidate>
         {conflict ? <ConflictNotice message={conflict.message} onSaved={() => { draft.discard(); setConflict(null); }} onMine={() => { draft.rebase(fromOffice(conflict.latest), conflict.latest.version); setConflict(null); }}
-          rows={[{ label: "Office name", saved: conflict.latest.name, mine: f.name }, { label: "Province or territory", saved: conflict.latest.province ?? "", mine: f.inCanada ? f.province : "" },
-            { label: "Country", saved: conflict.latest.countryCode, mine: f.inCanada ? "CA" : f.country }, { label: "Time zone", saved: conflict.latest.timeZone, mine: f.zone }]} /> : null}
+          rows={[
+            ...(mine.includes("name") ? [{ label: "Office name", saved: conflict.latest.name, mine: f.name }] : []),
+            ...(mine.some((k) => k === "inCanada" || k === "province" || k === "country") ? [{ label: "Where", saved: whereLine(conflict.latest), mine: f.inCanada ? `${f.province ? `${f.province}, ` : ""}Canada` : f.country }] : []),
+            ...(mine.includes("zone") ? [{ label: "Time zone", saved: conflict.latest.timeZone, mine: f.zone }] : [])]} /> : null}
         {problem ? <div tabIndex={-1} data-office-problem-box className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"><Notice tone="danger" title="Not saved"><span data-office-problem>{problem}</span></Notice></div> : null}
         <Field label="Office name" error={errors.name}><Input value={f.name} maxLength={200} onChange={(e) => set({ name: e.target.value })} data-office-name /></Field>
         <fieldset className="flex flex-col gap-2">

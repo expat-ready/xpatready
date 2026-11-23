@@ -1,4 +1,4 @@
-// PF-31 (EXPERIENCE §2.12, the founder's choice of 23 Nov: tabs drawn inside the app, the console pattern of Salesforce's
+// PF-31 (EXPERIENCE §2.13, the founder's choice of 23 Nov: tabs drawn inside the app, the console pattern of Salesforce's
 // Service Console, Dynamics 365's multisession workspace and Zendesk's agent workspace): the workspace tab strip.
 //  * Each open item is an app tab with its own router: its own address, scroll and form state. Only the active tab is shown;
 //    the others stay mounted, hidden, so nothing typed is lost. The address bar shows the active tab's address, so links,
@@ -26,12 +26,17 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 /** Until a page names itself: the address's last part in words. */
 const guess = (path: string) => { const last = itemOf(path).split("/").filter(Boolean).pop(); return last ? decodeURIComponent(last).replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase()) : "Home"; };
 
-type Ws = { tabs: Tab[]; active: string; notice: string | null; activate: (id: string) => void; close: (id: string) => void; dirty: Set<string> };
+type Ws = { tabs: Tab[]; active: string; notice: string | null; activate: (id: string) => void; close: (id: string) => void; dirty: Set<string>; mounted: Set<string> };
 const WsCtx = React.createContext<Ws | null>(null);
-type TabApi = { id: string; active: boolean; setTitle: (t: string | null, page: boolean) => void; setDirty: (owner: string, d: boolean, discard?: () => void) => void };
+type TabApi = { id: string; active: boolean; leave: (path: string) => void; setTitle: (t: string | null, page: boolean) => void; setDirty: (owner: string, d: boolean, discard?: () => void) => void };
 const TabCtx = React.createContext<TabApi | null>(null);
 /** Inside a workspace tab: whether it is the one shown (dialogs and panels of a hidden tab stay closed). True outside one. */
 export const useTabActive = () => React.useContext(TabCtx)?.active ?? true;
+/** A record's tab is done (its panel closed or saved): go to `path`. When another tab already shows it (the list the record
+ *  was opened from), this tab closes and that one comes forward; otherwise this tab moves there (review M2). */
+export function useLeaveTab(): ((path: string) => void) | null { return React.useContext(TabCtx)?.leave ?? null; }
+/** Focus the tab of `id` in the shown strip (after a close or a keyboard move, review S4). */
+const focusTab = (id: string) => requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-ws-panel="${id}"] [data-ws-tab="${id}"]`)?.focus());
 /** A page names its tab ("Office: Calgary"); without one the frame's place line names it (`fromFrame`). */
 export function useTabTitle(title: string | null, fromFrame = false) {
   const t = React.useContext(TabCtx);
@@ -87,16 +92,16 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     setMounted((m) => new Set(m).add(t.id));
     if (focus) { now.current = { ...now.current, tabs: [...ts, t] }; show(t.id); }
   }, [show]);
-  const close = React.useCallback((id: string) => {
+  const close = React.useCallback((id: string, quiet = false) => {
     const { tabs: ts, active: a } = now.current;
     if (ts.length < 2) return;
     const owners = dirtyOwners.current.get(id);
-    if (owners?.size) {
+    if (owners?.size && !quiet) {
       if (!window.confirm("This tab has unsaved changes. Close it and discard them?")) return;
       for (const discard of owners.values()) discard();
     }
     const i = ts.findIndex((t) => t.id === id), rest = ts.filter((t) => t.id !== id);
-    if (id === a) { const n = rest[Math.min(i, rest.length - 1)]; now.current = { tabs: rest, active: n.id }; setWs({ tabs: rest, active: n.id }); window.history.pushState({ ws: n.id }, "", n.path); requestAnimationFrame(() => window.scrollTo(0, n.scroll)); }
+    if (id === a) { const n = rest[Math.min(i, rest.length - 1)]; now.current = { tabs: rest, active: n.id }; setWs({ tabs: rest, active: n.id }); window.history.pushState({ ws: n.id }, "", n.path); requestAnimationFrame(() => window.scrollTo(0, n.scroll)); if (!quiet) focusTab(n.id); }
     else setWs((s) => ({ ...s, tabs: s.tabs.filter((t) => t.id !== id) }));
     setMounted((m) => { const c = new Set(m); c.delete(id); return c; });
   }, []);
@@ -108,6 +113,17 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     setWs((s) => ({ ...s, tabs: s.tabs.map((t) => (t.id === id ? { ...t, path, state, nav: t.nav + 1, type: how === "push" ? NavigationType.Push : NavigationType.Replace } : t)) }));
     if (id === now.current.active) window.history[how === "push" ? "pushState" : "replaceState"]({ ws: id }, "", path);
   }, [show]);
+  const leave = React.useCallback((id: string, path: string) => {
+    const other = now.current.tabs.find((t) => t.id !== id && itemOf(t.path) === itemOf(path));
+    if (!other) { move(id, path, "replace"); return; }
+    // This tab goes and the other comes forward in one step (no neighbour flashes in between).
+    const scroll = other.scroll, rest = now.current.tabs.filter((t) => t.id !== id);
+    now.current = { tabs: rest, active: other.id };
+    setWs((s) => ({ active: other.id, tabs: s.tabs.filter((t) => t.id !== id).map((t) => (t.id === other.id ? { ...t, path, nav: t.nav + 1, type: NavigationType.Push } : t)) }));
+    setMounted((m) => { const c = new Set(m); c.delete(id); return c; });
+    window.history.pushState({ ws: other.id }, "", path);
+    requestAnimationFrame(() => window.scrollTo(0, scroll));
+  }, [move]);
 
   // Back and Forward: the tab that shows the address comes forward, else the active tab follows it.
   React.useEffect(() => {
@@ -122,7 +138,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     const onClick = (e: MouseEvent) => {
       const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
-      if (!a || !a.closest("[data-workspace]") || (a.target && a.target !== "_self") || a.hasAttribute("download") || a.origin !== window.location.origin) return;
+      if (!a || !a.closest("[data-workspace]") || (a.target && a.target !== "_self") || a.hasAttribute("download") || a.origin !== window.location.origin || /^\/api\//.test(a.pathname)) return;   // a file or API link is not an app page
       const path = a.pathname + a.search + a.hash;
       const background = e.type === "auxclick" ? e.button === 1 : e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey;
       const opens = e.type === "click" && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && !!a.closest("[data-workspace-open]");
@@ -133,7 +149,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey || e.ctrlKey || e.metaKey || !document.querySelector("[data-workspace]")) return;
       const { tabs: ts, active: a } = now.current, i = ts.findIndex((t) => t.id === a);
-      if (e.key === "PageDown" || e.key === "PageUp") { e.preventDefault(); show(ts[(i + (e.key === "PageDown" ? 1 : ts.length - 1)) % ts.length].id); }
+      if (e.key === "PageDown" || e.key === "PageUp") { e.preventDefault(); const n = ts[(i + (e.key === "PageDown" ? 1 : ts.length - 1)) % ts.length].id; show(n); focusTab(n); }
       else if (e.shiftKey && e.code === "KeyW") { e.preventDefault(); close(a); }
     };
     const leave = (e: BeforeUnloadEvent) => { if (anyDraft()) { e.preventDefault(); e.returnValue = ""; } };
@@ -148,16 +164,16 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     dirtyOwners.current.set(id, m);
     setDirtySet((s) => { if (s.has(id) === m.size > 0) return s; const c = new Set(s); if (m.size) c.add(id); else c.delete(id); return c; });
   }, []);
-  const ws: Ws = { tabs, active, notice, activate: show, close, dirty };
+  const ws: Ws = { tabs, active, notice, activate: show, close: (id) => close(id), dirty, mounted };
   return (
     <WsCtx.Provider value={ws}>
-      {tabs.filter((t) => mounted.has(t.id)).map((t) => <TabHost key={t.id} tab={t} active={t.id === active} move={move} setDirty={setDirty}
+      {tabs.filter((t) => mounted.has(t.id)).map((t) => <TabHost key={t.id} tab={t} active={t.id === active} move={move} leave={leave} setDirty={setDirty}
         setTitle={(title) => setWs((s) => (s.tabs.find((x) => x.id === t.id)?.title === title ? s : { ...s, tabs: s.tabs.map((x) => (x.id === t.id ? { ...x, title } : x)) }))}>{children}</TabHost>)}
     </WsCtx.Provider>
   );
 }
 
-function TabHost({ tab, active, move, setDirty, setTitle, children }: { tab: Tab; active: boolean; move: (id: string, to: To, how: "push" | "replace", state?: unknown) => void;
+function TabHost({ tab, active, move, leave, setDirty, setTitle, children }: { tab: Tab; active: boolean; move: (id: string, to: To, how: "push" | "replace", state?: unknown) => void; leave: (id: string, path: string) => void;
   setDirty: (id: string, owner: string, d: boolean, discard?: () => void) => void; setTitle: (t: string) => void; children: React.ReactNode }) {
   const p = parsePath(tab.path);
   const location = React.useMemo(() => ({ pathname: p.pathname || "/", search: p.search ?? "", hash: p.hash ?? "", state: tab.state ?? null, key: `${tab.id}-${tab.nav}` }), [tab.path, tab.nav, tab.state]);   // eslint-disable-line react-hooks/exhaustive-deps -- the parsed path is tab.path
@@ -169,9 +185,9 @@ function TabHost({ tab, active, move, setDirty, setTitle, children }: { tab: Tab
     replace: (to: To, state?: unknown) => move(tab.id, to, "replace", state),
     go: (n: number) => window.history.go(n),
   }), [tab.id, move]);
-  const api = React.useMemo<TabApi>(() => ({ id: tab.id, active, setTitle: (t, page) => { names.current[page ? "page" : "frame"] = t; const n = names.current.page ?? names.current.frame; if (n) set.current(n); }, setDirty: (o, d, discard) => setDirty(tab.id, o, d, discard) }), [tab.id, active, setDirty]);
+  const api = React.useMemo<TabApi>(() => ({ id: tab.id, active, leave: (path) => leave(tab.id, path), setTitle: (t, page) => { names.current[page ? "page" : "frame"] = t; const n = names.current.page ?? names.current.frame; if (n) set.current(n); }, setDirty: (o, d, discard) => setDirty(tab.id, o, d, discard) }), [tab.id, active, setDirty, leave]);
   return (
-    <div hidden={!active} data-ws-panel={tab.id}>
+    <div hidden={!active} data-ws-panel={tab.id} role="tabpanel" id={`ws-panel-${tab.id}`} aria-label={tab.title}>
       <TabCtx.Provider value={api}><Router location={location} navigationType={tab.type} navigator={navigator}>{children}</Router></TabCtx.Provider>
     </div>
   );
@@ -196,7 +212,7 @@ export function WorkspaceStrip() {
   const go = (i: number) => { const t = tabs[(i + tabs.length) % tabs.length]; ws.activate(t.id); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-ws-panel="${t.id}"] [data-ws-tab="${t.id}"]`)?.focus()); };
   const onKey = (e: React.KeyboardEvent, i: number, id: string) => {
     if (e.key === "ArrowRight") go(i + 1); else if (e.key === "ArrowLeft") go(i - 1); else if (e.key === "Home") go(0); else if (e.key === "End") go(tabs.length - 1);
-    else if (e.key === "Delete" && tabs.length > 1) ws.close(id); else return;
+    else if (e.key === "Delete" && tabs.length > 1) ws.close(id); else return;   // close() focuses the next tab
     e.preventDefault();
   };
   const name = (t: Tab) => `${t.title}${ws.dirty.has(t.id) ? " (unsaved changes)" : ""}`;
@@ -206,7 +222,7 @@ export function WorkspaceStrip() {
         {tabs.map((t, i) => {
           const on = t.id === active;
           return (
-            <button key={t.id} ref={(el) => { if (el) refs.current.set(t.id, el); }} type="button" role="tab" id={`ws-${me.id}-${t.id}`} aria-selected={on} tabIndex={on ? 0 : -1} title={t.path}
+            <button key={t.id} ref={(el) => { if (el) refs.current.set(t.id, el); }} type="button" role="tab" id={`ws-${me.id}-${t.id}`} aria-selected={on} aria-controls={ws.mounted.has(t.id) ? `ws-panel-${t.id}` : undefined} tabIndex={on ? 0 : -1} title={t.path}
               aria-keyshortcuts={tabs.length > 1 ? "Delete" : undefined} data-ws-tab={t.id} data-ws-path={t.path}
               onClick={() => ws.activate(t.id)} onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); ws.close(t.id); } }} onKeyDown={(e) => onKey(e, i, t.id)}
               className={cn("group flex h-9 max-w-56 min-w-24 shrink-0 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
@@ -215,7 +231,7 @@ export function WorkspaceStrip() {
               <span className="truncate">{t.title}</span>
               <span className="sr-only">{ws.dirty.has(t.id) ? ", unsaved changes" : ""}</span>
               {tabs.length > 1 ? <span aria-hidden data-ws-close title="Close (Delete)" onClick={(e) => { e.stopPropagation(); ws.close(t.id); }}
-                className="ml-auto grid size-5 shrink-0 place-items-center rounded hover:bg-text/10"><X className="size-3.5" /></span> : null}
+                className="ml-auto grid size-6 shrink-0 place-items-center rounded hover:bg-text/10"><X className="size-3.5" /></span> : null}
             </button>
           );
         })}

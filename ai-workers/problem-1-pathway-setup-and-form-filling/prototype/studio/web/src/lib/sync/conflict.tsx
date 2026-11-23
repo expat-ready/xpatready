@@ -1,14 +1,19 @@
-// PF-31 (EXPERIENCE §4 "conflict", §2.12): someone else saved the record after this draft began, so the save was refused
+// PF-31 (EXPERIENCE §4 "conflict", §2.13): someone else saved the record after this draft began, so the save was refused
 // (409) and nothing was written. Both values show side by side; the person takes the saved one or keeps theirs (the draft
 // moves onto the newer version, and the next Save writes it). Never overwritten silently.
+import * as React from "react";
 import { Button, Notice } from "@/components/ui/controls";
 
+/** One detail I changed: its value saved now and mine. Only the details the draft changed are listed (review M1). */
 export type ConflictRow = { label: string; saved: string; mine: string };
 
 export function ConflictNotice({ rows, message, onSaved, onMine }: { rows: ConflictRow[]; message: string; onSaved: () => void; onMine: () => void }) {
   const differ = rows.filter((r) => r.saved !== r.mine);
+  // Review S7: the person learns at once, by focus and by a screen reader's announcement.
+  const box = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => { box.current?.focus(); }, []);
   return (
-    <div data-conflict tabIndex={-1} className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+    <div ref={box} role="alert" data-conflict tabIndex={-1} className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
       <Notice tone="warn" title="Someone else saved this first">
         <p data-conflict-message>{message} Nothing of yours was saved. Compare, then choose.</p>
         {differ.length ? <table className="mt-2 w-full text-left text-sm">

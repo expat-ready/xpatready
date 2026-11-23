@@ -7,7 +7,8 @@
 //      the last value; the other view reads it again (tests/lib/multi-view.ts walkSharedRecord);
 //   T5 a stale save is 409, nothing written, the conflict state shows both values; Keep mine saves (walkStaleSave);
 //   T6 a reload restores the open tabs, the active one and the drafts; T7 a dirty tab asks before it closes; the 12-tab cap
-//      says so; T8 the second screen, a lead's phone: mirrored, one save, stale 409 → conflict; T9 the API: ETag on reads,
+//      says so; T5b "keep mine" keeps only what I changed; T8 the second screen, a lead's phone: mirrored, one save, stale
+//      409 → conflict; T9 the API: version in reads' bodies, ETag on save answers,
 //      If-Match on a route that takes no version 422, a malformed tag 422; T10 axe clean on the strip; 375 px: "Open items".
 // Sample firm only, fresh copy. US$0, no model call; live AI off. Run from studio/:
 //   zsh tools/isolated.sh pf31 4731 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx tests/check_pf31_multitab_browser.ts 4731 xr_studio_pf31
@@ -133,9 +134,28 @@ try {
     otherSaves: async (v) => { const r = await api(T, "PATCH", `/platform/offices/${O2.id}`, { name: v }, { "if-match": `"${O2v.version}"` }); if (r.status !== 200) throw new Error(`other save ${r.status}`); },
     values: { mirrored: "", last: "", stale: `${O2.name} mine ${run}`, other: `${O2.name} theirs ${run}` } }, ok);
 
-  // T7: a dirty tab asks before closing; the cap
-  ok("T5/T4 after a save the panel closes and the list's tab comes forward (its address is the list's item)", await until(async () => urlPath(p1) === "/platform/offices"), p1.url());
-  await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"]`).click();
+  ok("T5 after a save the office's tab closes and the list's tab comes forward (review M2)", await until(async () => urlPath(p1) === "/platform/offices" && !(await tabs(p1)).some((x) => x.path === officePath(O2.id))), { url: p1.url(), tabs: await tabs(p1) });
+  const editFromList = async (o: { id: string }) => { await p1.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]').click(); await shown(p1).locator(`[data-office-edit][href="${officePath(o.id)}"]`).click(); await nameField(p1).waitFor(); };
+
+  // T5b (review M1): someone changes a detail I did not touch; "Keep mine" keeps only what I changed
+  await editFromList(O1);
+  const O1v = (await offices()).offices.find((o) => o.id === O1.id)!, mineName = `${O1.name} only name ${run}`;
+  await nameField(p1).fill(mineName);
+  const zoneSave = await api(T, "PATCH", `/platform/offices/${O1.id}`, { timeZone: "America/Halifax" }, { "if-match": `"${O1v.version}"` });
+  await p1.locator('[role="dialog"] [data-office-save]').click();
+  const box = p1.locator("[data-conflict]");
+  await box.waitFor({ timeout: 10_000 });
+  ok("T5b the conflict lists only the detail I changed (no time zone I never touched)", zoneSave.status === 200 && (await box.locator("[data-conflict-row]").count()) === 1 && (await box.locator('[data-conflict-row="Office name"]').count()) === 1, await box.innerText());
+  ok("T5b the conflict notice takes focus and is announced (role alert)", await box.evaluate((el) => el === document.activeElement && el.getAttribute("role") === "alert"));
+  await box.locator("[data-conflict-keep-mine]").click();
+  await p1.locator('[role="dialog"] [data-office-save]').click();
+  ok("T5b Keep mine then Save: my name is written and their time zone stays", await until(async () => officeName(O1.id) === mineName && sql(`select time_zone from platform_office where id = '${O1.id}'`) === "America/Halifax", 5000), { name: officeName(O1.id), zone: sql(`select time_zone from platform_office where id = '${O1.id}'`) });
+
+  // T7: Close; a dirty tab asks before closing; the cap
+  await editFromList(O2);
+  await p1.locator('[role="dialog"] [data-office-close]').click();
+  ok("T7 Close on an unchanged office closes its tab and shows the list (review M2)", await until(async () => urlPath(p1) === "/platform/offices" && !(await tabs(p1)).some((x) => x.path === officePath(O2.id))), await tabs(p1));
+  await editFromList(O2);
   await p1.locator('[role="dialog"] [data-office-name]').fill(`${O2.name} again ${run}`);
   closeAnswer = false;
   const before = (await tabs(p1)).length;
@@ -145,6 +165,7 @@ try {
   closeAnswer = true;
   await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="${officePath(O2.id)}"] [data-ws-close]`).click();
   ok("T7 Yes closes it, drops its draft and shows the next tab", await until(async () => (await tabs(p1)).length === before - 1) && !(await p1.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith("xr.draft.platform-office:")))), await tabs(p1));
+  ok("T7 focus goes to the tab that comes forward (review S4)", await until(async () => p1.evaluate(() => document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true")));
   await p1.evaluate(() => { const s = JSON.parse(sessionStorage.getItem("xr.workspace.v1")!); for (let i = s.tabs.length; i < 12; i++) s.tabs.push({ id: `cap${i}`, path: `/platform/x${i}`, title: `Item ${i}` }); sessionStorage.setItem("xr.workspace.v1", JSON.stringify(s)); });
   await p1.reload(); await p1.locator('[data-workspace]:visible [role="tablist"]').waitFor({ timeout: 60_000 });
   await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]`).click(); await officeRows(p1);
@@ -187,12 +208,15 @@ try {
 
   // T9: the API door
   const read = await api(T, "GET", "/platform/firm/profile");
-  ok("T9 a read that carries a version sends it as a strong ETag", read.headers.get("etag") === `"${read.body?.version}"`, read.headers.get("etag"));
+  ok("T9 a read carries its version in the body, never as an ETag a cache could answer 304 to (review M3)", !!read.body?.version && read.headers.get("etag") !== `"${read.body?.version}"`, read.headers.get("etag"));
+  const o1 = (await offices()).offices.find((o) => o.id === O1.id)!;
+  const saved = await api(T, "PATCH", `/platform/offices/${O1.id}`, { name: `${O1.name} etag ${run}` }, { "if-match": `"${o1.version}"` });
+  ok("T9 a save with If-Match is 200 and its answer's version is its strong ETag", saved.status === 200 && saved.headers.get("etag") === `"${saved.body?.version}"`, { status: saved.status, etag: saved.headers.get("etag") });
   const wrongRoute = await api(T, "PUT", `/platform/staff/${sql(`select id from platform_staff where actor_id = 'user-O' limit 1`)}/office`, { officeId: null }, { "if-match": '"x"' });
   ok("T9 If-Match on a change that takes no version is 422 in words (never a silent pass)", wrongRoute.status === 422 && /does not take a version/.test(JSON.stringify(wrongRoute.body)), wrongRoute.body);
   const bad = await api(T, "PATCH", `/platform/offices/${O1.id}`, { name: "x" }, { "if-match": "*" });
   const differ = await api(T, "PATCH", `/platform/offices/${O1.id}`, { name: "x", version: "a" }, { "if-match": '"b"' });
-  ok("T9 a malformed If-Match (\"*\") and a body version that differs from the header are 422; nothing written", bad.status === 422 && differ.status === 422 && officeName(O1.id) === S4, { bad: bad.status, differ: differ.status });
+  ok("T9 a malformed If-Match (\"*\") and a body version that differs from the header are 422; nothing written", bad.status === 422 && differ.status === 422 && officeName(O1.id) === `${O1.name} etag ${run}`, { bad: bad.status, differ: differ.status });
   const staleProfile = await api(T, "PUT", "/platform/firm/profile", { website: "https://pf31.example.ca" }, { "if-match": '"0000"' });
   ok("T9 the firm profile takes If-Match too: a stale one is 409", staleProfile.status === 409, staleProfile.status);
   ok("no page errors", errs.length === 0, errs.slice(0, 5));
