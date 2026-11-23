@@ -4,8 +4,11 @@
 // The rules (review and break round 1 on #3303):
 // 1. This file owns the retry loop; tus-js-client makes one attempt at a time (no retries of its own: its own give up
 //    while the browser says offline, and its retry count does not reset). A request that got no answer, a 5xx or a
-//    423 is tried again on RETRY_DELAYS, then every last delay, until it works or abort(), whatever navigator.onLine
-//    says; the browser's "online" only tries again at once. A request with no progress for STALL_MS is cut and tried again.
+//    423 is tried again on RETRY_DELAYS. A request that got no answer keeps trying every last delay until it works or
+//    abort(), whatever navigator.onLine says (the browser's "online" only tries again at once); a server that keeps
+//    answering with an error is given the whole list, then its words are shown and the upload kept for retry(). The
+//    delays start again only when the server's offset moves (review round 2: tus-js-client reports progress before a
+//    byte is accepted). A request with no progress for STALL_MS is cut and tried again.
 // 2. Every attempt after the first resumes the same upload (HEAD, then PATCH from the server's offset), never a new one:
 //    a 404 or 410 then is said in words ("expired", "no longer on the server"), never a silent start from 0.
 // 3. Done only with the stored file's id (Upload-File-Id). An answer without it (a lost final answer: tus-js-client then
@@ -13,7 +16,7 @@
 //    server's refusal. A refusal (4xx) is final and said in the server's own words (problem+json's detail, or plain text).
 // 4. A 401 or 403 keeps the upload: retry() resumes it from its offset once the person has signed in again.
 // The upload's address is the server's; nothing is kept in the browser's storage (a reload starts the file again).
-import { Upload, type DetailedError, type HttpResponse } from "tus-js-client";
+import { Upload, type DetailedError } from "tus-js-client";
 
 export const UPLOADS_ENDPOINT = "/api/platform/files/uploads";
 /** Sample: wait before each retry (ms); the last is repeated until the upload works or is stopped. */
@@ -59,22 +62,25 @@ export type ResumableUploadOptions = {
 export type ResumableUploadHandle = { done: Promise<string>; abort: () => void; retry: () => Promise<string> };
 
 const answered = (status: number) => status > 0;
-/** No answer, a server error or a lock: try again. Any other answer is the server's decision. */
-const tryAgain = (status: number) => status === 0 || status >= 500 || status === 423;
+/** No answer, a server error, a lock, or tus's own offset conflict (a plain-text 409; our refusals are problem+json):
+ *  try again. Any other answer is the server's decision. */
+const tryAgain = (status: number, type?: string | null) => status === 0 || status >= 500 || status === 423 || (status === 409 && !(type ?? "").includes("json"));
 
 /** Starts one file's upload; `done` resolves with the stored file's id, or rejects with the words shown. */
 export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): ResumableUploadHandle {
   const delays = o.retryDelays?.length ? o.retryDelays : RETRY_DELAYS, stallMs = o.stallMs ?? STALL_MS;
   const name = (file as File).name ?? "upload";
-  let percent = 0, failures = 0, paused = false, resumed = false, stopped = false, settled = false;
+  let percent = 0, failures = 0, paused = false, resumed = false, stopped = false, settled = false, succeeded = false;
+  let base = -1;   // the offset this attempt started from (its first progress): the delays restart only past it
   let url: string | null = null, current: Upload | null = null, timer: ReturnType<typeof setTimeout> | undefined, stall: ReturnType<typeof setTimeout> | undefined;
   let resolve!: (id: string) => void, reject!: (e: Error) => void;
   const answer = () => new Promise<string>((res, rej) => { resolve = res; reject = rej; });
   const done = answer();
+  let latest = done;
   const tell = (phase: UploadPhase, extra: { fileId?: string; failure?: string } = {}) =>
     o.onState({ phase, percent, ...(extra.fileId ? { fileId: extra.fileId } : {}), words: uploadWords(phase, percent, extra.failure) });
   const quiet = () => { clearTimeout(timer); clearTimeout(stall); window.removeEventListener("online", now); };
-  const finish = (id: string) => { if (settled) return; settled = true; quiet(); percent = 100; tell("done", { fileId: id }); resolve(id); };
+  const finish = (id: string) => { if (settled) return; settled = true; succeeded = true; quiet(); percent = 100; tell("done", { fileId: id }); resolve(id); };
   const refuse = (failure: string) => { if (settled) return; settled = true; quiet(); tell("failed", { failure }); reject(new Error(uploadWords("failed", percent, failure))); };
   const auth = (): Record<string, string> => { const t = o.token(); return t ? { Authorization: `Bearer ${t}` } : {}; };
 
@@ -89,21 +95,25 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
   const watch = () => { clearTimeout(stall); stall = setTimeout(() => { if (current && !settled) { void current.abort(); lost(0); } }, stallMs); };
 
   /** An attempt that ended without the file: try again, or say why not. */
-  function lost(status: number, res?: HttpResponse | null) {
+  function lost(status: number, res?: { body?: string; type?: string | null }) {
     current = null; clearTimeout(stall);
     if (settled || stopped) return;
-    if (tryAgain(status)) { if (!answered(status) && !paused) { paused = true; tell("paused"); } later(); return; }
-    refuse(refusalWords(status, res?.getBody?.(), res?.getHeader?.("Content-Type")));   // rule 3, rule 4 (url kept)
+    const words = () => refusalWords(status, res?.body, res?.type);
+    if (tryAgain(status, res?.type)) {
+      if (answered(status) && failures >= delays.length) return refuse(words());   // rule 1: a lasting server error is said; the upload is kept for retry()
+      if (!answered(status) && !paused) { paused = true; tell("paused"); }
+      return later();
+    }
+    refuse(words());   // rule 3, rule 4 (url kept)
   }
 
   /** Rule 3: the upload is complete but the answer named no file: the empty PATCH at the end asks the server for it. */
   async function confirm() {
     try {
-      const r = await fetch(url!, { method: "PATCH", headers: { ...auth(), "Tus-Resumable": "1.0.0", "Upload-Offset": String(file.size), "Content-Type": "application/offset+octet-stream" } });
+      const r = await fetch(url!, { method: "PATCH", signal: AbortSignal.timeout(stallMs), headers: { ...auth(), "Tus-Resumable": "1.0.0", "Upload-Offset": String(file.size), "Content-Type": "application/offset+octet-stream" } });
       const id = r.headers.get("Upload-File-Id");
       if (r.ok && id) return finish(id);
-      if (tryAgain(r.status)) return lost(r.status);
-      refuse(refusalWords(r.status, await r.text(), r.headers.get("Content-Type")));
+      lost(r.status, { body: await r.text(), type: r.headers.get("Content-Type") });
     } catch { lost(0); }
   }
 
@@ -122,7 +132,7 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
         watch();
         percent = total ? Math.floor((sent / total) * 100) : 0;
         if (paused) { paused = false; resumed = true; }
-        failures = 0;
+        if (base < 0) base = sent; else if (sent > base) failures = 0;   // only bytes really moving restart the delays
         tell(resumed ? "resumed" : "uploading");   // "Resumed, 62%" stays until the file is done
       },
       onSuccess: ({ lastResponse }) => {
@@ -130,9 +140,14 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
         const id = lastResponse.getHeader("Upload-File-Id");
         if (id) finish(id); else void confirm();
       },
-      onError: (err) => { const res = (err as DetailedError).originalResponse; lost(res?.getStatus?.() ?? 0, res); },
+      onError: (err) => {
+        const e = err as DetailedError, res = e.originalResponse;
+        // No request behind the error: the browser could not read the file (moved, deleted, permission). Not a network fault.
+        if (!e.originalRequest) return refuse("The file could not be read. Choose it again.");
+        lost(res?.getStatus?.() ?? 0, res ? { body: res.getBody?.(), type: res.getHeader?.("Content-Type") } : undefined);
+      },
     });
-    current = up; watch(); up.start();
+    base = -1; current = up; watch(); up.start();
   }
 
   tell("uploading");
@@ -141,9 +156,9 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
     done,
     abort: () => { if (settled) return; stopped = true; quiet(); void current?.abort(); refuse("Upload stopped."); },
     retry: () => {
-      if (stopped || !settled) return done;
-      const next = answer(); settled = false; paused = false; failures = 0; attempt();
-      return next;
+      if (stopped || !settled || succeeded) return latest;   // running, stopped, or done: the answer already in hand
+      latest = answer(); settled = false; paused = false; failures = 0; attempt();
+      return latest;
     },
   };
 }

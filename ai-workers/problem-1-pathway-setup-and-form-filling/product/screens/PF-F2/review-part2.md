@@ -81,3 +81,65 @@
   - **Not checked:** GitHub's advisory database and the Scorecard were not reachable here; they are the Lead's.
 
 **Verdict: Block.** Fix before Approve: B1, M1, M2, M3, each with the named tests. The Minors are the builder's call.
+
+---
+
+# Round 2
+
+**Reviewed head:** `2261b901e9731e989dc5c2fb0837797ce827f7d7`. Only `git diff 3ff40ec988d803654faf148cc5ee2d14ee2445c1..2261b901e9731e989dc5c2fb0837797ce827f7d7` was reviewed: `resumable-upload.ts` rewritten (the client owns its retry loop), the suite (+10 tests), gate entry 23, and the module card row. **Verdict: Block.**
+
+**How I checked it.**
+- **The suite:** `tests/check_pff2_resume_browser.ts` passed 24, failed 0 (same set-up as round 1).
+- **Code:** I read the new client against tus-js-client 4.3.1 (`_resumeUpload`, `_addChunkToRequest`, `abort`).
+- **Probes:** I ran a probe harness built from the new suite's own set-up, in the ignored `studio/var/`, deleted afterwards. Its results are quoted below.
+- **Ports:** the suite and my probe used `listen(0)`, a random local port. Nothing used :4400.
+
+## Round-1 findings
+- **B1, fixed.** The client is done only with `Upload-File-Id`. An answer without it is confirmed by the empty PATCH at the end, and a refusal there is final, in words. DW8e covers the lost answer, a finish that fails once, and a refused finish (409, its `detail`). Each would fail on the round-1 code.
+- **M1, fixed.** Every attempt is a fresh `Upload` with `uploadUrl`, so retries never run out. DW8 run 3 (delays [0, 200], a 5 s cut) and DW8f (a 6 s cut the browser does not notice) prove it.
+- **M2, fixed.** `refusalWords` uses problem+json's `detail`, else `title`. It uses the body only when it is `text/plain` and at most 500 characters, and never shows markup. DW8g shows plain words on a refused token, then a new sign-in and `retry()` resume from the offset with no new POST.
+- **M3, fixed.** Gate entry 23 lists the six P-587 checks with evidence. It says plainly that the stable line is a one-person, 22-month-old release with no security policy. The judgement is recorded for the Lead.
+- **n1 to n5, fixed.**
+  - **n1:** `abort()` settles as "Upload stopped." and removes the listener (DW8i).
+  - **n2:** a 404 or 410 on resume is said in words; there is no endpoint on later attempts (DW8h).
+  - **n3:** "paused" is shown only when no answer came back.
+  - **n4:** the suite asserts that the cut failed a PATCH in flight.
+  - **n5:** the "Reconsider when" lists are merged into one.
+
+## Blocker
+
+**R2-B1. A persistent server error makes the client retry with no delay, forever: about 100 requests a second from one browser. A finish error re-runs the server's whole finish each time.**
+- **Cause.** `onProgress` sets `failures = 0`. tus-js-client calls `onProgress` before any byte is accepted:
+  - `_addChunkToRequest` emits `_emitProgress(offset, size)` before it sends each PATCH;
+  - `_resumeUpload` emits `_emitProgress(length, length)` when HEAD reads complete.
+- **Effect.** So every attempt whose HEAD succeeds resets the back-off, and `later()` always waits `delays[0]` = 0 ms. Rule 1 also says 5xx is tried "until abort", so the loop never ends. The page shows a frozen "N%" or "100%" and never the server's words.
+- **Reproduced.** Each run uses default options, a 1.2 MB file and a 6 s window:
+  - **H1, `FilesPort.put` always fails (500 at finish):** 526 requests, alternating `HEAD` and the empty `PATCH:1228787` every ~12 ms. Each PATCH re-runs `finish` on the server (reads the whole staged file, runs PF-F4's check, calls `put`). The words stayed "100%".
+  - **H2, every PATCH after the first answers 503:** 664 requests (`HEAD`, `PATCH:262144`, …, every ~18 ms). The words stayed "21%".
+  - **H3, every PATCH after the first is reset while HEAD works** (a middlebox or proxy that drops large bodies): 734 requests. The words stayed "Upload paused: reconnecting".
+- **Why it matters.** Any server fault after creation (storage down, PF-15's store, a bug in a door's `onComplete`) turns every open upload page into a request flood against our own API.
+- **Not affected.** A real offline cut is not affected: HEAD fails, there is no progress, and the back-off works. That is why the suite stays green.
+- **Fix.**
+  - **Back-off:** reset `failures` only when the server's offset has moved past the offset at the start of the attempt (`onChunkComplete`, or the offset in `onProgress` exceeding the attempt's starting offset after a 2xx). Do not reset it on any `onProgress`.
+  - **Answered 5xx:** once the delay list is spent on answered 5xx, stop and show the server's words through `refuse(refusalWords(...))`. Keep the upload for `retry()`, as with a 401. Keep "until abort" only for no answer (status 0).
+  - **Test:** add one in which finish always fails and a mid-file PATCH always answers 503. Assert a bounded request count in a fixed window, increasing gaps, and, after the list, the server's words on the page.
+
+## Minor
+- **r2-n1. A file that can no longer be read loops forever as "Upload paused: reconnecting".**
+  - **Cause:** tus-js-client wraps a read failure as a request error with no response, so it looks like status 0. Examples: a moved or revoked file, an Android content URI, a file that changed size ("source is done after N bytes").
+  - **Fix:** treat an error whose `causingError` is not a network failure (for example, there is no `originalRequest` response and the source read failed) as final, in plain words.
+- **r2-n2. A 409 on a PATCH is now final and shows tus's own "Upload-Offset conflict".**
+  - **Reproduced (H4):** the page words were "Upload-Offset conflict", which is not the product's words.
+  - **Context:** every attempt starts from HEAD, so this is rare. Round 1 retried it.
+  - **Fix:** treat a 409 on a PATCH as "try again" once, through a fresh HEAD, or map tus's bare bodies to words.
+- **r2-n3. `retry()` after a successful `done` starts a new attempt.** It sends HEAD and the empty PATCH, and gets the same id back. **Fix:** return `done` when the upload is already done.
+- **r2-n4. `confirm()`'s `fetch` has no timeout or stall cut.** A hung confirm leaves the page at "100%". **Fix:** give it an `AbortSignal.timeout(stallMs)`.
+
+## Judged as fine
+- **Rule 4:** a 401 keeps the upload and `retry()` resumes it.
+- **Stall cut:** it aborts and resumes. A long server-side finish beyond `stallMs` re-joins the same finish through `#finishing` and the confirm PATCH.
+- **No double attempt:** `later()`/`now()` clear each other, `addEventListener` de-duplicates `now`, and `abort` clears both.
+- **The new tests fail on the round-1 code:** DW8e resolved `""`, DW8i never settled, and DW8h restarted with a POST.
+- **Gate entry 23** meets P-587 (3), with the decision left to the Lead.
+
+**Verdict: Block.** Fix before Approve: R2-B1, with its test. The Minors are the builder's call.

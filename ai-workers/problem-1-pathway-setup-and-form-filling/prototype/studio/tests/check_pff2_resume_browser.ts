@@ -87,11 +87,12 @@ try {
   await seedSampleFirms(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`);
   const signIn = async () => (await (await fetch(`${base}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) })).json()).token as string;
-  const P = randomUUID(), P_FAIL_ONCE = randomUUID(), P_REFUSE = randomUUID(), people = new Set([P, P_FAIL_ONCE, P_REFUSE]);
-  let failedOnce = false;
+  const P = randomUUID(), P_FAIL_ONCE = randomUUID(), P_REFUSE = randomUUID(), P_ALWAYS = randomUUID(), people = new Set([P, P_FAIL_ONCE, P_REFUSE, P_ALWAYS]);
+  let failedOnce = false, storeBack = false;
   nest.get(UploadDoors).register("STAFF", { allowedKinds: ["pdf"], authorize: async (_c, m) => (m.personId && people.has(m.personId) ? { personId: m.personId } : null), keyOf: (t, id) => `uploads/${t.personId}/${id}`,
     onComplete: async (_tx, f) => {
       if (f.target.personId === P_FAIL_ONCE && !failedOnce) { failedOnce = true; throw new Error("the door's store is down for a moment"); }
+      if (f.target.personId === P_ALWAYS && !storeBack) throw new Error("the door's store stays down");
       if (f.target.personId === P_REFUSE) throw new HttpException({ title: "Not stored", status: 409, detail: "Your plan's storage is full. Nothing was stored." }, 409);
     } });
 
@@ -265,6 +266,26 @@ try {
   ok("PF-F2 DW8j fail (break m4): a request left hanging is cut after stallMs, shown paused, and the upload completes from its offset",
     hung && !!stalled.result && rowOf(stalled.result) === smallSha && rowsFor(P) === before8 + 1 && stalled.words.includes("Upload paused: reconnecting"), { result: stalled.result, failed: stalled.failed, reqs: stalled.reqs });
   await stalled.ctx.close();
+
+  // Review round 2 B1: a server that keeps answering with an error gets the delay list, then its words; never a tight loop.
+  const t0 = Date.now();
+  const down = await run(P_ALWAYS, { retryDelays: [0, 150, 300] }, undefined, 25, false);
+  ok("PF-F2 DW8k fail (review round 2 B1): a finish that always fails (500) is tried the delay list's length, then ends in the server's words; requests stay few",
+    down.result === undefined && /could not be finished/.test(down.failed ?? "") && down.reqs.length <= 15 && Date.now() - t0 >= 450 && rowsFor(P_ALWAYS) === 0, { failed: down.failed, n: down.reqs.length, reqs: down.reqs });
+  storeBack = true;
+  const postsDown = down.reqs.filter((r) => r.startsWith("POST")).length;
+  await down.page.evaluate(() => (window as any).retryUpload());
+  await down.page.waitForFunction(() => (window as any).result !== undefined || (window as any).failed !== undefined, null, { timeout: 30_000 });
+  const back = await down.page.evaluate(() => (window as any).result as string | undefined);
+  ok("PF-F2 DW8k pass (review round 2 B1): the upload was kept: once the server is back, retry() finishes it from its offset (no new POST), one file",
+    !!back && rowOf(back) === smallSha && rowsFor(P_ALWAYS) === 1 && down.reqs.filter((r) => r.startsWith("POST")).length === postsDown, { back, reqs: down.reqs.slice(-4) });
+  await down.ctx.close();
+  const busy = await run(P, { retryDelays: [0, 150, 300] }, async (page) => {
+    await page.route("**/api/platform/files/uploads/*", (route) => (route.request().method() === "PATCH" ? route.fulfill({ status: 503, contentType: "text/plain", body: "Busy: try again later." }) : route.continue()));
+  }, 0, false);
+  ok("PF-F2 DW8k fail (review round 2 B1): every PATCH answered 503 → a few tries on the delays, then the server's words (not a loop)",
+    busy.failed === "Busy: try again later." && busy.reqs.length <= 15, { failed: busy.failed, n: busy.reqs.length });
+  await busy.ctx.close();
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
