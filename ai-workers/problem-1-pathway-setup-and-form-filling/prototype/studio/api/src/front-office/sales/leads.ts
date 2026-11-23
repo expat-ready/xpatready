@@ -101,7 +101,7 @@ export class Leads {
       id: lead.id, number: lead.number, label: "Lead", state: lead.state, door: lead.door, source: lead.source, sourceDetail: lead.sourceDetail,
       interestedIn: lead.interestedIn?.label ?? null, ownerStaffId: lead.ownerStaffId, owner: ownerLabel(lead.ownerStaffId ? staff.get(lead.ownerStaffId) : undefined),
       arrivedAt: lead.arrivedAt, firstResponseAt: lead.firstResponseAt, closeReason: lead.closeReason?.label ?? null, closeNote: lead.closeNote, closedAt: lead.closedAt,
-      person: { id: lead.person.id, givenNames: lead.person.givenNames, familyName: lead.person.familyName, email: lead.person.email, phone: lead.person.phone, fixNumber: !lead.person.phoneReadable },
+      person: { id: lead.person.id, givenNames: lead.person.givenNames, familyName: lead.person.familyName, email: lead.person.email, phone: lead.person.phone, fixNumber: !lead.person.phoneReadable, version: lead.person.updatedAt.toISOString() },
       possibleMatch, attribution: lead.attribution ? Object.fromEntries(Object.entries(lead.attribution).filter(([k, x]) => x !== null && !["firmId", "leadId", "createdAt"].includes(k))) : null,
     };
   }

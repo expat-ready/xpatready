@@ -21,6 +21,7 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves.md"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/isolated.sh"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/test-copies.sh"
+      - ".mergify.yml"   # P-785 (2) step 2: check-mergify-scopes.sh reads it (every PR once #2445 puts it in ci)
       - "CONTRIBUTING.md"   # P-785 (2) step 4: check-contributing.sh reads these three
       - ".github/pull_request_template.md"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs"
@@ -47,5 +48,7 @@ jobs:
               sudo ln -sf "$(/home/linuxbrew/.linuxbrew/bin/brew --prefix)/bin/zsh" /usr/bin/zsh
             fi
           fi
+      - name: focus-truth.py's tests (ENF-733b, Sample fixtures, a few seconds)
+        run: python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_focus_truth.py
       - name: every guard's test, and each fails without its guard
         run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-guards.sh --mutate

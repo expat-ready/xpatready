@@ -11,7 +11,8 @@
 # with a warning, never a failure (fixes still merge, P-214). It holds the only write token here, so it runs main's
 # waves.py from the base commit in a folder of its own, reads the PR's title and body as data only, and keeps no
 # token in .git/config (tools/write-token.py, ALLOW).
-# Test: product/tools/check-g4-rules.sh.
+# Test: product/tools/check-g4-rules.sh. E5 (P-674 to P-677): cleanup-pr-check.sh proves a "Clean-up:" PR is a pure
+# move or deletion and runs the stale-path check on every PR (test: product/tools/check-cleanup-pr.sh).
 name: pr-rules
 on:
   pull_request:
@@ -44,6 +45,9 @@ jobs:
         env:
           TITLE: "${{ github.event.pull_request.title }}"
         run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs claim --title "$TITLE"
+      - name: a "Clean-up:" PR is a pure move or deletion; no live file names a moved path (E5, P-674 to P-677)
+        if: "${{ !cancelled() }}"
+        run: printf '%s\n' "$BODY" | bash "$T/cleanup-pr-check.sh" --base HEAD^1
       - name: under 800 changed lines of code and tests, or a recorded exception
         if: "${{ !cancelled() }}"
         env:

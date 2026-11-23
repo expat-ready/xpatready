@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
+# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-758's queue blocked by checks (guard 37, 20 Nov, P-758), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), ENF-738's constraint section (guard 29, 20 Nov), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) with ENF-761's under-cap ACTs (761c) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
 #   bash product/tools/check-guards.sh [--mutate]
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-ready-gate.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh"
+TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (#2597, ENF-772 stack)
+TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate (#2738, ENF-772 stack)
 bad=0
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
@@ -94,7 +96,6 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 comment|../../.github/workflows/queue-gate.yml|/comment.author_association/d|check-queue-gate.sh
 15 dispatch|product/tools/queue-gate.sh|s/schedule.workflow_dispatch)/schedule)/|check-queue-gate.sh
 15 gatewd|../../.github/workflows/queue-gate.yml|s/ .. github.event_name == .workflow_dispatch.$//|check-queue-gate.sh
-15 full|product/tools/queue-gate.sh|s/^  fullproof "\$head" .. return 1/  true/|check-queue-gate.sh
 15 full head|product/tools/queue-gate.sh|s/select(.title == \$t)/select(true)/|check-queue-gate.sh
 15 full green|product/tools/queue-gate.sh|s/if \[ "\$st \$co" = "completed success" \]; then/if true; then/|check-queue-gate.sh
 15 full main|product/tools/queue-gate.sh|s/^      grep -qx "\$sha" "\$H.m" .. continue/      true/|check-queue-gate.sh
@@ -108,13 +109,11 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full recfiles|product/tools/queue-gate.sh|s/^records() { has records \&\& .*/records() { has records; }/|check-queue-gate.sh
 15 full unread|product/tools/queue-gate.sh|s/ \[ "\${full_state:-}" = unread \] \&\& exit 3; exit 1;;/ exit 1;;/|check-queue-gate.sh
 15 full sweep3|product/tools/label-sweep.sh|s/^    if \[ "\$g" = 3 \]; then/    if false; then/|check-label-sweep.sh
-15 full fromwho|product/tools/queue-gate.sh|s/\(.\[.\[\] . \)select(.user.login as \$l . \$who . index(\$l)) . \(select(.author_association == "OWNER"\)/\1\2/|check-queue-gate.sh
 15 full nottested|../../.github/workflows/ci.yml|s/, FULL_PR: "\${{ inputs.pr }}", GATE_B_NOT_TESTED: "[^"]*" }/, FULL_PR: "${{ inputs.pr }}" }/|check-queue-gate.sh
 15 batch only|product/tools/queue-gate.sh|s/(map(select(. != "ci")) . if length > 0 then . else empty end) \/\/ ./map(select(. != "ci"))/|check-queue-gate.sh
 15 batch unread|product/tools/queue-gate.sh|s/names=\$(failing "\$rid" all . sort -u); \[ -n "\$names" \] .. {[^}]*}/names=$(failing "$rid" all)/|check-queue-gate.sh
 15 batch body|product/tools/queue-gate.sh|s/ + \[(.body \/\/ "") . scan(.*tonumber\]\() . index(\$n))\)/\1/|check-queue-gate.sh
 15 batch pages|product/tools/queue-gate.sh|s/length < 100 or any(.\[\]; .number <= \$n)/true/|check-queue-gate.sh
-15 full from|product/tools/queue-gate.sh|s/ \&\& \[\[ "\$at" < "\$FULL_FROM" \]\] \&\& return 0/ \&\& return 0/|check-queue-gate.sh
 15 full names|product/tools/queue-gate.sh|s/ 2>\/dev\/null . san . cut -c1-120 . grep \.; true; }/ 2>\/dev\/null; true; }/|check-queue-gate.sh
 15 batch|product/tools/queue-gate.sh|s/^  if ! { judge \&\& covered; }; then/  if ! judge; then/|check-queue-gate.sh
 15 batch part|product/tools/queue-gate.sh|s/ <<< "\$lines" .. miss=/ <<< "$lines" .. true .. miss=/|check-queue-gate.sh
@@ -135,6 +134,13 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
 15 full depth|../../.github/workflows/label-guard.yml|/^          fetch-depth: 0$/d|check-queue-gate.sh
 15 full name|../../.github/workflows/ci.yml|s/format(.full-run PR #{0} {1}., inputs.pr, inputs.head)/inputs.head/|check-queue-gate.sh
+15 start rid|product/tools/queue-gate.sh|s/ \&\& held \&\& \[ "\$held_state" = failed \]; then start/ \&\& held; then start/|check-queue-gate.sh
+15 deq unlabel|product/tools/queue-gate.sh|s/^          api -X DELETE "\$API\/repos\/\$REPO\/issues\/\$PR\/labels\/review%3A%20approved"/          true/|check-queue-gate.sh
+15 proof deq|product/tools/queue-gate.sh|s/ \] .. has dequeued; then/ ]; then/|check-queue-gate.sh
+15 start red|product/tools/queue-gate.sh|s/\[ "\$ci_state" = failure \] \&\& { echo "#\$PR: ci is red/false \&\& { echo "#$PR: ci is red/|check-queue-gate.sh
+15 start|product/tools/queue-gate.sh|s/^  api -X POST "\$API\/repos\/\$REPO\/actions\/workflows\/ci.yml\/dispatches"/  true/|check-queue-gate.sh
+15 start who|product/tools/queue-gate.sh|s/^  approved \(..\) { echo "#\$PR: no full run: \$why";/  true \1 { echo "x";/|check-queue-gate.sh
+15 start wake|../../.github/workflows/queue-gate.yml|s/ .. (github.event.action == .labeled. \&\& github.event.label.name == .dequeued.)//|check-queue-gate.sh
 16 source|product/tools/cockpit-data.py|s/                elif st != "open":/                elif False:/|check-lead-watch-board.sh
 16 count|product/tools/lead-watch.sh|s/; echo "\$bw"; act=\$((act + \$(grep -c .^ACT. <<<"\$bw")))/; echo "$bw"/|check-lead-watch-board.sh
 17 wall|product/tools/known-failures.py|s/(1 if b > int(row\["threshold"\]) else 0)/0/|check-known-failures.sh
@@ -232,7 +238,10 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 36 draft|../../.github/workflows/trace.yml|/SPD-2 item 5 (b): not on a draft/d|check-pr-concurrency.sh
 35 report|../../.github/workflows/pr-suites.yml|/^        if: steps.setup.outcome == .success.$/{n;d;}|check-pr-suites-job.sh
 35 batch|../../.github/workflows/pr-suites.yml|s/ \&\& !startsWith(github.event.pull_request.head.ref, .mergify\/.)//|check-pr-suites-job.sh
-35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh'
+35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh
+761c build|product/tools/waves.py|s/    if len(building) < CAP_BUILDING and waiting:/    if False:/|check-waves.sh
+761c qa|product/tools/waves.py|s/    if qa is not None and qa < CAP_QA and built:/    if False:/|check-waves.sh
+761c view|product/tools/waves.py|s/^        if re.search(r"^UNREADABLE".*/        if False:/|check-waves.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 jsparse() { node --check "${@: -1}"; }   # "$sh -n FILE" for a .js (guard 36: app-view.js; bash -n cannot read JavaScript)
 MUT="$MUT"'
@@ -259,6 +268,100 @@ MUT="$MUT"'
 32 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$nw")))/true/|check-nightly-watch.sh
 32 parts|../../.github/workflows/nightly.yml|s/^      N: [0-9]*$/      N: 8/|check-nightly-watch.sh'
 MUT="$MUT"'
+ENF771 stop|product/tools/stop-check.sh|/resource-claim-guard.sh" 2>\/dev\/null/d|check-resource-claim-guard.sh
+ENF771 deny|product/tools/resource-claim-guard.sh|s/    if s and CLAIM.search(s) and not NEG.search(s)/    if s and CLAIM.search(s)/|check-resource-claim-guard.sh
+ENF771 near|product/tools/resource-claim-guard.sh|s/EVID.search(" ".join(sents\[max(0, i - 1):i + 2\]))/EVID.search(text)/|check-resource-claim-guard.sh'
+MUT="$MUT"'
+38 E7|product/tools/check-docs.sh|s/    if rid in stale or re.search/    if True or re.search/|check-rule-register.sh
+38 E7 suffix|product/tools/check-docs.sh|s/        if f.removeprefix("\.\/") not in have:/        if not any(x.endswith(f) for x in files):/|check-rule-register.sh
+38 E7 path|product/tools/check-docs.sh|s/^have = set(files) .*$/have = set(files)/|check-rule-register.sh
+38 E7 stale|product/tools/check-docs.sh|s/^    KNOWN_STALE=" P-690 IDX-23 "/    KNOWN_STALE=" P-1 P-690 IDX-23 "/|check-rule-register.sh
+37 E15 kind|product/tools/decision-impact.sh|s/scope.tooling)/scope.none)/|check-decision-impact.sh
+37 E15 impact|product/tools/decision-impact.sh|s/^done . grep . \&\& bad=1$/done/|check-decision-impact.sh
+37 E15 from|product/tools/decision-impact.sh|s/IMPACT_FROM=808/IMPACT_FROM=99999/|check-decision-impact.sh
+37 E15 frozen|product/tools/decision-impact.sh|s/^EXEMPT_UPTO=764;/EXEMPT_UPTO=999;/|check-decision-impact.sh
+38 hand|product/tools/lead-upkeep.py|s/    if beyond >= HAND_K:/    if False:/|check-lead-upkeep.sh
+38 warn|product/tools/lead-upkeep.py|s/    elif beyond >= WARN_K:/    elif False:/|check-lead-upkeep.sh
+38 given|product/tools/lead-upkeep.py|s/    if now is None:/    if False and now is None:/|check-lead-upkeep.sh
+38 start|product/tools/lead-upkeep.py|s/(kilo(m.group(1)), "STATE current_lead:") if m else/(None, "x") if False else/|check-lead-upkeep.sh
+38 secret|product/tools/lead-upkeep.py|s/    elif p.returncode == 3 and /    elif False and /|check-lead-upkeep.sh
+38 group|product/tools/lead-upkeep.py|s/            os.killpg(p.pid, signal.SIGKILL)/            p.kill()/|check-lead-upkeep.sh
+38 range|product/tools/lead-upkeep.py|s/    if beyond < 0:  /    if False:  /|check-lead-upkeep.sh
+38 fail|product/tools/lead-upkeep.py|s/    if p.returncode == 0:/    if True:/|check-lead-upkeep.sh
+38 notes|product/tools/lead-upkeep.py|s/    if not os.path.isdir(a.notes):/    if False:/|check-lead-upkeep.sh
+38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
+38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh
+29 machines|product/tools/flow-constraint.py|s/(mc.get("oldest_min") or 0) > BAR\["wait_min"\]/False/|check-flow-constraint.sh
+29 culprit|product/tools/flow-constraint.py|s/ if y\["open"\] and not y.get("requeued")})/ if y["open"]})/|check-flow-constraint.sh
+29 stale|product/tools/flow-constraint.py|s/ and age > BOARD_MAX_MIN else$/ and False else/|check-flow-constraint.sh
+29 board|product/tools/flow-constraint.py|s/^BOARD_MAX_MIN = int(os.environ.get("FRESH_MAX_MIN") or 10) if .* else 10 /BOARD_MAX_MIN = 45 /|check-flow-constraint.sh
+29 unread|product/tools/flow-constraint.py|s/^    if unmeasured:$/    if False:/|check-flow-constraint.sh
+29 count|product/tools/lead-watch.sh|s/; echo "\$cs"; act=\$((act + \$(grep -c .^ACT. <<<"\$cs")))/; echo "$cs"/|check-flow-constraint.sh
+761g gap|product/tools/lead-watch.sh|s/GAP_MAX:-15/GAP_MAX:-999/|check-lead-gap.sh
+761g stall|product/tools/lead-watch.sh|s/STALL_MAX:-15/STALL_MAX:-40/|check-lead-gap.sh
+761g guard|product/tools/lead-check-guard.sh|/norm "\$GAP")" \] .. exit 0$/d|check-lead-gap.sh
+37 paths|product/tools/queue-blocked.py|s/^    return bool(files) and all(any(r.search(f) for r in CHECK_ONLY) for f in files)/    return True/|check-queue-blocked.sh
+37 approve|product/tools/queue-blocked.py|s/^    return bool(re.match(.*/    return True/|check-queue-blocked.sh
+37 head|product/tools/queue-blocked.py|s/approve\[sd\]?\\s+%s\\b" % re.escape(head)/approve" % ()/|check-queue-blocked.sh
+37 trusted|product/tools/queue-blocked.py|s/c.get("author_association") not in TRUSTED or //|check-queue-blocked.sh
+37 who|product/tools/queue-blocked.py|s/ or (c.get("user") or {}).get("login") not in who:/:/|check-queue-blocked.sh
+37 source|product/tools/queue-blocked.py|s/ and main_like(r.get("head_branch"))\]/]/|check-queue-blocked.sh
+37 measured|product/tools/queue-blocked.py|s/"" if note else "main.s guards green, "/"main.s guards green, "/|check-queue-blocked.sh
+37 pages|product/tools/queue-blocked.py|s/^        if len(page) < 100 or enough(page):/        if True:/|check-queue-blocked.sh
+37 rename|product/tools/queue-blocked.py|s/, f.get("previous_filename"))/,)/|check-queue-blocked.sh
+37 running|product/tools/queue-blocked.py|s/ or any(r.get("status") != "completed" for r in mine)//|check-queue-blocked.sh
+37 batchpr|product/tools/queue-blocked.py|s/ or str((p.get("head") or {}).get("ref") or "").startswith("mergify\/")//|check-queue-blocked.sh
+37 label|product/tools/queue-blocked.py|s/if "review: approved" not in labels and not /if not /|check-queue-blocked.sh
+37 cancelled|product/tools/queue-blocked.py|s/ and r.get("conclusion") not in ("cancelled", "skipped")//|check-queue-blocked.sh
+37 window red|product/tools/queue-blocked.py|s/ and (r is last or (when(r.get("created_at")) or now) >= since)\]/ and r is last]/|check-queue-blocked.sh
+37 reviewers|product/tools/queue-blocked.py|s/^            rv = gh("api", .*/            rv = ""/|check-queue-blocked.sh
+37 cap|product/tools/queue-blocked.py|s/^    raise Unread("more than %d pages" % cap)/    return out/|check-queue-blocked.sh
+37 ci|product/tools/queue-blocked.py|s/^    return max(mine, .*/    return True/|check-queue-blocked.sh
+37 guards|product/tools/queue-blocked.py|s/^            if red:/            if False:/|check-queue-blocked.sh
+37 batch|product/tools/queue-blocked.py|s/str(r.get("head_branch") or "").startswith("mergify\/merge-queue\/") and/str(r.get("head_branch") or "").startswith("never\/") and/|check-queue-blocked.sh
+37 window|product/tools/queue-blocked.py|s/^WINDOW_H = 2 /WINDOW_H = 999 /|check-queue-blocked.sh
+37 dequeued|product/tools/queue-blocked.py|s/.get("name") == "dequeued"/.get("name") == "never"/|check-queue-blocked.sh
+37 green|product/tools/queue-blocked.py|s/^    if not why and not warn:/    if False:/|check-queue-blocked.sh
+37 unread|product/tools/queue-blocked.py|s/^    if not why and not warn:/    if not why:/|check-queue-blocked.sh
+37 draft|product/tools/queue-blocked.py|s/if p.get("draft") or /if False and p.get("draft") or /|check-queue-blocked.sh
+37 count|product/tools/lead-watch.sh|s/; seen "\$qb"; act=\$((act + \$(grep -c .^ACT. <<<"\$qb")))/; seen "$qb"/|check-queue-blocked.sh
+39 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
+39 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh
+39 board|product/tools/owed-watch.py|s/            raise ValueError("no backlog.by_lane")/            by = {}/|check-owed-watch.sh
+39 done|product/tools/owed-watch.py|s/ and not DONE.search(c):/:/|check-owed-watch.sh
+39 head|product/tools/owed-watch.py|s/^        if h:  /        if False:  /|check-owed-watch.sh
+39 state|product/tools/owed-watch.py|s/^        print(f"ACT   starts owed not measured/        return; print(f"ACT   starts owed not measured/|check-owed-watch.sh
+39 watch|product/tools/lead-watch.sh|s/echo "\$lr"; act=\$((act + \$(grep -c .^ACT. <<<"\$lr")))/echo "$lr"/|check-owed-watch.sh
+39 watch2|product/tools/lead-watch.sh|s/echo "\$so"; act=\$((act + \$(grep -c .^ACT. <<<"\$so")))/echo "$so"/|check-owed-watch.sh
+37 count|product/tools/queue-batches.py|s/ or any(r.get("status") != "completed" for r in runs\["check_runs"\]):/:/|check-lead-merge.sh
+37 refuse|product/tools/lead-merge.sh|s/^if \[ "\$n" != 0 \] \&\& \[ -z "\$blank" \]; then$/if false; then/|check-lead-merge.sh
+37 page|product/tools/queue-batches.py|s/ > len(runs\["check_runs"\]):   # one page only/ < 0:   # one page only/|check-lead-merge.sh
+37 unread|product/tools/queue-batches.py|s/^        return 3$/        return 0/|check-lead-merge.sh
+37 watch|product/tools/lead-watch.sh|s/; say "\$qb"$//|check-lead-merge.sh'
+MUT="$MUT"'
+LRG access|product/tools/lead-read-gate.sh|s/ or any(.\[\]; test(\$access)) or / or false or /|check-lead-read-gate.sh
+LRG route|product/tools/lead-read-gate.sh|s/(\$w and any(.\[\]; test(\$route)))))/($w and false)))/|check-lead-read-gate.sh
+LRG hunk|product/tools/lead-read-gate.sh|s/else .\[-1\] += \[\$l\] end/else .[-1] += [ if $l[0:1] == " " then empty else $l end ] end/|check-lead-read-gate.sh
+LRG whole|product/tools/lead-read-gate.sh|s/(\$w and any(\$n\[\]; test(\$whole; "i"))) as \$all/false as $all/|check-lead-read-gate.sh
+LRG paths|product/tools/lead-read-gate.sh|s/^    hit=\$(paths <<< "\$names" . tick)$/    hit=""/|check-lead-read-gate.sh
+LRG head|product/tools/lead-read-gate.sh|s/grep -x "\$head" >\/dev\/null; then/grep . >\/dev\/null; then/|check-lead-read-gate.sh
+LRG writer|product/tools/lead-read-gate.sh|s/select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")/select(true)/|check-lead-read-gate.sh
+LRG edited|product/tools/lead-read-gate.sh|s/select(.created_at != null and (.updated_at \/\/ .created_at) == .created_at)/select(true)/|check-lead-read-gate.sh
+LRG bot|product/tools/lead-read-gate.sh|s/ and .user.login == "mergify\[bot\]" and .head.repo.full_name == \$r//|check-lead-read-gate.sh
+LRG page|product/tools/lead-read-gate.sh|s/-lt 100 \] \&\& break/-lt 100000 ] \&\& break/|check-lead-read-gate.sh
+LRG block|product/tools/lead-read-gate.sh|s/if \[ "\$MODE" = block \]; then s=failure;/if false; then s=failure;/|check-lead-read-gate.sh
+LRG closed|product/tools/lead-read-gate.sh|s/^    \*) echo "#\$PR: \$why"; \[ -n "\$head" \] .. return 2; s=failure;/    *) s=success;/|check-lead-read-gate.sh
+LRG list|product/tools/lead-read-paths.txt|/^\/api\/src\/platform\/identity\/$/d|check-lead-read-gate.sh
+LRG main|../../.github/workflows/lead-read.yml|s/^  pull_request_target:$/  pull_request:/|check-lead-read-gate.sh'
+echo "--- each test without its guard (must FAIL)"
+MUT="$MUT"'
+E5 pure|product/tools/cleanup-pr-check.sh|s/^  \[ "\$r" = 0 \] .. bad=1$/  true/|check-cleanup-pr.sh
+E5 list|product/tools/cleanup-pr-check.sh|s/^  if \[ "\$lists" -gt 0 \]; then/  if false; then/|check-cleanup-pr.sh
+E5 bulk|product/tools/cleanup-pr-check.sh|s/^  if \[ "\$moved" -ge "\$BULK" \]; then/  if false; then/|check-cleanup-pr.sh
+E5 stale|product/tools/cleanup-pr-check.sh|s/^bash "\$TOOLS\/check-stale-paths.sh"; r=\$?/r=0/|check-cleanup-pr.sh
+E5 ci|../../.github/workflows/pr-rules.yml|/cleanup-pr-check.sh" --base HEAD^1/d|check-cleanup-pr.sh
+E5 move|product/tools/check-pure-move.sh|s/ \&\& { \[ "\$st" != R100 \] .. \[ "\$om" = "\$nm" \]; }//|check-cleanup-checks.sh'
+MUT="$MUT"'
 38 part|product/tools/ready-gate.py|s/            elif p in merged:/            elif True:/|check-ready-gate.sh
 38 pr|product/tools/ready-gate.py|s/        mm = re.match(r"Merge pull request #(\[0-9\]+) from ", lines\[0\]) if lines else None/        mm = re.match(r"(.*)", lines[0]) if lines else None/|check-ready-gate.sh
 38 journey|product/tools/ready-gate.py|s/        if not pl.get("journeyExists"):/        if False:/|check-ready-gate.sh
@@ -266,7 +369,6 @@ MUT="$MUT"'
 38 queue|../../.mergify.yml|/-check-failure = completes-ready/d|check-ready-gate.sh
 38 records|product/tools/ready-gate.py|s/    if NOT_A_PART.match(title or \"\"):/    if False:/|check-ready-gate.sh
 38 landed|product/tools/ready-gate.py|s/ \"--first-parent\", \"-m\",//|check-ready-gate.sh'
-echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
@@ -274,7 +376,7 @@ while IFS='|' read -r g f edit t; do
   cp "$ROOTD/.github/workflows/"*.yml "$M/.github/workflows/"; cp "$ROOTD/.mergify.yml" "$M/"; git -C "$M" init -q   # every workflow: check-label-guard parses two
   for x in $(cd "$ROOTD" && ls packages/xfa-engine/fixtures/synthetic/*.pdf packages/xfa-engine/src/__tests__/fixtures/*.pdf 2>/dev/null); do mkdir -p "$M/$(dirname "$x")"; cp "$ROOTD/$x" "$M/$x"; done   # guard 11 needs the real bytes
   before=$(cksum < "$M/$P/$f"); sed -i.bak "$edit" "$M/$P/$f"; rm -f "$M/$P/$f.bak"
-  sh=bash; head -1 "$M/$P/$f" | grep -q zsh && sh=zsh; case "$f" in *.yml) sh=true;; *.py) sh=pyparse;; *.js|*.mjs) sh=jsparse;; esac   # a .yml is parsed by its test; a .py by ast (B192)
+  sh=bash; head -1 "$M/$P/$f" | grep -q zsh && sh=zsh; case "$f" in *.yml|*.txt) sh=true;; *.py) sh=pyparse;; *.js|*.mjs) sh=jsparse;; esac   # a .yml or .txt list is read by its test; a .py by ast (B192)
   if [ "$before" = "$(cksum < "$M/$P/$f")" ]; then echo "FAIL  guard $g: the edit '$edit' changed nothing in $f"; bad=1
   elif ! $sh -n "$M/$P/$f" 2>"$M/log"; then echo "FAIL  guard $g: the edit '$edit' breaks $f's syntax, so its test failing proves nothing ($(head -1 "$M/log"))"; bad=1
   elif bash "$M/$P/product/tools/$t" > "$M/log" 2>&1; then echo "FAIL  guard $g: $t still passes with the guard off"; bad=1
