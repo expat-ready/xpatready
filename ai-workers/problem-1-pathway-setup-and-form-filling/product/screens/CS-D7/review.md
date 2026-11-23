@@ -125,3 +125,36 @@ Verdict: Block
 Reviewer: Changes 2cd403ffdf43f56b4d964e24407d413218db4fc3
 
 Verdict: Block
+
+## Round 3 (diff-only, on the split heads: #3256 `b41fe99098337d25daef71c071761281b0ad4ab5`, #3180 `366d3ed3bea87675911b1e9b6c62624023fadddd`)
+Fresh reviewer, 23 Nov 2026. Scope (the tech lead): the round-2 fixes `2cd403ffd..eab779b`, and the split. The minors listed as follow-up rows in the PR body are out of scope; none of them is Major.
+**Copy:** isolated `rev3_csd7` on :4437 (never :4400), stopped afterwards. Live AI off, US$0. **Suites on :4437 (head 366d3ed3b):** check_csd5_flags 38/38, check_csd5c_type_defaults 24/24, check_csd5_flags_browser 33/33 (this is J-70; run from a scratch copy so the committed screenshots were not overwritten), check_c76_readiness 91/91, check_readiness_pass_codes 4/4. **Typecheck:** `tsc -p api` on the head and on a standalone `git archive b41fe9909` tree: the same 15 errors, all in unrelated old tests, and none in a changed file. `tsc -p web` is clean on both. **Schema:** on fresh databases, `prisma migrate deploy` then `prisma migrate diff --from-config-datasource --to-schema prisma/schema` gives "No difference detected" for #3256 alone (it stops at 140000) and for #3180 (140000, then 150000).
+
+**Round-2 items:**
+- **N1 / R2-M1, fixed and tested both ways.** `flagWarnings` (`api/src/case-document-flags.ts:46-52`) keys each warning by the file and the value it depends on: `expired|<doc>|<date>`, `no_expiry|<doc>` and `age|<doc>|<max_age_days>`. `engine/runtime/readiness.ts:256` passes `part: w.key`. The check "review N1 pass" (`tests/check_csd5_flags.ts:113-120`) passes the age line, moves `uploaded_at` back a day and expects it still passed. With the old `part: w` the words change ("401 days"), so the check fails.
+- **R2-m1, fixed. The race itself has no test.** `updateMany` at `:168` now has `current: true`, and `:169` re-reads the row to answer `not_current`. Live probe: psql `begin; update … current=false; pg_sleep(3); commit` running alongside `POST flags {language:"ru"}` gives 409 `not_current` after 2.3 s, with the language and `flags_version` unchanged and no audit line. Run alongside a concurrent version bump instead, it gives 409 `flags_changed`. But "break m8 fail" (`:155`) is answered by the pre-check at `:147`, so no check fails if `current: true` is removed from `:168` (R3-m1).
+- **n2 / R2-m2, fixed in the words.** Playwright at 1024 px: open Document flags…, upload a newer file, type an expiry, Save. The `role=alert` says "…Nothing was changed. Close this and open the newer file's flags." Axe finds 0 serious issues, there is no sideways scroll and no page error. Save stays offered and gives the same words again (R3-m2).
+- **R2-m4, fixed and tested both ways.** `api/src/case-checklist.ts:208` empties `flag_warnings` on a not-applicable or waived line, which matches `flagWarningsOf`. The setup check (`:158`) sees the warning, and the fail check (`:160`) sees `[]` once the line is not applicable. That check fails without the fix.
+
+**The split: nothing lost, nothing duplicated.**
+- (a) The literal `git diff eab779b 366d3ed3b` also shows main's own commits (#3256's base is a newer main), so I compared each branch with its own base: `8f487df4b..eab779b` against `origin/main(7bd590d6f)..366d3ed3b`. The same 30 files, every blob identical. The only difference is the two migration folders, renamed 100000 → 140000 (csd7c) and 110000 → 150000 (flags), with identical contents (blobs `53f5c12…` and `eb2b5b3…`). Main touched none of these files in between.
+- (b) #3256 (`origin/main...b41fe9909`, 15 files, 708 lines) is CS-D7c only. No file references `case-document-flags`, `flags_version`, `document_flag`, `flag_warnings` or the `case_document` flag columns. Its migration touches only `document_type`, and it typechecks and migrates on its own (above).
+- (c) #3180 (`b41fe9909...366d3ed3b`, 15 files, 710 lines) is CS-D7 only. It depends on #3256's `SnapTypeDefaults` and the governed-change route (the right direction). `Completes: R1.70` is on #3180 only.
+- (d) Order: main's newest migration is `20261123030000`, followed by `20261123140000_csd7c_type_defaults` and then `20261123150000_csd7_document_flags`. The `readiness_pass_known_code_check` list in 150000 is c78's list (still the newest on main) plus `document_flag`.
+- Note: #3180's head moved to `94a80e401` after the commit I reviewed. That commit only adds the breaker's Round 3 section to `break-report.md` (+17 lines, no code).
+
+**New findings (all Minor, Should; none blocks):**
+- **R3-m1 (Minor): no test for the R2-m1 race.** Fix: in `check_csd5_flags.ts`, start `psql -c "begin; update case_document set current=false where id=…; select pg_sleep(2); commit"` in the background. After about 0.5 s, `POST flags {version, language:"ru"}`. Expect 409 `not_current`, the language unchanged and no new audit line. This check fails if `current: true` is removed.
+- **R3-m2 (nit/Minor): the stale dialog keeps a live Save** (`web/src/pages/case/document-flags/panel.tsx:58,90`). The words say "Close this", but the buttons are still "Cancel" and "Save flags", and every Save repeats the 409. No browser check covers these words. Fix: on `not_current`, keep a `stale` flag, hide Save and rename Cancel to "Close". Add the case to `check_csd5_flags_browser.ts`.
+- **R3-m3 (Minor; = breaker R3-m1): a translation pass outlives a change of language or of the staff flag.** The key is `translation|<doc>` only (`api/src/case-document-flags.ts:98`). A reason given for Portuguese then covers German. Fix: `translation|${d.id}|${d.language}|${flags.translation_from}`, plus a check that a language change reopens the line.
+- **R3-m4 (Minor; = breaker R3-m2): the language carry-over can drop a save made at the same moment.** `api/src/case-checklist.ts:356` reads `was.language` with a plain read before the supersede at `:357`. A flags save in between gets 200 on a file that is replaced a moment later, and the new file keeps the old language. Fix: supersede first and take the language from that row (`UPDATE … RETURNING language`), or `SELECT … FOR UPDATE` before the read.
+
+**Journey (reviewer role, round 3 delta):** the age pass now holds across days (API check and probe). The stale-file dialog gives correct words at 1024 px. Correct data goes ½ → 1, and the other criteria are unchanged from round 2. Score **8.5 / 10 (pass, no 0)**. Next step obvious stays ½ (F3, and the live Save in R3-m2). The journey-test file is unchanged.
+**D/BIC changes:** D2 4, D5 4 (N1 and R2-m1 fixed). The rest are unchanged.
+**Not checked:** GitHub CI `types`/`fast`/`regression` on either head (skipped on the PR events; my local typecheck stands in for them); the graph (P-86) was not re-run for a diff-only round; a real screen reader; D17/D20.
+
+**#3256:** Verdict: Approve (no Blocker or Major).
+Reviewer: Approve b41fe99098337d25daef71c071761281b0ad4ab5
+
+**#3180:** Verdict: Approve (no Blocker or Major). R3-m1 to R3-m4 go in as follow-up rows, or are fixed in place.
+Reviewer: Approve 366d3ed3bea87675911b1e9b6c62624023fadddd
