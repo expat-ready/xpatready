@@ -116,3 +116,43 @@ Open: Minor 2 (PF-0c's checker cannot see `ports/fakes/`) is outside this row, a
 **Round 2 (delta) verdict: Approve.** The 400 vs 422 question is for the Lead, already raised in the PR.
 
 Reviewer: Approve 24417b62c6fb3718d2af16f4ee1bbf534154e062
+
+## Round 3 (B164 key format): commit `7a47325a0781a6675e2e711501cc2b8530a76456` (diff from c4b0c55 only)
+Why: merge batch 45236170502, shard 11, failed `check_b164_no_engine_keys.ts`, because B164 reads a one-dot string in api/src as a combination key. The tech lead ruled on #3291: leave the guard alone and give every metric key the form `reports.<area>.<name>`.
+
+**What I ran** (on the head)
+* `check_b164_no_engine_keys`: **67 passed, 0 failed**.
+* `check_pfr1_reports`: **72 passed, 0 failed**. This test also runs the MetricsPort contract.
+* `check_pf0p_ports`: **127 passed, 0 failed**.
+* `tools/check-port-contracts.mjs`: 0 problems.
+* A scratch probe (outside the repository) of `MetricKey` and `checkRegistration`.
+
+**Findings**
+* **The regex is right and still bounded.** It is anchored, and every quantifier has a limit (area up to 30 characters, name up to 60).
+  - It accepts `reports.sales.leads_added`, and accepts an area of exactly 30 and a name of exactly 60 characters.
+  - It refuses `sales.leads_added`, `reports.sales`, `reports.a.b.c`, `Reports.…`, `xreports.…`, `reports..x`, a trailing newline, and one character over either limit.
+  - 50 parses of a 100 KB key took 5 ms.
+  - The area and name rules are the same as before.
+* **Prefix ownership still works with three segments.** `split(".").slice(0, 2)` gives `reports.<area>`, and the match uses `startsWith("reports.<area>.")`. The probe showed:
+  - Module sales adds `reports.sales.a` and then `.b`. Money is refused `reports.sales.c` ("the reports.sales.* keys are sales's").
+  - Money owns `reports.money.*`, and sales is refused there.
+  - Money may use `reports.sales_x.*` and `reports.sale.*`, so a near-name is not mistaken for the same area.
+  - The real registry and the fake both go through the same `checkRegistration`.
+* **No other behaviour changed.** Apart from the key strings, the diff changes only the regex, its message and the prefix line. The dashboards still check each key through `MetricKey.parse`. Every assertion is the same apart from the prefix.
+* **B164 has nothing to flag.**
+  - `git grep` finds no one-dot `sales.`, `cases.`, `money.` or `sample.` string left in api/src. The only one-dot sample string is in the contract under `ports/`, which B164 does not read, and it is there on purpose as the fail case.
+  - `reports` is seven letters, so B164's two-to-five-letter rule for a new program's key cannot match it.
+  - No key-format wording is out of date in the PR's other files (MODULE.rows/PF-R1.md, registry, routes, fake, feature file).
+* **Pass and fail per point.**
+  - The key format has a fail (contract: a one-dot key is refused; `NoDot` is also still refused) and a pass (`reports.sample.one` registers).
+  - Ownership has a fail (module `other` on `reports.sample.extra`) and a pass (the same module adds `reports.sample.extra2`).
+  - Every DW line keeps its pair.
+
+**New Minor (does not block)**
+7. No test checks that two modules can each own a different area. Every key in the tests is in `reports.sample.*`, under module `sample`. If the prefix shrank to the first segment (`reports`), the whole registry would have one owner and every current test would still pass. The probe shows the code is right today. **Fix (later PR):** add a pass that registers `reports.sample.x` (module sample) and `reports.other.y` (module other) on one registry.
+
+Journey: this round changes no screen or HTTP flow (key strings only), so I did not run a new journey. The score stays **9.5 / 10** from round 2.
+
+**Round 3 verdict: Approve.** No Blocker or Major is open.
+
+Reviewer: Approve 7a47325a0781a6675e2e711501cc2b8530a76456
