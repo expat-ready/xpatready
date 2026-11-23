@@ -213,6 +213,28 @@ try {
   ok("PF-21c DW3 pass/fail (breaker: two sends at once): one → 201, the other → 409; one notice row, one email",
     JSON.stringify([t1.status, t2.status].sort()) === "[201,409]" && sql(`select count(*) from plat_breach_notice where breach_id = '${twin.body.id}'`) === "1" && outboxOf(firmD) === dOwner.email, [t1.status, t2.status, outboxOf(firmD)]);
 
+  // Review M1: a change in flight (not yet committed) that withdraws the firm and the decision; a notice sent meanwhile
+  // waits for it, then finds the firm no longer named, and records and sends nothing.
+  const firmE = await newFirm("Sample Breach Firm E"); await staff(firmE, "owner", ["OWNER"]);
+  const race = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, affectedFirms: [firmE] } });
+  await call(base, "PATCH", `/api/system/register/breaches/${race.body.id}`, { token: ownerT, body: { reason: "Sample", decision: "NOTIFY_FIRMS", decisionReason: "Sample: tell them" } });
+  let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+  let changeStarted!: () => void; const started = new Promise<void>((r) => { changeStarted = r; });
+  const changing = owner.$transaction(async (tx) => {
+    await tx.$queryRaw`select plat_breach_change(${race.body.id}::uuid, ${JSON.stringify({ affected_firms: [], decision: "NO_NOTICE", decision_reason: "Sample: not affected after all" })}::jsonb, ${`staff:${OWNER}`})`;
+    changeStarted(); await gate;
+  }, { timeout: 30_000 });
+  await started;
+  const sending = call(base, "POST", `/api/system/register/breaches/${race.body.id}/notices`, { token: ownerT, body: { reason: "Sample: during a change", firmId: firmE } });
+  let waitedOnChange = true; sending.then(() => { waitedOnChange = false; }, () => { waitedOnChange = false; });
+  await new Promise((r) => setTimeout(r, 400));
+  const blocked = waitedOnChange;
+  release(); await changing;
+  const raced = await sending;
+  ok("PF-21c review M1 pass/fail: a notice sent while a change withdrawing the firm and the decision is in flight waits for it, then is refused; no notice row, no message, and the record stays consistent",
+    blocked && raced.status >= 400 && raced.status < 500 && sql(`select count(*) from plat_breach_notice where breach_id = '${race.body.id}'`) === "0" && outboxOf(firmE) === ""
+    && sql(`select decision || ':' || cardinality(affected_firms) from plat_breach where id = '${race.body.id}'`) === "NO_NOTICE:0", { blocked, raced: [raced.status, raced.body.code] });
+
   // DW4: insert-only and kept
   const noticeId = a1.body.id as string;
   ok("PF-21c DW4 fail: a notice row can't be changed or deleted, nor the notices table truncated (even by the owner)",
@@ -246,6 +268,9 @@ try {
   ok("PF-21c DW5 fail: a draft gets no notice even with a decision (409 BREACH_DRAFT), nothing sent to firm C", draftNotice.status === 409 && draftNotice.body.code === "BREACH_DRAFT" && outboxOf(firmC) === "", draftNotice);
   const confirm = await call(base, "PATCH", `/api/system/register/breaches/${draft.body.id}`, { token: ownerT, body: { reason: "Sample: confirmed", status: "RECORDED", description: "Sample: the chain broke at one line; checked and confirmed." } });
   const back = await call(base, "PATCH", `/api/system/register/breaches/${draft.body.id}`, { token: ownerT, body: { reason: "Sample", status: "DRAFT" } });
+  const ghostConfirm = await call(base, "PATCH", `/api/system/register/breaches/${ghost.body.id}`, { token: ownerT, body: { reason: "Sample", status: "RECORDED" } });
+  ok("PF-21c review m2 fail: confirming a draft without the description firms will read → 422 naming description; it stays a draft",
+    ghostConfirm.status === 422 && Object.hasOwn(ghostConfirm.body.fields ?? {}, "description") && sql(`select status from plat_breach where id = '${ghost.body.id}'`) === "DRAFT", ghostConfirm.body);
   ok("PF-21c DW5 pass: our staff confirm the draft (RECORDED, its event says RECORDED); it never goes back to draft (422)",
     confirm.status === 200 && confirm.body.status === "RECORDED" && back.status === 422, [confirm.body.status, back.status]);
 
@@ -278,6 +303,9 @@ try {
     refusedAsApp(firmB, `select plat_breach_notice_ready('${id}', '${firmA}')`, /only in the notified firm's own session/)
     && refusedAsApp(null, `select plat_breach_notice_ready('${id}', '${firmA}')`, /only in the notified firm's own session/)
     && refusedAsApp(firmC, `select * from plat_breach_notice_record('${id}', '${firmC}', '[{"staffId":"x"}]', '${tpl}', 'staff:${uuid()}')`, /ExpatReady's own staff/));
+  ok("PF-21c review m3 fail: a firm's own session can't record a notice that was never sent (recipients without this notice's outbox rows are refused), even naming a real staff member of ours",
+    refusedAsApp(firmC, `select * from plat_breach_notice_record('${draft.body.id}', '${firmC}', '[{"staffId":"${cOwner.id}","outboxId":"${uuid()}"}]', '${tpl}', 'staff:${OWNER}')`, /this notice's message in the outbox/)
+    && sql(`select count(*) from plat_breach_notice where firm_id = '${firmC}'`) === "0");
   const firmTry = await Promise.all(["/api/platform/breaches", "/api/platform/register/breaches", "/api/front-office/breaches"].map((p) => call(base, "GET", p, { token: firmT })));
   const srcFiles = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? srcFiles(join(dir, e.name)) : /\.ts$/.test(e.name) ? [join(dir, e.name)] : []);
   const controllers = srcFiles(join(STUDIO, "api", "src")).flatMap((f) => [...readFileSync(f, "utf8").matchAll(/@Controller\(\s*"([^"]*)"/g)].map((m) => m[1]));

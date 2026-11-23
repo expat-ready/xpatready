@@ -75,6 +75,8 @@ const ChangeBody = z.strictObject({
   decision: z.enum(["UNDECIDED", "NOTIFY_FIRMS", "NO_NOTICE"]).optional(), decisionReason: plain(2000, "Say why.").optional(),
 }).refine((b) => Object.keys(b).some((k) => k !== "reason"), { message: "Change at least one field.", path: ["body"] })
   .refine((b) => b.decision === undefined || b.decision === "UNDECIDED" || b.decisionReason !== undefined, { message: "Say why (the decision names who and why).", path: ["decisionReason"] })
+  // Review m2: a draft from an alert carries our internal words; confirming it needs the description the firms will read.
+  .refine((b) => b.status !== "RECORDED" || b.description !== undefined, { message: "Confirm the description with the record (the firms' notice quotes it).", path: ["description"] })
   .refine((b) => b.decisionReason === undefined || (b.decision !== undefined && b.decision !== "UNDECIDED"), { message: "A reason goes with a decision to notify or not.", path: ["decisionReason"] });
 const NoticeBody = z.strictObject({ ...Why, firmId: Uuid });
 export const LIST_MAX = 500;
@@ -219,7 +221,7 @@ export class Breaches {
         WHERE s.firm_id = ${firm}::uuid AND s.status = 'ACTIVE' GROUP BY s.id, s.email ORDER BY s.id`;
       if (people.length === 0) problem(409, "Nobody to notify", "The firm has no active Owner or Admin; nothing was sent or recorded.", { code: "NO_RECIPIENTS" });
       const cats = r.data_categories.map((k) => CATEGORY_WORDS[k as keyof typeof CATEGORY_WORDS] ?? k);
-      const values = { firm_name: f.name, discovered_on: String(r.discovered_at).slice(0, 10), description: r.description, data_categories: cats.length ? cats.join(", ") : "not yet known",
+      const values = { firm_name: f.name, discovered_on: `${new Date(r.discovered_at).toISOString().slice(0, 16).replace("T", " ")} UTC`, description: r.description, data_categories: cats.length ? cats.join(", ") : "not yet known",
         containment: r.containment ?? "Our investigation is continuing.", breach_ref: breach };
       const words = { subject: fillFields(v.subject ?? "", values), text: fillFields(v.body, values) };
       const recipients: BreachNotice["recipients"] = [];
@@ -229,7 +231,7 @@ export class Breaches {
       }
       const [n] = await tx.$queryRaw<{ id: string; sent_at: Date }[]>`SELECT id::text AS id, sent_at FROM plat_breach_notice_record(${breach}::uuid, ${firm}::uuid, ${JSON.stringify(recipients)}::jsonb, ${v.id}::uuid, ${by})`;
       await this.audit.record(tx, { firmId: firm, actor: BREACH_ACTOR, action: "platform.breach.notice_sent", entity: "plat_breach_notice", entityKey: n.id,
-        summary: `ExpatReady sent its Security incident notice about a security incident discovered on ${values.discovered_on} to this firm's Owner and Admins (${recipients.length}). The firm decides whether and how to tell its clients.`,
+        summary: `ExpatReady sent its Security incident notice about a security incident discovered ${values.discovered_on} to this firm's Owner and Admins (${recipients.length}). The firm decides whether and how to tell its clients.`,
         detail: { breachId: breach, recipients: recipients.length, templateVersionId: v.id, by, staffId: c.staffId }, before: null,
         after: { breachId: breach, channel: "EMAIL", recipients: recipients.map((x) => x.staffId), templateVersionId: v.id, sentBy: by, sentAt: n.sent_at.toISOString() } });
       return { id: n.id, firmId: firm, channel: "EMAIL", recipients, templateVersionId: v.id, sentBy: by, sentAt: n.sent_at.toISOString() };

@@ -341,7 +341,10 @@ DECLARE b plat_breach;
 BEGIN
   PERFORM plat_breach_own_firm(p_firm);
   PERFORM pg_advisory_xact_lock(hashtext('breach-notice:' || lower(p_breach::text) || ':' || lower(p_firm::text)));
-  SELECT * INTO b FROM plat_breach WHERE id = p_breach;
+  -- FOR SHARE (review M1): a change to the breach (plat_breach_change's FOR UPDATE) waits for this notice's transaction,
+  -- and this read waits for a change in flight, so a notice is never recorded against a decision or firm list that a
+  -- concurrent change has just withdrawn.
+  SELECT * INTO b FROM plat_breach WHERE id = p_breach FOR SHARE;
   IF NOT FOUND THEN RETURN jsonb_build_object('state', 'NOT_FOUND'); END IF;
   IF b.status <> 'RECORDED' THEN RETURN jsonb_build_object('state', 'DRAFT'); END IF;
   IF b.decision <> 'NOTIFY_FIRMS' THEN RETURN jsonb_build_object('state', 'NOT_DECIDED_TO_NOTIFY'); END IF;
@@ -363,6 +366,17 @@ BEGIN
     RAISE EXCEPTION 'plat_breach_notice_record: a notice is sent by one of ExpatReady''s own staff' USING ERRCODE = 'insufficient_privilege';
   END IF;
   PERFORM pg_advisory_xact_lock(hashtext('breach-notice:' || lower(p_breach::text) || ':' || lower(p_firm::text)));
+  PERFORM 1 FROM plat_breach b WHERE b.id = p_breach FOR SHARE;
+  -- Review m3: a notice is recorded only for messages that exist: each recipient names a staff member of this firm and the
+  -- outbox row this breach's notice wrote for them (its idempotency key), so a notice that was never sent cannot be recorded.
+  IF jsonb_typeof(p_recipients) <> 'array' OR jsonb_array_length(p_recipients) = 0 OR EXISTS (
+       SELECT 1 FROM jsonb_array_elements(p_recipients) rc
+        WHERE jsonb_typeof(rc) <> 'object' OR NOT (rc ? 'staffId') OR NOT (rc ? 'outboxId')
+           OR NOT EXISTS (SELECT 1 FROM platform_staff s WHERE s.firm_id = p_firm AND s.id::text = rc->>'staffId')
+           OR NOT EXISTS (SELECT 1 FROM msg_outbox o WHERE o.firm_id = p_firm AND o.id::text = rc->>'outboxId' AND o.subject_kind = 'STAFF'
+                            AND o.subject_id::text = rc->>'staffId' AND o.idempotency_key = 'breach-notice:' || lower(p_breach::text) || ':' || (rc->>'staffId'))) THEN
+    RAISE EXCEPTION 'plat_breach_notice_record: each recipient is a staff member of this firm with this notice''s message in the outbox' USING ERRCODE = 'check_violation';
+  END IF;
   INSERT INTO plat_breach_notice AS n (id, breach_id, firm_id, recipients, template_version_id, sent_by)
     VALUES (gen_random_uuid(), p_breach, p_firm, p_recipients, p_template_version, p_by) RETURNING n.* INTO r;
   INSERT INTO plat_breach_event (id, breach_id, kind, actor, detail)
