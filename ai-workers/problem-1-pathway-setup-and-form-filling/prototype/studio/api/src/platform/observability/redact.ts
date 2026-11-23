@@ -103,6 +103,21 @@ function errorShape(e: unknown): Record<string, unknown> {
   return out;
 }
 
+// PF-23m (SA-11-37 rule 1: "record id, mailbox id, rule name, result"): the database rule a refusal names, never its
+// words. PostgreSQL names a constraint, trigger or policy in double quotes; only a name shaped like an identifier that
+// pattern redaction leaves as it is comes back (a quoted value never does: it is not identifier-shaped, or it is not
+// after one of these words).
+const DB_RULE = /\b(?:constraint|trigger|policy|function)\s+"([A-Za-z_][A-Za-z0-9_]{0,62})"/;
+/** The constraint, trigger, policy or function a database error names, or undefined. */
+export function dbRuleOf(e: unknown): string | undefined {
+  try {
+    const x = e as { message?: unknown; meta?: { constraint?: unknown; target?: unknown } } | null;
+    const fromMeta = typeof x?.meta?.constraint === "string" ? x.meta.constraint : undefined;
+    const name = fromMeta ?? (typeof x?.message === "string" ? DB_RULE.exec(x.message)?.[1] : undefined);
+    return name && /^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(name) && redactText(name) === name ? name : undefined;
+  } catch { return undefined; }
+}
+
 /** Sample: the most values one redact() call walks (PF-23r, review minor 1); what is left becomes "[over budget]". */
 export const REDACT_BUDGET = 2_000;
 type Walk = { left: number; seen: WeakSet<object>; path: WeakSet<object> };

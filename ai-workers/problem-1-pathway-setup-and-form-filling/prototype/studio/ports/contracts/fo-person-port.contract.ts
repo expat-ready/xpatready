@@ -38,8 +38,10 @@ export type FoPersonHarness = {
 
 const refusedAs = (k: new (...a: never[]) => Error) => (e: unknown) => e instanceof k;
 const mine = async (h: FoPersonHarness, key: string) => (await h.auditLines()).filter((l) => l.entityKey === key);
-/** DW6: the line names no name, email or phone given (ids only). */
-const noPersonalData = (line: unknown, values: string[]) => { const s = JSON.stringify(line).toLowerCase(); return values.every((v) => !s.includes(v.toLowerCase())); };
+/** DW6: the line names no name, email or phone given outside its before and after values (ids only); R1.8 (QA-594, P-687):
+ *  those values are the line's `before`/`after` (the fake's entry) or `<field>_before`/`<field>_after` (the adapter's detail). */
+const outsideValues = (k: string, v: unknown) => (k === "before" || k === "after" || /_(before|after)$/.test(k) ? undefined : v);
+const noPersonalData = (line: unknown, values: string[]) => { const s = JSON.stringify(line, outsideValues).toLowerCase(); return values.every((v) => !s.includes(v.toLowerCase())); };
 
 export const foPersonPortContract = defineContract("FoPersonPort", (make: () => Promise<FoPersonHarness> | FoPersonHarness) => [
   {

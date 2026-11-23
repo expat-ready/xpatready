@@ -1,7 +1,8 @@
 // PF-19r part 1 (gap G4, QA-495; Release 1 rows R1.47 one email layout, R1.49 the gate on every path): staff and system
 // mail through MessagePort. The staff invitation and the two-step reset notice (MAIL_PORT, now the app's MESSAGES_MAIL),
 // the identity provider's code emails (handleCustomEmail over the same MailPort) and the complaint acknowledgement
-// reminder (the complaints feature's ports). Named tests DW1-DW6 from the brief, each with a pass and a fail. A scratch
+// reminder (the complaints feature's ports). Named tests DW1-DW6 from the brief, each with a pass and a fail; DW7 (part 3):
+// sign-up's "You already have an account" on the app's MESSAGES_MAIL (moved by PF-5v part 2; DW7 proves it through MessagePort). A scratch
 // database with every migration and the Sample firms; a Nest app of the identity classes with the app's own MAIL_PORT and
 // MESSAGES_MAIL providers (from their feature files), MessagePort on fakeJobs and a test clock, files in a scratch
 // folder, the local email adapter. No model call, nothing leaves the machine (US$0). The database and folder are removed.
@@ -33,6 +34,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = URL;
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -108,7 +110,7 @@ try {
   const r1 = await rowsTo("dw1.invitee@example.com"), m1 = (await inbox.list("dw1.invitee@example.com", undefined)).messages[0];
   ok("DW1 pass: an invitation from the app's providers lands in msg_outbox (TRANSACTIONAL, SENT by the local adapter) with the one layout: the firm's name on top, the \"Sent by\" line, the firm's sender name and Reply-To",
     inv1.status === 201 && inv1.body.emailed === true && r1.length === 1 && r1[0].class === "TRANSACTIONAL" && r1[0].state === "SENT"
-    && !!m1 && m1.html.includes(`font-weight:bold">${firmA.operatingName}</div>`) && m1.html.includes(`Sent by ${firmA.operatingName}.`) && m1.from.startsWith(firmA.operatingName) && m1.reply_to === firmA.contactEmail && /\/invitation#t=[A-Za-z0-9_-]{43}/.test(m1.body), { inv1: inv1.body, r1, m1 });
+    && !!m1 && m1.html.includes(`>${firmA.operatingName}</p>`) && m1.html.includes('role="presentation"') && m1.html.includes(`Sent by ${firmA.operatingName}.`) && m1.from.startsWith(firmA.operatingName) && m1.reply_to === firmA.contactEmail && /\/invitation#t=[A-Za-z0-9_-]{43}/.test(m1.body), { inv1: inv1.body, r1, m1 });
   // Fail: today's main (LocalMail bound to MAIL_PORT) writes no outbox row.
   const legacy = new LocalMail(() => clock.now());
   const old = await appWith([{ provide: MAIL_PORT, useValue: legacy }]);
@@ -237,9 +239,9 @@ try {
   await run();
   const f50 = (await rowsTo("dw5.fiftieth@example.com"))[0], f51 = (await rowsTo("dw5.fiftyfirst@example.com"))[0];
   ok("DW5 pass: on a trial firm the 50th email of the day is sent and the 51st is held: QUEUED with the reason \"daily limit\", nothing in the inbox, one alert",
-    sentSoFar > 0 && b5.status === 201 && f50?.state === "SENT" && f51?.state === "QUEUED" && f51.stateReason === HELD_DAILY_LIMIT && (await inbox.list("dw5.fiftyfirst@example.com", undefined)).messages.length === 0 && alerts.raised.some((a) => a.kind === "send_cap_reached"), { b5: b5.body, f50, f51, alerts: alerts.raised });
+    sentSoFar > 0 && b5.status === 200 && f50?.state === "SENT" && f51?.state === "QUEUED" && f51.stateReason === HELD_DAILY_LIMIT && (await inbox.list("dw5.fiftyfirst@example.com", undefined)).messages.length === 0 && alerts.raised.some((a) => a.kind === "send_cap_reached"), { b5: b5.body, f50, f51, alerts: alerts.raised });
   const held = await db.msgOutbox.findMany({ where: { firmId: firmA.id, state: "QUEUED", stateReason: HELD_DAILY_LIMIT }, select: { address: true } });
-  const rowOf = (e: string) => (b5.body.invitations ?? []).find((x: { email: string }) => x.email === e);
+  const rowOf = (e: string) => (b5.body.invited ?? []).find((x: { email: string }) => x.email === e);
   ok("DW5 pass: the batch's answer reports the held row: heldRows [2], and row 2 says emailHeld \"daily limit\" (row 1 does not); the outbox holds exactly that one",
     held.length === 1 && held[0].address === "dw5.fiftyfirst@example.com" && JSON.stringify(b5.body.heldRows) === "[2]" && rowOf("dw5.fiftyfirst@example.com")?.emailHeld === HELD_DAILY_LIMIT && rowOf("dw5.fiftieth@example.com")?.emailHeld === undefined, { held, b5: b5.body });
   // The two-step reset notice at the cap (break M1): never left for tomorrow, so nothing is reset.
@@ -266,6 +268,38 @@ try {
   ok("DW6 pass: no file under api/src/features/ binds MAIL_PORT to LocalMail or uses fakeMail(", offenders.length === 0, offenders);
   const probe = "{ provide: MAIL_PORT, useFactory: () => new LocalMail(() => 0) }; runtimeComplaintPorts = () => ({ mail: fakeMail() })";
   ok("DW6 fail: the same scan finds both in main's old lines (the scan is not blind)", /\bLocalMail\b/.test(probe) && /\bfakeMail\(/.test(probe));
+
+  // ----------------------------------------------------------------------- DW7 (part 3) sign-up's "already have an account"
+  // The sign-up door's ports as the app builds them (features/platform-firms.ts: runtimeSignUpPorts with MESSAGES_MAIL),
+  // on the app's MessagesMail; the form's time stamp on a test clock. A known staff email gets the email through MessagePort.
+  const { runtimeSignUpPorts } = await import("../api/src/platform/firms/runtime-ports.ts");
+  const { FirmSignUp, ACCEPTED } = await import("../api/src/platform/firms/signup.ts");
+  const firmsFeature = (await import("../api/src/features/platform-firms.ts")).default as { providers: unknown[] };
+  const { SIGNUP_PORTS } = await import("../api/src/platform/firms/routes.ts");
+  const signupBinding = providerOf(firmsFeature, SIGNUP_PORTS) as P & { useFactory: (m: unknown) => ReturnType<typeof runtimeSignUpPorts> };
+  const fclock = new FakeClock(new Date());
+  // This scratch server has no identity provider set (notReady says so); the local stand-in and the fake billing stand in,
+  // and the mail is the factory's own (the thing under test).
+  const { LocalSignUp } = await import("../api/src/platform/firms/signup-identity.ts");
+  const { fakeBilling } = await import("../ports/billing.ts");
+  const built = signupBinding.useFactory(appMail);
+  const door = () => new FirmSignUp(db, { ...built, notReady: null, identity: new LocalSignUp(() => fclock.now()), billing: fakeBilling(), clock: fclock, appUrl: "http://localhost:4400" });
+  const form = async (d: InstanceType<typeof FirmSignUp>, email: string) => { const p = await d.plans(); await fclock.advance({ seconds: 30 }); return { email, password: "a long enough password 1", firmName: "Known Firm", countryCode: "CA", acceptedTerms: p.terms.map((t) => t.id), formStamp: p.formStamp }; };
+  const ownerEmail = (await db.platformStaff.findFirstOrThrow({ where: { firmId: firmA.id, actorId: "user-O" } })).email;
+  const firmCount = async () => (await db.msgSendCounter.aggregate({ where: { firmId: firmA.id }, _sum: { sent: true } }))._sum.sent ?? 0;
+  const before7 = await firmCount();
+  const d7 = door(), a7 = await d7.signUp(await form(d7, ownerEmail.toUpperCase()), "10.7.0.1"); await d7.settled(); await run();
+  const r7 = await rowsTo(ownerEmail), m7 = (await inbox.list(ownerEmail, undefined)).messages.find((m: { subject: string }) => m.subject === "You already have an ExpatReady account");
+  ok("DW7 pass: sign-up with a known staff email → \"You already have an account\" through MessagePort as a platform account email (review M1): one outbox row with no firm (PLATFORM_ACCOUNT, TRANSACTIONAL, SENT), the one layout from ExpatReady, and the firm's daily count unchanged",
+    signupBinding.inject?.[0] === MESSAGES_MAIL && built.mail === appMail && a7.message === ACCEPTED && r7.length === 1 && r7[0].firmId === null && r7[0].audience === "PLATFORM_ACCOUNT" && r7[0].class === "TRANSACTIONAL" && r7[0].state === "SENT"
+    && !!m7 && m7.html.includes(">ExpatReady</p>") && m7.html.includes('role="presentation"') && m7.html.includes("Sent by ExpatReady.") && !m7.html.includes(firmA.operatingName) && m7.body.includes("/account") && (await firmCount()) === before7, { a7, r7, m7, before7, after: await firmCount() });
+  // Fail: the same email as the firm's (main's shape with firmId, which this PR's first commit sent) spends the firm's cap.
+  await appMail.send({ firmId: firmA.id, to: "dw7.firm.shape@example.com", replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: "x", class: "TRANSACTIONAL" }); await run();
+  ok("DW7 fail: the firm-shaped send (firmId) is counted against the firm's daily cap (the check above is not blind)", (await firmCount()) === before7 + 1, { before7, after: await firmCount() });
+  await fclock.advance({ hours: 2 });   // past the 3-an-hour limit per address
+  const a7s = await d7.signUp(await form(d7, "Nobody.Known@example.com"), "10.7.0.2"); await d7.settled(); await run();
+  ok("DW7 fail: an email with no account gets no \"already\" email (this door's identity stand-in has no mail, so nothing at all), and the same answer",
+    a7s.message === ACCEPTED && (await rowsTo("nobody.known@example.com")).length === 0, await rowsTo("nobody.known@example.com"));
 } catch (e) {
   fail++; console.log(`FAIL  the check stopped: ${e instanceof Error ? e.stack : String(e)}`);
 } finally {

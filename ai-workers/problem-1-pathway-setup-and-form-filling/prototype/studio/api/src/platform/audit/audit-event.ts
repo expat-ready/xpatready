@@ -5,12 +5,16 @@
 // carries firm_id (the entry's), case_id (the entry's), actor_type (the actor word's, which the insert trigger checks),
 // correlation_id and support_session_id (the request's or job's, context.ts); detail.firmId stays until a later row drops
 // it. A line never lands on another firm's trail: an entry whose firm is not the request's or job's firm is refused.
+// R1.8 (QA-594, P-687): an entry's before and after (personal values in full, secrets refused by the port) go into detail
+// as `<field>_before` / `<field>_after`, the shape AUD-4's reader shows as "field: old → new", inside the line (so the
+// hash chain, AUD-1c, covers them). R1.8 (QA-595): a case-side line's firm is its case's own firm (runtime_case.firm_id,
+// else its firm key's platform firm), so the wall applies there too.
 // Fail-closed (P-607 (3), a recorded departure from SA-11-7, SA-11 BR-5 and NFR5-08: no durable retry, the change does
 // not commit; Unconfirmed: no counsel): every failure raises one audit_write_failed alert with ids only and is thrown,
 // so the caller's transaction rolls the change back. One try: inside PostgreSQL a failed statement aborts the
 // transaction, so a retry there could never succeed.
 import type { Prisma } from "@prisma/client";
-import { AuditEntry, CaseActor, CaseEntry, isCaseEntry, type AuditPort } from "../../../../ports/audit.ts";
+import { AuditEntry, CaseActor, CaseEntry, flattenValues, isCaseEntry, type AuditPort } from "../../../../ports/audit.ts";
 import { writeAuditWithAlarm } from "../observability/alerts.ts";
 import { actorTypeOfWord, auditContext } from "./context.ts";
 
@@ -54,15 +58,17 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       const workspaceId = await platformAuditWorkspaceId(tx);
       await tx.auditEvent.create({
         data: { workspaceId, firmId, caseId: e.caseId?.toLowerCase() ?? null, actorType, correlationId: ctx?.correlationId ?? null, supportSessionId: ctx?.supportSessionId ?? null,
-          actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: { ...e.detail, firmId } as Prisma.InputJsonValue },
+          actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: { ...e.detail, ...flattenValues(e.before, e.after), firmId } as Prisma.InputJsonValue },
       });
     }, ids, { attempts: 1 });
   }
 
   /** AUD-1m: one case-side or configuration line (core.ts's Audit.log), with the same rules: its workspace is the caller's
-   *  (the demo workspace's lines stay the demo reset's, P-571 (1)); its firm is the request's or job's, null outside both
-   *  (until CS-W1 the case routes name none); no line in a request our staff make, and in a signed-in request only the
-   *  request's own actor; one alert with ids only and the error thrown on any failure, one try. */
+   *  (the demo workspace's lines stay the demo reset's, P-571 (1)); its firm (R1.8, QA-595) is the named case's own, else
+   *  the request's or job's, null outside every one (a configuration line); a line whose case belongs to another firm than
+   *  the request's or job's, or that names another firm than that, is refused; a named case that does not exist is refused
+   *  (never guessed); no line in a request our staff make, and in a signed-in request only the request's own actor; one
+   *  alert with ids only and the error thrown on any failure, one try. */
   private async recordCase(tx: Tx, entry: CaseEntry): Promise<void> {
     const raw = (entry ?? {}) as Partial<Record<"entity" | "entityKey", unknown>>;
     const ids = { firmId: undefined as string | undefined, entity: idOf(raw.entity), entityKey: idOf(raw.entityKey) ?? undefined };
@@ -75,13 +81,29 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       const e = CaseEntry.parse(entry);
       if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF), which has no actor word until PF-4s`);
       if (ctx?.actor && e.actor !== ctx.actor) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);
+      const caseFirm = e.caseId ? await caseFirmOf(tx, e.caseId) : undefined;
+      const named = e.firmId?.toLowerCase(), scope = ctx?.firmId?.toLowerCase();
+      if (caseFirm && scope && caseFirm !== scope) throw new AuditRefused(`audit line refused: case ${e.caseId} belongs to firm ${caseFirm}, but this request or job acts for firm ${scope} (a line never lands on another firm's trail)`);
+      const firmId = caseFirm ?? scope ?? named ?? null;
+      if (named && named !== firmId) throw new AuditRefused(`audit line refused: the line names firm ${named}, but its ${caseFirm ? "case's" : "request's or job's"} firm is ${firmId ?? "none"} (a line never lands on another firm's trail)`);
+      if (firmId) ids.firmId = firmId;
       await tx.auditEvent.create({
-        data: { workspaceId: e.workspaceId, firmId: ctx?.firmId ?? null, caseId: e.caseId?.toLowerCase() ?? null, actorType: actorTypeOfWord(e.actor), correlationId: ctx?.correlationId ?? null,
+        data: { workspaceId: e.workspaceId, firmId, caseId: e.caseId?.toLowerCase() ?? null, actorType: actorTypeOfWord(e.actor), correlationId: ctx?.correlationId ?? null,
           supportSessionId: ctx?.supportSessionId ?? null, actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary,
           detail: e.detail === undefined ? undefined : (e.detail as Prisma.InputJsonValue), combinationId: e.combinationId ?? null },
       });
     }, ids, { attempts: 1 });
   }
+}
+
+/** R1.8 (QA-595): a case's own platform firm, read in the caller's transaction: runtime_case.firm_id, else its firm key's
+ *  platform firm through CS-W1's one narrow lookup (it reads past PF-12's wall and returns only the id). A case id with no
+ *  case is refused: a line about a case nobody can find never takes a firm by guess. A case whose firm key has no platform
+ *  firm yet (a Sample firm before its seed) gives undefined: the request's or job's firm applies, as before. */
+async function caseFirmOf(tx: Tx, caseId: string): Promise<string | undefined> {
+  const rows = await tx.$queryRaw<{ firm: string | null }[]>`select coalesce(c.firm_id, case_lookup.case_firm_id_of_key(c.firm_key))::text as firm from runtime_case c where c.id = ${caseId}::uuid`;
+  if (!rows.length) throw new AuditRefused(`audit line refused: the line names case ${caseId}, which does not exist`);
+  return rows[0].firm?.toLowerCase() ?? undefined;
 }
 
 /** The one instance modules use (`auditEvent.record(tx, …)`). */

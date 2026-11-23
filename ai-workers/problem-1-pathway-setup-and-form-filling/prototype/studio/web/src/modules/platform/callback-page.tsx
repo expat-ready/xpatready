@@ -58,8 +58,8 @@ export function CallbackPage() {
     window.addEventListener("hashchange", take);
     return () => window.removeEventListener("hashchange", take);
   }, []);
-  // A sign-in from the card below (or another way) after the refusal opens My account (break M1).
-  if (state.step === "done" || (state.step === "refused" && token && token !== state.tokenThen)) return <Navigate to="/account" replace />;
+  // A sign-in from the card below (or another way) after the refusal opens Home (break M1; PF-18h: sign-in lands on Home).
+  if (state.step === "done" || (state.step === "refused" && token && token !== state.tokenThen)) return <Navigate to="/home" replace />;
   const signedIn = state.step === "refused" && !!token;
   return (
     <Frame area="outside" title={signedIn ? "Sign-in link" : "Sign in"}>

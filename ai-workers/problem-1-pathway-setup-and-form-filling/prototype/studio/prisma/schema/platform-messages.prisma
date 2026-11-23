@@ -12,8 +12,8 @@
 // by a composite foreign key; a withdrawal is also its own insert-only row. Every firm row here is covered by PF-12's
 // walls (msg_firm, msg_consent_wording, msg_consent, msg_consent_withdrawal, msg_suppression, msg_template,
 // msg_template_version, msg_outbox, msg_event, msg_send_counter). The CASL reading behind
-// "marketing needs express consent on that channel" is Unconfirmed: no counsel. Room is left for PF-18n's
-// msg_notification (later notifications).
+// "marketing needs express consent on that channel" is Unconfirmed: no counsel. PF-18n's msg_notification (the in-app
+// notifications) keys on platform_firm and platform_staff directly and is written only by api/src/platform/notifications/.
 
 /// Who a consent or a message is about: a front-office person, a case party, or a staff member. The id is that side's
 /// own row id (no foreign key across modules: each side owns its people).
@@ -231,6 +231,7 @@ model MsgConsentWithdrawal {
   firm MsgFirm @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([firmId, subjectKind, subjectId, channel, purpose, withdrawnAt])
+  @@index([firmId, withdrawnBy])
   @@map("msg_consent_withdrawal")
 }
 
@@ -329,6 +330,7 @@ model MsgOutbox {
   @@unique([firmId, idempotencyKey])
   @@index([firmId, state, createdAt])
   @@index([firmId, providerId])
+  @@index([firmId, channel, address])
   @@map("msg_outbox")
 }
 
@@ -362,4 +364,30 @@ model MsgSendCounter {
 
   @@id([firmId, day])
   @@map("msg_send_counter")
+}
+
+/// PF-18n part 1 (AG-7-39 r2 and r10; AG16-60 "duplicate beats a miss"; brief lead-b-briefs/PF-18n1.md): one in-app
+/// notification per person, item and kind. Ids only, no free text; the link is built when the row is read, never stored.
+/// Written only by api/src/platform/notifications/ (PrismaNotificationPort): a repeat for the same person, item and kind
+/// sets read_at back to empty and created_at to now, never a second row. kind and item_kind are PF-18np's names
+/// (ports/notifications.ts), group one of its eight; the person is staff of the row's own firm (composite key). Insert and
+/// update of read_at and created_at only: no delete (the 90-day removal is part 2's). Rules Prisma cannot say are in the
+/// migration 20261121020000_pf18n_notifications; PF-12's wall covers it.
+model MsgNotification {
+  id        String    @id @default(uuid()) @db.Uuid
+  firmId    String    @map("firm_id") @db.Uuid
+  staffId   String    @map("staff_id") @db.Uuid
+  kind      String
+  group     String
+  itemKind  String    @map("item_kind")
+  itemId    String    @map("item_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  readAt    DateTime? @map("read_at") @db.Timestamptz
+
+  firm  PlatformFirm  @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  staff PlatformStaff @relation(fields: [firmId, staffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, staffId, itemKind, itemId, kind])
+  @@index([firmId, staffId, createdAt])
+  @@map("msg_notification")
 }

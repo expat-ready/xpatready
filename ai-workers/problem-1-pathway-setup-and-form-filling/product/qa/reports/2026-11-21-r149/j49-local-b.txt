@@ -1,0 +1,32 @@
+PASS  J-49 setup: the Sample firm and its front office are seeded — []
+PASS  J-49 W1 Your details, with the firm's marketing tick: axe finds no WCAG A/AA violation — []
+PASS  J-49 W1 pass: the firm's public booking page offers one marketing tick, unticked, beside the firm's own wording (its Sample booking wording)
+PASS  J-49 W1 pass: visitor A's tick is stored as A's own email marketing consent (BOOKING_FORM, self-service, live) — [{"source":"BOOKING_FORM","kind":"SELF_SERVICE","withdrawn":false,"via":null}]
+PASS  J-49 W1 fail: visitor B, who left the box empty, has no marketing consent — []
+PASS  J-49 W1 pass: both visitors still get their booking confirmation (transactional: no consent needed, no unsubscribe link) — [[["TRANSACTIONAL","Your Free consultation is booked"]],[["TRANSACTIONAL","Your Free consultation is booked"]]]
+PASS  J-49 W2 pass: the firm's marketing email to visitor B (no consent) is SUPPRESSED before it leaves, reason NO_CONSENT: MARKETING, and never reaches B's inbox — {"id":"1be9a3d3-df4a-4f41-9dae-40a001a4c6fb","first":"SUPPRESSED","row":{"id":"1be9a3d3-df4a-4f41-9dae-40a001a4c6fb","state":"SUPPRESSED","reason":"NO_CONSENT: MARKETING","class":"MARKETING"}}
+PASS  J-49 W2 fail: the same marketing email to visitor A (ticked) goes, and arrives with the one-click unsubscribe headers — [{"id":"f1f6800f-a58a-4a50-8ea9-66a54b9f0b4a","state":"SENT","reason":null,"class":"MARKETING"},{"List-Unsubscribe":"<http://localhost:4474/api/public/unsubscribe/AAAAAF_6iEq_jihXJ9RETZWW1UhUXINQESxh4bZ42rYrLgaOVuIRuHTg5r_kBr2NylNqnV9eeuymLORcQNBPPQ>","List-Un
+PASS  J-49 DW1 pass: the gate reads the real consent store: A's booking tick (msg_consent) lets it through, B's empty box does not — {"a":{"id":"f1f6800f-a58a-4a50-8ea9-66a54b9f0b4a","first":"QUEUED","row":{"id":"f1f6800f-a58a-4a50-8ea9-66a54b9f0b4a","state":"SENT","reason":null,"class":"MARKETING"}},"b":{"id":"1be9a3d3-df4a-4f41-9dae-40a001a4c6fb","first":"SUPPRESSED","row":{"id":"1be9a3d3
+PASS  J-49 DW1 pass (the gate's answers): the real consent store allows A and refuses B for NO_CONSENT
+PASS  J-49 DW1 NR [fails on the stand-in]: with fakeConsent (no booking tick in it) the judge fails because A is refused for NO_CONSENT too — [{"allowed":false,"reason":"NO_CONSENT","purpose":"MARKETING"},{"allowed":false,"reason":"NO_CONSENT","purpose":"MARKETING"}]
+PASS  J-49 W2 pass: B's lead page (the Owner) shows the marketing email as "Not sent", why in words ("no consent to marketing on this channel"), the address masked — {"word":"Not sent","why":"Not sent: no consent to marketing on this channel","text":"Message\nNot sent\nNot sent: no consent to marketing on this channel\n\nEmail to j…@example.com · Marketing · from Sample immigration firm\n\nCreated Nov 21, 2026, 6:48 a.m."}
+PASS  J-49 W2 B's lead page with a Not sent message: axe finds no WCAG A/AA violation — []
+PASS  J-49 W2 B's lead page at 1024 px: no sideways page scroll
+PASS  J-49 W2 B's lead page at 1440 px: no sideways page scroll
+PASS  J-49 W3 the unsubscribe page: axe finds no WCAG A/AA violation — []
+PASS  J-49 W3 pass: A opens the email's unsubscribe link: one page, in the firm's name, with one Unsubscribe button; opening it records nothing (a link scanner unsubscribes no one) — 200
+PASS  J-49 W3 You are unsubscribed: axe finds no WCAG A/AA violation — []
+PASS  J-49 W3 pass: Unsubscribe says "You are unsubscribed" and records one withdrawal (email marketing, via UNSUBSCRIBE); A's booking consent now reads withdrawn — [{"source":"BOOKING_FORM","kind":"SELF_SERVICE","withdrawn":true,"via":"UNSUBSCRIBE"}]
+PASS  J-49 W3 fail: the used link is spent: a second click answers the not-found page (404) and records nothing more — 404
+PASS  J-49 W4 pass: the next marketing email to A is not sent (SUPPRESSED, WITHDRAWN: MARKETING) and is not in A's inbox — {"id":"68b2b9aa-d811-443a-8170-9b60f9185097","state":"SUPPRESSED","reason":"WITHDRAWN: MARKETING","class":"MARKETING"}
+PASS  J-49 DW2 pass: the gate's consent read (ConsentStore.allows, which MessagePort.send and its worker call) reads, on the copy's database, the withdrawal the running copy's unsubscribe door wrote — {"allowed":false,"reason":"WITHDRAWN","purpose":"MARKETING"}
+PASS  J-49 DW2 NR [fails on the stand-in]: fakeConsent holding A's tick never sees the door's withdrawal: the judge fails, it still allows A's marketing — {"allowed":true,"reason":"CONSENT","consentId":"450ce09b-2363-45c2-a1e6-1357c78c4866","purpose":"MARKETING"}
+PASS  J-49 W4 pass: a marketing email written before the click and sent after it is stopped by the worker's re-check (QUEUED, then SUPPRESSED WITHDRAWN: MARKETING) — ["QUEUED",{"id":"deb9aaeb-da3a-4067-90a4-e505bff0b2a7","state":"SUPPRESSED","reason":"WITHDRAWN: MARKETING","class":"MARKETING"}]
+PASS  J-49 W4 fail: a service email to A still goes and arrives (an unsubscribe is marketing only) — [{"id":"3cb937fd-2cd7-43dc-9894-8ef1b0fe73dd","state":"SENT","reason":null,"class":"SERVICE"},"SERVICE"]
+PASS  J-49 W4 pass: A's lead page shows the marketing email after the unsubscribe as "Not sent: the person withdrew consent", the service email and the first marketing email as sent, the address masked — [{"word":"Not sent","why":"Not sent: the person withdrew consent","text":"Message\nNot sent\nNot sent: the person withdrew consent\n\nEmail to j…@example.com · Marketing · from Sample immigration firm\n\nCreated Nov 21, 2026, 6:48 a.m."},"Sent","Sent"]
+PASS  J-49 W4 A's lead page after the unsubscribe: axe finds no WCAG A/AA violation — []
+PASS  J-49 W4 A's lead page at 1024 px: no sideways page scroll
+PASS  J-49 W4 A's lead page at 1440 px: no sideways page scroll
+PASS  J-49: no script error on any page walked — []
+
+30/30 passed

@@ -25,6 +25,8 @@ CODE = [("push guard", r"push-guard\.sh"), ("route has a screen", r"route-has-sc
         ("packs by diff and the protected set", r"works-set\.mjs"), ("type check", r"typecheck\.mjs"),
         ("type check's own check", r"check-typecheck\.sh"), ("this test", r"check-queue-run-scope\.sh")]
 
+# check-skeleton-scope.sh loads TOK .. evaluate from here by regex, up to `def truthy`: keep that block self-contained
+# and keep the name truthy.
 TOK = re.compile(r"\s*(?:('(?:[^']|'')*')|(==|!=|&&|\|\||<=|>=|[!(),<>])|([A-Za-z_][\w\-]*(?:\.(?:[\w\-]+|\*))*)|(\d+))")
 
 def lookup(path, ctx):

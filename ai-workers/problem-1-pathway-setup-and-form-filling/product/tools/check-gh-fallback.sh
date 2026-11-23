@@ -64,6 +64,8 @@ run bash "$GH" run list --limit 2 --json databaseId,status,headBranch
 ok "run list --json maps the REST names to gh's" "$([ $r = 0 ] && echo "$out" | jq -e '.[1] == {databaseId:43,status:"queued",headBranch:"x"}' >/dev/null && echo 1)" "exit $r: $out $err"
 run bash "$GH" api repos/o/r/issues/1/events --paginate --jq '[.[]|select(.event=="labeled")]|length'
 ok "api --paginate follows the Link header and joins the pages" "$([ $r = 0 ] && [ "$out" = 2 ] && echo 1)" "exit $r: $out $err"
+run bash "$GH" api -X POST repos/o/r/actions/workflows/walks.yml/dispatches -f ref=main -f 'inputs[journeys]=j_74'
+ok "api -f 'inputs[k]=v' nests like gh: a workflow dispatch sends {inputs:{journeys:...}} (21 Nov, Lead 6)" "$([ $r = 0 ] && tail -1 "$T/curl.log" | grep -q '"inputs": {"journeys": "j_74"}' && ! tail -1 "$T/curl.log" | grep -q 'inputs\[' && echo 1)" "exit $r: $(tail -1 "$T/curl.log")"
 run bash "$GH" repo view --json nameWithOwner -q .nameWithOwner
 ok "repo view reads the repository from git, with no request" "$([ $r = 0 ] && echo "$out" | grep -qE '^[^/]+/[^/]+$' && echo 1)" "exit $r: $out $err"
 run bash "$GH" pr merge 1052

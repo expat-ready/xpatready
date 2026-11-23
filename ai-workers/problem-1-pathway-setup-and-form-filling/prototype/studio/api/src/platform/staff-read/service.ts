@@ -14,7 +14,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The six starter roles in the order the role picker and Compare roles show them (PF-6r). */
 export const STARTER_ROLES = ["OWNER", "ADMIN", "CASE_MANAGER", "CASE_OFFICER", "BILLING_FINANCE", "READ_ONLY"] as const satisfies readonly PlatformRole[];
 export const TWO_STEP_WORDS = "Required for all staff";
-const include = { grants: { where: { endedAt: null }, select: { role: true }, orderBy: { grantedAt: "asc" as const } }, credential: { select: { representativeType: true, licensingBody: true } } };
+const include = { grants: { where: { endedAt: null }, select: { role: true }, orderBy: { grantedAt: "asc" as const } }, credential: { select: { representativeType: true, licensingBody: true } }, office: { select: { officeId: true } } };
 
 @Injectable()
 export class StaffReads {
@@ -35,8 +35,8 @@ export class StaffReads {
     return { used, limit, plan: sub?.plan.name ?? null, active: c.active, suspended: c.suspended, pending: c.pending, line: `${used} of ${limit} seats used` };
   }
 
-  private async row(s: { id: string; displayName: string; email: string; status: string; identitySubject: string | null; lastSignInAt: Date | null; grants: { role: string }[]; credential: { representativeType: string; licensingBody: string } | null }) {
-    return { id: s.id, displayName: s.displayName, email: s.email, roles: s.grants.map((g) => g.role), status: s.status, twoStep: await this.twoStep(s), lastSignInAt: s.lastSignInAt, licensed: !!s.credential };
+  private async row(s: { id: string; displayName: string; email: string; status: string; identitySubject: string | null; lastSignInAt: Date | null; grants: { role: string }[]; credential: { representativeType: string; licensingBody: string } | null; office: { officeId: string } | null }) {
+    return { id: s.id, displayName: s.displayName, email: s.email, roles: s.grants.map((g) => g.role), status: s.status, twoStep: await this.twoStep(s), lastSignInAt: s.lastSignInAt, licensed: !!s.credential, officeId: s.office?.officeId ?? null };   // PF-18s part 1: who works where
   }
 
   /** GET /api/platform/staff: the Team list and the seat line. */

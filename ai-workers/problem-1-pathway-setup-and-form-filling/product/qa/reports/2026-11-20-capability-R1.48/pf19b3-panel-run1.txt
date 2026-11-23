@@ -1,0 +1,26 @@
+PASS  PF-19b3 setup: the Sample firms and their front office are seeded — []
+PASS  DW4 pass (the running copy): its own worker sends a lead's email with the local adapter, and its test event makes it DELIVERED within one worker cycle (no SES) — {"d":"DELIVERED","b":"BOUNCED"}
+PASS  DW4 pass (the running copy): a Sample bounce address reads BOUNCED and the address is suppressed
+PASS  DW4 fail (the running copy): a message the copy did not send (no test event) stays SENT
+PASS  DW4 pass (the running copy): the next send to the bounced address is suppressed — {"outboxId":"3d5be7ea-defb-4892-a58b-b7a7be5913d4","state":"SUPPRESSED","reason":"SUPPRESSED: HARD_BOUNCE","repeated":false}
+PASS  DW5 pass (route): the lead's owner gets its four messages; no body text and no full address in the answer — {"status":200,"body":"{\"messages\":[{\"id\":\"3d5be7ea-defb-4892-a58b-b7a7be5913d4\",\"purpose\":null,\"class\":\"TRANSACTIONAL\",\"channel\":\"EMAIL\",\"address\":\"b…@example.com\",\"state\":\"SUPPRESSED\",\"stateReason\":\"SUPPRESSED: HARD_BOUNCE\",\"fromN
+PASS  DW5 fail (route): a Read-only person who may not see the lead, and firm B's Owner → 404 with the same words; no session → 401 — {"roW":"404:No such record in your firm.","fbW":"404:No such record in your firm.","none":401}
+PASS  DW6 pass (keyboard only): Tab reaches the lead in the Leads list and Enter opens its page with the Messages panel
+PASS  DW6 pass: the panel shows Sent, Delivered, Bounced and Not sent as words, one per message — ["Not sent","Sent","Delivered","Bounced"]
+PASS  DW6 pass: each message names its channel, the masked address, its class, the from-name and what happened with times — "Messages\n\nEvery email to this person, from any of their leads.\n\nMessage\nNot sent\nNot sent: an earlier email to this address bounced\n\nEmail to b…@example.com · Transactional · from Sample immigration firm\n\nCreated Nov 20, 2026, 9:07 a.m.\n\nMessage\n
+PASS  DW6 fail (review M1): a stored reason shows in plain words, never as a code (Not sent: an earlier email to this address bounced; hard bounce in words) — "Messages\n\nEvery email to this person, from any of their leads.\n\nMessage\nNot sent\nNot sent: an earlier email to this address bounced\n\nEmail to b…@example.com · Transactional · from Sample immigration firm\n\nCreated Nov 20, 2026, 9:07 a.m.\n\nMessage\n
+PASS  DW6 fail: the page shows no body text and no full address of any message
+PASS  DW6 pass: each state pill carries its word (never colour alone)
+PASS  DW6 pass (1440 px): no sideways page scroll
+PASS  DW6 pass (1440 px): axe finds no WCAG A/AA violation in the panel
+PASS  DW6 pass (1024 px): no sideways page scroll
+PASS  DW6 pass (1024 px): axe finds no WCAG A/AA violation in the panel
+PASS  DW6 pass (375 px): no sideways page scroll
+PASS  DW6 pass (375 px): axe finds no WCAG A/AA violation in the panel
+PASS  DW6 pass: axe finds no WCAG A/AA violation on the whole lead page with the panel
+PASS  DW6 pass (review m1): 50 shown, then Show older messages by keyboard loads the 51st and focus moves to it (not the top of the page) — {"firstPage":50,"focused":50}
+PASS  DW6 fail→pass (review m2): a failed load says so with a Try again button; Try again then shows the messages
+PASS  DW6 fail: a Read-only person who may not see the lead reads Lead not found, with no Messages panel
+PASS  DW6: no script error on any page — []
+
+24/24 passed

@@ -1,0 +1,18 @@
+{
+  "name": "xr-estate-cdk",
+  "private": true,
+  "description": "PF-8a: the Canadian estate as code (AWS CDK v2), synth only; its own package, outside the app (tech gate entry 8).",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "synth": "node bin/app.ts",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.275.0",
+    "constructs": "10.8.1"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.1147.0"
+  }
+}

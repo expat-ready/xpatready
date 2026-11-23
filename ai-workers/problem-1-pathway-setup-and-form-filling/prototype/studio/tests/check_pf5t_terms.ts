@@ -139,7 +139,7 @@ try {
   ok("PF-5t DW3 fail: a Case Officer accepting firm terms → 403 with the words, nothing written", coAccept.status === 403 && coAccept.body.detail === OWNER_ONLY && rows(`version_id = '${dpa2}'`) === 0, coAccept.body);
   const tosOld = sql(`select id from platform_terms_version where kind = 'TERMS_OF_SERVICE' and version = 'sample-2026-11-15'`);
   const old = await Promise.all([[tosOld], ["0f5a0000-0000-4000-8000-00000000dead"], ["not-a-uuid"], []].map((v) => call(base, "POST", "/api/platform/me/terms/accept", { token: tR, body: { versionIds: v } })));
-  ok("PF-5t DW3 fail: an old version id, an unknown one, a malformed one or none → 400, nothing written", old.every((o) => o.status === 400) && old[0].body.code === "TERMS_NOT_CURRENT" && rows(`staff_id = '${R}' and version_id = '${tosOld}'`) === 1, old.map((o) => [o.status, o.body.code]));
+  ok("PF-5t DW3 fail: an old version id, an unknown one, a malformed one or none → 400 TERMS_NOT_CURRENT for the two not current, 422 CHECK_FIELDS for the malformed one and none (PF-28 part 2b), nothing written", old.slice(0, 2).every((o) => o.status === 400) && old.slice(2).every((o) => o.status === 422) && old[0].body.code === "TERMS_NOT_CURRENT" && rows(`staff_id = '${R}' and version_id = '${tosOld}'`) === 1, old.map((o) => [o.status, o.body.code]));
   const first = await call(base, "POST", "/api/platform/me/terms/accept", { token: tR, body: { versionIds: [dpa2] } });
   const audits = sql(`select count(*) from audit_event where action = 'platform.terms.accepted'`);
   const replay = await call(base, "POST", "/api/platform/me/terms/accept", { token: tR, body: { versionIds: [dpa2] } });
@@ -194,7 +194,7 @@ try {
   ok("PF-5t DW4 pass: the list pages (limit 2, then the cursor): the next page follows on, no row twice, in the full list's order",
     p1.body.acceptances?.length === 2 && !!p1.body.nextCursor && p2.body.acceptances?.length === 2 && new Set(pageIds).size === 4 && JSON.stringify(pageIds) === JSON.stringify(a.slice(0, 4).map((x: any) => x.id)), [p1.body, p2.body]);
   const badPage = await Promise.all(["?limit=0", "?limit=201", "?limit=x", "?cursor=nope", `?cursor=${listC?.acceptances[0]?.id}`].map((q) => call(base, "GET", `/api/platform/terms/acceptances${q}`, { token: tO })));
-  ok("PF-5t DW4 fail: a bad limit, a malformed cursor or another firm's row as cursor → 400 (never another firm's page)", badPage.every((b) => b.status === 400), badPage.map((b) => b.status));
+  ok("PF-5t DW4 fail: a bad limit, a malformed cursor or another firm's row as cursor → 422 (never another firm's page)", badPage.every((b) => b.status === 422), badPage.map((b) => b.status));
 
   // ------------------------------------- the "new version" rule (review M1, break M2) and older databases (break M1)
   // A version published while a sign-up waits for its email check is pending for the new Owner (they accepted an older one).

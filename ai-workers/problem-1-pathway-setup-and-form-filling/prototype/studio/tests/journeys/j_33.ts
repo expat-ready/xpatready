@@ -130,7 +130,7 @@ try {
   const after = await listRow();
   await shot(owner, "W3-leads-list-no-flag-1440");
   ok("J-33 W3: the Leads list no longer flags the lead", !after.includes("Fix number"), after);
-  ok("J-33 W3: one phone audit line, with ids only (no number)", sql(`select count(*) || '|' || bool_and(detail::text !~ '4165550100|555') from audit_event where entity = 'fo_person' and entity_key = '${personId}' and action = 'front_office.person.phone_changed'`) === "1|true");
+  ok("J-33 W3: one phone audit line; the number is only its after value, in full (R1.8, P-687)", sql(`select count(*) || '|' || bool_and((select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from jsonb_each(detail) e(k, v) where k !~ '_(before|after)$')::text !~ '4165550100|555' and summary !~ '4165550100|555') || '|' || max(detail->>'phone_after') from audit_event where entity = 'fo_person' and entity_key = '${personId}' and action = 'front_office.person.phone_changed'`) === "1|true|+14165550100");
 
   // ------------------------------------------------------------- W4: firm B's person → 404
   const bLead = await api(tok.S, "POST", "/front-office/leads", { requestId: randomUUID(), givenNames: `Bea${run}`, familyName: "Sample", phone: "12", source: "Phone call (Sample)", confirmedNew: true });

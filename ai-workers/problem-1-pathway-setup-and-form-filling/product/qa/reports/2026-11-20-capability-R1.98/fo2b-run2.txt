@@ -1,0 +1,64 @@
+NOTICE:  database "xr_studio_fo2b_3346" does not exist, skipping
+PASS  FO-2b setup: both Sample firms have both pipelines
+PASS  FO-2b fail: Corporate Engage without a company name → refused at the field (422 companyName); the lead stays OPEN, nothing made
+PASS  FO-2b pass: Corporate Engage → one CORPORATE prospect in the Corporate pipeline's Engaged stage, the company made, the lead ENGAGED, owned by the clicker (it had R)
+PASS  FO-2b pass: the enquirer is linked as PRIMARY, is the prospect's primary contact and stays labelled Lead; the lead reads as Lead
+PASS  FO-2b pass (review m3): Engage on an Unassigned lead makes the clicker its owner and writes the take line on the lead (FO-2v's race answer reads it)
+PASS  FO-2b fail (review m3): Engage on an owned lead writes no take line
+PASS  FO-2b pass: lead.engaged is in the outbox with the company (ids only), one stage move from nowhere
+PASS  FO-2b fail: Engage on a closed lead → 409 LEAD_CLOSED (reopen first, AG-2-75 rule 1)
+PASS  FO-2b pass: the normalised name drops case, punctuation and ltd/inc/corp…
+PASS  FO-2b fail (Devin): vowel marks are kept, so two different Devanagari names never match
+PASS  FO-2b pass: a near-identical name is offered as a match, with its open prospect
+PASS  FO-2b fail: a different name is not offered (no fuzzy match, AG-2-79 §13)
+PASS  FO-2b fail: Engage with a matching name and no pick → 409 COMPANY_MATCH with the offer; nothing links by itself (no company, no link, lead OPEN)
+PASS  FO-2b pass (review m1): a pick by id with no name typed records no match key, and says it was picked
+PASS  FO-2b pass: picking the offered company links the enquirer to it; the company keeps one live PRIMARY (the second enquirer is OTHER)
+PASS  FO-2b pass: "New company" despite the offer makes a second company on purpose (AG-2-79 rule 7)
+PASS  FO-2b pass (review m3): a second Engage on the same lead makes a second prospect and keeps the first engaged time and person
+PASS  FO-2b pass (Devin): Engage writes its line on the lead too (lead.engaged on fo_lead, naming the prospect), once per Engage
+PASS  FO-2b pass: one person may hold two roles at one company (Lena PRIMARY and SIGNATORY)
+PASS  FO-2b fail: the same person and role twice → 409 ALREADY_LINKED, one link
+PASS  FO-2b fail: a family role (APPLICANT) → refused at the field (AG-2-77 rule 3)
+PASS  FO-2b fail: a second PRIMARY by Add → 409 PRIMARY_TAKEN
+PASS  FO-2b pass: a new person added as HR gets a person record and a link
+PASS  FO-2b fail: the same new person again → 409 KNOWN_PERSON (checked against people first, AG-2-77 rule 5)
+PASS  FO-2b pass (review m7): KNOWN_PERSON names the person on file the adder may see (a contact here), so they can be picked
+PASS  FO-2b fail: ending the PRIMARY link → 409 PRIMARY_NEEDED, the link stays
+PASS  FO-2b fail: ending the only link of an open prospect's primary contact (Tomas, P2) → 409 PRIMARY_NEEDED
+PASS  FO-2b pass: Make primary: Tomas PRIMARY, Lena kept as OTHER (and SIGNATORY), the company's open prospects that named Lena now name Tomas
+PASS  FO-2b pass: ending a contact keeps the person and dates the link
+PASS  FO-2b pass: Change type Individual → Corporate keeps the number, owner, lead and notes; same stage key (Consult) in the Corporate pipeline; the person linked PRIMARY
+PASS  FO-2b pass: Corporate → Individual: the primary contact is the subject, the company and its link stay
+PASS  FO-2b fail: Change type to the type it has → 409 SAME_TYPE
+PASS  FO-2b fail: Change type to Corporate without a company name → refused at the field, nothing changed
+PASS  FO-2b fail (review M1): a draft retainer for the current client → 409 RETAINER_OPEN naming it (FO-5 cannot discard a draft); nothing changed
+PASS  FO-2b fail: a retainer out for signing → 409 "Void the retainer in Agreements first."
+PASS  FO-2b pass: once the retainer is withdrawn, Change type goes ahead
+PASS  FO-2b fail: Change type after a signature → 409 SIGNED; type, stage and subject unchanged
+PASS  FO-2b pass: the Corporate board lists only Corporate prospects (P1 under Won, P2, P3), eight stages in order
+PASS  FO-2b fail: the Individual board shows no Corporate prospect, and the Corporate board no Individual one
+PASS  FO-2b fail: a pipeline that is not Individual or Corporate → 422
+PASS  FO-2b fail: with "everyone sees all" off, another person's board holds none of R's prospects, and R's prospect reads 404 to them
+PASS  FO-2b fail: firm B's staff reading firm A's prospect or company → 404
+PASS  FO-2b fail (review M2): with "everyone sees all" off, T's Make primary that would repoint R's prospect → 409 HIDDEN_PROSPECTS, naming no prospect; nothing changed
+PASS  FO-2b fail (review m2): R ending Yuri's only link (the primary contact of T's prospect, unseen with the setting off) → 409 PRIMARY_NEEDED that never names T's prospect
+PASS  FO-2b pass (review M2): a Make primary by someone who sees both prospects repoints R's prospect with its own audit line and lists it on the role line
+PASS  FO-2b fail (Devin): T cannot pick a company none of whose prospects T sees (422, as an unknown id), and the match says only that one exists, with no id
+PASS  FO-2b fail (Devin): T cannot add a person T may not see (R's Lena) as a contact by id → 404, no link
+PASS  FO-2b pass: T may add a person whose lead T sees
+PASS  FO-2b pass (Devin): Make primary over 53 open prospects succeeds with the real audit adapter: 53 prospect lines, the role line's count 53 and its id list capped at 50
+PASS  FO-2b pass: prospect.won's subject is COMPANY with the company's name and its live contacts with their roles (Tomas PRIMARY and the primary contact; Lena OTHER and SIGNATORY)
+PASS  FO-2b pass: an Individual prospect's won subject is PERSON
+PASS  FO-2b fail: the won subject contract refuses a company with no contacts or no name
+PASS  FO-2b pass: every change wrote one audit line through AuditPort (Engage, Change type four times, add, role change, end)
+PASS  FO-2b fail: a forced audit failure rolls Engage back (no prospect, company, link or event; the lead OPEN)
+PASS  FO-2b fail: a forced audit failure rolls Change type back
+PASS  FO-2b fail: a forced audit failure rolls Add contact back
+PASS  FO-2b fail: a forced audit failure rolls Change role back (the link still live, no new link)
+PASS  FO-2b fail: a forced audit failure rolls End contact back
+PASS  FO-2b pass: every route declares a seeded agent/prospect:* key (one grant covers both pipelines, AG-2-52 rule 6)
+PASS  FO-2b fail: a Read-only person cannot engage, change type or change contacts (403 at the guard)
+PASS  FO-2b pass: PF-4's start-up rule accepts every route
+
+FO-2b Corporate prospects: 61 passed, 0 failed

@@ -4,19 +4,26 @@
 name: cockpit-tests
 on:
   pull_request:
+    # SPD-2 item 5 (b): a draft runs only the light checks (ci's guard, pr-rules, module-cards); this runs on ready-for-review.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/cockpit-*"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_cockpit_data.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/flow-measure.py"   # the board's pipeline and review-rounds feed
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_flow_measure.py"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/fixtures/cockpit/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/cockpit/**"
       - ".github/workflows/cockpit-tests.yml"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/human-sample.py"   # P-782 (1): the weekly human sample lead-watch prints
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_human_sample.py"
 permissions:
   contents: read
 concurrency:
   group: cockpit-tests-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}   # SPD-2 item 5: a newer push supersedes; a merge-queue batch never
 jobs:
   test:
+    if: "${{ !github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/') }}"   # SPD-2 item 5 (b): not on a draft (a merge-queue batch is a draft and still runs it)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -30,6 +37,8 @@ jobs:
         run: pip install jsonschema==4.26.0
       - name: unit tests (hand-worked numbers on the fixtures)
         run: python3 -m unittest "$P/tools/test_cockpit_data.py" -v
+      - name: flow-measure's Release 1 measures (ENF-782b, P-782 (3); hand-worked numbers, no network)
+        run: python3 -I "$P/tools/test_flow_measure.py"
       - name: invariants, schema and reconciliation on the fixture snapshot
         run: |
           out="$RUNNER_TEMP/cockpit"
@@ -42,3 +51,5 @@ jobs:
           print("trust:", d["trust"]["state"], "| invariants broken:", bad or "none")
           sys.exit(1 if bad or d["trust"]["state"] == "disagree" else 0)
           PY
+      - name: human sample states (ENF-782b part 2, P-782 (1); due, open, yes, no, overdue; no network)
+        run: python3 -I "$P/tools/test_human_sample.py"

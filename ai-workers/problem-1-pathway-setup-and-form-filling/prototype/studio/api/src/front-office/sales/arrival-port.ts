@@ -64,8 +64,10 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
       wording = { wordingId: w.id, ...WORDING, locale: w.locale, givenAt: a.consent.givenAt };
     }
     const p = a.person;
+    // FO-10 part 2 (AG-2-85 rule 1(b)): the booking row is written before its arrival, in this transaction; its one host owns the lead.
+    const host = (await tx.$queryRaw<{ staff_id: string }[]>`select staff_id::text from fo_booking where firm_id = ${firmId}::uuid and id = ${a.bookingId}::uuid`)[0]?.staff_id;
     const out = await arrive(tx, {
-      firmId, door: "BOOKING", intakeKey: key, source: BOOKING_SOURCE,
+      firmId, door: "BOOKING", intakeKey: key, source: BOOKING_SOURCE, ...(host ? { bookingHostStaffId: host } : {}),
       person: { givenNames: p.givenNames, familyName: p.familyName, email: p.email, phone: p.phone ? { phone: p.phone, readable: p.phoneReadable !== false } : null },
       consent: wording, actor: ACTOR, ...(holders.length === 1 ? { onOpenProspectPersonId: holders[0].person_id } : {}),
       payloadHash: createHash("sha256").update(JSON.stringify([p, a.consent?.wordingId ?? null])).digest("hex"),
@@ -163,7 +165,8 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
     const last = await tx.foStageMove.findFirst({ where: firmScope(firmId, { prospectId: p.id }), orderBy: { seq: "desc" }, select: { toStageId: true } });
     await tx.foProspect.update({ where: { id: p.id }, data: { stageId: consult.id } });
     await tx.foStageMove.create({ data: { firmId, prospectId: p.id, fromStageId: last?.toStageId ?? null, toStageId: consult.id, cause: "BOOKING", byActor: actor } });
-    await this.ports.audit.record(tx, { firmId, actor, action: EVENT.PROSPECT_STAGE_MOVED, entity: "fo_prospect", entityKey: p.id, summary: `Consult booked: ${p.number} moved from ${p.key} to ${consult.key}.`, detail: { fromStageKey: p.key, toStageKey: consult.key, cause: "BOOKING" } });
+    await this.ports.audit.record(tx, { firmId, actor, action: EVENT.PROSPECT_STAGE_MOVED, entity: "fo_prospect", entityKey: p.id, summary: `Consult booked: ${p.number} moved from ${p.key} to ${consult.key}.`, detail: { fromStageKey: p.key, toStageKey: consult.key, cause: "BOOKING" },
+      before: { stage: p.key }, after: { stage: consult.key } });
     await tx.moduleEvent.create({ data: { firmId, type: EVENT.PROSPECT_STAGE_MOVED, subjectId: p.id, payload: ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: consult.key, ownerStaffId: p.owner_staff_id, cause: "BOOKING" }) } });
     return p.id;
   }

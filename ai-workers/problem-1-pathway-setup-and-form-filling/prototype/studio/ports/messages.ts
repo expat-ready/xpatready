@@ -107,20 +107,27 @@ export function fillFields(text: string, values: Record<string, string>): string
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-/** The one fixed layout (row 47): the firm's name on top, the body, and a line naming who sent it. A platform account
- *  message (`replyable` false) is not answered by a person, so its line says only who sent it. */
-export function layout(firmName: string, subject: string, text: string, html?: string, replyable = true): string {
+/** What the one layout draws for a firm (PF-13): its sender name, brand colour, footer and logo link. Never the tagline,
+ *  banner or favicon (P-629). Unset values are ExpatReady's neutral look. */
+export type LayoutBrand = { name: string; colour?: string | null; footer?: string | null; logoUrl?: string | null };
+/** The one fixed layout (row 47), as a plain string: the firm's name on top, the body, a line naming who sent it, and
+ *  with PF-13 the firm's colour and footer. A platform account message (`replyable` false) is not answered by a person,
+ *  so its line says only who sent it. The fake stores this; the real adapter draws the same values with react-email
+ *  (api/src/platform/messages/layout/email-layout.ts, PF-13; ports stay zod only). */
+export function layout(brand: string | LayoutBrand, subject: string, text: string, html?: string, replyable = true): string {
+  const b = typeof brand === "string" ? { name: brand } : brand, firmName = b.name, colour = /^#[0-9a-f]{6}$/.test(b.colour ?? "") ? b.colour : "#1f4e79";
   const body = html ?? text.split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
+  const footer = b.footer ? `<div style="padding:16px 24px 0;font-size:12px;color:#616e7c">${esc(b.footer).replace(/\n/g, "<br>")}</div>` : "";
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(subject)}</title></head><body style="margin:0;background:#f4f5f7;font-family:Arial,sans-serif;color:#1f2933">`
-    + `<div style="max-width:600px;margin:0 auto;background:#fff"><div style="padding:16px 24px;border-bottom:3px solid #1f4e79;font-weight:bold">${esc(firmName)}</div>`
-    + `<div style="padding:24px">${body}</div><div style="padding:16px 24px;font-size:12px;color:#616e7c">Sent by ${esc(firmName)}.${replyable ? " Reply to this email to reach them." : ""}</div></div></body></html>`;
+    + `<div style="max-width:600px;margin:0 auto;background:#fff"><div style="padding:16px 24px;border-bottom:3px solid ${colour};font-weight:bold">${esc(firmName)}</div>`
+    + `<div style="padding:24px">${body}</div>${footer}<div style="padding:16px 24px;font-size:12px;color:#616e7c">Sent by ${esc(firmName)}.${replyable ? " Reply to this email to reach them." : ""}</div></div></body></html>`;
 }
 
 /** Renders a checked message for its firm's sender (shared by the adapter and the fake, so both store the same shape).
  *  A platform account message (PF-19p) is from "ExpatReady" at `platformFrom`, which is also its Reply-To. */
-export function render(outboxId: string, m: z.output<typeof MessageSend>, sender: { name: string; replyTo: string }, words: { subject: string; text: string; html?: string }): Rendered;
+export function render(outboxId: string, m: z.output<typeof MessageSend>, sender: { name: string; replyTo: string; brand?: LayoutBrand }, words: { subject: string; text: string; html?: string }): Rendered;
 export function render(outboxId: string, m: z.output<typeof PlatformAccountSend>, platformFrom: string, words: { subject: string; text: string; html?: string }): Rendered;
-export function render(outboxId: string, m: AnySend, sender: { name: string; replyTo: string } | string, words: { subject: string; text: string; html?: string }): Rendered {
+export function render(outboxId: string, m: AnySend, sender: { name: string; replyTo: string; brand?: LayoutBrand } | string, words: { subject: string; text: string; html?: string }): Rendered {
   const base = { outboxId, channel: m.channel, class: m.class, to: normaliseAddress(m.channel, m.address), subject: words.subject, text: words.text };
   if (isPlatformAccount(m)) {
     if (typeof sender !== "string") throw new TypeError("render: a platform account message takes the platform's From address");
@@ -129,7 +136,7 @@ export function render(outboxId: string, m: AnySend, sender: { name: string; rep
   if (typeof sender === "string") throw new TypeError("render: a firm's message takes its firm's sender");
   return {
     ...base, firmId: m.firmId.toLowerCase(), from: { name: sender.name, address: PLATFORM_FROM }, replyTo: sender.replyTo,
-    html: layout(sender.name, words.subject, words.text, words.html), attachments: m.attachments,
+    html: layout(sender.brand ?? sender.name, words.subject, words.text, words.html), attachments: m.attachments,
   };
 }
 

@@ -9,7 +9,10 @@
 # Founder 1 Nov night (reverses P-210's limit of one): the repository is public, so batches run free on GitHub's
 # machines, not the one Mac; up to 6 batches are checked at once, each assuming the ones ahead of it pass.
 merge_queue:
-  max_parallel_checks: 6   # P-728 (2), held by P-730 until scopes (#2207, on main) and the batch-failure alert; Lead 94 19 Nov: 19 PRs waited, job wait 0.1 min
+  max_parallel_checks: 4   # Lead 4, 22 Nov 15:47 IST (pipeline fix, P-214): 12 to 4. At 15:44 IST 10 batches ran at once, each with
+  # 17-27 jobs waiting for a machine: 113 jobs running, 163 workflow runs queued, nothing merged since 14:35 IST. Fewer
+  # batches at a time let the front batches finish instead of all starving. 12 was CI-SPEED-1 (founder A253, 21 Nov),
+  # set when 74 jobs ran with no shortage; load has since doubled. Earlier: 6 (P-739), 3 (CK-1).
   # P-715 (Lead 84; founder P-717, 19 Nov ~07:3x IST, the one exception to the P-716 freeze): batches that share no
   # scope test and merge at the same time, and one failure no longer resets the others. Undo: mode: serial (one line).
   # Design and evidence: product/design/mergify-parallel-scopes-2026-11-19.md (40% of 118 batches failed in 72 h).
@@ -49,6 +52,8 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-*.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-clients/*.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-deadlines/*.ts"   # card api-cases (CS-DL1 part 2, #2317)
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/search/*.ts"   # card api-cases (CS-S1 part 2, #2913)
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-notes/*.ts"   # card api-cases (CS-NT1 part 1, #2999)
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/assessments.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/team.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/person-link.ts"
@@ -194,6 +199,12 @@ queue_rules:
           - -files ~= /prototype/
     merge_conditions:
       - check-success = ci
+      # QA-449 part 2 (R1.16; P-717 (b), Lead 4 series 3, 20 Nov): skeleton ran clean on 10 merge batches since #2517,
+      # so a red container proof now blocks a product batch. Guarded: a batch that touches none of skeleton.yml's
+      # `paths` gets no skeleton run and is not held. Keep this regex in step with skeleton.yml's `paths` block.
+      - or:
+          - check-success = skeleton
+          - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/(studio/(api|web|engine|contracts|prisma|samples|deploy)/|studio/(package\.json|package-lock\.json|prisma\.config\.ts|Dockerfile|Dockerfile\.dockerignore|tools/skeleton-smoke\.sh)$|contracts/|p2/[^/]+\.ts$|p5/.*\.ts$|env/node/)
     merge_method: merge
   # P-717 (a), founder 19 Nov ~07:3x IST: pipeline work (checks, workflows, Mergify, tools, agent rules) has its own
   # lane. Every file of the PR is a pipeline path; with the scope "pipeline" (capacity 1) it never shares a batch with
