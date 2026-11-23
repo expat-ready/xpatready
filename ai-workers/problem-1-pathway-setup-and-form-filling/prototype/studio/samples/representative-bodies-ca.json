@@ -8,7 +8,7 @@
     { "label": "Notary (Chambre des notaires du Québec)", "bodies": ["CNQ"], "status": "Official" }
   ],
   "bodies": [
-    { "name": "College of Immigration and Citizenship Consultants", "kind": "CICC", "site": "http://college-ic.ca/", "status": "Official", "read": "2026-10-19" },
+    { "name": "College of Immigration and Citizenship Consultants", "kind": "CICC", "site": "http://college-ic.ca/", "status": "Official", "read": "2026-10-19", "numberPattern": "R[0-9]{6}", "source": { "url": "https://college-ic.ca/protecting-the-public/working-with-an-immigration-consultant", "page": "College of Immigration and Citizenship Consultants, 'Working with an immigration consultant', tab 'Other items to note' (page last modified 22 Mar 2024)", "quote": "The licensed immigration consultant must include their full legal name and licence number (begins with the letter ‘R’ and is followed by 6 numbers. For example: R123456) on the agreement.", "date": "2026-11-23" } },
     { "name": "Chambre des notaires du Québec", "kind": "CNQ", "site": "https://www.cnq.org/en/", "status": "Official", "read": "2026-10-19" },
     { "name": "Law Society of British Columbia", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
     { "name": "Law Society of Alberta", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },

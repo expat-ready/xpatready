@@ -268,7 +268,11 @@ const lQ = linkOf(await invite(`pf6-q-${run}@example.com`));
 for (const w of [375, 1024, 1440]) { const v = await newPage(w); await v.goto(lQ.url); await v.locator('[data-accept="valid"]').waitFor({ timeout: 20_000 }); await axe(`PF-6 DW8 Accept invitation, valid (${w} px)`, v); await noSideways(`PF-6 DW8 Accept invitation (${w} px)`, v); await shot(v, `accept-valid-${w}`); }
 
 // DW7: My account → Licence, the person's own; the two-step state and the Security line.
-const LIC = `PF6L${run}`.toUpperCase(), LIC2 = `PF6M${run}`.toUpperCase();
+// PF-4c part 2 (R1.92): the College's numbers are "R and 6 numbers" (college-ic.ca), so a College record here uses that shape: any
+// other shape now saves with the soft warning, and on Licences the panel then stays open (a later click would hit it). Each is
+// distinct per run, so the leak checks below still find only this run's numbers.
+const licBase = Date.now() % 900_000, licOf = (k: number) => `R${String(100_000 + ((licBase + k * 1009) % 900_000)).padStart(6, "0")}`;
+const LIC = licOf(0), LIC2 = licOf(1), LIC_OLD = licOf(2), LIC_NEW = licOf(3), LIC_A = licOf(4);
 sql(`delete from platform_staff_credential where staff_id = '${O.id}'`);   // the suite reruns on one copy
 const oTok = await apiSignIn(O.email), lp = await newPage(1440, oTok);
 await lp.goto(`${BASE}/account/licence`); await lp.locator("[data-licence-form]").waitFor({ timeout: 20_000 });
@@ -287,7 +291,7 @@ await lp.locator("[data-licence-save]").click(); await lp.locator("[data-licence
 ok("PF-6 DW7 fail (break m4): Save with nothing changed sends nothing and says so", putsO() === putsBefore && (await lp.locator("[data-licence-note]").innerText()) === "Nothing to save: the licence is as it was.");
 // Review MJ-1 / break M1: a form opened before someone else's save does not undo it.
 await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "Notary (Chambre des notaires du Québec)", licensingBody: "Chambre des notaires du Québec", licenceNumber: LIC2 } });
-await lp.locator("[data-licence-number]").fill(`${LIC}-OLD`); await lp.locator("[data-licence-save]").click(); await lp.locator("[data-licence-error]").waitFor({ timeout: 10_000 });
+await lp.locator("[data-licence-number]").fill(LIC_OLD); await lp.locator("[data-licence-save]").click(); await lp.locator("[data-licence-error]").waitFor({ timeout: 10_000 });
 ok("PF-6 DW7 fail (conflict): saving from an older read saves nothing, says someone else changed it, and shows the record as it is", (await lp.locator("[data-licence-error]").innerText()).startsWith("Someone else changed this licence") && sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`) === LIC2 && (await lp.locator("[data-licence-number]").inputValue()) === LIC2);
 await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "College member (CICC)", licensingBody: "College of Immigration and Citizenship Consultants", licenceNumber: LIC } });
 await lp.reload(); await lp.locator("[data-licence-form]").waitFor({ timeout: 20_000 });
@@ -315,9 +319,9 @@ await rp.goto(`${BASE}/platform/licences`); await rp.locator(`[data-licence-row=
 ok("PF-6 DW6/BR-8 pass: the Owner's Licences shows the Case Officer's record with the number in full", (await rp.locator(`[data-licence-row="${O.id}"] [data-licence-number-cell]`).innerText()) === LIC);
 await rp.locator(`[data-licence-row="${O.id}"] [data-licence-change]`).click(); await rp.locator("[data-licence-form]").waitFor();
 // Review MJ-1 / break M1: another tab saves first; this panel's save changes nothing and shows the newer record.
-await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "College member (CICC)", licensingBody: "College of Immigration and Citizenship Consultants", licenceNumber: `${LIC}-NEW` } });
+await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "College member (CICC)", licensingBody: "College of Immigration and Citizenship Consultants", licenceNumber: LIC_NEW } });
 await rp.locator("[data-licence-number]").fill(LIC2); await rp.locator("[data-licence-save]").click(); await rp.locator("[data-licence-error]").waitFor({ timeout: 10_000 });
-ok("PF-6 DW6 fail (conflict): the Owner's panel opened before the person's own save changes nothing and shows the newer number", (await rp.locator("[data-licence-error]").innerText()).startsWith("Someone else changed this licence") && sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`) === `${LIC}-NEW` && (await rp.locator("[data-licence-number]").inputValue()) === `${LIC}-NEW`);
+ok("PF-6 DW6 fail (conflict): the Owner's panel opened before the person's own save changes nothing and shows the newer number", (await rp.locator("[data-licence-error]").innerText()).startsWith("Someone else changed this licence") && sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`) === LIC_NEW && (await rp.locator("[data-licence-number]").inputValue()) === LIC_NEW);
 await rp.locator("[data-licence-number]").fill(LIC2); await rp.locator("[data-licence-save]").click();
 for (let i = 0; i < 100 && !sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`).includes(LIC2); i++) await rp.waitForTimeout(100);
 const toastR = await rp.getByText(`The licence record for ${O.name} was saved.`).innerText({ timeout: 10_000 }).catch(() => "");
@@ -325,7 +329,7 @@ ok("PF-6 DW6/BR-8 pass: the Owner changes another's licence in the panel; the to
 const aId = staffOf(`email = '${A}'`).id;
 ok("PF-6 DW6 pass: a person with no record is listed with Add licence", (await rp.locator(`[data-no-licence="${aId}"] [data-licence-add]`).count()) === 1);
 await rp.locator(`[data-no-licence="${aId}"] [data-licence-add]`).click(); await rp.locator("[data-licence-form]").waitFor();
-await rp.locator("[data-licence-type]").selectOption("College member (CICC)"); await rp.locator("[data-licence-number]").fill(`${LIC}-A`); await rp.locator("[data-licence-save]").click();
+await rp.locator("[data-licence-type]").selectOption("College member (CICC)"); await rp.locator("[data-licence-number]").fill(LIC_A); await rp.locator("[data-licence-save]").click();
 await rp.locator(`[data-licence-row="${aId}"]`).waitFor({ timeout: 10_000 }); await rp.waitForTimeout(300);
 ok("PF-6 DW8 keyboard (review MJ-2): after Add licence and Save, focus is on that person's new Change button, not the page", await rp.evaluate((id) => !!document.activeElement?.closest(`[data-licence-row="${id}"]`) && document.activeElement?.hasAttribute("data-licence-change"), aId));
 await rp.locator(`[data-licence-row="${aId}"] [data-licence-change]`).click(); await rp.locator("[data-licence-number]").fill("typed, not saved");
