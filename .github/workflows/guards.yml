@@ -1,6 +1,6 @@
 # The eight guards of 6 Nov and B134's label sweep (founder, ~03:00 IST: "make them hard rules"): every test passes, and each test fails with
 # its guard switched off (product/tools/check-guards.sh --mutate). Runs only when a guard, its test or a file it reads
-# changes; separate from ci.yml (owned by the flow-fix lane) and not a merge condition. About 20-35 minutes with the mutation rows (it was about 1 minute on 6 Nov), US$0.
+# changes; separate from ci.yml (owned by the flow-fix lane) and not a merge condition. In 4 parts since 23 Nov (one run took over 45 minutes with 363 rows), US$0.
 name: guards
 on:
   pull_request:
@@ -31,11 +31,19 @@ concurrency:
   group: guards-${{ github.event.pull_request.number }}
   cancel-in-progress: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}   # SPD-2 item 5: a newer push supersedes; a merge-queue batch never
 jobs:
-  guards:
+  # Lead 5 (23 Nov): 363 mutation rows no longer fit one 45-minute job (run 137634775496 was cancelled at the limit), so
+  # the rows run in N parts (check-guards.sh --mutate --part i/N: the plain tests in part 1, every N-th row in each), and
+  # the job named guards, run always(), is green only when every part succeeded: a failed, cancelled or skipped part is
+  # red. check-guard-parts.sh proves the parts cover every test and row exactly once and checks this wiring.
+  part:
     if: "${{ !github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/') }}"   # SPD-2 item 5 (b): not on a draft (a merge-queue batch is a draft and still runs it)
+    name: guards part ${{ matrix.part }}/4
     runs-on: ubuntu-latest
-    timeout-minutes: 45   # CI-PRE (19 Nov): about 150 mutation rows, each re-running a test file; the run reached the old limit of 10.
-                          # ENF-758 (20 Nov): runs took 20-27 min before its 25 rows (~25 s each on a runner); at 30 the run was cancelled mid-way
+    timeout-minutes: 45   # CI-PRE (19 Nov) and ENF-758 (20 Nov): the limit stays; the parts keep each run well under it
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - name: zsh (isolated.sh is a zsh script)
@@ -48,5 +56,20 @@ jobs:
               sudo ln -sf "$(/home/linuxbrew/.linuxbrew/bin/brew --prefix)/bin/zsh" /usr/bin/zsh
             fi
           fi
-      - name: every guard's test, and each fails without its guard
-        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-guards.sh --mutate
+      - name: focus-truth.py's tests (ENF-733b, Sample fixtures, a few seconds)
+        if: ${{ matrix.part == 1 }}
+        run: python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_focus_truth.py
+      - name: this part's guard tests and mutation rows (each test fails without its guard)
+        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-guards.sh --mutate --part ${{ matrix.part }}/4
+  guards:
+    needs: part
+    if: "${{ always() && (!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every part succeeded (a failed, cancelled or skipped part is red)
+        env:
+          PARTS: ${{ needs.part.result }}
+        run: |
+          echo "guards parts: $PARTS"
+          [ "$PARTS" = success ] || { echo "::error::a guards part did not succeed ($PARTS): see the guards part jobs"; exit 1; }
