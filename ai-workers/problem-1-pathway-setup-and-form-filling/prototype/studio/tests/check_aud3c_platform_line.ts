@@ -87,7 +87,7 @@ class Aud3cController {
     const ctx = (await import("../api/src/platform/audit/context.ts")).auditContext(), me = ctx?.actor ?? "none";
     const entry = v === "own" ? kind(me) : v === "other-actor" ? kind(`ourstaff:${otherStaff}`) : v === "firm-id" ? kind(me, { firmId: firmForTry })
       : v === "case-id" ? kind(me, { caseId: uuid() }) : v === "other-action" ? kind(me, { action: "platform.other" }) : v === "workspace" ? kind(me, { workspaceId: sql(`select id from workspace where key = 'platform-audit'`) || uuid() })
-      : v === "system-word" ? kind("system:aud3c") : kind(me);
+      : v === "system-word" ? kind("system:aud3c") : v === "detail-firm" ? kind(me, { detail: { firmId: firmForTry } }) : kind(me);
     await walled.$transaction(async (tx) => { await auditEvent.record(tx as never, entry as never); });
     return { ok: true };
   }
@@ -138,7 +138,7 @@ try {
     const own = await call(base, "POST", "/api/system/plans/aud3c/try/own", { token: ownerT, body: {} });
     ok("AUD-3c DW3 pass: the kind written directly in our staff's request, under their own word, is one line", own.status === 201 && lines(`entity = 'plat_bypass_use'`) === own0 + 1, own);
     for (const [v, why] of [["other-actor", "another staff member's ourstaff: word"], ["firm-id", "a firm id"], ["case-id", "a case id"], ["other-action", "another action"],
-      ["workspace", "a workspace id (it would be a case entry, which our staff never write)"], ["system-word", "a system: word"]] as const) {
+      ["workspace", "a workspace id (it would be a case entry, which our staff never write)"], ["system-word", "a system: word"], ["detail-firm", "a firm id in its detail (breaker m3)"]] as const) {
       const before = lines("true");
       const r = await call(base, "POST", `/api/system/plans/aud3c/try/${v}`, { token: ownerT, body: {} });
       ok(`AUD-3c DW3 fail: the firm-less kind with ${why} is refused (500), and nothing is written`, r.status === 500 && lines("true") === before, r);
@@ -172,6 +172,16 @@ try {
     const noContext = await throwsLike(() => port.fakeAudit().record({}, kind(`ourstaff:${OWNER}`)), () => true);
     ok("AUD-3c DW5: the port's in-memory fake keeps our staff's own line and refuses the same: another actor, a case id, another action, the kind's entity on a firm line, a firm staff request, no request at all",
       fake.platformEntries.length === 1 && refusedAll && refusedFirmStaff && noContext && fake.platformEntries.length === 1);
+    // Breaker m1: failOn reaches the kind; m2: given a context, AUD-3a's rule on an ordinary entry.
+    const failing = port.fakeAudit({ context: () => ({ actor: `ourstaff:${OWNER}`, actorType: "OUR_STAFF" }), failOn: () => true });
+    const failed = await throwsLike(() => failing.record({}, kind(`ourstaff:${OWNER}`)), (e) => e instanceof port.AuditFailure);
+    const firmLine = (actor: string) => ({ firmId: firmA, actor, action: "platform.bypass", entity: "platform_firm", entityKey: firmA, summary: "x", before: null, after: null });
+    const noReq = port.fakeAudit({ context: () => undefined }), inOurs = port.fakeAudit({ context: () => ({ actor: `ourstaff:${OWNER}`, actorType: "OUR_STAFF" }) });
+    const m2 = await throwsLike(() => noReq.record({}, firmLine(`ourstaff:${OWNER}`)), () => true) && await throwsLike(() => inOurs.record({}, firmLine("system:x")), () => true)
+      && await throwsLike(() => inOurs.record({}, firmLine(`ourstaff:${otherStaff}`)), () => true);
+    await inOurs.record({}, firmLine(`ourstaff:${OWNER}`));
+    ok("AUD-3c DW5 (breaker m1, m2): the fake's failOn fails the kind and counts it; given a context, it refuses our staff's word outside their request, another word in it, and keeps their own on a firm line",
+      failed && failing.failures === 1 && failing.platformEntries.length === 0 && m2 && inOurs.entries.length === 1);
   }
 } finally {
   for (const a of apps) await a.close().catch(() => undefined);

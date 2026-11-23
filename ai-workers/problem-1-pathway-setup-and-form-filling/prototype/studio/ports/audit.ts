@@ -125,7 +125,9 @@ export const OurStaffPlatformEntry = z.strictObject({
   /** The bypass use's name. */
   entityKey: z.string().min(1).max(200),
   summary: z.string().trim().min(1).max(600),
-  detail: AuditDetail.default({}),
+  /** Never a firm in detail (breaker m3): older readers take detail.firmId as a line's firm (AUD-1a's delete rule, FO's
+   *  timeline filters), and this line names none. */
+  detail: AuditDetail.default({}).refine((d) => !Object.keys(d).some((k) => /^firm_?id$/i.test(k)), "a firm-less line holds no firm id in detail"),
 });
 export type OurStaffPlatformEntry = z.input<typeof OurStaffPlatformEntry>;
 /** The firm-less kind: no workspace and a firm of null (an AuditEntry's firm is always a firm id). */
@@ -188,11 +190,20 @@ export function fakeAudit(opts: { failOn?: (e: z.output<typeof AuditEntry>, tx: 
       if (isOurStaffPlatformEntry(entry)) {
         const p = OurStaffPlatformEntry.parse(entry), why = ourStaffPlatformRefusal(p, opts.context?.());
         if (why) throw new Error(why);
+        // Breaker m1: a test's failOn reaches this kind too (it receives the parsed entry; its firm is null).
+        if (opts.failOn?.(p as never, tx)) { failures++; throw new AuditFailure(entry as never); }
         platformRows.push({ tx, entry: p });
         return;
       }
       const e = AuditEntry.parse(entry);
       if (e.entity === OUR_STAFF_PLATFORM_ENTITY) throw new Error(`audit line refused: ${OUR_STAFF_PLATFORM_ENTITY} is the firm-less kind's entity, never a firm's line`);
+      // Breaker m2: given a context, the fake keeps AUD-3a's rule as the adapter does: our staff's word only in our staff's
+      // request, and in such a request only their own word (without a context it knows no request, as before).
+      if (opts.context) {
+        const c = opts.context(), ours = e.actor.startsWith("ourstaff:");
+        if ((c?.actorType === "OUR_STAFF") !== ours) throw new Error(ours ? `audit line refused: ${e.actor} is our staff's word, written only in a request our staff make` : `audit line refused: this request is our staff's, so its line names them, not ${e.actor}`);
+        if (c?.actor && e.actor !== c.actor) throw new Error(`audit line refused: the line names ${e.actor}, but this request is ${c.actor}'s`);
+      }
       if (opts.failOn?.(e, tx)) { failures++; throw new AuditFailure(entry); }
       rows.push({ tx, entry: e });
     },
