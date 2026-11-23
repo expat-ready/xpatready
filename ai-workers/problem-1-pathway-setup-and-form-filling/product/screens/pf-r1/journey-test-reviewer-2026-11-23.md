@@ -37,3 +37,22 @@ The door writes nothing (AG-14-1). The catalogue has exactly AG-14 §10's defaul
 3. Plain messages for Zod's default issues. This raises plain words.
 
 Not tested: a real screen reader, any screen, an intended user's unaided walk (D17 and D20 stay with the founder), and figures from real module reads (none registered yet).
+
+## Round 2: commit `67872c4496ae6f68bf97c1c0675b5b32090563c3`
+Checked with the row's test (70 passed, twice), the mutation runs and a scratch probe through the fake. I did not repeat the HTTP walk: the routes and controller did not change.
+
+| Journey | Now |
+|---|---|
+| 5. Case Manager, money | **Held.** WITHHELD without view-financial, and the Case Officer too (DW3 :143, contract). |
+| 6. Error input | **Held.** "not a field here: extra", "this has the wrong type" and a plain message for a bad metric key. The client-type message is still Zod's default. |
+| 9. Failure and recovery | **Held.** A read stuck for 5 s answers UNAVAILABLE (TIMEOUT) while the others answer (:216). |
+
+| Criterion | R1 | R2 | Evidence |
+|---|---|---|---|
+| Task completed | ½ | 1 | Every journey holds, and each role gets exactly the figures it should |
+| Plain words | ½ | ½ | One Zod default is left (client type), review.md Minor 6 |
+| Correct data | ½ | 1 | The money scope follows AG-14-35 to -37. Reads get the viewer's keys. |
+| Error recovery | ½ | 1 | Read time limit; the 400s name their fields |
+| Other criteria | | | Unchanged: next step 1, feedback 1, speed 1, trust 1; accessibility and visual quality N/A |
+
+**Round 2: 7½ of the 8 criteria that apply = 9.5 / 10, a pass, no criterion at 0.** The one fix that would raise it: give `invalid_value` a plain message.

@@ -153,14 +153,14 @@ try {
   const unknown = await refusal(() => ask(OWNER, { metrics: ["sample.leads", "sample.nope"] }));
   ok("PF-R1 DW4 fail: an unknown metric key gives 400 UNKNOWN_METRIC naming it", unknown?.status === 400 && unknown.body.code === "UNKNOWN_METRIC" && String(unknown.body.detail).includes("sample.nope"), unknown);
   ok("PF-R1 DW4 pass: the registered key answers", value(await ask(OWNER, { metrics: ["sample.leads"] })) === inA);
-  ok("PF-R1 DW4 fail: no metrics, or more than 30, gives 400", (await refusal(() => ask(OWNER, { metrics: [] })))?.status === 400 && (await refusal(() => ask(OWNER, { metrics: Array(31).fill("sample.leads") })))?.status === 400);
+  ok("PF-R1 DW4 fail: no metrics, or more than 30, gives 422 (a body failing its schema)", (await refusal(() => ask(OWNER, { metrics: [] })))?.status === 422 && (await refusal(() => ask(OWNER, { metrics: Array(31).fill("sample.leads") })))?.status === 422);
 
   // ----------------------------------------------------------------------------------------------- DW5: filter schema
   const backwards = await refusal(() => ask(OWNER, { metrics: ["sample.leads"], filters: { from: "2026-11-30", to: "2026-11-01" } }));
-  ok("PF-R1 DW5 fail: a filter that fails its schema (start after end) gives 400 with the message", backwards?.status === 400 && backwards.body.code === "QUERY_INVALID" && backwards.body.detail === "the start date is after the end date", backwards);
+  ok("PF-R1 DW5 fail: a filter that fails its schema (start after end) gives 422 (PF-28; the row says 400) with the message", backwards?.status === 422 && backwards.body.code === "QUERY_INVALID" && backwards.body.detail === "the start date is after the end date", backwards);
   const typo = await refusal(() => ask(OWNER, { metrics: ["sample.leads"], filters: { clientType: "COMPANY", office: "x" } }));
-  ok("PF-R1 DW5 fail: an unknown client type and an unknown filter key give 400 naming the fields", typo?.status === 400 && JSON.stringify(typo.body.fields).includes("filters.clientType") && JSON.stringify(typo.body).includes("office"), typo);
-  ok("PF-R1 DW5 fail: 31 February and a person that is not a staff id give 400", (await refusal(() => ask(OWNER, { metrics: ["sample.leads"], filters: { from: "2026-02-31" } })))?.status === 400 && (await refusal(() => ask(OWNER, { metrics: ["sample.leads"], filters: { staffId: "user-O" } })))?.status === 400);
+  ok("PF-R1 DW5 fail: an unknown client type and an unknown filter key give 422 naming the fields in plain words", typo?.status === 422 && JSON.stringify(typo.body.fields).includes("filters.clientType") && JSON.stringify(typo.body).includes("office") && JSON.stringify(typo.body).includes("not one of the allowed values") && !JSON.stringify(typo.body).includes("Invalid option"), typo);
+  ok("PF-R1 DW5 fail: 31 February and a person that is not a staff id give 422", (await refusal(() => ask(OWNER, { metrics: ["sample.leads"], filters: { from: "2026-02-31" } })))?.status === 422 && (await refusal(() => ask(OWNER, { metrics: ["sample.leads"], filters: { staffId: "user-O" } })))?.status === 422);
   ok("PF-R1 DW5 pass: a well-formed filter (dates, person, client type) answers 200", value(await ask(OWNER, { metrics: ["sample.leads"], filters: { from: "2026-01-01", to: "2026-12-31", staffId: OWNER.staffId, clientType: "INDIVIDUAL" } })) === 2);
 
   // ----------------------------------------------------------------------------------------------- DW6: firm walls
@@ -195,7 +195,8 @@ try {
   ok("PF-R1 DW7 fail (break M3): the budget reads each context inside its own firm (firm B's context counts firm B's ~5,000 rows, never 0 or firm A's)", seen[0] === inB, seen);
   ok("PF-R1 DW7 fail: a read answering the wrong shape fails the budget test too", (await overBudget(new Map([["sample.leads", { ...leadsMetric, read: async () => ({ kind: "COUNT", value: -1 }) }]]), [ctxs[0]], withFirm)).length === 1);
   // review M2: every module that registers metrics on the app's registry has a test that runs overBudget on them
-  const registrants = (files: { path: string; text: string }[]) => files.filter((f) => !f.path.includes("/platform/reports/") && /platform\/reports\/registry/.test(f.text) && /\.register\(/.test(f.text)).map((f) => f.path);
+  // a registrant imports the registry or the port (a module coded to MetricsPort, handed the registry: review round 2 m5)
+  const registrants = (files: { path: string; text: string }[]) => files.filter((f) => !f.path.includes("/platform/reports/") && /platform\/reports\/registry|ports\/metrics(\.ts)?["']/.test(f.text) && /\.register\(/.test(f.text)).map((f) => f.path);
   const unbudgeted = (src: { path: string; text: string }[], tests: { path: string; text: string }[]) => registrants(src).filter((p) => !tests.some((t) => t.text.includes("overBudget(") && t.text.includes(p.replace(/^.*api\/src\//, "").replace(/\.ts$/, ""))));
   const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith(".ts") ? [join(d, e.name)] : []));
   const src = walk(join(STUDIO, "api", "src")).map((path) => ({ path, text: readFileSync(path, "utf8") }));
@@ -203,14 +204,18 @@ try {
   ok("PF-R1 DW7 pass (review M2): every module registering metrics on the app's registry has a test running overBudget on them", unbudgeted(src, tests).length === 0, unbudgeted(src, tests));
   const planted = [{ path: "/x/api/src/front-office/reports/metrics.ts", text: `import { MetricRegistry } from "../../platform/reports/registry.ts"; registry.register({})` }];
   ok("PF-R1 DW7 fail (review M2): a module that registers a metric with no budget test is named", JSON.stringify(unbudgeted(planted, tests)) === JSON.stringify([planted[0].path]) && unbudgeted(planted, [...tests, { path: "t.ts", text: "front-office/reports/metrics overBudget(" }]).length === 0);
+  const viaPort = [{ path: "/x/api/src/client-money/reports/metrics.ts", text: `import type { MetricsPort } from "../../../../ports/metrics.ts"; export const add = (p: MetricsPort) => p.register({})` }];
+  ok("PF-R1 DW7 fail (review round 2 m5): a module coded to MetricsPort that registers with no budget test is named too", JSON.stringify(unbudgeted(viaPort, tests)) === JSON.stringify([viaPort[0].path]));
 
   // ----------------------------------------------------------------------------------------------- break minors
   const reg = new MetricRegistry(); reg.register(leadsMetric);
   const flood = await refusal(() => ask(OWNER, { metrics: ["sample.leads"], filters: Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`k${i}`, "x"])) }));
-  ok("PF-R1 (break m1) fail: 2,000 unknown filter keys give a short 400, never an echo of them", flood?.status === 400 && JSON.stringify(flood.body).length < 1500, JSON.stringify(flood).length);
-  ok("PF-R1 (break m1, review m4) fail: a malformed metric key (control characters, HTML) is a QUERY_INVALID naming the field, not echoed", ((r) => r?.status === 400 && r.body.code === "QUERY_INVALID" && !JSON.stringify(r.body).includes("<b>"))(await refusal(() => ask(OWNER, { metrics: ["<b>x\u202e</b>"] }))));
+  ok("PF-R1 (break m1) fail: 2,000 unknown filter keys give a short 422, never an echo of them", flood?.status === 422 && JSON.stringify(flood.body).length < 1500, JSON.stringify(flood).length);
+  ok("PF-R1 (break m1, review m4) fail: a malformed metric key (control characters, HTML) is a QUERY_INVALID (422) naming the field, not echoed", ((r) => r?.status === 422 && r.body.code === "QUERY_INVALID" && !JSON.stringify(r.body).includes("<b>"))(await refusal(() => ask(OWNER, { metrics: ["<b>x\u202e</b>"] }))));
   const wide = new Map([["sample.wide", { ...leadsMetric, key: "sample.wide", kind: "LIST", aggregation: "LIST", read: async () => ({ kind: "LIST", rows: [Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`c${i}`, 1]))] }) } as MetricRegistration]]);
   ok("PF-R1 (break m3) fail: a LIST row over 20 columns is UNAVAILABLE", (await runMetrics(wide, OWNER, { metrics: ["sample.wide"] })).metrics[0].status === "UNAVAILABLE");
+  const moneyless = new Map([["sample.table", { ...leadsMetric, key: "sample.table", kind: "LIST", aggregation: "LIST", read: async () => ({ kind: "LIST", rows: [{ bucket: "1-30", currency: "CAD", amount: "900.00" }] }) } as MetricRegistration]]);
+  ok("PF-R1 (break round 2 r1) fail: a table not declared per currency that carries a currency is UNAVAILABLE (it would skip view-financial)", (await runMetrics(moneyless, OFFICER, { metrics: ["sample.table"] })).metrics[0].status === "UNAVAILABLE");
   const stuck = new Map([["sample.stuck", { ...leadsMetric, key: "sample.stuck", read: () => new Promise<never>(() => {}) } as MetricRegistration], ["sample.leads", leadsMetric]]);
   const t0 = Date.now(), st = await withFirm(A, () => runMetrics(stuck, OWNER, { metrics: ["sample.stuck", "sample.leads"] }, undefined, 100));
   ok("PF-R1 (break m4, review m1) fail: a read that never answers is UNAVAILABLE at the time limit while the others answer", st.metrics[0].status === "UNAVAILABLE" && st.metrics[1].status === "OK" && Date.now() - t0 < 2000, st);

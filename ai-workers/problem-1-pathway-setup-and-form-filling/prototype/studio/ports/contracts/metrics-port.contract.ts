@@ -48,12 +48,12 @@ export const metricsPortContract = defineContract("MetricsPort", (make: () => Me
     },
   },
   {
-    name: "an unknown key and a bad filter are 400; no report key is 403; another person's figures at own scope are 403",
+    name: "an unknown key is 400 and a bad filter 422 (PF-28); no report key is 403; another person's figures at own scope are 403",
     async run() {
       const p = make();
       p.register(count("sample.one", async () => ({ kind: "COUNT", value: 1 })));
       await expectRefused(() => p.query(caller(REPORT_KEYS.all), { metrics: ["sample.nope"] }), "unknown key", refusedWith(400, "UNKNOWN_METRIC"));
-      await expectRefused(() => p.query(caller(REPORT_KEYS.all), { metrics: ["sample.one"], filters: { from: "2026-13-01" } }), "bad date", refusedWith(400, "QUERY_INVALID"));
+      await expectRefused(() => p.query(caller(REPORT_KEYS.all), { metrics: ["sample.one"], filters: { from: "2026-13-01" } }), "bad date", refusedWith(422, "QUERY_INVALID"));
       await expectRefused(() => p.query(caller(), { metrics: ["sample.one"] }), "no report key", refusedWith(403, "MISSING_PERMISSION"));
       await expectRefused(() => p.query(caller(REPORT_KEYS.own), { metrics: ["sample.one"], filters: { staffId: OTHER } }), "another person", refusedWith(403, "OWN_ONLY"));
     },

@@ -20,6 +20,8 @@ export const LIST_MAX_COLUMNS = 20;
 /** A read that has not answered by then is UNAVAILABLE (TIMEOUT), so one stuck read never holds the answer (break m4). */
 export const READ_TIMEOUT_MS = 5000;
 
+/** The filter bar's names (a plain const: tests/check_pf0p_ports.ts reads an export holding "from" and a quote as an import). */
+const FILTER_NAMES = ["from", "to", "staffId", "clientType"] as const;
 export const MetricKey = z.string().regex(/^[a-z][a-z_]{0,29}\.[a-z][a-z0-9_]{0,59}$/, "a metric key is module.name, e.g. sales.leads_added");
 export const MetricKind = z.enum(["COUNT", "MONEY", "PERCENT", "LIST"]);
 export type MetricKind = z.infer<typeof MetricKind>;
@@ -34,7 +36,7 @@ export const Currency = z.enum(["CAD", "USD"]);
  *  parameter names. The target re-checks its own keys and firm (the door adds nothing). */
 export const DrillTarget = z.strictObject({
   path: z.string().regex(/^\/api\/[a-z0-9/-]{1,200}$/),
-  carries: z.partialRecord(z.enum(["from", "to", "staffId", "clientType"]), z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/)).default({}),
+  carries: z.partialRecord(z.enum(FILTER_NAMES), z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/)).default({}),
 }).refine((t) => new Set(Object.values(t.carries)).size === Object.values(t.carries).length, "each filter goes to its own parameter (break M4)");
 export type DrillTarget = z.infer<typeof DrillTarget>;
 
@@ -63,7 +65,7 @@ export const MetricFilters = z.strictObject({
   to: DAY.optional(),
   staffId: z.string().uuid("the person is a staff id").optional(),
   clientType: z.enum(["INDIVIDUAL", "CORPORATE"]).optional(),
-}).refine((f) => !f.from || !f.to || f.from <= f.to, { message: "the start date is after the end date", path: ["from"] });
+}).refine((f) => !f.from || !f.to || f.from <= f.to, { message: "the start date is after the end date", path: [FILTER_NAMES[0]] });
 export type MetricFilters = z.infer<typeof MetricFilters>;
 
 /** The door's body (AG-14-30). `scope` is accepted and never read: the scope is the server's (AG-14-19). */
@@ -101,9 +103,9 @@ export type MetricAnswer = {
 };
 export type ReportAnswer = { metrics: MetricAnswer[]; filters: MetricFilters };
 
-/** A refusal the door turns into 400 (bad metric or filter) or 403 (no report key, or another person's figures at own scope). */
+/** A refusal the door turns into 422 (a body or filter failing its schema: PF-28's field-error status), 400 (an unknown metric) or 403 (no report key, or another person's figures at own scope). */
 export class ReportRefused extends Error {
-  constructor(readonly status: 400 | 403, readonly code: string, message: string, readonly fields: Record<string, string> = {}) { super(message); this.name = "ReportRefused"; }
+  constructor(readonly status: 400 | 403 | 422, readonly code: string, message: string, readonly fields: Record<string, string> = {}) { super(message); this.name = "ReportRefused"; }
 }
 
 /** The caller's base scope from the report keys: all, own, or none (AG-14-19; SA6-D1 defaults). */
@@ -124,16 +126,32 @@ export const mayReport = (keys: readonly string[]) => baseScope(keys) !== null |
 const plain = (i: z.core.$ZodIssue): string => {
   if (i.code === "unrecognized_keys") return `not a field here: ${i.keys.slice(0, 3).map((k) => (/^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(k) ? k : "(unreadable)")).join(", ")}${i.keys.length > 3 ? ` and ${i.keys.length - 3} more` : ""}`;
   if (i.code === "invalid_type") return "this has the wrong type";
+  if (i.code === "invalid_value") return "this is not one of the allowed values";
   return i.message.slice(0, 200);
 };
 const pathOf = (i: z.core.$ZodIssue) => i.path.slice(0, 4).map((p) => String(p).slice(0, 40)).join(".") || "body";
-const fieldsOfIssues = (e: z.ZodError) => Object.fromEntries(e.issues.slice(0, 10).map((i) => [pathOf(i), plain(i)]));
+/** The fields, at most 10: an unknown field is named by its own key, as PF-28's fieldsOf does ("This field is not allowed here."). */
+const fieldsOfIssues = (e: z.ZodError) => {
+  const out: [string, string][] = [];
+  for (const i of e.issues) {
+    if (i.code === "unrecognized_keys") for (const k of i.keys) out.push([[...i.path.slice(0, 3).map((p) => String(p).slice(0, 40)), /^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(k) ? k : "(unreadable)"].join("."), "This field is not allowed here."]);
+    else out.push([pathOf(i), plain(i)]);
+  }
+  return Object.fromEntries(out.slice(0, 10));
+};
 const timeout = <T,>(p: Promise<T>, ms: number) => { let t: ReturnType<typeof setTimeout> | undefined; return Promise.race([p, new Promise<"TIMEOUT">((r) => { t = setTimeout(() => r("TIMEOUT"), ms); })]).finally(() => clearTimeout(t)); };
+/** The 422 for a body that fails ReportQuery: one plain message and at most 10 named fields. */
+export function queryRefusal(error: z.ZodError): ReportRefused {
+  const first = error.issues[0];
+  return new ReportRefused(422, "QUERY_INVALID", first ? plain(first) : "Check the report query", fieldsOfIssues(error));
+}
 /** A reading that fits its definition: the kind, and a currency on every row of a PER_CURRENCY list. */
 const fits = (m: MetricDefinition, raw: unknown): Reading | null => {
   const got = Reading.safeParse(raw);
   if (!got.success || got.data.kind !== m.kind) return null;
   if (got.data.kind === "LIST" && m.moneyTreatment === "PER_CURRENCY" && !got.data.rows.every((r) => Currency.safeParse(r.currency).success)) return null;
+  // a table not declared per currency never carries money: a row with a currency there would skip view-financial (break r1)
+  if (got.data.kind === "LIST" && m.moneyTreatment === "NONE" && got.data.rows.some((r) => "currency" in r)) return null;
   return got.data;
 };
 
@@ -144,7 +162,7 @@ const fits = (m: MetricDefinition, raw: unknown): Reading | null => {
 export async function runMetrics(metrics: ReadonlyMap<string, MetricRegistration>, caller: ReportCaller, body: unknown, onFail?: (key: string, reason: "ERROR" | "SHAPE" | "TIMEOUT") => void, readTimeoutMs = READ_TIMEOUT_MS): Promise<ReportAnswer> {
   if (!mayReport(caller.keys)) throw new ReportRefused(403, "MISSING_PERMISSION", `Your roles include no report permission (${REPORT_KEYS.own}, ${REPORT_KEYS.all} or ${REPORT_KEYS.financial}).`);
   const parsed = ReportQuery.safeParse(body ?? {});
-  if (!parsed.success) { const first = parsed.error.issues[0]; throw new ReportRefused(400, "QUERY_INVALID", first ? plain(first) : "Check the report query", fieldsOfIssues(parsed.error)); }
+  if (!parsed.success) throw queryRefusal(parsed.error);
   const { metrics: keys, filters } = parsed.data;
   const unknown = keys.filter((k) => !metrics.has(k));
   if (unknown.length) throw new ReportRefused(400, "UNKNOWN_METRIC", `No such metric: ${unknown.slice(0, 5).join(", ")}`);

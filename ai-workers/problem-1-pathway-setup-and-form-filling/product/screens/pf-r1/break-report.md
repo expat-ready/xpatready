@@ -54,4 +54,42 @@ UNKNOWN_METRIC (`:126`) caps each key at 80 characters and 5 keys, but keeps RTL
 - **Dashboards.** `Owner`, `OWNER`, `../owner`, `owner/../owner`, `%6fwner`, `owner%00`, padded, zero-width, Cyrillic-е, `__proto__`, `constructor`, `toString` and `hasOwnProperty` all give 404. No session gives 401 on both routes. No report key gives 403.
 - **Not exercised.** The HTTP layer itself: Express decoding `%2e%2e` to `..` would land on the same allow-list.
 
-Verdict: Changes
+Round 1 verdict (d3679946b): Changes
+
+## Round 2 (commit 67872c449, re-tried 23 Nov 2026)
+I re-ran both probe scripts against 67872c449, adjusted only for the new `overBudget(…, runAs)` signature and the new `keys` in the read context, and added round-2 cases. The row's own test passes: 70 passed, 0 failed. I changed no code.
+
+**Each round-1 finding, re-tried**
+- **M1 holds.** `ctx.keys` reaches the read and is frozen. With a read that uses the keys, a Case Manager without `agent/prospect:view.all` gets 1 (their own lead), not the firm-wide 3. A read doing `ctx.keys.push("agent/prospect:view.all")` throws and the metric answers UNAVAILABLE, so a read cannot widen itself.
+- **M2 holds.** Billing / Finance reads a PER_CURRENCY LIST (ageing) at `financial` scope, firm-wide, with no person filter. A Case Officer gets the same LIST WITHHELD. A row whose currency is lower-case `cad`, or missing, makes the metric UNAVAILABLE.
+- **m7 is settled the conservative way (AG-14-35 to -37):** without `view-financial`, a money metric is WITHHELD.
+- **M3 holds when the caller passes `withFirm`.** A context naming firm B, run while firm A was active, counted firm B's 5,000 rows. A wrong-shaped reading fails the budget. One gap is left (r2 below).
+- **M4 holds.**
+  - An own-scope figure whose target lacks `staffId` now gets `drill: null`.
+  - A `clientType` filter the target cannot carry also gives `null`.
+  - With no filter in effect, the link is still given.
+  - Mapping two filters to one parameter (`from→d`, `to→d`) is refused at registration.
+- **m1 holds.** 2,000 hostile filter keys now give a 301-byte answer: "not a field here: (unreadable) … and 1997 more". A 100 KB metric key with bidi, script and newline characters gives the plain MetricKey message. UNKNOWN_METRIC echoes only keys that pass MetricKey, at most 5. 200 badly typed metrics give 10 fields.
+- **m2 holds.** COUNT+LIST, LIST+COUNT, PERCENT+MEDIAN and MONEY+COUNT are refused. COUNT+SUM and MONEY+AVG still register, which is allowed by design. If `sales` registers a `money.*` key first, client money's `money.fees_billed` is then refused with "the money.* keys are sales's", so the conflict fails loudly at start-up.
+- **m3 holds.** 200 rows of 2,000 columns, and a column name of 100,000 characters, are both UNAVAILABLE.
+- **m4 holds.** With a 100 ms limit, a stuck read is UNAVAILABLE (TIMEOUT) while the other metrics answer.
+- **m5 holds.** One read setting `f.staffId` no longer changes what another read sees (null), the echoed filters (`{}`) or the drill link. A changed `definitions()` copy changes nothing registered.
+- **m6 holds.** A caller with no report key and a bad body gets 403 MISSING_PERMISSION.
+
+**Still holding from round 1:** scope from the body is ignored. Person-filter case and near-UUID tricks give 403/400. A metric key sent several times is read once. Error words appear in neither the answer nor the log (key plus ERROR, SHAPE or TIMEOUT only). Firm A filtering on firm B's staff id gets 0, with no existence oracle. The dashboard role tricks give 404/401/403. 30 parallel reads of about 50 ms each answered in 186 ms.
+
+**Minor findings left open (none blocks the merge)**
+- **r1: the `view-financial` gate depends on the module declaring money honestly.**
+  - *Repro:* CAD and USD cents summed (4,550,000) and registered as COUNT/SUM/NONE come back OK at `own` scope to a `view.own`-only Case Officer.
+  - The same happens with a LIST declared NONE whose rows carry `currency` and `overdue: "900.00"`.
+  - *Fix:* in `fits`, refuse a NONE LIST row that has a `currency` key. Have PF-R2cm's breaker check that every metric reading client-money tables is PER_CURRENCY.
+- **r2: the budget check can still pass without reading anything if the caller passes a do-nothing `runAs`.**
+  - *Repro:* `runAs = (f, fn) => fn()` counted 0 of firm B's rows and the run passed.
+  - The registrant check is text-based: the test file only has to contain `overBudget(` and the module's path.
+  - *Fix:* fail a run in which every read returned 0 or empty, or have `runAs` report the firm that was active.
+- **r3: a read that hits the time limit keeps running in the background and holds its connection.** In the probe it finished 300 ms after the answer was sent.
+  - *Fix:* give each read an `AbortSignal` in the context.
+- **r4: the read context is not a `StaffContext`.** The existing visibility helpers (for example `leadsSeenWhere(ctx: StaffContext, vis)`, with the firm's "everyone sees all" switch) take more than keys, so each module will rebuild them.
+  - *Fix:* a shared helper (`visibility(area)` or a `StaffContext` view) in a later row.
+
+Verdict: Approve

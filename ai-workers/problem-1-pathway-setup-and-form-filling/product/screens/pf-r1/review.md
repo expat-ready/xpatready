@@ -47,3 +47,44 @@ Verdict: Changes
 2. `tools/check-port-contracts.mjs --list` sees only the real MetricRegistry ("MetricsPort ×1"), because `fakeMetrics` is in `ports/fakes/` (the path the row asks for). If the fake's `runContract` call (check_pfr1_reports.ts:49) were deleted, nothing static would notice. Note it in the PR for PF-0c's checker (eligibility.fake.ts has the same gap).
 3. Zod's default words reach the 400 answer: "Unrecognized key: \"extra\"", "Invalid input: expected object, received array", "Invalid option: expected one of…" (seen over HTTP). AG-14-30 asks for a plain, localisable message. Give the body, the filter keys and `clientType` their own messages, as `DAY` and `staffId` already have.
 4. `ports/metrics.ts:65`: each metric key in the request is a bare `z.string()`. Use `MetricKey`, so that a malformed key is QUERY_INVALID naming the field instead of being echoed back as UNKNOWN_METRIC.
+
+## Round 2: commit `67872c4496ae6f68bf97c1c0675b5b32090563c3` (diff from d3679946b only)
+**What I ran:** the row's test, twice in a scratch worktree of 67872c4: **70 passed, 0 failed** both times. Then three mutation runs, each reverting one fix in that worktree:
+* Reverting M1 (money at the base scope without view-financial): **5 checks FAIL**. These are the contract case on both adapters plus the DW3 Case Officer and Case Manager WITHHELD check.
+* Removing the m1 timeout wrapper: the run **hangs** and never prints a result, so CI goes red (it fails by hanging, not by printing a FAIL line).
+* Removing only the TIMEOUT branch: all checks still pass, because the timeout falls through to the shape check and is still answered UNAVAILABLE; only the log reason changes.
+
+I did not repeat the HTTP walk, because the routes and controller did not change. The round 1 walk at :4431 still stands. I also ran a scratch probe of the 400 messages through `fakeMetrics`.
+
+**Round 1 findings**
+* **M1: fixed.**
+  - `scopeFor` (ports/metrics.ts:116) reads money only with view-financial, at scope `financial`; otherwise the metric answers WITHHELD.
+  - Tests: DW3 at check_pfr1_reports.ts:143 checks the Case Officer and the seeded Case Manager (user-T); the contract checks view.all without view-financial.
+  - Owner and Admin keep money through their seeded view-financial, which matches §10 l.651. The Case Manager dashboard has no money widget, so it stays consistent.
+* **M2: fixed as a rule, with one hole (new Minor 5 below).**
+  - `overBudget` now takes `runAs` (withFirm), times each context inside its own firm, and fails a reading of the wrong shape. Its tests cover firm B's ~5,000 rows and a wrong-shape read.
+  - The sweep (check_pfr1_reports.ts:198) names every api/src file that imports `platform/reports/registry` and calls `.register(` but has no test calling `overBudget(` on it. A planted file is named; the real tree has none.
+* **m1: fixed.** `READ_TIMEOUT_MS` is 5 s (:131). A stuck read answers UNAVAILABLE (TIMEOUT) while the others answer (test :216).
+* **m2: open, as noted.** It is PF-0c's checker gap, outside this row's touch list, and the builder is noting it in the PR.
+* **m3: mostly fixed.** Unrecognized keys now read "not a field here: extra" and a wrong type reads "this has the wrong type". One Zod default is left: a bad client type still answers `Invalid option: expected one of "INDIVIDUAL"|"CORPORATE"` (probe). See new Minor 6.
+* **m4: fixed.** `metrics: z.array(MetricKey)` (:71). "BAD KEY" answers QUERY_INVALID with "a metric key is module.name…".
+
+**The breaker's fixes (I checked that the code is right, not the breaker's reasons)**
+* Reads now get a frozen copy of the viewer's keys, so a module can apply its own view.own / view.all (AG-14-19, SA6-D6), and a test shows it.
+* A per-currency LIST needs view-financial, and every row must carry a currency.
+* A drill link is given only when the target carries every filter in effect; otherwise there is no link. It is never a wider one, so AG-14-22 holds.
+* A carried parameter used twice, a mismatch between kind and aggregation, and another module's key prefix are all refused at registration.
+* The filters and definitions handed out are copies.
+* 403 now comes before 400, so no report key answers 403 even for a bad body.
+
+The scope still never comes from the request, firm walls still hold (DW6 unchanged), error words still never leave the server, and the fake and the real registry still share `runMetrics`, `checkRegistration` and `definitionsOf`. I found no regression.
+
+**New Minors (none blocks)**
+5. The sweep at `tests/check_pfr1_reports.ts:198` can be evaded by splitting the code across two files. A feature file imports `MetricRegistry` and passes it on, and a module file typed with the port (`p: MetricsPort`) calls `p.register(…)`. Neither file matches both patterns, so the probe found `registrants: []`. That is the natural pattern for a module coding to the port. **Fix:** treat as a registrant any api/src file outside `platform/reports/` that calls `.register(` and imports `ports/metrics.ts` or `platform/reports/registry`.
+6. `ports/metrics.ts:124` (`plain`): give `invalid_value` its own plain message (for example "not one of the choices here"), as `invalid_type` and `unrecognized_keys` now have.
+
+Journey score after round 2: **9.5 / 10**, a pass (7½ of the 8 criteria that apply; see the journey-test file, round 2).
+
+**Round 2 verdict: Approve.** No Blocker or Major is open. Minors 2, 5 and 6 can follow in later PRs.
+
+Reviewer: Approve 67872c4496ae6f68bf97c1c0675b5b32090563c3
