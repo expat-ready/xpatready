@@ -13,6 +13,7 @@
 import * as React from "react";
 import { createPath, NavigationType, parsePath, Router, type To } from "react-router-dom";
 import { X } from "lucide-react";
+import { FoldArrow } from "@/components/fold-out";
 import { anyDraft, discardDraft, draftsAt, useDraftTick } from "@/lib/sync/drafts";
 import { onStaffChange, sessionEndReason, staffScope } from "@/modules/platform/session";
 import { cn } from "@/lib/utils";
@@ -278,7 +279,7 @@ export function WorkspaceStrip() {
         })}
       </div>
       <div className="flex items-center gap-2 px-4 py-1.5 md:hidden">
-        <button type="button" aria-expanded={menu} onClick={() => setMenu((m) => !m)} data-ws-menu className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm font-medium">Open items ({tabs.length})</button>
+        <button type="button" aria-expanded={menu} onClick={() => setMenu((m) => !m)} data-ws-menu className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium"><FoldArrow open={menu} />Open items ({tabs.length})</button>
         <span className="min-w-0 truncate text-sm text-text-muted">{tabs.find((t) => t.id === active)?.title}</span>
       </div>
       {menu ? <ul className="flex flex-col gap-1 border-t border-border px-4 py-2 md:hidden" aria-label="Open items">

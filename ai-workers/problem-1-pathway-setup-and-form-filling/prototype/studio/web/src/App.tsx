@@ -42,7 +42,8 @@ export default function App() {
   // simulated people.
   // BK-4a: the sign-in page (P-484 (3): a page, not a gate), one notice for every change of person, and a stored person
   // this workspace does not know goes to the sign-in page (BR-6) instead of a refusal on every screen.
-  return <WorkspaceRouter><PersonNotice /><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/clients/*" element={<KnownPerson><ClientsApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></WorkspaceRouter>;
+  // PF-31: the notice sits outside the workspace router, so it is mounted once, not once per open tab.
+  return <><PersonNotice /><WorkspaceRouter><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/clients/*" element={<KnownPerson><ClientsApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></WorkspaceRouter></>;
 }
 
 /** BK-4a BR-6: a person chosen in this browser who is not one of the simulated people opens the sign-in page. A browser
