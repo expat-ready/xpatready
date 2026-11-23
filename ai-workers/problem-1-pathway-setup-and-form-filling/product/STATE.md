@@ -2,7 +2,7 @@
 
 current_lead: local_1117b08b-e591-401e-8f74-dbc5ef877570 Lead 7 · 23 Nov 18:39 IST (took over from Lead 6 (local_f2d41d71) at ~325k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 18:39 IST: hand-over Lead 6 to Lead 7
+updated: 2026-11-23 18:50 IST: Lead 7 running (check 881617aa); #3254 `/run full` posted on 03d6df61e (Approve; Lead read of guard, test, ci.yml and check-guards done, label after the full run is green); #3258 open with P-810 and six rows, trace red on two Source lines, fix under way
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
