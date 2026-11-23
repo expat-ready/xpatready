@@ -377,7 +377,8 @@ MUT="$MUT"'
 761r req|product/tools/queue-red.py|s/n for n in f if n in req/n for n in f/|check-queue-red.sh
 761r ci|product/tools/queue-red.py|s/ . MERGIFY$//|check-queue-red.sh
 761r ready|product/tools/queue-red.py|s/, "completes-ready"}/}/|check-queue-red.sh
-761r skel|product/tools/queue-red.py|s/, "skeleton"//|check-queue-red.sh'
+761r skel|product/tools/queue-red.py|s/, "skeleton"//|check-queue-red.sh
+761r prr|product/tools/queue-red.py|s/, "pr-rules"//|check-queue-red.sh'
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
