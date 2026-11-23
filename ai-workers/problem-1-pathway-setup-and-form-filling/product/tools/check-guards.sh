@@ -132,6 +132,12 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
 15 full depth|../../.github/workflows/label-guard.yml|/^          fetch-depth: 0$/d|check-queue-gate.sh
 15 full name|../../.github/workflows/ci.yml|s/format(.full-run PR #{0} {1}., inputs.pr, inputs.head)/inputs.head/|check-queue-gate.sh
+15 lead soft|product/tools/queue-gate.sh|s/^    grep -qiEf "\$H.soft" <<< "\$f" .. continue$/    continue/|check-queue-gate.sh
+15 lead hard|product/tools/queue-gate.sh|s/^    if grep -qiEf "\$H.hard" <<< "\$f"; then printf .%s\\n. "\$f"; continue; fi$/    true/|check-queue-gate.sh
+15 lead rec|product/tools/queue-gate.sh|s/^    \[ "\$rec" = 1 \] \&\& continue$/    continue/|check-queue-gate.sh
+15 lead label|product/tools/queue-gate.sh|s/^  records \&\& rec=1$/  rec=1/|check-queue-gate.sh
+15 lead img|product/tools/queue-gate.sh|/^    grep -qiE .\/product\/tools\/. <<< "\$f" .. ! grep/d|check-queue-gate.sh
+15 lead list|product/tools/queue-gate.sh|s/^  \[ -r "\$all" \] \&\& grep -q .^# --- records-exempt. "\$all" .. {[^}]*}$/  true/|check-queue-gate.sh
 15 start rid|product/tools/queue-gate.sh|s/ \&\& held \&\& \[ "\$held_state" = failed \]; then start/ \&\& held; then start/|check-queue-gate.sh
 15 deq unlabel|product/tools/queue-gate.sh|s/^          api -X DELETE "\$API\/repos\/\$REPO\/issues\/\$PR\/labels\/review%3A%20approved"/          true/|check-queue-gate.sh
 15 proof deq|product/tools/queue-gate.sh|s/ \] .. has dequeued; then/ ]; then/|check-queue-gate.sh
