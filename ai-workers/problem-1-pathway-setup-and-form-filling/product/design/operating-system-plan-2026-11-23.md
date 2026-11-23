@@ -61,3 +61,11 @@ Clean-up stages (#2459 and on), refactor R0-R9, mutation pilot E4, lint (T14), W
 ## Records
 Refused actions, not routed around: (1) setting `GATE_RUNNER` (12:1x IST; then done in the browser on the founder's explicit words); (2) building M7+M8 in a scratch copy with commit hooks skipped (12:1x IST) and, after the founder's yes and with hooks on, again (12:16): stopped, founder chose a cloud lane.
 Duplicate check: 500 last-updated closed PRs searched by tooling id; merged already: #2920, #2925, #2972, #2939, #3007, #2445, #2602, #2746, #2741, #2776. None duplicates a must row by title; per-PR content check is part of each verification.
+
+## Facts and findings after 12:20 IST
+* **A301-A303 (founder, relayed by Lead 2):** VPS or AWS for speed and scale; private as early as 24 Nov with the four gates run in parallel; managed machines first, Lead 2 runs the vendor research. The desk's 1 Dec date no longer holds; its gates do.
+* **AWS ca-central-1:** Spot 160 and on-demand 160 vCPU applied; credit $992.34 left, expires 30 Nov 2028 (covered services not read). 40 jobs of 4 vCPU each way; a peak of 170 needs about 680 vCPU. At 103,934 min/day: about $131/day Spot ($0.0755/h, 19 Nov price) + 20% idle = $157/day, so the credit lasts about 6 days.
+* **Mergify:** Free, $0, 2 repositories, 2 contributors. **Namespace:** app still installed, plan unread (sign-in).
+* **M19 runner variable:** branch `claude/lead-o-ci-runner` 6aeb97eeb (CI_RUNNER; heavy read-only jobs; fork PRs stay on GitHub). In review.
+* **M7/M8 fix first:** #2457 (browser-merge advice without the Lead read), #2473 (completes-ready missing), #2444 with #2599 (register lines no longer block), #2605 (private sync may empty the mirror). Sent to Lead 2.
+* Lead O's measuring used a large part of the shared GitHub allowance (5000/5000 at 12:23, reset 12:26); the by-workflow minutes measurement failed and is owed.
