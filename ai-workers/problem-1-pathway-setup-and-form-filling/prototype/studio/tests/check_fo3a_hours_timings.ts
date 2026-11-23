@@ -159,6 +159,17 @@ try {
   ok("FO-3a DW14 pass (review M1, m4): a duplicate keeps the host's set (same 4 times); the preview and staff warnings read the type's set (only Tuesday has times; Tue 09:00 → OUTSIDE_HOURS)",
     copy.status === 201 && JSON.stringify(sCopy) === JSON.stringify(s2) && pv.status === 200 && pv.body.days.filter((d: { slots: unknown[] }) => d.slots.length).map((d: { date: string }) => d.date).join() === "2026-10-20"
     && warn.status === 409 && JSON.stringify(warn.body).includes("OUTSIDE_HOURS"), [copy.status, sCopy.length, warn.status]);
+  // R1.42 (FO-3st3 J-T3 on a Monday): unasked, the preview is seven whole days in the firm's zone from today, never an
+  // eighth day cut at this time of day ("No host hours"). Today a Monday; today a Sunday; across a month end and the
+  // clocks going back (1 Nov 2026).
+  const clockWas = clock.now(), unasked: string[] = [];
+  for (const [now, first, last] of [["2026-11-23 01:02", "2026-11-23", "2026-11-29"], ["2026-11-22 23:30", "2026-11-22", "2026-11-28"], ["2026-10-31 23:30", "2026-10-31", "2026-11-06"]]) {
+    await clock.set(at(now));
+    const r = await F("GET", `booking-types/${T2.id}/preview`, P.OWNER), days: string[] = (r.body.days ?? []).map((d: { date: string }) => d.date);
+    if (r.status !== 200 || days.length !== 7 || days[0] !== first || days[6] !== last) unasked.push(`${now}: ${r.status} ${days.join(",")}`);
+  }
+  await clock.set(clockWas);
+  ok("FO-3st3 R1.42 pass: the preview asked with no dates shows today and the six days after, whole (a Monday, a Sunday, a month end)", unasked.length === 0, unasked);
   const readBack = async () => (await F("GET", `booking-types/${T2.id}`, P.CASE_MANAGER)).body.hostSets;
   const [chosenRead, cleared, clearedRead] = [await readBack(), await F("PUT", `booking-types/${T2.id}/hosts/${P.OWNER.id}/set`, P.OWNER, { setId: null }), await readBack()];
   await F("PUT", `booking-types/${T2.id}/hosts/${P.OWNER.id}/set`, P.OWNER, { setId: evening.body.id });

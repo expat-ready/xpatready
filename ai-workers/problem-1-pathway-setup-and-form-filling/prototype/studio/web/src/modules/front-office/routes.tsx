@@ -8,9 +8,9 @@ import { AvailabilityPage } from "./booking/availability/availability-page";
 import { BookingsPage } from "./booking/calendar/calendar-page";
 import { TimingsPage } from "./booking/settings/timings-page";
 import { BookingTypesPage } from "./booking/settings/types-page";
-import { BookingListPage } from "./booking-public/list-page";
 import { BookingManagePage } from "./booking-public/manage-page";
 import { BookingTypePage } from "./booking-public/type-page";
+import { BookingEntry } from "./booking-public/site";
 import { LeadPage } from "./sales/lead-page";
 import { LeadsPage } from "./sales/leads-page";
 import { PipelinePage } from "./sales/pipeline-page";
@@ -36,7 +36,8 @@ export const routes: ModuleRoute[] = [
   { path: "/front-office/bookings/:id", element: <BookingsPage /> },
   { path: "/front-office/settings/booking-types", element: <BookingTypesPage /> },   // FO-3st3 part 3a: Settings → Booking types
   { path: "/front-office/settings/timings", element: <TimingsPage /> },   // FO-3st3b: Settings → Timings
-  { path: "/book/:firmKey", element: <BookingListPage /> },
+  { path: "/book", element: <BookingEntry /> },   // QA-756: a firm's own address (site.tsx)
+  { path: "/book/:firmKey", element: <BookingEntry /> },   // the list here; on a firm's own address a type, or manage
   { path: "/book/:firmKey/manage", element: <BookingManagePage /> },
   { path: "/book/:firmKey/:slug", element: <BookingTypePage /> },
 ];
