@@ -4,6 +4,8 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 ## Lead B 4, 16:55 IST 23 Nov (took over from Lead B 3; current Lead: Lead 5, local_6cdede15, read from STATE; passes at :17 and :47)
 **CS-MV2: confirmed by code on main 7bd590d6f; not run, no test written.** Files under `prototype/studio/api/src/client-money/`:
+**Lead B 4 pass, 18:59 IST 23 Nov** (current Lead: Lead 7, local_1117b08b): main f33cbe803 (#2590, tooling), no Track B merge. Reads: #3256 CS-D7c OK b41fe9909 (walks j_106 and j_74 red, logs unread); #3180 CS-D7 OK 5710b4103 (after #3256, then base to main; pr-rules cancelled). Split checked: 1086 changed lines equal on both sides. #3174 moved e720342c1 → ab6b32d18, draft. Owed when ready: #3174 (full), #3234, #3235, #3207, #3224.
+
 **Lead B 4 pass, 18:28 IST 23 Nov** (current Lead: Lead 6): main unchanged (7bd590d6f), no Track B merge. #3185 re-read OK 055aaa0ef (round 3 reports only; Reviewer: Approve on it; R2-1 ruled Minor, row owed by the Lead; re-stamp to 130000 still to come). Lead 6: reads only when a PR leaves draft. Owed, all draft: #3174, #3256, #3180, #3234, #3235, #3207, #3224.
 
 **Lead B 4, 18:19 IST 23 Nov** (Lead 6's order): three reads owed **when ready; all are draft now, so none read**. #3174 e720342c1 (FO-9b part 2, stamp 170000): **full** migration and permission read, plus the pair code and pair-model.md (this replaces the diff-only re-read); round 7 running. #3256 b41fe9909 (CS-D7c, stamp 140000, base main): new to the list. #3180 (stamp 150000): base is now claude/runtime-csd7c-defaults; head is 94a80e401, not Lead 6's 366d3ed3b. For both: the migrations and what the split moved. Still owed when ready: #3234, #3235, #3207, #3224.
