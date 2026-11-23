@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261123030000_fo9b_review";
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261123170000_fo9b_review";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo9br_${process.pid}`, URL_ = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
@@ -84,6 +84,7 @@ try {
   const pairOf = (a: string, b: string) => sql(`select id from fo_dup_review where firm_id = '${A}' and low_id = least('${a}'::uuid, '${b}'::uuid) and high_id = greatest('${a}'::uuid, '${b}'::uuid)`);
   const ports = { audit: auditEvent, consent };
   const inTx = <T,>(fn: (tx: never) => Promise<T>) => db.$transaction((tx) => fn(tx as never));
+  const review = new DuplicateReview(db, ports);   // the list as a person sees it (pair-model.md)
 
   // ------------------------------------------------------------------------------- the database's rules
   const ins = (lo: string, hi: string, extra = "", vals = "") => `insert into fo_dup_review (firm_id, low_id, high_id, score, reasons${extra}) values ('${A}', '${lo}', '${hi}', 100, '[]'${vals})`;
@@ -260,8 +261,8 @@ try {
   const nm = await inTx((tx) => mergeIfSafe(tx, A, nAB, ports)) as { mergeRef?: string };
   const nAC = pairOf(nA.person.id, nC.person.id);   // written by the merge itself (review r3-m5: no fallback, no skip)
   const rAC = nAC ? await inTx((tx) => mergeIfSafe(tx, A, nAC, ports)) as { mergeRef?: string } : {};
-  ok("FO-9b n1 fail: after B merges into A, the A-C pair keeps B-C's Kept separate decision and C is never merged by itself",
-    !!nm.mergeRef && sql(`select status from fo_dup_review where id = '${nBC}'`) === "KEPT_SEPARATE" && !!nAC && sql(`select status from fo_dup_review where id = '${nAC}'`) === "KEPT_SEPARATE" && !rAC.mergeRef
+  ok("FO-9b n1 fail: after B merges into A, the A-C pair is shown Kept separate through B-C's decision and C is never merged by itself",
+    !!nm.mergeRef && sql(`select status from fo_dup_review where id = '${nBC}'`) === "KEPT_SEPARATE" && !!nAC && (await review.list(R, "KEPT_SEPARATE")).items.some((it) => it.id === nAC && it.keptThrough === nBC) && !rAC.mergeRef
     && sql(`select merged_into_id is null from fo_person where id = '${nC.person.id}'`) === "t", { nm, nAC, rAC });
   // R3-1: A (name N, phone P), B (phone P, email E), C (name N, email E): pairs A-B, B-C and A-C (by name). B-C is kept
   // separate; once B merges into A (guided or by itself), A-C carries that decision and C is never merged by itself.
@@ -275,8 +276,8 @@ try {
   const r3gk = await call("POST", `/front-office/duplicates/review/${g.bc}/keep-separate`, tR, {});
   const r3gm = await call("POST", `/front-office/duplicates/review/${g.ab}/merge`, tR, { survivorId: g.a, choices: { email: "LOSER" } });
   const gAC = g.ac ? await inTx((tx) => mergeIfSafe(tx, A, g.ac, ports)) as { mergeRef?: string; refused?: string[] } : {};
-  ok("FO-9b R3-1 fail: B-C kept separate, then a guided merge of B into A → the A-C pair already listed carries the decision (Kept separate), and C is never merged by itself",
-    !!g.ac && r3gk.status === 200 && r3gm.status === 200 && sql(`select status from fo_dup_review where id = '${g.ac}'`) === "KEPT_SEPARATE" && !gAC.mergeRef
+  ok("FO-9b R3-1 fail: B-C kept separate, then a guided merge of B into A → the A-C pair already listed is shown Kept separate through B-C, and C is never merged by itself",
+    !!g.ac && r3gk.status === 200 && r3gm.status === 200 && (await review.list(R, "KEPT_SEPARATE")).items.some((it) => it.id === g.ac && it.keptThrough === g.bc) && !gAC.mergeRef
     && sql(`select merged_into_id is null from fo_person where id = '${g.c}'`) === "t", { ac: g.ac, gk: r3gk.status, gm: r3gm.status, gAC });
   const gu4 = await call("POST", `/front-office/duplicates/merges/${r3gm.body.mergeRef}/undo`, tR, {});
   ok("FO-9b R4-3 fail: Undo of that merge opens the A-C pair again (a decision nobody made on A-C is not left behind); B-C stays Kept separate",

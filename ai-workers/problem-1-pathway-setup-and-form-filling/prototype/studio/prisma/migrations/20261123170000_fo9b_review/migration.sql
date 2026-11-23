@@ -2,6 +2,8 @@
 -- the duplicate review list. One row per pair of person records in a firm (the pair in id order, unique), written when a
 -- new person arrives with a match (exact email or phone, or a similar name), with its score and reasons and when it was
 -- first seen. Its status is OPEN, MERGED (names the merge record) or KEPT_SEPARATE; an Undo of the merge opens it again.
+-- noted_by_merge_id names the merge that first wrote the pair (the survivor meeting the loser's matches); while that
+-- merge is undone the pair is not listed (product/screens/FO-9b-2/pair-model.md).
 -- Never deleted or truncated (fo_dup_review_no_delete). The pair's ids are plain uuids, like fo_dup_merge's: a pair is a
 -- decision record, so a MERGED pair keeps naming the merged-away record (read through merged_into_id).
 CREATE TYPE "FoDupReviewStatus" AS ENUM ('OPEN', 'MERGED', 'KEPT_SEPARATE');
@@ -19,6 +21,7 @@ CREATE TABLE "fo_dup_review" (
     "decided_by" TEXT,
     "decided_at" TIMESTAMPTZ,
     "merge_id" UUID,
+    "noted_by_merge_id" UUID,
 
     CONSTRAINT "fo_dup_review_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "fo_dup_review_order" CHECK ("low_id" < "high_id"),
@@ -29,6 +32,7 @@ CREATE TABLE "fo_dup_review" (
 CREATE UNIQUE INDEX "fo_dup_review_firm_id_low_id_high_id_key" ON "fo_dup_review"("firm_id", "low_id", "high_id");
 CREATE INDEX "fo_dup_review_firm_id_status_idx" ON "fo_dup_review"("firm_id", "status");
 ALTER TABLE "fo_dup_review" ADD CONSTRAINT "fo_dup_review_merge_id_fkey" FOREIGN KEY ("merge_id") REFERENCES "fo_dup_merge"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "fo_dup_review" ADD CONSTRAINT "fo_dup_review_noted_by_merge_id_fkey" FOREIGN KEY ("noted_by_merge_id") REFERENCES "fo_dup_merge"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 CREATE FUNCTION fo_dup_review_no_delete() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
