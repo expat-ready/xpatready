@@ -277,6 +277,10 @@ MUT="$MUT"'
 38 notes|product/tools/lead-upkeep.py|s/    if not os.path.isdir(a.notes):/    if False:/|check-lead-upkeep.sh
 38 source|product/tools/private-sync.sh|s/^if \[ ! -d "\$NOTES" \] .*then$/if false; then/|check-lead-upkeep.sh
 38 rev-parse|product/tools/private-sync.sh|s/^if ! git rev-parse -q --verify HEAD .*then$/if false; then/|check-lead-upkeep.sh
+38 note file|product/tools/private-sync.sh|s/ -type f ! -name / -name /|check-lead-upkeep.sh
+38 after copy|product/tools/private-sync.sh|s/^if \[ -z "\$(notes_in notes\/side-session-notes)" \]; then$/if false; then/|check-lead-upkeep.sh
+38 origin|product/tools/private-sync.sh|s/^if \[ "\$(git remote get-url origin 2>\/dev\/null)" != "\$REMOTE" \]; then$/if false; then/|check-lead-upkeep.sh
+38 pull|product/tools/private-sync.sh|s/^if ! git pull -q --ff-only; then$/if ! git pull -q --ff-only \&\& false; then/|check-lead-upkeep.sh
 38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
 38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh'
 MUT="$MUT"'
