@@ -1,3 +1,22 @@
+Reviewer: Approve 9f88b52c96df5a6cd91d0ff8495ae6a533f113ab
+
+# Round 4 (diff only, c239c2175..9f88b52c9): the merge of main and the CI `types` fix
+
+Reviewer (Opus 5.5; I did not build it), 23 Nov. **Verdict: Approve** (Ship). No open Blocker or Major; the round 3 Minors stand as written.
+
+* **The merge 58ecdbece** (origin/main `d8e6c7959`, which includes #3042) was clean: `git show --cc 58ecdbece` is empty, so no conflict was resolved by hand. The newest migrations on the head are `20261123010000_fo9b_person_merge`, then ours, `20261123020000_fo7g3_bill_to_province`, so the P-600 order holds.
+* **The fix 9f88b52c9** is one file, +2/-2. `drafts.ts:9` imports `MoneyLineKind` from `@prisma/client`, and `drafts.ts:149` changes `kind: { not: "GOVERNMENT_FEE" }` to `{ not: MoneyLineKind.GOVERNMENT_FEE }`. The query is the same at runtime and only the type changes.
+* **The PR's own diff stayed the same:** I compared `git diff origin/main HEAD -- prototype/studio` with `git diff 73455f04f c239c2175 -- prototype/studio`, with the index lines removed. The only differences are those two lines (one hunk header moved with the import). `git diff origin/main...HEAD --stat` lists the same 14 files: 11 studio files and 3 records.
+* **Interplay with #3042 (FO-9b):** FO-9b's DW2 column scan matches `(^|_)(person|company)_id$`, foreign keys and FO_PERSON subjects. `bill_to_province` matches none of these, so it needs no classification. When a merge re-points an invoice's person, it does not change `bill_to_province`, so our gate lets it through.
+* **Runs on the head:**
+  * `node product/tools/typecheck.mjs`: PASS, "no new type errors (15 known, 0 fixed)" (api 15 known, web 0).
+  * `check_fo7g3_bill_to.ts`: 23/0.
+  * `check_pf8b_f4_migrations.ts`: 9/9.
+  * I did not re-run `check_fo7b_invoices.ts`, `check_fo7g_tax_defaults.ts` or `check_fo9b_*`. The builder reports fo7b 108/0 and fo7g 76/0, and this diff does not touch what those checks cover.
+
+Reviewer: Approve 9f88b52c96df5a6cd91d0ff8495ae6a533f113ab
+
+---
 Reviewer: Approve 1b58c679aae69f2f1e350bd27b301324d0812ef0
 
 # Round 3 (diff only: `git diff 207ef0f83 1b58c679a -- prototype/studio`; 2 files, +51/-14): Lead B's re-rate
