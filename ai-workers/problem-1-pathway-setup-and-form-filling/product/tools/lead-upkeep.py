@@ -66,6 +66,11 @@ def sync(a):
     if os.environ.get("PRIVATE_SYNC") == "0":
         print("private sync skipped (PRIVATE_SYNC=0)")
         return
+    # Lead 9 (21 Nov, #2605): a copy without the side-notes folder (a cloud copy) skips quietly; an ACT only where the
+    # folder exists and the sync fails.
+    if not os.path.isdir(a.notes):
+        print("private sync skipped: no side-notes folder in this copy (P-678)")
+        return
     # Own process group, no stdin, no git credential prompt: on a timeout the whole group (git, rsync) is killed, so
     # nothing keeps running into the next check (reviewer Major, 21 Nov).
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "true", "SSH_ASKPASS": "true"}
@@ -101,6 +106,7 @@ def main():
     s = p.add_subparsers(dest="cmd_name", required=True)
     c = s.add_parser("context"); c.add_argument("--state", required=True)
     y = s.add_parser("sync"); y.add_argument("--cmd", default="bash " + shlex.quote(os.path.join(here, "private-sync.sh"))); y.add_argument("--timeout", type=int, default=90)
+    y.add_argument("--notes", default=os.environ.get("PRIVATE_NOTES_DIR") or os.path.expanduser("~/Library/Application Support/Claude/side-session-notes"))
     a = p.parse_args()
     try:
         (context if a.cmd_name == "context" else sync)(a)
