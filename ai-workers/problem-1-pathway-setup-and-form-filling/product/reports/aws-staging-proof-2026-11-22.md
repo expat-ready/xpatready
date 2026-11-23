@@ -484,3 +484,31 @@ xr-staging: VPC, 6 subnets, NAT, ALB + 2 listeners, ECS cluster/service/2 task d
 * The app on main 8f487df4b serves over HTTPS from that estate (2 healthy tasks behind the load balancer, above).
 * Note for production, not staging: the database is single-zone (`MultiAZ False`) on staging; PF-8b's production setting is for qa to read in code.
 * Not part of this proof: PF-8c's deploy from CI by OpenID Connect (no `deploy.yml` on main; deploys are run from CloudShell).
+
+## Step 16: R1.13, R1.15, R1.5 on the running service (main 8f487df4b), 23 Nov 11:11 IST
+
+Read-only script `~/p23.sh` → `~/p23-2026-11-23.txt` (05:41:07-05:41:20Z). No test alarm fired this time (delivery to SNS proved 22 Nov, Step 4).
+```
+td xrstagingAppTask7031B6E4:7
+R1.13 log group /xr/staging/app retention 90; newest streams studio/studio/2fc79f71…, …/9fc64d13… (the two new tasks); 99 events in 10 min
+R1.13 alarms: 5xx-rate, alert-audit-chain-break, alert-audit-write-failed, alert-breach-clock-near, alert-job-stuck,
+              alert-privacy-clock-near, job-age, job-failures, mail-bounce-rate: all OK, 1 action each; Requests metric: 2 datapoints in 15 min
+R1.15 10 secrets from Secrets Manager xr/staging/* (DATABASE_URL, APP_DATABASE_URL, PLATFORM_STRIPE_SECRET_KEY, PLATFORM_STRIPE_WEBHOOK_SECRET,
+      PLATFORM_BOLDSIGN_API_KEY, PLATFORM_ZOOM_CLIENT_ID, PLATFORM_ZOOM_CLIENT_SECRET, PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN,
+      PLATFORM_SECRET_BOX_KEYS, PLATFORM_SECRET_BOX_KEY_VERSION); plain env names only: PLATFORM_SES_REGION PLATFORM_ADDRESS_SUFFIX
+      PLATFORM_IDENTITY PLATFORM_COGNITO_USER_POOL_ID PLATFORM_ENVIRONMENT PLATFORM_COGNITO_CLIENT_ID
+R1.5  PLATFORM_IDENTITY=cognito; app pool = xr-staging-staff (admin-create-only True), client flows USER_AUTH, USER_SRP_AUTH, REFRESH
+      pools: xr-staging-own-staff MFA ON, users 0, PASSWORD+WEB_AUTHN, TOTP on, passkey RP staging.lab.expatready.com, UV required
+             xr-staging-staff     MFA ON, users 0, PASSWORD+WEB_AUTHN, TOTP on, passkey RP staging.lab.expatready.com, UV required
+             xr-staging-clients   MFA OPTIONAL, users 0, PASSWORD, TOTP on
+      https://www.staging.lab.expatready.com/sign-in 200 ssl_verify=0 hsts=0 cookies=0; /api/health/live 200 hsts=0 cookies=0
+      http://…/sign-in -> 301 https://…/sign-in
+      /api/platform/me -> 401 not-signed-in; POST /api/platform/session/callback {} -> 401 sign-in-code-refused, cache-control: no-store
+```
+* **R1.13 logs and alarms: Pass** (re-confirmed on the new tasks: logs flow, metric filters feed, 9 alarms OK with an action each).
+* **R1.15 secrets in a managed store: Pass** (re-confirmed on task def :7; the app reached RDS as `xr_app`, tasks healthy).
+* **R1.5 staff sign-in: AWS half Pass (unchanged, HSTS still missing, Minor); real-pool sign-in not provable yet.** Exact blocking step:
+  every pool has **0 users** (admin-create-only), and a signed-in pool user must map to a staff record of a firm
+  (`api/src/platform/identity/guard.ts:108`, `identity.authenticate`), while staging has **0 firms** (Step 8). Needs, in order:
+  (1) the Sample seed (Step 17), (2) one staging test staff user in `xr-staging-staff` linked to a seeded staff member (an account: the founder's OK),
+  (3) the founder types the password and TOTP code on `https://www.staging.lab.expatready.com/sign-in`.
