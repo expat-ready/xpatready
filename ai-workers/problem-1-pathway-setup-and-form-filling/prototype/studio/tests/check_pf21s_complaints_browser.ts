@@ -465,8 +465,8 @@ for (const w of [375, 1024, 1440]) {
   await axe(`PF-21s record page (${w} px)`, p); await noSideways(`PF-21s record page (${w} px)`, p); await shot(p, `record-${w}`);
   if (w === 375) ok("PF-21s record page (375 px): the facts sit above the timeline", await p.evaluate(() => document.querySelector("#pf-facts")!.getBoundingClientRect().top < document.querySelector("#pf-events")!.getBoundingClientRect().top && document.querySelector("#pf-facts")!.getBoundingClientRect().left === document.querySelector("#pf-events")!.getBoundingClientRect().left));
 }
-const foreign = calls.filter((x) => !/^(GET|POST) \/api\/platform\/(me|complaints)(\/|\?|$)/.test(x) && !x.startsWith("GET /api/platform/complaints") && x !== "POST /api/platform/session/local");
-ok("PF-21s: the pages call only PF-21's complaints routes and /api/platform/me (and the frame's sign-in card, break M3)", foreign.length === 0 && calls.length > 10, [...new Set(foreign)]);
+const foreign = calls.filter((x) => !/^(GET|POST) \/api\/platform\/(me|complaints)(\/|\?|$)/.test(x) && !x.startsWith("GET /api/platform/complaints") && x !== "POST /api/platform/session/local" && x !== "GET /api/platform/billing/banner");   // PF-16: the frame's trial banner read (Owner and Admin)
+ok("PF-21s: the pages call only PF-21's complaints routes and /api/platform/me (and the frame's sign-in card, break M3, and its trial banner read, PF-16)", foreign.length === 0 && calls.length > 10, [...new Set(foreign)]);
 ok("PF-21s: no page error in any browser", errors.length === 0, errors);
 } finally { await browser.close(); }
 process.exit(summary() ? 1 : 0);

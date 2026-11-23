@@ -99,7 +99,12 @@ try {
   for (const d of all.filter((x) => x >= NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
   ok("PF-19a pass: the migration applies to a demo-data copy (cases, audit, the Sample firms and staff) and leaves its rows as they were", sql(DEMO, demoRows) === was, was);
   ok("PF-19a pass: migrate diff after it on the demo-data copy names no msg_ table or type", msgDiff(DEMO).length === 0, msgDiff(DEMO));
-  ok("PF-19a: no msg_ row exists until the messages code writes one (the migration writes no data)", sql(DEMO, MSG_TABLES.map((t) => `(select count(*) from ${t})`).join(" + ").replace(/^/, "select ")) === "0");
+  // A later migration may seed a platform-owned email template (firm_id null) by name: PF-21c's "Security incident notice".
+  const SEEDED_PLATFORM_TEMPLATES = ["platform.security_incident_notice"];
+  const seededOnly = (t: string) => t === "msg_template" ? `(select count(*) from msg_template where not (firm_id is null and key = any('{${SEEDED_PLATFORM_TEMPLATES.join(",")}}')))`
+    : t === "msg_template_version" ? `(select count(*) from msg_template_version v where not exists (select 1 from msg_template t where t.id = v.template_id and t.firm_id is null and t.key = any('{${SEEDED_PLATFORM_TEMPLATES.join(",")}}')))`
+    : `(select count(*) from ${t})`;
+  ok("PF-19a: no msg_ row exists until the messages code writes one (the migration writes no data; later migrations only the named platform templates)", sql(DEMO, MSG_TABLES.map(seededOnly).join(" + ").replace(/^/, "select ")) === "0");
 
   // -------------------------------------------------------------------------------------------- shape: indexes, times
   ok("PF-19a pass: firm_id is first in every msg_ index (primary keys aside) but the platform's own template indexes", indexesNotFirmFirst(DEMO, MSG_TABLES) === "", indexesNotFirmFirst(DEMO, MSG_TABLES));
