@@ -22,14 +22,14 @@ a{color:var(--primary)}
 </style></head><body>
 <h1>Board A — bell in the frame, panel open (1440)</h1>
 <div class="board">
-  <div class="header"><span class="firm">northfield-immigration</span><span class="muted">Find…</span>
+  <div class="header"><span class="firm">Firm A (Sample)</span><span class="muted">Find…</span>
     <button class="bell" aria-label="Notifications, 2 unread">🔔<span class="badge">2</span></button>
     <button class="bell" aria-label="Get help with this page">?</button><span>Agent A</span><span class="muted">Sign out</span></div>
-  <div class="panel" role="dialog" aria-label="Notifications">
-    <header><strong>Notifications</strong><a href="#">Mark all read</a></header>
-    <div class="row"><span class="dot" aria-hidden="true"></span><div><div><strong>Lead assigned to you</strong> · Client A (Sample)</div><div class="muted">23 Nov, 09:14 · America/Toronto · <span>Unread</span></div></div></div>
-    <div class="row"><span class="dot" aria-hidden="true"></span><div><div><strong>A stage deadline</strong> · case C-2026-00042 (Sample)</div><div class="muted">22 Nov, 17:00 · America/Toronto · Unread</div></div></div>
-    <div class="row"><span class="dot read" aria-hidden="true"></span><div><div>A government step is due · <span class="muted">This item can no longer be opened</span></div><div class="muted">20 Nov, 08:00 · America/Toronto</div></div></div>
+  <div class="panel" role="dialog" aria-modal="true" aria-label="Notifications">
+    <header><span><strong>Notifications</strong> <span class="muted">· times in America/Toronto</span></span><a href="#">Mark all read</a></header>
+    <div class="row"><span class="dot" aria-hidden="true"></span><div><div><strong>Lead assigned to you</strong> · Client A (Sample)</div><div class="muted">23 Nov, 09:14 · <span>Unread</span></div></div></div>
+    <div class="row"><span class="dot" aria-hidden="true"></span><div><div><strong>A stage deadline</strong> · case C-2026-00042 (Sample)</div><div class="muted">22 Nov, 17:00 · Unread</div></div></div>
+    <div class="row"><span class="dot read" aria-hidden="true"></span><div><div>A government step is due · <span class="muted">This item can no longer be opened</span></div><div class="muted">20 Nov, 08:00</div></div></div>
     <footer><a href="#">See all</a><a href="#">Choose what you get</a></footer>
   </div>
   <p class="note">Below 640 px the panel is a full-width sheet under the header. Empty: "Nothing new. Work handed to you will show here."</p>
@@ -37,7 +37,7 @@ a{color:var(--primary)}
 <h1>Board B — My account → Notifications → All</h1>
 <div class="board"><div class="panel" style="width:100%;margin:0">
   <header><span><strong>Settings</strong> | <u>All</u></span><span>Show: <u>All</u> · Unread</span></header>
-  <div class="row"><span class="dot" aria-hidden="true"></span><div><strong>Lead assigned to you</strong> · Client A (Sample)<div class="muted">23 Nov, 09:14 · America/Toronto</div></div></div>
+  <div class="row"><span class="dot" aria-hidden="true"></span><div><strong>Lead assigned to you</strong> · Client A (Sample)<div class="muted">23 Nov, 09:14</div></div></div>
   <footer><span class="muted">Page 1</span><a href="#">Next</a></footer>
 </div></div>
 </body></html>
