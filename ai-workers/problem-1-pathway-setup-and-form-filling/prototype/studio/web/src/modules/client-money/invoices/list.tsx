@@ -17,9 +17,12 @@ function ListBody() {
   const me = usePlatformStaff(), token = useStaffToken();
   const [params, setParams] = useSearchParams();
   const f = filtersOf(params), allowed = me.keys.includes(LIST_KEY);
+  // break m5: "from" after "to" is said on the field in words and nothing is asked of the server
+  const datesWrong = !!(f.issuedFrom && f.issuedTo && f.issuedFrom > f.issuedTo);
+  const firstNew = React.useRef<number | null>(null);
   const set = (p: Partial<Filters>) => setParams(new URLSearchParams(queryOf({ ...f, ...p })), { replace: true });
   const q = useInfiniteQuery({
-    queryKey: ["fo", "money", "invoices", token, queryOf(f)], enabled: !!token && allowed, retry: false, initialPageParam: null as string | null,
+    queryKey: ["fo", "money", "invoices", token, queryOf(f)], enabled: !!token && allowed && !datesWrong, retry: false, initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => Page.parse(await staffApi(`/front-office/money/invoices?${queryOf(f, pageParam)}`)),
     getNextPageParam: (last) => last.next,
   });
@@ -37,12 +40,12 @@ function ListBody() {
       <form role="search" aria-label="Filter invoices" className="flex flex-wrap items-end gap-3" onSubmit={(e) => e.preventDefault()}>
         <Field label="Status" className="w-40"><Select value={f.status} onChange={(e) => set({ status: e.target.value })} data-filter-status><option value="">Any status</option>{STATUSES.map((s) => <option key={s.code} value={s.code}>{s.word}</option>)}</Select></Field>
         <Field label="Issued from" className="w-40"><Input type="date" value={f.issuedFrom} onChange={(e) => set({ issuedFrom: e.target.value })} data-filter-from /></Field>
-        <Field label="Issued to" className="w-40"><Input type="date" value={f.issuedTo} onChange={(e) => set({ issuedTo: e.target.value })} data-filter-to /></Field>
+        <Field label="Issued to" className="w-40" error={datesWrong ? "Choose a date on or after Issued from." : null}><Input type="date" value={f.issuedTo} onChange={(e) => set({ issuedTo: e.target.value })} data-filter-to /></Field>
         <Button type="button" variant="ghost" aria-expanded={more} onClick={() => setMore((m) => !m)} data-more-filters>More filters</Button>
         {more ? <label className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" checked={f.overdue} onChange={(e) => set({ overdue: e.target.checked })} data-filter-overdue /> Overdue only</label> : null}
         {anyFilter(f) ? <Button type="button" variant="outline" onClick={() => setParams(new URLSearchParams(), { replace: true })} data-clear-filters>Clear filters</Button> : null}
       </form>
-      {q.isError ? <Notice tone="danger" title="Could not load the invoices"><span data-invoices-error>{q.error instanceof StaffApiError ? q.error.message : "Please reload the page."}</span></Notice>
+      {datesWrong ? null : q.isError ? <Notice tone="danger" title="Could not load the invoices"><span data-invoices-error>{q.error instanceof StaffApiError ? q.error.message : "Please reload the page."}</span></Notice>
         : q.isPending ? <Loading label="Loading the invoices" rows={4} />
           : !rows.length ? (
             <p data-empty className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted">
@@ -51,9 +54,9 @@ function ListBody() {
           ) : (
             <>
               <Table label="Invoices" head={["Number", "Bill to", "Issued", "Due", "Total", "Balance due", "Status"]} headClass={[undefined, "hidden md:table-cell", "hidden lg:table-cell", "hidden sm:table-cell", "hidden md:table-cell", undefined, undefined]}>
-                {rows.map((r) => (
+                {rows.map((r, i) => (
                   <tr key={r.id} data-invoice-row={r.number ?? "Draft"}>
-                    <td className="font-medium"><Link to={`/money/invoices/${r.id}`} className="whitespace-nowrap text-text-link underline underline-offset-2" data-invoice-link>{r.number ?? "Draft"}</Link>
+                    <td className="font-medium"><Link ref={i === firstNew.current ? (el) => { if (el) { el.focus(); firstNew.current = null; } } : undefined} to={`/money/invoices/${r.id}`} className="whitespace-nowrap text-text-link underline underline-offset-2" data-invoice-link>{r.number ?? "Draft"}</Link>
                       <span className="block text-xs font-normal text-text-muted sm:hidden">Due {day(r.dueDate)}</span></td>
                     <td className="hidden md:table-cell">{billToWord(r)}</td>
                     <td className="hidden whitespace-nowrap lg:table-cell">{day(r.issuedOn)}</td>
@@ -64,7 +67,7 @@ function ListBody() {
                   </tr>
                 ))}
               </Table>
-              {q.hasNextPage ? <div><Button variant="outline" busy={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()} data-show-more>Show more</Button></div> : null}
+              {q.hasNextPage ? <div><Button variant="outline" busy={q.isFetchingNextPage} onClick={() => { firstNew.current = rows.length; void q.fetchNextPage(); }} data-show-more>Show more</Button></div> : null}
             </>
           )}
     </div>

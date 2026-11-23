@@ -24,7 +24,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { chromium, type Browser, type Locator, type Page } from "playwright";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
-import { money } from "../web/src/modules/client-money/invoices/contract.ts";
+import { centsOf, money } from "../web/src/modules/client-money/invoices/contract.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
@@ -87,6 +87,13 @@ const trustAnswered = sql(`select trust_answer from money_payment_settings where
 ok("FO-7s1 setup: a CAD invoice (Fee 1,000.00 at 13 % and a Government fee 255.00) and a USD invoice issued, a draft; the Owner, the Case Officer and user-T as Read only signed in; trust not answered",
   /^INV-/.test(cadNo ?? "") && /^INV-/.test(usdNo) && !!draft && ro.status === 200 && !trustAnswered && province === "ON", { cadNo, usdNo, ro: ro.status, trustAnswered, province });
 
+// ------------------------------------------------------------------------------------------------ B1 the typed amount (break B1)
+const cents = (t: string) => { const r = centsOf(t); return "cents" in r ? r.cents : null; };
+ok("FO-7s1 B1 pass: an amount is read one way only: 1,000.50 → 100050, 5.50 → 550, 100 → 10000, 12,345,678.9 → 1234567890",
+  cents("1,000.50") === 100050 && cents("5.50") === 550 && cents("100") === 10000 && cents("12,345,678.9") === 1234567890);
+ok("FO-7s1 B1 fail: a decimal comma, stray commas, spaces, three decimals and 0 are refused, never guessed: 5,50 · 1,0,0 · 1 000,50 · 1000.005 · 0.00",
+  ["5,50", "1,0,0", "1 000,50", "1000.005", "0.00", "-5", "1e3"].every((t) => cents(t) === null));
+
 // ------------------------------------------------------------------------------------------------ the browser
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });
 const errs: string[] = [];
@@ -140,6 +147,10 @@ try {
     && (paidWords.length > 0 || (await po.locator("[data-empty]").innerText()) === "No invoices match these filters."), { paidWords });
   await po.locator("[data-clear-filters]").click(); await po.locator(`[data-invoice-row="${cadNo}"]`).waitFor();
   ok("FO-7s1 L1: Clear filters empties the address and the open invoices come back", !po.url().includes("status=") && (await po.locator(`[data-invoice-row="${cadNo}"]`).count()) === 1);
+  await list(po, "?issuedFrom=2026-12-01&issuedTo=2026-11-01").catch(() => undefined);
+  await po.locator("[data-filter-to]").waitFor();
+  ok("FO-7s1 L1 fail: Issued from after Issued to is said on the field in words (no code names, no request)",
+    (await po.locator("[data-filter-to]").getAttribute("aria-invalid")) === "true" && (await po.getByText("Choose a date on or after Issued from.").count()) === 1 && !/issuedFrom/.test(await po.locator("main").innerText()));
   await list(po, "?issuedFrom=2999-01-01");
   ok("FO-7s1 L1 fail: filters that match nothing say so in words, with Clear filters", (await po.locator("[data-empty]").innerText()) === "No invoices match these filters." && (await po.locator("[data-clear-filters]").count()) === 1);
   const pr = await tab(TRO); await list(pr);
@@ -175,6 +186,17 @@ try {
   await po.locator("[data-credit-problem]").waitFor({ timeout: 15_000 });
   ok("FO-7s1 DW3 fail: more than can be credited is refused in the API's words on the panel, and nothing is written", (await po.locator("[data-credit-problem]").innerText()).length > 0 && sql(`select count(*) from money_credit_note where invoice_id = '${cad}'`) === "1",
     await po.locator("[data-credit-problem]").innerText());
+  await po.locator("[data-credit-amount]").fill("5,50");
+  const reads = await po.locator("[data-credit-reads]").count();
+  await po.locator("[data-credit-save]").click();
+  const amountErr = await po.locator("[data-credit-amount]").getAttribute("aria-invalid");
+  ok("FO-7s1 B1 fail (browser): \"5,50\" is refused on the field in words before anything is sent, the old refusal is gone, and no credit note is written",
+    amountErr === "true" && reads === 0 && (await po.locator("[data-credit-problem]").count()) === 0 && sql(`select count(*) from money_credit_note where invoice_id = '${cad}'`) === "1");
+  await po.locator("[data-credit-amount]").fill("5.50"); await po.locator("[data-credit-reason]").fill("");
+  const readsOk = await po.locator("[data-credit-reads]").innerText().catch(() => "");
+  await po.locator("[data-credit-save]").click();
+  ok("FO-7s1 B1 pass (browser): \"5.50\" reads back as \"This credit note: CAD 5.50\" before Save; an empty reason is asked for in words, nothing sent",
+    readsOk === "CAD 5.50" && (await po.locator("[data-credit-reason]").getAttribute("aria-invalid")) === "true" && sql(`select count(*) from money_credit_note where invoice_id = '${cad}'`) === "1", { readsOk });
   await po.keyboard.press("Escape"); await po.locator('[role="dialog"]').waitFor({ state: "detached" }).catch(() => undefined);
   await detail(po, draft);
   ok("FO-7s1 DW3 fail: a draft offers no credit note, no PDF and no number (\"Draft\")", (await po.locator("[data-action]").count()) === 0 && (await po.locator("[data-invoice-number]").innerText()) === "Draft");
@@ -196,7 +218,7 @@ try {
   await pk.locator('[role="dialog"]').waitFor();
   const onFirst = await pk.locator("[data-credit-part]").evaluate((el) => el === document.activeElement);
   await pk.keyboard.press("Escape"); await pk.locator('[role="dialog"]').waitFor({ state: "detached" });
-  const back = await cn.evaluate((el) => el === document.activeElement);
+  let back = false; for (let i = 0; i < 20 && !back; i++) { back = await cn.evaluate((el) => el === document.activeElement); if (!back) await pk.waitForTimeout(100); }
   ok("FO-7s1 DW10 pass: keyboard only: Tab to the invoice and Enter opens it; Tab to \"Use a credit note\" and Enter opens the panel on its first field; Escape returns focus to the button", onFirst && back, { onFirst, back });
   for (const w of [375, 1024]) {
     const pw = await tab(TOWNER, w);

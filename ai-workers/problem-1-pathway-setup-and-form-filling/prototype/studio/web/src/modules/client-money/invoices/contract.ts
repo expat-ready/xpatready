@@ -83,10 +83,16 @@ export const queryOf = (f: Filters, after?: string | null): string => {
 };
 export const anyFilter = (f: Filters) => !!(f.status || f.issuedFrom || f.issuedTo || f.overdue);
 
-/** "100.00" or "1,000" typed → cents (10000); null when it is not an amount with at most two decimals. Parsing only: the API checks it. */
-export function centsOf(typed: string): number | null {
-  const t = typed.replace(/[,\s]/g, "");
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(t)) return null;
-  const [w, c = ""] = t.split(".");
-  return Number(w) * 100 + Number(c.padEnd(2, "0"));
+/** A typed amount → cents, or a reason in words. Only one way of writing is read (break B1): digits, an optional comma between
+ *  each group of three ("1,000" or "1000"), and a dot before at most two decimals ("1,000.50"). A decimal comma ("5,50"), stray
+ *  commas ("1,0,0") and spaces ("1 000,50") are refused, never guessed: a misread would credit 100 times too much. Parsing
+ *  only: the API checks the amount. */
+export function centsOf(typed: string): { cents: number } | { error: string } {
+  const t = typed.trim();
+  if (!t) return { error: "Enter an amount, for example 100.00." };
+  if (!/^(\d{1,3}(,\d{3})+|\d+)(\.\d{1,2})?$/.test(t)) return { error: "Write the amount with a dot before the cents and no spaces, for example 1,000.50 or 5.50." };
+  const [w, c = ""] = t.replace(/,/g, "").split(".");
+  if (w.length > 9) return { error: "That amount is too large." };
+  const cents = Number(w) * 100 + Number(c.padEnd(2, "0"));
+  return cents > 0 ? { cents } : { error: "Enter an amount above 0.00." };
 }

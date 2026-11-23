@@ -35,12 +35,15 @@ const Section = ({ id, title, children }: { id: string; title: string; children:
 );
 const Fact = ({ k, v, data }: { k: string; v: React.ReactNode; data?: string }) => <div className="min-w-0"><dt className="text-xs font-medium text-text-muted">{k}</dt><dd className="text-sm tabular-nums" data-fact={data ?? k}>{v}</dd></div>;
 const when = (iso: string) => day(iso.slice(0, 10));
+/** A line's tax in words: never a figure on a government fee (AG-6-4 r3, P-607 (7)). */
+const taxWords = (l: Detail["invoice"]["lines"][number]) => l.kind === "GOVERNMENT_FEE" ? <span className="text-text-muted">Government fees are never taxed</span>
+  : l.ratePpm ? <span data-figure>{money(l.taxMinor, l.currency)} ({rateWord(l.ratePpm)})</span> : <span className="text-text-muted">No tax</span>;
 
 function DetailBody() {
   const { id = "" } = useParams(), token = useStaffToken(), me = usePlatformStaff();
   const q = useQuery({ queryKey: ["fo", "money", "invoice", token, id], enabled: !!token, retry: false, queryFn: async () => Detail.parse(await staffApi(`/front-office/money/invoices/${encodeURIComponent(id)}/detail`)) });
   const [crediting, setCrediting] = React.useState(false), [pdfProblem, setPdfProblem] = React.useState<string | null>(null), [pdfBusy, setPdfBusy] = React.useState(false);
-  const opener = React.useRef<HTMLButtonElement>(null);
+  const opener = React.useRef<HTMLButtonElement>(null), heading = React.useRef<HTMLHeadingElement>(null), pdfBox = React.useRef<HTMLDivElement>(null);
   if (q.isError) {
     const e = q.error instanceof StaffApiError ? q.error : null;
     // Another firm's, an unknown, and one outside the caller's view: the same plain not found (never "CAD 0").
@@ -60,16 +63,16 @@ function DetailBody() {
       <MoneyMenuSmall keys={me.keys} />
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold"><span data-invoice-number>{number}</span><Pill tone={STATUS_TONE[inv.statusWord]} title={STATUS_HINT[inv.statusWord]}><span data-invoice-status>{inv.statusWord}</span></Pill></h1>
+          <h1 ref={heading} tabIndex={-1} className="flex flex-wrap items-center gap-2 text-2xl font-semibold outline-none"><span data-invoice-number>{number}</span><Pill tone={STATUS_TONE[inv.statusWord]} title={STATUS_HINT[inv.statusWord]}><span data-invoice-status>{inv.statusWord}</span></Pill></h1>
           <p className="mt-1 text-sm text-text-muted">Bill to: {billToWord(inv)}{inv.billToProvince ? ` · ${inv.billToProvince}` : ""}</p>
           <p className="mt-1 text-base">Balance due: <strong className="tabular-nums" data-figure data-balance>{money(inv.dueMinor, c)}</strong></p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {acts.has("CREDIT_NOTE") ? <Button ref={opener} onClick={() => setCrediting(true)} data-action="CREDIT_NOTE">Use a credit note</Button> : null}
-          {acts.has("DOWNLOAD_PDF") ? <Button variant="outline" busy={pdfBusy} data-action="DOWNLOAD_PDF" onClick={() => { setPdfBusy(true); setPdfProblem(null); downloadPdf(inv.id, number).catch((e) => setPdfProblem(e instanceof StaffApiError ? e.message : "Could not download the PDF.")).finally(() => setPdfBusy(false)); }}>Download PDF</Button> : null}
+          {acts.has("CREDIT_NOTE") ? <Button ref={opener} className="max-sm:h-11" onClick={() => setCrediting(true)} data-action="CREDIT_NOTE">Use a credit note</Button> : null}
+          {acts.has("DOWNLOAD_PDF") ? <Button variant="outline" className="max-sm:h-11" busy={pdfBusy} data-action="DOWNLOAD_PDF" onClick={() => { setPdfBusy(true); setPdfProblem(null); downloadPdf(inv.id, number).catch((e) => { setPdfProblem(e instanceof StaffApiError ? e.message : "Could not download the PDF."); requestAnimationFrame(() => pdfBox.current?.focus()); }).finally(() => setPdfBusy(false)); }}>Download PDF</Button> : null}
         </div>
       </header>
-      {pdfProblem ? <Notice tone="danger" title="No PDF"><span data-pdf-problem>{pdfProblem}</span></Notice> : null}
+      {pdfProblem ? <div ref={pdfBox} tabIndex={-1} className="outline-none"><Notice tone="danger" title="No PDF"><span data-pdf-problem>{pdfProblem}</span></Notice></div> : null}
       <Section id="overview" title="Overview">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
           <Fact k="Issued" v={day(d.issuedOn)} /><Fact k="Due" v={day(inv.dueDate)} />
@@ -83,14 +86,14 @@ function DetailBody() {
       <Section id="lines" title="Lines">
         {inv.status === "ISSUED" ? <p className="text-sm text-text-muted" data-frozen>Issued invoices can't be edited{acts.has("CREDIT_NOTE") ? " — use a credit note." : "."}</p> : null}
         {!inv.lines.length ? <p data-empty className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">No lines yet.</p> : (
-          <Table label="Invoice lines" head={["Line", "Qty", "Unit", "Amount", "Tax"]} headClass={[undefined, "hidden sm:table-cell", "hidden sm:table-cell", undefined, undefined]}>
+          <Table label="Invoice lines" head={["Line", "Qty", "Unit", "Amount", "Tax"]} headClass={[undefined, "hidden sm:table-cell", "hidden sm:table-cell", undefined, "hidden sm:table-cell"]}>
             {inv.lines.map((l) => (
               <tr key={l.id} data-line={l.kind}>
                 <td className="min-w-40 [overflow-wrap:anywhere]"><span className="block text-xs text-text-muted">{KIND_WORD[l.kind]}</span>{l.description}</td>
                 <td className="hidden tabular-nums sm:table-cell">{l.quantity}</td>
                 <td className="hidden whitespace-nowrap tabular-nums sm:table-cell" data-figure>{money(l.unitMinor, l.currency)}</td>
-                <td className="whitespace-nowrap tabular-nums" data-figure>{money(l.amountMinor, l.currency)}</td>
-                <td className="whitespace-nowrap text-sm tabular-nums" data-line-tax>{l.kind === "GOVERNMENT_FEE" ? <span className="text-text-muted">Government fees are never taxed</span> : l.ratePpm ? <span data-figure>{money(l.taxMinor, l.currency)} ({rateWord(l.ratePpm)})</span> : <span className="text-text-muted">No tax</span>}</td>
+                <td className="whitespace-nowrap tabular-nums"><span data-figure>{money(l.amountMinor, l.currency)}</span><span className="block whitespace-normal text-xs sm:hidden" data-line-tax-small>{taxWords(l)}</span></td>
+                <td className="hidden whitespace-nowrap text-sm tabular-nums sm:table-cell" data-line-tax>{taxWords(l)}</td>
               </tr>
             ))}
           </Table>
@@ -113,7 +116,7 @@ function DetailBody() {
       <Section id="history" title="History">
         {!history.length ? <p className="text-sm text-text-muted">A draft: nothing has happened to it yet.</p> : <ol className="flex flex-col gap-1 text-sm" data-history>{history.map((h, i) => <li key={i}><span className="text-text-muted">{day(h.at)}</span> · {h.text}</li>)}</ol>}
       </Section>
-      {acts.has("CREDIT_NOTE") && inv.number ? <CreditNotePanel open={crediting} onOpenChange={setCrediting} invoiceId={inv.id} number={inv.number} currency={c} creditableMinor={d.creditableMinor} returnFocus={() => opener.current} /> : null}
+      {acts.has("CREDIT_NOTE") && inv.number ? <CreditNotePanel open={crediting} onOpenChange={setCrediting} invoiceId={inv.id} number={inv.number} currency={c} creditableMinor={d.creditableMinor} returnFocus={() => (opener.current?.isConnected ? opener.current : heading.current)} /> : null}
     </div>
   );
 }
