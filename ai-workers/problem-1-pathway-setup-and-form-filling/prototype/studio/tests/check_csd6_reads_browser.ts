@@ -64,6 +64,10 @@ try {
   await open();
   await row.locator("[data-upload-input]").setInputFiles({ name: "invitation-letter.pdf", mimeType: "application/pdf", buffer: PDF });
   await page.locator(`[data-line="${first!.id}"][data-state="received"]`).waitFor({ timeout: 30_000 });
+  // The upload has finished only when its spinner is gone and focus is back on the line's ⋯ button (checklist.tsx back()):
+  // a menu opened before that is closed by the focus coming back.
+  await row.locator("[data-line-busy]").waitFor({ state: "detached", timeout: 30_000 });
+  await page.waitForFunction((id) => document.activeElement?.closest(`[data-line="${id}"]`)?.contains(document.activeElement) && document.activeElement?.hasAttribute("data-line-menu"), first!.id, { timeout: 10_000 });
   const doc = (await lines()).find((l) => l.id === first!.id)!.documents.find((d) => d.current)!;
   ok("CS-D6 W1: the case officer uploads a PDF on the line: Received, one current file", !!doc?.id, doc);
   await details();
