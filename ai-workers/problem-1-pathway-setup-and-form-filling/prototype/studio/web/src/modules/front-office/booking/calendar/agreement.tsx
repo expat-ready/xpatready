@@ -4,7 +4,7 @@
 //     needs it, why Attended and the consult record wait (the server refuses them: 409 AGREEMENT_NOT_SIGNED). An agreement
 //     that ended unsigned still holds, and a fresh one is sent while the meeting is ahead (Lead 1's ruling on #3184); a
 //     No-show, Attended or cancelled booking cannot be rescheduled nor sent a fresh one, so the panel says what can be done
-//     instead (review r2-2, break P2R3-4; agreement-words.ts).
+//     instead (review r2-2, break P2R3-4; contracts/consultation-agreement-words.ts).
 //   * `PersonAgreements`, on the lead's page: each agreement of the person's bookings the viewer sees (GET by-person, the
 //     list key), with the signed copy as a link: a short-lived link for this person (POST …/signed-copy/download-link),
 //     opened with the session's token, as the retainer page downloads its files.
@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { Pill } from "@/components/ui/controls";
 import { staffApi, staffToken } from "@/modules/platform/session";
-import { agreementNextStep, sendsFresh } from "./agreement-words";
+import { agreementNextStep, sendsFresh } from "../../../../../../contracts/consultation-agreement-words";
 
 const Agreement = z.object({
   id: z.string().nullable(), bookingId: z.string(), status: z.string(), signed: z.boolean(), words: z.string(),
