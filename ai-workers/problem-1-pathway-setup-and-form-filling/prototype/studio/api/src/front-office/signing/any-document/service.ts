@@ -37,13 +37,13 @@ export type Upload = { bytes: Uint8Array; size: number; name?: string } | undefi
 
 /** The file's own checks: a PDF by its first bytes (never by its name or declared type), the size, not a government form. */
 /** Whether a PDF is a government (IRCC) form: AG-5-61 r6 keeps those on AG-07's own path. Signals, any one (review M1 on
- *  #3207, measured on the committed IRCC forms in official-sources/ircc): an IMM form number in the file name or title;
+ *  #3207, measured on the committed IRCC forms in official-sources/ircc): an IMM or IRM form number in the file name or title;
  *  `/NeedsRendering` (a dynamic XFA form) or `/XFA` in the raw bytes; a fillable form with Reader usage rights
  *  (`/AcroForm` and `/UR3`, dictionary keys that stay readable under an owner password); `/XFA` inside a deflated
  *  stream (an open form keeps it in an object stream), at most 400 streams and 24 MB inflated in all. A check of the file,
  *  not a guarantee (Unconfirmed: no immigration expert). */
 export function isGovernmentForm(bytes: Uint8Array, name: string): boolean {
-  if (/(?:^|[^a-z])IMM[\s_-]?\d{4}/i.test(name)) return true;   // break M1: "client_IMM5476.pdf" too
+  if (/(?:^|[^a-z])(?:IMM|IRM)[\s_-]?\d{4}/i.test(name)) return true;   // break M1: "client_IMM5476.pdf" too; IRM forms as IMM (check_irm_editions, breaker m5)
   const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (b.includes("/NeedsRendering") || b.includes("/XFA") || (b.includes("/AcroForm") && b.includes("/UR3"))) return true;   // UR3: Reader usage rights (a certified PDF's DocMDP /Perms is not one; break r2)
   if (b.includes("/Encrypt")) return false;   // an encrypted stream cannot be read here

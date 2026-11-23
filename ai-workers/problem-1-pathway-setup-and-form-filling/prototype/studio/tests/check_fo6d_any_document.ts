@@ -134,7 +134,8 @@ try {
     notPdf.status === 422 && notPdf.body.code === "NOT_PDF" && /PDF/.test(notPdf.body.detail) && requests() === r0 && docs() === d0, notPdf.text.slice(0, 300));
   const xfa = await call("POST", "/api/front-office/signature-requests", R.token, form({ bytes: Buffer.concat([PDF, Buffer.from("<< /AcroForm << /XFA 5 0 R >> >>")]) }));
   const imm = await call("POST", "/api/front-office/signature-requests", R.token, form({ name: "client_IMM5476.pdf" }));
-  ok("FO-6d S2 fail: a government form (an XFA form, or named like IMM 5257) → 422 GOVERNMENT_FORM, nothing sent", xfa.status === 422 && imm.status === 422 && xfa.body.code === "GOVERNMENT_FORM" && imm.body.code === "GOVERNMENT_FORM" && requests() === r0, [xfa.text.slice(0, 200), imm.status]);
+  const irm = await call("POST", "/api/front-office/signature-requests", R.token, form({ name: "letter.pdf", title: "IRM 0002 statement (Sample)" }));
+  ok("FO-6d S2 fail: a government form (an XFA form, a name like client_IMM5476.pdf, a title like "IRM 0002") → 422 GOVERNMENT_FORM, nothing sent", xfa.status === 422 && imm.status === 422 && xfa.body.code === "GOVERNMENT_FORM" && imm.body.code === "GOVERNMENT_FORM" && irm.status === 422 && irm.body.code === "GOVERNMENT_FORM" && requests() === r0, [xfa.text.slice(0, 200), imm.status, irm.status]);
   // Review M1 on #3207: a real IRCC form (owner password, its XFA inside encrypted object streams) and an open form whose
   // /XFA sits only inside a deflated object stream are both named as government forms, never "upload an open copy".
   const IRCC = join(STUDIO, "..", "..", "official-sources", "ircc", "forms", "imm5257e.pdf");
