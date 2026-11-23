@@ -99,3 +99,44 @@ stubs PlatformJobs). D17/D20 stay with the founder.
 **Verdict: Block.** To fix: B1, B2, M1, M2, M3, each with a fail test. Then fix the Minors or list them in the PR.
 
 Reviewer: Block 2a39e1473e3e32652381214ef07318106e1a0dc3
+
+## Round 2: `a371f89019cc458b05eae2c38d6cff20a1ec387d` (PR #3235)
+Scope: `git diff 2a39e1473..a371f8901`. It includes the merge of 1a's round-1 fixes; I read those only where 1b depends on
+them (the registry's frozen `{module, erase}`, `isOn`). Run in a fresh worktree on scratch databases (never :4400).
+1b's size against the new 1a head is 683 changed lines of code and tests (P-610, under 800: met).
+
+**Suites:** check_pf21d_erasure 24/0 and 24/0 · check_pf21d_switch 20/0 · check_pf21b_requests 27/0 · check_pf21b_holds 67/0 ·
+check_pf21b_port 32/0 · check_features_registry 27/0 · check_pf23w_jobs_wired 31/0 · check_prisma_schema 8/0 ·
+check_pf8b_f6 26/26 · check_pf8b_f4 9/9.
+
+| Round 1 | Status | Evidence |
+|---|---|---|
+| B1 1a's suite fails to start | Fixed | PlatformJobs stub in `tests/check_pf21d_switch.ts:102`; 20/0 |
+| B2 a cancel during a run | Fixed | The claim (`plat_data_request_erasure_claim`, `FOR UPDATE`, its own commit) comes before the firm transaction. Steps and finish run only under that claim (`_step` and `_finish` compare `erasing_since`). A finish that is not `DONE` throws (`service.ts:179-180`). The guard trigger refuses everything but the OVERDUE mark while the request is claimed. The new suite line (a waiting eraser, then cancel → `ERASURE_RUNNING`, then a hand move → 409, then COMPLETED with two results) fails if the claim is removed. My probe: a fresh claim held by another run is skipped and cancel gets 409; a claim 31 minutes old is retaken and completes; the daily mark moves a claimed request to OVERDUE; a hand move is still 409 |
+| M1 a false COMPLETED with no eraser | Fixed | With an empty registry: one SKIPPED step, the order stays scheduled (`service.ts:134-138`). Tested before any eraser registers |
+| M2 a failure not on the request | Fixed | A step naming the module under the claim, then the claim is released (`service.ts:153-163`). The suite asserts the exact note |
+| M3 a hand COMPLETED while scheduled | Fixed | The guard trigger gives 409 `ERASURE_SCHEDULED`, mapped in `requests/service.ts:119-123`. The check now holds COMPLETED ⇒ no `erase_on` (and my probe hits it). Tested |
+| m1 approve on HELD or OVERDUE | Kept, with a reason | Accepted: an overdue deletion must still be erasable. Re-approve of a COMPLETED request → 409, now tested |
+| m2 to m5 | Fixed | The switch is read per order. The person id is on the approve line. No SA id in user text. Held orders sort last in the due list. A merged person is refused |
+
+**New Minors (none block):**
+1. A dead rule in the check. `mig:20-21` reads `erase_on IS NULL OR (… AND (erasing_since IS NULL OR erase_on IS NOT NULL)
+   AND (…))`, and AND binds before OR. So "a claim needs an erase day" is never enforced: I proved a row with
+   `erasing_since` set and `erase_on` NULL is accepted. COMPLETED ⇒ no `erase_on` does hold. No code path sets the bad
+   pair (claim needs `erase_on`; cancel and finish clear both). Fix: move the clause outside the OR.
+2. After the day, the request is locked until the job runs. Cancel gives `WINDOW_ENDED` (`mig:71`; matches decision 4) and a
+   hand move gives `ERASURE_SCHEDULED`. With the switch off, or before part 2 registers an eraser (today's real app), an
+   approved deletion therefore cannot be withdrawn or moved by hand, and it erases whenever erasers arrive. Say so in the
+   PR or the card; part 2 or the console may want cancel allowed after a SKIPPED step.
+3. The module card (`api/src/platform/MODULE.rows/PF-21d.md`) does not mention `erasing_since`, the claim or the guard
+   trigger on #3189's table (STANDARDS §7 card [M]: update it or write "Card unchanged: <reason>").
+4. Remote: a job that dies after the firm commit on an order that a hold had left HELD. Once its claim is 30 minutes old,
+   a cancel is allowed (status HELD) and clears the order, even though its rows are already erased. This needs a crash, a
+   30-minute gap and a cancel on a formerly held order; port rule 4 covers the rerun case only. Note it with the gap risk.
+
+Journey score (re-walked: journeys 8, 9 and 10 now hold, journey 5 shows the failure): **9/10, pass**. That is 7.5 of the
+8 applicable criteria (9.4 scaled): every criterion 1 except error recovery, ½ for Minor 2.
+
+**Verdict: Approve** (no open Blocker or Major). List Minors 1-4 in the PR or fix them.
+
+Reviewer: Approve a371f89019cc458b05eae2c38d6cff20a1ec387d
