@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import { fakeMail } from "../ports/mail.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { allowedActions, paymentActions, type ActionFacts } from "../api/src/client-money/reads/actions.ts";
+import { moneyVisible } from "./lib/money-visible.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -92,7 +93,7 @@ try {
   };
   await seedSampleFirms(owner); await seedSampleFirmsFrontOffice(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
-  const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7q.${n}@example.org', 'seed:FO-7q', now()) returning id`);
+  const person = (firm: string, n: string) => moneyVisible(sql, firm, "person", sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7q.${n}@example.org', 'seed:FO-7q', now()) returning id`));   // C5 (#3305 M1): a client the caller sees
   const PA = person(A, "a"), PA2 = person(A, "a2"), PB = person(B, "b");
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'seed:FO-7q', now())`);
   const signIn = async (actorId: string, firmKey: string) => { const r = await call(undefined, "POST", "/platform/session/local", { firmKey, actorId, secondStep: true }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
@@ -241,6 +242,9 @@ try {
 
   // ------------------------------------------------- DW9: C5 through CS-MV1's adapter (PgMoneyVisibility), real cases
   // Firm A's cases X (user-O on its team) and Y (user-T's), and a prospect of user-O's whose subject is PA2 (Sample).
+  // DW9 needs PA with no prospect and "everyone sees all" off: the fixture's money-visible prospects (#3305 M1) are put
+  // away for this block and back after it, so FO-7b's routes reach PA's invoices again for DW1 + DW2.
+  sql(`delete from fo_prospect where firm_id = '${A}' and created_by = 'seed:money-visible'; update platform_firm_setting set value = 'false'::jsonb where firm_id = '${A}' and key = 'platform.everyone_sees_all'`);
   const WS = randomUUID(); let cn = 0;
   sql(`insert into workspace (id, key, label) values ('${WS}', 'fo7q-${WS.slice(0, 8)}', 'FO-7q (Sample)')`);
   const realCase = () => { const id = randomUUID(), client = randomUUID(); cn++;
@@ -280,6 +284,8 @@ try {
   // the adapter's own answer for firm B, not only the list's wall (review n1): a leak of A's ids would show here
   ok("FO-7q DW9 fail: firm B's widest scope through the adapter names none of firm A's cases or parties, and its list holds none of A's invoices",
     ![X, Y].some((c) => bScope.cases.includes(c)) && ![PA, PA2].some((p) => bScope.parties.includes(p)) && bReal.items.every((r) => ![iX, iY, usd, S.Paid].includes(r.id)), bScope);
+
+  moneyVisible(sql, A, "person", PA); moneyVisible(sql, A, "person", PA2);   // back, after DW9 (above)
 
   // ------------------------------------------------------------------------- DW1 + DW2: 10,000 invoices per firm
   for (const [f, p] of [[A, PA], [B, PB]]) {
