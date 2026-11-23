@@ -16,6 +16,7 @@ import { FIELD_ERROR_STATUS, fieldsOf } from "../../http/input.ts";
 import { PlatformClock } from "../../identity/port.ts";
 import { forbidden, problem } from "../../identity/keys.ts";
 import { CLOCK_LEAD_MS, clocksNear, currentAlerts } from "../../observability/alerts.ts";
+import { logPort } from "../../observability/log.ts";
 import { SystemIdentity, type SystemAuditLine } from "../../system-identity/service.ts";
 type Tx = Prisma.TransactionClient;
 /** SA-11 v2.16 line 778: "Manage the register of requests made to ExpatReady". */
@@ -60,7 +61,7 @@ const MoveBody = z.strictObject({
 export const LIST_MAX = 500;
 const ListQuery = z.strictObject({ status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "OVERDUE", "HELD"]).optional(), limit: z.coerce.number().int().min(1).max(LIST_MAX).optional() });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const fields = (e: z.ZodError): never => problem(FIELD_ERROR_STATUS, "Check the highlighted fields", "Some fields need a change.", { code: "DATA_REQUEST_FIELDS", fields: fieldsOf(e) });
+function fields(e: z.ZodError): never { return problem(FIELD_ERROR_STATUS, "Check the highlighted fields", "Some fields need a change.", { code: "DATA_REQUEST_FIELDS", fields: fieldsOf(e) }); }
 const notFound = (): never => problem(404, "Not found", "No such request.", { code: "NOT_FOUND" });
 const dayOf = (d: Date) => d.toISOString().slice(0, 10);
 const addDays = (day: string, n: number) => dayOf(new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000));
@@ -83,7 +84,7 @@ export class DataRequests {
     try {
       return await this.db.$transaction(async (tx) => {
         const done = await fn(tx);
-        if (line) await this.identity.audit({ ...line, target: { ...line.target, ...done.target }, outcome: "ALLOWED", code: null }, tx as never);
+        if (line) await this.identity.audit({ ...line, target: { ...line.target, ...done.target }, outcome: "ALLOWED", code: null }, tx);
         return done.result;
       });
     } catch (e) {
@@ -147,7 +148,7 @@ export class DataRequests {
     const due = await this.rows(null, null, addDays(this.today(), leadDays + 1), LIST_MAX + 1);
     const out = { overdue: [] as string[], near: [] as string[], failed: 0 };
     for (const r of due) {
-      try { const k = await this.checkOne(r.id, r); if (k) out[k].push(r.id); } catch { out.failed++; }
+      try { const k = await this.checkOne(r.id, r); if (k) out[k].push(r.id); } catch (e) { out.failed++; logPort.error("data_request_check_failed", e, {}); }   // review M3
     }
     return out;
   }
