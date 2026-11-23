@@ -247,3 +247,58 @@ So at three at once, 4 of 24 shards (15, 20, 21, 22) were red in repeat 1 apart 
 **Owed, not started:** one small report-only PR after the tooling list lands (repeat-fault lines: two batches red on one suite with the same first FAIL line; main red on two runs, naming the fix PR, product files included; no ejection, no hold); red-batch re-measure 24 Nov 13:22 IST from #2434 (nothing wakes it); PR for claude/lead-o2-focus-waits 9b138d265 after the pause (not run); database time inside suites 25 Nov; private checks plan above (nothing created; founder's "after the three checks pass" against check 2 needing an empty repository: his to settle).
 **Notes (Mac folder local_6cdede15):** ci-minutes-24h, red-batches-24h, slowest-100-suites, pilot-a-results, repeat-fault-design, all -lead-o2.md. Branches never to merge: claude/lead-o2-pack, claude/lead-o2-guards-parts (superseded), claude/lead-o-ci-measure.
 **Corrections made here:** fix-2 batch count is for 22-23 Nov UTC; repeat-fault pairs are 8 of 11 (not 9). **Limits kept:** no label, merge, close, dequeue or cancel. Pilot A run 45169056072 started before Lead 6's hold reached me.
+
+# Pilot A on all 24 shards: result (Lead O 2, 23 Nov 23:42 IST). Measurement only; nothing goes live
+Three suites at once (K=3), three repeats, one 4-CPU GitHub machine a shard, at most 4 machines, no --retry, main frozen at f33cbe803. Runs: repeat 1 45180835489 45186076970 45191971568; repeat 2 45198177057 45204606262 45210733016; repeat 3 45217280175 45223678708 45230044852. 72 of 72 jobs have totals (shard 12 repeat 2's log came on a later read).
+**Baseline: the suites step of 5 green batches (45029468748 45048395221 45068458484 45086233524 45140338075). They ran with --retry, only green runs are in it, and on other commits than f33cbe803, so the ratio is approximate.** Minutes; set-up not in either column.
+
+| Shard | Baseline mean (range, n) | K=3 r1 | r2 | r3 | K=3 mean | Faster by |
+|---|---|---|---|---|---|---|
+| 1 | 15.9 (13.9-19.2, n=5) | 15.3 | 15.1 | 14.5 | 15.0 | 1.07 |
+| 2 | 17.9 (16.1-19.9, n=5) | 10.1 | 12.9 | 8.8 | 10.6 | 1.69 |
+| 3 | 17.7 (15.5-20.1, n=5) | 11.4 | 9.7 | 11.2 | 10.8 | 1.65 |
+| 4 | 19.3 (16.3-20.5, n=5) | 10.9 | 8.6 | 9.5 | 9.7 | 2.00 |
+| 5 | 19.4 (15.9-22.9, n=5) | 12.0 | 14.0 | 8.8 | 11.6 | 1.67 |
+| 6 | 21.3 (17.6-22.6, n=5) | 13.5 | 9.6 | 13.5 | 12.2 | 1.74 |
+| 7 | 18.5 (15.4-21.0, n=5) | 10.7 | 10.5 | 10.7 | 10.6 | 1.74 |
+| 8 | 15.4 (14.0-17.4, n=5) | 9.3 | 12.9 | 12.0 | 11.4 | 1.35 |
+| 9 | 17.2 (15.5-20.1, n=5) | 11.9 | 8.5 | 8.6 | 9.7 | 1.78 |
+| 10 | 17.1 (14.6-21.2, n=5) | 11.8 | 12.0 | 11.7 | 11.8 | 1.44 |
+| 11 | 19.2 (13.9-21.2, n=5) | 9.6 | 12.4 | 8.2 | 10.1 | 1.91 |
+| 12 | 17.5 (14.5-19.8, n=5) | 10.0 | 7.9 | 10.3 | 9.4 | 1.87 |
+| 13 | 18.7 (15.7-22.0, n=5) | 9.6 | 11.7 | 8.3 | 9.9 | 1.90 |
+| 14 | 18.9 (14.4-20.7, n=5) | 9.9 | 13.4 | 10.5 | 11.3 | 1.68 |
+| 15 | 19.5 (15.2-21.1, n=5) | 12.0 | 11.3 | 13.8 | 12.4 | 1.57 |
+| 16 | 16.6 (13.2-20.2, n=5) | 11.1 | 11.2 | 11.3 | 11.2 | 1.48 |
+| 17 | 18.3 (16.6-22.4, n=5) | 16.0 | 15.9 | 11.0 | 14.3 | 1.28 |
+| 18 | 18.5 (16.3-19.6, n=5) | 10.5 | 14.5 | 11.7 | 12.2 | 1.51 |
+| 19 | 19.2 (15.4-21.8, n=5) | 12.7 | 12.8 | 8.7 | 11.4 | 1.68 |
+| 20 | 19.0 (17.4-21.1, n=5) | 11.9 | 9.4 | 10.2 | 10.5 | 1.81 |
+| 21 | 18.6 (16.8-21.2, n=5) | 9.2 | 11.8 | 8.8 | 9.9 | 1.88 |
+| 22 | 16.3 (14.0-18.6, n=5) | 10.2 | 7.5 | 10.3 | 9.3 | 1.75 |
+| 23 | 18.0 (14.9-19.9, n=5) | 8.4 | 10.9 | 8.2 | 9.2 | 1.96 |
+| 24 | 16.6 (12.8-19.2, n=5) | 11.5 | 11.6 | 11.8 | 11.6 | 1.42 |
+| **All** | **434.5** | 269.5 | 276.1 | 252.4 | **266.0** | **1.63** |
+
+* **Time:** 1.63 times faster over all shards, not the 2.3 of shard 7 alone (different baselines: shard 7's own pilot was serial without --retry). Slowest shard in a repeat: 16.0, 15.9, 14.5 min. Shard 1 gains almost nothing (1.07): one long unit.
+* **Cost of the pilot:** 969 job minutes, set-up included (325, 333, 311 a repeat); mean 13.5 a job.
+* **Machine:** processor mean about 3 of 4; most memory 7.39 GB; no swap.
+
+| Repeat | Shard | Red at K=3 | Alone afterwards |
+|---|---|---|---|
+| 1 | 15 | check_fo8_prospect_won, check_c116_channels_browser | green, green |
+| 1 | 20 | check_pf4_identity | green |
+| 1 | 21 | check_w1_qa51_52_54 | green |
+| 1 | 22 | check_c76_ready_browser | green |
+| 2 | 18 | check_forms_channels_browser | green |
+| 2 | 20 | check_pf4_identity | green |
+| 3 | 11 | check_cost_override | green |
+| 3 | 16 | check_c69_page_browser | green |
+| 3 | 20 | check_pf4_identity, check_c83_review_browser | green, green |
+
+* **No repeat of the 24 shards was wholly green: 4, 2 and 3 shards red (9 of 72 jobs; 11 suite failures, 9 different suites).** All 11 green on one re-run alone. Not counted: check_b164_no_engine_keys (shard 3, repeat 1), red alone too, from my shallow checkout.
+* **check_pf4_identity cannot be packed as dealt: red 3 of 3.** Its psql command failed. Likely: it runs every migration, and 20261116013000_pf12_firm_walls drops, creates and alters roles that belong to the whole server, beside other suites. **Not confirmed:** the log cuts the message before the database's own words.
+* **The other 8 were red 1 of 3 each.** Packing or chance cannot be told apart from this: one alone re-run each, no serial control without --retry. check_c69_page_browser is a known failing suite on batches. The causes were not read further than the first message.
+* **Shards that cannot pack:** shard 20 as dealt. Red once in three: 11, 15 (two suites), 16, 18, 21, 22. Never red in three: 1-10, 12-14, 17, 19, 23, 24 (3's only red was my checkout).
+* **Untested:** K=2; --retry with packing; a serial run at f33cbe803 without --retry; regression, pack and guards jobs; a full run's wall time; larger servers; whether a packed shard hides a real fault.
+* **Reading:** not ready to go live at K=3. Next cheapest step, for the Lead to decide: K=2 on shards 11, 15, 16, 18, 20, 21, 22 (three repeats, about 21 jobs), with check_pf4_identity moved to the serial tail.
