@@ -105,7 +105,7 @@ function ProfileBody() {
               <Field label="Public email" error={errors.publicEmail} hint="Leave empty for none."><Input type="email" autoComplete="email" maxLength={254} value={f.publicEmail} onChange={set("publicEmail")} data-profile-field="publicEmail" /></Field>
               <Field label="Website" error={errors.website} hint="Starting https://. Leave empty for none." className="sm:col-span-2"><Input type="url" inputMode="url" maxLength={500} value={f.website} onChange={set("website")} data-profile-field="website" /></Field>
               <Field label="Language" error={errors.language}><Select value={f.language} onChange={set("language")} data-profile-field="language">{LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}</Select></Field>
-              <Field label="Currency" error={errors.currency} hint="New invoices and fees start in this currency."><Select value={f.currency} onChange={set("currency")} data-profile-field="currency">{CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</Select></Field>
+              <Field label="Currency" error={errors.currency} hint="Your firm's default currency."><Select value={f.currency} onChange={set("currency")} data-profile-field="currency">{CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</Select></Field>
               <Field label="Time zone" error={errors.timeZone} hint="Deadlines, reminders and bookings use this unless an office has its own." className="sm:col-span-2"><Select value={f.timeZone} onChange={set("timeZone")} data-profile-field="timeZone">{zones.map((z) => <option key={z} value={z}>{z}</option>)}</Select></Field>
             </div>
           ) : (
