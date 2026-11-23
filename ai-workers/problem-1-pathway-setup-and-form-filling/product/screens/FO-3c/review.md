@@ -288,3 +288,120 @@ Scope: only the diff, which changes `controller.ts` and `tests/check_forms_qa53.
 Reviewer: Approve 4b7d5b404f4257f4011f7b225a1280285c153cd1
 
 Verdict: Approve 4b7d5b404f4257f4011f7b225a1280285c153cd1
+
+## Part 2, round 1 (f40ebc7e3)
+
+Scope: `git diff origin/main...f40ebc7e3` (PR #3184), FO-3c part 2 (R1.104; Lead 10's rulings of 23 Nov). Fresh context, did not build. The branch moved to d560df8e0 at 05:25Z (a test only) and another session edited `gate.ts`, `live.ts`, `service.ts`, `types.ts` and `break-report.md` in this checkout at 05:28-05:29Z, uncommitted. **I reviewed only f40ebc7e3**; the suites below were re-run on a `git archive` copy of it. Earlier rounds above are kept as written (rule 8).
+
+**Verdict: Rework (Block).** No Blocker; three Majors. All three are also in the breaker's uncommitted part 2 notes (P2-1, P2-2, P2-3), found independently here.
+
+### What I ran
+* Clean copy of f40ebc7e3: `check_fo3c2` 17/17, `check_fo3c` 42/42, `check_fo3a2_consult_record` 39/39, `check_fo3a_booking_types` 48/48, `fo3vr` 24/24, `fo3m` 14/14. In the checkout, before the other session's edits: `bypass_uses` 52/52, `pf12b_bypass_audit` 70/70, `pf19r` 21/21. Web `tsc`: clean. Api `tsc`: no error in a touched file.
+* Migration: all migrations applied to a scratch database. `require_agreement` is boolean and nullable with no default, so no row is rewritten. `rollback.sql` ran in one transaction, and the migration applied again cleanly. The stamp is after main's newest (20261123020000).
+* `j_104` on my isolated copy `rv104` on :4437 (runtime ports), screenshots to scratch: **20/20 PASS**.
+* My own Playwright walk on the same copy:
+  - widths 1440, 1024, 720 (the 200 % zoom stand-in) and 400;
+  - keyboard only;
+  - axe WCAG 2.2 A/AA;
+  - the data read back from the copy's database.
+* Probes on a scratch database: the representative of record signing with "everyone sees all" off, and 45 idle poller runs after a signature. The isolated copy's own audit trail was also read for the bypass lines.
+* Mutations on the clean copy:
+
+  | Mutation | Result |
+  |---|---|
+  | `sees()` always true | P5 goes red (good) |
+  | `copyVisible` without its `mine()` re-check | Still 17/17 |
+  | The gate without its type-switch clause (`gate.ts:35`) | Still 17/17 |
+
+### What held
+* **Firm and visibility walls on reads.** Another firm gets 404 by person, by id and by booking (W8 live). A list-key colleague outside the record rule gets 404 (P5). Owner F, not the host, reads through the wired `Booking.staffBooking` (200 live), so the host-only fallback is not what the app runs.
+* **Download links.** A link is bound to its firm and its person (FO-5's `FileLinks` HMAC), and the person's visibility is checked again at download. No route takes a raw file key, so I found no way to read another person's agreement or file.
+* **Concurrency.** The gate runs inside the attendance transaction after the booking row lock (`booking/service.ts:436`). A signature committing at the same moment can only make it refuse, which is the safe side, and no status moves from signed back to unsigned. No-show stays open. A double click on Attended shows one alert. The send's advisory lock plus re-read keeps one agreement per booking across two pollers.
+* **The poller fails safe.**
+  - It is single-flight, waits on shutdown, and its timer is `unref`.
+  - Each event is in its own try; the run is in another.
+  - Every firm read writes its `platform.bypass` line before any of that firm's rows is handled (P4, and live in `rv104`'s trail).
+  - Sends run as their own firm (`withFirm`).
+* **Switch and words on screen.** The W4b switch saves (DB `t`, audit "Booking type "Follow-up" edited."), and the read-only view shows "Agreement signed before it starts: Yes".
+* **Accessibility.** At 400, 720, 1024 and 1440 px there is no sideways scroll and no axe violation on the booking panel, the agreements section or the type dialog. By keyboard alone, Attended shows the refusal, and "Download the signed copy" downloads the file.
+* **Speed.** The panel loads in about 1 s.
+* **Resend deviation.** It is honestly stated, with a true technical cause: `fo_signer.link_token_sha256` is written once and stored as a hash only, so a resend needs FO-6's new request. Not building resend here is acceptable. What is not acceptable is the block left with no way out (M2).
+
+### Majors
+* **M1. The representative of record cannot sign when "Everyone sees all" is off, so the booking is held for good.** `consultation-agreement/service.ts:294-296` (`mine` now needs booking visibility) and `:457` (`hostLink` goes through `mine`).
+  - Probe: host user-O (no licence record), Kim's lead owned by user-O, signatory user-R. `needsYou(R)` lists the agreement, then signing as R → **404 NOT_FOUND**; `read(R)` → 404. Attended → 409 for ever.
+  - FO-5's BR-3 ("the representative always may read it") is broken by this PR; part 1 did not have the problem.
+  - Fix: in `mine()`, let `r.representativeStaffId === ctx.staffId` through, as `staffBooking` does for the host. Add a pass test and a fail test.
+* **M2. The block has no way out, and its words promise one that does not exist.** `gate.ts:26` (HOLD_WORDS), `gate.ts:38`, `agreement.tsx:38`.
+  - The words say "or record it as signed offline". No screen offers it: my walk found 0 such controls, and FO-5's retainer page lists Signed offline as "a later part".
+  - FO-5's API refuses it for DECLINED. With visibility off it also refuses a booking that has no prospect (`visible(change)`; the agreement is `createdBy` system).
+  - The hold counts any status that is not signed. So DECLINED, WITHDRAWN (the firm's signer declined), a lost email or a booking moved to No-show (its link then 404s) all hold Attended and the consult record **for ever**. `send` answers ALREADY_SENT, and resend is not built.
+  - Lead 10 asked for "says why and links to resend". The declared gap covers only the missing link, not these dead ends.
+  - Fix (pick one, for the tech lead):
+    - hold only while the agreement is live (SENT, VIEWED or CLIENT_SIGNED) and say on the panel when it has ended; or
+    - keep the hold and put the dead ends on the PR as a gap the tech lead accepts.
+
+    Either way, drop "or record it as signed offline" from both texts until a screen does it. Add a test for a declined agreement.
+* **M3. The poller writes a `platform.bypass` line to a firm's trail every 30 s while it has nothing to do.** `service.ts:137` and `:142`, through `each` → `touchFirms` (`live.ts:48`, `:71`).
+  - The catch-up runs again for every request SIGNED in the last 7 days, and each run writes that firm's line. The copy job's key makes the re-queue itself a no-op.
+  - Live on `rv104`: one line every 30 s (05:22:41, :57, 05:23:27 … 05:24:57Z) with no events. Probe: 3 lines in 45 idle runs. That is about 2,880 lines a day for 7 days after **every** signature.
+  - A send that keeps failing also retries, with a line, every 30 s with no backoff. CS-K1's poller was fixed for exactly this (break M1 of 20 Nov: `touchedEach` backoff).
+  - This is round 2's n2, now that the poller is wired.
+  - Fix: re-queue the copy only when none has been sent, and back off failing rows the way `touchedEach` does. Add a test that an idle firm gets no line.
+
+### Minors (not blocking)
+* m1. Mutation-proof test gaps:
+  - `copyVisible`'s re-check (`service.ts:312`) has no same-firm denial test; P6 fail only tries another firm.
+  - The gate's type clause (`gate.ts:35`) is untested.
+  - P2 "record" passes either way (`test:164`).
+  - The two new routes (`…/signed-copy/download-link`, `files/:token`: 410, another person's link) have no API test.
+  - The graph lists them under G3.
+* m2. Fail-open beyond the declared gap 3: a send that fails until the meeting starts leaves no agreement, so no hold. The panel then gives a wrong reason ("no template, or no email", `agreement.tsx:39`). The 2 s before the poller sends a staff-made booking is also open. This is the tech lead's call (PR question).
+* m3. The cursor moves past a failed event (`live.ts:69`), and a late-committing lower `seq` is skipped. The catch-up fixes sends, but a lost `booking.rescheduled` means no 24-hour reminder.
+* m4. Switching a type off after its agreement was sent lifts the hold. Switching it back on blocks the consult record of an Attended booking. The reminder ignores the switch. A stored choice cannot go back to the default (`types.ts:93`, `z.boolean()`).
+* m5. Lead page:
+  - The rows say only "Sent <date>" (`agreement.tsx:57`), so 4 rows can't be told apart (screenshot w7).
+  - Each signed row POSTs a download link on render (`:69`), one request per row.
+  - `forPerson` makes about 8 queries per agreement (`:330`, m7 from part 1, now larger).
+* m6. The types dialog's hint "What a booker may do from the link in their email." now sits under the agreement checkbox (`types-page.tsx:202`).
+* m7. A SIGNED_OFFLINE agreement counts as signed but has no copy to download (`signedCopyKey` reads only the e-signature evidence).
+
+### Scores
+* D1–D20:
+
+  | Score | Dimensions |
+  |---|---|
+  | Met | D3 (FO-5 FileLinks, FO-3vr reused) · D6 · D10 (except M2's clause) · D12 · D13 · D14 · D15 · D18 (Sample, Unconfirmed: no counsel) |
+  | Partly | D1 (M1, M2) · D2 (m2, m4) · D5 (M2, m3) · D9 (M2) · D11 (m2 wording) · D16 (m1) · D19 (dead ends) |
+  | N/A | D4 · D7 (no AI) · D8 |
+  | Simulated only | D17, D20 |
+
+* BIC-01–BIC-20: N/A. These are front-office staff screens, not case-side (§6 scope).
+* **Journey score (reviewer; the one score for this check): 7.5/10. Fail** (below 8, and one criterion at 0).
+  - Journeys walked: J1, the host opens a held booking and presses Attended (at 1440, 1024, 720 and 400 px, and by keyboard). J2, the lead page and its signed copy. J3, the Owner switches Follow-up on. J4, wrong role (Client D, the copy's Billing and finance host, on someone else's booking: nothing shown). J5, the representative signs with visibility off (probe: M1). J6, a declined agreement (by reading, plus the breaker's P2-2).
+
+  | Criterion | Score | Evidence |
+  |---|---|---|
+  | Task completed | ½ | j_104 20/20 for host = signatory; M1 |
+  | Next step obvious | ½ | Says why; no resend; the offline step does not exist |
+  | Plain words | ½ | Clear, but one false clause (M2) and rows without their booking (m5) |
+  | Feedback and state | 1 | Pill, "why" line, inline alert, one alert on a double click |
+  | Correct data | 1 | Switch stored and audited; one agreement per booking |
+  | Error recovery | 0 | Declined, lost email or rep 404: no way out in the product (M1, M2) |
+  | Accessibility and sizes | 1 | axe clean; no sideways scroll at 400–1440; keyboard path works |
+  | Speed | 1 | About 1 s panel |
+  | Visual quality | 1 | Team pills and sections (screenshots w3, w4, w7, w9) |
+  | Trust and sources | 1 | Signatory named; the signed copy's date and sha256 |
+
+  Raise it with M2, then M1, then m5.
+* The journey-test report is folded into this section: I was told to change no other file.
+
+### Could not check
+* A real e-signature vendor (fake only).
+* A visible headed browser or screen reader (headless Playwright).
+* An intended user's own walk (D17 and D20 stay with the founder).
+* `check_pf28_inputs` and `check_forms_qa53` (the PR lists them as still to run).
+
+Reviewer: Block f40ebc7e38e0e3d774538626afa28203e29649a1
+
+Verdict: Block f40ebc7e38e0e3d774538626afa28203e29649a1 — fix M1, M2, M3.

@@ -196,3 +196,96 @@ Not new in this diff (behaviour since round 1):
 No Blocker or Major in this round's diff.
 
 Verdict: Approve 8a09b9609ae6fcc25883a338a1668fcaa0035c30
+
+## Part 2, round 1 (f40ebc7e3)
+
+Scope: `git diff origin/main...f40ebc7e3`. Tested in three ways. A scratch suite at the services, on its own database (dropped afterwards). An isolated copy `brk3c2` on :4415 (`PLATFORM_IDENTITY=local`, stopped afterwards), driven by HTTP and Playwright at 1440 px. The row test passes 17/17.
+
+**P2-1. When the firm's signatory is not the host, they cannot sign while "Everyone sees all" is off. (Major)**
+- Steps:
+  1. Firm A turns `platform.everyone_sees_all` off.
+  2. The host, user-O (a Case Officer with no licence record), books Kim. Kim's lead is owned by user-O.
+  3. The agreement goes out with the representative of record, user-R (Owner, licensed), as the firm's signer. The client signs (CLIENT_SIGNED).
+- Expected: user-R signs. FO-5's BR-3 says "The representative always may read it".
+- Actual:
+  - `needsYou(R)` lists the agreement with `yourTurn: true`.
+  - `hostLink(R)` answers 404 NOT_FOUND, and so does `read(R)`.
+  - FO-5's `GET retainers/:id` answers 200 for the same person, and its `download-link` gives the .docx.
+  - The agreement can never reach SIGNED, so the booking's Attended and consult record are held for good.
+- Where:
+  - `mine()` now requires the booking's visibility (`consultation-agreement/service.ts:294-296`).
+  - `hostLink` goes through it (`service.ts:457`).
+  - The representative is not exempted, unlike the host in `staffBooking`.
+
+**P2-2. A declined agreement holds the consultation for good, and the screen's words are wrong for it. (Major)**
+- Steps: the client declines (status DECLINED). The meeting starts and the host presses Attended.
+- Expected: some way to start the consultation, or words that say what to do.
+- Actual:
+  - Attended answers 409 AGREEMENT_NOT_SIGNED.
+  - `send()` answers ALREADY_SENT, so no new agreement can be sent.
+  - FO-5's signed-offline answers 409 "A declined agreement cannot be recorded as signed" (`retainers/service.ts:42,644`).
+  - With "Everyone sees all" off, signed-offline answers 404 even for the Owner. The booking has no prospect, so FO-5's `visible(change)` refuses.
+  - The same applies to WITHDRAWN: the firm's signer declines after the client signed.
+  - The panel still says "The client signs from the link in their email, then … signs; or record it as signed offline" (`agreement.tsx:31`), and the 409 says the same (`gate.ts:156`). Neither is possible.
+  - The only ways out are switching the type's agreement off for every booking (see P2-4), or cancelling and rebooking.
+- Where: `gate.ts:160-168` holds on any status that is not signed, ended ones included.
+
+**P2-3. The poller writes a `platform.bypass` line to a firm's trail every catch-up with nothing to do, and retries a failing send with no backoff. (Major)**
+- Steps: firm A has one agreement SIGNED within the last 7 days, and nothing else is pending. 46 `tick()`s on a fresh `AgreementPoll` run 4 catch-ups.
+- Actual, idle firm:
+  - Firm A gets 4 bypass lines, one per catch-up. At the default 2 s × 15 that is one every 30 s: about 2,880 lines a day for 7 days after every signature.
+  - The cause: the "signed copy re-queue" branch runs through `each()`, and so through `touchFirms`, for every SIGNED request of the last 7 days (`service.ts:137,142`; `live.ts:48`).
+  - The copy job's key makes the queueing a no-op, but the audit line is written each time.
+- Steps, failing send: in firm B, the provider refuses a booking's send.
+- Actual, failing send: 46 runs made 3 provider calls and wrote 3 bypass lines to firm B. That is one try and one line every 30 s until the meeting, plus a log line each time.
+- Expected: a line only when a firm's rows are actually handled. This is CS-K1's break M1 of 20 Nov: `case-clients/live.ts` `touchedEach` added a doubling backoff (at most about 33 lines a day). `consultation-agreement/live.ts` has none.
+
+**P2-4. Switching a type off after its agreement was sent lifts the hold. Switching it back on blocks the consult record of a booking already Attended. (Minor)**
+- Steps:
+  1. The agreement is sent (SENT, unsigned).
+  2. An Admin PATCHes `requireAgreement: false`. Attended answers 200.
+  3. The Admin PATCHes `requireAgreement: true`. The consult record answers 409 AGREEMENT_NOT_SIGNED.
+- Expected: the rule is fixed when the agreement is sent, or the switch says it applies to bookings already sent.
+- Where: the gate reads the type's switch at the moment of the check (`gate.ts:165`).
+- Mitigation: needs the type-edit key (a Case Officer gets 403) and is audited.
+- Also seen: the 24-hour reminder is still sent for a type that is switched off (`runReminder` never asks `needsAgreement`).
+
+**P2-5. Once a type's choice is stored, the API cannot return it to the purpose default. (Minor)**
+- `requireAgreement: null` answers 422 on both PATCH and POST (`settings/types.ts:93`: `z.boolean()`).
+- A type saved once keeps `true` even if its purpose is later changed to FOLLOW_UP.
+- On screen, the checkbox writes a stored value on its first click (`types-page.tsx:201`), with no "use the default" choice.
+- The hint "What a booker may do from the link in their email." now sits under the agreement checkbox, which is not something a booker does.
+
+**P2-6. The signed-copy link is not a usable link, and a paper copy is never offered. (Minor)**
+- The `<a href>` points at the token URL (`agreement.tsx:83`). Middle-click or "open in new tab" answers 401 `not-signed-in` JSON, because the token is sent only by the click handler.
+- Each signed row POSTs a new download link on render, and again on window focus (staleTime 60 s), before anyone clicks.
+- A SIGNED_OFFLINE agreement shows "Agreement signed" with no copy: `signedCopy` is null and `signed-copy/download-link` answers 409 NO_SIGNED_COPY. R1.104 asks for "the signed copy is on the person"; for a paper signature it is only on FO-5's page.
+- The lead page lists each agreement as "status · Sent <date>" with no booking, type or meeting date. Three rows for one person cannot be told apart (screenshot at 1440 px; nothing clipped or overflowing).
+
+What held:
+- **Reads by booking, id, person and link:**
+  - The host gets 200.
+  - A same-firm Case Officer who does not see the booking gets 404. The Owner with "Everyone sees all" off gets 404.
+  - Billing (no list key) gets 404 by booking and 403 by id, by person and on the link route. Firm B's Owner gets 404 everywhere.
+  - Malformed ids answer 404.
+- **The download link:**
+  - The host's link downloads (200, `application/pdf`, `attachment`, `no-store`, `nosniff`).
+  - The same link used by a colleague, by firm B or with one character changed answers 404. Used by Billing it answers 403.
+  - The same link at FO-5's `/files/:token` answers 404.
+  - An unsigned agreement's link answers 409 NO_SIGNED_COPY.
+  - A viewer who sees the booking only through "Everyone sees all" loses both the key (404) and the download once the setting goes off.
+  - Keyboard Enter on the link downloads the file.
+- **The hold:**
+  - Two Attended requests at once both answer 409, and the booking stays SCHEDULED.
+  - No-show answers 200; Attended after it answers 409.
+  - Over HTTP, Attended answers 409 AGREEMENT_NOT_SIGNED and the panel shows the server's words.
+  - SIGNED_OFFLINE opens the gate. A follow-up type is never held.
+- **The poller:**
+  - It sent the live booking's agreement within seconds on the running copy.
+  - A firm-B outbox event naming a firm-A booking sends nothing in either firm.
+  - A restart replays a day of events with no second agreement.
+  - The advisory lock still guards a raced send.
+- **The types API:** `requireAgreement` set to `"false"`, `0`, `"yes"`, `[]` or `{}` answers 422. A Case Officer's PATCH answers 403.
+- **Not a finding:** a first run of the copy answered 500 on by-booking (`PrismaClientValidationError`). Another session regenerated the shared Prisma client while the copy was starting (`node_modules/.prisma/client/index.js` stamped 05:24:04). After a restart every call answered as above.
+
+Verdict: Changes f40ebc7e38e0e3d774538626afa28203e29649a1

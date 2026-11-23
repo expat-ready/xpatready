@@ -156,12 +156,11 @@ try {
   ok("FO-3c2 P2 fail: No-show is not the consultation starting: it is saved while the agreement is unsigned", s3?.sent === true && noShow3.status === 200 && statusOf(b3.id) === "NO_SHOW", noShow3);
   // A booking already marked Attended before this part (written straight to the table): its record waits for the agreement too.
   const b4 = await book(A, free, R.staffId, lee, -120);
-  const s4 = await db.$transaction(async () => svc.send(A, b4.id).catch(() => null));
-  const sentLate = s4?.sent ? s4 : { sent: false };
+  const sentLate = await svc.send(A, b4.id);
   await db.foBooking.update({ where: { id: b4.id }, data: { status: "COMPLETED" } });
   const rec4 = await answer(() => consult.put(R, b4.id, RECORD));
   ok("FO-3c2 P2 record: a consult record for an Attended booking whose agreement is unsigned is refused (409 AGREEMENT_NOT_SIGNED) and nothing is stored (or the booking had no agreement to wait for: then the record is saved)",
-    sentLate.sent ? rec4.status === 409 && /AGREEMENT_NOT_SIGNED/.test(rec4.body) && Number(sql(`select count(*) from fo_consult_record where booking_id = '${b4.id}'`)) === 0 : rec4.status === 200, { sentLate, rec4 });
+    sentLate.sent && rec4.status === 409 && /AGREEMENT_NOT_SIGNED/.test(rec4.body) && Number(sql(`select count(*) from fo_consult_record where booking_id = '${b4.id}'`)) === 0, { sentLate, rec4 });
 
   // ------------------------------------------------------------------------------------------------ P3 after signing (W9)
   // Signed during b5's meeting (a link of a meeting that has ended is refused, part 1's break m5), then answered after it.
@@ -232,6 +231,65 @@ try {
     unsignedKey.status === 409 && /NO_SIGNED_COPY/.test(unsignedKey.body) && (await answer(() => svc.signedCopyKey(S, a5))).status === 404 && !(await svc.copyVisible(S, k)), { unsignedKey });
   const words = await svc.read(R, a5);
   ok("FO-3c2 W7 words: the signed agreement reads \"Agreement signed\" with the copy's sha256", words.words === WORDS.signed && /^[0-9a-f]{64}$/.test(words.signedCopy?.sha256 ?? ""), words);
+
+  // ------------------------------------------------------------------------- round 1's breaker findings (P2-1 .. P2-5)
+  // P2-1: the representative of record signs for a host with no licence record (user-O) on a lead the signer does not
+  // see (everyone-sees-all off, the colleague owns it): the signer still reaches the agreement; a third person does not.
+  const Ohost = ctxOf(sid("user-O"), A, officer), Tview = ctxOf(sid("user-T"), A, officer.filter((k) => k !== "agent/prospect:view.all" && k !== "agent/prospect:assign"));
+  const typeO = await type(A, "p2-free-o", [Ohost.staffId]);
+  const b7 = await book(A, typeO, Ohost.staffId, pat, -180);
+  await clock.set(new Date(b7.startsAt.getTime() - 10 * MIN));
+  const s7 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b7));
+  const a7 = s7?.sent ? s7.agreementId : "";
+  const rep7 = sql(`select representative_staff_id from fo_retainer where id = '${a7}'`);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  const RnoAll = ctxOf(R.staffId, A, R.keys.filter((k) => k !== "agent/prospect:view.all" && k !== "agent/prospect:assign"));
+  const readSigner = await answer(() => svc.read(RnoAll, a7)), seesBooking = await answer(() => svc.forBooking(RnoAll, b7.id));
+  await clock.set(new Date(b7.startsAt.getTime() + 5 * MIN));
+  const signed7 = a7 ? await signAll(a7, "pat@client.example", RnoAll).catch((e) => `threw ${String(e).slice(0, 120)}`) : "";
+  await clock.set(today);
+  ok("FO-3c2 B1 pass (break P2-1): the representative of record, who signs for a host with no licence record, reads the agreement and signs it although the booking is not one they see",
+    rep7 === R.staffId && readSigner.status === 200 && seesBooking.status === 404 && signed7 === "SIGNED", { rep7: rep7 === R.staffId, readSigner: readSigner.status, seesBooking: seesBooking.status, signed7 });
+  ok("FO-3c2 B1 fail: a colleague who neither signs nor sees the booking still reads the one not-found", (await answer(() => svc.read(Tview, a7))).status === 404);
+  // P2-2: an agreement the client declined can no longer be signed: it holds nothing.
+  const b8 = await book(A, free, R.staffId, lee, -180);
+  await clock.set(new Date(b8.startsAt.getTime() - 10 * MIN));
+  const s8 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b8)), a8 = s8?.sent ? s8.agreementId : "";
+  const req8 = await db.foSignatureRequest.findFirstOrThrow({ where: { documentId: a8 }, include: { signers: true } });
+  for (const h of await signing.act(A, req8.providerDocumentId, req8.signers.find((x) => x.role === "CLIENT")!.id, "declined")) await svc.signingEvent(h);
+  await clock.set(today);
+  const st8 = sql(`select status from fo_retainer where id = '${a8}'`), att8 = await answer(() => bookings.recordAttendance(R, b8.id, { outcome: "COMPLETED" })), w8 = await svc.read(R, a8);
+  ok("FO-3c2 B2 pass (break P2-2): an agreement declined by the client ends unsigned (\"Agreement ended unsigned\") and no longer holds Attended",
+    ["DECLINED", "WITHDRAWN"].includes(st8) && w8.words === WORDS.ended && att8.status === 200 && statusOf(b8.id) === "COMPLETED", { st8, words: w8.words, att8 });
+  // P2-3: a quiet catch-up (a signed copy already queued, nothing to send) touches no firm: no new bypass line.
+  for (let i = 0; i < 16; i++) await poll.tick();   // runs at least one catch-up (every 15th run)
+  const quiet0 = lines();
+  for (let i = 0; i < 16; i++) await poll.tick();
+  ok("FO-3c2 B3 pass (break P2-3): with nothing new, a further catch-up writes no platform.bypass line (signed copies already queued are passed over)", lines() === quiet0, { before: quiet0, after: lines() });
+  const b9 = await book(A, free, R.staffId, lee, 6 * 24 * 60);   // clear of b6, moved to day 4 straight in the table
+  await out(b9, EVENT.BOOKING_SCHEDULED);
+  await poll.tick();
+  ok("FO-3c2 B3 fail: a new booking event is read, sent and lined (one firm read, one line)", agreementsOf(b9.id) === 1 && lines() === quiet0 + 1, { lines: lines() - quiet0 });
+  // P2-5: null puts a type back on its purpose's default.
+  const cur = await types.get(R, follow.id) as { version: number };
+  const on = await types.update(R, follow.id, { requireAgreement: true, version: cur.version }) as { version: number; requireAgreement: boolean };
+  const reset = await types.update(R, follow.id, { requireAgreement: null, version: on.version }) as { requireAgreement: boolean; requireAgreementSet: boolean };
+  ok("FO-3c2 B4 (break P2-5): requireAgreement null puts a follow-up back on its default (off, nothing stored); true before it stored on",
+    on.requireAgreement === true && reset.requireAgreement === false && reset.requireAgreementSet === false && sql(`select coalesce(require_agreement::text, 'null') from fo_consultation_type where id = '${follow.id}'`) === "null", { on, reset });
+  // Review m1: the type's switch is read by the hold itself (a type switched off after its agreement was sent holds no more;
+  // switched on again, it holds again), and the download's visibility check refuses a person outside the rule.
+  const b10 = await book(A, freeOff, R.staffId, lee, -180);
+  await db.foConsultationType.update({ where: { id: freeOff.id }, data: { requireAgreement: true } });
+  await clock.set(new Date(b10.startsAt.getTime() - 10 * MIN));
+  const s10 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b10));
+  await clock.set(today);
+  const held10 = await answer(() => bookings.recordAttendance(R, b10.id, { outcome: "COMPLETED" }));
+  await db.foConsultationType.update({ where: { id: freeOff.id }, data: { requireAgreement: false } });
+  const free10 = await answer(() => bookings.recordAttendance(R, b10.id, { outcome: "COMPLETED" }));
+  ok("FO-3c2 R1 (review m1): the hold reads the type's switch: on, an unsigned agreement holds Attended (409); switched off, the same booking's Attended is saved",
+    s10?.sent === true && held10.status === 409 && free10.status === 200 && statusOf(b10.id) === "COMPLETED", { s10, held10: held10.status, free10: free10.status });
+  ok("FO-3c2 R1 download: the signed copy's file is refused to a colleague with the list key outside the record rule (the download's check), and given to its host",
+    !(await svc.copyVisible(Tview, k)) && (await svc.copyVisible(R, k)), { k: !!k });
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

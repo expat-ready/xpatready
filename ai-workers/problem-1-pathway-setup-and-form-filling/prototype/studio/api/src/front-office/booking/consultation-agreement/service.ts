@@ -54,13 +54,18 @@ const DOOR_MAX_KEYS = 50_000;
 /** The public door's limit per IP (contracts §0.6; Sample, sized as the booking door's token limit). */
 const DOOR_PER_IP = 30, DOOR_WINDOW_MS = 10 * 60_000;
 export const PRO_BONO = "No fee: this consultation is provided pro bono.";   // Sample wording
-export const WORDS = { signed: "Agreement signed", unsigned: "Agreement not signed yet", none: "No agreement was sent" } as const;
+export const WORDS = { signed: "Agreement signed", unsigned: "Agreement not signed yet", none: "No agreement was sent", ended: "Agreement ended unsigned" } as const;
+/** An agreement no one can sign any more (declined, withdrawn, expired): part 2 (break P2-2) holds nothing on it. */
+export const ENDED_STATUSES = ["DECLINED", "WITHDRAWN", "EXPIRED"] as const;
 const SYSTEM = "system:consultation-agreement";
 
 /** FO-3c part 2 (Lead 10, FO-3vr): whether a person sees a booking: the booking service's `staffBooking` (its host, or the
  *  list key and the record rule), which throws the one not-found otherwise. Not given (a suite or a stand-in): the host
  *  only, so a read never opens wider than the rule. */
 export type SeeBooking = (ctx: StaffContext, bookingId: string) => Promise<unknown>;
+/** How the catch-up runs one row as its firm: the row's own key lets the poller hold back a row that keeps failing
+ *  (answering null: not tried this run). */
+export type CatchUpEach = <T>(firmId: string, fn: () => Promise<T>, key?: string) => Promise<T | null>;
 export type AgreementPorts = { audit: AuditPort<Tx>; clock: ClockPort; mail: MailPort; jobs: JobPort; signing: SigningPort; files: FilesPort; publicBaseUrl: string; warn?: (m: string) => void; seeBooking?: SeeBooking };
 
 const fail = (status: number, title: string, detail: string, code: string): never => { throw new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code }, status); };
@@ -74,6 +79,8 @@ export type SendResult = { sent: true; agreementId: string } | { sent: false; re
 
 export class ConsultationAgreementService {
   private readonly door = new Map<string, number[]>();
+  /** Signed requests whose copy this process queued again (catch-up). */
+  private readonly requeued = new Set<string>();
   private swept = 0;
   constructor(protected readonly db: PrismaClient, protected readonly ports: AgreementPorts) {}
   /** A rolling window per IP on the public door (review M3): over it → 429, nothing read. */
@@ -109,7 +116,7 @@ export class ConsultationAgreementService {
 
   /** Every scheduled booking whose event was missed (no agreement yet, the meeting still ahead): made good by the next run.
    *  The first read crosses firms (the caller's own scope decides what it sees: PF-12); each send runs as its firm. */
-  async catchUp(each: <T>(firmId: string, fn: () => Promise<T>) => Promise<T> = withFirm): Promise<{ sent: number; failed: number; sealed: number }> {
+  async catchUp(each: CatchUpEach = withFirm): Promise<{ sent: number; failed: number; sealed: number }> {
     const rows = await this.db.$queryRaw<{ firm_id: string; id: string }[]>`
       select b.firm_id::text, b.id::text from fo_booking b
        where b.status in ('SCHEDULED', 'RESCHEDULED') and b.starts_at > ${this.ports.clock.now()}
@@ -137,12 +144,15 @@ export class ConsultationAgreementService {
           or (q.status = 'SIGNED' and q.ended_at > ${new Date(this.ports.clock.now().getTime() - 7 * DAY)}))
        order by (q.status = 'CLIENT_SIGNED') desc, q.sent_at limit 200`;   // the stuck seals first (R2-4)
     for (const q of unsealed) {
+      // A signed copy is queued again once per process (its job key sends it once): a request already queued here is
+      // passed over before its firm is touched, so a quiet catch-up writes no bypass line (part 2, break P2-3).
+      if (q.sealed && this.requeued.has(q.id)) continue;
       try {
-        if (!q.sealed) { if (await each(q.firm_id, () => this.seal(q.firm_id, q.id))) out.sealed++; }
-        else await each(q.firm_id, async () => { const d = await this.db.foSignatureRequest.findFirstOrThrow({ where: { firmId: q.firm_id, id: q.id } }); await this.queueCopy(q.firm_id, d.documentId, q.id); });
+        if (!q.sealed) { if (await each(q.firm_id, () => this.seal(q.firm_id, q.id), `seal:${q.id}`)) out.sealed++; }
+        else if (await each(q.firm_id, async () => { const d = await this.db.foSignatureRequest.findFirstOrThrow({ where: { firmId: q.firm_id, id: q.id } }); await this.queueCopy(q.firm_id, d.documentId, q.id); return true; }, `copy:${q.id}`)) this.requeued.add(q.id);
       } catch (e) { out.failed++; await this.safe(`catch-up of request ${q.id}`, () => { throw e; }); }
     }
-    for (const r of rows) { try { if ((await each(r.firm_id, () => this.send(r.firm_id, r.id))).sent) out.sent++; } catch (e) { out.failed++; await this.safe(`catch-up of booking ${r.id}`, () => { throw e; }); } }
+    for (const r of rows) { try { if ((await each(r.firm_id, () => this.send(r.firm_id, r.id), `send:${r.id}`))?.sent) out.sent++; } catch (e) { out.failed++; await this.safe(`catch-up of booking ${r.id}`, () => { throw e; }); } }
     return out;
   }
 
@@ -250,6 +260,7 @@ export class ConsultationAgreementService {
     const r = await this.db.foRetainer.findFirst({ where: { firmId, id: p.agreementId, kind: "CONSULTATION" }, include: { representative: true } });
     const b = await this.db.foBooking.findFirst({ where: { firmId, id: p.bookingId }, include: { type: true } });
     if (!r || !b || b.sequence !== p.sequence || !["SCHEDULED", "RESCHEDULED"].includes(b.status) || !["SENT", "VIEWED", "CLIENT_SIGNED"].includes(r.status)) return;
+    if (!needsAgreement(b.type)) return;   // part 2 (break P2-4): a type switched off since needs no reminder
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: firmId } });
     const turn = r.status === "CLIENT_SIGNED" ? "The client has signed: it now needs your signature." : "The client has not signed yet.";
     await this.ports.mail.send({ firmId, to: r.representative.email, replyTo: firm.contactEmail, class: "SERVICE", idempotencyKey: job.key, templateKey: "consultation_agreement.reminder",
@@ -271,7 +282,8 @@ export class ConsultationAgreementService {
     const rep = await this.db.platformStaff.findFirst({ where: { firmId, id: r.representativeStaffId }, select: { displayName: true } });
     const isHost = m["booking.signatory_is_host"] !== false;
     return {
-      id: r.id, bookingId: String(m[BOOKING_ID] ?? ""), personId: r.signerPersonId, status: r.status, signed: isSigned(r.status), words: isSigned(r.status) ? WORDS.signed : WORDS.unsigned,
+      id: r.id, bookingId: String(m[BOOKING_ID] ?? ""), personId: r.signerPersonId, status: r.status, signed: isSigned(r.status), words: isSigned(r.status) ? WORDS.signed : (ENDED_STATUSES as readonly string[]).includes(r.status) ? WORDS.ended : WORDS.unsigned,
+      meetingAt: m[BOOKING_ID] && UUID.test(String(m[BOOKING_ID])) ? (await this.db.foBooking.findFirst({ where: { firmId, id: String(m[BOOKING_ID]) }, select: { startsAt: true } }))?.startsAt ?? null : null,
       sentAt: v?.sentAt ?? null, clientSignedAt: of("CLIENT")?.signedAt ?? null, firmSignedAt: of("FIRM")?.signedAt ?? null,
       signatory: { staffId: r.representativeStaffId, name: rep?.displayName ?? null, isHost,
         note: isHost ? null : `The consultation's host holds no licence record: the agreement is with the firm's representative of record, ${rep?.displayName ?? ""}.` },
@@ -293,7 +305,8 @@ export class ConsultationAgreementService {
   /** One agreement of the person's firm whose booking they see; anything else is the one not-found (FO-3vr). */
   private async mine(ctx: StaffContext, id: string) {
     const r = UUID.test(String(id)) ? await this.db.foRetainer.findFirst({ where: { firmId: ctx.firmId, id, kind: "CONSULTATION" } }) : null;
-    if (!r || !(await this.sees(ctx, await this.bookingOf(ctx.firmId, r.id)))) return notFound();
+    // The person who signs for the firm always reaches it (break P2-1: the representative of record may not see the booking).
+    if (!r || (r.representativeStaffId !== ctx.staffId && !(await this.sees(ctx, await this.bookingOf(ctx.firmId, r.id))))) return notFound();
     return r;
   }
   /** One agreement (another firm's id, or a booking the person does not see: 404). */

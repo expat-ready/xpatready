@@ -22,6 +22,7 @@ import type { ConsultationAgreementService } from "./service.ts";
 export const agreementPollMs = () => Math.min(3_600_000, Math.max(200, Number(process.env.CONSULTATION_AGREEMENT_POLL_MS) || 2_000));
 export const CATCH_UP_EVERY = 15;
 const BATCH = 200, DAY = 24 * 60 * 60_000;
+export const BACKOFF_MAX_MS = 3_600_000;
 const TYPES = [EVENT.BOOKING_SCHEDULED, EVENT.BOOKING_RESCHEDULED];
 
 export type PollRun = { events: number; sent: number; failed: number; caughtUp: { sent: number; failed: number; sealed: number } | null };
@@ -41,13 +42,21 @@ export class AgreementPoll implements OnApplicationBootstrap, OnApplicationShutd
   /** One run, unless one is still going (single-flight). */
   tick() { if (!this.running) this.running = this.run().finally(() => { this.running = null; }); return this.running; }
 
-  /** Each firm's rows run as that firm, once its bypass line of this run is written. */
+  /** Rows that failed: not tried again (so no bypass line written for them) until their wait is over; the wait doubles
+   *  from one catch-up to at most an hour (break P2-3, as CS-K1's touchedEach). */
+  private readonly backoff = new Map<string, { until: number; wait: number }>();
+  /** Each firm's rows run as that firm, once its bypass line of this run is written; a held-back row answers null. */
   private eachOf() {
     const lined = new Map<string, Promise<void>>();
-    return async <T,>(firmId: string, fn: () => Promise<T>): Promise<T> => {
+    return async <T,>(firmId: string, fn: () => Promise<T>, key?: string): Promise<T | null> => {
+      const k = key ? `${firmId}:${key}` : null, held = k ? this.backoff.get(k) : undefined, now = this.now().getTime();
+      if (held && held.until > now) return null;
       if (!lined.has(firmId)) lined.set(firmId, touchFirms(this.db, [firmId]));
       await lined.get(firmId)!;
-      return withFirm(firmId, fn);
+      try { const r = await withFirm(firmId, fn); if (k) this.backoff.delete(k); return r; } catch (e) {
+        if (k) { const wait = held ? Math.min(BACKOFF_MAX_MS, held.wait * 2) : agreementPollMs() * CATCH_UP_EVERY; this.backoff.set(k, { until: now + wait, wait }); }
+        throw e;
+      }
     };
   }
 
@@ -64,7 +73,7 @@ export class AgreementPoll implements OnApplicationBootstrap, OnApplicationShutd
           select seq, firm_id::text, type, payload from module_event where seq > ${this.cursor} and type = any(${TYPES}) and firm_id is not null order by seq limit ${BATCH}`;
         for (const e of rows) {
           out.events++;
-          try { const r = await each(e.firm_id, () => this.svc.onBookingEvent({ type: e.type, firmId: e.firm_id, payload: e.payload })); if (r?.sent) out.sent++; }
+          try { const r = await each(e.firm_id, () => this.svc.onBookingEvent({ type: e.type, firmId: e.firm_id, payload: e.payload })); if (r?.sent) out.sent++; }   // no key: an event is read once
           catch (err) { out.failed++; logPort.error("consultation_agreement_event_failed", err, { seq: String(e.seq), firmId: e.firm_id }); }
           this.cursor = e.seq;   // a failed send is made good by the catch-up below (the booking still has no agreement)
         }

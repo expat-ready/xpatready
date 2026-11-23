@@ -90,7 +90,7 @@ const Fields = {
   allowReschedule: z.boolean(),
   allowCancel: z.boolean(),
   /** FO-3c part 2 (Lead 10, W4b): the consultation agreement is signed before the consultation starts. */
-  requireAgreement: z.boolean(),
+  requireAgreement: z.boolean().nullable(),   // null: back to the purpose's default (break P2-5)
   slotIntervalMinutes: z.number().int().min(5).max(480).nullable(),
   meetingLink: z.string().max(2000).regex(/^https:\/\/[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+$/, "A meeting link starts with https://.").nullable(),
 };

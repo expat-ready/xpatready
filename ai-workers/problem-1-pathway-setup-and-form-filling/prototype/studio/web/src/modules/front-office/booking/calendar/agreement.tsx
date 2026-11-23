@@ -18,7 +18,10 @@ const Agreement = z.object({
   clientSignedAt: z.string().nullable().optional(), sentAt: z.string().nullable().optional(),
   signatory: z.object({ name: z.string().nullable(), note: z.string().nullable() }).optional(),
   signedCopy: z.object({ sha256: z.string(), storedAt: z.string() }).nullable().optional(),
+  meetingAt: z.string().nullable().optional(),
 });
+/** Still waiting for a signature (the only statuses that hold the consultation; the server's gate.ts). */
+const LIVE = ["SENT", "VIEWED", "CLIENT_SIGNED"];
 type Agreement = z.infer<typeof Agreement>;
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" }) : "");
@@ -28,15 +31,16 @@ export function BookingAgreement({ bookingId }: { bookingId: string }) {
   const q = useQuery({ queryKey: ["fo", "bookings", "agreement", bookingId], retry: false, queryFn: async () => Agreement.parse(await staffApi(`/front-office/consultation-agreements/by-booking/${encodeURIComponent(bookingId)}`)) });
   const a = q.data;
   if (!a || (a.status === "NONE" && !a.required)) return null;
-  const waiting = !a.signed && a.status !== "NONE" && a.required !== false;
+  const waiting = LIVE.includes(a.status) && a.required !== false, ended = !a.signed && a.status !== "NONE" && !LIVE.includes(a.status);
   return (
     <section aria-labelledby="fo-agreement" className="border-t border-border pt-3" data-agreement={a.status}>
       <h3 id="fo-agreement" className="font-semibold">Consultation agreement</h3>
-      <p className="flex flex-wrap items-center gap-2"><Pill tone={a.signed ? "ok" : a.status === "NONE" ? "neutral" : "warn"}>{a.words}</Pill>
+      <p className="flex flex-wrap items-center gap-2"><Pill tone={a.signed ? "ok" : a.status === "NONE" || ended ? "neutral" : "warn"}>{a.words}</Pill>
         {a.signed && a.signedCopy ? <span className="text-text-muted">Signed copy stored {day(a.signedCopy.storedAt)}</span> : null}
         {!a.signed && a.clientSignedAt ? <span className="text-text-muted">The client signed {day(a.clientSignedAt)}: the firm signs next.</span> : null}</p>
-      {waiting ? <p className="mt-1 text-text-muted" data-agreement-why>The consultation cannot start until it is signed: Attended and the consult record wait. The client signs from the link in their email, then {a.signatory?.name ?? "the firm"} signs; or record it as signed offline.</p> : null}
-      {a.status === "NONE" ? <p className="mt-1 text-text-muted">No agreement was sent for this booking (the firm has no active consultation agreement template, or the person has no email).</p> : null}
+      {waiting ? <p className="mt-1 text-text-muted" data-agreement-why>The consultation cannot start until it is signed: Attended and the consult record wait. The client signs from the link in their email, then {a.signatory?.name ?? "the firm"} signs. If the meeting time has passed, reschedule it: the client can sign before the new time.</p> : null}
+      {ended ? <p className="mt-1 text-text-muted" data-agreement-ended>This agreement was declined, withdrawn or has expired, so it can no longer be signed and does not hold the consultation.</p> : null}
+      {a.status === "NONE" ? <p className="mt-1 text-text-muted">No agreement was sent for this booking (the firm has no active consultation agreement template, the person has no email, nobody can sign for the firm, or sending has not succeeded yet).</p> : null}
       {a.signatory?.note ? <p className="mt-1 text-text-muted">{a.signatory.note}</p> : null}
     </section>
   );
@@ -53,8 +57,8 @@ export function PersonAgreements({ personId }: { personId: string }) {
       <ul className="mt-2 flex flex-col gap-2 text-sm">
         {q.data.map((a) => (
           <li key={a.id ?? a.bookingId} className="flex flex-wrap items-center gap-2">
-            <Pill tone={a.signed ? "ok" : "warn"}>{a.words}</Pill>
-            <span className="text-text-muted">Sent {day(a.sentAt)}</span>
+            <Pill tone={a.signed ? "ok" : LIVE.includes(a.status) ? "warn" : "neutral"}>{a.words}</Pill>
+            <span className="text-text-muted">{a.meetingAt ? `For the meeting on ${day(a.meetingAt)} · ` : ""}Sent {day(a.sentAt)}</span>
             {a.signed && a.signedCopy && a.id ? <SignedCopyLink agreementId={a.id} /> : null}
           </li>
         ))}
