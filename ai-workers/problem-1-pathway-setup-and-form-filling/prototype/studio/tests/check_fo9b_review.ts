@@ -41,7 +41,7 @@ const { auditEvent, platformAuditWorkspaceId } = await import("../api/src/platfo
 const { ConsentStore } = await import("../api/src/platform/messages/consent/consent-store.ts");
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { ClientMoney } = await import("../api/src/client-money/port.ts");
-const { mergeIfSafe, whyNotSafe, SYSTEM_ACTOR, CASE_SIDE_LINE } = await import("../api/src/front-office/duplicates/merge/review.ts");
+const { mergeIfSafe, whyNotSafe, DuplicateReview, SYSTEM_ACTOR, CASE_SIDE_LINE, STALE_LINE } = await import("../api/src/front-office/duplicates/merge/review.ts");
 const mergeFeature = (await import("../api/src/features/front-office-merge.ts")).default;
 type Ctx = import("../api/src/platform/identity/keys.ts").StaffContext;
 
@@ -206,6 +206,43 @@ try {
     flagBefore === "1" && keep.status === 200 && sql(`select status from fo_dup_review where id = '${PB}'`) === "KEPT_SEPARATE" && sql(`select count(*) from fo_lead where person_id in ('${both1.person.id}', '${both2.person.id}') and possible_match_person_id in ('${both1.person.id}', '${both2.person.id}')`) === "0", { flagBefore, keep });
   const kept = await call("GET", "duplicates/review?status=KEPT_SEPARATE", tO), keep2 = await call("POST", `duplicates/review/${PB}/keep-separate`, tO, {});
   ok("FO-9b BR-11 fail: the pair leaves To review for Kept separate; a second Keep separate → 409", kept.body.items.some((i: { id: string }) => i.id === PB) && !(await call("GET", "duplicates/review", tO)).body.items.some((i: { id: string }) => i.id === PB) && keep2.status === 409, keep2);
+
+  // ------------------------------------------------------------------------------- break round 1 (F1-F7)
+  const f1a = await add(R, { givenNames: "Eve", familyName: "Shift", email: "eve.shift@example.org" }), f1b = await add(R, { givenNames: "Eve", familyName: "Shifts", email: "eve.shift@example.org" });
+  const PF1 = pairOf(f1a.person.id, f1b.person.id);
+  sql(`update fo_person set email = 'eve.other@example.org' where id = '${f1b.person.id}'`);
+  const rf1 = await inTx((tx) => mergeIfSafe(tx, A, PF1, ports)) as { refused?: string[]; mergeRef?: string };
+  ok("FO-9b F1 fail: a pair whose email no longer matches (changed after it was listed) is never merged by itself (NOT_EXACT, from the records as they are now)", !rf1.mergeRef && (rf1.refused ?? []).includes("NOT_EXACT") && sql(`select count(*) from fo_person where id in ('${f1a.person.id}', '${f1b.person.id}') and merged_into_id is null`) === "2", rf1);
+  const f2a = await add(R, { givenNames: "Ivy", familyName: "Race", email: "ivy.race@example.org" }), f2b = await add(R, { givenNames: "Ivy", familyName: "Races", email: "ivy.race@example.org" });
+  const PF2 = pairOf(f2a.person.id, f2b.person.id);
+  // Another writer commits an invoice for the newer record while the merge runs (its last step, the outbox row, is where it lands).
+  const racing = { ...ports, emit: async () => { replica(`insert into money_invoice (id, firm_id, person_id, currency, due_date, created_by, updated_at) values (gen_random_uuid(), '${A}', '${f2b.person.id}', 'CAD', '2026-12-15', 'seed:fo9b', now())`); } };
+  const rf2 = await inTx((tx) => mergeIfSafe(tx, A, PF2, racing)) as { refused?: string[]; mergeRef?: string };
+  ok("FO-9b F2 fail: an invoice committed while the merge by itself runs → checked again under the merge's locks, rolled back (MONEY), no tombstone, no merge record, the pair stays OPEN",
+    !rf2.mergeRef && JSON.stringify(rf2.refused) === '["MONEY"]' && sql(`select count(*) from fo_person where id in ('${f2a.person.id}', '${f2b.person.id}') and merged_into_id is null`) === "2"
+    && sql(`select count(*) from fo_dup_merge where loser_id = '${f2b.person.id}'`) === "0" && sql(`select status from fo_dup_review where id = '${PF2}'`) === "OPEN", rf2);
+  const f3a = await add(R, { givenNames: "Gus", familyName: "Case", email: "gus.case@example.org" }), f3b = await add(R, { givenNames: "Gus", familyName: "Cases", email: "gus.case@example.org" });
+  const PF3 = pairOf(f3a.person.id, f3b.person.id);
+  const caseRace = new DuplicateReview(db, { ...ports, emit: async () => { replica(`insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values (gen_random_uuid(), (select id from workspace order by created_at limit 1), 'sample-firm', '${A}', (select coalesce(max(client_number), 9000) + 1 from case_client where firm_key = 'sample-firm'), 'Gus Sample', 'PERSON', '${f3b.person.id}', 'seed:fo9b')`); } });
+  const rf3 = await caseRace.merge(R, PF3, { survivorId: f3a.person.id }).then(() => 200, (e: { status?: number; response?: { detail?: string } }) => `${e.status}:${e.response?.detail}`);
+  ok("FO-9b F3 fail: a case opened while a guided merge runs → 409 with the case sentence, nothing merged", rf3 === `409:${CASE_SIDE_LINE}` && sql(`select count(*) from fo_person where id in ('${f3a.person.id}', '${f3b.person.id}') and merged_into_id is null`) === "2", rf3);
+  const f4a = await add(R, { givenNames: "Lou", familyName: "Stale", email: "lou.stale@example.org" }), f4b = await add(R, { givenNames: "Lou", familyName: "Stales", email: "lou.stale@example.org" });
+  const PF4 = pairOf(f4a.person.id, f4b.person.id);
+  const pv4 = await call("POST", `duplicates/review/${PF4}/preview`, tR, { survivorId: f4a.person.id });
+  sql(`update fo_person set email = 'lou.changed@example.org', updated_at = now() + interval '1 second' where id = '${f4b.person.id}'`);
+  const st = await call("POST", `duplicates/review/${PF4}/merge`, tR, { survivorId: f4a.person.id, choices: { email: "LOSER" }, updatedAt: pv4.body.updatedAt });
+  ok("FO-9b F4 fail: the loser changed after the preview → 409 STALE_VERSION with the sentence, nothing merged", st.status === 409 && st.body.code === "STALE_VERSION" && st.body.detail === STALE_LINE && sql(`select merged_into_id is null from fo_person where id = '${f4b.person.id}'`) === "t", st);
+  const pv4b = await call("POST", `duplicates/review/${PF4}/preview`, tR, { survivorId: f4a.person.id });
+  const fresh = await call("POST", `duplicates/review/${PF4}/merge`, tR, { survivorId: f4a.person.id, choices: { email: "LOSER" }, updatedAt: pv4b.body.updatedAt });
+  ok("FO-9b F4 pass: with the preview's updatedAt still true, the merge goes through and keeps the picked email", fresh.status === 200 && sql(`select email from fo_person where id = '${f4a.person.id}'`) === "lou.changed@example.org", fresh);
+  sql(`insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values (gen_random_uuid(), (select id from workspace order by created_at limit 1), 'sample-firm', '${A}', (select coalesce(max(client_number), 9000) + 1 from case_client where firm_key = 'sample-firm'), 'Lena Sample', 'PERSON', '${L1}', 'seed:fo9b')`);
+  const u5 = await call("POST", `duplicates/merges/${auto.mergeRef}/undo`, tR, {});
+  ok("FO-9b F5 fail: Undo of a merge whose survivor became a case-side client since → 409 NEEDS_CASE_SIDE, nothing undone", u5.status === 409 && u5.body.code === "NEEDS_CASE_SIDE" && sql(`select merged_into_id from fo_person where id = '${L2}'`) === L1, u5);
+  const c6 = await call("POST", `duplicates/review/${PN}/merge`, tR, { survivorId: noor.person.id, choices: { emial: "LOSER" } });
+  const c6p = await fetch(`${BASE}/duplicates/review/${PN}/merge`, { method: "POST", headers: { authorization: `Bearer ${tR}`, "content-type": "application/json" }, body: `{"survivorId":"${noor.person.id}","choices":{"__proto__":"LOSER"}}` });
+  ok("FO-9b F6 fail: choices with an unknown field (emial) or __proto__ → 422 naming it, nothing merged", c6.status === 422 && Object.keys(c6.body.fields ?? {}).some((k) => k.includes("emial")) && c6p.status === 422 && sql(`select status from fo_dup_review where id = '${PN}'`) === "OPEN", [c6, c6p.status]);
+  const q7 = await call("GET", "duplicates/merges?x=1", tR);
+  ok("FO-9b F7 fail: an unknown query field on the Merged tab → 422 naming it", q7.status === 422 && !!q7.body.fields?.x, q7);
 
   // DW8: no contact value in any audit line or event of these actions
   const lines = sql(`select coalesce(string_agg(coalesce(detail::text, '') || ' ' || coalesce(summary, ''), ' '), '') from audit_event where action in ('person.merged', 'person.unmerged', 'fo.duplicates.kept_separate')`)

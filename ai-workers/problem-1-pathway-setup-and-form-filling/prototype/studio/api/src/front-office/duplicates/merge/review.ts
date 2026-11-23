@@ -28,6 +28,7 @@ import { MergeBusy, mergeRecords, unmergeRecords, type MergePorts } from "./serv
 export const REVIEW_KEY = "agent/prospect:edit";
 export { MERGE_KEY };
 export const SYSTEM_ACTOR = "system:fo-duplicates";
+export const STALE_LINE = "One of these records was changed after you opened the merge. Nothing was merged. Open it again to see the changes.";
 export const CASE_SIDE_LINE = "This person has a case; merge them from the client record.";
 export type Unsafe = "NOT_EXACT" | "CASE" | "CASE_UNKNOWN" | "DOCUMENT" | "MONEY";
 
@@ -68,11 +69,19 @@ export async function whyNotSafe(tx: Tx, firmId: string, ids: string[], reasons:
   if (cases === null) out.add("CASE_UNKNOWN"); else if (cases.size) out.add("CASE");
   const [docs] = await tx.$queryRaw<{ n: number }[]>`
     select ((select count(*) from "fo_retainer" where "firm_id" = ${firmId}::uuid and "signer_person_id" = any(${ids}::uuid[]))
-          + (select count(*) from "fo_identity_check" where "firm_id" = ${firmId}::uuid and "person_id" = any(${ids}::uuid[]) and "copy_file_key" is not null))::int as n`;
+          + (select count(*) from "fo_identity_check" where "firm_id" = ${firmId}::uuid and "person_id" = any(${ids}::uuid[]) and "copy_file_key" is not null)
+          + (select count(*) from "fo_signer" where "firm_id" = ${firmId}::uuid and "person_id" = any(${ids}::uuid[])))::int as n`;
   if (docs.n) out.add("DOCUMENT");
   const money = new ClientMoney(tx as unknown as PrismaClient);
   for (const id of ids) if (await money.hasMoney(firmId, { personId: id })) { out.add("MONEY"); break; }
   return [...out];
+}
+
+/** The exact keys the two records share now (email, readable E.164 phone). */
+async function liveReasons(tx: Tx, firmId: string, ids: string[]): Promise<MatchReason[]> {
+  const r = await tx.foPerson.findMany({ where: firmScope(firmId, { id: { in: ids } }), select: { email: true, phoneE164: true } });
+  if (r.length !== 2) return [];
+  return [...(r[0].email && r[0].email.toLowerCase() === r[1].email?.toLowerCase() ? [{ key: "EMAIL" as const }] : []), ...(r[0].phoneE164 && r[0].phoneE164 === r[1].phoneE164 ? [{ key: "PHONE" as const }] : [])];
 }
 
 const systemCtx = (firmId: string, firmKey = ""): StaffContext => ({ staffId: "00000000-0000-0000-0000-000000000000", firmId, firmKey, roles: [], keys: [MERGE_KEY], duties: [], authTime: 0, via: "local" });
@@ -82,11 +91,20 @@ export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports:
   const [p] = await tx.$queryRaw<{ low_id: string; high_id: string; reasons: MatchReason[]; status: string }[]>`
     select "low_id"::text, "high_id"::text, "reasons", "status"::text from "fo_dup_review" where "firm_id" = ${firmId}::uuid and "id" = ${pairId}::uuid for update`;
   if (!p || p.status !== "OPEN") return { refused: [] };
-  const why = await whyNotSafe(tx, firmId, [p.low_id, p.high_id], p.reasons);
+  const ids = [p.low_id, p.high_id];
+  // The match as the records are now, never as stored when the pair was first seen (break F1).
+  const why = await whyNotSafe(tx, firmId, ids, await liveReasons(tx, firmId, ids));
   if (why.length) return { refused: why };
-  const people = await tx.foPerson.findMany({ where: firmScope(firmId, { id: { in: [p.low_id, p.high_id] } }), select: { id: true, createdAt: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  const people = await tx.foPerson.findMany({ where: firmScope(firmId, { id: { in: ids } }), select: { id: true, createdAt: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   if (people.length !== 2) return { refused: [] };
+  await tx.$executeRaw`savepoint fo_dup_auto`;
   const { merge_ref } = await mergeRecords(tx, systemCtx(firmId), { kind: "PERSON", survivor_fo_id: people[0].id, loser_fo_id: people[1].id, reason: "Merged by itself: exact match, no case, document or money (P-574 (2))." }, ports, { automatic: true });
+  // Checked again once the merge holds both records' locks (break F2, F3): a case, document or money row committed while
+  // the merge ran is seen now (read committed), and the merge is rolled back. A writer that starts after these locks
+  // waits on them; that it then writes on the merged-away record is the money side's check (Question for the tech lead).
+  const after = await whyNotSafe(tx, firmId, ids, [{ key: "EMAIL" }]);
+  if (after.length) { await tx.$executeRaw`rollback to savepoint fo_dup_auto`; return { refused: after }; }
+  await tx.$executeRaw`release savepoint fo_dup_auto`;
   await tx.foDupReview.updateMany({ where: firmScope(firmId, { id: pairId }), data: { status: "MERGED", mergeId: merge_ref, decidedBy: SYSTEM_ACTOR, decidedAt: new Date() } });
   return { mergeRef: merge_ref };
 }
@@ -134,24 +152,24 @@ export class DuplicateReview {
   }
 
   async list(ctx: StaffContext, status: "OPEN" | "MERGED" | "KEPT_SEPARATE" = "OPEN") {
-    const rows = await this.db.foDupReview.findMany({ where: firmScope(ctx.firmId, { status }), orderBy: [{ score: "desc" }, { firstSeenAt: "asc" }, { id: "asc" }], take: 500 });
+    const rows = await this.db.foDupReview.findMany({ where: firmScope(ctx.firmId, { status }), orderBy: [{ score: "desc" }, { firstSeenAt: "asc" }, { id: "asc" }] });
     const ids = [...new Set(rows.flatMap((r) => [r.lowId, r.highId]))];
     const card = await cards(this.db, ctx.firmId, ids), via = (id: string) => card.get(id)?.mergedIntoId ?? id;   // a merged-away side is seen through its survivor
     const [see, cases] = await Promise.all([seen(this.db, ctx, [...new Set(ids.map(via))]), this.db.$transaction((tx) => caseOf(tx, ids))]);
     const items = rows.filter((r) => see.has(via(r.lowId)) && see.has(via(r.highId)) && (status !== "OPEN" || (!card.get(r.lowId)?.mergedIntoId && !card.get(r.highId)?.mergedIntoId)))
       .map((r) => ({ id: r.id, kind: r.kind, people: [card.get(r.lowId)!, card.get(r.highId)!].map(({ mergedIntoId: _, ...c }) => c), score: r.score, reasons: r.reasons, firstSeenAt: r.firstSeenAt, status: r.status,
-        decidedAt: r.decidedAt, automatic: r.decidedBy === SYSTEM_ACTOR, mergeRef: r.mergeId, needsCaseSide: cases === null || cases.has(r.lowId) || cases.has(r.highId) }));
+        decidedAt: r.decidedAt, automatic: r.decidedBy === SYSTEM_ACTOR, mergeRef: r.mergeId, needsCaseSide: cases === null || cases.has(r.lowId) || cases.has(r.highId) })).slice(0, 500);   // filtered by visibility first (break F8)
     return { items, openCount: status === "OPEN" ? items.length : undefined };
   }
 
   /** The Merged tab (concept M6): every merge whose surviving record the viewer may open, newest first. */
   async merges(ctx: StaffContext) {
-    const rows = await this.db.foDupMerge.findMany({ where: firmScope(ctx.firmId, { kind: "PERSON" as const }), orderBy: [{ at: "desc" }, { id: "asc" }], take: 500 });
+    const rows = await this.db.foDupMerge.findMany({ where: firmScope(ctx.firmId, { kind: "PERSON" as const }), orderBy: [{ at: "desc" }, { id: "asc" }] });
     const see = await seen(this.db, ctx, [...new Set(rows.flatMap((m) => [m.survivorId, m.loserId]))]);
     const card = await cards(this.db, ctx.firmId, [...new Set(rows.flatMap((m) => [m.survivorId, m.loserId]))]);
     return { items: rows.filter((m) => see.has(m.survivorId) && (m.undoneAt === null || see.has(m.loserId))).map((m) => ({
       id: m.id, mergeRef: m.id, kind: m.kind, survivor: { personId: m.survivorId, name: card.get(m.survivorId)?.name ?? "" }, loser: { personId: m.loserId, name: card.get(m.loserId)?.name ?? "" },
-      automatic: m.automatic, by: m.by, at: m.at, undoneAt: m.undoneAt })) };
+      automatic: m.automatic, by: m.by, at: m.at, undoneAt: m.undoneAt })).slice(0, 500) };
   }
 
   /** Both values of every field, the default pick, what will move, each side's updatedAt (concept M7). */
@@ -175,7 +193,7 @@ export class DuplicateReview {
   }
 
   /** The guided merge (P-574 (2)): the viewer picks the survivor and, field by field, the values. */
-  async merge(ctx: StaffContext, id: string, body: { survivorId: string; choices?: Record<string, FieldPick>; reason?: string }) {
+  async merge(ctx: StaffContext, id: string, body: { survivorId: string; choices?: Record<string, FieldPick>; reason?: string; updatedAt?: { survivor: string; loser: string } }) {
     try {
       return await this.db.$transaction(async (tx) => {
         const p = await this.pair(tx, ctx, id);
@@ -184,7 +202,21 @@ export class DuplicateReview {
         if (!l) return problem(422, "Check the details", "survivorId: Pick one of the pair's two people. Nothing was saved.", { code: "INVALID", fields: { survivorId: "Pick one of the pair's two people." } });
         const cases = await caseOf(tx, [s, l]);
         if (cases === null || cases.size) conflict(CASE_SIDE_LINE, "NEEDS_CASE_SIDE");
+        if (body.updatedAt) {   // the survivor as the person merging saw it (preview's updatedAt)
+          const now = await tx.foPerson.findMany({ where: firmScope(ctx.firmId, { id: { in: [s, l] } }), select: { id: true, updatedAt: true } });
+          const at = (id: string) => now.find((x) => x.id === id)?.updatedAt.getTime();
+          if (at(s) !== Date.parse(body.updatedAt.survivor) || at(l) !== Date.parse(body.updatedAt.loser)) conflict(STALE_LINE, "STALE_VERSION");
+        }
         const { merge_ref } = await mergeRecords(tx, ctx, { kind: "PERSON", survivor_fo_id: s, loser_fo_id: l, ...(body.choices ? { choices: body.choices } : {}), ...(body.reason ? { reason: body.reason } : {}) }, this.ports);
+        // With both records locked (break F3, F4): a case opened while the merge ran rolls it back; the values the person
+        // merging saw (preview's updatedAt, concept M7) must still be the records' (STANDARDS §4: a stale save is a 409).
+        const again = await caseOf(tx, [s, l]);
+        if (again === null || again.size) conflict(CASE_SIDE_LINE, "NEEDS_CASE_SIDE");
+        if (body.updatedAt) {   // the loser as the merge locked and read it (its snapshot)
+          const m = await tx.foDupMerge.findFirst({ where: firmScope(ctx.firmId, { id: merge_ref }), select: { loserSnapshot: true } });
+          const was = (m?.loserSnapshot as { loser?: { updated_at?: string } } | null)?.loser?.updated_at;
+          if (!was || Date.parse(String(was)) !== Date.parse(body.updatedAt.loser)) conflict(STALE_LINE, "STALE_VERSION");
+        }
         await tx.foDupReview.updateMany({ where: firmScope(ctx.firmId, { id: p.id }), data: { status: "MERGED", mergeId: merge_ref, decidedBy: `staff:${ctx.staffId}`, decidedAt: new Date() } });
         return { mergeRef: merge_ref };
       });
@@ -195,8 +227,11 @@ export class DuplicateReview {
   async undo(ctx: StaffContext, mergeRef: string) {
     try {
       return await this.db.$transaction(async (tx) => {
-        const m = await tx.foDupMerge.findFirst({ where: firmScope(ctx.firmId, { id: mergeRef, kind: "PERSON" as const }), select: { survivorId: true } });
+        const m = await tx.foDupMerge.findFirst({ where: firmScope(ctx.firmId, { id: mergeRef, kind: "PERSON" as const }), select: { survivorId: true, loserId: true } });
         if (!m || !(await seen(tx, ctx, [m.survivorId])).size) return problem(404, "Not found", "No such merge in your firm.", { code: "NOT_FOUND" });
+        // A person who became a case-side client since the merge is split by the case side only (break F5).
+        const cases = await caseOf(tx, [m.survivorId, m.loserId]);
+        if (cases === null || cases.size) conflict("This person has a case now; undo the merge from the client record.", "NEEDS_CASE_SIDE");
         const out = await unmergeRecords(tx, ctx, mergeRef, this.ports);
         await tx.foDupReview.updateMany({ where: firmScope(ctx.firmId, { mergeId: mergeRef }), data: { status: "OPEN", mergeId: null, decidedBy: null, decidedAt: null } });
         return out;
