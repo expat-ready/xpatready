@@ -72,3 +72,90 @@ None.
 Details in `screens/PF-4bc/journey-test-reviewer-2026-11-23.md`. Below 8 because of M1, M2 and m1. Accessibility and visual quality do not apply (no page).
 
 Verdict: Changes 964275775006a7d4964bbb7c65a436d9a6b4eaa0
+
+## Round 2 (head fa8aefc670f09571572a407c74e5bbcd8c47604a)
+
+Reviewer: independent session, 23 Nov 2026. Read `git diff 964275775..fa8aefc67` (provider.ts, the test, the fake, challenge.md, one comment) and the callers again (session/service.ts:46-47, :110-144, :187-224; staff-read/service.ts:24-45).
+
+**Verdict: Ship (Approve).** All round-1 Majors (review M1, M2; break M1, M2, M3) are fixed or declared, and each fix has a test that fails without it. No new Blocker or Major. Five minors stay open (r2-m1 to r2-m5). The first two are what is left of M1 and M2 once Cognito is slow.
+
+### What I ran
+* `npx tsx tests/check_pf4bc_cognito_admin.ts`: 42 passed, 0 failed, exit 0 (4.8 s).
+* **Mutations** (scratch copy of provider.ts each time, then restored; `git status` clean). Every one made the suite fail:
+
+  | Mutation | Test that failed |
+  |---|---|
+  | (A) no deadline (a signal that never aborts) | break M1 |
+  | (B) the email check after a lookup by `sub` removed | break M2, foreign `sub` |
+  | (C) the by-email `sub` comparison removed | break M2, stale `sub` and the right-`sub` pass |
+  | (H) a stale `sub` treated as "nothing to end" again (round-1 behaviour) | break M2, stale `sub` |
+  | (D) the Gate removed | review M2: `most: 10` |
+  | (E) `giveBack` removed | break m1 |
+  | (F) `maxAttempts: 1` | review m4 and break m1 |
+  | (G) the `Enabled` check removed | break m2 |
+
+* **Probes** on the recorded fake (`r2probe.mts`, session scratchpad):
+  * P1: a throttle answered at 2.5 s, then the SDK's retry, ends at 3001 ms with 503 and no user created.
+  * P1b: a reset whose answers take 1.1 s each ends at 3001 ms with 503, and the authenticator app is still on (AdminSetUserMFAPreference was never sent).
+  * P2: 10 throttled reads, then 8 reads aborted at 1.5 s, then 10 reads: all TOTP. The Gate is released on the error path and the abort path.
+  * P5: a code given back keeps its expiry (refused 2 s after it). P6: three parallel redeems give one success.
+  * P7: a `local-…` subject on cognito gets 409 MISMATCH for both the read and the reset. That is the safe direction.
+* **SDK fact:** `@smithy/core` retry `isTransientError` excludes `AbortError` (submodules/retry/index.js:60). An aborted request is never retried, and an attempt after the deadline fails at once.
+* `graph.mjs --check` exit 0.
+* Not run:
+  * `tsc` (the kernel stopped it for memory);
+  * check_pf4b_session_reads.ts (untouched since round 1);
+  * a live pool.
+
+### Round-1 items
+* **Review M1 / break M1: fixed for a lone caller.** One 3 s AbortSignal covers every request and retry of a call (provider.ts:157-160). Two-step reads have 1.5 s. The deadline test fails without the fix (A). The remainder is r2-m2.
+* **Review M2: declared, and capped per read.** challenge.md and PR Question 3 propose a `two_step_method` column as a new row. That is an acceptable stop-gap for a declared [M] deviation, because the schema change is outside this row. The cap is pinned (D). The remainder is r2-m1.
+* **Break M2: fixed.** `find()` (provider.ts:179-188):
+  * a lookup by `sub` must match the email;
+  * a stale `sub` is looked up again by email, and a different `sub` there → 409;
+  * only "nobody under either" counts as nothing to end.
+  * Pinned by (B), (C) and (H).
+* **Break M3: fixed honestly.**
+  * The fake keeps the passkey listed after a reset.
+  * The fixture header's "Not verified" list and PR Question 4 name the open point.
+  * The docstring no longer claims a reset clears passkeys.
+* **Minors fixed with tests:** m1 (code given back; break m1), m4, break m2 (`Enabled`), break m3 (`OtherError`), break m4 (exactly one UUID `sub`). m5 and m6 are declared, m7 is fixed and m8 (the PR body) is corrected.
+* **Contract m3: the explanation is acceptable, but it is in the wrong place** (r2-m4).
+  * The local stand-in signs in with the second step done (PF-4's rule), so "before enrolment" cannot happen on local.
+  * But the note is only in the PR body.
+
+### Minors (Should; none blocks)
+* **r2-m1. The read deadline starts after the Gate, so the Team list has no total budget.**
+  * The Gate is one FIFO queue for the whole server (provider.ts:141, :213-215).
+  * P3, 40 rows: 1.0 s with Cognito at 100 ms, 14.0 s at 1.4 s, and 15.0 s at 2 s, with all 40 unknown.
+  * Because the queue is server-wide, one firm's list also delays other firms' My account reads.
+  * Fix (cheap): start the 1.5 s deadline before `acquire`, so a queued read gives up as unknown. Put the measured figures in challenge.md, which now only says "more when Cognito is slow".
+* **r2-m2. The 3 s budget fits 5 s only if nothing waits for the firm row lock.**
+  * accept and `inFirm` lock the firm row `for no key update` before the provider call (session/service.ts:47, :112), and each holds that lock for its own call of up to 3 s.
+  * Two writes in one firm while Cognito is slow can take up to 3 s waiting plus 3 s calling, which is over 5 s. That is round-1 M1's outcome again: Cognito changed, the database rolled back, an unmapped 500.
+  * The same outcome follows when an aborted call had already been applied. That case returns 503, and a retry is safe: create, reset and sign-out are idempotent.
+  * Found by reading the code; not reproduced, because no database was run.
+  * The M1 test compares constants and never reads the callers' transaction options.
+  * Fix or declare: a `set local lock_timeout`, or an explicit `{ timeout }` on the three `$transaction` calls, plus a line in the PR.
+* **r2-m3. twoStep's fast path skips the email check** (provider.ts:216-217).
+  * P4: person A, not enrolled, whose row holds B's live `sub`, reads B's PASSKEY. A reset with that row gets 409.
+  * This is acceptable for a read. A foreign `sub` needs a corrupted row, the actions that change something refuse, and the fast path saves one request per row.
+  * But the comment at :208-210 ("one held by someone else … reads as a refusal") is true only for a stale `sub`. Fix: correct the comment.
+* **r2-m4. Move the pre-enrolment difference (round-1 m3) into the contract.** Add one line to the header of `ports/contracts/identity-admin-port.contract.ts`. Today it is only in PR Question 5, and the repository is the record (AGENTS rule 10).
+* **r2-m5. Two items are neither fixed nor answered:**
+  * Round-1 m2: a CONFIRMED user is reused, and only `Enabled` is checked. This is defensible, because the invitation proved the person controls that email, but say so in the PR.
+  * Break m5: a credentials error with no status maps to 503 UNREACHABLE.
+
+### Dimensions changed since round 1
+* D2: 4/5 (r2-m2).
+* D5: 4/5.
+* D15: 3/5 (r2-m1, declared).
+* D16: 4/5 (every fix pinned; the M1 test only compares constants).
+* D18: 5/5.
+* D19: 2/5, unchanged (R1.5 still does not close on cognito; declared).
+* The rest are as in round 1.
+
+### Journey score: 8.1/10, a pass (6.5 of 8 applicable criteria, none at 0)
+Details are in `screens/PF-4bc/journey-test-reviewer-2026-11-23.md`, section "Round 2".
+
+Verdict: Approve fa8aefc670f09571572a407c74e5bbcd8c47604a

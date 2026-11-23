@@ -53,3 +53,42 @@ Head 964275775006a7d4964bbb7c65a436d9a6b4eaa0. **PF-4bc is an API adapter with n
 4. Declare the passkey-reset assumption (m5). This raises feedback and state.
 
 Not tested: a real screen reader, an intended user's unaided walk (D17/D20 stay with the founder), a live Cognito pool (C21), and the database-backed check_pf4b_session_reads.ts.
+
+## Round 2 (head fa8aefc670f09571572a407c74e5bbcd8c47604a)
+I walked the same journeys through the port on the recorded fake: the PR's test (42/0) plus probes P1–P7 (`r2probe.mts`, session scratchpad). There is still no page, no database run and no live pool.
+
+* **2. Accept again:** reuses the existing account; a turned-off user → 409 SIGN_IN_ACCOUNT_DISABLED (test). A CONFIRMED user is still reused (r2-m5).
+* **4. Cognito busy at redeem:** 503, then the same code works (test). If the code expires meanwhile it is refused (P5). Three parallel redeems give one success (P6). **Fixed.**
+* **5. Owner resets two-step, with slow answers:**
+  * 503 at 3001 ms, the app still on, nothing sent (test; P1b).
+  * At normal speed the reset completes.
+  * Under firm-lock contention the budget can still pass 5 s (r2-m2, from code).
+* **6. Sign out everywhere, stale or foreign `sub`:** 409 SIGN_IN_ACCOUNT_MISMATCH, nobody touched. With the right `sub` it reaches the live user (test). **Fixed.**
+* **7. Team list:** one request per person, at most 4 at a time.
+  * 40 rows: 1.0 s with Cognito at 100 ms, 14–15 s when Cognito is slow (P3, r2-m1).
+  * A row holding another person's live `sub` shows that person's state (P4, r2-m3).
+* **9. Break it:**
+  * An unknown error name is logged as OtherError.
+  * A `sub` that is not exactly one UUID → 502.
+  * The Gate is released after throttles and aborts (P2).
+  * An abort is never retried (smithy `isTransientError`).
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | Every adapter call works on recorded answers; 42/42 |
+| Next step obvious | 1 | A busy redeem keeps the code. A mismatch or a turned-off account says "contact support" |
+| Plain words | 1 | Our own words on every error |
+| Feedback and state | ½ | "Not set up" after a passkey reset is unverified on a real pool (declared). A foreign `sub` reads another person's state (r2-m3) |
+| Correct data | ½ | Fixed for a lone caller. Contention can still roll back after the provider changed (r2-m2) |
+| Error recovery | 1 | The code is kept. Create, reset and sign-out are safe to retry after a 503 |
+| Accessibility and screen sizes | n/a | No page |
+| Speed | ½ | 40 rows in 1.0 s when Cognito is healthy; 15 s when it is slow, queued across firms (r2-m1) |
+| Visual quality | n/a | No page |
+| Trust and sources | 1 | The passkey limit and the N+1 are declared (fixture header, challenge.md, PR Questions 3–4) |
+
+**6.5 of 8 applicable criteria (8.1/10), none at 0. A pass.** Fixes that would raise it:
+1. Start the read deadline before the Gate (r2-m1). This raises speed.
+2. A lock or transaction bound on the three callers (r2-m2). This raises correct data.
+3. Correct the fast-path comment, or add the email check (r2-m3). This raises feedback and state.
+
+Not tested: a screen reader, an intended user's unaided walk (D17/D20 stay with the founder), a live Cognito pool (C21), and the database-backed suites.
