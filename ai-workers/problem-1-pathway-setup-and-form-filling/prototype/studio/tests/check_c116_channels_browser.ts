@@ -130,7 +130,10 @@ try {
   ok("C11.6-11 (screen): the older read is refused with \"Changed since you read it\" and a Reload, nothing saved", /Reload, then make your change again/.test(await dialog().innerText()) && sql(`select coalesce(channel::text, '') from filing_item where id='${item(P, "IMM 5707")?.id}'`) === "");
   await state("changed-since-you-read-it", "[role=dialog]");
   await press(dialog().getByRole("button", { name: "Reload" }));
-  await p.waitForTimeout(800);
+  // Reload is done when its notice goes: the dialog takes the new version and clears the refusal in one update
+  // (item-channels.tsx). A fixed 800 ms wait here pressed Save before a slow reload had landed, on the older version,
+  // so the dialog stayed open and the walk stopped (red in packed runs on a busy machine, green alone).
+  await dialog().getByText("Changed since you read it").waitFor({ state: "detached", timeout: 10_000 });
   await press(dialog().getByRole("button", { name: "Save" }));
   await dialog().waitFor({ state: "detached", timeout: 15_000 });
   await row(P, "IMM 5707").and(p.locator('[data-channel="PDF_UPLOAD"]')).waitFor({ timeout: 15_000 });
