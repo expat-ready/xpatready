@@ -91,7 +91,7 @@ export type FormItem = {
  *  needed line that is never waivable only if they call for it; either blocks until received or ruled out. */
 export type DocumentItem = { item?: string; label: string; subject: string; person: string; required: boolean; received: boolean; owes?: Owes; never_waivable?: boolean; waiting?: string;
   /** CS-D7 (4): its current file's flag warnings (expired, too old, a translation needed): items passed with a reason, never a stop. */
-  flag_warnings?: string[] };
+  flag_warnings?: { key: string; words: string }[] };
 export type OpenCheck = { fact: string; label: string; subject: string; person: string };
 export type Finding = { id: string; subject?: string; form?: string; severity: "CRITICAL" | "MAJOR" | "MINOR" | "INFO"; words: string };
 export type Fee = { line: string; superseded?: boolean; acceptedUntil: string | null;
@@ -253,7 +253,7 @@ export function filingReadiness(x: FilingInput): FilingReadiness {
   if (x.releaseUpdate) warn({ code: "release_update", item: `release|${x.filing}`, part: x.releaseUpdate.key, owes: "staff", words: x.releaseUpdate.words });
   for (const d of x.documents ?? []) {
     // CS-D7 (4, map row 70): a received file's flag warning is an item to fix or pass with a reason, never a block.
-    for (const w of d.flag_warnings ?? []) warn({ code: "document_flag", item: d.item, form: d.label, subject: d.subject, part: w, owes: "staff", words: `${d.person}: ${d.label}: ${w}` });
+    for (const w of d.flag_warnings ?? []) warn({ code: "document_flag", item: d.item, form: d.label, subject: d.subject, part: w.key, owes: "staff", words: `${d.person}: ${d.label}: ${w.words}` }); // review N1: passed by its key, not its words
     if (d.received) continue;
     // M3-S4 (P-172): a line its release marks never waivable blocks until received; passing it with a reason is refused.
     if (d.never_waivable) block({ code: "document_never_waivable", item: d.item, form: d.label, subject: d.subject, owes: d.waiting && !d.required ? "staff" : d.owes ?? "client",

@@ -53,7 +53,12 @@ function Form({ v, err, setErr, close, done }: { v: View; err: string | null; se
       await api(`/runtime/documents/${v.document.id}/flags`, { method: "POST", json: { version: f.version, ...changed } });
       setErr(null);
       await done(); close();
-    } catch (e) { setErr(e instanceof ApiError && e.status === 409 ? `${(e as Error).message} The form now shows the flags as they are: make your change again.` : (e as Error).message); if (e instanceof ApiError && e.status === 409) await done(); }
+    } catch (e) {
+      // Review n2 / break R2-m2: a newer file replaced this one: retrying here can never work, so the words say close it.
+      const stale = e instanceof ApiError && (e.problem as { code?: string }).code === "not_current";
+      setErr(stale ? `${(e as Error).message} Close this and open the newer file's flags.` : e instanceof ApiError && e.status === 409 ? `${(e as Error).message} The form now shows the flags as they are: make your change again.` : (e as Error).message);
+      if (e instanceof ApiError && e.status === 409) await done();
+    }
     finally { sending.current = false; setBusy(false); }
   };
   return (

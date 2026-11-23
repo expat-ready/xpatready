@@ -95,3 +95,33 @@ A real screen reader; the intended user's unaided walk; the full CI set (the PR 
 Reviewer: Changes 157dfdb6d9d56506adf19d57bacdd4d11091b3f3
 
 Verdict: Block
+
+## Round 2 (head 2cd403ffdf43f56b4d964e24407d413218db4fc3; diff `157dfdb6d..2cd403ffd`)
+**Copy:** isolated `rev_csd7` on :4437, stopped afterwards. Live AI off, US$0. **Suites on :4437:** check_csd5_flags 35/35, check_csd5_flags_browser 33/33. **Typecheck:** `tsc -p api` no error in the changed files; `tsc -p web` clean. **Probes:** a pass-persistence script (API + SQL) and a 1024 px browser walk of the readiness item (scratchpad, not committed). **Journey:** round 2 in `journey-test-reviewer-2026-11-23.md`, score **8/10 (pass)**.
+
+**Round-1 findings re-checked:**
+- **M1, fixed.** `panel.tsx` keys `<Form>` on `flags.version` and keeps the error in the dialog, so a 409 refetch re-seeds the inputs. `save` sends only the fields that differ from the view it was seeded with. A reopen from the cache can no longer write back a field the person did not touch. The browser check fails if either fix is removed: the "form now shows their expiry" check and the notarisation-only check.
+- **M2, still open.** On this head `pr-rules` is red: "REFUSED: 1059 changed lines, over 800 (P-610 (1))". The PR body has no "Size exception: P-NNN".
+- **M3, fixed (one new defect, N1).** `flagWarningsOf` feeds each current file's warnings, and a translation still needed, into `DocumentItem.flag_warnings`. Readiness turns them into `document_flag` warnings, never blocks, and skips lines that are not applicable or waived. The migration's code list matches c78's list plus `document_flag` (checked against `20261109120000`), so the severity check still holds. In the browser at 1024 px the item shows under "The case team" with "Pass with a reason…". The pass was stored and showed as "1 passed with a reason".
+- **m2, fixed.** A replacement file keeps the language (tested). **m5, fixed:** the path in `evidence.prisma`. **m6, fixed:** ports 4434-4436 (runtime lane). **m4, resolved as a side effect:** the panel now sends only what changed, so the "language → English/French drops a staff Required" rule now runs from the screen too.
+- **m1 and m3 are not addressed, and there is no follow-up row** (BACKLOG has only rows 1217-1218). Both stay Should.
+
+**New findings:**
+- **N1 (Major, D2/D5): a passed age warning reopens every day.** The pass key is `item|part`, and `part` is the whole warning text (`engine/runtime/readiness.ts:256`). The age warning's text holds the day count: "Uploaded ${age} days ago…" (`api/src/case-document-flags.ts:60`).
+  - Probe: the document is 400 days old and gets a pass with a reason. The warning then sits under `passed` and is gone from `warns`. After moving `uploaded_at` back one day, the same warning is open again ("Uploaded 401 days ago…") and the pass covers nothing. A filing marked Ready to file falls back the next morning, and every re-pass adds another history row.
+  - Fix: give each flag warning a stable key separate from its words. For example, `flagsOf` returns `{ key, words }`, with keys `expired|<expires_on>`, `no_expiry`, `age|<uploaded day>|<max_age_days>` and `translation|<document id>`. Pass the key as `part` and the words as `words`. Add a check: pass the age warning, move the date one day, and it stays passed.
+- **n1 (Minor, Should), the audit wording question:** "not set → Required" (`case-document-flags.ts:156,167`). Changing the test to match the stored value is honest, because the old expectation described something the code never did. But the wording should change:
+  - The same dialog calls the empty choice "From the document type" and shows "Now: Not required (from the document type)".
+  - The history then says "not set", which hides what was in force. Someone reading "notarisation: not set → Required" cannot tell that the earlier value was Not required. Someone reading "Required → not set" cannot tell what it became.
+  - Fix: keep `changed` comparing stored values, but word a null translation or notarisation in the summary as the effective value, e.g. "from the document type (Not required) → Required". Use `flagsOf(d, t.defaults, today)` before and after. Update the browser assertion.
+- **n2 (Minor, Should): a 409 `not_current` in the panel gives false advice** (`web/src/pages/case/document-flags/panel.tsx:56`). Every 409 adds "The form now shows the flags as they are: make your change again". After another person uploads a newer file, the dialog stays bound to the old document id, so every retry is refused again. Fix: on `code === "not_current"`, show the server's words only and close the dialog after `done()` (or turn Save off), so the person reopens it from the new file.
+- **n3 (Minor, Should): the PR body is out of date.** It still says "CS-D7 (4) … is not in this PR" and gives 28/28 and 30/30. Fix: update the readiness bullet, the counts (35/35, 33/33) and the migration note (the readiness_pass check is widened).
+
+**D changes since round 1:** D1 4 (row (4) built), D2 3 (no lost updates; N1), D5 3 (409 recovery sound; N1), D11 4, D16 4 (the concurrency checks fail without the fix), D19 4 (checklist → readiness works). The rest are unchanged.
+**BIC changes:** BIC-18 Met (the form re-seeds after a 409). The rest are unchanged.
+
+**To fix before Approve:** N1, and M2 (a split, or a Size exception that the Lead names). n1, n2, n3, m1 and m3 are Should: fix them or record follow-up rows.
+
+Reviewer: Changes 2cd403ffdf43f56b4d964e24407d413218db4fc3
+
+Verdict: Block

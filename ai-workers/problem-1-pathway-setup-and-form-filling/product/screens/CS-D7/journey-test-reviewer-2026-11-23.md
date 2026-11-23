@@ -77,3 +77,28 @@ Both say this right under the new "Translation + translator's affidavit — Need
 - The client's own link pages (they show no flags; not in the rows' scope).
 - Timings against the STANDARDS §9 budgets.
 - The full CI set: the PR is a draft, so only the guard and pr-rules have run.
+
+## Round 2 (head 2cd403ffdf43f56b4d964e24407d413218db4fc3)
+**Setup:** isolated `rev_csd7` on :4437 (not :4400), stopped afterwards. Live AI off, US$0. The builder's suites were re-run (flags 35/35, browser 33/33). Then J3/J9 were walked again at 1024 px, plus an API probe across two days.
+- **J4 and J5 hold now.** After a 409 the dialog shows the other person's expiry and says "make your change again". Saving again with nothing changed writes nothing. A notarisation-only save writes one audit line, and the expiry is untouched.
+- **J3 and J9 hold now.** The expired passport shows on the case page under Ready to file → The case team, as "Warning … Expired on 2026-11-22 …", with "Pass with a reason…". Passing it gave the toast "Passed with your reason" and "1 passed with a reason". No page errors.
+- **J7 holds now.** A replacement file keeps the staff-picked language.
+- **New, Major (review N1):** passing an age warning ("Uploaded 400 days ago…") does not last. The next day the text reads "401 days", the key changes, and the warning is open again.
+- **Still open:** F3 (two contradicting translation items). The translation line still has no action of its own. The history says "not set" where the dialog says "From the document type" (review n1).
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J1–J3 and J9: flags set, line shown, readiness item passed |
+| Next step obvious | ½ | Readiness now offers "Pass with a reason…"; F3 and the translation line with no action remain |
+| Plain words | ½ | F3; the audit's "not set" against the dialog's "From the document type" |
+| Feedback and state | 1 | The form re-seeds after a 409 and says so |
+| Correct data | ½ | No silent overwrite (J4/J5); an age pass is lost daily (N1) |
+| Error recovery | 1 | The 409 retry is safe; the dead end after a `not_current` 409 is minor (review n2) |
+| Accessibility and screen sizes | 1 | Browser suite: axe 0 serious, keyboard, 1440/1024/375 px |
+| Speed | ½ | Two queries per prepare read, no request per row; not timed against §9 |
+| Visual quality | 1 | Team components; the readiness item matches its neighbours |
+| Trust and sources | 1 | Origin per flag; the type's quote; the pass reason recorded with who and when |
+| **Total** | **8 / 10** | **Pass (no 0)** |
+
+**What would raise the score:** N1's stable keys (correct data); F3 (next step and plain words); the audit naming the type's default (plain words).
+**Not tested:** a real screen reader; an intended user's unaided walk (D17/D20); the §9 timings.

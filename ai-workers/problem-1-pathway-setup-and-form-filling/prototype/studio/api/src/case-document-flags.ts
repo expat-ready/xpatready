@@ -41,6 +41,16 @@ export type DocFlags = {
 const day = (d: Date) => d.toISOString().slice(0, 10);
 const daysBetween = (from: string, to: string) => Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 
+/** Review N1 (round 2): each warning has a key that stays the same from day to day (never its words, which count the
+ *  days), so a pass with a reason keeps covering it; a new file, a new expiry date or a new max age is a new key. */
+export function flagWarnings(d: DocRow, t: SnapTypeDefaults | undefined, today: string): { key: string; words: string }[] {
+  const out: { key: string; words: string }[] = [], exp = d.expiresOn ? day(d.expiresOn) : null;
+  if (exp && exp < today) out.push({ key: `expired|${d.id}|${exp}`, words: `Expired on ${exp}: check whether it is still accepted, or ask for a newer one. Nothing is blocked.` });
+  if (!exp && t?.has_expiry) out.push({ key: `no_expiry|${d.id}`, words: "Its type has an expiry date: enter the date on the document." });
+  if (t?.max_age_days) { const age = daysBetween(day(d.uploadedAt), today); if (age > t.max_age_days) out.push({ key: `age|${d.id}|${t.max_age_days}`, words: `Uploaded ${age} days ago; its type asks for one no older than ${t.max_age_days} days. Nothing is blocked.` }); }
+  return out;
+}
+
 /** The document's flags as they stand: what staff set, else the type's default from the release; and its warnings. */
 export function flagsOf(d: DocRow, t: SnapTypeDefaults | undefined, today: string): DocFlags {
   let translation = d.translation as FlagState | null, tFrom: DocFlags["translation_from"] = translation ? "staff" : "not_set", tWords = "";
@@ -53,11 +63,7 @@ export function flagsOf(d: DocRow, t: SnapTypeDefaults | undefined, today: strin
   if (!tWords) tWords = "Not set.";
   let notarisation = d.notarisation as FlagState | null, nFrom: DocFlags["notarisation_from"] = notarisation ? "staff" : "not_set";
   if (!notarisation && t?.notarisation_rule) { notarisation = t.notarisation_rule; nFrom = "type"; }
-  const warnings: string[] = [];
-  const exp = d.expiresOn ? day(d.expiresOn) : null;
-  if (exp && exp < today) warnings.push(`Expired on ${exp}: check whether it is still accepted, or ask for a newer one. Nothing is blocked.`);
-  if (!exp && t?.has_expiry) warnings.push("Its type has an expiry date: enter the date on the document.");
-  if (t?.max_age_days) { const age = daysBetween(day(d.uploadedAt), today); if (age > t.max_age_days) warnings.push(`Uploaded ${age} days ago; its type asks for one no older than ${t.max_age_days} days. Nothing is blocked.`); }
+  const exp = d.expiresOn ? day(d.expiresOn) : null, warnings = flagWarnings(d, t, today).map((w) => w.words);
   return { language: d.language, language_name: languageName(d.language), translation, translation_detail: d.translationDetail, translation_from: tFrom, translation_words: tWords,
     notarisation, notarisation_detail: d.notarisationDetail, notarisation_from: nFrom, expires_on: exp, warnings, version: d.flagsVersion };
 }
@@ -80,7 +86,7 @@ export function translationLines(docs: (DocRow & { fileName: string })[], typeOf
 
 /** CS-D7 (4): readiness reads each current file's flag warnings, and a translation still needed, as items (never a stop). */
 export async function flagWarningsOf(db: Pick<Db, "caseDocument" | "checklistLine">, subjects: string[], types: { key: string; name: string; defaults?: SnapTypeDefaults }[]) {
-  const out = new Map<string, string[]>(), today = new Date().toISOString().slice(0, 10);
+  const out = new Map<string, { key: string; words: string }[]>(), today = new Date().toISOString().slice(0, 10);
   if (!subjects.length) return out;
   const docs = await db.caseDocument.findMany({ where: { subjectId: { in: subjects }, current: true }, orderBy: [{ uploadedAt: "asc" }, { id: "asc" }] });
   const off = new Set((await db.checklistLine.findMany({ where: { subjectId: { in: subjects }, state: { in: ["not_applicable", "waived"] }, stage: { state: "CURRENT" } }, select: { subjectId: true, documentType: true } })).map((l) => `${l.subjectId}|${l.documentType}`));
@@ -89,7 +95,7 @@ export async function flagWarningsOf(db: Pick<Db, "caseDocument" | "checklistLin
     const key = `${d.subjectId}|${d.documentType}`;
     if (off.has(key)) continue;
     const t = typeOf(d.documentType), tl = translationLines([d], typeOf, today)[0];
-    const ws = [...flagsOf(d, t?.defaults, today).warnings, ...(tl?.state === "needed" ? [`${TRANSLATION_LINE} needed (${tl.words.replace(/\.$/, "")}).`] : [])];
+    const ws = [...flagWarnings(d, t?.defaults, today), ...(tl?.state === "needed" ? [{ key: `translation|${d.id}`, words: `${TRANSLATION_LINE} needed (${tl.words.replace(/\.$/, "")}).` }] : [])];
     if (ws.length) out.set(key, [...(out.get(key) ?? []), ...ws]);
   }
   return out;
@@ -158,7 +164,9 @@ export class CaseDocumentFlags {
     const changed = (Object.keys(next) as (keyof typeof next)[]).filter((k) => words(k, next[k]) !== words(k, d[k]));
     if (!changed.length) return this.view(c, d);
     const done = await this.db.$transaction(async (tx) => {
-      const n = await tx.caseDocument.updateMany({ where: { id: d.id, flagsVersion: d.flagsVersion }, data: { ...next, flagsVersion: { increment: 1 } } });
+      // Break R2-m1: only while it is still the current file (a newer upload at the same moment wins).
+      const n = await tx.caseDocument.updateMany({ where: { id: d.id, flagsVersion: d.flagsVersion, current: true }, data: { ...next, flagsVersion: { increment: 1 } } });
+      if (n.count !== 1 && (await tx.caseDocument.findUnique({ where: { id: d.id }, select: { current: true } }))?.current === false) problem(409, "not_current", "Not the current file", "A newer file of this document was uploaded: set the flags on that one. Nothing was changed.");
       if (n.count !== 1) problem(409, "flags_changed", "Changed since you read it", "Someone changed this document's flags at the same moment: read them again, then try again. Nothing was changed.");
       const log = new Audit(tx as never);
       // One audit line per flag changed (never the file's contents, RT-17).

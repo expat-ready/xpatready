@@ -36,7 +36,7 @@ export type ReadinessInputs = {
     /** M3-S4 break M1: a never waivable line that may be needed: the questions it waits for (it blocks until answered). */
     waiting?: string;
     /** CS-D7 (4): the current file's flag warnings (api/src/case-document-flags.ts), passed to readiness as items. */
-    flag_warnings?: string[] }[];
+    flag_warnings?: { key: string; words: string }[] }[];
   /** The per-form fact result (engine/runtime/forms.ts readiness) and who owes each fact. */
   factsOf: (form: string, subject: string) => Readiness;
   owesFact: (fact: string, subject: string) => Owes;
