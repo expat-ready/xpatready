@@ -395,6 +395,18 @@ try {
     const free = rowFree(pid), uo = await running, waited = Date.now() - t0; await held;
     ok("FO-9b R7 §2 fail: Undo waits for the people's locks and holds no pair row while it waits", mm.status === 200 && uo.status === 200 && free && waited >= 1000, { free, waited, uo: uo.status });
   }
+  // part 2b's limit (pair-model.md §4): an arrival never takes a person's lock inside its own transaction, so the merge by
+  // itself at arrival must run after the arrival commits. This turns red if the arrival path starts to call it inside.
+  {
+    const g1 = await add(R, { givenNames: "Ira", familyName: "Arrive7", phone: "+1 416 555 0197" });
+    const held = await db.$transaction(async (tx) => {
+      await arrive(tx as never, { firmId: A, door: "MANUAL", intakeKey: `manual:${randomUUID()}`, source: "Phone call", actor: `staff:${R.staffId}`, payloadHash: randomUUID(), ownerStaffId: R.staffId,
+        person: { givenNames: "Ira", familyName: "Arrive7b", email: null, phone: salesPhone("+1 416 555 0197") } }, ports);
+      return Number((await (tx as never as { $queryRaw: (q: TemplateStringsArray) => Promise<{ n: number }[]> }).$queryRaw`select count(*)::int as n from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()`)[0].n);
+    });
+    ok("FO-9b part 2b limit: an arrival that writes a pair takes no person's lock inside its transaction (the merge by itself at arrival runs after it commits)",
+      held === 0 && sql(`select count(*) from fo_dup_review where '${g1.person.id}' in (low_id, high_id)`) === "1", { held });
+  }
   // a chain: B into A, then A into D; Undo of the earlier one is refused (409), never "not found"
   const cA = await add(R, { givenNames: "Cal", familyName: "Chain7", phone: "+1 416 555 0195" }), cB = await add(R, { givenNames: "Cal", familyName: "Chains7", phone: "+1 416 555 0195" }), cD = await add(R, { givenNames: "Cal", familyName: "Chainz7", phone: "+1 416 555 0195" });
   const ch1 = await call("POST", `/front-office/duplicates/review/${pairOf(cA.person.id, cB.person.id)}/merge`, tR, { survivorId: cA.person.id });

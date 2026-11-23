@@ -11,7 +11,7 @@ Code: `api/src/front-office/duplicates/merge/review.ts` (`listed`, `keptBetween`
 * KEPT_SEPARATE, with who and when;
 * MERGED, naming its merge.
 
-It also stores `noted_by_merge_id`: the merge that first wrote the row, or null when an arrival wrote it. A Kept separate decision is never changed by any action, and a row is never deleted.
+It also stores `noted_by_merge_id`: the merge that **last noted** the row, or null. A merge notes a row when it first writes it, or when it finds it again after an earlier noting merge was undone. An Undo also credits to its merge a row someone's arrival wrote while the merge stood, once that row no longer matches. An arrival that writes a row, or finds it again, sets null. A Kept separate decision is never changed by any action, and a row is never deleted.
 
 **A root** is the live record a person's chain of merges ends at. `merged_into_id` is never re-pointed, so in B into A, then A into D, the root of A and of B is D.
 
@@ -35,13 +35,15 @@ It also stores `noted_by_merge_id`: the merge that first wrote the row, or null 
 | Keep separate (only on a pair that is To review) | Sets that one row to KEPT_SEPARATE. | Every OPEN pair between the same two live records moves to Kept separate, without being written. |
 | Guided merge, or merge by itself (only on a pair that is To review, re-read under the people's locks) | Sets its row to MERGED. `notePairs(survivor)` inserts the survivor's new pairs with `noted_by_merge_id` = this merge. | The loser's pairs leave To review (merged away). The new pairs appear, or show as Kept separate when a decision keeps them apart. |
 | Chained merge (B into A, then A into D) | The same as a merge. | Roots follow the whole chain, so B-C's decision still blocks D-C (R4-2). |
-| Undo (only the latest merge naming either record; part 1's rule, so a chain undoes in reverse: A into D first) | Sets the merge's own row back to OPEN. Nothing else is written. | See below. |
+| Undo (only the latest merge naming either record; part 1's rule, so a chain undoes in reverse: A into D first; the earlier one answers 409 `UNDO_REFUSED`) | Sets the merge's own row back to OPEN. For someone who arrived while the merge stood: their pair with the survivor that no longer matches gets this merge's id, and the loser's pairs are written (`notePairs(loser)`). | See below. |
 
 **What an Undo gives back.** These all follow from the derivation:
 * The merged pair is To review again; it was OPEN, since a merge needs that.
 * The loser's pairs are listed again, because the loser is live again.
 * The pairs this merge wrote are not listed, because their noting merge is undone.
 * A pair blocked only through the loser is To review again.
+
+* Someone who arrived while the merge stood: their pair with the survivor leaves the list if it matched only through the merged values, and their pair with the record split off is To review.
 
 When the Undo is of the last change, the list is exactly what it was before the merge. A pair whose row did not exist and a pair that is not listed look the same to a person. If a later merge or arrival finds a pair an undone merge wrote, that pair is listed again and names the new noter.
 
@@ -50,7 +52,7 @@ When the Undo is of the last change, the list is exactly what it was before the 
 | Level | Lock | Rule |
 |---|---|---|
 | L1 | Each person's advisory lock (`fo_dup_merge:<id>`, the same as `service.ts` `lockPair`) | Taken first, sorted, waiting. |
-| L2 | The pair row (`for update`) | Taken **only while holding L1 of both its people.** |
+| L2 | The pair row (`for update`) | **Waited on only while holding L1 of both its people.** With L1 of only one of them, a row is written only through `for update skip locked`, which never waits. |
 | L3 | The merge's and Undo's data rows | `NOWAIT` with back-off, then 503 Busy (Lead 5 on #3042). |
 
 | Writer | L1 | L2 | Other |
@@ -59,19 +61,24 @@ When the Undo is of the last change, the list is exactly what it was before the 
 | Guided merge | Both people | Its row | L3 through `mergeRecords` (L1 again: advisory locks stack) |
 | Merge by itself | Both people | Its row | The same |
 | Preview | — | — | Reads only |
-| Undo | Both people (`unmergeRecords`) | Its own pair row, by `merge_id` | L3 |
+| Undo | Both people (`unmergeRecords`) | Its own pair row by `merge_id`, after L3 (it never waits on it: see below); arrival pairs with the survivor that no longer match, `skip locked` | L3; `notePairs(loser)` |
 | `notePairs` (arrival, after a merge) | — | Never waits | `insert … on conflict do nothing`. Never `do update … where`: that locks the row even when its WHERE is false (R4-1). Noting a pair again uses `for update skip locked`. |
 
 **Why nothing can deadlock.**
-* No transaction waits on a pair row. To wait on row (x, y) you must hold L1 of x and y. Another holder of that row would hold them too, and advisory locks are exclusive.
+* No transaction waits on a pair row. To wait on row (x, y) you must hold L1 of x and y. Any other transaction holding that row holds L1 of x or of y, since it took the row either waiting (both) or through `skip locked` (at least one). Advisory locks are exclusive, so the two cannot overlap. This is also why Undo can take its pair row after L3.
 * L1 is taken in one sorted batch, before any other lock.
 * L3 never waits.
 * An `on conflict do nothing` insert waits only on an uncommitted insert of the same pair. Two writers share at most one such key: a merge writes the survivor's pairs and an arrival writes the new person's. So that wait cannot form a cycle either.
 
+**Other waits (review round 7).** None of them closes a cycle, because the transaction that holds the lock never waits on a pair row or on L1 while holding it:
+* a merge or Undo waits at commit in the deferred `fo_dup_live_party` trigger;
+* every merge and Undo holds the platform-wide `module_event_seq` lock from its outbox row to commit, and so does the work after it (the checks under the locks, `notePairs`);
+* Keep separate's update of its leads' match flags waits on any lead writer, which never takes L1 or a pair row.
+
 **Why a Kept separate decision is never joined.** A merge reads `keptBetween` under L1 of both people. While it holds them:
-* nothing can merge into either record (a merge needs L1);
-* nothing can be undone from either record (Undo needs L1);
-* no Keep separate can name either record (it needs L1, and it refuses a merged-away side).
+* nothing can merge into either live record, nor into any record already merged into it (a merge needs L1 of its survivor, and a merged-away record is never a survivor);
+* nothing can be undone from either live record (Undo needs L1 of the survivor);
+* no Keep separate can name either live record or anything merged into it (it needs L1, and it refuses a merged-away side).
 
 An Add as new arrival writes Kept separate only with a person who is new and not yet committed, so no existing pair can be merged across it.
 
@@ -90,11 +97,23 @@ Then come bursts (**I3** and I1): a fresh trio who all match, with two or three 
 |---|---|---|
 | fa59de01d (the PR head before this) | I2 in 3 seeds: a merge's new pairs stayed To review after its Undo | **I1 in 3 of 5:** a merge X-Y, a Keep separate Y-Z and a merge X-Z at once joined Y and Z. The guided merge never asked whether a decision keeps the records apart. |
 | 744cc7919 | I2 (R4-3) | I3 in 5 of 5: 40P01 (R4-1); the database counted 5 deadlocks |
-| This model | 17/17 | Pass; wide run: 30 seeds × 40 steps × 25 bursts, 61/61, no deadlock |
+| This model (e720342c1) | 17/17 | Pass; wide run: 30 seeds × 40 steps × 25 bursts, 61/61, no deadlock. Round 7's breaker: seeds 39-140, `STEPS=50 BURSTS=40`, 207/207 |
+
+Round 7 added **I5** (after every step, every pair's tab in `list()` equals `listed()` for that pair), Undo and arrivals in the bursts, and a deterministic test per rule in `check_fo9b_review.ts`:
+* not listed: 409 `NOT_LISTED`;
+* a withdrawn pair is never merged by itself;
+* a pair is noted again;
+* a merged-away side is hidden;
+* the people's locks come first, with no pair row held while waiting.
+
+The PR comment has the table showing that removing each rule turns a suite red.
 
 ## 4. Limits
+* Work after a merge's outbox row holds the platform-wide `module_event_seq` lock until commit (review r7-m3). A merge is short, but this is a throughput limit, not a correctness one.
+* A pair merged by a merge that is later undone through `PersonMergePort` (not this module's Undo) stays MERGED (review r7-m5). Only this module's Undo reopens it.
+* A match made by an edit (FO-9a's phone edit) writes no pair. The list catches up at the next arrival or merge that finds it.
 
-* **Part 2b** (the merge by itself at arrival) must call `mergeIfSafe` in its own transaction after the arrival commits. Otherwise it takes L1 while the arrival's row locks are held, which breaks §2. Unconfirmed until part 2b is built.
+* **Part 2b** (the merge by itself at arrival) must call `mergeIfSafe` in its own transaction after the arrival commits. Otherwise it takes L1 while the arrival's row locks are held, which breaks §2. `check_fo9b_review.ts` holds this today: an arrival takes no person lock. Proposed row text is on the PR for Lead B.
 * Merges made elsewhere (the case side) do not use this model. Today it only reads them.
 * Noting a pair again is skipped while another action holds that row. The pair then stays off the list until the next arrival or merge finds it. This has no effect on safety.
 * `list()` gains `keptThrough` (null, or the deciding pair's id) for FO-9s's screens. The Merged and Kept separate tabs show decisions whatever their noting merge.
