@@ -24,6 +24,7 @@ import { parseInput, strict } from "../../platform/http/input.ts";
 import { z } from "zod";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 import { winProspect } from "../sales/prospects.ts";
+import { prepareRetainerSigning } from "../signing/service.ts";
 import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf } from "../compliance/conflict/gate.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
@@ -607,6 +608,9 @@ export class Retainers {
     const signer = r.signerPersonId ? await this.db.foPerson.findFirst({ where: { firmId: ctx.firmId, id: r.signerPersonId }, select: { id: true, givenNames: true, familyName: true } }) : null;
     const noCheck = !!signer && (await this.db.foIdentityCheck.count({ where: { firmId: ctx.firmId, personId: signer.id } })) === 0;
     const warnings = noCheck ? [`No identity check is recorded for ${nameOf(signer!) || "the signer"}.`] : [];
+    // FO-6 part 3: the signing request in this same step (the adapter's envelope now; its rows in this transaction; the
+    // envelope cancelled when the transaction does not commit). A consultation agreement is FO-3c's.
+    const signing = r.kind === "RETAINER" ? await prepareRetainerSigning(this.db, this.files, ctx, r, { audit: this.audit, now: () => new Date(this.clock.now()) }) : null;
     await this.tx(async (tx) => {
       if (r.kind === "RETAINER" && r.prospectId) {   // FO-13c (m3, m-3): asked again in the send's transaction, after the party's lock
         const party = await partyOf(tx, ctx.firmId, r.prospectId);
@@ -619,8 +623,10 @@ export class Retainers {
       await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion }, data: { sentAt: now } });
       await this.audit.record(tx, { ...this.line(ctx, "retainer.sent", r.id, `Sent (version ${r.currentVersion})${noCheck ? "; warning: no identity check is recorded for the signer" : ""}`, { retainerId: r.id, version: r.currentVersion, ...(noCheck ? { warning: "NO_IDENTITY_CHECK", signerPersonId: signer!.id } : {}) }), entity: "fo_retainer",
         before: { status: "DRAFT", sentAt: null }, after: { status: "SENT", sentAt: now.toISOString() } });
+      await signing?.record(tx);
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SENT, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
-    });
+    }).catch(async (e) => { await signing?.cancel(); throw e; });
+    await signing?.afterCommit();
     return { ...(await this.read(ctx, id)), warnings };
   }
 

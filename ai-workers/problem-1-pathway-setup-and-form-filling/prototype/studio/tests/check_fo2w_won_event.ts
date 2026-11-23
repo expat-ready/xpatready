@@ -172,7 +172,7 @@ try {
   ok("FO-2w W5 pass: Signed offline calls winProspect, and in the front office (the emitters; the case side's consumer is FO-8's) prospect.won is named only in the helper's file and Signed offline's audit line",
     callAt > src.indexOf("async signedOffline(") && src.indexOf("async signedOffline(") > 0
       && execFileSync("grep", ["-rlE", "--include=*.ts", "EVENT\\.PROSPECT_WON|\"prospect\\.won\"", join(STUDIO, "api", "src", "front-office")], { encoding: "utf8" }).trim().split("\n").map((f) => f.slice(STUDIO.length + 1)).sort().join(",")
-        === ["api/src/front-office/retainers/service.ts", "api/src/front-office/sales/prospects.ts"].join(","));
+        === ["api/src/front-office/retainers/on-signing-completed.ts", "api/src/front-office/retainers/service.ts", "api/src/front-office/sales/prospects.ts"].join(","));   // FO-6 part 3: the e-signature win's audit line
   // The mutant: the same service with the helper call taken out (prospectWon stays false), run on a fresh prospect.
   const end = src.indexOf("!== null;", callAt) + "!== null;".length;
   writeFileSync(MUTANT, src.slice(0, callAt) + "prospectWon = false;" + src.slice(end));
