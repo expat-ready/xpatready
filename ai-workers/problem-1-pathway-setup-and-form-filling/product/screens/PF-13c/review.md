@@ -185,3 +185,30 @@ Diff-only re-review of the three commits after the last Approve (9f2938573): 016
 No Blocker or Major opened. One recommendation for the PF-30s lane (point 5, qa row), outside this PR's scope.
 
 **Verdict: Approve** (90436aa81bec5d33f67a2e7128c5c3009b7a32b0)
+
+## Merge of main (diff 34e594d69..83c4aece6)
+
+Diff-only re-review of one commit after the last Approve (34e594d69): 83c4aece6, a merge of origin/main at 270a3cee6. Its first parent is 34e594d69 and its second is 270a3cee6. Checked with git at 83c4aece6. Suites not re-run here.
+
+1. **Conflict resolution and scope.** The merge conflicted in `tests/check_pf30s_find_box_browser.ts`. The builder took main's version whole.
+   - `git diff origin/main 83c4aece6 -- …/check_pf30s_find_box_browser.ts` is empty, and so is the diff against 270a3cee6. At 83c4aece6 the file has no `slash(` call, so this PR's workaround from the last round is gone.
+   - `git diff --name-only origin/main...83c4aece6` lists only this PR's own files: `booking-public/frame.tsx`, `booking-public/brand.tsx`, `tests/check_pf13c_booking_brand_browser.ts`, `web/src/MODULE.rows/PF-13c.md` and paths under `product/screens/PF-13c/` (break report, build notes, review, screenshots). The PF-30s suite is no longer in this PR's diff. Held.
+2. **Approved code unchanged.** `git diff 34e594d69 83c4aece6` over the four code and test paths is empty. Over `product/screens/PF-13c/` it is also empty. Held.
+3. **Main's side against the booking frame and the public branding read.**
+   - `git diff 34e594d69 83c4aece6 --stat` (371 files) has nothing under `front-office/booking-public/`, nothing under `platform/branding/` and no `public.controller`. The open door `GET /api/public/firms/:firmKey/branding` that `brand.tsx` reads is not changed.
+   - One wiring change reaches branding. In `features/platform-branding.ts`, the `LocalFiles` provider becomes `...filesProviders` from the new `platform/files/choose.ts` (PF-F1b). The `LocalFiles` token now resolves to `boundFiles()`. With `PLATFORM_FILES` unset outside production, that is still a `LocalFiles` on `FO_FILES_DIR`, which is the setup the builder's runs use. With `s3`, the branding images are kept in S3. `BrandingImages` and the public image route keep their contract, so the frame's `BrandImage` (same-origin `/api/public/firms/…` links only, `samePath`) is not affected either way.
+   - The new `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` (both 3.1161.0, pinned like the existing SDK packages) are used only by `platform/files/s3-files.ts` and `choose.ts`. Nothing in this PR imports them.
+   - The builder's runs cover this. At 83c4aece6, `check_pf13b_images` (32/32) and `check_pf13c_booking_brand_browser` (28/28) pass, so the logo and banner still load through the new binding.
+4. **Last round's PF-30s recommendation is closed.** Point 5 of the previous section asked the PF-30s lane to pin down why the "/" was lost, so that a retry would not become the permanent explanation. Main's 97ee46025, an ancestor of 270a3cee6, does that. The check waited for an `h1` and a find box that the old page also has. The "/" went to the old frame's box just before it unmounted. The check now waits for the Sales frame. This is a test-timing cause, not a product defect, and it fits the hypothesis in that point. Taking main's file whole is the right resolution. Keeping the `slash()` retry on top would only hide a future regression of the same kind.
+5. **Builder's runs at 83c4aece6** (not re-run; diff-only scope). Two runs of `run-suites.sh --only`, exit 0 both times:
+   - `check_pf13_branding` 30/30, `check_pf13b_images` 32/32 and `check_pf13_branding_browser` 40/40
+   - `check_pf13c_booking_brand_browser` 28/28, `check_fo3w_booking_browser` 67/67 and `check_fo3w_manage_browser` 50/50
+   - `check_pf30s_find_box_browser` 98/98, now on main's version
+   - `j_23` 15/15, twice
+   - typecheck: no new errors
+
+   The earlier journey score stands, because no PR code changed.
+
+No Blocker, Major or Minor opened.
+
+**Verdict: Approve** (83c4aece6a9c643b473a53225505fbcf2e5d3230)
