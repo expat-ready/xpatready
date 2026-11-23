@@ -3,7 +3,8 @@
 //     host, or the list key and the booking's record rule; else nothing is shown), and, while unsigned on a type that
 //     needs it, why Attended and the consult record wait (the server refuses them: 409 AGREEMENT_NOT_SIGNED). An agreement
 //     that ended unsigned still holds, and a fresh one is sent while the meeting is ahead (Lead 1's ruling on #3184); a
-//     No-show booking cannot be rescheduled, so the panel says to make a new booking instead (review r2-2).
+//     No-show, Attended or cancelled booking cannot be rescheduled nor sent a fresh one, so the panel says what can be done
+//     instead (review r2-2, break P2R3-4; agreement-words.ts).
 //   * `PersonAgreements`, on the lead's page: each agreement of the person's bookings the viewer sees (GET by-person, the
 //     list key), with the signed copy as a link: a short-lived link for this person (POST …/signed-copy/download-link),
 //     opened with the session's token, as the retainer page downloads its files.
@@ -13,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { Pill } from "@/components/ui/controls";
 import { staffApi, staffToken } from "@/modules/platform/session";
-import { agreementNextStep } from "./agreement-words";
+import { agreementNextStep, sendsFresh } from "./agreement-words";
 
 const Agreement = z.object({
   id: z.string().nullable(), bookingId: z.string(), status: z.string(), signed: z.boolean(), words: z.string(),
@@ -43,7 +44,7 @@ export function BookingAgreement({ bookingId, bookingStatus }: { bookingId: stri
         {a.signed && a.signedCopy ? <span className="text-text-muted">Signed copy stored {day(a.signedCopy.storedAt)}</span> : null}
         {!a.signed && a.clientSignedAt ? <span className="text-text-muted">The client signed {day(a.clientSignedAt)}: the firm signs next.</span> : null}</p>
       {held && !ended ? <p className="mt-1 text-text-muted" data-agreement-why>The consultation cannot start until it is signed: Attended and the consult record wait. The client signs from the link in their email, then {a.signatory?.name ?? "the firm"} signs. {next}</p> : null}
-      {ended ? <p className="mt-1 text-text-muted" data-agreement-ended>This agreement was declined, withdrawn, has expired or was put back to draft, so it can no longer be signed.{held ? <> The consultation still cannot start: while the meeting is ahead, a new agreement is emailed to the client. {next}</> : null}</p> : null}
+      {ended ? <p className="mt-1 text-text-muted" data-agreement-ended>This agreement was declined, withdrawn, has expired or was put back to draft, so it can no longer be signed.{held ? <> The consultation still cannot start.{sendsFresh(bookingStatus) ? " While the meeting is ahead, a new agreement is emailed to the client." : ""} {next}</> : null}</p> : null}
       {a.status === "NONE" ? <p className="mt-1 text-text-muted">No agreement was sent for this booking (the firm has no active consultation agreement template, the person has no email, nobody can sign for the firm, or sending has not succeeded yet).</p> : null}
       {a.signatory?.note ? <p className="mt-1 text-text-muted">{a.signatory.note}</p> : null}
     </section>

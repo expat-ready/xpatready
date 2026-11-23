@@ -28,7 +28,7 @@ import { DOCX, renderDocx } from "../../retainers/docx.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent, type SigningPort } from "../../signing/port.ts";
 import { wallLabel } from "../service.ts";
 import { CODE_S23, s23Check } from "./items.ts";
-import { ENDED_STATUSES, isEnded, isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
+import { DECIDING_ORDER, ENDED_STATUSES, isEnded, isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
 
 type Tx = Prisma.TransactionClient;
 /** This module's two events (the row's names). `ports/events.ts` is outside the row's touch list: J-104 moves them there. */
@@ -165,11 +165,11 @@ export class ConsultationAgreementService {
     return out;
   }
 
-  /** The booking's latest agreement (newest first: an ended one is followed by its fresh one). */
+  /** The booking's deciding agreement (gate.ts DECIDING_ORDER: signed, else waiting, else the newest that ended). */
   private async ofBooking(q: Tx | PrismaClient, firmId: string, bookingId: string) {
     const rows = await q.$queryRaw<{ id: string; status: string }[]>`
       select r.id::text, r.status::text from fo_retainer r join fo_retainer_version v on v.firm_id = r.firm_id and v.retainer_id = r.id
-       where r.firm_id = ${firmId}::uuid and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = ${bookingId} order by r.created_at desc, r.id desc limit 1`;
+       where r.firm_id = ${firmId}::uuid and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = ${bookingId} ${Prisma.raw(DECIDING_ORDER)} limit 1`;
     return rows[0] ?? null;
   }
 

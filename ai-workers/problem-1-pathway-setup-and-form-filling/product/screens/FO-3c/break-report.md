@@ -335,3 +335,63 @@ What held:
 - **P2-6:** each lead row names its meeting (`meetingAt`, read only for agreements the viewer can already see). The new-tab 401 and the paper-signed copy are the declared gaps.
 
 Verdict: Changes e8511e15673206e0c9b46a2a6028f78b50f375e4
+
+## Part 2, round 3 (9f2754207)
+
+Scope: `git diff d47aca316..9f2754207`, under the Lead's ruling of 23 Nov: every unsigned agreement holds, and an ended one is replaced while the meeting is ahead. Tested with a scratch suite at the services, built on the row suite's set-up, on its own database (dropped afterwards). "Everyone sees all" was on, so FO-5's actions could run. The row suite passes 36/36, and `check_pf19r_every_sender` passes 21/21. No isolated copy this round.
+
+**P2R3-1. The hold reads only the newest agreement, so a signed older one never lifts it, and the catch-up then never replaces an ended newest one. (Major)**
+- Steps, case 1 (e-signed):
+  1. A CASE_REVIEW booking with a prospect is sent its agreement (A1).
+  2. FO-5's `edit` adds a fee, which puts A1 back to DRAFT. The next catch-up sends a fresh agreement (A2): a second "Please sign" email.
+  3. FO-5's `send` of the edited draft answers 200. Now both A1 and A2 are SENT.
+  4. The client signs A1 from the link in the first email, then the firm signs. A1 is SIGNED, with its sealed copy stored.
+- Actual, case 1: `agreementHold` still holds on A2 (SENT). By-booking shows A2: "Agreement not signed yet". Attended and the consult record stay refused although a fully signed agreement exists.
+- Steps, case 2 (paper):
+  1. After the same edit (A1 DRAFT) and the fresh A2, FO-5's `signedOffline` on A1 answers 200 (SIGNED_OFFLINE). The hold stays on A2.
+  2. The firm withdraws A2, since the paper one is the one that counts. The statuses are SIGNED_OFFLINE, then WITHDRAWN. The hold stays, now on A2 WITHDRAWN.
+  3. `catchUp` sends nothing: its filter sees a non-ended agreement, A1.
+- Actual, case 2: the booking is held while the meeting is still ahead. The panel promises "a new agreement is emailed to the client", and none is sent. Only a reschedule frees it, because `onBookingEvent` and `send()` read the newest agreement (WITHDRAWN) and do send.
+- The same split applies when the client declines A2 but signs A1.
+- Expected: the hold, `send()` and the catch-up ask one question. Under the ruling that question is "is any agreement of this booking signed?" A signed agreement lifts the hold, and an ended newest one is replaced only when nothing is signed or waiting.
+- Where:
+  - `gate.ts:44-48`: the newest agreement only (`order by r.created_at desc … limit 1`, then `!isSigned`).
+  - `service.ts:140-142`: the catch-up's "no non-ended agreement" filter.
+  - `service.ts:172,201,236`: `ofBooking` reads the newest agreement.
+
+**P2R3-2. Nothing limits or stops the fresh agreements. (Minor)**
+- Steps: the client declines 4 times, with a catch-up after each decline.
+- Actual:
+  - The client gets 5 "Please sign your consultation agreement" emails, each within about 30 s of a decline. There is no count, no wait and no staff control.
+  - A firm that withdraws an agreement on purpose (for example, the client asked not to be emailed) has the next catch-up email a fresh one. The only stop is switching the type's agreement off, which applies to every booking of that type.
+- This follows the ruling. Recorded so the Lead can confirm that an unlimited re-send after each "no" is intended.
+
+**P2R3-3. After an FO-5 withdraw or edit, the first email's link still opens next to the fresh one. (Minor; the root is outside the diff)**
+- Steps:
+  1. FO-5 `withdraw` answers 200. The signing request stays SENT.
+  2. The catch-up sends A2.
+- Actual:
+  - The old token's `open` answers 200 and offers consent.
+  - Signing through it ends in a webhook 500: `fo_retainer: a WITHDRAWN retainer does not change`.
+  - After `edit`, the old link likewise stays open. In P2R3-1 case 1 it signed version 1's file while version 2 was the one "sent".
+- Why it matters now: FO-5 never ends FO-3c's request, so the diff's fresh send leaves the client with two working-looking links in two emails.
+
+**P2R3-4. The panel tells staff to reschedule, or promises a new agreement, on a cancelled or completed booking. (Minor)**
+- Steps: a booking's agreement is declined, then the booking is cancelled (`staffCancel` 200). By-booking still answers DECLINED with `required`.
+- Actual: `agreement.tsx` shows "The consultation still cannot start: while the meeting is ahead, a new agreement is emailed to the client. If the meeting time has passed, reschedule it…". `staffReschedule` answers 409 "This booking is no longer active", and the catch-up skips cancelled bookings.
+- `agreementNextStep` handles only NO_SHOW (`agreement-words.ts:6`). CANCELLED and COMPLETED get the reschedule advice too.
+
+What held:
+- **Concurrency:** after a decline, two `send()`s, a `catchUp`, a reschedule event and a third `send()` run at once. Exactly one fresh agreement is made (DECLINED, then SENT) and the client gets 2 emails in all. The others answer ALREADY_SENT: the advisory lock and the in-lock `isEnded` re-check hold.
+- **Re-sends:** a re-sent ended agreement goes out once. A waiting fresh one is never duplicated by a repeated `send()` or catch-up (row suite B2, B6).
+- **P2R2-1:**
+  - A declined agreement and a withdrawn one both hold.
+  - A past meeting gets no fresh agreement until it is rescheduled.
+  - The reschedule sends one for the new time.
+  - The fresh agreement's signature lifts the hold.
+- **P2R2-2:** the wait is `min(doubled wait, max(30 s, half the time left))`. It stays bounded near the meeting: about 7 extra tries in the last hour, and the floor of one catch-up means a meeting under 30 s away may be missed. Row suite B5 passes.
+- **P2R2-3:** NO_TEMPLATE backs off with no bypass line while held back, and recovers once the file is back (B8).
+- **r2-1 and r2-2:** the reminder skips a type that is switched off (B9). On No-show, the panel says to make a new booking (B7).
+- **Permissions:** the controller and the read rules are not in the diff. `forBooking` now reads the newest agreement, the same one the hold reads.
+
+Verdict: Changes 9f2754207cdd532db0094c26e69e1a6e478821b1

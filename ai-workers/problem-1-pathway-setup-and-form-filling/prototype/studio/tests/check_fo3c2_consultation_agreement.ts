@@ -15,7 +15,7 @@
 //       ahead (by the send, the catch-up or a reschedule), once; its signature lifts the hold (Lead 1's ruling on #3184)
 //   B5  the poller's backoff: held back, retried after 30 s, doubled; capped by the time left before the meeting (P2R2-2)
 //   B7  the panel's next step on a No-show booking (review r2-2)   B8  NO_TEMPLATE backs off (P2R2-3)
-//   B9  the reminder reads the type's switch (review r2-1)
+//   B9  the reminder reads the type's switch (review r2-1)   B10  any signed agreement lifts the hold (P2R3-1)
 //   tsx studio/tests/check_fo3c2_consultation_agreement.ts
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -54,7 +54,7 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, opt
 const { ConsultationAgreementService, WORDS } = await import("../api/src/front-office/booking/consultation-agreement/service.ts");
 const { AgreementPoll } = await import("../api/src/front-office/booking/consultation-agreement/live.ts");
 const { HOLD_WORDS, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
-const { agreementNextStep, NEXT_NO_SHOW, NEXT_RESCHEDULE } = await import("../web/src/modules/front-office/booking/calendar/agreement-words.ts");
+const { agreementNextStep, sendsFresh, NEXT_CANCELLED, NEXT_COMPLETED, NEXT_NO_SHOW, NEXT_RESCHEDULE } = await import("../web/src/modules/front-office/booking/calendar/agreement-words.ts");
 const { BookingService } = await import("../api/src/front-office/booking/service.ts");
 const { ConsultRecordService } = await import("../api/src/front-office/booking/consult/service.ts");
 const { BookingTypesService } = await import("../api/src/front-office/booking/settings/types.ts");
@@ -297,10 +297,32 @@ try {
   const r8w = await svc.onBookingEvent(eventOf(EVENT.BOOKING_RESCHEDULED, moved8w));
   ok("FO-3c2 B6 fail: rescheduled to a time ahead, the reschedule sends a fresh agreement for the new time (the latest is SENT)",
     r8w?.sent === true && agreementsOf(b8w.id) === 2 && latestOf(b8w.id)[1] === "SENT", { r8w });
+  // Break P2R3-1: any signed agreement of the booking lifts the hold, whichever is newest, and a fresh one is sent only when
+  // every agreement has ended. A1 declined, fresh A2 sent; then A1 is filed signed on paper (FO-5's signed offline of an
+  // earlier version, written straight to the table here, past FO-5's own rules: the breaker reached it through FO-5).
+  const b14 = await book(A, free, R.staffId, pat, -180);
+  await clock.set(new Date(b14.startsAt.getTime() - 60 * MIN));
+  const s14 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b14)), a14 = s14?.sent ? s14.agreementId : "";
+  await decline(a14);
+  const f14 = await svc.send(A, b14.id), a14b = f14.sent ? f14.agreementId : "";
+  await clock.set(new Date(b14.startsAt.getTime() + 5 * MIN));
+  const held14 = await answer(() => bookings.recordAttendance(R, b14.id, { outcome: "COMPLETED" }));
+  sql(`set session_replication_role = replica; update fo_retainer set status = 'SIGNED_OFFLINE', offline_at = now(), offline_reason = 'Sample: signed on paper', offline_by = 'staff:${R.staffId}', offline_file_key = 'retainers/' || id::text || '/signed-offline.pdf', offline_file_sha256 = repeat('a', 64) where id = '${a14}'`);
+  const retainersApi = await answer(() => retainers.withdraw(R, a14b, { reason: "Sample: signed on paper", expectedVersion: 1, expectedStatus: "SENT" }));
+  const again14 = await svc.send(A, b14.id), cu14 = await svc.catchUp((_f, fn) => fn()), panel14 = await svc.forBooking(R, b14.id);
+  const att14 = await answer(() => bookings.recordAttendance(R, b14.id, { outcome: "COMPLETED" }));
+  await clock.set(today);
+  ok("FO-3c2 B10 pass (break P2R3-1): an older agreement signed (on paper) lifts the hold although a newer one was sent and then withdrawn; no further one is sent; the panel shows the signed one",
+    att14.status === 200 && statusOf(b14.id) === "COMPLETED" && again14.sent === false && again14.reason === "ALREADY_SENT" && again14.agreementId === a14 && cu14.sent === 0 && agreementsOf(b14.id) === 2 && panel14.id === a14 && panel14.signed === true,
+    { att14: att14.status, again14, cu14, panel14: [panel14.id === a14, panel14.status], withdraw: retainersApi.status });
+  ok("FO-3c2 B10 fail: before the older one was signed, the same booking was held on the fresh one (409 naming it)",
+    f14.sent === true && held14.status === 409 && held14.body.includes(a14b), { f14, held14: held14.status });
   // Review r2-2: a No-show booking cannot be rescheduled, so the panel's next step says to make a new booking.
   ok("FO-3c2 B7 (review r2-2): the panel's next step on a No-show booking says to make a new booking, never to reschedule; on any other booking it says to reschedule",
     agreementNextStep("NO_SHOW") === NEXT_NO_SHOW && !/reschedule it/.test(agreementNextStep("NO_SHOW")) && agreementNextStep("SCHEDULED") === NEXT_RESCHEDULE && agreementNextStep(undefined) === NEXT_RESCHEDULE
     && (await answer(() => bookings.staffReschedule(R, b3.id, { startsAt: new Date(clock.now().getTime() + 10 * 24 * HOUR).toISOString(), timeZone: "America/Toronto" }))).status === 409);
+  ok("FO-3c2 B7 other statuses (break P2R3-4): Attended and cancelled bookings are never told to reschedule nor promised a fresh agreement; Scheduled and Rescheduled are",
+    agreementNextStep("COMPLETED") === NEXT_COMPLETED && agreementNextStep("CANCELLED") === NEXT_CANCELLED && !sendsFresh("COMPLETED") && !sendsFresh("CANCELLED") && !sendsFresh("NO_SHOW") && sendsFresh("SCHEDULED") && sendsFresh("RESCHEDULED"));
   // P2-3: a quiet catch-up (a signed copy already queued, nothing to send) touches no firm: no new bypass line.
   for (let i = 0; i < 16; i++) await poll.tick();   // runs at least one catch-up (every 15th run)
   const quiet0 = lines();
