@@ -2,7 +2,7 @@
 
 current_lead: local_1117b08b-e591-401e-8f74-dbc5ef877570 Lead 7 · 23 Nov 18:39 IST (took over from Lead 6 (local_f2d41d71) at ~325k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 18:50 IST: Lead 7 running (check 881617aa); #3254 `/run full` posted on 03d6df61e (Approve; Lead read of guard, test, ci.yml and check-guards done, label after the full run is green); #3258 open with P-810 and six rows, trace red on two Source lines, fix under way
+updated: 2026-11-23 19:36 IST: Lead 7: #3258 MERGED (P-810, six rows; main 5c8c4201a; number posted on #3185). #3254 full run green, labelled 19:26, batch #3260. Then sprint (c): #2597 merges main alone (its Lead read done, no objection), full run, label; #2738, #2473, #2444 one at a time (no size row for #2444). #3174 182723f26 round 8 running, ruled no split: DECISIONS size row owed (next records PR, after P-810). Lead B 4 read OK #3256, #3180; Lead schema reads owed; compare #3256 walk j_74 W7 with main
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
