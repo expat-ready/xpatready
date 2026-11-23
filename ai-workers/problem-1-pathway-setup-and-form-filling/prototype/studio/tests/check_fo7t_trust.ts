@@ -24,8 +24,7 @@
 //                                              balanceAfterMinor }], pageSize }   (newest first; default 50, maximum 200)
 //   GET  /trust/balances?personId=          → { balances: [{ currency, caseId, amountMinor }], totals: [{ currency, amountMinor }] }
 //   (FO-7t.md names the query party=&case=; personId=/companyId=/caseId= are the same, as FO-7b's routes spell them.)
-// Field errors answer 422 (PF-28 part 6, Lead B rev 17.21, the newer ruling; FO-7t.md's "400" predates it), so the
-// check accepts 400 or 422 for a field error and asks the tech lead in the PR. A non-Owner may read the answer (AG-6-59
+// Field errors answer 422 (PF-28 part 6; Lead 10, 23 Nov; FO-7t.md's "400" predates it). A non-Owner may read the answer (AG-6-59
 // rule 8: "Last changed <date> by <person>" is shown to staff). Audit lines: trust.answered, trust.request_created (one
 // per request, sent or held), trust.request_cancelled, trust.deposited; old and new in `detail` as <field>_before/_after.
 // A scratch database (every migration), a Nest app of PF-4's guard, PF-12's walls and this row's feature, with the local
@@ -50,7 +49,7 @@ const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
-const fieldError = (status: number) => status === 400 || status === 422;
+const fieldError = (status: number) => status === 422;   // PF-28 part 6; Lead 10, 23 Nov
 /** The one money format of every message (AG-6-68 rule 8; FO-7t.md DW7): two decimals, thousands with a comma. */
 const money = (minor: number) => (minor / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** What a person reads in an email: subject and text (never the attachment's bytes). */
@@ -151,7 +150,7 @@ try {
   ok("FO-7t DW2 fail: a Case Manager (not the Owner) answering → 403, the answer unchanged, no audit line for firm A",
     notOwner.status === 403 && answerOf(A) === "UNANSWERED" && sql(`select count(*) from audit_event where action = 'trust.answered' and firm_id = '${A}'`) === "0", notOwner.body);
   const bad = await call(tR, "PUT", "/answer", { answer: "MAYBE" });
-  ok("FO-7t DW2 fail: an answer other than YES or NO → a field error (400/422), unchanged (zod, AG-6-37 rule 3)", fieldError(bad.status) && answerOf(A) === "UNANSWERED", bad.body);
+  ok("FO-7t DW2 fail: an answer other than YES or NO → a field error (422), unchanged (zod, AG-6-37 rule 3)", fieldError(bad.status) && answerOf(A) === "UNANSWERED", bad.body);
   const yes = await call(tR, "PUT", "/answer", { answer: "YES" });
   const yesAudit = sql(`select count(*) || ':' || min(actor) || ':' || min(detail->>'answer_before') || ':' || min(detail->>'answer_after') from audit_event where action = 'trust.answered' and firm_id = '${A}'`);
   ok("FO-7t DW2 pass: the Owner's Yes → 200, stored with who (staff) and when (the database's), one audit line by the Owner with old and new",
@@ -176,7 +175,7 @@ try {
     && text.includes(r1.body.number) && text.includes("600.00") && text.includes("transit 00011") && sql(`select number from money_trust_request where id = '${r1.body.id}'`) === r1.body.number, [r1.body, m1.map(words)]);
   ok("FO-7t DW3 fail (P-567 (3)): the email carries no link and no word \"card\"", !/https?:\/\//i.test(text) && !/\bcard\b/i.test(text), text);
   const noReason = await call(tR, "POST", `/requests/${r1.body.id}/cancel`, {});
-  ok("FO-7t DW3 fail: cancel without a reason → a field error (400/422), the request still Sent, no audit line", fieldError(noReason.status) && sql(`select cancelled_at is null from money_trust_request where id = '${r1.body.id}'`) === "t" && audits("trust.request_cancelled") === 0, noReason.body);
+  ok("FO-7t DW3 fail: cancel without a reason → a field error (422), the request still Sent, no audit line", fieldError(noReason.status) && sql(`select cancelled_at is null from money_trust_request where id = '${r1.body.id}'`) === "t" && audits("trust.request_cancelled") === 0, noReason.body);
   const r2 = await call(tR, "POST", "/requests", { ...reqBody, amountMinor: 20000 });
   const cancel = await call(tR, "POST", `/requests/${r2.body.id}/cancel`, { reason: "Asked twice by mistake" });
   ok("FO-7t DW3 pass: a cancelled request keeps its number (Cancelled, reason stored, one audit line)", cancel.status === 200 && cancel.body.status === "Cancelled" && cancel.body.number === r2.body.number
@@ -190,7 +189,7 @@ try {
   const keylessD = await Promise.all([dep({ method: "WIRE", amountMinor: 100, idempotencyKey: "fo7t-k1" }, tT), dep({ method: "WIRE", amountMinor: 100, idempotencyKey: "fo7t-k2" }, tO)]);
   ok("FO-7t DW4 fail (keys): a Case Manager and a Case Officer recording a deposit → 403, nothing written", keylessD.every((r) => r.status === 403) && sql(`select count(*) from money_payment`) === "0", keylessD.map((r) => r.status));
   const cards = await Promise.all([dep({ method: "CARD", amountMinor: 1000, idempotencyKey: "fo7t-card" }), dep({ method: "CARD_TERMINAL", amountMinor: 1000, idempotencyKey: "fo7t-card-terminal" })]);
-  ok("FO-7t DW4 fail (P-567 (3)): CARD or CARD_TERMINAL into trust → refused (a field error or 409), nothing written", cards.every((r) => fieldError(r.status) || r.status === 409) && sql(`select count(*) from money_payment`) === "0", cards.map((r) => r.body));
+  ok("FO-7t DW4 fail (P-567 (3)): CARD or CARD_TERMINAL into trust → refused with a field error (422), nothing written", cards.every((r) => fieldError(r.status)) && sql(`select count(*) from money_payment`) === "0", cards.map((r) => r.body));
   const d1body = { method: "E_TRANSFER", amountMinor: 60000, trustRequestId: r1.body.id, reference: "ET-0001", evidenceFileKey: "firm/fo7t/evidence/et-0001.pdf", idempotencyKey: "fo7t-dep1" };
   const d1 = await dep(d1body), d1again = await dep(d1body);
   ok("FO-7t DW4 pass: a deposit → one payment received into TRUST, one DEPOSIT entry in the same transaction, one TRUST receipt; the same key again → 200, the same payment, nothing more",
@@ -263,7 +262,7 @@ try {
   ok("FO-7t DW6 pass: the ledger is newest first with date, entry, reference, payer, amount and running balance; no page size → 50; 200 → 200; 2 → 2",
     page.status === 200 && page.body.pageSize === 50 && items.length > 0 && items[0].balanceAfterMinor === dbBal("CAD") && ["at", "kind", "reference", "payer", "amountMinor", "balanceAfterMinor"].every((k) => k in items[0])
     && items.every((x: { at: string }, i: number) => i === 0 || items[i - 1].at >= x.at) && max.status === 200 && max.body.pageSize === 200 && small.body.items?.length === 2, page.body);
-  ok("FO-7t DW6 fail: page size 500 → a field error (400/422; maximum 200)", fieldError(big.status), big.body);
+  ok("FO-7t DW6 fail: page size 500 → a field error (422; maximum 200)", fieldError(big.status), big.body);
 
   // ------------------------------------------------------------------------- DW3 again: the request's derived status
   const r3 = await call(tR, "POST", "/requests", { ...reqBody, amountMinor: 10000 });
@@ -302,6 +301,13 @@ try {
   const officer = await call(tO, "GET", `/ledger?personId=${PA}`), ownerRead = await call(tR, "GET", `/ledger?personId=${PA}`);
   ok("FO-7t DW10 pass (C5 through MoneyVisibilityPort): a Case Officer who sees neither PA's case nor PA gets an empty ledger page; the Owner, who sees both, gets the entries",
     officer.status === 200 && (officer.body.items ?? []).length === 0 && ownerRead.status === 200 && (ownerRead.body.items ?? []).length > 0, [officer.body, ownerRead.status]);
+  // Lead 10 (23 Nov) ruling 3: the visibility rule covers the balances and the request read too.
+  const [offBal, ownBal, offReq, ownReq] = await Promise.all([call(tO, "GET", `/balances?personId=${PA}`), call(tR, "GET", `/balances?personId=${PA}`), call(tO, "GET", `/requests/${r1.body.id}`), call(tR, "GET", `/requests/${r1.body.id}`)]);
+  ok("FO-7t DW10 fail (C5, balances; Lead 10 ruling 3): a Case Officer who sees neither PA nor PA's case gets no balances and no totals",
+    offBal.status === 200 && (offBal.body.balances ?? [1]).length === 0 && (offBal.body.totals ?? [1]).length === 0, offBal.body);
+  ok("FO-7t DW10 pass (C5, balances): the Owner, who sees both, gets PA's figures", ownBal.status === 200 && (ownBal.body.totals ?? []).find((x: { currency: string }) => x.currency === "CAD")?.amountMinor === dbBal("CAD"), ownBal.body);
+  ok("FO-7t DW10 fail (C5, request read; Lead 10 ruling 3): that Case Officer reading r1 (PA's, no case) → 404", offReq.status === 404, offReq.body);
+  ok("FO-7t DW10 pass (C5, request read): the Owner reads r1", ownReq.status === 200 && ownReq.body.number === r1.body.number, ownReq.body);
   // Build round 1, M2: a Case Officer on CASE's team sees CASE's entries only, and their running balance is CASE's own
   // money (summed over what they see), never the party's whole balance (which includes money outside their view).
   sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values (gen_random_uuid(), '${W}', '${CASE}', 'user-O', 'OFFICER', 'user-R')`);
@@ -310,7 +316,7 @@ try {
   const ti = onTeam.body.items ?? [];
   ok("FO-7t DW10 pass (C5, any role; build round 1, M2): a Case Officer on the case's team gets the case's entries only, the newest running balance the case's own (as /balances says), never the party's",
     onTeam.status === 200 && ti.length > 0 && ti.every((x: { caseId: string }) => x.caseId === CASE) && ti[0].balanceAfterMinor === caseSum && caseSum !== dbBal("CAD")
-    && (onTeamBal.body.totals ?? []).find((x: { currency: string }) => x.currency === "CAD")?.amountMinor === caseSum, [ti, onTeamBal.body, caseSum]);
+    && (onTeamBal.body.balances ?? []).every((x: { caseId: string }) => x.caseId === CASE) && (onTeamBal.body.totals ?? []).find((x: { currency: string }) => x.currency === "CAD")?.amountMinor === caseSum, [ti, onTeamBal.body, caseSum]);
   ok("FO-7t DW10 pass: one audit line per change, by staff: each trust deposit, each request (held or sent), each cancel",
     audits("trust.deposited") === Number(sql(`select count(*) from money_payment where received_into = 'TRUST'`)) && audits("trust.request_created") === Number(sql(`select count(*) from money_trust_request`))
     && audits("trust.request_cancelled") === Number(sql(`select count(*) from money_trust_request where cancelled_at is not null`))
