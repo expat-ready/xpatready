@@ -310,6 +310,11 @@ guarded() {  # guarded <log> <command...>: the exit code is timeout's (124 timed
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
   return "$code"
 }
+# B203 (P-744): with SUITES_COVERAGE=<dir>, each suite and the copy it starts write V8 coverage to <dir>/<suite> (the
+# preload lets a server stopped by SIGTERM flush it); test-graph.py turns it into the capability -> file -> suite graph.
+# Set before the copy starts (isolated.sh passes the environment on). Unset (every PR, batch and nightly run): nothing.
+cov() { [ -n "${SUITES_COVERAGE:-}" ] || return 0; export NODE_V8_COVERAGE="$SUITES_COVERAGE/${1%.*}"; mkdir -p "$NODE_V8_COVERAGE"
+  case " ${NODE_OPTIONS:-} " in *coverage-preload.mjs*) ;; *) export NODE_OPTIONS="--import=$ROOT/$S/tests/qa/coverage-preload.mjs${NODE_OPTIONS:+ $NODE_OPTIONS}";; esac; }   # absolute: a bare path is read as a package; added once, never replacing what was set
 run() {  # $1 file, $2 label, rest: command. AGAIN readies a retry (recopy ...); NORETRY says why there is none; both cleared.
   local f="$1" label="$2"; shift 2; local log="$OUT/${f%.*}.log" t0=$SECONDS code=0 code2=0 note="" a src="" rw=""; RF="$f"
   # CI only: one line per suite as it starts, on stderr (the job log), so a part stopped at its job limit, whose table
@@ -348,7 +353,7 @@ for path in "$TESTS"/check_*.ts "$TESTS"/check_*.cjs; do
   picked "$f" || continue
   myturn "$f" || continue
   case " $QUARANTINE " in *" $f "*) { [ -n "$CHANGED" ] || [ "$SKIPQ" = 1 ]; } && { rows+=("| $f | quarantined | | $(qwhy "$f") |"); continue; };; esac
-  usage=$(grep -m1 -E "studio/tests/$f" "$path")
+  usage=$(grep -m1 -E "studio/tests/$f" "$path"); cov "$f"
   if [ "$f" = check_studio_browser.cjs ]; then
     if [ "$DEMO" = 0 ] && [ "${SUITES_BROWSER_ISOLATED:-}" = 1 ]; then
       # The Mac CI runner (self-hosted, founder 30 Oct): the same suite on its own isolated copy, never the :4400 demo.
@@ -384,9 +389,10 @@ done
 # Suites outside tests/check_*: the runtime lane's (R1, two steps on one copy) and the drafting guard's (prototype/tests,
 # plain: they make their own temporary copies). Both lanes' Lead checks found CI skipping them (24 Oct).
 RT="$S/tests/runtime"; [ -n "${SUITES_TESTS_DIR:-}" ] && RT=/nonexistent; RN=$(iname runtime_r1); RP=$(iport 4430)
-if [ -f "$RT/check_case_engine.ts" ] && picked check_case_engine.ts && myturn check_case_engine.ts; then run check_case_engine.ts plain $TSX "$RT/check_case_engine.ts"; fi
+if [ -f "$RT/check_case_engine.ts" ] && picked check_case_engine.ts && myturn check_case_engine.ts; then cov check_case_engine.ts; run check_case_engine.ts plain $TSX "$RT/check_case_engine.ts"; fi
 # The three R1 suites share one copy and run in order: chosen together (select-suites.mjs) or not at all.
 if [ -f "$RT/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked check_runtime_r1c.cjs || picked check_runtime_r1d.ts; } && myturn check_runtime_r1a.ts; then
+  cov check_runtime_r1a.ts   # the three share one copy, so one coverage folder (test-graph.py says so)
   if zsh "$S/tools/isolated.sh" "$RN" "$RP" start >/dev/null 2>&1 && guarded "$OUT/setup_visitor_visa.log" $TSX "$RT/setup_visitor_visa.ts" "$RP" "xr_studio_$RN"; then
     # R1c's browser journey first: it publishes a release 2 that R1a expects (runtime lane, 24 Oct).
     # Never retried one by one (review M2): the three share one copy, so a retry would start from the first try's data.
@@ -398,7 +404,7 @@ if [ -f "$RT/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked 
   zsh "$S/tools/isolated.sh" "$RN" "$RP" stop >/dev/null 2>&1
 fi
 for t in check_p2_guard check_p2_launch check_p2_shared_ledger; do
-  [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && myturn "$t.ts" && run "$t.ts" plain "$S/node_modules/.bin/tsx" "$P/prototype/tests/$t.ts"
+  [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && myturn "$t.ts" && cov "$t.ts" && run "$t.ts" plain "$S/node_modules/.bin/tsx" "$P/prototype/tests/$t.ts"
 done
 # Every unit dealt to this shard leaves a row: ran, quarantined or skipped (#1660, 12 Nov). One that left none is a
 # fault in this script, never a silent pass. (The R1 unit's row is check_runtime_r1a.ts, run or failed.)

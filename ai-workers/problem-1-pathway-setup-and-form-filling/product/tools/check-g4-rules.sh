@@ -59,7 +59,7 @@ merged=$(g rev-parse lane/merged); closed=$(g rev-parse lane/closed); after=$(g 
 g push -q origin --all 2>/dev/null; g fetch -q origin
 echo "[{\"headRefName\":\"lane/open\",\"headRefOid\":\"x\",\"state\":\"OPEN\"},{\"headRefName\":\"lane/merged\",\"headRefOid\":\"$merged\",\"state\":\"MERGED\"},{\"headRefName\":\"lane/after\",\"headRefOid\":\"$after\",\"state\":\"MERGED\"},{\"headRefName\":\"lane/closed\",\"headRefOid\":\"$closed\",\"state\":\"CLOSED\"}]" > "$T/all.json"
 echo '[{"id":"G-9","branch":"lane/reported"}]' > "$T/items.json"; printf '#!/bin/sh\ncase "$*" in *"--state all"*) cat "%s";; *) echo "[]";; esac\n' "$T/all.json" > "$T/bin/fakegh"
-out=$(cd "$R" && SWEEP_GH="sh $T/bin/fakegh" ITEMS="$T/items.json" bash "$TOOLS/branch-sweep.sh"); r=$?
+out=$(cd "$R" && SWEEP_GH="sh $T/bin/fakegh" ITEMS="$T/items.json" SWEEP_STATE_DIR="$T/sweep" bash "$TOOLS/branch-sweep.sh"); r=$?
 ok "(5) a branch ahead with no PR and no report is listed" "$(echo "$out" | grep -q '^ACT   lane/none: 1 commit' && echo 1)" "$out"
 ok "(5) a branch whose PR closed unmerged is listed" "$(echo "$out" | grep -q '^ACT   lane/closed' && echo 1)" "$out"
 ok "(5) a branch pushed after its PR merged is listed" "$(echo "$out" | grep -q '^ACT   lane/after: 2 commit' && echo 1)" "$out"

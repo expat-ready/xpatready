@@ -139,7 +139,8 @@ export class WebAddresses {
   /** ExpatReady staff change (or first set) a firm's address (SA-2-27): their key, a reason, one transaction with the
    *  history record (the reason; for a change also the 90-day redirect), the address and one audit line (a failed audit
    *  line rolls all of it back). */
-  async change(ctx: StaffContext, firmId: string, input: { address?: unknown; reason?: unknown }) {
+  /** `actor`: the audit actor word, the caller's own (PF-25w's route passes our staff's `ourstaff:<id>`, AUD-3a). */
+  async change(ctx: Pick<StaffContext, "staffId" | "keys">, firmId: string, input: { address?: unknown; reason?: unknown }, actor = `staff:${ctx.staffId}`) {
     if (!ctx.keys.includes(ADDRESS_CHANGE_KEY))
       problem(403, "forbidden", "Only ExpatReady staff change this", "After sign-up, a firm's web address is changed only by ExpatReady staff. Ask ExpatReady support.", { code: "MISSING_PERMISSION" });
     const id = firmScope(firmId).firmId;
@@ -150,7 +151,6 @@ export class WebAddresses {
     if (!reason.ok) fields.reason = reason.message;
     if (!choice.ok || !reason.ok) return problem(422, "web-address-fields", "Check the highlighted fields", "Some fields need a change.", { fields });
     const address = choice.address;
-    const actor = `staff:${ctx.staffId}`;
     try {
       return await this.deps.db.$transaction(async (tx) => {
         // The firm's row is the change's lock (no key update: it blocks no insert naming the firm, review m5); the
