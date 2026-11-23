@@ -21,15 +21,20 @@ sed -n 2p "$f" | grep -qE '(^| )rows=[0-9]+' || ACT "app view saved without rows
 # Idle-lane alarm (A334 fix 1, founder 23 Nov "Yes, beside product": lanes sat idle for hours waiting for answers). Each FLAG
 # line stays one ACT, never two; a cloud lane idle over 10 min with work left, or waiting for the Lead (need_input, blocked,
 # failed), comes first, oldest first, and ends "[idle lane N min: answer or wake it]". Other flags (mac lanes, context) follow.
+# Fields are found by shape, not position (a title or detail may hold " · "): the place and status after the first
+# " · cloud|mac · <status> · needs: ", the idle minutes from the last "idle N min" field, the reasons after the last " -> ".
+# Any reason other than idle or context is a status the Lead must answer (need_input, blocked, failed, or a failed run).
 idle_lanes=$(grep '^FLAG' "$f" | awk -F' · ' '{
-  why = index($0, " -> ") ? substr($0, index($0, " -> ") + 4) : ""; m = 0
-  for (i = 2; i <= NF; i++) if ($i ~ /^idle [0-9]+ min$/) { split($i, w, " "); m = w[2] + 0 }
-  lane = ($2 == "cloud") && (why ~ /idle [0-9]+ min with work left/ || why ~ /(^|, )(need_input|blocked|failed)(,|$)/)
-  printf "%d\t%d\t%s\n", lane, m, $0 }' | sort -t "$(printf '\t')" -s -k1,1nr -k2,2nr)
+  why = $0; while ((k = index(why, " -> ")) > 0) why = substr(why, k + 4); if (why == $0) why = ""
+  m = "?"; for (i = NF; i >= 2; i--) if ($i ~ /^idle [0-9]+ min$/) { split($i, w, " "); m = w[2]; break }
+  rs = why; gsub(/ \([^)]*\)/, "", rs)   # "context 46% (over 45%, P-565)": the comma inside brackets is not a reason
+  wait = 0; n = split(rs, r, ", "); for (j = 1; j <= n; j++) if (r[j] !~ /^(idle [0-9]+ min with work left|context )/) wait = 1
+  lane = ($0 ~ / · cloud · [a-z_]+ · needs: /) && (why ~ /idle [0-9]+ min with work left/ || wait)
+  printf "%d\t%d\t%s\t%s\n", lane, (m == "?" ? 0 : m), m, $0 }' | sort -t "$(printf '\t')" -s -k1,1nr -k2,2nr)
 nl=0; oldest=0
-while IFS="$(printf '\t')" read -r lane m l; do
+while IFS="$(printf '\t')" read -r lane key m l; do
   [ -z "$l" ] && continue
-  if [ "$lane" = 1 ]; then nl=$((nl+1)); [ "$m" -gt "$oldest" ] && oldest=$m; ACT "app view: ${l#FLAG  } [idle lane $m min: answer or wake it]"
+  if [ "$lane" = 1 ]; then nl=$((nl+1)); [ "$key" -gt "$oldest" ] && oldest=$key; ACT "app view: ${l#FLAG  } [idle lane $m min: answer or wake it]"
   else ACT "app view: ${l#FLAG  }"; fi
 done <<< "$idle_lanes"
 echo "idle lanes: $nl cloud lanes idle over 10 min with work left or waiting for the Lead$([ "$nl" -gt 0 ] && echo ", oldest $oldest min")"

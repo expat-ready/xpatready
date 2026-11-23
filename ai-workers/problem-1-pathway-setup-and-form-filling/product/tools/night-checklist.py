@@ -4,7 +4,8 @@ beside product with an objective and a checklist, enforced at every check. lead-
 
 Reads product/design/night-checklist.json: items with id, track ("product" or "operating system"), title, owner, done_when,
 due_ist ("YYYY-MM-DD HH:MM", IST), proof. An item is done only when proof is {"pr": N} and PR #N is merged on main (a
-"Merge pull request #N " or "... (#N)" subject on origin/main); prose, a PR not merged, or no proof is not done (rule 3).
+"Merge pull request #N from" subject on origin/main: Mergify merges with merge_method merge;
+a subject merely ending "(#N)" is prose and never counts); prose, a PR not merged, or no proof is not done (rule 3).
 Prints one ACT per item not done (overdue first within its track, product items before operating-system items), then
 "operating system: n done of m". An unreadable file or item is an ACT too, never a silent pass. Exit = number of ACT lines.
 
@@ -23,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 def merged_prs(subjects):
     out = set()
     for s in subjects:
-        m = re.match(r"Merge pull request #(\d+) ", s) or re.search(r"\(#(\d+)\)\s*$", s)
+        m = re.match(r"Merge pull request #(\d+) from ", s)
         if m:
             out.add(int(m.group(1)))
     return out
@@ -63,6 +64,8 @@ def main():
     for i, it in enumerate(items):
         iid = it.get("id", f"item {i + 1}") if isinstance(it, dict) else f"item {i + 1}"
         miss = [f for f in FIELDS if not isinstance(it, dict) or f not in it]
+        is_os = isinstance(it, dict) and it.get("track") == "operating system"
+        os_all += is_os  # an unreadable operating-system item still counts in m (not done)
         if miss or it["track"] not in TRACKS:
             rows.append((0, 0, f"night checklist {iid} unreadable: " + (f"missing {', '.join(miss)}" if miss else f"track {it['track']!r} is not product or operating system")))
             continue
@@ -79,9 +82,7 @@ def main():
             why = "no proof"
         else:
             why = f"proof is not a PR number merged on main ({json.dumps(p)[:60]}): give {{\"pr\": N}}"
-        if it["track"] == "operating system":
-            os_all += 1
-            os_done += done
+        os_done += is_os and done
         if done:
             continue
         late = now - due
