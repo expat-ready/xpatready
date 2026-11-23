@@ -247,9 +247,12 @@ try {
   sql(`delete from fo_prospect where firm_id = '${A}' and created_by = 'seed:money-visible'; update platform_firm_setting set value = 'false'::jsonb where firm_id = '${A}' and key = 'platform.everyone_sees_all'`);
   const WS = randomUUID(); let cn = 0;
   sql(`insert into workspace (id, key, label) values ('${WS}', 'fo7q-${WS.slice(0, 8)}', 'FO-7q (Sample)')`);
+  // the cases' client is PK, not PA (Lead 14 on #3321: a case's linked party joins its viewers' party scope; PA stays a
+  // person with no case and no prospect, so DW9's fail-closed cases still hold)
+  const PK = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Client k', 'Sample', 'fo7q.k@example.org', 'seed:FO-7q', now()) returning id`);
   const realCase = () => { const id = randomUUID(), client = randomUUID(); cn++;
     sql(`set session_replication_role = replica;
-      insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values ('${client}', '${WS}', 'sample-firm', '${A}', ${cn}, 'Client ${cn} (Sample)', 'PERSON', '${PA}', 'seed:FO-7q');
+      insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values ('${client}', '${WS}', 'sample-firm', '${A}', ${cn}, 'Client ${cn} (Sample)', 'PERSON', '${PK}', 'seed:FO-7q');
       insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status) values ('${id}', '${WS}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(cn).padStart(5, "0")}', 'sample-firm', '${A}', '${client}', 'OPEN')`);
     return id; };
   const team = (caseId: string, userId: string) => sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values ('${randomUUID()}', '${WS}', '${caseId}', '${userId}', 'OFFICER', 'user-R')`);

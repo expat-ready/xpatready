@@ -32,3 +32,6 @@ export async function seesInvoice(tx: Reader, firmId: string, invoiceId: string,
   const [seen] = await tx.$queryRaw<{ ok: number }[]>`select 1 as ok from money_invoice i where i.firm_id = ${firmId}::uuid and i.id = ${invoiceId}::uuid and ${scopeSql(scope)}`;
   return !!seen;
 }
+/** A party (person or company id) the scope lets an invoice with no case be drafted for (Lead 14, #3321 (2)): in its
+ *  party half, which holds the linked parties of the caller's cases too (PgMoneyVisibility). */
+export const partyInScope = (s: MoneyScope, partyId: string): boolean => s === "ALL" || s.parties.includes(partyId.toLowerCase());

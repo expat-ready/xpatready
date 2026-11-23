@@ -24,7 +24,7 @@ import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { MoneyDocuments, creditNoteData, documentText, invoiceData, receiptData, type Letterhead, type MoneyTemplate } from "./documents.ts";
 import { MONEY, UUID, badField, notFound, parse } from "./drafts.ts";
 import { dayOf, invoiceFacts, type Facts } from "./facts.ts";
-import { failClosed, invoiceInScope, type ScopeOf } from "../reads/visibility.ts";
+import { failClosed, invoiceInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 
 type Tx = Prisma.TransactionClient;
 type Reader = Tx | PrismaClient;
@@ -43,14 +43,15 @@ export class InvoiceMoney {
     private readonly scopeOf: ScopeOf = failClosed) {}   // C5 (#3305 M1): the app binds PgMoneyVisibility; fail closed otherwise
 
   /** C5 on an existing invoice (reads/visibility.ts invoiceInScope): out of scope is the same 404, before any write. */
-  private async seen(tx: Reader, ctx: StaffContext, id: string) { await invoiceInScope(tx, firmScope(ctx.firmId).firmId, id, await this.scopeOf(ctx)); }
+  private async seen(tx: Reader, ctx: StaffContext, id: string, scope: MoneyScope) { await invoiceInScope(tx, firmScope(ctx.firmId).firmId, id, scope); }
 
   /** POST …/invoices/:id/issue[?dueDate=YYYY-MM-DD]: the next INV- number, the lines frozen, a due date (the firm's "Due in
    *  N days" when none is sent). The query is parsed before anything is read. */
   async issue(ctx: StaffContext, invoiceId: string, query: unknown): Promise<IssuedView> {
     const b = parse(IssueIn, query ?? {}), id = idOf(invoiceId), today = dayOf(this.clock.now());
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     const view = await this.write(async (tx) => {
-      const inv = await this.lock(tx, ctx.firmId, id); await this.seen(tx, ctx, id);   // C5, before anything is written
+      const inv = await this.lock(tx, ctx.firmId, id); await this.seen(tx, ctx, id, scope);   // C5, before anything is written
       if (inv.issued) refuse("ISSUED", `This invoice is already issued (${inv.number}). Nothing was changed.`);
       const s = await tx.moneyPaymentSettings.findFirst({ where: firmScope(ctx.firmId), select: { dueInDays: true, pricesIncludeTax: true } });
       if (!s) return refuse("PAYMENTS_NOT_SET_UP", "Set up payments first: this firm's payment settings are not saved yet. Nothing was changed.");
@@ -73,7 +74,7 @@ export class InvoiceMoney {
   /** POST …/invoices/:id/send: sends the issued invoice's email (the one an empty operating details block held). */
   async send(ctx: StaffContext, invoiceId: string): Promise<IssuedView> {
     const id = idOf(invoiceId), view = (await this.facts(this.db, ctx.firmId, id, dayOf(this.clock.now()))).view;
-    await this.seen(this.db, ctx, id);   // C5
+    await this.seen(this.db, ctx, id, await this.scopeOf(ctx));   // C5 (no transaction here)
     if (view.status !== "ISSUED") refuse("DRAFT", "Issue the invoice first: a draft is not sent.");
     if (view.statusWord === "Credited") refuse("CANCELLED", `${view.number} is cancelled: it is not sent.`);
     return IssuedView.parse({ invoice: view, email: await this.emailInvoice(ctx.firmId, view) });
@@ -85,8 +86,9 @@ export class InvoiceMoney {
     if (into === "TRUST" && p.method === "CARD_TERMINAL") badField("receivedInto", "A card terminal payment goes to the operating account only, never to trust. Nothing was saved.");
     if (receivedOn > today || receivedOn < "2000-01-01") badField("receivedOn", "The date received can't be in the future, or before the year 2000. Nothing was saved.");
     const firmId = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     const done = await this.write(async (tx) => {
-      const inv = await this.lock(tx, ctx.firmId, id); await this.seen(tx, ctx, id);   // C5, before anything is written
+      const inv = await this.lock(tx, ctx.firmId, id); await this.seen(tx, ctx, id, scope);   // C5, before anything is written
       const had = await tx.moneyPayment.findFirst({ where: firmScope(ctx.firmId, { idempotencyKey: p.idempotencyKey }) });
       if (had) {   // a double click, or a retry: the one payment, never a second
         if (had.invoiceId !== id || had.amountMinor !== p.amountMinor || had.method !== p.method || had.receivedInto !== into) refuse("KEY_USED", "This idempotency key already recorded a different payment. Nothing was saved.");
@@ -141,8 +143,9 @@ export class InvoiceMoney {
   /** POST …/invoices/:id/credit-notes: part (a gross amount) or full (all that is left: a cancel), with a reason. */
   async credit(ctx: StaffContext, invoiceId: string, body: unknown): Promise<CreditNoteView> {
     const id = idOf(invoiceId), c = parse(CreditNoteIn, body), today = dayOf(this.clock.now()), firmId = firmScope(ctx.firmId).firmId;
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
-      const inv = await this.lock(tx, ctx.firmId, id), cur = inv.currency; await this.seen(tx, ctx, id);   // C5, before anything is written
+      const inv = await this.lock(tx, ctx.firmId, id), cur = inv.currency; await this.seen(tx, ctx, id, scope);   // C5, before anything is written
       if (!inv.issued) refuse("DRAFT", "A draft is edited, not credited: a credit note is for an issued invoice. Nothing was saved.");
       const before = await this.facts(tx, ctx.firmId, id, today);
       if (before.view.statusWord === "Written off") refuse("WRITTEN_OFF", "Already settled by write-off. Nothing was saved.");
@@ -166,9 +169,10 @@ export class InvoiceMoney {
   /** GET …/invoices/:id/pdf, …/payments/:paymentId/receipt.pdf and …/credit-notes/:noteId/pdf: the stored figures, rendered. */
   async pdf(ctx: StaffContext, invoiceId: string, what: { paymentId?: string; creditNoteId?: string } = {}) {
     const id = idOf(invoiceId), today = dayOf(this.clock.now());
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     const doc = await this.db.$transaction(async (tx) => {
       const f = await this.facts(tx, ctx.firmId, id, today);
-      await this.seen(tx, ctx, id);   // C5: the invoice, its receipts and its credit notes alike
+      await this.seen(tx, ctx, id, scope);   // C5: the invoice, its receipts and its credit notes alike
       if (f.view.status !== "ISSUED") return refuse("DRAFT", "Issue the invoice first: a draft has no document.");
       if (what.paymentId !== undefined) {
         const pv = UUID.test(what.paymentId) ? await this.paymentView(tx, ctx.firmId, what.paymentId.toLowerCase(), false, today) : notFound("payment");

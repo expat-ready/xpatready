@@ -19,7 +19,7 @@ import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { dayOf, invoiceFacts } from "./facts.ts";
 import { lineRatePpm, provinceCode, taxDefault } from "../tax/defaults.ts";
 import { billToProvince, type BillToParty } from "./bill-to.ts";
-import { failClosed, invoiceInScope, type ScopeOf } from "../reads/visibility.ts";
+import { failClosed, invoiceInScope, partyInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { taxForLine } from "./tax-round.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -58,17 +58,19 @@ export class InvoiceDrafts {
     private readonly scopeOf: ScopeOf = failClosed) {}   // C5 (#3305 M1): the app binds PgMoneyVisibility; fail closed otherwise
 
   /** C5 on an existing invoice (reads/visibility.ts invoiceInScope): out of scope is the same 404, before any write. */
-  private async seen(tx: Tx, ctx: StaffContext, id: string) { await invoiceInScope(tx, firmScope(ctx.firmId).firmId, id, await this.scopeOf(ctx)); }
+  private async seen(tx: Tx, ctx: StaffContext, id: string, scope: MoneyScope) { await invoiceInScope(tx, firmScope(ctx.firmId).firmId, id, scope); }
 
   /** POST /api/front-office/money/invoices. */
   async create(ctx: StaffContext, body: unknown): Promise<InvoiceView> {
     const d = parse(DraftIn, body);
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.db.$transaction(async (tx) => {
       const settings = await this.settingsOrRefuse(tx, ctx.firmId);
       const client = d.personId
         ? await tx.foPerson.findFirst({ where: firmScope(ctx.firmId, { id: d.personId.toLowerCase() }), select: { id: true } })
         : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: d.companyId!.toLowerCase() }), select: { id: true } });
-      if (!client) notFound(d.personId ? "person" : "company");
+      // C5 (Lead 14, #3321 (2)): a party outside the caller's scope is the same 404 as a missing one, before anything is written
+      if (!client || !partyInScope(scope, client.id)) notFound(d.personId ? "person" : "company");
       const currency = d.currency ?? settings.defaultCurrency;
       // FO-7g part 3 (P-797): the Bill-to province starts as the client's Canadian address, else the firm's province, as a
       // code (null while the firm's province is not one of the 13: the tax default then warns, never guesses).
@@ -92,12 +94,13 @@ export class InvoiceDrafts {
     // nothing sent is the default (LineIn defaults an absent rate to 0, so the body is asked whether it sent one).
     const sentRate = Object.hasOwn(body as object, "ratePpm") && (body as Record<string, unknown>).ratePpm !== undefined;   // undefined is "not sent" (break m2)
     if (l.kind === "GOVERNMENT_FEE" && sentRate && l.ratePpm !== 0) badField("ratePpm", "A government fee is never taxed: send no rate, or 0. Nothing was saved.");   // AG-6-4 rule 3, no override
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.db.$transaction(async (tx) => {
       await this.settingsOrRefuse(tx, ctx.firmId);
       const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
       const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string; personId: string | null; companyId: string | null; billTo: string | null }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by, person_id::text as "personId", company_id::text as "companyId", bill_to_province as "billTo" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
-      await this.seen(tx, ctx, id);   // C5, before anything is written
+      await this.seen(tx, ctx, id, scope);   // C5, before anything is written
       if (inv.by !== `staff:${ctx.staffId}` && !(await holdsKey(tx, firmId, ctx.staffId, EDIT_KEY)))
         problem(403, "Not allowed", "Only the person who started this draft, or someone who may edit invoices, can add to it. Nothing was saved.", { code: "MISSING_PERMISSION", missing: [EDIT_KEY] });
       if (inv.issued) problem(409, "Not possible now", "This invoice is issued: it can't be edited. Use a credit note. Nothing was saved.", { code: "ISSUED" });
@@ -137,11 +140,12 @@ export class InvoiceDrafts {
   async setBillTo(ctx: StaffContext, invoiceId: string, body: unknown): Promise<InvoiceView> {
     if (!UUID.test(invoiceId)) notFound("invoice");
     const b = parse(BillToIn, body);
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.db.$transaction(async (tx) => {
       const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
       const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; billTo: string | null; personId: string | null; companyId: string | null; currency: string }[]>`select issued_at is not null as issued, number, bill_to_province as "billTo", person_id::text as "personId", company_id::text as "companyId", currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
-      await this.seen(tx, ctx, id);   // C5, before anything is written
+      await this.seen(tx, ctx, id, scope);   // C5, before anything is written
       if (inv.issued) problem(409, "Not possible now", `This invoice is issued (${inv.number}): its Bill-to province is fixed. Nothing was saved.`, { code: "ISSUED" });
       if (inv.billTo === b.province) return this.view(tx, ctx.firmId, id);
       // The two defaults, from one read of the firm's facts after the invoice's lock (as addLine reads them).
@@ -178,7 +182,8 @@ export class InvoiceDrafts {
     if (!UUID.test(invoiceId)) notFound("invoice");
     // One snapshot: the lines and the total are read as of the same moment (a line added between them never shows).
     const id = invoiceId.toLowerCase();
-    return this.db.$transaction(async (tx) => { const v = await this.view(tx, ctx.firmId, id); await this.seen(tx, ctx, id); return v; }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
+    return this.db.$transaction(async (tx) => { const v = await this.view(tx, ctx.firmId, id); await this.seen(tx, ctx, id, scope); return v; }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 
   // ------------------------------------------------------------------------------------------------- helpers
