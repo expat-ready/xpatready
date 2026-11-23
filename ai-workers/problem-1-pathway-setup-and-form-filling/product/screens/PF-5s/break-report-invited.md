@@ -45,4 +45,30 @@ Actual: the door's `firmName` check rejects `\p{Cf}`, so the screen shows "No co
 * **Keyboard.** Tab order runs Password → Firm name → tick → three terms links → Start free trial → Sign in. Enter submits. Focus goes to the summary on a refusal (`aria-invalid` set on the field) and to the heading on Check your email and on the dead page.
 * **Deviations M4 (no plan Change) and BR-13 (the email check still asked).** Both are recorded with reasons in `challenge.md`. They are not findings here.
 
-Verdict: Changes (65e4e1fa39bc666f0a71e89f42f4ab366c3ccf77): fix M1 (a Try again on the load-error view, and the no-token page's own title, which covers m1). The Minors can be fixed or listed in the PR.
+Round 1 verdict: Changes (65e4e1fa39bc666f0a71e89f42f4ab366c3ccf77): fix M1 (a Try again on the load-error view, and the no-token page's own title, which covers m1). The Minors can be fixed or listed in the PR.
+
+## Round 2: `git diff 65e4e1fa3..e7748d5d3` (diff only)
+Same method: a fresh copy on :4614, restarted twice to clear the door's 10-per-10-minute sign-up limit, then stopped. I made plans with SQL: an inactive one, a 0-day-trial one and one withdrawn mid-test. The schema has no "internal" or private plan flag (`platform_plan.active` is the only gate), so for the door "internal" means inactive.
+
+**Round-1 fixes: all held.**
+* **M1:** with the first GET aborted, Try again now loads the form without reloading the page. The words say the link is kept on the page.
+* **m1:** a reload now shows "Open your invitation link" with "…If you haven't finished signing up, it still works.", no ask line, and the matching tab title.
+* **m3:** a 20,000-character token goes straight to the dead page and sends no request.
+* **m4:** the summary now reads "Password: Not only spaces. | Firm name: 2 to 120 characters."
+* **m2:** checked in the code only. `slowSend(action)` reads "Your answers are kept: wait a few minutes, then press <action> again."
+* **m5:** the door's shared rule, passed to the tech lead (not re-tested).
+
+**Plan Change path: what held.**
+* **Body tampering, straight against `POST /api/public/signup/:token`:** an inactive plan, an unknown plan, `TEAM`, `team' or '1'='1` → 422 "planCode: choose one of the plans offered". 41 characters, `""`, `null` or `1` → 422 "planCode: check this answer". `period` "WEEKLY" or "yearly" → 422. An extra `email` or `countryCode` → 422 "not a field of this form". The link's email cannot be changed.
+* **A valid change:** `firm`/`YEARLY` → 202; the pending row is `firm YEARLY`.
+* **A 0-day-trial plan:** picking it changes the heading and button to "Sign up" and drops "14 days free". The pending row holds that plan. A link made on a 0-day plan opens as "Sign up".
+* **The plan list unreachable:** `/api/public/plans` aborted → no Change button. The link's plan is shown and sent.
+* **375 px and 1280 px at 200 % zoom:** no sideways scroll with the picker open. Tab reaches Change, the selects and Done, and arrow keys change the select. The plan line updates and reads "Changed from your invitation's plan."
+
+**Round-2 Minors**
+* **r2-m1. A plan withdrawn between opening and sending is fixable, but the page doesn't say what happened.** Steps: a link on plan W; open it; set W inactive; send. Result: 422 "Plan: Choose one of the plans offered." in the summary and under the plan line, which still reads "W, monthly … From your invitation." Change still lists W, selected (`choices` is read once at load, `invited-page.tsx:88`). After picking Team and pressing Done, the old error stays until the next send. Sending again then works (pending row `team`). Same result when the plan the person chose is the one withdrawn. Suggestion: on a `planCode` refusal, read `plans` again and say "That plan is no longer offered; choose another."
+* **r2-m2. Focus is lost when the picker opens or closes.** Steps: keyboard only, at 375 px or 200 % zoom: Enter on Change, then Enter on Done. Result: `document.activeElement` is BODY both times, so a screen reader announces nothing. Chrome's next Tab happens to land on the select or Change. Escape does not close the picker. S2 (`signup-page.tsx:134-140`) has the same pattern, so fix both: focus the plan select on open and Change on Done.
+* **r2-m3. (Door GET; question.)** A link whose plan is withdrawn before it is opened still gets the dead page "This link's plan is not offered … Ask us for a new link". On POST the person can now pick another plan, so the door could answer the GET with the link's data and a "plan no longer offered" flag, and the page would open with the picker. The GET's 409 carries no invitation, so the screen cannot do this alone.
+* **r2-m4. "No card needed." stays on a 0-day-trial plan.** Steps: pick the 0-day plan. The heading becomes "Sign up", but the line still says "You were invited to Expat Ready. No card needed." With no trial, Checkout takes the first payment. S2 has the same line (`signup-page.tsx:116`).
+
+Verdict: Approve at e7748d5d3e401c4dc77b062acb0dfb2f376381e6
