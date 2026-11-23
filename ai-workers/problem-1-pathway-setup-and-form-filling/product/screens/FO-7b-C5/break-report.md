@@ -1,0 +1,48 @@
+# Break report: PR #3321 (R1.56, FO-7b's C5 scope fix), head 2d69a9f17
+
+Breaker, 23 Nov 2026. Diff `629ff76f6...2d69a9f17`, run from a separate git worktree at 2d69a9f17. Scratch databases on 127.0.0.1:54329 (`xr_studio_brkc5_<pid>`); all of them, and the two my failed first runs left behind, are dropped. :4400 was never touched.
+My attack suite is a copy of the setup in `tests/check_fo7b_c5_scope.ts` plus about 120 lines of attacks, run through the real Nest app with PF-4's guard and PF-12's walls and the local sign-in. It is not committed.
+The caller is user-O, a Case Officer given the money keys and own cases only, with "everyone sees all" off, as in the PR's suite.
+
+## Baseline
+- `check_fo7b_c5_scope`: 34/0.
+- Neighbouring suites, re-run on this head: `check_csmv1_money_visibility` 33/0, `check_fo7q_reads` 52/0, `check_fo7b_refunds` 29/0, `check_fo7g_tax_defaults` 78/0.
+
+## Attacks
+
+| # | Attack | Expected | Actual | Result |
+|---|---|---|---|---|
+| 1 | Every route in the sweep table, called with an out-of-scope invoice or payment and again with a random id (14 pairs: read, pdf, lines, bill-to, issue, send, payments, credit-notes, receipt pdf, refunds, extra, tax-default with and without `invoiceId`, create) | 404 both ways, the same body | 404/404 on all 14, the bodies identical byte for byte | Held |
+| 2 | Linked party CS (case K, user-O on its team): a case-less invoice, an invoice on unseen case KT, an invoice on unseen case L | case-less invoice opens; cased ones are judged by their case | case-less 200; on KT 404 (tax-default too); on L 404 | Held |
+| 3 | End user-O's team row on K mid-way (`ended_at`, `end_reason` set) | CS's case-less invoice and new drafts close | read 200 → 404; create 404; credit 404 | Held |
+| 4 | Firm B case whose `case_client` points at a firm A person (L3); firm A case pointing at a firm B person | nothing opens | 404 both ways. Firm A's case puts firm B's person id into the party half (`caseLinks` does not check the person's firm, visibility-adapter.ts:62). This is harmless: create looks the person up within the firm first, and `scopeSql` matches only the firm's own invoices | Held |
+| 5 | `case_client.firm_id` NULL, linked person, user-O on the team | fail closed | the join `c.firm_id = k.firm_id` drops the row; create 404 | Held |
+| 6 | Company-linked cases | as for a person | linked company: create 201, tax-default 200; company of an unseen case: create 404 in the same words as a missing company, its invoice 404 | Held |
+| 7 | Refund and extra (REFUND and KEEP) by payment id when the payment's invoice is out of scope | 404 "No such payment", nothing written | 404, the same words as a missing payment; `money_refund` and `money_credit_entry` unchanged | Held |
+| 8 | Replays: the Owner refunds or records under key K; user-O sends the exact same request (same key, same body) on that out-of-scope payment or invoice | 404, never the stored answer | 404 for both: `seen` runs before `replay` and before the `had` lookup (refunds.ts:42, money.ts:91) | Held |
+| 9 | Paths built without a scope: `new InvoiceDrafts/InvoiceMoney/Refunds/TaxDefaults` without `scopeOf`, called with real ids | fail closed | 404 on create, read, pdf, refund and forParty | Held |
+| 10 | Other callers that might bypass the guard | none | `ClientMoney` (port.ts) has only `hasMoney`, a yes/no per party with no invoice data. `refundsReader` is fail-closed and calls only `standing()`, from reads that are already scoped. No job or other module builds these services (grep of `api/src`). Merge columns never write `money_*` | Held |
+| 11 | Wrong role or key | the key's 403 first; scope never widens | `choose` checks REFUND's 403 before scope, as it does for a missing payment, so nothing leaks. Validation (422) runs before scope on both paths | Held |
+| 12 | tax-default with `invoiceId` for an invoice on a case the caller sees, billed to a party outside the party half (invoice of PX put on case K) | 200, since the case decides | read 200 and addLine 201, but tax-default answers 404 "No such person": the party check runs first (tax/routes.ts:37) | **Minor m1** |
+| 13 | Race: the scope changes between the read before the transaction and the write (a `scopeOf` wrapper ends the team row after reading) | refused, or the risk accepted | the line is written (8 → 9 lines); the next read is 404 | **Minor m2** |
+| 14 | Timing and locks, missing versus out of scope (60 GETs each) | no usable signal | read p50 13.7 vs 14.5 ms, pdf 12.9 vs 18.2 ms, p90 ranges overlap; one run showed +5 ms. Out of scope, `money_trust_lock` and the invoice's `FOR UPDATE` are taken before the 404 (money.ts:207, refunds.ts:135); `read` builds the full view before `seen` (drafts.ts:186) | **Minor m3** |
+| 15 | `scopeOf` for a firm with many cases (the Owner, `case:view.all`) | within the budgets | 0 extra cases: scopeOf 3 ms, the linked query 0.8 ms, GET/POST lines 16/25 ms. 20,000 extra cases: scopeOf 96 ms (the new linked query alone 53 ms, plan 63.6 ms, 40,012 ids in scope); GET …/:id 169 ms, POST …/lines 167 ms, on every route, writes included | **Minor m4** |
+
+## Findings
+- **m1 (Minor), tax/routes.ts:37.** The tax default judges the party before the invoice. An invoice the caller reaches through its case then gets "No such person" here, while `GET …/:id` and `POST …/lines` serve the same invoice. This breaks the PR's own rule ("an invoice with a case is still judged by that case alone").
+  - It is latent today. Nothing in the app sets `money_invoice.case_id` (only fixtures do), and `web/src` never calls `tax-default`.
+  - Why not a Blocker or Major: no access is widened, and no screen in "What gets built" breaks.
+- **m2 (Minor), drafts.ts:66/97/143 and each `scopeOf` call made before a transaction.** A caller who loses a case after the scope read still writes once, within milliseconds. Lead 14 (4) ordered the read before the transaction. READ COMMITTED inside the transaction would have the same window unless the team rows were locked, so I record this as an accepted risk, not a defect.
+- **m3 (Minor).** A caller outside the scope briefly takes the party's trust lock and the invoice's row lock before getting 404, and the read path does extra work first, so the timing differs by a few ms. Invoice ids are random UUIDs, so this tells nobody which records exist unless they already hold the id. Nothing is written.
+- **m4 (Minor), visibility-adapter.ts:36.** `PgMoneyVisibility` never answers "ALL". The Owner's scope is a full id list, and the new linked-parties query costs about 53 ms at 20,000 cases; it now runs on every FO-7b route, writes included. STANDARDS §9 sets budgets with the sample data and leaves scale work to the team, so this is not a budget breach.
+
+## What held
+- Every route in the sweep answers out of scope with 404 in the same words as a missing record.
+- Nothing is written out of scope: no line, Bill-to change, issue, email, payment, credit note, refund, kept credit or audit row.
+- A replay does not cross the scope, and every path fails closed by default.
+- Linked parties open only case-less invoices. A link from another firm or with a NULL `firm_id` opens nothing. Company links behave the same.
+- Losing a team row closes access at once.
+- There is one `caseLinks` predicate, shared by FO-7q's search (parties.ts:90) and the money visibility.
+- No other caller of `InvoiceDrafts`, `InvoiceMoney`, `Refunds` or `TaxDefaults` skips the guard.
+
+Verdict: Approve 2d69a9f173734bbd11599202d1edf81335a9f441
