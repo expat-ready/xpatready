@@ -2,7 +2,7 @@
 
 current_lead: local_c598a0e1-126f-4370-9065-ea0f229121ee Lead 16 · 24 Nov 04:26 IST (after Lead 15; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 05:21 IST: Lead 16, check 41b05d46. #3207 merged; #3040 labelled 05:15, then #3202 (base still #3040's branch; lane 01MXNda67yexjnYrdQ3B9MNt). Batches #3350 (#3203), #3351 (#3302). #3321 f648b5eec: full run 45289864846, then label. #3209: wake after #3040 to merge and declare. #3225 aa1d004e6: Lead B 5 read 98e5fc19c; new head unread; label after #3040, #3033. Typed 05:20: #3224 (R1.54 lane), #3033 (R1.70 lane 01MXNda9PEWJuWCAsf8AenTj, stamp 20261123223000). #3193 2fd5352aa unread.
+updated: 2026-11-24 05:29 IST: Lead 16, check 41b05d46. #3040 labelled, not queued yet: its `ci` re-runs since 05:16 (cause not found); then #3202 (base still #3040's branch; lane 01MXNda67yexjnYrdQ3B9MNt). Batches #3350 (#3203), #3351 (#3302). #3321 f648b5eec: full run 45289864846, then label. #3209: wake after #3040 to merge and declare. #3225 aa1d004e6: all reads OK, full run asked 05:28; label after #3040. #3224 a837a3937 (R1.54 lane) and #3033 053869eed (R1.70 lane 01MXNda9PEWJuWCAsf8AenTj, stamp 20261123223000): verdicts owed. #3193 2fd5352aa unread.
 
 ## Hand-over Lead 15 → Lead 16, 04:26 IST 24 Nov (before: `history/STATE-2026-11-24-lead15-before-handover.md`; earlier, still owed: `…-lead14-before-handover.md`, `…-lead13-A338-row.md`)
 
