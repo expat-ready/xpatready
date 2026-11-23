@@ -7,6 +7,7 @@ import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fakeAlerts } from "../ports/alert.ts";
@@ -21,7 +22,7 @@ const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "mi
 const BREW = "/opt/homebrew/opt/postgresql@18/bin", bin = (n: string) => (existsSync(join(BREW, n)) ? join(BREW, n) : n);
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf11c_${process.pid}`, urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
-const sql = (q: string) => execFileSync(bin("psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const sql = (q: string) => { try { return execFileSync(bin("psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(); } catch (e) { throw new Error(`psql: ${String((e as { stderr?: unknown }).stderr ?? e).trim()}`); } };
 const sqlFails = (q: string) => { try { sql(q); return false; } catch { return true; } };
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 700)}` : ""}`); };
@@ -41,13 +42,15 @@ const { ARCHIVE_YEARS, CLOSED_ACTION, CLOSURE_CRON, CLOSURE_QUEUE, CLOSURE_ZONE,
 const { bypassUses, withFirm } = await import("../api/src/platform/firm-scope.ts");
 const { PgLegalHolds } = await import("../api/src/platform/register/holds/adapter.ts");
 const { PlatformIdentity, FIRM_CLOSED } = await import("../api/src/platform/identity/service.ts");
+const { PlatformSession } = await import("../api/src/platform/identity/session/service.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
 const closureFeature = (await import("../api/src/features/platform-firm-closure.ts")).default;
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 const DAY = 86_400_000, T0 = new Date("2026-12-01T15:00:00Z"), at = (d: number, h = 1) => new Date(T0.getTime() + d * DAY + h * 3_600_000);
 const fake = new FakeClock(T0.toISOString());
-const mail = fakeMail(), alerts = fakeAlerts(), archive = fakeAuditArchive(() => fake.now());
+// The store's clock runs 25 ms ahead of the job's (break M2: on real clocks the store writes a little after the job starts).
+const mail = fakeMail(), alerts = fakeAlerts(), archive = fakeAuditArchive(() => new Date(fake.now().getTime() + 25));
 const notices = new ExitNotices({ db, mail, audit: auditEvent, now: () => fake.now(), appUrl: "https://app.example.test" });
 const deps = { db, audit: auditEvent, archive, holds: new PgLegalHolds(), alerts: () => alerts, now: () => fake.now() };
 const closure = new FirmClosure(deps);
@@ -80,9 +83,13 @@ try {
     ok("AUD-2 fail: deleting inside the keep period is refused (ArchiveRetained), on day one and one second before it ends; the object stays", early && lastSecond && (await ar.get("audit/test/one.jsonl")) !== null);
     await c.set(new Date(until.getTime() + 1000)); await ar.remove("audit/test/one.jsonl");
     ok("AUD-2 pass: after its keep period the object can be removed", (await ar.get("audit/test/one.jsonl")) === null);
-    const badKeys = await Promise.all(["../x", "/abs", "Firms/UPPER", "a//b", "a/../b"].map((k) => refusedWith(() => ar.put(k, bytes, until), Error)));
+    const badKeys = await Promise.all(["../x", "/abs", "Firms/UPPER", "a//b", "a/../b"].map((k) => refusedWith(() => ar.put(k, bytes, addYears(c.now(), 1)), Error)));
     ok("AUD-2 fail: a key with '..', a leading '/', upper case or an empty segment is refused", badKeys.every(Boolean), badKeys);
-    ok("AUD-2 pass: list(prefix) returns the keys under a prefix, sorted", (await ar.put("audit/x/b.jsonl", bytes, until), await ar.put("audit/x/a.jsonl", bytes, until), (await ar.list("audit/x/")).join()) === "audit/x/a.jsonl,audit/x/b.jsonl");
+    ok("AUD-2 pass: list(prefix) returns the keys under a prefix, sorted", (await ar.put("audit/x/b.jsonl", bytes, addYears(c.now(), 1)), await ar.put("audit/x/a.jsonl", bytes, addYears(c.now(), 1)), (await ar.list("audit/x/")).join()) === "audit/x/a.jsonl,audit/x/b.jsonl");
+    const past = await refusedWith(() => ar.put("audit/test/past.jsonl", bytes, new Date(c.now().getTime() - 1000)), RangeError);
+    const nowOnly = await refusedWith(() => ar.put("audit/test/now.jsonl", bytes, c.now()), RangeError);
+    ok("AUD-2 fail (break m2): a keep-until date in the past, or now, is refused", past && nowOnly && (await ar.list("audit/test/")).length === 0);
+    ok("AUD-2 fail (break m3): the fake exposes no map of its objects (only its four calls reach them)", !("objects" in ar));
     ok("AUD-5 pass: the archive copy is kept for the longest floor of the keep-period table (the activity log's 7 years)", ARCHIVE_YEARS === 7 && ARCHIVE_YEARS === ACTIVITY_LOG_YEARS);
   }
 
@@ -106,7 +113,7 @@ try {
   ok("setup: firm A is on payment hold with its four notices sent (days 0, 16, 46, 83); firm B on hold with none", clockA.noticesSent.map((n) => n.day).join() === "0,16,46,83" && (await exitClock(db, B))!.noticesSent.length === 0, clockA.noticesSent);
   const before = countsOf(A), beforeB = countsOf(B), auditBefore = allLines(A);
   const day89 = await run(() => withFirm(A, () => closure.runFirm(A)), 89, 23);
-  ok("day 89 pass: nothing happens: the firm stays on payment hold, nothing is archived, no alert", day89.state === "not_due" && statusOf(A) === "PAYMENT_HOLD" && archive.objects.size === 0 && alerts.raised.length === 0, day89);
+  ok("day 89 pass: nothing happens: the firm stays on payment hold, nothing is archived, no alert", day89.state === "not_due" && statusOf(A) === "PAYMENT_HOLD" && (await archive.list("")).length === 0 && alerts.raised.length === 0, day89);
 
   // ------------------------------------------------------------------------- day 90, but the conditions are not met
   {
@@ -117,7 +124,7 @@ try {
     archive.failPut = true;
     const broken = await withFirm(A, () => closure.runFirm(A));
     archive.failPut = false;
-    ok("day 90 fail: an archive write that fails closes nothing: the firm stays on hold, no session ends, alert raised", broken.state === "blocked" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.archive_write_failed") === 1 && Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}' and reason = '${FIRM_CLOSED_REASON}'`)) === 0 && archive.objects.size === 0, broken);
+    ok("day 90 fail: an archive write that fails closes nothing: the firm stays on hold, no session ends, alert raised", broken.state === "blocked" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.archive_write_failed") === 1 && Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}' and reason = '${FIRM_CLOSED_REASON}'`)) === 0 && (await archive.list("")).length === 0, broken);
     const noHolds = await withFirm(A, () => new FirmClosure({ ...deps, holds: null }).runFirm(A));
     ok("day 90 fail: with no legal-hold check wired nothing is closed (BR-7: the hold is asked first)", noHolds.state === "blocked" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.no_hold_check") === 1, noHolds);
   }
@@ -126,22 +133,33 @@ try {
   const holdId = sql(`insert into plat_legal_hold (id, firm_id, scope_kind, reason, placed_by) values (gen_random_uuid(), '${A}', 'FIRM', 'A court order (Sample)', 'staff:platform-owner') returning id`).split("\n")[0];
   {
     const h1 = await withFirm(A, () => closure.runFirm(A)), h2 = await withFirm(A, () => closure.runFirm(A));
-    ok("hold fail: a legal hold on the firm stops the close: nothing archived, the firm stays on hold, one firm.closure_held line a day (run twice)", h1.state === "held" && h2.state === "held" && statusOf(A) === "PAYMENT_HOLD" && archive.objects.size === 0 && lines(A, HELD_ACTION) === 1, { h1, h2, held: lines(A, HELD_ACTION) });
+    ok("hold fail: a legal hold on the firm stops the close: nothing archived, the firm stays on hold, one firm.closure_held line a day (run twice)", h1.state === "held" && h2.state === "held" && statusOf(A) === "PAYMENT_HOLD" && (await archive.list("")).length === 0 && lines(A, HELD_ACTION) === 1, { h1, h2, held: lines(A, HELD_ACTION) });
     sql(`update plat_legal_hold set released_at = now(), released_by = 'staff:platform-owner', release_reason = 'Order lifted (Sample)' where id = '${holdId}'`);
+  }
+
+  // ------------------------------------------------------------------------- a copy that is not the firm's whole log (break M1)
+  {
+    const lying = { ...archive, get: async (k: string) => { const o = await archive.get(k); return o && { ...o, bytes: o.bytes.subarray(0, 200) }; } };
+    const partial = await withFirm(A, () => new FirmClosure({ ...deps, archive: lying }).runFirm(A));
+    ok("M1 fail: a copy that does not read back byte for byte (a partial copy) closes nothing: blocked, alert raised", partial.state === "blocked" && partial.rule === "PF-11c.archive_unreadable" && statusOf(A) === "PAYMENT_HOLD" && alertsFor(A, "PF-11c.archive_unreadable") === 1 && lines(A, CLOSED_ACTION) === 0, partial);
+    const ws = sql(`select workspace_id from audit_event where firm_id = '${A}' limit 1`);
+    const late = { ...archive, put: async (k: string, b: Buffer, u: Date) => { const r = await archive.put(k, b, u); sql(`insert into audit_event (id, workspace_id, actor, action, entity, summary, firm_id) values (gen_random_uuid(), '${ws}', 'system:pf11c-check', 'pf11c.check.late_line', 'platform_firm', 'a line written after the copy', '${A}')`); return r; } };
+    const stale = await withFirm(A, () => new FirmClosure({ ...deps, archive: late }).runFirm(A));
+    ok("M1 fail: a line written after the copy (the copy is stale) closes nothing; the next run writes a new copy", stale.state === "changed" && statusOf(A) === "PAYMENT_HOLD" && lines(A, CLOSED_ACTION) === 0, stale);
   }
 
   // ------------------------------------------------------------------------- day 90 (after the release): the close
   const staffA = sql(`select id from platform_staff where firm_id = '${A}' order by id`).split("\n").filter(Boolean);
   const closedAt = at(91, 2);
   const r = await run(() => withFirm(A, () => closure.runFirm(A)), 91, 2);
-  const key = archiveKeyOf(A, clockA.holdSeq), copy = await archive.get(key);
+  const key = r.state === "closed" ? r.archiveKey : "", copy = key ? await archive.get(key) : null;
   ok("close pass: after the hold is released the next run closes the firm (status DELETED, read as closed)", r.state === "closed" && statusOf(A) === "DELETED", r);
-  ok("archive first pass: the copy is in the write-once archive under firms/<firm>/closure-<hold>.jsonl, written no later than the close, kept 7 years", copy !== null && r.state === "closed" && r.archiveKey === key && copy.writtenAt.getTime() <= closedAt.getTime() && copy.retainUntil.getTime() === addYears(closedAt, 7).getTime(), copy && { key, writtenAt: copy.writtenAt, until: copy.retainUntil });
+  ok("archive first pass: the copy is in the write-once archive under firms/<firm>/closure-<hold>-<run time>.jsonl (a fresh key each run), with the store's clock 25 ms ahead (M2), kept 7 years", copy !== null && r.state === "closed" && key.startsWith(archiveKeyOf(A, clockA.holdSeq, closedAt, "").slice(0, -".jsonl".length)) && /-[0-9a-f]{8}\.jsonl$/.test(key) && Math.abs(copy.writtenAt.getTime() - closedAt.getTime()) < 1000 && copy.retainUntil.getTime() === addYears(closedAt, 7).getTime(), copy && { key, writtenAt: copy.writtenAt, until: copy.retainUntil });
   {
     const rows = copy!.bytes.toString("utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
     const head = rows[0] as { kind: string; firmId: string; auditLines: number; firm: { id: string } };
     const body = rows.slice(1);
-    ok("archive pass: the copy names the firm and holds every one of its activity-log lines at the time it was written", head.kind === "firm-closure-archive" && head.firmId === A && head.firm.id === A && body.length === head.auditLines && head.auditLines >= auditBefore && body.every((l) => l.kind === "audit_event" && l.firmId === A), { head: { ...head, firm: undefined }, n: body.length, auditBefore });
+    ok("archive pass: the copy names the firm and holds every one of its activity-log lines at the time it was written", head.kind === "firm-closure-archive" && head.firmId === A && head.firm.id === A && body.length === head.auditLines && head.auditLines >= auditBefore && body.every((l) => l.kind === "audit_event" && l.firmId === A) && body.some((l) => l.action === "pf11c.check.late_line"), { head: { ...head, firm: undefined }, n: body.length, auditBefore });
     ok("archive fail: the copy holds no line of firm B", !copy!.bytes.toString("utf8").includes(B));
     const closedLine = sql(`select detail::text from audit_event where firm_id = '${A}' and action = '${CLOSED_ACTION}'`);
     const d = JSON.parse(closedLine) as { archiveKey: string; sha256: string; keepUntil: string };
@@ -158,6 +176,13 @@ try {
     ok("sign-in fail: a new sign-in to the closed firm is refused (401 FIRM_CLOSED, in plain words)", refused.status === 401 && refused.code === "FIRM_CLOSED" && refused.detail === FIRM_CLOSED, refused);
     const staffB = sql(`select s.id from platform_staff s where s.firm_id = '${B}' and s.status = 'ACTIVE' order by s.id limit 1`);
     const ctxB = await identity.authenticate(local.issue(staffB, { authTimeMs: Date.now(), secondStep: true })).catch((e) => e as Error);
+    const local2 = await identity.localSignIn({ firmKey: "sample-firm", actorId: staffA[0] }).then(() => ({}), (e) => { const x = e as { getStatus?: () => number; getResponse?: () => { code?: string } }; return { status: x.getStatus?.(), code: x.getResponse?.().code }; });
+    ok("sign-in fail (break m1): the local sign-in door issues no token for the closed firm", (local2 as { code?: string }).code === "FIRM_CLOSED", local2);
+    const token = randomBytes(32).toString("base64url"), staffBefore = Number(sql(`select count(*) from platform_staff where firm_id = '${A}'`));
+    sql(`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at) values (gen_random_uuid(), '${A}', 'late.invitee@example.test', '{CASE_OFFICER}', encode(sha256('${token}'::bytea), 'hex'), 'staff:${staffA[0]}', now() + interval '48 hours')`);
+    const session = new PlatformSession(db, {} as never, mail, { now: () => Date.now() }, identity);
+    const acc = await session.accept(token).then(() => ({}), (e) => { const x = e as { getStatus?: () => number; getResponse?: () => { code?: string } }; return { status: x.getStatus?.(), code: x.getResponse?.().code }; });
+    ok("invitation fail (break M3): a pending invitation of the closed firm cannot be accepted (410); no staff member is added", (acc as { status?: number }).status === 410 && (acc as { code?: string }).code === "INVITATION_NOT_VALID" && Number(sql(`select count(*) from platform_staff where firm_id = '${A}'`)) === staffBefore, acc);
     ok("sign-in pass: firm B's staff still sign in", !(ctxB instanceof Error) && ctxB.firmId === B, ctxB instanceof Error ? ctxB.message : ctxB.firmId);
   }
 
@@ -180,10 +205,10 @@ try {
   // ------------------------------------------------------------------------- run twice, the same day and later
   {
     await fake.set(at(91, 5));
-    const puts = archive.objects.size, closedLines = lines(A, CLOSED_ACTION), revs = Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}'`));
+    const puts = (await archive.list("")).length, closedLines = lines(A, CLOSED_ACTION), revs = Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}'`));
     const again = await withFirm(A, () => closure.runFirm(A));
     const swept = await closure.sweep();
-    ok("twice pass: the job run again the same day does nothing (no second copy, line or revocation; the sweep lists only firm B)", again.state === "not_due" && archive.objects.size === puts && lines(A, CLOSED_ACTION) === closedLines && Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}'`)) === revs && swept.closed === 0 && swept.blocked === 1, { again, swept });
+    ok("twice pass: the job run again the same day does nothing (no second copy, line or revocation; the sweep lists only firm B)", again.state === "not_due" && (await archive.list("")).length === puts && lines(A, CLOSED_ACTION) === closedLines && Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}'`)) === revs && swept.closed === 0 && swept.blocked === 1, { again, swept });
   }
 
   // ------------------------------------------------------------------------- a hold that ends before day 90 closes nothing

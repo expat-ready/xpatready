@@ -5,7 +5,8 @@
 // archive refuses its step (PF-11c raises firm_closure_blocked), never a silent pass.
 //
 // The rules every adapter keeps (the fake proves them in tests/check_pf11c_close.ts; S3 compliance mode keeps them by itself):
-// 1. put(key, bytes, retainUntil) writes once: a key already written is refused (ArchiveKeyExists), never replaced.
+// 1. put(key, bytes, retainUntil) writes once: a key already written is refused (ArchiveKeyExists), never replaced; a
+//    retainUntil not after now is refused (RangeError).
 // 2. remove(key) is refused while the clock is before the object's retainUntil (ArchiveRetained): deleting inside a keep
 //    period is refused. retainUntil can never be shortened (no call changes it).
 // 3. get(key) returns the bytes as written with their sha256 and retainUntil, or null.
@@ -37,13 +38,15 @@ export interface AuditArchivePort {
 export const sha256Of = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
 /** The fake: in memory, on the caller's clock (a test moves it past retainUntil). `failPut` makes the next puts throw. */
-export function fakeAuditArchive(now: () => Date): AuditArchivePort & { objects: Map<string, ArchivedObject>; failPut: boolean } {
+export function fakeAuditArchive(now: () => Date): AuditArchivePort & { failPut: boolean } {
+  // Private to the fake (break m3): only the four calls reach it, and every answer is a copy.
   const objects = new Map<string, ArchivedObject>();
   const self = {
-    objects, failPut: false,
+    failPut: false,
     async put(key: string, bytes: Buffer, retainUntil: Date) {
       const k = ArchiveKey.parse(key), until = RetainUntil.parse(retainUntil);
       if (!Buffer.isBuffer(bytes)) throw new TypeError("archive: bytes must be a Buffer");
+      if (until.getTime() <= now().getTime()) throw new RangeError("archive: a keep-until date in the past or now is refused");
       if (self.failPut) throw new Error("archive: the store did not answer (fake failPut)");
       if (objects.has(k)) throw new ArchiveKeyExists(k);
       const copy = Buffer.from(bytes), sha256 = sha256Of(copy);

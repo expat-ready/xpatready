@@ -6,8 +6,8 @@
 //   2. every departure notice of the clock (EXIT_NOTICE_DAYS, PF-5) must have been sent, else it waits and raises
 //      firm_closure_blocked (AlertPort): a person looks;
 //   3. the archive copy comes first: the firm's record and every activity-log line of the firm, as JSON Lines, written to
-//      the write-once archive (AuditArchivePort, `firms/<firmId>/closure-<holdSeq>.jsonl`) kept for the longest floor of
-//      AUD-5's table (7 years), then read back and its sha256 checked. No archive wired, a failed write or a copy that
+//      the write-once archive (AuditArchivePort, `firms/<firmId>/closure-<holdSeq>-<run time>-<random>.jsonl`, a fresh key each run) kept for the longest floor of
+//      AUD-5's table (7 years), then read back and compared byte for byte; at the close the copy must still hold every line of the firm. No archive wired, a failed write or a copy that
 //      does not read back → firm_closure_blocked, and the firm stays as it is;
 //   4. only then, in one transaction (the firm's row locked, the clock and the hold checked again): the firm → DELETED
 //      (closed), every staff session ended (a revocation per staff member), sign-in refused (identity/service.ts), and one
@@ -17,8 +17,9 @@
 // sessions and PF-27's closed-lock clock come with it. A run twice the same day does nothing the second time.
 // Legal readings: Unconfirmed: no counsel.
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import type { AlertPort } from "../../../../ports/alert.ts";
-import { ArchiveKeyExists, sha256Of, type AuditArchivePort } from "../../../../ports/audit-archive.ts";
+import { sha256Of, type AuditArchivePort } from "../../../../ports/audit-archive.ts";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import { KEEP_PERIODS } from "../../../../ports/keep-period.ts";
@@ -39,7 +40,8 @@ export const CLOSED_ACTION = "firm.closed", HELD_ACTION = "firm.closure_held";
 export const FIRM_CLOSED_REASON = "firm-closed";
 /** The archive copy's keep period: the longest FLOOR in AUD-5's table (the activity log's 7 years, SA-11-14). */
 export const ARCHIVE_YEARS = Math.max(...KEEP_PERIODS.filter((r) => r.kind === "FLOOR" && typeof r.years === "number").map((r) => r.years as number));
-export const archiveKeyOf = (firmId: string, holdSeq: string) => `firms/${firmId.toLowerCase()}/closure-${holdSeq}.jsonl`;
+/** One key per run (break M1): the firm, the hold's event seq, the run's time and a random part (two runs in one millisecond). */
+export const archiveKeyOf = (firmId: string, holdSeq: string, at: Date, run: string = randomUUID().slice(0, 8)) => `firms/${firmId.toLowerCase()}/closure-${holdSeq}-${at.toISOString().replace(/[-:.]/g, "").toLowerCase()}-${run}.jsonl`;
 export const addYears = (d: Date, years: number) => { const x = new Date(d.getTime()); x.setUTCFullYear(x.getUTCFullYear() + years); return x; };
 
 export type ClosureDeps = { db: PrismaClient; audit: AuditPort<Tx>; archive: AuditArchivePort | null; holds: LegalHoldPort<Tx> | null; alerts: () => AlertPort; now: () => Date };
@@ -74,23 +76,31 @@ export class FirmClosure {
     const archive = this.d.archive;
     if (!archive) return this.blocked(id, "PF-11c.no_archive");
 
-    // The archive copy first (rule 3): written once, read back, its hash checked.
-    const key = archiveKeyOf(id, clock.holdSeq);
+    // The archive copy first (rule 3; break M1, M2): a fresh copy every run under its own key (never one left by an earlier
+    // run), read back and compared byte for byte with what was written, kept until exactly the date asked for.
+    const until = addYears(now, ARCHIVE_YEARS);
+    const key = archiveKeyOf(id, clock.holdSeq, now);
+    let bundle: { bytes: Buffer; ids: string[] };
     try {
-      if (!(await archive.get(key))) {
-        const bytes = await this.bundle(id, clock, now);
-        try { await archive.put(key, bytes, addYears(now, ARCHIVE_YEARS)); } catch (e) { if (!(e instanceof ArchiveKeyExists)) throw e; }
-      }
+      bundle = await this.bundle(id, clock, now);
+      const { sha256 } = await archive.put(key, bundle.bytes, until);
+      if (sha256 !== sha256Of(bundle.bytes)) throw new Error("archive: the store's sha256 is not the copy's");
     } catch (e) { logPort.error("firm_closure_archive_failed", e, { firmId: id }); return this.blocked(id, "PF-11c.archive_write_failed"); }
     const copy = await archive.get(key).catch(() => null);
-    if (!copy || sha256Of(copy.bytes) !== copy.sha256 || copy.retainUntil.getTime() < addYears(copy.writtenAt, ARCHIVE_YEARS).getTime() || !this.namesFirm(copy.bytes, id, clock.holdSeq))
+    if (!copy || !copy.bytes.equals(bundle.bytes) || copy.sha256 !== sha256Of(bundle.bytes) || copy.retainUntil.getTime() < until.getTime())
       return this.blocked(id, "PF-11c.archive_unreadable");
 
-    return this.d.db.$transaction(async (tx): Promise<ClosureResult> => {
+    try {
+      return await this.d.db.$transaction(async (tx): Promise<ClosureResult> => {
       await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for update`;
       const again = await exitClock(tx, id);
       if (!again || again.holdSeq !== clock.holdSeq) return { state: "changed" };
       if ((await holds!.isHeld(tx, id, ALL)).held) { await this.heldLine(tx, id, clock, now); return { state: "held" }; }
+      // The copy must still hold every activity-log line of the firm (break M1): a line written since → the next run
+      // writes a new copy. Audit lines are never changed or deleted (AUD-1a), so the same ids mean the same lines.
+      const live = await tx.auditEvent.findMany({ where: { firmId: id }, select: { id: true } });
+      const inCopy = new Set(bundle.ids);
+      if (live.length !== inCopy.size || live.some((l) => !inCopy.has(l.id))) return { state: "changed" };
       await tx.platformFirm.update({ where: { id }, data: { status: "DELETED" } });
       const staff = await tx.platformStaff.findMany({ where: firmScope(id), select: { id: true }, orderBy: { id: "asc" } });
       if (staff.length) await tx.platformSessionRevocation.createMany({ data: staff.map((s) => ({ firmId: id, staffId: s.id, revokedAt: now, reason: FIRM_CLOSED_REASON })) });
@@ -100,21 +110,21 @@ export class FirmClosure {
         detail: { holdSeq: clock.holdSeq, deletionDate: clock.deletionDate.toISOString(), archiveKey: key, sha256: copy.sha256, keepUntil, staffSessionsEnded: staff.length, closedAt: now.toISOString() },
         before: { status: "PAYMENT_HOLD" }, after: { status: "DELETED", archiveKey: key } });
       return { state: "closed", archiveKey: key, sha256: copy.sha256, staffSessionsEnded: staff.length };
-    });
+      });
+    } catch (e) {   // break m4: a close that failed after its copy was written is a person's to look at
+      logPort.error("firm_closure_close_failed", e, { firmId: id });
+      return this.blocked(id, "PF-11c.close_failed");
+    }
   }
 
   /** The archive copy: line 1 the firm's record and the clock, then every activity-log line of the firm, oldest first. */
-  private async bundle(id: string, clock: ExitClock, now: Date): Promise<Buffer> {
+  private async bundle(id: string, clock: ExitClock, now: Date): Promise<{ bytes: Buffer; ids: string[] }> {
     return this.d.db.$transaction(async (tx) => {
       const firm = await tx.platformFirm.findFirst({ where: { id } });
       const lines = await tx.auditEvent.findMany({ where: { firmId: id }, orderBy: [{ at: "asc" }, { id: "asc" }] });
       const head = { kind: "firm-closure-archive", firmId: id, holdSeq: clock.holdSeq, deletionDate: clock.deletionDate.toISOString(), writtenAt: now.toISOString(), auditLines: lines.length, firm };
-      return Buffer.from([json(head), ...lines.map((l) => json({ kind: "audit_event", ...l }))].join("\n") + "\n", "utf8");
+      return { bytes: Buffer.from([json(head), ...lines.map((l) => json({ kind: "audit_event", ...l }))].join("\n") + "\n", "utf8"), ids: lines.map((l) => l.id) };
     });
-  }
-
-  private namesFirm(bytes: Buffer, id: string, holdSeq: string): boolean {
-    try { const h = JSON.parse(bytes.toString("utf8").split("\n", 1)[0]) as { kind?: string; firmId?: string; holdSeq?: string }; return h.kind === "firm-closure-archive" && h.firmId === id && h.holdSeq === holdSeq; } catch { return false; }
   }
 
   private async heldLine(tx: Tx, id: string, clock: ExitClock, now: Date) {

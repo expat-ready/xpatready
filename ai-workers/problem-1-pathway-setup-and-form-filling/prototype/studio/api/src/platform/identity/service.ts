@@ -189,7 +189,9 @@ export class PlatformIdentity implements OnModuleInit {
     if (typeof body.firmKey !== "string" || !body.firmKey) return problem(FIELD_ERROR_STATUS, "Choose the firm", "Give the firm key.", { code: "FIRM_REQUIRED" });
     // PF-12b part 2: the firm through the narrow definer lookup (its id only), then its row is read as that firm.
     const key = body.firmKey, firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select platform_firm_of_key(${key}) as f`)[0]?.f;
-    const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true } })) : null;
+    const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true, status: true } })) : null;
+    // PF-11c (break m1): a closed firm's door issues no token and writes no sign-in line.
+    if (firm?.status === "DELETED") return unauthorized(FIRM_CLOSED, "FIRM_CLOSED");
     if (firm) enterFirm(firm.id);   // PF-12: the rest of the sign-in runs as this firm
     const who = typeof body.actorId === "string" && body.actorId ? { actorId: body.actorId } : { email: emailOf(body.email) };
     const staff = firm && await this.db.platformStaff.findFirst({ where: firmScope(firm.id, who) });
