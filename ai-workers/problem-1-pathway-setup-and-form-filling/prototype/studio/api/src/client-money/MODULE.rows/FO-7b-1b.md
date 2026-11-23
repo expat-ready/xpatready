@@ -1,0 +1,2 @@
+Entry points: `/api/front-office/money/invoices/:id` (FO-7b part 1b): `POST issue`, `POST send`, `POST payments` (by hand, with its `R-` receipt; idempotent), `POST credit-notes` (part or full), `GET pdf`, `GET payments/:paymentId/receipt.pdf`, `GET credit-notes/:noteId/pdf`; `InvoiceMoney` (`invoices/money.ts`), the derived status `invoiceStatus` and `MONEY_EVENT` (ports/client-money.ts), `ClientMoney.hasMoney` (`port.ts`, ClientMoneyPort's adapter).
+Tests: tests/check_fo7b_invoices.ts
