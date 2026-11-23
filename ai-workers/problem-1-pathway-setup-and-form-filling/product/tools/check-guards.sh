@@ -378,7 +378,8 @@ MUT="$MUT"'
 761r req|product/tools/queue-red.py|s/n for n in f if n in req/n for n in f/|check-queue-red.sh
 761r ci|product/tools/queue-red.py|s/ . MERGIFY$//|check-queue-red.sh
 761r ready|product/tools/queue-red.py|s/, "completes-ready"}/}/|check-queue-red.sh
-761r skel|product/tools/queue-red.py|s/, "skeleton"//|check-queue-red.sh'
+761r skel|product/tools/queue-red.py|s/, "skeleton"//|check-queue-red.sh
+761r prr|product/tools/queue-red.py|s/, "pr-rules"//|check-queue-red.sh'
 MUT="$MUT"'
 29 scope|product/tools/stop-check.sh|s/scope=1   # P-756/scope=   # P-756/|check-stop-check.sh
 29 owner|product/tools/stop-check.sh|s/if \[ -z "\$scope" \] .. \[ -z "\$pats" \] .. printf/if false \&\& printf/|check-stop-check.sh
