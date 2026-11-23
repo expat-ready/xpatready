@@ -37,9 +37,11 @@ export const kindOf = (key: string): TemplateKind | undefined => KINDS.find((k) 
 /** The limits the editor and the publish check share. Subject: PF-19b's send rule (one line, at most 200). Body: Sample. */
 export const LIMITS = { subject: 200, body: 10_000 } as const;
 
-const FIELD_RE = /\{\{\s*([^{}]*?)\s*\}\}/g;
+// No `\s*` around the name: with the lazy name both could take the same spaces, a polynomial backtrack on long input
+// (CodeQL js/polynomial-redos); the name is trimmed instead, the same spaces `\s` takes.
+const FIELD_RE = /\{\{([^{}]*)\}\}/g;
 /** Every `{{ … }}` in the text, in order, as written between the braces (trimmed). */
-export const fieldsIn = (text: string): string[] => [...text.matchAll(FIELD_RE)].map((m) => m[1]);
+export const fieldsIn = (text: string): string[] => [...text.matchAll(FIELD_RE)].map((m) => m[1].trim());
 /** The fields in the text that the record type does not provide, each once, in order. */
 export function unknownFields(recordType: RecordType, text: string): string[] {
   const known = new Set(FIELDS[recordType].map((f) => f.key));
@@ -57,7 +59,7 @@ export function partsOf(recordType: RecordType, text: string, values: Record<str
   let at = 0;
   for (const m of text.matchAll(FIELD_RE)) {
     if (m.index > at) out.push({ text: text.slice(at, m.index) });
-    const f = m[1];
+    const f = m[1].trim();
     out.push({ field: f, label: labels.get(f) ?? f, value: labels.has(f) ? (values[f] ?? null) : null });
     at = m.index + m[0].length;
   }

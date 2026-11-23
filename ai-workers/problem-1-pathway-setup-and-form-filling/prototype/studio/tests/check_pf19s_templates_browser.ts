@@ -32,7 +32,7 @@ import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
 import { EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
-import { FIELDS, KINDS } from "../api/src/platform/messages/templates/registry.ts";
+import { FIELDS, KINDS, strayBraces, unknownFields } from "../api/src/platform/messages/templates/registry.ts";
 import { ACCOUNT_SECTIONS, visibleSections } from "../web/src/modules/platform/account-sections.ts";
 import { insertField } from "../web/src/modules/platform/messages/templates/contract.ts";
 import { client, recorder } from "./runtime/api.ts";
@@ -68,7 +68,7 @@ if (versions() !== 0) { console.error("STOP  sample-firm already has a Follow-up
 // People this run needs that the seed lacks: a Read-only person and a Billing / Finance person (no template keys, AG-12 §10).
 const person = (role: string) => {
   const id = randomUUID(), actorId = `pf19s-${role.toLowerCase()}-${run}`;
-  sql(`insert into platform_staff (id, firm_id, actor_id, email, display_name, updated_at) values ('${id}', '${A}', '${actorId}', '${actorId}@sample.invalid', 'Sample ${role.toLowerCase().replace("_", " ")}', now())`);
+  sql(`insert into platform_staff (id, firm_id, actor_id, email, display_name, updated_at) values ('${id}', '${A}', '${actorId}', '${actorId}@sample.invalid', 'Sample ${role.toLowerCase().replaceAll("_", " ")}', now())`);
   sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${id}', '${role}', 'seed:pf19s')`);
   return actorId;
 };
@@ -95,8 +95,10 @@ const ins = insertField("Dear , welcome", 5, 5, "lead_first_name");
 ok("R1.46 PF-19s T2: Insert field puts {{ field }} at the cursor (or over the selection) and moves the cursor after it",
   ins.text === "Dear {{ lead_first_name }}, welcome" && ins.cursor === 5 + "{{ lead_first_name }}".length && insertField("ab", 0, 2, "x").text === "{{ x }}", ins);
 ok("R1.46 PF-19s: every starter uses only its record type's fields (AG-12-70) and no passport or financial field is offered (SA-5-63)",
-  KINDS.every((k) => [...`${k.starter.subject} ${k.starter.body}`.matchAll(/\{\{\s*([^{}]*?)\s*\}\}/g)].every((m) => FIELDS[k.recordType].some((f) => f.key === m[1])))
+  KINDS.every((k) => [...`${k.starter.subject} ${k.starter.body}`.matchAll(/\{\{([^{}]*)\}\}/g)].every((m) => FIELDS[k.recordType].some((f) => f.key === m[1].trim())))
   && !FIELDS.lead.some((f) => /passport|bank|card|account|sin\b/i.test(f.key)));
+const t0 = performance.now(), long = `{{${" ".repeat(50_000)}x`, slow = [unknownFields("lead", long), strayBraces(long)];
+ok("R1.46 PF-19s: a long unclosed {{ is read in linear time (CodeQL polynomial-redos); fail: it is still a lone {{", performance.now() - t0 < 500 && slow[1] === true, performance.now() - t0);
 
 // ------------------------------------------------------------------------------------------------ the browser
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });
@@ -213,9 +215,9 @@ try {
   await p.locator("[data-template-publish]").click(); await said(p, "Published: version 1");
   const v1 = sql(`select v.version || '|' || v.subject || '|' || v.published_by from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = 'lead.follow_up'`);
   const storedBody = sql(`select replace(v.body, chr(10), '\\n') from msg_template_version v join msg_template t on t.id = v.template_id where t.firm_id = '${A}' and t.key = 'lead.follow_up'`);
-  const audit = sql(`select count(*) || '|' || coalesce(max(summary), '') from audit_event where entity = 'msg_template' and entity_key = '${A}:lead.follow_up'`);
-  ok("R1.46 PF-19s T4: Publish stores version 1 with the subject and message as typed, by the Owner, and one audit line that names the version, never the wording (AG-12-95)",
-    v1 === `1|Following up, {{ lead_first_name }}|staff:${owner}` && storedBody === wording.replace(/\n/g, "\\n") && audit.startsWith("1|") && audit.includes("version 1") && !audit.includes("reference"), { v1, audit });
+  const audit = sql(`select count(*) || '|' || coalesce(max(summary), '') || '|' || coalesce(max(detail->>'version_before'), 'none') || '|' || coalesce(max(detail->>'version_after'), '') from audit_event where entity = 'msg_template' and entity_key = '${A}:lead.follow_up'`);
+  ok("R1.46 PF-19s T4: Publish stores version 1 with the subject and message as typed, by the Owner, and one audit line that names the version (before none, after 1), never the wording (AG-12-95)",
+    v1 === `1|Following up, {{ lead_first_name }}|staff:${owner}` && storedBody === wording.replace(/\n/g, "\\n") && audit.startsWith("1|") && audit.includes("version 1") && audit.endsWith("|none|1") && !audit.includes("reference"), { v1, audit });
   await openList(p);
   ok("R1.46 PF-19s T4: the list now says Your wording, version 1 for Follow-up and ExpatReady's wording for the others",
     (await p.locator('[data-template-row="lead.follow_up"] [data-template-whose]').innerText()) === "Your wording, version 1" && (await p.locator('[data-template-row="lead.going_cold"] [data-template-whose]').innerText()) === "ExpatReady's wording");

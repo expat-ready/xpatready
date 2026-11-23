@@ -108,7 +108,8 @@ export class TemplatesService {
       await tx.msgTemplateVersion.create({ data: { firmId: s.firmId, templateId: t.id, version, subject, body, publishedBy: actorWord(s.staffId) } });
       await auditEvent.record(tx, {
         firmId: s.firmId, actor: actorWord(s.staffId), action: "platform.template.publish", entity: "msg_template",
-        entityKey: `${s.firmId}:${kind.key}`, summary: `Template ${kind.key} (${kind.name}): version ${version} published`, detail: { key: kind.key, version },
+        entityKey: `${s.firmId}:${kind.key}`, summary: `Template ${kind.key} (${kind.name}): version ${version} published`, detail: { key: kind.key },
+        before: now ? { version: now.version } : null, after: { version },   // the version only, never the wording (AG-12-95)
       });
       return { key: kind.key, version, published: true };
     });
