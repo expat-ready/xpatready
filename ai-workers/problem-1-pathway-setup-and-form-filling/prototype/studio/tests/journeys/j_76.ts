@@ -11,8 +11,8 @@
 //      line); and the front office's note on a prospect, kept on its person (FO-2 part 4, merged: fo_note.person_id).
 //   W4 "each case ... has its own timeline": CS-NT1 part 3, GET /api/runtime/cases/:id/timeline: case A1's note is on
 //      A1's timeline with who and when, and never on case A2's.
-//   W5 "each ... person ... has its own timeline": no BACKLOG part names a person's timeline (CS-NT1's is per case,
-//      FO-2's per lead and prospect): this journey assumes GET /api/runtime/clients/:id/timeline (a guess, said).
+//   W5 "each ... person ... has its own timeline": CS-NT1t (BACKLOG, the Lead's ruling 23 Nov), GET
+//      /api/case-clients/:id/timeline (the row's own path; another firm's person 404).
 //   W6 "each ... prospect has its own timeline": FO-2 part 4 (merged): the prospect's note is on its timeline with who
 //      and when; another prospect's timeline never shows it.
 //   W7 "another firm's lines never appear": firm B (sample-solo) writes a prospect note and a case note; firm A's
@@ -22,7 +22,7 @@
 //      (FO-4 part 2b).
 // Fails on main today only where a part is not merged (P-606); each failing label names its part. Assumed paths (said):
 // CS-NT1 part 3's /api/runtime/cases/:id/timeline is the brief's; the case client's notes route
-// (/api/runtime/clients/:id/notes) and a person's timeline (/api/runtime/clients/:id/timeline) are guesses; the
+// (/api/runtime/clients/:id/notes) is a guess; a person's timeline is CS-NT1t's /api/case-clients/:id/timeline; the
 // panel's words ("Notes", "Add note") are guesses until CS-NT1 part 4's concept. Cases are opened through the merged
 // route (POST /api/runtime/cases, the simulated case officer) after Demo › Load the configured checkpoint. Sample values
 // only; US$0, no model call, no live mail. No screenshots. Run from prototype/:
@@ -148,8 +148,8 @@ try {
   ok("J-76 W4 fail (part missing: CS-NT1 part 3): case A2's own timeline answers and never shows case A1's note", tl2.status === 200 && !has(tl2.body, caseNote) && !has(tl2.body, caseNote2), tl2.status);
 
   // ------------------------------------------------------------------------------------------- W5 each person its own timeline
-  const ptl = await api(tA, "GET", `/runtime/clients/${clientA1}/timeline`);
-  ok("J-76 W5 (part missing: none named — no BACKLOG part gives a person a timeline; route guessed): the case client's own timeline shows the note on that person",
+  const ptl = await api(tA, "GET", `/case-clients/${clientA1}/timeline`);   // CS-NT1t's path
+  ok("J-76 W5 (part missing: CS-NT1t, GET case-clients/:id/timeline): the case client's own timeline shows the note on that person",
     ptl.status === 200 && !!lineWith(ptl.body, personNote), ptl.status);
 
   // ------------------------------------------------------------------------------------------- W6 each prospect its own timeline

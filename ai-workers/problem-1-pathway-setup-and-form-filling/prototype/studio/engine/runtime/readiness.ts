@@ -41,10 +41,10 @@ export type Owes = "staff" | "representative" | "client" | "employer" | "ircc";
 export type BlockCode = "barcode_not_validated" | "document_never_waivable";
 /** P-315: the former blocks, now CRITICAL warnings passed with a recorded reason (P-237, P-238). */
 export type CriticalCode = "missing_facts" | "fact_problem" | "open_check" | "out_of_date" | "missing_signature" | "edition_expired" | "representative_review" | "fields_left_empty" | "no_copy" | "must_verify" | "hand_filled_copy";
-export type WarnCode = CriticalCode | "missing_document" | "finding" | "edition_superseded" | "copy_stale" | "entered_out_of_date" | "hand_write" | "release_update";
+export type WarnCode = CriticalCode | "missing_document" | "finding" | "edition_superseded" | "copy_stale" | "entered_out_of_date" | "hand_write" | "release_update" | "document_flag";
 export const BLOCK_CODES: readonly BlockCode[] = ["barcode_not_validated", "document_never_waivable"];
 export const CRITICAL_CODES: readonly CriticalCode[] = ["missing_facts", "fact_problem", "open_check", "out_of_date", "missing_signature", "edition_expired", "representative_review", "fields_left_empty", "no_copy", "must_verify", "hand_filled_copy"];
-export const WARN_CODES: readonly WarnCode[] = [...CRITICAL_CODES, "missing_document", "finding", "edition_superseded", "copy_stale", "entered_out_of_date", "hand_write", "release_update"];
+export const WARN_CODES: readonly WarnCode[] = [...CRITICAL_CODES, "missing_document", "finding", "edition_superseded", "copy_stale", "entered_out_of_date", "hand_write", "release_update", "document_flag"];
 export const isCritical = (code: string): code is CriticalCode => (CRITICAL_CODES as readonly string[]).includes(code);
 
 /** One form item of the filing, for one person. `readiness` is the built per-form P-71 result (engine/runtime/forms.ts);
@@ -89,7 +89,9 @@ export type FormItem = {
 /** `never_waivable` (M3-S4, P-172): the release's line is never waivable; not received, it blocks whatever `required` says. */
 /** `waiting` (M3-S4 break M1, re-review N1): the questions a never waivable line waits for: one that may be needed, or a
  *  needed line that is never waivable only if they call for it; either blocks until received or ruled out. */
-export type DocumentItem = { item?: string; label: string; subject: string; person: string; required: boolean; received: boolean; owes?: Owes; never_waivable?: boolean; waiting?: string };
+export type DocumentItem = { item?: string; label: string; subject: string; person: string; required: boolean; received: boolean; owes?: Owes; never_waivable?: boolean; waiting?: string;
+  /** CS-D7 (4): its current file's flag warnings (expired, too old, a translation needed): items passed with a reason, never a stop. */
+  flag_warnings?: { key: string; words: string }[] };
 export type OpenCheck = { fact: string; label: string; subject: string; person: string };
 export type Finding = { id: string; subject?: string; form?: string; severity: "CRITICAL" | "MAJOR" | "MINOR" | "INFO"; words: string };
 export type Fee = { line: string; superseded?: boolean; acceptedUntil: string | null;
@@ -250,6 +252,8 @@ export function filingReadiness(x: FilingInput): FilingReadiness {
     : "The representative of record has not reviewed this filing. Passing it needs a reason, which is kept in the history." });
   if (x.releaseUpdate) warn({ code: "release_update", item: `release|${x.filing}`, part: x.releaseUpdate.key, owes: "staff", words: x.releaseUpdate.words });
   for (const d of x.documents ?? []) {
+    // CS-D7 (4, map row 70): a received file's flag warning is an item to fix or pass with a reason, never a block.
+    for (const w of d.flag_warnings ?? []) warn({ code: "document_flag", item: d.item, form: d.label, subject: d.subject, part: w.key, owes: "staff", words: `${d.person}: ${d.label}: ${w.words}` }); // review N1: passed by its key, not its words
     if (d.received) continue;
     // M3-S4 (P-172): a line its release marks never waivable blocks until received; passing it with a reason is refused.
     if (d.never_waivable) block({ code: "document_never_waivable", item: d.item, form: d.label, subject: d.subject, owes: d.waiting && !d.required ? "staff" : d.owes ?? "client",
@@ -321,7 +325,7 @@ export const CODE_WORDS: Record<BlockCode | WarnCode, string> = {
   missing_signature: "A missing signature", barcode_not_validated: "No validated copy read back", document_never_waivable: "A document that can never be waived", edition_expired: "Past IRCC's accepted-until date",
   representative_review: "The representative's review", must_verify: "A value to verify before filing", missing_document: "A missing document", finding: "A review finding",
   edition_superseded: "A newer edition or fee", copy_stale: "A PDF copy out of date", entered_out_of_date: "A portal section entered before a change",
-  hand_write: "A line to write by hand", no_copy: "No current copy made for filing", hand_filled_copy: "Filled by hand: upload the completed copy", release_update: "A newer release",
+  hand_write: "A line to write by hand", no_copy: "No current copy made for filing", hand_filled_copy: "Filled by hand: upload the completed copy", release_update: "A newer release", document_flag: "A document flag (expiry, age or translation)",
 };
 
 /** Why a code cannot be passed (null: it can): blocks are never passed, only fixed; an unknown code is named. */

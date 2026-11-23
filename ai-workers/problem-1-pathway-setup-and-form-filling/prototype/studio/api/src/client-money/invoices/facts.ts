@@ -31,7 +31,7 @@ export async function invoiceFacts(tx: Tx, firmId: string, id: string, today: st
   const paidMinor = n(f.operating) - refundedMinor + trustPaidMinor + n(f.applied), openMinor = totalMinor - creditedMinor - writtenOffMinor;
   const lines = inv.lines.map((x) => ({ id: x.id, position: x.position, kind: x.kind, description: x.description, quantity: x.quantity, unitMinor: x.unitAmountMinor, amountMinor: x.amountMinor, ratePpm: x.taxRatePpm, taxMinor: x.taxMinor, currency: x.currency }));
   const issued = inv.issuedAt !== null;
-  const view = InvoiceView.parse({ id: inv.id, status: issued ? "ISSUED" : "DRAFT", number: inv.number, personId: inv.personId, companyId: inv.companyId, currency: inv.currency, lines,
+  const view = InvoiceView.parse({ id: inv.id, status: issued ? "ISSUED" : "DRAFT", number: inv.number, personId: inv.personId, companyId: inv.companyId, currency: inv.currency, billToProvince: inv.billToProvince, lines,
     subtotalMinor: lines.reduce((s, x) => s + x.amountMinor, 0), taxMinor: lines.reduce((s, x) => s + x.taxMinor, 0), totalMinor,
     statusWord: invoiceStatus({ issued, totalMinor, creditedMinor, writtenOffMinor, hasWriteOff: n(f.write_offs) > 0, paidMinor, refundedMinor, dueDate: f.due, today }),
     dueDate: f.due, paidMinor, creditedMinor, writtenOffMinor, dueMinor: issued ? Math.max(0, openMinor - paidMinor) : 0, extraMinor: Math.max(0, paidMinor - openMinor - n(f.kept)) });

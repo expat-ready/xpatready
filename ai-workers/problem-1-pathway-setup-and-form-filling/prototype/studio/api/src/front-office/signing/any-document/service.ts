@@ -37,25 +37,27 @@ export type Upload = { bytes: Uint8Array; size: number; name?: string } | undefi
 
 /** The file's own checks: a PDF by its first bytes (never by its name or declared type), the size, not a government form. */
 /** Whether a PDF is a government (IRCC) form: AG-5-61 r6 keeps those on AG-07's own path. Signals, any one (review M1 on
- *  #3207, measured on the committed IRCC forms in official-sources/ircc): an IMM form number in the file name or title;
+ *  #3207, measured on the committed IRCC forms in official-sources/ircc): an IMM or IRM form number in the file name or title;
  *  `/NeedsRendering` (a dynamic XFA form) or `/XFA` in the raw bytes; a fillable form with Reader usage rights
- *  (`/AcroForm` and `/Perms`, both dictionary keys that stay readable under an owner password); `/XFA` inside a deflated
- *  stream (an open form keeps it in an object stream), at most 400 streams and 64 MB inflated. A check of the file,
+ *  (`/AcroForm` and `/UR3`, dictionary keys that stay readable under an owner password); `/XFA` inside a deflated
+ *  stream (an open form keeps it in an object stream), at most 400 streams and 24 MB inflated in all. A check of the file,
  *  not a guarantee (Unconfirmed: no immigration expert). */
 export function isGovernmentForm(bytes: Uint8Array, name: string): boolean {
-  if (/(?:^|[^a-z])IMM[\s_-]?\d{4}/i.test(name)) return true;   // break M1: "client_IMM5476.pdf" too
+  if (/(?:^|[^a-z])(?:IMM|IRM)[\s_-]?\d{4}/i.test(name)) return true;   // break M1: "client_IMM5476.pdf" too; IRM forms as IMM (check_irm_editions, breaker m5)
   const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (b.includes("/NeedsRendering") || b.includes("/XFA") || (b.includes("/AcroForm") && b.includes("/Perms"))) return true;
+  if (b.includes("/NeedsRendering") || b.includes("/XFA") || (b.includes("/AcroForm") && b.includes("/UR3"))) return true;   // UR3: Reader usage rights (a certified PDF's DocMDP /Perms is not one; break r2)
   if (b.includes("/Encrypt")) return false;   // an encrypted stream cannot be read here
+  // A budget, not a hope (break r2): every inflate counts its output, and one that hits the per-stream cap counts the cap.
+  const PER = 4 * 1024 * 1024, BUDGET = 24 * 1024 * 1024;
   let at = 0, streams = 0, out = 0;
-  while (streams < 400 && out < 64 * 1024 * 1024) {
+  while (streams < 400 && out < BUDGET) {
     const s = b.indexOf("stream", at);
     if (s < 0) break;
     const start = s + (b[s + 6] === 0x0d && b[s + 7] === 0x0a ? 8 : 7), end = b.indexOf("endstream", start);
     if (end < 0) break;
     at = end + 9; streams++;
     if (!b.subarray(Math.max(0, s - 400), s).includes("/FlateDecode")) continue;
-    try { const z = inflateSync(b.subarray(start, end), { maxOutputLength: 16 * 1024 * 1024 }); out += z.length; if (z.includes("/XFA")) return true; } catch { /* not a whole zlib stream */ }
+    try { const z = inflateSync(b.subarray(start, end), { maxOutputLength: PER }); out += z.length; if (z.includes("/XFA")) return true; } catch (e) { out += (e as { code?: string })?.code === "ERR_BUFFER_TOO_LARGE" ? PER : 0; }
   }
   return false;
 }

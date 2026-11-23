@@ -1,4 +1,4 @@
-migration: `20261123120000_fo6d_any_document` (enum value `OTHER`; new table `fo_signing_document`, keyed to platform_firm and platform_staff, insert-only, walled; FO-6 part 1's `fo_signing_request_write` and `fo_signing_evidence_write` ask for the signed firm signer only when the kind is not OTHER). Shared contract: `SigningPort.send` takes **at most one** firm signer (was exactly one) and at least one client.
+migration: `20261123213000_fo6d_any_document` (enum value `OTHER`; new table `fo_signing_document`, keyed to platform_firm and platform_staff, insert-only, walled; FO-6 part 1's `fo_signing_request_write` and `fo_signing_evidence_write` ask for the signed firm signer only when the kind is not OTHER). Shared contract: `SigningPort.send` takes **at most one** firm signer (was exactly one) and at least one client.
 
 **FO-6d part 1 of 2** (P-610: the row measured 870+ lines, split at its seam). **Stacked on #3065** (FO-6 part 3, head 7d7979437) as the tech lead asked; nothing pushed to #3065. This part's own diff: `git diff 7d7979437..HEAD`. Part 2 (the webhook's OTHER handler, the sealed copy filed, "Your signed document", the person's signed copies, and both review reports) is its own PR stacked on this one.
 
@@ -27,7 +27,9 @@ Routes (`/api/front-office`): `POST signature-requests` (multipart) · `GET sign
 * Minors taken: keys on the new table; titles refuse C1/format/line-separator characters; newest 200; stale comments. Left, said: orphan file on a failed send (as retainers); double submit (the screen disables Send); a Read-only staff member as firm signer (AG-5-61 "one firm person"); the database does not check an OTHER request names its firm's document (the API writes it first).
 
 ## Checks and results
-<filled at the end>
+* Suites touched (18, by `run-suites.sh --only`: FO-6d, FO-6 port/signing/API, FO-3c, FO-2w, PF-28 inputs, PF-6b permissions, PF-19r senders, QA-53, PF-12 walls, Prisma schema, CS-SD1 drift, PF-8b F4/F7, features registry, events, PF-1 routes) at 9691d5539: **run 1 exit 0 (18/18), run 2 exit 0 (18/18)**. `--changed` selects ALL (a migration is shared), so the PR's check runs the rest.
+* `tests/check_fo6d_any_document.ts` 26/26; `graph.mjs --check` exit 0; `count-any.mjs` 416 = base 416; `module-cards.py pr` exit 0; size 775 changed lines (P-610).
+* Review: round 1 Changes/Changes at f6d048440, round 2 Changes/Changes at 8162df596 (one Major, fixed at 9691d5539); round 3 asked of the tech lead.
 
 Duplicate check: searched BACKLOG*.md ("FO-6d", "any document", "OTHER", "send for signature"), open PRs (all, records PRs too: none for FO-6d/FO-6ds), main's code (`signature-requests`, `fo_signing_document`, `"OTHER"`), qa/BUGS.md; none.
 
