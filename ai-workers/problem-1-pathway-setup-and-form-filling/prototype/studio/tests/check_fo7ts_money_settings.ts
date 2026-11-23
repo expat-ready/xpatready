@@ -849,13 +849,16 @@ try {
     && sql(EMPTY, `select count(*) from information_schema.columns where table_name = 'money_trust_entry' and column_name = 'picked_other_funds_by'`) === "1");
   rb3(EMPTY);
   ok("FO-7ts part 3 rollback: rollback.sql restores money_trust_entry_write as part 2 left it, money_invoice_write as part 1 left it, and money_credit_note_write, money_move_batch_owed_back and money_move_line_write as FO-7lk left them, exactly, and money_trust_entry's checks as before",
+    // own-migration: ok (checksOf reads only money_trust_entry's constraints, a money table: another area's migration cannot change it, and a money one waits in the same slot)
     src3(EMPTY) === srcBefore3 && checksOf(EMPTY) === checksBefore3 && sql(EMPTY, `select count(*) from pg_class where relname in ('money_party_tax_treatment', 'money_invoice_firm_id_issued_at_id_idx')`) === "0"
     && sql(EMPTY, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_invoice_write', 'money_credit_note_write', 'money_move_batch_owed_back', 'money_move_line_write')`) === "t", { s: src3(EMPTY), srcBefore3 });
   ok("FO-7ts part 3 pass: after its rollback the migration runs again, and rolls back again", (psql(EMPTY, ["-1", "-f", join(MIG, NEW3, "migration.sql")]), sql(EMPTY, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "1") && (rb3(EMPTY), src3(EMPTY) === srcBefore3));
   psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]);
   ok("FO-7ts part 2 rollback: rollback.sql restores money_trust_entry_write exactly as FO-7lk left it and money_trust_entry's checks as before, and drops the credit ledger",
+    // own-migration: ok (checksOf reads only money_trust_entry's constraints, a money table: another area's migration cannot change it, and a money one waits in the same slot)
     sql(EMPTY, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`) === entryBefore && checksOf(EMPTY) === checksBefore
     && sql(EMPTY, `select count(*) from pg_class where relname = 'money_credit_entry'`) === "0" && sql(EMPTY, `select count(*) from pg_proc where proname in ('money_credit_entry_write', 'money_invoice_due', 'money_trust_entry_move_paired')`) === "0",
+    // own-migration: ok (the same money_trust_entry read, in the failure detail)
     { e: sql(EMPTY, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`), entryBefore, c: checksOf(EMPTY) === checksBefore });
   ok("FO-7ts part 2 pass (break R2): after the rollback the migration runs again", (psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "migration.sql")]), sql(EMPTY, `select count(*) from pg_class where relname = 'money_credit_entry'`) === "1"));
 } finally {
