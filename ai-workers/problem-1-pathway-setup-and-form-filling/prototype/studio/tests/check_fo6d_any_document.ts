@@ -140,7 +140,7 @@ try {
   ok("FO-6d S2 fail: a file that is not a PDF (named .pdf, typed application/pdf) → 422 in words (\"PDF\"), nothing stored or sent",
     notPdf.status === 422 && notPdf.body.code === "NOT_PDF" && /PDF/.test(notPdf.body.detail) && requests() === r0 && docs() === d0, notPdf.text.slice(0, 300));
   const xfa = await call("POST", "/api/front-office/signature-requests", R.token, form({ bytes: Buffer.concat([PDF, Buffer.from("<< /AcroForm << /XFA 5 0 R >> >>")]) }));
-  const imm = await call("POST", "/api/front-office/signature-requests", R.token, form({ name: "imm5257e.pdf" }));
+  const imm = await call("POST", "/api/front-office/signature-requests", R.token, form({ name: "client_IMM5476.pdf" }));
   ok("FO-6d S2 fail: a government form (an XFA form, or named like IMM 5257) → 422 GOVERNMENT_FORM, nothing sent", xfa.status === 422 && imm.status === 422 && xfa.body.code === "GOVERNMENT_FORM" && imm.body.code === "GOVERNMENT_FORM" && requests() === r0, [xfa.text.slice(0, 200), imm.status]);
   // Review M1 on #3207: a real IRCC form (owner password, its XFA inside encrypted object streams) and an open form whose
   // /XFA sits only inside a deflated object stream are both named as government forms, never "upload an open copy".
@@ -156,6 +156,9 @@ try {
   const noMail = await call("POST", "/api/front-office/signature-requests", R.token, form());
   sql(`update fo_person set email = 'cy.fo6d@example.com' where id = '${PC}'`);
   ok("FO-6d S2 fail: a signer with no email → 422 SIGNER_NO_EMAIL naming them (\"Add an email first\", AG-5-61 §12), nothing sent", noMail.status === 422 && noMail.body.code === "SIGNER_NO_EMAIL" && /Cy Sample.*Add an email first/.test(noMail.body.detail) && requests() === r0, noMail.text.slice(0, 200));
+  const badTitles = await Promise.all(["Invoice \u0085 x", "Line\u2028two", "Invoice \u202efdp.exe", "\u200b"].map((t) => call("POST", "/api/front-office/signature-requests", R.token, form({ title: t }))));
+  ok("FO-6d S2 fail: a title with a C1 control, a line separator, a direction override or nothing readable → 422 at the field, nothing stored or sent (break m1)",
+    badTitles.every((x) => x.status === 422 && !!x.body.fields?.title) && requests() === r0 && docs() === d0, badTitles.map((x) => x.status));
   const noFile = await call("POST", "/api/front-office/signature-requests", R.token, form({ noFile: true }));
   ok("FO-6d S2 fail: no file → 422 \"Choose a PDF\"", noFile.status === 422 && noFile.body.code === "FILE_REQUIRED", noFile.text.slice(0, 200));
   const plainZ = Buffer.concat([Buffer.from("%PDF-1.7\n4 0 obj << /Length 20 /Filter /FlateDecode >>\nstream\n", "latin1"), deflateSync(Buffer.from("BT /F1 12 Tf (Sample letter) Tj ET")), Buffer.from("\nendstream\nendobj\n%%EOF\n", "latin1")]);
