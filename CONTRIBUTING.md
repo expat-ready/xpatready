@@ -12,7 +12,8 @@ This page is for anyone, person or agent, who wants to change this repository. I
 - Work lives as rows in [`BACKLOG.md`](ai-workers/problem-1-pathway-setup-and-form-filling/product/BACKLOG.md). Each row says what it touches, what it waits on, and its **Done when** (the test that proves it). Take a row that is ready, is yours or unowned (one owner per row), and that no open PR already touches.
 - **Duplicate check first:** search the row's words in the backlog files, open PRs (records PRs too), `main`'s code and [`qa/BUGS.md`](ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/BUGS.md). Found one? Ask before building.
 - Agents in this repository use the `next` skill ([`.claude/skills/next/SKILL.md`](.claude/skills/next/SKILL.md)) and `/next <area>`.
-- One row is one small PR: under 800 changed lines, counting everything but `product/screens/` and `product/qa/` records. Branch from the latest `main`. Push after every step.
+- One row is one small PR: under 800 changed lines, counting everything but `product/screens/` and `product/qa/` records. Branch from the latest `main` and push your branch after every step.
+- **Get the reviewer's Approve on the branch first, then open the PR, not as a draft** (rule P-683, in [`RULES.md`](ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md)). The full `ci` then runs once, on the approved commit.
 - Builders never edit `STATE.md`, `DECISIONS.md` or `qa/CAPABILITIES.md`: status goes in the PR body.
 
 ## 3. The checks on your PR
@@ -32,9 +33,9 @@ Use the [PR template](.github/pull_request_template.md): it carries every body l
 - Immigration values (programs, forms, fees, thresholds) need an official source cited with page, quote and date; anything else is labelled Sample (`AGENTS.md` rule 4).
 
 ## 5. Review and merge
-- An independent reviewer, never the builder, reviews the exact head commit. Money, permissions, schema and new screens also get an adversarial breaker. A PR comment line `Reviewer: Approve <full head SHA>` records the verdict.
-- **Then mark the PR ready for review.** The full `ci` runs only on a ready PR, and a draft never joins the queue.
-- The label `review: approved` puts the PR in the Mergify merge queue ([`.mergify.yml`](.mergify.yml)), which tests it on the latest `main` with the PRs ahead of it and merges it. The label needs a reviewer's Approve on the head, a green `ci`, and the owner's read where §4 asks for it. Without a path from §4, the queue gate puts it on by itself; otherwise the builder or the tech lead does.
+- An independent reviewer, never the builder, reviews the exact head commit of your branch. Money, permissions, schema and new screens also get an adversarial breaker. A PR comment line `Reviewer: Approve <full head SHA>` records the verdict.
+- Open the PR (not a draft) on that commit and post the Approve line on it. The full `ci` runs only on a ready PR, and a draft never joins the queue.
+- The label `review: approved` puts the PR in the Mergify merge queue ([`.mergify.yml`](.mergify.yml)), which tests it on the latest `main` with the PRs ahead of it and merges it. The label needs a reviewer's Approve on the head, a green `ci`, and the owner's read where §4 asks for it. Without a path from §4, the queue gate puts it on by itself when the Approve comes from the owner's account or a listed reviewer; otherwise the builder or the tech lead does.
 - A new push removes the label unless it is a pure merge of `main` ([`label-guard.yml`](.github/workflows/label-guard.yml)). PRs merge through the queue, not by hand.
 - From a fork: you are welcome. Your PR is judged by the same checks, but it never joins the queue by itself: a member takes it through review.
 
