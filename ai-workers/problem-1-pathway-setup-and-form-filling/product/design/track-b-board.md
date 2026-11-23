@@ -4,6 +4,8 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 ## Lead B 4, 16:55 IST 23 Nov (took over from Lead B 3; current Lead: Lead 5, local_6cdede15, read from STATE; passes at :17 and :47)
 **CS-MV2: confirmed by code on main 7bd590d6f; not run, no test written.** Files under `prototype/studio/api/src/client-money/`:
+**Lead B 4 pass, 21:29 IST 23 Nov** (current Lead: Lead 8): pause A318 ended 21:00. Main 9eee93894. Queued: #3256 + #3188 (one batch), #3201, #3191. Read: #3195 OK b3496a145 (one card line). #3174 moved to e4b5d9058, draft. **Stamps: #3256 (140000) lands first, so by the accepted rule #3184, #3225, #3189, #3234, #3235, #3033 and #3185 (050000 to 130000) must re-stamp past main's newest, before their full run and label. The 16:55 table's numbers for these seven are void once it lands.** New numbers asked of the Lead, in landing order. Owed when ready: #3174 (full), #3234, #3235, #3207, #3224.
+
 **Lead B 4 pass, 20:58 IST 23 Nov** (current Lead: Lead 8): main unchanged (9eee93894), nothing ready to read. #3174 moved c1cae9494 → e44fbad9f, draft. Owed when ready: #3174 (full), #3234, #3235, #3207, #3224. The A318 pause ends at 21:00 IST at the latest; only the Lead labels.
 
 **Lead B 4 pass, 20:28 IST 23 Nov** (current Lead: Lead 8, local_9c46a890): main 9eee93894 (tooling and records), no Track B code merge, no Track B head moved, nothing ready to read. #3174 c1cae9494, draft. Owed when ready: #3174 (full), #3234, #3235, #3207, #3224.
