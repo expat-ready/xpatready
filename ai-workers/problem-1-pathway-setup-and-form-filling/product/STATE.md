@@ -25,11 +25,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A319 | 23 Nov ~14:30 | why so slow while product is paused | answered; stack refresh sent to sprint (b); A320 "Yes, land as one" (#2590, ten PRs, after #2457/#2605 fixes and the Lead read): A316 file |
 | A316 | 23 Nov ~13:55 (typed to Lead 3) | make the operating system, four fixes, product targets and the private part live; plan, tracking, parallel work, timelines, visual | Lead O owns the four fixes; visual plan owed: `history/STATE-2026-11-23-lead4-ask-A316.md` |
 | A308-A313 | 23 Nov | answered; rows word for word: `history/STATE-2026-11-23-lead4-asks-A308-A313.md` |
-| A300 | 23 Nov 12:0x | operating system first in the queue until complete; Lead O; in full: `history/STATE-2026-11-23-1305-lead3-asks-A297-A300.md` |
-| A301-A305 | 23 Nov 12:0x-12:3x | private impossible at US$100 (A304): nothing bought; open with him: stay public, combined PR, close #2372; in full: `history/STATE-2026-11-23-1236-lead2-asks-A301-A305.md` |
-| A283-A299 (not A297) | 22-23 Nov | rows word for word in `history/STATE-2026-11-23-1310-lead3-asks-A283-A299.md` |
-| A297 | 23 Nov 10:5x | tooling first as a one-time exception; in full: same file |
-| A242-A282 | 21-22 Nov (A279 parts: `product/design/A279-parts-2026-11-22.md`) | word for word in `product/history/STATE-2026-11-22-1027-lead21s3-founder-asks-A272-A276.md` | |
+| A242-A305 | 21-23 Nov | A300 (operating system first) in force; pointer rows word for word: `history/STATE-2026-11-23-lead4-older-ask-rows.md` |
 
 ## Start here (next Lead)
 **P-788 (founder, 12:0x IST 22 Nov): everything on Opus 5.5 medium; any other model or higher effort only when needed, named to him with reason and place when used, never silently. After every cloud start read the model label in claude.ai/code and fix it; each check lists sessions not on Opus 5.5 medium.**
