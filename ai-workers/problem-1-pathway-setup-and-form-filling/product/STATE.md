@@ -1,27 +1,28 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_a085acf2-65e4-4f05-922a-a84057c951d1 Lead 1 · 23 Nov 11:24 IST (new account after the 23 Nov switch, weekly 0%; took over from Lead 10 (local_d4a6b1cd), Opus 5.5 medium, P-788)
+current_lead: local_2158cd24-6120-467d-ab3f-043acd7b417b Lead 2 · 23 Nov 11:59 IST (took over from Lead 1 (local_a085acf2) at 378k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 11:25 IST: Lead 1 on the new account (check 2cc39209), re-briefing lanes from RESUME; was 2026-11-23 11:23 IST: Lead 10 ended at the switch (check 0721b6cb deleted; AWS hand-over 61cd95852: R1.1, R1.13, R1.15 Pass); was 11:14 IST: stop order at 94%, switch now (RESUME 'Switch of 23 Nov'); was 10:21 IST: Lead 10, A291 analysis, demo restored, lanes answered (check 0721b6cb)
+updated: 2026-11-23 11:59 IST: Lead 1 → Lead 2 hand-over (new check is Lead 2's)
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
-## Lead 1 on the new account, 11:31 IST 23 Nov (the block before this, word for word: `history/STATE-2026-11-23-1131-lead1-before-new-account-block.md`)
+## Hand-over Lead 1 → Lead 2, 11:59 IST 23 Nov (Lead 1 at 378k, ~260k beyond its start read, P-446; Lead 1 block and A298-A299 in full: `history/STATE-2026-11-23-1155-lead1-block-and-asks.md`)
 
-**Goal (A295-A297):** 18 proven by 11:00 IST 24 Nov from 48/101 (`design/plan-24h-2026-11-23.md`; checkpoints 15:00 ≥3, 19:00 ≥7, 23:00 ≥11). Weekly 0% at 11:24, resets 22:30 IST 29 Nov. Open contribution target 17:00-18:00.
-**Main fault, first:** `check_fo3st3_types_browser` (shard 10) fails on main 8f487df4b on a Monday ("No host hours"): full runs of #3065 and #2935 and batch 45116131668 failed only on it. Fix lane fix-fo3st3; land it ahead (P-214), then /run full on #3065, #2935, #3037, #2933, #3173 and label.
-**Requested 11:26-11:30 as cloud lanes (env xpatready, Opus 5.5 medium; all 25 started 11:3x by the app notes):** fix-fo3st3 · R1.104 #3184 · R1.70 #3180 · R1.86 #3185 · R1.105 #3195 · R1.46 #3179 · R1.92 PF-5s S5 · R1.29 #3174 · R1.24 QA-756 (+#3191) · R1.85 #3189 + PF-21d · R1.54 FO-6d/ds · R1.68 #3188 · R1.69 CS-D6 · R1.87 AUD-3 #3178 · R1.93 PF-17 rest · R1.90 invited screen · R1.56 #3197/#3190 · R1.58 #3033 · qa A4 · qa B4 · UX PF-31 · tool-a (open contribution) · tool-b (merge flow) · tool-c (close list) · R1.65 bucket gaps + web-address catch-up.
-**Local:** Lead B 3 `local_281c4e7e` (Track B reads), standbys Lead 2 `local_2158cd24`, Lead 3 `local_cf20dbb4`. No AWS session on this account: worktree `.claude/worktrees/focused-torvalds-075cb7` @61cd95852.
-**Rulings posted:** #3184 and #3174 round 3 allowed; #3179 starters as platform rows; #3183 qa judges R1.1, R1.13, R1.15 from the AWS report first.
-**Not started:** FO-9s parts 2-3 (the Lead owes 3 answers, #2896), R1.10 #2933 / R1.23 #3037 need only a green run and the label. Queued at 11:25: #3155, #3187, #3043-#3045.
-**R1.5 (11:42): blocked by code, not by the founder** (AWS Step 18, 3c8873d67): PF-4bc plus new PF-4bs (sign-in page, callback, cognito-idp actions, first Owner) proposed as two cloud cards; out of the 24 h set unless both merge. AWS proof 3 idles. RDS, NAT and load balancer idle ~US$0.18/h (about US$4.3/day list). **Waiting on the founder:** press the two R1.5 cards; claude.ai sign-in in the built-in pane.
+**Goal (A295-A299):** 18 proven by 11:00 IST 24 Nov from 48/101 (`design/plan-24h-2026-11-23.md`; checkpoints 15:00 ≥3 at risk, 19:00 ≥7, 23:00 ≥11); operating system live first; going private is the founder's first priority (detailed report). Weekly 6% at 11:54 (1% at 11:34: ~15%/h, over 3%/h at two checks: find the cause, tell him).
+**FIRST: land #3208** (head 1ea222cfc, Reviewer Approve, Lead read posted, full ci running): when green, ahead of the queue (P-214). THEN label #3197, #3190, #3189 (Lead read lines posted) when green; `/run full` then label #3065, #2935, #2933, #3037, #3173; requeue #3043, #3044, #3183.
+**Tooling (A297):** #2972, #2925 merged 11:49; #2920 in batch (round 4 allowed); next #2971 (read its check-mergify-scopes diff, label), then #3035 (P-808 in #3210), then tool-b's and tool-c's "ready to land" list: #2597 #2473 #2738 #2444 #2370 #2487 #2428 #2434; close asks #2372 #2472 (evidence on each). Lane claims: verify before landing.
+**Reads the Lead owes:** #3185 (R1.86 migration; head moved to 21adefa9c after its Approve: needs a diff-only re-review), #3195 (R1.105, Approve eef90d8c8), #3178 (AUD-3a migration, Approve 6c91c1c4e) and #3191 (PF-25w, Approve 7a9614ff5; one of them carries the shared migration), #3033 (Lead B money re-read asked), #3174 (round 6 allowed; same stamp as #3033).
+**qa:** R1.1, R1.13, R1.15 judged Partial (#3206); AWS proof 3 `local_f09b5b4c` was asked to close them in one pass; it may ask the founder a yes for cost.
+**Desk** `local_d92dde4f` (git host, private, 2x/4x): not done, waits on its run sample; publish its detailed report for the founder when it ends.
+**Local:** Lead B 3 `local_281c4e7e` (asked: #3033 re-read, refund-route visibility check, four rows to shape), standby Lead 3 `local_cf20dbb4`. 27 cloud lanes started (25 + PF-4bc + PF-4bs), read claude.ai with Show more: Awaiting input: R1.29, tool-c; many "Unread response" lanes wait on labels.
+**Founder-typed turn owed:** start PF-27 (firm lock, `firmAllows`; two starts failed: environments not readable), FO-7s1 screens lane after #3197, FO-9s parts 2-3 (the Lead's 3 answers, #2896), one standby. #2129 and #3030 ask the Lead (parked; Source cells). RULES still as of P-795 (file at its 25 KB limit): fold P-796 to P-808 into an IDX row.
+**Waiting on the founder:** nothing. AWS idles at ~US$0.18/h.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A299 | 23 Nov 11:45 (typed): going private is first priority; detailed report for our DevOps, scale and more capacity, official docs and proven communities, better tools; both R1.5 cards pressed; claude.ai signed in; money approved; is the pipeline proven? | 11:5x: scope sent to desk `local_d92dde4f` (detailed report, 2x and 4x load, what breaks on private, sequence with rollback); qa #3206: R1.1, R1.13, R1.15 all Partial (missing smoke, real alarm, sealed key, scans), AWS proof 3 closes them; main fix is #3208 (real product bug: an eighth partial day); P-808 in #3210; rulings on #3174 #3184 #3195 #2920 #3203 #3190 #3197 #3189 #3033; after #3208: label #3197, #3190, #3189, then /run full #3065 #2935 #2933 #3037 #3173 and #3043-5; PF-27 lane start failed twice (environments not readable), retry next typed turn |
-| A298 | 23 Nov 11:37 (typed): AWS signed in, problems fixed?, monitor the sharp goal, operating system (tooling) fully live first; strategy session: Gitea or GitLab or other vs GitHub, go private | 11:4x: AWS sign-in seen in the built-in pane (ca-central-1), AWS proof 3 `local_f09b5b4c` started (R1.5 by the product's own invitation; asks him before a spend); desk `local_d92dde4f` researches git host and CI; #2972, #2925, #2920 read by the Lead and labelled; #2971, #3035 next; built-in claude.ai is signed OUT, so lanes are read by PR only until he signs in |
+| A298-A299 | 23 Nov 11:37-11:45 | going private research, tooling first, AWS signed in, R1.5 cards pressed, money approved; in full: `history/STATE-2026-11-23-1155-lead1-block-and-asks.md` |
 | A297 | 23 Nov 10:5x (typed): unarchive AWS via his computer; remove the two-queue decision from pending; one-time exception: land all agreed tooling/enforcement/open contribution first, estimate, 'fix the car or keep moving' | 10:52: Claude app cannot be controlled by the Lead (fixed rule), claude.ai lists no archived Mac sessions: started AWS · staging proof 2 `local_b9ba7abd` in the same folder/branch; #3006 closed by decision (one queue, split only if measured); enforcement sprint written into RESUME 'Switch of 23 Nov' (3 lanes, 4-6 h, open contribution live ~17:00-18:00) |
 | A293, A295-A296 | 23 Nov | word for word in `history/STATE-2026-11-23-1131-lead1-before-new-account-block.md` |
 | A292, A294 | 23 Nov | word for word in `history/STATE-2026-11-23-1131-lead1-before-new-account-block.md` |
@@ -48,7 +49,7 @@ Older Start here pointers (P-754 hold, 19 Nov lines): `product/history/STATE-202
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 23 Nov:** Lead 1 (local_a085acf2, from 23 Nov 11:24 IST).
+**New account from 23 Nov:** Lead 1 (local_a085acf2, from 23 Nov 11:24 IST), Lead 2 (local_2158cd24, from 23 Nov 11:59 IST).
 **New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST), Lead 2 (local_d718f32a, from 22 Nov 11:17 IST), Lead 3 (local_6efc4ae3, from 22 Nov 13:05 IST), Lead 4 (local_bcc6ed82, from 22 Nov 14:18 IST), Lead 5 (local_fec215ea, from 22 Nov 17:10 IST), Lead 6 (local_d4609e9d, from 22 Nov 19:04 IST), Lead 7 (local_d7cc573e, from 22 Nov 21:14 IST), Lead 8 (local_82fee93b, from 22 Nov 23:59 IST), Lead 9 (local_482034a7, from 23 Nov 02:15 IST), Lead 10 (local_d4a6b1cd, from 23 Nov 09:38 IST).
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
