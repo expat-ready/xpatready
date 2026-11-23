@@ -102,7 +102,8 @@ try {
     noSettings.status === 409 && noSettings.body?.code === "PAYMENTS_NOT_SET_UP" && sql(`select count(*) from money_invoice`) === "0", noSettings.body);
   // FO-7g part 1w (Lead B ruling A, 22 Nov): a line's rate is the firm's tax default, so both sample firms are registered
   // for tax; their province is Ontario (samples/firms.json), whose cited default is 13 %. A case at another rate puts
-  // firm A in the province whose cited rate it is (atRate), then back in Ontario.
+  // firm A in the province whose cited rate it is (atRate) while its draft is started (FO-7g part 3: a draft keeps the
+  // Bill-to province it starts with, P-797), then back in Ontario.
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, tax_registered, tax_number, updated_by, updated_at) values ('${f}', true, '123456789RT0001', 'seed:FO-7b-1a', now())`);
   const PROVINCE_OF: Record<number, string> = { 130000: "ON", 150000: "NB", 140000: "NS", 50000: "AB" };
   const inProvince = (code: string) => sql(`update platform_firm set business_address = jsonb_set(coalesce(business_address, '{}'::jsonb), '{province_state}', to_jsonb('${code}'::text)) where id = '${A}'`);
@@ -113,7 +114,7 @@ try {
   const stored = (id: string) => sql(`select string_agg(position || ':' || kind || ':' || amount_minor || ':' || tax_rate_ppm || ':' || tax_minor || ':' || currency, ',' order by position) from money_invoice_line where invoice_id = '${id}'`);
   const fee = (unitMinor: number, ratePpm: number, extra: Record<string, unknown> = {}) => ({ kind: "FEE", description: "Professional fee (Sample)", unitMinor, ratePpm, ...extra });
   /** One FEE line on a fresh CAD draft: the stored tax read back from money_invoice_line. */
-  const taxOf = async (unitMinor: number, ratePpm: number) => { const d = await draft(); const r = await atRate(ratePpm, () => line(d.body.id, fee(unitMinor, ratePpm))); return { r, tax: Number(sql(`select tax_minor from money_invoice_line where invoice_id = '${d.body.id}'`)) }; };
+  const taxOf = async (unitMinor: number, ratePpm: number) => { let d!: Res; const r = await atRate(ratePpm, async () => { d = await draft(); return line(d.body.id, fee(unitMinor, ratePpm)); }); return { r, tax: Number(sql(`select tax_minor from money_invoice_line where invoice_id = '${d.body.id}'`)) }; };
 
   // ------------------------------------------------------------------------------------------------- R1: AG-06
   const d1 = await draft();
@@ -154,7 +155,7 @@ try {
   ok("FO-7b R7 fail (planted): tax on the subtotal, as the route itself taxes one 1.00 line (0.13), is caught", sub.status === 201 && sub.body.taxMinor === 13 && !R7(sub.body.taxMinor), sub.body);
 
   // --------------------------------------------------------------------------------------- R8: large and exact
-  const d8 = await draft(); const r8 = await atRate(150000, () => line(d8.body.id, fee(2147483647, 150000)));
+  let d8!: Res; const r8 = await atRate(150000, async () => { d8 = await draft(); return line(d8.body.id, fee(2147483647, 150000)); });
   ok("FO-7b R8 pass: unit 21,474,836.47 at 15 % → 3,221,225.47 exactly (exact 322,122,547.05 cents, down); the total past 2^31 is exact (24,696,061.94)",
     r8.status === 201 && stored(d8.body.id) === "1:FEE:2147483647:150000:322122547:CAD" && r8.body.totalMinor === 2469606194 && sql(`select money_invoice_total('${A}', '${d8.body.id}')`) === "2469606194", r8.body);
   const big = await line(d8.body.id, fee(2147483647, 0, { quantity: 2 }));

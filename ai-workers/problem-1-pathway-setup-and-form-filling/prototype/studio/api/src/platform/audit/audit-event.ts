@@ -14,7 +14,7 @@
 // so the caller's transaction rolls the change back. One try: inside PostgreSQL a failed statement aborts the
 // transaction, so a retry there could never succeed.
 import type { Prisma } from "@prisma/client";
-import { AuditEntry, CaseActor, CaseEntry, flattenValues, isCaseEntry, type AuditPort } from "../../../../ports/audit.ts";
+import { AuditEntry, CaseActor, CaseEntry, flattenValues, isCaseEntry, isOurStaffPlatformEntry, OUR_STAFF_PLATFORM_ENTITY, OurStaffPlatformEntry, ourStaffPlatformRefusal, type AuditPort } from "../../../../ports/audit.ts";
 import { writeAuditWithAlarm } from "../observability/alerts.ts";
 import { actorTypeOfWord, auditContext } from "./context.ts";
 
@@ -38,8 +38,9 @@ export class AuditRefused extends Error { constructor(m: string) { super(m); thi
 const idOf = (v: unknown) => (typeof v === "string" ? v : undefined);
 
 export class AuditEventAdapter implements AuditPort<Tx> {
-  async record(tx: Tx, entry: AuditEntry | CaseEntry): Promise<void> {
+  async record(tx: Tx, entry: AuditEntry | CaseEntry | OurStaffPlatformEntry): Promise<void> {
     if (isCaseEntry(entry)) return this.recordCase(tx, entry);
+    if (isOurStaffPlatformEntry(entry)) return this.recordOurStaffPlatform(tx, entry);
     const raw = (entry ?? {}) as Partial<Record<"firmId" | "entity" | "entityKey", unknown>>;
     // The alarm's ids (read by writeAuditWithAlarm after a failure): the firm is the request's or job's own when it has one,
     // so a refused line for another firm never spends that other firm's alert (breaker m4).
@@ -48,12 +49,16 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       const ctx = auditContext();
       if (ctx?.firmId) ids.firmId = ctx.firmId;
       const e = AuditEntry.parse(entry), firmId = e.firmId.toLowerCase();
+      if (e.entity === OUR_STAFF_PLATFORM_ENTITY) throw new AuditRefused(`audit line refused: ${OUR_STAFF_PLATFORM_ENTITY} is the firm-less kind's entity (AUD-3c), never a firm's line`);
       if (ctx?.firmId && ctx.firmId !== firmId) throw new AuditRefused(`audit line refused: the line names firm ${firmId}, but this request or job acts for firm ${ctx.firmId} (a line never lands on another firm's trail)`);
       const actorType = actorTypeOfWord(e.actor);
-      // OUR_STAFF has no actor word yet (PF-4s): in a request our staff make, no line is written at all, so none is ever
-      // written as FIRM_STAFF or under another word (breaker M1). In a signed-in request the line's actor is the request's
-      // own, exactly: never another person, a system: or a seed: word (review M1; no caller on main writes one there).
-      if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF), which has no actor word until PF-4s`);
+      // AUD-3a: our staff's line is written under our staff's own word (ourstaff:<id>, OUR_STAFF) and only in our staff's
+      // request: never as FIRM_STAFF or under another word (breaker M1), and that word never outside such a request. In a
+      // signed-in request the line's actor is the request's own, exactly: never another person, a system: or a seed: word
+      // (review M1; no caller on main writes one there).
+      if ((ctx?.actorType === "OUR_STAFF") !== (actorType === "OUR_STAFF")) throw new AuditRefused(ctx?.actorType === "OUR_STAFF"
+        ? `audit line refused: this request is our staff's (OUR_STAFF), so its line names them as ourstaff:<id>, not ${e.actor}`
+        : `audit line refused: ${e.actor} is our staff's word, written only in a request our staff make`);
       if (ctx?.actor && e.actor !== ctx.actor) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);
       const workspaceId = await platformAuditWorkspaceId(tx);
       await tx.auditEvent.create({
@@ -61,6 +66,26 @@ export class AuditEventAdapter implements AuditPort<Tx> {
           actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: { ...e.detail, ...flattenValues(e.before, e.after), firmId } as Prisma.InputJsonValue },
       });
     }, ids, { attempts: 1 });
+  }
+
+  /** AUD-3c (Lead 10's ruling on #3040): our own staff's firm-less platform.bypass line. Its own narrow kind, never a
+   *  case-side line (recordCase's refusal of our staff stays as AUD-3a wrote it): firm and case null, the platform audit
+   *  workspace (never reset, P-571 (1)), OUR_STAFF, the request's correlation id. Refused (ports/audit.ts
+   *  ourStaffPlatformRefusal): outside our staff's request, under any actor but the request's own, in a request or job
+   *  that acts for a firm; the schema refuses any firm or case id, a workspace, another action or entity. One alert with
+   *  ids only and the error thrown on any failure, one try (fail-closed, P-607 (3)). */
+  private async recordOurStaffPlatform(tx: Tx, entry: OurStaffPlatformEntry): Promise<void> {
+    const raw = (entry ?? {}) as Partial<Record<"entity" | "entityKey", unknown>>;
+    await writeAuditWithAlarm(async () => {
+      const e = OurStaffPlatformEntry.parse(entry), ctx = auditContext();
+      const why = ourStaffPlatformRefusal(e, ctx);
+      if (why) throw new AuditRefused(why);
+      const workspaceId = await platformAuditWorkspaceId(tx);
+      await tx.auditEvent.create({
+        data: { workspaceId, firmId: null, caseId: null, actorType: "OUR_STAFF", correlationId: ctx?.correlationId ?? null, supportSessionId: ctx?.supportSessionId ?? null,
+          actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: e.detail as Prisma.InputJsonValue },
+      });
+    }, { entity: idOf(raw.entity), entityKey: idOf(raw.entityKey) }, { attempts: 1 });
   }
 
   /** AUD-1m: one case-side or configuration line (core.ts's Audit.log), with the same rules: its workspace is the caller's
@@ -79,7 +104,8 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       const word = (entry as { actor?: unknown })?.actor;
       if (!CaseActor.safeParse(word).success) throw new AuditRefused(`audit line refused: the actor word '${String(word).replace(/'/g, "''").slice(0, 200)}' has no actor type (staff:<id>, person:<id>, system:<door>, seed:<row> or a simulated person's id)`);
       const e = CaseEntry.parse(entry);
-      if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF), which has no actor word until PF-4s`);
+      // AUD-3a: a case-side line has no word for our staff (CaseActor), so our staff's request writes none there.
+      if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF); our staff write no case-side line`);
       if (ctx?.actor && e.actor !== ctx.actor) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);
       const caseFirm = e.caseId ? await caseFirmOf(tx, e.caseId) : undefined;
       const named = e.firmId?.toLowerCase(), scope = ctx?.firmId?.toLowerCase();

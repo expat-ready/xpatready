@@ -247,8 +247,8 @@ try {
     placed.status === 201 && placed.body.scope.kind === "CASE" && placed.body.scope.id === c && placed.body.reason === body.reason && placed.body.placedBy === `staff:${OWNER}` && placed.body.active === true
     && holdLines(sampleFirm, "platform.legal_hold.placed") === placedBefore + 1, placed);
   const line = JSON.parse(sql(`select row_to_json(a) from (select actor, actor_type, entity_key, detail from audit_event where firm_id = '${sampleFirm}' and action = 'platform.legal_hold.placed' order by at desc, id desc limit 1) a`));
-  ok("PF-21b DW3 pass: the line names the hold, our system actor (never typed as the firm's own staff) and the staff member's id in its detail",
-    line.entity_key === placed.body.id && line.actor === "system:platform.register.legal-hold" && line.actor_type === "SYSTEM" && line.detail.staffId === OWNER, line);
+  ok("PF-21b DW3 pass (AUD-3a): the line names the hold, our staff member as ourstaff:<id> (OUR_STAFF, never typed as the firm's own staff) and their id in its detail",
+    line.entity_key === placed.body.id && line.actor === `ourstaff:${OWNER}` && line.actor_type === "OUR_STAFF" && line.detail.staffId === OWNER, line);
   const values = JSON.parse(sql(`select detail from audit_event where firm_id = '${sampleFirm}' and action = 'platform.legal_hold.placed' order by at desc, id desc limit 1`));
   ok("PF-21b DW3 pass (review M1, QA-594): the placement line carries the hold's values in full as after-values (scope, target, reason, placed by), no before",
     values.scope_after === "CASE" && values.target_after === c && values.reason_after === body.reason && values.placedBy_after === `staff:${OWNER}` && !Object.keys(values).some((k) => k.endsWith("_before")), values);
@@ -337,11 +337,15 @@ try {
     shape(EMPTY) === "tplatform-owner5" && shape(DEMO) === "tplatform-owner5" && sqlOn(DEMO, `select count(*) from platform_firm`) === firmsBefore, { empty: shape(EMPTY), demo: shape(DEMO) });
   ok("PF-21b DW6: every function the migration creates carries the area prefix plat_ (rows rev 15.2)",
     [...readFileSync(join(MIG, NEW, "migration.sql"), "utf8").replace(/^\s*--.*$/gm, "").matchAll(/CREATE (?:OR REPLACE )?FUNCTION (\w+)/g)].every((m) => m[1].startsWith("plat_legal_hold")));
+  // The diff compares the fully migrated database with the schema: every migration later than this one is applied to the
+  // empty copy first, so a later row's tables never read as drift (batch 45080999446: FO-9b's fo_dup_merge listed).
+  const later = all.filter((d) => d > NEW);
+  for (const d of later) psqlFile(EMPTY, join(MIG, d, "migration.sql"));
   mkdirSync(WORK, { recursive: true });
   const cfg = join(WORK, "prisma.config.ts");
   writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(urlOf(EMPTY))} } });\n`);
   const diff = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
-  ok("PF-21b DW6 pass: prisma migrate diff between the migrated database and the schema is empty", diff.status === 0, `${diff.stdout}${diff.stderr}`.slice(0, 800));
+  ok(`PF-21b DW6 pass: prisma migrate diff between the fully migrated database (this migration, then the ${later.length} after it) and the schema is empty`, diff.status === 0, `${diff.stdout}${diff.stderr}`.slice(0, 800));
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

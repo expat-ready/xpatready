@@ -115,6 +115,13 @@ ok("FO-7g DW4 pass (the rule alone): not registered → 0 and no tax name for ev
   && taxDefault({ firmProvince: "ON", registered: true }).ratePpm === T.ON.ratePpm);
 ok("FO-7g DW4 fail: anything but true (\"true\", 1, \"false\", null, nothing) is not registered → 0", ["true", 1, "false", null, undefined, {}].every((r) => { const d = taxDefault({ firmProvince: "ON", registered: r as boolean }); return d.ratePpm === 0 && d.registered === false; }));
 
+// FO-7g part 3 (pure; P-797): the client's province (an invoice's Bill-to) wins over the firm's when it is one of the 13.
+ok("FO-7g part 3 pass (the rule alone): partyProvince NS for an Ontario firm → NS's entry, source PARTY_PROVINCE; for each of the 13 the party's entry",
+  PROVINCE_CODES.every((c) => { const d = taxDefault({ firmProvince: "ON", partyProvince: c, registered: true }); return d.source === "PARTY_PROVINCE" && d.ratePpm === T[c].ratePpm && d.taxName === T[c].taxName && d.warning === null && !d.outsideCanada; }));
+ok("FO-7g part 3 fail (the rule alone): a party province that is not one of the 13 (a name, ZZ, empty, a number, null) is never a guess: the firm's ON with source FIRM_PROVINCE; not registered → 0 whatever the party's",
+  ["Nova Scotia", "ZZ", "", 13, null, undefined, ["NS"]].every((p) => { const d = taxDefault({ firmProvince: "ON", partyProvince: p as string, registered: true }); return d.source === "FIRM_PROVINCE" && d.ratePpm === T.ON.ratePpm; })
+  && taxDefault({ firmProvince: "ON", partyProvince: "NS", registered: false }).ratePpm === 0 && taxDefault({ firmProvince: null, partyProvince: "NS", registered: true }).source === "PARTY_PROVINCE");
+
 // DW12 (pure): the default goes through QA-482's rounding (FO-7b's taxForLine, read only).
 const halfUp = (amount: number, ppm: number) => Math.round(amount * ppm / 1_000_000);
 const on = taxDefault({ firmProvince: "ON", registered: true });
