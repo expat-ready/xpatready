@@ -26,9 +26,9 @@ fi
 [ "$n" != 0 ] && echo "reason given with $n batch(es) running: $reason (say it in the merge comment and in STATE)"
 cat <<EOF
 Steps for #$pr (run them yourself; this tool merges nothing):
-  1. read #$pr's head: green checks and the reviewer's "Reviewer: Approve <head sha>" for that head
-  2. prefer the queue: label "review: approved" and let Mergify merge it (no batch restarts)
-  3. only if a by-hand merge is needed: merge #$pr yourself on GitHub (its "Merge pull request" button)
+  1. read #$pr's head: green checks, the reviewer's "Reviewer: Approve <head sha>" for that head, and its diff yourself; then post "Lead read the diff: <head sha>" (P-423)
+  2. prefer the queue: label "review: approved" and let Mergify merge it (no batch restarts); a product PR is never merged by hand: it goes through the queue
+  3. only after step 1's "Lead read the diff: <head sha>" line is on that exact head, and only for a tooling or records PR: merge #$pr yourself on GitHub (its "Merge pull request" button)
   4. comment on #$pr: "Merged by hand by the Lead: ${reason:-no batch running}"
 EOF
 exit 0
