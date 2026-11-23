@@ -114,6 +114,11 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/answers.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_answers__*/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-case-notes:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/case-notes.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_case-notes__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
       mig-case-search:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/case-search.prisma"
@@ -158,6 +163,11 @@ scopes:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-consult.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-consult__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-front-office-duplicates:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-duplicates.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-duplicates__*/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
       mig-front-office-retainers:
         include:
@@ -224,6 +234,11 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-support.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-support__*/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-system:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-system.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-system__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
       mig-platform-web-address:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-web-address.prisma"
@@ -283,6 +298,7 @@ scopes:
     money: 1
     pipeline: 1
     mig-answers: 1
+    mig-case-notes: 1
     mig-case-search: 1
     mig-cases: 1
     mig-client-money: 1
@@ -292,6 +308,7 @@ scopes:
     mig-front-office-booking: 1
     mig-front-office-compliance: 1
     mig-front-office-consult: 1
+    mig-front-office-duplicates: 1
     mig-front-office-retainers: 1
     mig-front-office-sales: 1
     mig-front-office-signing: 1
@@ -305,6 +322,7 @@ scopes:
     mig-platform-permissions: 1
     mig-platform-register: 1
     mig-platform-support: 1
+    mig-platform-system: 1
     mig-platform-web-address: 1
     mig-proposals: 1
     mig-review: 1
