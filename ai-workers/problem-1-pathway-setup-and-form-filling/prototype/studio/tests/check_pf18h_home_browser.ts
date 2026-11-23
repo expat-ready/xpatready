@@ -189,9 +189,10 @@ try {
   // The notice shows first; the focus goes back to Hide only once the refetch it starts has finished (home-page.tsx
   // focusAfter), so it is waited for, at most 5 s, and false on a timeout. Read at once it was red packed
   // ({"told0":2,"unread":1}: the data right, the focus not back yet) and green alone.
-  const hideFocused = await items(p).filter({ hasText: NUMBER }).locator("[data-needs-you-hide]").evaluate((el) => new Promise<boolean>((done) => {
-    const t0 = performance.now(); const tick = () => (el === document.activeElement ? done(true) : performance.now() - t0 > 5_000 ? done(false) : requestAnimationFrame(tick)); tick();
-  })).catch(() => false);
+  const hideFocused = await p.waitForFunction((num) => {
+    const row = [...document.querySelectorAll("[data-needs-you-item]")].find((li) => li.textContent?.includes(num));
+    return !!row && row.querySelector("[data-needs-you-hide]") === document.activeElement;
+  }, NUMBER, { timeout: 5_000 }).then(() => true, () => false);
   ok("PF-18h (break m3): Hide on a row whose deadline was reminded again after the page loaded keeps it, says so, and the store keeps it unread (PF-18n's seen)",
     told0 === 2 && rowsOf(OFF) === 1 && await items(p).filter({ hasText: NUMBER }).count() === 1 && hideFocused,
     { told0, unread: rowsOf(OFF), hideFocused, focused: await p.evaluate(() => document.activeElement?.outerHTML.slice(0, 120) ?? null) });
