@@ -405,3 +405,80 @@ Scope: `git diff origin/main...f40ebc7e3` (PR #3184), FO-3c part 2 (R1.104; Lead
 Reviewer: Block f40ebc7e38e0e3d774538626afa28203e29649a1
 
 Verdict: Block f40ebc7e38e0e3d774538626afa28203e29649a1 — fix M1, M2, M3.
+
+## Part 2, round 2 (f89c066a6; head e8511e156)
+
+Scope: only `git diff f40ebc7e3..f89c066a6`. e8511e156 adds only the four J-104 screenshots; I checked that no code changed.
+
+**Verdict: Ship (Approve).** All three Majors are closed. What remains is Minor or a gap already put to the tech lead.
+
+### What I ran
+* Suites on a `git archive` copy of f89c066a6:
+
+  | Suite | Result |
+  |---|---|
+  | `check_fo3c2` | 25/25 |
+  | `check_fo3c` | 42/42 |
+  | `check_fo3a_booking_types` | 48/48 |
+  | `check_fo3a2_consult_record` | 39/39 |
+
+* j_104 on my isolated copy `rv104b` on :4438, checkout at f89c066a6, screenshots to scratch: **20/20 PASS**. The w4 and w7 screenshots show the new words and the meeting dates.
+* Five mutations on the copy:
+
+  | Mutation | Result |
+  |---|---|
+  | (A) The representative's exception removed from `mine()` | B1 red |
+  | (B) Hold on any status that is not signed | B2 red |
+  | (C) No `requeued` skip | B3 pass and B3 fail red |
+  | (D) Backoff removed (`live.ts`) | **Still 25/25** |
+  | (E) The reminder's switch check removed | **Still 25/25** |
+
+* The round-1 mutations (`copyVisible`'s re-check, the gate's type clause) are now caught by R1, as the builder says.
+
+### Round-1 Majors
+* **M1: closed.** `mine()` lets `representativeStaffId === ctx.staffId` through (`service.ts:308-309`), so reading, signing and the copy key all work for the signer. B1 pass is the signer with "everyone sees all" off, signing to SIGNED while `forBooking` stays 404. B1 fail is a third colleague still getting 404. This matches FO-5's BR-3.
+* **M2: closed (option (a) of round 1). It needs the tech lead's ruling, which the PR asks for.**
+  - Only SENT, VIEWED and CLIENT_SIGNED hold (`gate.ts:41-42`).
+  - An ended agreement reads "Agreement ended unsigned" with a neutral pill and a line saying it no longer holds.
+  - The signed-offline clause is gone. The words now name rescheduling as the way out.
+  - I checked that rescheduling works: `move` accepts SCHEDULED and RESCHEDULED with a future time (`booking/service.ts:48`), and the client's link opens again for a RESCHEDULED booking (`bookingActive`). Reschedule sits under the panel's "More".
+  - Tests: B2 (declined → Attended saved) and the existing P2 pass.
+* **M3: closed.**
+  - A signed copy already re-queued by this process is skipped before its firm is touched (`service.ts:149`). B3 shows no line in a quiet catch-up, and its fail side shows one line for a real event.
+  - Failing catch-up rows back off from 30 s, doubling to at most an hour, before `touchFirms` (`live.ts:52-60`), as CS-K1's `touchedEach` does.
+  - What remains: one line per firm per process start, which is fine.
+
+### Round-1 Minors
+* m1 closed (R1, B4, and the record case is now deterministic).
+* m4 closed:
+  - The reminder skips a type that is switched off.
+  - `null` resets a type to its purpose's default (B4).
+  - A switch flipped after sending still applies when the gate checks. R1 now shows this, and the tech lead's question covers it.
+* m5: the rows now name the meeting date. The query count per agreement is a declared gap.
+* m6 closed: the hint is back under "Allow cancellation".
+* m2, m3 and m7: declared gaps for the tech lead. m5's queries are too.
+
+### New Minors (not blocking)
+* r2-1. Two rules have no failing test. Removing the backoff (`live.ts:52`) or the reminder's switch check (`service.ts:263`) leaves 25/25 (mutations D and E). Add a failing send that is skipped on the next catch-up and lined again after its wait, and a switched-off type whose reminder sends nothing.
+* r2-2. A booking answered No-show while its agreement is still SENT: changing it to Attended stays held. The client's link answers 404 (the booking is not active), and Reschedule refuses a NO_SHOW booking (`ACTIVE`). The panel still advises rescheduling. This is a narrow dead end. Fix: say so on the panel for NO_SHOW, or let the tech lead accept it with resend (FO-6).
+* r2-3. Holding only while live means anyone who can end the agreement lifts the hold. FO-5's withdraw API (key-gated and audited, with no screen yet) can do it. This belongs with the tech lead's question on M2.
+* r2-4. Rescheduling does not resend the agreement's link. For a lost email the client still has nothing to sign with. This is the declared resend gap (FO-6), and the words say "from the link in their email".
+* r2-5. A catch-up send that returns `NO_TEMPLATE` without throwing (the template's file is missing) is not backed off: one line per catch-up. It is rare. Throw instead, or key the backoff on `sent: false`.
+
+### Journey score, round 2 (reviewer): 9.5/10. Pass, no criterion at 0
+* Task completed 1 (B1, j_104 20/20).
+* Next step obvious 1 (reschedule named, under "More").
+* Plain words 1 (meeting dates on the rows; "Agreement ended unsigned").
+* Feedback and state 1.
+* Correct data 1.
+* **Error recovery ½** (r2-2, r2-4).
+* Accessibility and sizes 1 (unchanged layout; j_104 W10 axe clean).
+* Speed 1.
+* Visual 1.
+* Trust 1.
+
+The journey-test report stays folded into this file, as I was told to change no other file.
+
+Reviewer: Approve e8511e15673206e0c9b46a2a6028f78b50f375e4
+
+Verdict: Approve e8511e15673206e0c9b46a2a6028f78b50f375e4
