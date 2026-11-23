@@ -78,6 +78,8 @@ ok("C9.2 page: after the reload the one change left is offered back to SAMPLE", 
 await btn2.focus(); await p1.keyboard.press("Enter");
 await p1.locator("[data-out-of-date]").waitFor({ state: "detached", timeout: 15000 }); await settle(p1);
 ok("C9.2 page: Undo puts the value the items were finished with back: nothing is Out of date", current() === "SAMPLE" && !itemsOf((await prepare(c.id, officer)).p, P).some((i) => i.state === "out_of_date"), current());
+// Focus lands after the list is gone; wait for it (a focus that never lands still fails the line below). Red in a 23 Nov batch.
+await p1.waitForFunction(() => document.activeElement?.id === "forms-h", null, { timeout: 5000 }).catch(() => undefined);
 ok("C9.2 page (S3): the focus goes to the panel's heading once the list is gone, never the page", await p1.evaluate(() => document.activeElement?.id === "forms-h"), await p1.evaluate(() => document.activeElement?.tagName + "#" + document.activeElement?.id));
 await axe(p1, "the forms panel after Undo"); await shot(p1, "3-after-undo-1440");
 ok("C9.2 page: no error in the browser console", errs.length === 0, errs);

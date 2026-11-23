@@ -137,6 +137,8 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   step("C6.9 page pass (P-229 (2)): the drawer previews the stamp \"Seen by Case officer (Sample)\" (no licence, the firm's record)", /"Seen by Case officer \(Sample\)"/.test(await p.locator("[role=dialog]").innerText()));
   await state("review-drawer");
   await tabTo(/^Mark reviewed$/); await p.keyboard.press("Enter"); await p.waitForSelector("[role=dialog]", { state: "detached" }); await settle();
+  // Focus lands after the drawer is gone; wait for it (a focus that never lands still fails the line below). Red twice in 22 Nov batches.
+  await p.waitForFunction(() => document.activeElement?.id === "result", null, { timeout: 5000 }).catch(() => undefined);
   step("C6.9 page pass (review M1): after Mark reviewed (now off), focus is on the result's heading", await focusIs() === "#result", await focusIs());
   step("C6.9 page pass (P-407 BIC-14): once marked, \"Already marked reviewed\" shows as text beside the switched-off button", /Already marked reviewed/.test(await text()));
   step("C6.9 page pass (BR-16): marked: \"Seen by Case officer\" on the result; Mark reviewed is then off", /Seen by Case officer/.test(await text()) && await p.getByRole("button", { name: /^Mark reviewed/ }).isDisabled());
