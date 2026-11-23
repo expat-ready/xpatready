@@ -185,3 +185,16 @@ Verdict: Approve 21adefa9c559435864a915c6025aa42a6b0ee341 (no open Blocker or Ma
 R2-1: Minor
 
 Reviewer: Approve 21adefa9c559435864a915c6025aa42a6b0ee341
+
+## Round 4 (re-stamp only; Lead 8)
+
+Diff reviewed: `git diff -M 055aaa0ef23c0d57624528aa60650472541e435e..95a1bdbf03f0ea32cbe6036a5a13fc6d2818e24c`. It is one commit (95a1bdbf0).
+
+- **The diff is exactly the re-stamp.** `--stat`/`--summary` show four files and 3+/3-. The folder rename `20261123100000_pf21c_breaches => 20261123210000_pf21c_breaches` is 100%. `migration.sql` has blob `0d780dd590b45739d21e35868ed8744112cd0425` on both sides. The three one-line edits change only the name: the comment at `api/src/platform/register/breaches/service.ts:5`, the comment at `prisma/schema/platform-register.prisma:177` and `NEW` at `tests/check_pf21c_breaches.ts:23`.
+- **The old name is gone.** `git grep 20261123100000` at the head finds nothing (rc 1). The new name appears only in those three places and the folder.
+- **Order.** origin/main is at a2e3d48ed, fetched today. Its newest migration is `20261123140000_csd7c_type_defaults`, and 20261123210000 sorts after it. No folder on main has the prefix 20261123210000. main has moved past the branch (it adds `20261123030000_aud_ourstaff_actor_word` and `20261123140000_csd7c_type_defaults`). `git merge-tree --write-tree origin/main 95a1bdbf0` merges cleanly. Main already has some duplicate 14-digit prefixes (for example 20261025090000). They are not touched by this PR and are not a finding here.
+- **Suite.** `run-suites.sh --only "check_pf21c_breaches.ts check_pf8b_f4_migrations.ts"` at 95a1bdbf0: check_pf21c_breaches.ts PASS, 46 passed and 0 failed. check_pf8b_f4_migrations.ts PASS, 9/9.
+- **Journey score:** 8.8/10, carried over from round 3. There is no app behaviour change: comments, one test constant and a migration folder name with identical SQL. The PF-21c replay applied the renamed migration and passed 46/46.
+- **New findings:** none. n5, R2-1 and the other round-3 Minors carry over unchanged.
+
+Verdict: Approve 95a1bdbf03f0ea32cbe6036a5a13fc6d2818e24c (no open Blocker or Major)
