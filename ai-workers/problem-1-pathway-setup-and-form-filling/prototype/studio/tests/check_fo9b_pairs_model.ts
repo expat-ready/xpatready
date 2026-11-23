@@ -110,6 +110,18 @@ try {
     const sx = pairId(s0, x0), hid = await hiddenValid();
     ok("FO-9b pairs I6 fail (break B10-1 seeded): after Ma (S takes e, notes S-X), Mb (X takes S's phone, finds S-X) and Undo Ma, S-X still matches and is listed", !!sx && !hid.includes(sx) && hid.length === 0, { sx, hid });
   }
+  {
+    // I6, the sequence the round-11 sweep captured (seed 353): the other side of a pair changes while one is merged away
+    const p0 = await arriveP("Oberon", "Fitch", "r12.e0@example.org", null), p1 = await arriveP("Quenby", "Arlow", "r12.e0@example.org", "+1 416 555 0911");
+    const p2 = await arriveP("Tamsin", "Brook", null, "+1 416 555 0910"), p3 = await arriveP("Wystan", "Cole", "r12.e0@example.org", "+1 416 555 0910");
+    const m1 = await review.merge(R, pairId(p2, p3), { survivorId: p2 }) as { mergeRef: string };   // P2 takes e0, notes P2-P0 and P2-P1
+    await review.undo(R, m1.mergeRef);                                                                // both withdrawn: P2 has no email again
+    const m2 = await db.$transaction((tx) => mergeIfSafe(tx as never, A, pairId(p0, p1), ports)) as { mergeRef: string };   // P1 into P0
+    await db.$transaction((tx) => mergeIfSafe(tx as never, A, pairId(p2, p3), ports));               // P3 into P2 again: P2 has e0 again
+    await review.undo(R, m2.mergeRef);                                                                // P1 is back and matches P2 by e0
+    const p21 = pairId(p1, p2), hid = await hiddenValid();
+    ok("FO-9b pairs I6 fail (round-11 sweep, seed 353 captured): after M1 P3→P2 and its Undo, auto P1→P0, auto P3→P2, Undo P1→P0, P2-P1 still matches and is listed", !!p21 && !hid.includes(p21) && hid.length === 0, { p21, hid });
+  }
 
   for (const seed of SEEDS) {
     const rnd = mulberry32(seed), pick = <T,>(xs: T[]): T => xs[Math.floor(rnd() * xs.length)];
