@@ -89,19 +89,34 @@ def check_only(files):
     return bool(files) and all(any(r.search(f) for r in CHECK_ONLY) for f in files)
 
 
-LEAD_READ = re.compile(r"^\s*(?:lead read the diff:|lead read: ok)\s+([0-9a-f]{40})\.?\s*$", re.I | re.M)
+# The Lead's read exactly as lead-read-gate.sh on main reads it (breaker and reviewer, 23 Nov): HTML comments, ``` and
+# ~~~ blocks dropped, then * _ ` and CR; a line indented by 4 spaces or a tab is code; ASCII blanks only (a no-break space
+# is not one); "Lead read the diff:" (colon optional) or "Lead read: OK", the full head, an optional full stop.
+LEAD_READ = re.compile(r"^[ \t\v\f]*lead read(?:: *ok| the diff:?)[ \t\v\f]+([0-9a-f]{40})[ \t\v\f]*\.?[ \t\v\f]*$", re.I)
+DROP = [re.compile(r"<!--[\s\S]*?(?:-->|\Z)"), re.compile(r"```[\s\S]*?(?:```|\Z)"), re.compile(r"~~~[\s\S]*?(?:~~~|\Z)")]
 
 
-def lead_read(comments, head):
-    """The Lead's read of this head, as lead-read-gate.sh reads it: a line alone, "Lead read the diff: <full head>" (or
-    "Lead read: OK <full head>"), in a comment by someone with write access that was never edited."""
+def lead_read(comments, head, author="", leads=()):
+    """The Lead's read of this head, as lead-read-gate.sh judges it: a comment by someone with write access, never
+    edited, and, when LEAD_LOGINS names logins, by one of them and never the PR's author; a line alone (above)."""
+    leads = [x.lower() for x in leads]
     for c in comments:
         if c.get("author_association") not in TRUSTED or not c.get("created_at"):
             continue
         if (c.get("updated_at") or c.get("created_at")) != c.get("created_at"):
             continue
-        if any(x.lower() == head.lower() for x in LEAD_READ.findall(c.get("body") or "")):
-            return True
+        login = str((c.get("user") or {}).get("login") or "").lower()
+        if leads and (login not in leads or login == str(author or "").lower()):
+            continue
+        body = c.get("body") or ""
+        for d in DROP:
+            body = d.sub("", body)
+        for line in re.sub(r"[*_`\r]", "", body).split("\n"):
+            if line.startswith("    ") or line.startswith("\t"):
+                continue
+            m = LEAD_READ.match(line)
+            if m and m.group(1).lower() == head.lower():
+                return True
     return False
 
 
@@ -187,6 +202,17 @@ def main(argv):
         except Unread:
             rv = ""
     who = [repo.split("/")[0]] + rv.split()
+    # LEAD_LOGINS: the repository variable lead-read-gate.sh reads (env first; unset on GitHub = any writer). Any other
+    # read failure: no merge is offered at all (fails safe), said on a warn line.
+    ll = os.environ.get("LEAD_LOGINS")
+    if ll is None:
+        try:
+            ll = gh("api", "repos/%s/actions/variables/LEAD_LOGINS" % repo, "-q", ".value")
+        except Unread as e:
+            ll = "" if re.search(r"\b404\b|not found", str(e), re.I) else None
+            if ll is None:
+                print("warn  queue blocked by checks: LEAD_LOGINS unreadable (%s): no merge is offered this check" % e)
+    leads = None if ll is None else [x for x in re.split(r"[\s,]+", ll) if x]
     for x in note:
         print(x)
     for w in warn:
@@ -217,7 +243,7 @@ def main(argv):
                 continue
             if comments is None:
                 comments = pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"])
-            read = lead_read(comments, head)
+            read = leads is not None and lead_read(comments, head, (p.get("user") or {}).get("login"), leads)
         except Unread as e:
             print("warn  queue blocked by checks: #%s unreadable (%s)" % (n, e)); continue
         hits += 1
