@@ -141,6 +141,12 @@ try {
   const xfa = await call("POST", "/api/front-office/signature-requests", R.token, form({ bytes: Buffer.concat([PDF, Buffer.from("<< /AcroForm << /XFA 5 0 R >> >>")]) }));
   const imm = await call("POST", "/api/front-office/signature-requests", R.token, form({ name: "imm5257e.pdf" }));
   ok("FO-6d S2 fail: a government form (an XFA form, or named like IMM 5257) → 422 GOVERNMENT_FORM, nothing sent", xfa.status === 422 && imm.status === 422 && xfa.body.code === "GOVERNMENT_FORM" && imm.body.code === "GOVERNMENT_FORM" && requests() === r0, [xfa.text.slice(0, 200), imm.status]);
+  const locked = await call("POST", "/api/front-office/signature-requests", R.token, form({ bytes: Buffer.concat([PDF, Buffer.from("trailer << /Encrypt 9 0 R >>")]) }));
+  ok("FO-6d S2 fail: a password-protected PDF → 422 \"This PDF is protected. Upload an open copy.\" (AG-5-61 §12), nothing sent", locked.status === 422 && locked.body.detail === "This PDF is protected. Upload an open copy." && requests() === r0, locked.text.slice(0, 200));
+  sql(`update fo_person set email = null where id = '${PC}'`);
+  const noMail = await call("POST", "/api/front-office/signature-requests", R.token, form());
+  sql(`update fo_person set email = 'cy.fo6d@example.com' where id = '${PC}'`);
+  ok("FO-6d S2 fail: a signer with no email → 422 SIGNER_NO_EMAIL naming them (\"Add an email first\", AG-5-61 §12), nothing sent", noMail.status === 422 && noMail.body.code === "SIGNER_NO_EMAIL" && /Cy Sample.*Add an email first/.test(noMail.body.detail) && requests() === r0, noMail.text.slice(0, 200));
   const noFile = await call("POST", "/api/front-office/signature-requests", R.token, form({ noFile: true }));
   ok("FO-6d S2 fail: no file → 422 \"Choose a PDF\"", noFile.status === 422 && noFile.body.code === "FILE_REQUIRED", noFile.text.slice(0, 200));
   const s2 = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, title: "Second addendum (Sample)" }));

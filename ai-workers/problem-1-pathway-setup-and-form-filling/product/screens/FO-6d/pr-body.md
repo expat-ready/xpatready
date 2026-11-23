@@ -11,7 +11,7 @@ Routes (`/api/front-office`): `POST signature-requests` (multipart) · `GET sign
 1. Schema: `OTHER`, `fo_signing_document` (insert-only, never deleted, PF-12 wall, firm-first), the two trigger bodies (part 1's text with one condition each).
 2. Port: at most one firm signer; contract case "clients only is accepted and completes once every client signed".
 3. `signing/any-document/service.ts` + `routes.ts`; `features/front-office-signing-any-document.ts` registers the OTHER handler; FO-6 part 3's `receive` hands every non-RETAINER kind to its registered handler (one line).
-4. `tests/check_fo6d_any_document.ts` (28 checks, a pass and a fail per Done-when line).
+4. `tests/check_fo6d_any_document.ts` (30 checks, a pass and a fail per Done-when line).
 
 ## Done when → the test that proves it
 | BACKLOG FO-6d line | check |
@@ -22,6 +22,7 @@ Routes (`/api/front-office`): `POST signature-requests` (multipart) · `GET sign
 | a person without the key → 403 | S3 fail (Read-only 403; no session 401) |
 | another firm's document id → 404 | S3 fail (read, send, file link: 404) |
 | government forms are never sent this way | S2 fail (XFA form or IMM-numbered name → 422) |
+| AG-5-61 §12: a PDF with a password refused; a signer with no email cannot be picked | S2 fail ×2 ("This PDF is protected. Upload an open copy."; SIGNER_NO_EMAIL "…Add an email first.") |
 | firm signer optional, signs last | S5 pass/fail |
 | the database keeps part 1's rule for every kind but OTHER | D fail/pass |
 

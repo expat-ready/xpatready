@@ -10,7 +10,8 @@
 // SIGNED, writes `signing.completed` (kind OTHER) last, then emails each client signer "Your signed document" once. An
 // OTHER request never moves a prospect and never makes a client (no retainer, no win). Government forms are never sent
 // this way: a PDF with an XFA form (IRCC's forms are XFA) or named like an IRCC form number is refused (a check of the
-// file, Unconfirmed: no immigration expert). The case documents' read port is not built: uploads only (said on screen).
+// file, Unconfirmed: no immigration expert); a password-protected PDF and a signer with no email are refused (AG-5-61 §12).
+// The case documents' read port is not built: uploads only (said on screen).
 // Every value is Sample. Legal points (e-signature identity): Unconfirmed: no counsel.
 import { HttpException } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -45,6 +46,8 @@ export function checkPdf(f: Upload, title: string): Uint8Array {
   if (!f || !f.bytes.length) return refuse("Choose a PDF to send.", "FILE_REQUIRED", "file");
   if (f.size > MAX_BYTES || f.bytes.length > MAX_BYTES) return refuse("This file is too large: at most 25 MB.", "FILE_TOO_LARGE", "file");
   if (Buffer.from(f.bytes.subarray(0, 5)).toString("latin1") !== "%PDF-") return refuse("This file is not a PDF. Only a PDF can be sent for signature.", "NOT_PDF", "file");
+  // AG-5-61 §12: a PDF with a password (an encryption dictionary in its trailer) is refused at send.
+  if (Buffer.from(f.bytes).includes("/Encrypt")) return refuse("This PDF is protected. Upload an open copy.", "PDF_PROTECTED", "file");
   const form = /\bIMM[\s_-]?\d{4}/i.test(`${f.name ?? ""} ${title}`) || Buffer.from(f.bytes).includes("/XFA");
   if (form) return refuse("Government forms are not sent for signature this way. The client signs the form itself on paper or in the government's portal.", "GOVERNMENT_FORM", "file");
   return f.bytes;
@@ -83,8 +86,11 @@ export class AnyDocuments {
     const ids = [...new Set(input.signerPersonIds.map((x) => x.toLowerCase()))];
     if (!ids.length) return refuse("Pick at least one person to sign.", "SIGNERS_REQUIRED", "signerPersonIds");
     if (ids.length > 9) return refuse("At most 9 people sign one document.", "TOO_MANY_SIGNERS", "signerPersonIds");
-    const on = await this.peopleOn(firmId, p), people = await this.db.foPerson.findMany({ where: { firmId, id: { in: ids } }, select: { id: true, givenNames: true, familyName: true } });
+    const on = await this.peopleOn(firmId, p), people = await this.db.foPerson.findMany({ where: { firmId, id: { in: ids } }, select: { id: true, givenNames: true, familyName: true, email: true } });
     if (people.length !== ids.length || ids.some((x) => !on.has(x))) return refuse("Each signer must be a person on this prospect.", "SIGNER_NOT_ON_PROSPECT", "signerPersonIds");
+    // AG-5-61 §12: a signer with no email cannot be picked (the link and the code go by email).
+    const noEmail = people.filter((x) => !x.email?.trim());
+    if (noEmail.length) return refuse(`${noEmail.map((x) => nameOf(x) || "A signer").join(", ")} has no email address. Add an email first.`, "SIGNER_NO_EMAIL", "signerPersonIds");
     const rep = input.firmSignerStaffId ? await this.db.platformStaff.findFirst({ where: { firmId, id: input.firmSignerStaffId, status: "ACTIVE" }, select: { id: true, displayName: true } }) : null;
     if (input.firmSignerStaffId && !rep) return refuse("The firm signer must be an active person of your firm.", "FIRM_SIGNER_NOT_IN_FIRM", "firmSignerStaffId");
     const bytes = checkPdf(f, input.title);

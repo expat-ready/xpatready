@@ -57,7 +57,7 @@ export class AnyDocumentsController {
   /** A short-lived link to the original or the sealed copy (BR-15's pattern). */
   @Post("signature-requests/:id/download-link") @HttpCode(200) @PermissionKeys("agent/document:show") @OwnOrAll("agent/prospect")
   async link(@Req() r: R, @Param("id") id: string, @Body() b: Record<string, unknown>) {
-    const ctx = staffOf(r), { file } = parseInput(LINK, b ?? {}), key = await this.svc.fileKey(ctx, idParam(id, "signature request"), file);
+    const ctx = staffOf(r), rid = idParam(id, "signature request"), { file } = parseInput(LINK, b ?? {}), key = await this.svc.fileKey(ctx, rid, file);
     const l = this.links.sign(ctx.firmId, ctx.staffId, key, this.clock.now());
     return { url: `/api/front-office/signing-files/${l.token}`, expiresAt: l.expiresAt };
   }
