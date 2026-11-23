@@ -147,6 +147,8 @@ out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$T/other.git.pushInsteadOf
 ok "private-sync: a pushInsteadOf rule that sends the push to another repository → refused (exit 4), nothing pushed there" "$([ $r = 4 ] && grep -q 'pushInsteadOf' <<<"$out" && [ "$(git --git-dir="$T/other.git" for-each-ref | wc -l)" = "$ob" ] && echo 1)" "exit $r: $out"
 out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$T/remote.git/.pushInsteadOf" GIT_CONFIG_VALUE_0="file://$T/remote.git" ps "$T/notes" "$T/h22"); r=$?
 ok "private-sync: a pushInsteadOf rule that still names the private home (a trailing slash) is not refused" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$T/other.git#.pushInsteadOf" GIT_CONFIG_VALUE_0="" ps "$T/notes" "$T/h22"); r=$?
+ok "private-sync: an empty pushInsteadOf value (git applies it to every URL) that sends the push elsewhere → refused (exit 4)" "$([ $r = 4 ] && grep -q 'pushInsteadOf' <<<"$out" && echo 1)" "exit $r: $out"
 mkdir -p "$T/n-sub0/s3"; echo a > "$T/n-sub0/a.md"; echo z > "$T/n-sub0/s3/z.md"; git init -q "$T/n-sub0/s3"
 before=$(git --git-dir="$T/remote.git" rev-parse HEAD); out=$(ps "$T/n-sub0" "$T/h23"); r=$?
 ok "private-sync: a session folder that is a git repository with no commit → refused (exit 4, named), notes/ reset, the mirror untouched" "$([ $r = 4 ] && grep -q 's3' <<<"$out" && untouched && [ -z "$(git -C "$T/h23" status --porcelain 2>&1)" ] && echo 1)" "exit $r: $out; status: $(git -C "$T/h23" status --porcelain 2>&1)"

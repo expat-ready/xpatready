@@ -304,6 +304,7 @@ MUT="$MUT"'
 38 branch|product/tools/private-sync.sh|s/"HEAD:refs\/heads\/\${up#origin\/}"/HEAD/|check-lead-upkeep.sh
 38 F4 upstream|product/tools/private-sync.sh|/^case "\$up" in origin\/?\*) ;; \*) echo "private-sync: refused, the working copy tracks no branch/d|check-lead-upkeep.sh
 38 F4 pushinsteadof|product/tools/private-sync.sh|s/^  case "\$u" in "\$v"\*) same_repo/  case "$u" in nomatch) same_repo/|check-lead-upkeep.sh
+38 F4 empty|product/tools/private-sync.sh|s/^  \[ -n "\$k" \] /  [ -n "$v" ] /|check-lead-upkeep.sh
 38 F4 add|product/tools/private-sync.sh|s/^if ! adderr=\$(git add -A notes 2>\&1); then$/git add -A notes; if false; then/|check-lead-upkeep.sh
 38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
 38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh

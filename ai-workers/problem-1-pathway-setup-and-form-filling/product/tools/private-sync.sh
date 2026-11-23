@@ -42,7 +42,7 @@ done <<< "$(git config --get-all remote.origin.pushurl 2>/dev/null)"
 # elsewhere, F4; git applies none to an explicit pushurl, which the loop above checks)
 u=$(git config --get remote.origin.url 2>/dev/null || true)
 [ -n "$(git config --get-all remote.origin.pushurl 2>/dev/null)" ] || while read -r k v; do
-  [ -n "$v" ] || continue; base="${k#url.}"; base="${base%.pushinsteadof}"
+  [ -n "$k" ] || continue; base="${k#url.}"; base="${base%.pushinsteadof}"   # an empty value matches every URL in git
   case "$u" in "$v"*) same_repo "$base${u#"$v"}" "$REMOTE" || { echo "private-sync: refused, a pushInsteadOf rule sends the push for $u to $base${u#"$v"}, not $REMOTE: nothing synced" >&2; exit 4; };; esac
 done <<< "$(git config --get-regexp '^url\..*\.pushinsteadof$' 2>/dev/null)"
 # ...never push from a working copy that holds no history of the mirror (a failed or empty clone).
@@ -69,7 +69,7 @@ undo() { git reset -q -- notes; git checkout -q HEAD -- notes 2>/dev/null || tru
 # A session folder that is a git repository with no commit makes git add fail (exit 128): refused and named (F4).
 if ! adderr=$(git add -A notes 2>&1); then
   undo
-  echo "private-sync: refused, git add failed (a session folder that is a git repository with no commit?): $(echo $adderr): nothing pushed, the mirror untouched" >&2
+  echo "private-sync: refused, git add failed (a session folder that is a git repository with no commit?): $(tr "\n" " " <<<"$adderr")nothing pushed, the mirror untouched" >&2
   exit 4
 fi
 subs=$(git ls-files -s -- notes/side-session-notes | awk '$1 == "160000"' | cut -f2-)
