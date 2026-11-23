@@ -74,3 +74,10 @@ Duplicate check: 500 last-updated closed PRs searched by tooling id; merged alre
 Per month 1x / 2x / 4x: Ubicloud $7,795 / 15,590 / 31,180; GitHub 4-core $37,116 / 74,532 / 149,365; RunsOn on AWS, estimate, $5,018 / 10,035 / 20,071 plus licence. Peak floor 170 jobs = 680 vCPU; the AWS limit of 160 carries 40. Namespace Business holds 40 jobs: does not fit. Desk's claim: #2151 merged 18 Nov 20:15 UTC, so its saving is already in the four metered days; the -54% is never counted again.
 Cost gap: the desk's RunsOn $5,018 is about $167/day; Lead O's AWS line above is $157/day. Same size, two estimates.
 **Date conflict for the founder:** he asked for private at once (A302, relayed); the desk's date is 30 Nov 02:00 IST. What sets the date is the capacity gate. Lead O's earlier "24-25 Nov" assumed lighter gates and is withdrawn until a vendor confirms 300 jobs.
+
+## Verification 2 (independent Opus reader, scratch copy of the merged files; received after 12:24 IST)
+* **M11:** #2472 close. #2372 close only with its reversal recorded: main has a guarded hand requeue (`lead-pr.sh`), not the unattended one P-746 (4) asked for, nor the "qa proof PR out of the queue over 60 min" line (P-746 (3)). An old note says the founder asked for it: ask him first.
+* **M9 #2595 fix first:** comment conflict in `check-mergify-scopes.sh`; would hold #3179 and #3201 (red pr-rules); land after #3179 or its size row.
+* **M10 #3035 fix first, last:** `check-mergify-scopes.sh` fails after the merge ("scope migrations is missing"); `engineering-approved-setup.json:184` pins `migrations: 1`; nine open PRs add unnamed migrations; #2915's cross-area evidence (adcf9c105) must be answered; needs P-808.
+* **M12 #2915:** update its stale status, sources and measures, then land. Open after it: lead-read is report-only; #2971; the ruleset asks 0 approvals and every role shares one account (founder).
+* Order: #3210, #3179, #2595, #2971, #3035.
