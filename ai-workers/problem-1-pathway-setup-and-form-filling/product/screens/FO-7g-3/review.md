@@ -1,3 +1,45 @@
+Reviewer: Approve 1b58c679aae69f2f1e350bd27b301324d0812ef0
+
+# Round 3 (diff only: `git diff 207ef0f83 1b58c679a -- prototype/studio`; 2 files, +51/-14): Lead B's re-rate
+
+Reviewer (Opus 5.5; I did not build it), 23 Nov. **Verdict: Approve** (Ship). No open Blocker or Major. Minors R3-1 to R3-4 are below.
+
+## Runs (PG 127.0.0.1:54329; no app started; never :4400)
+| Run | Result |
+|---|---|
+| `check_fo7g3_bill_to.ts` at 1b58c679a | **23/0** |
+| `check_fo7b_invoices.ts` at 1b58c679a | **108/0** |
+| Mutant a (scratch worktree): no `taxRatePpm: from.ratePpm` filter, so every non-government line is re-rated | 22/1: B7 pass fails (the 0 % FEE goes to 15 %) |
+| Mutant b: the re-rated tax is `Math.round(...) + 1` instead of `this.tax` | 20/3 (B2 pass, B2 fail, B7 pass) |
+| Mutant c: no re-rate at all | 19/4 (B2 pass, B2 fail, B7 pass, B7 fail) |
+| My probe: a copy of the check in the scratchpad with 4 extra cases, on its own scratch database, dropped at the end | all 4 pass, listed below |
+Probe cases:
+* 1,100.00 credit applied (by SQL) to a 1,130.00 ON draft, then Bill-to AB: **409 `CREDIT_APPLIED`**; lines, Bill-to (ON) and audit (0) unchanged. The regex matches the trigger's text through Prisma's model `update`, and the HttpException rolls back the Bill-to write already made.
+* The same draft, then Bill-to NB: 200, and the line is at 15 %.
+* AB → NT (both 5 %): no line touched, NT stored, one audit line with `linesReRated` 0.
+* Firm switched to unregistered after a 13 % line, then Bill-to NB: nothing re-rated (from and to are both 0).
+The probe's only failure was the final "draft_created = invoice count" line, caused by the issued invoice my probe inserted by SQL.
+
+## Correctness, point by point (`drafts.ts:130-166`)
+* **Which lines count as "at the old default":** lines where `tax_rate_ppm = from.ratePpm` and the kind is not GOVERNMENT_FEE. `addLine` only ever stores 0 or the default (a sent rate other than these is 422, `:105-108`), so on any draft written after this part a rate equal to the old default is always a default line, never a person's choice. A 0 % line stays at 0, as Lead B's read says (B7, mutant a). The kind filter is a second guard: a government fee is always 0, so the rate filter already excludes it while from > 0.
+* **Stored value null (drafts from before this part):** `from` falls back to the firm's *current* province, as `addLine` does. See R3-2.
+* **Unregistered firm:** from and to are both 0, so nothing moves and the audit line records 0 → 0 (probe 4). **Same rate** (AB/NT/NU/YT/QC/BC/MB/SK at 5 % in the cited GST/HST table): no line is written, the province is stored, the audit says 0 lines (probe 3).
+* **from = 0 with a province now chosen** (registered firm with no province, so lines were stored at 0, NONE): `from.ratePpm > 0` is false, so those lines stay at 0 while new lines take the new rate. That is the read word for word ("0 % lines … stay at 0"). See R3-1.
+* **Rounding:** `this.tax`, the same injected `taxForLine` (half to even, per line) as `addLine`, on `amount_minor`. Quantity is already in the amount.
+* **Lock order:** the invoice is taken `for update` first (`:135`). Then the facts read, then the Bill-to write, then the line updates. Each line update fires `money_invoice_line_credit`, which holds the invoice FOR SHARE (already covered by our FOR UPDATE) and `money_credit_kept_holds`. That is exactly `addLine`'s order (invoice lock, then a line write), so no new lock order and no deadlock with `addLine`. A concurrent `addLine` waits and then reads the new Bill-to.
+* **CREDIT_APPLIED:** the per-row AFTER trigger can refuse partway through. A re-rate moves every line in the same direction, so if the trigger refuses after one row, the full change would be refused too. The whole transaction rolls back (probe 1).
+* **Audit:** one line per change. `before`/`after` carry the province and the rate. `detail` holds flat counts and sums only (`linesReRated`, `taxBeforeMinor`, `taxAfterMinor`), within AuditDetail's limits. The same value returns before any read or write (B2 fail).
+* **Scope:** no route, field or migration change. `money_invoice_line_write` refuses only on issued invoices, so the `LINES_TAXED` branch correctly does not exist.
+
+## Issues (Minor)
+* **R3-1 (for the Lead, no change asked):** a registered firm whose province was not set shows "Your firm's province isn't set — tax is not added", and its lines are stored at 0. Setting a Bill-to leaves those lines at 0, and only new lines are taxed. This follows the read literally, but the biller may expect the untaxed lines to be taxed. Lead B may want to confirm that, or ask that 0 lines stored under NONE move too.
+* **R3-2:** on a draft from before this part (stored null) whose firm changed province after a line was added, that line's old rate no longer equals `from` and is not re-rated. This affects legacy data only. It ties to round 1 Minor 2, which is with the Lead.
+* **R3-3 (test strength):** the `CREDIT_APPLIED` mapping has no case in `check_fo7g3_bill_to.ts` (my probe 1 shows it works). The re-rate amounts (1,000.00 at 5/13/15 %) are exact, so a half-up for half-even swap inside the loop would not be caught. Fix: add probe 1 as a case, and one odd-cent line, for example 0.50 at 5 % (taxForLine 0.02 vs half-up 0.03).
+* **R3-4 (records):** the BACKLOG row's B2 text ("leaves existing lines' stored tax unchanged") is now superseded by Lead B's read on #3156. The check's header says so. The row, or a DECISIONS line, should say so too, so that the record and the code agree (that is the Lead's file).
+
+Reviewer: Approve 1b58c679aae69f2f1e350bd27b301324d0812ef0
+
+---
 Reviewer: Approve 91c33c747aef60d8ee58e8d657e8ba7206789aaa
 
 # Round 2 (diff only: `git diff 8de8403af 91c33c747 -- prototype/studio`; 7 files, +22/-8)
