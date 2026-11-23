@@ -95,7 +95,7 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
         {conflict ? <ConflictNotice message={conflict.message} onSaved={() => { draft.discard(); setConflict(null); }} onMine={() => { draft.rebase(fromOffice(conflict.latest), conflict.latest.version); setConflict(null); }}
           rows={[
             ...(mine.includes("name") ? [{ label: "Office name", saved: conflict.latest.name, mine: f.name }] : []),
-            ...(mine.some((k) => k === "inCanada" || k === "province" || k === "country") ? [{ label: "Where", saved: whereLine(conflict.latest), mine: f.inCanada ? `${f.province ? `${f.province}, ` : ""}Canada` : f.country }] : []),
+            ...(mine.some((k) => k === "inCanada" || k === "province" || k === "country") ? [{ label: "Where", saved: whereLine(conflict.latest), mine: whereLine({ countryCode: f.inCanada ? "CA" : f.country.trim().toUpperCase(), province: f.inCanada ? f.province || null : null }) }] : []),
             ...(mine.includes("zone") ? [{ label: "Time zone", saved: conflict.latest.timeZone, mine: f.zone }] : [])]} /> : null}
         {problem ? <div tabIndex={-1} data-office-problem-box className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"><Notice tone="danger" title="Not saved"><span data-office-problem>{problem}</span></Notice></div> : null}
         <Field label="Office name" error={errors.name}><Input value={f.name} maxLength={200} onChange={(e) => set({ name: e.target.value })} data-office-name /></Field>

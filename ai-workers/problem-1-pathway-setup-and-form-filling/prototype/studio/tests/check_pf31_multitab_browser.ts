@@ -1,4 +1,4 @@
-// PF-31 (EXPERIENCE §2.12; the founder's choice of 23 Nov: tabs drawn inside the app, the console pattern): work in many tabs,
+// PF-31 (EXPERIENCE §2.13; the founder's choice of 23 Nov: tabs drawn inside the app, the console pattern): work in many tabs,
 // walked in a browser on an isolated copy (never :4400), with the API and the database read underneath. Lines:
 //   T1 a menu link Ctrl-clicked opens an app tab in the background with the right address; the page stays where it was;
 //   T2 the same record never opens twice: a second open of the office focuses the tab that has it;
@@ -157,6 +157,7 @@ try {
   await editFromList(O2);
   await p1.locator('[role="dialog"] [data-office-close]').click();
   ok("T7 Close on an unchanged office closes its tab and shows the list (review M2)", await until(async () => urlPath(p1) === "/platform/offices" && !(await tabs(p1)).some((x) => x.path === officePath(O2.id))), await tabs(p1));
+  ok("T7 after Close, focus is on the tab that comes forward, not lost (round 2 Should 1)", await until(async () => p1.evaluate(() => document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true")), await p1.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
   await editFromList(O2);
   await p1.locator('[role="dialog"] [data-office-name]').fill(`${O2.name} again ${run}`);
   closeAnswer = false;
@@ -173,6 +174,8 @@ try {
   await p1.locator(`[data-workspace]:visible [role="tab"][data-ws-path="/platform/offices"]`).click(); await officeRows(p1);
   await shown(p1).locator('nav[aria-label="My account"] a[href="/platform/security"]').click({ modifiers: ["Control"] });
   ok("T7 at 12 open items a 13th is refused with a clear message", (await tabs(p1)).length === 12 && /12 items are open/.test(await p1.locator("[data-workspace]:visible [data-ws-notice]").innerText().catch(() => "")), await tabs(p1));
+  await p1.locator('[data-workspace]:visible [role="tab"][data-ws-path="/platform/x11"] [data-ws-close]').click();
+  ok("T7 closing a background tab keeps focus on the strip's active tab (round 2 Should 2)", await until(async () => p1.evaluate(() => document.activeElement?.getAttribute("role") === "tab" && document.activeElement?.getAttribute("aria-selected") === "true")) && (await tabs(p1)).length === 11, await p1.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
 
   // T10: axe on the strip; keyboard; 375 px
   const ax = (await new AxeBuilder({ page: p1 }).include("[data-workspace]:not([hidden] *) [data-workspace-strip]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations;

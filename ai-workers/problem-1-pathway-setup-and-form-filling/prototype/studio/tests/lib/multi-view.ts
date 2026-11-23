@@ -1,4 +1,4 @@
-// PF-31 (EXPERIENCE §2.12): the reusable "work in many tabs" walk for any screen with a form (skills screen-review and
+// PF-31 (EXPERIENCE §2.13): the reusable "work in many tabs" walk for any screen with a form (skills screen-review and
 // journey-test name it). Two views of one record in one browser (a second window shares nothing but the BroadcastChannel and
 // the server): a change typed in one shows in the other, Save writes once with If-Match and the last value, the other view
 // reads the record again, and a save from a version someone else changed is refused (409) with the conflict state.

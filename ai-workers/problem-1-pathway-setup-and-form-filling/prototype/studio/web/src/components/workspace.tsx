@@ -92,17 +92,17 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     setMounted((m) => new Set(m).add(t.id));
     if (focus) { now.current = { ...now.current, tabs: [...ts, t] }; show(t.id); }
   }, [show]);
-  const close = React.useCallback((id: string, quiet = false) => {
+  const close = React.useCallback((id: string) => {
     const { tabs: ts, active: a } = now.current;
     if (ts.length < 2) return;
     const owners = dirtyOwners.current.get(id);
-    if (owners?.size && !quiet) {
+    if (owners?.size) {
       if (!window.confirm("This tab has unsaved changes. Close it and discard them?")) return;
       for (const discard of owners.values()) discard();
     }
     const i = ts.findIndex((t) => t.id === id), rest = ts.filter((t) => t.id !== id);
-    if (id === a) { const n = rest[Math.min(i, rest.length - 1)]; now.current = { tabs: rest, active: n.id }; setWs({ tabs: rest, active: n.id }); window.history.pushState({ ws: n.id }, "", n.path); requestAnimationFrame(() => window.scrollTo(0, n.scroll)); if (!quiet) focusTab(n.id); }
-    else setWs((s) => ({ ...s, tabs: s.tabs.filter((t) => t.id !== id) }));
+    if (id === a) { const n = rest[Math.min(i, rest.length - 1)]; now.current = { tabs: rest, active: n.id }; setWs({ tabs: rest, active: n.id }); window.history.pushState({ ws: n.id }, "", n.path); requestAnimationFrame(() => window.scrollTo(0, n.scroll)); focusTab(n.id); }
+    else { setWs((s) => ({ ...s, tabs: s.tabs.filter((t) => t.id !== id) })); focusTab(a); }   // round 2 Should 2: focus stays on the strip
     setMounted((m) => { const c = new Set(m); c.delete(id); return c; });
   }, []);
   /** A move inside a tab: another tab that shows the item is focused instead (the same record never opens twice). */
@@ -123,6 +123,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     setMounted((m) => { const c = new Set(m); c.delete(id); return c; });
     window.history.pushState({ ws: other.id }, "", path);
     requestAnimationFrame(() => window.scrollTo(0, scroll));
+    focusTab(other.id);   // round 2 Should 1: the closed panel's focus goes to the tab that comes forward, not to <body>
   }, [move]);
 
   // Back and Forward: the tab that shows the address comes forward, else the active tab follows it.
