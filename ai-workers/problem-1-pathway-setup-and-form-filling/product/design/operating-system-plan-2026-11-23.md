@@ -178,9 +178,9 @@ Three runs of 24 shards (run 45131327234, ended): 69 of 72 read, 23 per run. **S
 | #3210, #2595 | | | | merged 15:37 and 16:30 IST |
 | #2590 | c836593b6 (moved 17:03) | 36c342a2b only: Approve owed on the new head | running; full run 45160823502 ended **green** on 36c342a2b, no longer counts | Lead 5: sprint (b) splits guards and adds F1 |
 | #2597 | 2fa9528c0 | yes | guards green; pr-rules red: 2,189 lines over 800 while stacked | waits on #2590; re-Approve after |
-| #2738 | 0eb8e7c84 | yes | guards cut at 45 min; pr-rules red (cause not read to the end); conflicts | same |
-| #2473 | 8441bc45c | yes | guards green; pr-rules red (cause not read); conflicts | same |
-| #2444 | eb9ceaacd | yes | guards cut at 45 min; pr-rules red (cause not read); conflicts | same |
+| #2738 | 0eb8e7c84 | yes | guards cut at 45 min; pr-rules red: 2,584 lines over 800 while stacked; conflicts | same |
+| #2473 | 8441bc45c | yes | guards green; pr-rules red: 2,789 lines; conflicts | same |
+| #2444 | eb9ceaacd | yes | guards cut at 45 min; pr-rules red: 2,935 lines; conflicts | same |
 | #3254 own-migration guard | 0af19d4c9, draft | none | | waits for "Lead allows round 4" |
 | #2915 | 6d1327f6c | no exact-head line found | green, clean | Lead's records read |
 | #3035 | dd06974e2 | yes | conflicts | after #3254 and #2738 (Lead 5) |
