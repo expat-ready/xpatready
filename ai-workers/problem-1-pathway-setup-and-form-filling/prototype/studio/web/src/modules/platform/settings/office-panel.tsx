@@ -92,7 +92,7 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
   return (
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => { if (!dirty) return true; if (!window.confirm("Discard your changes to this office?")) return false; if (office) draft.discard(); return true; }}
       title={office ? "Edit office" : "Add an office"} description={office ? "Changes apply when you press Save." : "The office keeps its own time zone. Its hours start as the firm's."}
-      footer={<><Button variant="ghost" onClick={() => { if (dirty && !window.confirm("Discard your changes to this office?")) return; if (dirty && office) draft.discard(); onOpenChange(false); }} data-office-close>Close</Button><Button type="submit" form="office-form" busy={busy} disabled={!dirty} data-office-save>{office ? "Save" : "Add office"}</Button></>}>
+      footer={<><Button variant="ghost" onClick={() => { if (office && dirty) { if (!window.confirm("Discard your changes to this office?")) return; draft.discard(); } onOpenChange(false); }} data-office-close>Close</Button><Button type="submit" form="office-form" busy={busy} disabled={!dirty} data-office-save>{office ? "Save" : "Add office"}</Button></>}>
       <form id="office-form" className="flex flex-col gap-4" onSubmit={(e) => void save(e)} noValidate>
         {conflict ? <ConflictNotice message={conflict.message} onSaved={() => { draft.discard(); setConflict(null); }} onMine={() => { draft.rebase(fromOffice(conflict.latest), conflict.latest.version, WHERE_GROUP); setConflict(null); }}
           rows={[

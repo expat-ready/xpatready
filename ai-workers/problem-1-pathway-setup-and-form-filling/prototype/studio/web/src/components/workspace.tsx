@@ -33,6 +33,11 @@ const storeOf = (owner: string) => `${STORE}:${owner}`;
 type Tab = { id: string; path: string; title: string; nav: number; type: NavigationType; scroll: number; state?: unknown };
 /** The item a tab shows: its address without query or hash ("/platform/offices/abc"). Two tabs never share one. */
 export const itemOf = (path: string) => { const p = parsePath(path).pathname || "/"; return p.length > 1 ? p.replace(/\/+$/, "") : p; };
+/** Who a page runs as (BR-1): the Studio (the simulated configuration person), the case area with its client pages (the
+ *  simulated case person), or the firm staff pages (the staff session). A link into another of them changes the person, so
+ *  the workspace never opens it as an in-app tab (a background tab would change who you are); Ctrl-click opens a browser
+ *  tab, as before PF-31. Sign-in, the link page and the demo inbox are each their own. */
+const personAreaOf = (path: string) => { const p = itemOf(path); return /^\/(cases|clients)(\/|$)/.test(p) ? "cases" : /^\/(platform|front-office)(\/|$)/.test(p) ? "staff" : /^\/(sign-in|link|inbox)(\/|$)/.test(p) ? p : "studio"; };
 const here = () => window.location.pathname + window.location.search + window.location.hash;
 const newId = () => Math.random().toString(36).slice(2, 10);
 /** Until a page names itself: the address's last part in words. */
@@ -92,12 +97,13 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = React.useState(() => new Set([active]));
   const dirtyOwners = React.useRef(new Map<string, Map<string, () => void>>());
   const slot = React.useRef<HTMLDivElement>(null);   // where the shown tab's box is attached
+  const shownOwner = React.useRef(ownerNow());        // whose tabs these are (kept under their key)
   const [dirty, setDirtySet] = React.useState(new Set<string>());
   const now = React.useRef({ tabs, active });
   now.current = { tabs, active };
 
   React.useEffect(() => {
-    try { sessionStorage.setItem(storeOf(ownerNow()), JSON.stringify({ tabs: tabs.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
+    try { sessionStorage.setItem(storeOf(shownOwner.current), JSON.stringify({ tabs: tabs.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
   }, [tabs, active]);
   React.useEffect(() => { setMounted((m) => (m.has(active) ? m : new Set(m).add(active))); }, [active]);
   React.useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(t); }, [notice]);
@@ -169,6 +175,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
       const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
       if (!a || !a.closest("[data-workspace]") || (a.target && a.target !== "_self") || a.hasAttribute("download") || a.origin !== window.location.origin || /^\/api\//.test(a.pathname)) return;   // a file or API link is not an app page
       const path = a.pathname + a.search + a.hash;
+      if (personAreaOf(path) !== personAreaOf(here())) return;   // another area runs as another person: the browser's own way (Lead 13)
       const background = e.type === "auxclick" ? e.button === 1 : e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey;
       const opens = e.type === "click" && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && !!a.closest("[data-workspace-open]");
       if (!background && !opens) return;
@@ -195,19 +202,19 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   }, []);
   // Break B1: a change of person shows that owner's own tabs (none: this page alone); signing in as someone else also drops
   // every other staff member's kept tabs in this browser tab. Round 3: the same person after an expiry gets theirs back.
-  React.useEffect(() => {
-    let was = ownerNow();
-    return onStaffChange(() => {
-      const owner = ownerNow();
+  // Lead 13: a session that ends by itself changes nothing on the screen (each page says the session was lost, in place);
+  // the tabs stay that person's, and the next sign-in decides: the same person carries on, anyone else starts afresh.
+  React.useEffect(() => onStaffChange(() => {
+      const owner = ownerNow(), was = shownOwner.current;
       if (owner === was) return;
-      if (owner === "local" && was !== "local" && !sessionEndReason()) try { sessionStorage.removeItem(storeOf(was)); } catch { /* none kept */ }   // signed out on purpose: their tabs go
-      was = owner;
+      if (owner === "local" && sessionEndReason()) return;   // ended by itself: the screen stays as it is
+      if (owner === "local" && was !== "local") try { sessionStorage.removeItem(storeOf(was)); } catch { /* none kept */ }   // signed out on purpose: their tabs go
+      shownOwner.current = owner;
       if (owner !== "local") try { for (const k of Object.keys(sessionStorage)) if (k.startsWith(`${STORE}:`) && k !== storeOf(owner) && k !== storeOf("local")) sessionStorage.removeItem(k); } catch { /* none kept */ }
       const next = load();
       now.current = { tabs: next.tabs, active: next.active };
       dirtyOwners.current.clear(); setDirtySet(new Set()); setMounted(new Set([next.active])); setWs({ tabs: next.tabs, active: next.active });
-    });
-  }, []);
+    }), []);
   // Break M2: a tab with a stored draft shows its dot even when it is not mounted.
   const tick = useDraftTick();
   const dirtyAll = React.useMemo(() => new Set([...dirty, ...tabs.filter((t) => draftsAt(itemOf(t.path)).length).map((t) => t.id)]), [dirty, tabs, tick]);   // eslint-disable-line react-hooks/exhaustive-deps -- tick: any draft change
