@@ -2,7 +2,7 @@
 // and the "Security incident notice" to each affected firm's Owner and Admins.
 // Who: the Platform Owner opens, changes and notifies (system/breach:manage); the Auditor reads (system/breach:read); every
 // other person, a firm's staff included, gets 403 (PF-4s's system guard first, this service again). The database refuses
-// every register call inside a firm's session (the definers' system-only check, migration 20261123100000_pf21c_breaches).
+// every register call inside a firm's session (the definers' system-only check, migration 20261123210000_pf21c_breaches).
 // Recording is unconditional (BR-11): a breach is RECORDED by hand, or a DRAFT pre-filled from a PF-23 integrity alert
 // (never sent by itself); whether firms are told is a recorded decision with who and why. Kept 7 years: nothing deletes.
 // The notice (SA-11-25): one per breach and firm, in that firm's own transaction (its Owner and Admins read there, under

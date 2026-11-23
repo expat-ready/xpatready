@@ -174,7 +174,7 @@ model PlatLegalHold {
 // PF-21c (map row 86; SA-11 §3.7, SA-11-14, SA-11-24, SA-11-25, BR-11; SA7-D74 (b); api/src/platform/register/breaches/):
 // ExpatReady's breach register and the notices sent to affected firms. The Platform Owner manages it
 // (system/breach:manage), the Auditor reads it (system/breach:read). Our own registers: row-level security forced with no
-// policy (PF-12's OWN list); only the definers in the migration 20261123100000_pf21c_breaches read or write them. Rules
+// policy (PF-12's OWN list); only the definers in the migration 20261123210000_pf21c_breaches read or write them. Rules
 // Prisma cannot say are there: never deleted (kept 7 years, SA-11-14), events and notices insert-only, fixed facts, the
 // decision's who and why, one notice per breach and firm, the firms exist. Legal reading Unconfirmed: no counsel.
 

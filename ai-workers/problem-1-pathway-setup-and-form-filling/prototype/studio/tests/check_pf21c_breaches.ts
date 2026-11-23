@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261123100000_pf21c_breaches";
+const NEW = "20261123210000_pf21c_breaches";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf21c_${process.pid}`, EMPTY = `xr_studio_pf21c_empty_${process.pid}`, DEMO = `xr_studio_pf21c_demo_${process.pid}`;
