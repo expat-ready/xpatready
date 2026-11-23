@@ -25,9 +25,8 @@
 //      is made); the staff change with the same values is refused on its address field (422) and changes nothing.
 //   W5 the staff-only change (PF-25w): the Platform Admin changes A's address to `j24-<run>` with a reason; the new address
 //      opens A's booking page; the old one sends the visitor there (301, same path); one audit line. Support (no key) is
-//      refused 403, the firm's own Owner cannot reach the route, no reason is refused on its field, an unknown firm is 404.
-//      The route is looked for at PUT|PATCH|POST /api/system/firms/:id/web-address (PF-25w names no path: if its PR picks
-//      another, that PR changes this line).
+//      refused 403, the firm's own Owner cannot reach the route, no reason is refused in words (400 or 422), an unknown firm is 404.
+//      The route: POST /api/system/firms/:id/web-address (PF-25w, #3191); PUT and PATCH are tried too, harmlessly.
 //   W6 the walk ends at row 37's first step: on the new address the visitor chooses A's type and sees "Choose a time".
 //   W7 the booking page on the address at 400, 1024 and 1440 px: no sideways scroll, axe WCAG 2.2 A/AA clean; no page error.
 // Re-runnable on one copy (each run makes its own address and type names). Sample firms and values only. US$0, no model
@@ -199,8 +198,8 @@ try {
   const noReason = await change(adminTok, A.id, { address: NEW });
   const unknownFirm = await change(adminTok, "00000000-0000-4000-8000-000000000000", { address: NEW, reason: `J-24 unknown ${run}` });
   const missing = [bySupport, noReason].every(routeMissing);
-  ok("J-24 W5 (PF-25w): Support (no system/firm:address) is refused 403; the firm's own Owner cannot use the route (401/403); no reason is refused on its reason field (422); an unknown firm is 404; nothing changes",
-    !missing && bySupport.status === 403 && [401, 403].includes(byOwner.status) && noReason.status === 422 && !!(noReason.body?.fields?.reason) && unknownFirm.status === 404 && (await addressOf(A.id)) === addrA0,
+  ok("J-24 W5 (PF-25w): Support (no system/firm:address) is refused 403; the firm's own Owner cannot use the route (401/403); no reason is refused in words naming the reason (PF-4s's guard: 400 REASON_REQUIRED, or 422 on the field); an unknown firm is 404; nothing changes",
+    !missing && bySupport.status === 403 && [401, 403].includes(byOwner.status) && [400, 422].includes(noReason.status) && (!!noReason.body?.fields?.reason || /reason/i.test(String(noReason.body?.detail ?? ""))) && unknownFirm.status === 404 && (await addressOf(A.id)) === addrA0,
     missing ? "route missing: PF-25w (PUT|PATCH|POST /api/system/firms/:id/web-address answers Cannot …)" : { support: bySupport.status, owner: byOwner.status, noReason: `${noReason.status} ${JSON.stringify(noReason.body?.fields ?? noReason.body).slice(0, 120)}`, unknown: unknownFirm.status });
   const made = await change(adminTok, A.id, { address: NEW, reason: `J-24: the firm asked for its new name (${run})` });
   const changed = (await addressOf(A.id)) === NEW, a1 = await audits();
