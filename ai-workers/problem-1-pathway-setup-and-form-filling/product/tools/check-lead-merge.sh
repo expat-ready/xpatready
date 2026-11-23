@@ -54,4 +54,14 @@ o=$(lm "$T/none.json")
 ok "no PR number: refused" "$(grep -q '^rc=1' <<< "$o" && grep -q 'give the PR number' <<< "$o" && echo 1)" "$o"
 ok "lead-merge.sh never runs gh: the gh log is empty after every case" "$([ ! -s "$T/gh.log" ] && echo 1)" "$(cat "$T/gh.log")"
 ok "lead-merge.sh runs no merge or push command of its own" "$(! grep -qE '^[^#]*(gh(\.sh)? (pr|api)|git (merge|push))' "$M" && echo 1)" "a merge or push command found"
+# F1 (Lead 4, 23 Nov on #2590; P-423, P-691): step 1 asks for the Lead's own "Lead read the diff: <head sha>" line and says
+# product code is never merged by hand; step 3 offers the by-hand merge only after that line, never before step 1
+o=$(lm "$T/none.json" 2754); s1=$(grep -E '^  1\. ' <<< "$o"); s3=$(grep -E '^  3\. ' <<< "$o")
+ok "step 1 asks for the Lead's line \"Lead read the diff: <head sha>\" for #2754's head (P-423)" "$(grep -qF '"Lead read the diff: <head sha>"' <<< "$s1" && echo 1)" "$s1"
+ok "step 1 says product code is never merged by hand: only a pipeline or CI fix while the queue is broken (P-691)" "$(grep -qF 'product code is never merged by hand' <<< "$s1" && grep -qF 'pipeline or CI fix' <<< "$s1" && echo 1)" "$s1"
+ok "step 3 offers the by-hand merge only after step 1's \"Lead read the diff: <head sha>\" line names that head" "$(grep -qF 'only after' <<< "$s3" && grep -qF '"Lead read the diff: <head sha>"' <<< "$s3" && grep -qF 'merge #2754 yourself' <<< "$s3" && echo 1)" "$s3"
+n1=$(grep -nE '^  1\. ' <<< "$o" | cut -d: -f1); nm=$(grep -nF 'yourself on GitHub' <<< "$o" | head -1 | cut -d: -f1)
+ok "no by-hand merge is offered before step 1 (the first \"yourself on GitHub\" comes after it)" "$([ -n "$n1" ] && [ -n "$nm" ] && [ "$nm" -gt "$n1" ] && echo 1)" "step 1 at line ${n1:-none}, first offer at ${nm:-none}"
+o=$(lm "$T/pulls.json" 2754 --reason "pipeline fix, queue broken")
+ok "with --reason and batches running, step 1 still asks for the Lead-read line" "$(grep -E '^  1\. ' <<< "$o" | grep -qF 'Lead read the diff: <head sha>' && echo 1)" "$o"
 finish

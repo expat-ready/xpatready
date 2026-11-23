@@ -367,7 +367,11 @@ MUT="$MUT"'
 37 refuse|product/tools/lead-merge.sh|s/^if \[ "\$n" != 0 \] \&\& \[ -z "\$blank" \]; then$/if false; then/|check-lead-merge.sh
 37 page|product/tools/queue-batches.py|s/ > len(runs\["check_runs"\]):   # one page only/ < 0:   # one page only/|check-lead-merge.sh
 37 unread|product/tools/queue-batches.py|s/^        return 3$/        return 0/|check-lead-merge.sh
-37 watch|product/tools/lead-watch.sh|s/; say "\$qb"$//|check-lead-merge.sh'
+37 watch|product/tools/lead-watch.sh|s/; say "\$qb"$//|check-lead-merge.sh
+37 F1 read|product/tools/lead-merge.sh|s/ and your own "Lead read the diff: <head sha>" naming the same full head (P-423);/;/|check-lead-merge.sh
+37 F1 hand|product/tools/lead-merge.sh|s/; product code is never merged by hand: a by-hand merge is only for a pipeline or CI fix while the queue is broken (P-691)$//|check-lead-merge.sh
+37 F1 after|product/tools/lead-merge.sh|s/, and only after step 1.s "Lead read the diff: <head sha>" names the head you merge:/:/|check-lead-merge.sh
+37 F1 order|product/tools/lead-merge.sh|s/^Steps for #\$pr (run/  merge #$pr yourself on GitHub now\nSteps for #$pr (run/|check-lead-merge.sh'
 MUT="$MUT"'
 LRG access|product/tools/lead-read-gate.sh|s/ or any(.\[\]; test(\$access)) or / or false or /|check-lead-read-gate.sh
 LRG route|product/tools/lead-read-gate.sh|s/(\$w and any(.\[\]; test(\$route)))))/($w and false)))/|check-lead-read-gate.sh
