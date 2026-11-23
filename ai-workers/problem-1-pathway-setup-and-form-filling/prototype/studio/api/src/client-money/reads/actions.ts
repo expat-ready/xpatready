@@ -27,3 +27,23 @@ export const ACTIONS: readonly Row[] = [
 ];
 
 export const allowedActions = (f: ActionFacts): Action[] => ACTIONS.filter((r) => r.when(f)).map((r) => r.action);
+
+// ------------------------------------------------------------------------------- on a payment (FO-7q part 2, #3036)
+/** A payment's actions, for the routes FO-7b part 1c put on main: POST …/payments/:id/refunds (REFUND) and
+ *  …/payments/:id/extra (KEEP_AS_CREDIT, REFUND_EXTRA: "Refund · Keep as credit"). */
+export type PaymentAction = "REFUND" | "KEEP_AS_CREDIT" | "REFUND_EXTRA";
+/** `refundableMinor` and `waitingMinor` are Refunds.standing's (invoices/refunds.ts): 0 for a trust payment or an
+ *  uncleared cheque, by that file's own rules. */
+export type PaymentActionFacts = { keys: readonly string[]; refundableMinor: number; waitingMinor: number };
+const holds = (f: { keys: readonly string[] }, k: string) => f.keys.includes(k);
+
+export const PAYMENT_ACTIONS: readonly { action: PaymentAction; when: (f: PaymentActionFacts) => boolean }[] = [
+  // the refund route's key (AG-6-23 §8); something of the payment left to refund
+  { action: "REFUND", when: (f) => f.refundableMinor > 0 && holds(f, "agent/refund:create") },
+  // the choice route's key; Keep returns no money, so it needs no refund key
+  { action: "KEEP_AS_CREDIT", when: (f) => f.waitingMinor > 0 && holds(f, "agent/payment:record") },
+  // a Refund choice also needs the refund key (checked by the route's service)
+  { action: "REFUND_EXTRA", when: (f) => f.waitingMinor > 0 && holds(f, "agent/payment:record") && holds(f, "agent/refund:create") },
+];
+
+export const paymentActions = (f: PaymentActionFacts): PaymentAction[] => PAYMENT_ACTIONS.filter((r) => r.when(f)).map((r) => r.action);
