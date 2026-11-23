@@ -2,7 +2,7 @@
 
 current_lead: local_1117b08b-e591-401e-8f74-dbc5ef877570 Lead 7 · 23 Nov 18:39 IST (took over from Lead 6 (local_f2d41d71) at ~325k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 19:50 IST: A326. #3254 batch #3260 running. Pilot A push 2 shard 15: check_c116_channels_browser and check_fo8_prospect_won red packed, green alone (packing reds); push 3 running. #3174 round 8 Changes (R8-1, Undo past 10 matches), round 9 allowed; its size row owed (no split ruled)
+updated: 2026-11-23 19:53 IST: "Yes, land as one" recorded, #3261 open (independent reviewer reading it); #3254 batch #3260 running; sprint (c) on #2444; Pilot B confirm after 21:17; #3174 round 9 allowed
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -21,7 +21,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A326 | 23 Nov ~19:49 (typed to Lead 7) | visual report of the whole pipeline; result of the experiments; wrap the tooling fast, product work starts very soon | visual report and pilot results given 19:50; asked him: land the last four tooling PRs (#2597 #2738 #2473 #2444) as one (P-809's exception covers ten others only); pause ends 21:00 as he set |
+| A326 | 23 Nov ~19:49 (typed to Lead 7) | visual report of the whole pipeline; result of the experiments; wrap the tooling fast, product work starts very soon | visual report and pilot results given 19:50; **he typed "Yes, land as one" (~19:50)**: #2597 #2738 #2473 #2444 land as ONE through #2444 (P-811, records PR #3261, with P-812 for #3174); sprint (c) told to merge main + 03d6df61e into #2444, Approve, stop; then Lead reads all four parts, full run, label; pause ends 21:00 as he set |
 | A325 | 23 Nov ~18:38 (typed to Lead 6) | what is going on with the pilot, testing on Amazon? | answered in chat |
 | A324 | 23 Nov 17:13-17:35 | CI machines: packed pilot, peers, growth 100 to 2,000, steps 1-4 fast | Lead O 2: Pilot A shard 7: 3 at once no red, about 2.3x faster; all 24 shards (his "Yes, test all 24", relayed) start after #2590 merges, red batches and slowest suites measured (file); Pilot B (one AWS server, at most 4 h): "Yes, cap US$25" typed to Lead 5 ~17:40 (relayed, not seen by Lead 6); **RUNNING since 17:46 IST, self-terminates ~21:17 IST (m6a.32xlarge, ca-central-1, US$6.16/h, about US$21.6 at most by that rate; by Lead 5's report). Any Lead may stop it: terminate the server, then delete its security group; ids in the private note pilot-b-launch-2026-11-23, folder local_86bd4439. Lead 5 watches; confirm it is gone after 21:17;** full runs 17% of CI minutes (measured), P-731/P-743 kept: `history/STATE-2026-11-23-lead6-ask-A324.md` |
 | A316, A319, A321, A323 | 23 Nov | A316 visual plan owed; the rest answered or recorded | word for word: `history/STATE-2026-11-23-lead6-older-ask-rows-A316-A323.md` |
