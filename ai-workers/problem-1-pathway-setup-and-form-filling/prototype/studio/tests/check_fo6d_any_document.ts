@@ -42,6 +42,9 @@ const { EVERYONE_SEES_ALL, writeSetting } = await import("../api/src/platform/se
 const { platformAuditWorkspaceId } = await import("../api/src/platform/audit/audit-event.ts");
 const { fakeSigning } = await import("../api/src/front-office/signing/port.ts");
 const { useSigningPort } = await import("../api/src/front-office/signing/handlers.ts");
+const { Signing } = await import("../api/src/front-office/signing/service.ts");
+const { SigningHooksController } = await import("../api/src/front-office/signing/hooks.ts");
+const { LocalFiles } = await import("../api/src/front-office/files.ts");
 const retainers = (await import("../api/src/features/front-office-retainers.ts")).default;
 const anyDoc = (await import("../api/src/features/front-office-signing-any-document.ts")).default;
 
@@ -173,6 +176,19 @@ try {
 
   ok("FO-6d S3 fail: sending OTHER documents never moves the prospect or makes a retainer (stage unchanged, no prospect.won)",
     stage() === stage0 && count("fo_retainer", `prospect_id = '${PRO}'`) === 0 && count("audit_event", `firm_id = '${A}' and action = 'prospect.won'`) === 0);
+
+  const certified = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, bytes: Buffer.concat([PDF, Buffer.from("<< /AcroForm << /Fields [] >> /Perms << /DocMDP 7 0 R >> >>")]), title: "قرارداد\u200cنامه (Sample)" }));
+  ok("FO-6d S2 pass: a certified (DocMDP) PDF with a form is not taken for a government form, and a Persian title with a zero-width non-joiner is plain text (201)", certified.status === 201, certified.text.slice(0, 200));
+
+  // Review r2 on #3207: until part 2 registers its handler, the provider's events for an OTHER request are stored once and
+  // answered "no handler" by FO-6 part 3's door; nothing is applied (never the retainer path).
+  const hooks = new SigningHooksController(new Signing(db, new LocalFiles(join(WORK, "files"))));
+  const pdQ1 = sql(`select provider_document_id from fo_signature_request where id = '${Q1}'`);
+  const [viewed] = await signing.act(A, pdQ1, sql(`select id from fo_signer where request_id = '${Q1}' and person_id = '${PB}'`), "viewed");
+  const hv = await hooks.receive("fake", { ip: "10.0.2.1", headers: viewed.headers, body: JSON.parse(new TextDecoder().decode(viewed.body)) });
+  ok("FO-6d S3 fail: with no OTHER handler registered, a viewed event is stored once and answered \"no handler\"; the signer and the request are unchanged, no retainer line",
+    hv.applied === false && hv.reason === "no handler" && count("fo_signing_hook_receipt", `request_id = '${Q1}'`) === 1 && count("fo_signer", `request_id = '${Q1}' and viewed_at is not null`) === 0
+      && sql(`select status from fo_signature_request where id = '${Q1}'`) === "SENT" && count("audit_event", `entity_key = '${Q1}' and action like 'signing.viewed'`) === 0, hv);
 
   // ------------------------------------------------------------------------------- S5: an added firm signer signs last
   const s5 = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, firm: other.id, title: "Countersigned letter (Sample)" }));
