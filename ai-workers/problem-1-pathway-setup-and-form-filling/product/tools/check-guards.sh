@@ -274,7 +274,7 @@ MUT="$MUT"'
 38 group|product/tools/lead-upkeep.py|s/            os.killpg(p.pid, signal.SIGKILL)/            p.kill()/|check-lead-upkeep.sh
 38 range|product/tools/lead-upkeep.py|s/    if beyond < 0:  /    if False:  /|check-lead-upkeep.sh
 38 fail|product/tools/lead-upkeep.py|s/    if p.returncode == 0:/    if True:/|check-lead-upkeep.sh
-38 notes|product/tools/lead-upkeep.py|s/    if not os.path.isdir(a.notes):/    if False:/|check-lead-upkeep.sh
+38 notes|product/tools/lead-upkeep.py|s/    if not os.path.lexists(a.notes):/    if not os.path.isdir(a.notes):/|check-lead-upkeep.sh
 38 source|product/tools/private-sync.sh|s/^if \[ ! -d "\$NOTES" \] .*then$/if false; then/|check-lead-upkeep.sh
 38 rev-parse|product/tools/private-sync.sh|s/^if ! git rev-parse -q --verify HEAD .*then$/if false; then/|check-lead-upkeep.sh
 38 note file|product/tools/private-sync.sh|s/ -type f ! -path / -type f -path /|check-lead-upkeep.sh
@@ -285,6 +285,11 @@ MUT="$MUT"'
 38 ahead|product/tools/private-sync.sh|s/ && \[ "\$ahead" = 0 \]; then$/; then/|check-lead-upkeep.sh
 38 stored|product/tools/private-sync.sh|s/git config --get remote.origin.url/git remote get-url origin/|check-lead-upkeep.sh
 38 slash|product/tools/private-sync.sh|s/local a="\${1%\/}" b="\${2%\/}"/local a="$1" b="$2"/|check-lead-upkeep.sh
+38 symlink|product/tools/private-sync.sh|s/\$1 == "100644" .. \$1 == "100755"/$1 != "160000"/|check-lead-upkeep.sh
+38 gitlink|product/tools/private-sync.sh|s/^if \[ -n "\$subs" \]; then$/if false; then/|check-lead-upkeep.sh
+38 undo|product/tools/private-sync.sh|s/^undo() { git reset -q -- notes;/undo() { git reset -q --hard HEAD;/|check-lead-upkeep.sh
+38 pushurl|product/tools/private-sync.sh|s/^  \[ -z "\$u" \] /  true /|check-lead-upkeep.sh
+38 branch|product/tools/private-sync.sh|s/"HEAD:refs\/heads\/\${up#origin\/}"/HEAD/|check-lead-upkeep.sh
 38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
 38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh'
 MUT="$MUT"'
@@ -327,13 +332,17 @@ MUT="$MUT"'
 37 read head|product/tools/queue-blocked.py|s/^            if m and m.group(1).lower() == head.lower():$/            if m:/|check-queue-blocked.sh
 37 read drop|product/tools/queue-blocked.py|s/^        for d in DROP:$/        for d in []:/|check-queue-blocked.sh
 37 read code|product/tools/queue-blocked.py|s/^            if line.startswith("    ") or line.startswith(.\\t.):$/            if False:/|check-queue-blocked.sh
-37 read blank|product/tools/queue-blocked.py|s/^LEAD_READ = re.compile(r"^\[ \\t\\v\\f\]\*lead read/LEAD_READ = re.compile(r"^\\s*lead read/|check-queue-blocked.sh
+37 read blank|product/tools/queue-blocked.py|s/^LEAD_READ = re.compile(r"^\[ \\t\\v\\f\]\*lead read/LEAD_READ = re.compile(r"^[\\s\\xa0]*lead read/|check-queue-blocked.sh
 37 read leads|product/tools/queue-blocked.py|s/^        if leads and (login not in leads or login == asc(str(author or ""))):$/        if False:/|check-queue-blocked.sh
 37 read unread|product/tools/queue-blocked.py|s/^                ll = None$/                ll = ""; continue/|check-queue-blocked.sh
 37 read org|product/tools/queue-blocked.py|s/^                    continue$/                    break/|check-queue-blocked.sh
 37 read nul|product/tools/queue-blocked.py|s/^    if any("\\x00" in b for b in counted):/    if False:/|check-queue-blocked.sh
 37 read ascii|product/tools/queue-blocked.py|s/^    return re.sub(r"\[A-Z\]", lambda m: m.group().lower(), x)$/    return x.lower()/|check-queue-blocked.sh
-37 read empty|product/tools/queue-blocked.py|s/ll = os.environ.get("LEAD_LOGINS") or None/ll = os.environ.get("LEAD_LOGINS")/|check-queue-blocked.sh
+37 read empty|product/tools/queue-blocked.py|s/os.environ.get("QB_LEAD_LOGINS")/os.environ.get("LEAD_LOGINS")/|check-queue-blocked.sh
+37 read asciire|product/tools/queue-blocked.py|s/, re.I . re.A)   # grep/, re.I)   # grep/|check-queue-blocked.sh
+37 read split|product/tools/queue-blocked.py|s/\[^\\S\\x1c-\\x1f\]/\\s/|check-queue-blocked.sh
+37 read 404|product/tools/queue-blocked.py|s/^                if e.notfound:$/                if True:/|check-queue-blocked.sh
+37 read 404 text|product/tools/queue-blocked.py|s/returned error: 404\\b/never/|check-queue-blocked.sh
 37 count|product/tools/lead-watch.sh|s/; seen "\$qb"; act=\$((act + \$(grep -c .^ACT. <<<"\$qb")))/; seen "$qb"/|check-queue-blocked.sh
 39 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
 39 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh
