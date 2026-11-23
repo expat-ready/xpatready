@@ -16,8 +16,10 @@ Row PF-17, item R1.93. Stacked on PF-17 part 1 (#3155, branch `claude/runtime-pf
 7. `tests/check_pf4s_system_signin.ts`: its exact seeded-key list gains the two keys (as PF-21b part 2 did for its key).
 
 ## Not built
-Internal notes, assignment, priority, force-close, reopen window, linked tickets, the three SA-10 emails (no email on our reply), attachment download for our staff, a support session from a ticket (AUD-3b), naming the replying staff member on the firm's trail (the line's actor is `system:support`, PF-18b's; PF-4s's guard line names the person; AUD-3a, open as #3178, brings an actor word for our staff), failed jobs per firm (its own part), and every screen (part 4).
+Internal notes, assignment, priority, force-close, reopen window, linked tickets, the three SA-10 emails (no email on our reply), attachment download for our staff, a support session from a ticket (AUD-3b), failed jobs per firm (its own part), and every screen (part 4).
 
 ## Checks (builder)
 * `tests/check_pf17_support.ts`: DW1-DW8, 26 passed, 0 failed, run twice.
 * Existing suites: listed in the PR body with exit codes.
+
+**After main's merge (24 Nov, 58c79b84a; round 2 review m2):** the reply's line on the firm's trail now names the replying staff member, `ourstaff:<id>` (OUR_STAFF), because AUD-3a refuses a `system:` word in our staff's requests. PF-18b's `replyAsSupport` takes the actor word as an optional third argument (`system:support` by default).
