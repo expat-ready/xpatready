@@ -91,7 +91,15 @@ const refusedByDb = (e: unknown): never => {
   throw e;
 };
 
-type Row = Record<string, any>;
+/** One breach as plat_breach_json returns it (snake case, times as text). */
+type Row = {
+  id: string; status: BreachView["status"]; source: BreachView["source"]; source_alert: unknown; discovered_at: string; description: string; affected_firms: string[] | null; data_categories: string[] | null;
+  root_cause: string | null; containment: string | null; decision: BreachView["decision"]; decision_reason: string | null; decided_by: string | null; decided_at: string | null;
+  other_notifications: string | null; opened_by: string; created_at: string; updated_at: string;
+  notices?: { id: string; firm_id: string; channel: string; recipients: BreachNotice["recipients"]; template_version_id: string; sent_by: string; sent_at: string }[];
+};
+/** plat_breach_notice_ready's answer. */
+type Ready = { state: "READY" | "NOT_FOUND" | "DRAFT" | "NOT_DECIDED_TO_NOTIFY" | "NOT_AFFECTED" | "ALREADY_SENT"; discovered_at: string; description: string; data_categories: string[]; containment: string | null };
 const iso = (v: unknown) => (v === null || v === undefined ? null : new Date(String(v)).toISOString());
 function viewOf(r: Row): BreachView {
   const firms = (r.affected_firms ?? []) as string[];
@@ -100,7 +108,7 @@ function viewOf(r: Row): BreachView {
     scope: firms.length === 0 ? "UNDER_INVESTIGATION" : "KNOWN", dataCategories: r.data_categories ?? [], rootCause: r.root_cause ?? null, containment: r.containment ?? null,
     decision: r.decision, decisionReason: r.decision_reason ?? null, decidedBy: r.decided_by ?? null, decidedAt: iso(r.decided_at), otherNotifications: r.other_notifications ?? null,
     openedBy: r.opened_by, createdAt: iso(r.created_at)!, updatedAt: iso(r.updated_at)!,
-    notices: ((r.notices ?? []) as Row[]).map((n) => ({ id: n.id, firmId: n.firm_id, channel: n.channel, recipients: n.recipients, templateVersionId: n.template_version_id, sentBy: n.sent_by, sentAt: iso(n.sent_at)! })),
+    notices: (r.notices ?? []).map((n) => ({ id: n.id, firmId: n.firm_id, channel: n.channel, recipients: n.recipients, templateVersionId: n.template_version_id, sentBy: n.sent_by, sentAt: iso(n.sent_at)! })),
   };
 }
 
@@ -195,7 +203,7 @@ export class Breaches {
     if (!p.success) fields(p.error);
     const breach = id.toLowerCase(), firm = p.data.firmId, by = `staff:${c.staffId}`;
     const sent = await withFirm(firm, () => this.db.$transaction(async (tx) => {
-      const [{ r }] = await tx.$queryRaw<{ r: Row }[]>`SELECT plat_breach_notice_ready(${breach}::uuid, ${firm}::uuid) AS r`;
+      const [{ r }] = await tx.$queryRaw<{ r: Ready }[]>`SELECT plat_breach_notice_ready(${breach}::uuid, ${firm}::uuid) AS r`;
       if (r.state === "NOT_FOUND") notFound();
       if (r.state === "DRAFT") problem(409, "Still a draft", "Confirm the breach record before any notice is sent.", { code: "BREACH_DRAFT" });
       if (r.state === "NOT_DECIDED_TO_NOTIFY") problem(409, "No decision to notify", "Record the decision to notify firms, with why, before any notice is sent.", { code: "NOT_DECIDED_TO_NOTIFY" });
@@ -210,7 +218,7 @@ export class Breaches {
         FROM platform_staff s JOIN platform_role_grant g ON g.staff_id = s.id AND g.firm_id = s.firm_id AND g.ended_at IS NULL AND g.role IN ('OWNER', 'ADMIN')
         WHERE s.firm_id = ${firm}::uuid AND s.status = 'ACTIVE' GROUP BY s.id, s.email ORDER BY s.id`;
       if (people.length === 0) problem(409, "Nobody to notify", "The firm has no active Owner or Admin; nothing was sent or recorded.", { code: "NO_RECIPIENTS" });
-      const cats = (r.data_categories as string[]).map((k) => CATEGORY_WORDS[k as keyof typeof CATEGORY_WORDS] ?? k);
+      const cats = r.data_categories.map((k) => CATEGORY_WORDS[k as keyof typeof CATEGORY_WORDS] ?? k);
       const values = { firm_name: f.name, discovered_on: String(r.discovered_at).slice(0, 10), description: r.description, data_categories: cats.length ? cats.join(", ") : "not yet known",
         containment: r.containment ?? "Our investigation is continuing.", breach_ref: breach };
       const words = { subject: fillFields(v.subject ?? "", values), text: fillFields(v.body, values) };
