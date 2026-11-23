@@ -152,8 +152,8 @@ try {
   const line = INV ? await staffApi("POST", `/api/front-office/money/invoices/${INV}/lines`, { kind: "FEE", description: `Consultation given (Sample ${run})`, unitMinor: FEE_MINOR }, tok) : null;
   ok("J-61 setup: client A's invoice draft with one fee line for a service given (FO-7b part 1a; started from the retainer when that part merges, else a plain draft)", !!INV && (line?.status === 201 || line?.status === 200), { draft: draft.status, fallback: d0.status, line: line?.status, retainerAccepted: draft.status === 201 });
   const issued = INV ? await staffApi("POST", `/api/front-office/money/invoices/${INV}/issue`, {}, tok) : null;
-  const NUMBER = String(issued?.body?.number ?? "");
-  ok("J-61 setup (part missing: FO-7b part 1b, #2953, issue): the invoice issues with an INV- number (only an issued invoice is paid)", issued?.status === 200 && /^INV-/.test(NUMBER), issued ? brief(issued) : "no draft");
+  const NUMBER = String(issued?.body?.invoice?.number ?? issued?.body?.number ?? "");   // issue answers { invoice, email } (FO-7b part 1b)
+  ok("J-61 setup (FO-7b part 1b, #2953, on main): the invoice issues with an INV- number (only an issued invoice is paid)", issued?.status === 200 && /^INV-/.test(NUMBER), issued ? brief(issued) : "no draft");
   const total = INV ? Number(sql(`select coalesce(sum(amount_minor + tax_minor), 0) from money_invoice_line where invoice_id = '${INV}'`)) : 0;
   const amountWords = (total / 100).toFixed(2);   // the open amount the pay step must show (tax as the firm's default adds it)
 
