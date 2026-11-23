@@ -97,3 +97,60 @@ Note: during this run the working tree's `parties.ts` gained uncommitted edits (
 are not mine; every result above is for `e51fcc3e5`. Not tested: concurrent writes (reads only); screens, keyboard and zoom (no screen in this row).
 
 Verdict: Changes
+
+## Round 2 (diff only: `e51fcc3e5..ded31c573`; the query changed in `d7a7a89a2`, and `ded31c573` only adds a test and rewords a message)
+How: I ran each commit from a `git archive` snapshot with a new scratch script, which copies the new query text exactly for
+EXPLAIN. Each run used its own database, dropped afterwards. The suite gives 38/38 at d7a7a89a2 and 40/40 at ded31c573;
+check_fo7q_reads gives 52/52. A scratch mutation that removes the company case branch (`… or c.id in (select cid from on_case
+…)` → `or false`) turns the new CD tests red: 3 failures. So r2-m1's test can fail.
+
+**Round 1 closed**
+- M1 is closed: no quadratic plan. Every set is a `hashed SubPlan` at every size I measured.
+  - Real scope at 5,000 won: 33 to 44 ms (HTTP 54 to 64 ms), down from 684 to 786 ms. At 7,000: 65 ms (HTTP 100 ms), down from
+    1,420 ms.
+  - 10,000 won and 5,000 cases: 81 ms (HTTP 113 ms).
+- m1 is closed: `?q=wo%00nbee` and `?q=%00%00` give 422 `{"q":"Remove the hidden character from the name."}`. A NUL in a key name
+  gives 422 too.
+- m2 is closed: there is one list, and it is cut by the same name and order it shows. 23 matches give "Aaa Orderzz Co", then
+  B00 to B18. "Zorderzz" now sorts after "B…", and its name has no leading blank.
+
+**New findings**
+- **r2-m1 (Minor, scale note): cost grows linearly with the size of the firm, and it crosses the 200 ms budget at about 20,000
+  clients.**
+  - 20,000 won and 20,000 cases: 222 ms (HTTP 267 ms).
+  - 100,000 won: 638 ms (HTTP 807 ms).
+  - Even a query that matches nothing (`zzqqxx`) costs 185 / 500 ms at those sizes. Each keystroke materializes every won
+    subject and every case link of the firm, then hashes them (`parties.ts` CTEs `won`, `on_case`).
+  - Scope with only 3 cases: 46 / 98 ms.
+  - Scale work is the team's (§9), so this is not a Major.
+- **r2-m2 (Minor; replaces round 1 m4): the search and the invoice label now show one person differently.** For given "Ann "
+  and family "Leezz", the search shows `"Ann  Leezz"` (SQL `btrim` strips spaces only) but the label shows `"Ann Leezz"`
+  (`personName`, JS `trim`).
+- Round 1 m3 (accent case-folding on a C-locale cluster) is unchanged. On this cluster "Ángel" now sorts after "z" in the shown
+  list as well.
+- Round 1 m5 is unchanged: the label of an invoice billed to a merged-away person is not in this diff.
+
+**Held (round 2)**
+- Case-only clients:
+  - A person (PD) and a company (CD) with no prospect are found with ALL, and through their own case in scope.
+  - The client of out-of-scope case Y is not found through the case scope alone (`cases [D]` → none).
+  - With PY in the party scope, the search finds PY. That is C5's party half, the same as the invoice reads.
+- Cross-firm through the case branch. case_client has no foreign key into the front office (`csk1_case_client` header), so I
+  planted both directions:
+  - A firm A case linking a firm B person is never found, by A (ALL or scoped) or by B.
+  - A firm B case linking a firm A open-prospect person is never found, by A (ALL, or B's case id put in A's scope) or by B.
+  - Firm B case and party ids in firm A's scope find nothing.
+- Merged parties through the case branch:
+  - A case_client still pointing at a tombstone finds neither record. No merge leaves this state: CS-K2 re-points the link
+    (`columns.ts:38`), and on main no route calls the merge.
+  - Once re-pointed, the survivor is found with ALL and through case MC.
+- A person with only an open prospect who is also a case client is found. That is right: the case makes them a client. The case
+  status check allows OPEN and CLOSED (only OPEN was seeded). Upper-case and duplicate ids in the scope resolve.
+- The `${all}` path:
+  - `all` is derived only from the server's `scopeOf`; nothing in the request can set it. PgMoneyVisibility never returns "ALL".
+  - It binds as a boolean. On the ALL plan, `in_scope` is folded away and only the two client sets remain hashed. On the scoped
+    plan, `in_scope` is a third hashed SubPlan.
+  - An empty scope still returns early, before any SQL.
+- Control and bidi characters (`%01`, U+202E) give 200 with no match, never a 500.
+
+Verdict: Approve (head `ded31c573`)
