@@ -41,6 +41,9 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fakeMail, type SentMail } from "../ports/mail.ts";
 import { TRUST_EVENT } from "../ports/events/client-money-trust.ts";   // ports/events.ts is frozen since #2919 (P-785 (2)): the trust names live in their own file (review m11)
+import { runContract } from "../ports/contracts/contract.ts";
+import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
+import { TrustDocuments } from "../api/src/client-money/trust/documents.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -363,5 +366,10 @@ try {
   await app?.close(); await owner.$disconnect();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB], { stdio: "ignore" });
 }
+// PF-0c DW1 (fast: check-port-contracts.mjs): TrustDocuments is a real DocumentRenderPort adapter, so it runs the port's
+// contract here, read back with FO-7b's text-page reader. Pure: no database.
+const receipt = { firmName: "Sample Firm", number: "R-000001", issuedOn: "2026-11-23", party: "Client A", currency: "CAD", amount: "600.00", method: "e-Transfer", receivedOn: "2026-11-23", reference: "", request: "", cleared: "" };
+const pdfText = (bytes: Uint8Array) => [...Buffer.from(bytes).toString("latin1").matchAll(/^\((.*)\) Tj T\*$/gm)].map((m) => m[1]).join("\n");
+await runContract(documentRenderPortContract, "TrustDocuments", () => ({ render: new TrustDocuments(), template: "client_money.trust_receipt", data: receipt, reordered: Object.fromEntries(Object.entries(receipt).reverse()), other: { ...receipt, amount: "600.01" }, text: pdfText }), ok);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
