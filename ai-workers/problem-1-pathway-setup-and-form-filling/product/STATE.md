@@ -16,12 +16,13 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Red suites, 24 h (failed-job logs):** check_forms_qa53 16 batches, check_b164_no_engine_keys 13, check_csdl3_milestones 12, check_pf8b_f4_migrations 12, check_pf28_inputs 9; causes unclassified, with Lead O.
 **Local:** Lead B 3 `local_281c4e7e`, AWS proof 3 `local_f09b5b4c` (done, idle, 0 tasks), desk `local_d92dde4f` (final report in shared notes), standby Lead 4 `local_86bd4439`. qa re-read R1.13: Partial (#3226, records).
 **GitHub API quota (5000/h) is shared:** Lead 2 and Lead O used it up at 12:23; sample less. Disk 7.7 GB. Weekly 13% (12:28 to 12:46). Lead 3, 13:00: answered #3178 (round 4), #3217 (round 3), #3202; records owed: BR-13 text, rows for #3202 answers 2, 3, 5. private-sync fixed (its /tmp copy had lost git files; re-cloned; the script should test `git rev-parse`, owed). One more standby owed at his next typed turn. RULES stays as of P-795 (P-796 to P-807 on main owed as an IDX row). AWS idles.
-**Waiting on the founder:** stay public? combined tooling PR? close #2372?
+**Founder answered (typed to Lead 2, read in its transcript by Lead 3):** stay public until the final solution; combined PR no, land separately; close #2372, reverse that part of P-746 (4), fix B205, proof-out-60-min alert as a later row (records owed). **#2372 is still open: the close was refused in Lead 3's shell, not retried.** #2434 read and labelled 13:0x. **Waiting on the founder:** A309 option; press Close on #2372.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A309 | 23 Nov 13:0x (typed) | staying public: safeguard so nobody gets the entire thing, detailed visual analysis, then set it up and start | study read (private notes); recommended: new valuable work private first; his yes asked; nothing moved |
 | A308 | 23 Nov 12:57 (typed) | pasted a Google AI answer (one 32-core server ₹12-22k/month, or AWS spot ₹2-8k/month, for 100 pipelines) and asks why answers differ | answered in chat by Lead 3: its sums fit its assumed small load, not our measured one |
 | A300 | 23 Nov 12:0x | operating system first in the queue until complete; Lead O; in full: `history/STATE-2026-11-23-1305-lead3-asks-A297-A300.md` |
 | A301-A305 | 23 Nov 12:0x-12:3x | private impossible at US$100 (A304): nothing bought; open with him: stay public, combined PR, close #2372; in full: `history/STATE-2026-11-23-1236-lead2-asks-A301-A305.md` |
