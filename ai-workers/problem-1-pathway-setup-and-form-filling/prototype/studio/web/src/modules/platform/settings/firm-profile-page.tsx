@@ -17,7 +17,7 @@ import { useToast } from "@/lib/api";
 import { allZones } from "@/modules/front-office/booking-public/time";
 import { PlatformFrame, usePlatformStaff } from "../frame";
 import { staffApi, StaffApiError, useStaffToken } from "../session";
-import { addressLines, changesOf, countryName, CURRENCIES, currencyWord, fieldErrors, formOf, isDirty, LANGUAGES, languageWord, otherErrors, Profile, PROFILE_ADMIN_KEY, PROFILE_READ_KEY, Saved, WORDS, type FieldName, type Form } from "./firm-profile-contract";
+import { addressLines, changedWords, changesOf, countryName, CURRENCIES, currencyWord, fieldErrors, formOf, isDirty, keepEdits, LANGUAGES, languageWord, otherErrors, Profile, PROFILE_ADMIN_KEY, PROFILE_READ_KEY, Saved, WORDS, type FieldName, type Form } from "./firm-profile-contract";
 
 const BILLING_KEY = "agent/subscription-invoice:view";
 
@@ -44,7 +44,16 @@ function ProfileBody() {
   const [start, setStart] = React.useState<Form | null>(null), [f, setF] = React.useState<Form | null>(null), [version, setVersion] = React.useState<string | null>(null);
   const [errors, setErrors] = React.useState<Partial<Record<FieldName, string>>>({}), [problem, setProblem] = React.useState<{ tone: "danger" | "warn"; title: string; text: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
-  const sending = React.useRef(false), problemBox = React.useRef<HTMLDivElement>(null);
+  const sending = React.useRef(false), problemBox = React.useRef<HTMLDivElement>(null), saveButton = React.useRef<HTMLButtonElement>(null);
+  /** The form as it is now, for a save that returns while the person keeps typing. */
+  const now = React.useRef<Form | null>(null); now.current = f;
+  const dirtyNow = !!f && !!start && isDirty(start, f);
+  // Break m2: leaving or reloading with unsaved changes asks first (as Branding and Notifications do).
+  React.useEffect(() => {
+    if (!dirtyNow) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn);
+  }, [dirtyNow]);
   /** Load a profile into the form (first read, after a save, after a 409). */
   const load = React.useCallback((p: Profile) => { const s = formOf(p); setStart(s); setF(s); setVersion(p.version); }, []);
   React.useEffect(() => { if (q.data && version === null) load(q.data); }, [q.data, version, load]);
@@ -63,7 +72,7 @@ function ProfileBody() {
   const p = q.data, editDetails = p.canChange.details, editOwner = p.canChange.ownerOnly;
   const seesBilling = admin || editOwner;
   const set = (k: FieldName) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => { const v = e.target.value; setF((x) => (x ? { ...x, [k]: v } : x)); setErrors((x) => ({ ...x, [k]: undefined })); };
-  const dirty = isDirty(start, f);
+  const dirty = dirtyNow;
   const focusProblem = () => requestAnimationFrame(() => { const box = document.getElementById("profile-form"); (box?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? problemBox.current)?.focus(); });
 
   const save = async (e: React.FormEvent) => {
@@ -71,16 +80,26 @@ function ProfileBody() {
     if (sending.current) return;
     if (!dirty) { setProblem({ tone: "warn", title: "Nothing saved", text: WORDS.nothing }); return; }
     sending.current = true; setBusy(true); setErrors({}); setProblem(null);
+    const sent = f;
     try {
       const r = Saved.parse(await staffApi("/platform/firm/profile", { method: "PUT", json: changesOf(start, f, version) }));
-      qc.setQueryData(key, r.profile); load(r.profile);
+      qc.setQueryData(key, r.profile);
+      // Break m3: what was typed while the save ran is kept, on top of what was saved.
+      const saved = formOf(r.profile); setStart(saved); setF(keepEdits(saved, sent, now.current ?? sent)); setVersion(r.profile.version);
       toast.push({ tone: "ok", text: WORDS.saved });
+      // Break m7: Save was disabled while busy, which drops keyboard focus to the page; it goes back to Save.
+      requestAnimationFrame(() => { if (document.activeElement === document.body || document.activeElement === null) saveButton.current?.focus(); });
     } catch (x) {
       if (x instanceof StaffApiError && x.status === 409) {
         // The staff client keeps only a problem's plain fields, not its `latest`: read the profile again and load it.
         const latest = await staffApi("/platform/firm/profile").then((d) => Profile.parse(d)).catch(() => null);
-        if (latest) { qc.setQueryData(key, latest); load(latest); }
-        setProblem({ tone: "danger", title: "Not saved", text: latest ? x.message : `${x.message} We could not load the latest details: please reload the page.` });
+        if (latest) {
+          // Break M1 (STANDARDS §4, BIC-13): the latest becomes the starting point, this person's own changes stay on top, and the
+          // fields someone else changed are named.
+          const fresh = formOf(latest), mine = now.current ?? sent, theirs = changedWords(start, fresh);
+          qc.setQueryData(key, latest); setStart(fresh); setF(keepEdits(fresh, start, mine)); setVersion(latest.version);
+          setProblem({ tone: "danger", title: "Not saved", text: `Someone else saved the firm profile while you were editing${theirs ? `: they changed the ${theirs}` : ""}. Your changes are kept: check them and press Save again.` });
+        } else setProblem({ tone: "danger", title: "Not saved", text: `${x.message} We could not load the latest details: please reload the page.` });
       } else if (x instanceof StaffApiError) {
         setErrors(fieldErrors(x.problem.fields));
         const more = otherErrors(x.problem.fields);
@@ -115,7 +134,7 @@ function ProfileBody() {
         {seesBilling ? (
           <Section id="billing" title="Billing" note={editOwner ? "Where we send your firm's invoices and receipts." : WORDS.ownerOnly}>
             {editOwner
-              ? <Field label="Billing email" error={errors.billingEmail} hint="Invoices and receipts from ExpatReady go here."><Input type="email" autoComplete="email" maxLength={254} value={f.billingEmail} onChange={set("billingEmail")} data-profile-field="billingEmail" /></Field>
+              ? <Field label="Billing email" error={errors.billingEmail} hint="Needed: invoices and receipts from ExpatReady go here."><Input type="email" autoComplete="email" maxLength={254} value={f.billingEmail} onChange={set("billingEmail")} data-profile-field="billingEmail" /></Field>
               : <Facts rows={[["Billing email", none(p.ownerOnly.billingEmail), "billingEmail"]]} />}
             <div className="flex flex-col gap-1" data-profile-address>
               <span className="text-xs font-medium text-text-muted">Business address</span>
@@ -128,7 +147,7 @@ function ProfileBody() {
           <div className="flex flex-wrap items-center justify-end gap-3">
             {dirty ? <span className="text-sm text-text-muted" data-profile-unsaved>You have unsaved changes.</span> : null}
             <Button type="button" variant="ghost" disabled={!dirty || busy} onClick={() => { setF(start); setErrors({}); setProblem(null); }} data-profile-reset>Undo changes</Button>
-            <Button type="submit" busy={busy} data-profile-save>Save</Button>
+            <Button ref={saveButton} type="submit" busy={busy} data-profile-save>Save</Button>
           </div>
         ) : null}
       </form>

@@ -31,8 +31,19 @@ export const formOf = (p: Profile): Form => ({
  *  never carries the Owner's billing email). The server trims and treats "" as "none" for phone, email and website. */
 export function changesOf(start: Form, now: Form, version: string): Record<string, string> {
   const body: Record<string, string> = { version };
-  for (const k of FIELDS) if (now[k] !== start[k]) body[k] = now[k];
+  for (const k of FIELDS) if (now[k] !== start[k]) body[k] = TEXT_FIELDS.includes(k) ? now[k].trim() : now[k];
   return body;
+}
+/** Free-text fields: sent trimmed, so spaces only count as empty ("none"; break m5). */
+const TEXT_FIELDS: readonly FieldName[] = ["publicPhone", "publicEmail", "website", "billingEmail"];
+export const LABELS: Record<FieldName, string> = { publicPhone: "public phone", publicEmail: "public email", website: "website", language: "language", timeZone: "time zone", currency: "currency", billingEmail: "billing email" };
+/** A new saved state with this person's own edits kept on top: the fields where `mine` differs from `base` (break M1: a 409 or a
+ *  save that returns while someone types never throws typed work away). */
+export const keepEdits = (saved: Form, base: Form, mine: Form): Form => Object.fromEntries(FIELDS.map((k) => [k, mine[k] !== base[k] ? mine[k] : saved[k]])) as Form;
+/** The fields someone else changed between two saved states, in words ("time zone and website"). */
+export function changedWords(before: Form, after: Form): string {
+  const w = FIELDS.filter((k) => before[k] !== after[k]).map((k) => LABELS[k]);
+  return w.length <= 1 ? w.join("") : `${w.slice(0, -1).join(", ")} and ${w[w.length - 1]}`;
 }
 export const isDirty = (start: Form, now: Form) => FIELDS.some((k) => start[k] !== now[k]);
 /** The 422's field errors by our field names; a field the page does not show (a read-only one) is kept for the notice. */

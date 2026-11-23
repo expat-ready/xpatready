@@ -7,8 +7,9 @@
 //       fail: an unchanged form sends nothing ("No changes to save") and writes no line;
 //   FP3 refusals in words on each field (a phone of letters, a website with no https://): 422, aria-invalid on both, focus on the
 //       first; nothing written; fail: correcting them saves;
-//   FP4 a stale save (someone changed the profile behind the page): 409, the latest is loaded into the form and said; fail: the
-//       next save from the loaded form goes through;
+//   FP4 a stale save (someone changed the profile behind the page): 409, the latest is loaded, what they changed is named and the
+//       typed change is kept; fail: Save again goes through with nothing retyped; spaces only save as none; leaving with unsaved
+//       changes asks first (a clean page does not);
 //   FP5 the billing email is the Owner's: the Owner changes it (one platform.firm.billing_email_changed line); an Admin sees it as
 //       text with "Only the Owner can change this" and no field, and the Admin's own save of the website goes through without it;
 //   FP6 keyboard only (Tab to Time zone, change by keys, Save by Enter on the button), axe clean (WCAG 2.2 A/AA) on every state, at
@@ -147,14 +148,31 @@ try {
   await save(po).click();
   await problem(po).waitFor({ timeout: 15_000 });
   const conflictText = await problem(po).innerText();
-  ok("PF-5s S5 FP4 fail: a save from before someone else's change is refused (409); the latest is loaded into the form and said; nothing written",
-    other.status === 200 && /Someone else changed/.test(conflictText) && /latest details are loaded/.test(conflictText) && (await field(po, "website").inputValue()) === behind && (await field(po, "publicEmail").inputValue()) !== `hello-${run}@sample-firm.example.ca`
+  const typed = `hello-${run}@sample-firm.example.ca`;
+  ok("PF-5s S5 FP4 fail: a save from before someone else's change is refused (409); the latest is loaded, what they changed is named, this person's typed change is kept; nothing written",
+    other.status === 200 && /they changed the website/.test(conflictText) && /Your changes are kept/.test(conflictText) && (await field(po, "website").inputValue()) === behind && (await field(po, "publicEmail").inputValue()) === typed
     && sql(`select count(*) from audit_event where at > '${t0}' and firm_id = '${A}'`) === "0", { conflictText });
   await shot(po, "conflict-1280"); axeAll.push(...ids(await axe(po)).map((x) => `conflict: ${x}`));
-  await field(po, "publicEmail").fill(`hello-${run}@sample-firm.example.ca`); t0 = now();
+  t0 = now();
   await save(po).click();
-  ok("PF-5s S5 FP4 pass: the next save from the loaded form goes through, keeping the other person's website",
-    (await toast(po, /^Firm profile saved\.$/)) && await wait(() => lines("platform.public_email", t0) === 1) && sql(`select value #>> '{}' from platform_firm_setting where firm_id = '${A}' and key = 'platform.website'`) === behind);
+  ok("PF-5s S5 FP4 pass: Save again, with nothing retyped, goes through: the kept email is saved and the other person's website stays",
+    (await toast(po, /^Firm profile saved\.$/)) && await wait(() => lines("platform.public_email", t0) === 1) && sql(`select value #>> '{}' from platform_firm_setting where firm_id = '${A}' and key = 'platform.public_email'`) === typed
+    && sql(`select value #>> '{}' from platform_firm_setting where firm_id = '${A}' and key = 'platform.website'`) === behind);
+  // Break m5: spaces only count as empty (none), never a format refusal.
+  t0 = now();
+  await field(po, "publicPhone").fill("   "); await save(po).click();
+  ok("PF-5s S5 FP4b: a phone of spaces only is saved as none (sent trimmed), not refused as a bad format",
+    (await toast(po, /^Firm profile saved\.$/)) && await wait(() => lines("platform.public_phone", t0) === 1) && sql(`select coalesce(value #>> '{}', 'null') from platform_firm_setting where firm_id = '${A}' and key = 'platform.public_phone'`) === "null");
+  // Break m2: leaving with unsaved changes asks first; a clean page does not.
+  const pl = await tab(TOWNER); await open(pl);
+  let asked = false; pl.on("dialog", (d) => { if (d.type() === "beforeunload") asked = true; void d.dismiss(); });
+  await pl.close({ runBeforeUnload: true }); await new Promise((r) => setTimeout(r, 500));
+  const askedClean = asked;
+  const pu = await tab(TOWNER); await open(pu); asked = false;
+  pu.on("dialog", (d) => { if (d.type() === "beforeunload") asked = true; void d.dismiss(); });
+  await field(pu, "website").fill(`https://unsaved-${run}.example.ca`);
+  await pu.close({ runBeforeUnload: true }); await new Promise((r) => setTimeout(r, 1000));
+  ok("PF-5s S5 FP4c: leaving with unsaved changes asks first (beforeunload); fail: a page with no changes leaves without asking", asked && !askedClean, { asked, askedClean });
 
   // ---------------------------------------------------------------------------------------------- FP5
   const billing = `billing-${run}@sample-firm.example.ca`; t0 = now();
@@ -179,6 +197,8 @@ try {
   await reach(pk, save(pk)); await pk.keyboard.press("Enter");
   ok("PF-5s S5 FP6 pass: keyboard only: Tab reaches Time zone, an arrow key changes it, Tab to Save and Enter saves it",
     before !== after && (await toast(pk, /^Firm profile saved\.$/)) && await wait(() => sql(`select value #>> '{}' from platform_firm_setting where firm_id = '${A}' and key = 'platform.time_zone'`) === after), { before, after });
+  await pk.waitForTimeout(300);
+  ok("PF-5s S5 FP6: after a keyboard save, focus is back on Save (never dropped to the page)", await save(pk).evaluate((el) => el === document.activeElement));
   for (const [who, t] of [["owner", TOWNER], ["officer", TOFF]] as const) {
     const pm = await tab(t, 375); await open(pm);
     const wide = await sideways(pm); axeAll.push(...ids(await axe(pm)).map((x) => `${who}-375: ${x}`));
