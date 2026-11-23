@@ -5,7 +5,7 @@
 #   bash product/tools/check-guards.sh [--mutate]
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-lead-read-gate.sh"
 bad=0
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
@@ -258,6 +258,21 @@ MUT="$MUT"'
 32 missed|product/tools/nightly-watch.py|s/    if newest is None or now - newest >= timedelta(hours=MISSED_H):/    if False:/|check-nightly-watch.sh
 32 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$nw")))/true/|check-nightly-watch.sh
 32 parts|../../.github/workflows/nightly.yml|s/^      N: [0-9]*$/      N: 8/|check-nightly-watch.sh'
+MUT="$MUT"'
+LRG access|product/tools/lead-read-gate.sh|s/ or any(.\[\]; test(\$access)) or / or false or /|check-lead-read-gate.sh
+LRG route|product/tools/lead-read-gate.sh|s/(\$w and any(.\[\]; test(\$route)))))/($w and false)))/|check-lead-read-gate.sh
+LRG hunk|product/tools/lead-read-gate.sh|s/else .\[-1\] += \[\$l\] end/else .[-1] += [ if $l[0:1] == " " then empty else $l end ] end/|check-lead-read-gate.sh
+LRG whole|product/tools/lead-read-gate.sh|s/(\$w and any(\$n\[\]; test(\$whole; "i"))) as \$all/false as $all/|check-lead-read-gate.sh
+LRG paths|product/tools/lead-read-gate.sh|s/^    hit=\$(paths <<< "\$names" . tick)$/    hit=""/|check-lead-read-gate.sh
+LRG head|product/tools/lead-read-gate.sh|s/grep -x "\$head" >\/dev\/null; then/grep . >\/dev\/null; then/|check-lead-read-gate.sh
+LRG writer|product/tools/lead-read-gate.sh|s/select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")/select(true)/|check-lead-read-gate.sh
+LRG edited|product/tools/lead-read-gate.sh|s/select(.created_at != null and (.updated_at \/\/ .created_at) == .created_at)/select(true)/|check-lead-read-gate.sh
+LRG bot|product/tools/lead-read-gate.sh|s/ and .user.login == "mergify\[bot\]" and .head.repo.full_name == \$r//|check-lead-read-gate.sh
+LRG page|product/tools/lead-read-gate.sh|s/-lt 100 \] \&\& break/-lt 100000 ] \&\& break/|check-lead-read-gate.sh
+LRG block|product/tools/lead-read-gate.sh|s/if \[ "\$MODE" = block \]; then s=failure;/if false; then s=failure;/|check-lead-read-gate.sh
+LRG closed|product/tools/lead-read-gate.sh|s/^    \*) echo "#\$PR: \$why"; \[ -n "\$head" \] .. return 2; s=failure;/    *) s=success;/|check-lead-read-gate.sh
+LRG list|product/tools/lead-read-paths.txt|/^\/api\/src\/platform\/identity\/$/d|check-lead-read-gate.sh
+LRG main|../../.github/workflows/lead-read.yml|s/^  pull_request_target:$/  pull_request:/|check-lead-read-gate.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
@@ -266,7 +281,7 @@ while IFS='|' read -r g f edit t; do
   cp "$ROOTD/.github/workflows/"*.yml "$M/.github/workflows/"; cp "$ROOTD/.mergify.yml" "$M/"; git -C "$M" init -q   # every workflow: check-label-guard parses two
   for x in $(cd "$ROOTD" && ls packages/xfa-engine/fixtures/synthetic/*.pdf packages/xfa-engine/src/__tests__/fixtures/*.pdf 2>/dev/null); do mkdir -p "$M/$(dirname "$x")"; cp "$ROOTD/$x" "$M/$x"; done   # guard 11 needs the real bytes
   before=$(cksum < "$M/$P/$f"); sed -i.bak "$edit" "$M/$P/$f"; rm -f "$M/$P/$f.bak"
-  sh=bash; head -1 "$M/$P/$f" | grep -q zsh && sh=zsh; case "$f" in *.yml) sh=true;; *.py) sh=pyparse;; *.js|*.mjs) sh=jsparse;; esac   # a .yml is parsed by its test; a .py by ast (B192)
+  sh=bash; head -1 "$M/$P/$f" | grep -q zsh && sh=zsh; case "$f" in *.yml|*.txt) sh=true;; *.py) sh=pyparse;; *.js|*.mjs) sh=jsparse;; esac   # a .yml or .txt list is read by its test; a .py by ast (B192)
   if [ "$before" = "$(cksum < "$M/$P/$f")" ]; then echo "FAIL  guard $g: the edit '$edit' changed nothing in $f"; bad=1
   elif ! $sh -n "$M/$P/$f" 2>"$M/log"; then echo "FAIL  guard $g: the edit '$edit' breaks $f's syntax, so its test failing proves nothing ($(head -1 "$M/log"))"; bad=1
   elif bash "$M/$P/product/tools/$t" > "$M/log" 2>&1; then echo "FAIL  guard $g: $t still passes with the guard off"; bad=1
