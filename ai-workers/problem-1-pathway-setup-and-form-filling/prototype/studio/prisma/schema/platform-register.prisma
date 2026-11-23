@@ -129,3 +129,44 @@ model PlatComplaintEvent {
   @@unique([firmId, complaintId, seq])
   @@map("plat_complaint_event")
 }
+
+// PF-21b part 2 (map row 85; SA-11 §3.5, SA-11-40, SA2-D25, BR-7, BR-12; brief design/briefs/track-b/PF-21b-2.md): legal
+// holds, placed and released by ExpatReady's Platform Owner only (system/compliance:legal-hold). LegalHoldPort's real
+// adapter (api/src/platform/register/holds/adapter.ts) reads this table; every deleter asks it first. Our own register:
+// row-level security forced with no policy (PF-12's OWN list), so only the bypass role reads or writes it, and a firm's
+// deleter reads its own firm's active holds through the definer plat_legal_hold_active(firm) only. Rules Prisma cannot
+// say are in the migration 20261122180000_pf21b_legal_holds: the scope's shape, the firm must exist (a check, not a
+// relation: PlatformFirm's file is not this row's), the times are the database's, never deleted, released once.
+// Legal reading Unconfirmed: no counsel.
+
+/// What a hold covers (§3.5: a firm, a case, a data category, a date range; SA-11-40: one person record).
+enum PlatLegalHoldScope {
+  FIRM
+  CASE
+  PERSON
+  CATEGORY
+  DATE_RANGE
+}
+
+/// One legal hold. A release sets the four release fields once (never a delete); a released hold matches nothing.
+model PlatLegalHold {
+  id            String             @id @default(uuid()) @db.Uuid
+  firmId        String             @map("firm_id") @db.Uuid
+  scopeKind     PlatLegalHoldScope @map("scope_kind")
+  /// The case or person id (CASE, PERSON); another module's id, never a foreign key.
+  targetId      String?            @map("target_id") @db.Uuid
+  /// A LEGAL_HOLD_CATEGORY name (CATEGORY).
+  category      String?
+  rangeFrom     DateTime?          @map("range_from") @db.Timestamptz
+  rangeTo       DateTime?          @map("range_to") @db.Timestamptz
+  reason        String
+  placedBy      String             @map("placed_by")
+  /// The database's time at placement (trigger).
+  placedAt      DateTime           @default(now()) @map("placed_at") @db.Timestamptz
+  releasedBy    String?            @map("released_by")
+  releasedAt    DateTime?          @map("released_at") @db.Timestamptz
+  releaseReason String?            @map("release_reason")
+
+  @@index([firmId, releasedAt])
+  @@map("plat_legal_hold")
+}
