@@ -138,6 +138,25 @@ test("PF-F1c gap 4 fail: the task role on every key, deleting, another bucket, t
   assert.ok(bypassFindings(extra).some((l) => l.includes("allows s3:DeleteObject, not on the allow list")));
 });
 
+test("PF-F1c fail (review M1): the files grants on another task role (the migration's), as an inline policy on the service's role, as s3:* or kms:*, or in a second policy, are caught; actions sorted (cdk.json's minimizePolicies) are not a finding (review m2)", () => {
+  const t0 = homes[0].template;
+  const exportsId = dataBuckets(t0).find(([id]) => id.startsWith("ExportsBucket"))![0];
+  const keyId = of(t0, "AWS::KMS::Key").find(([id]) => id.startsWith("DataKey"))![0];
+  const roleOf = (t: Template, name: "service" | "migration") => (taskDefinitions(t)[name]![1].Properties!.TaskRoleArn as { "Fn::GetAtt": [string] })["Fn::GetAtt"][0];
+  const wide = [{ Action: ["s3:GetObject", "s3:PutObject"], Effect: "Allow", Resource: { "Fn::Join": ["", [{ "Fn::GetAtt": [exportsId, "Arn"] }, "/*/*"]] } }, { Action: ["kms:Decrypt", "kms:GenerateDataKey"], Effect: "Allow", Resource: { "Fn::GetAtt": [keyId, "Arn"] } }];
+  const cases: [string, (t: Template) => void, string][] = [
+    ["migration task role (probe A)", (t) => { t.Resources!.MigrateFiles = { Type: "AWS::IAM::Policy", Properties: { PolicyName: "m", Roles: [{ Ref: roleOf(t, "migration") }], PolicyDocument: { Version: "2012-10-17", Statement: wide } } }; }, "only the service's task role"],
+    ["inline on the service's role (probe B)", (t) => { (t.Resources![roleOf(t, "service")].Properties as Record<string, unknown>).Policies = [{ PolicyName: "x", PolicyDocument: { Version: "2012-10-17", Statement: wide } }]; }, "not one of the files grants"],
+    ["s3:*", (t) => { taskStatements(t).push({ Action: "s3:*", Effect: "Allow", Resource: { "Fn::GetAtt": [exportsId, "Arn"] } }); }, "not one of the files grants"],
+    ["*", (t) => { taskStatements(t).push({ Action: "*", Effect: "Allow", Resource: "*" }); }, "not one of the files grants"],
+    ["a second policy", (t) => { t.Resources!.Second = { Type: "AWS::IAM::Policy", Properties: { PolicyName: "s", Roles: [{ Ref: roleOf(t, "service") }], PolicyDocument: { Version: "2012-10-17", Statement: wide } } }; }, "not one of the files grants"],
+  ];
+  for (const [name, edit, want] of cases) { const t = clone(t0); edit(t); assert.ok(filesTaskFindings(t).some((l) => l.includes(want)), `${name}: ${filesTaskFindings(t).join("; ")}`); }
+  const sorted = clone(t0);
+  for (const st of taskStatements(sorted)) if (Array.isArray(st.Action)) st.Action = [...st.Action].sort();
+  assert.deepEqual(filesTaskFindings(sorted), []);
+});
+
 test("PF-F1c fail: the log-delivery Allow widened (another principal, every key, any source, no account) or on a data bucket, is caught by the resource-policy guard", () => {
   const logId = [...accessLogBuckets(homes[0].template)][0];
   const delivery = (t: Template) => statements(t).filter((st) => st.Effect === "Allow");

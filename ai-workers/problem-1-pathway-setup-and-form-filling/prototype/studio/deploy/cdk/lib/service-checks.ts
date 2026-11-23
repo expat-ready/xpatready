@@ -374,21 +374,29 @@ export function filesTaskFindings(t: Template, region = "ca-central-1"): string[
   const linkSecret = (c.Secrets ?? []).find((x) => x.Name === "PLATFORM_FILES_LINK_KEY");
   const ls = linkSecret ? t.Resources?.[refId(linkSecret.ValueFrom) ?? ""] : undefined;
   if (ls && g(ls.Properties, "GenerateSecretString", "SecretStringTemplate") !== undefined) out.push("PLATFORM_FILES_LINK_KEY is made from a template (a JSON placeholder the loader would take as a key), not random");
-  // the role's grants: every S3 or KMS statement is one of the three, and all three are there
+  // the grants (review M1): every S3 or KMS statement that reaches any ECS task role, by a policy attached to it (inline
+  // on the role, AWS::IAM::Policy or a managed policy of this stack), is one of the three, on the service's task role
+  // only; and all three are there. Actions compared as a set, so CDK's minimizePolicies (cdk.json) sorting them is no
+  // finding (review m2).
   const role = refId(service[1].Properties?.TaskRoleArn);
+  const taskRoles = new Set(all(t, "AWS::ECS::TaskDefinition").map(([, td]) => refId(td.Properties?.TaskRoleArn)).filter((x): x is string => !!x));
+  const norm = (st: Record<string, unknown>) => json({ ...st, Action: [...arr(Array.isArray(st.Action) ? st.Action : [st.Action]).map(String)].sort() });
   const want = [
     { Action: ["s3:GetObject", "s3:PutObject"], Effect: "Allow", Resource: { "Fn::Join": ["", [{ "Fn::GetAtt": [bucketId, "Arn"] }, "/*/*"]] } },
     { Action: "s3:ListBucket", Effect: "Allow", Resource: { "Fn::GetAtt": [bucketId, "Arn"] } },
     { Action: ["kms:GenerateDataKey", "kms:Decrypt"], Condition: { StringEquals: { "kms:ViaService": `s3.${region}.amazonaws.com` } }, Effect: "Allow", Resource: { "Fn::GetAtt": [keyId, "Arn"] } },
-  ].map(json);
+  ].map(norm);
+  const reaching: [string, string, unknown][] = [];   // [where, role, document]
+  for (const [id, p] of [...all(t, "AWS::IAM::Policy"), ...all(t, "AWS::IAM::ManagedPolicy")]) for (const r of arr(p.Properties?.Roles)) { const rid = refId(r); if (rid && taskRoles.has(rid)) reaching.push([id, rid, g(p.Properties, "PolicyDocument")]); }
+  for (const rid of taskRoles) for (const ip of arr(g(t.Resources?.[rid], "Properties", "Policies"))) reaching.push([`${rid} inline`, rid, g(ip, "PolicyDocument")]);
   const got: string[] = [];
-  for (const [id, p] of all(t, "AWS::IAM::Policy")) if (arr(p.Properties?.Roles).some((r) => refId(r) === role))
-    for (const st of arr(g(p.Properties, "PolicyDocument", "Statement")) as Record<string, unknown>[]) {
-      const acts = arr(Array.isArray(st.Action) ? st.Action : [st.Action]).map(String);
-      if (!acts.some((a) => /^(s3|kms):/i.test(a))) continue;
-      got.push(json(st));
-      if (!want.includes(json(st))) out.push(`${id}: the task role's grant ${json(st).slice(0, 160)} is not one of the files grants`);
-    }
+  for (const [where, rid, doc] of reaching) for (const st of arr(g(doc, "Statement")) as Record<string, unknown>[]) {
+    const acts = arr(Array.isArray(st.Action) ? st.Action : [st.Action]).map(String);
+    if (!acts.some((a) => /^(s3|kms|\*)/i.test(a))) continue;
+    if (rid !== role) { out.push(`${where}: task role ${rid} is granted ${json(st.Action)}: only the service's task role may use the files bucket or the data key`); continue; }
+    got.push(norm(st));
+    if (!want.includes(norm(st))) out.push(`${where}: the task role's grant ${json(st).slice(0, 160)} is not one of the files grants`);
+  }
   for (const w of want) if (!got.includes(w)) out.push(`the task role lacks ${w.slice(0, 120)}`);
   return out;
 }

@@ -172,7 +172,8 @@ export class AppService extends Construct {
       logging: ecs.LogDrivers.awsLogs({ logGroup: props.appLogs, streamPrefix: "studio" }), // PF-8b F1: to PF-23c's group
     });
     repository.grantPull(this.task.obtainExecutionRole());
-    // PF-F1c: the task reads and writes firm keys (`<firm id>/<key>`, AG-9-17) and nothing else in the bucket: no delete
+    // PF-F1c: the task reads and writes keys with a folder (`*/*`; that the folder is the firm id, `<firm id>/<key>`, is the
+    // adapter's rule, AG-9-17, not IAM's) and nothing else in the bucket: no delete
     // (a deleted file is a tombstone put, PF-Fd), no other bucket. ListBucket gives a missing key 404, not 403, and serves
     // usedBytes' per-firm listing. The data key only through S3 in this region.
     const taskRole = this.task.taskRole;
