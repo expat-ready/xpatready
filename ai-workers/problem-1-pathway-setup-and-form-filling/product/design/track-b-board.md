@@ -2,6 +2,32 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2, 10:4x IST 23 Nov (Lead 10's rulings):** FO-9b part 2 (#3174) keys `agent/prospect:edit` (review) and `agent/prospect:merge` (merge), superseding the row's `agent/duplicates:*`; arrival auto-merge → new row **FO-9b part 2b**. #3033 FO-7t part 1: Lead 10's migration read OK, size accepted; question 4 → new row **FO-7t part 1p** (the case's client through the port); needs one CS-W3 census line meanwhile. R1.76's per-person timeline is row **CS-NT1t** (on main since 22 Nov). Row FO-9b part 1m dropped: folded into FO-9b part 2.
+
+**Lead B 2 pass, 09:5x IST 23 Nov** (current Lead: Lead 10, local_d4a6b1cd): #3065 shard 10 fix re-read OK a255e0321. #3165 queued. #3033 FO-7t part 1 and #3155 PF-17 part 1 drafts.
+
+**Lead B 2 pass, 09:2x IST 23 Nov:** #3065 FO-6 part 3 out of the queue (shard 10: check_forms_qa53 QA-65, the signing webhook not on PUBLIC_DOOR_WRITES); lane text sent (add it as FO-7c did in 2766ef4f0). #3033 FO-7t part 1 now has code (draft; migration 20261123030000). #3165 full run going. #3155 draft.
+
+**Lead B 2 pass, 08:5x IST 23 Nov:** quiet. #3065 queued; #3165 dequeued, full run going. #3033 FO-7t part 1 tests-only since 10:50 UTC 22 Nov (lane may be idle; flagged to Lead 9). #3155 draft.
+
+**Lead B 2 pass, 08:2x IST 23 Nov:** #3065 FO-6 part 3 bypass move re-read OK 0c41fa139; queued with #3165 PF-Fw. FO-5d lane text sent (after #3065; replaces the webhook bypass). qa asks answered: R1.76 person timeline = CS-NT1t (BACKLOG line 1086, in scope, after CS-NT1 part 3); j_58 data fix → fresh qa lane. qa verdicts: R1.58, R1.76, R1.65, R1.56, R1.29 Partial.
+
+**Lead B 2 pass, 07:5x IST 23 Nov:** **#3156 FO-7g part 3 merged** (02:23 UTC). #3165 PF-Fw Lead B read OK 24d0691f9 (note for PF-11's brief: the export archive may outgrow the 25 MB port cap). #3065 FO-6 part 3 ready, needs the Lead's read and label; FO-5d after it. #3155 PF-17 part 1 draft.
+
+**Lead B 2 pass, 07:2x IST 23 Nov:** **#3159 CS-MV1 binding merged** (01:35 UTC): R1.56's invoice list now scoped by case and prospect on main (j_56 walkable). #3156 FO-7g part 3 queued (types fix only since read). #3065 FO-6 part 3 merged main, needs ready + label; FO-5d waits it. FO-9b lane → FO-9b part 2 (with the hasMoney fix folded in; replaces row 1m). #3165 PF-Fw and #3155 PF-17 part 1 drafts.
+
+**Lead B 2 pass, 06:5x IST 23 Nov:** **#3042 FO-9b part 1 merged.** #3156 FO-7g part 3 takes the slot (Lead 9's read and label). #3159 queued. FO-9b part 1m and FO-7q part 2 wait on the held records branch (founder). Rows on main for free lanes: PF-Fw, FO-5d (after #3156).
+
+**Lead B 2 pass, 06:2x IST 23 Nov:** #3157 merged; #3042 queued again. #3159 (CS-MV1 binding: PgMoneyVisibility in place of failClosed) Lead B read OK bd7d9f531 — R1.56's list walkable once it merges. #3156 waits #3042 (stamp order). #3155 PF-17 part 1 draft.
+
+**Lead B 2 pass, 05:5x IST 23 Nov:** **#3001 FO-7q merged** (23:56 UTC): R1.56's money reads on main. #3156 FO-7g part 3 fix: Lead B re-read OK c239c2175 (re-rate on Bill-to change). Next row sent: CS-MV1 binding line (adapter in place of failClosed in features/client-money-reads.ts) to the FO-7q or CS-MV1 lane. Slot: #3157 → #3042 → #3156. #3155 PF-17 part 1 draft.
+
+**Lead B 2 pass, 05:2x IST 23 Nov:** **#3073 CS-MV1 merged** (23:26 UTC); its binding line follows #3001. #3157 (PF-21b DW6 test fix) Lead B read OK db799f6fa, queued; #3042 waits it. #3156 FO-7g part 3: one fix before the label (re-rate existing taxed lines on a Bill-to change, or refuse while taxed lines exist); lane text sent. #3155 PF-17 part 1 draft. #3001 queued.
+
+**Lead B 2 pass, 04:5x IST 23 Nov:** **#3041 PF-F1b and #3017 PF-21b part 2 merged** (23:04 UTC). Queued: #3001, #3042, #3073. Next rows sent to Lead 9 for the three free lanes: PF-21b lane → PF-17 part 1 (brief PF-17-1.md, ready); PF-F1b lane → PF-Fw (no migration); FO-7ts part 3 lane → FO-7g part 3 (migration, slot after #3042). Held: FO-7q part 2 (after #3001), FO-9b part 1m (after #3042), both waiting on the records PR decision.
+
+**Lead B 2 pass, 04:2x IST 23 Nov:** **#2999 CS-NT1 part 1 merged** (R1.76). #3001 FO-7q OVERDUE fix: Lead B re-read OK 84b4ab16e (chunked candidates, facts once per row; limit noted: rare status in a very large firm). #3073 merged main again (343981ef3), own 6 files, queued. #3042 labelled; #3041, #3017 queued. Records branch lead-b/2026-11-23-track-b-records @a1c2ce3ae waits the founder's decision (PR open refused in this session).
+
 **Lead B 2 pass, 03:5x IST 23 Nov:** no merge since 02:5x. #3001 dequeued: its own DW1 OVERDUE page 696 ms > 300 ms; Lead 9 prompting its lane (session_01Ln6TiQZEG25BKeaDRJjEfy). #3042 full run going; hasMoney answered from main (port.ts:11-16 does not count tax treatments or trust payees) → new BACKLOG row **FO-9b part 1m**. Queued: #3073, #3017, #3041, #2999.
 
 **Lead B 2 pass, 03:2x IST 23 Nov:** #3042 FO-9b part 1 re-stamped 20261123010000 with the F7 lift: Lead B re-read OK 4a36e3e92; question to the lane on whether hasMoney counts per-party tax treatments and trust payees (else a follow-up row FO-9b part 1m). #3001 and #3041 full runs re-running; queued: #3073, #3017, #3041, #2999.

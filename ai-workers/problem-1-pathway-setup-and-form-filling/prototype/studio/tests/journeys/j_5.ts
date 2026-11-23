@@ -12,8 +12,8 @@
 //       Person panel's roles).
 //   DW1: lock-out at the next request, not at expiry: the deactivated person's token, still unexpired, gets 401 on
 //       /api/platform/me at once; the revocation row and the audit line (before and after) are read from the database.
-//   DW2: the second step is checked: the sign-in door without it (missing, false, or the text "true") answers 401
-//       TWO_STEP_REQUIRED in words and no token; the control, the same request with it, gives a working token. No fake is
+//   DW2: the second step is checked: the sign-in door without it (missing or false) answers 401 TWO_STEP_REQUIRED in
+//       words and no token, and the text "true" 422 naming secondStep (PF-28's input rule) and no token; the control, the same request with it, gives a working token. No fake is
 //       in this path (the stand-in is the provider here), so this is a pass and its control, not a fake-to-real swap.
 //   The race of a sign-in with Deactivate or Sign out everywhere (break B1, B2) is tests/check_pf4r_lockout_race.ts.
 //       (The guard's own `amr` check on a token is PF-4's check_pf4_identity.ts.)
@@ -203,8 +203,11 @@ try {
 
   // ------------------------------------------------------------------------- DW2: the second step, real and fake
   const noStep = await signInApi(NEW, OMIT), falseStep = await signInApi(NEW, false), textStep = await signInApi(NEW, "true");
-  ok("J-5 DW2 pass: the sign-in door without the second step (missing, false, or the text \"true\") answers 401 TWO_STEP_REQUIRED in words and no token",
-    [noStep, falseStep, textStep].every((a) => a.status === 401 && a.body?.code === "TWO_STEP_REQUIRED" && /Two-step sign-in is required/.test(String(a.body?.detail)) && !a.body?.token), [noStep.body?.code, falseStep.body?.code, textStep.body?.code]);
+  // The text "true" is the wrong type: since PF-28's one input rule it is refused before the door as a field error
+  // (422 naming secondStep, the tech lead's ruling on #2619), still in words and still with no token.
+  ok("J-5 DW2 pass: the sign-in door without the second step (missing or false) answers 401 TWO_STEP_REQUIRED in words, the text \"true\" 422 naming secondStep, and no token",
+    [noStep, falseStep].every((a) => a.status === 401 && a.body?.code === "TWO_STEP_REQUIRED" && /Two-step sign-in is required/.test(String(a.body?.detail)) && !a.body?.token)
+      && textStep.status === 422 && !!textStep.body?.fields?.secondStep && !textStep.body?.token, [noStep.body?.code, falseStep.body?.code, `${textStep.status} ${textStep.body?.code} ${JSON.stringify(textStep.body?.fields ?? {})}`]);
   const withStep = await signInApi(NEW, true), mine = withStep.body?.token ? await api(withStep.body.token, "GET", "/platform/me") : { status: 0, body: null };
   ok("J-5 DW2 control: the same request with the second step gives a token that /me accepts as this person, so the refusal above is the second-step check and nothing else",
     withStep.status === 200 && mine.status === 200 && mine.body?.staffId === newId, [withStep.status, mine.status]);

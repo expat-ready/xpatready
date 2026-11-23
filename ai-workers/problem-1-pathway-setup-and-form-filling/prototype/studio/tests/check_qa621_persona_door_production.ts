@@ -41,6 +41,7 @@ const production = () => Object.entries({
   PLATFORM_SES_REGION: "ca-central-1", PLATFORM_BOLDSIGN_API_KEY: rand(40),
   PLATFORM_ZOOM_CLIENT_ID: rand(22), PLATFORM_ZOOM_CLIENT_SECRET: rand(32), PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN: rand(22),
   PLATFORM_SECRET_BOX_KEYS: `1:${randomBytes(32).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1",
+  PLATFORM_FILES: "local",   // PF-F1b: production names its file store (unset stops the start-up); this suite's subject is the persona door
 }).map(([k, v]) => `${k}=${v}`);
 
 // The Open a case dialog's body (the web app's runtime/cases.tsx): no clientId, so the opening would make a new client.
