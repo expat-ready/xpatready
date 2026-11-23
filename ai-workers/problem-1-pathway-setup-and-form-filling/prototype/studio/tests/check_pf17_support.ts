@@ -38,7 +38,7 @@ const call = async (base: string, path: string, token?: string, body?: unknown, 
   return { status: r.status, body: b };
 };
 
-const MIGRATION = "20261123060000_pf17_support_keys";
+const MIGRATION = "20261124030000_pf17_support_keys";
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 const migrations = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
 // Rev 16.7: the seed is measured right before and right after its own migration, never assuming it is the newest.
