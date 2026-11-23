@@ -251,7 +251,7 @@ jobs:
     # rows the batch's PRs name (GATE_B_ONCE). One GitHub machine.
     needs: kind
     if: ${{ needs.kind.outputs.kind != 'notes' && needs.kind.outputs.mode != 'same' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: ${{ needs.kind.outputs.suites == 'true' && 90 || 45 }} # a batch's gate B runs packs (as job "packs"); a PR's runs none; cloud-setup.sh's apt wait can take ~7 min (types: 30)
     permissions: { contents: read, pull-requests: read }
     env:
@@ -373,7 +373,7 @@ jobs:
     # P-651 (2): the suites, on a merge-queue batch of code only (a PR's head runs none), on GitHub's machines.
     needs: kind
     if: ${{ needs.kind.outputs.shards != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 75 # 10 Nov (P-214): parts now reach 44-56 min; 3 of the last 7 full runs had parts stopped at 60 (run 42762001529 lost three, dequeuing #1450 after 1 h of CI). 9 Nov: raised from 45 for the same reason. The lasting fix, 8 shards dealt by refreshed suite times (pipeline row 2, P-436 (7)), puts the longest part at about 32-35 min on the 10 Nov batches; the limit stays 75 until a week of runs shows it.
     permissions: { contents: read, pull-requests: read }
     strategy:
@@ -453,7 +453,7 @@ jobs:
     # P-651 (2): on a merge-queue batch of code only (kind works the set out on the batch's range; a PR's head runs none).
     needs: kind
     if: ${{ needs.kind.outputs.mode != 'same' && needs.kind.outputs.dpacks != '' && needs.kind.outputs.dpacks != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 90
     permissions: { contents: read }
     strategy:
@@ -493,7 +493,7 @@ jobs:
     # P-291: tsc --noEmit for api and web, beside the parts (no added wall time); records and code, never notes.
     needs: kind
     if: ${{ needs.kind.outputs.kind != 'notes' && needs.kind.outputs.mode != 'same' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30 # 11 Nov (P-214): 15 until GitHub's runners could not reach Ubuntu's servers; cloud-setup.sh's apt wait (~7 min) plus the Homebrew zsh fallback outlasted it (run 43052598478). Back to 15 when apt resolves again.
     permissions: { contents: read }
     env:
@@ -554,7 +554,7 @@ jobs:
   regression:
     needs: [kind, regression-plan]
     if: ${{ needs.regression-plan.outputs.groups != '' && needs.regression-plan.outputs.groups != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 90
     permissions: { contents: read }
     strategy:

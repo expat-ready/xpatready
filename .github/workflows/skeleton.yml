@@ -51,7 +51,7 @@ jobs:
   skeleton:
     # A builder's draft skips (P-371 (1)); a ready PR, a Mergify batch (a draft by design) and a dispatch run.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/')
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 25
     env:
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio

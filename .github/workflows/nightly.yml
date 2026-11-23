@@ -67,7 +67,7 @@ jobs:
   packs:
     needs: plan
     if: ${{ needs.plan.outputs.caps != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     permissions: { contents: read }
     strategy:
@@ -98,7 +98,7 @@ jobs:
   suites:
     needs: plan
     if: ${{ needs.plan.outputs.caps == '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     # 14 Nov (P-436 (7), P-502): 6 parts at 45 min gave no verdict on 13 and 14 Nov. Measured (suite-times.tsv, 8 green
     # batches): 311 min of suites, so 51.8 min a part on 6, ~57 min a job with set-up; on 8 parts the deal's longest part
     # (part 4: 126 units, the 5 quarantined and the 0-s rows among them, 50 isolated copies) is 40.4 min of suites
@@ -156,7 +156,7 @@ jobs:
     # true, and by hand it runs with the full set (no capabilities named), never on a named-capability re-test.
     # tests/check_pf8r_nightly_job.ts checks this wiring on every change to it.
     if: ${{ github.event_name == 'schedule' || github.event.inputs.capabilities == '' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     permissions: { contents: read }
     env:
@@ -213,7 +213,7 @@ jobs:
     # D5: one machine per group; gate B runs its packs on 3 job slots (one fresh copy and port each), each row on its data.
     needs: works-plan
     if: ${{ needs.works-plan.outputs.groups != '' && needs.works-plan.outputs.groups != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 90
     permissions: { contents: read }
     strategy:

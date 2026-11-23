@@ -85,7 +85,7 @@ jobs:
   prove:
     needs: detect
     if: ${{ needs.detect.outputs.items != '' && needs.detect.outputs.items != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 150
     permissions: { contents: read }
     strategy:
