@@ -15,6 +15,14 @@
 ^(CLAUDE|AGENTS)\.md$
 # CI's gates that ci.yml runs from the PR's own copy (gate-b.mjs, works-set.mjs, check-port-contracts.mjs)
 /prototype/studio/tools/
+# The permission machinery itself (P-785 (2) step 1, break B2): the guard, the keys and their catalogue, the start-up
+# guard in core.ts, the firm wall and the terms gate. A change here needs no key or decorator to widen access.
+/api/src/platform/identity/
+/api/src/core\.ts$
+/api/src/platform/(firm-scope|terms/gate)\.ts$
+/api/src/features/platform-terms\.ts$
+# Who sees which notification group: an access rule kept as data (break round 2 m1)
+/studio/samples/notification-groups\.json$
 # The schema and its migrations (P-423)
 /prisma/migrations/
 /prisma/schema/
