@@ -198,3 +198,31 @@ Diff reviewed: `git diff -M 055aaa0ef23c0d57624528aa60650472541e435e..95a1bdbf03
 - **New findings:** none. n5, R2-1 and the other round-3 Minors carry over unchanged.
 
 Verdict: Approve 95a1bdbf03f0ea32cbe6036a5a13fc6d2818e24c (no open Blocker or Major)
+
+## Lead read fix (Lead 9; diff-only review)
+
+Diff reviewed: `git diff 6a1c683a917c075defbdd2face5620e5cd552351..ccb4ea2d7c1a60fd0c0f0c4ce787a83b52c190da`. Two files, 6+/2-.
+
+- **The diff is exactly what was ordered.** `migration.sql:126-127`: the decided branch of `plat_breach_decision_whole` gains `"decided_by" IS NOT NULL` and `"decision_reason" IS NOT NULL`. Nothing else in the migration changes, and the folder is still `20261123210000_pf21c_breaches`. `tests/check_pf21c_breaches.ts:171-174` adds two checks. Nothing else changed.
+- **The constraint now refuses both NULL cases.** Before the fix, `plat_breach_actor_ok(NULL)` and `btrim(NULL) <> ''` gave NULL, so the decided branch was NULL and the CHECK passed. Now each NULL makes that branch false. The UNDECIDED branch is unchanged.
+- **No legitimate write is refused.** I traced every path that writes `plat_breach`:
+  - `plat_breach_open`, both the manual record and the from-alert draft, never sets a decision. The row is UNDECIDED with all three fields NULL, so the first branch holds.
+  - `plat_breach_change`, deciding NOTIFY_FIRMS or NO_NOTICE: `decided_by` is `p_by`, a staff actor, whenever the decision or reason changes. Otherwise it keeps the old `decided_by`, which is already set on a decided row.
+  - `decision_reason` comes from the patch. The API always supplies it with a non-UNDECIDED decision: `service.ts:79-84` refines on "Say why", and `plain()` is trimmed and at least 1 character. So a decision patch that keeps the old reason resends it, and the row passes.
+  - Going back to UNDECIDED sets by, at and reason to NULL (`service.ts:182`; function lines 312-315), so the first branch holds.
+  - The update trigger (`:169-177`) touches only `decided_at`. It sets `decided_at` to `updated_at` on a decided row, or keeps the old value.
+  - No seed writes `plat_breach`. The DO block seeds only the permission keys and the template. `git grep` finds no other writer.
+  - At the head, the DW2 "decision names who, when and why" check passes, and so do the UNDECIDED checks.
+- **The two checks really test the constraint.**
+  - Each check matches `/plat_breach_decision_whole/` in psql's stderr. Each then confirms that `select decision` returns `UNDECIDED`. That select would return `""` and fail if the row were invisible.
+  - `xr_studio` is `rolsuper=t, rolbypassrls=t` (from `pg_roles`), so forced RLS does not hide the row, and the direct UPDATE reaches it.
+  - `plat_breach_system_only()` passes, because no firm session is set.
+- **Suites at ccb4ea2d7:** `run-suites.sh --only "check_pf21c_breaches.ts check_pf8b_f4_migrations.ts"` gives check_pf21c_breaches.ts PASS (48 passed, 0 failed) and check_pf8b_f4_migrations.ts PASS (9/9).
+- **It fails without the fix.**
+  - **Setup:** a scratch worktree at ccb4ea2d7 with only `migration.sql` restored from 6a1c683a9. `git diff 6a1c683a9 --stat` in that worktree showed only the test file. `run-suites.sh` there stopped because it could not start a demo database in the scratch copy, so I ran the suite's own usage line, `tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf21c_breaches.ts`.
+  - **Result:** both new checks FAIL, because the UPDATEs succeeded and wrote a decided row with a NULL reason or a NULL `decided_by`. Four later checks failed as a consequence, plus one unexpected error, for 11 passed and 6 failed. The worst of these: a notice was sent (201) off a decision that named no reason or no person, where the check expects 409 `NOT_DECIDED_TO_NOTIFY`. That is the BR-11 hole the fix closes.
+  - **Cleanup:** the worktree was removed, and no `xr_studio_pf21c_*` database was left.
+- **Journey score:** 8.8/10, carried over from round 3. Only a CHECK constraint tightens and two checks are added. No legitimate path changes behaviour, as shown above.
+- **New findings:** none. n5, R2-1 and the other round-3 Minors carry over unchanged.
+
+Verdict: Approve ccb4ea2d7c1a60fd0c0f0c4ce787a83b52c190da (no open Blocker or Major)
