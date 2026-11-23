@@ -6,7 +6,8 @@
 //        that document only; a refused download adds none
 //   DW2  without agent/document:view-access-log (Case officer, Case manager) the list is 403; with no session 401; the
 //        Owner gets it; the other Sample firm's Owner gets 404 in the words of an unknown id; 51 lines page as 50 + 1,
-//        newest first, no line twice; a cursor the list did not give is 400
+//        newest first, no line twice; a cursor the list did not give is 400; a person holding the key but not the case
+//        (no agent/case:view.all, not on the case's team, not its file owner: caseScope, AG-9-53) gets 404 on both routes
 //   DW3  "Check the file is unchanged" on the stored file answers unchanged and writes "checked unchanged"; after the
 //        stored bytes are altered on disk it answers changed and writes "found changed"; another firm gets 404 and
 //        writes nothing
@@ -83,12 +84,31 @@ await main("CS-D6 reads", "Read by list, the fingerprint and the file check; sta
   const [other, unknown] = await Promise.all([reads(doc!, soloOwner), reads(UNKNOWN, owner)]);
   ok("CS-D6 DW2 fail: the other Sample firm's Owner gets 404 in the same words as an unknown id", other.status === 404 && unknown.status === 404 && other.body?.detail === unknown.body?.detail, [other.status, unknown.status, other.body?.detail]);
   ok("CS-D6 DW2 fail: a cursor the list did not give → 400", (await reads(doc!, owner, "yesterday")).status === 400);
+  // A line tagged with the other Sample firm, about this document's key, never shows (review m1).
+  const soloFirm = sql("select id from platform_firm where key='sample-solo'"), ws = sql(`select workspace_id from case_document where id='${doc}'`);
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, firm_id) values (gen_random_uuid(), '${ws}', 'user-S', 'viewed', 'case document', '${doc}', 'Sample line of the other firm', '${soloFirm}')`);
+  ok("CS-D6 DW2 fail: a read line tagged with another firm, about this document, is not listed", lineCount(doc!, "viewed") === v1 + 1 && !((await reads(doc!, owner)).body?.lines ?? []).some((l: { summary: string }) => l.summary === "Sample line of the other firm"), lineCount(doc!, "viewed"));
   ok("CS-D6 DW2 pass: the Owner gets the list with the file's name and fingerprint", (await reads(doc!, owner)).body?.document?.sha256 === sql(`select sha256 from case_document where id='${doc}'`));
   for (let i = 0; i < 51; i++) await download(doc2!, OFFICER);
   const p1 = await reads(doc2!, owner), p2 = p1.body?.next ? await reads(doc2!, owner, p1.body.next) : { status: 0, body: null };
   const all = [...(p1.body?.lines ?? []), ...(p2.body?.lines ?? [])] as { id: string; at: string }[];
   const sorted = all.every((l, i) => i === 0 || all[i - 1]!.at >= l.at);
   ok("CS-D6 DW2 pass: 51 reads page as 50 + 1, newest first, no line twice, and the last page has no next", p1.body?.lines?.length === 50 && !!p1.body?.next && p2.body?.lines?.length === 1 && p2.body?.next === null && new Set(all.map((l) => l.id)).size === 51 && sorted, [p1.body?.lines?.length, p2.body?.lines?.length, p2.body?.next, sorted]);
+
+  // Breaker M1: the key alone is not enough; the case must be in the person's caseScope. On this copy only, the Case
+  // manager role loses agent/case:view.all and gains the access-log key; user-T is on no team of this case.
+  sql(`delete from platform_role_permission where role='CASE_MANAGER' and permission_key='agent/case:view.all'; insert into platform_role_permission (role, permission_key) values ('CASE_MANAGER', 'agent/document:view-access-log') on conflict do nothing`);
+  const ownOnly = await tokenOf("user-T"), lines0 = lineCount(doc!, "checked unchanged") + lineCount(doc!, "found changed");
+  const [scopedList, scopedCheck] = [await reads(doc!, ownOnly), await staff("POST", `/runtime/documents/${doc}/check-unchanged`, ownOnly)];
+  ok("CS-D6 DW2 fail: a person with the access-log key but not the case (own cases only, not on its team) gets 404 on the list and the check, and no line is written",
+    scopedList.status === 404 && scopedCheck.status === 404 && lineCount(doc!, "checked unchanged") + lineCount(doc!, "found changed") === lines0, [scopedList.status, scopedCheck.status]);
+  sql(`delete from platform_role_permission where role='CASE_MANAGER' and permission_key='agent/document:view-access-log'; insert into platform_role_permission (role, permission_key) values ('CASE_MANAGER', 'agent/case:view.all') on conflict do nothing`);
+
+  // Lines written in the same microsecond (a writer using the database's own clock) page by id, none skipped (review m1).
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, at) select gen_random_uuid(), workspace_id, 'user-O', 'viewed', 'case document', id::text, 'Sample same-moment line', '2026-01-01 00:00:00.000001+00' from case_document, generate_series(1, 52) where id = '${doc2}'`);
+  const seen = new Set<string>(); let next: string | null | undefined = undefined, pages = 0;
+  do { const pg = await reads(doc2!, owner, next ?? undefined); (pg.body?.lines ?? []).forEach((l: { id: string }) => seen.add(l.id)); next = pg.body?.next; pages++; } while (next && pages < 10);
+  ok("CS-D6 DW2 pass: 103 lines, 52 of them in the same microsecond, page through as 50 + 50 + 3 with every line once", seen.size === 103 && seen.size === lineCount(doc2!, "viewed") && pages === 3, [seen.size, lineCount(doc2!, "viewed"), pages]);
 
   // ---- DW3 the file check
   const u0 = lineCount(doc!, "checked unchanged");
@@ -101,6 +121,10 @@ await main("CS-D6 reads", "Read by list, the fingerprint and the file check; sta
   if (file) writeFileSync(file, textPdf(["Sample synthetic letter, altered after upload"]));
   r = await staff("POST", `/runtime/documents/${doc}/check-unchanged`, officer);
   ok("CS-D6 DW3 fail: after the stored bytes are altered the check answers changed and writes one \"found changed\" line", r.status === 200 && r.body?.unchanged === false && !!r.body?.found_sha256 && r.body?.found_sha256 !== r.body?.sha256 && lineCount(doc!, "found changed") === f0 + 1, [r.status, r.body]);
+  const file2 = storedFile(doc2!);
+  if (file2) execFileSync("rm", ["-f", file2]);
+  r = await staff("POST", `/runtime/documents/${doc2}/check-unchanged`, officer);
+  ok("CS-D6 DW3 fail: a stored file that is gone (or cannot be read) answers changed with no hash found, and writes \"found changed\"", r.status === 200 && r.body?.unchanged === false && r.body?.found_sha256 === null && lineCount(doc2!, "found changed") === 1, [r.status, r.body]);
   r = await reads(doc!, owner);
   ok("CS-D6 DW3 pass: both checks show in the document's Read by list, newest first", r.body?.lines?.[0]?.action === "found changed" && (r.body?.lines ?? []).some((l: { action: string }) => l.action === "checked unchanged"), r.body?.lines?.slice(0, 3));
 });

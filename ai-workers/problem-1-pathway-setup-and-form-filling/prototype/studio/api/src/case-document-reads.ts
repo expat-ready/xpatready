@@ -5,15 +5,18 @@
 //   AG-9-24: every preview audited (CS-D5's "previewed" line, listed here once it exists).
 //   AG-9-31: SHA-256 per file; a re-hash mismatch flags the document. The flag is the "found changed" line and the 409
 //            the readers already give.
-//   AG-9-53: only those who can see the case, on every read path: the document is reached through its case in the
-//            session's firm (as CS-C1a's guarded case routes reach a case); anything else is 404 in the download's words.
+//   AG-9-53: only those who can see the case, on every read path: the document is reached through its case, and the case
+//            must be in the person's `caseScope` (case-access.ts, the one rule: view.all, else their own cases); anything
+//            else is 404 in the download's words (breaker M1).
 // Both routes take PF-4's staff session and keys (features/case-document-reads.ts), never x-actor.
-// Not here: "read by AI" and "read by rules" lines (one line inside case-documents.ts `readOnce`, after CS-D5 part 1, #3188,
-// which edits that file, merges); the keep list (part 2); Dispose (part 3).
+// Not here: the "read by AI" and "read by rules" lines (written inside case-documents.ts `readOnce`; this file lists them
+// when they exist), the keep list (part 2) and Dispose (part 3).
 import { Inject, Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { createReadStream } from "node:fs";
 import { join } from "node:path";
+import { caseScope, caseScopeWhere } from "./case-access.ts";
 import { Audit, Db, VAR, WORKSPACE_KEY } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
 
@@ -22,7 +25,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const READ_ACTIONS = ["viewed", "previewed", "read by AI", "read by rules", "checked unchanged", "found changed"] as const;
 /** Lines per page of the "Read by" list. */
 export const READS_PAGE = 50;
-const ENTITY = "case document";
 const DOCS = () => VAR(WORKSPACE_KEY);   // where case files are stored today (case-documents.ts, case-checklist.ts)
 
 /** The download's 404 words, for an unknown id, another firm's document or a case the person cannot see (leaks nothing). */
@@ -31,15 +33,15 @@ const gone = (): never => problem(404, "Not found", "No such document.", { code:
 export type ReadLine = { id: string; at: string; action: (typeof READ_ACTIONS)[number]; who: string; summary: string };
 export type ReadsPage = { document: { id: string; file_name: string; sha256: string }; lines: ReadLine[]; next: string | null };
 
-/** "<at ISO>_<line id>": the keyset cursor of the next page (the last line shown). */
-const cursorOf = (l: { at: Date; id: string }) => `${l.at.toISOString()}_${l.id}`;
-function parseCursor(before: unknown): { at: Date; id: string } | null {
-  if (before === undefined || before === "") return null;
-  const m = typeof before === "string" ? /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)_([0-9a-f-]{36})$/i.exec(before) : null;
-  const at = m ? new Date(m[1]!) : null;
-  if (!m || !at || Number.isNaN(at.getTime()) || !UUID.test(m[2]!)) return problem(400, "Check the details", "The page cursor is not one this list gave.", { code: "INVALID", fields: { before: "The page cursor is not one this list gave." } });
-  return { at, id: m[2]!.toLowerCase() };
-}
+/** The next page's cursor is the id of the last line shown; the database compares `(at, id)` at its own precision
+ *  (microseconds), so lines in the same millisecond are never skipped (breaker m1). */
+const badCursor = (): never => problem(400, "Check the details", "The page cursor is not one this list gave.", { code: "INVALID", fields: { before: "The page cursor is not one this list gave." } });
+/** SHA-256 of a stored file, streamed (a large file never holds the server); null when it cannot be read (missing, a
+ *  directory, damaged storage): the check then says the file changed (breaker m2). */
+const hashOf = (abs: string) => new Promise<string | null>((done) => {
+  const h = createHash("sha256");
+  createReadStream(abs).on("error", () => done(null)).on("data", (b) => h.update(b)).on("end", () => done(h.digest("hex")));
+});
 
 @Injectable()
 export class CaseDocumentReads {
@@ -50,7 +52,8 @@ export class CaseDocumentReads {
     if (typeof documentId !== "string" || !UUID.test(documentId)) return gone();
     const d = await this.db.caseDocument.findUnique({ where: { id: documentId.toLowerCase() } });
     const p = d ? await this.db.caseParticipant.findFirst({ where: { subjectId: d.subjectId }, select: { caseId: true } }) : null;
-    const c = p ? await this.db.case.findFirst({ where: { id: p.caseId, firmKey: ctx.firmKey }, select: { id: true, workspaceId: true, caseNumber: true, firmKey: true } }) : null;
+    const scope = p ? await caseScope(this.db, { firmId: ctx.firmId, staffId: ctx.staffId, keys: ctx.keys }) : null;
+    const c = p && scope ? await this.db.case.findFirst({ where: { AND: [{ id: p.caseId, firmKey: ctx.firmKey }, caseScopeWhere(scope)] }, select: { id: true, workspaceId: true, firmKey: true } }) : null;
     if (!d || !c) return gone();
     const firm = await this.db.platformFirm.findUnique({ where: { key: c.firmKey }, select: { id: true } });
     if (!firm || firm.id !== ctx.firmId) return gone();   // the case's firm key names another platform firm
@@ -62,21 +65,21 @@ export class CaseDocumentReads {
    *  column, filled for lines written under a firm's request); a line with none is this document's by its key. */
   async list(ctx: StaffContext, documentId: unknown, before?: unknown): Promise<ReadsPage> {
     const { d, c } = await this.reach(ctx, documentId);
-    const cur = parseCursor(before);
-    const rows = await this.db.auditEvent.findMany({
-      where: {
-        workspaceId: c.workspaceId, entity: ENTITY, entityKey: d.id, action: { in: [...READ_ACTIONS] },
-        OR: [{ firmId: null }, { firmId: ctx.firmId }],
-        ...(cur ? { AND: [{ OR: [{ at: { lt: cur.at } }, { at: cur.at, id: { lt: cur.id } }] }] } : {}),
-      },
-      orderBy: [{ at: "desc" }, { id: "desc" }], take: READS_PAGE + 1,
-      select: { id: true, at: true, action: true, actor: true, summary: true },
-    });
+    if (before !== undefined && before !== "" && (typeof before !== "string" || !UUID.test(before))) badCursor();
+    const mine = Prisma.sql`e.workspace_id = ${c.workspaceId}::uuid and e.entity = 'case document' and e.entity_key = ${d.id}
+      and e.action = any(${[...READ_ACTIONS]}::text[]) and (e.firm_id is null or e.firm_id = ${ctx.firmId}::uuid)`;
+    const cur = typeof before === "string" && before ? before.toLowerCase() : null;
+    // A cursor must be a line of this list (this document, as this person sees it); anything else is 400.
+    if (cur && !(await this.db.$queryRaw<{ n: number }[]>`select 1 as n from audit_event e where e.id = ${cur}::uuid and ${mine}`).length) badCursor();
+    const rows = await this.db.$queryRaw<{ id: string; at: Date; action: string; actor: string; summary: string }[]>`
+      select e.id::text, e.at, e.action, e.actor, e.summary from audit_event e where ${mine}
+        ${cur ? Prisma.sql`and (e.at, e.id) < (select x.at, x.id from audit_event x where x.id = ${cur}::uuid)` : Prisma.empty}
+      order by e.at desc, e.id desc limit ${READS_PAGE + 1}`;
     const page = rows.slice(0, READS_PAGE), names = await this.namesOf(ctx, page.map((r) => r.actor));
     return {
       document: { id: d.id, file_name: d.fileName, sha256: d.sha256 },
       lines: page.map((r) => ({ id: r.id, at: r.at.toISOString(), action: r.action as ReadLine["action"], who: names.get(r.actor) ?? r.actor, summary: r.summary })),
-      next: rows.length > READS_PAGE ? cursorOf(page[page.length - 1]!) : null,
+      next: rows.length > READS_PAGE ? page[page.length - 1]!.id : null,
     };
   }
 
@@ -84,12 +87,11 @@ export class CaseDocumentReads {
    *  upload (AG-9-31); one line, "checked unchanged" or "found changed". A missing file is a change. */
   async checkUnchanged(ctx: StaffContext, documentId: unknown) {
     const { d, c } = await this.reach(ctx, documentId);
-    const abs = join(DOCS(), d.path);
-    const now = existsSync(abs) ? createHash("sha256").update(readFileSync(abs)).digest("hex") : null;
+    const now = await hashOf(join(DOCS(), d.path));
     const unchanged = now === d.sha256;
     const who = await this.namesOf(ctx, [`staff:${ctx.staffId}`]);
-    await new Audit(this.db).log(c.workspaceId, `staff:${ctx.staffId}`, unchanged ? "checked unchanged" : "found changed", ENTITY, d.id,
-      `${who.get(`staff:${ctx.staffId}`) ?? "A staff member"} checked ${unchanged ? "that the file is unchanged" : now ? "the file: it changed since upload" : "the file: it is missing"} on case ${c.caseNumber}`,
+    await new Audit(this.db).log(c.workspaceId, `staff:${ctx.staffId}`, unchanged ? "checked unchanged" : "found changed", "case document", d.id,
+      `${who.get(`staff:${ctx.staffId}`) ?? "A staff member"} checked ${unchanged ? "that the file is unchanged" : now ? "the file: it changed since upload" : "the file: it cannot be read"} on case ${c.id.slice(0, 8)}`,
       { sha256: d.sha256, found: now, firmId: ctx.firmId });
     return { unchanged, sha256: d.sha256, found_sha256: now, checked_at: new Date().toISOString() };
   }

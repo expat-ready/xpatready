@@ -100,7 +100,7 @@ try {
 
   // W3: keyboard only, then phone width.
   await page.keyboard.press("Escape");
-  await row.locator("[data-line-menu]").focus();
+  await page.waitForFunction(() => document.activeElement?.hasAttribute("data-line-menu"), undefined, { timeout: 5_000 }).catch(() => undefined);
   ok("J-69 W3: closing the dialog hands focus back to the line's ⋯ button", await row.locator("[data-line-menu]").evaluate((e) => e === document.activeElement));
   await page.keyboard.press("Enter");
   await page.locator('[data-action="file-details"]').waitFor();
@@ -109,6 +109,7 @@ try {
   const byKeys = await dialog.locator("[data-check-unchanged]").waitFor({ timeout: 15_000 }).then(() => true, () => false);
   if (byKeys) { await dialog.locator("[data-check-unchanged]").focus(); await page.keyboard.press("Enter"); }
   ok("J-69 W3: keyboard only: ⋯ → File details… → Check, each with Enter", byKeys && await dialog.locator("[data-check-result]").waitFor({ timeout: 15_000 }).then(() => true, () => false));
+  ok("J-69 W3: after the check, focus is still on the Check button (never dropped to the dialog)", await dialog.locator("[data-check-unchanged]").evaluate((e) => e === document.activeElement));
   await page.setViewportSize({ width: 390, height: 844 });
   const fits = await dialog.evaluate((d) => d.scrollWidth <= d.clientWidth + 1 && document.documentElement.scrollWidth <= 391);
   ok("J-69 W3: at 390 px the dialog fits, the fingerprint wraps, no sideways scroll", fits);
