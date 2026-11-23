@@ -13,3 +13,8 @@ Asks why tooling, the four fixes and test selection cannot all be done together 
 # A318 (~14:04 IST, pressed in Lead 3's session, relayed)
 
 "Pause new product merges until the tooling list lands, 21:00 IST at the latest?": "Yes, pause". No new product labels; batches already testing finish, nothing dequeued, no run cancelled; building and reviews go on; exceptions: a main fix or a qa Blocker; no hand merges (P-691); tooling two at a time where files do not clash; the Lead reads the next five tooling PRs ahead; six faulty ones fixed in parallel; product restarts 21:00 IST or earlier, a few at a time. Estimate told 3.5-4 h, unmeasured. Open: the queue gate self-labels app PRs on a reviewer Approve, so not labelling is not a full hold.
+
+# Replay result (Lead O, relayed by Lead 3, ~14:25 IST; not re-checked by Lead 4)
+
+61 replayable red batches: affected-only misses 5 (normal pick) or 7 (direct); 3 and 4 of them are the Monday test; check_c69_page, c41_section_order, pf30s_find_box unclassified. 55% or 35% of suites by count; 42 of 61 ran everything under the normal pick. The bar "no failure missed" is not met as it stands. Open: green batches to make 100, the three suites. Lead O: no gate change; cut the cascade first (#2938 in all 12 red batches of its hour), re-measure 24 h after #2434. A317's shadow start ("once the replay is clean") is therefore not triggered.
+Open conflict: card at 13:0x "gates answered first, build in M4 after the Bake, nothing created" against ~13:58 "Yes, after the plan" (private repository). Founder to settle.
