@@ -49,3 +49,42 @@ Journey score: **8.5/10** (pass), `journey-test-reviewer-2026-11-23.md`.
 Minor, fix in this PR if cheap, else record: m1 `switches/routes.ts:18`; m2 `switches/service.ts:21`; m3 `tests/check_pf21d_switch.ts:126` and `migration.sql:66`; m4 `migration.sql:57,65`; m5 `migration.sql:24,34-41`; m6 `migration.sql:9`, `erasure-port.contract.ts:2`.
 
 Reviewer: Block 43e53cec91c11cd2d5d1ad1a063eacfad9749a7e
+
+## Round 2 (reviewer, 23 Nov 2026): head db8ee8a8c7b1d4e03ca675ae49ff5061bcbaea85
+
+Reviewed only `git diff 43e53cec9..db8ee8a8c` (one commit: 6 code/test files, +78/-29, plus the round-1 records), in a fresh worktree; :4400 never used.
+
+**Runs:**
+- `check_pf21d_switch.ts`: 20/20 twice (exit 0).
+- `check_pf21b_requests` 27/27, `check_pf12_walls` 110/110, `check_features_registry` 27/27, `check_pf8b_f4_migrations` 9/9, `check_pf21b_port` 32/32.
+- `check-port-contracts.mjs`: 0 problems.
+- `typecheck.mjs`: no new errors (15 known).
+- `module-cards.py pr` with the PR body: PASS.
+- Code and tests against #3189's head: 629 lines.
+
+**Round-1 findings:**
+- **M1, closed.** Rule 4 (`ports/erasure.ts:12-14`) now reads "never answers ERASED; NOTHING, or KEPT again". The case (`erasure-port.contract.ts:61-68`) asserts it, and `rowsOf` says kept floor rows are not counted. I ran the case against four stand-in erasers:
+  - ERASED→NOTHING and KEPT→KEPT pass;
+  - KEPT→NOTHING and ERASED→ERASED fail.
+  The rule now fails when it is broken.
+- **m1, closed.** The POST is `@SystemReason()` (`switches/routes.ts:18`). No reason, or one with no letter or digit (the `!!!` case and an invisible-only reason), gets 400 from the guard with a REFUSED line, so the event and the trail keep the same reason. Tested at `check_pf21d_switch.ts:126-131`.
+- **m2, closed.** The bidi characters in `switches/service.ts:21` are now `\u` escapes.
+- **m4, closed.** `plat_switch_system_only()` has its own words. It is owned by xr_wall_reader, EXECUTE revoked from PUBLIC and granted to xr_data, as the register's.
+- **m6, closed.** The rollback line names `plat_switch_kept()`. The contract header says rules 3 and 4, with KEPT left to the module's own test. The port no longer points to a file that does not exist.
+
+**The breaker's fixes I checked:**
+- **NUL or odd key.** It gets 404 inside the change, so a REFUSED line, and never reaches SQL (`service.ts:44`, tested with `%00`).
+- **The answer.** It is read inside the change's transaction, through the definer (`service.ts:51-52`), so it is the state this call left.
+- **Registration.** `registerInto` refuses an eraser without an `erase` function, and stores a frozen `{module, erase}` with `erase` bound. My probe confirmed `this` still works and the entry is frozen. The contract proves a later rename does not change the registered name.
+
+**Still open, Minor, as stated by the builder:**
+- m3: no case for the `FOR UPDATE` race or for the line sharing the transaction. My round-1 probe showed both hold. The new REFUSED assertion uses `>=`.
+- m5: owner-only insert paths and the event `at`.
+
+Neither blocks.
+
+**New issues:** none.
+
+**Verdict: Approve** (no open Blocker or Major).
+
+Reviewer: Approve db8ee8a8c7b1d4e03ca675ae49ff5061bcbaea85
