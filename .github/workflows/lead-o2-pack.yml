@@ -1,5 +1,5 @@
-# MEASUREMENT ONLY, branch claude/lead-o2-pack, never merged (founder through Lead 5, 23 Nov; Pilot A, US$0): one ci shard
-# with 1, 2, 3 and 4 suites at once on one GitHub machine, three runs each, at most 4 machines. Read-only token, no secrets.
+# MEASUREMENT ONLY, branch claude/lead-o2-pack, never merged (founder through Lead 5, 23 Nov; Pilot A, US$0): pack-config.json says
+# which shards, how many suites at once and how many repeats; at most 4 machines at once. Read-only token, no secrets.
 # GitHub offers workflow_dispatch only for a workflow file on the default branch, so it runs on a push that changes the
 # marker file pack-go (as claude/lead-o-ci-measure ran on a push).
 name: lead-o2-pack
@@ -10,15 +10,34 @@ on:
 permissions: { contents: read }
 concurrency: { group: lead-o2-pack, cancel-in-progress: false }
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs: { shards: "${{ steps.c.outputs.shards }}", ks: "${{ steps.c.outputs.ks }}", runs: "${{ steps.c.outputs.runs }}" }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - id: c
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json
+          c = json.load(open("pack-pilot/pack-config.json"))
+          sh, ks, r = c["shards"], c["at_once"], c["repeats"]
+          assert sh and all(type(x) is int and 1 <= x <= 24 for x in sh) and len(set(sh)) == len(sh)
+          assert ks and all(type(x) is int and 1 <= x <= 3 for x in ks) and type(r) is int and 1 <= r <= 3 and len(sh) * len(ks) * r <= 72
+          print("shards=" + json.dumps(sh)); print("ks=" + json.dumps(ks)); print("runs=" + json.dumps(list(range(1, r + 1))))
+          PY
   pack:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 75
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        run: [1, 2, 3]
-        k: [1, 2, 3, 4]
+        run: ${{ fromJSON(needs.plan.outputs.runs) }}
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+        k: ${{ fromJSON(needs.plan.outputs.ks) }}
     env:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
@@ -30,7 +49,7 @@ jobs:
       - run: bash "$P/tools/cloud-setup.sh"
       - run: cd "$S" && ./node_modules/.bin/playwright install chromium
       - name: the shard, ${{ matrix.k }} suites at once
-        run: python3 pack-pilot/pack-run.py 7 24 ${{ matrix.k }} "$RUNNER_TEMP/pack"
+        run: python3 pack-pilot/pack-run.py ${{ matrix.shard }} 24 ${{ matrix.k }} "$RUNNER_TEMP/pack"
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: "pack-k${{ matrix.k }}-run${{ matrix.run }}", path: "${{ runner.temp }}/pack/*.txt", retention-days: 7 }
+        with: { name: "pack-s${{ matrix.shard }}-k${{ matrix.k }}-run${{ matrix.run }}", path: "${{ runner.temp }}/pack/*.txt", retention-days: 7 }

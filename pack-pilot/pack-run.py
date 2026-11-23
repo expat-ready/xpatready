@@ -39,16 +39,16 @@ def sample():
         if d: samples.append(((1 - (b[1] - a[1]) / d), (b[2] - a[2]) / d, *mem()))
         a = b
 lock, results = threading.Lock(), []
-def one(f, prefix):
-    t = time.time(); env = {**os.environ, "PACK_UNITS": f, "COPY_PREFIX": prefix, "COPY_CAP": "16", "SUITES_OUT": f"{out}/{f}"}
+def one(f, prefix, tag="PACK"):
+    t = time.time(); env = {**os.environ, "PACK_UNITS": f, "COPY_PREFIX": prefix, "COPY_CAP": "16", "SUITES_OUT": f"{out}/{tag}-{f}"}
     r = subprocess.run(["bash", RS, "--demo", "--skip-quarantined", "--shard", f"{shard}/{of}"], env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     rows = [l for l in r.stdout.splitlines() if l.startswith("| check_")]
-    open(f"{out}/{f}.txt", "w").write(r.stdout + r.stderr)
+    open(f"{out}/{tag}-{f}.txt", "w").write(r.stdout + r.stderr)
     with lock:
         for l in rows or [f"| {f} | FAIL | | no row, exit {r.returncode} |"]:
             c = [x.strip() for x in l.strip("|").split("|")]
-            results.append((c[0], c[1])); print(f"PACK suite={c[0]} result={c[1].replace(' ', '_')} s={time.time()-t:.0f} why={'' if c[1] in ('PASS', 'quarantined') else c[-1][:140]}", flush=True)
-        if r.returncode and all(x.split("|")[2].strip() in ("PASS", "quarantined") for x in rows): print(f"PACK suite={f} result=EXIT_{r.returncode} s=0 why=non-zero exit with green rows", flush=True); results.append((f, "FAIL"))
+            tag == "PACK" and results.append((c[0], c[1])); print(f"{tag} suite={c[0]} result={c[1].replace(' ', '_')} s={time.time()-t:.0f} why={'' if c[1] in ('PASS', 'quarantined') else c[-1][:140]}", flush=True)
+        if r.returncode and all(x.split("|")[2].strip() in ("PASS", "quarantined") for x in rows): print(f"{tag} suite={f} result=EXIT_{r.returncode} s=0 why=non-zero exit with green rows", flush=True); tag == "PACK" and results.append((f, "FAIL"))
 q = queue.Queue()
 for f in par: q.put(f)
 def worker(prefix):
@@ -68,3 +68,7 @@ red = sorted({a for a, b in results if b not in ("PASS", "quarantined", "skipped
 print(f"PACK total k={k} shard={shard}/{of} cpus={n} packed_suites={len(par)} serial_suites={len(ser)} packed_min={(t1-t0)/60:.1f} serial_min={(t2-t1)/60:.1f} wall_min={(t2-t0)/60:.1f}"
       f" cpu_mean={c[0]:.2f} cpu_p95={c[1]:.2f} cpu_max={c[2]:.2f} steal_mean={stats([x[1] for x in s])[0]*100:.1f}% mem_mean={m[0]:.2f} mem_p95={m[1]:.2f} mem_max={m[2]:.2f} swap_max={stats([x[3] for x in s])[2]:.2f} red={','.join(red) or 'none'}")
 print("PACK serial=" + ",".join(ser))
+# Every red once more, alone on the now idle machine (founder, 23 Nov): shown as ALONE lines, never replacing the red.
+for f in red:
+    if f in deal: one(f, "", "ALONE")
+    else: print(f"ALONE suite={f} result=NOT_RUN s=0 why=part of a group (its unit is not its own)")
