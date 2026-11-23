@@ -159,7 +159,7 @@ try {
   const nowListed = await listedSlugs();
   ok("FO-3a DW4 fail: a switched-off or deleted type cannot be booked by staff (404, the type's not-found) nor by the public door (the one not-found); a switched-off type leaves the public list",
     offR.status === 200 && offR.body.active === false && goneR.status === 200 && goneR.body.futureBookings === 1 && wasListed && !nowListed.includes("switch-me") && !nowListed.includes("delete-me")
-      && afterOff.every((r) => r.status === 404) && afterOff[2].body.detail === "This booking page or link is not available.", { offR, goneR, afterOff, nowListed });
+      && afterOff.every((r) => r.status === 404) && afterOff[2].body.detail === "This page is not available.", { offR, goneR, afterOff, nowListed });
   const offShow = await staff("GET", `/${offBooking.body.id}`), goneShow = await staff("GET", `/${goneBooking.body.id}`);
   const goneMove = await staff("POST", `/${goneBooking.body.id}/reschedule`, P.OWNER, { startsAt: iso("2026-10-29 11:00") });
   ok("FO-3a DW4 pass: their bookings stay; the deleted type's future booking still shows and can be rescheduled (AG-4-9 test 4)",
@@ -196,7 +196,7 @@ try {
   const cr = await make({ name: "Document review call", purpose: "CASE_REVIEW" }), fu = await make({ name: "Follow up call", purpose: "FOLLOW_UP" });
   const crPage = await pubBook(cr.slug, "2026-10-27 14:00", "p3"), fuPage = await pubBook(fu.slug, "2026-10-27 14:00", "p4");
   ok("FO-3a DW7 pass: CASE_REVIEW and FOLLOW_UP save and are never on the booking page (not listed; their link is the one not-found)",
-    !(await listedSlugs()).some((s) => s === cr.slug || s === fu.slug) && crPage.status === 404 && fuPage.status === 404 && crPage.body.detail === "This booking page or link is not available." && cr.onBookingPage === false, [crPage, fuPage]);
+    !(await listedSlugs()).some((s) => s === cr.slug || s === fu.slug) && crPage.status === 404 && fuPage.status === 404 && crPage.body.detail === "This page is not available." && cr.onBookingPage === false, [crPage, fuPage]);
   const sw = await make({ name: "Public then case" });
   const swB = await staffBook(sw.id, "2026-10-30 10:00");
   const wasPub = (await listedSlugs()).includes(sw.slug);
