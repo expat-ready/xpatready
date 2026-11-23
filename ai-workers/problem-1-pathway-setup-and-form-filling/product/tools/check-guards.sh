@@ -313,6 +313,10 @@ MUT="$MUT"'
 37 green|product/tools/queue-blocked.py|s/^    if not why and not warn:/    if False:/|check-queue-blocked.sh
 37 unread|product/tools/queue-blocked.py|s/^    if not why and not warn:/    if not why:/|check-queue-blocked.sh
 37 draft|product/tools/queue-blocked.py|s/if p.get("draft") or /if False and p.get("draft") or /|check-queue-blocked.sh
+37 read|product/tools/queue-blocked.py|s/^        if read:$/        if True:/|check-queue-blocked.sh
+37 read who|product/tools/queue-blocked.py|s/ not in TRUSTED or not c.get("created_at"):/ is None:/|check-queue-blocked.sh
+37 read edited|product/tools/queue-blocked.py|s/^        if (c.get("updated_at") or c.get("created_at")) != c.get("created_at"):$/        if False:/|check-queue-blocked.sh
+37 read head|product/tools/queue-blocked.py|s/if any(x.lower() == head.lower() for x in LEAD_READ.findall/if any(True for x in LEAD_READ.findall/|check-queue-blocked.sh
 37 count|product/tools/lead-watch.sh|s/; seen "\$qb"; act=\$((act + \$(grep -c .^ACT. <<<"\$qb")))/; seen "$qb"/|check-queue-blocked.sh
 39 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
 39 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh
