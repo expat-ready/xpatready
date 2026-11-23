@@ -322,9 +322,9 @@ try {
     one.status === 200 && kinds === "RECORDED,CHANGED,NOTICE_SENT,NOTICE_SENT" && changeEv?.detail.before.decision === "UNDECIDED" && changeEv?.detail.after.decision === "NOTIFY_FIRMS"
     && (one.body.events as { actor: string }[]).every((e) => e.actor === `staff:${OWNER}`) && one.body.notices.length === 2, { kinds, changeEv });
   const ev = JSON.parse(sql(`select row_to_json(a) from (select actor, actor_type, entity_key, detail, summary from audit_event where firm_id = '${firmA}' and action = 'platform.breach.notice_sent') a`));
-  ok("PF-21c DW6 pass: firm A's own trail has exactly one notice line, naming the notice, our system actor and the staff member; firm C's has none; no firm line for the record itself",
+  ok("PF-21c DW6 pass: firm A's own trail has exactly one notice line, naming the notice and our staff member by their own word (AUD-3a: ourstaff:<id>, OUR_STAFF, as PF-21b's holds); firm C's has none; no firm line for the record itself",
     lines(firmA, "platform.breach.notice_sent") === 1 && lines(firmB, "platform.breach.notice_sent") === 1 && lines(firmC, "platform.breach.notice_sent") === 0
-    && ev.entity_key === noticeId && ev.actor === "system:platform.register.breach" && ev.actor_type === "SYSTEM" && ev.detail.staffId === OWNER && ev.detail.breachId_after === id
+    && ev.entity_key === noticeId && ev.actor === `ourstaff:${OWNER}` && ev.actor_type === "OUR_STAFF" && ev.detail.staffId === OWNER && ev.detail.breachId_after === id
     && Number(sql(`select count(*) from audit_event where action like 'platform.breach.%' and action <> 'platform.breach.notice_sent'`)) === 0, ev);
   ok("PF-21c DW6 pass: every register call by our staff has its line in plat_system_audit (PF-4s's guard), with the reason",
     Number(sql(`select count(*) from plat_system_audit where route like '/api/system/register/breaches%' and outcome = 'ALLOWED' and staff_id = '${OWNER}'`)) >= 10
