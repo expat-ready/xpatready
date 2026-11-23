@@ -50,3 +50,50 @@ Actual 200. The survivor's fields go back to their pre-merge values (`survivorBe
 * **No leaks:** no email or phone in any `person.merged`, `person.unmerged` or `fo.duplicates.kept_separate` audit summary or detail, nor in the `module_event` payloads.
 
 Verdict: **Changes** on `b0eee18ea9faa8cb3d58e68a95e5265ec7adee55` (F1-F5 Major open).
+
+## Round 2 (diff `b0eee18ea..3168257`)
+
+Commit `3168257452e42c1df0b117fe101d9354d891538b`. Breaker, 23 Nov 2026. Same method: `check_fo9b_review` 51/51, `check_fo9b_merge` 88/88 and `check_fo9a_duplicates` 53/53, then a round-2 harness on its own database `xr_studio_fo9bbrk2_<pid>` (127.0.0.1:54329, dropped at the end; never :4400). A second `psql` session is the other writer. It commits either at the merge's audit write (after the record locks) or while holding the merge's pair advisory lock (after the pre-lock checks, before the record locks). Pairs are made through `arrive` (web-form-like). "Add as new" goes through `Leads.add` with `confirmedNew`. Not findings (with the tech lead): the key names, wiring `mergeIfSafe` into arrival, and a money writer that starts after the locks.
+Note: while the harness ran, an uncommitted edit by someone else appeared in this shared tree (`notePairs`, "review round 2 n1"). It is not in 3168257. R2-1's result can only come from the committed `notePairs`, which shows the run loaded 3168257.
+
+### Round 1 re-run
+* **F1 fixed.** Email changed after the pair was written: `mergeIfSafe` → `refused: ["NOT_EXACT"]`, both people live. Residual: R2-2.
+* **F2 fixed.** An invoice committed at the merge's audit write → `refused: ["MONEY"]`, loser live, no merge record and no `person.merged` line, pair OPEN. A case at the same point → `["CASE"]`. A write the caller made earlier in the same transaction survives the savepoint rollback.
+* **F3 fixed.** A case client committed mid guided merge → 409 `NEEDS_CASE_SIDE`, nothing merged, pair OPEN.
+* **F4 fixed when `updatedAt` is sent.** Loser or survivor edited after preview → 409 `STALE_VERSION`. Swapped stamps → 409. A fresh stamp → 200. A bad format or an extra key → named 422. The loser edited while the merge waits on the pair lock → 409 (snapshot check). Residuals: R2-3 and R2-4.
+* **F5 fixed.** Auto merge, then a case on the survivor, then Undo → 409 `NEEDS_CASE_SIDE` with the line. Residual: R2-5.
+* **F6 fixed.** Results: `notAField`, `constructor`, `mergedIntoId`, `choices.__proto__` (string or object) and top-level `__proto__` → named 422; `choices: null` → 422. Residual: R2-8.
+* **F7 fixed.** `merges?x=1` and `merges?status=OPEN` → named 422; a plain call → 200.
+* **F8 fixed.** With 600 higher-scored pairs hidden from O, O's own pair is listed (1 item, 61 ms). Residual: R2-7.
+* **F9 fixed.** A `fo_signer` row → `DOCUMENT`.
+
+### Findings on the new code
+**R2-1 Major: a merge reopens a Kept separate decision, and the merge by itself then joins the two people.** `notePairs` (`review.ts:43-56`) writes every pair of the survivor (`review.ts:119`, `:237`) as OPEN. It ignores a KEPT_SEPARATE row between the same people through the merged-away record.
+Steps: A (phone p, no email) and B (phone p, email e) form pair A-B, OPEN. C is added with "Add as new" and email e (B's partner), so B-C is KEPT_SEPARATE. Guided merge A-B, survivor A, `choices: {email: "LOSER"}` → 200. Result: a new pair A-C, `OPEN 100 [EMAIL]`, on To review. Then `mergeIfSafe(A-C)` → `{ mergeRef }`, and C is merged into A. The automatic variant gives the same result: `mergeIfSafe(A-B)` gives A email e, then A-C is OPEN, then `mergeIfSafe(A-C)` merges.
+Concept §8 B1 says the automatic merge skips "Add as new" pairs, and BR-11 says a Keep separate decision stands. This is latent until arrival calls `mergeIfSafe`, but the reopened pair already shows on To review now.
+
+**R2-2 Minor: the re-check under the locks never compares the match again.** `review.ts:116` passes a fixed `[{key:"EMAIL"}]`, so NOT_EXACT is decided only from the live reasons read before the locks (`:107`).
+Steps: a session holding the pair lock changes the older person's email, then commits. `mergeIfSafe` waits for that lock and then merges: `{ mergeRef }`, and the survivor took the changed email. Expected `refused: ["NOT_EXACT"]`. The window is milliseconds. Fix: call `liveReasons` in the re-check.
+
+**R2-3 Minor: the survivor's stamp is checked only before the locks.** `review.ts:220-224` runs before `mergeRecords`, and `:231-235` re-checks the loser only.
+Steps: preview, then a session holding the pair lock changes the survivor's email and commits. Merge with fresh `updatedAt` and `choices: {email: "LOSER"}` → 200. The other session's survivor email is overwritten (lost update). Undo can recover it from `survivorBefore`.
+
+**R2-4 Minor: the stale check is optional and does not say what changed.** `routes.ts:18` has `updatedAt …optional()` and `review.ts:220` has `if (body.updatedAt)`. A merge without it after an edit → 200, and the value nobody saw is written (round 1's F4, unchanged for such a caller). Elsewhere in this module the version read is required, for example booking types and the consult record. STANDARDS §4 asks for a "409 with what changed", but `STALE_LINE` (`review.ts:31`) names no field.
+
+**R2-5 Minor: Undo checks for a case before its locks only.** `review.ts:250-252` has no re-check after `unmergeRecords`, unlike the merge. Steps: a case client committed during the Undo (at its `person.unmerged` audit write) → 200. The loser comes back and the survivor's fields revert under a live case client.
+
+**R2-6 Minor: an "Add as new" lead still shows "Possible match" for a pair already decided Kept separate.** `arrival.ts:104`, `:129`. Sam's lead keeps `possible_match_person_id` = Pat, and the lead page reads "Possible match: Pat Couple (L-00049)". BR-11 clears that flag when a pair is kept separate.
+
+**R2-7 Minor: `openCount` stops at 500.** `review.ts:174` counts after `.slice(0, 500)`. With more than 600 open pairs visible to R → `openCount: 500`.
+
+**R2-8 Minor: `__proto__` inside `updatedAt` is dropped without a 422.** Only `choices` is checked (`routes.ts:37-38`). `{"updatedAt":{"__proto__":{…},"survivor":…,"loser":…}}` passes the schema. Harmless, but PF-28 says an unknown field gets a named 422.
+
+### What held (round 2)
+* **HAS_MONEY:** an invoice on the survivor, an invoice on the loser (either survivor choice) and a tax treatment on the loser each → 409 `HAS_MONEY` with the line, both people live. Preview gives `hasMoney: true`. An invoice committed mid guided merge → 409 `HAS_MONEY`, nothing merged. Money is answered before a stale stamp.
+* **"Add as new":** the pair is written `KEPT_SEPARATE`, by `staff:<adder>`, with `decided_at`. `mergeIfSafe` → `refused: []`, both live. The pair is on the Kept separate tab, not To review. An exact match without `confirmedNew` → 409 `KNOWN_PERSON`. A name-only match without it → OPEN pair.
+* **Retainer through `fo_prospect`:** a draft retainer with no signer on a prospect whose subject is B → `DOCUMENT`, and `mergeIfSafe` is refused. One whose company prospect names A as primary contact → `DOCUMENT`.
+* **`notePairs` in the merge transaction:** the survivor's new pairs commit and roll back with the merge (F2 and F3 left no stray pair). Undo of a merge that a later merge built on → 409 `UNDO_REFUSED`.
+* **Busy:** with the survivor row locked elsewhere, merge → 503 `BUSY` after about 0.9 s and the pair stays OPEN. Undo → 503 `BUSY`. `mergeIfSafe` throws `MergeBusy`. (No `Retry-After` header; no standard asks for one.)
+* **Scale (observation):** with no cap before the filter, 10,000 Kept-separate pairs list in 372 ms (R) and 269 ms (O). That is beyond sample data, so it is not a §9 finding. Keep separate and Undo now take no body: a body field is ignored (200), and the PF-28 sweep passes 18/19 (the 19th needs a live copy on :4487).
+
+Verdict: **Changes** on `3168257452e42c1df0b117fe101d9354d891538b` (R2-1 Major open).

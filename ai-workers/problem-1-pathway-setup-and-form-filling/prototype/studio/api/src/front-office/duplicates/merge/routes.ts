@@ -33,9 +33,10 @@ export class DuplicateReviewController {
 
   @Post("duplicates/review/:id/merge") @HttpCode(200) @PermissionKeys(MERGE_KEY)
   merge(@Req() r: R, @Param("id") id: string, @Body() b: unknown) {
-    const pid = idParam(id, "pair"), c = (b as { choices?: unknown } | null)?.choices;
-    // A "__proto__" key JSON.parse made inside choices is never a field (parseInput checks the top level only; break F6).
-    if (c !== null && typeof c === "object" && Object.hasOwn(c, "__proto__")) problem(422, "Check the details", "One field needs a change: choices.__proto__: This field is not allowed here. Nothing was saved.", { code: "INVALID", fields: { "choices.__proto__": "This field is not allowed here." } });
+    const pid = idParam(id, "pair"), b0 = b as Record<string, unknown> | null;
+    // A "__proto__" key JSON.parse made inside a nested object is never a field (parseInput checks the top level only;
+    // break F6, R2-8).
+    for (const k of ["choices", "updatedAt"]) { const c = b0?.[k]; if (c !== null && typeof c === "object" && Object.hasOwn(c, "__proto__")) problem(422, "Check the details", `One field needs a change: ${k}.__proto__: This field is not allowed here. Nothing was saved.`, { code: "INVALID", fields: { [`${k}.__proto__`]: "This field is not allowed here." } }); }
     return this.svc.merge(staffOf(r), pid, parseInput(MERGE, b ?? {}));
   }
 

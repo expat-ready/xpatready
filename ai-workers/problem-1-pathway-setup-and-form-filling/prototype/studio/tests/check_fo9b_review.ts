@@ -300,6 +300,8 @@ try {
   ok("FO-9b F5 fail: Undo of a merge whose survivor became a case-side client since → 409 NEEDS_CASE_SIDE, nothing undone", u5.status === 409 && u5.body.code === "NEEDS_CASE_SIDE" && sql(`select merged_into_id from fo_person where id = '${L2}'`) === L1, u5);
   const c6 = await call("POST", `/front-office/duplicates/review/${PN}/merge`, tR, { survivorId: noor.person.id, choices: { emial: "LOSER" } });
   const c6p = await fetch(`${BASE}/front-office/duplicates/review/${PN}/merge`, { method: "POST", headers: { authorization: `Bearer ${tR}`, "content-type": "application/json" }, body: `{"survivorId":"${noor.person.id}","choices":{"__proto__":"LOSER"}}` });
+  const c8 = await fetch(`${BASE}/front-office/duplicates/review/${PN}/merge`, { method: "POST", headers: { authorization: `Bearer ${tR}`, "content-type": "application/json" }, body: `{"survivorId":"${noor.person.id}","updatedAt":{"survivor":"2026-11-23T00:00:00Z","loser":"2026-11-23T00:00:00Z","__proto__":{"x":1}}}` });
+  ok("FO-9b R2-8 fail: a __proto__ key inside updatedAt → 422 naming it", c8.status === 422 && Object.keys(((await c8.json()) as { fields?: object }).fields ?? {}).includes("updatedAt.__proto__"));
   ok("FO-9b F6 fail: choices with an unknown field (emial) or __proto__ → 422 naming it, nothing merged", c6.status === 422 && Object.keys(c6.body.fields ?? {}).some((k) => k.includes("emial")) && c6p.status === 422 && sql(`select status from fo_dup_review where id = '${PN}'`) === "OPEN", [c6, c6p.status]);
   const q7 = await call("GET", "/front-office/duplicates/merges?x=1", tR);
   ok("FO-9b F7 fail: an unknown query field on the Merged tab → 422 naming it", q7.status === 422 && !!q7.body.fields?.x, q7);

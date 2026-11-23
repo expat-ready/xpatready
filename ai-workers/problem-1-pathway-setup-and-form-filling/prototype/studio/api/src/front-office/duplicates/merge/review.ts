@@ -122,7 +122,7 @@ export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports:
   // Checked again once the merge holds both records' locks (break F2, F3): a case, document or money row committed while
   // the merge ran is seen now (read committed), and the merge is rolled back. A writer that starts after these locks
   // waits on them; that it then writes on the merged-away record is the money side's check (Question for the tech lead).
-  const after = await whyNotSafe(tx, firmId, ids, [{ key: "EMAIL" }]);
+  const after = await whyNotSafe(tx, firmId, ids, await liveReasons(tx, firmId, ids));   // live keys again (break R2-2)
   if (after.length) { await tx.$executeRaw`rollback to savepoint fo_dup_auto`; return { refused: after }; }
   await tx.$executeRaw`release savepoint fo_dup_auto`;
   await notePairs(tx, firmId, people[0].id);   // the loser's other matches now meet the survivor (review m7)
@@ -259,6 +259,8 @@ export class DuplicateReview {
         const cases = await caseOf(tx, [m.survivorId, m.loserId]);
         if (cases === null || cases.size) conflict("This person has a case now; undo the merge from the client record.", "NEEDS_CASE_SIDE");
         const out = await unmergeRecords(tx, ctx, mergeRef, this.ports);
+        const again = await caseOf(tx, [m.survivorId, m.loserId]);   // under Undo's locks too (break R2-5)
+        if (again === null || again.size) conflict("This person has a case now; undo the merge from the client record.", "NEEDS_CASE_SIDE");
         await tx.foDupReview.updateMany({ where: firmScope(ctx.firmId, { mergeId: mergeRef }), data: { status: "OPEN", mergeId: null, decidedBy: null, decidedAt: null } });
         return out;
       });
