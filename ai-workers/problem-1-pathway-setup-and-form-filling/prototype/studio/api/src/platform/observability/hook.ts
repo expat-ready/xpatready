@@ -43,7 +43,11 @@ const ACTOR_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/, UUID = /^[0-9a-f]{8}-[0
  *  no firm and never a req.platform) is OUR_STAFF, `ourstaff:<id>`. No staff, no actor. */
 export function auditOf(req: Pick<Req, "platform" | "systemStaff">): AuditScope | undefined {
   const ours = req.systemStaff?.staffId;
-  if (ours !== undefined) return typeof ours === "string" && ACTOR_ID.test(ours) ? { actor: `ourstaff:${ours}`, actorType: "OUR_STAFF" } : undefined;
+  if (ours !== undefined) {
+    // Fail closed (review n1): a staff id of another shape never leaves the request with no actor, which would let any word pass.
+    if (typeof ours !== "string" || !ACTOR_ID.test(ours)) throw new Error("AUD-3a: our staff's id is not an actor id, so no audit line can be written in this request");
+    return { actor: `ourstaff:${ours}`, actorType: "OUR_STAFF" };
+  }
   const p = req.platform, s = p?.staffId;
   if (typeof s !== "string" || !ACTOR_ID.test(s)) return undefined;
   const support = typeof p?.supportSessionId === "string" && UUID.test(p.supportSessionId) ? { supportSessionId: p.supportSessionId.toLowerCase() } : {};

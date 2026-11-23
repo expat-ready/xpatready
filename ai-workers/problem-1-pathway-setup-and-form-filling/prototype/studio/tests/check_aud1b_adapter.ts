@@ -194,6 +194,8 @@ try {
   ok("AUD-3a pass (database): the insert trigger maps ourstaff:<id> to OUR_STAFF, and refuses a writer that passes it as FIRM_STAFF",
     sql(`select aud_event_actor_type('ourstaff:${OURS}')::text || '|' || aud_event_actor_type('staff:${OURS}')::text || '|' || coalesce(aud_event_actor_type('ourstaff:')::text, 'none')`) === "OUR_STAFF|FIRM_STAFF|none"
     && refusedSql(`insert into audit_event (id, workspace_id, actor, actor_type, action, entity, entity_key, summary) select gen_random_uuid(), id, 'ourstaff:${OURS}', 'FIRM_STAFF', 'x', 'platform_staff', 'aud1b-dw3-trigger', 'x' from workspace limit 1`, /is OUR_STAFF, not FIRM_STAFF/));
+  const badId = await rejects(() => write({ systemStaff: { staffId: "bad id!" } }, "staff:x", "aud1b-dw3-badid"), (e) => /not an actor id/.test(String(e)));
+  ok("AUD-3a fail (review n1): our staff's request whose id is not an actor id fails closed: no line at all, under any word", badId && sql(`select count(*) from audit_event where entity_key = 'aud1b-dw3-badid'`) === "0", badId);
   const pf25Checks = sql(`select string_agg(conname || '=' || (pg_get_constraintdef(oid) like '%(staff|ourstaff|system|seed):%')::text, ',' order by conname) from pg_constraint where conname in ('platform_firm_web_address_set_by', 'platform_firm_address_history_changed_by')`);
   ok("AUD-3a pass (database): PF-25's two actor columns (set_by, changed_by) accept the word too, for PF-25w's change by our staff; nothing else in their patterns changed",
     pf25Checks === "platform_firm_address_history_changed_by=true,platform_firm_web_address_set_by=true", pf25Checks);
