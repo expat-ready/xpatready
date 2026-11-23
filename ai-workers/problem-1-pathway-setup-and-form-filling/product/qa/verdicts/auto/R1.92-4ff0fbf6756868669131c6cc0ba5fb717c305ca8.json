@@ -1,0 +1,30 @@
+{
+  "item": "R1.92",
+  "name": "92 Firm profile, offices and time zones, licence-number check",
+  "pr": 3173,
+  "sha": "4ff0fbf6756868669131c6cc0ba5fb717c305ca8",
+  "run_id": "45256715945",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45256715945",
+  "at": "2026-11-23T20:17:36.174Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_92.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45256715945/artifacts/14858228807",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.92-4ff0fbf6756868669131c6cc0ba5fb717c305ca8.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
