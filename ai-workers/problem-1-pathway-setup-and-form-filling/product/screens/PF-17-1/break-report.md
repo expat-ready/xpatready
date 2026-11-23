@@ -162,3 +162,50 @@ after. No product edit, no port 4400. On this head: `check_pf17_console.ts` 35/0
   mode stays `platform`.
 
 Verdict: Approve 1d5c8d55066aaae88ba7c98b2042d783a36c6209
+
+## Round 3 (diff-only, 8b7b5c347)
+
+Breaker, 23 Nov. Diff `1d5c8d550..8b7b5c347` (studio): `firms.ts`, where every `?health=` page now scans the same first 150
+firms the rows call OK, plus the storage comment and the new DW9 cases. Same scratch harness and databases (`xr_studio_pf17brk2_<pid>`,
+dropped after). `check_pf17_console.ts` on this head: 38 passed, 0 failed.
+
+### n1 re-run (same set-up as round 2: 160 firms need attention, 202 are OK)
+* `?health=ATTENTION`, pages 1-7:
+  * `total` is 110 on every page; the pages hold 50, 50, 10, then nothing.
+  * The pages together hold exactly 110 firms: none twice, none of the wrong health. `complete:false` is on every page.
+  * `page=99999` → 200, empty, `total` 110, `complete:false`.
+* `?health=OK`: `total` is 100 on every page; pages hold 50 and 50; together 100, none twice.
+* **n1 is fixed.** What is left is the bound by design (Lead 10): 50 of the 160 and 102 of the 202 cannot be reached, and the
+  answer says so.
+
+### Trying to break the new arithmetic
+* Did: built eight groups of firms, each found by its own `?q=`. Each group sets how many firms need attention from their rows
+  ("sure") and how many look OK from their rows ("open"), every third of those with no live plan. Read pages 1-9 and
+  `page=99999` for both filters, and checked each firm against a one-firm read.
+* For every group and both filters:
+  * `total` is the same on every page, and the pages together hold exactly `total` firms;
+  * no firm appears twice, and no firm shows a health different from its one-firm read;
+  * a page past the end returns no firms with the same `total`.
+
+  | Sure / open | ATTENTION: total, firms per page | OK: total | `complete` |
+  |---|---|---|---|
+  | 60 / 300 | 110: 50, 50, 10 | 100 | false |
+  | 50 / 200 | 100: 50, 50 (page 2 is all scanned matches) | 100 | false |
+  | 0 / 300 | 50: 50 | 100 | false |
+  | 137 / 151 | 187: 50, 50, 50, 37 | 100 | false |
+  | 49 / 150 | 99: 50, 49 | 100 | true; the pages then hold every matching firm |
+  | 1 / 151 | 51: 50, 1 | 100 | false |
+  | 0 / 0 | 0 | 0 | true |
+  | 200 / 3 | 201: 50, 50, 50, 50, 1 | 2 | true |
+
+* `complete` turns false exactly at 151 open firms (150 → true). Per call at most 50 + 150 = 200 firms' figures are worked out.
+* Each filtered call still writes exactly one firm-less line and no firm lines.
+* A page past the end still works out about 150 firms' figures (about 0.8 s) to return nothing. This is the same cost noted in
+  round 2; not raised again.
+* **n2:** `firms.ts:9-12` now says that a firm back under keeps the figure of that measure, dated, and points to question 1.
+  The comment is accurate (I checked it against `storage.ts:49`). What to do about it stays the tech lead's question 1.
+
+### New findings
+None.
+
+Verdict: Approve 8b7b5c347f5b646df59a966c819a793e5d05826b
