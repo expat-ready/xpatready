@@ -119,9 +119,10 @@ export async function notePairs(tx: Tx, firmId: string, personId: string, addedA
   for (const m of found.matches) {
     const [lo, hi] = pairOf(personId, m.id);
     const [row] = await tx.$queryRaw<{ id: string }[]>`
-      insert into "fo_dup_review" ("firm_id", "kind", "low_id", "high_id", "score", "reasons", "status", "decided_by", "decided_at", "noted_by_merge_id")
+      insert into "fo_dup_review" ("firm_id", "kind", "low_id", "high_id", "score", "reasons", "status", "decided_by", "decided_at", "noted_by_merge_id", "first_seen_at")
       values (${firmId}::uuid, 'PERSON', ${lo}::uuid, ${hi}::uuid, ${m.score}, ${JSON.stringify(m.reasons)}::jsonb,
-              ${addedAsNew ? "KEPT_SEPARATE" : "OPEN"}::"FoDupReviewStatus", ${addedAsNew?.by ?? null}, ${addedAsNew ? new Date() : null}, ${mergeRef}::uuid)
+              ${addedAsNew ? "KEPT_SEPARATE" : "OPEN"}::"FoDupReviewStatus", ${addedAsNew?.by ?? null}, ${addedAsNew ? new Date() : null}, ${mergeRef}::uuid,
+              clock_timestamp())   -- when it was written, not when its transaction began (review R8-2)
       on conflict ("firm_id", "low_id", "high_id") do nothing returning "id"::text as id`;
     if (row) { ids.push(row.id); continue; }
     // A pair an undone merge wrote is found again: it is listed again, now naming this merge (or this arrival).
@@ -379,15 +380,17 @@ export class DuplicateReview {
         // The pairs this merge noted leave the list by themselves (noted_by_merge_id names an undone merge), and a pair a
         // Kept separate decision blocked only through the merged record is To review again (pair-model.md §1). Someone who
         // arrived while the merge stood (review r7-m2, break R7-2): their pair with the survivor that no longer matches is
-        // credited to this merge, so it leaves the list; their pairs with the record split off are written now.
-        const still = new Set((await wonDuplicates(tx, ctx.firmId, { subject: "PERSON", personId: m.survivorId })).matches.map((x) => x.id));
-        const since = await tx.$queryRaw<{ id: string; other: string }[]>`
-          select r."id"::text, (case when r."low_id" = ${m.survivorId}::uuid then r."high_id" else r."low_id" end)::text as other from "fo_dup_review" r
-           where r."firm_id" = ${ctx.firmId}::uuid and ${m.survivorId}::uuid in (r."low_id", r."high_id") and r."status" = 'OPEN' and r."noted_by_merge_id" is null and r."first_seen_at" > ${m.at}`;
+        // credited to this merge, so it leaves the list; their pairs with the record split off are written now. The same for
+        // a pair a later merge wrote (review R8-3). "No longer matches" is asked of exactly these people, with no cap (R8-1).
+        const since = await tx.$queryRaw<{ id: string; other: string; noted: string | null }[]>`
+          select r."id"::text, (case when r."low_id" = ${m.survivorId}::uuid then r."high_id" else r."low_id" end)::text as other, r."noted_by_merge_id"::text as noted from "fo_dup_review" r
+           where r."firm_id" = ${ctx.firmId}::uuid and ${m.survivorId}::uuid in (r."low_id", r."high_id") and r."status" = 'OPEN' and r."first_seen_at" > ${m.at}
+             and (r."noted_by_merge_id" is null or exists (select 1 from "fo_dup_merge" m2 where m2."id" = r."noted_by_merge_id" and m2."undone_at" is null and m2."at" > ${m.at}))`;
+        const still = new Set(since.length ? (await wonDuplicates(tx, ctx.firmId, { subject: "PERSON", personId: m.survivorId }, { among: [...new Set(since.map((r) => r.other))] })).matches.map((x) => x.id) : []);
         const gone = since.filter((r) => !still.has(r.other)).map((r) => r.id);
         // Only the survivor's lock is held for these rows, so a row another action holds is skipped, never waited on (§2).
         if (gone.length) await tx.$executeRaw`update "fo_dup_review" set "noted_by_merge_id" = ${mergeRef}::uuid where "id" in (
-            select "id" from "fo_dup_review" where "firm_id" = ${ctx.firmId}::uuid and "id" = any(${gone}::uuid[]) and "status" = 'OPEN' and "noted_by_merge_id" is null for update skip locked)`;
+            select "id" from "fo_dup_review" where "firm_id" = ${ctx.firmId}::uuid and "id" = any(${gone}::uuid[]) and "status" = 'OPEN' for update skip locked)`;
         await notePairs(tx, ctx.firmId, m.loserId);
         return out;
       });
