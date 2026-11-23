@@ -79,3 +79,33 @@ No Blocker or Major is open.
 Reviewer: Approve d7a7a89a28e50bc7746e9d99aae918f1ec4eb023
 
 Verdict: Approve
+
+## Round 3 (merge and census, diff only)
+Head reviewed: `e701d1e69181eb0c3c105e22fb8da987959c2e91`. Last approved head: `a40589385`. Two commits since then: `6e076d841` (census line, Lead 13) and `e701d1e69` (merge of origin/main at `0fede1e00`, with one conflict, in `tests/check_csw3_firm_scope.ts`).
+
+**Diff checks**
+* `git diff a40589385 e701d1e69 -- tests/check_csw3_firm_scope.ts`: 3 lines change. The comment gains this PR's reason, `ALLOW` gains `client-money/reads/parties`, and the census check goes to `ALLOW.length === 52` with "52 with FO-7q part 3" in its label. Main's `case-document-flags` entry (#3180, CS-D7) and its reason are kept word for word. The remerge diff shows the conflict resolution touched only this file.
+* PR against main: the merge base is `0fede1e00`. `git diff origin/main...e701d1e69 --stat` and `git diff 0fede1e00 e701d1e69 --stat` are the same 11 files: the 3 screens/FO-7q-3 records, `MODULE.rows/FO-7q-3.md`, `reads/invoices.ts`, `reads/parties.ts`, `reads/routes.ts`, `features/client-money-reads.ts`, `check_fo7q_parties.ts`, `check_fo7q_reads.ts`, and this census line. The merge brought nothing else into the PR.
+  * A two-dot diff against today's origin/main (`35be5ae43`) also shows `design/rq-rows-shape-2026-11-24.md` as removed. That is main moving on after the merge (#3318, docs only). The file is not this PR's, and GitHub's three-dot view does not show it.
+* PR code since `a40589385`: the FO-7q-3 files are byte-identical. The only other changes in that range are main's FO-7g-3 (`tax/defaults.ts`, `tax/routes.ts`). `parties.ts` imports `provinceCode` from `tax/defaults.ts`, and that function is unchanged (the merge adds only `partyProvince` to `taxDefault`).
+* **52 is the true count.** I took the `ALLOW` words out of the merged file (52, no duplicates) and compared them with `tests/fixtures/csw3/csw3-spike.sh census` on the merged tree (52 files). The two lists are identical both ways: no case-side file is missing from the list, and no stale entry is on it. #3203 has not merged, so 52 rather than 53 (Lead 14).
+* **The reason text is accurate** for `api/src/client-money/reads/parties.ts`:
+  * Firm from the session: the search takes `firmScope(ctx.firmId)` (`:76`). Every set filters on that firm: `won` on `fo_prospect` (`:88`); `on_case` on `runtime_case` and `case_client`, with `c.firm_id = k.firm_id` (`:89`); `fo_person` and `fo_company` (`:94`, `:99`); and the firm's own row (`:103`).
+  * `labelsOf` scopes `fo_person`, `fo_company` and `case` with `firmScope` (`:51-53`). Its `firmId` comes from `firmScope(ctx.firmId)` (`invoices.ts:121`, then `:97`) or from `ctx.firmId` (`invoices.ts:148`).
+  * C5: `PartyReads` gets the same `scopeOf(db)` (a `PgMoneyVisibility` wrapper) as `InvoiceReads` and `PaymentReads` (`features/client-money-reads.ts:13-17`). An empty scope finds nobody (`:77`).
+
+**Runs on the merged tree (e701d1e69)**
+* `check_csw3_firm_scope`: **48/48** on a fresh isolated copy (`rt_csw3`, :4496, `xr_studio_rt_csw3`), started and then stopped (database removed). Both "census pass (… 52 with FO-7q part 3)" and "census fail" (the planted file) pass.
+* `check_fo7q_parties`: **40/0**. `check_fo7q_reads`: **52/0**. Each uses its own scratch database on :54329. :4400 was never used.
+
+**New, Nit (non-blocking, no change asked)**
+* r3-n1: the census comment still says "plus seven merged on main after the spike". It now names ten. The wording was already stale on main (nine under "seven"), so this PR did not cause it. The count assertion (52) is what binds.
+* r3-n2: the reason says "the invoice labels and the won-party search read runtime_case and case_client". In fact only the search reads `case_client`; the labels read `runtime_case` (with `fo_person` and `fo_company`), firm-scoped, on invoice rows the C5 filter has already narrowed. The claim that holds the line on the list (firm-scoped and C5-scoped) is true.
+
+**Journey score, round 3:** unchanged at **10/10 scaled (8/8 applicable)**. No runtime code changed since the approved head: the PR's files are byte-identical, and main's merged changes do not touch the search or label paths. I did not run a new journey; the round 2 report stands. D1–D20 are as in round 2.
+
+No Blocker or Major is open.
+
+Reviewer: Approve e701d1e69181eb0c3c105e22fb8da987959c2e91
+
+Verdict: Approve e701d1e69181eb0c3c105e22fb8da987959c2e91
