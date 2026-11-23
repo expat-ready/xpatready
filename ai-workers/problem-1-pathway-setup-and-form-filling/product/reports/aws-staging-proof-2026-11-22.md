@@ -512,3 +512,27 @@ R1.5  PLATFORM_IDENTITY=cognito; app pool = xr-staging-staff (admin-create-only 
   (`api/src/platform/identity/guard.ts:108`, `identity.authenticate`), while staging has **0 firms** (Step 8). Needs, in order:
   (1) the Sample seed (Step 17), (2) one staging test staff user in `xr-staging-staff` linked to a seeded staff member (an account: the founder's OK),
   (3) the founder types the password and TOTP code on `https://www.staging.lab.expatready.com/sign-in`.
+
+## Step 17: Sample seeds (Lead 7's agreed resume steps), R1.5 and R1.24 blockers, scaled to 0, 23 Nov 11:12-11:20 IST
+
+| Step | Exit / result | Time (UTC) |
+|---|---|---|
+| `~/d-seed.sh resolve api/src/platform/seed-sample-firms.ts` (app task def :7, task 220726e0…) | **exit 0**: `{"firmsAdded":2,"staffAdded":4,"grantsAdded":6,"credentialsAdded":3,"subscriptionsAdded":2,"settingKeys":8,"unmatchedCaseFirmKeys":[],"sampleSettingValues":2}`: PF-8b F8's RDS-safe seed works on RDS | 05:43Z |
+| `~/d-seed.sh resolve api/src/front-office/firm-seed.ts` (task 43c7cf08…) | **exit 0**: both firms (12f4dec8…, a3fd5886…) `seeded: true`, 16 stages, 14 reasons, 1 web form each | 05:45Z |
+| `curl https://{sample-firm,sample-solo,nosuchfirm}.staging.lab.expatready.com/` | 404, 404, 404 (ssl_verify 0): the Sample firms have no web address yet (assigned by the catch-up at app start; the tasks started before the seed) | 05:46Z |
+| `~/d-seed.sh resolve api/src/platform/web-address/firm-created.ts` (the catch-up's own command, task 885837f9…) | **exit 1**: both firms `failed`: `DriverAdapterError: new row violates row-level security policy for table "platform_firm_web_address"` | 05:47Z |
+| re-check after | sample-firm 404, sample-solo 404, nosuchfirm 404 | 05:47:50Z |
+| `d-cdk.sh deploy 0` | rc=0, 76.48 s; desired 0, running 0. CodeBuild projects: none; role `xr-staging-image-build`: NoSuchEntity | 05:49:39Z |
+
+* **R1.24 (not one of this session's five; recorded): still Partial.** Root cause, same family as PF-8b F5/F6/F8: `web-address/firm-created.ts`
+  (`catchUpFirmAddresses`) writes `platform_firm_web_address` without the firm's context, so on RDS (owner `xr_admin`, no BYPASSRLS) the walls refuse it;
+  it is also what runs at app start, so a firm created by the seed never gets an address on staging. Fix row: write each firm's address
+  under `firmInTransaction(tx, firmId)` as F8 did for the seed. After it merges: rebuild, deploy 2, run the catch-up (or restart), curl `sample-firm.` → 200.
+  The Sample firms and staff are now on staging, so no seed step is left.
+* **R1.5 real-pool sign-in: blocked, exact step.** A pool user is matched to a staff record by `identitySubject` (the Cognito `sub`,
+  `identity/cognito.ts:47-49` → `service.ts:121` `authenticate`). The 4 seeded Sample staff have no `identitySubject`, the pools have 0 users,
+  and creating one needs a password typed (by the founder, never the agent) and a way to put its `sub` on a staff record (an invite flow, which mails
+  through SES in sandbox mode, or a link step). Needs the Lead: which path (PF-28 invite on staging with a verified address, or a staging link
+  command), then the founder creates or accepts the user and types the password and TOTP on `https://www.staging.lab.expatready.com/sign-in`.
+
+Cost: 2 tasks ran 05:40-05:49Z (~US$0.02); idle again at ~US$0.18/h (RDS, NAT, load balancer, public IPv4).
