@@ -280,7 +280,7 @@ try {
   const held = (no.body.held ?? []).find((h: { currency: string }) => h.currency === "CAD");
   ok("FO-7t DW2 pass (AG-6-59 rule 6): Yes → No with money held → 200 (never 409), the answer changed, the held amount per currency and its cases answered",
     no.status === 200 && no.body.answer === "NO" && answerOf(A) === "NO" && held?.amountMinor === Number(sql(`select coalesce(sum(amount_minor), 0) from money_trust_entry where firm_id = '${A}' and currency = 'CAD'`)) && Number.isInteger(held?.cases)
-    && (no.body.held ?? []).some((h: { currency: string }) => h.currency === "USD") && new RegExp(`CAD ${money(held?.amountMinor ?? 0).replace(/[.,]/g, "\\$&")} is held`).test(no.body.message ?? ""), no.body);
+    && (no.body.held ?? []).some((h: { currency: string }) => h.currency === "USD") && (no.body.message ?? "").includes(`CAD ${money(held?.amountMinor ?? 0)} is held`), no.body);
   const heldReads = await Promise.all([call(tR, "GET", `/ledger?personId=${PA}`), call(tR, "GET", `/balances?personId=${PA}`)]);
   const heldNew = await Promise.all([call(tR, "POST", "/requests", reqBody), dep({ method: "E_TRANSFER", amountMinor: 100, idempotencyKey: "fo7t-off-held" })]);
   ok("FO-7t DW1 pass: trust off with money held: the ledger and balances answer; a new request or deposit is refused, nothing written",
