@@ -159,6 +159,10 @@ const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
 const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
 const { InvoiceDraftsController } = await import("../api/src/client-money/invoices/routes.ts");
+const { InvoiceDrafts } = await import("../api/src/client-money/invoices/drafts.ts");
+const { billToProvince } = await import("../api/src/client-money/invoices/bill-to.ts");
+const { withFirm } = await import("../api/src/platform/firm-scope.ts");
+const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
 const { TaxDefaultController, TaxDefaults } = await import("../api/src/client-money/tax/routes.ts");
 const invoices = (await import("../api/src/features/client-money-invoices.ts")).default;
 const feature = (await import("../api/src/features/client-money-tax.ts")).default;
@@ -257,14 +261,95 @@ try {
   const draft = await call(tA, "POST", "/front-office/money/invoices", { personId: PA, currency: "CAD" });
   const line = (body: Record<string, unknown>) => call(tA, "POST", `/front-office/money/invoices/${draft.body.id}/lines`, body);
   const stored = () => sql(`select string_agg(position || ':' || kind || ':' || amount_minor || ':' || tax_rate_ppm || ':' || tax_minor, ',' order by position) from money_invoice_line where invoice_id = '${draft.body.id}'`);
-  await line({ kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500, ratePpm: dflt.ratePpm });
+  await line({ kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500 });   // part 1w: a government fee carries no rate
   const svc = await line({ kind: "FEE", description: "Professional fee (Sample)", unitMinor: 100000, ratePpm: lineRatePpm({ kind: "FEE" }, dflt) });
   const DW3 = (rows: string) => rows === `1:GOVERNMENT_FEE:25500:0:0,2:FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}`;
-  ok("FO-7g DW3 pass (AG-6-4 §11, through FO-7b's line route): firm in Ontario, a 255.00 government fee sent with the default rate and a 1,000.00 service line at the default → the government line stores rate 0 and tax 0; tax only on the service line",
+  ok("FO-7g DW3 pass (AG-6-4 §11, through FO-7b's line route): firm in Ontario, a 255.00 government fee and a 1,000.00 service line at the default → the government line stores rate 0 and tax 0; tax only on the service line",
     svc.status === 201 && DW3(stored()) && svc.body.taxMinor === taxForLine(100000, T.ON.ratePpm), [svc.body, stored()]);
   ok("FO-7g DW3 fail (planted): rows in which the government fee kept the default rate are caught", !DW3(`1:GOVERNMENT_FEE:25500:${T.ON.ratePpm}:${taxForLine(25500, T.ON.ratePpm)},2:FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}`));
   const half = await line({ kind: "FEE", description: "Copy fee (Sample)", unitMinor: 50, ratePpm: dflt.ratePpm });
   ok("FO-7g DW12 (stored): a 0.50 FEE line at the route's Ontario default stores the table's rate and tax 0.06", half.status === 201 && sql(`select tax_rate_ppm || ':' || tax_minor from money_invoice_line where invoice_id = '${draft.body.id}' and position = 3`) === `${T.ON.ratePpm}:6`, half.body);
+
+  // ------------------------------------------------- part 1w: the default reaches every new draft line (the route)
+  // The draft step takes its rate from taxDefault through lineRatePpm, with the province from billToProvince (P-797's
+  // fallback: the firm's province while no party has an address). A rate sent with a line is 0 (not taxable) or the
+  // default (taxable); nothing sent is the default; anything else is 422 at ratePpm (Lead B ruling, 22 Nov).
+  const fresh = async (t = tA, personId = PA) => (await call(t, "POST", "/front-office/money/invoices", { personId, currency: "CAD" })).body.id as string;
+  const addTo = (id: string, body: Record<string, unknown>, t = tA) => call(t, "POST", `/front-office/money/invoices/${id}/lines`, body);
+  const rows = (id: string) => sql(`select coalesce(string_agg(kind || ':' || amount_minor || ':' || tax_rate_ppm || ':' || tax_minor, ',' order by position), '') from money_invoice_line where invoice_id = '${id}'`);
+  const feeLine = (unitMinor: number, extra: Record<string, unknown> = {}) => ({ kind: "FEE", description: "Professional fee (Sample)", unitMinor, ...extra });
+  const govLine = (extra: Record<string, unknown> = {}) => ({ kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500, ...extra });
+  const count = () => sql(`select count(*) from money_invoice_line`);
+  ok("FO-7g 1w: billToProvince(firm, party) answers the firm's province while no party has an address (P-797's fallback), and null for a firm with no province",
+    billToProvince({ businessAddress: { province_state: "ON" } }, { kind: "PERSON", id: PA }) === "ON" && billToProvince({ businessAddress: { province_state: "ON" } }, null) === "ON"
+    && [null, {}, [], "ON", { province_state: 13 }].every((a) => billToProvince({ businessAddress: a }, { kind: "PERSON", id: PA }) === null));
+
+  // 1w case 1 (Build Lead C's DW12 through the route): Ontario, a 0.50 FEE line with no rate sent.
+  const w1 = await fresh(), w1r = await addTo(w1, feeLine(50));
+  const W1 = (r: string) => r === `FEE:50:${T.ON.ratePpm}:6`;
+  ok("FO-7g 1w case 1 pass (DW12 through the route): an Ontario firm's 0.50 FEE line, no rate sent, stores tax_rate_ppm 130000 and tax 0.06 (a half to even), not 0.07",
+    w1r.status === 201 && W1(rows(w1)) && T.ON.ratePpm === 130000, [w1r.body, rows(w1)]);
+  const staffA = sql(`select id from platform_staff where actor_id = 'user-R' and firm_id = '${A}'`);
+  const ctxA = { staffId: staffA, firmId: A, firmKey: "sample-firm", roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" } as never;
+  const plantedDrafts = new InvoiceDrafts(nest.get(Db), auditEvent, halfUp), w1p = await fresh();
+  await withFirm(A, () => plantedDrafts.addLine(ctxA, w1p, feeLine(50)));
+  ok("FO-7g 1w case 1 fail (planted): the same draft step with half up (Math.round) in place of taxForLine stores 0.07, and the case catches it", rows(w1p) === `FEE:50:${T.ON.ratePpm}:7` && !W1(rows(w1p)), rows(w1p));
+
+  // 1w case 2: a government fee sent with a rate.
+  let n = count(); const w2 = await fresh(), w2r = await addTo(w2, govLine({ ratePpm: 130000 }));
+  ok("FO-7g 1w case 2 fail: a GOVERNMENT_FEE line sent with 130000 → 422 at ratePpm, in words, nothing written",
+    w2r.status === 422 && w2r.body.errors?.[0]?.field === "ratePpm" && /government fee is never taxed/i.test(w2r.body.detail) && count() === n, w2r.body);
+  const w2a = await addTo(w2, govLine()), w2b = await addTo(w2, govLine({ ratePpm: 0 }));
+  ok("FO-7g 1w case 2 pass: a GOVERNMENT_FEE line with no rate, or with 0, is added at rate 0 and tax 0", w2a.status === 201 && w2b.status === 201 && rows(w2) === "GOVERNMENT_FEE:25500:0:0,GOVERNMENT_FEE:25500:0:0", rows(w2));
+
+  // 1w case 3: a client-sent rate is never used: it may only say taxable (the default) or not taxable (0).
+  n = count(); const w3 = await fresh();
+  const sentBad = await Promise.all([150000, 1300, 50000, 130001, 1_000_000].map((ratePpm) => addTo(w3, feeLine(100000, { ratePpm }))));
+  ok("FO-7g 1w case 3 fail: a FEE line sent with any rate that is neither Ontario's default nor 0 (15 %, 13 % in basis points, 5 %, 130001, 100 %) → 422 at ratePpm, nothing written",
+    sentBad.every((x) => x.status === 422 && x.body.errors?.[0]?.field === "ratePpm") && count() === n, sentBad.map((x) => [x.status, x.body?.errors?.[0]]));
+  const asDefault = await addTo(w3, feeLine(100000, { ratePpm: T.ON.ratePpm })), notTaxable = await addTo(w3, feeLine(100000, { ratePpm: 0 })), disb = await addTo(w3, { kind: "DISBURSEMENT", description: "Courier (Sample)", unitMinor: 2000 });
+  ok("FO-7g 1w case 3 pass: the default sent (taxable) stores the table's rate, 0 sent (not taxable) stores 0, and a DISBURSEMENT with no rate takes the default",
+    [asDefault, notTaxable, disb].every((x) => x.status === 201) && rows(w3) === `FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)},FEE:100000:0:0,DISBURSEMENT:2000:${T.ON.ratePpm}:${taxForLine(2000, T.ON.ratePpm)}`, rows(w3));
+
+  // 1w case 4: not registered → 0 on every line.
+  sql(`update money_payment_settings set tax_registered = false where firm_id = '${A}'`);
+  n = count(); const w4 = await fresh();
+  const w4r = [await addTo(w4, feeLine(100000)), await addTo(w4, { kind: "DISBURSEMENT", description: "Courier (Sample)", unitMinor: 2000 }), await addTo(w4, govLine()), await addTo(w4, feeLine(100000, { ratePpm: 0 }))];
+  const w4bad = await addTo(w4, feeLine(100000, { ratePpm: T.ON.ratePpm }));
+  ok("FO-7g 1w case 4 pass: a firm not registered gets rate 0 and tax 0 on every line (FEE, DISBURSEMENT, GOVERNMENT_FEE, FEE sent 0)",
+    w4r.every((x) => x.status === 201) && rows(w4) === "FEE:100000:0:0,DISBURSEMENT:2000:0:0,GOVERNMENT_FEE:25500:0:0,FEE:100000:0:0", rows(w4));
+  ok("FO-7g 1w case 4 fail: the same unregistered firm sending Ontario's 13 % → 422 (its default is 0), nothing written", w4bad.status === 422 && w4bad.body.errors?.[0]?.field === "ratePpm" && count() === String(Number(n) + 4), w4bad.body);
+  sql(`update money_payment_settings set tax_registered = true where firm_id = '${A}'`);
+  province(A, `'{"city":"Sample"}'::jsonb`); const w4u = await fresh(), w4ur = await addTo(w4u, feeLine(100000)); province(A, inProvince("ON"));
+  ok("FO-7g 1w case 4: a registered firm whose province is not set gets 0 (source NONE: never a guess)", w4ur.status === 201 && rows(w4u) === "FEE:100000:0:0", rows(w4u));
+
+  // 1w case 5: firm A never reads firm B's province.
+  province(B, inProvince("NS"));
+  const w5a = await fresh(), w5b = await fresh(tB, PB);
+  await addTo(w5a, feeLine(100000)); await addTo(w5b, feeLine(100000), tB);
+  ok("FO-7g 1w case 5 pass: with firm B moved to Nova Scotia, firm A's line still takes Ontario's rate and firm B's takes Nova Scotia's",
+    rows(w5a) === `FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}` && rows(w5b) === `FEE:100000:${T.NS.ratePpm}:${taxForLine(100000, T.NS.ratePpm)}`, [rows(w5a), rows(w5b)]);
+  province(A, inProvince("AB")); const w5c = await fresh(); await addTo(w5c, feeLine(100000)); province(A, inProvince("ON")); province(B, inProvince("AB"));
+  ok("FO-7g 1w case 5 fail (stand-in): firm A moved to Alberta takes Alberta's rate on its next line, so the case above would catch a step that read another firm's province or none (the read names the session's firm, and PF-12's row rules on platform_firm hide firm B's row as well: either alone keeps this case green)",
+    rows(w5c) === `FEE:100000:${T.AB.ratePpm}:${taxForLine(100000, T.AB.ratePpm)}` && T.AB.ratePpm !== T.ON.ratePpm, rows(w5c));
+  // Break m1: "Prices include tax" turned on while a line waits on the invoice lock is seen after the lock (409, nothing written).
+  const lockId = await fresh(); let release!: () => void; const held = new Promise<void>((r) => { release = r; });
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const locker = owner.$transaction(async (tx) => { await tx.$queryRawUnsafe(`select 1 from money_invoice where id = '${lockId}' for update`); await held; await tx.$executeRawUnsafe(`update money_payment_settings set prices_include_tax = true where firm_id = '${A}'`); }, { timeout: 30_000 });
+  await sleep(300); const waiting = addTo(lockId, feeLine(100000)); await sleep(700); release(); await locker; const m1 = await waiting;
+  sql(`update money_payment_settings set prices_include_tax = false where firm_id = '${A}'`);
+  ok("FO-7g 1w (break m1) fail: \"Prices include tax\" turned on while the line waited on the invoice lock → 409 PRICES_INCLUDE_TAX, nothing written (never taxed on top)", m1.status === 409 && m1.body.code === "PRICES_INCLUDE_TAX" && rows(lockId) === "", [m1.status, m1.body?.code, rows(lockId)]);
+  const m1b = await addTo(lockId, feeLine(100000));
+  ok("FO-7g 1w (break m1) pass (stand-in): with it off again, the same line is added at the default", m1b.status === 201 && rows(lockId) === `FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}`, rows(lockId));
+  // Break m2: an in-process caller passing ratePpm: undefined gets the default, not 0 (undefined is "not sent").
+  const realDrafts = nest.get(InvoiceDrafts), m2 = await fresh();
+  await withFirm(A, () => realDrafts.addLine(ctxA, m2, feeLine(100000, { ratePpm: undefined })));
+  ok("FO-7g 1w (break m2): ratePpm: undefined from an in-process caller is \"not sent\" → the default, not 0", rows(m2) === `FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}`, rows(m2));
+  const m3 = await addTo(await fresh(), feeLine(100000, { ratePpm: 150000 }));
+  ok("FO-7g 1w (review minor 2): the refusal names the rate as a person reads it (HST 13 %) beside its parts per million", m3.status === 422 && /HST 13 %/.test(m3.body.detail) && /130000 \(parts per million\)/.test(m3.body.detail), m3.body.detail);
+
+  ok("FO-7g 1w audit: each line written above has one audit line by a typed staff actor, carrying the rate stored",
+    sql(`select count(*) from money_invoice_line l join audit_event a on a.entity_key = l.id::text and a.action = 'invoice.line_added' where (a.detail->>'ratePpm')::int = l.tax_rate_ppm and a.actor like 'staff:%'`) === count());
 
   // ------------------------------------------------------------------------------------- DW5: frozen at issue
   const before = stored();

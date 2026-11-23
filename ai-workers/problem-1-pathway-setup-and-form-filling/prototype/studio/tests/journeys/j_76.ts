@@ -108,7 +108,7 @@ const errors: string[] = [];
 try {
   // ------------------------------------------------------------------------------------------- W1 a note on a case
   const added = await api(tA, "POST", `/runtime/cases/${A1}/notes`, { text: caseNote });
-  const noteKey: string = added.body?.id ?? added.body?.noteKey ?? "";
+  const noteKey: string = added.body?.note?.id ?? added.body?.id ?? added.body?.noteKey ?? "";   // CS-NT1 part 1 answers { note: { id } }
   ok("J-76 W1 (part missing: CS-NT1 part 1, #2999): firm A's Owner adds a note to case A1 (201)", added.status === 201 && !!noteKey, { status: added.status, detail: added.body?.detail ?? null });
   const listA1 = await api(tA, "GET", `/runtime/cases/${A1}/notes`);
   const shown = lineWith(listA1.body, caseNote);

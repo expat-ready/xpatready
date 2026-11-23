@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { PlatformFrame, usePlatformStaff } from "../frame";
 import { staffApi, StaffApiError, useStaffToken } from "../session";
 import { AddressPanel } from "./address-panel";
-import { addressLines, addressOf, Billing, cardLabel, confirmed, datesLine, day, HandOff, invoiceUrl, Invoices, KEY, money, seatsLine, STATUS, stripeUrl, trialLine, WORDS } from "./billing-contract";
+import { addressLines, addressOf, Billing, cardLabel, confirmed, datesLine, day, HandOff, invoiceUrl, Invoices, KEY, money, seatsLine, STATUS, stripeUrl, taxWords, trialLine, WORDS } from "./billing-contract";
 
 const SLOW_MS = 60_000;   // Sample (concept BR-6/BR-9)
 const refusal = (e: unknown, fallback: string) => e instanceof StaffApiError ? e.message : fallback;
@@ -28,12 +28,14 @@ function InvoiceList() {
         : !q.data ? <p role="status" className="text-sm text-text-muted">Loading invoices…</p>
         : q.data.invoices.length === 0 ? <p className="text-sm text-text-muted" data-invoices-empty>No invoices yet.</p>
         : (
-          <Table head={["Invoice", "Date", "Amount", "Status", ""]} label="Invoices">
+          <Table head={["Invoice", "Date", "Amount", "Tax", "Status", ""]} label="Invoices">
             {q.data.invoices.map((i) => { const href = invoiceUrl(i.hostedUrl); return (
               <tr key={i.id} data-invoice={i.id}>
                 <td className="[overflow-wrap:anywhere]">{i.number ?? (i.status === "draft" ? "Draft" : "No number")}</td><td><time dateTime={i.createdAt}>{day(i.createdAt)}</time></td><td>{money(i.amountDueCents, i.currency)}</td>
+                <td data-invoice-tax className="min-w-[9rem] [overflow-wrap:break-word]">{taxWords(i)}</td>
                 <td className="capitalize">{i.status ?? ""}</td>
-                <td>{href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-text-link underline">View<span className="sr-only"> invoice {i.number ?? ""} on Stripe (opens in a new tab)</span></a> : null}</td>
+                <td>{href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-text-link underline">View<span className="sr-only"> invoice {i.number ?? ""} {stripeUrl(href) ? "on Stripe" : "(stand-in)"} (opens in a new tab)</span></a> : null}
+                  {href && !stripeUrl(href) ? <> · <a href={`${href}&download=1`} download className="text-text-link underline">Download<span className="sr-only"> invoice {i.number ?? ""}</span></a></> : null}</td>
               </tr>); })}
           </Table>
         )}

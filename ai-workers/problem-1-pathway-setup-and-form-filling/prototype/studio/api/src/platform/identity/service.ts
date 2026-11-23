@@ -14,7 +14,8 @@ import { enterFirm, firmScope, notInFirm, withFirm } from "../firm-scope.ts";
 import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
 import { z } from "zod";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
-import { batchRowsOf, flagOf, seatWords } from "./batch-invite.ts";
+import { batchRowsOf, flagOf, overSeatWords } from "./batch-invite.ts";
+import { bodyNamed, licenceWarning } from "./licence-format.ts";
 import { readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
@@ -68,7 +69,9 @@ export function emailOf(v: unknown): string {
 export function rolesOf(v: unknown): PlatformRole[] {
   if (!Array.isArray(v) || !v.length) return problem(FIELD_ERROR_STATUS, "Choose a role", "Give at least one role.", { code: "ROLES_REQUIRED" });
   const bad = v.filter((r) => !ROLES.includes(r as PlatformRole));
-  if (bad.length) return problem(FIELD_ERROR_STATUS, "Choose a role", `Not a role: ${bad.map(String).join(", ").slice(0, 120)}. Roles: ${ROLES.join(", ")}.`, { code: "ROLE_UNKNOWN" });
+  // PF-4c1b break M1: a role that is not text ({"toString":1}) is named as such, never String()-ed (that threw: a 500 that
+  // stopped a whole batch's good rows).
+  if (bad.length) return problem(FIELD_ERROR_STATUS, "Choose a role", `Not a role: ${bad.map((r) => (typeof r === "string" ? r : "a value that is not text")).join(", ").slice(0, 120)}. Roles: ${ROLES.join(", ")}.`, { code: "ROLE_UNKNOWN" });
   if (new Set(v).size !== v.length) return problem(FIELD_ERROR_STATUS, "Choose a role", "Each role once.", { code: "ROLE_TWICE" });
   return v as PlatformRole[];
 }
@@ -220,16 +223,23 @@ export class PlatformIdentity implements OnModuleInit {
 
   /** Seats used = ACTIVE + SUSPENDED staff + invitations neither accepted, revoked nor expired (database clock); the
    *  limit is the live subscription's plan (AG-1-13, AG1-D3), read through EntitlementPort's real adapter in this same
-   *  transaction (PF-15: the one plan-limit check; fail closed with no live plan). Over it: 409 PLAN_LIMIT_REACHED, with
-   *  the seats after these additions and how many to remove (PF-4c: "7 of 10 seats after these invites"); `words` gives a
-   *  caller's own sentence (the batch invite). Answers the seat line. */
-  private async seatCheck(tx: Tx, firmId: string, adding = 1, words?: (limit: number, afterInvites: number, removeCount: number, planName: string | null) => string) {
+   *  transaction (PF-15: the one plan-limit check; fail closed with no live plan). One check for `adding` more people:
+   *  `fit` is how many of them the plan takes (all of them when allowed). Shared by seatCheck and the batch (PF-4c1b). */
+  private async seatRoom(tx: Tx, firmId: string, adding: number) {
     const limits = new PgEntitlements(tx, () => this.clock.now());
     const plan = await limits.limitOf(firmId, "seats");
     const used = await seatsUsed(tx, firmId);
     const r = await limits.check(firmId, "seats", used + Math.max(adding, 1) - 1);   // one more is allowed below the limit, so `adding` fit while used + adding - 1 is below it
-    const limit = r.allowed ? (plan.limit ?? 0) : r.limit, afterInvites = used + adding, removeCount = r.allowed ? 0 : Math.max(1, afterInvites - limit);
-    if (!r.allowed) problem(409, "Plan limit reached", words ? words(limit, afterInvites, removeCount, plan.planName) : plan.planCode
+    const limit = r.allowed ? (plan.limit ?? 0) : r.limit;
+    return { allowed: r.allowed, limit, used, fit: r.allowed ? adding : Math.max(0, Math.min(adding, limit - used)), plan };
+  }
+
+  /** The single-person seat check: over the limit 409 PLAN_LIMIT_REACHED, with the seats after this addition and how many
+   *  to remove. Answers the seat line. */
+  private async seatCheck(tx: Tx, firmId: string, adding = 1) {
+    const { allowed, limit, used, plan } = await this.seatRoom(tx, firmId, adding);
+    const afterInvites = used + adding, removeCount = allowed ? 0 : Math.max(1, afterInvites - limit);
+    if (!allowed) problem(409, "Plan limit reached", plan.planCode
       ? `Your plan (${plan.planName}) allows ${limit} ${limit === 1 ? "person" : "people"}, counting active, suspended and invited people (${used} now). Revoke a pending invitation or deactivate someone first, or change the plan.`
       : "Your firm has no live subscription, so nobody can be added.", { code: "PLAN_LIMIT_REACHED", metric: "seats", limit, used, upgradePath: "Change the plan in Settings, Billing.", seatsLimit: limit, seatsUsed: used, afterInvites, removeCount });
     return { seatsLimit: limit, seatsUsed: used, afterInvites };
@@ -340,7 +350,7 @@ export class PlatformIdentity implements OnModuleInit {
   async saveCredential(actor: StaffContext, id: string, body: { representativeType?: unknown; licensingBody?: unknown; licenceNumber?: unknown }) {
     const own = id.toLowerCase() === actor.staffId;
     const data = { representativeType: textOf(body.representativeType, "representative type"), licensingBody: textOf(body.licensingBody, "licensing body"), licenceNumber: textOf(body.licenceNumber, "licence number") };
-    return this.inFirm(actor, async (tx) => {
+    const saved = await this.inFirm(actor, async (tx) => {
       const t = await this.target(tx, actor.firmId, id);   // another firm's id: 404 first, whatever the key (break m6)
       if (!own && !actor.keys.includes("agent/firm-credential:manage")) forbidden("You can change only your own licence record.", "NOT_ALLOWED");
       const before = await tx.platformStaffCredential.findFirst({ where: firmScope(actor.firmId, { staffId: t.id }) });
@@ -354,6 +364,11 @@ export class PlatformIdentity implements OnModuleInit {
         after: { representativeType: data.representativeType, licensingBody: data.licensingBody, licenceNumberChanged: !before || before.licenceNumber !== data.licenceNumber } });
       return { staffId: t.id, representativeType: data.representativeType, licensingBody: data.licensingBody, saved: true };
     });
+    // PF-4c part 2 (AG-1-34): a number that does not match the body's format in the pack is saved with a soft warning,
+    // never refused; no validity, expiry or register look-up (AG1-D19). The warning names the body, never the number.
+    // Read after the commit (review m1): the pattern never runs while the firm's row is locked.
+    const warning = licenceWarning(bodyNamed(data.licensingBody), data.licenceNumber);
+    return warning ? { ...saved, warning } : saved;
   }
 
   // ------------------------------------------------------------------------------------------------------- invitations
@@ -408,40 +423,39 @@ export class PlatformIdentity implements OnModuleInit {
     return { ...answer, ...(await this.emailInvitation(actor, email, token)) };
   }
 
-  /** PF-4c part 1 (AG-1-69): one form of 1-20 rows in one locked transaction (the firm's row lock takes two batches, or a
-   *  batch and a single invite, one after the other). Every row is checked and flagged on its own row; one seat check for
-   *  the rows that would be sent; over the limit 409 PLAN_LIMIT_REACHED and any flagged row 422 ROWS_FLAGGED, and then
-   *  nothing is created. Otherwise one invitation and one audit line per row in the transaction, and one email per row
-   *  after the commit (a failed send leaves that invitation pending, emailed: false). No Owner in a batch. */
+  /** PF-4c part 1b (P-727, AG-1-69; reverses part 1's all-or-nothing): one form of 1-50 rows in one locked transaction
+   *  (the firm's row lock takes two batches, or a batch and a single invite, one after the other). Every row is checked
+   *  and flagged on its own row; the seat limit is read once, through EntitlementPort, for the rows with no flag, and
+   *  those rows take the free seats in row order: the rows past the limit are flagged OVER_SEAT_LIMIT. Every row with no
+   *  flag gets one invitation and one audit line in the transaction, and one email after the commit (a failed send
+   *  leaves that invitation pending, emailed: false). Answers 200 with `invited` and `flagged` (each flagged row with its
+   *  reason; nothing flagged is sent). No Owner in a batch. */
   async inviteBatch(actor: StaffContext, body: { rows?: unknown }) {
     const rows = batchRowsOf(body, actor.roles.includes("OWNER"));
-    const answerRows = () => rows.map((r) => ({ row: r.row, flags: r.flags }));
     const out = await this.inFirm(actor, async (tx) => {
       // rowCheck's two halves, each run whenever its input is valid, so every problem of a row shows at once (review m1).
       for (const r of rows) {
         if (r.roles && !r.roles.includes("OWNER")) try { await this.roleRules(actor, null, r.roles, [], null, tx); } catch (e) { r.flags.push(flagOf(e)); }
         if (r.email && !r.flags.some((f) => f.code === "DUPLICATE_IN_FORM")) try { await this.personCheck(tx, actor, r.email); } catch (e) { r.flags.push(flagOf(e)); }
       }
-      const clean = rows.filter((r) => !r.flags.length), flagged = rows.length - clean.length;
-      let seats = null;
-      if (clean.length) {
-        try { seats = await this.seatCheck(tx, actor.firmId, clean.length, seatWords); }
-        catch (e) { if (e instanceof HttpException && e.getStatus() === 409) problem(409, "Plan limit reached", (e.getResponse() as { detail: string }).detail, { ...(e.getResponse() as object), rows: answerRows() }); throw e; }
-      }
-      if (flagged) problem(422, "Check the rows", `${flagged} of ${rows.length} ${rows.length === 1 ? "row needs" : "rows need"} a change. Nothing was sent.`, { code: "ROWS_FLAGGED", rows: answerRows() });
+      const valid = rows.filter((r) => !r.flags.length);
+      const room = await this.seatRoom(tx, actor.firmId, valid.length);   // the form's one EntitlementPort check (seatRoom)
+      const over = overSeatWords(room.limit, room.plan.planName);
+      for (const r of valid.slice(room.fit)) r.flags.push({ code: "OVER_SEAT_LIMIT", detail: over });
       const made = [];
-      for (const r of clean) {
+      for (const r of valid.slice(0, room.fit)) {
         const row = await this.insertInvitation(tx, actor.firmId, r.email!, r.roles!, actorWord(actor.staffId));
-        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${clean.length} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: null, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
+        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${room.fit} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: null, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
         made.push({ row: r.row, id: row.id, email: r.email!, roles: r.roles!, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token, name: r.name });
       }
-      return { made, seats: seats! };
+      return { made, seatsLimit: room.limit, seatsUsed: room.used + made.length };
     });
-    const invitations = [];
-    for (const { token, name, ...m } of out.made) invitations.push({ ...m, ...(await this.emailInvitation(actor, m.email, token, name)) });
+    const invited = [];
+    for (const { token, name, ...m } of out.made) invited.push({ ...m, ...(await this.emailInvitation(actor, m.email, token, name)) });
+    const flagged = rows.filter((r) => r.flags.length).map((r) => ({ row: r.row, email: r.email, reason: r.flags[0].code, detail: r.flags[0].detail, flags: r.flags }));
     // PF-19r (DW5): the rows the daily cap holds, by their form row (they go out with the next day's first sends).
-    const held = invitations.filter((i) => i.emailHeld).map((i) => i.row);
-    return { invitations, seatsLimit: out.seats.seatsLimit, seatsUsed: out.seats.afterInvites, ...(held.length ? { heldRows: held } : {}) };
+    const held = invited.filter((i) => i.emailHeld).map((i) => i.row);
+    return { invited, flagged, seatsLimit: out.seatsLimit, seatsUsed: out.seatsUsed, ...(held.length ? { heldRows: held } : {}) };
   }
 
   async invitations(actor: StaffContext) {

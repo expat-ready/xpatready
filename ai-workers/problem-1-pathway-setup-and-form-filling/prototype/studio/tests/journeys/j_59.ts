@@ -42,7 +42,10 @@ try {
   const fo = await seedSampleFirmsFrontOffice(db);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
   // The firm's payment settings (FO-7ts's own route is not on main yet) and one client, written as seed lines.
+  // FO-7g part 1w (Lead B ruling A, 22 Nov): a line's rate is the firm's tax default, so both firms are registered for tax;
+  // the sample firms are in Ontario (samples/firms.json), whose cited default is the 13 % these steps use.
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'seed:J-59', now()) on conflict (firm_id) do nothing`);
+  for (const f of [A, B]) sql(`update money_payment_settings set tax_registered = true, tax_number = coalesce(tax_number, '123456789RT0001') where firm_id = '${f}'`);
   const PA = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Ana${run}', 'Sample', 'j59.${run}@example.org', 'seed:J-59', now()) returning id`);
   ok("J-59 setup: both Sample firms, their front office, payment settings with \"Prices include tax\" off, and one client of firm A", !!A && !!B && fo.failed.length === 0 && !!PA
     && sql(`select count(*) from money_payment_settings where firm_id in ('${A}', '${B}') and not prices_include_tax`) === "2", fo.failed);
@@ -81,7 +84,7 @@ try {
   ok("J-59 W3 fail (stand-in): tax on the subtotal, as the route taxes one 1.00 line at 13 %, is 0.13, not the 0.12 of two lines taxed one by one", sub.status === 201 && sub.body?.taxMinor === 13 && w3b.body?.taxMinor !== sub.body?.taxMinor, sub.body);
 
   // ----------------------------------------------------------------------------------------- W4: a government fee
-  const w4 = await draft(); await add(w4.body.id, { kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500, ratePpm: 130000 }); const w4b = await add(w4.body.id, fee(100000));
+  const w4 = await draft(); await add(w4.body.id, { kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500 }); const w4b = await add(w4.body.id, fee(100000));
   ok("J-59 W4 pass (API step): a 255.00 GOVERNMENT_FEE beside 1,000.00 FEE at 13 % → 130.00 tax, total 1,385.00", lines(w4.body.id) === "GOVERNMENT_FEE:25500:0:0:CAD,FEE:100000:130000:13000:CAD" && w4b.body?.taxMinor === 13000 && w4b.body?.totalMinor === 138500, w4b.body);
   ok("J-59 W4 fail (planted): a government-fee line written with 13 % tax (33.15) is refused by the database, nothing saved",
     refused(line2("GOVERNMENT_FEE", 25500, 130000, 3315), /money_invoice_line_government_fee_untaxed/) && lines(w1.body.id) === "FEE:85000:130000:11050:CAD");
