@@ -283,6 +283,7 @@ MUT="$MUT"'
 38 group|product/tools/lead-upkeep.py|s/            os.killpg(p.pid, signal.SIGKILL)/            p.kill()/|check-lead-upkeep.sh
 38 range|product/tools/lead-upkeep.py|s/    if beyond < 0:  /    if False:  /|check-lead-upkeep.sh
 38 fail|product/tools/lead-upkeep.py|s/    if p.returncode == 0:/    if True:/|check-lead-upkeep.sh
+38 notes|product/tools/lead-upkeep.py|s/    if not os.path.isdir(a.notes):/    if False:/|check-lead-upkeep.sh
 38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
 38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh
 29 machines|product/tools/flow-constraint.py|s/(mc.get("oldest_min") or 0) > BAR\["wait_min"\]/False/|check-flow-constraint.sh
