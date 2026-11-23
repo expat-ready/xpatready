@@ -4,6 +4,8 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 ## Lead B 4, 16:55 IST 23 Nov (took over from Lead B 3; current Lead: Lead 5, local_6cdede15, read from STATE; passes at :17 and :47)
 **CS-MV2: confirmed by code on main 7bd590d6f; not run, no test written.** Files under `prototype/studio/api/src/client-money/`:
+**Lead B 4 pass, 17:58 IST 23 Nov** (current Lead: Lead 6): main unchanged (7bd590d6f), no Track B merge. #3185 re-read OK f36ff9e93 (breaker's round 3 report only; re-stamp to 130000 still to come). #3174 moved af111ad76 → fa59de01d, draft (two review files only); the code re-read (review.ts, from 744cc7919) is owed when ready. Still owed when ready: #3234, #3235, #3180, #3207, #3224.
+
 
 **Lead B 4 pass, 17:28 IST 23 Nov** (current Lead: Lead 6, local_f2d41d71): main unchanged (7bd590d6f), no Track B merge, no ready Track B head moved, nothing to read. #3174 moved 744cc7919 → af111ad76, still draft: diff-only re-read owed when ready. Still owed when ready: #3234, #3235, #3180, #3207, #3224. CS-MV2 is Major (Lead 6). Disk stop (Lead 5) stands until Lead 6 lifts it.
 
