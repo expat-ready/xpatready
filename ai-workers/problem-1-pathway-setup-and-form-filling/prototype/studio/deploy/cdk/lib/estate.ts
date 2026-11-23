@@ -5,9 +5,10 @@
 // account (P-551); `cdk synth` and the assertion tests in ../test prove the template. PF-8b adds the service and its
 // secrets, PF-8c the deploy; PF-8rc's backup plan and ca-west-1 copy are in backup.ts.
 // Instance sizes are Sample (no load measured yet); ASSUMPTIONS-style values are marked Sample where they appear.
-import { Duration, RemovalPolicy, Stack, Tags, type StackProps, aws_backup as backup, aws_ec2 as ec2, aws_kms as kms, aws_rds as rds, aws_s3 as s3 } from "aws-cdk-lib";
+import { Duration, RemovalPolicy, Stack, Tags, type StackProps, aws_backup as backup, aws_ec2 as ec2, aws_iam as iam, aws_kms as kms, aws_rds as rds, aws_s3 as s3 } from "aws-cdk-lib";
 import type { Construct } from "constructs";
 import { backupPlan } from "./backup.ts";
+import { ABORT_UPLOAD_DAYS, ACCESS_LOG_DAYS } from "./checks.ts";
 import { Observability } from "./observability.ts";
 
 import { AppService, NO_DOMAIN } from "./service.ts"; // PF-8b
@@ -29,6 +30,9 @@ export class EstateStack extends Stack {
   constructor(scope: Construct, id: string, props: EstateProps) {
     // The region is fixed here, never taken from the caller's environment: a stray AWS_REGION cannot move the estate.
     super(scope, id, { ...props, env: { account: props.env?.account, region: HOME_REGION } });
+    // PF-F1c: S3's logging service writes the access logs by a bucket policy, never an ACL (the buckets enforce the owner).
+    // Set on the stack, so every way of building it (the CLI, buildApp, a test's own App) writes the same template.
+    this.node.setContext("@aws-cdk/aws-s3:serverAccessLogsUseBucketPolicy", true);
     const production = props.stage === "production";
     Tags.of(this).add("xr:stage", props.stage);
 
@@ -77,6 +81,42 @@ export class EstateStack extends Stack {
     // before the app service, whose containers log to its group (PF-8b F1).
     this.observability = new Observability(this, "Observability", { stage: props.stage });
 
+    // PF-F1c: S3's request log lines for the three buckets (who asked for which key, when), kept ACCESS_LOG_DAYS. S3's
+    // own key: aws-cdk-lib 2.275.0 refuses the aws/s3 KMS key for a log target, and a customer key would put S3's logging
+    // service on the data key's policy. Not versioned and not backed up: the lines expire on their own.
+    const accessLogs = new s3.Bucket(this, "AccessLogsBucket", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED, // S3's logging service writes by a bucket policy, no ACLs
+      removalPolicy: RemovalPolicy.RETAIN,
+      lifecycleRules: [{ id: "access-logs", expiration: Duration.days(ACCESS_LOG_DAYS), abortIncompleteMultipartUploadAfter: Duration.days(ABORT_UPLOAD_DAYS) }],
+    });
+    const bucket = (name: (typeof BUCKETS)[number]) => {
+      const b = new s3.Bucket(this, `${name[0].toUpperCase()}${name.slice(1)}Bucket`, {
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        versioned: true,
+        encryption: s3.BucketEncryption.KMS,
+        encryptionKey: this.key,
+        bucketKeyEnabled: true,
+        enforceSSL: true, // a bucket policy refusing any request without TLS
+        objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+        removalPolicy: RemovalPolicy.RETAIN,
+        serverAccessLogsBucket: accessLogs, serverAccessLogsPrefix: `${name}/`, // PF-F1c
+        lifecycleRules: [
+          // PF-8rc: an overwritten or deleted file's old version is kept 35 days, then expires (the backups keep their own)
+          { id: "old-versions", noncurrentVersionExpiration: Duration.days(BACKUP_DAYS) },
+          { id: "unfinished-uploads", abortIncompleteMultipartUploadAfter: Duration.days(ABORT_UPLOAD_DAYS) }, // PF-F1c
+        ],
+      });
+      // PF-F1c: the bucket itself refuses a put encrypted other than with aws:kms (AES256 was accepted, AWS proof 22 Nov)
+      // or naming no encryption; the app always names aws:kms and the data key (api/src/platform/files/s3-files.ts).
+      for (const [sid, condition] of [["DenyPutNotKms", { StringNotEquals: { "s3:x-amz-server-side-encryption": "aws:kms" } }], ["DenyPutNoEncryption", { Null: { "s3:x-amz-server-side-encryption": "true" } }]] as const)
+        b.addToResourcePolicy(new iam.PolicyStatement({ sid, effect: iam.Effect.DENY, principals: [new iam.AnyPrincipal()], actions: ["s3:PutObject"], resources: [b.arnForObjects("*")], conditions: condition }));
+      return b;
+    };
+    this.buckets = { documents: bucket("documents"), exports: bucket("exports"), imports: bucket("imports") };
+
     // PF-8b: the app service, its secrets, mail, firm addresses and sign-in pools (lib/service.ts). PF-8b F3: `-c
     // xr:domain=none` means staging has no domain while production keeps its default (the app synthesizes both stacks).
     // xr:certArn names the imported certificate (no-domain staging only); xr:serviceTasks=0|2 (default 2) sets staging's task
@@ -87,21 +127,9 @@ export class EstateStack extends Stack {
       domain: domain === NO_DOMAIN && !noDomainHere ? undefined : domain,
       certArn: domain === NO_DOMAIN && !noDomainHere ? undefined : this.node.tryGetContext("xr:certArn"),
       serviceTasks: props.stage === "production" ? undefined : this.node.tryGetContext("xr:serviceTasks"),
+      files: this.buckets.documents, // PF-F1c: the cloud FilesPort's bucket (PLATFORM_FILES=s3)
     });
 
-    const bucket = (name: (typeof BUCKETS)[number]) => new s3.Bucket(this, `${name[0].toUpperCase()}${name.slice(1)}Bucket`, {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      versioned: true,
-      encryption: s3.BucketEncryption.KMS,
-      encryptionKey: this.key,
-      bucketKeyEnabled: true,
-      enforceSSL: true, // a bucket policy refusing any request without TLS
-      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
-      removalPolicy: RemovalPolicy.RETAIN,
-      // PF-8rc: an overwritten or deleted file's old version is kept 35 days, then expires (the backups keep their own)
-      lifecycleRules: [{ id: "old-versions", noncurrentVersionExpiration: Duration.days(BACKUP_DAYS) }],
-    });
-    this.buckets = { documents: bucket("documents"), exports: bucket("exports"), imports: bucket("imports") };
     // PF-8rc: the daily AWS Backup plan over the database and every bucket, copied to ca-west-1 (lib/backup.ts)
     backupPlan(this, props.stage, [backup.BackupResource.fromRdsDatabaseInstance(this.database), ...Object.values(this.buckets).map((b) => backup.BackupResource.fromArn(b.bucketArn))], this.key);
   }

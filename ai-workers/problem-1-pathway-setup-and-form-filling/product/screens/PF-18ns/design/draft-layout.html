@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PF-18ns bell board</title>
+<style>
+:root{--bg:#f7f7f8;--surface:#fff;--border:#e3e3e8;--text:#1d1d22;--muted:#65656f;--primary:#2753c9;--dot:#2753c9}
+body{margin:0;font:14px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--text)}
+h1{font-size:16px;margin:24px 16px 8px}
+.board{margin:0 16px 32px;max-width:1100px}
+.header{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px 12px 0 0;padding:10px 16px}
+.header .firm{font-weight:600;margin-right:auto}
+.bell{position:relative;border:1px solid var(--border);background:var(--surface);border-radius:8px;width:36px;height:36px}
+.badge{position:absolute;top:-6px;right:-6px;background:var(--primary);color:#fff;border-radius:999px;font-size:11px;padding:0 6px}
+.panel{width:400px;max-width:100%;margin-left:auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.panel header{display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.row{display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)}
+.row .dot{width:8px;height:8px;border-radius:50%;background:var(--dot);margin-top:6px;flex:none}
+.row .dot.read{background:transparent}
+.muted{color:var(--muted);font-size:12px}
+.panel footer{display:flex;justify-content:space-between;padding:10px 16px}
+a{color:var(--primary)}
+.note{font-size:12px;color:var(--muted);margin:8px 0}
+</style></head><body>
+<h1>Board A — bell in the frame, panel open (1440)</h1>
+<div class="board">
+  <div class="header"><span class="firm">Firm A (Sample)</span><span class="muted">Find…</span>
+    <button class="bell" aria-label="Notifications, 2 unread">🔔<span class="badge">2</span></button>
+    <button class="bell" aria-label="Get help with this page">?</button><span>Agent A</span><span class="muted">Sign out</span></div>
+  <div class="panel" role="dialog" aria-modal="true" aria-label="Notifications">
+    <header><span><strong>Notifications</strong> <span class="muted">· times in America/Toronto</span></span><a href="#">Mark all read</a></header>
+    <div class="row"><span class="dot" aria-hidden="true"></span><div><div><strong>Lead assigned to you</strong> · Client A (Sample)</div><div class="muted">23 Nov, 09:14 · <span>Unread</span></div></div></div>
+    <div class="row"><span class="dot" aria-hidden="true"></span><div><div><strong>A stage deadline</strong> · case C-2026-00042 (Sample)</div><div class="muted">22 Nov, 17:00 · Unread</div></div></div>
+    <div class="row"><span class="dot read" aria-hidden="true"></span><div><div>A government step is due · <span class="muted">This item can no longer be opened</span></div><div class="muted">20 Nov, 08:00</div></div></div>
+    <footer><a href="#">See all</a><a href="#">Choose what you get</a></footer>
+  </div>
+  <p class="note">Below 640 px the panel is a full-width sheet under the header. Empty: "Nothing new. Work handed to you will show here."</p>
+</div>
+<h1>Board B — My account → Notifications → All</h1>
+<div class="board"><div class="panel" style="width:100%;margin:0">
+  <header><span><strong>Settings</strong> | <u>All</u></span><span>Show: <u>All</u> · Unread</span></header>
+  <div class="row"><span class="dot" aria-hidden="true"></span><div><strong>Lead assigned to you</strong> · Client A (Sample)<div class="muted">23 Nov, 09:14</div></div></div>
+  <footer><span class="muted">Page 1</span><a href="#">Next</a></footer>
+</div></div>
+</body></html>
