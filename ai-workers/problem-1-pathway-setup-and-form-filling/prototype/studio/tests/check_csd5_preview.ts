@@ -17,7 +17,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { CLIENT, FAMILY, OFFICER, PORT, DB, call, firms, main, ok, openCase, sql } from "../acceptance/lib/m3.ts";
 import { textPdf, upload } from "../acceptance/lib/fixtures.ts";
-import { PreviewLinks, PREVIEW_SECONDS } from "../api/src/documents/preview.ts";
+import { PreviewLinks, PREVIEW_SECONDS } from "../api/src/case-preview-links.ts";
 
 const studio = join(import.meta.dirname, "..");
 const vvOf = () => sql("select id from combination where combination_key='vv.single'") || null;
@@ -59,7 +59,7 @@ await main("CS-D5 preview", "short-lived single-use nameless link, the download'
   const before = previewed(pdfDoc);
   r = await link(pdfDoc, OFFICER);
   const l = r.body as Link;
-  ok("CS-D5 DW1 pass: the officer gets a link for a clean PDF, with its type, name, size, upload date and scan state", r.status === 200 && l.media_type === "application/pdf" && l.file_name === name && l.size_bytes > 0 && !!l.uploaded_at && l.scan === "CLEAN" && typeof l.contains_scripts === "boolean", r.body);
+  ok("CS-D5 DW1 pass: the officer gets a link for the PDF, with its type, name, size, upload date and its scan state said as it is (NOT_SCANNED while case files have no scan, never a false CLEAN)", r.status === 200 && l.media_type === "application/pdf" && l.file_name === name && l.size_bytes > 0 && !!l.uploaded_at && l.scan === "NOT_SCANNED" && typeof l.contains_scripts === "boolean", r.body);
   let b = await fetchBytes(l.url, OFFICER);
   ok("CS-D5 DW1 pass: its bytes come inline with nosniff, the CSP sandbox and no-store", b.status === 200 && b.type.startsWith("application/pdf") && b.nosniff === "nosniff" && /sandbox/.test(b.csp) && /default-src 'none'/.test(b.csp) && b.disposition.startsWith("inline") && /no-store/.test(b.cache) && b.bytes.subarray(0, 5).toString() === "%PDF-", [b.status, b.type, b.csp, b.disposition, b.cache]);
   const png = (await link(pngDoc, OFFICER)).body as Link;
