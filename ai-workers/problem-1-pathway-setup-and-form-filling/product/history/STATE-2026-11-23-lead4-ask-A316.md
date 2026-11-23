@@ -18,3 +18,7 @@ Asks why tooling, the four fixes and test selection cannot all be done together 
 
 61 replayable red batches: affected-only misses 5 (normal pick) or 7 (direct); 3 and 4 of them are the Monday test; check_c69_page, c41_section_order, pf30s_find_box unclassified. 55% or 35% of suites by count; 42 of 61 ran everything under the normal pick. The bar "no failure missed" is not met as it stands. Open: green batches to make 100, the three suites. Lead O: no gate change; cut the cascade first (#2938 in all 12 red batches of its hour), re-measure 24 h after #2434. A317's shadow start ("once the replay is clean") is therefore not triggered.
 Open conflict: card at 13:0x "gates answered first, build in M4 after the Bake, nothing created" against ~13:58 "Yes, after the plan" (private repository). Founder to settle.
+
+# A319 (~14:30 IST, typed to Lead 4)
+
+"And why it is taking so much time for this when we have paused the product work to just do this tooling and operating system work?" Answer: measured with git merge-tree, 17 of 18 open tooling PRs conflict with main, 15 on check-guards.sh (one-line TESTS list, MUT block; 57 commits in 3 days); stack B went behind when #2370/#2487 merged 14:19; Lead 4 waited on Lead O instead of going to the lane. Sent 14:4x to the Enforcement sprint (b) lane (session_01MXNda7Tq2rpWMVbzRGznbw): refresh #2428, then stack B from #2982 up, landing one by one. Follow-up after the list: check-guards.sh reads guards.d/.
