@@ -92,5 +92,37 @@ UXL-09: Not met. The primary button is 40 px at 375 (`Button size="lg"` = `h-10`
 * **The head moved while I reviewed.** The builder committed `fd282071a` (j_90 screenshots) and `d5e3782d4` (break round 1, 06:35 UTC) in this same checkout. The second run of each suite (second copy, started about 06:30 UTC) may have used a tree being edited; the first run and every walk above were on `65e4e1fa3` (the old reload and 429 words show it). `d5e3782d4` says it fixes Minors 2–4. Not reviewed. It leaves the plan line, so Major 1 still applies there.
 * `break-report-invited.md` (the breaker's) was not read.
 
-Verdict: Changes at 65e4e1fa39bc666f0a71e89f42f4ab366c3ccf77 (one open Major, so not an Approve; the builder does not label `review: approved`).
-Reviewer: Changes 65e4e1fa39bc666f0a71e89f42f4ab366c3ccf77
+Round 1 verdict: Changes at 65e4e1fa39bc666f0a71e89f42f4ab366c3ccf77 (one open Major).
+
+## Round 2: `git diff 65e4e1fa3..e7748d5d3` (diff only, 23 Nov)
+**Ran:**
+* Browser check, fresh copy :4613: **40/40, exit 0**.
+* Own walk:
+  * Change by keyboard at 375 px, with axe on the open picker.
+  * A 0-day plan picked through Change.
+  * The link's plan withdrawn while the form is open.
+  * A reload.
+* I did not re-run the other suites the builder lists.
+
+**Round-1 findings:**
+| Round 1 | Status at e7748d5d3 | Evidence |
+|---|---|---|
+| Major 1 (M4) | **Closed (option a)** | The link's plan and period are the default, with S2's in-place Change over `GET /api/public/plans`. `InvitedBody` takes optional `planCode`/`period`; a plan that is not active → 422 on planCode (`signup.ts`). Confirm builds the firm from the pending row, so the choice reaches the firm: IV1 makes the firm on PLAN2, monthly, from a yearly link. Fail line: "no-such-plan" → 422, nothing stored. Keyboard at 375 px works: team → firm, monthly → yearly, "Changed from your invitation's plan.". axe is empty with the picker open and there is no sideways scroll. `challenge.md` is corrected. |
+| Minor 2 (reload) | Closed | "Open your invitation link … it still works", no "ask for a new link" (walked; IV3 line). |
+| Minor 3 (429) | Closed | "Your answers are kept: wait a few minutes, then press <action> again". |
+| Minor 4 (summary) | Closed for the field name | Summary lines are prefixed with the field ("Plan: Choose one of the plans offered."). Links to the fields are left at S2's level (shared pattern, outside this PR). |
+| Minor 5 (targets) | Partly | The sign-in link is now 24 px or more (tested). The 40 px shared Button `lg` is a listed follow-up: acceptable, since UXL-09 counts as a Should here. |
+| Minor 6 (tests) | Closed | PLAN_GONE (IV3b), the server 422 on the plan, and a failed first read with Try again (IV4b). |
+| Minor 7 (BR-13 reason) | Closed | `challenge.md` gives it. The Lead amends BR-13's text. |
+| Nit 8 (Canada) | Left, accepted | The door accepts CA only. |
+
+The breaker's fixes check out: Try again keeps the token in memory, and a token of the wrong shape is refused before any request (IV3 line counts 0 reads).
+
+**New, Minor (Should), none blocking:**
+* **R2-m1:** Change and Done drop keyboard focus to the page body. The button that had focus unmounts (`invited-page.tsx` plan block), so a keyboard user has to Tab from the top to reach the picker. S2 has the same code (`signup-page.tsx:134-140`). Fix both together: focus "Choose a plan" on open and "Change" on Done.
+* **R2-m2:** a 0-day plan picked through Change reads "Sign up", but the sub-line still says "No card needed." (walked, 1024 px). SA-2-22: no trial days → card first. S2's sub-line is the same static text. No seeded plan has 0 days. Make the sentence conditional in both pages.
+* **Nit:** after a 422 on the plan (the link's plan withdrawn mid-form, walked), the line still shows the withdrawn plan, and the picker list is the one read at load, so the person can pick it again. Re-read `plans` on that refusal.
+* **Note:** a withdrawn link plan is still a dead page on opening (409, #3040's IS2). `challenge.md` lists offering the picker there as a door follow-up. Accepted.
+
+Verdict: Approve at e7748d5d3e401c4dc77b062acb0dfb2f376381e6 (no open Blocker or Major; R2-m1 and R2-m2 are Shoulds shared with S2, to be fixed or listed as a follow-up row).
+Reviewer: Approve e7748d5d3e401c4dc77b062acb0dfb2f376381e6
