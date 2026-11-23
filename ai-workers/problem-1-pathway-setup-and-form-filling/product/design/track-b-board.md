@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 10:5x IST 23 Nov:** **records PR #3175 merged** (rows FO-7q part 2, FO-9b part 2b, FO-7t part 1p on main). #3033 C5 fix re-read OK 0f1acb674. #3155 PF-17 part 1 permissions read OK cd306cb67. #3065 404-before-body fix, no money read. Drafts: #3174 FO-9b part 2, #3189 PF-21b part 3 (migration), #3190 FO-7g part 3 follow-up. qa journeys #3043-#3045 queued.
+
 **Lead B 2 pass, 10:3x IST 23 Nov:** **#3165 PF-Fw merged.** Records PR #3175 (Lead 10, my 7732294b5: rows FO-7q part 2, FO-9b part 2b, FO-7t part 1p) queued. #3033 FO-7t part 1 money read at 0738e3818: OK with one fix (C5 on writes with no caseId: party must be in scope, else 404) plus the CS-W3 census line. #3174 FO-9b part 2, #3155 PF-17 part 1 drafts. #3065 full run.
 
 **Lead B 2 pass, 09:5x IST 23 Nov** (current Lead: Lead 10, local_d4a6b1cd): #3065 shard 10 fix re-read OK a255e0321. #3165 queued. #3033 FO-7t part 1 and #3155 PF-17 part 1 drafts.
