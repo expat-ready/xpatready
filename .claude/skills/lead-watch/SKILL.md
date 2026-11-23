@@ -13,7 +13,7 @@ The outcome, in this order (founder, 3 Nov): **quality first** (P-303), **comple
 3. **Every report to the founder is `product/tools/founder-report.py` output, never retyped** (A260; IST, P-302): checks `--short` (blocks 1-3, "Since last report": only what changed; only a decision, risk or spend unasked), full all 6. One `--needs` per 🔴 item (what, where, what stops; else `nothing`), then "🟡 Decide when you can"; every 🔴 item is also the end-of-turn box's question (P-478). Keep `product/cycle-plan.json` current (rows, parts, lane, aws, qa owner, reserve, outside; A244, A263).
 
 ## The app view and the ETA board (founder, 4 Nov, P-338, P-339)
-* **App view, every check (P-326):** one script read of claude.ai/code statuses in the built-in browser (Awaiting input, Failed, Merge conflicts, quiet over 90 min), plus `list_sessions include_archived` for any lane archived with work left (restore and brief it). Open a lane only when flagged; confirm its URL and title before typing or clicking; the list re-sorts, so never click by an old position.
+* **App view, every check (P-326):** one script read of claude.ai/code statuses in the built-in browser (Awaiting input, Failed, Merge conflicts, quiet over 10 min), plus `list_sessions include_archived` for any lane archived with work left (restore and brief it). Open a lane only when flagged; confirm its URL and title before typing or clicking; the list re-sorts, so never click by an old position.
 * **Prompts in a lane:** the founder approves the Lead answering a lane's question or permission prompt in claude.ai only when the action is inside that lane's brief and the rules (no spend over the cap, no settings or permission change, no delete, no label the rules forbid). Anything else, or a product preference, goes to the founder at once.
 * **Escalate at once:** any lane blocked on the founder gets one line to him with a recommendation; when the 10-message cap is reached, ask him to type "go".
 * **ETA board:** the timeline; late rows: why, and slip vs the previous estimate (P-338).
@@ -33,7 +33,7 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 
 ## Unblock playbook (each line points to its rule; read the failed log or Mergify's summary first, P-502)
 1. Dequeued after a failed batch: the "Batch failures covered" line for every failed suite, then relabel on the exact head's reviewer Approve (P-731, P-385).
-2. Approved, not queued over 60 min, Mergify's summary shows no unmet condition: a bare `@mergifyio requeue` comment (it can reset a batch: never in a running one).
+2. Approved, not queued over 20 min, Mergify's summary shows no unmet condition: a bare `@mergifyio requeue` comment (it can reset a batch: never in a running one).
 3. pr-rules ran before a DECISIONS row reached main: `tools/lead-pr.sh reopen <n>` (it re-runs every check: only for that cause).
 4. Check-only fixes holding the queue: merge in the built-in browser at the first check (P-757, P-758) only with no product code, carry the reviewer's or the Lead's Approve and green `ci`, after the Lead's read (P-423); a classifier refusal in the shell is never routed around (P-504).
 5. Labels, Ready for review, reopen refused in the shell: do them in the built-in browser after the Lead's read; a label needs the exact head's reviewer Approve (P-423, P-752, P-385).
@@ -52,8 +52,8 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 | Your context | 200k beyond your start read (P-446) | refresh `RULES.md`, then hand over to the first standby (P-286) |
 | Burn per hour | over 3%/h at two checks | read each working session's context share; end idle ones, hand over any over 250k; tell the founder the cause in one line (P-440) |
 | Disk free | under 10 GB · under 4 GB | drop test databases idle **at two checks in a row** (the script lists them; file times are copied from the template, so one idle reading is not proof) · tell Mac builders to pause suite runs |
-| Approved, not merged | over 60 min | find what holds it; dequeued → its owner merges main, or give it to a spare |
-| Lane | no push in 90 min with work left | message "continue" plus its next step; a cloud lane silent after that → replace it |
+| Approved, not queued | over 20 min | find what holds it; dequeued → its owner merges main, or give it to a spare |
+| Lane | no push in 30 min with work left | message "continue" plus its next step; a cloud lane silent after that → replace it |
 | Batch failure | over 10% | keep PRs that touch the same checks out of one batch (3 Nov: #735 and #744 failed together) |
 | Paid AI | each run | worst case in the ledger first, cheapest first, one attempt (P-295, P-300); report the paid total from the paid runner's own report |
 

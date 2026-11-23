@@ -41,6 +41,12 @@
    "approval": "the founder, A253 (21 Nov 12:1x IST: never wait for machine, use it as much as possible), row CI-SPEED-1"
   },
   {
+   "version": "1.5.1",
+   "date": "2026-11-22",
+   "change": "max_parallel_checks 12 to 4: at 15:44 IST 10 merge batches ran at once, each with 17-27 jobs waiting for a machine (113 jobs running, 163 workflow runs queued) and nothing merged since 14:35 IST; fewer batches at a time let the front ones finish. Load has doubled since CI-SPEED-1's 74 jobs.",
+   "approval": "the tech lead (Lead 4), 22 Nov 15:47 IST, as a pipeline fix (P-214)"
+  },
+  {
    "version": "1.6.0",
    "date": "2026-11-22",
    "change": "SPD-1: two track queues, track-a and track-b (batch size 3), between verdicts and product; a PR whose app files are all of one track (product/tools/track-paths.txt) joins its track's queue, both tracks or neither the shared queue product. Each track queue keeps product's queue and merge conditions and adds its two path lines (test-spd-1.sh). batch-proof.yml walks a claimed item's journey on the merge batch, report-only (P-717 (b)).",
@@ -179,7 +185,7 @@
  },
  "mergify": {
   "path": ".mergify.yml",
-  "max_parallel_checks": 12,
+  "max_parallel_checks": 4,
   "mode": "parallel",
   "capacities_required": {"money": 1, "migrations": 1, "pipeline": 1},
   "barrier_files_required": ["**/package.json", "**/package-lock.json", ".nvmrc", "tsconfig.base.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/base.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/links.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/extension.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/audit.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/migration_lock.toml", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts"],
