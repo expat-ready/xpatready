@@ -47,7 +47,7 @@ Account: Enterprise Cloud **paid**, 1 licence, $21/month, next payment 1 Dec; $3
 | M12 | #2915 open-contribution proof; contribution model live | Land: steps 1, 2, 4 merged (#2919, #3032, #2925, #2920, #2939, #2972); step 3's proof is open | #2915 merged; one outside-style PR goes through on CONTRIBUTING.md alone, no Lead read | Lead O | 19:00 |
 | M13 | pipeline PRs ahead of product in the queue | Only by Lead 2's hand order until the list ends; no queue re-design | Must items above product in the queue | Lead 2 | now |
 | M14 | Account facts: Enterprise and billing read (above); Mergify plan, AWS quota left | Find out: on a trial, private means hours of CI (desk) | Four facts written here | Founder card | today |
-| M18 | Cut the minutes first (founder to confirm as a gate): price only after the by-workflow measurement | Private is not affordable at 103,934 a day | Seven-day mean at the level the founder sets | Lead O | set after measurement |
+| M18 | **Capacity gate** for private (replaces "cut the minutes first", desk's challenge accepted: cutting sets the price, not the date). Cuts run in parallel | Load can be carried without being cut; without capacity private stops the queue | Outside machines hold 300 jobs while still public; 50 matched runs; private proving repository passes; founder sets a cost ceiling | Lead O; founder for the ceiling | after purchase |
 | M15 | Outside machines for private CI | Trial one non-required shard, 10 runs, then choose; purchase is the founder's | Time and cost per run measured; founder chose | Founder; Lead O | 26 Nov |
 | M16 | Private proving repository: lane clone, PR, Mergify parallel queue, checks, secrets, Macs | Prove before the switch | Each of the six shown working | Founder creates; Lead O | 29 Nov |
 | M17 | Desk's final report | Publish for the founder | Report linked here | Desk | 14:00 |
@@ -69,3 +69,8 @@ Duplicate check: 500 last-updated closed PRs searched by tooling id; merged alre
 * **M19 runner variable:** branch `claude/lead-o-ci-runner` 6aeb97eeb (CI_RUNNER; heavy read-only jobs; fork PRs stay on GitHub). In review.
 * **M7/M8 fix first:** #2457 (browser-merge advice without the Lead read), #2473 (completes-ready missing), #2444 with #2599 (register lines no longer block), #2605 (private sync may empty the mirror). Sent to Lead 2.
 * Lead O's measuring used a large part of the shared GitHub allowance (5000/5000 at 12:23, reset 12:26); the by-workflow minutes measurement failed and is owed.
+
+## Desk final, received 12:24 IST (its figures; it relied on the meter as read by Lead O, not by itself)
+Per month 1x / 2x / 4x: Ubicloud $7,795 / 15,590 / 31,180; GitHub 4-core $37,116 / 74,532 / 149,365; RunsOn on AWS, estimate, $5,018 / 10,035 / 20,071 plus licence. Peak floor 170 jobs = 680 vCPU; the AWS limit of 160 carries 40. Namespace Business holds 40 jobs: does not fit. Desk's claim: #2151 merged 18 Nov 20:15 UTC, so its saving is already in the four metered days; the -54% is never counted again.
+Cost gap: the desk's RunsOn $5,018 is about $167/day; Lead O's AWS line above is $157/day. Same size, two estimates.
+**Date conflict for the founder:** he asked for private at once (A302, relayed); the desk's date is 30 Nov 02:00 IST. What sets the date is the capacity gate. Lead O's earlier "24-25 Nov" assumed lighter gates and is withdrawn until a vendor confirms 300 jobs.
