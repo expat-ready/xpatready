@@ -22,6 +22,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A313 | 23 Nov 13:2x (typed) | still fit nowhere? how do OpenClaw and the Adobe clones manage? | answered: OpenClaw ~300 merges/day, sponsored machines, adaptive test selection cut 158,546 to 21,395 runner-hours a week-ish; Adobe clones not ready; we fit at US$0 while public |
 | A309-A312 | 23 Nov 13:0x-13:2x | stay public safeguards (one-pack plan with Lead O, B181 mechanism pilot only); over-engineering; CI vs industry (metric: CI minutes per merged change, 1,083 today); Google AI 8-vCPU VPS / Shopify answer checked: in full `history/STATE-2026-11-23-1320-lead3-asks-A309-A311.md` |
 | A308 | 23 Nov 12:57 (typed) | pasted a Google AI answer (one 32-core server ₹12-22k/month, or AWS spot ₹2-8k/month, for 100 pipelines) and asks why answers differ | answered in chat by Lead 3: its sums fit its assumed small load, not our measured one |
 | A300 | 23 Nov 12:0x | operating system first in the queue until complete; Lead O; in full: `history/STATE-2026-11-23-1305-lead3-asks-A297-A300.md` |
