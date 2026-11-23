@@ -289,10 +289,14 @@ MUT="$MUT"'
 38 notes|product/tools/lead-upkeep.py|s/    if not os.path.isdir(a.notes):/    if False:/|check-lead-upkeep.sh
 38 source|product/tools/private-sync.sh|s/^if \[ ! -d "\$NOTES" \] .*then$/if false; then/|check-lead-upkeep.sh
 38 rev-parse|product/tools/private-sync.sh|s/^if ! git rev-parse -q --verify HEAD .*then$/if false; then/|check-lead-upkeep.sh
-38 note file|product/tools/private-sync.sh|s/ -type f ! -name / -name /|check-lead-upkeep.sh
-38 after copy|product/tools/private-sync.sh|s/^if \[ -z "\$(notes_in notes\/side-session-notes)" \]; then$/if false; then/|check-lead-upkeep.sh
-38 origin|product/tools/private-sync.sh|s/^if \[ "\$(git remote get-url origin 2>\/dev\/null)" != "\$REMOTE" \]; then$/if false; then/|check-lead-upkeep.sh
+38 note file|product/tools/private-sync.sh|s/ -type f ! -path / -type f -path /|check-lead-upkeep.sh
+38 after copy|product/tools/private-sync.sh|s/^if \[ -z "\$(git ls-files -s -- notes\/side-session-notes\/ .*then$/if false; then/|check-lead-upkeep.sh
+38 origin|product/tools/private-sync.sh|s/^if ! same_repo .*then$/if false; then/|check-lead-upkeep.sh
 38 pull|product/tools/private-sync.sh|s/^if ! git pull -q --ff-only; then$/if ! git pull -q --ff-only \&\& false; then/|check-lead-upkeep.sh
+38 dot path|product/tools/private-sync.sh|s/ grep -v -E .(^.\/)\[.\]. / cat /|check-lead-upkeep.sh
+38 ahead|product/tools/private-sync.sh|s/ && \[ "\$ahead" = 0 \]; then$/; then/|check-lead-upkeep.sh
+38 stored|product/tools/private-sync.sh|s/git config --get remote.origin.url/git remote get-url origin/|check-lead-upkeep.sh
+38 slash|product/tools/private-sync.sh|s/local a="\${1%\/}" b="\${2%\/}"/local a="$1" b="$2"/|check-lead-upkeep.sh
 38 watch|product/tools/lead-watch.sh|s/echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))/echo "$lc"/|check-lead-upkeep.sh
 38 watch2|product/tools/lead-watch.sh|s/echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))/echo "$ps"/|check-lead-upkeep.sh
 29 machines|product/tools/flow-constraint.py|s/(mc.get("oldest_min") or 0) > BAR\["wait_min"\]/False/|check-flow-constraint.sh
@@ -330,13 +334,17 @@ MUT="$MUT"'
 37 draft|product/tools/queue-blocked.py|s/if p.get("draft") or /if False and p.get("draft") or /|check-queue-blocked.sh
 37 read|product/tools/queue-blocked.py|s/^        if read:$/        if True:/|check-queue-blocked.sh
 37 read who|product/tools/queue-blocked.py|s/ not in TRUSTED or not c.get("created_at"):/ is None:/|check-queue-blocked.sh
-37 read edited|product/tools/queue-blocked.py|s/^        if (c.get("updated_at") or c.get("created_at")) != c.get("created_at"):$/        if False:/|check-queue-blocked.sh
+37 read edited|product/tools/queue-blocked.py|s/^        if (c.get("created_at") if u is None else u) != c.get("created_at"):/        if False:/|check-queue-blocked.sh
 37 read head|product/tools/queue-blocked.py|s/^            if m and m.group(1).lower() == head.lower():$/            if m:/|check-queue-blocked.sh
 37 read drop|product/tools/queue-blocked.py|s/^        for d in DROP:$/        for d in []:/|check-queue-blocked.sh
 37 read code|product/tools/queue-blocked.py|s/^            if line.startswith("    ") or line.startswith(.\\t.):$/            if False:/|check-queue-blocked.sh
 37 read blank|product/tools/queue-blocked.py|s/^LEAD_READ = re.compile(r"^\[ \\t\\v\\f\]\*lead read/LEAD_READ = re.compile(r"^\\s*lead read/|check-queue-blocked.sh
-37 read leads|product/tools/queue-blocked.py|s/^        if leads and (login not in leads or login == str(author or "").lower()):$/        if False:/|check-queue-blocked.sh
-37 read unread|product/tools/queue-blocked.py|s/ll = "" if re.search/ll = "" if True or re.search/|check-queue-blocked.sh
+37 read leads|product/tools/queue-blocked.py|s/^        if leads and (login not in leads or login == asc(str(author or ""))):$/        if False:/|check-queue-blocked.sh
+37 read unread|product/tools/queue-blocked.py|s/^                ll = None$/                ll = ""; continue/|check-queue-blocked.sh
+37 read org|product/tools/queue-blocked.py|s/^                    continue$/                    break/|check-queue-blocked.sh
+37 read nul|product/tools/queue-blocked.py|s/^    if any("\\x00" in b for b in counted):/    if False:/|check-queue-blocked.sh
+37 read ascii|product/tools/queue-blocked.py|s/^    return re.sub(r"\[A-Z\]", lambda m: m.group().lower(), x)$/    return x.lower()/|check-queue-blocked.sh
+37 read empty|product/tools/queue-blocked.py|s/ll = os.environ.get("LEAD_LOGINS") or None/ll = os.environ.get("LEAD_LOGINS")/|check-queue-blocked.sh
 37 count|product/tools/lead-watch.sh|s/; seen "\$qb"; act=\$((act + \$(grep -c .^ACT. <<<"\$qb")))/; seen "$qb"/|check-queue-blocked.sh
 39 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
 39 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh

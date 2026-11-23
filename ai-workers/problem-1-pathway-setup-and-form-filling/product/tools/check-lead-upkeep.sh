@@ -94,6 +94,28 @@ out=$(ps "$T/notes" "$T/h9"); r=$?
 ok "private-sync: a working copy whose origin is another repository → refused (exit 4)" "$([ $r = 4 ] && grep -q 'refused' <<<"$out" && echo 1)" "exit $r: $out"
 mv "$T/remote.git" "$T/remote.away"; out=$(ps "$T/notes" "$T/h4"); r=$?; mv "$T/remote.away" "$T/remote.git"
 ok "private-sync: the pull fails (GitHub unreachable) → exit 5, never 'nothing new'" "$([ $r = 5 ] && ! grep -q 'nothing new' <<<"$out" && echo 1)" "exit $r: $out"
+# Breaker round 2 (23 Nov): judged on what git will commit, not on the disk; a failed push is retried; the stored origin
+# URL is compared (insteadOf rewriting and a trailing slash or .git do not refuse the Lead's own clone).
+before=$(git --git-dir="$T/remote.git" rev-parse HEAD)
+mkdir -p "$T/n-git"; git init -q "$T/n-git"; out=$(ps "$T/n-git" "$T/h10"); r=$?
+ok "private-sync: a source holding only a .git folder → refused (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
+mkdir -p "$T/n-ign"; echo x > "$T/n-ign/n1.md.swp"; printf '*.swp\n' > "$T/excl"
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.excludesFile GIT_CONFIG_VALUE_0="$T/excl" ps "$T/n-ign" "$T/h11"); r=$?
+ok "private-sync: a source of git-ignored files only → refused (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
+mkdir -p "$T/n-trash/.trash"; echo x > "$T/n-trash/.trash/x.md"; out=$(ps "$T/n-trash" "$T/h12"); r=$?
+ok "private-sync: a note only under a dot-folder (.trash/x.md) → refused (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
+mkdir -p "$T/n-push"; echo a > "$T/n-push/a.md"; ps "$T/n-push" "$T/h13" >/dev/null 2>&1
+echo b > "$T/n-push/new.md"; printf '#!/bin/sh\nexit 1\n' > "$T/remote.git/hooks/pre-receive"; chmod +x "$T/remote.git/hooks/pre-receive"
+out1=$(ps "$T/n-push" "$T/h13"); r1=$?; rm -f "$T/remote.git/hooks/pre-receive"; out=$(ps "$T/n-push" "$T/h13"); r=$?
+ok "private-sync: a push GitHub refused is pushed by the next run, never 'nothing new'" "$([ $r1 != 0 ] && [ $r = 0 ] && grep -q 'private-sync: pushed' <<<"$out" && git --git-dir="$T/remote.git" show HEAD:notes/side-session-notes/new.md >/dev/null 2>&1 && echo 1)" "first exit $r1; then exit $r: $out"
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$T/.insteadOf" GIT_CONFIG_VALUE_0="file:///alias/" PRIVATE_NOTES_DIR="$T/n-push" PRIVATE_HOME_DIR="$T/h14" PRIVATE_REMOTE="file:///alias/remote.git" bash "$TOOLS/private-sync.sh" 2>&1); r=$?
+ok "private-sync: an insteadOf rule on the Mac does not refuse its own clone (the stored URL is compared)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+out=$(PRIVATE_NOTES_DIR="$T/n-push" PRIVATE_HOME_DIR="$T/h13" PRIVATE_REMOTE="file://$T/remote.git/" bash "$TOOLS/private-sync.sh" 2>&1); r=$?
+ok "private-sync: REMOTE with a trailing slash still matches a clone made without one" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+mkdir -p "$T/n-race2/local_aaa" "$T/gitw2"; echo note > "$T/n-race2/local_aaa/r.md"
+printf '#!/bin/sh\ncase "$1" in pull) "%s" "$@"; r=$?; rm -rf "%s"/*; mkdir -p "%s/.trash"; echo x > "%s/.trash/y.md"; exit $r;; esac\nexec "%s" "$@"\n' "$(command -v git)" "$T/n-race2" "$T/n-race2" "$T/n-race2" "$(command -v git)" > "$T/gitw2/git"; chmod +x "$T/gitw2/git"
+before=$(git --git-dir="$T/remote.git" rev-parse HEAD); out=$(PATH="$T/gitw2:$PATH" ps "$T/n-race2" "$T/h15"); r=$?
+ok "private-sync: only a dot-folder note left after the pull → refused after the copy (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
 W="$TOOLS/../../../../.claude/skills/lead-watch/SKILL.md"
 ok "skill lead-watch step 1 passes the context to lead-watch.sh (LEAD_CONTEXT, Lead 9 21 Nov)" "$(grep -q 'LEAD_CONTEXT=<k> bash product/tools/lead-watch.sh 30' "$W" && echo 1)" "no LEAD_CONTEXT in $W step 1"
 
