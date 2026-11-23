@@ -19,15 +19,17 @@ const from = (f: "staff" | "type" | "not_set") => (f === "type" ? " (from the do
  *  document type" sends null, so the type's default applies again. */
 export function DocumentFlagsDialog({ documentId, label, close, done }: { documentId: string; label: string; close: () => void; done: () => Promise<unknown> }) {
   const q = useApi<View>(["runtime", "document-flags", documentId], `/runtime/documents/${documentId}/flags`);
+  // Break M1: a refusal survives the form being re-seeded (keyed by the flags' version) after a 409 reload.
+  const [err, setErr] = React.useState<string | null>(null);
   return (
     <Dialog open onOpenChange={(o) => { if (!o) close(); }} title={`Document flags: ${label}`} description="Language, translation, notarisation and expiry. A flag you leave on the document type's default follows it. Warnings never block.">
       {q.isLoading ? <Skeleton className="h-40 w-full" /> : q.isError ? <Notice tone="danger" title="The flags could not be loaded">{(q.error as Error).message}</Notice>
-        : <Form v={q.data!} close={close} done={async () => { await q.refetch(); await done(); }} />}
+        : <Form key={q.data!.flags.version} v={q.data!} err={err} setErr={setErr} close={close} done={async () => { await q.refetch(); await done(); }} />}
     </Dialog>
   );
 }
 
-function Form({ v, close, done }: { v: View; close: () => void; done: () => Promise<unknown> }) {
+function Form({ v, err, setErr, close, done }: { v: View; err: string | null; setErr: (e: string | null) => void; close: () => void; done: () => Promise<unknown> }) {
   const f = v.flags;
   const own = (x: FlagState | null, src: string) => (src === "staff" && x ? x : "");
   const [language, setLanguage] = React.useState(f.language ?? "");
@@ -36,7 +38,6 @@ function Form({ v, close, done }: { v: View; close: () => void; done: () => Prom
   const [notarisation, setNotarisation] = React.useState<string>(own(f.notarisation, f.notarisation_from));
   const [nDetail, setNDetail] = React.useState(f.notarisation_detail ?? "");
   const [expires, setExpires] = React.useState(f.expires_on ?? "");
-  const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const sending = React.useRef(false);
   const known = v.languages.some((l) => l.code === language);
@@ -44,10 +45,15 @@ function Form({ v, close, done }: { v: View; close: () => void; done: () => Prom
     if (sending.current) return; // Enter twice sends one request
     sending.current = true; setBusy(true); setErr(null);
     try {
-      await api(`/runtime/documents/${v.document.id}/flags`, { method: "POST", json: { version: f.version, language: language || null, translation: translation || null, translation_detail: tDetail || null,
-        notarisation: notarisation || null, notarisation_detail: nDetail || null, expires_on: expires || null } });
+      // Break M1: only what this person changed is sent, so a save never writes back a value someone else changed meanwhile.
+      const now = { language: language || null, translation: translation || null, translation_detail: tDetail || null, notarisation: notarisation || null, notarisation_detail: nDetail || null, expires_on: expires || null };
+      const was = { language: f.language, translation: own(f.translation, f.translation_from) || null, translation_detail: f.translation_detail, notarisation: own(f.notarisation, f.notarisation_from) || null, notarisation_detail: f.notarisation_detail, expires_on: f.expires_on };
+      const changed = Object.fromEntries(Object.entries(now).filter(([k, x]) => x !== was[k as keyof typeof was]));
+      if (!Object.keys(changed).length) { close(); return; }
+      await api(`/runtime/documents/${v.document.id}/flags`, { method: "POST", json: { version: f.version, ...changed } });
+      setErr(null);
       await done(); close();
-    } catch (e) { setErr((e as Error).message); if (e instanceof ApiError && e.status === 409) await done(); }
+    } catch (e) { setErr(e instanceof ApiError && e.status === 409 ? `${(e as Error).message} The form now shows the flags as they are: make your change again.` : (e as Error).message); if (e instanceof ApiError && e.status === 409) await done(); }
     finally { sending.current = false; setBusy(false); }
   };
   return (

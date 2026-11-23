@@ -218,7 +218,8 @@ export class CaseChecklists {
           need: "not_needed", lineage: x.lineage, also_from: [], document: { key: x.documentType, name: typeName(x.documentType) }, missing: [], base: false, provided_by: "client", alternatives: [], quote: null, rule: null, set: null, waivable: false, never_waivable: false, who: "", who_words: "", shared: null, providers: [], providers_rule: null, providers_words: null }));
       const lines = [...p.lines.map((l) => out(l, false)), ...keptWaiting.map((l) => out(l, true)), ...keptNot.map((l) => out(l, true)), ...orphans.map((l) => out(l, true))];
       // CS-D7 (3): one "Translation + translator's affidavit" line per current document that needs one, worked out on read.
-      const translations: TranslationLine[] = translationLines(docs.filter((x) => x.subjectId === p.subject), (k) => { const t = types.find((y) => y.key === k); return t ? { name: t.name, defaults: t.defaults } : undefined; }, d.today);
+      const off = new Set(rows.filter((x) => x.subjectId === p.subject && (x.state === "not_applicable" || x.state === "waived")).map((x) => x.documentType)); // break m3
+      const translations: TranslationLine[] = translationLines(docs.filter((x) => x.subjectId === p.subject && !off.has(x.documentType)), (k) => { const t = types.find((y) => y.key === k); return t ? { name: t.name, defaults: t.defaults } : undefined; }, d.today);
       return { ...p, lines, translations, waiting: p.waiting.filter((l) => !acted(l)).map((l) => out(l, false)), not_needed: p.not_needed.filter((l) => !acted(l)).map((l) => out(l, false)) };
     });
     return { ...d, people };
@@ -351,9 +352,11 @@ export class CaseChecklists {
         const n = await tx.checklistLine.updateMany({ where: { id, version: row.version }, data: { state: met ? "received" : "requested", stateReason: null, stateBy: actor.id, stateAt: new Date(), version: { increment: 1 } } });
         if (n.count !== 1) fail("Someone changed this line after you opened it: read the checklist again to see its state now, then try again. Nothing was stored.", HttpStatus.CONFLICT);
         const now = new Date();
+        // CS-D7 (review m2): a new file of the same document keeps the language staff picked for the one it replaces.
+        const was = await tx.caseDocument.findFirst({ where: { subjectId: row.subjectId, documentType: member.key, current: true }, orderBy: { uploadedAt: "desc" }, select: { language: true } });
         await tx.caseDocument.updateMany({ where: { subjectId: row.subjectId, documentType: member.key, current: true }, data: { current: false, supersededAt: now } });
         await tx.caseDocument.create({ data: { id: docId, workspaceId: c.workspaceId, subjectId: row.subjectId, documentType: member.key, checklistLineId: id, fileName: checked.name,
-          mediaType: checked.mediaType, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now } });
+          mediaType: checked.mediaType, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now, language: was?.language ?? null } });
       });
     } catch (e) { rmSync(abs, { force: true }); throw e; } // a refused upload leaves no file behind
     await this.recount(actor, c, row.subjectId, member.key, id);

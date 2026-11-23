@@ -16,5 +16,5 @@ ALTER TABLE "document_type"
   ADD CONSTRAINT "document_type_defaults_cited_check" CHECK (
     "status" = 'DRAFT'
     OR ("translation_rule" IS NULL AND "notarisation_rule" IS NULL AND "has_expiry" IS NULL AND "max_age_days" IS NULL)
-    OR (length(btrim(coalesce("defaults_source_quote", ''))) > 0 AND length(btrim(coalesce("defaults_source_file", ''))) > 0)
+    OR (length(regexp_replace(coalesce("defaults_source_quote", ''), '[[:space:]]', '', 'g')) >= 3 AND length(regexp_replace(coalesce("defaults_source_file", ''), '[[:space:]]', '', 'g')) >= 3)
   );

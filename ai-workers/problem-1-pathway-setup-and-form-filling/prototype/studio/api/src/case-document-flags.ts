@@ -26,7 +26,7 @@ const short = (id: string) => id.slice(0, 8);
 export const FLAG_STATES = ["NOT_REQUIRED", "REQUIRED", "PROVIDED"] as const;
 export type FlagState = (typeof FLAG_STATES)[number];
 const STATE_WORDS: Record<FlagState, string> = { NOT_REQUIRED: "Not required", REQUIRED: "Required", PROVIDED: "Provided" };
-/** Languages staff pick from (ISO 639-1; Sample list, the most common on applications); any other two-letter code is kept as typed. */
+/** Languages staff pick from (ISO 639-1; Sample list, the most common on applications). Only these are stored (break m2). */
 export const LANGUAGES: { code: string; name: string }[] = [["en", "English"], ["fr", "French"], ["ar", "Arabic"], ["bn", "Bengali"], ["zh", "Chinese"], ["de", "German"], ["hi", "Hindi"], ["it", "Italian"], ["ja", "Japanese"], ["ko", "Korean"], ["fa", "Persian"], ["pt", "Portuguese"], ["pa", "Punjabi"], ["ru", "Russian"], ["es", "Spanish"], ["tl", "Tagalog"], ["ta", "Tamil"], ["tr", "Turkish"], ["uk", "Ukrainian"], ["ur", "Urdu"], ["vi", "Vietnamese"]].map(([code, name]) => ({ code, name }));
 export const languageName = (code: string | null) => (code ? LANGUAGES.find((l) => l.code === code)?.name ?? code : "not set");
 export const OFFICIAL = new Set(["en", "fr"]);
@@ -49,7 +49,7 @@ export function flagsOf(d: DocRow, t: SnapTypeDefaults | undefined, today: strin
     if (!d.language) tWords = "Pick the document's language: its type needs a translation when it is neither English nor French.";
     else { translation = OFFICIAL.has(d.language) ? "NOT_REQUIRED" : "REQUIRED"; tFrom = "type"; tWords = OFFICIAL.has(d.language) ? `In ${languageName(d.language)}: no translation needed.` : `In ${languageName(d.language)}: its type needs a translation and the translator's affidavit.`; }
   }
-  if (tFrom === "staff") tWords = `${STATE_WORDS[translation!]}: set by staff${d.translationDetail ? ` (${d.translationDetail})` : ""}.`;
+  if (tFrom === "staff") tWords = `${STATE_WORDS[translation!]}: set by staff${translation === "PROVIDED" && d.translationDetail ? ` (${d.translationDetail})` : ""}${d.language ? `; the document is in ${languageName(d.language)}` : ""}.`; // break m6: a detail is shown only with Provided
   if (!tWords) tWords = "Not set.";
   let notarisation = d.notarisation as FlagState | null, nFrom: DocFlags["notarisation_from"] = notarisation ? "staff" : "not_set";
   if (!notarisation && t?.notarisation_rule) { notarisation = t.notarisation_rule; nFrom = "type"; }
@@ -73,7 +73,24 @@ export function translationLines(docs: (DocRow & { fileName: string })[], typeOf
     const f = flagsOf(d, def, today);
     if (f.translation !== "REQUIRED" && f.translation !== "PROVIDED") continue;
     out.push({ id: `translation:${d.id}`, label: TRANSLATION_LINE, document_id: d.id, for_document: t!.name, file_name: d.fileName, state: f.translation === "PROVIDED" ? "provided" : "needed",
-      words: f.translation === "PROVIDED" ? `Provided for ${t!.name} (${d.fileName})${f.translation_detail ? `: ${f.translation_detail}` : ""}.` : `For ${t!.name} (${d.fileName}), in ${f.language_name}.`, quote: def.source_quote, source: def.source_file });
+      words: f.translation === "PROVIDED" ? `Provided for ${t!.name} (${d.fileName})${f.translation_detail ? `: ${f.translation_detail}` : ""}.` : f.translation_from === "staff" ? `For ${t!.name} (${d.fileName}): marked Required by staff (the document is in ${f.language_name}).` : `For ${t!.name} (${d.fileName}), in ${f.language_name}.`, quote: def.source_quote, source: def.source_file });
+  }
+  return out;
+}
+
+/** CS-D7 (4): readiness reads each current file's flag warnings, and a translation still needed, as items (never a stop). */
+export async function flagWarningsOf(db: Pick<Db, "caseDocument" | "checklistLine">, subjects: string[], types: { key: string; name: string; defaults?: SnapTypeDefaults }[]) {
+  const out = new Map<string, string[]>(), today = new Date().toISOString().slice(0, 10);
+  if (!subjects.length) return out;
+  const docs = await db.caseDocument.findMany({ where: { subjectId: { in: subjects }, current: true }, orderBy: [{ uploadedAt: "asc" }, { id: "asc" }] });
+  const off = new Set((await db.checklistLine.findMany({ where: { subjectId: { in: subjects }, state: { in: ["not_applicable", "waived"] }, stage: { state: "CURRENT" } }, select: { subjectId: true, documentType: true } })).map((l) => `${l.subjectId}|${l.documentType}`));
+  const typeOf = (k: string) => types.find((t) => t.key === k);
+  for (const d of docs) {
+    const key = `${d.subjectId}|${d.documentType}`;
+    if (off.has(key)) continue;
+    const t = typeOf(d.documentType), tl = translationLines([d], typeOf, today)[0];
+    const ws = [...flagsOf(d, t?.defaults, today).warnings, ...(tl?.state === "needed" ? [`${TRANSLATION_LINE} needed (${tl.words.replace(/\.$/, "")}).`] : [])];
+    if (ws.length) out.set(key, [...(out.get(key) ?? []), ...ws]);
   }
   return out;
 }
@@ -81,13 +98,13 @@ export function translationLines(docs: (DocRow & { fileName: string })[], typeOf
 const detail = z.string().refine((x) => !UNSTORABLE.test(x), "The detail has a character that cannot be stored (a control character or half of an emoji). Retype it.")
   .transform((x) => x.replace(INVISIBLE, "").trim()).pipe(z.string().max(300, "The detail is at most 300 characters.")).transform((x) => x || null);
 export const SetFlags = z.strictObject({
-  language: z.string().trim().toLowerCase().regex(/^[a-z]{2,3}$/, "Pick the language (a two-letter code such as es).").nullable().optional(),
+  language: z.string({ message: "Pick the language from the list (a two-letter code such as es), or null." }).trim().toLowerCase().refine((x) => LANGUAGES.some((l) => l.code === x), "Pick the language from the list (a two-letter code such as es).").nullable().optional(),
   translation: z.enum(FLAG_STATES, { message: "translation is NOT_REQUIRED, REQUIRED, PROVIDED or null (back to the type's default)." }).nullable().optional(),
   translation_detail: detail.nullable().optional(),
   notarisation: z.enum(FLAG_STATES, { message: "notarisation is NOT_REQUIRED, REQUIRED, PROVIDED or null (back to the type's default)." }).nullable().optional(),
   notarisation_detail: detail.nullable().optional(),
-  expires_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expires_on is a date, YYYY-MM-DD.").refine((x) => !Number.isNaN(Date.parse(`${x}T00:00:00Z`)) && day(new Date(`${x}T00:00:00Z`)) === x, "expires_on is not a real date.").nullable().optional(),
-  version: z.number({ message: "Send \"version\": the flags' version you saw." }).int().min(0),
+  expires_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expires_on is a date, YYYY-MM-DD.").refine((x) => { const y = Number(x.slice(0, 4)); return y >= 1900 && y <= 2200 && !Number.isNaN(Date.parse(`${x}T00:00:00Z`)) && day(new Date(`${x}T00:00:00Z`)) === x; }, "expires_on is not a real date between 1900 and 2200.").nullable().optional(), // break m1
+  version: z.number({ message: "Send \"version\": the flags' version you saw (a whole number from 0)." }).int("Send \"version\": a whole number from 0.").min(0, "Send \"version\": a whole number from 0."),
 });
 const problem = (status: number, code: string, title: string, detail: string): never => { throw new HttpException({ type: `https://expatready.local/problems/${code}`, title, status, code, detail }, status); };
 
@@ -121,6 +138,7 @@ export class CaseDocumentFlags {
     if (!b.success) problem(400, "check_flags", "Check the flags", b.error!.issues[0]?.message ?? "Check the flags.");
     const x = b.data!;
     const { d, c } = await this.reach(actor, id);
+    if (!d.current) problem(409, "not_current", "Not the current file", "A newer file of this document was uploaded: set the flags on that one. Nothing was changed."); // break m8
     if (x.version !== d.flagsVersion) problem(409, "flags_changed", "Changed since you read it", `This document's flags changed after you opened them (version ${d.flagsVersion} now): read them again, then try again. Nothing was changed.`);
     const next = { language: d.language, translation: d.translation, translationDetail: d.translationDetail, notarisation: d.notarisation, notarisationDetail: d.notarisationDetail, expiresOn: d.expiresOn };
     if (x.language !== undefined) next.language = x.language;
@@ -131,7 +149,7 @@ export class CaseDocumentFlags {
     if (x.expires_on !== undefined) next.expiresOn = x.expires_on ? new Date(`${x.expires_on}T00:00:00Z`) : null;
     // A language change sends a translation staff marked Required back to the type's default (so English or French drops
     // the line); a Provided translation stays, with its detail.
-    if (x.language !== undefined && x.language !== d.language && x.translation === undefined && d.translation === "REQUIRED") next.translation = null;
+    if (x.language !== undefined && x.language !== d.language && x.language && OFFICIAL.has(x.language) && x.translation === undefined && d.translation === "REQUIRED") next.translation = null; // break m5: only English or French
     if (next.translation === "PROVIDED" && !next.translationDetail) problem(400, "detail_needed", "Say what was provided", "A translation marked Provided needs its detail: who translated it and the affidavit (up to 300 characters). Nothing was changed.");
     if (next.notarisation === "PROVIDED" && !next.notarisationDetail) problem(400, "detail_needed", "Say what was provided", "A notarisation marked Provided needs its detail: who notarised it and when (up to 300 characters). Nothing was changed.");
     const t = this.typeOf(c, d.documentType), name = t?.name ?? d.documentType;
@@ -144,7 +162,9 @@ export class CaseDocumentFlags {
       if (n.count !== 1) problem(409, "flags_changed", "Changed since you read it", "Someone changed this document's flags at the same moment: read them again, then try again. Nothing was changed.");
       const log = new Audit(tx as never);
       // One audit line per flag changed (never the file's contents, RT-17).
-      for (const k of changed) await log.log(c.workspaceId, actor.id, "flag changed", "case document", d.id, `${actor.name} set the ${LABEL[k]} of ${name} on case ${short(c.id)}: ${words(k, d[k])} → ${words(k, next[k])}`.slice(0, 600), { flag: k, version: d.flagsVersion + 1 });
+      // Break m7: a detail's text goes in the line's detail, whole; the summary stays short enough never to be cut.
+      const isDetail = (k: keyof typeof next) => k === "translationDetail" || k === "notarisationDetail";
+      for (const k of changed) await log.log(c.workspaceId, actor.id, "flag changed", "case document", d.id, isDetail(k) ? `${actor.name} ${next[k] ? "set" : "cleared"} the ${LABEL[k]} of ${name} on case ${short(c.id)}` : `${actor.name} set the ${LABEL[k]} of ${name} on case ${short(c.id)}: ${words(k, d[k])} → ${words(k, next[k])}`, { flag: k, version: d.flagsVersion + 1, ...(isDetail(k) ? { before: d[k], after: next[k] } : {}) });
       return tx.caseDocument.findUnique({ where: { id: d.id } });
     });
     return this.view(c, done!);

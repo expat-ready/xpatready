@@ -7,7 +7,7 @@
 // state; English takes the translation line away. axe-core (WCAG 2.2 A/AA) at 0 serious or critical on the panel and the
 // dialog; 1440, 1024 and 375 px without sideways scroll; screenshots (deviceScaleFactor 1) in product/screens/CS-D7/
 // screenshots/. No model call (US$0).
-//   zsh studio/tools/isolated.sh runtime_csd5b 4463 start && tsx studio/tests/check_csd5_flags_browser.ts 4463 xr_studio_runtime_csd5b
+//   zsh studio/tools/isolated.sh runtime_csd5b 4436 start && tsx studio/tests/check_csd5_flags_browser.ts 4436 xr_studio_runtime_csd5b
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -117,6 +117,23 @@ try {
   ok("CS-D7 pass: nothing is blocked: the line keeps its state", (await line().getAttribute("data-state")) === before, [before, await line().getAttribute("data-state")]);
   await state("expired-warning", "[data-documents-panel]");
 
+  // Review M1 and break M1: another person changes the expiry while this dialog is open; the save is refused (409), the
+  // form shows the flags as they are now, and saving again never writes back the old expiry.
+  await openFlags();
+  const v0 = Number(sql(`select flags_version from case_document where id='${doc}'`));
+  const other = await call("POST", `/runtime/documents/${doc}/flags`, { version: v0, expires_on: "2031-05-05" }, c.officer);
+  await tabTo("[data-flag-expires]"); await p.keyboard.type("03042029"); await p.keyboard.press("Enter");
+  await p.locator("[data-flags-error]").waitFor(); await settle();
+  ok("review M1 fail: a save on a version someone changed meanwhile is refused in words, and the form now shows their expiry", other.status === 200 && /changed after you opened/.test(await p.locator("[data-flags-error]").innerText()) && (await p.locator("[data-flag-expires]").inputValue()) === "2031-05-05", [other.status, await p.locator("[data-flag-expires]").inputValue()]);
+  await tabTo("[data-flag-translation-detail]"); await p.keyboard.press("Enter");
+  await p.locator("[data-flags-form]").waitFor({ state: "detached" }); await settle();
+  ok("review M1 pass: saving again with nothing changed writes nothing; their expiry stays", sql(`select expires_on::text from case_document where id='${doc}'`) === "2031-05-05" && Number(sql(`select flags_version from case_document where id='${doc}'`)) === v0 + 1);
+  await openFlags();
+  await tabTo("[data-flag-notarisation]"); await p.keyboard.type("Required"); await tabTo("[data-flag-notarisation-detail]"); await p.keyboard.press("Enter");
+  await p.locator("[data-flags-form]").waitFor({ state: "detached" }); await settle();
+  const last = sql(`select string_agg(summary, ' | ' order by at) from audit_event where entity_key='${doc}' and action='flag changed' and (detail->>'version')::int = ${v0 + 2}`) ?? "";
+  ok("review M1 pass: changing only notarisation sends only notarisation: one audit line, the expiry untouched", /notarisation .*: Not required → Required/.test(last) && !/expiry|language|translation/.test(last) && sql(`select expires_on::text from case_document where id='${doc}'`) === "2031-05-05", last);
+
   // English: the translation line goes (Provided stays Provided until staff change it, so clear it to the type's default).
   await openFlags();
   await tabTo("[data-flag-language]"); await p.keyboard.type("English");
@@ -125,7 +142,7 @@ try {
   await p.locator("[data-flags-form]").waitFor({ state: "detached" }); await settle();
   ok("CS-D7 pass: English (translation back on the type's default) takes the translation line away", await p.locator("[data-translation-line]").count() === 0, await p.locator("[data-translations]").innerText().catch(() => "none"));
   const audits = Number(sql(`select count(*) from audit_event where entity='case document' and entity_key='${doc}' and action='flag changed'`));
-  ok("CS-D7 pass: each flag change made on screen wrote one audit line (language, translation, its detail, expiry, language, translation, detail: 7)", audits === 7, audits);
+  ok("CS-D7 pass: each flag change made on screen or by the other person wrote one audit line (language, translation, its detail, expiry, the other's expiry, notarisation, language, translation, detail: 9)", audits === 9, audits);
   ok("CS-D7: no page error or console error", errs.length === 0, errs);
 } catch (e) { await p.screenshot({ path: join(SHOTS, "CSD7-crash.png") }).catch(() => undefined); ok(`CS-D7 browser: ran to its end (crashed: ${(e as Error).message}; focus: ${await p.evaluate(() => document.activeElement?.outerHTML.slice(0, 160)).catch(() => "?")}; dialog: ${await p.locator("[role=dialog]").innerText().catch(() => "none")})`, false); }
 await b.close();

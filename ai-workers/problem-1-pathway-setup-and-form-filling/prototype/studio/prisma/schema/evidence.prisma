@@ -59,7 +59,7 @@ model CaseDocument {
   uploadedBy      String    @map("uploaded_by")
   uploadedAt      DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz
   supersededAt    DateTime? @map("superseded_at") @db.Timestamptz
-  /// CS-D7 (map row 70; AG-9-64): the flags staff set on the document (api/src/case-documents/flags.ts), all null = not
+  /// CS-D7 (map row 70; AG-9-64): the flags staff set on the document (api/src/case-document-flags.ts), all null = not
   /// set: the document then reads its type's defaults from the case's release (CS-D7c). language: the ISO 639-1 code staff
   /// picked (the Reader's guess stays a suggestion). translation, notarisation: NOT_REQUIRED | REQUIRED | PROVIDED; PROVIDED
   /// carries its detail (checks in SQL). expiresOn: the date on the document. flagsVersion: the version staff saw.

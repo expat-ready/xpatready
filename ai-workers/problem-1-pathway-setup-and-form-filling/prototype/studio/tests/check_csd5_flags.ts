@@ -5,7 +5,7 @@
 // it away; saved twice, still one line; an expired or too-old document warns, nothing is blocked; a type with no rule adds
 // no line; Provided without a detail is 400; every flag change writes one audit line; old documents read null. Rules only,
 // no AI (US$0). Values Sample until the immigration expert confirms.
-//   zsh studio/tools/isolated.sh runtime_csd5 4462 start && tsx studio/tests/check_csd5_flags.ts 4462 xr_studio_runtime_csd5
+//   zsh studio/tools/isolated.sh runtime_csd5 4435 start && tsx studio/tests/check_csd5_flags.ts 4435 xr_studio_runtime_csd5
 import { textPdf } from "../acceptance/lib/fixtures.ts";
 import { sourceEveryNumber } from "./fixtures/source-every-number.cjs";
 import { APPROVER, AUTHOR, CLIENT, OFFICER, PORT, REVIEWER, call, main, ok, openCase, sql } from "../acceptance/lib/m3.ts";
@@ -97,6 +97,12 @@ await main("CS-D7", "flags on each document, read by the checklist", async () =>
   const after = me.lines.find((x) => x.id === pass!.id)!;
   ok("CS-D7 pass: an expired document shows a warning on its line", r.status === 200 && after.flag_warnings.some((w) => /^Expired on /.test(w)) && after.documents.find((x) => x.id === doc)?.flags.expires_on === yesterday, after.flag_warnings);
   ok("CS-D7 pass: nothing is blocked: the line keeps its state and the document stays current", after.state === before.state && after.documents.find((x) => x.id === doc)?.current === true, [before.state, after.state]);
+  // CS-D7 (4), review M3: readiness reads the warning (and the translation still needed) as items to pass, never a stop.
+  const prep = async () => (await call("GET", `/runtime/cases/${c.id}/prepare`, undefined, c.officer)).body;
+  let pr = await prep();
+  const flagWarns = (x: any) => ((x?.readiness ?? []) as any[]).flatMap((f) => (f.warns ?? []).filter((w: any) => w.code === "document_flag")); // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely
+  const flagBlocks = (x: any) => ((x?.readiness ?? []) as any[]).flatMap((f) => (f.blocks ?? []).filter((w: any) => w.code === "document_flag")); // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely
+  ok("CS-D7 pass (4): readiness lists the expired passport as a \"document flag\" item to fix or pass, never a block", flagWarns(pr).some((w: any) => /Expired on /.test(w.words)) && flagBlocks(pr).length === 0, flagWarns(pr).map((w: any) => w.words)); // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely
   r = await set(doc, { expires_on: "2099-12-31" });
   me = await list();
   ok("CS-D7 fail: a future expiry gives no expiry warning", !me.lines.find((x) => x.id === pass!.id)!.flag_warnings.some((w) => /Expired|expiry date/.test(w)), me.lines.find((x) => x.id === pass!.id)!.flag_warnings);
@@ -106,6 +112,8 @@ await main("CS-D7", "flags on each document, read by the checklist", async () =>
   r = await set(doc, { expires_on: "2026-02-30" });
   ok("CS-D7 fail: an expiry that is not a real date is refused (400)", r.status === 400, words(r));
 
+  pr = await prep();
+  ok("CS-D7 fail (4): with a future expiry and the translation Provided, readiness names no expiry and no translation item", !flagWarns(pr).some((w: any) => /Expired|Translation/.test(w.words)), flagWarns(pr).map((w: any) => w.words)); // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely
   // A type with no rule adds no line.
   r = await set(other, { language: "es" });
   me = await list();
@@ -122,5 +130,19 @@ await main("CS-D7", "flags on each document, read by the checklist", async () =>
   // Every flag change writes one audit line: count the changes made above on the passport.
   const flagsChanged = Number(sql(`select count(*) from audit_event where entity_key='${doc}' and action='flag changed'`));
   ok("CS-D7 pass: every flag change wrote exactly one audit line (11 changes on the passport so far), none for refused or unchanged saves", flagsChanged === 11, flagsChanged);
+
+  // Break and review fixes (round 1).
+  r = await set(doc, { expires_on: "0000-01-01" });
+  ok("break m1 fail: a year outside 1900-2200 is refused (400, not 500)", r.status === 400, [r.status, words(r)]);
+  r = await set(doc, { language: "zz" });
+  ok("break m2 fail: a language code not in the list is refused (400)", r.status === 400, [r.status, words(r)]);
+  await set(doc, { translation: "REQUIRED" });
+  r = await set(doc, { language: "pt" });
+  ok("break m5 pass: Spanish → Portuguese keeps a translation staff marked Required", r.body?.flags?.translation === "REQUIRED" && r.body.flags.translation_from === "staff", r.body?.flags);
+  const u3 = await up(pass!.id, "passport-new");
+  const newer = u3.body?.document?.id as string;
+  ok("review m2 pass: a new file of the passport keeps the language staff picked (Portuguese)", u3.status < 300 && sql(`select language from case_document where id='${newer}'`) === "pt", [u3.status, sql(`select language from case_document where id='${newer}'`)]);
+  r = await call("POST", `/runtime/documents/${doc}/flags`, { version: Number(sql(`select flags_version from case_document where id='${doc}'`)), language: "de" }, c.officer);
+  ok("break m8 fail: the replaced file's flags cannot be changed (409 not_current)", r.status === 409 && r.body?.code === "not_current", [r.status, words(r)]);
   void OFFICER; void today;
 });

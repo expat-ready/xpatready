@@ -4,11 +4,11 @@
 // release; one without a citation is refused (the API at proposal, the database at publish); a published type's values
 // never change in place (a new draft version); old types read null and their release is written as before. The quote and
 // source here are test words (labelled Test), not immigration values. Rules only, no AI (US$0).
-//   zsh studio/tools/isolated.sh runtime_csd5c 4461 start && tsx studio/tests/check_csd5c_type_defaults.ts 4461 xr_studio_runtime_csd5c
+//   zsh studio/tools/isolated.sh runtime_csd5c 4434 start && tsx studio/tests/check_csd5c_type_defaults.ts 4434 xr_studio_runtime_csd5c
 import { execFileSync } from "node:child_process";
 import { sourceEveryNumber } from "./fixtures/source-every-number.cjs";
 
-const PORT = Number(process.argv[2] ?? 4461), DB = process.argv[3] ?? "xr_studio_runtime_csd5c";
+const PORT = Number(process.argv[2] ?? 4434), DB = process.argv[3] ?? "xr_studio_runtime_csd5c";
 let pass = 0, fail = 0;
 const ok = (name: string, c: boolean, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 260)}` : ""}`); };
 const call = async (method: string, path: string, body?: unknown, actor = "user-A") => {
