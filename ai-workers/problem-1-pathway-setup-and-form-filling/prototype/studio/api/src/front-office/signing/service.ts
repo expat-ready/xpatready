@@ -28,12 +28,12 @@ import { asBypass, touchFirms, withFirm } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { onSigningCompleted, SIGNING_ACTOR } from "../retainers/on-signing-completed.ts";
 import { signingHandlerFor, signingMail, signingPort } from "./handlers.ts";
+import { SIGNING_WEBHOOK } from "./webhook.bypass.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent } from "./port.ts";
 
 type Tx = Prisma.TransactionClient;
 export const EXPIRES_DAYS = 14;   // Sample (AG-05 C3; a firm setting in part 5)
 const DAY = 86_400_000;
-export const WEBHOOK_USE = "front-office.signing.webhook";
 const sha = (b: Uint8Array | string) => createHash("sha256").update(b).digest("hex");
 const conflict = (detail: string, code: string): never => problem(409, "Not possible now", detail, { code });
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter((x) => x && x.trim()).join(" ").trim();
@@ -119,7 +119,7 @@ export class Signing {
     if (typeof provider !== "string" || provider.toUpperCase() !== port.provider) problem(404, "Not found", "No such signing provider here.", { code: "NOT_FOUND" });
     const ev = await port.verifyWebhook(call);
     if (!ev) return problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });
-    const found = await asBypass(WEBHOOK_USE, async () => {
+    const found = await asBypass(SIGNING_WEBHOOK, async () => {
       const q = await this.db.foSignatureRequest.findFirst({ where: { provider: ev.provider, providerDocumentId: ev.providerDocumentId }, select: { id: true, firmId: true, documentKind: true } });
       if (q) await touchFirms(this.db, [q.firmId]);   // PF-12b: the crossing read's line in that firm's trail
       return q;

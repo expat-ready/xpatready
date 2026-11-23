@@ -355,9 +355,11 @@ try {
   const grep = (() => { try { return execFileSync("grep", ["-rlE", "retainer\\.executed|envelope\\.completed", join(STUDIO, "api", "src"), join(STUDIO, "ports"), join(STUDIO, "web", "src"), join(STUDIO, "engine")], { encoding: "utf8" }).trim(); } catch { return ""; } })();
   ok("FO-6 G pass: no retainer.executed or envelope.completed name anywhere in the code (A51 §12: signing.completed is the one)", grep === "", grep);
   const { BYPASS_USES } = await import("../api/src/platform/firm-scope.ts");
-  const use = BYPASS_USES["front-office.signing.webhook"];
-  ok("FO-6 G pass: the webhook's crossing read is a named per-firm bypass use for that route only",
-    !!use && use.audit === "per-firm" && use.routes.some((r) => r.test("POST /api/hooks/signing/fake")) && !use.routes.some((r) => r.test("POST /api/hooks/stripe")) && !use.outside);
+  const { SIGNING_WEBHOOK } = await import("../api/src/front-office/signing/webhook.bypass.ts");
+  const use = SIGNING_WEBHOOK.entry;
+  ok("FO-6 G pass: the webhook's crossing read is a per-firm bypass use declared beside its module (P-785 (2)), for that route only, and not on firm-scope.ts's frozen list",
+    SIGNING_WEBHOOK.name === "front-office.signing.webhook" && use.audit === "per-firm" && use.routes.some((r) => r.test("POST /api/hooks/signing/fake")) && !use.routes.some((r) => r.test("POST /api/hooks/stripe")) && !use.outside
+      && !Object.prototype.hasOwnProperty.call(BYPASS_USES, "front-office.signing.webhook"));
 } finally {
   await db.$disconnect();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);

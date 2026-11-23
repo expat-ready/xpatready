@@ -1,7 +1,7 @@
 // FO-6 part 3: the signing provider's webhook door, POST /api/hooks/signing/:provider. Public under /api/hooks as Stripe's (no session: the provider
 // signs the body, the adapter checks it), rate limited per caller address (rolling minute, Sample 120), never a 500 for a
-// hostile call. The request is found by the provider's document id under PF-12's named use `front-office.signing.webhook`
-// (firm-scope.ts), then everything runs as its firm (./service.ts).
+// hostile call. The request is found by the provider's document id under PF-12's bypass use `front-office.signing.webhook`
+// (declared in ./webhook.bypass.ts), then everything runs as its firm (./service.ts).
 // The body: the adapter verifies the exact bytes. With no raw-body mount for this path (main.ts is not this part's file),
 // the JSON parser's object is written back with JSON.stringify, which gives the fake's bytes exactly (it writes its body
 // with JSON.stringify); FO-6v mounts express.raw for this path as PF-5 did for Stripe, and a Buffer body is used as is.

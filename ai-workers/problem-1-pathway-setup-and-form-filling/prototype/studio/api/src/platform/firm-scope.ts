@@ -137,7 +137,6 @@ export const BYPASS_USES: Readonly<Record<string, BypassEntry>> = Object.freeze(
   "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true, audit: "per-firm" },
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true, audit: "per-firm" },
   "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true, audit: "per-firm" },
-  "front-office.signing.webhook": { why: "the signing provider's event names its document, not our firm: the door finds the request by the provider's document id (unique across firms), then applies it as that firm (FO-6 part 3)", routes: [/^POST \/api\/hooks\/signing\/[^/]+$/i], direct: true, audit: "per-firm" },
   "platform.billing.stripe-webhook": { why: "Stripe's event names a customer or subscription, not our firm: the door finds the firm, then updates it as that firm (PF-5 part 2)", routes: [/^POST \/api\/hooks\/stripe$/i], direct: true, audit: "per-firm" },
   "job:platform.billing.webhook_sweep": { why: "Stripe events whose handling did not finish, every firm's (PF-5 part 2)", routes: [], outside: true, audit: "per-firm" },
   "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true, audit: "platform" },
