@@ -129,3 +129,59 @@ The screenshot changes in this commit come from re-running the journey (times an
 `Reviewer: Approve 6a86d2f90e0963339e0667e8b6eba98b51d6c210`
 
 Verdict: Approve
+
+## Round 4 (conflict files): head `b4bcfcb169f5eef517cbf6b7607666efadbf21ae` (merge of origin/main `09b3893df` into the approved `c24d31d82`)
+
+Scope: only the add/add conflict in `tests/journeys/j_69.ts` and how it was resolved. Main's own changes were not reviewed.
+
+**What I ran**
+* `git diff origin/main HEAD -- tests/journeys/j_69.ts`: empty. origin/main is still `09b3893df`, and HEAD contains it.
+* `git diff --name-status HEAD^2 HEAD`: against main, this merge adds only this row's files. Nothing under `screens/J-69/` differs from main.
+* `git diff c24d31d82:tests/journeys/j_69.ts HEAD:tests/check_csd6_reads_browser.ts`, full paths. Read line by line.
+* `run-suites.sh --only "check_csd6_reads_browser.ts check_csd6_reads_keep.ts"`: both **PASS**. The browser suite gave 18/18 in 27 s and the keep suite 23/23 in 22 s. The runner chose copies named `runtime_*` on ports +14000, never :4400.
+* `check-select-suites.sh`: **83 passed, 0 failed**.
+* `module-cards.py tree`: **PASS** (15 cards, tree checked).
+* `select-suites.mjs`, fed `web/src/runtime/document-reads.tsx`: selects `check_csd6_reads_browser.ts`.
+* `select-suites.mjs`, fed `api/src/features/case-document-reads.ts`: selects both CS-D6 suites.
+* My run rewrote the three PNGs in `screens/CS-D6/screenshots/`, which shows the new path is the one in use. I restored them with `git checkout -- …/product/screens/`, and `git status` is clean.
+
+**Judgement**
+* **Keeping qa's `j_69.ts`: right.**
+  * Its header says it is qa's journey for the whole capability R1.69 (W1-W6: read lines, Read by, fingerprint, changed file, keep period, weekly reminder). qa wrote it before the last part merges.
+  * The builder's part 1 walk proves only part 1. Two files with one name could not both be kept. The capability journey owns the J-69 name and its screenshot folder, so the part walk moving under the row's own name (`check_csd6_*`, `screens/CS-D6/`) is the right split.
+  * Taking main's file unchanged means qa's later runs are not disturbed.
+* **No assertion lost or weakened.**
+  * Both files have 18 `ok(` lines, and the runner reported 18/18.
+  * Every predicate, threshold, timeout, selector and retry loop is identical, including round 3's 390 px measuring and the named stored-file lookup.
+  * The diff changes only these things:
+    * the header;
+    * import depth (`../../acceptance` → `../acceptance`);
+    * the arguments, now `<port> <database>` (default 4492 / `xr_studio_csd6_browser`);
+    * the screenshot folder, now `screens/CS-D6/screenshots/`;
+    * the PDF caption;
+    * labels, from "J-69 …" to "CS-D6 …".
+  * `NAME` now comes from the database name. `isolated.sh` names the database `xr_studio_<name>` and the files `var/isolated-<name>`, so `storedFile()` still resolves. The "W2 setup: the stored file is found" line passed in the runner, with a prefixed copy name.
+* **Runner and usage line: standard.**
+  * The usage line now has the `isolated.sh <name> <port> start && tsx studio/tests/<file> <port> <db>` form that `run-suites.sh` parses.
+  * It drops `--ttl 40`, the `trap … stop` and `--tsconfig`. All three are supplied by the runner, which adds `--tsconfig` in `$TSX` and manages the copy's lifecycle. Same form as the sibling `check_csd6_reads_keep.ts`.
+* **Card rows:** both `MODULE.cases.rows/CS-D6.md` and `runtime/MODULE.rows/CS-D6.md` now name `tests/check_csd6_reads_browser.ts`, and `module-cards.py tree` passes.
+* **Screenshots:**
+  * The three part 1 shots moved from `J-69/` to `CS-D6/`. `J-69/` now holds only main's (qa's) shots, so no orphans are left.
+  * The moved PNGs differ in bytes from `c24d31d82`'s because they were re-run, with new times in "Read by".
+  * The 390 px shot shows the same layout: the dialog fits, the fingerprint wraps, and "The file has changed" notice and the Read by list are both there.
+
+**Findings**
+* n4 (nit, no change): two dated records still name the old file or path, and records keep their facts (P-188):
+  * `break-report.md:27` cites `j_69.ts:110`.
+  * `journey-test-reviewer-2026-11-23.md` cites `j_69.ts` and `J-69/screenshots/w2-…`, which now sits at `CS-D6/screenshots/w2-…`.
+
+  A reader following those links should look in `check_csd6_reads_browser.ts` and `CS-D6/screenshots/`.
+* m1 from round 3 (390 px width not asserted) moved with the file unchanged. It was neither fixed nor made worse, and it remains Minor and not blocking.
+
+No Blocker, no Major.
+
+**Journey score, round 4: 9/10** (unchanged; the resolution changes no screen).
+
+`Reviewer: Approve b4bcfcb169f5eef517cbf6b7607666efadbf21ae`
+
+Verdict: Approve
