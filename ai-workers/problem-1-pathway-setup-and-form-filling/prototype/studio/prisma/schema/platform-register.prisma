@@ -173,7 +173,7 @@ model PlatLegalHold {
 
 // PF-21b part 3 (map row 85; SA-11 §3.8, SA-11-40, NFR5-14): the register of privacy requests made to ExpatReady itself,
 // worked in our console with system/compliance:dsr-manage. Our own register, forced with no policy (PF-12's OWN list),
-// reached only through the plat_data_request_* definers of 20261123100000_pf21b_data_requests, which also holds the rules
+// reached only through the plat_data_request_* definers of 20261123200000_pf21b_data_requests, which also holds the rules
 // Prisma cannot say. The target date (received + 30 days) is a code constant and a reminder (Unconfirmed: no counsel).
 
 /// Access, correction or deletion (§3.8).
