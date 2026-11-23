@@ -265,6 +265,25 @@ try {
   ok(`PF-17 DW9 pass/fail: ?health=OK checks at most ${FIGURES_PER_CALL} firms' figures a call and says so (complete false, a note naming the bound); a narrower ?q= checks them all`,
     okH.r.body.complete === false && /at most 200 a call/.test(okH.r.body.note ?? "") && okH.r.body.firms.length === PAGE_SIZE && okH.r.body.firms.every((f: any) => f.health === "OK")
     && (await call(base, "/api/system/firms?health=OK&q=paging", tokens.support)).body.complete === true, { complete: okH.r.body.complete, note: okH.r.body.note });
+  // Review M1-r2: 60 more overdue firms (ATTENTION from their rows) and 20 seat-over firms whose names sort after the
+  // 150th firm the row calls OK: the pages of ?health=ATTENTION agree on `total`, hold it between them with no firm twice,
+  // and say complete only when they do.
+  firmsOf("pf17-due-load", "Due load ", 60, "ACTIVE", "OVERDUE");
+  sql(`insert into platform_firm (id, key, operating_name, country_code, contact_email, status, updated_at)
+       select gen_random_uuid(), 'pf17-over-' || i, 'Load firm 160 over ' || lpad(i::text, 2, '0'), 'CA', 'over' || i || '@pf17.example', 'ACTIVE', now() from generate_series(1, 20) i`);
+  sql(`insert into platform_subscription (id, firm_id, plan_id, status, updated_at) select gen_random_uuid(), f.id, (select id from platform_plan where code = 'solo'), 'ACTIVE', now() from platform_firm f where f.key like 'pf17-over-%'`);
+  sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) select gen_random_uuid(), f.id, 'staff' || n || '.' || f.key || '@pf17.example', 'Sample staff', 'ACTIVE', now() from platform_firm f, generate_series(1, 2) n where f.key like 'pf17-over-%'`);
+  const f0 = listLines();
+  const pages = [];
+  for (let n = 1; n <= 4; n++) pages.push((await call(base, `/api/system/firms?health=ATTENTION&page=${n}`, tokens.support)).body);
+  const shown = pages.flatMap((b: any) => b.firms ?? []), totals = pages.map((b: any) => b.total);
+  const overFound = shown.filter((f: any) => /^Load firm 160 over/.test(f.name)).length;
+  ok("PF-17 DW9 pass/fail (review M1-r2): ?health=ATTENTION gives the same total on every page, the pages hold exactly that many firms with none twice, all ATTENTION, and the seat-over firms past the 150th row-OK firm on none",
+    totals.every((t: number) => t === totals[0]) && shown.length === totals[0] && new Set(shown.map((f: any) => f.id)).size === shown.length && shown.every((f: any) => f.health === "ATTENTION") && overFound === 0 && pages.every((b: any) => b.complete === false),
+    { totals, shown: shown.length, overFound, complete: pages.map((b: any) => b.complete) });
+  ok("PF-17 DW9 pass (review m1-r2): each filtered list call writes exactly one firm-less bypass line, however many firms' figures it works out", listLines() === f0 + 4, { f0, f1: listLines() });
+  const narrow = (await call(base, "/api/system/firms?health=ATTENTION&q=160%20over", tokens.support)).body;
+  ok("PF-17 DW9 pass: narrowed with ?q=, all 20 seat-over firms are found (complete)", narrow.total === 20 && narrow.complete === true && narrow.firms.every((f: any) => f.reasons.includes("seats over the limit")), { total: narrow.total, complete: narrow.complete });
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

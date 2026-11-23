@@ -6,14 +6,18 @@
 // firm's own line), Lead 9's rulings on #3155.
 // Figures come through PF-15's own reads, never a second count: seats by `seatsUsed`, limits and the live plan by
 // `PgEntitlements.limitOf`, cases by the case side's `CaseCountPort` bound to the firm's key. Storage is StorageWatch's
-// stored measure (platform_storage_over, written by its daily job and each upload), shown with its date ("as of"), never a
-// live listing of the firm's files (Lead 10 on #3155: the console shows health, not billing).
+// stored measure (platform_storage_over), shown with its date ("as of"), never a live listing of the firm's files (Lead 10
+// on #3155: the console shows health, not billing). StorageWatch writes that row when a firm goes over, while it stays
+// over, and once when it is back under; a firm never over has none (used null), and one back under keeps the figure of
+// that measure, dated (the PR's question 1).
 // The list (Lead 10 on #3155, break M1): one short transaction writes the list's line and reads the firm rows; `?q=` and
 // the page are applied to the rows; only then are the figures worked out, each firm in its own short transaction. A firm's
 // hold, overdue payment, trial and storage mark are on its row, so the order (HELD, ATTENTION, OK, NOT_LIVE, then name) and
 // `?health=HELD` / `?health=NOT_LIVE` need no figures. A firm whose seats or cases are over its limit, or with no live plan,
 // is found only from its figures: it shows ATTENTION where its row stands among the others, and `?health=ATTENTION` /
-// `?health=OK` check at most PAGE_SIZE × 4 firms' figures per call, saying `complete: false` when that bound stopped them.
+// `?health=OK` check at most PAGE_SIZE × 4 firms' figures per call: the page's firms the row already places, and the same
+// first PAGE_SIZE × 3 of the others on every page (so `total` and the pages agree), saying `complete: false` when that
+// bound stopped them.
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -128,7 +132,8 @@ export class SystemFirms {
       const sure = health === "ATTENTION" ? kept.filter((r) => tier.get(r) === "ATTENTION") : [];
       const open = kept.filter((r) => tier.get(r) === "OK");
       const found = await inTurn(sure.slice(start, start + PAGE_SIZE), figures);
-      const scan = open.slice(0, FIGURES_PER_CALL - found.length), i = scan.length;
+      // The same scan on every page (review M1-r2): its matches follow `sure`, so page n shows exactly its share of them.
+      const scan = open.slice(0, FIGURES_PER_CALL - PAGE_SIZE), i = scan.length;
       const matches = (await inTurn(scan, figures)).filter((f) => f.health === health);
       const complete = i === open.length, from = Math.max(0, start - sure.length);
       const firms = [...found, ...matches.slice(from, from + PAGE_SIZE - found.length)];

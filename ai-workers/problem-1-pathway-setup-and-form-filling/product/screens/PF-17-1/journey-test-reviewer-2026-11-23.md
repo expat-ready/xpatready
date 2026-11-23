@@ -50,3 +50,30 @@ Fixes that raise the low scores, most valuable first:
 3. Part 4: show the next action beside each reason.
 
 Not tested: a real screen reader, widths and zoom (no page yet); an intended user's unaided walk (D17 and D20 stay with the founder); a real S3 bucket.
+
+## Round 2 (1d5c8d550, diff-only)
+I walked the journeys again on the suite's own harness (the real Nest app, PF-4s's sign-in and guard, FirmWallsInterceptor), with 458 firms. Port 4400 was not used. The probe code was added to a scratch worktree copy of the suite and is not committed.
+
+| # | Journey | Round 2 result |
+|---|---|---|
+| J1 | Support: the whole list | 200, 50 a page, HELD first, then ATTENTION from the row, the rest by name, NOT_LIVE last. About 300 ms (was 2.4 s at 400 firms). Held. |
+| J2 | Support: "only the ones in trouble" (`?health=ATTENTION`) | 1.1 s, bounded, `complete:false` with a plain note. **With 71 overdue firms and 193 others, page 3 says `complete:true`, total 84, 0 firms; 10 firms needing attention are on no page** (review M1-r2). Partly held. |
+| J3 | Billing: open firm A | Same figures as the list row. Storage is the stored measure with `asOf`; a firm never measured shows `used: null`. One line on A's trail. Held. |
+| J4 | Auditor: held, locked, deleted, no live plan | HELD "on payment hold"; HELD "under a security lock"; NOT_LIVE "firm deleted"; ATTENTION "no live plan", with no ended plan name. Held. |
+| J5 | Admin: page through 458 | No firm on two pages; `total` exact on the unfiltered list. Held. |
+| J6-J8 | Wrong role, errors, odd paths | Unchanged code; DW1 and DW7 still pass. Held. |
+
+Data underneath: each list call writes exactly 1 firm-less line, filtered calls included, and no per-firm line. After a firm goes back under, its stored storage figure stays at the back-under measure (review m2-r2).
+
+| Criterion | R2 | Evidence |
+|---|---|---|
+| Task completed | 1 | J1, J3-J5 complete; J2 works on the first page. |
+| Next step obvious | ½ | Reasons, but no actions yet (part 3). |
+| Plain words | 1 | "no live plan", "firm deleted", the bound's note. |
+| Feedback and state | 1 | `complete`, `note`, `asOf`. |
+| Correct data | ½ | M1-r2: a `complete:true` page hides counted firms. m2-r2: stale stored storage, though dated. |
+| Error recovery | 1 | 404 and 422 unchanged. |
+| Speed | ½ | No more 500. The list is about 300 ms and the filters about 1.1 s against §9's 200 ms, within Lead 10's 2 s. |
+| Trust and sources | 1 | Storage dated; Sample values labelled; every call audited. |
+
+**Round 2: 6.5 of the 8 applicable criteria, which scales to 8.1 / 10, given as 8 / 10. Pass as a journey, with no 0.** The review blocks on M1-r2. Fixing it raises "correct data" to 1.
