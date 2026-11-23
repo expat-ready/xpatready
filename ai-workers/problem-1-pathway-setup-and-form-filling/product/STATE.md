@@ -2,7 +2,7 @@
 
 current_lead: local_c598a0e1-126f-4370-9065-ea0f229121ee Lead 16 · 24 Nov 04:26 IST (after Lead 15; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 04:59 IST: Lead 16, check 41b05d46. Merged #3289 #3155; #3203 labelled 04:58; #3207 batch #3349. #3040 1e3ddde1e: full run 45285176414; label after #3207, then #3202. #3321 f648b5eec: main merged, Approve and Lead B 5 owed, then full run. #3209 5d1204f0c: Approve, 3 Minors allowed into its merge push; wake after #3207 and #3040. Typed 04:57: #3225 (label after #3040, #3033), #3302.
+updated: 2026-11-24 05:07 IST: Lead 16, check 41b05d46. #3207 batch #3349, #3203 batch #3350. #3040 1e3ddde1e: full run green; label when #3207 is on main, then #3202. #3321 f648b5eec: all reads OK, full run 45289864846, then label. #3209 5d1204f0c: reads OK, keep out of the queue (its auto full run will be red); wake after #3207 and #3040 to merge and declare. #3225 98e5fc19c: Lead B 5 OK, round 3 allowed, reviewer running; label after #3040, #3033. #3302 4420de495: Approve, ci running, gate labels.
 
 ## Hand-over Lead 15 → Lead 16, 04:26 IST 24 Nov (before: `history/STATE-2026-11-24-lead15-before-handover.md`; earlier, still owed: `…-lead14-before-handover.md`, `…-lead13-A338-row.md`)
 
