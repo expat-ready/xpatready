@@ -17,7 +17,8 @@ REMOTE="${PRIVATE_REMOTE:-https://github.com/expat-ready/private.git}"   # PRIVA
 # would delete every note on GitHub. Refuse (exit 4) before touching anything.
 # A note is a regular file whose name does not start with a dot: folders (git keeps none), .DS_Store, ._* and .localized
 # are not notes (breaker, 23 Nov: a source of empty session folders emptied the mirror).
-notes_in() { find -H "$1" -type f ! -name '.*' -print -quit 2>/dev/null; }
+# (no path part under the folder starting with a dot either: .trash/x.md is not a note; breaker round 2).
+notes_in() { (cd "$1" 2>/dev/null && find -H . -type f ! -path '*/.*' -print -quit 2>/dev/null); }
 if [ ! -d "$NOTES" ] || [ -z "$(notes_in "$NOTES")" ]; then
   echo "private-sync: refused, the source copy is missing or holds no note ($NOTES): nothing synced, the mirror untouched" >&2
   exit 4
@@ -27,7 +28,9 @@ if [ ! -d "$HOME_DIR/.git" ]; then
 fi
 cd "$HOME_DIR"
 # ...never push into another repository (a leftover working copy of something else)...
-if [ "$(git remote get-url origin 2>/dev/null)" != "$REMOTE" ]; then
+# (the stored URL, not get-url's insteadOf rewrite; a trailing slash or .git is the same repository)
+same_repo() { local a="${1%/}" b="${2%/}"; [ "${a%.git}" = "${b%.git}" ]; }
+if ! same_repo "$(git config --get remote.origin.url 2>/dev/null)" "$REMOTE"; then
   echo "private-sync: refused, the working copy $HOME_DIR is not a clone of $REMOTE: nothing synced" >&2
   exit 4
 fi
@@ -43,10 +46,12 @@ if ! git pull -q --ff-only; then
 fi
 mkdir -p notes
 rsync -a --delete --exclude '.DS_Store' "$NOTES"/ notes/side-session-notes/
-# Checked again after the copy: the source can empty while the pull runs; nothing is pushed unless a note remains.
-if [ -z "$(notes_in notes/side-session-notes)" ]; then
-  git reset -q --hard HEAD; git clean -qfd notes
-  echo "private-sync: refused, no note left after the copy (the source emptied while syncing?): nothing pushed, the mirror untouched" >&2
+# Checked again after the copy, on what git will commit (breaker round 2): the source can empty while the pull runs, a
+# copied .git folder becomes a gitlink, ignored files are never committed. Nothing is pushed unless a note remains.
+git add -A notes
+if [ -z "$(git ls-files -s -- notes/side-session-notes/ | awk '$1 != "160000"' | cut -f2- | grep -v -E '(^|/)[.]' | head -1)" ]; then
+  git reset -q --hard HEAD; git clean -qffdx notes
+  echo "private-sync: refused, no note would be committed after the copy (the source emptied while syncing, or holds only a .git folder, ignored or dot files): nothing pushed, the mirror untouched" >&2
   exit 4
 fi
 
@@ -58,10 +63,12 @@ if grep -rlE 'sk-ant-[A-Za-z0-9_-]{20}|ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|g
 fi
 
 git add -A
-if git diff --cached --quiet; then
+# A commit an earlier run made but GitHub refused is still ahead of origin: push it, never "nothing new" (breaker round 2).
+ahead=$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo 1)
+if git diff --cached --quiet && [ "$ahead" = 0 ]; then
   echo "private-sync: nothing new"
   exit 0
 fi
-git commit -qm "sync: side notes $(TZ=Asia/Kolkata date '+%Y-%m-%d %H:%M IST')"
+git diff --cached --quiet || git commit -qm "sync: side notes $(TZ=Asia/Kolkata date '+%Y-%m-%d %H:%M IST')"
 git push -q origin HEAD
 echo "private-sync: pushed $(git rev-parse --short HEAD) ($(git ls-files | wc -l | tr -d ' ') files)"
