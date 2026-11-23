@@ -5,7 +5,7 @@
 # one and the same "pipeline paths" pattern (P-717 (a)); each area's screens, tests and feature files sit in its scope
 # (path owners, P-785 (2) step 2), and a track list (track-paths.txt) never repeats a scope's pattern (one source).
 # Run by check-guards.sh, and by ci.yml on every pull request and batch (P-756 (2): job
-# "fast", and job "ci" for notes; checked below). US$0, no network. The product queue waits for pr-rules (E6, P-772).
+# "fast", and job "ci" for notes; checked below). US$0, no network.
 #   bash product/tools/check-mergify-scopes.sh
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
