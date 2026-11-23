@@ -90,3 +90,31 @@ No app code was changed. Scope is the row as the Lead described it, plus what th
 Probes: `/tmp/claude-0/-home-user-xpatready/d4a803f4-3580-57ec-aa34-45a99ccaeb6a/scratchpad/breaker/probe.mts`, `http.sh`.
 
 Verdict: Changes c97b85ca34d04c7a55ecbad8240885a977027814
+
+## Round 2 (head e37b88ec1bcbc6f57c6871286fe3cb713a186794)
+
+I re-checked only my own findings against `git diff c97b85ca3..e37b88ec1`, using a new probe: `/tmp/claude-0/-home-user-xpatready/d4a803f4-3580-57ec-aa34-45a99ccaeb6a/scratchpad/breaker/probe2.mts`. It ran on its own database, dropped afterwards.
+
+- **M1 (the booking host is never told): accepted as resolved for this row, and lowered to Minor (still open).**
+  - The claim now matches the code: `arrival.ts:141-143` and the front-office card row both say "not yet".
+  - A test pins today's behaviour: `arrive()` tells the host when it is given the port, and tells nobody without it.
+  - `booking/runtime-ports.ts` is outside this row's touch list (the booking module's own file), so leaving its wiring to a follow-up is fair.
+  - **Condition:** the follow-up is written down only in a code comment. It is not in `BACKLOG.md` or `STATE.md` (AGENTS rule 10), so the tech lead should record it as a row. Its Done-when: a public booking tells its host once, and a staff booking where the booker is the host tells nobody.
+- **m1 (long names): partly resolved, still Minor.**
+  - Fixed: 100+100 ASCII names now give a 170-character label ending in "… (L-00001)", with the link.
+  - The same holds for 100+100 BMP CJK names.
+  - Still broken: `shortName` counts code points (160), but `labels.ts:239` counts UTF-16 units (200). So a name in non-BMP characters still loses both label and link for its own owner.
+  - Evidence: 100+100 emoji, 100+100 CJK Extension B, and even 60+40 Extension B characters each gave 1 row with `label: null, link: false`.
+  - Such names are rare, hence Minor.
+  - **Fix:** cut by UTF-16 length (`n.length`, without splitting a surrogate pair), or have `labels.ts` count code points.
+  - **Fail test:** a lead with 100 Extension B characters (`"𠀀".repeat(100)`) is labelled for its owner.
+- **m2 (the read key): resolved.** The labeller now gives O, who holds `agent/prospect:show`, 1 label; without the key it gives 0. The row's own test also covers this.
+- **m3 (protocol-relative links): resolved.**
+  - Refused: `//intranet`, `//evil-host/x`, `/\evil`, `///x` and `https://e`.
+  - Kept: `/front-office/leads/x` and `/a//b`, both app paths.
+- **m4 (case labels): resolved as a wording change.** `store.ts` now says plainly that case kinds have no case-scope check and names the X-row. That matches the code, and the gap is latent while every starter role holds `agent/case:view.all`.
+- **Nit, not a finding:** the new guard in `tellAssigned` (`arrival.ts:154`) compares firm ids as raw strings. Called with an upper-case id inside its own firm's scope, it throws "called in another firm's scope". No caller can reach this today, because `arrive` and `ctx.firmId` both pass lower-case ids. Comparing `firmScope(firmId).firmId` would close it.
+
+No Major is left. The open Minors are M1 (needs its follow-up row) and m1 (names in non-BMP characters).
+
+Verdict: Approve e37b88ec1bcbc6f57c6871286fe3cb713a186794

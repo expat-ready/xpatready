@@ -94,3 +94,35 @@
 * The full CI suite: the PR is draft, so only guard and module-cards ran.
 
 **Verdict: Block**: 2 Majors open, and both are small fixes. On the skill's scale this is "Ship after fixes". Fix M1 and M2 to approve; m1 is words only and should go in the same push. m2-m7 should be fixed or answered in the PR.
+
+## Re-review round 2 (P-277: only the new commits)
+**Head:** `e37b88ec1bcbc6f57c6871286fe3cb713a186794`. **Diff:** `git diff c97b85ca3..e37b88ec1`.
+The diff touches 4 code files, 2 MODULE rows and the suite. It also commits this folder's records: this review, the journey report and the break report. No code was edited by me.
+
+**What I ran**
+* `check_pf18n2_lead_notices.ts`: **32 passed, 0 failed**.
+* `typecheck.mjs`: PASS (15 known, 0 new).
+* `module-cards.py pr` and `tree`: **PASS** locally. GitHub's `module-cards` was still in progress when I read it.
+* **Mutation probe** (a scratch copy of the suite, outside the repo): the test's port was made to write on its own client, outside the caller's transaction.
+  * The new "DW5 fail (review M1)" line turns **red**.
+  * The rejection is the injected audit failure, so the line does reach the notify.
+  * As round 1 said, the old arrival rollback line stays green under that mutation.
+
+| # | Status | Evidence |
+|---|---|---|
+| M1 | Fixed | The suite's new Assign has a broken audit, which fails after `tellAssigned` (`leads.ts` `change()` audits after `fn`). The test asserts 0 rows and the owner unchanged, and the mutation turns it red |
+| M2 | Fixed | `api/src/features/MODULE.rows/PF-18n2.md` names both feature files and the suite; `module-cards.py pr` passes |
+| m1 | Fixed (words) | Both the card row and `arrival.ts:141-143` now say a booking host is told only once the booking door passes the port: not yet, a follow-up for the booking module. A test shows the host is told with the port and nobody without it |
+| m2 | Fixed | `shortName` cuts the name to 160 characters plus "…" (`lead-notification-labels.ts:20-21`); tested with 100 + 100 names: label ≤ 200, number kept, link kept |
+| m3 | Fixed | `READ_KEY` `agent/prospect:show` is checked before any read; tested without and with the key |
+| m4 | Fixed | `PAGE = /^\/(?!\/)…/`; `//evil-host/x` and `/\evil` are refused and an app path is kept (tested) |
+| m5 | Fixed (words) | The `NotificationView` comment now says case kinds have no case-scope check, and names the follow-up |
+| m6 | Fixed | `tellAssigned` throws when the in-scope firm differs, before anything is written. Tested both ways: firm B's scope refused with 0 rows; its own scope gives 1 row |
+| m7 | Fixed | The firm-B helper is deactivated, so the one user owns the form lead, is told once, and is named and linked in firm B's list (tested) |
+
+**Nits (no count, not blocking)**
+* `shortName` counts code points, but `labels.ts` caps `label.length` in UTF-16 units. So a name of ~95+ characters from outside the Basic Multilingual Plane (emoji, CJK Extension B) would still drop its label. Counting units in `shortName` would close it.
+* m6 compares the firm ids as given. Both callers pass lower-case ids (`firmScope`, the guard's firm); `firmScope(firmId).firmId` on both sides would make that explicit.
+* The new M1 line accepts any rejection. The mutation shows it is the audit failure today; asserting the message would keep it that way.
+
+**Round 2 verdict: Approve.** 0 Blockers, 0 Majors, 0 Minors open; 3 nits. Approved for `e37b88ec1bcbc6f57c6871286fe3cb713a186794` only.
