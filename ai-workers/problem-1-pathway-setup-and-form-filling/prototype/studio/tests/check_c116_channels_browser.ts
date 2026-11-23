@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { chromium, type Page } from "playwright";
+import { chromium, type Page, type Request } from "playwright";
 import { DB, FAMILY, PORT, call, itemsOf, needVisitorVisa, officerOf, openCase, prepare, sql } from "../acceptance/lib/m3.ts";
 
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
@@ -129,11 +129,19 @@ try {
   await dialog().getByText("Changed since you read it").waitFor({ timeout: 10_000 });
   ok("C11.6-11 (screen): the older read is refused with \"Changed since you read it\" and a Reload, nothing saved", /Reload, then make your change again/.test(await dialog().innerText()) && sql(`select coalesce(channel::text, '') from filing_item where id='${item(P, "IMM 5707")?.id}'`) === "");
   await state("changed-since-you-read-it", "[role=dialog]");
+  // Reload is done when its reload has landed and its notice goes: the dialog takes the new version and clears the refusal
+  // in one update (item-channels.tsx). A fixed 800 ms wait here hid a product race: Reload, a plain button inside the
+  // dialog's form, also submitted it, so a Save on the older version ran with the reload (a second 409, Save busy) and
+  // this Save was pressed on a busy button (red in packed runs on a busy machine, green alone). Reload is now
+  // type="button"; every PATCH sent from the Reload press until the reload lands is counted.
+  const patches: string[] = []; const seen = (r: Request) => { if (r.method() === "PATCH" && /\/channel$/.test(r.url())) patches.push(r.url()); };
+  p.on("request", seen);
+  const reloaded = p.waitForResponse((r) => r.request().method() === "GET" && /\/prepare/.test(r.url()), { timeout: 10_000 });
   await press(dialog().getByRole("button", { name: "Reload" }));
-  // Reload is done when its notice goes: the dialog takes the new version and clears the refusal in one update
-  // (item-channels.tsx). A fixed 800 ms wait here pressed Save before a slow reload had landed, on the older version,
-  // so the dialog stayed open and the walk stopped (red in packed runs on a busy machine, green alone).
+  await reloaded;
   await dialog().getByText("Changed since you read it").waitFor({ state: "detached", timeout: 10_000 });
+  p.off("request", seen);
+  ok("C11.6-11 (screen): Reload only reloads: it sends no change of its own (no PATCH while it runs)", patches.length === 0, patches);
   await press(dialog().getByRole("button", { name: "Save" }));
   await dialog().waitFor({ state: "detached", timeout: 15_000 });
   await row(P, "IMM 5707").and(p.locator('[data-channel="PDF_UPLOAD"]')).waitFor({ timeout: 15_000 });
