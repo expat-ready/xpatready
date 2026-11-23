@@ -1,0 +1,30 @@
+{
+  "item": "R1.23",
+  "name": "23 Firm logo, colour, sender name, favicon, banner",
+  "pr": 3037,
+  "sha": "955fd15b33a7f99ae839665a2fa71e9a58352d69",
+  "run_id": "45219450747",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45219450747",
+  "at": "2026-11-23T16:45:46.805Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_23.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45219450747/artifacts/14839448240",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.23-955fd15b33a7f99ae839665a2fa71e9a58352d69.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
