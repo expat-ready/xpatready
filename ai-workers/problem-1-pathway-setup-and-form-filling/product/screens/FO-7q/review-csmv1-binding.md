@@ -69,3 +69,36 @@ Each mutation is caught by at least two cases: (a) by the two pass cases, (b) by
 - RLS enforcement as xr_app inside the test: the scratch database connects as the owner. I relied on PF-12's own suite for that.
 
 Verdict: Approve on 4dcaea959
+
+## Round 2: diff-only re-review of 085e523ed (`git diff 4dcaea959 HEAD -- tests/check_fo7q_reads.ts`)
+
+**Verdict: Ship.** n1 and n2 are fixed. n3 stays out of this PR, as agreed: it is named in the PR for the trust row, and it is still fail closed.
+
+**Suite:** `check_fo7q_reads` gave 40 passed, 0 failed when I ran it.
+
+**The diff (test only):**
+- **For n2,** X's invoice gets one line by SQL, is issued through FO-7b's route, and gets a 300 CASH payment.
+- **The payments case** now requires that the officer sees that payment (`xPay`), as well as none on PA's case-less invoices.
+- **For n1,** the firm-B case now also checks `vis.scopeOf(ctxB)` itself: it must name neither X nor Y among the cases, nor PA or PA2 among the parties.
+
+**Mutation probe, repeated.** I used a scratchpad copy of the new suite, changing nothing in the repo. Three mutations, each applied both to the app's binding and to the test's adapter:
+- **(a) fail closed.**
+- **(b) widened within the firm:** the app gets `"ALL"`, and the adapter returns every case and person of the caller's firm.
+- **(c) leaking across firms:** the adapter returns firm A's cases and persons whatever the caller's firm.
+
+| DW9 case | (a) | (b) | (c) |
+|---|---|---|---|
+| pass: user-R lists X and Y, opens Y | **FAIL** | pass | pass |
+| fail: a case-less invoice with no prospect is absent and 404 | pass | **FAIL** | **FAIL** |
+| pass: an own-cases officer gets X and PA2, opens X | **FAIL** | pass | pass |
+| fail: never Y (404) nor PA's case-less invoice | pass | **FAIL** | **FAIL** |
+| **pass: payments follow the invoice (sees xPay, none of PA's)** | **FAIL** (now) | **FAIL** | **FAIL** |
+| **fail: firm B's scope names none of A's ids, its list none of A's invoices** | pass | pass | **FAIL** (now) |
+
+- **The payments case now fails under fail closed** (0 payments, so `xPay` is missing). In round 1 it passed vacuously, so n2 is closed.
+- **The firm-B case now fails under a cross-firm leak**: `bScope.cases` held A's case ids. In round 1 no mutation could make it fail, so n1 is closed.
+- **It still passes under (b).** That is expected: a widening within the firm cannot show up in firm B's answer, and (b) is caught by three other cases.
+
+No open findings remain against this diff.
+
+Verdict: Approve on 085e523ed
