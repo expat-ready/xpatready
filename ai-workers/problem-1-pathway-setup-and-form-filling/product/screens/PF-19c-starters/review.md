@@ -46,3 +46,32 @@ Verdict: Block
 Fix list: B1.
 
 Reviewer: Block c80fe79b146ce30bdbf2b48789376ebb6f9585e2
+
+## Re-review (diff c80fe79..a89c0be7)
+Scope: only `git diff c80fe79b146ce30bdbf2b48789376ebb6f9585e2..a89c0be7a558c926a94b4826cbf2721720686ff3` (migration, `check_pf8b_f7_data_walls.ts`, `check_pf19c_platform_starters.ts`). Checked out at da069a02d (the later commits are records only). Throwaway clusters and the :54329 scratch DB only; :4400 was not used.
+
+| Run | Result |
+|---|---|
+| `PGBIN=/usr/lib/postgresql/18/bin tsx --tsconfig api/tsconfig.json tests/check_pf8b_f7_data_walls.ts 14481` on the fix | **18/18 passed**: the sweep counts 45 guarded statements in 16 migrations, and the new pf19c window passes |
+| The same suite (port 14482), in a detached worktree of a89c0be7 with only the pf19c migration put back to c80fe79's text | **3 failed**: the sweep (names pf19c, `msg_template` and `msg_template_version`); the pf19c window (`P3018`, `new row violates row-level security policy for table "msg_template"`, `platform_firm_first() line 5`); and "the rest applies" (`P3009`). The worktree was removed afterwards and the working tree is clean |
+| `tsx --tsconfig api/tsconfig.json tests/check_pf19c_platform_starters.ts` | **7 passed, 0 failed**, including the rerun line and the write-once line |
+| `diff` of the two `DO $pf8b_f7$ … $pf8b_f7$;` blocks (pf5p3 with comment lines dropped vs pf19c) | They differ only in the `walls` array (`'msg_template', 'msg_template_version'`) and the data statement |
+
+### Findings
+**B1 (first round): resolved.**
+- **The wrapper matches the pattern.** It has the same `rolsuper OR rolbypassrls` test, and the lift runs only for the other runners. `LOCK TABLE … IN ACCESS EXCLUSIVE MODE` comes before any lift. `lifted` is read from `pg_class.relforcerowsecurity` and `gated` from `pg_trigger` (`0_pf12_firm_first`, `tgenabled = 'O'` only). After the insert both are restored in reverse order: the gate is enabled again, then FORCE is put back. For a bypass runner both arrays stay `'{}'`, so the restore loops do nothing and it writes exactly as before. On an error the whole DO statement rolls back, so FORCE and the gate come back with it, as in pf5p3. The window's "every walled table is forced again at the end" step passes. The comment now describes the F7 runner and names the pattern and the test.
+- **The plpgsql body is still idempotent.** The `WITH … INSERT … INSERT` is unchanged apart from indentation. `NOT EXISTS` is checked per key over firm-less EMAIL/`en` rows, and versions are inserted only for templates this run created. For the non-bypass runner the owner sees every row once FORCE is lifted, so the guard reads the real table. The starters test reruns the file and adds nothing (bypass path). The window shows 3|3 on the non-bypass path.
+- **The window is a real fail test.** Before the deploy, the seeded firm row is shown to be hidden from `xr_admin` (count 0) and visible to `postgres`. `want: "3|3"` fails both ways the old migration could go wrong: the run stopping (P3018, as reproduced above) or a silent zero-row insert. The mutation run above shows it failing.
+- **m2 (first round): resolved.** Both refusals must contain `write-once`, which is the wording of the pf19a trigger (`'% is write-once: % refused'`, `20261115004500_pf19a_platform_messages/migration.sql:372`).
+
+**New, Minor**
+- m4 (nit). The CTE `t` (`… ), t AS (INSERT …) … FROM t JOIN s ON s."key" = t."key"`) has the same name as the DO block's `DECLARE t text`. It works: PL/pgSQL does not substitute a scalar variable for a table reference or for `t."key"`, and the window plus the 3 versions prove it. Still, a reader has to know that rule. Renaming the CTE (for example to `made`) would remove the doubt. Not required.
+
+**Still open from the first round (Minor, unchanged by this diff):** m1 (wording drift guard once #3179 merges) and m3 (the rerun error is not reported on its own line).
+
+**Blocker:** none. **Major:** none.
+
+Journey score: unchanged in method. B1 was the only deduction ("task completed", "error recovery"), and the deploy now succeeds for the non-bypass runner, so the score is **10/10** for a89c0be7.
+
+Verdict: Approve
+Reviewer: Approve a89c0be7a558c926a94b4826cbf2721720686ff3 (code). The record-only commits 48a29c199 and da069a02d change no code.
