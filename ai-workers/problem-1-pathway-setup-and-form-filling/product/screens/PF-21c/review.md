@@ -87,3 +87,64 @@ Journey score: **8.1/10** (pass; `journey-test-reviewer-2026-11-23.md`).
 **Should fix in the same round:** m2 and m3 (small, both in this row's files).
 
 Verdict: Block 06bc784e1f2ba49eb5645f1df1247852e2a3a5dc
+
+## Round 2 (reviewer, 23 Nov 2026)
+
+Reviewed head **cc7e9a4be2d24bd140e977afde0e6d606c9bfc3f**: only `git diff 06bc784e..cc7e9a4b` (routes.ts, service.ts, the PF-21c migration edited in place, the Prisma schema, the suite). The migration is not on main yet, so editing it in place is safe.
+
+**Runs:**
+- `check_pf21c_breaches.ts`: 46/46.
+- Neighbours: `check_pf12_walls` 110/110, `check_pf8b_f4_migrations` 9/9. The `tsc` run on `api/` shows no breach errors.
+- **Mutation runs:** each fix was reverted one at a time in a scratch worktree, and the suite was run again (13 runs; worktree removed afterwards).
+- **SQL race:** two `xr_app` sessions used one Idempotency-Key, on a scratch database (dropped afterwards).
+- **API walk:** isolated copy `rv21c` on :4621, stopped afterwards (see the journey report's Round 2).
+
+### Round 1 and breaker findings: fixed?
+| Finding | Fix (file:line) | Test, and does it fail without the fix? | Status |
+|---|---|---|---|
+| M1 / B1: race between a change and a send | `FOR SHARE` in `notice_ready` (`migration.sql:368`) and in `notice_record` (`:399`) | suite:237. Without `FOR SHARE`: `raced 201`, so it **fails** | Fixed. The send waits, then answers 409 `NOT_DECIDED_TO_NOTIFY` (422 `BREACH_FIELDS` if only the firm was removed). No 500 |
+| m2: draft text emailed | A confirm needs `description` (`service.ts:83`) | suite:308. **Fails** without the fix | Fixed (walk J3) |
+| m3: notice recorded with no outbox rows | Each recipient needs this notice's outbox row (`migration.sql:400-408`) | suite:342. **Fails** without the fix | Fixed |
+| m4: email date | `YYYY-MM-DD HH:MM UTC` (`service.ts:234`) | none needed | Fixed: unambiguous. It is not in words, but nothing in the standards asks for words |
+| B2: notice to an all-suppressed firm | 409 `NOT_DELIVERABLE`, rolled back (`service.ts:244`) | suite:263. **Fails** without the fix | Fixed. Walk J4: 0 outbox rows and 0 notices, then 201 once the suppression is lifted |
+| B3: forged sender or template | Sender must be ACTIVE with an open grant holding `system/breach:manage`; template must be the notice's (`migration.sql:386-396`) | suite:345. **Fails** without the key check, and **fails** without the template check | Fixed (residual: note R1) |
+| B4: duplicate creates | Idempotency-Key, partial unique index (`:94`), advisory lock and hash in `plat_breach_open` (`:272-282`) | suite:249. **Fails** without the hash check. Still **passes without the lock** (n1) | Fixed. Walk: repeat → 200 with the same id; other body or other Owner → 422; missing → 400; key with a space → 400. SQL race: the second session waited 1.5 s and got `repeated` |
+| B5: decision rewritten | Trigger freezes reason and decider once notices exist (`:169`); `decided_by` moves only on a real change (`:313`) | suite:268. **Fails** without the fix | Fixed. Walk J5: Owner 2 sending the same decision → 200, decider unchanged; a new reason → 409 `DECISION_KEPT` |
+| B6: invisible or broken text | Refines at `service.ts:60-61` | suite:272. **Fails** without either refine | Fixed for the reported cases (n2) |
+| B7: alert ids in description | Description no longer quotes entity or key (`service.ts:149`) | suite:296. **Fails** without the fix | Fixed. The ids stay in `source_alert` (internal only) |
+
+**Checks on the new code. No defect found in:**
+- the 13-argument definer (owner, REVOKE and GRANT loop updated; no other caller);
+- the CHECK on `request_key`/`request_hash`, which matches `readIdempotencyKey`'s 0x21-0x7E rule;
+- `plat_breach_json` and the events, which strip the key and hash;
+- the immutability trigger, which covers the key;
+- migrate diff, which is empty (DW8);
+- deadlocks: the change takes no advisory lock, and two notices to different firms both take `FOR SHARE` and do not block each other.
+
+### New findings (round 2)
+**Blocker:** none. **Major:** none.
+
+**n1 (Minor, test gap).** suite:249's "three drafts at once" check still passes with `pg_advisory_xact_lock` removed from `plat_breach_open` (`migration.sql:274`); the requests are not truly concurrent. Only my two-session SQL run proves the lock. If the lock were ever bypassed, the backstop unique index raises a `unique_violation` that `refusedByDb` does not map, so the answer would be 500. *Fix:* hold a transaction across the second call (as the M1 test does), or map `plat_breach_request_key` to the repeat path.
+
+**n2 (Minor).** Other blank-looking characters still pass. A description of only U+3164 (Hangul filler) → 201 (walk J6). Others not covered: U+115F, U+1160, U+FFA0, U+2800, U+180E, U+2061-U+2064, variation selectors, tag characters. *Fix:* widen the class in `service.ts:61`, or require at least one `\p{L}\p{N}`.
+
+**n3 (nit).** The `BREACH_CHANGED` catch (`service.ts:250-256`) cannot be reached while `FOR SHARE` holds, and no test covers it. Reverting `FOR SHARE` with the catch still in place gives 201: the catch alone would not save the race. Harmless backstop.
+
+**n4 (nit).**
+- `NOT_DELIVERABLE` says "(bounced or complained)", but UNSUBSCRIBE and STAFF suppressions trigger it too.
+- Each refused attempt leaves a rendered file with no outbox row. That is accepted under the Messages design ("at most an orphan file … nothing is ever sent").
+
+**R1 (residual note, B3).** A firm-session caller could still forge a notice by writing its own `breach-notice:` outbox rows. That needs:
+- the breach id, which a firm learns only once its notice exists, and then it gets `ALREADY_SENT`;
+- a manage-holding staff id;
+- the template id.
+
+Low risk, defence in depth.
+
+**Unchanged by this diff:** m1, m5, m6 (deferrals for the tech lead).
+
+Journey score round 2: **8.8/10** (pass; `journey-test-reviewer-2026-11-23.md`, Round 2).
+
+Verdict: Approve cc7e9a4be2d24bd140e977afde0e6d606c9bfc3f (no open Blocker or Major; n1 and n2 are small follow-ups)
+
+Reviewer: Approve cc7e9a4be2d24bd140e977afde0e6d606c9bfc3f
