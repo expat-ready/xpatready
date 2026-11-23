@@ -41,7 +41,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fakeMail, type SentMail } from "../ports/mail.ts";
-import * as events from "../ports/events.ts";   // client money's names: from ports/events/client-money.ts once #2919 splits the file
+import { TRUST_EVENT } from "../ports/events/client-money-trust.ts";   // ports/events.ts is frozen since #2919 (P-785 (2)): the trust names live in their own file (review m11)
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -102,6 +102,22 @@ try {
   // holds agent/payment:record, PF-3's role keys); user-S: sample-solo's Owner.
   const tR = await signIn("user-R", "sample-firm"), tT = await signIn("user-T", "sample-firm"), tO = await signIn("user-O", "sample-firm"), tS = await signIn("user-S", "sample-solo");
   const staffR = sql(`select id from platform_staff where actor_id = 'user-R' and firm_id = '${A}'`);
+  // C5 through MoneyVisibilityPort (CS-MV1, on main since this check was approved; it replaces "fail closed until CS-K3's
+  // check is reachable"): an entry is visible when its case is (the case side's caseScope), or its party, with no case,
+  // is (the front office's own-versus-all on prospects). A bare fo_person with no prospect and no case is seen by nobody,
+  // and PF-3's seed gives every role agent/case:view.all and agent/prospect:view.all. So, truthfully for DW6 and DW10:
+  // PA is the subject of a prospect user-R owns; CASE (below) is a real case of firm A on PA; and the Case Officer role
+  // sees only its own (agent/case:view.all and agent/prospect:view.all taken from CASE_OFFICER), with user-O on no team
+  // and owning no prospect: "a Case Officer who cannot see a case gets an empty ledger page" (FO-7t.md DW10).
+  const CASE = "00000000-0000-4000-8000-0000000f07a1", W = "00000000-0000-4000-8000-0000000f07a2", CLIENT = "00000000-0000-4000-8000-0000000f07a3";
+  sql(`set session_replication_role = replica;
+    insert into workspace (id, key, label) values ('${W}', 'fo7t-check', 'FO-7t (Sample)');
+    insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values ('${CLIENT}', '${W}', 'sample-firm', '${A}', 1, 'Client a (Sample)', 'PERSON', '${PA}', 'seed:FO-7t-1');
+    insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status)
+      values ('${CASE}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07001', 'sample-firm', '${A}', '${CLIENT}', 'OPEN');
+    insert into fo_prospect (id, firm_id, number, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
+      values (gen_random_uuid(), '${A}', 'P-07001', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${PA}', '${PA}', '${staffR}', 'seed:FO-7t-1', now());
+    delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key in ('agent/case:view.all', 'agent/prospect:view.all')`);
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'seed:FO-7t-1', now())`);
   const audits = (action: string) => Number(sql(`select count(*) from audit_event where action = '${action}'`));
   const answerOf = (f: string) => sql(`select trust_answer from money_payment_settings where firm_id = '${f}'`);
@@ -166,11 +182,11 @@ try {
   ok("FO-7t DW4 fail (keys): a Case Manager and a Case Officer recording a deposit → 403, nothing written", keylessD.every((r) => r.status === 403) && sql(`select count(*) from money_payment`) === "0", keylessD.map((r) => r.status));
   const cards = await Promise.all([dep({ method: "CARD", amountMinor: 1000, idempotencyKey: "fo7t-card" }), dep({ method: "CARD_TERMINAL", amountMinor: 1000, idempotencyKey: "fo7t-card-terminal" })]);
   ok("FO-7t DW4 fail (P-567 (3)): CARD or CARD_TERMINAL into trust → refused (a field error or 409), nothing written", cards.every((r) => fieldError(r.status) || r.status === 409) && sql(`select count(*) from money_payment`) === "0", cards.map((r) => r.body));
-  const d1body = { method: "E_TRANSFER", amountMinor: 60000, trustRequestId: r1.body.id, reference: "ET-0001", evidenceFileKey: "firm/fo7t/evidence/et-0001.pdf", idempotencyKey: "fo7t-d1" };
+  const d1body = { method: "E_TRANSFER", amountMinor: 60000, trustRequestId: r1.body.id, reference: "ET-0001", evidenceFileKey: "firm/fo7t/evidence/et-0001.pdf", idempotencyKey: "fo7t-dep1" };
   const d1 = await dep(d1body), d1again = await dep(d1body);
   ok("FO-7t DW4 pass: a deposit → one payment received into TRUST, one DEPOSIT entry in the same transaction, one TRUST receipt; the same key again → 200, the same payment, nothing more",
     d1.status === 201 && d1again.status === 200 && d1again.body.paymentId === d1.body.paymentId
-    && sql(`select count(*) || ':' || min(received_into::text) from money_payment where idempotency_key = 'fo7t-d1'`) === "1:TRUST"
+    && sql(`select count(*) || ':' || min(received_into::text) from money_payment where idempotency_key = 'fo7t-dep1'`) === "1:TRUST"
     && sql(`select count(*) from money_trust_entry where payment_id = '${d1.body.paymentId}' and kind = 'DEPOSIT' and amount_minor = 60000`) === "1" && receiptsOf(d1.body.paymentId) === "1", [d1.body, d1again.body]);
   const raced = await Promise.all([dep({ method: "WIRE", amountMinor: 1500, idempotencyKey: "fo7t-replay" }), dep({ method: "WIRE", amountMinor: 1500, idempotencyKey: "fo7t-replay" })]);
   ok("FO-7t DW4 pass: the same new key sent twice at once → one payment (201 and 200)", raced.map((r) => r.status).sort().join() === "200,201" && sql(`select count(*) from money_payment where idempotency_key = 'fo7t-replay'`) === "1", raced.map((r) => r.status));
@@ -182,8 +198,8 @@ try {
     dup.status === 409 && dup.body.code === "DUPLICATE_REFERENCE" && sql(`select count(*) from money_payment where idempotency_key = 'fo7t-dup'`) === "0", dup.body);
   const dupOk = await dep({ method: "E_TRANSFER", amountMinor: 5000, reference: "et-0001", idempotencyKey: "fo7t-dup", duplicateReferenceAcknowledged: true });
   ok("FO-7t DW4 pass: the same duplicate, confirmed → recorded", dupOk.status === 201 && sql(`select count(*) from money_payment where idempotency_key = 'fo7t-dup'`) === "1", dupOk.body);
-  const keyReuse = await dep({ method: "WIRE", amountMinor: 7000, idempotencyKey: "fo7t-d1" });
-  ok("FO-7t DW4 fail: the same idempotency key with a different payment → 409, nothing written", keyReuse.status === 409 && sql(`select count(*) from money_payment where idempotency_key = 'fo7t-d1'`) === "1", keyReuse.body);
+  const keyReuse = await dep({ method: "WIRE", amountMinor: 7000, idempotencyKey: "fo7t-dep1" });
+  ok("FO-7t DW4 fail: the same idempotency key with a different payment → 409, nothing written", keyReuse.status === 409 && sql(`select count(*) from money_payment where idempotency_key = 'fo7t-dep1'`) === "1", keyReuse.body);
 
   // ------------------------------------------------------------------------------------------ DW5: the TRUST receipt
   const receiptMail = (number: string) => mail.sent.find((m) => m.attachments?.some((a) => a.filename === `${number}.pdf`));
@@ -201,7 +217,7 @@ try {
     sql(`select count(*) = max(substr(number, 3)::int) and count(*) = count(distinct number) from money_receipt where firm_id = '${A}'`) === "t");
 
   // --------------------------------------------------------------------------------------- DW6: ledger and balances
-  const CASE = "00000000-0000-4000-8000-0000000f07a1";   // a Sample case id: money_trust_entry.case_id has no key across the module wall
+  // CASE: firm A's Sample case on PA (set up above, for C5); money_trust_entry.case_id has no key across the module wall.
   const onCase = await dep({ method: "E_TRANSFER", amountMinor: 30000, caseId: CASE, reference: "ET-case", idempotencyKey: "fo7t-case" }), usd = await dep({ method: "WIRE", amountMinor: 12345, currency: "USD", reference: "W-USD", idempotencyKey: "fo7t-usd" });
   ok("FO-7t DW6 setup: a deposit on a case and a deposit in USD are recorded", onCase.status === 201 && usd.status === 201, [onCase.body, usd.body]);
   const bal = await call(tR, "GET", `/balances?personId=${PA}`);
@@ -256,7 +272,7 @@ try {
   ok("FO-7t DW10 fail: firm B reading firm A's client's ledger or balances gets 404 or an empty answer, never a figure",
     wallReads.every((r) => r.status === 404 || (r.status === 200 && (r.body.items ?? r.body.balances ?? []).length === 0 && !(r.body.totals ?? []).length)), wallReads.map((r) => r.body));
   const officer = await call(tO, "GET", `/ledger?personId=${PA}`), ownerRead = await call(tR, "GET", `/ledger?personId=${PA}`);
-  ok("FO-7t DW10 pass (C5, ruled, fail closed until CS-K3's check is reachable through a port): a Case Officer gets an empty ledger page; the Owner gets the entries",
+  ok("FO-7t DW10 pass (C5 through MoneyVisibilityPort): a Case Officer who sees neither PA's case nor PA gets an empty ledger page; the Owner, who sees both, gets the entries",
     officer.status === 200 && (officer.body.items ?? []).length === 0 && ownerRead.status === 200 && (ownerRead.body.items ?? []).length > 0, [officer.body, ownerRead.status]);
   ok("FO-7t DW10 pass: one audit line per change, by staff: each trust deposit, each request (held or sent), each cancel",
     audits("trust.deposited") === Number(sql(`select count(*) from money_payment where received_into = 'TRUST'`)) && audits("trust.request_created") === Number(sql(`select count(*) from money_trust_request`))
@@ -264,8 +280,8 @@ try {
     && sql(`select count(*) from audit_event where action like 'trust.%' and actor not like 'staff:%'`) === "0");
 
   // ------------------------------------------------------------------------------------------- DW18: the events
-  const EVENT = events.EVENT as Record<string, string>;
-  ok("FO-7t DW18 pass: the event name comes from EVENT.* (trust.deposited, contracts §8)", EVENT.TRUST_DEPOSITED === "trust.deposited");
+  const EVENT = TRUST_EVENT as Record<string, string>;
+  ok("FO-7t DW18 pass: the event name comes from TRUST_EVENT.* in ports/events/client-money-trust.ts (trust.deposited, contracts §8)", EVENT.TRUST_DEPOSITED === "trust.deposited");
   const evs = sql(`select coalesce(string_agg(payload::text, '|'), '') from module_event where type = 'trust.deposited' and subject_id = '${d1.body.paymentId}'`);
   ok("FO-7t DW18 pass: one trust.deposited per deposit (a replay adds none), payload ids, amount and currency only",
     sql(`select count(*) from module_event where type = 'trust.deposited'`) === sql(`select count(*) from money_payment where received_into = 'TRUST'`) && evs.split("|").length === 1
