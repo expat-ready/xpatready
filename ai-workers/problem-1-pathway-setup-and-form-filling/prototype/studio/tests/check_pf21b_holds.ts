@@ -247,8 +247,8 @@ try {
     placed.status === 201 && placed.body.scope.kind === "CASE" && placed.body.scope.id === c && placed.body.reason === body.reason && placed.body.placedBy === `staff:${OWNER}` && placed.body.active === true
     && holdLines(sampleFirm, "platform.legal_hold.placed") === placedBefore + 1, placed);
   const line = JSON.parse(sql(`select row_to_json(a) from (select actor, actor_type, entity_key, detail from audit_event where firm_id = '${sampleFirm}' and action = 'platform.legal_hold.placed' order by at desc, id desc limit 1) a`));
-  ok("PF-21b DW3 pass: the line names the hold, our system actor (never typed as the firm's own staff) and the staff member's id in its detail",
-    line.entity_key === placed.body.id && line.actor === "system:platform.register.legal-hold" && line.actor_type === "SYSTEM" && line.detail.staffId === OWNER, line);
+  ok("PF-21b DW3 pass (AUD-3a): the line names the hold, our staff member as ourstaff:<id> (OUR_STAFF, never typed as the firm's own staff) and their id in its detail",
+    line.entity_key === placed.body.id && line.actor === `ourstaff:${OWNER}` && line.actor_type === "OUR_STAFF" && line.detail.staffId === OWNER, line);
   const values = JSON.parse(sql(`select detail from audit_event where firm_id = '${sampleFirm}' and action = 'platform.legal_hold.placed' order by at desc, id desc limit 1`));
   ok("PF-21b DW3 pass (review M1, QA-594): the placement line carries the hold's values in full as after-values (scope, target, reason, placed by), no before",
     values.scope_after === "CASE" && values.target_after === c && values.reason_after === body.reason && values.placedBy_after === `staff:${OWNER}` && !Object.keys(values).some((k) => k.endsWith("_before")), values);

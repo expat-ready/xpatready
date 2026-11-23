@@ -3,7 +3,7 @@
 // does and why (ECR by digest, 2 tasks over two zones, HTTPS-only ALB, secrets supplied at deploy, the migration task,
 // SES, the wildcard zone and certificate, three Cognito pools): ../README.md "The service". Log groups and alarms are
 // PF-23c's; deploy, rollback and smoke test PF-8c's. Sizes, timings, DMARC and password policy are Sample.
-import { CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, aws_certificatemanager as acm, aws_cognito as cognito, aws_ec2 as ec2, aws_ecr as ecr, aws_ecs as ecs, aws_elasticloadbalancingv2 as elbv2, aws_kms as kms, aws_logs as logs, aws_rds as rds, aws_route53 as route53, aws_route53_targets as targets, aws_secretsmanager as sm, aws_ses as ses } from "aws-cdk-lib";
+import { CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, aws_certificatemanager as acm, aws_cognito as cognito, aws_ec2 as ec2, aws_ecr as ecr, aws_ecs as ecs, aws_elasticloadbalancingv2 as elbv2, aws_iam as iam, aws_kms as kms, aws_logs as logs, aws_rds as rds, aws_route53 as route53, aws_route53_targets as targets, aws_s3 as s3, aws_secretsmanager as sm, aws_ses as ses } from "aws-cdk-lib";
 import { Construct } from "constructs";
 
 export type Stage = "staging" | "production";
@@ -53,6 +53,9 @@ export interface AppServiceProps {
   /** PF-23c's app log group (`/xr/<stage>/app`): both containers send stdout and stderr here (PF-8b F1). Required, so a
    *  service can never be built that logs nowhere. */
   appLogs: logs.ILogGroup;
+  /** PF-F1c: the cloud FilesPort's bucket (the documents bucket, KMS-encrypted with `key`). Required, so a service is
+   *  never built that stores firms' files on its own disk. */
+  files: s3.IBucket;
 }
 
 export class AppService extends Construct {
@@ -102,7 +105,17 @@ export class AppService extends Construct {
       removalPolicy: RemovalPolicy.RETAIN,
     });
     const ownerUrl = secret("DATABASE_OWNER_URL"); // the table owner's address: migrations and the job runner
-    const appSecrets: Record<string, sm.Secret> = { DATABASE_URL: ownerUrl, ...Object.fromEntries(SERVICE_SECRETS.map((n) => [n, secret(n)])) };
+    // PF-F1c: the key the S3 download links are signed with (PF-F1b), made by Secrets Manager as 48 random letters and
+    // digits: nobody types or sees it, so it needs no deploy step (rotating it ends the links already handed out, which
+    // last 5 minutes). Not a placeholder: PF-24's loader would take the placeholder's JSON as a key.
+    const linkKey = new sm.Secret(this, "SecretPLATFORM_FILES_LINK_KEY", {
+      secretName: `xr/${stage}/PLATFORM_FILES_LINK_KEY`,
+      description: `Expat Ready ${stage}: PLATFORM_FILES_LINK_KEY, the S3 download links' signing key (random, made by Secrets Manager)`,
+      generateSecretString: { passwordLength: 48, excludePunctuation: true, includeSpace: false },
+      encryptionKey: key,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+    const appSecrets: Record<string, sm.Secret> = { DATABASE_URL: ownerUrl, ...Object.fromEntries(SERVICE_SECRETS.map((n) => [n, secret(n)])), PLATFORM_FILES_LINK_KEY: linkKey };
 
     // --- Cognito: three separate pools (PF-4b staff, PF-4s our own staff, PF-4p clients)
     // QA-643 (PF-4b; AWS's cognito-idp API model 2016-04-18, botocore 1.44.9, read 21 Nov 2026): a staff member signs in
@@ -150,6 +163,8 @@ export class AppService extends Construct {
         PLATFORM_COGNITO_USER_POOL_ID: pools.staff.userPoolId,
         PLATFORM_COGNITO_CLIENT_ID: staffClient.userPoolClientId,
         PLATFORM_SES_REGION: region,
+        // PF-F1c: the cloud FilesPort (api/src/platform/files/choose.ts): the documents bucket, the data key, this region
+        PLATFORM_FILES: "s3", PLATFORM_FILES_BUCKET: props.files.bucketName, PLATFORM_FILES_KMS_KEY_ID: key.keyArn, PLATFORM_FILES_REGION: region,
         ...(noDomain ? {} : { PLATFORM_ADDRESS_SUFFIX: domain }), // PF-8b F2b: firm addresses under this stack's zone (F3: no-domain mode sets the load balancer's name below)
       },
       secrets: Object.fromEntries(Object.entries(appSecrets).map(([n, s]) => [n, ecs.Secret.fromSecretsManager(s)])),
@@ -157,6 +172,14 @@ export class AppService extends Construct {
       logging: ecs.LogDrivers.awsLogs({ logGroup: props.appLogs, streamPrefix: "studio" }), // PF-8b F1: to PF-23c's group
     });
     repository.grantPull(this.task.obtainExecutionRole());
+    // PF-F1c: the task reads and writes keys with a folder (`*/*`; that the folder is the firm id, `<firm id>/<key>`, is the
+    // adapter's rule, AG-9-17, not IAM's) and nothing else in the bucket: no delete
+    // (a deleted file is a tombstone put, PF-Fd), no other bucket. ListBucket gives a missing key 404, not 403, and serves
+    // usedBytes' per-firm listing. The data key only through S3 in this region.
+    const taskRole = this.task.taskRole;
+    taskRole.addToPrincipalPolicy(new iam.PolicyStatement({ actions: ["s3:GetObject", "s3:PutObject"], resources: [props.files.arnForObjects("*/*")] }));
+    taskRole.addToPrincipalPolicy(new iam.PolicyStatement({ actions: ["s3:ListBucket"], resources: [props.files.bucketArn] }));
+    taskRole.addToPrincipalPolicy(new iam.PolicyStatement({ actions: ["kms:GenerateDataKey", "kms:Decrypt"], resources: [key.keyArn], conditions: { StringEquals: { "kms:ViaService": `s3.${region}.amazonaws.com` } } }));
 
     // --- the migration task: the owner's address only, the same image, `prisma migrate deploy`
     this.migration = new ecs.FargateTaskDefinition(this, "Migrate", { cpu: 512, memoryLimitMiB: 1024 }); // Sample sizes

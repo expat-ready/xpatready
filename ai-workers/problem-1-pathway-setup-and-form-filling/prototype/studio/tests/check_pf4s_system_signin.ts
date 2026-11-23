@@ -7,7 +7,7 @@
 // "existing" route and test-only system routes (a refund route: never in api/src). No model call (US$0).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf4s_system_signin.ts
 import "reflect-metadata";
-import { Controller, Get, Module, Param, Post, SetMetadata } from "@nestjs/common";
+import { Body, Controller, Get, Module, Param, Post, SetMetadata } from "@nestjs/common";
 import { APP_GUARD, NestFactory } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -64,6 +64,8 @@ const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
 const { AnyStaff, PLATFORM_ACCESS } = await import("../api/src/platform/identity/keys.ts");
 const { requestMiddleware } = await import("../api/src/platform/observability/hook.ts");
+const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
+let trailDb: PrismaClient | undefined;   // AUD-3a's test route writes through it (set below)
 const { SystemLocalIdentity, SYSTEM_LOCAL_ISSUER } = await import("../api/src/platform/system-identity/local.ts");
 const { SYSTEM_IDENTITY_PORT, SystemIdentity, systemIdentityPortFromConfig } = await import("../api/src/platform/system-identity/service.ts");
 const { SystemGuard, SystemPlaneWall, assertSystemRoutesDeclared } = await import("../api/src/platform/system-identity/guard.ts");
@@ -85,6 +87,13 @@ let handled = 0;
   @Post("refunds/:id") @SystemKeys("system/billing:refund") refund(@Param("id") id: string) { handled++; return { refunded: id }; }
   @Post("nobody") @SystemKeys("system/test:nobody-holds-this") nobody() { handled++; return { ok: true }; }
   @Post("firms/:id/lock") @SystemKeys("system/firm:suspend") @SystemReason() lock(@Param("id") id: string) { handled++; return { locked: id }; }
+  // AUD-3a: a test route that writes one line on a firm's own trail, as PF-25w's address change will (the actor word comes
+  // from the request: the guard's req.systemStaff through hook.ts).
+  @Post("firms/:id/trail") @SystemKeys("system/firm:address") async trail(@Param("id") id: string, @Body() b: { actor?: string }) {
+    const actor = b?.actor ?? (await import("../api/src/platform/observability/log.ts")).requestScope.getStore()?.audit?.()?.actor ?? "none";
+    await trailDb!.$transaction((tx) => auditEvent.record(tx as never, { firmId: id, actor, action: "platform.check.aud3a", entity: "platform_firm", entityKey: `aud3a-${id.slice(0, 8)}`, summary: "AUD-3a test line." }));
+    return { ok: true };
+  }
 }
 // Routes that must stop the start-up.
 @Controller("api/system") class UndeclaredController { @Get("undeclared-thing") thing() { return 1; } }
@@ -475,6 +484,15 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   ok("PF-4s part 2 (PF-28): each staff route answers an unknown field 422 naming it and a wrong type 422, writes one REFUSED line (INVALID) and changes nothing",
     p28Wrong.length === 0 && rolesTyped.status === 422 && sql(`select count(*) from plat_system_staff`) === staffBefore, { p28Wrong, rolesTyped });
   ok("PF-4s part 2: audit text is cut by code point, never splitting a character", lineText("😀😀😀", 2) === "😀😀" && lineText("a\u0000b", 5) === "ab");
+
+  // ---------------------------------------------------------- AUD-3a: our staff's actor word on a firm's trail
+  trailDb = db;
+  const adm = await signedNow(ADMIN), trailOf = () => sql(`select actor_type || '|' || actor || '|' || firm_id from audit_event where entity_key = 'aud3a-${firmId.slice(0, 8)}'`);
+  const trailCall = await call(A.base, "POST", `/api/system/test/firms/${firmId}/trail`, { token: adm, body: {} });
+  ok("AUD-3a pass: a firm-trail line written in our staff's request (through the system guard) is OUR_STAFF, ourstaff:<their id>, on that firm's trail",
+    trailCall.status === 201 && trailOf() === `OUR_STAFF|ourstaff:${ADMIN}|${firmId}`, { trailCall, line: trailOf() });
+  const asFirm = await call(A.base, "POST", `/api/system/test/firms/${firmId}/trail`, { token: adm, body: { actor: `staff:${ADMIN}` } });
+  ok("AUD-3a fail: in our staff's request a firm-trail line under a firm staff word is refused (500, nothing more written)", asFirm.status === 500 && sql(`select count(*) from audit_event where entity_key = 'aud3a-${firmId.slice(0, 8)}'`) === "1", asFirm);
 
   // ------------------------------------------------------------------------ DW8: everything else is as it was
   const simulated = await call(A.base, "GET", "/api/probe", { actor: "user-A" }), nobody = await call(A.base, "GET", "/api/probe"), linkOnly = await call(A.base, "GET", "/api/probe", { token: "some-link-token", actor: "user-A" });
