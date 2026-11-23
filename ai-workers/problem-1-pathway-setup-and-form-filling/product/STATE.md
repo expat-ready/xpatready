@@ -2,7 +2,7 @@
 
 current_lead: local_f2d41d71-f0b2-4c38-87ac-53b3fcfa604a Lead 6 · 23 Nov 16:57 IST (took over from Lead 5 (local_6cdede15) at ~336k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 16:57 IST: hand-over Lead 5 to Lead 6
+updated: 2026-11-23 17:05 IST: Lead 6 took over; CS-MV2 ruled Major; #2590 head c836593b6 (guards in 4 parts) in CI, needs a new Approve, `/run full`, Lead read
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
@@ -14,12 +14,13 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **#3035 last:** Lead 5 ruled (#2915) the own-migration guard lands first: PR #3254 by sprint (a) session_01MXNda7DgUndbix9Pa5XNRU, unread; round 5 on #3035 allowed; P-423 read and the manifest row owed. #2472 to close.
 **Sessions:** Lead O 2 local_f6d6bb60, Lead B 4 local_9e318c45 (first: CS-MV2, possible Critical), sprint (b) 2 cloud (F2, F4 after #2590; claude.ai id ends wtWY3ThS; check its model label), standby Lead 7 local_1117b08b; one more standby owed at the founder's next typed turn on the desktop (Remote Control refuses starts). Lead O and Lead B 3 archived; their folders are now the app's spare pool.
 **Founder A322 (typed ~16:49, "follow your recommendations"):** AWS staging kept (~US$0.18/h reported, no bill seen); private repository only after the three checks pass, NOTHING created (Lead O 15:03: 1 partly, 2 NOT met, 3 met); four temp copies deleted. Disk 7.6 GB, swings 3 to 9 (macOS update snapshot? unproven); Mac sessions told: no heavy disk use.
-**Owed by the Lead:** A316 visual plan page; proven recount and full report; ETA board; app view of #3178 #3180 #3185 #3174 lanes (awaiting input, unread); about 28 PR questions, most unread (#3183 #3222 #3218 full runs held for the pause); keen-pike lane unread; #3193 base to main (refused twice: ask the founder); watch script queue section crashes on GitHub 504; private-sync run. Records: CS-MV2, FO-7w1, PF-21b 3r, FO-9b 2m, PF-21f rows to BACKLOG.
+**Owed by the Lead:** A316 visual plan page; proven recount and full report; ETA board; app view of #3178 #3180 #3185 #3174 lanes (awaiting input, unread); about 28 PR questions, most unread (#3183 #3222 #3218 full runs held for the pause); keen-pike lane unread; #3193 base to main (refused twice: ask the founder); watch script queue section crashes on GitHub 504; private-sync run. **CS-MV2 ruled Major (Lead 6): row in `history/STATE-2026-11-23-1705-lead6-cs-mv2-and-older-leads.md`, first after the pause.** Records: CS-MV2, FO-7w1, PF-21b 3r, FO-9b 2m, PF-21f rows to BACKLOG.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A323 | 23 Nov ~17:00 | why not Gitea with autoscaling Kubernetes runners | Lead 5 answers in chat (host-research-report, notes folder local_a085acf2); answer not confirmed by Lead 6 |
 | A318 | 23 Nov ~14:04 (pressed in Lead 3) | "Yes, pause": NO NEW PRODUCT LABELS until the tooling list lands, 21:00 IST latest; exceptions a main fix or qa Blocker; nothing dequeued | in force; gate self-labels, hold being checked; A317 and this in full: A316 file |
 | A321 | 23 Nov | approves the Lead recommendations above; private repository: one question at a time | recorded: A316 file |
 | A319 | 23 Nov ~14:30 | why so slow while product is paused | answered; stack refresh sent to sprint (b); A320 "Yes, land as one" (#2590, ten PRs, after #2457/#2605 fixes and the Lead read): A316 file |
@@ -45,7 +46,7 @@ Red-row lanes line of 21 Nov (with the AWS root and Node 22 approvals): word for
 
 ## Leads, in order
 **New account from 23 Nov:** Lead 1 (local_a085acf2, from 23 Nov 11:24 IST), Lead 2 (local_2158cd24, from 23 Nov 11:59 IST), Lead 3 (local_cf20dbb4, from 23 Nov 12:47 IST), Lead 4 (local_86bd4439, from 23 Nov 13:54 IST), Lead 5 (local_6cdede15, from 23 Nov 15:13 IST), Lead 6 (local_f2d41d71, from 23 Nov 16:57 IST).
-**New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST), Lead 2 (local_d718f32a, from 22 Nov 11:17 IST), Lead 3 (local_6efc4ae3, from 22 Nov 13:05 IST), Lead 4 (local_bcc6ed82, from 22 Nov 14:18 IST), Lead 5 (local_fec215ea, from 22 Nov 17:10 IST), Lead 6 (local_d4609e9d, from 22 Nov 19:04 IST), Lead 7 (local_d7cc573e, from 22 Nov 21:14 IST), Lead 8 (local_82fee93b, from 22 Nov 23:59 IST), Lead 9 (local_482034a7, from 23 Nov 02:15 IST), Lead 10 (local_d4a6b1cd, from 23 Nov 09:38 IST).
+**Leads of 22 Nov (account before):** word for word in `history/STATE-2026-11-23-1705-lead6-cs-mv2-and-older-leads.md`.
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
 **Series 1: Leads 1 to 41, before 9 Nov 17:48 IST**, never renamed or renumbered: the full list, word for word, is in `history/STATE-2026-11-09-2130-lead2s2.md` ("Leads, in order").
