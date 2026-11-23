@@ -2,7 +2,7 @@
 
 current_lead: local_def18400-f970-4299-9d3c-ba36f0e0c147 Lead 13 · 24 Nov 00:48 IST (took over from Lead 12 (local_4e13ee93) past 200k after its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 00:53 IST: Lead 13 started, check d87020f3. #3304 no red yet, 8 shards and 2 regression parts running. Lead reads: #3065 be4590f45 posted (label after run 45246239005 and the 45104967343 covered line); #3207 54041dca7's IRM fix read OK, the read line NOT posted on purpose (the gate would label it before #3065 and #3185); #3219 read OK, re-stamp to 20261124090000 asked. Owed: #3277, #3174 review.ts.
+updated: 2026-11-24 01:06 IST: Lead 13, check d87020f3. #3189 MERGED 00:59. Queue checks #3190, #3180, #3173+#3216, #3193+#3289 together; #3296 #3179 queued. #3185 left on a conflict, its lane merging main (typed). #3302 round 3 allowed, #3219 re-stamp 20261124090000 typed to its lane. #3276 #3203 full runs finished no red. #3065 read posted (label after 45246239005 and the 45104967343 covered line). #3207 read OK, line held for order. #3234 after #3185, hold. No lane: CS-D5 p2 (pdfjs gate), FO-5s later part, FO-7t 2-3, the Licence/My account query-key crash row. qa B idle until #3190. Owed reads: #3277, #3174.
 
 ## Hand-over Lead 12 → Lead 13, 00:48 IST 24 Nov (the block before and Lead 12's last update line, word for word, still owed where not repeated: `history/STATE-2026-11-24-0050-lead12-before-handover.md`)
 
