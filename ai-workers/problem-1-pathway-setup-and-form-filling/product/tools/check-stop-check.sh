@@ -52,6 +52,26 @@ printf '#!/bin/bash\necho "NEW CHECK: something new is wrong"; exit 1\n' > "$P/t
 git -C "$C" update-index --assume-unchanged "$PRODREL/tools/check-docs.sh"; stop
 ok "a check-docs line of a kind the hook does not know blocks an app-only lane" "$([ "$blocked" = block ] && jq -r .reason <<< "$out" | grep -q '^NEW CHECK: something new' && echo 1)" "$out"
 git -C "$C" update-index --no-assume-unchanged "$PRODREL/tools/check-docs.sh"; cp "$T/check-docs.keep" "$P/tools/check-docs.sh"
+# 2b. ENF-772 (#2599, E7): check-docs names a register row whose enforcer file is not on the branch. The line blocks
+# the lane that deleted or renamed that file; a lane that did not touch it only gets the warning; a line saying the
+# enforcer check could not run blocks every lane (fail closed).
+mkdir -p "$C/$APPREL/tools"; echo '#!/bin/bash' > "$C/$APPREL/tools/gate-x.sh"; git -C "$C" add -A; git -C "$C" commit -qm gate; git -C "$C" update-ref refs/remotes/origin/main HEAD
+reg() { printf '#!/bin/bash\necho "%s"; exit 1\n' "$1" > "$P/tools/check-docs.sh"; git -C "$C" update-index --assume-unchanged "$PRODREL/tools/check-docs.sh"; }
+unreg() { git -C "$C" update-index --no-assume-unchanged "$PRODREL/tools/check-docs.sh"; cp "$T/check-docs.keep" "$P/tools/check-docs.sh"; }
+GONE='RULES REGISTER: P-1 is enforced by gate-x.sh, but no such file is on this branch: fix the Enforced by cell (prose, or the real file), or write \"owed\" if it is not built yet (E7, P-611a)'
+lane runtime/del; git -C "$C" rm -q "$APPREL/tools/gate-x.sh"; git -C "$C" commit -qm del; reg "$GONE"; stop
+ok "E7: a lane that deleted a register row's enforcer file is refused on that RULES REGISTER line" \
+  "$([ "$blocked" = block ] && jq -r .reason <<< "$out" | grep -q '^RULES REGISTER: P-1 is enforced by gate-x.sh' && echo 1)" "$out"
+unreg; lane runtime/mv; git -C "$C" mv "$APPREL/tools/gate-x.sh" "$APPREL/tools/gate-y.sh"; git -C "$C" commit -qm mv; reg "$GONE"; stop
+ok "E7: a lane that renamed the enforcer file is refused too" "$([ "$blocked" = block ] && jq -r .reason <<< "$out" | grep -q '^RULES REGISTER: P-1 is enforced by gate-x.sh' && echo 1)" "$out"
+unreg; lane screens/app3; echo 'export const a = 5;' > "$C/$APPREL/web/src/a.ts"; git -C "$C" commit -qam app; reg "$GONE"; stop
+ok "E7: an app-only lane that did not touch the enforcer gets the register line as a warning, not a block" \
+  "$([ "$blocked" = none ] && jq -r '.systemMessage // ""' <<< "$out" | grep -q 'RULES REGISTER: P-1 is enforced by gate-x.sh' && echo 1)" "$out"
+for l in "RULES REGISTER: git could not list this copy's files, so no enforcer file was checked (E7)" "RULES REGISTER: the enforcer-file check stopped with an error, so no enforcer file was checked (E7)"; do
+  unreg; lane screens/app4; echo 'export const a = 6;' > "$C/$APPREL/web/src/a.ts"; git -C "$C" commit -qam app; reg "$l"; stop
+  ok "E7: '${l:16:40}...' blocks even an app-only lane (the check did not run)" "$([ "$blocked" = block ] && jq -r .reason <<< "$out" | grep -qF "$l" && echo 1)" "$out"
+done
+unreg
 # 3. Nothing to compare with: every line still blocks (fail closed).
 lane screens/app2; echo 'export const a = 3;' > "$C/$APPREL/web/src/a.ts"; git -C "$C" commit -qam app
 git -C "$C" update-ref -d refs/remotes/origin/main; git -C "$C" branch -q -m main old-main 2>/dev/null; stop
