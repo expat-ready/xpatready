@@ -1,5 +1,5 @@
 # MEASUREMENT ONLY, branch claude/lead-o2-pack, never merged (founder through Lead 5, 23 Nov; Pilot A, US$0): pack-config.json says
-# which shards (8 at most a push), how many suites at once and which repeat; at most 4 machines at once. Read-only token, no secrets.
+# which shards (8 at most a push), how many suites at once and which repeat; at most 2 machines at once. Read-only token, no secrets.
 # GitHub offers workflow_dispatch only for a workflow file on the default branch, so it runs on a push that changes the
 # marker file pack-go (as claude/lead-o-ci-measure ran on a push).
 name: lead-o2-pack
@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 75
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         run: ${{ fromJSON(needs.plan.outputs.runs) }}
         shard: ${{ fromJSON(needs.plan.outputs.shards) }}

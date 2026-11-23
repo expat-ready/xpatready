@@ -14,7 +14,7 @@ deal = subprocess.run(["bash", RS, "--demo", "--skip-quarantined", "--shard", f"
                       capture_output=True, text=True, check=True).stdout.split()
 assert deal, "the shard's deal is empty"
 def serial(f):
-    if f in ("check_studio_browser.cjs", "check_runtime_r1a.ts"): return True
+    if f in ("check_studio_browser.cjs", "check_runtime_r1a.ts", "check_pf4_identity.ts"): return True
     try: t = open(f"{TESTS}/{f}").read()
     except FileNotFoundError: return True   # a suite outside tests/ (case engine, drafting guard): not judged, so serial
     usage = next((l for l in t.splitlines() if f"studio/tests/{f}" in l), "")
