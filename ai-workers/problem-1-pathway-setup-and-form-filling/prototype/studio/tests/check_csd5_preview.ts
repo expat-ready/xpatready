@@ -3,12 +3,12 @@
 // short-lived, single-use, nameless link. Requirement text: AG-9-24 (preview through a short-lived signed GET; every
 // preview audited), AG-9-16 (signed, never public), AG-9-53 (only those who can see the case), AG-9-20 / AG-9-55 (never an
 // unscanned file), AG-9-32 (every read leaves a record). Each rule has a passing and a failing case:
-//   DW1  a clean PDF and a clean PNG get a link and their bytes with the download's four headers; a file still being
-//        checked → 409 "Checking for viruses…", a removed one → 410 "Removed — infected file", no link made
+//   DW1  a PDF and a PNG get a link and their bytes with the download's four headers; the answer says NOT_SCANNED, never a
+//        false CLEAN (the scan gate, 409/410, is R1.66's and joins when PF-F3 lands: Lead 10's ruling on #3188)
 //   DW2  the link answers 404 after 300 s (in-process, fixed clock), for another firm, for another staff member of the
 //        same firm and with one character altered; 200 inside its life for its own person
 //   DW3  making a link writes one "previewed" audit line naming the document; a second fetch of the same link → 404 and
-//        no line (single use); a refused link (404, 403, 409, 410) writes none
+//        no line (single use); a refused link (404, 403) writes none
 //   DW4  someone who cannot see the case gets 404 in the download's words; a client gets the download's status (403)
 //   DW5  the URL and the token's readable part hold no firm name, no person's name and no file name
 // Synthetic Sample documents only. No model call (US$0).
@@ -65,10 +65,6 @@ await main("CS-D5 preview", "short-lived single-use nameless link, the download'
   const png = (await link(pngDoc, OFFICER)).body as Link;
   const pb = await fetchBytes(png?.url ?? "/", OFFICER);
   ok("CS-D5 DW1 pass: a clean PNG gets a link and its bytes as image/png", png?.media_type === "image/png" && pb.status === 200 && pb.type.startsWith("image/png") && pb.bytes[1] === 0x50, [png, pb.status]);
-  // DW1 scan states: waiting on the tech lead's choice (PR question). Case files have no scan state on main (PF-F3 not
-  // built); this check names the cases so they cannot be skipped silently.
-  ok("CS-D5 DW1 fail: a file still being checked → 409 \"Checking for viruses…\", no link (needs a scan state on main: PF-F3)", false, "waiting: no scan state on main");
-  ok("CS-D5 DW1 fail: a removed file → 410 \"Removed — infected file\", no link (needs a scan state on main: PF-F3)", false, "waiting: no scan state on main");
 
   // ---- DW3 one line per opening; single use
   ok("CS-D5 DW3 pass: making the link wrote one \"previewed\" line for the document", previewed(pdfDoc) === before + 1, [before, previewed(pdfDoc)]);

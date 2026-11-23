@@ -4,8 +4,9 @@
 //   AG-9-53: only those who can see the case, on every read path (the link and the bytes each reach the case again).
 //   AG-9-32: every read leaves a record: one "previewed" line per opening, and the token is single use, so no read
 //   goes unrecorded (concept M2). AG-09 line 426: "today 300s".
-// The scan gate (AG-9-20, AG-9-55: 409 "Checking for viruses…", 410 "Removed — infected file") reads `scanStateOf`;
-// case files have no scan state on main (PF-F3 not built): see the tech lead's question on the PR.
+// The scan gate (AG-9-20, AG-9-55: 409 "Checking for viruses…", 410 "Removed — infected file") is R1.66's and joins
+// when PF-F3 lands (Lead 10's ruling on #3188): case files have no scan state yet, so the answer says NOT_SCANNED and
+// never claims CLEAN. Files are read as they are stored today, through the download's own read path.
 // The signer is `case-preview-links.ts` (pure).
 import { Controller, Get, Headers, HttpCode, HttpStatus, Inject, Injectable, Param, Post, Res } from "@nestjs/common";
 import type { Response } from "express";
@@ -15,31 +16,25 @@ import { actorOf, Audit, CaseRead, fail, type Actor } from "./core.ts";
 import { PlatformClock } from "./platform/identity/port.ts";
 import { detect } from "./platform/files/file-type.ts";
 
-export type ScanState = "CLEAN" | "SCANNING" | "QUARANTINED" | "NOT_SCANNED";
+/** What the answer says of a file's virus scan: case files have none until PF-F3 (R1.66). */
+export const SCAN_STATE = "NOT_SCANNED" as const;
 const GONE = "No such document.";   // the download's 404 words, for every refusal of a link (leaks nothing)
-
-/** The scan state of a case document. Case files have no scan state on main yet (PF-F3, CS-D1 part 1): see the PR's
- *  question; until it is answered this says NOT_SCANNED and never claims CLEAN. */
-export function scanStateOf(_document: { id: string }): ScanState { return "NOT_SCANNED"; }
 
 @Injectable()
 export class DocumentPreviews {
   constructor(@Inject(CaseDocuments) private readonly docs: CaseDocuments, @Inject(Audit) private readonly audit: Audit,
     @Inject(PreviewLinks) private readonly links: PreviewLinks, @Inject(PlatformClock) private readonly clock: PlatformClock) {}
 
-  /** POST /runtime/documents/:id/preview-link: the case reached as the download reaches it; a file being checked or
-   *  removed makes no link; else one "previewed" line and a link for this asker. */
+  /** POST /runtime/documents/:id/preview-link: the case reached as the download reaches it, then one "previewed" line
+   *  and a link for this asker. */
   async link(actor: Actor, documentId: string) {
     const x = await this.docs.reachDocument(actor, documentId);
-    const scan = scanStateOf(x.document);
-    if (scan === "SCANNING") fail("Checking for viruses…", HttpStatus.CONFLICT);
-    if (scan === "QUARANTINED") fail("Removed — infected file", HttpStatus.GONE);
     const bytes = await x.bytes();
     const found = detect(new Uint8Array(bytes));
     const { token, expiresAt } = this.links.sign(x.workspaceId, actor.id, x.document.id, this.clock.now());
     await this.audit.log(x.workspaceId, actor.id, "previewed", "case document", x.document.id, `${actor.name} previewed ${x.typeName} on case ${x.caseId.slice(0, 8)}`);
     return { url: `${PREVIEW_PATH}${token}`, expires_at: expiresAt, media_type: x.document.mediaType, file_name: x.document.fileName, size_bytes: x.document.sizeBytes,
-      uploaded_at: x.document.uploadedAt.toISOString(), scan, contains_scripts: found.ok ? found.activeContent.length > 0 : false };
+      uploaded_at: x.document.uploadedAt.toISOString(), scan: SCAN_STATE, contains_scripts: found.ok ? found.activeContent.length > 0 : false };
   }
 
   /** GET /runtime/document-previews/:token: the token's asker, unaltered, unexpired and unused; the case reached again
@@ -51,7 +46,6 @@ export class DocumentPreviews {
     const now = this.clock.now(), t = this.links.check(token, x.workspaceId, actor.id, now);
     if ("refused" in t || t.document !== x.document.id) fail(GONE, HttpStatus.NOT_FOUND);
     const ok = t as { mac: string; exp: number };
-    if (scanStateOf(x.document) === "SCANNING" || scanStateOf(x.document) === "QUARANTINED") fail(GONE, HttpStatus.NOT_FOUND);
     if (!this.links.consume(ok.mac, ok.exp, now)) fail(GONE, HttpStatus.NOT_FOUND);
     return { bytes: await x.bytes(), media: x.document.mediaType, name: x.document.fileName };
   }
