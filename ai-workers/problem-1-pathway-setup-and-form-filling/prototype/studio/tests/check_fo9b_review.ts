@@ -40,8 +40,10 @@ const { EVERYONE_SEES_ALL, writeSetting } = await import("../api/src/platform/se
 const { auditEvent, platformAuditWorkspaceId } = await import("../api/src/platform/audit/audit-event.ts");
 const { ConsentStore } = await import("../api/src/platform/messages/consent/consent-store.ts");
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
+const { arrive } = await import("../api/src/front-office/sales/arrival.ts");
+const { phone: salesPhone } = await import("../api/src/front-office/sales/common.ts");
 const { ClientMoney } = await import("../api/src/client-money/port.ts");
-const { mergeIfSafe, whyNotSafe, DuplicateReview, SYSTEM_ACTOR, CASE_SIDE_LINE, STALE_LINE } = await import("../api/src/front-office/duplicates/merge/review.ts");
+const { mergeIfSafe, whyNotSafe, DuplicateReview, SYSTEM_ACTOR, CASE_SIDE_LINE, STALE_LINE, MONEY_LINE } = await import("../api/src/front-office/duplicates/merge/review.ts");
 const mergeFeature = (await import("../api/src/features/front-office-merge.ts")).default;
 type Ctx = import("../api/src/platform/identity/keys.ts").StaffContext;
 
@@ -73,7 +75,12 @@ try {
     R.keys.includes("agent/prospect:merge") && R.keys.includes("agent/prospect:edit") && O.keys.includes("agent/prospect:edit") && !O.keys.includes("agent/prospect:merge"));
   const consent = new ConsentStore(auditEvent);
   const leads = new Leads(db, { audit: auditEvent, consent, publicOrigin: "http://localhost:4400" });
-  const add = (ctx: Ctx, p: Record<string, unknown>) => leads.add(ctx, { requestId: randomUUID(), source: "Phone call", confirmedNew: true, ...p }) as Promise<{ id: string; person: { id: string } }>;
+  // Arrivals through the one arrival path (a web-form-like arrival, not Add a lead's "Add as new"), owned by `ctx`.
+  const add = async (ctx: Ctx, p: { givenNames: string; familyName: string; email?: string; phone?: string; ownerStaffId?: string }) => {
+    const out = await db.$transaction((tx) => arrive(tx as never, { firmId: ctx.firmId, door: "MANUAL", intakeKey: `manual:${randomUUID()}`, source: "Phone call", actor: `staff:${ctx.staffId}`, payloadHash: randomUUID(), ownerStaffId: p.ownerStaffId ?? ctx.staffId,
+      person: { givenNames: p.givenNames, familyName: p.familyName, email: p.email ?? null, phone: p.phone ? salesPhone(p.phone) : null } }, ports));
+    return { id: out.leadId!, person: { id: out.personId! } };
+  };
   const pairOf = (a: string, b: string) => sql(`select id from fo_dup_review where firm_id = '${A}' and low_id = least('${a}'::uuid, '${b}'::uuid) and high_id = greatest('${a}'::uuid, '${b}'::uuid)`);
   const ports = { audit: auditEvent, consent };
   const inTx = <T,>(fn: (tx: never) => Promise<T>) => db.$transaction((tx) => fn(tx as never));
@@ -143,69 +150,102 @@ try {
   @Module({ controllers: mergeFeature.controllers as never[], providers: providers as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   await app.listen(0, "127.0.0.1"); apps.push(app);
-  const BASE = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}/api/front-office`;
+  const BASE = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const call = async (method: string, path: string, tok: string | null, body?: Record<string, unknown>): Promise<{ status: number; body: any }> => {
-    const r = await fetch(`${BASE}/${path}`, { method, headers: { ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const r = await fetch(`${BASE}${path}`, { method, headers: { ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
     const text = await r.text(); let b: unknown = text; try { b = JSON.parse(text); } catch { /* text */ }
     return { status: r.status, body: b };
   };
 
-  const listR = await call("GET", "duplicates/review", tR);
+  const listR = await call("GET", "/api/front-office/duplicates/review", tR);
   const ids = (listR.body?.items ?? []).map((i: { id: string }) => i.id);
   ok("FO-9b review pass: the Owner's list shows the open pairs with score, reasons and first seen; a merged pair is not on To review",
     listR.status === 200 && ids.includes(inv.pair) && ids.includes(PN) && !ids.includes(P1) && listR.body.openCount === ids.length && listR.body.items.every((i: { score: number; firstSeenAt: string }) => typeof i.score === "number" && !!i.firstSeenAt), listR);
   ok("FO-9b BR-7 pass: the case pair is listed with needsCaseSide; the others are not", listR.body.items.find((i: { id: string }) => i.id === kim.pair)?.needsCaseSide === true && listR.body.items.find((i: { id: string }) => i.id === inv.pair)?.needsCaseSide === false);
-  const noSession = await call("GET", "duplicates/review", null), roList = await call("GET", "duplicates/review", tRO), roKeep = await call("POST", `duplicates/review/${PN}/keep-separate`, tRO, {});
+  const noSession = await call("GET", "/api/front-office/duplicates/review", null), roList = await call("GET", "/api/front-office/duplicates/review", tRO), roKeep = await call("POST", `/api/front-office/duplicates/review/${PN}/keep-separate`, tRO, {});
   ok("FO-9b keys fail: no session 401; a member without agent/prospect:edit gets 403 on the list and on Keep separate", noSession.status === 401 && roList.status === 403 && roKeep.status === 403, [noSession.status, roList.status, roKeep.status]);
-  const oMerge = await call("POST", `duplicates/review/${inv.pair}/merge`, tO, { survivorId: inv.a }), oPrev = await call("POST", `duplicates/review/${inv.pair}/preview`, tO, { survivorId: inv.a }), oUndo = await call("POST", `duplicates/merges/${auto.mergeRef}/undo`, tO, {});
+  const oMerge = await call("POST", `/api/front-office/duplicates/review/${inv.pair}/merge`, tO, { survivorId: inv.a }), oPrev = await call("POST", `/api/front-office/duplicates/review/${inv.pair}/preview`, tO, { survivorId: inv.a }), oUndo = await call("POST", `/api/front-office/duplicates/merges/${auto.mergeRef}/undo`, tO, {});
   ok("FO-9b keys fail: a Case Officer without agent/prospect:merge gets 403 on preview, merge and Undo, and nothing merged", oMerge.status === 403 && oPrev.status === 403 && oUndo.status === 403 && sql(`select status from fo_dup_review where id = '${inv.pair}'`) === "OPEN", [oMerge.status, oPrev.status, oUndo.status]);
 
   // DW8: firms and visibility
-  const sList = await call("GET", "duplicates/review", tS), sMerge = await call("POST", `duplicates/review/${inv.pair}/merge`, tS, { survivorId: inv.a }), sKeep = await call("POST", `duplicates/review/${inv.pair}/keep-separate`, tS, {});
+  const sList = await call("GET", "/api/front-office/duplicates/review", tS), sMerge = await call("POST", `/api/front-office/duplicates/review/${inv.pair}/merge`, tS, { survivorId: inv.a }), sKeep = await call("POST", `/api/front-office/duplicates/review/${inv.pair}/keep-separate`, tS, {});
   ok("FO-9b DW8 fail: firm B sees none of firm A's pairs and gets the one not-found on them", sList.status === 200 && (sList.body.items ?? []).length === 0 && sMerge.status === 404 && sKeep.status === 404, [sList.status, sMerge.status, sKeep.status]);
   const oOwn = await add(O, { givenNames: "Ola", familyName: "Own", email: "ola@example.org" }), oOther = await add(R, { givenNames: "Ola", familyName: "Own", email: "ola@example.org", ownerStaffId: R.staffId });
   const PO = pairOf(oOwn.person.id, oOther.person.id);
-  const oList = await call("GET", "duplicates/review", tO), oKeep = await call("POST", `duplicates/review/${PO}/keep-separate`, tO, {});
+  const oList = await call("GET", "/api/front-office/duplicates/review", tO), oKeep = await call("POST", `/api/front-office/duplicates/review/${PO}/keep-separate`, tO, {});
   ok("FO-9b DW8 fail: a viewer who may open only one side never sees the pair (absent from the list, Keep separate 404)",
     !!PO && oList.status === 200 && !(oList.body.items ?? []).some((i: { id: string }) => i.id === PO) && oKeep.status === 404, { PO, o: oList.body?.items?.length, keep: oKeep.status });
   const both1 = await add(O, { givenNames: "Uma", familyName: "Own", email: "uma@example.org" }), both2 = await add(O, { givenNames: "Uma", familyName: "Owne", email: "uma@example.org" });
   const PB = pairOf(both1.person.id, both2.person.id);
-  ok("FO-9b DW8 pass: the same Case Officer sees a pair whose two sides are both theirs", !!PB && (await call("GET", "duplicates/review", tO)).body.items.some((i: { id: string }) => i.id === PB));
+  ok("FO-9b DW8 pass: the same Case Officer sees a pair whose two sides are both theirs", !!PB && (await call("GET", "/api/front-office/duplicates/review", tO)).body.items.some((i: { id: string }) => i.id === PB));
 
   // guided merge, preview, Undo, the Merged tab
-  const pv = await call("POST", `duplicates/review/${inv.pair}/preview`, tR, { survivorId: inv.a });
+  const pv = await call("POST", `/api/front-office/duplicates/review/${inv.pair}/preview`, tR, { survivorId: inv.a });
   ok("FO-9b preview pass: both values of every field, the default pick, what moves and each side's updatedAt", pv.status === 200 && pv.body.fields.length === 6 && pv.body.fields.every((f: { pick: string }) => ["SURVIVOR", "LOSER"].includes(f.pick)) && pv.body.moves.leads === 1 && !!pv.body.updatedAt.loser, pv);
-  const pvBad = await call("POST", `duplicates/review/${inv.pair}/preview`, tR, { survivorId: noor.person.id });
+  const pvBad = await call("POST", `/api/front-office/duplicates/review/${inv.pair}/preview`, tR, { survivorId: noor.person.id });
   ok("FO-9b preview fail: a survivor outside the pair → 422 on survivorId", pvBad.status === 422 && !!pvBad.body.fields?.survivorId, pvBad);
-  const gm = await call("POST", `duplicates/review/${inv.pair}/merge`, tR, { survivorId: inv.a, choices: { familyName: "LOSER" } });
+  ok("FO-9b preview pass: preview says when either person has money", pv.body.hasMoney === true);
+  const gmMoney = await call("POST", `/api/front-office/duplicates/review/${inv.pair}/merge`, tR, { survivorId: inv.a });
+  ok("FO-9b M6 fail: a guided merge of a person with money (an invoice) → 409 HAS_MONEY with the sentence, nothing merged (client money never follows merged_into_id)",
+    gmMoney.status === 409 && gmMoney.body.code === "HAS_MONEY" && gmMoney.body.detail === MONEY_LINE && sql(`select count(*) from fo_person where id in ('${inv.a}', '${inv.b}') and merged_into_id is null`) === "2", gmMoney);
+  const gp = await pairWith("35", () => undefined);
+  const gm = await call("POST", `/api/front-office/duplicates/review/${gp.pair}/merge`, tR, { survivorId: gp.a, choices: { familyName: "LOSER" } });
   ok("FO-9b DW1 pass (guided): the chosen survivor stays, the loser's family name is kept as picked, the pair is MERGED by the staff member, not automatic",
-    gm.status === 200 && sql(`select family_name from fo_person where id = '${inv.a}'`) === "Money31x" && sql(`select merged_into_id from fo_person where id = '${inv.b}'`) === inv.a
-    && sql(`select status || ':' || decided_by from fo_dup_review where id = '${inv.pair}'`) === `MERGED:staff:${R.staffId}` && sql(`select automatic from fo_dup_merge where id = '${gm.body.mergeRef}'`) === "f", gm);
-  const gm2 = await call("POST", `duplicates/review/${inv.pair}/merge`, tR, { survivorId: inv.a });
+    gm.status === 200 && sql(`select family_name from fo_person where id = '${gp.a}'`) === "Money35x" && sql(`select merged_into_id from fo_person where id = '${gp.b}'`) === gp.a
+    && sql(`select status || ':' || decided_by from fo_dup_review where id = '${gp.pair}'`) === `MERGED:staff:${R.staffId}` && sql(`select automatic from fo_dup_merge where id = '${gm.body.mergeRef}'`) === "f", gm);
+  const gm2 = await call("POST", `/api/front-office/duplicates/review/${gp.pair}/merge`, tR, { survivorId: gp.a });
   ok("FO-9b merge fail: a decided pair → 409", gm2.status === 409, gm2);
-  const ck = await call("POST", `duplicates/review/${kim.pair}/merge`, tR, { survivorId: kim.a });
+  const ck = await call("POST", `/api/front-office/duplicates/review/${kim.pair}/merge`, tR, { survivorId: kim.a });
   ok("FO-9b BR-7 fail: a client with a case is never merged here: 409 with the sentence, nothing changed", ck.status === 409 && ck.body.detail === CASE_SIDE_LINE && sql(`select count(*) from fo_person where id in ('${kim.a}', '${kim.b}') and merged_into_id is null`) === "2", ck);
-  const bad = await call("POST", `duplicates/review/${PN}/merge`, tR, { survivorId: noor.person.id, extra: 1 }), notId = await call("POST", "duplicates/review/not-a-uuid/merge", tR, { survivorId: noor.person.id });
+  const bad = await call("POST", `/api/front-office/duplicates/review/${PN}/merge`, tR, { survivorId: noor.person.id, extra: 1 }), notId = await call("POST", "/api/front-office/duplicates/review/not-a-uuid/merge", tR, { survivorId: noor.person.id });
   ok("FO-9b input fail: an unknown field 422 (named); a path id that is not a uuid 404", bad.status === 422 && notId.status === 404, [bad.status, notId.status]);
-  const mergedTab = await call("GET", "duplicates/review?status=MERGED", tR);
-  ok("FO-9b review pass: a merged pair is listed under MERGED (its merged-away side seen through the survivor)", mergedTab.body.items?.some((i: { id: string; mergeRef: string }) => i.id === inv.pair && i.mergeRef === gm.body.mergeRef) && mergedTab.body.items?.some((i: { id: string; automatic: boolean }) => i.id === P1 && i.automatic), mergedTab);
-  const merges = await call("GET", "duplicates/merges", tR);
+  const mergedTab = await call("GET", "/api/front-office/duplicates/review?status=MERGED", tR);
+  ok("FO-9b review pass: a merged pair is listed under MERGED (its merged-away side seen through the survivor)", mergedTab.body.items?.some((i: { id: string; mergeRef: string }) => i.id === gp.pair && i.mergeRef === gm.body.mergeRef) && mergedTab.body.items?.some((i: { id: string; automatic: boolean }) => i.id === P1 && i.automatic), mergedTab);
+  const merges = await call("GET", "/api/front-office/duplicates/merges", tR);
   const mi = (merges.body?.items ?? []) as { id: string; automatic: boolean; undoneAt: string | null }[];
   ok("FO-9b M6 pass: the Merged tab lists the guided and the automatic merge, automatic marked", merges.status === 200 && mi.find((m) => m.id === gm.body.mergeRef)?.automatic === false && mi.find((m) => m.id === auto.mergeRef)?.automatic === true, merges);
-  ok("FO-9b M6 fail: firm B's Merged tab is empty", ((await call("GET", "duplicates/merges", tS)).body.items ?? []).length === 0);
-  const un = await call("POST", `duplicates/merges/${gm.body.mergeRef}/undo`, tR, {});
-  ok("FO-9b BR-10 pass: Undo from the Merged tab restores both people and the pair opens again", un.status === 200 && sql(`select count(*) from fo_person where id in ('${inv.a}', '${inv.b}') and merged_into_id is null`) === "2" && sql(`select status from fo_dup_review where id = '${inv.pair}'`) === "OPEN", un);
-  const un2 = await call("POST", `duplicates/merges/${gm.body.mergeRef}/undo`, tR, {}), unS = await call("POST", `duplicates/merges/${auto.mergeRef}/undo`, tS, {});
+  ok("FO-9b M6 fail: firm B's Merged tab is empty", ((await call("GET", "/api/front-office/duplicates/merges", tS)).body.items ?? []).length === 0);
+  const un = await call("POST", `/api/front-office/duplicates/merges/${gm.body.mergeRef}/undo`, tR, {});
+  ok("FO-9b BR-10 pass: Undo from the Merged tab restores both people and the pair opens again", un.status === 200 && sql(`select count(*) from fo_person where id in ('${gp.a}', '${gp.b}') and merged_into_id is null`) === "2" && sql(`select status from fo_dup_review where id = '${gp.pair}'`) === "OPEN", un);
+  const un2 = await call("POST", `/api/front-office/duplicates/merges/${gm.body.mergeRef}/undo`, tR, {}), unS = await call("POST", `/api/front-office/duplicates/merges/${auto.mergeRef}/undo`, tS, {});
   ok("FO-9b BR-10 fail: a second Undo → 409 with the reason; firm B's Undo of firm A's merge → 404", un2.status === 409 && /already undone/i.test(un2.body.detail ?? "") && unS.status === 404, [un2.status, unS.status]);
 
   // BR-11: Keep separate clears the possible-match flag
   const flagBefore = sql(`select count(*) from fo_lead where person_id in ('${both1.person.id}', '${both2.person.id}') and possible_match_person_id in ('${both1.person.id}', '${both2.person.id}')`);
-  const keep = await call("POST", `duplicates/review/${PB}/keep-separate`, tO, {});
+  const keep = await call("POST", `/api/front-office/duplicates/review/${PB}/keep-separate`, tO, {});
   ok("FO-9b BR-11 pass: Keep separate (a Case Officer with agent/prospect:edit) decides the pair and clears the possible-match flag between them",
     flagBefore === "1" && keep.status === 200 && sql(`select status from fo_dup_review where id = '${PB}'`) === "KEPT_SEPARATE" && sql(`select count(*) from fo_lead where person_id in ('${both1.person.id}', '${both2.person.id}') and possible_match_person_id in ('${both1.person.id}', '${both2.person.id}')`) === "0", { flagBefore, keep });
-  const kept = await call("GET", "duplicates/review?status=KEPT_SEPARATE", tO), keep2 = await call("POST", `duplicates/review/${PB}/keep-separate`, tO, {});
-  ok("FO-9b BR-11 fail: the pair leaves To review for Kept separate; a second Keep separate → 409", kept.body.items.some((i: { id: string }) => i.id === PB) && !(await call("GET", "duplicates/review", tO)).body.items.some((i: { id: string }) => i.id === PB) && keep2.status === 409, keep2);
+  const kept = await call("GET", "/api/front-office/duplicates/review?status=KEPT_SEPARATE", tO), keep2 = await call("POST", `/api/front-office/duplicates/review/${PB}/keep-separate`, tO, {});
+  ok("FO-9b BR-11 fail: the pair leaves To review for Kept separate; a second Keep separate → 409", kept.body.items.some((i: { id: string }) => i.id === PB) && !(await call("GET", "/api/front-office/duplicates/review", tO)).body.items.some((i: { id: string }) => i.id === PB) && keep2.status === 409, keep2);
+
+  // ------------------------------------------------------------------------------- review round 1 (M1, M7, M8)
+  await leads.add(R, { requestId: randomUUID(), source: "Phone call", givenNames: "Ana", familyName: "First", email: "ana.couple@example.org" });
+  const anaNew = await leads.add(R, { requestId: randomUUID(), source: "Phone call", confirmedNew: true, givenNames: "Ben", familyName: "Second", email: "ana.couple@example.org" }) as { person: { id: string } };
+  const PA = sql(`select id from fo_dup_review where firm_id = '${A}' and '${anaNew.person.id}' in (low_id, high_id)`);
+  const ra = PA ? await inTx((tx) => mergeIfSafe(tx, A, PA, ports)) as { mergeRef?: string } : {};
+  ok("FO-9b M7 fail: \"Add as new\" writes the pair Kept separate (decided by the adder) and the merge by itself never joins it",
+    !!PA && sql(`select status || ':' || decided_by from fo_dup_review where id = '${PA}'`) === `KEPT_SEPARATE:staff:${R.staffId}` && !ra.mergeRef && sql(`select merged_into_id is null from fo_person where id = '${anaNew.person.id}'`) === "t");
+  const retainer = (p: string, viaProspect: boolean) => {
+    const t = randomUUID();
+    sql(`set session_replication_role = replica;
+      insert into fo_prospect (id, number, firm_id, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, created_by, updated_at)
+        select gen_random_uuid(), 'P-9' || lpad((floor(random() * 100000))::int::text, 5, '0'), '${A}', l.id, 'INDIVIDUAL', gen_random_uuid(), '${p}', '${p}', 'staff:${R.staffId}', now() from fo_lead l where l.person_id = '${p}' limit 1;
+      insert into fo_retainer (id, firm_id, prospect_id, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at)
+        select gen_random_uuid(), '${A}', x.id, ${viaProspect ? "null" : `'${p}'`}, '${R.staffId}', '${t}', 1, 'retainer-templates/${t}/v1.docx', 'staff:${R.staffId}', now() from fo_prospect x where x.subject_person_id = '${p}'`);
+  };
+  const d1 = await pairWith("36", (p) => retainer(p, true));
+  const wd1 = await inTx((tx) => whyNotSafe(tx, A, [d1.a, d1.b], [{ key: "PHONE" }]));
+  ok("FO-9b M1 fail: a draft retainer with no signer yet, on the person's prospect, is a stored document (DOCUMENT)", JSON.stringify(wd1) === '["DOCUMENT"]', wd1);
+  const d2 = await pairWith("37", (p) => retainer(p, false));
+  const wd2 = await inTx((tx) => whyNotSafe(tx, A, [d2.a, d2.b], [{ key: "PHONE" }]));
+  ok("FO-9b M8 fail: a retainer that names the person as signer is a stored document (DOCUMENT)", JSON.stringify(wd2) === '["DOCUMENT"]', wd2);
+  sql(`alter table case_client rename to case_client_away`);
+  const wu = await inTx((tx) => whyNotSafe(tx, A, [gp.a, gp.b], [{ key: "PHONE" }]));
+  const gu = await call("POST", `/api/front-office/duplicates/review/${gp.pair}/merge`, tR, { survivorId: gp.a });
+  sql(`alter table case_client_away rename to case_client`);
+  ok("FO-9b M8 fail: when the case read fails, the pair is not safe (CASE_UNKNOWN) and a guided merge is refused (409 NEEDS_CASE_SIDE): fail-closed",
+    JSON.stringify(wu) === '["CASE_UNKNOWN"]' && gu.status === 409 && gu.body.code === "NEEDS_CASE_SIDE", [wu, gu.status]);
 
   // ------------------------------------------------------------------------------- break round 1 (F1-F7)
   const f1a = await add(R, { givenNames: "Eve", familyName: "Shift", email: "eve.shift@example.org" }), f1b = await add(R, { givenNames: "Eve", familyName: "Shifts", email: "eve.shift@example.org" });
@@ -228,20 +268,20 @@ try {
   ok("FO-9b F3 fail: a case opened while a guided merge runs → 409 with the case sentence, nothing merged", rf3 === `409:${CASE_SIDE_LINE}` && sql(`select count(*) from fo_person where id in ('${f3a.person.id}', '${f3b.person.id}') and merged_into_id is null`) === "2", rf3);
   const f4a = await add(R, { givenNames: "Lou", familyName: "Stale", email: "lou.stale@example.org" }), f4b = await add(R, { givenNames: "Lou", familyName: "Stales", email: "lou.stale@example.org" });
   const PF4 = pairOf(f4a.person.id, f4b.person.id);
-  const pv4 = await call("POST", `duplicates/review/${PF4}/preview`, tR, { survivorId: f4a.person.id });
+  const pv4 = await call("POST", `/api/front-office/duplicates/review/${PF4}/preview`, tR, { survivorId: f4a.person.id });
   sql(`update fo_person set email = 'lou.changed@example.org', updated_at = now() + interval '1 second' where id = '${f4b.person.id}'`);
-  const st = await call("POST", `duplicates/review/${PF4}/merge`, tR, { survivorId: f4a.person.id, choices: { email: "LOSER" }, updatedAt: pv4.body.updatedAt });
+  const st = await call("POST", `/api/front-office/duplicates/review/${PF4}/merge`, tR, { survivorId: f4a.person.id, choices: { email: "LOSER" }, updatedAt: pv4.body.updatedAt });
   ok("FO-9b F4 fail: the loser changed after the preview → 409 STALE_VERSION with the sentence, nothing merged", st.status === 409 && st.body.code === "STALE_VERSION" && st.body.detail === STALE_LINE && sql(`select merged_into_id is null from fo_person where id = '${f4b.person.id}'`) === "t", st);
-  const pv4b = await call("POST", `duplicates/review/${PF4}/preview`, tR, { survivorId: f4a.person.id });
-  const fresh = await call("POST", `duplicates/review/${PF4}/merge`, tR, { survivorId: f4a.person.id, choices: { email: "LOSER" }, updatedAt: pv4b.body.updatedAt });
+  const pv4b = await call("POST", `/api/front-office/duplicates/review/${PF4}/preview`, tR, { survivorId: f4a.person.id });
+  const fresh = await call("POST", `/api/front-office/duplicates/review/${PF4}/merge`, tR, { survivorId: f4a.person.id, choices: { email: "LOSER" }, updatedAt: pv4b.body.updatedAt });
   ok("FO-9b F4 pass: with the preview's updatedAt still true, the merge goes through and keeps the picked email", fresh.status === 200 && sql(`select email from fo_person where id = '${f4a.person.id}'`) === "lou.changed@example.org", fresh);
   sql(`insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values (gen_random_uuid(), (select id from workspace order by created_at limit 1), 'sample-firm', '${A}', (select coalesce(max(client_number), 9000) + 1 from case_client where firm_key = 'sample-firm'), 'Lena Sample', 'PERSON', '${L1}', 'seed:fo9b')`);
-  const u5 = await call("POST", `duplicates/merges/${auto.mergeRef}/undo`, tR, {});
+  const u5 = await call("POST", `/api/front-office/duplicates/merges/${auto.mergeRef}/undo`, tR, {});
   ok("FO-9b F5 fail: Undo of a merge whose survivor became a case-side client since → 409 NEEDS_CASE_SIDE, nothing undone", u5.status === 409 && u5.body.code === "NEEDS_CASE_SIDE" && sql(`select merged_into_id from fo_person where id = '${L2}'`) === L1, u5);
-  const c6 = await call("POST", `duplicates/review/${PN}/merge`, tR, { survivorId: noor.person.id, choices: { emial: "LOSER" } });
-  const c6p = await fetch(`${BASE}/duplicates/review/${PN}/merge`, { method: "POST", headers: { authorization: `Bearer ${tR}`, "content-type": "application/json" }, body: `{"survivorId":"${noor.person.id}","choices":{"__proto__":"LOSER"}}` });
+  const c6 = await call("POST", `/api/front-office/duplicates/review/${PN}/merge`, tR, { survivorId: noor.person.id, choices: { emial: "LOSER" } });
+  const c6p = await fetch(`${BASE}/api/front-office/duplicates/review/${PN}/merge`, { method: "POST", headers: { authorization: `Bearer ${tR}`, "content-type": "application/json" }, body: `{"survivorId":"${noor.person.id}","choices":{"__proto__":"LOSER"}}` });
   ok("FO-9b F6 fail: choices with an unknown field (emial) or __proto__ → 422 naming it, nothing merged", c6.status === 422 && Object.keys(c6.body.fields ?? {}).some((k) => k.includes("emial")) && c6p.status === 422 && sql(`select status from fo_dup_review where id = '${PN}'`) === "OPEN", [c6, c6p.status]);
-  const q7 = await call("GET", "duplicates/merges?x=1", tR);
+  const q7 = await call("GET", "/api/front-office/duplicates/merges?x=1", tR);
   ok("FO-9b F7 fail: an unknown query field on the Merged tab → 422 naming it", q7.status === 422 && !!q7.body.fields?.x, q7);
 
   // DW8: no contact value in any audit line or event of these actions
