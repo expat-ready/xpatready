@@ -21,7 +21,9 @@ Shared contract: `ports/events/signing.ts` gains the `OTHER` variant of `signing
 Round 1 covered parts 1 and 2 together (reports here: `screens/FO-6d/review.md`, `break-report.md`); its M2 is fixed in this part with S6. Left, said: a mismatched consent text version answers 500 on each retry (break m3; FO-6 part 4's door writes one version), a declined OTHER event is stored for FO-5d (break m4; FO-5d's row covers "the adapter's declined event"), orphan files on a failed completion (as retainers).
 
 ## Checks and results
-<filled at the end>
+* Suites touched (the same 18) at f2ff1f76f: **run 1 exit 0 (18/18), run 2 exit 0 (18/18)**.
+* `tests/check_fo6d_any_document.ts` 36/36; size about 700 changed lines on part 1 (P-610).
+* Review: round 1 with part 1; round 2 Approve/Approve at 130af5518; the merge of part 1's round 2 fix needs the round 3 asked on #3207.
 
 Duplicate check: as part 1 (#3207); none.
 Cost: US$0 (fake adapter, fake mail). On the demo: nothing visible (API only).
