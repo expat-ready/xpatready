@@ -48,6 +48,7 @@ import type { EntitlementPort } from "../../ports/entitlement.ts"; // CS-C1b
 /** C6.17 (P-78): the channel of an answer written from a stage record (the officer entered it on "Done before we started"). */
 export const STAGE_RECORD = "stage_record";
 import { ASKED_RELATIONS, cellAsked, isListRelation, listWords, relativeKey, relativeOf, SUBJECT_OR_RELATIVE, type Relation } from "../../engine/runtime/relatives.ts";
+import { clientNotesOf } from "./case-notes/service.ts"; // CS-NT1 part 1: the client case read
 
 type H = string | undefined;
 function parse<S extends z.ZodType>(schema: S, input: unknown): z.infer<S> {
@@ -418,7 +419,9 @@ export class Runtime {
       can_add: offeredRoles(snapshot).map((p) => ({ role: p.role, label: roleWords(p), max: p.max!, has: c.participants.filter((x) => x.role === p.role).length })),
       // C11.5 (P-106): whether this case may rely on an employer case, read from its pinned release (staff only, as the team; review m3).
       // C1.3: and, once picked, the employer case it relies on (its facts copied then, never updated later).
-      ...(team ? { employer_link: { ...employerLinkOffer(snapshot), linked: await linkedOf(this.db, c.workspaceId, c.id) } } : {}) };
+      ...(team ? { employer_link: { ...employerLinkOffer(snapshot), linked: await linkedOf(this.db, c.workspaceId, c.id) } } : {}),
+      // CS-NT1 part 1 (AG-13-21, BR-4): the case's client reads its CLIENT_VISIBLE current notes only, filtered in SQL.
+      ...(isOfficer(actor) ? {} : { notes: await clientNotesOf(this.db, c.id) }) };
   }
 
   /** V3 B1 (runtime side, P-297 (3)): what the "Open a case" dialog may offer. Each not retired combination's newest
