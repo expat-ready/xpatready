@@ -4,8 +4,11 @@
 // Auditor, Owner 200); DW2 every figure equals PF-15's own read for that firm, and follows a change; DW3 the health rules
 // (one seat over → ATTENTION "seats over the limit", a held firm → HELD, nothing wrong → OK, a trial ending soon); DW4
 // last staff sign-in is the newest, null when nobody signed in; DW5 one PF-4s audit line per call (a refusal too), never
-// on a firm's own trail; DW6 the two bypass uses are on the named list for these routes only and refused anywhere else;
-// DW7 an unknown or malformed id → 404, never 500; DW8 paging and ?health= / ?q= return the right rows. One process, a
+// on a firm's own trail; DW6 the two bypass uses are declared beside the module (firms.bypass.ts, P-785 (2)) for these
+// routes only, run only by their declared values, and refused anywhere else;
+// DW7 an unknown or malformed id → 404, never 500; DW8 paging, the order and ?health= / ?q= return the right rows; DW9
+// (break M1, Lead 10 on #3155) 400 firms answer under 2 s, ?health= checks at most PAGE_SIZE × 4 firms' figures and says
+// so, storage is StorageWatch's stored measure with its date. One process, a
 // scratch database (dropped at the end), a small Nest app built from the features' own classes. No model call (US$0).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf17_console.ts
 import "reflect-metadata";
@@ -42,7 +45,9 @@ process.env.PLATFORM_ENVIRONMENT = "local";
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
-const { BYPASS_USES, BypassRefused, inRequest, wallUnscopedQueries } = await import("../api/src/platform/firm-scope.ts");
+const { BYPASS_USES, BypassRefused, asBypass, bypassUses, inRequest, wallUnscopedQueries, withFirm } = await import("../api/src/platform/firm-scope.ts");
+const { FIRMS_LIST, FIRM_READ } = await import("../api/src/platform/system-console/firms.bypass.ts");
+const { StorageWatch } = await import("../api/src/platform/entitlements/storage.ts");
 const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
@@ -54,14 +59,14 @@ const { SystemLocalIdentity } = await import("../api/src/platform/system-identit
 const { SYSTEM_IDENTITY_PORT, SystemIdentity } = await import("../api/src/platform/system-identity/service.ts");
 const { SystemGuard, SystemPlaneWall } = await import("../api/src/platform/system-identity/guard.ts");
 const { SystemIdentityController } = await import("../api/src/platform/system-identity/routes.ts");
-const { SystemFirms, FIRMS_LIST_USE, FIRM_READ_USE, PAGE_SIZE, healthOf } = await import("../api/src/platform/system-console/firms.ts");
+const { SystemFirms, PAGE_SIZE, FIGURES_PER_CALL, healthOf } = await import("../api/src/platform/system-console/firms.ts");
 const { SystemFirmsController } = await import("../api/src/platform/system-console/routes.ts");
 const { PgEntitlements, seatsUsed, mbOf } = await import("../api/src/platform/entitlements/limits.ts");
 const { PgCaseCount } = await import("../api/src/case-count.ts");
 const feature = (await import("../api/src/features/platform-system-console.ts")).default;
 
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
-/** Storage in bytes per firm id, read by the service and by the test's own PF-15 comparison through the same FilesPort. */
+/** Storage in bytes per firm id, measured by StorageWatch (PF-15's own measure), whose stored figure the console shows. */
 const bytes = new Map<string, number>();
 const files = { usedBytes: async (id: string) => bytes.get(id) ?? 0 };
 const apps: { close(): Promise<void> }[] = [];
@@ -76,12 +81,12 @@ try {
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, SystemIdentity, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard },
       { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor },
-      { provide: SystemFirms, useFactory: (db: InstanceType<typeof Db>) => new SystemFirms({ db, files, cases: (k, tx) => new PgCaseCount(tx, k), now: () => clock.now() }), inject: [Db] }] as never[] }) class TestApp {}
+      { provide: SystemFirms, useFactory: (db: InstanceType<typeof Db>) => new SystemFirms({ db, cases: (k, tx) => new PgCaseCount(tx, k), now: () => clock.now() }), inject: [Db] }] as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   app.use(requestMiddleware());
   await app.listen(0, "127.0.0.1"); apps.push(app);
   const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
-  ok("PF-17 pass: the feature registers the firms controller and the service (bound to PF-15's FilesPort and the case side's PgCaseCount)",
+  ok("PF-17 pass: the feature registers the firms controller and the service (bound to PlatformClock and the case side's PgCaseCount)",
     feature.controllers.includes(SystemFirmsController) && (feature.providers as { provide?: unknown }[]).some((p) => p.provide === SystemFirms));
 
   const person = async (name: string, roles: string[]) => (await owner.platSystemStaff.create({ data: { email: `${name.toLowerCase().replace(/\s+/g, ".")}.pf17@expatready.example`, displayName: `Sample ${name}`, grants: { create: roles.map((roleCode) => ({ roleCode })) } } })).id;
@@ -103,21 +108,37 @@ try {
   ok("PF-17 DW1 fail (breaker): the firm token on a mixed-case path is refused too (403)", upper.status === 403, upper);
 
   // ----------------------------------------------------------------------------- DW2: PF-15's own figures
-  bytes.set(firmA, 7 * 1024 * 1024 + 1);
+  const watch = new StorageWatch({ db: owner, files, mail: null, now: () => clock.now() });
+  const measure = (id: string) => withFirm(id, () => watch.measure(id));
+  const storageLimitA = (await new PgEntitlements(owner, () => clock.now()).limitOf(firmA, "storage_mb")).limit as number;
+  bytes.set(firmA, (storageLimitA + 1) * 1024 * 1024 + 1);
+  await measure(firmA);   // over: StorageWatch stores its measure (platform_storage_over)
+  const stored = () => JSON.parse(sql(`select json_build_object('bytes', used_bytes::text, 'at', to_char(updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) from platform_storage_over where firm_id = '${firmA}'`));
   const pf15 = async (id: string, key: string) => {
     const ent = new PgEntitlements(owner, () => clock.now()), counts = await new PgCaseCount(owner, key).activeCounts(owner);
+    const row = sql(`select used_bytes::text from platform_storage_over where firm_id = '${id}'`);
     return { seats: { used: await seatsUsed(owner, id), limit: (await ent.limitOf(id, "seats")).limit }, active_individual_cases: { used: counts.individual, limit: (await ent.limitOf(id, "active_individual_cases")).limit },
-      active_corporate_cases: { used: counts.corporate, limit: (await ent.limitOf(id, "active_corporate_cases")).limit }, storage_mb: { used: mbOf(await files.usedBytes(id)), limit: (await ent.limitOf(id, "storage_mb")).limit } } as Record<string, { used: number; limit: number | null }>;
+      active_corporate_cases: { used: counts.corporate, limit: (await ent.limitOf(id, "active_corporate_cases")).limit }, storage_mb: { used: row ? mbOf(Number(row)) : null, limit: (await ent.limitOf(id, "storage_mb")).limit } } as Record<string, { used: number | null; limit: number | null }>;
   };
-  const same = (got: any, want: Record<string, { used: number; limit: number | null }>) => got.usage.length === 4 && got.usage.every((u: any) => want[u.metric] && want[u.metric].used === u.used && want[u.metric].limit === u.limit);
-  const aOne = await call(base, `/api/system/firms/${firmA}`, tokens.support), aWant = await pf15(firmA, "sample-firm");
-  ok("PF-17 DW2 pass: firm A's seats, active individual and corporate cases and storage (used and limit) equal PF-15's own reads for A",
-    aOne.status === 200 && same(aOne.body, aWant) && aOne.body.usage.find((u: any) => u.metric === "storage_mb").used === 8, { got: aOne.body.usage, want: aWant });
+  const same = (got: any, want: Record<string, { used: number | null; limit: number | null }>) => got.usage.length === 4 && got.usage.every((u: any) => want[u.metric] && want[u.metric].used === u.used && want[u.metric].limit === u.limit);
+  const aOne = await call(base, `/api/system/firms/${firmA}`, tokens.support), aWant = await pf15(firmA, "sample-firm"), aStore = aOne.body.usage?.find((u: any) => u.metric === "storage_mb");
+  ok("PF-17 DW2 pass: firm A's seats, active individual and corporate cases (PF-15's reads) and storage (StorageWatch's stored measure, with its date) equal PF-15's figures for A",
+    aOne.status === 200 && same(aOne.body, aWant) && aStore.used === storageLimitA + 2 && aStore.over === true && aStore.asOf === stored().at && aOne.body.reasons.includes("storage over the limit"), { got: aOne.body.usage, want: aWant, stored: stored() });
+  bytes.set(firmA, 7 * 1024 * 1024 + 1);
+  const aLive = await call(base, `/api/system/firms/${firmA}`, tokens.support);
+  ok("PF-17 DW2 pass (Lead 10 on #3155): the console never lists the firm's files itself: until StorageWatch measures again, storage stays at its stored figure",
+    aLive.body.usage.find((u: any) => u.metric === "storage_mb").used === storageLimitA + 2, aLive.body.usage);
+  clock.t += 60_000; await measure(firmA);   // back under: the stored measure follows
+  const aUnder = await call(base, `/api/system/firms/${firmA}`, tokens.support), under = aUnder.body.usage.find((u: any) => u.metric === "storage_mb");
+  ok("PF-17 DW2 fail: StorageWatch's next measure (back under) moves the console's storage to 8 MB, not over, as of that measure",
+    under.used === 8 && under.over === false && under.asOf === stored().at && under.asOf !== aStore.asOf && !aUnder.body.reasons.includes("storage over the limit"), { under, stored: stored() });
+  const sStore = (await call(base, `/api/system/firms/${firmS}`, tokens.support)).body.usage.find((u: any) => u.metric === "storage_mb");
+  ok("PF-17 DW2 pass: a firm StorageWatch has stored no measure for shows storage used null and no date, not over (never a guessed 0)", sStore.used === null && sStore.asOf === null && sStore.over === false, sStore);
   const aInList = (await call(base, "/api/system/firms", tokens.support)).body.firms.find((f: any) => f.id === firmA);
-  ok("PF-17 DW2 pass: the list's row for A carries the same figures as the one-firm answer", JSON.stringify(aInList?.usage) === JSON.stringify(aOne.body.usage), { aInList: aInList?.usage });
+  ok("PF-17 DW2 pass: the list's row for A carries the same figures as the one-firm answer", JSON.stringify(aInList?.usage) === JSON.stringify(aUnder.body.usage), { aInList: aInList?.usage });
   sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${firmA}', 'extra.pf17@sample-firm.example', 'Sample extra', 'ACTIVE', now())`);
   const aAfter = await call(base, `/api/system/firms/${firmA}`, tokens.support), aWant2 = await pf15(firmA, "sample-firm");
-  const seatsBefore = aOne.body.usage.find((u: any) => u.metric === "seats").used, seatsAfter = aAfter.body.usage.find((u: any) => u.metric === "seats").used;
+  const seatsBefore = aUnder.body.usage.find((u: any) => u.metric === "seats").used, seatsAfter = aAfter.body.usage.find((u: any) => u.metric === "seats").used;
   ok("PF-17 DW2 fail: one more staff member in A moves A's seats by one, as PF-15's read does; firm B's figures do not move",
     seatsAfter === seatsBefore + 1 && same(aAfter.body, aWant2) && same((await call(base, `/api/system/firms/${firmS}`, tokens.support)).body, await pf15(firmS, "sample-solo")), { seatsBefore, seatsAfter });
 
@@ -140,6 +161,18 @@ try {
   ok("PF-17 DW3 pass/fail: a trial ending in 2 days or an overdue payment is ATTENTION; a trial ending in 5 days and a firm exactly at its limit are OK",
     soon.health === "ATTENTION" && soon.reasons.includes("trial ends within 3 days") && overdue.health === "ATTENTION" && overdue.reasons.includes("payment overdue") && later.health === "OK" && atLimit.health === "OK", { soon, later, overdue, atLimit });
 
+  const lock = healthOf({ status: "SECURITY_LOCK", subStatus: "ACTIVE", trialEndsAt: null, usage: u }, now), ended = healthOf({ status: "TRIAL", subStatus: "TRIAL", trialEndsAt: new Date(now - 86_400_000), usage: u }, now);
+  ok("PF-17 DW3 pass/fail (review m4): a security lock is HELD \"under a security lock\"; a trial whose end has passed is ATTENTION \"trial ended\" (not \"ends within\")",
+    lock.health === "HELD" && lock.reasons[0] === "under a security lock" && ended.health === "ATTENTION" && ended.reasons.includes("trial ended") && !ended.reasons.some((r) => r.startsWith("trial ends")), { lock, ended });
+  const gone = ["DELETED", "ABANDONED", "PROVISIONING"].map((status) => healthOf({ status, subStatus: null, trialEndsAt: null, usage: u, livePlan: false }, now));
+  ok("PF-17 DW3 fail (review m2, break m1): a deleted, abandoned or still-provisioning firm is NOT_LIVE with its plain reason, never OK",
+    gone.every((g) => g.health === "NOT_LIVE") && JSON.stringify(gone.map((g) => g.reasons[0])) === JSON.stringify(["firm deleted", "sign-up abandoned", "still being set up"]), gone);
+  sql(`update platform_subscription set status = 'ENDED' where firm_id = '${firmS}'`);
+  const noPlan = await call(base, `/api/system/firms/${firmS}`, tokens.auditor);
+  ok("PF-17 DW3 fail (break m2): a firm whose only subscription ended shows no plan (not the ended one's) and the reason \"no live plan\" first",
+    noPlan.body.plan === null && noPlan.body.subscription?.status === "ENDED" && noPlan.body.health === "ATTENTION" && noPlan.body.reasons[0] === "no live plan", noPlan.body);
+  sql(`update platform_subscription set status = 'ACTIVE' where firm_id = '${firmS}'`);
+
   // -------------------------------------------------------------------------------- DW4: last staff sign-in
   sql(`update platform_staff set last_sign_in_at = null where firm_id in ('${firmA}', '${firmS}')`);
   const never = await call(base, `/api/system/firms/${firmS}`, tokens.support);
@@ -150,25 +183,31 @@ try {
 
   // ---------------------------------------------------------------------------- DW5: one PF-4s line per call
   const trailA = () => Number(sql(`select count(*) from audit_event where firm_id = '${firmA}'`)), bypassA = () => Number(sql(`select count(*) from audit_event where firm_id = '${firmA}' and action = 'platform.bypass'`));
-  const s0 = sysLines(), t0 = trailA();
+  const listLines = () => Number(sql(`select count(*) from audit_event where firm_id is null and action = 'platform.bypass' and detail->>'use' = '${FIRMS_LIST.name}'`));
+  const s0 = sysLines(), t0 = trailA(), l0 = listLines();
   await call(base, "/api/system/firms", tokens.billing);
-  const s1 = sysLines(), t1 = trailA(), last = JSON.parse(sql(`select row_to_json(a) from (select staff_id, method, route, outcome from plat_system_audit order by at desc, id desc limit 1) a`));
+  const s1 = sysLines(), t1 = trailA(), l1 = listLines(), last = JSON.parse(sql(`select row_to_json(a) from (select staff_id, method, route, outcome from plat_system_audit order by at desc, id desc limit 1) a`));
   await call(base, "/api/system/firms", tokens.publisher);
   const s2 = sysLines(), refusedLine = JSON.parse(sql(`select row_to_json(a) from (select route, outcome, code from plat_system_audit order by at desc, id desc limit 1) a`));
   ok("PF-17 DW5 pass: a list call writes exactly one PF-4s audit line naming the staff member and the route; a refused call writes exactly one too (REFUSED)",
     s1 === s0 + 1 && last.method === "GET" && last.route === "/api/system/firms" && last.outcome === "ALLOWED" && s2 === s1 + 1 && refusedLine.outcome === "REFUSED", { s0, s1, s2, last, refusedLine });
-  ok("PF-17 DW5 fail: the list call leaves no line on a firm's own trail (its one bypass line is firm-less)", t1 === t0 && Number(sql(`select count(*) from audit_event where firm_id is null and action = 'platform.bypass' and detail->>'use' = '${FIRMS_LIST_USE}'`)) >= 1, { t0, t1 });
+  ok("PF-17 DW5 fail (review m4): the list call writes exactly one firm-less bypass line (its figures' own transactions write none) and nothing on a firm's own trail",
+    t1 === t0 && l1 === l0 + 1, { t0, t1, l0, l1 });
   const b0 = bypassA();
   await call(base, `/api/system/firms/${firmA}`, tokens.billing);
   ok("PF-17 DW5 pass: opening one firm writes one PF-4s line and that firm's own platform.bypass line (its use named), nothing for another firm",
-    bypassA() === b0 + 1 && JSON.parse(sql(`select detail from audit_event where firm_id = '${firmA}' and action = 'platform.bypass' order by at desc, id desc limit 1`)).use === FIRM_READ_USE, { b0, b1: bypassA() });
+    bypassA() === b0 + 1 && JSON.parse(sql(`select detail from audit_event where firm_id = '${firmA}' and action = 'platform.bypass' order by at desc, id desc limit 1`)).use === FIRM_READ.name, { b0, b1: bypassA() });
 
   // ----------------------------------------------------------------------------------- DW6: the bypass uses
-  const listUse = BYPASS_USES[FIRMS_LIST_USE], oneUse = BYPASS_USES[FIRM_READ_USE];
-  ok("PF-17 DW6 pass: the two uses are on the named list for these two routes only (list: platform audit; one firm: per-firm)",
-    listUse?.routes.length === 1 && listUse.routes[0].test("GET /api/system/firms") && !listUse.routes[0].test("GET /api/system/firms/x") && !listUse.routes[0].test("POST /api/system/firms") && listUse.audit === "platform"
-    && oneUse?.routes.length === 1 && oneUse.routes[0].test(`GET /api/system/firms/${firmA}`) && !oneUse.routes[0].test("GET /api/system/firms") && !oneUse.routes[0].test(`DELETE /api/system/firms/${firmA}`) && !oneUse.routes[0].test(`GET /api/system/firms/${firmA}/staff`) && oneUse.audit === "per-firm");
-  const svc = new SystemFirms({ db: owner, files, cases: (k, tx) => new PgCaseCount(tx, k) });
+  const listUse = bypassUses()[FIRMS_LIST.name], oneUse = bypassUses()[FIRM_READ.name];
+  ok("PF-17 DW6 pass: the two uses are declared in firms.bypass.ts (not on the frozen BYPASS_USES) for these two routes only (list: platform audit; one firm: per-firm)",
+    listUse === FIRMS_LIST.entry && oneUse === FIRM_READ.entry && !(FIRMS_LIST.name in BYPASS_USES) && !(FIRM_READ.name in BYPASS_USES)
+    && listUse.routes.length === 1 && listUse.routes[0].test("GET /api/system/firms") && !listUse.routes[0].test("GET /api/system/firms/x") && !listUse.routes[0].test("POST /api/system/firms") && listUse.audit === "platform"
+    && oneUse.routes.length === 1 && oneUse.routes[0].test(`GET /api/system/firms/${firmA}`) && !oneUse.routes[0].test("GET /api/system/firms") && !oneUse.routes[0].test(`DELETE /api/system/firms/${firmA}`) && !oneUse.routes[0].test(`GET /api/system/firms/${firmA}/staff`) && oneUse.audit === "per-firm");
+  const byUseName = await throwsLike(() => inRequest({ method: "GET", path: "/api/system/firms" }, () => asBypass(FIRMS_LIST.name, async () => 1)), (e) => e instanceof BypassRefused);
+  const lookAlike = await throwsLike(() => inRequest({ method: "GET", path: "/api/system/firms" }, () => asBypass({ name: FIRMS_LIST.name, entry: FIRMS_LIST.entry }, async () => 1)), (e) => e instanceof BypassRefused);
+  ok("PF-17 DW6 fail: on its own route, either use run by its name alone or by a look-alike object is refused (BypassRefused): only the declared value crosses", byUseName && lookAlike, { byUseName, lookAlike });
+  const svc = new SystemFirms({ db: owner, cases: (k, tx) => new PgCaseCount(tx, k), now: () => clock.now() });
   const caller = { staffId: "pf17", keys: ["system/firm:read"] };
   const elsewhere = await throwsLike(() => inRequest({ method: "GET", path: "/api/platform/me" }, () => svc.list(caller, {})), (e) => e instanceof BypassRefused);
   const elsewhereOne = await throwsLike(() => inRequest({ method: "POST", path: "/api/system/signup-links" }, () => svc.one(caller, firmA)), (e) => e instanceof BypassRefused);
@@ -182,18 +221,50 @@ try {
     [unknown, bad, sqlish].every((r) => r.status === 404 && r.body.detail === "No such firm."), [unknown, bad, sqlish].map((r) => [r.status, r.body.detail]));
 
   // ------------------------------------------------------------------------------ DW8: paging and filters
-  sql(`insert into platform_firm (id, key, operating_name, country_code, contact_email, status, updated_at)
-       select gen_random_uuid(), 'pf17-page-' || i, 'Paging firm ' || lpad(i::text, 3, '0'), 'CA', 'p' || i || '@pf17.example', 'ACTIVE', now() from generate_series(1, ${PAGE_SIZE + 3}) i`);
+  const firmsOf = (prefix: string, name: string, n: number, status = "ACTIVE", sub: string | null = "ACTIVE") => {
+    sql(`insert into platform_firm (id, key, operating_name, country_code, contact_email, status, updated_at)
+         select gen_random_uuid(), '${prefix}-' || i, '${name}' || lpad(i::text, 3, '0'), 'CA', '${prefix}' || i || '@pf17.example', '${status}', now() from generate_series(1, ${n}) i`);
+    if (sub) sql(`insert into platform_subscription (id, firm_id, plan_id, status, updated_at) select gen_random_uuid(), f.id, (select id from platform_plan where code = 'team'), '${sub}', now() from platform_firm f where f.key like '${prefix}-%'`);
+  };
+  firmsOf("pf17-page", "Paging firm ", PAGE_SIZE + 3);
+  firmsOf("pf17-held", "Zeta held ", 1, "PAYMENT_HOLD");
+  firmsOf("pf17-due", "Yankee overdue ", 1, "ACTIVE", "OVERDUE");
+  firmsOf("pf17-gone", "Alpha deleted ", 1, "DELETED", null);
+  const held1 = sql(`select id from platform_firm where key = 'pf17-held-1'`), due1 = sql(`select id from platform_firm where key = 'pf17-due-1'`), gone1 = sql(`select id from platform_firm where key = 'pf17-gone-1'`);
+  sql(`insert into platform_firm_web_address (firm_id, address, set_by, updated_at) select id, 'pf17-seven', 'seed:pf17', now() from platform_firm where key = 'pf17-page-7'`);
+  sql(`update platform_firm set operating_name = 'École paging' where key = 'pf17-page-9'`);
   sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${firmS}', 'third.pf17@sample-solo.example', 'Sample third', 'ACTIVE', now())`);
   const p1 = await call(base, "/api/system/firms", tokens.admin), p2 = await call(base, "/api/system/firms?page=2", tokens.admin);
-  const total = PAGE_SIZE + 3 + 2;
-  ok(`PF-17 DW8 pass: ${total} firms in pages of ${PAGE_SIZE}: page 1 has ${PAGE_SIZE}, starting with the ATTENTION firm; page 2 has the other 5; no firm on both`,
-    p1.body.total === total && p1.body.firms.length === PAGE_SIZE && p1.body.firms[0].id === firmS && p1.body.firms[0].health === "ATTENTION" && p2.body.firms.length === 5 && !p2.body.firms.some((f: any) => p1.body.firms.some((g: any) => g.id === f.id)), { total: p1.body.total, first: p1.body.firms[0]?.health, p2: p2.body.firms?.length });
-  const att = await call(base, "/api/system/firms?health=ATTENTION", tokens.admin), byName = await call(base, "/api/system/firms?q=paging%20firm%20007", tokens.admin), byAddr = await call(base, `/api/system/firms?q=${encodeURIComponent("' or 1=1 --")}`, tokens.admin);
-  ok("PF-17 DW8 pass/fail: ?health=ATTENTION returns only the over-limit firm; ?q= matches a name (one firm); a SQL-looking ?q= matches nothing",
-    att.body.total === 1 && att.body.firms[0].id === firmS && byName.body.total === 1 && byName.body.firms[0].name === "Paging firm 007" && byAddr.status === 200 && byAddr.body.total === 0, { att: att.body.total, byName: byName.body.total, byAddr: byAddr.body.total });
+  const total = PAGE_SIZE + 3 + 3 + 2, both = [...(p1.body.firms ?? []), ...(p2.body.firms ?? [])];
+  ok(`PF-17 DW8 pass: ${total} firms in pages of ${PAGE_SIZE}: page 1 has ${PAGE_SIZE}, page 2 the other ${total - PAGE_SIZE}; no firm on both`,
+    p1.body.total === total && p1.body.firms.length === PAGE_SIZE && p2.body.firms.length === total - PAGE_SIZE && new Set(both.map((f: any) => f.id)).size === total && p1.body.complete === true, { total: p1.body.total, p2: p2.body.firms?.length });
+  ok("PF-17 DW8 pass/fail (review m4): the held firm comes first, then the overdue one (ATTENTION from its row), then the rest by name, the deleted firm last (NOT_LIVE)",
+    both[0]?.id === held1 && both[0]?.health === "HELD" && both[1]?.id === due1 && both[1]?.health === "ATTENTION" && both.at(-1)?.id === gone1 && both.at(-1)?.health === "NOT_LIVE"
+    && both.slice(2, -1).every((f: any, i: number, xs: any[]) => i === 0 || xs[i - 1].name.localeCompare(f.name) <= 0), both.slice(0, 3).map((f: any) => [f.name, f.health]));
+  ok("PF-17 DW8 pass: the seat-over firm, found from its figures, shows ATTENTION \"seats over the limit\" where its name puts it", both.find((f: any) => f.id === firmS)?.health === "ATTENTION" && both.find((f: any) => f.id === firmS)?.reasons.includes("seats over the limit"));
+  const [att, hld, nl] = await Promise.all(["ATTENTION", "HELD", "NOT_LIVE"].map((h) => call(base, `/api/system/firms?health=${h}`, tokens.admin)));
+  ok("PF-17 DW8 pass/fail: ?health=ATTENTION returns the overdue firm and the seat-over firm (all checked: complete); ?health=HELD the held one; ?health=NOT_LIVE the deleted one",
+    att.body.total === 2 && JSON.stringify(att.body.firms.map((f: any) => f.id)) === JSON.stringify([due1, firmS]) && att.body.complete === true && hld.body.total === 1 && hld.body.firms[0].id === held1 && nl.body.total === 1 && nl.body.firms[0].id === gone1,
+    { att: att.body.firms?.map((f: any) => f.name), hld: hld.body.total, nl: nl.body.total });
+  const byName = await call(base, "/api/system/firms?q=paging%20firm%20007", tokens.admin), byAddr = await call(base, "/api/system/firms?q=PF17-SEVEN", tokens.admin), sqlQ = await call(base, `/api/system/firms?q=${encodeURIComponent("' or 1=1 --")}`, tokens.admin);
+  const nfd = await call(base, `/api/system/firms?q=${encodeURIComponent("e\u0301cole")}`, tokens.admin), nfc = await call(base, `/api/system/firms?q=${encodeURIComponent("\u00e9cole")}`, tokens.admin);
+  ok("PF-17 DW8 pass/fail: ?q= matches a name (one firm) and a web address (review m4), any case; a SQL-looking ?q= matches nothing",
+    byName.body.total === 1 && byName.body.firms[0].name === "Paging firm 007" && byAddr.body.total === 1 && byAddr.body.firms[0].webAddress === "pf17-seven" && sqlQ.status === 200 && sqlQ.body.total === 0, { byName: byName.body.total, byAddr: byAddr.body.total, sqlQ: sqlQ.body.total });
+  ok("PF-17 DW8 pass (break m3): ?q= finds \"École\" typed composed or decomposed (NFC on both sides)", nfd.body.total === 1 && nfc.body.total === 1 && nfd.body.firms[0].name === "École paging", { nfd: nfd.body.total, nfc: nfc.body.total });
   const badQ = await Promise.all(["/api/system/firms?health=SICK", "/api/system/firms?page=0", "/api/system/firms?sort=name"].map((p) => call(base, p, tokens.admin)));
   ok("PF-17 DW8 fail: an unknown health, page 0 and an unknown query key → 422 with the field named", badQ.every((r) => r.status === 422 && r.body.code === "FIRMS_QUERY"), badQ.map((r) => [r.status, r.body.fields]));
+
+  // ------------------------------------------------------- DW9: 400 more firms (break M1, Lead 10 on #3155)
+  firmsOf("pf17-load", "Load firm ", 400);
+  const timed = async (path: string) => { const t = performance.now(); const r = await call(base, path, tokens.support); return { r, ms: Math.round(performance.now() - t) }; };
+  await timed("/api/system/firms");   // warm
+  const all = await timed("/api/system/firms"), lastPage = await timed(`/api/system/firms?page=${Math.ceil((total + 400) / PAGE_SIZE)}`), q = await timed("/api/system/firms?q=load%20firm%2039"), okH = await timed("/api/system/firms?health=OK"), attH = await timed("/api/system/firms?health=ATTENTION");
+  const times = { all: all.ms, last: lastPage.ms, q: q.ms, ok: okH.ms, att: attH.ms };
+  ok(`PF-17 DW9 pass: with ${total + 400} firms the list, its last page, a search and both bounded ?health= filters each answer 200 in under 2 s on the local store`,
+    [all, lastPage, q, okH, attH].every((x) => x.r.status === 200 && x.ms < 2000) && all.r.body.total === total + 400 && all.r.body.firms.length === PAGE_SIZE && q.r.body.total === 10, { ...times, q: q.r.body.total });
+  ok(`PF-17 DW9 pass/fail: ?health=OK checks at most ${FIGURES_PER_CALL} firms' figures a call and says so (complete false, a note naming the bound); a narrower ?q= checks them all`,
+    okH.r.body.complete === false && /at most 200 a call/.test(okH.r.body.note ?? "") && okH.r.body.firms.length === PAGE_SIZE && okH.r.body.firms.every((f: any) => f.health === "OK")
+    && (await call(base, "/api/system/firms?health=OK&q=paging", tokens.support)).body.complete === true, { complete: okH.r.body.complete, note: okH.r.body.note });
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
