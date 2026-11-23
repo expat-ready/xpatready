@@ -116,6 +116,27 @@ mkdir -p "$T/n-race2/local_aaa" "$T/gitw2"; echo note > "$T/n-race2/local_aaa/r.
 printf '#!/bin/sh\ncase "$1" in pull) "%s" "$@"; r=$?; rm -rf "%s"/*; mkdir -p "%s/.trash"; echo x > "%s/.trash/y.md"; exit $r;; esac\nexec "%s" "$@"\n' "$(command -v git)" "$T/n-race2" "$T/n-race2" "$T/n-race2" "$(command -v git)" > "$T/gitw2/git"; chmod +x "$T/gitw2/git"
 before=$(git --git-dir="$T/remote.git" rev-parse HEAD); out=$(PATH="$T/gitw2:$PATH" ps "$T/n-race2" "$T/h15"); r=$?
 ok "private-sync: only a dot-folder note left after the pull → refused after the copy (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
+# Breaker round 3 (23 Nov): a symlink is not a note; a session folder that is its own git repository is refused, not
+# silently skipped; a refusal resets only notes/; a pushurl elsewhere is refused; the push goes to the upstream branch.
+mkdir -p "$T/n-race3/local_aaa" "$T/gitw3"; echo note > "$T/n-race3/local_aaa/c.md"
+printf '#!/bin/sh\ncase "$1" in pull) "%s" "$@"; r=$?; rm -rf "%s"/*; ln -s /nonexistent "%s/link.md"; exit $r;; esac\nexec "%s" "$@"\n' "$(command -v git)" "$T/n-race3" "$T/n-race3" "$(command -v git)" > "$T/gitw3/git"; chmod +x "$T/gitw3/git"
+before=$(git --git-dir="$T/remote.git" rev-parse HEAD); out=$(PATH="$T/gitw3:$PATH" ps "$T/n-race3" "$T/h16"); r=$?
+ok "private-sync: only a symlink left after the pull → refused after the copy (exit 4), the mirror untouched" "$([ $r = 4 ] && untouched && echo 1)" "exit $r: $out"
+mkdir -p "$T/n-sub/s2"; echo a > "$T/n-sub/a.md"; echo z > "$T/n-sub/s2/z.md"; git init -q "$T/n-sub/s2"; git -C "$T/n-sub/s2" add -A; git -C "$T/n-sub/s2" commit -qm z
+before=$(git --git-dir="$T/remote.git" rev-parse HEAD); out=$(ps "$T/n-sub" "$T/h17"); r=$?
+ok "private-sync: a session folder that is its own git repository → refused (exit 4, named), never 'pushed' without its notes" "$([ $r = 4 ] && grep -q 's2' <<<"$out" && untouched && echo 1)" "exit $r: $out"
+ps "$T/notes" "$T/h18" >/dev/null 2>&1; mkdir -p "$T/h18/other"; echo k > "$T/h18/other/keep.md"; git -C "$T/h18" add other/keep.md
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.excludesFile GIT_CONFIG_VALUE_0="$T/excl" ps "$T/n-ign" "$T/h18"); r=$?
+ok "private-sync: a refusal after the copy resets notes/ only (work staged elsewhere in the working copy stays)" "$([ $r = 4 ] && git -C "$T/h18" diff --cached --name-only | grep -qx other/keep.md && echo 1)" "exit $r: $out; staged: $(git -C "$T/h18" diff --cached --name-only)"
+git -C "$T/h18" reset -q; rm -rf "$T/h18/other"
+ps "$T/notes" "$T/h19" >/dev/null 2>&1; git -C "$T/h19" config remote.origin.pushurl "file://$T/other.git"; echo c > "$T/notes/c.md"
+out=$(ps "$T/notes" "$T/h19"); r=$?
+ok "private-sync: a pushurl pointing elsewhere → refused (exit 4)" "$([ $r = 4 ] && grep -q 'refused' <<<"$out" && echo 1)" "exit $r: $out"
+def=$(git --git-dir="$T/remote.git" symbolic-ref --short HEAD); ps "$T/notes" "$T/h20" >/dev/null 2>&1
+git -C "$T/h20" checkout -q -b work --track "origin/$def"; echo d > "$T/notes/d.md"; out=$(ps "$T/notes" "$T/h20"); r=$?
+ok "private-sync: a working copy on another local branch pushes to the upstream branch ($def), not a new branch" "$([ $r = 0 ] && git --git-dir="$T/remote.git" show "$def:notes/side-session-notes/d.md" >/dev/null 2>&1 && ! git --git-dir="$T/remote.git" rev-parse -q --verify refs/heads/work >/dev/null && echo 1)" "exit $r: $out"
+: > "$T/afile"; out=$(env -u PRIVATE_SYNC $U sync --notes "$T/afile" --cmd "bash $T/bad.sh"); ok "the side-notes path is a file, not a folder: no quiet skip, the sync runs and its failure is an ACT" "$([ "$(acts "$out")" = 1 ] && echo 1)" "$out"
+ln -s /nonexistent "$T/dangling"; out=$(env -u PRIVATE_SYNC $U sync --notes "$T/dangling" --cmd "bash $T/bad.sh"); ok "the side-notes path is a dangling symlink: no quiet skip, an ACT" "$([ "$(acts "$out")" = 1 ] && echo 1)" "$out"
 W="$TOOLS/../../../../.claude/skills/lead-watch/SKILL.md"
 ok "skill lead-watch step 1 passes the context to lead-watch.sh (LEAD_CONTEXT, Lead 9 21 Nov)" "$(grep -q 'LEAD_CONTEXT=<k> bash product/tools/lead-watch.sh 30' "$W" && echo 1)" "no LEAD_CONTEXT in $W step 1"
 
