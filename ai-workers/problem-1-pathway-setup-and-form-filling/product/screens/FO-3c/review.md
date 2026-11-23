@@ -644,3 +644,34 @@ Could not check: a real screen reader; an intended user's own walk (D17 and D20 
 Reviewer: Approve 8927036b47dc0ed68e25d61b89c8297ac4abf514
 
 Verdict: Approve 8927036b47dc0ed68e25d61b89c8297ac4abf514
+
+## Part 2, CI fix (85860f3e9)
+
+Scope: `git diff 0b6dc934b..85860f3e9` only. **Verdict: Ship (Approve).** No logic change.
+
+* **What the diff contains:**
+  - `agreement-words.ts` is renamed to `studio/contracts/consultation-agreement-words.ts`, 100 % similar: the content is byte for byte the same.
+  - Two import paths changed: `agreement.tsx:17` and the row suite's line 58.
+  - One comment changed.
+  - `MODULE.rows/FO-3c.md`'s types-page path is corrected.
+  - Three J-104 screenshots are refreshed.
+  - Nothing else changed.
+* **The move is complete:**
+  - `../../../../../../contracts/` from `web/src/modules/front-office/booking/calendar/` resolves to `studio/contracts`. That is the same folder the precedent `case-check-words` reaches with `../../../contracts` from `web/src/components`.
+  - A search of the folder (outside node_modules, var and dist) finds no reference to the old path; `qa/graph.json` already names the new file.
+* **What I ran:**
+
+  | Check | Where | Result |
+  |---|---|---|
+  | `vite build` (web) | `git archive` copy of 85860f3e9 | Passes |
+  | `tsc -p web/tsconfig.json --noEmit` | Same copy | 0 errors |
+  | Row suite | Same copy | 45/45 |
+  | `check-select-suites.sh` | Repository, read-only | 83/83 |
+  | `module-cards.py tree` | Repository, read-only | PASS (15 cards) |
+
+  The working tree stayed clean.
+* No new findings. The re-check Minors (m3r-1 to m3r-3) are unchanged and remain non-blocking.
+
+Reviewer: Approve 85860f3e92ce79ff11b3b1ff116dbdbbb78dbea5
+
+Verdict: Approve 85860f3e92ce79ff11b3b1ff116dbdbbb78dbea5
