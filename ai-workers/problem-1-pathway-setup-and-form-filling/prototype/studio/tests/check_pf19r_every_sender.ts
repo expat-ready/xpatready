@@ -48,6 +48,8 @@ const SENDERS: Record<string, Entry> = {
   "platform/support/support.ts": { counts: { mailSend: 1, anySend: 1 }, route: "support ticket mail: MAIL_PORT (MESSAGES_MAIL) (features/platform-support.ts)" },
   "platform/entitlements/storage.ts": { counts: { mailSend: 2, anySend: 2 }, route: "storage-over emails: MAIL_PORT (MESSAGES_MAIL) (features/platform-entitlements.ts; PF-15 part 1a)" },
   "platform/entitlements/limit-changes.ts": { counts: { mailSend: 1, anySend: 1 }, route: "live-plan removal notice: the MailPort its caller gives (no caller in api/src: no route until PF-4s)" },
+  "front-office/signing/service.ts": { counts: { mailSend: 1, anySend: 2 }, route: "\"Your signed agreement\": signingMail() = MESSAGES_MAIL, set by features/front-office-signing.ts (FO-6 part 3); its other .send( is SigningPort's (the envelope, no email)" },
+  "front-office/signing/handlers.ts": { counts: {}, route: "holds the MailPort the signing feature sets (MESSAGES_MAIL) and the SigningPort; sends nothing (FO-6 part 3)" },
   "platform/billing/exit-notices.ts": { counts: { mailSend: 1, anySend: 1 }, route: "payment-hold notice and deletion warnings: MESSAGES_MAIL (features/platform-billing-exit.ts; PF-5 part 4)" },
   "front-office/booking/service.ts": { counts: { mailSend: 3, anySend: 3 }, route: "booking mail: BOOKING_PORTS.mail = MESSAGES_MAIL (features/front-office-booking.ts; PF-19b)" },
   "front-office/booking/consultation-agreement/service.ts": { counts: { mailSend: 4, anySend: 7 }, route: "consultation agreement mail (the client's link, the 24 h reminder, the one-time code, the signed copy): CONSULTATION_AGREEMENT_PORTS.mail = MESSAGES_MAIL (features/front-office-consultation-agreement.ts; FO-3c). Its other 3 .send( are SigningPort's send, never mail" },
