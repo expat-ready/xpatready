@@ -76,3 +76,32 @@ BIC-01-20 (EXPERIENCE.md §6): N/A, not a case-side screen.
 To fix: M1 (shape check before `asBypass`; 404 test), M2 (keep the refused-read line, touch the link's firm when it has one; test). Minors m1-m7 should be fixed in the same round where cheap (m1 and m2 especially).
 
 Reviewer: Block bacf188d8a9aa8bf1bdb3afd9f94728775457b9a
+
+## Round 2: diff only, bacf188d → `0eb3cdb1410f7afcbe97e960cf61cb06e5879a27`
+**Runs.**
+* `check_r190_invited_signup` **17/17** on a fresh copy at 4440 (both local stand-ins). Its api.log has no 500 and no error line.
+* `check_pf28_inputs` **48/48** on a second fresh copy at 4440.
+* Both copies are stopped.
+
+**Round 1, closed.**
+* **M1 closed.** Both doors test the token's shape before `asBypass` and answer `linkGone()`. IS6 sends 65 characters, a dot, a % and a tilde on GET and POST: all 404 in the one set of words.
+* **M2 closed.** `liveLink` commits the firm-less line for unknown, unused and expired links. A used link gets `touchFirms` on its firm (the same way as the self-serve lookup's line), then the 404. IS7 shows the open lines going 8 → 9 and the firm's lines 3 → 4.
+* **Confirm after the link has gone.** `LINK_GONE` rolls the transaction back; then `signup.verify-link-gone` is written and the answer is 404. IS7's fail case: no firm, the link unused, the line kept.
+* **m1 closed.** The GET has a per-IP limit (`invite-open:`, 30 per window); IS8 gets 429 from the 23rd call of its burst, once the check's earlier opens are counted.
+* **m2 closed.** `rollback.sql` follows the 15 existing ones; `migration.sql` points to it.
+* **m3 closed.** Tests added for an Admin making a link, an unknown plan, an unknown field, PLAN_GONE (409) and the link going between the form and Confirm.
+* **m4 closed.** `firm.created` says "invited sign-up, from a private link".
+* **m5 closed.** The invite door has its own 404 words: "Ask us for a new link, or sign in…".
+* **Not changed:** m7 (the PR body) is being rewritten; m8 is the graph tool's gap.
+
+**New finding.**
+* **N1 (Major, Must): `tests/journeys/j_90.ts:167` no longer parses.**
+  * The m6 edit put a `//` comment in the middle of the call:
+    `j("POST", "/api/system/signup-links",   // Lead 6 on #3040: … { email: invited, …, period: "MONTHLY" }, tok);`
+  * Everything after `//` is now a comment: the body, `tok` and the closing `);`.
+  * TypeScript's parser reports `168: Argument expression expected`. The whole j_90 journey (W1-W6) cannot run in walks.yml or item-proof, which run it.
+  * Fix: move the comment to the end of the line, or to its own line above the call. Then run `j_90` once (its W4 lines stay red by design until the screen exists).
+
+**Verdict round 2: Block `0eb3cdb1410f7afcbe97e960cf61cb06e5879a27`.** One open Major, N1, a one-line fix; nothing else is open.
+
+Reviewer: Block 0eb3cdb1410f7afcbe97e960cf61cb06e5879a27

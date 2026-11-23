@@ -114,9 +114,9 @@ try {
   ok("R1.90 IS4 fail: a link past its 14 days → 404 on GET and POST, no firm", lateGet.status === 404 && latePost.status === 404 && firmsOf(late) === "0", { lateGet: lateGet.status, latePost: latePost.status });
 
   // ------------------------------------------------------------------------------------------ IS6 malformed tokens
-  const bad = ["A".repeat(65), "a.b", "%41" + "A".repeat(40), "abc~def"];
+  const bad = ["A".repeat(65), "a.b", "%41" + "A".repeat(40), "abc~def", "%41" + "A".repeat(42), "%41".repeat(43)];   // the last two decode to a token's shape (break R2-M1)
   const badAnswers = await Promise.all(bad.flatMap((t) => [call("GET", `/api/public/signup/${t}`), signUp(t)]));
-  ok("R1.90 IS6 fail (review/break M1): a malformed token (65 characters, a dot, a %, a tilde) → the one 404 on GET and POST, never 500", badAnswers.every((a) => a.status === 404 && a.body?.detail === unknown.body?.detail), badAnswers.map((a) => a.status));
+  ok("R1.90 IS6 fail (review/break M1, R2-M1): a malformed token (65 characters, a dot, a %, a tilde, a %-encoded token that decodes to the shape) → the one 404 on GET and POST, never 500", badAnswers.every((a) => a.status === 404 && a.body?.detail === unknown.body?.detail), badAnswers.map((a) => a.status));
 
   // ------------------------------------------------------------------------------------------ IS7 refused opens keep their line
   const opens = () => Number(sql(`select count(*) from audit_event where action = 'platform.bypass' and detail->>'step' = 'signup-link.open'`));

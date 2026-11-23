@@ -164,7 +164,8 @@ try {
 
   // ------------------------------------------------------------------------------------------ W4: the private plan link
   const invited = `invited.j90.${run}@example.com`;
-  const made = await j("POST", "/api/system/signup-links",   // Lead 6 on #3040: our staff's plane (PF-4s); a firm token is refused there { email: invited, countryCode: "CA", planCode: plan, period: "MONTHLY" }, tok);
+  // Lead 6 on #3040: our staff's plane (PF-4s), so a firm token is refused there (403), never "Cannot POST".
+  const made = await j("POST", "/api/system/signup-links", { email: invited, countryCode: "CA", planCode: plan, period: "MONTHLY" }, tok);
   const routeMissing = made.status === 404 && /Cannot POST/i.test(JSON.stringify(made.body));
   ok("R1.90 W4 (PF-5): a private single-use sign-up link can be made (POST /api/system/signup-links answers, to our staff or with a refusal by role)", !routeMissing, { status: made.status, body: JSON.stringify(made.body).slice(0, 160) });
   const opened = await j("GET", "/api/public/signup/qa-j90-not-a-token");
