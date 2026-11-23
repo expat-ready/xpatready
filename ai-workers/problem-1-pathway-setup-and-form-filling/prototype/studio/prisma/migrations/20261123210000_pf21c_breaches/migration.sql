@@ -123,8 +123,8 @@ ALTER TABLE "plat_breach" ADD CONSTRAINT "plat_breach_facts_set" CHECK (
 -- The decision: UNDECIDED names nobody; a decision names who, when and why (SA-11-24, BR-11).
 ALTER TABLE "plat_breach" ADD CONSTRAINT "plat_breach_decision_whole" CHECK (
   ("decision" = 'UNDECIDED' AND "decided_by" IS NULL AND "decided_at" IS NULL AND "decision_reason" IS NULL)
-  OR ("decision" <> 'UNDECIDED' AND plat_breach_actor_ok("decided_by") AND "decided_at" IS NOT NULL
-      AND btrim("decision_reason") <> '' AND char_length("decision_reason") <= 2000));
+  OR ("decision" <> 'UNDECIDED' AND "decided_by" IS NOT NULL AND plat_breach_actor_ok("decided_by") AND "decided_at" IS NOT NULL
+      AND "decision_reason" IS NOT NULL AND btrim("decision_reason") <> '' AND char_length("decision_reason") <= 2000));
 ALTER TABLE "plat_breach_event" ADD CONSTRAINT "plat_breach_event_actor" CHECK (plat_breach_actor_ok("actor") AND jsonb_typeof("detail") = 'object');
 ALTER TABLE "plat_breach_notice" ADD CONSTRAINT "plat_breach_notice_facts" CHECK (
   "channel" = 'EMAIL' AND plat_breach_actor_ok("sent_by") AND jsonb_typeof("recipients") = 'array' AND jsonb_array_length("recipients") BETWEEN 1 AND 200);

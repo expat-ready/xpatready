@@ -168,6 +168,10 @@ try {
     opened.status === 201 && opened.body.status === "RECORDED" && opened.body.source === "MANUAL" && opened.body.description === body.description && opened.body.discoveredAt === new Date(discoveredAt).toISOString()
     && JSON.stringify(opened.body.affectedFirms) === JSON.stringify([firmA, firmB]) && opened.body.scope === "KNOWN" && JSON.stringify(opened.body.dataCategories) === JSON.stringify(body.dataCategories)
     && opened.body.rootCause === body.rootCause && opened.body.containment === body.containment && opened.body.decision === "UNDECIDED" && opened.body.openedBy === `staff:${OWNER}` && opened.body.notices.length === 0, opened);
+  ok("PF-21c Lead read fail (SA-11-24, BR-11: a decision names why): plat_breach_change deciding \"notify firms\" with no decision_reason is refused by plat_breach_decision_whole",
+    refusedBySql(`select plat_breach_change('${id}', '{"decision":"NOTIFY_FIRMS"}', 'staff:${OWNER}')`, /plat_breach_decision_whole/) && sql(`select decision from plat_breach where id = '${id}'`) === "UNDECIDED");
+  ok("PF-21c Lead read fail (SA-11-24, BR-11: a decision names who): a direct update deciding \"notify firms\" with decided_by null is refused by plat_breach_decision_whole",
+    refusedBySql(`update plat_breach set decision = 'NOTIFY_FIRMS', decision_reason = 'Sample: who is missing', decided_by = null where id = '${id}'`, /plat_breach_decision_whole/) && sql(`select decision from plat_breach where id = '${id}'`) === "UNDECIDED");
   const audList = await call(base, "GET", "/api/system/register/breaches", { token: auditorT });
   const audOne = await call(base, "GET", `/api/system/register/breaches/${id}`, { token: auditorT });
   ok("PF-21c DW1 pass: the Auditor reads the register and the breach (200, read-only)", audList.status === 200 && audList.body.breaches.some((b: { id: string }) => b.id === id) && audOne.status === 200 && audOne.body.id === id, { audList: audList.status, audOne: audOne.status });
