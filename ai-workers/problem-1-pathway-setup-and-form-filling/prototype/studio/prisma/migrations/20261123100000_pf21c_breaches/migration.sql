@@ -1,6 +1,6 @@
 -- PF-21c (map row 86; SA-11 §3.7, SA-11-14, SA-11-24, SA-11-25, SA-11-35, BR-11; SA7-D74 (b); P-600, P-601 (1)): ExpatReady's
 -- breach register and the notices to affected firms. Additive: four enums, three tables, their indexes, checks and
--- triggers, seven definers, two permission rows and one Sample platform email template. No existing table, function or
+-- triggers, six definers, two permission rows and one Sample platform email template. No existing table, function or
 -- row is changed.
 --
 -- Walls: plat_breach, plat_breach_event and plat_breach_notice are our own registers (PF-12's OWN list,
