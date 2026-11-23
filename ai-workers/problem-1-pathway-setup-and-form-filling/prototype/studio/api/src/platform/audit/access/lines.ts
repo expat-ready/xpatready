@@ -58,7 +58,7 @@ const ourStaff = () => {
 export async function recordFirmRead(tx: Tx, firmId: string, call: Call): Promise<void> {
   const { actor } = ourStaff();
   await auditEvent.record(tx, { firmId, actor, action: FIRM_READ, entity: "platform_firm", entityKey: firmId.toLowerCase(),
-    summary: "ExpatReady staff read this firm's records.", detail: { method: call.method, route: call.route } });
+    summary: "ExpatReady staff read this firm's records.", detail: { method: call.method, route: call.route }, before: null, after: null });   // a read: nothing before or after
 }
 
 /** One firm-less cross_tenant.access line on the platform's own trail, in `tx`: the staff member (the actor) and the scope. */
@@ -67,7 +67,7 @@ export async function recordCrossTenant(tx: Tx, scope: string, call: Call, filte
     const { actor, correlationId } = ourStaff();
     const workspaceId = await platformAuditWorkspaceId(tx);
     await tx.auditEvent.create({ data: { workspaceId, firmId: null, caseId: null, actorType: "OUR_STAFF", correlationId: correlationId ?? null, supportSessionId: null,
-      actor, action: CROSS_TENANT, entity: ACCESS_ENTITY, entityKey: call.route.slice(0, 200), summary: `ExpatReady staff read more than one firm's records: ${scope}.`,
+      actor, action: CROSS_TENANT, entity: "plat_system_access", entityKey: call.route.slice(0, 200), summary: `ExpatReady staff read more than one firm's records: ${scope}.`,
       detail: { scope, method: call.method, route: call.route, ...filters } } });
   }, { entity: ACCESS_ENTITY, entityKey: call.route.slice(0, 200) }, { attempts: 1 });
 }
