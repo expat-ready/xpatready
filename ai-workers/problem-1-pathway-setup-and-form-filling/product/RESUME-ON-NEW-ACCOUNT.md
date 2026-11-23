@@ -5,6 +5,7 @@
 ## Switch of 23 Nov (Lead 10 → the new account's Lead), written 10:4x IST 23 Nov: READ THIS BLOCK FIRST
 **Why:** weekly 84% at 10:10, 88% at 10:37 IST (about 8%/h with the all-in push the founder approved, A292); stop order at 95%, switch before 97%.
 **Truth:** `product/STATE.md` on `lead/2026-11-07-lead31` (Lead 10 lines, founder asks A291-A293). Proven on main: 48/101 at 10:37 (main history: 12 on 20 Nov, 25 on 21, 41 on 22, 46 on 23 at 00:00).
+**The plan to run: `product/design/plan-24h-2026-11-23.md` (target 18, commitment 16 with AWS, checkpoints 15:00 ≥3 · 19:00 ≥6 · 23:00 ≥10 · 03:00 ≥13 · 07:00 ≥15 · 11:00 ≥16; new lanes listed there).**
 **Founder decisions in force:** full approval to the Lead (A292); goal 70% (+23) in 2-3 days, ask for 25 by 10:00 24 Nov; tabs drawn inside the app (A293, console pattern); push on the new account.
 **Cloud lanes on the old account (they stop; re-brief each from its PR or branch, one fresh session per row, Opus 5.5 medium, P-788):**
 * Capability builders: R1.70 CS-D7c/CS-D7 · R1.85 PF-21b rest + PF-21d · R1.105 PF-11c + AUD-2 · R1.56 FO-7g part 3 · R1.61 J-61 (on #3065) · R1.46 PF-19s · R1.86 PF-21c · R1.29 FO-9b part 2 (#3174, rulings posted) · R1.93 PF-17 part 1 (#3155, round 3) · R1.58 FO-7t part 1 (#3033: hand-over note on the PR; Lead B's no-case scope fix) · R1.24 staff actor word then PF-25w (QmVh lane) · R1.104 FO-3c part 2 (T38b lane, rulings W4 block, W5 signatory) · R1.23 #3037 (merge main, then /run full) · R1.90 #3040 (to main, reviewer + breaker) · R1.92 #3173 (queued).
