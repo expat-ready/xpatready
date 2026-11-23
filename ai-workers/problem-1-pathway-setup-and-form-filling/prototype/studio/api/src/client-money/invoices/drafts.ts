@@ -18,7 +18,7 @@ import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { dayOf, invoiceFacts } from "./facts.ts";
 import { lineRatePpm, provinceCode, taxDefault } from "../tax/defaults.ts";
-import { billToProvince } from "./bill-to.ts";
+import { billToProvince, type BillToParty } from "./bill-to.ts";
 import { taxForLine } from "./tax-round.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -124,21 +124,44 @@ export class InvoiceDrafts {
   }
 
   /** PUT /api/front-office/money/invoices/:id/bill-to (agent/invoice:edit, AG-6-4 §8): the province the draft's tax
-   *  follows (FO-7g part 3, P-797), one of the 13 codes. New lines take its rate; lines already added keep their stored
-   *  tax. An issued invoice's is fixed (409, and the database's gate). */
+   *  follows (FO-7g part 3, P-797), one of the 13 codes. Lead B's read on #3156: in the same transaction, every line taxed
+   *  at the old Bill-to's default is re-rated to the new default with taxForLine (a line at 0 %, a government fee and a
+   *  line at any other rate stay as they are), and the one audit line carries both rates, how many lines were re-rated and their tax before and after. New
+   *  lines take the new default. An issued invoice's is fixed (409, and the database's gate). */
   async setBillTo(ctx: StaffContext, invoiceId: string, body: unknown): Promise<InvoiceView> {
     if (!UUID.test(invoiceId)) notFound("invoice");
     const b = parse(BillToIn, body);
     return this.db.$transaction(async (tx) => {
       const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
-      const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; billTo: string | null }[]>`select issued_at is not null as issued, number, bill_to_province as "billTo" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
+      const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; billTo: string | null; personId: string | null; companyId: string | null; currency: string }[]>`select issued_at is not null as issued, number, bill_to_province as "billTo", person_id::text as "personId", company_id::text as "companyId", currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
       if (inv.issued) problem(409, "Not possible now", `This invoice is issued (${inv.number}): its Bill-to province is fixed. Nothing was saved.`, { code: "ISSUED" });
-      if (inv.billTo !== b.province) {
-        await tx.moneyInvoice.update({ where: { firmId_id: { firmId, id } }, data: { billToProvince: b.province } });
-        await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.bill_to_changed", entity: "money_invoice", entityKey: id,
-          summary: `Bill-to province of a draft invoice set to ${b.province}; new lines take its tax.`, detail: { invoiceId: id }, before: { billToProvince: inv.billTo }, after: { billToProvince: b.province } });
+      if (inv.billTo === b.province) return this.view(tx, ctx.firmId, id);
+      // The two defaults, from one read of the firm's facts after the invoice's lock (as addLine reads them).
+      const [facts] = await tx.$queryRaw<{ registered: boolean | null; address: unknown }[]>`select s.tax_registered as registered, f.business_address as address from platform_firm f left join money_payment_settings s on s.firm_id = f.id where f.id = ${firmId}::uuid`;
+      const party: BillToParty = inv.personId ? { kind: "PERSON", id: inv.personId } : inv.companyId ? { kind: "COMPANY", id: inv.companyId } : null;
+      const registered = facts?.registered === true;
+      const from = taxDefault({ firmProvince: billToProvince({ businessAddress: facts?.address ?? null }, party, inv.billTo), registered });
+      const to = taxDefault({ firmProvince: b.province, registered });
+      await tx.moneyInvoice.update({ where: { firmId_id: { firmId, id } }, data: { billToProvince: b.province } });
+      const reRated: { position: number; amountMinor: number; taxBefore: number; taxAfter: number }[] = [];
+      if (from.ratePpm > 0 && from.ratePpm !== to.ratePpm) {
+        const lines = await tx.moneyInvoiceLine.findMany({ where: firmScope(ctx.firmId, { invoiceId: id, taxRatePpm: from.ratePpm, kind: { not: "GOVERNMENT_FEE" } }), orderBy: { position: "asc" }, select: { id: true, position: true, amountMinor: true, taxMinor: true } });
+        try {
+          for (const l of lines) {
+            const taxAfter = this.tax(l.amountMinor, to.ratePpm);
+            await tx.moneyInvoiceLine.update({ where: { id: l.id }, data: { taxRatePpm: to.ratePpm, taxMinor: taxAfter } });
+            reRated.push({ position: l.position, amountMinor: l.amountMinor, taxBefore: l.taxMinor, taxAfter });
+          }
+        } catch (e) {   // the database's credit rule: re-rating down below credit already applied to this draft
+          if (/of credit is applied to this draft/.test(String((e as Error).message))) problem(409, "Not possible now", "Credit is applied to this draft, more than its lines would leave at the new province's tax: reverse that credit first. Nothing was saved.", { code: "CREDIT_APPLIED" });
+          throw e;
+        }
       }
+      await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.bill_to_changed", entity: "money_invoice", entityKey: id,
+        summary: `Bill-to province of a draft invoice set to ${b.province}${reRated.length ? `; ${reRated.length} line(s) re-rated from ${percent(from.ratePpm)} to ${percent(to.ratePpm)}` : ""}.`,
+        detail: { invoiceId: id, linesReRated: reRated.length, taxBeforeMinor: reRated.reduce((t, l) => t + l.taxBefore, 0), taxAfterMinor: reRated.reduce((t, l) => t + l.taxAfter, 0) },   // flat facts (AuditDetail)
+        before: { billToProvince: inv.billTo, ratePpm: from.ratePpm }, after: { billToProvince: b.province, ratePpm: to.ratePpm } });
       return this.view(tx, ctx.firmId, id);
     });
   }

@@ -2,7 +2,9 @@
 // Rules for Services", para 20 and Example 6; AG-6-4 rules 1, 4, 7, §8 and edge case 12; Tax readings: Unconfirmed: no
 // accountant): the Bill-to province. The BACKLOG row's six cases, each a pass and a fail:
 //   B1 an Ontario firm with Bill-to NB gives 15 % lines, not 13 %;
-//   B2 Bill-to edited on a draft changes the default of new lines and leaves existing lines' stored tax unchanged;
+//   B2 Bill-to edited on a draft changes the default of new lines and (Lead B's read on #3156, superseding the row's
+//      "leaves existing lines' stored tax unchanged") re-rates the lines taxed at the old default in the same change;
+//   B7 only lines at the old default move: a 0 % line and a government fee stay at 0;
 //   B3 Bill-to cannot change after issue (the route's 409 and the database's gate);
 //   B4 a code outside the 13 is refused 422;
 //   B5 no address and no edit gives the firm's province (filled on the new draft);
@@ -107,14 +109,26 @@ try {
     s1.status === 200 && s1.body.billToProvince === "NB" && l1.status === 201 && lines(d1.body.id) === `1:${T.NB.ratePpm}:${taxForLine(100000, T.NB.ratePpm)}` && T.NB.ratePpm === 150000, [s1.body, lines(d1.body.id)]);
   ok("FO-7g3 B1 fail: the line is not the firm's 13 %", T.ON.ratePpm === 130000 && lines(d1.body.id) !== `1:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}`);
 
-  // ------------------------------------------------------------- B2: edit changes new lines, leaves existing lines' tax
+  // ------------------------------------------- B2 (Lead B's read on #3156): an edit re-rates the old default's lines
   const d2 = await draft(); await fee(d2.body.id); const before = lines(d2.body.id);
   const s2 = await setTo(d2.body.id, "AB"); await fee(d2.body.id);
-  ok("FO-7g3 B2 pass: Bill-to ON → AB on a draft: line 1 keeps its stored 13 % tax, line 2 takes AB's 5 % GST; one audit line with before ON and after AB",
-    s2.status === 200 && before === `1:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}` && lines(d2.body.id) === `${before},2:${T.AB.ratePpm}:${taxForLine(100000, T.AB.ratePpm)}`
-    && sql(`select count(*) || ':' || min(detail->>'billToProvince_before') || ':' || min(detail->>'billToProvince_after') from audit_event where action = 'invoice.bill_to_changed' and entity_key = '${d2.body.id}'`) === "1:ON:AB", [lines(d2.body.id), sql(`select detail from audit_event where action = 'invoice.bill_to_changed' and entity_key = '${d2.body.id}'`)]);
+  const ab = `1:${T.AB.ratePpm}:${taxForLine(100000, T.AB.ratePpm)}`;
+  ok("FO-7g3 B2 pass: Bill-to ON → AB on a draft: line 1 (at ON's 13 % default) is re-rated to AB's 5 % with taxForLine, line 2 takes 5 %; one audit line: ON 130000 → AB 50000, 1 line re-rated, its tax 130.00 → 50.00",
+    s2.status === 200 && before === `1:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}` && lines(d2.body.id) === `${ab},2:${T.AB.ratePpm}:${taxForLine(100000, T.AB.ratePpm)}`
+    && sql(`select count(*) || ':' || min(detail->>'billToProvince_before') || ':' || min(detail->>'billToProvince_after') || ':' || min(detail->>'ratePpm_before') || ':' || min(detail->>'ratePpm_after') || ':' || min(detail->>'linesReRated') || ':' || min(detail->>'taxBeforeMinor') || ':' || min(detail->>'taxAfterMinor') from audit_event where action = 'invoice.bill_to_changed' and entity_key = '${d2.body.id}'`) === `1:ON:AB:${T.ON.ratePpm}:${T.AB.ratePpm}:1:${taxForLine(100000, T.ON.ratePpm)}:${taxForLine(100000, T.AB.ratePpm)}`,
+    [lines(d2.body.id), sql(`select detail from audit_event where action = 'invoice.bill_to_changed' and entity_key = '${d2.body.id}'`)]);
   const same = await setTo(d2.body.id, "AB");
-  ok("FO-7g3 B2 fail: line 1's stored tax is not recomputed, and the same value again writes no second audit line", same.status === 200 && lines(d2.body.id).startsWith(before) && audits(d2.body.id) === "1");
+  ok("FO-7g3 B2 fail: the same value again re-rates nothing and writes no second audit line", same.status === 200 && lines(d2.body.id).startsWith(ab) && audits(d2.body.id) === "1");
+
+  // ------------------------------------------- B7 (Lead B's read): only lines at the old default move; 0 % stays 0 %
+  const d7 = await draft(); await fee(d7.body.id);
+  await call(tA, "POST", `${M}/${d7.body.id}/lines`, { kind: "FEE", description: "Not taxable (Sample)", unitMinor: 50000, ratePpm: 0 });
+  await call(tA, "POST", `${M}/${d7.body.id}/lines`, { kind: "GOVERNMENT_FEE", description: "IRCC fee (Sample)", unitMinor: 15500 });
+  const before7 = lines(d7.body.id), s7 = await setTo(d7.body.id, "NB");
+  ok("FO-7g3 B7 pass: Bill-to ON → NB re-rates the 13 % fee to 15 % (1,000.00 → tax 150.00) in the same change; the 0 % line and the government fee stay at 0",
+    s7.status === 200 && before7 === `1:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)},2:0:0,3:0:0` && lines(d7.body.id) === `1:${T.NB.ratePpm}:${taxForLine(100000, T.NB.ratePpm)},2:0:0,3:0:0`
+    && s7.body.taxMinor === taxForLine(100000, T.NB.ratePpm), [before7, lines(d7.body.id), s7.body?.taxMinor]);
+  ok("FO-7g3 B7 fail: the invoice no longer carries ON's 13 % on any line after the change", !lines(d7.body.id).includes(`:${T.ON.ratePpm}:`));
   const officer = await draft(tO), so = await setTo(officer.body.id, "NB", tO);
   ok("FO-7g3 keys fail (AG-6-4 §8): a Case Officer may start a draft but not change its Bill-to (403 agent/invoice:edit), unchanged", officer.status === 201 && so.status === 403 && stored(officer.body.id) === "ON", so.body);
 
