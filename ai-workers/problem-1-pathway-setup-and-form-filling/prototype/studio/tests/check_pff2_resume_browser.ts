@@ -14,7 +14,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { chromium, devices, type Browser, type BrowserContext } from "playwright";
@@ -47,6 +47,7 @@ const { LocalFiles } = await import("../api/src/front-office/files.ts");
 const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts");
 const { PgLegalHolds } = await import("../api/src/platform/register/holds/adapter.ts");
 const { UploadDoors } = await import("../api/src/platform/files/uploads/doors.ts");
+const { UploadRail } = await import("../api/src/platform/files/uploads/rail.ts");
 const { uploadWords } = await import("../web/src/lib/resumable-upload.ts");
 const feature = (await import("../api/src/features/platform-files.ts")).default;
 
@@ -87,7 +88,7 @@ try {
   await seedSampleFirms(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`);
   const signIn = async () => (await (await fetch(`${base}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) })).json()).token as string;
-  const P = randomUUID(), P_FAIL_ONCE = randomUUID(), P_REFUSE = randomUUID(), P_ALWAYS = randomUUID(), people = new Set([P, P_FAIL_ONCE, P_REFUSE, P_ALWAYS]);
+  const P = randomUUID(), P_FAIL_ONCE = randomUUID(), P_REFUSE = randomUUID(), P_ALWAYS = randomUUID(), P_WRITEFAIL = randomUUID(), people = new Set([P, P_FAIL_ONCE, P_REFUSE, P_ALWAYS, P_WRITEFAIL]);
   let failedOnce = false, storeBack = false;
   nest.get(UploadDoors).register("STAFF", { allowedKinds: ["pdf"], authorize: async (_c, m) => (m.personId && people.has(m.personId) ? { personId: m.personId } : null), keyOf: (t, id) => `uploads/${t.personId}/${id}`,
     onComplete: async (_tx, f) => {
@@ -158,16 +159,21 @@ try {
   type Run = { result?: string; failed?: string; words: string[]; phases: string[]; reqs: string[] };
   const small = pdfOf(1200 * 1024), smallSha = sha(small);
   /** One upload on a fresh desktop page; `during` acts on the page mid-upload (once past `at` %). */
-  const run = async (person: string, o: { retryDelays?: number[]; stallMs?: number }, during?: (page: import("playwright").Page, ctx: BrowserContext) => Promise<void>, at = 25, slow = true): Promise<Run & { page: import("playwright").Page; ctx: BrowserContext }> => {
-    const ctx = await browser!.newContext({ viewport: { width: 1440, height: 900 } }), page = await ctx.newPage(), reqs: string[] = [];
+  const run = async (person: string, o: { retryDelays?: number[]; stallMs?: number }, during?: (page: import("playwright").Page, ctx: BrowserContext) => Promise<void>, at = 25, slow = true,
+    x: { init?: (ctx: BrowserContext) => Promise<void>; filePath?: string } = {}): Promise<Run & { page: import("playwright").Page; ctx: BrowserContext }> => {
+    const ctx = await browser!.newContext({ viewport: { width: 1440, height: 900 } });
+    await x.init?.(ctx);
+    const page = await ctx.newPage(), reqs: string[] = [];
     if (slow) await (await ctx.newCDPSession(page)).send("Network.emulateNetworkConditions", { offline: false, latency: 20, downloadThroughput: -1, uploadThroughput: 256 * 1024 });
     page.on("request", (r) => { if (r.url().includes("/api/platform/files/uploads")) reqs.push(`${r.method()}:${r.headers()["upload-offset"] ?? ""}`); });
     await page.goto(`${base}/pff2-test/`);
     await page.evaluate((p) => { (window as any).personId = p; }, person);
-    await page.setInputFiles("#f", { name: "statement.pdf", mimeType: "application/pdf", buffer: small });
+    await page.setInputFiles("#f", x.filePath ?? { name: "statement.pdf", mimeType: "application/pdf", buffer: small });
     await page.evaluate(([t, opts]) => (window as any).startUpload(t, opts), [await signIn(), o] as const);
     if (during) { await page.waitForFunction((n) => ((window as any).states.at(-1)?.percent ?? 0) >= n, at, { timeout: 30_000 }); await during(page, ctx); }
-    await page.waitForFunction(() => (window as any).result !== undefined || (window as any).failed !== undefined, null, { timeout: 60_000 });
+    // A timeout is this run's answer, shown loudly as "TIMED OUT" in its named check (the next checks still run).
+    const ended = await page.waitForFunction(() => (window as any).result !== undefined || (window as any).failed !== undefined, null, { timeout: 30_000 }).then(() => true, () => false);
+    if (!ended) await page.evaluate(() => { (window as any).handle?.abort(); (window as any).failed = "TIMED OUT (still running after 30 s)"; });
     const r = await page.evaluate(() => ({ result: (window as any).result, failed: (window as any).failed, words: (window as any).states.map((s: { words: string }) => s.words), phases: (window as any).states.map((s: { phase: string }) => s.phase) as string[] }));
     return { ...r, reqs, page, ctx };
   };
@@ -286,6 +292,52 @@ try {
   ok("PF-F2 DW8k fail (review round 2 B1): every PATCH answered 503 → a few tries on the delays, then the server's words (not a loop)",
     busy.failed === "Busy: try again later." && busy.reqs.length <= 15, { failed: busy.failed, n: busy.reqs.length });
   await busy.ctx.close();
+
+  // Review round 3 B1 / break R3-B1: the server reads the whole chunk, then answers 5xx (a staging write failing; a proxy's
+  // 502). Bytes sent are not bytes accepted: the delays must not restart, and the upload ends in the server's words.
+  const rail = nest.get(UploadRail), realWrite = rail.store.write.bind(rail.store);
+  let writeDown = false, patchesWhileDown = 0;
+  rail.store.write = (async (readable: AsyncIterable<unknown>, id: string, offset: number) => {
+    const up = await rail.store.getUpload(id);
+    if (writeDown && (JSON.parse(up.metadata?.xr_target ?? "{}") as { personId?: string }).personId === P_WRITEFAIL) { patchesWhileDown++; for await (const _ of readable) { /* read every byte */ } throw new Error("staging disk full"); }
+    return realWrite(readable as never, id, offset);
+  }) as typeof rail.store.write;
+  let downAt = 0;
+  const readThenFail = await run(P_WRITEFAIL, { retryDelays: [0, 150, 300] }, async () => { writeDown = true; downAt = Date.now(); });
+  ok("PF-F2 DW8l fail (review round 3 B1, break R3-B1): a server that reads each chunk and then answers 500 gets a few tries on growing delays, then its words; never a tight loop",
+    /could not be finished/.test(readThenFail.failed ?? "") && patchesWhileDown >= 2 && patchesWhileDown <= 6 && Date.now() - downAt >= 450 && rowsFor(P_WRITEFAIL) === 0, { failed: readThenFail.failed, patchesWhileDown, reqs: readThenFail.reqs.length });
+  writeDown = false;
+  const postsW = readThenFail.reqs.filter((r) => r.startsWith("POST")).length;
+  await readThenFail.page.evaluate(() => (window as any).retryUpload());
+  await readThenFail.page.waitForFunction(() => (window as any).result !== undefined || (window as any).failed !== undefined, null, { timeout: 60_000 });
+  const wBack = await readThenFail.page.evaluate(() => (window as any).result as string | undefined);
+  ok("PF-F2 DW8l pass: once the store writes again, retry() resumes from the server's offset (no new POST) and the file is the original",
+    !!wBack && rowOf(wBack) === smallSha && readThenFail.reqs.filter((r) => r.startsWith("POST")).length === postsW, { wBack });
+  await readThenFail.ctx.close();
+
+  // Break R3-M1: a browser inside the build target without AbortSignal.any (Chrome 111-115, Safari 16.4-17.3), with the last
+  // answer lost: the confirm still runs and the page ends done with the stored file's id.
+  let cutFinal2 = false;
+  const before12 = rowsFor(P);
+  const oldBrowser = await run(P, {}, async (page) => {
+    await page.route("**/api/platform/files/uploads/*", async (route) => {
+      const off = Number(route.request().headers()["upload-offset"] ?? -1);
+      if (!cutFinal2 && route.request().method() === "PATCH" && off + 256 * 1024 >= small.length) { cutFinal2 = true; await route.fetch(); return route.abort("connectionreset"); }
+      return route.continue();
+    });
+  }, 0, false, { init: (ctx) => ctx.addInitScript(() => { delete (AbortSignal as unknown as { any?: unknown }).any; }) });
+  ok("PF-F2 DW8m fail (break R3-M1): with no AbortSignal.any and the last answer lost, the page still ends done with the stored file's id (never paused for ever)",
+    cutFinal2 && !!oldBrowser.result && rowOf(oldBrowser.result) === smallSha && rowsFor(P) === before12 + 1, { result: oldBrowser.result, failed: oldBrowser.failed, words: oldBrowser.words.slice(-3) });
+  await oldBrowser.ctx.close();
+
+  // Break R3-m1: the picked file changes on disk mid-upload: said in words at once, never retried for ever as "paused".
+  mkdirSync(WORK, { recursive: true });
+  const picked = join(WORK, "picked-statement.pdf"); writeFileSync(picked, small);
+  const before13 = rowsFor(P);
+  const changed = await run(P, { retryDelays: [0, 150, 300] }, async () => { writeFileSync(picked, pdfOf(900 * 1024)); }, 25, true, { filePath: picked });
+  ok("PF-F2 DW8n fail (break R3-m1): a file changed on disk mid-upload ends in \"The file could not be read. Choose it again.\" after a few requests; nothing stored",
+    changed.failed === "The file could not be read. Choose it again." && changed.reqs.length <= 12 && rowsFor(P) === before13, { failed: changed.failed, n: changed.reqs.length, words: changed.words.slice(-3) });
+  await changed.ctx.close();
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
