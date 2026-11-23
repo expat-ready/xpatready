@@ -26,10 +26,11 @@ import type { LegalHoldPort } from "../../../../ports/legal-hold.ts";
 import { EXIT_NOTICE_DAYS, exitClock, type ExitClock } from "../billing/exit-clock.ts";
 import { asBypass, firmScope, touchEachFirm, withFirm } from "../firm-scope.ts";
 import { logPort } from "../observability/log.ts";
-import { CLOSURE_BYPASS, CLOSURE_QUEUE } from "./closure.bypass.ts";
+import { CLOSURE_BYPASS } from "./closure.bypass.ts";
 
 type Tx = Prisma.TransactionClient;
-export { CLOSURE_QUEUE };
+/** The job queue (its bypass use is "job:" + this name, closure.bypass.ts). */
+export const CLOSURE_QUEUE = "platform.firm.closure";
 /** Daily at 07:30 Toronto: outside 01:00-03:00 in every Canadian zone, after the night's notices are due. */
 export const CLOSURE_CRON = "30 7 * * *", CLOSURE_ZONE = "America/Toronto";
 export const CLOSURE_ACTOR = "system:platform.firm.closure";
