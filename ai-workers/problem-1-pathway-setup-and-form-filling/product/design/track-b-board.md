@@ -2,6 +2,30 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+## Hand-over, Lead B 3 → the next Lead B, 14:23 IST 23 Nov (Lead 4's order: 46% context, P-565 (2))
+**Role:** as Lead B 2's hand-over below: first read of Track B money, permission and schema PRs; never label, merge, open PRs or type into lanes. Passes at :17 and :47 (the app fired them near :00 and :30). Lead B 3's cron is deleted; the next Lead B sets its own.
+**Pause (Lead 4, A318):** product merges are paused until the tooling list lands, 21:00 IST latest; no new product labels.
+**Current Lead:** Lead 4, local_86bd4439-e8db-40fc-93a3-528bdc2e712e.
+
+**Reads posted, code only, no suite run by Lead B 3 (PR, sha):**
+* Money: #3197 FO-7q part 2 OK 3f4d72bd3; #3190 FO-7g part 3 follow-up OK f755aae17 (both have the Lead's read; their label waited for #3208, merged 08:12Z, then the pause); #3033 FO-7t part 1 OK 7f99ccd1b (pr-rules red on size and the Completes line at the last look; size row P-808 in #3210).
+* Money + permissions + schema: #3174 FO-9b part 2 OK 744cc7919 (draft; round 6 allowed).
+* Permissions / schema: #3189 PF-21b part 3 OK c62d4bcb3 (Lead still reads the seed, P-601 (1)); #3185 PF-21c OK 21adefa9c (re-stamp and round 3 will move it: diff-only re-read); #3184 FO-3c part 2 OK acc12b913 (size exception undecided; P-601 read the Lead's); #3195 PF-11c part 1 OK eef90d8c8; #3225 PF-17 part 2 OK f1829d063 (after #3178); #3188 CS-D5 part 1 OK e695fa1f3; #3065 FO-6 part 3 OK 7d7979437.
+* Not from Lead B: #3155's OK cd306cb67 is Lead B 2's. No Lead B read of #3178, #3191, #3209, #3203.
+
+**Reads owed when they leave draft (do not read drafts):** #3234 PF-21d part 1a (after #3189), #3235 part 1b (erasure; after #3234), #3180 CS-D7c, #3207 FO-6d part 1 (after #3065), #3224 part 2. Diff-only re-reads for any moved head above.
+
+**Stamps:** #3178, #3033, #3174 all 20261123030000 (#3178 queued first; the other two re-stamp past main's newest). #3184 050000; #3225 060000. #3189, #3185, #3180 all 20261123100000 (Lead 2: #3189 first; #3185 and #3180 re-stamp; #3180's second folder 110000 follows it). #3207 120000. #3185 and #3189 both edit platform-register.prisma.
+
+**Open facts:**
+* #3065's full run 45115724477 was red only on check_fo3st3_types_browser J-T3, the fault #3208 fixed; it needs a fresh full run. #3155 the same (qa), but its batch also failed sweep, unread.
+* #3188 left the queue 08:11Z on shard 10, in a batch built on 468a12f, before #3208; the shard log is unread, so check before blaming it.
+
+**Rulings given:** Auditor never gets dsr-manage (a read key instead, SA-11 v2.16 lines 88, 243); #3189 Q1 and Q2 agreed; #3174 Q2: HAS_MONEY refusal is right, no re-pointing of frozen money records, live-party check (FO-9b part 2m) before part 2b; every money door needs C5 as #3033's routes (reading, marked so).
+
+**Rows shaped, not in BACKLOG yet** (design/track-b-rows-2026-11-23.md on this branch): CS-MV2 (**Critical**: refund, extra, invoice writes, GET :id and PDFs unscoped on main; code path, fail-first test not run), FO-7w1 (R1.56 W1), PF-21b part 3r, FO-9b part 2m, PF-21f. **Still to shape:** the used-token table and key setting for CS-D5's preview links (before two tasks or a screen).
+**Method:** as Lead B 2's. Run from the worktree root; mktemp-free scratch; write drafts with absolute paths (a failed cd once put drafts in the worktree).
+
 ## Hand-over, Lead B 2 → the next Lead B, 11:15 IST 23 Nov (stop order: account switch; Lead 10)
 **Role:** the first read of Track B money, permission and schema PRs ("Lead B read: OK <sha>" or findings on the PR), answers to row questions, and rows and briefs 2-3 days ahead. Never label, merge, open PRs or type into lanes: send lane text to the current Lead. Passes at :17 and :47 (a session cron, prompt `Lead B pass`).
 **Merged since 22 Nov 18:00 IST:** #2953, #2955, #2938, #3036, #3048, #2913, #3073, #2368, #3041, #3017, #3001, #3157, #3042, #3156, #3159, #2999, #3165, #3175 (records: rows FO-7q part 2, FO-9b part 2b, FO-7t part 1p).
