@@ -148,7 +148,7 @@ try {
   let restarted = false;
   try {
     execFileSync("zsh", [join(STUDIO, "tools", "isolated.sh"), NAME, String(PORT), "restart", "--ttl", "30", "PLATFORM_IDENTITY=local", "PLATFORM_FILES=s3", `PLATFORM_FILES_BUCKET=${BUCKET}`,
-      `PLATFORM_FILES_KMS_KEY_ID=${KMS}`, `AWS_ENDPOINT_URL_S3=http://127.0.0.1:${S3_PORT}`, "AWS_ACCESS_KEY_ID=test", "AWS_SECRET_ACCESS_KEY=test"],
+      `PLATFORM_FILES_KMS_KEY_ID=${KMS}`, `PLATFORM_FILES_LINK_KEY=${randomUUID()}${randomUUID()}`, `AWS_ENDPOINT_URL_S3=http://127.0.0.1:${S3_PORT}`, "AWS_ACCESS_KEY_ID=test", "AWS_SECRET_ACCESS_KEY=test"],
       { cwd: join(STUDIO, ".."), stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 240_000 });
     restarted = true;
   } catch (e) { console.log(`  note: the restart with PLATFORM_FILES=s3 failed: ${String((e as { stdout?: string; stderr?: string }).stdout ?? "").split("\n").slice(-4).join(" ")} ${String((e as { stderr?: string }).stderr ?? e).split("\n").slice(-3).join(" ")}`); }

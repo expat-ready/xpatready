@@ -2,7 +2,7 @@
 // default is right, the two event names exist once each, and the port guard passes (and fails when the fake runs no
 // contract). No database, no server, no model call (US$0).   tsx studio/tests/check_fo9b_port.ts
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { runContract } from "../ports/contracts/contract.ts";
 import { personMergePortContract, type PersonMergeHarness } from "../ports/contracts/person-merge-port.contract.ts";
@@ -46,8 +46,8 @@ try {
   ok("FO-9b DW0 fail: an unknown field, a 501-character reason, a bad id or an extra key is refused",
     [{ choices: { email: "LOSER" }, kind: "COMPANY" }, { reason: "x".repeat(501) }, { loser_fo_id: "not-a-uuid" }, { firm_id: id }].every((o) => !MergePersonsInput.safeParse({ kind: "PERSON", survivor_fo_id: id, loser_fo_id: id2, ...o }).success));
 
-  // Events: each name once in ports/events.ts; the payload is ids only.
-  const ev = readFileSync(join(STUDIO, "ports/events.ts"), "utf8");
+  // Events: each name once in the events contract (ports/events/<module>.ts since P-785 (2); ports/events.ts re-exports); the payload is ids only.
+  const ev = [readFileSync(join(STUDIO, "ports/events.ts"), "utf8"), ...readdirSync(join(STUDIO, "ports/events")).filter((f) => f.endsWith(".ts")).map((f) => readFileSync(join(STUDIO, "ports/events", f), "utf8"))].join("\n");
   const count = (s: string) => ev.split(`"${s}"`).length - 1;
   ok("FO-9b DW0 pass: person.merged and person.unmerged exist once each in EVENT", EVENT.PERSON_MERGED === "person.merged" && EVENT.PERSON_UNMERGED === "person.unmerged" && count("person.merged") === 1 && count("person.unmerged") === 1, { merged: count("person.merged"), unmerged: count("person.unmerged") });
   ok("FO-9b DW0 fail: the payload refuses a name, email or phone (ids only)",
@@ -56,7 +56,7 @@ try {
   // The port guard passes on this tree and fails when the fake runs no contract; ports/ imports only zod and its own files.
   const guard = (root: string) => spawnSync(process.execPath, [join(root, "tools/check-port-contracts.mjs")], { encoding: "utf8" });
   const here = guard(STUDIO);
-  ok("FO-9b DW0 pass: tools/check-port-contracts.mjs exits 0 and lists PersonMergePort", here.status === 0 && /PersonMergePort ×1/.test(here.stdout), here.stdout);
+  ok("FO-9b DW0 pass: tools/check-port-contracts.mjs exits 0 and lists PersonMergePort (×2 from part 1: the fake and the real adapter, tests/check_fo9b_merge.ts)", here.status === 0 && /PersonMergePort ×2/.test(here.stdout), here.stdout);
   const copy = join(WORK, "tree");
   for (const d of ["ports", "tools"]) cpSync(join(STUDIO, d), join(copy, d), { recursive: true });
   const there = guard(copy);
