@@ -15,7 +15,7 @@ import { JsonLog, requestScope, stdSink, useLog, type AuditScope, type Level, ty
 import { requestLine } from "./metrics.ts";
 import { logText, redact, redactText, safeError } from "./redact.ts";
 
-type Req = { method: string; path?: string; baseUrl?: string; headers: Record<string, string | string[] | undefined>; route?: { path?: unknown }; platform?: { firmId?: unknown; staffId?: unknown; ourStaff?: unknown; supportSessionId?: unknown } };
+type Req = { method: string; path?: string; baseUrl?: string; headers: Record<string, string | string[] | undefined>; route?: { path?: unknown }; platform?: { firmId?: unknown; staffId?: unknown; supportSessionId?: unknown }; systemStaff?: { staffId?: unknown } };
 type Res = { statusCode: number; writableFinished?: boolean; setHeader(name: string, value: string): unknown; on(event: "finish" | "close", fn: () => void): unknown };
 
 const ID = /^[A-Za-z0-9_.:-]{1,128}$/;
@@ -39,12 +39,19 @@ const firmOf = (req: Req): string | undefined => { const f = req.platform?.firmI
 
 const ACTOR_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/, UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** AUD-1b: who the request acts as, from the guard's StaffContext (PF-4's req.platform): a staff member of a firm is
- *  FIRM_STAFF; a request a later guard marks `ourStaff: true` (PF-4s, not on main) is OUR_STAFF. No staff, no actor. */
-export function auditOf(req: Pick<Req, "platform">): AuditScope | undefined {
+ *  FIRM_STAFF, `staff:<id>`. AUD-3a: one of ExpatReady's own staff (PF-4s's guard puts them on req.systemStaff; they have
+ *  no firm and never a req.platform) is OUR_STAFF, `ourstaff:<id>`. No staff, no actor. */
+export function auditOf(req: Pick<Req, "platform" | "systemStaff">): AuditScope | undefined {
+  const ours = req.systemStaff?.staffId;
+  if (ours !== undefined) {
+    // Fail closed (review n1): a staff id of another shape never leaves the request with no actor, which would let any word pass.
+    if (typeof ours !== "string" || !ACTOR_ID.test(ours)) throw new Error("AUD-3a: our staff's id is not an actor id, so no audit line can be written in this request");
+    return { actor: `ourstaff:${ours}`, actorType: "OUR_STAFF" };
+  }
   const p = req.platform, s = p?.staffId;
   if (typeof s !== "string" || !ACTOR_ID.test(s)) return undefined;
   const support = typeof p?.supportSessionId === "string" && UUID.test(p.supportSessionId) ? { supportSessionId: p.supportSessionId.toLowerCase() } : {};
-  return { actor: `staff:${s}`, actorType: p?.ourStaff === true ? "OUR_STAFF" : "FIRM_STAFF", ...support };
+  return { actor: `staff:${s}`, actorType: "FIRM_STAFF", ...support };
 }
 
 export function requestMiddleware() {
