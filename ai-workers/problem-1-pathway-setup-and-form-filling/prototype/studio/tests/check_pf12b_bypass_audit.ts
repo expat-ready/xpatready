@@ -75,8 +75,8 @@ const PER_FIRM = ["cases.prospect-won.catch-up", "job:messages.outbox_sweep", "j
 const DOORS = ["fo.booking.public-page", "fo.booking.self-service", "fo.sales.web-form", "platform.identity.authenticate", "platform.identity.invitation", "platform.identity.sign-in", "platform.web-address.host"];
 const perFirm = Object.entries(BYPASS_USES).filter(([, e]) => e.audit === "per-firm").map(([k]) => k).sort();
 ok("PF-12b DW3 pass: the twelve cross-firm uses audit per firm (PF-5 part 4 added the exit notices job); the seven own-firm doors are off the list (PF-12b part 2: narrow lookups, tests/check_pf12b_doors.ts)", JSON.stringify(perFirm) === JSON.stringify(PER_FIRM) && DOORS.every((d) => !(d in BYPASS_USES)), perFirm);
-const PLATFORM = ["job:messages.send", "job:platform.signup.purge", "platform.account.mail", "platform.firms.signup-link"];   // R1.90: our staff's private sign-up link (a row with no firm)
-ok("PF-12b3 pass: the registry is the 12 per-firm uses plus 4 platform uses, nothing else; the re-encrypt job left it (it refuses a job with no firm before any read)",
+const PLATFORM = ["job:messages.send", "job:platform.signup.purge", "platform.account.mail"];
+ok("PF-12b3 pass: the registry is the 12 per-firm uses plus 3 platform uses, nothing else; the re-encrypt job left it (it refuses a job with no firm before any read)",
   JSON.stringify(Object.entries(BYPASS_USES).filter(([, e]) => e.audit === "platform").map(([k]) => k).sort()) === JSON.stringify(PLATFORM) && Object.keys(BYPASS_USES).length === PER_FIRM.length + PLATFORM.length && !("job:platform.secret_box.reencrypt" in BYPASS_USES), Object.keys(BYPASS_USES));
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);

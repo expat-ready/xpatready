@@ -29,6 +29,7 @@ import { asBypass, firmScope, touchFirm, touchFirms, touchPlatform } from "../fi
 import { writeMoneyKeysGranted } from "../identity/money-line.ts";
 import { emailOf } from "../identity/service.ts";
 import type { SignUpIdentity } from "./signup-identity.ts";
+import { SIGNUP_LINK_USE } from "./signup-link.bypass.ts";
 
 type Tx = Prisma.TransactionClient;
 export type SignUpPorts = {
@@ -213,7 +214,7 @@ export class FirmSignUp {
 
   // ------------------------------------------------------------------------------------------ R1.90 invited sign-up
   /** Our staff make a private single-use link (PF-4s's route; the guard has checked the key and the reason). */
-  makeLink(staff: { staffId: string }, body: unknown) { return asBypass("platform.firms.signup-link", () => this.makeLinkWork(staff, body)); }
+  makeLink(staff: { staffId: string }, body: unknown) { return asBypass(SIGNUP_LINK_USE, () => this.makeLinkWork(staff, body)); }
   private async makeLinkWork(staff: { staffId: string }, body: unknown) {
     const b = parse(LinkBody, body, (e) => { throw fields([...new Set(e.issues.map(words))], fieldsOf(e)); });
     let email: string;
