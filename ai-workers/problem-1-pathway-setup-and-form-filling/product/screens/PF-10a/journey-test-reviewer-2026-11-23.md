@@ -52,3 +52,31 @@ Fixes that raise the low scores, most valuable first:
 * A real screen reader, or an intended user walking it unaided (D17 and D20 stay with the founder).
 * A real RDS cluster beyond `check_pf8b_f4_migrations`.
 * The full demo reset on an isolated copy.
+
+## Round 2 (commit 68c32637c): the same journeys against the step 5 and 6 rules, as `xr_app`
+**Changed results**
+* J3 (dry run, then run) **failed in its dry-run half.** A dry-run CREATE row with no record yet was refused, and so was a dry-run MERGE with no before-image (review M3). Only SKIP and ERROR dry-run rows can be stored.
+* J3's run half now writes fresh rows, after the dry run's rows are deleted. That held.
+* J4 (resume) held on the new key `(firm, batch, row)`.
+* J6 (undo) held.
+
+**New**
+* A run that ends FAILED cannot be undone (m8).
+* A row can be added after the batch has FAILED (m6).
+
+**Unchanged:** J1, J2, J5, J7–J10 held.
+
+| Criterion | R1 | R2 | Why it changed |
+|---|---|---|---|
+| Task completed | 1 | ½ | The dry-run preview cannot be stored (M3) |
+| Next step obvious | 1 | 1 | |
+| Plain words | 1 | 1 | |
+| Feedback and state | ½ | ½ | |
+| Correct data | 1 | 1 | Forward-only states, rows written once, batches kept |
+| Error recovery | 1 | ½ | FAILED strands created records (m8) |
+| Access | 1 | 1 | |
+| Speed | 1 | 1 | |
+| Consistency | ½ | 1 | M1 and M2 fixed |
+| Trust and sources | ½ | ½ | |
+
+**Round 2: 8/10, no criterion at 0: passes the journey bar.** M3 still blocks the row.

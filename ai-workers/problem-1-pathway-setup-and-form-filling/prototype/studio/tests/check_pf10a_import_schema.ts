@@ -90,8 +90,10 @@ try {
   const batch = (id: string, firm: string, importer: string, att: string | null = null) =>
     `insert into plat_import_batch (id, firm_id, target_key, source_name, file_key, file_sha256, file_kind, mapping, importer_staff_id, attestation_id)
      values ('${id}', '${firm}', 'person', 'Old CRM export', 'import/${id}/file.csv', '${HASH}', 'CSV', '{"Email":"email"}', '${importer}', ${att ? `'${att}'` : "null"})`;
-  const row = (batchId: string, firm: string, n: number, outcome: string, reasons: string, extra = "") =>
-    `insert into plat_import_row (id, firm_id, batch_id, row_number, outcome, reasons${extra ? ", record_kind, record_id, before_image" : ""}) values (gen_random_uuid(), '${firm}', '${batchId}', ${n}, '${outcome}', '${reasons}'${extra})`;
+  /** A row; phase DRY_RUN unless named (review round 2 M3). extra: ", <record_kind>, <record_id>, <before_image>". */
+  const row = (batchId: string, firm: string, n: number, outcome: string, reasons: string, extra = "", phase = "DRY_RUN") =>
+    `insert into plat_import_row (id, firm_id, batch_id, phase, row_number, outcome, reasons${extra ? ", record_kind, record_id, before_image" : ""}) values (gen_random_uuid(), '${firm}', '${batchId}', '${phase}', ${n}, '${outcome}', '${reasons}'${extra})`;
+  const runRow = (batchId: string, firm: string, n: number, outcome: string, reasons: string, extra = "") => row(batchId, firm, n, outcome, reasons, extra, "RUN");
 
   // ----------------------------------------------------------------------------- DW3: the Owner's attestation
   const attA = uuid();
@@ -140,9 +142,9 @@ try {
 
   // ------------------------------------------------------------------------------- DW2: reasons are names, never values
   sql(row(bA, firmA, 1, "ERROR", `[{"field":"email","rule":"email.format"},{"field":"phone","rule":"required"}]`));
-  sql(row(bA, firmA, 2, "CREATE", "[]", `, 'person', '${uuid()}', null`));
-  sql(row(bA, firmA, 3, "MERGE", `[{"field":"givenNames","rule":"merge.filled_kept"}]`, `, 'person', '${uuid()}', '{"phone":null}'`));
-  ok("PF-10a DW2 pass: an ERROR row with two {field, rule} reasons, a CREATE naming its record, and a MERGE with its before-image are written",
+  sql(row(bA, firmA, 2, "CREATE", "[]"));
+  sql(row(bA, firmA, 3, "MERGE", `[{"field":"givenNames","rule":"merge.filled_kept"}]`, `, 'person', '${uuid()}', null`));
+  ok("PF-10a DW2 pass: dry-run rows are written: an ERROR with two {field, rule} reasons, a would-be CREATE naming no record, a MERGE naming its match (review round 2 M3)",
     sql(`select string_agg(row_number::text || outcome::text || jsonb_array_length(reasons)::text, ',' order by row_number) from plat_import_row where batch_id = '${bA}'`) === "1ERROR2,2CREATE0,3MERGE1");
   const reasonRefused = (r: string) => refused(row(bA, firmA, 9, "ERROR", r), /plat_import_row_reasons_shape/);
   ok("PF-10a DW2 fail: a reason carrying the raw value (an extra key \"value\") is refused", reasonRefused(`[{"field":"email","rule":"email.format","value":"jane@example.com"}]`));
@@ -156,13 +158,25 @@ try {
     (() => { const many = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => ({ field: `f${i}`, rule: "required" })));
       sql(row(bA, firmA, 4, "ERROR", many(50))); return reasonRefused(many(51)); })());
   ok("PF-10a DW2 fail: an ERROR row with no reason is refused", refused(row(bA, firmA, 9, "ERROR", "[]"), /plat_import_row_outcome_shape/));
+  // A batch at its run, for the RUN rows' shape.
+  const bR = uuid();
+  sql(batch(bR, firmA, ownerA, attA)); sql(`update plat_import_batch set state = 'DRY_RUN_READY', dry_run_hash = '${"f".repeat(64)}' where id = '${bR}'`); sql(`update plat_import_batch set state = 'RUNNING' where id = '${bR}'`);
+  sql(runRow(bR, firmA, 1, "CREATE", "[]", `, 'person', '${uuid()}', null`));
+  sql(runRow(bR, firmA, 2, "MERGE", "[]", `, 'person', '${uuid()}', '{"phone":null}'`));
+  ok("PF-10a DW2 pass: run rows are written: a CREATE naming its record, a MERGE with its before-image", sql(`select count(*) from plat_import_row where batch_id = '${bR}' and phase = 'RUN'`) === "2");
   ok("PF-10a DW2 fail: a before-image on a CREATE is refused (only a merge keeps what it overwrote)",
-    refused(row(bA, firmA, 9, "CREATE", "[]", `, 'person', '${uuid()}', '{"phone":null}'`), /plat_import_row_outcome_shape/));
-  ok("PF-10a DW2 fail: a record named on a SKIP, and a record kind with no id, are refused",
-    refused(row(bA, firmA, 9, "SKIP", "[]", `, 'person', '${uuid()}', null`), /plat_import_row_outcome_shape/)
+    refused(runRow(bR, firmA, 9, "CREATE", "[]", `, 'person', '${uuid()}', '{"phone":null}'`), /plat_import_row_outcome_shape/));
+  ok("PF-10a M3 fail: a dry-run MERGE with a before-image is refused (a dry run writes nothing, AG-18-15)",
+    refused(row(bA, firmA, 9, "MERGE", "[]", `, 'person', '${uuid()}', '{"phone":null}'`), /plat_import_row_outcome_shape/));
+  ok("PF-10a M3 pass: a SKIP may name the record it matched", (() => { sql(row(bA, firmA, 5, "SKIP", "[]", `, 'person', '${uuid()}', null`)); return true; })());
+  ok("PF-10a M3 fail: a dry-run row cannot be written into a RUNNING batch, nor a run row into a DRAFT one",
+    refused(row(bR, firmA, 9, "SKIP", "[]"), /DRY_RUN row refused while the batch is RUNNING/) && refused(runRow(bA, firmA, 9, "SKIP", "[]"), /RUN row refused while the batch is DRAFT/));
+  ok("PF-10a M3 fail: a run row is never deleted, even while RUNNING", refused(`delete from plat_import_row where batch_id = '${bR}' and phase = 'RUN'`, /DELETE of a RUN row refused/));
+  ok("PF-10a DW2 fail: a record named on an ERROR, and a record kind with no id, are refused",
+    refused(row(bA, firmA, 9, "ERROR", `[{"field":"email","rule":"required"}]`, `, 'person', '${uuid()}', null`), /plat_import_row_outcome_shape/)
     && refused(row(bA, firmA, 9, "CREATE", "[]", `, 'person', null, null`), /plat_import_row_outcome_shape/));
   ok("PF-10a pass/fail: one row per batch and row number (a resumed job never writes row 1 twice; AG-18-20)",
-    refused(row(bA, firmA, 1, "SKIP", "[]"), /plat_import_row_firm_id_batch_id_row_number_key/));
+    refused(row(bA, firmA, 1, "SKIP", "[]"), /plat_import_row_firm_id_batch_id_phase_row_number_key/));
 
   // ------------------------------------------------------------------------------- a batch's facts never change
   sql(`update plat_import_batch set state = 'DRY_RUN_READY', dry_run_hash = '${"b".repeat(64)}', error_count = 2, created_count = 1 where id = '${bA}'`);
@@ -174,13 +188,13 @@ try {
   ok("PF-10a fail: a hash that is not 64 lower-case hex, a negative count, or a mapping that is not an object is refused",
     refused(`update plat_import_batch set dry_run_hash = '${"B".repeat(64)}' where id = '${bA}'`, /plat_import_batch_facts/)
     && refused(`update plat_import_batch set error_count = -1 where id = '${bA}'`, /plat_import_batch_facts/)
-    && refused(`update plat_import_batch set mapping = '[]' where id = '${bA}'`, /plat_import_batch_facts/));
+    && refused(`update plat_import_batch set mapping = '[]', dry_run_hash = '${"7".repeat(64)}' where id = '${bA}'`, /plat_import_batch_facts/));
 
   // ------------------------------------------- round 1's break findings (screens/PF-10a/break-report.md F1, F2, F4-F6)
-  ok("PF-10a F2 fail: a MERGE with no before-image, and a CREATE or MERGE naming no record, are refused (undo could not reverse them)",
-    refused(row(bA, firmA, 9, "MERGE", "[]", `, 'person', '${uuid()}', null`), /plat_import_row_outcome_shape/)
-    && refused(row(bA, firmA, 9, "CREATE", "[]", `, null, null, null`), /plat_import_row_outcome_shape/)
-    && refused(row(bA, firmA, 9, "MERGE", "[]", `, null, null, '{"phone":null}'`), /plat_import_row_outcome_shape/));
+  ok("PF-10a F2 fail: a run MERGE with no before-image, and a run CREATE or MERGE naming no record, are refused (undo could not reverse them)",
+    refused(runRow(bR, firmA, 9, "MERGE", "[]", `, 'person', '${uuid()}', null`), /plat_import_row_outcome_shape/)
+    && refused(runRow(bR, firmA, 9, "CREATE", "[]", `, null, null, null`), /plat_import_row_outcome_shape/)
+    && refused(runRow(bR, firmA, 9, "MERGE", "[]", `, null, null, '{"phone":null}'`), /plat_import_row_outcome_shape/));
   ok("PF-10a F6 fail: a blank-looking wording version (zero-width space), source name (zero-width space) or file key (a tab) is refused",
     refused(`insert into plat_import_attestation (id, firm_id, owner_staff_id, wording_version) values (gen_random_uuid(), '${firmA}', '${ownerA}', E'\\u200b')`, /plat_import_attestation_facts/)
     && refused(batch(uuid(), firmA, ownerA).replace("'Old CRM export'", "E'\\u200b'"), /plat_import_batch_facts/)
@@ -197,13 +211,26 @@ try {
     (() => { mv(`state = 'DRY_RUN_READY'`); return mvRefused(`state = 'RUNNING'`, /only after its dry run/); })());
   sql(row(bL, firmA, 1, "SKIP", "[]")); sql(row(bL, firmA, 2, "SKIP", "[]"));
   ok("PF-10a F1 pass: before the run, a redone dry run removes its own rows", (() => { sql(`delete from plat_import_row where batch_id = '${bL}' and row_number = 2`); return sql(`select count(*) from plat_import_row where batch_id = '${bL}'`) === "1"; })());
-  mv(`dry_run_hash = '${H2}', state = 'RUNNING'`);
-  ok("PF-10a F1 fail: from the run on, a row cannot be removed", refused(`delete from plat_import_row where batch_id = '${bL}'`, /kept for undo/));
-  ok("PF-10a F4 fail: from the run on, the mapping, the dry-run hash and the attestation never change",
+  ok("PF-10a R2-F4 fail: the dry-run hash cannot be set in the same move as RUNNING (the run is its dry run's)", mvRefused(`dry_run_hash = '${H2}', state = 'RUNNING'`, /from the run on/));
+  mv(`dry_run_hash = '${H2}'`);
+  ok("PF-10a R2-F4 fail/pass: while DRY_RUN_READY a new mapping alone is refused; with a new dry-run hash it is taken",
+    mvRefused(`mapping = '{"Phone":"phone"}'`, /needs a new dry run/) && (() => { mv(`mapping = '{"Email":"email","Phone":"phone"}', dry_run_hash = '${H2.replace(/d/g, "9")}'`); mv(`mapping = '{"Email":"email"}', dry_run_hash = '${H2}'`); return true; })());
+  ok("PF-10a R2-F4 fail: a mapping change in the move to RUNNING is refused", mvRefused(`mapping = '{"Phone":"phone"}', state = 'RUNNING'`, /from the run on/));
+  ok("PF-10a R2-F3 fail: a finish time or an undo deadline on a batch that has not finished is refused",
+    mvRefused(`finished_at = '1990-01-01'`, /plat_import_batch_finish_shape/) && mvRefused(`undo_deadline = now() + interval '100 years'`, /plat_import_batch_finish_shape/));
+  mv(`state = 'RUNNING'`);
+    ok("PF-10a F4 fail: from the run on, the mapping, the dry-run hash and the attestation never change",
     mvRefused(`mapping = '{"Phone":"phone"}'`, /from the run on/) && mvRefused(`dry_run_hash = '${"e".repeat(64)}'`, /from the run on/) && mvRefused(`attestation_id = null`, /from the run on/));
   ok("PF-10a F4 fail: RUNNING cannot go back to DRAFT or DRY_RUN_READY", mvRefused(`state = 'DRAFT'`, /moves forward only/) && mvRefused(`state = 'DRY_RUN_READY'`, /moves forward only/));
   mv(`created_count = 1, skipped_count = 1`);   // counts as the job goes on (state to itself)
+  ok("PF-10a F1 fail: from the run on, a dry-run row cannot be removed either", refused(`delete from plat_import_row where batch_id = '${bL}' and phase = 'DRY_RUN'`, /refused while the batch is RUNNING/));
+  ok("PF-10a R2-F2 pass: a run row is written while RUNNING", (() => { sql(runRow(bL, firmA, 1, "SKIP", "[]")); return true; })());
+  ok("PF-10a R2-F3 fail: COMPLETED without its finish time or undo deadline is refused; FAILED after creating a record is refused (m8)",
+    mvRefused(`state = 'COMPLETED', finished_at = now()`, /plat_import_batch_finish_shape/) && mvRefused(`state = 'FAILED', finished_at = now()`, /plat_import_batch_finish_shape/));
   mv(`state = 'COMPLETED', finished_at = now(), undo_deadline = now() + interval '14 days'`);
+  ok("PF-10a R2-F3 fail: a finished batch's counts never change", mvRefused(`error_count = 99`, /counts never change/));
+  ok("PF-10a R2-F2 fail: no row, dry-run or run, is written into a COMPLETED batch",
+    refused(runRow(bL, firmA, 2, "MERGE", "[]", `, 'person', '${uuid()}', '{"email":"planted"}'`), /refused while the batch is COMPLETED/) && refused(row(bL, firmA, 7, "SKIP", "[]"), /refused while the batch is COMPLETED/));
   ok("PF-10a F4 fail: the finish time and the undo deadline are set once", mvRefused(`finished_at = '1990-01-01'`, /set once/) && mvRefused(`undo_deadline = now() + interval '100 years'`, /set once/));
   mv(`state = 'UNDOING'`); mv(`state = 'UNDONE'`);
   ok("PF-10a F4 pass: the forward life DRAFT → DRY_RUN_READY → RUNNING → COMPLETED → UNDOING → UNDONE is taken", sql(`select state || ':' || created_count || skipped_count from plat_import_batch where id = '${bL}'`) === "UNDONE:11");
@@ -218,6 +245,23 @@ try {
     && sql(`select has_table_privilege('xr_app', 'plat_import_batch', 'INSERT') and has_table_privilege('xr_app', 'plat_import_batch', 'UPDATE') and has_table_privilege('xr_app', 'plat_import_row', 'DELETE')`) === "t");
   ok("PF-10a F1 fail: as the app, delete-and-reinsert of a batch under the same id with another file is refused",
     refusedAsApp(firmA, `delete from plat_import_batch where id = '${bA}'`, /kept for undo|permission denied/) && sql(`select file_sha256 from plat_import_batch where id = '${bA}'`) === HASH);
+
+  // ------------------------------------------- round 2's break findings (R2-F1, R2-F5)
+  ok("PF-10a R2-F5 fail: invisible or direction-control characters inside a source name are refused (zero-width space, right-to-left override, no-break space, line separator)",
+    ["A\\u200bB", "CRM\\u202egpj.exe", "Old\\u00a0CRM", "Old\\u2028CRM"].every((v) => refused(batch(uuid(), firmA, ownerA).replace("'Old CRM export'", `E'${v}'`), /plat_import_batch_facts/)));
+  ok("PF-10a R2-F5 pass: a source name in another script is taken (Cyrillic, Chinese)",
+    ["Экспорт", "客户导出"].every((v) => { const id = uuid(); sql(batch(id, firmA, ownerA).replace("'Old CRM export'", `'${v}'`)); return sql(`select source_name from plat_import_batch where id = '${id}'`) === v; }));
+  ok("PF-10a R2-F5 fail: a file key with a '..' or '.' segment or an empty one is refused",
+    ["import/../x.csv", "./x.csv", "import//x.csv"].every((k) => refused(batch(uuid(), firmA, ownerA).replace(/'import\/[^']*'/, `'${k}'`), /plat_import_batch_facts/)));
+  const DEFINERS = ["pf_import_batch_facts_kept", "pf_import_batch_born", "pf_import_kept", "pf_import_row_open", "pf_import_attestation_owner", "pf_import_attestation_kept"];
+  ok("PF-10a R2-F1 fail: no role but the owner may call PF-10a's trigger functions directly (EXECUTE revoked from PUBLIC; xr_app and xr_data hold none)",
+    DEFINERS.every((f) => sql(`select has_function_privilege('xr_app', '${f}()', 'EXECUTE') or has_function_privilege('xr_data', '${f}()', 'EXECUTE')`) === "f"));
+  ok("PF-10a R2-F1 fail: as the app, a look-alike temp table cannot be given the row or Owner trigger",
+    refusedAsApp(firmA, `create temp table plat_import_row (firm_id uuid, batch_id uuid, phase text); create trigger t before delete on pg_temp.plat_import_row for each row execute function public.pf_import_row_open()`, /permission denied/)
+    && refusedAsApp(firmA, `create temp table plat_import_attestation (firm_id uuid, owner_staff_id uuid, at timestamptz); create trigger t before insert on pg_temp.plat_import_attestation for each row execute function public.pf_import_attestation_owner()`, /permission denied/));
+  ok("PF-10a R2-F1 fail: even where the trigger can be made (the owner), a look-alike table fired from it learns nothing: refused before any read",
+    refused(`begin; create temp table plat_import_row (firm_id uuid, batch_id uuid, phase text); create trigger t before insert on pg_temp.plat_import_row for each row execute function public.pf_import_row_open(); insert into pg_temp.plat_import_row values ('${firmB}', '${bB}', 'DRY_RUN'); rollback`, /own trigger only/)
+    && refused(`begin; create temp table plat_import_attestation (firm_id uuid, owner_staff_id uuid, at timestamptz); create trigger t before insert on pg_temp.plat_import_attestation for each row execute function public.pf_import_attestation_owner(); insert into pg_temp.plat_import_attestation values ('${firmB}', '${ownerB}', now()); rollback`, /own trigger only/));
 
   // ------------------------------------------------------------------------------- DW5: PF-12's wall
   sql(`insert into plat_import_mapping (id, firm_id, source_name, target_key, mapping, saved_by) values (gen_random_uuid(), '${firmB}', 'Old CRM export', 'person', '{"Email":"email"}', '${ownerB}')`);

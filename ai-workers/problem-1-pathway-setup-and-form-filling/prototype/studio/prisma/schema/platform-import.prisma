@@ -38,6 +38,12 @@ enum PlatImportRowOutcome {
   ERROR
 }
 
+/// A row's phase: a dry run's preview (writes nothing to target records, AG-18-15) or the run's result.
+enum PlatImportRowPhase {
+  DRY_RUN
+  RUN
+}
+
 /// One import of one file into one target (AG-18-52: scoped to the importer's firm). mapping is the column → field map
 /// the target's schema checked (PF-10b); dryRunHash is the SHA-256 of file and mapping that a run must match (AG-18-16);
 /// undoDeadline is set when the batch completes (AG-18-39, Sample 14 days).
@@ -74,14 +80,16 @@ model PlatImportBatch {
   @@map("plat_import_batch")
 }
 
-/// One row of a batch's file and what became of it (AG-18-15). reasons is a list of {field, rule} names, never the raw
-/// value (AG-18-12; a check). recordKind and recordId name the record made or merged; beforeImage is the merged record's
-/// fields before the merge, for undo (AG-18-40), and only on a MERGE. One row per batch and row number (a resumed job
-/// never writes a row twice, AG-18-20). Written once: never updated; deleted only while the batch is before its run.
+/// One row of a batch's file and what became of it (AG-18-15), as the dry run's preview (phase DRY_RUN) or the run's
+/// result (RUN). reasons is a list of {field, rule} names, never the raw value (AG-18-12; a check). recordKind and
+/// recordId name the record made, merged or matched (a RUN CREATE or MERGE must); beforeImage is the merged record's fields
+/// before the merge, for undo (AG-18-40), on a RUN MERGE only. One row per batch, phase and row number (a resumed job never
+/// writes a row twice, AG-18-20). Never updated; a DRY_RUN row is deleted only before the run, a RUN row never.
 model PlatImportRow {
   id          String               @id @default(uuid()) @db.Uuid
   firmId      String               @map("firm_id") @db.Uuid
   batchId     String               @map("batch_id") @db.Uuid
+  phase       PlatImportRowPhase
   rowNumber   Int                  @map("row_number")
   outcome     PlatImportRowOutcome
   reasons     Json                 @default("[]")
@@ -92,7 +100,7 @@ model PlatImportRow {
 
   batch PlatImportBatch @relation(fields: [firmId, batchId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
-  @@unique([firmId, batchId, rowNumber])
+  @@unique([firmId, batchId, phase, rowNumber])
   @@index([firmId, batchId, outcome])
   @@map("plat_import_row")
 }

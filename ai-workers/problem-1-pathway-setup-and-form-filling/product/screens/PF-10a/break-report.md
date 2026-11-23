@@ -47,3 +47,56 @@ Repro [A]: an attestation with `wording_version = E'​'` → accepted. A batch 
 Not findings (outside PF-10a or by design): `xr_app` can `SET ROLE xr_staff_bypass` (PF-12's logged bypass role). The database proves that the named staff member is an active Owner, not that the Owner was the one acting; that check belongs to PF-10b.
 
 Verdict: Changes
+
+## Round 2 — commit 68c32637c62bdd9133933f58f7836a99f37ac6b4 (diff 9d717c8ec..68c32637c)
+
+**Set-up:** fresh scratch DB `xr_studio_pf10a_break_r2_10958`, built with every migration and the same seed. App calls as before, written **[A]** or **[B]**. Also run: `check_pf10a_import_schema.ts` (63/63); an RDS-shaped throwaway cluster (non-superuser BYPASSRLS admin, `prisma migrate deploy`); a rollback catalogue comparison on two fresh DBs. All dropped. Nothing was edited or committed. Line numbers (`mig:N`) refer to this commit.
+
+**R2-F1 — Major — another firm can use the SECURITY DEFINER trigger functions through a temp table: they answer about firm B and lock firm B's rows.** `pf_import_kept()` (`mig:205-213`) and `pf_import_attestation_owner()` (`mig:222-233`) run as `xr_wall_reader` (BYPASSRLS). They are executable by PUBLIC, and they trust `OLD`/`NEW` without checking which table fired them or the session's firm. `xr_app` holds TEMP on the database.
+Repro [A], firm A's session (also reproduced as xr_app on the RDS-shaped cluster):
+```sql
+create temp table plat_import_row (firm_id uuid, batch_id uuid) on commit drop;
+create trigger t before delete on pg_temp.plat_import_row for each row execute function public.pf_import_kept();
+insert into pg_temp.plat_import_row values ('<B>','<B batch 1>'),('<B>','<B batch 2>');
+delete from pg_temp.plat_import_row where batch_id='<B batch 1>';  -- returns the row: B's batch is DRAFT/DRY_RUN_READY
+delete from pg_temp.plat_import_row where batch_id='<B batch 2>';  -- "kept for undo … (DELETE refused)": RUNNING or later, or no such batch
+create temp table p (firm_id uuid, owner_staff_id uuid, at timestamptz) on commit drop;
+create trigger t before insert on pg_temp.p for each row execute function public.pf_import_attestation_owner();
+insert into p values ('<B>','<B staff id>',null) returning at;  -- succeeds only if that staff member is an active Owner of B
+```
+While firm A's transaction stays open, the `FOR SHARE OF s, g` lock is held on **firm B's** staff and grant rows. [B]'s `update platform_staff set display_name=… where id='<B owner>'` waited and was cancelled by `lock_timeout` ("while locking tuple (0,6) in relation platform_staff"). So firm A can stall firm B's renames, deactivations and Owner-grant changes for as long as it likes.
+It needs B's UUIDs, so this is Major, not Blocker. The round-1 `pf_import_attestation_owner` had the same oracle, without the lock; I missed it in round 1.
+Fix in this row: in each function, refuse unless `TG_RELID` is the expected `public.*` table, and/or unless `OLD/NEW.firm_id = platform_session_firm()` for a caller without bypass; `REVOKE EXECUTE … FROM PUBLIC` on the five functions.
+**Note for the lead:** 116 trigger functions owned by `xr_wall_reader` are executable by xr_app (query on `pg_proc`), so the same class may exist outside PF-10a (PF-12's area).
+
+**R2-F2 — Minor — rows can still be added to a batch after its run has ended.** There is no INSERT rule on `plat_import_row`; `mig:216` covers UPDATE/DELETE only.
+Repro [A]: batch DRAFT→DRY_RUN_READY→RUNNING→COMPLETED, then `insert into plat_import_row (…, outcome, record_kind, record_id, before_image) values (…,777,'MERGE',…,'person','<any record>','{"email":"planted@x.test"}')` → accepted. After UNDOING→UNDONE, a CREATE row → accepted. Undo would "restore" the planted before-image.
+The run itself must insert rows, so the window can only be narrowed: allow inserts only in DRAFT, DRY_RUN_READY or RUNNING.
+Related race: the row-delete check does not lock the batch row. T1 deletes a dry-run row while the batch is DRY_RUN_READY; T2 moves the batch to RUNNING without waiting (0.01 s); T1 commits; result is RUNNING with 0 rows. Only pre-run rows can be lost this way. `FOR SHARE` on the batch row in `pf_import_kept` would close it.
+
+**R2-F3 — Minor — the finish time, undo deadline and counts are not tied to the run, and "set once" freezes an early wrong value.** `mig:182-185`, `191-200`.
+Repro [A]: `insert … on conflict (id) do update set error_count=99, undo_deadline=now()+interval '100 years', finished_at='1990-01-01'` on a DRAFT batch → accepted. A plain UPDATE in DRAFT does the same.
+That batch's real completion is then refused ("the finish time and the undo deadline are set once"), and its undo window never closes (AG-18-39).
+Counts still change in UNDONE (`created_count=5000` accepted). The born-draft rule holds only at the moment of insert.
+
+**R2-F4 — Minor — the mapping and dry-run hash can change after the dry run, including in the same UPDATE that starts the run.** The freeze tests `OLD.state` (`mig:178-181`).
+Repro [A]: in DRY_RUN_READY, `update … set mapping='{"Phone":"email"}'` → OK. Then `update … set state='RUNNING', dry_run_hash=repeat('c',64), mapping='{"Other":"email"}'` → `RUNNING`.
+The run then uses a mapping its dry run never checked (AG-18-16). PF-10b's hash check is the remaining guard.
+
+**R2-F5 — Minor — the text checks do not reject invisible characters, and they refuse non-Latin names.** `mig:146-147`, `152`. `[[:cntrl:]]` does not match format characters, and `~ '[A-Za-z0-9]'` only requires one ASCII letter or digit somewhere.
+Accepted as `source_name`: `E'A​B'`, `E'CRM‮gpj.exe'` (right-to-left override; it displays as "CRMexe.jpg"), `E'A '`, `E'A B'`.
+Refused: `'Экспорт'` and `'客户导出'` (non-English export names; `'Экспорт CRM'` passes).
+`file_key` accepts `a/../../etc/passwd`. It is system-generated, so this is for FilesPort to note, not counted.
+
+### Round 2 — what held
+- **Batch removal:** DELETE/TRUNCATE of batches, and UPDATE/TRUNCATE/`ON CONFLICT DO UPDATE` of rows → "permission denied"; the triggers stand behind the revokes.
+- **Rows of a run:** deleting a row of a RUNNING batch is refused, including in the same statement as a state change (`with u as (update … set state='DRY_RUN_READY') delete …` → refused). RUNNING→DRY_RUN_READY is refused, so a batch cannot be moved back to unlock its rows.
+- **State moves:** DRAFT→RUNNING and DRAFT→COMPLETED (including through `ON CONFLICT DO UPDATE`) are refused. A CTE double hop (`with a as (update … 'DRY_RUN_READY') update … 'RUNNING'`) applies only the first update (PostgreSQL ignores a second update of the same row in one statement). RUNNING needs a dry-run hash. Mapping, hash and attestation are refused from RUNNING on.
+- **Born-draft:** non-DRAFT and counted inserts are refused. `created_at` on insert is replaced by the database time. An upsert setting `created_at=excluded.created_at` is refused.
+- **Row shape and key:** a MERGE without a before-image, and a CREATE without a record, are refused (check 63/63). The unique key is `(firm_id, batch_id, row_number)`, which closes round-1 F5.
+- **FOR SHARE (normal use):** two concurrent attestations both succeed. Ending the Owner's grant waits for the open attestation (1.5 s), then proceeds. It works as xr_app on the RDS shape (the reader has UPDATE there).
+  Caveat (not counted): two transactions that both attest and then both update the same Owner's `platform_staff` row deadlock ("deadlock detected … while locking tuple in relation platform_staff"). PF-10b should not touch the staff row in the attestation transaction.
+- **Rollback:** after `rollback.sql -1`, the catalogue matches a database migrated only to the previous migration: relations, functions (owner, definer, ACL, source hash), types, policies, constraints, schema ACL, default ACLs, role memberships and the `_prisma_migrations` row. The only differences are OID-named internal triggers. No `pf_import_%`/`PlatImport%` objects remain.
+- **RDS shape:** every migration applied as the non-superuser admin. All five pf_import functions are owned by `xr_wall_reader` (SECURITY DEFINER). The reader has no CREATE on public afterwards. Attestation and refusal as in round 1.
+
+Verdict: Changes (for 68c32637c62bdd9133933f58f7836a99f37ac6b4)

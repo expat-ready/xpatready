@@ -82,3 +82,65 @@ The branch moved to **6f6502570** while I worked: 4f11a86ce "step 5 — break ro
 **Verdict: Block** — fix M1, M2 and m1 (CI). Then m2 and m3 are worth the same round.
 
 Reviewer: Block 9d717c8ec8afa96f0846c7737dde4db5532d342b
+
+---
+
+## Round 2 (23 Nov 2026): commit 68c32637c62bdd9133933f58f7836a99f37ac6b4
+Diff `9d717c8ec..68c32637c`: step 5 (the breaker's F1–F6) and step 6 (my round 1).
+
+**What I ran**
+* `check_pf10a_import_schema.ts`: **63 passed, 0 failed**.
+* `check_prisma_schema` 8/8, `check_pf12_walls` 110/110, `check_pf8b_f4_migrations` 9/9, `check_pf0p_ports` 127/127.
+* `check-module-cards.sh` passes.
+* CI on this head: module-cards and the latest pr-rules run are green.
+* As `xr_app` on a scratch database with every migration plus the Sample firms, I played PF-10b's flows.
+* The rollback in one transaction left no `plat_import`/`pf_import` object and no migration row, and the migration then re-applied cleanly. Database dropped.
+
+**Round 1 items:** M1, M2 and m1 are fixed, and m3 is fixed (7 frozen columns tested).
+* m2: fixed. There are tests for a deactivated Owner, an ended grant, a backdated `at`, and an `xr_app` insert.
+* m4: recorded as PF-10b's rule at `migration.sql:15-16`.
+* m5: fixed with `FOR SHARE OF s, g` (`:228`). The reader holds UPDATE on both tables, so the lock is allowed.
+
+**Breaker's F1–F6:** each has a pass/fail check, and those checks pass.
+
+**What PF-10b (BACKLOG.md:1039) can do, as `xr_app`:**
+* Resume works: `ON CONFLICT DO NOTHING` on the new key gave `INSERT 0 0`.
+* Deleting a dry run's rows before RUNNING and writing the run's rows fresh works.
+* A crash during UNDOING: the job can resume, because a batch may stay in the same state and UNDOING → UNDONE stays open.
+
+**Majors**
+* **M3 (Must): a dry run cannot store its per-row outcomes.**
+  * Where: `plat_import_row_outcome_shape` now requires a record kind and id on every CREATE and MERGE, and a before-image on every MERGE, whatever the batch state (`migration.sql:140`, `:142`).
+  * Why that fails: a dry run writes nothing to the target records (AG-18-15), so a would-be CREATE has no record id. I tried each as `xr_app` and each was refused:
+    * a dry-run CREATE row;
+    * a dry-run MERGE row with no before-image;
+    * a duplicate SKIP that names its match.
+  * The rest of the change assumes dry-run rows do live here: `migration.sql:13`, the row-delete exception in `pf_import_kept` (`:205-208`, "a dry run's rows"), and `platform-import.prisma:80`.
+  * The test's "redone dry run" uses only SKIP rows (`tests/check_pf10a_import_schema.ts:198`), so it misses this.
+  * Effect: PF-10b's preview (totals plus per-row outcomes with reasons, up to 5,000 rows, paged in PF-10s) would need a new migration, made-up record ids, or a store outside the firm wall.
+  * Fix, the tech lead's choice:
+    * (a) A `phase` column (`DRY_RUN | RUN`), part of the row key. The CREATE/MERGE record and before-image rules apply only to RUN rows, and only DRY_RUN rows may be deleted, and only before RUNNING. This also gives the "previewed versus applied" marker from round 1's notes.
+    * (b) Record on the PR that dry-run outcomes are not stored in this table, say where PF-10b keeps them, and correct the three comments.
+
+**Minors**
+* **m6 (Should): rows can be added to a batch in any state.**
+  * I added a row to a FAILED batch as `xr_app` and it was accepted. Batches in COMPLETED, PARTIAL, UNDOING and UNDONE also have no insert check.
+  * So a MERGE with a made-up before-image can be added after the run, and undo would then "restore" it. This is F1's risk by another door.
+  * Fix: on insert, the batch must be DRAFT, DRY_RUN_READY or RUNNING (read with `FOR SHARE`).
+* **m7 (Could): row deletes can race the move to RUNNING.** The delete exception reads the batch state with no lock (`migration.sql:208`), so a delete can commit at the same moment as DRY_RUN_READY → RUNNING. Fix: `FOR SHARE` on the batch.
+* **m8 (Should, record it): a FAILED batch can never be undone** (`:171-172`; AG-18-39 allows undo only for COMPLETED and PARTIAL).
+  * PF-10b must therefore mark any run that created or merged something PARTIAL, never FAILED. Otherwise those records are stranded.
+  * Fix: say so in PF-10b's brief, or enforce that FAILED means `created_count = merged_count = 0`.
+
+**Notes (not findings)**
+* Rows can no longer be updated, so undo progress cannot be marked on them. The undo job must be idempotent, and its "worked on since" test must not count undo's own restore.
+* An abandoned DRAFT batch stays for ever. AG-18's state list has no "cancelled".
+* PF-11c's purge needs a named exception for batches, rows and attestations.
+
+**Journey score (round 2): 8/10, no criterion at 0** (round 2 section of the journey report).
+
+**Verdict: Block** — fix M3 (either option). m6 and m8 are worth the same round.
+
+Verdict: Block
+
+Reviewer: Block 68c32637c62bdd9133933f58f7836a99f37ac6b4
