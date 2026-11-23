@@ -17,7 +17,7 @@ export function useSigningMail(m: MailPort | null): MailPort | null { const was 
 
 /** A document kind's own webhook handler: it gets the verified call and the request's firm, and runs as that firm. */
 export type SigningKindHandler = (call: SigningHookCall, firmId: string) => Promise<unknown>;
-type OtherKind = "CONSULTATION";
+type OtherKind = "CONSULTATION" | "OTHER";   // OTHER: FO-6d registers its handler (features/front-office-signing-any-document.ts)
 const handlers = new Map<OtherKind, SigningKindHandler>();
 /** Registers a kind's handler once; returns the undo (a suite's clean-up). A second registration is a programming error. */
 export function registerSigningHandler(kind: OtherKind, h: SigningKindHandler): () => void {
