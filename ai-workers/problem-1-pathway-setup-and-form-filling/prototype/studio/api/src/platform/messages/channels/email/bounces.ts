@@ -14,9 +14,11 @@
 // events, each matching only its own provider's ids.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createVerify } from "node:crypto";
+import { z } from "zod";
 import { normaliseAddress, type ConsentPort } from "../../../../../../ports/consent.ts";
 import { enterFirm, firmScope } from "../../../firm-scope.ts";
 import { REF_HEADER, SES_PROVIDER } from "./ses.ts";
+import { parseInput } from "../../../http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 /** The SES notice body apply() reads (SES's own shape; the local adapter writes the same). */
@@ -24,6 +26,16 @@ export type SesMessage = { notificationType?: string; eventType?: string; mail?:
 export type NoticeResult = "applied" | "repeated" | "ignored" | "confirmation";
 export const NOTICE_PATH = "/api/public/messages/ses-notices";
 export const BOUNCE_ACTOR = "system:ses-notice";
+/** PF-28 (R1.10, the one code line left after parts 2-6): the SNS envelope through the one input rule, after the signature
+ *  (as the Stripe door, amendment 1: nothing is read as ours before SNS signed it). Typed and bounded; not strict, as
+ *  Stripe's event envelope is not: AWS owns the envelope and may add fields, which the signature already covers. */
+export const SnsNotice = z.object({
+  Type: z.enum(["Notification", "SubscriptionConfirmation", "UnsubscribeConfirmation"]),
+  MessageId: z.string().min(1).max(100), TopicArn: z.string().regex(/^arn:aws:sns:[a-z0-9-]{1,30}:\d{12}:[A-Za-z0-9_-]{1,256}$/),
+  Message: z.string().max(262_144), Timestamp: z.iso.datetime(), Subject: z.string().max(100).optional(),
+  SignatureVersion: z.enum(["1", "2"]), Signature: z.string().max(1024), SigningCertURL: z.string().max(2048),
+  SubscribeURL: z.string().max(2048).optional(), UnsubscribeURL: z.string().max(2048).optional(), Token: z.string().max(2048).optional(),
+});
 const CERT_HOST = /^sns\.[a-z]{2}-[a-z]+-[0-9]\.amazonaws\.com$/;
 
 export class NoticeRefused extends Error { constructor(m: string) { super(m); this.name = "NoticeRefused"; } }
@@ -83,6 +95,7 @@ export class SesNotices {
     const n = (typeof raw === "string" ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw) as Record<string, unknown> | null;
     if (!n || typeof n !== "object" || Array.isArray(n)) throw new NoticeRefused("not a notice");
     await this.verify(n);
+    parseInput(SnsNotice, n);   // PF-28: the envelope's shape after the signature (422 named; nothing applied)
     // Break M3: SNS sends notices only after its SubscribeURL is visited. A verified confirmation for one of our topics is
     // confirmed here (SNS's own address only); with no topic list set, the URL is logged for our team to visit once.
     if (n.Type === "SubscriptionConfirmation") {
