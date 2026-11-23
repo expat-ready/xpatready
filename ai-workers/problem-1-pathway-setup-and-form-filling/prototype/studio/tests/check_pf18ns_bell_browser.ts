@@ -68,7 +68,10 @@ const assignToO = async (given = `Client ${String.fromCharCode(65 + (n % 26))}${
   return { id, number: added.body?.number as string, name: `${given} Sample` };
 };
 const unreadOf = async (t: string) => (await api(t, "GET", "/platform/me/notifications/unread-count")).body?.unread as number;
-await api(TO, "POST", "/platform/me/notifications/read-all"); await api(TR, "POST", "/platform/me/notifications/read-all");   // a fresh start on a reused copy
+// A fresh start on a reused copy (review m8): O's and R's earlier rows and switches (other suites', some dated ahead by a fake clock) are
+// removed by the database owner; the app itself never deletes a notification.
+sql(`delete from msg_notification where staff_id in ('${O}', '${R}')`);
+sql(`delete from platform_notification_preference where staff_id in ('${O}', '${R}')`);   // back to the defaults (in-app on), whatever another suite switched
 
 // ------------------------------------------------------------------------------------------------ the browser
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -109,7 +112,7 @@ try {
   await openPanel(po);
   const row = rows(po).first(), rowText = (await row.innerText()).replace(/\u2011/g, "-");   // the number shows with a non-breaking hyphen
   ok("PF-18ns DW1: the panel shows it: \"Lead assigned to you · <name> (<number>)\", unread (dot and word), the time, and the zone once in the heading",
-    await rows(po).count() === 1 && rowText.includes(`Lead assigned to you · ${lead.name} (${lead.number})`) && rowText.includes("Unread") && (await row.getAttribute("data-unread")) === "true"
+    await panel(po).locator("[data-notification][data-unread]").count() === 1 && rowText.includes(`Lead assigned to you · ${lead.name} (${lead.number})`) && rowText.includes("Unread") && (await row.getAttribute("data-unread")) === "true"
     && (await po.locator('[role="dialog"]').innerText()).includes("Times in America/Toronto"), rowText);
   await shot(po, "2-panel-1440");
   await row.locator("[data-notification-open]").focus(); await po.keyboard.press("Enter");
@@ -219,6 +222,48 @@ try {
   await openPanel(pa); await panel(pa).locator("xpath=ancestor::*[@role='dialog']").locator("[data-notifications-choose]").click();
   await pa.waitForURL(`${BASE}/account/notifications`);
   ok("PF-18ns DW6: \"Choose what you get\" in the panel opens My account → Notifications (the settings)", pa.url() === `${BASE}/account/notifications`);
+
+  // ---------------------------------------------------------------------------------------------- round 2 (review m1, m3; break M1, m2-m5)
+  const p2 = await tab(TO);
+  await go(p2, "/account"); await api(TO, "POST", "/platform/me/notifications/read-all"); await p2.locator('nav[aria-label="My account"] [data-account-section="/home"]').click(); await waitCount(p2, 0);
+  await assignToO();
+  await p2.locator('nav[aria-label="My account"] [data-account-section="/account/licence"]').click(); await p2.waitForURL(`${BASE}/account/licence`);
+  ok("PF-18ns DW1 (review m1): moving to another page inside the app, right after a count was read, reads it again: the bell says 1 at once (no reload)", await waitCount(p2, 1, 3_000));
+  await api(TO, "POST", "/platform/me/notifications/read-all"); await assignToO();   // after the last count read, before the panel opens
+  await openPanel(p2);
+  ok("PF-18ns DW2 (break m2): opening the panel reads the count again, and Mark all read follows the panel's own unread rows (enabled)",
+    await panel(p2).locator("[data-notifications-mark-all]").isEnabled() && await waitCount(p2, 1, 3_000));
+  const link = panel(p2).locator("[data-notification][data-unread] [data-notification-open]").first();
+  ok("PF-18ns DW5 (break m5): an unread row's link carries \"unread\" in its accessible name", /unread/i.test((await link.evaluate((el) => (el as HTMLElement).innerText)) ?? ""));
+  await p2.keyboard.press("Escape");
+  // break M1, review m3: Mark read keeps keyboard focus on the row (never the page body).
+  sql(`insert into msg_notification (id, firm_id, staff_id, kind, "group", item_kind, item_id, created_at) values (gen_random_uuid(), '${A}', '${O}', 'lead-assigned', 'WORK_HANDED_TO_ME', 'lead', gen_random_uuid(), date_trunc('milliseconds', now()))`);
+  await go(p2, "/account/notifications/all");
+  const markBtn = p2.locator("section[aria-label='Notifications'] [data-notification-mark]").first();
+  await markBtn.waitFor();
+  const markName = await markBtn.getAttribute("aria-label");
+  await markBtn.focus(); await p2.keyboard.press("Enter");
+  // Once the mark is done (the row is read, its button gone), where is focus?
+  await p2.waitForFunction(() => !document.querySelector("section[aria-label='Notifications'] [data-notification]:first-child [data-notification-mark]"), null, { timeout: 10_000 });
+  await p2.waitForTimeout(300);
+  const focusOn = await p2.evaluate(() => (document.activeElement?.closest("[data-notification]") ? "row" : document.activeElement?.tagName));
+  ok("PF-18ns DW6 (break M1): after Mark read, focus stays on that row (not the page body); each Mark read button names its own row and time", focusOn === "row" && !!markName && /\d{1,2} \w{3}, \d{2}:\d{2}/.test(markName), { focusOn, markName });
+  // break m4: a link that is not an app path is never trusted (shown with no link).
+  await p2.route("**/api/platform/me/notifications/items?size=20", async (r) => { const res = await r.fetch(); const j = await res.json(); if (j.items[0]) j.items[0].link = "https://evil.example/x"; await r.fulfill({ response: res, json: j }); });
+  await go(p2, "/account"); await openPanel(p2);
+  ok("PF-18ns DW3 (break m4): an outside link from the server is not rendered as a link", await panel(p2).locator('a[href^="http"], a[href^="//"]').count() === 0);
+  await p2.unroute("**/api/platform/me/notifications/items?size=20"); await p2.keyboard.press("Escape");
+  // break m3: marking the last row of Unread page 2 moves back to a page with rows.
+  sql(`delete from msg_notification where staff_id = '${O}'`);   // exactly 26 unread: page 1 holds 25, page 2 one
+  for (let i = 0; i < 26; i++) sql(`insert into msg_notification (id, firm_id, staff_id, kind, "group", item_kind, item_id, created_at) values (gen_random_uuid(), '${A}', '${O}', 'lead-assigned', 'WORK_HANDED_TO_ME', 'lead', gen_random_uuid(), date_trunc('milliseconds', now()) - interval '${200 + i} minutes')`);
+  const lastPage = await tab(TO);
+  await go(lastPage, "/account/notifications/all"); await lastPage.locator('[data-notifications-filter="unread"]').click();
+  await lastPage.locator("[data-notifications-next]").click(); await lastPage.getByText("Page 2").waitFor();
+  await lastPage.locator("section[aria-label='Notifications'] [data-notification-mark]").last().click();
+  await lastPage.getByText("Page 1").waitFor({ timeout: 10_000 }).catch(() => undefined);
+  ok("PF-18ns DW6 (break m3): marking the last row of the last Unread page goes back to the previous page, never an empty page while unread rows remain",
+    await lastPage.getByText("Page 1").isVisible().catch(() => false) || (await lastPage.locator("section[aria-label='Notifications'] [data-notification]").count()) > 0);
+  await lastPage.context().close(); await p2.context().close();
   await pa.context().close(); await po.context().close(); await pr.context().close();
   ok("PF-18ns: no page error in any tab", errs.length === 0, errs);
 } catch (e) {

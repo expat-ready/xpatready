@@ -11,7 +11,8 @@ export const NotificationItem = z.object({
   group: z.string(),
   item: z.object({ kind: z.string(), id: z.string() }),
   label: z.string().nullable(),
-  link: z.string().nullable(),
+  /** Only an app path is trusted as a link (break m4: never "//host" or "https://…", whatever the server sends). */
+  link: z.string().nullable().transform((l) => (l !== null && /^\/(?!\/)[A-Za-z0-9/_-]{1,200}$/.test(l) ? l : null)),
   createdAt: z.string(),
   readAt: z.string().nullable(),
 });
@@ -44,7 +45,7 @@ export const zoneLine = (zone: string) => `Times in ${zone.replace(/_/g, " ")}`;
 /** The badge: 1-99, then "99+"; nothing at 0. */
 export const badgeOf = (n: number) => (n <= 0 ? null : n > 99 ? "99+" : String(n));
 /** The bell's accessible name carries the count, so it is never colour or a number alone. */
-export const bellName = (n: number) => (n === 0 ? "Notifications, none unread" : `Notifications, ${n} unread`);
+export const bellName = (n: number | null) => (n === null ? "Notifications, count not available" : n === 0 ? "Notifications, none unread" : `Notifications, ${n} unread`);
 
 // BR-8 (challenge M1): the count is announced once per change, never on a poll or a page change. Each page mounts its own
 // frame and so its own bell, so the last count announced lives here, once per tab, not in the bell's state.

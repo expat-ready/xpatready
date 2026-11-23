@@ -9,7 +9,7 @@ import { Button, Notice } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { PlatformFrame } from "../frame";
 import { staffApi } from "../session";
-import { NOTIFICATIONS_KEY, NotificationRow, useMarkAll } from "./bell";
+import { Loading, NOTIFICATIONS_KEY, NotificationRow, useMarkAll } from "./bell";
 import { COPY, NotificationList, PAGE_SIZE, zoneLine } from "./contract";
 
 /** "Settings | All" over My account → Notifications (one line on PF-18s's page and on this one). */
@@ -27,7 +27,10 @@ function AllBody() {
   const [unread, setUnread] = React.useState(false), [page, setPage] = React.useState(1);
   const q = useQuery({ queryKey: [...NOTIFICATIONS_KEY, "all", unread, page], placeholderData: (prev) => prev,
     queryFn: async () => NotificationList.parse(await staffApi(`/platform/me/notifications/items?size=${PAGE_SIZE}&page=${page}${unread ? "&unread=1" : ""}`)) });
-  const all = useMarkAll(page === 1 ? q.data?.items[0]?.createdAt : undefined);
+  const list = React.useRef<HTMLUListElement>(null);
+  const all = useMarkAll(page === 1 ? q.data?.items[0]?.createdAt : undefined, () => list.current);
+  // Break m3: a page left empty (its last unread row marked) goes back one, never an empty page while rows remain before it.
+  React.useEffect(() => { if (page > 1 && q.data && !q.isPlaceholderData && !q.data.items.length) setPage((p) => p - 1); }, [page, q.data, q.isPlaceholderData]);
   const show = (u: boolean) => { setUnread(u); setPage(1); };
   const filter = (u: boolean, label: string) => <Button variant={unread === u ? "secondary" : "ghost"} size="sm" aria-pressed={unread === u} onClick={() => show(u)} data-notifications-filter={u ? "unread" : "all"}>{label}</Button>;
   return (
@@ -37,14 +40,14 @@ function AllBody() {
       <p className="mt-1 text-sm text-text-muted">{q.data ? zoneLine(q.data.zone) : "Everything handed to you, newest first."}</p>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <div role="group" aria-label="Show" className="flex gap-1">{filter(false, "All")}{filter(true, "Unread")}</div>
-        <Button variant="outline" size="sm" busy={all.busy} disabled={page !== 1 || !q.data?.items.some((i) => i.readAt === null)} onClick={() => void all.run()} data-notifications-mark-all>{COPY.markAll}</Button>
+        <Button variant="outline" size="sm" busy={all.busy} disabled={page !== 1 || q.isPlaceholderData || !q.data?.items.some((i) => i.readAt === null)} onClick={() => void all.run()} data-notifications-mark-all>{COPY.markAll}</Button>
       </div>
       {all.failed ? <Notice className="mt-3" tone="danger" title={COPY.markFailed} /> : null}
       <section aria-label="Notifications" className="mt-3 rounded-xl border border-border bg-surface-raised px-4">
-        {q.isPending ? <p role="status" className="py-4 text-sm text-text-muted">{COPY.loading}</p>
+        {q.isPending ? <Loading />
           : q.isError ? <div className="py-4"><Notice tone="danger" title={COPY.loadFailed} action={<Button variant="outline" size="sm" onClick={() => void q.refetch()}>{COPY.retry}</Button>} /></div>
             : !q.data.items.length ? <p className="py-4 text-sm text-text-muted" data-notifications-empty>{unread ? COPY.emptyUnread : COPY.empty}</p>
-              : <ul aria-label="Notifications">{q.data.items.map((i) => <NotificationRow key={i.id} item={i} zone={q.data.zone} />)}</ul>}
+              : <ul ref={list} tabIndex={-1} aria-label="Notifications" aria-busy={q.isPlaceholderData || undefined} className={q.isPlaceholderData ? "opacity-60 outline-none" : "outline-none"}>{q.data.items.map((i) => <NotificationRow key={i.id} item={i} zone={q.data.zone} />)}</ul>}
       </section>
       {q.data && (page > 1 || q.data.nextPage) ? (
         <nav aria-label="Pages" className="mt-3 flex items-center justify-between">

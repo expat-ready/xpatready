@@ -14,8 +14,8 @@ import { endSession, staffApi, StaffApiError, useLocalSignIn, useMe, useSessionE
 import { SignedInElsewhere } from "./signed-in-elsewhere";
 import { TermsPage, useTermsPending } from "./terms/terms-gate";
 import { FindBox } from "./find/find-box";
-import { HelpButton } from "./settings/help-button";
-import { NotificationBell } from "./notifications/bell";   // PF-18ns: the bell on every staff page (R1.50)   // PF-18s part 2: the "?" on every staff page (AG-16-63)
+import { HelpButton } from "./settings/help-button";   // PF-18s part 2: the "?" on every staff page (AG-16-63)
+import { NotificationBell } from "./notifications/bell";   // PF-18ns: the bell on every staff page (R1.50)
 import { SUPPORT_CREATE_KEY } from "./settings/support-contract";
 
 /** FO-4's sign-in card (moved here from sales-frame.tsx): PF-4's local stand-in until the provider's sign-in pages. */

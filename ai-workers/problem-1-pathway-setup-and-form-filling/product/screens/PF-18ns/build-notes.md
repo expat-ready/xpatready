@@ -31,12 +31,29 @@ R1.50. Built to `concept.md` r2 (approved by the tech lead at c9353ae76, Lead 10
 * **The record's number.** It stays on one line at 375 px, using a non-breaking hyphen in "(L‑00007)".
 
 ## Checks run
-* `check_pf18ns_bell_browser.ts` 18/18 on a freshly built isolated copy (:4731, never :4400).
+* `check_pf18ns_bell_browser.ts` 24/24 (round 2) on a reused copy and on a freshly built isolated copy (:4731, never :4400).
 * axe-core: 0 serious or critical on the page, the open panel and the All page at 375, 1024 and 1440 px, with no sideways scroll.
 * Keyboard only: Tab reaches the bell, Enter opens the panel with focus inside, and Escape returns focus to the bell.
 * Neighbouring suites, the web type check and module cards: results are in the PR.
+
+## Review round 1 (reviewer Approve, 9 Minors; breaker Changes, 1 Major, 8 Minors) → round 2
+Fixed, each with a test line that fails first:
+* **Focus after a mark (break M1, review m3).** After Mark read, focus stays on the row (`li tabIndex=-1`). After Mark all read, focus goes to the list.
+* **The count (review m1, break m2).** It is read again on every page change (`staleTime: 0`, `refetchOnMount: "always"`) and when the panel opens. The panel's Mark all read follows its own unread rows. A failed count is named "Notifications, count not available" (review m4).
+* **Links (break m4).** Only an app path is trusted as a link in the browser too (`contract.ts`).
+* **Screen-reader names (break m5).** "(unread)" is inside the row link's name, and each Mark read button names its row and time.
+* **Paging (break m3).** A page emptied by a mark goes back one. While a page loads, the list shows busy and Mark all read waits (break m7, part).
+* **Loading (review m2).** Skeleton rows instead of a text line.
+* **Long names (review m5, break m6).** They wrap rather than being cut (the number at the end must stay readable), and the full text is in `title`. This is a deviation from the concept's "truncate", recorded here.
+* **The check (review m8).** It re-runs on a reused copy: it clears O's and R's rows and switches first.
+* **Comments.** Two comments put on the wrong lines are back in place (review m7, break m8).
 
 ## Known gaps
 * The bell is not yet on the case pages' frame (`runtime/cases.tsx`, the Studio's simulated person). This is an X-row (Lead 10).
 * The kind words are not yet shared with Home (see Words above).
 * No push channel in Release 1 (the row).
+* Follow-ups recorded on the PR, not built here:
+  * the 320 px header (WCAG reflow; the project bar of 375 px passes);
+  * the filter and page kept in the address (break m7);
+  * the My account menu's current entry on the All page (review m6, PF-6's file);
+  * one word map shared with Home (review m9, PF-18h's file).
