@@ -13,6 +13,7 @@ import { TermsAcceptancesPage } from "./terms/acceptances-page";
 import { PricingPage } from "./signup/pricing-page";
 import { SignUpPage } from "./signup/signup-page";
 import { VerifyPage } from "./signup/verify-page";
+import { InvitedSignUpPage } from "./signup/invited-page";
 import { BillingPage } from "./saas/billing-page";
 import { OfficesPage } from "./settings/offices-page";
 import { BrandingPage } from "./branding/branding-page";
@@ -34,6 +35,7 @@ export const routes: ModuleRoute[] = [
   { path: "/pricing", element: <PricingPage /> },   // PF-5s part 1 (public)
   { path: "/sign-up", element: <SignUpPage /> },   // PF-5s part 1 (public): Sign up, then Check your email
   { path: "/sign-up/verify", element: <VerifyPage /> },   // PF-5s part 1 (public): the email's link (PF-5's door writes it)
+  { path: "/sign-up/invited", element: <InvitedSignUpPage /> },   // PF-5s S8 (public): a private sign-up link (R1.90; PF-5's GET|POST /api/public/signup/:token)
   { path: "/settings/billing", element: <BillingPage /> },   // PF-5s part 2: Plan and billing (PF-5 part 2 returns from Stripe here)
   { path: "/platform/offices", element: <OfficesPage /> },   // PF-18s part 1: Offices (Owner and Admin)
   { path: "/platform/branding", element: <BrandingPage /> },   // PF-13 part 2: Branding (Owner and Admin; R1.23)
