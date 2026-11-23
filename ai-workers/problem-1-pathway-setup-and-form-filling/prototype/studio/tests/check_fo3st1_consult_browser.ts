@@ -122,8 +122,12 @@ try {
   await host.getByLabel("Currency").selectOption("USD"); await host.getByRole("button", { name: "Save record" }).click();
   await host.locator("[data-consult-saved]").waitFor({ timeout: 15_000 });
   const fees = await record(B.fees);
+  // The form gives the focus back to Save a frame after "Saved" shows (consult-record.tsx: requestAnimationFrame once the
+  // busy button lets go), so it is waited for, at most 5 s, and false on a timeout. Read at once, it was red on a busy
+  // machine (the frame had not run yet) and green alone.
+  const saveFocused = await host.waitForFunction(() => document.activeElement?.textContent === "Save record", undefined, { timeout: 5_000 }).then(() => true, () => false);
   ok('C2 J-S6 pass: "1,500.50" USD saves as 150050 minor units, "Saved"; the Save button keeps the focus', fees?.quotedFeeMinor === 150050 && fees.quotedFeeCurrency === "USD"
-    && (await host.evaluate(() => document.activeElement?.textContent ?? "")) === "Save record", fees);
+    && saveFocused, { fees, focused: await host.evaluate(() => document.activeElement?.textContent ?? "") });
 
   // ------------------------------------------------------------------------------------------------ C3 the route's issues at their fields
   await host.getByLabel("Notes (optional)").fill("bad \u0001 text"); await host.getByRole("button", { name: "Save record" }).click();
