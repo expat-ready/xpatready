@@ -287,7 +287,7 @@ MUT="$MUT"'
 37 rename|product/tools/queue-blocked.py|s/, f.get("previous_filename"))/,)/|check-queue-blocked.sh
 37 running|product/tools/queue-blocked.py|s/ or any(r.get("status") != "completed" for r in mine)//|check-queue-blocked.sh
 37 batchpr|product/tools/queue-blocked.py|s/ or str((p.get("head") or {}).get("ref") or "").startswith("mergify\/")//|check-queue-blocked.sh
-37 label|product/tools/queue-blocked.py|s/if "review: approved" not in labels and not /if not /|check-queue-blocked.sh
+37 label|product/tools/queue-blocked.py|s/^            if "review: approved" not in labels:$/            if True:/|check-queue-blocked.sh
 37 cancelled|product/tools/queue-blocked.py|s/ and r.get("conclusion") not in ("cancelled", "skipped")//|check-queue-blocked.sh
 37 window red|product/tools/queue-blocked.py|s/ and (r is last or (when(r.get("created_at")) or now) >= since)\]/ and r is last]/|check-queue-blocked.sh
 37 reviewers|product/tools/queue-blocked.py|s/^            rv = gh("api", .*/            rv = ""/|check-queue-blocked.sh
@@ -303,7 +303,12 @@ MUT="$MUT"'
 37 read|product/tools/queue-blocked.py|s/^        if read:$/        if True:/|check-queue-blocked.sh
 37 read who|product/tools/queue-blocked.py|s/ not in TRUSTED or not c.get("created_at"):/ is None:/|check-queue-blocked.sh
 37 read edited|product/tools/queue-blocked.py|s/^        if (c.get("updated_at") or c.get("created_at")) != c.get("created_at"):$/        if False:/|check-queue-blocked.sh
-37 read head|product/tools/queue-blocked.py|s/if any(x.lower() == head.lower() for x in LEAD_READ.findall/if any(True for x in LEAD_READ.findall/|check-queue-blocked.sh
+37 read head|product/tools/queue-blocked.py|s/^            if m and m.group(1).lower() == head.lower():$/            if m:/|check-queue-blocked.sh
+37 read drop|product/tools/queue-blocked.py|s/^        for d in DROP:$/        for d in []:/|check-queue-blocked.sh
+37 read code|product/tools/queue-blocked.py|s/^            if line.startswith("    ") or line.startswith(.\\t.):$/            if False:/|check-queue-blocked.sh
+37 read blank|product/tools/queue-blocked.py|s/^LEAD_READ = re.compile(r"^\[ \\t\\v\\f\]\*lead read/LEAD_READ = re.compile(r"^\\s*lead read/|check-queue-blocked.sh
+37 read leads|product/tools/queue-blocked.py|s/^        if leads and (login not in leads or login == str(author or "").lower()):$/        if False:/|check-queue-blocked.sh
+37 read unread|product/tools/queue-blocked.py|s/ll = "" if re.search/ll = "" if True or re.search/|check-queue-blocked.sh
 37 count|product/tools/lead-watch.sh|s/; seen "\$qb"; act=\$((act + \$(grep -c .^ACT. <<<"\$qb")))/; seen "$qb"/|check-queue-blocked.sh
 39 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
 39 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh
