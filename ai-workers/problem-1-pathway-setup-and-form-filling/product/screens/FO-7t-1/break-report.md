@@ -153,3 +153,23 @@ How I ran it: a new scratch harness, `break3.ts`, with the same setup as round 1
 No Blocker or Major remains. r2-m1 to r2-m3 and round 1's Minors 5-7 are left for the Lead to take or defer.
 
 Verdict: pass
+
+## Diff-only round on c83d2017 (23 Nov 2026)
+
+Scope: only `git diff 0f1acb674..c83d20173`, i.e. the DocumentRenderPort contract run for `TrustDocuments` added at the end of `studio/tests/check_fo7t_trust.ts` (lines 369-373). Tried against the real adapter (temporary edits to `api/src/client-money/trust/documents.ts`, each reverted with `git checkout`) and against look-alike adapters in a scratch script using the exact harness from the diff.
+
+**What held**
+* Full check on the local Postgres: 58 passed, 0 failed, including the four `PF-0c DW2 DocumentRenderPort TrustDocuments` lines (3 of 3 cases). `tools/check-port-contracts.mjs`: 0 problems; `--list` names `TrustDocuments` with `tests/check_fo7t_trust.ts`.
+* The PDF text reader really reads the amount: it finds all 11 `Tj T*` lines `textPdf` writes, including `Received into trust: CAD 600.00 by e-Transfer on 2026-11-23`. 600.00 and 600.01 give different text. A reader that returns "" turns the contract red.
+* Edit E1, rendering fixed text and ignoring the data: **red** (case 2, and case 3 because nothing is parsed).
+* Edit E2, accepting unknown templates by falling back to the receipt: **red** (case 3).
+* Scratch versions: the order of the data's keys changing the text, an empty content type, the amount dropped, the amount rounded to `600`: all **red**.
+* The contract run is outside the database `try` and before the exit line. It counts through the file's own `ok`, so a red case fails the file.
+
+**Findings**
+* **d-m1 (Minor): the "Date in the data" case says nothing for this adapter.** Edit E3 removed `RenderData.parse` from `trustText` (`documents.ts:31`). The contract stays **green, 3 of 3**. Yet the edited adapter then accepts `{...receipt, extra: new Date()}`; the real one refuses it with a ZodError. Cause: the contract's probe `{ when: new Date() }` (`ports/contracts/document-render-port.contract.ts`, case 3) has none of the receipt's fields, so `fill` throws "no value for firmName" first. `expectRefused` accepts any error. The JSON check therefore has no test through this run. The real adapter is right today. Fix: a probe built on the harness's data (`{ ...h.data, when: new Date() }`), or a probe in the file itself. The contract file is outside this diff, so this does not block.
+* **d-m2 (Minor, note): only `client_money.trust_receipt` goes through the contract.** `client_money.trust_request` (the other entry of `TRUST_TEMPLATES`) is rendered by the same `render`, but no contract case covers it. The harness takes one template, so this is how the contract is built, not a fault in the diff.
+
+The tree was left clean except this file. `screens/FO-7t-1/review.md` already had changes from someone else when this round began; this round did not touch it.
+
+Verdict: pass (Approve)
