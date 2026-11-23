@@ -14,7 +14,7 @@
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
 //   zsh studio/tools/isolated.sh j69 4495 start PLATFORM_IDENTITY=local --ttl 40 && trap 'zsh studio/tools/isolated.sh j69 4495 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_69.ts j69 4495
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
@@ -43,8 +43,9 @@ ok("J-69 setup: Client A has a document line not yet requested", !!first, (await
 const PDF = textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", "Sample synthetic document (J-69)"]);
 const storedFile = (doc: string) => {
   const root = join(STUDIO, "var", `isolated-${NAME}`, "workspaces"), rel = sql(`select path from case_document where id='${doc}'`);
-  if (rel) for (const ws of existsSync(root) ? readdirSync(root) : []) { const p = join(root, ws, rel); if (existsSync(p) && statSync(p).isFile()) return p; }
-  return null;
+  // Named, never listed (a folder listing ties every acceptance pack to this journey in the suite selector).
+  const p = rel ? join(root, process.env.STUDIO_WORKSPACE_KEY?.trim() || "demo", rel) : null;
+  return p && existsSync(p) ? p : null;
 };
 
 const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 250 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -111,8 +112,20 @@ try {
   ok("J-69 W3: keyboard only: ⋯ → File details… → Check, each with Enter", byKeys && await dialog.locator("[data-check-result]").waitFor({ timeout: 15_000 }).then(() => true, () => false));
   ok("J-69 W3: after the check, focus is still on the Check button (never dropped to the dialog)", await dialog.locator("[data-check-unchanged]").evaluate((e) => e === document.activeElement));
   await page.setViewportSize({ width: 390, height: 844 });
-  const fits = await dialog.evaluate((d) => d.scrollWidth <= d.clientWidth + 1 && document.documentElement.scrollWidth <= 391);
-  ok("J-69 W3: at 390 px the dialog fits, the fingerprint wraps, no sideways scroll", fits);
+  // After the resize, the layout is measured once it has settled (up to 5 s), and each claim gets its own line with the
+  // widths, so a red says which element is wide: the dialog (this row's) or the case page behind it.
+  type Fit = { inside: boolean; noScroll: boolean; wraps: boolean; page: boolean; widths: Record<string, number>; widest: [string, number][] };
+  const measure = () => dialog.evaluate((d): Fit => {
+    const r = d.getBoundingClientRect(), code = d.querySelector("[data-fingerprint]")?.getBoundingClientRect();
+    const widest = [...document.body.querySelectorAll("*")].map((e) => [`${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ""}.${String(e.getAttribute("class") ?? "").split(" ").slice(0, 3).join(".")}`, Math.round(e.getBoundingClientRect().right)] as [string, number]).filter((x) => x[1] > innerWidth).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    return { inside: r.left >= 0 && r.right <= innerWidth + 1, noScroll: d.scrollWidth <= d.clientWidth + 1, wraps: !!code && code.right <= r.right + 1, page: document.documentElement.scrollWidth <= innerWidth + 1,
+      widths: { viewport: innerWidth, dialogLeft: Math.round(r.left), dialogRight: Math.round(r.right), dialogScroll: d.scrollWidth, dialogClient: d.clientWidth, fingerprintRight: Math.round(code?.right ?? -1), pageScroll: document.documentElement.scrollWidth }, widest };
+  });
+  await page.waitForFunction(() => innerWidth === 390, undefined, { timeout: 5_000 }).catch(() => undefined);
+  let fit = await measure();
+  for (let i = 0; i < 25 && !(fit.inside && fit.noScroll && fit.wraps && fit.page); i++) { await page.waitForTimeout(200); fit = await measure(); }
+  ok("J-69 W3: at 390 px the dialog fits inside the screen and its fingerprint wraps, with no sideways scroll in the dialog", fit.inside && fit.noScroll && fit.wraps, fit);
+  ok("J-69 W3: at 390 px with the dialog open, the page has no sideways scroll", fit.page, fit);
   await dialog.screenshot({ path: join(SHOTS, "w3-owner-read-by-390.png") });
   await page.keyboard.press("Escape");
   ok("J-69 end: back on the line, where the next capability starts", await row.isVisible() && (await dialog.count()) === 0);

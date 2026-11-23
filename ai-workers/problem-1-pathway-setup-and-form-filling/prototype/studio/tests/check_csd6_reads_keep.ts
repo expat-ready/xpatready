@@ -14,7 +14,7 @@
 // Parts 2 (keep list) and 3 (Dispose) add DW4-DW8 here. Synthetic Sample documents only. No model call (US$0).
 //   zsh studio/tools/isolated.sh runtime_csd6 4494 start PLATFORM_IDENTITY=local && tsx studio/tests/check_csd6_reads_keep.ts 4494 xr_studio_runtime_csd6
 import { execFileSync } from "node:child_process";
-import { readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CLIENT, FAMILY, OFFICER, PORT, DB, call, main, ok, openCase, sql } from "../acceptance/lib/m3.ts";
 import { textPdf, upload } from "../acceptance/lib/fixtures.ts";
@@ -43,12 +43,13 @@ const tokenOf = async (actorId: string, firmKey = "sample-firm") => {
 const download = (doc: string, actor: string) => fetch(`${BASE}/runtime/documents/${doc}/file`, { headers: { "x-actor": actor } }).then(async (r) => { await r.arrayBuffer(); return r.status; }).catch(() => 0);
 const reads = (doc: string, token: string | null, before?: string) => staff("GET", `/runtime/documents/${doc}/reads${before !== undefined ? `?before=${encodeURIComponent(before)}` : ""}`, token);
 const lineCount = (doc: string, action: string) => Number(sql(`select count(*) from audit_event where entity='case document' and entity_key='${doc}' and action='${action}'`) ?? "-1");
-/** The stored file of a document on this copy (studio/var/isolated-<name>/workspaces/<ws>/<path>). */
+/** The stored file of a document on this copy (studio/var/isolated-<name>/workspaces/<workspace key>/<path>). Named, never
+ *  listed: a folder listing beside the pack paths above makes the suite selector tie every acceptance pack to this suite. */
 function storedFile(doc: string): string | null {
   const root = join(studio, "var", `isolated-${DB.replace(/^xr_studio_/, "")}`, "workspaces"), rel = sql(`select path from case_document where id='${doc}'`);
   if (!rel) return null;
-  try { for (const ws of readdirSync(root)) { const p = join(root, ws, rel); try { if (statSync(p).isFile()) return p; } catch { /* not this workspace */ } } } catch { /* no folder */ }
-  return null;
+  const p = join(root, process.env.STUDIO_WORKSPACE_KEY?.trim() || "demo", rel);
+  return existsSync(p) ? p : null;
 }
 
 await main("CS-D6 reads", "Read by list, the fingerprint and the file check; staff session and keys; one audit trail (US$0)", async () => {
