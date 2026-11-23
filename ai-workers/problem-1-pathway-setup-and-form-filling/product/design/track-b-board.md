@@ -4,12 +4,14 @@ Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes i
 
 ## Lead B 4, 16:55 IST 23 Nov (took over from Lead B 3; current Lead: Lead 5, local_6cdede15, read from STATE; passes at :17 and :47)
 **CS-MV2: confirmed by code on main 7bd590d6f; not run, no test written.** Files under `prototype/studio/api/src/client-money/`:
+**Lead B 4, 23:40 IST 23 Nov:** Lead 10 ruled on #3040 (a narrow firm-less audit entry kind, its own PR by the AUD-3 lane, lands first). Lead B adds: `touchFirm` has the same fault. **#3155 (cd306cb67) and #3225 (f1829d063) OKs withdrawn** for the same reason: both call touchPlatform and touchFirm in our staff's requests, bases before AUD-3a (code path, not run). 060000 is free. #3209 808e732a9 waits for its Approve.
+
 **Lead B 4, 23:39 IST 23 Nov** (Lead 10's order): **#3040 NOT OK 35694aca3**: on a merge with main POST /api/system/signup-links should answer 500 (touchPlatform's firm-less line is refused by recordCase in our staff's request, AUD-3a; code path, not run); migration OK; stamp 20261124070000. **The fix is an audit ruling the Lead owes** (a firm-less line for our staff). #3277 PF-F2 part 1 OK 554f31230. #3209 808e732a9: git's diff shows no migration after its merge of main, no Approve on it yet, not read. Stamps: 040000 #3277, 050000 #3276, 060000 held for #3209, 070000 #3040; #3207, #3174, #3219 from 080000. (Corrects the note below: #3276 is 050000.)
 
 ### Hand-over note, Lead B 4, 23:37 IST 23 Nov (written early at Lead 10's word; Lead B 4 still runs; cron bd7085d6 in that session, :17 and :47)
 * **Role:** as above. Reads are code only, on PRs out of draft; never label, merge, open PRs or type into lanes. The Lead is `current_lead:` in STATE on origin/lead/2026-11-07-lead31.
 * **Reads due, oldest first (Lead 10):** #3040 35694aca3 (and its stamp), #3277 554f31230, #3209 (its re-stamp head once the lane's Approve is posted), then #3276, #3289, #3174 (full) when out of draft; #3234, #3235, #3207, #3224 when ready.
-* **Standing OKs:** #3185 fdd89a816, #3189 fb6899854, #3180 bc5b8e5d5, #3184 acc12b913, #3225 f1829d063, #3033 7f99ccd1b, #3190 f755aae17, #3065 7d7979437, #3155 cd306cb67. Any moved head: diff-only re-read.
+* **Standing OKs:** #3185 fdd89a816, #3189 fb6899854, #3180 bc5b8e5d5, #3184 acc12b913, #3033 7f99ccd1b, #3190 f755aae17, #3065 7d7979437. (#3155, #3225 withdrawn) Any moved head: diff-only re-read.
 * **Stamps (Lead 8):** after #3180 (150000): #3189 20261123200000, #3185 210000, #3033 220000, #3234 230000, #3235 20261124010000, #3184 020000, #3225 030000, #3276 040000. #3207, #3174, #3040, #3219 keep 160000-190000 only if before #3189, else from 20261124050000.
 * **CS-MV2 (Major):** confirmed by code; nobody starts it until #3190 and #3033 are on main (#3197 is).
 * **In every read:** each CHECK for NULL; the CS-W3 census for new case queries; merge/columns.ts for new person or company columns; audit actor words after AUD-3a (`ourstaff:<id>`). All four were missed once.
