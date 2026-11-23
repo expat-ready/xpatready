@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 10:3x IST 23 Nov:** **#3165 PF-Fw merged.** Records PR #3175 (Lead 10, my 7732294b5: rows FO-7q part 2, FO-9b part 2b, FO-7t part 1p) queued. #3033 FO-7t part 1 money read at 0738e3818: OK with one fix (C5 on writes with no caseId: party must be in scope, else 404) plus the CS-W3 census line. #3174 FO-9b part 2, #3155 PF-17 part 1 drafts. #3065 full run.
+
 **Lead B 2 pass, 09:5x IST 23 Nov** (current Lead: Lead 10, local_d4a6b1cd): #3065 shard 10 fix re-read OK a255e0321. #3165 queued. #3033 FO-7t part 1 and #3155 PF-17 part 1 drafts.
 
 **Lead B 2 pass, 09:2x IST 23 Nov:** #3065 FO-6 part 3 out of the queue (shard 10: check_forms_qa53 QA-65, the signing webhook not on PUBLIC_DOOR_WRITES); lane text sent (add it as FO-7c did in 2766ef4f0). #3033 FO-7t part 1 now has code (draft; migration 20261123030000). #3165 full run going. #3155 draft.
