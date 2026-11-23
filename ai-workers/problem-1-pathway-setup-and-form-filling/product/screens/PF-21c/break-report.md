@@ -97,3 +97,74 @@ Same root cause as the reviewer's M1; I reproduced it independently. `migration.
 - **Volume:** 600 breaches × 200 firms, each with a 3000-character description, were written in 523 ms. The Auditor's list of 500 took 149 ms (5.1 MB, `truncated:true`). A PATCH to 200 firms took 27 ms.
 
 Verdict: Changes 06bc784e1f2ba49eb5645f1df1247852e2a3a5dc
+
+## Round 2 (head `cc7e9a4be2d24bd140e977afde0e6d606c9bfc3f`; scope: `git diff 06bc784e..cc7e9a4b` only)
+
+**How:** I ran the row's own suite at this head: 46 passed, 0 failed. Then I ran a scratch script that reuses its harness: scratch Postgres databases, a Nest app on an ephemeral port, fake jobs, 2 Platform Owners plus Support, Admin, Auditor and a firm token. I also ran live checks on an isolated copy (`isolated.sh br21c 4631`, with local stand-ins) for the key, the role walls and a real notice. Nothing was left behind: the scratch databases and files are gone, and the copy is stopped. Live AI was off.
+
+### Findings
+**R2-1 — Minor (what is left of B3): a firm's session can still forge its own notice, or block it for good, by writing the outbox row first.**
+- **Repro, as `xr_app` with `app.firm_id = A`:**
+  1. Insert into `msg_outbox` with `idempotency_key = 'breach-notice:<breach>:<A owner id>'`, `state = 'SUPPRESSED'` and `subject_kind = 'STAFF'`. **Accepted.**
+  2. Run `plat_breach_notice_record('<breach>', A, '[{"staffId":"<A owner>","outboxId":"<that row>"}]', '<real tpl>', 'staff:<Platform Owner id>')`. **The notice is recorded.**
+  3. The real `POST …/notices {firmId:A}` then answers **409 ALREADY_NOTIFIED**, and nobody is emailed.
+- If step 2 is skipped, the pre-written SUPPRESSED row is returned by `send()`'s idempotency lookup (`messages.ts:99-100`). The real send then answers NOT_DELIVERABLE every time, even after the suppression is lifted.
+- **Cause:** the check at `migration.sql:400-407` asks only that a row with the key exists. It does not ask that the row was written by this transaction or that it is QUEUED.
+- **Fixed:** the sender now needs an ACTIVE person holding the manage key. A deactivated person, an ended grant and an upper-cased id are all refused. A firm version under the platform template is refused by `msg_template_version_in_firm`.
+- **Why Minor, not Major:** the attack needs the breach's id. A firm's session reads 0 register rows and first sees a breach id in its trail only after its own notice. The Owner's staff id is in the firm's own trail (`detail.staffId`, `by`) after any earlier notice.
+
+**R2-2 — Minor (B6, partly fixed): many characters that show nothing still pass `plain()` (`service.ts:61`).**
+- **Refused (422):** zero-width characters, U+FEFF, U+2028, LRM, and a lone surrogate at either end.
+- **Still 201 as a description made only of them:** U+3164, U+2800, U+034F, U+180E, U+FE0F, U+2061-2064, U+115F/U+1160, U+FFA0, U+17B4, and Unicode tag characters (U+E0041…).
+- `"Sample ok"` followed by 200 tag characters (hidden ASCII text) → 201. That text is quoted in the firm's email.
+- On PATCH, `rootCause: "ㅤ"` → 200 and `containment: "⠀"` → 200. Containment is also quoted in the email.
+
+**R2-3 — Minor (side effect of the B2 fix): each NOT_DELIVERABLE attempt leaves the rendered notice in the firm's file store.**
+- **Repro:** a firm whose Owner and Admin are both suppressed, then 3 sends at once.
+- **Observed:** 3× 409 NOT_DELIVERABLE, with 0 notice, outbox, trail or event rows (correct). But there are **6 orphan `msg/<firm>/outbox/<id>.json` files**, holding the breach description and the suppressed addresses.
+- **Cause:** `send()` writes the file at `messages.ts:118`, before the transaction that `service.ts:242-244` rolls back. Nothing ever removes the files, so each retry adds two more.
+
+**R2-4 — Minor (B7, partly fixed): `detail.rule` still reaches the description.**
+- **Repro:** from-alert with `rule: "Jane.Doe_1985-04-12_passport_AB123456"` → 201. The description reads "…(audit_chain_break, rule Jane.Doe_1985-04-12_passport_AB123456)…" (`service.ts:149`).
+- `PATCH {status:"RECORDED", description:<the draft words unchanged>}` → 200. Those words are then what the firm is emailed.
+- `entity` and `entityKey` are now kept out of the text (fixed). `sourceAlert` still keeps `firmId` in upper case, verbatim; it is internal only.
+
+### What held
+- **B1:**
+  - 20 rounds of a notice to E, a notice to F and `PATCH` (alternating `NO_NOTICE` and dropping E). Outcomes were only 201, 409 (`NOT_DECIDED_TO_NOTIFY`, `NOTIFIED_FIRM_KEPT`, `DECISION_KEPT`), 422 (`BREACH_FIELDS`) and 200.
+  - **No 500 and no deadlock.** In the database, no notice was left for a firm that is no longer named or under a decision other than NOTIFY_FIRMS, and there were 0 orphan outbox rows.
+  - The suite's held-open change test passes: the notice waits on `FOR SHARE`, then is refused.
+- **B2:**
+  - Everyone suppressed, 3 sends at once → 3× 409 `NOT_DELIVERABLE`, with nothing recorded.
+  - After lifting the Admin's suppression: 201, with states QUEUED and SUPPRESSED, recorded honestly.
+  - The suite's lift-then-resend → 201.
+- **B4:**
+  - 10 creates at once with one key → one 201, nine 200s and one row. The body has no `repeated`/`requestKey`.
+  - Reordered JSON keys, or the quoted form of the key → 200, same breach.
+  - Another body, the same body from the other Owner, a changed audit reason, or the key reused on from-alert → 422 `IDEMPOTENCY_KEY_REUSED`. The other user's breach id is not revealed.
+  - Missing, empty, containing a space, 256 characters, non-ASCII, a lone quote, `""`, or the header sent twice → 400. 255 characters → 201.
+  - A key whose first request failed (404 unknown firm) → the corrected body gets 201.
+  - 4 concurrent requests with one key but different bodies and users → one 201 and three 422.
+  - from-alert ×6 concurrent with one key: unknown firm (the fallback path) → one draft, `affectedFirms:[]`; known firm in upper case → one draft.
+  - Repeating after a PATCH → 200 with the current breach. Repeating after the opener's grant ended → 403.
+  - In the database:
+    - the function is refused in a firm session;
+    - a replay with another hash raises "key reused";
+    - a malformed key or hash fails `plat_breach_facts_set`;
+    - the key and hash appear in no event and no Auditor read.
+  - **Live :4631:** missing → 400, 201, then 200 with the same id, the header twice → 400, another body → 422. A real notice → 201, then 409.
+- **B5:**
+  - Before a notice, the other Owner re-sending the same decision keeps `decidedBy` and `decidedAt` (no new event).
+  - After a notice: the same decision and reason (even padded with spaces) → 200, still Owner 1. A new reason, UNDECIDED, or a mixed patch → 409 `DECISION_KEPT`. A description-only patch → 200.
+  - Direct `UPDATE` of `decided_by` or `decision_reason` is refused by the trigger; `decided_at` is pinned.
+- **m2:** confirming a draft without a description → 422. **m4:** the notice says "2026-11-23 04:30 UTC" for a discovery at 23:30 −05:00.
+- **Path and firm id case:** upper-case breach id in the path and upper-case `firmId` → 201.
+- **Permissions on every changed path:**
+  - The Auditor gets 403 `MISSING_PERMISSION` on create and from-alert, with a fresh or a used key, live and in the harness. Support and Admin get the same.
+  - A firm token gets 403 `FIRM_SESSION_REFUSED`, also via `/api/platform/../system/…`. No token or a junk token gets 401.
+  - The guard answers before the key is read, so a refused caller cannot probe keys. The Auditor reads (200).
+- **Noted, not a finding:**
+  - The 400 hint says "the alert's own id is a good one", but the alert body has no id field. Two different keys for the same alert still make two drafts; the key answers B4's double-submit ask.
+  - A partly suppressed firm, once notified, cannot be re-sent to the suppressed person. The notice records that person as SUPPRESSED.
+
+Verdict: Approve cc7e9a4be2d24bd140e977afde0e6d606c9bfc3f (no Blocker or Major left; R2-1…R2-4 are Minor follow-ups)
