@@ -56,3 +56,26 @@ a `NOT_SCHEDULED` finish as a failure and logs it. The shipped check has no conc
 catch it.
 
 **Verdict: Changes** (Blockers #1 and #2, Major #3)
+
+## Round 2: a371f8901 (PR #3235), only `2a39e1473..a371f8901`
+Fresh worktree. Shipped checks pass: `check_pf21d_erasure` 24/0, `check_pf21d_switch` 20/0, `check_pf21b_requests` 27/0.
+The probes run mid-run: the second eraser waits inside the firm transaction, after the first has deleted the rows.
+* **Held, B1:** cancel mid-run → 409 ERASURE_RUNNING (the claim is set). The erasure is recorded: two RESULT steps and COMPLETED.
+* **Held, B2:** hand moves mid-run → COMPLETED and HELD both get 409 ERASURE_SCHEDULED; the job's result is recorded.
+* **Held, M3:** hand moves while scheduled (before the day) → 409 ERASURE_SCHEDULED. The owner's direct `UPDATE … status='COMPLETED'`
+  is refused by the guard trigger. Cancel on the day → 409 WINDOW_ENDED.
+* **Held:** the daily sweep marks OVERDUE mid-run (allowed by the guard), then the finish goes OVERDUE → COMPLETED.
+  A hold placed mid-run waits for the firm transaction, then is saved. Finish or step under a wrong claim → NOT_CLAIMED / false.
+  Claim from a firm session → refused. Empty registry → SKIPPED. The switch is read per order (service.ts:134). Merged-away
+  person refused (service.ts:56). Held orders sort last (mig:84).
+
+| # | Attack | Expected | Actual | Sev | Where |
+|---|---|---|---|---|---|
+| R1 | Stale claim retaken while run 1 is still alive. Run 1 has deleted 2 rows; I age its claim by 31 minutes and run 2 starts | A late finish fails loudly and the record keeps what was erased | Run 1's finish returns NOT_CLAIMED and throws (counted failed, so the job fails), which is loud. But run 2 re-runs the idempotent erasers and records `test.rows: NOTHING (no rows)`, COMPLETED. **The register says nothing was erased while 2 rows were.** The log line carries only the error's name and frames. This needs a live run stalled for over 30 minutes between the erase commit and the record (the erase transaction caps at 120 s), so it is rare | Minor | service.ts:177-180; mig:101-102 |
+| R2 | Release fails (EXECUTE on `_release` revoked) after an eraser throws | Failure step written, claim released, or the failure visible | Step and release share one transaction that is caught and swallowed, so the failure step is lost and the claim stays. Run 1 is still counted failed (loud). Runs within 30 minutes then skip the order **silently**: `one()` returns null, so it is neither failed nor skipped and the job succeeds. Cancel → RUNNING. After 30 minutes it is retaken and erased | Minor | service.ts:158-161, 141, 153 |
+| R3 | After the day, with the switch off or a module failing daily | The person can still withdraw | Cancel → WINDOW_ENDED and hand moves → ERASURE_SCHEDULED, so no route stops the order until it runs. This follows the brief ("cancel before `erase_on`"); flagged for the tech lead | Minor | mig:71; guard mig:31-33 |
+| R4 | Round-1 Minors not touched by this diff: #5 approve of OVERDUE/HELD, #8 cancel leaves HELD, #9 definers trust `p_erase_on`, #10 owner `erase_on` edit (the guard only covers status) | n/a | Still as in round 1 | Minor | mig:52-56, 72 |
+
+No Blocker or Major is open: B1, B2 and M3 are closed. R1-R4 are Minor.
+
+**Verdict: Approve** (a371f8901)
