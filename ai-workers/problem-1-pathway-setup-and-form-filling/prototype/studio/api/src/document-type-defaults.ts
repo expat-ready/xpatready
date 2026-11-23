@@ -46,7 +46,9 @@ type Row = { translationRule: string | null; notarisationRule: string | null; ha
 export const defaultsOf = (r: Row): TypeDefaults => ({ translation_rule: r.translationRule, notarisation_rule: r.notarisationRule, has_expiry: r.hasExpiry, max_age_days: r.maxAgeDays, source_quote: r.defaultsSourceQuote, source_file: r.defaultsSourceFile });
 const columns = (d: TypeDefaults) => ({ translationRule: d.translation_rule, notarisationRule: d.notarisation_rule, hasExpiry: d.has_expiry, maxAgeDays: d.max_age_days, defaultsSourceQuote: d.source_quote, defaultsSourceFile: d.source_file });
 export const anySet = (d: Pick<TypeDefaults, "translation_rule" | "notarisation_rule" | "has_expiry" | "max_age_days">) => d.translation_rule !== null || d.notarisation_rule !== null || d.has_expiry !== null || d.max_age_days !== null;
-const same = (a: TypeDefaults, b: TypeDefaults) => JSON.stringify(a) === JSON.stringify(b);
+const FIELDS = ["translation_rule", "notarisation_rule", "has_expiry", "max_age_days", "source_quote", "source_file"] as const;
+/** Field by field: a change's stored before/after come back from jsonb with its own key order. */
+const same = (a: TypeDefaults, b: TypeDefaults) => FIELDS.every((k) => (a[k] ?? null) === (b[k] ?? null));
 const copyType = (r: Record<string, unknown>) => { const x = strip(r); for (const k of ["readerProfile", "suppliesAbout", "sets"]) if (x[k] === null) x[k] = Prisma.DbNull; return x; };
 const RULE_WORDS: Record<string, string> = { NOT_REQUIRED: "not required", REQUIRED_IF_NOT_EN_FR: "required when not in English or French", REQUIRED: "required" };
 /** The four values in words, for To review, History and the audit line. */
