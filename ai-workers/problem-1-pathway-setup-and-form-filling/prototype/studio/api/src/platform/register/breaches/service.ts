@@ -1,0 +1,233 @@
+// PF-21c (map row 86; SA-11 §3.7, SA-11-14, SA-11-24, SA-11-25, SA-11-35, BR-11; SA7-D74 (b)): ExpatReady's breach register
+// and the "Security incident notice" to each affected firm's Owner and Admins.
+// Who: the Platform Owner opens, changes and notifies (system/breach:manage); the Auditor reads (system/breach:read); every
+// other person, a firm's staff included, gets 403 (PF-4s's system guard first, this service again). The database refuses
+// every register call inside a firm's session (the definers' system-only check, migration 20261123100000_pf21c_breaches).
+// Recording is unconditional (BR-11): a breach is RECORDED by hand, or a DRAFT pre-filled from a PF-23 integrity alert
+// (never sent by itself); whether firms are told is a recorded decision with who and why. Kept 7 years: nothing deletes.
+// The notice (SA-11-25): one per breach and firm, in that firm's own transaction (its Owner and Admins read there, under
+// its walls), through MessagePort (PF-19b) from the newest published platform template "platform.security_incident_notice"
+// (Sample words until counsel's; Unconfirmed: no counsel). The outbox rows, the notice row, its NOTICE_SENT event and one
+// line on the firm's own trail (AuditPort) commit together or not at all; the worker sends after the commit. A second
+// send to the same firm waits on the first's lock and is refused (409), and its message keys repeat the first's rows,
+// so no person is mailed twice. The record's own changes are its insert-only events plus PF-4s's line per call
+// (plat_system_audit); a firm's trail gets a line only when the firm is told (a firm never sees an investigation note).
+// The firm decides about its clients (SA-11-25); ExpatReady mails only its own users, the firm's staff accounts.
+// The audit line's actor is `system:platform.register.breach` with the staff member's id in its detail (PF-21b's reason:
+// the trail has no actor word for our own staff yet).
+import { Inject, Injectable } from "@nestjs/common";
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { z } from "zod";
+import type { AuditPort } from "../../../../../ports/audit.ts";
+import { AlertDetail } from "../../../../../ports/alert.ts";
+import { fillFields, type MessagePort } from "../../../../../ports/messages.ts";
+import { Db } from "../../../core.ts";
+import { auditEvent } from "../../audit/audit-event.ts";
+import { withFirm } from "../../firm-scope.ts";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../../http/input.ts";
+import { forbidden, problem } from "../../identity/keys.ts";
+
+type Tx = Prisma.TransactionClient;
+/** SA-07 Appendix A "ExpatReady's data-incident (breach) register": the Platform Owner manages (SA7-D74 (b)). */
+export const BREACH_MANAGE_KEY = "system/breach:manage";
+/** The same row: the Auditor reads only (the key's name is this row's mapping, SA-07 §10). */
+export const BREACH_READ_KEY = "system/breach:read";
+export const BREACH_ACTOR = "system:platform.register.breach";
+export const BREACH_AUDIT = Symbol("Breaches.audit");
+export const BREACH_MESSAGES = Symbol("Breaches.messages");
+/** SA-05 Appendix B.6's ExpatReady-owned email (seeded version 1 with Sample words; the Platform Owner publishes more). */
+export const NOTICE_TEMPLATE_KEY = "platform.security_incident_notice";
+/** Sample list of affected data categories (SA-11-24 names the field, not its list). */
+export const BREACH_CATEGORIES = ["identity_documents", "contact_details", "immigration_records", "financial_details", "sign_in_credentials", "messages_and_files", "other"] as const;
+const CATEGORY_WORDS: Record<(typeof BREACH_CATEGORIES)[number], string> = { identity_documents: "identity documents", contact_details: "contact details", immigration_records: "immigration records",
+  financial_details: "financial details", sign_in_credentials: "sign-in credentials", messages_and_files: "messages and files", other: "other data" };
+/** The PF-23 alerts that can open a draft breach: the integrity and security ones (SA-11 BR-2, BR-5). */
+export const BREACH_ALERT_KINDS = ["audit_chain_break", "audit_write_failed"] as const;
+
+export type BreachCaller = { staffId: string; keys: readonly string[] };
+export type BreachNotice = { id: string; firmId: string; channel: string; recipients: { staffId: string; roles: string[]; outboxId: string; state: string }[]; templateVersionId: string; sentBy: string; sentAt: string };
+export type BreachView = {
+  id: string; status: "DRAFT" | "RECORDED"; source: "MANUAL" | "ALERT"; sourceAlert: unknown; discoveredAt: string; description: string; affectedFirms: string[];
+  scope: "UNDER_INVESTIGATION" | "KNOWN"; dataCategories: string[]; rootCause: string | null; containment: string | null; decision: "UNDECIDED" | "NOTIFY_FIRMS" | "NO_NOTICE";
+  decisionReason: string | null; decidedBy: string | null; decidedAt: string | null; otherNotifications: string | null; openedBy: string; createdAt: string; updatedAt: string; notices: BreachNotice[];
+};
+
+/** Ordinary text: control characters (C0 but tab and line breaks, C1) and the invisible direction marks are refused. */
+const plain = (max: number, need: string) => z.string().trim().min(1, need).max(max, `At most ${max} characters.`)
+  .refine((r) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/.test(r), "Write it as ordinary text.");
+const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a uuid").transform((s) => s.toLowerCase());
+const Firms = z.array(Uuid).max(200).refine((a) => new Set(a).size === a.length, "Name each firm once.");
+const Categories = z.array(z.enum(BREACH_CATEGORIES)).max(BREACH_CATEGORIES.length).refine((a) => new Set(a).size === a.length, "Name each category once.");
+const When = z.iso.datetime({ offset: true, error: "A time with its zone." }).transform((v) => new Date(v))
+  .refine((d) => d.getUTCFullYear() >= 2000, "A time after the year 2000.").refine((d) => d.getTime() <= Date.now() + 5 * 60_000, "Not in the future.");
+/** The guard's written reason (@SystemReason): checked and recorded there; carried in every change's body. */
+const Why = { reason: z.string().max(500).optional() };
+const OpenBody = z.strictObject({
+  ...Why, discoveredAt: When, description: plain(4000, "Describe the breach."), affectedFirms: Firms.optional(), dataCategories: Categories.optional(),
+  rootCause: plain(4000, "Give the root cause, or leave it out.").optional(), containment: plain(4000, "Give the containment, or leave it out.").optional(),
+  otherNotifications: plain(4000, "Give the other notifications, or leave it out.").optional(),
+});
+const AlertBody = z.strictObject({ ...Why, alert: z.strictObject({ kind: z.enum(BREACH_ALERT_KINDS), detail: AlertDetail, raisedAt: When }) });
+const ChangeBody = z.strictObject({
+  ...Why, status: z.literal("RECORDED").optional(), description: plain(4000, "Describe the breach.").optional(), affectedFirms: Firms.optional(), dataCategories: Categories.optional(),
+  rootCause: plain(4000, "Give the root cause.").nullable().optional(), containment: plain(4000, "Give the containment.").nullable().optional(),
+  otherNotifications: plain(4000, "Give the other notifications.").nullable().optional(),
+  decision: z.enum(["UNDECIDED", "NOTIFY_FIRMS", "NO_NOTICE"]).optional(), decisionReason: plain(2000, "Say why.").optional(),
+}).refine((b) => Object.keys(b).some((k) => k !== "reason"), { message: "Change at least one field.", path: ["body"] })
+  .refine((b) => b.decision === undefined || b.decision === "UNDECIDED" || b.decisionReason !== undefined, { message: "Say why (the decision names who and why).", path: ["decisionReason"] })
+  .refine((b) => b.decisionReason === undefined || (b.decision !== undefined && b.decision !== "UNDECIDED"), { message: "A reason goes with a decision to notify or not.", path: ["decisionReason"] });
+const NoticeBody = z.strictObject({ ...Why, firmId: Uuid });
+export const LIST_MAX = 500;
+const ListQuery = z.strictObject({ limit: z.coerce.number().int().min(1).max(LIST_MAX).optional() });
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function fields(e: z.ZodError): never { return problem(FIELD_ERROR_STATUS, "Check the highlighted fields", "Some fields need a change.", { code: "BREACH_FIELDS", fields: fieldsOf(e) }); }
+const notFound = (): never => problem(404, "Not found", "No such breach.", { code: "NOT_FOUND" });
+const refusedByDb = (e: unknown): never => {
+  const s = String(e);
+  if (/plat_breach: no such firm/.test(s)) problem(404, "Not found", "No such firm.", { code: "FIRM_NOT_FOUND" });
+  if (/a firm that was sent a notice stays/.test(s)) problem(409, "Firm was notified", "A firm that was sent a notice stays among the affected firms.", { code: "NOTIFIED_FIRM_KEPT" });
+  if (/notices were sent, so the decision stays/.test(s)) problem(409, "Notices were sent", "Notices were sent, so the decision stays \"notify firms\".", { code: "DECISION_KEPT" });
+  throw e;
+};
+
+type Row = Record<string, any>;
+const iso = (v: unknown) => (v === null || v === undefined ? null : new Date(String(v)).toISOString());
+function viewOf(r: Row): BreachView {
+  const firms = (r.affected_firms ?? []) as string[];
+  return {
+    id: r.id, status: r.status, source: r.source, sourceAlert: r.source_alert ?? null, discoveredAt: iso(r.discovered_at)!, description: r.description, affectedFirms: firms,
+    scope: firms.length === 0 ? "UNDER_INVESTIGATION" : "KNOWN", dataCategories: r.data_categories ?? [], rootCause: r.root_cause ?? null, containment: r.containment ?? null,
+    decision: r.decision, decisionReason: r.decision_reason ?? null, decidedBy: r.decided_by ?? null, decidedAt: iso(r.decided_at), otherNotifications: r.other_notifications ?? null,
+    openedBy: r.opened_by, createdAt: iso(r.created_at)!, updatedAt: iso(r.updated_at)!,
+    notices: ((r.notices ?? []) as Row[]).map((n) => ({ id: n.id, firmId: n.firm_id, channel: n.channel, recipients: n.recipients, templateVersionId: n.template_version_id, sentBy: n.sent_by, sentAt: iso(n.sent_at)! })),
+  };
+}
+
+@Injectable()
+export class Breaches {
+  constructor(@Inject(Db) private readonly db: PrismaClient, @Inject(BREACH_MESSAGES) private readonly messages: MessagePort<Tx>, @Inject(BREACH_AUDIT) private readonly audit: AuditPort<Tx> = auditEvent) {}
+
+  private may(c: BreachCaller, key: string) {
+    if (!c || !c.keys.includes(key)) forbidden(key === BREACH_READ_KEY ? "Only ExpatReady's Platform Owner and Auditor read the breach register." : "Only ExpatReady's Platform Owner records breaches and sends their notices.", "MISSING_PERMISSION");
+  }
+
+  /** POST /api/system/register/breaches: records a breach by hand (RECORDED). 201 with it. */
+  async open(c: BreachCaller, body: unknown): Promise<BreachView> {
+    this.may(c, BREACH_MANAGE_KEY);
+    const p = OpenBody.safeParse(body ?? {});
+    if (!p.success) fields(p.error);
+    const b = p.data;
+    return this.insert({ status: "RECORDED", source: "MANUAL", alert: null, discoveredAt: b.discoveredAt, description: b.description, firms: b.affectedFirms ?? [], categories: b.dataCategories ?? [],
+      rootCause: b.rootCause ?? null, containment: b.containment ?? null, other: b.otherNotifications ?? null, by: `staff:${c.staffId}` });
+  }
+
+  /** POST /api/system/register/breaches/from-alert { alert: { kind, detail, raisedAt } }: a DRAFT pre-filled from a PF-23
+   *  integrity or security alert. Nothing is sent: a draft can get no notice until our staff confirm it and decide. */
+  async fromAlert(c: BreachCaller, body: unknown): Promise<BreachView> {
+    this.may(c, BREACH_MANAGE_KEY);
+    const p = AlertBody.safeParse(body ?? {});
+    if (!p.success) fields(p.error);
+    const a = p.data.alert, firm = a.detail.firmId && UUID.test(a.detail.firmId) ? a.detail.firmId.toLowerCase() : null;
+    const what = a.kind === "audit_chain_break" ? "the activity log's hash chain did not verify" : "an activity log line could not be written after its retries";
+    const description = `Draft from a ${a.kind} alert (rule ${a.detail.rule}): ${what}${a.detail.entity ? ` (${a.detail.entity}${a.detail.entityKey ? ` ${a.detail.entityKey}` : ""})` : ""}. Confirm or correct this record before it is recorded; nothing has been sent.`;
+    const draft = (firms: string[]) => this.insert({ status: "DRAFT", source: "ALERT", alert: { kind: a.kind, detail: a.detail, raisedAt: a.raisedAt.toISOString() }, discoveredAt: a.raisedAt, description,
+      firms, categories: [], rootCause: null, containment: null, other: null, by: `staff:${c.staffId}` });
+    // The alert's firm, when it names one that exists; otherwise the scope is under investigation (BR-11: still recorded).
+    if (!firm) return draft([]);
+    return draft([firm]).catch((e: { getResponse?: () => unknown }) => { if ((e?.getResponse?.() as { code?: string } | undefined)?.code === "FIRM_NOT_FOUND") return draft([]); throw e; });
+  }
+
+  private async insert(b: { status: string; source: string; alert: unknown; discoveredAt: Date; description: string; firms: string[]; categories: string[]; rootCause: string | null; containment: string | null; other: string | null; by: string }): Promise<BreachView> {
+    const [row] = await this.db.$queryRaw<{ b: Row }[]>`SELECT plat_breach_open(${b.status}, ${b.source}, ${b.alert === null ? null : JSON.stringify(b.alert)}::jsonb, ${b.discoveredAt}::timestamptz, ${b.description},
+      ${b.firms}::uuid[], ${b.categories}::text[], ${b.rootCause}, ${b.containment}, ${b.other}, ${b.by}) AS b`.catch(refusedByDb);
+    return viewOf(row.b);
+  }
+
+  /** PATCH /api/system/register/breaches/:id: changes the given fields; `status: "RECORDED"` confirms a draft; a decision
+   *  names why. 200 with the breach. */
+  async change(c: BreachCaller, id: string, body: unknown): Promise<BreachView> {
+    this.may(c, BREACH_MANAGE_KEY);
+    if (!UUID.test(id)) notFound();
+    const p = ChangeBody.safeParse(body ?? {});
+    if (!p.success) fields(p.error);
+    const b = p.data, patch: Record<string, unknown> = {};
+    if (b.status) patch.status = b.status;
+    if (b.description !== undefined) patch.description = b.description;
+    if (b.affectedFirms !== undefined) patch.affected_firms = b.affectedFirms;
+    if (b.dataCategories !== undefined) patch.data_categories = b.dataCategories;
+    if (b.rootCause !== undefined) patch.root_cause = b.rootCause;
+    if (b.containment !== undefined) patch.containment = b.containment;
+    if (b.otherNotifications !== undefined) patch.other_notifications = b.otherNotifications;
+    if (b.decision !== undefined) { patch.decision = b.decision; patch.decision_reason = b.decision === "UNDECIDED" ? null : b.decisionReason; }
+    const [row] = await this.db.$queryRaw<{ b: Row | null }[]>`SELECT plat_breach_change(${id.toLowerCase()}::uuid, ${JSON.stringify(patch)}::jsonb, ${`staff:${c.staffId}`}) AS b`.catch(refusedByDb);
+    if (!row.b) notFound();
+    return viewOf(row.b!);
+  }
+
+  /** GET /api/system/register/breaches?limit= (1-500): newest discovered first; `truncated` says more exist. */
+  async list(c: BreachCaller, query: unknown): Promise<{ breaches: BreachView[]; truncated: boolean }> {
+    this.may(c, BREACH_READ_KEY);
+    const q = ListQuery.safeParse(query ?? {});
+    if (!q.success) fields(q.error);
+    const limit = q.data.limit ?? LIST_MAX;
+    const rows = await this.db.$queryRaw<{ b: Row }[]>`SELECT b FROM plat_breach_list(NULL, ${limit + 1}::int) b`;
+    return { breaches: rows.slice(0, limit).map((r) => viewOf(r.b)), truncated: rows.length > limit };
+  }
+
+  /** GET /api/system/register/breaches/:id: the breach, its notices and its events. */
+  async one(c: BreachCaller, id: string): Promise<BreachView & { events: { seq: number; kind: string; at: string; actor: string; detail: unknown }[] }> {
+    this.may(c, BREACH_READ_KEY);
+    if (!UUID.test(id)) notFound();
+    const [row] = await this.db.$queryRaw<{ b: Row }[]>`SELECT b FROM plat_breach_list(${id.toLowerCase()}::uuid, 1) b`;
+    if (!row) notFound();
+    const events = await this.db.$queryRaw<{ seq: bigint; kind: string; at: Date; actor: string; detail: unknown }[]>`SELECT seq, kind, at, actor, detail FROM plat_breach_events(${id.toLowerCase()}::uuid)`;
+    return { ...viewOf(row.b), events: events.map((e) => ({ seq: Number(e.seq), kind: e.kind, at: e.at.toISOString(), actor: e.actor, detail: e.detail })) };
+  }
+
+  /** POST /api/system/register/breaches/:id/notices { firmId }: the "Security incident notice" to that firm's active Owner
+   *  and Admins (SA-11-25), recorded on the breach. 201 with the notice; 409 for a draft, an undecided or "no notice"
+   *  breach, a firm already notified, or a firm with no active Owner or Admin; 422 for a firm the breach does not name. */
+  async notify(c: BreachCaller, id: string, body: unknown): Promise<BreachNotice> {
+    this.may(c, BREACH_MANAGE_KEY);
+    if (!UUID.test(id)) notFound();
+    const p = NoticeBody.safeParse(body ?? {});
+    if (!p.success) fields(p.error);
+    const breach = id.toLowerCase(), firm = p.data.firmId, by = `staff:${c.staffId}`;
+    const sent = await withFirm(firm, () => this.db.$transaction(async (tx) => {
+      const [{ r }] = await tx.$queryRaw<{ r: Row }[]>`SELECT plat_breach_notice_ready(${breach}::uuid, ${firm}::uuid) AS r`;
+      if (r.state === "NOT_FOUND") notFound();
+      if (r.state === "DRAFT") problem(409, "Still a draft", "Confirm the breach record before any notice is sent.", { code: "BREACH_DRAFT" });
+      if (r.state === "NOT_DECIDED_TO_NOTIFY") problem(409, "No decision to notify", "Record the decision to notify firms, with why, before any notice is sent.", { code: "NOT_DECIDED_TO_NOTIFY" });
+      if (r.state === "NOT_AFFECTED") problem(FIELD_ERROR_STATUS, "Check the highlighted fields", "This breach does not name that firm.", { code: "BREACH_FIELDS", fields: { firmId: "This breach does not name that firm." } });
+      if (r.state === "ALREADY_SENT") problem(409, "Already notified", "This firm was already sent this breach's notice; nothing was sent again.", { code: "ALREADY_NOTIFIED" });
+      const [f] = await tx.$queryRaw<{ name: string }[]>`SELECT operating_name AS name FROM platform_firm WHERE id = ${firm}::uuid`;
+      if (!f) problem(404, "Not found", "No such firm.", { code: "FIRM_NOT_FOUND" });
+      const [v] = await tx.$queryRaw<{ id: string; subject: string | null; body: string }[]>`SELECT v.id::text AS id, v.subject, v.body FROM msg_template_version v JOIN msg_template t ON t.id = v.template_id
+        WHERE t.owner = 'PLATFORM' AND t.firm_id IS NULL AND v.firm_id IS NULL AND t.key = ${NOTICE_TEMPLATE_KEY} AND t.channel = 'EMAIL' AND t.language = 'en' ORDER BY v.version DESC LIMIT 1`;
+      if (!v) problem(409, "No published notice", "The Security incident notice has no published version.", { code: "NO_TEMPLATE" });
+      const people = await tx.$queryRaw<{ id: string; email: string; roles: string[] }[]>`SELECT s.id::text AS id, s.email, array_agg(DISTINCT g.role::text ORDER BY g.role::text) AS roles
+        FROM platform_staff s JOIN platform_role_grant g ON g.staff_id = s.id AND g.firm_id = s.firm_id AND g.ended_at IS NULL AND g.role IN ('OWNER', 'ADMIN')
+        WHERE s.firm_id = ${firm}::uuid AND s.status = 'ACTIVE' GROUP BY s.id, s.email ORDER BY s.id`;
+      if (people.length === 0) problem(409, "Nobody to notify", "The firm has no active Owner or Admin; nothing was sent or recorded.", { code: "NO_RECIPIENTS" });
+      const cats = (r.data_categories as string[]).map((k) => CATEGORY_WORDS[k as keyof typeof CATEGORY_WORDS] ?? k);
+      const values = { firm_name: f.name, discovered_on: String(r.discovered_at).slice(0, 10), description: r.description, data_categories: cats.length ? cats.join(", ") : "not yet known",
+        containment: r.containment ?? "Our investigation is continuing.", breach_ref: breach };
+      const words = { subject: fillFields(v.subject ?? "", values), text: fillFields(v.body, values) };
+      const recipients: BreachNotice["recipients"] = [];
+      for (const s of people) {
+        const out = await this.messages.send(tx, { firmId: firm, person: { kind: "STAFF", id: s.id }, channel: "EMAIL", class: "TRANSACTIONAL", address: s.email, content: words, idempotencyKey: `breach-notice:${breach}:${s.id}` });
+        recipients.push({ staffId: s.id, roles: s.roles, outboxId: out.outboxId, state: out.state });
+      }
+      const [n] = await tx.$queryRaw<{ id: string; sent_at: Date }[]>`SELECT id::text AS id, sent_at FROM plat_breach_notice_record(${breach}::uuid, ${firm}::uuid, ${JSON.stringify(recipients)}::jsonb, ${v.id}::uuid, ${by})`;
+      await this.audit.record(tx, { firmId: firm, actor: BREACH_ACTOR, action: "platform.breach.notice_sent", entity: "plat_breach_notice", entityKey: n.id,
+        summary: `ExpatReady sent its Security incident notice about a security incident discovered on ${values.discovered_on} to this firm's Owner and Admins (${recipients.length}). The firm decides whether and how to tell its clients.`,
+        detail: { breachId: breach, recipients: recipients.length, templateVersionId: v.id, by, staffId: c.staffId }, before: null,
+        after: { breachId: breach, channel: "EMAIL", recipients: recipients.map((x) => x.staffId), templateVersionId: v.id, sentBy: by, sentAt: n.sent_at.toISOString() } });
+      return { id: n.id, firmId: firm, channel: "EMAIL", recipients, templateVersionId: v.id, sentBy: by, sentAt: n.sent_at.toISOString() };
+    }, { maxWait: 10_000, timeout: 60_000 }));
+    // After the commit: the worker sends; a dispatch that fails is left to the outbox sweep (never sent twice).
+    await this.messages.dispatch(firm, sent.recipients.filter((x) => x.state === "QUEUED").map((x) => x.outboxId)).catch(() => undefined);
+    return sent;
+  }
+}
