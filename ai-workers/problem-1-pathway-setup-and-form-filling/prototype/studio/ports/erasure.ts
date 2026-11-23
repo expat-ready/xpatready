@@ -1,4 +1,4 @@
-// PF-21d part 1 (map row 85; SA-11-16, SA-11-18, SA-11-28, SA-11-40; brief product/screens/PF-21d/brief.md): the erasure
+// PF-21d part 1a (map row 85; SA-11-16, SA-11-18, SA-11-28, SA-11-40; brief product/screens/PF-21d/brief.md): the erasure
 // port. Each module registers one eraser; the erasure job (api/src/platform/erasure/service.ts) calls every registered
 // eraser for an approved deletion request, 7 days after approval, behind the "Data erasure" switch. Part 2 registers the
 // platform's and front office's erasers; the case side registers its own (CS-X2).

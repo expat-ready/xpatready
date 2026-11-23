@@ -70,3 +70,12 @@ part 3, the register `plat_data_request`). Requirement text read: `trace-require
 * new `tests/check_pf21d_erasure.ts`; `tests/check_pf4s_system_signin.ts` only if a new key is seeded (decision 1 reuses one: no change)
 
 Reviewer + breaker (deletion, schema, permissions). Starts once #3189 merges or as a PR stacked on it.
+
+## Split of part 1 (23 Nov, the runtime lane, P-610)
+Built whole, part 1 was 927 changed lines of code and tests, over P-610's 800. So it ships as two stacked PRs, the same
+scope as accepted:
+* **1a** (branch `claude/sharp-shannon-mdy7sc`, on #3189): `ports/erasure.ts` + its contract and registry, the switch
+  (`plat_switch`, `plat_switch_event`, migration `20261123110000_pf21d_switch`, `/api/system/switches`),
+  `tests/check_pf21d_switch.ts`. About 530 lines.
+* **1b** (branch `claude/runtime-pf21d-erasure`, on 1a): approve, cancel, the daily job, `erase_on` and the ERASURE_*
+  steps (migration `20261123120000_pf21d_erasure`), `tests/check_pf21d_erasure.ts`. About 520 lines.

@@ -1,4 +1,4 @@
-// PF-21d part 1: ErasurePort's real registry, one per process (the erasure job reads it). Modules register their eraser at
+// PF-21d part 1a: ErasurePort's real registry, one per process (the erasure job reads it). Modules register their eraser at
 // start-up, in their feature's provider; rules 1 and 2 of ports/erasure.ts (registerInto), proven by its contract.
 import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";

@@ -1,4 +1,4 @@
-// PF-21d part 1: ErasurePort's contract (ports/erasure.ts). Run by fakeErasure and by the real registry ErasureRegistry
+// PF-21d part 1a: ErasurePort's contract (ports/erasure.ts). Run by fakeErasure and by the real registry ErasureRegistry
 // (api/src/platform/erasure/registry.ts): rules 1 and 2 of the port file. eraserCases: rules 3 to 5 on one eraser, run
 // by each module's own test with a harness that seeds a person in two firms.
 import { defineContract, expect, expectRefused, type ContractCase } from "./contract.ts";

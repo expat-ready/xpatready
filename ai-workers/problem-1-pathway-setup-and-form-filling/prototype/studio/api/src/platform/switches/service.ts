@@ -1,4 +1,4 @@
-// PF-21d part 1 (SA-11-16 (d)): platform switches, the minimal home the tech lead accepted on #3189 until SA-12's feature
+// PF-21d part 1a (SA-11-16 (d)): platform switches, the minimal home the tech lead accepted on #3189 until SA-12's feature
 // flags exist. One row per switch, on by default; turning one off or on needs a reason and writes one insert-only event
 // and one line in our staff's trail (plat_system_audit, ALLOWED inside the change's transaction, REFUSED otherwise).
 // Only staff holding system/compliance:dsr-manage (the Platform Owner; Sample: SA-12 names no key) read or change them.
