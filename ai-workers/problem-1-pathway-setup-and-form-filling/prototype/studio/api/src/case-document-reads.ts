@@ -16,6 +16,7 @@ import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { caseScope, caseScopeWhere } from "./case-access.ts";
 import { Audit, Db, VAR, WORKSPACE_KEY } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
@@ -35,6 +36,8 @@ export type ReadsPage = { document: { id: string; file_name: string; sha256: str
 
 /** The next page's cursor is the id of the last line shown; the database compares `(at, id)` at its own precision
  *  (microseconds), so lines in the same millisecond are never skipped (breaker m1). */
+/** The `before` query (CS-V1, STANDARDS §6: every query read through a zod schema): absent, empty, or a line id. */
+export const ReadsCursor = z.union([z.undefined(), z.literal(""), z.string().max(36).regex(UUID)]);
 const badCursor = (): never => problem(400, "Check the details", "The page cursor is not one this list gave.", { code: "INVALID", fields: { before: "The page cursor is not one this list gave." } });
 /** SHA-256 of a stored file, streamed (a large file never holds the server); null when it cannot be read (missing, a
  *  directory, damaged storage): the check then says the file changed (breaker m2). */
@@ -65,10 +68,11 @@ export class CaseDocumentReads {
    *  column, filled for lines written under a firm's request); a line with none is this document's by its key. */
   async list(ctx: StaffContext, documentId: unknown, before?: unknown): Promise<ReadsPage> {
     const { d, c } = await this.reach(ctx, documentId);
-    if (before !== undefined && before !== "" && (typeof before !== "string" || !UUID.test(before))) badCursor();
+    const q = ReadsCursor.safeParse(before);
+    if (!q.success) return badCursor();
     const mine = Prisma.sql`e.workspace_id = ${c.workspaceId}::uuid and e.entity = 'case document' and e.entity_key = ${d.id}
       and e.action = any(${[...READ_ACTIONS]}::text[]) and (e.firm_id is null or e.firm_id = ${ctx.firmId}::uuid)`;
-    const cur = typeof before === "string" && before ? before.toLowerCase() : null;
+    const cur = q.data ? q.data.toLowerCase() : null;
     // A cursor must be a line of this list (this document, as this person sees it); anything else is 400.
     if (cur && !(await this.db.$queryRaw<{ n: number }[]>`select 1 as n from audit_event e where e.id = ${cur}::uuid and ${mine}`).length) badCursor();
     const rows = await this.db.$queryRaw<{ id: string; at: Date; action: string; actor: string; summary: string }[]>`
