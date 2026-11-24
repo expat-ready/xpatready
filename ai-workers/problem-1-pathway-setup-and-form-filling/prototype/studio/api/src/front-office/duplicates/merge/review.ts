@@ -186,8 +186,11 @@ async function anyMoney(tx: Tx, firmId: string, ids: string[]): Promise<boolean>
 
 const systemCtx = (firmId: string, firmKey = ""): StaffContext => ({ staffId: "00000000-0000-0000-0000-000000000000", firmId, firmKey, roles: [], keys: [MERGE_KEY], duties: [], authTime: 0, via: "local" });
 
-/** P-574 (2): merges an OPEN pair by itself when it is safe (the newer record into the older), once. */
-export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports: MergePorts): Promise<{ mergeRef: string } | { refused: Unsafe[] }> {
+/** P-574 (2): merges an OPEN pair by itself when it is safe (the newer record into the older), once. `arrival`
+ *  (part 2b, the arrival job, the one production caller; break B1 and M1 on #3527): the newer record is an unchecked
+ *  arrival, so the record on file keeps its values, a second contact key that differs refuses (CONTACT_CONFLICT), and a
+ *  merge that would copy a live consent refuses (CONSENT). Without it, part 2's model (pair-model.md) as it was. */
+export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports: MergePorts, opts: { arrival?: boolean } = {}): Promise<{ mergeRef: string } | { refused: Unsafe[] }> {
   const h = await pairRow(tx, firmId, pairId, false);
   if (!h) return { refused: [] };
   await lockPeople(tx, h.low_id, h.high_id);   // pair-model.md §2: the people first, then the pair row
@@ -205,18 +208,18 @@ export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports:
   // Part 2b (break B1 on #3527): one key matches, but the other differs on both records (two emails on one phone, two
   // phones on one email): not shown to be one person, so a person decides (To review).
   const [S, L] = people;
-  if ((S.email && L.email && S.email.toLowerCase() !== L.email.toLowerCase()) || (S.phoneE164 && L.phoneE164 && S.phoneE164 !== L.phoneE164)) return { refused: ["CONTACT_CONFLICT"] };
+  if (opts.arrival && ((S.email && L.email && S.email.toLowerCase() !== L.email.toLowerCase()) || (S.phoneE164 && L.phoneE164 && S.phoneE164 !== L.phoneE164))) return { refused: ["CONTACT_CONFLICT"] };
   // The record on file keeps its values; the newcomer's fill only its empty fields (break B1: an arrival is unchecked,
   // so it never overwrites a person's name, email or phone by itself).
   const val = (r: typeof S, f: string) => (r as unknown as Record<string, unknown>)[f];
   const empty = (v: unknown) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
-  const choices = Object.fromEntries(MERGE_FIELDS.PERSON.map((f) => [f, empty(val(S, f)) && !empty(val(L, f)) ? "LOSER" : "SURVIVOR"])) as Record<string, FieldPick>;
+  const choices = opts.arrival ? Object.fromEntries(MERGE_FIELDS.PERSON.map((f) => [f, empty(val(S, f)) && !empty(val(L, f)) ? "LOSER" : "SURVIVOR"])) as Record<string, FieldPick> : undefined;
   await tx.$executeRaw`savepoint fo_dup_auto`;
-  const { merge_ref } = await mergeRecords(tx, systemCtx(firmId), { kind: "PERSON", survivor_fo_id: S.id, loser_fo_id: L.id, choices, reason: "Merged by itself: exact match, no case, document or money (P-574 (2))." }, ports, { automatic: true });
+  const { merge_ref } = await mergeRecords(tx, systemCtx(firmId), { kind: "PERSON", survivor_fo_id: S.id, loser_fo_id: L.id, ...(choices ? { choices } : {}), reason: "Merged by itself: exact match, no case, document or money (P-574 (2))." }, ports, { automatic: true });
   // A merge that copies a live consent cannot be undone (part 1: consent rows are never removed), and an arrival's
   // consent is unchecked: never by itself; the pair waits for a person (break M1 on #3527).
-  const snap = (await tx.foDupMerge.findFirst({ where: firmScope(firmId, { id: merge_ref }), select: { loserSnapshot: true } }))?.loserSnapshot as { copied?: { consents?: string[] } } | null;
-  if (snap?.copied?.consents?.length) { await tx.$executeRaw`rollback to savepoint fo_dup_auto`; return { refused: ["CONSENT"] }; }
+  const snap = !opts.arrival ? null : (await tx.foDupMerge.findFirst({ where: firmScope(firmId, { id: merge_ref }), select: { loserSnapshot: true } }))?.loserSnapshot as { copied?: { consents?: string[] } } | null;
+  if (opts.arrival && snap?.copied?.consents?.length) { await tx.$executeRaw`rollback to savepoint fo_dup_auto`; return { refused: ["CONSENT"] }; }
   // Checked again once the merge holds both records' locks (break F2, F3): a case, document or money row committed while
   // the merge ran is seen now (read committed), and the merge is rolled back. A writer that starts after these locks
   // waits on them; that it then writes on the merged-away record is the money side's check (Question for the tech lead).

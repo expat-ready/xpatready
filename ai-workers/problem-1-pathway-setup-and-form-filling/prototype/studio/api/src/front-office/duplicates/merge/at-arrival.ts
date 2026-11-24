@@ -78,7 +78,7 @@ export async function mergeArrival(db: PrismaClient, firmId: string, personId: s
     let merged: string | null = null;
     for (const p of queue) {
       try {
-        const r = await db.$transaction((tx) => mergeIfSafe(tx as never, firmId, p.id, ports));
+        const r = await db.$transaction((tx) => mergeIfSafe(tx as never, firmId, p.id, ports, { arrival: true }));
         if ("mergeRef" in r) { merged = r.mergeRef; break; }
         refused.push({ pairId: p.id, why: r.refused });
       } catch (e) { if (e instanceof MergeBusy || deadlock(e)) busy = true; else throw e; }

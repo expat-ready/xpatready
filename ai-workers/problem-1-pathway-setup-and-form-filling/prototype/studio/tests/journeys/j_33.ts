@@ -32,9 +32,10 @@ const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwr
 const [NAME, PORT] = [process.argv[2] ?? "j33", Number(process.argv[3] ?? 4433)];
 const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..", "..");
 const autoMergeDone = async (personId: string) => {   // FO-9b part 2b: the merge job for this new person has finished (at most 20 s)
-  for (let i = 0; i < 100; i++) { if (sql(`select count(*) from platform_jobs.job where name = 'fo.duplicates.auto_merge' and data->>'personId' = '${personId}' and state = 'completed'`) === "1") return true; await new Promise((r) => setTimeout(r, 200)); }
+  for (let i = 0; i < 100; i++) { if (sql(`select count(*) from platform_jobs.job where name = 'fo.duplicates.auto_merge' and data->'payload'->>'personId' = '${personId}' and state = 'completed'`) === "1") return true; await new Promise((r) => setTimeout(r, 200)); }
   return false;
 };
+const jobStates = (personId: string) => sql(`select coalesce(string_agg(state::text || ':' || coalesce(output::text, ''), ' '), 'none') from platform_jobs.job where name = 'fo.duplicates.auto_merge' and data->'payload'->>'personId' = '${personId}'`).slice(0, 300);
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "J-33", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const HEADED = process.env.HEADED === "1";
 const { ok, summary } = recorder();
@@ -181,7 +182,7 @@ try {
   const bookPerson = sql(`select person_id from fo_lead where id = '${bookLead}'`), jobDone = await autoMergeDone(bookPerson);
   ok("J-33 W5: two emails on one number are never merged by itself: the job finished, both records live, the pair To review",
     jobDone && sql(`select count(*) from fo_person where id in ('${webPerson}', '${bookPerson}') and merged_into_id is null`) === "2"
-      && sql(`select status from fo_dup_review where low_id = least('${webPerson}'::uuid, '${bookPerson}'::uuid) and high_id = greatest('${webPerson}'::uuid, '${bookPerson}'::uuid)`) === "OPEN", { jobDone });
+      && sql(`select status from fo_dup_review where low_id = least('${webPerson}'::uuid, '${bookPerson}'::uuid) and high_id = greatest('${webPerson}'::uuid, '${bookPerson}'::uuid)`) === "OPEN", { jobDone, jobs: jobStates(bookPerson) });
   await owner.goto(`${BASE}/front-office/leads/${bookLead}`);
   await owner.getByRole("heading", { level: 1, name: new RegExp(wynn) }).waitFor({ timeout: 20_000 });
   const matchLine = (await owner.locator("main").innerText());
