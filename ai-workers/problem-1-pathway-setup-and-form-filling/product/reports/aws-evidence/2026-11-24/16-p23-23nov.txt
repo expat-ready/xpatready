@@ -1,0 +1,46 @@
+== start 2026-11-23T05:41:07Z image sha256:75ae532d... main 8f487df4b
+td arn:aws:ecs:ca-central-1:581508167097:task-definition/xrstagingAppTask7031B6E4:7
+== R1.13 log groups
+/xr/staging/app	90
+== R1.13 newest streams in /xr/staging/app
+studio/studio/2fc79f711ccd43d5b79bb93b5f1128f1	1795412372210
+studio/studio/9fc64d13e4a54b89a1d3eae8304e7b51	1795412371626
+events last 10 min: 99
+0
+== R1.13 alarms
+xr-staging-5xx-rate	OK	1
+xr-staging-alert-audit-chain-break	OK	1
+xr-staging-alert-audit-write-failed	OK	1
+xr-staging-alert-breach-clock-near	OK	1
+xr-staging-alert-job-stuck	OK	1
+xr-staging-alert-privacy-clock-near	OK	1
+xr-staging-job-age	OK	1
+xr-staging-job-failures	OK	1
+xr-staging-mail-bounce-rate	OK	1
+Requests datapoints last 15 min: 2
+== R1.15 secrets (names -> store)
+DATABASE_URL	SM:xr/staging/DATABASE_OWNER_URL-TsOQt0
+APP_DATABASE_URL	SM:xr/staging/APP_DATABASE_URL-C7RGAQ
+PLATFORM_STRIPE_SECRET_KEY	SM:xr/staging/PLATFORM_STRIPE_SECRET_KEY-mECfaT
+PLATFORM_STRIPE_WEBHOOK_SECRET	SM:xr/staging/PLATFORM_STRIPE_WEBHOOK_SECRET-NhxGYU
+PLATFORM_BOLDSIGN_API_KEY	SM:xr/staging/PLATFORM_BOLDSIGN_API_KEY-Kbto6S
+PLATFORM_ZOOM_CLIENT_ID	SM:xr/staging/PLATFORM_ZOOM_CLIENT_ID-JEtHgT
+PLATFORM_ZOOM_CLIENT_SECRET	SM:xr/staging/PLATFORM_ZOOM_CLIENT_SECRET-Eyx6R4
+PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN	SM:xr/staging/PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN-Zvg1Kf
+PLATFORM_SECRET_BOX_KEYS	SM:xr/staging/PLATFORM_SECRET_BOX_KEYS-mWOzBX
+PLATFORM_SECRET_BOX_KEY_VERSION	SM:xr/staging/PLATFORM_SECRET_BOX_KEY_VERSION-V3rhqO
+== R1.15 plain env names
+PLATFORM_SES_REGION PLATFORM_ADDRESS_SUFFIX PLATFORM_IDENTITY PLATFORM_COGNITO_USER_POOL_ID PLATFORM_ENVIRONMENT PLATFORM_COGNITO_CLIENT_ID 
+PLATFORM_IDENTITY=cognito
+== R1.5 pools (name, MFA, sign-in policy)
+xr-staging-own-staff ON 0 PASSWORD WEB_AUTHN  totp/webauthn: True staging.lab.expatready.com required
+xr-staging-clients OPTIONAL 0 PASSWORD  totp/webauthn: True None None
+xr-staging-staff ON 0 PASSWORD WEB_AUTHN  totp/webauthn: True staging.lab.expatready.com required
+== R1.5 HTTP
+https://www.staging.lab.expatready.com/sign-in http=200 ssl=0 hsts=0 cookies=0
+https://www.staging.lab.expatready.com/api/health/live http=200 ssl=0 hsts=0 cookies=0
+http://…/sign-in -> 301 https://www.staging.lab.expatready.com:443/sign-in
+{"type":"https://expatready.local/problems/not-signed-in","title":"Sign in again","status":401,"detail":"Sign in first: this needs a staff member's session (a b
+{"type":"https://expatready.local/problems/sign-in-code-refused","title":"Sign in again","status":401,"detail":"This sign-in link has been used or has expired. 
+cache-control: no-store
+== end 2026-11-23T05:41:20Z

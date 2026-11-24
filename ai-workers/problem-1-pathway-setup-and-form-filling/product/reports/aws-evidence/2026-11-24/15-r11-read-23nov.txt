@@ -1,0 +1,53 @@
+Mon Nov 23 05:28:57 AM UTC 2026
+== stacks in every enabled region
+ca-central-1 | stacks: xr-staging	CDKToolkit | rds: xr-staging-databaseb269d8bb-rzdhp2v9sbgn | ecs: arn:aws:ecs:ca-central-1:581508167097:cluster/xr-staging-AppCluster68CC0559-GPRhlOZPAdsd
+ca-west-1 | stacks: xr-staging-copy	CDKToolkit | rds:  | ecs: 
+== every S3 bucket and its region
+cdk-hnb659fds-assets-581508167097-ca-central-1 ca-central-1
+cdk-hnb659fds-assets-581508167097-ca-west-1 ca-west-1
+xr-staging-documentsbucket9ec9deb9-6uplyey6pgi9 ca-central-1
+xr-staging-exportsbucket5a12738b-tfowvdipnskv ca-central-1
+xr-staging-importsbucket18b2d913-dtmi2f7d6nbs ca-central-1
+== xr-staging resource types
+     10 AWS::SecretsManager::Secret
+      7 AWS::Route53::RecordSet
+      7 AWS::CloudWatch::Alarm
+      6 AWS::EC2::SubnetRouteTableAssociation
+      6 AWS::EC2::Subnet
+      6 AWS::EC2::RouteTable
+      5 AWS::IAM::Role
+      4 AWS::IAM::Policy
+      4 AWS::EC2::SecurityGroup
+      4 AWS::EC2::Route
+      3 AWS::S3::BucketPolicy
+      3 AWS::S3::Bucket
+      3 AWS::EC2::SecurityGroupIngress
+      3 AWS::Cognito::UserPoolClient
+      3 AWS::Cognito::UserPool
+      2 AWS::ElasticLoadBalancingV2::Listener
+      2 AWS::ECS::TaskDefinition
+      1 AWS::SES::EmailIdentity
+      1 AWS::SecretsManager::SecretTargetAttachment
+      1 AWS::Route53::HostedZone
+      1 AWS::RDS::DBSubnetGroup
+      1 AWS::RDS::DBParameterGroup
+      1 AWS::RDS::DBInstance
+      1 AWS::KMS::Key
+      1 AWS::KMS::Alias
+      1 AWS::ElasticLoadBalancingV2::TargetGroup
+      1 AWS::ElasticLoadBalancingV2::LoadBalancer
+      1 AWS::ECS::Service
+      1 AWS::ECS::Cluster
+      1 AWS::ECR::Repository
+      1 AWS::EC2::VPCGatewayAttachment
+      1 AWS::EC2::VPC
+      1 AWS::EC2::SecurityGroupEgress
+      1 AWS::EC2::NatGateway
+      1 AWS::EC2::InternetGateway
+      1 AWS::EC2::EIP
+      1 AWS::CertificateManager::Certificate
+      1 AWS::Backup::BackupSelection
+      1 AWS::Backup::BackupPlan
+== RDS
+xr-staging-databaseb269d8bb-rzdhp2v9sbgn	ca-central-1a	False	False	True	postgres	18.3
+Mon Nov 23 05:30:06 AM UTC 2026

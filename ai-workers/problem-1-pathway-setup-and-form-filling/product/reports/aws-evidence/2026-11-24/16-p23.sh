@@ -1,0 +1,16 @@
+set -u; H=https://www.staging.lab.expatready.com; echo "== start $(date -u +%FT%TZ) image sha256:75ae532d... main 8f487df4b"
+TD=$(aws ecs list-task-definitions --family-prefix xrstagingAppTask7031B6E4 --sort DESC --query 'taskDefinitionArns[0]' --output text); echo "td $TD"
+echo '== R1.13 log groups'; aws logs describe-log-groups --log-group-name-prefix /xr/ --query 'logGroups[].[logGroupName,retentionInDays]' --output text
+echo '== R1.13 newest streams in /xr/staging/app'; aws logs describe-log-streams --log-group-name /xr/staging/app --order-by LastEventTime --descending --max-items 2 --query 'logStreams[].[logStreamName,lastEventTimestamp]' --output text | head -2
+NOW=$(date +%s000); echo -n 'events last 10 min: '; aws logs filter-log-events --log-group-name /xr/staging/app --start-time $((NOW-600000)) --query 'length(events)' --output text
+echo '== R1.13 alarms'; aws cloudwatch describe-alarms --alarm-name-prefix xr-staging- --query 'MetricAlarms[].[AlarmName,StateValue,length(AlarmActions)]' --output text
+echo -n 'Requests datapoints last 15 min: '; aws cloudwatch get-metric-statistics --namespace ExpatReady/Alarms/staging --metric-name Requests --start-time $(date -u -d '-15 min' +%FT%TZ) --end-time $(date -u +%FT%TZ) --period 60 --statistics Sum --query 'length(Datapoints)' --output text
+echo '== R1.15 secrets (names -> store)'; aws ecs describe-task-definition --task-definition $TD --query 'taskDefinition.containerDefinitions[0].secrets[].[name,valueFrom]' --output text | sed -E 's/arn:aws:secretsmanager:[^:]+:[0-9]+:secret:/SM:/'
+echo '== R1.15 plain env names'; aws ecs describe-task-definition --task-definition $TD --query 'taskDefinition.containerDefinitions[0].environment[].[name]' --output text | tr '\n' ' '; echo
+echo -n 'PLATFORM_IDENTITY='; aws ecs describe-task-definition --task-definition $TD --query "taskDefinition.containerDefinitions[0].environment[?name=='PLATFORM_IDENTITY'].value" --output text
+echo '== R1.5 pools (name, MFA, sign-in policy)'; for P in $(aws cognito-idp list-user-pools --max-results 20 --query 'UserPools[].Id' --output text); do aws cognito-idp describe-user-pool --user-pool-id $P --query 'UserPool.[Name,MfaConfiguration,EstimatedNumberOfUsers,Policies.SignInPolicy.AllowedFirstAuthFactors]' --output text | tr '\n\t' '  '; echo -n ' totp/webauthn: '; aws cognito-idp get-user-pool-mfa-config --user-pool-id $P --query '[SoftwareTokenMfaConfiguration.Enabled,WebAuthnConfiguration.RelyingPartyId,WebAuthnConfiguration.UserVerification]' --output text | tr '\t' ' '; done
+echo '== R1.5 HTTP'; for u in $H/sign-in $H/api/health/live; do curl -s -o /dev/null -D /tmp/h -w "$u http=%{http_code} ssl=%{ssl_verify_result}" $u; echo " hsts=$(grep -ci strict-transport /tmp/h) cookies=$(grep -ci set-cookie /tmp/h)"; done
+curl -s -o /dev/null -w "http://…/sign-in -> %{http_code} %{redirect_url}\n" http://www.staging.lab.expatready.com/sign-in
+curl -s -w ' <- /api/platform/me http=%{http_code}\n' $H/api/platform/me | cut -c1-160
+curl -s -X POST -H 'content-type: application/json' -d '{}' -D /tmp/h -w ' <- callback http=%{http_code}\n' $H/api/platform/session/callback | cut -c1-160; grep -i cache-control /tmp/h
+echo "== end $(date -u +%FT%TZ)"

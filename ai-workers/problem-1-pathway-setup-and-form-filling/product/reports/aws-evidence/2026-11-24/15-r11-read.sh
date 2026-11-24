@@ -1,0 +1,6 @@
+date -u
+echo '== stacks in every enabled region'; for r in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do s=$(aws cloudformation list-stacks --region $r --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE --query 'StackSummaries[].StackName' --output text 2>/dev/null); d=$(aws rds describe-db-instances --region $r --query 'DBInstances[].DBInstanceIdentifier' --output text 2>/dev/null); e=$(aws ecs list-clusters --region $r --query 'clusterArns' --output text 2>/dev/null); [ -n "$s$d$e" ] && echo "$r | stacks: $s | rds: $d | ecs: $e"; done
+echo '== every S3 bucket and its region'; for b in $(aws s3api list-buckets --query 'Buckets[].Name' --output text); do echo "$b $(aws s3api get-bucket-location --bucket $b --output text)"; done
+echo '== xr-staging resource types'; aws cloudformation describe-stack-resources --stack-name xr-staging --query 'StackResources[].ResourceType' --output text | tr '\t' '\n' | sort | uniq -c | sort -rn | head -40
+echo '== RDS'; aws rds describe-db-instances --query 'DBInstances[].[DBInstanceIdentifier,AvailabilityZone,MultiAZ,PubliclyAccessible,StorageEncrypted,Engine,EngineVersion]' --output text
+date -u
