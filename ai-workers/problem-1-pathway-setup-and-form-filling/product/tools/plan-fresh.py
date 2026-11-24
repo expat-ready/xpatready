@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The cycle plan is today's (A363): cycle-plan.json's cycle_start is the 07:00 -> 07:00 IST cycle now. One line, an ACT when
 it is not, or cannot be read; exit 1 then. lead-watch.sh prints it before the rest; founder-report.py gives no forecast on 1.
-  python3 -I product/tools/plan-fresh.py [--plan F] [--now ISO]          Test: check-lead-run.sh"""
+  python3 -I product/tools/plan-fresh.py [--plan F] [--now ISO]          Test: check-tools-fresh.sh"""
 import argparse, json, os, sys
 from datetime import datetime, timedelta, timezone
 IST = timezone(timedelta(hours=5, minutes=30))

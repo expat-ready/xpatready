@@ -397,14 +397,20 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
-A363 fetch|product/tools/tools-fresh.py|/^        git("fetch"/s/git(/(lambda *a: 0)(/|check-tools-fresh.sh
+A363 fetch|product/tools/tools-fresh.py|s/git(\*fetch, limit=10)/pass/|check-tools-fresh.sh
 A363 head|product/tools/tools-fresh.py|s/ "--no-write-fetch-head",//|check-tools-fresh.sh
 A363 keep|product/tools/tools-fresh.py|s/ --overlay//|check-tools-fresh.sh
 A363 stage|product/tools/tools-fresh.py|s/ --worktree -- / --staged --worktree -- /|check-tools-fresh.sh
-A363 old|product/tools/tools-fresh.py|s/ or git("log", "-1", "--format=%h", "--find-object=".*)/)/|check-tools-fresh.sh
+A363 old|product/tools/tools-fresh.py|s/ or git("log", "-1", .*strip()$//|check-tools-fresh.sh
+A363 clash|product/tools/tools-fresh.py|s/^        stuck = .*/        stuck = []/|check-tools-fresh.sh
+A363 merge|product/tools/tools-fresh.py|s/ "--first-parent", "--diff-merges=first-parent",//|check-tools-fresh.sh
+A363 here|product/tools/tools-fresh.py|s/ or os.path.realpath(HERE) != .*/:/|check-tools-fresh.sh
+A363 mode|product/tools/tools-fresh.py|s/"100755" if os.access(at(p), os.X_OK) else "100644")/want.get(p, ("", ""))[1])/|check-tools-fresh.sh
+A368 fetched|product/tools/copy-age.sh|s/^  \[ "\${FETCHED:-}" = 1 \] .*/  :/|check-tools-fresh.sh
+A368 unknown|product/tools/takeover.sh|/^  \[ "\$r" != 1 \] .*REFUSED: main/d|check-tools-fresh.sh
 A363 edit|product/tools/tools-fresh.py|s/(old if mains else edited)/old/|check-tools-fresh.sh
 A363 miss|product/tools/tools-fresh.py|s/^        missing = .*/        missing = []/|check-tools-fresh.sh
-A363 floor|product/tools/tools-fresh.py|s/if len(want) < 10 and .*/if False:/|check-tools-fresh.sh
+A363 floor|product/tools/tools-fresh.py|s/if len(want) < (1 if .*/if False:/|check-tools-fresh.sh
 A363 report|product/tools/founder-report.py|s/^    if not a.fixture:.*/    if False:/|check-tools-fresh.sh
 A363 stale|product/tools/founder-report.py|s/^    stale = .*/    stale = False/|check-tools-fresh.sh
 A363 plan|product/tools/plan-fresh.py|s/if got == cycle:/if True:/|check-tools-fresh.sh
@@ -412,7 +418,7 @@ A363 seven|product/tools/plan-fresh.py|s/timedelta(hours=7))/timedelta(hours=0))
 A363 first|product/tools/lead-watch.sh|/^pf=/d|check-tools-fresh.sh
 A368 hours|product/tools/copy-age.sh|s/^\[ "\$h" -lt 24 \]/true/|check-tools-fresh.sh
 A368 own|product/tools/copy-age.sh|s/git rev-list --first-parent origin.main/git merge-base HEAD origin\/main/|check-tools-fresh.sh
-A368 quiet|product/tools/copy-age.sh|/^\[ "\$lo" = 0 \]/d|check-tools-fresh.sh
+A368 quiet|product/tools/copy-age.sh|s/^if \[ "\$lo" = 0 \]; then/if false; then/|check-tools-fresh.sh
 A368 clock|product/tools/copy-age.sh|s/ \[ "\$t" -le "\$now" \] .*clock"//|check-tools-fresh.sh
 A368 take|product/tools/takeover.sh|s/^  exit 3$/  :/|check-tools-fresh.sh
 A368 start|product/tools/session-start.sh|s/ \[ -n "\$age" \] \&\& echo "\$age";//|check-tools-fresh.sh

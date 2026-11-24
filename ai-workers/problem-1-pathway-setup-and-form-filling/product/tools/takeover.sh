@@ -8,8 +8,11 @@ TOOLS="$(cd "$(dirname "$0")" && pwd)"; cd "$TOOLS/.." || exit 99
 br=$(git rev-parse --abbrev-ref HEAD)
 # A363, A368: whose tools, and how old this copy is. A copy that left main over 24 h ago takes over nothing: it would lead by
 # the rules and tools of that day. No flag goes round it; a fresh branch is one step.
-[ -f "$TOOLS/tools-fresh.py" ] && python3 -I "$TOOLS/tools-fresh.py"
-ca=$(bash "$TOOLS/copy-age.sh" 2>/dev/null); r=$?; [ -n "$ca" ] && echo "$ca"
+r=0; if [ -f "$TOOLS/copy-age.sh" ]; then
+  python3 -I "$TOOLS/tools-fresh.py"; f=$?; fe=1; [ "$f" -gt 1 ] && fe=""
+  ca=$(FETCHED=$fe bash "$TOOLS/copy-age.sh"); r=$?; echo "$ca"
+  [ "$r" != 1 ] && { [ "$f" -gt 1 ] || [ "$r" -gt 1 ]; } && { echo "REFUSED: main could not be read now, so this copy's age is unknown: reach GitHub, then run takeover.sh again."; exit 3; }
+fi
 if [ "$r" = 1 ]; then
   echo "REFUSED: this copy left main over 24 h ago. Start a fresh lead/<today> from origin/main (WAY-OF-WORKING, tech lead housekeeping, P-388), then run takeover.sh in it."
   exit 3

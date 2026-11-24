@@ -9,7 +9,12 @@ L=(); while read -r s; do L+=("$s"); done < <(git rev-list --first-parent origin
 lo=0; hi=$n   # newest first: the first one this copy holds; all older ones on main's line are held too
 while [ "$lo" -lt "$hi" ]; do m=$(( (lo + hi) / 2 )); if git merge-base --is-ancestor "${L[$m]}" HEAD 2>/dev/null; then hi=$m; else lo=$((m + 1)); fi; done
 [ "$lo" -lt "$n" ] || no "no commit of main's is held"
-[ "$lo" = 0 ] && { echo "copy   holds all of origin/main (${L[0]:0:9})"; exit 0; }
 t=$(git log -1 --format=%ct "${L[$lo]}"); [ "$t" -le "$now" ] 2>/dev/null || no "a commit dated after the clock"
-h=$(( (now - t) / 3600 )); echo "copy   newest main commit it holds is $h h old (${L[$lo]:0:9}); it misses main's last $lo"
+h=$(( (now - t) / 3600 ))
+# Holding all of main is fresh only of a main fetched in this run (FETCHED=1, the caller's); else an old ref would look fresh.
+if [ "$lo" = 0 ]; then
+  [ "${FETCHED:-}" = 1 ] || [ "$h" -lt 24 ] || no "main was not fetched now, and what is here is $h h old"
+  echo "copy   holds all of origin/main (${L[0]:0:9})"; exit 0
+fi
+echo "copy   newest main commit it holds is $h h old (${L[$lo]:0:9}); it misses main's last $lo"
 [ "$h" -lt 24 ]

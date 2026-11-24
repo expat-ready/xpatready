@@ -7,7 +7,7 @@ set -u
 [ -f "$TOOLS/tools-fresh.py" ] || { ok "tools-fresh.py is there (A363)" 0 "no file: a copy's old tools run and nothing says so"; finish; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/tf.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }
 trap 'rm -rf "${T:?}"' EXIT
-unset GIT_INDEX_FILE; export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t GIT_CONFIG_GLOBAL=/dev/null TOOLS_FRESH_FEW=1
+unset GIT_INDEX_FILE; export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t GIT_CONFIG_GLOBAL=/dev/null
 U="$T/up"; D="$PRODREL/tools"; has() { grep -qF -- "$1" <<<"$2" && echo 1; }
 DAY=86400; NOWT=$(date +%s); at() { GIT_AUTHOR_DATE="$1 +0000" GIT_COMMITTER_DATE="$1 +0000" git -C "$U" commit -qm "$2"; }
 git init -q -b main "$U"; mkdir -p "$U/$D" "$U/$PRODREL/state" "$U/$PRODREL/design"
@@ -15,36 +15,52 @@ cp "$TOOLS"/{tools-fresh.py,copy-age.sh,plan-fresh.py,founder-report.py,cycle-ti
 printf 'echo OLD\n' > "$U/$D/callee.sh"; printf '. "$(dirname "$0")/callee.sh"\n' > "$U/$D/caller.sh"; echo gone > "$U/$D/gone.sh"; echo 'current_lead: main-state' > "$U/$PRODREL/STATE.md"; echo '[]' > "$U/$PRODREL/state/items.json"
 git -C "$U" add -A; at $((NOWT - 2 * DAY)) two-days-ago
 L="$T/lead"; git clone -q "$U" "$L" 2>/dev/null; git -C "$L" checkout -qb lead/old; echo rec >> "$L/$PRODREL/STATE.md"; git -C "$L" commit -qam "lead record"
-tf() { python3 -I "$L/$D/tools-fresh.py" 2>&1; }
-fix() { sed -nE 's/.*Run: (git restore [^;|&]*)$/\1/p' <<<"$1"; }
+tf() { python3 -I "$L/$D/tools-fresh.py" --few 2>&1; }
+fix() { sed -nE 's/.*Run: (git -C [^;|&]*)$/\1/p' <<<"$1"; }
 state() { git -C "$L" rev-parse HEAD; git -C "$L" for-each-ref refs/heads; git -C "$L" ls-files -s | git hash-object --stdin; find "$L/.git" -maxdepth 1 -name FETCH_HEAD -exec cat {} +; }
 
 o=$(tf); r=$?; ok "the same files as main: yes, exit 0, main's sha, time and age" "$([ $r = 0 ] && grep -qE "^tools  main $(git -C "$U" rev-parse --short=9 main), committed .* IST \([0-9]+ min old\): this copy's [0-9]+ files are the same$" <<<"$o" && echo 1)" "exit $r: $o"
 printf 'echo NEW\n' > "$U/$D/callee.sh"; git -C "$U" add -A; at $((NOWT - 60)) new-callee
 before=$(state); o=$(tf); r=$?; ok "one changed tool on main (called by another, which did not change): ACT, exit 1, named" "$([ $r = 1 ] && grep -q '^ACT   tools: not main' <<<"$o" && grep -qF 'old 1 (callee.sh)' <<<"$o" && bash "$L/$D/caller.sh" | grep -q OLD && echo 1)" "exit $r: $o"
 ok "the check changed no branch, HEAD, index or FETCH_HEAD" "$([ "$before" = "$(state)" ] && echo 1)" "changed"
-c=$(fix "$o"); ok "the printed line pins that sha and stages nothing" "$(grep -qE "^git restore --overlay --source=$(git -C "$U" rev-parse main) --worktree -- $D$" <<<"$c" && echo 1)" "$c"
+c=$(fix "$o"); ok "the printed line pins that sha and stages nothing" "$(grep -qE "^git -C [^ ]+ restore --overlay --source=$(git -C "$U" rev-parse main) --worktree -- $D$" <<<"$c" && echo 1)" "$c"
 (cd "$L" && eval "$c"); o=$(tf); r=$?; ok "... and after it: yes, the caller runs the new tool, nothing is staged" "$([ $r = 0 ] && bash "$L/$D/caller.sh" | grep -q NEW && [ -z "$(git -C "$L" diff --cached --name-only)" ] && echo 1)" "exit $r: $o"
 printf 'echo NEWER\n' > "$U/$D/callee.sh"; git -C "$U" add -A; at $((NOWT - 50)) newer; o=$(tf); ok "main moves on: an unstaged older main's file is old, not an edit" "$([ "$(has 'old 1 (callee.sh)' "$o")" = 1 ] && ! grep -q edited <<<"$o" && echo 1)" "$o"
 echo new > "$U/$D/more.sh"; git -C "$U" add -A; at $((NOWT - 40)) more; o=$(tf); r=$?; ok "one missing tool: ACT" "$([ $r = 1 ] && has 'missing 1 (more.sh)' "$o")" "$o"
 git -C "$U" rm -q "$D/gone.sh"; at $((NOWT - 30)) gone; echo mine > "$L/$D/mine.sh"; (cd "$L" && eval "$(fix "$(tf)")"); o=$(tf); r=$?
 ok "extra files (one main deleted, one only here): named, left where they are, not an ACT" "$([ $r = 0 ] && has 'left as they are: 2 (gone.sh, mine.sh)' "$o" >/dev/null && [ -f "$L/$D/gone.sh" ] && [ -f "$L/$D/mine.sh" ] && echo 1)" "exit $r: $o"
-echo '# my change' >> "$L/$D/caller.sh"; o=$(tf); r=$?; ok "a tool edited here: ACT, named, and no line is printed" "$([ $r = 1 ] && [ "$(has 'edited here 1 (caller.sh)' "$o")" = 1 ] && [ -z "$(fix "$o")" ] && ! grep -q 'git restore' <<<"$o" && echo 1)" "exit $r: $o"; git -C "$L" restore "$D/caller.sh"
-echo theirs > "$U/$D/mine.sh"; git -C "$U" add -A; at $((NOWT - 20)) mine; o=$(tf); ok "an untracked file that main now has too, not the same: edited, no line" "$([ "$(has 'edited here 1 (mine.sh)' "$o")" = 1 ] && ! grep -q 'git restore' <<<"$o" && echo 1)" "$o"
+echo '# my change' >> "$L/$D/caller.sh"; o=$(tf); r=$?; ok "a tool edited here: ACT, named, and no line is printed" "$([ $r = 1 ] && [ "$(has 'edited here 1 (caller.sh)' "$o")" = 1 ] && [ -z "$(fix "$o")" ] && ! grep -q 'Run: ' <<<"$o" && echo 1)" "exit $r: $o"; git -C "$L" restore "$D/caller.sh"
+echo theirs > "$U/$D/mine.sh"; git -C "$U" add -A; at $((NOWT - 20)) mine; o=$(tf); ok "an untracked file that main now has too, not the same: edited, no line" "$([ "$(has 'edited here 1 (mine.sh)' "$o")" = 1 ] && ! grep -q 'Run: ' <<<"$o" && echo 1)" "$o"
 git -C "$L" remote set-url origin "$T/none"; o=$(tf); r=$?; ok "the fetch fails: unknown, an ACT, exit 2, never yes" "$([ $r = 2 ] && has 'ACT   tools: unknown' "$o")" "exit $r: $o"
-git -C "$L" remote set-url origin "$U"; o=$(TOOLS_FRESH_FEW='' python3 -I "$L/$D/tools-fresh.py" 2>&1); ok "with the real floor, this small tree still reads (over 10 tools)" "$(grep -q '^ACT   tools: not main' <<<"$o" && echo 1)" "$o"
-E1="$T/e"; git clone -q "$U" "$E1" 2>/dev/null; git -C "$U" checkout -q -b empty; git -C "$U" rm -rq "$D"; git -C "$U" commit -qm none; o=$(git -C "$E1" remote set-url origin "$T/up2"; git clone -q --bare "$U" "$T/up2" 2>/dev/null; git -C "$T/up2" update-ref refs/heads/main "$(git -C "$U" rev-parse empty)"; unset TOOLS_FRESH_FEW; python3 -I "$E1/$D/tools-fresh.py" 2>&1); ok "a main with no tools (a partial read) is unknown" "$(has 'ACT   tools: unknown' "$o")" "$o"; git -C "$U" checkout -q main
+git -C "$L" remote set-url origin "$U"; o=$(python3 -I "$L/$D/tools-fresh.py" 2>&1); ok "with the real floor, this small tree still reads (over 10 tools)" "$(grep -q '^ACT   tools: not main' <<<"$o" && echo 1)" "$o"
+E1="$T/e"; git clone -q "$U" "$E1" 2>/dev/null; git -C "$U" checkout -q -b empty; git -C "$U" rm -rq "$D"; git -C "$U" commit -qm none; o=$(git -C "$E1" remote set-url origin "$T/up2"; git clone -q --bare "$U" "$T/up2" 2>/dev/null; git -C "$T/up2" update-ref refs/heads/main "$(git -C "$U" rev-parse empty)"; python3 -I "$E1/$D/tools-fresh.py" 2>&1); ok "a main with no tools (a partial read) is unknown" "$(has 'ACT   tools: unknown' "$o")" "$o"; git -C "$U" checkout -q main
+
+# what the line would have to remove is never called missing or extra (review N1), and main's own merge results are never "edited" (N2)
+git -C "$L" remote set-url origin "$U"; git -C "$L" clean -qfd; git -C "$L" checkout -q -- .; (cd "$L" && eval "$(fix "$(tf)")")
+mkdir "$L/$D/newtool"; echo w > "$L/$D/newtool/mywork.txt"; echo x > "$U/$D/newtool"; echo f > "$L/$D/fixt"; mkdir "$U/$D/fixt" "$U/$D/lnk"; echo a > "$U/$D/fixt/a.json"; echo b > "$U/$D/lnk/b"; mkdir "$T/else"; ln -s "$T/else" "$L/$D/lnk"; git -C "$U" add -A; at $((NOWT - 15)) clash
+o=$(tf); r=$?; ok "a folder, a file and a link of this copy where main has another kind: named, no line" "$([ $r = 1 ] && grep -qF 'edited here 3 (fixt/a.json, lnk/b, newtool)' <<<"$o" && ! grep -q 'Run: ' <<<"$o" && echo 1)" "$o"
+rm -f "$L/$D/fixt" "$L/$D/lnk" "$L/$D/newtool/mywork.txt"; rmdir "$L/$D/newtool"; chmod +x "$U/$D/more.sh"; git -C "$U" add -A; at $((NOWT - 14)) mode; (cd "$L" && eval "$(fix "$(tf)")"); chmod -x "$L/$D/more.sh"; o=$(tf); ok "a file that is executable on main and not here is old" "$(has 'old 1 (more.sh)' "$o")" "$o"; (cd "$L" && eval "$(fix "$o")")
+git -C "$U" checkout -q -b s1; printf 'a\nmid\nz\n' > "$U/$D/m.sh"; git -C "$U" add -A; git -C "$U" commit -qm m; git -C "$U" checkout -q main; git -C "$U" merge -q --no-ff s1 -m m1
+git -C "$U" checkout -q -b s2; printf 'A\nmid\nz\n' > "$U/$D/m.sh"; git -C "$U" commit -qam s2; git -C "$U" checkout -q -b s3 main; printf 'a\nmid\nZ\n' > "$U/$D/m.sh"; git -C "$U" commit -qam s3; git -C "$U" checkout -q main; git -C "$U" merge -q --no-ff s2 -m m2; git -C "$U" merge -q --no-ff s3 -m m3
+(cd "$L" && eval "$(fix "$(tf)")"); git -C "$U" checkout -q -b s4; printf 'A\nnew\nZ\n' > "$U/$D/m.sh"; git -C "$U" commit -qam s4; git -C "$U" checkout -q main; git -C "$U" merge -q --no-ff s4 -m m4; o=$(tf); ok "a file that was only ever a merge's result on main is old, never an edit" "$([ "$(has 'old 1 (m.sh)' "$o")" = 1 ] && ! grep -q edited <<<"$o" && echo 1)" "$o"
+mkdir -p "$T/other/tools"; cp "$L/$D/tools-fresh.py" "$T/other/tools/"; o=$(python3 -I "$T/other/tools/tools-fresh.py" 2>&1); r=$?; ok "run from another folder: unknown" "$([ $r = 2 ] && echo 1)" "$o"
+o=$(tf); (cd "$L" && eval "$(fix "$o")"); b=$(cd "$L" && git checkout -q -b lead/x origin/main 2>/dev/null; git branch --show-current); u=$(git -C "$L" ls-files -o -- "$D")
+git -C "$L" restore --worktree -- "$D"; mkdir -p "$T/moved"; for f in $u; do mv "$L/$f" "$T/moved/"; done; n=$(cd "$L" && git fetch -q && git checkout -q -b lead/x origin/main 2>/dev/null; git branch --show-current)
+ok "after the line a fresh branch is refused by git, and the step the ACT names (put back, move the new ones) makes it work, with no -f (review N5)" "$([ "$b" = lead/old ] && [ "$n" = lead/x ] && grep -q 'before a later branch change: git restore --worktree -- <tools>, and move the new ones away' <<<"$o" && echo 1)" "$b / $n / $o"; git -C "$L" checkout -q lead/old
+git -C "$L" checkout -q -- .; git -C "$L" clean -qfd "$D"
 
 # the copy's age
 age() { (cd "$1" && bash "$TOOLS/copy-age.sh"); }
 git -C "$L" fetch -q; o=$(age "$L"); r=$?; ok "a copy whose newest main commit is 48 h old: exit 1, its age and what it misses" "$([ $r = 1 ] && has 'is 48 h old' "$o")" "exit $r: $o"
 git clone -q "$U" "$T/new" 2>/dev/null; o=$(age "$T/new"); r=$?; ok "a copy that holds all of main: exit 0" "$([ $r = 0 ] && has 'holds all of origin/main' "$o")" "exit $r: $o"
-o=$(NOW=$((NOWT + 14 * DAY)) age "$T/new"); r=$?; ok "... however quiet main has been" "$([ $r = 0 ] && echo 1)" "exit $r: $o"
+o=$(FETCHED=1 NOW=$((NOWT + 14 * DAY)) age "$T/new"); r=$?; ok "... however quiet main has been, when main was fetched now" "$([ $r = 0 ] && echo 1)" "exit $r: $o"
 git -C "$U" merge -q --no-ff -m "records PR" "$(git -C "$U" fetch -q "$L" lead/old && git -C "$U" rev-parse FETCH_HEAD)" 2>/dev/null; echo r > "$U/rule"; git -C "$U" add -A; at "$NOWT" rule; git -C "$L" fetch -q; o=$(age "$L"); r=$?; ok "the Lead's own records merged into main do not make its copy fresh" "$([ $r = 1 ] && has 'is 48 h old' "$o")" "exit $r: $o"
 o=$(NOW=$((NOWT - 2 * DAY + DAY)) age "$L"); r=$?; ok "24 h to the second is over" "$([ $r = 1 ] && echo 1)" "exit $r: $o"
 o=$(NOW=$((NOWT - 3 * DAY)) age "$L"); r=$?; ok "a commit dated after the clock: not readable, exit 2" "$([ $r = 2 ] && echo 1)" "exit $r: $o"
 git init -q "$T/lone"; o=$(age "$T/lone"); r=$?; ok "no origin/main: not readable, exit 2, never 'fresh'" "$([ $r = 2 ] && echo 1)" "exit $r: $o"
 for f in takeover.sh copy-age.sh tools-fresh.py; do cp "$TOOLS/$f" "$L/$D/"; done
+git -C "$L" remote set-url origin "$T/none"; git clone -q "$U" "$T/off" 2>/dev/null; git -C "$T/off" remote set-url origin "$T/none"; cp "$TOOLS"/{takeover.sh,copy-age.sh,tools-fresh.py} "$T/off/$D/"; o=$(cd "$T/off" && NOW=$((NOWT + 13 * DAY)) bash "$D/takeover.sh" 2>&1); r=$?
+ok "no network and a 13-day-old main that the copy holds whole: unknown, takeover refuses (review N3)" "$([ $r = 3 ] && grep -q 'REFUSED: main could not be read now' <<<"$o" && ! grep -q '^lead  ' <<<"$o" && echo 1)" "exit $r: $o"; git -C "$L" remote set-url origin "$U"
 o=$(cd "$L" && bash "$D/takeover.sh" 2>&1); r=$?; ok "takeover.sh refuses a copy over 24 h old, names the step, and goes no further" "$([ $r = 3 ] && [ "$(has 'REFUSED: this copy left main' "$o")" = 1 ] && ! grep -q '^lead  ' <<<"$o" && echo 1)" "exit $r: $o"
 git -C "$L" checkout -qf -b lead/today origin/main; o=$(cd "$L" && bash "$D/takeover.sh" 2>&1); r=$?; ok "... and takes over in a fresh one" "$([ $r = 0 ] && has 'lead  main-state' "$o")" "exit $r: $o"
 ss() { jq -n --arg d "$1" '{cwd:$d}' | (cd "$1" && bash "$TOOLS/session-start.sh") 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext' | head -4; }

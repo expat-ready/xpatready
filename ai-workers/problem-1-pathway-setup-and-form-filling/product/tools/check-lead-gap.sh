@@ -31,6 +31,7 @@ gap; ok "stamp 60 min in the future (clock jump): ACT, exit 1, not a silent ok" 
 # The normal run's stall guard (step 0) is lowered from 40 to 15 min; only its first lines are read (real clock, fake gh).
 # Output goes to a file (never a pipe, whose reader would wait on any child still holding it: guards hung 30 min in CI on
 # 6aa72f3/6c66a84). It is polled for step 0's stamp (the three A363 lines come first), then the whole run is SIGKILLed; psql, curl and gh are stubs.
+G=$(command -v git); printf '#!/bin/sh\nfor a; do [ "$a" = fetch ] && exit 1; done\nexec %s "$@"\n' "$G" > "$T/bin/git"; chmod +x "$T/bin/git"   # no network: the A363 lines say unknown
 for c in psql curl; do printf '#!/bin/sh\nexit 1\n' > "$T/bin/$c"; chmod +x "$T/bin/$c"; done
 SETSID=$(command -v setsid || true)
 run() { echo $(( $(date +%s) - $1 * 60 )) > "$T/state/last-check"; : > "$T/run.out"
