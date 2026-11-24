@@ -22,6 +22,7 @@ TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)
 TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh"
 TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
+TESTS="$TESTS check-lane-cleanup.sh"   # A348: lane clean-up list
 TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
 TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
@@ -58,6 +59,19 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 5|product/tools/factory-board.sh|s/; gh() { bash "\$TOOLS\/gh.sh" "\$@"; }//|check-gh-fallback.sh
+A348 clean all|product/tools/lane-cleanup.py|s/all(p in merged for p in prs)/any(p in merged for p in prs)/|check-lane-cleanup.sh
+A348 clean dirty|product/tools/lane-cleanup.py|s/ and not git(path, "status", "--porcelain").strip()//|check-lane-cleanup.sh
+A348 clean ahead|product/tools/lane-cleanup.py|s/ and not git(repo, "rev-list".*strip() and/ and/|check-lane-cleanup.sh
+A348 clean pr|product/tools/lane-cleanup.py|s/clean = prs and not git/clean = not git/|check-lane-cleanup.sh
+A348 clean status|product/tools/lane-cleanup.py|s/ or m.group(3) != "completed"//|check-lane-cleanup.sh
+A348 clean idle|product/tools/lane-cleanup.py|s/ or int(idle\[-1\]) < IDLE_MIN//|check-lane-cleanup.sh
+A348 clean need|product/tools/lane-cleanup.py|s/ or rest.split(.*)\[0\] != "none"//|check-lane-cleanup.sh
+A348 clean link|product/tools/lane-cleanup.py|s/^PR = .*/PR = re.compile(r"#(\\d{2,})")/|check-lane-cleanup.sh
+A348 clean stale|product/tools/lane-cleanup.py|s/^    if not 0 <= age <= STALE_MIN:/    if False:/|check-lane-cleanup.sh
+A348 clean whole|product/tools/lane-cleanup.py|s/^    if "UNREADABLE" in head .*/    if False:/|check-lane-cleanup.sh
+A348 clean lock|product/tools/lane-cleanup.py|s/"git", "--no-optional-locks", /"git", /|check-lane-cleanup.sh
+A348 clean me|product/tools/lane-cleanup.py|s/ or os.path.realpath(path) == me//|check-lane-cleanup.sh
+A348 clean wired|product/tools/lead-watch.sh|s/^cl=/# cl=/|check-lane-cleanup.sh
 6|product/tools/check-docs.sh|/STATE TOO BIG/d|check-state-page.sh
 A348 cap standbys|product/tools/capacity-watch.py|s/^    elif int(v) < MIN_STANDBYS:/    elif False:/|check-capacity-watch.sh
 A348 cap given|product/tools/capacity-watch.py|s/^    if not (v.isascii.*/    if False:/|check-capacity-watch.sh

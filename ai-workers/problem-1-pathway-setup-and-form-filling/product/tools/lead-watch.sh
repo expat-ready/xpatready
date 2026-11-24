@@ -281,6 +281,11 @@ fresh "product/state/app-view-latest.txt (app-view-check.sh)"
 nc=$(python3 -I "$TOOLS/night-checklist.py" 2>&1); echo "$nc"; act=$((act + $(grep -c '^ACT' <<<"$nc"))); seen "$nc"
 fresh "night-checklist.py: design/night-checklist.json and origin/main's merge subjects (fetched in step 4)"
 
+# 10c. Lane clean-up list (A348, founder 24 Nov): sessions whose PRs have all merged; the Lead archives, nothing here does.
+cl=$(python3 -I "$TOOLS/lane-cleanup.py" 2>&1); echo "$cl"; act=$((act + $(grep -c '^ACT' <<<"$cl"))); seen "$cl"
+grep -qE '^(lanes to clean up|ACT   lane clean-up)' <<<"$cl" || ACT "lane clean-up list: lane-cleanup.py did not run ($(head -1 <<<"$cl"))"
+fresh "lane-cleanup.py: git worktrees, main's merges (fetched in step 4) and the app view saved in step 10"
+
 # 11. What the founder's board shows (B201, founder A117 16 Nov: the check missed six stuck items his board showed; P-639:
 # never take the board's word blindly). The board's own Today card and Stuck panel (cockpit-data.py --watch reads the
 # published data.json › first, built by first_screen: no second formula), one ACT per Stuck entry, then each checked against
