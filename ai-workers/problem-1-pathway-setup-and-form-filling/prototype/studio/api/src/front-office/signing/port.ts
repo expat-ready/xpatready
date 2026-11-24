@@ -23,16 +23,19 @@ export type SigningProviderName = z.infer<typeof SigningProviderName>;
 export const SigningSigner = z.strictObject({ signerId: Uuid, role: z.enum(["CLIENT", "FIRM"]), name: z.string().trim().min(1).max(300) });
 export type SigningSigner = z.infer<typeof SigningSigner>;
 
-/** A send: one document, at least one client and exactly one firm signer (the firm signs last, on our server), each once. */
+/** A send: one document, at least one client and at most one firm signer (the firm signs last, on our server), each once.
+ *  A retainer or consultation agreement always names its firm signer (our server); a document of kind OTHER names one only
+ *  when the sender added one (FO-6d, AG-5-61). */
 export const SigningSend = z.strictObject({
   firmId: Uuid,
   requestId: Uuid,
   title: z.string().trim().min(1).max(200),
   document: z.strictObject({ bytes: z.instanceof(Uint8Array).refine((b) => b.length > 0 && b.length <= 25 * 1024 * 1024, "1 byte to 25 MB"), contentType: z.string().regex(/^[\w.+-]+\/[\w.+-]+(;.*)?$/, "a media type") }),
-  signers: z.array(SigningSigner).min(2).max(10),
+  signers: z.array(SigningSigner).min(1).max(10),
 }).superRefine((s, ctx) => {
   const firm = s.signers.filter((x) => x.role === "FIRM").length;
-  if (firm !== 1) ctx.addIssue({ code: "custom", message: "exactly one firm signer", path: ["signers"] });
+  if (firm > 1) ctx.addIssue({ code: "custom", message: "at most one firm signer", path: ["signers"] });
+  if (firm === s.signers.length) ctx.addIssue({ code: "custom", message: "at least one client", path: ["signers"] });
   if (new Set(s.signers.map((x) => x.signerId)).size !== s.signers.length) ctx.addIssue({ code: "custom", message: "a signer once", path: ["signers"] });
 });
 export type SigningSend = z.input<typeof SigningSend>;

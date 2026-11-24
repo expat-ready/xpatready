@@ -14,6 +14,8 @@ import { StandIn } from "@/components/stand-in";
 import { NOT_APPLICABLE_FROM, REQUEST_FROM, UPLOAD_FROM, WAIVE_FROM, type LineState, type StoredDocument } from "../../../contracts/documents";
 import { lineId, noRetryOnRefusal } from "./questionnaire";
 import { FoldOut } from "@/components/fold-out";
+import { DocumentFlagsDialog } from "@/pages/case/document-flags/panel"; // CS-D7
+import { DocumentReads } from "./document-reads";
 
 /** What the panel reads of a line as the API answers it (api/src/case-checklist.ts StoredLine, from the engine's PersonLine
  *  in engine/runtime/case-checklist.ts). Declared here, not imported: the engine file reads Node modules the web build has not. */
@@ -28,10 +30,14 @@ export type ChecklistLine = { id: string; label: string; lineage: string; reason
   /** C6.14: a line asked once for the application or the couple is one item with providers, and why each was named. */
   shared?: "application" | "couple" | null; providers?: { subject: string; label: string; role: string; why: string }[];
   providers_rule?: "type_roles" | "first_applicant" | "changed" | null; providers_words?: string | null;
-  providers_change?: { reason: string; by: string | null; at: string | null; defaults: boolean } | null };
+  providers_change?: { reason: string; by: string | null; at: string | null; defaults: boolean } | null;
+  /** CS-D7 (map row 70): warnings from its current files' flags (expired, too old, notarisation needed: QA-758): never a block. */
+  flag_warnings?: string[] };
+/** CS-D7 (3): a "Translation + translator's affidavit" line a document gives (api/src/case-document-flags.ts). */
+type TranslationLine = { id: string; label: string; document_id: string; for_document: string; file_name: string; state: "needed" | "provided"; words: string; quote: string; source: string };
 /** B102 (A6, BR-8): the person's age as the lines read it (engine/runtime/case-checklist.ts PersonAge). */
 type Age = { years: number | null; on: string | null; why: string; worked_out: boolean };
-type Person = { subject: string; label: string; role: string; applies: boolean; lines: ChecklistLine[]; waiting: ChecklistLine[]; not_needed: ChecklistLine[]; age?: Age;
+type Person = { subject: string; label: string; role: string; applies: boolean; lines: ChecklistLine[]; waiting: ChecklistLine[]; not_needed: ChecklistLine[]; age?: Age; translations?: TranslationLine[];
   /** C6.14 BR-4: whether the person may provide a shared document today (the server's rule), and why not. */
   may_provide?: { ok: boolean; why: string } };
 export type ChecklistView =
@@ -91,6 +97,12 @@ function PersonDocuments({ caseId, caseSubject, p, people, nameOf }: { caseId: s
       {!p.applies && !p.lines.length ? <p className="mt-1 text-sm text-text-muted" data-not-travelling>Not travelling with this application: nothing is asked of them.</p> : null}
       {p.applies && !p.lines.length && !p.waiting.length ? <p className="mt-1 text-sm text-text-muted">Nothing is needed from this person now.</p> : null}
       {p.lines.length ? <ul className="mt-2 divide-y divide-border rounded-lg border border-border">{p.lines.map((l) => <LineRow key={l.id} caseId={caseId} p={p} people={people} l={l} nameOf={nameOf} />)}</ul> : null}
+      {p.translations?.length ? <ul className="mt-2 divide-y divide-border rounded-lg border border-border" aria-label={`Translations for ${p.label}`} data-translations>{p.translations.map((t) => (
+        <li key={t.id} className="px-3 py-2.5 text-sm" data-translation-line={t.document_id} data-translation-state={t.state}>
+          <p className="font-medium">{t.label} <Pill tone={t.state === "provided" ? "ok" : "warn"}>{t.state === "provided" ? "Provided" : "Needed"}</Pill></p>
+          <p className="text-[13px] [overflow-wrap:anywhere]">{t.words}</p>
+          <FoldOut className="mt-0.5" summaryClassName="text-xs text-text-link" summary="Source"><p className="mt-1 text-xs text-text-muted [overflow-wrap:anywhere]">“{t.quote}” ({t.source})</p></FoldOut>
+        </li>))}</ul> : null}
       {p.waiting.length ? (
         <div className="mt-2" data-waiting>
           <p className="text-xs font-medium text-text-muted">May be needed</p>
@@ -121,6 +133,8 @@ function LineRow({ caseId, p, people, l, nameOf }: { caseId: string; p: Person; 
   const [na, setNa] = React.useState<false | "not-applicable" | "waive">(false);
   const [history, setHistory] = React.useState(false);
   const [providers, setProviders] = React.useState(false);
+  const [flags, setFlags] = React.useState<string | null>(null); // CS-D7: the document whose flags are open
+  const [details, setDetails] = React.useState(false);   // CS-D6 part 1: the current files' fingerprint, check and "Read by"
   const file = React.useRef<HTMLInputElement>(null);
   const member = React.useRef<string | null>(null); // C6.15: which member of the line's set the chosen file is
   // Review and break M1 (WCAG 2.4.3): after every action and when a dialog closes, focus goes back to this line's ⋯ button,
@@ -160,6 +174,7 @@ function LineRow({ caseId, p, people, l, nameOf }: { caseId: string; p: Person; 
           {l.set_status ? <p className={l.set_status.met ? "text-text-muted" : "font-medium"} data-set-status={l.set_status.met ? "met" : "open"}>{l.set_status.words}</p> : null}</div> : null}
         <p className="mt-0.5 text-xs text-text-muted">{current ? <>{currents.length > 1 || current.member ? "Files" : "File"}: <span className="[overflow-wrap:anywhere]">{currents.map((d) => `${d.file_name}${d.member ? ` (${d.member.name})` : ""}`).join(", ")}</span>{earlier ? ` · ${earlier} earlier` : ""}</> : "No file yet"}{l.state_at ? ` · Last change ${when(l.state_at)}${l.state_by ? ` by ${nameOf(l.state_by)}` : ""}` : ""}</p>
         {l.on_file ? <p className="mt-0.5 text-xs font-medium text-text-warn" data-on-file>{l.on_file.words}</p> : null}
+        {(l.flag_warnings ?? []).map((w) => <p key={w} className="mt-0.5 text-xs font-medium text-text-warn" data-flag-warning>{w}</p>)}
         {error ? <p role="alert" className="mt-1 text-xs text-text-danger" data-line-error>{error}</p> : null}</div>
       <div className="flex items-start justify-end">
         <input ref={file} type="file" className="sr-only" tabIndex={-1} aria-hidden accept="application/pdf,image/jpeg,image/png" data-upload-input
@@ -176,13 +191,21 @@ function LineRow({ caseId, p, people, l, nameOf }: { caseId: string; p: Person; 
               {NOT_APPLICABLE_FROM.includes(l.state) && !l.never_waivable ? <DropdownMenu.Item className={item} onSelect={() => setNa("not-applicable")} data-action="not-applicable">Not applicable…</DropdownMenu.Item> : null}
               {l.waivable && WAIVE_FROM.includes(l.state) ? <DropdownMenu.Item className={item} onSelect={() => setNa("waive")} data-action="waive">Waive…</DropdownMenu.Item> : null}
               {l.shared ? <DropdownMenu.Item className={item} onSelect={() => setProviders(true)} data-action="providers">Change providers…</DropdownMenu.Item> : null}
+              {currents.map((d) => <DropdownMenu.Item key={d.id} className={item} onSelect={() => setFlags(d.id)} data-action="flags" data-document={d.id}>{currents.length > 1 ? `Flags: ${d.file_name}…` : "Document flags…"}</DropdownMenu.Item>)}
+              {currents.length ? <DropdownMenu.Item className={item} onSelect={() => setDetails(true)} data-action="file-details">File details…</DropdownMenu.Item> : null}
               <DropdownMenu.Item className={item} onSelect={() => setHistory(true)} data-action="history">History</DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
       </div>
       {na ? <NotApplicableDialog l={l} label={label} waive={na === "waive"} close={() => { setNa(false); back(); }} done={reload} /> : null}
+      {flags ? <DocumentFlagsDialog documentId={flags} label={label} close={() => { setFlags(null); back(); }} done={reload} /> : null}
       {providers ? <ProvidersDialog l={l} label={l.label} people={people} close={() => { setProviders(false); back(); }} done={reload} /> : null}
+      {details ? <Dialog open onOpenChange={(o) => { if (!o) { setDetails(false); back(); } }} title={`File details: ${label}`}>
+        <div className="min-w-0 space-y-5 [overflow-wrap:anywhere]" data-file-details>
+          {currents.map((d) => <div key={d.id} className="space-y-2">{currents.length > 1 ? <p className="font-medium">{d.file_name}{d.member ? ` (${d.member.name})` : ""}</p> : null}<DocumentReads doc={d} /></div>)}
+        </div>
+      </Dialog> : null}
       {history ? <Dialog open onOpenChange={(o) => { if (!o) { setHistory(false); back(); } }} title={`History: ${label}`}>
         <div className="min-w-0 space-y-2 text-sm [overflow-wrap:anywhere]" data-history>
           <p>State: {l.state_words}{l.state_at ? `, since ${when(l.state_at)}${l.state_by ? ` by ${nameOf(l.state_by)}` : ""}` : ""}{l.state_reason ? `. Reason: ${l.state_reason}` : ""}.</p>

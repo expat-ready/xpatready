@@ -83,6 +83,9 @@ model FoConsultationType {
   showOnBookingPage       Boolean               @default(true) @map("show_on_booking_page")
   allowReschedule         Boolean               @default(true) @map("allow_reschedule")
   allowCancel             Boolean               @default(true) @map("allow_cancel")
+  /// FO-3c part 2 (Lead 10, W4b; AG-4-15 rule 1): the consultation agreement must be signed before the consultation starts.
+  /// Null = by purpose (on for all but FOLLOW_UP; consultation-agreement/gate.ts needsAgreement); a save stores the choice.
+  requireAgreement        Boolean?              @map("require_agreement")
   /// FO-3a (AG-4-9 rules 1, 5, 7, §7): at most 1,000 characters; the optimistic-save counter; a soft delete (hidden
   /// everywhere, its bookings kept and still changeable, its slug freed: the slug is unique among not-deleted rows, a
   /// partial index in 20261116090000_fo3a_booking_types; "manage" is reserved); who created it (history only, no key).

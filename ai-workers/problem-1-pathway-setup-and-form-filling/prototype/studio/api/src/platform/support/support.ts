@@ -219,15 +219,18 @@ export class SupportService {
   }
 
   /** Our team's reply (PF-17's console calls it, under /api/system after PF-4s): "Waiting on firm". Inside the caller's
-   *  transaction; the caller runs on the system plane (no firm scope: our team answers every firm). */
-  async replyAsSupport(tx: Tx, input: { ticketId: string; body: string }): Promise<TicketView> {
+   *  transaction; the caller runs on the system plane (no firm scope: our team answers every firm). `actor` is the audit
+   *  line's word: `system:support` by default, or, in a request our own staff make, that person's own `ourstaff:<id>`
+   *  (AUD-3a refuses any other word there; PF-17 part 2). The message itself stays authored by 'support'. */
+  async replyAsSupport(tx: Tx, input: { ticketId: string; body: string }, actor = "system:support"): Promise<TicketView> {
+    if (actor !== "system:support" && !/^ourstaff:[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(actor)) throw new Error("replyAsSupport: the actor is system:support or ourstaff:<id>");
     const v = parse(z.object({ ticketId: z.string().refine(isUuid, "a ticket id"), body: Body }).strict(), input);
     await this.bodyHasText(tx, v.body);
     const t = await this.lock(tx, v.ticketId.toLowerCase());
     if (t.status === "CLOSED") closedRefused();
     const m = await tx.platformSupportMessage.create({ data: { firmId: t.firmId, ticketId: t.id, authorKind: "SUPPORT", authorId: "support", body: v.body } });
     const u = await tx.platformSupportTicket.update({ where: { firmId_id: { firmId: t.firmId, id: t.id } }, data: { status: "WAITING_ON_FIRM" } });
-    await this.d.audit.record(tx, { firmId: t.firmId, actor: "system:support", action: "support.ticket.replied", entity: "platform_support_ticket", entityKey: t.id,
+    await this.d.audit.record(tx, { firmId: t.firmId, actor, action: "support.ticket.replied", entity: "platform_support_ticket", entityKey: t.id,
       summary: "Support replied to a ticket; waiting on the firm", detail: { ticketId: t.id, messageId: m.id, fields: ["body"] },
       before: { status: t.status }, after: { status: u.status } });
     return view(u, [m]);

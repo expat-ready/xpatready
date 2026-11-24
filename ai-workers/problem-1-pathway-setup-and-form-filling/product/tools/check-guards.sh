@@ -21,10 +21,17 @@ done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
 TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh"
 TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
+TESTS="$TESTS check-rules-settled.sh"   # A348: rules before review
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
+TESTS="$TESTS check-lane-cleanup.sh"   # A348: lane clean-up list
 TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
+TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
+TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
+TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
+TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
+TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 bad=0
 if [ "$part" = 1 ]; then
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
@@ -48,13 +55,75 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 3 touch|product/tools/lane-preflight.sh|s/ python3 -I "\$DIR\/touch-overlap.py" 2>\&1)/ cat >\/dev\/null)/|check-touch-overlap.sh
 3 hit|product/tools/touch-overlap.py|s/^            if paths:/            if False:/|check-touch-overlap.sh
 3 closed|product/tools/touch-overlap.py|s/^        return 2$/        return 0/|check-touch-overlap.sh
+A348 rules cite|product/tools/rules-settled.py|s/^        bad = .*/        bad = []/|check-rules-settled.sh
+A348 rules none|product/tools/rules-settled.py|s/^    if r is None:/    if False:/|check-rules-settled.sh
+A348 rules kinds|product/tools/rules-settled.py|s/^    ("permission", /    ("permission", re.compile("^none$")), ("x", /|check-rules-settled.sh
+A348 rules fence|product/tools/rules-settled.py|s/^        if fence:/        if False:/|check-rules-settled.sh
+A348 rules gap|product/tools/rules-settled.py|s/^        elif not BULLET.match(l) and (FIELD.*/        elif False:/|check-rules-settled.sh
+A348 rules html|product/tools/rules-settled.py|s/^    body = re.sub(.*/    pass/|check-rules-settled.sh
+A348 rules wired|../../.github/workflows/pr-rules.yml|s/^\( *\)printf .*rules-settled.py" --files.*/\1true/|check-rules-settled.sh
+A348 rules unread|../../.github/workflows/pr-rules.yml|s/else echo "::warning title=Rules settled (A348)::the PR.*/else echo ok; fi/|check-rules-settled.sh
 3 own|product/tools/touch-overlap.py|s/^        if n in own:/        if False:/|check-touch-overlap.sh
+A351 b1 two|product/tools/same-cause.py|s/ if len({r\["run"\] for r in rs}) > 1}/}/|check-same-cause.sh
+A351 b1 once|product/tools/same-cause.py|s/^        if k not in fired:/        if len(rs) > 1:/|check-same-cause.sh
+A351 b1 words|product/tools/same-cause.py|s/by.setdefault(f"{s}.*{w}"/by.setdefault(s/|check-same-cause.sh
+A351 b1 fail row|product/tools/same-cause.py|s/(FAIL.failed twice)/(failed twice)/|check-same-cause.sh
+A351 b1 first try|product/tools/same-cause.py|s/^        if what == "failed twice" and .*/        if False:/|check-same-cause.sh
+A351 b1 not retried|product/tools/same-cause.py|s/^        w = re.split(.*/        w = why/|check-same-cause.sh
+A351 b1 named|product/tools/same-cause.py|s/ if NAMED.search(w) else ""$//|check-same-cause.sh
+A351 b1 errors|product/tools/same-cause.py|s/^NAMED = .*/NAMED = re.compile(r"FAIL +")/|check-same-cause.sh
+A351 b1 ids|product/tools/same-cause.py|s/ID.sub("#", w.strip())/w.strip()/|check-same-cause.sh
+A351 b1 12h|product/tools/same-cause.py|s/ if r.get("end", "9") >= since}/}/|check-same-cause.sh
+A351 b1 forget|product/tools/same-cause.py|s/^    fired = .*/    fired = dict(st["fired"])/|check-same-cause.sh
+A351 b1 whole|product/tools/same-cause.py|s/^        if not missing:/        if True:/|check-same-cause.sh
+A351 b1 left|product/tools/same-cause.py|s/^    if left or unread:/    if False:/|check-same-cause.sh
+A351 b1 unread|product/tools/same-cause.py|s/^            unread += 1; continue/            continue/|check-same-cause.sh
+A351 b1 blank|product/tools/same-cause.py|s/^    if blank:/    if False:/|check-same-cause.sh
+A351 b1 lost|product/tools/same-cause.py|s/^    for b in bad\[:3\]:/    for b in []:/|check-same-cause.sh
+A351 b1 memory|product/tools/same-cause.py|s/^    if why:/    if False:/|check-same-cause.sh
+A351 b1 inside|product/tools/same-cause.py|s/ for r in st\["runs"\].values())$/ for r in [])/|check-same-cause.sh
+A351 b1 batch|product/tools/same-cause.py|s/ if w\["head_branch"\].startswith("mergify.")\]$/]/|check-same-cause.sh
+A351 b1 green|product/tools/same-cause.py|s/^            if st\["ran"\]\[k\]:/            if True:/|check-same-cause.sh
+A351 b1 pages|product/tools/same-cause.py|s/^    for n in range(1, 11):/    for n in range(1, 2):/|check-same-cause.sh
+A351 b1 rerun|product/tools/same-cause.py|s/ and r.get("end") == w\["updated_at"\]:/:/|check-same-cause.sh
+A351 b1 gone|product/tools/same-cause.py|s/^    st\["runs"\] = {k: r for k, r in st\["runs"\].items() if k in .*/    pass/|check-same-cause.sh
+A351 b1 nopr|product/tools/same-cause.py|s/^        raise RuntimeError(f"no pull request.*/        p = [{"number": 0, "title": "", "body": ""}]/|check-same-cause.sh
+A351 b1 wired|product/tools/lead-watch.sh|s/^sc=/# sc=/|check-same-cause.sh
+A351 b1 ran|product/tools/lead-watch.sh|/same-cause.py did not run/d|check-same-cause.sh
 3 dot|product/tools/touch-overlap.py|s/re.sub(r"^(\\.\/)+", "", /(/|check-touch-overlap.sh
 3 run|product/tools/check-lane-preflight.sh|/check-touch-overlap.sh" 2>\&1)/d|check-touch-overlap.sh
 4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 5|product/tools/factory-board.sh|s/; gh() { bash "\$TOOLS\/gh.sh" "\$@"; }//|check-gh-fallback.sh
+A348 clean all|product/tools/lane-cleanup.py|s/all(p in merged for p in prs)/any(p in merged for p in prs)/|check-lane-cleanup.sh
+A348 clean dirty|product/tools/lane-cleanup.py|s/ and not git(path, "status", "--porcelain").strip()//|check-lane-cleanup.sh
+A348 clean ahead|product/tools/lane-cleanup.py|s/ and not git(repo, "rev-list".*strip() and/ and/|check-lane-cleanup.sh
+A348 clean pr|product/tools/lane-cleanup.py|s/clean = prs and not git/clean = not git/|check-lane-cleanup.sh
+A348 clean status|product/tools/lane-cleanup.py|s/ or m.group(3) != "completed"//|check-lane-cleanup.sh
+A348 clean idle|product/tools/lane-cleanup.py|s/ or int(idle\[-1\]) < IDLE_MIN//|check-lane-cleanup.sh
+A348 clean need|product/tools/lane-cleanup.py|s/ or rest.split(.*)\[0\] != "none"//|check-lane-cleanup.sh
+A348 clean link|product/tools/lane-cleanup.py|s/^PR = .*/PR = re.compile(r"#(\\d{2,})")/|check-lane-cleanup.sh
+A348 clean stale|product/tools/lane-cleanup.py|s/^    if not 0 <= age <= STALE_MIN:/    if False:/|check-lane-cleanup.sh
+A348 clean whole|product/tools/lane-cleanup.py|s/^    if "UNREADABLE" in head .*/    if False:/|check-lane-cleanup.sh
+A348 clean lock|product/tools/lane-cleanup.py|s/"git", "--no-optional-locks", /"git", /|check-lane-cleanup.sh
+A348 clean me|product/tools/lane-cleanup.py|s/ or os.path.realpath(path) == me//|check-lane-cleanup.sh
+A348 clean wired|product/tools/lead-watch.sh|s/^cl=/# cl=/|check-lane-cleanup.sh
 6|product/tools/check-docs.sh|/STATE TOO BIG/d|check-state-page.sh
+A348 cap standbys|product/tools/capacity-watch.py|s/^    elif int(v) < MIN_STANDBYS:/    elif False:/|check-capacity-watch.sh
+A348 cap given|product/tools/capacity-watch.py|s/^    if not (v.isascii.*/    if False:/|check-capacity-watch.sh
+A348 cap disk|product/tools/capacity-watch.py|s/^    if gb < START_GB:/    if False:/|check-capacity-watch.sh
+A348 cap remote|product/tools/capacity-watch.py|s/^    miss = len(fs) - .*/    miss = 0/|check-capacity-watch.sh
+A348 cap odd|product/tools/capacity-watch.py|s/miss = len(fs) - len(plain) + /miss = /|check-capacity-watch.sh
+A348 cap dead|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--remotes=origin", "--stdin"/|check-capacity-watch.sh
+A348 cap local|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--branches", "--stdin"/|check-capacity-watch.sh
+A348 cap copy|product/tools/capacity-watch.py|s/^    if any(os.path.basename(p) == ".git".*/    if False:/|check-capacity-watch.sh
+A348 cap whole|product/tools/capacity-watch.py|s/os.walk(d, onerror=stop)/os.walk(d)/|check-capacity-watch.sh
+A348 cap age|product/tools/capacity-watch.py|s/ or now - newest < o.age.*/:/|check-capacity-watch.sh
+A348 cap ctime|product/tools/capacity-watch.py|s/st.st_mtime, st.st_ctime/st.st_mtime/|check-capacity-watch.sh
+A348 cap cut|product/tools/capacity-watch.py|s/^    if c\["cut"\]:/    if False:/|check-capacity-watch.sh
+A348 cap cr|product/tools/capacity-watch.py|s/and not set(.*) & set(p)\]/]/|check-capacity-watch.sh
+A348 cap dark|product/tools/capacity-watch.py|s/^    if c.get("dark"):/    if False:/|check-capacity-watch.sh
+A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 7|product/tools/check-docs.sh|s/if m > 30:/if False:/|check-state-page.sh
 7 mine|product/tools/check-docs.sh|s/^  mine=1; c=""$/  mine=0; c=""/|check-state-page.sh
 7 read|product/tools/check-docs.sh|s/^  if \[ -z "\$u" \]; then msg=/  if false; then msg=/|check-state-page.sh
@@ -467,7 +536,46 @@ OMG counts|product/tools/own-migration-guard.py|s/^                    if not db
 OMG step|product/tools/own-migration-guard.py|s/^                nxt = next((j for j, n2 in own/                nxt = len(lines) if 1 else next((j for j, n2 in own/|check-own-migration-guard.sh
 OMG steploop|product/tools/own-migration-guard.py|s/^                            and any(k > j and d2 \& set(dbs) for k, d2 in loop_lines(lines, n2))), len(lines))/                            ), len(lines))/|check-own-migration-guard.sh
 OMG stepdb|product/tools/own-migration-guard.py|s/^                            and dbs and set(PSQLDB.findall/                            and True or set(PSQLDB.findall/|check-own-migration-guard.sh
-OMG late|product/tools/own-migration-guard.py|s/^                if pre and nxt < len(lines):/                if False:/|check-own-migration-guard.sh'
+OMG late|product/tools/own-migration-guard.py|s/^                if pre and nxt < len(lines):/                if False:/|check-own-migration-guard.sh
+A348 retry bot|product/tools/retry-watch.py|s/(c.get("user") or {}).get("login") != "github-actions\[bot\]"/False/|check-retry-watch.sh
+A348 retry phrase|product/tools/retry-watch.py|s/ or not PHRASE.search(b):/:/|check-retry-watch.sh
+A348 retry plain|product/tools/retry-watch.py|s/^    for l in PLAIN.findall(body):/    for l in []:/|check-retry-watch.sh
+A348 retry unread|product/tools/retry-watch.py|s/in names or \["(no suite read)"\]:/in names:/|check-retry-watch.sh
+A348 retry page|product/tools/retry-watch.py|s/page = page + 1 if last == since else 1/page = page + 1; last = since/|check-retry-watch.sh
+A348 retry second|product/tools/retry-watch.py|s/page = page + 1 if last == since else 1/page = 1/|check-retry-watch.sh
+A348 retry cut|product/tools/retry-watch.py|s/^        if not whole:/        if False:/|check-retry-watch.sh
+A348 retry keep|product/tools/retry-watch.py|s/"found": found}, open/"found": {}}, open/|check-retry-watch.sh
+A348 retry memory|product/tools/retry-watch.py|s/^    if why:/    if False:/|check-retry-watch.sh
+A348 retry line|product/tools/retry-watch.py|s/^FIX = .*/FIX = re.compile(r"Retry fix\\s*:\\s*(.+)")/|check-retry-watch.sh
+A348 retry hidden|product/tools/retry-watch.py|s/HIDDEN.sub("", (p/str((p/|check-retry-watch.sh
+A348 retry closed|product/tools/retry-watch.py|s/^            if p\["state"\] == "open" or m:/            if True:/|check-retry-watch.sh
+A348 retry back|product/tools/retry-watch.py|s/ if (m is None or m >= t) and not/ if not/|check-retry-watch.sh
+A348 retry own|product/tools/retry-watch.py|s/ and not (m and str(n) in prs)//|check-retry-watch.sh
+A348 retry search|product/tools/retry-watch.py|s/^        n += 1$/        return out, ""/|check-retry-watch.sh
+A348 retry wired|product/tools/lead-watch.sh|s/^rw=/# rw=/|check-retry-watch.sh
+A348 retry ran|product/tools/lead-watch.sh|/retry-watch.py did not run/d|check-retry-watch.sh
+A334 order|product/tools/app-view-check.sh|s/ -k1,1nr -k2,2nr)$/ -k1,1nr)/|check-lead-watch-idle.sh
+A334 cloud|product/tools/app-view-check.sh|s/^  lane = (\$0 ~ \/ · cloud · /  lane = (\$0 ~ \/ · /|check-lead-watch-idle.sh
+A334 first|product/tools/night-checklist.py|s/^    rows.sort(key=lambda r: (r\[0\], r\[1\]))$/    rows.sort(key=lambda r: r[1])/|check-lead-watch-idle.sh
+A334 proof|product/tools/night-checklist.py|s/^            done = p\["pr"\] in merged$/            done = True/|check-lead-watch-idle.sh
+A334 prose|product/tools/night-checklist.py|s/ from ", s)$/", s) or re.search(r"\\(#(\\d+)\\)", s)/|check-lead-watch-idle.sh
+A334 brackets|product/tools/app-view-check.sh|s/^  rs = why; gsub.*/  rs = why/|check-lead-watch-idle.sh
+A334 wired|product/tools/lead-watch.sh|/night-checklist.py" 2>&1); echo/d|check-lead-watch-idle.sh
+A348 act|product/tools/proof-number.py|s/^    if apps and rp.*/    if False:/|check-proof-number.sh
+A348 4h|product/tools/proof-number.py|s/^HOURS = 4/HOURS = 0/|check-proof-number.sh
+A348 ist|product/tools/proof-number.py|s/^    mid = now.astimezone(fm.IST).replace/    mid = now.replace/|check-proof-number.sh
+A348 streak|product/tools/proof-number.py|s/map(fm.proven_at, hist.values())/[ev[-1] for ev in hist.values()]/|check-proof-number.sh
+A348 shallow|product/tools/proof-number.py|s/^    shallow = set(open.*/    shallow = set()/|check-proof-number.sh
+A348 live|product/tools/proof-number.py|s/^    if live != .*/    if False:/|check-proof-number.sh
+A348 first|product/tools/proof-number.py|s/git("log", "--first-parent", "-s",/git("log", "-s",/|check-proof-number.sh
+A348 app|product/tools/proof-number.py|s/"web.src", //|check-proof-number.sh
+A348 paths|product/tools/proof-number.py|s/^        if not git("ls-tree".*/        if False:/|check-proof-number.sh
+A348 edge|product/tools/proof-number.py|s/^    if today is None or rp.*/    if False:/|check-proof-number.sh
+A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 11, 30/RELEASE_END = datetime(2026, 12, 13/|check-proof-number.sh
+A348 fetch|product/tools/lead-watch.sh|/origin.main not fetched/d|check-proof-number.sh
+A348 ran|product/tools/lead-watch.sh|/proof-number.py did not run/d|check-proof-number.sh
+A348 wired|product/tools/lead-watch.sh|s/^pn=/# pn=/|check-proof-number.sh'
+
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
 while IFS='|' read -r g f edit t; do
@@ -475,7 +583,7 @@ while IFS='|' read -r g f edit t; do
   [ "$list" = 1 ] && { echo "ROW $k $g"; continue; }
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
-  cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; mkdir -p "$M/$P/product/design"; cp "$ROOTD/$P/product/design/waves.tsv" "$ROOTD/$P/product/design/waves.md" "$M/$P/product/design/"; cp "$ROOTD/$P/product/focus-list.md" "$M/$P/product/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"
+  cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; mkdir -p "$M/$P/product/design"; cp "$ROOTD/$P/product/design/waves.tsv" "$ROOTD/$P/product/design/waves.md" "$ROOTD/$P/product/design/night-checklist.json" "$M/$P/product/design/"; cp "$ROOTD/$P/product/focus-list.md" "$M/$P/product/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"
   cp "$ROOTD/.github/workflows/"*.yml "$M/.github/workflows/"; cp "$ROOTD/.mergify.yml" "$M/"; git -C "$M" init -q   # every workflow: check-label-guard parses two
   for x in $(cd "$ROOTD" && ls packages/xfa-engine/fixtures/synthetic/*.pdf packages/xfa-engine/src/__tests__/fixtures/*.pdf 2>/dev/null); do mkdir -p "$M/$(dirname "$x")"; cp "$ROOTD/$x" "$M/$x"; done   # guard 11 needs the real bytes
   before=$(cksum < "$M/$P/$f"); sed -i.bak "$edit" "$M/$P/$f"; rm -f "$M/$P/$f.bak"

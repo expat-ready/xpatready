@@ -125,3 +125,67 @@ Verdict: Block
 Reviewer: Changes 2cd403ffdf43f56b4d964e24407d413218db4fc3
 
 Verdict: Block
+
+## Round 3 (diff-only, on the split heads: #3256 `b41fe99098337d25daef71c071761281b0ad4ab5`, #3180 `366d3ed3bea87675911b1e9b6c62624023fadddd`)
+Fresh reviewer, 23 Nov 2026. Scope (the tech lead): the round-2 fixes `2cd403ffd..eab779b`, and the split. The minors listed as follow-up rows in the PR body are out of scope; none of them is Major.
+**Copy:** isolated `rev3_csd7` on :4437 (never :4400), stopped afterwards. Live AI off, US$0. **Suites on :4437 (head 366d3ed3b):** check_csd5_flags 38/38, check_csd5c_type_defaults 24/24, check_csd5_flags_browser 33/33 (this is J-70; run from a scratch copy so the committed screenshots were not overwritten), check_c76_readiness 91/91, check_readiness_pass_codes 4/4. **Typecheck:** `tsc -p api` on the head and on a standalone `git archive b41fe9909` tree: the same 15 errors, all in unrelated old tests, and none in a changed file. `tsc -p web` is clean on both. **Schema:** on fresh databases, `prisma migrate deploy` then `prisma migrate diff --from-config-datasource --to-schema prisma/schema` gives "No difference detected" for #3256 alone (it stops at 140000) and for #3180 (140000, then 150000).
+
+**Round-2 items:**
+- **N1 / R2-M1, fixed and tested both ways.** `flagWarnings` (`api/src/case-document-flags.ts:46-52`) keys each warning by the file and the value it depends on: `expired|<doc>|<date>`, `no_expiry|<doc>` and `age|<doc>|<max_age_days>`. `engine/runtime/readiness.ts:256` passes `part: w.key`. The check "review N1 pass" (`tests/check_csd5_flags.ts:113-120`) passes the age line, moves `uploaded_at` back a day and expects it still passed. With the old `part: w` the words change ("401 days"), so the check fails.
+- **R2-m1, fixed. The race itself has no test.** `updateMany` at `:168` now has `current: true`, and `:169` re-reads the row to answer `not_current`. Live probe: psql `begin; update … current=false; pg_sleep(3); commit` running alongside `POST flags {language:"ru"}` gives 409 `not_current` after 2.3 s, with the language and `flags_version` unchanged and no audit line. Run alongside a concurrent version bump instead, it gives 409 `flags_changed`. But "break m8 fail" (`:155`) is answered by the pre-check at `:147`, so no check fails if `current: true` is removed from `:168` (R3-m1).
+- **n2 / R2-m2, fixed in the words.** Playwright at 1024 px: open Document flags…, upload a newer file, type an expiry, Save. The `role=alert` says "…Nothing was changed. Close this and open the newer file's flags." Axe finds 0 serious issues, there is no sideways scroll and no page error. Save stays offered and gives the same words again (R3-m2).
+- **R2-m4, fixed and tested both ways.** `api/src/case-checklist.ts:208` empties `flag_warnings` on a not-applicable or waived line, which matches `flagWarningsOf`. The setup check (`:158`) sees the warning, and the fail check (`:160`) sees `[]` once the line is not applicable. That check fails without the fix.
+
+**The split: nothing lost, nothing duplicated.**
+- (a) The literal `git diff eab779b 366d3ed3b` also shows main's own commits (#3256's base is a newer main), so I compared each branch with its own base: `8f487df4b..eab779b` against `origin/main(7bd590d6f)..366d3ed3b`. The same 30 files, every blob identical. The only difference is the two migration folders, renamed 100000 → 140000 (csd7c) and 110000 → 150000 (flags), with identical contents (blobs `53f5c12…` and `eb2b5b3…`). Main touched none of these files in between.
+- (b) #3256 (`origin/main...b41fe9909`, 15 files, 708 lines) is CS-D7c only. No file references `case-document-flags`, `flags_version`, `document_flag`, `flag_warnings` or the `case_document` flag columns. Its migration touches only `document_type`, and it typechecks and migrates on its own (above).
+- (c) #3180 (`b41fe9909...366d3ed3b`, 15 files, 710 lines) is CS-D7 only. It depends on #3256's `SnapTypeDefaults` and the governed-change route (the right direction). `Completes: R1.70` is on #3180 only.
+- (d) Order: main's newest migration is `20261123030000`, followed by `20261123140000_csd7c_type_defaults` and then `20261123150000_csd7_document_flags`. The `readiness_pass_known_code_check` list in 150000 is c78's list (still the newest on main) plus `document_flag`.
+- Note: #3180's head moved to `94a80e401` after the commit I reviewed. That commit only adds the breaker's Round 3 section to `break-report.md` (+17 lines, no code).
+
+**New findings (all Minor, Should; none blocks):**
+- **R3-m1 (Minor): no test for the R2-m1 race.** Fix: in `check_csd5_flags.ts`, start `psql -c "begin; update case_document set current=false where id=…; select pg_sleep(2); commit"` in the background. After about 0.5 s, `POST flags {version, language:"ru"}`. Expect 409 `not_current`, the language unchanged and no new audit line. This check fails if `current: true` is removed.
+- **R3-m2 (nit/Minor): the stale dialog keeps a live Save** (`web/src/pages/case/document-flags/panel.tsx:58,90`). The words say "Close this", but the buttons are still "Cancel" and "Save flags", and every Save repeats the 409. No browser check covers these words. Fix: on `not_current`, keep a `stale` flag, hide Save and rename Cancel to "Close". Add the case to `check_csd5_flags_browser.ts`.
+- **R3-m3 (Minor; = breaker R3-m1): a translation pass outlives a change of language or of the staff flag.** The key is `translation|<doc>` only (`api/src/case-document-flags.ts:98`). A reason given for Portuguese then covers German. Fix: `translation|${d.id}|${d.language}|${flags.translation_from}`, plus a check that a language change reopens the line.
+- **R3-m4 (Minor; = breaker R3-m2): the language carry-over can drop a save made at the same moment.** `api/src/case-checklist.ts:356` reads `was.language` with a plain read before the supersede at `:357`. A flags save in between gets 200 on a file that is replaced a moment later, and the new file keeps the old language. Fix: supersede first and take the language from that row (`UPDATE … RETURNING language`), or `SELECT … FOR UPDATE` before the read.
+
+**Journey (reviewer role, round 3 delta):** the age pass now holds across days (API check and probe). The stale-file dialog gives correct words at 1024 px. Correct data goes ½ → 1, and the other criteria are unchanged from round 2. Score **8.5 / 10 (pass, no 0)**. Next step obvious stays ½ (F3, and the live Save in R3-m2). The journey-test file is unchanged.
+**D/BIC changes:** D2 4, D5 4 (N1 and R2-m1 fixed). The rest are unchanged.
+**Not checked:** GitHub CI `types`/`fast`/`regression` on either head (skipped on the PR events; my local typecheck stands in for them); the graph (P-86) was not re-run for a diff-only round; a real screen reader; D17/D20.
+
+**#3256:** Verdict: Approve (no Blocker or Major).
+Reviewer: Approve b41fe99098337d25daef71c071761281b0ad4ab5
+
+**#3180:** Verdict: Approve (no Blocker or Major). R3-m1 to R3-m4 go in as follow-up rows, or are fixed in place.
+Reviewer: Approve 366d3ed3bea87675911b1e9b6c62624023fadddd
+
+## Round 4 (CS-W3 census, Lead 9; head 65fbb6e9cba64eeda786e8271352c8ba91313d32; diff `5710b4103..65fbb6e9c`, 2 test files)
+Fresh reviewer, 23 Nov 2026. This is a diff-only review of a permission path: case access across firms. **Suites** (run-suites.sh isolated copies, ports +14000, never :4400; live AI off, US$0): check_csd5_flags 41/41 and check_csw3_firm_scope 48/48. **Mutation:** I removed `|| (officer && c.firmKey !== firmOfActor(actor)?.key)` from `api/src/runtime.ts:171` and check_csd5_flags failed on "CS-W3 fail (flags)". The file was restored with `git checkout` and the tree is clean.
+
+**(1) The pattern: the builder's reading is right.**
+- The census (`tests/fixtures/csw3/csw3-spike.sh:85-103`) lists every file that names a case model or table. "Sets a firm" is only a column in its output, so scoping a file never takes it off the list. `client-money/visibility-adapter` already goes through `caseScope` and is still listed.
+- The rows scoped by `caseScope`/PF-4 (case-notes/service, visibility-adapter, party-search) serve routes that have PF-4's StaffContext (firmId, staffId, keys). This route is an x-actor `/api/runtime/*` route. Its neighbours there (case-documents, case-checklist, case-work and others) all reach their case through `Runtime.reach`.
+- Lines `api/src/case-document-flags.ts:125-128` are the same lookup as `case-documents.ts:402-405`, which is on the list. Switching to `caseScope` here would split one route family across two access rules.
+- The view.own rule (CS-S1) is not applied on any `/api/runtime` route. That gap was there before this PR and is not a finding here.
+
+**(2) The firm is enforced.**
+- `Runtime.reach` (`api/src/runtime.ts:164-173`) returns "No such case." (404) to an officer whose `firmOfActor(actor).key` is not the case's `firmKey`. The flags route maps that to "No such document."
+- Both firms share the one workspace (`ws.id()`), so the firm check is the only thing that refuses. The mutation above confirms it.
+- **Two cases for one subject cannot happen.** `case_participant.subject_id` is unique (`prisma/schema/cases.prisma:340`; index `case_participant_subject_id_key`, migration 20261023220000). `case_document` has no case id, only `subject_id` (`prisma/schema/evidence.prisma:47`). So `findFirst({subjectId})` finds the document's one case or nothing (a removed person gives 404). No other firm's case can be picked, and no wrong refusal can come from it.
+- The door tags the request with the staff member's firm (`features/case-firm-door.ts:78`). `@CaseRead()` is a read-scope tag, not a permission key, so the door does apply to this route.
+
+**(3) The test checks both ways.**
+- `check_csd5_flags.ts:131-143`: firm B (user-S) opens its own case, uploads a file and reads the flags (200, the same document id). SQL confirms the two cases are in different firms (`count(distinct firm_id) = 2`).
+- Firm A's officer gets 404 "No such document." on read and 404 on write. The write sends a valid body, so the 404 comes from reach and not from validation. After it, language and version are unchanged (`none|0`) and there is no audit line.
+- The check fails when the firm rule is removed (mutation above). A failed setup cannot pass silently, because the own-read check needs 200.
+
+**(4) The allow-list reason is accurate** (`check_csw3_firm_scope.ts:269`). It names the route, the door, the reach through `Runtime.reach` with the 404 words, the matching case-documents lookup, Lead 9 and the test. It carries the same kind of facts as the CS-MV1 and CS-NT1 rows. The count moves to 51 in both the check's words and its assertion (`:278`).
+
+**Findings (none Blocker or Major):**
+- **R4-m1 (Minor, Should; comment accuracy):** `tests/check_csw3_firm_scope.ts:267` still says "plus seven merged on main after the spike", but it now lists nine (42 + 9 = 51). CS-MV1 already left it at seven when there were eight. Review m7 (`84d533d71`) had corrected exactly this sentence. Fix: "plus nine merged on main after the spike".
+- **R4-n1 (nit):** `tests/check_csd5_flags.ts:143` checks the words only on the read refusal. Fix (optional): also test `/^No such document\.$/.test(words(bWrite))`, so the write refusal is shown to use the same words as an unknown id.
+
+**Journey (reviewer role, round 4 delta):** no screen changed. The cross-firm wrong-role step (break-it: "wrong role by URL") is now proven for both read and write, with no data changed. The score stays **8.5 / 10 (pass, no 0)**, and the journey-test file is unchanged. **D/BIC:** unchanged. **Not checked:** GitHub CI on this head; the graph (P-86) was not re-run for a diff-only round; a real screen reader; D17/D20.
+
+**#3180:** Verdict: Approve (no Blocker or Major). R4-m1 can be fixed in place or added to the follow-up rows with R3-m1 to R3-m4.
+Reviewer: Approve 65fbb6e9cba64eeda786e8271352c8ba91313d32
