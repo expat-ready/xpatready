@@ -236,3 +236,7 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Not read as a yes to: creating a CodeAnt account, accepting its terms, installing its package, or sending code (C1 to C6). Asked: C1.
 * Started: qa 6 (cloud, task_7ca7a2d0: R1.87, R1.86, R1.35 re-scores, j_58, FO-3c door), FO-7t part 2 (cloud, R1.58), Lead 25 standby local_f8cf715f.
 * Tooling answer given: CodeAnt tested 25-26 Nov (28 PRs, two arms, bar 4 of 14 known misses), Opus checklist arm first; Sentry before the first firm; Linear, Qodo, CodeRabbit, Harness no; wake-on-merge ours, not shaped yet. No tool is in use yet.
+
+### Ask rows moved from STATE by Lead 24 (still open, word for word)
+| A354 | 24 Nov ~10:22 (typed to Lead 21) | Mac slow: check and optimize, all approvals; signed in to Stripe | measured; plan file; open |
+| A353 | 24 Nov, before 10:10 (typed to Lead 17; relayed) | check us against the AI-native SDLC playbook; implement only what helps quality or speed | `design/sdlc-playbook-alignment-2026-11-24.md`; read by Lead 21, seven facts spot-checked true on main; N2-N4 finish ordered work; founder 10:22 IST to Lead 21: implement; N2-N4 ordered to Lead O 2, N1 in the next five risky briefs; notes: plan file; open |
