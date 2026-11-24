@@ -96,3 +96,40 @@ UXL (§7): not scored at 1280/375 for this check. At 400 px there is no sideways
 A real screen reader · a real 428 arriving mid-send at 479291e (only mocked, plus pf5t on the newer head) · 50 rows with real SES (local adapter only) · the founder's unaided walk (D17, D20) · commits after 479291e.
 
 Verdict: Changes
+
+## Round 2: diff 479291e52..c5845b16efb8156b2c522c046c1d898cb0c0b7f0 (that diff only)
+I ran everything on a fresh isolated copy, `rv20` on port 4460, and stopped it afterwards.
+* **Tests:** `journeys/j_20.ts rv20 4460` passed 36/36 twice, with no retry.
+* **Probes:** Playwright, scratch, with the batch answer held for 8 s.
+
+**M1 is closed.** `<fieldset disabled={busy}>` at invite-panel.tsx:72 locks the form while a send is in flight.
+* **Scenario 1 (edit in flight):** typing into Email or Name, Remove, + Add and ticking a role were all refused. v4 was invited and v5 was never typed. The staff row stayed with its words.
+* **Scenario 2 (add in flight):** + Add was refused. The panel closed with v6 invited and no typed row lost.
+* **Double send:** Enter, Enter, Space on Send invited once.
+* **Fails when removed:** j_20 W3 asserts that Email and + Add are disabled while the route is held, so taking the fieldset out fails it.
+
+**The other fixes, checked:**
+* **50-row cap (breaker m2, my m1):** at 50 rows, + Add gives way to "50 people is the most in one form. Send these, then invite more." (panel:95-96, j_20 W7). The server still refuses 51 as before.
+* **Focus:** after a flagged send, focus goes to the first flagged field (panel:64). This is the Name field when the name is what's flagged (probe: an invisible character in the name). j_20 W1 asserts it, and fails on the old behaviour, where focus went to the panel container.
+* **Seat words (my m3):**
+  * 0 free now reads "Your plan has no free seat, so Send invites no one now: every row stays here…".
+  * Over the limit, the seat line reads "12 of 12 seats used · 2 on this form" (j_20 W5).
+  * The notice reads "Each row below says why: fix it, or free a seat, then send again."
+* **Email copy (my m5):** the API card row now names the stored copy of the sent email. The PR body still has to drop "nowhere else", as the builder said they would.
+* **Accessibility:** axe finds no violations at 1024 and 720 px (200 %), with no sideways scroll and no page errors.
+
+**Left open by choice, accepted as Minor:**
+* **m2:** one alert per flagged row. This is PF-6's existing field pattern; focus now lands on the first flagged row.
+* **m4:** the 100-character name rule is shared with PF-4c and named in the PR body.
+
+**New Minor (not new code; it behaves the same on main):** the footer's Close button sits outside the fieldset, so it stays live while a send is in flight, and it closes without the discard question (on main too). Closing mid-send still invites the valid rows and shows the toast, but the flagged rows disappear without their reasons.
+* Probe: rows [c1, a staff email] → Send → Close. c1 was invited, the toast said "1 invitation sent.", and the staff row was gone.
+* Fix later: disable Close while busy, or leave it as it is.
+
+**Round 2 score:**
+* **Journey score: 9/10, no 0.** Feedback and state, and error recovery, each go from ½ to 1 (the form locks while sending; focus lands on the first flagged field). Plain words stays at ½ ("marked" is still in the seat words), and so does accessibility (one alert per flagged row).
+* **D5** goes from 3 to 4 and **D11** from 3 to 4. BIC-13 and BIC-18 are now Met.
+
+No Blocker or Major is open at c5845b16e.
+
+Verdict: Approve

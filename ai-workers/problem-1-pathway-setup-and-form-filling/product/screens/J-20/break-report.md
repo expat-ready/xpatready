@@ -64,3 +64,27 @@ The Notice is a live region (1 found), so a screen reader hears the summary. A k
 - **Layout.** At 1024 px and 720 px (200 %), the panel and the flagged rows do not scroll sideways (panel scrollWidth equals clientWidth, and the document has no horizontal overflow). No page errors.
 
 Verdict: Changes
+
+## Round 2 (commit `c5845b16efb8156b2c522c046c1d898cb0c0b7f0`)
+
+I ran the round-1 probes (ui.mts, ui2.mts) on a fresh copy `br20` on :4470, then stopped it. The served bundle contained the round-2 strings.
+The fixes are in web/src/modules/platform/staff/invite-panel.tsx: `<fieldset disabled={busy}>`, `BATCH_MAX = 50`, and focus on the first flagged field. m3 and m4 are named in the PR body and were not re-tested.
+
+- **M1: fixed.** With the batch delayed 2.5 s, the fieldset is disabled. 0 inputs and 0 buttons inside it are enabled, and filling row 1's Email or row 2's Name times out.
+  "+ Add another person" cannot be clicked, so no row can be added mid-send. Row 1 is invited exactly as sent.
+  When I waited for the lock instead (S1b), the edit applied only after the answer: row 1 showed the new address with its old error cleared and was not marked invalid. One row's words no longer land on another row's email.
+- **m1: fixed.** "Remove person 2" cannot be clicked mid-send, so the zero-row state (a button reading "Send 0 invitations") can no longer be reached.
+  After the answer, 1 row remains with its reason, and the button reads "Send invitation".
+- **m2: fixed.** The add button disappears at 50 rows, replaced by "50 people is the most in one form. Send these, then invite more."
+  Send makes 1 call with 50 rows. 14 were invited and 36 flagged OVER_SEAT_LIMIT under P-727, with no 422. No 51st row can be made.
+- **m5: fixed.** At 1024 px and at 720 px (200 %), after a keyboard Send, focus is on Email, person 1 (`aria-invalid="true"`), and its description reads the row's reason.
+  At 200 % the field is scrolled into view. When the only flag on the row is a name flag (110 characters), focus goes to Name, person 1 instead.
+- **Held again:** a double click gives 1 call, and so does Enter, Enter, Space. A faked 428 or 401 on the batch keeps the row and its name and shows "Nothing was sent". There is no sideways overflow and there were no page errors.
+- **Notes, not findings:**
+  - The Close button and Escape stay enabled mid-send, because the footer is outside the fieldset. Escape asks "Discard the people you typed?". Once confirmed, the valid row is still invited, the flagged row is dropped, and reopening gives a fresh form. The person chose to discard.
+  - The `<summary>` disclosures (20) stay focusable inside the disabled fieldset. They only show text.
+  - At 720 px the success toast briefly covers the focused row's Name field (scratch r2-zoom200-focus.png).
+
+No new break was found in round 2.
+
+Verdict: Approve
