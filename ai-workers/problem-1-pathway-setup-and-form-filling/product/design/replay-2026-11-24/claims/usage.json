@@ -133,5 +133,19 @@
   "out": 15765,
   "outside": [],
   "tool_calls": 22
+ },
+ "S20": {
+  "cache_read": 1131750,
+  "fresh_in": 149910,
+  "out": 17007,
+  "outside": [],
+  "tool_calls": 25
+ },
+ "S22": {
+  "cache_read": 1026389,
+  "fresh_in": 178464,
+  "out": 17529,
+  "outside": [],
+  "tool_calls": 23
  }
 }
