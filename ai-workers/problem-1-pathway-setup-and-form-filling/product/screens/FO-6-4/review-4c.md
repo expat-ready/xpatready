@@ -98,3 +98,26 @@ The m2 line (422) would fail on round 1's code, which answered 409.
 **Verdict: Approve.** No Blocker or Major is open.
 
 Reviewer: Approve 18b64a0b7cd38a2662ec256b53b807c2fdcc6557
+
+## Round 3 (diff only, tests only; Lead 29 on #3490): `560df0562..052d20a9835121fc6c39dea0095fb17c8be9ddce`
+Two test files changed: +6 −3. No app code changed.
+
+**(a) TS2554 fix.** `check_fo6_signing_api.ts:82,358` and `check_pf6b_permission_rules.ts:253` now pass `db as never` as `SigningController`'s third argument, `Db`.
+* I ran `tsc` on a throwaway tsconfig in gitignored `var/`, containing only these two test files and extending `api/tsconfig.json`. It found **no errors in either file**.
+* The only remaining errors are `door.ts(89)` `codeVerifiedAt`. That file is #3460's: `door.ts` is not in `fcb8e3ad8..052d20a98`.
+* The full `typecheck.mjs` for the api ran out of memory here at 8 GB, so CI's run is the full proof.
+
+**(b) The PF-6b SWEEP entry `SigningController.firmLink`.**
+* It sends the current consent body. A 404 means "not seen". Any other refusal means the record was seen: in the sweep's fixture that is 409 NO_LIVE_REQUEST, or 403. This is right, because `Retainers.read` (404) comes before every other refusal (`routes.ts:342-343`).
+* No write is possible in the fixture, because no retainer there has a live request.
+* **Removal check:** I replaced the route's `Retainers.read` with a firm-wide lookup that ignores visibility. DW6 went **red** on exactly `SigningController.firmLink`, and was restored afterwards. So the entry proves the own-or-all rule on this route. DW7 is satisfied.
+
+**Runs at 052d20a98, isolated copies, never :4400:** pf6b **42/42** (the DW6 firmLink line passes), signing_api **57/0**. Both are confirmed.
+
+**Findings:** no Blocker or Major. One optional Minor:
+* The entry's `catch` counts *every* non-404 error as "seen", including a 500 or a TypeError (`check_pf6b_permission_rules.ts:256`). It could therefore mask a crash for a holder who is allowed to see the record. It cannot hide a leak: a false "seen" for someone not allowed still fails DW6.
+* **Fix:** rethrow unless the status is 403 or 409, like the file's own `refusedButSeen` does for 422 (`:248`).
+
+**Verdict: Approve.**
+
+Reviewer: Approve 052d20a9835121fc6c39dea0095fb17c8be9ddce
