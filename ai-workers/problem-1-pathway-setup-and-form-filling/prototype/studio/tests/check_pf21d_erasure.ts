@@ -79,10 +79,11 @@ try {
     const n = await tx.$executeRaw`delete from pf21d_rows where firm_id = ${currentFirm()}::uuid and person_id = ${o.personId}::uuid`;
     return n ? { outcome: "ERASED", note: `${n} row(s)` } : { outcome: "NOTHING", note: "no rows" };
   } };
-  let mode: "nothing" | "throw" | "kept" | "wait" = "nothing", entered = false, gate: () => void = () => undefined;
+  let mode: "nothing" | "throw" | "kept" | "wait" | "merge" = "nothing", mergeTry: (() => void) | null = null, entered = false, gate: () => void = () => undefined;
   const secondEraser: Eraser<any> = { module: "test.second", async erase() {
     if (mode === "throw") throw new Error("Sample: the second module is down");
     if (mode === "wait") { entered = true; await new Promise<void>((r) => { gate = r; }); }
+    if (mode === "merge" && mergeTry) mergeTry();   // review r4 M1: a merge tries to land while the run erases
     return mode === "kept" ? { outcome: "KEPT", note: "client_financial: 2 rows kept 7 years, name replaced by a reference" } : { outcome: "NOTHING", note: "no rows" };
   } };
   const rowsOf = (firm: string, person: string) => Number(sql(`select count(*) from pf21d_rows where firm_id = '${firm}' and person_id = '${person}'`));
@@ -221,6 +222,27 @@ try {
   ok("PF-21d fail (Lead B 5, SA-11-40 rule 6): a person merged away after approval → HELD with why (one step over two runs), no eraser called, the rows stay, never a false COMPLETED; the merge is not followed",
     gone.held.includes(r5) && seen.length === 0 && rowsOf(A, P5) === 2 && statusOf(r5).startsWith("HELD|2") && (kinds(r5).match(/ERASURE_HELD/g) ?? []).length === 1
     && /merged away or is no longer in that firm/.test(sql(`select note from plat_data_request_event where request_id = '${r5}' and kind = 'ERASURE_HELD'`)), { gone, s: statusOf(r5), k: kinds(r5) });
+  // review r4 M1: a merge that tries to land while the run is erasing (after the re-check) is refused by the run's lock
+  // (FO-9b's merge locks with NOWAIT: it answers "busy"); the run ends recorded, never COMPLETED with nothing erased.
+  const P6 = person(A), P6s = person(A); addRows(A, P6);
+  const r6 = await deletion(A, P6); await svc.approve(as, null, r6); clock.t += 7 * DAY;
+  let mergeOutcome = "not tried";
+  mergeTry = () => { mergeOutcome = refusedBySql(`set lock_timeout = '300ms'; update fo_person set merged_into_id = '${P6s}', merged_at = now() where id = '${P6}'`, /lock timeout|could not obtain lock|canceling statement/) ? "refused by the lock" : "landed"; };
+  mode = "merge"; const raced = await svc.run(); mode = "nothing"; mergeTry = null;
+  ok("PF-21d fail (review r4 M1): a merge trying to land mid-run cannot slip between the re-check and the erasers: it waits on the run's lock and gives up; the order ends COMPLETED with the person's rows erased, never COMPLETED with nothing erased",
+    mergeOutcome === "refused by the lock" && raced.erased.includes(r6) && rowsOf(A, P6) === 0 && statusOf(r6) === "COMPLETED|-"
+    && /test\.rows: ERASED/.test(sql(`select actions_taken from plat_data_request where id = '${r6}'`)), { mergeOutcome, raced, s: statusOf(r6) });
+  // review r4 m1: HELD for a hold, then the person merged and the hold released → a new HELD step with the new reason.
+  const P7 = person(A), P7s = person(A); addRows(A, P7);
+  const r7 = await deletion(A, P7); await svc.approve(as, null, r7);
+  const h7 = sql(`insert into plat_legal_hold (id, firm_id, scope_kind, target_id, reason, placed_by) values (gen_random_uuid(), '${A}', 'PERSON', '${P7}', 'Sample: an inquiry on the records', 'staff:${OWNER}') returning id`).split("\n")[0];
+  clock.t += 7 * DAY; await svc.run();
+  sql(`update fo_person set merged_into_id = '${P7s}', merged_at = now() where id = '${P7}'`);
+  sql(`update plat_legal_hold set released_by = 'staff:${OWNER}', released_at = now(), release_reason = 'Sample: lifted' where id = '${h7}'`);
+  await svc.run(); await svc.run();
+  const notes7 = sql(`select string_agg(note, ' / ' order by seq) from plat_data_request_event where request_id = '${r7}' and kind = 'ERASURE_HELD'`);
+  ok("PF-21d fail (review r4 m1): held for a hold, then merged away with the hold released → a second HELD step names the merge (the stale reason is not left alone); still one per reason over two runs",
+    (kinds(r7).match(/ERASURE_HELD/g) ?? []).length === 2 && /an inquiry on the records/.test(notes7) && /merged away/.test(notes7) && rowsOf(A, P7) === 2 && statusOf(r7).startsWith("HELD|2"), { notes7, s: statusOf(r7) });
   // -------------------------------------------------------------------------------------- the database's rules
   ok("PF-21d fail (database): an erase day on an access request or not after the day received, a forged mark through the job's step → refused",
     refusedBySql(`update plat_data_request set erase_on = received_on + 7 where id = '${access}'`, /plat_data_request_erase_on_set/)

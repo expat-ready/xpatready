@@ -115,3 +115,29 @@ migration itself holds.
 **Verdict: Changes** for 2d698e3152788b7b05b92cdfeadd4844939cb233 (Blocker R3-1)
 Note: at the end of this round the branch was already at 452b1e122 (1b's routes declared) on eb19e71ad (1a's switch
 routes declared). Those heads were not broken here. A re-run should start from that head.
+
+## Round 4: 4d72360f6 (PR #3235), only `2d698e315..4d72360f6`
+Fresh worktree at the head, which already contains current main (a26e80b6a) and #3234 (eb19e71ad). Private Prisma client
+generated into an overlay; the shared copy was not written. Scratch copy of the shipped suite, deleted with the worktree.
+* **Held, R3-1 closed:** `isolated.sh brk1b 4479 start` → API up; `/api/health` 200; GET `…/erasure/requests/<uuid>`,
+  POST `…/approve` and GET `/api/system/switches` → 401 without a token; stopped, database dropped. `check_pf12_walls`
+  110/0 (105/5 in round 3), `check_aud3_access` 30/0 (opt-out list names ErasureController.cancel and both switch routes),
+  `check_pf21d_erasure` 25/0, `check_pf21d_switch` 20/0, `check_pf21b_requests` 27/0.
+* **Held, merged person:** merged after approval → one ERASURE_HELD step with why, no eraser, rows stay, still scheduled.
+  Repeated runs write no second step (r5 over 6 runs). Merge and Undo before the day → erased on the day. Undo after the
+  HELD → the next run erases (COMPLETED, 2 rows). That is the approved order on a live record again. Person deleted →
+  HELD, no eraser. Moving a person to another firm is refused by the fo_person trigger. Gone-HELD then cancel after the day
+  → 200 (the cancel allows HELD), erase day cleared, the next run takes nothing, and a hand move to COMPLETED is then allowed.
+* **Held, round-2 mid-run probes:** while the second eraser waits, the daily sweep marks OVERDUE, cancel → 409
+  ERASURE_RUNNING, a hand move → 409. The run then ends COMPLETED with two RESULT steps (the GET was not re-run: the token
+  had expired after the 31-day clock jump).
+
+| # | Attack | Expected | Actual | Sev | Where |
+|---|---|---|---|---|---|
+| R4-1 | A merge commits between the run's person check and the erasers. The hook sits on `holds.isHeld`, which runs right after the check: P6's 2 rows are moved to the survivor and P6 is tombstoned, on another connection | HELD, never a false COMPLETED | **COMPLETED**, `test.rows: NOTHING (no rows)`, while P6's 2 rows now sit on the survivor. The check runs on its own pooled connection (`foPersonCheck` → `this.db`, not `tx`). It takes no lock, and the merge's `pg_advisory_xact_lock('fo_dup_merge:<id>')` is not taken, so nothing orders the merge against the erasers. Once an eraser has deleted a row that the merge must re-point, the merge waits. So the window is from the check to the first eraser that locks one of this person's rows: milliseconds, once a day, and only for a merge of that person. It stays latent until part 2 registers real erasers (today the app records SKIPPED). Possible fix: take the merge's advisory lock for the person inside the firm transaction, then check through `tx` | Minor | service.ts:55-56, 171 |
+| R4-2 | Legal hold → HELD. Then the hold is released and the person merged away | A HELD step with the new why | No new step. `erasure_step` p_once compares the kind only, so the request still reads "On legal hold … Sample: litigation hold" although that hold is released and the real block is the merge. The same happens when one hold is replaced by another | Minor | service.ts:186; mig:128-129 |
+| R1-R4 | Round-2 Minors | n/a | Untouched by this diff | Minor | as round 2 |
+
+No Blocker or Major is open. R3-1 is closed; R4-1 and R4-2 are Minor.
+
+**Verdict: Approve** for 4d72360f6d69db7b0f3e4d62aa1f0b510f80608b

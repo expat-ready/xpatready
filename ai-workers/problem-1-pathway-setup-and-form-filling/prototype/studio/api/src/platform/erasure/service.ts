@@ -38,7 +38,9 @@ export const ERASURE_ACTOR = "system:platform.register.erasure";
 export const ERASURE_HOLDS = Symbol("Erasure.holds");
 /** Does this person record exist in this firm? (front office's fo_person, in the firm's scope; a test gives its own.) */
 export const ERASURE_PERSON_CHECK = Symbol("Erasure.personCheck");
-export type PersonCheck = (firmId: string, personId: string) => Promise<boolean>;
+/** `q` is the caller's client: the run passes its firm transaction, so the row lock (FOR SHARE) lasts until the erasers
+ *  are done and a person merge (FO-9b locks the person FOR UPDATE NOWAIT) cannot land in between (review r4 M1). */
+export type PersonCheck = (q: Pick<Tx, "$queryRaw">, firmId: string, personId: string) => Promise<boolean>;
 export type ErasureView = { requestId: string; status: string; eraseOn: string | null };
 export type RunResult = { erased: string[]; partial: string[]; held: string[]; skipped: string[]; failed: number };
 
@@ -52,8 +54,8 @@ const addDays = (day: string, n: number) => dayOf(new Date(Date.parse(`${day}T00
 /** An eraser's failure, named by its module only (its message may hold data; it goes to the log, never a step). */
 class EraserFailed extends Error { constructor(readonly module: string, readonly cause: unknown) { super(`eraser ${module} failed`); } }
 
-const foPersonCheck = (db: PrismaClient): PersonCheck => (firmId, personId) => withFirm(firmId, async () =>
-  (await db.$queryRaw<{ hit: boolean }[]>`SELECT EXISTS (SELECT 1 FROM fo_person p WHERE p.id = ${personId}::uuid AND p.firm_id = ${firmId}::uuid AND p.merged_into_id IS NULL) AS hit`)[0].hit);   // break m7: never a merged-away record
+const foPersonCheck: PersonCheck = async (q, firmId, personId) =>   // break m7: never a merged-away record
+  (await q.$queryRaw<{ id: string }[]>`SELECT p.id::text AS id FROM fo_person p WHERE p.id = ${personId}::uuid AND p.firm_id = ${firmId}::uuid AND p.merged_into_id IS NULL FOR SHARE`).length === 1;
 
 @Injectable()
 export class Erasure {
@@ -62,7 +64,7 @@ export class Erasure {
     @Inject(PlatformClock) private readonly clock: PlatformClock, @Inject(PlatSwitches) private readonly switches: PlatSwitches,
     @Inject(ErasureRegistry) private readonly registry: ErasurePort<Tx>, @Inject(ERASURE_HOLDS) private readonly holds: LegalHoldPort<Tx>,
     @Optional() @Inject(ERASURE_PERSON_CHECK) personCheck?: PersonCheck) {
-    this.personCheck = personCheck ?? foPersonCheck(db);
+    this.personCheck = personCheck ?? foPersonCheck;
   }
   private allowed(c: RequestCaller) {
     if (!c || !c.keys.includes(DSR_KEY)) forbidden("Only ExpatReady staff who manage the register of requests made to ExpatReady can do this.", "MISSING_PERMISSION");
@@ -100,7 +102,7 @@ export class Erasure {
       const unfit = (detail: string, code: string) => problem(FIELD_ERROR_STATUS, "Cannot approve this erasure", detail, { code });
       if (r.type !== "DELETION") unfit("Only a deletion request can be erased.", "NOT_DELETION");
       if (!r.firm_id || !r.person_id) unfit("The request names no person record; staff choose the one person it is about.", "NO_PERSON");
-      if (!(await this.personCheck(r.firm_id!, r.person_id!))) unfit("That person record is not in that firm; nothing was scheduled.", "PERSON_NOT_IN_FIRM");
+      if (!(await withFirm(r.firm_id!, () => this.db.$transaction((ftx) => this.personCheck(ftx, r.firm_id!, r.person_id!))))) unfit("That person record is not in that firm; nothing was scheduled.", "PERSON_NOT_IN_FIRM");
       if (line) line.target = { ...line.target, personId: r.person_id };
       const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_erasure_approve(${id.toLowerCase()}::uuid, ${eraseOn}::date, ${`staff:${c.staffId}`}) AS out`;
       if (out === "NOT_FOUND") notFound();
@@ -168,7 +170,7 @@ export class Erasure {
     const done = await withFirm(order.firmId, () => this.db.$transaction(async (tx) => {
       // Lead B 5 on #3235: the person may have been merged away (or left the firm) since approval. The run asks again;
       // gone → HELD with why, nothing erased. The merge is not followed: staff choose the person (SA-11-40 rule 6, AG16-44).
-      if (!(await this.personCheck(order.firmId, order.personId))) return { kind: "gone" } as const;
+      if (!(await this.personCheck(tx, order.firmId, order.personId))) return { kind: "gone" } as const;   // in this transaction, locked (review r4 M1)
       const hold = await this.holds.isHeld(tx, order.firmId, [{ kind: "PERSON", id: order.personId }]);
       if (hold.held) return { kind: "held", held: hold.holds.map((h) => `hold ${h.holdId}: ${h.reason}`) } as const;
       const results: { module: string; r: EraseOutcome }[] = [];

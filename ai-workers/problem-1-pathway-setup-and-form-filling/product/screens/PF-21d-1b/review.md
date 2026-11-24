@@ -220,3 +220,97 @@ Journey score: not re-walked. This round is a re-stamp with no change in behavio
 The re-stamp itself is correct and complete. It would be approved on its own.
 
 Reviewer: Block 2d698e3152788b7b05b92cdfeadd4844939cb233
+
+## Round 4: `4d72360f6d69db7b0f3e4d62aa1f0b510f80608b` (PR #3235, diff only)
+
+Scope: the PR's own commits since 2d698e315 (452b1e122 AUD-3 declarations; 4d72360f6 Lead B 5 person re-check, plus records),
+and the merges since round 2's approved head 4689c3469.
+
+**Merges.** `git show --remerge-diff` is empty for all three merges of #3234's branch since 4689c3469
+(19f7ddc93, e9a032f99, 981786e90). Nothing was resolved by hand.
+
+**Suites at 4d72360f6** (worktree; Postgres 18 on 127.0.0.1:54329 accepting; shared Prisma client, no private client
+needed): check_pf21d_erasure 25/0 and 25/0 (two runs), check_aud3_access 30/0, check_pf21d_switch 20/0.
+**API start-up:** `isolated.sh rv1b 4477 start --ttl 15` started. `/api/health` 200; GET
+`/api/system/erasure/requests/<uuid>` with no token 401 NOT_SIGNED_IN; POST `…/approve` with no token 401. Stopped
+(database removed). Round 3's Major (start-up stop under AUD-3) is **fixed**.
+
+**Rule test fails when the rule is removed:** commenting out `service.ts:171` (the re-check) makes the new Lead B 5 line
+FAIL (`COMPLETED|-`, ERASURE_RESULT steps). Test-first holds.
+
+### AUD-3 declarations (452b1e122): true and the best fit
+* `read` `@ReadsAcrossFirms("one request's erasure state, …")`: it matches `DataRequestController.read` on main. It
+  over-declares (the answer is status and `eraseOn` only), which is the safe direction.
+* `approve` `@ReadsAcrossFirms(…)`: true. Approve does read one firm's `fo_person` through `personCheck`
+  (`service.ts:103`). This is more accurate than round 3's suggestion of `@NoFirmData`, which I withdraw. `@ReadsFirm`
+  needs the firm in a path parameter, and here it comes from the record. `@ChangesFirm` would be false, because approve
+  changes only ExpatReady's register. So nothing else in the set fits. One remark, not a finding: the line goes on the
+  platform trail and not on the firm's own trail. The approve line in our staff's trail carries `personId` and
+  `requestId`.
+* `cancel` `@NoFirmData(…)`: true. It touches only `plat_data_request` and matches `DataRequestController.move`.
+  `check_aud3_access` lists it in the reviewed opt-outs.
+
+### Lead B 5 (4d72360f6): the re-check
+* **Placement:** the re-check runs first in the firm transaction, before the hold check, so a gone person never reaches an
+  eraser. The step is written under the claim with `p_once`, and `finish("BLOCKED")` gives HELD and keeps it scheduled.
+  The Lead's single-threaded case is closed and tested.
+* **HELD leaves staff a working path:** `plat_data_request_erasure_cancel` lets a HELD request be cancelled after its day
+  (migration line 71: `status <> 'HELD'`). Probe A confirmed this: cancel on the merged-person request returns 200,
+  `eraseOn` null, an ERASURE_CANCELLED step, and the next run takes nothing. The step's text tells staff exactly that.
+* **Sources:** `trace-requirements.py --brief PF-21d` prints SA-11-40 @13537758. Rule 6 says "asks the staff member to
+  choose. It never picks one or merges silently (AG16-44)". §10 says "the system never widens a request to other people
+  on its own". Not following the merge to the survivor is a fair reading of both. The legal reading stays Unconfirmed: no
+  counsel (header). The tool also warns "SA-11-40 has no @hash"; the brief's own row is outside this diff.
+
+**M1 (Major, Must): the race the Lead named is still open, and a false COMPLETED is reproduced.**
+* **Where:** `personCheck` (`service.ts:55-56`, called at `:171`) runs on its own pooled connection and takes no lock. A
+  merge that commits after the check and before an eraser's statement moves the person's rows to the survivor. Every
+  eraser then finds nothing, and the request reads COMPLETED with nothing erased. This is exactly Lead B 5's outcome.
+* **Probe C:** a test eraser commits the merge (tombstone plus moving the rows) on a separate connection just before it
+  deletes. The run reported `erased: [r7]`, status `COMPLETED|-`, results `test.rows: NOTHING / test.second: NOTHING`, and
+  the person's 2 rows now under the survivor.
+* **Why it matters:** the window is the length of one order's erasers (timeout 120 s). Firm staff can merge at any time
+  while the 07:40 job runs. The PR's own comment (`:166-167`) shows the hold check is serialised by a lock; the person
+  check is not.
+* **Fix (small):** run the check inside the firm transaction on `tx`, with
+  `SELECT 1 FROM fo_person WHERE firm_id = … AND id = … AND merged_into_id IS NULL FOR SHARE`. Pass `tx` to the
+  injectable `PersonCheck`.
+* **Why this fix is enough:** FO-9b's merge already locks both records `FOR UPDATE NOWAIT` with back-off and answers
+  MergeBusy (`front-office/duplicates/merge/service.ts:4, 49, 61-74`).
+  * If the run holds the share lock, a merge waits and then says "try again".
+  * If the merge holds its lock first, the run waits. The re-evaluated row is then merged, so the result is gone and the
+    request is HELD.
+  * No deadlock, and no false COMPLETED.
+* **Fail test:** this probe, with the run expected HELD and no eraser called, or the merge refused with the rows erased.
+  It fails on today's code.
+
+**m1 (Minor, Should): HELD shows a stale reason after a hold is followed by a merge.**
+* **Why:** `p_once` compares only the last step's kind (migration lines 128-129). Probe B: a legal hold gives HELD "On
+  legal hold … hold six". The person is then merged, the hold released, and the next run returns `gone`. Its
+  ERASURE_HELD step is dropped as a duplicate.
+* **Result:** the request stays HELD, and its only reason names a hold that has been released. The real reason, the
+  merge, is never written. Status is not false, but the "why" the Lead asked for is.
+* **Fix:** skip only when the last step has the same kind **and** the same note (or the same reason class). Add a test
+  line for hold, then merge, then release.
+
+Round 2's Minors 1-4 are untouched by this diff and stay listed in the PR.
+
+**Journey score (reviewer): re-scored for the changed path only.** The merged-person journey has no screen. It was walked
+through the service as the job runs it, with the outcome read back through the register's own read:
+* merged person → HELD with why → staff cancel → nothing runs: works;
+* hold → merge → release: stale why (m1);
+* merge mid-run: false COMPLETED (M1).
+
+Correct data falls to ½ (M1) and feedback and state to ½ (m1). Round 2's other criteria stand. Result: **8/10 (scaled
+over the applicable criteria), pass, no 0**. The Major blocks regardless.
+
+**Verdict: Block** for `4d72360f6d69db7b0f3e4d62aa1f0b510f80608b`. Fix list:
+1. M1: move the person re-check into the firm transaction on `tx` with `FOR SHARE` on the `fo_person` row
+   (`merged_into_id IS NULL`). Add the mid-run merge test (HELD or MergeBusy, never COMPLETED with nothing erased).
+2. m1 (Should, may ride along): make `p_once` compare the note or the reason class too, with a test for hold, then merge,
+   then release.
+
+Everything else in this round is correct and would be approved on its own: the AUD-3 declarations, start-up, the
+re-check's placement and test, cancel while HELD, and the source reading.
+
+Reviewer: Block 4d72360f6d69db7b0f3e4d62aa1f0b510f80608b

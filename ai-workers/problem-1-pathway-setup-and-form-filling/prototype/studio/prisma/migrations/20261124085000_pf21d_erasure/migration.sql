@@ -112,11 +112,11 @@ BEGIN
   RETURN FOUND;
 END $fn$;
 -- The job's steps: p_kind one of the erasure kinds only (never a mark or a move). With p_once, nothing is written when the
--- request's latest erasure step (status moves aside) is already of that kind: a switch left off writes one SKIPPED, a
--- hold left on one HELD, not one a day. True when written.
+-- request's latest erasure step (status moves aside) is the same step (kind and note): a switch left off writes one
+-- SKIPPED, a hold left on one HELD, not one a day; a new reason is a new step. True when written.
 CREATE FUNCTION plat_data_request_erasure_step(p_id uuid, p_kind text, p_note text, p_by text, p_once boolean, p_claim timestamptz) RETURNS boolean
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
-DECLARE last text;
+DECLARE last text; last_note text;
 BEGIN
   PERFORM plat_data_request_system_only();
   IF p_kind NOT IN ('ERASURE_HELD', 'ERASURE_RESULT', 'ERASURE_SKIPPED') THEN
@@ -125,8 +125,8 @@ BEGIN
   PERFORM 1 FROM plat_data_request x WHERE x.id = p_id AND x.erase_on IS NOT NULL AND x.status <> 'COMPLETED'
     AND (p_kind = 'ERASURE_SKIPPED' OR x.erasing_since = p_claim) FOR UPDATE;   -- a result or a hold only under the job's own claim
   IF NOT FOUND THEN RETURN false; END IF;
-  SELECT e.kind::text INTO last FROM plat_data_request_event e WHERE e.request_id = p_id AND e.kind::text LIKE 'ERASURE\_%' ORDER BY e.seq DESC LIMIT 1;
-  IF p_once AND last = p_kind THEN RETURN false; END IF;
+  SELECT e.kind::text, e.note INTO last, last_note FROM plat_data_request_event e WHERE e.request_id = p_id AND e.kind::text LIKE 'ERASURE\_%' ORDER BY e.seq DESC LIMIT 1;
+  IF p_once AND last = p_kind AND last_note IS NOT DISTINCT FROM p_note THEN RETURN false; END IF;   -- review r4 m1: a new reason is a new step
   INSERT INTO plat_data_request_event (id, request_id, kind, note, actor) VALUES (gen_random_uuid(), p_id, p_kind::"PlatDataRequestEventKind", p_note, p_by);
   RETURN true;
 END $fn$;
