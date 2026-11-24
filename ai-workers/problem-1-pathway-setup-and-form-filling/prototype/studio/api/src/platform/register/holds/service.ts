@@ -53,8 +53,8 @@ const ScopeBody = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("CATEGORY"), category: LegalHoldCategory }),
   z.strictObject({ kind: z.literal("DATE_RANGE"), from: RangeEnd("from"), to: RangeEnd("to") }),
 ]).refine((s) => s.kind !== "DATE_RANGE" || s.from.getTime() <= s.to.getTime(), { message: "The range ends on or after its start.", path: ["to"] });
-const PlaceBody = z.strictObject({ firmId: FirmId, scope: ScopeBody, reason: Reason });
-const ReleaseBody = z.strictObject({ reason: Reason });
+export const PlaceBody = z.strictObject({ firmId: FirmId, scope: ScopeBody, reason: Reason });
+export const ReleaseBody = z.strictObject({ reason: Reason });
 /** The list's page: at most LIST_MAX holds; `truncated` says more match (break M1, review M2). */
 export const LIST_MAX = 500;
 const ListQuery = z.strictObject({ firm: FirmId.optional(), state: z.enum(["active", "released", "all"]).optional(), limit: z.coerce.number().int().min(1).max(LIST_MAX).optional() });

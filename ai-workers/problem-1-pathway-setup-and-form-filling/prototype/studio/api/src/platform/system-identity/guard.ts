@@ -19,12 +19,14 @@ import { REASON_MAX, SYSTEM_ACCESS, SYSTEM_KEY, SYSTEM_PATH, SYSTEM_CHANGE, SYST
 import { correlationOf } from "../observability/hook.ts";
 import { logPort } from "../observability/log.ts";
 import { requestLine } from "../observability/metrics.ts";
-import { FIELD_ERROR_STATUS } from "../http/input.ts";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
+import type { ZodType } from "zod";
 import { PlatformClock } from "../identity/port.ts";
 import { STEP_UP_SECONDS, STEP_UP_WORDS } from "../identity/session/step-up.ts";
 import { SystemIdentity } from "./service.ts";
 import type { CallLine } from "./staff.ts";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
 const bearerOf = (h: string | string[] | undefined) => { const a = Array.isArray(h) ? h[0] : h; return typeof a === "string" ? /^Bearer\s+(\S+)$/i.exec(a.trim())?.[1] : undefined; };
@@ -103,7 +105,11 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     const staff = await this.identity.authenticate(bearerOf(req.headers.authorization), (who, code) => this.identity.audit({ staff: who, method: req.method, route, target, outcome: "REFUSED", code, reason: null, device }));
     const missing = access.kind === "keys" ? access.keys.filter((k) => !staff.keys.includes(k)) : [];
     const targets = [ctx.getHandler(), ctx.getClass()], now = this.clock.now();
-    const wantsReason = this.reflector.getAllAndOverride<boolean>(SYSTEM_REASON, targets) === true;
+    const reasonOf_ = this.reflector.getAllAndOverride<ZodType | true | undefined>(SYSTEM_REASON, targets);
+    const wantsReason = reasonOf_ !== undefined, bodySchema = typeof reasonOf_ === "object" ? reasonOf_ : null;
+    // R1.10 A4: a malformed record id is the one not-found (404), answered after the permission and step-up checks and before
+    // any field is read, as every PF/FO door does (PF-28); every /api/system path parameter is a record id.
+    const badId = Object.entries((req as { params?: Record<string, unknown> }).params ?? {}).some(([, v]) => !(typeof v === "string" && UUID_RE.test(v)));
     // SA-7-10: a sign-in at most 5 minutes old (exactly 5 passes, as PF-4b's requireStepUp).
     const stale = this.reflector.getAllAndOverride<boolean>(SYSTEM_STEP_UP, targets) === true && now / 1000 - staff.authTime > STEP_UP_SECONDS;
     const reason = reasonOf((req.body as { reason?: unknown } | null | undefined)?.reason);
@@ -111,7 +117,17 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     const notObject = wantsReason && (typeof req.body !== "object" || req.body === null || Array.isArray(req.body));
     const rawReason = (req.body as { reason?: unknown } | null | undefined)?.reason;
     const tooLong = typeof rawReason === "string" && [...lineText(rawReason, REASON_MAX + 1)].length > REASON_MAX;
-    const code = missing.length ? "MISSING_PERMISSION" : stale ? "STEP_UP_REQUIRED" : notObject ? "INVALID" : tooLong ? "REASON_TOO_LONG" : wantsReason && !reason ? "REASON_REQUIRED" : null;
+    // R1.10 A4 (Lead 28): the reason is a field like any other: with the route's own schema read at the same time, one 422 names
+    // every field that needs a change (an unknown one, a missing one, the reason), so a missing reason never hides the rest.
+    const fields: Record<string, string> = {};
+    if (wantsReason && !notObject) {
+      if (bodySchema) { const r = bodySchema.safeParse(req.body); if (!r.success) Object.assign(fields, fieldsOf(r.error)); }
+      if (tooLong) fields.reason = `A reason is at most ${REASON_MAX} characters.`;
+      else if (!reason) fields.reason = `This needs a written reason (up to ${REASON_MAX} characters).`;
+      else delete fields.reason;   // the guard's reading of the reason (cleaned, counted by character) stands for it
+    }
+    const code = missing.length ? "MISSING_PERMISSION" : stale ? "STEP_UP_REQUIRED" : badId ? "NOT_FOUND" : notObject ? "INVALID"
+      : !Object.keys(fields).length ? null : tooLong ? "REASON_TOO_LONG" : wantsReason && !reason ? "REASON_REQUIRED" : "INVALID";
     // One line per call, allowed or refused, before the handler: a line that cannot be written stops the call (fail-closed).
     // An allowed change writes its own line instead, in the change's transaction (staff.ts).
     const change = this.reflector.getAllAndOverride<boolean>(SYSTEM_CHANGE, targets) === true;
@@ -119,9 +135,9 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     else await this.identity.audit({ staff, method: req.method, route, target, outcome: code ? "REFUSED" : "ALLOWED", code, reason: wantsReason || change ? reason : null, device });
     if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
     if (stale) problem(401, "Confirm it's you", `${STEP_UP_WORDS} This change needs a sign-in in the last 5 minutes.`, { code: "STEP_UP_REQUIRED" });   // the same test as the line's (review n3)
+    if (badId) problem(404, "Not found", "Not found.", { code: "NOT_FOUND" });
     if (notObject) problem(FIELD_ERROR_STATUS, "Check the details", "Send the details as one JSON object. Nothing was saved.", { code: "INVALID", fields: {} });
-    if (tooLong) problem(400, "Shorten the reason", `A reason is at most ${REASON_MAX} characters.`, { code: "REASON_TOO_LONG" });
-    if (code === "REASON_REQUIRED") problem(400, "Give a reason", `This needs a written reason (reason, up to ${REASON_MAX} characters).`, { code });
+    if (code) { const n = Object.keys(fields).length; problem(FIELD_ERROR_STATUS, "Check the details", `${n === 1 ? "One field needs" : `${n} fields need`} a change: ${Object.entries(fields).map(([k, v]) => `${k}: ${v}`).join(" ").slice(0, 600)} Nothing was saved.`, { code, fields }); }
     req.systemStaff = staff;
     return true;
   }

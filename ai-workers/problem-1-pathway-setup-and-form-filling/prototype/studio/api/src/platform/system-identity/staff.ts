@@ -12,7 +12,7 @@ import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { Db } from "../../core.ts";
-import { parseInput, strict } from "../http/input.ts";
+import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
 import { PlatformClock } from "../identity/port.ts";
 import { forbidden, problem, unauthorized } from "../identity/keys.ts";
 import { REASON_MAX, SYSTEM_ROLES, type SystemStaffContext } from "./keys.ts";
@@ -77,7 +77,8 @@ export class SystemStaffAccess {
   private static ownerRole(actor: SystemStaffContext, touched: boolean, reason: string | null) {
     if (!touched) return;
     if (!actor.roles.includes(OWNER)) forbidden("Only a Platform Owner gives or removes the Platform Owner role.", "OWNER_ONLY");
-    if (!reason) problem(400, "Give a reason", "Giving or removing the Platform Owner role needs a written reason.", { code: "REASON_REQUIRED" });
+    // R1.10 A4: the reason is a field (422 naming it), after the Owner-only check (who may, before what is sent).
+    if (!reason) problem(FIELD_ERROR_STATUS, "Give a reason", "Giving or removing the Platform Owner role needs a written reason.", { code: "REASON_REQUIRED", fields: { reason: "Giving or removing the Platform Owner role needs a written reason." } });
   }
   /** SA-7-25: the change would leave no active Owner. Through the API it is a second wall: the sender is an active Owner
    *  checked again under the lock and never the target, so two active Owners exist whenever it runs (review m2). */
