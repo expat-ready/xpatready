@@ -65,8 +65,9 @@ export async function recordFirmRead(tx: Tx, firmId: string, call: Call): Promis
 export async function recordCrossTenant(tx: Tx, scope: string, call: Call, filters: Record<string, string> = {}): Promise<void> {
   // Round 6 (Lead 15's ruling on #3209): through AuditPort as AUD-3c's firm-less kind, its cross_tenant.access pair; the
   // adapter writes today's row (platform audit workspace, OUR_STAFF, the request's correlation id) with its one attempt and
-  // its alarm. ourStaff() refuses first outside our staff's request, in this file's own words.
-  const { actor } = ourStaff();
+  // its alarm. ourStaff() refuses first outside our staff's request, in this file's own words, and that refusal raises the
+  // same one alert as a failed write (round 6, Lead 16: as before the line moved onto the port).
+  const { actor } = await writeAuditWithAlarm(async () => ourStaff(), { entity: ACCESS_ENTITY, entityKey: call.route.slice(0, 200) }, { attempts: 1 });
   await auditEvent.record(tx, { firmId: null, actor, action: "cross_tenant.access", entity: "plat_system_access", entityKey: call.route.slice(0, 200),
     summary: `ExpatReady staff read more than one firm's records: ${scope}.`, detail: { scope, method: call.method, route: call.route, ...filters }, before: null, after: null });   // a read: nothing before or after
 }

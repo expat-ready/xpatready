@@ -163,7 +163,7 @@ export const OUR_STAFF_PLATFORM_ENTITIES: ReadonlySet<string> = new Set(["plat_b
 export type AuditRequestContext = { actor?: string; actorType?: string; firmId?: string };
 /** AUD-3c: the refusals of the firm-less kind, shared by the real adapter and the fake. Returns the reason, or null. */
 export function ourStaffPlatformRefusal(e: z.output<typeof OurStaffPlatformEntry>, ctx: AuditRequestContext | undefined): string | null {
-  if (ctx?.actorType !== "OUR_STAFF") return "audit line refused: a firm-less platform.bypass line under an ourstaff: word is written only in a request our staff make";
+  if (ctx?.actorType !== "OUR_STAFF") return "audit line refused: a firm-less line under an ourstaff: word (platform.bypass or cross_tenant.access) is written only in a request our staff make";
   if (ctx.actor !== e.actor) return `audit line refused: the line names ${e.actor}, but this request is ${ctx.actor ?? "nobody"}'s`;
   if (ctx.firmId) return `audit line refused: this request or job acts for firm ${ctx.firmId}, so its line is that firm's, not a firm-less one`;
   return null;
@@ -173,7 +173,7 @@ export function ourStaffPlatformRefusal(e: z.output<typeof OurStaffPlatformEntry
 export interface AuditPort<Tx = unknown> {
   /** Records one line inside `tx`. Throws on a refused entry or a failed write, so the caller's transaction rolls back.
    *  A CaseEntry (AUD-1m: it names a workspace) is a case-side or configuration line; an OurStaffPlatformEntry (AUD-3c: firm
-   *  null, no workspace) is our staff's firm-less platform.bypass line; any other entry is an AuditEntry. */
+   *  null, no workspace) is our staff's firm-less line (platform.bypass or cross_tenant.access); any other entry is an AuditEntry. */
   record(tx: Tx, entry: AuditEntry | CaseEntry | OurStaffPlatformEntry): Promise<void>;
 }
 
@@ -187,7 +187,7 @@ export type FakeAudit = AuditPort<unknown> & {
   readonly entries: ReadonlyArray<z.output<typeof AuditEntry>>;
   /** AUD-1m: the case-side lines recorded, in order (kept apart: a case line is never read as a platform line). */
   readonly caseEntries: ReadonlyArray<z.output<typeof CaseEntry>>;
-  /** AUD-3c: our staff's firm-less platform.bypass lines recorded, in order. */
+  /** AUD-3c: our staff's firm-less lines recorded (platform.bypass and cross_tenant.access), in order. */
   readonly platformEntries: ReadonlyArray<z.output<typeof OurStaffPlatformEntry>>;
   /** How many records were refused by `failOn`. */
   readonly failures: number;

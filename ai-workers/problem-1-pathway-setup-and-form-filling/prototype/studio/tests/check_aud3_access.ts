@@ -62,11 +62,14 @@ const sysFeature = (await import("../api/src/features/platform-system-identity.t
 const holdsFeature = (await import("../api/src/features/platform-register-holds.ts")).default;
 const breachesFeature = (await import("../api/src/features/platform-register-breaches.ts")).default;   // round 5: PF-21c (#3185)
 const requestsFeature = (await import("../api/src/features/platform-register-requests.ts")).default;   // round 5: PF-21b part 3 (#3189)
+const consoleFeature = (await import("../api/src/features/platform-system-console.ts")).default;   // round 6: PF-17 part 1 (#3155)
+const signupLinksFeature = (await import("../api/src/features/platform-signup-links.ts")).default;   // round 6: R1.90 (#3040)
 const accessFeature = (await import("../api/src/features/audit-access.ts")).default;
 const { ReadsFirm, ChangesFirm, NoFirmData } = await import("../api/src/platform/audit/access/declare.ts");
 const { assertFirmDataDeclared, recordCrossTenant, recordFirmRead, SystemAccessLines, FIRM_READ, CROSS_TENANT } = await import("../api/src/platform/audit/access/lines.ts");
 const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
 const port: Record<string, any> = await import("../ports/audit.ts");
+const { useAlerts } = await import("../api/src/platform/observability/alerts.ts");
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 wallUnscopedQueries();
 const pool = new WalledPool({ connectionString: appDatabaseUrl(urlOf(DB), {}), max: 6, options: "-c TimeZone=UTC" });
@@ -208,20 +211,27 @@ try {
   const reflector = new Reflector();
   ok("AUD-3 DW3 fail (start-up): a route our staff call with no firm-data declaration stops the start-up, naming it",
     await throwsLike(() => assertFirmDataDeclared([UndeclaredController], reflector), (e) => /UndeclaredController\.thing \(\/api\/system\/aud3-undeclared\)/.test(String(e))));
-  ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's holds and requests, PF-21c's breaches, PF-25w's)",
-    await throwsLike(() => assertFirmDataDeclared([...sysFeature.controllers, ...holdsFeature.controllers, ...breachesFeature.controllers, ...requestsFeature.controllers, Aud3TestController], reflector), () => true) === false);
+  ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's holds and requests, PF-21c's breaches, PF-17's firms, R1.90's sign-up links)",
+    await throwsLike(() => assertFirmDataDeclared([...sysFeature.controllers, ...holdsFeature.controllers, ...breachesFeature.controllers, ...requestsFeature.controllers, ...consoleFeature.controllers, ...signupLinksFeature.controllers, Aud3TestController], reflector), () => true) === false);
   ok("AUD-3 DW3 fail (start-up, round 2, breaker 4): a handler inherited from a base class with no declaration stops the start-up too",
     await throwsLike(() => assertFirmDataDeclared([InheritedController], reflector), (e) => /InheritedController\.thing \(\/api\/system\/aud3-inherited\)/.test(String(e))));
   ok("AUD-3 DW3 fail (start-up, review m1): a read that answers through @Res() stops the start-up (its answer would leave before its line)",
     await throwsLike(() => assertFirmDataDeclared([RawReadController], reflector), (e) => /RawReadController\.thing .*answers through @Res\(\)/.test(String(e))));
   // Review m4: an opt-out is visible in review. Every route on main that declares @NoFirmData, by name; a new one fails here.
   const { FIRM_DATA } = await import("../api/src/platform/audit/access/declare.ts");
-  const optOuts = [...sysFeature.controllers, ...holdsFeature.controllers, ...breachesFeature.controllers, ...requestsFeature.controllers].flatMap((c: any) => Object.getOwnPropertyNames(c.prototype).filter((k) => k !== "constructor" && (Reflect.getMetadata(FIRM_DATA, c.prototype[k]) as { kind?: string } | undefined)?.kind === "none").map((k) => `${c.name}.${k}`)).sort();
-  ok("AUD-3 DW3 (review m4, round 5): the @NoFirmData routes are exactly PF-4s's who-am-I and six staff-access routes, and the changes to ExpatReady's own breach and request registers (a new opt-out must be added here, in review)",
-    JSON.stringify(optOuts) === JSON.stringify(["BreachController.change", "BreachController.fromAlert", "BreachController.open", "DataRequestController.log", "DataRequestController.move", "SystemIdentityController.me", "SystemStaffController.deactivate", "SystemStaffController.endSessions", "SystemStaffController.invite", "SystemStaffController.reactivate", "SystemStaffController.resetMfa", "SystemStaffController.roles"]), optOuts);
+  const optOuts = [...sysFeature.controllers, ...holdsFeature.controllers, ...breachesFeature.controllers, ...requestsFeature.controllers, ...consoleFeature.controllers, ...signupLinksFeature.controllers].flatMap((c: any) => Object.getOwnPropertyNames(c.prototype).filter((k) => k !== "constructor" && (Reflect.getMetadata(FIRM_DATA, c.prototype[k]) as { kind?: string } | undefined)?.kind === "none").map((k) => `${c.name}.${k}`)).sort();
+  ok("AUD-3 DW3 (review m4, round 5): the @NoFirmData routes are exactly PF-4s's who-am-I and six staff-access routes, the changes to ExpatReady's own breach and request registers, and the private sign-up link (a new opt-out must be added here, in review)",
+    JSON.stringify(optOuts) === JSON.stringify(["BreachController.change", "BreachController.fromAlert", "BreachController.open", "DataRequestController.log", "DataRequestController.move", "SignupLinkController.make", "SystemIdentityController.me", "SystemStaffController.deactivate", "SystemStaffController.endSessions", "SystemStaffController.invite", "SystemStaffController.reactivate", "SystemStaffController.resetMfa", "SystemStaffController.roles"]), optOuts);
   ok("AUD-3 DW3 fail: a declaration in no plain words is refused", await throwsLike(() => ReadsFirm("1-bad"), () => true) && await throwsLike(() => ChangesFirm(""), () => true));
 
   // --------------------------------------------------------------------------------------- DW4: fail-closed
+  // Round 6 (Lead 16): the outside refusal raises one alert with the line's ids, as before the line moved onto the port.
+  const outsideAlerts: { kind: string; detail: any }[] = [];
+  const wasA = useAlerts({ raise: async (kind: string, detail: any) => { outsideAlerts.push({ kind, detail }); return { raised: true }; } } as never);
+  const outsideRefused = await throwsLike(() => owner.$transaction((tx) => recordCrossTenant(tx as never, "Sample scope", { method: "GET", route: "/api/system/register/holds" })), (e) => /only in a request our staff make/.test(String(e)));
+  useAlerts(wasA);
+  ok("AUD-3 DW4 fail (round 6, Lead 16): a cross_tenant.access line refused outside our staff's request raises one audit_write_failed alert, entity plat_system_access",
+    outsideRefused && outsideAlerts.length === 1 && outsideAlerts[0].kind === "audit_write_failed" && outsideAlerts[0].detail.entity === "plat_system_access", outsideAlerts);
   ok("AUD-3 DW4 fail: the writers refuse outside our staff's request (no request at all)",
     await throwsLike(() => owner.$transaction((tx) => recordFirmRead(tx as never, firmA, { method: "GET", route: "/x" })), (e) => /only in a request our staff make/.test(String(e)))
     && await throwsLike(() => owner.$transaction((tx) => recordCrossTenant(tx as never, "Sample scope", { method: "GET", route: "/x" })), (e) => /only in a request our staff make/.test(String(e))));
@@ -247,6 +257,28 @@ try {
   const refusedFirmStaff = await fakeRefuses(goodCross);
   ok("AUD-3 DW4 (round 6): the port's fake keeps the good cross_tenant.access pair in our staff's context and refuses alike: both crossings, the three bad details, the kind's entity on a firm line, a firm staff context",
     fake.platformEntries.length === 1 && refusedLikewise && refusedFirmStaff && fake.platformEntries.length === 1);
+  // Round 6 (Lead 16, review m2): a cross_tenant.access write that fails at the database answers 500 with no data, after
+  // exactly one try (a sequence the trigger bumps before refusing: nextval survives the rollback), and raises exactly one
+  // audit_write_failed alert with the line's own ids.
+  const crossAlerts: { kind: string; detail: any }[] = [];
+  sql(`create sequence aud3_tries; create function aud3_refuse_cross() returns trigger language plpgsql as $$ begin perform nextval('aud3_tries'); raise exception 'aud3 test: refused'; end $$;
+       create trigger aud3_refuse_cross before insert on audit_event for each row when (new.action = '${CROSS_TENANT}') execute function aud3_refuse_cross()`);
+  const wasB = useAlerts({ raise: async (kind: string, detail: any) => { crossAlerts.push({ kind, detail }); return { raised: true }; } } as never);
+  // The failure's metric line carries its tries (a retry inside the aborted transaction never reaches the trigger again, so
+  // the sequence alone cannot count a second try): read from the process's own log lines during the call.
+  const logLines: string[] = [], realOut = process.stdout.write.bind(process.stdout), realErr = process.stderr.write.bind(process.stderr);
+  (process.stdout as any).write = (chunk: any, ...rest: any[]) => { logLines.push(String(chunk)); return realOut(chunk, ...rest); };
+  (process.stderr as any).write = (chunk: any, ...rest: any[]) => { logLines.push(String(chunk)); return realErr(chunk, ...rest); };
+  const crossFailed = await call(base, "GET", "/api/system/register/holds", { token: ownerT });
+  (process.stdout as any).write = realOut; (process.stderr as any).write = realErr;
+  useAlerts(wasB);
+  const failLines = logLines.flatMap((l) => l.split("\n")).filter((l) => l.includes('"event":"audit_write_failed"')).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  const tries = Number(sql(`select last_value from aud3_tries`)), triedAtAll = sql(`select is_called from aud3_tries`) === "t";
+  sql(`drop trigger aud3_refuse_cross on audit_event; drop function aud3_refuse_cross(); drop sequence aud3_tries`);
+  ok("AUD-3 DW4 pass (round 6, Lead 16): a cross_tenant.access line refused by the database answers 500 with no holds sent, after exactly one try, and raises exactly one audit_write_failed alert (entity plat_system_access, the route as key, masked as not_an_id)",
+    crossFailed.status === 500 && crossFailed.body?.holds === undefined && triedAtAll && tries === 1 && crossAlerts.length === 1 && crossAlerts[0].kind === "audit_write_failed"
+    && crossAlerts[0].detail.entity === "plat_system_access" && crossAlerts[0].detail.entityKey === "not_an_id"
+    && failLines.length === 1 && failLines[0].attempts === 1 && failLines[0].entity === "plat_system_access", { status: crossFailed.status, tries, crossAlerts, failLines });
   // A line that cannot be written: forced at the database for one call, by a trigger refusing the read line's action, then dropped.
   sql(`create function aud3_refuse() returns trigger language plpgsql as $$ begin raise exception 'aud3 test: refused'; end $$;
        create trigger aud3_refuse before insert on audit_event for each row when (new.action = '${FIRM_READ}') execute function aud3_refuse()`);

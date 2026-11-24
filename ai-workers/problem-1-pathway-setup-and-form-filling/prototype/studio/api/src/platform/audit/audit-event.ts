@@ -70,11 +70,12 @@ export class AuditEventAdapter implements AuditPort<Tx> {
     }, ids, { attempts: 1 });
   }
 
-  /** AUD-3c (Lead 10's ruling on #3040): our own staff's firm-less platform.bypass line. Its own narrow kind, never a
+  /** AUD-3c (Lead 10's ruling on #3040; Lead 15's on #3209): our own staff's firm-less line, one of two fixed pairs
+   *  (platform.bypass / plat_bypass_use; cross_tenant.access / plat_system_access). Its own narrow kind, never a
    *  case-side line (recordCase's refusal of our staff stays as AUD-3a wrote it): firm and case null, the platform audit
    *  workspace (never reset, P-571 (1)), OUR_STAFF, the request's correlation id. Refused (ports/audit.ts
    *  ourStaffPlatformRefusal): outside our staff's request, under any actor but the request's own, in a request or job
-   *  that acts for a firm; the schema refuses any firm or case id, a workspace, another action or entity. One alert with
+   *  that acts for a firm; the schema refuses any firm or case id, a workspace, a crossed pair or another action or entity. One alert with
    *  ids only and the error thrown on any failure, one try (fail-closed, P-607 (3)). */
   private async recordOurStaffPlatform(tx: Tx, entry: OurStaffPlatformEntry): Promise<void> {
     const raw = (entry ?? {}) as Partial<Record<"entity" | "entityKey", unknown>>;
