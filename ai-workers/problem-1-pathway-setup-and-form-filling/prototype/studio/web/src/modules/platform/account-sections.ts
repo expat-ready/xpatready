@@ -7,7 +7,6 @@ export const ACCOUNT_SECTIONS: AccountSection[] = [
   { label: "Profile", path: "/account", key: null },
   { label: "Licence", path: "/account/licence", key: null },   // PF-6 part 2b: everyone's own
   { label: "Availability", path: "/account/availability", key: null },   // FO-3st2: own hours need no key (AG-4-62 §8)
-  { label: "Video", path: "/account/video", key: null },   // FO-3v part 1: own video link and choice, no key (AG-4-58 rule 5, AG-16-73)
   { label: "Notifications", path: "/account/notifications", key: "agent/notification:manage-preferences" },   // PF-18s part 3: everyone's own (all six roles hold the key)
   { label: "Team", path: "/platform/team", key: "agent/staff:manage" },   // PF-6 part 2a
   { label: "Licences", path: "/platform/licences", key: "agent/firm-credential:manage" },   // PF-6 part 2b

@@ -5,7 +5,6 @@
 // FO-3st1: the staff Bookings area (Calendar; a booking by its link), inside PF-6's PlatformFrame. FO-3st3: its Settings → Booking types; FO-3st3b: Timings.
 import type { ModuleRoute } from "@/modules";
 import { AvailabilityPage } from "./booking/availability/availability-page";
-import { VideoPage } from "./video/video-page";
 import { BookingsPage } from "./booking/calendar/calendar-page";
 import { TimingsPage } from "./booking/settings/timings-page";
 import { BookingTypesPage } from "./booking/settings/types-page";
@@ -33,7 +32,6 @@ export const routes: ModuleRoute[] = [
   { path: "/front-office/settings/retainer-templates", element: <RetainerTemplatesPage /> },   // FO-5s part 2: Settings › Retainer templates (S1)
   { path: "/front-office/settings/web-form", element: <WebFormSettingsPage /> },   // FO-4w: Settings › Web form (Owner, Admin)
   { path: "/account/availability", element: <AvailabilityPage /> },   // FO-3st2: My account → Availability
-  { path: "/account/video", element: <VideoPage /> },   // FO-3v part 1: My account → Video
   { path: "/front-office/bookings", element: <BookingsPage /> },
   { path: "/front-office/bookings/:id", element: <BookingsPage /> },
   { path: "/front-office/settings/booking-types", element: <BookingTypesPage /> },   // FO-3st3 part 3a: Settings → Booking types

@@ -64,7 +64,6 @@ const { linkFor, VIDEO_WORDS } = await import("../api/src/front-office/booking/v
 const { wallToUtc } = await import("../api/src/front-office/booking/slots.ts");
 const { copyFirmHoursTo } = await import("../api/src/front-office/booking-seed.ts");
 const feature = (await import("../api/src/features/front-office-video.ts")).default;
-const sections = (await import("../web/src/modules/platform/account-sections.ts")).ACCOUNT_SECTIONS;
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, options: "-c TimeZone=UTC" }) });
 const at = (s: string) => { const [d, t] = s.split(" "); const [y, m, dd] = d.split("-").map(Number); const [h, mi] = t.split(":").map(Number); return wallToUtc(y, m, dd, h * 60 + mi, TZ)!; };
@@ -114,8 +113,7 @@ try {
   const mailsOf = (bookingId: string, to = "lee@client.example") => mail.inbox(to).filter((m) => m.attachments?.some((a) => new TextDecoder().decode(a.bytes).includes(bookingId)));
   const ics = (m: { attachments?: { bytes: Uint8Array }[] }) => new TextDecoder().decode(m.attachments![0].bytes).replace(/\r\n /g, "");
   const prefRows = () => db.foVideoPref.count();
-  ok("FO-3v set-up: the feature file registers the Video routes; My account lists Video for everyone (no key)",
-    feature.controllers?.includes(MyVideoController) && sections.some((s) => s.label === "Video" && s.path === "/account/video" && s.key === null), sections.filter((s) => s.label === "Video"));
+  ok("FO-3v set-up: the feature file registers the Video routes (My account → Video's panel is part 1b, DW7)", feature.controllers?.includes(MyVideoController));
 
   // ---------------------------------------------------------------------------------------- DW1: the link's shape
   const empty = await me("GET", CO);
