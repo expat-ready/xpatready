@@ -146,8 +146,11 @@ try {
   const opened = await j("GET", `/api/system/firms/${A}`, undefined, tOur);
   ok("J-93 W3 (parts missing: PF-17, PF-4s part 1): our Platform Owner opens firm A in the console (GET /api/system/firms/:id)", opened.status === 200 && (opened.body?.id === A || opened.body?.firm?.id === A), opened.status);
   const afterA = await oursLines(tA), afterB = await oursLines(tB);
-  ok("J-93 W3 (parts missing: AUD-3, PF-17): opening firm A writes one more line firm A's Owner sees as ExpatReady staff access (actor type OUR_STAFF)",
-    afterA.lines.length === beforeA.lines.length + 1 && afterA.lines.every((l) => l.advanced?.actorType === "OUR_STAFF"), { before: beforeA.lines.length, after: afterA.lines.length });
+  // Since #3209 (AUD-3 part 1) one read writes two lines under one correlation id, by design: PF-12's audited bypass use
+  // (platform.bypass) and AUD-3's platform.system.firm_read (qa 6, 24 Nov; as R1.87's probe).
+  const newActions = afterA.lines.slice(0, afterA.lines.length - beforeA.lines.length).map((l) => String((l as { action?: string }).action ?? "")).sort().join(",");
+  ok("J-93 W3 (AUD-3 part 1 #3209 and PF-17, on main): opening firm A writes the lines firm A's Owner sees as ExpatReady staff access (actor type OUR_STAFF): its platform.system.firm_read line and PF-12's platform.bypass line",
+    afterA.lines.length === beforeA.lines.length + 2 && newActions === "platform.bypass,platform.system.firm_read" && afterA.lines.every((l) => l.advanced?.actorType === "OUR_STAFF"), { before: beforeA.lines.length, after: afterA.lines.length, newActions });
   ok("J-93 W3 fail: firm B's Owner reads no line for our opening of firm A (another firm's access line never appears; vacuous until PF-17 and AUD-3 merge: no line is written today)", afterB.status === 200 && afterB.lines.length === beforeB.lines.length, { before: beforeB.lines.length, after: afterB.lines.length });
   const actx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   await actx.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tA);
