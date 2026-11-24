@@ -16,7 +16,7 @@
 //      a Sign button, and signing there marks the client signed (CLIENT_SIGNED) through the copy's own webhook door;
 //      after that the link answers "signed", sends no code and opens no session. The firm signer's link (staff route,
 //      `agent/retainer:show`, the retainer's representative only, after every client) opens the same page.
-//   F  The door is rate limited per address (429).
+//   F  The door is rate limited per address and token (429), so one caller cannot block other clients' links.
 // Stand-ins, said: the prospects, the conflict check and the ended requests (B) are written by SQL; the firm setting in D
 // is written by SQL into platform_firm_setting (the Owner's switch has no route yet: note question 6). Sample values only;
 // US$0, no model call, no live mail, no vendor call. Legal points (e-signature identity): Unconfirmed: no counsel.
@@ -49,12 +49,13 @@ const TOKEN_SHAPE = /^[0-9a-f]{32}\.[A-Za-z0-9_-]{43}$/;
 type Ans = { status: number; body: any; text: string; cookies: string[] };   // eslint-disable-line @typescript-eslint/no-explicit-any -- answers read loosely, as the journeys do
 /** One browser for the API: its own cookie jar (the door's signing session is an http-only cookie). */
 const jar = () => {
-  const c = new Map<string, string>();
+  const c = new Map<string, { value: string; path: string }>();   // a real browser's rule: a cookie goes only to its Path and below
   const call = async (method: string, path: string, body?: unknown, token?: string, form?: FormData): Promise<Ans> => {
-    const headers: Record<string, string> = { ...(form ? {} : { "content-type": "application/json" }), ...(token ? { authorization: `Bearer ${token}` } : {}), ...(c.size ? { cookie: [...c].map(([k, v]) => `${k}=${v}`).join("; ") } : {}) };
+    const pathOnly = path.split("?")[0], send = [...c].filter(([, v]) => pathOnly === v.path || pathOnly.startsWith(v.path.endsWith("/") ? v.path : `${v.path}/`));
+    const headers: Record<string, string> = { ...(form ? {} : { "content-type": "application/json" }), ...(token ? { authorization: `Bearer ${token}` } : {}), ...(send.length ? { cookie: send.map(([k, v]) => `${k}=${v.value}`).join("; ") } : {}) };
     const r = await fetch(`${BASE}${path}`, { method, redirect: "manual", headers, body: form ?? (body === undefined ? undefined : JSON.stringify(body)) });
     const cookies = r.headers.getSetCookie();
-    for (const s of cookies) { const [kv] = s.split(";"); const i = kv.indexOf("="); if (i > 0) c.set(kv.slice(0, i).trim(), kv.slice(i + 1).trim()); }
+    for (const s of cookies) { const [kv, ...attrs] = s.split(";"); const i = kv.indexOf("="); const p = attrs.map((a) => a.trim()).find((a) => /^path=/i.test(a))?.slice(5) || "/"; if (i > 0) c.set(kv.slice(0, i).trim(), { value: kv.slice(i + 1).trim(), path: p }); }
     const text = await r.text(); let b: unknown = null; try { b = JSON.parse(text); } catch { /* not JSON */ }
     return { status: r.status, body: b, text, cookies };
   };
@@ -162,10 +163,15 @@ try {
   ok("FO-6 door C (part 4b): POST …/code mails the client a 6-digit code through MailPort; only its sha256 is stored", ask.status < 300 && /^\d{6}$/.test(code) && sql(`select count(*) from fo_signer where request_id = '${A.req}' and code_sha256 = '${sha(code)}'`) === "1", { ask: brief(ask), gotCode: !!code });
   const verify = await c1("POST", door(TA || "none", "/code/verify"), { code });
   const cookie = verify.cookies.find((x) => /httponly/i.test(x)) ?? "";
-  ok("FO-6 door C (part 4b): the right code starts a signing session: an http-only cookie on the door's path, Sample 30 minutes",
-    verify.status < 300 && !!cookie && new RegExp(`path=/api/public/sign/${TA.replace(/[.]/g, "\\.")}`, "i").test(cookie) && /max-age=1800|expires=/i.test(cookie), { verify: brief(verify), cookie });
+  ok("FO-6 door C (part 4b): the right code starts a signing session: an http-only, SameSite=Strict cookie on exactly the door's path, Sample 30 minutes",
+    verify.status < 300 && !!cookie && new RegExp(`path=/api/public/sign/${TA.replace(/[.]/g, "\\.")}(;|$)`, "i").test(cookie) && /samesite=strict/i.test(cookie) && /max-age=1800|expires=/i.test(cookie), { verify: brief(verify), cookie });
   const consent = await c1("POST", door(TA || "none", "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion });
   ok("FO-6 door C (part 4b): consent is recorded once with its text version (AG-5-20)", consent.status < 300 && sql(`select count(*) from fo_signer where request_id = '${A.req}' and role = 'CLIENT' and consent_text_version = '${String(live.body?.consentTextVersion ?? "none")}'`) === "1", brief(consent));
+  const twice = await c1("POST", door(TA || "none", "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion });
+  ok("FO-6 door C (part 4b): a second consent changes nothing (consent is written once; part 1's trigger)", twice.status < 300 && sql(`select count(*) from fo_signer where request_id = '${A.req}' and role = 'CLIENT' and consented_at is not null`) === "1", brief(twice));
+  const doorLines = Number(sql(`select count(*) from audit_event where firm_id = '${firmA}' and actor = 'system:signing-door' and detail::text like '%${A.req}%'`) || "0");
+  ok("FO-6 door C (part 4b): each door write so far (code sent, session started, consent) wrote its audit line (actor system:signing-door), never the code or token",
+    doorLines >= 3 && sql(`select count(*) from audit_event where firm_id = '${firmA}' and (detail::text like '%${code || "none"}%' or detail::text like '%${TA ? TA.split(".")[1] : "none"}%')`) === "0", { doorLines });
   const session = await c1("GET", door(TA || "none", "/session"));
   ok("FO-6 door C (part 4b): GET …/session answers the adapter's embedded link", session.status === 200 && typeof session.body?.url === "string" && session.body.url.length > 0, brief(session));
   const fwd = jar(), fwdSession = await fwd("GET", door(TA || "none", "/session")), fwdConsent = await fwd("POST", door(TA || "none", "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion });
@@ -173,11 +179,12 @@ try {
   const again = await c1("GET", door(TA || "none")), again2 = await c1("GET", door(TA || "none", "/session"));
   ok("FO-6 door C (part 4b): the link reopens until signed (AG-5-21): state 200 and the session again", again.status === 200 && again2.status === 200, [brief(again), brief(again2)]);
   // the lock: a seeded live request, six wrong codes
-  const L = seeded("LIVE"), lj = jar(); await lj("POST", door(L.client, "/code"), {});
-  const wrong: number[] = []; for (let i = 0; i < 6; i++) wrong.push((await lj("POST", door(L.client, "/code/verify"), { code: "000000" })).status);
-  const afterLock = await lj("POST", door(L.client, "/code/verify"), { code: "000000" });
-  ok("FO-6 door C (part 4b): the sixth wrong code locks the link for 15 minutes (423, Sample); further tries stay locked",
-    wrong.slice(0, 5).every((s) => s === 422) && wrong[5] === 423 && afterLock.status === 423 && /15 minutes/.test(afterLock.text) && sql(`select count(*) from fo_signer where request_id = '${L.rq}' and role = 'CLIENT' and locked_until > now() + interval '14 minutes'`) === "1", { wrong, after: brief(afterLock) });
+  const L = seeded("LIVE"), lj = jar(), lBefore = (await inbox(L.p.email)).length; await lj("POST", door(L.client, "/code"), {});
+  const right = await codeIn(L.p.email, lBefore);
+  const wrong: number[] = []; for (let i = 0; i < 6; i++) wrong.push((await lj("POST", door(L.client, "/code/verify"), { code: right === "000000" ? "111111" : "000000" })).status);
+  const afterLock = await lj("POST", door(L.client, "/code/verify"), { code: right || "000000" });
+  ok("FO-6 door C (part 4b): the sixth wrong code locks the link for 15 minutes (423, Sample); even the right code is then refused",
+    !!right && wrong.slice(0, 5).every((s) => s === 422) && wrong[5] === 423 && afterLock.status === 423 && afterLock.cookies.length === 0 && /15 minutes/.test(afterLock.text) && sql(`select count(*) from fo_signer where request_id = '${L.rq}' and role = 'CLIENT' and locked_until > now() + interval '14 minutes'`) === "1", { wrong, after: brief(afterLock) });
 
   // ---------------------------------------------------------------------------------------------- D the code switched off
   const off = trySql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${firmA}', 'front-office.signing.email_code', 'false', 'system:test') on conflict (firm_id, key) do update set value = 'false' returning key`);
@@ -185,6 +192,9 @@ try {
   const dState = await dj("GET", door(TD || "none")), dConsent = await dj("POST", door(TD || "none", "/consent"), { agree: true, consentTextVersion: dState.body?.consentTextVersion }), dSession = await dj("GET", door(TD || "none", "/session"));
   ok("FO-6 door D (part 4a setting, 4b door): with the firm's code switched off the state says no code is needed, the session starts at consent, and no code is mailed",
     !!off && dState.body?.codeRequired === false && dConsent.status < 300 && dConsent.cookies.some((x) => /httponly/i.test(x)) && dSession.status === 200 && (await inbox(PD.email)).length === dBefore, { setting: off, state: brief(dState), consent: brief(dConsent), session: brief(dSession), req: D.req });
+  const d2 = jar(), d2Consent = await d2("POST", door(TD || "none", "/consent"), { agree: true, consentTextVersion: dState.body?.consentTextVersion }), d2Session = await d2("GET", door(TD || "none", "/session"));
+  ok("FO-6 door D (part 4b; note question 2, as recommended): with the code off a second browser's consent starts its own session without writing consent again (a bearer link until signed), and replaces the first browser's session",
+    d2Consent.status < 300 && d2Session.status === 200 && sql(`select count(*) from fo_signer where request_id = '${D.req || randomUUID()}' and role = 'CLIENT' and consented_at is not null`) === "1" && [401, 403].includes((await dj("GET", door(TD || "none", "/session"))).status), { consent: brief(d2Consent), session: brief(d2Session) });
   trySql(`delete from platform_firm_setting where firm_id = '${firmA}' and key = 'front-office.signing.email_code' returning key`);
 
   // ---------------------------------------------------------------------------------------------- E the stand-in signing page and the firm signer
@@ -198,25 +208,32 @@ try {
     const signed = onCopy && await until(async () => sql(`select status from fo_signature_request where id = '${A.req}'`) === "CLIENT_SIGNED", 15_000);
     ok("FO-6 door E (part 4c): signing on the stand-in page marks the client signed through the copy's webhook door: the request reads CLIENT_SIGNED", signed, { request: A.req ? sql(`select status from fo_signature_request where id = '${A.req}'`) : "none" });
     const s1 = await c1("GET", door(TA || "none")), s2 = await c1("POST", door(TA || "none", "/code"), {}), s3 = await c1("GET", door(TA || "none", "/session"));
-    ok("FO-6 door E (part 4b+4c): after signing the link answers \"signed\" in words, sends no code and opens no session (AG-5-21)",
-      signed && s1.status === 200 && /signed/i.test(s1.text) && !personal(s1, PA) && s2.status >= 400 && s3.status >= 400, [brief(s1), s2.status, s3.status]);
+    ok("FO-6 door E (part 4b+4c): after signing the link answers \"already signed\" or \"has been signed\" in words (j_61's words), sends no code and opens no session (AG-5-21)",
+      signed && s1.status === 200 && /already signed|has been signed/i.test(s1.text) && !personal(s1, PA) && s2.status >= 400 && s3.status >= 400, [brief(s1), s2.status, s3.status]);
     // the firm signer's link: not the representative → refused; the representative → the page
-    const other = sql(`select coalesce((select s.email from platform_staff s join platform_role_grant g on g.staff_id = s.id join platform_role_permission p on p.role = g.role where s.firm_id = '${firmA}' and s.id <> '${ownerId}' and p.permission_key = 'agent/retainer:show' limit 1), '')`);
+    // A Sample CASE_OFFICER of firm A, not the representative, who sees every prospect (EVERYONE_SEES_ALL on, a stand-in by SQL), so the refusal is the representative check's own.
+    trySql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${firmA}', 'platform.everyone_sees_all', 'true', 'system:test') on conflict (firm_id, key) do update set value = 'true' returning key`);
+    const other = sql(`select coalesce((select s.email from platform_staff s join platform_role_grant g on g.staff_id = s.id where s.firm_id = '${firmA}' and s.id <> '${ownerId}' and g.role::text = 'CASE_OFFICER' order by s.actor_id limit 1), '')`);
     const otherTok = other ? (await jar()("POST", "/api/platform/session/local", { firmKey: "sample-firm", email: other, secondStep: true })).body?.token as string | undefined : undefined;
-    const notRep = otherTok ? await staffApi("POST", `/api/front-office/retainers/${A.retainerId}/firm-signing-link`, {}, otherTok) : null;
-    ok("FO-6 door E (part 4c): a staff member who may read the retainer but is not its representative cannot get the firm signer's link (403)", notRep?.status === 403, notRep ? brief(notRep) : "no other staff with agent/retainer:show");
-    const rep = await staffApi("POST", `/api/front-office/retainers/${A.retainerId}/firm-signing-link`, {}, tok);
+    const firmBody = { consent: true, consentTextVersion: live.body?.consentTextVersion };   // the firm signer consents too (AG-5-25; part 3 refuses a signature without it)
+    const notRep = otherTok ? await staffApi("POST", `/api/front-office/retainers/${A.retainerId}/firm-signing-link`, firmBody, otherTok) : null;
+    ok("FO-6 door E (part 4c): a case officer who may read the retainer but is not its representative cannot get the firm signer's link (403 NOT_THE_REPRESENTATIVE)", notRep?.status === 403 && notRep.body?.code === "NOT_THE_REPRESENTATIVE", notRep ? brief(notRep) : "no Sample case officer");
+    const noConsent = await staffApi("POST", `/api/front-office/retainers/${A.retainerId}/firm-signing-link`, {}, tok);
+    ok("FO-6 door E (part 4c): the representative's link without consent is refused (422), nothing recorded", noConsent.status === 422 && sql(`select count(*) from fo_signer where request_id = '${A.req || randomUUID()}' and role = 'FIRM' and consented_at is not null`) === "0", brief(noConsent));
+    const rep = await staffApi("POST", `/api/front-office/retainers/${A.retainerId}/firm-signing-link`, firmBody, tok);
     const repUrl = String(rep.body?.url ?? "");
     if (repUrl && new URL(repUrl, BASE).origin === new URL(BASE).origin) { await pg.goto(new URL(repUrl, BASE).toString()); await pg.getByRole("button", { name: /^sign/i }).first().click({ timeout: 10_000 }).catch(() => undefined); }
     const done = await until(async () => sql(`select status from fo_signature_request where id = '${A.req}'`) === "SIGNED", 15_000);
-    ok("FO-6 door E (part 4c): the representative's link opens the same page and signs last: the request reads SIGNED (part 3 stores the files)", rep.status === 200 && done, { link: brief(rep), request: A.req ? sql(`select status from fo_signature_request where id = '${A.req}'`) : "none" });
+    ok("FO-6 door E (part 4c): the representative's link (with consent, its text version recorded) opens the same page and signs last: the request reads SIGNED (part 3 stores the files)", rep.status === 200 && done, { link: brief(rep), request: A.req ? sql(`select status from fo_signature_request where id = '${A.req}'`) : "none" });
     await ctx.close();
   } finally { await browser.close(); }
 
   // ---------------------------------------------------------------------------------------------- F rate limited
-  const rj = jar(), statuses: number[] = [];
-  for (let i = 0; i < 150; i++) statuses.push((await rj("GET", door(`${firmA.replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`))).status);
-  ok("FO-6 door F (part 4b): the door is rate limited per address: a burst of 150 tries meets 429", statuses.includes(429) && statuses.every((s) => s === 404 || s === 429), { first429: statuses.indexOf(429) });
+  const rj = jar(), statuses: number[] = [], hot = `${firmA.replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`;
+  for (let i = 0; i < 60; i++) statuses.push((await rj("GET", door(hot))).status);
+  const elsewhere = await jar()("GET", door(TD || "none"));
+  ok("FO-6 door F (part 4b): the door is rate limited per address and token (Sample 30 a minute): a burst of 60 on one token meets 429, while another link from the same address still answers",
+    statuses.includes(429) && statuses.every((s) => s === 404 || s === 429) && elsewhere.status !== 429, { first429: statuses.indexOf(429), elsewhere: elsewhere.status });
 } catch (e) {
   ok("FO-6 door: the walk finished without an error", false, String((e as Error)?.stack ?? e).slice(0, 400));
 }
