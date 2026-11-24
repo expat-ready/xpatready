@@ -130,6 +130,18 @@ try {
   ok("FO-6d S1 pass: the uploaded file is kept with its sha256, the prospect named, and one audit line in the send's transaction",
     sql(`select sha256 || ':' || prospect_id || ':' || (file_key like 'signing/documents/%/original.pdf') from fo_signing_document where id = (select document_id from fo_signature_request where id = '${Q1}')`) === `${sha(PDF)}:${PRO}:true`
       && sql(`select (select xmin::text from fo_signature_request where id = '${Q1}') = (select xmin::text from audit_event where entity_key = '${Q1}' and action = 'signing.request_sent')`) === "t");
+  // Part 3 (FO-6 part 4's door): after the commit each client signer gets "Please sign" once, with their own link.
+  const please = (q?: string) => mail.sent.filter((m) => m.templateKey === "signing.please_sign" && (!q || m.idempotencyKey?.startsWith(`signing:${q}:`)));
+  const linkTo = (to: string, q: string) => please(q).filter((m) => m.to === to).map((m) => /\/sign\/([^\s/]+)/.exec(m.text ?? "")?.[1] ?? "");
+  const [lb, lc] = [linkTo("bea.fo6d@example.com", Q1), linkTo("cy.fo6d@example.com", Q1)], secret = (lb[0] ?? "").split(".")[1] || "no-link";
+  const rowSha = (person: string) => sql(`select link_token_sha256 from fo_signer where request_id = '${Q1}' and person_id = '${person}'`);
+  ok("FO-6d part 3 pass: each of the two people got one \"Please sign your document\" email with their own link to the door; the link's sha256 is their signer row's",
+    please(Q1).length === 2 && lb.length === 1 && lc.length === 1 && lb[0] !== lc[0] && sha(Buffer.from(lb[0])) === rowSha(PB) && sha(Buffer.from(lc[0])) === rowSha(PC)
+      && please(Q1).every((m) => /^Please sign your document with /.test(m.subject) && /\/sign\/[^\s/]+/.test(m.text ?? "")) && lb[0].startsWith(A.replace(/-/g, "") + "."), please(Q1).map((m) => [m.to, m.subject]));
+  ok("FO-6d part 3 fail: the plain link is kept nowhere: not in the signing tables, the audit lines or the request's read",
+    !!lb[0] && count("fo_signer", `link_token_sha256 in ('${lb[0]}', '${lc[0] ?? ""}')`) === 0 && count("audit_event", `detail::text like '%${secret}%' or summary like '%${secret}%'`) === 0
+      && !(await call("GET", `/api/front-office/signature-requests/${Q1}`, R.token)).text.includes(secret));
+  const pleaseAfterS1 = please().length;
   const r0 = requests(), d0 = docs();
   const outsider = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: `${PB},${PD}` }));
   const xfirm = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: `${PB},${PX}` }));
@@ -158,6 +170,7 @@ try {
   const noMail = await call("POST", "/api/front-office/signature-requests", R.token, form());
   sql(`update fo_person set email = 'cy.fo6d@example.com' where id = '${PC}'`);
   ok("FO-6d S2 fail: a signer with no email → 422 SIGNER_NO_EMAIL naming them (\"Add an email first\", AG-5-61 §12), nothing sent", noMail.status === 422 && noMail.body.code === "SIGNER_NO_EMAIL" && /Cy Sample.*Add an email first/.test(noMail.body.detail) && requests() === r0, noMail.text.slice(0, 200));
+  ok("FO-6d part 3 fail: a refused send (not on the prospect, firm B's person, not a PDF, a government form, protected, a signer with no email) emails nobody", please().length === pleaseAfterS1, please().length - pleaseAfterS1);
   const badTitles = await Promise.all(["Invoice \u0085 x", "Line\u2028two", "Invoice \u202efdp.exe", "\u200b"].map((t) => call("POST", "/api/front-office/signature-requests", R.token, form({ title: t }))));
   ok("FO-6d S2 fail: a title with a C1 control, a line separator, a direction override or nothing readable → 422 at the field, nothing stored or sent (break m1)",
     badTitles.every((x) => x.status === 422 && !!x.body.fields?.title) && requests() === r0 && docs() === d0, badTitles.map((x) => x.status));
@@ -219,6 +232,7 @@ try {
   const s5 = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, firm: other.id, title: "Countersigned letter (Sample)" }));
   const Q5 = String(s5.body?.id ?? "00000000-0000-4000-8000-000000000000"), pd5 = sql(`select provider_document_id from fo_signature_request where id = '${Q5}'`);
   ok("FO-6d S5 pass: a send with one firm person added has one client and one firm signer (order 2)", s5.status === 201 && sql(`select string_agg(role || ':' || sign_order, ',' order by sign_order) from fo_signer where request_id = '${Q5}'`) === "CLIENT:1,FIRM:2", s5.text.slice(0, 200));
+  ok("FO-6d part 3 pass: with a firm person added, only the client gets a link email; the firm signer's link is never emailed", please(Q5).length === 1 && please(Q5)[0].to === "bea.fo6d@example.com", please(Q5).map((m) => m.to));
   sql(`update fo_signer set consented_at = now(), consent_text_version = '${CONSENT}' where request_id = '${Q5}'`);
   const firm5 = sql(`select id from fo_signer where request_id = '${Q5}' and role = 'FIRM'`), client5 = sql(`select id from fo_signer where request_id = '${Q5}' and role = 'CLIENT'`);
   const [f5] = await signing.act(A, pd5, firm5, "signed"), firstFirm = await refusal(() => post(f5));
