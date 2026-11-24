@@ -19,6 +19,7 @@ import { IdentityCheckPanel } from "../compliance/identity/identity-panel";
 import { ConflictCheckPanel, ConvertConflictNote, useConflictList } from "../compliance/conflict/conflict-panel";
 import { FIXED_BY_A_CHECK } from "../compliance/conflict/contract";
 import { RetainerCard } from "../retainers/retainer-card";
+import { SignatureRequestsSection } from "../sign/signature-requests";
 /** AG-2-47 rule 16's words, shown before Convert while no retainer is signed (the same text the server answers with). */
 const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";
 type Act = "lost" | "convert" | "undo" | "value";
@@ -140,6 +141,7 @@ function ProspectBody({ id }: { id: string }) {
         </aside>
       </div>
       <RetainerCard prospectId={p.id} name={name} working={working} />   {/* FO-5s part 1 (S2) */}
+      <SignatureRequestsSection prospectId={p.id} name={name} lost={p.stage.kind === "LOST"} />   {/* FO-6ds */}
       <ConflictCheckPanel prospectId={p.id} corporate={p.type === "CORPORATE"} />
       {p.person ? <IdentityCheckPanel personId={p.person.id} name={p.person.name === "(no name)" ? "" : p.person.name} /> : null}
       <Panel open={open === "lost"} onOpenChange={(o) => start(o ? "lost" : null)} title="Mark lost" description={`${name}, ${p.number}. It leaves the board and is found in the List under Stage: Lost.`}
