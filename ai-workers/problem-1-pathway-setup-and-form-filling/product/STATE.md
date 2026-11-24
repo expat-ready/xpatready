@@ -18,7 +18,7 @@ updated: 2026-11-24 11:58 IST: Lead 23 (check c7d18bd1). **Hand-over: the last s
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A357 | 24 Nov ~11:55 (typed to Lead 23) | verify Linear, Qodo, CodeRabbit, Harness, Sentry; lean, cost? | research running; plan file, end |
+| A357 | 24 Nov ~11:55 (typed to Lead 23) | verify Linear, Qodo, CodeRabbit, Harness, Sentry; lean, cost? | research running; he pasted a GitLab/GCP six-tool plan to judge too; plan file, end |
 | A356 | 24 Nov, after 11:45 (relayed by Lead 22) | why not delivering, the bottleneck, unblock by hand, finish partials, one tool | ledger in the plan file, end; lanes woken; in progress |
 | A355 | 24 Nov before 11:17 (typed to Lead 22) | CodeRabbit: agent studies products, cost (US$100, trial), fit, alternatives, visual case study, then start using it | study done (page in the plan file); nothing installed; his answer on training next |
 | A354 | 24 Nov ~10:22 (typed to Lead 21) | Mac slow: check and optimize, all approvals; signed in to Stripe | measured; plan file; open |
@@ -31,7 +31,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A342, A343, A347 | 24 Nov | open rows, word for word at the end of the plan file | in force |
 | A331-A336, A341, A344, A345 | 23-24 Nov | in force as recorded (A341: P-814 since merged in #3314); rows word for word `history/STATE-2026-11-24-lead14-before-handover.md`; A331-A336 in full `history/STATE-2026-11-23-lead9-ask-rows-A331-A336.md` |
 | A337-A340 | 23 Nov | the night plan runs (in force); the audit reports' decisions are the morning questions; word for word `history/STATE-2026-11-24-lead13-A338-row.md` |
-| A318 | 23 Nov ~14:04 (pressed in Lead 3) | "Yes, pause": NO NEW PRODUCT LABELS until the tooling list lands, 21:00 IST latest; exceptions a main fix or qa Blocker; nothing dequeued | in force; gate self-labels, hold being checked; A317 and this in full: A316 file |
+| A318 | 23 Nov | in force; word for word in the plan file, end |
 | A308-A329 | 23 Nov | A328 in force (scope line above); A316 visual plan owed; the rest answered or recorded, rows word for word: `history/STATE-2026-11-23-lead9-ask-rows-A308-A329.md` |
 | A242-A305 | 21-23 Nov | A300 (operating system first) in force; pointer rows word for word: `history/STATE-2026-11-23-lead4-older-ask-rows.md` |
 
