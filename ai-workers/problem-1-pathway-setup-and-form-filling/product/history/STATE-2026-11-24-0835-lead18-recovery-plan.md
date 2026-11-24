@@ -533,3 +533,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * #3477 28ae2601b: Approve, full run running, then label.
 * After Lead B 7's reads (17:49): #3497 NOT OK (census row), label off; #3491 OK but label off for the migration order (relabel after #3174, #3234); #3492, #3477, #3498 OK.
 * 17:59: queue stalled: #3467 "Preparing checks" with no batch since about 17:36, all scopes behind it. refresh and requeue did nothing; dequeue then queue at 17:56 (no batch running) moved it behind #3174 and #3313, which then read "In merge queue". #3305 requeued 17:52. Check that batches now open.
+
+### Lead 29, check 18:10 IST 24 Nov (87% weekly; disk 6.4 GB; context about 420k: past the hand-over line, no standby)
+* **Mergify: four batches "Preparing", 0 checking (its dashboard), no draft opened since 17:19 (#3501); no draft open since #3496 closed 17:36. GitHub and Mergify status pages: no incident found.** Cause unknown. My dequeue of #3467 (17:56) sent it to the back.
+* **A read-only GitHub API call (rulesets, two diffs, comments) was refused by the permission layer twice at about 18:12, no reason given; the first also held a comment saying I had read a diff I had not yet read (not posted). Not routed around.** So unread: #3492 1f..1d14a564c (one card line by its lane's words; "Lead allows round 3" not posted; it is queued on a label from its old head), #3497 2836de75c (label back on it; .mergify.yml change takes the Lead's read; **my read and Lead B's re-read owed**).
+* #3477 queued (full run green). #3493 Approve 80185f1ae: my money read and Lead B's owed. #3490 built at cb742468e, in review. #3442 full run red on types only. R1.68 running; the rest idle or waiting.
+* Waiting on the founder: hand merge of #3494; qa 8 card; disk for a standby.
