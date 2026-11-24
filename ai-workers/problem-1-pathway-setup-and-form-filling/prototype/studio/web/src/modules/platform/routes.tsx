@@ -41,6 +41,7 @@ export const routes: ModuleRoute[] = [
   { path: "/sign-up/invited", element: <InvitedSignUpPage /> },   // PF-5s S8 (public): a private sign-up link (R1.90; PF-5's GET|POST /api/public/signup/:token)
   { path: "/settings/billing", element: <BillingPage /> },   // PF-5s part 2: Plan and billing (PF-5 part 2 returns from Stripe here)
   { path: "/platform/offices", element: <OfficesPage /> },   // PF-18s part 1: Offices (Owner and Admin)
+  { path: "/platform/offices/:id", element: <OfficesPage /> },   // PF-31: one office's edit at its own address (a workspace tab)
   { path: "/platform/branding", element: <BrandingPage /> },   // PF-13 part 2: Branding (Owner and Admin; R1.23)
   { path: "/platform/firm-profile", element: <FirmProfilePage /> },   // PF-5s S5: Firm profile (R1.92)
   { path: "/platform/support", element: <SupportPage /> },   // PF-18s part 2: Help & support

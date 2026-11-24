@@ -154,11 +154,13 @@ try {
   const v0 = (await api(TOWNER, "GET", "/platform/offices")).body.offices.find((o: { id: string }) => o.id === cal).version;
   const elsewhere = await api(TOWNER, "PATCH", `/platform/offices/${cal}`, { name: "Calgary (Stephen Ave)", version: v0 });
   await p.locator("[data-office-name]").fill("Calgary downtown"); await p.locator("[data-office-save]").click();
-  await p.locator("[data-office-problem]").waitFor();
-  const stale = await p.locator("[data-office-problem]").innerText(), reloaded = await p.locator("[data-office-name]").inputValue();
-  await p.locator("[data-office-name]").fill("Calgary downtown"); await p.locator("[data-office-save]").click(); await dialog(p).waitFor({ state: "detached" });
-  ok("PF-18s DW5: a change made elsewhere first → the save is refused (409) in words, the latest name is loaded; saving again goes through",
-    elsewhere.status === 200 && stale.startsWith("Someone changed this office since you opened it.") && reloaded === "Calgary (Stephen Ave)" && sql(`select name from platform_office where id = '${cal}'`) === "Calgary downtown", { stale, reloaded });
+  // PF-31 (EXPERIENCE §4 "conflict", the founder's 23 Nov decision): a stale save no longer reloads the latest over what was
+  // typed; the conflict state shows the saved name beside mine, and "Keep mine, then Save" goes through.
+  await p.locator("[data-conflict]").waitFor();
+  const stale = await p.locator("[data-conflict]").innerText(), reloaded = await p.locator('[data-conflict-row="Office name"] [data-conflict-saved]').innerText();
+  await p.locator("[data-conflict-keep-mine]").click(); await p.locator("[data-office-save]").click(); await dialog(p).waitFor({ state: "detached" });
+  ok("PF-18s DW5: a change made elsewhere first → the save is refused (409) in words, the latest name is shown beside mine; Keep mine then Save goes through",
+    elsewhere.status === 200 && stale.includes("Someone changed this office since you opened it.") && reloaded.includes("Calgary (Stephen Ave)") && sql(`select name from platform_office where id = '${cal}'`) === "Calgary downtown", { stale, reloaded });
 
   // ---------------------------------------------------------------------------------------------- DW6
   await offices(p); const where = p.locator("[data-who-works-where]"); await where.locator("[data-place-row]").first().waitFor({ timeout: 30_000 });

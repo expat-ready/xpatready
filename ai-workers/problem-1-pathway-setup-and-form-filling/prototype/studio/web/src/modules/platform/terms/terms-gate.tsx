@@ -9,6 +9,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Notice } from "@/components/ui/controls";
+import { useTabActive } from "@/components/workspace";
 import { staffApi, StaffApiError } from "../session";
 import { kindLabel, kindWords, listWords, MyTerms, safeUrl } from "./contract";
 
@@ -50,7 +51,7 @@ function focusBack(before: Element | null) {
 }
 
 export function TermsPage({ token, terms, signOut, leaving }: { token: string | null; terms: MyTerms; signOut: () => void; leaving: boolean }) {
-  const qc = useQueryClient();
+  const qc = useQueryClient(), shown = useTabActive();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const heading = React.useRef<HTMLHeadingElement>(null);
@@ -74,6 +75,9 @@ export function TermsPage({ token, terms, signOut, leaving }: { token: string | 
       if (e instanceof StaffApiError && e.status === 400) void qc.invalidateQueries({ queryKey: KEY(token) });   // not current any more: show the versions now current
     } finally { setBusy(false); }
   };
+  // PF-31: this dialog is always open and portals to the page's body, so only the shown workspace tab draws it (a hidden
+  // tab's copy would put a second terms page over the shown one).
+  if (!shown) return null;
   return (
     <DialogPrimitive.Root open modal>
       <DialogPrimitive.Portal>
