@@ -78,7 +78,7 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
       catch (e) {
         const booked = e instanceof StaffApiError && e.status === 404 && e.problem.code === "NO_RECORD" ? bookedOf(booking) : null;
         // Before the first save the no-record answer carries the agreement warning too (FO-3c-warn break F4).
-        if (booked !== null) return { record: null, bookedMinutes: booked, warning: ((e as StaffApiError).problem as { agreementWarning?: Warning }).agreementWarning };
+        if (booked !== null) return { record: null, bookedMinutes: booked, warning: (e as StaffApiError).problem.agreementWarning };
         throw e;
       }
     },

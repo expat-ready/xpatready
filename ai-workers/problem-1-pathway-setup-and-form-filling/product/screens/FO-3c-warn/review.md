@@ -72,3 +72,35 @@ N/A: a front-office booking panel, not a case-side screen (EXPERIENCE §6 scope)
 **Verdict: Block** on f53b39de6f13984b0f6a84030e614da3c3a3e068. To fix: M1 (a, b, c), with its tests. m1-m6 should be fixed in the same round.
 
 Reviewer: Block f53b39de6f13984b0f6a84030e614da3c3a3e068
+
+## Re-review, 24 Nov 2026: head 9e97b8aa33ee582249a434926e0c8850e7e0c67f
+This covers commits 7d4f457cd and 9e97b8aa3, the builder's fixes. The checkout was clean at this head.
+
+**Runs:**
+- **Suites:** check_fo3c2 65/0, check_fo3c 42/0, check_fo3a2_consult_record 39/0, check_fo3_booking 133/0, check_fo3sr_routes 29/0, check_fo3m_answers 14/0.
+- **Red first:** this head's check_fo3c2 run on f53b39de6 gives 61/4. W1 record, W5, W6 and W7 fail there.
+- **j_104:** 20/20 on `j104r` :4435. Screenshots restored afterwards.
+- **My walk:** at 1024 px with the keyboard only, at 1440 px and at 720 px CSS. Axe 0; no sideways scroll; Client D 404/404 with the booking unchanged; one `booking.completed`.
+
+**My list:**
+- **M1 — closed.** `gate.ts` `warnWords(bookingStatus, agreementStatus)` is now the one set of words. `forBooking` returns them as `warning`, and `agreement.tsx:51` shows them, adding the reschedule step only while the booking can be rescheduled.
+  - (a) Sent, then Attended: on my walk the panel and the record's notice read the same words: "…the client's link no longer opens: to meet the client again, make a new booking…". W6 confirms that `openAs` returns 404.
+  - (b) Client signed, then Attended: the words are WARN_WORDS_FIRM. `needsYou` keeps the item unless the booking is cancelled, and `hostLink` returns 200 (W5).
+  - (c) WARN_WORDS now says that saving Attended ends the client's link.
+- **m1 — closed.** The words for an Attended booking with nothing sent no longer say what can be saved (seen live). The reschedule advice now says "if the meeting did not take place" (`gate.ts:76-77`, `consultation-agreement-words.ts:6`).
+- **m2 — closed.** Attended and the record read the warning inside their transaction (`booking/service.ts:456-466`, `consult/service.ts:162`). A failed read rolls the save back.
+- **m3 — closed for this change.** The record's warning is `{code, words}` only (`consult/service.ts:31`, test "W1 record"). The record's own visibility rule predates this change and is noted on the PR.
+- **m5 — closed.** No "hold" or "cannot start" words remain in the FO-3c files; only the internal type name `Hold` is left. The j_104 header records the 24 Nov ruling.
+- **m6 — closed.** The W4 screenshot shows the shipped words.
+- **m4 — server fixed, screen not fixed (Minor, Should).** The 404 NO_RECORD answer now carries the warning: I saw it live and W7 tests it. But `problemOf` (`web/src/modules/front-office/sales/contract.ts:10`) keeps only known fields and drops `agreementWarning`. So `consult-record.tsx:364` always reads `undefined`, and the record section shows no notice before the first save (my walk r5; the j_104 W4 capture). No test reads the screen here; W7 checks only the server. The booking panel above still shows the same warning to the host, so the user is warned.
+  - **Fix:** read the raw problem body, or let `problemOf` keep `agreementWarning`. Add a screen check before the first save.
+
+**Journey score: 9.5/10.** Feedback and state scores ½ for m4; every other criterion scores 1. The bar is 8 or more with no 0.
+
+**D-score changes:** D1 4, D4 4, D5 4, D9 4, D10 4, D16 4. D11 stays 4 (m4). The other scores are unchanged.
+
+No Blocker or Major is open; m4 is a Minor to fix in the next round.
+
+Verdict: Approve 9e97b8aa33ee582249a434926e0c8850e7e0c67f
+
+Reviewer: Approve 9e97b8aa33ee582249a434926e0c8850e7e0c67f

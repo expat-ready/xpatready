@@ -60,3 +60,10 @@ Walk: Playwright headless (Chromium) as a person would use it. I clicked and typ
 - A real screen reader, or an intended user's unaided walk (D17 and D20 stay with the founder).
 - A visible (headed) browser: I ran headless and used screenshots instead.
 - A cancelled booking with an agreement still sent.
+
+## Re-run at 9e97b8aa3 (24 Nov)
+- **Same journeys** on `j104r` :4435. j_104 passed 20/20.
+- **J2 is fixed:** the panel and the record's notice now read the same true words ("…the client's link no longer opens…").
+- **J1:** the words for an Attended booking no longer say what can be saved.
+- **Record before its first save:** the server's 404 carries the warning, but the screen drops it (`sales/contract.ts:10` `problemOf`), so no notice shows. The panel still warns (Minor).
+- **Score:** feedback and state ½; next step, plain words and error recovery are now 1. **Total 9.5/10: pass.**

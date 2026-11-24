@@ -208,9 +208,11 @@ try {
   const afterClick = (await db.foBooking.findUniqueOrThrow({ where: { id: b2.id } })).status;
   const refusal = (await answers2.locator('[role="alert"]').innerText({ timeout: 1000 }).catch(() => "")).trim();
   const warnAfter = (await c.locator("[data-booking-detail] [data-agreement-why]").innerText({ timeout: 5000 }).catch(() => "")).trim();
+  // The consult record section, before its first save, shows the same warning (FO-3c-warn review m4).
+  const recordWarn = (await c.locator("[data-booking-detail] [data-consult-agreement-warning]").innerText({ timeout: 8000 }).catch(() => "")).trim();
   await shot(c, "w4-attended-before-signing-1440");
-  ok("J-104 W4 (screen): before the agreement is signed, the booking's panel warns in plain words that it is not signed; Attended on the panel is saved (no refusal) and the warning stays",
-    !!a2 && /not signed/i.test(warn2) && /sign/i.test(warn2) && afterClick === "COMPLETED" && !/agreement/i.test(refusal) && /not signed/i.test(warnAfter), { a2: !!a2, warn2, afterClick, refusal, warnAfter });
+  ok("J-104 W4 (screen): before the agreement is signed, the booking's panel warns in plain words that it is not signed; Attended on the panel is saved (no refusal), the warning stays, and the consult record section shows it before its first save",
+    !!a2 && /not signed/i.test(warn2) && /sign/i.test(warn2) && afterClick === "COMPLETED" && !/agreement/i.test(refusal) && /not signed/i.test(warnAfter) && /not signed/i.test(recordWarn), { a2: !!a2, warn2, afterClick, refusal, warnAfter, recordWarn });
   // A second ended booking for the API judge (a status that moved cannot be put back: the table's own guard).
   const b3 = await book(new Date(Math.floor((Date.now() - 130 * MIN) / (30 * MIN)) * 30 * MIN));
   const s3 = svc ? await svc.onBookingEvent(eventOf(b3)) : null;
