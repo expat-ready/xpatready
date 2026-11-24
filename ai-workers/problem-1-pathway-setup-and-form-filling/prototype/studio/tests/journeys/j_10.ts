@@ -325,11 +325,24 @@ try {
   const plan = sql(`select coalesce(min(code), '') from platform_plan where active`);
   const signUp = tS0 ? await call("POST", "/api/system/signup-links", { token: tS0, body: JSON.stringify({ email: `j10.signup.${run}@example.com`, countryCode: "CA", planCode: plan, period: "MONTHLY", reason: "J-10: a real sign-up link for the input probes" }) }) : null;
   const signUpToken = /#token=([A-Za-z0-9_-]+)/.exec(String(signUp?.body?.link ?? ""))?.[1] ?? "";
-  const booking = sql(`select coalesce((select id || ',' || firm_id || ',' || ends_at::text from fo_booking where firm_id = (select id from platform_firm where key = 'sample-firm') and status = 'SCHEDULED' and starts_at > now() order by starts_at limit 1), '')`).split(",");
+  // A Sample booking two-plus weeks out (as check_fo10p2's) with a manage token for it: the token doors' probes reach the booking.
+  const sampleFirm = sql(`select id from platform_firm where key = 'sample-firm'`);
+  const host = sql(`select id from platform_staff where firm_id = '${sampleFirm}' and email = '${owner.replace(/'/g, "''")}'`);
+  const typeId = sql(`select coalesce(min(id::text), '') from fo_consultation_type where firm_id = '${sampleFirm}' and active and deleted_at is null`);
   let bookingToken = "";
-  if (booking[0]) { const tid = randomUUID(), v = randomBytes(32).toString("base64url"); sql(`insert into fo_booking_token (id, firm_id, booking_id, token_hash, expires_at) values ('${tid}', '${booking[1]}', '${booking[0]}', '${createHash("sha256").update(v, "utf8").digest("hex")}', '${booking[2]}')`); bookingToken = `${tid}.${v}`; }
-  // The Sample web form, live for this copy, with this copy's own address as an allowed site (the door checks the page's origin).
-  sql(`update fo_web_form set enabled = true, allowed_sites = array_append(array_remove(allowed_sites, '${BASE}'), '${BASE}') where firm_id = (select id from platform_firm where key = 'sample-firm')`);
+  if (typeId && host) {
+    const at = `date_trunc('hour', now()) + interval '17 days' + ${Math.floor(Math.random() * 400)} * interval '1 hour'`;
+    const bid = sql(`with b as (insert into fo_booking (id, firm_id, type_id, staff_id, mode, starts_at, ends_at, visitor_time_zone, updated_at) values (gen_random_uuid(), '${sampleFirm}', '${typeId}', '${host}', 'VIDEO', ${at}, ${at} + interval '30 minutes', 'America/Toronto', now()) returning id, ends_at) select id || ',' || ends_at::text from b`).split(",");
+    const tid = randomUUID(), v = randomBytes(32).toString("base64url");
+    sql(`insert into fo_booking_token (id, firm_id, booking_id, token_hash, expires_at) values ('${tid}', '${sampleFirm}', '${bid[0]}', '${createHash("sha256").update(v, "utf8").digest("hex")}', '${bid[1]}')`);
+    bookingToken = `${tid}.${v}`;
+  }
+  // The Sample web form, live for this copy with its own address as an allowed site (the door checks the page's origin); a live
+  // form needs a consent wording (fo_web_form_consent_check): the firm's own, else a Sample one.
+  let wording = sql(`select coalesce((select id::text from msg_consent_wording where firm_id = '${sampleFirm}' order by published_at limit 1), '')`);
+  if (!wording) wording = sql(`with w as (insert into msg_consent_wording (id, firm_id, channel, purpose, locale, version, text, text_hash, published_by) values (gen_random_uuid(), '${sampleFirm}', (enum_range(null::"MsgChannel"))[1], (enum_range(null::"MsgPurpose"))[1], 'en', 1, 'Sample: the firm may contact you about your enquiry.', md5('j10-sample-wording'), 'seed:J-10') returning id) select id from w`);
+  if (sql(`select count(*) from fo_web_form where firm_id = '${sampleFirm}'`) === "0") sql(`insert into fo_web_form (firm_id, name, public_token, consent_wording_version_id, thank_you_text, updated_by, updated_at) values ('${sampleFirm}', 'Sample web form (J-10)', '${randomBytes(24).toString("base64url")}', '${wording}', 'Thank you (Sample).', 'seed:J-10', now())`);
+  sql(`update fo_web_form set enabled = true, consent_wording_version_id = coalesce(consent_wording_version_id, '${wording}'), allowed_sites = array_append(array_remove(allowed_sites, '${BASE}'), '${BASE}') where firm_id = '${sampleFirm}'`);
   const templateKey = sql(`select 'sales.lead.acknowledgement'`);   // a key of the template registry (platform/messages/templates/registry.ts)
   const rows = () => sql(`select coalesce(string_agg(relname || ':' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I', relname), false, true, '')))[1]::text, ',' order by relname), '') from pg_stat_user_tables where (relname ~ '^(platform_|fo_|money_|msg_|plat_|auto_)' or relname in ('module_event', 'webhook_receipt')) and relname not in ('platform_session', 'msg_firm', 'plat_system_audit')`);
   const before = rows();
@@ -370,7 +383,7 @@ try {
     const token = d.open ? undefined : d.system ? await opSignIn() : tR, method = d.method === "ALL" ? "POST" : d.method, area = areaOf(d.path), route = `${d.method} ${d.path}`;
     // B3: the web form's door checks the page's origin; B4: the public booking doors count per address, so their probes come
     // from a new loopback address every 8 requests (another client each time; the limit stays as it is, see the control below).
-    const origin = d.path.startsWith("/api/public/forms/") ? { origin: BASE } : undefined, spread = /^\/api\/public\/(firms|bookings)\//.test(d.path);
+    const origin = d.path.startsWith("/api/public/forms/") ? { origin: BASE } : undefined, spread = /^\/api\/public\/(firms|bookings|signup)\//.test(d.path);
     const ask = (m: string, pth: string, o: CallOpts) => call(m, pth, { ...o, headers: { ...o.headers, ...origin }, ...(spread ? { from: nextFrom() } : {}) });
     const bad = (probe: string, a: Answer) => { if (excepted.has(`${route} ${probe}`)) return; failing[area].push(`${route} ${probe} → ${a.status}`); if (a.status >= 500) five.push(`${route} ${probe}`); };
     if (d.body) {
