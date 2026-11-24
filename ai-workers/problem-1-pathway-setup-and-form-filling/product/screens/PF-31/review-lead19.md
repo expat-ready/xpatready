@@ -81,3 +81,54 @@ Not tested: a real screen reader (this result comes from reading the DOM), and a
 2. **S1 (Should).** Add the missing `scrollY > 0` precondition at `tests/check_pf31_multitab_browser.ts:298` (section 3).
 
 (b) Changes 91cb4a742186bbaf8188ade098e8636947cf155e
+
+---
+
+## Round 2: re-review of de662c505 (diff only)
+Head reviewed: `de662c50549d4cdb01ce221bc62775eb3e786bf5`. Running copy: :4747, db xr_studio_bell, built from this head. Tested as user-S of sample-solo.
+
+**Verdict: Ship.** M1 and S1 are closed. Nothing is open at Blocker or Major.
+
+### M1: fixed (`bell.tsx:148-151`)
+A hidden bell now sets its live region to "" and never calls `announcementFor`. The shown bell announces, and the effect re-runs on `[n, shown]`.
+
+Reading the code:
+- A change is used up once, by the shown bell.
+- A tab coming forward says nothing old: its region was cleared while it was hidden, and `announcementFor` returns `null` for a count already said.
+- A count that changes while a tab is hidden is said by whichever tab is shown.
+- Outside a workspace, `useTabActive()` is `true`, so pages without tabs behave as on main.
+
+Browser probe: tabs /home, /account and /account/licence, with the last one shown. The table lists what was in the document after each step.
+
+| Step | Shown tab | Live region | Badge |
+|---|---|---|---|
+| Before | /account/licence | `""` | 0 |
+| 2 notices inserted, panel opened | /account/licence | `"2 unread notifications"` | 2 |
+| Alt+PageDown | /home | `""` (no stale words) | 2 |
+| Back again | /account/licence | `""` (not said twice) | 2 |
+| A 3rd notice, then the middle tab comes forward | /account | `"3 unread notifications"` | 3 |
+| Back to the last tab | /account/licence | `""` | 3 |
+| Mark all read (clicked before the panel's refetch, so BR-6 left the 3rd unread) | /account/licence | `"1 unread notification"` | 1 |
+
+- There was one live region in the document at every step and no page errors.
+- The probe's rows were deleted; user-S has 0 notifications again.
+
+### New check line: does what it says
+The new line is at `check_pf31_multitab_browser.ts:228-234`.
+- It inserts two notifications for user-R, brings /account/licence forward (not the first tab), and expects the shown region to say a count, with exactly one region in the document.
+- The builder reports it failed on the old code (75/76, `[""]`). So the line would catch the rule being removed.
+- Its cleanup deletes only rows for user-R whose `item_id` is not a real lead.
+
+Two Minor notes, not blocking:
+- The pattern accepts any count (`^\d+ unread`), not exactly 2. That is fine if user-R may already have unread rows.
+- "Exactly one region" is guaranteed by the detached boxes anyway. The line's real strength is the words in the shown tab.
+
+### S1: fixed (`check_pf31_multitab_browser.ts:307`)
+The line now asserts `scrolledY > 0` before the Ctrl-click.
+
+### Journey score
+Feedback and state, and accessibility, rise from ½ to 1: the change is said once, where the person is. The score is now **10/10**, a pass.
+
+Not tested: a real screen reader (this result comes from reading the DOM). D17 and D20 stay with the founder.
+
+(b) Approve de662c50549d4cdb01ce221bc62775eb3e786bf5
