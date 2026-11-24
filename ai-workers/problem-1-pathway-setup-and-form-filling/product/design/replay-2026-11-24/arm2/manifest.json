@@ -1,0 +1,664 @@
+[
+ {
+  "slice": "S01-1",
+  "repo": "S01",
+  "branch": "slice-1",
+  "files": [
+   "api/src/front-office/sales/prospects.ts",
+   "api/src/front-office/sales/routes.ts",
+   "api/src/front-office/sales/source-filter.ts",
+   "tests/check_fo2p3_prospects.ts",
+   "tests/check_fo4sf_source_filter.ts",
+   "tests/check_pf28_inputs.ts",
+   "tests/check_r130_prospect_source.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "4852fde01c193df0a770a802c160a167cdd99cb8b295490aeaf5d4b4d7ad00c9"
+ },
+ {
+  "slice": "S02-1",
+  "repo": "S02",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/front-office-sales.ts",
+   "api/src/front-office/sales/arrival.ts",
+   "api/src/front-office/sales/common.ts",
+   "api/src/front-office/sales/leads.ts",
+   "api/src/front-office/sales/public.ts",
+   "api/src/front-office/sales/routes.ts",
+   "api/src/main.ts",
+   "ports/events.ts",
+   "tests/check_fo2_leads_prospects.ts",
+   "tests/check_forms_qa53.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "e9c33e26e03d83dccf0d3c6b198ad47f854999d01af7d6abd96aeea744a36858"
+ },
+ {
+  "slice": "S03-1",
+  "repo": "S03",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/platform-complaints.ts",
+   "api/src/platform/complaints/routes.ts",
+   "tests/check_pf21w_routes.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "12fc7c40f4a8425cda4de8957d3e74288bdb872f12a5c4ace3129a76a0499e43"
+ },
+ {
+  "slice": "S04-1",
+  "repo": "S04",
+  "branch": "slice-1",
+  "files": [
+   "api/src/case-checklist.ts",
+   "api/src/case-filings.ts",
+   "api/src/case-prepare.ts",
+   "api/src/demo.ts",
+   "api/src/earlier-facts.ts",
+   "api/src/filing-record.ts",
+   "api/src/fill-case.ts",
+   "api/src/person-link.ts",
+   "api/src/runtime.ts",
+   "api/src/submission.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "5c6ec175663b20dd5d7557ab73749e25833c0586e22e92350a65a0ea030a6898"
+ },
+ {
+  "slice": "S04-2",
+  "repo": "S04",
+  "branch": "slice-2",
+  "files": [
+   "contracts/runtime.ts",
+   "prisma/migrations/20261112150000_a24_case_number/migration.sql",
+   "prisma/schema.prisma",
+   "tests/check_a24_case_number_api.ts",
+   "tests/check_a24_case_number_migration.ts",
+   "tests/check_a24_record_reference_browser.ts",
+   "tests/check_c617_stages_migration.ts",
+   "tests/check_forms_channels_migration.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "320f5f6bc40b77ffc575809da1eeeb532ff2c4f08d31fa4de089d7a857b64845"
+ },
+ {
+  "slice": "S05-1",
+  "repo": "S05",
+  "branch": "slice-1",
+  "files": [
+   "api/src/case-clients/live.ts",
+   "api/src/case-clients/prospect-won.ts",
+   "api/src/platform/entitlements/limit-changes.ts",
+   "api/src/platform/entitlements/storage.ts",
+   "api/src/platform/firm-scope.ts",
+   "api/src/platform/firms/signup.ts",
+   "api/src/platform/identity/demo-reset.ts",
+   "api/src/platform/messages/demo-inbox.ts",
+   "api/src/platform/messages/send/messages.ts",
+   "api/src/platform/seed-sample-firms.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "1a7ee27ba1505f1c9c270459186953362f4c01188fc8c3f7bbb0d80702d2bb40"
+ },
+ {
+  "slice": "S05-2",
+  "repo": "S05",
+  "branch": "slice-2",
+  "files": [
+   "api/src/platform/web-address/routes.ts",
+   "tests/check_aud1a_insert_only.ts",
+   "tests/check_pf12b_bypass_audit.ts",
+   "tests/check_pf5_signup_billing.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "fadb46d82b194eaf63770ab07188de930075fe4a68fd3e96369d68e851439fbb"
+ },
+ {
+  "slice": "S06-1",
+  "repo": "S06",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/platform-entitlements.ts",
+   "api/src/platform/entitlements/limits.ts",
+   "api/src/runtime.ts",
+   "ports/entitlement.ts",
+   "tests/check_csc1_count.ts",
+   "tests/check_csk1_client.ts",
+   "tests/check_fo8_prospect_won.ts",
+   "tests/check_pf15c_case_limits.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "f7991a20ba86e58d6f41839f65cd418d3340d22eb5ca6d1355a4b63fb04769c7"
+ },
+ {
+  "slice": "S07-1",
+  "repo": "S07",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/front-office-identity-check.ts",
+   "api/src/front-office/compliance/identity/routes.ts",
+   "api/src/front-office/compliance/identity/service.ts",
+   "api/src/front-office/retainers/service.ts",
+   "ports/events.ts",
+   "prisma/migrations/20261118140000_fo13i_identity_check_key/migration.sql",
+   "tests/check_fo13i_identity.ts",
+   "tests/check_pf12_walls.ts",
+   "tests/check_pf3_platform_schema.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "bd324f9ad3ed9dfeeb4891874ab7e00d05c7d59097898d7423e65442c355a0c1"
+ },
+ {
+  "slice": "S08-1",
+  "repo": "S08",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/front-office-sales.ts",
+   "api/src/front-office/duplicates/phone.ts",
+   "api/src/front-office/people/edit.ts",
+   "web/src/modules/front-office/sales/lead-page.tsx",
+   "tests/check_fo9a_phone_edit.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "e00ff4c77b682c73cec1363bb8e535db46dfcb338363cd2f9f5f9c331f1b1708"
+ },
+ {
+  "slice": "S09-1",
+  "repo": "S09",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/platform-messages.ts",
+   "api/src/platform/messages/channels/email/local.ts",
+   "api/src/platform/messages/demo-inbox.ts",
+   "api/src/platform/messages/send/channels.ts",
+   "api/src/platform/messages/send/messages.ts",
+   "ports/alert.ts",
+   "ports/contracts/message-port.contract.ts",
+   "ports/messages.ts",
+   "tests/check_forms_qa53.ts",
+   "tests/check_pf19b_sending.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "478d399f3d1442568c9c1b6d37b42bc1e0d6b27f59f166813546affd9c600562"
+ },
+ {
+  "slice": "S10-1",
+  "repo": "S10",
+  "branch": "slice-1",
+  "files": [
+   "api/src/front-office/assignment/routes.ts",
+   "api/src/front-office/compliance/conflict/routes.ts",
+   "api/src/front-office/compliance/conflict/service.ts",
+   "api/src/front-office/compliance/identity/routes.ts",
+   "api/src/front-office/compliance/identity/service.ts",
+   "api/src/front-office/duplicates/routes.ts",
+   "api/src/front-office/people/edit.ts",
+   "api/src/front-office/sales/corporate/routes.ts",
+   "api/src/front-office/sales/prospect-edit.ts",
+   "api/src/front-office/sales/public.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "a595624d314f84a5d2e989e2509df4365341646ee13d16e1dfc9752fad9a3333"
+ },
+ {
+  "slice": "S10-2",
+  "repo": "S10",
+  "branch": "slice-2",
+  "files": [
+   "tests/check_fo13c_conflict.ts",
+   "tests/check_fo13i_identity.ts",
+   "tests/check_fo2_leads_prospects.ts",
+   "tests/check_fo4_sales_browser.ts",
+   "tests/check_pf28_inputs.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "e9f3225ad3828091e48bfd1518d1ea02ebdaff0c9b964c133424f64e906bd573"
+ },
+ {
+  "slice": "S11-1",
+  "repo": "S11",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/front-office-consultation-agreement.ts",
+   "api/src/front-office/booking/consultation-agreement/controller.ts",
+   "api/src/front-office/booking/consultation-agreement/items.ts",
+   "api/src/front-office/booking/consultation-agreement/service.ts",
+   "tests/check_fo3c_consultation_agreement.ts",
+   "tests/check_forms_qa53.ts",
+   "tests/check_pf19r_every_sender.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "719b5c9e11303c3540248a58afee924b58ffd8c182680ef82e55136f26073438"
+ },
+ {
+  "slice": "S12-1",
+  "repo": "S12",
+  "branch": "slice-1",
+  "files": [
+   "api/src/platform/audit/audit-event.ts",
+   "ports/audit.ts",
+   "ports/clock.ts",
+   "ports/files.ts",
+   "ports/jobs.ts",
+   "ports/mail.ts",
+   "ports/render.ts",
+   "ports/staff.ts",
+   "prisma/schema/platform.prisma",
+   "tests/check_case_feed.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "1d35e8ef2bd1bce5bbf64e7f8515dcbdfeaa809e2438d3db6f295f961298b038"
+ },
+ {
+  "slice": "S12-2",
+  "repo": "S12",
+  "branch": "slice-2",
+  "files": [
+   "tests/check_pf0p_ports.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "80fb652a94f1b4e91400231853677dfe1ce725f47021796bcb85e6d6553f08b2"
+ },
+ {
+  "slice": "S13-1",
+  "repo": "S13",
+  "branch": "slice-1",
+  "files": [
+   "api/src/core.ts",
+   "api/src/features/platform-firm-walls.ts",
+   "api/src/front-office/booking/service.ts",
+   "api/src/front-office/sales/public.ts",
+   "api/src/platform/firm-scope.ts",
+   "api/src/platform/firms/signup.ts",
+   "api/src/platform/identity/demo-reset.ts",
+   "api/src/platform/identity/guard.ts",
+   "api/src/platform/identity/service.ts",
+   "api/src/platform/identity/session/service.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "2cde11fb5c69a4f03b8fd03ae815007f9c5af9744af7d73402ac1c1486ca0d69"
+ },
+ {
+  "slice": "S13-2",
+  "repo": "S13",
+  "branch": "slice-2",
+  "files": [
+   "api/src/platform/jobs/platform-jobs.ts",
+   "api/src/platform/messages/demo-inbox.ts",
+   "api/src/platform/web-address/host.ts",
+   "api/src/platform/web-address/routes.ts",
+   "api/src/platform/web-address/service.ts",
+   "prisma/migrations/20261116013000_pf12_firm_walls/migration.sql",
+   "tests/check_pf12_walls.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "cd23493aabb0c29f17c0aa99db7f589b9e26512e464a879ab3e271f20f6821b9"
+ },
+ {
+  "slice": "S14-1",
+  "repo": "S14",
+  "branch": "slice-1",
+  "files": [
+   "api/src/case-prepare.ts",
+   "api/src/runtime.ts",
+   "api/src/sign-steps.ts",
+   "contracts/runtime.ts",
+   "tests/check_csv1_inputs.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "4dfa12f8ba914ab0d6edf0d63a71e59c161250e71b57ca4bdc4a5f30ae663921"
+ },
+ {
+  "slice": "S15-1",
+  "repo": "S15",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/front-office-sales.ts",
+   "api/src/front-office/sales/board-totals.ts",
+   "api/src/front-office/sales/corporate/service.ts",
+   "api/src/front-office/sales/leads.ts",
+   "api/src/front-office/sales/prospects.ts",
+   "api/src/front-office/sales/routes.ts",
+   "ports/events.ts",
+   "tests/check_fo2p3_prospects.ts",
+   "tests/check_pf6b_permission_rules.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "c38574881e7afafa7a3e3139d93cd1de8e1ac0e2d88c4c09f9bac1e41f284035"
+ },
+ {
+  "slice": "S16-1",
+  "repo": "S16",
+  "branch": "slice-1",
+  "files": [
+   "api/src/core.ts",
+   "api/src/form-uses.ts",
+   "api/src/library-items.ts",
+   "api/src/lifecycle.ts",
+   "api/src/platform/audit/audit-event.ts",
+   "api/src/platform/audit/context.ts",
+   "api/src/studio.ts",
+   "ports/audit.ts",
+   "tests/check_aud1m_case_writes.ts",
+   "tests/check_c75_findings_api.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "55ee5e3c3620c9fba77ac9742c0c7432a585b3eb55f6c3ce08a2ddbbf188c828"
+ },
+ {
+  "slice": "S16-2",
+  "repo": "S16",
+  "branch": "slice-2",
+  "files": [
+   "tests/check_case_feed.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "a2096d7dc78d78e8be07e84e61e54616ab39e23834680e95c6d00568bbc4fb0b"
+ },
+ {
+  "slice": "S17-1",
+  "repo": "S17",
+  "branch": "slice-1",
+  "files": [
+   "api/src/front-office/retainers/routes.ts",
+   "api/src/front-office/retainers/service.ts",
+   "web/src/modules/front-office/retainers/contract.ts",
+   "web/src/modules/front-office/retainers/retainer-card.tsx",
+   "web/src/modules/front-office/retainers/retainer-page.tsx",
+   "web/src/modules/front-office/routes.tsx",
+   "web/src/modules/front-office/sales/prospect-page.tsx",
+   "tests/check_fo5s_retainer_screens_browser.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "3678873ab81dd02e9229ebb15d21cc987aa5f7fcf5b87c892f04c7c138f9fdf5"
+ },
+ {
+  "slice": "S18-1",
+  "repo": "S18",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/front-office-signing.ts",
+   "api/src/front-office/retainers/on-signing-completed.ts",
+   "api/src/front-office/retainers/service.ts",
+   "api/src/front-office/signing/handlers.ts",
+   "api/src/front-office/signing/hooks.ts",
+   "api/src/front-office/signing/routes.ts",
+   "api/src/front-office/signing/service.ts",
+   "api/src/front-office/signing/webhook.bypass.ts",
+   "ports/events/signing.ts",
+   "tests/check_fo2w_won_event.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "cbda99b955b9a5180d5a228903a2c2710a76a603430af31316e84b105cd60e28"
+ },
+ {
+  "slice": "S18-2",
+  "repo": "S18",
+  "branch": "slice-2",
+  "files": [
+   "tests/check_fo6_signing_api.ts",
+   "tests/check_forms_qa53.ts",
+   "tests/check_pf19r_every_sender.ts",
+   "tests/check_pf28_inputs.ts",
+   "tests/check_pf6b_permission_rules.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "e243def4ae21035e022e00fbef59adce7f403fd72ce6dbde3b8271354274ff84"
+ },
+ {
+  "slice": "S19-1",
+  "repo": "S19",
+  "branch": "slice-1",
+  "files": [
+   "api/src/case-checklist.ts",
+   "api/src/case-documents.ts",
+   "api/src/finished-story.ts",
+   "api/src/main.ts",
+   "tests/check_c617_stages_browser.ts",
+   "tests/check_c64_storage_api.ts",
+   "tests/check_csd1t_file_type.ts",
+   "tests/check_m3s4_blocking_api.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "34265097e719e31f77e9365ecc4935b08c3178ffe1508c7d4cf9ce4bcca7d787"
+ },
+ {
+  "slice": "S20-1",
+  "repo": "S20",
+  "branch": "slice-1",
+  "files": [
+   "api/src/front-office/sales/corporate/service.ts",
+   "api/src/front-office/sales/prospects.ts",
+   "api/src/front-office/sales/routes.ts",
+   "web/src/modules/front-office/routes.tsx",
+   "web/src/modules/front-office/sales/contract.ts",
+   "web/src/modules/front-office/sales/lead-page.tsx",
+   "web/src/modules/front-office/sales/leads-page.tsx",
+   "web/src/modules/front-office/sales/pipeline-page.tsx",
+   "web/src/modules/front-office/sales/prospect-actions.tsx",
+   "web/src/modules/front-office/sales/prospect-page.tsx"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "61df3a6deb1f709b9c356d0e5e46f79d246ffa6199c6ffe2443668a12f134b49"
+ },
+ {
+  "slice": "S20-2",
+  "repo": "S20",
+  "branch": "slice-2",
+  "files": [
+   "web/src/modules/front-office/sales/sales-frame.tsx"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "ebd72333bd983cfa0e2b7a69105db4710adefa21d304a0c0ab53e6e36c084b0f"
+ },
+ {
+  "slice": "S21-1",
+  "repo": "S21",
+  "branch": "slice-1",
+  "files": [
+   "api/src/case-clients/client-link.ts",
+   "api/src/case-clients/live.ts",
+   "api/src/case-clients/prospect-won.ts",
+   "api/src/clients.ts",
+   "api/src/features/case-clients.ts",
+   "api/src/platform/firm-scope.ts",
+   "api/src/runtime.ts",
+   "prisma/migrations/20261120100000_csk1_client_link_check/migration.sql",
+   "prisma/migrations/20261120100000_csk1_client_link_check/rollback.sql",
+   "prisma/schema/cases.prisma"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "6a4815ab2aac8daf3cc95f66af6b6afc97f48f864d679bb020c28fcb8bb73b3a"
+ },
+ {
+  "slice": "S21-2",
+  "repo": "S21",
+  "branch": "slice-2",
+  "files": [
+   "tests/check_csc1_count.ts",
+   "tests/check_csk1_client.ts",
+   "tests/check_fo8_prospect_won.ts",
+   "tests/check_pf15c_case_limits.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "ee58ba45f2a6a9cadc94b6ce5213788b79ba990d8da458c7204d6cc53957191d"
+ },
+ {
+  "slice": "S22-1",
+  "repo": "S22",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/front-office-booking.ts",
+   "api/src/front-office/booking/ics.ts",
+   "api/src/front-office/booking/public.controller.ts",
+   "api/src/front-office/booking/runtime-ports.ts",
+   "api/src/front-office/booking/service.ts",
+   "api/src/front-office/booking/slots.ts",
+   "api/src/front-office/booking/tokens.ts",
+   "ports/arrival.ts",
+   "ports/events.ts",
+   "prisma/schema/front-office-booking.prisma"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "906ae25fb2bb854e3f40437b281afcec4580cd481b13d5ada93f0bd98edb9fd3"
+ },
+ {
+  "slice": "S22-2",
+  "repo": "S22",
+  "branch": "slice-2",
+  "files": [
+   "tests/check_fo3_booking.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "0df03378cd0f1a734c2a6593605e9cd58b44e051b6896c3d7ba01ec469ac39f5"
+ },
+ {
+  "slice": "S23-1",
+  "repo": "S23",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/front-office-identity-check.ts",
+   "api/src/features/front-office-retainers.ts",
+   "api/src/features/platform-branding.ts",
+   "api/src/features/platform-entitlements.ts",
+   "api/src/features/platform-messages.ts",
+   "api/src/features/platform-support.ts",
+   "api/src/platform/config/settings.ts",
+   "api/src/platform/entitlements/storage.ts",
+   "api/src/platform/files/choose.ts",
+   "api/src/platform/files/s3-files.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "0433f52ef43f40d1ddd74562c876a68f04090c898c5ca019104fadc34c2eb316"
+ },
+ {
+  "slice": "S23-2",
+  "repo": "S23",
+  "branch": "slice-2",
+  "files": [
+   "tests/check_pf24_secrets.ts",
+   "tests/check_pff1_s3_files.ts",
+   "tests/check_pff1b_bind.ts",
+   "tests/check_qa621_persona_door_production.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "883fb2b9d8f2200f34fbdfb4f06c4a1bb8b1196f35e012ad0139e8a481139658"
+ },
+ {
+  "slice": "S24-1",
+  "repo": "S24",
+  "branch": "slice-1",
+  "files": [
+   "api/src/case-filings.ts",
+   "api/src/case-prepare.ts",
+   "api/src/runtime.ts",
+   "api/src/studio.ts",
+   "contracts/runtime.ts",
+   "contracts/workspace.ts",
+   "engine/people.ts",
+   "engine/runtime/filings.ts",
+   "engine/runtime/prepare.ts",
+   "engine/snapshot.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "6b13b996cbed8b8b944b2177608bb63880d148497cba74cedaeb912ab84d242f"
+ },
+ {
+  "slice": "S24-2",
+  "repo": "S24",
+  "branch": "slice-2",
+  "files": [
+   "prisma/migrations/20261102030000_c612_c116_prepare_items/migration.sql",
+   "prisma/schema.prisma",
+   "tests/check_vv_prepare.ts",
+   "tests/check_vv_prepare_api.ts",
+   "tests/check_vv_prepare_store.ts",
+   "tests/check_vv_prepare_store_api.ts",
+   "tests/runtime/check_vv_filings_api.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "156905e8195b0b8fb5bb02ef8ff1ac2632fba4ded1cbb63dff589a39ef5fc102"
+ },
+ {
+  "slice": "S25-1",
+  "repo": "S25",
+  "branch": "slice-1",
+  "files": [
+   "api/src/forms.ts",
+   "api/src/main.ts",
+   "api/src/runtime.ts",
+   "api/src/studio.ts",
+   "contracts/runtime.ts",
+   "engine/runtime/case.ts",
+   "engine/runtime/forms.ts",
+   "engine/snapshot.ts",
+   "web/src/pages/job.tsx",
+   "web/src/pages/library.tsx"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "dbe854a84adbce1e7649546cded7211629e0907d6d0060e00653242f2318be17"
+ },
+ {
+  "slice": "S25-2",
+  "repo": "S25",
+  "branch": "slice-2",
+  "files": [
+   "web/src/runtime/questionnaire.tsx",
+   "tests/check_c44_part2.ts",
+   "tests/check_c44_part2_browser.cjs",
+   "tests/check_c44_question_types.ts",
+   "tests/check_c44_question_types_browser.cjs",
+   "tests/runtime/check_runtime_r1c.cjs",
+   "tests/runtime/prepare_c44.cjs",
+   "tests/runtime/setup_c44_types.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "98b9493acf7c7952a41986a78f1659c4e33f4e08a900ef832c2c340f97036e92"
+ },
+ {
+  "slice": "S26-1",
+  "repo": "S26",
+  "branch": "slice-1",
+  "files": [
+   "api/src/platform/branding/images.ts",
+   "api/src/platform/branding/routes.ts",
+   "api/src/platform/firm-scope.ts",
+   "api/src/platform/firms/signup.ts",
+   "api/src/platform/messages/send/mail.ts",
+   "api/src/platform/messages/send/messages.ts",
+   "tests/check_pf12b_bypass_audit.ts",
+   "tests/check_pf12b_doors.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "710e21f91255453899e9bc41eb2df21b1c3d2dca2363b95083e941d16d4a7d79"
+ },
+ {
+  "slice": "S27-1",
+  "repo": "S27",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/front-office-booking.ts",
+   "api/src/front-office/booking/staff.controller.ts",
+   "tests/check_fo3sr_routes.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "9f7519a2a03c6097f204f3ba712a6175ffa0a91f5af03a20172124950450e055"
+ },
+ {
+  "slice": "S28-1",
+  "repo": "S28",
+  "branch": "slice-1",
+  "files": [
+   "api/src/features/platform-billing-exit.ts",
+   "api/src/platform/billing/exit-clock.ts",
+   "api/src/platform/billing/exit-notices.ts",
+   "api/src/platform/firm-scope.ts",
+   "tests/check_pf12b_bypass_audit.ts",
+   "tests/check_pf19r_every_sender.ts",
+   "tests/check_pf5_exit_clock.ts"
+  ],
+  "over_5000_lines": [],
+  "diff_sha256": "9571f05403f9131e32e4ed0a5868cfddd2c950c848004f9f68b67761f6a69611"
+ }
+]
