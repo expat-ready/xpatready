@@ -123,3 +123,4 @@ Shorthand: App = `prototype/studio`, P = `product`.
 ## Agreement
 
 ## Build discoveries
+* **BD-1 (PR C round 1, reviewer #8 and breaker m6; 24 Nov):** concept r2 §5's closed-ticket sentence, "This ticket is closed. The firm can reopen it by writing again", is untrue on main. The API refuses any message on a closed ticket (409, "A closed ticket takes no new message: raise a new ticket instead"), and a database trigger refuses one too ("platform_support_message: a closed ticket takes no message"). The page now says "This ticket is closed. No more replies can be sent; the firm raises a new ticket if it needs more help." For the Lead: confirm this wording, or ask for a reopen path (not in R1.93).

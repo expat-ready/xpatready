@@ -10,10 +10,19 @@ Measures:
   failed    failed batches in the last 6 h, each with its member PRs; a member still open is the culprit (an innocent
             member merges in a later batch)
   merge     approved to merged: median minutes from the last `review: approved` label to the merge, PRs merged in 24 h
+  stages    the same flow in its two steps, by scope (the Mergify queue that merged it: product, pipeline, verdicts,
+            records; Mergify's file scopes split product into keys of one PR each, so they are not keys), PRs merged in
+            the last 6 h: labelled ->
+            batch start (the first batch PR Mergify opened with it after the label) and batch start -> merged; each
+            scope's medians and its slowest PR. A merge whose batch PR is not among the PRs read is counted apart.
+  waiting   now: each open labelled PR in no open batch, with its minutes since the label (the live queue wait), and
+            the number in a batch
   rate      merges to main per hour, last 3 h
   proven    Proven today: the board's Today card (data.json › first.today), with its age
 The one constraint is the first of these over its bar, in the order the flow runs: machines, failed batches, batch time,
-approved to merged, no supply (nothing approved and nothing merging), proof. None over its bar: proof stays named.
+labelled -> batch start (a scope's median, n >= 2, or a PR waiting now; the larger), batch start -> merged (a scope's
+median, n >= 2), approved to merged, no supply (nothing approved and nothing merging), proof. It is named with its
+number: the measure, the scope and the PR that holds it (ENF-738, P-738 (1)). None over its bar: proof stays named.
 
   python3 product/tools/flow-constraint.py [--facts FILE] [--runs-waiting FILE] [--board FILE] [--now ISO] [--save FILE]
 --facts reads gathered facts (tests); otherwise read with gh (REST and one GraphQL query). Read-only, US$0, never cancels.
@@ -23,7 +32,10 @@ import json, os, re, statistics, subprocess, sys
 from datetime import datetime, timedelta, timezone
 
 WINDOW_H = 6
-BAR = {"wait_min": 15, "fail_share": 0.10, "batch_min": 45, "merge_min": 60, "proven_short": 0}
+BAR = {"wait_min": 15, "fail_share": 0.10, "batch_min": 45, "merge_min": 60, "proven_short": 0,
+       # ENF-738 stages, from 24 Nov's measure (26 merges, 8 h): batch start -> merged 31-38 min (product), 7-9 (pipeline,
+       # verdicts); labelled -> batch start median 17 (product), 147 (pipeline). Mergify's own wait is 2-5 min.
+       "label_to_batch_min": 20, "batch_to_merge_min": 45}
 IST = timezone(timedelta(hours=5, minutes=30))
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 GH = os.environ.get("FLOW_GH") or f"{TOOLS}/gh.sh"   # FLOW_GH: the test's stand-in for gh.sh
@@ -53,6 +65,8 @@ def gh(*args):
 
 MERGED_Q = """query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:MERGED,first:60,
   orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number mergedAt
+  timelineItems(itemTypes:[LABELED_EVENT],last:20){nodes{... on LabeledEvent{createdAt label{name}}}}}}
+  open: pullRequests(states:OPEN,labels:["review: approved"],first:50){nodes{number
   timelineItems(itemTypes:[LABELED_EVENT],last:20){nodes{... on LabeledEvent{createdAt label{name}}}}}}}}"""
 
 
@@ -75,7 +89,7 @@ def gather(now):
         f["batches"] = {"error": str(e)[:160]}
     try:
         pulls = gh("api", "repos/{owner}/{repo}/pulls?state=all&sort=updated&direction=desc&per_page=100")
-        f["pulls"] = {str(p["number"]): {"title": p.get("title") or "", "body": (p.get("body") or "")[:4000], "state": p.get("state"),
+        f["pulls"] = {str(p["number"]): {"title": p.get("title") or "", "body": (p.get("body") or "")[:8000], "state": p.get("state"), "created_at": p.get("created_at"),
                                          "merged_at": p.get("merged_at"), "login": (p.get("user") or {}).get("login"),
                                          "ref": (p.get("head") or {}).get("ref") or ""} for p in pulls}
     except Exception as e:   # noqa: BLE001
@@ -88,15 +102,67 @@ def gather(now):
                                             and e["createdAt"] <= n["mergedAt"]] or [None], key=lambda x: x or "")}
                        for n in d["data"]["repository"]["pullRequests"]["nodes"]]
     except Exception as e:   # noqa: BLE001
-        f["merged"] = {"error": str(e)[:160]}
+        f["merged"] = {"error": str(e)[:160]}; f["open_labelled"] = {"error": str(e)[:160]}
+        return f
+    try:   # its own read: a bad open node never wipes the merged PRs already read (review m5)
+        op = d["data"]["repository"].get("open")
+        f["open_labelled"] = ({"error": "no open labelled PRs in GitHub's answer"} if not isinstance(op, dict) else
+                              [{"number": n["number"], "approved_at": max([e["createdAt"] for e in (n.get("timelineItems") or {}).get("nodes") or [] if e and (e.get("label") or {}).get("name") == "review: approved"] or [None], key=lambda x: x or "")}
+                               for n in op["nodes"] if n])
+    except Exception as e:   # noqa: BLE001
+        f["open_labelled"] = {"error": str(e)[:160]}
     return f
 
 
 def members(p):
-    """Member PR numbers of a Mergify batch PR: "#n" in its title and the body's "- number: n" lines (as queue-gate.sh)."""
-    t = [int(x) for x in re.findall(r"#(\d+)", p.get("title") or "")]
+    """Member PR numbers of a Mergify batch PR: the body's metadata "- number: n" lines; with none, the title's "#n" before
+    ", stacked on" (the PRs a batch is stacked on are queued ahead of it, not in it: "checking #3516 on main, stacked on
+    #3467 and #3500"; ENF-738 review M2)."""
     b = [int(x) for x in re.findall(r"(?m)^\s*-\s*number:\s*(\d+)\s*$", p.get("body") or "")]
-    return sorted(set(t + b))
+    if b:
+        return sorted(set(b))
+    return sorted({int(x) for x in re.findall(r"#(\d+)", re.split(r",?\s+stacked on\b", p.get("title") or "")[0])})
+
+
+def batch_prs(pl):
+    """Mergify's batch PRs among the PRs read: {number: {opened, open, queue, members}}. The queue is the body's "of the
+    `product` queue"; members as members()."""
+    out = {}
+    for k, v in pl.items():
+        if v.get("login") != "mergify[bot]" or not str(k).isdigit():
+            continue
+        q = re.search(r"of the `([\w-]+)` queue", v.get("body") or "")
+        out[int(k)] = {"opened": v.get("created_at"), "open": v.get("state") == "open", "queue": q.group(1) if q else "queue not named", "members": set(members(v))}
+    return out
+
+
+def stages(mg, pl, now):
+    """labelled -> batch start -> merged, by scope, for PRs merged in WINDOW_H (see the header)."""
+    bp = batch_prs(pl)
+    by, unseen, rows = {}, [], []
+    for x in mg:
+        L, M = iso(x.get("approved_at")), iso(x.get("merged_at"))
+        if not L or not M or M < now - timedelta(hours=WINDOW_H):
+            continue
+        n = x["number"]
+        mine = sorted((b for b in bp.values() if n in b["members"] and iso(b["opened"]) and L - timedelta(minutes=1) <= iso(b["opened"]) <= M), key=lambda b: b["opened"])
+        if not mine:
+            unseen.append(n); continue
+        scope = mine[-1]["queue"]   # the queue of the batch that merged it
+        r = {"pr": n, "scope": scope, "wait": mins(L, mine[0]["opened"]), "in_batch": mins(mine[0]["opened"], M), "batches": len(mine)}
+        rows.append(r); by.setdefault(scope, []).append(r)
+    med = lambda rs, k: round(statistics.median([r[k] for r in rs]))
+    sc = {k: {"n": len(rs), "wait": med(rs, "wait"), "in_batch": med(rs, "in_batch"),
+              "slow_wait": max(rs, key=lambda r: r["wait"]), "slow_batch": max(rs, key=lambda r: r["in_batch"])} for k, rs in sorted(by.items())}
+    return {"scopes": sc, "unseen": sorted(unseen), "n": len(rows)}
+
+
+def waiting(op, pl, now):
+    """Open labelled PRs now: in no open batch (minutes since the label) or in one."""
+    inb = {n for b in batch_prs(pl).values() if b["open"] for n in b["members"]}
+    out = [{"pr": x["number"], "min": mins(x.get("approved_at"), now.strftime("%Y-%m-%dT%H:%M:%SZ"))} for x in op if x["number"] not in inb]
+    return {"waiting": sorted((w for w in out if w["min"] is not None), key=lambda w: -w["min"]), "in_batch": sorted(x["number"] for x in op if x["number"] in inb),
+            "no_time": sorted(w["pr"] for w in out if w["min"] is None)}   # its approval label not among its last 20 label events
 
 
 def measure(f, rw, board, now):
@@ -142,6 +208,12 @@ def measure(f, rw, board, now):
         m["merge"] = {"median_min": round(statistics.median(am)) if am else None, "n": len(am), "merged_24h": len(day)}
         h3 = [x for x in mg if (iso(x.get("merged_at")) or now - timedelta(days=9)) >= now - timedelta(hours=3)]
         m["rate"] = {"per_hour": round(len(h3) / 3, 1), "n": len(h3)}
+    pl = f.get("pulls")
+    pl_err = pl["error"] if isinstance(pl, dict) and "error" in pl else None
+    m["stages"] = ({"error": mg["error"]} if isinstance(mg, dict) else {"error": f"PRs unreadable ({pl_err})"} if pl_err else stages(mg, pl or {}, now))
+    op = f.get("open_labelled")
+    m["waiting"] = ({"error": op["error"]} if isinstance(op, dict) and "error" in op else {"error": f"PRs unreadable ({pl_err})"} if pl_err else
+                    {"error": "open labelled PRs not read"} if op is None else waiting(op, pl or {}, now))
     t = ((board or {}).get("first") or {}).get("today") if isinstance(board, dict) else None
     gen = ((board or {}).get("freshness") or {}).get("generated_at") if isinstance(board, dict) else None
     age = round((now - iso(gen)).total_seconds() / 60) if iso(gen) else None
@@ -174,6 +246,18 @@ def lines(m, now):
                          for x in fl["batches"])
         out.append(f"  failed    {fl['n']} of {fl['of']} batch(es) failed in {WINDOW_H} h" + (f": {desc}" if desc else ""))
     out.append("  merge     " + (nm(mg) if err(mg) else "approved to merged median " + (f"{mg['median_min']} min" if mg["median_min"] is not None else "not measured") + f" (n={mg['n']}, merged in 24 h)"))
+    st, wt = m.get("stages"), m.get("waiting")
+    if err(st):
+        out.append("  stages    " + nm(st))
+    else:
+        out.append(f"  stages    labelled -> batch start -> merged, by scope, PRs merged in {WINDOW_H} h (medians, min)" + ("" if st["scopes"] else ": none with a batch read"))
+        for k, g in st["scopes"].items():
+            out.append(f"            {k}: n={g['n']}, labelled -> batch start {g['wait']}, batch start -> merged {g['in_batch']}; slowest #{g['slow_wait']['pr']} waited {round(g['slow_wait']['wait'])}, #{g['slow_batch']['pr']} in batch {round(g['slow_batch']['in_batch'])}")
+        if st["unseen"]:
+            out.append(f"            {len(st['unseen'])} merge(s) with no batch PR among the PRs read: " + ", ".join(f"#{n}" for n in st["unseen"]))
+    out.append("  waiting   " + (nm(wt) if err(wt) else (f"{len(wt['waiting'])} labelled PR(s) in no batch" + (": " + ", ".join(f"#{w['pr']} {round(w['min'])} min" for w in wt["waiting"]) if wt["waiting"] else "")
+               + f"; {len(wt['in_batch'])} in a batch" + (": " + ", ".join(f"#{n}" for n in wt["in_batch"]) if wt["in_batch"] else "")
+               + (f"; label time not read: " + ", ".join(f"#{n}" for n in wt["no_time"]) if wt.get("no_time") else ""))))
     out.append("  rate      " + (nm(rt) if err(rt) else f"{rt['per_hour']} merges per hour (last 3 h, {rt['n']} merges)"))
     out.append("  proven    " + (nm(pv) if err(pv) else f"Proven today {pv['proven']}" + (f" of {pv['goal']} ({pv.get('short', 0)} short)" if pv.get("goal") is not None else "")
                + (f", {pv['waiting']} Built waiting for qa" if pv.get("waiting") is not None else "") + (f" (board {pv['age_min']} min old)" if pv.get("age_min") is not None else "")))
@@ -203,12 +287,31 @@ def pick(m):
         lp = b.get("longest")
         return (f"constraint: batch time — median wall {b['median_min']} min (bar {BAR['batch_min']}): "
                 + (f"split or speed up the longest part, {lp['name']} ({lp['min']} min)" if lp else "read the newest batch's jobs for the longest part"))
+    st, wt = m.get("stages"), m.get("waiting")
+    if not err(st) and not st["n"] and st["unseen"]:
+        st = m["stages"] = {"error": "merges with no batch PR among the PRs read: " + ", ".join(f"#{n}" for n in st["unseen"][:8])}
+    if not err(st) or not err(wt):
+        bar = BAR["label_to_batch_min"]
+        c = [(g["wait"], f"{k} median {g['wait']} min over n={g['n']}, slowest #{g['slow_wait']['pr']} {round(g['slow_wait']['wait'])} min")
+             for k, g in ({} if err(st) else st["scopes"]).items() if g["n"] >= 2 and g["wait"] > bar]
+        c += [(w["min"], f"#{w['pr']} labelled {round(w['min'])} min ago, in no batch") for w in ([] if err(wt) else wt["waiting"]) if (w["min"] or 0) > bar]
+        if c:
+            v, what = max(c, key=lambda t: t[0])
+            return (f"constraint: labelled -> batch start — {what} (bar {bar}): find what holds it before Mergify batches it "
+                    "(queue-gate's reason on the PR, a red or missing ci on its head, a conflict, a barrier or a full queue) and clear it")
+    if not err(st):
+        bar = BAR["batch_to_merge_min"]
+        c = [(g["in_batch"], k, g) for k, g in st["scopes"].items() if g["n"] >= 2 and g["in_batch"] > bar]
+        if c:
+            v, k, g = max(c, key=lambda t: t[0])
+            return (f"constraint: batch start -> merged — {k} median {v} min over n={g['n']} (bar {bar}), slowest #{g['slow_batch']['pr']} "
+                    f"{round(g['slow_batch']['in_batch'])} min in {g['slow_batch']['batches']} batch(es): read its batches' failed or longest parts")
     if not err(mg) and (mg.get("median_min") or 0) > BAR["merge_min"]:
         return (f"constraint: approved to merged — median {mg['median_min']} min (bar {BAR['merge_min']}): find what holds the oldest "
                 "approved PR (Lead read, a dequeue, a stale queue-fresh) and clear it")
     if not err(rt) and rt["n"] == 0 and not err(b) and b.get("n3") == 0:
         return "constraint: supply — no merge and no batch in 3 h: approved PRs are missing; answer lane questions and Lead reads, give idle lanes their next row"
-    unmeasured = [k for k in ("machines", "failed", "batch", "merge", "rate", "proven") if err(m.get(k))]
+    unmeasured = [k for k in ("machines", "failed", "batch", "merge", "stages", "waiting", "rate", "proven") if err(m.get(k))]
     if unmeasured:
         return f"constraint: not measured — {', '.join(unmeasured)} unreadable or stale this check: read them by hand before naming a constraint (P-738 (3))"
     if pv.get("goal") is not None and (pv.get("short") or 0) > BAR["proven_short"]:
