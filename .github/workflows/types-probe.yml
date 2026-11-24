@@ -1,0 +1,29 @@
+name: types-probe-3
+on: { push: { branches: [claude/lead-o2-types-probe3] } }
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy: { fail-fast: false, matrix: { prs: ["3235", "3305 3442", "3234"] } }
+    env: { P: ai-workers/problem-1-pathway-setup-and-form-filling/product, S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio, PRS: "${{ matrix.prs }}" }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - name: main with the pull requests merged in
+        run: |
+          git config user.email t@t; git config user.name t
+          git fetch -q origin main; git checkout -q origin/main
+          for n in $PRS; do git fetch -q origin "refs/pull/$n/head"; git merge -q --no-edit FETCH_HEAD; done
+          echo "PROBE tree main=$(git rev-parse --short origin/main) prs=$PRS head=$(git rev-parse --short HEAD)"
+          echo "PROBE machine cpus=$(nproc)"; free -m | sed 's/^/PROBE /'
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: bash "$P/tools/cloud-setup.sh" > /dev/null 2>&1
+      - name: the types step as ci runs it, 12288, with the machine's free memory sampled
+        env: { NODE_OPTIONS: "--max-old-space-size=12288" }
+        run: |
+          set +e
+          ( while :; do free -m | awk 'NR==2{print $7}'; sleep 1; done > /tmp/free ) & m=$!
+          s=$(date +%s); node "$P/tools/typecheck.mjs" > /tmp/o 2>&1; r=$?; kill $m
+          sed 's/^/PROBE /' /tmp/o | tail -8; echo "PROBE exit $r in $(( $(date +%s) - s )) s, lowest available memory $(sort -n /tmp/free | head -1) MB of $(free -m | awk 'NR==2{print $2}')"; exit $r
