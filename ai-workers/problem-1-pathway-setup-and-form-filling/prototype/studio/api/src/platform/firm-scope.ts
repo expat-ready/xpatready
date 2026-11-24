@@ -59,6 +59,7 @@ import pg from "pg";
 import { logPort, requestScope } from "./observability/log.ts";
 import { currentJobFirm } from "./jobs/pgboss-jobs.ts";
 import { auditEvent, platformAuditWorkspaceId } from "./audit/audit-event.ts";
+import { auditContext } from "./audit/context.ts";
 import type { AuditPort } from "../../../ports/audit.ts";
 import type { PrismaClient } from "@prisma/client";
 
@@ -136,7 +137,7 @@ export type BypassEntry = { why: string; routes: readonly RegExp[]; outside?: bo
 export const BYPASS_USES: Readonly<Record<string, BypassEntry>> = Object.freeze({
   "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true, audit: "per-firm" },
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true, audit: "per-firm" },
-  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true, audit: "per-firm" },
+  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5); a private link's page and form, R1.90 (the link has no firm until it is used)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i, /^(GET|POST) \/api\/public\/signup\/[^/]{1,400}$/i], direct: true, audit: "per-firm" },
   "platform.billing.stripe-webhook": { why: "Stripe's event names a customer or subscription, not our firm: the door finds the firm, then updates it as that firm (PF-5 part 2)", routes: [/^POST \/api\/hooks\/stripe$/i], direct: true, audit: "per-firm" },
   "job:platform.billing.webhook_sweep": { why: "Stripe events whose handling did not finish, every firm's (PF-5 part 2)", routes: [], outside: true, audit: "per-firm" },
   "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true, audit: "platform" },
@@ -144,7 +145,7 @@ export const BYPASS_USES: Readonly<Record<string, BypassEntry>> = Object.freeze(
   "job:platform.entitlements.storage_daily": { why: "the daily storage measure lists every firm, then measures each in its own firm scope (PF-15, SA-3-40)", routes: [], outside: true, audit: "per-firm" },
   "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b), and the firm-less PLATFORM_ACCOUNT rows due a retry (PF-19p; their firm-less line: PF-12b part 4)", routes: [], outside: true, audit: "per-firm" },
   "job:messages.send": { why: "a platform job (JobPort platform: true, no firm) sends one platform account message, a PLATFORM_ACCOUNT row with no firm; a firm's send job runs as its firm (PF-19p)", routes: [], outside: true, audit: "platform" },
-  "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], outside: true, direct: true, audit: "platform", inside: ["platform.firms.signup"] },
+  "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p; R1.90's invited form too)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i, /^POST \/api\/public\/signup\/[^/]{1,400}$/i], outside: true, direct: true, audit: "platform", inside: ["platform.firms.signup"] },
   "cases.prospect-won.catch-up": { why: "at start and every few seconds, every firm's won prospects with no client yet are listed (each is then made a client as its own firm, never on this use; the link jobs are queued after it) (FO-8, CS-K1 part 2)", routes: [], outside: true, audit: "per-firm" },
   "job:platform.billing.exit_notices": { why: "the payment-hold notices list every firm on hold, then send each its due notice in its own firm scope (PF-5 part 4, SA-2-6)", routes: [], outside: true, audit: "per-firm" },
   "job:platform.entitlements.booking_daily": { why: "the daily job lists every firm with a booked plan change now due, then applies each in its own firm scope (PF-15 part 1b, SA-3-60)", routes: [], outside: true, audit: "per-firm" },
@@ -319,9 +320,11 @@ const touched = new WeakMap<object, Set<string>>();
  *  any other shape is kept as null. */
 const CORRELATION = /^(job:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;   // observability/jobs.ts makes job:<pg-boss uuid>
 /** PF-12b: inside a bypass use, the firm whose rows this transaction reads or writes. Writes one platform.bypass line to
- *  that firm's trail inside `tx` (once per firm and transaction): the use, the method (never the path), the actor
- *  (system:<use>; none of the per-firm uses runs in a staff session) and the correlation id. A failed write throws
- *  BypassNotRecorded, so `tx` rolls back. Outside a bypass use it does nothing: nothing crossed a wall. */
+ *  that firm's trail inside `tx` (once per firm and transaction): the use, the method (never the path), the actor and the
+ *  correlation id. The actor is system:<use>, except in a request our own staff make (PF-4s's /api/system routes: a
+ *  firm's staff session never runs a bypass use), where it is the request's own ourstaff:<id>, as an ordinary entry on
+ *  that firm's trail (AUD-3c, Lead B's point 1 on #3040: AUD-3a refuses any other word in such a request). A failed write
+ *  throws BypassNotRecorded, so `tx` rolls back. Outside a bypass use it does nothing: nothing crossed a wall. */
 export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
   const s = scope.getStore(), use = s?.bypass;
   if (!use) return;
@@ -335,17 +338,22 @@ export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
   const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
   const given = requestScope.getStore()?.correlationId, correlationId = given && CORRELATION.test(given) ? given : null;
   try {
-    await recorder().record(tx, { firmId: id, actor: `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
+    const ours = ourStaffActor();
+    await recorder().record(tx, { firmId: id, actor: ours ?? `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
       summary: `Our platform read or changed this firm's records across the firm walls (${use}).`, detail: { use, method, correlationId } });
   } catch (e) { seen.delete(id); throw new BypassNotRecorded(use, e); }
 }
+/** AUD-3c: the request's own ourstaff:<id> when this is a request our own staff make, else undefined. */
+const ourStaffActor = (): string | undefined => { const c = auditContext(); return c?.actorType === "OUR_STAFF" && c.actor?.startsWith("ourstaff:") ? c.actor : undefined; };
+
 /** PF-12b part 3: inside a "platform" bypass use, one firm-less platform.bypass line in `tx` (once per transaction), on
  *  the platform's own audit workspace (never reset, P-571 (1)): the use, the method (never the path) and the correlation
  *  id. A failed write throws BypassNotRecorded, so `tx` rolls back (P-607). Outside a "platform" use it does nothing.
  *  A recorded departure (review m3): AuditPort's AuditEntry requires a firm, so the line goes through the case/configuration
  *  entry shape (it names the platform workspace, no case, no firm) rather than a port change (P-423; a firm-less platform
- *  entry is the tech lead's later row). That shape takes the request's or job's firm when one is in scope, so a "platform"
- *  use in a firm's scope is refused here (fail-closed) rather than land its line on that firm's trail (break m3). */
+ *  entry is the tech lead's later row; AUD-3c built it for our own staff's requests, below). That shape takes the
+ *  request's or job's firm when one is in scope, so a "platform" use in a firm's scope is refused here (fail-closed)
+ *  rather than land its line on that firm's trail (break m3). */
 /** `step` (Lead 15's ruling on #2814): a per-firm use's step that touches no firm (sign-up's new-email lookup and pending
  *  row; a refused verify) names itself and writes the same firm-less line; `key` is a pending id, never a secret, code
  *  or email. Without a step, only a "platform" use writes. */
@@ -361,9 +369,17 @@ export async function touchPlatform(tx: unknown, at?: { step: string; key?: stri
   const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
   const given = requestScope.getStore()?.correlationId, correlationId = given && CORRELATION.test(given) ? given : null;
   try {
-    const workspaceId = await platformAuditWorkspaceId(tx as Parameters<typeof platformAuditWorkspaceId>[0]);
-    await recorder().record(tx, { workspaceId, actor: `system:${use}`, action: "platform.bypass", entity: "bypass use", entityKey: use,
-      summary: `Our platform used the bypass role for its own records, no firm's (${use}${at ? `, ${at.step}` : ""}).`, detail: { use, method, correlationId, ...(at ? { step: at.step, key: at.key ?? null } : {}) } });
+    const detail = { use, method, correlationId, ...(at ? { step: at.step, key: at.key ?? null } : {}) };
+    // AUD-3c (Lead 10's ruling on #3040): in a request our own staff make, the line is the port's firm-less kind under the
+    // request's own ourstaff:<id> (no workspace: the adapter finds it), never a case-side line, never a system: word.
+    const ours = ourStaffActor();
+    if (ours) await recorder().record(tx, { firmId: null, actor: ours, action: "platform.bypass", entity: "plat_bypass_use", entityKey: use,
+      summary: `ExpatReady staff used the bypass role for the platform's own records, no firm's (${use}${at ? `, ${at.step}` : ""}).`, detail });
+    else {
+      const workspaceId = await platformAuditWorkspaceId(tx as Parameters<typeof platformAuditWorkspaceId>[0]);
+      await recorder().record(tx, { workspaceId, actor: `system:${use}`, action: "platform.bypass", entity: "bypass use", entityKey: use,
+        summary: `Our platform used the bypass role for its own records, no firm's (${use}${at ? `, ${at.step}` : ""}).`, detail });
+    }
   } catch (e) { seen.delete(""); throw new BypassNotRecorded(use, e); }
 }
 /** For a use that only reads firms' rows (a sweep's read, a lookup): each firm's line in a transaction of its own. Returns

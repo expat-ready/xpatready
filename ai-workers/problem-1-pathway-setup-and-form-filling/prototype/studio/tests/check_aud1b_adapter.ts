@@ -32,6 +32,7 @@ const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-v
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); };
 const rejects = async (f: () => Promise<unknown>, test: (e: unknown) => boolean = () => true) => { try { await f(); return false; } catch (e) { return test(e); } };
+const refusedSql = (q: string, like: RegExp) => { try { sql(q); return false; } catch (e) { return like.test(String((e as { stderr?: unknown }).stderr ?? e)); } };
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Res = { status: number; body: any; requestId: string | null };
@@ -171,15 +172,33 @@ try {
     seen.wroteB === true && seen.refusedA === true && (seen.ctx as any)?.firmId === FIRM_B && (seen.ctx as any)?.actorType === "SYSTEM" && sql("select count(*) from audit_event where entity_key = 'aud1b-dw2-boss-a'") === "0" && row(`entity_key = 'aud1b-dw2-boss-b'`).startsWith(`${FIRM_B}|SYSTEM|`), seen);
 
   // ------------------------------------------------------------------------- DW3: a scope marked ours
-  const ours = { platform: { staffId: R.id, firmId: FIRM_A, ourStaff: true } }, theirs = { platform: { staffId: R.id, firmId: FIRM_A } };
-  const inScope = <T>(req: typeof ours | typeof theirs, fn: () => T) => requestScope.run({ correlationId: "aud1b-dw3", firmId: () => FIRM_A, audit: () => auditOf(req) }, fn);
+  // AUD-3a: one of ExpatReady's own staff (PF-4s's guard puts them on req.systemStaff, never req.platform) acts as
+  // ourstaff:<id>, OUR_STAFF; a firm's staff member as staff:<id>, FIRM_STAFF.
+  const OURS = "0f0f0f0f-0000-4000-8000-00000000a3a1";
+  const ours = { systemStaff: { staffId: OURS } }, theirs = { platform: { staffId: R.id, firmId: FIRM_A } };
+  const inScope = <T>(req: object, fn: () => T) => requestScope.run({ correlationId: "aud1b-dw3", firmId: () => (("platform" in req) ? FIRM_A : undefined), audit: () => auditOf(req as never) }, fn);
   const ctxOurs = inScope(ours, () => auditContext()), ctxTheirs = inScope(theirs, () => auditContext());
-  ok("AUD-1b DW3 pass: a scope a guard marks as ours gives OUR_STAFF (entered directly; PF-4s's guard is not on main); a firm's staff gives FIRM_STAFF",
-    ctxOurs?.actorType === "OUR_STAFF" && ctxOurs.actor === `staff:${R.id}` && ctxOurs.firmId === FIRM_A && ctxOurs.correlationId === "aud1b-dw3" && ctxTheirs?.actorType === "FIRM_STAFF", { ctxOurs, ctxTheirs });
-  const oursWrite = (actor: string, key: string) => inScope(ours, () => rejects(() => db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor, action: "platform.check.ours", entity: "platform_staff", entityKey: key, summary: "AUD-1b ours." })), (e) => e instanceof AuditRefused && /OUR_STAFF/.test((e as Error).message)));
-  const oursRefused = [await oursWrite(`staff:${R.id}`, "aud1b-dw3"), await oursWrite(`staff:${R.id.toUpperCase()}`, "aud1b-dw3-upper"), await oursWrite("system:support", "aud1b-dw3-system"), await oursWrite(`staff:${S.id}`, "aud1b-dw3-other")];
-  ok("AUD-1b DW3 fail: our staff's line is never written as FIRM_STAFF or under another word: until PF-4s gives our staff an actor word, every line in their request is refused (own id, upper case, system:, another staff member; breaker M1)",
+  ok("AUD-1b DW3 pass (AUD-3a): our staff's request (req.systemStaff) acts as ourstaff:<id>, OUR_STAFF, with no firm of its own; a firm's staff gives staff:<id>, FIRM_STAFF",
+    ctxOurs?.actorType === "OUR_STAFF" && ctxOurs.actor === `ourstaff:${OURS}` && ctxOurs.firmId === undefined && ctxOurs.correlationId === "aud1b-dw3" && ctxTheirs?.actorType === "FIRM_STAFF" && ctxTheirs.actor === `staff:${R.id}`, { ctxOurs, ctxTheirs });
+  const write = (req: object, actor: string, key: string) => inScope(req, () => db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor, action: "platform.check.ours", entity: "platform_staff", entityKey: key, summary: "AUD-1b ours." })));
+  const oursRefusedWith = (req: object, actor: string, key: string, re: RegExp) => rejects(() => write(req, actor, key), (e) => e instanceof AuditRefused && re.test((e as Error).message));
+  const oursRefused = [await oursRefusedWith(ours, `staff:${OURS}`, "aud1b-dw3-staffword", /OUR_STAFF/), await oursRefusedWith(ours, `staff:${R.id}`, "aud1b-dw3", /OUR_STAFF/), await oursRefusedWith(ours, "system:support", "aud1b-dw3-system", /OUR_STAFF/),
+    await oursRefusedWith(ours, `ourstaff:${OURS.toUpperCase()}`, "aud1b-dw3-upper", /this request is ourstaff/), await oursRefusedWith(ours, "ourstaff:0f0f0f0f-0000-4000-8000-00000000a3a2", "aud1b-dw3-other", /this request is ourstaff/)];
+  ok("AUD-1b DW3 fail (breaker M1; AUD-3a): in our staff's request a line under any word but their own is refused (staff: with their id or another's, system:, ourstaff: in another case or of another person); nothing written",
     oursRefused.every(Boolean) && sql(`select count(*) from audit_event where entity_key like 'aud1b-dw3%'`) === "0", oursRefused);
+  const elsewhere = [await oursRefusedWith(theirs, `ourstaff:${OURS}`, "aud1b-dw3-firmreq", /our staff's word/), await rejects(() => db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: `ourstaff:${OURS}`, action: "platform.check.ours", entity: "platform_staff", entityKey: "aud1b-dw3-noreq", summary: "AUD-1b ours." })), (e) => e instanceof AuditRefused && /our staff's word/.test((e as Error).message))];
+  ok("AUD-1b DW3 fail (AUD-3a): our staff's word is never written outside our staff's request (a firm staff member's request, no request at all)", elsewhere.every(Boolean) && sql(`select count(*) from audit_event where entity_key like 'aud1b-dw3%'`) === "0", elsewhere);
+  await write(ours, `ourstaff:${OURS}`, "aud1b-dw3-own");
+  ok("AUD-3a pass: in our staff's request their own line is written on the firm's trail, OUR_STAFF, under ourstaff:<id>, with the request's correlation id",
+    sql(`select firm_id || '|' || actor_type || '|' || actor || '|' || correlation_id from audit_event where entity_key = 'aud1b-dw3-own'`) === `${FIRM_A}|OUR_STAFF|ourstaff:${OURS}|aud1b-dw3`);
+  ok("AUD-3a pass (database): the insert trigger maps ourstaff:<id> to OUR_STAFF, and refuses a writer that passes it as FIRM_STAFF",
+    sql(`select aud_event_actor_type('ourstaff:${OURS}')::text || '|' || aud_event_actor_type('staff:${OURS}')::text || '|' || coalesce(aud_event_actor_type('ourstaff:')::text, 'none')`) === "OUR_STAFF|FIRM_STAFF|none"
+    && refusedSql(`insert into audit_event (id, workspace_id, actor, actor_type, action, entity, entity_key, summary) select gen_random_uuid(), id, 'ourstaff:${OURS}', 'FIRM_STAFF', 'x', 'platform_staff', 'aud1b-dw3-trigger', 'x' from workspace limit 1`, /is OUR_STAFF, not FIRM_STAFF/));
+  const badId = await rejects(() => write({ systemStaff: { staffId: "bad id!" } }, "staff:x", "aud1b-dw3-badid"), (e) => /not an actor id/.test(String(e)));
+  ok("AUD-3a fail (review n1): our staff's request whose id is not an actor id fails closed: no line at all, under any word", badId && sql(`select count(*) from audit_event where entity_key = 'aud1b-dw3-badid'`) === "0", badId);
+  const pf25Checks = sql(`select string_agg(conname || '=' || (pg_get_constraintdef(oid) like '%(staff|ourstaff|system|seed):%')::text, ',' order by conname) from pg_constraint where conname in ('platform_firm_web_address_set_by', 'platform_firm_address_history_changed_by')`);
+  ok("AUD-3a pass (database): PF-25's two actor columns (set_by, changed_by) accept the word too, for PF-25w's change by our staff; nothing else in their patterns changed",
+    pf25Checks === "platform_firm_address_history_changed_by=true,platform_firm_web_address_set_by=true", pf25Checks);
 
   // ------------------------------------------------------------------------- DW4: a forced audit failure, fail-closed
   sql(`create sequence aud1b_tries; create function aud1b_force() returns trigger language plpgsql as $$ begin perform nextval('aud1b_tries'); raise exception 'aud1b forced audit failure'; end $$;

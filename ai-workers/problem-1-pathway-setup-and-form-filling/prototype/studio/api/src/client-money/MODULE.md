@@ -20,6 +20,7 @@ The firm's client money: invoices, payments, refunds, receipts, the trust ledger
 - A pick of another payer's money is same-case only, by a person, with a reason, never more than the payer holds on that case; a pick takes both parties' locks, smaller id first (FO-7ts part 3).
 - A line's tax is `taxForLine` (per line, round half to even, whole minor units, then summed; never a float), computed by the route and stored; nothing recomputes it; a client-sent tax is ignored (FO-7b part 1a, QA-482; AG-6-4a, BR-4).
 - Every table is behind PF-12's walls; every trigger function runs as `xr_wall_reader` (PF-12).
+- Every route on an existing invoice, a new draft and the tax default answer 404 outside the caller's C5 scope, before any lock or write; the scope is read before the transaction, so a write can still land in the milliseconds after a caller leaves a case (Minor, accepted: Lead 14 on #3321).
 
 **Tables.** moneyPaymentSettings, moneyPaymentAccount, moneyNumberSeries, moneyInvoice, moneyInvoiceLine, moneyCreditNote, moneyPayment, moneyRefund, moneyReceipt, moneyTrustRequest, moneyTrustEntry, moneyWriteOff, moneyMoveBatch, moneyMoveLine.
 **Tests.** `tests/check_fo7a_money_schema.ts`, `tests/check_fo7mv_move_list.ts`, `tests/check_fo7a2_ledger_rules.ts`, `tests/check_pf12_walls.ts`.

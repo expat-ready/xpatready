@@ -7,7 +7,8 @@
 // Part 1 reads the firm's province only. The Bill-to party's province and country (AG-6-4 rules 1 and 4) are part 3's:
 // no person or company has an address on main, so they are not inputs yet (an input that is taken and not read would be
 // a silent wrong answer). "PARTY_PROVINCE" and outsideCanada are in the answer's shape for that part; here the source is
-// "FIRM_PROVINCE" or "NONE" and outsideCanada is false.
+// "FIRM_PROVINCE" or "NONE" and outsideCanada is false. FO-7g part 3 (P-797) adds `partyProvince`: the invoice's Bill-to
+// province, the client's province; with it the source is "PARTY_PROVINCE". outsideCanada stays false (no party country).
 import { PROVINCE_CODES, PROVINCE_TAX_RATES, type ProvinceCode, type ProvinceTaxTable } from "./canada-gst-hst.ts";
 
 export type TaxDefault = {
@@ -36,11 +37,16 @@ export function provinceCode(value: unknown): ProvinceCode | null {
 
 const NONE = (registered: boolean, warning: string | null): TaxDefault => ({ taxName: null, ratePpm: 0, source: "NONE", outsideCanada: false, registered, warning });
 
-/** The default tax for a firm. Not registered (anything but true) → 0 and no tax name (rule 5), whatever the province
+/** The default tax for a firm (and, with `partyProvince`, for one invoice's Bill-to province). Not registered (anything but true) → 0 and no tax name (rule 5), whatever the province
  *  or the tax number. Registered with an unknown province → 0, "NONE" and the warning. Else the province's entry of the
  *  table. `table` is the cited table; a test passes a planted one, never the app. */
-export function taxDefault(input: { firmProvince?: string | null; registered: boolean }, table: ProvinceTaxTable = PROVINCE_TAX_RATES): TaxDefault {
+export function taxDefault(input: { firmProvince?: string | null; partyProvince?: string | null; registered: boolean }, table: ProvinceTaxTable = PROVINCE_TAX_RATES): TaxDefault {
   if (input.registered !== true) return NONE(false, null);
+  // FO-7g part 3 (P-797): the client's province (an invoice's Bill-to province) wins when it is one of the 13 codes in the
+  // table; anything else is not a guess, so the firm's province is read as before.
+  const party = provinceCode(input.partyProvince);
+  const partyEntry = party && Object.hasOwn(table, party) ? table[party] : null;
+  if (partyEntry) return { taxName: partyEntry.taxName, ratePpm: partyEntry.ratePpm, source: "PARTY_PROVINCE", outsideCanada: false, registered: true, warning: null };
   const code = provinceCode(input.firmProvince);
   const entry = code && Object.hasOwn(table, code) ? table[code] : null;
   if (!entry) return NONE(true, NO_PROVINCE_WARNING);

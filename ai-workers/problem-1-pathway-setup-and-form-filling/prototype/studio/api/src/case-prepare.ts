@@ -678,10 +678,11 @@ export class CasePrepare {
       const ask = l.missing.filter((m) => !m.answered).map((m) => m.question);
       return filing ? [{ subject: p.subject, person: p.label, filing, document_type: l.document.key, label: l.label, required: false, never_waivable: true, waiting: ask.length ? ask.join(", ") : "the questions its condition reads" }] : [];
     }));
+    const flagWarn = await flagWarningsOf(this.db, people.map((p) => p.subjectId), (s as { document_types?: { key: string; name: string }[] }).document_types ?? []); // CS-D7 (4)
     const readiness = await readinessOfCase(this.db, { workspaceId: c.workspaceId, caseId: c.id, filings: filings.map((f) => f.id), forms: formItems, reviewAfterMove, releaseUpdate,
       byHand: (form, subject) => handOf.get(`${form}|${subject}`) ?? [],
       copy: copyOf,
-      documents: docItems.map((d) => ({ subject: d.subject, person: d.person, filing: d.filing, item: d.id, document_type: d.document_type, label: d.label, required: docLine(d.subject, d.document_type)?.required ?? true, never_waivable: docLine(d.subject, d.document_type)?.never_waivable ?? false, ...(docLine(d.subject, d.document_type)?.never_if?.length ? { waiting: docLine(d.subject, d.document_type)!.never_if!.join(", ") } : {}) }) as ReadinessInputs["documents"][number]).concat(waitingNever), // M3-S4
+      documents: docItems.map((d) => ({ subject: d.subject, person: d.person, filing: d.filing, item: d.id, document_type: d.document_type, label: d.label, ...(flagWarn.get(`${d.subject}|${d.document_type}`)?.length ? { flag_warnings: flagWarn.get(`${d.subject}|${d.document_type}`) } : {}), required: docLine(d.subject, d.document_type)?.required ?? true, never_waivable: docLine(d.subject, d.document_type)?.never_waivable ?? false, ...(docLine(d.subject, d.document_type)?.never_if?.length ? { waiting: docLine(d.subject, d.document_type)!.never_if!.join(", ") } : {}) }) as ReadinessInputs["documents"][number]).concat(waitingNever), // M3-S4
       factsOf: (form, subject) => formReady(form, subject),
       // C7.9 (P-242): the must-verify facts this form writes from an unchecked client-given value.
       unverifiedOf: (form, subject) => unverifiedOf(s, answers, formCoverage(s, people, answers, rows, form, subject)?.facts ?? [], reading), owesFact: (fact, subject) => (subject !== REPRESENTATIVE && isClientField(s, fact) ? "client" : "staff"), // B107: the representative's facts are the firm record's
@@ -999,6 +1000,7 @@ export async function storedVersion(tx: Tx | Db, caseId: string) {
 const withRevision = (v: string, revision: number) => (revision > 1 ? `${v}~r${revision}` : v);
 export { busyWords } from "./busy.ts";
 import { busyWords } from "./busy.ts";
+import { flagWarningsOf } from "./case-document-flags.ts"; // CS-D7 (4)
 /** The version of a set of current filings and items (the same rule for the view and for a write's check). */
 function versionOf(filings: { id: string; submissionGroupId: string }[], items: { id: string; channel?: string | null; version: number }[]) {
   const groups = [...new Set(filings.map((f) => f.submissionGroupId))].map((id) => ({ id, filings: filings.filter((f) => f.submissionGroupId === id).map((f) => f.id) }));
