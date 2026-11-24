@@ -358,3 +358,13 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Works on main at day end IST, by grep: 20 Nov 25, 21 Nov 41, 22 Nov 46, 23 Nov 50; 55 now.
 * Last 24 h on main: 126 merged PRs, 48 app code. App code medians: created to merged 704 min; first Approve to merged 586; last Approve to last label 53; last label to merged 62; 23 of 48 were dequeued at least once. Old PRs inflate the first two.
 * Standby asked for; lane-preflight refused at 14:49 (disk 6.5 GB, needs 7), not started. Two refusals are not to be worked around. lead-watch run started 14:45 not finished at 14:51.
+
+### Lead 26, check 14:59 IST 24 Nov
+* Merged: #3454 14:42, #3461 14:53. In batches: #3441 (M2, #3469) and #3433 (#3468). Queued: #3456, #3464. Main: no failed run; nightly green. #3234's full run going; then #3421 (needs a new /run full, #3454 is on main), #3235, #3277 (after #3464), #3174.
+* #3465 (R1.20) API and web read, read line posted. #3470 (PF-17 part 4): concept approved on four answers (demo sign-in local only). #3467: CodeQL 2 high in check_no_array_tx.ts:118 (escaping), told on the PR.
+* **#3471 (consultation gate): not ruled, for the founder** (conflict of AG-4-15 with R1.104 and the Code); lane asked for a one-page revision. Nothing is built.
+* Replay follow-up (CONTROLS-ON-MAIN.md, its words): of 21 claims 17 still on main and unrecorded, 1 recorded, 3 fixed; first for qa: S17 M1, M4, M5, retainer page. Not passed to qa yet; effort and tokens unconfirmed.
+* Lead O 2: wake test, no reply in 30 min; watch line kept, comments not trusted to wake.
+* **Number clash:** Lead 25 relays its own A363 (Greptile against CodeRabbit and CodeAnt, startup credits); recorded here as **A364**; Lead 25 does the sign-up steps with him in its chat, I open none. P-662 stands.
+* Standby: preflight refused again (load 17.3 over 16; disk 7.7). Lead 25 tried too and was refused; only one of us retries: me, at his next typed turn.
+* Lead B 6 at 42% of its window, Lead O 2 11%, Lead 27%. Weekly 74%. cloud lanes' labels read: PF-17 part 4, R1.20 on Opus 5.5 Medium.
