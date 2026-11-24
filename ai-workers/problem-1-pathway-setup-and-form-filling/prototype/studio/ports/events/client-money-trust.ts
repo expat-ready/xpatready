@@ -2,6 +2,7 @@
 // their names (module_event.type) and the shape their consumers read. One file per owner module or part (P-785 (2)).
 // Part 1 adds trust.deposited only (briefs/track-b/FO-7t-1.md); trust.request_sent waits on Lead B's confirmation.
 // Part 2 adds trust.applied and trust.refunded (contracts §8's names; FO-7t.md part 2).
+// Part 3 adds trust.moved (AG-6-73 §9 "a moved fact"; the name is proposed by FO-7t.md, Lead B confirms).
 // Imports only zod. tests/check_ports_events.ts keeps every name unique across the folder.
 import { z } from "zod";
 
@@ -13,6 +14,8 @@ export const TRUST_EVENT = {
   TRUST_APPLIED: "trust.applied",
   /** Trust money went back to the client (a REFUND_TO_CLIENT entry, recorded offline; FO-7t part 2, AG-6-23 §9). */
   TRUST_REFUNDED: "trust.refunded",
+  /** A "To move" batch was recorded between the trust and operating accounts, or undone (FO-7t part 3, AG-6-73 §9). */
+  TRUST_MOVED: "trust.moved",
 } as const;
 
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
@@ -36,3 +39,9 @@ export const TrustRefundedPayload = z.strictObject({
   amountMinor: z.number().int().positive(), currency: z.enum(["CAD", "USD"]),
 });
 export type TrustRefundedPayload = z.infer<typeof TrustRefundedPayload>;
+/** trust.moved: ids, the batch's total and its currency only (no reason or person). The subject is the batch; an undo
+ *  names the batch it undoes (undoesBatchId), whose total it carries. */
+export const TrustMovedPayload = z.strictObject({
+  batchId: uuid, undoesBatchId: uuid.nullable(), amountMinor: z.number().int().positive(), currency: z.enum(["CAD", "USD"]),
+});
+export type TrustMovedPayload = z.infer<typeof TrustMovedPayload>;

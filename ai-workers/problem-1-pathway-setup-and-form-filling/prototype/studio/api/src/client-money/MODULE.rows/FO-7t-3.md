@@ -1,0 +1,2 @@
+Entry points: FO-7t part 3: `GET /api/front-office/money/trust/to-move`, `POST /api/front-office/money/trust/to-move/batches`, `POST /api/front-office/money/trust/to-move/batches/:id/undo` (agent/payment:record; C5 as the ledger); jobs `client_money.trust_to_move_sweep` (daily, its bypass use `to-move.bypass.ts`) and `client_money.trust_to_move_waiting` (NotificationPort kind `trust-to-move-waiting`); event `trust.moved`.
+Tests: `tests/check_fo7t_to_move.ts`

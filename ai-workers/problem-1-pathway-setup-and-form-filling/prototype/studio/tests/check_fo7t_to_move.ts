@@ -11,11 +11,10 @@
 //        read from money_to_move only, the lines the person may see (C5, as the ledger).
 //   POST /trust/to-move/batches { currency, direction, transferDate, lines: [{ sourceEntryId, amountMinor }] } (agent/payment:record)
 //        → 201 { batchId, currency, direction, transferDate, totalMinor, lines: [{ lineId, sourceEntryId, amountMinor }] }
-//        lines whose entries are in two currencies, or not the batch's → 400 (one batch per currency, AG-6-73 §12); the
+//        lines whose entries are in two currencies, or not the batch's → 422 (one batch per currency, AG-6-73 §12; the brief's 400 is PF-28's 422 since Lead B rev 17.21); the
 //        database's refusal → 409 MOVE_REFUSED in its words; the route holds no cap of its own.
-//   POST /trust/to-move/batches/:id/undo { reason } (agent/payment:record) → 201 { batchId, undoesBatchId }; no reason → 400.
-// Audit lines trust_money.moved and trust_money.move_undone, one per change, in its transaction. Field errors 422 (PF-28),
-// the one-batch-per-currency answer 400 as the brief names it.
+//   POST /trust/to-move/batches/:id/undo { reason } (agent/payment:record) → 201 { batchId, undoesBatchId }; no reason → 422 (PF-28).
+// Audit lines trust_money.moved and trust_money.move_undone, one per change, in its transaction. Field errors 422 (PF-28).
 // A scratch database (every migration), a Nest app of PF-4's guard, PF-12's walls, FO-7b's invoices and FO-7t's trust,
 // with the local sign-in stand-in; the mail, jobs, clock and notifications are the fakes. No network, no model call (US$0).
 // Amounts are Sample. Dropped at the end, also when the feature is missing.
@@ -160,7 +159,7 @@ try {
   const I3 = await issued(PA, CASE, 1000);
   const W3 = await applied({ invoiceId: I3, amountMinor: 1000 });
   const twoCur = await move([{ sourceEntryId: W1, amountMinor: 100 }], tR, { currency: "USD" });
-  ok("FO-7t DW12 fail (AG-6-73 §12): a CAD line in a USD batch → 400 (one batch per currency), nothing written", twoCur.status === 400 && batches() === 0, twoCur.body);
+  ok("FO-7t DW12 fail (AG-6-73 §12): a CAD line in a USD batch → 422 on lines (one batch per currency), nothing written", fieldError(twoCur.status) && /currency/i.test(JSON.stringify(twoCur.body)) && batches() === 0, twoCur.body);
   const noDate = await move([{ sourceEntryId: W1, amountMinor: 100 }], tR, { transferDate: undefined });
   const future = await move([{ sourceEntryId: W1, amountMinor: 100 }], tR, { transferDate: "2999-01-01" });
   ok("FO-7t DW12 fail: no transfer date, or one in the future → 422, nothing written", fieldError(noDate.status) && fieldError(future.status) && batches() === 0, [noDate.body, future.body]);
@@ -180,12 +179,14 @@ try {
   ok("FO-7t DW12 pass: part of a line (CAD 4.00 of 10.00) → 201; CAD 6.00 stays on the list", part.status === 201 && open(W3) === 600 && tot((await list()).body)?.openMinor === 600, part.body);
   const empty = await move([]);
   ok("FO-7t DW12 fail: no line → 422, nothing written", fieldError(empty.status) && batches() === 2, empty.body);
+  const tooMany = await move(Array.from({ length: 101 }, () => ({ sourceEntryId: W3, amountMinor: 1 })));
+  ok("FO-7t DW12 fail: 101 lines → 422 (at most 100 a batch, so its audit line names every line), nothing written", fieldError(tooMany.status) && batches() === 2, tooMany.body);
   const gone = await move([{ sourceEntryId: randomUUID(), amountMinor: 1 }]);
   ok("FO-7t DW12 fail: a line naming no trust entry of the firm → 404, nothing written", gone.status === 404 && batches() === 2, gone.body);
 
   // ------------------------------------------------------------------------------------------------- DW13: undo
   const noReason = await undo(moved.batchId, {});
-  ok("FO-7t DW13 fail (AG-6-73 rule 6): an undo without a reason → 400, nothing written", noReason.status === 400 && batches() === 2, noReason.body);
+  ok("FO-7t DW13 fail (AG-6-73 rule 6): an undo without a reason → 422, nothing written", fieldError(noReason.status) && batches() === 2, noReason.body);
   const u1 = await undo(moved.batchId);
   ok("FO-7t DW13 pass: an undo with a reason → 201 naming the batch it undoes; its lines go back to the list (169.50 open again)",
     u1.status === 201 && u1.body.undoesBatchId === moved.batchId && open(W1) === 16950 && (await list()).body.lines.some((x: any) => x.sourceEntryId === W1), u1.body);   // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -262,8 +263,9 @@ try {
     toA().length === 2 && calls === 1 && notifyCalls() === 1 && toA().every((n) => n.at.getTime() === firstRound[0].at.getTime()), { calls, now: notifyCalls(), sent: toA() });
   // Move everything left (each open line, its whole open amount), then a new line becomes old: a new episode.
   const left = (await list()).body.lines as { sourceEntryId: string; openMinor: number; direction: string }[];
-  const all = await move(left.filter((x) => x.direction === "TRUST_TO_OPERATING").map((x) => ({ sourceEntryId: x.sourceEntryId, amountMinor: x.openMinor })));
-  ok("FO-7t DW14 setup: every open line moved in one batch → the list is empty", all.status === 201 && (await list()).body.lines.length === 0, all.body);
+  const outs = left.filter((x) => x.direction === "TRUST_TO_OPERATING").map((x) => ({ sourceEntryId: x.sourceEntryId, amountMinor: x.openMinor })), all: Res[] = [];
+  for (let i = 0; i < outs.length; i += 100) all.push(await move(outs.slice(i, i + 100)));   // at most 100 lines a batch
+  ok("FO-7t DW14 setup: every open line moved, 100 lines a batch → the list is empty", all.every((r) => r.status === 201) && (await list()).body.lines.length === 0, all.map((r) => r.body));
   await fclock.advance({ days: 1 });
   ok("FO-7t DW14 pass: after moving, the sweep finds nothing waiting and tells nobody again", notifyCalls() === 1 && toA().length === 2, { calls: notifyCalls() });
   void Q; void staffO;
