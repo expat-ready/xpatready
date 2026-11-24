@@ -124,3 +124,27 @@ Reviewed only `git diff bd9d81495..9fe17105a`: `lib/service-checks.ts`, `README.
 **Verdict: Approve**
 
 Reviewer: Approve 9fe17105ad710fbbc4db811242dfc732a676e478
+
+## Round 3 (5ab662ad7, diff-only)
+
+**Verdict: Approve 5ab662ad700ec20cb7b0fa467c3b84552965605c** (no Blocker, no Major; diff `913f71d07..5ab662ad7`, 4 files under `deploy/cdk`).
+
+**What holds:**
+- The eighth action is everywhere it must be: `SIGN_IN_ACTIONS` with its caller (`lib/service.ts:45-50`, true to #3217 `provider.ts:236-239`: `factors()` tells a passkey from an app), the exact check and `ECS_TASK_ACTIONS` via the list, the tests, the README and the comments. Synth before and after (both modes) differs in exactly 4 lines: `cognito-idp:AdminGetUserAuthFactors` added to `AppTaskTaskRoleDefaultPolicy` (role `AppTaskTaskRole`, resource `GetAtt AppPoolstaff.Arn`) in xr-staging and xr-production, both modes. No other change; the backup stacks are unchanged.
+- `NO_IAM` (`test:189`) is right. In SDK 3.1161.0 `dist-types/commands`, each of the four says "Amazon Cognito doesn't evaluate Identity and Access Management (IAM) policies". `AdminGetUserAuthFactors` says "evaluates". The list is 4 of the 30 IAM-free commands, so a new one (for example `RevokeToken`) fails safe: the test asks for a grant.
+- `PENDING` (`test:191`) is right. PF-4bc = the five commands of #3217's one import: `git grep Command pr3217` shows `provider.ts:6`, called at :183/:203/:237/:246/:256. The parts 2b/4 entry = concept r3 §2 steps 1-2 and §3 (AdminInitiateAuth, AdminRespondToAuthChallenge, AdminSetUserPassword, AdminGetUser). `PF4BC_PROVIDER_IMPORT` matches pr3217 `provider.ts` lines 1-7 byte for byte (checked).
+- Would it have caught the miss? Yes. `test:244-245` ties the PF-4bc entry to #3217's import. Once #3217 is on main, the reader reads the real file.
+- What the reader catches (probed): aliases, multi-line imports, `import type`, a `}` inside a comment, a commented-out import, and a URL with `//`. It refuses: namespace, default+named, a deep path, `export *`, a re-export, `require`, dynamic `import()` and the all-in-one client.
+- Order with #3217: I trial-merged pr3217 (7a7740278) into 5ab662ad7. No conflict, and the full cdk suite gives 139/139 with exit 0, so main stays green. The reader finds the 5 commands in `provider.ts`. `tests/fixtures/pf4bc-cognito/fake-cognito.ts` names the SDK only in comments and is not read. Merging this PR first leaves 4 actions granted with no caller on main. Each is named in `PENDING` and is a read or admin call on the staff pool only, which is the same stance round 1 approved.
+- `npm test` twice: exit 0 and exit 0 (139/139, 16.2 s and 18.0 s).
+
+**Minors (Should):**
+- m1 The guard does not run on the PRs it guards. `.github/workflows/deploy-synth.yml:19-22` runs on a PR only when `deploy/cdk/**` changes, but the test now reads `api/src`, `ports` and `tools`. A row that adds a Cognito command in `api/src` alone stays green on its PR and turns main's push run red after the merge. #3217 itself touches nothing under `deploy/`. Fix: add those folders (and the ones in m2) to the `pull_request.paths` list.
+- m2 Folders the app imports and the image ships are not read. `test:222` reads `api/src`, `ports` and `tools`, but the API imports `engine/` (372 imports) and `contracts/` (206), and `deploy/container-entry.mjs` runs in the task. All of these are in the image (`Dockerfile.dockerignore`), so a command added there is missed. Fix: walk all of `studio/` minus what the dockerignore leaves out (`node_modules`, `web`, `tests`, `evidence`, `var`, `deploy/cdk`).
+- m3 Comment stripping can hide an import. `test:205-206`: a string holding `/*` ahead of a later top-level import (legal in ESM, for example `const g = "uploads/*";` then the import, then a `/** doc */`) is stripped as one comment, and the file is skipped. `"a//b"; import {…}` on one line does the same. A string-built specifier (`import(p)`, `createRequire`) or a raw signed `fetch` to `cognito-idp` is never seen. Fix: run the named-import regex on the raw text too and take the union (a commented import only adds a command, which fails safe). Refuse any file that names `cognito-idp` or `client-cognito-` without a readable import.
+- m4 `PENDING` never retires. Once #3217 merges, its entry keeps all five actions counted as needed, so the "granted but not called" half cannot see one of them being dropped later. Fix: put a follow-up in `STATE.md` to delete the PF-4bc entry and `PF4BC_PROVIDER_IMPORT` when #3217 merges, and likewise each parts 2b/4 command as its PR lands.
+- Nit `test:63`: the case named "an eighth action" now adds a ninth. The README says nothing about the tie test, or that the deploy tests now read the app's source.
+
+**Journey score (round 3):** unchanged, 10 scaled from 8 of 8 applicable. There is no UI. The diff adds one IAM action and a test that reads the source. Live AWS behaviour stays on the staging proof list.
+
+Reviewer: Approve 5ab662ad700ec20cb7b0fa467c3b84552965605c
