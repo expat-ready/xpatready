@@ -141,11 +141,53 @@
   "outside": [],
   "tool_calls": 25
  },
+ "S21": {
+  "cache_read": 1652169,
+  "fresh_in": 230913,
+  "out": 26731,
+  "outside": [],
+  "tool_calls": 32
+ },
  "S22": {
   "cache_read": 1026389,
   "fresh_in": 178464,
   "out": 17529,
   "outside": [],
   "tool_calls": 23
+ },
+ "S23": {
+  "cache_read": 1370301,
+  "fresh_in": 194405,
+  "out": 17864,
+  "outside": [],
+  "tool_calls": 31
+ },
+ "S24": {
+  "cache_read": 1900373,
+  "fresh_in": 219973,
+  "out": 19436,
+  "outside": [],
+  "tool_calls": 38
+ },
+ "S26": {
+  "cache_read": 1206814,
+  "fresh_in": 176732,
+  "out": 15330,
+  "outside": [],
+  "tool_calls": 22
+ },
+ "S27": {
+  "cache_read": 1054386,
+  "fresh_in": 153979,
+  "out": 11201,
+  "outside": [],
+  "tool_calls": 18
+ },
+ "S28": {
+  "cache_read": 1753752,
+  "fresh_in": 176305,
+  "out": 16200,
+  "outside": [],
+  "tool_calls": 28
  }
 }
