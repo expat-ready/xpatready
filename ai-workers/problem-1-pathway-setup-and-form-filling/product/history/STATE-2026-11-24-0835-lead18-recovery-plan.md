@@ -432,3 +432,10 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 ### Lead 27, 15:56 IST 24 Nov: the type check runs out of memory
 * Batch #3475 (#3305 + #3442) failed only on `types`: tsc api out of memory at the 8 GB heap; #3235 the same on three heads. 4 red of 35 types jobs since 13:47 IST, all this (logs of two read by me). Bisecting: #3305 alone in #3481. Lead O 2 asked to measure, then one small PR (I read it, .github/).
 * Founder (typed, after 15:50): all approvals for the audit check, browser or terminal. The close-and-reopen was refused by the classifier a second time; not done in the browser. The uploads lane 6TCJS is asked instead to merge main into #3277 (normal path; a new full run follows).
+
+### Lead 27, check 16:01 IST 24 Nov
+* #3277 is now 7f59eb088 (main merged, pure); its audit: 0 new findings against the base (lane's comment). Full run on the NEW head owed (45373102240 is on the old one; its types part red); read line on 7f59eb088 owed.
+* #3235 88cfadbe5: round 7 allowed and told; 825 lines against 800: size exception is the founder's question (lane and I recommend yes, deletion-safety tests). Lead B 6: carried Major closed there.
+* #3470 1d2cf9221: Approve, my read line posted, label on green ci. #3477 (R1.104 warn, never block) in delta review. #3474 16fd7922d needs its Approve line. #3478 (AS-1g, score grids) told to take stamp 20261124140000 and say who started it (opened 15:37, after the pause). #3481 tests #3305 alone; #3442 waits its bisection.
+* 5 types reds now (memory); Lead O 2 has my message queued, no answer seen. M1's full run 45373097708 going, its types part green.
+* Context 334k at 15:58: hand over at the next check.
