@@ -94,3 +94,44 @@
 * A headed (visible) browser, 200% zoom, a real screen reader, real KMS or SES, and D17/D20.
 
 Verdict: Changes 570c344b483ace08ee761d08c704a53d2c367de3
+
+## Round 2: `633b89afb2f5bfb9979d5f2e1742431070e0d638` (diff since 570c344b4 only, P-277)
+
+**Verdict: Ship.** All three Majors are fixed. No Blocker or Major is open. Reviewer: Opus 5.5, 24 Nov 2026.
+
+### What I ran at 633b89afb
+* **Suites, all PASS:** pf19e 27/27, pf19r_senders 28/28, pf19b_sending 42, pf19b_mail 29, pf19p 68, pf4b 57, pf6m2 19, pf21c 48, pf13 30, pf24 84, pf4c_batch_invite 24, pf4c1b_batch 19, pf4dn 15.
+* **Mutations:** each was put back with `git checkout`, and the tree is clean afterwards.
+  * The invitation's 409 off: the new DW4 invitation case fails.
+  * The invitation's 429 off: the new DW3 Resend case fails.
+  * The new suppressed-before-limit order put back to limit-first: still 27/27, so no test covers it (n1).
+* **Copy:** an isolated copy on :4431 at 1024 px, headless Chromium (round2.mjs in the session scratchpad). The copy is stopped and its database dropped.
+
+### Round 1 fixes
+* **M1: fixed.**
+  * The single invite and Resend now write the email inside their own transaction, through `invitationIn` and `mailIn` (`identity/service.ts:408-421`). `mailReady` runs before the firm's row lock, and the dispatch happens after the commit.
+  * In the person panel, Resend went ok four times. The fifth Resend (the sixth email) showed "We send at most 5 account emails an hour to one address, so this invitation was not sent. Try again in an hour." in the panel's "Not done" notice.
+  * Afterwards exactly one invitation is open, and its token hash matches a link in the demo inbox. So the last emailed link is kept.
+* **M2: fixed.**
+  * The invite panel's row shows "We couldn't send email to r2gone…@example.com. Ask your firm's Owner or Admin to check it." axe found 0 violations on that state.
+  * No invitation and no outbox row are kept. One `platform.invitation.not_sent` line is written in its own transaction.
+  * PF-19r DW2 was updated to the 409.
+* **M3: fixed.** New stored-file checks:
+  * the reset notice and the code email (`check_pf19e_sealed_bodies.ts:207-210`);
+  * the complaint reminder's last resort (`check_pf19r_senders.ts:230-232`).
+  * Each asserts a sealed file with none of the message's words.
+* **m3 order: fixed** (`send/messages.ts:144`): a suppressed address gets its refusal, never the limit.
+* **m6: fixed:** the count now filters on channel.
+* **m7: fixed:** the class order in `ports/messages.ts`, and the stale comment.
+* **Breaker m4:** a log line of ids and the refusal code when a body does not open. It holds no body.
+* **Left as questions for the tech lead on the PR:** m2 (per-firm scope), m3 (shared bucket), m4 (bodies are no SealedValueStore) and m5 (reset words). I could not read the PR from here (GitHub API path refused), so I take the builder's word that they are posted. They do not block.
+
+### Open (Minor, should)
+* **n1:** the suppressed-before-limit order (`send/messages.ts:144`) has no test. Moving the limit check back in front of the gate keeps the suite green (STANDARDS §7: a rule's test fails when the rule is removed). Fix: one DW4 case for an address that is both suppressed and at its limit, expecting 409.
+* **n2:** the batch route `POST /api/platform/staff/invitations/batch` still emails after its commit, through the catch-all (`identity/service.ts:396-403, 485`).
+  * A suppressed row, or one over the limit, answers `emailed:false`. Its audit line says "an invitation was sent", and a later Resend revokes it.
+  * No web page calls this route: the invite panel posts each row singly. So I treat this as a Minor.
+  * Fix: give batch rows the same `invitationIn` per row, or record the batch as out of scope on the PR.
+* **m1 (round 1): still open and not on the coordinator's list.** `Messages` and `PlatformInbox` still fall back to the local constant key in every environment when no box is passed (`send/messages.ts:105`, `messages/demo-inbox.ts:25`).
+
+Verdict: Approve 633b89afb2f5bfb9979d5f2e1742431070e0d638
