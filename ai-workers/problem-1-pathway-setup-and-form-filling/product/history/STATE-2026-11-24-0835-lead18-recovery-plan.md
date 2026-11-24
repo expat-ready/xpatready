@@ -368,3 +368,8 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **Number clash:** Lead 25 relays its own A363 (Greptile against CodeRabbit and CodeAnt, startup credits); recorded here as **A364**; Lead 25 does the sign-up steps with him in its chat, I open none. P-662 stands.
 * Standby: preflight refused again (load 17.3 over 16; disk 7.7). Lead 25 tried too and was refused; only one of us retries: me, at his next typed turn.
 * Lead B 6 at 42% of its window, Lead O 2 11%, Lead 27%. Weekly 74%. cloud lanes' labels read: PF-17 part 4, R1.20 on Opus 5.5 Medium.
+
+### Lead 26, 15:00 IST 24 Nov: A365 (Lead 25 calls it A364)
+* Founder, typed in Lead 25's chat before 14:55, relayed: check settings, clean disk and claude.ai lanes, create a standby; "after some time I will be moving out, and then you have to work out autonomously and recover everything as we discussed"; say the right stage to pass on. Not read as a yes to #3305, the copy move, CodeAnt's next steps, or any deletion or archive by name.
+* Split agreed: Lead 26 runs queue, lanes, reads, reports, records, disk; Lead 25 only the CodeAnt steps with him present and starts in his typed turns (so **Lead 27's standby is Lead 25's to retry while he types there**, mine otherwise), no files. CodeAnt passes to me when he leaves: signed in with GitHub (read:user, user:email, read:org, no repositories), waiting at workspace choice, shown Approved in the org's OAuth policy (Lead 25 recommends he removes it), no code sent. All Lead 25's words.
+* Clean copies per Lead 25: jolly-chatterjee (Lead B 5, 1.4 GB; it asks him), keen-pike, focused-torvalds, musing-newton (#3421, keep). build-lead-c-647b40: never touch (uncommitted work).
