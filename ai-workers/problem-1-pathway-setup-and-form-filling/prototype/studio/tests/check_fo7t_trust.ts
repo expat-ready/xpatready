@@ -339,6 +339,24 @@ try {
   ok("FO-7t DW10 pass (C5, any role; build round 1, M2): a Case Officer on the case's team gets the case's entries only, the newest running balance the case's own (as /balances says), never the party's",
     onTeam.status === 200 && ti.length > 0 && ti.every((x: { caseId: string }) => x.caseId === CASE) && ti[0].balanceAfterMinor === caseSum && caseSum !== dbBal("CAD")
     && (onTeamBal.body.balances ?? []).every((x: { caseId: string }) => x.caseId === CASE) && (onTeamBal.body.totals ?? []).find((x: { currency: string }) => x.currency === "CAD")?.amountMinor === caseSum, [ti, onTeamBal.body, caseSum]);
+  // Lead 17 (24 Nov, money read of 3e8d36f5f): cancel checks the caller's visibility (C5) as the request read does. For
+  // this block the Case Officer role holds agent/payment:record, so user-O has the key but sees only CASE (on its team
+  // above), not CASE2 and not PA as a party. Unseen → 404 before the cancelled check, nothing changed, no audit line.
+  sql(`insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', 'agent/payment:record')`);
+  const mk = async (body: Record<string, unknown>) => (await call(tR, "POST", "/requests", { ...reqBody, ...body })).body.id as string;
+  const rParty = await mk({}), rCase2 = await mk({ caseId: CASE2 }), rOnCase = await mk({ caseId: CASE }), rDone = await mk({ caseId: CASE2 });
+  await call(tR, "POST", `/requests/${rDone}/cancel`, { reason: "Owner cancelled it (Sample)" });
+  const cancelsBefore = audits("trust.request_cancelled"), state = () => sql(`select string_agg(id || ':' || coalesce(cancel_reason, '-'), ',' order by id) from money_trust_request where id in ('${rParty}', '${rCase2}', '${rDone}')`), st0 = state();
+  const cancelUnseen = await Promise.all([rParty, rCase2, rDone].map((id) => call(tO, "POST", `/requests/${id}/cancel`, { reason: "Not mine to cancel" })));
+  ok("FO-7t C5 fail (cancel; Lead 17): a staff member with agent/payment:record who sees neither the request's case nor its client → 404 on an open request (by party, by case) and on a cancelled one (never \"already cancelled\"); no row changed, no audit line",
+    cancelUnseen.every((r) => r.status === 404) && state() === st0 && audits("trust.request_cancelled") === cancelsBefore, cancelUnseen.map((r) => [r.status, r.body?.code, r.body?.detail]));
+  const byCase = await call(tO, "POST", `/requests/${rOnCase}/cancel`, { reason: "Client changed plans (Sample)" });
+  ok("FO-7t C5 pass (cancel, by case; Lead 17): that staff member cancels a request on the case they see (200, Cancelled, one audit line)",
+    byCase.status === 200 && byCase.body.status === "Cancelled" && sql(`select cancel_reason from money_trust_request where id = '${rOnCase}'`) === "Client changed plans (Sample)" && audits("trust.request_cancelled") === cancelsBefore + 1, byCase.body);
+  const byParty = await call(tR, "POST", `/requests/${rParty}/cancel`, { reason: "Sent in error (Sample)" });
+  ok("FO-7t C5 pass (cancel, by party; Lead 17): the Owner, who sees the client, cancels the client's request with no case (200, one audit line)",
+    byParty.status === 200 && byParty.body.status === "Cancelled" && audits("trust.request_cancelled") === cancelsBefore + 2, byParty.body);
+  sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/payment:record'`);
   ok("FO-7t DW10 pass: one audit line per change, by staff: each trust deposit, each request (held or sent), each cancel",
     audits("trust.deposited") === Number(sql(`select count(*) from money_payment where received_into = 'TRUST'`)) && audits("trust.request_created") === Number(sql(`select count(*) from money_trust_request`))
     && audits("trust.request_cancelled") === Number(sql(`select count(*) from money_trust_request where cancelled_at is not null`))
