@@ -18,6 +18,7 @@ updated: 2026-11-24 10:08 IST: Lead 21, check 4dfd36d5. **Hand-over: the last tw
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A353 | 24 Nov, before 10:10 (typed to Lead 17; relayed) | check us against the AI-native SDLC playbook; implement only what helps quality or speed | `design/sdlc-playbook-alignment-2026-11-24.md`; read by Lead 21, seven facts spot-checked true on main; N2-N4 finish ordered work; N1 trial not started; Lead 21's notes: plan file; open |
 | A352 | 24 Nov ~10:11 IST (typed to Lead 21) | yes to #3379's wording; concurs with the Lead's 'decide when you can'; the Lead drives the sandbox set-up (Stripe test mode, BoldSign, Google and Microsoft OAuth test apps) in the browser, one step and one question at a time; he watches and logs in | #3379 reworded; Stripe first; in progress |
 | A351 | 24 Nov 09:27 (typed to Lead 17) | five delivery problems: implement from now without delaying product | `design/delivery-five-2026-11-24.md` (end); C4 done: `design/p702-evaluation-2026-11-24.md`; open |
 | A350 | 24 Nov ~09:22 (typed to Lead 19) | do every needs-me step in the browser; AWS run US$2 yes; RQ-01 inside the 101, no blocker, parallel tracks; **commit 29 Nov**, 10-15 a day; research security and counsel; on-call given in chat | in progress; full in the plan file |
