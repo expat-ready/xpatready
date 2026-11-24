@@ -331,12 +331,15 @@ try {
   ok("FO-7t DW10 pass (C5, balances): the Owner, who sees both, gets PA's figures", ownBal.status === 200 && (ownBal.body.totals ?? []).find((x: { currency: string }) => x.currency === "CAD")?.amountMinor === dbBal("CAD"), ownBal.body);
   ok("FO-7t DW10 fail (C5, request read; Lead 10 ruling 3): that Case Officer reading r1 (PA's, no case) → 404", offReq.status === 404, offReq.body);
   ok("FO-7t DW10 pass (C5, request read): the Owner reads r1", ownReq.status === 200 && ownReq.body.number === r1.body.number, ownReq.body);
-  // Build round 1, M2: a Case Officer on CASE's team sees CASE's entries only, and their running balance is CASE's own
-  // money (summed over what they see), never the party's whole balance (which includes money outside their view).
+  // Build round 1, M2: a Case Officer on CASE's team gets a running balance summed over what they see, never the party's
+  // whole balance (which includes money outside their view).
   sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values (gen_random_uuid(), '${W}', '${CASE}', 'user-O', 'OFFICER', 'user-R')`);
   // Since #3321 (Lead 14: a visible case's client joins the party scope) that officer also sees PA's money with no case;
   // never money on PA's other case (CASE2, one deposit by the Owner here), so the figure is still not the party's whole.
   await dep({ method: "WIRE", amountMinor: 2500, caseId: CASE2, idempotencyKey: "fo7t-case2-money" });
+  // Round 13 M1: a visible row after the hidden one, so a running balance summed over all of PA's rows differs at the newest
+  // row the officer sees (with the hidden money last, it would equal the visible sum there and pass unnoticed).
+  await dep({ method: "WIRE", amountMinor: 300, caseId: CASE, idempotencyKey: "fo7t-case-after-case2" });
   const caseSum = Number(sql(`select sum(amount_minor) from money_trust_entry where person_id = '${PA}' and currency = 'CAD' and (case_id = '${CASE}' or case_id is null)`));
   const [onTeam, onTeamBal] = await Promise.all([call(tO, "GET", `/ledger?personId=${PA}&currency=CAD`), call(tO, "GET", `/balances?personId=${PA}`)]);
   const ti = onTeam.body.items ?? [];
