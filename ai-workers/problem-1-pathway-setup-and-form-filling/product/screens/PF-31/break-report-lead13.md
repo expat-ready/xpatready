@@ -117,3 +117,55 @@ Repro (user-S, /home): Ctrl-click "/pricing", then "/book/sample-firm" (both are
 - **m1 residual.** A reload after Sign out still writes the staff address into `xr.workspace.v1:local` (`/home`), through `load()`.
 
 Breaker: Changes 30ab3cde21af8b6f94ff9c0918bc5b70c65f55a0
+
+## Re-break on a42412e7f (delta a42412e7f), copy :4747 (xr_studio_n1new)
+
+Diff only. My own offices BrkA–BrkD vcmd (sample-solo, user-S); Studio as user-A. Clicks on the strip and on rows were made at mouse coordinates, so Playwright's scroll-into-view adds no movement. Nothing fixed, nothing committed. **Verdict: Approve.** No Blocker or Major is left. Four Minors below.
+
+### What held
+- **N1.**
+  - From /home, Ctrl-click on `/pricing`, `/book/sample-firm` and `/sign-in` each opens a browser tab. So does a middle-click on `/pricing`.
+  - No in-app tab appears, and `document.title` is unchanged.
+  - "/" (Studio) still opens in-app, as one area.
+- **N2.**
+  - The status tooltip on /settings/billing, opened by hover or by focus, is gone after Alt+PageDown and after Back.
+  - The Studio "Demo" menu, with the "Load the finished story…" tooltip inside it, leaves no menu, no tooltip and no `body` style after Alt+PageDown or Back.
+- **N3.** At the cap, the 13th Ctrl-click leaves the strip at 43 px, and the BrkB row stays at 337.
+- **N4.**
+  - On expiry the spacer goes (room 0, scrollHeight 900). After Sign out with 2 tabs it goes too.
+  - After the same person signs in again, the strip comes back over a page drawn afresh, so there is no pointer target to keep. I do not count that.
+- **Scroll compensation (main's measured move).**
+  - Row BrkC stays put when the strip appears, and again when it goes back to one item, at:
+    - the top of a short page (1440×900; room 43 added, then removed);
+    - the top of a long page (1024×500);
+    - mid-page (scrollY 150);
+    - the bottom of the page.
+  - On a scrolled page Chrome's anchoring does the work and no second scroll is made. Instrumented: one scroll event, no `scrollBy`.
+  - Side panel open on a record tab, the two other tabs closed: the typing is kept and focus stays in the field. The panel goes to top 0 (m5, follow-up). Escape back to the list causes no shift.
+- **m1.**
+  - Signed out, a typed `/platform/offices?q=x` and then a reload: `xr.workspace.v1:local` holds no staff path.
+  - Sign out answered 200 or 401: no list kept, as in the round before.
+
+### Minor
+- **P1. Each focus of a strip tab scrolls the page 10 px.**
+  - Cause: `html, main { scroll-padding-top: 4.5rem }` (styles/index.css:17) is 72 px, but a strip button's top is at 62 px. So `focusTab` (workspace.tsx:59) makes Chrome scroll the button "into view".
+  - Strip click round trip: scrollY 200 comes back as 190.
+  - Alt+PageDown/Up round trip: 180. The loss adds up on every switch.
+  - Closing a hidden tab with its × while scrolled (3 → 2 items): the page moves 10 px under the pointer, from scrollY 193 to 183.
+  - Partly older (the close and keyboard paths). The click path is from 30ab3cde2.
+- **P2. A hidden tab's tooltip comes back when its tab is shown again.**
+  - Repro: hover the billing status pill, press Alt+PageDown, move the pointer away, press Alt+PageUp.
+  - The tooltip shows with no hover, and stays through mouse moves and the wheel until Escape.
+  - Cause: Radix keeps `open`, and only the content is suppressed (tooltip.tsx:55).
+- **P3. The cap notice now covers the page top for 6 s.**
+  - It is `absolute` at y=98–127 over the page's `h1` and "where am I" line. A click there lands on the notice (`elementsFromPoint`: P[notice], H1).
+  - The trade for a constant strip height is reasonable. Noted only.
+- **P4. Signed out, a page load of a staff address drops a Studio or case tab from the "local" list.**
+  - Cause: `load()` moves the active local tab to the staff address, and the new filter (workspace.tsx:120-121) then removes it.
+  - Repro: `/cases` + `/clients`, then a typed `/platform/offices`. The list becomes `[/clients]`, with `active` pointing at the lost id.
+  - On the way back to `/cases`, it returns as a new tab at the end.
+  - Nothing typed is lost: these areas hold no drafts.
+
+Accepted, as agreed: N5, M2, m4, m5.
+
+Breaker: Approve a42412e7f653e4abd05909a96b87be97f5b4ede8
