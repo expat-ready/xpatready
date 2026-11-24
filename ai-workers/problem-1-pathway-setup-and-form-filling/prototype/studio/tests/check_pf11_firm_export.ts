@@ -107,6 +107,8 @@ try {
   sql(`update platform_staff set status = 'ACTIVE', deactivation_reason = null where id = '${R}'`);
   const back = await withFirm(FIRM_A, () => svc.request(ctx(R), { operationId: op() }).then((v) => v.state, (e) => String(e)));
   ok("PF-11 DW1 fail: a deactivated Owner is refused 403 by the in-transaction re-check (the same call passes once active)", deact === 403 && back === "QUEUED", [deact, back]);
+  ok("PF-11 DW1 pass (the key rows, exactly): agent/firm-data-export:list in the catalogue (NONE, GENERAL) on OWNER and ADMIN only; :request on OWNER only (PF-3's seed)",
+    sql(`select scope || ',' || class from platform_permission_key where key = 'agent/firm-data-export:list'`) === "NONE,GENERAL" && sql(`select string_agg(role::text || '=' || permission_key, ' ' order by permission_key, role) from platform_role_permission where permission_key like 'agent/firm-data-export:%'`) === "OWNER=agent/firm-data-export:list ADMIN=agent/firm-data-export:list OWNER=agent/firm-data-export:request");
   ok("PF-11 DW1 fail: a non-Owner holding the key by context alone is refused by the re-check", await withFirm(FIRM_A, () => svc.request(ctx(T), { operationId: op() }).then(() => 0, (e) => e.getStatus?.())) === 403);
 
   // ------------------------------------------------------------------------------------------ DW2: one request per operationId
