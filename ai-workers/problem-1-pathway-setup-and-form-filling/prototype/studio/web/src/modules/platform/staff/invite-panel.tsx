@@ -1,7 +1,9 @@
 // PF-6 part 2a (BR-1 to BR-3; AG-1-10, -13, -69): Invite people, a right panel. Rows of email and roles (Case Officer
 // ticked first; Owner never offered, BR-1), one plain line per row and Compare roles; the seat line for the whole form
-// before anything is sent (over the limit nothing is sent); one call per row; a row the server refuses keeps its words.
+// before anything is sent (over the limit nothing is sent); a row the server refuses keeps its words.
 // PF-4dn (AG-1-10): an optional Name per row goes with the invitation; accept uses it for the new staff member.
+// R1.20 (P-727, PF-4c part 1b's route): the whole form is one call to staff/invitations/batch; the good rows are sent and
+// leave the form, and each flagged row stays with its own words (a name flag under Name, every other flag under Email).
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Input, Notice, Panel } from "@/components/ui/controls";
@@ -11,6 +13,11 @@ import { givable, moneyKeysAdded, moneyLine, roleLine, type Role } from "./contr
 import { CompareRoles, RolePicker } from "./roles";
 import { staffChange } from "./step-up";
 
+type RowFlag = { code: string; detail: string };
+/** PF-4c part 1b's answer: the rows sent, and each flagged row with its reason (`flags` lists every problem of the row). */
+type BatchAnswer = { invited: { row: number; emailed?: boolean }[]; flagged: { row: number; reason: string; detail: string; flags?: RowFlag[] }[] };
+/** A flag about the row's name shows under Name (PF-4dn review m1); every other flag under Email. */
+const NAME_FLAGS = new Set(["INVALID_NAME"]);
 type Row = { n: number; name: string; email: string; roles: string[]; error: string | null; nameError: string | null };
 /** Case Officer ticked first (AG-1-69) when the inviter may give it; an Admin may not (SA-06: Admin lacks two of its keys). */
 const fresh = (n: number, offered: readonly string[]): Row => ({ n, name: "", email: "", roles: offered.includes("CASE_OFFICER") ? ["CASE_OFFICER"] : [], error: null, nameError: null });
@@ -19,35 +26,38 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
   const offered = givable(roles, me, true);
   const [rows, setRows] = React.useState<Row[]>(() => [fresh(1, offered)]);
   const [busy, setBusy] = React.useState(false);
+  const [formError, setFormError] = React.useState<{ title: string; text: string } | null>(null);
   const next = React.useRef(2);
   const qc = useQueryClient(), toast = useToast();
-  React.useEffect(() => { if (open) { setRows([fresh(1, offered)]); next.current = 2; } }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form on each opening
+  React.useEffect(() => { if (open) { setRows([fresh(1, offered)]); setFormError(null); next.current = 2; } }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form on each opening
   const set = (n: number, p: Partial<Row>) => setRows((rs) => rs.map((r) => (r.n === n ? { ...r, ...p } : r)));
   const after = seats.used + rows.length, over = after - seats.limit;
   // BR-3: the same email twice on this form is flagged on the later row (the server flags staff and pending invitations).
   const twice = (r: Row) => !!r.email.trim() && rows.some((o) => o.n < r.n && o.email.trim().toLowerCase() === r.email.trim().toLowerCase());
   const send = async () => {
     if (over > 0 || rows.some(twice)) return;
-    setBusy(true);
-    let sent = 0, unmailed = 0;
-    for (const r of rows) {
-      try { const a = await staffChange<{ emailed?: boolean }>("/platform/staff/invitations", { email: r.email.trim(), roles: r.roles, ...(r.name.trim() ? { displayName: r.name.trim() } : {}) }); sent++; if (a?.emailed === false) unmailed++; setRows((rs) => rs.filter((x) => x.n !== r.n)); }
-      catch (e) {
-        // PF-4dn review m1: a refused name shows on the Name field, every other refusal on the row's Email field.
-        if (e instanceof StaffApiError && /^DISPLAY_NAME_/.test(String((e.problem as { code?: unknown }).code ?? ""))) set(r.n, { nameError: e.message });
-        else set(r.n, { error: e instanceof StaffApiError ? e.message : "Could not send this invitation. Please try again." });
-      }
-    }
+    setBusy(true); setFormError(null);
+    const form = rows;   // row k of the request is form[k - 1]
+    let answer: BatchAnswer;
+    try { answer = await staffChange<BatchAnswer>("/platform/staff/invitations/batch", { rows: form.map((r) => ({ email: r.email.trim(), roles: r.roles, ...(r.name.trim() ? { name: r.name.trim() } : {}) })) }); }
+    catch (e) { setBusy(false); setFormError({ title: "Nothing was sent", text: e instanceof StaffApiError ? e.message : "Could not send these invitations. Please try again." }); return; }
+    const sentNs = new Set(answer.invited.map((i) => form[i.row - 1]?.n));
+    const flagsOf = new Map(answer.flagged.map((f) => [form[f.row - 1]?.n, f.flags?.length ? f.flags : [{ code: f.reason, detail: f.detail }]]));
+    const words = (fs: RowFlag[] | undefined, name: boolean) => fs?.filter((f) => NAME_FLAGS.has(f.code) === name).map((f) => f.detail).join(" ") || null;
+    setRows((rs) => rs.filter((r) => !sentNs.has(r.n)).map((r) => (flagsOf.has(r.n) ? { ...r, error: words(flagsOf.get(r.n), false), nameError: words(flagsOf.get(r.n), true) } : r)));
     setBusy(false);
     await qc.invalidateQueries({ queryKey: ["pf", "staff"] });
+    const sent = answer.invited.length, unmailed = answer.invited.filter((i) => i.emailed === false).length, flagged = answer.flagged.length;
     if (sent) toast.push(unmailed ? { tone: "danger", text: `${sent} ${sent === 1 ? "invitation" : "invitations"} made; ${unmailed} could not be emailed. Use Resend under Invited.` } : { tone: "ok", text: `${sent} ${sent === 1 ? "invitation" : "invitations"} sent.` });
-    if (sent === rows.length) onOpenChange(false);
+    if (flagged) setFormError({ title: "Not everyone was invited", text: `${flagged} ${flagged === 1 ? "person was" : "people were"} not invited. Fix ${flagged === 1 ? "the row" : "each row"} below and send again.` });
+    else if (sent === form.length) onOpenChange(false);
   };
   return (
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => !rows.some((r) => r.email.trim() || r.name.trim()) || window.confirm("Discard the people you typed?")} title="Invite people" description="Each person gets their own invitation email. It works for 72 hours."
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button busy={busy} disabled={over > 0} onClick={() => void send()} data-send-invites>Send {rows.length === 1 ? "invitation" : `${rows.length} invitations`}</Button></>}>
       <div className="flex flex-col gap-4">
         <p className="text-sm" data-invite-seats>{after} of {seats.limit} seats after these invites</p>
+        {formError ? <div data-invite-form-error><Notice tone="danger" title={formError.title}>{formError.text}</Notice></div> : null}
         {over > 0 ? <Notice tone="warn" title="Plan limit reached">Remove {over} {over === 1 ? "person" : "people"} or upgrade your plan. Nothing is sent until the form fits.</Notice> : null}
         {rows.map((r, i) => {
           const money = moneyKeysAdded(roles, r.roles), dup = twice(r);
