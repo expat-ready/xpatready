@@ -780,7 +780,7 @@ export class Studio {
     if (!up && at === keys.length - 1) fail(`"${title}" is already the last section.`, HttpStatus.CONFLICT);
     const to = up ? at - 1 : at + 1;
     [keys[at], keys[to]] = [keys[to], keys[at]];
-    await this.db.$transaction(async (tx) => { for (const [i, k] of keys.entries()) await tx.sqrSectionSelection.update({ where: { combinationId_sectionKey: { combinationId, sectionKey: k } }, data: { sectionOrder: i } }); });   // M2: interactive, never an array batch
+    await this.db.$transaction(async (tx) => { for (const [i, k] of keys.entries()) await tx.sqrSectionSelection.update({ where: { combinationId_sectionKey: { combinationId, sectionKey: k } }, data: { sectionOrder: i } }); }, { maxWait: 10_000, timeout: 5_000 });   // M2: interactive, never an array batch; M1 (Lead 25): its limits stated
     const nth = ordinal(to + 1);
     await this.audit.log(c.workspaceId, actor.id, "updated", "section selection", sectionKey, `${actor.name} moved the section "${title}" ${body.direction} in the questionnaire of "${c.label}": now ${nth} of ${keys.length}`, undefined, c.id);
     return { ok: true, position: to + 1, of: keys.length, order: keys.map((k) => ({ key: k, title: order.find((x) => x.key === k)!.title })) };

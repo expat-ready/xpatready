@@ -189,7 +189,10 @@ try {
     w2.link && w2.door === 200 && w2.gotCode && w2.verify < 300 && w2.consent < 300 && w2.session === 200, w2);
   ok("J-54 W2 (part missing: FO-6's routes, a signing page for the fake adapter on the running copy; the fake's link points at signing.fake.invalid): client A signs; their signer row is signed and the request reads CLIENT_SIGNED",
     w2.signed && REQ !== "" && requestOf(ra.id).split("|")[2] === "CLIENT_SIGNED", { how: w2.how, request: requestOf(ra.id) || "none" });
-  const fl = await api("POST", `/api/front-office/retainers/${ra.id}/firm-signing-link`, {}, tok);
+  // The firm signer agrees to sign electronically on the way in: FO-6 part 4c's strict body (#3490, routes.ts
+  // FirmSigningLinkBody; the words' version is door.ts's CONSENT_TEXT_VERSION). Aligned by qa 8, 24 Nov: it posted {}
+  // before, which part 4c answers 422.
+  const fl = await api("POST", `/api/front-office/retainers/${ra.id}/firm-signing-link`, { consent: true, consentTextVersion: "sign-electronically-v1" }, tok);
   const fc = await fresh(); const firmHow = await finish(fc.page, String(fl.body?.url ?? ""), () => requestOf(ra.id).split("|")[2] === "SIGNED"); await fc.ctx.close();
   ok("J-54 W3 (part missing: FO-6's routes, the firm signer's link (guessed route) and the fake's signing page): the representative signs last; the request reads SIGNED",
     fl.status === 200 && requestOf(ra.id).split("|")[2] === "SIGNED", { link: brief(fl), how: firmHow });

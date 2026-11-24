@@ -33,6 +33,13 @@ export class TrustController {
   @Post("deposits") @PermissionKeys("agent/payment:record")
   async deposit(@Req() r: R, @Body() b: unknown, @Res({ passthrough: true }) res: Response) { const { replayed, ...d } = await this.money.deposit(staffOf(r), b); if (replayed) res.status(200); return d; }
 
+  /** FO-7t part 2: Pay from trust (agent/invoice:issue, AG-6-68 §8) and a refund to the client (agent/refund:create, AG-6-23 §8). */
+  @Post("applications") @PermissionKeys("agent/invoice:issue")
+  apply(@Req() r: R, @Body() b: unknown) { return this.money.apply(staffOf(r), b); }
+
+  @Post("refunds") @PermissionKeys("agent/refund:create")
+  refund(@Req() r: R, @Body() b: unknown) { return this.money.refund(staffOf(r), b); }
+
   @Get("ledger") @PermissionKeys("agent/invoice:show")
   ledger(@Req() r: R, @Query() q: unknown) { return this.reads.ledger(staffOf(r), q); }
 
