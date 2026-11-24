@@ -79,7 +79,7 @@ try {
   clearingConflicts(db, { retainers: Retainers.prototype, prospects: Prospects.prototype });   // FO-13c: the conflict check first (Send and the win ask for it)
   const salesPorts = { audit: auditEvent, consent: new ConsentStore(auditEvent), publicOrigin: "http://localhost:4400" };
   const leads = new Leads(db, salesPorts), pros = new Prospects(db, salesPorts);
-  const hooks = new SigningHooksController(api), state = new SigningController(api, svc);
+  const hooks = new SigningHooksController(api), state = new SigningController(api, svc, db as never);
 
   const tpl = await svc.uploadTemplate(R, { name: "FO-6 part 3 retainer (Sample)" }, { bytes: buildDocx(["Client {client.name}", "{#fees}", "{label}: {amount}", "{/fees}"]), size: 1000 });
   let n = 0;
@@ -355,7 +355,7 @@ try {
       && count("fo_signer", `request_id = '${q13}' and (signed_at is not null or viewed_at is not null)`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q13}'`) === 2, { wv, wsg });
 
   // part 4c review round 1 M1: the firm signer's link rules, each with a line that fails without it (through the route itself)
-  const routes = new SigningController(api, svc, db);
+  const routes = new SigningController(api, svc, db as never);
   const repOf = (rid: string) => { const actor = sql(`select s.actor_id from fo_retainer r join platform_staff s on s.id = r.representative_staff_id where r.id = '${rid}'`); return ctxOf(actor, "sample-firm"); };
   const firmLink = (ctx: StaffContext, rid: string) => routes.firmLink({ platform: ctx }, rid, { consent: true, consentTextVersion: CONSENT });
   const p14 = await prospect("Max"), r14 = await draft(p14);
