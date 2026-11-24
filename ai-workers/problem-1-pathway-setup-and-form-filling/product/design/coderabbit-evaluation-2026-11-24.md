@@ -4,9 +4,11 @@ Read-only study for the tech lead. Nothing installed, no account, US$0. Web page
 
 **Names.** "Code Rabbit" is read as CodeRabbit. "Code and AI" is read as **CodeAnt AI**; the founder has not confirmed this. It could be Codium AI, now Qodo (section 5). **Budget (founder, 24 Nov):** at most US$100 a month, a cap and not a target.
 
+> **Update, 24 Nov (A355, Lead 23 reports the founder left the choice to the Lead): CodeAnt AI, command line only; CodeRabbit is dropped because of its training text. No App, no purchase. The replay has two arms (Opus checklist, CodeAnt). Steps: `codeant-replay-setup-2026-11-24.md`. The comparison below is kept as the record; sections 4 and 8 to 10 on CodeRabbit, its phase B and steps A and B do not go ahead.**
+
 ## Recommendation
 
-**Buy nothing and install no GitHub App today. On 25-26 Nov, replay our own known misses through three reviewers on the same 28 PRs: our Opus reviewer with a better checklist, CodeRabbit's command line and CodeAnt AI's command line. Keep only what finds something the others miss. Spend: US$0.**
+**Buy nothing and install no GitHub App today. On 25-26 Nov, replay our own known misses through two reviewers on the same 28 PRs: our Opus reviewer with a better checklist, and CodeAnt AI's command line. Keep CodeAnt only if it finds what the checklist misses. Spend: US$0.**
 
 | His question | Answer |
 |---|---|
@@ -201,21 +203,21 @@ Independent user-review pages were blocked or thin. On set-up and daily experien
 
 ## 7. The trial
 
-| | Phase A: replay, command line | Phase B: live, App |
+| | Phase A: replay, command line | Phase B: live, App (**dropped, A355**) |
 |---|---|---|
 | Dates (IST) | 25-26 Nov | 27 Nov to 3 Dec; decision 4 Dec |
 | PRs | 14 with a known escaped Major, plus 14 clean controls of like size, each at its original commit | Next 40 PRs touching money, migrations, permissions or a new screen |
-| Baseline | Our original reviewer and breaker record for each PR, read before the replay (a finding already noted there is not a miss); fresh Opus reviewer with the new checklist, blind; CodeRabbit and CodeAnt command lines, same commits | Our Opus verdict, already posted |
+| Baseline | Our original reviewer and breaker record for each PR, read before the replay (a finding already noted there is not a miss); fresh Opus reviewer with the new checklist, blind; CodeAnt command line, same commits | Our Opus verdict, already posted |
 | True finding | Matches the known Major; or a new Major+ that a second fresh judge reproduces or proves from code | Not in our reviewer's text; reproduced or proved; would be qa Major or above |
 | False alarm | A Major+ claim the judge refutes | Same |
-| Pass | At least 4 of 14 found, at least half of Major+ claims true, **and at least 2 that the improved Opus reviewer missed.** Two tools pass together only if each finds 2 the other missed | At least 3 unique true Majors in 40, at least half true, at most 10 minutes' triage a PR |
+| Pass | At least 4 of 14 found, at least half of Major+ claims true, **and at least 2 that the improved Opus reviewer missed.** | At least 3 unique true Majors in 40, at least half true, at most 10 minutes' triage a PR |
 | Stop | Any paid prompt; output not attributable; under 4 of 14 | Any write outside comments, any wrong merge, outsider use, over 70% false after 15 PRs, any charge |
 
 Small samples: 14 and 40 can justify more testing, not a rate. Judges do not see which tool wrote a finding. Report limits reached and minutes spent. If B passes: Essentials, one seat, or stay on OSS if it keeps up. If A fails and the Opus checklist does better: adopt the checklist and close this.
 
-**Waiting:** 28 PRs at 3 an hour is at least 9.3 hours for one CodeRabbit pass; CodeAnt states no hourly limit, but its command line reads at most 10 files a run, so each larger PR is run in slices of 10 files or fewer (`--include`), the same slices for every reviewer; a finding lost only to the limit is reported apart. CodeRabbit says command-line and PR reviews differ, so a failed replay does not settle the App.
+**Waiting:** CodeAnt states no hourly limit, but its command line reads at most 10 files a run, so each larger PR is run in slices of 10 files or fewer (`--include`), the same slices for every reviewer; a finding lost only to the limit is reported apart. CodeRabbit says command-line and PR reviews differ, so a failed replay does not settle the App.
 
-**Effort:** A about 9 hours (3 to find introducing PRs, 2 set-up, 4 judging). B about 8 hours over the week. Easy to install (about 10 minutes); harder to keep safe and to measure.
+**Effort:** A about 7 hours (3 to find introducing PRs, 1 set-up, 3 judging). B about 8 hours over the week. Easy to install (about 10 minutes); harder to keep safe and to measure.
 
 ## 8. Risks and rollback
 
