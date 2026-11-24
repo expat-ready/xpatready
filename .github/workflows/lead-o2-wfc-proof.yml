@@ -1,0 +1,20 @@
+# PROOF ONLY, branch claude/lead-o2-wfc-proof, never merged (Lead 25, 24 Nov): check_workspace_first_calls.ts with 10 rounds, old and fixed.
+name: lead-o2-wfc-proof
+on: { push: { branches: [claude/lead-o2-wfc-proof], paths: [wfc-proof/go] } }
+permissions: { contents: read }
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy: { fail-fast: false, matrix: { v: [old, fixed] } }
+    env: { P: ai-workers/problem-1-pathway-setup-and-form-filling/product, S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, filter: "blob:none", persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: cp "wfc-proof/proof-${{ matrix.v }}.ts" "$S/tests/check_workspace_first_calls.ts"
+      - run: bash "$P/tools/cloud-setup.sh"
+      - run: bash "$P/tools/run-suites.sh" --demo --only check_workspace_first_calls.ts
+      - if: always()
+        run: cat "$S/var/suites/check_workspace_first_calls.log" | tail -70
