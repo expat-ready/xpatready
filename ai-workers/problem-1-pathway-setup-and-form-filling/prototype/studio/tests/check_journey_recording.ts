@@ -73,8 +73,8 @@ ok("P-700 R2: the self-test step fails its job unless the fixture's walk failed 
   /steps\.w\.outcome/.test(y) && /steps\.up\.outputs\.artifact-id/.test(y) && /expect: "fail"/.test(wp) && /fail-fast: false/.test(y));
 ok("P-700 R2: the app starts only through the journey's isolated.sh line (walk.mjs), never :4400 or a second way",
   !/start\.sh|:4400|npm run (dev|start)/.test(y.replace(/^#.*$/gm, "")) && /isolated\.sh/.test(readFileSync(join(J, "walk.mjs"), "utf8")));
-ok("P-700 R2: never on a draft or a mergify/* batch (Lead 81, m9); a PR made ready is walked",
-  /if: \$\{\{ github\.event_name == 'workflow_dispatch' \|\| \(!github\.event\.pull_request\.draft && !startsWith\(github\.event\.pull_request\.head\.ref, 'mergify\/'\)\) \}\}/.test(y) && /types: \[[^\]]*ready_for_review/.test(y));
+ok("P-700 R2: never on a draft or a mergify/* batch (Lead 81, m9); a PR made ready is walked (a push to main: ENF-733, check_walk_plan.ts W11)",
+  /if: \$\{\{ github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'push' \|\| \(!github\.event\.pull_request\.draft && !startsWith\(github\.event\.pull_request\.head\.ref, 'mergify\/'\)\) \}\}/.test(y) && /types: \[[^\]]*ready_for_review/.test(y));
 ok("P-700 R2: no npm or actions cache (a dispatch on any ref must not write a cache the default branch reads; CodeQL, #2133)",
   !/^\s*(cache|cache-dependency-path):|actions\/cache@/m.test(y.replace(/^\s*#.*$/gm, "")));
 
