@@ -206,19 +206,39 @@ try {
   ok("PF-5s1 DW3: Wrong email? Start again → the form with the answers kept and the tick cleared", (await s.getByLabel("Work email").inputValue()) === e3 && !(await s.locator("[data-signup-agree]").isChecked()));
 
   // ------------------------------------------------------------------------------------- DW4: keyboard, widths, hosts
-  const e4 = `owner4.pf5s1.${run}@example.com`;
+  // The page moves focus to the error summary one animation frame after a refusal (signup-page.tsx focusSummary). On a
+  // busy runner that frame can land after the step has tabbed on, taking the Space or Enter meant for the tick or the
+  // button (#3040's batch, shard 4, job 138117798714; #3065). `holdFrame` reproduces the worst case: once armed, the
+  // page's animation frames wait and run just before the next key pressed on the tick or the button (else after 1.5 s),
+  // so the summary takes focus from under that key. A string, not a function: tsx's compiled functions call a helper
+  // (__name) the page does not have.
+  const holdFrame = `(() => {
+    const raf = window.requestAnimationFrame.bind(window), held = [];
+    let armed = false;
+    const release = () => { if (!armed) return; armed = false; for (const cb of held.splice(0)) cb(performance.now()); };
+    window.requestAnimationFrame = (cb) => (armed ? (held.push(cb), 0) : raf(cb));
+    document.addEventListener("keydown", (e) => { if (armed && e.target && e.target.matches && e.target.matches("[data-signup-agree], [data-signup-submit]")) release(); }, true);
+    window.__pf5s1Arm = () => { armed = true; setTimeout(release, 1500); };
+  })();`;
+  const keyboardSignUp = async (k: Page, email: string, held: boolean) => {
+    if (held) await k.addInitScript({ content: holdFrame });
+    await k.goto(`${BASE}/sign-up`); await k.locator("[data-signup-agree]").waitFor({ timeout: 20_000 });
+    await k.keyboard.press("Tab");
+    for (let i = 0; i < 40 && !(await k.evaluate(() => (document.activeElement as HTMLInputElement | null)?.type === "email")); i++) await k.keyboard.press("Tab");
+    await k.keyboard.type(email); await k.keyboard.press("Tab"); await k.keyboard.type(PASS_WORDS); await k.keyboard.press("Tab"); await k.keyboard.type(`Sample Keyboard Firm ${run}`);
+    const tabTo = async (sel: string) => { for (let i = 0; i < 30 && !(await k.evaluate((x) => !!document.activeElement?.matches(x), sel)); i++) await k.keyboard.press("Tab"); };
+    if (held) await k.evaluate(() => (window as unknown as { __pf5s1Arm: () => void }).__pf5s1Arm());
+    await k.keyboard.press("Enter");   // from the firm name: the form is sent, the tick still unticked
+    await k.locator("[data-signup-terms-error]").waitFor({ timeout: 10_000 });
+    await tabTo("[data-signup-agree]"); await k.keyboard.press("Space");
+    await tabTo("[data-signup-submit]"); await k.keyboard.press("Enter");
+    await checkScreen(k);
+    return (await k.locator("[data-signup-sent-to]").innerText()) === email;
+  };
+  const e4 = `owner4.pf5s1.${run}@example.com`, e4h = `owner4h.pf5s1.${run}@example.com`;
   const k = await newPage();
-  await k.goto(`${BASE}/sign-up`); await k.locator("[data-signup-agree]").waitFor({ timeout: 20_000 });
-  await k.keyboard.press("Tab");
-  for (let i = 0; i < 40 && !(await k.evaluate(() => (document.activeElement as HTMLInputElement | null)?.type === "email")); i++) await k.keyboard.press("Tab");
-  await k.keyboard.type(e4); await k.keyboard.press("Tab"); await k.keyboard.type(PASS_WORDS); await k.keyboard.press("Tab"); await k.keyboard.type(`Sample Keyboard Firm ${run}`);
-  const tabTo = async (sel: string) => { for (let i = 0; i < 30 && !(await k.evaluate((x) => !!document.activeElement?.matches(x), sel)); i++) await k.keyboard.press("Tab"); };
-  await k.keyboard.press("Enter");   // from the firm name: the form is sent, the tick still unticked
-  await k.locator("[data-signup-terms-error]").waitFor({ timeout: 10_000 });
-  await tabTo("[data-signup-agree]"); await k.keyboard.press("Space");
-  await tabTo("[data-signup-submit]"); await k.keyboard.press("Enter");
-  await checkScreen(k);
-  ok("PF-5s1 DW4: keyboard only: Tab to each field, Enter refuses with the tick unticked, Space ticks, Enter sends", (await k.locator("[data-signup-sent-to]").innerText()) === e4);
+  ok("PF-5s1 DW4: keyboard only: Tab to each field, Enter refuses with the tick unticked, Space ticks, Enter sends", await keyboardSignUp(k, e4, false));
+  ok("PF-5s1 DW4 fail (#3040 shard 4): the same, when the page's focus move to the summary lands just as the tick has focus (a slow frame)", await keyboardSignUp(await newPage(), e4h, true).catch((x: Error) => { console.log(`  held-frame run: ${String(x.message).split("\n")[0]}`); return false; }));
   for (const width of [375, 1024]) {
     const w = await newPage(width);
     for (const [name, path, ready] of [["Pricing", "/pricing", "[data-plan]"], ["Sign up", "/sign-up", "[data-signup-agree]"]] as const) {
