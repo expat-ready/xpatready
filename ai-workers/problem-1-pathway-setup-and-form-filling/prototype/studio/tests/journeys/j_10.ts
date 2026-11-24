@@ -479,7 +479,7 @@ try {
   if (actorDoor) { csProbes++; const a = await call(actorDoor.method === "ALL" ? "POST" : actorDoor.method, actorDoor.path.replace(/:[A-Za-z_]+/g, () => "not-a-uuid"), { token: tR, body: actorDoor.body ? "{}" : undefined }); if (a.status !== 403) csBad.push(`${actorDoor.method} ${actorDoor.path} bearer on an actor door → ${a.status} (expected 403)`); }
   for (const d of cs) {
     const method = d.method === "ALL" ? "POST" : d.method, params = d.path.match(/:[A-Za-z_]+/g) ?? [];
-    const as: CallOpts = d.keys ? { ...as } : { headers: { "x-actor": "user-O" } };
+    const as: CallOpts = d.keys ? { token: tR } : { headers: { "x-actor": "user-O" } };
     if (!params.length && d.body && method !== "GET") { csProbes++; const a = await call(method, d.path, { ...as, body: JSON.stringify({ pf28Unknown: "x" }) }); if (!(a.status === 400 && named(a, "pf28Unknown"))) csBad.push(`${d.method} ${d.path} unknown → ${a.status}`); }
     if (!params.length && d.query && method === "GET") { csProbes++; const a = await call(method, `${d.path}?pf28Unknown=x`, { ...as }); if (!(a.status === 400 && named(a, "pf28Unknown"))) csBad.push(`${d.method} ${d.path} query-unknown → ${a.status}`); }
     for (const prm of params.filter((x) => /id$/i.test(x))) { csProbes++; const a = await call(method, d.path.replace(/:[A-Za-z_]+/g, (m) => (m === prm ? "not-a-uuid" : randomUUID())), { ...as, body: d.body ? "{}" : undefined }); if (a.status !== 404) csBad.push(`${d.method} ${d.path} id${prm} → ${a.status}`); }
