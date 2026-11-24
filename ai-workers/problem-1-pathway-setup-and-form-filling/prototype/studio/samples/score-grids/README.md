@@ -33,17 +33,7 @@ with a number, or `{ "op": "and", "args": [...] }` of those (a range: `gte` 18 a
 one answer could both match are refused (one answer, two point values), and so are two language rows of one test and
 skill whose score ranges meet.
 
-## Example (Sample values, not IRCC's)
+## Example
 
-```json
-{
-  "key": "sample.grid", "label": "Sample grid", "selection_model": "FIXED_PASS_MARK", "pass_mark": 6, "maximum": 10,
-  "combinations": ["wp.family"], "source_ref": "Sample",
-  "factors": [{ "key": "age", "role": "PRINCIPAL", "facts": ["person.age"], "maximum": 10, "source_ref": "Sample",
-    "bands": [
-      { "when": { "op": "and", "args": [{ "op": "gte", "field": "person.age", "value": 18 }, { "op": "lt", "field": "person.age", "value": 36 }] }, "points": 10, "source_ref": "Sample" },
-      { "when": { "op": "gte", "field": "person.age", "value": 36 }, "points": 5, "source_ref": "Sample" }
-    ] }],
-  "language_conversion": [{ "test": "SAMPLE_TEST", "skill": "READING", "score_min": 0, "score_max": 4.5, "clb": 4, "source_ref": "Sample" }]
-}
-```
+`tests/check_as1g_score_grids.ts` (`grid()`) holds a whole file with Sample values, not IRCC's: two factors (one cited
+with a test source), touching age ranges, a CLB list and two language rows.

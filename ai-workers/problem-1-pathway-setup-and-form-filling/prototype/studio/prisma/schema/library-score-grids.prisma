@@ -74,6 +74,7 @@ model ScoreBand {
 
   factor ScoreFactor @relation(fields: [factorId], references: [id], onDelete: Cascade)
 
+  @@index([factorId])
   @@map("score_band")
 }
 
@@ -91,5 +92,6 @@ model LanguageConversion {
 
   ruleset ScoreRuleset @relation(fields: [rulesetId], references: [id], onDelete: Cascade)
 
+  @@index([rulesetId])
   @@map("language_conversion")
 }

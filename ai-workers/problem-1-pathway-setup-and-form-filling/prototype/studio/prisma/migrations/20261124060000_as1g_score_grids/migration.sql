@@ -95,11 +95,18 @@ ALTER TABLE "language_conversion" ADD CONSTRAINT "language_conversion_ruleset_id
 
 
 -- ------------------------------------------------------------------------------- AGENTS rule 4: cited or Sample, never both
-CREATE FUNCTION score_source_ref_ok(ref jsonb, sample boolean) RETURNS boolean LANGUAGE sql IMMUTABLE AS $fn$
-  SELECT CASE WHEN sample THEN ref IS NULL
-    ELSE ref IS NOT NULL AND jsonb_typeof(ref) = 'object' AND ref ?& array['url', 'section', 'quote', 'date']
-      AND length(btrim(coalesce(ref->>'url', ''))) > 0 AND length(btrim(coalesce(ref->>'quote', ''))) > 0
-      AND coalesce(ref->>'date', '') ~ '^\d{4}-\d{2}-\d{2}$' END $fn$;
+-- A source is an https page, a section and a quote with words in them (invisible characters do not count), and a real
+-- calendar date (breaker M5).
+CREATE FUNCTION score_source_ref_ok(ref jsonb, sample boolean) RETURNS boolean LANGUAGE plpgsql IMMUTABLE AS $fn$
+DECLARE said text := '[^[:space:]\u200b-\u200f\u2060\ufeff]';
+BEGIN
+  IF sample THEN RETURN ref IS NULL; END IF;
+  IF ref IS NULL OR jsonb_typeof(ref) <> 'object' OR NOT ref ?& array['url', 'section', 'quote', 'date'] THEN RETURN false; END IF;
+  IF coalesce(ref->>'url', '') !~ '^https://[^[:space:]/]+\.[^[:space:]]+$' OR coalesce(ref->>'section', '') !~ said OR coalesce(ref->>'quote', '') !~ said
+     OR coalesce(ref->>'date', '') !~ '^\d{4}-\d{2}-\d{2}$' THEN RETURN false; END IF;
+  RETURN to_char(to_date(ref->>'date', 'YYYY-MM-DD'), 'YYYY-MM-DD') = ref->>'date';
+EXCEPTION WHEN others THEN RETURN false;
+END $fn$;
 ALTER TABLE "score_ruleset" ADD CONSTRAINT "score_ruleset_cited" CHECK (score_source_ref_ok("source_ref", "sample"));
 ALTER TABLE "score_factor" ADD CONSTRAINT "score_factor_cited" CHECK (score_source_ref_ok("source_ref", "sample"));
 ALTER TABLE "score_band" ADD CONSTRAINT "score_band_cited" CHECK (score_source_ref_ok("source_ref", "sample"));

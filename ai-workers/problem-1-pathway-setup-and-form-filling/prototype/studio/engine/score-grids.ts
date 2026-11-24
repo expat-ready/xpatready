@@ -21,3 +21,21 @@ export function gridOf(r: StoredGrid): GridFileShape {
     language_conversion: r.conversions.map((c) => ({ test: c.test, skill: c.skill as GridFileShape["language_conversion"][number]["skill"], score_min: c.scoreMin, score_max: c.scoreMax, clb: c.clb, source_ref: refOut(c) })) };
 }
 export const snapGrid = (r: StoredGrid): SnapGrid => ({ ...gridOf(r), sha256: r.importSha256 });
+
+const n = (k: number, one: string, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
+const OPS: Record<string, string> = { gt: ">", gte: "≥", lt: "<", lte: "≤" };
+/** A band's condition in words ("18 ≤ person.age < 36", "person.clb is 7 or 8"). */
+export function conditionWords(w: Record<string, unknown>): string {
+  const leaves = (w.op === "and" ? (w.args as Record<string, unknown>[]) : [w]) ?? [];
+  return leaves.map((x) => x.op === "eq" ? `${x.field} is ${JSON.stringify(x.value)}` : x.op === "in" ? `${x.field} is ${(x.value as unknown[]).map((v) => JSON.stringify(v)).join(" or ")}` : `${x.field} ${OPS[String(x.op)] ?? x.op} ${x.value}`).join(" and ");
+}
+const src = (r?: SourceRef) => (r === "Sample" || !r ? "Sample" : `${r.url} §${r.section}, ${r.date}: "${r.quote.slice(0, 160)}"`);
+/** What the second person and the immigration expert read: every factor, band and point value with its source. */
+export function gridWords(g: GridFileShape): string {
+  const rows = [g, ...g.factors, ...g.factors.flatMap((f) => f.bands), ...g.language_conversion];
+  const sample = rows.filter((r) => r.source_ref === "Sample").length;
+  const head = `${g.label} (${g.selection_model === "FIXED_PASS_MARK" ? `pass mark ${g.pass_mark}` : "ranking total, no pass mark"}, maximum ${g.maximum}; for ${g.combinations.join(", ")}; ${n(rows.length - sample, "row")} cited, ${sample} Sample).`;
+  const factors = g.factors.map((f) => `${f.key} (${f.role.toLowerCase()}, maximum ${f.maximum}; ${src(f.source_ref)}): ${f.bands.map((b) => `${conditionWords(b.when)} → ${n(b.points, "point")} [${src(b.source_ref)}]`).join("; ")}`);
+  const lang = g.language_conversion.length ? [`Language: ${g.language_conversion.map((c) => `${c.test} ${c.skill.toLowerCase()} ${c.score_min}-${c.score_max} → CLB ${c.clb} [${src(c.source_ref)}]`).join("; ")}`] : [];
+  return [head, ...factors, ...lang].join(" · ").slice(0, 6000);
+}

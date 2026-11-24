@@ -6,8 +6,8 @@
 // number appears in api/src or engine code (P-319's guard pattern). Every value here is Sample (test words), never an
 // IRCC value: the cited Express Entry grids are AS-1c's. Rules only, no AI (US$0).
 //   zsh studio/tools/isolated.sh runtime_as1g 4436 start && tsx studio/tests/check_as1g_score_grids.ts 4436 xr_studio_runtime_as1g
-import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { sourceEveryNumber } from "./fixtures/source-every-number.cjs";
 
@@ -55,8 +55,32 @@ const pointsIn = (releaseId: string) => sql(`select snapshot->'score_grids'->0->
   const served = (await call("GET", "/session")).body?.workspace?.id;
   const inDb = (() => { try { return sql(`select id from workspace where id='${served}'`); } catch { return ""; } })();
   if (!served || !inDb) { console.error(`STOP  the database ${DB} is not the one the server on port ${PORT} uses. Pass the copy's database: tsx <check> ${PORT} xr_studio_<name>.`); process.exit(2); }
-  // Measured right after its own migration (Amendment 6): the tables exist, nothing is in them but this suite's own rows.
-  ok("AS-1g pass (migration): the four grid tables exist with their cited-or-Sample checks", sql(`select count(*) from pg_constraint where conname in ('score_ruleset_cited','score_factor_cited','score_band_cited','language_conversion_cited')`) === "4");
+  // 0. The migration, measured right after its own migration on a scratch database (rows rev 16.7, Amendment 6): never
+  // assumed to be the newest.
+  {
+    const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261124060000_as1g_score_grids", BIN = "/opt/homebrew/opt/postgresql@18/bin";
+    const SCR = `xr_studio_as1g_mig_${process.pid}`, PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
+    const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort(), before = all.filter((d) => d < NEW), after = all.filter((d) => d > NEW);
+    const run = (d: string) => execFileSync(join(BIN, "psql"), [`postgresql://xr_studio@127.0.0.1:54329/${SCR}`, "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "pipe", "pipe"] });
+    const on = (q: string) => execFileSync(join(BIN, "psql"), [`postgresql://xr_studio@127.0.0.1:54329/${SCR}`, "-Atc", q], { encoding: "utf8" }).trim();
+    execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", SCR], { stdio: "ignore" }); execFileSync(join(BIN, "createdb"), [...PG, SCR]);
+    try {
+      ok(`AS-1g pass (migration): its own stamp, later than every one before it (newest before: ${before.at(-1)})`, all.includes(NEW) && before.every((d) => d < NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1);
+      for (const d of before) run(d);
+      ok("AS-1g fail (migration): before it, no grid table exists", on(`select count(*) from pg_class where relname in ('score_ruleset','score_factor','score_band','language_conversion')`) === "0");
+      run(NEW);
+      ok("AS-1g pass (migration): right after it, the four tables with their cited-or-Sample checks; xr_app may select but not insert", on(`select count(*) from pg_constraint where conname in ('score_ruleset_cited','score_factor_cited','score_band_cited','language_conversion_cited')`) === "4"
+        && on(`select string_agg(has_table_privilege('xr_app', t, 'SELECT')::text || has_table_privilege('xr_app', t, 'INSERT')::text, ',') from unnest(array['score_ruleset','score_factor','score_band','language_conversion']) t`) === "truefalse,truefalse,truefalse,truefalse");
+      ok("AS-1g fail (migration): it does not apply twice", (() => { try { run(NEW); return false; } catch (e) { return /already exists/.test(String((e as { stderr?: Buffer }).stderr)); } })());
+      for (const d of after) run(d);
+      mkdirSync(join(STUDIO, "var"), { recursive: true });
+      const cfg = join(STUDIO, "var", `as1g-${process.pid}.config.ts`);
+      writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(join(STUDIO, "prisma", "schema"))}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: "postgresql://xr_studio@127.0.0.1:54329/${SCR}" } });\n`);
+      const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", join(STUDIO, "prisma", "schema"), "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
+      rmSync(cfg, { force: true });
+      ok("AS-1g pass (migration): migrate diff from every migration to the schema is empty (indexes included)", r.status === 0, `${r.stdout}${r.stderr}`.slice(-400));
+    } finally { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", SCR]); }
+  }
   sql(`delete from score_ruleset where key like 'as1g.%'`);   // platform-wide rows the demo reset does not touch: this suite's own, from an earlier run
   await call("POST", "/demo/reset", { confirm: "RESET" });
   const l = await call("POST", "/demo/load", {});
@@ -96,18 +120,43 @@ const pointsIn = (releaseId: string) => sql(`select snapshot->'score_grids'->0->
   const stray = grid(); (stray.factors[0].bands[0].when as any).args[0].field = "person.other";
   r = await propose(stray);
   ok("AS-1g fail (condition): a band that reads a fact its factor does not name is refused", r.status === 400 && /not one of the factor's facts/.test(words(r)), words(r));
+  const mixed = grid(); mixed.factors[1].bands[0] = { when: { op: "in", field: "person.sample_clb", value: ["7", "8"] }, points: 4, source_ref: "Sample" };
+  r = await propose(mixed);
+  ok("AS-1g fail (overlap, breaker M3): words \"7\" beside a number range on one fact are refused (compared as text, both could match)", r.status === 400 && /mix number and string/.test(words(r)), words(r));
+  const nowhere = grid(); nowhere.combinations = ["wp.famly"];
+  r = await propose(nowhere);
+  ok("AS-1g fail (combination, review M2): a grid naming a combination that does not exist is refused (400 GRID_COMBINATION)", r.status === 400 && r.body?.code === "GRID_COMBINATION" && /wp\.famly/.test(words(r)), words(r));
+  const forged = [{ url: "javascript:alert(1)" }, { date: "2026-13-45" }, { quote: "\u200b" }, { section: " " }].map((x) => { const g = grid(); (g.factors[1] as any).source_ref = { ...(g.factors[1].source_ref as object), ...x }; return g; });
+  const fr = await Promise.all(forged.map((g) => propose(g)));
+  ok("AS-1g fail (forged source, breaker M5): a javascript: address, the date 2026-13-45, an invisible quote and a blank section are each refused", fr.every((x) => x.status === 400), fr.map((x) => x.status));
+  ok("AS-1g fail (forged source, database): the table's check refuses the date 2026-02-31 and an http address", ["2026-02-31", "ok"].every((d, i) => /score_ruleset_cited/.test(fails("xr_studio", `insert into score_ruleset (id, key, label, selection_model, maximum, combination_keys, source_ref, sample, import_sha256, imported_by) values (gen_random_uuid(), 'as1g.f${i}', 'f', 'DRAW_RANKING', 10, '{}', '{"url": "${i ? "http" : "https"}://example.org/a", "section": "s", "quote": "q", "date": "${i ? "2026-01-02" : d}"}', false, 'x', 'x')`))));
+  const huge = grid(); huge.maximum = 3_000_000_000;
+  r = await propose(huge);
+  ok("AS-1g fail (bounds, breaker M1): a maximum past the database's whole-number column is refused at import, not at approval", r.status === 400, [r.status, words(r)]);
   r = await propose(grid(), "user-R");
   ok("AS-1g fail (duty): a person without the author duty cannot propose (403)", r.status === 403 || r.status === 401, r.status);
+
+  // A returned import never locks its key (review B1, breaker M1): withdrawn by its proposer, or replaced by the next import.
+  r = await propose(grid(7));
+  const back = await call("POST", `/library/changes/${r.body?.id}/return`, { note: "Test: wrong points (AS-1g)." }, "user-B");
+  r = await propose(grid(8));
+  ok("AS-1g pass (replace): after a return, a corrected import of the same key waits, and the returned one is marked replaced", back.status < 300 && r.status < 300 && sql(`select string_agg(status, ',' order by proposed_at) from library_change where kind='score_grid'`) === "WITHDRAWN,WAITING", [back.status, r.status, words(r)]);
+  const again = await propose(grid(6));
+  const wd = await call("POST", `/library/changes/${r.body?.id}/withdraw`, { note: "Test: withdrawn (AS-1g)." });
+  ok("AS-1g fail (one at a time): a second import while one waits is refused (409); its proposer can withdraw the waiting one", again.status === 409 && wd.status < 300 && sql(`select count(*) from library_change where kind='score_grid' and status='WAITING'`) === "0", [again.status, wd.status, words(wd)]);
 
   // 4. Proposed (bands 18-36 and 36+ touch, never overlap), approved by a second person, written on the bypass use.
   r = await propose(grid());
   const id1 = r.body?.id;
   ok("AS-1g pass: the Sample grid (touching ranges, a cited factor) is proposed and waits; nothing written yet", r.status < 300 && sql(`select status from library_change where id='${id1}'`) === "WAITING" && sql(`select count(*) from score_ruleset where key='${KEY}'`) === "0", r.status >= 300 ? words(r) : r.body?.label);
+  const queue = ((await call("GET", "/review-queue", undefined, "user-B")).body?.items ?? (await call("GET", "/review-queue", undefined, "user-B")).body ?? []) as any[];
+  const item = (Array.isArray(queue) ? queue : []).find((x: any) => x.id === `change:${id1}`);
+  ok("AS-1g pass (To review, review M6): the second person reads each band's points and source in words", /18 and person\.sample_age < 36 → 10 points \[Sample\]/.test(item?.what ?? "") && /example\.org\/test-page §Test section 1/.test(item?.what ?? "") && /4 rows cited|cited, \d+ Sample/.test(item?.what ?? ""), String(item?.what ?? Object.keys(queue)).slice(0, 300));
   const self = await approve(id1, "user-A");
   ok("AS-1g fail: the proposer cannot approve their own import", self.status >= 400 && sql(`select status from library_change where id='${id1}'`) === "WAITING", [self.status, words(self)]);
   r = await approve(id1);
   ok("AS-1g pass: a second person's approval writes the grid (2 factors, 4 bands, 2 language rows) and the change waits for the release", r.status < 300 && sql(`select (select count(*) from score_factor f join score_ruleset s on s.id = f.ruleset_id where s.key='${KEY}') || '|' || (select count(*) from score_band b join score_factor f on f.id = b.factor_id join score_ruleset s on s.id = f.ruleset_id where s.key='${KEY}') || '|' || (select count(*) from language_conversion c join score_ruleset s on s.id = c.ruleset_id where s.key='${KEY}')`) === "2|4|2" && sql(`select status from library_change where id='${id1}'`) === "APPROVED", [r.status, words(r)]);
-  ok("AS-1g pass: the proposal and the approval each wrote one audit line on the grid", sql(`select count(*) from audit_event where entity='score grid' and entity_key='${KEY}' and action in ('proposed','approved')`) === "2");
+  ok("AS-1g pass: each of the three imports that reached To review wrote one proposed line, and the approval one approved line", sql(`select string_agg(action || ':' || n, ',' order by action) from (select action, count(*) n from audit_event where entity='score grid' and entity_key='${KEY}' group by action) x`) === "approved:1,proposed:3");
   const listed = (await call("GET", "/library/score-grids", undefined, "user-B")).body?.grids?.find((x: any) => x.key === KEY);
   ok("AS-1g pass: the library lists the grid back in the file's shape (Sample rows read \"Sample\", the cited one its source)", listed?.factors?.[0]?.bands?.[0]?.source_ref === "Sample" && listed?.factors?.[1]?.source_ref?.quote?.startsWith("Test words") && listed?.language_conversion?.length === 2, listed?.factors?.[1]?.source_ref);
 
@@ -134,6 +183,8 @@ const pointsIn = (releaseId: string) => sql(`select snapshot->'score_grids'->0->
   r = r.status < 300 ? await approve(r.body.id) : r;
   const draft2 = (await call("GET", `/combinations/${wp}/config?mode=draft`)).body;
   ok("AS-1g fail (one point): one band's points 10 → 9 changes the draft's fingerprint from release 1's", r.status < 300 && draft2?.sha256 && draft2.sha256 !== sha1 && draft2?.snapshot?.score_grids?.[0]?.factors?.[0]?.bands?.[0]?.points === 9, [r.status, words(r), draft2?.sha256?.slice(0, 12)]);
+  const line2 = ((await call("GET", `/combinations/${wp}`)).body?.draft?.changes ?? []).find((x: any) => x.kind === "Score grid");
+  ok("AS-1g pass (review, breaker m5): the changed grid's release line shows the point value before and after", line2?.change === "changed" && /now age .*→ 9 points/.test(line2?.label ?? "") && /was age .*→ 10 points/.test(line2?.label ?? ""), line2?.label);
   r = await release(wp);
   const [rel2] = latest(wp);
   ok("AS-1g pass (release 2): release 2 carries 9 points", r.status < 300 && rel2 !== rel1 && pointsIn(rel2) === "9", [r.status, words(r)]);
@@ -141,12 +192,14 @@ const pointsIn = (releaseId: string) => sql(`select snapshot->'score_grids'->0->
 
   // 7. No score or pass-mark number in api/src or engine code (P-319's guard pattern): grids are data.
   const ROOT = join(import.meta.dirname, "..");
-  const SCORE = /\b(pass_?mark|points|max_?score|crs\w*|fsw\w*|clb)\s*[:=]\s*-?[1-9]\d*\b/i;
+  // A score-shaped name compared with, or set to, a number of 2 or more (0 and 1 are counts and flags, not scores).
+  const SCORE = /\b\w*(pass_?mark|points|score|clb|crs|fsw|threshold|cut_?off)\w*\s*(:|=|===?|!==?|>=?|<=?)\s*-?([2-9]|\d{2,})/i;
   const hits = (text: string) => text.split("\n").map((t, i) => [i + 1, t.replace(/\/\/.*$/, "")] as const).filter(([, t]) => SCORE.test(t)).map(([n]) => n);
   const walk = (d: string): string[] => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : p.endsWith(".ts") ? [p] : []; });
   const found = ["api/src", "engine"].flatMap((d) => walk(join(ROOT, d))).flatMap((p) => hits(readFileSync(p, "utf8")).map((n) => `${p.slice(ROOT.length + 1)}:${n}`));
   ok("AS-1g pass (guard): no score, pass-mark or CLB number is written in api/src or engine code", found.length === 0, found.slice(0, 5));
-  ok("AS-1g fail (guard): the same check finds a pass mark written in code (a stand-in line)", hits("const rule = { passMark: 67 };").length === 1 && hits("// passMark: 67 in a comment").length === 0);
+  const stand = ["const rule = { passMark: 67 };", "if (points >= 67) ok();", "if (clb >= 7) x();", "const f = { maxPoints: 12 };", "let agePoints = 12;", "const s = { score: 470 };", "const t = { threshold: 67 };"];
+  ok("AS-1g fail (guard, review M5): the same check finds each stand-in score in code; a comment is not code", stand.every((t) => hits(t).length === 1) && hits("// passMark: 67 in a comment").length === 0, stand.filter((t) => !hits(t).length));
 
   sql(`delete from score_ruleset where key like 'as1g.%'`);
   console.log(`\n${pass} passed, ${fail} failed`);

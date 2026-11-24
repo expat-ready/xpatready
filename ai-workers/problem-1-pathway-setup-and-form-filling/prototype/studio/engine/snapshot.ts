@@ -124,7 +124,8 @@ export async function buildSnapshots(db: PrismaClient, workspaceId: string, comb
   if (comps.length !== new Set(combinationIds).size) throw new Error("Combination not found");
   const gridRows = mode === "draft" ? await db.scoreRuleset.findMany({ where: { combinationKeys: { hasSome: comps.map((c) => c.combinationKey) } }, include: GRID_INCLUDE }) : [];
   const released = new Map<string, SnapGrid[]>();
-  if (mode === "published") for (const r of await db.configRelease.findMany({ where: { combinationId: { in: combinationIds }, status: "RELEASED" }, orderBy: { version: "asc" }, select: { combinationId: true, snapshot: true } })) released.set(r.combinationId, (r.snapshot as { score_grids?: SnapGrid[] } | null)?.score_grids ?? []);
+  // Review m7: only the grids of each combination's current release, never its whole snapshot.
+  if (mode === "published") for (const r of await db.$queryRaw<{ id: string; grids: SnapGrid[] | null }[]>`select distinct on (combination_id) combination_id::text as id, snapshot->'score_grids' as grids from config_release where combination_id::text = any(${combinationIds}) and status = 'RELEASED' order by combination_id, version desc`) released.set(r.id, r.grids ?? []);
   const allEditionIds = [...new Set(allForms.flatMap((f) => f.form.editions.map((e) => e.id)))];
   const allMaps = allEditionIds.length ? await db.formFieldMap.findMany({ where: { formEditionId: { in: allEditionIds } }, orderBy: { dataPath: "asc" } }) : [];
   // The shared library is resolved once per request, not once per row (the 371-row catalogue spent most of its time here).
