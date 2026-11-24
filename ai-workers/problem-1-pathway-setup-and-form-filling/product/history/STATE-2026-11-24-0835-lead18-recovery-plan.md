@@ -588,3 +588,12 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Lead O 2: #3506 (PR A) draft, ruled: an ACT line, no automatic deletion; traces pf5s1 fixed on main (its words), C9.5-6b proof in CI, bk3 unproven, Node-report row allowed without environment in its output. Told to clear its own scratch (1.45 GB).
 * Lead B 7: #3490 7c454f295, #3460 cdbeac417, #3493 OK; Minor for FO-7ts (money a credit note owes back to trust).
 * lead-watch run once, from this copy's old tools; GitHub gave 504 on one read, so no queue section; it named 46-odd old branches with commits and no PR (not acted on). "Previous check 257 min ago" is the tool's own log, the Leads ran lean checks.
+
+### Lead 30, check 20:11 to 20:21 IST 24 Nov (90% weekly, disk 6.7 GB, context about 305k: hand over near 365k)
+* Merged since 19:41: #3174 (R1.29), #3477 (R1.104), #3313, #3483 at 19:42; #3470 (R1.93) 20:12; #3495 (lasting types fix) 20:16; #3505 20:17. Main b6fdc65e8.
+* **Constraint: Mergify scopes one batch at a time** (money, migrations, pipeline): #3467 (oldest, 17:56), #3442, #3305, #3234, #3500, #3497 wait; its estimates 21:27 to 22:41. Running: #3512 (#3487), #3513 (#3511), #3514 (#3482). Not changed by me.
+* #3460 labelled 20:13 (reads done); not queued: queue-fresh says "waiting for a green ci on this head", ci reads green: look again. #3508 read line posted, its fresh Approve and review owed.
+* Walks on main dispatched for R1.74 and R1.29: run 45418213518 (j_74, j_29). **Tell qa 8 the id; R1.29 has no qa lane (qa 8's list leaves it out): give it to qa 8.**
+* Comments posted (pane hidden, so not typed into lanes): #3489 (7wnHW: retarget, ready, PR C), #3493 (6wAJfK: module-cards and pr-rules). Next: when the pane shows, type them. #3491: pr-rules and module-cards are green on its newest run (the red is old); relabel after #3234.
+* Lead O 2: #3506 rebuilt without copies (0bd14ef4a), draft, re-review running, merge held; #3511 queued; #3508 hang report. Owed by #3495 merging: the heap back to 8192 and library/ci-pipeline-strategy.md:141.
+* Asked the founder twice: delete Lead 29's scratch copy (1.1 GB); no answer.
