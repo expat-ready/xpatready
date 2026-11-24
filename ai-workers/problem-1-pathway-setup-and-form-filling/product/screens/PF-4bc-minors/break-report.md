@@ -59,3 +59,41 @@ For comparison I ran the same script on base `7a7740278` (extracted with `git ar
 Not run: the PR's own test, because it creates `xr_studio_pf4bc_scratch_*` databases, outside my prefix.
 
 Verdict: Changes e83c22ccdc0e7d38ef3f6441a3e7589139039144
+
+## Round 2 (head `b902813c001a0b5747564f0a2c2a80f85abe9e34`)
+Diff `git diff e83c22ccd..b902813c0` (firm-lock.ts, service.ts, provider.ts comment, PR test). Same harness, databases `xr_studio_pf4bcm2_*` (all dropped), script `scratchpad/pf4bcm2/a.mts` (round-1 cases plus B1–B5). No network, no AWS. The PR's own test was not run (its databases are outside my prefix).
+
+**Re-runs: every round-1 finding is closed for its repro.**
+- M1. A1 (another firm holds the event lock 2.5 s): **200 in 2512 ms**, 1 Cognito user, 1 staff row. A1q (30 writers × 80 ms): **200 in 2522 ms**.
+- m1. A2 key-share streams of 7, 9.8, 10.5, 13 and 17 s, Cognito 0.9 s per request: reset and sign-out everywhere both answer **503 FIRM_BUSY** (7.5–17.6 s). Cognito untouched every time (totp true, signOuts 0→0), 0 audit lines, 0 revocations. Same result with 6–6.3 s streams and Cognito at 0.95 s or 1.4 s.
+- m2. A3, own sign-out behind a 6 s holder: **200**, token ended (was 500). With a 3 s holder: 200.
+- m3. A6, 40 sign-out-everywhere requests behind a 6 s holder: 10 × 200 and 30 × 503, **no 500** (was 3 × 500).
+- m4. The accept 503 now reads "Your firm's account is busy right now. Try again in a moment." (B3).
+- A4, the mixed burst: only 200 or 503, 3769 ms. Cognito and our rows agree for each person, and the accept that got 503 left no Cognito user.
+- A5: a 2 s key share gives 503 at 1533 ms with 0 Cognito calls. A5b: the audit insert waits for no lock.
+
+**Minors**
+
+**m1. Sign-out can still answer 500 and leave its token live.** P2028 is mapped only on the bounded path. For `bounded: false`, inFirm's `.catch` is `Promise.reject(e)` (service.ts:57; signOut service.ts:187-190).
+- Also, the 15 s limit rests on "a bounded holder may keep the firm lock that long" (firm-lock.ts:18), which is false. Prisma's 12 s limit does not cancel a statement that is still waiting, so a bounded transaction keeps the firm lock until its statement returns.
+- s17 (A2s with a 17 s stream): sign-out everywhere held the firm lock until 17.6 s (it then answered 503, correctly). A colleague's own sign-out queued behind it got **500 at 17602 ms**, with 0 revocations, and **the token still works**.
+- B1, own sign-out behind a 16 s firm-lock holder (PF-11c's close may hold it 60 s, closure.ts:44): **500 `Internal server error` at 16030 ms**, no revocation, token still works.
+- B2, 40 different people sign out at once behind a 3 s holder: 37 × 200 and **3 × 500** (the pool's maxWait), and those 3 tokens still work.
+- In each case frame.tsx:90-92 ends the session in the browser only, so the token stays valid on the server.
+- Minor: it needs a firm lock held for more than 15 s, or pool exhaustion.
+- Fix: map P2028 on the unbounded path as well, or end the session under the person's row lock without the firm lock. Correct the comment at firm-lock.ts:18. Test: B1 and B2 give no 500.
+
+**m2. Accept: Cognito changed and our records rolled back, still reachable after `createUser`, as the header accepts** (firm-lock.ts:13-14, service.ts:147-153).
+- B3: another firm holds the global event lock for 14 s. Accept answers **503 FIRM_BUSY at 14016 ms**, with the Cognito user created and 0 staff rows.
+- The 503 arrives when the holder lets go, not at 12 s: the waiting statement is not cancelled.
+- A retry recovers, because createUser takes over the existing user (round 1). An invitee who gives up leaves an orphan Cognito user.
+- It needs the server-wide event lock stalled for about 11 s, so Minor, and it is a documented trade-off. Recorded so it stays visible.
+
+**What held**
+- **Per-transaction clock (B4).** An old reset in firm A, behind a 9.8 s stream, got 503 at 10565 ms with Cognito untouched. Three fresh sign-out-everywhere requests in firm B, started at 6, 7.6 and 9 s while it ran, all got 200, and Cognito and the revocations agree (3 and 3). A shared clock would have refused the fresh ones or let the old one through. The PR's own two-at-once check is the same idea.
+- **The clock matches Prisma's timer (B5).** After a 1.75 s pool wait, a query at callback start + 11.7 s succeeds and one at + 12.4 s gets P2028. So Prisma's 12 s runs from the callback, as txClock does: the pool wait is not hidden from roomForProvider.
+- **No legitimate change refused.** The refusal starts only past 7 s elapsed. That needs a statement that waited through several bounded lock attempts, which cannot happen without overlapping holders. The A4 burst, A5b, B4 and A3 all got 200 where a 200 was due.
+- **No "no clock" refusal.** roomForProvider is called only inside txClock, at service.ts:149, :202 and :235. These are the only provider-changing calls in api/src (grep). handOff is local (provider.ts:217). The adapter's deadline is the constant (platform-staff-read.ts:15 passes no `deadlineMs`), so PROVIDER_ROOM_MS matches.
+- **No 500 on the bounded paths** in any run (A2, A4, A6, B3, B4).
+
+Verdict: Approve b902813c001a0b5747564f0a2c2a80f85abe9e34
