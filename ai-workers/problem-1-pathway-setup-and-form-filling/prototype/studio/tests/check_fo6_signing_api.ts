@@ -342,6 +342,18 @@ try {
   ok("FO-6 B fail (break m3): completed after a withdraw → 200 not applied, stored once, no evidence, no files", wd.applied === false && /withdrawn/.test(wd.reason ?? "")
     && count("fo_signing_evidence", `request_id = '${q11}'`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q11}'`) === 3, wd);
 
+  // part 4c (QA-770's signing path, Lead 29 answer 1): a view or a signature on a withdrawn agreement is refused, stored once
+  const p13 = await prospect("Lea"), r13 = await draft(p13);
+  await sendIt(r13);
+  const [q13, d13] = reqOf(r13);
+  consent(q13);
+  const [v13] = await signing.act(A, d13, signerOf(q13, "CLIENT"), "viewed"), [s13] = await signing.act(A, d13, signerOf(q13, "CLIENT"), "signed");
+  await svc.withdraw(R, r13, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed their mind" });
+  const wv = await post(v13), ws = await post(s13);
+  ok("FO-6 B fail (part 4c, QA-770): viewed and signed after a withdraw → 200 not applied (\"withdrawn\"), both stored once; the signer stays unsigned and unviewed, the request SENT",
+    wv.applied === false && ws.applied === false && /withdrawn/.test(`${wv.reason} ${ws.reason}`) && reqOf(r13)[2] === "SENT"
+      && count("fo_signer", `request_id = '${q13}' and (signed_at is not null or viewed_at is not null)`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q13}'`) === 2, { wv, ws });
+
   // break R2-M1: a completed that arrives before the signatures is "not yet" (409, nothing kept), then applies
   const p12 = await prospect("Kim"), r12 = await draft(p12);
   await sendIt(r12);
