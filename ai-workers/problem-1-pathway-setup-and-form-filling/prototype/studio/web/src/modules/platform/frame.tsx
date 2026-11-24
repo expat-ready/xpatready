@@ -15,6 +15,7 @@ import { SignedInElsewhere } from "./signed-in-elsewhere";
 import { TermsPage, useTermsPending } from "./terms/terms-gate";
 import { FindBox } from "./find/find-box";
 import { HelpButton } from "./settings/help-button";   // PF-18s part 2: the "?" on every staff page (AG-16-63)
+import { NotificationBell } from "./notifications/bell";   // PF-18ns: the bell on every staff page (R1.50)
 import { SUPPORT_CREATE_KEY } from "./settings/support-contract";
 import { TrialBanner } from "./trial-banner";
 
@@ -96,7 +97,7 @@ export function PlatformFrame({ crumbs = [], back = null, area, intro, children 
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
     <Frame area="outside" title={who ? who.firmKey : "Your firm"} home="/home"
-      controls={who ? <>{pending.checked && !pending.terms ? <FindBox /> : null}{pending.checked && !pending.terms && who.keys.includes(SUPPORT_CREATE_KEY) ? <HelpButton /> : null}<span className="min-w-0 max-w-[30%] truncate text-sm font-medium max-[359px]:hidden sm:max-w-none" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
+      controls={who ? <>{pending.checked && !pending.terms ? <FindBox /> : null}{pending.checked && !pending.terms ? <NotificationBell /> : null}{pending.checked && !pending.terms && who.keys.includes(SUPPORT_CREATE_KEY) ? <HelpButton /> : null}<span className="min-w-0 max-w-[30%] truncate text-sm font-medium max-[359px]:hidden sm:max-w-none" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
       menu={who ? (area ? area.menu(who) : <AccountMenu me={who} />) : null}>
       {who && pending.checked && !pending.terms ? <TrialBanner me={who} /> : null}
       <Place crumbs={crumbs} back={back} area={area} />{intro}
