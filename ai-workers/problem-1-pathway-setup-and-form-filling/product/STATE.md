@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_2d7cb97e-fbba-4b7b-b075-c8a84b99d73d Lead 31 · 24 Nov 21:13 IST (after Lead 30, past the 200k line; Opus 5.5 medium, P-788)
+current_lead: local_9e9d5c2f-c57c-4143-970b-5ba71fd90ff0 Lead 32 · 24 Nov 22:09 IST (new account after the 24 Nov switch; Lead 31 stopped, founder's word; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 21:52 IST: **account switch; Lead 31 stopped. Read RESUME-ON-NEW-ACCOUNT, block "Switch of 24-25 Nov", first; the new Lead sets current_lead to itself.** 55/101 Works (25 Partial, 21 Not built). Weekly 93% (old account).
+updated: 2026-11-24 22:12 IST: **Lead 32 (local_9e9d5c2f) took over on the new account (Ultra, weekly 5%, resets 1 Dec 10:29 IST); check created 3,33.** Lead 31 stopped (founder). 55/101 Works (25 Partial, 21 Not built) until re-read.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
