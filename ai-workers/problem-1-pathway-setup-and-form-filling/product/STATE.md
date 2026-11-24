@@ -2,7 +2,7 @@
 
 current_lead: local_1d6d1d97-b8eb-40fa-b5e8-60a9a78ea74c Lead 23 · 24 Nov 11:45 IST (after Lead 22, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 11:45 IST: Lead 22 ended. **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 53/101 Works (counted 11:45), 24 Partial, 24 Not built. Queue: #3408, #3375 + #3397, #3202 in batches; #3209, #3377, #3385, #3398, #3405 queued; #3033's full run green, label owed. Founder: xr/staging agreed, key check with him next; then CodeRabbit's training question (A355, study done). Weekly 59%, disk 13 GB. No second standby.
+updated: 2026-11-24 11:48 IST: Lead 23 (check c7d18bd1). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 53/101 Works (counted 11:45), 24 Partial, 24 Not built. Queue: #3408, #3209, #3377, #3398, #3405, #3033 queued; #3202, #3375, #3397 merged; #3385 dequeued (C9.5). Founder: xr/staging agreed, key check with him next; then CodeRabbit's training question (A355, study done). Weekly 59%, disk 13 GB. No second standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 

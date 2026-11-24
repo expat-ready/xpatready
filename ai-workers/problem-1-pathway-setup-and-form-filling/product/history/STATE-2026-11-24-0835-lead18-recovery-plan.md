@@ -139,3 +139,8 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **Owed:** DECISIONS rows (Stripe keys in Secrets Manager at xr/staging, QA-772, and Lead 21's list), #3385's A4 ruling, lane questions (#3305 first), RULES, BACKLOG edits, private-sync, full-format report, context stamps, #3369's hang.
 * **Check script:** /private/tmp/claude-501/-Users-ranjansingh-Desktop-Xpatready/625ebfdb-253c-4038-a116-2bbbf2b293d1/scratchpad/chk.sh <minutes> (edit its PR list); count script /tmp/claude-501/cnt.py may be gone.
 * My errors: two times written without the clock (corrected); R1.104 ruling first given without reading AG-4-15 (suspended, replaced); told Lead O 2 #3408 was a draft before it was refused (corrected).
+
+## Lead 23, 11:48 IST 24 Nov
+* Took over; check c7d18bd1; one-shot 8cd39be8 wakes Lead O 2 at 13:22 IST. #3033 labelled 11:47 (no batch held it; stamp sorts after main's newest). Merged: #3202, #3375, #3397. Full runs of #3193 and #3379 still going.
+* #3385 dequeued: batch 45331636158 (#3404) red on regression, C9.5-6b twice (a move answered 200 where 503 is expected); cause unknown; its full run started by the gate.
+* AWS signed in, in this session's browser pane; Stripe secret page opened for the founder (names only, no value opened). Check script: /private/tmp/claude-501/-Users-ranjansingh-Desktop-Xpatready/a7ecb5dd-524b-417b-b2c1-17a6a126630b/scratchpad/chk.sh <minutes>.
