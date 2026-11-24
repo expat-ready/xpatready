@@ -8,14 +8,14 @@
 //   L  each refusal above writes exactly one audit line (REFUSED), and nothing else changes (the register, staff and firm
 //      tables' row counts).
 // Sample people of this run only; no model call (US$0). Run from prototype/ (never :4400):
-//   zsh studio/tools/isolated.sh pf28sys 4796 start PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh pf28sys 4796 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf28_system_reason.ts 4796 xr_studio_pf28sys
+//   zsh studio/tools/isolated.sh runtime_pf28sys 4796 start PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh runtime_pf28sys 4796 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf28_system_reason.ts 4796 xr_studio_runtime_pf28sys
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { recorder } from "./runtime/api.ts";
 
-const PORT = Number(process.argv[2] ?? 4796), DB = process.argv[3] ?? "xr_studio_pf28sys", BASE = `http://localhost:${PORT}`;
+const PORT = Number(process.argv[2] ?? 4796), DB = process.argv[3] ?? "xr_studio_runtime_pf28sys", BASE = `http://localhost:${PORT}`;
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const sql = (q: string) => execFileSync(join(BIN, "psql"), [`postgresql://xr_studio@127.0.0.1:54329/${DB}`, "-X", "-q", "-Atc", q], { encoding: "utf8" }).trim();

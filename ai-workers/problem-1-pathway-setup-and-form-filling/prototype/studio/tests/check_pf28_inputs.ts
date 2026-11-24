@@ -253,7 +253,12 @@ for (const d of all) {
 if (process.env.PF28_DUMP) writeFileSync(process.env.PF28_DUMP, JSON.stringify(Object.fromEntries(answers), null, 1));   // every answer, for writing the allow-list
 const after = await rows(), changed = Object.keys({ ...before, ...after }).filter((t) => before[t] !== after[t]).map((t) => `${t} ${before[t]}→${after[t]}`);
 console.log(`probes: ${seen.length} on ${all.length - skipped.length} routes; ${failing.length} not as the rule says (allow-listed: ${Object.keys(allow.probes).length}); NOT TESTED (no Sample token holds the keys): ${skipped.length} ${skipped.join(", ")}`);
-const jp = judge(failing, seen, { ...allow.probes, ...allow.exceptions?.probes });
+// R1.10 A4: a line on a route this sweep does not ask (our own staff's doors, NOT TESTED above) is judged where those doors are
+// asked (journey j_10, which signs in a Sample operator), not called "gone" here; named, never dropped silently.
+const notAskedHere = new Set(skipped), listedHere = Object.fromEntries(Object.entries({ ...allow.probes, ...allow.exceptions?.probes }).filter(([k]) => !notAskedHere.has(k.split(" ").slice(0, 2).join(" "))));
+const judgedElsewhere = Object.keys({ ...allow.probes, ...allow.exceptions?.probes }).filter((k) => !(k in listedHere));
+if (judgedElsewhere.length) console.log(`NOTE  allow-list lines on doors not asked here (judged by j_10): ${judgedElsewhere.join(", ")}`);
+const jp = judge(failing, seen, listedHere);
 ok("PF-28 (b) pass: every probe answers as the rule says (unknown field 422 naming it, wrong type and missing 422, 1 MB 413, bad id 404), or is on the allow-list", jp.unlisted.length === 0, jp.unlisted.map((k) => `${k} → ${answers.get(k)?.status}`));
 ok("PF-28 (b) pass: the probe list only shrinks (no entry answers well now or is gone)", jp.fixedButListed.length === 0, jp.fixedButListed.map((k) => `${k} → ${answers.get(k)?.status ?? "gone"}`));
 ok("PF-28 (b) pass: no probe answered 500", ![...answers.values()].some((a) => a.status >= 500), [...answers].filter(([, a]) => a.status >= 500).map(([k]) => k));

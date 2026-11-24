@@ -109,7 +109,9 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     const wantsReason = reasonOf_ !== undefined, bodySchema = typeof reasonOf_ === "object" ? reasonOf_ : null;
     // R1.10 A4: a malformed record id is the one not-found (404), answered after the permission and step-up checks and before
     // any field is read, as every PF/FO door does (PF-28); every /api/system path parameter is a record id.
-    const badId = Object.entries((req as { params?: Record<string, unknown> }).params ?? {}).some(([, v]) => !(typeof v === "string" && UUID_RE.test(v)));
+    // Only on a route that asks for a reason: there the guard reads the body, so the not-found must come first; every other route
+    // answers its own not-found in its own words (PF-17's "No such support ticket.").
+    const badId = wantsReason && Object.entries((req as { params?: Record<string, unknown> }).params ?? {}).some(([, v]) => !(typeof v === "string" && UUID_RE.test(v)));
     // SA-7-10: a sign-in at most 5 minutes old (exactly 5 passes, as PF-4b's requireStepUp).
     const stale = this.reflector.getAllAndOverride<boolean>(SYSTEM_STEP_UP, targets) === true && now / 1000 - staff.authTime > STEP_UP_SECONDS;
     const reason = reasonOf((req.body as { reason?: unknown } | null | undefined)?.reason);
@@ -121,7 +123,8 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     // every field that needs a change (an unknown one, a missing one, the reason), so a missing reason never hides the rest.
     const fields: Record<string, string> = {};
     if (wantsReason && !notObject) {
-      if (bodySchema) { const r = bodySchema.safeParse(req.body); if (!r.success) Object.assign(fields, fieldsOf(r.error)); }
+      // Only when the reason itself needs a change: with a good reason the route reads its own body in its own words and codes.
+      if (bodySchema && (tooLong || !reason)) { const r = bodySchema.safeParse(req.body); if (!r.success) Object.assign(fields, fieldsOf(r.error)); }
       if (tooLong) fields.reason = `A reason is at most ${REASON_MAX} characters.`;
       else if (!reason) fields.reason = `This needs a written reason (up to ${REASON_MAX} characters).`;
       else delete fields.reason;   // the guard's reading of the reason (cleaned, counted by character) stands for it

@@ -48,7 +48,7 @@ export async function seedSampleSettingValues(tx: Tx, firmId: string, values: Re
   return n;
 }
 
-const SaveBody = z.strictObject({ years: z.unknown(), reason: z.unknown().optional() });
+const SaveBody = z.strictObject({ years: z.unknown().optional(), reason: z.unknown().optional() });   // R1.10 A4: years is checked below with the reason, so both are named at once
 const REASON_MAX = 500;
 const WARNING_SHORT = COLLEGE_WARNING.replace(" Give a reason to save it.", "");
 

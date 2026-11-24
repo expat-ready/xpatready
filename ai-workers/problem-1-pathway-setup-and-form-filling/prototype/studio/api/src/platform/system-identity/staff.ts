@@ -12,7 +12,7 @@ import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { Db } from "../../core.ts";
-import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
+import { FIELD_ERROR_STATUS, idParam, parseInput, strict } from "../http/input.ts";
 import { PlatformClock } from "../identity/port.ts";
 import { forbidden, problem, unauthorized } from "../identity/keys.ts";
 import { REASON_MAX, SYSTEM_ROLES, type SystemStaffContext } from "./keys.ts";
@@ -105,6 +105,7 @@ export class SystemStaffAccess {
   /** SA-7-12: give and remove roles (never one's own; the Owner role by an Owner with a reason; the floor). */
   changeRoles(actor: SystemStaffContext, line: CallLine, id: string, input: unknown) {
     return this.change(actor, line, async (tx, now) => {
+      idParam(id, "staff member");   // R1.10 A4: a malformed id is the one not-found, before the body is read (PF-28)
       const to: string[] = parseInput(RolesBody, input).roles;
       if (id.toLowerCase() === actor.staffId) forbidden("Nobody changes their own roles. Ask another Platform Owner.", "OWN_ROLES");
       const t = await this.target(tx, id), from = SystemStaffAccess.rolesOf(t);
