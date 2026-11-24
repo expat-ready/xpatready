@@ -11,6 +11,9 @@ export type Stage = "staging" | "production";
 export const DEFAULT_DOMAIN = "expatready.com";
 export const CONTAINER_PORT = 8080; // deploy/container-entry.mjs (PF-7)
 export const MIN_TASKS = 2;
+/** The load balancer's idle time, AWS's default stated: the API server keeps an idle connection longer than this
+ *  (api/src/platform/http/keep-alive.ts), so the balancer never sends on one the server is closing (a 502). */
+export const BALANCER_IDLE_SECONDS = 60;
 /** PF-8b F3: `-c xr:domain=none` builds staging with no domain (the staging domain is blocked, Lead 15, 21 Nov): no hosted
  *  zone, no DNS-validated certificate, no SES domain identity; HTTPS on a self-signed certificate the deploy imports into
  *  ACM (bin/self-signed-cert.sh) and names with `-c xr:certArn=<arn>` (context, not a template parameter: the region
@@ -235,6 +238,7 @@ export class AppService extends Construct {
       : acm.Certificate.fromCertificateArn(this, "Imported", props.certArn!);
     const loadBalancer = new elbv2.ApplicationLoadBalancer(this, "Lb", {
       vpc, internetFacing: true, securityGroup: albSg, vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC }, dropInvalidHeaderFields: true,
+      idleTimeout: Duration.seconds(BALANCER_IDLE_SECONDS),
       // F3: a fixed lower-case name, so the AWS host name is lower case, as PLATFORM_ADDRESS_SUFFIX requires (the loader refuses capitals)
       ...(noDomain ? { loadBalancerName: `xr-${stage}-app` } : {}),
     });
