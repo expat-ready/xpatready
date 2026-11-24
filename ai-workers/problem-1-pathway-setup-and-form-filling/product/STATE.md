@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_a55ecb03-8a77-400e-93a7-4b25dc67a228 Lead 22 · 24 Nov 10:39 IST (after Lead 21, at the 200k line; Opus 5.5 medium, P-788)
+current_lead: local_1d6d1d97-b8eb-40fa-b5e8-60a9a78ea74c Lead 23 · 24 Nov 11:45 IST (after Lead 22, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 11:35 IST: Lead 22, check 3c4b700e, context 333k: hand over as soon as a standby exists (founder asked). #3408 queued. #3184, #3370, #3366, #3376, #3382 merged. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Batches: #3414 (#3415), #3375 + #3397 (#3413), #3367 (#3410), #3202 (#3412); queued #3385, #3379, #3375, #3377, #3397, #3398; #3209 labelled; #3033 shards 8 and 19 re-running. #3405 read, label on green; read owed #3193 771b9c39f. Nightly of 24 Nov green. Stripe keys: Secrets Manager (founder); xr/staging naming asked. Weekly 57%, disk 15 GB. No second standby.
+updated: 2026-11-24 11:45 IST: Lead 22 ended. **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 53/101 Works (counted 11:45), 24 Partial, 24 Not built. Queue: #3408, #3375 + #3397, #3202 in batches; #3209, #3377, #3385, #3398, #3405 queued; #3033's full run green, label owed. Founder: xr/staging agreed, key check with him next; then CodeRabbit's training question (A355, study done). Weekly 59%, disk 13 GB. No second standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,7 +18,7 @@ updated: 2026-11-24 11:35 IST: Lead 22, check 3c4b700e, context 333k: hand over 
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A355 | 24 Nov before 11:17 (typed to Lead 22) | CodeRabbit: agent studies products, cost (US$100, trial), fit, alternatives, visual case study, then start using it | study session started; no install before his yes; plan file |
+| A355 | 24 Nov before 11:17 (typed to Lead 22) | CodeRabbit: agent studies products, cost (US$100, trial), fit, alternatives, visual case study, then start using it | study done (page in the plan file); nothing installed; his answer on training next |
 | A354 | 24 Nov ~10:22 (typed to Lead 21) | Mac slow: check and optimize, all approvals; signed in to Stripe | measured; plan file; open |
 | A353 | 24 Nov, before 10:10 (typed to Lead 17; relayed) | check us against the AI-native SDLC playbook; implement only what helps quality or speed | `design/sdlc-playbook-alignment-2026-11-24.md`; read by Lead 21, seven facts spot-checked true on main; N2-N4 finish ordered work; founder 10:22 IST to Lead 21: implement; N2-N4 ordered to Lead O 2, N1 in the next five risky briefs; notes: plan file; open |
 | A352 | 24 Nov ~10:11 IST (typed to Lead 21) | yes to #3379's wording; concurs with the Lead's 'decide when you can'; the Lead drives the sandbox set-up (Stripe test mode, BoldSign, Google and Microsoft OAuth test apps) in the browser, one step and one question at a time; he watches and logs in | #3379 reworded; Stripe first; in progress |
@@ -50,7 +50,7 @@ Older Start here pointers and the red-row lanes line: `history/STATE-2026-11-24-
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, 09:23), Lead 21 (local_11ef6843, 10:02), Lead 22 (local_a55ecb03, from 24 Nov 10:39 IST).
+**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, 09:23), Lead 21 (local_11ef6843, 10:02), Lead 22 (local_a55ecb03, 10:39), Lead 23 (local_1d6d1d97, from 24 Nov 11:45 IST).
 **Leads of 22 Nov (account before):** word for word in `history/STATE-2026-11-23-1705-lead6-cs-mv2-and-older-leads.md`.
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
