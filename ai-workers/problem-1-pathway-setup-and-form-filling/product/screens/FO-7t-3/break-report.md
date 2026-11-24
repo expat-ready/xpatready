@@ -67,3 +67,24 @@ Commit `357825109` on `claude/zealous-keller-h3v4f4`. I checked part 3 only (`gi
   * `trust.moved` carries `amountMinor, batchId, currency, undoesBatchId` only.
   * The audit holds ids and amounts in cents. The undo reason is kept in the audit only, and no name appears anywhere.
 * **Load:** the list answered in 82 ms for 186 lines.
+
+## Round 2 (diff-only: `357825109..48899e198`, run at merge head 2bc1a384d, which changes nothing under client-money or ports)
+
+Breaker: pass 2bc1a384d44d58ec4441c42048836e831c18c383
+
+Script `break2.mts` in the session scratchpad, on its own scratch database (dropped). Neither Major remains.
+* **M1 fixed.** A batch dated 1999-12-31, 1900-01-01, 0001-01-01 or 0000-01-01 gives 422 "on or after 2000-01-01". An undo dated 1999-12-31 or 0000-01-01 also gives 422. No 500 anywhere.
+* **The date edges hold:** batch dated 2000-01-01 with the source on 2000-01-01 → 201; source the next day (the one day of slack) → 201; source two days later → 422; source today with the date yesterday → 201, the day before → 422. Undo before the batch's own date → 422; on the same day → 201.
+* **M2 fixed.** Five quiet days plus five extra sweeps queued no new job (key `…:0` only). Moving the line in full and then undoing it queued and ran `…:1`; a partial move ran `…:2`; three quiet days after that queued nothing. The fake notification port re-marks the one record unread rather than adding a second, so I counted job runs.
+* **m1 fixed.** By reading: the list's `over` flag, the sweep and the job's re-check now count TRUST_TO_OPERATING lines only.
+* **Lock order:** 30 rounds of three-party batches against picks (uuid order) gave 150 of 150 successes (201), with no 40P01 and no 500.
+
+**Minor R2-1: with several lines, the "never dated before its money left trust" check only looks at the oldest line.** `to-move.ts:97-98` uses `min(created_at)`. Repro: one line from a withdrawal dated 2000-01-03 plus one from a withdrawal made today, in a batch dated 2000-01-02 → **201**. Expected: 422, because today's withdrawal could not have been moved in 2000. Using `max(created_at)` would check every line.
+
+**Minor R2-2: a line that leaves the list without a new move line comes back without a new reminder.** The key counts move lines only (`to-move-reminder.ts:57-58`). Repro (firm B, line L past 25 days):
+1. A partial move of 10.00 queues and runs key `L:2`.
+2. The remaining 20.00 goes back to trust by a correction naming the withdrawal. L leaves the list.
+3. The partial batch is undone. L is back with 10.00 open and still 2 move lines.
+4. Two days and a sweep later: no new job; key `L:2` was already used.
+
+This edge needs both a return and an undo. Noted for the record; it does not block.

@@ -68,3 +68,28 @@ The pass bar is met with no 0. There is no separate journey report: the brief gi
 **Not checked:** the full `ci`, the demo reset and checkpoint load (C10.1), and red-on-base (the PR body states 0/1). The graph tool was not run, because this change has no page. Lead B's and the release Lead's money read (P-423) stays with them.
 
 Reviewer: Changes 35782510911740835bf89a8e914cae7dcef8d7ac
+
+## Round 2 (diff only: `357825109..48899e198`, then the merge of main to `2bc1a384d`)
+The merge changes nothing under `api/src/client-money`, `ports`, `features/client-money-trust.ts`, the check or `prisma` (checked with `git diff --stat`, which was empty). `check_fo7t_to_move.ts` at `2bc1a384d`: **36 passed, 0 failed**. Mutants and probes ran on a `git archive` copy of 48899e198.
+
+**Verdict: Changes 2bc1a384d44d58ec4441c42048836e831c18c383** (one Major is open).
+
+**Closed**
+* **Major 1:** a date before 2000 or `0001-01-01` now gets a 422 on `transferDate`, for both the batch and the undo (`to-move.ts:36-37`). The new DW12 and DW13 cases show it. An undo dated before its batch also gets a 422 (`:132`).
+* **Major 2:** the new DW10 case has `tO` undo `part`'s batch → 404, with no batch written.
+* **Minor 3:** the locks are now ordered by the uuid and enum columns in a subquery (`:51-56`), which is the trigger's own order.
+* **Breaker m1:** only TRUST_TO_OPERATING lines count, consistently in the list flag (`:71`), the sweep and the waiting job (`to-move-reminder.ts:58,76`).
+* **Can the new key fire again while nothing changes?** No. Move lines are insert-only, and an undo adds a batch, not lines, so the count only grows with a real move. The oldest line is chosen in a fixed order (`created_at`, then id). In my probe, three more idle days with three sweeps kept the notify count at 2.
+
+**Major (new, about breaker M2's fix): the re-fire test passes without the fix.** I removed `:${f.n}` from the key (`to-move-reminder.ts:65`) and the check still gave **36/0**.
+* Why it still passes: in DW14 the undone batch is the last of the clean-up batches (`check_fo7t_to_move.ts:282`). Its oldest line is not the line the first item was keyed on, so the key changes anyway.
+* Scenario: a later edit drops the count from the key. Then a firm whose oldest line was moved and then undone is never told again, which is exactly what breaker M2 reported, and nothing goes red.
+* Fix: undo the batch that moved the line the first key named, while every other line stays moved. Then expect one more notify, and still one after a second sweep. Asserting the queued job keys would also do.
+
+**Minor (new)**
+1. The trim at `to-move.ts:153` now also cuts a closing bracket. Probe: "…(16950 CAD to move: 16950 less 0 returned to trust, 0 moved before. Nothing was saved." Trim only the backtick and the whitespace.
+2. "Never dated before its money left trust" (`:97-98`) is a TypeScript rule the database does not hold, so a write that goes around the route skips it. It is an input check, not a cap, eligibility or open amount, but Lead B's condition says "no move rule of its own". Name it in the PR for Lead B, or ask FO-7ts for it.
+
+Round 1 Minors 1, 4, 5 and 6 are still open (not blocking).
+
+Reviewer: Changes 2bc1a384d44d58ec4441c42048836e831c18c383

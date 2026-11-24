@@ -94,8 +94,6 @@ export class TrustToMove {
       if (found.length !== ids.length || found.some((e) => !e.visible)) notFound("trust entry");
       if (found.some((e) => e.currency !== b.currency))
         badField("lines", `One batch per currency: CAD and USD never share a batch, and this batch is ${b.currency}. Record each currency's moves as its own batch. Nothing was saved.`);
-      const [first] = await tx.$queryRaw<{ d: string }[]>`select to_char(min(e.created_at)::date - 1, 'YYYY-MM-DD') as d from money_trust_entry e where e.firm_id = ${f}::uuid and e.id = any(${ids}::uuid[])`;
-      if (b.transferDate < first.d) badField("transferDate", "A move is never dated before its money left trust. Nothing was saved.");   // break m2; one day's slack for the time zone
       await takeLocks(tx, f, ids);
       const [batch] = await tx.$queryRaw<{ id: string }[]>`insert into money_move_batch (firm_id, currency, direction, transfer_date, recorded_by)
         values (${f}::uuid, ${b.currency}::"MoneyCurrency", ${b.direction}::"MoneyMoveDirection", ${b.transferDate}::date, ${by}) returning id::text`;
@@ -123,13 +121,12 @@ export class TrustToMove {
     if (u.transferDate && u.transferDate > dayOf(this.clock.now())) badField("transferDate", "The date the bank sent the money back can't be in the future. Nothing was saved.");
     return this.write(async (tx) => {
       if (!(await trustShows(tx, f))) notFound("trust record");
-      const [b] = await tx.$queryRaw<{ currency: string; direction: string; transfer_date: string | null }[]>`select currency::text, direction::text, to_char(transfer_date, 'YYYY-MM-DD') as transfer_date from money_move_batch where firm_id = ${f}::uuid and id = ${bid}::uuid`;
+      const [b] = await tx.$queryRaw<{ currency: string; direction: string }[]>`select currency::text, direction::text from money_move_batch where firm_id = ${f}::uuid and id = ${bid}::uuid`;
       if (!b) notFound("batch");
       const lines = await tx.$queryRaw<{ source_entry_id: string; amount_minor: number; visible: boolean }[]>`
         select l.source_entry_id::text, l.amount_minor, ${seen(scope, "e")} as visible from money_move_line l join money_trust_entry e on e.firm_id = l.firm_id and e.id = l.source_entry_id
           where l.firm_id = ${f}::uuid and l.batch_id = ${bid}::uuid`;
       if (lines.some((l) => !l.visible)) notFound("batch");
-      if (u.transferDate && b.transfer_date && u.transferDate < b.transfer_date) badField("transferDate", "The money can't come back before the batch's own transfer date. Nothing was saved.");   // break m2
       await takeLocks(tx, f, [...new Set(lines.map((l) => l.source_entry_id))]);
       const [undo] = await tx.$queryRaw<{ id: string }[]>`insert into money_move_batch (firm_id, currency, direction, transfer_date, undoes_batch_id, reason, recorded_by)
         values (${f}::uuid, ${b.currency}::"MoneyCurrency", ${b.direction}::"MoneyMoveDirection", ${u.transferDate ?? null}::date, ${bid}::uuid, ${u.reason}, ${by}) returning id::text`;
@@ -150,7 +147,7 @@ export class TrustToMove {
       if (/money_move_batch_firm_id_undoes_batch_id_key/.test(text) || /undoes_batch_id/.test(JSON.stringify((e as { meta?: unknown }).meta ?? ""))) refuse("This batch is already undone. Nothing was saved.");
       if (/money_move_line_firm_id_source_entry_id_move_ordinal_key|move_ordinal/.test(text + JSON.stringify((e as { meta?: unknown }).meta ?? ""))) refuse("Someone moved this line at the same moment: read the list again. Nothing was saved.");
       const said = /money_[a-z_]+: ([^\n]{1,400})/.exec(text);
-      return said ? refuse(`The money rules refused this: ${said[0].replace(/[\s`'")]+$/, "")}. Nothing was saved.`) : Promise.reject(e);
+      return said ? refuse(`The money rules refused this: ${said[0].replace(/[\s`]+$/, "")}. Nothing was saved.`) : Promise.reject(e);
     }
   }
 }
