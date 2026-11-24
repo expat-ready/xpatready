@@ -172,8 +172,13 @@ try {
   const vera = await web({ givenNames: "Vera", familyName: "Victim", email: "vera.v@example.org" });
   const mal = await web({ givenNames: "Mallory", familyName: "Attacker", email: "vera.v@example.org", phone: "+1 416 555 0144" });
   await jobs.runDue();
-  ok("FO-9b 2b fail (break B1): a stranger's arrival with Vera's email never changes her name; only her empty phone is filled",
-    live(vera, mal) === 1 && sql(`select given_names || ' ' || family_name || '|' || email || '|' || coalesce(phone_e164, '-') from fo_person where id = '${vera}'`) === "Vera Victim|vera.v@example.org|+14165550144");
+  ok("FO-9b 2b fail (break B1, R2-B1): a stranger's arrival with Vera's email and a phone she lacks is never merged by itself: her record unchanged, the pair To review",
+    live(vera, mal) === 2 && sql(`select given_names || ' ' || family_name || '|' || email || '|' || coalesce(phone_e164, '-') from fo_person where id = '${vera}'`) === "Vera Victim|vera.v@example.org|-" && (await listedPair(db, A, pairOf(vera, mal))) === "OPEN");
+  const ada = await web({ givenNames: "Ada", familyName: "One", phone: "+1 416 555 0146" }), bea = await web({ givenNames: "Bea", familyName: "Two", email: "bea.two@example.org" });
+  const zed = await web({ givenNames: "Zed", familyName: "Bridge", email: "bea.two@example.org", phone: "416 555 0146" });
+  await jobs.runDue();
+  ok("FO-9b 2b fail (R2-B2, M-r1): one stranger with Bea's email and Ada's phone joins no one: Ada, Bea and Zed all stay live, Ada and Bea unchanged",
+    live(ada, bea, zed) === 3 && sql(`select coalesce(email, '-') from fo_person where id = '${ada}'`) === "-" && sql(`select coalesce(phone_e164, '-') from fo_person where id = '${bea}'`) === "-");
   const hh1 = await web({ givenNames: "Hal", familyName: "Home", email: "hal@example.org", phone: "+1 416 555 0145" });
   const hh2 = await web({ givenNames: "Hana", familyName: "Home", email: "hana@example.org", phone: "416 555 0145" });
   await jobs.runDue();
@@ -199,10 +204,31 @@ try {
   ok("FO-9b 2b fail (review m3): Add a lead's \"Add as new\" writes the pair Kept separate and the job never merges it", live(k1, k2) === 2 && (await listedPair(db, A, pairOf(k1, k2))) === "KEPT_SEPARATE");
   // a burst: P2's job never ran (no queue then); P3's job merges P3 into P1, then P2 too (it also matched P3)
   const p1 = await web({ givenNames: "Pia", familyName: "Burst", email: "pia@example.org" });
+  await jobs.runDue();   // P1's own job is done before the burst (review m-r1: else it alone would merge P2)
   registerAutoMerge(null); const p2 = await web({ givenNames: "Pia", familyName: "Burst", email: "pia@example.org" }); registerAutoMerge(auto);
   const p3 = await web({ givenNames: "Pia", familyName: "Burst", email: "pia@example.org" });
   await jobs.runDue();
-  ok("FO-9b 2b pass (break m1): a burst of one person's arrivals becomes one record, even when one job did not run", live(p1, p2, p3) === 1 && sql(`select count(*) from fo_person where id in ('${p2}', '${p3}') and merged_into_id = '${p1}'`) === "2");
+  ok("FO-9b 2b pass (break m1): a burst of one person's arrivals becomes one record, even when one job did not run", live(p1, p2, p3) === 1 && live(p1) === 1,   // P3 into P1 or into P2 first (equal scores): either way one record, the first
+    { live: live(p1, p2, p3), into: sql(`select string_agg(coalesce(merged_into_id::text, '-'), ',') from fo_person where id in ('${p1}', '${p2}', '${p3}')`), ids: [p1, p2, p3], pairs: sql(`select string_agg(low_id || '-' || high_id || ':' || status, ' ') from fo_dup_review where '${p1}' in (low_id, high_id) or '${p2}' in (low_id, high_id)`), job: queued(p3)[0]?.status + (queued(p3)[0]?.error ?? "") });
+  const o1 = await web({ givenNames: "Oli", familyName: "Old", email: "oli@example.org" });
+  await jobs.runDue();   // O1's own job done first
+  registerAutoMerge(null); const o2 = await web({ givenNames: "Oli", familyName: "Old", email: "oli@example.org" }); registerAutoMerge(auto);
+  sql(`update fo_person set created_at = created_at - interval '1 day' where id in ('${o1}', '${o2}')`);   // a pair left on To review since yesterday
+  const o3 = await web({ givenNames: "Oli", familyName: "Old", email: "oli@example.org" });
+  await jobs.runDue();
+  ok("FO-9b 2b fail (review m-r3): a new arrival merges itself only; an old pair a person left on To review stays (O1 and O2 both live)",
+    sql(`select merged_into_id from fo_person where id = '${o3}'`) !== "" && live(o1, o2) === 2 && (await listedPair(db, A, pairOf(o1, o2))) === "OPEN", { o3: sql(`select coalesce(merged_into_id::text, '-') from fo_person where id = '${o3}'`), live: live(o1, o2), job: queued(o3)[0]?.status + (queued(o3)[0]?.error ?? "") });
+  {
+    const slow = { enqueue: () => new Promise<void>((r) => setTimeout(r, 3_000)) };
+    const t0 = Date.now();
+    const sp = (await db.$transaction((tx) => arrive(tx as never, { ...webIn(A), source: "Website", actor: "system:web-form", payloadHash: randomUUID(), person: person({ givenNames: "Sol", familyName: "Slow", email: "sol@example.org" }), }, { ...ports, autoMerge: slow }))).personId!;
+    const took = Date.now() - t0;
+    ok("FO-9b 2b pass (break m2): a queue that takes 3 s holds the arrival at most about 2 s, and the arrival commits", took < 2_800 && sql(`select count(*) from fo_person where id = '${sp}'`) === "1", took);
+  }
+  auto.onApplicationShutdown();
+  const z1 = await web({ givenNames: "Zoe", familyName: "Closed", email: "zoe@example.org" });
+  ok("FO-9b 2b fail (review m2): once the app's shutdown hook ran, arrive() queues nothing", queued(z1).length === 0);
+  registerAutoMerge(auto);
   ok("FO-9b 2b fail (break m1): with no burst, the run stops at the person's own merge (one merge for the Ann pair)", sql(`select count(*) from fo_dup_merge where survivor_id = '${ann1}'`) === "1");
 
   // ------------------------------------------------------------------- firms never meet; no queue, no merge

@@ -54,3 +54,10 @@ To raise it:
 * A screen reader.
 * An intended user's unaided walk (D17 and D20 stay with the founder).
 * Several API instances.
+
+## Round 2 (commit e65760efd, diff only)
+* Re-walked on the runtime ports: j_28 on :4438 passed 48/48. W2 now keeps the visitor and the booking apart (the booking carries a consent); the job completed and the pair is To review. j_33 on :4439 passed 20/20. W5 keeps two emails on one phone apart, and the lead page shows "Possible match".
+* What held: a retry after Undo never merges again; "Add as new" is never merged; a consent-carrying arrival waits for a person, and its savepoint leaves no row behind; 12 concurrent arrivals become 1 record; a 4 s queue returns the arrival in 2,036 ms.
+* Break-it: a phone-only person gets a stranger's email (Blocker B1-r). An arrival carrying Bea's email and Ada's phone joins Ada and Bea into one record (Major M-r1). Old OPEN pairs are merged by a later arrival (Minor m-r3). Details are in `review.md` Round 2.
+* Score changes: Correct data 1 → ½ (B1-r, M-r1). Error recovery stays ½: Undo now holds, but a wrong join by itself is shown to no one. The other criteria are unchanged.
+* **Score: 8.0 / 10.** That meets the score's pass rule, but the review verdict is Block because of B1-r. To raise it, fix B1-r and M-r1 (Correct data back to 1).

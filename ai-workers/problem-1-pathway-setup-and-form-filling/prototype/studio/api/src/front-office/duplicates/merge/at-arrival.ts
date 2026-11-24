@@ -7,9 +7,11 @@
 // * Outside any staff request (Lead 12, AUD-3a): the merge's audit line names `system:fo-duplicates`, which a signed-in
 //   request's audit context refuses, so it runs as a job of the person's firm (PF-14's runner, PF-12's firm scope).
 // * The job first waits on that arrival lock, so it reads the arrival as committed (the person is there) or rolled back
-//   (no person: nothing to do). Then each OPEN pair of the new person, best first, in its own transaction; the first
-//   merge ends it (the newer record goes into the older). A refusal leaves the pair on To review; Busy throws, so the
-//   queue tries again (DEFAULT_RETRY), and once its tries are spent the pair stays on To review.
+//   (no person: nothing to do). Then each OPEN pair of the new person, best first, in its own transaction, through
+//   mergeIfSafe's `arrival` rules (the record on file keeps its values and never gains an email or phone; a differing
+//   second key or a copied consent refuses); never two people merged before. After a merge, the rest of the same burst
+//   (people who matched the merged-away record and arrived within BURST of it). A refusal leaves the pair on To review;
+//   Busy throws, so the queue tries again (DEFAULT_RETRY), and once its tries are spent the pair stays on To review.
 // * One door path: arrive() calls queueArrivalMerge for a new person (web form, hand-added lead, booking page), with
 //   its own ports' queue, else the one the running app registered (this file's provider, features/front-office-auto-merge.ts).
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -29,6 +31,8 @@ const WAIT_MS = 30_000;
 const QUEUE_MS = 2_000;
 /** At most this many merges per run (a burst of one person's arrivals joins up; never an endless chain). */
 const MAX_MERGES = 20;
+/** A burst: arrivals of one person this close to each other. */
+const BURST = "10 minutes";
 
 /** What arrive() is given: queues the merge of one new person, after its arrival commits. */
 export interface AutoMergeQueue { enqueue(firmId: string, personId: string): Promise<void> }
@@ -72,7 +76,7 @@ export async function mergeArrival(db: PrismaClient, firmId: string, personId: s
     select r."id"::text from "fo_dup_review" r where r."firm_id" = ${firmId}::uuid and r."status" = 'OPEN' and ${where}
        and not exists (select 1 from "fo_dup_merge" m where m."firm_id" = r."firm_id" and ((m."survivor_id" = r."low_id" and m."loser_id" = r."high_id") or (m."survivor_id" = r."high_id" and m."loser_id" = r."low_id")))
      order by r."score" desc, r."first_seen_at", r."id"`;
-  const refused: ArrivalMergeOut["refused"] = [];
+  const refused: ArrivalMergeOut["refused"] = [], started = new Date();
   let busy = false, first: string | null = null, queue = await open(Prisma.sql`${id}::uuid in (r."low_id", r."high_id")`);
   for (let merges = 0; queue.length && merges < MAX_MERGES;) {
     let merged: string | null = null;
@@ -85,12 +89,16 @@ export async function mergeArrival(db: PrismaClient, firmId: string, personId: s
     }
     if (!merged) break;
     first ??= merged; merges++;
-    // the survivor's OPEN pairs with someone who also matched the record just merged away (its pair with them is now
-    // hidden as merged away): the rest of a burst, whichever order its jobs ran in (break m1)
+    // The rest of a burst (break m1): the survivor's OPEN pairs, written before this run, with someone who also matched
+    // the record just merged away and who arrived within BURST of it (never old pairs a person left on To review,
+    // review m-r3). The record on file never gains a contact key here (NEW_CONTACT), so no new match is made (M-r1).
     const [m] = await db.$queryRaw<{ s: string; l: string }[]>`select "survivor_id"::text as s, "loser_id"::text as l from "fo_dup_merge" where "firm_id" = ${firmId}::uuid and "id" = ${merged}::uuid`;
     if (!m) break;
-    queue = await open(Prisma.sql`${m.s}::uuid in (r."low_id", r."high_id") and exists (select 1 from "fo_dup_review" o where o."firm_id" = r."firm_id"
-      and ${m.l}::uuid in (o."low_id", o."high_id") and (case when r."low_id" = ${m.s}::uuid then r."high_id" else r."low_id" end) in (o."low_id", o."high_id"))`);
+    queue = await open(Prisma.sql`${m.s}::uuid in (r."low_id", r."high_id") and r."first_seen_at" < ${started}
+      and exists (select 1 from "fo_dup_review" o join "fo_person" x on x."firm_id" = o."firm_id" and x."id" = (case when r."low_id" = ${m.s}::uuid then r."high_id" else r."low_id" end)
+                   join "fo_person" lp on lp."firm_id" = o."firm_id" and lp."id" = ${m.l}::uuid
+                  where o."firm_id" = r."firm_id" and ${m.l}::uuid in (o."low_id", o."high_id") and x."id" in (o."low_id", o."high_id")
+                    and x."created_at" between lp."created_at" - ${BURST}::interval and lp."created_at" + ${BURST}::interval)`);
   }
   if (first) return { mergeRef: first, refused, busy: false, arrived: true };
   return { mergeRef: null, refused, busy, arrived: true };
