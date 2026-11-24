@@ -75,8 +75,19 @@ function SupportBody() {
   // Where the focus goes when the panel closes (round 2, breaker M2): the row's button if it is still listed, else the
   // first row now listed, else the page's heading; never the page body.
   const backTo = () => (opener.current?.isConnected ? opener.current : document.querySelector<HTMLElement>("[data-ticket-row] button") ?? headingRef.current);
+  // Round 3 (review R2-1): the row the focus went back to can leave the list once the queue re-reads after a reply (it
+  // no longer matches the filter). After a closed panel, each new answer checks the focus again until the list settles;
+  // a page opened fresh is never touched.
+  const refocus = React.useRef(false);
+  const closePanel = () => { refocus.current = true; put("ticket", null); };
   const status = params.get("status"), firm = params.get("firm"), ticket = params.get("ticket");
   const d = list.data, now = Date.now();
+  React.useEffect(() => {
+    if (!refocus.current || ticket) return;
+    const at = document.activeElement;
+    if (!at || at === document.body || !at.isConnected) backTo()?.focus();
+    if (!list.isFetching) refocus.current = false;
+  }, [d, ticket, list.isFetching]);   // eslint-disable-line react-hooks/exhaustive-deps -- after a close, on each answer
   if (!d && !list.isError) return <p role="status" className="text-sm text-text-muted" data-loading>Loading the support queue…</p>;
   const refused = list.error instanceof SystemApiError ? list.error : null;
   const title = <header><h1 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold outline-none">Support</h1>
@@ -106,8 +117,9 @@ function SupportBody() {
             {status || firm ? <Button variant="outline" size="sm" onClick={() => setParams(new URLSearchParams())}>{SUPPORT_COPY.showAll}</Button> : null}</p>
             : <Table label="Support tickets" head={["Subject", "Firm", "Status", "Raised by", "Page", "Age", "Last activity", "Messages"]}>
               {d.tickets.map((t) => <tr key={t.id} data-ticket-row={t.id} className="cursor-pointer hover:bg-surface-sunken"
-                // The whole row opens the ticket (concept §4d); its subject is the keyboard's way in, its firm name a filter.
-                onClick={(e) => { if ((e.target as Element).closest("a,button")) return; opener.current = (e.currentTarget as HTMLElement).querySelector("button"); put("ticket", t.id); }}>
+                // The whole row opens the ticket (concept §4d); its subject is the keyboard's way in, its firm name a filter;
+                // a click that ends a text selection keeps the selection (breaker round 2).
+                onClick={(e) => { if ((e.target as Element).closest("a,button") || window.getSelection()?.toString()) return; opener.current = (e.currentTarget as HTMLElement).querySelector("button"); put("ticket", t.id); }}>
                 <td className="min-w-48"><button type="button" className="text-left font-medium text-text-link hover:underline [overflow-wrap:anywhere]" onClick={open(t)}>{t.subject}</button></td>
                 <td className="min-w-40"><a href={`/system/support?firm=${t.firm.id}`} onClick={(e) => { e.preventDefault(); put("firm", t.firm.id); }} className="text-text-link hover:underline [overflow-wrap:anywhere]">{t.firm.name}</a>
                   <span className="block text-xs text-text-muted">{t.firm.plan?.name ?? SUPPORT_COPY.noPlan}</span></td>
@@ -123,7 +135,7 @@ function SupportBody() {
         <Button variant="outline" size="sm" disabled={d.page <= 1} onClick={() => put("page", String(d.page - 1))}>Previous</Button>
         <span>Page {d.page} of {pages} · {d.total} tickets</span>
         <Button variant="outline" size="sm" disabled={d.page >= pages} onClick={() => put("page", String(d.page + 1))}>Next</Button></nav> : null}
-      <TicketPanel id={ticket} onClose={() => put("ticket", null)} returnFocus={backTo} />
+      <TicketPanel id={ticket} onClose={closePanel} returnFocus={backTo} />
     </div>
   );
 }

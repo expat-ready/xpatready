@@ -1,5 +1,56 @@
 # PF-17 part 4, PR C: break report (24 Nov)
 
+## Round 2 (head `3c703b985`, 24 Nov): verdict **Approve**
+
+I re-ran every round-1 attack against the delta.
+* Isolated copy `brkc2` on :4475, after `web-fresh.sh build`, never :4400. Seeded the same way: the four extra staff roles and 67 tickets.
+* New attacks: a 409 on a slow server (1.2 s), the last ticket in a filter replied to, row clicks on cells and links, a drag-select inside a row, escaped hostile ids, and the past-end and empty-filter buttons by keyboard.
+
+**Blockers: none. Majors: none.** Both Majors are fixed:
+* **M1 fixed.** Closed under the panel, then Send gives "This ticket was closed while you were writing. Your reply was not sent."
+  * The header and the row turn Closed, the box goes and the closed notice shows. Nothing is stored.
+  * On the slow server the box is read-only and Send is disabled until the refetch lands.
+* **M2 fixed.** After a reply under New, and under All when the ticket moves to page 2, Escape focuses the first listed row's button.
+  * When the replied ticket was the last one in the filter, focus goes to the h1. A panel opened from the address goes to the first row.
+  * A ticket still listed gets its own row back.
+
+The fixed Minors:
+* **m1 fixed.** A no-space subject wraps: `h2` right edge 311 px against the Close button at 327 px (375 px wide), and 256 against 272 at 320. No overflow in the dialog.
+* **m2 fixed.** `?page=3`, `?page=99999` and `?status=CLOSED&page=2` show "No tickets on this page. Go to page 1". An empty filter shows "Show every ticket".
+* **m4 fixed (busy part).** Text typed during a 1.5 s send is refused (the box is read-only). A double-click still stores one message.
+* **m5 fixed (announcement part).** The `role=status` says "Reply sent. The ticket is now waiting on the firm." A later 422 clears it.
+* **m6 fixed.** The closed words now match the API (BD-1).
+* **m7 fixed (the parts claimed).**
+  * `?ticket=../../firms` and `x/../../../firms` are sent escaped (`..%2F..%2Ffirms`) and give "No such support ticket"; no `/api/system/firms` call.
+  * The message bodies and the reply box have `dir="auto"`.
+  * A click on any non-link cell opens the ticket, and the firm link still filters.
+  * Field names now show as labels ("Status:", "Page:", "Reply:").
+
+**Still held:**
+* The keys: Billing gets the no-key sentence, the Auditor gets the read-only words.
+* The planes, unchanged on the API.
+* A revoked session on Send stores nothing and shows the card.
+* No page-level sideways scroll at 1440, 1024, 375 or 320.
+* axe found 0 issues on the list and the panel at all four widths.
+* `window.__xss` was never set.
+* `scan-logs.ts brkc2-api.log`: 0 findings in 968 lines; no 5xx and no tokens (warn lines are only 401/403/404/409/422).
+
+**New Minor (does not block):**
+* **r2-1. A drag-select inside a row opens the ticket.** A whole-row click now opens the panel, so selecting a raiser's name or a page path to copy it opens the panel on mouse-up, and the selection is lost.
+  * Repro: drag across the Page cell of row 5. `?ticket=` is set.
+  * Where: the row's `onClick`, `support-page.tsx` (the `data-ticket-row` `<tr>`).
+  * Fix: return early when `getSelection()?.toString()` is non-empty.
+
+**Accepted follow-ups (not re-raised):**
+* m3: focus after Clear firm, Clear filters and the last Next. The new "Go to page 1" and "Show every ticket" buttons also leave focus on `<body>`; they belong to the same follow-up.
+* m4: the draft is still lost on Back, reload or session end.
+* m5: focus after Send still lands on the dialog container.
+* m7: no counter on the reply box, and "Clear firm: this firm".
+
+---
+
+# Round 1 (head `67aece028`)
+
 Breaker, did not build it. Branch `claude/runtime-pf17-support-page` at `67aece028`, PR #3517. Scope (P-26): concept r2 §4d, §4e, BR-1, BR-5 to BR-7, B4-B6. Not built (not findings): internal notes, assignment, priority, firm detail, country/contact/recent tickets in the panel.
 
 **How it was run.** App = `prototype/studio`. `web-fresh.sh build`, then isolated copy `brkc` on :4469 (`AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local`, never :4400). Playwright from node (chromium 1243) plus `fetch` for the API. Scripts and screenshots stayed in the session scratchpad (not committed).

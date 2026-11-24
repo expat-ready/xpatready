@@ -205,10 +205,23 @@ try {
   await pk.getByRole("dialog").getByRole("button", { name: "Send reply" }).click();
   await pk.getByRole("dialog").locator("[data-reply-sent]").waitFor({ timeout: 10_000 }).catch(() => undefined);
   const sentSaid = await pk.getByRole("dialog").locator("[data-reply-sent]").innerText().catch(() => "");
-  await pk.keyboard.press("Escape"); await pk.waitForTimeout(600);
-  const landed = await pk.evaluate(() => { const e = document.activeElement; return e ? `${e.tagName}|${e.closest("table") ? "table" : ""}` : ""; });
-  ok("PF-17 B9c fail (round 2, breaker M2): after a reply that takes the ticket out of the filter, the reply is announced and Escape puts the focus on the list (the next row) or its heading, never the page body",
-    sentSaid === SUPPORT_COPY.sent && tE !== "" && (landed === "BUTTON|table" || landed.startsWith("H1")), { sentSaid, landed });
+  // Round 3 (review R2-1): the focus is sampled soon after Escape and again once the list has re-read, since the row it
+  // first lands on can leave the list a moment later.
+  const where = () => pk.evaluate(() => { const e = document.activeElement; return e ? `${e.tagName}|${e.closest("table") ? "table" : ""}` : ""; });
+  await pk.keyboard.press("Escape"); await pk.waitForTimeout(100);
+  const early = await where(); await pk.waitForTimeout(1400); const late = await where();
+  const sane = (x: string) => x === "BUTTON|table" || x.startsWith("H1");
+  ok("PF-17 B9c fail (round 2-3, breaker M2, review R2-1): after a reply that takes the ticket out of the filter, the reply is announced and the focus stays on the list (a row) or its heading, soon after Escape and once the list has re-read, never the page body",
+    sentSaid === SUPPORT_COPY.sent && tE !== "" && sane(early) && sane(late), { sentSaid, early, late });
+  // A page opened fresh keeps the focus where the browser puts it: the re-check only follows a closed panel.
+  await pk.goto(`${BASE}/system/support`); await rowOf(pk, `Sample ${run} two`).waitFor({ timeout: 15_000 }).catch(() => undefined); await pk.waitForTimeout(500);
+  ok("PF-17 B9c pass (round 3): opening the page moves no focus by itself (the body keeps it)", (await where()).startsWith("BODY"), await where());
+  // Breaker round 2 Minor: selecting text in a row does not open its ticket.
+  const cell = rowOf(pk, `Sample ${run} two`).locator("td").nth(4);
+  const box = await cell.boundingBox();
+  if (box) { await pk.mouse.move(box.x + 2, box.y + box.height / 2); await pk.mouse.down(); await pk.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 5 }); await pk.mouse.up(); }
+  await pk.waitForTimeout(400);
+  ok("PF-17 B9c fail (breaker round 2 Minor): dragging to select text in a row does not open its ticket", (await pk.getByRole("dialog").count()) === 0 && !/ticket=/.test(pk.url()), pk.url());
   await pk.goto(`${BASE}/system/support`); await heading(pk).waitFor({ timeout: 15_000 }).catch(() => undefined);
   const pageAxe = (await axe(pk)).length;
   const widths: Record<number, { axe: number; sideways: boolean }> = {};

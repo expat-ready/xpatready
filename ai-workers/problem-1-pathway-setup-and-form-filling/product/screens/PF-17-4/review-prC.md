@@ -1,5 +1,66 @@
 # PF-17 part 4, PR C (console Support page and ticket panel; R1.93): independent review, 24 Nov
 
+## Round 2 (head `3c703b98555a3745ed76754b54b4215bf13a4025`; the current verdict)
+Delta checked: `git diff 67aece028 3c703b985` (support-page.tsx, contract.ts, the shared Panel title in controls.tsx, the check, challenge.md BD-1, the breaker's report).
+
+**Verdict: Block** (last round allowed). Round 1's Major #1 is fixed. But the breaker's M2 fix (focus after the panel closes) only works when the close animation outlasts the queue's refetch. Its own new check fails **2 of 2** on my copy. That makes one new Major, and the fix is small.
+
+**What I ran (copy `rvc3` :4473, never :4400):**
+* `web-fresh.sh build` OK; `tsc -p web --noEmit` exit 0.
+* `check_pf17_support_browser.ts 4473 xr_studio_rvc3`: **21/22, twice**. Both times the failure was the same line, "B9c fail (round 2, breaker M2)", with `landed: "BODY|"`. The builder reported 22/22 twice.
+* `check_pf17_console_browser.ts`: **32/32**. `j_93.ts rvc3 4473`: **24/24**.
+* My own probes on the running app (below).
+* Copy stopped. `scan-logs.ts var/isolated-logs/rvc3-api.log`: "0 finding(s) — ok" (exit 0, 1 114 lines).
+* My runs overwrote six committed PF-17-4 screenshots; I restored them with `git checkout`.
+
+**New Major**
+* **R2-1. After a reply moves the ticket out of the current filter, closing the panel drops focus to the page body for anyone with reduced motion or a slow network** (WCAG 2.4.3; EXPERIENCE §2.12 [M]).
+  * Cause: `backTo` (`support-page.tsx`) chooses its target at close time. "Reply sent" appears *before* `invalidateQueries(["sys","queue"])` has re-read the list, so a quick Escape finds the row's button still connected and focuses it. A moment later the refetch removes the row, and focus falls to BODY.
+  * Probe (only open ticket, `?status=OPEN`, Send, wait for "Reply sent", Escape):
+    * Without reduced motion: focus events `Send reply → dialog → H1 Support`. Correct, but only because Radix's close animation lasts longer than the refetch.
+    * With `reducedMotion: "reduce"` (as the check itself sets): `Send reply → dialog → BUTTON <the row>`, then **BODY** at 50, 200, 600 and 1 200 ms.
+  * Replying always takes a ticket out of the New and Waiting on us filters, so this is the main path for anyone using those chips.
+  * The check is right. The product is racy, and the builder's green runs were timing luck. As it stands, CI can go red at random (D16).
+  * **Fix:** decide again after the list settles. For example, in `SupportBody` add `useEffect(() => { if (!ticket && document.activeElement === document.body) backTo()?.focus(); }, [d, ticket])`. Or keep a "just closed" ref and move focus in that effect. Run the support check twice with the B9c line green.
+
+**Round 1's findings, re-checked:**
+* **#1 Major: fixed.** I opened a ticket, sent a blank reply, closed the ticket in the database, typed and pressed Send. The panel then read "This ticket was closed while you were writing. Your reply was not sent.". The header changed to "· Closed ·", the box went away and the closed note showed. After Escape the row read "Closed". The database still holds 1 message. B5c covers this.
+* **#2: partly fixed.** Labels replace the parameter names ("Status:", "Reply:"; `refusalWords` in contract.ts). A blank reply still shows the firm-facing words: "Some fields need a change. Reply: write what you need help with, without control characters". No `maxLength`. Firms still uses its own copy with raw names (PR B R2-d). Minor.
+* **#3: fixed** ("No tickets on this page." with Go to page 1; a B4b line). **#6: fixed.** Clicking the Age or Last activity cell opens the panel. The firm link still filters and does not open it (checked). **#7: fixed** ("Show every ticket" on an empty filtered list; a B4b line).
+* **#8: fixed.** The new sentence matches the firm side and the API, and BD-1 in `challenge.md` asks the Lead to confirm it.
+* **#4, #5, #9, #10:** follow-ups, as stated. They are still Minor, and still to be recorded on the row.
+
+**The breaker's fixes and what the delta could break:**
+* **Shared Panel title** (`min-w-0 [overflow-wrap:anywhere]`; 40 Panel users, 4 with a badge). I probed the Support panel with an injected badge, comparing the new and old classes:
+  * Short title: identical (115×28, badge on the same line).
+  * Long title with spaces: identical (471×56).
+  * One unbroken word: old 688 px wide and **overlapping Close**; new wraps to 471×56, clear of Close.
+  * So the change only affects unbroken text, where it fixes the overlap. Safe for the other panels.
+* `?ticket=..%2Ffirms` is escaped and answers "No such support ticket.".
+* `dir="auto"` on messages and the box. The box is read-only while sending. "Reply sent" is announced through a live region that stays mounted.
+* The new copy reads well. The row's hover token (`surface-sunken`) and `text-text-ok` exist in tokens.css.
+
+**Journey score, round 2: 8½/10, pass** (no criterion at 0):
+* task completed 1
+* next step obvious 1
+* plain words ½ (#2 firm-facing words)
+* feedback and state ½ (#4)
+* correct data 1
+* error recovery 1 (#1 and #3 fixed)
+* accessibility and screen sizes ½ (R2-1, #5, #9)
+* speed 1
+* visual quality 1
+* trust and sources 1
+
+**D-score changes:** D1 3→4 · D5 3→4 · D10 3→4 · D11 3→4 · D13 4→3 (R2-1) · D16 4→3 (a new line fails 2/2 here).
+
+**List to fix for Approve:** R2-1, with the support check green twice. The rest are Minor.
+
+Reviewer: Block 3c703b98555a3745ed76754b54b4215bf13a4025
+
+---
+# Round 1 (head `67aece028`; kept as the record)
+
 Reviewer: a fresh context that did not build it. Head `67aece0280850c56d354cb0305438a34c9e03a89` (#3517, stacked on B `20f5bd12c`). Diff `git diff origin/claude/runtime-pf17-screens...HEAD -- studio/` (6 code files, +360). Checked against concept r2 §4d, §4e, §5, §6 B4-B6, BR-1, BR-5 to BR-7; `design/console-r1.html`; SA-10 §3.2-§3.4; STANDARDS, EXPERIENCE (§7 UXL), QUALITY; j_93 W4; PR B's findings (`review-prB.md`). The journey test is the section below (one file, as briefed).
 
 **Verdict: Block** (skill scale: Ship after fixes). One open Major, a small fix. Everything else is sound or Minor.
