@@ -241,3 +241,31 @@ Nothing a person has open is clobbered:
 Journey score unchanged: 10 / 10.
 
 Not checked: the full suites (I rely on pf31 73/73 twice and pf5t 35/35 three times), a slow network, and other browsers.
+
+## Addendum 4: re-review of head 6c1d1f2320707c357308de664daa8f879c99843b (24 Nov)
+
+**Verdict: Approve (Ship).** No Blocker or Major is open.
+
+Scope: diff only, `git show 6c1d1f232`. I walked :4747 as user-S.
+
+### Breaker F1: fixed at the root
+- **The root cause.** `licence-page.tsx:21` gives Licence its own key, `["pf","account",token,"licence"]`. My account keeps `["pf","account",token]` with its `Account` parser.
+- **The two keys still stay in step:**
+  - a Licence save invalidates My account's key exactly (`:32`);
+  - a My account invalidation of the prefix also refreshes Licence.
+- **Other keys.** A scan of the one-line `useQuery` keys found no other key read with two different parsers. It is a heuristic: multi-line calls and `useApi` were not scanned. The repeated `["pf","staff","list",token]` uses `StaffList` everywhere.
+- **The bug was there before PF-31.** Going from Licence to My account within the 2 s staleTime could have hit the same shape clash. PF-31's tabs that stay mounted, plus the refetch on switch, made it certain.
+- **Walked.** With My account and Licence both open as tabs, I switched between them four times, each after 2.6 s. Every time there was one `main` with the right h1, no `[data-ws-failed]`, and no page or console error.
+
+### TabBoundary
+`workspace.tsx:270-280` (wrapped at `:303`) keeps an error inside its own tab and resets when the tab moves to another address. A whole-app blank becomes a one-tab notice, which is strictly better. The new check line fails first on the old code, and is justified.
+
+### Minor, for the follow-up (not blocking)
+**The fallback strands the person.** It renders a bare `<main>` with no Frame: no header, no menu and no strip.
+- Alt+PageUp/Down also stop working, because the key handler returns early when the document has no `[data-workspace]` (`workspace.tsx:211`).
+- So "open another item" in the copy has no control on screen. Only the browser's Back or a reload gets the person out.
+- Fix: draw `<WorkspaceStrip />` in the fallback (both contexts are in scope), or mark the fallback `data-workspace`.
+
+Journey score unchanged: 10 / 10.
+
+Not checked: the full suites (I rely on 74/74 twice), and a forced crash to see the fallback live. The fallback point comes from reading the code.
