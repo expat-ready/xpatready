@@ -44,3 +44,11 @@ Lane builds it as its own FO-7t part. Only trust YES and deposit row above zero,
 | A346 | 24 Nov ~01:25 (typed to Lead 13) | "So you have all my approval. Go ahead and implement those as per your best recommended possible, and create enough standby so that you can run entire night flawlessly and keep monitoring as set processes." | P-814 and date option A (P-815, 12 Dec) in #3314; standbys, Lead B 5, qa A 5 and RQ shaping started |
 
 **Correction, Lead 19 (09:0x):** the R1.60 bound "pay link: P-567 (3) governs (none on a trust request in R1)" above is wrong: P-567 (3) defers card into trust only; AG-6-61 rule 5's link stands. O3: a person cancels (rule 11). See the comment on #3371. Lead B 5 read #3209 6bff2d790 and #3184 2e986f3ae OK.
+
+## A350 in full (founder, typed and chosen in Lead 19, 09:22 IST 24 Nov)
+"for the all this stuff which needs me ... work with me and do everything yourself ... in the browser ... you have all the permissions. If you get stuck, I'm here to unblock you."
+- AWS: "Yes, I'll sign in": one staging run, US$2 in all, temporary CodeBuild project and role deleted after, 0 tasks after. He gave the on-call address in chat (kept out of the repository; it goes only into the deploy parameter).
+- RQ-01: INSIDE the 101. His words: "So we have to build inside 101, but we have to plan in such a way that it doesn't become blocker ... Maybe we can create one track ... divide entire project in the kind of files when they don't share or bump into each other ... these are the critical features, and I don't want to miss them ... make sure that these are prioritized without delaying our target ... We have to just do 10 per day. At least start making 10, 15 per days."
+- Date: "Commit 29 Nov", chosen after 9.6 a day needed against about 5 was shown. Replaces P-815's 12 Dec (DECISIONS row owed; RULES P-609 and flow-measure's date follow).
+- Security test and counsel: "Yes, research": 3 each, public prices, nobody contacted, US$0.
+- qa's AWS gap list: https://github.com/expat-ready/xpatready/pull/3380 (R1.1 sign-in and PF-8c, R1.15 sealed key need code first; R1.65, the R1.1 region survey, R1.15 missing-secret start and R1.13 are in the run).
