@@ -405,7 +405,7 @@ export const ECS_EXEC_ACTIONS = ["ecr:BatchCheckLayerAvailability", "ecr:BatchGe
 // an execution role pulls and reads; a task role only sends (review r1). PF-F1c: and reads and writes firms' files in its
 // bucket, through the data key: allowed here for any task role, and held by service-checks.ts filesTaskFindings to the
 // service's task role only, each statement exact (review M1)
-// PF-4bs: and calls the seven sign-in actions, held by service-checks.ts signInTaskFindings to the service's task role
+// PF-4bs: and calls the eight sign-in actions, held by service-checks.ts signInTaskFindings to the service's task role
 // and the staff pool's ARN only, exactly
 export const ECS_TASK_ACTIONS = ["ses:SendEmail", "ses:SendRawEmail", "s3:GetObject", "s3:PutObject", "s3:ListBucket", "kms:GenerateDataKey", "kms:Decrypt", ...SIGN_IN_ACTIONS];
 const SERVICE_ACTIONS: Record<string, string[]> = { "backup.amazonaws.com": ROLE_ACTIONS, "ecs-tasks.amazonaws.com": [] };

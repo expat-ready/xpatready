@@ -42,10 +42,12 @@ export const POOLS = ["staff", "own-staff", "clients"] as const;
  *  on the staff pool's ARN only (held by service-checks.ts signInTaskFindings and checks.ts ECS_TASK_ACTIONS). Sign-in and
  *  its code: AdminInitiateAuth, AdminRespondToAuthChallenge; the set-password callback: AdminSetUserPassword, AdminGetUser;
  *  PF-4bc: AdminCreateUser (accept), AdminSetUserMFAPreference (reset two-step), AdminUserGlobalSignOut (sign out
- *  everywhere). AssociateSoftwareToken, VerifySoftwareToken and RespondToAuthChallenge take no IAM permission (AWS: "you
+ *  everywhere), AdminGetUserAuthFactors (two-step state and the first step of reset two-step: provider.ts factors(), which
+ *  tells a passkey from an app; read only; its own IAM action, Lead 24's ruling on #3429, 24 Nov). The deploy test
+ *  sign-in-task.test.ts ties this list to the commands the app imports. AssociateSoftwareToken, VerifySoftwareToken and RespondToAuthChallenge take no IAM permission (AWS: "you
  *  can't use IAM credentials to authorize requests"), so they are not here. */
 export const SIGN_IN_ACTIONS = ["cognito-idp:AdminInitiateAuth", "cognito-idp:AdminRespondToAuthChallenge", "cognito-idp:AdminSetUserPassword", "cognito-idp:AdminGetUser",
-  "cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserMFAPreference", "cognito-idp:AdminUserGlobalSignOut"] as const;
+  "cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserMFAPreference", "cognito-idp:AdminUserGlobalSignOut", "cognito-idp:AdminGetUserAuthFactors"] as const;
 /** PF-4bs: minutes a staff member has to answer a sign-in challenge (AWS `AuthSessionValidity`, 3 to 15): a first-time
  *  invitee installs an authenticator app inside it (challenge round 1, M4). */
 export const CHALLENGE_MINUTES = 15;
