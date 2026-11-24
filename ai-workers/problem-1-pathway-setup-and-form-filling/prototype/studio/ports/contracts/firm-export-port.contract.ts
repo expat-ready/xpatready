@@ -1,6 +1,5 @@
-// PF-11 part 1: FirmExportPort's contract (ports/firm-export.ts), run by fakeFirmExport and PgFirmExport in
-// tests/check_pf11_firm_export.ts. The port file's sentences: a registered module appears in collect, in registration
-// order; a module registers once; a row of another firm, a short row or a cell of the wrong kind is refused.
+// PF-11 part 1: FirmExportPort's contract (ports/firm-export.ts), run by every adapter in tests/check_pf11_firm_export.ts: a
+// module appears in collect in order and registers once; another firm's row, a short row or a wrong-kind cell is refused.
 import { defineContract, expect, expectRefused } from "./contract.ts";
 import { FirmExportRefused, type FirmExportPort } from "../firm-export.ts";
 

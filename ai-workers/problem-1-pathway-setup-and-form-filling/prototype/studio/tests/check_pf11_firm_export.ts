@@ -1,7 +1,6 @@
-// PF-11 part 1 (brief lead-b-briefs/PF-11.md, Lead B's corrections on #1972): DW1 ask and list; DW2 one request per
-// operationId; DW3 firm states (@HoldOpen); DW4 expiry, who downloads; DW5 the CSV and the cap; DW6 no other firm, the
-// read-only scoped read, the port contract (fake and real); DW7 audit. Scratch database, PF-12 walls on, PF-4's guard,
-// PF-5's hold gate, fake jobs and files on a fake clock. No network, US$0.   tsx studio/tests/check_pf11_firm_export.ts
+// PF-11 part 1 (brief lead-b-briefs/PF-11.md, Lead B's corrections on #1972): DW1-DW7 and FirmExportPort's contract (fake and
+// real), on a scratch database with PF-12's walls, PF-4's guard, PF-5's hold gate, fake jobs and files on a fake clock. US$0.
+//   tsx studio/tests/check_pf11_firm_export.ts
 import "reflect-metadata";
 import { Controller, Get, Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
@@ -48,6 +47,8 @@ const { withFirm } = await import("../api/src/platform/firm-scope.ts");
 const { PgFirmExport } = await import("../api/src/platform/firm-export/registry.ts");
 const { platformSections } = await import("../api/src/platform/firm-export/platform-sections.ts");
 const { FirmExports, BUILD_JOB } = await import("../api/src/platform/firm-export/service.ts");
+const { buildPackage, ExportTooLarge } = await import("../api/src/platform/firm-export/package.ts");
+const { PgLegalHolds } = await import("../api/src/platform/register/holds/adapter.ts");
 const { FirmExportController } = await import("../api/src/platform/firm-export/routes.ts");
 const feature = (await import("../api/src/features/platform-firm-export.ts")).default;
 
@@ -68,7 +69,9 @@ try {
     rows: [[firmId, "=HYPERLINK(\"http://x\")", -1250, "CAD"], [firmId, "+1", 900, "USD"], [firmId, "-x", null, null], [firmId, "@sum", 0, "CAD"]] }] });
   let theDb: never;
   const nestDb = () => theDb;
-  const make = (cap?: number) => { const port = new PgFirmExport(nestDb()); port.register("platform", platformSections); port.register("test-module", testModule); return new FirmExports({ db: nestDb(), port, files, jobs, audit: auditEvent as never, now: () => fc.now(), cap }); };
+  const holds = { on: false, real: new PgLegalHolds(), isHeld(tx: never, f: string, q: never) { return this.on ? Promise.resolve({ held: true as const, holds: [] }) : this.real.isHeld(tx, f, q); } };
+  const make = (cap?: number, extra?: (f: string) => Promise<void>) => { const port = new PgFirmExport(nestDb()); port.register("platform", platformSections); port.register("test-module", async (f) => { await extra?.(f); return testModule(f); });
+    return new FirmExports({ db: nestDb(), port, files, jobs, audit: auditEvent as never, holds: holds as never, now: () => fc.now(), cap }); };
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
     { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: PaymentHoldGate }, { provide: FirmExports, useFactory: (db: never) => { theDb = db; return make(); }, inject: [Db] }];
   @Controller("api/platform/pf11-probe") class Probe { @Get() @AnyStaff("PF-11's check of the hold gate") get() { return { ok: true }; } }
@@ -122,10 +125,12 @@ try {
   const inState = async (st: string) => { sql(`update platform_firm set status = '${st}' where id = '${FIRM_A}'`); const r = await ask(tR); return r.status; };
   const open = [await inState("TRIAL"), await inState("PAYMENT_HOLD"), (sql(`update platform_firm set status = 'PAYMENT_HOLD' where id = '${FIRM_A}'`), (await call("GET", "/api/platform/firm-export", tT)).status)];
   ok("PF-11 DW3 pass: allowed in TRIAL and PAYMENT_HOLD (a held Owner gets 201, not 402, through @HoldOpen; the list too)", open.join() === "201,201,200", open);
+  await jobs.runDue(); const heldDl = await call("GET", `/api/platform/firm-export/${other.body.id}/download`, tR);
+  ok("PF-11 DW3 pass: a held Owner downloads (200 through @HoldOpen)", heldDl.status === 200, heldDl.body);
   const n3 = rows(), shut = [];
-  for (const st of ["PROVISIONING", "SECURITY_LOCK", "ABANDONED", "DELETED"]) shut.push(await inState(st));
+  for (const st of ["PROVISIONING", "SECURITY_LOCK", "ABANDONED", "DELETED"]) { shut.push(await inState(st)); if (st !== "DELETED") shut.push((await call("GET", "/api/platform/firm-export", tT)).status); }
   sql(`update platform_firm set status = 'ACTIVE' where id = '${FIRM_A}'`);
-  ok("PF-11 DW3 fail: refused in PROVISIONING, SECURITY_LOCK, ABANDONED and DELETED; no row made", shut.every((s) => s >= 400) && rows() === n3, shut);
+  ok("PF-11 DW3 fail: refused in PROVISIONING, SECURITY_LOCK, ABANDONED and DELETED (the list too); no row made", shut.every((s) => s >= 400) && rows() === n3, shut);
   sql(`update platform_firm set status = 'PAYMENT_HOLD' where id = '${FIRM_A}'`); const probe = await call("GET", "/api/platform/pf11-probe", tR); sql(`update platform_firm set status = 'ACTIVE' where id = '${FIRM_A}'`);
   ok("PF-11 DW3 fail (the gate itself): a route without @HoldOpen answers a held firm 402 (PF-5's gate is on in this app)", probe.status === 402 && probe.body.code === "PAYMENT_HOLD", probe.body);
 
@@ -137,16 +142,27 @@ try {
   await fc.advance({ days: 7, minutes: 1 });
   const late = await call("GET", `/api/platform/firm-export/${first.body.id}/download`, await signIn("user-R"));
   ok("PF-11 DW4 pass: after the Sample 7 days on the fake clock the expiry job marks it EXPIRED and the download answers 410",
-    sql(`select state from platform_firm_export where id = '${first.body.id}'`) === "EXPIRED" && late.status === 410 && late.body.code === "EXPIRED" && files.count >= 2, late.body);
+    sql(`select state from platform_firm_export where id = '${first.body.id}'`) === "EXPIRED" && late.status === 410 && late.body.code === "EXPIRED", late.body);
+  ok("PF-11 DW4 pass: with no legal hold the expired zip is deleted (FilesPort.delete, after the commit)", await files.get(FIRM_A, sql(`select file_key from platform_firm_export where id = '${first.body.id}'`)) === null);
+  const kept = await ask(await signIn("user-R")); await jobs.runDue(); holds.on = true; await fc.advance({ days: 8 }); holds.on = false;
+  ok("PF-11 DW4 fail: while a legal hold covers the firm the expired zip is kept", sql(`select state from platform_firm_export where id = '${kept.body.id}'`) === "EXPIRED" && !!(await files.get(FIRM_A, sql(`select file_key from platform_firm_export where id = '${kept.body.id}'`))));
 
   // ------------------------------------------------------------------------------------------ DW5: the CSV and the cap
   const notes = csv("test-module/notes.csv");
   ok("PF-11 DW5 pass: =, +, - and @ text is neutralised with a leading '", notes.includes(`"'=HYPERLINK(""http://x"")"`) && notes.includes("'+1") && notes.includes("'-x") && notes.includes("'@sum"), notes);
   ok("PF-11 DW5 fail: a negative amount stays a number (-1250, never '-1250), beside its own currency; no total row", /,-1250,CAD\r\n/.test(notes) && !notes.includes("'-1250") && notes.split("\r\n").filter(Boolean).length === 5, notes);
-  const small = make(3000), puts = files.count, op2 = op();
+  const small = make(3000), op2 = op();
   sql(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, updated_at) values ('${op2}', '${FIRM_A}', '${op2}', '${R}', now())`);
   await withFirm(FIRM_A, () => small.build(op2, FIRM_A));
-  ok("PF-11 DW5 fail: with a small cap the job stops FAILED \"too large for one download\" before storing anything", sql(`select state || '|' || failed_reason from platform_firm_export where id = '${op2}'`) === "FAILED|too large for one download" && files.count === puts);
+  let read = false;
+  ok("PF-11 DW5 fail: the cap is checked while adding: past it on the sections, the stored file is never read", await buildPackage({ title: "t", madeAt: fc.now(), modules: await (() => { const p = new PgFirmExport(nestDb()); p.register("platform", platformSections); p.register("test-module", testModule); return p.collect(FIRM_A); })(), file: async () => { read = true; return blob; }, cap: 2000 }).then(() => false, (e) => e instanceof ExportTooLarge) && !read);
+  ok("PF-11 DW5 fail: the build checks the firm state itself (a locked firm's queued export fails in words)", await (async () => { const id = op(); sql(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, updated_at) values ('${id}', '${FIRM_A}', '${id}', '${R}', now()); update platform_firm set status = 'SECURITY_LOCK' where id = '${FIRM_A}'`);
+    await withFirm(FIRM_A, () => svc.build(id, FIRM_A)); sql(`update platform_firm set status = 'ACTIVE' where id = '${FIRM_A}'`); return sql(`select failed_reason from platform_firm_export where id = '${id}'`) === "the firm's account is not open for a data download"; })());
+  let release = () => {}; const gate = new Promise<void>((r) => { release = r; }), slow = make(undefined, async () => { await gate; }), race = op();
+  sql(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, updated_at) values ('${race}', '${FIRM_A}', '${race}', '${R}', now())`);
+  const late1 = withFirm(FIRM_A, () => slow.build(race, FIRM_A)); await new Promise((r) => setTimeout(r, 300)); await withFirm(FIRM_A, () => svc.build(race, FIRM_A)); release(); await late1;
+  ok("PF-11 DW2 fail (break M1): a redelivered build finishing late changes nothing: READY at attempt 2, one ready line, its own zip deleted", sql(`select state || '|' || attempt || '|' || (select count(*) from audit_event where entity_key = '${race}' and action = 'platform.firm_export.ready') from platform_firm_export where id = '${race}'`) === "READY|2|1" && await files.get(FIRM_A, `firm-export/${race}/1.zip`) === null);
+  ok("PF-11 DW5 fail: with a small cap the job stops FAILED \"too large for one download\" before storing anything", sql(`select state || '|' || failed_reason from platform_firm_export where id = '${op2}'`) === "FAILED|too large for one download" && await files.get(FIRM_A, `firm-export/${op2}/1.zip`) === null);
 
   // ------------------------------------------------------------------------------------------ DW6: no other firm, the read
   const firmCols = names.filter((n) => n.endsWith(".csv")).map((n) => { const [head, ...body] = csv(n).split("\r\n").filter(Boolean); const i = head.split(",").indexOf("firm_id"); return { n, ids: i < 0 ? [] : body.map((l) => l.split(",")[i]) }; });
@@ -154,6 +170,9 @@ try {
   const pg = new PgFirmExport(nestDb());
   pg.register("peek", async () => ({ module: "peek", sections: [{ key: "staff", title: "Staff", columns: [{ key: "firm_id", kind: "text" }], rows: (await withFirm(FIRM_B, () => (nestDb() as any).platformStaff.findMany())).map((s: any) => [s.firmId]) }] }));
   ok("PF-11 DW6 fail: a test exporter that reads outside its firm's scope (as firm B) fails the check", await pg.collect(FIRM_A).then(() => false, (e) => e instanceof FirmExportRefused));
+  const bare = new PgFirmExport(nestDb()); bare.register("bare", async (_f, tx) => ({ module: "bare", sections: [{ key: "staff", title: "Staff", columns: [{ key: "firm_id", kind: "text" }], rows: (await tx.platformStaff.findMany()).map((x) => [x.firmId]) }] }));
+  const bareRows = await bare.collect(FIRM_A).then((m) => m[0].sections[0].rows, () => []);   // called from no scope: only the adapter's withFirm makes it firm A's
+  ok("PF-11 DW6 pass: an exporter's unfiltered read runs as the firm (withFirm inside the adapter): firm A's staff only, not none", bareRows.length >= 3 && bareRows.every((r) => r[0] === FIRM_A), bareRows);
   const writer = new PgFirmExport(nestDb()); writer.register("writer", async (_f, tx) => { await tx.$executeRaw`update platform_firm set status = status`; return { module: "writer", sections: [] }; });
   ok("PF-11 DW6 fail: an exporter that writes is refused (the transaction is READ ONLY)", await writer.collect(FIRM_A).then(() => false, (e) => /read-only/i.test(String(e))));
   await runContract(firmExportPortContract, "PgFirmExport", () => ({ port: new PgFirmExport(nestDb()) as never, firmId: FIRM_A, otherFirmId: FIRM_B }), ok);

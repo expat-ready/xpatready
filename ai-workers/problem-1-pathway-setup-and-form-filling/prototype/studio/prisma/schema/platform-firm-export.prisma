@@ -1,8 +1,7 @@
 // platform-firm-export.prisma — the firm's full data download. Owner: Lead B (platform, P-559). PF-11 part 1 (map row 22;
-// SA-2-33, AG-16-20): one row per request (firm, operationId); the zip is stored per attempt (firm-export/<id>/<n>.zip);
-// READY for the Sample 7 days, then EXPIRED. Checks in migration 20261124120000_pf11_firm_export; walled by PF-12.
+// SA-2-33, AG-16-20): one row per request (firm, operationId); the zip stored per attempt (firm-export/<id>/<n>.zip); READY for
+// the Sample 7 days, then EXPIRED; failed_reason in plain words only. Checks in migration 20261124120000_pf11_firm_export.
 
-/// AG-16-20's states.
 enum PlatformFirmExportState {
   QUEUED
   READY
@@ -15,18 +14,15 @@ model PlatformFirmExport {
   id           String                  @id @default(uuid()) @db.Uuid
   firmId       String                  @map("firm_id") @db.Uuid
   operationId  String                  @map("operation_id") @db.Uuid
-  /// The Owner who asked: staff of firm_id (the (firm_id, requested_by) key).
   requestedBy  String                  @map("requested_by") @db.Uuid
   state        PlatformFirmExportState @default(QUEUED)
   attempt      Int                     @default(0)
   fileKey      String?                 @map("file_key")
   sha256       String?
   sizeBytes    Int?                    @map("size_bytes")
-  /// Rows per section, `<module>/<section>` → count (ids and numbers only).
   rowCounts    Json?                   @map("row_counts")
   expiresAt    DateTime?               @map("expires_at") @db.Timestamptz
   downloadedAt DateTime?               @map("downloaded_at") @db.Timestamptz
-  /// Plain words, never personal data.
   failedReason String?                 @map("failed_reason")
   createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime                @updatedAt @map("updated_at") @db.Timestamptz

@@ -1,10 +1,8 @@
--- PF-11 part 1 (map row 22; SA-2-33, AG-16-20, AG-16-22; brief lead-b-briefs/PF-11.md with Lead B's corrections on #1972;
--- schema prisma/schema/platform-firm-export.prisma, owner Lead B): the firm's full data download. Additive: one enum, one
--- table (the requester is staff of the same firm, by the (firm_id, requested_by) key), PF-12's walls, one check, and key
--- rows. agent/firm-data-export:request is PF-3's seed on OWNER: verified, not inserted. agent/firm-data-export:list is new
--- (P-423, read by the Lead): catalogue row (NONE, GENERAL) and OWNER and ADMIN rows (P-601 (1); Sample: AG-16-20 names the
--- Owner for the request only). Rollback: DELETE the two role rows and the catalogue row of agent/firm-data-export:list;
--- DROP TABLE "platform_firm_export"; DROP TYPE "PlatformFirmExportState"; delete this folder's _prisma_migrations row.
+-- PF-11 part 1 (map row 22; SA-2-33, AG-16-20, AG-16-22; brief lead-b-briefs/PF-11.md, Lead B's corrections on #1972; owner
+-- Lead B): one enum, the table platform_firm_export (its requester staff of the same firm), PF-12's walls, one check, key rows.
+-- agent/firm-data-export:request: PF-3's seed on OWNER, verified. agent/firm-data-export:list (new; P-423): catalogue row
+-- (NONE, GENERAL), OWNER and ADMIN (P-601 (1); Sample). Rollback: DELETE that key's role and catalogue rows; DROP TABLE
+-- "platform_firm_export"; DROP TYPE "PlatformFirmExportState"; delete this folder's _prisma_migrations row.
 CREATE TYPE "PlatformFirmExportState" AS ENUM ('QUEUED', 'READY', 'DOWNLOADED', 'EXPIRED', 'FAILED');
 CREATE TABLE "platform_firm_export" (
     "id" UUID NOT NULL,
@@ -31,7 +29,7 @@ ALTER TABLE "platform_firm_export" ADD CONSTRAINT "platform_firm_export_firm_id_
 -- A READY, DOWNLOADED or EXPIRED export has its file, hash, size and expiry; a FAILED one its plain-words reason.
 ALTER TABLE "platform_firm_export" ADD CONSTRAINT "platform_firm_export_facts_set" CHECK (
   "attempt" >= 0
-  AND (("state" IN ('READY', 'DOWNLOADED', 'EXPIRED')) <= ("file_key" IS NOT NULL AND "sha256" ~ '^[0-9a-f]{64}$' AND "size_bytes" >= 0 AND "expires_at" IS NOT NULL))
+  AND (("state" IN ('READY', 'DOWNLOADED', 'EXPIRED')) <= ("file_key" IS NOT NULL AND "sha256" IS NOT NULL AND "sha256" ~ '^[0-9a-f]{64}$' AND "size_bytes" IS NOT NULL AND "size_bytes" >= 0 AND "expires_at" IS NOT NULL))
   AND (("state" = 'FAILED') = ("failed_reason" IS NOT NULL))
   AND ("failed_reason" IS NULL OR (btrim("failed_reason") <> '' AND char_length("failed_reason") <= 300))
   AND (("state" = 'DOWNLOADED') <= ("downloaded_at" IS NOT NULL)));
@@ -40,11 +38,8 @@ ALTER TABLE "platform_firm_export" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SE
 CREATE POLICY "pf12_firm" ON "platform_firm_export" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "platform_firm_export" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
 -- The keys (PF-6b's check fails a role key with no catalogue row).
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM "platform_role_permission" WHERE "role" = 'OWNER' AND "permission_key" = 'agent/firm-data-export:request') THEN
-    RAISE EXCEPTION 'pf11: agent/firm-data-export:request is not on OWNER (PF-3 seeds it)';
-  END IF;
-END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM "platform_role_permission" WHERE "role" = 'OWNER' AND "permission_key" = 'agent/firm-data-export:request')
+  THEN RAISE EXCEPTION 'pf11: agent/firm-data-export:request is not on OWNER (PF-3 seeds it)'; END IF; END $$;
 INSERT INTO "platform_permission_key" ("key", "scope", "class") VALUES ('agent/firm-data-export:list', 'NONE', 'GENERAL');
 INSERT INTO "platform_role_permission" ("role", "permission_key") VALUES
   ('OWNER', 'agent/firm-data-export:list'), ('ADMIN', 'agent/firm-data-export:list');

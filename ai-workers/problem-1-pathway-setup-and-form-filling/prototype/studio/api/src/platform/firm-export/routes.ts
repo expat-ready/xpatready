@@ -1,6 +1,5 @@
-// PF-11 part 1: the firm's data download routes under /api/platform/firm-export. Each declares its key (keys.ts; the guard
-// refuses the rest) and carries @HoldOpen() (PF-5 part 2): a firm on payment hold still downloads its data. Every rule is
-// in FirmExports (service.ts); the controller reads the request and answers.
+// PF-11 part 1: the routes under /api/platform/firm-export. Each declares its key (keys.ts) and carries @HoldOpen() (PF-5
+// part 2): a held firm still downloads its data. Every rule is in FirmExports (service.ts).
 import { Body, Controller, Get, Inject, Param, Post, Req, Res } from "@nestjs/common";
 import type { Response } from "express";
 import { HoldOpen } from "../billing/routes.ts";

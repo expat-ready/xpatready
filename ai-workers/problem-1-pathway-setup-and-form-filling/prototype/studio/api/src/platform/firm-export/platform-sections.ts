@@ -11,23 +11,13 @@ import type { Tx } from "./registry.ts";
 type Model = { name: string; dbName: string | null; fields: readonly { name: string; dbName?: string | null; kind: string; type: string }[] };
 const NUMBER = new Set(["Int", "Float", "Decimal", "BigInt"]);
 
-/** The sections: [section key, title, Prisma model, the delegate's name]. */
-const TABLES: readonly [string, string, string, string][] = [
-  ["firm-profile", "Firm profile", "PlatformFirm", "platformFirm"],
-  ["staff", "Staff", "PlatformStaff", "platformStaff"],
-  ["staff-roles", "Staff roles", "PlatformRoleGrant", "platformRoleGrant"],
-  ["staff-licences", "Staff licences", "PlatformStaffCredential", "platformStaffCredential"],
-  ["settings", "Firm settings", "PlatformFirmSetting", "platformFirmSetting"],
-  ["offices", "Offices", "PlatformOffice", "platformOffice"],
-  ["terms-accepted", "Terms accepted", "PlatformTermsAcceptance", "platformTermsAcceptance"],
-  ["consents", "Message consents", "MsgConsent", "msgConsent"],
-  ["consent-withdrawals", "Consent withdrawals", "MsgConsentWithdrawal", "msgConsentWithdrawal"],
-  ["message-templates", "Message templates", "MsgTemplate", "msgTemplate"],
-  ["message-template-versions", "Message template versions", "MsgTemplateVersion", "msgTemplateVersion"],
-  ["messages", "Messages sent", "MsgOutbox", "msgOutbox"],
-  ["message-events", "Message events", "MsgEvent", "msgEvent"],
-  ["complaints", "Complaints", "PlatComplaint", "platComplaint"],
-  ["complaint-events", "Complaint handling steps", "PlatComplaintEvent", "platComplaintEvent"],
+/** The sections: [section key, title, Prisma model (its client delegate is the name in lower camel case)]. */
+const TABLES: readonly [string, string, string][] = [
+  ["firm-profile", "Firm profile", "PlatformFirm"], ["staff", "Staff", "PlatformStaff"], ["staff-roles", "Staff roles", "PlatformRoleGrant"],
+  ["staff-licences", "Staff licences", "PlatformStaffCredential"], ["settings", "Firm settings", "PlatformFirmSetting"], ["offices", "Offices", "PlatformOffice"],
+  ["terms-accepted", "Terms accepted", "PlatformTermsAcceptance"], ["consents", "Message consents", "MsgConsent"], ["consent-withdrawals", "Consent withdrawals", "MsgConsentWithdrawal"],
+  ["message-templates", "Message templates", "MsgTemplate"], ["message-template-versions", "Message template versions", "MsgTemplateVersion"], ["messages", "Messages sent", "MsgOutbox"],
+  ["message-events", "Message events", "MsgEvent"], ["complaints", "Complaints", "PlatComplaint"], ["complaint-events", "Complaint handling steps", "PlatComplaintEvent"],
 ];
 
 const kindOf = (type: string): ExportColumn["kind"] => (NUMBER.has(type) ? "number" : type === "Boolean" ? "boolean" : type === "DateTime" ? "date" : "text");
@@ -40,13 +30,13 @@ const valueOf = (v: unknown, kind: ExportColumn["kind"]): string | number | bool
 };
 
 /** One table as a section: every scalar column but the secret-named ones, the rows ordered by id (settings by key). */
-async function section(tx: Tx, firmId: string, [key, title, model, delegate]: (typeof TABLES)[number]): Promise<ExportSection> {
+async function section(tx: Tx, firmId: string, [key, title, model]: (typeof TABLES)[number]): Promise<ExportSection> {
   const m = (Prisma.dmmf.datamodel.models as readonly Model[]).find((x) => x.name === model);
   if (!m) throw new Error(`firm export: no model ${model}`);
   const fields = m.fields.filter((f) => (f.kind === "scalar" || f.kind === "enum") && !SECRET_FIELD.test(f.dbName ?? f.name));
   const columns = fields.map((f) => ({ key: f.dbName ?? f.name, kind: f.kind === "enum" ? "text" as const : kindOf(f.type) }));
   const where = model === "PlatformFirm" ? { id: firmId } : { firmId };
-  const rows = await (tx as unknown as Record<string, { findMany(a: unknown): Promise<Record<string, unknown>[]> }>)[delegate].findMany({ where, orderBy: m.fields.some((f) => f.name === "id") ? { id: "asc" } : { key: "asc" } });
+  const rows = await (tx as unknown as Record<string, { findMany(a: unknown): Promise<Record<string, unknown>[]> }>)[model[0].toLowerCase() + model.slice(1)].findMany({ where, orderBy: m.fields.some((f) => f.name === "id") ? { id: "asc" } : { key: "asc" } });
   return { key, title, columns, rows: rows.map((r) => fields.map((f, i) => valueOf(r[f.name], columns[i].kind))) };
 }
 
