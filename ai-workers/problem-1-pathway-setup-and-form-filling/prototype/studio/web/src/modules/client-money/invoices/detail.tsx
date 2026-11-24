@@ -64,7 +64,7 @@ function DetailBody() {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 ref={heading} tabIndex={-1} className="flex flex-wrap items-center gap-2 text-2xl font-semibold outline-none"><span data-invoice-number>{number}</span><Pill tone={STATUS_TONE[inv.statusWord]} title={STATUS_HINT[inv.statusWord]}><span data-invoice-status>{inv.statusWord}</span></Pill></h1>
-          <p className="mt-1 text-sm text-text-muted">Bill to: {billToWord(inv)}{inv.billToProvince ? ` · ${inv.billToProvince}` : ""}</p>
+          <p className="mt-1 text-sm text-text-muted [overflow-wrap:anywhere]">Bill to: <span data-bill-to>{billToWord(d.billTo)}</span>{inv.billToProvince ? ` · ${inv.billToProvince}` : ""}{d.caseLabel ? <> · Case <span data-case>{d.caseLabel}</span></> : null}</p>
           <p className="mt-1 text-base">Balance due: <strong className="tabular-nums" data-figure data-balance>{money(inv.dueMinor, c)}</strong></p>
         </div>
         <div className="flex flex-wrap gap-2">

@@ -24,7 +24,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { chromium, type Browser, type Locator, type Page } from "playwright";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
-import { centsOf, money } from "../web/src/modules/client-money/invoices/contract.ts";
+import { billToWord, centsOf, money } from "../web/src/modules/client-money/invoices/contract.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
@@ -65,10 +65,10 @@ const ro = await api(TOWNER, "PATCH", `/platform/staff/${ADM}/roles`, { roles: [
 const TRO = await signIn("sample-firm", "user-T");
 // C5 (CS-MV1): a party is visible when it is the subject of a prospect the person may see. Each run's two people get a prospect
 // owned by the Owner and one by the Case Officer, inserted as FO-7q's own check seeds them (Sample).
-const PB = person("b"), PU = person("u");
+const PB = person("b"), PU = person("u"), PH = person("h");
 const staffOf = (actor: string) => sql(`select id from platform_staff where actor_id = '${actor}' and firm_id = '${A}'`);
 let pn = 0;
-for (const who of [PB, PU]) for (const owner of ["user-R", "user-O"])
+for (const who of [PB, PU, PH]) for (const owner of ["user-R", "user-O"])
   sql(`set session_replication_role = replica; insert into fo_prospect (id, firm_id, number, lead_id, type, stage_id, subject_person_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
     values (gen_random_uuid(), '${A}', 'P-${String(10000 + ((Date.now() + 7919 * ++pn) % 89999))}', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${who}', null, '${who}', '${staffOf(owner)}', 'seed:FO-7s1', now())`);
 const make = async (who: string, currency: string, lines: { kind: string; description: string; unitMinor: number; ratePpm?: number }[]) => {
@@ -86,6 +86,16 @@ const cadNo = sql(`select number from money_invoice where id = '${cad}'`), usdNo
 const trustAnswered = sql(`select trust_answer from money_payment_settings where firm_id = '${A}'`) !== "UNANSWERED";
 ok("FO-7s1 setup: a CAD invoice (Fee 1,000.00 at 13 % and a Government fee 255.00) and a USD invoice issued, a draft; the Owner, the Case Officer and user-T as Read only signed in; trust not answered",
   /^INV-/.test(cadNo ?? "") && /^INV-/.test(usdNo) && !!draft && ro.status === 200 && !trustAnswered && province === "ON", { cadNo, usdNo, ro: ro.status, trustAnswered, province });
+
+// ------------------------------------------------------------------------------------------------ M1 (#3321): C5 on every invoice route
+// An invoice issued to a visible party; its prospects then go, so it is outside C5 for everyone. Every route on it is the same 404.
+const hid = await make(PH, "CAD", [{ kind: "FEE", description: `Hidden ${run}`, unitMinor: 10000 }]);
+const hidIssued = (await api(TOWNER, "POST", `${M}/${hid}/issue`)).status;
+sql(`delete from fo_prospect where firm_id = '${A}' and subject_person_id = '${PH}'`);
+const m1 = { detail: (await api(TOWNER, "GET", `${M}/${hid}/detail`)).status, read: (await api(TOWNER, "GET", `${M}/${hid}`)).status, pdf: (await api(TOWNER, "GET", `${M}/${hid}/pdf`)).status,
+  credit: (await api(TOWNER, "POST", `${M}/${hid}/credit-notes`, { amountMinor: 100, reason: "M1 probe" })).status, offPdf: (await api(TOFF, "GET", `${M}/${hid}/pdf`)).status };
+ok("FO-7s1 M1 (#3321) fail: an issued invoice outside C5 answers 404 on the detail, the plain read, the PDF (Owner and Case Officer) and the credit-note route, and no credit note is written",
+  hidIssued === 200 && Object.values(m1).every((x) => x === 404) && sql(`select count(*) from money_credit_note where invoice_id = '${hid}'`) === "0", { hidIssued, ...m1 });
 
 // ------------------------------------------------------------------------------------------------ B1 the typed amount (break B1)
 const cents = (t: string) => { const r = centsOf(t); return "cents" in r ? r.cents : null; };
@@ -126,6 +136,11 @@ try {
   ok("FO-7s1 L1: the Money area's menu offers Invoices, and the list shows this run's CAD and USD invoices with their numbers and status words",
     JSON.stringify(menu) === JSON.stringify(["Invoices"]) && (await po.locator(`[data-invoice-row="${cadNo}"]`).count()) === 1 && (await po.locator(`[data-invoice-row="${usdNo}"]`).count()) === 1
     && (await po.locator(`[data-invoice-row="${cadNo}"]`).getByText("Open").count()) === 1, { menu });
+  const billCad = await po.locator(`[data-invoice-row="${cadNo}"] [data-bill-to]`).innerText(), billUsd = await po.locator(`[data-invoice-row="${usdNo}"] [data-bill-to]`).innerText();
+  ok("FO-7s1 N1 pass: Bill to shows the stored names from FO-7q part 3 (#3306): \"Client b Sample\" and \"Client u Sample\"; no case on either (—)",
+    billCad === "Client b Sample" && billUsd === "Client u Sample" && (await po.locator(`[data-invoice-row="${cadNo}"] [data-case]`).innerText()) === "—", { billCad, billUsd });
+  ok("FO-7s1 N1 fail: a party with no stored name says its kind and that no name is on file, never a guess or an id",
+    billToWord({ kind: "PERSON", name: null }) === "A person (no name on file)" && billToWord({ kind: "COMPANY", name: null }) === "A company (no name on file)" && billToWord(null) === "Not chosen yet");
   const figs = await figures(po);
   const cadRow = await po.locator(`[data-invoice-row="${cadNo}"] [data-balance]`).innerText(), usdRow = await po.locator(`[data-invoice-row="${usdNo}"] [data-balance]`).innerText();
   const sumWord = money(138500 + 50000, "CAD"), sumWordUsd = money(138500 + 50000, "USD");
@@ -163,6 +178,8 @@ try {
   ok("FO-7s1 DW3 pass: the issued invoice offers \"Use a credit note\" and Download PDF, says it can't be edited, and has no edit or Record payment control",
     JSON.stringify(acts) === JSON.stringify(["CREDIT_NOTE", "DOWNLOAD_PDF"]) && (await po.getByRole("button", { name: "Use a credit note" }).count()) === 1
     && (await po.locator("[data-frozen]").innerText()) === "Issued invoices can't be edited — use a credit note." && (await po.getByRole("button", { name: /^edit|record payment/i }).count()) === 0 && (await po.locator("main input").count()) === 0, { acts });
+  ok("FO-7s1 N1: the detail's header names who it is for (\"Bill to: Client b Sample\") and shows no case for an invoice with none",
+    (await po.locator("[data-bill-to]").innerText()) === "Client b Sample" && (await po.locator("[data-case]").count()) === 0);
   const govTax = await po.locator('[data-line="GOVERNMENT_FEE"] [data-line-tax]').innerText(), feeTax = await po.locator('[data-line="FEE"] [data-line-tax]').innerText();
   ok("FO-7s1 DW1 (part 1): the government-fee line says \"Government fees are never taxed\" with no tax figure; the Fee line shows CAD 130.00 (13%); the total is the API's CAD 1,385.00",
     govTax === "Government fees are never taxed" && feeTax === "CAD 130.00 (13%)" && (await po.locator("[data-total]").innerText()) === "CAD 1,385.00", { govTax, feeTax });

@@ -13,9 +13,12 @@ export const STATUSES: { code: string; word: StatusWord }[] = [
   { code: "OVERDUE", word: "Overdue" }, { code: "CREDITED", word: "Credited" }, { code: "REFUNDED", word: "Refunded" }, { code: "WRITTEN_OFF", word: "Written off" },
 ];
 
+/** FO-7q part 3 (#3306): the party's kind and stored name (null when none is stored), and the case number. */
+const BillTo = z.object({ kind: z.enum(["PERSON", "COMPANY"]), name: z.string().nullable() }).nullable();
 export const Row = z.object({
   id: z.string(), number: z.string().nullable(), statusWord: StatusWord, personId: z.string().nullable(), companyId: z.string().nullable(), caseId: z.string().nullable(),
   currency: Currency, issuedOn: z.string().nullable(), dueDate: z.string().nullable(), totalMinor: z.number().int(), paidMinor: z.number().int(), dueMinor: z.number().int(),
+  billTo: BillTo, caseLabel: z.string().nullable(),
 });
 export type Row = z.infer<typeof Row>;
 export const Page = z.object({ items: z.array(Row), pageSize: z.number().int(), next: z.string().nullable() });
@@ -31,7 +34,7 @@ export const Detail = z.object({
     billToProvince: z.string().nullable(), lines: z.array(Line), subtotalMinor: z.number().int(), taxMinor: z.number().int(), totalMinor: z.number().int(), statusWord: StatusWord,
     dueDate: z.string().nullable(), paidMinor: z.number().int(), creditedMinor: z.number().int(), writtenOffMinor: z.number().int(), dueMinor: z.number().int(), extraMinor: z.number().int(),
   }),
-  caseId: z.string().nullable(), issuedOn: z.string().nullable(), creditableMinor: z.number().int(),
+  caseId: z.string().nullable(), billTo: BillTo, caseLabel: z.string().nullable(), issuedOn: z.string().nullable(), creditableMinor: z.number().int(),
   // An action the page does not know is dropped, never shown (BR-10).
   allowedActions: z.array(z.string()).transform((a) => a.filter((x): x is Action => Action.safeParse(x).success)),
   payments: z.array(z.object({ id: z.string(), method: z.string(), amountMinor: z.number().int(), currency: z.string(), receivedOn: z.string(), reference: z.string().nullable(),
@@ -58,8 +61,8 @@ export function day(d: string | null): string {
   const [y, m, dd] = d.split("-").map(Number);
   return `${dd} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1]} ${y}`;
 }
-/** Who the invoice is for, in words. FO-7q's reads carry the party's id and kind, not a name (gap: question for the tech lead). */
-export const billToWord = (r: { personId: string | null; companyId: string | null }) => (r.companyId ? "A company" : r.personId ? "A person" : "Not chosen yet");
+/** Who the invoice is for: the stored name (FO-7q part 3); a party with no stored name says its kind, never a guess. */
+export const billToWord = (b: z.infer<typeof BillTo>) => (b?.name ? b.name : b?.kind === "COMPANY" ? "A company (no name on file)" : b?.kind === "PERSON" ? "A person (no name on file)" : "Not chosen yet");
 export const KIND_WORD: Record<Line["kind"], string> = { FEE: "Fee", DISBURSEMENT: "Disbursement", GOVERNMENT_FEE: "Government fee" };
 /** A rate in parts per million as people read it: 130000 → "13%", 49750 → "4.975%". */
 export const rateWord = (ppm: number) => `${(ppm / 10000).toLocaleString("en-CA", { maximumFractionDigits: 4 })}%`;

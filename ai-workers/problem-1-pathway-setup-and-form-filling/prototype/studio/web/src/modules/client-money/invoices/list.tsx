@@ -2,7 +2,7 @@
 // a Catalogue-style list over FO-7q's paged read. Filters Status and Issued (from–to), "More filters": Overdue only; all in the
 // address. Columns: Number (or "Draft"), Bill to, Issued, Due, Total, Balance due, Status chip. Each amount in its own currency
 // and no total row (BR-4). 50 a page, "Show more" (FO-7q's keyset). Who lacks agent/invoice:list sees a plain refusal.
-// Not here yet (gaps in the PR): search by number or party, and the party and case filters (FO-7q answers ids, not names).
+// Bill to and Case read FO-7q part 3's names (#3306). Not here yet: search by number or party, and the party and case filters.
 import * as React from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -53,12 +53,13 @@ function ListBody() {
             </p>
           ) : (
             <>
-              <Table label="Invoices" head={["Number", "Bill to", "Issued", "Due", "Total", "Balance due", "Status"]} headClass={[undefined, "hidden md:table-cell", "hidden lg:table-cell", "hidden sm:table-cell", "hidden md:table-cell", undefined, undefined]}>
+              <Table label="Invoices" head={["Number", "Bill to", "Case", "Issued", "Due", "Total", "Balance due", "Status"]} headClass={[undefined, "hidden md:table-cell", "hidden xl:table-cell", "hidden lg:table-cell", "hidden sm:table-cell", "hidden md:table-cell", undefined, undefined]}>
                 {rows.map((r, i) => (
                   <tr key={r.id} data-invoice-row={r.number ?? "Draft"}>
                     <td className="font-medium"><Link ref={i === firstNew.current ? (el) => { if (el) { el.focus(); firstNew.current = null; } } : undefined} to={`/money/invoices/${r.id}`} className="whitespace-nowrap text-text-link underline underline-offset-2" data-invoice-link>{r.number ?? "Draft"}</Link>
                       <span className="block text-xs font-normal text-text-muted sm:hidden">Due {day(r.dueDate)}</span></td>
-                    <td className="hidden md:table-cell">{billToWord(r)}</td>
+                    <td className="hidden min-w-32 [overflow-wrap:anywhere] md:table-cell" data-bill-to>{billToWord(r.billTo)}</td>
+                    <td className="hidden whitespace-nowrap xl:table-cell" data-case>{r.caseLabel ?? <span className="text-text-muted">—</span>}</td>
                     <td className="hidden whitespace-nowrap lg:table-cell">{day(r.issuedOn)}</td>
                     <td className="hidden whitespace-nowrap sm:table-cell">{day(r.dueDate)}</td>
                     <td className="hidden whitespace-nowrap tabular-nums md:table-cell" data-figure>{money(r.totalMinor, r.currency)}</td>
