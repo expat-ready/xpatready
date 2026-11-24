@@ -182,6 +182,7 @@ function keysOf(e: ts.Expression | undefined, file: string, depth = 0): string[]
   if (ts.isPropertyAccessExpression(callee)) {
     const base = keysOf(callee.expression, file, depth + 1);
     if (name === "extend" || name === "merge") { const more = lit(e.arguments[0]) ?? keysOf(e.arguments[0], file, depth + 1); return base && more ? [...new Set([...base, ...more])] : null; }
+    if (name === "pipe") return keysOf(e.arguments[0], file, depth + 1);   // B7: a piped schema's fields are its output's
     if (name === "pick" || name === "omit") { const sel = lit(e.arguments[0]); return base && sel ? base.filter((k) => (name === "pick") === sel.includes(k)) : null; }
     return base;   // .strict(), .refine(), .superRefine(), .transform(), .optional(), .default() ...
   }

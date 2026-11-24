@@ -14,12 +14,15 @@ type R = { platform?: StaffContext };
  *  R1.10 (j_10 B7): its fields are declared, so a reader of the code knows them: the ones the service saves and the read-only ones it
  *  refuses in words. Loose on purpose: any other key passes on to the service, which names it with the rest (review m4). */
 const unknownField = z.unknown().optional();
-export const ProfileBody = z.looseObject({
-  version: unknownField, publicPhone: unknownField, publicEmail: unknownField, website: unknownField, language: unknownField,
-  timeZone: unknownField, currency: unknownField, billingEmail: unknownField,
-  legalName: unknownField, operatingName: unknownField, countryCode: unknownField, key: unknownField, businessAddress: unknownField,
-}, { error: "Send the firm profile as one set of named fields." })   // PF-5fp-2 (review r3-m1): plain words, never "This must be a record."
-  .superRefine((v, c) => { for (const k of Object.keys(v)) if (k.length > 64) c.addIssue({ code: "custom", path: [k], message: "A field name is at most 64 characters." }); });
+// PF-5fp-2 (review r3-m1): plain words, never the library's "This must be a record."/"This must be a object.": a custom check first
+// (parseInput keeps its message), then the fields; a key over 64 characters keeps its own message too.
+export const ProfileBody = z.unknown()
+  .refine((v) => v !== null && typeof v === "object" && !Array.isArray(v), "Send the firm profile as one set of named fields.")
+  .pipe(z.looseObject({
+    version: unknownField, publicPhone: unknownField, publicEmail: unknownField, website: unknownField, language: unknownField,
+    timeZone: unknownField, currency: unknownField, billingEmail: unknownField,
+    legalName: unknownField, operatingName: unknownField, countryCode: unknownField, key: unknownField, businessAddress: unknownField,
+  }).superRefine((v, c) => { for (const k of Object.keys(v)) if (k.length > 64) c.addIssue({ code: "custom", path: [k], message: "A field name is at most 64 characters." }); }));
 
 @Controller("api/platform/firm/profile")
 export class FirmProfileController {
