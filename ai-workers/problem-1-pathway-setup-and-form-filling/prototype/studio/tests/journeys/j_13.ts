@@ -83,8 +83,11 @@ try {
     [rid.page, rid.refused, rid.booked].map((id) => requestLine(id)));
 
   // W2: the whole log, structured and without the person.
-  const all = logLines(), s = scan(all);
-  ok(`J-13 W2: all ${all.length} lines of the server's log are JSON objects and none holds the booker's name, any word of it, the email or the passport number`, all.length > 10 && s.notJson.length === 0 && s.leaking.length === 0, s);
+  // The scan must cover the booker's own three request lines (W1), so it cannot pass on an empty or early log. It was
+  // "more than 10 lines" until 24 Nov (qa 11): GitHub's runner writes 10 lines here (an agent's copy 12), so that bound
+  // failed on the runner with nothing wrong (walks 45453467752, notJson [] and leaking []).
+  const all = logLines(), s = scan(all), covered = [rid.page, rid.refused, rid.booked].every((id) => all.some((l) => l.includes(id)));
+  ok(`J-13 W2: all ${all.length} lines of the server's log, the booker's three request lines among them, are JSON objects and none holds the booker's name, any word of it, the email or the passport number`, covered && s.notJson.length === 0 && s.leaking.length === 0, { covered, lines: all.length, ...s });
   const probe = scan([...all, JSON.stringify({ time: new Date().toISOString(), level: "warn", event: "console", message: `booking for ${GIVEN} ${FAMILY} failed` }), "plain text line"]);
   ok("J-13 W2 fail: the same scan flags a leaking line and a non-JSON line added to a scratch copy of the log (the check can fail)", probe.leaking.length === 1 && probe.notJson.length === 1, probe);
 
