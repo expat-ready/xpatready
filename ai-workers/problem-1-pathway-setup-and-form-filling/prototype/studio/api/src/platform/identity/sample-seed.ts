@@ -4,12 +4,15 @@
 //   unset or off              never seeds
 // A production configuration (PLATFORM_ENVIRONMENT=production) never runs it, even with the setting on: it says so and
 // carries on. Any other value stops the start-up with its name. The one line that calls this is in main.ts.
+// PF-17 part 4 (Lead 26 on #3470): with it, our two Sample ExpatReady staff when PLATFORM_SYSTEM_IDENTITY=local (local
+// only; system-identity/sample-staff.ts), so the console can be signed into on the demo.
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { seedSampleFirms, seedSampleSettings, type SeedResult } from "../seed-sample-firms.ts";
 import { seedSampleConsultationType } from "../../front-office/booking-seed.ts";
 import { loadPlatformConfig, platformConfig, type PlatformConfig } from "../config/settings.ts";
 import { logPort } from "../observability/log.ts";
+import { sampleSystemStaffDecision, seedSampleSystemStaff } from "../system-identity/sample-staff.ts";
 
 export type SeedDecision = { run: boolean; why: string };
 
@@ -41,5 +44,9 @@ export async function seedSampleOnStart(env: NodeJS.ProcessEnv = process.env, se
   if (!d.run) { if (d.why.startsWith("refused")) console.warn(`platform: Sample seed ${d.why}`); return null; }
   const url = configOf(env).databaseUrl.reveal();   // the demo database locally, as core.ts DATABASE_URL
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url, options: "-c TimeZone=UTC" }) });
-  try { return await seed(db); } finally { await db.$disconnect(); }
+  try {
+    const r = await seed(db), c = configOf(env);
+    if (sampleSystemStaffDecision(c).run) console.log(`platform: Sample ExpatReady staff ${JSON.stringify(await seedSampleSystemStaff(db, c))}`);
+    return r;
+  } finally { await db.$disconnect(); }
 }
