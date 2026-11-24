@@ -87,7 +87,14 @@ export function Frame({ area, title, subtitle, home, badge, controls, band, menu
   const loc = useLocation();
   const [own, setOwn] = React.useState<Where | null>(null);
   const where = own ?? whereFromAddress(area, loc.pathname);
-  const brand = <><img src="/brand/expat-ready-notagline-dark.svg" alt="Expat Ready" className="h-6 dark:hidden" /><img src="/brand/expat-ready-notagline.svg" alt="Expat Ready" className="hidden h-6 dark:block" /></>;
+  // Below 360 px the brand mark stands in for the wordmark (PF-18ns round 5, Lead 16 on #3302): at 320 px the top bar's
+  // controls (Find, the bell, "?", Sign out) stay whole and full size; the brand gives way, never a control or its target.
+  const brand = <>
+    <img src="/brand/expat-ready-notagline-dark.svg" alt="Expat Ready" className="h-6 dark:hidden max-[359px]:hidden" />
+    <img src="/brand/expat-ready-notagline.svg" alt="Expat Ready" className="hidden h-6 dark:block dark:max-[359px]:hidden" />
+    <img src="/brand/favicon-dark.svg" alt="Expat Ready" className="hidden size-6 max-[359px]:block dark:max-[359px]:hidden" data-brand-mark />
+    <img src="/brand/favicon-white.svg" alt="Expat Ready" className="hidden size-6 dark:max-[359px]:block" data-brand-mark-dark />
+  </>;
   return (
     <div className="flex min-h-full flex-col" data-frame={area}>
       <header className="sticky top-0 z-30 flex h-14 min-w-0 items-center gap-3 border-b border-border bg-surface-raised px-4">
