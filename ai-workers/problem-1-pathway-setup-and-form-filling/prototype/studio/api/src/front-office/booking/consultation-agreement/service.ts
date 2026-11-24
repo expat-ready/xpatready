@@ -343,7 +343,7 @@ export class ConsultationAgreementService {
     if (a) return { ...(await this.read(ctx, a.id)), required };
     // QA-772 (Lead 22): needs one, none yet → held; `why` is the refusal's own words (gate.ts), shown on the panel.
     const m = required ? await missingCauses(this.db, ctx.firmId, b.id) : null;
-    return { id: null, bookingId: b.id, status: "NONE", signed: false, words: WORDS.none, required, ...(m ? { causes: m.causes, why: missingWords(m.causes, m.bookingStatus) } : {}) };
+    return { id: null, bookingId: b.id, status: "NONE", signed: false, words: WORDS.none, required, ...(m ? { causes: m.causes, why: missingWords(m.causes, m.started) } : {}) };
   }
   /** The person's agreements, newest first. Another firm's person: 404. */
   async forPerson(ctx: StaffContext, personId: string) {

@@ -43,7 +43,7 @@ export const HOLD_WORDS = "The consultation agreement is not signed yet, so the 
 /** The same refusal for a booking that can no longer be signed for nor rescheduled (No-show, Attended: review m3-1). */
 export const HOLD_WORDS_INACTIVE = "The consultation agreement is not signed yet, so the consultation cannot start, and this booking can no longer be signed for or rescheduled: to meet the client, make a new booking, and a new agreement is sent for it.";
 export const holdWords = (bookingStatus: string) => (bookingStatus === "SCHEDULED" || bookingStatus === "RESCHEDULED" ? HOLD_WORDS : HOLD_WORDS_INACTIVE);
-export type Hold = { agreementId: string | null; status: string; bookingStatus: string; causes?: Cause[] };
+export type Hold = { agreementId: string | null; status: string; bookingStatus: string; causes?: Cause[]; started?: boolean };
 
 // ---- what stops an agreement being sent (send()'s reasons, as SQL over `fo_booking b`): the catch-up's filter and the hold
 /** The booking's person has an email. */
@@ -58,31 +58,42 @@ export const CAN_SIGN = Prisma.sql`(exists (select 1 from platform_staff s join 
                 and (select count(distinct rp.permission_key) from platform_role_grant g join platform_role_permission rp on rp.role = g.role
                       where g.firm_id = s.firm_id and g.staff_id = s.id and g.ended_at is null and rp.permission_key = any(${[...DUTY_KEYS.represent]})) = ${DUTY_KEYS.represent.length}))`;
 
-/** Why a booking that needs an agreement has none yet (QA-772). SENDING: nothing stops it; the send is being made or retried. */
-export type Cause = "NO_TEMPLATE" | "NO_LICENSED" | "NO_CLIENT_EMAIL" | "SENDING";
-export const CAUSE_WORDS: Record<Cause, string> = {
+/** Why a booking that needs an agreement has none yet (QA-772). SENDING: nothing stops the send (it is being made or
+ *  retried, or was not made in time). NOT_SCHEDULED: the booking is No-show or Attended, so none is sent for it. */
+export type Cause = "NO_TEMPLATE" | "NO_LICENSED" | "NO_CLIENT_EMAIL" | "SENDING" | "NOT_SCHEDULED";
+export const CAUSE_WORDS: Record<Exclude<Cause, "SENDING" | "NOT_SCHEDULED">, string> = {
   NO_TEMPLATE: "The firm has no active consultation agreement template: upload one, or turn one on, in Templates.",
-  NO_LICENSED: "Nobody can sign it for the firm: the host, or a representative of record, needs an active licence record.",
-  NO_CLIENT_EMAIL: "The client has no email address: add it to their record.",
-  SENDING: "It is being sent now (a send that failed is tried again within minutes): try again shortly.",
+  NO_LICENSED: "Nobody can sign it for the firm: the host needs a licence record, or a representative of record needs a licence record and the sign-off permissions.",
+  NO_CLIENT_EMAIL: "The client has no email address on file (or the booking names no client): add the client's email to their record.",
 };
-const NONE_ACTIVE = "No consultation agreement has been sent for this booking yet, so the consultation cannot start.";
-/** The refusal for "needs one, none yet": the cause(s) and the way out. A booking no longer scheduled is never sent one. */
-export function missingWords(causes: Cause[], bookingStatus: string) {
-  const active = bookingStatus === "SCHEDULED" || bookingStatus === "RESCHEDULED";
-  if (!active) return `${NONE_ACTIVE} This booking is no longer scheduled, so none is sent for it: to meet the client, make a new booking.${causes.includes("SENDING") ? "" : ` ${causes.map((c) => CAUSE_WORDS[c]).join(" ")}`}`;
-  return `${NONE_ACTIVE} ${causes.map((c) => CAUSE_WORDS[c]).join(" ")}${causes.includes("SENDING") ? "" : " The agreement is then sent to the client within a minute."}`;
+/** The way out once nothing is missing. Attended is only answered after the meeting has started, and the catch-up only
+ *  sends for a meeting still ahead (break QA772-1): a meeting already started is rescheduled first. */
+export const NEXT_WORDS = {
+  ahead: "The agreement is then sent to the client within a minute.",
+  aheadSending: "It is being sent now; a send that fails is tried again, up to an hour apart. If it does not arrive, check the consultation template's file in Templates.",
+  started: "Then reschedule the meeting to a later time: the agreement is sent to the client for the new time, and the consultation starts once it is signed.",
+  startedSending: "None was sent before the meeting started: reschedule the meeting to a later time and the agreement is sent to the client for the new time. If it still does not arrive, check the consultation template's file in Templates.",
+  inactive: "This booking is no longer scheduled, so none is sent for it: to meet the client, make a new booking.",
+} as const;
+/** The refusal for "needs one, none yet": the cause(s) and the way out. */
+export function missingWords(causes: Cause[], started: boolean) {
+  const fixes = causes.filter((c): c is keyof typeof CAUSE_WORDS => c in CAUSE_WORDS).map((c) => CAUSE_WORDS[c]);
+  const head = "No consultation agreement has been sent for this booking, so the consultation cannot start.";
+  if (causes.includes("NOT_SCHEDULED")) return [head, NEXT_WORDS.inactive, ...fixes].join(" ");
+  if (!fixes.length) return `${head} ${started ? NEXT_WORDS.startedSending : NEXT_WORDS.aheadSending}`;
+  return [head, ...fixes, started ? NEXT_WORDS.started : NEXT_WORDS.ahead].join(" ");
 }
-/** A booking's causes, or null when its type needs no agreement (or it is not this firm's). */
-export async function missingCauses(q: Q, firmId: string, bookingId: string): Promise<{ causes: Cause[]; bookingStatus: string } | null> {
-  const rows = await q.$queryRaw<{ booking_status: string; email: boolean; template: boolean; can_sign: boolean }[]>`
-    select b.status::text as booking_status, ${HAS_EMAIL} as email, ${HAS_TEMPLATE} as template, ${CAN_SIGN} as can_sign
+/** A booking's causes, or null when its type needs no agreement, it is cancelled, or it is not this firm's. */
+export async function missingCauses(q: Q, firmId: string, bookingId: string): Promise<{ causes: Cause[]; started: boolean; bookingStatus: string } | null> {
+  const rows = await q.$queryRaw<{ booking_status: string; started: boolean; email: boolean; template: boolean; can_sign: boolean }[]>`
+    select b.status::text as booking_status, b.starts_at <= now() as started, ${HAS_EMAIL} as email, ${HAS_TEMPLATE} as template, ${CAN_SIGN} as can_sign
       from fo_booking b join fo_consultation_type t on t.firm_id = b.firm_id and t.id = b.type_id
-     where b.firm_id = ${firmId}::uuid and b.id = ${bookingId}::uuid and ${Prisma.raw(NEEDS_AGREEMENT_SQL)}`;
+     where b.firm_id = ${firmId}::uuid and b.id = ${bookingId}::uuid and b.status <> 'CANCELLED' and ${Prisma.raw(NEEDS_AGREEMENT_SQL)}`;
   const m = rows[0];
   if (!m) return null;
   const causes: Cause[] = [...(m.template ? [] : ["NO_TEMPLATE" as const]), ...(m.can_sign ? [] : ["NO_LICENSED" as const]), ...(m.email ? [] : ["NO_CLIENT_EMAIL" as const])];
-  return { causes: causes.length ? causes : ["SENDING"], bookingStatus: m.booking_status };
+  const active = m.booking_status === "SCHEDULED" || m.booking_status === "RESCHEDULED";
+  return { causes: active ? (causes.length ? causes : ["SENDING"]) : ["NOT_SCHEDULED", ...causes], started: m.started, bookingStatus: m.booking_status };
 }
 
 /** The booking's deciding agreement when its type needs one and none of its agreements is signed; with none yet, the
@@ -99,12 +110,12 @@ export async function agreementHold(q: Q, firmId: string, bookingId: string): Pr
   // once all have ended the catch-up sends a fresh one (service.ts `catchUp`, `send`), and its signature lifts the hold.
   if (r) return isSigned(r.status) ? null : { agreementId: r.id, status: r.status, bookingStatus: r.booking_status };
   const m = await missingCauses(q, firmId, bookingId);   // needs one, none yet (Lead 22's ruling on QA-772)
-  return m ? { agreementId: null, status: "NONE", bookingStatus: m.bookingStatus, causes: m.causes } : null;
+  return m ? { agreementId: null, status: "NONE", bookingStatus: m.bookingStatus, causes: m.causes, started: m.started } : null;
 }
 
 /** Refuses (409 AGREEMENT_NOT_SIGNED) when the booking is held; nothing is written by the caller. */
 export async function assertAgreementSigned(q: Q, firmId: string, bookingId: string) {
   const h = await agreementHold(q, firmId, bookingId);
   if (h) throw new HttpException({ type: "https://expatready.local/problems/agreement-not-signed", title: "Agreement not signed yet", status: 409,
-    detail: h.causes ? missingWords(h.causes, h.bookingStatus) : holdWords(h.bookingStatus), code: "AGREEMENT_NOT_SIGNED", agreementId: h.agreementId, ...(h.causes ? { causes: h.causes } : {}) }, 409);
+    detail: h.causes ? missingWords(h.causes, h.started ?? true) : holdWords(h.bookingStatus), code: "AGREEMENT_NOT_SIGNED", agreementId: h.agreementId, ...(h.causes ? { causes: h.causes } : {}) }, 409);
 }
