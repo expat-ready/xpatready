@@ -230,3 +230,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * #3235 round 5 allowed (77997e39d: re-check under FOR SHARE, so the part 2 carry on BACKLOG PF-21d is to be struck when it merges). #3433: go on FO-6 part 4, answers on the PR; stamp 20261124130000; **for the founder's review (P-628): with the code off, a live signing link is a bearer link until signed (on by default)**; qa owes a BUGS row on FO-3c's door.
 * R1.58 Partial, no verdict (#3439): FO-7t parts 2, 3, FO-7s3a/b, FO-7m, FO-7v and a shortfall read missing; j_58 fix and the next qa walks need a fresh qa session (his typed turn), both qa lanes now at their limit.
 * #3429 5ab662ad7 (eight actions) pushed, verdict awaited. #3434 labelled by the gate. Full run 45344502243 red as expected (old head of #3234, its failures not read); /run full owed on #3234 eb19e71ad, #3174, #3418 after #3428's.
+### Lead 24, 13:10 IST 24 Nov: founder ask A359 (typed, after 13:06)
+* A359 in his words (short): move faster proving more; "I will follow your recommendation. Please do on my behalf everything that is required"; the final tooling decision, when each starts, the outcome expected.
+* Read as his yes to the one question open in this chat, #3305's line: pushed 65dcc1c4e to claude/screens-fo7s1-invoices at about 13:10 (not refused this time; one line; not run by me). Owed: its verdict, fast, my read.
+* Not read as a yes to: creating a CodeAnt account, accepting its terms, installing its package, or sending code (C1 to C6). Asked: C1.
+* Started: qa 6 (cloud, task_7ca7a2d0: R1.87, R1.86, R1.35 re-scores, j_58, FO-3c door), FO-7t part 2 (cloud, R1.58), Lead 25 standby local_f8cf715f.
+* Tooling answer given: CodeAnt tested 25-26 Nov (28 PRs, two arms, bar 4 of 14 known misses), Opus checklist arm first; Sentry before the first firm; Linear, Qodo, CodeRabbit, Harness no; wake-on-merge ours, not shaped yet. No tool is in use yet.
