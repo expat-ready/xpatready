@@ -65,10 +65,15 @@ A351 c1 ci|product/tools/red-on-old.py|s/^    if os.environ.get("GITHUB_ACTIONS"
 A351 c1 gone|product/tools/red-on-old.py|s/^            git("rm", "-rq", "--", p)/            pass/|check-red-on-old.sh
 A351 c1 green|product/tools/red-on-old.py|s/^    if red or load:/    if True:/|check-red-on-old.sh
 A351 c1 reason|product/tools/red-on-old.py|s/^    elif green and y:/    elif green:/|check-red-on-old.sh
-A351 c1 none|product/tools/red-on-old.py|s/else green if r == "PASS" else/else green if r != "FAIL" else/|check-red-on-old.sh
+A351 c1 none|product/tools/red-on-old.py|s/ or (r == "FAIL" and SETUP.search(w) and "FAIL  " not in w) else/ else/|check-red-on-old.sh
 A351 c1 load|product/tools/red-on-old.py|s/ load if LOAD.search(w) else red$/ red/|check-red-on-old.sh
 A351 c1 once|../../.github/workflows/red-on-old.yml|s/types: \[opened, ready_for_review\]/types: [opened, synchronize]/|check-red-on-old.sh
-A351 c1 red check|../../.github/workflows/red-on-old.yml|0,/continue-on-error: true/{/continue-on-error: true/d;}|check-red-on-old.sh
+A351 c1 red check|../../.github/workflows/red-on-old.yml|/^      - id: old$/,/run:/s/^        continue-on-error: true$/        continue-on-error: false/|check-red-on-old.sh
+A351 c1 base|../../.github/workflows/red-on-old.yml|s/old --base HEAD^1/old --base HEAD/|check-red-on-old.sh
+A351 c1 only|../../.github/workflows/red-on-old.yml|s/ --only "\$SUITES"//|check-red-on-old.sh
+A351 c1 depth|../../.github/workflows/red-on-old.yml|s/fetch-depth: 0/fetch-depth: 1/|check-red-on-old.sh
+A351 c1 batch|../../.github/workflows/red-on-old.yml|s/^    if: .*/    if: true/|check-red-on-old.sh
+A351 c1 ports|product/tools/red-on-old.py|s/"packages", "ports", /"packages", /|check-red-on-old.sh
 6|product/tools/check-docs.sh|/STATE TOO BIG/d|check-state-page.sh
 7|product/tools/check-docs.sh|s/if m > 30:/if False:/|check-state-page.sh
 7 mine|product/tools/check-docs.sh|s/^  mine=1; c=""$/  mine=0; c=""/|check-state-page.sh

@@ -25,7 +25,7 @@ jobs:
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 2, persist-credentials: false }   # the test merge and its first parent, the base
+        with: { fetch-depth: 0, filter: "blob:none", persist-credentials: false }   # history and origin/main, as pr-suites.yml: a suite may read them
       - id: p
         name: which suites does this PR add or change? (red-on-old.py plan)
         continue-on-error: true
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.old.outcome == 'success'
         continue-on-error: true
-        with: { node-version-file: .nvmrc }
+        with: { node-version-file: .nvmrc, cache: npm, cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json }
       - id: setup
         name: the packages, the web app, Chromium (cloud-setup.sh)
         if: steps.old.outcome == 'success'
@@ -53,8 +53,19 @@ jobs:
         if: steps.setup.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 25
-        env: { SUITES: "${{ steps.p.outputs.suites }}" }
-        run: bash "$P/tools/run-suites.sh" --demo --only "$SUITES" > red-on-old.md 2>&1 || true
+        env: { SUITES: "${{ steps.p.outputs.suites }}", SUITES_TIMEOUT: "300" }   # 4 suites of 5 minutes at most: one hang never hides the rest
+        run: bash "$P/tools/run-suites.sh" --demo --skip-quarantined --only "$SUITES" > red-on-old.md 2>&1 || true
+      - name: logs
+        if: steps.s.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: red-on-old-a${{ github.run_attempt }}
+          path: |
+            red-on-old.md
+            ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
+          retention-days: 7
+          if-no-files-found: ignore
       - name: report (never a failure)
         if: steps.p.outputs.suites != ''
         continue-on-error: true

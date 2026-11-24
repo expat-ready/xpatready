@@ -3,21 +3,25 @@
 suites on the base commit's app code. At least one must fail there; when all pass, the report says "these checks would pass
 without the change". Report only (red-on-old.yml): never a failure.
   plan    --base REV [--head REV]   the suites (studio/tests/check_*) the PR adds, or in which it adds or changes a line that
-          is no comment; at most MAX (the newest files first, the rest named); nothing to run when no app code changed (a
+          is no comment; at most MAX (new files, then changed ones, by name; the rest named); nothing to run when no app code changed (a
           test-only or records PR). Prints GITHUB_OUTPUT lines: suites=<names> app=<folders> note=<words>.
-  old     --base REV                puts the app folders of this working tree back to the base (files the PR added there go).
+  old     --base REV                puts everything a copy runs (api, web, engine, prisma, ports, contracts, tools, lock file)
+          of this working tree back to the base (files the PR added there go).
           Only in CI: refuses unless GITHUB_ACTIONS=true.
   report  --suites "<names>" --out FILE [--summary FILE]   reads run-suites.sh's table and the PR body on stdin.
-A suite that cannot load on the old code (its import is not there yet) is red too, and said apart: it proves the suite needs
+A suite whose copy did not start, or that the runner skipped, is not judged. A suite that cannot load on the old code (its import is not there yet) is red too, and said apart: it proves the suite needs
 the change, not that each check does. A suite is judged whole: a new green check beside an old red one counts as red.
 Exit 0; 2 when it cannot read (said, never "red"). Test: check-red-on-old.sh."""
 import argparse, os, re, subprocess, sys
 S = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/"
-APP = [S + d for d in ("api/src", "web/src", "engine", "prisma", "contracts", "samples", "packages")]   # app-code-prs.sh's list (P-500)
+APP = [S + d for d in ("api", "web", "engine", "prisma", "contracts", "samples", "packages", "ports", "deploy", "tools", "package.json", "package-lock.json", "prisma.config.ts", "acceptance/lib")]
+# Everything a copy runs, built or started from; the tests, the suite runner (product/tools) and the PR's other files stay.
+DOC = re.compile(r"\.md$")
 SUITE = re.compile(r"^" + re.escape(S) + r"tests/(check_[A-Za-z0-9_.-]+\.(?:ts|cjs))$"); MAX = 4
 NOTE = re.compile(r"^\s*(//|\*|/\*)|^\s*$")
 ROW = re.compile(r"^\| (check_[A-Za-z0-9_.-]+) \| ([^|]*?) \| [^|]*\| (.*?) \|\s*$", re.M)
-LOAD = re.compile(r"Cannot find module|ERR_MODULE_NOT_FOUND|does not provide an export|is not a function|TS\d{4}|no usage line", re.I)
+LOAD = re.compile(r"Cannot find module|ERR_MODULE_NOT_FOUND|does not provide an export|SyntaxError: The requested module|\bTS\d{4}\b")
+SETUP = re.compile(r"did not start|no usage line|not found|refused|web build|start the demo", re.I)      # nothing was run: not a red check
 
 
 def git(*a):
@@ -34,7 +38,7 @@ def safe(s, n=160):
 def plan(o):
     raw = git("diff", "--raw", "-z", "--no-renames", "--no-abbrev", o.base, o.head).split("\0")
     files = [(raw[k].split()[4][0], raw[k + 1]) for k in range(0, len(raw) - 1, 2)]
-    app = [p for p in APP if any(f.startswith(p + "/") for _, f in files)]
+    app = [p for p in APP if any((f == p or f.startswith(p + "/")) and not DOC.search(f) for _, f in files)]
     new, changed = [], []
     for st, f in files:
         m = SUITE.match(f)
@@ -85,8 +89,8 @@ def report(o):
     lines, red, load, green, none = [], [], [], [], []
     for s in want:
         r, w = rows.get(s, ("no row", ""))
-        kind = none if r in ("no row", "quarantined", "skipped", "remembered") else green if r == "PASS" else load if LOAD.search(w) else red
-        kind.append(s); lines.append(f"- {s}: {'not judged (' + safe(r) + ')' if kind is none else 'PASSES on the old code' if kind is green else 'red: cannot load there' if kind is load else 'red'}" + (f": {safe(w)}" if kind in (red, load) else ""))
+        kind = none if r not in ("PASS", "FAIL", "failed twice", "passed on retry") or (r == "FAIL" and SETUP.search(w) and "FAIL  " not in w) else green if r in ("PASS", "passed on retry") else load if LOAD.search(w) else red
+        kind.append(s); lines.append(f"- {s}: {'not judged (' + safe(r) + ')' if kind is none else 'PASSES on the old code' if kind is green else 'red: cannot load there' if kind is load else 'red'}" + (f": {safe(w)}" if kind in (red, load, none) and w else ""))
     y = why(sys.stdin.read())
     head = f"{len(red)} red, {len(load)} cannot load, {len(green)} pass, {len(none)} not judged, of {len(want)} suites on the old code"
     if o.summary:
