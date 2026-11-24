@@ -122,3 +122,4 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 | A347 | 24 Nov ~08:15 | all "needs you" items approved, full report given; word for word in the recovery plan file | approvals above |
 | A342, A343 | 24 Nov | reports unchecked; plan file | open |
 * 11:19 IST, A355 continued (founder, typed): compare "code and AI" too (read as CodeAnt AI, not confirmed; Qodo, once Codium AI, covered as well); best fit, best in class experience and why; US$100 a month is the most he allows, spend only what is required. Sent to the study session. #3405 2e3c85839: Lead's read posted, label on green.
+* 11:20 IST: #3408 ready again (the founder's yes was until its proof is in). Proof read in the jobs' logs by me: run 45334891908, old file ECONNRESET at 6052 ms idle, new file 56/56; small (1 of 24 against 0 of 24; line 88 itself not shown red again). #3369's hang still unexplained.
