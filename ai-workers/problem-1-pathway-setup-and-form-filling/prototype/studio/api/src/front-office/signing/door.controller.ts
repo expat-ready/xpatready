@@ -73,7 +73,7 @@ export class SigningDoorController {
     return a.body;
   }
 
-  @Get(":token") @OpenRead("the client's signing link: its state, the firm's name and the consent text, never personal data (FO-6 part 4b)")
+  @OpenRead("the client's signing link: its state, the firm's name and the consent text, never personal data, FO-6 part 4b") @Get(":token")   // QA-53 REVIEWED
   state(@Param("token") token: string, @Req() r: Rq, @Res({ passthrough: true }) res: Rs) {
     this.begin(r, res, token);
     return counted(ipOf(r), () => this.door.state(token));
@@ -97,7 +97,7 @@ export class SigningDoorController {
     return this.finish(res, token, await counted(ipOf(r), () => this.door.consent(token, parseInput(ConsentBody, body ?? {}), sessionCookies(r.headers.cookie))));
   }
 
-  @Get(":token/session") @OpenRead("the client's signing session: the provider's embedded link, for the browser that holds the session (FO-6 part 4b)")
+  @OpenRead("the client's signing session: the provider's embedded link, only for the browser that holds the session, FO-6 part 4b") @Get(":token/session")   // QA-53 REVIEWED
   session(@Param("token") token: string, @Req() r: Rq, @Res({ passthrough: true }) res: Rs) {
     this.begin(r, res, token);
     return counted(ipOf(r), () => this.door.session(token, sessionCookies(r.headers.cookie)));

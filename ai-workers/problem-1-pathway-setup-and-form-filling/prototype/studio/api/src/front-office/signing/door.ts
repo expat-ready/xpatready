@@ -86,7 +86,7 @@ export class SigningDoor {
     const s = f.signer, now = this.now().getTime();
     if (!s.sessionSha256 || !s.sessionExpiresAt || s.sessionExpiresAt.getTime() <= now || !cookies.some((c) => sha(c) === s.sessionSha256)) return false;
     const started = s.sessionExpiresAt.getTime() - SESSION_MINUTES * MIN;
-    return !codeOn || (!!s.codeVerifiedAt && Math.abs(s.codeVerifiedAt.getTime() - started) < 1000);
+    return !codeOn || (!!s.codeVerifiedAt && s.codeVerifiedAt.getTime() === started);   // verify writes both from one moment
   }
   private line(f: Found, action: string, summary: string, after: Record<string, string | number | boolean | null>, before: Record<string, string | number | boolean | null> | null = null) {
     return (tx: Tx) => this.audit.record(tx, { firmId: f.firmId, actor: ACTOR, action, entity: "fo_signature_request", entityKey: f.request.id, summary,
@@ -102,8 +102,8 @@ export class SigningDoor {
     return cur;
   }
   /** A new session for this browser (replacing any earlier one); answers its plain token for the cookie. */
-  private async startSession(tx: Tx, f: Found, why: string): Promise<string> {
-    const token = randomBytes(32).toString("base64url"), expires = new Date(this.now().getTime() + SESSION_MINUTES * MIN);
+  private async startSession(tx: Tx, f: Found, why: string, now: Date = this.now()): Promise<string> {
+    const token = randomBytes(32).toString("base64url"), expires = new Date(now.getTime() + SESSION_MINUTES * MIN);
     await tx.foSigner.update({ where: { id: f.signer.id }, data: { sessionSha256: sha(token), sessionExpiresAt: expires } });
     await this.line(f, "signing.session_started", `A signing session started for the client (${why}).`, { sessionMinutes: SESSION_MINUTES })(tx);
     return token;
@@ -141,10 +141,11 @@ export class SigningDoor {
       const given = codeOf(b.code);
       if (!given) { const [st, title, detail, code] = CODE_REFUSALS.FORMAT; problem(st, title, detail, { code }); }
       const lineOf: CodeLine = (tx, summary, after) => this.line(f, "signing.door_code", summary, after)(tx);
+      const now = this.now();   // one moment for the check and the session it starts (liveSession pairs them; 4b review round 2)
       const out = await this.db.$transaction(async (tx) => {
         await this.locked(tx, f);
-        const v = await checkCode(tx, f.firmId, f.signer.id, given!, this.now(), { line: lineOf });
-        return v === "OK" ? { v, session: await this.startSession(tx, f, "the emailed code was right") } : { v, session: undefined };
+        const v = await checkCode(tx, f.firmId, f.signer.id, given!, now, { line: lineOf });
+        return v === "OK" ? { v, session: await this.startSession(tx, f, "the emailed code was right", now) } : { v, session: undefined };
       });
       if (out.v !== "OK") { const [st, title, detail, code] = CODE_REFUSALS[out.v]; problem(st, title, detail, { code }); }
       return { body: { verified: true as const, sessionMinutes: SESSION_MINUTES }, session: out.session };
