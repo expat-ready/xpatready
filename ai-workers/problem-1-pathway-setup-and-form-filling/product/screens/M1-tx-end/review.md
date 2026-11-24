@@ -52,3 +52,39 @@ Lead 25's comment (09:05, after this head): "one test through a real split upser
 A real split packet on a network (modelled by the 20 ms deferral). Why the single loaded w1 run failed (watch it in CI). Prisma versions other than 7.8.0. CI's full run: only CodeQL had finished, and the other jobs were skipped on this draft head.
 
 Verdict: Approve 1167bcd46410285f81940e51643c806695978c19
+
+## Round 2: head f824febdd2f079fbef32cc7115a670d31f128bae
+Same reviewer, 24 Nov. Scope: `git diff 1167bcd46..f824febdd -- ':!*/product/screens/*'` only (4 files). My probes ran in a scratchpad worktree, and the scratch databases were on :54329 (PostgreSQL 18.3). The isolated copy ran on runtime port :4433, never :4400. The worktree is removed and the main checkout is clean.
+
+**Verdict: Approve** (Ship). Every round-1 Minor that was fixed holds when probed, and the Lead 25 test is a real red/green. No app SQL is misread. **Journey score: 9.5/10, pass** (`journey-test-reviewer-2026-11-24.md`, Round 2).
+
+| Check | Result |
+|---|---|
+| `check_tx_end_guard.ts` / `check_pool_tx_return.ts` / `check_no_array_tx.ts` | **21/0** (10.7 s), **16/0**, **14/0** |
+| `tools/upsert-native.mts` | **23 lines, exit 0** (17 NATIVE, 6 SPLIT). With an `.upsert(` planted in `core.ts`: `LIST out of date … ["core.ts:192"]`, **exit 1** |
+| Split upsert (block 7) with **648adace4's `firm-scope.ts`** swapped in | **red twice**: `{"r8":"Connection terminated","stored":1}`. With only the refusal disabled at head: red, `stored: 1`. At head: **green 6 times out of 6** (lock 600 ms vs timeout 300 ms; no flake seen) |
+| The 19 rows of the table, each sent to PostgreSQL inside `BEGIN; select txid_current()`, then the transaction state read after 30 ms and `txid_current_if_assigned()` checked | **19/19 expected values right**. All 9 "true" rows leave the session idle with xid null (`prepare transaction` errors "prepared transactions are disabled" and still ends it). The 10 "false" rows stay in the transaction (still `T` with the xid) or in a failed one (`E`) |
+| 25 extra strings on the same server | 19 agree, including: `U&'\0027; commit'`, `"x""; commit"`, `a$b$; commit`, `/*/*/ commit */ */; commit`, `2*/*x*/3; commit`, `x''`, `b''`, `n''`, `$q$…$q$ \|\| $$…$$`, `'a'\n'b'; commit`, `rollback transaction to s`, and `case … end` and `with end_rows` mid-statement. 6 differ, in 4 forms (r2-m1) |
+| Scanner mutations | removing the E'' branch, PREPARE TRANSACTION or named dollar tags fails the table. Removing nesting (`depth++`) **stays 21/21** (r2-m2). Removing the savepoint exclusion now **fails in 19 s** ("the pool ends within 15 s"), where round 1 hung |
+| App SQL (TypeScript AST of `api/src`, `engine`, `ports`: 757 files, 51,342 literals, 73 with a transaction word) | **10 hits, none SQL** (`"end"`, `"abort"`, `END:VEVENT`, "End must be after start."): the same as round 1. No `BEGIN ATOMIC`, `AND CHAIN` or `CREATE RULE` in `api/src`, `engine`, `ports`, `tools` or the migrations |
+| `released` flag (pg-pool 3.14.0, pg 8.22.0, adapter-pg 7.8.0, read) | pg-pool resets `client.release` at every acquire (`index.js:342`). Its own releases (verify, timedOut) happen before `WalledPool.connect` wraps it. `Pool.query` is fully overridden. adapter-pg releases once, in `commit()`, `rollback()` or `startTransaction`'s catch. Probed: 30 `WalledPool.query` calls (10 in parallel), pool 1/1 idle; a failing query drops its client; `connect(cb)` `done()` twice, `release(); release(err)` and a busy `release(err); release()` each **throw to the caller synchronously**; no uncaught exception; the pool keeps serving the right firm |
+| Submittable (`new pg.Query`) after COMMIT | the `error` listener gets the M1 error and the Submittable is returned, as pg does. With a callback, the callback gets it (r2-m3) |
+| Isolated copy :4433, this head | `check_c41_section_order` **32/32**, `check_bk17_keep_recorded` **25/25**, `check_w1_structure` **81/81 three times** on fresh copies (it needs an empty workspace: run after the others on the same copy, it fails 8). The copy's api.log has no M1 refusal, no `platform_pool_release_failed` and no `platform_pool_open_transaction` |
+| CodeQL on this head | **success** (Analyze javascript-typescript). The escape `/[.*+?^${}()\|[\]\\]/g → "\\$&"` covers every RegExp metacharacter, backslash included. `-` and `/` need no escape outside a class or a literal. The input is already `[A-Za-z_$][\w$]*` |
+| `tsc -p api/tsconfig.json --noEmit` / `check_pf23m_log_calls` | 15 errors, none in this diff's files (as round 1) / 15/0 |
+
+### Blockers
+None.
+### Majors
+None. No legitimate app query can be refused: the only false ends are four syntaxes the app never sends, and a false end fails closed (the transaction fails, and nothing is half-written).
+### Minors
+- **r2-m1 (Should). The comment says "as PostgreSQL reads them", but four forms differ on 18.3** (`firm-scope.ts:508-519`, `:539`). Round-1 m4 is half done: PREPARE TRANSACTION is added, but AND CHAIN is neither excluded nor named. False ends: `create function … begin atomic select 1; end` (real PG 14+ syntax: the `;` inside the body splits and `end` reads as an end); `commit and chain` and `rollback and chain` (the refusal's "outside the transaction" is wrong there); `E'a'` newline `'\'; commit'` (a continued E'' string keeps backslash escapes). Missed end: `select 1 as é$x$; commit` (a non-ASCII identifier character before `$` is read as a dollar tag; the same holds for `éE'…'`). Tags over 62 characters and astral-plane tag characters are not read as tags either. Fix: name these in the doc comment (and the MODULE row), or exclude `and\s+chain` and skip `begin atomic … end`.
+- **r2-m2 (Should). Nesting is not pinned.** `select 1 /* a /* nested */ commit */` is false with or without `depth++`. Add `["select 1 /* a /* b */ ; commit */", false]`: PostgreSQL keeps the transaction (psql probe, xid still set), and with nesting removed the scanner says true (probed).
+- **r2-m3 (Could).** A refused query with a callback returns `undefined`, even when the config is a Submittable that pg would return (`firm-scope.ts:554`). The callback still gets the error, and nothing in the app passes one.
+- **r2-m4 (Could).** The upsert drift check is keyed on `file:line` (`tools/upsert-native.mts:75`). Any edit above an upsert fails the tool (closed, but noisy), and `.upsert (` or `["upsert"](` is not seen.
+- **Carried, Could:** round-1 m7 (typed variable and `as` cast in the source check) and m8 (the use-after-release window unnamed) are unchanged and not in the PR's "Not done" list. They are fine as they are, but should be listed there.
+
+### Not checked
+The 10 s cap path (`destroyed-unsettled`) in a test (the PR lists it as not done; probed in round 1). A real split network packet. Prisma versions other than 7.8.0. CI's full run: only the guard jobs and CodeQL ran on this draft head. Four `xr_studio_txend_scratch_*` databases (pids 8104, 8156, 21440, 22433) are on :54329 and are not mine: they are left for `prune-test-dbs.sh`.
+
+Verdict: Approve f824febdd2f079fbef32cc7115a670d31f128bae

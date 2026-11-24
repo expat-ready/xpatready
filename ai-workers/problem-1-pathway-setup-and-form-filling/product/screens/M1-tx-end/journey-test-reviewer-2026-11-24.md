@@ -40,3 +40,32 @@ The diff has no screen, route or wording a person sees. It changes what the app'
 **Score: 9/10 (pass: 8 or more, no 0).** Fixes that would raise it: m1 and m2 (error recovery), then the wording in m4.
 
 Not tested: a real split network packet; a screen reader and an intended user's walk (D17 and D20 stay with the founder; no UI here).
+
+## Round 2: head f824febdd2f079fbef32cc7115a670d31f128bae
+The same method: scratch databases on :54329 (PostgreSQL 18.3), an isolated copy on :4433, never :4400, and no browser (no UI in the diff).
+
+| # | Persona and goal | Expected | Head |
+|---|---|---|---|
+| J1–J6 | as in round 1 | as in round 1 | `check_tx_end_guard` 21/0, `check_pool_tx_return` 16/0 |
+| J7 | Author and case officer flows that go through the pool | all pass | c41 32/32, bk17 25/25, w1 81/81 three times on fresh copies; api.log has no refusal or release failure |
+| J10 | Author saves a form definition (`tx.govFormDef.upsert`, `update: {}`) while another session holds the table; the transaction times out | caller told it failed, nothing stored | told it failed, 0 rows (6/6 runs). With 648adace4's pool: "Connection terminated", **1 row stored** |
+| J11 | Raw caller releases twice (busy and idle, `connect(cb)` `done` twice) | the second call throws to the caller; the process lives | throws synchronously each way; no uncaught exception; the pool serves firm A next |
+| J12 | A backend ends while its release waits | destroyed; the next firm gets a new connection | new pid, firm B, no transaction |
+| J13 | A query object (Submittable) after COMMIT | its error listener gets the refusal | it does; the object is returned |
+
+**Break it:** 44 SQL strings were checked against the server's own transaction state. All 19 table rows are right. 6 strings in 4 exotic forms differ (`BEGIN ATOMIC` bodies, `AND CHAIN`, a continued E'' string, `é$x$`), and the app sends none of them (AST scan: 10 hits, none SQL). One scanner mutation (nesting) passes the table. A hanging mutation now fails in 19 s.
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J10 is red on the base and green at head; 21/0 |
+| Next step obvious | 1 | the refusal says why |
+| Plain words | ½ | unchanged: the `M1:` and `P1:` prefixes stay, and the refusal is wrong for `AND CHAIN` (r2-m1) |
+| Feedback and state | 1 | `platform_pool_release_failed` is added for a failed deferred release |
+| Correct data | 1 | row counts under J10–J12 |
+| Error recovery | 1 | round-1 m1 and m2 are fixed and probed (J11, J13) |
+| Accessibility and screen sizes | n/a, counted 1 | no UI |
+| Speed | 1 | a 60 KB unclosed comment reads in under 50 ms; the suite takes 10.7 s |
+| Visual quality | n/a, counted 1 | no UI |
+| Trust and sources | n/a, counted 1 | expected values checked against PostgreSQL itself |
+
+**Score: 9.5/10 (pass).** The one fix that would raise it: r2-m1, naming or excluding `AND CHAIN` so the refusal's words are right.
