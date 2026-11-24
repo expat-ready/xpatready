@@ -256,18 +256,21 @@ try {
   if (rf.status === 409 && rf.body?.code === "UNCLEARED") rf = await api(TA, "POST", `${M}/trust/refunds`, { ...rfBody, unclearedAcknowledged: true });
   if (balance(PR) !== bR - 50000) { note(`the 500.00 refund written by SQL (POST ${M}/trust/refunds answered ${rf.status})`); rawSql(entryQ("REFUND_TO_CLIENT", -50000, PR, { reason: "Unused money returned (Sample)" })); }
   const depEntry = sql(`select id from money_trust_entry where payment_id = '${chq.id}'`);
-  const rev = await api(TA, "POST", `${M}/payments/${chq.id}/reverse`, { reason: "Returned" });
+  // FO-7v part T (#3552): preview the reversal (its plan and hash), then reverse with that hash (aligned by qa 9, 25 Nov).
+  const plan = await api(TA, "GET", `${M}/payments/${chq.id}/reverse-preview`);
+  const rev = await api(TA, "POST", `${M}/payments/${chq.id}/reverse`, { reasonCode: "RETURNED", previewHash: plan.body?.hash });
   const revEntry = () => sql(`select coalesce((select id::text from money_trust_entry where corrects_entry_id = '${depEntry}' and kind = 'CORRECTION' and correction_kind = 'RETURNED'), '')`);
-  ok("R1.58 W5 (part missing: FO-7v, the reversal route (not on checklist row 58; route as FO-7v words it, prefix guessed /front-office/money)): the hand-recorded 200.00 cheque, its money already refunded, is reversed as Returned through the API: accepted, one correction naming the deposit, the balance −200.00",
-    (rev.status === 200 || rev.status === 201) && !!revEntry() && balance(PR) === -20000, { status: rev.status, detail: rev.body?.detail ?? null, balance: balance(PR) });
+  ok("R1.58 W5 (FO-7v part T, #3552: GET payments/:id/reverse-preview, POST payments/:id/reverse): the hand-recorded 200.00 cheque, its money already refunded, is previewed (below zero: −200.00) and reversed as Returned through the API: accepted, one correction naming the deposit, the balance −200.00",
+    plan.status === 200 && plan.body?.balanceAfterMinor === -20000 && (rev.status === 200 || rev.status === 201) && rev.body?.balanceAfterMinor === -20000 && !!revEntry() && balance(PR) === -20000,
+    { preview: plan.status, status: rev.status, detail: rev.body?.detail ?? null, balance: balance(PR) });
   let underneath = !!revEntry();
   if (!underneath) { try { rawSql(entryQ("CORRECTION", -20000, PR, { corrects: depEntry, ck: "RETURNED", reason: "Returned" })); underneath = true; note("the reversal written straight to the ledger"); } catch (e) { console.log(`      (reversal refused: ${String((e as { stderr?: string }).stderr ?? e).split("\n")[0]})`); } }
   ok("R1.58 W5 underneath (FO-7a2, P-634, on main): the database accepts that reversal below zero (−200.00) and money_trust_shortfall lists the client at −200.00 with that reversal",
     underneath && balance(PR) === -20000 && sql(`select coalesce((select balance_minor || ':' || (reversal_entry_id = '${revEntry()}') from money_trust_shortfall where firm_id = '${A}' and person_id = '${PR}' and currency = 'CAD'), 'none')`) === "-20000:true");
   const sf = await api(TA, "GET", `${M}/trust/shortfall`);
   const sfRow = Array.isArray(sf.body?.items ?? sf.body) ? (sf.body?.items ?? sf.body).find((x: { personId?: string; partyId?: string }) => x.personId === PR || x.partyId === PR) : null;
-  ok("R1.58 W5 (part missing: a read of the shortfall list (no backlog row names one; route name guessed: GET /trust/shortfall)): the shortfall list read through the API names the client at −200.00 CAD",
-    sf.status === 200 && !!sfRow && (sfRow.balanceMinor === -20000 || sfRow.amountMinor === -20000), { status: sf.status, row: sfRow ?? null });
+  ok("R1.58 W5 (FO-7v part T, #3552: GET trust/shortfall): the shortfall list read through the API names the client at −200.00 CAD, with the reversal that took them there",
+    sf.status === 200 && !!sfRow && sfRow.balanceMinor === -20000 && sfRow.currency === "CAD" && sfRow.reversalEntryId === revEntry(), { status: sf.status, row: sfRow ?? null });
 
   // the screen: Money › Trust shows the client in red (FO-7s3b's trust area; P-634's red shortfall)
   const browser = await chromium.launch({ headless: !process.env.HEADED, slowMo: process.env.HEADED ? 150 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
