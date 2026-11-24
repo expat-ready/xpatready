@@ -99,10 +99,10 @@ try {
     description: `Sample: a storage bucket's files were readable by link for two hours (R1.87 ${run}).`, affectedFirms: [A], dataCategories: ["contact_details"] };
   const breach = await j("POST", "/api/system/register/breaches", rec, ourTok, { "idempotency-key": `r187-${run}` });
   const breachId = typeof breach.body === "object" ? breach.body?.id : undefined;
-  const b0 = count(A);
+  const p6a = count(A);
   const breachRead = breachId ? await j("GET", `/api/system/register/breaches/${breachId}`, undefined, ourTok) : { status: 0, body: null };
   ok("R1.87 P6 (part missing: AUD-3, a breach read naming the firm; from j_86 W10): our staff's read of a breach that names firm A (200) writes one OUR_STAFF line on firm A's own trail",
-    breach.status === 201 && breachRead.status === 200 && count(A) === b0 + 1, { recorded: breach.status, read: breachRead.status, firmA: [b0, count(A)] });
+    breach.status === 201 && breachRead.status === 200 && count(A) === p6a + 1, { recorded: breach.status, read: breachRead.status, firmA: [p6a, count(A)] });
 
   // P5 AUD-3 part 2 (#3491, aligned by qa 10 on its head 36a32698a): our side's per-firm access report
   // (SA-11-31 "strictly firm-scoped; CSV"). Firm B gets a read of its own first, so "strictly firm A" is counted.
