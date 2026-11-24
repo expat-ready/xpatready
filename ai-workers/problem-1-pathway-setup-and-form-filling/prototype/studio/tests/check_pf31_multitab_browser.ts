@@ -10,8 +10,9 @@
 //      says so; T5b "keep mine" keeps only what I changed; T8 the second screen, a lead's phone: mirrored, one save, stale
 //      409 → conflict; T9 the API: version in reads' bodies, ETag on save answers,
 //      If-Match on a route that takes no version 422, a malformed tag 422; T10 axe clean on the strip; 375 px: "Open items".
-// Sample firm only, fresh copy. US$0, no model call; live AI off. Run from studio/:
-//   zsh tools/isolated.sh pf31 4731 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx tests/check_pf31_multitab_browser.ts 4731 xr_studio_pf31
+// Sample firm only, fresh copy. US$0, no model call; live AI off. Arguments: the isolated copy's port and database, both
+// required (run-suites.sh passes its own copy's; Lead 22: the old line did not match its pattern, so the suite ran with no copy):
+//   zsh studio/tools/isolated.sh screens_pf31 4794 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx studio/tests/check_pf31_multitab_browser.ts 4794 xr_studio_screens_pf31
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
@@ -23,7 +24,8 @@ import { client, recorder } from "./runtime/api.ts";
 import { shown, tabs, until, walkSharedRecord, walkStaleSave } from "./lib/multi-view.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
-const [PORT, DBNAME] = [Number(process.argv[2] ?? 4731), process.argv[3] ?? "xr_studio_pf31"];
+const [PORT, DBNAME] = [Number(process.argv[2]), process.argv[3] ?? ""];
+if (!PORT || !/^xr_studio_[a-z0-9_]+$/.test(DBNAME)) { console.log("usage: <port of an isolated copy, never 4400> <its database, xr_studio_<name>>"); process.exit(2); }
 if (PORT === 4400 || DBNAME === "xr_studio_demo") { console.log("refused: never the demo on :4400"); process.exit(2); }
 const BASE = `http://localhost:${PORT}`;
 const { ok, summary } = recorder();

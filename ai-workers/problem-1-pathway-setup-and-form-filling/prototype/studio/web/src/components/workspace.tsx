@@ -81,6 +81,13 @@ const keptTab = (t: unknown): t is { id: string; path: string; title: string } =
   const x = t as { id?: unknown; path?: unknown; title?: unknown } | null;
   return !!x && typeof x.id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(x.id) && typeof x.path === "string" && x.path.startsWith("/") && !x.path.startsWith("//") && x.path.length <= 2000 && typeof x.title === "string";
 };
+/** One owner's kept tabs (well formed only). */
+function keptTabsOf(owner: string): Tab[] {
+  try {
+    const s = JSON.parse(sessionStorage.getItem(storeOf(owner)) ?? "null") as { tabs?: unknown } | null;
+    return Array.isArray(s?.tabs) ? s.tabs.filter(keptTab).slice(0, TAB_CAP).map((t) => ({ id: t.id, path: t.path, title: t.title.slice(0, 200), nav: 0, type: NavigationType.Pop, scroll: 0 })) : [];
+  } catch { return []; }
+}
 /** The tabs kept in this browser tab, only when they are this session's (break B1: never the last person's). */
 function load(): { tabs: Tab[]; active: string; dropped: boolean } {
   let tabs: Tab[] = [], keptActive: unknown = null;
@@ -242,6 +249,17 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
       const owner = ownerNow(), was = shownOwner.current;
       if (owner === was) return;
       if (was === NOBODY && owner === "local") { startAlone(); return; }   // the Sign out this tab just made: this page alone, nothing kept
+      if (was === "local" && owner !== "local") {
+        // Signing in where no staff session was (a sign-in card inside a page, e.g. a case's file details; Lead 22,
+        // check_csd6_reads_browser): the page stays as it is, open dialog and all; this person's own kept tabs join it and
+        // every other staff member's kept list goes. A change from one person to another still starts afresh (below).
+        shownOwner.current = owner;
+        try { for (const k of Object.keys(sessionStorage)) if (k.startsWith(`${STORE}:`) && k !== storeOf(owner) && k !== storeOf("local")) sessionStorage.removeItem(k); } catch { /* none kept */ }
+        const items = new Set(now.current.tabs.map((t) => itemOf(t.path)));
+        const joining = keptTabsOf(owner).filter((t) => !items.has(itemOf(t.path)));
+        if (joining.length) { const tabs = [...now.current.tabs, ...joining].slice(0, TAB_CAP); now.current = { ...now.current, tabs }; setWs((st) => ({ ...st, tabs })); }
+        return;
+      }
       if (owner === "local" && sessionEndReason()) return;   // ended by itself: the screen stays as it is
       if (owner === "local" && was !== "local") try { sessionStorage.removeItem(storeOf(was)); } catch { /* none kept */ }   // signed out on purpose: their tabs go
       shownOwner.current = owner;
