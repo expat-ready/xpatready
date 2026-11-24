@@ -47,9 +47,10 @@ type KeepPeriodsReader = { forFirm(firmId: string): Promise<FirmKeepPeriod> };
 export type PastCase = { case_id: string; case_number: string; client: string; closed_on: string; passed_on: string; documents_held: number; document_ids: string[] };
 export type PastKeepList = { years: number | null; source: FirmKeepPeriod["source"]; words: string; zone: string; today: string; cases: PastCase[]; next: string | null };
 
-/** The `after` query: absent, empty, or a case id the list gave. */
+/** The `after` query: absent, empty, or a case id the list gave. The route parses it (CS-V1: in the handler, where
+ *  check_csv1_inputs follows it) and hands keepListFor the parsed value. */
 export const KeepListCursor = z.union([z.undefined(), z.literal(""), z.string().max(36).regex(UUID)]);
-const badCursor = (): never => problem(400, "Check the details", "The page cursor is not one this list gave.", { code: "INVALID", fields: { after: "The page cursor is not one this list gave." } });
+export const badCursor = (): never => problem(400, "Check the details", "The page cursor is not one this list gave.", { code: "INVALID", fields: { after: "The page cursor is not one this list gave." } });
 
 /** The firm's closed cases whose keep period has passed by `today` (YYYY-MM-DD in `zone`), oldest close first, keyset
  *  paged by (closed_at, id). `scope` limits them to the cases a person can see; null means every case of the firm (the
@@ -80,14 +81,12 @@ export async function pastKeepPeriod(db: Reader, firmId: string, years: number, 
 }
 
 /** GET /api/runtime/documents/past-keep-period?after=: the list a holder of agent/document:dispose reads (session firm). */
-export async function keepListFor(db: Reader, keepPeriods: KeepPeriodsReader, clock: ClockPort, ctx: StaffContext, after?: unknown): Promise<PastKeepList> {
-  const q = KeepListCursor.safeParse(after);
-  if (!q.success) return badCursor();
+export async function keepListFor(db: Reader, keepPeriods: KeepPeriodsReader, clock: ClockPort, ctx: StaffContext, after: z.output<typeof KeepListCursor>): Promise<PastKeepList> {
   const firm = await keepPeriods.forFirm(ctx.firmId), cal = await readFirmCalendar(db, ctx.firmId), today = localDate(cal.zone, clock.now());
   const y = firm.closedClientFilesYears;
   if (y === null) return { years: null, source: firm.source, words: NOT_SET_WORDS, zone: cal.zone, today, cases: [], next: null };
   const scope = await caseScope(db, { firmId: ctx.firmId, staffId: ctx.staffId, keys: ctx.keys });
-  const { cases, next } = await pastKeepPeriod(db, ctx.firmId, y, cal.zone, today, scope, q.data ? q.data.toLowerCase() : null, KEEP_LIST_PAGE);
+  const { cases, next } = await pastKeepPeriod(db, ctx.firmId, y, cal.zone, today, scope, after ? after.toLowerCase() : null, KEEP_LIST_PAGE);
   const words = `Your firm keeps closed client files for ${y} year${y === 1 ? "" : "s"} after closing. This is a reminder, not a lock: nothing is deleted automatically.`;
   return { years: y, source: firm.source, words, zone: cal.zone, today, cases, next };
 }

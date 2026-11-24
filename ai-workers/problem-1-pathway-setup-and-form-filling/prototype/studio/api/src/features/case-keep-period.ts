@@ -7,7 +7,7 @@ import { systemClock } from "../../../ports/clock.ts";
 import type { JobPort } from "../../../ports/jobs.ts";
 import type { NotificationPort } from "../../../ports/notifications.ts";
 import { CaseRead, Db } from "../core.ts";
-import { DISPOSE_KEY, KeepPeriodReminders, keepListFor } from "../documents/keep-period.ts";
+import { badCursor, DISPOSE_KEY, KeepListCursor, KeepPeriodReminders, keepListFor } from "../documents/keep-period.ts";
 import type { Feature } from "../features.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../platform/identity/keys.ts";
 import { PlatformJobs } from "../platform/jobs/platform-jobs.ts";
@@ -24,7 +24,10 @@ export class CaseKeepPeriodController {
 
   /** SA-11-33: the closed client files past the firm's keep period, each only if the person can see the case (AG-9-53). */
   @Get("past-keep-period") @PermissionKeys(DISPOSE_KEY)
-  list(@Req() r: R, @Query("after") after?: string) { return keepListFor(this.db, this.keep, systemClock, staffOf(r), after); }
+  list(@Req() r: R, @Query("after") after?: string) {
+    const q = KeepListCursor.safeParse(after);   // CS-V1: the query's zod parse; a cursor the list did not give is 400
+    return q.success ? keepListFor(this.db, this.keep, systemClock, staffOf(r), q.data) : badCursor();
+  }
 }
 
 const registered = new WeakSet<JobPort>();
