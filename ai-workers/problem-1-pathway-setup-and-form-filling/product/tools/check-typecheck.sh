@@ -57,8 +57,9 @@ cat > "$D/good.ts" <<'E2'
 import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: "x" }) });
-// @ts-expect-error the constructor takes no type of its own (Prisma's generic one would infer a new client type per file)
-export const own = new PrismaClient<Prisma.PrismaClientOptions>({ adapter: new PrismaPg({ connectionString: "x" }) });
+// @ts-expect-error a client is the app's one type whatever its options (with Prisma's own types this line is right, and each file has its own client type)
+new PrismaClient({ adapter: new PrismaPg({ connectionString: "x" }), log: [{ emit: "event", level: "query" }] }).$on("query", () => undefined);
+export class Sub extends PrismaClient { constructor() { super({ adapter: new PrismaPg({ connectionString: "x" }) }); } }
 export const same: PrismaClient = db;
 export const f = async () => { await db.$transaction(async (tx: Prisma.TransactionClient) => { await tx.platformFirm.findFirst({ select: { id: true } }); }); return db.platformFirm.findMany(); };
 E2
@@ -71,7 +72,17 @@ export const b = db.noSuchModel;
 export const c = () => db.platformFirm.findMany({ where: { noSuchField: 1 } });
 export const d = async (): Promise<number> => (await db.platformFirm.findFirst({ select: { id: true } }))!.id;
 export const e: string = db;
+const adapter = new PrismaPg({ connectionString: "x" }), o = { adapter, extra: 1 };
+export const f = new PrismaClient(o);
+export const g = new PrismaClient({ ...o });
+export const h = new PrismaClient({ adapter, omit: { platformFirm: { id: true } } });
 E2
-c=$(run --project api="$D/tsconfig.json" --known "$T/none.txt"); n=$(grep -cE 'bad.ts\([4-8]\): TS' "$T/out")
-ok "one shared client type: five planted errors (option, model, field, result, assignment) are all found, a right file has none, the constructor is not generic" "$([ "$c" = 1 ] && [ "$(grep -oE 'bad.ts\([4-8]\)' "$T/out" | sort -u | wc -l | tr -d ' ')" = 5 ] && ! grep -q 'good.ts(' "$T/out" && echo 1)" "exit $c, $n: $(tail -8 "$T/out")"
+c=$(run --project api="$D/tsconfig.json" --known "$T/none.txt"); n=$(grep -oE 'bad.ts\(([4-8]|1[0-2])\)' "$T/out" | sort -u | wc -l | tr -d ' ')
+ok "one shared client type: eight planted errors (option, model, field, result, assignment, an extra key in a variable and in a spread, omit) are all found, a right file has none" "$([ "$c" = 1 ] && [ "$n" = 8 ] && ! grep -q 'good.ts(' "$T/out" && echo 1)" "exit $c, $n of 8: $(tail -12 "$T/out")"
+# the generated client missing or an un-generated stub: an error, never a client that is `any`
+for k in missing stub; do M="$T/m-$k"; mkdir -p "$M/api/check"; cp "$API/check/prisma-client.ts" "$M/api/check/"
+  [ $k = stub ] && { mkdir -p "$M/node_modules/.prisma/client"; echo 'export declare const PrismaClient: any; export declare const Prisma: any;' > "$M/node_modules/.prisma/client/index.d.ts"; echo > "$M/node_modules/.prisma/client/index.js"; }
+  printf '{"compilerOptions":{"noEmit":true,"strict":true,"skipLibCheck":true,"types":[],"module":"nodenext","moduleResolution":"nodenext","target":"es2023","allowImportingTsExtensions":true,"paths":{"@prisma/client":["./check/prisma-client.ts"]}},"include":["*.ts"]}\n' > "$M/api/tsconfig.json"
+  printf 'import { PrismaClient } from "@prisma/client";\nexport const x: number = new PrismaClient({ whatever: 1 }).nope.foo();\n' > "$M/api/a.ts"
+  c=$(run --project api="$M/api/tsconfig.json" --known "$T/none.txt"); ok "a $k generated client is an error in the check, never a silent any" "$([ "$c" = 1 ] && grep -q 'prisma-client.ts(' "$T/out" && echo 1)" "exit $c: $(tail -5 "$T/out")"; done
 echo "$pass passed, $fail failed"; [ "$fail" = 0 ]
