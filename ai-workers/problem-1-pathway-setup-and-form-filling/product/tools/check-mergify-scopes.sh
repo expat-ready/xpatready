@@ -160,8 +160,7 @@ for t in ("tests/check_fo0_x.ts", "tests/check_FO3_x.ts", "tests/check_Pf9_x.ts"
     n += 1
     if owners_bad(src, files + [ST + t]) == base: bad.append(f"self-test: a new {t} that no scope holds still passes")
 n += 1   # a new area folder only partly in its scope (break round 2 m6, R-G1)
-# money holds web/src/modules/client-money/** since FO-7s1 (#3305): drop that glob first, then hold one file only
-c = mutated(lambda c: (c["money"].__setitem__("include", [g for g in c["money"]["include"] if not g.endswith("web/src/modules/client-money/**")]), c["money"]["include"].append(ST + "web/src/modules/client-money/index.tsx")))
+c = mutated(lambda c: c["money"]["include"].append(ST + "web/src/modules/client-money/index.tsx"))
 if not any("not wholly" in x for x in owners_bad(c, files + [ST + "web/src/modules/client-money/index.tsx", ST + "web/src/modules/client-money/b.tsx"])): bad.append("self-test: client-money/ only partly in money still passes")
 n += 1   # an owned test also in a second scope, migrations included (follow-up 1, 2)
 c = mutated(lambda c: c["migrations"]["include"].append(ST + "tests/check_pf*"))
