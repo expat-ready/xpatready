@@ -11,7 +11,8 @@ Measures:
             member merges in a later batch)
   merge     approved to merged: median minutes from the last `review: approved` label to the merge, PRs merged in 24 h
   stages    the same flow in its two steps, by scope (the Mergify queue that merged it: product, pipeline, verdicts,
-            records; plus its Mergify file scopes when the batch names any), PRs merged in the last 6 h: labelled ->
+            records; Mergify's file scopes split product into keys of one PR each, so they are not keys), PRs merged in
+            the last 6 h: labelled ->
             batch start (the first batch PR Mergify opened with it after the label) and batch start -> merged; each
             scope's medians and its slowest PR. A merge whose batch PR is not among the PRs read is counted apart.
   waiting   now: each open labelled PR in no open batch, with its minutes since the label (the live queue wait), and
@@ -100,36 +101,38 @@ def gather(now):
                         "approved_at": max([e["createdAt"] for e in n["timelineItems"]["nodes"] if e and (e.get("label") or {}).get("name") == "review: approved"
                                             and e["createdAt"] <= n["mergedAt"]] or [None], key=lambda x: x or "")}
                        for n in d["data"]["repository"]["pullRequests"]["nodes"]]
-        op = d["data"]["repository"].get("open")
-        f["open_labelled"] = ({"error": "no open labelled PRs in GitHub's answer"} if not isinstance(op, dict) else
-                              [{"number": n["number"], "approved_at": max([e["createdAt"] for e in n["timelineItems"]["nodes"] if e and (e.get("label") or {}).get("name") == "review: approved"] or [None], key=lambda x: x or "")}
-                               for n in op["nodes"]])
     except Exception as e:   # noqa: BLE001
         f["merged"] = {"error": str(e)[:160]}; f["open_labelled"] = {"error": str(e)[:160]}
+        return f
+    try:   # its own read: a bad open node never wipes the merged PRs already read (review m5)
+        op = d["data"]["repository"].get("open")
+        f["open_labelled"] = ({"error": "no open labelled PRs in GitHub's answer"} if not isinstance(op, dict) else
+                              [{"number": n["number"], "approved_at": max([e["createdAt"] for e in (n.get("timelineItems") or {}).get("nodes") or [] if e and (e.get("label") or {}).get("name") == "review: approved"] or [None], key=lambda x: x or "")}
+                               for n in op["nodes"] if n])
+    except Exception as e:   # noqa: BLE001
+        f["open_labelled"] = {"error": str(e)[:160]}
     return f
 
 
 def members(p):
-    """Member PR numbers of a Mergify batch PR: "#n" in its title and the body's "- number: n" lines (as queue-gate.sh)."""
-    t = [int(x) for x in re.findall(r"#(\d+)", p.get("title") or "")]
+    """Member PR numbers of a Mergify batch PR: the body's metadata "- number: n" lines; with none, the title's "#n" before
+    ", stacked on" (the PRs a batch is stacked on are queued ahead of it, not in it: "checking #3516 on main, stacked on
+    #3467 and #3500"; ENF-738 review M2)."""
     b = [int(x) for x in re.findall(r"(?m)^\s*-\s*number:\s*(\d+)\s*$", p.get("body") or "")]
-    return sorted(set(t + b))
+    if b:
+        return sorted(set(b))
+    return sorted({int(x) for x in re.findall(r"#(\d+)", re.split(r",?\s+stacked on\b", p.get("title") or "")[0])})
 
 
 def batch_prs(pl):
-    """Mergify's batch PRs among the PRs read: {number: {opened, open, queue, members: {pr: [scopes]}}}. The queue is the
-    body's "of the `product` queue"; members and their scopes are the body's metadata ("- number: n" then "scopes: [..]"),
-    else the title's "#n"."""
+    """Mergify's batch PRs among the PRs read: {number: {opened, open, queue, members}}. The queue is the body's "of the
+    `product` queue"; members as members()."""
     out = {}
     for k, v in pl.items():
         if v.get("login") != "mergify[bot]" or not str(k).isdigit():
             continue
-        body = v.get("body") or ""
-        q = re.search(r"of the `([\w-]+)` queue", body)
-        mem = {int(n): [x.strip() for x in sc.split(",") if x.strip()] for n, sc in re.findall(r"(?m)^\s*-\s*number:\s*(\d+)\s*\n\s*scopes:\s*\[([^\]\n]*)\]", body)}
-        for n in members(v):
-            mem.setdefault(n, [])
-        out[int(k)] = {"opened": v.get("created_at"), "open": v.get("state") == "open", "queue": q.group(1) if q else "queue not named", "members": mem}
+        q = re.search(r"of the `([\w-]+)` queue", v.get("body") or "")
+        out[int(k)] = {"opened": v.get("created_at"), "open": v.get("state") == "open", "queue": q.group(1) if q else "queue not named", "members": set(members(v))}
     return out
 
 
@@ -145,8 +148,7 @@ def stages(mg, pl, now):
         mine = sorted((b for b in bp.values() if n in b["members"] and iso(b["opened"]) and L - timedelta(minutes=1) <= iso(b["opened"]) <= M), key=lambda b: b["opened"])
         if not mine:
             unseen.append(n); continue
-        last = mine[-1]
-        scope = last["queue"] + ("/" + "+".join(sorted(last["members"][n])) if last["members"][n] else "")
+        scope = mine[-1]["queue"]   # the queue of the batch that merged it
         r = {"pr": n, "scope": scope, "wait": mins(L, mine[0]["opened"]), "in_batch": mins(mine[0]["opened"], M), "batches": len(mine)}
         rows.append(r); by.setdefault(scope, []).append(r)
     med = lambda rs, k: round(statistics.median([r[k] for r in rs]))
@@ -158,9 +160,9 @@ def stages(mg, pl, now):
 def waiting(op, pl, now):
     """Open labelled PRs now: in no open batch (minutes since the label) or in one."""
     inb = {n for b in batch_prs(pl).values() if b["open"] for n in b["members"]}
-    wait = sorted(({"pr": x["number"], "min": mins(x.get("approved_at"), now.strftime("%Y-%m-%dT%H:%M:%SZ"))} for x in op if x["number"] not in inb and x.get("approved_at")),
-                  key=lambda w: -(w["min"] or 0))
-    return {"waiting": wait, "in_batch": sorted(x["number"] for x in op if x["number"] in inb)}
+    out = [{"pr": x["number"], "min": mins(x.get("approved_at"), now.strftime("%Y-%m-%dT%H:%M:%SZ"))} for x in op if x["number"] not in inb]
+    return {"waiting": sorted((w for w in out if w["min"] is not None), key=lambda w: -w["min"]), "in_batch": sorted(x["number"] for x in op if x["number"] in inb),
+            "no_time": sorted(w["pr"] for w in out if w["min"] is None)}   # its approval label not among its last 20 label events
 
 
 def measure(f, rw, board, now):
@@ -254,7 +256,8 @@ def lines(m, now):
         if st["unseen"]:
             out.append(f"            {len(st['unseen'])} merge(s) with no batch PR among the PRs read: " + ", ".join(f"#{n}" for n in st["unseen"]))
     out.append("  waiting   " + (nm(wt) if err(wt) else (f"{len(wt['waiting'])} labelled PR(s) in no batch" + (": " + ", ".join(f"#{w['pr']} {round(w['min'])} min" for w in wt["waiting"]) if wt["waiting"] else "")
-               + f"; {len(wt['in_batch'])} in a batch" + (": " + ", ".join(f"#{n}" for n in wt["in_batch"]) if wt["in_batch"] else ""))))
+               + f"; {len(wt['in_batch'])} in a batch" + (": " + ", ".join(f"#{n}" for n in wt["in_batch"]) if wt["in_batch"] else "")
+               + (f"; label time not read: " + ", ".join(f"#{n}" for n in wt["no_time"]) if wt.get("no_time") else ""))))
     out.append("  rate      " + (nm(rt) if err(rt) else f"{rt['per_hour']} merges per hour (last 3 h, {rt['n']} merges)"))
     out.append("  proven    " + (nm(pv) if err(pv) else f"Proven today {pv['proven']}" + (f" of {pv['goal']} ({pv.get('short', 0)} short)" if pv.get("goal") is not None else "")
                + (f", {pv['waiting']} Built waiting for qa" if pv.get("waiting") is not None else "") + (f" (board {pv['age_min']} min old)" if pv.get("age_min") is not None else "")))
