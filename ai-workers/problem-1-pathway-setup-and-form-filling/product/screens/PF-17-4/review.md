@@ -3,7 +3,49 @@
 Reviewer: a fresh context that did not build it. Head reviewed: `34f58ea0b4be249431cf1f793538b43e9f36b916` (#3470, branch `claude/festive-hawking-3i8mgi`); diff `git diff origin/main...HEAD -- studio/` (13 files, +276 −28). App = `prototype/studio`.
 Read: concept r2 (§3 BR-3/4/5, §6, §7 Q4), `challenge.md` (M1, M2, m1), `handover.md` (m1-m3), Lead 26's approval comment, STANDARDS, QUALITY. PR A builds no screen, so the screen parts of the skill (keyboard, 1024 px, BIC table, look) are **N/A here** and go to PRs B and C.
 
-## Verdict
+## Round 2 (head `d4b5ea3fbd19a95eff64b368cc1c371525a444c3`): the current verdict
+**Verdict: Approve.** No Blocker and no Major is open; round 1's M-1 and m-1 to m-3 are closed. The delta since `34f58ea0b` is 6 files, +38 −14: tests, the MODULE row, one comment, and the seed's catch for a race.
+
+**Suites, run by me on this head:**
+* `check_pf17_console` 50/0
+* `check_pf17_support` 34/0
+* `check_pf17_demo_signin` 15/0, run twice to catch flakiness
+
+**Round 1's findings:**
+* **M-1, closed.**
+  * DW12 now takes the first firm from `?health=OK` and asserts OK with no reasons at 0 and at 5 failed jobs (`tests/check_pf17_console.ts:341-348`).
+  * My round-1 mutation now turns DW12 red, re-run on a scratch copy: an OK firm with 3 or more failed jobs goes to ATTENTION and gives `noisy:["ATTENTION",[]]`.
+  * DW12 also goes red when failed jobs add a reason.
+* **m-1, closed.**
+  * At the cap, every firm with no entries reads 0, and the page says `failedJobsComplete:false` (:338-339).
+  * Mutation "a firm with no entries reads null" turns DW10, DW11 and DW12 red.
+* **m-2, closed.**
+  * The known limit is in `api/src/platform/MODULE.rows/PF-17-4.md`.
+  * `pgboss-jobs.ts:226` names `DEAD_LETTER_CAP`. The builder is right that only the comment carried the literal.
+* **m-3, closed.**
+  * The PR body now covers what was built, the checks with exit codes, and "On the demo" with the Sample sign-in.
+  * Its suite counts are round 1's numbers. This needs no action.
+
+**The breaker's Minors:**
+* **Seed race, sound.**
+  * `sample-staff.ts:35-41` skips only Prisma `P2002` (the unique email) and rethrows everything else. The losing start-up adds nobody and does not stop.
+  * DS1 runs two seeds at once. With the catch removed, DS1 goes red (`PrismaClientKnownRequestError` on `create`).
+  * The person and their grant are one nested create, so a race cannot leave a person without a role.
+* **DW13, sound.** The Firms list, one firm and `livePlanOf` agree in each of three states: active (a plan), `PAYMENT_HOLD` (a plan) and only `ENDED` (null). The test restores the status afterwards. Together with SQ-plan, both pages are now held to the helper in all three states.
+* **SQ-plan role check, sound.** It is a pure read of `plat_system_role_permission`: every `system/support:list` role must also hold `system/firm:read`. Today the list is empty, which is correct.
+
+**What the delta could break: nothing found.**
+* No route, type or SQL changed.
+* The DW12 and DW13 changes clear the dead-letter list and restore the subscription, so later checks start clean.
+* Neighbouring suites are unaffected: the delta touches only the seed's error path.
+
+**Journey score: unchanged at 9.4/10.** The delta changes no behaviour a user meets. The one ½ (next step obvious) now has its fix in the PR body.
+
+Reviewer: Approve d4b5ea3fbd19a95eff64b368cc1c371525a444c3
+
+## Round 1 (head `34f58ea0b`), kept as written
+
+### Verdict (round 1)
 **Verdict: Block.** On the screen-review scale this is **Changes (Ship after fixes)**: one Major, a small test fix. The code behaves correctly. One acceptance test (DW12) does not prove its rule, and that breaks an [M] line of STANDARDS. Fix it and the three Minors, then re-review the new head.
 
 ## Suites (run by me on this head, PostgreSQL 127.0.0.1:54329, never :4400)
