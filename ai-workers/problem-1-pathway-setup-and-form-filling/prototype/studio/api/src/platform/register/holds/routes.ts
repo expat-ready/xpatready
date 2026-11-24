@@ -13,7 +13,7 @@ type R = { systemStaff?: SystemStaffContext };
 export class LegalHoldController {
   constructor(@Inject(LegalHolds) private readonly holds: LegalHolds) {}
 
-  @Get() @SystemKeys(LEGAL_HOLD_KEY) @ReadsAcrossFirms("legal holds of every firm")
+  @Get() @SystemKeys(LEGAL_HOLD_KEY) @ReadsAcrossFirms("legal holds of every firm", { firmFilter: true })
   list(@Req() r: R, @Query() q: Record<string, unknown>) { return this.holds.list(systemStaffOf(r), q); }
 
   @Post() @HttpCode(201) @SystemKeys(LEGAL_HOLD_KEY) @SystemReason() @ChangesFirm("places a hold on one firm")

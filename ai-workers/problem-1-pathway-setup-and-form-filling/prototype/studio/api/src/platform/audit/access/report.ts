@@ -11,14 +11,19 @@
 // Both routes are @ReadsFirm("id"): each successful call writes its own platform.system.firm_read line on the firm's
 // trail (lines.ts), so a later report shows who read the report. The firm is found on a per-firm bypass use
 // (report.bypass.ts: its platform.bypass line on that firm); an unknown or malformed id is 404 before any line.
-// The export, as AUD-4's (P-607 (3)): in one read-only REPEATABLE READ snapshot, count (over EXPORT_MAX: 413, no line),
-// write and commit one audit.exported line on the firm's trail (a failure: 500, no file), then read the lines from the
-// snapshot, which cannot see that line. The file is made whole in memory before any byte is sent (at most EXPORT_MAX
-// lines, Sample) and answered as a StreamableFile, so it passes the access interceptor (no @Res(): "no line, no answer").
+// The export (P-607 (3)), one database connection at a time (breaker M2: a snapshot held open while the line took a
+// second connection let concurrent exports drain the pool): (1) in one transaction, count (over EXPORT_MAX: 413, no
+// audit.exported line; the firm's platform.bypass line of step 0 stands) and write one audit.exported line on the firm's
+// trail, committed before any data (a failure: 500, no file); (2) in a read-only REPEATABLE READ snapshot, read the lines
+// up to that line's own time, leaving it out. `rows` on the line is the count at (1); a line that committed between (1)
+// and (2) with an earlier time is in the file too, never one fewer. The file is made whole in memory before any byte is
+// sent (at most EXPORT_MAX lines, Sample) and answered as a StreamableFile, so it passes the access interceptor (no
+// @Res(): "no line, no answer"). HEAD is refused 405 (breaker m1: it would log an export nobody received).
+// The two branches are read as a UNION ALL (breaker m2), each on audit_event_firm_id_at_idx (the firm's id, or null).
 // Who: "ExpatReady staff" or, under a support session, "ExpatReady support", with the actor word; no name for our staff
 // is read (as AUD-4: contract gap).
 import { randomUUID } from "node:crypto";
-import { Controller, Get, Header, Inject, Injectable, Param, Query, StreamableFile } from "@nestjs/common";
+import { Controller, Get, Header, Inject, Injectable, Param, Query, Req, StreamableFile } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { Db } from "../../../core.ts";
 import { asBypass, touchFirm } from "../../firm-scope.ts";
@@ -81,47 +86,65 @@ export class AccessReport {
     }));
   }
 
-  /** The report's lines: the firm first in each branch, then the range. Strictly this firm (SA-11-31). */
-  private where(firmId: string, f: Filter): Prisma.Sql {
-    return Prisma.sql`((e.firm_id = ${firmId}::uuid and (e.actor_type = 'OUR_STAFF' or e.support_session_id is not null))
-      or (e.firm_id is null and e.action = ${CROSS_TENANT} and e.detail->>'firm' = ${firmId}))
-      and e.at >= ${f.from} and e.at < ${f.to}`;
+  /** The report's two branches, each with the range: strictly this firm (SA-11-31). `extra` narrows both (a page, the
+   *  export's own line). */
+  private branches(firmId: string, f: Filter, extra: Prisma.Sql = Prisma.empty): [Prisma.Sql, Prisma.Sql] {
+    const range = Prisma.sql`e.at >= ${f.from} and e.at < ${f.to} ${extra}`;
+    return [Prisma.sql`e.firm_id = ${firmId}::uuid and (e.actor_type = 'OUR_STAFF' or e.support_session_id is not null) and ${range}`,
+      Prisma.sql`e.firm_id is null and e.action = ${CROSS_TENANT} and e.detail->>'firm' = ${firmId} and ${range}`];
   }
 
-  private rows(c: Client, where: Prisma.Sql, after: { at: string; id: string } | undefined, limit: number) {
-    const page = after ? Prisma.sql`and (e.at, e.id) < (${after.at}::timestamptz, ${after.id}::uuid)` : Prisma.empty;
+  private count(c: Client, firmId: string, f: Filter) {
+    const [a, b] = this.branches(firmId, f);
+    return c.$queryRaw<{ n: number }[]>`select ((select count(*) from audit_event e where ${a}) + (select count(*) from audit_event e where ${b}))::int as n`;
+  }
+
+  private rows(c: Client, firmId: string, f: Filter, after: { at: string; id: string } | undefined, limit: number, extra: Prisma.Sql = Prisma.empty) {
+    const page = after ? Prisma.sql`and (e.at, e.id) < (${after.at}::timestamptz, ${after.id}::uuid) ${extra}` : extra;
+    const [a, b] = this.branches(firmId, f, page);
+    const cols = Prisma.sql`e.id, e.at, e.firm_id, e.actor, e.actor_type, e.action, e.entity, e.entity_key, e.correlation_id, e.support_session_id, e.summary, e.detail`;
     return c.$queryRaw<Row[]>`select e.id::text as id, ${AT_TEXT} as at, e.firm_id::text as firm_id, e.actor, e.actor_type::text as actor_type, e.action, e.entity, e.entity_key,
       e.correlation_id, e.support_session_id::text as support_session_id, e.summary, e.detail
-      from audit_event e where ${where} ${page} order by e.at desc, e.id desc limit ${limit}`;
+      from ((select ${cols} from audit_event e where ${a} order by e.at desc, e.id desc limit ${limit})
+            union all (select ${cols} from audit_event e where ${b} order by e.at desc, e.id desc limit ${limit})) e
+      order by e.at desc, e.id desc limit ${limit}`;
   }
 
   async page(id: string, q: unknown) {
     const input = parseInput(REPORT_QUERY, q ?? {}), f = parseFilter(input), after = decode(input.cursor);
     const firm = await this.firm(id);
-    const got = await this.rows(this.db, this.where(firm.id, f), after, PAGE + 1);
+    const got = await this.rows(this.db, firm.id, f, after, PAGE + 1);
     return { firm, from: f.from.toISOString(), to: f.to.toISOString(), lines: got.slice(0, PAGE).map(line), next: got.length > PAGE ? encode(got[PAGE - 1]) : null };
   }
 
   async exportCsv(id: string, q: unknown): Promise<{ name: string; rows: number; csv: Buffer }> {
     const f = parseFilter(parseInput(EXPORT_QUERY, q ?? {}));
-    const firm = await this.firm(id), where = this.where(firm.id, f), iso = (d: Date) => d.toISOString();
+    const firm = await this.firm(id), iso = (d: Date) => d.toISOString();
     const { actor } = ourStaff();
+    // (1) Count and log the export, committed before any data: no line, no file.
+    const logged = await this.db.$transaction(async (tx) => {
+      const [{ n }] = await this.count(tx, firm.id, f);
+      if (n > EXPORT_MAX) problem(413, "Narrow the dates", `This export would hold ${n} lines; the limit is ${EXPORT_MAX} (Sample). Narrow the dates.`, { code: "EXPORT_TOO_LARGE", rows: n, limit: EXPORT_MAX });
+      const key = randomUUID();
+      await auditEvent.record(tx, { firmId: firm.id, actor, action: "audit.exported", entity: "plat_audit_export", entityKey: key,
+        summary: `ExpatReady staff exported this firm's access report: ${n} line${n === 1 ? "" : "s"} from ${iso(f.from)} to ${iso(f.to)}.`,
+        detail: { report: "access-report", rangeFrom: iso(f.from), rangeTo: iso(f.to), rows: n }, before: null, after: null });   // an export changes no record
+      const [line] = await tx.$queryRaw<{ id: string; at: Date }[]>`select id::text as id, at from audit_event where entity = 'plat_audit_export' and entity_key = ${key} and firm_id = ${firm.id}::uuid`;
+      if (!line) problem(500, "Not saved to the audit trail", "The export's line could not be read back, so nothing was exported.", { code: "AUDIT_LINE_MISSING" });
+      return { n, line };
+    });
+    // (2) The lines up to the export's own line, from one snapshot (one connection), leaving that line out.
+    const upTo = Prisma.sql`and e.at <= ${logged.line.at} and e.id <> ${logged.line.id}::uuid`;
     return this.db.$transaction(async (tx) => {
       await tx.$executeRaw`set transaction isolation level repeatable read, read only`;
-      const [{ n }] = await tx.$queryRaw<{ n: number }[]>`select count(*)::int as n from audit_event e where ${where}`;
-      if (n > EXPORT_MAX) problem(413, "Narrow the dates", `This export would hold ${n} lines; the limit is ${EXPORT_MAX} (Sample). Narrow the dates.`, { code: "EXPORT_TOO_LARGE", rows: n, limit: EXPORT_MAX });
-      // Committed before any data (its own transaction): no line, no file.
-      await this.db.$transaction((w) => auditEvent.record(w, { firmId: firm.id, actor, action: "audit.exported", entity: "plat_audit_export", entityKey: randomUUID(),
-        summary: `ExpatReady staff exported this firm's access report: ${n} line${n === 1 ? "" : "s"} from ${iso(f.from)} to ${iso(f.to)}.`,
-        detail: { report: "access-report", rangeFrom: iso(f.from), rangeTo: iso(f.to), rows: n }, before: null, after: null }));   // an export changes no record
-      const out: string[] = [`﻿${csvRow(CSV_HEADER)}`];
+      const out: string[] = [`\uFEFF${csvRow(CSV_HEADER)}`];
       for (let after: { at: string; id: string } | undefined; ;) {
-        const batch = await this.rows(tx, where, after, 1000);
+        const batch = await this.rows(tx, firm.id, f, after, 1000, upTo);
         for (const r of batch) out.push(csvRow(cells(line(r))));
         if (batch.length < 1000) break;
         after = { at: batch[batch.length - 1].at, id: batch[batch.length - 1].id };
       }
-      return { name: `access-report-${firm.id}-${iso(f.from).slice(0, 10)}-to-${iso(f.to).slice(0, 10)}.csv`, rows: n, csv: Buffer.from(out.join(""), "utf8") };
+      return { name: `access-report-${firm.id}-${iso(f.from).slice(0, 10)}-to-${iso(f.to).slice(0, 10)}.csv`, rows: logged.n, csv: Buffer.from(out.join(""), "utf8") };
     }, { timeout: 5 * 60_000, maxWait: 10_000 });
   }
 }
@@ -134,7 +157,8 @@ export class AccessReportController {
   page(@Param("id") id: string, @Query() q: Record<string, unknown>) { return this.report.page(id, q); }
 
   @Get(":id/access-report/export") @SystemKeys(AUDIT_LOG_LIST, AUDIT_EXPORT) @ReadsFirm("id") @Header("Cache-Control", "no-store") @Header("X-Content-Type-Options", "nosniff")
-  async export(@Param("id") id: string, @Query() q: Record<string, unknown>) {
+  async export(@Req() req: { method?: string }, @Param("id") id: string, @Query() q: Record<string, unknown>) {
+    if (req.method === "HEAD") problem(405, "Download the export", "An export is made only for a download (GET): a HEAD request would log an export nobody received.", { code: "EXPORT_HEAD_REFUSED" });
     const made = await this.report.exportCsv(id, q);
     return new StreamableFile(made.csv, { type: "text/csv; charset=utf-8", disposition: `attachment; filename="${made.name}"`, length: made.csv.length });
   }

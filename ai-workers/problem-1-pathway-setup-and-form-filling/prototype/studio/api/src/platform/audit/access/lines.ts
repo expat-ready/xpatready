@@ -164,7 +164,10 @@ export class SystemAccessLines implements NestInterceptor, OnModuleInit {
       await this.db.$transaction(async (tx) => { await recordFirmRead(tx, firm.toLowerCase(), call); });
       return;
     }
-    const f = req.query?.firm, filters: Record<string, string> = typeof f === "string" && UUID.test(f) ? { firm: f.toLowerCase() } : {};
+    // Part 2 (breaker M1): the firm filter is recorded only for a route that declares it narrows by `?firm=` (its own
+    // strict query reads it); on any other route a caller's `?firm=` is ignored by the handler, so it is never recorded,
+    // and no line can be planted in a firm's access report.
+    const f = data.firmFilter ? req.query?.firm : undefined, filters: Record<string, string> = typeof f === "string" && UUID.test(f) ? { firm: f.toLowerCase() } : {};
     await this.db.$transaction(async (tx) => { await recordCrossTenant(tx, data.scope, call, filters); });
   }
 }

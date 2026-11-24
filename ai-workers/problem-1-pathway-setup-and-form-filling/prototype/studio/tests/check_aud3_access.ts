@@ -66,7 +66,7 @@ const consoleFeature = (await import("../api/src/features/platform-system-consol
 const signupLinksFeature = (await import("../api/src/features/platform-signup-links.ts")).default;   // round 6: R1.90 (#3040)
 const supportFeature = (await import("../api/src/features/platform-system-support.ts")).default;   // round 8: PF-17 part 2 (#3225)
 const accessFeature = (await import("../api/src/features/audit-access.ts")).default as { controllers?: unknown[]; providers: unknown[] };
-const { ReadsFirm, ChangesFirm, NoFirmData } = await import("../api/src/platform/audit/access/declare.ts");
+const { ReadsFirm, ChangesFirm, NoFirmData, ReadsAcrossFirms } = await import("../api/src/platform/audit/access/declare.ts");
 const { assertFirmDataDeclared, recordCrossTenant, recordFirmRead, SystemAccessLines, FIRM_READ, CROSS_TENANT } = await import("../api/src/platform/audit/access/lines.ts");
 const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
 const port: Record<string, any> = await import("../ports/audit.ts");
@@ -105,6 +105,8 @@ class Aud3TestController {
   }
   @Get("firms/:id/via-req") @SystemKeys("system/firm:read") @ReadsFirm("id")
   viaReq(@Param("id") id: string, @Req() r: { res: { json(b: unknown): void } }) { handled++; r.res.json({ firm: id }); }
+  @Get("tickets/:id") @SystemKeys("system/firm:read") @ReadsAcrossFirms("one Sample ticket, named by its own id")
+  ticket(@Param("id") id: string) { handled++; return { ticket: id }; }
   @Get("mine") @AnySystemStaff("own identity") @NoFirmData("own identity")
   mine() { handled++; return { ok: true }; }
 }
@@ -232,6 +234,12 @@ try {
   const firmStaffLine = sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, firm_id) values (gen_random_uuid(), (select id from workspace where key = 'platform-audit'),
     'staff:${uuid()}', 'platform.aud3_test.firm_staff', 'platform_firm', '${firmA}', 'Sample firm staff line.', '${firmA}') returning id`);
   await call(base, "GET", "/api/system/register/holds", { token: ownerT });
+  // Breaker M1 (round 1): a read across firms whose route ignores `?firm=` (no firmFilter declared) records no firm,
+  // so a caller cannot plant a line in firm A's report; the holds list (which narrows by ?firm=) still records it.
+  const planted = await call(base, "GET", `/api/system/aud3-test/tickets/${uuid()}?firm=${firmA}`, { token: supportT });
+  const plantedLine = sql(`select coalesce(detail->>'firm', 'none') from audit_event where action = '${CROSS_TENANT}' and correlation_id = '${planted.requestId}'`);
+  ok("AUD-3 DW5 fail (breaker M1): ?firm=<firm A> on a read across firms that does not narrow by it writes its cross_tenant.access line with no firm, so it can never reach firm A's report",
+    planted.status === 200 && plantedLine === "none", { planted: planted.status, plantedLine });
   const idsWhere = (where: string) => sql(`select coalesce(string_agg(id::text, ','), '') from audit_event where ${where}`).split(",").filter(Boolean);
   const wantA = idsWhere(`(firm_id = '${firmA}' and actor_type = 'OUR_STAFF') or (firm_id is null and action = '${CROSS_TENANT}' and detail->>'firm' = '${firmA}')`);
   const notA = idsWhere(`firm_id = '${firmB}' or (firm_id is null and action = '${CROSS_TENANT}' and detail->>'firm' is null) or id = '${firmStaffLine}'`);
@@ -286,8 +294,16 @@ try {
     csv.status === 200 && /^text\/csv/.test(csv.headers.get("content-type") ?? "") && /attachment; filename="access-report-/.test(csv.headers.get("content-disposition") ?? "") && csv.headers.get("cache-control") === "no-store"
     && wantA.every((id) => csvText.includes(id)) && notA.every((id) => !csvText.includes(id)) && lines(`firm_id = '${firmA}' and action = 'audit.exported'`) === exp0 + 1
     && exported.startsWith(`ourstaff:${OWNER}|OUR_STAFF|plat_audit_export|`) && exported.endsWith(`|${csv.headers.get("x-request-id")}`), { status: csv.status, exported, head: csvText.slice(0, 300) });
-  ok("AUD-3 DW5 pass: the export's own read writes one platform.system.firm_read line on firm A's trail too",
-    lines(`firm_id = '${firmA}' and action = '${FIRM_READ}' and detail->>'route' = '${EXPORT_ROUTE}'`) === 1);
+  const headExp0 = lines(`firm_id = '${firmA}' and action = 'audit.exported'`);
+  const headExport = await fetch(`${base}/api/system/firms/${firmA}/access-report/export?${RANGE}`, { method: "HEAD", headers: { authorization: `Bearer ${ownerT}` } });
+  ok("AUD-3 DW5 fail (breaker m1): HEAD on the export answers 405 and logs no export nobody received",
+    headExport.status === 405 && lines(`firm_id = '${firmA}' and action = 'audit.exported'`) === headExp0, headExport.status);
+  // Breaker M2: each export uses one connection at a time, so a burst of exports leaves the pool to other routes.
+  const burst = await Promise.all([...Array.from({ length: 12 }, () => fetch(`${base}/api/system/firms/${firmA}/access-report/export?${RANGE}`, { headers: { authorization: `Bearer ${ownerT}` } }).then(async (r) => { await r.text(); return r.status; })),
+    call(base, "GET", "/api/system/register/holds", { token: ownerT }).then((r) => r.status)]);
+  ok("AUD-3 DW5 pass (breaker M2): 12 exports at once and an unrelated holds list all answer 200", burst.every((s) => s === 200), burst);
+  ok("AUD-3 DW5 pass: each export's own read writes one platform.system.firm_read line on firm A's trail too (the first and the burst's 12; none for HEAD)",
+    lines(`firm_id = '${firmA}' and action = '${FIRM_READ}' and detail->>'route' = '${EXPORT_ROUTE}'`) === 13);
   const audRead = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}`, { token: auditorT });
   const exp1 = lines(`firm_id = '${firmA}' and action = 'audit.exported'`);
   const audExport = await call(base, "GET", `/api/system/firms/${firmA}/access-report/export?${RANGE}`, { token: auditorT });
