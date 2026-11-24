@@ -214,3 +214,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * M1 ruled on #3428: Major, latent, own row in lane 4oPSMou after #3428's approval, before #3217's minors; red test first, plus which upserts Prisma runs natively. Evidence is the lane's (main 2 of 2 without a key; nothing kept with the real key); BACKLOG row owed.
 * Queue: #3033, #3276, #3405, #3193, #3398, #3385, #3379, #3421, #3422, #3420, #3308 carry queued; batches #3423, #3425, #3426, #3427 running, no red seen (#3426 has one cancelled check, not looked into). Last merge 12:19 IST. Full runs 45344502243 (#3234's old head) and 45344518667 (#3277) still going.
 * Disk 9.3 GB free at 12:46, below the 10 GB line; nothing deleted. claude.ai list read (50 rows): Running: 4oPSMou, 5a3n1, 87D51, this session; 4p8aWF "Tooling · idle-lane alarm" Cloud, its state not read.
+
+### Lead 24, check 12:57 IST 24 Nov
+* Merged 12:48 to 12:56 IST: #3193, #3033, #3276, #3398, #3405, #3379 (R1.50 Works), #3422 (R1.90 Works). Counted on main 21af27936 by grep: **55 Works, 23 Partial, 23 Not built** of 101.
+* Lead B 6: #3428 df7e5d15d OK; its Minor (readyForQuery) is in the M1 row. Round-2 verdicts not in. Batches: #3432 (#3385), #3435 (#3308 + #3430; one cancelled check), #3436 (#3421), #3437 (#3420). #3431 queued.
+* Read posted #3429 913f71d07 (R1.5 task role; code only); Lead B's read asked. New, approved, not read: #3434 0ca135826 (PF-5tv). #3411 and #3219 conflict with main: asked on the PRs (the sessions not confirmed to see it). qa Track B 7YhUV told to walk R1.58 (Running seen).
+* Disk 12.3 GB. 53 runs in progress, 12 queued.
