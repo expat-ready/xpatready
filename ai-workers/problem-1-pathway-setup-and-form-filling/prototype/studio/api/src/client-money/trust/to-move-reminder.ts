@@ -6,10 +6,12 @@
 //   days after the client is invoiced) would be stricter when trust is applied late: noted only, Unconfirmed: no counsel.
 // * The sweep (daily, Sample time) runs on its own bypass use (to-move.bypass.ts): it lists the firms with a line older
 //   than 25 days by "now" from the clock port (P-607), never the database's, writes each such firm's platform.bypass line
-//   (touchEachFirm), and queues that firm's waiting job keyed `trust-to-move:<firm>:<oldest waiting line>`. A key never
-//   queues twice (JobPort), so the item fires once per oldest waiting line: the sweep run again tells nobody again; once
-//   that line has moved, a line still waiting (or one that waits later) is told once more ("Duplicate beats a miss",
+//   (touchEachFirm), and queues that firm's waiting job keyed `trust-to-move:<firm>:<oldest waiting line>:<its move lines>`.
+//   A key never queues twice (JobPort), so the sweep run again with nothing changed tells nobody again; once that line
+//   has moved (all or part), or comes back by an undo, a line still waiting is told once more ("Duplicate beats a miss",
 //   AG16-60). No table holds the reminder's state: the job key is it.
+// * Only trust → operating lines count (the brief rules the start date for withdrawals and WRONG_ACCOUNT corrections;
+//   an operating → trust line, what a credit note owes back, carries its withdrawal's date: a question for the tech lead).
 // * The waiting job runs in its firm's scope, reads again that a line still waits (skip-if-stale, AG-13-14), and tells
 //   every active holder of agent/payment:record through NotificationPort, ids only: item { kind: "firm", id: <firm> }.
 // * Clearing the item when no line waits (AG-6-73 rule 5) needs a way to resolve a notification, which NotificationPort
@@ -49,15 +51,18 @@ export class ToMoveReminder {
   async sweep(): Promise<number> {
     const since = this.since();
     const firms = await asBypass(TO_MOVE_SWEEP_BYPASS, async () => {
-      const rows = await this.p.db.$queryRaw<{ firm_id: string; oldest: string }[]>`
-        select distinct on (m.firm_id) m.firm_id::text, m.source_entry_id::text as oldest from money_to_move m
-          where m.created_at < ${since}::timestamptz order by m.firm_id, m.created_at, m.source_entry_id`;
+      // The key also counts the oldest line's move lines (insert-only): a move then an undo, or a part moved, makes a new
+      // key, so a line back on the list is told once more (break M2); the sweep run again with nothing changed is not.
+      const rows = await this.p.db.$queryRaw<{ firm_id: string; oldest: string; n: number }[]>`
+        select distinct on (m.firm_id) m.firm_id::text, m.source_entry_id::text as oldest,
+               (select count(*) from money_move_line l where l.firm_id = m.firm_id and l.source_entry_id = m.source_entry_id)::int as n
+          from money_to_move m where m.direction = 'TRUST_TO_OPERATING' and m.created_at < ${since}::timestamptz order by m.firm_id, m.created_at, m.source_entry_id`;
       const { failed } = await touchEachFirm(this.p.db, rows.map((r) => r.firm_id));
       return rows.filter((r) => !failed.has(r.firm_id.toLowerCase()));
     });
     let queued = 0;
     for (const f of firms) {
-      try { if ((await this.p.jobs.enqueue(TO_MOVE_WAITING_JOB, {}, { key: `trust-to-move:${f.firm_id}:${f.oldest}`, firmId: f.firm_id })).queued) queued++; }
+      try { if ((await this.p.jobs.enqueue(TO_MOVE_WAITING_JOB, {}, { key: `trust-to-move:${f.firm_id}:${f.oldest}:${f.n}`, firmId: f.firm_id })).queued) queued++; }
       catch (e) { logPort.error("trust_to_move_queue_failed", e, { firmId: f.firm_id }); }
     }
     return queued;
@@ -68,7 +73,7 @@ export class ToMoveReminder {
     if (!job.firmId || !UUID.test(job.firmId)) return 0;
     const f = firmScope(job.firmId).firmId, since = this.since();
     return withFirm(f, () => this.p.db.$transaction(async (tx) => {
-      const [w] = await tx.$queryRaw<{ waits: boolean }[]>`select exists (select 1 from money_to_move m where m.firm_id = ${f}::uuid and m.created_at < ${since}::timestamptz) as waits`;
+      const [w] = await tx.$queryRaw<{ waits: boolean }[]>`select exists (select 1 from money_to_move m where m.firm_id = ${f}::uuid and m.direction = 'TRUST_TO_OPERATING' and m.created_at < ${since}::timestamptz) as waits`;
       if (!w?.waits) return 0;
       const roles = (await tx.platformRolePermission.findMany({ where: { permissionKey: PAYMENT_RECORD }, select: { role: true } })).map((r) => r.role);
       const staff = await tx.platformStaff.findMany({ where: firmScope(f, { status: "ACTIVE" as const, grants: { some: { firmId: f, endedAt: null, role: { in: roles } } } }), select: { id: true }, orderBy: { id: "asc" } });

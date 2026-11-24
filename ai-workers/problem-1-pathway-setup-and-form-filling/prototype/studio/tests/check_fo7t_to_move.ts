@@ -163,6 +163,10 @@ try {
   const noDate = await move([{ sourceEntryId: W1, amountMinor: 100 }], tR, { transferDate: undefined });
   const future = await move([{ sourceEntryId: W1, amountMinor: 100 }], tR, { transferDate: "2999-01-01" });
   ok("FO-7t DW12 fail: no transfer date, or one in the future → 422, nothing written", fieldError(noDate.status) && fieldError(future.status) && batches() === 0, [noDate.body, future.body]);
+  const old1999 = await move([{ sourceEntryId: W1, amountMinor: 100 }], tR, { transferDate: "1999-12-31" }), old0001 = await move([{ sourceEntryId: W1, amountMinor: 100 }], tR, { transferDate: "0001-01-01" });
+  const beforeMoney = await move([{ sourceEntryId: W1, amountMinor: 100 }], tR, { transferDate: "2001-01-01" });
+  ok("FO-7t DW12 fail (break M1, m2): a transfer date before 2000 (the database's own bound) or before the line's money left trust → 422 on transferDate, never a 500, nothing written",
+    [old1999, old0001, beforeMoney].every((r) => fieldError(r.status) && r.body.fields?.transferDate) && batches() === 0, [old1999.body, old0001.body, beforeMoney.body]);
   const keyless = await move([{ sourceEntryId: W1, amountMinor: 100 }], tO);
   ok("FO-7t DW12 fail (keys): a Case Officer without agent/payment:record → 403", keyless.status === 403, keyless.body);
   const over = await move([{ sourceEntryId: W1, amountMinor: 16951 }]);
@@ -190,6 +194,9 @@ try {
   const u1 = await undo(moved.batchId);
   ok("FO-7t DW13 pass: an undo with a reason → 201 naming the batch it undoes; its lines go back to the list (169.50 open again)",
     u1.status === 201 && u1.body.undoesBatchId === moved.batchId && open(W1) === 16950 && (await list()).body.lines.some((x: any) => x.sourceEntryId === W1), u1.body);   // eslint-disable-line @typescript-eslint/no-explicit-any
+  const uOld = await undo(moved.batchId, { reason: "Bank sent it back (Sample)", transferDate: "1999-12-31" }), uBefore = await undo(moved.batchId, { reason: "Bank sent it back (Sample)", transferDate: "2001-01-01" });
+  ok("FO-7t DW13 fail (break M1, m2): an undo dated before 2000 or before the batch's own transfer date → 422 on transferDate, never a 500, nothing written",
+    [uOld, uBefore].every((r) => fieldError(r.status) && r.body.fields?.transferDate) && batches() === 3, [uOld.body, uBefore.body]);
   const u2 = await undo(moved.batchId);
   ok("FO-7t DW13 fail: a second undo of the same batch → 409 MOVE_REFUSED (already undone), nothing written", u2.status === 409 && u2.body.code === "MOVE_REFUSED" && batches() === 3 && open(W1) === 16950, u2.body);
   const uu = await undo(u1.body.batchId);
@@ -224,6 +231,9 @@ try {
   const oList = await list(tO), oMove = await move([{ sourceEntryId: W3, amountMinor: 1 }], tO);
   ok("FO-7t DW10 fail (C5, fails closed): a Case Officer with agent/payment:record who sees no case and no client → an empty list, and moving a line it cannot see → 404, nothing written",
     oList.status === 200 && oList.body.lines.length === 0 && oList.body.totals.length === 0 && oMove.status === 404 && open(W3) === 600, [oList.body, oMove.body]);
+  const before = batches(), oUndo = await undo(part.body.batchId, undefined, tO);
+  ok("FO-7t DW10 fail (review M2, C5 on the undo): the same Case Officer undoing a batch whose line is on a case it cannot see → 404, nothing written, the batch still moved",
+    oUndo.status === 404 && batches() === before && open(W3) === 600, oUndo.body);
   const tList = await list(tT);
   ok("FO-7t DW10 pass (C5): a Case Manager who sees the cases reads the same lines as the Owner", tList.status === 200 && tot(tList.body)?.openMinor === tot((await list()).body)?.openMinor, tList.body);
   const movedCount = Number(sql(`select count(*) from money_move_batch where undoes_batch_id is null`)), undone = Number(sql(`select count(*) from money_move_batch where undoes_batch_id is not null`));
@@ -268,6 +278,14 @@ try {
   ok("FO-7t DW14 setup: every open line moved, 100 lines a batch → the list is empty", all.every((r) => r.status === 201) && (await list()).body.lines.length === 0, all.map((r) => r.body));
   await fclock.advance({ days: 1 });
   ok("FO-7t DW14 pass: after moving, the sweep finds nothing waiting and tells nobody again", notifyCalls() === 1 && toA().length === 2, { calls: notifyCalls() });
+  // Break M2: the last batch undone puts its lines back; they still wait (over 25 days) → told once more, then once only.
+  const lastBatch = all[all.length - 1].body.batchId as string;
+  const back = await undo(lastBatch);
+  await fclock.advance({ days: 1 });
+  const afterUndo = notifyCalls();
+  await fclock.advance({ days: 1 }); await reminder.sweep();
+  ok("FO-7t DW14 pass (break M2): a batch undone puts old lines back on the list → the item is sent once more (unread again), and the sweep run again sends nothing more",
+    back.status === 201 && afterUndo === 2 && notifyCalls() === 2 && toA().length === 2 && toA().every((n) => !n.read), { back: back.body, afterUndo, now: notifyCalls() });
   void Q; void staffO;
 } catch (e) {
   ok("FO-7t part 3: the check ran to the end", false, e instanceof Error ? e.stack : String(e));

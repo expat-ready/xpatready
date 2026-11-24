@@ -33,7 +33,8 @@ const Direction = z.enum(["TRUST_TO_OPERATING", "OPERATING_TO_TRUST"], { message
 const id = (what: string) => z.string().regex(UUID, `${what} is not an id.`).transform((v) => v.toLowerCase());
 const amount = z.number({ error: "The amount (in cents) must be a whole number." }).int("The amount (in cents) must be a whole number.").min(1, "The amount is at least 1 cent.").max(MINOR_MAX, `The amount is at most ${MONEY(MINOR_MAX)}.`);
 const day = z.string({ error: "The transfer date is needed (YYYY-MM-DD)." }).regex(/^\d{4}-\d{2}-\d{2}$/, "A date as YYYY-MM-DD.")
-  .refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().startsWith(d), "That date does not exist.");
+  .refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().startsWith(d), "That date does not exist.")
+  .refine((d) => d >= "2000-01-01", "A bank transfer date is on or after 2000-01-01.");   // the database's bound (money_move_batch_date_check), as a field error (break M1)
 const words = (what: string, max: number) => z.string({ error: `${what} is needed.` }).trim().min(1, `${what} is needed.`).max(max, `At most ${max} characters.`).regex(/^[^\u0000-\u001f\u007f\u2028\u2029]*$/, "One line, no tabs or control characters.");
 
 export const ListIn = z.strictObject({ currency: MoneyCurrency.optional() });
@@ -47,12 +48,12 @@ const refuse = (detail: string): never => problem(409, "Not possible now", detai
 /** The locks a set of trust entries' move lines take: each entry's party, and for a withdrawal its invoice's party, each
  *  with its own currency; sorted by party id then currency, as money_move_line_write compares ids (smaller first). */
 async function takeLocks(tx: Tx, f: string, entryIds: string[]) {
-  const locks = await tx.$queryRaw<{ party: string; currency: string }[]>`
-    select coalesce(e.person_id, e.company_id)::text as party, e.currency::text as currency from money_trust_entry e where e.firm_id = ${f}::uuid and e.id = any(${entryIds}::uuid[])
+  const locks = await tx.$queryRaw<{ party: string; currency: string }[]>`select x.party::text, x.currency::text from (
+    select coalesce(e.person_id, e.company_id) as party, e.currency from money_trust_entry e where e.firm_id = ${f}::uuid and e.id = any(${entryIds}::uuid[])
     union
-    select coalesce(i.person_id, i.company_id)::text, i.currency::text from money_trust_entry e join money_invoice i on i.firm_id = e.firm_id and i.id = e.invoice_id
+    select coalesce(i.person_id, i.company_id), i.currency from money_trust_entry e join money_invoice i on i.firm_id = e.firm_id and i.id = e.invoice_id
       where e.firm_id = ${f}::uuid and e.id = any(${entryIds}::uuid[]) and e.kind = 'WITHDRAWAL_TO_INVOICE'
-    order by 1, 2`;
+    ) x order by x.party, x.currency`;   // uuid order, as money_move_line_write compares ids (review m3)
   for (const l of locks) await tx.$executeRaw`select money_trust_lock(${f}::uuid, ${l.party}::uuid, ${l.currency}::"MoneyCurrency")`;
 }
 
@@ -67,7 +68,7 @@ export class TrustToMove {
       const since = new Date(this.clock.now().getTime() - TO_MOVE_WAIT_DAYS * 86_400_000);
       const rows = await tx.$queryRaw<{ source_entry_id: string; kind: string; direction: string; currency: string; person_id: string | null; company_id: string | null; case_id: string | null; invoice_id: string | null; open_minor: number; source_date: Date; over: boolean }[]>`
         select m.source_entry_id::text, m.kind::text, m.direction::text, m.currency::text, m.person_id::text, m.company_id::text, m.case_id::text, m.invoice_id::text, m.open_minor, m.created_at as source_date,
-               m.created_at < ${since}::timestamptz as over
+               (m.direction = 'TRUST_TO_OPERATING' and m.created_at < ${since}::timestamptz) as over
           from money_to_move m where m.firm_id = ${f}::uuid and ${seen(scope, "m")} ${q.currency ? Prisma.sql`and m.currency = ${q.currency}::"MoneyCurrency"` : Prisma.empty}
           order by m.currency, m.direction, m.created_at, m.source_entry_id`;
       const lines = rows.map((r) => ({ sourceEntryId: r.source_entry_id, kind: r.kind, direction: r.direction, currency: r.currency, personId: r.person_id, companyId: r.company_id, caseId: r.case_id, invoiceId: r.invoice_id,
@@ -93,6 +94,8 @@ export class TrustToMove {
       if (found.length !== ids.length || found.some((e) => !e.visible)) notFound("trust entry");
       if (found.some((e) => e.currency !== b.currency))
         badField("lines", `One batch per currency: CAD and USD never share a batch, and this batch is ${b.currency}. Record each currency's moves as its own batch. Nothing was saved.`);
+      const [first] = await tx.$queryRaw<{ d: string }[]>`select to_char(min(e.created_at)::date - 1, 'YYYY-MM-DD') as d from money_trust_entry e where e.firm_id = ${f}::uuid and e.id = any(${ids}::uuid[])`;
+      if (b.transferDate < first.d) badField("transferDate", "A move is never dated before its money left trust. Nothing was saved.");   // break m2; one day's slack for the time zone
       await takeLocks(tx, f, ids);
       const [batch] = await tx.$queryRaw<{ id: string }[]>`insert into money_move_batch (firm_id, currency, direction, transfer_date, recorded_by)
         values (${f}::uuid, ${b.currency}::"MoneyCurrency", ${b.direction}::"MoneyMoveDirection", ${b.transferDate}::date, ${by}) returning id::text`;
@@ -120,12 +123,13 @@ export class TrustToMove {
     if (u.transferDate && u.transferDate > dayOf(this.clock.now())) badField("transferDate", "The date the bank sent the money back can't be in the future. Nothing was saved.");
     return this.write(async (tx) => {
       if (!(await trustShows(tx, f))) notFound("trust record");
-      const [b] = await tx.$queryRaw<{ currency: string; direction: string }[]>`select currency::text, direction::text from money_move_batch where firm_id = ${f}::uuid and id = ${bid}::uuid`;
+      const [b] = await tx.$queryRaw<{ currency: string; direction: string; transfer_date: string | null }[]>`select currency::text, direction::text, to_char(transfer_date, 'YYYY-MM-DD') as transfer_date from money_move_batch where firm_id = ${f}::uuid and id = ${bid}::uuid`;
       if (!b) notFound("batch");
       const lines = await tx.$queryRaw<{ source_entry_id: string; amount_minor: number; visible: boolean }[]>`
         select l.source_entry_id::text, l.amount_minor, ${seen(scope, "e")} as visible from money_move_line l join money_trust_entry e on e.firm_id = l.firm_id and e.id = l.source_entry_id
           where l.firm_id = ${f}::uuid and l.batch_id = ${bid}::uuid`;
       if (lines.some((l) => !l.visible)) notFound("batch");
+      if (u.transferDate && b.transfer_date && u.transferDate < b.transfer_date) badField("transferDate", "The money can't come back before the batch's own transfer date. Nothing was saved.");   // break m2
       await takeLocks(tx, f, [...new Set(lines.map((l) => l.source_entry_id))]);
       const [undo] = await tx.$queryRaw<{ id: string }[]>`insert into money_move_batch (firm_id, currency, direction, transfer_date, undoes_batch_id, reason, recorded_by)
         values (${f}::uuid, ${b.currency}::"MoneyCurrency", ${b.direction}::"MoneyMoveDirection", ${u.transferDate ?? null}::date, ${bid}::uuid, ${u.reason}, ${by}) returning id::text`;
@@ -146,7 +150,7 @@ export class TrustToMove {
       if (/money_move_batch_firm_id_undoes_batch_id_key/.test(text) || /undoes_batch_id/.test(JSON.stringify((e as { meta?: unknown }).meta ?? ""))) refuse("This batch is already undone. Nothing was saved.");
       if (/money_move_line_firm_id_source_entry_id_move_ordinal_key|move_ordinal/.test(text + JSON.stringify((e as { meta?: unknown }).meta ?? ""))) refuse("Someone moved this line at the same moment: read the list again. Nothing was saved.");
       const said = /money_[a-z_]+: ([^\n]{1,400})/.exec(text);
-      return said ? refuse(`The money rules refused this: ${said[0].replace(/\s+$/, "")}. Nothing was saved.`) : Promise.reject(e);
+      return said ? refuse(`The money rules refused this: ${said[0].replace(/[\s`'")]+$/, "")}. Nothing was saved.`) : Promise.reject(e);
     }
   }
 }
