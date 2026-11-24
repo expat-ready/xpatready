@@ -181,8 +181,10 @@ try {
   ok("FO-6 door C (part 4b): POST …/code mails the client a 6-digit code through MailPort; only its sha256 is stored", ask.status < 300 && /^\d{6}$/.test(code) && sql(`select count(*) from fo_signer where request_id = '${A.req}' and code_sha256 = '${sha(code)}'`) === "1", { ask: brief(ask), gotCode: !!code });
   const verify = await c1("POST", door(TA || "none", "/code/verify"), { code });
   const cookie = verify.cookies.find((x) => /httponly/i.test(x)) ?? "";
+  // The cookie's Path attribute is exactly the door's path (compared as text, no pattern built from the token: CodeQL on #3433).
+  const pathIs = (setCookie: string, want: string) => setCookie.split(";").map((x) => x.trim()).some((x) => x.slice(0, 5).toLowerCase() === "path=" && x.slice(5) === want);
   ok("FO-6 door C (part 4b): the right code starts a signing session: an http-only, SameSite=Strict cookie on exactly the door's path, Sample 30 minutes",
-    verify.status < 300 && !!cookie && new RegExp(`path=/api/public/sign/${TA.replace(/[.]/g, "\\.")}(;|$)`, "i").test(cookie) && /samesite=strict/i.test(cookie) && /max-age=1800|expires=/i.test(cookie), { verify: brief(verify), cookie });
+    verify.status < 300 && !!cookie && pathIs(cookie, `/api/public/sign/${TA}`) && /samesite=strict/i.test(cookie) && /max-age=1800|expires=/i.test(cookie), { verify: brief(verify), cookie });
   const consent = await c1("POST", door(TA || "none", "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion });
   ok("FO-6 door C (part 4b): consent is recorded once with its text version (AG-5-20)", consent.status < 300 && sql(`select count(*) from fo_signer where request_id = '${A.req}' and role = 'CLIENT' and consent_text_version = '${String(live.body?.consentTextVersion ?? "none")}'`) === "1", brief(consent));
   const twice = await c1("POST", door(TA || "none", "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion });
