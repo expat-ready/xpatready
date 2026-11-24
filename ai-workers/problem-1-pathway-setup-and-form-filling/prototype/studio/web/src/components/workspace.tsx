@@ -22,6 +22,7 @@ import { FoldArrow } from "@/components/fold-out";
 import { anyDraft, discardDraft, draftsAt, onForget, useDraftTick } from "@/lib/sync/drafts";
 import { onStaffChange, sessionEndReason, staffScope } from "@/modules/platform/session";
 import { cn } from "@/lib/utils";
+import { queryClient } from "@/lib/api";
 
 export const TAB_CAP = 12;
 const STORE = "xr.workspace.v1";
@@ -123,6 +124,11 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
     if (shownOwner.current !== NOBODY) try { sessionStorage.setItem(storeOf(shownOwner.current), JSON.stringify({ tabs: kept.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
   }, [tabs, active]);
   React.useEffect(() => { setMounted((m) => (m.has(active) ? m : new Set(m).add(active))); }, [active]);
+  // A tab coming forward reads its stale answers again, as a page did when it mounted before PF-31 (the app's staleTime,
+  // 2 s; it keeps refetch-on-focus off): what was typed and the scroll stay, only the server's data is fresh (Lead 13: a
+  // Terms tab opened earlier came back with its first page of acceptances from before).
+  const firstShow = React.useRef(true);
+  React.useEffect(() => { if (firstShow.current) { firstShow.current = false; return; } void queryClient.refetchQueries({ type: "active", stale: true }); }, [active]);
   React.useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(t); }, [notice]);
 
   // Each history entry keeps its router state ({ ws, usr }, as BrowserRouter keeps `usr`): Back and a reload give a page the
