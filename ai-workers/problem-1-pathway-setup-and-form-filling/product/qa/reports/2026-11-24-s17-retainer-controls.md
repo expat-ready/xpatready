@@ -17,14 +17,17 @@ Screenshots: `2026-11-24-s17-retainer-controls/` (M1-send-panel-after-typing-175
 * M4: the blocker's link opens /front-office/prospects/<id>. Email fields or edit controls found there: 0. (b) "Save as version 3" pressable: false. Values show the email: false. The signer blocker is still shown: true.
 * M5: Send answered 409 CONFLICT_DISCLOSURE_NOT_PRINTED. The page shows the words: true. Template controls on the draft: 0. Status now: DRAFT.
 
-**What this means for the rows.** R1.53 is **Works** (21 Nov, bfd1b2de1). These are three open Majors that name it, and P-305 says an open Major keeps a row Partial. qa has not moved the R1.53 row here: that is a question for the tech lead (below). QA-780 also touches R1.108 (the conflict check), which is Works.
+**What this means for the rows.** R1.53 was **Works** (21 Nov, bfd1b2de1). Three open Majors now name it, so it moves to **Partial** in `qa/CAPABILITIES.md` (P-305; records never claim Works that an open Major contradicts, P-488). QA-778 contradicts its own words, "edits make versions until sent". It will be re-scored when the fixes merge. Its packs are green, so it is not a `REGRESSION-HELD.md` case. QA-780 also touches R1.108 (the conflict check, Works). The gate itself behaves correctly there, so R1.108 is left at Works and put to the tech lead (question 1).
 
 **Not walked:** the other S17 claims (M2, M8) and the rest of the list; they were not asked.
 
 ## Questions for the tech lead
-1. R1.53 is Works with three open Majors naming it (QA-778, QA-779, QA-780). Should qa hold it in `REGRESSION-HELD.md`, or move it to Partial now (P-305)? My recommendation is to hold it, and re-score it when the fixes merge. The flaws were there at the 21 Nov proof; j_53 never typed without saving, never used a client with no email, and never had a Potential conflict.
+1. R1.108 (conflict check) stays Works here: its gate refuses correctly, and the dead end is the retainer page (QA-780). Do you agree, or should QA-780 hold R1.108 too? My recommendation: leave R1.108 at Works.
 2. Severity: all three are marked Major, because each one sends the wrong agreement or blocks the path for good. Are any of them Critical under "a capability gives a wrong result"? QA-778 sends a fee the person did not intend. My recommendation: keep Major, because the panel shows the old fee before Send.
 
 ## Suggestions
 * *Needed for the proof · Capability:* Check and send saves the typed edits first, or is off while there are any (QA-778). A person's email can be edited where their phone is (FO-9a) (QA-779). A draft's template can be changed, which the API's PATCH already takes as `templateId` (QA-780).
 * *Later · Capability:* the starter template carries {conflict.disclosure}, so a firm on the starter is not stuck at its first potential conflict.
+
+## Fresh reader (Opus, a new context; read only, P-339)
+All three were confirmed: no screen path was missed (no screen edits a person's email; the page never sends `templateId`; a second live retainer is refused; the withdraw route has no screen). Major was found defensible for each one. Change asked and made: R1.53 to Partial now (P-305, P-488), not a hold. Optional wording, taken: "that prospect's retainer … by screens"; the fee-retype way through (b) is marked as read from the code; the withdraw route is noted.
