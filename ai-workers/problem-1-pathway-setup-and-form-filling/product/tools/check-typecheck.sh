@@ -57,8 +57,9 @@ cat > "$D/good.ts" <<'E2'
 import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: "x" }) });
-type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
-export const same: Same<typeof db, PrismaClient> = true;
+// @ts-expect-error the constructor takes no type of its own (Prisma's generic one would infer a new client type per file)
+export const own = new PrismaClient<Prisma.PrismaClientOptions>({ adapter: new PrismaPg({ connectionString: "x" }) });
+export const same: PrismaClient = db;
 export const f = async () => { await db.$transaction(async (tx: Prisma.TransactionClient) => { await tx.platformFirm.findFirst({ select: { id: true } }); }); return db.platformFirm.findMany(); };
 E2
 cat > "$D/bad.ts" <<'E2'
@@ -72,5 +73,5 @@ export const d = async (): Promise<number> => (await db.platformFirm.findFirst({
 export const e: string = db;
 E2
 c=$(run --project api="$D/tsconfig.json" --known "$T/none.txt"); n=$(grep -cE 'bad.ts\([4-8]\): TS' "$T/out")
-ok "one shared client type: five planted errors (option, model, field, result, assignment) are all found, a right file has none, its client is the app's type" "$([ "$c" = 1 ] && [ "$(grep -oE 'bad.ts\([4-8]\)' "$T/out" | sort -u | wc -l | tr -d ' ')" = 5 ] && ! grep -q 'good.ts(' "$T/out" && echo 1)" "exit $c, $n: $(tail -8 "$T/out")"
+ok "one shared client type: five planted errors (option, model, field, result, assignment) are all found, a right file has none, the constructor is not generic" "$([ "$c" = 1 ] && [ "$(grep -oE 'bad.ts\([4-8]\)' "$T/out" | sort -u | wc -l | tr -d ' ')" = 5 ] && ! grep -q 'good.ts(' "$T/out" && echo 1)" "exit $c, $n: $(tail -8 "$T/out")"
 echo "$pass passed, $fail failed"; [ "$fail" = 0 ]
