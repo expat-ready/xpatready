@@ -104,6 +104,6 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **Check script:** /private/tmp/claude-501/-Users-ranjansingh-Desktop-Xpatready/6dfe96ec-8ddc-443e-a782-11e5edf349f9/scratchpad/chk.sh <minutes>.
 * My errors: I asked for #3381's merge without saying it would restart the running batches (it ended #3396 and #3399); archiving Lead 1 took the git-host desk and AWS proof 3 with it (said beforehand).
 
-## Lead 22, 10:46 IST 24 Nov
+## Lead 22, 10:43 IST 24 Nov (first written 10:46, a guess, corrected from the commit time)
 * Stripe keys: origin/main `design/accounts-register.md` rows 4, 6 and the secret-names line already say keys live only in AWS Secrets Manager ca-central-1; the Stripe sandbox key (15 Nov) and BoldSign sandbox key are recorded as stored there, row 10 Microsoft as deferred (P-621; A352 of 24 Nov names it again). Records only: the store itself not looked at. The code reads PLATFORM_STRIPE_SECRET_KEY, PLATFORM_STRIPE_WEBHOOK_SECRET, PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET (settings.ts:47-49), not the names without PLATFORM_ given earlier. The register's name form is expatready/<env>/..., the 23 Nov AWS proof used xr/staging/*: to settle. No row for webhook secrets in the register.
 * Nightly 24 Nov: started by its own schedule 04:51Z, in progress. #3385 is queued with its own approval; its open ruling is about the later A4 PR. The cancelled check in #3401 and #3402 is the sweep job only.
