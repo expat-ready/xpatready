@@ -152,6 +152,8 @@ export function fakeSigning(opts: { now?: () => Date; linkBase?: () => string | 
       calls.push({ op: "embeddedLink", providerDocumentId });
       const expiresAt = new Date(now().getTime() + LINK_MINUTES * 60_000), base = opts.linkBase?.() ?? null;
       if (!base) return { url: `https://signing.fake.invalid/sign/${providerDocumentId}/${signerId}/${randomUUID()}`, expiresAt };
+      const nowMs = now().getTime();
+      for (const [k, v] of nonces) if (v.expiresAt <= nowMs) nonces.delete(k);   // 4c review m6, break m4: expired nonces are swept
       const nonce = randomBytes(32).toString("base64url");
       nonces.set(nonce, { firmId: e.firmId, providerDocumentId, signerId, expiresAt: expiresAt.getTime() });
       return { url: `${base.replace(/\/+$/, "")}/api/public/sign-fake/${encodeURIComponent(providerDocumentId)}/${signerId}/${nonce}`, expiresAt };

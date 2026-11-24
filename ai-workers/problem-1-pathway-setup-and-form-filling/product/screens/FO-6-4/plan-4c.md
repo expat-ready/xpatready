@@ -65,3 +65,17 @@ The challenger said the plan could be approved after B1 and M1 without another f
 * Opus reviewer plus breaker (permissions, a public route): `Reviewer: Approve <exact head>`, and `ci` green.
 
 Legal points (the e-signature identity of a click on a test page): Unconfirmed: no counsel. Sample values only; US$0; no vendor call; live AI off.
+
+## Round 1 fixes (reviewer `review-4c.md`: Block, 0 Blockers, 1 Major, 6 Minors; breaker `break-report-4c.md`: Pass, 4 Minors; on cb742468e)
+* **Review M1:** three firm-link rules now each have a line in `check_fo6_signing_api` that fails without them:
+  * clients first: 409 CLIENTS_FIRST, with no consent written;
+  * consent once: two calls, one `signing.consent_recorded`;
+  * a withdrawn retainer: 409 NO_LIVE_REQUEST.
+* **Deviations from row 2 and row 4, recorded (review m1, m2):**
+  * **The nonce is taken before anything is sent, not after a 2xx.** Two Signs at once must give one signature, and the fake has already signed once its step runs. Calls the door did not take stay under the nonce for 10 minutes, and **Try again** sends them (break m1). A 429, a 5xx or no answer is not final. A refusal (applied: false, or a 4xx other than 429) is final.
+  * **A consent version that is not the current wording is now 422 in the body schema** (`z.literal`), before any lookup, as row 4 says. It was a 409 after the read.
+* **Break m1 / review m5:** the page uses plain words. "Try again" appears when the door did not take the call yet. "Ask the firm for the latest agreement" appears when it was refused. No raw codes, and the status is 409 on both.
+* **Break m3:** the start guard is in the page controller's constructor. Nest makes controllers at start, so the start fails however the page is registered outside local.
+* **Review m3:** QA-770's newer-version branch has its own line. SIGNED_OFFLINE uses the same refusal list and is not tested on its own: signing offline needs an uploaded scan, and the list is one array.
+* **Review m4:** the firm link re-reads the request under its lock and writes nothing if it ended meanwhile (409 CHANGED).
+* **Review m6 / break m4:** expired nonces are swept on every new link.

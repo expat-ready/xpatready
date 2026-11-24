@@ -59,28 +59,50 @@ function page(title: string, body: string): string {
     + `<body><main><h1>Test signing page (no real signature)</h1><p class="note">This page stands in for the signing provider on a test copy. It is not a real signature service.</p><h2>${esc(title)}</h2>${body}</main></body></html>`;
 }
 
-/** POSTs one call to this copy's own webhook door, retrying a "not yet" or "changed at the same time" answer. */
-async function deliver(call: SigningHookCall): Promise<{ ok: boolean; status: number; reason?: string }> {
+type Delivered = { ok: true } | { ok: false; final: boolean };
+/** POSTs one call to this copy's own webhook door. A "not yet" or "changed at the same time" answer is retried here; a
+ *  refusal (applied: false, or a 4xx other than 429) is final; a 429, a 5xx or no answer is not, and the page offers
+ *  Try again (4c break m1: one failed delivery must not lock the signer out). A call stored already counts as delivered. */
+async function deliver(call: SigningHookCall): Promise<Delivered> {
   const url = `http://127.0.0.1:${process.env.STUDIO_PORT ?? 4400}/api/hooks/signing/fake`;
-  let last = { ok: false, status: 0, reason: "not sent" as string | undefined };
+  let last: Delivered = { ok: false, final: false };
   for (let i = 0; i <= RETRIES; i++) {
     if (i) await new Promise((r) => setTimeout(r, RETRY_MS));
     try {
       const r = await fetch(url, { method: "POST", headers: Object.fromEntries(Object.entries(call.headers).filter((e): e is [string, string] => typeof e[1] === "string")), body: Buffer.from(call.body) });
-      const j = await r.json().catch(() => null) as { applied?: boolean; reason?: string; code?: string } | null;
-      last = { ok: r.ok && j?.applied !== false, status: r.status, reason: j?.reason ?? j?.code };
-      if (r.status !== 409 || !/NOT_YET|CHANGED|NOT_READY/.test(String(j?.code))) return last;
-    } catch { last = { ok: false, status: 0, reason: "the copy's webhook door did not answer" }; }
+      const j = await r.json().catch(() => null) as { applied?: boolean; duplicate?: boolean; code?: string } | null;
+      if (r.ok) return j?.applied === false && !j.duplicate ? { ok: false, final: true } : { ok: true };
+      if (r.status === 409 && /NOT_YET|CHANGED|NOT_READY/.test(String(j?.code))) { last = { ok: false, final: false }; continue; }
+      return { ok: false, final: r.status < 500 && r.status !== 429 };
+    } catch { last = { ok: false, final: false }; }
   }
   return last;
 }
 
+/** Calls the fake made but the door did not take yet, by nonce (10 minutes): Try again sends them, never a second signature. */
+const pending = new Map<string, { ticket: FakePageTicket; calls: SigningHookCall[]; expiresAt: number }>();
+const PENDING_MS = 10 * 60_000;
+function takePending(doc: string, signer: string, nonce: string) {
+  const now = Date.now();
+  for (const [k, v] of pending) if (v.expiresAt <= now) pending.delete(k);
+  const p = typeof nonce === "string" ? pending.get(nonce) : undefined;
+  if (!p || p.ticket.providerDocumentId !== String(doc) || p.ticket.signerId !== String(signer)) return null;
+  return p;
+}
+const tryAgain = (title: string) => page(title, `<p role="alert">The signature was not recorded yet. Wait a moment and try again.</p><form method="post"><button type="submit">Try again</button></form>`);
+const refused = (title: string) => page(title, `<p role="alert">This agreement can no longer be signed here. Ask the firm for the latest agreement.</p>`);
+
 @Controller("api/public/sign-fake")   // STAND_IN_ROUTE, written out: QA-53 reads the path from the decorator
 export class FakeSigningPageController {
+  /** 4c break m3: the start fails however the page is registered outside local (Nest makes controllers at start). */
+  constructor() { assertStandInPageAllowed([FakeSigningPageController], process.env.PLATFORM_ENVIRONMENT); }
+
   @OpenRead("the copy's stand-in for the signing vendor's frame on the fake adapter, local only, its nonce the key, FO-6 part 4c") @Get(":doc/:signer/:nonce")   // QA-53 REVIEWED
   show(@Param("doc") doc: string, @Param("signer") signer: string, @Param("nonce") nonce: string, @Res({ passthrough: true }) res: Rs) {
     headers(res);
-    const t = fake().pageTicket(doc, signer, nonce);
+    const f = fake(), p = takePending(doc, signer, nonce);
+    if (p) return tryAgain(p.ticket.title);
+    const t = f.pageTicket(doc, signer, nonce);
     if (!t) return gone(res);
     return page(t.title, `<p>You are signing as ${side(t)}.</p><form method="post"><button type="submit">Sign</button></form>`);
   }
@@ -88,14 +110,25 @@ export class FakeSigningPageController {
   @Post(":doc/:signer/:nonce") @HttpCode(200)
   async sign(@Param("doc") doc: string, @Param("signer") signer: string, @Param("nonce") nonce: string, @Res({ passthrough: true }) res: Rs) {
     headers(res);
-    const f = fake(), t = f.claimTicket(doc, signer, nonce);   // taken now: a second Sign on this nonce is the 404
-    if (!t) return gone(res);
-    let calls: SigningHookCall[];
-    try { calls = await f.act(t.firmId, t.providerDocumentId, t.signerId, "signed"); } catch { return page(t.title, `<p role="alert">This document can no longer be signed here. Ask the firm to send it again.</p>`); }
-    for (const c of calls) {
-      const d = await deliver(c);
-      if (!d.ok) { res.status(409); return page(t.title, `<p role="alert">The signature was not recorded (${esc(String(d.reason ?? d.status))}). Ask the firm to send it again.</p>`); }
+    const f = fake();
+    // The nonce is taken before anything is sent, so two Signs at once give one signature (a deliberate change from the
+    // plan's "used up after a 2xx": review m1); calls not yet delivered stay under it for Try again (break m1).
+    let ticket: FakePageTicket, calls: SigningHookCall[];
+    const p = takePending(doc, signer, nonce);
+    if (p) { pending.delete(nonce); ticket = p.ticket; calls = p.calls; } else {
+      const t = f.claimTicket(doc, signer, nonce);
+      if (!t) return gone(res);
+      ticket = t;
+      try { calls = await f.act(t.firmId, t.providerDocumentId, t.signerId, "signed"); } catch { res.status(409); return refused(t.title); }
     }
-    return page(t.title, `<p role="status">Signed. You can close this page.</p>`);
+    for (let i = 0; i < calls.length; i++) {
+      const d = await deliver(calls[i]);
+      if (d.ok) continue;
+      res.status(409);
+      if (d.final) return refused(ticket.title);
+      pending.set(nonce, { ticket, calls: calls.slice(i), expiresAt: Date.now() + PENDING_MS });
+      return tryAgain(ticket.title);
+    }
+    return page(ticket.title, `<p role="status">Signed. You can close this page.</p>`);
   }
 }

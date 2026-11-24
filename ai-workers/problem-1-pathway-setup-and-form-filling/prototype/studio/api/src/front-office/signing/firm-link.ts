@@ -34,6 +34,9 @@ export async function firmSigningLink(db: PrismaClient, ctx: StaffContext, retai
   if (firmSigner!.signedAt) problem(409, "Signed already", "You have signed this agreement already.", { code: "SIGNED_ALREADY" });
   if (!firmSigner!.consentedAt) await db.$transaction(async (tx) => {
     await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${req.id}::uuid for update`;
+    // Review round 1 m4: the request as it is now, under its lock: one that ended or changed meanwhile writes nothing (409).
+    const cur = await tx.foSignatureRequest.findFirst({ where: { firmId, id: req.id }, select: { status: true } });
+    if (cur?.status !== "CLIENT_SIGNED") problem(409, "This changed", "This agreement changed while you opened it. Open it again.", { code: "CHANGED" });
     // Written only while none is recorded (part 1's trigger keeps consent once; a second call writes nothing: plan m4).
     const done = await tx.foSigner.updateMany({ where: { firmId, id: firmSigner!.id, consentedAt: null, signedAt: null }, data: { consentedAt: now(), consentTextVersion: CONSENT_TEXT_VERSION } });
     if (done.count) await audit.record(tx, { firmId, actor: `staff:${ctx.staffId}`, action: "signing.consent_recorded", entity: "fo_signature_request", entityKey: req.id, summary: "The representative agreed to sign electronically.",

@@ -72,7 +72,23 @@ try {
   const rU: ReturnType<typeof res> & { code?: number } = Object.assign(res(), { status(c: number) { rU.code = c; } });
   const unknown = String(ctrl.show(l6.doc, l6.signer, "B".repeat(43), rU));
   ok("FO-6 4c fake page: an unknown nonce is the one 404, as a readable page (\"This test link does not work.\"), never raw JSON", rU.code === 404 && unknown.includes("This test link does not work.") && unknown.startsWith("<!doctype html>"), { code: rU.code });
+  // 4c break m1: a delivery the door does not take (here a 429) is not the end: Try again sends the same calls, and the
+  // fake is asked to sign once only. fetch is stubbed here: the loopback door is check_fo6_door.ts's.
+  const l7 = parts((await q.embeddedLink(firm, d3, client)).url)!, realFetch = globalThis.fetch, answers = [429, 200], seen: number[] = [];
+  let acts = 0; const realAct = q.act; (q as { act: typeof q.act }).act = async (...a) => { acts++; return realAct(...a); };
+  globalThis.fetch = (async () => { const st = answers.shift() ?? 200; seen.push(st); return new Response(JSON.stringify(st === 200 ? { received: true, applied: true } : { code: "X" }), { status: st }); }) as typeof fetch;
+  try {
+    const r1: ReturnType<typeof res> & { code?: number } = Object.assign(res(), { status(c: number) { r1.code = c; } });
+    const first = String(await ctrl.sign(l7.doc, l7.signer, l7.nonce, r1));
+    const shown = String(ctrl.show(l7.doc, l7.signer, l7.nonce, res()));
+    const r2: ReturnType<typeof res> & { code?: number } = Object.assign(res(), { status(c: number) { r2.code = c; } });
+    const second = String(await ctrl.sign(l7.doc, l7.signer, l7.nonce, r2)), r3 = Object.assign(res(), { status() { /* 404 */ } });
+    const third = String(await ctrl.sign(l7.doc, l7.signer, l7.nonce, r3));
+    ok("FO-6 4c fake page (break m1): a 429 from the door shows Try again (409, plain words, no raw code); the page reopens on Try again; Try again delivers and signs; the fake signed once; the nonce is then used",
+      r1.code === 409 && /Try again/.test(first) && !/\(X\)|429/.test(first) && /Try again/.test(shown) && /Signed\./.test(second) && r2.code === undefined && acts === 1 && /does not work/.test(third), { seen, acts, code1: r1.code, code2: r2.code });
+  } finally { globalThis.fetch = realFetch; (q as { act: typeof q.act }).act = realAct; }
   const env = process.env.PLATFORM_ENVIRONMENT; process.env.PLATFORM_ENVIRONMENT = "production";
+  ok("FO-6 4c fake page (break m3): the page's controller cannot be made outside local, however it is registered (the start fails)", !!refused(() => new FakeSigningPageController()));
   const outside = await statusOf(() => ctrl.show(l6.doc, l6.signer, l6.nonce, res()));
   process.env.PLATFORM_ENVIRONMENT = env;
   ok("FO-6 4c fake page (plan m6): at request time outside local the page is the one 404, even with a live nonce", outside === 404, outside);

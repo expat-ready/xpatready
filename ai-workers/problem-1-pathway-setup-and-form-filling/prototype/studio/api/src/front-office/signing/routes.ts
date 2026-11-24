@@ -6,13 +6,15 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req } from "@nest
 import { z } from "zod";
 import { Db } from "../../core.ts";
 import { OwnOrAll, PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
-import { idParam, parseInput, strict, text } from "../../platform/http/input.ts";
+import { idParam, parseInput, strict } from "../../platform/http/input.ts";
 import { Retainers } from "../retainers/service.ts";
+import { CONSENT_TEXT_VERSION } from "./door.ts";
 import { firmSigningLink } from "./firm-link.ts";
 import { Signing } from "./service.ts";
 
-/** The firm signer consents to sign electronically with the version of the words they were shown (AG-5-20, AG-5-25). */
-export const FirmSigningLinkBody = strict({ consent: z.literal(true), consentTextVersion: text(40).min(1) });
+/** The firm signer consents to sign electronically with the version of the words they were shown (AG-5-20, AG-5-25); a
+ *  version that is not the current wording is a field error (422) before any lookup, as the plan says (review round 1 m2). */
+export const FirmSigningLinkBody = strict({ consent: z.literal(true), consentTextVersion: z.literal(CONSENT_TEXT_VERSION, { error: "The consent wording changed. Open the agreement again to read it." }) });
 
 @Controller("api/front-office")
 export class SigningController {
