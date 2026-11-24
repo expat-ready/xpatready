@@ -221,7 +221,7 @@ export class TrustMoney {
         if (caseId ? !seen.cases.includes(caseId) : !seen.parties.includes(payer?.id ?? inv.party)) notFound(caseId ? "case" : "person");
         await textOk(tx, "pick", a.pick.reason, 200);
       }
-      const done = await applyTrust(tx, this.audit, { firmId: f, by, today: dayOf(this.clock.now()), invoiceId: a.invoiceId, amountMinor: a.amountMinor, unclearedAcknowledged: a.unclearedAcknowledged, duplicateAcknowledged: a.duplicateAcknowledged,
+      const done = await applyTrust(tx, this.audit, { firmId: f, by, today: dayOf(this.clock.now()), invoiceId: a.invoiceId, amountMinor: a.amountMinor, unclearedAcknowledged: a.unclearedAcknowledged, duplicateOf: a.duplicateOf,
         pick: a.pick, ...(payer ? { payer: { personId: payer.personId, companyId: payer.companyId } } : {}) });
       const v = done.after.view;
       return { entryId: done.entryId, invoiceId: done.invoiceId, amountMinor: done.amountMinor, currency: done.currency, invoice: { number: v.number, statusWord: v.statusWord, dueMinor: v.dueMinor } };
