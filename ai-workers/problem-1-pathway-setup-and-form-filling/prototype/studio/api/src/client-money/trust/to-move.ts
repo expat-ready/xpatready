@@ -166,8 +166,11 @@ export class TrustToMove {
             from money_trust_entry x join money_payment p on p.firm_id = x.firm_id and p.id = x.payment_id where ${on} and x.kind = 'DEPOSIT' and not p.cleared)::text as uncleared`;   // R4-1: only what is left of each cheque (a reversed one is none)
       const uncleared = Number(r.uncleared), covered = Math.max(0, Number(r.ledger) + Number(r.waiting) - uncleared);
       if (g.minor <= covered) continue;
-      if (!b.unclearedAcknowledged) problem(409, "Not possible now", `${b.currency} ${MONEY(Math.min(uncleared, g.minor - covered))} of this is from a cheque not yet cleared. If it bounces, the firm will have moved money it doesn't hold. Move anyway?`,
-        { code: "UNCLEARED", acknowledge: "unclearedAcknowledged" });
+      // Break m1 (R4-1): with no cheque left at risk, what is over the cover is a shortfall a reversal left, said as one.
+      const atRisk = Math.min(uncleared, g.minor - covered), words = atRisk > 0
+        ? `${b.currency} ${MONEY(atRisk)} of this is from a cheque not yet cleared. If it bounces, the firm will have moved money it doesn't hold. Move anyway?`
+        : `${b.currency} ${MONEY(g.minor - covered)} of this is more than the client's trust money here covers: a reversal left it short. Move anyway?`;
+      if (!b.unclearedAcknowledged) problem(409, "Not possible now", words, { code: "UNCLEARED", acknowledge: "unclearedAcknowledged" });
       asked = true;
     }
     return asked;

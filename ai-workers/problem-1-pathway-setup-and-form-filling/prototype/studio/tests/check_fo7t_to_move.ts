@@ -86,7 +86,7 @@ try {
   const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7t3.${n}@example.org', 'seed:FO-7t-3', now()) returning id`);
   // P1 < P2 < Q by id (Lead 96's deadlock case, FO-7ts part 3 break R3-m1); PA a plain client; PB firm B's.
   const [P1, P2, Q] = [person(A, "p1"), person(A, "p2"), person(A, "q")].sort();
-  const PA = person(A, "a"), PB = person(B, "b"), PU = person(A, "u"), PV = person(A, "v");
+  const PA = person(A, "a"), PB = person(B, "b"), PU = person(A, "u"), PV = person(A, "v"), PW = person(A, "w"), PX = person(A, "x");
   // user-R: sample-firm's Owner (every money key); user-T: a Case Manager, given agent/payment:record here; user-O: a Case
   // Officer, no money key until DW10 (then agent/payment:record, seeing no case and no client: C5 fails closed); user-S:
   // sample-solo's Owner.
@@ -97,6 +97,7 @@ try {
   const CASE = "00000000-0000-4000-8000-0000000f37b1", CASE_Q = "00000000-0000-4000-8000-0000000f37b2", CASE_B = "00000000-0000-4000-8000-0000000f37b4";
   const CLIENT_U = "00000000-0000-4000-8000-0000000f37a5", CASE_U = "00000000-0000-4000-8000-0000000f37b5";
   const CLIENT_V = "00000000-0000-4000-8000-0000000f37a6", CASE_V = "00000000-0000-4000-8000-0000000f37b6";
+  const CLIENT_W = "00000000-0000-4000-8000-0000000f37a7", CASE_W = "00000000-0000-4000-8000-0000000f37b7", CLIENT_X = "00000000-0000-4000-8000-0000000f37a8", CASE_X = "00000000-0000-4000-8000-0000000f37b8";
   sql(`set session_replication_role = replica;
     insert into workspace (id, key, label) values ('${W}', 'fo7t3-check', 'FO-7t part 3 (Sample)');
     insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values
@@ -104,13 +105,17 @@ try {
       ('${CLIENT_Q}', '${W}', 'sample-firm', '${A}', 2, 'Client q (Sample)', 'PERSON', '${Q}', 'seed:FO-7t-3'),
       ('${CLIENT_B}', '${W}', 'sample-solo', '${B}', 1, 'Client b (Sample)', 'PERSON', '${PB}', 'seed:FO-7t-3'),
       ('${CLIENT_U}', '${W}', 'sample-firm', '${A}', 3, 'Client u (Sample)', 'PERSON', '${PU}', 'seed:FO-7t-3'),
-      ('${CLIENT_V}', '${W}', 'sample-firm', '${A}', 4, 'Client v (Sample)', 'PERSON', '${PV}', 'seed:FO-7t-3');
+      ('${CLIENT_V}', '${W}', 'sample-firm', '${A}', 4, 'Client v (Sample)', 'PERSON', '${PV}', 'seed:FO-7t-3'),
+      ('${CLIENT_W}', '${W}', 'sample-firm', '${A}', 5, 'Client w (Sample)', 'PERSON', '${PW}', 'seed:FO-7t-3'),
+      ('${CLIENT_X}', '${W}', 'sample-firm', '${A}', 6, 'Client x (Sample)', 'PERSON', '${PX}', 'seed:FO-7t-3');
     insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status) values
       ('${CASE}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07301', 'sample-firm', '${A}', '${CLIENT_A}', 'OPEN'),
       ('${CASE_Q}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07302', 'sample-firm', '${A}', '${CLIENT_Q}', 'OPEN'),
       ('${CASE_B}', '${W}', gen_random_uuid(), 'user-P', 'user-S', 'C-2026-07301', 'sample-solo', '${B}', '${CLIENT_B}', 'OPEN'),
       ('${CASE_U}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07305', 'sample-firm', '${A}', '${CLIENT_U}', 'OPEN'),
-      ('${CASE_V}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07306', 'sample-firm', '${A}', '${CLIENT_V}', 'OPEN');
+      ('${CASE_V}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07306', 'sample-firm', '${A}', '${CLIENT_V}', 'OPEN'),
+      ('${CASE_W}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07307', 'sample-firm', '${A}', '${CLIENT_W}', 'OPEN'),
+      ('${CASE_X}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07308', 'sample-firm', '${A}', '${CLIENT_X}', 'OPEN');
     insert into platform_role_permission (role, permission_key) values ('CASE_MANAGER', 'agent/payment:record') on conflict do nothing`);
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, trust_details, updated_by, updated_at) values ('${f}', 'Trust account (Sample)', 'seed:FO-7t-3', now())`);
   const audits = (action: string) => Number(sql(`select count(*) from audit_event where action = '${action}'`));
@@ -336,6 +341,25 @@ try {
   const vMove = await move([{ sourceEntryId: WV, amountMinor: 40000 }]);
   ok("FO-7t R4-1 pass: moving the CAD 400.00 paid from the cleared e-Transfer → 201 without asking, with no acknowledgement recorded",
     vMove.status === 201 && open(WV) === 0 && sql(`select coalesce(detail->>'unclearedAcknowledged', 'false') from audit_event where action = 'trust_money.moved' and entity_key = '${vMove.body.batchId}'`) === "false", vMove.body);
+  // R4-1 round 2 (review m1): a cheque corrected in part still counts for what is left of it. Client w: a CAD 500.00
+  // cheque not yet cleared, a CAD 100.00 e-Transfer, then CAD 200.00 of the cheque corrected as WRONG_ACCOUNT: CAD 400.00
+  // on the case, of which CAD 300.00 may still bounce, so CAD 100.00 is cleared.
+  const chqW = await deposit(PW, CASE_W, 50000, tR, "CHEQUE"); await deposit(PW, CASE_W, 10000);
+  sql(`insert into money_trust_entry (firm_id, person_id, case_id, kind, amount_minor, currency, corrects_entry_id, correction_kind, reason, created_by)
+    values ('${A}', '${PW}', '${CASE_W}', 'CORRECTION', -20000, 'CAD', (select id from money_trust_entry where payment_id = '${chqW.paymentId}'), 'WRONG_ACCOUNT', 'Belonged in operating (Sample)', 'seed:FO-7t-3')`);
+  const wOk = await refundIn({ personId: PW, caseId: CASE_W, amountMinor: 10000 }), wOver = await refundIn({ personId: PW, caseId: CASE_W, amountMinor: 1 });
+  ok("FO-7t R4-1 pass: a cheque corrected in part counts for what is left: the CAD 100.00 cleared refunds without asking", wOk.status === 201, wOk.body);
+  ok("FO-7t R4-1 fail: one cent more is still from the cheque (CAD 300.00 of it may bounce) → 409 UNCLEARED, nothing written", wOver.status === 409 && wOver.body.code === "UNCLEARED"
+    && Number(sql(`select count(*) from money_trust_entry where kind = 'REFUND_TO_CLIENT' and person_id = '${PW}'`)) === 1, wOver.body);
+  // Break m1: a CAD 500.00 cheque pays an invoice, then is reversed as Returned: moving what it paid still asks (trust is
+  // short), in words that name the shortfall, never "CAD 0.00 … not yet cleared".
+  const chqX = await deposit(PX, CASE_X, 50000, tR, "CHEQUE");
+  const IX = await issued(PX, CASE_X, 50000), WX = await applied({ invoiceId: IX, amountMinor: 50000, unclearedAcknowledged: true });
+  sql(`insert into money_trust_entry (firm_id, person_id, case_id, kind, amount_minor, currency, corrects_entry_id, correction_kind, reason, created_by)
+    values ('${A}', '${PX}', '${CASE_X}', 'CORRECTION', -50000, 'CAD', (select id from money_trust_entry where payment_id = '${chqX.paymentId}'), 'RETURNED', 'Returned', 'seed:FO-7t-3')`);
+  const xMove = await move([{ sourceEntryId: WX, amountMinor: 50000 }]);
+  ok("FO-7t R4-1 fail (break m1): moving what a reversed cheque paid → 409 UNCLEARED naming the CAD 500.00 shortfall a reversal left, never \"CAD 0.00\"",
+    xMove.status === 409 && xMove.body.code === "UNCLEARED" && /500\.00 of this is more than the client's trust money here covers: a reversal left it short/.test(xMove.body.detail ?? "") && !/0\.00 of this is from a cheque/.test(xMove.body.detail ?? ""), xMove.body);
   void Q; void staffO;
 } catch (e) {
   ok("FO-7t part 3: the check ran to the end", false, e instanceof Error ? e.stack : String(e));
