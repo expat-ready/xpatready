@@ -727,3 +727,24 @@ Could not check: a real screen reader; an intended user's own walk (D17 and D20 
 Reviewer: Changes 2af3b44183d1ca410af0021ddd37703c0c695180
 
 Verdict: Changes 2af3b44183d1ca410af0021ddd37703c0c695180
+
+## Part 2, round 7 re-check (e281108e5)
+
+Scope: `git diff 2af3b4418..e281108e5` only. Repository read-only on the head; US$0. **Verdict: Ship (Approve).**
+
+* **What the diff contains.** It changes three files:
+  - The two SQL lines below.
+  - This file, where it adds my round-7 section as I wrote it (+52 lines).
+  - Nothing else.
+* **R7-1: closed.** `rollback.sql:2` now runs `-f prisma/migrations/20261124032000_fo3c2_require_agreement/rollback.sql`. I ran that line as written, from `studio/`, against a throwaway database (`xr_studio_r7rb`, with the column added): exit 0 and the column is gone. The database was then dropped. `git grep 20261123050000 HEAD -- ':!*.md'` is empty; only the .md records keep the old stamp, as history.
+* **R7-2: closed.** `migration.sql:6` now names main's newest, 20261124030000. The edit touches a comment only, and the DDL is unchanged. The checksum changes, which is harmless because this migration has not merged and no shared database has recorded it.
+* **Stamp order holds.** origin/main is still bdcf1e7be, and its newest migration is 20261124030000_pf17_support_keys. 20261124032000 sorts after it, and the head merges cleanly with main.
+* **Re-runs on e281108e5:**
+  - `check_pf8b_f4_migrations` exit 0, 9/9.
+  - `check_fo3c2_consultation_agreement` exit 0, 45/45: the edited migration applies on a fresh copy.
+* **R7-3 and R7-4 (PR body: the new folder name, this round's runs, and the local P3009 recovery note)** are records only. They go in the body after this verdict and block nothing.
+* Journey score unchanged at 9.5/10, because no code or screen changed. The earlier Minors stay open and none of them blocks.
+
+Reviewer: Approve e281108e5a3bda4fdc56cc82669116e8adf816b3
+
+Verdict: Approve e281108e5a3bda4fdc56cc82669116e8adf816b3
