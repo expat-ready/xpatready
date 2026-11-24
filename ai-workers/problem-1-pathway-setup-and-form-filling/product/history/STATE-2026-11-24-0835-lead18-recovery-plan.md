@@ -296,3 +296,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * #3305 86e04deeb: my read line posted. #3442 (FO-7t part 2, trust money) held for Lead B 6's read. #3433 14201132f: Approve, Lead B 6 asked; my read owed. #3277 waits on a CI npm audit step (P-776; Lead O 2 asked) and a full run.
 * PF-17 part 4 needs a fresh cloud session (his typed turn): hand-over on claude/runtime-pf17-part4 3a1f0faf0. PF-4bs PR 2a: m1 (CI path) first.
 * 14:12 IST: #3442 NOT OK db7daec5f (Lead B 6): two confirms at once is a Major; ruled on the PR (the confirm names the entry it saw), round 3 allowed, lane 84kEb working (seen). #3433 14201132f: Lead B 6 OK; red on module-cards and one CodeQL alert in its test, answered, round 3 allowed. Measured: Works 48 (24 h before), 50 (00:00 IST), 55 (about 14:06); from CAPABILITIES on main, by grep.
+
+### Lead 25, check 14:15 IST 24 Nov
+* Merged 14:05: #3429 (R1.5 task role), #3453. #3454 labelled by the gate after Lead O 2's proof (run 45355873733 on main plus #3421: old file red, fixed green 30/30; its words, not re-run by me). #3421's label waits for its full run.
+* #3433: the gate labelled 14201132f at 14:13, seconds after my round 3 line; I removed the label. Its api code read, no fault found; asked what a client sees at /sign/<token> before 4b.
+* #3235 54ad5b8c2: records pushed, Approve posted. qa 6 near its limit, hand-over on #3461: a fresh qa session is owed (his typed turn), with PF-17 part 4.
+* Disk 7.3 GB, weekly 70%.
