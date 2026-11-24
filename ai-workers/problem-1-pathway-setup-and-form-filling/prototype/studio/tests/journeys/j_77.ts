@@ -213,9 +213,9 @@ try {
   await tab.getByRole("dialog").locator("[data-act-refusal]").waitFor({ timeout: 15_000 });
   ok("J-77 W4 fail: the Withdraw held open in another tab is refused in the screen's words; the case stays open",
     (await tab.getByRole("dialog").locator("[data-act-refusal]").innerText()) === "A filing has a decision, so the case cannot be withdrawn. Close it with a reason instead." && one(`select status from runtime_case where id = '${a.id}'`) === "OPEN");
-  // A tab closed as it opens can hang: page.close() has no time limit (2 in 6,416 on a busy machine, CI run 45429673590).
+  // page.close() has no time limit and can hang (CI run 45429673590, a probe on a busy machine: 2 of 6,416 closes of a tab just opened were not back in 20 s).
   await tab.waitForLoadState("load", { timeout: 15000 }).catch(() => {});
-  if (await Promise.race([tab.close().then(() => "closed"), new Promise((f) => setTimeout(f, 15000, "late"))]) === "late") console.log("NOTE  j_77.ts: the new tab was not closed after 15 s; going on");
+  if (await Promise.race([tab.close().then(() => "closed"), new Promise((f) => setTimeout(f, 15000, "late"))]) === "late") console.log("NOTE  j_77.ts: the second tab was not closed after 15 s; going on");
 
   // ---- DW2: every act writes one audit line by staff:<id> -----------------------------------------------------------------
   const staffR = one(`select id from platform_staff where email = 'representative@sample-firm.example.com'`);
