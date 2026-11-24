@@ -46,4 +46,31 @@ mk dtsonly '' '["*.d.ts"]' 'a.d.ts:export declare const a: number;'
 c=$(run --project p="$T/dtsonly/tsconfig.json" --known "$T/none.txt"); ok "an include that finds only .d.ts files: exit 2" "$([ "$c" = 2 ] && echo 1)" "exit $c: $(tail -2 "$T/out")"
 mk nocheck ',"noCheck":true' '["*.ts"]' 'a.ts:export const a: number = "x";'
 c=$(run --project p="$T/nocheck/tsconfig.json" --known "$T/none.txt"); ok "noCheck: true in the tsconfig cannot hide an error: exit 1" "$([ "$c" = 1 ] && grep -q TS2322 "$T/out" && echo 1)" "exit $c: $(tail -2 "$T/out")"
+# api's own check tsconfig: its tsconfig.json (same include, same options) plus one shared Prisma client type. The type must
+# still refuse what Prisma refuses, and a file's client must be the app's own type (or each test costs about 44 MB again).
+API="$(cd "$(dirname "$TC")/../../prototype/studio/api" && pwd)"
+c=$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1]));const k=Object.keys(c).sort().join()+"/"+Object.keys(c.compilerOptions).join();console.log(k==="compilerOptions,extends/paths"&&c.extends==="./tsconfig.json"&&Object.keys(c.compilerOptions.paths).join()==="@prisma/client"?"same":k)' "$API/tsconfig.check.json" 2>&1); ok "api's check tsconfig adds one path and changes nothing else (include, strict)" "$([ "$c" = same ] && echo 1)" "$c"
+grep -q '\["api", "tsconfig.check.json"\]' "$TC"; ok "typecheck.mjs checks api with it" "$([ $? = 0 ] && echo 1)" "not wired"
+D="$API/check/zz-planted-$$"; mkdir "$D"; trap 'rm -rf "${T:?}" "${D:?}"' EXIT
+printf '{"extends":"../../tsconfig.check.json","include":["*.ts"]}\n' > "$D/tsconfig.json"
+cat > "$D/good.ts" <<'E2'
+import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: "x" }) });
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+export const same: Same<typeof db, PrismaClient> = true;
+export const f = async () => { await db.$transaction(async (tx: Prisma.TransactionClient) => { await tx.platformFirm.findFirst({ select: { id: true } }); }); return db.platformFirm.findMany(); };
+E2
+cat > "$D/bad.ts" <<'E2'
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: "x" }) });
+export const a = new PrismaClient({ adapterr: 1 });
+export const b = db.noSuchModel;
+export const c = () => db.platformFirm.findMany({ where: { noSuchField: 1 } });
+export const d = async (): Promise<number> => (await db.platformFirm.findFirst({ select: { id: true } }))!.id;
+export const e: string = db;
+E2
+c=$(run --project api="$D/tsconfig.json" --known "$T/none.txt"); n=$(grep -cE 'bad.ts\([4-8]\): TS' "$T/out")
+ok "one shared client type: five planted errors (option, model, field, result, assignment) are all found, a right file has none, its client is the app's type" "$([ "$c" = 1 ] && [ "$(grep -oE 'bad.ts\([4-8]\)' "$T/out" | sort -u | wc -l | tr -d ' ')" = 5 ] && ! grep -q 'good.ts(' "$T/out" && echo 1)" "exit $c, $n: $(tail -8 "$T/out")"
 echo "$pass passed, $fail failed"; [ "$fail" = 0 ]
