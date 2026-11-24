@@ -486,7 +486,7 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
     && (await db.platSystemStaff.findUniqueOrThrow({ where: { id: TSUP } })).status === "ACTIVE" && !(await db.platSystemStaff.findUnique({ where: { email: "blank.name@expatready.example" } })), { filler: filler.r, long: long.r, blankName: blankName.r });
   // PF-28's rule on our own staff's routes (its sweep cannot sign in here, so it lists them NOT TESTED and they are asked
   // here): an unknown field 422 naming it, a wrong type 422, and a bad body changes nothing (one REFUSED line, code INVALID).
-  const ow = await signedNow(OWNER), probeId = TSUP, staffBefore = sql(`select count(*) from plat_system_staff`);
+  const ow = await signedNow(soleOwner), probeId = TSUP, staffBefore = sql(`select count(*) from plat_system_staff`);
   const p28: [string, string, unknown][] = [["POST", P2, { pf28Unknown: "x" }], ["PUT", `${P2}/${probeId}/roles`, { pf28Unknown: "x" }], ["POST", `${P2}/${probeId}/deactivate`, { reason: "x", pf28Unknown: "x" }],
     ["POST", `${P2}/${probeId}/reactivate`, { pf28Unknown: "x" }], ["POST", `${P2}/${probeId}/end-sessions`, { pf28Unknown: "x" }], ["POST", `${P2}/${probeId}/reset-mfa`, { reason: "x", verified: true, pf28Unknown: "x" }]];
   const p28Wrong: string[] = [];
