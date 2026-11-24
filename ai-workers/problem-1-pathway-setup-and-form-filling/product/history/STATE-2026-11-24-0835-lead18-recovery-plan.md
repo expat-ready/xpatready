@@ -183,3 +183,4 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Merged: #3377 12:19. Lead reads posted and /run full asked: #3234 ba86ad46c, #3277 de8976408 (Lead B's read owed on both heads; one orphan-file question on #3277). #3174: ruled to freeze noted_by_merge_id now. #3385 requeue asked. Batches: #3423 (#3193), #3425, #3426 (#3033 + #3276), #3427 (#3379 + #3422). Disk 10.1 GB; worktrees 13 GB.
 * New lanes of the unseen account: #3424 (FO-5cr), #3418 (the account not checked for #3424).
 * 12:31 IST, Lead B 5: #3428 a4365b0ac OK; #3277 de8976408 OK with a Major carried (no upload door before its fix: X-row owed); #3234 NOT OK (#3209's route declarations; my read missed it; lane told, #3235 too).
+* 12:33 IST, Lead B 5: #3234 eb19e71ad OK (Lead's read and full run owed), #3174 3f03a9ff8 OK, #3235 2d698e315 NOT OK (routes; merged person). Lead B 5 asks for a successor: a start in the founder's typed turn, asked.
