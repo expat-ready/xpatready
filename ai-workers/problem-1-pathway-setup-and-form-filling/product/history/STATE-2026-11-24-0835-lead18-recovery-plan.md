@@ -60,3 +60,6 @@ Cloud sessions requested: tracks plan (task_70ec14a4), security and counsel rese
 
 ## Moved from STATE by Lead 20, 24 Nov (word for word)
 **Founder 24 Nov ~08:15 (A347) approved all "needs you" items.** Acted: trc, Lead B 4, tus exception (#3277 comment; #3303 follows it; DECISIONS row owed), case-rule edge = #3318 (on main: rq-rows-shape of 24 Nov) §4.4 points 1-4 and #3318 questions 1-7 as recommended (row owed). fast-check trial: approved, not started. STILL HIS: keep-awake (refused again by the classifier, not worked around); RQ-01 inside or after the 101 (45-60 h; no recommendation was put to him); security test and counsel (who, price: none put to him).
+
+## Ask row moved from STATE by Lead 20 (done)
+| A349 | 24 Nov ~08:37 | AWS relay; replaced by A350 | done |
