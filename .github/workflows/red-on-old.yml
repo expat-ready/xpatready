@@ -1,0 +1,64 @@
+# Red on the old code, REPORT ONLY (A351 C1, founder 24 Nov; CR-03 of library/agent-failure-modes.md): a PR's new or changed
+# check suites run on the base commit's app code; when every one passes there, they would pass without the change.
+#   * its own workflow: no Mergify condition and no ruleset context names it (P-717 (b)); every step after checkout is
+#     continue-on-error, so it is a ::warning:: and a summary, never a red check;
+#   * cost: one machine, once per PR (opened or made ready, not at each push), at most 4 suites, only when app code and a suite
+#     changed. Measured on 10 PRs before anyone asks for more. product/tools/red-on-old.py.
+# Drafts and Mergify's batch PRs run nothing. Read-only token: it runs the PR's test code, as pr-suites.yml does. US$0, no
+# model call. Test: product/tools/check-red-on-old.sh.
+name: red-on-old
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+concurrency:
+  group: red-on-old-${{ github.event.pull_request.number }}
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
+permissions: {}
+jobs:
+  red-on-old:
+    if: ${{ !github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions: { contents: read }
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 2, persist-credentials: false }   # the test merge and its first parent, the base
+      - id: p
+        name: which suites does this PR add or change? (red-on-old.py plan)
+        continue-on-error: true
+        run: |
+          out=$(python3 -I "$P/tools/red-on-old.py" plan --base HEAD^1) || { echo "$out"; exit 0; }
+          printf '%s\n' "$out" | tee -a "$GITHUB_OUTPUT"
+          echo "**Red on the old code (report only):** $(sed -n 's/^note=//p' <<< "$out")" >> "$GITHUB_STEP_SUMMARY"
+      - id: old
+        name: the base's app code under the PR's tests (red-on-old.py old)
+        if: steps.p.outputs.suites != ''
+        continue-on-error: true
+        run: python3 -I "$P/tools/red-on-old.py" old --base HEAD^1
+      - uses: actions/setup-node@v4
+        if: steps.old.outcome == 'success'
+        continue-on-error: true
+        with: { node-version-file: .nvmrc }
+      - id: setup
+        name: the packages, the web app, Chromium (cloud-setup.sh)
+        if: steps.old.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 15
+        run: bash "$P/tools/cloud-setup.sh" && cd "$S" && ./node_modules/.bin/playwright install chromium
+      - id: s
+        name: the PR's suites on the old code (red is what we hope for here)
+        if: steps.setup.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 25
+        env: { SUITES: "${{ steps.p.outputs.suites }}" }
+        run: bash "$P/tools/run-suites.sh" --demo --only "$SUITES" > red-on-old.md 2>&1 || true
+      - name: report (never a failure)
+        if: steps.p.outputs.suites != ''
+        continue-on-error: true
+        env: { SUITES: "${{ steps.p.outputs.suites }}", BODY: "${{ github.event.pull_request.body }}", SETUP: "${{ steps.setup.outcome }}" }
+        run: |
+          if [ "$SETUP" != success ] || [ ! -s red-on-old.md ]; then echo "::warning title=Red on the old code (A351 C1)::set-up ${SETUP:-not run}: nothing was judged"; exit 0; fi
+          printf '%s\n' "$BODY" | python3 -I "$P/tools/red-on-old.py" report --suites "$SUITES" --out red-on-old.md --summary "$GITHUB_STEP_SUMMARY" || true
