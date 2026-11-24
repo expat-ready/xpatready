@@ -43,13 +43,13 @@ GH_TOKEN="${GH_TOKEN:-$(command gh auth token 2>/dev/null)}"; if [ -n "$GH_TOKEN
 . "$TOOLS/fresh-lib.sh"   # ENF-803 (P-803): every section says when and from where it read; cached answers over 10 min refused
 
 # 00. Whose tools, how old a copy, whose plan: before anything else (A363, A368, founder 24 Nov), each a line or the first ACTs.
-fr=$(bash "$TOOLS/tools-fresh.sh" 2>&1); [ -n "$fr" ] || fr="ACT   tools: tools-fresh.sh did not run"
+fr=$(python3 -I "$TOOLS/tools-fresh.py" 2>&1); grep -qE '^(tools  |ACT   tools)' <<<"$fr" || fr="ACT   tools: tools-fresh.py did not run ($(head -1 <<<"$fr"))"
 ca=$(bash "$TOOLS/copy-age.sh" 2>&1); r=$?; [ "$r" = 1 ] && ca="ACT   $ca: over 24 h: start a fresh lead/<today> from origin/main (WAY-OF-WORKING, P-388)"; [ "$r" -gt 1 ] && ca="ACT   $ca"
 pf=$(python3 -I "$TOOLS/plan-fresh.py" 2>&1); grep -qE '^(plan  |ACT   plan)' <<<"$pf" || pf="ACT   plan: plan-fresh.py did not run ($(head -1 <<<"$pf"))"
 for l in "$fr" "$ca" "$pf"; do echo "$l"; seen "$l"; act=$((act + $(grep -c '^ACT' <<<"$l"))); done
 bo=$(git diff --name-only origin/main HEAD -- "${TOOLS_REL:=ai-workers/problem-1-pathway-setup-and-form-filling/product}/DECISIONS.md" "$TOOLS_REL/RULES.md" "$TOOLS_REL/cycle-plan.json" "$TOOLS_REL/design/board-lead-*" 2>/dev/null | sed 's#.*/##' | paste -sd ' ' -)
-[ -n "$bo" ] && say "branch differs from main in: $bo (this check reads main's; land what is newer here)"
-fresh "tools-fresh.sh, copy-age.sh, plan-fresh.py: git here (origin/main as last fetched) and cycle-plan.json"
+[ -n "$bo" ] && say "branch differs from main in: $bo (land what is newer here)"
+fresh "tools-fresh.py (fetches main), copy-age.sh, plan-fresh.py: git here and cycle-plan.json"
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
 
 # 0. Stall guard (founder, 7 Nov, P-388): the previous check must have run. Lead 24 stalled ~7.4 h on one prompt and no

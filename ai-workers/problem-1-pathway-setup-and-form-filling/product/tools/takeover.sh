@@ -4,13 +4,16 @@
 # unmerged lane branches; and the check: a script cannot see cron, so it prints the exact CronCreate call to make when
 # CronList shows no check.   Usage: bash product/tools/takeover.sh      Test: check-handover.sh
 set -uo pipefail
-TOOLS="$(cd "$(dirname "$0")" && pwd)"; cd "$TOOLS/.." || exit 99; [ -z "${LEAD_RUN_ROOT:-}" ] || cd "$LEAD_RUN_ROOT/ai-workers/problem-1-pathway-setup-and-form-filling/product" || exit 99   # lead-run.sh: the records are this copy's
+TOOLS="$(cd "$(dirname "$0")" && pwd)"; cd "$TOOLS/.." || exit 99
 br=$(git rev-parse --abbrev-ref HEAD)
 # A363, A368: whose tools, and how old this copy is. A copy that left main over 24 h ago takes over nothing: it would lead by
 # the rules and tools of that day. No flag goes round it; a fresh branch is one step.
-[ -f "$TOOLS/tools-fresh.sh" ] && bash "$TOOLS/tools-fresh.sh"
-if [ -f "$TOOLS/copy-age.sh" ]; then git fetch -q origin main 2>/dev/null; ca=$(bash "$TOOLS/copy-age.sh"); r=$?; echo "$ca"
-  [ "$r" = 1 ] && { echo "REFUSED: this copy left main over 24 h ago. Start a fresh lead/<today> from origin/main (WAY-OF-WORKING, tech lead housekeeping, P-388), then run takeover.sh in it."; exit 3; }; fi
+[ -f "$TOOLS/tools-fresh.py" ] && python3 -I "$TOOLS/tools-fresh.py"
+ca=$(bash "$TOOLS/copy-age.sh" 2>/dev/null); r=$?; [ -n "$ca" ] && echo "$ca"
+if [ "$r" = 1 ]; then
+  echo "REFUSED: this copy left main over 24 h ago. Start a fresh lead/<today> from origin/main (WAY-OF-WORKING, tech lead housekeeping, P-388), then run takeover.sh in it."
+  exit 3
+fi
 git fetch -q origin "$br" 2>/dev/null && [ "$(git rev-list --count "HEAD..origin/${br}" 2>/dev/null || echo 0)" -gt 0 ] && echo "warn  this copy is behind origin/$br: git pull --ff-only, then run this again"
 echo "lead  $(grep '^current_lead: ' STATE.md | sed 's/^current_lead: //')"
 # Hand-over commits only (subject names "hand-over"): a Lead's own "took over" edits to its line are not hand-overs.

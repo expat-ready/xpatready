@@ -422,9 +422,9 @@ def main(argv=None):
     ap.add_argument("--capabilities-at-start", help="CAPABILITIES.md at the cycle's 07:00, instead of git (tests)")
     a = ap.parse_args(argv)
     if not a.fixture:   # A363: no report from tools that are not main's newest (tests answer GitHub from a fixture)
-        r = subprocess.run(["bash", os.path.join(HERE, "tools-fresh.sh")], capture_output=True, text=True)
+        r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "tools-fresh.py")], capture_output=True, text=True)
         if r.returncode != 0:
-            print("NO REPORT. " + (r.stdout.strip() or "tools-fresh.sh did not run: " + r.stderr.strip()[:200]))
+            print("NO REPORT. " + (r.stdout.strip() or "tools-fresh.py did not run: " + r.stderr.strip()[:200]))
             return 2
     print(report(a))
     return 0
