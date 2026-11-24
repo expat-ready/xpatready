@@ -54,3 +54,46 @@ Nits (no severity): module names `a-` and `a--b` are accepted (`ports/erasure.ts
   returned list do not reach the registry, and Nest gives one instance per app.
 
 **Verdict: Approve**
+
+## Round 3 (24 Nov, diff only: 7d6a7a8fa → d6186236088f2623c5fb9a9ff1ffe544454e09fc)
+Diff: the merge of origin/main (a79e246c6), the re-stamp to `20261124080000_pf21d_switch` (462cac84d) and a comment-only
+commit (d61862360). `git diff a79e246c6 d6186236` touches only this PR's 14 files. The migration differs from the approved
+one only in its F4 comment, which now names `20261123200000_pf21b_data_requests`. Run in a worktree at d6186236 against
+Postgres 18 on :54329, never :4400.
+
+**Attempts**
+* **Order:** applied all 163 migrations by hand, in order, to a new database. Expected: they apply, `20261124080000` last.
+  Actual: they apply; it comes last, after `20261124032000_fo3c2_require_agreement` (origin/main is still a79e246c6). Held.
+* **Shipped suite** `check_pf21d_switch.ts`: 20/20. It covers "after every one before it", the run right after the
+  migration on an empty and a demo copy, and an empty `prisma migrate diff`. Held.
+* **Collisions with main since 23 Nov:** `pf12_walls` 110/110, `pf12b_doors` 33/33, `features_registry` 27/27,
+  `pf17_support` 29/29 (keys `20261124030000`), `pf17_console` 38/38, `pf4s_system_signin` 104/104 (system staff catalogue),
+  `pf21b_requests` 27/27, `pf21c_breaches` 48/48, `pf21w_routes` 83/83, `pf21j_handler_key` 19/19, `pf8b_f4`–`f8` all
+  passed (9, 14, 26, 17, 15) and `pff1c_catchup_walls` 14/14. Nothing else on main defines `plat_switch*`. The `dsr-manage`
+  key has one seed row (`platform-owner`, from #3189). This migration seeds no key. pf21b's and pf21c's `*_system_only` have
+  other names. Held.
+* **Walls by hand** (fully migrated database): `xr_app` with no firm can list the switch. With `app.firm_id` set, list
+  and set are refused by `plat_switch_system_only`, as is `set local role xr_staff_bypass` with a firm; with no firm, the
+  bypass role selecting the table is permission denied. `pg_temp` copies of `platform_session_firm()` or the helper do not
+  get past the refusal. A temp `plat_switch` table with the row `shadow.key` is ignored. Both tables are forced with 0
+  policies; the three functions belong to `xr_wall_reader`, executable by `xr_data` only; `public`'s ACL no longer lists
+  `xr_wall_reader` after the hand-over. Held.
+* **Round-1 attack script re-run** with the new stamp: no new findings. Its BROKE lines are the ones round 1 already ruled
+  on (no-firm setting by design, the owner's direct writes, the `%2E` and trailing-slash aliases, duplicate-key JSON).
+  One new BROKE line ("E: from a firm session…") is a fault in my script: its temp row held `false` while the real switch
+  was already `false`, so the result could not be read. Repeated by hand with a distinct key, it held (above).
+
+**Notes (not findings for 1a)**
+* 1b (`origin/claude/runtime-pf21d-erasure`, 4689c3469) still carries `20261123110000_pf21d_switch`. Its
+  `20261123120000_pf21d_erasure` now sorts before 1a's migration, so 1b must be rebased and re-stamped after `20261124080000`.
+* `check_fo3c2_consultation_agreement` fails locally with `requireAgreement` unknown. The cause is the stale shared Prisma
+  client (`studio/node_modules/.prisma/client`, generated 23 Nov 06:03), not this PR. The switch is read through raw SQL
+  only (`switches/service.ts:47,51,65`).
+* I left the databases `xr_studio_pf21ds_*_7133` and `_9007` because they belong to other sessions. Mine and my worktree
+  are removed.
+
+**What held (round 3):** the re-stamped migration applies last on an empty copy and on a demo copy. It does not collide
+with anything merged since 23 Nov: migrations, PF-12's walls, the staff catalogue, PF-17's keys, the features registry and
+the dsr-manage seed. The definer walls, the forced tables and the hand-over also hold.
+
+**Verdict: Approve** for d6186236088f2623c5fb9a9ff1ffe544454e09fc (no open Blocker or Major).

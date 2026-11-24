@@ -88,3 +88,41 @@ Neither blocks.
 **Verdict: Approve** (no open Blocker or Major).
 
 Reviewer: Approve db8ee8a8c7b1d4e03ca675ae49ff5061bcbaea85
+
+## Round 3 (24 Nov): re-stamp and merge of main, diff only, head d6186236088f2623c5fb9a9ff1ffe544454e09fc
+
+**Scope.** I reviewed only what changed since the last approved head, 7d6a7a8fa (code at db8ee8a8c). The PR's base is now main, since #3189 merged on 23 Nov. Three commits:
+- the merge of origin/main, a79e246c6 (18996be2f);
+- the re-stamp, 462cac84d;
+- a comment-only fix in the migration, d61862360. The coordinator flagged it mid-review, so this verdict is for d6186236.
+
+This round changes no behaviour, so I gave no journey score: the screen and the API are the same as in round 2.
+
+**Checks:**
+- **The merge has no hand edits.** `git show --remerge-diff HEAD~1` printed nothing for 18996be2f. Its parents are 7d6a7a8fa and a79e246c6 (origin/main).
+- **The PR touches only its own files.** `git diff origin/main...HEAD` lists the same 14 files (818 lines added). I compared the PR's whole added-line patch with round 2's: c62d4bcb3..7d6a7a8fa against origin/main...d6186236. Only these lines differ:
+  - the stamp, in `brief.md:78`, `MODULE.rows/PF-21d.md:1` and `check_pf21d_switch.ts:19`;
+  - the backticks removed around ports/erasure.ts in the rows file's Entry points line;
+  - the one migration comment line.
+  The `platform-register.prisma` file differs from 7d6a7a8fa by 108 lines. Those lines all came from main (PF-21b and PF-21c); the PR's own hunk in that file is the same as in round 2.
+- **The rename is complete.** The folder `20261123110000_pf21d_switch` became `20261124080000_pf21d_switch` with 100% similarity in 462cac84d. `git grep 20261123110000 -- …/prototype` finds nothing. The new stamp appears only in the migration folder and the three references above.
+- **The migration differs from round 2 by one comment line.** Against 7d6a7a8fa's file, the only change is line 79, the PF-8b F4 comment: "(as 20261123100000_pf21b_data_requests)" became "(as 20261123200000_pf21b_data_requests)". That is the folder name #3189's migration took when it merged, and it exists on main. No SQL changed. Before d61862360 the comment named a folder that no longer existed; it now names a real one.
+- **The new stamp is unique and the latest.** No other folder uses 20261124080000. It sorts after every migration on origin/main; the newest there is `20261124032000_fo3c2_require_agreement`. The suite measures this itself: "after every one before it (newest before: 20261124032000_fo3c2_require_agreement)", and it applies the migration right after main's on an empty copy and on a demo copy.
+
+**Runs.** All on d6186236, in a scratch worktree, against Postgres 18 on 127.0.0.1:54329. Nothing used :4400.
+
+| Run | Result |
+| --- | --- |
+| `check_pf21d_switch.ts`, run 1 | 20 passed, 0 failed |
+| `check_pf21d_switch.ts`, run 2 | 20 passed, 0 failed |
+| `check_pf8b_f4_migrations.ts` | 9/9 passed |
+| `check_pf21b_requests.ts` | 27 passed, 0 failed |
+| `product/tools/check-module-cards.sh` | exit 0, "module cards: 44 fixtures", no FAIL lines |
+
+**Setup note.** In a worktree, the tracked symlink `prototype/node_modules` points to `../../../.tools/…`, so it does not resolve there. I linked the worktree's `.tools` to the main copy's (untracked, scratch only). The repository is unchanged.
+
+**Findings.** None new. Round 2's open Minors are as before: m3 (no case for the race or for the line sharing the transaction) and m5 (owner-only insert paths and the event `at`). Neither blocks.
+
+**Verdict: Approve** (no open Blocker or Major).
+
+Reviewer: Approve d6186236088f2623c5fb9a9ff1ffe544454e09fc
