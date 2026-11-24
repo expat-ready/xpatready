@@ -101,6 +101,14 @@ sql(`update runtime_case set status = 'CLOSED', close_outcome = 'CLOSED_BY_STAFF
 const signIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email: sql(`select email from platform_staff where actor_id = '${REP}'`), secondStep: true }) });
 const repTok = ((await signIn.json()) as { token?: string }).token;
 if (!repTok) { console.error("STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local)"); process.exit(2); }
+// CS-D6 part 1's routes sit behind PF-4's guard (a staff session, not x-actor; qa 24 Nov, journey drift on main f0bc60179):
+// the Owner (R), the Case Officer (O, no view-access-log key) and the other firm's Owner (S) sign in like repTok above.
+const tokenOf = async (actor: string, firmKey = "sample-firm") => ((await (await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey, email: sql(`select email from platform_staff where actor_id = '${actor}' and firm_id = (select id from platform_firm where key = '${firmKey}')`), secondStep: true }) })).json().catch(() => ({}))) as { token?: string }).token ?? null;
+const officerTok = await tokenOf(OFFICER), otherTok = await tokenOf(OTHER_FIRM, "sample-solo");
+const staffCall = async (method: string, path: string, token: string | null, body?: unknown) => {
+  const r = await fetch(`${BASE}/api${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }).catch(() => null);
+  return { status: r?.status ?? 0, body: (await r?.json().catch(() => null)) as any };
+};
 const viewed = (doc: string) => sql(`select count(*) from audit_event where action = 'viewed' and entity = 'case document' and entity_key = '${doc}'`);
 const fileOf = (doc: string) => execFileSync("find", [join(STUDIO, "var", `isolated-${NAME}`), "-type", "f", "-path", `*/${sql(`select path from case_document where id = '${doc}'`)}`], { encoding: "utf8" }).trim().split("\n").filter(Boolean)[0] ?? "";
 
@@ -134,40 +142,54 @@ try {
   await panel.screenshot({ path: join(SHOTS, "w1-documents-panel-1440.png") });
 
   // ---------------------------------------------------------------------------------------------- W2 the "Read by" panel
-  const log = await call("GET", `/runtime/documents/${docA.id}/reads`, undefined, REP);
-  const items: { actor?: string; by?: string; at?: string; action?: string }[] = log.body?.reads ?? log.body?.items ?? (Array.isArray(log.body) ? log.body : []);
+  const log = await staffCall("GET", `/runtime/documents/${docA.id}/reads`, repTok);
+  const items: { who?: string; at?: string; action?: string }[] = log.body?.lines ?? [];
   const ats = items.map((x) => Date.parse(x.at ?? ""));
-  ok("J-69 W2 (missing: CS-D6 part 1, the reads panel; the path is this journey's guess): the representative reads the document's 'Read by' list: every read, who and when, newest first",
-    log.status === 200 && items.length >= 3 && items.filter((x) => JSON.stringify(x).includes(OFFICER) || /Case officer/.test(JSON.stringify(x))).length >= 2 && ats.every((t, i) => Number.isFinite(t) && (i === 0 || t <= ats[i - 1])), { status: log.status, n: items.length });
-  const logClient = await call("GET", `/runtime/documents/${docA.id}/reads`, undefined, CLIENT), logOther = await call("GET", `/runtime/documents/${docA.id}/reads`, undefined, OTHER_FIRM);
-  ok("J-69 W2 fail (missing: CS-D6 part 1): without agent/document:view-access-log the case's client gets 403, another firm 404 (counted only where the representative's read answers 200)",
-    log.status === 200 && logClient.status === 403 && logOther.status === 404, { rep: log.status, client: logClient.status, otherFirm: logOther.status });
-  const readBy = (await row.innerText().catch(() => "")).replace(/\s+/g, " ") + " " + (await p.locator("[data-read-by], [aria-label*='Read by']").first().innerText().catch(() => "")).replace(/\s+/g, " ");
-  ok("J-69 W2 (missing: CS-D6 part 1, the panel on screen): the document's line shows 'Read by' with the case officer's read", /Read by/i.test(readBy) && /Case officer/.test(readBy), readBy.slice(0, 240));
+  ok("J-69 W2 (CS-D6 part 1): the representative (Owner, signed in) reads the document's 'Read by' list: every read, who and when, newest first",
+    log.status === 200 && items.length >= 3 && items.filter((x) => x.action === "viewed" && /Case officer/.test(x.who ?? "")).length >= 2 && ats.every((t, i) => Number.isFinite(t) && (i === 0 || t <= ats[i - 1])), { status: log.status, n: items.length });
+  // The client is not staff: with no staff session the route answers 401 (CS-D6 DW2), and lists nothing.
+  const logOfficer = await staffCall("GET", `/runtime/documents/${docA.id}/reads`, officerTok), logClient = await call("GET", `/runtime/documents/${docA.id}/reads`, undefined, CLIENT), logOther = await staffCall("GET", `/runtime/documents/${docA.id}/reads`, otherTok);
+  ok("J-69 W2 fail (CS-D6 part 1): without agent/document:view-access-log the case officer gets 403, the case's client (no staff session) 401, another firm's Owner 404; none sees a line (counted only where the representative's read answers 200)",
+    log.status === 200 && !!officerTok && !!otherTok && logOfficer.status === 403 && logClient.status === 401 && logOther.status === 404 && ![logOfficer, logClient, logOther].some((x) => Array.isArray(x.body?.lines)), { rep: log.status, officer: logOfficer.status, client: logClient.status, otherFirm: logOther.status });
+  // On screen (CS-D6 part 1): the line's ⋯ → "File details…" opens a dialog that asks for the staff sign-in inline.
+  const dialog = p.getByRole("dialog");
+  await row.locator("[data-line-menu]").first().click(); await p.locator('[data-action="file-details"]').click();
+  await dialog.locator("[data-document-reads]").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
+  if (await dialog.locator("[data-sign-in-card]").isVisible().catch(() => false)) {
+    await dialog.getByLabel("Firm key").fill("sample-firm"); await dialog.getByLabel("Work email").fill(sql(`select email from platform_staff where actor_id = '${REP}'`));
+    await dialog.getByRole("button", { name: "Sign in" }).click();
+  }
+  const readLines = await dialog.locator("[data-read-lines]").waitFor({ timeout: 30_000 }).then(() => dialog.locator("[data-read-lines] li").allInnerTexts(), () => [] as string[]);
+  const readBy = (await dialog.locator("[data-read-by]").first().innerText().catch(() => "")).replace(/\s+/g, " ");
+  ok("J-69 W2 (CS-D6 part 1, on screen): the line's File details shows 'Read by' with the case officer's openings, newest first, in words", /Read by/i.test(readBy) && readLines.filter((l) => /Case officer/.test(l) && /Opened the file/.test(l)).length >= 2, { readLines: readLines.slice(0, 4), readBy: readBy.slice(0, 200) });
+  await dialog.screenshot({ path: join(SHOTS, "w2-file-details-read-by-1440.png") }).catch(() => undefined);
 
   // ---------------------------------------------------------------------------------------------- W3 each file has a fingerprint
   const shown = (await linesOf(caseA!)).find((l) => l.id === lineA.id)?.documents.find((d) => d.id === docA.id);
   ok("J-69 W3: case A's document's fingerprint is the sha256 of the uploaded bytes: in the database, the upload's answer and the checklist",
     sql(`select sha256 from case_document where id = '${docA.id}'`) === sha(BYTES_A) && docA.sha256 === sha(BYTES_A) && shown?.sha256 === sha(BYTES_A) && sha(BYTES_A) !== sha(BYTES_T), { stored: sql(`select sha256 from case_document where id = '${docA.id}'`), uploaded: sha(BYTES_A) });
-  const panelText = (await row.innerText().catch(() => "")).replace(/\s+/g, " ");
-  ok("J-69 W3 (missing: CS-D6 part 1): the Documents panel shows 'Fingerprint (SHA-256)' with the file's own hash on its line", /Fingerprint \(SHA-256\)/i.test(panelText) && panelText.includes(sha(BYTES_A).slice(0, 12)), panelText.slice(0, 240));
+  const dlgText = (await dialog.innerText().catch(() => "")).replace(/\s+/g, " "), fp = (await dialog.locator("[data-fingerprint]").first().textContent().catch(() => ""))?.trim();
+  ok("J-69 W3 (CS-D6 part 1, on screen): the line's File details shows 'Fingerprint (SHA-256)' with the file's own full hash", /Fingerprint \(SHA-256\)/i.test(dlgText) && fp === sha(BYTES_A), { fp, label: /Fingerprint \(SHA-256\)/i.test(dlgText) });
+  await p.keyboard.press("Escape");
 
   // ---------------------------------------------------------------------------------------------- W4 a changed file is caught
-  const check = (doc: string) => call("POST", `/runtime/documents/${doc}/check-unchanged`, {}, REP);
+  // One session per person (PF-4): the dialog's sign-in above ended repTok's session, so the representative signs in again.
+  const repTok2 = await tokenOf(REP);
+  const check = (doc: string) => staffCall("POST", `/runtime/documents/${doc}/check-unchanged`, repTok2, {});
   const checks = () => Number(sql(`select count(*) from audit_event where entity = 'case document' and entity_key in ('${docA.id}', '${docT.id}') and action not in ('viewed', 'uploaded')`));
   const c0 = checks(), intact = await check(docA.id);
-  ok("J-69 W4 (missing: CS-D6 part 1, the unchanged check; the path is a guess): 'Check the file is unchanged' answers unchanged for the intact file and writes one audit line",
-    intact.status === 200 && /unchanged|match/i.test(JSON.stringify(intact.body)) && !/mismatch|changed on disk/i.test(JSON.stringify(intact.body)) && checks() === c0 + 1, { status: intact.status, body: intact.body });
+  ok("J-69 W4 (CS-D6 part 1, the unchanged check): 'Check the file is unchanged' answers unchanged for the intact file and writes one audit line",
+    intact.status === 200 && intact.body?.unchanged === true && intact.body?.found_sha256 === sha(BYTES_A) && checks() === c0 + 1, { status: intact.status, body: intact.body });
   const disk = fileOf(docT.id);
   if (disk) appendFileSync(disk, "\n% tampered (J-69)\n");
   const vT = viewed(docT.id), tampered = await call("GET", `/runtime/documents/${docT.id}/file`, undefined, OFFICER);
   ok("J-69 W4: a file edited on disk is caught on read: 409 in words ('changed on disk'), and no 'viewed' line is written", !!disk && tampered.status === 409 && /changed on disk/.test(tampered.body?.detail ?? JSON.stringify(tampered.body)) && viewed(docT.id) === vT, { disk: !!disk, status: tampered.status, detail: tampered.body?.detail });
   const c1 = checks(), mismatch = await check(docT.id);
-  ok("J-69 W4 (missing: CS-D6 part 1): the unchanged check shows a mismatch for the edited file and writes one audit line",
-    mismatch.status !== 404 && mismatch.status < 500 && /mismatch|changed|unchanged":\s*false/i.test(JSON.stringify(mismatch.body)) && checks() === c1 + 1, { status: mismatch.status, body: mismatch.body });
+  ok("J-69 W4 (CS-D6 part 1): the unchanged check shows a mismatch for the edited file and writes one audit line",
+    mismatch.status === 200 && mismatch.body?.unchanged === false && mismatch.body?.found_sha256 !== mismatch.body?.sha256 && checks() === c1 + 1, { status: mismatch.status, body: mismatch.body });
 
   // ---------------------------------------------------------------------------------------------- W5 keep period and its list
-  const saved = await fetch(`${BASE}/api/platform/keep-periods/closed-client-files`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${repTok}` }, body: JSON.stringify({ years: 6 }) });
+  const saved = await fetch(`${BASE}/api/platform/keep-periods/closed-client-files`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${repTok2}` }, body: JSON.stringify({ years: 6 }) });
   const forFirm = await new KeepPeriods(db).forFirm(firmA);
   ok("J-69 W5: the representative saves 'Keep closed client files for 6 years' (AUD-5 part 1, #2008) and KeepPeriodPort.forFirm reads 6 from the firm setting", saved.status === 200 && forFirm.closedClientFilesYears === 6 && forFirm.source === "firm setting", { status: saved.status, forFirm });
   const past = await call("GET", `/runtime/documents/past-keep-period`, undefined, REP);
