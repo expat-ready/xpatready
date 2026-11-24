@@ -23,7 +23,7 @@ const sql = (q: string) => execFileSync(join(BIN, "psql"), [`postgresql://xr_stu
 const { ok, summary } = recorder();
 type Answer = { status: number; body: Record<string, any> | null };
 const call = async (method: string, path: string, token: string, body: string): Promise<Answer> => {
-  const r = await fetch(`${BASE}${path}`, { method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body });
+  const r = await fetch(`${BASE}${path}`, { method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "idempotency-key": randomUUID() }, body });   // as a client sends it (the breach register asks for one)
   const t = await r.text(); let b: Record<string, any> | null = null; try { b = JSON.parse(t); } catch { /* not JSON */ }
   return { status: r.status, body: b };
 };
