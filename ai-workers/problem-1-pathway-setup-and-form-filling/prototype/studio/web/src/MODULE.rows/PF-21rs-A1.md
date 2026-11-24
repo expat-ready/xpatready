@@ -1,0 +1,2 @@
+Entry points: PF-21rs A1 (R1.86): `/system/privacy/breaches` (`modules/system/privacy/breaches-page.tsx`, "Record a breach" in `modules/system/privacy/record-breach.tsx`); the console menu's Privacy group (`PRIVACY_SECTIONS`, `modules/system/privacy/contract.ts`); `systemApi`'s `headers` (a create's Idempotency-Key; never the authorization).
+Tests: tests/check_pf21rs_browser.ts (R1.86: Breaches list equal to the API, Record a breach with its refusals, the walls, keyboard and axe at 400, 1024 and 1440)
