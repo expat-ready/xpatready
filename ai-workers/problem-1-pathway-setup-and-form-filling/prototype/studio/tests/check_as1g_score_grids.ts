@@ -120,7 +120,7 @@ const pointsIn = (releaseId: string) => sql(`select snapshot->'score_grids'->0->
   const stray = grid(); (stray.factors[0].bands[0].when as any).args[0].field = "person.other";
   r = await propose(stray);
   ok("AS-1g fail (condition): a band that reads a fact its factor does not name is refused", r.status === 400 && /not one of the factor's facts/.test(words(r)), words(r));
-  const mixed = grid(); mixed.factors[1].bands[0] = { when: { op: "in", field: "person.sample_clb", value: ["7", "8"] }, points: 4, source_ref: "Sample" };
+  const mixed = grid(); mixed.factors[1].bands[0] = { when: { op: "in", field: "person.sample_clb", value: ["7", "8"] as unknown as number[] }, points: 4, source_ref: "Sample" };
   r = await propose(mixed);
   ok("AS-1g fail (overlap, breaker M3): words \"7\" beside a number range on one fact are refused (compared as text, both could match)", r.status === 400 && /mix number and string/.test(words(r)), words(r));
   const nowhere = grid(); nowhere.combinations = ["wp.famly"];
