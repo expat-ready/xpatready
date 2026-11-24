@@ -181,4 +181,5 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 ### Lead 23, check 12:29 IST 24 Nov
 * P1: the lane says its tests are red on main (8 of 10) and 11 of 11 with the fix; draft #3428 a4365b0ac, reviewer and breaker running; firm-scope.ts read by me, no fault. Not run by a second machine yet.
 * Merged: #3377 12:19. Lead reads posted and /run full asked: #3234 ba86ad46c, #3277 de8976408 (Lead B's read owed on both heads; one orphan-file question on #3277). #3174: ruled to freeze noted_by_merge_id now. #3385 requeue asked. Batches: #3423 (#3193), #3425, #3426 (#3033 + #3276), #3427 (#3379 + #3422). Disk 10.1 GB; worktrees 13 GB.
-* New lanes of the unseen account: #3424 (FO-5cr, R1.55 family), #3418.
+* New lanes of the unseen account: #3424 (FO-5cr), #3418 (the account not checked for #3424).
+* 12:31 IST, Lead B 5: #3428 a4365b0ac OK; #3277 de8976408 OK with a Major carried (no upload door before its fix: X-row owed); #3234 NOT OK (#3209's route declarations; my read missed it; lane told, #3235 too).
