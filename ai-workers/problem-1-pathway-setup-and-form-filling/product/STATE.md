@@ -2,7 +2,7 @@
 
 current_lead: local_799486c7-1ce5-42f6-8817-ba8dcc23ede4 Lead 18 · 24 Nov 07:20 IST (after Lead 17; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 08:23 IST: Lead 18 (founder awake). 51/101 (+1 since 00:00, +3 in 24 h). Disk 5.4 GB (trc removed 08:17 after proof all 9,293 blobs are on main; Lead B 4 archived, its folder kept by the app for reuse). Standbys REFUSED by preflight under 7 GB: start two at the first typed turn over 7 GB. Cloud FO-6ds lane runs (…vA1uahERMke4). Nightly of 24 Nov not started: dispatch when the queue is idle. GitHub 429 at 08:18: space calls. Wake Lead O 2 (local_f6d6bb60) 13:22 IST.
+updated: 2026-11-24 08:31 IST: Lead 18. **Recovery plan (A348): `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`: read it at take-over.** 51/101. Disk 9.4 GB (old exports proven on GitHub removed). Standbys Lead 19 local_abd52603, Lead 20 local_aa6d586e. Cloud lanes asked 08:30: qa near-done, R1.20, R1.60 (rules before code: answer its go), R1.10; FO-6ds (vA1uahERMke4) runs; #3184's lane woken (stamp 032000). 6 finished cloud lanes and Leads 14-16 archived. Lead O 2 woken for the five lessons. Nightly missing: dispatch when idle. Weekly 50%: on pace to run out early.
 
 ## Hand-over Lead 17 → Lead 18, 07:20 IST 24 Nov (fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -14,12 +14,13 @@ updated: 2026-11-24 08:23 IST: Lead 18 (founder awake). 51/101 (+1 since 00:00, 
 **Check script:** Lead 18's scratchpad `chk.sh`.
 **Lead reads owed:** #3277, #3174 review.ts.
 **qa asks:** R1.10 137 probes (bugs or parts?), j_74 W7 red on two branches while R1.74 is Works, j_90 W4 ends `&& false`. **No lane:** FO-7w1 (R1.56 W1), CS-D5 part 2 (pdfjs gate), FO-5s later part, FO-7t parts 2-3; X-rows owed: Owner's "all" scope (#3321 m4), Button in forms, rAF focus audit, AG-7-1 r11, AG-5-55, Licence/My account query-key crash, #3302's four follow-ups.
-**Sessions:** NO standby left after Lead 18: top up at a founder-typed turn; Lead B 5 local_bb33cf0e; Lead O 2 local_f6d6bb60; qa A 5 (session_01MXNda8oJbGMtZ6ov38m3BR), qa B 4 (01MXNda7YhUVUEMkU93gbfaj). Lane ids: FO-7q 01MXNda7PhEdXQAhL6GMtRyG, R1.90 01MXNda67yexjnYrdQ3B9MNt, PF-31 01MXNda6DzofSEsZJa14VVec, PF-18n2 01MXNda5Q4zsDUw8f6CTRCiv, CS-D6 01MXNda6PPrG2yzjfwiFG9e9. Start limit: disk 7 GB.
+**Sessions:** standbys Lead 19, 20; Lead B 5 local_bb33cf0e; Lead O 2 local_f6d6bb60; qa A 5 (session_01MXNda8oJbGMtZ6ov38m3BR), qa B 4 (01MXNda7YhUVUEMkU93gbfaj). Lane ids: FO-7q 01MXNda7PhEdXQAhL6GMtRyG, R1.90 01MXNda67yexjnYrdQ3B9MNt, PF-31 01MXNda6DzofSEsZJa14VVec, PF-18n2 01MXNda5Q4zsDUw8f6CTRCiv, CS-D6 01MXNda6PPrG2yzjfwiFG9e9. Start limit: disk 7 GB.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A348 | 24 Nov ~08:25 (typed to Lead 18) | recovery plan, clean up lanes and disk, near-done first, lessons live, keep the dates | plan file above; in progress |
 | A347 | 24 Nov ~08:15 (typed to Lead 18) | "you have my all approvals for everything which you are mentioning for needs you ... detailed report ... complete lead status full ... proven ... track A, track B, time view ... confidence level, what gone well ... learn ... Log into the browser and do everything done" | approvals above; full report given in chat |
 | A346 | 24 Nov ~01:25 (typed to Lead 13) | "So you have all my approval. Go ahead and implement those as per your best recommended possible, and create enough standby so that you can run entire night flawlessly and keep monitoring as set processes." | P-814 and date option A (P-815, 12 Dec) in #3314; standbys, Lead B 5, qa A 5 and RQ shaping started |
 | A331-A336, A341, A344, A345 | 23-24 Nov | in force as recorded (A341: P-814 since merged in #3314); rows word for word `history/STATE-2026-11-24-lead14-before-handover.md`; A331-A336 in full `history/STATE-2026-11-23-lead9-ask-rows-A331-A336.md` |
