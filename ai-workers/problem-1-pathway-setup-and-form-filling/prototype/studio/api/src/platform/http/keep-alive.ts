@@ -11,12 +11,20 @@ export const KEEP_ALIVE_MS = (BALANCER_IDLE_SECONDS + 5) * 1000;
 /** Longer than the keep-alive, so a reused connection is never ended by the headers limit first. */
 export const HEADERS_MS = KEEP_ALIVE_MS + 5_000;
 
-/** Called once, before the server listens. A stop (server.close) still ends promptly: Node closes the connections idle
- *  at that moment, and one that was answering then is closed here right after its answer, not KEEP_ALIVE_MS later. */
+/** Called once, before the server listens. A stop (server.close) does not wait KEEP_ALIVE_MS on an idle connection: Node
+ *  closes those idle at that moment, and one that was answering then is ended here after its last answer. Each request
+ *  ends only its own connection (bytes still being sent go out first), never another's. */
 export function outlastBalancer(server: Server): void {
   server.keepAliveTimeout = KEEP_ALIVE_MS;
   server.headersTimeout = HEADERS_MS;
-  server.prependListener("request", (_req, res) => {
-    res.once("finish", () => { if (!server.listening) setImmediate(() => server.closeIdleConnections()); });
+  const open = new WeakMap<object, number>();   // answers owed per connection (a pipelined one is not cut)
+  server.prependListener("request", (req, res) => {
+    const { socket } = req;
+    open.set(socket, (open.get(socket) ?? 0) + 1);
+    res.once("finish", () => {
+      const left = (open.get(socket) ?? 1) - 1;
+      open.set(socket, left);
+      if (!server.listening && left === 0) socket.end();
+    });
   });
 }

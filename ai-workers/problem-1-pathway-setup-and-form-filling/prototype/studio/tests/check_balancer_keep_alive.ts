@@ -1,11 +1,11 @@
 // The API server keeps an idle connection longer than the load balancer's 60 s, so the balancer never sends on one the
-// server is closing (a 502; on 24 Nov the same race was ECONNRESET in batch #3401). The container's real entry
+// server is closing (a 502; on 24 Nov the same close was ECONNRESET in batch #3401). The container's real entry
 // (deploy/container-entry.mjs, then main.ts) runs on a scratch database; plain sockets, so no client pool hides a close.
 // Takes about 65 s. No browser, no model call (US$0). The database is dropped at the end.
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_balancer_keep_alive.ts
 import { execFileSync, spawn } from "node:child_process";
 import { readdirSync, rmSync } from "node:fs";
-import { createServer, get } from "node:http";
+import { Agent, createServer, get } from "node:http";
 import { connect, type AddressInfo, type Socket } from "node:net";
 import { join } from "node:path";
 
@@ -42,16 +42,23 @@ class Line {
 const keepAlive = await import("../api/src/platform/http/keep-alive.ts").catch(() => null);
 ok("keep-alive.ts exists (the old code has none)", keepAlive);
 if (keepAlive) {
-  const server = createServer((q, r) => void setTimeout(() => r.end("ok"), q.url === "/slow" ? 800 : 0));
+  const BIG = 60 * 1024 * 1024;
+  const server = createServer((q, r) => void setTimeout(() => r.end(q.url === "/big" ? Buffer.alloc(BIG) : "ok"), q.url === "/slow" ? 800 : q.url === "/big" ? 500 : 0));
   keepAlive.outlastBalancer(server);
   ok("the headers limit outlasts the keep-alive, which outlasts the balancer", server.headersTimeout > server.keepAliveTimeout && server.keepAliveTimeout > 60_000, [server.headersTimeout, server.keepAliveTimeout]);
   const port = await new Promise<number>((res) => server.listen(0, "127.0.0.1", () => res((server.address() as AddressInfo).port)));
   const idle = new Line(port), busy = new Line(port);
+  let got = 0;   // a client that reads a big answer late: it starts after the stop, while another request finishes
+  const bigDone = new Promise<void>((res) => get({ host: "127.0.0.1", port, path: "/big", agent: new Agent({ keepAlive: true }) }, (r) => {
+    setTimeout(() => r.on("data", (b: Buffer) => (got += b.length)), 1_000); r.on("close", () => res());
+  }).on("error", () => res()));
   await idle.ask("/"); busy.send("/slow"); await pause(200);
   const t0 = Date.now();
   const took = await Promise.race([new Promise<number>((res) => server.close(() => res(Date.now() - t0))), pause(8_000).then(() => Infinity)]);
-  ok("server.close() with one idle and one answering connection ends within 3 s", took < 3_000, took);
+  ok("server.close() with one idle and two answering connections ends within 3 s", took < 3_000, took);
   ok("the answering request was answered whole, not cut", /^HTTP\/1\.1 200/.test(busy.text) && busy.text.includes("ok"), busy.text);
+  await Promise.race([bigDone, pause(5_000)]);
+  ok("a big answer still being sent is not cut by another request that finishes during the stop", got === BIG, got);
   idle.end(); busy.end();
 }
 
