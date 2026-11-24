@@ -240,3 +240,5 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 ### Ask rows moved from STATE by Lead 24 (still open, word for word)
 | A354 | 24 Nov ~10:22 (typed to Lead 21) | Mac slow: check and optimize, all approvals; signed in to Stripe | measured; plan file; open |
 | A353 | 24 Nov, before 10:10 (typed to Lead 17; relayed) | check us against the AI-native SDLC playbook; implement only what helps quality or speed | `design/sdlc-playbook-alignment-2026-11-24.md`; read by Lead 21, seven facts spot-checked true on main; N2-N4 finish ordered work; founder 10:22 IST to Lead 21: implement; N2-N4 ordered to Lead O 2, N1 in the next five risky briefs; notes: plan file; open |
+
+* 13:12 IST: **CodeAnt C1: yes** (founder pressed "Yes, send it" in Lead 24: the 28 sample PRs' public code). Nothing sent; C3 (install) asked next, C2 (terms, his reading) given as links. qa 6 and FO-7t part 2 cloud sessions started; Lead 25 standing by.
