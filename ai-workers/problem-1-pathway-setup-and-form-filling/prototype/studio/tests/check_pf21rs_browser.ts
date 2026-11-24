@@ -250,11 +250,15 @@ try {
   const other = await api(tOwner, `${BREACHES}/${w4.body?.id}`, "PATCH", { reason: "Sample: another tab", rootCause: "Sample: changed in another tab" });
   await st.getByLabel("Root cause").fill("Sample: this tab's stale words"); await st.getByLabel("Reason for the audit line").fill("Sample: stale");
   await st.getByRole("button", { name: "Save the changes" }).click();
-  const staleSaid = await st.locator("[data-record-error]").innerText({ timeout: 10_000 }).catch(() => "");
+  await st.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+  const staleSaid = await p1.locator("[data-done]").innerText({ timeout: 10_000 }).catch(() => "");
+  const closed = !(await st.isVisible());
+  // Round 2 (M1): the stale form is gone, so it cannot be saved again; Edit opens on the latest words.
+  await p1.getByRole("button", { name: "Edit the record" }).click(); await st.waitFor();
+  const fresh = await st.getByLabel("Root cause").inputValue();
   await st.getByRole("button", { name: "Cancel" }).click(); await st.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
-  await p1.getByText("Sample: changed in another tab").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
-  ok("PF-21rs A2 fail (break M1, STANDARDS §4): a breach changed elsewhere while Edit is open → nothing saved, the dialog says so, the page shows the other change",
-    other.status === 200 && staleSaid === COPY.stale && sql(`select root_cause from plat_breach where id = '${w4.body?.id}'`) === "Sample: changed in another tab" && (await p1.getByText("Sample: changed in another tab").count()) > 0, { status: other.status, staleSaid });
+  ok("PF-21rs A2 fail (break M1, round 2): a breach changed elsewhere while Edit is open → nothing saved, Edit closes and the page says so; Edit opens again on the latest words",
+    other.status === 200 && closed && staleSaid === COPY.stale && fresh === "Sample: changed in another tab" && sql(`select root_cause from plat_breach where id = '${w4.body?.id}'`) === "Sample: changed in another tab", { status: other.status, closed, staleSaid, fresh });
   // Edit the record: a change of containment is stored and listed; a notified firm cannot be removed.
   await p1.getByRole("button", { name: "Edit the record" }).click();
   const ed = p1.getByRole("dialog", { name: "Edit the record" }); await ed.waitFor();

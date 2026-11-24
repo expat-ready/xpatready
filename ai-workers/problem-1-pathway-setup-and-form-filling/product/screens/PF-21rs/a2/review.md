@@ -91,3 +91,32 @@ A real screen reader; Safari or Firefox keyboard reach into the words box; an in
 Reviewer: Block 074eaaae3afd0041a7b41b50d86e87c97e08507d
 
 **Verdict: Block** (commit `074eaaae3afd0041a7b41b50d86e87c97e08507d`). To fix: issue 1, the Major (`breach-page.tsx:59`, and the check's W6 scan at `check_pf21rs_browser.ts:276-279`). Issues 2-8 are Minors: fix them in this PR or record them on the row.
+
+## Round 2 (head `c9cd9ef38ab705a0b400f069b1443b1e7bc0259a`; diff `074eaaa..c9cd9ef` only; the current verdict)
+**Ran (copy `rsrev` on :4437, stopped after):** `check_pf21rs_browser.ts` **39/39** twice (screenshots restored with `git checkout`); `tsc -p web --noEmit` exit 0; my own probes in Chromium at 1440, 1024, 1024 at 200 % and 400.
+**Re-checked:**
+* **Issue 1 (Major): fixed.** The `<pre>` takes focus with the name "Words sent to <firm>". With every "Words sent" open, axe finds 0 serious and there is no sideways scroll at all four widths, on a 1,000-character notice with a 108-character firm name. The check's W6 scan now opens the words.
+* **Issue 2: fixed for Decide.** A Decide over another tab's decision stores nothing (DB keeps NOTIFY_FIRMS), closes, says `COPY.stale`, and the page shows "Change the decision".
+* **Issue 3: fixed.** History wraps (`[overflow-wrap:anywhere]`), and so does the Send button.
+* **Issue 4 / breaker M2: fixed.** Confirm starts empty with the alert's words shown apart. The alert words, with or without a trailing space, are refused under "What happened", the focus goes to the box, and the breach stays DRAFT.
+* **Issue 5: half fixed.** After recording, the focus is on the `h1` and `?recorded` leaves the address, so a reload does not repeat the line. Still open (Minor): after a refused Decide or Send the focus is on the dialog box, not the refused field. "Why" now gets `aria-invalid` (breaker m1).
+* **Issue 6: fixed.** The header status has `title` (e.g. "Recorded; decide whether the affected firms are told.").
+* **Issue 8: half fixed.** "(confirm the record first)" is right now; the "A breach" crumb stays, listed in the PR.
+* **Issue 7 is still open (Minor)**, as listed in the PR.
+
+**New, Major (Must): breaker M1 is not closed. A retry after the stale refusal overwrites the other tab's change** (`breach-page.tsx:84-87`, `record-breach.tsx:65`, `:79`).
+* Probe:
+  1. Opened Edit on a breach naming X.
+  2. Another tab (an API PATCH) added firm Y and a containment.
+  3. In the open dialog: wrote a root cause and pressed Save. I got `COPY.stale` ("… The page now shows the latest; try again."), and nothing was stored. This is correct.
+  4. The dialog stays open, still holding the old firms (1) and an empty containment. I pressed Save again, as the words invite.
+  5. Result: 200, and the DB holds **1 firm (Y removed) and containment NULL**. The other tab's change is silently undone.
+* Cause:
+  * `unchanged()` compares the fresh read with `one.data`, which `reload()` has just refreshed, so the second try passes.
+  * The form's values are seeded only on opening (`record-breach.tsx:65`), and `changeBody` diffs them against the new breach, so every field the other person changed is sent back.
+* Fix: on STALE, close the Edit dialog as Decide does, or re-seed the form from the fresh breach and say what changed. Keep the guard's base as the `updatedAt` seen when the dialog opened, not `one.data`.
+* Test: add one fail line to the M1 check (`check_pf21rs_browser.ts:247`) where a second Save after the stale words leaves the other change in the DB.
+
+Reviewer: Block c9cd9ef38ab705a0b400f069b1443b1e7bc0259a
+
+**Verdict: Block** (commit `c9cd9ef38ab705a0b400f069b1443b1e7bc0259a`). To fix: the new Major (the stale Edit retry). The rest of round 1's Major and Minors are fixed except Minor 5's refusal focus, Minor 7 and the crumb, which stay Minor as listed in the PR.

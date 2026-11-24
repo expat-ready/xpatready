@@ -54,9 +54,10 @@ function FirmPicker({ chosen, onChange, error, kept = [] }: { chosen: Firm[]; on
   );
 }
 
-export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMaybeRecorded, breach, before }: { open: boolean; onOpenChange: (o: boolean) => void; onRecorded: (id: string) => void; returnFocus: () => HTMLElement | null; onMaybeRecorded: () => void;
+export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMaybeRecorded, breach, before, onStale }: { open: boolean; onOpenChange: (o: boolean) => void; onRecorded: (id: string) => void; returnFocus: () => HTMLElement | null; onMaybeRecorded: () => void;
   /** A2: edit this breach (or confirm it, when a draft) instead of recording a new one. */ breach?: BreachOne;
-  /** A2 (break M1): run before a change is sent; throws when the breach changed since the page read it. */ before?: () => Promise<void> }) {
+  /** A2 (break M1): run before a change is sent; throws when the breach changed since the page read it. */ before?: () => Promise<void>;
+  /** A2 (round 2 M1): the breach changed elsewhere: the form closes, so its old values can never be saved over the new ones. */ onStale?: () => void }) {
   const confirm = breach?.status === "DRAFT";
   const [d, setD] = React.useState<RecordDraft>(blank), [key, setKey] = React.useState("");
   const [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false);
@@ -76,7 +77,7 @@ export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMa
     if (confirm && (!d.description.trim() || d.description.trim() === breach!.description.trim())) { setErrors({ description: COPY.draftSame }); setRefused((n) => n + 1); return; }
     setBusy(true); setErrors({});
     try {
-      if (breach && before) await before();
+      if (breach && before) { try { await before(); } catch (x) { if (x instanceof SystemApiError && x.problem.code === "STALE") { onOpenChange(false); onStale?.(); return; } throw x; } }
       if (breach) onRecorded(Recorded.parse(await systemApi(`/register/breaches/${breach.id}`, { method: "PATCH", json: changeBody(breach, d, confirm) })).id);
       else onRecorded(Recorded.parse(await systemApi("/register/breaches", { method: "POST", json: recordBody(d), headers: { "idempotency-key": key } })).id);
     }

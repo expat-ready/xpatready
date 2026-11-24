@@ -29,7 +29,10 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
 function ChangeDialog({ open, onOpenChange, title, description, submit, send, children, returnFocus }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description: React.ReactNode; submit: string;
   send: (reason: string) => Promise<void>; children?: (errors: Record<string, string>) => React.ReactNode; returnFocus: () => HTMLElement | null }) {
   const [reason, setReason] = React.useState(""), [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false);
+  const form = React.useRef<HTMLFormElement>(null);
   React.useEffect(() => { if (open) { setReason(""); setErrors({}); } }, [open]);
+  // After a refusal the first refused field takes the focus (review round 2).
+  React.useEffect(() => { if (Object.keys(errors).length) form.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus(); }, [errors]);
   const go = async (e: React.FormEvent) => {
     e.preventDefault(); if (busy) return; setBusy(true); setErrors({});
     try { await send(reason); } catch (x) { setErrors(x instanceof SystemApiError && x.problem.fields ? fieldErrors(x.problem.fields) : { other: x instanceof SystemApiError ? x.message : "Could not save. Please try again." }); }
@@ -38,7 +41,7 @@ function ChangeDialog({ open, onOpenChange, title, description, submit, send, ch
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={title} description={description} returnFocus={returnFocus}
       footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" form="breach-change" busy={busy}>{submit}</Button></>}>
-      <form id="breach-change" onSubmit={go} noValidate className="flex flex-col gap-4">
+      <form id="breach-change" ref={form} onSubmit={go} noValidate className="flex flex-col gap-4">
         {children?.(errors)}
         <Field label="Reason for the audit line" hint="Why you are doing this: kept on the audit line." error={errors.reason}><Input value={reason} onChange={(e) => setReason(e.target.value)} data-field="reason" /></Field>
         {errors.other ? <Notice tone="danger"><span data-change-error>{errors.other}</span></Notice> : null}
@@ -147,7 +150,7 @@ function BreachBody() {
       </Card>
 
       {manage ? <>
-        <RecordBreach before={unchanged} open={editing} onOpenChange={(o) => { setEditing(o); if (!o) reload(); }} breach={b} returnFocus={() => editButton.current}
+        <RecordBreach before={unchanged} onStale={() => setDone(COPY.stale)} open={editing} onOpenChange={(o) => { setEditing(o); if (!o) reload(); }} breach={b} returnFocus={() => editButton.current}
           onRecorded={() => { setEditing(false); setDone(b.status === "DRAFT" ? "Confirmed. Next: decide whether firms are told." : "Saved."); reload(); }} onMaybeRecorded={reload} />
         <ChangeDialog open={deciding} onOpenChange={setDeciding} title="Decide whether firms are told" description="The decision names who and why. It is fixed once a notice is sent." submit="Record the decision"
           returnFocus={() => decideButton.current ?? document.getElementById("breach-decision")}
