@@ -4,4 +4,6 @@
 
 QA-775 (Gap · Minor, open): the change-plan route answers 409 NO_BILLING_ACCOUNT on a local copy before its downgrade check. In the merged journey its two answers are printed as NOTE lines, not judged; the check is judged through PlanBookings.book, which that route calls, and one step checks the route books nothing.
 
-Runs on #3465's head aa2ad42d4 (isolated copy :4471, PLATFORM_IDENTITY=local, live AI off, US$0): run 1 66/66, exit 0.
+Runs (isolated copies, PLATFORM_IDENTITY=local, live AI off, US$0):
+* #3465's head aa2ad42d4, :4471: run 1 66/66 exit 0; run 2 66/66 exit 0.
+* main 649fae886 (before the fix), :4472: 38 PASS, 21 FAIL, exit 1. Every FAIL is QA-773 (W1-W3: Send never goes, so no batch call, no invitations, W6 has no link) or QA-774 (W4 and W10 seat line / words; W10 code: Team's seat line does not read seatLimitOf), or follows from them (W11: A has no pending invitation). So the journey is red on main and green on the fix.
