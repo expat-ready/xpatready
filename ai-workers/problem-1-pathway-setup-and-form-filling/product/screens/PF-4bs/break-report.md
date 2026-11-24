@@ -78,3 +78,43 @@ Method: each mutation edits a clone of the synthesized template from `allStacks(
 - **No other principal gets Cognito power:** execution roles, AWS Backup's role, roles no task definition references, outside roles, managed policies and other IAM types all fail.
 - **The service's env and the staff pool stay tied together** for a single entry (`refId` plus `UserPoolName`).
 - **In array-form policies,** signInTaskFindings' exact-grant comparison and its count of one.
+
+## Round 2 (9fe17105a)
+**Verdict: Approve** — `9fe17105ad710fbbc4db811242dfc732a676e478`. B1, B2, M3 and M4 are closed. One new Minor remains (R7). It gives no Cognito power: claims (a) to (d) hold against every mutation tried.
+
+`npm test` in deploy/cdk exit 0 (137 tests, 137 pass, 0 fail). Same method as round 1: five checks, xr-production and xr-staging, with a domain and without. I re-ran the scratch `attack.ts` and `side.ts`, then ran a new `attack2.ts` against the round-2 code.
+
+**Round 1 breaks:**
+- **B1, closed.** All five variants are now caught by signInTaskFindings: one-object `Statement` on another pool, both pools, the migration role, inline `Policies`, and an added `Condition`. The second exact grant written with a `Sid` is caught too.
+- **B2, closed.** The `Fn::Sub` and `Fn::Join` clients are caught by poolFindings ("not a plain Ref to a pool of this stack").
+- **M3, closed.** signInTaskFindings: "AppMigrate… also runs as the service's task role".
+- **M4, closed.** signInTaskFindings: "named twice".
+- All round 1 caught cases are still caught.
+
+**Attacks on the new code, caught:**
+- **One-object reader:** each of these was refused.
+  - **By bypassFindings (statementsOf):** a `Statement` that is one `Fn::If` object (on a Policy and in inline `Policies`); an `Fn::If` element in the array; a one-object `NotAction`; an extra `Statements` key next to an empty array.
+  - **By both checks:** `Statement` as a JSON string ("cannot be read").
+- **Plain-Ref client rule:**
+  - `{Ref, "Fn::Sub"}` with an extra key is caught.
+  - A second plain-Ref staff client behind a resource-level `Condition` is caught ("2 app clients").
+- **Shared-role rule:**
+  - migration `TaskRoleArn` as `GetAtt [service role, RoleId]`: caught by signInTaskFindings.
+  - migration `ExecutionRoleArn` set to the service task role: caught by bypassFindings and resourcePolicyFindings.
+  - `Roles` as `Fn::If`: caught by bypassFindings.
+  - a decoy `ECS::Service` placed first in the Resources order: caught ("pool null").
+- **Duplicate-name rule:** a sidecar container repeating the settings is caught ("named twice"). The rule spans every container and both Environment and Secrets.
+
+**Still open, R7 (Minor): the container's command can set the setting the rule protects**
+- **Mutation:** on the service container (which has no `Command` today), add `Command: ["sh","-c",{"Fn::Join":["",["PLATFORM_COGNITO_USER_POOL_ID=",{Ref:<own-staff pool>}," exec node dist/main.js"]]}]`. A variant used `EntryPoint: ["env", "PLATFORM_COGNITO_USER_POOL_ID=<own-staff>"]`.
+- **Checks that returned `[]`:** all five.
+- **Effect:** the app would sign staff in against own-staff while the checks read the env entry, which still names staff. M4's purpose ("one name, one value") is defeated through a different channel. No power is gained: the IAM grant is still on the staff pool alone, so the calls would be refused.
+- **Fix:** the service container has no `Command` or `EntryPoint`, or neither mentions `PLATFORM_`.
+
+**Not findings:**
+- an env name with a trailing space (a different variable)
+- the env set to `GetAtt [staff, ProviderName]` (still the staff pool, just a wrong value)
+- a client in the ca-west-1 copy stack (Cognito is regional and no staff pool is there)
+- `PermissionsBoundary` (it only narrows a role)
+
+**Already open before this PR (not counted):** filesTaskFindings still reads only array `Statement`s (service-checks.ts:398). `side.ts` still returns [] from filesTaskFindings and bypassFindings for the migration role's one-object `s3:GetObject` grant.
