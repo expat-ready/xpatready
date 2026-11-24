@@ -2,7 +2,7 @@
 
 current_lead: local_2729de7c-efc8-4aa1-9b0c-e09e8441b503 Lead 30 · 24 Nov 19:23 IST (after Lead 29, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 19:23 IST: Lead 29 ended. **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`; action list (A370).** 55/101 Works. Weekly 88% at 19:08.
+updated: 2026-11-24 19:33 IST: Lead 30 (check 88ab22ce). **Read the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`; action list (A370).** 55/101 Works (not recounted). Weekly 89%.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
