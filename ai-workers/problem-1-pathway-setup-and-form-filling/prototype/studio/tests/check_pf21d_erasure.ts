@@ -263,10 +263,11 @@ try {
   const afterBreak = statusOf(r8), rowsAfter = rowsOf(A, P8);
   const lateCancel8 = await throws(() => svc.cancel(as, null, r8, { note: "Sample: withdrawn" }), /ERASURE_RUNNING/);
   sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r8}'`);   // a run 30 minutes later
+  const staleCancel8 = await throws(() => svc.cancel(as, null, r8, {}), /ERASURE_RUNNING/);   // review r6 M1: a stale claim still refuses
   const recorded = await svc.run();
   ok("PF-21d fail (Lead 26): a HELD order whose erasers committed but whose record failed keeps its claim: cancel → 409 (never a cancelled register over erased data); a run after 30 minutes records it COMPLETED",
-    broke.failed === 1 && rowsAfter === 0 && afterBreak.startsWith("HELD|2") && lateCancel8 && !kinds(r8).includes("ERASURE_CANCELLED")
-    && recorded.erased.includes(r8) && statusOf(r8) === "COMPLETED|-", { broke, afterBreak, rowsAfter, lateCancel8, recorded, s: statusOf(r8), k: kinds(r8) });
+    broke.failed === 1 && rowsAfter === 0 && afterBreak.startsWith("HELD|2") && lateCancel8 && staleCancel8 && !kinds(r8).includes("ERASURE_CANCELLED")
+    && recorded.erased.includes(r8) && statusOf(r8) === "COMPLETED|-" && /earlier run.*not recorded/i.test(sql(`select actions_taken from plat_data_request where id = '${r8}'`)), { broke, afterBreak, rowsAfter, lateCancel8, recorded, s: statusOf(r8), k: kinds(r8) });
   // Lead 27: the same order shape, but the erasers' COMMIT succeeds and its answer is lost: the claim must stay too.
   const P9 = person(A); addRows(A, P9);
   const r9 = await deletion(A, P9); await svc.approve(as, null, r9);
@@ -277,10 +278,35 @@ try {
   const lostRows = rowsOf(A, P9), lostState = statusOf(r9);
   const lostCancel = await throws(() => svc.cancel(as, null, r9, { note: "Sample: withdrawn" }), /ERASURE_RUNNING/);
   sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r9}'`);
+  const staleCancel9 = await throws(() => svc.cancel(as, null, r9, {}), /ERASURE_RUNNING/);   // review r6 M1
   const lostRecorded = await svc.run();
   ok("PF-21d fail (Lead 27): the erasers' COMMIT succeeds but its answer is lost → the claim stays (an unknown outcome is never a rollback): cancel → 409; a run after 30 minutes records it COMPLETED",
-    lost.failed === 1 && lostRows === 0 && lostState.startsWith("HELD|2") && lostCancel && !kinds(r9).includes("ERASURE_CANCELLED") && lostRecorded.erased.includes(r9) && statusOf(r9) === "COMPLETED|-",
+    lost.failed === 1 && lostRows === 0 && lostState.startsWith("HELD|2") && lostCancel && staleCancel9 && !kinds(r9).includes("ERASURE_CANCELLED") && lostRecorded.erased.includes(r9) && statusOf(r9) === "COMPLETED|-",
     { lost, lostRows, lostState, lostCancel, lostRecorded, s: statusOf(r9), k: kinds(r9) });
+  // review r6 M2: the run that retakes a kept claim knows the data may already be erased. A hold placed meanwhile → HELD
+  // with true words and no erase day (never cancellable, never "nothing was erased"); nothing more is erased.
+  const P10 = person(A); addRows(A, P10);
+  const r10 = await deletion(A, P10); await svc.approve(as, null, r10); clock.t += 7 * DAY;
+  mode = "breakRecord"; await svc.run(); mode = "nothing";
+  sql(`alter function pf21d_finish_away(uuid, text, text, date, text, timestamptz) rename to plat_data_request_erasure_finish`);
+  sql(`insert into plat_legal_hold (id, firm_id, scope_kind, target_id, reason, placed_by) values (gen_random_uuid(), '${A}', 'PERSON', '${P10}', 'Sample: a late inquiry', 'staff:${OWNER}')`);
+  sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r10}'`);
+  const retook = await svc.run();
+  const notes10 = sql(`select string_agg(coalesce(note, ''), ' / ' order by seq) from plat_data_request_event where request_id = '${r10}'`);
+  const cancel10 = await throws(() => svc.cancel(as, null, r10, {}), /NOT_SCHEDULED|ERASURE_RUNNING/);
+  ok("PF-21d fail (review r6 M2): a retaken claim under a new hold → HELD, no erase day, the step says an earlier run may have erased and its result was not recorded (never \"nothing was erased\"); cancel → 409",
+    retook.partial.includes(r10) && statusOf(r10) === "HELD|-" && cancel10 && /not recorded/.test(notes10) && /a late inquiry/.test(notes10)
+    && !/On legal hold; nothing was erased/.test(notes10) && /may have erased/.test(sql(`select actions_taken from plat_data_request where id = '${r10}'`)), { retook, s: statusOf(r10), notes10 });
+  // review r6 M2: a retaken claim whose eraser then fails keeps the claim (an earlier run may have erased): cancel → 409.
+  const P11 = person(A); addRows(A, P11);
+  const r11 = await deletion(A, P11); await svc.approve(as, null, r11); clock.t += 7 * DAY;
+  mode = "breakRecord"; await svc.run(); mode = "nothing";
+  sql(`alter function pf21d_finish_away(uuid, text, text, date, text, timestamptz) rename to plat_data_request_erasure_finish`);
+  sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r11}'`);
+  mode = "throw"; const retakeFail = await svc.run(); mode = "nothing";
+  const cancel11 = await throws(() => svc.cancel(as, null, r11, {}), /ERASURE_RUNNING/);
+  ok("PF-21d fail (review r6 M2): a retaken claim whose eraser fails keeps the claim (never \"nothing was erased\" over an earlier unrecorded run): cancel → 409",
+    retakeFail.failed === 1 && cancel11 && sql(`select erasing_since is not null from plat_data_request where id = '${r11}'`) === "t", { retakeFail, cancel11, k: kinds(r11) });
   // -------------------------------------------------------------------------------------- the database's rules
   ok("PF-21d fail (database): an erase day on an access request or not after the day received, a forged mark through the job's step → refused",
     refusedBySql(`update plat_data_request set erase_on = received_on + 7 where id = '${access}'`, /plat_data_request_erase_on_set/)

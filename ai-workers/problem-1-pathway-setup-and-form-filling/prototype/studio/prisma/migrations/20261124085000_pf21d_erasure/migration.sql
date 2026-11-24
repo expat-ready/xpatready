@@ -91,17 +91,18 @@ BEGIN
   RETURN QUERY SELECT r.status::text, r.erase_on FROM plat_data_request r WHERE r.id = p_id;
 END $fn$;
 -- The job's claim (break B1, B2): a scheduled, due request not claimed (or claimed over 30 minutes ago, a job that died)
--- is claimed now; returns the claim, or null when it cannot be claimed (cancelled, completed, not due, running).
-CREATE FUNCTION plat_data_request_erasure_claim(p_id uuid, p_today date) RETURNS timestamptz
+-- is claimed now; returns the claim and whether it retook an earlier run's claim, or no row when it cannot be claimed.
+CREATE FUNCTION plat_data_request_erasure_claim(p_id uuid, p_today date) RETURNS TABLE (claim timestamptz, retaken boolean)
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
 DECLARE r plat_data_request%ROWTYPE; c timestamptz := date_trunc('milliseconds', clock_timestamp());   -- the app's Date carries milliseconds
 BEGIN
   PERFORM plat_data_request_system_only();
   SELECT * INTO r FROM plat_data_request x WHERE x.id = p_id FOR UPDATE;
   IF r.id IS NULL OR r.erase_on IS NULL OR r.erase_on > p_today OR r.status = 'COMPLETED'
-     OR (r.erasing_since IS NOT NULL AND r.erasing_since > c - interval '30 minutes') THEN RETURN NULL; END IF;
+     OR (r.erasing_since IS NOT NULL AND r.erasing_since > c - interval '30 minutes') THEN RETURN; END IF;
   UPDATE plat_data_request x SET erasing_since = c WHERE x.id = p_id;
-  RETURN c;
+  -- retaken (review r6 M2): an earlier run's claim was still here, so its erasers may have committed unrecorded.
+  RETURN QUERY SELECT c, r.erasing_since IS NOT NULL;
 END $fn$;
 -- Gives a claim back with nothing changed (an eraser failed: the order stays scheduled for the next run).
 CREATE FUNCTION plat_data_request_erasure_release(p_id uuid, p_claim timestamptz) RETURNS boolean

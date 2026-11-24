@@ -384,3 +384,94 @@ Correct data and feedback and state go back to 1. The score returns to round 2's
 tested first, and each test fails when its rule is removed).
 
 Reviewer: Approve 77997e39d1282cfbb2ff4bb867480f324b9f8ef1
+
+## Round 6: `d3680b44ef3965777fdbfbbdbba46030c9b26ae2` (PR #3235, diff only: `git diff 54ad5b8c2 d3680b44e`, Lead 27)
+
+Scope: 0d594e988 (Lead 26) and d3680b44e (Lead 27). That is `service.ts`, the cancel definer in `20261124085000_pf21d_erasure`
+(same stamp; the PR is unmerged, so editing the migration in place is fine), and `check_pf21d_erasure.ts`.
+
+**Suites at d3680b44e** (worktree; Postgres 18 on 127.0.0.1:54329 accepting): check_pf21d_erasure 29/0 and 29/0 (two runs);
+check_aud3_access 30/0.
+
+**Mutations (all run in the worktree, then reverted):**
+* `service.ts` set back to 54ad5b8c2: the Lead 26 line and the Lead 27 line both FAIL (27/2).
+* `service.ts` at 0d594e988 (`state.erased` set after `$transaction` returns): only the Lead 27 line FAILS (28/1).
+* Cancel definer set back to the 30-minute rule (`… AND r.erasing_since > clock_timestamp() - interval '30 minutes'`):
+  **29/0, nothing fails.** See r6 M1.
+
+### Judged correct
+* **Release or keep, in each path.** `state.erased = true` is set at `service.ts:190`, after the last eraser returns and
+  inside the callback. An eraser that throws (wrapped as EraserFailed), an `EraseOutcome.parse` that throws, a hold check
+  that throws and a person check that throws all happen before that line. Prisma then rolls back, so the rollback is
+  certain and the claim is released: right. A COMMIT whose answer is lost, a failing record transaction, and anything
+  `withFirm` throws after the commit all leave `state.erased` true, so the claim is kept: right.
+* **A COMMIT that really fails** (a deferred constraint, Prisma's 120 s timeout closing the transaction, a lost
+  connection). Nothing is erased, but the claim is kept. That is cautious, not wrong. The client cannot tell a failed
+  COMMIT from a lost answer: no eraser uses deferred constraints, and READ COMMITTED gives no serialization failure at
+  COMMIT. The cost is small. The step's words stay true ("the erasers ran … could not be recorded"). Cancel answers 409
+  until the next daily run. The only order where a cancel was still possible is a HELD one whose hold is lifted, and the
+  next run erases that order anyway, because it is due. Not worth telling the two cases apart.
+* **No claim is kept forever.** `due()` still lists claimed orders, and `claim()` retakes a claim older than 30 minutes, so
+  the next daily run retakes it. If every run fails to record, the claim is retaken and kept again each day, an
+  `erasure_order_failed` error is logged each day, and cancel keeps answering 409. That is right while the data may be
+  gone (see m1 for the step a day).
+* **Cancel's new rule blocks no legitimate cancel.** Before the erase day nothing can be claimed (`claim()` needs
+  `erase_on <= today`). An order blocked by a hold gets `finish BLOCKED`, which sets `erasing_since = NULL`, so it stays
+  cancellable. A process that died before its erasers ran leaves a claim with nothing erased, and cancel then waits up to
+  a day: cautious and acceptable.
+* **TestDb is a faithful stand-in.** The override's `.then` runs only after `super.$transaction` resolved, that is after
+  COMMIT. The flag is raised inside the erasers' own transaction, so exactly that transaction "commits, then loses its
+  answer". `lostRows === 0` proves the commit landed. The real case would probably also lose the follow-up step, which is
+  `.catch`ed. The Lead 26 rename runs in a separate psql session during the erasers, so the erasers commit and `finish`
+  is missing. Both tests prove what they claim (mutations above).
+
+### r6 M1 (Major, [M] "a rule's test fails when the rule is removed"; Lead 26's second defect): "however old" is untested
+* **What fails.** Reverting the cancel definer to the 30-minute rule leaves the suite green. Both Lead blocks cancel while
+  the claim is seconds old (`check_pf21d_erasure.ts:264`, `:278`), which is the one case the old rule already refused.
+* **Why it matters.** The job is daily, so after a kept claim the next run comes about 24 h later. For about 23.5 of those
+  hours, this one line is the only thing between staff and "cancelled over erased data", and it is the guarantee the new
+  step promises ("The request cannot be cancelled").
+* **Fix.** In each Lead block, after the existing `- interval '31 minutes'` line (`:265`, `:279`) and before the later
+  run, cancel again and expect `ERASURE_RUNNING`. It should fail on the 30-minute rule.
+
+### r6 M2 (Major, Lead 26's outcome through the retake): a retake that ends held or gone releases the claim over erased data
+* **The flaw.** The retaking run does not know that the claim it takes may cover data that is already erased. I proved
+  this with a local probe in the worktree (not committed), with no initial hold:
+  1. Approve. On the erase day the record breaks (the Lead 26 rename): the erasers commit, rows = 0, the claim is kept,
+     and the step reads "…cannot be cancelled".
+  2. A new hold is placed. The claim is aged 31 minutes, and the next run takes the held path: `ERASURE_HELD` "On legal
+     hold; nothing was erased." (false), `finish BLOCKED` releases the claim, and the status is `HELD|<day>`.
+  3. `cancel` then answers **CANCELLED**, and erase_on is cleared.
+* **The result.** The register reads cancelled over erased data, with a false "nothing was erased" step. The person-gone
+  path (`service.ts:199-200`, a merge before the retake) does the same.
+* **Second symptom (same cause).** When the retake ends COMPLETED, its record lists only what the retake found. For r8 the
+  probe printed `actions_taken = "test.rows: NOTHING (no rows); test.second: NOTHING (no rows)"` for data the first run
+  erased. The trail does keep the earlier "could not be recorded" step.
+* **Fix (no new scope; the builder chooses how).** The run must know it is retaking a claim that may cover erased data.
+  For example, `claim()` could report that it replaced a stale claim, or a marker could be set when the claim is kept.
+  On such a retake:
+  * the held or gone outcome writes words that are true ("an earlier run's erasers ran on <date> and their result was
+    not recorded; staff check before cancelling");
+  * it does not make the order cancellable (keep the claim, or have cancel refuse while the marker is set);
+  * a COMPLETED or PARTIAL record says that an earlier run's result was not recorded.
+* **Test.** The probe above as a fail line: break the record, place a hold, age the claim, run, cancel → 409, with no
+  "nothing was erased" step.
+
+### Minor
+* **m1.** The kept-claim step uses `p_once = false`, so a record that keeps failing writes the same "could not be recorded"
+  step every day. Use `true`: the same kind and note then collapse to one step, as for SKIPPED and HELD (r4 m1).
+* **m2.** The new 409 words do not say when the block ends. Add "the next daily run records it" (plain words; optional).
+
+Round 2's Minors 1-4 are untouched and stay listed in the PR.
+
+**Journey score (reviewer): changed path re-walked through the service (no screen in this item).** What held: a failure
+after the erasers keeps the request uncancellable, and the next run records COMPLETED. M2 shows that the register can
+still end cancelled over erased data, with a false "nothing was erased" step, if a hold or a merge lands before the
+retake. Correct data drops to ½. The score is **8.5/10, pass, no 0**, down from round 5's 9/10. Round 5 did not see this
+path; it already existed there, in a worse form.
+
+**Verdict: Block** for `d3680b44ef3965777fdbfbbdbba46030c9b26ae2`. Fix list: r6 M1 (a cancel test on a claim older than
+30 minutes), r6 M2 (a retake that may cover erased data never releases into a cancellable order and never writes "nothing
+was erased"; the probe as a fail line). Fix m1 and m2 or list them in the PR.
+
+Reviewer: Block d3680b44ef3965777fdbfbbdbba46030c9b26ae2

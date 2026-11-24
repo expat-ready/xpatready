@@ -186,3 +186,43 @@ worktree and scratch databases are removed.
 No Blocker or Major is open.
 
 **Verdict: Approve** for 77997e39d1282cfbb2ff4bb867480f324b9f8ef1
+
+## Round 6 (diff only: `git diff 54ad5b8c2 d3680b44e`, Lead 27)
+
+How it was tested: a scratch copy of the shipped suite (never committed), run on two worktrees, d3680b44e and its parent
+0d594e988. Postgres 18 on :54329, scratch databases only. The service's Db connected through a **real TCP proxy**: the
+eraser's transaction sends a marker, the proxy passes its COMMIT on, waits for the server's `COMMIT` CommandComplete
+(so the commit is durable), then cuts both sockets before the answer reaches the client. A second test used a
+**real `pg_terminate_backend`**, fired from another session while COMMIT ran a deferred 3 s constraint trigger.
+Order shape as in the suite: HELD, the hold lifted, now due. Cancel was called over HTTP with a fresh Owner token.
+The shipped suite at head: 29/0.
+
+| # | Attack | Expected | Actual | Sev | Where |
+|---|---|---|---|---|---|
+| R6-1 | The erasers commit and COMMIT's answer is lost; **before the next run a new legal hold is placed on the person** | The claim stays until a run records that the data may be gone; cancel stays 409 | The retake goes down the hold path. It writes `ERASURE_HELD` "On legal hold; **nothing was erased**", and `finish('BLOCKED')` clears the claim. Then cancel → **200**: ERASURE_CANCELLED, register `HELD\|-`, person's rows 0. The register reads cancelled, its last step says nothing was erased, and the data is gone: the very outcome Leads 26 and 27 closed. Not a regression (the parent does the same, and worse, at once), but the fix's promise "a run after 30 minutes retakes it and records the result" does not hold here | **Major** | service.ts:185, 203-205 (the hold path runs before anything checks that an earlier run may have erased); mig:142 |
+| R6-2 | Same, but the person is **merged away** before the retake (or, in part 2, an eraser removes or merges the person record itself) | As R6-1 | The retake goes down the gone path. It writes "merged away … nothing was erased; Staff choose the person: cancel", clears the claim, and cancel → **200** over erased rows. Same cause as R6-1 | **Major** (same fix as R6-1) | service.ts:183, 198-200 |
+| R6-3 | A COMMIT that really fails, every run (a deferred FK raised at COMMIT), 3 retakes | Cautious, not harmful | Each run: failed 1, claim kept, cancel 409, rows stay. One "The erasers ran, but their result could not be recorded" step per run. Once the fault is gone the next run erases → COMPLETED. Not stuck for the job. But while the fault lasts, a HELD order cannot be cancelled and no one has a way out (the 409 text names no remedy). At the parent it was released at once and cancel → 200 | Minor | service.ts:160-164, 190 |
+| R6-4 | The run dies **before** the erasers (claim 2 h old, nothing erased), then cancel | Trade-off | Cancel → 409, and the next run erases a request staff wanted to cancel. Before 0d594e988 a 30-minute-old claim was cancellable. A claim alone cannot tell "died before" from "died after", so refusing is the safe side. Accepted trade-off, written in mig:70 | Minor | mig:70 |
+| R6-5 | COMMIT's answer is lost, then the switch is turned off before the retake | No false "nothing erased" | A `ERASURE_SKIPPED` step "switch is off; **nothing was erased**" lands on the claimed order, since the step skips the claim check for SKIPPED. Claim kept, cancel 409. With the switch back on → COMPLETED | Minor | service.ts:139; mig:126 |
+| R6-6 | The record after a retake (S1, and a run that died after commit, claim 10 days old) | The register shows what was erased | COMPLETED, but actions_taken reads `test.rows: NOTHING — no rows` for every module, although that run's first attempt deleted 2 rows. This follows port rule 4. In the died case no "could not be recorded" step precedes it. After `pg_terminate_backend` the kept step was not written either: the next pooled query failed with `Connection terminated unexpectedly` (seen with a temporary log; the step is best-effort) | Minor | service.ts:163 (`.catch`) |
+
+* **Held:**
+  - **Lead 27, for real.** The proxy cut the connection after the server committed. At 0d594e988 the run releases the
+    claim and writes "nothing was recorded as erased". Cancel → **200**, ERASURE_CANCELLED, rows 0: reproduced. At
+    d3680b44e: failed 1, rows 0, claim kept, the "could not be recorded" step written, HTTP cancel → **409
+    ERASURE_RUNNING**. Claim aged 31 min → the retake records **COMPLETED**.
+  - **Backend killed during COMMIT (a certain rollback).** Rows stay, claim kept, cancel 409. The retake erases →
+    COMPLETED. Cautious, recovers. The same holds when Prisma's 120 s timer ends the transaction after the last eraser
+    returns (by reading).
+  - **Died after commit, claim 10 days old:** cancel 409, the next run → COMPLETED.
+  - **Cancel with no claim still works.** Before the day: 200. On a HELD-blocked order with its hold still on (after
+    BLOCKED, no claim): 200, rows stay.
+  - **The `gone` and `held` returns inside the erasers' transaction leave `state.erased` false.** A lost answer there
+    releases the claim, which is correct: nothing was erased.
+  - **`state.erased` is set after the last eraser and nothing runs between it and the callback's return** (service.ts:190).
+* **Cleaned up:** both worktrees (with their symlinks and `.tools`) and every scratch database this round created
+  (dropped in `finally`).
+
+R6-1/R6-2 are open, each Major: a retake can still end with the register cancelled over erased data.
+
+**Verdict: Changes** for d3680b44ef3965777fdbfbbdbba46030c9b26ae2
