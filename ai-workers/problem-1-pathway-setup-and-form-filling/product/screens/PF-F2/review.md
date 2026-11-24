@@ -131,3 +131,28 @@ Reviewer: Approve dc3301c778341d9504c14ecffa2ddd9fca38cef6
 Reviewer: Approve eee137d1c6931c265dc6294705ec6e04d8fb5130
 
 **Verdict: Approve** (head `eee137d1c6931c265dc6294705ec6e04d8fb5130`). No open Blocker or Major. Before the label: the Lead answers r2's Question, and `pr-rules` turns green with the size line.
+
+## Round 4 (Lead 24: rule line, merge of main)
+
+Head reviewed: `7bb39be681ee540aa0f60739250539d50e47acb7`. The review was fresh and diff-only, covering just the two things Lead 24 asked for, measured from the last Approve on `de8976408cef25f0aa779681a1505d32678decc6`. I did not re-review code that earlier rounds approved.
+
+**1. Merge of main (`b9795dade`).**
+- The merge's parents are `de897640` and main's `bc91087d7`, which is `origin/main` at review time, so main is fully included. `git diff-tree --cc b9795dade` is empty: no hand-resolved conflicts.
+- `git diff de897640..HEAD -- $(git diff --name-only origin/main...HEAD)` shows one change in the PR's 14 files: the single added line in item 2. The merge brought nothing else into the PR's own files.
+- Migrations: `20261124060000_pff2_plat_file` sorts last. It comes after main's `20261124033000_fo7t1_evidence_key` (#3033) and `20261124050000_pf10a_import_tables` (#3276), and its stamp is unique (one match). DW9 confirms it: "newest before: 20261124050000_pf10a_import_tables". r3's merge-order risk is now gone, because #3276 is on main.
+- `prisma migrate diff` from the fully migrated database to the schema, with main's new schema files in place, is empty (DW9 pass).
+
+**2. Rule line in `prisma/schema/platform-files.prisma`.**
+- The first line is now `// platform-files.prisma — the record of each finished upload (plat_file), written by the upload rail. Owner: Lead B (platform).` It matches `check_prisma_schema.ts:54`, `^// platform-files\.prisma — .+ Owner: .+\.\n`: right file name, an em dash, ` Owner: `, and the line ends in a full stop and a newline. Check F passes with 37 area files.
+- The owner fits. `api/src/platform/MODULE.md` makes the owner area the platform module rows PF-* and names no lead ("Unconfirmed: no lane map in code"). Every sibling `platform-*.prisma` file says `Owner: Lead B (platform…)`, so this line follows the same pattern.
+
+**Run:** `run-suites.sh --only "check_prisma_schema.ts check_pff2_uploads.ts"` on commit `7bb39be68`: check_prisma_schema.ts 8 passed, 0 failed; check_pff2_uploads.ts 40 passed, 0 failed. Postgres 18 on :54329, builder ports +14000, never :4400.
+
+**Findings:** none. No Blocker, no Major, no new Minor. Earlier r1 (body size split) and r2 (P-776 audit in CI, the Lead's call) are not re-reviewed this round. r3 is closed by the merge.
+
+**Journey score:** not scored this round, as in round 3. The change is API and schema only, with no screen.
+**Not checked:** CI check runs on `7bb39be6` (only the local run above), and full run 45344518667 itself. I reproduced only its shard-4 cause (check F).
+
+Reviewer: Approve 7bb39be681ee540aa0f60739250539d50e47acb7
+
+**Verdict: Approve** (head `7bb39be681ee540aa0f60739250539d50e47acb7`). No open Blocker or Major.
