@@ -336,3 +336,7 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Lead 25's facts, not checked by me: SOR/2022-128 s. 23(1) written agreement before an initial consultation, 23(2)(c) pro bono covered, 23(3) signed, exceptions ss. 25-26 (read by a subagent); gate.ts refuses the Attended answer and the consult record, not booking. A flexible rule must fit that source (P-170). Main ba2ad41e7: 55 Works, 25 Partial, 21 Not built.
 * Replay arm 1 (claude/fervent-mahavira-b75d49 410b73527, RESULT.md read by me): 7 of 14 known misses found (bar 4, met); 45 of 124 Major claims true, 36% (bar half, not met); in-sample, code read only, ran at high effort not medium. Next ordered: the 21 true claims on 9 control PRs against main. Arm 2 stopped.
 * #3456 and #3464 read and labelled. #3451 (QA-777) conflicts in qa/BUGS.md and needs a "Done when" in its body: for qa 7, not told yet.
+
+### Ask rows moved from STATE by Lead 26 (answered; A355's training question still his; word for word)
+| A357 | 24 Nov ~11:55 (typed to Lead 23) | verify Linear, Qodo, CodeRabbit, Harness, Sentry; lean, cost? | researched; plan file, end; told 12:04 |
+| A355 | 24 Nov before 11:17 (typed to Lead 22) | CodeRabbit: agent studies products, cost (US$100, trial), fit, alternatives, visual case study, then start using it | study done (page in the plan file); nothing installed; his answer on training next |
