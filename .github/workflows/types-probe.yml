@@ -1,0 +1,44 @@
+name: types-probe
+on: { push: { branches: [claude/lead-o2-types-probe] } }
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy: { fail-fast: false, matrix: { prs: ["", "3235", "3305 3442", "3277"] } }
+    env: { P: ai-workers/problem-1-pathway-setup-and-form-filling/product, S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio, PRS: "${{ matrix.prs }}" }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - name: main with the pull requests merged in
+        run: |
+          git config user.email t@t; git config user.name t
+          git fetch -q origin main; git checkout -q origin/main
+          for n in $PRS; do git fetch -q origin "refs/pull/$n/head"; git merge -q --no-edit FETCH_HEAD; done
+          echo "PROBE tree main=$(git rev-parse --short origin/main) prs=$PRS head=$(git rev-parse --short HEAD)"
+          echo "PROBE machine cpus=$(nproc)"; free -m | sed 's/^/PROBE /'
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: bash "$P/tools/cloud-setup.sh" > /dev/null 2>&1
+      - name: peak memory
+        run: |
+          cd "$S"; sudo apt-get install -y -q time > /dev/null 2>&1 || true
+          t() { echo "PROBE == $1"; shift; NODE_OPTIONS="--max-old-space-size=$HEAP" /usr/bin/time -v "$@" > /tmp/o 2>&1; echo "PROBE exit $?"; grep -E '^(Files|Lines of|Identifiers|Symbols|Types|Instantiations|Memory used|Check time|Total time|Assignability)|Maximum resident|heap out of memory' /tmp/o | sed "s/^/PROBE $HEAP /"; }
+          HEAP=14336 t "api, 14 GB heap" node_modules/.bin/tsc --noEmit --noCheck false --extendedDiagnostics --pretty false -p api/tsconfig.json
+          HEAP=8192 t "api, 8 GB heap as ci" node_modules/.bin/tsc --noEmit --noCheck false --extendedDiagnostics --pretty false -p api/tsconfig.json
+          HEAP=6144 t "api, 6 GB heap" node_modules/.bin/tsc --noEmit --noCheck false --extendedDiagnostics --pretty false -p api/tsconfig.json
+          sed 's#, "../tests/\*.ts"##' api/tsconfig.json > api/tsconfig.src.json
+          HEAP=14336 t "api without tests, 14 GB" node_modules/.bin/tsc --noEmit --noCheck false --extendedDiagnostics --pretty false -p api/tsconfig.src.json
+      - name: which files cost
+        if: matrix.prs != '3277'
+        run: |
+          cd "$S"; NODE_OPTIONS=--max-old-space-size=14336 node_modules/.bin/tsc --noEmit --noCheck false --pretty false -p api/tsconfig.json --generateTrace /tmp/tr > /dev/null 2>&1; echo "PROBE trace exit $?"; ls -la /tmp/tr | sed 's/^/PROBE /'
+          NODE_OPTIONS=--max-old-space-size=12288 node -e '
+          const fs=require("fs"),rl=require("readline");const sf={};const depth=[];let n=0;
+          const sh=p=>(p||"").replace(/.*prototype\//,"");
+          (async()=>{const open={};for await(let l of rl.createInterface({input:fs.createReadStream("/tmp/tr/trace.json")})){l=l.replace(/^\[|,$|\]$/g,"");let e;try{e=JSON.parse(l)}catch{continue}
+            if(e.name==="checkSourceFile"){const p=sh(e.args&&e.args.path);if(e.ph==="X")sf[p]=(sf[p]||0)+e.dur;else if(e.ph==="B")open.p=[p,e.ts];else if(e.ph==="E"&&open.p){sf[open.p[0]]=(sf[open.p[0]]||0)+e.ts-open.p[1]}}
+            if(e.ph==="X"&&e.dur>1.5e6&&e.name!=="checkSourceFile")console.log("PROBE slow",(e.dur/1e6).toFixed(1)+" s",e.name,sh(JSON.stringify(e.args)).slice(0,200));}
+            for(const[p,d]of Object.entries(sf).sort((a,b)=>b[1]-a[1]).slice(0,40))console.log("PROBE file",(d/1e6).toFixed(1)+" s",p);
+          const by={},nm={};let t=0;for await(let l of rl.createInterface({input:fs.createReadStream("/tmp/tr/types.json")})){l=l.replace(/^\[|,$|\]$/g,"");let e;try{e=JSON.parse(l)}catch{continue}t++;const d=e.firstDeclaration||e.symbolDeclaration;const p=d?sh(d.path):"(none)";by[p]=(by[p]||0)+1;const k=(e.symbolName||e.intrinsicName||(e.unionTypes?"(union)":e.intersectionTypes?"(intersection)":e.conditionalCheckType?"(conditional)":"(anon)"));nm[k]=(nm[k]||0)+1;if(e.unionTypes&&e.unionTypes.length>300){const b="union of "+e.unionTypes.length;nm[b]=(nm[b]||0)+1}}
+          console.log("PROBE types",t);for(const[p,c]of Object.entries(by).sort((a,b)=>b[1]-a[1]).slice(0,25))console.log("PROBE types-in",c,p);for(const[p,c]of Object.entries(nm).sort((a,b)=>b[1]-a[1]).slice(0,30))console.log("PROBE types-named",c,p);})()'
