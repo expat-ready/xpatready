@@ -6,6 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useTabActive } from "@/components/workspace";   // PF-31: a hidden workspace tab keeps its dialogs closed (its state stays)
 
 export const buttonVariants = cva(
   ["inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-xs font-medium", "transition-all shrink-0", "disabled:pointer-events-none disabled:opacity-50",
@@ -75,10 +76,10 @@ function openOnFirstField(e: Event) {
 /** guard: once a field in the dialog was changed, closing it by Escape, the X or the overlay asks before discarding.
  *  initialFocus: the field to start in, asked when the content mounts (else the first field). */
 export function Dialog({ open, onOpenChange, title, description, children, footer, wide, guard, initialFocus }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: React.ReactNode; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean; guard?: boolean; initialFocus?: () => HTMLInputElement | null | undefined }) {
-  const touched = React.useRef(false);
+  const touched = React.useRef(false), shown = useTabActive();
   const change = (o: boolean) => { if (!o && guard && touched.current && !window.confirm("Discard your unsaved changes?")) return; if (!o) touched.current = false; onOpenChange(o); };
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={change}>
+    <DialogPrimitive.Root open={open && shown} onOpenChange={change}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
         <DialogPrimitive.Content onOpenAutoFocus={(e) => { const el = initialFocus?.(); if (el && !el.disabled) { e.preventDefault(); el.focus(); } else openOnFirstField(e); }} className={cn("fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface-raised shadow-xl outline-none", wide ? "max-w-4xl" : "max-w-lg")}>
@@ -111,12 +112,14 @@ export function Panel({ open, onOpenChange, title, description, badge, children,
   bodyLabel?: string }) {
   // S6 1b (Lead early look): while a side panel is open, toasts move clear of it (styles/index.css), so they never cover
   // its footer's Accept or Reject.
-  React.useEffect(() => { if (!open) return; document.body.dataset.panelOpen = "true"; return () => { delete document.body.dataset.panelOpen; }; }, [open]);
+  const shown = useTabActive();
+  React.useEffect(() => { if (!open || !shown) return; document.body.dataset.panelOpen = "true"; return () => { delete document.body.dataset.panelOpen; }; }, [open, shown]);
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={(o) => { if (!o && confirmClose && !confirmClose()) return; onOpenChange(o); }}>
+    <DialogPrimitive.Root open={open && shown} onOpenChange={(o) => { if (!o && confirmClose && !confirmClose()) return; onOpenChange(o); }}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/25" />
-        <DialogPrimitive.Content onOpenAutoFocus={openOnFirstField} onCloseAutoFocus={(e) => { const el = returnFocus?.(); if (el) { e.preventDefault(); el.focus(); } }} className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[560px] flex-col border-l border-border bg-surface-raised shadow-xl outline-none">
+        {/* PF-31: a side panel starts below the workspace strip (--ws-top), so the open items stay one click away. */}
+        <DialogPrimitive.Overlay className="fixed inset-x-0 bottom-0 top-[var(--ws-top,0px)] z-50 bg-black/25" />
+        <DialogPrimitive.Content onOpenAutoFocus={openOnFirstField} onInteractOutside={(e) => { if ((e.target as Element | null)?.closest?.("[data-workspace-strip]")) e.preventDefault(); }} onCloseAutoFocus={(e) => { const el = returnFocus?.(); if (el) { e.preventDefault(); el.focus(); } }} className="fixed bottom-0 right-0 top-[var(--ws-top,0px)] z-50 flex w-full max-w-[560px] flex-col border-l border-border bg-surface-raised shadow-xl outline-none">
           <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2"><DialogPrimitive.Title className="text-lg font-semibold">{title}</DialogPrimitive.Title>{badge}</div>
