@@ -15,7 +15,7 @@ import { can } from "../sales/contract";
 import { Loading } from "../sales/loading";
 import { SalesFrame, useStaff } from "../sales/sales-frame";
 import { staffApi, StaffApiError, staffToken } from "../sales/session";
-import { cad, centsIn, isNoFee, NO_FEE, EDITABLE, R_KEY, Representatives, Retainer, STATUS, TemplateChecklist, VALUE_LABELS, WHEN } from "./contract";
+import { cad, centsIn, isNoFee, NO_FEE, EDITABLE, R_KEY, Representatives, Retainer, STATUS, TemplateChecklist, Templates, VALUE_LABELS, WHEN } from "./contract";
 
 type Row = { label: string; amount: string; when: string; dueOn: string };
 const rowsOf = (r: Retainer): Row[] => r.version.fees.map((f) => ({ label: f.label, amount: f.amountMinor === null ? "" : (Number(f.amountMinor) / 100).toFixed(2), when: f.when, dueOn: f.dueOn ?? "" }));
@@ -24,16 +24,21 @@ const day = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-CA",
 /** A company contact's role in words (review n3). */
 const ROLE: Record<string, string> = { SIGNATORY: "Signatory", PRIMARY: "Primary contact", HR: "HR", BILLING: "Billing", OTHER: "Other" };
 const BLOCKER_FIELD: Record<string, string> = { fees: "fo-fees", representativeStaffId: "fo-rep", "client.name": "fo-values", signerPersonId: "fo-signer" };
+/** QA-780: the placeholder a potential conflict's disclosure prints through (Code s. 24(3)(o); gate.ts NO_DISCLOSURE). */
+const DISCLOSURE = "conflict.disclosure";
 
 function RetainerBody({ id }: { id: string }) {
   const me = useStaff(), qc = useQueryClient(), toast = useToast(), key = ["fo", "retainers", "one", id];
   const one = useQuery({ queryKey: key, retry: false, queryFn: async () => Retainer.parse(await staffApi(`/front-office/retainers/${encodeURIComponent(id)}`)) });
   const reps = useQuery({ enabled: can(me, R_KEY.draft), queryKey: ["fo", "retainer-representatives"], queryFn: async () => Representatives.parse(await staffApi("/front-office/retainer-representatives")) });
   const [editing, setEditing] = React.useState(false), [rows, setRows] = React.useState<Row[]>([]), [repId, setRepId] = React.useState(""), [signerId, setSignerId] = React.useState("");
+  // QA-780: the draft's template can be changed (the PATCH takes templateId): the firm's active templates of this kind.
+  const [templateId, setTemplateId] = React.useState("");
+  const templates = useQuery({ enabled: can(me, R_KEY.draft), queryKey: ["fo", "retainer-templates", "all"], queryFn: async () => Templates.parse(await staffApi("/front-office/retainer-templates")) });
   const [error, setError] = React.useState<{ field: string | null; text: string; code?: string } | null>(null);
   const [sending, setSending] = React.useState(false), [showItems, setShowItems] = React.useState(false), [warnings, setWarnings] = React.useState<string[]>([]);
   const r = one.data;
-  const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); setSignerId(x.signerPersonId ?? ""); }, []);
+  const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); setSignerId(x.signerPersonId ?? ""); setTemplateId(x.template.id); }, []);
   React.useEffect(() => { if (r) reset(r); }, [r, reset]);
   const checklist = useQuery({ enabled: showItems && !!r, queryKey: ["fo", "retainer-template-checklist", r?.template.id], queryFn: async () => TemplateChecklist.parse(await staffApi(`/front-office/retainer-templates/${r!.template.id}/checklist`)) });
   const after = (x: Retainer, text: string) => { qc.setQueryData(key, x); void qc.invalidateQueries({ queryKey: ["fo", "retainers", "of"] }); setEditing(false); setError(null); setWarnings(x.warnings ?? []); toast.push({ tone: "ok", text }); };
@@ -43,7 +48,7 @@ function RetainerBody({ id }: { id: string }) {
     if (e instanceof StaffApiError && e.status === 409) void one.refetch();   // a colleague changed or sent it (break m1)
   };
   const save = useMutation({
-    mutationFn: async (fees: unknown[]) => Retainer.parse(await staffApi(`/front-office/retainers/${id}`, { method: "PATCH", json: { expectedVersion: r!.version.n, expectedStatus: r!.status, representativeStaffId: repId, fees, ...(r!.subject === "COMPANY" && signerId ? { signerPersonId: signerId } : {}) } })),
+    mutationFn: async (fees: unknown[]) => Retainer.parse(await staffApi(`/front-office/retainers/${id}`, { method: "PATCH", json: { expectedVersion: r!.version.n, expectedStatus: r!.status, representativeStaffId: repId, fees, ...(r!.subject === "COMPANY" && signerId ? { signerPersonId: signerId } : {}), ...(templateId && templateId !== r!.template.id ? { templateId } : {}) } })),
     onSuccess: (x) => after(x, `Saved as version ${x.version.n}.`), onError: fail,
   });
   const send = useMutation({
@@ -67,7 +72,13 @@ function RetainerBody({ id }: { id: string }) {
   const client = String(v["client.name"] ?? "") || "the client", to = String(v["signer.email"] ?? v["client.email"] ?? "");
   const mayEdit = r.mayChange && can(me, R_KEY.draft) && EDITABLE.includes(r.status), draft = r.status === "DRAFT";
   const form = mayEdit && (draft || editing), next = r.version.n + 1;
-  const changed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && !!signerId && signerId !== (r.signerPersonId ?? ""));   // an empty pick is no change (break re-check)
+  const changed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && !!signerId && signerId !== (r.signerPersonId ?? "")) || (!!templateId && templateId !== r.template.id);   // an empty pick is no change (break re-check)
+  // QA-780: the templates a draft may be made from (active, this kind); the current one stays listed even when switched off.
+  const listed = (templates.data ?? []).filter((t) => t.kind === r.kind && (t.active || t.id === r.template.id));
+  const options = listed.some((t) => t.id === r.template.id) ? listed : [{ id: r.template.id, name: r.template.name ?? "(removed)", kind: r.kind, version: r.template.version, active: false, placeholders: undefined }, ...listed];
+  const prints = (t: { placeholders?: string[] }) => !!t.placeholders?.includes(DISCLOSURE);
+  const toTemplate = () => document.querySelector<HTMLElement>("#fo-template select")?.focus();
+  const noDisclosure = error?.code === "CONFLICT_DISCLOSURE_NOT_PRINTED";
   const company = r.subject === "COMPANY", blocked = new Set([...(r.blockers["client.name"] ? ["client.name"] : []), ...(r.blockers.signerPersonId ? ["signer.name", "signer.email"] : [])]);
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -96,7 +107,10 @@ function RetainerBody({ id }: { id: string }) {
       {r.status === "SENT" || r.status === "VIEWED" ? <Notice tone="info" title={`Waiting for ${client} to sign version ${r.version.n}.`}>{mayEdit ? "Edit makes a new version; the sent one stays as it was and the new one is sent again." : null}</Notice> : null}
       {!EDITABLE.includes(r.status) ? <Notice tone="info" title={r.status === "WITHDRAWN" ? "This retainer is withdrawn. Prepare a new one from the prospect." : `${client} has already signed. This retainer can no longer change.`} /> : null}
       {warnings.map((w) => <Notice key={w} tone="warn" title={w} />)}
-      {error && !error.field && error.code !== "SEND_BLOCKED" ? <Notice tone="danger" title={error.text} action={error.code?.startsWith("CONFLICT_") && r.prospect ? <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-sm text-text-link hover:underline">Open the prospect's conflict check</Link> : undefined} /> : null}
+      {error && !error.field && error.code !== "SEND_BLOCKED" ? <Notice tone="danger" title={error.text} action={noDisclosure && form ? (options.some(prints)
+        ? <Button variant="link" size="sm" onClick={toTemplate}>Choose a template that prints it</Button>
+        : <span className="text-sm">None of your firm's templates prints it yet. {can(me, "agent/retainer:configure-template") ? <Link to="/front-office/settings/retainer-templates" className="text-text-link hover:underline">Add {"{conflict.disclosure}"} to one in Retainer templates</Link> : "Ask your firm's Owner or Admin to add {conflict.disclosure} to a retainer template."}, then choose it here.</span>)
+        : error.code?.startsWith("CONFLICT_") && r.prospect ? <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-sm text-text-link hover:underline">Open the prospect's conflict check</Link> : undefined} /> : null}
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <div className="flex min-w-0 flex-col gap-4">
           <section aria-labelledby="fo-agreement" className="rounded-xl border border-border bg-surface-raised p-4">
@@ -104,11 +118,14 @@ function RetainerBody({ id }: { id: string }) {
               {mayEdit && !draft && !editing ? <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button> : null}</div>
             <form onSubmit={submit} className="mt-3 flex flex-col gap-4" noValidate>
               <dl className="grid gap-1 text-sm sm:grid-cols-[9rem_1fr]">
-                <dt className="text-text-muted">Template</dt><dd className="[overflow-wrap:anywhere]">{r.template.name ?? "(removed)"} · version {r.template.version}</dd>
+                {!form ? <><dt className="text-text-muted">Template</dt><dd className="[overflow-wrap:anywhere]">{r.template.name ?? "(removed)"} · version {r.template.version}</dd></> : null}
                 {!(form && company) ? <><dt className="text-text-muted">Signer</dt><dd id="fo-signer" tabIndex={-1} className="[overflow-wrap:anywhere]">{String(v["signer.name"] ?? "") || "Not chosen"}{to ? ` · ${to}` : ""}
                   {r.blockers.signerPersonId && EDITABLE.includes(r.status) ? <span className="block text-text-danger" data-blocker="signer">{r.blockers.signerPersonId}{!company && r.prospect && r.mayChange ? <> <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-text-link hover:underline">Add it on {client}'s record</Link>, then save a new version here.</> : null}</span> : null}</dd></> : null}
                 {!form ? <><dt className="text-text-muted">Representative</dt><dd>{repName(r.representativeStaffId)}</dd></> : null}
               </dl>
+              {form ? <div id="fo-template"><Field label="Template" hint="The next version you save is made from this template." error={fieldError("templateId")}>
+                <Select value={templateId} onChange={(e) => { setTemplateId(e.target.value); setError(null); }}>{options.map((t) => <option key={t.id} value={t.id}>{t.name} · version {t.id === r.template.id ? r.template.version : t.version}{prints(t) ? " · prints the conflict disclosure" : ""}{t.active ? "" : " · switched off"}</option>)}</Select>
+              </Field></div> : null}
               {form && company ? <div id="fo-signer"><Field label="Who signs" hint="One of the company's contacts. A signatory contact is chosen first; any contact may sign." error={fieldError("signerPersonId") ?? r.blockers.signerPersonId ?? null}>
                 <Select value={signerId} onChange={(e) => { setSignerId(e.target.value); setError(null); }}><option value="">Choose who signs</option>{r.signerOptions.map((o) => <option key={o.personId} value={o.personId}>{o.name} · {ROLE[o.role] ?? o.role}{o.email ? ` · ${o.email}` : " · no email"}</option>)}</Select>
               </Field></div> : null}

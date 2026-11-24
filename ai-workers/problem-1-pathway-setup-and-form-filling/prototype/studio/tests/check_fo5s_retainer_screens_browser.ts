@@ -176,6 +176,58 @@ try {
   await r.goto(`${BASE}/front-office/prospects/${ana.id}`); await card(r).locator("[data-retainer-status]").waitFor({ timeout: 15_000 });
   ok("R1.53 FO-5s S2: the card then shows Sent, version 3, waiting for the client, and Open the retainer", (await card(r).innerText()).includes("Version 3") && (await card(r).locator("[data-waiting]").count()) === 1 && await card(r).getByRole("link", { name: "Open the retainer" }).isVisible());
 
+  // ------------------------------------------------------------------------------- QA-780: a draft's template can be changed
+  // A potential conflict needs its disclosure printed (Code s. 24(3)(o), 15(1); Unconfirmed: no counsel). The starter has no
+  // {conflict.disclosure}, so Send is refused; the draft offers the fix: choose a template that prints it, save, send.
+  const { buildDocx } = await import("../api/src/front-office/retainers/docx.ts");
+  const upT = (name: string, lines: string[]) => { const f = new FormData(); f.set("name", name); f.set("file", new Blob([buildDocx(lines)]), "t.docx"); return call(tok.R, "POST", "/front-office/retainer-templates", f); };
+  const discT = await upT(`Disclosure retainer ${run}`, ["Client {client.name}", "Conflict: {conflict.disclosure}", "{#fees}", "{label}: {amount}", "{/fees}"]);
+  const offT = await upT(`Old retainer ${run}`, ["Client {client.name}", "{#fees}", "{label}: {amount}", "{/fees}"]);
+  const offR = await call(tok.R, "PATCH", `/front-office/retainer-templates/${offT.body.id}`, { active: false });
+  const ida = prospect("Ida", R.id), DISC = `Sample disclosure ${run}: the firm acted for a related party (Sample).`;
+  const ic = await call(tok.R, "POST", "/front-office/conflict-checks", { requestId: crypto.randomUUID(), prospectId: ida.id, result: "POTENTIAL_CONFLICT", disclosureText: DISC });
+  const ir = await call(tok.R, "POST", `/front-office/prospects/${ida.id}/retainers`, { templateId: tpl.body.id, fees: [{ label: "Deposit on signing", amountMinor: 150000, when: "ON_SIGNING" }] });
+  ok("FO-5s setup (QA-780): a second template that prints {conflict.disclosure}, a switched-off one, a Potential conflict with its disclosure, and a draft on the starter",
+    discT.status === 201 && offT.status === 201 && offR.status === 200 && ic.status === 201 && ir.status === 201, [discT.status, offT.status, offR.status, ic.status, ic.body?.code, ir.status]);
+  await r.goto(`${BASE}/front-office/retainers/${ir.body.id}`); await r.locator("[data-check-and-send]").waitFor({ timeout: 30_000 });
+  const pick = r.getByLabel("Template", { exact: true });
+  // A bounded wait read as true or false and asserted, so main (no pick) gives FAIL lines, not a stopped run.
+  const hasPick = await pick.locator("option", { hasText: `Disclosure retainer ${run}` }).waitFor({ state: "attached", timeout: 10_000 }).then(() => true, () => false);
+  const opts = hasPick ? await pick.locator("option").allInnerTexts() : [];
+  ok("R1.53 QA-780 pass: the draft's agreement has a Template pick with this draft's template chosen, and the template that prints the conflict disclosure says so",
+    hasPick && (await pick.inputValue()) === tpl.body.id && opts.some((o) => o.includes(`Disclosure retainer ${run}`) && o.includes("prints the conflict disclosure")) && !opts.some((o) => o.includes(`Standard retainer ${run}`) && o.includes("prints")), opts);
+  ok("R1.53 QA-780 fail: a switched-off template is not offered", hasPick && !opts.some((o) => o.includes(`Old retainer ${run}`)), opts);
+  if (!hasPick) ok("R1.53 QA-780: the refusal's fix, the switched-off race and the send after choosing a template need the Template pick", false);
+  else {
+    await r.locator("[data-check-and-send]").click();
+    const ip = r.getByRole("dialog", { name: /^Send to .* to sign$/ }); await ip.waitFor({ timeout: 10_000 });
+    await ip.getByRole("button", { name: /^Send to / }).click();
+    const fix = r.getByRole("button", { name: "Choose a template that prints it" }); await fix.waitFor({ timeout: 10_000 });
+    await fix.click();
+    ok("R1.53 QA-780 pass: Send on the starter is refused in the gate's words (use a template with {conflict.disclosure}), and the notice's \"Choose a template that prints it\" focuses the Template pick; nothing is sent",
+      (await r.getByText(/use a template with \{conflict\.disclosure\}/).count()) >= 1 && await pick.evaluate((e) => e === document.activeElement) && (await ret(ida.id)).status === "DRAFT");
+    await shot(r, "qa780-refused-choose-template-1440");
+    await pick.selectOption(discT.body.id);
+    const offNow = await call(tok.R, "PATCH", `/front-office/retainer-templates/${discT.body.id}`, { active: false });   // a colleague switches it off meanwhile
+    await r.getByRole("button", { name: "Save as version 2" }).click();
+    await r.getByText("This template is switched off.").waitFor({ timeout: 10_000 });
+    ok("R1.53 QA-780 fail: a template switched off before Save is refused on the Template pick and nothing is saved (still version 1, still the starter)",
+      offNow.status === 200 && (await ret(ida.id)).versions.length === 1 && (await ret(ida.id)).templateId === tpl.body.id);
+    await call(tok.R, "PATCH", `/front-office/retainer-templates/${discT.body.id}`, { active: true });
+    await r.getByRole("button", { name: "Save as version 2" }).click();
+    await r.locator("[data-version]", { hasText: "Version 2" }).waitFor({ timeout: 15_000 });
+    const iv = await call(tok.R, "GET", `/front-office/retainers/${ir.body.id}`);
+    ok("R1.53 QA-780 pass: Save makes version 2 from the chosen template, which prints the check's disclosure, and the pick shows it",
+      (await ret(ida.id)).templateId === discT.body.id && iv.body.version?.values?.["conflict.disclosure"] === DISC && (await pick.inputValue()) === discT.body.id, iv.body.version?.values?.["conflict.disclosure"]);
+    await r.locator("[data-check-and-send]").click(); await ip.waitFor({ timeout: 10_000 });
+    await ip.getByRole("button", { name: /^Send to / }).click();
+    await r.locator("[data-retainer-status]", { hasText: "Sent" }).waitFor({ timeout: 15_000 });
+    const iSent = await ret(ida.id);
+    ok("R1.53 QA-780 pass: Send then sends version 2 (the disclosure is printed, so the gate lets it through); version 1 on the starter was never sent",
+      iSent.status === "SENT" && !!iSent.versions[1]?.sentAt && iSent.versions[0].sentAt === null, iSent.status);
+  }
+  await call(tok.R, "PATCH", `/front-office/retainer-templates/${discT.body.id}`, { active: false });   // later steps expect one active template
+
   // ------------------------------------------------------------------------------- signed: Edit gone; read-only: no Prepare
   const bea = prospect("Bea", R.id);
   const d = await call(tok.R, "POST", `/front-office/prospects/${bea.id}/retainers`, { templateId: tpl.body.id, fees: [{ label: "L".repeat(120), amountMinor: 100000, when: "ON_SIGNING" }] });
