@@ -8,6 +8,8 @@ never a failure (the founder is asked before it may block).
            suite that left the place the runner reads (deleted, renamed or moved); a suite added to run-suites.sh's
            QUARANTINE or SKIP, any flaky-ledger.tsv line changed; an added skip, only, early exit or "if (false)".
   Warns    when a listed line looks like a check (or a suite left, or something was switched off) and no reason is given.
+  Limits   a check put under an added condition without its own line changing otherwise, a line only added (a weaker value set
+           above a check) and tools that carry their own --self-test are not seen.
   No parser: it cannot tell a check from its helper, nor weaker from stronger, and does not see a constant or fixture outside
            these files. The reviewer reads each listed line.
    printf '%s' "$BODY" | python3 -I product/tools/checks-changed.py --base REV [--head REV] [--summary FILE]
@@ -20,10 +22,10 @@ CODE = r"\.(ts|tsx|cjs|mjs|js|py|sh)$"
 TESTS = re.compile(r"^(" + re.escape(P) + r"(prototype/studio/(tests|acceptance|deploy/.*test)/|prototype/tests/|product/tools/(check-|test[_-]|guard-test-lib)|deploy/.*test/)|(.*/)?packages/.*__tests__/|deploy/.*test/).*" + CODE + "|^" + re.escape(P) + r"product/tools/(check-[^/]+|test[_-][^/]+|guard-test-lib)\.(sh|mjs|py)$", re.S)
 RUN = re.compile(r"^" + re.escape(P) + r"(prototype/studio/tests/check_[^/]+|prototype/studio/acceptance/[^/]+\.test\.ts|prototype/studio/tests/journeys/j_[^/]+|product/tools/(check-|test[_-])[^/]+)$", re.S)
 SUITES, LEDGER = P + "product/tools/run-suites.sh", P + "product/tools/flaky-ledger.tsv"
-OFF = re.compile(r"\.(skip|only|todo|fixme|skipIf)\b|\b(xit|xdescribe|fit|skipTest|skipIf|skipUnless)\(|\bif\s*\(\s*(false|0)\s*\)|(^|[;{]\s*)process\.exit\(0\)|^\s*(exit 0|return;?)\s*($|[#/])|^\s*(if false|false &&)|\|\| true\b", re.M)
-CHECK = re.compile(r"\b(ok|okk|check|expect|must|refused|assert\w*|step|prop|t|case_|yes_|no_|fixed|unfixed|fail\w*|failures\.\w+)\s*[(\"']|\[ [^\]]* (?:=|!=|-[a-z]{2}) |&& echo 1|grep -q|\bself\.assert|\bassert\b|\bFAIL\b|[=!]==|\.(to[A-Z]\w+)\(|^[A-Z]?\w+ ?\w*\|(product|\.\.)/|^\s*TESTS=")
+OFF = re.compile(r"\.(skip|only|todo|fixme|skipIf)\b|\b(xit|xdescribe|fit|skipTest|skipIf|skipUnless)\(|\bskip:\s*true|\bif\s*\(\s*(false|0)\s*\)|^\s*if (False|0)\s*:|(^|[;{]\s*)process\.exit\(0\)|^\s*(exit 0|return)\s*(;|$|[#/])|^\s*(if false|false &&|: *<<)|\|\| true\b|^\s*/\*\s*$|^\s*[`'\"]{3}\s*$", re.M)
+PLAIN = re.compile(r"^\s*(import\b|export\s+(\{|\*|type|interface)|(export\s+)?(const|let|var|function|async function|type|interface|class)\b|from\b|def (?!test)|class\b|[\])};,]*\s*$|set -|\. \"|(local|declare)\b)")
 NOTE = re.compile(r"^\s*(//|#(?!!)|\*|/\*)|^\s*$")
-LISTS = re.compile(r'^\s*(QUARANTINE|SKIP)="([^"]*)"', re.M)
+LISTS = re.compile(r'^\s*(QUARANTINE|SKIP)\+?=["\']([^"\']*)["\']', re.M)
 
 
 def git(*a):
@@ -39,8 +41,9 @@ def safe(s, n=220):
     return s if len(s) <= n else s[:n] + "…"
 
 
-def squash(lines):
-    return re.sub(r"\s+", "", "".join(lines))
+def words(lines):
+    """The words of a place, line ends and indentation left out (a re-wrap), spaces inside a line kept as one."""
+    return " ".join(" ".join(lines).split())
 
 
 def around(a, b, n=200):
@@ -53,7 +56,7 @@ def around(a, b, n=200):
 def hunks(base, head, path):
     """[(old lines, new lines)] of each changed place in one file."""
     out = []
-    for l in git("diff", "--no-renames", "--no-ext-diff", "-U0", "--no-color", base, head, "--", ":(literal)" + path).split("\n"):
+    for l in git("diff", "--no-renames", "--no-ext-diff", "--no-textconv", "--text", "-U0", "--no-color", base, head, "--", ":(literal)" + path).split("\n"):
         if l.startswith("@@"):
             out.append(([], []))
         elif out and l.startswith("-"):
@@ -61,6 +64,11 @@ def hunks(base, head, path):
         elif out and l.startswith("+"):
             out[-1][1].append(l[1:])
     return out
+
+
+def like(path, l):
+    """A listed line that may be a check: in a file the runner reads, anything but an import, a declaration or a bracket."""
+    return bool(RUN.match(path) or "guard-test-lib" in path or "__tests__" in path or "/test/" in path or "prototype/tests" in path) and not PLAIN.match(l)
 
 
 def reason(body):
@@ -81,12 +89,15 @@ def main():
     files = [(*raw[k].split()[2:4], raw[k].split()[4][0], raw[k + 1]) for k in range(0, len(raw) - 1, 2)]
     added = {n: p for _, n, st, p in files if st == "A"}
     places, gone, off, lists, tests = [], [], [], [], 0
-    new = collections.Counter()
+    new, where = collections.Counter(), {}
     for _, _, st, path in files:
         if path == LEDGER:
             lists += [f"flaky-ledger.tsv {'removed' if k == 0 else 'added'}: {safe(l)}" for h in hunks(o.base, o.head, path) for k in (0, 1) for l in h[k] if not NOTE.match(l)]
         if path == SUITES and st == "M":
-            was, now = ({m[0]: m[1] for m in LISTS.findall(git("show", f"{r}:{path}"))} for r in (o.base, o.head))
+            was, now = (collections.defaultdict(str) for _ in (0, 1))
+            for d, r in ((was, o.base), (now, o.head)):
+                for k, v in LISTS.findall(git("show", f"{r}:{path}")):
+                    d[k] += " " + v
             for k in sorted(set(was) | set(now)):
                 more = set(now.get(k, "").split()) - set(was.get(k, "").split())
                 if more:
@@ -94,8 +105,15 @@ def main():
         if not TESTS.match(path):
             continue
         tests += 1
-        for old, nw in hunks(o.base, o.head, path):
-            places.append((path, st, old, nw)); new.update(" ".join(l.split()) for l in nw)
+        got = hunks(o.base, o.head, path)
+        if st == "M" and not got:
+            lists.append(f"changed, not read: {safe(path.replace(P, ''))}")
+        for old, nw in got:
+            places.append((path, st, old, nw))
+            for l in nw:      # a line counts as moved only to a file the runner reads (or its own), and only if it says something
+                k = " ".join(l.split())
+                for q in ({"*"} if RUN.match(path) else set()) | {path}:
+                    new[(q, k)] += 1
     for ob, _, st, path in files:
         if st == "D" and (RUN.match(path) or TESTS.match(path)):
             to = added.get(ob); ok = to and bool(RUN.match(to)) == bool(RUN.match(path)) and to.rsplit("/", 1)[0] == path.rsplit("/", 1)[0]
@@ -104,30 +122,36 @@ def main():
     rows = []
     for path, st, old, nw in places:
         for l in nw:
-            if OFF.search(l) and not NOTE.match(l) and not any(" ".join(l.split()) == " ".join(x.split()) for x in old) and st != "A":
+            if OFF.search(l) and (l.strip() == "/*" or not NOTE.match(l)) and not any(" ".join(l.split()) == " ".join(x.split()) for x in old) and st != "A":
                 off.append((path, l))
-        if not old or squash(old) == squash(nw):
+        if not old or words(old) == words(nw):
             continue
         left = []
         for l in old:
             k = " ".join(l.split())
             if NOTE.match(l):
                 continue
-            if new[k] > 0:      # the same line stands elsewhere in the change: moved
-                new[k] -= 1; continue
+            to = path if new[(path, k)] > 0 else "*" if RUN.match(path) and new[("*", k)] > 0 else ""
+            if to and (re.search(r"([\"'`])[^\"'`]{12,}\1", l) or PLAIN.match(l)):
+                new[(to, k)] -= 1; continue
             left.append(l)
         if left:
             rows.append((path, left, [l for l in nw if not NOTE.match(l)]))
-    n = sum(len(x[1]) for x in rows); c = sum(1 for x in rows for l in x[1] if CHECK.search(l)); total = n + len(gone) + len(off) + len(lists)
-    rows.sort(key=lambda x: not any(CHECK.search(l) for l in x[1]))
+    n = sum(len(x[1]) for x in rows); c = sum(1 for x in rows for l in x[1] if like(x[0], l)); total = n + len(gone) + len(off) + len(lists)
+    rows.sort(key=lambda x: not any(like(x[0], l) for l in x[1]))
     why = reason(sys.stdin.read())
     if not total:
         print(f"ok    checks: {tests} test files in the change, no existing test line removed or changed"); return
     short = lambda p: safe(p.replace(P, ""))
-    out = [f"left the run: {short(p)}" + (f" (now {short(t)})" if t else " (deleted)") for p, t in gone] + lists + [f"switched off? {short(p)}: {safe(l.strip())}" for p, l in off]
+    out = [f"left the run: {short(p)}" + (f" (now {short(t)})" if t else " (deleted, or renamed with edits)") for p, t in gone] + lists + [f"switched off? {short(p)}: {safe(l.strip())}" for p, l in off]
     for p, left, nw in rows:
-        for k, l in enumerate(left):
-            x, y = around(l.strip(), nw[k].strip()) if k < len(nw) else (safe(l.strip()), "")
+        pool = list(nw)
+        for l in left:      # its new text: the line of this place that starts most alike, each used once
+            best = max(pool, key=lambda z: len(os.path.commonprefix([l.strip(), z.strip()])), default=None)
+            if best is not None and (len(os.path.commonprefix([l.strip(), best.strip()])) >= 4 or len(pool) == 1 == len(left)):
+                pool.remove(best); x, y = around(l.strip(), best.strip())
+            else:
+                x, y = safe(l.strip()), ""
             out.append(f"{short(p)}\n  - was: {x}\n  - now: {y or '(removed)'}")
     head = f"{n} existing test lines removed or changed ({c} look like checks), {len(gone)} suites left the run, {len(off)} switched off, {len(lists)} quarantine or ledger lines"
     if o.summary:

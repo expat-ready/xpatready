@@ -58,8 +58,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
-A351 c2 moved|product/tools/checks-changed.py|s/^            if new\[k\] > 0:.*/            if False:/|check-checks-changed.sh
-A351 c2 wrap|product/tools/checks-changed.py|s/ or squash(old) == squash(nw):/:/|check-checks-changed.sh
+A351 c2 moved|product/tools/checks-changed.py|s/^            if to and (re.search.*/            if False:/|check-checks-changed.sh
+A351 c2 wrap|product/tools/checks-changed.py|s/ or words(old) == words(nw):/:/|check-checks-changed.sh
 A351 c2 off|product/tools/checks-changed.py|s/^            if OFF.search(l) and .*/            if False:/|check-checks-changed.sh
 A351 c2 lists|product/tools/checks-changed.py|s/^                if more:/                if False:/|check-checks-changed.sh
 A351 c2 ledger|product/tools/checks-changed.py|s/^        if path == LEDGER:/        if False:/|check-checks-changed.sh
@@ -68,6 +68,10 @@ A351 c2 place|product/tools/checks-changed.py|s/ok = to and bool(RUN.*/ok = to/|
 A351 c2 check|product/tools/checks-changed.py|s/^    elif not c + len(gone).*/    elif True:/|check-checks-changed.sh
 A351 c2 reason|product/tools/checks-changed.py|s/^    if why:/    if True:/|check-checks-changed.sh
 A351 c2 window|product/tools/checks-changed.py|s/s = max(0, k - 60)/s = 0/|check-checks-changed.sh
+A351 c2 text|product/tools/checks-changed.py|s/ "--text",//|check-checks-changed.sh
+A351 c2 moved to|product/tools/checks-changed.py|s/({"\*"} if RUN.match(path) else set())/{"*"}/|check-checks-changed.sh
+A351 c2 like|product/tools/checks-changed.py|s/ and not PLAIN.match(l)$/ and "ok(" in l/|check-checks-changed.sh
+A351 c2 pair|product/tools/checks-changed.py|s/best = max(pool, key=.*/best = pool[0] if pool else None/|check-checks-changed.sh
 A351 c2 safe|product/tools/checks-changed.py|s/.replace("::", .*replace("##\[", "[^"]*")//|check-checks-changed.sh
 A351 c2 limit|../../.github/workflows/pr-rules.yml|s/timeout 30 python3 -I "\$T.checks-changed/python3 -I "$T\/checks-changed/|check-checks-changed.sh
 A351 c2 wired|../../.github/workflows/pr-rules.yml|s/^\( *\)run: printf .*checks-changed.py.*/\1run: true/|check-checks-changed.sh
