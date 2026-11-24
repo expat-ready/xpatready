@@ -1,18 +1,15 @@
-// FO-3c part 2 (R1.104 "A booking whose type needs it cannot start until signed"; Lead 10's rulings W4/W9 and W4b, 23 Nov;
-// AG-4-15 rule 1; Code SOR/2022-128 s. 23 "a written agreement before services", Unconfirmed: no counsel; QA-750, QA-751).
+// FO-3c part 2 (R1.104; AG-4-15 rule 4 and AG-04 Rule 7 "warn, never block": the founder's ruling of 24 Nov, relayed by
+// Lead 26 on #3471, replacing Lead 22's ruling on QA-772 and #3420's refusal; Code SOR/2022-128 s. 23, Unconfirmed: no
+// counsel, kept as a risk in product/design/consult-gate-and-code-2026-11-24.md).
 //   * `needsAgreement`: whether a booking type needs the agreement. The type's stored choice, else its purpose's default:
 //     on for every purpose but FOLLOW_UP (a meeting after the first consultation).
-//   * `agreementHold`: the one rule the attendance answer (Attended) and the consult record both ask, inside their own
-//     transaction: the booking's type needs it and the booking's latest agreement is not signed → refused with the agreement's
-//     own words. Waiting (sent, viewed, signed by the client only) or ended unsigned (declined, withdrawn, expired, back to
-//     draft) both hold (Lead 10's W4; Lead 1's ruling on #3184, 23 Nov): an ended one is replaced by a fresh one, which the
-//     catch-up sends while the meeting is still ahead (a past meeting is rescheduled first). A booking with no agreement
-//     yet holds too (Lead 22's ruling on QA-772, 24 Nov; Code SOR/2022-128 s. 23(1) "must enter into a written
-//     consultation agreement" before an initial consultation; it overrides AG-4-15's "warning, never a block", DECISIONS
-//     row owed): the refusal names what stops the send (`missingCauses`: no client email, no active template, nobody
-//     licensed to sign, else a send still being made or retried) and the way out. One rule, here.
-// Reads only; no lock of its own (the caller holds the booking's row lock).
-import { HttpException } from "@nestjs/common";
+//   * `agreementWarning`: the one warning the booking's panel, the attendance answer (Attended) and the consult record all
+//     show: the booking's type needs it and none of its agreements is signed (the provider's seal or a paper copy). Waiting
+//     (sent, viewed, signed by the client only), ended unsigned (declined, withdrawn, expired, back to draft: the catch-up
+//     sends a fresh one while the meeting is ahead) or none yet (`missingCauses`: no client email, no active template,
+//     nobody licensed to sign, else a send still being made) each warn with their own next step. Nothing is ever refused
+//     for it: Attended, No-show and the consult record are saved whatever the agreement's state.
+// Reads only; no lock of its own.
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { DUTY_KEYS } from "../../../platform/identity/keys.ts";
 
@@ -39,10 +36,10 @@ export function needsAgreement(t: { requireAgreement: boolean | null; purpose: s
 /** The same rule in SQL, over `fo_consultation_type t` (catch-up's and the hold's reads). */
 export const NEEDS_AGREEMENT_SQL = "coalesce(t.require_agreement, t.purpose::text <> 'FOLLOW_UP')";
 
-export const HOLD_WORDS = "The consultation agreement is not signed yet, so the consultation cannot start. The client signs first, from the link in their email, then the firm. If the meeting time has passed, reschedule it: the client can sign before the new time.";
-/** The same refusal for a booking that can no longer be signed for nor rescheduled (No-show, Attended: review m3-1). */
-export const HOLD_WORDS_INACTIVE = "The consultation agreement is not signed yet, so the consultation cannot start, and this booking can no longer be signed for or rescheduled: to meet the client, make a new booking, and a new agreement is sent for it.";
-export const holdWords = (bookingStatus: string) => (bookingStatus === "SCHEDULED" || bookingStatus === "RESCHEDULED" ? HOLD_WORDS : HOLD_WORDS_INACTIVE);
+export const WARN_WORDS = "The consultation agreement is not signed yet. The client signs from the link in their email, then the firm. Attended and the consult record can still be saved.";
+/** The same warning for a booking that can no longer be signed for nor rescheduled (No-show, Attended: review m3-1). */
+export const WARN_WORDS_INACTIVE = "The consultation agreement for this booking is not signed, and this booking can no longer be signed for or rescheduled: a new booking sends a new agreement.";
+export const warnWords = (bookingStatus: string) => (bookingStatus === "SCHEDULED" || bookingStatus === "RESCHEDULED" ? WARN_WORDS : WARN_WORDS_INACTIVE);
 export type Hold = { agreementId: string | null; status: string; bookingStatus: string; causes?: Cause[]; started?: boolean };
 
 // ---- what stops an agreement being sent (send()'s reasons, as SQL over `fo_booking b`): the catch-up's filter and the hold
@@ -71,14 +68,14 @@ export const CAUSE_WORDS: Record<Exclude<Cause, "SENDING" | "NOT_SCHEDULED">, st
 export const NEXT_WORDS = {
   ahead: "The agreement is then sent to the client within a minute.",
   aheadSending: "It is being sent now; a send that fails is tried again, up to an hour apart. If it does not arrive, check the consultation template's file in Templates.",
-  started: "Then reschedule the meeting to a later time: the agreement is sent to the client for the new time, and the consultation starts once it is signed.",
+  started: "None is sent for a meeting that has started: to have it signed, reschedule the meeting to a later time and the agreement is sent to the client for the new time.",
   startedSending: "None was sent before the meeting started: reschedule the meeting to a later time and the agreement is sent to the client for the new time. If it still does not arrive, check the consultation template's file in Templates.",
   inactive: "This booking is no longer scheduled, so none is sent for it: to meet the client, make a new booking.",
 } as const;
-/** The refusal for "needs one, none yet": the cause(s) and the way out. */
+/** The warning for "needs one, none yet": the cause(s) and the way out. */
 export function missingWords(causes: Cause[], started: boolean) {
   const fixes = causes.filter((c): c is keyof typeof CAUSE_WORDS => c in CAUSE_WORDS).map((c) => CAUSE_WORDS[c]);
-  const head = "No consultation agreement has been sent for this booking, so the consultation cannot start.";
+  const head = "No consultation agreement has been sent for this booking yet. Attended and the consult record can still be saved.";
   if (causes.includes("NOT_SCHEDULED")) return `${head} ${NEXT_WORDS.inactive}`;   // fixes do nothing for this booking (review 3)
   if (!fixes.length) return `${head} ${started ? NEXT_WORDS.startedSending : NEXT_WORDS.aheadSending}`;
   return [head, ...fixes, started ? NEXT_WORDS.started : NEXT_WORDS.ahead].join(" ");
@@ -98,7 +95,7 @@ export async function missingCauses(q: Q, firmId: string, bookingId: string): Pr
 
 /** The booking's deciding agreement when its type needs one and none of its agreements is signed; with none yet, the
  *  causes (QA-772); else null. */
-export async function agreementHold(q: Q, firmId: string, bookingId: string): Promise<Hold | null> {
+async function unsigned(q: Q, firmId: string, bookingId: string): Promise<Hold | null> {
   const rows = await q.$queryRawUnsafe<{ id: string; status: string; booking_status: string }[]>(`
     select r.id::text, r.status::text, b.status::text as booking_status from fo_booking b join fo_consultation_type t on t.firm_id = b.firm_id and t.id = b.type_id
       join fo_retainer_version v on v.firm_id = b.firm_id and v.n = 1 and v.merge_values->>'booking.id' = b.id::text
@@ -106,16 +103,17 @@ export async function agreementHold(q: Q, firmId: string, bookingId: string): Pr
      where b.firm_id = $1::uuid and b.id = $2::uuid and ${NEEDS_AGREEMENT_SQL}
      ${DECIDING_ORDER} limit 1`, firmId, bookingId);
   const r = rows[0];
-  // The deciding agreement: any signed one → not held; else held (P2R2-1, P2R3-1). An ended one no longer holds for good:
-  // once all have ended the catch-up sends a fresh one (service.ts `catchUp`, `send`), and its signature lifts the hold.
+  // The deciding agreement: any signed one → no warning; else a warning (P2R2-1, P2R3-1). Once all have ended the catch-up
+  // sends a fresh one (service.ts `catchUp`, `send`), and its signature ends the warning.
   if (r) return isSigned(r.status) ? null : { agreementId: r.id, status: r.status, bookingStatus: r.booking_status };
-  const m = await missingCauses(q, firmId, bookingId);   // needs one, none yet (Lead 22's ruling on QA-772)
+  const m = await missingCauses(q, firmId, bookingId);   // needs one, none yet (QA-772)
   return m ? { agreementId: null, status: "NONE", bookingStatus: m.bookingStatus, causes: m.causes, started: m.started } : null;
 }
 
-/** Refuses (409 AGREEMENT_NOT_SIGNED) when the booking is held; nothing is written by the caller. */
-export async function assertAgreementSigned(q: Q, firmId: string, bookingId: string) {
-  const h = await agreementHold(q, firmId, bookingId);
-  if (h) throw new HttpException({ type: "https://expatready.local/problems/agreement-not-signed", title: "Agreement not signed yet", status: 409,
-    detail: h.causes ? missingWords(h.causes, h.started ?? true) : holdWords(h.bookingStatus), code: "AGREEMENT_NOT_SIGNED", agreementId: h.agreementId, ...(h.causes ? { causes: h.causes } : {}) }, 409);
+export type AgreementWarning = { code: "AGREEMENT_NOT_SIGNED"; agreementId: string | null; words: string; causes?: Cause[] };
+/** The booking's agreement warning, or null when its type needs none or one of its agreements is signed. Never refuses. */
+export async function agreementWarning(q: Q, firmId: string, bookingId: string): Promise<AgreementWarning | null> {
+  const h = await unsigned(q, firmId, bookingId);
+  if (!h) return null;
+  return { code: "AGREEMENT_NOT_SIGNED", agreementId: h.agreementId, words: h.causes ? missingWords(h.causes, h.started ?? true) : warnWords(h.bookingStatus), ...(h.causes ? { causes: h.causes } : {}) };
 }

@@ -25,7 +25,7 @@ import type { ConsultRecordRead, PartyRef } from "../../../../../ports/consult-r
 import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
 import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../../platform/http/input.ts";
-import { assertAgreementSigned } from "../consultation-agreement/gate.ts";
+import { agreementWarning } from "../consultation-agreement/gate.ts";
 
 type Tx = Prisma.TransactionClient;
 export type ConsultPorts = { audit: AuditPort<Tx> };
@@ -116,7 +116,7 @@ export class ConsultRecordService {
     const b = await this.booking(this.db, ctx, bookingId);
     const r = await this.db.foConsultRecord.findFirst({ where: firmScope(ctx.firmId, { bookingId: b.id }) });
     if (!r) throw problem(404, "not-found", "Not found", WORDS.noRecord, { code: "NO_RECORD", bookedMinutes: bookedMinutes(b) });
-    return this.view(ctx, b, r);
+    return { ...this.view(ctx, b, r), agreementWarning: await agreementWarning(this.db, ctx.firmId, b.id) };
   }
 
   async put(ctx: StaffContext, bookingId: string, body: unknown) {
@@ -137,7 +137,6 @@ export class ConsultRecordService {
       const b = await this.booking(tx, ctx, bookingId);
       if (b.status === "CANCELLED") throw problem(409, "not-active", "Cancelled", WORDS.cancelled, { code: "CANCELLED" });
       if (b.status !== "COMPLETED") throw problem(409, "not-attended", "Not attended", WORDS.notAttended, { code: "NOT_ATTENDED" });
-      await assertAgreementSigned(tx, ctx.firmId, b.id);   // FO-3c part 2 (R1.104, Lead 10 W4): no record of a consultation whose agreement is unsigned
       const before = await tx.foConsultRecord.findFirst({ where: firmScope(ctx.firmId, { bookingId: b.id }) });
       // A save from a form read before someone else's save (or a second "first" save) never overwrites it (review M1).
       if ((before?.version ?? null) !== (v.version ?? null)) throw problem(409, "stale-version", "Changed by someone else", WORDS.stale, { code: "STALE_VERSION", version: before?.version ?? null });
@@ -156,7 +155,9 @@ export class ConsultRecordService {
       });
       return { b, saved };
     }, TX);
-    return this.view(ctx, b, saved);
+    // FO-3c part 2 (AG-4-15 rule 4, the founder's ruling of 24 Nov): saved whatever the agreement's state; an unsigned one
+    // is the record's warning, never a refusal.
+    return { ...this.view(ctx, b, saved), agreementWarning: await agreementWarning(this.db, ctx.firmId, b.id) };
   }
 
   /** The adapter's read (ports/consult-record.ts): the firm's record by its id, or null. */

@@ -28,6 +28,8 @@ export const ConsultRecord = z.object({
   recommended: z.array(z.string()), quotedFee: z.object({ amountMinor: z.number(), currency: z.string() }).nullable(),
   attendanceChanged: z.literal("NO_SHOW").nullable(), nextSteps: z.array(z.enum(["ENGAGE_AND_PREPARE_RETAINER", "CLOSE_LEAD", "PREPARE_RETAINER"])),
   createdAt: z.string(), updatedAt: z.string(),
+  // FO-3c part 2 (AG-4-15 rule 4): the consultation agreement is not signed: a warning, never a refusal (the server's words).
+  agreementWarning: z.object({ code: z.string(), words: z.string() }).nullable().optional(),
 });
 export type ConsultRecord = z.infer<typeof ConsultRecord>;
 /** The route's answer: the record, or none yet with the booked length (404 NO_RECORD). */
@@ -96,6 +98,7 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   const suggested = interested && chars(interested) <= 120 ? [interested] : [];
   return (
     <>
+      {record?.agreementWarning ? <div className="mb-2" data-consult-agreement-warning><Notice tone="warn" title="Consultation agreement not signed">{record.agreementWarning.words}</Notice></div> : null}
       <RecordForm key={loads} booking={booking} record={record} bookedMinutes={bookedMinutes} suggested={suggested} onSaved={() => setJustSaved(true)}
         onReload={() => void qc.invalidateQueries({ queryKey: ["fo", "bookings"] }).then(() => setLoads((n) => n + 1))} />
       {record ? <NextStep booking={booking} record={record} reveal={justSaved} /> : null}

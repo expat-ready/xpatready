@@ -166,7 +166,7 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
                     <dt className="text-text-muted">Show on booking page</dt><dd>{draft.showOnBookingPage ? "Yes" : "No"}</dd>
                     <dt className="text-text-muted">Allow reschedule</dt><dd>{draft.allowReschedule ? "Yes" : "No"}</dd>
                     <dt className="text-text-muted">Allow cancellation</dt><dd>{draft.allowCancel ? "Yes" : "No"}</dd>
-                    <dt className="text-text-muted">Agreement signed before it starts</dt><dd>{needsAgreement(draft) ? "Yes" : "No"}</dd>
+                    <dt className="text-text-muted">Consultation agreement sent to sign</dt><dd>{needsAgreement(draft) ? "Yes" : "No"}</dd>
                   </dl>
                 ) : (<>
                   <Field label="Name" error={errors.name}><Input value={draft.name} onChange={(e) => set("name", e.target.value)} /></Field>
@@ -199,7 +199,7 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
                     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowReschedule} onChange={(e) => set("allowReschedule", e.target.checked)} /> Allow reschedule</label>
                     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowCancel} onChange={(e) => set("allowCancel", e.target.checked)} /> Allow cancellation</label>
                     <p className="text-xs text-text-muted">What a booker may do from the link in their email.</p>
-                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={needsAgreement(draft)} onChange={(e) => set("requireAgreement", e.target.checked)} data-require-agreement /> Consultation agreement signed before the consultation starts</label>
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={needsAgreement(draft)} onChange={(e) => set("requireAgreement", e.target.checked)} data-require-agreement /> Send the client our consultation agreement to sign before the consultation</label>
                   </> : null}
                   {t ? <TypeTimingsSection typeId={t.id} onSaved={(version, sent) => { if (sent !== t.version) { void qc.invalidateQueries({ queryKey: ["fo", "booking-types", "one", t.id] }); return; } timingVersion.current = version; qc.setQueryData<TypeDetail>(["fo", "booking-types", "one", t.id], (o) => (o ? { ...o, version } : o)); }} />
                     : <p className="text-xs text-text-muted">This type uses the firm's timings. Save it first to change them for this type.</p>}

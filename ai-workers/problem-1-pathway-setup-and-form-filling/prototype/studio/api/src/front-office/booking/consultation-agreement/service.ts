@@ -339,9 +339,9 @@ export class ConsultationAgreementService {
     const b = UUID.test(String(bookingId)) ? await this.db.foBooking.findFirst({ where: { firmId: ctx.firmId, id: bookingId }, select: { id: true, type: { select: { requireAgreement: true, purpose: true } } } }) : null;
     if (!b || !(await this.sees(ctx, b.id))) return notFound();
     const a = await this.ofBooking(this.db, ctx.firmId, b.id), required = needsAgreement(b.type);
-    // `required`: the booking's type needs it (part 2): an unsigned one holds Attended and the consult record.
+    // `required`: the booking's type needs it (part 2): an unsigned one is a warning on the booking, never a refusal.
     if (a) return { ...(await this.read(ctx, a.id)), required };
-    // QA-772 (Lead 22): needs one, none yet → held; `why` is the refusal's own words (gate.ts), shown on the panel.
+    // QA-772: needs one, none yet → `why` is the warning's own words (gate.ts), shown on the panel.
     const m = required ? await missingCauses(this.db, ctx.firmId, b.id) : null;
     return { id: null, bookingId: b.id, status: "NONE", signed: false, words: WORDS.none, required, ...(m ? { causes: m.causes, why: missingWords(m.causes, m.started) } : {}) };
   }

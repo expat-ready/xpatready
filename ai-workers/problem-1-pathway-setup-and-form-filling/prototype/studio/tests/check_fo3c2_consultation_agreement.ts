@@ -1,25 +1,29 @@
-// FO-3c part 2 (R1.104; Lead 10's rulings of 23 Nov: W4/W9 block, W4b requireAgreement, W5 signatory, FO-3vr; J-104
-// W2-W9; QA-750, QA-751; Code SOR/2022-128 s. 23, Unconfirmed: no counsel). Each case with a passing and a failing side,
+// FO-3c part 2 (R1.104; Lead 10's rulings of 23 Nov: W4b requireAgreement, W5 signatory, FO-3vr; J-104 W2-W9; QA-750,
+// QA-751; AG-4-15 rule 4 "warn, never block", the founder's ruling of 24 Nov relayed on #3471, replacing W4/W9's block and
+// Lead 22's ruling on QA-772; Code SOR/2022-128 s. 23, Unconfirmed: no counsel). Each case with a passing and a failing side,
 // at the services: a scratch database (every migration, this part's included), PF-3's Sample firms and staff (user-R
 // licensed hosts the bookings; firm B's user-S), the real booking, consult-record and booking-type services, FilesPort in
 // a scratch folder, the fake clock, jobs, mail, audit and signer. No server, no browser, no model call (US$0). Dropped at
 // the end.
 //   P1  the type's switch (W4b): a follow-up sends none, a stored false sends none, a stored true sends; the settings save it
-//   P2  the block (W4): Attended and the consult record refused while unsigned, the booking unchanged; No-show still saved
-//   P3  after signing (W9): Attended and the consult record saved; a type that needs none is never held
+//   P2  warn, never block: Attended and the consult record saved while unsigned, each answer carrying the warning; No-show
+//       saved too
+//   P3  after signing (W9): no warning; a type that needs none never warns
 //   P4  the poller (W2, W5): a booking event in the outbox sends the agreement as its firm, once; a reschedule moves the
 //       reminder; each firm read writes its platform.bypass line; a follow-up's event sends none
 //   P5  the reads follow the booking's visibility (FO-3vr): another person's booking is the one not-found
 //   P6  the signed copy's key: refused before signing, given after, and checked again for whoever asks
-//   B2, B6  an agreement that ended unsigned (declined, withdrawn) still holds; a fresh one is sent while the meeting is
-//       ahead (by the send, the catch-up or a reschedule), once; its signature lifts the hold (Lead 1's ruling on #3184)
+//   B2, B6  an agreement that ended unsigned (declined, withdrawn) still warns; a fresh one is sent while the meeting is
+//       ahead (by the send, the catch-up or a reschedule), once; its signature ends the warning (Lead 1's ruling on #3184)
 //   B5  the poller's backoff: held back, retried after 30 s, doubled; capped by the time left before the meeting (P2R2-2)
 //   B7  the panel's next step on a No-show booking (review r2-2)   B8  NO_TEMPLATE backs off (P2R2-3)
-//   B9  the reminder reads the type's switch (review r2-1)   B10  any signed agreement lifts the hold (P2R3-1)
+//   B9  the reminder reads the type's switch (review r2-1)   B10  any signed agreement ends the warning (P2R3-1)
 //   B11 one fresh agreement under concurrent sends; a draft counts as ended (review M2)   B12 the cap at each check (m3-2)
-//   N1-N4 (QA-772; Lead 22's ruling, 24 Nov): a type that needs it and has none yet is held, the refusal naming the cause
-//       (no client email, no active template, nobody licensed to sign, a send still being made); removing the cause lets
-//       the catch-up send, and the hold then names the agreement. N5: a No-show booking with none; a type needing none
+//   N1-N4 (QA-772): a type that needs it and has none yet warns, naming the cause (no client email, no active template,
+//       nobody licensed to sign, a send still being made); removing the cause lets the catch-up send, and the warning then
+//       names the agreement. N5: a No-show booking with none; a type needing none
+//   W1-W4 (the founder's ruling, 24 Nov): Attended and the consult record with none sent are saved with the warning; a
+//       paper copy ends it; a person without the key is still refused; no regulator or statute named in the words
 //   tsx studio/tests/check_fo3c2_consultation_agreement.ts
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -57,7 +61,7 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, opt
 
 const { ConsultationAgreementService, WORDS } = await import("../api/src/front-office/booking/consultation-agreement/service.ts");
 const { AgreementPoll } = await import("../api/src/front-office/booking/consultation-agreement/live.ts");
-const { CAUSE_WORDS, NEXT_WORDS, HOLD_WORDS, HOLD_WORDS_INACTIVE, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
+const { CAUSE_WORDS, NEXT_WORDS, WARN_WORDS, WARN_WORDS_INACTIVE, agreementWarning, missingWords, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
 const { agreementNextStep, sendsFresh, NEXT_CANCELLED, NEXT_COMPLETED, NEXT_NO_SHOW, NEXT_RESCHEDULE } = await import("../contracts/consultation-agreement-words.ts");
 const { BookingService } = await import("../api/src/front-office/booking/service.ts");
 const { ConsultRecordService } = await import("../api/src/front-office/booking/consult/service.ts");
@@ -133,6 +137,10 @@ try {
     return sql(`select status from fo_retainer where id = '${agreementId}'`);
   };
   const RECORD = { timeSpentMinutes: 30, notes: "Sample consult notes (FO-3c part 2)", recommended: ["Study permit (Sample)"] };
+  /** The warning the booking carries now (gate.ts `agreementWarning`, as the panel, Attended and the record show it): reads only. */
+  const warnAt = async (c: StaffContext | string, bookingId: string) => { const w = await agreementWarning(db, typeof c === "string" ? c : c.firmId, bookingId); return { warned: !!w, body: JSON.stringify(w ?? null) }; };
+  /** An answer's `agreementWarning` (null when none). */
+  const warningOf = (a: { status: number; body: string }) => { try { return JSON.parse(a.body).agreementWarning ?? null; } catch { return undefined; } };
 
   const free = await type(A, "p2-free", [R.staffId]), follow = await type(A, "p2-follow", [R.staffId], "FOLLOW_UP");
   const freeOff = await type(A, "p2-free-off", [R.staffId], "FREE_CONSULT", false), followOn = await type(A, "p2-follow-on", [R.staffId], "FOLLOW_UP", true);
@@ -156,21 +164,22 @@ try {
     tv.requireAgreement === true && tv.requireAgreementSet === false && saved.requireAgreement === false && saved.requireAgreementSet === true && back.requireAgreement === true
     && sql(`select require_agreement from fo_consultation_type where id = '${free.id}'`) === "t" && badType.status === 422 && /requireAgreement/.test(badType.body), { tv, saved, back, badType });
 
-  // --------------------------------------------------------------------------------------------------- P2 the block (W4)
+  // ------------------------------------------------------------------------------ P2 warn, never block (AG-4-15 rule 4)
   const b2 = await book(A, free, R.staffId, lee, -180), b3 = await book(A, free, R.staffId, lee, -180);   // both over: their attendance question is open
   const s2 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b2)), s3 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b3));
   const att2 = await answer(() => bookings.recordAttendance(R, b2.id, { outcome: "COMPLETED" }));
   const noShow3 = await answer(() => bookings.recordAttendance(R, b3.id, { outcome: "NO_SHOW" }));
-  ok("FO-3c2 P2 pass (W4; QA-750): with its agreement sent and unsigned, Attended is refused (409 AGREEMENT_NOT_SIGNED, in words naming the agreement) and the booking stays Scheduled",
-    s2?.sent === true && att2.status === 409 && /AGREEMENT_NOT_SIGNED/.test(att2.body) && att2.body.includes(HOLD_WORDS.slice(0, 40)) && statusOf(b2.id) === "SCHEDULED", { s2, att2 });
-  ok("FO-3c2 P2 fail: No-show is not the consultation starting: it is saved while the agreement is unsigned", s3?.sent === true && noShow3.status === 200 && statusOf(b3.id) === "NO_SHOW", noShow3);
-  // A booking already marked Attended before this part (written straight to the table): its record waits for the agreement too.
+  ok("FO-3c2 P2 pass (AG-4-15 r4; the founder's ruling): with its agreement sent and unsigned, Attended is saved (200, Attended) and its answer carries the warning naming the agreement",
+    s2?.sent === true && att2.status === 200 && statusOf(b2.id) === "COMPLETED" && warningOf(att2)?.code === "AGREEMENT_NOT_SIGNED" && warningOf(att2)?.agreementId === s2.agreementId, { s2, att2 });
+  ok("FO-3c2 P2 fail: No-show is saved while the agreement is unsigned (and carries no warning)", warningOf(noShow3) === null && s3?.sent === true && noShow3.status === 200 && statusOf(b3.id) === "NO_SHOW", noShow3);
+  // A booking already marked Attended (written straight to the table): its record is saved, with the warning.
   const b4 = await book(A, free, R.staffId, lee, -120);
   const sentLate = await svc.send(A, b4.id);
   await db.foBooking.update({ where: { id: b4.id }, data: { status: "COMPLETED" } });
   const rec4 = await answer(() => consult.put(R, b4.id, RECORD));
-  ok("FO-3c2 P2 record: a consult record for an Attended booking whose agreement is unsigned is refused (409 AGREEMENT_NOT_SIGNED) and nothing is stored (or the booking had no agreement to wait for: then the record is saved)",
-    sentLate.sent && rec4.status === 409 && /AGREEMENT_NOT_SIGNED/.test(rec4.body) && Number(sql(`select count(*) from fo_consult_record where booking_id = '${b4.id}'`)) === 0, { sentLate, rec4 });
+  const get4 = await answer(() => consult.get(R, b4.id));
+  ok("FO-3c2 P2 record: a consult record for an Attended booking whose agreement is unsigned is saved (one row) and its answer, and a later read, carry the warning",
+    sentLate.sent && rec4.status === 200 && Number(sql(`select count(*) from fo_consult_record where booking_id = '${b4.id}'`)) === 1 && warningOf(rec4)?.code === "AGREEMENT_NOT_SIGNED" && warningOf(get4)?.code === "AGREEMENT_NOT_SIGNED", { sentLate, rec4, get4 });
 
   // ------------------------------------------------------------------------------------------------ P3 after signing (W9)
   // Signed during b5's meeting (a link of a meeting that has ended is refused, part 1's break m5), then answered after it.
@@ -179,19 +188,19 @@ try {
   const s5 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b5));
   const before5 = await answer(() => bookings.recordAttendance(R, b5.id, { outcome: "COMPLETED" }));   // too early: not started
   await clock.set(new Date(b5.startsAt.getTime() + 5 * MIN));
-  const held5 = await answer(() => bookings.recordAttendance(R, b5.id, { outcome: "COMPLETED" }));
+  const held5 = await warnAt(R, b5.id);
   const signed5 = s5?.sent ? await signAll(s5.agreementId, "pat@client.example", R) : "";
   await clock.set(today);
   const att5 = await answer(() => bookings.recordAttendance(R, b5.id, { outcome: "COMPLETED" }));
   const rec5 = await answer(() => consult.put(R, b5.id, RECORD));
-  ok("FO-3c2 P3 pass (W9): once the client and the firm have signed, Attended is saved and the consult record is accepted",
-    signed5 === "SIGNED" && att5.status === 200 && statusOf(b5.id) === "COMPLETED" && rec5.status === 200, { signed5, att5, rec5 });
-  ok("FO-3c2 P3 fail: the same booking was refused before signing (409 AGREEMENT_NOT_SIGNED during the meeting; too early before it)",
-    before5.status === 409 && /too-early|Not yet/.test(before5.body) && held5.status === 409 && /AGREEMENT_NOT_SIGNED/.test(held5.body), { before5, held5 });
+  ok("FO-3c2 P3 pass (W9): once the client and the firm have signed, Attended and the consult record are saved with no warning",
+    signed5 === "SIGNED" && att5.status === 200 && statusOf(b5.id) === "COMPLETED" && rec5.status === 200 && warningOf(att5) === null && warningOf(rec5) === null, { signed5, att5, rec5 });
+  ok("FO-3c2 P3 fail: the same booking warned before signing (during the meeting); Attended before the meeting started is still too early (409)",
+    before5.status === 409 && /too-early|Not yet/.test(before5.body) && held5.warned && /AGREEMENT_NOT_SIGNED/.test(held5.body), { before5, held5 });
   const bF2 = await book(A, follow, R.staffId, lee, -120);
   await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, bF2));
   const attF = await answer(() => bookings.recordAttendance(R, bF2.id, { outcome: "COMPLETED" }));
-  ok("FO-3c2 P3 type: a follow-up (no agreement needed, none sent) is never held: its Attended is saved", attF.status === 200 && statusOf(bF2.id) === "COMPLETED" && agreementsOf(bF2.id) === 0, attF);
+  ok("FO-3c2 P3 type: a follow-up (no agreement needed, none sent) never warns: its Attended is saved", attF.status === 200 && warningOf(attF) === null && statusOf(bF2.id) === "COMPLETED" && agreementsOf(bF2.id) === 0, attF);
 
   // --------------------------------------------------------------------------------------------------- P4 the poller (W2)
   const poll = new AgreementPoll(db, svc, () => clock.now());
@@ -277,16 +286,16 @@ try {
   const [fresh8, freshSt8] = latestOf(b8.id);
   const repeat8 = await svc.send(A, b8.id), cu8 = await svc.catchUp((_f, fn) => fn());   // the fresh one is waiting: none more
   await clock.set(new Date(b8.startsAt.getTime() + 5 * MIN));
-  const att8 = await answer(() => bookings.recordAttendance(R, b8.id, { outcome: "COMPLETED" }));
-  ok("FO-3c2 B2 pass (P2R2-1; Lead 1's ruling): a declined agreement reads \"Agreement ended unsigned\" and still holds; while the meeting is ahead a fresh one is sent (once), and Attended stays refused until it is signed",
+  const att8 = await warnAt(R, b8.id);
+  ok("FO-3c2 B2 pass (P2R2-1; Lead 1's ruling): a declined agreement reads \"Agreement ended unsigned\" and still warns; while the meeting is ahead a fresh one is sent (once), and the warning names it until it is signed",
     ["DECLINED", "WITHDRAWN"].includes(st8) && w8.words === WORDS.ended && cuFresh8.sent >= 1 && fresh8 !== a8 && freshSt8 === "SENT" && agreementsOf(b8.id) === 2
-    && repeat8.sent === false && repeat8.reason === "ALREADY_SENT" && cu8.sent === 0 && agreementsOf(b8.id) === 2 && att8.status === 409 && /AGREEMENT_NOT_SIGNED/.test(att8.body) && att8.body.includes(fresh8), { st8, words: w8.words, cuFresh8, repeat8, cu8, att8: att8.status });
+    && repeat8.sent === false && repeat8.reason === "ALREADY_SENT" && cu8.sent === 0 && agreementsOf(b8.id) === 2 && att8.warned && /AGREEMENT_NOT_SIGNED/.test(att8.body) && att8.body.includes(fresh8), { st8, words: w8.words, cuFresh8, repeat8, cu8, att8 });
   const signed8 = await signAll(fresh8, "lee@client.example", R);
   await clock.set(today);
   const done8 = await answer(() => bookings.recordAttendance(R, b8.id, { outcome: "COMPLETED" }));
-  ok("FO-3c2 B2 fail: once the fresh agreement is signed, the same booking's Attended is saved (the latest agreement decides, not the declined one)",
-    signed8 === "SIGNED" && done8.status === 200 && statusOf(b8.id) === "COMPLETED", { signed8, done8 });
-  // Withdrawn by the firm (FO-5's withdraw) with the meeting already past: held, and no fresh one until it is rescheduled.
+  ok("FO-3c2 B2 fail: once the fresh agreement is signed, the same booking's Attended is saved with no warning (the latest agreement decides, not the declined one)",
+    signed8 === "SIGNED" && done8.status === 200 && warningOf(done8) === null && statusOf(b8.id) === "COMPLETED", { signed8, done8 });
+  // Withdrawn by the firm (FO-5's withdraw) with the meeting already past: warns, and no fresh one until it is rescheduled.
   const b8w = await book(A, free, R.staffId, lee, -180);
   await clock.set(new Date(b8w.startsAt.getTime() - 60 * MIN));
   const s8w = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b8w)), a8w = s8w?.sent ? s8w.agreementId : "";
@@ -294,9 +303,9 @@ try {
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });   // FO-5's page reads it so
   const wd = await answer(() => retainers.withdraw(R, a8w, { reason: "Sample: skip it", expectedVersion: 1, expectedStatus: "SENT" }));
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
-  const held8w = await answer(() => bookings.recordAttendance(R, b8w.id, { outcome: "COMPLETED" })), cu8w = await svc.catchUp((_f, fn) => fn());
-  ok("FO-3c2 B6 pass (P2R2-1): an agreement the firm withdrew still holds Attended, and with the meeting past the catch-up sends no fresh one",
-    wd.status === 200 && sql(`select status from fo_retainer where id = '${a8w}'`) === "WITHDRAWN" && held8w.status === 409 && /AGREEMENT_NOT_SIGNED/.test(held8w.body) && agreementsOf(b8w.id) === 1 && statusOf(b8w.id) === "SCHEDULED", { wd: wd.status, held8w: held8w.status, cu8w });
+  const held8w = await warnAt(R, b8w.id), cu8w = await svc.catchUp((_f, fn) => fn());
+  ok("FO-3c2 B6 pass (P2R2-1): an agreement the firm withdrew still warns, and with the meeting past the catch-up sends no fresh one",
+    wd.status === 200 && sql(`select status from fo_retainer where id = '${a8w}'`) === "WITHDRAWN" && held8w.warned && /AGREEMENT_NOT_SIGNED/.test(held8w.body) && agreementsOf(b8w.id) === 1 && statusOf(b8w.id) === "SCHEDULED", { wd: wd.status, held8w, cu8w });
   const moved8w = await db.foBooking.update({ where: { id: b8w.id }, data: { status: "RESCHEDULED", startsAt: new Date(clock.now().getTime() + 9 * 24 * HOUR), endsAt: new Date(clock.now().getTime() + 9 * 24 * HOUR + 30 * MIN), sequence: { increment: 1 } } });
   const r8w = await svc.onBookingEvent(eventOf(EVENT.BOOKING_RESCHEDULED, moved8w));
   ok("FO-3c2 B6 fail: rescheduled to a time ahead, the reschedule sends a fresh agreement for the new time (the latest is SENT)",
@@ -329,24 +338,25 @@ try {
   await decline(a14);
   const f14 = await svc.send(A, b14.id), a14b = f14.sent ? f14.agreementId : "";
   await clock.set(new Date(b14.startsAt.getTime() + 5 * MIN));
-  const held14 = await answer(() => bookings.recordAttendance(R, b14.id, { outcome: "COMPLETED" }));
+  const held14 = await warnAt(R, b14.id);
   sql(`set session_replication_role = replica; update fo_retainer set status = 'SIGNED_OFFLINE', offline_at = now(), offline_reason = 'Sample: signed on paper', offline_by = 'staff:${R.staffId}', offline_file_key = 'retainers/' || id::text || '/signed-offline.pdf', offline_file_sha256 = repeat('a', 64) where id = '${a14}'`);
   const retainersApi = await answer(() => retainers.withdraw(R, a14b, { reason: "Sample: signed on paper", expectedVersion: 1, expectedStatus: "SENT" }));
   const again14 = await svc.send(A, b14.id), cu14 = await svc.catchUp((_f, fn) => fn()), panel14 = await svc.forBooking(R, b14.id);
   const att14 = await answer(() => bookings.recordAttendance(R, b14.id, { outcome: "COMPLETED" }));
   await clock.set(today);
-  ok("FO-3c2 B10 pass (break P2R3-1): an older agreement signed (on paper) lifts the hold although a newer one was sent and then withdrawn; no further one is sent; the panel shows the signed one",
-    att14.status === 200 && statusOf(b14.id) === "COMPLETED" && again14.sent === false && again14.reason === "ALREADY_SENT" && again14.agreementId === a14 && cu14.sent === 0 && agreementsOf(b14.id) === 2 && panel14.id === a14 && panel14.signed === true,
+  ok("FO-3c2 B10 pass (break P2R3-1): an older agreement signed (on paper) ends the warning although a newer one was sent and then withdrawn; no further one is sent; the panel shows the signed one",
+    att14.status === 200 && warningOf(att14) === null && statusOf(b14.id) === "COMPLETED" && again14.sent === false && again14.reason === "ALREADY_SENT" && again14.agreementId === a14 && cu14.sent === 0 && agreementsOf(b14.id) === 2 && panel14.id === a14 && panel14.signed === true,
     { att14: att14.status, again14, cu14, panel14: [panel14.id === a14, panel14.status], withdraw: retainersApi.status });
-  ok("FO-3c2 B10 fail: before the older one was signed, the same booking was held on the fresh one (409 naming it)",
-    f14.sent === true && held14.status === 409 && held14.body.includes(a14b), { f14, held14: held14.status });
+  ok("FO-3c2 B10 fail: before the older one was signed, the same booking warned on the fresh one (naming it)",
+    f14.sent === true && held14.warned && held14.body.includes(a14b), { f14, held14 });
   // Review r2-2: a No-show booking cannot be rescheduled, so the panel's next step says to make a new booking.
   ok("FO-3c2 B7 (review r2-2): the panel's next step on a No-show booking says to make a new booking, never to reschedule; on any other booking it says to reschedule",
     agreementNextStep("NO_SHOW") === NEXT_NO_SHOW && !/reschedule it/.test(agreementNextStep("NO_SHOW")) && agreementNextStep("SCHEDULED") === NEXT_RESCHEDULE && agreementNextStep(undefined) === NEXT_RESCHEDULE
     && (await answer(() => bookings.staffReschedule(R, b3.id, { startsAt: new Date(clock.now().getTime() + 10 * 24 * HOUR).toISOString(), timeZone: "America/Toronto" }))).status === 409);
   const noShowAtt = await answer(() => bookings.recordAttendance(R, b3.id, { outcome: "COMPLETED" }));
-  ok("FO-3c2 B7 server words (review m3-1): Attended on a No-show booking is refused in words that say to make a new booking, never to reschedule (a Scheduled one's refusal says to reschedule)",
-    noShowAtt.status === 409 && noShowAtt.body.includes(HOLD_WORDS_INACTIVE) && !/reschedule it/.test(noShowAtt.body) && att2.body.includes(HOLD_WORDS), { noShowAtt });
+  const sched7 = await warnAt(R, b8w.id);   // rescheduled ahead, its fresh agreement sent and unsigned (B6 fail)
+  ok("FO-3c2 B7 server words (review m3-1): Attended on a No-show booking is saved, and its warning says a new booking sends a new agreement, never to reschedule (a Rescheduled one's warning names the email link)",
+    noShowAtt.status === 200 && warningOf(noShowAtt)?.words === WARN_WORDS_INACTIVE && !/reschedule it/.test(noShowAtt.body) && warningOf(att2)?.words === WARN_WORDS_INACTIVE && sched7.body.includes(WARN_WORDS), { noShowAtt, sched7 });
   ok("FO-3c2 B7 other statuses (break P2R3-4): Attended and cancelled bookings are never told to reschedule nor promised a fresh agreement; Scheduled and Rescheduled are",
     agreementNextStep("COMPLETED") === NEXT_COMPLETED && agreementNextStep("CANCELLED") === NEXT_CANCELLED && !sendsFresh("COMPLETED") && !sendsFresh("CANCELLED") && !sendsFresh("NO_SHOW") && sendsFresh("SCHEDULED") && sendsFresh("RESCHEDULED"));
   // P2-3: a quiet catch-up (a signed copy already queued, nothing to send) touches no firm: no new bypass line.
@@ -371,11 +381,11 @@ try {
   await clock.set(new Date(b10.startsAt.getTime() - 10 * MIN));
   const s10 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b10));
   await clock.set(today);
-  const held10 = await answer(() => bookings.recordAttendance(R, b10.id, { outcome: "COMPLETED" }));
+  const held10 = await warnAt(R, b10.id);
   await db.foConsultationType.update({ where: { id: freeOff.id }, data: { requireAgreement: false } });
   const free10 = await answer(() => bookings.recordAttendance(R, b10.id, { outcome: "COMPLETED" }));
-  ok("FO-3c2 R1 (review m1): the hold reads the type's switch: on, an unsigned agreement holds Attended (409); switched off, the same booking's Attended is saved",
-    s10?.sent === true && held10.status === 409 && free10.status === 200 && statusOf(b10.id) === "COMPLETED", { s10, held10: held10.status, free10: free10.status });
+  ok("FO-3c2 R1 (review m1): the warning reads the type's switch: on, an unsigned agreement warns; switched off, the same booking's Attended is saved with no warning",
+    s10?.sent === true && held10.warned && free10.status === 200 && warningOf(free10) === null && statusOf(b10.id) === "COMPLETED", { s10, held10, free10: free10.status });
   ok("FO-3c2 R1 download: the signed copy's file is refused to a colleague with the list key outside the record rule (the download's check), and given to its host",
     !(await svc.copyVisible(Tview, k)) && (await svc.copyVisible(R, k)), { k: !!k });
 
@@ -458,11 +468,11 @@ try {
   ok("FO-3c2 B9 pass (review r2-1): a type switched off after its agreement was sent gets no 24-hour reminder", s13.sent && !off13, { s13, off13 });
   ok("FO-3c2 B9 fail: a type still on gets its reminder", s12.sent && on12, { s12, on12 });
 
-  // ------------------------------------------------------- QA-772: needs one, none yet (Lead 22's ruling, 24 Nov)
-  // Each booking is over (its attendance question is open) and was never sent an agreement (no event read). Attended is
-  // refused naming the cause and the way out (on old code it was saved). The way out is the real one (break QA772-1): the
-  // cause fixed, the meeting rescheduled to a later time, and the catch-up, at today's clock, sends the agreement.
-  const att = (c: StaffContext, b: { id: string }) => answer(() => bookings.recordAttendance(c, b.id, { outcome: "COMPLETED" }));
+  // ------------------------------------------------------------------------------------- QA-772: needs one, none yet
+  // Each booking is over (its attendance question is open) and was never sent an agreement (no event read). It warns,
+  // naming the cause and the way out (read here without answering Attended, which W1 saves). The way out is the real one
+  // (break QA772-1): the cause fixed, the meeting rescheduled to a later time, and the catch-up sends the agreement.
+  const att = (c: StaffContext, b: { id: string }) => warnAt(c, b.id);
   const causesOf = (r: { body: string }) => { try { return (JSON.parse(r.body).causes ?? []).join(","); } catch { return "?"; } };
   let later = 12 * 24;   // hours ahead, a fresh time for each reschedule
   const sendAfter = async (c: StaffContext, b: { id: string }) => {
@@ -478,12 +488,12 @@ try {
   const noe = await db.foPerson.create({ data: { firmId: A, givenNames: "Noe", familyName: "Sample", createdBy: "seed:qa772" } });
   const n1 = await book(A, free, R.staffId, noe, -180);
   const n1a = await att(R, n1), n1panel = await svc.forBooking(R, n1.id) as { why?: string; causes?: string[] };
-  ok("FO-3c2 N1 fail-before (QA-772): no client email: Attended is refused (409) naming the cause and the way out; the panel says the same; nothing is saved",
-    n1a.status === 409 && /AGREEMENT_NOT_SIGNED/.test(n1a.body) && causesOf(n1a) === "NO_CLIENT_EMAIL" && n1a.body.includes(CAUSE_WORDS.NO_CLIENT_EMAIL) && n1a.body.includes(NEXT_WORDS.started) && !n1a.body.includes(NEXT_WORDS.ahead) && n1panel.why?.includes(CAUSE_WORDS.NO_CLIENT_EMAIL) === true && statusOf(n1.id) === "SCHEDULED", { n1a, n1panel });
+  ok("FO-3c2 N1 (QA-772): no client email: the warning names the cause and the way out; the panel says the same",
+    n1a.warned && /AGREEMENT_NOT_SIGNED/.test(n1a.body) && causesOf(n1a) === "NO_CLIENT_EMAIL" && n1a.body.includes(CAUSE_WORDS.NO_CLIENT_EMAIL) && n1a.body.includes(NEXT_WORDS.started) && !n1a.body.includes(NEXT_WORDS.ahead) && n1panel.why?.includes(CAUSE_WORDS.NO_CLIENT_EMAIL) === true && statusOf(n1.id) === "SCHEDULED", { n1a, n1panel });
   await db.foPerson.update({ where: { id: noe.id }, data: { email: "noe@client.example" } });
   const n1cu = await svc.catchUp((_f, fn) => fn()), n1c = await att(R, n1);
-  ok("FO-3c2 N1 started (break QA772-1): with only the email added, a meeting already started is not sent one, and the refusal says to reschedule (it promises no send)",
-    agreementsOf(n1.id) === 0 && n1c.status === 409 && causesOf(n1c) === "SENDING" && n1c.body.includes(NEXT_WORDS.startedSending) && !/within a minute|being sent now/.test(n1c.body), { n1cu, n1c });
+  ok("FO-3c2 N1 started (break QA772-1): with only the email added, a meeting already started is not sent one, and the warning says to reschedule (it promises no send)",
+    agreementsOf(n1.id) === 0 && n1c.warned && causesOf(n1c) === "SENDING" && n1c.body.includes(NEXT_WORDS.startedSending) && !/within a minute|being sent now/.test(n1c.body), { n1cu, n1c });
   const n1sent = await sendAfter(R, n1);
   ok("FO-3c2 N1 pass: rescheduled to a later time, the catch-up sends the agreement (the booking now waits on it, sent, not signed)", n1sent.moved === 200 && n1sent.n === 1 && await heldOn(R, n1.id), n1sent);
   // N2: the firm has no active consultation template (firm B's switched off).
@@ -491,8 +501,8 @@ try {
   sql(`set session_replication_role = replica; update fo_retainer_template set active = false where firm_id = '${B}' and kind = 'CONSULTATION'`);
   const n2a = await att(S, n2);
   sql(`set session_replication_role = replica; update fo_retainer_template set active = true where firm_id = '${B}' and kind = 'CONSULTATION'`);
-  ok("FO-3c2 N2 fail-before (QA-772): no active template: Attended is refused naming it (Templates)",
-    n2a.status === 409 && causesOf(n2a) === "NO_TEMPLATE" && n2a.body.includes(CAUSE_WORDS.NO_TEMPLATE) && statusOf(n2.id) === "SCHEDULED", n2a);
+  ok("FO-3c2 N2 (QA-772): no active template: the warning names it (Templates)",
+    n2a.warned && causesOf(n2a) === "NO_TEMPLATE" && n2a.body.includes(CAUSE_WORDS.NO_TEMPLATE) && statusOf(n2.id) === "SCHEDULED", n2a);
   const n2sent = await sendAfter(S, n2);
   ok("FO-3c2 N2 pass: with the template on again and the meeting rescheduled, the catch-up sends it", n2sent.moved === 200 && n2sent.n === 1 && await heldOn(S, n2.id), n2sent);
   // N3: nobody can sign for the firm (firm B's staff suspended: no licensed host, no representative of record).
@@ -501,25 +511,58 @@ try {
   sql(`set session_replication_role = replica; update platform_staff set status = 'SUSPENDED' where firm_id = '${B}'`);
   const n3a = await att(S, n3);
   for (const kv of staffB.split(",")) { const [id, st] = kv.split("="); sql(`set session_replication_role = replica; update platform_staff set status = '${st}' where id = '${id}'`); }
-  ok("FO-3c2 N3 fail-before (QA-772): nobody licensed to sign: Attended is refused naming it",
-    n3a.status === 409 && causesOf(n3a) === "NO_LICENSED" && n3a.body.includes(CAUSE_WORDS.NO_LICENSED), n3a);
+  ok("FO-3c2 N3 (QA-772): nobody licensed to sign: the warning names it",
+    n3a.warned && causesOf(n3a) === "NO_LICENSED" && n3a.body.includes(CAUSE_WORDS.NO_LICENSED), n3a);
   const n3sent = await sendAfter(S, n3);
   ok("FO-3c2 N3 pass: with the signer active again and the meeting rescheduled, the catch-up sends it", n3sent.moved === 200 && n3sent.n === 1 && await heldOn(S, n3.id), n3sent);
   // N4: nothing stops the send, but none has been made yet (the event not read, or a send backing off).
   const n4 = await book(A, free, R.staffId, pat, -180);
   const n4a = await att(R, n4);
-  ok("FO-3c2 N4 fail-before (QA-772): nothing missing but none sent before the meeting started: Attended is refused, saying to reschedule (no promise of a send)",
-    n4a.status === 409 && causesOf(n4a) === "SENDING" && n4a.body.includes(NEXT_WORDS.startedSending) && agreementsOf(n4.id) === 0, n4a);
+  ok("FO-3c2 N4 (QA-772): nothing missing but none sent before the meeting started: the warning says to reschedule (no promise of a send)",
+    n4a.warned && causesOf(n4a) === "SENDING" && n4a.body.includes(NEXT_WORDS.startedSending) && agreementsOf(n4.id) === 0, n4a);
   const n4sent = await sendAfter(R, n4);
   ok("FO-3c2 N4 pass: rescheduled to a later time, the catch-up sends it", n4sent.moved === 200 && n4sent.n === 1 && await heldOn(R, n4.id), n4sent);
   // N5: a No-show booking with none is told to make a new booking; a type that needs none is never held (unchanged).
   const n5 = await book(A, free, R.staffId, noe, -180), n5f = await book(A, follow, R.staffId, noe, -180);
-  const n5ns = await answer(() => bookings.recordAttendance(R, n5.id, { outcome: "NO_SHOW" })), n5a = await att(R, n5), n5b = await att(R, n5f);
+  const n5ns = await answer(() => bookings.recordAttendance(R, n5.id, { outcome: "NO_SHOW" })), n5a = await att(R, n5), n5b = await answer(() => bookings.recordAttendance(R, n5f.id, { outcome: "COMPLETED" }));
   const n5c = await book(A, free, R.staffId, noe, -180);
   await db.foBooking.update({ where: { id: n5c.id }, data: { status: "CANCELLED" } });
   const n5panel = await svc.forBooking(R, n5c.id) as { why?: string };
-  ok("FO-3c2 N5 (QA-772; break QA772-4): No-show stays open; Attended on that No-show booking with none says to make a new booking (cause NOT_SCHEDULED); a follow-up with none is saved; a cancelled booking's panel shows no hold",
-    n5ns.status === 200 && n5a.status === 409 && causesOf(n5a) === "NOT_SCHEDULED" && n5a.body.includes(NEXT_WORDS.inactive) && !/reschedule/.test(n5a.body) && n5b.status === 200 && statusOf(n5f.id) === "COMPLETED" && n5panel.why === undefined, { n5ns: n5ns.status, n5a, n5b: n5b.status, n5panel });
+  ok("FO-3c2 N5 (QA-772; break QA772-4): No-show is saved; that No-show booking with none warns to make a new booking (cause NOT_SCHEDULED); a follow-up with none is saved with no warning; a cancelled booking's panel shows no warning",
+    n5ns.status === 200 && n5a.warned && warningOf(n5b) === null && causesOf(n5a) === "NOT_SCHEDULED" && n5a.body.includes(NEXT_WORDS.inactive) && !/reschedule/.test(n5a.body) && n5b.status === 200 && statusOf(n5f.id) === "COMPLETED" && n5panel.why === undefined, { n5ns: n5ns.status, n5a, n5b: n5b.status, n5panel });
+
+  // ------------------------------------------------- W: warn, never block (AG-4-15 rule 4; the founder's ruling, 24 Nov)
+  // W1: none could be sent (no client email): Attended and the consult record are saved, each answer naming the cause.
+  const wPerson = await db.foPerson.create({ data: { firmId: A, givenNames: "Wren", familyName: "Sample", createdBy: "seed:fo3c2-warn" } });
+  const w1 = await book(A, free, R.staffId, wPerson, -180);
+  const w1att = await answer(() => bookings.recordAttendance(R, w1.id, { outcome: "COMPLETED" }));
+  const w1rec = await answer(() => consult.put(R, w1.id, RECORD)), w1panel = await svc.forBooking(R, w1.id) as { why?: string };
+  ok("FO-3c2 W1 pass (AG-4-15 r4): with no agreement sent (no client email), Attended is saved (Attended) and its answer warns, naming the cause; the consult record is saved (one row) with the same warning; the panel still warns",
+    w1att.status === 200 && statusOf(w1.id) === "COMPLETED" && warningOf(w1att)?.code === "AGREEMENT_NOT_SIGNED" && (warningOf(w1att)?.causes ?? []).includes("NO_CLIENT_EMAIL")
+    && w1rec.status === 200 && Number(sql(`select count(*) from fo_consult_record where booking_id = '${w1.id}'`)) === 1 && (warningOf(w1rec)?.causes ?? []).includes("NO_CLIENT_EMAIL") && !!w1panel.why, { w1att, w1rec, w1panel });
+  ok("FO-3c2 W1 fail: a booking type that needs none gives Attended no warning, and the warning's words never say the consultation cannot start",
+    warningOf(attF) === null && !/cannot start|wait/.test(String(warningOf(w1att)?.words)) && !/cannot start/.test(WARN_WORDS + WARN_WORDS_INACTIVE), { words: warningOf(w1att)?.words });
+  // W2: a paper copy (FO-5's Signed offline, written straight to the table) ends the warning; until then it shows.
+  const w2 = await book(A, free, R.staffId, lee, -180);
+  await clock.set(new Date(w2.startsAt.getTime() - 60 * MIN));
+  const s2w = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, w2));
+  await clock.set(today);
+  const w2before = await warnAt(R, w2.id), w2panelBefore = await svc.forBooking(R, w2.id);
+  sql(`set session_replication_role = replica; update fo_retainer set status = 'SIGNED_OFFLINE', offline_at = now(), offline_reason = 'Sample: signed on paper', offline_by = 'staff:${R.staffId}', offline_file_key = 'retainers/' || id::text || '/signed-offline.pdf', offline_file_sha256 = repeat('b', 64) where id = '${s2w?.sent ? s2w.agreementId : ""}'`);
+  const w2after = await warnAt(R, w2.id), w2panel = await svc.forBooking(R, w2.id), w2att = await answer(() => bookings.recordAttendance(R, w2.id, { outcome: "COMPLETED" }));
+  ok("FO-3c2 W2 pass: once signed on paper, the warning goes: Attended's answer has none and the panel reads signed",
+    s2w?.sent === true && !w2after.warned && w2panel.signed === true && w2att.status === 200 && warningOf(w2att) === null, { s2w, w2after, w2panel: w2panel.status, w2att });
+  ok("FO-3c2 W2 fail: before the paper copy, the same booking warned and its panel read unsigned", w2before.warned && w2panelBefore.signed === false, { w2before, w2panelBefore: w2panelBefore.status });
+  // W3: who may answer is unchanged: a colleague without agent/booking:edit, not the host, is still refused.
+  const w3 = await book(A, free, R.staffId, lee, -180);
+  const noKey = ctxOf(sid("user-O"), A, keysOf("CASE_OFFICER").filter((k) => k !== "agent/booking:edit"));
+  const w3att = await answer(() => bookings.recordAttendance(noKey, w3.id, { outcome: "COMPLETED" }));
+  const w3rec = await answer(() => consult.put(noKey, w2.id, RECORD));
+  ok("FO-3c2 W3 (permissions unchanged): a colleague without agent/booking:edit who does not host is refused Attended (403 or the one 404) and the consult record, and nothing changes",
+    [403, 404].includes(w3att.status) && statusOf(w3.id) === "SCHEDULED" && [403, 404].includes(w3rec.status) && Number(sql(`select count(*) from fo_consult_record where booking_id = '${w2.id}'`)) === 0, { w3att, w3rec });
+  // W4: AG-04 Rule 7: the words name no regulator or statute.
+  const allWords = [WARN_WORDS, WARN_WORDS_INACTIVE, ...Object.values(CAUSE_WORDS), ...Object.values(NEXT_WORDS), missingWords(["NO_CLIENT_EMAIL", "NO_TEMPLATE", "NO_LICENSED"], true), missingWords(["SENDING"], false)].join(" ");
+  ok("FO-3c2 W4 (AG-04 Rule 7): no warning word names a regulator or a statute", !/College|Code|SOR\/|regulat|statute|s\. ?23/i.test(allWords), allWords.slice(0, 200));
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
