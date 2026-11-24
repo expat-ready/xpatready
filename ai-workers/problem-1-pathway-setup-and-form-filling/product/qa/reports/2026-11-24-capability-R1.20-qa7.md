@@ -50,3 +50,6 @@ All three are made on 1d494014e and later. It also noted, without blocking: W10'
 ## Suggestions
 * *Later · Scaffolding:* the local plan-change stand-in gives seeded firms a test subscription id, so j_20 can judge the route too (QA-775).
 * *Later · Capability:* judge W10's form seat text.
+
+## On main after the merge
+walks run 45383961944 (job 138410185818), workflow_dispatch on main 30e97254c (#3480 merged): j_20 65 PASS, 4 NOTE, 0 FAIL, exit 0, success. That is the run on main the reader asked for (P-339); R1.20 stays Works.
