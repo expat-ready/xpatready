@@ -61,7 +61,7 @@ export function RuntimeApp() {
   if (!isCasePerson(getActor())) return casesLeaving() || !personChosen() ? null : <NotACasePerson />;
   const client = isClient(actor);
   return (
-    <Frame area={client ? "client" : "cases"} title={client ? "Your application" : "Cases"} home={client ? undefined : "/cases"} staff={!client}
+    <Frame area={client ? "client" : "cases"} workspace={!client} title={client ? "Your application" : "Cases"} home={client ? undefined : "/cases"} staff={!client}
       controls={<>{client ? null : <CaseAreaNav />}<PersonPicker area={client ? "client" : "cases"} /></>}>
       <Routes>
         <Route index element={<CaseList />} />
@@ -87,7 +87,7 @@ function NotACasePerson() {
   const me = personOf(getActor());
   const officer = personOf(CASE_OFFICER)!;
   return (
-    <Frame area="cases" title="Cases" home="/cases" staff controls={<PersonPicker area="cases" />}>
+    <Frame area="cases" workspace title="Cases" home="/cases" staff controls={<PersonPicker area="cases" />}>
       <div className="mx-auto max-w-5xl space-y-4" data-not-case-person>
         <h1 className="text-2xl font-semibold">Cases</h1>
         <Notice title="Cases are worked by the firm" action={<Button size="sm" variant="secondary" onClick={() => setActor(CASE_OFFICER)} data-continue-as-officer>Continue as {officer.name} <ArrowRight /></Button>}>
