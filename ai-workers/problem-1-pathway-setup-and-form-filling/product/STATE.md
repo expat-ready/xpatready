@@ -2,7 +2,7 @@
 
 current_lead: local_b17225db-0bef-4a96-aed3-534dada14800 Lead 26 · 24 Nov 14:35 IST (after Lead 25, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 14:39 IST: Lead 26 (check 88bd21e4). **Hand-over: the last sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (counted 14:01, main 872275102). **Firm wall: P1 merged; M2 #3441 queued 14:34; M1 #3467 draft (lane 4oPSMou).** Founder: plain yes on #3305's checker line; start fresh qa + PF-17 part 4; CodeAnt account; AG-4-15; bearer link. Weekly 73%, disk 9 GB; second standby owed.
+updated: 2026-11-24 14:41 IST: Lead 26 (check 88bd21e4). **Hand-over: the last sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (14:37, main ba2ad41e7, Lead 25's count). **Firm wall: P1 merged; M2 #3441 queued 14:34; M1 #3467 draft (lane 4oPSMou).** Founder: plain yes on #3305's checker line; CodeAnt account. AG-4-15 and the bearer link: in research (A361). Weekly 73%, disk 9 GB; second standby owed.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -20,6 +20,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 |---|---|---|
 | A359 | 24 Nov, after 13:06 (typed to Lead 24) | prove faster; follow the Lead's recommendations; final tooling decision, dates, outcomes | plan file, end; #3305 line pushed; three sessions started; CodeAnt C1 and C3 yes |
 | A360 | 24 Nov ~13:43 (typed to Lead 25) | check with the last Lead, lose nothing; say which tools and what's next; speed check; go on by yourself; may start sessions | plan file, end; in progress |
+| A361 | 24 Nov ~14:37 (typed to Lead 25, relayed) | open fresh qa + PF-17 part 4; consultation gate and signing code: research best practice, keep flexible, recommend and implement; update | sessions requested by Lead 25; research stops for ruling; plan file, end |
 | A357 | 24 Nov ~11:55 (typed to Lead 23) | verify Linear, Qodo, CodeRabbit, Harness, Sentry; lean, cost? | researched; plan file, end; told 12:04 |
 | A356 | 24 Nov, after 11:45 (relayed by Lead 22) | why not delivering, the bottleneck, unblock by hand, finish partials, one tool | ledger in the plan file, end; lanes woken; in progress |
 | A355 | 24 Nov before 11:17 (typed to Lead 22) | CodeRabbit: agent studies products, cost (US$100, trial), fit, alternatives, visual case study, then start using it | study done (page in the plan file); nothing installed; his answer on training next |
