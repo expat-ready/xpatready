@@ -1,0 +1,740 @@
+[
+ {
+  "id": "S01",
+  "pr": 2909,
+  "merge": "eaaad3600980c5e060adf7c3a8f65b7d743d54ec",
+  "date": "2026-11-22",
+  "title": "runtime: R1.10 \u2014 PF-28 part 3a, the sales routes check their input (leads, prospects, calls, notes, web-form settings)",
+  "files": 7,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/prospects.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/source-filter.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo2p3_prospects.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo4sf_source_filter.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf28_inputs.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_r130_prospect_source.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 2922
+ },
+ {
+  "id": "S02",
+  "pr": 1813,
+  "merge": "6241487ce8b073b23b3c8407547c7337c1a083ff",
+  "date": "2026-11-15",
+  "title": "runtime: FO-2 part 1 \u2014 the public web form and the lead inbox (arrival path, form door, Unassigned leads, one lead, Take it)",
+  "files": 10,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-sales.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/arrival.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/common.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/leads.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/public.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/events.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo2_leads_prospects.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_forms_qa53.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 1824
+ },
+ {
+  "id": "S03",
+  "pr": 1823,
+  "merge": "fc6f2175235e4d8e1a3b4bb6aab97bbc7667ec5b",
+  "date": "2026-11-15",
+  "title": "runtime: PF-21w \u2014 the complaints record's routes (map row 109) behind PF-4's guard",
+  "files": 3,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-complaints.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/complaints/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf21w_routes.ts"
+   ]
+  ],
+  "miss": [
+   "QA-517"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S04",
+  "pr": 1633,
+  "merge": "92507436db24a53259a5bd70b956afd0ee40a4f8",
+  "date": "2026-11-12",
+  "title": "runtime: A24-1 \u2014 case number C-YYYY-NNNNN, own reference optional, one client person per case (schema + API)",
+  "files": 18,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-checklist.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-filings.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-prepare.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/demo.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/earlier-facts.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/filing-record.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/fill-case.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/person-link.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/submission.ts"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/contracts/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/20261112150000_a24_case_number/migration.sql",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema.prisma",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_a24_case_number_api.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_a24_case_number_migration.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_a24_record_reference_browser.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_c617_stages_migration.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_forms_channels_migration.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 1910
+ },
+ {
+  "id": "S05",
+  "pr": 2029,
+  "merge": "3a8fdee6f4fb1839c7770838f241213323319988",
+  "date": "2026-11-20",
+  "title": "runtime: PF-12b part 1 \u2014 every cross-firm bypass use writes platform.bypass to each touched firm's trail, fail-closed (QA-499)",
+  "files": 14,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-clients/live.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-clients/prospect-won.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/entitlements/limit-changes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/entitlements/storage.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/firm-scope.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/firms/signup.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/identity/demo-reset.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/messages/demo-inbox.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/messages/send/messages.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/seed-sample-firms.ts"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/web-address/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_aud1a_insert_only.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf12b_bypass_audit.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf5_signup_billing.ts"
+   ]
+  ],
+  "miss": [
+   "QA-608"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S06",
+  "pr": 2307,
+  "merge": "6b12e2a3f3b9b9b83d86def8b5dc2af4a8782c33",
+  "date": "2026-11-20",
+  "title": "runtime: R1.20 PF-15c \u2014 a firm's case limits hold through createCase (PgEntitlements bound)",
+  "files": 8,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-entitlements.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/entitlements/limits.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/entitlement.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_csc1_count.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_csk1_client.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo8_prospect_won.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf15c_case_limits.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 2253
+ },
+ {
+  "id": "S07",
+  "pr": 2011,
+  "merge": "16f6d59797da9afcf7266c837b38b4599e9bcc80",
+  "date": "2026-11-18",
+  "title": "runtime: FO-13i \u2014 the client identity check (migration)",
+  "files": 9,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-identity-check.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/compliance/identity/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/compliance/identity/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/retainers/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/events.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/20261118140000_fo13i_identity_check_key/migration.sql",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo13i_identity.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf12_walls.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf3_platform_schema.ts"
+   ]
+  ],
+  "miss": [
+   "QA-510"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S08",
+  "pr": 2268,
+  "merge": "7aa9b3b8449b5b501094e8dd14b0b629d77ff117",
+  "date": "2026-11-19",
+  "title": "runtime: R1.33 \u2014 FO-9a phone part: staff fix a person's phone (PATCH people/:personId), with J-33",
+  "files": 5,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-sales.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/duplicates/phone.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/people/edit.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/sales/lead-page.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo9a_phone_edit.ts"
+   ]
+  ],
+  "miss": [
+   "QA-526"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S09",
+  "pr": 1824,
+  "merge": "53596ff91bff7e2c03b89023cd96816e2096b8da",
+  "date": "2026-11-15",
+  "title": "runtime: PF-19b part 1 \u2014 one sending path: outbox, consent gate at send time, worker, daily cap, local adapter (shared contract: ports/messages.ts, ports/alert.ts)",
+  "files": 10,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-messages.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/messages/channels/email/local.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/messages/demo-inbox.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/messages/send/channels.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/messages/send/messages.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/alert.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/contracts/message-port.contract.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/messages.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_forms_qa53.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf19b_sending.ts"
+   ]
+  ],
+  "miss": [
+   "QA-601"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S10",
+  "pr": 2931,
+  "merge": "71984ae8a151ed69b5b73996df544d8dbddadf91",
+  "date": "2026-11-22",
+  "title": "runtime: R1.10 \u2014 PF-28 part 3b, the rest of front-office sales checks its input (corporate, conflict and identity checks, assignment, duplicates, prospect value, person phone, public web form)",
+  "files": 15,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/assignment/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/compliance/conflict/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/compliance/conflict/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/compliance/identity/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/compliance/identity/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/duplicates/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/people/edit.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/corporate/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/prospect-edit.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/public.ts"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo13c_conflict.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo13i_identity.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo2_leads_prospects.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo4_sales_browser.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf28_inputs.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 3065
+ },
+ {
+  "id": "S11",
+  "pr": 2922,
+  "merge": "bc1f39c084486d1e21a0d1dfa64b7a2ffe2f2031",
+  "date": "2026-11-22",
+  "title": "runtime: R1.104 \u2014 FO-3c, the consultation agreement before the first consultation (API on SigningPort's fake)",
+  "files": 7,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-consultation-agreement.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/consultation-agreement/controller.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/consultation-agreement/items.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/consultation-agreement/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo3c_consultation_agreement.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_forms_qa53.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf19r_every_sender.ts"
+   ]
+  ],
+  "miss": [
+   "QA-750",
+   "QA-751"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S12",
+  "pr": 1752,
+  "merge": "97c332419fc38a39a741822003400f4a6e82b970",
+  "date": "2026-11-14",
+  "title": "runtime: PF-0p \u2014 shared ports and fakes (audit, staff, clock, jobs, mail, files, render) + interim AuditPort adapter",
+  "files": 11,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/audit/audit-event.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/audit.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/clock.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/files.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/jobs.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/mail.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/render.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/staff.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform.prisma",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_case_feed.ts"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf0p_ports.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 1760
+ },
+ {
+  "id": "S13",
+  "pr": 1910,
+  "merge": "b04d3896bec5199f4168c16c22769563b83f97c3",
+  "date": "2026-11-16",
+  "title": "migration \u2014 runtime: PF-12 database walls between firms (row-level security, xr_app role, named bypass list)",
+  "files": 17,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-firm-walls.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/public.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/firm-scope.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/firms/signup.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/identity/demo-reset.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/identity/guard.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/identity/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/identity/session/service.ts"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/jobs/platform-jobs.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/messages/demo-inbox.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/web-address/host.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/web-address/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/web-address/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/20261116013000_pf12_firm_walls/migration.sql",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf12_walls.ts"
+   ]
+  ],
+  "miss": [
+   "QA-499"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S14",
+  "pr": 2331,
+  "merge": "265a2e20cc4afb42929f94b5eed1cd8bb537cbdb",
+  "date": "2026-11-19",
+  "title": "runtime: CS-V1 part 3 \u2014 the last five case-side inputs parse through strict schemas; the allow-list is empty",
+  "files": 5,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-prepare.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/sign-steps.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/contracts/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_csv1_inputs.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 2268
+ },
+ {
+  "id": "S15",
+  "pr": 2140,
+  "merge": "6f6dbcd6d0bd447f90c7a158695c01746e3d5172",
+  "date": "2026-11-18",
+  "title": "runtime: FO-2 part 3 \u2014 Individual prospects API (Engage, moves, lost, convert/undo, board totals per currency, leads owner/date filters) [shared contract: ports/events.ts]",
+  "files": 9,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-sales.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/board-totals.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/corporate/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/leads.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/prospects.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/events.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo2p3_prospects.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf6b_permission_rules.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 2011
+ },
+ {
+  "id": "S16",
+  "pr": 2214,
+  "merge": "6f2caced080045edaa528180c5c1d152af6a69db",
+  "date": "2026-11-19",
+  "title": "runtime: AUD-1m part 1 \u2014 the case side's audit lines go through AuditPort (firm, correlation, actor type, case id)",
+  "files": 11,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/form-uses.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/library-items.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/lifecycle.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/audit/audit-event.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/audit/context.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/audit.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_aud1m_case_writes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_c75_findings_api.ts"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_case_feed.ts"
+   ]
+  ],
+  "miss": [
+   "QA-595"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S17",
+  "pr": 2802,
+  "merge": "16e31b7f5c249de3f684e4429faf86b53ddc568e",
+  "date": "2026-11-21",
+  "title": "screens: R1.53 \u2014 FO-5s part 1 + J-53: retainer card, Check before sending with the Code's items, versions, Send",
+  "files": 8,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/retainers/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/retainers/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/retainers/contract.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/retainers/retainer-card.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/retainers/retainer-page.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/routes.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/sales/prospect-page.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo5s_retainer_screens_browser.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 2814
+ },
+ {
+  "id": "S18",
+  "pr": 3065,
+  "merge": "a898fa6e6fac11f730ea8f99f1725dd06ac8e6b4",
+  "date": "2026-11-23",
+  "title": "runtime: FO-6 part 3 \u2014 retainer signing on the fake vendor: send, state, signed file back, signing.completed",
+  "files": 15,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-signing.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/retainers/on-signing-completed.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/retainers/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/signing/handlers.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/signing/hooks.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/signing/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/signing/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/signing/webhook.bypass.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/events/signing.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo2w_won_event.ts"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo6_signing_api.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_forms_qa53.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf19r_every_sender.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf28_inputs.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf6b_permission_rules.ts"
+   ]
+  ],
+  "miss": [
+   "QA-770"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S19",
+  "pr": 2253,
+  "merge": "415e80ab874bb2aa4821f8c900d76e556dda4d23",
+  "date": "2026-11-19",
+  "title": "runtime: CS-D1t \u2014 the case upload doors use the one file-type check, with J-67 (R1.67)",
+  "files": 8,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-checklist.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-documents.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/finished-story.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_c617_stages_browser.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_c64_storage_api.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_csd1t_file_type.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_m3s4_blocking_api.ts"
+   ]
+  ],
+  "miss": [
+   "QA-520"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S20",
+  "pr": 2251,
+  "merge": "c52acda430d10ed685a35cdf499cd771d5862650",
+  "date": "2026-11-19",
+  "title": "screens: FO-4 part 2a \u2014 R1.30, R1.31: Pipeline board and list, Move to\u2026, Mark lost, Convert and Undo, leads owner and date filters; J-30 and J-31",
+  "files": 11,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/corporate/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/prospects.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/sales/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/routes.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/sales/contract.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/sales/lead-page.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/sales/leads-page.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/sales/pipeline-page.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/sales/prospect-actions.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/sales/prospect-page.tsx"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/front-office/sales/sales-frame.tsx"
+   ]
+  ],
+  "miss": [],
+  "matched": 2214
+ },
+ {
+  "id": "S21",
+  "pr": 2406,
+  "merge": "617acff0790c50b21b84cbbb1c20b8542a889efa",
+  "date": "2026-11-20",
+  "title": "migration \u2014 runtime: CS-K1 part 2 \u2014 every case client linked to its fo_person or fo_company; J-72 (R1.72)",
+  "files": 14,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-clients/client-link.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-clients/live.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-clients/prospect-won.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/clients.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/case-clients.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/firm-scope.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/20261120100000_csk1_client_link_check/migration.sql",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/20261120100000_csk1_client_link_check/rollback.sql",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/cases.prisma"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_csc1_count.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_csk1_client.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo8_prospect_won.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf15c_case_limits.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 2029
+ },
+ {
+  "id": "S22",
+  "pr": 1760,
+  "merge": "7669a2669a0e9f70680ca41830a8ae865642e9b2",
+  "date": "2026-11-14",
+  "title": "runtime: FO-3 \u2014 booking API, public door first (slots, booking, self-service by token; new ArrivalPort)",
+  "files": 11,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-booking.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/ics.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/public.controller.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/runtime-ports.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/service.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/slots.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/tokens.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/arrival.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports/events.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-booking.prisma"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo3_booking.ts"
+   ]
+  ],
+  "miss": [
+   "QA-453"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S23",
+  "pr": 3041,
+  "merge": "7e084dab257accdac816b99daddbd925588aaa62",
+  "date": "2026-11-22",
+  "title": "runtime: PF-F1b \u2014 bind the chosen files adapter",
+  "files": 14,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-identity-check.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-retainers.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-branding.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-entitlements.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-messages.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-support.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/config/settings.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/entitlements/storage.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/files/choose.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/files/s3-files.ts"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf24_secrets.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pff1_s3_files.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pff1b_bind.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_qa621_persona_door_production.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 3065
+ },
+ {
+  "id": "S24",
+  "pr": 356,
+  "merge": "04312cc10f54074c4811a5a47d3a935856d85a1c",
+  "date": "2026-11-02",
+  "title": "runtime: C6.12, C11.6 \u2014 migration 20261102030000 evolves #325's filing tables; one /prepare with split and item channel (Visitor visa)",
+  "files": 17,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-filings.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-prepare.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/contracts/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/contracts/workspace.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/engine/people.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/engine/runtime/filings.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/engine/runtime/prepare.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/engine/snapshot.ts"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/20261102030000_c612_c116_prepare_items/migration.sql",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema.prisma",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_vv_prepare.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_vv_prepare_api.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_vv_prepare_store.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_vv_prepare_store_api.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/runtime/check_vv_filings_api.ts"
+   ]
+  ],
+  "miss": [
+   "QA-397"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S25",
+  "pr": 336,
+  "merge": "7709449e7a326594d49feabd7f33ba61b86060c6",
+  "date": "2026-11-01",
+  "title": "runtime: C4.4 parts 1+2 (replaces #321) \u2014 every P-47 type, section error summary, a fired section check blocks ready to file, checks authored as data, tier-3 refusal at US$0, PQR mode",
+  "files": 18,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/forms.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/contracts/runtime.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/engine/runtime/case.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/engine/runtime/forms.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/engine/snapshot.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/pages/job.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/pages/library.tsx"
+   ],
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/runtime/questionnaire.tsx",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_c44_part2.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_c44_part2_browser.cjs",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_c44_question_types.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_c44_question_types_browser.cjs",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/runtime/check_runtime_r1c.cjs",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/runtime/prepare_c44.cjs",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/runtime/setup_c44_types.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 356
+ },
+ {
+  "id": "S26",
+  "pr": 2814,
+  "merge": "24f83967864c0c9c4b6da0ade914d2b851b81e8a",
+  "date": "2026-11-21",
+  "title": "runtime: PF-12b part 3 (R1.4) \u2014 the three no-firm bypass uses write a firm-less audit line; re-encrypt leaves the list",
+  "files": 8,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/branding/images.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/branding/routes.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/firm-scope.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/firms/signup.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/messages/send/mail.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/messages/send/messages.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf12b_bypass_audit.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf12b_doors.ts"
+   ]
+  ],
+  "miss": [
+   "QA-701"
+  ],
+  "matched": null
+ },
+ {
+  "id": "S27",
+  "pr": 1811,
+  "merge": "745d2e4d9177989eca3f074b021af36c2223e4dd",
+  "date": "2026-11-15",
+  "title": "runtime: FO-3sr \u2014 the staff booking routes behind PF-4's guard (create, move, cancel, list, read, attendance)",
+  "files": 3,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-booking.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/booking/staff.controller.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo3sr_routes.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 1823
+ },
+ {
+  "id": "S28",
+  "pr": 3046,
+  "merge": "df85f44a63f6803ddb71948fbf579c6eccc29fbf",
+  "date": "2026-11-22",
+  "title": "runtime: PF-5 part 4 \u2014 the 90-day hold clock and the departure notices (days 0, 16, 46, 83 of the hold)",
+  "files": 7,
+  "slices": [
+   [
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-billing-exit.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/billing/exit-clock.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/billing/exit-notices.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/firm-scope.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf12b_bypass_audit.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf19r_every_sender.ts",
+    "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf5_exit_clock.ts"
+   ]
+  ],
+  "miss": [],
+  "matched": 2922
+ }
+]
