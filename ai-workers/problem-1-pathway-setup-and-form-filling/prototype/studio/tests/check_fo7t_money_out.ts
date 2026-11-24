@@ -177,11 +177,23 @@ try {
     && sql(`select count(*) from money_trust_entry where balance_after_minor < 0`) === "0", race.map((r) => [r.status, r.body.detail]));
   // Review and break M1: a double click on Pay from trust (the same amount from the same payer on one invoice, at once).
   const invC = await issued(PC, CASE_C, 20000);
-  const twice = await Promise.all([apply({ invoiceId: invC, amountMinor: 5000 }), apply({ invoiceId: invC, amountMinor: 5000 })]);
-  ok("FO-7t DW7 fail (M1, double click): the same Pay from trust twice at once → one 201, the other 409 DUPLICATE asking \"Pay it again?\"; one withdrawal",
-    twice.filter((r) => r.status === 201).length === 1 && twice.some((r) => r.status === 409 && r.body.code === "DUPLICATE" && r.body.acknowledge === "duplicateAcknowledged") && entries(`invoice_id = '${invC}'`) === 1, twice.map((r) => [r.status, r.body.code]));
-  const again = await apply({ invoiceId: invC, amountMinor: 5000, duplicateAcknowledged: true });
-  ok("FO-7t DW7 pass (M1): confirmed → the second one is written (201); the case holds 30.00", again.status === 201 && entries(`invoice_id = '${invC}'`) === 2 && caseBalance(PC, CASE_C) === 3000, again.body);
+  const twice = await Promise.all([apply({ invoiceId: invC, amountMinor: 3000 }), apply({ invoiceId: invC, amountMinor: 3000 })]);
+  const firstC = twice.find((r) => r.status === 201)?.body.entryId, askedC = twice.find((r) => r.status === 409)?.body;
+  ok("FO-7t DW7 fail (M1, double click): the same Pay from trust twice at once → one 201, the other 409 DUPLICATE asking \"Pay it again?\", naming the entry it duplicates; one withdrawal",
+    twice.filter((r) => r.status === 201).length === 1 && askedC?.code === "DUPLICATE" && askedC?.acknowledge === "duplicateOf" && askedC?.duplicateOf === firstC && entries(`invoice_id = '${invC}'`) === 1, twice.map((r) => [r.status, r.body.code, r.body.duplicateOf]));
+  // Round 3 (Lead 25's ruling after Lead B 6's read): a confirm names the duplicate it saw; a blind flag no longer works,
+  // and of two confirms at once only one is written (the second sees the first's entry, under the same lock).
+  const blindC = await apply({ invoiceId: invC, amountMinor: 3000, duplicateAcknowledged: true });
+  ok("FO-7t DW7 fail (round 3): a blind confirm (duplicateAcknowledged: true) → 422 (unknown field), nothing written", fieldError(blindC.status) && entries(`invoice_id = '${invC}'`) === 1, blindC.body);
+  const confirmsC = await Promise.all([apply({ invoiceId: invC, amountMinor: 3000, duplicateOf: firstC }), apply({ invoiceId: invC, amountMinor: 3000, duplicateOf: firstC })]);
+  const secondC = confirmsC.find((r) => r.status === 201)?.body.entryId;
+  ok("FO-7t DW7 fail (round 3): two confirms of the same duplicate at once → one 201, the other 409 DUPLICATE naming the newer entry; two withdrawals in all, never three",
+    confirmsC.filter((r) => r.status === 201).length === 1 && confirmsC.some((r) => r.status === 409 && r.body.code === "DUPLICATE" && r.body.duplicateOf === secondC) && entries(`invoice_id = '${invC}'`) === 2, confirmsC.map((r) => [r.status, r.body.code]));
+  const staleC = await apply({ invoiceId: invC, amountMinor: 3000, duplicateOf: firstC }), otherC = await apply({ invoiceId: invC, amountMinor: 3000, duplicateOf: "00000000-0000-4000-8000-0000000000aa" });
+  ok("FO-7t DW7 fail (round 3): the same confirm again (a retry), or an id that is not the newest match → 409 DUPLICATE naming the newest; nothing written",
+    staleC.status === 409 && staleC.body.duplicateOf === secondC && otherC.status === 409 && otherC.body.duplicateOf === secondC && entries(`invoice_id = '${invC}'`) === 2, [staleC.body, otherC.body]);
+  const thirdC = await apply({ invoiceId: invC, amountMinor: 3000, duplicateOf: secondC });
+  ok("FO-7t DW7 pass (round 3): a confirm naming the newest match → written (201); the case holds 40.00", thirdC.status === 201 && entries(`invoice_id = '${invC}'`) === 3 && caseBalance(PC, CASE_C) === 4000, thirdC.body);
 
   // ------------------------------------------------------------------------------------------ DW8: apply rules
   await deposit(PA, CASE2, 50000);
@@ -199,7 +211,7 @@ try {
     && sql(`select count(*) from audit_event where action = 'trust_money.applied' and entity_key = '${picked.body.entryId}' and detail::text like '%${CASE2}%'`) === "1", [picked.body]);
   const otherPayer = await apply({ invoiceId: inv2, amountMinor: 1000, pick: { personId: PC, caseId: CASE_C, reason: "Sample" } });
   ok("FO-7t DW8 fail: another payer's money from another case → 409 with the database's words (a pick never crosses cases or clients), nothing written",
-    otherPayer.status === 409 && otherPayer.body.code === "MONEY_RULE" && /same case/.test(otherPayer.body.detail ?? "") && caseBalance(PC, CASE_C) === 3000, otherPayer.body);
+    otherPayer.status === 409 && otherPayer.body.code === "MONEY_RULE" && /same case/.test(otherPayer.body.detail ?? "") && caseBalance(PC, CASE_C) === 4000, otherPayer.body);
   await deposit(PA, CASE, 40000, "CHEQUE");   // CASE: 169.50 cleared + 400.00 cheque not yet cleared
   const inv3 = await issued(PA, CASE, 30000);
   // Money is spent cleared first: the 169.50 cleared pays without a confirm; after it, what is left on CASE is the cheque.
@@ -252,11 +264,22 @@ try {
     && sql(`select payee_person_id || ':' || payee_reason from money_trust_entry where id = '${toOther.body.entryId}'`) === `${PC}:Client d asked for the money to go to Client c (Sample)`, toOther.body);
   // Review and break M1: a trust refund can't be corrected (P-603), so a double click must not write two.
   const dbl = await Promise.all([refund({ personId: PD, amountMinor: 20000, reference: "ET-555" }), refund({ personId: PD, amountMinor: 20000, reference: "ET-555" })]);
-  ok("FO-7t DW9 fail (M1, double click): the same refund twice at once → one 201, the other 409 DUPLICATE_REFERENCE asking \"Record anyway?\"; one refund written",
-    dbl.filter((r) => r.status === 201).length === 1 && dbl.some((r) => r.status === 409 && r.body.code === "DUPLICATE_REFERENCE" && r.body.acknowledge === "duplicateReferenceAcknowledged")
-    && entries("kind = 'REFUND_TO_CLIENT' and refund_reference = 'ET-555'") === 1, dbl.map((r) => [r.status, r.body.code]));
-  const sameRef = await refund({ personId: PD, amountMinor: 10000, reference: " et-555 ", duplicateReferenceAcknowledged: true });
-  ok("FO-7t DW9 pass (M1): the same reference (any case and spacing) confirmed → recorded (201)", sameRef.status === 201, sameRef.body);
+  const firstR = dbl.find((r) => r.status === 201)?.body.entryId, askedR = dbl.find((r) => r.status === 409)?.body;
+  ok("FO-7t DW9 fail (M1, double click): the same refund twice at once → one 201, the other 409 DUPLICATE_REFERENCE asking \"Record anyway?\", naming the refund it duplicates; one refund written",
+    dbl.filter((r) => r.status === 201).length === 1 && askedR?.code === "DUPLICATE_REFERENCE" && askedR?.acknowledge === "duplicateOf" && askedR?.duplicateOf === firstR
+    && entries("kind = 'REFUND_TO_CLIENT' and refund_reference = 'ET-555'") === 1, dbl.map((r) => [r.status, r.body.code, r.body.duplicateOf]));
+  // Round 3 (Lead 25's ruling): a trust refund can't be corrected (P-603), so a confirm names what it confirms.
+  const blindR = await refund({ personId: PD, amountMinor: 5000, reference: "ET-555", duplicateReferenceAcknowledged: true });
+  ok("FO-7t DW9 fail (round 3): a blind confirm (duplicateReferenceAcknowledged: true) → 422 (unknown field), nothing written", fieldError(blindR.status) && entries("kind = 'REFUND_TO_CLIENT' and refund_reference = 'ET-555'") === 1, blindR.body);
+  const confirmsR = await Promise.all([refund({ personId: PD, amountMinor: 5000, reference: " et-555 ", duplicateOf: firstR }), refund({ personId: PD, amountMinor: 5000, reference: " et-555 ", duplicateOf: firstR })]);
+  const secondR = confirmsR.find((r) => r.status === 201)?.body.entryId;
+  ok("FO-7t DW9 fail (round 3): two confirms of the same duplicate at once (any case and spacing) → one refund written, the other 409 DUPLICATE_REFERENCE naming it",
+    confirmsR.filter((r) => r.status === 201).length === 1 && confirmsR.some((r) => r.status === 409 && r.body.code === "DUPLICATE_REFERENCE" && r.body.duplicateOf === secondR) && entries("kind = 'REFUND_TO_CLIENT' and refund_reference ilike '%et-555%'") === 2, confirmsR.map((r) => [r.status, r.body.code]));
+  const staleR = await refund({ personId: PD, amountMinor: 5000, reference: "ET-555", duplicateOf: firstR }), otherR = await refund({ personId: PD, amountMinor: 5000, reference: "ET-555", duplicateOf: toOther.body.entryId });
+  ok("FO-7t DW9 fail (round 3): the same confirm again (a retry after a lost answer), or an id that is not the newest match → 409 naming the newest; nothing written",
+    staleR.status === 409 && staleR.body.duplicateOf === secondR && otherR.status === 409 && otherR.body.duplicateOf === secondR && entries("kind = 'REFUND_TO_CLIENT' and refund_reference ilike '%et-555%'") === 2, [staleR.body, otherR.body]);
+  const thirdR = await refund({ personId: PD, amountMinor: 5000, reference: "ET-555", duplicateOf: secondR });
+  ok("FO-7t DW9 pass (round 3): a confirm naming the newest match → recorded (201)", thirdR.status === 201 && entries("kind = 'REFUND_TO_CLIENT' and refund_reference ilike '%et-555%'") === 3, thirdR.body);
   const rest = await refund({ personId: PD, amountMinor: 20000 });
   ok("FO-7t DW9 pass (AG-6-23 test 1): refunding the rest to the payer (no payee given) → 201, a REFUND_TO_CLIENT with method, date, reference and reason, payee empty (the payer), the balance 0",
     rest.status === 201 && rest.body.balanceMinor === 0 && caseBalance(PD, null) === 0
@@ -281,7 +304,7 @@ try {
     oPicks.every((r) => r.status === 404) && entries(`invoice_id = '${invP}'`) === 0 && caseBalance(PA, CASE2) === 20000, oPicks.map((r) => [r.status, r.body.code]));
   const applied = entries("kind = 'WITHDRAWAL_TO_INVOICE'"), refunded = entries("kind = 'REFUND_TO_CLIENT'");
   ok("FO-7t DW10 pass (audit): one trust_money.applied line per withdrawal written by the routes and at issue, one trust_money.refunded per refund; every refusal above wrote none",
-    applied === 8 && audits("trust_money.applied") === applied && refunded === 4 && audits("trust_money.refunded") === refunded, { applied, refunded, a: audits("trust_money.applied"), r: audits("trust_money.refunded") });
+    applied === 9 && audits("trust_money.applied") === applied && refunded === 5 && audits("trust_money.refunded") === refunded, { applied, refunded, a: audits("trust_money.applied"), r: audits("trust_money.refunded") });
 
   // ----------------------------------------------------------------------------------------- DW18: the events
   const payloadKeys = sql(`select string_agg(distinct k, ',' order by k) from module_event, jsonb_object_keys(payload) k where type in ('trust.applied', 'trust.refunded')`);
