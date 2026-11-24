@@ -235,16 +235,21 @@ try {
   const gus = prospect("Gus", R.id), gr = await call(tok.R, "POST", `/front-office/prospects/${gus.id}/retainers`, { templateId: tpl.body.id, fees: [{ label: "Deposit on signing", amountMinor: 150000, when: "ON_SIGNING" }] });
   await recordCheck(gus.id);
   await r.goto(`${BASE}/front-office/retainers/${gr.body.id}`); await r.locator("[data-check-and-send]").waitFor({ timeout: 30_000 });
+  // Each step records its own verdict (a bounded wait read as true or false, then asserted), so main shows one FAIL per step.
+  const seen = (l: ReturnType<Page["locator"]>, timeout: number) => l.waitFor({ timeout }).then(() => true, () => false);
+  const closePanel = async () => { if (await r.getByRole("dialog").count()) { await r.keyboard.press("Escape"); await r.getByRole("dialog").waitFor({ state: "detached", timeout: 5_000 }); } };
   await r.getByLabel("Fee 1: amount").fill("17,50");
   await r.locator("[data-check-and-send]").click();
-  await r.getByText("Fee row 1: An amount in dollars with a dot for cents, for example 1500 or 1,500.50.").waitFor({ timeout: 5_000 });
+  const refusedHere = await seen(r.getByText("Fee row 1: An amount in dollars with a dot for cents, for example 1500 or 1,500.50."), 5_000);
   ok("R1.53 QA-778 fail: Check and send with a typed amount that is not money says so on its field, opens no Send panel and saves nothing (still version 1)",
-    (await r.getByRole("dialog").count()) === 0 && (await ret(gus.id)).versions.length === 1);
+    refusedHere && (await r.getByRole("dialog").count()) === 0 && (await ret(gus.id)).versions.length === 1, { refusedHere });
+  await closePanel();
   await r.getByLabel("Fee 1: amount").fill("");
   await r.locator("[data-check-and-send]").click();
-  await r.locator("[data-version]", { hasText: "Version 2" }).waitFor({ timeout: 15_000 }); await r.locator("[data-error-summary]").waitFor({ timeout: 5_000 });
+  const v2 = await seen(r.locator("[data-version]", { hasText: "Version 2" }), 15_000) && await seen(r.locator("[data-error-summary]"), 5_000);
   ok("R1.53 QA-778 fail: Check and send after the typed amount is cleared saves it as version 2, then shows its blocker (\"Fee is missing.\"), focuses the summary and opens no Send panel",
-    (await r.getByRole("dialog").count()) === 0 && (await ret(gus.id)).versions[1]?.fees[0]?.amountMinor === null && await r.locator("[data-error-summary] a").first().evaluate((e) => e === document.activeElement));
+    v2 && (await r.getByRole("dialog").count()) === 0 && (await ret(gus.id)).versions[1]?.fees[0]?.amountMinor === null && await r.locator("[data-error-summary] a").first().evaluate((e) => e === document.activeElement), { v2 });
+  await closePanel();
   await r.getByLabel("Fee 1: amount").fill("1750");   // typed, not saved: the qa replay's step (S17 M1)
   const hint = await r.locator("[data-unsaved-hint]").innerText().catch(() => "");
   await r.locator("[data-check-and-send]").click();
@@ -257,7 +262,7 @@ try {
   await r.locator("[data-retainer-status]", { hasText: "Sent" }).waitFor({ timeout: 15_000 });
   const gSent = await ret(gus.id);
   ok("R1.53 QA-778 pass: Send sends version 3 at CAD 1,750.00, the typed fee; versions 1 and 2 are kept as they were and never sent",
-    gSent.status === "SENT" && gSent.currentVersion === 3 && gSent.versions[2].sentAt !== null && gSent.versions[2].fees[0].amountMinor === 175000n && gSent.versions[0].fees[0].amountMinor === 150000n && gSent.versions[0].sentAt === null && gSent.versions[1].sentAt === null,
+    gSent.status === "SENT" && gSent.currentVersion === 3 && !!gSent.versions[2]?.sentAt && gSent.versions[2]?.fees[0]?.amountMinor === 175000n && gSent.versions[0].fees[0].amountMinor === 150000n && gSent.versions[0].sentAt === null && gSent.versions[1]?.sentAt === null,
     gSent.versions.map((v) => `${v.n}:${String(v.fees[0]?.amountMinor)}:${v.sentAt ? "sent" : "-"}`));
 
   // ------------------------------------------------------------------------------- widths
