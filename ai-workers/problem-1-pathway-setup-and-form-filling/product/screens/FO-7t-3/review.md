@@ -93,3 +93,33 @@ The merge changes nothing under `api/src/client-money`, `ports`, `features/clien
 Round 1 Minors 1, 4, 5 and 6 are still open (not blocking).
 
 Reviewer: Changes 2bc1a384d44d58ec4441c42048836e831c18c383
+
+## Round 4 (diff only: `80185f1ae..5445767089`, Lead 29's ruling (b))
+At `5445767089`: `check_fo7t_to_move.ts` **43 passed, 0 failed**; `check_fo7t_money_out.ts` **51 passed, 0 failed**.
+
+I made two mutants on `git archive` copies. Both go red:
+* Dropping the `askUncleared` call (`to-move.ts:105`): **39/4**. All four "ruling (b)" move cases fail.
+* Dropping the refund check (`money-out.ts:149`): **42/1**. The refund fail case fails.
+
+**The cover formula is faithful to `held`.** Cover = max(0, ledger on the case + open trust → operating lines on the case − uncleared deposits on the case), per party, case and currency (`to-move.ts:150-172`).
+* **Waiting must count.** A trust application lowers the ledger, but the money stays in the trust bank account until it moves.
+  * Without the waiting term, every fully applied case would read cover 0. Every move would then ask, even when the money was all cleared.
+  * Money already moved is left out, which is right: it is no longer in trust.
+* **Cleared money is counted first, as part 2's `clearedPart` does.**
+  * Example: cleared 100, plus an uncleared cheque 500 of which 300 was applied. Cover is 300 + 300 − 500 = 100.
+  * The tests show exactly this: 100 moves without asking, the next 50 asks, and the same 50 acknowledged goes through.
+* **Grouping:** lines are grouped by the entry's own party and case, which is where the money was held. A pick line counts against its payer, as `held` reads it.
+
+**Locks, blocking and audit**
+* **Read under the locks:** yes. It runs after `takeLocks`, inside the same transaction, at READ COMMITTED, so it reads fresh after the lock waits. The refund check uses `held`, read after the payer's lock (`money-out.ts:130-132`).
+* **It warns, never blocks:** the only refusal is when `unclearedAcknowledged` is not set. The 409 is an HttpException, so `write` passes it on unchanged. With the acknowledgement it writes. Operating → trust batches are not asked.
+* **Audit flag:** it is true only when the question applied and was acknowledged, false otherwise. That holds both on `trust_money.moved` (tested) and on `trust_money.refunded`.
+* **The changed money_out line:** the refund from CASE now acknowledges because that case still holds the uncleared cheque. That is correct under the ruling.
+
+**Minor (new, not blocking)**
+1. The refund's `unclearedAcknowledged: true` in the audit `detail` (`money-out.ts:157`) has no assertion. Only the move's flag is tested.
+2. A cheque that was "Returned" while still not cleared is subtracted twice: the RETURNED correction already lowered the ledger, and the deposit is still counted as uncleared. This over-asks. It is the same reading as part 2's `held`, so it is consistent, and it only warns. Name it with the FO-7ts gap.
+
+Verdict: Approve 5445767089cdc95f8db99220515a41bb4da65239
+
+Reviewer: Approve 5445767089cdc95f8db99220515a41bb4da65239
