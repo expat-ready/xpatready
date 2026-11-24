@@ -87,6 +87,13 @@ export interface MessagePort<Tx = unknown> {
   dispatch(firmId: string | null, outboxIds: string[]): Promise<void>;
 }
 
+/** PF-21rs R0 (QA-757): the words a firm's message was sent with, read back from its stored message inside that firm's
+ *  scope: its subject and text only (never its address, sender or html). null when the message is not that firm's, or its
+ *  stored file is missing or no longer matches the row's rendered_hash (never re-rendered from today's data). */
+export interface MessageWordsPort {
+  storedWords(firmId: string, outboxId: string): Promise<{ subject: string; text: string } | null>;
+}
+
 /** Refused: an unknown template, a field the template needs and the caller did not give, a missing attachment. */
 export class MessageRefused extends Error {
   constructor(message: string) { super(message); this.name = "MessageRefused"; }
