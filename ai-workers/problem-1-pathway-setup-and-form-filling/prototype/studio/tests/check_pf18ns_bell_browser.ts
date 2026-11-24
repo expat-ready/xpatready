@@ -76,10 +76,14 @@ sql(`delete from platform_notification_preference where staff_id in ('${O}', '${
 // ------------------------------------------------------------------------------------------------ the browser
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errs: string[] = [];
+const SLOW = Number(process.env.PF18NS_CPU_SLOW ?? 1);
 const tab = async (token: string, width = 1440) => {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 1, colorScheme: "light", reducedMotion: "reduce" });
   await ctx.addInitScript((x) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })); }, token);
-  const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push(e.message)); return p;
+  const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push(e.message));
+  // PF18NS_CPU_SLOW=<n>: the page runs n times slower (Chrome's CPU throttling), to prove the checks hold on a slow runner.
+  if (SLOW > 1) await (await ctx.newCDPSession(p)).send("Emulation.setCPUThrottlingRate", { rate: SLOW });
+  return p;
 };
 const bell = (p: Page) => p.locator("[data-notifications-bell]");
 const count = async (p: Page) => Number(await bell(p).getAttribute("data-unread-count"));
@@ -117,8 +121,11 @@ try {
   await shot(po, "2-panel-1440");
   await row.locator("[data-notification-open]").focus(); await po.keyboard.press("Enter");
   await po.waitForURL(`${BASE}/front-office/leads/${lead.id}`, { timeout: 20_000 });
+  // The lead page draws its record after its own read: wait for the number (isVisible() is a snapshot and never waits;
+  // on a slow runner it ran before the page had drawn, run 45311346283 shard 19).
+  const leadShown = await po.getByText(lead.number).first().waitFor({ state: "visible", timeout: 20_000 }).then(() => true, () => false);
   ok("PF-18ns DW1: opening it lands on the lead's page (the sales frame, with its own bell), and the count is 0; the row is read underneath",
-    await waitCount(po, 0) && await po.getByText(lead.number).first().isVisible() && sql(`select coalesce(read_at::text, 'unread') from msg_notification where staff_id = '${O}' and item_id = '${lead.id}'`) !== "unread");
+    leadShown && await waitCount(po, 0) && sql(`select coalesce(read_at::text, 'unread') from msg_notification where staff_id = '${O}' and item_id = '${lead.id}'`) !== "unread");
   await shot(po, "3-on-the-lead-1440");
 
   // ---------------------------------------------------------------------------------------------- DW2 Mark all read
@@ -151,7 +158,9 @@ try {
   const inside = await po.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'));
   await po.keyboard.press("Escape");
   await panel(po).waitFor({ state: "detached" });
-  const back = await bell(po).evaluate((el) => el === document.activeElement);
+  // The dialog gives focus back on the tick after it unmounts (Radix FocusScope), so read it once that tick has run:
+  // the bell must hold focus within 1 s (run 45311346283 read it in the same tick as the unmount).
+  const back = await po.waitForFunction(() => document.activeElement?.hasAttribute("data-notifications-bell") ?? false, null, { timeout: 1_000 * Math.max(1, SLOW) }).then(() => true, () => false);
   ok("PF-18ns DW5: keyboard only: Tab reaches the bell (a button), Enter opens the panel with focus inside it, Escape closes it with focus back on the bell", reached && inside && back, { reached, inside, back });
   const sizes: Record<number, unknown> = {};
   for (const w of [375, 1024, 1440]) {
