@@ -27,3 +27,8 @@
 **Done when:** `check-merge-wake.sh` passes: a merged wait is one ACT with the words to type; two waits with one merged, none; a closed unmerged wait, an ACT; after the waiting PR's next commit, none; prose, code fences and quotes, none; an unreadable PR list or main, an ACT; each rule has a mutation row. Report only for 24 h; then measured: minutes from merge to the waiting PR's next commit, the ten before against the ten after (the "before" read from this week's merges, not guessed).
 **For B's test (Lead and founder, 10 minutes, nothing installed):** on one idle cloud lane with an open PR, post one comment on that PR and look whether the lane's session starts a turn within 10 minutes; write the result here either way.
 **Needs from you:** the words "Waits on: #n" in lane briefs (a convention, no skill write by me), and your yes to build A as one small PR (estimate half a day, not measured).
+
+## Result of B's test (24 Nov 2026)
+One comment on #3371 at 14:13:46 IST, asking only for a one-line reply. Read at 14:44:33 IST, 30 min 47 s later: **no reply, no new commit** (head f70556b1c, last change to the PR 14:13:46, the comment itself). So no visible wake in this one test.
+What it does not show: whether the owning session is still alive or was subscribed to the PR (not looked at in the app); whether it started a turn and did not answer; whether another account's comment would do it (the comment came from the account the sessions use too, which also opened this PR); any other lane (a sample of one).
+Conclusion: B is not shown to work, so it is not built on; A (#3456) stands.
