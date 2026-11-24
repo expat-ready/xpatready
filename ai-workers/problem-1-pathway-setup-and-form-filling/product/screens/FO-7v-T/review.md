@@ -80,3 +80,64 @@ Not applicable: there is no screen. The code dimensions are covered above. D17 a
 A screen (FO-7s3a/b); an intended user's walk; a database refusal reaching `write()` in a live race. The route pre-empts every refusal I tried.
 
 Reviewer: Changes 9b0ac177b537c2155b63d548b8f079de5f760027
+
+## Round 2: diff-only re-review (P-277), head `6c98404ed`
+**Read:** the fix comment on #3552; `git diff 9b0ac177b 6c98404ed -- …/prototype` (`reverse.ts` +45/−36; `check_fo7v_reversals.ts` +56); for the SQL, FO-7a2's `money_trust_shortfall` (migration lines 283-289) and FO-7a's `money_text_ok` and `money_trust_entry_reason_check`. **Ports:** the check's own Nest app on port 0 and PostgreSQL on :54329; never :4400. US$0.
+
+### Verdict: Approve (Ship)
+No Blocker or Major is open. Both review Majors and both break items asked about are fixed, and each fix has a test that bites. Three new Minors are below; none blocks.
+
+### What I ran
+* `check_fo7v_reversals.ts` at the head: **27 passed, 0 failed, exit 0**. `tsc`: no error in the two files.
+* The new check against round 1's `reverse.ts` (a scratch copy; the repo was not touched): **24/3**, as the builder says. The three failures were M1 `[409 USE_A_REFUND, 409 NOT_YET, 409 ALREADY_REVERSED ×2]`, break M1 `500 ×6`, and M2 (client e's row at −10000 for the E1-only caller).
+* **Mutants** of the round 2 code, each run against the check:
+
+| Mutant | Result |
+|---|---|
+| C5 line removed | red, 25/2 |
+| C5 invoice branch made `true` | red, 26/1 (card and operating give 409) |
+| `money_text_ok` check off | red, 26/1 (two 500s) |
+| `isWellFormed` refine removed | red, 26/1 (the lone surrogate gives 500) |
+| `bool_and` → `bool_or` | red, 26/1 |
+| last entry `seq asc` | red, 25/2 |
+| C1 range removed from zod | 27/0, harmless: in a rolled-back schema, `money_text_ok` refuses U+0080, 0085, 0090, 009B and 009F, so the route still answers 422 |
+| latest reversal `seq asc` | **27/0, survives** (n2) |
+
+### Each item
+* **Review M1, fixed.** `planReversal(tx, f, id, seen)` first reads the deposit entry's case and party, or the invoice's for operating and card payments. It answers 404 straight after `!p`, before `USE_A_REFUND`, `NOT_YET`, `ALREADY_REVERSED`, `NOTHING_LEFT` and `NOT_RETURNED`. A payment with no entry and no invoice is 404, so it fails closed. All three callers (preview, the first plan before the lock, the re-plan under it) pass `seen`, and nothing else calls it.
+* **Review M2, fixed.** A row needs `bool_and(seen)` over every entry of that party and currency.
+* **The single-pass SQL matches `money_trust_shortfall`:**
+  * The firm is fixed, so `DISTINCT ON (person_id, company_id, currency) … seq desc` is the view's last entry. `seq` is unique per party and currency, so the pick is deterministic, and NULL party halves group together, as in the view.
+  * `< 0` is the view's filter.
+  * `rev` is the view's subquery: the latest `CORRECTION` of the four reversal kinds by `seq desc`, left-joined, so it is NULL when there is none.
+  * The currency filter goes into `e`, before grouping, which is correct.
+* **Break M1, fixed.**
+  * zod now refuses U+007F-U+009F and broken strings (`isWellFormed`; Node 22).
+  * Then `money_text_ok(reason, 200)` runs on the reason that is written (typed, or the code's words), and a refusal is `badField("reason")` 422.
+  * This runs inside the transaction, after the hash check, so a refusal rolls back. The six breaker strings give 422, and nothing is written.
+* **Break M2 (re-timed, as an indication).** I inserted rows directly with triggers off: 200,425 entries, 10,004 parties, 406 below zero, a 10,004-id `parties` array. `/trust/shortfall` took **868-959 ms** (5 runs) and returned 406 rows. A half scope took 660-687 ms. Round 1 took 36-42 s and gave 500. The breaker's own re-time still stands as asked.
+* **Break m2, fixed.** The lookup is `e.person_id = $party` or `e.company_id = $party`, chosen by which one the payment's entry has. That gives `firm_id, person_id|company_id, currency … order by seq desc limit 1`, which matches the unique `(firm, party, currency, seq)` index. I read the structure only; I did not run EXPLAIN.
+* **Regressions:** none found. Removing the card-terminal branch is safe, because `money_payment_card_not_trust` keeps card-terminal money out of trust. The fixes to review m1 and m2 hold (six reverses at once, cash with "Returned", `NOTHING_LEFT`).
+
+### New Minors (do not block)
+* **n1. Three-valued logic can still leak the shortfall figure.**
+  * `seen` is `case_id = any(cases) or (case_id is null and party = any(parties))`. For an entry with no case, on a party that is not in `parties`, with `cases` non-empty, this is NULL, not false. `bool_and` skips NULLs.
+  * Probe with scope `{cases:[CASE], parties:[]}`: client a, with entries on CASE and a −777.00 entry with no case, **shows at −77700** with `caseId null`. With scope `{[],[]}` it does not show.
+  * `reads.ts` uses the same predicate in a WHERE, where NULL drops the row, so it fails closed there; inside `bool_and` it fails open.
+  * Through the real adapter this needs an entry on a case that does not belong to the entry's party. `caseOf` refuses that for deposits, refunds and requests (`trust/service.ts:270`), and port rule 2 puts a seen case's linked party in `parties`. A pick on another payer's money (fo7ts_part3 :251-255) may be such an entry; I could not show one reachable through the routes.
+  * **Fix:** `having bool_and(coalesce(seen, false))`. With that change, the check gives 27/27 and the probe shows no row. Add the probe as a fail test.
+* **n2. "Latest reversal" has no test.** The `rev` CTE ordered `seq asc` still gives 27/0. No test has a party with two reversals that asserts which `reversalEntryId`, `caseId` and `reasonCode` it gets. Client e has two reversals, so asserting `reasonCode === "RECORDED_BY_MISTAKE"` and `caseId === E1` on the whole-scope row is enough.
+* **n3. The audit alarm is not asserted.** The break M1 test counts `trust_money.reversed` audit lines but not `audit_write_failed`, which is the breaker's BR-5 alarm. The 422 status covers it today, so this is a note only.
+* **Carried for the Lead (no change):** review m3 (the hash is freshness, not proof of a preview) and the app-wide form-encoded body.
+
+### Journey test (reviewer role; API only, through the routes and the service)
+I re-walked journeys 5 and 6 from round 1:
+* An unseen officer gets 404 on card, operating, reversed and plain deposits.
+* An officer on one case of a two-case client gets no row; a caller who sees both cases gets −100.00.
+
+Correct data goes from ½ to 1 (M1 and M2). The other scores are unchanged: accessibility ½ and visual ½ (there is no screen). **9/10, above the bar of 8, with no criterion at 0.**
+
+### Could not check
+A screen (FO-7s3a/b); EXPLAIN of the plan lookup; the breaker's own 200k re-time; whether a pick through the routes can produce n1's shape.
+
+Reviewer: Approve 6c98404ede1da416d702a1522687bc0235be7100
