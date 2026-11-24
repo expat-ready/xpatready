@@ -408,3 +408,13 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **Lead O 2:** ruled C (speed under 3 min) then A then B, plus the A368 line. Lead B 6 at 42% of its window at 14:45: replace it near 45-50%.
 * **Records owed:** DECISIONS rows (Lead 21, 22, 24 lists; #3442 refund; P-776 strict; A360 to A368 rulings; AG-4-15), BACKLOG rows (M1, M2, QR, no-door, refresh cookie, refund warning, Cognito sign-in for our staff), RULES, STATE and cycle-plan to main.
 * **My errors:** put #3441 as "not looked at" resolved only by time (nothing was wrong); opened one long reading turn while the 14:53 and 15:03 full reports went unsent (full format was not sent at either :03); used Lead 25's number A363/A364 twice (renumbered); told the founder TLS lines as part of the check's slowness, Lead O 2 measured 1 to 2 min of it.
+
+## Lead 27, 15:34 IST 24 Nov
+* Took over 15:20; check 463bb47a. Lead 28 standby exists (local_1baa984b, seen in list_sessions; not started by me).
+* #3442 and #3305 in batch #3475, #3465 in #3473, #3451 in #3476, all testing. #3456 and #3464 merged 15:19. #3472's red "sweep": label-sweep.sh got a 404 removing #3451's label at 15:12:26 IST, after the label guard had removed it (its own log; a race, not required). A fix row (404 on that DELETE is done) is owed.
+* M1 #3467 f637ad4d3: Approve 15:22, ready, read line posted (firm-scope.ts and check_no_array_tx.ts read; check_tx_end_guard.ts and upsert-native.mts not). Full run on it after #3174's 45366995113 ends. BACKLOG row owed: break r1 (statement reader).
+* #3235 0d594e988: fix diff read; round 6 allowed, one point for the breaker (connection lost in COMMIT); lane 7qW26 told, seen running.
+* qa 7's card answered "Move to Partial": R1.53 goes Works to Partial in #3474 (QA-778, 779, 780 Major; P-305, P-488). Works 55 becomes 54 when it merges.
+* 87D51 told #3433 merged, go on with 4b; seen running. Pane clicks land off when the page is drawn at 78%: multiply screenshot coordinates by 1.28.
+* lead-watch run from a sparse copy of main (scratchpad/mv). founder-report.py prints unknown for cycle lines (cycle-plan.json of 21 Nov). flow-measure hit GitHub's rate limit 15:31: stage ages not measured.
+* Next: reads #3277, #3418 (after its CodeQL fix), #3217; label #3467 on a green run; after it one run at a time: #3421, #3277, #3235.
