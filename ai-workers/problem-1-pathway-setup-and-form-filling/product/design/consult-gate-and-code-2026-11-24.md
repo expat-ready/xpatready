@@ -15,11 +15,11 @@ For Lead 26's ruling. The founder's ask was typed to Lead 25 on 24 Nov: "consult
 * s. 23(3): the licensee must "keep a copy of the signed consultation agreement … provide a copy to the client".
 * s. 25: "Sections 23 and 24 do not apply to a licensee who is a salaried employee" (of an education institution or its representative body, conditions apply). This is narrow. It is not a general exception.
 * College Guide 2022-001 (2022, pre-dates SOR/2026-68, so it may be stale): the agreement "must be dated and signed by the client and the licensee". Of the service agreement it says "A service agreement can be in written or digital form".
-* Nothing found in the Code allows urgency or a verbal agreement.
+* Nothing found in the Code allows urgency or a verbal agreement. The 13 Nov reading records "digital signature allowed (guide only)" from the Guide; the Code itself has no e-signature rule.
 * The Code binds the **licensee**, not the software or the booking. A lawyer, a Quebec notary or a non-Canadian adviser using the product is not a College licensee. I found no equivalent rule for them, but did not verify that.
 
 **Facts (our requirement and code):**
-* AG-4-15 rule 4 (AG-04 v2.1, 25 Oct, MS-D3): "'Not accepted yet' is a warning on the booking and never blocks anything". Test: "given a staff-made booking never accepted, then it still confirms and the reminders still go". Rule 7: "Warn, never block".
+* AG-4-15 rule 4 (AG-04 v2.1, 25 Oct, MS-D3): "'Not accepted yet' is a warning on the booking and never blocks anything". Test: "given a staff-made booking never accepted, then it still confirms and the reminders still go". AG-04's decision table, Rule 7 (line 153): "Warn, never block; no regulator or statute names in product text". AG-4-15 asks for acceptance and lists "No e-signature" as a non-goal; our build adds the firm's countersignature (FO-3c, B3 in the challenge).
 * Today's `gate.ts` (main @1a7028e7d, from #3420, Lead 22's ruling on QA-772) refuses Attended (`booking/service.ts:457`) and the consult record (`consult/service.ts:140`) with 409 `AGREEMENT_NOT_SIGNED`. It does this whenever the type needs the agreement and none is signed, including when none could ever be sent (no client email, no template, nobody licensed).
 * Paper counts in the gate (`SIGNED_OFFLINE`). But "Signed offline has no route while nothing has been sent: FO-5's draft lacks `booking.id`" (#3420 comment 7124548527).
 
@@ -28,7 +28,7 @@ For Lead 26's ruling. The founder's ask was typed to Lead 25 on 24 Nov: "consult
 | Product | What it does | Source (seen 24 Nov) |
 |---|---|---|
 | Acuity Scheduling | Requires acceptance at public booking, per type. Paraphrase: "clients must acknowledge these terms to complete their booking" | help.acuityscheduling.com/hc/articles/47291505860749 |
-| Microsoft Bookings | Requires it at booking: "won't be able to complete the booking until they've answered the required questions" | learn.microsoft.com/…/bookings/add-questions |
+| Microsoft Bookings | Required questions at booking (not an agreement as such): "won't be able to complete the booking until they've answered the required questions" | learn.microsoft.com/…/bookings/add-questions |
 | Practice Better | Requires it at booking, per service. Forms needing the practitioner's signature cannot be booking forms | help.practicebetter.io/hc/en-us/articles/360016092851 |
 | Jane App | Tracks and reminds; staff may fill a form in: "Jane will record that the form was completed by a staff member" | jane.app/guide/completing-intake-forms-in-clinic-fill-out-options |
 | SimplePractice | Tracks and reminds; paper upload; "visibly show, the client's IP address along with the timestamp" | support.simplepractice.com/…/41929603998605 |
@@ -41,6 +41,7 @@ For Lead 26's ruling. The founder's ask was typed to Lead 25 on 24 Nov: "consult
 * Public self-booking may require acceptance before the booking completes.
 * Staff bookings and the meeting itself are tracked and reminded, never blocked. No product documents a hard block on holding the meeting.
 * No product documents an override with a reason and an audit trail. Ours would go beyond the market.
+* Caveat: none of these tools is bound by a pre-consultation agreement rule, so "no block" is an absence of documentation in unregulated tools, not proof of best practice under a rule like s. 23.
 
 **Testing the Lead's hypothesis, part by part:**
 1. *Booking always allowed.* **Holds.** It matches AG-4-15, the Code (s. 23 binds the consultation, not the booking) and every tool.
@@ -111,7 +112,30 @@ For Lead 26's ruling. The founder's ask was typed to Lead 25 on 24 Nov: "consult
 
 **Cost:** about 3 h, 1 PR under 200 lines, no migration. It waits on #3433 (the setting lives there; not touched by this lane).
 
+## Revised after the challenge (`consult-gate-and-code-2026-11-24-challenge.md`)
+The challenge's verdicts: Q1 agree with changes, Q2 agree with changes. Taken:
+* **A1, licensed is self-declared.** A licence record is free text that any staff member can save for themselves (`platform/identity/routes.ts:73-75`, `identity/service.ts:356-358`). The app cannot verify a licence. So the reason is given by the person who **answers for it**: the host with a licence record, else a representative of record (`gate.ts` `CAN_SIGN`, the same rule as signing today). It is attributed to them by name in the audit, and it is never presented as "verified".
+* **A2, the reasons.**
+  * "Signed on paper" becomes the `SIGNED_OFFLINE` route (also for a booking with nothing sent), and the booking shows "copy owed" until the file is uploaded.
+  * "Agreed in writing by email" and "Urgent, agreement to follow" are dropped: neither is a signed agreement, and the second invites a breach.
+  * What is left: **"Other: <reason, required text>"**, plus the paper route.
+  * The firm list is named for what it is: consultations held without a signed agreement. That is a record the College may ask for, which is the point of truthful records. It is not a risk-reducer.
+* **A3, who rules.** The founder's 24 Nov ask ("consultation may go without a signed agreement … implement") is the authority. Lead 26 rules the design and writes the DECISIONS row owed since Lead 22's ruling (`gate.ts:11`), which conflicts with AG-4-15 r4. If Lead 26 reads it as still open, it goes to the founder (AGENTS rule 2).
+* **A4, money.** On the reason path, Attended does not bill by default: "Bill when signed" (the default) or "Bill now". The fee is itself a term of the unsigned agreement (s. 23(2)(c)), and the trust rules are s. 32-33 (Unconfirmed: no counsel).
+* **B1, before the meeting.** The app does hand out the join link (`booking/service.ts:930`, `:937`). Add a warning to the host on the booking before the start, and "Please sign the consultation agreement before the meeting" beside the client's join link. No block.
+* **B4, B5.**
+  * "Warn only" is Owner-only and audited, and is shown on the firm list. Its wording names no regulator (Rule 7): "Our consultants are not required to have a signed agreement before a first consultation".
+  * An Admin may give the reason for the host only if the Admin is themselves the answering licensee (A1's rule); otherwise 409.
+* **Cost, revised:**
+  * About 2.5 builder days in 3 PRs:
+    * (1) API reason, audit, billing hold, tests (~550 lines);
+    * (2) the paper route with no agreement sent, and "copy owed" (~300 lines);
+    * (3) screens, warnings, the list (~400 lines).
+  * 1 additive migration (reason columns, the firm setting) to stamp, and possibly a 2nd for the paper route's link to the booking.
+* **Q2 wording fixed:** "Signing links will then open for anyone who has the client's email. This applies to every agreement you send." Store "email code: off" on each signature; this needs no migration only if signature evidence is JSON (to check in #3433). The "stricter than the market" point is context, not the argument; the argument is harm-based (Treasury Board guidance).
+* Also check, on the Mac: whether the Guide (2022) is still current, and whether the College's 2026 regulations (SOR/2026-68) touched s. 23.
+
 ## Question for the tech lead
-1. Q1: replace the hard 409 with a licensee's audited reason, plus the paper route, plus a "Warn only" firm setting, as above? (Recommended. About 1.5 days, 1 migration to stamp, a DECISIONS row changing Lead 22's ruling.)
-2. Q2: keep P-564, Owner-only switch-off with a warning and audit, no limit by document kind? (Recommended. About 3 h after #3433 merges.)
-3. Before ruling: s. 26 and today's text of s. 23 should be read on the Mac (this container cannot reach laws-lois).
+1. **Q1:** replace the hard 409 with an audited reason from the answering licensee ("Other: <text>"), plus the paper route (also with nothing sent), billing held until signed, a warning before the meeting, and an Owner-only "Warn only" setting? **Recommended.** About 2.5 days, 3 PRs, 1-2 migrations to stamp, and a DECISIONS row replacing Lead 22's ruling.
+2. **Q2:** keep P-564, Owner-only switch-off with the warning above and an audit line, "email code: off" stored on each signature, no limit by document kind? **Recommended.** About 3 h, after #3433 merges.
+3. **Before ruling:** read s. 23, s. 26 and SOR/2026-68 on the Mac (this container cannot reach laws-lois or college-ic).
