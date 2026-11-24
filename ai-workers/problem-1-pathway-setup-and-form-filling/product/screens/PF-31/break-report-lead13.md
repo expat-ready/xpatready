@@ -169,3 +169,49 @@ Diff only. My own offices BrkA–BrkD vcmd (sample-solo, user-S); Studio as user
 Accepted, as agreed: N5, M2, m4, m5.
 
 Breaker: Approve a42412e7f653e4abd05909a96b87be97f5b4ede8
+
+## Re-break on 13621c493 (refetch when a tab comes forward), copy :4747 (xr_studio_fin)
+
+Diff only. My own offices BrkA–BrkD 58rc (sample-solo, user-S); user-T as the other person. Nothing fixed, nothing committed. **Verdict: Block.**
+
+### Blocker
+**F1. A tab switch blanks the whole app when My account and Licence are both open.**
+- **Repro** (user-S, /platform/offices):
+  1. Ctrl-click "Profile" (`/account`), then "Licence" (`/account/licence`).
+  2. Wait more than 2 s and press Alt+PageDown.
+- **Expected:** the next tab shows.
+- **Actual:** `TypeError: Cannot read properties of undefined (reading 'length')` and `#root` is empty: a white page.
+  - With no error boundary, every tab goes. All unsaved typing held only in a page's state (firm profile, Add office, Studio forms) is lost. Only the shared office and lead drafts survive in sessionStorage.
+  - Bisect: 12 tabs crash; the first 6 alone crash; the last 5 do not.
+- **Cause:** both pages use the query key `["pf","account",token]` with different parsers.
+  - account-page.tsx:25 uses `Account.parse`, which keeps `roles`. licence-page.tsx:19 uses `Mine.parse`, which drops it.
+  - `refetchQueries` (workspace.tsx:126-131) re-reads the shared key with the licence page's parser and writes the licence shape into the cache. AccountPage then reads `n.roles.length` and crashes (it is the only key collision the scan found).
+- **Not only this commit:**
+  - The same crash happens without any switch: open `/account`, wait 2.6 s, then Ctrl-click Licence (the new tab's mount re-reads the stale key). The reverse order, plus a switch, also crashes. So it was already reachable at a42412e7f, and my Approve there missed it.
+  - 13621c493 makes it fire on every tab switch after 2 s while both are open.
+  - Within 2 s there is no crash.
+
+### What held
+- **A draft or an open conflict state is not clobbered.**
+  - Office C draft "Mine C"; someone else saves "Theirs C" (API, 200); a switch away and back after 2.6 s. The field stays "Mine C", the dirty dot stays, and Save shows the conflict state.
+  - A second refetch round leaves the conflict state up, with "Mine C" kept. The draft carries its own base and version (drafts.tsx `useSharedDraft`).
+- **An open side panel keeps its typing.** "Add an office" with "New typed office" typed; office D changed by someone else, so the list answer is new; switch away and back. The panel is open and the text kept (office-panel.tsx:44 resets only on `open` or `office?.id`).
+- **No request storm.**
+  - With 12 mounted tabs, one switch after more than 2 s idle sends 17 GETs, one per active query across all tabs (a burst, not a storm).
+  - 22 switches 120 ms apart then send 0.
+  - So do 5 switches 2.5 s apart once those answers are fresh, so no repeat storm was seen.
+- **401 and 428.**
+  - A 428 TERMS_PENDING answered to the shown firm-profile tab's refetch does not bring up the terms page wrongly; the page and its data stay.
+  - A 401 SESSION_REVOKED answered to a refetch ends the session, as the server asked. The sign-in card shows and the person's list is kept, since the session ended by itself.
+- **B1.**
+  - X (user-S) has 4 tabs, the session expires, and Y (user-T) signs in. Y gets a fresh list, and X's list is deleted.
+  - After the sign-in, no request goes to X's hidden-tab pages (firm profile, branding, security), with any token.
+  - Y's next tab switch sends nothing for X.
+- **Test-only change.** check_pf5t's 2.1 s wait and pass-through of a non-list answer change no app behaviour.
+
+### Minor (noted)
+- Studio forms seeded from server values (field-scope.tsx:21 `[v.data?.scope]`; library.tsx's name `[cur?.id, cur?.label]`) take the newer value over the person's unsaved choice when someone else saved it in the meantime.
+  - They now refetch on every tab switch, not only after a save or a remount.
+  - Read only, not walked: no Studio fields on this copy.
+
+Breaker: Block 13621c4934697cc2721a1f336264280f68a6f854

@@ -265,6 +265,20 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** One tab's page failing stays in that tab (breaker F1 on 13621c493: one page's crash blanked the whole app and every tab's
+ *  typing): the tab says so, in words, and the others carry on. A move to another address in the tab starts it again. */
+class TabBoundary extends React.Component<{ at: string; children: React.ReactNode }, { failed: string | null }> {
+  state = { failed: null as string | null };
+  static getDerivedStateFromError() { return { failed: "" }; }
+  componentDidCatch(e: unknown) { this.setState({ failed: this.props.at }); console.error(e); }
+  componentDidUpdate(prev: { at: string }) { if (this.state.failed !== null && prev.at !== this.props.at) this.setState({ failed: null }); }
+  render() {
+    if (this.state.failed === null) return this.props.children;
+    return <main className="mx-auto max-w-xl p-6" data-ws-failed><h1 className="text-lg font-semibold">This page could not be shown</h1>
+      <p className="mt-2 text-sm text-text-muted">Something went wrong on this page only; your other open items are as you left them. Reload the page, or open another item.</p></main>;
+  }
+}
+
 function TabHost({ tab, active, slot, move, leave, setDirty, setTitle, children }: { tab: Tab; active: boolean; slot: React.RefObject<HTMLDivElement | null>; move: (id: string, to: To, how: "push" | "replace", state?: unknown) => void; leave: (id: string, path: string) => void;
   setDirty: (id: string, owner: string, d: boolean, discard?: () => void) => void; setTitle: (t: string) => void; children: React.ReactNode }) {
   const p = parsePath(tab.path);
@@ -286,7 +300,7 @@ function TabHost({ tab, active, slot, move, leave, setDirty, setTitle, children 
     host.appendChild(box);
     return () => { box.remove(); };
   }, [active, box, slot]);
-  return createPortal(<TabCtx.Provider value={api}><Router location={location} navigationType={tab.type} navigator={navigator}>{children}</Router></TabCtx.Provider>, box);
+  return createPortal(<TabCtx.Provider value={api}><Router location={location} navigationType={tab.type} navigator={navigator}><TabBoundary at={tab.path}>{children}</TabBoundary></Router></TabCtx.Provider>, box);
 }
 
 /** The strip under the header (drawn by Frame for staff areas). Below 768 px: an "Open items" menu. */

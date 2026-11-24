@@ -215,6 +215,16 @@ try {
   ok("T7 Ctrl-click on a public page (pricing) opens a browser tab, never an in-app one", !!pub && !(await tabs(p1)).some((x) => x.path === "/pricing"), { browserTab: !!pub, tabs: (await tabs(p1)).map((x) => x.path) });
   await pub?.close();
   ok("T7 Ctrl-click on My account's Profile opens an app tab in the background, never a browser tab", await until(async () => (await tabs(p1)).some((x) => x.path === "/account" && !x.selected)) && ctx.pages().length === pagesBefore, { tabs: (await tabs(p1)).map((x) => x.path), pages: ctx.pages().length });
+  // Breaker F1 on 13621c493: My account and Licence open together; a switch after the 2 s staleTime re-reads both (each its
+  // own query key now) and nothing breaks: no page error, a page is drawn.
+  const errsBefore = errs.length;
+  await p1.locator('[data-workspace]:visible [data-ws-tab][data-ws-path="/platform/x10"] [data-ws-close]').click();   // room under the cap
+  await shown(p1).locator('nav[aria-label="My account"] a[href="/account/licence"]').click({ modifiers: ["Control"] });
+  await until(async () => (await tabs(p1)).some((x) => x.path === "/account/licence"));
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="/account"]`).click(); await p1.waitForTimeout(2_600);
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="/account/licence"]`).click(); await p1.waitForTimeout(2_600);
+  await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="/account"]`).click(); await p1.waitForTimeout(1_000);
+  ok("T7 with My account and Licence both open, switching between them after 2 s keeps the app drawn (breaker F1)", errs.length === errsBefore && (await p1.locator("main").count()) === 1 && (await p1.locator("[data-ws-failed]").count()) === 0, errs.slice(errsBefore));
 
   // B1 (review round 3 Should 2): a draft broadcast by another person's window is ignored here
   const forgedKey = `platform-office:${O2.id}`;
