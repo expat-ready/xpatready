@@ -245,6 +245,11 @@ export function poolFindings(t: Template, stage: string, domain: string): string
   const names = pools.map(([, p]) => String(p.Properties?.UserPoolName));
   if (json([...names].sort()) !== json([...want].sort())) out.push(`pools are ${json(names)}, not the three separate ${json(want)}`);
   const clients = all(t, "AWS::Cognito::UserPoolClient").map(([, c]) => refId(c.Properties?.UserPoolId));
+  // review M2 (break B2): every client names its pool as a plain Ref to a pool of this stack, so the per-pool rules below see it
+  for (const [id, c] of all(t, "AWS::Cognito::UserPoolClient")) {
+    const u = c.Properties?.UserPoolId as { Ref?: unknown } | undefined;
+    if (!(u && typeof u === "object" && Object.keys(u).length === 1 && typeof u.Ref === "string" && t.Resources?.[u.Ref]?.Type === "AWS::Cognito::UserPool")) out.push(`${id}: its pool ${json(u)} is not a plain Ref to a pool of this stack`);
+  }
   for (const [id, p] of pools) {
     if (clients.filter((c) => c === id).length !== 1) out.push(`${id}: ${clients.filter((c) => c === id).length} app clients, not its own one`);
     if (/-(own-)?staff$/.test(String(p.Properties?.UserPoolName)) && p.Properties?.MfaConfiguration !== "ON") out.push(`${id}: a staff pool without required two-step sign-in`);
@@ -410,7 +415,10 @@ export function filesTaskFindings(t: Template, region = "ca-central-1"): string[
  *  policy of this stack) that names a Cognito action, or any action wildcard, is the one sign-in grant: on the service's
  *  task role only, Allow, exactly SIGN_IN_ACTIONS (as a set), on `Fn::GetAtt [<the pool PLATFORM_COGNITO_USER_POOL_ID
  *  names>, Arn]` alone (never checks.ts own()'s joined ARN, which could name another pool: challenge m1), with no other
- *  key (no condition, no NotAction or NotResource); and that grant is there. */
+ *  key (no condition, no NotAction or NotResource); and that grant is there once. A Statement written as one object is
+ *  read; an unreadable one is a finding. No other task definition runs as that role, and the service's container names
+ *  each setting once. Shapes this function does not read (Fn::If in Action, NotResource alone, managed policies by ARN)
+ *  are refused by checks.ts bypassFindings, which runs beside it. */
 export function signInTaskFindings(t: Template, stage: string): string[] {
   const out: string[] = [];
   const { service } = taskDefinitions(t);
@@ -418,19 +426,30 @@ export function signInTaskFindings(t: Template, stage: string): string[] {
   const pool = refId(env(containers(service[1])[0]).get("PLATFORM_COGNITO_USER_POOL_ID"));
   if (!pool || String(t.Resources?.[pool]?.Properties?.UserPoolName) !== `xr-${stage}-staff`) out.push(`the service's pool ${json(pool)} is not the staff pool xr-${stage}-staff`);
   const role = refId(service[1].Properties?.TaskRoleArn);
+  // break M4: one name, one value (a second PLATFORM_COGNITO_USER_POOL_ID could point elsewhere: which one ECS keeps is not ours to guess)
+  const names = containers(service[1]).flatMap((c) => [...(c.Environment ?? []), ...(c.Secrets ?? [])].map((x) => x.Name));
+  for (const n of new Set(names.filter((n, i) => names.indexOf(n) !== i))) out.push(`the service's container has the setting ${n} named twice`);
   const taskRoles = new Set(all(t, "AWS::ECS::TaskDefinition").map(([, td]) => refId(td.Properties?.TaskRoleArn)).filter((x): x is string => !!x));
+  // review m2 (break M3): no other task (the migration task, a one-off) runs as the service's task role and so holds its grant
+  for (const [id, td] of all(t, "AWS::ECS::TaskDefinition")) if (id !== service[0] && role && refId(td.Properties?.TaskRoleArn) === role) out.push(`${id} also runs as the service's task role, so it could call Cognito`);
   const reaching: [string, string, unknown][] = [];   // [where, role, document]
   for (const [id, p] of [...all(t, "AWS::IAM::Policy"), ...all(t, "AWS::IAM::ManagedPolicy")]) for (const r of arr(p.Properties?.Roles)) { const rid = refId(r); if (rid && taskRoles.has(rid)) reaching.push([id, rid, g(p.Properties, "PolicyDocument")]); }
   for (const rid of taskRoles) for (const ip of arr(g(t.Resources?.[rid], "Properties", "Policies"))) reaching.push([`${rid} inline`, rid, g(ip, "PolicyDocument")]);
   const want = json({ Action: [...SIGN_IN_ACTIONS].sort(), Effect: "Allow", Resource: { "Fn::GetAtt": [pool, "Arn"] } });
   let exact = 0;
-  for (const [where, rid, doc] of reaching) for (const st of arr(g(doc, "Statement")) as Record<string, unknown>[]) {
+  for (const [where, rid, doc] of reaching) {
+    // review M1 (break B1): a Statement written as one object is read as a list of one, as checks.ts statementsOf does;
+    // anything else is a finding, never read as empty
+    const raw = g(doc, "Statement"), sts = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : null;
+    if (!sts || !sts.every((x) => x && typeof x === "object" && !Array.isArray(x))) { out.push(`${where}: a policy reaching task role ${rid} cannot be read (${json(raw).slice(0, 80)})`); continue; }
+    for (const st of sts as Record<string, unknown>[]) {
     const acts = [st.Action, st.NotAction].flatMap((x) => arr(Array.isArray(x) ? x : x === undefined ? [] : [x])).map(String);
     if (!acts.some((a) => /^cognito/i.test(a)) && !covers(acts, ...SIGN_IN_ACTIONS, "cognito-idp:DeleteUserPool")) continue;   // IAM globs too ("*", "cogn*")
     if (rid !== role) { out.push(`${where}: task role ${rid} is granted ${json(st.Action ?? st.NotAction)}: only the service's task role may call Cognito`); continue; }
     const got = json({ ...st, Action: [...arr(Array.isArray(st.Action) ? st.Action : [st.Action]).map(String)].sort() });
     if (got === want) exact++;
     else out.push(`${where}: the task role's grant ${json(st).slice(0, 200)} is not the sign-in grant (exactly ${SIGN_IN_ACTIONS.length} actions on the staff pool's ARN)`);
+    }
   }
   if (exact !== 1) out.push(`the task role lacks the sign-in grant (exactly ${SIGN_IN_ACTIONS.length} actions on the staff pool's ARN, once): found ${exact}`);
   return out;
