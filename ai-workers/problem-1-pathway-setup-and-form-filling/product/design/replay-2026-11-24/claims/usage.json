@@ -83,6 +83,15 @@
   "outside": [],
   "tool_calls": 18
  },
+ "S13": {
+  "cache_read": 2436785,
+  "fresh_in": 306597,
+  "out": 35417,
+  "outside": [
+   "Bash /tmp/claude/t1"
+  ],
+  "tool_calls": 41
+ },
  "S14": {
   "cache_read": 880457,
   "fresh_in": 127652,
@@ -105,10 +114,24 @@
   "tool_calls": 29
  },
  "S17": {
-  "cache_read": 366253,
-  "fresh_in": 108316,
-  "out": 2629,
+  "cache_read": 1264608,
+  "fresh_in": 177398,
+  "out": 17593,
   "outside": [],
-  "tool_calls": 14
+  "tool_calls": 25
+ },
+ "S18": {
+  "cache_read": 1217557,
+  "fresh_in": 197714,
+  "out": 18638,
+  "outside": [],
+  "tool_calls": 28
+ },
+ "S19": {
+  "cache_read": 1093419,
+  "fresh_in": 157702,
+  "out": 15765,
+  "outside": [],
+  "tool_calls": 22
  }
 }
