@@ -74,9 +74,11 @@ function kindOf(b: Uint8Array): { ext: string; contentType: string } | null {
   return null;
 }
 
+/** A full document number is never taken (only its last 4): the refusal's words, also at the parse (routes.ts, PF-28 A3). */
+export const FULL_NUMBER_REFUSED = "Send only the last 4 characters of the document number (documentNumberLast4).";
 /** The body checked: each refusal is 422 naming its field (PF-28 part 3b; was 400); an unknown field (a full `documentNumber`) is refused, never ignored. */
 function parse(body: Record<string, unknown>) {
-  for (const k of Object.keys(body)) if (!FIELDS.has(k)) bad(k, k === "documentNumber" ? "Send only the last 4 characters of the document number (documentNumberLast4)." : `${k} is not a field of an identity check.`);
+  for (const k of Object.keys(body)) if (!FIELDS.has(k)) bad(k, k === "documentNumber" ? FULL_NUMBER_REFUSED : `${k} is not a field of an identity check.`);
   const method = oneOf(body.method, METHODS, "method", "The method");
   const md = text(body.methodDetail);
   // Characters as the database counts them (code points, break B-8), not UTF-16 units.
