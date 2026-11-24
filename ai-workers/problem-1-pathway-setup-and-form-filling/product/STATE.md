@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_9d85b0d8-f506-480d-bb98-4afe6544a78b Lead 24 · 24 Nov 12:40 IST (after Lead 23, past the 200k line; Opus 5.5 medium, P-788)
+current_lead: local_f8cf715f-189f-4312-a85f-7bf184888efc Lead 25 · 24 Nov 13:18 IST (after Lead 24, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 13:10 IST: Lead 24 (check 8d04a678). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (counted 12:57, main 21af27936). **BLOCKER P1 (firm wall): #3428 d33cb8de8 (full run asked, then label); M2 (firm wall, array batches) lane 4oPSMou, then M1; first each check. #3429 held.** Queue: #3385, #3308 + #3430, #3421, #3420, #3431. Founder: CodeAnt C1, the unseen account. Weekly 65%, disk 12 GB; standby Lead 25 local_f8cf715f.
+updated: 2026-11-24 13:18 IST: Lead 24 ended. **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (counted 12:57, main 21af27936). **BLOCKER P1 (firm wall): #3428 d33cb8de8 (full run asked, then label); M2 (firm wall, array batches) lane 4oPSMou, then M1; first each check. #3429 held.** Queue: #3385, #3308 + #3430, #3421, #3420, #3431. Founder: CodeAnt isolation commands (C1, C3 yes), the unseen account. Weekly 65%, disk 12 GB; second standby owed.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,7 +18,7 @@ updated: 2026-11-24 13:10 IST: Lead 24 (check 8d04a678). **Hand-over: the last s
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A359 | 24 Nov, after 13:06 (typed to Lead 24) | prove faster; follow the Lead's recommendations; final tooling decision, dates, outcomes | plan file, end; #3305 line pushed; three sessions started; CodeAnt C1 asked |
+| A359 | 24 Nov, after 13:06 (typed to Lead 24) | prove faster; follow the Lead's recommendations; final tooling decision, dates, outcomes | plan file, end; #3305 line pushed; three sessions started; CodeAnt C1 and C3 yes |
 | A358 | 24 Nov ~12:17 (typed to Lead 23) | sign-in design and review tool left to the Lead; one ask at a time | CodeAnt; plan file, end; in progress |
 | A357 | 24 Nov ~11:55 (typed to Lead 23) | verify Linear, Qodo, CodeRabbit, Harness, Sentry; lean, cost? | researched; plan file, end; told 12:04 |
 | A356 | 24 Nov, after 11:45 (relayed by Lead 22) | why not delivering, the bottleneck, unblock by hand, finish partials, one tool | ledger in the plan file, end; lanes woken; in progress |
@@ -53,7 +53,7 @@ Older Start here pointers and the red-row lanes line: `history/STATE-2026-11-24-
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, 09:23), Lead 21 (local_11ef6843, 10:02), Lead 22 (local_a55ecb03, 10:39), Lead 23 (local_1d6d1d97, 11:45), Lead 24 (local_9d85b0d8, from 24 Nov 12:40 IST).
+**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, 09:23), Lead 21 (local_11ef6843, 10:02), Lead 22 (local_a55ecb03, 10:39), Lead 23 (local_1d6d1d97, 11:45), Lead 24 (local_9d85b0d8, 12:40), Lead 25 (local_f8cf715f, from 24 Nov 13:18 IST).
 **Leads of 22 Nov (account before):** word for word in `history/STATE-2026-11-23-1705-lead6-cs-mv2-and-older-leads.md`.
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
