@@ -282,6 +282,26 @@ try {
     insert into fo_signing_evidence (id, firm_id, request_id, sealed_file_key, sealed_sha256, audit_file_key, audit_sha256, consent_text_version) values (gen_random_uuid(), '${A}', '${other1}', 'signing/y/sealed.pdf', '${"e".repeat(64)}', 'signing/y/audit.pdf', '${"f".repeat(64)}', 'v1');
     update fo_signature_request set status = 'SIGNED' where id = '${other1}'`)); } catch (e) { otherOk = false; console.log(String((e as { stderr?: string }).stderr ?? e).slice(0, 300)); }
   ok("FO-6d D pass: an OTHER request whose clients all signed stores its evidence and reaches SIGNED with no firm signer (AG-5-61 r3)", otherOk && sql(`select status from fo_signature_request where id = '${other1}'`) === "SIGNED");
+
+  // ------------------------------------------------------------------------------- Part 3 round 1 (review on #3542)
+  // Review M1: the emails go only after the commit. A temporary trigger refuses the request row, so the send's transaction
+  // fails after the adapter's send: the envelope is cancelled, nothing is stored and nobody is emailed.
+  sql(`create function fo6d3_refuse() returns trigger language plpgsql as $f$ begin raise exception 'forced failure (FO-6d part 3 test)'; end $f$; create trigger fo6d3_refuse before insert on fo_signature_request for each row execute function fo6d3_refuse()`);
+  const [mailsM1, cancelsM1, reqsM1] = [please().length, signing.calls.filter((c) => c.op === "cancel").length, requests()];
+  const failedSend = await call("POST", "/api/front-office/signature-requests", R.token, form({ title: "Fails after the send (Sample)" }));
+  sql(`drop trigger fo6d3_refuse on fo_signature_request; drop function fo6d3_refuse()`);
+  ok("FO-6d part 3 fail (review M1): a send whose transaction fails after the adapter's send emails nobody: one cancel at the adapter, no request",
+    failedSend.status >= 400 && please().length === mailsM1 && signing.calls.filter((c) => c.op === "cancel").length === cancelsM1 + 1 && requests() === reqsM1,
+    { status: failedSend.status, mails: please().length - mailsM1, cancels: signing.calls.filter((c) => c.op === "cancel").length - cancelsM1 });
+  // Review m1: one signer's email fails → it is logged and the send stands; the other signer still gets their link (as part 4a's).
+  const failing = fakeMail({ failOn: (m) => m.to === "bea.fo6d@example.com" });
+  useSigningMail(failing);
+  const s7 = await call("POST", "/api/front-office/signature-requests", R.token, form({ title: "One email fails (Sample)" }));
+  useSigningMail(mail);
+  const Q7 = String(s7.body?.id ?? "00000000-0000-4000-8000-000000000000");
+  ok("FO-6d part 3 pass (review m1): when one signer's email fails, the send stands (201, SENT) and the other signer still gets their link",
+    s7.status === 201 && sql(`select status from fo_signature_request where id = '${Q7}'`) === "SENT"
+      && failing.sent.filter((m) => m.templateKey === "signing.please_sign").map((m) => m.to).join() === "cy.fo6d@example.com", { status: s7.status, sent: failing.sent.map((m) => m.to) });
 } finally {
   for (const a of apps) await a.close().catch(() => undefined);
   rmSync(WORK, { recursive: true, force: true });

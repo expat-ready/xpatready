@@ -126,7 +126,7 @@ export class AnyDocuments {
       signers: [...signers.map((s) => ({ signerId: s.id, role: "CLIENT" as const, name: s.name })), ...(firmSigner ? [{ signerId: firmSigner.id, role: "FIRM" as const, name: firmSigner.name }] : [])] });
     // The link tokens, firm first (FO-3c's and FO-6's shape); only their sha256 is kept. A client signer's plain token stays
     // in memory until the email after the commit (part 3); the firm signer's is never emailed.
-    const plain = () => `${firmId.replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`;
+    const plain = () => `${firmId.toLowerCase().replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`;   // review note: as the retainer path
     const links = new Map(signers.map((s) => [s.id, plain()]));
     try {
       await this.db.$transaction(async (tx) => {
