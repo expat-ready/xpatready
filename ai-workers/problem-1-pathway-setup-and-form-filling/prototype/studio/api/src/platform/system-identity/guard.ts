@@ -122,11 +122,12 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     // R1.10 A4 (Lead 28): the reason is a field like any other: with the route's own schema read at the same time, one 422 names
     // every field that needs a change (an unknown one, a missing one, the reason), so a missing reason never hides the rest.
     const fields: Record<string, string> = {};
-    if (wantsReason && !notObject) {
+    if (!notObject) {
       // Only when the reason itself needs a change: with a good reason the route reads its own body in its own words and codes.
-      if (bodySchema && (tooLong || !reason)) { const r = bodySchema.safeParse(req.body); if (!r.success) Object.assign(fields, fieldsOf(r.error)); }
+      if (wantsReason && bodySchema && (tooLong || !reason)) { const r = bodySchema.safeParse(req.body); if (!r.success) Object.assign(fields, fieldsOf(r.error)); }
+      // A reason over its length is refused on every route that is sent one, as before (an optional reason too: breaker n2).
       if (tooLong) fields.reason = `A reason is at most ${REASON_MAX} characters.`;
-      else if (!reason) fields.reason = `This needs a written reason (up to ${REASON_MAX} characters).`;
+      else if (wantsReason && !reason) fields.reason = `This needs a written reason (up to ${REASON_MAX} characters).`;
       else delete fields.reason;   // the guard's reading of the reason (cleaned, counted by character) stands for it
     }
     const code = missing.length ? "MISSING_PERMISSION" : stale ? "STEP_UP_REQUIRED" : badId ? "NOT_FOUND" : notObject ? "INVALID"

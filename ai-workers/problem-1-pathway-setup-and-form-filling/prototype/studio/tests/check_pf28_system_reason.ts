@@ -8,7 +8,8 @@
 //   L  each refusal above writes exactly one audit line (REFUSED), and nothing else changes (the register, staff and firm
 //      tables' row counts).
 // Sample people of this run only; no model call (US$0). Run from prototype/ (never :4400):
-//   zsh studio/tools/isolated.sh runtime_pf28sys 4796 start PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh runtime_pf28sys 4796 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf28_system_reason.ts 4796 xr_studio_runtime_pf28sys
+//   zsh studio/tools/isolated.sh runtime_pf28sys 4796 start PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local && tsx studio/tests/check_pf28_system_reason.ts 4796 xr_studio_runtime_pf28sys
+// (the usage line run-suites.sh reads; by hand, stop the copy after: zsh studio/tools/isolated.sh runtime_pf28sys 4796 stop)
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
