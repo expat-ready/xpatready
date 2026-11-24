@@ -15,6 +15,7 @@ if [ -z "$want" ] || [ "${have%%.*}" != "${want%%.*}" ]; then
 fi
 [ -f package-lock.json ] || { echo "studio packages: no package-lock.json in $D"; exit 1; }
 hash=$( (sha256sum package-lock.json 2>/dev/null || shasum -a 256 package-lock.json) | cut -d' ' -f1)
+[ -n "$hash" ] || { echo "studio packages: no sha256sum or shasum to hash package-lock.json: nothing installed"; exit 1; }
 stamp=node_modules/.lock-sha256
 if [ ! -d node_modules ]; then why="node_modules missing"
 elif [ ! -f "$stamp" ]; then why="node_modules has no lock stamp (installed before this check)"

@@ -48,6 +48,12 @@ try {
   const e = copy(undefined, "99.0.0"); r = run(e);
   ok("D6 the PATH's Node is not package.json's engines major: nothing installed, exit 1", r.code === 1 && r.npm.length === 0 && /Node 99\.0\.0 needed/.test(r.out), r);
 
+  const cs = readFileSync(join(STUDIO, "..", "..", "product", "tools", "cloud-setup.sh"), "utf8");
+  ok("D9 cloud-setup.sh installs through deps-fresh.sh (the stamp start.sh reads), never its own node_modules check", /bash "\$STUDIO\/tools\/deps-fresh\.sh" "\$STUDIO"/.test(cs) && !/node_modules\/\.bin" \] && echo "already installed"/.test(cs), "cloud-setup.sh");
+  const h = copy(); const nosha = join(tmp, "nosha"); mkdirSync(nosha);
+  for (const b of ["bash", "node", "npm", "cut", "cat", "mkdir", "dirname"]) { const w = spawnSync("bash", ["-c", `command -v ${b}`], { encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } }).stdout.trim(); if (w && w.startsWith("/")) writeFileSync(join(nosha, b), `#!/bin/sh\nexec ${w} "$@"\n`), chmodSync(join(nosha, b), 0o755); }
+  r = run(h, { PATH: nosha });
+  ok("D10 no sha256sum or shasum: exit 1, nothing installed (an empty hash never matches an empty stamp)", r.code === 1 && r.npm.length === 0 && /no sha256sum or shasum/.test(r.out), r);
   // D7: start.sh's own package line on a copy whose lockfile gained a dependency after node_modules was installed.
   const start = readFileSync(join(STUDIO, "start.sh"), "utf8");
   const line = start.split("\n").find((l) => /npm ci|deps-fresh\.sh/.test(l) && !/^\s*#/.test(l)) ?? "";
