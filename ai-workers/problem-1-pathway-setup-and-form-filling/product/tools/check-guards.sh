@@ -28,6 +28,7 @@ TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
 TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
+TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
@@ -63,6 +64,32 @@ A348 rules html|product/tools/rules-settled.py|s/^    body = re.sub(.*/    pass/
 A348 rules wired|../../.github/workflows/pr-rules.yml|s/^\( *\)printf .*rules-settled.py" --files.*/\1true/|check-rules-settled.sh
 A348 rules unread|../../.github/workflows/pr-rules.yml|s/else echo "::warning title=Rules settled (A348)::the PR.*/else echo ok; fi/|check-rules-settled.sh
 3 own|product/tools/touch-overlap.py|s/^        if n in own:/        if False:/|check-touch-overlap.sh
+A351 b1 two|product/tools/same-cause.py|s/ if len({r\["run"\] for r in rs}) > 1}/}/|check-same-cause.sh
+A351 b1 once|product/tools/same-cause.py|s/^        if k not in fired:/        if len(rs) > 1:/|check-same-cause.sh
+A351 b1 words|product/tools/same-cause.py|s/by.setdefault(f"{s}.*{w}"/by.setdefault(s/|check-same-cause.sh
+A351 b1 fail row|product/tools/same-cause.py|s/(FAIL.failed twice)/(failed twice)/|check-same-cause.sh
+A351 b1 first try|product/tools/same-cause.py|s/^        if what == "failed twice" and .*/        if False:/|check-same-cause.sh
+A351 b1 not retried|product/tools/same-cause.py|s/^        w = re.split(.*/        w = why/|check-same-cause.sh
+A351 b1 named|product/tools/same-cause.py|s/ if NAMED.search(w) else ""$//|check-same-cause.sh
+A351 b1 errors|product/tools/same-cause.py|s/^NAMED = .*/NAMED = re.compile(r"FAIL +")/|check-same-cause.sh
+A351 b1 ids|product/tools/same-cause.py|s/ID.sub("#", w.strip())/w.strip()/|check-same-cause.sh
+A351 b1 12h|product/tools/same-cause.py|s/ if r.get("end", "9") >= since}/}/|check-same-cause.sh
+A351 b1 forget|product/tools/same-cause.py|s/^    fired = .*/    fired = dict(st["fired"])/|check-same-cause.sh
+A351 b1 whole|product/tools/same-cause.py|s/^        if not missing:/        if True:/|check-same-cause.sh
+A351 b1 left|product/tools/same-cause.py|s/^    if left or unread:/    if False:/|check-same-cause.sh
+A351 b1 unread|product/tools/same-cause.py|s/^            unread += 1; continue/            continue/|check-same-cause.sh
+A351 b1 blank|product/tools/same-cause.py|s/^    if blank:/    if False:/|check-same-cause.sh
+A351 b1 lost|product/tools/same-cause.py|s/^    for b in bad\[:3\]:/    for b in []:/|check-same-cause.sh
+A351 b1 memory|product/tools/same-cause.py|s/^    if why:/    if False:/|check-same-cause.sh
+A351 b1 inside|product/tools/same-cause.py|s/ for r in st\["runs"\].values())$/ for r in [])/|check-same-cause.sh
+A351 b1 batch|product/tools/same-cause.py|s/ if w\["head_branch"\].startswith("mergify.")\]$/]/|check-same-cause.sh
+A351 b1 green|product/tools/same-cause.py|s/^            if st\["ran"\]\[k\]:/            if True:/|check-same-cause.sh
+A351 b1 pages|product/tools/same-cause.py|s/^    for n in range(1, 11):/    for n in range(1, 2):/|check-same-cause.sh
+A351 b1 rerun|product/tools/same-cause.py|s/ and r.get("end") == w\["updated_at"\]:/:/|check-same-cause.sh
+A351 b1 gone|product/tools/same-cause.py|s/^    st\["runs"\] = {k: r for k, r in st\["runs"\].items() if k in .*/    pass/|check-same-cause.sh
+A351 b1 nopr|product/tools/same-cause.py|s/^        raise RuntimeError(f"no pull request.*/        p = [{"number": 0, "title": "", "body": ""}]/|check-same-cause.sh
+A351 b1 wired|product/tools/lead-watch.sh|s/^sc=/# sc=/|check-same-cause.sh
+A351 b1 ran|product/tools/lead-watch.sh|/same-cause.py did not run/d|check-same-cause.sh
 3 dot|product/tools/touch-overlap.py|s/re.sub(r"^(\\.\/)+", "", /(/|check-touch-overlap.sh
 3 run|product/tools/check-lane-preflight.sh|/check-touch-overlap.sh" 2>\&1)/d|check-touch-overlap.sh
 4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
