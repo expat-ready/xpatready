@@ -92,3 +92,76 @@ Reviewer: Opus 5.5, fresh context (I did not build it). Skills `screen-review` a
 Should, in the same round: m1 (record the gap), m2, m3, m4, m5.
 
 Reviewer: Block ba232f8bdff074081e533aaf8e9f0e32c268ec4a
+
+## Round 2: diff-only re-review (P-277) at 254a2b9da
+
+Reviewer: the same, 24 Nov 2026. Read: `git diff ba232f8bd 254a2b9da -- ':!*.md' ':!*.png'` (6 files, +71 / -20). Size against main's merge base: 651 added, 21 removed, under the 800 cap. The branch merges with `origin/main` cleanly, and the migration stamp is still later than main's newest (20261124032000). Journey: the round 2 section of `journey-test-reviewer-fo3v-part1-2026-11-24.md`, **9.5/10**.
+
+### Runs (never :4400)
+- **`check_fo3v_video.ts` at 254a2b9da:** 31/31, exit 0, about 6 s, on a scratch database.
+- **`check_pf12_walls.ts` at 254a2b9da:** 110/110, exit 0. "Every trigger function on a firm table runs as xr_wall_reader" now passes (it was red in round 1).
+- **`typecheck.mjs`:** no new errors (15 known; api and web).
+- **Mutation pass** (scratch worktree, each change reverted). Every mutation turns its line red:
+  - lock removed → m3 line;
+  - `if (asked === null) return null` restored → m4 line;
+  - `names(query)` removed → m7 line (and m3's audit count);
+  - old JS shape restored → the 15-link DW1 line;
+  - host-follows-`https://` check removed → the DW1 line (`https://evil.example\@…`);
+  - old DB regex restored → the m2 line;
+  - the URL put in the audit detail → both DW6 lines, including the real-AuditPort one.
+- **Database probe** (a scratch database with `en_US.UTF-8` collation, so not C). `fo_video_link_ok`:
+  - refuses U+2028, NBSP, U+200B, `é`, full-width `Ａ`, DEL, user:pass, an empty userinfo (`https://@…`), a backslash, each of `" < > ^ \` { | }`, and 2,049 bytes;
+  - takes Zoom, Teams (with `@thread.v2` in the path), Jitsi, `[1]` in the query, and 2,048 bytes.
+- **Trigger as the product runs it.** On a fully migrated scratch database:
+  - the function is `prosecdef = t`, owned by `xr_wall_reader`, with ACL `{xr_wall_reader=X/xr_wall_reader}` (PUBLIC revoked);
+  - as `xr_app` with firm A set, `UPDATE platform_staff SET status='DEACTIVATED'` drops only that person's row, and firm B's row stays;
+  - `xr_app` calling the function directly gets "permission denied".
+- **API journey** on copy `runtime_rev` :4436 (stopped afterwards, database dropped). 8 journeys, all hold, including deactivation through `POST /api/platform/staff/:id/deactivate`.
+
+### The builder's claims
+| Claim | Verified | How |
+|---|---|---|
+| M1 trigger SECURITY DEFINER, owner `xr_wall_reader`, PUBLIC revoked | Yes | `pg_proc` read, PF-12 guard green, the `xr_app` deactivation above |
+| Breaker m1: `linkOk` printable ASCII; refuses `" < > \ ^ \` { \| }`, user:pass, a host that is not dotted labels or does not start right after `https://` | Yes | The set is exactly `!#-;=?-[]_a-z~` (A-Z come from `?-[`). Probe below |
+| Breaker m2: DB check by byte ranges, `COLLATE "C"`, refuses userinfo | Yes, with n6 | Holds under en_US collation; host shape is not checked in the DB |
+| Breaker m3: per-person advisory lock | Yes | 10 two-tab rounds, 0 lost clears; 20 first saves give 1 row and 2 audit lines; the mutation bites |
+| m5 / breaker m4: `sourceChoice: null` is not kept while a source exists | Yes | J4: the answer and GET say `MY_LINK`; the mutation bites |
+| Breaker m7: id-like keys in the body or the query → 403 on GET and PUT | Yes, with n7 | `?staffId`, `?staff_id`, `?userId`, `?ID`, `id`, `StaffId`, `STAFF_ID` all 403 |
+| m2: DW6 reads `audit_event` through the real AuditPort | Yes, narrow (n8) | One settings save written through `auditEvent`; the leak scan is over all `audit_event` rows |
+| m4: trigger named on `platform.prisma` | Yes | `platform.prisma:261` |
+| Nit: `booking.video_link_removed` on a host change that drops a link | In code, untested (n9) | `booking/service.ts:958-960` |
+| Tests: new fail cases | Yes | 5 new lines, each one turns red under its mutation |
+
+### Holes in the new regexes
+I looked for a good link that is refused and for a look-alike that still passes. None at Major or Minor level.
+- **Real links pass** (JS probe and HTTP journey): Zoom with `pwd=`, Meet, Teams encoded and Teams with a raw `@thread.v2`, Teams live, Webex, Whereby, Jitsi `My_Room~1`, an upper-case host, `:443`, a fragment, an IPv4 host, a `xn--` host.
+- **Look-alikes and parser tricks refused:**
+  - `\@`, `@host`, `:@host`, `host@evil`, `%2F@`, `%40`;
+  - a percent-encoded host (`zo%6Fm.us`, because the host must start right after `https://`);
+  - a trailing-dot host, `localhost`, `[::1]`, `;` or `_` in the host, `0x7f.1` and `1.2` (the URL parser rewrites them, so the start check fails);
+  - zero-width and direction marks, NBSP, non-ASCII hosts.
+- **Refused but arguably fine** (no finding):
+  - `HTTPS://` and `Https://`;
+  - a leading or trailing space from a paste. Part 1b's panel should trim before it sends (note for 1b, not this PR).
+  - `https://my_host.example`.
+- **Passes, harmless:** `https://-.example/` (a hyphen-only label), and `https://evil.example/@zoom.us`. All parsers read the same host there, so there is no parser differential. The breaker's backslash case was a differential, and it is closed.
+
+### Round 2 nits (none block)
+- **n6.** The migration comment says the database check is "the same as the API's linkOk", but it does not check the host: `https:///zoom.us` and `https://./x` pass the database (true) and fail the API. This is defence in depth only, as the API is the one writer today. Before FO-3vm adds a second writer, either say "the same characters" in the comment or add the host shape (`^https://[a-z0-9-]+(\.[a-z0-9-]+)+([:/?#]|$)` with `~*`).
+- **n7.** The id refusal works from a list. `?staffId[]=`, `?staff-id=` and `?ownerId=` are ignored, and the answer is 200 for the caller's own row. No request reached another person's row (J3 edge).
+- **n8.** DW6's real-port line covers one settings save, made by calling `VideoService` directly. The booking lines (`booking.video_link_set`) through the real port are covered only by my journeys (round 1 J9, round 2 J8: no link in `audit_event` or `api.log`). This is enough for m2.
+- **n9.** No check names `booking.video_link_removed`, so removing that line would stay green. Add an assertion where DW5 moves a booking to a host with no link.
+
+### Open items carried, as questions in the PR (not re-scored)
+- **Breaker m5** (a deactivated host's link stays on bookings already made): Minor. It is for the row owner; the brief covers only confirmation.
+- **My m1 / breaker m6** (the host's item has no label on Home): Should. Record it as a gap for part 1b and FO-3vm, as asked in round 1.
+- **My m3** (§12 tested by a direct status update): Should, still open in the suite. My round 2 J7 and the `xr_app` SQL probe show the route path works with the SECURITY DEFINER trigger. The suite should still drive the route, so CI catches a future change in how the route writes.
+
+### Could not check
+- The PR body, its questions and CI for this head (no GitHub access here).
+- `check_fo3w_booking_browser.ts` (no Playwright browser).
+- Databases `xr_fo3v_diff`, `xr_studio_runtime_fo3v` and `xr_studio_fo3v_30873` exist on :54329 and are not mine. I left them.
+
+**Verdict: Approve** for `254a2b9dad327827d3f49c66146e54207a070827`. M1 is fixed and verified, and no Blocker or Major is open. Should (next round or part 1b): m1 recorded as a gap, m3 through the route, n6 to n9.
+
+Reviewer: Approve 254a2b9dad327827d3f49c66146e54207a070827

@@ -72,3 +72,19 @@ Reviewer role, 24 Nov 2026. No page in this part: the My account → Video panel
 - An intended user's unaided walk (D17 and D20 stay with the founder).
 - `check_fo3w_booking_browser.ts` (no Playwright browser on this machine).
 - The PR body (no GitHub access from this session).
+
+## Round 2 at 254a2b9da (diff-only re-review)
+Copy `runtime_rev` on :4436 (`PLATFORM_IDENTITY=local`, fresh database, Sample seed), stopped afterwards; :4400 never used. Script: scratchpad `fo3v_r2.mjs` (not committed). US$0, no model call. All 8 journeys hold.
+- **R1, main path, real links** (Case Officer). 8 pasted provider links are saved as typed, each 200 in 12-28 ms: Zoom with `pwd=`, Meet, Teams (encoded), Teams live, Webex, Whereby, Jitsi `My_Room~1`, an upper-case host.
+- **R2, error.** 12 look-alike or broken links, each 422 "Enter a full link starting with https://" with the row unchanged:
+  - parser tricks: `\@`, `@host`, `host@evil`, `zo%6Fm.us`;
+  - hidden marks: zero-width, right-to-left, markup;
+  - bad shape: `https:///…`, `https://./x`, a trailing space, a non-ASCII host, `localhost`.
+- **R3, wrong person.** Another person's id gives 403 `OWN_RECORD_ONLY` with nothing changed in 7 shapes: `?staffId` on PUT; `?staff_id`, `?userId` and `?ID` on GET; `id`, `StaffId` and `STAFF_ID` in the body. Edge: `staffId[]`, `staff-id` and `ownerId` are ignored, giving 200 for the caller's own row only (review n7).
+- **R4, alternate.** `sourceChoice: null` with a link: the answer and GET say `MY_LINK`.
+- **R5, recovery, two tabs.** One tab clears the link while one saves the choice, 10 rounds: the cleared link never came back (0 of 10).
+- **R6, recovery, double click.** 20 first saves at once: 20 × 200, one row, two audit lines, slowest 124 ms.
+- **R7, screen boundary to Team.** The Owner deactivates the second representative through `POST /api/platform/staff/:id/deactivate`: 200, her row went from 1 to 0, and the others' rows are untouched.
+- **R8, data underneath.** No saved or tried link in any `audit_event` row. None in the copy's `api.log` either (106 lines: 72 × 200, 7 × 403, 14 × 422 on `/me/video`).
+
+Score: unchanged at **9.5 / 10, pass**. The ½ is still "next step obvious": the host's item has no words (F1, open as a question for part 1b and FO-3vm). Every other criterion holds as in round 1, and R2 to R6 strengthen "error recovery" and "correct data". Not tested in round 2: the same list as round 1.
