@@ -14,25 +14,32 @@ import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { Retainers } from "./service.ts";
 
 /** The body that asks for the e-signed files: exactly one of the two, nothing else (PF-28: 422 named, before any look-up). */
-export const ESignedLinkBody = strict({ file: z.enum(["signed", "evidence"], { error: "signed or evidence." }) });
+export const ESignedLinkBody = strict({ file: z.enum(["signed", "evidence"]) });   // the route sends only these two here
 /** Whether a download-link body asks for an e-signed file (the route sends every other body to `Retainers.fileKey`). */
 export const asksESigned = (b: unknown): boolean => !!b && typeof b === "object" && ["signed", "evidence"].includes((b as { file?: unknown }).file as string);
 /** The keys part 3 stores (`signing/service.ts`): `signing/<request id>/<attempt>/sealed.pdf` and `…/audit.pdf`. */
 const KEY = /^signing\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/[0-9a-f]+\/(?:sealed|audit)\.pdf$/;
+const LIVE: string[] = ["SENT", "VIEWED", "CLIENT_SIGNED"];   // a retainer whose signing can still finish
 const notFile = (): never => problem(404, "Not found", "No such file in your firm.", { code: "NOT_FOUND" });
 
 export class RetainerSignedFiles {
   constructor(private readonly db: PrismaClient, private readonly retainers: Retainers) {}
 
   /** The key of the sealed copy (`signed`) or the audit file (`evidence`) of a retainer the person sees, once everyone
-   *  has signed it electronically. Order: malformed id 404 → body 422 → not visible 404 → not e-signed 409 NOT_SIGNED. */
+   *  has signed it electronically. Order: malformed id 404 → body 422 → not visible 404 → no e-signed copy 409: a live
+   *  retainer (sent, viewed, client signed) NOT_SIGNED "… yet"; any other (a draft, signed on paper, withdrawn, declined,
+   *  expired, or a consultation agreement, whose signed copy is FO-3c's) NO_E_SIGNED_COPY (breaker m1, m2 on #3536). */
   async fileKey(ctx: StaffContext, id: string, body: unknown): Promise<string> {
     const rid = idParam(id, "retainer");
     const { file } = parseInput(ESignedLinkBody, body ?? {});
     await this.retainers.assertFileVisible(ctx, `retainers/${rid}/`);   // the retainer's own read rule (404 "No such file")
     const q = await this.db.foSignatureRequest.findFirst({ where: { firmId: ctx.firmId, documentKind: "RETAINER", documentId: rid, status: "SIGNED", evidence: { isNot: null } },
       select: { evidence: { select: { sealedFileKey: true, auditFileKey: true } } }, orderBy: { endedAt: "desc" } });
-    if (!q?.evidence) return problem(409, "Not possible now", "This agreement is not signed electronically by everyone yet.", { code: "NOT_SIGNED" });
+    if (!q?.evidence) {
+      const r = await this.db.foRetainer.findFirst({ where: { firmId: ctx.firmId, id: rid }, select: { kind: true, status: true } });
+      return r?.kind === "RETAINER" && LIVE.includes(r.status) ? problem(409, "Not possible now", "This agreement is not signed electronically by everyone yet.", { code: "NOT_SIGNED" })
+        : problem(409, "Not possible now", "This agreement has no electronically signed copy here.", { code: "NO_E_SIGNED_COPY" });
+    }
     return file === "signed" ? q.evidence.sealedFileKey : q.evidence.auditFileKey;
   }
 

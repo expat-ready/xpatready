@@ -137,6 +137,9 @@ try {
   const malformed = await refusal(() => link(R, "not-a-uuid", { file: "evidence", junk: 1 }));
   ok("FO-6 4d fail: a malformed retainer id → the one 404, before the body is read", malformed?.status === 404 && malformed.body.code === "NOT_FOUND", malformed);
   const unknown = await refusal(() => link(R, randomUUID(), { file: "signed" }));
+  const orderX = await refusal(() => link(RB, r1, { file: "signed", junk: 1 })), orderU = await refusal(() => link(R, randomUUID(), { file: "evidence", junk: 1 }));
+  ok("FO-6 4d fail (review M3, PF-28): a bad body is 422 named before the read rule, on another firm's retainer and on an unknown id (never their 404)",
+    orderX?.status === 422 && orderU?.status === 422 && JSON.stringify(orderX.body).includes("junk"), [orderX, orderU]);
   ok("FO-6 4d fail: an unknown retainer id → 404", unknown?.status === 404, unknown);
 
   // ------------------------------------------------------------- D4: who may ask, and the second check at download
@@ -154,8 +157,11 @@ try {
 
   // ------------------------------------------------------------- D5: only a retainer's stored evidence goes through this route
   const forge = async (key: string) => refusal(() => fetchFile(R, `/api/front-office/files/${links.sign(A, R.staffId, key, clock.now()).token}`));
-  const wrongAttempt = await forge(ev[0].replace(/\/[0-9a-f]+\/sealed\.pdf$/, "/abcdef/sealed.pdf"));
-  ok("FO-6 4d fail: a signing key that is not the stored evidence (another attempt's folder) → 404", wrongAttempt?.status === 404, wrongAttempt);
+  // Review M1: part 3 stores the files before its transaction (signing/service.ts), so a refused or repeated completed
+  // leaves real files in other attempt folders of the same request.
+  const stray = await files.put(A, ev[0].replace(/\/[0-9a-f]+\/sealed\.pdf$/, "/abcdef/sealed.pdf"), new Uint8Array(Buffer.from("%PDF-1.4\n% another attempt (Sample)\n%%EOF\n")), "application/pdf");
+  const wrongAttempt = await forge(stray.key);
+  ok("FO-6 4d fail (review M1): a file stored in another attempt folder of the same request is not the evidence → 404", !!(await files.get(A, stray.key)) && wrongAttempt?.status === 404, wrongAttempt);
   const p2 = await prospect("Omar");
   const PDF = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n% Sample addendum (FO-6 4d), not a real document\ntrailer << /Root 1 0 R >>\n%%EOF\n", "latin1");
   const other = await docs.send(R, { title: "Addendum (Sample)", prospectId: p2.id, signerPersonIds: [p2.personId] }, { bytes: new Uint8Array(PDF), size: PDF.length, name: "addendum.pdf" }) as { id: string };
@@ -169,7 +175,29 @@ try {
   ok("FO-6 4d fail: an uploaded document's original through the retainer's files route → 404", original?.status === 404, original);
   const pOff = await prospect("Pia"), rOff = await draft(pOff);
   const offline = await refusal(() => link(R, rOff, { file: "signed" }));
-  ok("FO-6 4d fail: a retainer never signed electronically (a draft) → 409 NOT_SIGNED; its paper copy stays file \"signed-offline\"", offline?.status === 409 && offline.body.code === "NOT_SIGNED", offline);
+  ok("FO-6 4d fail (breaker m1): a retainer that is not out for signing (a draft) → 409 NO_E_SIGNED_COPY \"has no electronically signed copy here\" (no \"yet\"); a paper copy stays file \"signed-offline\"", offline?.status === 409 && offline.body.code === "NO_E_SIGNED_COPY" && /has no electronically signed copy here/.test(String(offline.body.detail)), offline);
+
+  // Review M2, breaker m2: a consultation agreement is an fo_retainer row of kind CONSULTATION whose request is kind
+  // CONSULTATION naming that row (booking/consultation-agreement/service.ts); its signed copy is FO-3c's own route. Made
+  // row by row as that service writes them, signed in the signing tables' own order, its files stored as part 3 stores them.
+  const ctpl = await svc.uploadTemplate(R, { name: "FO-6 4d consultation (Sample)", kind: "CONSULTATION" }, { bytes: buildDocx(["Client {client.name}"]), size: 1000 });
+  const pc = await prospect("Quin"), rc = (await svc.draft(R, pc.id, { kind: "CONSULTATION", templateId: ctpl.id })).id, qc = randomUUID();
+  sql(`insert into fo_signature_request (id, firm_id, document_kind, document_id, document_version_id, document_version, provider, provider_document_id, sent_by, sent_at, expires_at, updated_at)
+       select '${qc}', firm_id, 'CONSULTATION', retainer_id, id, 1, 'FAKE', 'fake-consult-${qc}', '${R.staffId}', now(), now() + interval '14 days', now() from fo_retainer_version where retainer_id = '${rc}' and n = 1`);
+  sql(`insert into fo_signer (id, firm_id, request_id, role, sign_order, person_id, link_token_sha256) values (gen_random_uuid(), '${A}', '${qc}', 'CLIENT', 1, '${pc.personId}', '${sha(Buffer.from(`c-${qc}`))}')`);
+  sql(`insert into fo_signer (id, firm_id, request_id, role, sign_order, staff_id, link_token_sha256) values (gen_random_uuid(), '${A}', '${qc}', 'FIRM', 2, '${R.staffId}', '${sha(Buffer.from(`f-${qc}`))}')`);
+  sql(`update fo_retainer_version set sent_at = now() where retainer_id = '${rc}' and n = 1; update fo_retainer set status = 'SENT' where id = '${rc}'`);   // as FO-3c's send
+  const cLive = await refusal(() => link(R, rc, { file: "signed" }));
+  ok("FO-6 4d fail (breaker m2): a consultation agreement out for signing → 409 NO_E_SIGNED_COPY (never \"yet\": its copy is not on this link)", cLive?.status === 409 && cLive.body.code === "NO_E_SIGNED_COPY", cLive);
+  for (const role of ["CLIENT", "FIRM"]) sql(`update fo_signer set consented_at = now(), consent_text_version = '${CONSENT}', signed_at = now() where request_id = '${qc}' and role = '${role}'`);
+  sql(`update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${qc}'`);
+  const cs = await files.put(A, `signing/${qc}/c0ffee/sealed.pdf`, new Uint8Array(PDF), "application/pdf"), ca = await files.put(A, `signing/${qc}/c0ffee/audit.pdf`, new Uint8Array(PDF), "application/pdf");
+  sql(`insert into fo_signing_evidence (id, firm_id, request_id, sealed_file_key, sealed_sha256, audit_file_key, audit_sha256, consent_text_version) values (gen_random_uuid(), '${A}', '${qc}', '${cs.key}', '${cs.sha256}', '${ca.key}', '${ca.sha256}', '${CONSENT}')`);
+  sql(`update fo_signature_request set status = 'SIGNED', ended_at = now() where id = '${qc}'`);
+  const cSigned = await refusal(() => link(R, rc, { file: "signed" })), cSealed = await forge(cs.key), cAudit = await forge(ca.key);
+  ok("FO-6 4d fail (review M2): an e-signed consultation agreement (its CONSULTATION request SIGNED, with evidence) → 409 NO_E_SIGNED_COPY, no link",
+    sql(`select status from fo_signature_request where id = '${qc}'`) === "SIGNED" && cSigned?.status === 409 && cSigned.body.code === "NO_E_SIGNED_COPY", cSigned);
+  ok("FO-6 4d fail (review M2): a link naming that consultation agreement's sealed or audit file → 404 at the retainer's files route", cSealed?.status === 404 && cAudit?.status === 404, [cSealed, cAudit]);
 
   // ------------------------------------------------------------- D6: the link's other files are unchanged (Retainers.fileKey)
   const v1 = await link(R, r1, { version: 1 }), fv = await fetchFile(R, v1.url);
