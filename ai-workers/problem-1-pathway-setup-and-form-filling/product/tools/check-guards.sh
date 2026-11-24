@@ -24,9 +24,11 @@ TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-67
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
 TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
-TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
+TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
+TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
+TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 bad=0
 if [ "$part" = 1 ]; then
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
@@ -57,6 +59,21 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 5|product/tools/factory-board.sh|s/; gh() { bash "\$TOOLS\/gh.sh" "\$@"; }//|check-gh-fallback.sh
 6|product/tools/check-docs.sh|/STATE TOO BIG/d|check-state-page.sh
+A348 cap standbys|product/tools/capacity-watch.py|s/^    elif int(v) < MIN_STANDBYS:/    elif False:/|check-capacity-watch.sh
+A348 cap given|product/tools/capacity-watch.py|s/^    if not (v.isascii.*/    if False:/|check-capacity-watch.sh
+A348 cap disk|product/tools/capacity-watch.py|s/^    if gb < START_GB:/    if False:/|check-capacity-watch.sh
+A348 cap remote|product/tools/capacity-watch.py|s/^    miss = len(fs) - .*/    miss = 0/|check-capacity-watch.sh
+A348 cap odd|product/tools/capacity-watch.py|s/miss = len(fs) - len(plain) + /miss = /|check-capacity-watch.sh
+A348 cap dead|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--remotes=origin", "--stdin"/|check-capacity-watch.sh
+A348 cap local|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--branches", "--stdin"/|check-capacity-watch.sh
+A348 cap copy|product/tools/capacity-watch.py|s/^    if any(os.path.basename(p) == ".git".*/    if False:/|check-capacity-watch.sh
+A348 cap whole|product/tools/capacity-watch.py|s/os.walk(d, onerror=stop)/os.walk(d)/|check-capacity-watch.sh
+A348 cap age|product/tools/capacity-watch.py|s/ or now - newest < o.age.*/:/|check-capacity-watch.sh
+A348 cap ctime|product/tools/capacity-watch.py|s/st.st_mtime, st.st_ctime/st.st_mtime/|check-capacity-watch.sh
+A348 cap cut|product/tools/capacity-watch.py|s/^    if c\["cut"\]:/    if False:/|check-capacity-watch.sh
+A348 cap cr|product/tools/capacity-watch.py|s/and not set(.*) & set(p)\]/]/|check-capacity-watch.sh
+A348 cap dark|product/tools/capacity-watch.py|s/^    if c.get("dark"):/    if False:/|check-capacity-watch.sh
+A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 7|product/tools/check-docs.sh|s/if m > 30:/if False:/|check-state-page.sh
 7 mine|product/tools/check-docs.sh|s/^  mine=1; c=""$/  mine=0; c=""/|check-state-page.sh
 7 read|product/tools/check-docs.sh|s/^  if \[ -z "\$u" \]; then msg=/  if false; then msg=/|check-state-page.sh
@@ -470,28 +487,44 @@ OMG step|product/tools/own-migration-guard.py|s/^                nxt = next((j f
 OMG steploop|product/tools/own-migration-guard.py|s/^                            and any(k > j and d2 \& set(dbs) for k, d2 in loop_lines(lines, n2))), len(lines))/                            ), len(lines))/|check-own-migration-guard.sh
 OMG stepdb|product/tools/own-migration-guard.py|s/^                            and dbs and set(PSQLDB.findall/                            and True or set(PSQLDB.findall/|check-own-migration-guard.sh
 OMG late|product/tools/own-migration-guard.py|s/^                if pre and nxt < len(lines):/                if False:/|check-own-migration-guard.sh
-A348 cap standbys|product/tools/capacity-watch.py|s/^    elif int(v) < MIN_STANDBYS:/    elif False:/|check-capacity-watch.sh
-A348 cap given|product/tools/capacity-watch.py|s/^    if not (v.isascii.*/    if False:/|check-capacity-watch.sh
-A348 cap disk|product/tools/capacity-watch.py|s/^    if gb < START_GB:/    if False:/|check-capacity-watch.sh
-A348 cap remote|product/tools/capacity-watch.py|s/^    miss = len(fs) - .*/    miss = 0/|check-capacity-watch.sh
-A348 cap odd|product/tools/capacity-watch.py|s/miss = len(fs) - len(plain) + /miss = /|check-capacity-watch.sh
-A348 cap dead|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--remotes=origin", "--stdin"/|check-capacity-watch.sh
-A348 cap local|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--branches", "--stdin"/|check-capacity-watch.sh
-A348 cap copy|product/tools/capacity-watch.py|s/^    if any(os.path.basename(p) == ".git".*/    if False:/|check-capacity-watch.sh
-A348 cap whole|product/tools/capacity-watch.py|s/os.walk(d, onerror=stop)/os.walk(d)/|check-capacity-watch.sh
-A348 cap age|product/tools/capacity-watch.py|s/ or now - newest < o.age.*/:/|check-capacity-watch.sh
-A348 cap ctime|product/tools/capacity-watch.py|s/st.st_mtime, st.st_ctime/st.st_mtime/|check-capacity-watch.sh
-A348 cap cut|product/tools/capacity-watch.py|s/^    if c\["cut"\]:/    if False:/|check-capacity-watch.sh
-A348 cap cr|product/tools/capacity-watch.py|s/and not set(.*) & set(p)\]/]/|check-capacity-watch.sh
-A348 cap dark|product/tools/capacity-watch.py|s/^    if c.get("dark"):/    if False:/|check-capacity-watch.sh
-A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
+A348 retry bot|product/tools/retry-watch.py|s/(c.get("user") or {}).get("login") != "github-actions\[bot\]"/False/|check-retry-watch.sh
+A348 retry phrase|product/tools/retry-watch.py|s/ or not PHRASE.search(b):/:/|check-retry-watch.sh
+A348 retry plain|product/tools/retry-watch.py|s/^    for l in PLAIN.findall(body):/    for l in []:/|check-retry-watch.sh
+A348 retry unread|product/tools/retry-watch.py|s/in names or \["(no suite read)"\]:/in names:/|check-retry-watch.sh
+A348 retry page|product/tools/retry-watch.py|s/page = page + 1 if last == since else 1/page = page + 1; last = since/|check-retry-watch.sh
+A348 retry second|product/tools/retry-watch.py|s/page = page + 1 if last == since else 1/page = 1/|check-retry-watch.sh
+A348 retry cut|product/tools/retry-watch.py|s/^        if not whole:/        if False:/|check-retry-watch.sh
+A348 retry keep|product/tools/retry-watch.py|s/"found": found}, open/"found": {}}, open/|check-retry-watch.sh
+A348 retry memory|product/tools/retry-watch.py|s/^    if why:/    if False:/|check-retry-watch.sh
+A348 retry line|product/tools/retry-watch.py|s/^FIX = .*/FIX = re.compile(r"Retry fix\\s*:\\s*(.+)")/|check-retry-watch.sh
+A348 retry hidden|product/tools/retry-watch.py|s/HIDDEN.sub("", (p/str((p/|check-retry-watch.sh
+A348 retry closed|product/tools/retry-watch.py|s/^            if p\["state"\] == "open" or m:/            if True:/|check-retry-watch.sh
+A348 retry back|product/tools/retry-watch.py|s/ if (m is None or m >= t) and not/ if not/|check-retry-watch.sh
+A348 retry own|product/tools/retry-watch.py|s/ and not (m and str(n) in prs)//|check-retry-watch.sh
+A348 retry search|product/tools/retry-watch.py|s/^        n += 1$/        return out, ""/|check-retry-watch.sh
+A348 retry wired|product/tools/lead-watch.sh|s/^rw=/# rw=/|check-retry-watch.sh
+A348 retry ran|product/tools/lead-watch.sh|/retry-watch.py did not run/d|check-retry-watch.sh
 A334 order|product/tools/app-view-check.sh|s/ -k1,1nr -k2,2nr)$/ -k1,1nr)/|check-lead-watch-idle.sh
 A334 cloud|product/tools/app-view-check.sh|s/^  lane = (\$0 ~ \/ · cloud · /  lane = (\$0 ~ \/ · /|check-lead-watch-idle.sh
 A334 first|product/tools/night-checklist.py|s/^    rows.sort(key=lambda r: (r\[0\], r\[1\]))$/    rows.sort(key=lambda r: r[1])/|check-lead-watch-idle.sh
 A334 proof|product/tools/night-checklist.py|s/^            done = p\["pr"\] in merged$/            done = True/|check-lead-watch-idle.sh
 A334 prose|product/tools/night-checklist.py|s/ from ", s)$/", s) or re.search(r"\\(#(\\d+)\\)", s)/|check-lead-watch-idle.sh
 A334 brackets|product/tools/app-view-check.sh|s/^  rs = why; gsub.*/  rs = why/|check-lead-watch-idle.sh
-A334 wired|product/tools/lead-watch.sh|/night-checklist.py" 2>&1); echo/d|check-lead-watch-idle.sh'
+A334 wired|product/tools/lead-watch.sh|/night-checklist.py" 2>&1); echo/d|check-lead-watch-idle.sh
+A348 act|product/tools/proof-number.py|s/^    if apps and rp.*/    if False:/|check-proof-number.sh
+A348 4h|product/tools/proof-number.py|s/^HOURS = 4/HOURS = 0/|check-proof-number.sh
+A348 ist|product/tools/proof-number.py|s/^    mid = now.astimezone(fm.IST).replace/    mid = now.replace/|check-proof-number.sh
+A348 streak|product/tools/proof-number.py|s/map(fm.proven_at, hist.values())/[ev[-1] for ev in hist.values()]/|check-proof-number.sh
+A348 shallow|product/tools/proof-number.py|s/^    shallow = set(open.*/    shallow = set()/|check-proof-number.sh
+A348 live|product/tools/proof-number.py|s/^    if live != .*/    if False:/|check-proof-number.sh
+A348 first|product/tools/proof-number.py|s/git("log", "--first-parent", "-s",/git("log", "-s",/|check-proof-number.sh
+A348 app|product/tools/proof-number.py|s/"web.src", //|check-proof-number.sh
+A348 paths|product/tools/proof-number.py|s/^        if not git("ls-tree".*/        if False:/|check-proof-number.sh
+A348 edge|product/tools/proof-number.py|s/^    if today is None or rp.*/    if False:/|check-proof-number.sh
+A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 11, 30/RELEASE_END = datetime(2026, 12, 13/|check-proof-number.sh
+A348 fetch|product/tools/lead-watch.sh|/origin.main not fetched/d|check-proof-number.sh
+A348 ran|product/tools/lead-watch.sh|/proof-number.py did not run/d|check-proof-number.sh
+A348 wired|product/tools/lead-watch.sh|s/^pn=/# pn=/|check-proof-number.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
