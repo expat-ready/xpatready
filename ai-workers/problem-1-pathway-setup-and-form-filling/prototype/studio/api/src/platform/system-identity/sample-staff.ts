@@ -3,6 +3,7 @@
 // Lead 26's terms: only where PLATFORM_ENVIRONMENT=local and PLATFORM_SYSTEM_IDENTITY=local (the loader already refuses the
 // stand-in anywhere else at start-up, settings.ts); called anywhere else it throws and writes nothing; people labelled
 // Sample; no password, secret or token here (the stand-in signs in by email and issues its token per sign-in).
+// It answers how many it added, never who: a start-up line holds no email (SA-11 BR-16; Lead 28 on #3470).
 // Idempotent: adds only who is missing by email, never changes an existing person's roles or status; two start-ups at
 // once on one database both carry on (the email's unique key decides who adds the person).
 import type { PrismaClient } from "@prisma/client";
@@ -25,16 +26,16 @@ export function sampleSystemStaffDecision(c: Settings): { run: boolean; why: str
   return { run: true, why: "PLATFORM_SYSTEM_IDENTITY=local (local)" };
 }
 
-/** Adds the Sample staff who are missing; throws (writing nothing) unless the decision allows it. */
-export async function seedSampleSystemStaff(db: PrismaClient, c: Settings): Promise<{ added: string[] }> {
+/** Adds the Sample staff who are missing and says how many; throws (writing nothing) unless the decision allows it. */
+export async function seedSampleSystemStaff(db: PrismaClient, c: Settings): Promise<{ added: number }> {
   const d = sampleSystemStaffDecision(c);
   if (!d.run) throw new SampleStaffRefused(`Sample ExpatReady staff not seeded: ${d.why}`);
-  const added: string[] = [];
+  let added = 0;
   for (const p of SAMPLE_SYSTEM_STAFF) {
     if (await db.platSystemStaff.findUnique({ where: { email: p.email }, select: { id: true } })) continue;
     try {
       await db.platSystemStaff.create({ data: { email: p.email, displayName: p.displayName, grants: { create: [{ roleCode: p.role }] } } });
-      added.push(p.email);
+      added++;
     } catch (e) {
       // Two start-ups on one database at once (break m1): the other added this person first; the email is unique.
       if ((e as { code?: unknown })?.code !== "P2002") throw e;
