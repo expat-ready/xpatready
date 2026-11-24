@@ -70,7 +70,9 @@ const { fakeAlerts } = await import("../ports/alert.ts");
 const { FakeClock } = await import("../ports/clock.ts");
 const { fakeJobs } = await import("../ports/jobs.ts");
 const { sha256Hex } = await import("../ports/files.ts");
-const { BREACH_MESSAGES, BREACH_WORDS } = await import("../api/src/platform/register/breaches/service.ts") as Record<string, unknown> & typeof import("../api/src/platform/register/breaches/service.ts");
+const { runContract } = await import("../ports/contracts/contract.ts");
+const { messageWordsPortContract } = await import("../ports/contracts/message-words-port.contract.ts");
+const { BREACH_MESSAGES, BREACH_WORDS, WORDS_UNREADABLE } = await import("../api/src/platform/register/breaches/service.ts") as Record<string, unknown> & typeof import("../api/src/platform/register/breaches/service.ts");
 const breaches = (await import("../api/src/features/platform-register-breaches.ts")).default;
 const holds = (await import("../api/src/features/platform-register-holds.ts")).default;
 const requests = (await import("../api/src/features/platform-register-requests.ts")).default;
@@ -99,7 +101,7 @@ try {
   const clock = new (class extends PlatformClock { t = Date.now(); override now() { return this.t; } })();
   const firmLocal = new LocalIdentity("pf21rs-r0-firm-standin-key-0123456789ab", () => clock.now());
   const systemLocal = new SystemLocalIdentity("pf21rs-r0-system-standin-key-012345678", () => clock.now());
-  const keep = (p: unknown) => !(typeof p === "object" && p !== null && "provide" in p && [BREACH_MESSAGES, BREACH_WORDS, DATA_REQUEST_DAILY].includes((p as { provide: unknown }).provide));
+  const keep = (p: unknown) => !(typeof p === "object" && p !== null && "provide" in p && ([BREACH_MESSAGES, BREACH_WORDS, DATA_REQUEST_DAILY] as unknown[]).includes((p as { provide: unknown }).provide));
   @Module({ controllers: [PlatformIdentityController, SystemIdentityController, ...breaches.controllers, ...holds.controllers, ...requests.controllers] as never[],
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, SystemIdentity, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard },
@@ -175,6 +177,12 @@ try {
     oddOut = await words.storedWords(firmA, odd).then((v) => ({ v }), (e) => ({ e: String(e) }));
   }
   ok("R0-2 fail (break m1): a stored body that matches its hash but is not a JSON object gives no words (null), not an error", typeof oddOut === "object" && oddOut !== null && "v" in oddOut && (oddOut as { v: unknown }).v === null, oddOut);
+  // PF-0c: the port's shared contract, run by its real adapter (a changed stored message: firm A's second recipient's, above).
+  await runContract(messageWordsPortContract, "Messages", () => ({ port: messages, firmId: firmA, outboxId: nA.body.recipients[0].outboxId, words: wantA, otherFirmId: firmB, changedOutboxId: odd ?? "" }), ok);
+  // Review m3: a stored message whose file is gone gives no words and the note (the breach still reads, 200).
+  rmSync(join(files.root, firmB, keyB)); rmSync(join(files.root, firmB, `${keyB}.meta`), { force: true });
+  const goneRead = await call(base, "GET", `/api/system/register/breaches/${id}`, { token: ownerT }), gone = noticeOf(goneRead, firmB);
+  ok("R0-1 fail (review m3): a stored message whose file is missing gives no words and the note; the breach still reads (200)", goneRead.status === 200 && gone.subject === null && gone.text === null && gone.wordsNote === WORDS_UNREADABLE, { status: goneRead.status, gone });
 
   // R0-3 names
   const list = await call(base, "GET", "/api/system/register/breaches", { token: ownerT });

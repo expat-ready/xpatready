@@ -1,0 +1,2 @@
+Entry points: PF-21rs R0 (QA-757): `ports/messages.ts` `MessageWordsPort.storedWords(firmId, outboxId)` (a firm's message's subject and text as stored, in that firm's scope, checked against rendered_hash; null otherwise), implemented by `messages/send/messages.ts` `Messages`; `register/names.ts` `firmNames`, `staffNames` (firm names under the declared use `platform.register.firm-names`, `register/names.bypass.ts`, one firm-less line per read); the three registers' GET answers carry names, the breach's notices their words.
+Tests: tests/check_pf21rs_r0.ts
