@@ -491,13 +491,26 @@ A348 retry ran|product/tools/lead-watch.sh|/retry-watch.py did not run/d|check-r
 A351 b1 two|product/tools/same-cause.py|s/ if len({r\["run"\] for r in rs}) > 1}/}/|check-same-cause.sh
 A351 b1 once|product/tools/same-cause.py|s/^        if k not in fired:/        if len(rs) > 1:/|check-same-cause.sh
 A351 b1 words|product/tools/same-cause.py|s/by.setdefault(f"{s}.*{w}"/by.setdefault(s/|check-same-cause.sh
-A351 b1 ids|product/tools/same-cause.py|s/ID.sub("#", \(.*\))$/(\1)/|check-same-cause.sh
+A351 b1 fail row|product/tools/same-cause.py|s/(FAIL.failed twice)/(failed twice)/|check-same-cause.sh
+A351 b1 first try|product/tools/same-cause.py|s/^        if what == "failed twice" and .*/        if False:/|check-same-cause.sh
+A351 b1 not retried|product/tools/same-cause.py|s/^        w = re.split(.*/        w = why/|check-same-cause.sh
+A351 b1 named|product/tools/same-cause.py|s/ if NAMED.search(w) else ""$//|check-same-cause.sh
+A351 b1 ids|product/tools/same-cause.py|s/ID.sub("#", w.strip())/w.strip()/|check-same-cause.sh
 A351 b1 12h|product/tools/same-cause.py|s/ if r.get("end", "9") >= since}/}/|check-same-cause.sh
 A351 b1 forget|product/tools/same-cause.py|s/^    fired = .*/    fired = dict(st["fired"])/|check-same-cause.sh
 A351 b1 whole|product/tools/same-cause.py|s/^        if not missing:/        if True:/|check-same-cause.sh
 A351 b1 left|product/tools/same-cause.py|s/^    if left or unread:/    if False:/|check-same-cause.sh
+A351 b1 unread|product/tools/same-cause.py|s/^            unread += 1; continue/            continue/|check-same-cause.sh
+A351 b1 blank|product/tools/same-cause.py|s/^    if blank:/    if False:/|check-same-cause.sh
+A351 b1 lost|product/tools/same-cause.py|s/^    for b in bad\[:3\]:/    for b in []:/|check-same-cause.sh
 A351 b1 memory|product/tools/same-cause.py|s/^    if why:/    if False:/|check-same-cause.sh
+A351 b1 inside|product/tools/same-cause.py|s/ for r in st\["runs"\].values())$/ for r in [])/|check-same-cause.sh
 A351 b1 batch|product/tools/same-cause.py|s/ if w\["head_branch"\].startswith("mergify.")\]$/]/|check-same-cause.sh
+A351 b1 green|product/tools/same-cause.py|s/^            if st\["ran"\]\[k\]:/            if True:/|check-same-cause.sh
+A351 b1 pages|product/tools/same-cause.py|s/^    for n in range(1, 11):/    for n in range(1, 2):/|check-same-cause.sh
+A351 b1 rerun|product/tools/same-cause.py|s/ and r.get("end") == w\["updated_at"\]:/:/|check-same-cause.sh
+A351 b1 gone|product/tools/same-cause.py|s/^    st\["runs"\] = {k: r for k, r in st\["runs"\].items() if k in .*/    pass/|check-same-cause.sh
+A351 b1 nopr|product/tools/same-cause.py|s/^        raise RuntimeError(f"no pull request.*/        p = [{"number": 0, "title": "", "body": ""}]/|check-same-cause.sh
 A351 b1 wired|product/tools/lead-watch.sh|s/^sc=/# sc=/|check-same-cause.sh
 A351 b1 ran|product/tools/lead-watch.sh|/same-cause.py did not run/d|check-same-cause.sh
 A334 order|product/tools/app-view-check.sh|s/ -k1,1nr -k2,2nr)$/ -k1,1nr)/|check-lead-watch-idle.sh
