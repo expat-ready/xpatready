@@ -12,7 +12,7 @@ updated: 2026-11-24 12:29 IST: Lead 23 (check c7d18bd1). **Hand-over: the last s
 **Check script (read first; argument minutes):** `/private/tmp/claude-501/-Users-ranjansingh-Desktop-Xpatready/7197abb3-bd94-44f0-8494-0a9194e38c06/scratchpad/chk.sh`.
 **Lead reads owed:** #3277, #3174 review.ts.
 **qa asks and work with no lane:** the recovery plan file, end.
-**Sessions:** standby Lead 20; Lead B 5 local_bb33cf0e; Lead O 2 local_f6d6bb60; qa A 5 (session_01MXNda8oJbGMtZ6ov38m3BR), qa B 4 (01MXNda7YhUVUEMkU93gbfaj). Lane ids: FO-7q 01MXNda7PhEdXQAhL6GMtRyG, R1.90 01MXNda67yexjnYrdQ3B9MNt, PF-31 01MXNda6DzofSEsZJa14VVec, PF-18n2 01MXNda5Q4zsDUw8f6CTRCiv, CS-D6 01MXNda6PPrG2yzjfwiFG9e9. Start limit: disk 7 GB.
+**Sessions:** standby Lead 20; Lead B 6 local_5637ca59 (after Lead B 5); Lead O 2 local_f6d6bb60; qa A 5 (session_01MXNda8oJbGMtZ6ov38m3BR), qa B 4 (01MXNda7YhUVUEMkU93gbfaj). Lane ids: FO-7q 01MXNda7PhEdXQAhL6GMtRyG, R1.90 01MXNda67yexjnYrdQ3B9MNt, PF-31 01MXNda6DzofSEsZJa14VVec, PF-18n2 01MXNda5Q4zsDUw8f6CTRCiv, CS-D6 01MXNda6PPrG2yzjfwiFG9e9. Start limit: disk 7 GB.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
