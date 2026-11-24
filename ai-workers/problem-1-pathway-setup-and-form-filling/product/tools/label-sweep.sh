@@ -52,7 +52,13 @@ for pr in $nums; do
     if [ "$g" = 3 ]; then echo "#$pr: queue-gate.sh could not judge it, label kept; the next sweep tries again"; rc=2; continue; fi
     gate=$(tail -1 <<< "$gate" | cut -c1-200); how="$how; queue-gate.sh: ${gate:-no reason given}"
   fi
-  api -X DELETE "$API/repos/$REPO/issues/$pr/labels/$enc" >/dev/null || { echo "#$pr: '$LABEL' ($how), but it could not be removed"; rc=2; continue; }
+  if ! api -X DELETE "$API/repos/$REPO/issues/$pr/labels/$enc" >/dev/null; then
+    # Already off (Lead 27, 24 Nov: #3472, the DELETE answered 404)? GitHub also says 404 to a token that may not see the
+    # PR, so the PR's labels are read again: only a list that was read and does not hold the label is done.
+    left=$(pages "repos/$REPO/issues/$pr/labels") && [ "$(jq --arg l "$LABEL" 'any(.[]; .name == $l)' <<< "$left")" = false ] \
+      && { echo "#$pr: '$LABEL' ($how) was already off"; continue; }
+    echo "#$pr: '$LABEL' ($how), but it could not be removed"; rc=2; continue
+  fi
   body="**Label sweep (B134):** \`$LABEL\` removed: $how. \`$BOT\` is a workflow's GITHUB_TOKEN, not a person: a pull request's own workflow can set the label, and such a label starts no label-guard run. A person labels a reviewed head (P-277, P-189), or queue-gate.yml one it judges eligible (B194).
 
 To label again: a person adds \`$LABEL\` once a PR comment line \"Reviewer: Approve\" names the head's SHA (label guard)."
