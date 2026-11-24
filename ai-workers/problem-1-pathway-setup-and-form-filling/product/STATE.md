@@ -2,7 +2,7 @@
 
 current_lead: local_f8cf715f-189f-4312-a85f-7bf184888efc Lead 25 · 24 Nov 13:18 IST (after Lead 24, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 13:46 IST: Lead 25 (check 4a7e3c25). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (counted 12:57, main 21af27936). **BLOCKER P1 (firm wall): #3428 d33cb8de8 full run green, labelled 13:44; M2 (firm wall) #3441, then M1; first each check. #3429 held.** Queue: #3385, #3308 + #3430, #3421, #3420, #3431. Founder: CodeAnt account (C2, C4), the unseen account. Weekly 65%, disk 12 GB; standbys: Lead 26 local_b17225db.
+updated: 2026-11-24 13:46 IST: Lead 25 (check 4a7e3c25). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (counted 12:57, main 21af27936). **BLOCKER P1 (firm wall): #3428 d33cb8de8 full run green, labelled 13:44; M2 (firm wall) #3441 648adace4 (full run asked), then M1; first each check. #3429 held.** Queue: #3385, #3308 + #3430, #3421, #3420, #3431. Founder: CodeAnt account (C2, C4), the unseen account. Weekly 65%, disk 12 GB; standbys: Lead 26 local_b17225db.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
