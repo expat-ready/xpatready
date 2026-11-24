@@ -263,6 +263,17 @@ try {
   await lastPage.getByText("Page 1").waitFor({ timeout: 10_000 }).catch(() => undefined);
   ok("PF-18ns DW6 (break m3): marking the last row of the last Unread page goes back to the previous page, never an empty page while unread rows remain",
     await lastPage.getByText("Page 1").isVisible().catch(() => false) || (await lastPage.locator("section[aria-label='Notifications'] [data-notification]").count()) > 0);
+  // round 5 (Lead 16 on #3302; review r5): the brand gives way below 375 px, so between 320 and 374 px no width scrolls
+  // sideways with a long name (the wordmark needs 365 px with the bell; `max-[359px]` left 359-364 px scrolling).
+  const LONG = "Second representative of the Sample firm (Sample)", wideAt: number[] = [];
+  for (const w of [320, 359, 364, 374]) {
+    const pw = await tab(TO, w);
+    await pw.route("**/api/platform/me", async (r) => { const res = await r.fetch(); const j = await res.json() as Record<string, unknown>; await r.fulfill({ response: res, json: { ...j, displayName: LONG } }); });
+    await go(pw, "/home");
+    if (await sideways(pw)) wideAt.push(w);
+    await pw.context().close();
+  }
+  ok("PF-18ns DW5 (round 5): from 320 to 374 px (320, 359, 364, 374) with a long name the top bar never scrolls the page sideways", wideAt.length === 0, wideAt);
   await lastPage.context().close(); await p2.context().close();
 
   // ---------------------------------------------------------------------------------------------- round 3 (break M1 round 2, review m3): focus
