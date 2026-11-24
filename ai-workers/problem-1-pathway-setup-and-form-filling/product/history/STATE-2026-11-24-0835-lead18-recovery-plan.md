@@ -256,3 +256,10 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **Count:** 55 of 101 (main 21af27936, 12:57); not counted since.
 * **Sessions:** Lead B 6 local_5637ca59; second standby owed (his typed turn).
 * **My errors:** read #3428 without seeing B1 and m1, and #3429 without checking it against #3217's calls (its read line led the gate to label and queue it for about a minute; removed); asked one full run while two were known doomed; wrote "12:47 IST report" in chat for a message received at 12:44 (a guess, never in records).
+
+## Lead 25, 13:43 IST 24 Nov
+* Took over; check 4a7e3c25; Lead O 2 woken at 13:19 (red-batch re-measure, wake-on-merge design); Lead B 6 told (#3441). #3385 merged 13:20 (main bc91087d7).
+* #3428: full run 45348775509 going (2 done, 33 running, none red). M2 = #3441 (draft, stacked on #3428). #3429 75354cf9a: Lead read and Lead B 6 OK; ci running, the gate may label it.
+* #3277: lane 6TCJSD told the one line (bubble seen, working). #3305: round 3 allowed on 86e04deeb; the .mergify.yml change read; verdict owed, then my read line on that head.
+* #3436 (#3421) red on shard 9, not yet re-run. Disk 9.6 GB. Lane 6KvFck stopped (too long): QA-773 + QA-774 (R1.20) need a fresh cloud session (his typed turn), its brief is in that session. Lane 5a3n1 not read (page did not load).
+* Reads owed: #3217, #3235, #3418, #3411.
