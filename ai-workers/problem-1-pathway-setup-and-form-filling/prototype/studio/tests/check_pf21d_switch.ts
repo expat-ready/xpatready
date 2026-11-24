@@ -16,7 +16,7 @@ import { runContract } from "../ports/contracts/contract.ts";
 import { erasurePortContract, eraserCases } from "../ports/contracts/erasure-port.contract.ts";
 import { fakeErasure, type Eraser } from "../ports/erasure.ts";
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261123110000_pf21d_switch";
+const NEW = "20261124080000_pf21d_switch";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf21ds_${process.pid}`, EMPTY = `xr_studio_pf21ds_empty_${process.pid}`, DEMO = `xr_studio_pf21ds_demo_${process.pid}`;
