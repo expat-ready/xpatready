@@ -3,7 +3,7 @@
 -- starts. Nullable: null is the default by the type's purpose (on for every purpose but FOLLOW_UP, a meeting after the
 -- first consultation; consultation-agreement/gate.ts `needsAgreement`), so no existing row is written here and a type
 -- made before this part keeps today's behaviour (part 1 sent the agreement for every type; a follow-up now gets none).
--- A person's choice on the type's settings stores true or false. The stamp is after main's newest (20261123020000).
+-- A person's choice on the type's settings stores true or false. The stamp is after main's newest (20261124030000; Lead 18, 24 Nov).
 -- Rollback: rollback.sql in this folder (Prisma reads only migration.sql).
 
 -- Prisma's DDL.

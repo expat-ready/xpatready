@@ -675,3 +675,55 @@ Scope: `git diff 0b6dc934b..85860f3e9` only. **Verdict: Ship (Approve).** No log
 Reviewer: Approve 85860f3e92ce79ff11b3b1ff116dbdbbb78dbea5
 
 Verdict: Approve 85860f3e92ce79ff11b3b1ff116dbdbbb78dbea5
+
+## Part 2, round 7 (2af3b4418): merge, re-stamp, module-cards
+
+Scope: `acc12b913..2af3b4418` only (Lead 18, 24 Nov: merge main once, re-stamp the migration to 20261124032000 as a pure rename with its rollback and comments following, and module-cards). Fresh Opus reviewer, 24 Nov; repository read-only on the head; US$0. **Verdict: Ship after fixes (Changes).** The merge and the rename are sound, but the rollback did not follow the rename.
+
+### What I verified
+* **Merge d39fb6d30 is clean.** Its tree (`da542b933`) is byte for byte what `git merge-tree --write-tree acc12b913 f0bc60179` builds, so the merge carries no edits by hand.
+* **The PR's own change is unchanged.** I diffed `merge-base..acc12b913` (base 270a3cee6) against `f0bc60179..HEAD`, both without PNGs: 27 files, +1567/-51 on each side. The added and removed lines are identical. The file lists match once the stamp is masked. The only other differences are hunk offsets and context lines in the booking service and the pf19r sender table, which come from main.
+* **Commit 2af3b4418** renames `migration.sql` and `rollback.sql` at **100 % similarity each**, and refreshes four J-104 PNGs. Nothing else changed, and that includes `rollback.sql`: the edit that the commit message and the brief describe is not in the commit (R7-1).
+* **Stamp order.** The merged main's newest migration is 20261123220000. origin/main has since moved to bdcf1e7be and added `20261124030000_pf17_support_keys`. 20261124032000 sorts after both, and no other migration shares it. The six duplicate stamps in the folder (20261025090000, …) are already on main. The head also merges cleanly with bdcf1e7be. pf17 only switches RLS and triggers off and on across its table lists, and adds no column to `fo_consultation_type`.
+* **Prisma.** `_prisma_migrations` identifies a migration by its folder name. The checksum is a sha256 of `migration.sql`, whose content did not change. CI, the merge queue and the demo build fresh copies or build from main, and none of them ever recorded the old name, so the rename is safe for every shared database. A database that already applied the branch's old name is a different case: it applies the "new" migration again, which fails with 42701 (duplicate column), and Prisma then refuses every later migration (P3009). This is observed here, not theory: in this environment `xr_studio_demo` on :54329 has `20261123050000_fo3c2_require_agreement` finished on 23 Nov and `20261124032000_fo3c2_require_agreement` failed with 42701 and 0 steps applied. That database is local only; I left it untouched (R7-4).
+* **Stale references.** `git grep 20261123050000 HEAD` is not clean: it finds `20261124032000_fo3c2_require_agreement/rollback.sql:2`.
+
+### Runs (head 2af3b4418; copies on runtime ports, never :4400)
+| Check | Result |
+|---|---|
+| `run-suites.sh --only check_pf8b_f4_migrations.ts` | exit 0, 9/9 |
+| `run-suites.sh --only check_fo3c2_consultation_agreement.ts` | exit 0, 45/45 (the migration applies under its new name on a fresh copy) |
+| `module-cards.py tree` · `check-module-cards.sh` · `module-cards.py pr` (changed files against f0bc60179, plus the PR body) | PASS (15 cards) · exit 0 · PASS ("Card unchanged" accepted; 3 modules touched) |
+| `j_104` on copy `j104r7` at :4433, run twice | 20/20 both times, exit 0; the W4 and W9 screens match round 3 |
+
+I did not re-run typecheck because no code line changed. The walk rewrote two J-104 PNGs in the working tree; I restored them to HEAD.
+
+### Findings
+* **R7-1 (Major, Must).** `prisma/migrations/20261124032000_fo3c2_require_agreement/rollback.sql:2` still runs `-f prisma/migrations/20261123050000_fo3c2_require_agreement/rollback.sql`. That path no longer exists, so the recorded rollback fails as written. This misses STANDARDS.md:34 [M] ("recorded rollback"), Lead 18's condition ("rollback following") and the brief's `git grep` check, and the commit message claims an edit that is not in the commit. **Fix:** change the stamp on line 2 to 20261124032000.
+* **R7-2 (Minor, Should; inside "comments following").** `migration.sql:6` says "The stamp is after main's newest (20261123020000)". Main's newest is now 20261124030000. **Fix:** update the number. Editing `migration.sql` changes its checksum, which is harmless before the merge, so make the edit now and never after the merge.
+* **R7-3 (Minor, Should; records).** The PR body's first line still names `20261123050000_fo3c2_require_agreement`. "Checks and results" is still headed acc12b913 and lists no round-7 runs. **Fix:** name the new folder and add this round's runs to the body.
+* **R7-4 (Minor, note).** Any local database that ran the branch before the rename, such as this environment's `xr_studio_demo`, is stuck at P3009. **Fix:** record the recovery in the PR or the hand-over: recreate the copy, or run `prisma migrate resolve --applied 20261124032000_fo3c2_require_agreement` and delete the `20261123050000_…` row. Shared databases are not affected.
+* The open Minors from earlier rounds (m3r-1 to m3r-3, P2R3R-1 to P2R3R-3) are unchanged, and none of them blocks.
+
+**To re-check after the fix:** a diff of the two SQL files only, then `check_pf8b_f4_migrations` and `check_fo3c2`, plus `git grep 20261123050000` coming back empty.
+
+### Journey score, round 7 (reviewer): 9.5/10. Pass, no criterion at 0
+The behaviour is unchanged since the round-3 re-check. j_104 ran 20/20 twice on 2af3b4418.
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J-104 W1-W10 20/20, twice |
+| Next step obvious | ½ | m3r-2 (still open) |
+| Plain words | 1 | W4 refusal names the agreement and the next step |
+| Feedback and state | 1 | "Agreement not signed yet" / "Agreement signed" on the panel |
+| Correct data | 1 | W2 one agreement; W7 sha256; W8 404/403 |
+| Error recovery | 1 | W4 → sign → W9 accepted |
+| Accessibility and sizes | 1 | W10 axe clean at 1440 px |
+| Speed | 1 | Agreement line within the 2 s poll |
+| Visual | 1 | W4 and W9 screenshots |
+| Trust | 1 | Signed copy with its sha256; s. 23 Unconfirmed: no counsel |
+
+Could not check: a real screen reader; an intended user's own walk (D17 and D20 stay with the founder); the founder's Mac demo database. The journey section is here and not in a separate file, because the brief allowed this one file only.
+
+Reviewer: Changes 2af3b44183d1ca410af0021ddd37703c0c695180
+
+Verdict: Changes 2af3b44183d1ca410af0021ddd37703c0c695180
