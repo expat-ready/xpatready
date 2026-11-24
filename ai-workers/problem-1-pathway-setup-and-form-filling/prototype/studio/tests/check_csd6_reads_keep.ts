@@ -210,5 +210,14 @@ await main("CS-D6 reads", "Read by list, the fingerprint and the file check; sta
     ok("CS-D6 DW6 fail: a redelivered firm job adds no notification (one per person, case and kind)", done.length > 0 && inner.sent().length === sent0, [done.length, inner.sent().length, sent0]);
     ok("CS-D6 DW6 fail: the reminder removes no file and no row", counts() === c0 && !!storedFile(keepDoc!), [c0, counts()]);
     ok("CS-D6 DW6 pass: the weekly job is scheduled on its own queue", handlers.has(KEEP_WEEKLY_JOB));
+    // Break M1: each notification is its own short transaction, so one that fails never rolls back the others; the job
+    // then fails, so the runner retries it.
+    const { isoWeek } = await import("../api/src/documents/keep-period.ts");
+    const firmA = sql("select id from platform_firm where key = 'sample-firm'")!, inner2 = fakeNotifications({ now: () => clock.now() });
+    const flaky = { async notify(tx: unknown, rcp: { staffId: string }, kind: Parameters<typeof inner2.notify>[2], item: Parameters<typeof inner2.notify>[3]) { if (item.id === kExact.id) throw new Error("Sample: this notification fails"); return inner2.notify(tx, rcp, kind, item); } };
+    const outcome = await new KeepPeriodReminders({ db, jobs: fakeJobs(clock) as never, notifications: flaky as never, clock, keepPeriods: new KeepPeriods(db) })
+      .remind({ payload: { week: isoWeek(clock.now()) }, firmId: firmA }).then(() => "resolved", (e: Error) => e.message);
+    ok("CS-D6 DW6 fail: one failing notification leaves the others sent (the case a day short still reaches the Owner) and the job fails for a retry",
+      /notifications failed/.test(outcome) && inner2.sent().some((x) => x.item.id === kShort.id && x.staffId === ownerStaff) && !inner2.sent().some((x) => x.item.id === kExact.id), { outcome, sent: inner2.sent().length });
   } finally { await db.$disconnect(); }
 });

@@ -21,6 +21,7 @@ import type { JobPort, JobRun } from "../../../ports/jobs.ts";
 import type { FirmKeepPeriod } from "../../../ports/keep-period.ts";
 import { NOTIFICATION_KIND, type NotificationPort } from "../../../ports/notifications.ts";
 import { caseScope, caseVisibleSql, type CaseScope } from "../case-access.ts";
+import { CLOSED_CLIENT_FILES } from "../platform/keep-period/service.ts";
 import { localDate, readFirmCalendar } from "../platform/calendar/working-days.ts";
 import { asBypass, firmScope, touchEachFirm } from "../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../platform/identity/keys.ts";
@@ -38,6 +39,7 @@ export const KEEP_REMIND_JOB = "case_documents.keep_period_remind";
 /** Sample: Mondays 09:17 UTC (outside 01:00-03:00, ports/jobs.ts). */
 export const KEEP_WEEKLY_CRON = "17 9 * * 1";
 
+const CLOSED_FILES_KEY = CLOSED_CLIENT_FILES.key;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Reader = PrismaClient | Prisma.TransactionClient;
 type KeepPeriodsReader = { forFirm(firmId: string): Promise<FirmKeepPeriod> };
@@ -52,7 +54,7 @@ const badCursor = (): never => problem(400, "Check the details", "The page curso
 /** The firm's closed cases whose keep period has passed by `today` (YYYY-MM-DD in `zone`), oldest close first, keyset
  *  paged by (closed_at, id). `scope` limits them to the cases a person can see; null means every case of the firm (the
  *  reminder job, which then filters per recipient). */
-export async function pastKeepPeriod(db: Reader, firmId: string, years: number, zone: string, today: string, scope: CaseScope | null, after: string | null, limit: number): Promise<{ cases: PastCase[]; next: string | null }> {
+export async function pastKeepPeriod(db: Reader, firmId: string, years: number, zone: string, today: string, scope: CaseScope | null, after: string | null, limit: number, withDocuments = true): Promise<{ cases: PastCase[]; next: string | null }> {
   const firm = firmScope(firmId).firmId;
   const visible = scope ? caseVisibleSql(scope) : Prisma.sql`true`;
   const past = Prisma.sql`c.firm_id = ${firm}::uuid and c.status = 'CLOSED' and c.closed_at is not null
@@ -67,7 +69,7 @@ export async function pastKeepPeriod(db: Reader, firmId: string, years: number, 
      order by c.closed_at, c.id limit ${limit + 1}`;
   const page = rows.slice(0, limit), ids = page.map((r) => r.id);
   // The documents still held on each case (every stored version; Dispose, part 3, will mark the ones it removes): ids only.
-  const docs = ids.length ? await db.$queryRaw<{ case_id: string; id: string }[]>`
+  const docs = ids.length && withDocuments ? await db.$queryRaw<{ case_id: string; id: string }[]>`
     select distinct p.case_id::text, d.id::text from case_participant p join case_document d on d.subject_id = p.subject_id
      where p.case_id = any(${ids}::uuid[]) order by 1, 2` : [];
   const cases = page.map((r) => {
@@ -119,7 +121,10 @@ export class KeepPeriodReminders {
   async weekly(): Promise<number> {
     const now = this.p.clock.now(), week = isoWeek(now);
     const firms = await asBypass(KEEP_PERIOD_WEEKLY_BYPASS, async () => {
-      const rows = await this.p.db.$queryRaw<{ id: string }[]>`select distinct firm_id::text as id from runtime_case where status = 'CLOSED' and firm_id is not null order by 1`;
+      // Only firms that set a number (break m5: a firm with none gets no bypass line and no job).
+      const rows = await this.p.db.$queryRaw<{ id: string }[]>`select distinct c.firm_id::text as id from runtime_case c
+        join platform_firm_setting s on s.firm_id = c.firm_id and s.key = ${CLOSED_FILES_KEY} and s.value is not null and s.value <> 'null'::jsonb
+       where c.status = 'CLOSED' and c.firm_id is not null order by 1`;
       const { failed } = await touchEachFirm(this.p.db, rows.map((r) => r.id));
       return rows.map((r) => r.id).filter((f) => !failed.has(f.toLowerCase()));
     });
@@ -143,7 +148,7 @@ export class KeepPeriodReminders {
     const y = (await this.p.keepPeriods.forFirm(firmId)).closedClientFilesYears;
     if (y === null) return 0;
     const cal = await readFirmCalendar(this.p.db, firmId), today = localDate(cal.zone, this.p.clock.now());
-    const { cases } = await pastKeepPeriod(this.p.db, firmId, y, cal.zone, today, null, null, 10_000);
+    const cases = await this.allPast(firmId, y, cal.zone, today, null);
     if (!cases.length) return 0;
     const holders = await this.p.db.$queryRaw<{ id: string }[]>`
       select distinct s.id::text from platform_staff s join platform_role_grant g on g.staff_id = s.id and g.firm_id = s.firm_id and g.ended_at is null
@@ -152,12 +157,29 @@ export class KeepPeriodReminders {
     const tell: { staffId: string; caseId: string }[] = [];
     for (const h of holders) {
       const scope = await caseScope(this.p.db, { firmId, staffId: h.id });
-      const seen = scope.all ? cases : (await pastKeepPeriod(this.p.db, firmId, y, cal.zone, today, scope, null, 10_000)).cases;
+      const seen = scope.all ? cases : await this.allPast(firmId, y, cal.zone, today, scope);
       for (const c of seen) tell.push({ staffId: h.id, caseId: c.case_id });
     }
-    await this.p.db.$transaction(async (tx) => {
-      for (const t of tell) await this.p.notifications.notify(tx, { staffId: t.staffId }, NOTIFICATION_KIND.KEEP_PERIOD_PASSED, { kind: "case", id: t.caseId });
-    });
+    // One short transaction per notification (break M1): one long transaction for a firm with many past files ran past
+    // the database's transaction timeout and rolled every reminder back, every week. A failed one is logged and the job
+    // fails after the rest are sent, so the runner retries it (the port keeps one notification per person, case and kind).
+    let failed = 0;
+    for (const t of tell) {
+      try { await this.p.db.$transaction(async (tx) => { await this.p.notifications.notify(tx, { staffId: t.staffId }, NOTIFICATION_KIND.KEEP_PERIOD_PASSED, { kind: "case", id: t.caseId }); }); }
+      catch (e) { failed++; logPort.error("keep_period_notify_failed", e, { firmId, caseId: t.caseId }); }
+    }
+    if (failed) throw new Error(`keep-period reminder: ${failed} of ${tell.length} notifications failed for firm ${firmId}`);
     return tell.length;
+  }
+
+  /** Every past case of the firm (as `scope` sees it), page by page with no cap (break m4); ids only, no documents. */
+  private async allPast(firmId: string, years: number, zone: string, today: string, scope: CaseScope | null): Promise<PastCase[]> {
+    const out: PastCase[] = [];
+    let after: string | null = null;
+    do {
+      const page = await pastKeepPeriod(this.p.db, firmId, years, zone, today, scope, after, 500, false);
+      out.push(...page.cases); after = page.next;
+    } while (after);
+    return out;
   }
 }
