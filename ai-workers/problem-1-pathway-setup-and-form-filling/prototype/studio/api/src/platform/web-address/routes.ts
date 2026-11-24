@@ -12,7 +12,7 @@ import { auditEvent } from "../audit/audit-event.ts";
 import { publicFirmOf, sendPublicNotFound, webAddressHost } from "./host.ts";
 import { catchUpFirmAddresses, type CatchUpResult } from "./firm-created.ts";
 import { ADDRESS_CHANGE_KEY, WebAddresses } from "./service.ts";
-import { addressHostSuffixes } from "./rules.ts";
+import { addressHostSuffixes, checkAddressChoice } from "./rules.ts";
 import { platformConfig } from "../config/settings.ts";
 import { asBypass, touchingAudit, withFirm } from "../firm-scope.ts";
 import { SystemKeys, SystemReason, systemStaffOf, type SystemStaffContext } from "../system-identity/keys.ts";
@@ -97,7 +97,10 @@ export class WebAddressController {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** PF-28: the change's body, strict (an unknown field is 422, named); each field's own rule is PF-25's service's. */
-export const ChangeBody = strict({ address: z.unknown().optional(), reason: z.unknown().optional() });
+// PF-28 A2 (R1.10): the address by its own rule (checkAddressChoice) and in its words, so a bad one is named even when the
+// system guard refuses a missing reason first and reads this schema then (A4); the service keeps the rule and the reason's.
+const ADDRESS = z.unknown().superRefine((v, c) => { const r = checkAddressChoice(v); if (!r.ok) c.addIssue({ code: "custom", message: r.message }); }).optional();
+export const ChangeBody = strict({ address: ADDRESS, reason: z.unknown().optional() });
 
 /** PF-25w: ExpatReady's own staff change a firm's web address (SA-2-27). The system guard has checked the key and the
  *  reason and written its line; the change runs inside the firm's own scope (PF-12's walls see that one firm), and its
