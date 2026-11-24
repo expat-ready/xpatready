@@ -291,11 +291,13 @@ try {
   await st.goto(`${BASE}/library/fields`); await st.locator("[data-workspace]:visible").first().waitFor({ timeout: 60_000 });
   // Review on 30ab3cde2: from a scrolled page too, the strip appearing leaves the content where it was (the browser's own scroll
   // anchoring and the workspace's correction together move it by nothing).
-  const releasesLink = shown(st).locator('a[href="/releases"]').first();
-  await st.waitForTimeout(1000); await st.evaluate(() => window.scrollTo(0, 150)); await releasesLink.scrollIntoViewIfNeeded(); await st.waitForTimeout(300);
+  // Any second Studio page will do; Rules, not Releases, so this check is not chosen for every change to the releases page
+  // (select-suites maps a suite to the pages it names; check-select-suites keeps that page under 30 suites, Lead 19).
+  const studioLink = shown(st).locator('a[href="/library/rules"]').first();
+  await st.waitForTimeout(1000); await st.evaluate(() => window.scrollTo(0, 150)); await studioLink.scrollIntoViewIfNeeded(); await st.waitForTimeout(300);
   const mainTop = () => st.evaluate(() => Math.round(document.querySelector("main")?.getBoundingClientRect().top ?? -999));
   const scrolledBefore = await mainTop(), scrolledY = await st.evaluate(() => scrollY);
-  await releasesLink.click({ modifiers: ["Control"] });
+  await studioLink.click({ modifiers: ["Control"] });
   await until(async () => (await tabs(st)).length > 1);
   await st.waitForTimeout(200);
   ok("from a scrolled page the strip appearing leaves the content still (review on 30ab3cde2)", Math.abs((await mainTop()) - scrolledBefore) <= 2, { before: scrolledBefore, after: await mainTop(), scrollYBefore: scrolledY, scrollY: await st.evaluate(() => scrollY) });
