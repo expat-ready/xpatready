@@ -58,3 +58,33 @@ Scope: the Breaches list `/system/privacy/breaches`, "Record a breach" (firm pic
   * The dialog traps focus (40 Tabs, never outside). The first focus is "Discovered at", and the order is the visual one.
   * The Escape guard asks once the form has been touched.
   * Reload mid-dialog stores nothing. Back and Forward return to a clean list.
+
+## Round 2 (diff only: `git diff fdb60f010..51b416d21`)
+**Verdict: Approve** `51b416d21d5c5adc74b9ef79880d8271a23ddbf5`: no open Blocker or Major. B1 and m1-m4 are fixed; m5 and m6 stay Minor as agreed; two new Minors below.
+
+I re-checked on a fresh `rsbrk` copy on :4438 (rebuilt web bundle carrying the new words; 120 Sample firms, an Auditor; stopped after, US$0).
+
+**Fixed:**
+* **B1 fixed.** Focus lands on "Record a breach" after each way of closing the dialog, checked with the keyboard:
+  * Escape;
+  * Cancel;
+  * the X;
+  * Escape on a touched form after accepting "Discard…";
+  * a record ended with Enter in the reason box.
+  * `returnFocus` is optional in the shared `Dialog` (`controls.tsx`), so other dialogs behave as before.
+* **m1 fixed.** I repeated the lost answer (the POST committed with 201, the browser got a reset):
+  * Edit, then retry: "An earlier try may already have recorded this breach: check the list…" (role=alert). The list behind the dialog already shows the row, and pressing again still stores 1.
+  * Lost answer, then Cancel: the list refreshes and shows the row (1 stored), and the focus is on the button.
+* **m2 fixed.** 121 matches show 8 buttons and "Showing the first 8 matches: type more of the name to narrow."; 9 matches show 8 buttons and the note; adding one of the 9 leaves 8 with no note; 1 match shows no note.
+* **m3 fixed.** 120 firms read "Breaker firm 001, Breaker firm 002, Breaker firm 003 and 117 more". The row is 57 px at 1440 and 97 px at 1024, 400 and 1440 at 200 %, with no sideways scroll and axe 0 serious on the page and the dialog.
+* **m4 fixed.** All fields blank with the time cleared gives three refusals in one answer (time, description, reason), and the focus goes to "Discovered at".
+* **Guard reset holds.** Touch the form, Cancel, reopen, Escape: no "Discard…" prompt.
+* **Roles unchanged.** The Auditor has no "Record a breach" and sees the read-only line; Support sees the 403 words and no table.
+
+**New Minors:**
+* **n1. An empty "Discovered at" now reads "This is not in the expected format."** (the generic message, from the API's `When` schema). Round 1's client message was "Give the day and time it was discovered."; this one is worse words for a blank box, though it now comes with the other refusals.
+* **n2. Long descriptions and firms past three cannot be read by keyboard or touch in A1.**
+  * A description longer than two lines is clamped (`line-clamp-2`).
+  * Its full text is only in a `title` tooltip, on a span that cannot take focus, so mouse hover is the only way to see it. Screen readers still read the full text, and the firm names past the first three are not shown anywhere.
+  * In A1 the rows are not links yet, so a keyboard-only or touch user cannot see either.
+  * A2's breach page closes this. Until then, the clamp could wait for A2, or the row could carry the full text.

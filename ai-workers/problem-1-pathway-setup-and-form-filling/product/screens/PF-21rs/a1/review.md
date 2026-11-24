@@ -80,3 +80,20 @@ A real screen reader; an intended user's unaided walk (D17, D20 stay with the fo
 Reviewer: Approve fdb60f0106b7ca3b3593d2d556d5195d3517692b
 
 **Verdict: Approve** (commit `fdb60f0106b7ca3b3593d2d556d5195d3517692b`). Nothing to fix before merge. Issues 1-7 above are Minors to fix in A2 or record on the row.
+
+## Round 2 (head `51b416d21d5c5adc74b9ef79880d8271a23ddbf5`; diff `fdb60f010..51b416d21` only; the current verdict)
+**Ran (copy `rsrev` on :4437, stopped after):** `check_pf21rs_browser.ts` **25/25** twice (screenshots restored with `git checkout`); `tsc -p web --noEmit` exit 0; my own probes at 1024 px: keyboard, the discard guard, a lost answer, an empty time, axe. The shared Dialog's suites (b106, fo3st2, bk19) are as the builder reported; I did not re-run them.
+**Re-checked:**
+* **Break B1 and my issue 2: fixed.** `returnFocus` (`controls.tsx` Dialog, `onCloseAutoFocus`) puts the focus back on "Record a breach" after Escape, the X, Cancel and a record (my probe: `BUTTON:Record a breach` all 4 times; new A1-2 fail line). Dialogs without `returnFocus` keep Radix's own behaviour.
+* **Issue 1: fixed.** A lost answer then an edited retry → "An earlier try may already have recorded this breach: check the list behind this dialog before recording it again." (`record-breach.tsx:72`); the list refreshes, the row shows behind the dialog, the DB holds it once; every close refreshes too (`breaches-page.tsx` `toggle`). A further try repeats the same words (the key is spent): fine, the words say what to do. New A1-2 line covers it.
+* **Issue 3: fixed.** `controls.tsx:83` resets `touched` on each opening: typing then Cancel, then reopening and pressing Escape, asks nothing; typing then Escape still asks.
+* **Issue 4: fixed.** `line-clamp-2` with the full text in `title` (`breaches-page.tsx:21`): a 1,650-character description is 40 px tall.
+* **Issue 7: fixed.** Each status has a `title` hint (`contract.ts` `STATUS_WORDS`), for example "Recorded; decide whether the affected firms are told."
+* **Breaker m2-m4:** `firmsText` ("and N more", P line), "Showing the first 8 matches…", and the empty time sent to the API: all hold.
+* **Still open, Minor (as agreed):** issue 5 (Status sits outside the table's box at 1024; walk screenshot `r2-list-1024`) and issue 6 (no test for m7's 300 ms / 2-letter wait).
+* **New, Minor:** with the client check gone (break m4), an emptied "Discovered at" now reads the API's "This is not in the expected format." instead of the plainer "Give the day and time it was discovered." (`contract.ts:90-91`). Fix: map the empty box to that line, or ask PF-21c for a "required" message on an empty `discoveredAt`.
+* Axe 0 for the dialog showing the "may already have recorded" words and for the list; no page errors.
+
+Reviewer: Approve 51b416d21d5c5adc74b9ef79880d8271a23ddbf5
+
+**Verdict: Approve** (commit `51b416d21d5c5adc74b9ef79880d8271a23ddbf5`). No Blocker or Major is open. Minors 5, 6 and the new empty-time wording stay listed.
