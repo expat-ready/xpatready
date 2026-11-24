@@ -1,8 +1,6 @@
 [
  {
   "slice": "S01-1",
-  "repo": "S01",
-  "branch": "slice-1",
   "files": [
    "api/src/front-office/sales/prospects.ts",
    "api/src/front-office/sales/routes.ts",
@@ -12,13 +10,13 @@
    "tests/check_pf28_inputs.ts",
    "tests/check_r130_prospect_source.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "4852fde01c193df0a770a802c160a167cdd99cb8b295490aeaf5d4b4d7ad00c9"
+  "commit": "c3da809e0bd92c5fe4ed248ac432be8b163041d1",
+  "tree_before": "591f6d698b52835a0ae6f423f2de80b21839bebb",
+  "tree_after": "0da48b346d2a1ae9259e20bbb023e0895419aad9",
+  "files_in_folder": 1867
  },
  {
   "slice": "S02-1",
-  "repo": "S02",
-  "branch": "slice-1",
   "files": [
    "api/src/features/front-office-sales.ts",
    "api/src/front-office/sales/arrival.ts",
@@ -31,25 +29,25 @@
    "tests/check_fo2_leads_prospects.ts",
    "tests/check_forms_qa53.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "e9c33e26e03d83dccf0d3c6b198ad47f854999d01af7d6abd96aeea744a36858"
+  "commit": "b3c40dfa9617cb8db14918b703070511d9631f39",
+  "tree_before": "ef55296e53513a8b6f0fb98bc0b01e58db1e9fb5",
+  "tree_after": "426ae7c5a7c5b560e800efe5f1ad90589a7907b1",
+  "files_in_folder": 1309
  },
  {
   "slice": "S03-1",
-  "repo": "S03",
-  "branch": "slice-1",
   "files": [
    "api/src/features/platform-complaints.ts",
    "api/src/platform/complaints/routes.ts",
    "tests/check_pf21w_routes.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "12fc7c40f4a8425cda4de8957d3e74288bdb872f12a5c4ace3129a76a0499e43"
+  "commit": "e7d668e5c933b71c923aec8ee4a4b8611467f5a4",
+  "tree_before": "528bf2cb1e00e287b97b05264a439715564adf39",
+  "tree_after": "672216e279ee16a3bc530042281dde3bc0ad773b",
+  "files_in_folder": 1300
  },
  {
   "slice": "S04-1",
-  "repo": "S04",
-  "branch": "slice-1",
   "files": [
    "api/src/case-checklist.ts",
    "api/src/case-filings.ts",
@@ -62,13 +60,13 @@
    "api/src/runtime.ts",
    "api/src/submission.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "5c6ec175663b20dd5d7557ab73749e25833c0586e22e92350a65a0ea030a6898"
+  "commit": "4a452a5d26f41e154733e57f8865ccf88c026b50",
+  "tree_before": "2f904b9661f92bd651a4b0d241d3d5e4c11dc79a",
+  "tree_after": "49b472037d54b52017aeed3149412eb6c62f5c89",
+  "files_in_folder": 1117
  },
  {
   "slice": "S04-2",
-  "repo": "S04",
-  "branch": "slice-2",
   "files": [
    "contracts/runtime.ts",
    "prisma/migrations/20261112150000_a24_case_number/migration.sql",
@@ -79,13 +77,13 @@
    "tests/check_c617_stages_migration.ts",
    "tests/check_forms_channels_migration.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "320f5f6bc40b77ffc575809da1eeeb532ff2c4f08d31fa4de089d7a857b64845"
+  "commit": "17d5cd09434faed9c9494cdd13a9e916254bae01",
+  "tree_before": "6e4c34c0c734695af0d6d3b62e5b4259a6076305",
+  "tree_after": "49b472037d54b52017aeed3149412eb6c62f5c89",
+  "files_in_folder": 1117
  },
  {
   "slice": "S05-1",
-  "repo": "S05",
-  "branch": "slice-1",
   "files": [
    "api/src/case-clients/live.ts",
    "api/src/case-clients/prospect-won.ts",
@@ -98,26 +96,26 @@
    "api/src/platform/messages/send/messages.ts",
    "api/src/platform/seed-sample-firms.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "1a7ee27ba1505f1c9c270459186953362f4c01188fc8c3f7bbb0d80702d2bb40"
+  "commit": "ad204413a105d2ee56a0d5b27dadd8365d56288a",
+  "tree_before": "5f735f2a8383a5ea3a3a4d23744cfd14084f8150",
+  "tree_after": "29e00bf6af5db287c44c3872291f658a143c3052",
+  "files_in_folder": 1679
  },
  {
   "slice": "S05-2",
-  "repo": "S05",
-  "branch": "slice-2",
   "files": [
    "api/src/platform/web-address/routes.ts",
    "tests/check_aud1a_insert_only.ts",
    "tests/check_pf12b_bypass_audit.ts",
    "tests/check_pf5_signup_billing.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "fadb46d82b194eaf63770ab07188de930075fe4a68fd3e96369d68e851439fbb"
+  "commit": "570d7f98d80ecae964252fe63b1e374941871a23",
+  "tree_before": "3512d72d9c3384339676e7f8675f50ac374b1a76",
+  "tree_after": "29e00bf6af5db287c44c3872291f658a143c3052",
+  "files_in_folder": 1679
  },
  {
   "slice": "S06-1",
-  "repo": "S06",
-  "branch": "slice-1",
   "files": [
    "api/src/features/platform-entitlements.ts",
    "api/src/platform/entitlements/limits.ts",
@@ -128,13 +126,13 @@
    "tests/check_fo8_prospect_won.ts",
    "tests/check_pf15c_case_limits.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "f7991a20ba86e58d6f41839f65cd418d3340d22eb5ca6d1355a4b63fb04769c7"
+  "commit": "060ce932df61f6a40a113c86507fcdf31c6f6c17",
+  "tree_before": "230adf5f08e738175ae13158b99db736030e015f",
+  "tree_after": "3c753285a000548c72adde12ca6e024e3f214cf6",
+  "files_in_folder": 1638
  },
  {
   "slice": "S07-1",
-  "repo": "S07",
-  "branch": "slice-1",
   "files": [
    "api/src/features/front-office-identity-check.ts",
    "api/src/front-office/compliance/identity/routes.ts",
@@ -146,27 +144,27 @@
    "tests/check_pf12_walls.ts",
    "tests/check_pf3_platform_schema.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "bd324f9ad3ed9dfeeb4891874ab7e00d05c7d59097898d7423e65442c355a0c1"
+  "commit": "b6ab4bd7590f413a9d9da7f0cc829a9f93bcf820",
+  "tree_before": "c2c44fa0a053f207f6b23f5fc87d81f92a5e2bec",
+  "tree_after": "87559bac895e0249c7fd2a634720183c2b18d353",
+  "files_in_folder": 1520
  },
  {
   "slice": "S08-1",
-  "repo": "S08",
-  "branch": "slice-1",
   "files": [
    "api/src/features/front-office-sales.ts",
    "api/src/front-office/duplicates/phone.ts",
    "api/src/front-office/people/edit.ts",
-   "web/src/modules/front-office/sales/lead-page.tsx",
-   "tests/check_fo9a_phone_edit.ts"
+   "tests/check_fo9a_phone_edit.ts",
+   "web/src/modules/front-office/sales/lead-page.tsx"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "e00ff4c77b682c73cec1363bb8e535db46dfcb338363cd2f9f5f9c331f1b1708"
+  "commit": "531574c1fe429f25264cb4ab224d83958feb2fde",
+  "tree_before": "d0b64129ec9576200740f59e5de3d5f92d7cc24f",
+  "tree_after": "d521d53469db8d1d5eba75d20e6aa3a2fa004e4e",
+  "files_in_folder": 1618
  },
  {
   "slice": "S09-1",
-  "repo": "S09",
-  "branch": "slice-1",
   "files": [
    "api/src/features/platform-messages.ts",
    "api/src/platform/messages/channels/email/local.ts",
@@ -179,13 +177,13 @@
    "tests/check_forms_qa53.ts",
    "tests/check_pf19b_sending.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "478d399f3d1442568c9c1b6d37b42bc1e0d6b27f59f166813546affd9c600562"
+  "commit": "ea56c2620a0ecae9e81850fc5914c2d5822f7030",
+  "tree_before": "b5e66177e3f04dba7b218dcea08cb0ab601477b3",
+  "tree_after": "528bf2cb1e00e287b97b05264a439715564adf39",
+  "files_in_folder": 1297
  },
  {
   "slice": "S10-1",
-  "repo": "S10",
-  "branch": "slice-1",
   "files": [
    "api/src/front-office/assignment/routes.ts",
    "api/src/front-office/compliance/conflict/routes.ts",
@@ -198,13 +196,13 @@
    "api/src/front-office/sales/prospect-edit.ts",
    "api/src/front-office/sales/public.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "a595624d314f84a5d2e989e2509df4365341646ee13d16e1dfc9752fad9a3333"
+  "commit": "d40a9b7720951e6978ef618b284b1a2d70fa90f6",
+  "tree_before": "2a355d4109a164a37a45abec34ec6ca32653b1a7",
+  "tree_after": "75aa9c2841499c78606f9e871055e237aa0456e8",
+  "files_in_folder": 1867
  },
  {
   "slice": "S10-2",
-  "repo": "S10",
-  "branch": "slice-2",
   "files": [
    "tests/check_fo13c_conflict.ts",
    "tests/check_fo13i_identity.ts",
@@ -212,13 +210,13 @@
    "tests/check_fo4_sales_browser.ts",
    "tests/check_pf28_inputs.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "e9f3225ad3828091e48bfd1518d1ea02ebdaff0c9b964c133424f64e906bd573"
+  "commit": "74c7d6f39e0be6ef80b417612fe13f2d6d18b2dd",
+  "tree_before": "2a416ffc7983d1e6314be949db490d357b719298",
+  "tree_after": "75aa9c2841499c78606f9e871055e237aa0456e8",
+  "files_in_folder": 1867
  },
  {
   "slice": "S11-1",
-  "repo": "S11",
-  "branch": "slice-1",
   "files": [
    "api/src/features/front-office-consultation-agreement.ts",
    "api/src/front-office/booking/consultation-agreement/controller.ts",
@@ -228,13 +226,13 @@
    "tests/check_forms_qa53.ts",
    "tests/check_pf19r_every_sender.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "719b5c9e11303c3540248a58afee924b58ffd8c182680ef82e55136f26073438"
+  "commit": "d6a830758f1958799b1c01b20b72fcc4e71b800a",
+  "tree_before": "542d8179baa6f54f6cfdb8093b2d0e6c30fe05f4",
+  "tree_after": "7323500fb09aca0fbd4fdeb1f281c0154ab3b525",
+  "files_in_folder": 1934
  },
  {
   "slice": "S12-1",
-  "repo": "S12",
-  "branch": "slice-1",
   "files": [
    "api/src/platform/audit/audit-event.ts",
    "ports/audit.ts",
@@ -247,23 +245,23 @@
    "prisma/schema/platform.prisma",
    "tests/check_case_feed.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "1d35e8ef2bd1bce5bbf64e7f8515dcbdfeaa809e2438d3db6f295f961298b038"
+  "commit": "a52f93d72c6e8fbf0d4327d6e294de0fe7773394",
+  "tree_before": "64034571ccaf2f551850a396f9db756016de8e7e",
+  "tree_after": "deb3ae740d73e6e1ca4ccc1b7af04b83530a499c",
+  "files_in_folder": 1186
  },
  {
   "slice": "S12-2",
-  "repo": "S12",
-  "branch": "slice-2",
   "files": [
    "tests/check_pf0p_ports.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "80fb652a94f1b4e91400231853677dfe1ce725f47021796bcb85e6d6553f08b2"
+  "commit": "d24968503597c65c0cdabf704f4b9f694a7894fa",
+  "tree_before": "45dbc400493308c4714ed175e024f5f147d9a44d",
+  "tree_after": "deb3ae740d73e6e1ca4ccc1b7af04b83530a499c",
+  "files_in_folder": 1186
  },
  {
   "slice": "S13-1",
-  "repo": "S13",
-  "branch": "slice-1",
   "files": [
    "api/src/core.ts",
    "api/src/features/platform-firm-walls.ts",
@@ -276,13 +274,13 @@
    "api/src/platform/identity/service.ts",
    "api/src/platform/identity/session/service.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "2cde11fb5c69a4f03b8fd03ae815007f9c5af9744af7d73402ac1c1486ca0d69"
+  "commit": "e2b90e91e5500d80242f42548b80094d1ae1f7d8",
+  "tree_before": "10ae0cc48024121cd1cf4724916825f7c541ab20",
+  "tree_after": "ae69727b866d1f3558dae1dc51353b37b789463e",
+  "files_in_folder": 1381
  },
  {
   "slice": "S13-2",
-  "repo": "S13",
-  "branch": "slice-2",
   "files": [
    "api/src/platform/jobs/platform-jobs.ts",
    "api/src/platform/messages/demo-inbox.ts",
@@ -292,13 +290,13 @@
    "prisma/migrations/20261116013000_pf12_firm_walls/migration.sql",
    "tests/check_pf12_walls.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "cd23493aabb0c29f17c0aa99db7f589b9e26512e464a879ab3e271f20f6821b9"
+  "commit": "935c39b5f91b36fbff4990986630f5a4d22b8774",
+  "tree_before": "19bf1ff2e8ff5c4b998a1a4efef57f650a0401e3",
+  "tree_after": "ae69727b866d1f3558dae1dc51353b37b789463e",
+  "files_in_folder": 1381
  },
  {
   "slice": "S14-1",
-  "repo": "S14",
-  "branch": "slice-1",
   "files": [
    "api/src/case-prepare.ts",
    "api/src/runtime.ts",
@@ -306,13 +304,13 @@
    "contracts/runtime.ts",
    "tests/check_csv1_inputs.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "4dfa12f8ba914ab0d6edf0d63a71e59c161250e71b57ca4bdc4a5f30ae663921"
+  "commit": "bb9f01416e890f2e6be6cba0d21f6454f21ddb19",
+  "tree_before": "88c2686f8f97806c34062ed99e32ac5bd6ef661d",
+  "tree_after": "d15167411312550695b1afb005bdd549169a4826",
+  "files_in_folder": 1624
  },
  {
   "slice": "S15-1",
-  "repo": "S15",
-  "branch": "slice-1",
   "files": [
    "api/src/features/front-office-sales.ts",
    "api/src/front-office/sales/board-totals.ts",
@@ -324,13 +322,13 @@
    "tests/check_fo2p3_prospects.ts",
    "tests/check_pf6b_permission_rules.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "c38574881e7afafa7a3e3139d93cd1de8e1ac0e2d88c4c09f9bac1e41f284035"
+  "commit": "d74008ade6c3df89edda07e3c426e3bd8d4aa119",
+  "tree_before": "67504b8c2fe2b0b4e9ee9da4ea7ce545a49f9764",
+  "tree_after": "7c2970240eb35696561e39d9c4ecdc192468a087",
+  "files_in_folder": 1533
  },
  {
   "slice": "S16-1",
-  "repo": "S16",
-  "branch": "slice-1",
   "files": [
    "api/src/core.ts",
    "api/src/form-uses.ts",
@@ -343,40 +341,40 @@
    "tests/check_aud1m_case_writes.ts",
    "tests/check_c75_findings_api.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "55ee5e3c3620c9fba77ac9742c0c7432a585b3eb55f6c3ce08a2ddbbf188c828"
+  "commit": "5b2757d3d0b4c8102fc5b5cff74ebcb43832bedc",
+  "tree_before": "b8d99c530a8d3f62f022f77c5882fe779bcbe7ed",
+  "tree_after": "dabafb49215a5a6eef6620f049dc1d0b3a4ce0b6",
+  "files_in_folder": 1588
  },
  {
   "slice": "S16-2",
-  "repo": "S16",
-  "branch": "slice-2",
   "files": [
    "tests/check_case_feed.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "a2096d7dc78d78e8be07e84e61e54616ab39e23834680e95c6d00568bbc4fb0b"
+  "commit": "f3a542d9d8817899f48c46afb0b589c2683d1e17",
+  "tree_before": "dd766c42c394fe74e0940b1af79deaab2e878f6c",
+  "tree_after": "dabafb49215a5a6eef6620f049dc1d0b3a4ce0b6",
+  "files_in_folder": 1588
  },
  {
   "slice": "S17-1",
-  "repo": "S17",
-  "branch": "slice-1",
   "files": [
    "api/src/front-office/retainers/routes.ts",
    "api/src/front-office/retainers/service.ts",
+   "tests/check_fo5s_retainer_screens_browser.ts",
    "web/src/modules/front-office/retainers/contract.ts",
    "web/src/modules/front-office/retainers/retainer-card.tsx",
    "web/src/modules/front-office/retainers/retainer-page.tsx",
    "web/src/modules/front-office/routes.tsx",
-   "web/src/modules/front-office/sales/prospect-page.tsx",
-   "tests/check_fo5s_retainer_screens_browser.ts"
+   "web/src/modules/front-office/sales/prospect-page.tsx"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "3678873ab81dd02e9229ebb15d21cc987aa5f7fcf5b87c892f04c7c138f9fdf5"
+  "commit": "613c6a67a45cb6179a4b3983da7c184052afc413",
+  "tree_before": "4bfda025924f0ea9d904bddec54480e5fb4c56bd",
+  "tree_after": "49a93ce4446faa1ed5f93fafb0b0249d74032939",
+  "files_in_folder": 1800
  },
  {
   "slice": "S18-1",
-  "repo": "S18",
-  "branch": "slice-1",
   "files": [
    "api/src/features/front-office-signing.ts",
    "api/src/front-office/retainers/on-signing-completed.ts",
@@ -389,13 +387,13 @@
    "ports/events/signing.ts",
    "tests/check_fo2w_won_event.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "cbda99b955b9a5180d5a228903a2c2710a76a603430af31316e84b105cd60e28"
+  "commit": "76a8cf81dba9724498364de86d0b26d51d29c79e",
+  "tree_before": "165529975140073da50af75553f3c3bae56495fa",
+  "tree_after": "2ac37ecf159ece3d5315a6cbcc0b52c6f7f11dab",
+  "files_in_folder": 2104
  },
  {
   "slice": "S18-2",
-  "repo": "S18",
-  "branch": "slice-2",
   "files": [
    "tests/check_fo6_signing_api.ts",
    "tests/check_forms_qa53.ts",
@@ -403,13 +401,13 @@
    "tests/check_pf28_inputs.ts",
    "tests/check_pf6b_permission_rules.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "e243def4ae21035e022e00fbef59adce7f403fd72ce6dbde3b8271354274ff84"
+  "commit": "1f25e149d09fd40b061b95a9023dd47ddefb81a8",
+  "tree_before": "8f58c398d2755800b537910e45d5ee6d0752fadc",
+  "tree_after": "2ac37ecf159ece3d5315a6cbcc0b52c6f7f11dab",
+  "files_in_folder": 2104
  },
  {
   "slice": "S19-1",
-  "repo": "S19",
-  "branch": "slice-1",
   "files": [
    "api/src/case-checklist.ts",
    "api/src/case-documents.ts",
@@ -420,13 +418,13 @@
    "tests/check_csd1t_file_type.ts",
    "tests/check_m3s4_blocking_api.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "34265097e719e31f77e9365ecc4935b08c3178ffe1508c7d4cf9ce4bcca7d787"
+  "commit": "64a2be4b16f7e46b957392b33f88cd09ef0db077",
+  "tree_before": "c711a427ebf4316c953e9b412f2a54db4043b002",
+  "tree_after": "51d11f1b10eb9067b4e297d9e348c149c909ce54",
+  "files_in_folder": 1605
  },
  {
   "slice": "S20-1",
-  "repo": "S20",
-  "branch": "slice-1",
   "files": [
    "api/src/front-office/sales/corporate/service.ts",
    "api/src/front-office/sales/prospects.ts",
@@ -439,23 +437,23 @@
    "web/src/modules/front-office/sales/prospect-actions.tsx",
    "web/src/modules/front-office/sales/prospect-page.tsx"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "61df3a6deb1f709b9c356d0e5e46f79d246ffa6199c6ffe2443668a12f134b49"
+  "commit": "c9af320b3ac7cbf1caa0bb0872346008093db243",
+  "tree_before": "9cdf41817ea61fcfddbfe6737d689bd6b49e8427",
+  "tree_after": "a381859009d73f0c6106d229d90a223e297b1ff7",
+  "files_in_folder": 1583
  },
  {
   "slice": "S20-2",
-  "repo": "S20",
-  "branch": "slice-2",
   "files": [
    "web/src/modules/front-office/sales/sales-frame.tsx"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "ebd72333bd983cfa0e2b7a69105db4710adefa21d304a0c0ab53e6e36c084b0f"
+  "commit": "5c52e477bc07f8ffac4b33fffc905c15a1083b52",
+  "tree_before": "b97b8ae94ee43ec51ea066d01e970cb0f004b19e",
+  "tree_after": "a381859009d73f0c6106d229d90a223e297b1ff7",
+  "files_in_folder": 1583
  },
  {
   "slice": "S21-1",
-  "repo": "S21",
-  "branch": "slice-1",
   "files": [
    "api/src/case-clients/client-link.ts",
    "api/src/case-clients/live.ts",
@@ -468,26 +466,26 @@
    "prisma/migrations/20261120100000_csk1_client_link_check/rollback.sql",
    "prisma/schema/cases.prisma"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "6a4815ab2aac8daf3cc95f66af6b6afc97f48f864d679bb020c28fcb8bb73b3a"
+  "commit": "d44c79e06ac0d5799c075be5413140fad1829a8f",
+  "tree_before": "c1d6f94fc87ccb67e20ea07b9aaaf4880bc60352",
+  "tree_after": "7ec791eab8512a0551bc3d5f8cc9a086f4ef5781",
+  "files_in_folder": 1658
  },
  {
   "slice": "S21-2",
-  "repo": "S21",
-  "branch": "slice-2",
   "files": [
    "tests/check_csc1_count.ts",
    "tests/check_csk1_client.ts",
    "tests/check_fo8_prospect_won.ts",
    "tests/check_pf15c_case_limits.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "ee58ba45f2a6a9cadc94b6ce5213788b79ba990d8da458c7204d6cc53957191d"
+  "commit": "dca97513c85b138b0a75e4340064b2db95105a2a",
+  "tree_before": "72b6d25f222ae3eba24aba7e87e1d3865e650f7f",
+  "tree_after": "7ec791eab8512a0551bc3d5f8cc9a086f4ef5781",
+  "files_in_folder": 1658
  },
  {
   "slice": "S22-1",
-  "repo": "S22",
-  "branch": "slice-1",
   "files": [
    "api/src/features/front-office-booking.ts",
    "api/src/front-office/booking/ics.ts",
@@ -500,23 +498,23 @@
    "ports/events.ts",
    "prisma/schema/front-office-booking.prisma"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "906ae25fb2bb854e3f40437b281afcec4580cd481b13d5ada93f0bd98edb9fd3"
+  "commit": "c0b49a101b406665b020dd31e9ae28d71f0ccb5e",
+  "tree_before": "b355b69a9c666b771346fa047f7033bf3d36dc5d",
+  "tree_after": "e33056171a99f3e15494c06978736fc51b4773cb",
+  "files_in_folder": 1246
  },
  {
   "slice": "S22-2",
-  "repo": "S22",
-  "branch": "slice-2",
   "files": [
    "tests/check_fo3_booking.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "0df03378cd0f1a734c2a6593605e9cd58b44e051b6896c3d7ba01ec469ac39f5"
+  "commit": "3f1e7ed16b74abee2878f207fd4fa2b7d607a0d0",
+  "tree_before": "cad7c2e43a3d25399e1559c095fa2ceeb5188819",
+  "tree_after": "e33056171a99f3e15494c06978736fc51b4773cb",
+  "files_in_folder": 1246
  },
  {
   "slice": "S23-1",
-  "repo": "S23",
-  "branch": "slice-1",
   "files": [
    "api/src/features/front-office-identity-check.ts",
    "api/src/features/front-office-retainers.ts",
@@ -529,26 +527,26 @@
    "api/src/platform/files/choose.ts",
    "api/src/platform/files/s3-files.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "0433f52ef43f40d1ddd74562c876a68f04090c898c5ca019104fadc34c2eb316"
+  "commit": "76442de420a4afcc0a7c0d1940138280837c2772",
+  "tree_before": "b264e11faa0ed455849cbc7cd37d7de6fd9b7032",
+  "tree_after": "84e5d9d3d35371258fe4508208706ec309029e4b",
+  "files_in_folder": 1987
  },
  {
   "slice": "S23-2",
-  "repo": "S23",
-  "branch": "slice-2",
   "files": [
    "tests/check_pf24_secrets.ts",
    "tests/check_pff1_s3_files.ts",
    "tests/check_pff1b_bind.ts",
    "tests/check_qa621_persona_door_production.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "883fb2b9d8f2200f34fbdfb4f06c4a1bb8b1196f35e012ad0139e8a481139658"
+  "commit": "c95eefa5e45789761dd2af04b9eb2598bf69d085",
+  "tree_before": "6cb02c869fa7c236180df138fd02c17fe1a2ee28",
+  "tree_after": "84e5d9d3d35371258fe4508208706ec309029e4b",
+  "files_in_folder": 1987
  },
  {
   "slice": "S24-1",
-  "repo": "S24",
-  "branch": "slice-1",
   "files": [
    "api/src/case-filings.ts",
    "api/src/case-prepare.ts",
@@ -561,13 +559,13 @@
    "engine/runtime/prepare.ts",
    "engine/snapshot.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "6b13b996cbed8b8b944b2177608bb63880d148497cba74cedaeb912ab84d242f"
+  "commit": "910c49cd5eb1eec717e3d7ad1798ff8d93429628",
+  "tree_before": "c6600183f8ff3a31ddfc9a967bedbd725b520736",
+  "tree_after": "5595bf5b2a994db5d8320f8d0137b5f7ad9f6fb9",
+  "files_in_folder": 461
  },
  {
   "slice": "S24-2",
-  "repo": "S24",
-  "branch": "slice-2",
   "files": [
    "prisma/migrations/20261102030000_c612_c116_prepare_items/migration.sql",
    "prisma/schema.prisma",
@@ -577,13 +575,13 @@
    "tests/check_vv_prepare_store_api.ts",
    "tests/runtime/check_vv_filings_api.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "156905e8195b0b8fb5bb02ef8ff1ac2632fba4ded1cbb63dff589a39ef5fc102"
+  "commit": "b8b56d11bef3a48f6b0c3f5c25afcad3dad9953b",
+  "tree_before": "8156e78303ed6636652ef7b420a20463801cc81c",
+  "tree_after": "5595bf5b2a994db5d8320f8d0137b5f7ad9f6fb9",
+  "files_in_folder": 461
  },
  {
   "slice": "S25-1",
-  "repo": "S25",
-  "branch": "slice-1",
   "files": [
    "api/src/forms.ts",
    "api/src/main.ts",
@@ -596,30 +594,30 @@
    "web/src/pages/job.tsx",
    "web/src/pages/library.tsx"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "dbe854a84adbce1e7649546cded7211629e0907d6d0060e00653242f2318be17"
+  "commit": "139c631d3ca536feebc0379cdf430e828f0b76c2",
+  "tree_before": "5f0e39eadf3b2a206ed44ea6e5858fb1d5ee71c4",
+  "tree_after": "499c36f8cde784739832dd7e3894aeefc6384fed",
+  "files_in_folder": 417
  },
  {
   "slice": "S25-2",
-  "repo": "S25",
-  "branch": "slice-2",
   "files": [
-   "web/src/runtime/questionnaire.tsx",
    "tests/check_c44_part2.ts",
    "tests/check_c44_part2_browser.cjs",
    "tests/check_c44_question_types.ts",
    "tests/check_c44_question_types_browser.cjs",
    "tests/runtime/check_runtime_r1c.cjs",
    "tests/runtime/prepare_c44.cjs",
-   "tests/runtime/setup_c44_types.ts"
+   "tests/runtime/setup_c44_types.ts",
+   "web/src/runtime/questionnaire.tsx"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "98b9493acf7c7952a41986a78f1659c4e33f4e08a900ef832c2c340f97036e92"
+  "commit": "e909dea6b0df59b00d94b8b03e46ea94b305c122",
+  "tree_before": "6a578cfa2fb91397e4fa7d5caf1a86a5f957d12e",
+  "tree_after": "499c36f8cde784739832dd7e3894aeefc6384fed",
+  "files_in_folder": 417
  },
  {
   "slice": "S26-1",
-  "repo": "S26",
-  "branch": "slice-1",
   "files": [
    "api/src/platform/branding/images.ts",
    "api/src/platform/branding/routes.ts",
@@ -630,25 +628,25 @@
    "tests/check_pf12b_bypass_audit.ts",
    "tests/check_pf12b_doors.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "710e21f91255453899e9bc41eb2df21b1c3d2dca2363b95083e941d16d4a7d79"
+  "commit": "9b0b8b8d7e88b7e34f601988fe87c2b5d4b95ba2",
+  "tree_before": "a04e2859085051d727c1ac157a3404e93c834c59",
+  "tree_after": "591040a80f8b2145006d1049382c1c816d189019",
+  "files_in_folder": 1807
  },
  {
   "slice": "S27-1",
-  "repo": "S27",
-  "branch": "slice-1",
   "files": [
    "api/src/features/front-office-booking.ts",
    "api/src/front-office/booking/staff.controller.ts",
    "tests/check_fo3sr_routes.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "9f7519a2a03c6097f204f3ba712a6175ffa0a91f5af03a20172124950450e055"
+  "commit": "e4e67ca925b0e8e2673c67fbbe952c9580328357",
+  "tree_before": "672216e279ee16a3bc530042281dde3bc0ad773b",
+  "tree_after": "ef55296e53513a8b6f0fb98bc0b01e58db1e9fb5",
+  "files_in_folder": 1302
  },
  {
   "slice": "S28-1",
-  "repo": "S28",
-  "branch": "slice-1",
   "files": [
    "api/src/features/platform-billing-exit.ts",
    "api/src/platform/billing/exit-clock.ts",
@@ -658,7 +656,9 @@
    "tests/check_pf19r_every_sender.ts",
    "tests/check_pf5_exit_clock.ts"
   ],
-  "over_5000_lines": [],
-  "diff_sha256": "9571f05403f9131e32e4ed0a5868cfddd2c950c848004f9f68b67761f6a69611"
+  "commit": "6036b9877a5dd8384427ace065dff0693862749c",
+  "tree_before": "262b58f77c46a567038b6d57d7ca5aee021618ca",
+  "tree_after": "3426d39625d5d07538603d0a117701d2890a2a73",
+  "files_in_folder": 1922
  }
 ]
