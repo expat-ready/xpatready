@@ -160,3 +160,51 @@ There are no new findings. The two round 4 Minors are still open and still not b
 Verdict: Approve 2ea622a7ed9179a0b55e84f56a841a6c9b94b929
 
 Reviewer: Approve 2ea622a7ed9179a0b55e84f56a841a6c9b94b929
+
+## Round 6 (batch fix and merge of main, 921ee246f)
+This is a diff-only check (P-277). The last Approve covered `7be8ca9cb`, which holds only records on top of round 5's `2ea622a7e`. Since then there are two commits on the branch (`git log --first-parent 7be8ca9cb..921ee246f`):
+* `ed6036194`: the batch fix. Merge batch run 45469373950, shard 23, failed `check_pf28_inputs`: Undo with a malformed batch id answered 422, not 404.
+* `921ee246f`: the merge of main (`4328e3dac`, which brings in #3497 CS-D6 part 2 and #3552 FO-7v part T).
+
+**1. The reorder changes nothing else** (`to-move.ts:127-128`).
+* The diff is one line moved: `bid` (UUID check, else `notFound("batch")`) now runs before `parse(UndoIn, body)`, not after it. No other line in `trust/` changed (`git diff 7be8ca9cb 921ee246f -- …/client-money/trust` is these two lines only).
+* `scopeOf(ctx)` is still read on the same line as before, before `this.write(...)`, so it is still outside the transaction (the r9-M1 shape).
+* Inside the transaction nothing moved. The order is still: `trustShows`, then the batch read, then the lines with C5 (`visible`), then `notFound` on an unseen line, then `takeLocks`, then the insert. C5 still comes before every lock, and the lock order is still `takeLocks`' sorted party and currency.
+* The new early `notFound` throws before any read or write. A malformed id cannot be a real batch, so a 404 says nothing about another firm's data. It is the same pattern as the older trust routes: `service.ts:123` `cancel` (`idOf` before `parse`) and `reads.ts:34`.
+* There is one small change in behaviour, and it is the intended one. A malformed id with a bad body now answers 404, not 422. A well-formed id still gets the body checked first (422 before any database read). DW13's "no reason → 422" case still passes.
+
+**2. No other part 3 route has the same issue.** `to-move-routes.ts` has three routes, and only `POST batches/:id/undo` has a path parameter. `GET /to-move` takes only a query, and `POST /batches` takes only a body. Part 3's change to `money-out.ts` (the refund's `unclearedAcknowledged`) is on a body-only route. The new test (`check_fo7t_to_move.ts:194-195`) sends a malformed id with `{}`. It expects 404 and `batches() === 2` (nothing written), and it sits before the other DW13 cases.
+
+**3. The merge resolution.** `git show --cc 921ee246f` shows one file resolved by hand, `ports/notifications.ts`, and nothing else.
+* Both maps keep both kinds: `KEEP_PERIOD_PASSED → NEEDS_YOU` (main) and `TRUST_TO_MOVE_WAITING → PAYMENTS` (part 3).
+* `NOTIFICATION_GROUP` is a `Record<NotificationKind, …>`, so a missing key would fail the type check. I checked both keys by eye. I could not run the API's `tsc --noEmit` here: it ran out of memory twice (exit 134). CI's types job is the check for this.
+* `NOTIFICATION_ITEM_KIND` is unchanged. Part 3 uses item `firm`, and CS-D6 uses `case`. Both were already in the list.
+
+**4. Main's new code against part 3**
+* **CS-D6 keep period** (`documents/keep-period.ts`, `features/case-keep-period.ts`): no `money_*` table. Its jobs are `case_documents.keep_period_*`. Part 3's jobs are `client_money.trust_to_move_*`. The names do not overlap. Each feature has its own once-per-runner `WeakSet`.
+* **FO-7v part T** (`client-money/reversals/`): it writes one `CORRECTION` naming a deposit, with kind RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT or OTHER, under `money_trust_lock` for the deposit's party. Neither part changes the other's tables, routes or event names. The checks against part 3:
+  * **The list:** `money_to_move` (FO-7mv) lists only `WRONG_ACCOUNT` corrections. The `money_move_line` trigger refuses any other correction kind, so a reversal never becomes a line to move. Part 3's `kindOf` (`CORRECTION → WRONG_ACCOUNT`) stays right.
+  * **Locks:** a reversal takes one party lock and no invoice lock, so it cannot invert `takeLocks`' order.
+  * **One overlap, now reachable: round 4's Minor 2.** Before this merge, a RETURNED correction could only be written straight into the database. With main's `POST /payments/:id/reverse` it can now be made from the product. I ran a probe: a copy of this check, with the reversals feature mounted, run on a scratch database and not committed.
+    * Setup: Client v has a CAD 500.00 cheque (not cleared) and a CAD 500.00 e-Transfer (cleared). CAD 400.00 is applied to an invoice. The cheque is then reversed as RETURNED (201, balance 100.00).
+    * Moving the CAD 400.00 gives **409 UNCLEARED: "CAD 400.00 of this is from a cheque not yet cleared"**. A refund of the remaining CAD 100.00 gives **409 UNCLEARED** as well.
+    * The control case is the same, without the reversal: the move answers **201 without asking**.
+    * The cause: the returned cheque's deposit still counts in `uncleared` (`to-move.ts:166`, `money-out.ts:69`), even though its reversal has already taken it out of the ledger.
+    * The question only warns and never blocks (Lead 29's ruling (b)). No money is wrong.
+    * But the wording and amount are false. If staff acknowledge, the audit line records `unclearedAcknowledged: true`.
+    * It is the same reading as part 2's `held`, so it stays **Minor, not blocking**. It now has evidence.
+    * Fix suggestion: count only what is left of each uncleared deposit (its amount plus its corrections), in both places. Name it in the PR body next to the FO-7ts gap.
+
+**5. The check, run once at `921ee246f`.** `npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo7t_to_move.ts` gives **44 passed, 0 failed**. That is round 5's 43 plus the new PF-28 case. Postgres ran on 127.0.0.1:54329 with a scratch database each time. Port 4400 was not used.
+
+**Journey score (reviewer, API only): 8/10, unchanged.** This round changes no journey step except one: Undo with a broken link now answers "not found" instead of a field error. That is the honest answer.
+
+**Open, not blocking:**
+* Round 4 Minor 1 (the refund's audit flag is not asserted).
+* Round 4 Minor 2, now reachable through FO-7v part T and shown by the probe above.
+
+There is no new Blocker or Major.
+
+Verdict: Approve 921ee246f39b8e6bd44b07b20bc1632c16ebc5ea
+
+Reviewer: Approve 921ee246f39b8e6bd44b07b20bc1632c16ebc5ea
