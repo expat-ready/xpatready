@@ -8,8 +8,9 @@ import { fileURLToPath } from "node:url";
 import { Stack, aws_route53 as route53 } from "aws-cdk-lib";
 import { allStacks, buildApp } from "../lib/app.ts";
 import { REGION_ALLOW, bypassFindings, regionFindings, resourcePolicyFindings, typeFindings, type Template } from "../lib/checks.ts";
-import { AppService, DEFAULT_DOMAIN, MIN_TASKS, NO_DOMAIN } from "../lib/service.ts";
-import { addressSuffixFindings, exposureFindings, noDomainFindings, imageFindings, listenerFindings, loaderSettings, logFindings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
+import { BALANCER_IDLE_SECONDS as SERVER_BALANCER_IDLE, HEADERS_MS, KEEP_ALIVE_MS } from "../../../api/src/platform/http/keep-alive.ts";
+import { AppService, BALANCER_IDLE_SECONDS, DEFAULT_DOMAIN, MIN_TASKS, NO_DOMAIN } from "../lib/service.ts";
+import { addressSuffixFindings, exposureFindings, idleTimeFindings, noDomainFindings, imageFindings, listenerFindings, loaderSettings, logFindings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SETTINGS = loaderSettings(readFileSync(join(HERE, "..", "..", "..", "api", "src", "platform", "config", "settings.ts"), "utf8"));
@@ -34,6 +35,7 @@ for (const s of real) {
   });
   test(`PF-8b pass (${s.name}): at least two Fargate tasks over two zones, nothing public but the load balancer`, () => assert.deepEqual([...spreadFindings(s.template), ...exposureFindings(s.template)], []));
   test(`PF-8b pass (${s.name}): HTTPS only (TLS 1.2+), port 80 redirects and does nothing else`, () => assert.deepEqual(listenerFindings(s.template), []));
+  test(`PF-8b pass (${s.name}): the load balancer states its idle time, shorter than the API server's keep-alive`, () => assert.deepEqual(idleTimeFindings(s.template, KEEP_ALIVE_MS / 1000), []));
   test(`PF-8b pass (${s.name}): the wildcard certificate covers *.${domain} and *.${domain} reaches the load balancer`, () => assert.deepEqual(wildcardFindings(s.template, domain), []));
   test(`PF-8b pass (${s.name}): the migration task uses the owner's address, the service the app role's`, () => assert.deepEqual(roleFindings(s.template, stage), []));
   test(`PF-8b pass (${s.name}): SES signs with DKIM, SPF on the MAIL FROM domain, DMARC published`, () => assert.deepEqual(mailFindings(s.template, domain), []));
@@ -44,6 +46,19 @@ for (const s of real) {
 }
 
 const t0 = real.find((s) => s.name === "xr-production")!.template;
+
+test("PF-8b: the server and the stack name the same balancer idle time, and the server's headers limit outlasts its keep-alive", () => {
+  assert.equal(SERVER_BALANCER_IDLE, BALANCER_IDLE_SECONDS);
+  assert.ok(KEEP_ALIVE_MS / 1000 > BALANCER_IDLE_SECONDS && HEADERS_MS > KEEP_ALIVE_MS);
+});
+test("PF-8b fail: an idle time not stated, or as long as the keep-alive, or the old 5 s keep-alive, is caught", () => {
+  const attrs = (t: Template) => of(t, "AWS::ElasticLoadBalancingV2::LoadBalancer")[0][1].Properties as { LoadBalancerAttributes: { Key: string; Value: string }[] };
+  const t = clone(t0); attrs(t).LoadBalancerAttributes = attrs(t).LoadBalancerAttributes.filter((a) => !a.Key.startsWith("idle_timeout"));
+  assert.match(idleTimeFindings(t, KEEP_ALIVE_MS / 1000).join(), /no idle time stated/);
+  const t2 = clone(t0); attrs(t2).LoadBalancerAttributes.find((a) => a.Key.startsWith("idle_timeout"))!.Value = String(KEEP_ALIVE_MS / 1000);
+  assert.match(idleTimeFindings(t2, KEEP_ALIVE_MS / 1000).join(), /not shorter/);
+  assert.match(idleTimeFindings(t0, 5).join(), /not shorter/);
+});
 
 test("PF-8b fail: a task definition missing PLATFORM_ENVIRONMENT, or set to local, or PLATFORM_IDENTITY=local, is caught", () => {
   const t = clone(t0); const c = svcContainer(t);
