@@ -1,0 +1,3 @@
+Entry points: `GET|POST /api/library/score-grids` (`library-score-grids.ts`, AS-1g): a score grid file (samples/score-grids/README.md) imported as one library change (kind `score_grid`) that a second person approves; the approval writes the grid tables on bypass use `configurator.score-grids.apply`; released when each combination it names carries it (snapshot `score_grids`, only when a grid names the combination).
+Tables: scoreRuleset, scoreFactor, scoreBand, languageConversion (AS-1g: platform-wide; every row cited or Sample, a check in SQL; the app role reads only, P-588 (1)).
+Tests: tests/check_as1g_score_grids.ts.
