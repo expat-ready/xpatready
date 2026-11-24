@@ -1,3 +1,44 @@
+# Round 12 (Lead 17: B164 audit names; diff only, 24 Nov 2026; 263595b68 → 4aacdbbe8)
+
+Round 12 verdict line: `Reviewer: Approve 4aacdbbe8d02e83566aa49ff6493a72f148ae6e5`
+
+Scope: `git diff 263595b68 4aacdbbe8` (2 files, +18 −18), one commit (4aacdbbe8). `api/src/client-money/trust/service.ts` changes 4 lines; `tests/check_fo7t_trust.ts` changes 14 (2 header comment lines, 12 audit readers). Nothing else changed. The tree was clean before and after my runs.
+
+## 1. The guard's own rule, and why the rename is the answer
+* `tests/check_b164_no_engine_keys.ts:142-150` `keyLike`: a dotted string is a key when its head is a known combination prefix, or when it matches `/^[a-z]{2,5}\.[a-z][a-z0-9_]*$/` and its head is not in `NOT_KEYS` (l. 123) or a file ending. `trust` is five letters, so `trust.answered` and the other three hit.
+* Main's money audit actions pass by that same rule, without being in `NOT_KEYS`: `payment.recorded` (`invoices/money.ts:122`) and `invoice.issued` (`money.ts:60`) have 7-letter heads, and `payment_account.onboarding_started` (`card/account.ts:82`) has a `_`. `trust_money` has an underscore (and 11 characters), so it fails the 2-5 letter test. It is not a known combination prefix either. It follows the same route as `payment_account.*`.
+* The guard is unchanged: `git diff origin/main 4aacdbbe8 -- tests/check_b164_no_engine_keys.ts` is empty (origin/main 02e240034), and the guard is not in the PR's diff. The ALLOW block (l. 30-40) and `NOT_KEYS` are untouched. Lead 17 is met: nothing was added to the allow-list and the guard was not loosened.
+* The name fits main's convention: a snake_case head naming the money object, a dot, then a snake_case past-tense verb. The suffixes are unchanged (`answered`, `request_created`, `request_cancelled`, `deposited`). The head matches the module class `TrustMoney`.
+
+## 2. The rename is complete
+* Writers: `service.ts:89, 108, 134, 199` are the only four `audit.record` calls in `client-money/trust/`. All four now use `trust_money.*`. Their `entity`, `summary`, `detail`, `before` and `after` are unchanged.
+* Readers: `git grep -nE 'trust\.(answered|request_created|request_cancelled|deposited|%)' 4aacdbbe8` (whole tree, not counting `sources/`, `code/`, `archive/`) finds no audit reader left on the old names:
+  * In code, the remaining hits are the event only: the `TRUST_DEPOSITED: "trust.deposited"` constant (`ports/events/client-money-trust.ts:3, 10, 14`), the comment at `service.ts:11` ("one trust.deposited event"), and the event readers in the test (`check_fo7t_trust.ts:7, 9, 367-373`, all on `module_event.type`).
+  * There is no web reader (FO-7t-1 is API only), and no audit word map or label table names trust actions: `git grep` for the old and new names in `web/src` and `ports/` finds none. Main's own actions have no map either (`payment.recorded` is read only in `money.ts`, `refunds.ts` and `check_fo7b_invoices.ts`).
+  * No migration or rollback comment names them.
+  * The docs that mention `trust.deposited` (BACKLOG l. 360, `design/briefs/FO-7t.md` l. 54 and 88, `briefs/track-b/FO-7t-1.md` l. 24 and 30) mean the event, not the audit line. No code reads them.
+  * The old names in this folder's records (`break-report.md`, the journey-test reports, the earlier rounds below) are history and stay as written (P-188).
+* Test readers: every audit read in `check_fo7t_trust.ts` (13 reads on 12 lines: l. 155, 159, 182, 186, 311, 349, 352, 355, 358, 361-363) uses `trust_money.*`. That includes the firm-wide `action like 'trust_money.%'` staff-actor sweep (l. 363), which stays as strict as before: it still covers every trust audit action, and with the new head it can no longer match a `trust.*` event name, which lives in `module_event` anyway.
+* Rows on main: on origin/main, `client-money/` has no `trust` folder, and `git grep '"trust(_money)?\.[a-z_]+"' origin/main` finds nothing. So no audit row on main or in the demo was ever written under the old names, and none needs a data step.
+
+## 3. The event is untouched, and correctly so
+* `trust.deposited` is a module-event contract (contracts §8, FO-7t.md l. 88, FO-7t-1 brief l. 24). It lives in `ports/events/`, outside B164's `engine/` and `api/src/` scope (l. 2). It reaches `service.ts:202` only through `TRUST_EVENT.TRUST_DEPOSITED`, so no dotted string literal sits in `api/src`. B164 passes with it as it is. Renaming it would change a contract to pass a guard that does not read it.
+* `service.ts` and the test agree: the audit lines use `trust_money.*`, and the `module_event` reads keep `trust.` (l. 368, 370, 373).
+
+## 4. Runs on 4aacdbbe8 (mine; run-suites.sh ports +14000, never :4400; live AI off)
+* `run-suites.sh --only check_b164_no_engine_keys.ts`: PASS, 67 passed, 0 failed, exit 0.
+* `run-suites.sh --only check_fo7t_trust.ts`: PASS, 62 passed, 0 failed, exit 0. Every audit-count assertion now reads the new names against real rows, so if a writer had been missed, its count check would fail.
+* The builder's other runs (irm_editions 13/13, csw3 48/48, forms_qa53 46/0, pf28 51/51, typecheck no new errors) were not re-run; they do not touch these strings.
+
+## 5. Findings
+None at Blocker, Major or Minor. Round 11's approval of everything else stands, because this diff changes only the four action strings and their readers.
+
+Journey score: **8.5/10 stands** (pass, no criterion at 0). I did not re-walk it, because no route, screen, word or answer changed; only the stored audit action names did. The journey's data check (step 4, "the audit line is there") was re-verified under the new names by check_fo7t_trust 62/0. D17 and D20 remain "simulated only". Report: `screens/FO-7t-1/journey-test-reviewer-2026-11-24.md` (unchanged).
+
+**Verdict: Approve** (Ship). No Blocker or Major is open.
+
+Reviewer: Approve 4aacdbbe8d02e83566aa49ff6493a72f148ae6e5
+
 # Round 11 (Lead 17: cancel visibility; diff only, 24 Nov 2026; 3e8d36f5f → db39eccd6)
 
 Round 11 verdict line: `Reviewer: Approve db39eccd6b001db1f18ce866712a60e672400c1d`
