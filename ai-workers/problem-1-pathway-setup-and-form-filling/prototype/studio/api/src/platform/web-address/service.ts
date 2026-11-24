@@ -51,15 +51,21 @@ const problem = (status: number, code: string, title: string, detail: string, ex
 
 /** Spaces of any kind at either end (also no-break and zero-width), and characters a reason may not hold (controls and
  *  direction changes: break m9); the migration's platform_web_address_reason_ok is the same rule. */
-const EDGE_SPACE = /^[\s\u00a0\u1680\u180e\u2000-\u200d\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]+|[\s\u00a0\u1680\u180e\u2000-\u200d\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]+$/g;
+const EDGE_CHAR = /[\s\u00a0\u1680\u180e\u2000-\u200d\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]/;
+/** The reason without its edge spaces, in one pass from each end (CodeQL #148, js/polynomial-redos: the old `^[…]+|[…]+$`
+ *  with /g backtracked over a long inner run of tabs). Every character of the class is one UTF-16 unit. */
+const trimEdges = (s: string) => { let a = 0, b = s.length; while (a < b && EDGE_CHAR.test(s[a])) a++; while (b > a && EDGE_CHAR.test(s[b - 1])) b--; return s.slice(a, b); };
+/** Longer than any kept reason can be (500 code points, each at most 2 units, and a few edge spaces): refused unread. */
+const REASON_INPUT_MAX = 4000;
 // eslint-disable-next-line no-control-regex
 const BAD_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u061c\u180e\u200e\u200f\u202a-\u202e\u2061-\u2064\u2066-\u206f]/;
 
 /** The reason as kept, or the message for the field. */
 export function readReason(input: unknown): { ok: true; reason: string } | { ok: false; message: string } {
   if (typeof input !== "string") return { ok: false, message: "Give the reason for the change (at least 3 characters)." };
+  if (input.length > REASON_INPUT_MAX) return { ok: false, message: "Keep the reason to 500 characters." };
   if (BAD_CHARS.test(input)) return { ok: false, message: "Remove the control or direction characters." };
-  const reason = input.replace(EDGE_SPACE, "");
+  const reason = trimEdges(input);
   // Characters as the database counts them (code points), not UTF-16 units: an emoji is one (Devin review on #1763).
   const length = [...reason].length;
   if (length < 3) return { ok: false, message: "Give the reason for the change (at least 3 characters)." };
