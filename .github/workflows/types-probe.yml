@@ -22,7 +22,7 @@ jobs:
       - run: bash "$P/tools/cloud-setup.sh" > /dev/null 2>&1
       - name: peak memory
         run: |
-          cd "$S"; sudo apt-get install -y -q time > /dev/null 2>&1 || true
+          set +e; cd "$S"; sudo apt-get install -y -q time > /dev/null 2>&1 || true
           t() { echo "PROBE == $1"; shift; NODE_OPTIONS="--max-old-space-size=$HEAP" /usr/bin/time -v "$@" > /tmp/o 2>&1; echo "PROBE exit $?"; grep -E '^(Files|Lines of|Identifiers|Symbols|Types|Instantiations|Memory used|Check time|Total time|Assignability)|Maximum resident|heap out of memory' /tmp/o | sed "s/^/PROBE $HEAP /"; }
           HEAP=14336 t "api, 14 GB heap" node_modules/.bin/tsc --noEmit --noCheck false --extendedDiagnostics --pretty false -p api/tsconfig.json
           HEAP=8192 t "api, 8 GB heap as ci" node_modules/.bin/tsc --noEmit --noCheck false --extendedDiagnostics --pretty false -p api/tsconfig.json
@@ -30,9 +30,9 @@ jobs:
           sed 's#, "../tests/\*.ts"##' api/tsconfig.json > api/tsconfig.src.json
           HEAP=14336 t "api without tests, 14 GB" node_modules/.bin/tsc --noEmit --noCheck false --extendedDiagnostics --pretty false -p api/tsconfig.src.json
       - name: which files cost
-        if: matrix.prs != '3277'
+        if: always()
         run: |
-          cd "$S"; NODE_OPTIONS=--max-old-space-size=14336 node_modules/.bin/tsc --noEmit --noCheck false --pretty false -p api/tsconfig.json --generateTrace /tmp/tr > /dev/null 2>&1; echo "PROBE trace exit $?"; ls -la /tmp/tr | sed 's/^/PROBE /'
+          set +e; cd "$S"; NODE_OPTIONS=--max-old-space-size=14336 node_modules/.bin/tsc --noEmit --noCheck false --pretty false -p api/tsconfig.json --generateTrace /tmp/tr > /dev/null 2>&1; echo "PROBE trace exit $?"; ls -la /tmp/tr | sed 's/^/PROBE /'
           NODE_OPTIONS=--max-old-space-size=12288 node -e '
           const fs=require("fs"),rl=require("readline");const sf={};const depth=[];let n=0;
           const sh=p=>(p||"").replace(/.*prototype\//,"");
