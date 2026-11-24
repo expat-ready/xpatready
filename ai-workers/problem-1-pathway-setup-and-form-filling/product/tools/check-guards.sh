@@ -31,6 +31,7 @@ TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
+TESTS="$TESTS check-merge-wake.sh"   # wake on merge
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
@@ -111,6 +112,22 @@ A351 b1 ran|product/tools/lead-watch.sh|/same-cause.py did not run/d|check-same-
 3 dot|product/tools/touch-overlap.py|s/re.sub(r"^(\\.\/)+", "", /(/|check-touch-overlap.sh
 3 run|product/tools/check-lane-preflight.sh|/check-touch-overlap.sh" 2>\&1)/d|check-touch-overlap.sh
 4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
+W24 all|product/tools/merge-wake.py|s/any(x not in merged for x in w)/all(x not in merged for x in w)/|check-merge-wake.sh
+W24 holds|product/tools/merge-wake.py|s/^        if has_all(.*/        if False:/|check-merge-wake.sh
+W24 lost|product/tools/merge-wake.py|s/^        if lost:/        if False:/|check-merge-wake.sh
+W24 line|product/tools/merge-wake.py|s/if ws and all(got) and len(ws) <= MANY:/if ws and any(got):/|check-merge-wake.sh
+W24 fence|product/tools/merge-wake.py|s/^            fence = f.group(1); continue/            pass/|check-merge-wake.sh
+W24 late|product/tools/merge-wake.py|s/t = max(merged/t = min(merged/|check-merge-wake.sh
+W24 lane|product/tools/merge-wake.py|s/got = by\["branch"\] or by\["number"\]/got = by["number"] or by["branch"]/|check-merge-wake.sh
+W24 empty|product/tools/merge-wake.py|s/ or not prs:/:/|check-merge-wake.sh
+W24 queued|product/tools/merge-wake.py|s/^        if labels \& .*/        if False:/|check-merge-wake.sh
+W24 clean|product/tools/merge-wake.py|s/^    s = re.sub(r"\[.x00.*/    s = str(s)/|check-merge-wake.sh
+W24 unread|product/tools/merge-wake.py|s/^    if unread:/    if False:/|check-merge-wake.sh
+W24 limit|product/tools/merge-wake.py|s/^    if len(prs) >= LIMIT:/    if False:/|check-merge-wake.sh
+W24 html|product/tools/merge-wake.py|s/in re.sub(r"<!--.*flags=re.S)/in (body or "").replace("\\r", "")/|check-merge-wake.sh
+W24 many|product/tools/merge-wake.py|s/^        if len(w) > MANY: .*/        if False:/|check-merge-wake.sh
+W24 wired|product/tools/lead-watch.sh|s/^mw=/# mw=/|check-merge-wake.sh
+W24 ran|product/tools/lead-watch.sh|/merge-wake.py did not run/d|check-merge-wake.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
 A351 c2 moved|product/tools/checks-changed.py|s/^            if to and (re.search.*/            if False:/|check-checks-changed.sh
