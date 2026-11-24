@@ -428,7 +428,7 @@ export function diff(prev: Snapshot | null, next: Snapshot): Change[] {
     for (const [key, x] of a) if (!b.has(key)) out.push({ kind: label, key, change: "removed", needs_sme: behaviour, label: x.name ?? x.plain ?? key });
   }
   // AS-1g (breaker m5): a changed grid names only what changed, before and after, so the expert sees 10 → 9 points.
-  const changedGrid = (was: SnapGrid | undefined, now: SnapGrid) => { if (!was) return gridWords(now); const a = gridWords(was).split(" · "), b = gridWords(now).split(" · "); return [`${now.label}, changed:`, ...b.filter((x) => !a.includes(x)).map((x) => `now ${x}`), ...a.filter((x) => !b.includes(x)).map((x) => `was ${x}`)].join(" · ").slice(0, 6000); };
+  const changedGrid = (was: SnapGrid | undefined, now: SnapGrid) => { if (!was) return gridWords(now); const a = gridWords(was).split(" · "), b = gridWords(now).split(" · "); return [`${now.label}, changed:`, ...b.filter((x) => !a.includes(x)).map((x) => `now ${x}`), ...a.filter((x) => !b.includes(x)).map((x) => `was ${x}`)].join(" · "); };
   // AS-1g (P-577): a score grid the release carries is named once, in words, for the immigration expert's sign-off.
   {
     const a = new Map(((prev?.score_grids ?? []) as { key: string; sha256: string; label: string }[]).map((x) => [x.key, x])), b = new Map(((next.score_grids ?? []) as SnapGrid[]).map((x) => [x.key, x]));

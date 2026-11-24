@@ -24,7 +24,7 @@ type Tx = Prisma.TransactionClient;
 export const GRID_KIND = "score_grid", GRID_ACTION = "SET_SCORE_GRID";
 /** One import of a key waits at a time; a returned one, or an approved one no release has carried, is replaced by the
  *  next import of its key (review B1, breaker M1/M2: never a key locked for good). */
-const REPLACED = ["RETURNED", "APPROVED"];
+const REPLACED = ["RETURNED"];   // review r2 M1: an approved one is replaced only when the next one is applied (apply)
 const problem = (status: number, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.local/problems/${title.toLowerCase().replace(/[^a-z]+/g, "-")}`, title, status, detail, ...extra }, status);
 const KEY = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
@@ -36,7 +36,7 @@ const SourceRef = z.union([z.literal("Sample"), z.strictObject({ url: z.string()
 const INT = z.number().int().min(0).max(100_000);   // breaker M1: never past the INTEGER column, refused here, not at approval
 const SCORE = z.number({ message: "a score is a finite number" }).min(-1000).max(1000);
 const Band = z.strictObject({ when: z.record(z.string(), z.unknown()), points: INT, source_ref: SourceRef });
-const Factor = z.strictObject({ key: z.string().regex(KEY).max(120), role: z.enum(["PRINCIPAL", "SPOUSE"]), facts: z.array(z.string().regex(/^[a-z][a-z0-9_.]{0,119}$/)).min(1).max(4), maximum: INT, source_ref: SourceRef, bands: z.array(Band).min(1).max(200) });
+const Factor = z.strictObject({ key: z.string().regex(KEY).max(120), role: z.enum(["PRINCIPAL", "SPOUSE"]), facts: z.array(z.string().regex(/^[a-z][a-z0-9_.]{0,119}$/)).min(1).max(4), maximum: INT, source_ref: SourceRef, bands: z.array(Band).min(1).max(200) }).refine((f) => f.bands.reduce((n, b) => n + JSON.stringify(b.when).length, 0) <= 20_000, "a factor's band conditions are at most 20 000 characters (review r2 M3: the overlap check stays quick)");
 const Conversion = z.strictObject({ test: z.string().regex(/^[A-Z][A-Z0-9_]{1,39}$/), skill: z.enum(["READING", "WRITING", "LISTENING", "SPEAKING"]), score_min: SCORE, score_max: SCORE, clb: z.number().int().min(1).max(12), source_ref: SourceRef });
 export const GridFile = z.strictObject({
   key: z.string().regex(KEY).max(120), label: said("label", 200), selection_model: z.enum(["FIXED_PASS_MARK", "DRAW_RANKING"]),
@@ -45,7 +45,7 @@ export const GridFile = z.strictObject({
 }).transform((g) => ({ ...g, // breaker m4: language rows in one order, so the file's hash is the snapshot's whatever order they came in
   language_conversion: [...g.language_conversion].sort((a, b) => a.test.localeCompare(b.test) || a.skill.localeCompare(b.skill) || a.score_min - b.score_min || a.score_max - b.score_max) }));
 export type Grid = z.infer<typeof GridFile>;
-const Body_ = z.strictObject({ grid: z.unknown(), reason: z.string().trim().min(3, "Say why (3 to 300 characters).").max(300, "Say why (3 to 300 characters).") });
+const Body_ = z.strictObject({ grid: z.unknown(), reason: said("the reason (say why, 3 to 300 characters)", 300).pipe(z.string().min(3, "Say why (3 to 300 characters).")) });
 
 // ------------------------------------------------------------------------------------------- the band condition language
 /** One fact's allowed values in a band: a numeric range (open or closed ends) or a set of exact values. */
@@ -64,7 +64,7 @@ export function spansOf(when: Record<string, unknown>, facts: string[]): Map<str
     const had = out.get(field);
     if (op === "eq" || op === "in") {
       const values = op === "eq" ? [v] : Array.isArray(v) ? v : [];
-      if (!values.length || values.length > 50 || !values.every((x) => typeof x === "string" ? x.length <= 200 : typeof x === "boolean" || (typeof x === "number" && Number.isFinite(x)))) return `"${op}" on ${field} needs 1 to 50 values (words, finite numbers or yes/no)`;
+      if (!values.length || values.length > 50 || !values.every((x) => typeof x === "string" ? x.length <= 200 && !UNSTORABLE.test(x) : typeof x === "boolean" || (typeof x === "number" && Number.isFinite(x)))) return `"${op}" on ${field} needs 1 to 50 values (words, finite numbers or yes/no)`;
       if (had) return `${field} is named twice in one band`;
       out.set(field, { kind: "set", values: values as (string | number | boolean)[] });
     } else if (COMPARE.has(op as string)) {
@@ -209,7 +209,7 @@ export class ScoreGrids implements OnModuleInit {
       const c = await tx.libraryChange.findUnique({ where: { id: seen.id } });
       if (c?.status !== "APPROVED") return null;
       const g = await this.recheck(tx, c);
-      await writeGrid(tx, g, (c.matches as { sha256: string }).sha256, c.proposedBy);
+      await writeGrid(tx, g, (c.matches as { sha256: string }).sha256, c.proposedBy); await tx.libraryChange.updateMany({ where: { kind: GRID_KIND, key: c.key, status: "APPROVED", id: { not: c.id } }, data: { status: "WITHDRAWN", decisionNote: "Replaced by a later approved import of the same grid before any release carried it." } });
       return g;
     }, { timeout: 30_000, maxWait: 10_000 }));
     if (!g) throw problem(409, "Changed meanwhile", "This change was withdrawn at the same moment, so nothing was applied. Refresh to see it.");

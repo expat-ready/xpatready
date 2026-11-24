@@ -37,5 +37,5 @@ export function gridWords(g: GridFileShape): string {
   const head = `${g.label} (${g.selection_model === "FIXED_PASS_MARK" ? `pass mark ${g.pass_mark}` : "ranking total, no pass mark"}, maximum ${g.maximum}; for ${g.combinations.join(", ")}; ${n(rows.length - sample, "row")} cited, ${sample} Sample).`;
   const factors = g.factors.map((f) => `${f.key} (${f.role.toLowerCase()}, maximum ${f.maximum}; ${src(f.source_ref)}): ${f.bands.map((b) => `${conditionWords(b.when)} → ${n(b.points, "point")} [${src(b.source_ref)}]`).join("; ")}`);
   const lang = g.language_conversion.length ? [`Language: ${g.language_conversion.map((c) => `${c.test} ${c.skill.toLowerCase()} ${c.score_min}-${c.score_max} → CLB ${c.clb} [${src(c.source_ref)}]`).join("; ")}`] : [];
-  return [head, ...factors, ...lang].join(" · ").slice(0, 6000);
+  return [head, ...factors, ...lang].join(" · ");
 }
