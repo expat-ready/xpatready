@@ -42,3 +42,5 @@ Lane builds it as its own FO-7t part. Only trust YES and deposit row above zero,
 **qa asks:** R1.10 137 probes (bugs or parts?), j_74 W7 red on two branches while R1.74 is Works, j_90 W4 ends `&& false`. **No lane:** FO-7w1 (R1.56 W1), CS-D5 part 2 (pdfjs gate), FO-5s later part, FO-7t parts 2-3; X-rows owed: Owner's "all" scope (#3321 m4), Button in forms, rAF focus audit, AG-7-1 r11, AG-5-55, Licence/My account query-key crash, #3302's four follow-ups.
 
 | A346 | 24 Nov ~01:25 (typed to Lead 13) | "So you have all my approval. Go ahead and implement those as per your best recommended possible, and create enough standby so that you can run entire night flawlessly and keep monitoring as set processes." | P-814 and date option A (P-815, 12 Dec) in #3314; standbys, Lead B 5, qa A 5 and RQ shaping started |
+
+**Correction, Lead 19 (09:0x):** the R1.60 bound "pay link: P-567 (3) governs (none on a trust request in R1)" above is wrong: P-567 (3) defers card into trust only; AG-6-61 rule 5's link stands. O3: a person cancels (rule 11). See the comment on #3371. Lead B 5 read #3209 6bff2d790 and #3184 2e986f3ae OK.
