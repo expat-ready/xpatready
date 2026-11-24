@@ -172,3 +172,89 @@ Not findings:
 **Verdict: Block** (one Blocker and one Major open). To fix: B1-r, M-r1, then m-r1, m-r2 and m-r3.
 
 Round 2 verdict: Block
+
+## Round 3
+
+* Reviewer: independent, Opus 5.5. Date: 24 Nov 2026. **Commit `628b26e9d3c342eefa266438315887febc519d29`.** Diff only (Lead 3 on #3527, comment 7140983461): `git diff e65760efd..628b26e9d -- '*.ts'`, which covers `review.ts`, `at-arrival.ts` and `check_fo9b_auto_merge.ts`.
+* The Lead's hold still applies: no label until FO-9b part 2m is on main.
+
+### Runs (mine, never :4400)
+| Run | Result |
+|---|---|
+| `check_fo9b_auto_merge`, twice | 29/29, 29/29 |
+| `check_fo9b_pairs_model` | 24/24 |
+| j_28 on :4438 (isolated, real PF-14 runner) | 48/48; W2's job `completed:`, both records live, pair To review |
+| j_33 on :4439 (isolated) | 20/20; W5's job `completed:`, both records live, pair To review |
+| `product/tools/typecheck.mjs` (CI's `types` job) | **FAIL: 1 new type error** at `at-arrival.ts:113` (M-r3-1 below) |
+
+The screenshots j_28 and j_33 rewrote were put back. My probe ran from the scratchpad on its own scratch database, which was dropped. The breaker works in this same checkout. Their round-3 first run showed "27 passed, 2 failed". My NEW_CONTACT mutation run fails exactly those 2 lines, so that result was probably mine and not a flake.
+
+### Each round-2 finding: fixed? red without its fix?
+I mutated each fix in place, ran the suite, then ran `git checkout` on the three files.
+
+| Finding | Fixed | Mutation: suite result |
+|---|---|---|
+| B1-r (Blocker) | **Yes**: `NEW_CONTACT` (`review.ts:216`), and the Vera line was flipped (`check_fo9b_auto_merge.ts:175`) | NEW_CONTACT off: 2 red (Vera :175, Ada/Bea/Zed :180) |
+| M-r1 (Major) | **Yes**, through NEW_CONTACT | Same mutation: the :180 line goes red. My `live()` probe found 1 live record, so the bridge returns |
+| M-r1, the second part ("only pairs written before the run") | Code yes; **no fail line** (m-r3-2) | `r."first_seen_at" < ${started}` off: **29/29 green** |
+| m-r1 (the burst test) | Yes. P1's job now runs first (:207) | Follow-up off (`if (!m) break` → `break`): 1 red (:211, live 2) |
+| m-r2, the 2 s bound | Yes (:221-227) | Race off, with the timer still subscribed: 1 red (3,037 ms). With the race simply removed, the suite crashes on the unhandled timeout, which also counts as red |
+| m-r2, the shutdown hook | Yes (:228-231) | Hook body emptied: 1 red |
+| m-r3 (old pairs) | Yes for a pair left from yesterday (:213-220). Partly in general (m-r3-1) | BURST clause off: 1 red (O2 merged into O1, live 1). The header (`at-arrival.ts:10-14`) is corrected |
+
+What I checked in the new code:
+* **NEW_CONTACT and its phone fields:**
+  * Both kinds of phone are covered. A readable phone is caught by `phoneE164`; an unreadable one by the raw `phone` (probe F: an email-only record and a newcomer bringing "ring the bell": refused, live 2).
+  * Every door turns a blank email or phone into null (`sales/common.ts:25`, `:46`). So the gap between the truthiness check and the trimmed fill at `:221` cannot be reached. The breaker reports the same.
+  * With NEW_CONTACT in force, the loser's email and phone are always a subset of the survivor's. So `notePairs` after a merge writes no pair through a key the survivor did not already have, and no new match is made.
+* **Clock and time zone in `first_seen_at < started`:**
+  * `first_seen_at` is `timestamptz`, and its default `now()` uses the database clock.
+  * The adapter sends a JS Date without a zone (probe: `'2026-11-24 18:52:52.001'`). The app's session is UTC (`core.ts:37`), even though the server's own zone is America/Toronto. So the value compares as the right moment.
+  * What remains is skew between the app's clock and the database's (m-r3-2).
+
+### Findings (ranked)
+
+**M-r3-1 (Major, Must: CI will be red): the type check fails on the new job file** (`at-arrival.ts:113`).
+* `this.jobs.handle(AUTO_MERGE_QUEUE, (job) => this.run(job))` returns `Promise<ArrivalMergeOut | null>`, while `JobHandler` is `(job) => Promise<void>` (`ports/jobs.ts:46`, the same on origin/main).
+* `node product/tools/typecheck.mjs` reports: `FAIL 1 new type error(s) (not in typecheck-known.txt)`, TS2322.
+* The PR is a draft, so the `types` job was skipped at this head. It will fail once the PR is marked ready, and nothing can merge.
+* The line has not changed since round 1, so I missed it in round 1. It is not a runtime fault, because tsx strips types.
+* Fix: `async (job) => { await this.run(job); }`. Tests that need the result call `auto.run` directly.
+
+**m-r3-1 (Minor, Should): the 10-minute window is measured from each merged-away record, not from the job's person** (`at-arrival.ts:101`).
+* **The outcome depends on a random tie.** Probe, 16 trials:
+  1. S is on file from yesterday.
+  2. X arrives today with no job.
+  3. L arrives.
+* Result: 8 trials ended in 1 record (L into S, then X into S). The other 8 ended in 2 records (L into X; S is outside the window, and the S–X pair, a few seconds old, stays To review).
+* The pairs L–S and L–X have the same score and the same `first_seen_at`, so `r."id"` decides.
+* The window also slides: the breaker's U4b chained arrivals 9 minutes apart into a pair 27 minutes old.
+* Both fail safe. Fix: measure from the job person's `created_at` (or the run's start), and break the tie by the oldest partner first. The breaker reports the same (R3-m3).
+
+**m-r3-2 (Minor, Should): the "written before the run" clause has no fail line, and it reads the app's clock** (`at-arrival.ts:97`).
+* With the clause removed, the suite stays 29/29. NEW_CONTACT is the real guard; this clause is the second layer that M-r1 asked for.
+* The m-r3 line moves only `created_at` back (:216), never `first_seen_at`.
+* `started` is `new Date()` (:79) and is compared with the database's `now()`. Skew between the two clocks moves the cut-off. Fix: take `started` from the database (`select now()`), and add a line where a pair noted by this run's merge is not followed.
+
+**m-r3-3 (Minor, Should): an unchecked arrival can still fill an empty last name** (`review.ts:221`; the web form's last name is optional, `sales/public.ts:117`).
+* Steps: Cher submits a first name and her email. A stranger submits "Mallory Attacker" with her email.
+* Result: her record reads "Cher Attacker" (the breaker, R3-m1, over HTTP).
+* My round-2 fix direction allowed names to fill, so this is not a regression of B1-r: no contact key is gained.
+* Fix: under `arrival`, keep the survivor's value for name fields too, or fill a name only when the given names agree.
+
+**m-r3-4 (Minor, Should): unreadable phones escape CONTACT_CONFLICT** (`review.ts:213` compares only `phoneE164`).
+* Probe E: two different unreadable phones on one email are merged (live 1).
+* Probe G: a readable phone on file and an unreadable newcomer's phone are merged too.
+* In both, the record on file keeps its own phone and the newcomer's goes to the snapshot only. That is not a takeover, but it differs from the readable case, which waits on To review. The breaker reports the same (R3-m2).
+
+**Nit:** the comment at `at-arrival.ts:72-74` says the pairs that a merge writes "are tried too". Since `first_seen_at < started` (:97), those are exactly the pairs that are not tried.
+
+Not findings: R2-m2 (throughput) is unchanged and was not asked of this round. M2 is part 2m by the Lead's ruling.
+
+**Journey score (reviewer), round 3: 8.5 / 10, pass.** Correct data goes back to 1: B1-r and M-r1 are closed, and j_28 and j_33 re-walked green. Error recovery stays at ½. Report: `journey-test-reviewer-2026-11-24.md`, Round 3.
+
+**Verdict: Block** for the label, at `628b26e9d`: one Must (M-r3-1). Everything else is ready: the Blocker and Major from round 2 are closed, and each fix goes red when it is removed. To fix: M-r3-1 (one line); then m-r3-1 to m-r3-4 and the nit (Should). A new head needs a new Approve, and the Lead's hold for part 2m still applies.
+
+Reviewer: Changes 628b26e9d3c342eefa266438315887febc519d29
+
+Round 3 verdict: Changes

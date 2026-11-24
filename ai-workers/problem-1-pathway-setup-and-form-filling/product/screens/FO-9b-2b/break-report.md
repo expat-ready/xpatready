@@ -97,3 +97,33 @@
   * **m3:** a retry after Undo, or a third arrival after Undo, never rejoins the undone pair (live 2). Kept separate is read through merge trees. An unreadable phone on file is kept.
   * **By ruling, not findings:** different names on one email merge (Hal/Hana), and an older record keeps its own name and phone while the newcomer's lead joins it. P-668 T16 keeps P-574 (2) and only warns on similar names. **Part 1's guard, not 2b:** a consent written later on a merged-away id is accepted (`msg_consent` has no `fo_dup_live_party`), but it reaches no survivor, and Undo still ran.
 Round 2 verdict: Block
+
+## Round 3 (head 628b26e9d, the diff only; isolated copy `brk2b3` on :4434 with PF-14's real runner, and scratch databases; US$0, all stopped or dropped; scripts in the session scratchpad: `http_r2.mjs`, `http_r2b.mjs`, `r3/http_r3.mjs`, `r3/burst.mjs`, `r3/u4.mts`, `r3/u5.mts`; the PR's suite 29/29 in 10 of 11 runs)
+* **R3-m1 (Minor): a stranger can still set an empty last name on the record on file.** The web form makes the last name optional (sales/public.ts:117).
+  * **Steps (HTTP):** (1) Cher submits a first name and her email, with no last name. (2) A stranger submits "Mallory Attacker" with her email. **Expected:** an unchecked arrival changes nothing on the record on file. **Actual:** 1.27 s later her record and her lead page read "Cher… Attacker". The audit line is `system:fo-duplicates ["familyName"]`. In scratch (U2b), a record with no name, written by calling arrive() directly (no door was found that writes one), took the stranger's whole name.
+  * No contact key is gained, and her mail still reaches her. The name is still what the record carries onward. **Fix direction:** under `arrival`, keep the survivor's value for name fields too, or fill a name only when the given names agree (`name_key`).
+* **R3-m2 (Minor): unreadable phones escape CONTACT_CONFLICT** (review.ts:213 compares `phoneE164` only).
+  * **Steps (HTTP):** Una submits an email and "555 0199 ext 4". Ulf submits the same email and "0161 496 0000". **Expected:** two different phones on one email go to To review, as the readable case does. **Actual:** merged in 1.29 s. Ulf's number leaves the live record (it is kept in the snapshot only). The same happens with a readable phone on file and a different unreadable one arriving (U1b).
+  * The record on file is unchanged, so this is not a takeover. **Fix direction:** when either `phone_e164` is null, compare the typed digits, and refuse when they differ.
+* **R3-m3 (Minor): the 10-minute window is measured from each merged-away record (at-arrival.ts:101), not from the job's person. So it stops short, and it also slides.**
+  * **Stops short (scratch U4a):** P1 arrived 12 min ago (its job done) and P2 6 min ago (no job: queue unregistered); then P3 arrives. In 6 runs, 3 ended as one record (P3 into P1). The other 3 ended as two records with the P1–P2 pair OPEN (P3 into P2; P1 is 12 min from P3). Which happens depends on the random pair id among equal scores. This fails safe.
+  * **Slides (scratch U4b):** O1, O2 and O3 arrived 27, 18 and 9 min ago with no jobs; then O4 arrives. All four became one record (3 merges): through 9-minute steps the follow-up reached a pair 27 min old. That is R2-m1's case, stretched.
+  * **Fix direction:** take the window from the job person's `created_at`, and make the tie order deterministic (for example, the oldest partner first).
+* **Observation, not graded:** the suite's first run reported 27 passed, 2 failed (the failing lines were not captured). The next 10 runs passed 29/29. Suite databases from another session (`xr_studio_fo9bam_*`, left in place) existed at that time, so load is possible. **R2-m2 / m4 still open:** 24 posts at once took 50.5 s until every job completed.
+* **What held:**
+  * **R2-B1:** Victoria (phone only), then a stranger with her phone and his email: refused `NEW_CONTACT`. Her record and her lead page show no email. The stranger's later email-only post joined his own record, never hers (1 lead on her record). The email-only mirror case and round 1's B1 (her email and phone) are unchanged.
+  * **R2-B2:** Ada / Bea / Zed over HTTP and in scratch gave 0 merges and 3 live records, both refusals `NEW_CONTACT`.
+  * **Unreadable phones:** these were refused `NEW_CONTACT`:
+    * a readable phone arriving at a record whose own phone is unreadable (U1a);
+    * an unreadable phone arriving at a record with no phone (U1c);
+    * readable digits sent with `phoneReadable: false` (U1e).
+    * Two identical unreadable phones never pair (U1h).
+  * **Chains of three strangers:**
+    * A (email), B (phone), C (both), then D (email) and E (phone): A and B are never joined. C was refused twice; D and E joined only through their own key.
+    * Bridge first, then an email-only and a phone-only stranger: both joined the bridge, which already holds both keys.
+    * A (email) and B (both) left OPEN, then C (phone): only C into B; A–B stays OPEN.
+  * **Bursts:** 12 and 24 posts at once over HTTP each ended as 1 live record with 0 OPEN pairs. In scratch, 11, 15 and 25 arrivals with jobs run afterwards (past MAX_MATCHES = 10), and 24 interleaved, each ended as 1 record. A day-old OPEN pair stays (the PR's own line).
+  * **Round-1 holds:** a consent tick copies 0 consents and writes 0 merge lines. Undo of the last automatic merge answered 200.
+  * **The run's start time:** `started` (the app's clock) is compared with `first_seen_at` correctly. Prisma's session is UTC, the database server's zone is America/Toronto, and there is no offset.
+  * **Latent, not reachable:** NEW_CONTACT tests truthiness, while the fill tests for blank after trimming. A whitespace-only phone on file (direct arrive() call) took a stranger's "999" (U1g). Every door trims a blank phone to null (sales/common.ts:46, ports/arrival.ts:24).
+Round 3 verdict: Approve

@@ -71,7 +71,7 @@ export async function mergeArrival(db: PrismaClient, firmId: string, personId: s
   if (!person || person.mergedIntoId) return { mergeRef: null, refused: [], busy: false, arrived: !!person };
   // Each OPEN pair of the person, best first; never two people who were merged before and undone (break m3: a retry
   // never redoes what a person undid). After a merge, the pairs that merge wrote (the loser's other matches meeting the
-  // survivor) are tried too, so a burst of one person's arrivals becomes one record (break m1).
+  // survivor) are not tried (only pairs written before this run), so a burst of one person's arrivals becomes one record (break m1).
   const open = (where: Prisma.Sql) => db.$queryRaw<{ id: string }[]>`
     select r."id"::text from "fo_dup_review" r where r."firm_id" = ${firmId}::uuid and r."status" = 'OPEN' and ${where}
        and not exists (select 1 from "fo_dup_merge" m where m."firm_id" = r."firm_id" and ((m."survivor_id" = r."low_id" and m."loser_id" = r."high_id") or (m."survivor_id" = r."high_id" and m."loser_id" = r."low_id")))
@@ -110,7 +110,7 @@ export class ArrivalAutoMerge implements AutoMergeQueue {
 
   /** Registers the job on PF-14's runner (before it starts), then this queue for arrive(). */
   async register(): Promise<void> {
-    await this.jobs.handle(AUTO_MERGE_QUEUE, (job) => this.run(job));
+    await this.jobs.handle(AUTO_MERGE_QUEUE, async (job) => { await this.run(job); });
     registerAutoMerge(this);
   }
 

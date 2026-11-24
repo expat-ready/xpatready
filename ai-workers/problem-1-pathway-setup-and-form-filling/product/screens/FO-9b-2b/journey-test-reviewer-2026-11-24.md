@@ -61,3 +61,23 @@ To raise it:
 * Break-it: a phone-only person gets a stranger's email (Blocker B1-r). An arrival carrying Bea's email and Ada's phone joins Ada and Bea into one record (Major M-r1). Old OPEN pairs are merged by a later arrival (Minor m-r3). Details are in `review.md` Round 2.
 * Score changes: Correct data 1 → ½ (B1-r, M-r1). Error recovery stays ½: Undo now holds, but a wrong join by itself is shown to no one. The other criteria are unchanged.
 * **Score: 8.0 / 10.** That meets the score's pass rule, but the review verdict is Block because of B1-r. To raise it, fix B1-r and M-r1 (Correct data back to 1).
+
+## Round 3 (commit 628b26e9d, diff only)
+* I re-walked on the runtime ports.
+  * j_28 on :4438 passed 48/48. In W2 the visitor and the booking stay apart, the job completed and the pair is To review.
+  * j_33 on :4439 passed 20/20. In W5 two emails on one phone stay apart, and the lead page shows "Possible match".
+  * The screenshots were put back.
+* What held:
+  * A phone-only person is no longer given a stranger's email (NEW_CONTACT; Vera's line is red when it is removed).
+  * Ada, Bea and Zed stay 3 records.
+  * A burst still becomes 1 record, and its line now goes red without the follow-up.
+  * A pair left from yesterday stays.
+  * The 2 s bound and the shutdown hook each have a fail line.
+* Break-it:
+  * The burst window gives 1 or 2 records at random: 8 of 16 trials each (m-r3-1).
+  * A stranger can fill an empty last name (m-r3-3).
+  * Unreadable phones skip the conflict check (m-r3-4).
+  * The CI type check fails at `at-arrival.ts:113` (M-r3-1). This is not a user-facing fault.
+  * Details are in `review.md` Round 3.
+* Score changes: Correct data ½ → 1. Error recovery stays ½: nobody is told about a merge made by itself. The other criteria are unchanged.
+* **Score: 8.5 / 10, pass.** To raise it, show the automatic merge where a person sees it (FO-9s part 2; Error recovery and Feedback).
