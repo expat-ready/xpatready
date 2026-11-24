@@ -89,3 +89,63 @@ Commit `9b0ac177b` (PR #3552, `claude/runtime-fo7v-trust`), 24 Nov 2026. The bre
   * Firm B with trust answer NO and a balance still held: shortfall gives 200.
 * **A10a, 402 parties below zero on a small ledger:** the list answers 200 with all 402 in 197-258 ms.
 * **Retry after a lost response:** gives 409 `ALREADY_REVERSED` "Nothing was changed". DW8's design; no second correction.
+
+## Round 2 (head `6c98404ed`, diff `9b0ac177b..6c98404ed`)
+
+Same setup: a scratch database per run on 127.0.0.1:54329, Nest on port 0 (never :4400), and every database dropped. The script is `…/scratchpad/brk/attack-r2.mts`: round 1's script plus 13 new checks. It ran 7 times (`r2run1.log`-`r2run7.log`). The first run's two failures were mistakes in the script, since fixed. Runs 2-7 sent 596 requests each, 380 of them to part T's routes, and got **0 answers of 500 or above**. The builder's check gives **27/27**.
+
+**Verdict: pass. 0 Blocker, 0 Major, 1 Minor (latent).** Round 1's Major 1, Major 2, Minor 1 and Minor 2 are closed.
+
+**Minor 1 (new, latent): the list's `seen` test is three-valued, and `bool_and` skips NULL** (`reverse.ts:139`, `:144`).
+* An entry with no case, whose party is not in `seen.parties`, gives `NULL = any(cases) or false`, which is NULL, not false. `bool_and` ignores it, so the party still counts as seen whole.
+* Repro (R2-2h): call `Reversals` directly with scope `{cases:[XJ], parties:[]}`. Client PJ has 50.00 on XJ, plus 10.00 deposited with no case and refunded. PJ's row is returned at −50.00, yet the preview rule `visible()` calls that no-case deposit unseen.
+* This is not reachable through the app:
+  * The real adapter always lists a seen case's linked party (port rule 2, `visibility-adapter.ts:39`).
+  * Deposits refuse another client's case (`trust/service.ts:270`).
+  * A case's link only goes from none to set (`clients.ts:65`).
+* The list should fail closed on its own and not rest on the port. Fail test: the scope above gives no row for PJ.
+
+### Rechecked (attack: result)
+* **Major 1, typed reasons (R2-1a), all 422 naming `reason`, nothing written:** 23 reasons in all.
+  * Round 1's six: U+200B U+200B, U+202E + text, "a" U+0085 "b", two U+0301, U+3164, "ok \ud800 x".
+  * 17 more: a lone low surrogate, a lone high surrogate at the end, U+2060, tag characters, U+FE0F, a skin-tone modifier, U+2800, U+180E, U+034F U+034F, U+061C, U+00AD, U+3000, U+2066…U+2069, U+009B, U+200B with `RECORDED_BY_MISTAKE`, U+202E with `WRONG_CLIENT`, and " U+200B ".
+  * **No alarm:** a counting AlertPort recorded 0 raises, there were 0 `audit_write_failed`/`alert` log lines, and 0 such audit rows.
+  * **Visible text still 201 (R2-1b):** Arabic with U+200F, French with a soft hyphen, Hebrew with U+200E, a U+200B inside text, a ZWJ family emoji, 200 CJK characters, Hindi, Thai, and a leading BOM.
+* **Major 2, `GET /trust/shortfall` timing:** 200 every time, median of 5 calls, Owner's list unless stated. The rows returned equal the number of parties below zero in every run.
+
+  | Entries | Parties | Below zero | Owner | Officer | `?currency=CAD` |
+  |---|---|---|---|---|---|
+  | 20,215 | 251 | 23 | 71 ms | 72 ms | 73 ms |
+  | 20,975 | 631 | 403 | 132 ms | 80 ms | 126 ms |
+  | 200,215 | 2,051 | 23 | 585 ms | 565 ms | 578 ms |
+  | 200,975 | 2,431 | 403 | 668 ms | 609 ms | 668 ms |
+
+  * Heavier shapes, not in round 1:
+    * Every one of 2,431 parties a prospect in the Owner's scope: 1,093 ms.
+    * 20,431 parties × 10 entries, at 200,975 entries: 1,377 ms (officer 552 ms).
+  * Round 1's own fail test (200k entries, 50 parties below zero, under 1 s) passes. The heavier shapes are still well under the 5 s transaction.
+  * At 200k entries, preview is 14-69 ms and reverse 24-81 ms. The balance lookup now matches on `person_id` / `company_id` (`reverse.ts:74`), which closes round 1's Minor 2.
+* **C5 on the list, user-O through the real adapter:**
+  * **R2-2a:** client PF has case X (the officer's) and case Y (hidden). Reversals and deposits alternate X/Y across 14 looks, each without a currency, with `CAD` and with `USD`. user-O never gets PF's row, and the Owner's row always equals the ledger.
+  * **A6a/A6b/A6e** (round 1's Minor 1 shape): PE never shows to user-O, whichever case has the latest reversal.
+  * **R2-2b:** PG holds the officer's case plus no-case money. user-O gets the row at −50.00. One later deposit (not a reversal) on a hidden case removes it. The Owner sees −49.00.
+  * **R2-2h0:** with the officer's case plus no-case money only, the row shows, and the preview of the no-case deposit gives 200.
+* **Two currencies (R2-2c):** CAD on the officer's case and USD on a hidden case.
+  * user-O gets the CAD row only, in all three queries.
+  * The Owner gets both. `?currency=` filters each and returns only that currency.
+* **Companies (R2-2d, R2-2e):**
+  * With CAD and USD on the officer's case, user-O gets both rows: `companyId` set, `personId` null, the operating name.
+  * A deposit on the company's hidden case removes only the CAD row.
+  * The officer's preview gives 409 `ALREADY_REVERSED`, not 404.
+  * No row carries both ids.
+* **Below zero with no reversal (R2-2f):** a `WRONG_ACCOUNT` correction after a full refund is refused by the database ("Only CAD 0.00 is available…"), so this case is unreachable.
+* **The officer who sees nothing (R2-2g):**
+  * Scope `{}` gives an empty list, with and without `?currency=USD`.
+  * Parties only, no cases, gives none of the case-held rows.
+  * user-T's real list gives 200.
+* **Same result as the view (R2-2i):** the Owner's list equals `money_trust_shortfall` for firm A (party, currency, balance, latest reversal): 8/8, no extras and none missing.
+* **Races, no regression in 7 runs:**
+  * A1 and A1b held.
+  * A2: 105 rounds, 315 racing requests. Reverse won 33, application 36, refund 36. 0 out-flows below zero, 0 deadlocks, 0 balance drift, 0 seq gaps.
+  * A2b, A3a-e, A4a-e, A5a-e (user-T 403/403/200), A6c-d and A9a-c held.
+* **Not findings, as in round 1:** A8b's form-urlencoded body gives 201. A8c's script check counts the accepted Arabic and French reasons as failures, but its six invisible reasons now give 422.
