@@ -65,3 +65,27 @@ Breaker, 24 Nov 2026. Re-attacked only round 1's findings against `git diff cc09
 
 Also held after the `Tip` wrappers in the diff: Tab stays inside the panel ("Not scanned yet" badge, X, Next, Fit width, 100%, 200%, Rotate, page area, Close, then round again); Escape closes; focus goes back to the file name.
 Nit, not a finding: the comment `// "100%" as Mozilla's viewer means it…` now sits at the end of the `density` line (`:29`) instead of on `CSS_PER_PT` (`:26`).
+
+## Round 3 (dda380e1f, diff only)
+
+Breaker, 24 Nov 2026. Re-attacked B1 and the fixes since 944c7290f (`git diff 944c7290f..dda380e1f -- …/studio`: `vite.config.ts` plugin `pdfjsData`, `document-preview.tsx:26,72-73`, the Previous/Next `Tip` wrappers `:152-154`). Isolated copy http://127.0.0.1:4497 (db xr_studio_csd5_rv3, user-O; never :4400). Probe `r3.mts`, fixtures `fx/`, generator `gen/gen.py`, screenshots `out3/` in the scratchpad, not committed. US$0, no app code changed.
+
+**Verdict: Approve. B1 fixed. No Blocker or Major. One new Minor (m5).**
+
+| Attempt (dpr 1 and dpr 2, 1440 px) | Result |
+|---|---|
+| CCITT G4 office scan (`fx/ccitt.pdf`, ImageMagick) | Draws: 9,296 dark px at dpr 1, 37,529 at dpr 2 (round 2: 0). `/pdfjs/wasm/jbig2.wasm` fetched. No warnings (`out3/r3-dpr1-ccitt-scan-sample.png`). |
+| JBIG2 stream (`fx/jbig2.pdf`: an embedded stream with a page-info segment, an MMR generic region and an end-of-page segment; poppler decodes it to the same bitmap) | Draws, with the same pixels as the same bitmap stored as CCITT G4 (28,198 / 112,478 dark px). Not tested: arithmetic-coded or symbol-dictionary JBIG2 (no encoder on this machine). Both go through the same `jbig2.wasm`. |
+| JPEG 2000 (`fx/jpx.pdf`) | Draws (6,105 / 24,906 dark px). `openjpeg.wasm` fetched. |
+| CJK text with `/STSong-Light` + `/UniGB-UCS2-H` and no embedded font | Draws "中文测试" (`out3/r3-dpr1-cjk-stsong-sample.png`). `UniGB-UCS2-H.bcmap` and `Adobe-GB1-UCS2.bcmap` fetched. The only warning is "Cannot load system font: STSong-Light", and the machine's CJK font stands in for it. |
+| ICC-based RGB image (embedded sRGB profile) and a DeviceCMYK image | Both draw with their colours (red and navy blocks, `out3/r3-dpr2-icc-rgb-sample.png`). `qcms_bg.wasm` fetched, plus `iccs/CGATS001Compat-v2-micro.icc` for the CMYK image. |
+| Scripting engine served? | `web/dist` holds no `quickjs*` file and no bundle mentions it. `GET /pdfjs/wasm/quickjs-eval.wasm`, `…/quickjs-eval.js`, `/assets/quickjs-eval.wasm` and `/pdfjs/wasm/LICENSE_QUICKJS` return the 639-byte app page (text/html), not wasm or JS. `dist/pdfjs/wasm` holds only jbig2, openjpeg and qcms, plus PDF.js's two decoder fallbacks (`*_nowasm_fallback.js`: our own build, loaded only if WebAssembly fails; they run nothing from the file). Path tricks (`/pdfjs/%2e%2e/…`, `..%2f`) return the app page. |
+| Data files only from our origin | Every request in all 16 openings went to http://127.0.0.1:4497 (0 to any other origin). `DATA = "/pdfjs/"` is a root-relative path (`:26`). `api/src/main.ts:258` serves all of `web/dist`, which `tools/web-fresh.sh` builds with `vite build`, so `closeBundle` copies the files on every build. `.wasm` is served as application/wasm. |
+| Keyboard after the `Tip` wrappers (40-page PDF) | Tab order is unchanged: badge, X, Next (Previous is disabled and skipped), Fit width, 100%, 200%, Rotate, page area, Close, then round again. The `<span>` wrappers are not tab stops (0 focusable spans in the toolbar). The tooltip opens on keyboard focus. Enter and Space on Next turn pages (2, then 3). Shift+Tab reaches Previous, and Enter twice goes back to page 1. One Escape closes the panel and focus returns to the file name. Hovering the disabled Previous button shows its tooltip. |
+
+**m5 Minor (new): when a decoder or data file cannot load, the page still comes out blank and looks real; only the CCITT path is tested.**
+* Steps: answer `/pdfjs/**` with the app page (as a deploy that misses the folder would), then open the JPEG 2000 and CCITT fixtures.
+* Expected: B1's ask in round 1, "plus a fail test per format", and §4's honest "could not be opened".
+* Actual: both show 0 dark px, `data-preview-state="ready"`, and only PDF.js warnings (`expected magic word 00 61 73 6d`, `OpenJPEG failed to initialize`).
+* The check (`tests/check_csd5_preview_browser.ts`, B1) asserts dark pixels for CCITT G4 only, plus that `jbig2.wasm` is served. Nothing would catch a dropped `openjpeg.wasm`, `qcms_bg.wasm` or `cmaps/` folder (the lists at `vite.config.ts:17,19`).
+* Why Minor: the build copies all the files together, and `cpSync` throws on a missing source. Today every format draws.
