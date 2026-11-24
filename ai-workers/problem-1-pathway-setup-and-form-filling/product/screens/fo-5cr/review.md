@@ -50,3 +50,33 @@ I ran no browser or isolated copy, as the caller instructed, and no app was list
 
 Reviewer: Changes a894ca308d9450aaf067920f10580d70c0659bad
 Verdict: Changes
+
+## Round 2 (diff only, P-277): a894ca3 → 59020d8371b814e4c95b10200e856b38e9f4c5fa
+I read `git diff a894ca3 59020d837`. The code is in e2f6aa923; 77b767fd8 and 59020d837 add only screenshots. I stayed on branch `claude/runtime-fo5cr` and did not detach. `check_fo5cr_consult_prefill.ts` passes 19/19 at the head, and web `tsc` shows no error in the changed files. I did not run the browser suite (the caller's rule). Its 11/11 result and the mutant run are the builder's.
+
+**Round 1 findings:**
+* **M1: fixed in substance, not yet run by CI** (see R2-M1 below). `tests/check_fo5cr_prefill_browser.ts` covers the right things:
+  * the prospect path (W1/W2) and the lead path after Engage (W3/W4, which is AG-4-50 §11 test 1);
+  * a USD record typed in the UI (W5);
+  * a real firm-B row given by address, read through the real adapter (W6);
+  * `[data-from-consult]`, Fee 1's label and amount, the audit `consultRecordId`, and axe on the panel and the draft. Axe flags only serious or critical problems, which 23 of 66 browser checks also do.
+  * If the POST loses `consultRecordId`, W2, W4, W5 and W6 fail (W2 by its label, W4 by its label, W5 because the USD notice never comes, W6 because the neutral notice never comes). That matches the builder's mutant run.
+* **m1: fixed.** `j_42.ts:312` now waits for a URL ending in `/prospects/[0-9a-f-]+$`.
+* **m2: fixed.** `retainer-card.tsx:32` navigates with `state.warnings`. `retainer-page.tsx:36-37` starts its `warn` Notices from that state; a save then replaces them (`:42`). Screenshot fo5cr-6 shows the USD notice still on the page after 5 s. Hooks still run before the early returns (`:64`).
+* **m3: fixed** by real `fo_consult_record` rows through the default adapter (W2, W4, W5, W6).
+* **n1: fixed.** The sentence now says "when the record is this prospect's".
+* **n3: fixed.** `lead-page.tsx:89` clears the ref in `panel(false)`. Engage success navigates without calling `panel(false)`, so the forward to the next page still works (W3).
+* **n4: fixed.** p8 now checks for no lone surrogate, the "…" ending and whole characters.
+* **n2 and n5: left as they are, with reasons.** I accept both: n2 shows only under development StrictMode, and n5 reaches only a drafter who already sees the prospect.
+
+**New findings**
+* **R2-M1 (Major, Must): CI will not run the new browser suite as an isolated copy, so it will fail there.**
+  * Cause: `run-suites.sh:369` recognises an isolated suite only when its usage line reads `isolated.sh <name> <port> start [KEY=V…] && (tsx|node) studio/tests/<file> <args>`. The new line (`check_fo5cr_prefill_browser.ts:8`) puts `&& trap '…stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/…` after `start`. I fed the line to the same regex in bash, and it reports no match.
+  * Effect: the runner treats it as a plain suite (`run-suites.sh:380-387`) and starts it with no port or database arguments, so it defaults to port 4443 and database `xr_studio_screens_fo5cr`. No copy is running there, so `seedSampleFirms` throws and the suite exits non-zero. CI goes red, and M1's guard never runs where it counts. (It could also hit a builder's live copy on 4443 on the Mac.)
+  * Fix: use the form the other browser checks use (for example `check_fo3st1_consult_browser.ts:10`): `//   zsh studio/tools/isolated.sh screens_fo5cr 4443 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo5cr_prefill_browser.ts 4443 xr_studio_screens_fo5cr`. The runner starts and stops the copy itself.
+* **R2-n1 (Nit): the notice can come back after it no longer applies.** Browser history keeps `state.warnings` (`retainer-page.tsx:36`). Back to that history entry, or a reload before any save, shows "enter the amount in CAD" again even after a later version set the amount.
+
+Journey score unchanged at 8/10 simulated. Feedback and state would rise to 1 with m2 fixed, but I did not walk it myself.
+
+Reviewer: Changes 59020d8371b814e4c95b10200e856b38e9f4c5fa
+Verdict: Changes

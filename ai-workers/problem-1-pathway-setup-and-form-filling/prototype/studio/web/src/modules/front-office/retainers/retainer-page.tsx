@@ -6,7 +6,7 @@
 // version never changes (BR-7): Edit on a sent one makes version n+1 in Draft, to be sent again. Once the client signed,
 // Edit is gone (the server refuses a racing save too). Withdraw, Signed offline and Sign as the firm are later parts.
 import * as React from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FoldOut } from "@/components/fold-out";
 import { Button, Field, Input, Notice, Panel, Pill, Select } from "@/components/ui/controls";
@@ -33,8 +33,10 @@ function RetainerBody({ id }: { id: string }) {
   const [error, setError] = React.useState<{ field: string | null; text: string; code?: string } | null>(null);
   const [sending, setSending] = React.useState(false), [showItems, setShowItems] = React.useState(false);
   // FO-5cr (review m2): a new draft's notices (from Prepare retainer, e.g. a USD quote to re-enter in CAD) arrive with the address.
-  const arrived = (useLocation().state as { warnings?: unknown } | null)?.warnings;
+  const here = useLocation(), nav = useNavigate(), arrived = (here.state as { warnings?: unknown } | null)?.warnings;
   const [warnings, setWarnings] = React.useState<string[]>(Array.isArray(arrived) ? arrived.filter((w): w is string => typeof w === "string") : []);
+  // Read once: the address forgets them, so Back or a reload never shows a notice that no longer applies (review R2-n1).
+  React.useEffect(() => { if (arrived !== undefined) nav(here.pathname + here.search, { replace: true, state: null }); }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- once, on arrival
   const r = one.data;
   const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); setSignerId(x.signerPersonId ?? ""); }, []);
   React.useEffect(() => { if (r) reset(r); }, [r, reset]);

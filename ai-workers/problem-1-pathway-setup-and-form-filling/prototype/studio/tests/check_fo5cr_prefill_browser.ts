@@ -5,7 +5,7 @@
 // "Quoted at the consultation: <item>" with the quoted amount. A USD quote and another firm's record each leave their
 // notice on the retainer page. Every record is a real row read through FO-3a part 2a's adapter (review m3). axe-core on
 // the panel and on the draft (no serious or critical finding). Screenshots: product/screens/fo-5cr/screenshots. US$0.
-//   zsh studio/tools/isolated.sh screens_fo5cr 4443 start PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh screens_fo5cr 4443 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo5cr_prefill_browser.ts 4443 xr_studio_screens_fo5cr
+//   zsh studio/tools/isolated.sh screens_fo5cr 4443 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo5cr_prefill_browser.ts 4443 xr_studio_screens_fo5cr
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { existsSync, mkdirSync } from "node:fs";
