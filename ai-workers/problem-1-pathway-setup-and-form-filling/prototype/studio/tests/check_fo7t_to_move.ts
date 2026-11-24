@@ -86,7 +86,7 @@ try {
   const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7t3.${n}@example.org', 'seed:FO-7t-3', now()) returning id`);
   // P1 < P2 < Q by id (Lead 96's deadlock case, FO-7ts part 3 break R3-m1); PA a plain client; PB firm B's.
   const [P1, P2, Q] = [person(A, "p1"), person(A, "p2"), person(A, "q")].sort();
-  const PA = person(A, "a"), PB = person(B, "b"), PU = person(A, "u");
+  const PA = person(A, "a"), PB = person(B, "b"), PU = person(A, "u"), PV = person(A, "v");
   // user-R: sample-firm's Owner (every money key); user-T: a Case Manager, given agent/payment:record here; user-O: a Case
   // Officer, no money key until DW10 (then agent/payment:record, seeing no case and no client: C5 fails closed); user-S:
   // sample-solo's Owner.
@@ -96,18 +96,21 @@ try {
   const W = "00000000-0000-4000-8000-0000000f37a0", CLIENT_A = "00000000-0000-4000-8000-0000000f37a1", CLIENT_Q = "00000000-0000-4000-8000-0000000f37a2", CLIENT_B = "00000000-0000-4000-8000-0000000f37a3";
   const CASE = "00000000-0000-4000-8000-0000000f37b1", CASE_Q = "00000000-0000-4000-8000-0000000f37b2", CASE_B = "00000000-0000-4000-8000-0000000f37b4";
   const CLIENT_U = "00000000-0000-4000-8000-0000000f37a5", CASE_U = "00000000-0000-4000-8000-0000000f37b5";
+  const CLIENT_V = "00000000-0000-4000-8000-0000000f37a6", CASE_V = "00000000-0000-4000-8000-0000000f37b6";
   sql(`set session_replication_role = replica;
     insert into workspace (id, key, label) values ('${W}', 'fo7t3-check', 'FO-7t part 3 (Sample)');
     insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values
       ('${CLIENT_A}', '${W}', 'sample-firm', '${A}', 1, 'Client a (Sample)', 'PERSON', '${PA}', 'seed:FO-7t-3'),
       ('${CLIENT_Q}', '${W}', 'sample-firm', '${A}', 2, 'Client q (Sample)', 'PERSON', '${Q}', 'seed:FO-7t-3'),
       ('${CLIENT_B}', '${W}', 'sample-solo', '${B}', 1, 'Client b (Sample)', 'PERSON', '${PB}', 'seed:FO-7t-3'),
-      ('${CLIENT_U}', '${W}', 'sample-firm', '${A}', 3, 'Client u (Sample)', 'PERSON', '${PU}', 'seed:FO-7t-3');
+      ('${CLIENT_U}', '${W}', 'sample-firm', '${A}', 3, 'Client u (Sample)', 'PERSON', '${PU}', 'seed:FO-7t-3'),
+      ('${CLIENT_V}', '${W}', 'sample-firm', '${A}', 4, 'Client v (Sample)', 'PERSON', '${PV}', 'seed:FO-7t-3');
     insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status) values
       ('${CASE}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07301', 'sample-firm', '${A}', '${CLIENT_A}', 'OPEN'),
       ('${CASE_Q}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07302', 'sample-firm', '${A}', '${CLIENT_Q}', 'OPEN'),
       ('${CASE_B}', '${W}', gen_random_uuid(), 'user-P', 'user-S', 'C-2026-07301', 'sample-solo', '${B}', '${CLIENT_B}', 'OPEN'),
-      ('${CASE_U}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07305', 'sample-firm', '${A}', '${CLIENT_U}', 'OPEN');
+      ('${CASE_U}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07305', 'sample-firm', '${A}', '${CLIENT_U}', 'OPEN'),
+      ('${CASE_V}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07306', 'sample-firm', '${A}', '${CLIENT_V}', 'OPEN');
     insert into platform_role_permission (role, permission_key) values ('CASE_MANAGER', 'agent/payment:record') on conflict do nothing`);
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, trust_details, updated_by, updated_at) values ('${f}', 'Trust account (Sample)', 'seed:FO-7t-3', now())`);
   const audits = (action: string) => Number(sql(`select count(*) from audit_event where action = '${action}'`));
@@ -320,6 +323,19 @@ try {
   const uRefundOk = await refundIn({ personId: PU, caseId: CASE_U, amountMinor: 100, unclearedAcknowledged: true });
   const cleanRefund = await refundIn({ personId: PA, caseId: CASE, amountMinor: 100 });
   ok("FO-7t ruling (b) pass: the refund acknowledged → 201; a refund of cleared money only (Client a's e-Transfer) → 201 without asking", uRefundOk.status === 201 && cleanRefund.status === 201, [uRefundOk.body, cleanRefund.body]);
+  // R4-1 (round 6's probe on #3493, now reachable through FO-7v part T's reverse): a cheque reversed as "Returned" is no
+  // longer money that may bounce, so it never counts as uncleared again. Client v's case: a CAD 500.00 cheque not yet
+  // cleared and a CAD 500.00 e-Transfer; CAD 400.00 paid from trust; then the cheque reversed (its CORRECTION, written as
+  // the reverse route writes it).
+  const chqV = await deposit(PV, CASE_V, 50000, tR, "CHEQUE"); await deposit(PV, CASE_V, 50000);
+  const IV = await issued(PV, CASE_V, 40000), WV = await applied({ invoiceId: IV, amountMinor: 40000 });
+  sql(`insert into money_trust_entry (firm_id, person_id, case_id, kind, amount_minor, currency, corrects_entry_id, correction_kind, reason, created_by)
+    values ('${A}', '${PV}', '${CASE_V}', 'CORRECTION', -50000, 'CAD', (select id from money_trust_entry where payment_id = '${chqV.paymentId}'), 'RETURNED', 'Returned', 'seed:FO-7t-3')`);
+  const vRefund = await refundIn({ personId: PV, caseId: CASE_V, amountMinor: 100 });
+  ok("FO-7t R4-1 pass: after the cheque is reversed as Returned, a refund of the client's cleared money → 201 without asking (a reversed cheque is never \"not yet cleared\")", vRefund.status === 201, vRefund.body);
+  const vMove = await move([{ sourceEntryId: WV, amountMinor: 40000 }]);
+  ok("FO-7t R4-1 pass: moving the CAD 400.00 paid from the cleared e-Transfer → 201 without asking, with no acknowledgement recorded",
+    vMove.status === 201 && open(WV) === 0 && sql(`select coalesce(detail->>'unclearedAcknowledged', 'false') from audit_event where action = 'trust_money.moved' and entity_key = '${vMove.body.batchId}'`) === "false", vMove.body);
   void Q; void staffO;
 } catch (e) {
   ok("FO-7t part 3: the check ran to the end", false, e instanceof Error ? e.stack : String(e));
