@@ -111,7 +111,8 @@ try {
   // P-606: W2's judges before Send.
   ok("J-20 W2 fail (before Send): no invitation exists for A or B", invitations(A) === 0 && invitations(B) === 0);
   await owner.locator("[data-send-invites]").click();
-  await owner.locator("[data-invite-form-error]").waitFor({ timeout: 20_000 }).catch(() => undefined);   // QA-773: on main Send stopped here; the lines below say so
+  // QA-773: on main Send stopped here; the wait is a check of its own, so a timeout fails loudly and W2 and W4 still report.
+  ok("J-20 W1 fail (QA-773): Send answers within 20 s with the form's \"not everyone was invited\" words", await owner.locator("[data-invite-form-error]").waitFor({ timeout: 20_000 }).then(() => true, () => false));
   const toast = await owner.getByText("2 invitations sent.").count();
   const rowsLeft = await owner.locator("[data-invite-row]").count();
   const words1 = await row(owner, 1).innerText(), words2 = await row(owner, 2).innerText();
