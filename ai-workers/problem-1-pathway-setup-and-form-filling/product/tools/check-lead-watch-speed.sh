@@ -18,7 +18,7 @@ o=$(case_ 'for k in a b c; do pre bash "$J" $k 20 0; done; for i in $(seq 100); 
 ok "three 20-second jobs run together (all started before any ended)" "$([ "$(grep -c '^start' <<<"$o")" = 3 ] && ! grep -q '^end' <<<"$o" && echo 1)" "$o"
 o=$(case_ 'pre bash "$J" a 0 0; bash "$J" a 0 0; bash "$J" a 0 0'); ok "the same command asked twice: the second is read again, never repeated" "$([ "$(grep -c '^out a' <<<"$o")" = 2 ] && [ "$(grep -c '^start a' "$T/log")" = 2 ] && echo 1)" "$(cat "$T/log")"
 o=$(case_ 'pre bash "$J" a 0 0; bash "$J" b 0 4; echo "rc=$?"'); ok "a command that was not started early runs at its step" "$([ "$o" = $'out b\nrc=4' ] && echo 1)" "$o"
-o=$(case_ 'pre bash "$J" "a 0" 0; bash "$J" a 0 0'); ok "other arguments that print alike are not the same command" "$(grep -q '^start a' "$T/log" && [ "$(grep -c '^start' "$T/log")" = 2 ] && echo 1)" "$(cat "$T/log")"
+o=$(case_ 'pre bash "$J" "a 0" 0; bash "$J" a 0 0; pre_wait 1'); ok "other arguments that print alike are not the same command" "$(grep -q '^start a' "$T/log" && [ "$(grep -c '^start' "$T/log")" = 2 ] && echo 1)" "$(cat "$T/log")"
 o=$(case_ 'pre bash "$J" a 9 0; kill -9 "$(cat "$PRE_DIR/1.pid")"; sleep 0.3; printf "echo again\n" > "$J.2"; pre bash "$J.2"; kill -9 "$(cat "$PRE_DIR/2.pid")" 2>/dev/null; sleep 0.3; rm -f "$PRE_DIR/2.rc"; bash "$J.2"')
 ok "a job that died without an answer: the step runs the command itself" "$([ "$o" = again ] && echo 1)" "$o"
 o=$(case_ 'pre bash "$J" a 1 0; after bash "$J" a 1 0 -- bash "$J" b 0 0; bash "$J" b 0 0'); ok "after: the second starts only when the first has ended" "$([ "$(paste -sd, "$T/log" | cut -c1-21)" = 'start a,end a,start b' ] && echo 1)" "$(cat "$T/log")"
