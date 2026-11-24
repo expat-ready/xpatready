@@ -95,3 +95,13 @@ Same role, :4497 (db `xr_studio_csd5_rv3`), headless Chromium, US$0. Builder's c
 | Accessibility and screen sizes | ½ | 1 | Previous and Next have tips on hover and on focus. |
 | Other six | 6 | 6 | Unchanged. |
 | **Total** | 8 | **9 / 10** | **Pass** (8 or more, no 0). |
+
+## Round 4 (f2ce7adfc): re-walk of open-a-file and the line after the batch #3518 fixes
+* Open a PDF from its name, turn pages, close, three times in a row (1440 px, :4499): **held**. Each open starts one `assets/pdf.worker-*.js` worker and each close ends it (3 started, 3 closed). No worker is left over.
+* B1 scan: **held** (87,896 dark pixels; jbig2 wasm from our own origin, quickjs none).
+* The line at 375 px with a 190-character file name: **held**. The page does not scroll sideways. The name wraps inside its 24 px button, and "Source" is a 24 x 57 px target. A long name now starts on its own line below "File:", which reads fine.
+* Keyboard: Escape returns focus to the file-name button: **held**.
+
+| Criterion | R3 | R4 | Why |
+|---|---|---|---|
+| All ten | 9 | **9 / 10** | No change. The decision step (BR-8) is still deferred by the Lead. **Pass**. |
