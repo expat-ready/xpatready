@@ -69,3 +69,8 @@ Asked by Lead 25 (13:18 IST). Arm 1 only: a fresh Opus reviewer with a checklist
 | S28 | #3046 | 2026-11-22 | 7 | 1 | - | #2922 |
 
 Built by `build.py` (seeded order); file lists in `sample.json`.
+
+## Fixed after the first claim came back, before any other was read
+* **Headline "found" = named at Major or above** (a Minor would not have stopped the merge). Named only as a Minor is reported apart.
+* Reviewers run at Opus **high** effort, not medium: the repository's hook (P-608 (2)) refused medium.
+* S04, S05 and S12 carry no requirement rows (none under the ids in their titles).

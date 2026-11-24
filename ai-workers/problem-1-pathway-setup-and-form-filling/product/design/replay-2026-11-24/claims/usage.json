@@ -1,0 +1,16 @@
+{
+ "S03": {
+  "cache_read": 1001520,
+  "fresh_in": 182233,
+  "out": 11695,
+  "outside": [],
+  "tool_calls": 23
+ },
+ "S04": {
+  "cache_read": 904092,
+  "fresh_in": 210266,
+  "out": 14642,
+  "outside": [],
+  "tool_calls": 24
+ }
+}
