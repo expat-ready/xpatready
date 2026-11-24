@@ -4,19 +4,21 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { cpSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 
 /** CS-D5 (break B1; the founder allowed this file on #3500): PDF.js 6 decodes black-and-white scans (JBIG2, CCITT),
  *  JPEG 2000, colour profiles and Asian-language text only with its data files, fetched from a base URL. They are copied
- *  into dist/pdfjs/ (our own origin). Never the scripting engine (quickjs-eval.*): nothing in a file runs (BR-3). */
+ *  into <outDir>/pdfjs/ (our own origin). Never the scripting engine (quickjs-eval.*): nothing in a file runs (BR-3).
+ *  Only the wasm decoders, not their no-wasm .js fallbacks: every JavaScript file the build ships has a source map (PF-Le). */
 function pdfjsData(): Plugin {
-  return { name: "pdfjs-data", apply: "build", closeBundle() {
-    const from = dirname(createRequire(import.meta.url).resolve("pdfjs-dist/package.json")), to = fileURLToPath(new URL("./dist/pdfjs", import.meta.url));
+  let outDir = "";
+  return { name: "pdfjs-data", apply: "build", configResolved(c) { outDir = resolve(c.root, c.build.outDir); }, closeBundle() {
+    const from = dirname(createRequire(import.meta.url).resolve("pdfjs-dist/package.json")), to = join(outDir, "pdfjs");
     for (const d of ["cmaps", "standard_fonts", "iccs"]) cpSync(join(from, d), join(to, d), { recursive: true });
     mkdirSync(join(to, "wasm"), { recursive: true });
-    for (const f of ["jbig2.wasm", "openjpeg.wasm", "qcms_bg.wasm", "jbig2_nowasm_fallback.js", "openjpeg_nowasm_fallback.js"]) cpSync(join(from, "wasm", f), join(to, "wasm", f));
+    for (const f of ["jbig2.wasm", "openjpeg.wasm", "qcms_bg.wasm"]) cpSync(join(from, "wasm", f), join(to, "wasm", f));
   } };
 }
 

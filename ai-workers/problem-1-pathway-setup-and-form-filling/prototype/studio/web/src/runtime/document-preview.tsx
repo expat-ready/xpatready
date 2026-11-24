@@ -10,7 +10,8 @@
 // Scan state: case files have none until PF-F3 (R1.66); the panel says what the API says and never claims "clean".
 import * as React from "react";
 import { RotateCw, ChevronLeft, ChevronRight } from "lucide-react";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+// The worker goes through the build like our own code (its own source map, PF-Le), one per opened file.
+import PdfWorker from "pdfjs-dist/build/pdf.worker.mjs?worker";
 import { api, ApiError, getActor } from "@/lib/api";
 import { Button, Notice, Panel, Pill } from "@/components/ui/controls";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,14 +69,15 @@ async function drawer(media: string, bytes: ArrayBuffer): Promise<Drawn> {
     } };
   }
   const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-  const loading = pdfjs.getDocument({ data: new Uint8Array(bytes), enableXfa: false, disableAutoFetch: true, disableStream: true, stopAtErrors: true,
+  const port = new PdfWorker(), worker = pdfjs.PDFWorker.create({ port });
+  const loading = pdfjs.getDocument({ worker, data: new Uint8Array(bytes), enableXfa: false, disableAutoFetch: true, disableStream: true, stopAtErrors: true,
     wasmUrl: `${DATA}wasm/`, cMapUrl: `${DATA}cmaps/`, cMapPacked: true, standardFontDataUrl: `${DATA}standard_fonts/`, iccUrl: `${DATA}iccs/` });
-  const pdf = await loading.promise;
+  const free = () => loading.destroy().finally(() => { worker.destroy(); port.terminate(); });
+  const pdf = await loading.promise.catch(async (e) => { await free(); throw e; });
   // One draw on the canvas at a time (break m1: two quick clicks drew on it at once): a newer draw cancels the one
   // running, waits for it to stop, and a draw that is no longer the newest is skipped.
   let task: { cancel: () => void; promise: Promise<void> } | null = null, chain = Promise.resolve(), newest = 0;
-  return { pages: pdf.numPages, close: () => { task?.cancel(); void loading.destroy(); }, draw: (n, canvas, width, rotation) => {
+  return { pages: pdf.numPages, close: () => { task?.cancel(); void free(); }, draw: (n, canvas, width, rotation) => {
     const me = ++newest; task?.cancel();
     const run = chain.then(async () => {
       if (me !== newest) return;
