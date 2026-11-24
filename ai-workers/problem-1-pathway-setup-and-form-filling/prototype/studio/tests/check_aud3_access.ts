@@ -237,15 +237,27 @@ try {
   const notA = idsWhere(`firm_id = '${firmB}' or (firm_id is null and action = '${CROSS_TENANT}' and detail->>'firm' is null) or id = '${firmStaffLine}'`);
   const readA0 = lines(`firm_id = '${firmA}' and action = '${FIRM_READ}' and detail->>'route' = '${REPORT_ROUTE}'`), b5 = lines(`firm_id = '${firmB}'`);
   const report = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}`, { token: ownerT });
-  const got: string[] = Array.isArray(report.body?.lines) ? report.body.lines.map((l: { id: string }) => l.id) : [];
-  ok("AUD-3 DW5 pass (SA-11-31): firm A's access report shows every OUR_STAFF line on firm A's trail and every cross-firm line filtered to firm A, each with its trail, the plain action words and who",
+  // The report's own crossing writes its platform.bypass line on firm A in the same call (report.bypass.ts), so that line is shown too.
+  const got: string[] = Array.isArray(report.body?.lines) ? report.body.lines.filter((l: { correlationId: string | null }) => l.correlationId !== report.requestId).map((l: { id: string }) => l.id) : [];
+  const ownBypass = Array.isArray(report.body?.lines) ? report.body.lines.filter((l: any) => l.correlationId === report.requestId) : [];
+  ok("AUD-3 DW5 pass (SA-11-31): firm A's access report shows every OUR_STAFF line on firm A's trail and every cross-firm line filtered to firm A, each with its trail, the plain action words and who (and this call's own platform.bypass line on firm A)",
     report.status === 200 && report.body.firm?.id === firmA && wantA.length > 3 && wantA.every((id) => got.includes(id)) && got.length === wantA.length
+    && ownBypass.length === 1 && ownBypass[0].action === "platform.bypass" && ownBypass[0].actor === `ourstaff:${OWNER}`
     && report.body.lines.some((l: any) => l.trail === "platform" && l.action === CROSS_TENANT) && report.body.lines.every((l: any) => l.who === "ExpatReady staff" && typeof l.at === "string")
     && report.body.lines.some((l: any) => l.action === FIRM_READ && l.actionWords === "ExpatReady staff read the firm's records"), { status: report.status, body: report.body, wantA: wantA.length, got: got.length });
   ok("AUD-3 DW5 fail (strictly firm-scoped): the report shows none of firm B's lines, no unfiltered read across firms, and no firm staff member's own line",
     report.status === 200 && notA.length > 2 && notA.every((id) => !got.includes(id)), { notA });
   ok("AUD-3 DW5 pass (SA-11-12): the report's own read writes one platform.system.firm_read line on firm A's trail (and nothing on firm B's)",
     lines(`firm_id = '${firmA}' and action = '${FIRM_READ}' and detail->>'route' = '${REPORT_ROUTE}' and actor = 'ourstaff:${OWNER}'`) === readA0 + 1 && lines(`firm_id = '${firmB}'`) === b5);
+  // Keyset pages: 50 lines a page, the next page from the cursor, no line twice or missed.
+  for (let i = 0; i < 50; i++) await call(base, "GET", `/api/system/aud3-test/firms/${firmA}/billing`, { token: supportT });
+  const p1 = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}`, { token: ownerT });
+  const p2 = p1.body?.next ? await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}&cursor=${p1.body.next}`, { token: ownerT }) : { status: 0, body: {} as any, requestId: null };
+  const paged = [...(p1.body?.lines ?? []), ...(p2.body?.lines ?? [])].map((l: any) => l.id);
+  const inRange = Number(sql(`select count(*) from audit_event where ((firm_id = '${firmA}' and actor_type = 'OUR_STAFF') or (firm_id is null and action = '${CROSS_TENANT}' and detail->>'firm' = '${firmA}')) and correlation_id <> '${p2.requestId}' and not (correlation_id = '${p1.requestId}' and action = '${FIRM_READ}')`));   // page 1's own read line is written after page 1 is read, so it is newer than both pages
+  ok("AUD-3 DW5 pass (keyset pages): the first page holds 50 lines and a cursor; the next page holds the rest, newest first, no line twice or missed",
+    p1.status === 200 && p1.body.lines.length === 50 && typeof p1.body.next === "string" && p2.status === 200 && p2.body.next === null && new Set(paged).size === paged.length && paged.length === inRange
+    && paged.every((id, i) => i === 0 || [...p1.body.lines, ...p2.body.lines][i - 1].at >= [...p1.body.lines, ...p2.body.lines][i].at), { p1: p1.body?.lines?.length, p2: p2.body?.lines?.length, paged: paged.length, inRange });
   const a5 = lines(`firm_id = '${firmA}'`);
   const noDates = await call(base, "GET", `/api/system/firms/${firmA}/access-report`, { token: ownerT });
   const badRange = await call(base, "GET", `/api/system/firms/${firmA}/access-report?from=${day(2)}&to=${day(-1)}`, { token: ownerT });
