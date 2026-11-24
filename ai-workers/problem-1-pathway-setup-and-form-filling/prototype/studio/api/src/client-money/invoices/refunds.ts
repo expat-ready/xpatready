@@ -19,6 +19,7 @@ import { firmScope } from "../../platform/firm-scope.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { MONEY, UUID, badField, notFound, parse } from "./drafts.ts";
+import { failClosed, invoiceInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { dayOf, invoiceFacts } from "./facts.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -28,12 +29,17 @@ const TRUST_WORDS = "Money received into trust is refunded from the trust ledger
 type Pay = { id: string; invoiceId: string; amountMinor: number; cleared: boolean; currency: "CAD" | "USD"; receivedInto: "OPERATING" | "TRUST"; method: string; receiptNumber: string | null; personId: string | null; companyId: string | null; caseId: string | null };
 
 export class Refunds {
-  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly clock: ClockPort) {}
+  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly clock: ClockPort, private readonly scopeOf: ScopeOf = failClosed) {}   // C5 (#3305 M1)
+
+  /** C5: the payment's invoice in the caller's scope, else the same 404 as a missing payment, before anything is written. */
+  private async seen(tx: Tx, ctx: StaffContext, p: { invoiceId: string }, scope: MoneyScope) { await invoiceInScope(tx, firmScope(ctx.firmId).firmId, p.invoiceId, scope, "payment"); }
 
   /** POST /api/front-office/money/payments/:paymentId/refunds (agent/refund:create on the route). */
   async refund(ctx: StaffContext, paymentId: string, body: unknown): Promise<RefundView> {
     const id = UUID.test(paymentId) ? paymentId.toLowerCase() : notFound("payment"), r = parse(RefundIn, body);
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
+      const pre = await this.row(tx, ctx.firmId, id); if (pre) await this.seen(tx, ctx, pre, scope);   // C5 before the locks and any write (review m2)
       const p = await this.lock(tx, ctx.firmId, id);
       const refundedOn = this.day("refundedOn", r.refundedOn);
       const had = await this.replay(tx, ctx.firmId, r.idempotencyKey, { paymentId: id, fromExtra: false, amountMinor: r.amountMinor, reason: r.reason, method: r.method, reference: r.reference ?? null, refundedOn: r.refundedOn ?? null });
@@ -50,13 +56,28 @@ export class Refunds {
     });
   }
 
+  /** FO-7q part 2 (read only: no lock, nothing written): what these two routes would take now for one payment, so
+   *  reads/actions.ts offers Refund and Refund · Keep as credit by this file's own rules, never a copy of them. A trust
+   *  payment or an uncleared cheque takes nothing (TRUST_REFUND / TRUST_EXTRA, NOT_CLEARED above); `refundableMinor` is
+   *  leftToRefund's, `waitingMinor` waiting's (0 where its stored extra is missing, where the route answers 404). Null:
+   *  no such payment on an invoice of the firm. */
+  async standing(tx: Tx, firm: string, paymentId: string): Promise<{ refundableMinor: number; waitingMinor: number } | null> {
+    const p = UUID.test(paymentId) ? await this.row(tx, firm, paymentId.toLowerCase()) : null;
+    if (!p) return null;
+    if (p.receivedInto === "TRUST" || !p.cleared) return { refundableMinor: 0, waitingMinor: 0 };
+    const waiting = (await this.storedExtra(tx, firm, p)) === null ? 0 : await this.waiting(tx, firm, p);
+    return { refundableMinor: (await this.leftToRefund(tx, firm, p)).left, waitingMinor: waiting };
+  }
+
   /** POST /api/front-office/money/payments/:paymentId/extra (agent/payment:record on the route; a Refund also needs
    *  agent/refund:create). Exactly the waiting extra, once. */
   async choose(ctx: StaffContext, paymentId: string, body: unknown): Promise<ExtraChoiceView> {
     const id = UUID.test(paymentId) ? paymentId.toLowerCase() : notFound("payment"), c = parse(ExtraChoiceIn, body);
     if (c.choice === "REFUND" && !(await holdsKey(this.db, firmScope(ctx.firmId).firmId, ctx.staffId, REFUND_KEY)))
       problem(403, "Not allowed", "Refunding money needs the refund permission. Nothing was refunded.", { code: "MISSING_PERMISSION", missing: [REFUND_KEY] });
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
+      const pre = await this.row(tx, ctx.firmId, id); if (pre) await this.seen(tx, ctx, pre, scope);   // C5 before the locks and any write (review m2)
       const p = await this.lock(tx, ctx.firmId, id);
       const refundedOn = c.choice === "REFUND" ? this.day("refundedOn", c.refundedOn) : null;
       if (c.choice === "REFUND") {   // the same key again: the one refund of the extra, answered again (never a plain refund's key)
@@ -100,13 +121,18 @@ export class Refunds {
       return said ? refuse("MONEY_RULE", `The money rules refused this: ${said[1].trim().replace(/[.\s]+$/, "")}. Nothing was changed.`) : Promise.reject(e);
     }
   }
-  /** The payment (on an invoice of the firm), the party's trust lock, then the invoice row (FO-7lk's order). */
-  private async lock(tx: Tx, firm: string, id: string): Promise<Pay> {
+  /** The payment as both routes read it (on an invoice of the firm), with no lock; null when there is none. */
+  private async row(tx: Tx, firm: string, id: string): Promise<Pay | null> {
     const firmId = firmScope(firm).firmId;
     const [p] = await tx.$queryRaw<Pay[]>`select p.id::text as id, p.invoice_id::text as "invoiceId", p.amount_minor as "amountMinor", p.currency::text as currency, p.received_into::text as "receivedInto", p.method::text as method, p.cleared,
         r.number as "receiptNumber", i.person_id::text as "personId", i.company_id::text as "companyId", i.case_id::text as "caseId"
       from money_payment p join money_invoice i on i.firm_id = p.firm_id and i.id = p.invoice_id left join money_receipt r on r.firm_id = p.firm_id and r.payment_id = p.id
       where p.firm_id = ${firmId}::uuid and p.id = ${id}::uuid`;
+    return p ?? null;
+  }
+  /** The payment (on an invoice of the firm), the party's trust lock, then the invoice row (FO-7lk's order). */
+  private async lock(tx: Tx, firm: string, id: string): Promise<Pay> {
+    const firmId = firmScope(firm).firmId, p = await this.row(tx, firm, id);
     if (!p) return notFound("payment");
     await tx.$executeRaw`select money_trust_lock(${firmId}::uuid, ${p.personId ?? p.companyId}::uuid, ${p.currency}::"MoneyCurrency")`;
     await tx.$queryRaw`select 1 from money_invoice where firm_id = ${firmId}::uuid and id = ${p.invoiceId}::uuid for update`;
@@ -153,12 +179,17 @@ export class Refunds {
   /** What of the payment's extra is still waiting: the extra its audit line stored (exactly one line, part 1b), less what
    *  was kept from it or refunded from it, and never more than the invoice is still paid over. */
   private async waiting(tx: Tx, firm: string, p: Pay): Promise<number> {
+    const extra = await this.storedExtra(tx, firm, p);
+    if (extra === null) return notFound("payment");
+    const facts = await invoiceFacts(tx, firm, p.invoiceId, dayOf(this.clock.now()));
+    return Math.max(0, Math.min(extra - (await this.kept(tx, firm, p.id)) - (await this.refunded(tx, firm, p.id)), facts?.view.extraMinor ?? 0));
+  }
+  /** The extra the payment's one audit line stored when it was recorded (part 1b); null when there is not exactly one. */
+  private async storedExtra(tx: Tx, firm: string, p: Pay): Promise<number | null> {
     const firmId = firmScope(firm).firmId;
     const lines = await tx.$queryRaw<{ extra: unknown }[]>`select detail->'extraMinor' as extra from audit_event where firm_id = ${firmId}::uuid and action = 'payment.recorded' and entity = 'money_payment'
       and entity_key = ${p.id} and detail->>'paymentId' = ${p.id} and detail->>'receiptNumber' = ${p.receiptNumber}`;
-    if (lines.length !== 1 || !Number.isSafeInteger(lines[0].extra) || (lines[0].extra as number) < 0) return notFound("payment");
-    const facts = await invoiceFacts(tx, firm, p.invoiceId, dayOf(this.clock.now()));
-    return Math.max(0, Math.min((lines[0].extra as number) - (await this.kept(tx, firm, p.id)) - (await this.refunded(tx, firm, p.id)), facts?.view.extraMinor ?? 0));
+    return lines.length === 1 && Number.isSafeInteger(lines[0].extra) && (lines[0].extra as number) >= 0 ? lines[0].extra as number : null;
   }
   private async writeRefund(tx: Tx, ctx: StaffContext, p: Pay, amount: number, reason: string, key: string, method: string, reference: string | null, refundedOn: string, fromExtra: boolean): Promise<string> {
     const [text] = await tx.$queryRaw<{ ok: boolean; ref: boolean }[]>`select money_text_ok(${reason}, 200) as ok, ${reference}::text is null or money_text_ok(${reference}, 200) as ref`;

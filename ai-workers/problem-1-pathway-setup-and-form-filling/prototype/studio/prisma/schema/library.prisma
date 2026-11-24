@@ -227,6 +227,16 @@ model DocumentType {
   /// C6.14 (SA-1B-151 §7): ordered person-role keys who provide this document when a line asks it once for the
   /// application or once for the couple; empty = not set (the person the item is for provides it).
   defaultProviderRoles String[]    @default([]) @map("default_provider_roles")
+  /// CS-D7c (map row 70; AG-9-12, AG-9-64): the type's translation, notarisation and validity defaults; null = not set
+  /// (behaves as before). NOT_REQUIRED | REQUIRED_IF_NOT_EN_FR · NOT_REQUIRED | REQUIRED (checks in SQL). Set only through
+  /// a second person's approval (api/src/document-type-defaults.ts); a version with any of them set is never anything but a
+  /// draft without its official citation (quote and file, a check in SQL: AGENTS rule 4, P-170).
+  translationRule      String?     @map("translation_rule")
+  notarisationRule     String?     @map("notarisation_rule")
+  hasExpiry            Boolean?    @map("has_expiry")
+  maxAgeDays           Int?        @map("max_age_days")
+  defaultsSourceQuote  String?     @map("defaults_source_quote")
+  defaultsSourceFile   String?     @map("defaults_source_file")
   version         Int
   status          DefinitionStatus
   supersedesId    String?          @map("supersedes_id") @db.Uuid

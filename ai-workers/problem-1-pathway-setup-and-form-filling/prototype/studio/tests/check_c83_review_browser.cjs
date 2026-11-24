@@ -137,6 +137,10 @@ const tsx = (f) => spawnSync(path.join(STUDIO, "node_modules", ".bin", "tsx"), [
     await shot("09-approval-withdrawn-change-only");
     // Keyboard first: Tab from the form's own button lands on its chip (a real key press, as a person moves).
     await withdrawn.getByRole("button").focus();
+    // The focus may scroll the page; that scroll event fires in the next frame, and Radix closes an open tooltip on a scroll
+    // of the trigger's page (react-tooltip handleScroll). Let it land before Tab opens the tooltip (ci run 45015083775,
+    // shard 20: scrollY 9 → 460 on focus, the scroll event after the Tab, the tooltip closed; 2 of 17 local runs).
+    await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     await p.keyboard.press("Tab");
     await p.getByRole("tooltip").waitFor(T);
     ok("C8.3 walk 10 pass (m5, BIC-14): the chip's tooltip opens on keyboard focus and says how it differs from \"Changed since review\"", /Approved earlier; a fact on it changed since, so the representative checks it again\./.test(await p.getByRole("tooltip").innerText()));
