@@ -450,8 +450,8 @@ export class PlatformIdentity implements OnModuleInit {
       for (const r of valid.slice(room.fit)) r.flags.push({ code: "OVER_SEAT_LIMIT", detail: over });
       const made = [];
       for (const r of valid.slice(0, room.fit)) {
-        const row = await this.insertInvitation(tx, actor.firmId, r.email!, r.roles!, actorWord(actor.staffId));
-        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${room.fit} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: null, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
+        const row = await this.insertInvitation(tx, actor.firmId, r.email!, r.roles!, actorWord(actor.staffId), r.name);   // R1.20: the row's name is kept, as the single invite's (PF-4dn)
+        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${room.fit} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: r.name, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
         made.push({ row: r.row, id: row.id, email: r.email!, roles: r.roles!, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token, name: r.name });
       }
       return { made, seatsLimit: room.limit, seatsUsed: room.used + made.length };
