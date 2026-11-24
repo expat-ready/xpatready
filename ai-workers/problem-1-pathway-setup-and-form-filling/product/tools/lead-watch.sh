@@ -71,6 +71,11 @@ fresh "df / and PostgreSQL 127.0.0.1:54329"
 lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$TOOLS/../STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 fresh "lead-upkeep.py context: STATE.md in this copy and LEAD_CONTEXT from the Lead's get_usage"
 
+# 1e. Capacity (A348, founder 24 Nov): under 2 standbys (LEAD_STANDBYS=<n>), under 7 GB, old exports over 100 MB. Never deletes.
+cp=$(python3 -I "$TOOLS/capacity-watch.py" --state "$STATE_DIR" 2>&1); echo "$cp"; act=$((act + $(grep -c '^ACT' <<<"$cp"))); seen "$cp"
+grep -qE '^(capacity |ACT   capacity)' <<<"$cp" || ACT "capacity: capacity-watch.py did not run ($(head -1 <<<"$cp"))"
+fresh "capacity-watch.py: LEAD_STANDBYS from the Lead's list_sessions, the disk, /private/tmp (exports: read at most once an hour, time printed)"
+
 # 2. Merges and the queue.
 since=$(date -u -v-"${SINCE}"M '+%Y-%m-%dT%H:%M:%SZ')
 merged=$(gh pr list --state merged --search "merged:>=$since" --json number,title -q '.[]|"#\(.number) \(.title[0:55])"')

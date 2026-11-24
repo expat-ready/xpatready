@@ -25,6 +25,7 @@ TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
 TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
+TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 bad=0
 if [ "$part" = 1 ]; then
@@ -469,6 +470,13 @@ OMG step|product/tools/own-migration-guard.py|s/^                nxt = next((j f
 OMG steploop|product/tools/own-migration-guard.py|s/^                            and any(k > j and d2 \& set(dbs) for k, d2 in loop_lines(lines, n2))), len(lines))/                            ), len(lines))/|check-own-migration-guard.sh
 OMG stepdb|product/tools/own-migration-guard.py|s/^                            and dbs and set(PSQLDB.findall/                            and True or set(PSQLDB.findall/|check-own-migration-guard.sh
 OMG late|product/tools/own-migration-guard.py|s/^                if pre and nxt < len(lines):/                if False:/|check-own-migration-guard.sh
+A348 cap standbys|product/tools/capacity-watch.py|s/^    elif int(v) < MIN_STANDBYS:/    elif False:/|check-capacity-watch.sh
+A348 cap given|product/tools/capacity-watch.py|s/^    if not v.isdigit():/    if False:/|check-capacity-watch.sh
+A348 cap disk|product/tools/capacity-watch.py|s/^    if gb < START_GB:/    if False:/|check-capacity-watch.sh
+A348 cap remote|product/tools/capacity-watch.py|s/^    miss = odd + .*/    miss = 0/|check-capacity-watch.sh
+A348 cap dirty|product/tools/capacity-watch.py|s/^        if dirty:/        if False:/|check-capacity-watch.sh
+A348 cap age|product/tools/capacity-watch.py|s/ or now - newest < AGE_H.*/:/|check-capacity-watch.sh
+A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 A334 order|product/tools/app-view-check.sh|s/ -k1,1nr -k2,2nr)$/ -k1,1nr)/|check-lead-watch-idle.sh
 A334 cloud|product/tools/app-view-check.sh|s/^  lane = (\$0 ~ \/ · cloud · /  lane = (\$0 ~ \/ · /|check-lead-watch-idle.sh
 A334 first|product/tools/night-checklist.py|s/^    rows.sort(key=lambda r: (r\[0\], r\[1\]))$/    rows.sort(key=lambda r: r[1])/|check-lead-watch-idle.sh
