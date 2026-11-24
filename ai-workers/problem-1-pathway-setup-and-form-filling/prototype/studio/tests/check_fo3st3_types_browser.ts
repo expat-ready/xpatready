@@ -184,7 +184,9 @@ try {
 
   // ------------------------------------------------------------------------------------------- J-T3: Preview as a booker
   await openType(pa, `${NAME} (copy)`);
-  const writesBefore = [await db.foBooking.count({ where: { firmId: firm.id } }), await db.auditEvent.count({ where: { firmId: firm.id } })];
+  // The preview's own writes: FO-3c part 2's outbox poller may add its platform.bypass line for this firm meanwhile
+  // (it read the firm's booking event from J-T2, PF-12b), which is no write of the preview's (#3184).
+  const writesBefore = [await db.foBooking.count({ where: { firmId: firm.id } }), await db.auditEvent.count({ where: { firmId: firm.id, action: { not: "platform.bypass" } } })];
   await panel(pa).getByRole("button", { name: "Preview as a booker" }).click();
   const dlg = pa.getByRole("dialog", { name: /Preview as a booker/ });
   await dlg.locator("[data-preview-day]").first().waitFor({ timeout: 20_000 });
@@ -196,7 +198,7 @@ try {
   await dlg.getByLabel("Date").fill(XMAS);
   await dlg.locator(`[data-preview-day="${XMAS}"]`).waitFor({ timeout: 20_000 });
   const xmasText = await dlg.locator(`[data-preview-day="${XMAS}"]`).innerText();
-  const writesAfter = [await db.foBooking.count({ where: { firmId: firm.id } }), await db.auditEvent.count({ where: { firmId: firm.id } })];
+  const writesAfter = [await db.foBooking.count({ where: { firmId: firm.id } }), await db.auditEvent.count({ where: { firmId: firm.id, action: { not: "platform.bypass" } } })];
   ok(`FO-3st3 J-T3 fail: Preview on ${XMAS} shows no times and "Closed day"; nothing is written (bookings and audit lines unchanged)`,
     xmasText.includes("Closed day") && !/\d\d:\d\d/.test(xmasText) && JSON.stringify(writesBefore) === JSON.stringify(writesAfter), { xmasText, writesBefore, writesAfter });
   await dlg.getByLabel("Time zone").selectOption("Asia/Dubai"); await dlg.getByLabel("Date").fill(MON);
