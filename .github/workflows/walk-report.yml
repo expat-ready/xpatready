@@ -1,0 +1,53 @@
+# Walks on merge, reported (ENF-733, P-733, P-728 (3)): when walks.yml's run for a push to main ends, one comment on the
+# PR that push merged: the walks run id and link, and each journey's PASS or FAIL with its PASS/FAIL/HELD step counts
+# (studio/tools/walk-plan.mjs comment). qa reads it there instead of waiting for the Lead to dispatch walks.
+# Why a second workflow: walks.yml also runs a pull request's own copy of itself, so it never holds a write token
+# (write-token.py W0-W5); this one runs main's copy only (workflow_run) and reads walks' artifacts as data
+# (walk-plan: the PR number and the journeys; walk-result-<journey>: each walk.json). GITHUB_TOKEN only, scoped to
+# this job; no secret, no cache, no model call, US$0.
+# Safety: it acts only on a walks run for a push to main of this repository; the PR number from the artifact must
+# be a number and GitHub must return that PR as merged with this run's head commit as its merge commit; PR-written
+# text (title, body) never reaches it. Test: studio/tests/check_walk_plan.ts W11-W13.
+name: walk-report
+on:
+  workflow_run:
+    workflows: [walks]
+    types: [completed]
+permissions: {}
+jobs:
+  comment:
+    if: ${{ github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read, actions: read, pull-requests: write, issues: write }
+    env:
+      T: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # main's code (a workflow_run checks out the default branch); the token is not kept.
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - name: walks' plan (none when the push merged no PR or walked nothing)
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with: { name: walk-plan, path: "${{ runner.temp }}/walk-data/plan", run-id: "${{ github.event.workflow_run.id }}", github-token: "${{ github.token }}" }
+      - name: each journey's walk.json
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with: { pattern: "walk-result-*", path: "${{ runner.temp }}/walk-data/results", run-id: "${{ github.event.workflow_run.id }}", github-token: "${{ github.token }}" }
+      - name: one comment on the merged PR
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          set -o pipefail; d="$RUNNER_TEMP/walk-data"
+          [ -f "$d/plan/plan.json" ] || { echo "walks run $RUN_ID kept no plan: the push merged no PR, or named no journey on main" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
+          PR=$(node -p 'String(require(process.argv[1]).pr ?? "")' "$d/plan/plan.json")
+          [[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "the plan's PR is not a number: nothing posted"; exit 1; }
+          m=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '(.merged_at != null) and (.merge_commit_sha == "'"$SHA"'") and (.base.ref == "main")')
+          [ "$m" = true ] || { echo "#$PR is not merged into main with $SHA as its merge commit: nothing posted"; exit 1; }
+          st=0; node "$T/walk-plan.mjs" comment --plan "$d/plan/plan.json" --results "$d/results" --run-id "$RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --sha "$SHA" > "$RUNNER_TEMP/comment.md" || st=$?
+          [ "$st" = 0 ] || { echo "nothing to post (walk-plan.mjs comment exit $st)"; exit 0; }
+          cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F "body=@$RUNNER_TEMP/comment.md" > /dev/null
+          echo "posted on #$PR"

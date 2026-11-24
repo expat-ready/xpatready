@@ -10,12 +10,22 @@
 //     the plan. The walk machinery (walk.mjs, record.ts,
 //     video-size.ts, fixtures/, walks.yml, this file, check_journey_recording.ts) is proved by the two failing
 //     fixtures, so a change to it walks the fixtures, not every journey that imports it.
-//   * The fixtures j_0_fails and j_0_throws join every non-empty matrix (the workflow's own self-test). Zero journeys
-//     and no machinery change: an empty matrix with a reason; walks.yml then skips the walk job and the check passes.
+//   * push to main (ENF-733, P-733, P-728 (3)): the merged PR's journeys, walked on main's new head: each R1 item its
+//     title names ("R1.29", "(R1 row 42)") or its body's "Completes:" line names, mapped as item-proof.mjs journeyOf
+//     (R1.40 -> j_38), when j_<n>.ts is on main. Skipped with a reason when the PR names no item, or changes nothing the
+//     app runs (no file under APP: a records-only or qa-records PR leaves main's walk as it was). At most 20. No
+//     fixtures: they ran on the PR; the comment counts real journeys only. walk-report.yml posts the result.
+//   * The fixtures j_0_fails and j_0_throws join every non-empty pull_request and dispatch matrix (the workflow's own
+//     self-test). Zero journeys and no machinery change: an empty matrix with a reason; walks.yml then skips the walk
+//     job and the check passes.
 // Usage (from the repository root):
-//   node <studio>/tools/walk-plan.mjs --event pull_request|workflow_dispatch --journeys <dir> [--want "j_6 9"]
-//        [--changed <file of changed paths>] [--body-file <PR body>]
-//   → stdout {"matrix":[{name,file,expect}],"reason":"..."}; exit 1 with the reason on a refusal.
+//   node <studio>/tools/walk-plan.mjs --event pull_request|workflow_dispatch|push --journeys <dir> [--want "j_6 9"]
+//        [--changed <file of changed paths>] [--body-file <PR body>] [--title-file <PR title>] [--pr <n>] [--sha <s>]
+//   → stdout {"matrix":[{name,file,expect[,items,via]}],"reason":"...","warn":"..."[,"pr","sha"]}; exit 1 on a refusal.
+//   node <studio>/tools/walk-plan.mjs comment --plan <plan.json> --results <dir> --run-id <id> --run-url <u> --sha <s>
+//   → stdout the merged PR's comment (walk-report.yml): per journey PASS or FAIL with its PASS/FAIL/HELD step counts,
+//     from <dir>/walk-result-<journey>/walk.json; a journey with no walk.json is FAIL ("no result"). Exit 3 and
+//     nothing printed when the plan walked nothing or names no PR.
 //   node <studio>/tools/walk-plan.mjs selftest   the rules on a made-up tree (walks.yml runs it first, every run).
 // Test: studio/tests/check_walk_plan.ts. No dependency (the plan job installs nothing); US$0.
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
@@ -25,6 +35,9 @@ import { fileURLToPath } from "node:url";
 import { detect, journeyOf } from "./item-proof.mjs";
 
 export const CAP = 20;
+/** What the app and its journeys run: walks.yml's pull_request paths without walks.yml itself (check_walk_plan W10). */
+const PROTO = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype";
+export const APP = [`${PROTO}/studio/`, `${PROTO}/contracts/`, `${PROTO}/p2/`, `${PROTO}/p5/`];
 const ID = /^j_([1-9]\d{0,2})$/;
 const posix = (p) => p.split(sep).join("/");
 const byNum = (a, b) => Number(a.slice(2)) - Number(b.slice(2));
@@ -54,11 +67,48 @@ export function machinery(jdir) {
     || f === `${studio}/tools/item-proof.mjs` || [`${d}/walk.mjs`, `${d}/record.ts`, `${d}/video-size.ts`].includes(f) || f.startsWith(`${d}/fixtures/`);
 }
 
+/** The R1 items a PR title names, any kind of PR: "R1.29", "(R1 row 42)" (item-proof.mjs claim's reading). */
+export function titleItems(title) {
+  const t = String(title ?? ""), ids = new Set([...t.matchAll(/\bR1\.([1-9]\d{0,2})(?![\d.]*\d)/g)].map((m) => `R1.${m[1]}`));
+  for (const m of t.matchAll(/\(R1 row ([1-9]\d{0,2})\)/gi)) ids.add(`R1.${m[1]}`);
+  return [...ids].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
+}
+
+/** push to main: the merged PR's named items' journeys (see the header). */
+function pushPlan({ d, all, title, body, changed, pr }) {
+  const named = new Map(), add = (i, via) => named.set(i, named.has(i) && named.get(i) !== via ? "title and Completes" : via);
+  for (const i of titleItems(title)) add(i, "title");
+  for (const i of detect(body).items) add(i, "Completes");
+  const who = pr ? `#${pr}` : "this push";
+  if (!pr) return { matrix: [], reason: "skipped: this push to main is no PR's merge commit (a direct push): nothing to walk", warn: "" };
+  if (!named.size) return { matrix: [], reason: `skipped: ${who}'s title names no R1 item and its body has no Completes line`, warn: "" };
+  const ch = changed.map((f) => f.trim()).filter(Boolean), app = ch.filter((f) => APP.some((a) => f.startsWith(a)));
+  const items = [...named.keys()].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
+  if (!app.length) return { matrix: [], reason: `skipped: ${who} names ${items.join(" ")} but changes nothing the app or a journey runs (${ch.length} file(s), none under studio/, contracts/, p2/ or p5/): main's walk is as before`, warn: "" };
+  const by = new Map(), why = [];
+  for (const item of items) {
+    const id = journeyOf(item).replace(/^tests\/journeys\/|\.ts$/g, "");
+    if (!all.includes(id)) { why.push(`${item} (${named.get(item)}): no ${id}.ts on main, nothing to walk`); continue; }
+    const e = by.get(id) ?? { name: id, file: id, expect: "pass", items: [], via: [] };
+    e.items.push(item); e.via.push(named.get(item)); by.set(id, e);
+  }
+  let matrix = [...by.values()].sort((a, b) => byNum(a.name, b.name)).map((e) => ({ ...e, items: e.items.join(" "), via: [...new Set(e.via)].join(", ") }));
+  for (const e of matrix) why.push(`${e.name}: ${e.items} (${e.via})`);
+  let warn = "";
+  if (matrix.length > CAP) { warn = `${matrix.length} journeys named (over ${CAP}): walking the first ${CAP}; not walked: ${matrix.slice(CAP).map((e) => e.name).join(" ")}`; matrix = matrix.slice(0, CAP); }
+  if (!matrix.length) return { matrix, reason: `skipped: ${who}: ${why.join("; ")}`, warn };
+  return { matrix, reason: `${matrix.length} journey(s) of ${who} on main's head (no fixtures: they ran on the PR): ${why.join("; ")}`, warn };
+}
+
 /** The plan. Throws Error(reason) on a refusal. */
-export function walkPlan({ event, jdir, want = "", changed = [], body = "", root = process.cwd() }) {
+export function walkPlan({ event, jdir, want = "", changed = [], body = "", title = "", pr = "", sha = "", root = process.cwd() }) {
   const d = posix(jdir).replace(/\/$/, "");
   const all = existsSync(resolve(root, d)) ? readdirSync(resolve(root, d)).map((f) => f.replace(/\.ts$/, "")).filter((f) => ID.test(f)).sort(byNum) : [];
   let ids = [], why = [], warn = "";
+  if (event === "push") {
+    if (pr && !/^[1-9]\d{0,6}$/.test(String(pr))) throw new Error(`pr: not a PR number: ${pr}`);
+    return { ...pushPlan({ d, all, title, body, changed, pr: String(pr || "") }), pr: String(pr || ""), sha: String(sha || "") };
+  }
   if (event === "workflow_dispatch") {
     if (want.length > 200) throw new Error("journeys: at most 200 characters");
     const words = want.split(/\s+/).filter(Boolean);
@@ -97,10 +147,40 @@ export function walkPlan({ event, jdir, want = "", changed = [], body = "", root
       warn = `${ids.length + skipped.length} journeys touched (over ${CAP}): walking only the ${ids.length} whose own file changed or that a Completes line names; skipped (reached through imports only): ${skipped.join(" ")}`;
       why.push(`over ${CAP}: ${skipped.length} import-only journey(s) skipped (see the warning)`);
     }
-  } else throw new Error(`event: ${event} is neither pull_request nor workflow_dispatch`);
+  } else throw new Error(`event: ${event} is not pull_request, workflow_dispatch or push`);
   const matrix = ids.map((id) => ({ name: id, file: id, expect: "pass" }));
   for (const f of ["j_0_fails", "j_0_throws"]) matrix.push({ name: f, file: `${d}/fixtures/${f}.ts`, expect: "fail" });
   return { matrix, reason: `${ids.length} journey(s) and the 2 failing fixtures: ${why.join("; ")}`, warn };
+}
+
+/** The merged PR's comment from a push plan and its walks' walk.json files (walk-report.yml). null: nothing to post. */
+export function walkComment({ plan, results, runId, runUrl, sha }) {
+  if (!plan || !Array.isArray(plan.matrix) || !plan.matrix.length || !/^[1-9]\d{0,6}$/.test(String(plan.pr ?? ""))) return null;
+  const rows = plan.matrix.map((j) => {
+    let w = null;
+    try { w = JSON.parse(readFileSync(join(results, `walk-result-${j.name}`, "walk.json"), "utf8")); } catch { w = null; }
+    const num = (v) => (Number.isInteger(v) ? v : null);
+    const ok = !!w && w.exit === 0 && w.fail === 0 && num(w.pass) !== null;
+    return { j, w, verdict: !w ? "FAIL (no result)" : ok ? "PASS" : "FAIL", ok };
+  });
+  const passed = rows.filter((r) => r.ok).length, failed = rows.length - passed, cell = (v) => (Number.isInteger(v) ? String(v) : "-");
+  const clean = (t) => String(t).replace(/[\r\n]+/g, " ").replace(/`/g, "'").slice(0, 240);
+  const out = [
+    `## Walks on merge (ENF-733, P-733): ${passed} PASS, ${failed} FAIL of ${rows.length} journey${rows.length === 1 ? "" : "s"}`,
+    "",
+    `Walked on main \`${String(sha).slice(0, 9)}\` (this PR's merge commit) by walks run [${runId}](${runUrl}).`,
+    "",
+    "| Journey | Item (named by) | Verdict | PASS | FAIL | HELD | Exit | Seconds |",
+    "|---|---|---|---|---|---|---|---|",
+    ...rows.map(({ j, w, verdict }) => `| ${j.name} | ${j.items ?? "-"} (${j.via ?? "-"}) | ${verdict} | ${cell(w?.pass)} | ${cell(w?.fail)} | ${cell(w?.held)} | ${cell(w?.exit)} | ${cell(w?.seconds)} |`),
+  ];
+  const lines = rows.flatMap(({ j, w }) => (Array.isArray(w?.failed) ? w.failed.slice(0, 5).map((l) => `${j.name}: ${clean(l)}`) : []));
+  const none = rows.filter((r) => !r.w).map((r) => r.j.name);
+  if (lines.length) out.push("", "First failing steps (up to 5 a journey):", "```", ...lines, "```");
+  if (none.length) out.push("", `No walk.json for ${none.join(" ")}: the walk ended before its verdict (see the run).`);
+  if (plan.warn) out.push("", `Note: ${clean(plan.warn)}`);
+  out.push("", `Recordings: the run's artifacts walk-<journey>-${sha} (video, trace, a screenshot per step; kept 30 days). This is the journey walk only; an item on a Completes line also gets item-proof's verdict (pack, suites, journey). qa reads this comment instead of waiting for a dispatch.`);
+  return out.join("\n") + "\n";
 }
 
 /** The rules on a made-up tree; returns failure lines (empty: all hold). */
@@ -144,16 +224,40 @@ export function selftest() {
     t("T8 a dispatch naming journeys walks them, sorted and once each, and the fixtures", names(p) === "j_1 j_2 j_0_fails j_0_throws", p);
     const r2 = refused(() => walkPlan({ event: "workflow_dispatch", jdir: J, want: "*", root })), r3 = refused(() => walkPlan({ event: "workflow_dispatch", jdir: J, want: "j_77", root }));
     t("T9 a dispatch input that is not j_<n> or <n>, or names no file, is refused", /not j_<n>/.test(r2) && /no s\/tests\/journeys\/j_77\.ts/.test(r3), [r2, r3]);
+    // ENF-733: push to main, the merged PR's named items (title or Completes), only when it changes what the app runs.
+    const app = `${APP[0]}api/src/x.ts`, push = (title, body, changed, pr = "7") => walkPlan({ event: "push", jdir: J, title, body, changed, pr, sha: "a".repeat(40), root });
+    p = push("runtime: R1.3 — part 2 (R1 row 5); not R1.4.2", "", [app]);
+    t("T10 a merged PR whose title names R1.3 and (R1 row 5) walks j_3 and j_5 on main, no fixtures; R1.4.2 is no item", names(p) === "j_3 j_5" && p.matrix[0].items === "R1.3" && p.matrix[0].via === "title" && p.pr === "7", p);
+    p = push("screens: R1.2 x", "Completes: R1.2, R1.6\n", [app]);
+    t("T11 title and Completes: each journey once, named by both or by Completes", names(p) === "j_2 j_6" && p.matrix[0].via === "title and Completes" && p.matrix[1].via === "Completes", p);
+    p = push("qa: R1.3 re-run on main", "", ["ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/x.md"]);
+    t("T12 a PR naming R1.3 that changes nothing the app runs (records, qa records) walks nothing, with a reason", p.matrix.length === 0 && /changes nothing the app or a journey runs/.test(p.reason), p);
+    const p13 = [push("tooling: no item", "", [app]), push("runtime: R1.99", "", [app]), push("runtime: R1.3", "", [app], "")];
+    t("T13 no item named, an item with no journey on main, or a push that merged no PR: nothing walked, each with its reason", p13.every((q) => q.matrix.length === 0) && /names no R1 item/.test(p13[0].reason) && /R1\.99 \(title\): no j_99\.ts on main/.test(p13[1].reason) && /no PR's merge commit/.test(p13[2].reason), p13);
+    const rdir = join(root, "results"); put("results/walk-result-j_3/walk.json", JSON.stringify({ exit: 0, pass: 9, fail: 0, held: 1, seconds: 80, failed: [] }));
+    put("results/walk-result-j_5/walk.json", JSON.stringify({ exit: 1, pass: 4, fail: 2, held: 0, seconds: 90, failed: ["FAIL W2 the `total` is 0\nmore"] }));
+    const plan14 = push("runtime: R1.3, R1.5 and R1.6", "", [app]), c = walkComment({ plan: plan14, results: rdir, runId: "123", runUrl: "https://x/runs/123", sha: "b".repeat(40) }) ?? "";
+    t("T14 the comment: 1 PASS 2 FAIL of 3, the run id and link, each journey's step counts, a missing walk.json is FAIL, failing steps fenced",
+      /^## Walks on merge \(ENF-733, P-733\): 1 PASS, 2 FAIL of 3 journeys\n/.test(c) && c.includes("run [123](https://x/runs/123)") && c.includes("| j_3 | R1.3 (title) | PASS | 9 | 0 | 1 | 0 | 80 |")
+      && c.includes("| j_5 | R1.5 (title) | FAIL | 4 | 2 | 0 | 1 | 90 |") && c.includes("| j_6 | R1.6 (title) | FAIL (no result) |") && c.includes("```\nj_5: FAIL W2 the 'total' is 0 more\n```"), c);
+    t("T15 no comment for a plan that walked nothing or names no PR", walkComment({ plan: p13[0], results: rdir, runId: "1", runUrl: "u", sha: "s" }) === null && walkComment({ plan: { ...plan14, pr: "" }, results: rdir, runId: "1", runUrl: "u", sha: "s" }) === null, "");
   } finally { rmSync(root, { recursive: true, force: true }); }
   return out;
 }
 
 function main(argv) {
   const [cmd] = argv, opt = {};
-  for (let i = cmd === "selftest" ? 1 : 0; i < argv.length; i++) if (argv[i].startsWith("--")) opt[argv[i].slice(2)] = argv[++i] ?? "";
-  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T9 hold (with T1b, T5b, T5c, T9b)"); return f.length ? 1 : 0; }
+  for (let i = cmd === "selftest" || cmd === "comment" ? 1 : 0; i < argv.length; i++) if (argv[i].startsWith("--")) opt[argv[i].slice(2)] = argv[++i] ?? "";
+  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T15 hold (with T1b, T5b, T5c, T9b)"); return f.length ? 1 : 0; }
+  const file = (k) => (opt[k] && existsSync(opt[k]) ? readFileSync(opt[k], "utf8") : "");
+  if (cmd === "comment") {
+    let plan = null; try { plan = JSON.parse(file("plan")); } catch { plan = null; }
+    const c = walkComment({ plan, results: opt.results ?? "", runId: opt["run-id"] ?? "", runUrl: opt["run-url"] ?? "", sha: opt.sha ?? "" });
+    if (c === null) { console.error("nothing to post: the plan walked nothing or names no PR"); return 3; }
+    process.stdout.write(c); return 0;
+  }
   try {
-    const p = walkPlan({ event: opt.event, jdir: opt.journeys, want: opt.want ?? "", changed: opt.changed ? readFileSync(opt.changed, "utf8").split("\n") : [], body: opt["body-file"] && existsSync(opt["body-file"]) ? readFileSync(opt["body-file"], "utf8") : "" });
+    const p = walkPlan({ event: opt.event, jdir: opt.journeys, want: opt.want ?? "", changed: opt.changed ? readFileSync(opt.changed, "utf8").split("\n") : [], body: file("body-file"), title: file("title-file").trim(), pr: opt.pr ?? "", sha: opt.sha ?? "" });
     console.log(JSON.stringify(p)); return 0;
   } catch (e) { console.error(e.message); return 1; }
 }
