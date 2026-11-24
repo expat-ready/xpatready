@@ -1,0 +1,32 @@
+name: types-probe-4
+on: { push: { branches: [claude/lead-o2-types-probe4] } }
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy: { fail-fast: false, matrix: { prs: ["3495", "3235 3305 3442 3277 3495"] } }
+    env: { P: ai-workers/problem-1-pathway-setup-and-form-filling/product, S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio, PRS: "${{ matrix.prs }}" }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - name: main with the pull requests merged in
+        run: |
+          git config user.email t@t; git config user.name t
+          git fetch -q origin main; git checkout -q origin/main
+          for n in $PRS; do git fetch -q origin "refs/pull/$n/head"; git merge -q --no-edit FETCH_HEAD; done
+          echo "PROBE tree main=$(git rev-parse --short origin/main) prs=$PRS head=$(git rev-parse --short HEAD)"
+          echo "PROBE machine cpus=$(nproc)"; free -m | sed 's/^/PROBE /'
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: bash "$P/tools/cloud-setup.sh" > /dev/null 2>&1
+      - name: peak memory
+        run: |
+          set +e; cd "$S"; sudo apt-get install -y -q time > /dev/null 2>&1 || true
+          t() { echo "PROBE == $1"; shift; NODE_OPTIONS="--max-old-space-size=$HEAP" /usr/bin/time -v "$@" > /tmp/o 2>&1; echo "PROBE exit $?"; grep -E '^(Files|Lines of|Identifiers|Symbols|Types|Instantiations|Memory used|Check time|Total time|Assignability)|Maximum resident|heap out of memory' /tmp/o | sed "s/^/PROBE $HEAP /"; }
+          X="--noEmit --noCheck false --extendedDiagnostics --pretty false"
+          errs() { grep -E 'error TS' /tmp/o | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > /tmp/e.$1; echo "PROBE errors $1 $(wc -l < /tmp/e.$1)"; }
+          X="--noEmit --noCheck false --extendedDiagnostics --pretty false"
+          errs() { grep -E 'error TS' /tmp/o | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > /tmp/e.$1; echo "PROBE errors $1 $(wc -l < /tmp/e.$1)"; }
+          HEAP=12288 t "Prisma's own types, 12 GB" node_modules/.bin/tsc $X -p api/tsconfig.json; errs plain
+          HEAP=8192 t "the shared type, 8 GB" node_modules/.bin/tsc $X -p api/tsconfig.check.json; errs shared; diff /tmp/e.plain /tmp/e.shared | sed 's/^/PROBE diff /' | cut -c1-260 | head -30
