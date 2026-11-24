@@ -169,6 +169,13 @@
   "outside": [],
   "tool_calls": 38
  },
+ "S25": {
+  "cache_read": 1965735,
+  "fresh_in": 252656,
+  "out": 22414,
+  "outside": [],
+  "tool_calls": 35
+ },
  "S26": {
   "cache_read": 1206814,
   "fresh_in": 176732,
