@@ -139,6 +139,9 @@ try {
   if (controls) { await opener.first().click(); await p.waitForTimeout(1500); } else await p.keyboard.press("Escape");
   // NOTE, not counted: opening from the panel is CS-D5's (R1.68); R1.69's clause is proved by the reads above.
   console.log(`NOTE  J-69 W1 on screen (CS-D5, R1.68's viewer): open control on the line ${controls ? "found" : "not found"}; lines added by opening it: ${Number(viewed(docA.id)) - n2}`);
+  // Since CS-D5 part 2 (#3500, merged 46798e2a8) the file's name opens the preview panel (a dialog) over the case: close
+  // it, as a person would, before the line's ⋯ menu below (qa 10: unclosed, it covered the menu and W2 timed out on main).
+  if (await p.getByRole("dialog").count()) { await p.keyboard.press("Escape"); await p.getByRole("dialog").first().waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined); }
   await panel.screenshot({ path: join(SHOTS, "w1-documents-panel-1440.png") });
 
   // ---------------------------------------------------------------------------------------------- W2 the "Read by" panel
@@ -192,7 +195,9 @@ try {
   const saved = await fetch(`${BASE}/api/platform/keep-periods/closed-client-files`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${repTok2}` }, body: JSON.stringify({ years: 6 }) });
   const forFirm = await new KeepPeriods(db).forFirm(firmA);
   ok("J-69 W5: the representative saves 'Keep closed client files for 6 years' (AUD-5 part 1, #2008) and KeepPeriodPort.forFirm reads 6 from the firm setting", saved.status === 200 && forFirm.closedClientFilesYears === 6 && forFirm.source === "firm setting", { status: saved.status, forFirm });
-  const past = await call("GET", `/runtime/documents/past-keep-period`, undefined, REP);
+  // CS-D6 part 2 as built: the list sits behind PF-4's guard like part 1's routes (a staff session with
+  // agent/document:dispose, never x-actor), so the representative reads it with their session (repTok2).
+  const past = await staffCall("GET", `/runtime/documents/past-keep-period`, repTok2 ?? null);
   const listed = JSON.stringify(past.body ?? "");
   ok("J-69 W5 (missing: CS-D6 part 1, the keep list; the path is a guess): 'Documents past their keep period' lists closed case B's document (closed 7 years ago) and never open case A's",
     past.status === 200 && listed.includes(docB.id) && !listed.includes(docA.id) && !listed.includes(docT.id), { status: past.status, detail: past.body?.detail });

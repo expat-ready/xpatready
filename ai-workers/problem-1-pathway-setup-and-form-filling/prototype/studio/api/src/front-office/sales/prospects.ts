@@ -231,7 +231,8 @@ export class Prospects {
     return {
       id: p.id, number: p.number, type: p.type, leadId: p.leadId, leadNumber: p.lead.number, ownerStaffId: p.ownerStaffId, version,
       stage: { id: p.stageId, key: p.stage.key, label: p.stage.label, kind: p.stage.kind },
-      person: p.subjectPerson ? { id: p.subjectPerson.id, name: nameOf(p.subjectPerson) } : null, company: p.subjectCompany ? { id: p.subjectCompany.id, name: p.subjectCompany.operatingName } : null,
+      // QA-779: the person's email and version (PF-31, sent as If-Match), for the page's Email field (PATCH people/:id).
+      person: p.subjectPerson ? { id: p.subjectPerson.id, name: nameOf(p.subjectPerson), email: p.subjectPerson.email, version: p.subjectPerson.updatedAt.toISOString() } : null, company: p.subjectCompany ? { id: p.subjectCompany.id, name: p.subjectCompany.operatingName } : null,
       valueCents: p.valueCents, currency: p.currency, wonVia: p.wonVia, wonAt: p.wonAt, retainerSigned: signed,
       lostReason: p.lostReason ? { key: p.lostReason.key, label: p.lostReason.label } : null, lostNote: p.lostNote, engagedAt: p.createdAt,
       ...(p.wonVia === "CONVERTED" && !signed ? { warning: NOT_SIGNED } : {}),

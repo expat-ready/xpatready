@@ -11,6 +11,7 @@ import { Button, Field, Input, Notice } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { COPY, endedWords, FIRM_READ_KEY, SUPPORT_LIST_KEY, type SystemMe } from "./contract";
 import { endSystemSession, SystemApiError, systemSignIn, useSystemMe, useSystemSessionEnd, useSystemToken } from "./session";
+import { PRIVACY_SECTIONS } from "./privacy/contract";
 
 /** Set by a sign-in on the card: the next page moves the focus to its heading once its first answer is in (review #9). */
 let arrived = false;
@@ -48,11 +49,18 @@ function SignInCard({ because }: { because: string | null }) {
   );
 }
 
+/** PF-21rs A1 (concept §4): the side menu's groups; a group's heading shows only when one of its links does. */
+const GROUPS: { label: string | null; sections: { path: string; label: string; key: string }[] }[] = [{ label: null, sections: SECTIONS }, { label: "Privacy", sections: PRIVACY_SECTIONS }];
+const allowed = (me: SystemMe) => GROUPS.map((g) => ({ ...g, sections: g.sections.filter((s) => me.keys.includes(s.key)) })).filter((g) => g.sections.length);
+
 function Menu({ me }: { me: SystemMe }) {
   const item = ({ isActive }: { isActive: boolean }) => cn("block rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", isActive ? "bg-primary/10 font-medium text-text-link" : "text-text hover:bg-surface-sunken");
-  const links = SECTIONS.filter((s) => me.keys.includes(s.key)).map((s) => <NavLink key={s.path} to={s.path} className={item}>{s.label}</NavLink>);
-  if (!links.length) return null;   // no empty column for someone who may open no page here (breaker 5)
-  return <nav aria-label="Console" className="hidden w-48 shrink-0 border-r border-border bg-surface-raised p-3 md:block">{links}</nav>;
+  const groups = allowed(me);
+  if (!groups.length) return null;   // no empty column for someone who may open no page here (breaker 5)
+  return <nav aria-label="Console" className="hidden w-48 shrink-0 border-r border-border bg-surface-raised p-3 md:block">
+    {groups.map((g) => { const links = g.sections.map((s) => <NavLink key={s.path} to={s.path} className={item}>{s.label}</NavLink>);
+      return g.label ? <div key={g.label} role="group" aria-labelledby={`sys-menu-${g.label}`} className="mt-3"><p id={`sys-menu-${g.label}`} className="px-3 pb-1 text-xs font-medium text-text-muted">{g.label}</p>{links}</div> : <React.Fragment key="top">{links}</React.Fragment>; })}
+  </nav>;
 }
 
 function Place({ crumbs }: { crumbs: Crumb[] }) {
@@ -66,7 +74,7 @@ export function SystemFrame({ crumbs = [], children }: { crumbs?: Crumb[]; child
   const who = token ? me.data : undefined;
   const page = crumbs.length ? crumbs[crumbs.length - 1].label : "Console";
   React.useEffect(() => { const was = document.title; document.title = `${page} · ExpatReady console`; return () => { document.title = was; }; }, [page]);
-  const mine = who ? SECTIONS.filter((s) => who.keys.includes(s.key)) : [];
+  const mine = who ? allowed(who).flatMap((g) => g.sections) : [];
   return (
     <Frame area="outside" title="ExpatReady console" home="/system/firms"
       controls={who ? <><span className="hidden max-w-48 truncate text-sm text-text-muted sm:inline" data-system-who>{who.name}</span>

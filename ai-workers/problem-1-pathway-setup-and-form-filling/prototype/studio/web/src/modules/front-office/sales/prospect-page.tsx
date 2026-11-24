@@ -12,6 +12,7 @@ import { centsOf, CURRENCIES, CURRENCY_REFUSED } from "../../../../../contracts/
 import { Board, can, KEY, LostReasons, money, Prospect, ValueCurrencies } from "./contract";
 import { Loading } from "./loading";
 import { MoveMenu, STALE_NOTE, useLock, useMove, useOwners, useReturnFocus } from "./prospect-actions";
+import { PersonEmail } from "./person-email";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { arrivedLabel } from "./time";
@@ -131,6 +132,7 @@ function ProspectBody({ id }: { id: string }) {
             {p.stage.kind === "WON" ? row("Won by", p.wonVia === "CONVERTED" ? "Convert to client" : "A signed retainer") : null}
             {p.lostReason ? row("Why lost", <span data-lost-reason>{p.lostReason.label}{p.lostNote ? ` · ${p.lostNote}` : ""}</span>) : null}
           </dl>
+          {p.person ? <PersonEmail prospectId={p.id} person={p.person} mayEdit={can(me, KEY.edit)} /> : null}   {/* QA-779 part (a) */}
         </section>
         <aside aria-label="Actions" className="flex flex-col items-stretch gap-2 rounded-xl border border-border bg-surface-raised p-4">
           {mayMove ? <MoveMenu prospect={{ id: p.id, number: p.number, name }} from={p.stage.id} stages={board.data?.stages ?? []} version={p.version} move={move} /> : null}

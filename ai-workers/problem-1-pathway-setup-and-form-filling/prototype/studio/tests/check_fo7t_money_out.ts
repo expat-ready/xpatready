@@ -318,7 +318,7 @@ try {
   await deposit(PA, CASE, 5000);   // money held when the Owner switches trust off
   await call(tR, "PUT", "/answer", { answer: "NO" });
   const inv4 = await issued(PA, CASE, 1000);
-  const heldApply = await apply({ invoiceId: inv4, amountMinor: 1000, unclearedAcknowledged: true }), heldRefund = await refund({ personId: PA, caseId: CASE, amountMinor: 100, method: "CHEQUE", reference: "CHQ-1" });
+  const heldApply = await apply({ invoiceId: inv4, amountMinor: 1000, unclearedAcknowledged: true }), heldRefund = await refund({ personId: PA, caseId: CASE, amountMinor: 100, method: "CHEQUE", reference: "CHQ-1", unclearedAcknowledged: true });   // FO-7t part 3, ruling (b): CASE still holds a cheque not yet cleared
   const newRequest = await call(tR, "POST", "/requests", { personId: PA, amountMinor: 100, currency: "CAD", purpose: "Retainer deposit (Sample)" });
   ok("FO-7t DW1 pass: trust off with money held → Pay from trust and a refund still answer 201 (AG-6-59 rule 6)", heldApply.status === 201 && heldRefund.status === 201, [heldApply.body, heldRefund.body]);
   ok("FO-7t DW1 fail: trust off with money held → a new trust request is refused (409 TRUST_OFF)", newRequest.status === 409 && newRequest.body.code === "TRUST_OFF", newRequest.body);

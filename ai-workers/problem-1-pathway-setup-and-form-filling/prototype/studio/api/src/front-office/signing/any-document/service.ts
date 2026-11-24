@@ -3,8 +3,10 @@
 // contact of its company) and optionally one active firm person, and clicks Send: the file is stored (FilesPort, under
 // signing/), the adapter's envelope is made, then one fo_signing_document, one fo_signature_request of kind OTHER and its
 // signers are written in one transaction with one audit line (a failure cancels the envelope). The same door, consent,
-// email code, reminders and expiry as FO-6 apply to it as they land (they key on fo_signature_request); this part sends
-// no signing email (FO-6 part 4's door sends every signer's link). The provider's webhook for OTHER requests (viewed,
+// email code, reminders and expiry as FO-6 apply to it as they land (they key on fo_signature_request). Part 3 (FO-6
+// part 4's door, note product/screens/FO-6-4/note.md "FO-6d's link emails"): after the send's commit each client signer
+// gets FO-6 part 4a's "Please sign" email with their own link (./link-mail.ts); the plain token lives only in memory
+// until then, the tables keep its sha256; the firm signer's link is never emailed. The provider's webhook for OTHER requests (viewed,
 // signed, completed: the sealed copy filed, "Your signed document") and the signed copies on a person are part 2
 // (./completion.ts, ./person-documents.ts). An OTHER request never moves a prospect and never makes a client.
 // Government forms are never sent this way: a PDF with an XFA form (IRCC's forms are XFA) or named like an IRCC form number is refused (a check of the
@@ -20,6 +22,7 @@ import { auditEvent } from "../../../platform/audit/audit-event.ts";
 import { problem, type StaffContext } from "../../../platform/identity/keys.ts";
 import { sees, visibilityOf } from "../../sales/common.ts";
 import { signingPort } from "../handlers.ts";
+import { sendPleaseSign } from "../link-mail.ts";
 import { SigningEnded, SigningNotFound } from "../port.ts";
 
 export type Tx = Prisma.TransactionClient;
@@ -121,15 +124,18 @@ export class AnyDocuments {
     const firmSigner = rep ? { id: randomUUID(), staffId: rep.id, name: rep.displayName } : null;
     const { providerDocumentId } = await port.send({ firmId, requestId, title: input.title, document: { bytes: new Uint8Array(bytes), contentType: "application/pdf" },
       signers: [...signers.map((s) => ({ signerId: s.id, role: "CLIENT" as const, name: s.name })), ...(firmSigner ? [{ signerId: firmSigner.id, role: "FIRM" as const, name: firmSigner.name }] : [])] });
-    const token = () => sha(`${firmId.replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`);   // part 4 emails the link; only its sha256 is kept
+    // The link tokens, firm first (FO-3c's and FO-6's shape); only their sha256 is kept. A client signer's plain token stays
+    // in memory until the email after the commit (part 3); the firm signer's is never emailed.
+    const plain = () => `${firmId.toLowerCase().replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`;   // review note: as the retainer path
+    const links = new Map(signers.map((s) => [s.id, plain()]));
     try {
       await this.db.$transaction(async (tx) => {
         const now = this.now(), expiresAt = new Date(now.getTime() + EXPIRES_DAYS * DAY);
         await tx.foSigningDocument.create({ data: { id: documentId, firmId, title: input.title, fileKey: stored.key, sha256: stored.sha256, prospectId: p.id, uploadedBy: ctx.staffId, createdAt: now } });
         await tx.foSignatureRequest.create({ data: { id: requestId, firmId, documentKind: "OTHER", documentId, documentVersionId: documentId, documentVersion: 1, provider: port.provider, providerDocumentId, sentBy: ctx.staffId, sentAt: now, expiresAt } });
         await tx.$queryRaw`select id from fo_signature_request where firm_id = ${firmId}::uuid and id = ${requestId}::uuid for update`;
-        for (const s of signers) await tx.foSigner.create({ data: { id: s.id, firmId, requestId, role: "CLIENT", signOrder: 1, personId: s.personId, linkTokenSha256: token() } });
-        if (firmSigner) await tx.foSigner.create({ data: { id: firmSigner.id, firmId, requestId, role: "FIRM", signOrder: 2, staffId: firmSigner.staffId, linkTokenSha256: token() } });
+        for (const s of signers) await tx.foSigner.create({ data: { id: s.id, firmId, requestId, role: "CLIENT", signOrder: 1, personId: s.personId, linkTokenSha256: sha(links.get(s.id)!) } });
+        if (firmSigner) await tx.foSigner.create({ data: { id: firmSigner.id, firmId, requestId, role: "FIRM", signOrder: 2, staffId: firmSigner.staffId, linkTokenSha256: sha(plain()) } });
         await this.audit.record(tx, { firmId, actor: `staff:${ctx.staffId}`, action: "signing.request_sent", entity: "fo_signature_request", entityKey: requestId,
           summary: `Sent for signing (document "${input.title}"): ${signers.length} ${signers.length === 1 ? "person" : "people"}${firmSigner ? ", then the firm" : ""}`,
           detail: { requestId, documentId, prospectId: p.id, sha256: stored.sha256, signers: signers.length, firmSigner: !!firmSigner, provider: port.provider },
@@ -139,6 +145,9 @@ export class AnyDocuments {
       try { await port.cancel(firmId, providerDocumentId); } catch (c) { if (!(c instanceof SigningEnded || c instanceof SigningNotFound)) console.error(`[fo-signing] cancel after a failed send did not finish: ${(c as Error)?.name ?? "error"}`); }
       throw e;
     }
+    // Part 3: committed, so each client signer gets their link once (sendPleaseSign never throws: a failed email is logged
+    // and the send stands, as FO-6 part 4a's; its idempotency key is the request and the person).
+    for (const s of signers) await sendPleaseSign(this.db, { firmId, requestId, personId: s.personId, token: links.get(s.id)!, kind: "OTHER" });
     return this.state(ctx, requestId);
   }
 

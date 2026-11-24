@@ -270,15 +270,17 @@ async function api() {
 // with the walls on. And client-money/trust/service (FO-7t part 1, #3033): a trust request's or deposit's case must be the
 // named client's, read firm-scoped from runtime_case and case_client (r.firm_id = the session's firm, one plain query, no
 // case-side import); Lead 5's Option A precedent, accepted for part 1 by Lead 10 on 23 Nov, with a port method to follow
-// (row FO-7t part 1p).
-const ALLOW = `case-document-flags case-document-reads case-notes/service search/party-search client-money/visibility-adapter client-money/reads/parties client-money/trust/service case-clients/prospect-won case-clients/client-link case-clients/live case-deadlines/reminders features/case-milestones assessments case-changes case-checklist case-close case-count case-documents case-filings case-prepare case-stages case-work clients
+// (row FO-7t part 1p). And documents/keep-period (CS-D6 part 2, #3497): the keep list reads runtime_case firm-first
+// (c.firm_id = the session's firm, through caseScope); each firm's reminder job runs in its own firm scope; the weekly run
+// reads only which firms have a closed case and a set number, on its declared bypass use (job:case_documents.keep_period_weekly).
+const ALLOW = `case-document-flags case-document-reads documents/keep-period case-notes/service search/party-search client-money/visibility-adapter client-money/reads/parties client-money/trust/service case-clients/prospect-won case-clients/client-link case-clients/live case-deadlines/reminders features/case-milestones assessments case-changes case-checklist case-close case-count case-documents case-filings case-prepare case-stages case-work clients
   core demo document-review-counts earlier-facts employer-link filing-changes filing-record fill-case findings finished-story form-additions
   form-library health person-link readiness-inputs readiness release-update review-rounds review-runs review-stamp routes-data runtime
   sample-case sample-validated sign-steps stage-scope studio submission-record submission team where-used`.split(/\s+/).map((f) => `api/src/${f}.ts`);
 function census() {
   const listed = () => execFileSync("bash", [join(STUDIO, "tests", "fixtures", "csw3", "csw3-spike.sh"), "census"], { encoding: "utf8" }).split("\n").slice(2).filter(Boolean).map((l) => l.split("\t")[0]);
   const now = listed(), extra = now.filter((f) => !ALLOW.includes(f));
-  ok("CS-W3 census pass: every case-side file that queries a case table is on the allow-list (47 at part 1, 48 with CS-S1 part 2, 49 with CS-NT1 part 1, 50 with CS-MV1, 51 with CS-D7, 52 with FO-7q part 3, 53 with CS-D6 part 1, 54 with FO-7t part 1)", ALLOW.length === 54 && extra.length === 0, extra);
+  ok("CS-W3 census pass: every case-side file that queries a case table is on the allow-list (47 at part 1, 48 with CS-S1 part 2, 49 with CS-NT1 part 1, 50 with CS-MV1, 51 with CS-D7, 52 with FO-7q part 3, 53 with CS-D6 part 1, 54 with FO-7t part 1, 55 with CS-D6 part 2)", ALLOW.length === 55 && extra.length === 0, extra);
   const planted = join(STUDIO, "api", "src", `zz-csw3-planted-${process.pid}.ts`);
   writeFileSync(planted, "// a throwaway file the census must catch\nexport const x = (db: any) => db.case.findMany({});\n");
   try {
