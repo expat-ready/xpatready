@@ -418,3 +418,7 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * 87D51 told #3433 merged, go on with 4b; seen running. Pane clicks land off when the page is drawn at 78%: multiply screenshot coordinates by 1.28.
 * lead-watch run from a sparse copy of main (scratchpad/mv). founder-report.py prints unknown for cycle lines (cycle-plan.json of 21 Nov). flow-measure hit GitHub's rate limit 15:31: stage ages not measured.
 * Next: reads #3277, #3418 (after its CodeQL fix), #3217; label #3467 on a green run; after it one run at a time: #3421, #3277, #3235.
+
+### Lead 27, check 15:37 IST 24 Nov
+* Asks A369 (keep the copy current, hooks, speed, SLA, 55 stuck) and A370 (one action list, every 30-minute report) typed in Lead 26's chat, relayed: `design/action-list-2026-11-24.md`, section F. Pause 24 h: there.
+* #3451 merged 15:34. #3174 full run still on (two regressions, eight shards, none red). Lead B 6 asks for a Lead B 7: founder-typed turn needed; it reads on. Read: 7wnHW (reviewing PR A), qa 6 (finished at its limit).
