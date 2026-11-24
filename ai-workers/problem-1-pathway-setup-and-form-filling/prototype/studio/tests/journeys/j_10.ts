@@ -346,7 +346,10 @@ try {
   if (wording) sql(`update fo_web_form set enabled = true, consent_wording_version_id = coalesce(consent_wording_version_id, '${wording}'), allowed_sites = array_append(array_remove(allowed_sites, '${BASE}'), '${BASE}') where firm_id = '${sampleFirm}'`);
   const templateKey = sql(`select 'sales.lead.acknowledgement'`);   // a key of the template registry (platform/messages/templates/registry.ts)
   const rows = () => sql(`select coalesce(string_agg(relname || ':' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I', relname), false, true, '')))[1]::text, ',' order by relname), '') from pg_stat_user_tables where (relname ~ '^(platform_|fo_|money_|msg_|plat_|auto_)' or relname in ('module_event', 'webhook_receipt')) and relname not in ('platform_session', 'msg_firm', 'plat_system_audit')`);
-  const before = rows();
+  // The seed booking's confirmation is sent by a job (its outbox row and the email's link token come a moment later): the counts
+  // are taken once they hold still (two equal reads 2 s apart, at most 30 s), so W4 compares the probes' effect alone.
+  let before = rows();
+  for (let n = 0; n < 15; n++) { await new Promise((r) => setTimeout(r, 2_000)); const again = rows(); if (again === before) break; before = again; }
   // Path keys that are not record ids, with the Sample firm's real values; a key with no value here gets a random one
   // (see the header: a builder who seeds one adds it here).
   const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":kind": "logo", ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = (select id from platform_firm where key = 'sample-firm') and active and show_on_booking_page and deleted_at is null`) };
