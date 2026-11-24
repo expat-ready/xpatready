@@ -122,8 +122,14 @@ export const STATUS_CHIPS: { value: TicketStatus | null; label: string }[] = [
 export const STATUS_WORDS: Record<TicketStatus, string> = { OPEN: "New", WAITING_ON_SUPPORT: "Waiting on us", WAITING_ON_FIRM: "Waiting on firm", CLOSED: "Closed" };
 
 export const SUPPORT_COPY = {
-  empty: "No tickets here. Pick All to see every ticket.",
-  closed: "This ticket is closed. The firm can reopen it by writing again.",
+  empty: "No tickets here.",
+  // Round 2 (review #8, breaker m6): concept r2's "the firm can reopen it by writing again" is untrue (the API and a
+  // database trigger refuse any message on a closed ticket); recorded in challenge.md, Build discoveries.
+  closed: "This ticket is closed. No more replies can be sent; the firm raises a new ticket if it needs more help.",
+  closedWhileWriting: "This ticket was closed while you were writing. Your reply was not sent.",
+  sent: "Reply sent. The ticket is now waiting on the firm.",
+  pastEnd: "No tickets on this page.",
+  showAll: "Show every ticket",
   noManage: "You can read this ticket. Replying needs the support manage key.",
   replyLabel: "Reply (the firm will see this)",
   loadFailed: "Could not load the support queue. Please try again.",
@@ -144,4 +150,10 @@ export function queueQuery(p: URLSearchParams): string {
   for (const k of ["status", "firm", "page"]) { const v = p.get(k); if (v) out.set(k, v); }
   const s = out.toString();
   return s ? `?${s}` : "";
+}
+
+/** A refused filter or reply in words: the API's sentence, then each field by its label, never the raw parameter name. */
+const FIELD_LABELS: Record<string, string> = { status: "Status", firm: "Firm", page: "Page", body: "Reply", health: "Health", q: "Search" };
+export function refusalWords(detail: string, fields?: Record<string, string>): string {
+  return `${detail}${fields ? ` ${Object.entries(fields).map(([k, v]) => `${FIELD_LABELS[k] ?? k}: ${v}`).join("; ")}` : ""}`;
 }

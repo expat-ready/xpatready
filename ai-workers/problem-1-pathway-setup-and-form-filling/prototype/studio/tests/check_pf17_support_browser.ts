@@ -70,6 +70,8 @@ const raise = (firm: string, words: string, page: string, status = "OPEN") => {
 const tA = raise(A, `Sample ${run} one: the licences page shows two seats`, "/platform/licences");
 const tB = raise(B, `Sample ${run} two: a booking question`, "/front-office/bookings", "WAITING_ON_FIRM");
 const tC = raise(A, `Sample ${run} three: done already`, "/platform/me", "CLOSED");
+const tD = raise(B, `Sample ${run} four: closed while we write`, "/platform/billing");
+const tLong = raise(B, `Sample${run}five${"x".repeat(180)}`, "/platform/me", "WAITING_ON_FIRM");
 seedStaff("auditor.pf17c@expatready.example.com", "Auditor (Sample)", "platform-auditor");
 seedStaff("billing.pf17c@expatready.example.com", "Billing (Sample)", "platform-billing-ops");
 
@@ -114,16 +116,22 @@ try {
     (await textOf(p4, `Sample ${run} one`)) !== "" && (await textOf(p4, `Sample ${run} two`)) === "" && (await p4.getByRole("button", { name: new RegExp(`Clear firm.*${nameA}`) }).count()) === 1);
   await p4.goto(`${BASE}/system/support?status=NOPE`);
   const refused = await p4.locator("[data-support-error]").innerText({ timeout: 15_000 }).catch(() => "");
-  ok("PF-17 B4b fail: a status the API refuses names its field, with Clear filters", /status/i.test(refused) && (await p4.getByRole("button", { name: "Clear filters" }).count()) === 1, refused);
+  ok("PF-17 B4b fail (round 2, review #2): a status the API refuses names its field in words (\"Status:\"), with Clear filters", refused.includes("Status:") && (await p4.getByRole("button", { name: "Clear filters" }).count()) === 1, refused);
+  await p4.goto(`${BASE}/system/support?page=9`);
+  const past = await p4.locator("[data-support-past-end]").innerText({ timeout: 15_000 }).catch(() => "");
+  ok("PF-17 B4b fail (round 2, review #3): a page past the end says so and offers page 1", past.includes(SUPPORT_COPY.pastEnd) && (await p4.getByRole("button", { name: "Go to page 1" }).count()) === 1, past);
+  await p4.goto(`${BASE}/system/support?status=WAITING_ON_SUPPORT&firm=${A}`);
+  const emptyNow = await p4.locator("[data-support-empty]").innerText({ timeout: 15_000 }).catch(() => "");
+  ok("PF-17 B4b fail (round 2, review #7): an empty filtered list offers the way back to every ticket", emptyNow !== "" && (await p4.getByRole("button", { name: "Show every ticket" }).count()) === 1, emptyNow);
 
   // ---------------------------------------------------------------------------------------- B5 the ticket panel and a reply
   await p4.goto(`${BASE}/system/support`);
   await rowOf(p4, `Sample ${run} one`).waitFor({ timeout: 15_000 }).catch(() => undefined);
-  await rowOf(p4, `Sample ${run} one`).getByRole("button", { name: new RegExp(`Sample ${run} one`) }).click();
+  await rowOf(p4, `Sample ${run} one`).locator("td").nth(5).click();   // the Age cell: the whole row opens it (concept §4d)
   const panel = p4.getByRole("dialog");
   const opened = await panel.locator("[data-ticket-head]").waitFor({ timeout: 10_000 }).then(() => true, () => false);
   const head = opened ? (await panel.innerText()).replace(/\s+/g, " ") : "";
-  ok("PF-17 B5 pass (SA-10 §3.4): a row opens the ticket's panel: its subject, firm A's name and plan, status and the firm's message",
+  ok("PF-17 B5 pass (SA-10 §3.4; round 2, review #6): a click anywhere on the row opens the ticket's panel: its subject, firm A's name and plan, status and the firm's message",
     opened && head.includes(`Sample ${run} one`) && head.includes(nameA) && head.includes(itemA?.firm?.plan?.name ?? "—") && head.includes("New") && head.includes("shows two seats"), head.slice(0, 300));
   await p4.screenshot({ path: join(SHOTS, "04-ticket-1440.png") });
   await panel.getByRole("button", { name: "Send reply" }).click();
@@ -144,6 +152,23 @@ try {
   await p4.goto(`${BASE}/system/support?ticket=${tC}`);
   const closedNote = await p4.getByRole("dialog").locator("[data-reply-closed]").innerText({ timeout: 15_000 }).catch(() => "");
   ok("PF-17 B5b fail: a closed ticket's panel (opened by address) offers no reply box and says why", closedNote === SUPPORT_COPY.closed && (await p4.getByRole("dialog").getByRole("button", { name: "Send reply" }).count()) === 0, closedNote);
+  // B5c (round 2, review and breaker M1): the ticket is closed while we write: the refused reply says so in our words,
+  // the panel turns to the closed ticket (no box) and the row follows.
+  await p4.goto(`${BASE}/system/support?ticket=${tD}`);
+  await p4.getByRole("dialog").getByLabel(SUPPORT_COPY.replyLabel).fill(`Sample ${run}: a reply that will be refused`);
+  sql(`update platform_support_ticket set status = 'CLOSED', updated_at = now() where id = '${tD}' returning id`);
+  await p4.getByRole("dialog").getByRole("button", { name: "Send reply" }).click();
+  const gone = await p4.getByRole("dialog").locator("[data-reply-closed-now]").innerText({ timeout: 10_000 }).catch(() => "");
+  await p4.getByRole("dialog").locator("[data-reply-closed]").waitFor({ timeout: 10_000 }).catch(() => undefined);
+  const head409 = await p4.getByRole("dialog").locator("[data-ticket-head]").innerText().catch(() => "");
+  ok("PF-17 B5c fail (BR-7): a reply refused because the ticket closed meanwhile says so in our words; the panel shows it Closed with no box; nothing stored",
+    gone === SUPPORT_COPY.closedWhileWriting && head409.includes("Closed") && (await p4.getByRole("dialog").getByRole("button", { name: "Send reply" }).count()) === 0
+      && sql(`select count(*) from platform_support_message where ticket_id = '${tD}'`) === "1", { gone, head409 });
+  // B5d (round 2, breaker m1): a subject with no spaces wraps inside the panel and never covers its Close button
+  await p4.goto(`${BASE}/system/support?ticket=${tLong}`);
+  await p4.getByRole("dialog").locator("[data-ticket-head]").waitFor({ timeout: 10_000 }).catch(() => undefined);
+  const fits = await p4.getByRole("dialog").evaluate((d) => { const t = d.querySelector("h2"); const x = d.querySelector('button[aria-label="Close"]'); if (!t || !x) return false; const a = t.getBoundingClientRect(), b = x.getBoundingClientRect(); return a.right <= b.left + 1 && t.scrollWidth <= t.clientWidth + 1; }).catch(() => false);
+  ok("PF-17 B5d pass (round 2, breaker m1): a long subject with no spaces wraps and stays clear of the panel's Close button", fits);
   await c4.close();
 
   // ---------------------------------------------------------------------------------------- B6 keys
@@ -173,6 +198,18 @@ try {
   await pk.keyboard.press("Escape"); await pk.waitForTimeout(400);
   const back = await opener.evaluate((e) => e === document.activeElement).catch(() => false);
   ok("PF-17 B9c pass: keyboard only, Enter on a row opens its ticket and Escape closes it with the focus back on that row", kOpen && back, { kOpen, back });
+  const tE = raise(A, `Sample ${run} six: focus after a reply`, "/platform/me");
+  await pk.goto(`${BASE}/system/support?status=OPEN`); await rowOf(pk, `Sample ${run} six`).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  await rowOf(pk, `Sample ${run} six`).getByRole("button", { name: new RegExp(`Sample ${run} six`) }).focus(); await pk.keyboard.press("Enter");
+  await pk.getByRole("dialog").getByLabel(SUPPORT_COPY.replyLabel).fill(`Sample ${run}: on it.`);
+  await pk.getByRole("dialog").getByRole("button", { name: "Send reply" }).click();
+  await pk.getByRole("dialog").locator("[data-reply-sent]").waitFor({ timeout: 10_000 }).catch(() => undefined);
+  const sentSaid = await pk.getByRole("dialog").locator("[data-reply-sent]").innerText().catch(() => "");
+  await pk.keyboard.press("Escape"); await pk.waitForTimeout(600);
+  const landed = await pk.evaluate(() => { const e = document.activeElement; return e ? `${e.tagName}|${e.closest("table") ? "table" : ""}` : ""; });
+  ok("PF-17 B9c fail (round 2, breaker M2): after a reply that takes the ticket out of the filter, the reply is announced and Escape puts the focus on the list (the next row) or its heading, never the page body",
+    sentSaid === SUPPORT_COPY.sent && tE !== "" && (landed === "BUTTON|table" || landed.startsWith("H1")), { sentSaid, landed });
+  await pk.goto(`${BASE}/system/support`); await heading(pk).waitFor({ timeout: 15_000 }).catch(() => undefined);
   const pageAxe = (await axe(pk)).length;
   const widths: Record<number, { axe: number; sideways: boolean }> = {};
   for (const w of [1024, 375]) {

@@ -10,24 +10,30 @@ import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Notice, Panel, Table, Textarea } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
-import { ageWords, momentWords, QueuePage, queueQuery, QueueTicket, STATUS_CHIPS, STATUS_WORDS, SUPPORT_COPY, SUPPORT_MANAGE_KEY, type QueueItem } from "./contract";
+import { ageWords, momentWords, QueuePage, queueQuery, QueueTicket, refusalWords, STATUS_CHIPS, STATUS_WORDS, SUPPORT_COPY, SUPPORT_MANAGE_KEY, type QueueItem } from "./contract";
 import { SystemFrame, useSystemStaff } from "./frame";
 import { systemApi, SystemApiError, useSystemToken } from "./session";
 
-const fieldWords = (e: SystemApiError) => `${e.message}${e.problem.fields ? ` ${Object.entries(e.problem.fields).map(([k, v]) => `${k}: ${v}`).join("; ")}` : ""}`;
+const fieldWords = (e: SystemApiError) => refusalWords(e.message, e.problem.fields);
 
 function TicketPanel({ id, onClose, returnFocus }: { id: string | null; onClose: () => void; returnFocus: () => HTMLElement | null }) {
   const token = useSystemToken(), me = useSystemStaff(), qc = useQueryClient();
-  const t = useQuery({ queryKey: ["sys", "ticket", id, token], enabled: !!token && !!id, retry: false, queryFn: async () => QueueTicket.parse(await systemApi(`/support/tickets/${id}`)) });
+  const path = id ? `/support/tickets/${encodeURIComponent(id)}` : "";   // the id from the address, escaped (breaker m7)
+  const t = useQuery({ queryKey: ["sys", "ticket", id, token], enabled: !!token && !!id, retry: false, queryFn: async () => QueueTicket.parse(await systemApi(path)) });
   const [body, setBody] = React.useState(""), [busy, setBusy] = React.useState(false), [error, setError] = React.useState<string | null>(null);
-  React.useEffect(() => { setBody(""); setError(null); }, [id]);
+  const [said, setSaid] = React.useState<"sent" | "closed" | null>(null);
+  React.useEffect(() => { setBody(""); setError(null); setSaid(null); }, [id]);
   const send = async (e: React.FormEvent) => {
-    e.preventDefault(); setBusy(true); setError(null);
+    e.preventDefault(); setBusy(true); setError(null); setSaid(null);
     try {
-      const after = QueueTicket.parse(await systemApi(`/support/tickets/${id}/replies`, { method: "POST", json: { body } }));
-      qc.setQueryData(["sys", "ticket", id, token], after); setBody("");
+      const after = QueueTicket.parse(await systemApi(`${path}/replies`, { method: "POST", json: { body } }));
+      qc.setQueryData(["sys", "ticket", id, token], after); setBody(""); setSaid("sent");
       await qc.invalidateQueries({ queryKey: ["sys", "queue"] });   // the row follows (its status and last activity)
-    } catch (x) { setError(x instanceof SystemApiError ? fieldWords(x) : "Could not send the reply. Please try again."); }
+    } catch (x) {
+      // Closed while we wrote (409, BR-7): say so in our words and show the ticket as it is now (round 2, M1).
+      if (x instanceof SystemApiError && x.status === 409) { setSaid("closed"); await Promise.all([qc.invalidateQueries({ queryKey: ["sys", "ticket", id] }), qc.invalidateQueries({ queryKey: ["sys", "queue"] })]); }
+      else setError(x instanceof SystemApiError ? fieldWords(x) : "Could not send the reply. Please try again.");
+    }
     finally { setBusy(false); }
   };
   const d = t.data, now = Date.now();
@@ -41,14 +47,16 @@ function TicketPanel({ id, onClose, returnFocus }: { id: string | null; onClose:
             <ol className="flex flex-col gap-3" aria-label="Messages">
               {d.messages.map((m) => <li key={m.id} className={cn("rounded-lg border border-border p-3 text-sm", m.authorKind === "SUPPORT" && "bg-primary/5")}>
                 <p className="text-xs text-text-muted">{m.authorName ?? (m.authorKind === "SUPPORT" ? "ExpatReady support" : "A firm user")} · {momentWords(m.createdAt)}</p>
-                <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{m.body}</p>
+                <p dir="auto" className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{m.body}</p>
                 {m.files.length ? <p className="mt-1 text-xs text-text-muted">{m.files.length} {m.files.length === 1 ? "file" : "files"} attached</p> : null}</li>)}
             </ol>
+            {said === "closed" ? <Notice tone="warn"><span data-reply-closed-now>{SUPPORT_COPY.closedWhileWriting}</span></Notice> : null}
+            <p role="status" className={said === "sent" ? "text-sm text-text-ok" : "sr-only"} data-reply-sent={said === "sent" || undefined}>{said === "sent" ? SUPPORT_COPY.sent : ""}</p>
             {d.status === "CLOSED" ? <Notice tone="info"><span data-reply-closed>{SUPPORT_COPY.closed}</span></Notice>
               : !canReply ? <Notice tone="info"><span data-reply-no-manage>{SUPPORT_COPY.noManage}</span></Notice>
                 : <form className="flex flex-col gap-2" onSubmit={send} noValidate>
                   <label htmlFor="sys-reply" className="text-sm font-medium">{SUPPORT_COPY.replyLabel}</label>
-                  <Textarea id="sys-reply" rows={4} value={body} onChange={(e) => setBody(e.target.value)} aria-invalid={error ? true : undefined} aria-describedby={error ? "sys-reply-error" : undefined} />
+                  <Textarea id="sys-reply" rows={4} dir="auto" value={body} readOnly={busy} onChange={(e) => setBody(e.target.value)} aria-invalid={error ? true : undefined} aria-describedby={error ? "sys-reply-error" : undefined} />
                   {error ? <p id="sys-reply-error" role="alert" className="text-sm text-text-danger" data-reply-error>{error}</p> : null}
                   <Button type="submit" busy={busy} className="self-end max-sm:min-h-11">Send reply</Button>
                 </form>}
@@ -63,12 +71,15 @@ function SupportBody() {
   const query = queueQuery(params);
   const list = useQuery({ queryKey: ["sys", "queue", query, token], enabled: !!token, retry: false, placeholderData: keepPreviousData, queryFn: async () => QueuePage.parse(await systemApi(`/support/tickets${query}`)) });
   const put = React.useCallback((k: string, v: string | null) => setParams((old) => { const p = new URLSearchParams(old); if (v) p.set(k, v); else p.delete(k); if (k !== "page" && k !== "ticket") p.delete("page"); return p; }), [setParams]);
-  const opener = React.useRef<HTMLElement | null>(null);
+  const opener = React.useRef<HTMLElement | null>(null), headingRef = React.useRef<HTMLHeadingElement>(null);
+  // Where the focus goes when the panel closes (round 2, breaker M2): the row's button if it is still listed, else the
+  // first row now listed, else the page's heading; never the page body.
+  const backTo = () => (opener.current?.isConnected ? opener.current : document.querySelector<HTMLElement>("[data-ticket-row] button") ?? headingRef.current);
   const status = params.get("status"), firm = params.get("firm"), ticket = params.get("ticket");
   const d = list.data, now = Date.now();
   if (!d && !list.isError) return <p role="status" className="text-sm text-text-muted" data-loading>Loading the support queue…</p>;
   const refused = list.error instanceof SystemApiError ? list.error : null;
-  const title = <header><h1 className="text-2xl font-semibold">Support</h1>
+  const title = <header><h1 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold outline-none">Support</h1>
     <p className="mt-1 text-sm text-text-muted">Every firm's tickets, the longest waiting on us first. Times in UTC.</p></header>;
   if (refused?.status === 403) return <div className="mx-auto flex max-w-7xl flex-col gap-4">{title}<Notice tone="danger" title="Not available"><span data-support-error>{refused.message}</span></Notice></div>;
   const firmName = firm ? d?.tickets.find((t) => t.firm.id === firm)?.firm.name ?? "this firm" : null;
@@ -88,9 +99,15 @@ function SupportBody() {
         ? <Notice tone="danger" title={refused.problem.title ?? "Not available"} action={<Button variant="outline" size="sm" onClick={() => setParams(new URLSearchParams())}>Clear filters</Button>}><span data-support-error>{fieldWords(refused)}</span></Notice>
         : <Notice tone="danger" title="Not available" action={<Button variant="outline" size="sm" onClick={() => void list.refetch()}>Retry</Button>}><span data-support-error>{refused ? refused.message : SUPPORT_COPY.loadFailed}</span></Notice>)
         : !d ? null
-          : !d.tickets.length ? <p data-support-empty className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted">{SUPPORT_COPY.empty}</p>
+          : !d.tickets.length && d.total > 0 && d.page > 1
+            ? <p data-support-past-end className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-dashed border-border px-4 py-8 text-sm text-text-muted">{SUPPORT_COPY.pastEnd}
+              <Button variant="outline" size="sm" onClick={() => put("page", null)}>Go to page 1</Button></p>
+          : !d.tickets.length ? <p data-support-empty className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-dashed border-border px-4 py-8 text-sm text-text-muted">{SUPPORT_COPY.empty}
+            {status || firm ? <Button variant="outline" size="sm" onClick={() => setParams(new URLSearchParams())}>{SUPPORT_COPY.showAll}</Button> : null}</p>
             : <Table label="Support tickets" head={["Subject", "Firm", "Status", "Raised by", "Page", "Age", "Last activity", "Messages"]}>
-              {d.tickets.map((t) => <tr key={t.id} data-ticket-row={t.id}>
+              {d.tickets.map((t) => <tr key={t.id} data-ticket-row={t.id} className="cursor-pointer hover:bg-surface-sunken"
+                // The whole row opens the ticket (concept §4d); its subject is the keyboard's way in, its firm name a filter.
+                onClick={(e) => { if ((e.target as Element).closest("a,button")) return; opener.current = (e.currentTarget as HTMLElement).querySelector("button"); put("ticket", t.id); }}>
                 <td className="min-w-48"><button type="button" className="text-left font-medium text-text-link hover:underline [overflow-wrap:anywhere]" onClick={open(t)}>{t.subject}</button></td>
                 <td className="min-w-40"><a href={`/system/support?firm=${t.firm.id}`} onClick={(e) => { e.preventDefault(); put("firm", t.firm.id); }} className="text-text-link hover:underline [overflow-wrap:anywhere]">{t.firm.name}</a>
                   <span className="block text-xs text-text-muted">{t.firm.plan?.name ?? SUPPORT_COPY.noPlan}</span></td>
@@ -106,7 +123,7 @@ function SupportBody() {
         <Button variant="outline" size="sm" disabled={d.page <= 1} onClick={() => put("page", String(d.page - 1))}>Previous</Button>
         <span>Page {d.page} of {pages} · {d.total} tickets</span>
         <Button variant="outline" size="sm" disabled={d.page >= pages} onClick={() => put("page", String(d.page + 1))}>Next</Button></nav> : null}
-      <TicketPanel id={ticket} onClose={() => put("ticket", null)} returnFocus={() => opener.current} />
+      <TicketPanel id={ticket} onClose={() => put("ticket", null)} returnFocus={backTo} />
     </div>
   );
 }

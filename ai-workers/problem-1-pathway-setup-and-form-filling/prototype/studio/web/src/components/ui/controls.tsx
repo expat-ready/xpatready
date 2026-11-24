@@ -122,7 +122,7 @@ export function Panel({ open, onOpenChange, title, description, badge, children,
         <DialogPrimitive.Content onOpenAutoFocus={openOnFirstField} onInteractOutside={(e) => { if ((e.target as Element | null)?.closest?.("[data-workspace-strip]")) e.preventDefault(); }} onCloseAutoFocus={(e) => { const el = returnFocus?.(); if (el) { e.preventDefault(); el.focus(); } }} className="fixed bottom-0 right-0 top-[var(--ws-top,0px)] z-50 flex w-full max-w-[560px] flex-col border-l border-border bg-surface-raised shadow-xl outline-none">
           <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2"><DialogPrimitive.Title className="text-lg font-semibold">{title}</DialogPrimitive.Title>{badge}</div>
+              <div className="flex flex-wrap items-center gap-2"><DialogPrimitive.Title className="min-w-0 text-lg font-semibold [overflow-wrap:anywhere]">{title}</DialogPrimitive.Title>{badge}</div>
               {description ? <DialogPrimitive.Description className="mt-1 text-xs text-text-muted">{description}</DialogPrimitive.Description> : <DialogPrimitive.Description className="sr-only">{title}</DialogPrimitive.Description>}
             </div>
             <DialogPrimitive.Close className="rounded-md p-1 text-text-muted hover:bg-text/5" aria-label="Close"><X className="size-4" /></DialogPrimitive.Close>
