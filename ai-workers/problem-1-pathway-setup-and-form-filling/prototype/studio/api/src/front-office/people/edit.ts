@@ -120,9 +120,10 @@ export class PeopleEdit {
       const newEmail = p.email !== email, newPhone = phone !== null && !(p.phone === phone && p.readable);
       if (!newEmail && !newPhone) return { ...now, changed: false };   // the same again changes nothing: no write, no audit line
       const after = await tx.foPerson.update({ where: { id }, data: { ...(newEmail ? { email } : {}), ...(newPhone ? { phone, phoneReadable: true } : {}) }, select: { id: true, email: true, phone: true, phoneReadable: true, updatedAt: true } });
-      const line = { firmId: ctx.firmId, actor: actorOf(ctx), entity: "fo_person", entityKey: id, detail: { foPersonId: id, staffId: ctx.staffId } };
-      if (newEmail) await this.ports.audit.record(tx, { ...line, action: EMAIL_EDIT_ACTION, summary: `Staff ${ctx.staffId} changed the email address of person ${id}.`, before: { email: p.email }, after: { email: after.email } });
-      if (newPhone) await this.ports.audit.record(tx, { ...line, action: PHONE_EDIT_ACTION, summary: `Staff ${ctx.staffId} changed the phone number of person ${id}.`,
+      // The entity is written in each call, not spread: the audit sweep (tests/check_case_feed.ts) reads it from the literal.
+      const line = { firmId: ctx.firmId, actor: actorOf(ctx), entityKey: id, detail: { foPersonId: id, staffId: ctx.staffId } };
+      if (newEmail) await this.ports.audit.record(tx, { ...line, entity: "fo_person", action: EMAIL_EDIT_ACTION, summary: `Staff ${ctx.staffId} changed the email address of person ${id}.`, before: { email: p.email }, after: { email: after.email } });
+      if (newPhone) await this.ports.audit.record(tx, { ...line, entity: "fo_person", action: PHONE_EDIT_ACTION, summary: `Staff ${ctx.staffId} changed the phone number of person ${id}.`,
         before: { phone: p.phone, phoneReadable: p.readable }, after: { phone: after.phone, phoneReadable: after.phoneReadable } });
       return { personId: after.id, email: after.email, phone: after.phone, fixNumber: !after.phoneReadable, version: after.updatedAt.toISOString(), changed: newEmail };
     });
