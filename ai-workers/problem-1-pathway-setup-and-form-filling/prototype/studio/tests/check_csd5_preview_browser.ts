@@ -22,7 +22,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { crc32, deflateSync } from "node:zlib";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
@@ -85,7 +85,9 @@ const put = async (l: Line, file: Buffer, name: string) => {
 };
 const [L1, L2, L3] = free;
 const previewed = (doc: string) => Number(sql(`select count(*) from audit_event where action='previewed' and entity='case document' and entity_key='${doc}'`) ?? "-1");
-const stored = (doc: string) => { const rel = sql(`select path from case_document where id='${doc}'`); const p = rel ? join(STUDIO, "var", `isolated-${NAME}`, "workspaces", process.env.STUDIO_WORKSPACE_KEY?.trim() || "demo", rel) : null; return p && existsSync(p) ? createHash("sha256").update(readFileSync(p)).digest("hex") : null; };
+// Named by the workspace key, never listed (a folder listing ties every acceptance pack to this check in the selector).
+const fileOf = (doc: string) => { const rel = sql(`select path from case_document where id='${doc}'`); const p = rel ? join(STUDIO, "var", `isolated-${NAME}`, "workspaces", process.env.STUDIO_WORKSPACE_KEY?.trim() || "demo", rel) : null; return p && existsSync(p) ? p : null; };
+const stored = (doc: string) => { const p = fileOf(doc); return p ? createHash("sha256").update(readFileSync(p)).digest("hex") : null; };
 
 const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 250 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 try {
@@ -171,9 +173,15 @@ try {
   await page.locator('[data-preview-state="refused"]').waitFor({ timeout: 10_000 });
   ok("CS-D5 BR-7 fail: refused twice → \"The file could not be opened…\", no third link", (await panel.locator("[data-preview-refused]").textContent())?.startsWith("The file could not be opened.") === true && net.filter((x) => x.includes("preview-link")).length === 2, net);
   await page.unroute("**/document-previews/**"); await closePanel();
+  // Review M1: a file changed on disk since upload (the API's 409 in its own words) is "could not open", never the scan's state.
+  const f3 = fileOf(d3); ok("CS-D5 setup: the stored PNG is found on this copy", !!f3); if (f3) appendFileSync(f3, Buffer.from([0]));
+  await openFile(d3); await page.locator('[data-preview-state="refused"]').waitFor({ timeout: 10_000 });
+  ok("CS-D5 BR-1 fail: a file changed on disk shows \"The file could not be opened…\", not \"Checking for viruses…\", no Try again", (await panel.locator("[data-preview-refused]").textContent())?.startsWith("The file could not be opened.") === true && (await panel.getByText("Checking for viruses…").count()) === 0 && (await panel.getByRole("button", { name: "Try again" }).count()) === 0);
+  await closePanel();
 
   // W1: the A4 bar at 1440 px, the 200-page fixture, keyboard only, axe, widths.
-  const d4 = await put(L2, A4, "letter-a4-sample.pdf"), d5 = await put(L3, LONG, "long-document-sample.pdf");
+  const LONGNAME = `IMG_20261121_bank_statement_SAMPLE_CLIENT_A_${"scanned_at_branch_".repeat(8)}letter-a4-sample.pdf`;
+  const d4 = await put(L2, A4, LONGNAME), d5 = await put(L3, LONG, "long-document-sample.pdf");
   await go(); await openFile(d4); await ready();
   const px = await page.locator("[data-preview-canvas]").evaluate((e: HTMLCanvasElement) => (parseFloat(e.style.width) / 595) * 9);
   ok("CS-D5 W1: at 1440 px, 9 pt print on an A4 page draws at least 11 px tall at Fit width", px >= 11, px.toFixed(2));
@@ -187,17 +195,19 @@ try {
   const ms = Date.now() - t0;
   ok("CS-D5 W1: page 150 of 200 is drawn within 2 s of Next page, and the toolbar answers a click meanwhile", ms <= 2000 && answered, ms);
   await closePanel();
-  // Keyboard only, from the line's file name.
+  // Keyboard only, from the line's file name (the start point is focused; everything in the panel is reached by Tab).
+  const tabTo = async (sel: string) => { for (let i = 0; i < 25; i++) { if (await page.evaluate((q) => !!document.activeElement?.matches(q), sel)) return true; await page.keyboard.press("Tab"); } return false; };
   await page.locator(`[data-preview-open="${d1}"]`).focus(); await page.keyboard.press("Enter"); await ready();
   const area = page.locator("[data-preview-area]");
-  await area.focus(); await page.locator('[data-preview-zoom="200"]').focus(); await page.keyboard.press("Enter"); await ready();
-  await area.focus();
+  const tabbed = await tabTo('[data-preview-zoom="200"]'); await page.keyboard.press("Enter"); await ready();
+  ok("CS-D5 W1: Tab reaches the zoom control inside the panel", tabbed);
+  ok("CS-D5 W1: Tab reaches the page area", await tabTo("[data-preview-area]"));
   await page.keyboard.press("PageDown"); await page.waitForTimeout(200);
   const stillOne = (await page.locator("[data-preview-page]").textContent()) === "Page 1 of 3";
   for (let i = 0; i < 30 && (await page.locator("[data-preview-page]").textContent()) === "Page 1 of 3"; i++) { await page.keyboard.press("PageDown"); await page.waitForTimeout(100); }
   await ready();
   ok("CS-D5 W1: PageDown scrolls the page area first, and turns to page 2 only at its bottom", stillOne && (await page.locator("[data-preview-page]").textContent()) === "Page 2 of 3");
-  await page.locator("[data-preview-rotate]").focus(); await page.keyboard.press("Enter"); await ready();
+  ok("CS-D5 W1: Tab (from the page area round the panel) reaches Rotate", await tabTo("[data-preview-rotate]")); await page.keyboard.press("Enter"); await ready();
   const axe = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   ok("CS-D5 W1: axe finds no serious or critical WCAG A/AA violation in the panel", axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical").length === 0, axe.violations.map((v) => `${v.id}:${v.impact}`));
   await page.keyboard.press("Escape"); await panel.waitFor({ state: "detached" });
@@ -207,12 +217,13 @@ try {
   const fit = async (p: Page, w: number) => {
     await p.setViewportSize({ width: w, height: w < 600 ? 812 : 800 }); await p.locator(`[data-preview-open="${d4}"]`).click(); await ready();
     if (w === 1024) { await p.locator('[data-preview-zoom="200"]').click(); await ready(); }
-    const m = await p.evaluate(() => { const a = document.querySelector("[data-preview-area]")!, body = a.closest('[role="dialog"]')!.querySelector(".overflow-y-auto")!; return { page: document.documentElement.scrollWidth <= innerWidth + 1, area: a.scrollWidth > a.clientWidth, body: body.scrollHeight <= body.clientHeight + 1 && body.scrollWidth <= body.clientWidth + 1 }; });
+    const m = await p.evaluate(() => { const a = document.querySelector("[data-preview-area]")!, body = a.closest('[role="dialog"]')!.querySelector(".overflow-y-auto")!; const d = a.closest('[role="dialog"]')!.getBoundingClientRect(), t = a.closest('[role="dialog"]')!.querySelector("h2")!.getBoundingClientRect(); return { title: t.right <= d.right + 1 && t.height > 30, page: document.documentElement.scrollWidth <= innerWidth + 1, area: a.scrollWidth > a.clientWidth, body: body.scrollHeight <= body.clientHeight + 1 && body.scrollWidth <= body.clientWidth + 1 }; });
     await p.screenshot({ path: join(SHOTS, `w1-preview-${w}.png`) }); await closePanel(); return m;
   };
   for (const w of [375, 1024, 1440]) {
     const m = await fit(page, w);
     ok(`CS-D5 W1: at ${w} px the page has no sideways scroll and the panel body does not scroll (only the page area)`, m.page && m.body, m);
+    ok(`CS-D5 W1: at ${w} px a long file name wraps inside the panel header (review M4)`, m.title, m);
     if (w === 1024) ok("CS-D5 W1: at 1024 px and 200% the page area scrolls sideways (the 9 pt print readable by zoom)", m.area, m);
   }
   ok("CS-D5 end: back on the line, where the next step (deciding on the file) starts", await row(L1).isVisible());
