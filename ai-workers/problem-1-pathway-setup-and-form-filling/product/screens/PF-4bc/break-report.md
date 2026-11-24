@@ -95,3 +95,39 @@ I ran only on the fake or my own SDK `requestHandler`, with no AWS call and no n
 - **Round-1 leak cases:** all 16 hostile answers give LOG LEAK false. No error name from outside the list is printed.
 
 Verdict: Changes fa8aefc670f09571572a407c74e5bbcd8c47604a
+
+## Round 3: head `8d6af7978f6a47bd13e0a6fa0fc046f8b6e79277`
+Diff only (`git diff fa8aefc67..8d6af7978`, without main's merge 3e5b97a58): `session/firm-lock.ts`, `provider.ts` Gate, `session/service.ts`. I ran on the fake and on a scratch database (`pf4bc_r3` on :54329, since dropped), with no AWS call and no network. Scripts are in the session scratchpad: `b6.mts` (lockFirm and FIRM_TX, imported from firm-lock.ts), `b7.mts` (Gate) and `b8.mts` (maxWait on the app's WalledPool). The PR's test: 46 passed, 0 failed.
+
+**Round 2, re-run:**
+- **R2-M1: closed.** T1 with 0.9 s answers: the first reset completes at 2717 ms. The second gets 409 FIRM_BUSY before any Cognito call, and Cognito and the audit agree. T1b: a holder of 1.2 s, then a reset completes at 3917 ms and stays consistent.
+- **R2-M2: closed.** G2 with Cognito not answering: 40 rows take 1520 ms and 100 rows take 1538 ms. A My account read started at the same moment takes the same time. Afterwards the Gate shows held=0, waiting=0.
+- R2-m5: the two names are now on the list, so closed as far as the diff shows. R2-m3 is now written in the comment at provider.ts:218-221, so it is a known limit. R2-m1, R2-m2 and R2-m4 are unchanged; the diff does not touch them.
+
+### Majors
+None in this PR's diff.
+
+### Outside this PR (not counted in the verdict; for the tech lead, as its own row): Blocker for the app
+**P1. When a transaction's maxWait runs out, its connection goes back to the pool with a transaction still open. The next request on that connection can run as another firm.**
+- Why: Prisma 7.8 gives up on a start that waited longer than maxWait. When the late connection arrives, Prisma calls `PgTransaction.rollback()`, which only does `client.release()` and never sends ROLLBACK (`node_modules/@prisma/adapter-pg/dist/index.mjs:657-661`, `@prisma/client/runtime/client.js` "Unable to start a transaction"). BEGIN was already sent (adapter :695).
+- What I did (`b8.mts`, the app's own `WalledPool` with max 1): firm A held the only connection for 3 s. A FIRM_TX change in firm A gave up with P2028 at about 2 s.
+- Actual: the pool showed the connection as idle, but the server showed `idle in transaction`. Firm B's next insert answered success but was never visible to anyone else. A later refused transaction on that connection rolled it back: 0 rows, so the write was lost. That rollback also undid firm B's `set_config('app.firm_id')`, while the pool's tag (firm-scope.ts:474-475) still said B. Firm B's next query ran as `app.firm_id` = firm A.
+- Expected: a request that gives up leaves the connection clean.
+- Scope: this happens on any `$transaction` in the app whose pool is full for 2 s (2 s is Prisma's default maxWait, so FIRM_TX does not change it). firm-scope.ts and Prisma are the same as on main (a79e246c6). This PR neither causes it nor fixes it.
+- Fix direction (not for this PR): in `WalledPool`, run ROLLBACK on checkout or release when the client is in a transaction, or drop such clients. Add a test like b8.
+
+### Minors
+- **R3-m1. After the firm lock, other lock waits have no limit, so R2-M1's outcome can still happen another way** (`b6.mts` T8). firm-lock.ts:20 sets `lock_timeout` back to default. Then `endSessions` takes `for update` on the person's row with no limit (service.ts:66). A key share held on that row also blocks it; any insert into the 19 tables with a foreign key to `platform_staff` takes one (fo_booking, fo_signature_request, msg_notification and others). With a key share held 6.0 s or 6.8 s, the reset passed 8 s: P2028, the audit row rolled back, and the app was off at Cognito. With the key share held 5.2 s, the reset completed at 7864 ms. With 9 s it expired before the Cognito call. So the header's "never end in provider changed, our records rolled back" (firm-lock.ts:9-10) holds only when nothing else holds the person's row for about 5 s or more. It needs a slow unrelated transaction, so Minor. Fix: before the provider call, check the time left in the transaction (refuse 409 if under the deadline plus a margin), or keep a bounded `lock_timeout` for the whole of FIRM_TX.
+- **R3-m2. The firm-lock wait is up to about 3 s, not 1.5 s.** Postgres applies `lock_timeout` to each lock attempt, and a row lock waits on the tuple and then on the holder's transaction. T3 (five holders of 1.4 s): one waiter got the lock after 2778 ms. T3c (six real resets): one waiter got it after 2681 ms and finished at 4080 ms, with Cognito and the audit consistent. T3q: two firm-row updaters queued ahead → 2816 ms. T4: three changes behind PF-11c's close → all FIRM_BUSY, the last at 3061 ms. The budget still holds (about 3 s + 3 s + commit < 8 s). The words "at most 1.5 s" are wrong in firm-lock.ts:8, MODULE.rows/PF-4bc.md and the PR test's name (check_pf4bc_cognito_admin.ts:194).
+- **R3-m3. A full pool answers a 500.** FIRM_TX's maxWait gives P2028 "Unable to start a transaction in the given time" at 2102 ms (T7), and nothing in session/service.ts maps it. `busy.ts:28` already words P2028 as a 503 for case routes. 20 more changes started meanwhile were all refused, then 10 later ones ran.
+- **R3-m4. Counting queue time puts healthy-Cognito rows in "unknown"** (`b7.mts` G4). 40 rows with every answer at 100 ms: 1018 ms, 0 unknown. At 150 ms: 4/40 unknown. At 250 ms: 20/40. G6 (1000 reads, half hung, half 20 ms): 497 of 500 fast reads read "unknown", because hung reads hold the 4 places for their whole 1.5 s. That is the stated trade (provider.ts:220-221), but the list degrades from about 4 × 1.5 s ÷ latency rows (40 rows at 150 ms). It also still logs one warn line per row: 997 lines for 1000 reads. Fix, if wanted: a per-list read budget, or a higher READS_AT_ONCE.
+
+### What held in round 3 (attack → result)
+- **Three or more changes in one firm:** six real resets → three done, three FIRM_BUSY, and Cognito and the audit agree for each person (T3c). No change ever ran past 8 s through the firm lock alone.
+- **A slower holder (PF-11c's close, `for update`, held 10 s):** every waiter got FIRM_BUSY, none got a 500 (T4). When the close commits within the wait, an accept-shaped waiter reads `DELETED` under the lock and is refused (T4b, service.ts:114-116).
+- **lock_timeout does not leak:** inside the transaction after lockFirm it is 0. It is 0 on the next statement on the same connection. A session-level 4s comes back as 4s. A later lock in the same transaction waits as before (2955 ms) (T5).
+- **State after 55P03:** the real error is P2010 with `originalCode: "55P03"` in `meta`, so the regex matches on the code, not by luck (T6). After FIRM_BUSY on a one-connection pool, `lock_timeout` is 0, there is no open transaction id, and the next transaction runs (T5).
+- **maxWait under exhaustion:** the pool keeps its count (total 2, idle 2, waiting 0) and later transactions run (T7). The connection is not clean, though: see P1.
+- **Gate races:** abort then release in the same tick → the waiter gets false and held=0. Release then abort → the waiter gets true, releases, and held=0. A signal already aborted gives false (R1). A fuzz of 20 000 acquires with random aborts never had more than 4 inside, and ended with held=0, waiting=0 (R2). After 1000 mixed reads the Gate is empty, and the next 4 reads answer in 21 ms (G6). Two firms' lists together (40 + 10 rows, 100 ms): 1316 ms, 0 unknown (G5).
+
+Verdict: Approve 8d6af7978f6a47bd13e0a6fa0fc046f8b6e79277

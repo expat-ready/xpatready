@@ -159,3 +159,55 @@ Reviewer: independent session, 23 Nov 2026. Read `git diff 964275775..fa8aefc67`
 Details are in `screens/PF-4bc/journey-test-reviewer-2026-11-23.md`, section "Round 2".
 
 Verdict: Approve fa8aefc670f09571572a407c74e5bbcd8c47604a
+
+## Round 3 (head 8d6af7978f6a47bd13e0a6fa0fc046f8b6e79277)
+
+Reviewer: independent session, 24 Nov 2026. Read `git diff fa8aefc67..8d6af7978` for the row's own parts only: d297ce36e (firm-lock.ts, the Gate, error names, contract note, tests), the merge 3e5b97a58 (`git show --cc`: its one conflict in session/service.ts) and 8d6af7978 (module-card rows, randomBytes). Main's own changes in the merge were not reviewed.
+
+**Verdict: Ship (Approve).** Break R2-M1 and R2-M2 are fixed, and the test fails when either fix is removed. No new Blocker or Major. Three new minors (r3-m1 to r3-m3). The first two are about the new 409 FIRM_BUSY reaching callers that never wanted the bounded wait.
+
+### What I ran
+* `npx tsx tests/check_pf4bc_cognito_admin.ts`: **46 passed, 0 failed, exit 0** (10 s; PostgreSQL 18 on 127.0.0.1:54329). Also run in a scratch copy of studio (node_modules linked), with the same result.
+* Callers on main's code after the merge: `tsx --tsconfig api/tsconfig.json tests/check_pf11c_close.ts` 47/0 (including "an Owner's pending invitation of the closed firm cannot be accepted (410)" and "an invitation accept holding the firm's row makes the close wait"); `check_pf4b_session_reads.ts` 55/0.
+* `graph.mjs --check` exit 0. `tsc` was not run: it ran out of memory (exit 134), as in round 2.
+* **Mutations** (scratch copy only; every file restored and diffed; the repository's `git status` is clean):
+
+  | Mutation | Result |
+  |---|---|
+  | (A) the round-2 code: no `lock_timeout`, timeout 5 s | **2 fail.** The R2-M1 race reproduces: "A query cannot be executed on an expired transaction … 5324 ms", and the audit holds only person A while B's app is off at Cognito |
+  | (A1) no `lock_timeout`, timeout 8 s | 1 fails (`rb: null`). Both resets complete and the data is consistent, but the test requires FIRM_BUSY |
+  | (A2) the bound kept, timeout back to 5 s | 1 fails (the constants check only; the race itself fits 1.5 + 2.7 s) |
+  | (B2) a fresh 1.5 s deadline started after the queue (the round-2 shape) | **1 fails:** 40 rows took 15 018 ms |
+  | (B1) the Gate's abort listener removed, with the shared signal kept | **passes 46.** See r3-m3 |
+  | (C) session/service.ts `inFirm` back to a plain lock with no `FIRM_TX` | **passes 46.** See r3-m3 |
+
+* **Probes** (scratchpad `probe_lock.ts`, `probe_gate.ts`, `probe_race.ts`; scratch databases dropped):
+  * **`to default`:** with `ALTER DATABASE … SET lock_timeout = '9s'`, the value is 9s before lockFirm and 9s after it. On a connection back from a rolled-back FIRM_BUSY transaction, `show lock_timeout` is the session's own value (0), so the 1500ms did not leak into the pool.
+  * **Lock timeout:** with the row held elsewhere, the result is 409 FIRM_BUSY at 1529 ms. Catching that error and querying again in the same transaction gives **25P02**: the transaction is aborted. That is correct here: lockFirm is the first statement, no caller catches the error, and the 409 rolls the transaction back before any provider call. The regex (firm-lock.ts:17) matches the pg adapter's message, and neither a statement timeout nor a deadlock matches it.
+  * **Gate:** 40 rows with Cognito down → all 503 in 1521-1526 ms. Afterwards `held 0`, `waiting []`, and the next reads answer. Four runs of 600 staggered readers, with deadlines of 8-40 ms against answers of 5-12 ms, interleave aborts and releases constantly: at most 4 requests in flight, never a slot lost or doubled, no waiter left behind. In code: `take` removes the abort listener before resolving, and `give` splices `take` out first, so release and abort cannot both win (single thread). A waiter handed a slot just as its signal fires takes the slot, fails fast on the aborted signal and releases it in `finally`.
+* **PF-11c merge:** accept takes `lockFirm(pre.firm_id)`, then reads `platform_firm.status` (service.ts:113-116). The closed-firm check is still under the lock that the close also takes. If the close holds the lock longer than 1.5 s, the accept gets FIRM_BUSY, and a retry after the close gets 410.
+* **Budget:** the transaction limit (8 s) covers the lock wait (≤ 1.5 s), the provider (≤ 3 s, on a handler that honours abort) and the commit, leaving about 3.5 s for our own queries. The other locks taken after the firm lock (the person's row, the outbox's per-message advisory lock) are short and taken by short transactions. Prisma's `maxWait` 2 s is its default, so nothing changed there.
+
+### Round-2 items
+* **Break R2-M1: fixed and pinned** by a real two-reset race on PostgreSQL (mutation A). Two limits remain:
+  * The race runs lockFirm and FIRM_TX on their own, not through session/service.ts (r3-m3).
+  * The late-answer case (break R2-m1) stays as declared: a retry is safe.
+* **Break R2-M2: fixed and pinned** (mutation B2). One FIFO queue per server remains, so one large list can still turn other firms' reads "unknown" for up to 1.5 s, bounded now and honest. 40 warn lines per list load remain.
+* My r2-m1 and r2-m2 are closed by the above. r2-m3: the docstring now says the fast path skips the email check. r2-m4: the note is in the contract header. r2-m5 / break m5: `CredentialsError` maps to "not set up", and the expected names are on the list. The CodeQL change (randomBytes) is fine.
+
+### Minors (Should; none blocks)
+* **r3-m1. FIRM_BUSY (409) on accept shows "This link cannot be used" with no Continue button.** accept-page.tsx:75 treats every 4xx as the end of the link. So under contention the invitee sees that title above "Someone else in your firm is changing staff right now. Try again in a moment." They recover only by reopening the email link. Before this round, the same contention waited and usually succeeded. Fix: send FIRM_BUSY as 503 "Try again shortly" (as SIGN_IN_PROVIDER_BUSY is), or have the page keep Continue for FIRM_BUSY. Words for the invitee without "your firm".
+* **r3-m2. A person's own sign-out now inherits the 1.5 s bound** (service.ts:180-181 → `inFirm` → lockFirm). signOut calls no provider. While a reset with a slow Cognito, an accept, a plan change (Stripe, under the firm lock) or a close holds the lock for more than 1.5 s, sign-out gets 409. frame.tsx:92 then ends the session in the browser, but the server-side revocation row is never written, so the token stays valid until it expires. Fix: keep the plain wait for signOut (only the provider-calling transactions need the bound), or retry once.
+* **r3-m3. The wiring of the fix is not pinned.** Mutations B1 and C pass. If session/service.ts drops `lockFirm` or `FIRM_TX` at either call site, no test notices: the race test imports the helper itself. Fix: a cheap source check in the PF-4bc test (the three provider-calling transactions use lockFirm and FIRM_TX), or run the race through `PlatformSession.inFirm`. The Gate's abort listener only saves a hop of the queue (with equal deadlines every queued read still reaches `call` at once and logs), so a short comment is enough there.
+
+### Dimensions changed since round 2
+* D2: 4/5 (r3-m2).
+* D15: 4/5 (bounded at 1.5 s).
+* D16: 4/5 (both fixes pinned, the wiring not; r3-m3).
+* D19: 2/5, unchanged (declared).
+* The rest are as in round 2.
+
+### Journey score: 8.8/10, a pass (7 of 8 applicable criteria, none at 0)
+Details are in `screens/PF-4bc/journey-test-reviewer-2026-11-24.md`.
+
+Verdict: Approve 8d6af7978f6a47bd13e0a6fa0fc046f8b6e79277
