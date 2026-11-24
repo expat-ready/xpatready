@@ -381,3 +381,8 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Count on main's RULES.md by my script (the page's own words, enforcers not tested): 152 rows, 21 enforced, 31 in part, 6 part owed, 94 prose (62%). Lead 25's count of the branch copy was 82 of 132, same share; target under 30%.
 * Recommended: sort each prose row as check it / judgement (needs a named reviewer and a sample audit) / retire; enforce by breaks first; no new rule without its enforcer or a named reason; enforcement kept outside the Lead (CI, hooks) with a weekly test that each enforcer still fires.
 * Lead 27 standby started: local_d274b187 (preflight: 9.9 GB, load 8.0). Lead 25 to be told.
+
+### Lead 26, 15:04 IST 24 Nov: A367 (founder, typed to me)
+* "for consultation without a signed agreement. We follow the team's requirement AG 415" -> ruled on #3471: warn, never block (AG-4-15 r4); Lead 22's QA-772 ruling and #3420's 409 replaced; DECISIONS row owed with it. s. 23 stays "Unconfirmed: no counsel". Lane not yet seen to read it. The signing-code question stays open.
+* "moving the lead to a fresh copy of main. Yes." -> at the next hand-over. Plan: a new lead branch cut from origin/main with only records carried (STATE, the recovery plan and history files, records only here), prepared by git plumbing, no checkout switched here; the next Lead starts from it in its own folder. lane.sh whoami and current-lead.sh must accept it: check first.
+* Staleness measured elsewhere: STATE.md on main names a Lead of 22 Nov (cloud lanes read that one); cycle-plan.json on main 21 Nov; worktrees behind main: Lead O 2 898, study 255, Lead B 5 666, others 1609 to 3157; demo-main 0.
