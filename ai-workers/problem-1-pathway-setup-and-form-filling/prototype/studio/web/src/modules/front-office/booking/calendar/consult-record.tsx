@@ -240,8 +240,8 @@ function NextStep({ booking, record, reveal }: { booking: FeedItem; record: Cons
   React.useEffect(() => { if (reveal) box.current?.scrollIntoView({ block: "nearest" }); }, [reveal]);
   const on = booking.hangsOn;
   const target = (s: ConsultRecord["nextSteps"][number]) =>
-    s === "ENGAGE_AND_PREPARE_RETAINER" && on?.kind === "lead" ? `/front-office/leads/${on.id}?engage=1`
-      : s === "PREPARE_RETAINER" && on?.kind === "prospect" ? `/front-office/prospects/${on.id}` : null;
+    s === "ENGAGE_AND_PREPARE_RETAINER" && on?.kind === "lead" ? `/front-office/leads/${on.id}?engage=1&consultRecord=${record.id}`   // FO-5cr: the retainer draft is filled in from this record
+      : s === "PREPARE_RETAINER" && on?.kind === "prospect" ? `/front-office/prospects/${on.id}?consultRecord=${record.id}` : null;
   const steps = record.nextSteps.map((s) => ({ s, to: target(s) })).filter((x): x is { s: typeof x.s; to: string } => x.to !== null);
   if (!steps.length) return null;
   return (

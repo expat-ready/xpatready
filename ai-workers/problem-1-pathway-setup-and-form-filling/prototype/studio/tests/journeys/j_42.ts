@@ -309,7 +309,7 @@ try {
   ok("J-42 W9: the button opens FO-4's Engage panel on B's lead page (the address carries no engage flag once open)", /\/front-office\/leads\/[0-9a-f-]+$/.test(new URL(staff.url()).pathname) && !staff.url().includes("engage=1"), staff.url());
   await shot(staff, "W9-engage-panel");
   await staff.getByRole("button", { name: "Engage as Individual" }).click();
-  await staff.waitForURL(/\/front-office\/prospects\//, { timeout: 15_000 });
+  await staff.waitForURL(/\/front-office\/prospects\/[0-9a-f-]+$/, { timeout: 15_000 });   // FO-5cr: the address drops ?consultRecord once the retainer card has loaded (review m1)
   const prospects = await db.foProspect.findMany({ where: { firmId: firm.id } });
   await shot(staff, "W9-prospect");
   ok("J-42 W9 pass: Engage as Individual starts one prospect for B and opens it; nothing is sent to B on the way (BR-16)",

@@ -15,6 +15,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AuditPort } from "../../../../ports/audit.ts";
+import type { ConsultRecordPort, ConsultRecordRead } from "../../../../ports/consult-record.ts";
 import { EVENT, RetainerEventPayload, type EventName } from "../../../../ports/events.ts";
 import type { FilesPort } from "../../../../ports/files.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
@@ -29,6 +30,8 @@ import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf }
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
 import { CODE_MARKED, checklistFor, draftChecklist, lettersOf, markedLetters } from "./code-checklist.ts";
+import { ConsultRecordService } from "../booking/consult/service.ts";
+import { PgConsultRecords } from "../booking/consult/port.ts";
 
 type Tx = Prisma.TransactionClient;
 const STUDIO = resolve(import.meta.dirname, "..", "..", "..", "..");
@@ -75,7 +78,7 @@ export const TemplateVersionBody = strict({ expectedVersion: z.union([z.string()
 const any = z.unknown().optional();
 export const TemplateBody = strict({ name: any, kind: any });
 export const TemplateChangeBody = strict({ active: any, name: any });
-export const DraftBody = strict({ kind: any, templateId: any, representativeStaffId: any, signerPersonId: any, fees: any });
+export const DraftBody = strict({ kind: any, templateId: any, representativeStaffId: any, signerPersonId: any, fees: any, consultRecordId: any });
 export const EditBody = strict({ templateId: any, signerPersonId: any, representativeStaffId: any, fees: any, expectedVersion: any, expectedStatus: any });
 export const SendBody = strict({ expectedVersion: any });
 export const WithdrawBody = strict({ reason: any, expectedVersion: any, expectedStatus: any });
@@ -128,6 +131,36 @@ export const PROSPECT_VIEW_ALL = "agent/prospect:view.all";
 
 /** BR-5: fee rows in. Amounts in cents (whole numbers, 0 … CAD 100 million), empty while the draft has none. */
 const FEE_KEYS = ["label", "amountMinor", "when", "dueOn"];
+
+/** FO-5cr (AG-4-49 rule 6, AG-4-50 rule 4; MS-D18(4)): the words of a fee row filled in from the consult record. */
+export const QUOTED = "Quoted at the consultation";
+/** One answer for an unknown id, another firm's id and a record that hangs on another person: never told apart. */
+export const NO_CONSULT_RECORD = "No consultation record to fill in from, so the fee row starts empty.";
+const DEFAULT_FEES = (): FeeIn[] => [{ label: "Deposit on signing", amountMinor: null, when: "ON_SIGNING", dueOn: null }];
+/** A fee row's label is one line of at most 120 UTF-16 units (str above): control characters become spaces, a longer
+ *  list is cut at a whole character with "…". */
+const oneLine = (t: string) => {
+  const c = t.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
+  if (c.length <= 120) return c;
+  let out = "";
+  for (const ch of c) { if (out.length + ch.length > 119) break; out += ch; }
+  return `${out.trimEnd()}…`;
+};
+/** FO-5cr: the first fee row from a consult record that hangs on this prospect: its recommended items name the row and a
+ *  CAD quoted fee is its amount (the quoted fee beats any default, MS-D18(4)). A retainer is in CAD only (the fee row's
+ *  CHECK), so a USD quote fills the items and asks for the amount in CAD; nothing is converted. A record with neither
+ *  items nor a fee changes nothing. `belongs` is false for another person's record. */
+export function feesFromConsult(rec: ConsultRecordRead | null, belongs: boolean): { fees: FeeIn[]; warnings: string[] } {
+  if (!rec || !belongs) return { fees: DEFAULT_FEES(), warnings: [NO_CONSULT_RECORD] };
+  const items = rec.recommended.map((x) => x.trim()).filter(Boolean), q = rec.quotedFee;
+  if (!items.length && !q) return { fees: DEFAULT_FEES(), warnings: [] };
+  const label = oneLine(items.length ? `${QUOTED}: ${items.join(", ")}` : QUOTED), warnings: string[] = [];
+  let amountMinor: bigint | null = null;
+  if (q && q.currency === "CAD" && BigInt(q.amountMinor) <= FEE_MAX_MINOR) amountMinor = BigInt(q.amountMinor);
+  else if (q && q.currency === "CAD") warnings.push("The quoted fee is above CAD 100,000,000.00, so enter the amount yourself.");
+  else if (q) warnings.push(`The quoted fee was USD ${(q.amountMinor / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. A retainer is in CAD, so enter the amount in CAD.`);
+  return { fees: [{ label, amountMinor, when: "ON_SIGNING", dueOn: null }], warnings };
+}
 export function feesOf(v: unknown): FeeIn[] {
   if (!Array.isArray(v) || v.length > 50) return unprocessable("Fee rows are a list of at most 50.", { fees: "At most 50 rows." });
   return v.map((r, i) => {
@@ -164,7 +197,9 @@ const feeWords = (fees: { label: string; amountMinor: bigint | number | null; wh
 
 export class Retainers {
   readonly render: DocxRender;
-  constructor(private readonly db: PrismaClient, private readonly files: FilesPort, private readonly clock: Clock, private readonly audit: AuditPort<Tx> = auditEvent) {
+  constructor(private readonly db: PrismaClient, private readonly files: FilesPort, private readonly clock: Clock, private readonly audit: AuditPort<Tx> = auditEvent,
+    /** FO-5cr: the consult record read (FO-3a part 2a's adapter by default; a test passes the port's fake). */
+    private readonly consult: ConsultRecordPort<Tx | PrismaClient> = new PgConsultRecords(new ConsultRecordService(db, { audit }), db)) {
     // The port's adapter resolves the starter's frame; a firm's template renders from its stored bytes (renderDocx).
     this.render = new DocxRender(async (k) => (k === STARTER_KEY ? starterFrame() : null));
   }
@@ -427,6 +462,8 @@ export class Retainers {
     if (kind !== "RETAINER" && kind !== "CONSULTATION") unprocessable("Kind is RETAINER or CONSULTATION.", { kind: "RETAINER or CONSULTATION." });
     for (const f of ["templateId", "representativeStaffId", "signerPersonId"] as const) uuidOf(body[f], f);
     if (body.fees !== undefined) feesOf(body.fees);
+    const recordId = uuidOf(body.consultRecordId, "consultRecordId");
+    if (recordId && body.fees !== undefined) unprocessable("Give the fee rows or a consultation record to fill them from, not both.", { consultRecordId: "Not with fee rows." });
     const reps = await this.representatives(ctx.firmId);
     if (!reps.length) conflict(NO_LICENSED, "NO_LICENSED_CONSULTANT");
     const p = await this.prospectFor(ctx, pid);
@@ -438,17 +475,23 @@ export class Retainers {
     if (!repId) unprocessable("Choose the representative.", { representativeStaffId: "Choose the representative." });
     if (!reps.some((r) => r.staffId === repId)) unprocessable("The representative must be an active person with a licence and the case-manager permissions.", { representativeStaffId: "Not eligible to represent." });
     const s = this.signerFor(p, uuidOf(body.signerPersonId, "signerPersonId"));
-    const fees = body.fees === undefined ? [{ label: "Deposit on signing", amountMinor: null, when: "ON_SIGNING" as const, dueOn: null }] : feesOf(body.fees);
+    // FO-5cr: from the consult record when one is named (read in this firm only; a record on a lead counts once that
+    // lead's person is this prospect's), else the empty first row.
+    const rec = recordId ? await this.consult.read(this.db, ctx.firmId, recordId) : null, ref = rec?.partyRef ?? null;
+    const same = (x: string | null | undefined) => !!x && !!ref && x.toLowerCase() === ref.id.toLowerCase();
+    const belongs = ref?.kind === "prospect" ? same(p.id) : ref?.kind === "lead" ? same(p.subjectPersonId) || same(p.primaryContactPersonId) : false;
+    const pre = recordId ? feesFromConsult(rec, belongs) : null, fromRecord = rec && belongs ? rec.recordId : null;
+    const fees = pre ? pre.fees : body.fees === undefined ? DEFAULT_FEES() : feesOf(body.fees);
     const id = randomUUID(), values = await this.mergeValues(ctx.firmId, p, s.signer, repId!, 1, fees, t.placeholders);
     const file = await this.renderVersion(ctx.firmId, id, 1, t.fileKey, values);
     await this.tx(async (tx) => {
       await tx.foRetainer.create({ data: { id, firmId: ctx.firmId, kind, prospectId: p.id, subject: p.type === "CORPORATE" ? "COMPANY" : "PERSON", companyId: p.type === "CORPORATE" ? p.subjectCompanyId : null, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey, createdBy: `staff:${ctx.staffId}` } });
       await this.writeVersion(tx, ctx, id, 1, values, file, fees);
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.drafted", id, `${kind === "RETAINER" ? "Retainer" : "Consultation agreement"} drafted (version 1)`, { retainerId: id, prospectId: p.id, templateId: t.id, templateVersion: t.version, sha256: file.sha256 }), entity: "fo_retainer",
-        before: null, after: { kind, status: "DRAFT", version: 1, prospectId: p.id, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, fees: feeWords(fees), fileSha256: file.sha256 } });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.drafted", id, `${kind === "RETAINER" ? "Retainer" : "Consultation agreement"} drafted (version 1)`, { retainerId: id, prospectId: p.id, templateId: t.id, templateVersion: t.version, sha256: file.sha256, ...(fromRecord ? { consultRecordId: fromRecord } : {}) }), entity: "fo_retainer",
+        before: null, after: { kind, status: "DRAFT", version: 1, prospectId: p.id, ...(fromRecord ? { consultRecordId: fromRecord } : {}), signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, fees: feeWords(fees), fileSha256: file.sha256 } });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_DRAFTED, { retainerId: id, kind, prospectId: p.id, version: 1 });
     }, { fo_retainer_one_live_per_prospect: open });
-    return { ...(await this.read(ctx, id)), warnings: s.warnings, signerOptions: s.options };
+    return { ...(await this.read(ctx, id)), warnings: [...s.warnings, ...(pre?.warnings ?? [])], signerOptions: s.options };
   }
 
   private async templateFor(firmId: string, templateId: string | null, kind: "RETAINER" | "CONSULTATION") {

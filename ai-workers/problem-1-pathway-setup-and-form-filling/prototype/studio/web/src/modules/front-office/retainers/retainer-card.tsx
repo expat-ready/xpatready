@@ -3,37 +3,50 @@
 // Continue the draft; Sent or Viewed → waiting for the client; any other → Open the retainer. Prepare opens a right panel:
 // the firm's active retainer template and the representative (only eligible people, the preparer pre-selected when
 // eligible); the draft is made with the client's details and opens on its own page.
+// FO-5cr (AG-4-50 rule 4): arriving with ?consultRecord=<id> (the consult record's "Prepare retainer") opens the panel
+// once and sends the record's id: the server fills the first fee row from the record's recommended items and quoted fee
+// (nothing is typed twice, nothing is sent), and its warnings show as notices on the retainer page. The mark then leaves the address.
 import * as React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button, Field, Notice, Panel, Pill, Select } from "@/components/ui/controls";
+import { useToast } from "@/lib/api";
 import { can } from "../sales/contract";
 import { useStaff } from "../sales/sales-frame";
 import { staffApi, StaffApiError } from "../sales/session";
 import { CLOSED, R_KEY, Representatives, Retainer, RetainerRows, STATUS, Templates } from "./contract";
 
 export function RetainerCard({ prospectId, name, working }: { prospectId: string; name: string; working: boolean }) {
-  const me = useStaff(), nav = useNavigate();
+  const me = useStaff(), nav = useNavigate(), toast = useToast();
   const rows = useQuery({ enabled: can(me, R_KEY.list), queryKey: ["fo", "retainers", "of", prospectId], retry: false, queryFn: async () => RetainerRows.parse(await staffApi(`/front-office/prospects/${prospectId}/retainers`)) });
   const [open, setOpen] = React.useState(false), [templateId, setTemplateId] = React.useState(""), [repId, setRepId] = React.useState("");
   const [error, setError] = React.useState<{ field: string | null; text: string } | null>(null);
+  const [params, setParams] = useSearchParams(), here = useLocation(), asked = params.get("consultRecord");
+  const [recordId, setRecordId] = React.useState<string | null>(null);
   const templates = useQuery({ enabled: open, queryKey: ["fo", "retainer-templates"], queryFn: async () => Templates.parse(await staffApi("/front-office/retainer-templates")).filter((t) => t.active && t.kind === "RETAINER") });
   const reps = useQuery({ enabled: open, queryKey: ["fo", "retainer-representatives"], queryFn: async () => Representatives.parse(await staffApi("/front-office/retainer-representatives")) });
   React.useEffect(() => { const only = templates.data?.length === 1 ? templates.data[0].id : ""; if (only) setTemplateId((t) => t || only); }, [templates.data]);
   React.useEffect(() => { if (reps.data?.some((r) => r.staffId === me.staffId)) setRepId((r) => r || me.staffId); }, [reps.data, me.staffId]);
   const prepare = useMutation({
-    mutationFn: async () => Retainer.parse(await staffApi(`/front-office/prospects/${prospectId}/retainers`, { method: "POST", json: { templateId, representativeStaffId: repId } })),
-    onSuccess: (r) => nav(`/front-office/retainers/${r.id}`),
+    mutationFn: async () => Retainer.parse(await staffApi(`/front-office/prospects/${prospectId}/retainers`, { method: "POST", json: { templateId, representativeStaffId: repId, ...(recordId ? { consultRecordId: recordId } : {}) } })),
+    onSuccess: (r) => nav(`/front-office/retainers/${r.id}`, { state: { warnings: r.warnings ?? [] } }),   // FO-5cr review m2: the draft's notices stay on its page
     onError: (e) => {
       const field = e instanceof StaffApiError ? (["templateId", "representativeStaffId"].find((f) => e.field(f)) ?? null) : null;
       setError({ field, text: e instanceof StaffApiError ? (field ? e.field(field)! : e.message) : "Could not prepare the retainer. Please try again." });
     },
   });
-  if (!can(me, R_KEY.list)) return null;
   const latest = rows.data?.find((r) => r.kind === "RETAINER") ?? null;
   const live = latest && !CLOSED.includes(latest.status) ? latest : null;
   const s = live ? STATUS[live.status] : null;
-  const mayPrepare = !live && working && can(me, R_KEY.draft);
+  const mayPrepare = !live && working && can(me, R_KEY.draft) && can(me, R_KEY.list);
+  React.useEffect(() => {
+    if (!asked || (can(me, R_KEY.list) && rows.isPending)) return;
+    setParams((x) => { x.delete("consultRecord"); return x; }, { replace: true, state: here.state });
+    if (mayPrepare) { setRecordId(asked); setOpen(true); setError(null); }
+    // Never a silent dead end: say why the panel did not open.
+    else toast.push({ tone: "info", text: live ? "This prospect already has a retainer: open it to add the consultation's fee." : "Preparing a retainer needs an open prospect and a role that drafts retainers." });
+  }, [asked, rows.isPending]);   // eslint-disable-line react-hooks/exhaustive-deps -- once, when the retainers have loaded
+  if (!can(me, R_KEY.list)) return null;
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!templateId) return setError({ field: "templateId", text: "Choose the template." });
@@ -58,7 +71,7 @@ export function RetainerCard({ prospectId, name, working }: { prospectId: string
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
               <span className="text-text-muted" data-no-retainer>{latest ? `The last retainer was ${STATUS[latest.status].label.toLowerCase()}.` : "No retainer yet."}</span>
               {latest ? <Link to={`/front-office/retainers/${latest.id}`} className="text-text-link hover:underline">Open it</Link> : null}
-              {mayPrepare ? <Button size="sm" onClick={() => { setOpen(true); setError(null); }}>Prepare retainer</Button> : null}
+              {mayPrepare ? <Button size="sm" onClick={() => { setRecordId(null); setOpen(true); setError(null); }}>Prepare retainer</Button> : null}
             </div>
           )}
       <Panel open={open} onOpenChange={setOpen} title="Prepare retainer" description={`For ${name}. The client's details and the firm's are filled in from the records; you check them before sending.`}
@@ -79,7 +92,8 @@ export function RetainerCard({ prospectId, name, working }: { prospectId: string
               {(reps.data ?? []).map((r) => <option key={r.staffId} value={r.staffId}>{r.name}</option>)}
             </Select>
           </Field>
-          <p className="text-xs text-text-muted">The first fee row is "Deposit on signing", with no amount yet: you add the amount on the next page.</p>
+          {recordId ? <p className="text-xs text-text-muted" data-from-consult>The first fee row is filled in from the consultation record (its recommended items and the quoted fee) when the record is this prospect's. You check it on the next page.</p>
+            : <p className="text-xs text-text-muted">The first fee row is "Deposit on signing", with no amount yet: you add the amount on the next page.</p>}
         </form>
       </Panel>
     </section>

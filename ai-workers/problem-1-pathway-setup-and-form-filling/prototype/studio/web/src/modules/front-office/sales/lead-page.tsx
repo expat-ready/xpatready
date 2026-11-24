@@ -106,17 +106,19 @@ function LeadBody({ id }: { id: string }) {
   // R1.32 (AG-2-13c, X-4): Assign or Reassign for people who may assign; a one-user firm sees no owner, Take it or Assign.
   const owners = useOwners(), [assigning, setAssigning] = React.useState(false);
   const assignPanel = (o: boolean) => setAssigning(o);   // focus returns to Assign/Reassign as the panel closes (Panel returnFocus)
-  const panel = (o: boolean) => { if (o) { focus.mark(); engage.reset(); } else focus.back(); setEngaging(o); };
+  const fromRecord = React.useRef<string | null>(null);
+  const panel = (o: boolean) => { if (o) { focus.mark(); engage.reset(); } else { focus.back(); fromRecord.current = null; } setEngaging(o); };   // FO-5cr review n3: a cancelled Engage forgets the record
   const engage = useMutation({
     mutationFn: async () => Prospect.parse(await staffApi(`/front-office/leads/${id}/engage`, { method: "POST" })),
-    onSuccess: (p) => { toast.push({ tone: "ok", text: p.message ?? `Prospect ${p.number} started in ${p.stage.label}.` }); void qc.invalidateQueries({ queryKey: ["fo"] }); go(`/front-office/prospects/${p.id}`); },
+    onSuccess: (p) => { toast.push({ tone: "ok", text: p.message ?? `Prospect ${p.number} started in ${p.stage.label}.` }); void qc.invalidateQueries({ queryKey: ["fo"] }); go(`/front-office/prospects/${p.id}${fromRecord.current ? `?consultRecord=${encodeURIComponent(fromRecord.current)}` : ""}`); },   // FO-5cr: on to the pre-filled retainer
     onSettled: () => lock.free(),
   });
   const lead = useQuery({ queryKey: ["fo", "leads", "one", id], retry: false, queryFn: async () => Lead.parse(await staffApi(`/front-office/leads/${encodeURIComponent(id)}`)) });
   const [params, setParams] = useSearchParams(), here = useLocation(), askEngage = params.get("engage") === "1";
   React.useEffect(() => {
     if (!askEngage || !lead.data || !owners.settled) return;
-    setParams((p) => { p.delete("engage"); return p; }, { replace: true, state: here.state });
+    fromRecord.current = params.get("consultRecord");   // FO-5cr: the consult record's "Engage and prepare retainer"
+    setParams((p) => { p.delete("engage"); p.delete("consultRecord"); return p; }, { replace: true, state: here.state });
     if (can(me, KEY.edit) && lead.data.state !== "CLOSED") panel(true);
     // Never a silent dead end (break M2): say why the Engage panel did not open.
     else toast.push({ tone: "info", text: lead.data.state === "CLOSED" ? "This lead is closed, so it cannot be engaged." : "Engaging a lead needs a role that works prospects. Ask your firm's Owner or Admin." });
