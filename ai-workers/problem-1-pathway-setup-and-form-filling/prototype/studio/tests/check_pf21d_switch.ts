@@ -124,11 +124,15 @@ try {
   const unknownSw = await call(base, "POST", "/api/system/switches/platform.nothing", { token: ownerT, body: { on: false, reason: "Sample" } });
   const nulKey = await call(base, "POST", "/api/system/switches/platform.data-erasure%00", { token: ownerT, body: { on: true, reason: "Sample" } });
   const invisible = await call(base, "POST", SW, { token: ownerT, body: { on: true, reason: "\u200b\u3164..." } });
-  ok("PF-21d pass/fail (SA-11-16 (d)): \"Data erasure\" is listed on; off without a reason, or with no letter or digit → 400 (the guard's rule); Support, Admin, Auditor, a firm → 403 with REFUSED lines; a key with a NUL → 404; the Owner turns it off with a reason → one event, one ALLOWED line; off again → 409; an unknown switch → 404",
-    listed.status === 200 && listed.body.switches.some((s: any) => s.key === "platform.data-erasure" && s.name === "Data erasure" && s.on === true) && noReason.status === 400 && invisible.status === 400 && nulKey.status === 404
+  // R1.10 A4 (#3487, on main): a missing reason is a field (422 naming reason), and an odd path parameter is the one 404, before
+  // any field is read. A switch's key is not a record id: the guard checks it as a key (#3524's batch: every change was a 404).
+  const oddNoReason = await call(base, "POST", "/api/system/switches/Platform..x", { token: ownerT, body: { on: false } });
+  const reasonField = (r: { status: number; body: any }) => r.status === 422 && r.body?.code === "REASON_REQUIRED" && typeof r.body?.fields?.reason === "string";
+  ok("PF-21d pass/fail (SA-11-16 (d)): \"Data erasure\" is listed on; off without a reason, or with no letter or digit → 422 naming reason (the guard's rule); Support, Admin, Auditor, a firm → 403 with REFUSED lines; a key with a NUL, or an odd key with no reason → 404; the Owner turns it off with a reason → one event, one ALLOWED line; off again → 409; an unknown switch → 404",
+    listed.status === 200 && listed.body.switches.some((s: any) => s.key === "platform.data-erasure" && s.name === "Data erasure" && s.on === true) && reasonField(noReason) && reasonField(invisible) && nulKey.status === 404 && oddNoReason.status === 404
     && swWho.every((r) => r.status === 403) && off.status === 200 && off.body.on === false && off.body.changedBy === `staff:${OWNER}`
     && sql(`select count(*) || ':' || bool_and(not is_on) from plat_switch_event`) === "1:true" && lines("ALLOWED", "/api/system/switches/:key") === 1
-    && offAgain.status === 409 && unknownSw.status === 404 && lines("REFUSED", "/api/system/switches/:key") >= refusedBefore + 3, { nulKey: nulKey.status, invisible: invisible.status, listed: listed.body, noReason: noReason.status, swWho: swWho.map((r) => r.status), off: off.body, offAgain: offAgain.status, unknownSw: unknownSw.status });
+    && offAgain.status === 409 && unknownSw.status === 404 && lines("REFUSED", "/api/system/switches/:key") >= refusedBefore + 3, { nulKey: nulKey.status, oddNoReason: oddNoReason.status, invisible: invisible.status, listed: listed.body, noReason: noReason.status, swWho: swWho.map((r) => r.status), off: off.body, offAgain: offAgain.status, unknownSw: unknownSw.status });
   const isOff = !(await switches.isOn("platform.data-erasure"));
   const back = await switches.set(as, null, "platform.data-erasure", { on: true, reason: "Sample: back on" });
   const notStaff = await switches.list({ staffId: SUPPORT, keys: [] }).then(() => false, (e) => /MISSING_PERMISSION/.test(JSON.stringify((e as any)?.response ?? e)));
