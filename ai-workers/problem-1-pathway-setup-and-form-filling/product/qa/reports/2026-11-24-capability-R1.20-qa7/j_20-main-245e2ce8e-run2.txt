@@ -1,3 +1,4 @@
+# qa 7: tests/journeys/j_20.ts as on be55cd2da (before the reader's fix to W9) on main 245e2ce8e's app code, isolated copy :4471
 PASS  J-20 setup: the Sample firm, its Owner and another active staff member are seeded
 PASS  J-20 setup (W8-W12): the Solo firm, its Owner, a Case Officer and a Case Manager are seeded
 PASS  J-20 setup: D already has a pending invitation — 201

@@ -45,8 +45,9 @@
 //   W10's case gate needs the configured checkpoint, loaded through the copy's own POST /api/demo/load.
 // Fails on the fake (P-606): W2's judges are read before Send (no invitation for A or B), W4's before Send (no invitation
 // for the second row), W6's before Accept (no staff row for A).
-// Not here (their own suites, named in the PR): the downgrade check (PF-15 part 2, check_pf15_limits.ts; the plan change
-// needs Stripe, not on the copy) and the case limits (PF-15c, check_pf15c_case_limits.ts).
+// Not here (their own suites): the change-plan route's own downgrade refusal with fake Stripe (check_pf16_billing_rules.ts
+// :220-222; on a local copy the route stops at 409 NO_BILLING_ACCOUNT first, QA-775, so W9 judges the rule through
+// PlanBookings.book, the service that route calls) and the case limits (PF-15c, check_pf15c_case_limits.ts).
 // Sample rows only; US$0, no model call, no live mail (the local email adapter, read at GET /api/demo/platform-inbox).
 // Screenshots: product/screens/J-20/screenshots/. Run from prototype/ (HEADED=1 opens a visible browser):
 //   zsh studio/tools/isolated.sh j20 4420 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j20 4420 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_20.ts j20 4420
@@ -358,7 +359,10 @@ try {
   console.log(`NOTE  W9 (API, QA-775 Gap · Minor, open): the change-plan preview to Solo answers ${planPreview.status} ${planPreview.body?.code ?? ""} (conflicts: ${JSON.stringify(planPreview.body?.conflicts ?? null)}); on a local copy no Sample firm has a billing subscription, so the route stops before its downgrade check, which is judged below through PlanBookings.book.`);
   const planChange = await api("POST", "/platform/billing/change-plan", { plan: target[0], period: "month", prorationDate: new Date(Math.floor(Date.now() / 1000) * 1000).toISOString(), kind: "renewal", amountDueNowCents: 0 });
   console.log(`NOTE  W9 (API, QA-775): the change of plan to Solo answers ${planChange.status} ${planChange.body?.code ?? ""}.`);
-  ok("J-20 W9 (API): the change-plan route books nothing for a move that breaks a limit", sql(`select count(*) from platform_subscription_change where firm_id = '${A_FIRM}'`) === changesBefore, { status: planChange.status, code: planChange.body?.code });
+  // Judged only when the route reached its check: a 409 NO_BILLING_ACCOUNT stops it before any check, so "nothing booked" would
+  // pass whatever the downgrade logic did (fresh reader on #3480; Lead 26: a 409 is never counted as a pass).
+  if (planChange.body?.code === "NO_BILLING_ACCOUNT") console.log("NOTE  W9 (API, QA-775): the change-plan route stopped at NO_BILLING_ACCOUNT before its check, so its \"books nothing\" is not judged here (check_pf16_billing_rules.ts judges it with fake Stripe).");
+  else ok("J-20 W9 (API): the change-plan route books nothing for a move that breaks a limit", sql(`select count(*) from platform_subscription_change where firm_id = '${A_FIRM}'`) === changesBefore, { status: planChange.status, code: planChange.body?.code });
   const solo = await outcome(() => withFirm(A_FIRM, () => bookings.book(A_FIRM, target[0], OWNER_ACTOR)));
   const seatC = (solo.body?.conflicts ?? []).find((c: { metric: string }) => c.metric === "seats");
   ok("J-20 W9 (underneath: PlanBookings.book, the route's check): the move to Solo is refused 409 DOWNGRADE_CONFLICTS listing each conflict (seats: used, limit, the amount to remove, SA-4-56's words); nothing booked",
