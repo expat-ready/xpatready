@@ -3,11 +3,11 @@
 **Tested on a real switch, 5 Nov 19:14 IST; corrected the same evening.** Canary requested and pushed inside 5 minutes; nothing on GitHub lost. The work lives on GitHub (P-82), so an account switch loses at most what a lane has not pushed. Every lane pushes after each step (P-344 (1)).
 
 ## Switch of 24-25 Nov (Lead 31 → the new account's Lead), drafted 21:30 IST 24 Nov: READ THIS BLOCK FIRST
-**Founder, relayed by Lead 29 (typed to it, about 21:30 IST): "Yes, switch at 95%", in answer to whether the new account is ready tonight.** Stop order at 95% (about 23:15 IST by the sample below; read get_usage), then records pushed, then he is told it is safe. Not started at 21:38.
+**Founder, typed to Lead 31 about 21:47 IST: "Can we do the account change right now?"** Stop order sent 21:48 to 21:50 to Lead O 2, Lead B 7 and the R1.68 session (the only cloud session seen running; list to 50 rows). CodeRabbit study `local_df9b47db` was not messaged.
 **Meter:** 88% at 19:08, 92% at 21:29 (about 1.7%/h on that one sample): 95% about 23:15, 96% about 23:50, 98% about 01:00 IST. The old account's week resets 29 Nov 22:30 IST.
 **Truth:** `STATE.md` on `lead/2026-11-07-lead31`, the Lead 29, 30 and 31 sections at the end of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`, RULES as of P-815. Proven 55/101 (21:13 record). Records owed: the Lead 29 and Lead 30 lists there.
 **Founder words in force:** A371 to A374 and the yeses by name in Lead 29's hand-over, no wider; the 24-hour pause on NEW capability rows to about 15:30 IST 25 Nov (P-663 keeps R1.10 A2, A3, A5 waiting).
-**Queue, 21:29:** testing: #3518 (#3467 database checkout fix, #3500 R1.68 preview panel), #3519 (#3516 qa records). Queued: #3460 (FO-6 signing door), #3234 (R1.85 erasure switch), #3497 (R1.69 notifications contract); scopes let one batch run at a time.
+**Queue, 21:48:** #3520 (#3467 alone) testing, 30 running, no red. Queued by scope: #3508 (hung-suite report), #3489 (R1.93 sign-in), #3460, #3497, #3234. #3516: its full run ended in success or is still running, label is on but Mergify shows dequeued: check, requeue. #3500: head f2ce7adfc, both batch faults fixed by its lane's words (its suites 40/40, 20/20, 53/53), diff-only verdict pending. #3521 bk3 test fix 44d05391f: Approve and Lead read posted, label on green ci, fast, types, guards. #3517: head 2df7793ef, draft, round 3 verdict not seen; see its hand-over comment.
 **Migration order:** #3234 080000, #3235 085000, #3460 130000, #3277 to 150000, #3491 170000; if #3460 lands before #3235, #3235 re-stamps.
 **Cloud work by PR and next step** (old account's lanes stop; a fresh session each, Opus 5.5 medium, P-788; read the PR's newest comments first):
 * #3489 R1.93 console sign-in (8e7f454d6): Approve and Lead read posted; label on green ci, fast, guards. #3517 R1.93 Support page (6f3eedda6, newer than the 3c703b985 in round 2): read its newest verdict, then retarget after #3489.
@@ -24,8 +24,27 @@
 **Local sessions:** Lead 31 `local_2d7cb97e`, Lead B 7 `local_4ca0919d`, Lead O 2 `local_f6d6bb60`. App list read 21:38 (first 20 rows, 'Show more' not clicked): no cloud lane was running before the two sends; qa 8 says everything is pushed, 7wnHW says B 8e7f454d6 and C 6f3eedda6 are pushed, 6KjpxK's head is 9b3ac365a. The rest are known only by their branch heads. Confirm each again at the stop.
 **At the go (or 96%):** message each running lane "finish this step, push, hand-over comment on your PR, stop"; confirm pushes; private-sync; refresh this block and STATE; CronDelete the Lead's check; the founder switches.
 **First steps on the new account:** (1) get_usage, tell the founder. (2) `/lead` in the main copy; check first (cron `3,33 * * * *`, prompt `run lead-watch; read STATE Start here`). (3) GitHub, Mac sign-ins and claude.ai browser sign-in by the founder; a one-lane canary that pushes before any more start. (4) qa, then lanes above nearest to proven first, `waves.py allow` before each. (5) Two standbys, preflight permitting (disk 6.6 GB at 21:29; a Mac start needs 7).
-**Prompt for the founder to paste (Code tab, this folder, a new session):**
-> /lead — new account after the 24-25 Nov switch. Read `product/RESUME-ON-NEW-ACCOUNT.md` block "Switch of 24-25 Nov" first, then STATE "Start here". Run get_usage and tell me the weekly %. Start one canary lane, and after it pushes re-brief the rest from their PRs, nearest-to-proven first. Everything is on branch lead/2026-11-07-lead31 and open PRs.
+**Why proven is flat (measured on main's qa/CAPABILITIES.md, 21:50 IST):** at 00:00 IST: 25 (21 Nov), 41 (22), 46 (23), 50 (24); 55 now, so +16, +5, +4, +5 a day. Today's rises: 03:05, 09:05 (2), 12:55 (2), and 16:53 (the repair of a 16:14 drop, R1.53 reopened, R1.20 proven). Since 16:53 none. Merges by hour from 16:00: 2, 1, 1, 5, 8, 0. What merged since were parts: 25 Partials each still miss a part; no qa after 20:51; shared-area batches run one at a time; #3500 failed two batches. 14 rows wait on outside accounts by Lead 25's list, not re-checked (Stripe R1.22 R1.57 R1.61 R1.91; BoldSign R1.54 R1.55; OAuth R1.43 R1.52 R1.112; AWS R1.1 R1.5 R1.15 R1.66; alarm R1.13). The 25 Partials were also moved up from Not built (R1.68 R1.69 R1.86 R1.87).
+**Forecast (hypothesis, net rate of 22-24 Nov = 4.7/day):** 25 Nov end 58-61; 29 Nov end 70-79; ceiling about 87 without the outside accounts; 101 by 12 Dec needs 2.6 a day.
+**Prompt for the founder to paste (Code tab, this folder, a new session; he may delete approval lines):**
+```text
+/lead You are Lead 32, on the new account (switch of 24 Nov, about 22:00 IST). Lead 31 (local_2d7cb97e) has stopped; that is my answer to the two-Leads check. This is a Mac session in the main copy, branch lead/2026-11-07-lead31. Set current_lead in STATE to yourself and push, then create your check (cron 3,33 * * * *, prompt: run lead-watch; read STATE Start here). Run get_usage and tell me the weekly %.
+Read product/RESUME-ON-NEW-ACCOUNT.md block "Switch of 24-25 Nov", STATE "Start here", RULES, and the last sections of history/STATE-2026-11-24-0835-lead18-recovery-plan.md. Verify every claim there against GitHub before acting.
+
+GOAL: proven capabilities go up (55 of 101 now). Order of work:
+1. qa first: start two fresh qa sessions so each finished capability is proven within the hour of its merge.
+2. Finish Partials nearest to proven: R1.93, R1.69, R1.87, R1.104, R1.10, R1.85, R1.68, R1.58, R1.29, R1.86. One session per capability until Proven.
+3. Keep the merge queue full; explain each red test the same check; measure the shared-area waiting (migrations, pipeline) and bring me one recommendation with the gain in minutes.
+4. Put before me, one at a time with links, every outside account step that blocks a capability (Stripe, BoldSign, Google/Microsoft OAuth, AWS, the alarm). Do all you can yourself in the browser; I sign in and enter keys.
+Report every 30 minutes: proven now and since midnight, which capability is next with an IST time and what it waits on, the stage table, and Needs you. Merges do not count as progress.
+
+MY APPROVALS, typed by me here, for this work only (lines I removed are not approved):
+- Start in the cloud, now, after one canary session pushes: 2 qa sessions and up to 8 builder sessions for the capabilities above, on Opus 5.5 medium, one per capability, within waves.py allow. Includes R1.10 A2, A3, A5.
+- Start 2 standby Leads on the Mac when the disk check passes.
+- In the project's GitHub and claude.ai, in the signed-in browser or the shell: labels after the required Approve and your read, ready for review, retarget, re-run a failed part, requeue, dispatch test runs, answer questions inside a session's brief.
+- End the 24-hour pause early for a Not-built capability only when no Partial can use the session.
+Still ask me first: spending money, new accounts, accepting terms, security or permission settings, merges outside the queue, deleting anything, lowering the bar, anything the app or sandbox refuses.
+```
 
 ## Switch of 23 Nov (Lead 10 → the new account's Lead), written 10:4x IST 23 Nov
 **Stop order sent 11:14 IST at 94%** to the 4 running cloud lanes (qa Track A 3, UX PF-31, R1.70 CS-D7, CS-D5 #3188) and Lead B 2: each pushes and writes a hand-over comment on its newest PR. Also since: #3155 labelled; #3175 records merged (FO-7q part 2, FO-9b part 2b, FO-7t part 1p on main); FO-7s1 lane told to build FO-7q part 2; #3033 needs a fresh lane (red, lane at 85%); R1.55 Low (#3187); CI research `design/ci-options-2026-11-23.md` (stay on GitHub Actions; trial Ubicloud/Blacksmith); AWS · staging proof 2 `local_b9ba7abd` waits for the founder's sign-in.

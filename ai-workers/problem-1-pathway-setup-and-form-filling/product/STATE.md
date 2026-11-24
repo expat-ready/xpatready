@@ -2,7 +2,7 @@
 
 current_lead: local_2d7cb97e-fbba-4b7b-b075-c8a84b99d73d Lead 31 · 24 Nov 21:13 IST (after Lead 30, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 21:13 IST: Lead 30 ended. **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`; action list (A370).** 55/101 Works (25 Partial, 21 Not built). Weekly 92%, disk 7.7 GB.
+updated: 2026-11-24 21:52 IST: **account switch; Lead 31 stopped. Read RESUME-ON-NEW-ACCOUNT, block "Switch of 24-25 Nov", first; the new Lead sets current_lead to itself.** 55/101 Works (25 Partial, 21 Not built). Weekly 93% (old account).
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,7 +18,7 @@ updated: 2026-11-24 21:13 IST: Lead 30 ended. **Hand-over: the last section of `
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A375 | 24 Nov ~21:28 (typed to Lead 29, relayed) | plan for the account change; who is the current Lead | Lead 31; block on top of RESUME-ON-NEW-ACCOUNT; he answered Lead 29 "Yes, switch at 95%" (relayed); stop order at 95%, open |
+| A375 | 24 Nov ~21:28 (typed to Lead 29, relayed) | plan for the account change; who is the current Lead | Lead 31; block on top of RESUME-ON-NEW-ACCOUNT; he typed to Lead 31 at 21:47 "right now"; stop order sent; prompt in the block; he also asked why 55 and for an estimate (block) |
 | A374 | 24 Nov ~17:02 and again (typed to Lead 29) | start R1.68; recover everything, diligently | R1.68 started in the cloud; in force |
 | A371, A372 | 24 Nov ~16:13, ~16:30 (typed to Lead 28) | all focus on Partials to Proven, rules held, usage no limit | plan file, end; in force |
 | A359 | 24 Nov, after 13:06 (typed to Lead 24) | prove faster; follow the Lead's recommendations; final tooling decision, dates, outcomes | plan file, end; #3305 line pushed; three sessions started; CodeAnt C1 and C3 yes |
