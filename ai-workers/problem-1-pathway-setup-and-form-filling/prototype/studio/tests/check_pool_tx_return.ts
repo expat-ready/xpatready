@@ -5,7 +5,8 @@
 // `rollback() { this.cleanup?.(); this.client.release(); }`). The pool then hands that open transaction to the next caller.
 // Each effect, a pass and a fail: (1) a write that answered success is lost (it sat in the stale transaction, invisible to
 // others, until a later refused change rolled it back); (2) firm B's next query runs as firm A (the rollback undid B's
-// set_config while the pool's tag still said B). Plus: a client released inside a transaction leaves the pool, a client
+// set_config while the pool's tag still said B); (3) after a leaked bypass-role use, firm B's next query runs as the
+// bypass role (Lead B 5). Plus: a client released inside a transaction leaves the pool, a client
 // released idle is kept, and a failed transaction ('E') leaves too. One scratch database, a pool of one connection, no
 // RLS needed (app.firm_id is read back directly). No browser, no server, no model call (US$0).
 //   tsx studio/tests/check_pool_tx_return.ts
@@ -53,6 +54,24 @@ try {
   // (2) firm B's next query runs in firm B.
   const b2 = await withFirm(B, firmNow);
   ok("P1 fail (2): firm B's next query runs as firm B (app.firm_id), never as firm A", b2.f === B, { asked: B, ranAs: b2.f });
+
+  // (3) Lead B 5: the same leak from a bypass-role use. The late transaction's checkout ran unscoped (this process's
+  // "direct" default: the bypass role, set on the session before its BEGIN); after firm B's checkout inside that open
+  // transaction and a refused change, the rollback restores the bypass role while the tag still says firm B.
+  {
+    const pool2 = new WalledPool({ connectionString: URL, max: 1 }), db2 = new PrismaClient({ adapter: new PrismaPg(pool2) });
+    try {
+      const who = () => db2.$queryRawUnsafe<{ f: string; r: string; u: string }[]>("select current_setting('app.firm_id', true) f, current_setting('role') r, current_user::text u").then((r) => r[0]);
+      const hold = withFirm(A, () => db2.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); await sleep(3_000); }, { timeout: 10_000 }));
+      await sleep(100);
+      const late = await db2.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); }, { maxWait: 1_000, timeout: 5_000 }).then(() => "ran", (e: Error) => e.message);
+      await hold; await sleep(300);
+      await withFirm(B, who);
+      await withFirm(B, () => db2.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); throw new Error("a refused change"); })).catch(() => undefined);
+      const b = await withFirm(B, who);
+      ok("P1 fail (3): after a leaked bypass-role use, firm B's next query runs as firm B with no role, never as the bypass role", late !== "ran" && b.f === B && b.r !== "xr_staff_bypass" && b.u !== "xr_staff_bypass", { late, b });
+    } finally { await db2.$disconnect().catch(() => {}); await pool2.end().catch(() => {}); }
+  }
 
   // The pool's own rule, on its clients directly: idle back → kept; inside a transaction or a failed one → removed.
   const q = async (c: { query: (t: string) => Promise<{ rows: Record<string, unknown>[] }> }) => (await c.query("select pg_backend_pid() p, current_setting('app.firm_id', true) f, (select xact_start is not null and xact_start < query_start from pg_stat_activity where pid = pg_backend_pid()) intx")).rows[0];
