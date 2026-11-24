@@ -158,19 +158,20 @@ try {
   await d.getByRole("button", { name: "Send", exact: true }).click(); await until(async () => !!(await fieldError(d, "Firm signer (optional)")), 10_000);
   ok("R1.54 FO-6ds BR-5 fail: a firm person made inactive meanwhile → \"The firm signer must be an active person of your firm.\" on the select; nothing sent",
     (await fieldError(d, "Firm signer (optional)")).includes("The firm signer must be an active person of your firm.") && requests(B) === n0, await fieldError(d, "Firm signer (optional)"));
-  sql(`update platform_staff set status = 'ACTIVE' where id = '${T.id}'`);
-  await d.getByLabel("Firm signer (optional)").selectOption("");
+  ok("R1.54 FO-6ds review MJ-1 fail: after FIRM_SIGNER_NOT_IN_FIRM the select reloads and the person no longer offered is cleared (shows and sends \"No firm signer\")",
+    await d.getByLabel("Firm signer (optional)").inputValue() === "" && await d.getByLabel("Firm signer (optional)").locator(`option[value="${T.id}"]`).count() === 0);
 
   // ------------------------------------------------------------------------------------------------ BR-6, BR-2/3 pass, BR-5 pass, BR-9, BR-10
   const stage0 = stageOf(B);
-  await d.getByRole("button", { name: "Send", exact: true }).dblclick();
+  await d.getByRole("button", { name: "Send", exact: true }).dblclick();   // T still suspended: the cleared select sends no firm signer
   await d.waitFor({ state: "detached", timeout: 15_000 });
+  sql(`update platform_staff set status = 'ACTIVE' where id = '${T.id}'`);
   const toast = await r.getByText(/^Recorded for signature:/).innerText({ timeout: 10_000 });
   await section(r).locator("[data-request]").first().waitFor();
   ok("R1.54 FO-6ds BR-6 pass/fail: a double click on Send makes exactly one request", requests(B) === n0 + 1, requests(B) - n0);
   const row = section(r).locator("[data-request]").first();
   ok("R1.54 FO-6ds BR-2/BR-3 pass: an ordinary PDF records a row \"0 of 1 signed\" for Client B", (await row.innerText()).includes(`Employment offer - Sample Worker ${run}`) && (await row.locator("[data-count]").innerText()) === "0 of 1 signed");
-  ok("R1.54 FO-6ds BR-5 pass: the default send has 0 firm signers (db)", sql(`select count(*) from fo_signer s join fo_signature_request q on q.id = s.request_id join fo_signing_document d on d.id = q.document_id where d.prospect_id = '${B}' and s.role = 'FIRM'`) === "0");
+  ok("R1.54 FO-6ds BR-5 pass (and review MJ-1 recovery): the send after the firm signer was cleared has 0 firm signers (db)", sql(`select count(*) from fo_signer s join fo_signature_request q on q.id = s.request_id join fo_signing_document d on d.id = q.document_id where d.prospect_id = '${B}' and s.role = 'FIRM'`) === "0");
   ok("R1.54 FO-6ds focus: after Send the focus is on the new row", await r.evaluate(() => document.activeElement?.hasAttribute("data-request") ?? false));
   ok("R1.54 FO-6ds BR-9: the prospect's stage is unchanged after the send (db)", stageOf(B) === stage0);
   const words = `${toast}\n${await section(r).innerText()}`;
@@ -194,6 +195,11 @@ try {
   await p2.getByText("Could not send. Nothing was sent; please try again.").waitFor({ timeout: 15_000 });
   ok("R1.54 FO-6ds M4 fail: a 500 → \"Could not send. Nothing was sent; please try again.\"; no row", requests(B) === n1 + 1);
   await r.keyboard.press("Escape");
+  await r.route("**/api/front-office/signature-requests", async (rt) => { if (rt.request().method() !== "POST") return rt.fallback(); await new Promise((w) => setTimeout(w, 1500)); await rt.fulfill({ status: 500, contentType: "application/problem+json", body: JSON.stringify({ title: "Server error", status: 500 }) }); }, { times: 1 });
+  p2 = await openPanel(r); await pick(p2, "Closed early.pdf", pdf("m4c")); await p2.getByRole("button", { name: "Send", exact: true }).click();
+  await p2.getByRole("button", { name: "Recording…" }).waitFor(); await r.keyboard.press("Escape"); await p2.waitFor({ state: "detached" });
+  const late = await r.getByText("Could not send. Nothing was sent; please try again.").waitFor({ timeout: 10_000 }).then(() => true, () => false);
+  ok("R1.54 FO-6ds break M4 fail: a send that fails after the panel was closed is still said (toast \"Could not send. Nothing was sent…\"); no row", late && requests(B) === n1 + 1);
 
   // ------------------------------------------------------------------------------------------------ BR-4 pass on an Individual; keyboard only
   const k = await pageAs(tok.R); await open(k, IA);
@@ -235,6 +241,29 @@ try {
   await shot(later, "section-expired-1440"); await later.context().close();
   ok("R1.54 FO-6ds BR-9: the prospect's stage is unchanged after a signed request (db)", stageOf(S) === stageS && older.status === 201);
   await shot(r, "section-states-1440");
+
+  // ------------------------------------------------------------------------------------------------ review MJ-1: people changed under an open panel
+  const P1 = person("ClientD"), P2 = person("ClientE"), P3 = person("ClientF");
+  const CO2 = sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Sample Garage Ltd ${run}', 'sample garage ltd ${run}', 'test', now()) returning id`);
+  sql(`insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${CO2}', '${P1}', 'PRIMARY', 'test'), ('${A}', '${CO2}', '${P2}', 'SIGNATORY', 'test'), ('${A}', '${CO2}', '${P3}', 'SIGNATORY', 'test'); select 1`);
+  const B2 = engaged("CORPORATE", P1, CO2);
+  await open(r, B2); const m = await openPanel(r);
+  const cb = (g: string) => m.getByRole("checkbox", { name: new RegExp(`${g}${run}`) });
+  await pick(m, "Garage offer.pdf", pdf("garage")); await cb("ClientD").check(); await cb("ClientE").check(); await cb("ClientF").check();
+  sql(`update fo_person set email = null where id = '${P2}'`);
+  await m.getByRole("button", { name: "Send", exact: true }).click(); await m.locator("#fo-who-error").waitFor({ timeout: 10_000 });
+  await until(async () => await cb("ClientE").isDisabled(), 10_000);
+  ok("R1.54 FO-6ds review MJ-1 fail: an email removed meanwhile → SIGNER_NO_EMAIL on Who signs; the person reloads disabled and unticked, the others stay ticked; nothing sent",
+    (await m.locator("#fo-who-error").innerText()).includes("has no email address") && !(await cb("ClientE").isChecked()) && await cb("ClientD").isChecked() && await cb("ClientF").isChecked() && requests(B2) === 0);
+  sql(`update fo_company_contact set valid_from = now() - interval '2 minutes', valid_to = now() - interval '1 minute' where company_id = '${CO2}' and person_id = '${P3}'`);
+  await m.getByRole("button", { name: "Send", exact: true }).click();
+  await until(async () => (await m.locator("#fo-who-error").innerText().catch(() => "")).includes("on this prospect") && await cb("ClientF").count() === 0, 10_000);
+  ok("R1.54 FO-6ds review MJ-1 fail: a person who left the company meanwhile → SIGNER_NOT_ON_PROSPECT; the list reloads without them and they are no longer picked; nothing sent",
+    (await m.locator("#fo-who-error").innerText()).includes("Each signer must be a person on this prospect.") && await cb("ClientF").count() === 0 && requests(B2) === 0);
+  await m.getByRole("button", { name: "Send", exact: true }).click(); await m.waitFor({ state: "detached", timeout: 15_000 });
+  ok("R1.54 FO-6ds review MJ-1 pass: the next Send records with the one person still offered, without Cancel (db: one request, 1 client signer)",
+    requests(B2) === 1 && sql(`select count(*) from fo_signer s join fo_signature_request q on q.id = s.request_id join fo_signing_document d on d.id = q.document_id where d.prospect_id = '${B2}' and s.person_id = '${P1}'`) === "1"
+      && sql(`select count(*) from fo_signer s join fo_signature_request q on q.id = s.request_id join fo_signing_document d on d.id = q.document_id where d.prospect_id = '${B2}'`) === "1");
 
   // ------------------------------------------------------------------------------------------------ BR-1 by role and stage
   const ro = await pageAs(tok.RO); await open(ro, S);

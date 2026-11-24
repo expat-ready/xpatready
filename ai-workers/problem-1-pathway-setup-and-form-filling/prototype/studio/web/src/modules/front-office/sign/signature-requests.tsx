@@ -27,11 +27,19 @@ export function SignatureRequestsSection({ prospectId, name, lost }: { prospectI
   const [open, setOpen] = React.useState(false), [file, setFile] = React.useState<File | null>(null), [title, setTitle] = React.useState("");
   const [picked, setPicked] = React.useState<string[]>([]), [firm, setFirm] = React.useState(""), [error, setError] = React.useState<Err | null>(null);
   const [focusId, setFocusId] = React.useState<string | null>(null);
+  const openRef = React.useRef(false); openRef.current = open;
   const lock = React.useRef(false), opener = React.useRef<HTMLButtonElement>(null), fileInput = React.useRef<HTMLInputElement>(null);
   const signers = useQuery({ enabled: open, queryKey: ["fo", "signers", prospectId], retry: false, queryFn: async () => Signers.parse(await staffApi(`/front-office/prospects/${prospectId}/signers`)) });
   const withEmail = (signers.data?.people ?? []).filter((p) => p.hasEmail);
   // BR-4: exactly one person with an email is pre-ticked.
   React.useEffect(() => { if (open && withEmail.length === 1) setPicked((x) => (x.length ? x : [withEmail[0].personId])); }, [open, signers.data]);   // eslint-disable-line react-hooks/exhaustive-deps -- once per answer
+  // Review MJ-1: after a reload (a refusal, or people changed meanwhile) a pick that is no longer offered is dropped, so
+  // the panel never keeps a choice the person cannot see or change.
+  React.useEffect(() => {
+    const d = signers.data; if (!d) return;
+    setPicked((x) => { const y = x.filter((id) => d.people.some((p) => p.personId === id && p.hasEmail)); return y.length === x.length ? x : y; });
+    setFirm((f) => (f && !d.firmPeople.some((s) => s.staffId === f) ? "" : f));
+  }, [signers.data]);
   React.useEffect(() => { if (focusId && rows.data?.some((r) => r.id === focusId)) { document.querySelector<HTMLElement>(`[data-request="${focusId}"]`)?.focus(); setFocusId(null); } }, [focusId, rows.data]);
 
   const send = useMutation({
@@ -49,6 +57,10 @@ export function SignatureRequestsSection({ prospectId, name, lost }: { prospectI
     },
     onError: (e) => {
       void qc.invalidateQueries({ queryKey: listKey });
+      if (!openRef.current) {   // break M4: closed while recording, the answer is still said
+        const text = !(e instanceof StaffApiError) ? "We could not confirm the send. Check the signature requests before sending again." : e.status >= 500 ? "Could not send. Nothing was sent; please try again." : `Not recorded: ${e.message}`;
+        return toast.push({ tone: "danger", text });
+      }
       if (!(e instanceof StaffApiError)) return setError({ field: null, tone: "warn", text: "We could not confirm the send. Check the list below before sending again." });   // M4: no answer
       if (["SIGNER_NOT_ON_PROSPECT", "SIGNER_NO_EMAIL", "FIRM_SIGNER_NOT_IN_FIRM"].includes(e.problem.code ?? "")) void signers.refetch();
       const field = FIELDS.find((x) => e.field(x)) ?? null;
@@ -63,7 +75,7 @@ export function SignatureRequestsSection({ prospectId, name, lost }: { prospectI
   const pick = (f: File | null) => {
     setFile(f); setError(null);
     if (f && f.size > MAX_MB * 1024 * 1024) setError({ field: "file", text: `This file is too large: at most ${MAX_MB} MB.` });
-    if (f) setTitle(titleOf(f.name));
+    if (f) setTitle((t) => (!t.trim() || (file && t === titleOf(file.name)) ? titleOf(f.name) : t));   // break m5: a typed title is kept
   };
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -73,6 +85,7 @@ export function SignatureRequestsSection({ prospectId, name, lost }: { prospectI
     if (!title.trim()) return setError({ field: "title", text: "Enter a title." });
     if (title.trim().length > 200) return setError({ field: "title", text: "The title has at most 200 characters." });
     if (!picked.length) return setError({ field: "signerPersonIds", text: "Pick at least one person to sign." });
+    if (picked.length > 9) return setError({ field: "signerPersonIds", text: "At most 9 people sign one document." });   // break m1
     lock.current = true; setError(null); send.mutate();
   };
   const download = async (r: SignatureRequest, which: "original" | "signed") => {
@@ -93,7 +106,7 @@ export function SignatureRequestsSection({ prospectId, name, lost }: { prospectI
     <section aria-labelledby="fo-signature-requests" data-signature-requests className="rounded-xl border border-border bg-surface-raised p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="fo-signature-requests" className="text-sm font-semibold">Signature requests</h2>
-        {maySend ? <Button ref={opener} variant="outline" size="sm" className="max-sm:min-h-11" onClick={start}>Send for signature</Button> : null}
+        {maySend ? <Button ref={opener} variant="outline" size="sm" className="max-sm:min-h-11" disabled={send.isPending} onClick={start}>Send for signature</Button> : null}
       </div>
       {rows.isPending ? <p className="mt-2 text-sm text-text-muted" data-loading>Loading signature requests…</p>
         : rows.isError ? (rows.error instanceof StaffApiError && rows.error.status === 404
@@ -116,12 +129,12 @@ export function SignatureRequestsSection({ prospectId, name, lost }: { prospectI
           <fieldset className="flex flex-col gap-2" aria-describedby={err("signerPersonIds") ? "fo-who-error" : undefined}>
             <legend className="mb-1 text-sm font-medium">Who signs</legend>
             {signers.isPending ? <p className="text-sm text-text-muted">Loading the people on this prospect…</p>
-              : signers.isError ? <p className="text-sm text-text-danger">Could not load the people on this prospect.</p>
+              : signers.isError ? <p className="flex flex-wrap items-center gap-2 text-sm text-text-danger">Could not load the people on this prospect.<Button variant="link" size="sm" onClick={() => void signers.refetch()}>Try again</Button></p>
                 : signers.data.people.map((p) => (
                   <label key={p.personId} className={`flex min-h-11 items-center gap-2 text-sm ${p.hasEmail ? "" : "text-text-muted"}`}>
-                    <input type="checkbox" className="size-4" disabled={!p.hasEmail} checked={picked.includes(p.personId)}
+                    <input type="checkbox" className="size-4" disabled={!p.hasEmail} checked={p.hasEmail && picked.includes(p.personId)}
                       onChange={(e) => { setPicked((x) => (e.target.checked ? [...x, p.personId] : x.filter((y) => y !== p.personId))); setError(null); }} />
-                    <span>{p.name}{p.hasEmail ? "" : <span className="ml-1 text-xs">No email: add an email first</span>}</span>
+                    <span>{p.name}{p.hasEmail ? null : <> <span className="text-xs">(No email: add an email first)</span></>}</span>
                   </label>))}
             {nobody ? <Notice tone="warn" title="No one on this prospect has an email. Add one to the person's record first." /> : null}
             {err("signerPersonIds") ? <p id="fo-who-error" role="alert" className="text-xs text-text-danger">{err("signerPersonIds")}</p> : null}
