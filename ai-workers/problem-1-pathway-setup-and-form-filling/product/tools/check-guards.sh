@@ -32,6 +32,8 @@ TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-merge-wake.sh"   # wake on merge
+TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
+TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
@@ -199,6 +201,9 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 8|product/tools/lead-check-guard.sh|s/^\[ -z "\$why" \] \&\& exit 0/exit 0/|check-lead-cron.sh
 9|product/tools/label-sweep.sh|s/^  if \[ "\$who" != "\$BOT" \]; then/  if true; then/|check-label-sweep.sh
 9 sched|../../.github/workflows/label-guard.yml|/cron: "\*\/10 \* \* \* \*"/d|check-label-sweep.sh
+9 off|product/tools/label-sweep.sh|s/was already off"; continue; }/was already off"; }/|check-label-sweep.sh
+9 on|product/tools/label-sweep.sh|s/ = false \] / != x ] /|check-label-sweep.sh
+9 left|product/tools/label-sweep.sh|s/left=\(.*\)labels") \&\& /left=\1labels"); left=${left:-[]}; /|check-label-sweep.sh
 9 queued|../../.github/workflows/label-guard.yml|/event_name == .schedule./s/ .. (github.event.action == .labeled. \&\& github.event.label.name == .queued.)//|check-label-sweep.sh
 9 guardq|../../.github/workflows/label-guard.yml|/review: approved.) .. (github.event.action/s/ .. github.event.label.name == .queued.)"/)"/|check-label-guard.sh
 9 batch|../../.github/workflows/label-guard.yml|s/types: \[synchronize, labeled, opened\]/types: [synchronize, labeled]/|check-label-sweep.sh
@@ -301,6 +306,25 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 15 start|product/tools/queue-gate.sh|s/^  api -X POST "\$API\/repos\/\$REPO\/actions\/workflows\/ci.yml\/dispatches"/  true/|check-queue-gate.sh
 15 start who|product/tools/queue-gate.sh|s/^  approved \(..\) { echo "#\$PR: no full run: \$why";/  true \1 { echo "x";/|check-queue-gate.sh
 15 start wake|../../.github/workflows/queue-gate.yml|s/ .. (github.event.action == .labeled. \&\& github.event.label.name == .dequeued.)//|check-queue-gate.sh
+LW speed answer|product/tools/lead-watch-pre.sh|s/return "\$(cat "\$PRE_DIR\/\$i.rc")"; fi/return 0; fi/|check-lead-watch-speed.sh
+LW speed once|product/tools/lead-watch-pre.sh|s/ && mkdir "\$PRE_DIR\/\$i.taken" 2>\/dev\/null//|check-lead-watch-speed.sh
+LW speed together|product/tools/lead-watch-pre.sh|s/ ) &$/ )/|check-lead-watch-speed.sh
+LW speed order|product/tools/lead-watch-pre.sh|s/\[ "\$first" = 0 \] .. pre_wait "\$first"; //|check-lead-watch-speed.sh
+LW speed rc|product/tools/lead-watch-pre.sh|s/ && grep -qxE .*i.rc"; then/; then/|check-lead-watch-speed.sh
+LW speed disk|product/tools/lead-watch-pre.sh|s/PRE_FREE_KB:-1048576/PRE_NONE:-0/|check-lead-watch-speed.sh
+LW speed ended|product/tools/lead-watch-pre.sh|s/i.rc" ] && continue /i.rc" ]; /|check-lead-watch-speed.sh
+LW speed nofetch|product/tools/lead-watch.sh|s/; \[ -z "\$early" \] .. pre_off//|check-lead-watch-speed.sh
+LW speed key|product/tools/lead-watch-pre.sh|s/%q /%s /|check-lead-watch-speed.sh
+LW speed off|product/tools/lead-watch-pre.sh|s/ rm -rf "\${PRE_DIR:?}";//|check-lead-watch-speed.sh
+LW speed step|product/tools/lead-watch.sh|/^nw=/d|check-lead-watch-speed.sh
+LW speed fetch|product/tools/lead-watch.sh|s/^PRE_T0=.*fetch -q origin 2>.*/PRE_T0=0; early=/|check-lead-watch-speed.sh
+LW speed sweep|product/tools/lead-watch.sh|s/ after bash .*lead-queue.sh" -- bash/ pre bash/|check-lead-watch-speed.sh
+LW speed asks|product/tools/lead-watch.sh|s/^cm=.* --paginate/cm=$(gh api "x"/|check-lead-watch-speed.sh
+LW speed shut|product/tools/lead-watch.sh|s/ACT "comments since.*/true/|check-lead-watch-speed.sh
+LW speed cut|product/tools/lead-watch.sh|/ACT "comments since $since cut short/d|check-lead-watch-speed.sh
+LW speed list|product/tools/lead-watch.sh|s/type == "array" and length > 0 and //|check-lead-watch-speed.sh
+LW speed seconds|product/tools/fresh-lib.sh|s/ && w="\$s s · "//|check-lead-watch-speed.sh
+LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch-speed.sh
 16 source|product/tools/cockpit-data.py|s/                elif st != "open":/                elif False:/|check-lead-watch-board.sh
 16 count|product/tools/lead-watch.sh|s/; echo "\$bw"; act=\$((act + \$(grep -c .^ACT. <<<"\$bw")))/; echo "$bw"/|check-lead-watch-board.sh
 17 wall|product/tools/known-failures.py|s/(1 if b > int(row\["threshold"\]) else 0)/0/|check-known-failures.sh
@@ -376,6 +400,17 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
+HANG env|product/tools/hang-report.py|s/if d.get("environmentVariables"):/if False:/|check-hang-report.sh
+HANG dir|product/tools/hang-report.py|s/^FILE = .*/FILE = re.compile(r"(.*)(:\\d+:\\d+)")/|check-hang-report.sh
+HANG line|product/tools/hang-report.py|s/(f or "(line not shown)")/(f or s)/|check-hang-report.sh
+HANG url|product/tools/hang-report.py|s/ or (None if re.search(.* else FILE/ or (FILE/|check-hang-report.sh
+HANG fn|product/tools/hang-report.py|s/fn + " " if NAME.fullmatch(fn) else ""/fn + " "/|check-hang-report.sh
+HANG sym|product/tools/hang-report.py|s/^SYMBOL = .*/SYMBOL = re.compile(r".+")/|check-hang-report.sh
+HANG kind|product/tools/hang-report.py|s/if re.fullmatch(r"\[a-z_\]{1,20}", kind):/if True:/|check-hang-report.sh
+HANG ask|product/tools/run-suites.sh|s/ --report-exclude-env --report-exclude-network --report-directory/ --report-directory/|check-hang-report.sh
+HANG wired|product/tools/run-suites.sh|s/; askreport "\$pid" "\$rd" ) </ ) </|check-hang-report.sh
+HANG raw|product/tools/run-suites.sh|s/ rm -rf "\${rd:?}"; }/ }/|check-hang-report.sh
+HANG catch|product/tools/run-suites.sh|s/ \&\& \[ \$(( 16#.* -ne 0 \]//;s/^    \[ "\$(basename .*//;s/^    { tr .*//|check-hang-report.sh
 31 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$fc")))/true/|check-founder-click-guard.sh
 33 E14|product/tools/check-docs.sh|s/        if miss: print(f"INDEX:/        if False: print(f"INDEX:/|check-idx-integrity.sh
 33 E14 range|product/tools/check-docs.sh|s/            ids .= {f"P-{i}" for i in range(a, b + 1)}/            pass/|check-idx-integrity.sh

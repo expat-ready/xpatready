@@ -347,3 +347,32 @@ model PlatDataRequestEvent {
   @@unique([requestId, seq])
   @@map("plat_data_request_event")
 }
+
+/// PF-21d part 1a (SA-11-16 (d)): a platform switch, on by default (SA-12's flags are not built). Our own table: forced,
+/// no policy; changed only through plat_switch_set with a reason, by our staff. Never deleted.
+model PlatSwitch {
+  key       String    @id
+  isOn      Boolean   @default(true) @map("is_on")
+  changedBy String?   @map("changed_by")
+  changedAt DateTime? @map("changed_at") @db.Timestamptz
+
+  events PlatSwitchEvent[]
+
+  @@map("plat_switch")
+}
+
+/// One change of a switch, with its reason: insert-only.
+model PlatSwitchEvent {
+  id     String   @id @default(uuid()) @db.Uuid
+  seq    BigInt   @default(autoincrement())
+  key    String
+  isOn   Boolean  @map("is_on")
+  reason String
+  actor  String
+  at     DateTime @default(now()) @db.Timestamptz
+
+  switch PlatSwitch @relation(fields: [key], references: [key], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([key, seq])
+  @@map("plat_switch_event")
+}

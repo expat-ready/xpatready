@@ -1,0 +1,5 @@
+xrstagingAppTask7031B6E4:8 [{'name': 'PLATFORM_FILES_KMS_KEY_ID', 'value': 'arn:aws:kms:ca-central-1:581508167097:key/5719e23a-2b19-49b9-bc53-35fe1c8462ac'}, {'name': 'PLATFORM_FILES_REGION', 'value': 'ca-central-1'}, {'name': 'PLATFORM_FILES_BUCKET', 'value': 'xr-staging-documentsbucket9ec9deb9-6uplyey6pgi9'}, {'name': 'PLATFORM_FILES', 'value': 's3'}]
+51f4d716a8f54aa58a74b94b716effc8
+Essential container in task exited [0]
+XFIRM adapter=S3Files ownFirmReads=sample otherFirmReads=null pathTrick=refused
+XFIRM rc=0

@@ -87,6 +87,13 @@ try {
   const leadsBefore = count("fo_lead"), receiptsBefore = count("fo_arrival_receipt");
   const bot = await post({ ...lena, website: "http://spam.example" });
   ok("FO-2 fail: the honeypot filled → answered like any other (the thank-you text), nothing stored", bot.thankYouText.length > 0 && count("fo_lead") === leadsBefore && count("fo_arrival_receipt") === receiptsBefore, bot);
+  // PF-28 A3 (R1.10): the trap field takes any text but no other type; the message's own length (text()'s count) is read at
+  // the parse, so it is named even when the names' rules would answer first.
+  const trapObj = await refusal(() => post({ ...lena, website: { pf28: 1 } })), fields = (a: typeof trapObj) => (a?.body.fields ?? {}) as Record<string, string>;
+  ok("PF-28 A3 fail: a trap field that is not text → 422 naming website in plain words, nothing stored", trapObj?.status === 422 && fields(trapObj).website === "This must be text." && count("fo_lead") === leadsBefore, trapObj?.body);
+  const longMsg = await refusal(() => post({ message: "a".repeat(5001) })), wideMsg = await refusal(() => post({ message: "\u{1F600}".repeat(5000) }));
+  ok("PF-28 A3 fail: a 5001-character message with no name → 422 naming message in its own words (before the names' rules)", longMsg?.status === 422 && fields(longMsg).message === "at most 5000 characters.", longMsg?.body);
+  ok("PF-28 A3 pass: 5000 characters of 2 UTF-16 units each pass the parse (counted as characters): the names' rule answers, not the message's", wideMsg?.status === 422 && !!fields(wideMsg).givenNames && !fields(wideMsg).message && count("fo_lead") === leadsBefore, wideMsg?.body);
   const quick = await forms.read(tokenA, req());
   clock += 1000;
   const fast = await forms.submit(tokenA, { submissionId: quick.submissionId, loadStamp: quick.loadStamp, ...lena }, req());

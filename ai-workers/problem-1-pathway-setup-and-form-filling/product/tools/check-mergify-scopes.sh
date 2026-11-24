@@ -77,7 +77,8 @@ def ambiguous(g):   # glob forms this script and Mergify may read differently
     return bool(re.search(r"[\[\]{}?]", g) or re.search(r"[^/]\*\*|\*\*[^/]", g))
 # FOLDERS: a module folder's scope; None = a known area left out of every scope on purpose (say why on its line).
 FOLDERS = {"platform": "platform", "front-office": "front-office", "client-money": "money", "money": "money",
-           "case-side": "case-side", "cases": "case-side", "forms": "forms-engine", "forms-engine": "forms-engine"}
+           "case-side": "case-side", "cases": "case-side", "forms": "forms-engine", "forms-engine": "forms-engine",
+           "system": "platform"}   # PF-17 part 4: our console's screens (web/src/modules/system/), the platform's (Lead 30 on #3489)
 # The area names, written apart from FOLDERS: a None in FOLDERS can never erase one (break 2971 round 2 m1).
 AREA_NAMES = frozenset({"platform", "front-office", "client-money", "money", "case-side", "cases", "forms", "forms-engine"})
 def is_area(name): return name in AREA_NAMES or any(name.startswith(a + "-") for a in AREA_NAMES)
@@ -160,7 +161,7 @@ for t in ("tests/check_fo0_x.ts", "tests/check_FO3_x.ts", "tests/check_Pf9_x.ts"
     n += 1
     if owners_bad(src, files + [ST + t]) == base: bad.append(f"self-test: a new {t} that no scope holds still passes")
 n += 1   # a new area folder only partly in its scope (break round 2 m6, R-G1)
-c = mutated(lambda c: c["money"]["include"].append(ST + "web/src/modules/client-money/index.tsx"))
+c = mutated(lambda c: (c["money"].__setitem__("include", [g for g in c["money"]["include"] if not g.endswith("web/src/modules/client-money/**")]), c["money"]["include"].append(ST + "web/src/modules/client-money/index.tsx")))
 if not any("not wholly" in x for x in owners_bad(c, files + [ST + "web/src/modules/client-money/index.tsx", ST + "web/src/modules/client-money/b.tsx"])): bad.append("self-test: client-money/ only partly in money still passes")
 n += 1   # an owned test also in a second scope, migrations included (follow-up 1, 2)
 c = mutated(lambda c: c["migrations"]["include"].append(ST + "tests/check_pf*"))

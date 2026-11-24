@@ -4,6 +4,8 @@
 // staff (user-R and user-T licensed, user-O a case officer with no licence record; firm B's user-S), the real FilesPort
 // (a scratch folder) and docx render, the fake clock, jobs, mail and audit. No server, no browser, no model call (US$0).
 // Dropped at the end.
+//   QA-777 (Lead 28, 24 Nov; Lead 24's ruling on #3433): the right code binds the link to the browser that typed it (a
+//   session cookie on the door's path, only its sha256 on the signer: FO-6 part 4b's columns); consent only after the code.
 //   tsx studio/tests/check_fo3c_consultation_agreement.ts
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -68,7 +70,9 @@ try {
   await svc.registerJobs();
   // The public door counts tries per IP: each call here comes from its own address unless a case says otherwise.
   let ipN = 0;
-  const op = (t: unknown, b: Parameters<typeof svc.open>[1] = {}, ip = `10.0.${Math.floor(++ipN / 250)}.${ipN % 250}`) => svc.open(t, b, ip);
+  // `cookies`: the session cookies this browser sends (QA-777); none by default, as a fresh browser.
+  const op = (t: unknown, b: Parameters<typeof svc.open>[1] = {}, ip = `10.0.${Math.floor(++ipN / 250)}.${ipN % 250}`, cookies: string[] = []) => (svc.open as (t: unknown, b: unknown, ip: string, c: string[]) => ReturnType<typeof svc.open>)(t, b, ip, cookies);
+  const cookieOf = (a: unknown) => (a as { session?: string }).session;
   /** Consent, then the one-time code from the client's email (P-564): answers the signing link. */
   const withCode = async (t: string, email: string) => {
     const first = await op(t, { consent: true });
@@ -214,10 +218,10 @@ try {
     (await svc.signingEvent(cdecl)).applied && sql(`select status || '|' || coalesce(withdrawn_reason, '-') from fo_retainer where id = '${m1b.id}'`) === "DECLINED|-" && await fails(() => op(m1b.tok), 404));
   // M2: the provider ended the client's part before its event reached us (the client signed and reloads).
   const m2 = await sendOne(T.staffId, kim, 11);
-  await withCode(m2.tok, "kim@client.example");
+  const m2s = cookieOf((await withCode(m2.tok, "kim@client.example")).done), m2c = m2s ? [m2s] : [];   // the client's browser (QA-777)
   const early2 = await signing.act(A, m2.q.providerDocumentId, m2.cl.id, "signed");   // not handed to us yet
-  ok("FO-3c M2 pass: the client reloading after signing at the provider gets 409 SIGNING_ENDED (never a 500), with the words that the copy follows",
-    await fails(() => op(m2.tok, { consent: true }), 409, /SIGNING_ENDED/) && await fails(() => op(m2.tok), 409, /signed copy/));
+  ok("FO-3c M2 pass: the client reloading after signing at the provider (the same browser) gets 409 SIGNING_ENDED (never a 500), with the words that the copy follows",
+    await fails(() => op(m2.tok, { consent: true }, undefined, m2c), 409, /SIGNING_ENDED/) && await fails(() => op(m2.tok, {}, undefined, m2c), 409, /signed copy/));
   for (const h of early2) await svc.signingEvent(h);
   ok("FO-3c M2 fail: once the client's signature is applied, their link is the one not-found (not a 409, not a 500)", await fails(() => op(m2.tok), 404));
   // m4: a double click on the host's link records the consent once; m3: a seal that failed is retried by the provider's repeat.
@@ -259,11 +263,11 @@ try {
     fresh.codeNeeded && /^https:\/\/signing\.fake\.invalid\//.test(good.link?.url ?? "") && sql(`select code_verified_at is not null and code_sha256 ~ '^[0-9a-f]{64}$' from fo_signer where id = '${r3.cl.id}'`) === "t"
     && Number(sql(`select count(*) from fo_signer where code_sha256 = '${code3}'`)) === 0, good);
   // R2-1: a checked code opens the link for 30 minutes only; then a new code is asked, from any address. R2-2: one new code a minute.
-  const within = await op(r3.tok, {}, "198.51.100.7");
+  const within = await op(r3.tok, {}, "198.51.100.7", cookieOf(good) ? [cookieOf(good)!] : []);   // the same browser (QA-777)
   await clock.advance({ minutes: 31 });
-  const later = await op(r3.tok, {}, "198.51.100.8");
-  ok("FO-3c R2-1 pass: within 30 minutes of the right code the link opens again without a code", /^https:\/\/signing\.fake\.invalid\//.test(within.link?.url ?? ""), within);
-  ok("FO-3c R2-1 fail: 31 minutes later the same link (another address) gets no signing link: a new code is emailed and the old one is spent",
+  const later = await op(r3.tok, {}, "198.51.100.8", cookieOf(good) ? [cookieOf(good)!] : []);   // the same browser, its cookie now 31 minutes old (QA-777 review M1)
+  ok("FO-3c R2-1 pass: within 30 minutes of the right code the same browser (its session cookie) opens the link again without a code", /^https:\/\/signing\.fake\.invalid\//.test(within.link?.url ?? ""), within);
+  ok("FO-3c R2-1 fail: 31 minutes later the same browser (its session cookie, expired) gets no signing link: a new code is emailed and the old one is spent",
     later.codeNeeded === true && later.link === null && await fails(() => op(r3.tok, { consent: true, code: code3 }), 422), later);
   const tooSoon = await fails(() => op(r3.tok, { consent: true, resend: true }), 429, /CODE_TOO_SOON/);
   await clock.advance({ minutes: 1, seconds: 1 });
@@ -295,10 +299,16 @@ try {
   const ok31 = await op(r31c.tok, { consent: true, code: code31 });
   ok("FO-3c r3-1 pass/fail: after a stale session the new code is accepted (the link opens), and the code used before it is refused", /^https:\/\/signing\.fake\.invalid\//.test(ok31.link?.url ?? "") && newCode !== code31, ok31);
   const r3b = await sendOne(T.staffId, kim, 15);
-  await op(r3b.tok, { consent: true });   // consent recorded, code not checked
+  const r3bAsk = await op(r3b.tok, { consent: true });   // QA-777: no code, so no consent is recorded (only a code is emailed)
   const [noCode] = await signing.act(A, r3b.q.providerDocumentId, r3b.cl.id, "signed");
-  const nc = await svc.signingEvent(noCode);
-  ok("FO-3c M3 fail: a provider \"signed\" for a client whose code was never checked is stored and not applied (NO_CODE)", nc.reason === "NO_CODE" && sql(`select signed_at is null from fo_signer where id = '${r3b.cl.id}'`) === "t", nc);
+  const ncNoConsent = await svc.signingEvent(noCode);
+  // The rule behind it still holds on its own: a consent written straight to the table, with no code checked, is refused NO_CODE.
+  const r3c2 = await sendOne(T.staffId, kim, 16);
+  sql(`update fo_signer set consented_at = now(), consent_text_version = 'sign-electronically-v1' where id = '${r3c2.cl.id}'`);
+  const [noCode2] = await signing.act(A, r3c2.q.providerDocumentId, r3c2.cl.id, "signed");
+  const nc = await svc.signingEvent(noCode2);
+  ok("FO-3c M3 fail: a provider \"signed\" for a client whose code was never checked is stored and not applied: refused NO_CONSENT when the door recorded nothing (QA-777), NO_CODE when a consent exists without a code",
+    r3bAsk.consented === false && ncNoConsent.reason === "NO_CONSENT" && nc.reason === "NO_CODE" && sql(`select (signed_at is null)::text from fo_signer where id in ('${r3b.cl.id}', '${r3c2.cl.id}') group by 1`) === "true", { r3bAsk: r3bAsk.consented, ncNoConsent, nc });
   const r3c = await sendOne(T.staffId, kim, 17);
   const [noConsent3] = await signing.act(A, r3c.q.providerDocumentId, r3c.cl.id, "signed");
   const ncs = await svc.signingEvent(noConsent3);
@@ -359,6 +369,54 @@ try {
   const made = prov?.useFactory?.(given, files) as { mail?: unknown } | undefined;
   ok("FO-3c PF-19r pass: the feature's ports take MESSAGES_MAIL and carry that same mail (every agreement email goes through MessagePort)", prov?.inject?.[0] === MESSAGES_MAIL && made?.mail === given, { inject: prov?.inject?.map(String) });
   ok("FO-3c PF-19r fail: a factory given another mail carries that one, not MESSAGES_MAIL's (the check tells them apart)", (prov?.useFactory?.(mail, files) as { mail?: unknown }).mail !== given);
+
+  // ---------------------------------------------------- QA-777: the code binds the link to one browser; consent after it
+  const q7 = await sendOne(T.staffId, kim, 22), lastCode = () => /\b(\d{6})\b/.exec(mail.inbox("kim@client.example").filter((x) => x.templateKey === "consultation_agreement.code").at(-1)?.text ?? "")?.[1];
+  await clock.advance({ minutes: 2 });   // clear of the earlier cases' resend gap
+  const qb0 = await op(q7.tok, { consent: true }, "203.0.113.2");   // browser B first, holding only the forwarded link
+  const consentedB0 = sql(`select (consented_at is not null)::text from fo_signer where id = '${q7.cl.id}'`);
+  const a1q = await op(q7.tok, { consent: true }, "203.0.113.1"), a2q = await op(q7.tok, { consent: true, code: lastCode() }, "203.0.113.1");
+  const cookieA = cookieOf(a2q);
+  const qb1 = await op(q7.tok, { consent: true }, "203.0.113.2"), qb2 = await op(q7.tok, {}, "203.0.113.2", ["x".repeat(43)]);
+  const a3q = await op(q7.tok, {}, "203.0.113.1", cookieA ? [cookieA] : []);
+  const stored = sql(`select coalesce(session_sha256, '') from fo_signer where id = '${q7.cl.id}'`);
+  ok("FO-3c QA-777 (2): a forwarded link alone, before any code, records no consent (consent comes after the code); it is told a code is needed",
+    qb0.codeNeeded === true && qb0.link === null && qb0.consented === false && consentedB0 === "false", { qb0, consentedB0 });
+  ok("FO-3c QA-777 control: the client (browser A) types the emailed code and gets the signing link and a session cookie (only its sha256 stored); consent is recorded then",
+    a1q.codeNeeded === true && /^https:\/\/signing\.fake\.invalid\//.test(a2q.link?.url ?? "") && !!cookieA && /^[0-9a-f]{64}$/.test(stored) && stored !== cookieA && a2q.consented === true, { a1q, a2q: { ...a2q, session: !!cookieA }, stored: !!stored });
+  ok("FO-3c QA-777 (1): browser B, with the forwarded link but not A's session (no cookie, or a made-up one), is asked for the code (200, no 429) and gets no signing link",
+    qb1.codeNeeded === true && qb1.link === null && qb2.codeNeeded === true && qb2.link === null, { qb1, qb2 });
+  ok("FO-3c QA-777 same browser: A, sending its session cookie, gets the link again without a code", /^https:\/\/signing\.fake\.invalid\//.test(a3q.link?.url ?? "") && a3q.codeNeeded === false, a3q);
+  // QA-777 review m6: a session counts only when the code check started it (expiry = check + 30 minutes): the same live
+  // cookie on a session moved off that moment (written straight to the table) gets no link.
+  sql(`update fo_signer set session_expires_at = session_expires_at + interval '1 minute' where id = '${q7.cl.id}'`);
+  const unpaired = await op(q7.tok, {}, undefined, cookieA ? [cookieA] : []);
+  sql(`update fo_signer set session_expires_at = session_expires_at - interval '1 minute' where id = '${q7.cl.id}'`);
+  const paired = await op(q7.tok, {}, undefined, cookieA ? [cookieA] : []);
+  ok("FO-3c QA-777 pairing: the same live cookie on a session not started at the code check's moment gets no link (a code is asked); paired again, it opens",
+    unpaired.codeNeeded === true && unpaired.link === null && /^https:\/\/signing\.fake\.invalid\//.test(paired.link?.url ?? ""), { unpaired, paired: !!paired.link });
+  // QA-777 break B2 (Lead B's Minor on 55ff7dc8f): the provider failing right after the right code still hands this
+  // browser its session (the error carries it for the cookie), so the same browser's retry opens without a new code.
+  const q9 = await sendOne(T.staffId, kim, 24);
+  await clock.advance({ minutes: 2 });
+  await op(q9.tok, { consent: true });
+  const realLink = signing.embeddedLink, code9 = lastCode();
+  signing.embeddedLink = async () => { throw new Error("provider down (Sample)"); };
+  let carried: string | undefined, threw9 = false;
+  try { await op(q9.tok, { consent: true, code: code9 }); } catch (e) { threw9 = true; carried = (e as { session?: string }).session; }
+  signing.embeddedLink = realLink;
+  const retry9 = await op(q9.tok, {}, undefined, carried ? [carried] : []);
+  ok("FO-3c QA-777 B2: the provider failing after the right code still gives this browser its session (carried for the cookie); the same browser's retry opens the link with no new code",
+    threw9 && !!carried && /^https:\/\/signing\.fake\.invalid\//.test(retry9.link?.url ?? "") && retry9.codeNeeded === false, { threw9, carried: !!carried, retry9 });
+  // QA-777 break B1: with no live code (none asked yet), a link holder's made-up codes are refused and never counted, so
+  // they cannot lock the client out; the client's own code then works.
+  const q8 = await sendOne(T.staffId, kim, 23), guesses: string[] = [];
+  for (let i = 0; i < 7; i++) { try { await op(q8.tok, { code: String(100000 + i) }); guesses.push("200"); } catch (e) { const r = e as { getStatus(): number; getResponse(): { code?: string } }; guesses.push(`${r.getStatus()}:${r.getResponse().code}`); } }
+  const counted8 = sql(`select code_failures || '|' || (locked_until is not null) from fo_signer where id = '${q8.cl.id}'`);
+  await clock.advance({ minutes: 2 });
+  const ask8 = await op(q8.tok, { consent: true }), ok8 = await op(q8.tok, { consent: true, code: lastCode() });
+  ok("FO-3c QA-777 B1: with no code asked, seven made-up codes are each refused (422 CODE_EXPIRED), none counted, no lock; the client then asks for a code and signs (the link)",
+    guesses.every((g) => g === "422:CODE_EXPIRED") && counted8 === "0|false" && ask8.codeNeeded === true && /^https:\/\/signing\.fake\.invalid\//.test(ok8.link?.url ?? ""), { guesses, counted8, ok8: !!ok8.link });
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
