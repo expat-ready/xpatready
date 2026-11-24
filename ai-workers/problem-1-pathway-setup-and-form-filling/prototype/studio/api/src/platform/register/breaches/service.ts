@@ -76,13 +76,13 @@ const When = z.iso.datetime({ offset: true, error: "A time with its zone." }).tr
   .refine((d) => d.getUTCFullYear() >= 2000, "A time after the year 2000.").refine((d) => d.getTime() <= Date.now() + 5 * 60_000, "Not in the future.");
 /** The guard's written reason (@SystemReason): checked and recorded there; carried in every change's body. */
 const Why = { reason: z.string().max(500).optional() };
-const OpenBody = z.strictObject({
+export const OpenBody = z.strictObject({
   ...Why, discoveredAt: When, description: plain(4000, "Describe the breach."), affectedFirms: Firms.optional(), dataCategories: Categories.optional(),
   rootCause: plain(4000, "Give the root cause, or leave it out.").optional(), containment: plain(4000, "Give the containment, or leave it out.").optional(),
   otherNotifications: plain(4000, "Give the other notifications, or leave it out.").optional(),
 });
-const AlertBody = z.strictObject({ ...Why, alert: z.strictObject({ kind: z.enum(BREACH_ALERT_KINDS), detail: AlertDetail, raisedAt: When }) });
-const ChangeBody = z.strictObject({
+export const AlertBody = z.strictObject({ ...Why, alert: z.strictObject({ kind: z.enum(BREACH_ALERT_KINDS), detail: AlertDetail, raisedAt: When }) });
+export const ChangeBody = z.strictObject({
   ...Why, status: z.literal("RECORDED").optional(), description: plain(4000, "Describe the breach.").optional(), affectedFirms: Firms.optional(), dataCategories: Categories.optional(),
   rootCause: plain(4000, "Give the root cause.").nullable().optional(), containment: plain(4000, "Give the containment.").nullable().optional(),
   otherNotifications: plain(4000, "Give the other notifications.").nullable().optional(),
@@ -92,7 +92,7 @@ const ChangeBody = z.strictObject({
   // Review m2: a draft from an alert carries our internal words; confirming it needs the description the firms will read.
   .refine((b) => b.status !== "RECORDED" || b.description !== undefined, { message: "Confirm the description with the record (the firms' notice quotes it).", path: ["description"] })
   .refine((b) => b.decisionReason === undefined || (b.decision !== undefined && b.decision !== "UNDECIDED"), { message: "A reason goes with a decision to notify or not.", path: ["decisionReason"] });
-const NoticeBody = z.strictObject({ ...Why, firmId: Uuid });
+export const NoticeBody = z.strictObject({ ...Why, firmId: Uuid });
 export const LIST_MAX = 500;
 const ListQuery = z.strictObject({ limit: z.coerce.number().int().min(1).max(LIST_MAX).optional() });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

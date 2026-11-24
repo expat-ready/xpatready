@@ -157,8 +157,8 @@ try {
   const future = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, discoveredAt: new Date(Date.now() + 86_400_000).toISOString() } });
   const noFirm = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, affectedFirms: [uuid()] } });
   const extra = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, status: "RECORDED" } });
-  ok("PF-21c DW1 fail: the Platform Owner without a reason (400), with an unknown category, a future discovery or an unknown field (422 each), or an unknown firm (404) records nothing",
-    noReason.status === 400 && badCat.status === 422 && future.status === 422 && extra.status === 422 && noFirm.status === 404 && noFirm.body.code === "FIRM_NOT_FOUND"
+  ok("PF-21c DW1 fail: the Platform Owner without a reason (422 naming reason; R1.10 A4), with an unknown category, a future discovery or an unknown field (422 each), or an unknown firm (404) records nothing",
+    noReason.status === 422 && !!noReason.body.fields?.reason && badCat.status === 422 && future.status === 422 && extra.status === 422 && noFirm.status === 404 && noFirm.body.code === "FIRM_NOT_FOUND"
     && Number(sql(`select count(*) from plat_breach`)) === rowsBefore, [noReason.status, badCat.status, future.status, extra.status, noFirm.status]);
 
   // Record a breach

@@ -44,7 +44,7 @@ const QueueQuery = z.strictObject({
   page: z.string().regex(/^[1-9][0-9]{0,4}$/, "a page number from 1").optional(),
 });
 /** The reply's body: `body` only (anything else, a priority or a status, is refused by name); its words are PF-18b's to judge. */
-const ReplyBody = z.strictObject({ body: z.unknown() });
+const ReplyBody = z.strictObject({ body: z.string({ error: "Write the reply as text." }) });   // R1.10 A4: a reply is text, refused before the ticket is looked up
 
 export type FirmRef = { id: string; key: string; name: string; plan: LivePlan | null };
 export type QueueItem = { id: string; firm: FirmRef; subject: string; status: QueueStatus; page: string; raisedByName: string | null; messages: number; createdAt: string; updatedAt: string };
