@@ -23,4 +23,4 @@ The same command again carries on where it stopped. **Time:** the made-up review
 * Its Grep can be made by the server to compare lines of another file on the Mac with the sample (a yes or no, never the text). Found by reading its source; not a sign that it is used.
 
 ## When it stops by itself
-It writes `/Users/Shared/arm2/STOP` with the reason: anything naming an app, card, plan, token or sign-in; a changed sample, program or runner; 3 unfinished slices in a row. Delete STOP only when the reason is settled. A slice gets two attempts at most.
+It writes `/Users/Shared/arm2/STOP` with the reason: anything naming an app, card, plan, token or sign-in; a changed sample, program or runner; 3 unfinished slices in a row. Delete STOP only when the reason is settled. A slice gets at most two attempts in which something was reviewed; a refusal or an outage does not count.

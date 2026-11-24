@@ -13,11 +13,11 @@ files only. The program's Read, LS and Grep are held to that folder by its own c
 outside file's lines with the sample (an answer of yes or no, not the text). It is started only as
 `~/codeant-replay/run review --headless --base-commit HEAD~1 --include <the slice's files> --max-files 10`.
 Whole = exit 0, JSON with no error, every file taken and finished, no failed part, planner or parsing error. A first whole
-result counts; at most two attempts a slice, each kept. The run stops at once, and writes <work>/STOP, on anything naming
+result counts; at most two attempts in which a batch finished or the size was refused; every attempt is kept. The run stops at once, and writes <work>/STOP, on anything naming
 an app, card, plan, token or sign-in; on a changed sample, program or runner; on 3 unfinished slices in a row (a slice
 refused for its size is noted and passed over).
 """
-import hashlib, json, os, re, shutil, signal, subprocess, sys, time
+import contextlib, hashlib, json, os, re, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ST = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/"
@@ -28,6 +28,7 @@ BASE = os.path.expanduser("~/codeant-replay")
 RUNNER = '#!/bin/sh\nexec env -i HOME="$HOME/codeant-replay/home" PATH="$HOME/codeant-replay/bin:/usr/bin:/bin" GIT_CONFIG_GLOBAL=/dev/null CODEANT_TELEMETRY_DISABLED=1 TERM=xterm node "$HOME/codeant-replay/cli/node_modules/codeant-cli/src/index.js" "$@"'
 TIMEOUT, PAUSE = 1800, 15
 ASK = re.compile(r"log ?in|log ?out|sign ?(in|up)|authenticat|unauthori[sz]ed|forbidden|access denied|\b40[123]\b|upgrade|payment|billing|\bcard\b|\bplan\b|trial|subscri|quota|credits?\b|\blimit|\b429\b|token|api.?key|\bapp\b|install", re.I)
+ASK_PAY = re.compile(r"upgrade|payment|billing|\bcard\b|\bplan\b|trial|subscri|quota|credits?\b|log ?in|sign ?(in|up)", re.I)
 ASK_MORE = re.compile(r"\bseat|contact sales|expired|\brate\b|too many|monthly|exceeded|not (found|allowed|enabled)|organi[sz]ation|workspace", re.I)
 SIZE = re.compile(r"too long|context (length|window)|maximum.*tokens|\b413\b|too large", re.I)
 NODE, MODULES = "23.11.0", "41293274b62dd36268c70e51778e3adc7a2f6649f883dc3f04569fc539d0ab06"
@@ -187,7 +188,7 @@ def again(f, *a, **k):
     for i in range(4):
         try:
             return f(*a, **k)
-        except (BlockingIOError, MemoryError, TimeoutError, InterruptedError):
+        except (BlockingIOError, MemoryError, TimeoutError, InterruptedError, FileExistsError):
             if i == 3: raise
             time.sleep(60)
 
@@ -209,6 +210,15 @@ def alive(pid):
     try: os.kill(pid, 0); return True
     except ProcessLookupError: return False
     except PermissionError: return True
+
+
+@contextlib.contextmanager
+def unstoppable():
+    """Clean-up is never cut short by a second Ctrl-C, a closed window or a TERM."""
+    old = {s: signal.signal(s, signal.SIG_IGN) for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+    try: yield
+    finally:
+        for s, h in old.items(): signal.signal(s, h)
 
 
 def end_group(pgid):
@@ -252,9 +262,13 @@ def mask(x):
 def asks(text):
     """A stop word in what the program says about itself: never a file name, a progress line or a size refusal."""
     for l in text.splitlines():
-        if re.match(r"\[(progress|files)\]", l) or SIZE.search(l):
+        if re.match(r"\[(progress|files)\]", l):
             continue
         l = re.sub(r"\S+\.(tsx?|[cm]?js|sql|prisma|css)\b", "", l)
+        if SIZE.search(l):
+            m = ASK_PAY.search(l)
+            if m: return m.group(0)
+            continue
         m = ASK.search(l) or (ASK_MORE.search(l) if re.match(r"(API Error:|\[error\])", l) else None)
         if m:
             return m.group(0)
@@ -268,17 +282,18 @@ def review(work, lock, m, res, cmd, timeout, attempt):
     stamp, start, seen, late = time.strftime("%Y-%m-%dT%H:%M:%S%z"), time.monotonic(), set(), False
     parts = [os.path.join(work, "part.out"), os.path.join(work, "part.err")]
     with open(parts[0], "w+b") as fo, open(parts[1], "w+b") as fe:
-        p = again(subprocess.Popen, args, cwd=cur, stdin=subprocess.DEVNULL, stdout=fo, stderr=fe, start_new_session=True, env={"HOME": os.path.expanduser("~"), "PATH": "/usr/bin:/bin"})
-        open(lock, "w").write(json.dumps({"pid": os.getpid(), "child": p.pid}))
+        p = None
         try:
+            p = again(subprocess.Popen, args, cwd=cur, stdin=subprocess.DEVNULL, stdout=fo, stderr=fe, start_new_session=True, env={"HOME": os.path.expanduser("~"), "PATH": "/usr/bin:/bin"})
+            open(lock, "w").write(json.dumps({"pid": os.getpid(), "child": p.pid}))
             while p.poll() is None:
                 if time.monotonic() - start > timeout:
                     late = True; break
                 seen |= addresses(p.pid); time.sleep(1)
         finally:
-            if p.poll() is None:
-                keep = signal.signal(signal.SIGINT, signal.SIG_IGN)     # a second Ctrl-C never leaves the child behind
-                end_group(p.pid); p.wait(); signal.signal(signal.SIGINT, keep)
+            with unstoppable():
+                if p is not None and p.poll() is None:
+                    end_group(p.pid); p.wait()
             open(lock, "w").write(json.dumps({"pid": os.getpid(), "child": None}))
         texts = []
         for f in (fo, fe):
@@ -296,7 +311,7 @@ def review(work, lock, m, res, cmd, timeout, attempt):
            ("no files", isinstance(j, dict) and bool(j.get("noFiles"))), ("capped", ok and bool(j["meta"].get("capped"))), ("not all files taken", ok and sorted(j["meta"].get("reviewed_files") or []) != want),
            ("not all files finished", done != want), ("a part failed", bool(re.search(r"^\[error\]", err, re.M))), ("planner failed", "Risk planner failed" in err), ("parsing error", "parsing error" in err)) if bad]
     said = err + "\n" + ("[error] " + str(j["error"]) if isinstance(j, dict) and j.get("error") else "" if isinstance(j, dict) else out[:2000])
-    rec = {"slice": n, "attempt": attempt, "whole": not why, "not_whole_because": why, "size_failure": bool(SIZE.search(said)), "exit": p.returncode, "start": stamp, "end": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    rec = {"slice": n, "attempt": attempt, "whole": not why, "not_whole_because": why, "size_failure": bool(SIZE.search(said)), "counts": bool(done) or bool(ok and j["issues"]) or bool(SIZE.search(said)), "exit": p.returncode, "start": stamp, "end": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
            "seconds": round(time.monotonic() - start, 1), "claims": len(j["issues"]) if ok else None, "files_with_suggestions_before_its_own_filter": int(had[-1]) if had else None, "files": want,
            "skipped": j["meta"].get("skipped") if ok else None, "addresses": sorted(seen), "asks": asks(said) if why else None, "result": mask(j) if ok else None}
     tmp = f"{res}/{n}.{attempt}.json.tmp"; json.dump(rec, open(tmp, "w"), indent=1); os.replace(tmp, f"{res}/{n}.{attempt}.json")
@@ -313,15 +328,18 @@ def run(work, get_man, cmd, check=lambda: None, timeout=TIMEOUT, pause=PAUSE):
     try:
         for x in ("part.out", "part.err", "current"):          # leftovers of a run that died
             p = os.path.join(work, x); shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.path.exists(p) and os.remove(p)
-        check(); man = get_man()
+        def checked(f):
+            try: return f()
+            except SystemExit as e: stop(work, str(e))
+        checked(check); man = checked(get_man)
         res = os.path.join(work, "results"); os.makedirs(res, exist_ok=True)
-        past = lambda n: [json.load(open(f"{res}/{n}.{k}.json")) for k in (1, 2) if os.path.exists(f"{res}/{n}.{k}.json")]
-        settled = lambda n: any(r["whole"] for r in past(n)) or len(past(n)) >= 2
+        past = lambda n: [json.load(open(f"{res}/{x}")) for x in sorted(os.listdir(res)) if re.fullmatch(re.escape(n) + r"\.\d+\.json", x)]
+        settled = lambda n: any(r["whole"] for r in past(n)) or sum(r["counts"] for r in past(n)) >= 2
         bad, t0 = 0, time.monotonic()
         for i, m in enumerate(man, 1):
             if settled(m["slice"]):
                 continue
-            check()
+            checked(check)
             if shutil.disk_usage(work).free < 500 * 2**20:
                 stop(work, "under 500 MB of disk left")
             rec = review(work, lock, m, res, cmd, timeout, len(past(m["slice"])) + 1)
@@ -336,8 +354,10 @@ def run(work, get_man, cmd, check=lambda: None, timeout=TIMEOUT, pause=PAUSE):
         print(f"finished: {len(w)} of 41 whole, {(time.monotonic() - t0) / 60:.0f} min; not whole: {[m['slice'] for m in man if m['slice'] not in w]}")
         return 0 if len(w) == 41 else 1
     finally:
-        shutil.rmtree(os.path.join(work, "current"), ignore_errors=True)
-        if os.path.exists(lock): os.remove(lock)
+        with unstoppable():
+            shutil.rmtree(os.path.join(work, "current"), ignore_errors=True)
+            for x in ("part.out", "part.err", "RUNNING"):
+                if os.path.exists(os.path.join(work, x)): os.remove(os.path.join(work, x))
 
 
 def main(a):
