@@ -2,7 +2,7 @@
 
 current_lead: local_abd52603-5cad-4aae-bb93-390177ebbb2c Lead 19 · 24 Nov 08:31 IST (after Lead 18, past 200k after its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 08:41 IST: Lead 19. Check 5fff61dd runs. **Recovery plan (A348): `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** #3225 merged 08:37. Queue: #3366 alone (#3369); then #3202 (dequeued by the pf4s race; its full run started by itself) and #3033 shards 8 and 19. 51/101. Disk 9.4 GB. Standby Lead 20 local_aa6d586e (top up one at a founder turn). Cloud lanes started once each: qa near-done (session_01MXNda7crVzNL6HM2svSJCN), R1.20 (01MXNda6KvFckJUX1XzHMvUk), R1.60 (01MXNda7SW9kChAanWJLU4m5), R1.10 (01MXNda9LZXVLUuS932GFzEi), all Opus 5.5 medium. **R1.60 ruling (P-797, P-628; DECISIONS row owed; founder review):** AG-6-61 / MS-D6 wins: one trust deposit request, Ask me first, never a draft invoice; rules file only, build waits for #3033 and Lead B 5's answer (asked). #3209's lane told to merge main (then Lead read); #3193's lane told: conflict plus the 'fast' line 'fewer than 30 suites (30)'. Nightly missing: dispatch when idle. Weekly 51%: on pace to run out early.
+updated: 2026-11-24 08:41 IST: Lead 19. Check 5fff61dd runs. **Recovery plan (A348): `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** #3225 merged 08:37. Queue: #3366 alone (#3369); then #3202 (dequeued by the pf4s race; its full run started by itself) and #3033 shards 8 and 19. 51/101. Disk 9.4 GB. Standby Lead 20 local_aa6d586e (top up one at a founder turn). Cloud lanes started once each: qa near-done (session_01MXNda7crVzNL6HM2svSJCN), R1.20 (01MXNda6KvFckJUX1XzHMvUk), R1.60 (01MXNda7SW9kChAanWJLU4m5), R1.10 (01MXNda9LZXVLUuS932GFzEi), all Opus 5.5 medium. **R1.60 ruling (P-797, P-628; DECISIONS row owed; founder review):** AG-6-61 / MS-D6 wins: one trust deposit request, Ask me first, never a draft invoice; rules file only, build waits for #3033 (Lead B 5 confirmed; bounds in the plan file). #3209's lane told to merge main (then Lead read); #3193's lane told: conflict plus the 'fast' line 'fewer than 30 suites (30)'. Nightly missing: dispatch when idle. Weekly 51%: on pace to run out early.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,11 +18,12 @@ updated: 2026-11-24 08:41 IST: Lead 19. Check 5fff61dd runs. **Recovery plan (A3
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A349 | 24 Nov ~08:37 (relayed by Lead 18) | one AWS staging run, cap US$2; full in the recovery plan file | NOT run: confirm with the founder here, qa names gaps first |
 | A348 | 24 Nov ~08:25 (typed to Lead 18) | recovery plan, clean up lanes and disk, near-done first, lessons live, keep the dates | plan file above; in progress |
 | A347 | 24 Nov ~08:15 | all "needs you" items approved, full report given; word for word in the recovery plan file | approvals above |
 | A346 | 24 Nov ~01:25 (typed to Lead 13) | "So you have all my approval. Go ahead and implement those as per your best recommended possible, and create enough standby so that you can run entire night flawlessly and keep monitoring as set processes." | P-814 and date option A (P-815, 12 Dec) in #3314; standbys, Lead B 5, qa A 5 and RQ shaping started |
 | A331-A336, A341, A344, A345 | 23-24 Nov | in force as recorded (A341: P-814 since merged in #3314); rows word for word `history/STATE-2026-11-24-lead14-before-handover.md`; A331-A336 in full `history/STATE-2026-11-23-lead9-ask-rows-A331-A336.md` |
-| A342, A343 | 24 Nov | CI-cost and proofs reports done, unchecked (ask for the content he meant); word for word in the recovery plan file | open |
+| A342, A343 | 24 Nov | reports unchecked; plan file | open |
 | A337-A340 | 23 Nov | the night plan runs (in force); the audit reports' decisions are the morning questions; word for word `history/STATE-2026-11-24-lead13-A338-row.md` |
 | A318 | 23 Nov ~14:04 (pressed in Lead 3) | "Yes, pause": NO NEW PRODUCT LABELS until the tooling list lands, 21:00 IST latest; exceptions a main fix or qa Blocker; nothing dequeued | in force; gate self-labels, hold being checked; A317 and this in full: A316 file |
 | A308-A329 | 23 Nov | A328 in force (scope line above); A316 visual plan owed; the rest answered or recorded, rows word for word: `history/STATE-2026-11-23-lead9-ask-rows-A308-A329.md` |
