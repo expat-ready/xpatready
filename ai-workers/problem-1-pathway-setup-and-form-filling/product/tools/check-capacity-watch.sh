@@ -35,7 +35,13 @@ new; mk e; echo dead > "$R/e/d"; run; no_ "a file only on a branch deleted on th
 new; mk e; echo mine > "$R/e/l"; run; no_ "a file only on a local branch" 'no (1 of 3'
 for d in dist node_modules __pycache__; do new; mk e; mkdir "$R/e/$d"; echo hand > "$R/e/$d/w"; run; no_ "a file of one's own in $d" 'no (1 of 3'; done
 new; mk e; ln -s /etc/hosts "$R/e/l"; run; no_ "a link" 'no (1 of 3'
-new; mk e; mkdir "$R/e/secret"; echo w > "$R/e/secret/w"; chmod 000 "$R/e/secret"; run; no_ "a folder that cannot be read" 'unknown (part of it cannot be read'; chmod 755 "$R/e/secret"
+new; mk e; mkdir "$R/e/secret"; echo w > "$R/e/secret/w"; chmod 000 "$R/e/secret"; run; ok "fail: a folder that cannot be read whole has its own ACT, never yes" "$([ "$(not 'on remote: yes')" = 1 ] && has "ACT   capacity: 1 folders hold something that cannot be read, size unknown, never called on remote: $R/e")" "$o"; chmod 755 "$R/e/secret"
+new; mk e; mk -x/u1/w; chmod 000 "$R/-x/u1"; run; ok "fail: one unreadable session folder is said and stops nothing else" "$([ "$(has "on remote: yes: $R/e")" = 1 ] && has "never called on remote: $R/-x/u1")" "$o"; chmod 755 "$R/-x/u1"
+new; mk e; printf 'UNSAVED' > "$R/e/a"$'\r'; run; no_ "a file name ending in a carriage return" 'no (1 of 3'
+new; mk e; printf 'UNSAVED' > "$R/e/a"$'\n'"b"; run; no_ "a file name holding a line end" 'no (1 of 3'
+new; echo small > "$R/small.log"; mkdir -p "$R/-x/u1/scratchpad"; echo s > "$R/-x/u1/scratchpad/s.txt"; X='--big 99999999' run; ok "pass: small files are not listed" "$(not export)" "$o"
+new; head -c 9000 /dev/zero > "$R/big.bin"; run; no_ "a big file at the root on no branch" 'no (1 of 1'
+new; mk e; mkdir "$T/away$seq"; head -c 9000 /dev/zero > "$T/away$seq/z"; ln -s "$T/away$seq" "$R/l"; run; ok "pass: a link to a folder is not walked" "$(not ": $R/l")" "$o"
 new; mk e; chmod 000 "$R/e/a"; run; no_ "a file that cannot be read" 'unknown ('; chmod 644 "$R/e/a"
 new; git clone -q "$T/hub" "$R/c" 2>/dev/null; run; no_ "a git copy, however clean" 'unknown (a git copy: look by hand)'
 new; mk e; mkdir -p "$R/e/sub"; echo 'gitdir: /x' > "$R/e/sub/.git"; run; no_ "a worktree inside" 'unknown (a git copy'
@@ -45,6 +51,7 @@ new; mk -Users-x/u1/scratchpad/e2; mk -Users-x/u1/work; run; ok "a session's scr
 new; S=k run; mk e; S=k run; ok "read once an hour: the second check repeats the first listing" "$(not export)" "$o"
 S=k NOW=$((at + 3601)) run; ok "and reads again after it" "$(has "$R/e")" "$o"
 mk f; cp -R "$R" "$T/rootother"; R="$T/rootother" S=k NOW=$((at + 3700)) run; ok "a listing of another folder is never reused" "$(has "$T/rootother/f")" "$o"
+new; mkdir "$R/e"; cp "$T/repo/a" "$R/e/"; X='--budget 0.0' run; ok "fail: out of time is never yes" "$(not 'remote: yes')" "$o"
 new; mk e; X='--budget -1' run; ok "fail: out of time is an ACT, never an empty list" "$([ "$(not 'remote: yes')" = 1 ] && has 'ACT   capacity: the listing stopped')" "$o"
 R="$T/none" run; ok "fail: an unreadable folder is an ACT" "$(has 'ACT   capacity: not measured')" "$o"
 new; mk e; b=$(cd "$R" && find . -exec ls -ldT {} + 2>/dev/null || find . -exec stat -c '%n %Y %Z' {} +); run; a=$(cd "$R" && find . -exec ls -ldT {} + 2>/dev/null || find . -exec stat -c '%n %Y %Z' {} +); ok "nothing in the folder is changed" "$([ "$a" = "$b" ] && echo 1)"

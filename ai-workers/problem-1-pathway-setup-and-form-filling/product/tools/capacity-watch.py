@@ -6,8 +6,8 @@
   exports   while under 10 GB is free: folders in /private/tmp/claude-<uid> (its own entries, each session's folders, each
             scratchpad's entries) over 100 MB, untouched 6 h or more (no file or folder in it written or put there since),
             with "on remote: yes|no|unknown". Yes only when every file in it, with no exception, is a blob reachable from a
-            branch GitHub lists right now (git ls-remote, never a kept local copy of a deleted branch). A git copy, a folder
-            that cannot be read whole, and a remote that cannot be asked are "unknown": look by hand. The Lead decides;
+            branch GitHub lists right now (git ls-remote, never a kept local copy of a deleted branch). A git copy
+            and a remote that cannot be asked are "unknown": look by hand. One that cannot be read whole has its own ACT. The Lead decides;
             this only lists. Read at most once an hour, about 60 s; a listing cut short says so.
    LEAD_STANDBYS=2 python3 -I product/tools/capacity-watch.py --state DIR      exit 0; lead-watch.sh counts the ACT lines
 Test: check-capacity-watch.sh."""
@@ -33,7 +33,9 @@ def walk(d, end):
     read raises, so the caller never calls a folder whole that it did not read."""
     def stop(e):
         raise e
-    yield d, os.lstat(d)
+    st = os.lstat(d); yield d, st
+    if not stat.S_ISDIR(st.st_mode):   # a file, or a link (never followed)
+        return
     for base, dirs, files in os.walk(d, onerror=stop):
         if time.time() > end:
             raise Late
@@ -42,20 +44,43 @@ def walk(d, end):
             yield p, os.lstat(p)
 
 
+def unreadable(d):
+    try:
+        os.path.isdir(d) and not os.path.islink(d) and os.listdir(d)
+    except PermissionError:
+        return True
+    except OSError:
+        pass
+    return False
+
+
+def names(d):
+    """What is in a folder; nothing for a file, a link, a folder that is gone or one that cannot be read (said by entries)."""
+    try:
+        return sorted(os.listdir(d)) if os.path.isdir(d) and not os.path.islink(d) else []
+    except OSError:
+        return []
+
+
 def entries(root):
     """The folders judged one by one, never one inside another."""
     for n in sorted(os.listdir(root)):
         p = os.path.join(root, n)
         if not (n.startswith("-") and os.path.isdir(p) and not os.path.islink(p)):
             yield p; continue
-        for s in sorted(os.listdir(p)):      # a session's folder: <path as a name>/<session id>/<entry>, scratchpad opened too
+        try:
+            ids = sorted(os.listdir(p))
+        except FileNotFoundError:
+            continue
+        except OSError:
+            yield p; continue                # walk() then says it cannot be read
+        for s in ids:      # a session's folder: <path as a name>/<session id>/<entry>, scratchpad opened too
             sp = os.path.join(p, s)
-            for x in sorted(os.listdir(sp)) if os.path.isdir(sp) and not os.path.islink(sp) else []:
+            for x in names(sp):
                 q = os.path.join(sp, x)
-                if x == "scratchpad" and os.path.isdir(q) and not os.path.islink(q):
-                    yield from (os.path.join(q, y) for y in sorted(os.listdir(q)))
-                else:
-                    yield q
+                yield from ([os.path.join(q, y) for y in names(q)] if x == "scratchpad" and not unreadable(q) and os.path.isdir(q) and not os.path.islink(q) else [q])
+            if unreadable(sp):
+                yield sp
 
 
 def remote_blobs(repo):
@@ -74,7 +99,7 @@ def on_remote(d, repo, end, blobs):
     fs = [(p, st) for p, st in all_ if not stat.S_ISDIR(st.st_mode)]
     if len(fs) > MAX_FILES:
         return f"unknown ({len(fs)} files, over {MAX_FILES})"
-    plain = [p for p, st in fs if stat.S_ISREG(st.st_mode) and "\n" not in p]
+    plain = [p for p, st in fs if stat.S_ISREG(st.st_mode) and not set("\n\r") & set(p)]   # git reads one name a line and drops a last \r
     have = git(repo, "hash-object", "--no-filters", "--stdin-paths", inp="\n".join(plain) + "\n").split() if plain else []
     if len(have) != len(plain):
         return "unknown (not every file could be read)"
@@ -106,26 +131,33 @@ def main():
     except (OSError, ValueError, KeyError, TypeError):
         fresh = False
     if not fresh:
-        end = time.time() + o.budget; lines, cut, memo = [], "", []
+        end = time.time() + o.budget; lines, cut, memo, dark = [], "", [], []
 
         def blobs():
-            if not memo:
-                memo.append(remote_blobs(o.repo))
+            if not memo:      # asked once: an answer, or the failure, for every folder
+                try:
+                    memo.append(remote_blobs(o.repo))
+                except Exception as e:
+                    memo.append(e)
+            if isinstance(memo[0], Exception):
+                raise memo[0]
             return memo[0]
         try:
             for p in entries(o.root):
-                size, newest, why = 0, 0, ""
+                size, newest, why = 0, 0, False
                 try:
                     for _, st in walk(p, end):
                         size += st.st_blocks * 512; newest = max(newest, st.st_mtime, st.st_ctime)
                 except FileNotFoundError:
                     continue   # gone, or changing, while it was read: not an old export
                 except OSError as e:
-                    why = f"unknown (part of it cannot be read: {type(e).__name__})"
-                if (size < o.big and not why) or now - newest < o.age * 3600:
+                    why = True
+                if why:
+                    dark.append(p); continue
+                if size < o.big or now - newest < o.age * 3600:
                     continue
                 try:
-                    r = why or on_remote(p, o.repo, end, blobs)
+                    r = on_remote(p, o.repo, end, blobs)
                 except Late:
                     r = "unknown (out of time)"
                 except Exception as e:
@@ -133,12 +165,14 @@ def main():
                 lines.append([size, f"{size / 2**20:.0f} MB, untouched {(now - newest) / 3600:.0f} h, on remote: {r}: {p}"])
         except Late:
             cut = f"the listing stopped after {o.budget:.0f} s: some folders were not read"
-        c = {"t": now, "root": o.root, "lines": [l for _, l in sorted(lines, reverse=True)], "cut": cut}
+        c = {"t": now, "root": o.root, "lines": [l for _, l in sorted(lines, reverse=True)], "cut": cut, "dark": dark}
         os.makedirs(o.state, exist_ok=True); json.dump(c, open(f + ".tmp", "w")); os.replace(f + ".tmp", f)
     if c["lines"]:
         print(f"ACT   capacity: {len(c['lines'])} old exports over {o.big // 2**20} MB (read {(now - c['t']) / 60:.0f} min ago; look again before any removal; nothing is removed here):")
         for l in c["lines"]:
             print("      export  " + l)
+    if c.get("dark"):
+        print(f"ACT   capacity: {len(c['dark'])} folders hold something that cannot be read, size unknown, never called on remote: " + ", ".join(c["dark"][:3]))
     if c["cut"]:
         print("ACT   capacity: " + c["cut"])
 
