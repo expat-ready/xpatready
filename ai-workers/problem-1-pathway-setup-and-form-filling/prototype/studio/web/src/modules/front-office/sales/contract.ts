@@ -71,7 +71,7 @@ export const ProspectRows = z.array(z.object({
 }));
 export const Prospect = z.object({
   id: z.string(), number: z.string(), type: z.string(), leadId: z.string(), leadNumber: z.string(), ownerStaffId: z.string().nullable(), version: z.string(),
-  stage: Stage.extend({ id: z.string() }), person: z.object({ id: z.string(), name: z.string() }).nullable(), company: z.object({ id: z.string(), name: z.string() }).nullable(),
+  stage: Stage.extend({ id: z.string() }), person: z.object({ id: z.string(), name: z.string(), /** QA-779: the email and the person's version (If-Match). */ email: z.string().nullable().optional(), version: z.string().optional() }).nullable(), company: z.object({ id: z.string(), name: z.string() }).nullable(),
   valueCents: z.number().nullable(), currency: z.string(), wonVia: z.string().nullable(), retainerSigned: z.boolean(), lostReason: reason, lostNote: z.string().nullable(), engagedAt: z.string(),
   warning: z.string().optional(), again: z.boolean().optional(), message: z.string().optional(),
 });
