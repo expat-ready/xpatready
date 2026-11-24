@@ -128,9 +128,10 @@ try {
   const inv2 = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "DW2.Gone@example.com", roles: ["CASE_OFFICER"] } });
   await run();
   const r2 = await rowsTo("dw2.gone@example.com");
-  ok("DW2 pass: an invitation to a suppressed address → SUPPRESSED, nothing sent, the invitation stays pending and the answer says it was not emailed",
-    inv2.status === 201 && inv2.body.emailed === false && inv2.body.status === "PENDING" && r2.length === 1 && r2[0].state === "SUPPRESSED" && /HARD_BOUNCE/.test(r2[0].stateReason ?? "")
-    && (await inbox.list("dw2.gone@example.com", undefined)).messages.length === 0 && sql(`select count(*) from platform_invitation where email = 'dw2.gone@example.com' and accepted_at is null and revoked_at is null`) === "1", { inv2: inv2.body, r2 });
+  // PF-19e item 4 (brief 16 Nov): the email is written in the invitation's transaction, so the refusal rolls it back.
+  ok("DW2 pass (PF-19e): an invitation to a suppressed address → 409 INVITATION_NOT_SENT in words (\"We couldn't send email to …\"), nothing sent, no invitation and no outbox row kept",
+    inv2.status === 409 && inv2.body.code === "INVITATION_NOT_SENT" && /^We couldn't send email to dw2\.gone@example\.com\./.test(inv2.body.detail ?? "") && r2.length === 0
+    && (await inbox.list("dw2.gone@example.com", undefined)).messages.length === 0 && sql(`select count(*) from platform_invitation where email = 'dw2.gone@example.com'`) === "0", { inv2: inv2.body, r2 });
   ok("DW2 fail: the same invitation to an address that is not suppressed is sent (DW1's address: SENT, in the inbox)", r1[0]?.state === "SENT" && !!m1);
 
   // ----------------------------------------------------------------------- DW3 the two-step reset notice
@@ -226,6 +227,9 @@ try {
   const r4d = await db.msgOutbox.findMany({ where: { idempotencyKey: { contains: c4d } } });
   ok("DW4 pass: with no active handler, Owner or Admin, the firm's contact address gets it, TRANSACTIONAL with no person (never a reminder to nobody)",
     r4d.length === 1 && r4d[0].address === firmA.contactEmail.toLowerCase() && r4d[0].class === "TRANSACTIONAL" && r4d[0].subjectKind === null, r4d);
+  // PF-19e amendment (a test per sender): this last resort is TRANSACTIONAL, so its stored file is sealed (no words, no link).
+  const f4d = new TextDecoder().decode((await files.get(firmA.id, `msg/${firmA.id}/outbox/${r4d[0].id}.json`))!.bytes);
+  ok("DW4 pass (PF-19e): the last resort's stored file is sealed: none of the reminder's words, no link", JSON.parse(f4d).sealed === "msg-sealed-1" && !/complaint|acknowledge|http/i.test(f4d), f4d.slice(0, 120));
   sql(`update platform_staff set status = 'ACTIVE' where firm_id = '${firmA.id}' and status = 'SUSPENDED'`);
   await run();   // every email so far is sent before the day's count is set
 

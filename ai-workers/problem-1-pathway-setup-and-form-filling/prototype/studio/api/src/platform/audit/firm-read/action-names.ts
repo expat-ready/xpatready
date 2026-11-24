@@ -61,6 +61,7 @@ AuditActionNames.register("platform", {
   "platform.staff.money_keys_granted": "Gave a role with money permissions",
   "platform.invitation.created": "Invited a person",
   "platform.invitation.resent": "Re-sent an invitation",
+  "platform.invitation.not_sent": "Could not email an invitation",
   "platform.invitation.revoked": "Withdrew an invitation",
   "platform.invitation.accepted": "Accepted an invitation",
   "platform.invitation.refused_inviter": "Refused an invitation (inviter no longer allowed)",

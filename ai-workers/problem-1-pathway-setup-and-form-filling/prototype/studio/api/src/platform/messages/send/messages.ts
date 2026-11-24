@@ -84,8 +84,13 @@ const dayIn = (zone: string, at: Date) => new Intl.DateTimeFormat("en-CA", { tim
 
 /** PF-19e: the stored message opened, or null when it does not open for its row (unsealed, tampered, another owner's, a
  *  key no longer held): the worker fails it "content changed" and nothing is sent. Never logs the reason's value. */
-function opened(box: SecretBoxPort, firmId: string | null, outboxId: string, cls: "TRANSACTIONAL" | "SERVICE" | "MARKETING", bytes: Uint8Array): Rendered | null {
-  try { return openStored(box, firmId, outboxId, cls, bytes); } catch (e) { if (e instanceof SecretRefused || e instanceof SyntaxError) return null; throw e; }
+function opened(box: SecretBoxPort, firmId: string | null, outboxId: string, cls: "TRANSACTIONAL" | "SERVICE" | "MARKETING", bytes: Uint8Array, log?: (line: string) => void): Rendered | null {
+  try { return openStored(box, firmId, outboxId, cls, bytes); } catch (e) {
+    if (!(e instanceof SecretRefused || e instanceof SyntaxError)) throw e;
+    // Break m4: one line of ids and the refusal's code (a retired key, an unsealed file), never the body.
+    log?.(`messages: ${firmId ? `firm ${firmId}` : "platform account"} outbox ${outboxId} body did not open (${e instanceof SecretRefused ? e.code : "not JSON"}): failed "content changed"`);
+    return null;
+  }
 }
 
 function inTransaction(tx: Tx): Tx {
@@ -122,13 +127,6 @@ export class Messages implements MessagePort<Tx> {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:${firmId}:${key}`}))`;
     const had = await tx.msgOutbox.findFirst({ where: firmScope(firmId, { idempotencyKey: key }), select: { id: true, state: true, stateReason: true } });
     if (had) return { outboxId: had.id, state: had.state, reason: had.stateReason, repeated: true };
-    if (m.system) {
-      // PF-19e: one writer per firm and address counts the hour, so two sends never both take the last place.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:system:${firmId}:${address}`}))`;
-      const [{ n }] = await tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "msg_outbox" WHERE "firm_id" = ${firmId}::uuid AND "address" = ${address}
-        AND "idempotency_key" LIKE ${`${SYSTEM_KEY_PREFIX}%`} AND "created_at" > now() - interval '1 hour'`;
-      if (n >= SYSTEM_PER_ADDRESS_HOUR) throw new MessageLimited();
-    }
     let words: { subject: string; text: string; html?: string }, templateVersionId: string | null = null;
     if ("templateKey" in m.content) {
       // The firm's own version first, else the platform's; the newest published one.
@@ -143,6 +141,13 @@ export class Messages implements MessagePort<Tx> {
     } else words = m.content;
     for (const k of m.attachments) if (k.startsWith("msg/") || !(await this.d.files.exists(firmId, k))) throw new MessageRefused(`attachment ${k} is not a file of this firm`);
     const decision = await this.d.consent.allows(tx, { firmId, subject: m.person, channel: m.channel, address, class: m.class });
+    if (m.system && decision.allowed) {   // review m3: a suppressed address answers its refusal, never the limit
+      // PF-19e: one writer per firm and address counts the hour, so two sends never both take the last place.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:system:${firmId}:${address}`}))`;
+      const [{ n }] = await tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "msg_outbox" WHERE "firm_id" = ${firmId}::uuid AND "channel" = ${m.channel}::"MsgChannel" AND "address" = ${address}
+        AND "idempotency_key" LIKE ${`${SYSTEM_KEY_PREFIX}%`} AND "created_at" > now() - interval '1 hour'`;
+      if (n >= SYSTEM_PER_ADDRESS_HOUR) throw new MessageLimited();
+    }
     // PF-13: the firm's branding (sender name, colour, footer; the logo from part 1b) drawn by the one react-email layout.
     const brand = await emailBrandOf(tx, firmId, firm.operatingName, { base: this.d.publicBase ?? publicBaseUrl(), firmKey: firm.key }), id = randomUUID();
     const rendered = { ...render(id, { ...m, firmId }, { name: brand.name, replyTo: firm.contactEmail, brand }, words), html: await emailLayout(brand, words) };
@@ -245,7 +250,7 @@ export class Messages implements MessagePort<Tx> {
       };
       const file = await this.d.files.get(firmId, fileKeyOf(firmId, outboxId));
       if (!file || (await sha256Hex(file.bytes)) !== row.rendered_hash) { await end("FAILED", "content changed"); return "failed" as const; }
-      const rendered = opened(this.box, firmId, outboxId, row.class, file.bytes);
+      const rendered = opened(this.box, firmId, outboxId, row.class, file.bytes, this.d.log);
       if (!rendered || rendered.outboxId !== outboxId || rendered.firmId !== firmId || rendered.to !== row.address || rendered.class !== row.class) { await end("FAILED", "content changed"); return "failed" as const; }
       const decision = await this.d.consent.allows(tx, { firmId, subject: row.subject_kind && row.subject_id ? { kind: row.subject_kind, id: row.subject_id } : undefined, channel: row.channel, address: row.address, class: row.class });
       if (!decision.allowed) { await end("SUPPRESSED", gateReason(decision)!); return "suppressed" as const; }
@@ -308,7 +313,7 @@ export class Messages implements MessagePort<Tx> {
       const where = { id: outboxId }, fail = async (reason: string) => { await tx.msgOutbox.update({ where, data: { state: "FAILED", stateReason: reason } }); return "failed" as const; };
       const file = await this.d.files.get(PLATFORM_FILES_SPACE, fileKeyOf(null, outboxId));
       if (!file || (await sha256Hex(file.bytes)) !== row.rendered_hash) return fail("content changed");
-      const rendered = opened(this.box, null, outboxId, "TRANSACTIONAL", file.bytes);
+      const rendered = opened(this.box, null, outboxId, "TRANSACTIONAL", file.bytes, this.d.log);
       if (!rendered || rendered.outboxId !== outboxId || rendered.firmId !== null || rendered.to !== row.address) return fail("content changed");
       const adapter = this.d.channels.get(row.channel);
       if (!adapter) return fail(`no ${row.channel.toLowerCase()} channel registered`);

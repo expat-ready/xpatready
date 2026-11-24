@@ -102,12 +102,12 @@ export class MessageRefused extends Error {
 
 /** A concurrent send with the same key committed first, after this caller's snapshot (REPEATABLE READ): nothing was
  *  written; run the caller's transaction again and send answers the first row (repeated: true). */
+export class MessageRepeated extends Error {
+  constructor(readonly idempotencyKey: string) { super(`a concurrent send used idempotency key ${idempotencyKey} first: retry, and the retry answers that message`); this.name = "MessageRepeated"; }
+}
 /** PF-19e: a system message over SYSTEM_PER_ADDRESS_HOUR to one address this hour; nothing was written. */
 export class MessageLimited extends Error {
   constructor() { super(`not sent: at most ${SYSTEM_PER_ADDRESS_HOUR} account emails an hour go to one address`); this.name = "MessageLimited"; }
-}
-export class MessageRepeated extends Error {
-  constructor(readonly idempotencyKey: string) { super(`a concurrent send used idempotency key ${idempotencyKey} first: retry, and the retry answers that message`); this.name = "MessageRepeated"; }
 }
 
 /** Plain named-field replacement ({{ field }}); a field without a value is refused, never sent blank. */

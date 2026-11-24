@@ -180,6 +180,15 @@ try {
   const okReset = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR });
   ok("PF-19e DW4 fail: the same reset to an address that takes email → 200 (never 500), and no notice_not_sent line", okReset.status === 200 && audits("platform.staff.notice_not_sent") === notSent0 + 1, okReset.body);
 
+  // ----------------------------------------------------------------------- DW4 an invitation to a suppressed address (break B2)
+  await db.msgSuppression.create({ data: { firmId: firmA.id, channel: "EMAIL", address: "dw4.gone@example.com", reason: "HARD_BOUNCE", createdBy: "seed:pf19e" } });
+  const invNot0 = audits("platform.invitation.not_sent");
+  const inv4 = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "dw4.gone@example.com", roles: ["CASE_OFFICER"] } });
+  ok("PF-19e DW4 pass: an invitation to a suppressed address → 409 \"We couldn't send email to <address>. Ask your firm's Owner or Admin to check it.\", one platform.invitation.not_sent line, no invitation kept, the address still suppressed",
+    inv4.status === 409 && inv4.body.code === "INVITATION_NOT_SENT" && inv4.body.detail === "We couldn't send email to dw4.gone@example.com. Ask your firm's Owner or Admin to check it."
+    && audits("platform.invitation.not_sent") === invNot0 + 1 && sql(`select count(*) from platform_invitation where email = 'dw4.gone@example.com'`) === "0" && (await db.msgSuppression.count({ where: { address: "dw4.gone@example.com" } })) === 1, inv4.body);
+  freeSeats();
+
   // ----------------------------------------------------------------------- DW3 the platform's own mail at the daily cap
   await messages.dispatch(firmA.id, [tr.outboxId]);   // DW2's receipt: counted, so the day's counter row exists
   await run();
@@ -195,6 +204,10 @@ try {
   ok("PF-19e DW3 pass: with the trial firm at its daily cap of 50, an invitation, a two-step reset and a sign-in code still send (SENT), and the day's count stays 50",
     inv3.status === 201 && inv3.body.emailHeld === undefined && reset3.status === 200 && code3.sent === true && i3?.state === "SENT" && tRows.length === 3 && tRows.every((r) => r.state === "SENT")
     && sql(`select sent from msg_send_counter where firm_id = '${firmA.id}' and day = '${day}'`) === "50", { inv3: inv3.body, reset3: reset3.body, code3, i3, tRows });
+  // Amendment (review M3): a test per sender. The reset notice's and the code email's stored files hold none of their words.
+  const tFiles = await Promise.all(tRows.map(async (r) => textOf(await fileOf(firmA.id, r.id))));
+  ok("PF-19e DW1 pass (each sender): the two-step reset notice's and the sign-in code's stored files are sealed and hold no code or notice words",
+    tFiles.length === 3 && tFiles.every((f) => JSON.parse(f).sealed === "msg-sealed-1" && !/118833|two-step sign-in was reset|reset your password/i.test(f)), tFiles.map((f) => f.slice(0, 80)));
   const staffMail = await new MessagesMail({ db, messages, files }).send({ firmId: firmA.id, to: "dw3.client@example.com", replyTo: firmA.contactEmail, class: "TRANSACTIONAL", subject: "Your receipt", text: "Receipt words." });
   await run();
   ok("PF-19e DW3 fail: a TRANSACTIONAL email that is not the platform's own (a receipt) is still held at the cap (QUEUED \"daily limit\")",
@@ -204,6 +217,15 @@ try {
   const sixth = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR });
   ok(`PF-19e DW3 fail: the sixth account email in an hour to one address → 429 EMAIL_HOURLY_LIMIT in words, nothing reset, no row written`,
     more.every((s) => s === 200) && sixth.status === 429 && sixth.body.code === "EMAIL_HOURLY_LIMIT" && /not reset/.test(sixth.body.detail ?? "") && (await rowsTo(tEmail)).length === SYSTEM_PER_ADDRESS_HOUR, { more, sixth: sixth.body });
+  // Break B1: an invitation over the hour's limit → 429, and Resend over it keeps the link that works.
+  freeSeats();
+  const inv6 = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "dw3.storm@example.com", roles: ["CASE_OFFICER"] } });
+  const resent: number[] = [];
+  for (let i = 1; i < SYSTEM_PER_ADDRESS_HOUR; i++) resent.push((await call(base, "POST", `/api/platform/staff/invitations/${sql(`select id from platform_invitation where email = 'dw3.storm@example.com' and revoked_at is null`)}/resend`, { token: tR, body: {} })).status);
+  const live = sql(`select id from platform_invitation where email = 'dw3.storm@example.com' and revoked_at is null`);
+  const over = await call(base, "POST", `/api/platform/staff/invitations/${live}/resend`, { token: tR, body: {} });
+  ok("PF-19e DW3 fail (break B1): a resend over the hour's limit → 429 EMAIL_HOURLY_LIMIT, and the last emailed link still works (not revoked)",
+    inv6.status === 201 && resent.every((x) => x === 200 || x === 201) && over.status === 429 && over.body.code === "EMAIL_HOURLY_LIMIT" && sql(`select id from platform_invitation where email = 'dw3.storm@example.com' and revoked_at is null`) === live, { inv6: inv6.body, resent, over: over.body });
   const code6 = await handleCustomEmail({ triggerSource: "CustomEmailSender_ForgotPassword", request: { code: "enc", userAttributes: { email: tEmail } } }, { decrypt: async () => "118834", mail: new MessagesMail({ db, messages, files }), firmOf: async () => firmA.id });
   ok("PF-19e DW3 fail: a sign-in code over the hour's limit is not sent and says so", code6.sent === false && /an hour/.test(code6.reason ?? ""), code6);
   const forged = await db.$transaction((tx) => messages.send(tx, { firmId: firmA.id, channel: "EMAIL", class: "TRANSACTIONAL", address: "dw3.forged@example.com", content: { subject: "x", text: "y" }, idempotencyKey: "system:forged" })).then(() => "written", (e: Error) => e.name);
