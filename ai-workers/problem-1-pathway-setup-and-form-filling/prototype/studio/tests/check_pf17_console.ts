@@ -12,6 +12,9 @@
 // j_93 W2 "each firm's failed jobs are its own dead letters") each firm's failedJobs is the count of its own entries on
 // PF-14's dead-letter list (PlatformJobs.deadLetters), one read per call, null (never a 500) when that read fails. One process, a
 // scratch database (dropped at the end), a small Nest app built from the features' own classes. No model call (US$0).
+// Part 4 (concept r2, Lead 26 on #3470): DW10 also checks the read asks for PF-14's DEAD_LETTER_CAP (m2); DW11 a read that
+// reaches the cap or fails sets failedJobsComplete false on the page and on one firm (m1); DW12 failed jobs leave health and
+// reasons unchanged (m3); DW13 one firm's plan is livePlanOf's, the support queue's source (challenge M2).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf17_console.ts
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
