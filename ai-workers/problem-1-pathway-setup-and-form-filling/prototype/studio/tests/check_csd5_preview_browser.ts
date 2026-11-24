@@ -198,6 +198,7 @@ try {
   ok("CS-D5 W1: page 150 of 200 is drawn within 2 s of Next page, and the toolbar answers a click meanwhile", ms <= 2000 && answered, ms);
   await page.locator("[data-preview-next]").dblclick(); await ready();
   ok("CS-D5 W1: two quick clicks on Next turn two pages and never break the panel (break m1)", (await page.locator("[data-preview-page]").textContent()) === "Page 152 of 200" && (await page.locator('[data-preview-state="ready"]').count()) === 1, await page.locator("[data-preview-page]").textContent());
+  await page.locator("[data-preview-facts]").hover();   // off the button first: the double-click left the pointer on it
   await page.locator("[data-preview-next]").hover();
   ok("CS-D5 W1: the icon-only Next page button has a tooltip on hover (review R2-1, BIC-14)", await page.getByRole("tooltip").filter({ hasText: "Next page" }).first().waitFor({ timeout: 3_000 }).then(() => true, () => false));
   await closePanel();
