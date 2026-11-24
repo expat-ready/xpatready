@@ -15,6 +15,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { recorder } from "./runtime/api.ts";
+import { readReason } from "../api/src/platform/web-address/service.ts";
 
 const PORT = Number(process.argv[2] ?? 4798), DB = process.argv[3] ?? "xr_studio_runtime_pf28a2", BASE = `http://localhost:${PORT}`;
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
@@ -91,5 +92,13 @@ const pBad: string[] = [];
 for (const [m, p, t, b, f] of P) { const a = await call(m, p, t === tS ? await op() : t, b); if (!([404, 409, 422].includes(a.status) && !(f in a.fields))) pBad.push(`${m} ${p.replace(/[0-9a-f-]{36}/, ":id")} → ${a.status} ${JSON.stringify(a.fields).slice(0, 160)}`); }
 const f2 = await call("GET", "/api/platform/find?q=ab", tR);
 ok(`A2 P pass: a value each rule takes passes the parse (5000 letters of 2 UTF-16 units count as 5000; find with 2 characters answers 200) (${P.length + 1} calls)`, pBad.length === 0 && f2.status === 200, { pBad, find: f2.status });
+// CodeQL #148 (js/polynomial-redos, Lead 2 on #3544): a reason of ~10k tabs (inside, and around a word) answers in under
+// 50 ms, with its words, never a slow regex; the old edge-space pattern is timed too, so this line shows what it would catch.
+const timed = (f: () => unknown) => { const t = performance.now(); f(); return performance.now() - t; };
+const tabs = "\t".repeat(10_000), OLD = /^[\s\u00a0]+|[\s\u00a0]+$/g;
+const cases = [`a${tabs}a`, `${tabs}a`, `a${tabs}`, `a${"\t".repeat(3_990)}a`, ` ${"\t".repeat(3_000)}x`];
+const ms = cases.map((c) => timed(() => readReason(c))), oldMs = timed(() => `a${"\t".repeat(10_000)}!`.replace(OLD, ""));
+ok(`A2 ReDoS fail: each reason of up to ~10k tabs answers in under 50 ms (slowest ${Math.max(...ms).toFixed(1)} ms; the old pattern took ${oldMs.toFixed(0)} ms on one); the words are kept`, ms.every((x) => x < 50)
+  && readReason(`a${tabs}a`).ok === false && readReason(`  ${"\t".repeat(10)}Sample reason\t `).ok === true && (readReason(`  ${"\t".repeat(10)}Sample reason\t `) as { reason: string }).reason === "Sample reason", { ms, oldMs });
 ok("A2 N: nothing stored by any probe (bookings, types, hours, offices, settings, support messages, sign-up links)", rows() === before, { before, after: rows() });
 process.exit(summary() ? 1 : 0);

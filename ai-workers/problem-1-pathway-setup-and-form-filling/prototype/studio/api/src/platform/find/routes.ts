@@ -1,6 +1,6 @@
 // PF-30a: GET /api/platform/find?q= — the one find door (batch 5). Any signed-in staff member may ask; each finder applies
 // its own area's view rule (front office: agent/prospect:view.own/view.all), so the door itself opens nothing. A text
-// of fewer than 2 or more than 100 characters (trimmed) is refused 400; the refusal never repeats it. The query is never
+// of fewer than 2 or more than 100 characters (trimmed) is refused 422 naming q (R1.10 A2; was 400); the refusal never repeats it. The query is never
 // logged: the request line names the route pattern only (PF-23 hook.ts), and nothing here writes it.
 import { Controller, Get, Inject, Query, Req } from "@nestjs/common";
 import { FindText, type FindResult } from "../../../../ports/find.ts";
@@ -11,7 +11,7 @@ import { FindRegistry } from "./registry.ts";
 
 type R = { platform?: StaffContext };
 /** The one query key the door reads. */
-export const FindQueryKeys = strict({ q: z.string().optional() });   // any length here: FindText answers 400 for every bad length (breaker m2)
+export const FindQueryKeys = strict({ q: z.string().optional() });   // any length here: FindText answers 422 (QUERY_LENGTH) for every bad length (breaker m2)
 
 @Controller("api/platform")
 export class FindController {
