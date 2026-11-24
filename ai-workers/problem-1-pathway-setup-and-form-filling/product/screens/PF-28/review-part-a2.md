@@ -70,3 +70,103 @@ It is tight. It names exactly one route string and excuses only that route's "un
 **Verdict: Approve** — commit a68a942c27bfd94d401cfc1020ab9b496315d0b7. No open Blocker or Major.
 
 Reviewer: Approve a68a942c27bfd94d401cfc1020ab9b496315d0b7
+
+
+# Round 2 (diff only): the CodeQL #148 fix
+
+Head **2c7df159581e5ac483681731089063e113f4299d** (same branch). Reviewer: Opus 5.5, 24 Nov. I did not write it and changed no code. Scope: `git diff a68a942c2..2c7df1595`, 5 files:
+- `web-address/service.ts`: a 4000-unit bound and `trimEdges`;
+- one new line in `check_pf28_a2_fields.ts`;
+- two comments in `find/routes.ts` (round 1's m4);
+- round 1's two records files, added as written.
+
+Live AI off; cost US$0. Ports: only :4436 for the copy; the PF-25 check starts its own server on a free port (`listen(0)`). Never :4400.
+
+## Checks run
+- **`check_pf28_a2_fields.ts`** by its usage line, `rvr2` on :4436 (db `xr_studio_rvr2`, stopped after): **7/7, exit 0**.
+  - The new line: slowest reason 0.3 ms; the line's own stand-in for the old pattern took 159 ms on one input.
+- **`check_pf25_web_address.ts`** (tsx, its usage line): **72/72, exit 0**.
+  - This includes the reason lines: break m9 (padded, direction control, over 500), Devin on #1763 (emoji counted as code points), and the database refusing a padded or direction-changing reason.
+- **`typecheck.mjs`**: exit 0 (15 known, 0 new).
+- **CodeQL on this head**: `Analyze (javascript-typescript)` was still in progress when I read the check runs. The alert API answers 403 to this session, so I could not see whether #148 has closed (see "Could not check").
+
+## (1) Is `trimEdges` exactly the old replace?
+**Yes.**
+- **The class.** I tested every UTF-16 unit from 0 to FFFF against the class. It holds 30 units, none of them a surrogate: 9-D, 20, A0, 1680, 180E, 2000-200D, 2028, 2029, 202F, 205F, 2060, 3000, FEFF. So one unit is one class character, and testing `s[a]` one unit at a time matches the old regex, which had no `u` flag and also read units.
+- **`EDGE_CHAR` has no `g` flag**, so `.test` keeps no `lastIndex` state between calls.
+- **The old regex's behaviour:**
+  - With `/g` and no `m`, the old pattern removes the longest run at the start, and then the longest run that ends the string.
+  - A string made only of spaces becomes "". At the end position nothing matches, because `C+` needs at least one character.
+  - `trimEdges` does the same from each end, and its `b > a` stops the two runs from overlapping.
+- **Fuzzing (scratch script):** 3,457,437 inputs, **0 differences** between old and new:
+  - every string up to 6 characters over 12 sample characters (spaces, no-break, zero-width, FEFF, 3000, a letter, both surrogate halves, 85, 180E, newline);
+  - 200,000 random strings up to 60 units, half from the class and half any unit.
+- **The database rule** (`20261114230000_pf25_web_address/migration.sql:79-82`, `platform_web_address_reason_ok`) is unchanged and uses the same class.
+  - I ran it on the local PostgreSQL (port 54329, read-only query, function body inlined). Its class matches exactly the same 30 code points from 1 to FFFD.
+  - Its `length` counts code points, as `[...reason]` does.
+  - It checks the reason the service has already trimmed, so its own trim changes nothing. Service and database agree.
+
+## (2) Does the 4000-unit bound refuse a reason the old code kept?
+**Only one kind: a reason padded with more than about 3000 edge spaces.** That does not matter in practice.
+- A kept reason is at most 500 code points, which is at most 1000 units. So the bound can only refuse input that has more than 3000 units of edge spaces around a valid reason.
+- Measured:
+  - "Sample reason" followed by 4000 spaces (4013 units): the old code kept "Sample reason"; the new code refuses it.
+  - 500 emoji (1000 units) with 1500 + 1500 spaces is accepted; with 1501 + 1500 it is refused.
+- It does not matter because no client sends such a reason:
+  - The change is a system-console call: `reason` comes from the body, and no web screen posts it.
+  - The guard upstream (`system-identity/guard.ts:36-39`) lets this input through, because it trims before counting. The service then refuses it with a 422 on the reason field, in its existing words ("Keep the reason to 500 characters."). That is true of the text as sent, and nothing is written.
+- The same order explains two smaller changes in the message (n3). Both inputs are refused before and after:
+  - an input over 4000 units that also holds a control character gets the length message instead of "Remove the control…";
+  - one that trims to fewer than 3 characters (10k tabs and "a") gets the length message instead of "at least 3".
+
+## (3) Is any polynomial regex left on readReason's path?
+**No.**
+- `readReason` checks, in order: the type, `input.length` (no regex), then `BAD_CHARS.test`. `BAD_CHARS` is one class with no quantifier, so it is linear.
+- `trimEdges` tests one character at a time against a single class, at most once per unit, so it is linear.
+- `[...reason]` is linear too.
+- Upstream on the HTTP path, the guard's `lineText` uses one class with `/gu`, then the built-in `.trim()`, and `reasonOf` uses `/[\p{L}\p{N}]/u`. All three are linear, and none is in the diff.
+- Measured worst cases at the bound (4000 units), new code: 0.57 ms, 0.16 ms and 0.21 ms.
+
+## (4) Would the new line fail on the old code?
+**Yes, through its first case. The margin is about 2 to 3 times (n1).**
+- I ran a68a942c2's `readReason`, copied verbatim into a scratch script, on the line's five inputs. Times are on this machine:
+
+| Input | Old code | New code |
+|---|---|---|
+| a + 10k tabs + a | **110.6 ms** | 0.14 ms |
+| 10k tabs + a | 0.1 ms | 0.01 ms |
+| a + 10k tabs | 3.3 ms | 0.01 ms |
+| a + 3990 tabs + a | 21.7 ms | 0.24 ms |
+| space + 3000 tabs + x | 0.0 ms | 0.17 ms |
+
+- So `ms.every(x => x < 50)` fails on the old code, and only because of the first case.
+- The growth is quadratic: a + 100k tabs + a took 10,949 ms on the old code and 0.03 ms on the new.
+- Both versions give the same answers on these inputs. The two meaning checks (10k tabs refused; "Sample reason" kept with its tabs and spaces trimmed) hold on both, so only the timing tells them apart.
+
+## Issues (all optional; no Blocker, no Major)
+- **n1 (optional): the line catches a regression only on a machine like this one.**
+  - The old code took 110 ms against the 50 ms bound; the line's own stand-in took 159 ms.
+  - On a CI runner about twice as fast, a return of the old regex could pass.
+  - Fix: about 20k tabs in the first case. The old code would then take about 440 ms (quadratic), and the new code still refuses at the bound in under 0.1 ms.
+- **n2 (optional): the "old pattern" the line prints is not the old pattern.**
+  - The line times `OLD = /^[\s\u00a0]+|[\s\u00a0]+$/g`, a shorter class, on `a…!`, while the comment says "the old edge-space pattern is timed too".
+  - It is only information, not asserted. Fix: say "a stand-in for", or copy the old class.
+- **n3 (no action):** over-bound input now gets the length message before the control-character or too-short message. Both are refused before and after, and the length message is true of the raw input.
+- **Outside this diff (for the lead's CodeQL list, not this PR):** `api/src/case-notes/service.ts:44` trims a note with the same shape, `v.replace(/^[\s]+|[\s]+$/g, "")`, before any length check. I did not check whether its body is bounded upstream.
+
+## Round 1's minor m4
+Done: `find/routes.ts:3` and `:14` now say 422 (QUERY_LENGTH). The check's Q line confirms it: 422 naming q.
+
+## Journey score
+**8/10, pass**, carried forward from round 1 (`journey-test-reviewer-2026-11-24-part-a2.md`).
+- The diff changes no screen and no journey. The only behaviour it changes is a refusal for a crafted reason over 4000 units.
+- J7 (the system address change) is re-covered by the PF-25 check, 72/72.
+- As the brief limits me to this file, I wrote no new journey report.
+
+## Could not check
+- Whether CodeQL alert #148 closed on this head. JS analysis was in progress, and the code-scanning API answers 403 here.
+- The full CI on 2c7df1595.
+
+**Verdict: Approve** — commit 2c7df159581e5ac483681731089063e113f4299d. No open Blocker or Major.
+
+Reviewer: Approve 2c7df159581e5ac483681731089063e113f4299d
