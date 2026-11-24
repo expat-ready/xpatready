@@ -2,7 +2,7 @@
 
 current_lead: local_11ef6843-97be-454a-88c6-7b65fd7e67ac Lead 21 · 24 Nov 10:02 IST (after Lead 20, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 10:08 IST: Lead 21, check 4dfd36d5. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Queue: #3184 + #3370 (batch #3392), #3381 stacked (#3395), #3368 (#3393), #3380 (#3396), then #3377; #3366 waits on 'fast', #3202 labelled but dequeued. #3379 waits on the founder (refused body edit). #3367 new head 5b98ba107, full run going. #3209 only after #3184 lands. AWS Step 20 raw outputs: private home, path in that section. 53/101 by 09:05 (not recounted). Weekly 56%, disk 15 GB. No standby.
+updated: 2026-11-24 10:08 IST: Lead 21, check 4dfd36d5. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Queue: #3184 + #3370 (batch #3392), #3381 stacked (#3395), #3368 (#3393), #3380 (#3396), then #3377; #3366 waits on 'fast', #3202 labelled but dequeued. #3379 reworded on the founder's yes (A352), pr-rules re-running. #3367 new head 5b98ba107, full run going. #3209 only after #3184 lands. AWS Step 20 raw outputs: private home, path in that section. 53/101 by 09:05 (not recounted). Weekly 56%, disk 15 GB. No standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,6 +18,7 @@ updated: 2026-11-24 10:08 IST: Lead 21, check 4dfd36d5. **Hand-over: the last tw
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A352 | 24 Nov ~10:11 IST (typed to Lead 21) | yes to #3379's wording; concurs with the Lead's 'decide when you can'; the Lead drives the sandbox set-up (Stripe test mode, BoldSign, Google and Microsoft OAuth test apps) in the browser, one step and one question at a time; he watches and logs in | #3379 reworded; Stripe first; in progress |
 | A351 | 24 Nov 09:27 (typed to Lead 17) | five delivery problems: implement from now without delaying product | `design/delivery-five-2026-11-24.md` (end); C4 done: `design/p702-evaluation-2026-11-24.md`; open |
 | A350 | 24 Nov ~09:22 (typed to Lead 19) | do every needs-me step in the browser; AWS run US$2 yes; RQ-01 inside the 101, no blocker, parallel tracks; **commit 29 Nov**, 10-15 a day; research security and counsel; on-call given in chat | in progress; full in the plan file |
 | A348 | 24 Nov ~08:25 (typed to Lead 18) | recovery plan, clean up lanes and disk, near-done first, lessons live, keep the dates | plan file above; in progress |
