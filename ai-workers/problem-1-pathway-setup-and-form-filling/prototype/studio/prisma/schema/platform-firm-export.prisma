@@ -1,0 +1,44 @@
+// platform-firm-export.prisma — the firm's full data download. Owner: Lead B (platform, P-559).
+//
+// PF-11 part 1 (map row 22; SA-2-33, AG-16-20, AG-16-22): one row per export request. The Owner asks with an operationId
+// (the same id again is the same request); the job builds one zip and stores it through FilesPort under a key per attempt
+// (firm-export/<id>/<attempt>.zip); READY until the Sample 7 days pass, then EXPIRED (the file stays stored until PF-Fd
+// adds a delete: a contract gap). Rules Prisma cannot say are checks in migration 20261124120000_pf11_firm_export.
+// Walled by PF-12 (forced policy, the firm-first gate).
+
+/// AG-16-20's states.
+enum PlatformFirmExportState {
+  QUEUED
+  READY
+  DOWNLOADED
+  EXPIRED
+  FAILED
+}
+
+model PlatformFirmExport {
+  id           String                  @id @default(uuid()) @db.Uuid
+  firmId       String                  @map("firm_id") @db.Uuid
+  operationId  String                  @map("operation_id") @db.Uuid
+  /// The Owner who asked: staff of firm_id (the (firm_id, requested_by) key).
+  requestedBy  String                  @map("requested_by") @db.Uuid
+  state        PlatformFirmExportState @default(QUEUED)
+  attempt      Int                     @default(0)
+  fileKey      String?                 @map("file_key")
+  sha256       String?
+  sizeBytes    Int?                    @map("size_bytes")
+  /// Rows per section, `<module>/<section>` → count (ids and numbers only).
+  rowCounts    Json?                   @map("row_counts")
+  expiresAt    DateTime?               @map("expires_at") @db.Timestamptz
+  downloadedAt DateTime?               @map("downloaded_at") @db.Timestamptz
+  /// Plain words, never personal data.
+  failedReason String?                 @map("failed_reason")
+  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime                @updatedAt @map("updated_at") @db.Timestamptz
+
+  firm      PlatformFirm  @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  requester PlatformStaff @relation(fields: [firmId, requestedBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, operationId])
+  @@index([firmId, createdAt])
+  @@map("platform_firm_export")
+}

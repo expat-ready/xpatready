@@ -123,6 +123,9 @@ model PlatformFirm {
   supportTickets  PlatformSupportTicket[] // platform-support.prisma (PF-18bk)
   supportMessages PlatformSupportMessage[] // platform-support.prisma (PF-18bk)
 
+  // back-relation slot: firm export (PF-11)
+  firmExports PlatformFirmExport[] // platform-firm-export.prisma
+
   @@map("platform_firm")
 }
 
@@ -289,6 +292,9 @@ model PlatformStaff {
   office PlatformStaffOffice? // platform-offices.prisma (the person's office)
   notificationPrefs PlatformNotificationPreference[] // platform-offices.prisma (PF-18a part 2: the person's notification switches)
   supportTicketsRaised PlatformSupportTicket[] // platform-support.prisma (PF-18bk: the raiser)
+
+  // back-relation slot: firm export (PF-11)
+  firmExportsRequested PlatformFirmExport[] // platform-firm-export.prisma (the requester)
 
   @@unique([firmId, email])
   /// The target of the (firm_id, staff_id) keys below: a row of firm A can never point at firm B's staff (break B-2).
