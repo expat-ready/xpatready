@@ -10,7 +10,7 @@ import { Button, Notice, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { SystemFrame, takeArrival, useSystemStaff } from "../frame";
 import { systemApi, SystemApiError, useSystemToken } from "../session";
-import { BREACH_MANAGE_KEY, BreachList, COPY, DECISION_WORDS, firmWords, noticesText, STATUS_WORDS, statusOf, whenWords, type Breach } from "./contract";
+import { BREACH_MANAGE_KEY, BreachList, COPY, DECISION_WORDS, firmsText, noticesText, STATUS_WORDS, statusOf, whenWords, type Breach } from "./contract";
 import { RecordBreach } from "./record-breach";
 
 function Row({ b, fresh }: { b: Breach; fresh: boolean }) {
@@ -18,11 +18,11 @@ function Row({ b, fresh }: { b: Breach; fresh: boolean }) {
   return (
     <tr data-breach-row={b.id} data-status={statusOf(b)} data-fresh={fresh || undefined} className={cn(fresh && "bg-primary/5")}>
       <td className="whitespace-nowrap"><time dateTime={b.discoveredAt}>{whenWords(b.discoveredAt)}</time></td>
-      <td className="min-w-64 max-w-xl [overflow-wrap:anywhere]">{b.description}</td>
-      <td className="min-w-40 [overflow-wrap:anywhere]">{b.firms.length ? b.firms.map(firmWords).join(", ") : <span className="text-text-muted">{COPY.underInvestigation}</span>}</td>
+      <td className="min-w-64 max-w-xl [overflow-wrap:anywhere]"><span className="line-clamp-2" title={b.description}>{b.description}</span></td>
+      <td className="min-w-40 [overflow-wrap:anywhere]">{b.firms.length ? firmsText(b.firms) : <span className="text-text-muted">{COPY.underInvestigation}</span>}</td>
       <td className="min-w-32">{DECISION_WORDS[b.decision]}{b.decision === "NO_NOTICE" && b.decisionReason ? <span className="block text-xs text-text-muted [overflow-wrap:anywhere]">why: {b.decisionReason}</span> : null}</td>
       <td className="whitespace-nowrap">{noticesText(b)}</td>
-      <td className="whitespace-nowrap"><span className={cn("font-medium", s.tone)}><span aria-hidden>{s.mark} </span>{s.word}</span></td>
+      <td className="whitespace-nowrap"><span className={cn("font-medium", s.tone)} title={s.hint}><span aria-hidden>{s.mark} </span>{s.word}</span></td>
     </tr>
   );
 }
@@ -31,13 +31,16 @@ function BreachesBody() {
   const token = useSystemToken(), me = useSystemStaff(), qc = useQueryClient();
   const list = useQuery({ queryKey: ["sys", "breaches", token], enabled: !!token, retry: false, queryFn: async () => BreachList.parse(await systemApi("/register/breaches")) });
   const [open, setOpen] = React.useState(false), [fresh, setFresh] = React.useState<string | null>(null);
-  const heading = React.useRef<HTMLHeadingElement>(null);
+  const heading = React.useRef<HTMLHeadingElement>(null), recordButton = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => { if (list.data && takeArrival()) heading.current?.focus(); }, [!!list.data]);   // eslint-disable-line react-hooks/exhaustive-deps -- the first answer after a sign-in
   const d = list.data;
   if (!d && !list.isError) return <p role="status" className="text-sm text-text-muted" data-loading>Loading the breaches…</p>;
   const refused = list.error instanceof SystemApiError ? list.error : null;
   const manage = me.keys.includes(BREACH_MANAGE_KEY) && refused?.status !== 403;
-  const recorded = (id: string) => { setOpen(false); setFresh(id); void qc.invalidateQueries({ queryKey: ["sys", "breaches"] }); };
+  const refresh = () => void qc.invalidateQueries({ queryKey: ["sys", "breaches"] });
+  const recorded = (id: string) => { setOpen(false); setFresh(id); refresh(); };
+  // Every close refreshes the list, so a breach whose answer was lost shows before anyone records it again (break m1).
+  const toggle = (o: boolean) => { setOpen(o); if (!o) refresh(); };
   const title = (
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
@@ -45,7 +48,7 @@ function BreachesBody() {
         <p className="mt-1 text-sm text-text-muted">{COPY.breachesLead}</p>
         {!manage && !refused ? <p className="mt-1 text-sm text-text-muted" data-read-only>{COPY.readOnly}</p> : null}
       </div>
-      {manage ? <Button onClick={() => setOpen(true)} className="max-sm:min-h-11">Record a breach</Button> : null}
+      {manage ? <Button ref={recordButton} onClick={() => setOpen(true)} className="max-sm:min-h-11">Record a breach</Button> : null}
     </header>
   );
   // Without the key (403) the API's own words, and nothing to press (BR-8).
@@ -64,7 +67,7 @@ function BreachesBody() {
               </Table>
               <p className="text-xs text-text-muted">{d.truncated ? COPY.truncated : `${d.breaches.length} ${d.breaches.length === 1 ? "breach" : "breaches"}`}</p>
             </>}
-      {manage ? <RecordBreach open={open} onOpenChange={setOpen} onRecorded={recorded} /> : null}
+      {manage ? <RecordBreach open={open} onOpenChange={toggle} onRecorded={recorded} onMaybeRecorded={refresh} returnFocus={() => recordButton.current} /> : null}
     </div>
   );
 }

@@ -44,13 +44,13 @@ function FirmPicker({ chosen, onChange, error }: { chosen: Firm[]; onChange: (f:
       {left.length ? <ul aria-label="Matching firms" className="flex flex-col gap-1">
         {left.slice(0, 8).map((f) => <li key={f.id}><Button type="button" variant="outline" size="sm" className="h-auto min-h-8 whitespace-normal text-left" onClick={() => change([...chosen, f])} data-add-firm={f.id}>Add {firmWords(f)}</Button></li>)}
       </ul> : null}
-      <p role="status" className="text-xs text-text-muted">{say ?? ""}</p>
+      <p role="status" className="text-xs text-text-muted">{say ?? (left.length > 8 ? COPY.firmsMore : "")}</p>
       {error ? <p role="alert" className="text-xs text-text-danger">{error}</p> : null}
     </fieldset>
   );
 }
 
-export function RecordBreach({ open, onOpenChange, onRecorded }: { open: boolean; onOpenChange: (o: boolean) => void; onRecorded: (id: string) => void }) {
+export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMaybeRecorded }: { open: boolean; onOpenChange: (o: boolean) => void; onRecorded: (id: string) => void; returnFocus: () => HTMLElement | null; onMaybeRecorded: () => void }) {
   const [d, setD] = React.useState<RecordDraft>(blank), [key, setKey] = React.useState("");
   const [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false);
   const form = React.useRef<HTMLFormElement>(null), [refused, setRefused] = React.useState(0);
@@ -65,16 +65,18 @@ export function RecordBreach({ open, onOpenChange, onRecorded }: { open: boolean
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    if (!d.discoveredAt) { setErrors({ discoveredAt: "Give the day and time it was discovered." }); setRefused((n) => n + 1); return; }
     setBusy(true); setErrors({});
     try { onRecorded(Recorded.parse(await systemApi("/register/breaches", { method: "POST", json: recordBody(d), headers: { "idempotency-key": key } })).id); }
-    catch (x) { setErrors(x instanceof SystemApiError && x.problem.fields ? fieldErrors(x.problem.fields) : { other: x instanceof SystemApiError ? x.message : COPY.recordFailed }); setRefused((n) => n + 1); }
+    catch (x) {
+      // An earlier try's answer was lost, then the form changed: the key is spent, so the breach may be on the list already (review m1).
+      if (x instanceof SystemApiError && x.problem.code === "IDEMPOTENCY_KEY_REUSED") { onMaybeRecorded(); setErrors({ other: COPY.maybeRecorded }); setRefused((n) => n + 1); return; }
+      setErrors(x instanceof SystemApiError && x.problem.fields ? fieldErrors(x.problem.fields) : { other: x instanceof SystemApiError ? x.message : COPY.recordFailed }); setRefused((n) => n + 1); }
     finally { setBusy(false); }
   };
   const text = (k: "description" | "rootCause" | "containment" | "otherNotifications", label: string, hint?: string, rows = 2) =>
     <Field label={label} hint={hint} error={errors[k]}><Textarea rows={rows} value={d[k]} onChange={(e) => put(k, e.target.value)} data-field={k} /></Field>;
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title={COPY.recordTitle} description={COPY.recordLead} wide guard
+    <Dialog open={open} onOpenChange={onOpenChange} title={COPY.recordTitle} description={COPY.recordLead} wide guard returnFocus={returnFocus}
       footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
         <Button type="submit" form="record-breach" busy={busy} data-record-send>Record the breach</Button></>}>
       <form id="record-breach" ref={form} onSubmit={send} noValidate className="flex flex-col gap-4">

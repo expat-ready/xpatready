@@ -34,12 +34,12 @@ export type BreachList = z.infer<typeof BreachList>;
  *  one next step. Notify firms with no firm named yet is "Firms to be named"; a firm the API refused (NO_RECIPIENTS) still
  *  counts as owed. */
 export type BreachStatus = "DRAFT" | "DECISION_OWED" | "FIRMS_TO_NAME" | "NOTICES_OWED" | "RECORDED";
-export const STATUS_WORDS: Record<BreachStatus, { word: string; mark: string; tone: string }> = {
-  DRAFT: { word: "Draft: confirm it", mark: "◇", tone: "text-text-warn" },
-  DECISION_OWED: { word: "Decision owed", mark: "◆", tone: "text-text-warn" },
-  FIRMS_TO_NAME: { word: "Firms to be named", mark: "◆", tone: "text-text-warn" },
-  NOTICES_OWED: { word: "Notices owed", mark: "▲", tone: "text-text-danger" },
-  RECORDED: { word: "Recorded", mark: "●", tone: "text-text-ok" },
+export const STATUS_WORDS: Record<BreachStatus, { word: string; mark: string; tone: string; hint: string }> = {
+  DRAFT: { word: "Draft: confirm it", mark: "◇", tone: "text-text-warn", hint: "Opened from an alert; confirm the record before anything else." },
+  DECISION_OWED: { word: "Decision owed", mark: "◆", tone: "text-text-warn", hint: "Recorded; decide whether the affected firms are told." },
+  FIRMS_TO_NAME: { word: "Firms to be named", mark: "◆", tone: "text-text-warn", hint: "Firms are to be told, but none is named yet." },
+  NOTICES_OWED: { word: "Notices owed", mark: "▲", tone: "text-text-danger", hint: "Firms are to be told and some have not been sent their notice." },
+  RECORDED: { word: "Recorded", mark: "●", tone: "text-text-ok", hint: "Decided, and nothing is owed." },
 };
 type StatusOf = Pick<Breach, "status" | "decision" | "affectedFirms"> & { notices: { firmId: string }[] };
 export function statusOf(b: StatusOf): BreachStatus {
@@ -60,6 +60,11 @@ export const DECISION_WORDS: Record<Breach["decision"], string> = { UNDECIDED: "
 
 /** An id shown short: its first and last four, "3f2a…c91e" (UXL: ids chunked). */
 export const shortId = (id: string) => (id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id);
+/** At most `n` firm names, then "and N more" (break m3: a breach may name up to 200 firms). */
+export function firmsText(firms: { id: string; name: string | null }[], n = 3): string {
+  const shown = firms.slice(0, n).map(firmWords).join(", ");
+  return firms.length > n ? `${shown} and ${firms.length - n} more` : shown;
+}
 /** A firm's name, or its short id when the register could not name it. */
 export const firmWords = (f: { id: string; name: string | null }) => f.name ?? `Firm ${shortId(f.id)}`;
 
@@ -82,6 +87,7 @@ export function fromLocalBox(v: string): string | null {
 /** The "Record a breach" body (PF-21c OpenBody): optional texts left out when blank, never sent as "". */
 export type RecordDraft = { discoveredAt: string; description: string; firms: { id: string; name: string | null }[]; categories: string[]; rootCause: string; containment: string; otherNotifications: string; reason: string };
 export function recordBody(d: RecordDraft): Record<string, unknown> {
+  // An empty or half-typed box is sent as typed: the API refuses it with every other field at once (break m4).
   const out: Record<string, unknown> = { reason: d.reason, discoveredAt: fromLocalBox(d.discoveredAt) ?? d.discoveredAt, description: d.description };
   if (d.firms.length) out.affectedFirms = d.firms.map((f) => f.id);
   if (d.categories.length) out.dataCategories = d.categories;
@@ -110,9 +116,11 @@ export const COPY = {
   firmsHint: "Pick from the firm list; leave empty while under investigation.",
   firmsSearchShort: "Type at least 2 letters of the firm's name.",
   firmsNone: "No firm matches.",
+  firmsMore: "Showing the first 8 matches: type more of the name to narrow.",
   firmsFailed: "Could not search the firms.",
   discoveredHint: "Your local time; stored in UTC.",
   descriptionHint: "Firms will read this in their notice.",
   reasonHint: "Why you are recording it: kept on the audit line.",
   recordFailed: "Could not record the breach. Please try again.",
+  maybeRecorded: "An earlier try may already have recorded this breach: check the list behind this dialog before recording it again.",
 } as const;

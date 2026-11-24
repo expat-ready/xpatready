@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { client, recorder } from "./runtime/api.ts";
 import { SESSION_KEY } from "../web/src/modules/system/contract.ts";
-import { COPY, fieldErrors, firmWords, fromLocalBox, noticesText, recordBody, STATUS_WORDS, statusOf, whenWords } from "../web/src/modules/system/privacy/contract.ts";
+import { COPY, fieldErrors, firmsText, firmWords, fromLocalBox, noticesText, recordBody, STATUS_WORDS, statusOf, whenWords } from "../web/src/modules/system/privacy/contract.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const [PORT, DBNAME] = [Number(process.argv[2] ?? 4434), process.argv[3] ?? "xr_studio_pf21rs"];
@@ -63,6 +63,9 @@ const BREACHES = "/system/register/breaches";
     !("rootCause" in body) && !("containment" in body) && !("affectedFirms" in body) && !("dataCategories" in body) && body.otherNotifications === "y" && body.discoveredAt === fromLocalBox("2026-11-24T07:10") && fromLocalBox("") === null && fromLocalBox("24/11/2026") === null, body);
   ok("PF-21rs P pass/fail: a 422's field names land on the dialog's fields (affectedFirms.1 → affectedFirms); an unknown one goes above the buttons",
     JSON.stringify(fieldErrors({ "affectedFirms.1": "a uuid", reason: "Give one.", body: "Change at least one field." })) === JSON.stringify({ affectedFirms: "a uuid", reason: "Give one.", other: "Change at least one field." }) && firmWords({ id: "3f2a0000-0000-0000-0000-00000000c91e", name: null }) === "Firm 3f2a…c91e");
+  const many = Array.from({ length: 124 }, (_, i) => ({ id: `f${i}`, name: `Firm ${i}` }));
+  ok("PF-21rs P pass/fail (break m3): a long firm list shows three names and \"and N more\"; three or fewer show in full",
+    firmsText(many) === "Firm 0, Firm 1, Firm 2 and 121 more" && firmsText(many.slice(0, 3)) === "Firm 0, Firm 1, Firm 2");
 }
 
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });
@@ -116,8 +119,14 @@ try {
   await p1.screenshot({ path: join(SHOTS, "a1-01-breaches-1440.png"), fullPage: true });
 
   // ---------------------------------------------------------------------------------------- A1-2 record by the dialog
-  await p1.getByRole("button", { name: "Record a breach" }).click();
   const dlg = p1.getByRole("dialog", { name: "Record a breach" });
+  const onRecordButton = () => p1.evaluate(() => document.activeElement?.textContent === "Record a breach");
+  const closedFocus: boolean[] = [];
+  await p1.getByRole("button", { name: "Record a breach" }).click(); await dlg.waitFor(); await p1.keyboard.press("Escape");
+  await dlg.waitFor({ state: "hidden" }); await p1.waitForTimeout(200); closedFocus.push(await onRecordButton());
+  await p1.getByRole("button", { name: "Record a breach" }).click(); await dlg.waitFor(); await dlg.getByRole("button", { name: "Cancel" }).click();
+  await dlg.waitFor({ state: "hidden" }); await p1.waitForTimeout(200); closedFocus.push(await onRecordButton());
+  await p1.getByRole("button", { name: "Record a breach" }).click();
   await dlg.waitFor();
   const before = count();
   await dlg.getByRole("button", { name: "Record the breach" }).click();
@@ -141,6 +150,9 @@ try {
   await dlg.getByRole("button", { name: "Record the breach" }).dblclick();
   const done = await seen(p1, "[data-recorded]", 15_000);
   await dlg.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+  await p1.waitForTimeout(200); closedFocus.push(await onRecordButton());
+  ok("PF-21rs A1-2 fail (break B1, WCAG 2.4.3): closing the dialog by Escape, Cancel or a record puts the focus back on \"Record a breach\", never on the page",
+    closedFocus.length === 3 && closedFocus.every(Boolean), closedFocus);
   const stored = sql(`select status || '|' || array_to_string(affected_firms, ',') || '|' || array_to_string(data_categories, ',') || '|' || containment || '|' || opened_by || '|' || floor(extract(epoch from discovered_at)) from plat_breach where description = '${desc.replace(/'/g, "''")}'`).split("|");
   const many = sql(`select count(*) from plat_breach where description = '${desc.replace(/'/g, "''")}'`);
   ok("PF-21rs A1-2 pass (BR-1): the breach is stored as written: RECORDED, firm A, the two categories, the containment, opened by our staff member, discovered now (the box's own minute)",
@@ -158,6 +170,23 @@ try {
   ok("PF-21rs A1-2 pass: the list shows it in the API's place (newest discovered first) with firm A, \"Decision owed\" and the next step in words",
     JSON.stringify(orderNow) === JSON.stringify(apiNow) && apiNow.indexOf(newId) >= 0 && apiNow.indexOf(newId) <= 1 && (await freshRow.innerText().catch(() => "")).includes("Decision owed") && (await freshRow.innerText().catch(() => "")).includes(nameA) && (await p1.locator("[data-recorded]").innerText()) === COPY.recorded, { at: apiNow.indexOf(newId), newId });
   await p1.screenshot({ path: join(SHOTS, "a1-03-recorded-1440.png"), fullPage: true });
+
+  // A lost answer (review m1, break m1): the server records it, the page sees a 502; the person edits and tries again.
+  const ldesc = `Sample: a lost answer (PF-21rs A1 ${run}).`;
+  let lost = 0;
+  await p1.route("**/api/system/register/breaches", async (r) => { if (r.request().method() !== "POST" || lost++) return r.continue(); await r.fetch(); await r.fulfill({ status: 502, body: "Bad gateway" }); });
+  await p1.getByRole("button", { name: "Record a breach" }).click(); await dlg.waitFor();
+  await dlg.getByLabel("What happened").fill(ldesc); await dlg.getByLabel("Reason for the audit line").fill("Sample: lost answer");
+  await dlg.getByRole("button", { name: "Record the breach" }).click();
+  await dlg.locator("[data-record-error]").waitFor({ timeout: 10_000 }).catch(() => undefined);
+  await dlg.getByLabel("What happened").fill(`${ldesc} Edited.`); await dlg.getByRole("button", { name: "Record the breach" }).click();
+  await p1.waitForTimeout(1500);
+  const said = await dlg.locator("[data-record-error]").innerText().catch(() => "");
+  await dlg.getByRole("button", { name: "Cancel" }).click(); await p1.unroute("**/api/system/register/breaches");
+  const lostId = sql(`select id from plat_breach where description = '${ldesc.replace(/'/g, "''")}'`);
+  await p1.locator(`[data-breach-row="${lostId}"]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  ok("PF-21rs A1-2 fail (review m1): an answer lost after the server recorded it, then an edited retry → plain words that it may be recorded already, the breach listed, nothing recorded twice",
+    said === COPY.maybeRecorded && sql(`select count(*) from plat_breach where description like 'Sample: a lost answer (PF-21rs A1 ${run})%'`) === "1" && (await p1.locator(`[data-breach-row="${lostId}"]`).count()) === 1, { said, lostId });
 
   // ---------------------------------------------------------------------------------------- W5 the walls (A1's page)
   const firmEmail = sql(`select email from platform_staff where actor_id = 'user-R'`);
