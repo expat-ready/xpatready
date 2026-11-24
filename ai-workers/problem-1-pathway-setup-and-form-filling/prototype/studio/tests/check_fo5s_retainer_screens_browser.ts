@@ -183,7 +183,7 @@ try {
   const shown = (l: ReturnType<Page["locator"]>, timeout: number) => l.waitFor({ timeout }).then(() => true, () => false);
   const { buildDocx } = await import("../api/src/front-office/retainers/docx.ts");
   const DISC_LINES = ["Client {client.name}", "Conflict: {conflict.disclosure}", "{#fees}", "{label}: {amount}", "{/fees}"], PLAIN_LINES = ["Client {client.name}", "{#fees}", "{label}: {amount}", "{/fees}"];
-  const docx = (lines: string[], name?: string) => { const f = new FormData(); if (name) f.set("name", name); f.set("file", new Blob([buildDocx(lines)]), "t.docx"); return f; };
+  const docx = (lines: string[], name?: string) => { const f = new FormData(); if (name) f.set("name", name); f.set("file", new Blob([new Uint8Array(buildDocx(lines))]), "t.docx"); return f; };
   const upT = (name: string, lines: string[]) => call(tok.R, "POST", "/front-office/retainer-templates", docx(lines, name));
   const onOff = (t: { body: { id: string } }, active: boolean) => call(tok.R, "PATCH", `/front-office/retainer-templates/${t.body.id}`, { active });
   const DISC = `Sample disclosure ${run}: the firm acted for a related party (Sample).`;
