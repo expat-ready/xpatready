@@ -261,6 +261,31 @@ try {
   const noList = await throwsLike(() => inRequest({ method: "GET", path: Q }, () => svc.list({ staffId: "pf17s", keys: ["system/support:manage"] }, {})), (e: any) => e?.status === 403);
   const noOne = await throwsLike(() => inRequest({ method: "GET", path: `${Q}/${t2}` }, () => svc.one({ staffId: "pf17s", keys: [] }, t2)), (e: any) => e?.status === 403);
   ok("PF-17 DW7 fail (review m2): the service itself refuses the queue and one ticket without system/support:list (403), whatever the route's guard did", noList && noOne, { noList, noOne });
+
+  // ------------------------------------------- SQ-plan (part 4; Lead 15 on #3225; SA-10 §3.2 "firm (name and plan)")
+  // Each row and the ticket name the firm's live plan through the one helper the Firms page uses (livePlanOf), so the two
+  // pages cannot disagree: an active firm its plan, a firm on payment hold still its plan, a firm whose only subscription
+  // ended none (null).
+  const { livePlanOf } = await import("../api/src/platform/system-console/live-plan.ts");
+  const planOf = async (f: string) => livePlanOf(owner, f, clock.now());
+  const rowPlan = async (t: string) => (await call(base, Q, tokens.support)).body.tickets.find((x: any) => x.id === t)?.firm?.plan;
+  const ticketPlan = async (t: string) => (await call(base, `${Q}/${t}`, tokens.support)).body?.firm?.plan;
+  const planA = await planOf(firmA), activeRow = await rowPlan(t1), activeOne = await ticketPlan(t1);
+  ok("PF-17 SQ-plan pass (Lead 15): an active firm's queue row and its ticket name its live plan, the same plan the Firms page reads",
+    !!planA && JSON.stringify(activeRow) === JSON.stringify(planA) && JSON.stringify(activeOne) === JSON.stringify(planA), { planA, activeRow, activeOne });
+  const subS = sql(`select id || '|' || status from platform_subscription where firm_id = '${firmS}' order by created_at desc limit 1`).split("|");
+  sql(`update platform_subscription set status = 'PAYMENT_HOLD' where id = '${subS[0]}'`);
+  const pHold = await planOf(firmS), holdRow = await rowPlan(t2);
+  ok("PF-17 SQ-plan pass: a firm on payment hold keeps its plan on the queue row (the Firms page shows it too)",
+    !!pHold && JSON.stringify(holdRow) === JSON.stringify(pHold), { pHold, holdRow });
+  sql(`update platform_subscription set status = 'ENDED' where id = '${subS[0]}'`);
+  const pEnded = await planOf(firmS), endedRow = await rowPlan(t2), endedOne = await ticketPlan(t2);
+  sql(`update platform_subscription set status = '${subS[1]}' where id = '${subS[0]}'`);
+  ok("PF-17 SQ-plan fail: a firm whose only subscription ended shows no plan (null) on its row and its ticket, as on the Firms page",
+    pEnded === null && endedRow === null && endedOne === null, { pEnded, endedRow, endedOne });
+  const src = (f: string) => readFileSync(join(STUDIO, "api", "src", "platform", "system-console", f), "utf8");
+  ok("PF-17 SQ-plan pass (challenge M2): the Firms page and the support queue both take the plan from livePlanOf, one helper",
+    /livePlanOf\(/.test(src("firms.ts")) && /livePlanOf\(/.test(src("support.ts")));
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

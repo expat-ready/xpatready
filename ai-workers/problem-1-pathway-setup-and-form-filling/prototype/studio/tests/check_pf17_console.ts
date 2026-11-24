@@ -70,8 +70,8 @@ const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts
 
 /** PF-14's dead-letter list as PlatformJobs.deadLetters answers it (a fake here: the list's own reader is PF-14's suite's). */
 const dead: { name: string; key: string; firmId: string | null; error: string; failedAt: Date }[] = [];
-let deadFails = false, deadReads = 0;
-const deadLetters = async (limit = 100) => { deadReads++; if (deadFails) throw new Error("jobs: the job queue is not running"); return dead.slice(0, limit); };
+let deadFails = false, deadReads = 0, deadLimit: number | undefined;
+const deadLetters = async (limit = 100) => { deadReads++; deadLimit = limit; if (deadFails) throw new Error("jobs: the job queue is not running"); return dead.slice(0, limit); };
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 /** Storage in bytes per firm id, measured by StorageWatch (PF-15's own measure), whose stored figure the console shows. */
 const bytes = new Map<string, number>();
@@ -313,6 +313,35 @@ try {
   deadFails = false;
   ok("PF-17 DW10 fail: when the dead-letter list cannot be read the list and one firm still answer 200, each failedJobs null (not known), never 0 and never a 500",
     down.status === 200 && down.body.firms.every((f: any) => f.failedJobs === null) && downOne.status === 200 && downOne.body.failedJobs === null, { status: [down.status, downOne.status], one: downOne.body?.failedJobs });
+  // part 4, m2 (#3431's review): the console asks PF-14's reader for its whole cap, never the reader's default of 100.
+  const { DEAD_LETTER_CAP } = await import("../api/src/platform/jobs/pgboss-jobs.ts");
+  deadLimit = undefined; await call(base, "/api/system/firms?q=sample", tokens.support);
+  ok("PF-17 DW10 pass (part 4, m2): the list asks PF-14's reader for its own cap (DEAD_LETTER_CAP, exported by PF-14), not the reader's default of 100",
+    typeof DEAD_LETTER_CAP === "number" && DEAD_LETTER_CAP > 100 && deadLimit === DEAD_LETTER_CAP, { asked: deadLimit, cap: DEAD_LETTER_CAP });
+  ok("PF-17 DW11 fail (part 4, m1): a list that could not be read is not complete (failedJobsComplete false on the page and on one firm)",
+    down.body.failedJobsComplete === false && downOne.body.failedJobsComplete === false, { page: down.body.failedJobsComplete, one: downOne.body?.failedJobsComplete });
+  // part 4, m1: PF-14's reader keeps the oldest DEAD_LETTER_CAP entries (pg-boss findJobs by created_on), so at the cap a
+  // newer failure may be missing: the page and one firm say so (failedJobsComplete false) instead of a bare count.
+  dead.length = 0;
+  for (let i = 0; i < DEAD_LETTER_CAP - 2; i++) dead.push(letter(null, i + 10));
+  dead.push(letter(firmA, 1));
+  const belowCap = (await call(base, "/api/system/firms?q=sample", tokens.support)).body, belowOne = (await call(base, `/api/system/firms/${firmA}`, tokens.support)).body;
+  ok("PF-17 DW11 pass (part 4, m1): one entry under the cap, the read is complete (failedJobsComplete true on the page and on one firm)",
+    belowCap.failedJobsComplete === true && belowOne.failedJobsComplete === true && belowOne.failedJobs === 1, { page: belowCap.failedJobsComplete, one: belowOne.failedJobsComplete });
+  dead.push(letter(firmS, 2));
+  const atCap = (await call(base, "/api/system/firms?q=sample", tokens.support)).body, atCapOne = (await call(base, `/api/system/firms/${firmS}`, tokens.support)).body;
+  ok("PF-17 DW11 fail (part 4, m1): a read that returns the full cap is not complete: failedJobsComplete false on the page and on one firm, the counts kept as read",
+    atCap.failedJobsComplete === false && atCapOne.failedJobsComplete === false && atCapOne.failedJobs === 1, { page: atCap.failedJobsComplete, one: atCapOne.failedJobsComplete, s: atCapOne.failedJobs });
+  // part 4, m3: failed jobs are shown, not judged: the same firm's health and reasons with none and with five.
+  dead.length = 0;
+  const calm = (await call(base, `/api/system/firms/${firmS}`, tokens.support)).body;
+  for (let i = 0; i < 5; i++) dead.push(letter(firmS, i + 1));
+  const noisy = (await call(base, `/api/system/firms/${firmS}`, tokens.support)).body;
+  ok("PF-17 DW12 pass (part 4, m3): five failed jobs change a firm's failedJobs (0 → 5) and nothing in its health or reasons",
+    calm.failedJobs === 0 && noisy.failedJobs === 5 && calm.health === noisy.health && JSON.stringify(calm.reasons) === JSON.stringify(noisy.reasons), { calm: [calm.health, calm.reasons], noisy: [noisy.health, noisy.reasons] });
+  const { livePlanOf } = await import("../api/src/platform/system-console/live-plan.ts");
+  ok("PF-17 DW13 pass (part 4, challenge M2): one firm's plan on the Firms page is livePlanOf's (the helper the support queue uses)",
+    JSON.stringify(noisy.plan) === JSON.stringify(await livePlanOf(owner, firmS, clock.now())), { plan: noisy.plan });
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
