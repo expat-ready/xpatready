@@ -21,7 +21,7 @@ PHRASE = re.compile(r"Passed only on retry", re.I)
 ROW = re.compile(r"^\|[^|\n]*\|[^|\n]*\| `(check_[A-Za-z0-9_.-]+)`", re.M)
 PLAIN = re.compile(r"Passed only on retry, a possible race[^:\n]*:\*\*([^\n]*?)(?:\. The bug report failed|$)", re.M)
 NAME = re.compile(r"(?<![\w.-])check_[A-Za-z0-9_.-]*[A-Za-z0-9]")
-FIX = re.compile(r"^[ \t*-]*Retry fix[ \t*]*:[ \t*]*((?:`?check_[A-Za-z0-9_.-]+`?[ \t]*,?[ \t]*)+)[ \t*]*$", re.M | re.I)
+FIX = re.compile(r"^[ \t*-]*Retry fix[ \t*]*:([^\n]*)$", re.M | re.I)
 HIDDEN = re.compile(r"<!--.*?(?:-->|\Z)|^[ \t]*(```|~~~).*?(?:^[ \t]*\1[^\n]*$|\Z)", re.M | re.S)
 Z = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -50,6 +50,13 @@ def memory(f, now):
     except Exception as e:
         why = f"unreadable ({type(e).__name__})"
     return (now - timedelta(days=DAYS)).strftime(Z), {}, why
+
+
+def names_only(line):
+    """The suite names of a "Retry fix:" line, or none when anything else is on it."""
+    words = [w.strip("`*.") for w in line.replace(",", " ").split()]
+    words = [w for w in words if w]
+    return words if all(NAME.fullmatch(w) for w in words) else []
 
 
 def suites(body):
@@ -94,7 +101,7 @@ def fixes():
             m = (p.get("pull_request") or {}).get("merged_at")
             if p["state"] == "open" or m:
                 for l in FIX.findall(HIDDEN.sub("", (p.get("body") or "").replace("\r", ""))):
-                    for s in NAME.findall(l):
+                    for s in names_only(l):
                         out.setdefault(s, []).append((p["number"], m))
         if r.get("incomplete_results"):
             return out, "GitHub's search answered in part"
