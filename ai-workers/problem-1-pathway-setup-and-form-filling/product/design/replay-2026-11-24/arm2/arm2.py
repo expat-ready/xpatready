@@ -234,8 +234,10 @@ def take_lock(work):
                 raise SystemExit(f"not started: another run is going (process {old['pid']})")
             c = old.get("child")          # a run that died: end its orphan, only if it is still ours by name
             if c:
-                name = "\n".join(l for l in subprocess.run(["/bin/ps", "-axo", "pgid=,command="], capture_output=True, text=True).stdout.splitlines() if l.split()[:1] == [str(c)])
-                if "codeant" in name or "stub.py" in name: end_group(c)
+                try: ps = subprocess.run(["/bin/ps", "-axo", "pgid=,command="], capture_output=True, text=True, check=True).stdout
+                except (OSError, subprocess.CalledProcessError): raise SystemExit(f"not started: an earlier run died and its review (process group {c}) may still be going; end it, then remove {lock}")
+                name = [l for l in ps.splitlines() if l.split()[:1] == [str(c)]]
+                if any("codeant" in l or "stub.py" in l for l in name): end_group(c)
             os.remove(lock)
     raise SystemExit("not started: the lock changed hands")
 
