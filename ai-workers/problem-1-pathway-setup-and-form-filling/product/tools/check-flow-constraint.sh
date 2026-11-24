@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# ENF-738 (P-738; B206 part 4, P-751): lead-watch.sh's constraint section. flow-constraint.py on made-up facts: the six
+# ENF-738 (P-738; B206 part 4, P-751): lead-watch.sh's constraint section. flow-constraint.py on made-up facts: the
 # measures print, the one constraint is the first over its bar in flow order, and anything unread is said, never passed.
+# S1-S9 (ENF-738, 24 Nov): labelled -> batch start -> merged by scope, the live wait, each constraint named with its number.
 # US$0, no network.   bash product/tools/check-flow-constraint.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
@@ -14,7 +15,8 @@ facts() {  # facts <file> [jq edit]
               {id: 3, conclusion: "failure", started: "2026-11-20T03:00:00Z", updated: "2026-11-20T03:50:00Z", pr: 900},
               {id: 4, conclusion: "success", started: "2026-11-20T04:00:00Z", updated: "2026-11-20T05:10:00Z", pr: 903}],
     newest_jobs: {run: 4, jobs: [{name: "fast", min: 3}, {name: "shard (7)", min: 41.4}, {name: "types", min: null}]},
-    pulls: {"900": {title: "merge queue: checking #11 + #12 together on main", body: "", state: "closed", login: "mergify[bot]"},
+    open_labelled: [],
+    pulls: {"900": {title: "merge queue: checking #11 + #12 together on main", body: "batch **b0** of the `product` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T03:00:00Z"},
             "11": {title: "a", state: "closed", merged_at: "2026-11-20T04:30:00Z"}, "12": {title: "b", state: "open", merged_at: null}},
     merged: [{number: 11, approved_at: "2026-11-20T03:00:00Z", merged_at: "2026-11-20T04:30:00Z"},
              {number: 13, approved_at: "2026-11-20T04:40:00Z", merged_at: "2026-11-20T05:10:00Z"},
@@ -91,13 +93,15 @@ case "$*" in
       {"id":72,"status":"in_progress","conclusion":null,"head_branch":"mergify/merge-queue/bb","run_started_at":"2026-11-20T05:00:00Z","updated_at":"2026-11-20T05:20:00Z","pull_requests":[{"number":951}]},
       {"id":73,"status":"completed","conclusion":"success","head_branch":"claude/lane-x","run_started_at":"2026-11-20T03:00:00Z","updated_at":"2026-11-20T03:10:00Z","pull_requests":[{"number":21}]}]}';;
   *"actions/runs/71/jobs"*) echo '{"jobs":[{"name":"shard (2)","started_at":"2026-11-20T04:01:00Z","completed_at":"2026-11-20T04:44:00Z"},{"name":"fast","started_at":"2026-11-20T04:01:00Z","completed_at":"2026-11-20T04:05:00Z"}]}';;
-  *"pulls?state=all"*) echo '[{"number":950,"title":"merge queue: checking #21 + #22 together on main","body":"","state":"closed","merged_at":null,"user":{"login":"mergify[bot]"},"head":{"ref":"mergify/merge-queue/aa"}},
+  *"pulls?state=all"*) echo '[{"number":952,"title":"merge queue: merged #20: x","body":"batch **b** of the `pipeline` queue\n```yaml\npull_requests:\n  - number: 20\n    scopes: [platform, cases]\n```","state":"closed","merged_at":null,"created_at":"2026-11-20T05:00:00Z","user":{"login":"mergify[bot]"},"head":{"ref":"mergify/merge-queue/cc"}},
+      {"number":950,"title":"merge queue: checking #21 + #22 together on main","body":"","state":"closed","merged_at":null,"user":{"login":"mergify[bot]"},"head":{"ref":"mergify/merge-queue/aa"}},
       {"number":951,"title":"merge queue: checking #21 on main","body":"","state":"open","merged_at":null,"user":{"login":"mergify[bot]"},"head":{"ref":"mergify/merge-queue/bb"}},
       {"number":21,"title":"x","state":"open","merged_at":null,"user":{"login":"lane"},"head":{"ref":"claude/lane-x"}},
       {"number":22,"title":"y","state":"open","merged_at":null,"user":{"login":"lane"},"head":{"ref":"claude/lane-y"}}]';;
   "repo view"*) echo '{"owner":{"login":"o"},"name":"r"}';;
   "api graphql"*) echo '{"data":{"repository":{"pullRequests":{"nodes":[
-      {"number":20,"mergedAt":"2026-11-20T05:30:00Z","timelineItems":{"nodes":[{"createdAt":"2026-11-20T03:00:00Z","label":{"name":"review: approved"}},{"createdAt":"2026-11-20T04:30:00Z","label":{"name":"review: approved"}},{"createdAt":"2026-11-20T05:00:00Z","label":{"name":"queued"}},{}]}}]}}}}';;
+      {"number":20,"mergedAt":"2026-11-20T05:30:00Z","timelineItems":{"nodes":[{"createdAt":"2026-11-20T03:00:00Z","label":{"name":"review: approved"}},{"createdAt":"2026-11-20T04:30:00Z","label":{"name":"review: approved"}},{"createdAt":"2026-11-20T05:00:00Z","label":{"name":"queued"}},{}]}}]},
+      "open":{"nodes":[{"number":21,"timelineItems":{"nodes":[{"createdAt":"2026-11-20T04:00:00Z","label":{"name":"review: approved"}}]}},{"number":22,"timelineItems":{"nodes":[{"createdAt":"2026-11-20T05:45:00Z","label":{"name":"review: approved"}},{"createdAt":"2026-11-20T05:10:00Z","label":{"name":"queued"}}]}}]}}}}';;
   *) echo '{"message":"unexpected"}'; exit 1;;
 esac
 GH
@@ -105,8 +109,38 @@ out=$(FLOW_GH="$T/gh/gh.sh" python3 -I "$C" --runs-waiting "$T/rw.json" --board 
 ok "gather: only completed runs on mergify/merge-queue/ branches are batches; wall from run_started_at to updated_at" "$(grep -q '^  batch     1 batch(es) started in the last 6 h and ended, median wall 50 min; newest.s longest part shard (2) 43 min (run 71)' <<< "$out" && echo 1)" "$out"
 ok "gather: a run with empty pull_requests finds its batch PR by branch; #21 re-queued in the running batch #951, #22 the culprit" "$(grep -q 'run 71: #21 (re-queued), #22 (culprit: still open)' <<< "$out" && echo 1)" "$out"
 ok "gather: GraphQL nesting; the last review: approved label before the merge (not the earlier one, not another label)" "$(grep -q '^  merge     approved to merged median 60 min (n=1' <<< "$out" && echo 1)" "$out"
+ok "S9 gather: the batch body's queue and file scopes (pipeline/cases+platform), and GraphQL's open labelled PRs (#21 in the open batch #951, #22 waiting 15 min)" "$(grep -qx '            pipeline/cases+platform: n=1, labelled -> batch start 30, batch start -> merged 30; slowest #20 waited 30, #20 in batch 30' <<< "$out" && grep -qx '  waiting   1 labelled PR(s) in no batch: #22 15 min; 1 in a batch: #21' <<< "$out" && echo 1)" "$out"
 out=$(GH_FAIL_RUNS=1 FLOW_GH="$T/gh/gh.sh" python3 -I "$C" --runs-waiting "$T/rw.json" --board "$T/board.json" --now "$NOW" 2>&1)
 ok "gather: a failed read is an error entry (not measured), never an empty list" "$(grep -q '^  batch     not measured (gh api' <<< "$out" && grep -q '^  failed    not measured' <<< "$out" && grep -q '^ACT   constraint: not measured' <<< "$out" && echo 1)" "$out"
+# S1-S9 (ENF-738): stages by scope. #31, #32 product (waits 10, 60; in batch 50, 60), #33 pipeline, #34 product with the
+# Mergify file scope platform; batch walls and failures under their bars, the board at its goal.
+OK9='.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z"'
+STG='| .merged = [{number: 31, approved_at: "2026-11-20T01:00:00Z", merged_at: "2026-11-20T02:00:00Z"}, {number: 32, approved_at: "2026-11-20T01:00:00Z", merged_at: "2026-11-20T03:00:00Z"},
+               {number: 33, approved_at: "2026-11-20T03:00:00Z", merged_at: "2026-11-20T04:00:00Z"}, {number: 34, approved_at: "2026-11-20T04:00:00Z", merged_at: "2026-11-20T05:00:00Z"}]
+  | .pulls = {"931": {title: "merge queue: merged #31", body: "batch **a** of the `product` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T01:10:00Z"},
+              "932": {title: "merge queue: merged #32", body: "batch **b** of the `product` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T02:00:00Z"},
+              "930": {title: "merge queue: checking #32 on main", body: "batch **z** of the `product` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T00:50:00Z"},
+              "933": {title: "merge queue: merged #33", body: "batch **c** of the `pipeline` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T03:05:00Z"},
+              "934": {title: "merge queue: merged #34", body: "batch **d** of the `product` queue\n```yaml\npull_requests:\n  - number: 34\n    scopes: [platform]\n```", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T04:30:00Z"}}'
+facts "$T/s1.json" "$OK9 $STG"; BD="$T/b2.json" run "$T/s1.json"
+ok "S1 stages by scope: each scope's medians (labelled -> batch start, batch start -> merged) and its slowest PRs; a batch opened before the label is not the start; the file scope named" "$(grep -qx '  stages    labelled -> batch start -> merged, by scope, PRs merged in 6 h (medians, min)' <<< "$out" \
+  && grep -qx '            pipeline: n=1, labelled -> batch start 5, batch start -> merged 55; slowest #33 waited 5, #33 in batch 55' <<< "$out" \
+  && grep -qx '            product: n=2, labelled -> batch start 35, batch start -> merged 55; slowest #32 waited 60, #32 in batch 60' <<< "$out" \
+  && grep -qx '            product/platform: n=1, labelled -> batch start 30, batch start -> merged 30; slowest #34 waited 30, #34 in batch 30' <<< "$out" && echo 1)" "$out"
+ok "S2 product's labelled -> batch start median 35 min over n=2 (bar 20) is the one constraint, named with its scope, measure and PR number" "$(grep -q '^ACT   constraint: labelled -> batch start — product median 35 min over n=2, slowest #32 60 min (bar 20): find what holds it' <<< "$act" && [ "$(grep -c '^ACT' <<< "$out")" = 1 ] && echo 1)" "$act"
+ok "S2b --save keeps the stages" "$(jq -e '.stages.scopes.product.n == 2 and .stages.scopes.product.wait == 35 and .waiting.waiting == []' "$T/m.json" >/dev/null && echo 1)" "$(cat "$T/m.json")"
+facts "$T/s3.json" "$OK9 $STG"' | .open_labelled = [{number: 40, approved_at: "2026-11-20T05:00:00Z"}, {number: 41, approved_at: "2026-11-20T05:30:00Z"}] | .pulls["941"] = {title: "merge queue: checking #41 on main", body: "", state: "open", login: "mergify[bot]", created_at: "2026-11-20T05:40:00Z"}'; BD="$T/b2.json" run "$T/s3.json"
+ok "S3 the live wait: #40 labelled 60 min in no batch, #41 in an open batch; 60 beats product's median 35, so #40 is named" "$(grep -qx '  waiting   1 labelled PR(s) in no batch: #40 60 min; 1 in a batch: #41' <<< "$out" && grep -q '^ACT   constraint: labelled -> batch start — #40 labelled 60 min ago, in no batch (bar 20)' <<< "$act" && echo 1)" "$out"
+facts "$T/s4.json" "$OK9 $STG"' | .merged[0].merged_at = "2026-11-20T02:10:00Z" | .merged[1].approved_at = "2026-11-20T01:55:00Z"'; BD="$T/b2.json" run "$T/s4.json"
+ok "S4 waits under 20, product in batch median 60 (bar 45): batch start -> merged, ahead of approved to merged (median 62, bar 60) in flow order" "$(grep -q '^ACT   constraint: batch start -> merged — product median 60 min over n=2 (bar 45), slowest #31 60 min in 1 batch(es)' <<< "$act" && grep -q '^  merge     approved to merged median 62 min' <<< "$out" && echo 1)" "$out"
+facts "$T/s5.json" "$OK9 $STG"' | .merged[1].approved_at = "2026-11-20T01:55:00Z" | .merged[1].merged_at = "2026-11-20T02:40:00Z" | .open_labelled = [{number: 42, approved_at: "2026-11-20T05:50:00Z"}]'; BD="$T/b2.json" run "$T/s5.json"
+ok "S5 every stage at or under its bar (product in batch median 45, bar 45; a scope with one PR is not judged; #42 waits 10 min): none over its bar" "$(grep -q '^ACT   constraint: none over its bar' <<< "$act" && echo 1)" "$out"
+facts "$T/s6.json" "$OK9"' | .pulls["900"].created_at = null'; BD="$T/b2.json" run "$T/s6.json"
+ok "S6 merges whose batch PR is not among the PRs read: stages not measured, never under the bar" "$(grep -qx '  stages    not measured (merges with no batch PR among the PRs read: #11, #13)' <<< "$out" && grep -q '^ACT   constraint: not measured — stages' <<< "$act" && echo 1)" "$out"
+facts "$T/s7.json" "$OK9"' | .open_labelled = {error: "HTTP 502"}'; BD="$T/b2.json" run "$T/s7.json"
+ok "S7 open labelled PRs unreadable: the waiting line says so and the constraint is not measured" "$(grep -q '^  waiting   not measured (HTTP 502)' <<< "$out" && grep -q '^ACT   constraint: not measured — waiting' <<< "$act" && echo 1)" "$out"
+facts "$T/s8.json" "$OK9 $STG"' | .batches[2].conclusion = "failure"'; BD="$T/b2.json" run "$T/s8.json"
+ok "S8 flow order: a failed batch share over its bar is named before the stages" "$(grep -q '^ACT   constraint: failed batches' <<< "$act" && echo 1)" "$act"
 L="$TOOLS/lead-watch.sh"
 ok "lead-watch.sh prints the section each check and counts its ACT" "$(grep -q 'flow-constraint.py" --runs-waiting "\$STATE_DIR/runs-waiting.json"' "$L" && grep -q 'echo "\$cs"; act=\$((act + \$(grep -c .^ACT. <<<"\$cs")))' "$L" && echo 1)" "no wiring in $L"
 ok "no cancel anywhere (P-371)" "$(! grep -qE '/cancel|force-cancel|run cancel' "$C" && echo 1)" "a cancel found"
