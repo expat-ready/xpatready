@@ -76,7 +76,7 @@ ok("W12 walk-report.yml: main's copy on walks' completed runs, only for a push t
   && /\npermissions: \{\}/.test(rc) && /if: \$\{\{ github\.event\.workflow_run\.event == 'push' && github\.event\.workflow_run\.head_branch == 'main' && github\.event\.workflow_run\.head_repository\.full_name == github\.repository \}\}/.test(rc)
   && /permissions: \{ contents: read, actions: read, pull-requests: write, issues: write \}/.test(rc) && (rc.match(/write/g) ?? []).length === 2
   && /uses: actions\/checkout@v4\s*\n\s*with: \{ persist-credentials: false \}/.test(rc) && !/\bref:/.test(rc) && (rc.match(/run-id: "\$\{\{ github\.event\.workflow_run\.id \}\}"/g) ?? []).length === 2
-  && /\[\[ "\$PR" =~ \^\[1-9\]\[0-9\]\{0,6\}\$ \]\]/.test(rc) && /merge_commit_sha == "'"\$SHA"'"/.test(rc) && rc.indexOf("merge_commit_sha") < rc.indexOf("issues/$PR/comments")
+  && /\[\[ "\$PR" =~ \^\[1-9\]\[0-9\]\{0,6\}\$ \]\]/.test(rc) && /merge_commit_sha == "'"\$SHA"'"/.test(rc) && /\n\s*\[ "\$m" = true \] \|\| \{ [^}\n]*exit 1; \}\n/.test(rc) && rc.indexOf('[ "$m" = true ]') < rc.indexOf("issues/$PR/comments")
   && /walk-plan\.mjs" comment --plan/.test(rc) && !/secrets\./.test(rc) && !/run:[^\n]*\$\{\{/.test(rc) && !/\$\{\{[^}]*(head_branch|display_title|head_commit)[^}]*\}\}/.test(rc.replace(/\n    if: .*/, "")), rc.slice(0, 800));
 // W13: the comment walk-report.yml posts, built here from two made-up walk.json files and one missing.
 const tmp = mkdtempSync(join(tmpdir(), "walk-report-"));
