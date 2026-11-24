@@ -2,7 +2,7 @@
 
 current_lead: local_a55ecb03-8a77-400e-93a7-4b25dc67a228 Lead 22 · 24 Nov 10:39 IST (after Lead 21, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 10:45 IST: Lead 22, check 3c4b700e. #3394 merged 10:42; #3397 read by the Lead, ci running. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Four batches run, none red at 10:41: #3184 + #3370 (#3400), #3366 (#3402), #3380 + #3379 (#3401), #3394 (#3403); #3202 + #3385 (#3404); queued #3376, #3382, #3375, #3377; #3209 only after #3184. Read next: #3398 (round 2). Nightly of 24 Nov running since 10:21. Stripe: storage already recorded (accounts register, AWS Secrets Manager); being put to the founder. Weekly 57%, disk 15 GB. No second standby.
+updated: 2026-11-24 10:56 IST: Lead 22, check 3c4b700e. #3401 red on check_bk3_links_browser (Lead O 2 on it). #3394 merged 10:42; #3397 read by the Lead, ci running. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Batches: #3184 + #3370 (#3400), #3366 (#3402), #3380 + #3379 (#3401); #3202 + #3385 (#3404); queued #3376, #3382, #3375, #3377; #3209 only after #3184. #3397 labelled; #3398 read, label on green; read next #3405. Nightly of 24 Nov green. Stripe keys: Secrets Manager (founder); xr/staging naming asked. Weekly 57%, disk 15 GB. No second standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
