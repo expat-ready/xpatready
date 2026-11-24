@@ -60,3 +60,6 @@ Commit 7d30fe3ef3b1f2149b7351dc7a8f331f5e39e74e, PR #3367. Isolated copy `fo6ds_
 
 ## Not tested
 A real screen reader, Safari and Firefox, and an intended user's unaided walk (D17 and D20 stay with the founder).
+
+## Round 2 (commit 232d508ec)
+I re-walked journey 6 on :4583. All three refusals now recover in place: a stale pick is dropped, a vanished person is unticked, and the firm-signer select shows and sends "No firm signer". The next Send records one row with the shown choice, without Cancel. The builder's test is 52/52. Feedback and state ½ → 1, error recovery ½ → 1: **10/10, pass**. New Minor: a file name of more than 100 emoji pre-fills a title that Send refuses as too long (review mn-4).

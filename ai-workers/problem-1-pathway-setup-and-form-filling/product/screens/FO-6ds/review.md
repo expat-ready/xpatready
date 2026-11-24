@@ -2,7 +2,32 @@
 
 Reviewer: screen-review agent, fresh context (did not build it), 24 Nov 2026. PR #3367, commit **7d30fe3ef3b1f2149b7351dc7a8f331f5e39e74e**. Read: `concept.md` (r2 with Lead corrections (a), (b)), `challenge.md` on `claude/nice-curie-tzbprl-fo6ds`, the diff, FO-6d `routes.ts`/`service.ts`, STANDARDS, EXPERIENCE, QUALITY, the PR body (its three recorded deviations). Ran on my own isolated copy `fo6ds_rev` on :4581 (never :4400), live AI off, US$0.
 
-**Verdict: Block** (skill scale: Ship after fixes; one Major, a small fix). Journey score **9/10** (pass), `journey-test-reviewer-2026-11-24.md`.
+**Verdict on 232d508ec4176f01786c24facc540b9af8baabe6 (Round 2): Approve** (skill scale: Ship). Nothing Blocker or Major is open; see "Round 2" below.
+Round 1 verdict on 7d30fe3ef: Block (one Major, MJ-1); journey score 9/10.
+
+## Round 2 (24 Nov 2026, commit 232d508ec; diff `7d30fe3ef..232d508ec` only)
+* **Run:** `check_fo6ds_send_browser.ts 4583 fo6ds_rev2` on my own copy (never :4400): **52/52 PASS, exit 0**. It adds three MJ-1 checks and a check for a send that fails after the panel is closed. Afterwards I restored `screenshots/` with `git checkout`.
+* **MJ-1: fixed.** An effect on each signers answer (`signature-requests.tsx:39-42`) drops picks no longer listed with an email and clears a firm signer no longer offered; `:135` ticks a box only if the person has an email. Re-walked on :4583 (my script, scratchpad):
+  * **No email:** Client E's email is removed meanwhile. Send shows the API's words. E reloads "(No email: add an email first)", unticked and disabled, and B stays ticked. The next Send records one request, signed by B only.
+  * **Not on the prospect:** Client D leaves the company meanwhile. Send shows "Each signer must be a person on this prospect.", D is gone and 0 boxes are ticked. Send gives "Pick at least one person to sign."; tick B, Send, 1 row.
+  * **Firm signer:** the firm signer is suspended meanwhile. The select now shows **and holds** "No firm signer", with the error on it. Pick "Representative (Sample)", Send: 1 row, with "Representative (Sample) (firm)".
+  * The new test (`check_fo6ds_send_browser.ts:245-266`, and `:161-162` no longer steps around it) fails if the effect is removed.
+* **mn-1: fixed.** The accessible name is now "Client E Sample (No email: add an email first)" (`:137`).
+* **Breaker items, checked in the diff:**
+  * M1-M3 are the same as MJ-1.
+  * M4: a send that fails after the panel is closed now says so in a toast (`:60-63`), and the test covers it.
+  * m1: picking more than 9 people gives "At most 9 people sign one document." (`:88`).
+  * m2: "Send for signature" is disabled while a send is in flight (`:109`).
+  * m3: `titleOf` now cuts by characters (`contract.ts:41`).
+  * m5: a typed title is kept when the file changes (`:78`).
+  * m7: people that fail to load get a Try again link (`:132`).
+  * I re-walked only MJ-1 and the m3 edge below.
+* **New Minor, mn-4.** The m3 fix cuts the title to 200 characters, but the length check (`:86`) and the API's `max(200)` count UTF-16 units. A file named with 150 emoji pre-fills a 150-character title (300 units), and Send says "The title has at most 200 characters." Only extreme names reach this (more than 100 astral characters). Fix: cut the pre-fill so its UTF-16 length is at most 200, without splitting a character.
+* **Still open, Minor:**
+  * mn-2: the missing role line is not yet written into the concept's §6b "Not built".
+  * mn-3, partly: 403, 404 read, list load error, download 410 and the nobody-has-email state have no test, and axe does not run on error states.
+  * These do not block Approve. They should be fixed or listed as a follow-up row.
+* **Journey score, Round 2: 10/10.** Feedback and state, and error recovery, go from ½ to 1: the J6 refusals now recover in place. The other eight criteria are unchanged from Round 1.
 
 ## Evidence run
 * `check_fo6ds_send_browser.ts 4581 fo6ds_rev`: **47/47 PASS, exit 0** (re-run on the exact commit by someone other than the builder).
@@ -84,4 +109,6 @@ Concept §2 maps the team's `envelope-builder-page.tsx` to File, Title, Who sign
 ## Could not check
 A real screen reader (mn-1 judged from the accessible-name string), Safari and Firefox downloads, the team's mock (`code/` capture), D17 and D20 (an intended user's unaided walk is the founder's), and whether removing the `lock` ref alone makes the double-click test fail (the Button's `busy` may also guard it; I did not mutate code).
 
-Reviewer: Block 7d30fe3ef3b1f2149b7351dc7a8f331f5e39e74e
+Round 1: Block 7d30fe3ef3b1f2149b7351dc7a8f331f5e39e74e
+
+Reviewer: Approve 232d508ec4176f01786c24facc540b9af8baabe6
