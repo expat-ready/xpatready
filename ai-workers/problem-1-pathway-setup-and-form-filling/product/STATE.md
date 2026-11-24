@@ -2,7 +2,7 @@
 
 current_lead: local_1d6d1d97-b8eb-40fa-b5e8-60a9a78ea74c Lead 23 · 24 Nov 11:45 IST (after Lead 22, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 11:48 IST: Lead 23 (check c7d18bd1). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 53/101 Works (counted 11:45), 24 Partial, 24 Not built. Queue: #3408, #3209, #3377, #3398, #3405, #3033 queued; #3202, #3375, #3397 merged; #3385 dequeued (C9.5). Founder: xr/staging agreed, key check with him next; then CodeRabbit's training question (A355, study done). Weekly 59%, disk 13 GB. No second standby.
+updated: 2026-11-24 11:58 IST: Lead 23 (check c7d18bd1). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 53/101 Works (counted 11:45), 24 Partial, 24 Not built. Queue: #3408, #3209, #3377, #3398, #3405, #3033 queued; #3202, #3375, #3397 merged; #3385 dequeued (C9.5). Founder: xr/staging agreed, key check with him next; then CodeRabbit's training question (A355, study done). Weekly 59%, disk 13 GB. Standby Lead 24 local_9d85b0d8.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,6 +18,8 @@ updated: 2026-11-24 11:48 IST: Lead 23 (check c7d18bd1). **Hand-over: the last s
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A357 | 24 Nov ~11:55 (typed to Lead 23) | verify Linear, Qodo, CodeRabbit, Harness, Sentry; lean, cost? | research running; plan file, end |
+| A356 | 24 Nov, after 11:45 (relayed by Lead 22) | why not delivering, the bottleneck, unblock by hand, finish partials, one tool | ledger in the plan file, end; lanes woken; in progress |
 | A355 | 24 Nov before 11:17 (typed to Lead 22) | CodeRabbit: agent studies products, cost (US$100, trial), fit, alternatives, visual case study, then start using it | study done (page in the plan file); nothing installed; his answer on training next |
 | A354 | 24 Nov ~10:22 (typed to Lead 21) | Mac slow: check and optimize, all approvals; signed in to Stripe | measured; plan file; open |
 | A353 | 24 Nov, before 10:10 (typed to Lead 17; relayed) | check us against the AI-native SDLC playbook; implement only what helps quality or speed | `design/sdlc-playbook-alignment-2026-11-24.md`; read by Lead 21, seven facts spot-checked true on main; N2-N4 finish ordered work; founder 10:22 IST to Lead 21: implement; N2-N4 ordered to Lead O 2, N1 in the next five risky briefs; notes: plan file; open |
