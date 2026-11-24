@@ -473,9 +473,15 @@ OMG late|product/tools/own-migration-guard.py|s/^                if pre and nxt 
 A348 cap standbys|product/tools/capacity-watch.py|s/^    elif int(v) < MIN_STANDBYS:/    elif False:/|check-capacity-watch.sh
 A348 cap given|product/tools/capacity-watch.py|s/^    if not v.isdigit():/    if False:/|check-capacity-watch.sh
 A348 cap disk|product/tools/capacity-watch.py|s/^    if gb < START_GB:/    if False:/|check-capacity-watch.sh
-A348 cap remote|product/tools/capacity-watch.py|s/^    miss = odd + .*/    miss = 0/|check-capacity-watch.sh
-A348 cap dirty|product/tools/capacity-watch.py|s/^        if dirty:/        if False:/|check-capacity-watch.sh
-A348 cap age|product/tools/capacity-watch.py|s/ or now - newest < AGE_H.*/:/|check-capacity-watch.sh
+A348 cap remote|product/tools/capacity-watch.py|s/^    miss = len(fs) - .*/    miss = 0/|check-capacity-watch.sh
+A348 cap odd|product/tools/capacity-watch.py|s/miss = len(fs) - len(plain) + /miss = /|check-capacity-watch.sh
+A348 cap dead|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--remotes=origin", "--stdin"/|check-capacity-watch.sh
+A348 cap local|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--branches", "--stdin"/|check-capacity-watch.sh
+A348 cap copy|product/tools/capacity-watch.py|s/^    if any(os.path.basename(p) == ".git".*/    if False:/|check-capacity-watch.sh
+A348 cap whole|product/tools/capacity-watch.py|s/os.walk(d, onerror=stop)/os.walk(d)/|check-capacity-watch.sh
+A348 cap age|product/tools/capacity-watch.py|s/ or now - newest < o.age.*/:/|check-capacity-watch.sh
+A348 cap ctime|product/tools/capacity-watch.py|s/st.st_mtime, st.st_ctime/st.st_mtime/|check-capacity-watch.sh
+A348 cap cut|product/tools/capacity-watch.py|s/^    if c\["cut"\]:/    if False:/|check-capacity-watch.sh
 A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 A334 order|product/tools/app-view-check.sh|s/ -k1,1nr -k2,2nr)$/ -k1,1nr)/|check-lead-watch-idle.sh
 A334 cloud|product/tools/app-view-check.sh|s/^  lane = (\$0 ~ \/ · cloud · /  lane = (\$0 ~ \/ · /|check-lead-watch-idle.sh
