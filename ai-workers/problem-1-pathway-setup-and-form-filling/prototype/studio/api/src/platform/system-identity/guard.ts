@@ -124,7 +124,8 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     const fields: Record<string, string> = {};
     if (!notObject) {
       // Only when the reason itself needs a change: with a good reason the route reads its own body in its own words and codes.
-      if (wantsReason && bodySchema && (tooLong || !reason) && !missing.length && !stale && !badId) {   // review m1: never parsed for a caller who is refused first const r = bodySchema.safeParse(req.body); if (!r.success) Object.assign(fields, fieldsOf(r.error)); }
+      // Review m1: never parsed for a caller who is refused first (no keys, a stale sign-in or a malformed id).
+      if (wantsReason && bodySchema && (tooLong || !reason) && !missing.length && !stale && !badId) { const r = bodySchema.safeParse(req.body); if (!r.success) Object.assign(fields, fieldsOf(r.error)); }
       // A reason over its length is refused on every route that is sent one, as before (an optional reason too: breaker n2).
       if (tooLong) fields.reason = `A reason is at most ${REASON_MAX} characters.`;
       else if (wantsReason && !reason) fields.reason = `This needs a written reason (up to ${REASON_MAX} characters).`;
