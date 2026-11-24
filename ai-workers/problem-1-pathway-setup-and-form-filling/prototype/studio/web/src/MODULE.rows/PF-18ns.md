@@ -1,0 +1,2 @@
+Entry points: PF-18ns: the bell `NotificationBell` (`modules/platform/notifications/bell.tsx`, in PlatformFrame's and SalesFrame's controls; its panel is the app's Panel) and My account → Notifications → All `/account/notifications/all` (`modules/platform/notifications/all-page.tsx`, `NotificationTabs` also on PF-18s's settings page); words and shapes in `modules/platform/notifications/contract.ts` (the count is announced once per change per tab).
+Tests: tests/check_pf18ns_bell_browser.ts
