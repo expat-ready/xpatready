@@ -191,7 +191,7 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
 }
 {
   // Break R2-M1: two resets in one firm while Cognito is slow, on real PostgreSQL with the service's own lockFirm and
-  // FIRM_TX: never "Cognito changed, our records rolled back"; the second waits at most 1.5 s and gets 409 FIRM_BUSY.
+  // FIRM_TX: never "Cognito changed, our records rolled back"; the second waits at most about 1.5 s and gets 503 FIRM_BUSY.
   const { execFileSync } = await import("node:child_process"); const { join } = await import("node:path");
   const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"], DB = `xr_studio_pf4bc_scratch_${process.pid}`;
   const { PrismaPg } = await import("@prisma/adapter-pg"); const { PrismaClient } = await import("@prisma/client");
@@ -235,6 +235,8 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
     const took = Date.now() - t0; await holder.query("rollback"); await holder.end(); await attempt;
     ok("PF-4bc fail (#3217 R3-m1): a person's row held elsewhere after the firm lock → 503 FIRM_BUSY within about 3 s, not a wait the whole transaction long", typeof held === "object" && held?.status === 503 && held.body.code === "FIRM_BUSY" && took < 5_000, { held, took });
     ok("PF-4bc pass (break R2-M1; #3217 R3-m2): the transaction's limit covers two bounded lock waits (up to 3 s each: Postgres bounds each lock attempt, and a row lock can wait twice), the 3 s provider deadline and the commit", FIRM_TX.timeout >= 2 * 3_000 + 3_000 + 2_000, FIRM_TX);
+    const { SIGN_OUT_TX } = lockMod as { SIGN_OUT_TX?: { timeout: number } };
+    ok("PF-4bc fail (review m2): sign-out's limit is above FIRM_TX's, since a bounded holder may keep the firm lock that long", !!SIGN_OUT_TX && SIGN_OUT_TX.timeout > FIRM_TX.timeout, SIGN_OUT_TX);
   } finally { await db.$disconnect(); try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* prune-test-dbs.sh */ } }
 }
 
@@ -246,7 +248,10 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
   const src = readFileSync(join(import.meta.dirname, "..", "api", "src", "platform", "identity", "session", "service.ts"), "utf8");
   const body = (name: string) => { const at = src.search(new RegExp(`async ${name}[(<]`)); return at < 0 ? "" : src.slice(at, src.indexOf("\n  async ", at + 10) < 0 ? undefined : src.indexOf("\n  async ", at + 10)); };
   ok("PF-4bc fail (#3217 r3-m2): signOut takes the firm lock without the bound (inFirm with bounded: false)", /bounded:\s*false/.test(body("signOut")), body("signOut").slice(0, 300));
-  ok("PF-4bc pass (#3217 r3-m3): inFirm takes lockFirm inside FIRM_TX when bounded", /lockFirm\(/.test(body("inFirm")) && /FIRM_TX/.test(body("inFirm")), body("inFirm").slice(0, 400));
+  ok("PF-4bc pass (#3217 r3-m3, review m4): inFirm takes lockFirm inside FIRM_TX only when bounded, and maps a lock timeout to FIRM_BUSY", /if \(o\.bounded\) await lockFirm\(/.test(body("inFirm")) && /o\.bounded \? FIRM_TX : SIGN_OUT_TX/.test(body("inFirm")) && /busyOnLockTimeout\(e\)/.test(body("inFirm")), body("inFirm").slice(0, 400));
+  const acc = body("accept"), lift = acc.indexOf("set local lock_timeout to default"), create = acc.indexOf("this.admin.createUser(");
+  ok("PF-4bc fail (review m1): accept lifts the lock bound just before its provider call (what follows it waits within FIRM_TX)", lift > 0 && create > lift && acc.slice(lift, create).split("\n").length <= 3, { lift, create });
+  ok("PF-4bc fail (review m3): accept's busy words are for a person not yet in the firm", /BUSY_WORDS_INVITEE/.test(acc));
   ok("PF-4bc pass (#3217 r3-m3): accept takes lockFirm inside FIRM_TX and maps a lock timeout to FIRM_BUSY", /lockFirm\(/.test(body("accept")) && /FIRM_TX/.test(body("accept")) && /busyOnLockTimeout/.test(body("accept")), body("accept").length);
 }
 console.log(`\n${pass} passed, ${fail} failed`);

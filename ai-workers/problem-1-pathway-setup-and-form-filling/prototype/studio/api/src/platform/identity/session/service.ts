@@ -20,7 +20,7 @@ import { PlatformIdentity } from "../service.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./mail.ts";
 import { IDENTITY_ADMIN_PORT, LocalIdentityAdmin, type IdentityAdminPort } from "./provider.ts";
 import { requireStepUp } from "./step-up.ts";
-import { busyOnLockTimeout, FIRM_TX, lockFirm } from "./firm-lock.ts";
+import { BUSY_WORDS_INVITEE, busyOnLockTimeout, FIRM_TX, lockFirm, SIGN_OUT_TX } from "./firm-lock.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,7 +54,7 @@ export class PlatformSession {
       if (me?.status !== "ACTIVE" || (rev && actor.authTime * 1000 <= rev.revokedAt.getTime())) unauthorized("Your session ended before this change was made. Sign in again.", "SESSION_REVOKED");
       if (me.grants.map((g) => g.role).sort().join() !== [...actor.roles].sort().join()) problem(409, "Your roles changed", "Your roles changed while this was being sent. Nothing was saved; try again.", { code: "ROLES_CHANGED" });
       return fn(tx);
-    }, o.bounded ? FIRM_TX : undefined).catch((e: unknown) => (o.bounded ? busyOnLockTimeout(e) : Promise.reject(e)));
+    }, o.bounded ? FIRM_TX : SIGN_OUT_TX).catch((e: unknown) => (o.bounded ? busyOnLockTimeout(e) : Promise.reject(e)));
   }
 
   private async target(tx: Tx, firmId: string, id: string) {
@@ -144,12 +144,14 @@ export class PlatformSession {
       await tx.$executeRaw`update platform_invitation set accepted_at = now() where id = ${inv.id}::uuid`;
       await auditEvent.record(tx, { firmId: inv.firm_id, actor: "system:invitation-accept", action: "platform.invitation.accepted", entity: "platform_invitation", entityKey: inv.id, summary: `an invitation was accepted; a staff member joined (${inv.roles.join(", ")})`, detail: { invitationId: inv.id, staffId: staff.id, roles: inv.roles },
         before: { status: "PENDING" }, after: { status: "ACCEPTED", staffId: staff.id, email: staff.email, displayName: staff.displayName, roles: inv.roles } });
-      // Last, so a refused provider call rolls everything back (AdminCreateUser with MessageAction SUPPRESS).
+      // Last, so a refused provider call rolls everything back (AdminCreateUser with MessageAction SUPPRESS). The lock bound
+      // ends here (review m1): what follows waits within FIRM_TX as before; a refusal after it is safe (createUser is idempotent).
+      await tx.$executeRawUnsafe("set local lock_timeout to default");
       const { subject } = await this.admin.createUser(inv.email);
       await tx.platformStaff.update({ where: { id: staff.id }, data: { identitySubject: subject } });
       await tx.moduleEvent.create({ data: { firmId: inv.firm_id, type: EVENT.STAFF_JOINED, subjectId: staff.id, payload: StaffJoinedPayload.parse({ staffId: staff.id, invitationId: inv.id }) } });   // last (PF-3 m8)
       return { staffId: staff.id, firmKey: inv.firm_key, roles: inv.roles, handOff: await this.admin.handOff(inv.firm_key, inv.email) };
-    }, FIRM_TX).catch(busyOnLockTimeout).then((out) => "refused" in out ? problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" }) : out));
+    }, FIRM_TX).catch((e: unknown) => busyOnLockTimeout(e, BUSY_WORDS_INVITEE)).then((out) => "refused" in out ? problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" }) : out));
   }
 
   /** PF-6m2: why the inviter (`invited_by`) may no longer hand this invitation out, else null. The same rule as invite
