@@ -20,6 +20,8 @@ type RowFlag = { code: string; detail: string };
 type BatchAnswer = { invited: { row: number; emailed?: boolean }[]; flagged: { row: number; reason: string; detail: string; flags?: RowFlag[] }[] };
 /** A flag about the row's name shows under Name (PF-4dn review m1); every other flag under Email. */
 const NAME_FLAGS = new Set(["INVALID_NAME"]);
+/** P-727: 1 to 50 people in one form (the batch route refuses 51 as a whole). */
+const BATCH_MAX = 50;
 /** P-727: what Send will do with more rows than free seats, said before Send. */
 const seatWords = (free: number, over: number) => free === 0
   ? "Your plan has no free seat. Every row comes back marked, to send after you free a seat or upgrade your plan."
@@ -58,13 +60,16 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
     await qc.invalidateQueries({ queryKey: ["pf", "staff"] });
     const sent = answer.invited.length, unmailed = answer.invited.filter((i) => i.emailed === false).length, flagged = answer.flagged.length;
     if (sent) toast.push(unmailed ? { tone: "danger", text: `${sent} ${sent === 1 ? "invitation" : "invitations"} made; ${unmailed} could not be emailed. Use Resend under Invited.` } : { tone: "ok", text: `${sent} ${sent === 1 ? "invitation" : "invitations"} sent.` });
+    // Break m5: focus goes to the first flagged row's field (its words are read with it), not the panel.
+    if (flagged) requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-invite-row="1"] input[aria-invalid="true"]')?.focus());
     if (flagged) setFormError({ title: "Not everyone was invited", text: `${flagged} ${flagged === 1 ? "person was" : "people were"} not invited. Fix ${flagged === 1 ? "the row" : "each row"} below and send again.` });
     else if (sent === form.length) onOpenChange(false);
   };
   return (
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => !rows.some((r) => r.email.trim() || r.name.trim()) || window.confirm("Discard the people you typed?")} title="Invite people" description="Each person gets their own invitation email. It works for 72 hours."
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button busy={busy} onClick={() => void send()} data-send-invites>Send {rows.length === 1 ? "invitation" : `${rows.length} invitations`}</Button></>}>
-      <div className="flex flex-col gap-4">
+      {/* Break M1: the form is locked while the batch is in flight, so the answer always maps onto the rows as sent. */}
+      <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" data-invite-form>
         <p className="text-sm" data-invite-seats>{after} of {seats.limit} seats after these invites</p>
         {formError ? <div data-invite-form-error><Notice tone="danger" title={formError.title}>{formError.text}</Notice></div> : null}
         {over > 0 ? <div data-invite-seat-warning><Notice tone="warn" title="More people than free seats">{seatWords(free, over)}</Notice></div> : null}
@@ -87,10 +92,11 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
           );
         })}
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => setRows((rs) => [...rs, fresh(next.current++, offered)])} data-add-row>+ Add another person</Button>
+          {rows.length < BATCH_MAX ? <Button variant="outline" size="sm" onClick={() => setRows((rs) => [...rs, fresh(next.current++, offered)])} data-add-row>+ Add another person</Button>
+            : <p className="text-xs text-text-muted" data-invite-max>{BATCH_MAX} people is the most in one form. Send these, then invite more.</p>}
           <CompareRoles roles={roles} />
         </div>
-      </div>
+      </fieldset>
     </Panel>
   );
 }

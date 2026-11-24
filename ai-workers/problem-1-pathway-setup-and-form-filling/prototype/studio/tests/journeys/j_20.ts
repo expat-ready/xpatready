@@ -18,6 +18,8 @@
 //       seat) and the third valid row (OVER_SEAT_LIMIT) stay, each with its words; a seat is added and the row is sent.
 //   W6: A opens the link from the email (the demo inbox) → Accept → signed in; A's staff record carries the name typed on
 //       the form. The walk ends at the next step (R1.5/R1.6): Team lists A as active.
+//   W7: at 50 rows the form offers no 51st (break m2). W1 also checks focus lands on the first flagged row (break m5); W3
+//       that the form is locked while the batch is in flight (break M1).
 //   DW1 (API): a single invite past the seat limit is refused 409 naming the limit, nothing stored.
 // Fails on the fake (P-606): W2's judges are read before Send (no invitation for A or B), W4's before Send (no invitation
 // for the second row), W6's before Accept (no staff row for A).
@@ -109,6 +111,7 @@ try {
   const words1 = await row(owner, 1).innerText(), words2 = await row(owner, 2).innerText();
   ok("J-20 W1: Send invites the two good rows (\"2 invitations sent.\"); they leave the form and the two flagged rows stay", toast === 1 && rowsLeft === 2 && (await owner.getByLabel("Email, person 1").inputValue()) === STAFF && (await owner.getByLabel("Email, person 2").inputValue()) === D, { toast, rowsLeft });
   ok("J-20 W1: each flagged row shows its own reason on its own row (already staff; already invited)", words1.includes("This person is already on your firm's staff.") && !words1.includes("invitation") && /already (has a pending invitation|invited)/i.test(words2) && !words2.includes("already on your firm's staff"), { words1, words2 });
+  ok("J-20 W1 (break m5): focus goes to the first flagged row's Email field, not the panel", await owner.evaluate(() => document.activeElement?.getAttribute("aria-invalid") === "true" && !!document.activeElement?.closest('[data-invite-row="1"]')));
   ok("J-20 W1: the form says how many were not invited", (await owner.locator("[data-invite-form-error]").innerText()).includes("2 people were not invited."));
   ok("J-20 W1: each flagged row's Email field is marked invalid for screen readers", await owner.getByLabel("Email, person 1").getAttribute("aria-invalid") === "true" && await owner.getByLabel("Email, person 2").getAttribute("aria-invalid") === "true");
   const axe = await new AxeBuilder({ page: owner }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
@@ -128,7 +131,13 @@ try {
   await owner.getByLabel("Email, person 1").fill(C2);
   await owner.getByRole("button", { name: "Remove person 2" }).click();
   ok("J-20 W3: correcting a flagged row clears its words", !(await row(owner, 1).innerText()).includes("already on your firm's staff"));
+  // Break M1: while the batch is in flight the form is locked, so nothing typed then can be lost or get another row's words.
+  let release!: () => void; const held = new Promise<void>((r) => { release = r; });
+  await owner.route("**/api/platform/staff/invitations/batch", async (r) => { await held; await r.continue(); }, { times: 1 });
   await owner.locator("[data-send-invites]").click();
+  await owner.locator("[data-invite-form]:disabled").waitFor({ timeout: 10_000 });
+  ok("J-20 W3 fail (break M1): while sending, the rows cannot be edited, removed or added to", await owner.getByLabel("Email, person 1").isDisabled() && await owner.locator("[data-add-row]").isDisabled());
+  release();
   await until("the corrected row's invitation", () => invitations(C2) === 1);
   await owner.getByLabel("Email, person 1").waitFor({ state: "detached", timeout: 15_000 });
   invited.push(sql(`select id from platform_invitation where email = '${C2}'`));
@@ -202,6 +211,11 @@ try {
   await shot(a, "W6-accepted-1440");
   await team(owner);
   ok("J-20 W6: the walk ends at the next step: Team lists A as active staff", await owner.locator(`[data-team-row="${A}"]`).isVisible());
+  // ---------------------------------------------------------------- W7: at most 50 people in one form (break m2, P-727)
+  await openInvite(owner);
+  for (let k = 1; k < 50; k++) await owner.locator("[data-add-row]").click();
+  ok("J-20 W7 fail (break m2): at 50 rows the form offers no 51st and says why", (await owner.locator("[data-invite-row]").count()) === 50 && (await owner.locator("[data-add-row]").count()) === 0 && (await owner.locator("[data-invite-max]").innerText()).includes("50 people is the most in one form"));
+  await owner.keyboard.press("Escape");
   ok("J-20: no page error", errors.length === 0, errors);
 } finally {
   limit(Number(plan[1]));
