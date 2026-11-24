@@ -173,13 +173,13 @@ def merged_prs(since, until):
 #   b. Review rounds per PR: comments whose first line starts "Reviewer:" (one verdict each), on the code PRs merged in the
 #      window (change-kind.sh code, P-500); share over 2 rounds (P-277's limit).
 #   c. First-time proof pass rate: R1 rows whose first qa score (Works, Partial or Broken) was Works.
-#   d. Reverse plan: rows not Works now, days to the Release 1 date (29 Nov IST, P-609), proofs needed a day, against the
+#   d. Reverse plan: rows not Works now, days to the Release 1 date (29 Nov IST, A350), proofs needed a day, against the
 #      net change of Works rows over the last 24 h, and the IST date that rate reaches all rows.
 #   e. Queue bounces: Mergify's own queue comments that ended "dequeued" in the window, by cause: the failing suites read
 #      from the failing shard's log (as merge-queue-causes.py), else the failing job, else Mergify's reason.
 CAPS = f"{P}/product/qa/CAPABILITIES.md"
 IST = timezone(timedelta(hours=5, minutes=30))
-RELEASE_END = datetime(2026, 11, 30, tzinfo=IST)   # end of 29 Nov IST (P-609)
+RELEASE_END = datetime(2026, 11, 30, tzinfo=IST)   # end of 29 Nov IST (founder 24 Nov, A350; was 12 Dec, P-815)
 SCORES = ("Works", "Partial", "Broken")
 ROW = re.compile(r"^\+\| (R1\.\d+) \|[^|]*\|[^|]*\| ([^|]+?) \| ([^|]*?) \|")
 TOK = re.compile(r"\bR1\.\d+\b")
