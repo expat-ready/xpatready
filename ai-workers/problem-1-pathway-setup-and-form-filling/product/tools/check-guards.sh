@@ -73,10 +73,14 @@ A351 c1 ports|product/tools/red-on-old.py|s/"packages", "ports", /"packages", /|
 3|product/tools/lane-preflight.sh|/under ${min} GB;/d|check-lane-preflight.sh
 3 touch|product/tools/lane-preflight.sh|s/ python3 -I "\$DIR\/touch-overlap.py" 2>\&1)/ cat >\/dev\/null)/|check-touch-overlap.sh
 P776 count|product/tools/npm-audit-report.py|s/^    if len(v) != c\["total"\]:/    if False:/|check-npm-audit-report.sh
-P776 error|product/tools/npm-audit-report.py|s/^    if d.get("error") or not/    if not/|check-npm-audit-report.sh
+P776 error|product/tools/npm-audit-report.py|s/ or e or "metadata" not in d:/ or "metadata" not in d:/|check-npm-audit-report.sh
 P776 new|product/tools/npm-audit-report.py|s/ or ORDER.index(s) < ORDER.index(w\[k\])}/}/|check-npm-audit-report.sh
 P776 base|product/tools/npm-audit-report.py|s/^            line += "; the base could not be read"; warn = .*/            pass/|check-npm-audit-report.sh
 P776 safe|product/tools/npm-audit-report.py|s/.replace("::", ": :")//|check-npm-audit-report.sh
+P776 order|product/tools/npm-audit-report.py|s/for k, _ in order\[:5\]/for k in list(new)[:5]/|check-npm-audit-report.sh
+P776 folder|../../.github/workflows/studio-audit.yml|s/npm audit --prefix "\$RUNNER_TEMP.\$v"/npm audit --prefix "$S"/|check-npm-audit-report.sh
+P776 show|../../.github/workflows/studio-audit.yml|s/> "\$RUNNER_TEMP.base.\$f" .. true$/> "$RUNNER_TEMP\/base\/$f"/|check-npm-audit-report.sh
+P776 depth|../../.github/workflows/studio-audit.yml|s/fetch-depth: 2/fetch-depth: 1/|check-npm-audit-report.sh
 P776 block|../../.github/workflows/studio-audit.yml|/^      - id: ci$/,/run:/s/^        continue-on-error: true$/        continue-on-error: false/|check-npm-audit-report.sh
 P776 scripts|../../.github/workflows/studio-audit.yml|s/ --ignore-scripts//|check-npm-audit-report.sh
 P776 token|../../.github/workflows/studio-audit.yml|s/permissions: { contents: read }/permissions: { contents: write }/|check-npm-audit-report.sh

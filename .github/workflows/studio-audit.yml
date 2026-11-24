@@ -2,7 +2,7 @@
 # in CI on that package; Lead 25, 24 Nov). npm ci itself runs in ci.yml's parts (tools/cloud-setup.sh). Here: the lockfile as it
 # stands is installed without its scripts (it must be in step with package.json), then audited, the PR's beside the base's;
 # the count goes to the summary (npm-audit-report.py). Main has findings, so nothing here fails a PR: every step after checkout
-# is continue-on-error, no Mergify condition and no ruleset names it. Read-only token, no secrets, no package script runs. US$0.
+# is continue-on-error, no Mergify condition and no ruleset names it. Read-only token, no secrets, package scripts off (--ignore-scripts). US$0.
 # Test: product/tools/check-npm-audit-report.sh.
 name: studio-audit
 on:
@@ -10,6 +10,7 @@ on:
     paths:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package.json"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/.npmrc"
       - ".github/workflows/studio-audit.yml"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/npm-audit-report.py"
 concurrency:
@@ -32,16 +33,19 @@ jobs:
         continue-on-error: true
         with: { node-version-file: .nvmrc }
       - id: ci
-        name: npm ci (no package script runs)
+        name: npm ci (package scripts off)
         continue-on-error: true
         run: cd "$S" && npm ci --ignore-scripts --no-audit --no-fund
       - name: npm audit, this PR and its base (report only)
         continue-on-error: true
         env: { CI_OUTCOME: "${{ steps.ci.outcome }}" }
         run: |
-          [ "$CI_OUTCOME" = success ] || echo "::warning title=npm audit (P-776, report only)::npm ci failed: the lockfile is not in step with package.json, or the registry did not answer"
-          mkdir -p "$RUNNER_TEMP/base"
-          for f in package.json package-lock.json; do git show "HEAD^1:$S/$f" > "$RUNNER_TEMP/base/$f"; done
-          (cd "$S" && npm audit --package-lock-only --json > "$RUNNER_TEMP/head.json") || true
-          (cd "$RUNNER_TEMP/base" && npm audit --package-lock-only --json > "$RUNNER_TEMP/base.json") || true
+          [ "$CI_OUTCOME" = success ] || echo "::warning title=npm audit (P-776, report only)::npm ci failed: the lockfile is not in step with package.json, or the registry did not answer" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Both sides in folders of their own: a committed .npmrc (offline, omit, another registry) must not change the count.
+          for v in head base; do mkdir -p "$RUNNER_TEMP/$v"; done
+          for f in package.json package-lock.json; do
+            cp "$S/$f" "$RUNNER_TEMP/head/$f" || true
+            git show "HEAD^1:$S/$f" > "$RUNNER_TEMP/base/$f" || true
+          done
+          for v in head base; do npm audit --prefix "$RUNNER_TEMP/$v" --package-lock-only --json --registry=https://registry.npmjs.org/ --offline=false --include=prod --include=dev --include=optional --include=peer > "$RUNNER_TEMP/$v.json" || true; done
           python3 -I "$P/tools/npm-audit-report.py" --head "$RUNNER_TEMP/head.json" --base "$RUNNER_TEMP/base.json" --summary "$GITHUB_STEP_SUMMARY" || true

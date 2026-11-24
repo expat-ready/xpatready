@@ -14,9 +14,12 @@ def safe(s, n=80):
 
 def read(path):
     d = json.load(open(path, encoding="utf-8"))
+    e = d.get("error") if isinstance(d, dict) else {}
+    if not isinstance(d, dict) or e or "metadata" not in d:      # npm's failures: {"error":{"code","summary"}} or {"message","uri"}
+        raise ValueError("no audit answer: " + safe((e or {}).get("summary") or (e or {}).get("code") or (d.get("message") if isinstance(d, dict) else "") or "fields missing", 120))
     c, v = d["metadata"]["vulnerabilities"], d["vulnerabilities"]
-    if d.get("error") or not isinstance(v, dict) or not all(isinstance(c.get(k), int) for k in (*ORDER, "total")):
-        raise ValueError("no audit answer: " + safe((d.get("error") or {}).get("summary", "fields missing") if isinstance(d.get("error"), dict) else "fields missing"))
+    if not isinstance(v, dict) or not all(isinstance(c.get(k), int) for k in (*ORDER, "total")):
+        raise ValueError("no audit answer: fields missing")
     if len(v) != c["total"]:
         raise ValueError(f"total {c['total']} but {len(v)} packages")
     return c, {k: x["severity"] for k, x in v.items()}
@@ -32,8 +35,9 @@ def main():
             b, w = read(o.base)
             new = {k: s for k, s in v.items() if k not in w or ORDER.index(s) < ORDER.index(w[k])}
             line += f"; the base has {b['total']}; {len(new)} new or more severe here, {len([k for k in w if k not in v])} gone"
-            rows = [f"| {safe(k)} | {s} |" for k, s in sorted(new.items(), key=lambda x: (ORDER.index(x[1]), x[0]))]
-            warn = f"{len(new)} packages with a new or more severe finding than the base: " + ", ".join(safe(k, 40) for k in list(new)[:5]) if new else ""
+            order = sorted(new.items(), key=lambda x: (ORDER.index(x[1]), x[0]))
+            rows = [f"| `{safe(k)}` | {s} |" for k, s in order]
+            warn = f"{len(new)} packages with a new or more severe finding than the base: " + ", ".join(safe(k, 40) for k, _ in order[:5]) if new else ""
         except Exception as e:
             line += "; the base could not be read"; warn = f"the base's audit could not be read ({type(e).__name__}: {safe(e)})"
     print(line)
@@ -47,5 +51,10 @@ def main():
 try:
     main()
 except Exception as e:
-    print(f"::warning title=npm audit (P-776, report only)::not read ({type(e).__name__}: {safe(e)}): the findings were not counted")
+    m = f"npm audit (studio, report only): not read ({type(e).__name__}: {safe(e, 160)}): the findings were not counted"
+    print("::warning title=npm audit (P-776, report only)::" + m)
+    f = sys.argv[sys.argv.index("--summary") + 1] if "--summary" in sys.argv[:-1] else ""
+    if f:
+        with open(f, "a", encoding="utf-8") as fh:
+            fh.write(f"### {m}\n")
     sys.exit(2)
