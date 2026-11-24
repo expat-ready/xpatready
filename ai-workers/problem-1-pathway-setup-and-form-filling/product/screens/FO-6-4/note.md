@@ -84,3 +84,62 @@ A fresh Opus challenger read this note, the test, the row and the code on main: 
 * Majors: rule 12 now takes the firm signer's consent (part 3 refuses a signature without it); the code-off bearer exposure is stated (rule 8) and question 2 rewritten; 4a no longer needs 4b's columns; the stand-in page is local only, and test and production never register it; the cookie path is anchored, `SameSite=Strict` is checked and the test's cookie jar honours `Path`; the non-representative is a fixed case officer and the 403's own code is asserted; the rate limit is keyed per (address, token), with question 9 added.
 * Minors: the migration reasoning is honest and names the code-column fallback; the setting is read live (question 8); `no-store` and `no-referrer` are added; timing is addressed; the right code is refused while locked (tested); consent is written once (tested); an audit line per door write (tested); GET writes nothing and the session writes `viewed_at`; a new session token on every verify; the nonce is checked; the "signed" wording matches j_61's; question 10 (j_54 W3's body).
 * Not taken: no rule was cut. The test keeps its stand-ins by SQL, said in its header.
+
+## Part 4b additions (Lead B's three Minors on #3433, 4a's first read)
+1. **The email's words** name every end: "It works until you sign or decline, until it expires, or until <firm> sends you a newer version." (`link-mail.ts`; test `check_fo6_door_code` S).
+2. **No localhost link outside local:** `signingPublicBase()` is null outside `PLATFORM_ENVIRONMENT=local` when `STUDIO_PUBLIC_URL` is unset, and then no "Please sign" email is sent (logged as an error). The copy still starts, because refusing to start would stop every other module (test `check_fo6_door_code` S).
+3. **Who can read the stored email (and so the full link):**
+   * Staff's message list (`GET /api/platform/messages`) shows a message's facts, never a transactional body: "transactional bodies stay sealed, PF-19e" (`platform/messages/staff-routes.ts:4`).
+   * The rendered email is a file in the firm's file space. It is read only by the demo inbox (`GET /api/demo/platform-inbox`, the local adapter, demo workspace only, 404 elsewhere) and by whoever operates the file store and database (our own staff with infrastructure access).
+   * With the code on, the link alone opens nothing (rule 7). With it off, it is a bearer link until signed (Lead 24, answer 2), so this exposure is the firm's choice, named in the switch's words.
+
+## Part 4b round 1 fixes (reviewer and breaker on 2ba80d7c4, `review-4b.md`, `break-report-4b.md`)
+* **Rule 10, the rate limit, changed** (breaker M1, reviewer m4):
+  * Per (address, token), Sample 30 a minute, as before.
+  * The address ceiling now counts only **misses** (malformed or unknown links), Sample 300 a minute. Past it, further misses get 429, but a live link is never refused because of other callers. With no trust-proxy, every client behind a proxy shares one address, and the old 300-a-minute ceiling on every call was one global limit.
+  * POST bodies must be JSON (415 otherwise; breaker m4).
+* **Rule 4's signed words** are now "This agreement has been signed.", which j_61's refusal words match (reviewer M1).
+* **The code:**
+  * A check with no live code (none asked, expired, or already used) is refused and not counted, so a forwarded-link holder cannot lock the client out (breaker m2).
+  * With the code on, only a session a right code started counts: a session started by consent while the code was off ends when the firm switches the code back on (breaker m1).
+  * The code's email key holds nothing of the code (reviewer m1).
+* **Small fixes:**
+  * The state is re-checked after the request's lock: 409 in words, never a 500 (reviewer m3).
+  * The retainer moves to VIEWED only at its current version (reviewer m2).
+  * The view line has before and after (reviewer m6).
+  * With the code off, the 401's words say "Agree first" (reviewer m5, breaker m3).
+  * `rollback.sql` deletes its `_prisma_migrations` row (reviewer m7).
+* **Tests** (reviewer M2): headers; consent needed; GET writes nothing; viewed and VIEWED; session replacement with the code on; the server-side expiry; checks with no code asked; JSON only; the code switched back on; SIGNED_OFFLINE in the ended-state loop; misses never blocking a live link.
+
+## Hand-over: FO-6 part 4c (written 24 Nov at 4b's Approve; Lead 28: no 4c in this session)
+**State.** 4a is on main (#3433). 4b (#3460) has round 3 approved by the reviewer and the breaker on fcb8e3ad8. Still owed, by the Lead, before the label: Lead B's re-read, the Lead's read line, and `ci` on the final head. Its stamp 20261124130000 lands after #3234 and #3235 (Lead 28). **Start 4c only once #3460 has merged**, on a new branch from origin/main (never build on an unmerged PR).
+
+**4c builds** (rules 11 and 12 above; the concept first, Lead 28: "Start 4c's concept now"):
+1. **The fake's stand-in signing page** (local only):
+   * `fakeSigning`'s `embeddedLink` points at a page on the copy's own origin, never `signing.fake.invalid`. That origin is `signingPublicBase()` from `link-mail.ts`, which is null outside local.
+   * The page checks a single-use nonce (10 minutes, held in the fake) and has a Sign button. Sign runs the fake's `act("signed")` and hands its webhook calls to `Signing.receive`, so part 3's order, consent and evidence rules apply unchanged.
+   * The route is registered only when `PLATFORM_ENVIRONMENT=local`. In test and production it does not exist (404), and a start-up assertion checks that it is not registered there. **4a review m5:** a unit line proves the 404 outside local.
+   * After a restart the fake has forgotten its envelopes, so `/session` answers 409 "Ask … to send it again" (already in `door.ts`).
+2. **The firm signer's link:** `POST /api/front-office/retainers/:id/firm-signing-link`.
+   * Keys: `@PermissionKeys("agent/retainer:show")`, `@OwnOrAll("agent/prospect")`, and the caller must be the retainer's representative (403 `NOT_THE_REPRESENTATIVE`).
+   * Only after every client signed (409 before). The body is `{ consent: true, consentTextVersion }`, which records the firm signer's consent once (part 3's webhook refuses a signature without it, `signing/service.ts:211`); without it, 422.
+   * It answers the adapter's link, which on the copy is item 1's page.
+3. **Lead B 6's two Minors on #3460:**
+   * `session` asks the provider for the embedded link before the lock. Re-check the end and the session under the lock after the link is fetched, and refuse if the request ended meanwhile.
+   * The limiter is in one process and its map is swept only of expired keys. Carry both as **known limits** in the module card (Lead 28: fine until two tasks share a limit).
+4. **The test:** `check_fo6_door.ts` drops its third argument (`4a,4b`), so every line counts; E's six lines must go green. If the door's page path changes, j_54 W3's `{}` body is qa's to change (Lead 24, answer 10).
+5. **Records:** `break-report-4b.md` is 107 lines after three rounds; the facts were kept, nothing cut (rule 8).
+
+**Size:** about 400 changed lines; no migration. Breaker: yes (a staff permission route and a public page).
+**Journey lines 4c turns green:**
+* j_54 W2 (signs) and W3;
+* j_61 W3 (signs), and W6 and W7 API;
+* it unblocks j_54 W4-W6.
+
+**Not 4c:**
+* FO-6v, the vendor (held, P-561);
+* part 5: expiry by JobPort, reminders, Send updated version, the representative's "needs you", PF-27;
+* FO-5d (decline, withdraw);
+* FO-5s, the client's `/sign/:token` page;
+* QA-777 (the R1.104 lane);
+* FO-6d's link emails (a small row after 4b, Lead 25).

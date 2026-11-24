@@ -27,7 +27,7 @@
 // signing link (port.ts) points at signing.fake.invalid, which no browser opens: W2's label names the missing page.
 // Parts as of 24 Nov (qa 11, run on #3490's head 9b3ac365a: 14/21 twice): the door FO-6 part 4b #3460 and the stand-in page
 // and firm link 4c #3490 (W2-W3); the e-signed retainer's downloads 4d #3536 (W4-W5); FO-5s's signed-copy button on the card
-// (W6, no PR); QA-782, no OTHER signer is emailed a link (W7, no part); FO-6v, the vendor's sandbox (W1, held P-561).
+// (W6, no PR); QA-786, no OTHER signer is emailed a link (W7, no part); FO-6v, the vendor's sandbox (W1, held P-561).
 // Sample values only; US$0, no model call, no live mail, no vendor call (the browser refuses the vendor and fake hosts).
 // No screenshots are written. Legal points (e-signature identity): Unconfirmed: no counsel. Run from prototype/:
 //   zsh studio/tools/isolated.sh j54 4454 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j54 4454 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_54.ts j54 4454
@@ -243,12 +243,12 @@ try {
   ok("J-54 W7 (FO-6d, on main): an uploaded PDF is sent to the prospect's two people: one OTHER request with two client signers",
     (other.status === 201 || other.status === 200) && ro === "OTHER|SENT|2", { send: brief(other), row: ro || "none" });
   const sb = await signByEmail(PB, OTHER_ID, PB.pid), sc = await signByEmail(PC, OTHER_ID, PC.pid);
-  ok("J-54 W7 (part missing: QA-782, no OTHER signer is emailed a link; no part named): each of the two people signs by their own emailed link", sb.signed && sc.signed, { B: sb, C: sc });
+  ok("J-54 W7 (part missing: QA-786, no OTHER signer is emailed a link; no part named): each of the two people signs by their own emailed link", sb.signed && sc.signed, { B: sb, C: sc });
   const oev = OTHER_ID ? sql(`select coalesce((select sealed_sha256 from fo_signing_evidence where request_id = '${OTHER_ID}'), '')`) : "";
   const docsB = await api("GET", `/api/front-office/people/${PB.pid}/documents`, undefined, tok), docsC = await api("GET", `/api/front-office/people/${PC.pid}/documents`, undefined, tok);
-  ok("J-54 W7 (part missing: QA-782; FO-6d files it once signed): the sealed copy of the uploaded PDF is filed, hashed, and listed on both people",
+  ok("J-54 W7 (part missing: QA-786; FO-6d files it once signed): the sealed copy of the uploaded PDF is filed, hashed, and listed on both people",
     /^[0-9a-f]{64}$/.test(oev) && docsB.text.includes(oev) && docsC.text.includes(oev), { sealed: oev || "none", B: docsB.status, C: docsC.status });
-  ok("J-54 W7 (part missing: QA-782): an OTHER document never moves the prospect (its stage unchanged, no prospect.won)",
+  ok("J-54 W7 (part missing: QA-786): an OTHER document never moves the prospect (its stage unchanged, no prospect.won)",
     !!OTHER_ID && sb.signed && sc.signed && sql(`select stage_id from fo_prospect where id = '${B.id}'`) === stageBefore
       && sql(`select count(*) from audit_event where firm_id = '${firmId}' and action = 'prospect.won' and (entity_key = '${B.id}' or detail::text like '%${B.id}%')`) === "0", { sent: !!OTHER_ID, signed: sb.signed && sc.signed });
 

@@ -3,8 +3,10 @@
 // `code`), with its Sample values, on part 1's fo_signer columns:
 //   * a code is 6 digits, lives 10 minutes, is single use (spent once checked), and only its sha256 is stored;
 //   * a new code at most once a minute per signer; a live unspent code is not sent again unless asked (`resend`);
-//   * a wrong or expired code counts; the sixth locks the link 15 minutes, and while locked even the right code is
-//     refused; a code asked after the lock ends starts the count again.
+//   * a wrong code against a live, unspent code counts; the sixth locks the link 15 minutes, and while locked even the
+//     right code is refused; a code asked after the lock ends starts the count again. A check when no live code exists
+//     (none asked, expired, or already used: a double submit) is refused and not counted (4b breaker m2: a forwarded-link
+//     holder cannot lock the client out without asking for a code, which emails the client).
 // Each call takes the request's row lock itself (`select … for update`, part 1 review m10; again is harmless when the
 // caller holds it already), so two calls on one signer queue and a code is used once. The caller passes its audit writer, so
 // each change writes one line in its transaction, naming the signer, never the code. The browser-bound session a right
@@ -39,7 +41,7 @@ async function lockedSigner(tx: Tx, firmId: string, signerId: string): Promise<S
   return tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
 }
 
-export type AskVerdict = { verdict: "SENT"; code: string } | { verdict: "ALREADY_SENT" | "TOO_SOON" | "LOCKED" };
+export type AskVerdict = { verdict: "SENT"; code: string; expiresAt: Date } | { verdict: "ALREADY_SENT" | "TOO_SOON" | "LOCKED" };
 
 /** Asks for a code. SENT carries the new code for the caller to email after its commit; ALREADY_SENT: a live unspent
  *  code exists and no resend was asked (nothing changes); TOO_SOON: the last code is under a minute old; LOCKED. */
@@ -48,17 +50,18 @@ export async function askCode(tx: Tx, firmId: string, signerId: string, now: Dat
   if (isLocked(cur, now)) return { verdict: "LOCKED" };
   if (liveCode(cur, now) && o.resend !== true) return { verdict: "ALREADY_SENT" };
   if (cur.codeExpiresAt && cur.codeExpiresAt.getTime() - CODE_MINUTES * MIN > now.getTime() - RESEND_GAP_MS) return { verdict: "TOO_SOON" };
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0"), expiresAt = new Date(now.getTime() + CODE_MINUTES * MIN);
   const failures = cur.lockedUntil ? 0 : cur.codeFailures;   // a lock that has ended starts the count again
-  await tx.foSigner.update({ where: { id: cur.id }, data: { codeSha256: sha(code), codeExpiresAt: new Date(now.getTime() + CODE_MINUTES * MIN), codeFailures: failures, lockedUntil: null } });
+  await tx.foSigner.update({ where: { id: cur.id }, data: { codeSha256: sha(code), codeExpiresAt: expiresAt, codeFailures: failures, lockedUntil: null } });
   await o.line(tx, "A one-time code was emailed to the signer.", { codeFailures: failures, locked: false });
-  return { verdict: "SENT", code };
+  return { verdict: "SENT", code, expiresAt };
 }
 
 export type CheckVerdict = "OK" | "WRONG" | "EXPIRED" | "LOCKED";
 
-/** Checks a code. OK: right, live and unspent (it is spent now: code_verified_at is set, the count cleared); WRONG or
- *  EXPIRED: counted; the sixth counted try answers LOCKED and locks the link LOCK_MINUTES; LOCKED: refused, not counted. */
+/** Checks a code. OK: right, live and unspent (it is spent now: code_verified_at is set, the count cleared); WRONG: counted,
+ *  and the sixth counted try answers LOCKED and locks the link LOCK_MINUTES; EXPIRED: no live code (none asked, past its
+ *  10 minutes, or spent), refused and not counted; LOCKED: refused, not counted. */
 export async function checkCode(tx: Tx, firmId: string, signerId: string, given: string, now: Date, o: { line: CodeLine }): Promise<CheckVerdict> {
   const cur = await lockedSigner(tx, firmId, signerId);
   if (isLocked(cur, now)) return "LOCKED";
@@ -69,10 +72,11 @@ export async function checkCode(tx: Tx, firmId: string, signerId: string, given:
     await o.line(tx, "The signer's one-time code was right.", { codeFailures: 0, locked: false, verified: true });
     return "OK";
   }
+  if (!live) return "EXPIRED";   // nothing to guess at: not counted, nothing written
   const failures = Math.min((cur.lockedUntil ? 0 : cur.codeFailures) + 1, CODE_TRIES), lock = failures >= CODE_TRIES ? new Date(now.getTime() + LOCK_MINUTES * MIN) : null;
   await tx.foSigner.update({ where: { id: cur.id }, data: { codeFailures: failures, lockedUntil: lock } });
-  await o.line(tx, lock ? `A sixth wrong code locked the link for ${LOCK_MINUTES} minutes.` : "A wrong or expired code.", { codeFailures: failures, locked: !!lock });
-  return lock ? "LOCKED" : live ? "WRONG" : "EXPIRED";
+  await o.line(tx, lock ? `A sixth wrong code locked the link for ${LOCK_MINUTES} minutes.` : "A wrong code.", { codeFailures: failures, locked: !!lock });
+  return lock ? "LOCKED" : "WRONG";
 }
 
 /** The words for a refused ask or check (the door answers them as problems): status, title, detail, code. */
@@ -80,6 +84,6 @@ export const CODE_REFUSALS = {
   TOO_SOON: [429, "Wait a minute", "A code was sent less than a minute ago. Check your email, or ask again in a minute.", "CODE_TOO_SOON"],
   LOCKED: [423, "Locked for now", `Too many wrong codes. Try again in ${LOCK_MINUTES} minutes.`, "CODE_LOCKED"],
   WRONG: [422, "Wrong code", "That code is not right. Check the email and try again.", "CODE_WRONG"],
-  EXPIRED: [422, "Code expired", "That code has expired. Ask for a new one.", "CODE_EXPIRED"],
+  EXPIRED: [422, "Ask for a code", "That code has expired or was already used. Ask for a new one.", "CODE_EXPIRED"],
   FORMAT: [422, "Check the code", "The code is the 6 digits in the email we sent you.", "CODE_FORMAT"],
 } as const;
