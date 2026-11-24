@@ -2,7 +2,30 @@
 
 **Tested on a real switch, 5 Nov 19:14 IST; corrected the same evening.** Canary requested and pushed inside 5 minutes; nothing on GitHub lost. The work lives on GitHub (P-82), so an account switch loses at most what a lane has not pushed. Every lane pushes after each step (P-344 (1)).
 
-## Switch of 23 Nov (Lead 10 → the new account's Lead), written 10:4x IST 23 Nov: READ THIS BLOCK FIRST
+## Switch of 24-25 Nov (Lead 31 → the new account's Lead), drafted 21:30 IST 24 Nov: READ THIS BLOCK FIRST
+**Not started: the founder has not given the date, the trigger, or said a new account exists.** Asked at 21:28 IST (typed to Lead 29, relayed). No lane is stopped before his go or the 96% rule (P-458). Refresh this block at the stop order.
+**Meter:** 88% at 19:08, 92% at 21:29 (about 1.7%/h on that one sample): 95% about 23:15, 96% about 23:50, 98% about 01:00 IST. The old account's week resets 29 Nov 22:30 IST.
+**Truth:** `STATE.md` on `lead/2026-11-07-lead31`, the Lead 29, 30 and 31 sections at the end of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`, RULES as of P-815. Proven 55/101 (21:13 record). Records owed: the Lead 29 and Lead 30 lists there.
+**Founder words in force:** A371 to A374 and the yeses by name in Lead 29's hand-over, no wider; the 24-hour pause on NEW capability rows to about 15:30 IST 25 Nov (P-663 keeps R1.10 A2, A3, A5 waiting).
+**Queue, 21:29:** testing: #3518 (#3467 database checkout fix, #3500 R1.68 preview panel), #3519 (#3516 qa records). Queued: #3460 (FO-6 signing door), #3234 (R1.85 erasure switch), #3497 (R1.69 notifications contract); scopes let one batch run at a time.
+**Migration order:** #3234 080000, #3235 085000, #3460 130000, #3277 to 150000, #3491 170000; if #3460 lands before #3235, #3235 re-stamps.
+**Cloud work by PR and next step** (old account's lanes stop; a fresh session each, Opus 5.5 medium, P-788; read the PR's newest comments first):
+* #3489 R1.93 console sign-in (8e7f454d6): Approve and Lead read posted; label on green ci, fast, guards. #3517 R1.93 Support page (6f3eedda6, newer than the 3c703b985 in round 2): read its newest verdict, then retarget after #3489.
+* #3460: lands by itself. Then #3490 FO-6 4c (retarget, full ci, Lead B read; its m5 question not found) and #3498 QA-777 (retarget).
+* #3493 R1.58 part 3: conflicts with main; merge main once after #3497, then Approve, Lead B read, Lead read of the new part, body checks.
+* #3234, then #3235 (retarget; ci, types red) and #3491 R1.87 (relabel after #3234).
+* R1.86 A1 to B: waits for #3489. R1.29: FO-9s parts 2-3 and FO-9b part 2b missing (j_29 13/22). R1.56: W1, FO-7c.
+* Not read by a recent Lead: #3277, #3303 (R1.64), #3479 (R1.5). Older open PRs with no step named here: #3471, #3478, #3424, #3421, #3418, #3411, #3406, #3371, #3220, #3219, #3217, #3214: read each before starting a lane.
+* qa: qa 8 stopped; qa 9 not started (hand-over on #3516's first comment).
+* Tooling: #3508 hung-suite report (4d3231487: Approve and Lead read posted; label on green). #3506 draft, held for A1. bk3 hang: tab.close() is Lead O 2's hypothesis, probe branch claude/lead-o2-bk3-tab (never merged).
+**Open questions to the founder:** #3471 Q2 (signing code); qa 9 and standby start; Lead 29's scratch copy (1.07 GB); folder switch A1; CodeAnt run; rule retires; outside accounts; the switch date.
+**Local sessions:** Lead 31 `local_2d7cb97e`, Lead B 7 `local_4ca0919d`, Lead O 2 `local_f6d6bb60`. Cloud lanes have not been read by Lead 31 (pane hidden); before the stop, read each and confirm its last push.
+**At the go (or 96%):** message each running lane "finish this step, push, hand-over comment on your PR, stop"; confirm pushes; private-sync; refresh this block and STATE; CronDelete the Lead's check; the founder switches.
+**First steps on the new account:** (1) get_usage, tell the founder. (2) `/lead` in the main copy; check first (cron `3,33 * * * *`, prompt `run lead-watch; read STATE Start here`). (3) GitHub, Mac sign-ins and claude.ai browser sign-in by the founder; a one-lane canary that pushes before any more start. (4) qa, then lanes above nearest to proven first, `waves.py allow` before each. (5) Two standbys, preflight permitting (disk 6.6 GB at 21:29; a Mac start needs 7).
+**Prompt for the founder to paste (Code tab, this folder, a new session):**
+> /lead — new account after the 24-25 Nov switch. Read `product/RESUME-ON-NEW-ACCOUNT.md` block "Switch of 24-25 Nov" first, then STATE "Start here". Run get_usage and tell me the weekly %. Start one canary lane, and after it pushes re-brief the rest from their PRs, nearest-to-proven first. Everything is on branch lead/2026-11-07-lead31 and open PRs.
+
+## Switch of 23 Nov (Lead 10 → the new account's Lead), written 10:4x IST 23 Nov
 **Stop order sent 11:14 IST at 94%** to the 4 running cloud lanes (qa Track A 3, UX PF-31, R1.70 CS-D7, CS-D5 #3188) and Lead B 2: each pushes and writes a hand-over comment on its newest PR. Also since: #3155 labelled; #3175 records merged (FO-7q part 2, FO-9b part 2b, FO-7t part 1p on main); FO-7s1 lane told to build FO-7q part 2; #3033 needs a fresh lane (red, lane at 85%); R1.55 Low (#3187); CI research `design/ci-options-2026-11-23.md` (stay on GitHub Actions; trial Ubicloud/Blacksmith); AWS · staging proof 2 `local_b9ba7abd` waits for the founder's sign-in.
 **Why:** weekly 84% at 10:10, 88% at 10:37 IST (about 8%/h with the all-in push the founder approved, A292); stop order at 95%, switch before 97%.
 **Truth:** `product/STATE.md` on `lead/2026-11-07-lead31` (Lead 10 lines, founder asks A291-A293). Proven on main: 48/101 at 10:37 (main history: 12 on 20 Nov, 25 on 21, 41 on 22, 46 on 23 at 00:00).
