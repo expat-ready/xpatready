@@ -156,3 +156,4 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 
 ### Ask row moved from STATE by Lead 23 (still in force, word for word)
 | A318 | 23 Nov ~14:04 (pressed in Lead 3) | "Yes, pause": NO NEW PRODUCT LABELS until the tooling list lands, 21:00 IST latest; exceptions a main fix or qa Blocker; nothing dequeued | in force; gate self-labels, hold being checked; A317 and this in full: A316 file |
+| A331-A336, A341, A344, A345 | 23-24 Nov | in force as recorded (A341: P-814 since merged in #3314); rows word for word `history/STATE-2026-11-24-lead14-before-handover.md`; A331-A336 in full `history/STATE-2026-11-23-lead9-ask-rows-A331-A336.md` |

@@ -29,7 +29,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A348 | 24 Nov ~08:25 (typed to Lead 18) | recovery plan, clean up lanes and disk, near-done first, lessons live, keep the dates | plan file above; in progress |
 | A346 | 24 Nov ~01:25 | night approvals (line above); plan file | in force |
 | A342, A343, A347 | 24 Nov | open rows, word for word at the end of the plan file | in force |
-| A331-A336, A341, A344, A345 | 23-24 Nov | in force as recorded (A341: P-814 since merged in #3314); rows word for word `history/STATE-2026-11-24-lead14-before-handover.md`; A331-A336 in full `history/STATE-2026-11-23-lead9-ask-rows-A331-A336.md` |
+| A331-A336, A341, A344, A345 | 23-24 Nov | in force; row word for word in the plan file, end |
 | A337-A340 | 23 Nov | the night plan runs (in force); the audit reports' decisions are the morning questions; word for word `history/STATE-2026-11-24-lead13-A338-row.md` |
 | A318 | 23 Nov | in force; word for word in the plan file, end |
 | A308-A329 | 23 Nov | A328 in force (scope line above); A316 visual plan owed; the rest answered or recorded, rows word for word: `history/STATE-2026-11-23-lead9-ask-rows-A308-A329.md` |
