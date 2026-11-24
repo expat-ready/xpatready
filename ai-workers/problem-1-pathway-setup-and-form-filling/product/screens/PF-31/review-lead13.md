@@ -161,3 +161,46 @@ Scope: diff only, `git show 6c4ff1f54` and `git show 30ab3cde2`. I walked the fr
 Everything else is unchanged at 1.
 
 Not checked: full suites (shared copy, and the breaker ended my user-S session once during the walk); Firefox and Safari anchoring; a screen reader.
+
+## Addendum 2: re-review of head a42412e7f653e4abd05909a96b87be97f5b4ede8 (24 Nov)
+
+**Verdict: Approve (Ship).** No Blocker or Major is open.
+
+Scope: diff only, `git show a42412e7f`. I walked :4747 as user-A (Studio) and user-S (sample-solo), using synthetic Ctrl-clicks so that Playwright's own scrolling could not hide a jump.
+
+### The Major from addendum 1: fixed
+The tab now scrolls by how far `main` actually moved, read in render before the DOM changes (`workspace.tsx:305-318`).
+
+Measured on Studio Fields at 1440×400:
+
+| Start | Strip appears | Strip goes (other tab closed) |
+|---|---|---|
+| Scrolled to 150 | scroll 150 → 193, `main` −61 → −61 | back to 150, `main` −61 |
+| At the top | scroll 0 → 43, `main` 89 → 89 | back to 0, `main` 89 |
+
+- On the short staff Offices page at the top, the spacer is added (room 1) and `main` stays at 56.
+- In the cases where the active tab also changes, the render-time read can see the old tab's `main`. `show()`, `close()` and `leave()` then restore each tab's own scroll in their rAF, which overrides it. Only the person-change reset has no such restore, and it is rare.
+- **Minor 2 (spacer left behind): fixed in code.** The cleanup on unmount removes it. The session-end walk did not trigger on my run, so this is checked in the code only.
+- **Minor 3 (one-tab undo): gone** with the measured scroll.
+- The new check line measures from a scrolled page. Justified.
+
+### The breaker items in this commit
+- **N1:** `PUBLIC` (`workspace.tsx:49`) puts `/pricing`, `/book`, `/sign-up`, `/invitation`, `/front-office/web-form/…`, `/sign-in`, `/link` and `/inbox` each in its own area. A Ctrl-click on one keeps the browser's behaviour.
+  - The staff settings page `/front-office/settings/web-form` is not caught by it. Correct.
+  - Nit: the check line plants its own `<a href="/pricing">` instead of clicking Home's real link. That does test the rule, but the comment says "as Home shows it".
+- **N2:** the tooltip's `useTabActive()` is called on every render, so the hook rule holds. A hidden tab draws no tooltip.
+- **N3:** the cap notice is positioned against the sticky strip, so the strip does not grow and `--ws-top` is unchanged.
+- **m1:** the "local" list leaves out `STAFF` addresses (`workspace.tsx:120-123`). After a reload while signed out, `xr.workspace.v1:local` held only `/sign-in`.
+
+### New Minors, for the follow-up (not blocking)
+1. **The spacer is removed on any tab switch.** The shown-strip cleanup at `workspace.tsx:319` also runs when `shownHere` goes from true to false.
+   - On a short page, the scroll of 43 is then clamped to 0 when you come back. Offices `main` sat at 56 before the switch and 99 after the return.
+   - This does not affect the Ctrl-click-row-after-row case, where the person stays on the list.
+2. **The cap notice (N3) now covers about one line of the page's top for its 6 seconds**, including the top of an open side panel.
+   - It appears only at 12 tabs. It could hide a focused control briefly (WCAG 2.4.11).
+3. **Earlier Minors 6 (10 px scroll drift) and 7 (strip arrows not discoverable) stay as agreed.**
+
+### Journey score: 10 / 10
+Up from 9. Feedback and state, and visual quality, are now 1: the content no longer jumps when the strip appears or goes, at the top or scrolled.
+
+Not checked: the full suites (I rely on the builder's 73/73 twice), Firefox and Safari anchoring, a screen reader, and the spacer cleanup on a live session end.
