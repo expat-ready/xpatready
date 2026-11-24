@@ -51,6 +51,14 @@ o=$(sel "$S/web/src/pages/history.tsx"); n=$(grep -c . <<< "$o"); ok "that page 
 o=$(dsel "$S/engine/near.ts" "$Q/prototype/p2/prompts/who-can-be.v1.md" "$T/run-suites.sh"); ok "--direct never runs everything" "$(! all "$o" && echo 1)" "$(head -1 <<< "$o")"
 o=$(dsel "$T/run-suites.sh"); ok "--direct: run-suites.sh still runs the suites that name it" "$(! only_smoke "$o" && echo 1)" "$(head -2 <<< "$o" | tr '\n' ' ')"
 o=$(dsel "$S/tests/check_queue_tx.ts"); ok "--direct: a changed suite still runs itself" "$(has "$o" check_queue_tx.ts && echo 1)" "$(head -2 <<< "$o" | tr '\n' ' ')"
+# Lead 12, founder 24 Nov 00:4x IST: the pure guards check_b164_no_engine_keys.ts (~12 s) and check_irm_editions.ts (~2 s;
+# no server, no database) always run for a change to api/src, engine or p2. --direct skipped them for a file that would
+# run everything (api/src/features/*, core.ts, main.ts): the "reads every file in api/src" rule came after its continue.
+for m in sel dsel; do for f in "$S/api/src/features/platform-reports.ts" "$S/api/src/core.ts" "$S/api/src/main.ts" "$S/engine/agreement.ts" "$Q/prototype/p2/launch.ts"; do
+  o=$($m "$f"); ok "pass ($m): ${f#$Q/prototype/} runs check_b164_no_engine_keys.ts and check_irm_editions.ts (or everything)" "$( (all "$o" || (has "$o" check_b164_no_engine_keys.ts && has "$o" check_irm_editions.ts)) && echo 1)" "$(grep -E '^ALL|b164|irm_editions' <<< "$o" | tr '\n' ' ' | cut -c1-200)"
+done; done
+o=$(dsel "$S/api/src/features/platform-reports.ts" "$S/api/src/core.ts"); ok "pass (--direct): the reason names the always-run guard rule" "$(grep -P '^check_b164_no_engine_keys\.ts\t' <<< "$o" | grep -q 'pure guard' && echo 1)" "$(grep -E 'b164|irm' <<< "$o" | tr '\n' ' ')"
+for m in sel dsel; do o=$($m "$Q/product/STATE.md" "$S/web/src/main.tsx" "$S/api/src/platform/MODULE.rows/PF-R1.md"); ok "fail ($m): records, a web file and an api/src note do not take the guard rule" "$(! grep -q 'pure guard' <<< "$o" && echo 1)" "$(grep -E 'pure guard' <<< "$o" | tr '\n' ' ' | cut -c1-200)"; done
 
 # The graph's rules, each with a passing and a failing case, on a made-up repository (fixed files, so the real code
 # changing never moves these): who uses what is read from the files themselves.
