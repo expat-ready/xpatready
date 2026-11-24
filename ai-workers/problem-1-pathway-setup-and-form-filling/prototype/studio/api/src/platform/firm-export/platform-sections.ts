@@ -1,10 +1,8 @@
-// PF-11 part 1: the platform's own sections of the firm's download (brief "This part's sections"): firm profile, staff
-// and roles (licences too), settings and offices, terms accepted, consents and withdrawals (PF-19a), messages and
-// templates (PF-19), complaints (PF-21). Each table is read whole for the firm, every column but one named like a secret
-// (ports/audit.ts SECRET_FIELD: passwords, tokens, hashes; never a person's details), its columns from the datamodel, so
-// an empty table still has its header row. Personal data is never masked (AG-16-20). Not here yet (contract gaps, each
-// named in its own row's PR): custom fields (PF-22), the Needs-you approval history (PF-20), import batch reports (PF-10,
-// for a caller who may view import reports only), the front office (part 2), client money (FO-7*), the case side (CS-X1).
+// PF-11 part 1: the platform's own sections (firm profile, staff, roles, licences, settings, offices, terms, consents and
+// withdrawals, messages and templates, complaints), each table whole for the firm, every column but those named like a
+// secret (ports/audit.ts SECRET_FIELD), columns from the datamodel so an empty table keeps its header; never masked
+// (AG-16-20). Contract gaps, each named in its row: custom fields (PF-22), Needs-you history (PF-20), import reports (PF-10,
+// import-report viewers only), the front office (part 2), client money (FO-7*), the case side and client files (CS-X1).
 import { Prisma } from "@prisma/client";
 import { SECRET_FIELD } from "../../../../ports/audit.ts";
 import type { ExportColumn, ExportSection, ModuleExportInput } from "../../../../ports/firm-export.ts";

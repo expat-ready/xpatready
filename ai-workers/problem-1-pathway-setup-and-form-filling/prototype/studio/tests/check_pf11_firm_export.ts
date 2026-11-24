@@ -1,10 +1,7 @@
-// PF-11 part 1 (map row 22; brief lead-b-briefs/PF-11.md with Lead B's corrections on #1972): the firm's full data
-// download. DW1 who may ask and list; DW2 one request per operationId; DW3 the firm states (a held Owner through
-// @HoldOpen); DW4 expiry and who may download; DW5 the CSV (formula-safe text, numbers numeric, currency kept) and the
-// size cap; DW6 no row of another firm, the read-only firm-scoped read, and FirmExportPort's contract (fake and real);
-// DW7 the audit lines. A scratch database (PF-12's walls on: the app connects as xr_app), a Nest app of PF-4's guard,
-// PF-5's hold gate and this row's classes, fake jobs and files on a fake clock. No network, US$0.
-//   tsx studio/tests/check_pf11_firm_export.ts
+// PF-11 part 1 (brief lead-b-briefs/PF-11.md, Lead B's corrections on #1972): DW1 ask and list; DW2 one request per
+// operationId; DW3 firm states (@HoldOpen); DW4 expiry, who downloads; DW5 the CSV and the cap; DW6 no other firm, the
+// read-only scoped read, the port contract (fake and real); DW7 audit. Scratch database, PF-12 walls on, PF-4's guard,
+// PF-5's hold gate, fake jobs and files on a fake clock. No network, US$0.   tsx studio/tests/check_pf11_firm_export.ts
 import "reflect-metadata";
 import { Controller, Get, Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
@@ -16,7 +13,7 @@ import { FakeClock } from "../ports/clock.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { firmExportPortContract } from "../ports/contracts/firm-export-port.contract.ts";
 import { fakeFiles } from "../ports/files.ts";
-import { fakeFirmExport, FirmExportRefused, type ModuleExportInput } from "../ports/firm-export.ts";
+import { exportRegistry, fakeFirmExport, FirmExportRefused, type ModuleExportInput } from "../ports/firm-export.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
@@ -29,6 +26,7 @@ let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
 const A_ID = "0c0c0c0c-0000-4000-8000-0000000000a1", B_ID = "0c0c0c0c-0000-4000-8000-0000000000b2";
 await runContract(firmExportPortContract, "fakeFirmExport", () => ({ port: fakeFirmExport() as never, firmId: A_ID, otherFirmId: B_ID }), ok);
+await runContract(firmExportPortContract, "exportRegistry", () => ({ port: exportRegistry<string>((f, ex) => ex(f, "tx")) as never, firmId: A_ID, otherFirmId: B_ID }), ok);
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });

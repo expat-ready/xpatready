@@ -1,9 +1,7 @@
-// PF-11 part 1: the one package writer for a data download (PF-26's person export imports it). One zip, built in memory
-// with pizzip (no new library, STANDARDS §1): README.txt, one CSV per section (UTF-8, a header row, RFC 4180 quoting; a
-// text cell starting with =, +, -, @, a tab or a carriage return gets a leading ' (audit/csv.ts's csvCell); number and
-// minor-unit cells stay numbers, so -1250 is written -1250), and each stored file under <module>/files/. The running size
-// is checked before each file is added: the next file that would pass the cap stops the build (ExportTooLarge), never
-// built past it first (Lead B, correction 6 on #1972).
+// PF-11 part 1: the one package writer of a data download (PF-26 imports it). One zip in memory (pizzip, no new library):
+// README.txt, one CSV per section (UTF-8, header row; text formula-safe by audit/csv.ts's csvCell; number and minor cells
+// stay numbers: -1250), stored files under <module>/files/. The running size is checked before each file is added, so the
+// file that would pass the cap stops the build (ExportTooLarge), never built past it (Lead B, correction 6 on #1972).
 import PizZip from "pizzip";
 import type { ExportColumn, ExportSection, ModuleExport } from "../../../../ports/firm-export.ts";
 import { csvCell, csvRow } from "../audit/csv.ts";

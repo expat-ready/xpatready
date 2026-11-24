@@ -1,9 +1,7 @@
-// PF-11 part 1 (map row 22; SA-2-33, AG-16-20, AG-16-22): the firm's full data download. Each module registers one
-// exporter; the export job collects every module's sections for one firm and writes one zip (api/src/platform/firm-export/).
-// The section shape is the one PF-26's PersonExportPort and CS-X1's case-side exporter use: tables (key, title, typed
-// columns, rows), stored files by key with their sha256, and an optional plain note. Personal data is never masked
-// (AG-16-20). The real adapter (PgFirmExport) runs each exporter inside one REPEATABLE READ, READ ONLY transaction opened
-// inside withFirm(firmId) (PF-12: a read outside that scope returns nothing). This folder imports only zod.
+// PF-11 part 1 (map row 22; SA-2-33, AG-16-20, AG-16-22): the firm's full data download. Each module registers one exporter;
+// the job zips every module's sections for one firm. The section shape is PF-26's and CS-X1's too: typed tables, stored
+// files with their sha256, an optional note; never masked. The real adapter (PgFirmExport) runs each exporter in one
+// REPEATABLE READ, READ ONLY transaction inside withFirm(firmId) (PF-12). This folder imports only zod.
 import { z } from "zod";
 import { FirmId } from "./audit.ts";
 
@@ -83,9 +81,10 @@ export function checkModuleExport(firmId: string, module: string, raw: unknown):
   return out;
 }
 
-/** The fake: in memory; each exporter is called with tx = null (a fake has no transaction). */
-export function fakeFirmExport(): FirmExportPort<null> {
-  const list: { module: string; exporter: FirmExporter<null> }[] = [];
+/** The registry both adapters share; `run` calls one exporter for the firm (the fake directly, the real one in its
+ *  read-only transaction), and every answer passes checkModuleExport. */
+export function exportRegistry<Tx>(run: (firmId: string, exporter: FirmExporter<Tx>) => Promise<unknown>): FirmExportPort<Tx> {
+  const list: { module: string; exporter: FirmExporter<Tx> }[] = [];
   return {
     register(module, exporter) {
       if (list.some((m) => m.module === module)) throw new FirmExportRefused(`${module}: already registered`);
@@ -94,8 +93,11 @@ export function fakeFirmExport(): FirmExportPort<null> {
     modules: () => list.map((m) => m.module),
     async collect(firmId) {
       const out: ModuleExport[] = [];
-      for (const m of list) out.push(checkModuleExport(firmId, m.module, await m.exporter(firmId, null)));
+      for (const m of list) out.push(checkModuleExport(firmId, m.module, await run(firmId, m.exporter)));
       return out;
     },
   };
 }
+
+/** The fake: in memory; each exporter is called with tx = null (a fake has no transaction). */
+export function fakeFirmExport(): FirmExportPort<null> { return exportRegistry<null>((firmId, exporter) => exporter(firmId, null)); }

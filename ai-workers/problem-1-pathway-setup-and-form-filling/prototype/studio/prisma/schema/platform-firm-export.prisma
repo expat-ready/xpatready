@@ -1,10 +1,6 @@
-// platform-firm-export.prisma — the firm's full data download. Owner: Lead B (platform, P-559).
-//
-// PF-11 part 1 (map row 22; SA-2-33, AG-16-20, AG-16-22): one row per export request. The Owner asks with an operationId
-// (the same id again is the same request); the job builds one zip and stores it through FilesPort under a key per attempt
-// (firm-export/<id>/<attempt>.zip); READY until the Sample 7 days pass, then EXPIRED (the file stays stored until PF-Fd
-// adds a delete: a contract gap). Rules Prisma cannot say are checks in migration 20261124120000_pf11_firm_export.
-// Walled by PF-12 (forced policy, the firm-first gate).
+// platform-firm-export.prisma — the firm's full data download. Owner: Lead B (platform, P-559). PF-11 part 1 (map row 22;
+// SA-2-33, AG-16-20): one row per request (firm, operationId); the zip is stored per attempt (firm-export/<id>/<n>.zip);
+// READY for the Sample 7 days, then EXPIRED. Checks in migration 20261124120000_pf11_firm_export; walled by PF-12.
 
 /// AG-16-20's states.
 enum PlatformFirmExportState {

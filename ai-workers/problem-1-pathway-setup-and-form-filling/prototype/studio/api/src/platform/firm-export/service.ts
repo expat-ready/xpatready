@@ -1,15 +1,10 @@
-// PF-11 part 1 (map row 22; SA-2-33, AG-16-20, AG-16-22; brief lead-b-briefs/PF-11.md, Lead B's corrections on #1972):
-// the firm's full data download.
-// Who: agent/firm-data-export:request (Owner only, PF-3's seed) asks, and the service re-checks in the transaction that the
-// caller is still an active Owner (the staff row read FOR SHARE, so a deactivation waits for it or comes first);
-// agent/firm-data-export:list (Owner, Admin) lists past requests; only the requester downloads (anyone else, or another
-// firm: the same 404).
-// When: the firm is TRIAL, ACTIVE or PAYMENT_HOLD (every route is @HoldOpen()); any other state is refused 409 in words.
-// How: one row per (firm, operationId), so the same operationId again is the same request and one job. The job collects
-// every registered module (FirmExportPort), builds one zip (package.ts) under the cap, stores it through FilesPort under a
-// key per attempt, and the row becomes READY for the Sample 7 days; then the expiry job marks it EXPIRED (the file stays
-// stored until PF-Fd adds a delete: a contract gap). A failure is FAILED with plain words, never personal data.
-// Audit: one line per request, ready or failed build, download and expiry: actor, scope FIRM, row counts, the hash; never content.
+// PF-11 part 1 (map row 22; SA-2-33, AG-16-20, AG-16-22; brief lead-b-briefs/PF-11.md, Lead B's corrections on #1972).
+// Who: agent/firm-data-export:request (Owner, PF-3's seed) asks, re-checked in the transaction as an active Owner (the staff
+// row FOR SHARE, so a deactivation waits or comes first); agent/firm-data-export:list (Owner, Admin) lists; only the
+// requester downloads (anyone else, any other firm: the same 404). When: TRIAL, ACTIVE or PAYMENT_HOLD (@HoldOpen); else 409.
+// One row per (firm, operationId): the same id again is the same request and one job. The job zips every registered module
+// (FirmExportPort, package.ts) under the cap, stores it per attempt; READY for the Sample 7 days, then EXPIRED (the file stays
+// until PF-Fd adds a delete: a contract gap). One audit line per step: actor, scope FIRM, counts, hash; never content.
 import { HttpException } from "@nestjs/common";
 import { Prisma, type PlatformFirmExport, type PlatformFirmStatus, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
