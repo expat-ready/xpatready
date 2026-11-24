@@ -1,0 +1,73 @@
+# DRAFT, NOT LIVE. Design appendix to coderabbit-evaluation-2026-11-24.md. Only a file named .coderabbit.yaml at the
+# repository root takes effect. Advisory only: no automatic review, no approval, no labels, no commits, no PR-text edits.
+# Keys and defaults: docs.coderabbit.ai/reference/configuration (V2), read 24 Nov 2026.
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+early_access: false
+inheritance: false
+reviews:
+  profile: quiet                        # most important feedback only (default chill)
+  auto_review:
+    enabled: false                      # a review starts only by hand: "@coderabbitai review"
+    auto_incremental_review: false      # no re-review on each push
+    drafts: false
+    base_branches: ["^main$"]
+    ignore_usernames: ["mergify[bot]", "github-actions[bot]"]
+  auto_approvals:
+    enabled: false                      # never approves, never requests changes (default false, stated on purpose)
+    allow_author_approval: false        # default true
+    approve_on_skipped_review: false
+  high_level_summary: false             # default true REWRITES the PR description; our pr-rules re-runs on every edit
+  high_level_summary_in_walkthrough: false
+  sequence_diagrams: false
+  changed_files_summary: false
+  collapse_walkthrough: true
+  poem: false
+  suggested_labels: false
+  auto_apply_labels: false              # never near "review: approved"
+  suggested_reviewers: false
+  auto_assign_reviewers: false
+  assess_linked_issues: false
+  review_progress: false                # no check run; with commit_status false no status either
+  commit_status: false
+  fail_commit_status: false
+  disable_cache: true                   # OSS cache is not encrypted
+  post_merge_actions: []
+  slop_detection: { enabled: false }
+  finishing_touches:                    # every one of these writes code
+    unit_tests: { enabled: false }
+    simplify: { enabled: false }
+    autofix: { enabled: false }
+    fix_ci: { enabled: false }
+    resolve_merge_conflict: { enabled: false }
+  pre_merge_checks:
+    title: { mode: "off" }
+    description: { mode: "off" }
+    issue_assessment: { mode: "off" }
+  path_filters:
+    - "!ai-workers/**/product/**"       # records, evidence and reports are not code
+    - "!**/package-lock.json"
+    - "!**/samples/**"
+    - "!**/*.pdf"
+  path_instructions:
+    - path: "ai-workers/**/prototype/studio/api/**"
+      instructions: >-
+        Report only defects that change behaviour: a route without a server-side permission, data of another firm
+        readable, a write with no audit line, one caller of a shared rule left on the old rule, state left live after
+        cancel or withdraw, money not exact. Name the line and one input that shows it. No style.
+    - path: "ai-workers/**/prototype/studio/prisma/**"
+      instructions: "Report only data loss, a missing firm scope, a missing constraint, or no path back. No style."
+chat:
+  auto_reply: false
+  allow_non_org_members: false          # default true: anyone on a public PR could talk to it
+knowledge_base:
+  opt_out: true                         # no stored learnings; on first use in the file it also deletes what is stored
+  web_search: { enabled: false }
+  mcp: { usage: disabled }
+  jira: { usage: disabled }
+  linear: { usage: disabled }
+issue_enrichment:
+  auto_enrich: { enabled: false }
+  planning:
+    enabled: false
+    auto_planning: { enabled: false }
