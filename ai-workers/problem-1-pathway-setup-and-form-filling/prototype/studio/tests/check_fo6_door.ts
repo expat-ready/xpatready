@@ -24,7 +24,8 @@
 // PENDING and is not counted, so the suite holds what is merged while the later parts are built (P-606); with no third
 // argument every line counts (that is how it ran red on main a26e80b6a, 2 of 31, exit 1). 4c's PR drops the argument.
 // Run from prototype/:
-//   zsh studio/tools/isolated.sh fo6door 4434 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh fo6door 4434 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo6_door.ts fo6door 4434 4a
+//   zsh studio/tools/isolated.sh fo6door 4434 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo6_door.ts 4434 xr_studio_fo6door 4a
+// (stop it after with: zsh studio/tools/isolated.sh fo6door 4434 stop)
 import "reflect-metadata";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -36,9 +37,9 @@ import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { buildDocx } from "../api/src/front-office/retainers/docx.ts";
 import { client, recorder } from "./runtime/api.ts";
 
-const [NAME, PORT] = [process.argv[2] ?? "fo6door", Number(process.argv[3] ?? 4434)];
-if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
-const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
+const PORT = Number(process.argv[2] ?? 4434), DBNAME = process.argv[3] ?? "xr_studio_fo6door";   // run-suites renames both for its own copy
+if (PORT === 4400 || !/^xr_studio_\w+$/.test(DBNAME) || DBNAME === "xr_studio_demo") { console.log("refused: never the demo (port 4400 or its database)"); process.exit(2); }
+const BASE = `http://localhost:${PORT}`;
 const { ok: record, summary } = recorder();
 const BUILT = process.argv[4] ? new Set(process.argv[4].split(",").map((x) => x.trim())) : null;   // null: every part counts
 let pending = 0;
@@ -108,7 +109,7 @@ const prospect = (p: ReturnType<typeof person>) => {
 };
 const form = new FormData();
 form.set("name", `FO-6 door retainer ${run} (Sample)`);
-form.set("file", new Blob([buildDocx(["Client {client.name}", "{#fees}", "{label}: {amount}", "{/fees}"])], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), "door.docx");
+form.set("file", new Blob([new Uint8Array(buildDocx(["Client {client.name}", "{#fees}", "{label}: {amount}", "{/fees}"])).buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), "door.docx");
 sql(`update fo_retainer_template set active = false where firm_id = '${firmA}'`);
 const tpl = await staffApi("POST", "/api/front-office/retainer-templates", undefined, tok, form);
 ok("FO-6 door setup: a retainer template is uploaded (FO-5)", tpl.status < 300 && !!tpl.body?.id, brief(tpl));
