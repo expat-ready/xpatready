@@ -285,6 +285,18 @@ LIMIT="${SUITES_TIMEOUT:-1200}"; [[ "$LIMIT" =~ ^[1-9][0-9]*$ ]] || LIMIT=1200
 KILL_AFTER="${SUITES_KILL_AFTER:-30}"; [[ "$KILL_AFTER" =~ ^[1-9][0-9]*$ ]] || KILL_AFTER=30
 lim() { if [ $((LIMIT % 60)) = 0 ]; then echo "$((LIMIT / 60)) min"; else echo "$LIMIT s"; fi; }
 timedout() { [ "$1" = 124 ] || { [ "$1" = 137 ] && [ "$2" -ge "$LIMIT" ]; }; }   # exit code, seconds taken
+# A hung Node suite also writes Node's own report when asked (hang-report.py prints the filtered part; the raw file never
+# leaves its private folder). Only with a Node that can leave the environment and network out, and only on Linux: a process
+# that does not catch SIGUSR2 dies of it, and /proc says which of the suite's own processes catch it.
+REPORT_OK=""; [ -d /proc/self/fd ] && node --report-exclude-env --report-exclude-network -e 0 2>/dev/null && REPORT_OK=1
+askreport() {  # askreport <timeout's pid> <folder>: SIGUSR2 to the node processes of the suite's own group that catch it and report there
+  local p c; [ -n "$2" ] || return 0
+  for p in $(ps -A -o pid=,pgid= 2>/dev/null | awk -v g="$1" '$2 == g { print $1 }'); do
+    tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -qF -- "--report-directory=$2" || continue
+    [ "$(basename "$(readlink "/proc/$p/exe" 2>/dev/null)")" = node ] || continue
+    c=$(awk '$1 == "SigCgt:" { print $2 }' "/proc/$p/status" 2>/dev/null); [ -n "$c" ] && [ $(( 16#${c: -3} & 16#800 )) -ne 0 ] && kill -USR2 "$p" 2>/dev/null
+  done
+}
 hangdump() {  # hangdump <timeout's pid>: the suite's processes while they still run
   kill -0 "$1" 2>/dev/null || return 0
   local p fd fds
@@ -301,13 +313,16 @@ hangdump() {  # hangdump <timeout's pid>: the suite's processes while they still
 guarded() {  # guarded <log> <command...>: the exit code is timeout's (124 timed out, 137 killed after ignoring the TERM)
   local log="$1"; shift; local pid w code
   # Append mode, so the suite's later lines never write over the STOP lines (its own offset would).
-  : > "$log"; "$TIMEOUT" -k "$KILL_AFTER" "$LIMIT" "$@" < /dev/null >> "$log" 2>&1 &
+  local rd="" opt=""; [ -n "$REPORT_OK" ] && rd=$(mktemp -d "${TMPDIR:-/tmp}/hang.XXXXXXXX" 2>/dev/null) && case "$rd" in *[[:space:]]*) rmdir "$rd"; rd="";; esac
+  [ -n "$rd" ] && opt="${NODE_OPTIONS:+$NODE_OPTIONS }--report-on-signal --report-exclude-env --report-exclude-network --report-directory=$rd"
+  : > "$log"; env ${opt:+"NODE_OPTIONS=$opt"} "$TIMEOUT" -k "$KILL_AFTER" "$LIMIT" "$@" < /dev/null >> "$log" 2>&1 &
   pid=$!
   ( s=""; trap '[ -n "$s" ] && kill "$s" 2>/dev/null; exit 0' TERM
-    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; hangdump "$pid" >> "$log" ) < /dev/null &
+    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; hangdump "$pid" >> "$log"; askreport "$pid" "$rd" ) < /dev/null &
   w=$!
   wait "$pid"; code=$?
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
+  [ -z "$rd" ] || { python3 -I "$P/product/tools/hang-report.py" "$rd" >> "$log" 2>/dev/null; rm -rf "${rd:?}"; }   # nothing in it when the suite ended by itself
   return "$code"
 }
 # B203 (P-744): with SUITES_COVERAGE=<dir>, each suite and the copy it starts write V8 coverage to <dir>/<suite> (the
