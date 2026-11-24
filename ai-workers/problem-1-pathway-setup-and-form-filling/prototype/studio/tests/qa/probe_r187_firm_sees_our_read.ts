@@ -92,6 +92,18 @@ try {
   const x1 = Number(sql(`select count(*) from audit_event where action = 'cross_tenant.access'`)), all1 = Number(sql(`select count(*) from audit_event where actor_type::text = 'OUR_STAFF' and firm_id is not null`));
   ok("R1.87 P4 (AUD-3 part 1, #3209): our firms list (200) writes one cross_tenant.access line and nothing on any firm's trail", list.status === 200 && x1 === x0 + 1 && all1 === all0, { list: list.status, x: [x0, x1], firmLines: [all0, all1] });
 
+  // P6 (moved here from j_86 W10 by the tech lead, #3533, after #3538's question 2): our staff's read of a breach on our
+  // register (PF-21c, on main) that names firm A is a read of firm A's data, so it writes one OUR_STAFF line on firm A's
+  // own trail (AUD-3). On main the read answers 200 and writes a platform-trail cross_tenant.access line only.
+  const rec = { reason: "Sample: recording the incident (R1.87 probe)", discoveredAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+    description: `Sample: a storage bucket's files were readable by link for two hours (R1.87 ${run}).`, affectedFirms: [A], dataCategories: ["contact_details"] };
+  const breach = await j("POST", "/api/system/register/breaches", rec, ourTok, { "idempotency-key": `r187-${run}` });
+  const breachId = typeof breach.body === "object" ? breach.body?.id : undefined;
+  const b0 = count(A);
+  const breachRead = breachId ? await j("GET", `/api/system/register/breaches/${breachId}`, undefined, ourTok) : { status: 0, body: null };
+  ok("R1.87 P6 (part missing: AUD-3, a breach read naming the firm; from j_86 W10): our staff's read of a breach that names firm A (200) writes one OUR_STAFF line on firm A's own trail",
+    breach.status === 201 && breachRead.status === 200 && count(A) === b0 + 1, { recorded: breach.status, read: breachRead.status, firmA: [b0, count(A)] });
+
   // P5 AUD-3 part 2 (#3491, aligned by qa 10 on its head 36a32698a): our side's per-firm access report
   // (SA-11-31 "strictly firm-scoped; CSV"). Firm B gets a read of its own first, so "strictly firm A" is counted.
   const readB = await j("GET", `/api/system/firms/${B}`, undefined, ourTok);
