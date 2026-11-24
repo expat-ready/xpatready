@@ -88,3 +88,37 @@ Script `break2.mts` in the session scratchpad, on its own scratch database (drop
 4. Two days and a sweep later: no new job; key `L:2` was already used.
 
 This edge needs both a return and an undo. Noted for the record; it does not block.
+
+## Round 4 (the uncleared question only: `80185f1ae..5445767089`)
+
+Breaker: pass 5445767089cdc95f8db99220515a41bb4da65239
+
+Script `break4.mts` in the session scratchpad, on its own scratch database (dropped). Cheques are uncleared deposits. Each scenario has its own client and case. No 500 anywhere.
+
+**What held:**
+* All money cleared: a batch or a refund passes with no question (201). A blind `unclearedAcknowledged: true` is recorded as `false` in both audits. The value `"yes"` gives 422.
+* Mixed money (600 cleared, 400 cheque, 1000 applied):
+  * 600 split over two lines and two withdrawals passes without the question.
+  * The next 0.01, in another batch, gives 409 UNCLEARED.
+  * The same 0.01 acknowledged gives 201 with `true` in the audit: a warning, never a block.
+* Two cases in one batch: 900 cleared on case X plus 10 from a cheque on case Y gives 409. The groups are not pooled.
+* A pick line paid from the payer's cheque, beside the invoice party's cleared line, gives 409. The cleared line alone gives 201.
+* WRONG_ACCOUNT lines pass without the question: a cleared one beside a 1000 cheque, and one from a cleared cheque.
+* OPERATING_TO_TRUST is not asked, by design.
+* Clearing the cheque in between removes the question.
+* **Races:**
+  * Two 500 batches at once on 600 cleared: one passes (201), one gets UNCLEARED. Over 8 more rounds with a refund added, every round was the same.
+  * 8 rounds of refund 500 against move 500 at once, on 1000 cleared plus a 1000 cheque: both pass (201), and the next 0.01 refund always asks. In total, never more than the cleared money left without the question.
+
+**Minor R4-1: a bounced cheque still counts as uncleared, so the question appears when all remaining money is cleared.**
+* Repro 1: 1000 cleared plus a 1000 cheque. Pay from trust 1000, which takes the cleared money first. The cheque is RETURNED, and the balance is 0.
+* Moving the withdrawal then gives 409 "CAD 1,000.00 of this is from a cheque not yet cleared".
+* Repro 2: 1000 cleared plus a 500 cheque that is RETURNED. A refund of 1000 gives 409 "CAD 500.00 … not yet cleared".
+* Cause: the `uncleared` sums in `to-move.ts` (askUncleared) and `money-out.ts` (held, about line 68) count `DEPOSIT and not p.cleared` without leaving out deposits that have a RETURNED correction. The RETURNED row already took the money off the ledger, so it is counted twice.
+* It only warns and never blocks, but the words are wrong.
+
+**Minor R4-2 (latent): uncleared money moved onto a case is never asked about.**
+* Repro: a pre-case cheque of 400, moved to a case by a `MOVE_TO_CASE` pair written at the database.
+* Pay from trust of 400 with no acknowledgement gives 201. The move of 400 gives 201, recorded `false`. The cheque is still uncleared.
+* Cause: both sums count only uncleared `DEPOSIT` rows on the same case, and moved money arrives on the case as `MOVE_TO_CASE`. A refund on that case would pass the same way.
+* No route writes `MOVE_TO_CASE` today, so this is not reachable through the API yet. It becomes a Major when a move-to-case route lands. The same gap is in part 2's `held`.
