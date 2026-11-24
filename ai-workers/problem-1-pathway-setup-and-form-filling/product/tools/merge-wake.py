@@ -46,6 +46,8 @@ def waits(body):
             bad += len(l) > 400 and bool(WAIT.match(l[:60])); continue
         ws = [x for x in re.split(r"[\s,+]+", m.group(1).strip(" \t*")) if x and x != "and"]
         got = [ONE.fullmatch(x) for x in ws]
+        if " ".join(ws).lower().rstrip(".") in ("none", "nothing", "main"):
+            continue
         if ws and all(got) and len(ws) <= MANY:
             out += [int(g.group(1) or g.group(2)) for g in got]
         else:
@@ -100,8 +102,10 @@ def main():
     up, n, wake, unread = {p["number"] for p in prs}, 0, 0, []
     for p in sorted(prs, key=lambda x: x["number"]):
         w, bad = waits(p.get("body")); w = [x for x in w if x != p["number"]]
-        if bad:
+        if bad or len(w) > MANY:
             unread.append(p["number"])
+        if len(w) > MANY:      # over the cap in all: printed short, judged not at all
+            continue
         if not w:
             continue
         n += 1
@@ -124,7 +128,7 @@ def main():
         wake += 1
         print(f"ACT   wake: {ws} on main since {ist(t)} ({(now - t) / 60:.0f} min); #{p['number']} waited: {lane(view, p['number'], p['headRefName'])}. Type: \"{ws} {'is' if len(w) == 1 else 'are'} on main: merge main once and go on with #{p['number']}\"")
     if unread:
-        print(f"ACT   wake: {len(unread)} pull requests have a wait line that cannot be read (numbers only, at most {MANY}: \"Waits on: #12, #13\"): " + " ".join("#%d" % x for x in unread[:10]))
+        print(f"ACT   wake: {len(unread)} pull request{'s' * (len(unread) > 1)} with a wait line that cannot be read (numbers only, at most {MANY}: \"Waits on: #12, #13\"): " + " ".join("#%d" % x for x in unread[:10]))
     print(f"wake  {n} of {len(prs)} open pull requests say what they wait on, {wake} may go on; {sum(1 for t in merged.values() if now - t < 3600)} merges in the last hour")
 
 

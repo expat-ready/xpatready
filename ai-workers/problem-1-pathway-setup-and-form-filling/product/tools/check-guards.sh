@@ -125,6 +125,7 @@ W24 clean|product/tools/merge-wake.py|s/^    s = re.sub(r"\[.x00.*/    s = str(s
 W24 unread|product/tools/merge-wake.py|s/^    if unread:/    if False:/|check-merge-wake.sh
 W24 limit|product/tools/merge-wake.py|s/^    if len(prs) >= LIMIT:/    if False:/|check-merge-wake.sh
 W24 html|product/tools/merge-wake.py|s/in re.sub(r"<!--.*flags=re.S)/in (body or "").replace("\\r", "")/|check-merge-wake.sh
+W24 many|product/tools/merge-wake.py|s/^        if len(w) > MANY: .*/        if False:/|check-merge-wake.sh
 W24 wired|product/tools/lead-watch.sh|s/^mw=/# mw=/|check-merge-wake.sh
 W24 ran|product/tools/lead-watch.sh|/merge-wake.py did not run/d|check-merge-wake.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
