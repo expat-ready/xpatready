@@ -14,14 +14,16 @@ import { AnyDocuments, MAX_BYTES } from "./service.ts";
 
 type R = { platform?: StaffContext };
 type F = { buffer: Buffer; size: number; originalname?: string } | undefined;
-const Id = z.uuid({ error: "This is not a valid id." });
-/** Multipart sends text: the signer ids as one comma-separated field or the field repeated. */
+const Id = z.uuid({ error: (i) => (i.input === undefined ? undefined : "This is not a valid id.") });   // a missing id keeps "This is required." (A3)
+/** Multipart sends text: the signer ids as one comma-separated field or the field repeated. PF-28 A3 (R1.10): each union
+ *  answers in plain words when no choice fits (missing, or a value of another type), never zod's "Invalid input". */
+const SIGNERS = (i: { input?: unknown }) => (i.input === undefined ? "This is required." : "Pick one to 9 people to sign, by their ids.");
 const SEND = strict({
   title: z.string().trim().min(1).max(200).refine((t) => !/[\p{Cc}\u2028\u2029]|(?![\u200c\u200d])\p{Cf}/u.test(t) && /[\p{L}\p{N}]/u.test(t), "This must be plain text on one line."),   // break m1: C0, C1, format (ZWNJ and ZWJ kept: Persian, Indic) and line-separator characters
 
   prospectId: Id,
-  signerPersonIds: z.union([z.string().max(400), list(z.string().max(40), 9)]).transform((v) => (Array.isArray(v) ? v : v.split(",")).map((x) => x.trim()).filter(Boolean)).pipe(z.array(Id).min(1).max(9)),
-  firmSignerStaffId: z.union([Id, z.literal("")]).nullish().transform((v) => v || null),
+  signerPersonIds: z.union([z.string().max(400), list(z.string().max(40), 9)], { error: SIGNERS }).transform((v) => (Array.isArray(v) ? v : v.split(",")).map((x) => x.trim()).filter(Boolean)).pipe(z.array(Id).min(1).max(9)),
+  firmSignerStaffId: z.union([Id, z.literal("")], { error: "This is not a valid id." }).nullish().transform((v) => v || null),
 });
 const LINK = strict({ file: z.enum(["original", "signed"]) });
 

@@ -10,17 +10,18 @@ import { idParam, list, parseInput, strict } from "../../../platform/http/input.
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../../../platform/identity/keys.ts";
 import { PlatformClock } from "../../../platform/identity/port.ts";
 import { FileLinks, LocalFiles } from "../../files.ts";
-import { COPY_MAX_BYTES, IdentityChecks } from "./service.ts";
+import { COPY_MAX_BYTES, FULL_NUMBER_REFUSED, IdentityChecks } from "./service.ts";
 
 type R = { platform?: StaffContext };
 type F = { buffer: Buffer; size: number } | undefined;
 const s = (max: number) => z.string().max(max).nullish();
 /** PF-28 part 3b (R1.10): the check's fields through a strict schema (an unknown field 422, named), after the person id
- *  (404 when not a uuid). Multipart sends text; `details` once or repeated. `documentNumber` passes here so the service
- *  refuses it with its own sentence ("Send only the last 4 characters …"); the service keeps every other rule. */
+ *  (404 when not a uuid). Multipart sends text; `details` once or repeated. A full `documentNumber`, whatever its value, is
+ *  refused here in the service's own sentence ("Send only the last 4 characters …"), named even when requestId is missing
+ *  too (PF-28 A3); the service keeps every other rule. */
 const RECORD = strict({ requestId: z.string().max(100),   // always needed, so {} is refused before the person is looked up
   method: s(100), methodDetail: s(2000), documentType: s(100), issuingCountry: s(100), documentExpiry: s(100),
-  documentNumberLast4: s(100), details: z.union([z.string().max(100), list(z.string().max(100), 20)], { error: "Each corroborated detail is one of NAME, HOME_ADDRESS, PHONE, EMAIL, BUSINESS_DETAILS." }).nullish(), documentNumber: z.unknown().optional() });
+  documentNumberLast4: s(100), details: z.union([z.string().max(100), list(z.string().max(100), 20)], { error: "Each corroborated detail is one of NAME, HOME_ADDRESS, PHONE, EMAIL, BUSINESS_DETAILS." }).nullish(), documentNumber: z.unknown().refine((v) => v === undefined, { error: FULL_NUMBER_REFUSED }).optional() });
 
 @Controller("api/front-office")
 export class IdentityChecksController {
