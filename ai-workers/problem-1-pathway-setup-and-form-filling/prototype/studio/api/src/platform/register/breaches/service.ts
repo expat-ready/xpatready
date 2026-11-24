@@ -20,7 +20,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { AuditPort } from "../../../../../ports/audit.ts";
 import { AlertDetail } from "../../../../../ports/alert.ts";
-import { fillFields, type MessagePort } from "../../../../../ports/messages.ts";
+import { fillFields, type MessagePort, type MessageWordsPort } from "../../../../../ports/messages.ts";
+import { firmNames, staffNames } from "../names.ts";
 import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
 import { withFirm } from "../../firm-scope.ts";
@@ -38,6 +39,10 @@ export const BREACH_ACTOR = "system:platform.register.breach";
 const actorOf = (staffId?: string) => (staffId ? `ourstaff:${staffId}` : BREACH_ACTOR);
 export const BREACH_AUDIT = Symbol("Breaches.audit");
 export const BREACH_MESSAGES = Symbol("Breaches.messages");
+/** PF-21rs R0 (QA-757): the words each notice was sent with, read back through the messages module (never its outbox). */
+export const BREACH_WORDS = Symbol("Breaches.words");
+/** Said on a notice whose stored words cannot be read back (missing, or changed since it was written). */
+export const WORDS_UNREADABLE = "The words sent could not be read back: the stored message is missing or has changed since it was sent.";
 /** SA-05 Appendix B.6's ExpatReady-owned email (seeded version 1 with Sample words; the Platform Owner publishes more). */
 export const NOTICE_TEMPLATE_KEY = "platform.security_incident_notice";
 /** Sample list of affected data categories (SA-11-24 names the field, not its list). */
@@ -49,6 +54,9 @@ export const BREACH_ALERT_KINDS = ["audit_chain_break", "audit_write_failed"] as
 
 export type BreachCaller = { staffId: string; keys: readonly string[] };
 export type BreachNotice = { id: string; firmId: string; channel: string; recipients: { staffId: string; roles: string[]; outboxId: string; state: string }[]; templateVersionId: string; sentBy: string; sentAt: string };
+/** PF-21rs R0: a read for our console names each firm and staff actor (null when not found). */
+export type NamedNotice = BreachNotice & { firmName: string | null; sentByName: string | null };
+export type NamedBreach = Omit<BreachView, "notices"> & { firms: { id: string; name: string | null }[]; openedByName: string | null; decidedByName: string | null; notices: NamedNotice[] };
 export type BreachView = {
   id: string; status: "DRAFT" | "RECORDED"; source: "MANUAL" | "ALERT"; sourceAlert: unknown; discoveredAt: string; description: string; affectedFirms: string[];
   scope: "UNDER_INVESTIGATION" | "KNOWN"; dataCategories: string[]; rootCause: string | null; containment: string | null; decision: "UNDECIDED" | "NOTIFY_FIRMS" | "NO_NOTICE";
@@ -123,7 +131,7 @@ function viewOf(r: Row): BreachView {
 
 @Injectable()
 export class Breaches {
-  constructor(@Inject(Db) private readonly db: PrismaClient, @Inject(BREACH_MESSAGES) private readonly messages: MessagePort<Tx>, @Inject(BREACH_AUDIT) private readonly audit: AuditPort<Tx> = auditEvent) {}
+  constructor(@Inject(Db) private readonly db: PrismaClient, @Inject(BREACH_MESSAGES) private readonly messages: MessagePort<Tx>, @Inject(BREACH_WORDS) private readonly words: MessageWordsPort, @Inject(BREACH_AUDIT) private readonly audit: AuditPort<Tx> = auditEvent) {}
 
   private may(c: BreachCaller, key: string) {
     if (!c || !c.keys.includes(key)) forbidden(key === BREACH_READ_KEY ? "Only ExpatReady's Platform Owner and Auditor read the breach register." : "Only ExpatReady's Platform Owner records breaches and sends their notices.", "MISSING_PERMISSION");
@@ -188,23 +196,41 @@ export class Breaches {
   }
 
   /** GET /api/system/register/breaches?limit= (1-500): newest discovered first; `truncated` says more exist. */
-  async list(c: BreachCaller, query: unknown): Promise<{ breaches: BreachView[]; truncated: boolean }> {
+  async list(c: BreachCaller, query: unknown): Promise<{ breaches: NamedBreach[]; truncated: boolean }> {
     this.may(c, BREACH_READ_KEY);
     const q = ListQuery.safeParse(query ?? {});
     if (!q.success) fields(q.error);
     const limit = q.data.limit ?? LIST_MAX;
     const rows = await this.db.$queryRaw<{ b: Row }[]>`SELECT b FROM plat_breach_list(NULL, ${limit + 1}::int) b`;
-    return { breaches: rows.slice(0, limit).map((r) => viewOf(r.b)), truncated: rows.length > limit };
+    return { breaches: await this.named(rows.slice(0, limit).map((r) => viewOf(r.b))), truncated: rows.length > limit };
   }
 
   /** GET /api/system/register/breaches/:id: the breach, its notices and its events. */
-  async one(c: BreachCaller, id: string): Promise<BreachView & { events: { seq: number; kind: string; at: string; actor: string; detail: unknown }[] }> {
+  async one(c: BreachCaller, id: string): Promise<Omit<NamedBreach, "notices"> & { notices: (NamedNotice & { subject: string | null; text: string | null; wordsNote: string | null })[];
+    events: { seq: number; kind: string; at: string; actor: string; actorName: string | null; detail: unknown }[] }> {
     this.may(c, BREACH_READ_KEY);
     if (!UUID.test(id)) notFound();
     const [row] = await this.db.$queryRaw<{ b: Row }[]>`SELECT b FROM plat_breach_list(${id.toLowerCase()}::uuid, 1) b`;
     if (!row) notFound();
     const events = await this.db.$queryRaw<{ seq: bigint; kind: string; at: Date; actor: string; detail: unknown }[]>`SELECT seq, kind, at, actor, detail FROM plat_breach_events(${id.toLowerCase()}::uuid)`;
-    return { ...viewOf(row.b), events: events.map((e) => ({ seq: Number(e.seq), kind: e.kind, at: e.at.toISOString(), actor: e.actor, detail: e.detail })) };
+    const [b] = await this.named([viewOf(row.b)]), people = await staffNames(this.db, events.map((e) => e.actor));
+    // QA-757: the words each firm was sent, from its first recipient's stored message (one firm's recipients share them).
+    // Break m2 (#3492): one notice at a time (each read is its firm's own short transaction), never all of a 200-firm
+    // breach at once against the pool.
+    const notices: (NamedNotice & { subject: string | null; text: string | null; wordsNote: string | null })[] = [];
+    for (const n of b.notices) {
+      const w = n.recipients[0] ? await this.words.storedWords(n.firmId, n.recipients[0].outboxId) : null;
+      notices.push({ ...n, subject: w?.subject ?? null, text: w?.text ?? null, wordsNote: w ? null : WORDS_UNREADABLE });
+    }
+    return { ...b, notices, events: events.map((e) => ({ seq: Number(e.seq), kind: e.kind, at: e.at.toISOString(), actor: e.actor, actorName: people.get(e.actor) ?? null, detail: e.detail })) };
+  }
+
+  /** PF-21rs R0: names for the ids a read returns (firms by REGISTER_FIRM_NAMES' one firm-less line; our staff's own plane). */
+  private async named(views: BreachView[]): Promise<NamedBreach[]> {
+    const firms = await firmNames(this.db, views.flatMap((v) => [...v.affectedFirms, ...v.notices.map((n) => n.firmId)]));
+    const people = await staffNames(this.db, views.flatMap((v) => [v.openedBy, v.decidedBy, ...v.notices.map((n) => n.sentBy)]));
+    return views.map((v) => ({ ...v, firms: v.affectedFirms.map((f) => ({ id: f, name: firms.get(f) ?? null })), openedByName: people.get(v.openedBy) ?? null,
+      decidedByName: v.decidedBy ? people.get(v.decidedBy) ?? null : null, notices: v.notices.map((n) => ({ ...n, firmName: firms.get(n.firmId) ?? null, sentByName: people.get(n.sentBy) ?? null })) }));
   }
 
   /** POST /api/system/register/breaches/:id/notices { firmId }: the "Security incident notice" to that firm's active Owner
