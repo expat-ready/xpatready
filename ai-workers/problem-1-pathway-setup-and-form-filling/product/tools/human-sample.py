@@ -11,15 +11,17 @@
 #   no         an answer "no" whose row is still Works on main: ACT "reopen R1.n as Partial and log a qa bug" (qa sets the
 #              status, P-314; the line stops once main no longer says Works).
 #   answered   every row of the newest ask answered and nothing due: one quiet line.
-#   on GitHub  (ENF-782b, P-557) an ask or answer counts only once it is on GitHub: origin/main's file, or this branch's
-#              pushed upstream. Measured 24 Nov 23:3x IST: the first ask was due Monday 23 Nov 10:00 IST and no copy, branch
-#              or PR held qa/human-sample.md, while each check that wrote one locally then read it back as "asked". Now an
-#              ask or answer only in this copy is a red "Not on GitHub" ACT every check until it is pushed; a copy that lacks
-#              an ask GitHub has is read from GitHub and writes nothing (it never asks a second time; pull first).
+#   on GitHub  (ENF-782b, P-557) an ask or answer counts only once it is on GitHub: in origin/main's file or in any
+#              origin/lead/* branch's (the Lead's records reach main through records PRs, P-336; the fetch is lead-watch's,
+#              line 60), read in one `git cat-file --batch`, all of them together. Measured 24 Nov 23:3x IST: the first ask
+#              was due Monday 23 Nov 10:00 IST and no copy, branch or PR held qa/human-sample.md, while each check that wrote
+#              one locally read it back as "asked". Now an ask or answer only in this copy is a red "Not on GitHub" ACT every
+#              check until it is pushed; a copy lacking an ask or answer GitHub has is judged on GitHub's and writes nothing
+#              (it never asks a second time; pull first). No origin refs at all: nothing is on GitHub (never HEAD).
 # Answers are recorded by the Lead from the founder's click: `human-sample.py answer R1.n yes|no "note"`, then committed.
-# Usage: python3 -I product/tools/human-sample.py [check] [--now <ISO>] [--file F] [--caps-log F --caps F [--pushed F]] [--journeys D]
+# Usage: python3 -I product/tools/human-sample.py [check] [--now <ISO>] [--file F] [--caps-log F --caps F] [--pushed F] [--journeys D]
 #        python3 -I product/tools/human-sample.py answer R1.26 no "the source filter is missing"
-# Exit (check): number of ACT lines. Test: test_human_sample.py (no network, no git; run by cockpit-tests.yml).
+# Exit (check): number of ACT lines. Test: test_human_sample.py (no network; temporary git repositories; cockpit-tests.yml).
 import argparse, os, random, re, subprocess, sys
 from datetime import datetime, timedelta, timezone
 
@@ -140,12 +142,31 @@ def ask_block(now, picked, info, jdir, n_fresh):
 
 def github_gap(text, pushed):
     """What of this copy's file is not on GitHub, and what GitHub has that this copy lacks (P-557).
-    → (asks only here, answers only here as (ask time, row), asks only on GitHub)."""
+    → (asks only here, answers only here as (ask time, row), asks or answers only on GitHub as ask times)."""
     la, pa = read_asks(text), read_asks(pushed)
-    pk, lk = {a["at"]: a for a in pa}, {a["at"] for a in la}
+    pk, lk = {a["at"]: a for a in pa}, {a["at"]: a for a in la}
     here = [a for a in la if a["at"] not in pk]
     ans = [(a["at"], r) for a in la if a["at"] in pk for r in a["answers"] if r not in pk[a["at"]]["answers"]]
-    return here, ans, [a for a in pa if a["at"] not in lk]
+    behind = [a["at"] for a in pa if a["at"] not in lk or any(r not in lk[a["at"]]["answers"] for r in a["answers"])]
+    return here, ans, behind
+
+
+def union(texts):
+    """One file text holding every ask and answer found in texts (GitHub's refs), asks in time order, for reading."""
+    asks = {}
+    for t in texts:
+        for a in read_asks(t):
+            u = asks.setdefault(a["at"], {"rows": [], "answers": {}})
+            u["rows"] += [r for r in a["rows"] if r not in u["rows"]]
+            for r, v in a["answers"].items():
+                u["answers"].setdefault(r, v)
+    out = []
+    for at in sorted(asks):
+        out += [f"## Ask {ist(at)} IST", ""] + [f"| {r} |" for r in asks[at]["rows"]]
+        for r, (ans, t, note) in asks[at]["answers"].items():
+            out.append(f"answer: {r} {ans}" + (f" ({ist(t)} IST)" if t else "") + (f" — {note}" if note else ""))
+        out.append("")
+    return "\n".join(out)
 
 
 def check(now, text, proven, info, jdir, write, pushed=None):
@@ -154,14 +175,14 @@ def check(now, text, proven, info, jdir, write, pushed=None):
     if pushed is not None:
         here, ans, behind = github_gap(text, pushed)
         if behind:   # this copy is behind GitHub: judge GitHub's file, write nothing here
-            pre.append(f"warn  this copy's product/qa/human-sample.md lacks the {', '.join(ist(a['at']) for a in behind)} IST ask GitHub has: read from GitHub; pull this copy")
+            pre.append(f"warn  this copy's product/qa/human-sample.md lacks what GitHub has for the {', '.join(ist(t) for t in behind)} IST ask: read from GitHub; pull this copy")
             text, write = pushed, False
         elif here or ans:
             what = "; ".join([f"the {ist(a['at'])} IST ask ({', '.join(a['rows'])})" for a in here] + [f"the answer for {r} ({ist(t)} IST ask)" for t, r in ans])
             pre.append(f"ACT   \033[31mNot on GitHub\033[0m: {what} only in this copy's product/qa/human-sample.md, not on origin/main or this "
                        "branch's upstream (P-557): push it in a records PR now; until then the founder was not asked on the record")
     lines, new = check_text(now, text, proven, info, jdir, write)
-    return pre + lines, new
+    return pre + lines, (new if write else None)   # a copy behind GitHub never writes (review M2)
 
 
 def check_text(now, text, proven, info, jdir, write):
@@ -206,18 +227,21 @@ def git(*a):
     return subprocess.run(["git", "-C", ROOT, *a], capture_output=True, text=True).stdout
 
 
-def on_github(rel, ref):
-    """The file as GitHub has it: of this branch's upstream and origin/main (ref), the copy with the newest ask ("" when
-    neither holds it). Tests pass --caps-log and skip this (no git)."""
-    best = ""
-    for r in ("@{u}", ref):
-        if not git("rev-parse", "--verify", "-q", r).strip():
-            continue
-        t = git("show", f"{r}:{rel}") if subprocess.run(["git", "-C", ROOT, "cat-file", "-e", f"{r}:{rel}"], capture_output=True).returncode == 0 else ""
-        newest = lambda x: max((q["at"] for q in read_asks(x)), default=datetime.min.replace(tzinfo=timezone.utc))
-        if newest(t) > newest(best):
-            best = t
-    return best
+def on_github(rel):
+    """The file as GitHub has it: every ask and answer in origin/main's copy and in every origin/lead/* branch's, read in
+    one `git cat-file --batch` ("" when none holds it; never HEAD or a local branch)."""
+    refs = [r for r in git("for-each-ref", "--format=%(refname)", "refs/remotes/origin/main", "refs/remotes/origin/lead/").split() if r]
+    if not refs:
+        return ""
+    p = subprocess.run(["git", "-C", ROOT, "cat-file", "--batch"], input="".join(f"{r}:{rel}\n" for r in refs).encode(), capture_output=True)
+    out, texts, i = p.stdout, [], 0
+    while i < len(out):
+        nl = out.index(b"\n", i)
+        head = out[i:nl].decode(errors="replace").split()
+        i = nl + 1
+        if len(head) == 3 and head[1] == "blob":
+            n = int(head[2]); texts.append(out[i:i + n].decode("utf-8", errors="replace")); i += n + 1
+    return union(texts)
 
 
 def main():
@@ -242,7 +266,7 @@ def main():
     caps = open(a.caps).read() if a.caps else git("show", f"{ref}:{CAPS}")
     if not caps:
         print(f"ACT   human sample not checked: {CAPS} unreadable on {ref}"); return 1
-    pushed = open(a.pushed, encoding="utf-8").read() if a.pushed else None if a.caps_log else on_github(os.path.relpath(os.path.abspath(a.file), ROOT), ref)
+    pushed = open(a.pushed, encoding="utf-8").read() if a.pushed else on_github(os.path.relpath(os.path.abspath(a.file), ROOT))
     lines, new = check(now, text, proven_since(log), rows(caps), a.journeys, not a.no_write, pushed)
     if new and not a.no_write:
         open(a.file, "w", encoding="utf-8").write(new)
