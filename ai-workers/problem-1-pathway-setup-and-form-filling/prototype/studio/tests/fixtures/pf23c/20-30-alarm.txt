@@ -1,0 +1,12 @@
+Tue Nov 24 04:16:33 AM UTC 2026
+before: OK	2026-11-23T06:38:34.128000+00:00
+alarm at Tue Nov 24 04:22:52 AM UTC 2026: ALARM	2026-11-24T04:22:34.129000+00:00
+requests callback-503 38
+requests me-401 114
+after: ALARM	2026-11-24T04:22:34.129000+00:00
+2026-11-24T04:22:34.129000+00:00	Alarm updated from OK to ALARM
+2026-11-24T04:22:34.171000+00:00	Successfully executed action arn:aws:sns:ca-central-1:581508167097:xr-staging-on-call
+sns NumberOfMessagesPublished 1.0
+sns NumberOfNotificationsDelivered 1.0
+sns NumberOfNotificationsFailed 0.0
+exit=0

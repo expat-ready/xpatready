@@ -14,12 +14,17 @@
 //   W4: a job waiting longer than STUCK_JOB_MS (Sample, 30 min) raises one `job_stuck` alarm line (embedded metric
 //       format, metric "Alerts", AlertKind job_stuck) naming its queue and job id within 2 minutes; the next minute's
 //       check raises none (one page per incident, ALERT_REPEAT_MS 5 min, Sample).
-// Not here, held (P-251) until PF-23c (the founder's AWS account and on-call address): W5 the alarm reaches the on-call
-// person; W6 the log group keeps 90 days in ca-central-1. This file carries no `Completes: R1.13` until then.
+//   W5 (PF-23c, on the staging account; recorded answers, no AWS call): a real app error reached the alarm and the alarm
+//       reached the on-call topic's one confirmed email subscription (tests/fixtures/pf23c/, byte copies of branch
+//       aws/2026-11-22-staging-proof 69b57dc9d, sha256 checked): genuine 503s, the 5xx-rate alarm OK -> ALARM with its
+//       action run on the on-call topic, never set-alarm-state, SNS delivered with none failed. That a person read it
+//       is the founder's own confirmation (its DECISIONS row), which qa reads; this file does not check it;
+//   W6 (PF-23c, the same record): the app's log group /xr/staging/app keeps 90 days, in ca-central-1.
 // The test firm, its host and its free-consultation type are written straight to the copy's database (Sample rows).
 // Run from prototype/ (US$0, no model call):
 //   zsh studio/tools/isolated.sh j13 4433 start --ttl 20 && trap 'zsh studio/tools/isolated.sh j13 4433 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_13.ts j13 4433
 import "reflect-metadata";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -115,6 +120,41 @@ try {
     first.length === 1 && a?.entityKey === job.id && a?.rule === "SA8-D40" && a?.AlertKind === "job_stuck" && a?.Alerts === 1 && Array.isArray(a?._aws?.CloudWatchMetrics) && a._aws.CloudWatchMetrics[0]?.Metrics?.[0]?.Name === "Alerts", first);
   await pause(70_000);   // the next minute's check
   ok("J-13 W4: the next minute's check raises no second alarm for the same job (one page per incident)", alarms().length === 1, alarms());
+
+  // W5-W6: PF-23c on the staging account, from its recorded answers (no AWS call here, US$0): byte copies of branch
+  // aws/2026-11-22-staging-proof 69b57dc9d, product/reports/aws-evidence/2026-11-24/ (tests/fixtures/pf23c/README.md).
+  const FIX = join(STUDIO, "tests", "fixtures", "pf23c");
+  const STEP: Record<string, string> = {   // 69b57dc9d's SHA256SUMS lines for the files read here
+    "20-alarm.sh": "c7233f4437108ff070cffd5c54dabbc91ef57f3f02ad4717ecf3bb3064dcaf05",
+    "20-30-alarm.txt": "0479d6fe4a7d1531e6c43ff15fa2b0128b7910a25da3501ccffa67821c0f94a6",
+    "42-log-groups-now.txt": "fdab4d24a61bcf01d277b1b551f97fed05bb5723ae750312ac4bc718b441d031",
+    "43-subscription-now.txt": "02afdfd6b4ad72468175230ee8efe2ca3678565f971da500f75e1c83b195af9e",
+    "44-alarm-history-24nov.txt": "b517f085e0b96dafc4322a47245f506aae7308e12d094e8818552144c49ade76",
+    "45-sns-counts-24nov.txt": "dcc3e3c534bb9c2472d835e9781b4df85cb020e74675e62b021fe02af83544cb",
+  };
+  const bytesOf = (f: string) => { try { return readFileSync(join(FIX, f)); } catch { return null; } };
+  const sums = bytesOf("SHA256SUMS")?.toString("utf8") ?? "";
+  const intact = (fs: string[]) => fs.every((f) => { const b = bytesOf(f); return !!b && createHash("sha256").update(b).digest("hex") === STEP[f] && sums.includes(`${STEP[f]}  ${f}`); });
+  const txt = (f: string) => bytesOf(f)?.toString("utf8") ?? "";
+  const TOPIC = /arn:aws:sns:ca-central-1:\d{12}:xr-staging-on-call\b/;
+  const script = txt("20-alarm.sh"), out20 = txt("20-30-alarm.txt"), sub = txt("43-subscription-now.txt"), hist = txt("44-alarm-history-24nov.txt"), sns = txt("45-sns-counts-24nov.txt");
+  const num = (t: string, re: RegExp) => Number((t.match(re) ?? [])[1] ?? NaN);
+  const subs = sub.split("\n").filter((l) => /^\S+\tarn:aws:sns:/.test(l));
+  const w5 = {
+    intact: intact(["20-alarm.sh", "20-30-alarm.txt", "43-subscription-now.txt", "44-alarm-history-24nov.txt", "45-sns-counts-24nov.txt"]),
+    forcedState: /^[^#]*set-alarm-state/m.test(script), real503s: num(out20, /^requests callback-503 (\d+)$/m), before: /^before: OK\t/m.test(out20),
+    toAlarm: /Alarm updated from OK to ALARM/.test(out20) && /\txr-staging-5xx-rate\tStateUpdate\tAlarm updated from OK to ALARM/.test(hist),
+    actionOnCall: new RegExp(`Successfully executed action ${TOPIC.source}`).test(out20) && new RegExp(`xr-staging-5xx-rate\tAction\tSuccessfully executed action ${TOPIC.source}`).test(hist),
+    delivered: num(out20, /^sns NumberOfNotificationsDelivered ([\d.]+)$/m), failed: num(out20, /^sns NumberOfNotificationsFailed ([\d.]+)$/m),
+    laterDelivered: num(sns, /^NumberOfNotificationsDelivered ([\d.]+)$/m), laterFailed: num(sns, /^NumberOfNotificationsFailed ([\d.]+)$/m),
+    topic: TOPIC.test(sub), subscriptions: subs.length, email: subs.length === 1 && subs[0].startsWith("email\t"), confirmed: subs.length === 1 && !/PendingConfirmation/.test(subs[0]) && new RegExp(`${TOPIC.source}:[0-9a-f-]{36}$`).test(subs[0]),
+  };
+  ok("J-13 W5 (PF-23c, the staging account; recorded answers from aws/2026-11-22-staging-proof 69b57dc9d in tests/fixtures/pf23c/; the person's reading is the founder's DECISIONS row, read by qa): genuine app 503s raised the 5xx-rate alarm (OK -> ALARM, never set-alarm-state), its action ran on the on-call topic, whose one subscription is a confirmed email, and SNS delivered with none failed",
+    w5.intact && !w5.forcedState && w5.real503s > 0 && w5.before && w5.toAlarm && w5.actionOnCall && w5.delivered >= 1 && w5.failed === 0 && w5.laterDelivered >= 1 && w5.laterFailed === 0 && w5.topic && w5.subscriptions === 1 && w5.email && w5.confirmed, w5);
+  const group = txt("42-log-groups-now.txt").split("\n").find((l) => l.startsWith("/xr/staging/app\t")) ?? "";
+  const [, days, groupArn] = group.split("\t");
+  ok("J-13 W6 (PF-23c, the same record): the app's log group /xr/staging/app keeps its lines 90 days (NFR5-14, exactly 90: LOG_RETENTION_DAYS) and is in ca-central-1",
+    intact(["42-log-groups-now.txt"]) && days === "90" && /^arn:aws:logs:ca-central-1:\d{12}:log-group:\/xr\/staging\/app:\*$/.test(groupArn ?? ""), { intact: intact(["42-log-groups-now.txt"]), group });
 } finally {
   await db.$disconnect();
 }
