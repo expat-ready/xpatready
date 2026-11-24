@@ -18,6 +18,7 @@ updated: 2026-11-24 16:06 IST: Lead 27 ended. **Hand-over: the last section of `
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A371 | 24 Nov ~16:13 (typed to Lead 28) | Partials to Proven first, rules held by code, manage resources | plan file, end; in progress |
 | A359 | 24 Nov, after 13:06 (typed to Lead 24) | prove faster; follow the Lead's recommendations; final tooling decision, dates, outcomes | plan file, end; #3305 line pushed; three sessions started; CodeAnt C1 and C3 yes |
 | A370 | 24 Nov ~15:27 (typed to Lead 26, relayed) | one action list in every 30-minute report | `design/action-list-2026-11-24.md`; in force |
 | A369 | 24 Nov ~15:25 (typed to Lead 26, relayed) | keep the copy current; enforce by code; speed, SLA | dated plan owed |

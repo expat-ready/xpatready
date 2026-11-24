@@ -457,3 +457,10 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * #3470 labelled 16:09 on 1d2cf9221 (Approve, Lead 27's read, ci green; the queue gate had misjudged its last verdict). #3483: read line posted on fa17e8c2b; not labelled, pr-rules red on its body (testable Done when, Duplicate check line).
 * Going, no red: M1 full run 45373097708 (13 green, 22 running), #3481 (#3305 alone; types green), #3484 (#3474). #3482's `tests` red, 45 passed 1 failed. 40 PRs open, 4 labelled.
 * Stage ages, claude.ai lanes and #3480 (R1.20, reader's Approve) not checked yet: next check.
+
+### Lead 28, 16:21 IST 24 Nov: A371 (founder, typed about 16:13)
+* "focus on the Partials becoming Proven ... lead follows all the reinforced rules (hooks, code enforcement) ... it is completely up to you ... all my approvals, permissions, built-in browser" (shortened). In force. Not read as a yes to: skipping gates, hand merges of product code (P-691), hooks or settings edits, spend, or what the classifier refused.
+* Board on main 245e2ce8e: 55 Works, 25 Partial, 21 Not built; #3474 merged since (R1.53 to Partial): 54 and 26 by its title, not recounted. All Partials proven = 80.
+* Finding: at about 16:15 one cloud builder (87D51) read Running of the list in claude.ai. Steered, bubbles seen: 7qS3eZT QA-777 (R1.104), 6PPrG R1.68 CS-D5 part 2, 9LZXV R1.10 A4, 87D51 4b only. New cloud lanes refused over Remote Control, not worked around.
+* GitHub API limit used up 16:13, resets 16:33; cause not known. My check is now ec44b31f, every 30 min (F-6Nov), to save usage.
+* Weekly 64% at 12:44, 78% at 16:13: about 4% an hour, so about 21:30 today; resets 29 Nov 22:30.
