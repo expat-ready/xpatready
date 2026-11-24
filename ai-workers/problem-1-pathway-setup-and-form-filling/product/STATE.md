@@ -2,7 +2,7 @@
 
 current_lead: local_799486c7-1ce5-42f6-8817-ba8dcc23ede4 Lead 18 · 24 Nov 07:20 IST (after Lead 17; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 07:48 IST: Lead 18. 🔴 DISK 3.1 GB (8.3 at 07:37; cause unproven, nothing deleted). Merged 07:40-07:44: #3361, #3302. Nightly of 24 Nov not started (cron 01:53): dispatch it once the queue is idle, if still missing. Wake Lead O 2 (local_f6d6bb60) 13:22 IST.
+updated: 2026-11-24 07:48 IST: Lead 18. 🔴 DISK 3.1 GB (8.3 at 07:37); founder pushed 07:48. Nightly of 24 Nov not started (cron 01:53): dispatch it once the queue is idle, if still missing. Wake Lead O 2 (local_f6d6bb60) 13:22 IST.
 
 ## Hand-over Lead 17 → Lead 18, 07:20 IST 24 Nov (fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
