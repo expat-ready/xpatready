@@ -138,7 +138,7 @@ try {
   // Aligned by qa 10 on #3489's head 8e7f454d6 (PF-17 part 4 PR B): each row's "Failed jobs" cell ([data-failed-jobs],
   // a count, "n+" past the cap) read on its own, firm A's and firm B's each against its own dead letters (the row's
   // text alone held "150", so "1" was found in any row).
-  const cellOf = async (row: typeof rowA) => (await row.count()) === 1 ? (await row.locator("[data-failed-jobs]").innerText()).trim() : "";
+  const cellOf = async (row: typeof rowA) => (await row.count()) === 1 && (await row.locator("[data-failed-jobs]").count()) === 1 ? (await row.locator("[data-failed-jobs]").innerText()).trim() : "";   // no cell: the step fails, never a timeout (reviewer m4, #3533)
   const [cellA, cellB] = sawFirms ? [await cellOf(rowA), await cellOf(rowB)] : ["", ""];
   ok("J-93 W2 (parts missing: PF-17 screens, PF-4s part 1): our console's Firms page lists firm A and firm B, each row's Failed jobs cell its own dead letters, firm A's row with its plan state",
     sawFirms && (await rowB.count()) === 1 && cellA === String(deadOf(A)) && cellB === String(deadOf(B)) && new RegExp(pA.split("|")[1] ?? "-", "i").test(rowAText), { heading: sawFirms, cells: [cellA, cellB], dead: [deadOf(A), deadOf(B)], rowA: rowAText.slice(0, 160) });
