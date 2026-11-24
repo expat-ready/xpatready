@@ -46,3 +46,14 @@ None.
 - **The answer contents:** it holds no file name (document ids and a count only). The words never say "legal obligation". A firm with no number gets an empty list and "Your firm has not set a keep period for closed client files."
 
 Verdict: Changes 8d1b712a5225f5ab2493c52cc3730e9be5699e86
+
+## Round 2: diff-only re-check, `8d1b712a5..74fb5af8c` (new head 74fb5af8c)
+The coordinator asked me to check only this diff (`keep-period.ts` and the check file). I re-ran the scratch `job.mts` against xr_studio_runtime_csd6k through the app's walled `Db` and the real `PrismaNotificationPort`. I removed every row I added: 3,000 cases, 3,022 notifications and one setting change.
+- **M1 is fixed.** `keep-period.ts:166-171` now runs each notification in its own short transaction, and a failure is logged and counted. Reproduction: the same 3,000 synthetic past cases, then `job.mts real`. The remind job ends `done` with 3,022 notify calls in 15.8 s and no timeout. `msg_notification` holds 3,022 rows for 3,022 distinct cases (it held 0 before). A failing notification leaves the others sent and then fails the job so the runner retries it; the new DW6 assertion shows this with a fake.
+- **m4 is fixed.** `allPast` (`:176-183`) pages 500 at a time with no cap and `withDocuments=false`, so the job reads no document ids. All 3,022 cases were reached; the old code stopped at 10,000.
+- **m5 is fixed.** The weekly run (`:125-127`) joins `platform_firm_setting` on `legal.closed_client_files_years`. Reproduction: set sample-firm's value to JSON `null` and run `weekly-only`: 0 firms queued, 0 new `platform.bypass` lines. Set it back to 6: 1 firm queued with key `keep-period:fc3b9d79…:2026-W49`. The solo firm has a number but no closed case, so it is not queued.
+- **New, Minor (n1).** The weekly bypass now also reads `platform_firm_setting`, which is a walled table, for every firm. It reads only whether the key is present. Its declared reason in `keep-period.bypass.ts:5` still says only "lists which firms have a closed case"; the reason should name the setting read too.
+- **Not changed, taken to the PR as known:** m1 (cursor 400 when the set changes), m2 (reminders marked unread again on retry; a failed notification now makes the whole job retry, which re-raises all of them), m3 (a zone PostgreSQL refuses), m6 and m7.
+- **Held in the diff:** the DW5 and DW6 role edits are now restored in `finally`. The new checks cover the 21:30-Toronto close, the 29 February close, a late week, a suspended holder and an own-cases-only holder who is never told.
+
+Verdict: Approve 74fb5af8ce8985a7c0675956d6d2f551a5ad36ac
