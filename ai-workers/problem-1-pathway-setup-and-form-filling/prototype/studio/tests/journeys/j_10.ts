@@ -384,7 +384,7 @@ try {
     const token = d.open ? undefined : d.system ? await opSignIn() : tR, method = d.method === "ALL" ? "POST" : d.method, area = areaOf(d.path), route = `${d.method} ${d.path}`;
     // B3: the web form's door checks the page's origin; B4: the public booking doors count per address, so their probes come
     // from a new loopback address every 8 requests (another client each time; the limit stays as it is, see the control below).
-    const origin = d.path.startsWith("/api/public/forms/") ? { origin: BASE } : undefined, spread = /^\/api\/public\/(firms|bookings|signup)\//.test(d.path);
+    const origin = d.path.startsWith("/api/public/forms/") ? { origin: BASE } : undefined, spread = /^\/api\/public\/(firms|bookings|signup)(\/|$)/.test(d.path);
     const ask = (m: string, pth: string, o: CallOpts) => call(m, pth, { ...o, headers: { ...o.headers, ...origin }, ...(spread ? { from: nextFrom() } : {}) });
     const bad = (probe: string, a: Answer) => { if (excepted.has(`${route} ${probe}`)) return; failing[area].push(`${route} ${probe} → ${a.status}`); if (a.status >= 500) five.push(`${route} ${probe}`); };
     if (d.body) {
@@ -392,10 +392,13 @@ try {
       if (!(u.status === FIELD_ERROR_STATUS && named(u, "pf28Unknown") && plainWords(u, "pf28Unknown"))) bad("unknown", u);
       const w = await ask(method, fill(d.path), { token, body: "[1]" }); probed[area]++;
       if (w.status !== FIELD_ERROR_STATUS) bad("wrong-type", w);   // the whole body of the wrong type ("[1]")
-      const m = await ask(method, fill(d.path), { token, body: "{}" }); probed[area]++;
+      // A by-design "missing" line means {} is a valid action there (a cancel, a resend): with a real Sample value it would act, so
+      // it is not sent; its answer was never judged (the allow-list's line stands for it).
+      const skipM = excepted.has(`${route} missing`);
+      const m: Answer = skipM ? { status: 0, body: null } : await ask(method, fill(d.path), { token, body: "{}" }); if (!skipM) probed[area]++;
       const required = m.status === FIELD_ERROR_STATUS ? Object.keys((m.body?.fields as object) ?? {}).filter((k) => /^[A-Za-z][A-Za-z0-9_]*$/.test(k) && k !== "body") : [];   // "body": the whole body, not a field
       const namedMissing = Object.keys((m.body?.fields as object) ?? {});   // "body" counts here: {} refused as a whole, named
-      if (!((m.status === FIELD_ERROR_STATUS && namedMissing.length > 0 && namedMissing.every((k) => plainWords(m, k))) || (m.status >= 200 && m.status < 300))) bad("missing", m);
+      if (!skipM && !((m.status === FIELD_ERROR_STATUS && namedMissing.length > 0 && namedMissing.every((k) => plainWords(m, k))) || (m.status >= 200 && m.status < 300))) bad("missing", m);
       const big = await ask(method, fill(d.path), { token, body: JSON.stringify({ pf28: MB }) }); probed[area]++;
       if (big.status !== 413) bad("1mb", big);
       // One field of the wrong type at a time: each declared field and each required one, sent alone as an object.
