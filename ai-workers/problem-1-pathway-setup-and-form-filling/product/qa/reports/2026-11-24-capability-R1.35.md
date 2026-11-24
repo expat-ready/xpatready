@@ -12,7 +12,7 @@
 | Journey | none exists (no j_35) | nothing a person can walk |
 
 ## What is on main (PF-10a)
-PF-10a adds four tables: `plat_import_batch`, `plat_import_row`, `plat_import_mapping` and `plat_import_attestation`. They are firm-scoped behind PF-12's walls. Reasons are stored as `{field, rule}` names only, and attestations are insert-only and Owner only. These hold the Done when's data shape (each bad row's reason; good rows once; source and consent) but nobody can use them yet.
+PF-10a adds four tables: `plat_import_batch`, `plat_import_row`, `plat_import_mapping` and `plat_import_attestation`. They are firm-scoped behind PF-12's walls. Reasons are stored as `{field, rule}` names only, and attestations are insert-only and Owner only. They hold part of the Done when's data: each bad row's reason, the mapping and the batch's source name. Consent is not among them: it is set on the target record (PF-10t). Nobody can use the tables yet.
 
 ## Done when, clause by clause
 | Clause | On main? | Waits on |
