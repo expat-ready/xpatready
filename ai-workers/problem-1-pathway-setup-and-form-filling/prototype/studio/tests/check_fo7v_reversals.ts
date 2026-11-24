@@ -52,6 +52,8 @@ try {
   const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
   const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
   const { PaymentReversedPayload } = await import("../ports/events/client-money-reversals.ts");
+  const { Reversals } = await import("../api/src/client-money/reversals/reverse.ts");
+  const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
   const trust = (await import("../api/src/features/client-money-trust.ts")).default;
   const invoices = (await import("../api/src/features/client-money-invoices.ts")).default;
   const reversals = (await import("../api/src/features/client-money-reversals.ts")).default;
@@ -80,12 +82,16 @@ try {
   const tR = await signIn("user-R", "sample-firm"), tO = await signIn("user-O", "sample-firm"), tS = await signIn("user-S", "sample-solo");
   const staffR = sql(`select id from platform_staff where actor_id = 'user-R' and firm_id = '${A}'`);
   const W = "00000000-0000-4000-8000-0000000f7a00", CLIENT_A = "00000000-0000-4000-8000-0000000f7a01", CASE = "00000000-0000-4000-8000-0000000f7b01";
+  const PE = person(A, "e"), CLIENT_E = "00000000-0000-4000-8000-0000000f7a02", E1 = "00000000-0000-4000-8000-0000000f7b02", E2 = "00000000-0000-4000-8000-0000000f7b03";
   sql(`set session_replication_role = replica;
     insert into workspace (id, key, label) values ('${W}', 'fo7v-check', 'FO-7v part T (Sample)');
     insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values
-      ('${CLIENT_A}', '${W}', 'sample-firm', '${A}', 1, 'Client a (Sample)', 'PERSON', '${PA}', 'seed:FO-7v');
+      ('${CLIENT_A}', '${W}', 'sample-firm', '${A}', 1, 'Client a (Sample)', 'PERSON', '${PA}', 'seed:FO-7v'),
+      ('${CLIENT_E}', '${W}', 'sample-firm', '${A}', 2, 'Client e (Sample)', 'PERSON', '${PE}', 'seed:FO-7v');
     insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status) values
-      ('${CASE}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07501', 'sample-firm', '${A}', '${CLIENT_A}', 'OPEN');
+      ('${CASE}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07501', 'sample-firm', '${A}', '${CLIENT_A}', 'OPEN'),
+      ('${E1}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07502', 'sample-firm', '${A}', '${CLIENT_E}', 'OPEN'),
+      ('${E2}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07503', 'sample-firm', '${A}', '${CLIENT_E}', 'OPEN');
     insert into fo_prospect (id, firm_id, number, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, owner_staff_id, created_by, updated_at) values
       (gen_random_uuid(), '${A}', 'P-07501', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${PA}', '${PA}', '${staffR}', 'seed:FO-7v', now()),
       (gen_random_uuid(), '${A}', 'P-07502', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${PC}', '${PC}', '${staffR}', 'seed:FO-7v', now()),
@@ -195,6 +201,52 @@ try {
     bP.status === 404 && bR.status === 404 && bS.status === 200 && bS.body.items.length === 0 && nP.status === 401 && corrections() === 3, [bP.status, bR.status, bS.body, nP.status]);
   ok("FO-7v DW11 fail (C5): an officer who sees neither the case nor the client → 404 on the preview and the reverse, an empty shortfall list, nothing written",
     oP.status === 404 && oR.status === 404 && oS.status === 200 && oS.body.items.length === 0 && corrections() === 3 && audits() === 3, [oP.status, oR.status, oS.body]);
+  // Review M1: C5 comes before every refusal, so an unseen payment's state is never said (card, operating, reversed).
+  const unseen = await Promise.all([preview(card, tO), preview(opId, tO), preview(d1, tO), reverse(d1, { reasonCode: "RECORDED_BY_MISTAKE", previewHash: "0".repeat(32) }, tO)]);
+  ok("FO-7v DW11 fail (C5 first, review M1): an officer who may not see them → 404 for a card payment, an operating payment and an already reversed deposit (never USE_A_REFUND, NOT_YET or ALREADY_REVERSED)",
+    unseen.every((r) => r.status === 404), unseen.map((r) => [r.status, r.body?.code]));
+
+  // ------------------------------------------------------------------------------------- break M1: typed reasons the database refuses
+  const pT = await preview(d4), alarmsBefore = Number(sql(`select count(*) from audit_event where action = 'trust_money.reversed'`));
+  const odd = await Promise.all(["\u200b\u200b", "\u202eSample reason", "a\u0085b", "\u0301\u0301", "\u3164", "ok \ud800 x"].map((reason) => reverse(d4, { reasonCode: "OTHER", reason, previewHash: pT.body.hash })));
+  ok("FO-7v DW2 fail (break M1): six typed reasons the database's text rule refuses (hidden, direction-changing, control, combining-only, filler, a broken character) → 422 on reason each, never 500; nothing written",
+    odd.every((r) => r.status === 422) && corrections() === 3 && audits() === alarmsBefore, odd.map((r) => [r.status, r.body?.detail]));
+  ok("FO-7v DW2 pass: a non-English typed reason is stored as typed", (await reverse(d4, { reasonCode: "OTHER", reason: "Saisi deux fois (Sample)", previewHash: pT.body.hash })).status === 201
+    && sql(`select reason from money_trust_entry where corrects_entry_id = (select id from money_trust_entry where payment_id = '${d4}')`) === "Saisi deux fois (Sample)");
+
+  // ------------------------------------------------------------------------------------- review m1: at once; cash; nothing left
+  const d5 = await deposit(PA, CASE, 7000), p5 = await preview(d5);
+  const many = await Promise.all(Array.from({ length: 6 }, () => reverse(d5, { reasonCode: "RECORDED_BY_MISTAKE", previewHash: p5.body.hash })));
+  ok("FO-7v DW8 fail (at once): six reverses of one deposit with one preview → exactly one 201, five 409 (ALREADY_REVERSED or CHANGED), one correction, one audit line, one event",
+    many.filter((r) => r.status === 201).length === 1 && many.filter((r) => r.status === 409 && ["ALREADY_REVERSED", "CHANGED"].includes(r.body.code)).length === 5
+      && Number(sql(`select count(*) from money_trust_entry where corrects_entry_id = (select id from money_trust_entry where payment_id = '${d5}')`)) === 1 && audits() === 5 && events() === 5, many.map((r) => [r.status, r.body?.code]));
+  const cash = await deposit(PA, CASE, 3000, "CASH"), pc2 = await preview(cash), cashRet = await reverse(cash, { reasonCode: "RETURNED", previewHash: pc2.body.hash });
+  ok("FO-7v DW2 fail (P-634 (1)): \"Returned\" on cash → 409 NOT_RETURNED", cashRet.status === 409 && cashRet.body.code === "NOT_RETURNED", cashRet.body);
+  const cashEntry = sql(`select id from money_trust_entry where payment_id = '${cash}'`);
+  sql(`insert into money_trust_entry (firm_id, person_id, case_id, kind, amount_minor, currency, corrects_entry_id, correction_kind, reason, created_by)
+    values ('${A}', '${PA}', '${CASE}', 'CORRECTION', -3000, 'CAD', '${cashEntry}', 'WRONG_ACCOUNT', 'Belonged in operating (Sample)', 'seed:FO-7v')`);
+  const none = await preview(cash);
+  ok("FO-7v DW8 fail: a deposit already corrected in full (WRONG_ACCOUNT) → 409 NOTHING_LEFT", none.status === 409 && none.body.code === "NOTHING_LEFT", none.body);
+
+  // ------------------------------------------------------------------------------------- review M2: the shortfall list never shows money on an unseen case
+  // Client e: 100.00 on E1; a 200.00 cheque on E2, refunded, then reversed as Returned → −100.00, all of it from E2.
+  const dE1 = await raw(tR, "POST", "/trust/deposits", { personId: PE, caseId: E1, method: "E_TRANSFER", amountMinor: 10000, currency: "CAD", idempotencyKey: "fo7v-dep-e1" });
+  const dE2 = await raw(tR, "POST", "/trust/deposits", { personId: PE, caseId: E2, method: "CHEQUE", amountMinor: 20000, currency: "CAD", idempotencyKey: "fo7v-dep-e2" });
+  if (dE1.status !== 201 || dE2.status !== 201) throw new Error(`client e deposits: ${JSON.stringify([dE1.body, dE2.body])}`);
+  const chqE = dE2.body.paymentId as string;
+  const rfE = { personId: PE, caseId: E2, currency: "CAD", amountMinor: 20000, reason: "Unused money returned (Sample)", method: "E_TRANSFER", reference: "FO7V-RFE" };
+  let rE = await raw(tR, "POST", "/trust/refunds", rfE); if (rE.status === 409 && rE.body?.code === "UNCLEARED") rE = await raw(tR, "POST", "/trust/refunds", { ...rfE, unclearedAcknowledged: true });
+  const pE = await preview(chqE), revE = await reverse(chqE, { reasonCode: "RETURNED", previewHash: pE.body.hash });
+  // Then a 50.00 deposit on E1, reversed: the latest reversal is on E1, the case the officer sees (the reviewer's shape).
+  const dE3 = await raw(tR, "POST", "/trust/deposits", { personId: PE, caseId: E1, method: "E_TRANSFER", amountMinor: 5000, currency: "CAD", idempotencyKey: "fo7v-dep-e3" });
+  const pE3 = await preview(dE3.body.paymentId), revE3 = await reverse(dE3.body.paymentId, { reasonCode: "RECORDED_BY_MISTAKE", previewHash: pE3.body.hash });
+  if (rE.status !== 201 || revE.status !== 201 || revE3.status !== 201) throw new Error(`client e: ${JSON.stringify([rE.body, revE.body, revE3.body])}`);
+  const ctxA = { firmId: A, staffId: staffR } as never;
+  const listFor = (scope: { cases: string[]; parties: string[] }) => new Reversals(owner, auditEvent, async () => scope).shortfall(ctxA, {}) as Promise<{ items: { personId: string | null; balanceMinor: number }[] }>;
+  const partial = await listFor({ cases: [E1], parties: [PE] }), whole = await listFor({ cases: [E1, E2], parties: [PE] });
+  ok("FO-7v DW11 fail (review M2): an officer who sees case E1 only never gets client e's row, though the latest reversal is on E1 (its −100.00 is money on E2)", !partial.items.some((x) => x.personId === PE), partial.items);
+  ok("FO-7v DW11 pass: a caller who sees both of client e's cases gets the row at −100.00", whole.items.find((x) => x.personId === PE)?.balanceMinor === -10000, whole.items);
+
   const ghost = await preview("00000000-0000-4000-8000-000000000999");
   ok("FO-7v DW11 fail: an unknown payment id → 404", ghost.status === 404, ghost.body);
 } catch (e) {
