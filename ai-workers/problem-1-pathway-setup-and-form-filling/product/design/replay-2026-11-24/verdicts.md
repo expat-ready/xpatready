@@ -1,0 +1,126 @@
+# Judges' verdicts on every Major+ claim (model output, one line each)
+
+- S01 M1 **TRUE** Strict ADD_LEAD answers 422 for firmId; j_4.ts:88 accepts only 400/201, breaking the \
+- S01 M2 **TRUE** LONG=20000 passes exactly 20,000 characters; over-long note/reason goes unnamed (or 404), failing R1.10's clause and j_10 W3 (routes.ts:33,43-51).
+- S02 M1 **MINOR** req.ip is always 127.0.0.1 behind container-entry.mjs, but that container is a loopback-only test skeleton; harmless today (public.ts:47).
+- S02 M2 **TRUE** text() refuses invisible or control characters in captured utm values, losing the whole enquiry despite \
+- S02 M3 **MINOR** Changed resend with the same submissionId is thanked and dropped; matches the stated one-lead clause, narrow Back-button case (arrival.ts:46-48).
+- S02 M4 **MINOR** frame-ancestors is only on the JSON read; the hosted form page is not in this API-only row (public.ts:64).
+- S03 M1 **MINOR** fakeMail does record reminders as sent, but it is interim wiring disclosed in the feature header, pending PF-4b (platform-complaints.ts:3-6,20).
+- S04 M1 **MINOR** Null reference prints blank, only for API-opened cases; today's dialog always sends it, and the screen is deferred to A24-2 (contracts/runtime.ts:48-50).
+- S05 M1 **TRUE** accept() runs wholly on bypass and reads other firms' staff with no line; signup's same lookup writes one (session/service.ts:96-116).
+- S05 M2 **MINOR** False \
+- S05 M3 **MINOR** detail.correlationId is null for real job keys, but the line's correlation_id column still carries it (firm-scope.ts:203,219; audit-event.ts:56).
+- S05 M4 **TRUE** Held rows are reselected every minute; a permanent line is written though the hourly-keyed enqueue is a no-op (messages.ts:291).
+- S06 M1 **MINOR** Reopen and next stage do skip the check, but row and title scope the binding to opening through createCase (case-close.ts:200-212).
+- S06 M2 **TRUE** Suite opens only individual cases; the Done-when clause \
+- S07 M1 **TRUE** READ_ONLY holds document:show, not download, yet routes.ts:33,41 send the passport as an attachment; sibling retainers/routes.ts:70,78 require :download.
+- S07 M2 **TRUE** retainers/service.ts:503-517 returns the warning only after SENT commits; read() (410-430) never shows a missing check beforehand.
+- S07 M3 **MINOR** Widening real (identity/service.ts:126-133) but deliberate: any live company contact can sign (retainers/service.ts:300-305); lost/withdrawn cases are edge.
+- S07 M4 **MINOR** kindOf (identity/service.ts:62-68) accepts bare signatures, but no door calls checkFile yet; an unreadable copy is harmless and correctable.
+- S08 M1 **TRUE** phone.ts:22-28 tests only isPossible; \
+- S08 M2 **MINOR** Flag not recomputed by edit.ts:58-66; phone_e164 key still updates and duplicates check matches; stale info notice only, links nothing.
+- S08 M3 **MINOR** Real at leads.ts:154 and corporate/service.ts:213, but those are FO-2 doors; this change is the PATCH people/:personId door only.
+- S09 M1 **MINOR** messages.ts:99-146 does retry hourly without end on throw, but the only adapter (local.ts:9-11) never throws; latent until part 2.
+- S09 M2 **MINOR** Provider called inside the transaction (messages.ts:124), but the local adapter has no outside effect, so no double send today.
+- S09 M3 **MINOR** runtime-ports.ts:14 still uses fakeMail, disclosed interim until PF-4b; this change is part 1 (outbox, gate, worker, cap, local adapter).
+- S10 M1 **MINOR** Real 400 without fields (public.ts:110,227), but only hand-crafted machine fields reach it; refused, nothing stored, real forms unaffected.
+- S11 M1 **TRUE** Reminder mails class SERVICE with no person (service.ts:247); MessagesMail throws MessageRefused (mail.ts:64) on every run.
+- S11 M2 **TRUE** read/forBooking/forPerson filter firm only (service.ts:279-293), bypassing staffBooking's record rule, host exception included (booking/service.ts:881-889).
+- S11 M3 **TRUE** signedOffline accepts CONSULTATION (retainers/service.ts:633-644); view calls only SIGNED signed, so it says \
+- S11 M4 **TRUE** openAs/apply never check retainer status (service.ts:337,464); withdraw leaves the request live; fo_retainer_write then raises (fo5 migration:315).
+- S11 M5 **MINOR** hostLink/apply skip bookingActive (service.ts:418-435), but this needs a deliberate host signature after cancellation; client door and item close.
+- S11 M6 **TRUE** move reassigns staffId (booking/service.ts:595-598); agreement keeps old signatory, item and isHost; new host gets 403 (service.ts:100-102,420).
+- S11 M7 **TRUE** Link email sent post-commit inside safe(), raw token unrecoverable; catchUp excludes existing agreements, no resend (service.ts:120,224-228).
+- S11 M8 **MINOR** No purpose filter (service.ts:168-181), but row literally says \
+- S11 M9 **MINOR** OTHER types get empty fees (service.ts:188); disclosed, no price exists on main, template text may state the fee.
+- S11 M10 **TRUE** Clause lists address, phone, email, College role and scope placeholders; none exist (placeholders.ts:14-37), so never shown missing (items.ts:22-29).
+- S11 M11 **MINOR** No app caller of onBookingEvent/catchUp/signingEvent; disclosed interim wiring for an API-on-fake change (features/front-office-consultation-agreement.ts:3-5).
+- S11 M12 **MINOR** expiresAt never enforced (service.ts:213,337), but header discloses expiry as FO-6's API part (service.ts:13-14).
+- S12 M1 **MINOR** Behaviour real, but jobs.ts:15-18,37 documents the global key space; in-memory fake, no production caller in this change.
+- S13 M1 **MINOR** EXECUTE granted to xr_app only (migration.sql:57), so the bypass role fails; but claimAtSignUp/change have no app caller today (service.ts:116).
+- S13 M2 **MINOR** pg-boss does connect by DATABASE_URL owner (platform-jobs.ts:44); check covers Db only; pre-existing, no shown firm-data path uses it.
+- S14 M1 **MINOR** take=abc/1000/-5 really answer 200, but clamped, read-only, disclosed default kept deliberately; harmless; api/src/runtime.ts:1038, contracts/runtime.ts:603.
+- S14 M2 **MINOR** NUL in q/client passes schema and main.ts:219 maps it to 404; real but rare, read-only; contracts/runtime.ts:605-606.
+- S15 M1 **TRUE** FOR UPDATE OF p with joined stage drops the row after a concurrent move; signature commits unwon; retainers/service.ts:617-621.
+- S15 M2 **MINOR** No case check exists, but no case names a prospect or client on this main; disclosed interim; prospects.ts:280-289, sales/README.md.
+- S15 M3 **TRUE** Ended WON corporate contact makes deferred fo_prospect_contact_linked raise on Undo; uncaught 500 every retry; prospects.ts:294, fo1a migration.sql:786-800.
+- S15 M4 **MINOR** Lost leaves the retainer SENT, but winProspect deliberately handles LOST to WON; no clause requires ending it; prospects.ts:219-234, service.ts:624.
+- S16 M1 **MINOR** Full key cut to 8 hex is real, but wrong only on a 32-bit prefix collision; core.ts:151-156.
+- S16 M2 **MINOR** Lookup runs outside writeAuditWithAlarm; only a transient read failure loses the alert; error still thrown; core.ts:168.
+- S16 M3 **MINOR** Drain inherits first request's scope, so correlation id is wrong; metadata only, firm harm is future; fill-case.ts:376-381, context.ts.
+- S16 M4 **MINOR** Assertion edited for typed word system:rules; disclosed, history readers mapped via actorWordOf, no functional harm; core.ts:144, check_c75_findings_api.ts:132.
+- S17 M1 **TRUE** Check and send ignores `changed`; sends saved version, then reset discards typed edits; retainer-page.tsx:35,48,68,171.
+- S17 M2 **TRUE** Options omit the ineligible current representative; native select shows another, a sole option cannot fire onChange, draft stuck; retainer-page.tsx:114.
+- S17 M3 **MINOR** Panel shows newest template and templateChanged is unused, but the page's line and fold-out show correct per-version items; retainer-page.tsx:36,166-169,181.
+- S17 M4 **TRUE** \
+- S17 M5 **TRUE** No template control on edit; conflict refusal tells user to change template, draft not withdrawable, Prepare refused; retainer-page.tsx:44,105, gate.ts:22.
+- S17 M6 **MINOR** Overwritten signerOptions lack email, showing \
+- S17 M7 **MINOR** Card takes newest row only, but nothing on this main ever sets EXPIRED, so state unreachable today; retainer-card.tsx:33-34.
+- S17 M8 **TRUE** read gives an own-only representative all company contacts' names and emails, which seenCompany refuses elsewhere; service.ts:469-470, corporate/service.ts:193-202.
+- S18 M1 **TRUE** signed branch ignores retainer status; withdrawn retainer's SENT request takes signature, unchecked moveRetainer, applied:true; signing/service.ts:207-216, retainers/service.ts:653
+- S18 M2 **MINOR** Trigger rejects mixed consent versions and 500s, but no retainer consent writer exists and one text version; signing/service.ts:229
+- S18 M3 **MINOR** Expiry uses receipt time and consumes the receipt, but only affects deliveries straddling the 14-day edge; signing/service.ts:209
+- S18 M4 **MINOR** Firm viewed does set VIEWED, but nothing depends on it; audit and signer list stay correct; signing/service.ts:200-204
+- S18 M5 **MINOR** Separate fakes and unregistered handler are disclosed interim wiring; runtime fake emits no webhooks; signing/handlers.ts:1-6, MODULE.rows/FO-6-3.md:1
+- S18 M6 **TRUE** Send emits retainer.sent only; nothing writes RETAINER_SENT stage move or consumes event; clause unmet, undisclosed; retainers/service.ts:627
+- S18 M7 **MINOR** Token discarded, but explicitly disclosed known gap until part 4's door; signing/service.ts:64, MODULE.rows/FO-6-3.md:1
+- S18 M8 **MINOR** Copy lost if mail fails after commit; disclosed, assigned to part 5's JobPort; signing/service.ts:254-274, MODULE.rows/FO-6-3.md:1
+- S18 M9 **MINOR** Decline receipted unapplied; disclosed and explicitly owned by FO-5d; signing/service.ts:190
+- S18 M10 **MINOR** Cancel errors swallowed silently, real but rare; later signature still refused here as cancelled; signing/service.ts:63-64
+- S18 M11 **MINOR** No representative notice exists, but this part's title covers send/state/file/event; notices are another part; signing/service.ts:207-216
+- S18 M12 **MINOR** Kind literals differ from row wording, but the CONSULTATION payload is never emitted and has no consumer; ports/events/signing.ts:35-46
+- S19 M1 **TRUE** Only tail marker and surviving page dictionaries checked; no /Count or stream check, so mid-file damage passes; tools/check_pdf_opens.py:36-51
+- S19 M2 **TRUE** Signed-scan and fee-receipt case doors still use mediaOf prefix only, storing damaged PDFs; sign-steps.ts:225, submission.ts:241
+- S19 M3 **MINOR** Container lacks Python so PDFs get 503, but Dockerfile discloses no-Python skeleton owned by later row; Dockerfile:27, case-checklist.ts:109
+- S19 M4 **MINOR** Audit phrase is premature, but wording is PF-F4's, viewer is CS-D5's, file served sandboxed; file-type.ts:35, case-documents.ts:719
+- S20 M1 **MINOR** Lost does use the cap, but needs 1,000+ prospects; \
+- S20 M2 **MINOR** Cap mismatch and ignored list error real, but no door writes value_cents, so values are always null today. pipeline-page.tsx:34
+- S20 M3 **MINOR** Owner filter dropped while assignees is pending or failed; transient, or one lookup failing alone. leads-page.tsx:119
+- S20 M4 **MINOR** Real for view.all roles without assign; disclosed limit set by the assignees API ruling. leads.ts:103, prospect-actions.tsx:17
+- S20 M5 **MINOR** Cents are rounded away, but no door in the app sets a prospect value. contract.ts:81
+- S20 M6 **MINOR** Text overstates server check; cases and invoices have no prospect link in this tree, disclosed in README. prospect-page.tsx undo dialog, sales/README.md:24
+- S20 M7 **MINOR** No drag or prospect source filter, but row FO-4 itself prescribes the Move to… menu without a drag library. pipeline-page.tsx:60
+- S21 M1 **TRUE** Dead-lettered key is never reusable; oldest waiting client unchanged, so that firm never relinks and validation stays blocked. live.ts:52-53, client-link.ts:15, pgboss-jobs.ts:#send
+- S21 M2 **MINOR** No firm-status filter, so seed refuses and blocks validation; but nothing in app code sets DELETED or ABANDONED. live.ts:52, firm-seed.ts:92
+- S22 M1 **MINOR** No staff routes; disclosed \
+- S22 M2 **MINOR** fakeJobs loses reminders on restart; disclosed interim wiring, though the PF-14 adapter is already in the tree. runtime-ports.ts:3-4,18
+- S22 M3 **MINOR** fakeArrival is live and contacts are in memory only; disclosed interim until FO-2, which is absent here. runtime-ports.ts:6,18
+- S22 M4 **TRUE** Container TCP-forwards via 127.0.0.1 and no trust proxy, so ten POSTs block bookings for everyone. container-entry.mjs:10-12, public.controller.ts:18, service.ts publicBook
+- S22 M5 **MINOR** Not registered and link defaults to localhost; host.ts assigns booking-page registration to FO-3w, and mail is a fake. host.ts:8, runtime-ports.ts:19
+- S22 M6 **TRUE** move() can change host, but afterCommit mails only the new staffId; old host gets no notice or CANCEL. service.ts move()/sendBookingMail
+- S22 M7 **MINOR** Booker send failure skips the host mail in the shared safe step; only on provider throw, booking is kept. service.ts afterCommit/sendBookingMail
+- S22 M8 **MINOR** Repeat POST on a multi-host type books twice; no idempotency, but no row clause requires it and it is cancellable. service.ts publicBook/create
+- S23 M1 **MINOR** Refusing when unset is the stated requirement; CDK task lacks the setting, a deployment gap beside this change. choose.ts:34, service.ts:147
+- S23 M2 **MINOR** FileLinks random per-process key is pre-existing; row says S3FileLinks bound beside it, no caller changes. files.ts:122, choose.ts:101-104
+- S24 M1 **TRUE** Live combination.portalKey replaces pinned snapshot.combination.portal; setAccount changes open cases' accepts and refusals (api/src/case-prepare.ts:59,151,218; forms.ts:128).
+- S24 M2 **TRUE** render gives person \
+- S24 M3 **TRUE** Stored item channel unread by fill-case: channelIn reads release line, so filing and validation ignore choice; undisclosed (api/src/fill-case.ts:48).
+- S24 M4 **TRUE** People view and editor toLines omit filingMode; any editor save replaces participants and erases it (api/src/workspace.ts:133; web/src/pages/workspace/questionnaires.tsx:49).
+- S24 M5 **MINOR** Real: ageOn does not trim, checkValue does; needs API-typed spaces (UI uses date parts), visibly \
+- S24 M6 **MINOR** Real unvalidated filingMode reaches DB check constraint, but only via handcrafted author PATCH with bogus value (api/src/studio.ts:223,332; migration:46).
+- S24 M7 **MINOR** Real: active-only rows drop stored separate group until next /prepare read; rare sequence, heals itself (api/src/case-filings.ts:31).
+- S24 M8 **MINOR** on_principal still derives own filing and fee, but no row clause asks otherwise, API-only setting (engine/runtime/filings.ts:105).
+- S25 M1 **TRUE** Missing subjectKind on case.* accepted; fires per person, id mismatch means no block, no summary, nothing shown (api/src/studio.ts:697; engine/render.ts:290; engine/runtime/forms.ts:98).
+- S25 M2 **TRUE** PRINCIPAL/SPOUSE/DEPENDENT checks run for every applying person, and this change makes firing block the wrong person's form (engine/render.ts:289; engine/runtime/forms.ts:99).
+- S25 M3 **MINOR** Real: unplaced appliesTo accepted, fact null never blocks; rare author mismatch, officer still sees notice (api/src/studio.ts:703; engine/runtime/case.ts:321).
+- S25 M4 **MINOR** True that no check edit or retire route exists, but row states no such clause; missing follow-on feature (api/src/main.ts:64).
+- S25 M5 **TRUE** Group question with zero rows always counts open; confirmed none_apply ignored, so result never arrives (engine/runtime/case.ts:349).
+- S25 M6 **TRUE** Ticked DOCUMENT facts allowed but dropped by sqr isClientField filter; client told \
+- S25 M7 **MINOR** Real dead links: hidden lines have no id, per-row check problems have row null; edge cases only (engine/runtime/case.ts:333; web/src/runtime/questionnaire.tsx:692).
+- S25 M8 **TRUE** multi_choice without options renders zero inputs, code falls back to text; no validation refuses it, required never answerable (web/src/runtime/questionnaire.tsx:55,178).
+- S25 M9 **MINOR** Dead-end real for client and officer, but needs contradictory author config (declaration on officer-collected field) (api/src/runtime.ts:261-263).
+- S25 M10 **MINOR** Gap check is data via derived field plus check; only Sample setup supplies it; UI hint still shows gaps (web/src/runtime/questionnaire.tsx:214).
+- S25 M11 **MINOR** Real: JSON length limit 4000 refuses text of about 3,999+ characters; boundary case, refusal stated clearly (contracts/runtime.ts:63,78).
+- S25 M12 **MINOR** No web caller for pqr, checks or review routes, but recorded row states no screen for them; API slice (api/src/main.ts:64).
+- S26 M1 **TRUE** knownAccount reads all firms on bypass; a throwing register skips the only touchPlatform, leaving zero lines; signup.ts:147-163,179
+- S26 M2 **TRUE** Double-submit loser 404s at signup.ts:213 with no line; throwing confirm at :201 likewise; every-use clause unmet
+- S26 M3 **MINOR** Real but untouched, accepted per-firm uses; no-firm row reads only, inbox demo-only; messages.ts sweep, demo-inbox.ts:36
+- S27 M1 **MINOR** True 404 and skipped mail, but disclosed interim wiring awaiting FO-2 and PF-4b; runtime-ports.ts:4-5,14
+- S27 M2 **MINOR** staffCreate lacks the public door's phone check, but staff-door rule unproven and staff can correct; service.ts:276-284 versus 221
+- S27 M3 **TRUE** Move re-hosts; host mail goes only to new staffId, so old host gets no notice or CANCEL; service.ts:410,476,502
+- S28 M1 **TRUE** ENDED is final and card Checkout finds no live row, yet notice promises card/payment restores; exit-notices.ts:46-49, webhook.ts:40,122
+- S28 M2 **TRUE** Hold event written only on firm status change, so later cause changes give wrong remedy; webhook.ts:159, exit-clock.ts:35,42
+- S28 M3 **TRUE** All-refused or zero recipients still records \
+- S28 M4 **MINOR** Real, but queued-as-accepted is MailPort's shared contract; later failure stays on the outbox row; mail.ts:96, exit-notices.ts:74
+- S28 M5 **MINOR** held is ignored, but the effect is mostly a day's delay under an unusual cap breach; exit-notices.ts:74, messages.ts:137
