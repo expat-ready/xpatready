@@ -7,7 +7,7 @@
 //   W3: staff enter "+1 416 555 0100" → saved (E.164), the pill goes away, and the list no longer flags it;
 //   W4: firm B's person, asked by firm A's staff → 404 (the route), and nothing of B's changes;
 //   W5 (FO-9b, QA-528): the same person arrives twice, "+44 (0)20 7946 0958" by the web form and "0044 20 7946 0958" by
-//       the booking screen; both are +442079460958, so the booking's person is merged by itself into the first (FO-9b part 2b).
+//       the booking screen; both are +442079460958 and the booking's lead shows the possible match on screen.
 // Sample rows only (the web form switched on by SQL, as an Owner would in settings); US$0, no model call. Repeatable on a
 // kept copy (each run's names carry a run stamp).
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
@@ -31,6 +31,10 @@ const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwr
 
 const [NAME, PORT] = [process.argv[2] ?? "j33", Number(process.argv[3] ?? 4433)];
 const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..", "..");
+const autoMergeDone = async (personId: string) => {   // FO-9b part 2b: the merge job for this new person has finished (at most 20 s)
+  for (let i = 0; i < 100; i++) { if (sql(`select count(*) from platform_jobs.job where name = 'fo.duplicates.auto_merge' and data->>'personId' = '${personId}' and state = 'completed'`) === "1") return true; await new Promise((r) => setTimeout(r, 200)); }
+  return false;
+};
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "J-33", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const HEADED = process.env.HEADED === "1";
 const { ok, summary } = recorder();
@@ -143,7 +147,7 @@ try {
   // ------------------------------------------------------------- W5 (FO-9b, QA-528): two spellings arrive and match
   // One person, two doors: the web form with "+44 (0)20 7946 0958" (a trunk 0), then the public booking screen with
   // "0044 20 7946 0958" (00 dialling) under another email. Every door reads the phone with the one exact normaliser, so
-  // both are +442079460958: one person, so the booking's person is merged by itself into the first (FO-9b part 2b).
+  // both are +442079460958 and the booking's lead names the first person as a possible match on screen.
   const wynn = `Wynn${run}`;
   const v2 = await pageAs(null);
   await v2.goto(`${BASE}/front-office/web-form/${token}`);
@@ -171,21 +175,18 @@ try {
   await shot(v3, "W5-booked-with-0044-1440");
   const pair = sql(`select string_agg(coalesce(phone_e164, '-'), ',' order by created_at) from fo_person where given_names = '${wynn}'`);
   ok("J-33 W5: the web form's \"+44 (0)20 7946 0958\" and the booking's \"0044 20 7946 0958\" are both stored +442079460958 (never +4402…)", pair === "+442079460958,+442079460958", pair);
-  // by arrival order: the merge may carry the booking's newer email to the survivor (AG-2-16 rule 1, the most recent value)
-  const [webPerson, bookPerson] = sql(`select string_agg(id::text, ',' order by created_at, id) from fo_person where given_names = '${wynn}'`).split(",");
-  const bookLead = sql(`select id from fo_lead where door = 'BOOKING' and person_id in ('${bookPerson}', '${webPerson}')`);
-  // FO-9b part 2b (P-574 (2)): one number, no case, document or money on either, so the booking's new person is merged
-  // by itself into the web-form person, by a job after the booking commits (waited for, at most 20 s).
-  let into = "";
-  for (let i = 0; i < 100 && !into; i++) { into = sql(`select coalesce(merged_into_id::text, '') from fo_person where id = '${bookPerson}'`); if (!into) await new Promise((r) => setTimeout(r, 200)); }
-  ok("J-33 W5: underneath, the two spellings are one person: the booking's person is merged by itself into the web-form person (exact phone match), logged automatic, and the booking's lead is theirs",
-    !!bookLead && into === webPerson && sql(`select count(*) from fo_dup_merge where loser_id = '${bookPerson}' and survivor_id = '${webPerson}' and automatic`) === "1" && sql(`select person_id from fo_lead where id = '${bookLead}'`) === webPerson, { bookLead, into, webPerson });
+  const [bookLead, webPerson] = [sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'wynn.book.${run}@j33.example'`), sql(`select id from fo_person where email = 'wynn.web.${run}@j33.example'`)];
+  ok("J-33 W5: underneath, the booking's lead is flagged a possible match of the web-form person", !!bookLead && sql(`select coalesce(possible_match_person_id::text, '-') from fo_lead where id = '${bookLead}'`) === webPerson);
+  // FO-9b part 2b (break B1 on #3527): one number with two different emails is never merged by itself (a shared phone).
+  const bookPerson = sql(`select person_id from fo_lead where id = '${bookLead}'`), jobDone = await autoMergeDone(bookPerson);
+  ok("J-33 W5: two emails on one number are never merged by itself: the job finished, both records live, the pair To review",
+    jobDone && sql(`select count(*) from fo_person where id in ('${webPerson}', '${bookPerson}') and merged_into_id is null`) === "2"
+      && sql(`select status from fo_dup_review where low_id = least('${webPerson}'::uuid, '${bookPerson}'::uuid) and high_id = greatest('${webPerson}'::uuid, '${bookPerson}'::uuid)`) === "OPEN", { jobDone });
   await owner.goto(`${BASE}/front-office/leads/${bookLead}`);
   await owner.getByRole("heading", { level: 1, name: new RegExp(wynn) }).waitFor({ timeout: 20_000 });
   const matchLine = (await owner.locator("main").innerText());
-  await shot(owner, "W5-booking-lead-on-the-web-form-person-1440");
-  ok("J-33 W5: on screen, the booking's lead shows the one person (their most recent details, AG-2-16 rule 1) with the number in E.164, and no possible-match line (nothing left to decide)",
-    matchLine.includes(`${wynn} Booker`) && matchLine.includes("+442079460958") && !matchLine.includes("Possible match"), matchLine.slice(0, 400));
+  await shot(owner, "W5-possible-match-on-screen-1440");
+  ok("J-33 W5: on screen, the booking's lead says \"Possible match: <the web-form person>\" and shows the number in E.164", matchLine.includes(`Possible match: ${wynn} Webform`) && matchLine.includes("+442079460958"), matchLine.slice(0, 400));
   ok("J-33: no page error in the walk", errors.length === 0, errors);
 } finally {
   await browser.close();

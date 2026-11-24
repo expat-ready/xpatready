@@ -34,7 +34,7 @@ const { arrive } = await import("../api/src/front-office/sales/arrival.ts");
 const { PrismaArrival } = await import("../api/src/front-office/sales/arrival-port.ts");
 const { phone: salesPhone } = await import("../api/src/front-office/sales/common.ts");
 const { ArrivalAutoMerge, AUTO_MERGE_QUEUE, mergeArrival, registerAutoMerge } = await import("../api/src/front-office/duplicates/merge/at-arrival.ts");
-const { listedPair, SYSTEM_ACTOR } = await import("../api/src/front-office/duplicates/merge/review.ts");
+const { listedPair, DuplicateReview, SYSTEM_ACTOR } = await import("../api/src/front-office/duplicates/merge/review.ts");
 const { FakeClock } = await import("../ports/clock.ts");
 const { fakeJobs } = await import("../ports/jobs.ts");
 
@@ -75,6 +75,7 @@ try {
   ok("FO-9b 2b pass: one person.merged event and one audit line for that merge; both leads are on the survivor",
     sql(`select count(*) from module_event where type = 'person.merged' and payload->>'loserId' = '${ann2}'`) === "1" && sql(`select count(*) from audit_event where action = 'person.merged' and entity_key in ('${ann1}', '${ann2}', '${m[0]}')`) === "1"
     && sql(`select count(*) from fo_lead where person_id = '${ann1}'`) === "2", [sql(`select count(*) from module_event where type = 'person.merged'`), sql(`select string_agg(entity_key, ',') from audit_event where action = 'person.merged'`)]);
+  ok("FO-9b 2b pass (break B1): the record on file keeps its own name: the newcomer's \"Anne\" never overwrites \"Ann\"", sql(`select given_names from fo_person where id = '${ann1}'`) === "Ann");
   await auto.run({ ...queued(ann2)[0], attempt: 2 });
   ok("FO-9b 2b fail: running the job again merges nothing (one merge record for the person)", sql(`select count(*) from fo_dup_merge where '${ann2}' in (loser_id, survivor_id)`) === "1");
 
@@ -84,7 +85,7 @@ try {
   const bo1 = await web({ givenNames: "Bo", familyName: "Booker", email: "bo.booker@example.org" });
   const bo2 = await book({ givenNames: "Bo", familyName: "Booker", email: "bo.booker@example.org" });
   await jobs.runDue();
-  ok("FO-9b 2b pass: a hand-added lead (exact phone) and a booking-page arrival (exact email) are merged by themselves into the earlier record",
+  ok("FO-9b 2b pass: arrive()'s MANUAL path (reached by Add a lead only in a race: an exact match is 409 KNOWN_PERSON first) with an exact phone, and a booking-page arrival with an exact email, are merged by themselves into the earlier record",
     live(ted1, ted2) === 1 && sql(`select merged_into_id from fo_person where id = '${ted2}'`) === ted1 && live(bo1, bo2) === 1 && sql(`select merged_into_id from fo_person where id = '${bo2}'`) === bo1);
   const known = await db.$transaction((tx) => arrive(tx as never, { firmId: A, door: "MANUAL", intakeKey: `manual:${randomUUID()}`, source: "Phone call", actor: `staff:${R}`, payloadHash: randomUUID(), ownerStaffId: R, existingPersonId: ted1, person: person({ givenNames: "Ted", familyName: "Door" }) }, ports));
   ok("FO-9b 2b fail: a lead added for a person already on file queues nothing (no new person)", known.personId === ted1 && queued(ted1).length === 1);
@@ -158,6 +159,51 @@ try {
     const rr = await mergeArrival(db, A, rolled, ports);
     ok("FO-9b 2b fail: an arrival that rolled back leaves a job that finds no person and merges nothing", !rr.arrived && !rr.mergeRef && sql(`select count(*) from fo_person where id = '${rolled}'`) === "0", rr);
   }
+
+
+  // ------------------------------------------------------------- break B1, M1 and m1-m3 on #3527 (the arrival is unchecked)
+  const ctxOf = (actor: string) => {
+    const [id, firmId] = sql(`select id || '|' || firm_id from platform_staff where actor_id = '${actor}'`).split("|");
+    const roles = sql(`select string_agg(role::text, ',') from platform_role_grant where staff_id = '${id}'`).split(",");
+    const keys = sql(`select string_agg(distinct permission_key, ',') from platform_role_permission where role::text = any(string_to_array('${roles.join(",")}', ','))`).split(",");
+    return { staffId: id, firmId, firmKey: "sample-firm", roles, keys, duties: [], authTime: 0, via: "local" as const };
+  };
+  const review = new DuplicateReview(db, ports), owner = ctxOf("user-R");
+  const vera = await web({ givenNames: "Vera", familyName: "Victim", email: "vera.v@example.org" });
+  const mal = await web({ givenNames: "Mallory", familyName: "Attacker", email: "vera.v@example.org", phone: "+1 416 555 0144" });
+  await jobs.runDue();
+  ok("FO-9b 2b fail (break B1): a stranger's arrival with Vera's email never changes her name; only her empty phone is filled",
+    live(vera, mal) === 1 && sql(`select given_names || ' ' || family_name || '|' || email || '|' || coalesce(phone_e164, '-') from fo_person where id = '${vera}'`) === "Vera Victim|vera.v@example.org|+14165550144");
+  const hh1 = await web({ givenNames: "Hal", familyName: "Home", email: "hal@example.org", phone: "+1 416 555 0145" });
+  const hh2 = await web({ givenNames: "Hana", familyName: "Home", email: "hana@example.org", phone: "416 555 0145" });
+  await jobs.runDue();
+  ok("FO-9b 2b fail (break B1): one phone with two different emails (a household phone) is never merged by itself; the pair waits To review",
+    live(hh1, hh2) === 2 && (await listedPair(db, A, pairOf(hh1, hh2))) === "OPEN" && sql(`select email from fo_person where id = '${hh1}'`) === "hal@example.org");
+  const wording = sql(`select id || '|' || channel || '|' || purpose || '|' || locale from msg_consent_wording where firm_id = '${A}' order by version limit 1`).split("|");
+  const c1 = await web({ givenNames: "Cora", familyName: "Consent", email: "cora@example.org" });
+  const c2 = (await db.$transaction((tx) => arrive(tx as never, { ...webIn(A), source: "Website", actor: "system:web-form", payloadHash: randomUUID(), person: person({ givenNames: "Cora", familyName: "Consent", email: "cora@example.org" }),
+    consent: { wordingId: wording[0], channel: wording[1] as never, purpose: wording[2] as never, locale: wording[3] } }, ports))).personId!;
+  await jobs.runDue();
+  ok("FO-9b 2b fail (break M1): an arrival carrying a consent is never merged by itself (its copy could never be undone); the pair waits To review, no consent on Cora",
+    live(c1, c2) === 2 && (await listedPair(db, A, pairOf(c1, c2))) === "OPEN" && sql(`select count(*) from msg_consent where subject_id = '${c1}'`) === "0");
+  const u1 = await web({ givenNames: "Uma", familyName: "Undo", email: "uma@example.org" }), u2 = await web({ givenNames: "Uma", familyName: "Undo", email: "uma@example.org" });
+  await jobs.runDue();
+  const um = sql(`select id from fo_dup_merge where loser_id = '${u2}'`);
+  const undone = await review.undo(owner as never, um) as { restored?: boolean };
+  await auto.run({ ...queued(u2)[0], attempt: 2 });
+  ok("FO-9b 2b fail (review m1, break m3): the job run again after a person's Undo never merges the pair again",
+    !!undone.restored && live(u1, u2) === 2 && sql(`select count(*) from fo_dup_merge where loser_id = '${u2}'`) === "1" && (await listedPair(db, A, pairOf(u1, u2))) === "OPEN", { undone, merges: sql(`select count(*) from fo_dup_merge where loser_id = '${u2}'`) });
+  const k1 = await web({ givenNames: "Kip", familyName: "Kept", email: "kip@example.org" });
+  const k2 = (await db.$transaction((tx) => arrive(tx as never, { firmId: A, door: "MANUAL", intakeKey: `manual:${randomUUID()}`, source: "Phone call", actor: `staff:${R}`, payloadHash: randomUUID(), ownerStaffId: R, addedAsNew: true, person: person({ givenNames: "Kip", familyName: "Kept", email: "kip@example.org" }) }, ports))).personId!;
+  await jobs.runDue();
+  ok("FO-9b 2b fail (review m3): Add a lead's \"Add as new\" writes the pair Kept separate and the job never merges it", live(k1, k2) === 2 && (await listedPair(db, A, pairOf(k1, k2))) === "KEPT_SEPARATE");
+  // a burst: P2's job never ran (no queue then); P3's job merges P3 into P1, then P2 too (it also matched P3)
+  const p1 = await web({ givenNames: "Pia", familyName: "Burst", email: "pia@example.org" });
+  registerAutoMerge(null); const p2 = await web({ givenNames: "Pia", familyName: "Burst", email: "pia@example.org" }); registerAutoMerge(auto);
+  const p3 = await web({ givenNames: "Pia", familyName: "Burst", email: "pia@example.org" });
+  await jobs.runDue();
+  ok("FO-9b 2b pass (break m1): a burst of one person's arrivals becomes one record, even when one job did not run", live(p1, p2, p3) === 1 && sql(`select count(*) from fo_person where id in ('${p2}', '${p3}') and merged_into_id = '${p1}'`) === "2");
+  ok("FO-9b 2b fail (break m1): with no burst, the run stops at the person's own merge (one merge for the Ann pair)", sql(`select count(*) from fo_dup_merge where survivor_id = '${ann1}'`) === "1");
 
   // ------------------------------------------------------------------- firms never meet; no queue, no merge
   const f1 = await web({ givenNames: "Fay", familyName: "Firm", email: "fay.firm@example.org" });

@@ -84,6 +84,10 @@ console.log(`setup (not through the product: no firm, staff, hours, type, web fo
 const visitor = { given: "Visitor", family: `J28 ${run}`, email: `visitor.${run}@j28-client.example` };
 const unticked = { given: "Unticked", family: `J28 ${run}`, email: `unticked.${run}@j28-client.example` };
 const bookerOff = { given: "Booker", family: `NoTick ${run}`, email: `booker.${run}@j28-client.example` };
+const autoMergeDone = async (personId: string) => {   // FO-9b part 2b: the merge job for this new person has finished (at most 20 s)
+  for (let i = 0; i < 100; i++) { if (sql(`select count(*) from platform_jobs.job where name = 'fo.duplicates.auto_merge' and data->>'personId' = '${personId}' and state = 'completed'`) === "1") return true; await new Promise((r) => setTimeout(r, 200)); }
+  return false;
+};
 const personOf = (email: string, nth = 0) => sql(`select id from fo_person where firm_id = '${firm.id}' and email = '${email}' order by created_at, id offset ${nth} limit 1`);
 const rowsOf = (person: string) => (person ? sql(`select channel || '|' || purpose || '|' || source || '|' || coalesce(wording_id::text, '-') || '|' || recorded_by || '|' || (withdrawn_at is null) from msg_consent where subject_id = '${person}' order by given_at, id`) : "").split("\n").filter(Boolean);
 const allowed = async (person: string, channel: "EMAIL" | "WHATSAPP", address: string) => consent.allows(db, { firmId: firm.id, subject: { kind: "FO_PERSON", id: person }, channel, address, class: "MARKETING" });
@@ -175,14 +179,15 @@ try {
   ok("J-28 W2: the same visitor (same email) books on the booking page with the booking tick, and is booked", b1.booked, b1);
   ok("J-28 W2 pass: underneath, one BOOKING_FORM consent row for that purpose (EMAIL MARKETING), with the wording the page showed (the firm's newest, not the web form's), recorded by the booking page, live",
     bRows.length === 1 && shownBooking === bookingWording.id && shownBooking !== formWording.id && bRows[0] === `EMAIL|MARKETING|BOOKING_FORM|${shownBooking}|system:booking-page|true`, { bRows, shownBooking, words: b1.words });
-  // FO-9b part 2b (P-574 (2), Lead 10 on #3174): the same email, no case, document or money on either, so the booking's
-  // new person is merged into the visitor by itself, by a job after the booking commits (waited for, at most 20 s).
-  const mergedInto = async () => { for (let i = 0; i < 100; i++) { const m = sql(`select coalesce(merged_into_id::text, '') from fo_person where id = '${b}'`); if (m) return m; await new Promise((r) => setTimeout(r, 200)); } return ""; };
-  const into = b ? await mergedInto() : "";
-  ok("J-28 W2: the booking's person is a new record, merged by itself into the web-form visitor (one email, nothing on either that stops it; P-574 (2)), logged automatic; the booking's lead is on the visitor",
-    b !== "" && b !== v && into === v && sql(`select count(*) from fo_dup_merge where loser_id = '${b}' and survivor_id = '${v}' and automatic`) === "1" && sql(`select count(*) from fo_lead where person_id = '${v}'`) === "2", { b: !!b, into });
-  ok("J-28 W2: the web form's row is untouched by the booking (live, as it was); the merge copied the booking's row to the visitor beside it (AG-2-16 rule 2b)",
-    JSON.stringify(rowsOf(v).filter((r) => r.includes("|WEB_FORM|"))) === JSON.stringify(vRows) && rowsOf(v).filter((r) => r.includes("|BOOKING_FORM|")).length === 1, rowsOf(v));
+  ok("J-28 W2: the booking's person is a new record flagged as a possible match of the web-form visitor, never linked (AG-2-84)",
+    b !== "" && b !== v && sql(`select count(*) from fo_lead where person_id = '${b}' and possible_match_person_id = '${v}'`) === "1");
+  ok("J-28 W2: the web form's row is untouched by the booking (still one row, live)", JSON.stringify(rowsOf(v)) === JSON.stringify(vRows));
+  // FO-9b part 2b (P-574 (2); break M1 on #3527): the booking carries a consent, so it is never merged by itself (that
+  // copy could never be undone); its job finishes and the pair waits on To review for a person.
+  const jobDone = b ? await autoMergeDone(b) : false;
+  ok("J-28 W2: the merge by itself leaves them apart (the booking carries a consent): its job finished, both records live, the pair To review",
+    jobDone && sql(`select count(*) from fo_person where id in ('${v}', '${b}') and merged_into_id is null`) === "2"
+      && sql(`select status from fo_dup_review where low_id = least('${v}'::uuid, '${b}'::uuid) and high_id = greatest('${v}'::uuid, '${b}'::uuid)`) === "OPEN", { jobDone });
   const b2 = await book(await newPage(), bookerOff, false);
   const off = personOf(bookerOff.email);
   ok("J-28 W2 fail: a booking with the tick off is booked and records no consent row (QA-511)", b2.booked && off !== "" && rowsOf(off).length === 0, { booked: b2.booked, rows: rowsOf(off) });
@@ -208,21 +213,21 @@ try {
   ok("J-28 W3: the visitor presses Unsubscribe → 'You are unsubscribed'", answer?.status() === 200 && doneText === "You are unsubscribed", [answer?.status(), doneText]);
   const after = rowsOf(v);
   ok("J-28 W3 pass: underneath, the web form's EMAIL MARKETING row is withdrawn via UNSUBSCRIBE, once, with a withdrawal row of its own",
-    sql(`select withdrawn_via || '|' || (withdrawn_by like 'system:unsubscribe:%') from msg_consent where subject_id = '${v}' and channel = 'EMAIL' and source = 'WEB_FORM'`) === "UNSUBSCRIBE|true"
+    sql(`select withdrawn_via || '|' || (withdrawn_by like 'system:unsubscribe:%') from msg_consent where subject_id = '${v}' and channel = 'EMAIL'`) === "UNSUBSCRIBE|true"
       && sql(`select count(*) from msg_consent_withdrawal where subject_id = '${v}' and channel = 'EMAIL' and purpose = 'MARKETING' and via = 'UNSUBSCRIBE'`) === "1", after);
   ok("J-28 W3 pass: the visitor's other purpose stays granted: the WhatsApp opt-in row is live and the gate still allows it", after.some((r) => r.startsWith("WHATSAPP|SERVICE|STAFF_RECORDED|") && r.endsWith("|true"))
     && (await consent.allows(db, { firmId: firm.id, subject: { kind: "FO_PERSON", id: v }, channel: "WHATSAPP", address: "+14165550128", class: "SERVICE" })).allowed, after);
   ok("J-28 W3 pass: the withdrawal changed only the withdrawal columns (channel, purpose, wording, source and time as before)",
-    sql(`select channel || '|' || purpose || '|' || source || '|' || wording_id || '|' || given_at from msg_consent where subject_id = '${v}' and channel = 'EMAIL' and source = 'WEB_FORM'`) === `EMAIL|MARKETING|WEB_FORM|${formWording.id}|${given}`);
+    sql(`select channel || '|' || purpose || '|' || source || '|' || wording_id || '|' || given_at from msg_consent where subject_id = '${v}' and channel = 'EMAIL'`) === `EMAIL|MARKETING|WEB_FORM|${formWording.id}|${given}`);
   const again = await fetch(link || `${BASE}/api/public/unsubscribe/none`, { method: "POST" });
   ok("J-28 W3 fail: the same link a second time → 404, and nothing more is recorded", again.status === 404 && sql(`select count(*) from msg_consent_withdrawal where subject_id = '${v}'`) === "1", again.status);
   // Not asserted (raised on the PR for qa): the booking's person has the same email and their own live EMAIL MARKETING
-  // consent (the merge copied it to the visitor and left the record's own row in place, AG-2-16 rule 2b).
+  // consent, and the unsubscribe withdrew only the web-form person's (persons are never linked, AG-2-84).
   const sameAddress = await allowed(b, "EMAIL", visitor.email);
   console.log(`NOTE  after the unsubscribe, a marketing send to the booking's person at the same address is ${sameAddress.allowed ? "still ALLOWED" : `blocked (${JSON.stringify(sameAddress)})`} (raised on the PR, not a line of this walk)`);
 
   // ---------------------------------------------------------------------------------------------- W4: never edited
-  const vEmailRow = sql(`select id from msg_consent where subject_id = '${v}' and channel = 'EMAIL' and source = 'WEB_FORM'`), bEmailRow = sql(`select id from msg_consent where subject_id = '${b}'`);
+  const vEmailRow = sql(`select id from msg_consent where subject_id = '${v}' and channel = 'EMAIL'`), bEmailRow = sql(`select id from msg_consent where subject_id = '${b}'`);
   const snap = (id: string) => sql(`select row_to_json(c)::text from msg_consent c where id = '${id}'`);
   const [vSnap, bSnap] = [snap(vEmailRow), snap(bEmailRow)];
   const editLive = refused(`update msg_consent set given_at = given_at - interval '1 day' where id = '${bEmailRow}'`);
