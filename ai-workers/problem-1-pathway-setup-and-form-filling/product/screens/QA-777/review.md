@@ -92,3 +92,25 @@ A real client page (none on main), a screen reader, an intended user's walk (D17
 **Verdict: Block** — fix issue 1 (R2-1 fail with the same browser's cookie at +31 minutes). m1-m9 are Should/notes, not blocking.
 
 Reviewer: Block 75747bc2f85c51bb642b45960ee7b72b4ece79ca
+
+## Re-review, 24 Nov (head 30edfb252ac323d392ed7a755e78b71e5123a93b; diff `git diff 75747bc2f..30edfb252`, service.ts and check_fo3c only)
+* Run here (Prisma client checked for `session_sha256` first; isolated copies :4436/:4438/:4439, stopped after): check_fo3c 48/0 ·
+  check_fo3c2 55/0 · check_fo6_door_code 24/0 · qa replay 5/5 (copied from origin/main, deleted) · check_fo6_door 36/36 · j_104 20/20.
+* **Issue 1 (Major) closed.** R2-1 fail now sends the same browser's cookie at +31 min. Mutation: expiry removed from `liveSession` →
+  R2-1 fail and R2-2 FAIL (46/2).
+* **m6 closed.** New "QA-777 pairing" case. Mutation: pairing returns true → that case FAILs (47/1).
+* **m2 / B1 closed.** `code()` returns EXPIRED for a code given when no live code exists. It writes nothing and counts nothing, as 4a's
+  `checkCode` does. Mutation: line removed → the client is locked (423), the suite stops (47/1). A side effect for the better: m8's
+  double submit no longer counts a failure. A guess with no live code leaves no audit line now. That matches 4a and is acceptable.
+* **m4 / B3 closed by reading.** Both `code()` and the consent transaction re-read the request and signer under the request lock. If
+  either has ended, the answer is the link's 404 (`ENDED` → `notFound()`; a throw inside the consent transaction rolls it back). There
+  is no race test. That is acceptable for a Minor.
+* **m5 closed.** The right-code line now says a 30-minute session started for this browser (`sessionMinutes: 30`).
+* Still open and listed by the builder as known Minors or their own rows: m1 (the "code sent" words when none was sent), m3/B2,
+  m7/B4, B5. None of them blocks. The journey score stays 8/10. B1 and m8 lifted error recovery, but I did not re-score: no new
+  HTTP walk was run.
+* No new Blocker or Major. Card unchanged (no new entry point or table).
+
+**Verdict: Approve 30edfb252ac323d392ed7a755e78b71e5123a93b**
+
+Reviewer: Approve 30edfb252ac323d392ed7a755e78b71e5123a93b
