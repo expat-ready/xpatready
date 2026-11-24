@@ -1,5 +1,5 @@
 import subprocess,re,json,os,random,io,tarfile,sys
-G='/Users/ranjansingh/Desktop/Xpatready/.claude/worktrees/friendly-gauss-dbd512'
+G='.'
 OUT=os.path.dirname(os.path.abspath(__file__))
 P='ai-workers/problem-1-pathway-setup-and-form-filling/'
 ST=P+'prototype/studio/'

@@ -1,37 +1,26 @@
 # Replay arm 2: prepared, not run (24 Nov 2026)
 
-Asked by Lead 27. **Nothing was run against CodeAnt, nothing sent, `~/codeant-replay/home` never opened.** C6 is the founder's go and is not given. The founder-click list is `../../codeant-replay-setup-2026-11-24.md`.
+**Nothing was run against CodeAnt, nothing sent, `~/codeant-replay/home` never opened.** The bar is in `../PLAN.md` ("Arm 2"); `PASS-RULE.md` is an unused proposal.
 
 | File | What it is |
 |---|---|
-| `build_slices.py` | Builds the 41 slices offline: 28 local repositories, one branch a slice, two commits, no remote, at most 10 files |
-| `manifest.json` | The 41 slices: files and the checksum of each diff, so a changed slice stops the run |
-| `run_arm2.py` | The one unattended script: `check`, `madeup`, `real`, `selftest` |
-| `stub.py` | The pretend reviewer used to test it |
-| `PASS-RULE.md` | The proposed rule with no severity |
+| `arm2.py` | Builds the samples and runs the 41 reviews; one file, resumable |
+| `manifest.json` | The 41 slices, each pinned by commit and tree id |
+| `FILES.txt` | Every file path that is in any folder (code files only) |
+| `stub.py` | The pretend reviewer used in the tests |
 
-## Where the slices are
-The sandbox refuses a Git repository inside this worktree (it protects `.git/config`), so the slices were built in the session's scratch folder (1.0 GB), which a clean-up can remove. Rebuild them anywhere outside a protected folder, from a clone that has `origin/main`:
+## Starting it (the founder, in Terminal; Mac on power, lid open, window left open)
 
 ```bash
-python3 -I build_slices.py <repository root> <work folder>
+caffeinate -i python3 -I ~/Desktop/Xpatready/.claude/worktrees/friendly-gauss-dbd512/ai-workers/problem-1-pathway-setup-and-form-filling/product/design/replay-2026-11-24/arm2/arm2.py run ~/Desktop/Xpatready/.claude/worktrees/friendly-gauss-dbd512 /Users/Shared/arm2 --founder-go "Yes, send the 28"
 ```
 
-The build gives the same diffs: its result must match `manifest.json` here, slice by slice. All slices are exactly the files arm 1's reviewers got, kept to one slice per review instead of relying on CodeAnt's `--include`.
+The same command again carries on where it stopped. **Time:** the made-up review of 2 files took about 3.5 minutes; 41 reviews of up to 10 files should take **about 3 to 7 hours** (estimate). **Disk:** about 21 MB for the store, one folder of up to about 40 MB at a time, deleted after each; it stops under 500 MB free.
 
-## What the script will not do without a person
-* `madeup` needs `<work>/GO-MADEUP`, `real` needs `<work>/GO-C6`: files with the founder's yes, word for word with its time, written by the tech lead. `real` also needs a clean made-up result. The file is a reminder and a record, not proof: anyone who can write the folder can make one.
-* It stops, and writes `STOP`, if the output asks to sign in, pay, install an App, upgrade or give a token; at 3 failures or 2 timeouts in a row; if a diff, the package or the runner is not as recorded. `STOP` must be removed by a person.
-* One review at a time, 20 minutes at most each, 20 seconds between; finished slices are skipped on a second start. Token-like text is masked before anything is kept.
+## What is sent
+* For each slice, its files' changes and full text. CodeAnt's agent can also read **any other file in that folder**: the app's whole code at that commit (up to about 2,100 files), not only the 28 PRs' files. All of it is in commits reachable from the public `main`; records, `.md`, `.json`, samples and screenshots are left out.
+* Paths of the folder, `/Users/Shared/arm2/current/...`. **CodeAnt's Glob tool fails with an error that shows `/Users/<Mac user name>/codeant-replay/cli/...`,** so the Mac user name is likely sent; the made-up run probably sent it too. CodeAnt already has the account holder's identity.
+* Its Grep can be made by the server to compare lines of another file on the Mac with the sample (a yes or no, never the text). Found by reading its source; not a sign that it is used.
 
-Order after the go's: `check`, then `madeup` (its addresses are printed), then the founder's C6, then `real`. Keep the Mac awake for `real`:
-
-```bash
-caffeinate -i python3 -I run_arm2.py real <work folder>
-```
-
-## Tested (with the stub, no network)
-41 of 41 slices; a second start redoes only a missing one; it stops on a sign-in request, on 3 failures, on output that is not JSON, and on a changed diff; a planted GitHub-style token is masked; `madeup` and `real` refuse with no GO file. `check` passed on this Mac: 41 slices as recorded, `codeant-cli` 0.5.17 with the recorded checksum, runner isolation lines present, no `gh` or `glab` reachable. No key-like text was found in the slices by a pattern search.
-
-## Not tested, and not knowable without a run
-CodeAnt's real JSON (the script expects a `suggestions` list, as its page shows), its exit codes, time per slice, whether it works with no App or plan, whether the words it prints trip a stop. Timeout handling was not exercised. Address recording is best effort and shows addresses, not names. No independent reviewer has read this script or rule.
+## When it stops by itself
+It writes `/Users/Shared/arm2/STOP` with the reason: anything naming an app, card, plan, token or sign-in; a changed sample, program or runner; 3 unfinished slices in a row. Delete STOP only when the reason is settled. A slice gets two attempts at most.

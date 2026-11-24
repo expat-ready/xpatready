@@ -80,9 +80,11 @@ Built by `build.py` (seeded order); file lists in `sample.json`.
 C6: Lead 25 reports the founder's answer "Yes, send the 28", about 15:30 IST, to whether the 28 sample PRs' public code may go to CodeAnt. The founder starts the run. The made-up run (Lead 25's account of it) returned label, text, file and line, and no severity.
 
 * Every claim CodeAnt makes is judged blind by the same judge rule as arm 1 (`TRUE` / `MINOR` / `FALSE`; tool and label hidden).
-* **Found** = a claim names the same wrong behaviour on the same code path. With no severity of its own, a claim counts as found only if the judge rates it TRUE, or the matcher finds it is the known miss itself (a known miss is Major by qa).
+* **Found** = a claim names the same wrong behaviour on the same code path as a known miss (a known miss is Major by qa, so the judge's rating of it does not matter). This gives CodeAnt credit for naming at any weight, which arm 1 was not given at Major; arm 1 named 10 of 14 in full at some weight, and that is reported beside the bar.
 * **The bar, unchanged:** at least 4 of 14 found; at least half of all claims TRUE (Major or above); at least 2 found that arm 1 did not find at Major (its 7 unfound: QA-499, 510, 517, 526, 595, 608, 750).
 * **Reported beside it, not the bar:** claims real at any severity (TRUE plus MINOR), because the reviewer was never asked to rate and half-at-Major is harder for a tool that also reports small things. Arm 1's same number was 124 of 124.
-* A slice that never finished is reported as not run; the bar is read only on 41 of 41. A file CodeAnt skips is named; a miss lost only to that is reported apart.
+* **Whole slices:** the first whole result of a slice counts; at most two attempts, each kept (`results/<slice>.<attempt>.json`). Under 41 whole: no verdict, partial numbers only. CodeAnt can run out of its 5 turns without saying so; that cannot be seen in its output, so "0 claims" and "suggested, none kept" slices are listed apart.
+* **Not equal:** arm 2 has code files only; arm 1 also had `.md` and `.json` files, the requirement rows, the checklist and all slices of a PR in one context (and arm 1's claim for QA-751 leaned on a journey file arm 2 does not have). CodeAnt reads at most 5 files a batch. Its Glob tool never works as installed (its `glob` package is missing), for any user.
+* QA numbers are stripped from claims before judging (code comments of other PRs hold some).
 * One claim repeated across slices of a PR counts once.
 * `arm2/PASS-RULE.md` (Lead 27's severity-free proposal) is kept as a proposal and is not the bar.
