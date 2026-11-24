@@ -22,7 +22,7 @@ import { asBypass, touchFirm, touchPlatform } from "../firm-scope.ts";
 import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import { forbidden, problem } from "../identity/keys.ts";
 import { livePlanOf, type LivePlan } from "./live-plan.ts";
-import { subjectOf, type SupportService } from "../support/support.ts";
+import { BODY_MAX, subjectOf, type SupportService } from "../support/support.ts";
 import { SUPPORT_QUEUE, SUPPORT_TICKET } from "./support.bypass.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -44,7 +44,9 @@ const QueueQuery = z.strictObject({
   page: z.string().regex(/^[1-9][0-9]{0,4}$/, "a page number from 1").optional(),
 });
 /** The reply's body: `body` only (anything else, a priority or a status, is refused by name); its words are PF-18b's to judge. */
-const ReplyBody = z.strictObject({ body: z.string({ error: "Write the reply as text." }) });   // R1.10 A4: a reply is text, refused before the ticket is looked up
+// R1.10 A4: a reply is text, refused before the ticket is looked up; A2: and its length, as replyAsSupport's Body counts it
+// (characters after line endings become \n) and in its words, so an over-long reply is named, never the ticket's 404.
+const ReplyBody = z.strictObject({ body: z.string({ error: "Write the reply as text." }).refine((s) => [...s.replace(/\r\n?/g, "\n")].length <= BODY_MAX, `at most ${BODY_MAX} characters`) });
 
 export type FirmRef = { id: string; key: string; name: string; plan: LivePlan | null };
 export type QueueItem = { id: string; firm: FirmRef; subject: string; status: QueueStatus; page: string; raisedByName: string | null; messages: number; createdAt: string; updatedAt: string };
