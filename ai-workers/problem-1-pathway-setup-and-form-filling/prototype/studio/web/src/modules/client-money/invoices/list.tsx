@@ -6,6 +6,7 @@
 import * as React from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
+import { FoldArrow } from "@/components/fold-out";
 import { Button, Field, Input, Notice, Pill, Select, Table } from "@/components/ui/controls";
 import { Loading } from "@/modules/front-office/sales/loading";
 import { PlatformFrame, usePlatformStaff } from "@/modules/platform/frame";
@@ -41,7 +42,7 @@ function ListBody() {
         <Field label="Status" className="w-40"><Select value={f.status} onChange={(e) => set({ status: e.target.value })} data-filter-status><option value="">Any status</option>{STATUSES.map((s) => <option key={s.code} value={s.code}>{s.word}</option>)}</Select></Field>
         <Field label="Issued from" className="w-40"><Input type="date" value={f.issuedFrom} onChange={(e) => set({ issuedFrom: e.target.value })} data-filter-from /></Field>
         <Field label="Issued to" className="w-40" error={datesWrong ? "Choose a date on or after Issued from." : null}><Input type="date" value={f.issuedTo} onChange={(e) => set({ issuedTo: e.target.value })} data-filter-to /></Field>
-        <Button type="button" variant="ghost" aria-expanded={more} onClick={() => setMore((m) => !m)} data-more-filters>More filters</Button>
+        <Button type="button" variant="ghost" aria-expanded={more} onClick={() => setMore((m) => !m)} data-more-filters><FoldArrow open={more} />More filters</Button>
         {more ? <label className="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" checked={f.overdue} onChange={(e) => set({ overdue: e.target.checked })} data-filter-overdue /> Overdue only</label> : null}
         {anyFilter(f) ? <Button type="button" variant="outline" onClick={() => setParams(new URLSearchParams(), { replace: true })} data-clear-filters>Clear filters</Button> : null}
       </form>
