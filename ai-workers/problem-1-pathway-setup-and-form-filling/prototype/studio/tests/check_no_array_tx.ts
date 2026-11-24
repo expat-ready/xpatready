@@ -64,6 +64,24 @@ try {
   const inter = (firm: string) => fs.withFirm(firm, () => db.$transaction(async (t) => (await t.$queryRawUnsafe<Who[]>(sel))[0]));
   const [a4, b4] = await Promise.all([inter(A), inter(B)]);
   ok("M2 pass: interactive transactions from two firms in the same tick each run in their own firm as xr_app", a4.f === A && a4.seen.split(",").includes("A-secret") && !a4.seen.includes("B-") && b4.f === B && b4.seen === "B-secret" && a4.u === "xr_app", { a4, b4 });
+  // (6) Review B1: a transaction client still has $transaction (Prisma supports nesting) and reads it from the root
+  // client, so the refusal must keep its receiver: a nested `tx.$transaction(fn)` (settings.ts writeSetting, booking-seed,
+  // library-changes, arrival-port) stays inside the outer transaction, on its connection, all or none.
+  const ids = "select pg_backend_pid() p, txid_current()::text x";
+  const nested = await fs.withFirm(A, () => db.$transaction(async (t) => {
+    const outer = (await t.$queryRawUnsafe<{ p: number; x: string }[]>(ids))[0];
+    const inner = await (t as unknown as typeof db).$transaction(async (u) => (await u.$queryRawUnsafe<{ p: number; x: string }[]>(ids))[0]);
+    return { outer, inner };
+  })).catch((e: Error) => ({ error: e.message }));
+  ok("M2 pass (review B1): a nested tx.$transaction(fn) runs inside the outer transaction (same connection, same transaction id)", !("error" in nested) && nested.outer.p === nested.inner.p && nested.outer.x === nested.inner.x, nested);
+  const kept = psql("select count(*) from note");
+  await fs.withFirm(A, () => db.$transaction(async (t) => {
+    await (t as unknown as typeof db).$transaction(async (u) => { await u.$executeRawUnsafe(`insert into note values ('${A}', 'A-inner')`); });
+    throw new Error("the outer change is refused");
+  })).catch(() => undefined);
+  ok("M2 fail (review B1): when the outer transaction fails, the nested transaction's write is rolled back with it", psql("select count(*) from note where body = 'A-inner'") === "0" && psql("select count(*) from note") === kept, { inner: psql("select count(*) from note where body = 'A-inner'") });
+  const r6 = await fs.withFirm(A, () => db.$transaction(async (t) => (t as unknown as typeof db).$transaction([t.$executeRawUnsafe(`insert into note values ('${A}', 'A-nested-batch')`)]).then(() => "ran", (e: Error) => e))).catch((e: Error) => e);
+  ok("M2 fail (review B1): an array batch on a transaction client is refused too, and nothing in it runs", (refused(r6) || (r6 instanceof Error && refused(r6))) && psql("select count(*) from note where body = 'A-nested-batch'") === "0", { r6: r6 instanceof Error ? r6.message : r6 });
 } finally {
   await db.$disconnect().catch(() => {}); await pool.end().catch(() => {});
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* left for prune-test-dbs.sh */ }
