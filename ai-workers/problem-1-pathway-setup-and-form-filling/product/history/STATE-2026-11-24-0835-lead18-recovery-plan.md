@@ -465,3 +465,4 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * GitHub API limit used up 16:13, resets 16:33; cause not known. My check is now ec44b31f, every 30 min (F-6Nov), to save usage.
 * Weekly 64% at 12:44, 78% at 16:13: about 4% an hour, so about 21:30 today; resets 29 Nov 22:30.
 * #3477 bf63a2b2a: api and contracts code read by me (git), no fault that holds it; tests and web not read; read line owed (API limit). Notes: the attendance answer still carries the agreement's id and causes (the record's copy does not); R1.104's Done when says "cannot start until signed", so its row and qa's judgement follow the founder's AG-4-15 ruling (DECISIONS row owed).
+* Correction: the commit "check 16:24 IST" was written at 16:21 without the clock. #3470 and #3480 are in merge batches (25f81328f2, 2b704c3365); board on main recounted: 54 Works, 26 Partial, 21 Not built.

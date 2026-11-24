@@ -2,7 +2,7 @@
 
 current_lead: local_1baa984b-182a-4f72-af99-af155226d9d4 Lead 28 · 24 Nov 16:06 IST (after Lead 27, near the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 16:24 IST: Lead 28. **A371: Partials to Proven first. Last sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`; action list (A370): `design/action-list-2026-11-24.md`.** About 54/101 Works. **M1 #3467 full run going.** Weekly 78%, disk 6.6 GB.
+updated: 2026-11-24 16:21 IST: Lead 28. **A371: Partials first; see the plan file's end (`history/STATE-2026-11-24-0835-lead18-recovery-plan.md`) and the action list (A370).** 54/101 Works. **M1 #3467 full run going.** Weekly 78%.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
