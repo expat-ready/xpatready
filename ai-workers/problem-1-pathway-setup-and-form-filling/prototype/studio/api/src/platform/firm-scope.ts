@@ -461,6 +461,34 @@ export function appDatabaseUrl(databaseUrl: string, env: NodeJS.ProcessEnv = pro
 
 const SET = Symbol("pf12.set"), swallow = () => undefined;   // swallow: pg rejects the query in flight and drops the client; this only stops a late 'error' killing the API
 type Tagged = pg.PoolClient & { [SET]?: string };
+/** P1 (PF-4bc round-3 break; Lead 23, 24 Nov): a client may come back with a transaction still open. Prisma 7.8's
+ *  adapter-pg drops a transaction whose start came after the engine gave up (maxWait) by `release()` alone, never sending
+ *  ROLLBACK, so the next caller ran inside it: its writes were lost at the next rollback, and a rollback undid its
+ *  set_config while the tag above still named its firm (the next query ran as the earlier firm). The server tells pg the
+ *  transaction state after every statement (ReadyForQuery: 'I' idle, 'T' in a transaction, 'E' failed); a client that is
+ *  not idle (not 'I', or a statement sent and not yet answered) when released is destroyed, never kept, and its tag cleared (fail closed). And at checkout (Lead B 5): a
+ *  client the pool cannot prove idle has its tag cleared and is destroyed, and another is taken (one more try; then the
+ *  checkout fails). Clearing the tag alone would not do: the lost write would stay. tests/check_pool_tx_return.ts. */
+const notIdleError = () => new Error("a pooled connection came back inside a transaction: destroyed, not reused");
+/** What pg 8 keeps per client (@types/pg does not declare it): the server's last transaction state, the statement in
+ *  flight and the queue. Idle means 'I' with nothing sent and unanswered (review m1: a BEGIN still in flight reads 'I'). */
+type PgState = { getTransactionStatus(): "I" | "T" | "E" | null; _getActiveQuery(): unknown; _queryQueue: unknown[] };
+const proto = pg.Client.prototype as unknown as Partial<PgState>;
+if (typeof proto.getTransactionStatus !== "function" || typeof proto._getActiveQuery !== "function")
+  throw new Error("P1: pg no longer reports a connection's transaction state (Client.getTransactionStatus, _getActiveQuery), so the pool cannot refuse an open transaction (firm-scope.ts; pg changed)");
+function idleNow(c: object): boolean {
+  const s = c as unknown as PgState;
+  return s.getTransactionStatus() === "I" && !s._getActiveQuery() && Array.isArray(s._queryQueue) && s._queryQueue.length === 0;
+}
+function closeOnOpenTransaction(c: Tagged): void {
+  const release = c.release;   // pg-pool gives each checkout its own release-once function
+  c.release = ((err?: Error | boolean) => {
+    if (err) return release(err);
+    if (!idleNow(c)) { c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed" }); return release(notIdleError()); }
+    return release();
+  }) as typeof c.release;
+}
+
 /** A pg pool whose every checkout first sets the context's firm and role on the connection (once per change). */
 export class WalledPool extends pg.Pool {
   override connect(): Promise<pg.PoolClient>;
@@ -469,8 +497,17 @@ export class WalledPool extends pg.Pool {
     const s = scope.getStore(), direct = !s && unscoped === "direct";
     if (direct && !saidDirect) { saidDirect = true; logPort.info("platform_bypass", { use: "direct-process", method: "none" }); }
     const firm = s?.bypass || direct ? "" : (s?.firmId ?? ""), role = s?.bypass || direct ? BYPASS_ROLE : "none", want = `${firm}|${role}`;
-    const p = (super.connect() as Promise<pg.PoolClient>).then(async (c: Tagged) => {
+    const idle = async (tries: number): Promise<Tagged> => {
+      const c = (await super.connect()) as Tagged;
+      if (idleNow(c)) return c;
+      c[SET] = undefined; c.release(notIdleError());   // P1 (Lead B 5): not provably idle at checkout: destroyed, never handed out
+      logPort.warn("platform_pool_open_transaction", { use: "destroyed-at-checkout" });
+      if (tries <= 0) throw notIdleError();
+      return idle(tries - 1);
+    };
+    const p = idle(1).then(async (c: Tagged) => {
       if (!c.listeners("error").includes(swallow)) c.on("error", swallow);   // a dropped socket fails its query, never the process (Devin review)
+      closeOnOpenTransaction(c);   // P1: a client released inside a transaction is destroyed
       if (c[SET] === want) return c;
       try { await c.query("select set_config('app.firm_id', $1, false), set_config('role', $2, false)", [firm, role]); c[SET] = want; return c; }
       catch (e) { c.release(e as Error); throw e; }
