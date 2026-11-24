@@ -65,7 +65,7 @@ const requestsFeature = (await import("../api/src/features/platform-register-req
 const consoleFeature = (await import("../api/src/features/platform-system-console.ts")).default;   // round 6: PF-17 part 1 (#3155)
 const signupLinksFeature = (await import("../api/src/features/platform-signup-links.ts")).default;   // round 6: R1.90 (#3040)
 const supportFeature = (await import("../api/src/features/platform-system-support.ts")).default;   // round 8: PF-17 part 2 (#3225)
-const accessFeature = (await import("../api/src/features/audit-access.ts")).default;
+const accessFeature = (await import("../api/src/features/audit-access.ts")).default as { controllers?: unknown[]; providers: unknown[] };
 const { ReadsFirm, ChangesFirm, NoFirmData } = await import("../api/src/platform/audit/access/declare.ts");
 const { assertFirmDataDeclared, recordCrossTenant, recordFirmRead, SystemAccessLines, FIRM_READ, CROSS_TENANT } = await import("../api/src/platform/audit/access/lines.ts");
 const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
@@ -125,7 +125,7 @@ try {
   const firmLocal = new LocalIdentity("aud3-firm-standin-key-0123456789abcdefgh", () => clock.now());
   const systemLocal = new SystemLocalIdentity("aud3-system-standin-key-0123456789abcd", () => clock.now());
   const sysProviders = sysFeature.providers.filter((p: any) => p !== PlatformClock && p?.provide !== SYSTEM_IDENTITY_PORT && p?.provide !== APP_GUARD);
-  @Module({ controllers: [PlatformIdentityController, ...sysFeature.controllers, ...holdsFeature.controllers, Aud3TestController, BypassOnlyController] as never[],
+  @Module({ controllers: [PlatformIdentityController, ...sysFeature.controllers, ...holdsFeature.controllers, Aud3TestController, BypassOnlyController, ...(accessFeature.controllers ?? [])] as never[],
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, ...sysProviders, { provide: APP_GUARD, useExisting: SystemGuard },
       ...accessFeature.providers, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, ...holdsFeature.providers] as never[] }) class TestApp {}   // the app's order: features load by file name, audit-access.ts first
@@ -140,9 +140,9 @@ try {
     values (gen_random_uuid(), ${k}, 'Sample access firm', 'CA', ${`${k}@sample-firm.example`}, now()) returning id::text as id`)[0].id; };
   const firmA = await newFirm(), firmB = await newFirm();
   const person = async (name: string, roles: string[]) => (await owner.platSystemStaff.create({ data: { email: `${name.toLowerCase()}.aud3@expatready.example`, displayName: `Sample ${name}`, grants: { create: roles.map((roleCode) => ({ roleCode })) } } })).id;
-  const OWNER = await person("Owner", ["platform-owner"]), SUPPORT = await person("Support", ["platform-support"]), CONTENT = await person("Content", ["platform-content-publisher"]);
+  const OWNER = await person("Owner", ["platform-owner"]), SUPPORT = await person("Support", ["platform-support"]), CONTENT = await person("Content", ["platform-content-publisher"]), AUDITOR = await person("Auditor", ["platform-auditor"]);
   const tokenOf = async (id: string) => { const email = (await owner.platSystemStaff.findUniqueOrThrow({ where: { id } })).email; const r = await call(base, "POST", "/api/system/session/local", { body: { email, secondStep: true } }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
-  const ownerT = await tokenOf(OWNER), supportT = await tokenOf(SUPPORT), contentT = await tokenOf(CONTENT);
+  const ownerT = await tokenOf(OWNER), supportT = await tokenOf(SUPPORT), contentT = await tokenOf(CONTENT), auditorT = await tokenOf(AUDITOR);
 
   // ------------------------------------------------------------------------------------------ DW1: a firm read
   const beforeA = lines(`firm_id = '${firmA}'`), beforeB = lines(`firm_id = '${firmB}'`);
@@ -212,8 +212,8 @@ try {
   const reflector = new Reflector();
   ok("AUD-3 DW3 fail (start-up): a route our staff call with no firm-data declaration stops the start-up, naming it",
     await throwsLike(() => assertFirmDataDeclared([UndeclaredController], reflector), (e) => /UndeclaredController\.thing \(\/api\/system\/aud3-undeclared\)/.test(String(e))));
-  ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's holds and requests, PF-21c's breaches, PF-17's firms and support queue, R1.90's sign-up links)",
-    await throwsLike(() => assertFirmDataDeclared([...sysFeature.controllers, ...holdsFeature.controllers, ...breachesFeature.controllers, ...requestsFeature.controllers, ...consoleFeature.controllers, ...signupLinksFeature.controllers, ...supportFeature.controllers, Aud3TestController], reflector), () => true) === false);
+  ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's holds and requests, PF-21c's breaches, PF-17's firms and support queue, R1.90's sign-up links, AUD-3 part 2's access report)",
+    await throwsLike(() => assertFirmDataDeclared([...sysFeature.controllers, ...holdsFeature.controllers, ...breachesFeature.controllers, ...requestsFeature.controllers, ...consoleFeature.controllers, ...signupLinksFeature.controllers, ...supportFeature.controllers, ...(accessFeature.controllers ?? []), Aud3TestController], reflector), () => true) === false);
   ok("AUD-3 DW3 fail (start-up, round 2, breaker 4): a handler inherited from a base class with no declaration stops the start-up too",
     await throwsLike(() => assertFirmDataDeclared([InheritedController], reflector), (e) => /InheritedController\.thing \(\/api\/system\/aud3-inherited\)/.test(String(e))));
   ok("AUD-3 DW3 fail (start-up, review m1): a read that answers through @Res() stops the start-up (its answer would leave before its line)",
@@ -224,6 +224,76 @@ try {
   ok("AUD-3 DW3 (review m4, round 5): the @NoFirmData routes are exactly PF-4s's who-am-I and six staff-access routes, the changes to ExpatReady's own breach and request registers, and the private sign-up link (a new opt-out must be added here, in review)",
     JSON.stringify(optOuts) === JSON.stringify(["BreachController.change", "BreachController.fromAlert", "BreachController.open", "DataRequestController.log", "DataRequestController.move", "SignupLinkController.make", "SystemIdentityController.me", "SystemStaffController.deactivate", "SystemStaffController.endSessions", "SystemStaffController.invite", "SystemStaffController.reactivate", "SystemStaffController.resetMfa", "SystemStaffController.roles"]), optOuts);
   ok("AUD-3 DW3 fail: a declaration in no plain words is refused", await throwsLike(() => ReadsFirm("1-bad"), () => true) && await throwsLike(() => ChangesFirm(""), () => true));
+
+  // ------------------------------------------------------------- DW5: our side's per-firm access report (part 2)
+  const REPORT_ROUTE = "/api/system/firms/:id/access-report", EXPORT_ROUTE = "/api/system/firms/:id/access-report/export";
+  const day = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString().slice(0, 10), RANGE = `from=${day(-1)}&to=${day(2)}`;
+  // A firm staff member's own line on firm A (not ours: never in our access report) and our unfiltered read across firms.
+  const firmStaffLine = sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, firm_id) values (gen_random_uuid(), (select id from workspace where key = 'platform-audit'),
+    'staff:${uuid()}', 'platform.aud3_test.firm_staff', 'platform_firm', '${firmA}', 'Sample firm staff line.', '${firmA}') returning id`);
+  await call(base, "GET", "/api/system/register/holds", { token: ownerT });
+  const idsWhere = (where: string) => sql(`select coalesce(string_agg(id::text, ','), '') from audit_event where ${where}`).split(",").filter(Boolean);
+  const wantA = idsWhere(`(firm_id = '${firmA}' and actor_type = 'OUR_STAFF') or (firm_id is null and action = '${CROSS_TENANT}' and detail->>'firm' = '${firmA}')`);
+  const notA = idsWhere(`firm_id = '${firmB}' or (firm_id is null and action = '${CROSS_TENANT}' and detail->>'firm' is null) or id = '${firmStaffLine}'`);
+  const readA0 = lines(`firm_id = '${firmA}' and action = '${FIRM_READ}' and detail->>'route' = '${REPORT_ROUTE}'`), b5 = lines(`firm_id = '${firmB}'`);
+  const report = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}`, { token: ownerT });
+  const got: string[] = Array.isArray(report.body?.lines) ? report.body.lines.map((l: { id: string }) => l.id) : [];
+  ok("AUD-3 DW5 pass (SA-11-31): firm A's access report shows every OUR_STAFF line on firm A's trail and every cross-firm line filtered to firm A, each with its trail, the plain action words and who",
+    report.status === 200 && report.body.firm?.id === firmA && wantA.length > 3 && wantA.every((id) => got.includes(id)) && got.length === wantA.length
+    && report.body.lines.some((l: any) => l.trail === "platform" && l.action === CROSS_TENANT) && report.body.lines.every((l: any) => l.who === "ExpatReady staff" && typeof l.at === "string")
+    && report.body.lines.some((l: any) => l.action === FIRM_READ && l.actionWords === "ExpatReady staff read the firm's records"), { status: report.status, body: report.body, wantA: wantA.length, got: got.length });
+  ok("AUD-3 DW5 fail (strictly firm-scoped): the report shows none of firm B's lines, no unfiltered read across firms, and no firm staff member's own line",
+    report.status === 200 && notA.length > 2 && notA.every((id) => !got.includes(id)), { notA });
+  ok("AUD-3 DW5 pass (SA-11-12): the report's own read writes one platform.system.firm_read line on firm A's trail (and nothing on firm B's)",
+    lines(`firm_id = '${firmA}' and action = '${FIRM_READ}' and detail->>'route' = '${REPORT_ROUTE}' and actor = 'ourstaff:${OWNER}'`) === readA0 + 1 && lines(`firm_id = '${firmB}'`) === b5);
+  const a5 = lines(`firm_id = '${firmA}'`);
+  const noDates = await call(base, "GET", `/api/system/firms/${firmA}/access-report`, { token: ownerT });
+  const badRange = await call(base, "GET", `/api/system/firms/${firmA}/access-report?from=${day(2)}&to=${day(-1)}`, { token: ownerT });
+  const unknownKey = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}&actorType=FIRM_STAFF`, { token: ownerT });
+  const badCursor = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}&cursor=nope`, { token: ownerT });
+  ok("AUD-3 DW5 fail (date range required): no dates → 422 DATES_REQUIRED; to before from, an unknown filter or a cursor this report did not give → 422; none writes a line",
+    noDates.status === 422 && noDates.body.code === "DATES_REQUIRED" && badRange.status === 422 && unknownKey.status === 422 && badCursor.status === 422 && lines(`firm_id = '${firmA}'`) === a5, { noDates, badRange, unknownKey, badCursor });
+  const ghost = uuid(), all0 = lines("true");
+  const unknownFirm = await call(base, "GET", `/api/system/firms/${ghost}/access-report?${RANGE}`, { token: ownerT });
+  const malformed = await call(base, "GET", `/api/system/firms/not-a-firm/access-report?${RANGE}`, { token: ownerT });
+  ok("AUD-3 DW5 fail: an unknown or malformed firm id answers 404 and writes no audit_event line at all",
+    unknownFirm.status === 404 && malformed.status === 404 && lines("true") === all0 && lines(`firm_id = '${ghost}'`) === 0, { unknownFirm, malformed });
+  const noKey = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}`, { token: contentT });
+  const noToken = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}`);
+  ok("AUD-3 DW5 fail: a staff member without system/audit-log:list gets 403, and no token 401; neither writes a line on firm A's trail",
+    noKey.status === 403 && noToken.status === 401 && lines(`firm_id = '${firmA}'`) === a5, { noKey: noKey.status, noToken: noToken.status });
+  const keys = sql(`select string_agg(role_code || '=' || permission_key, ',' order by permission_key, role_code) from plat_system_role_permission where permission_key in ('system/audit-log:list', 'system/audit:export')`);
+  ok("AUD-3 DW5 (catalogue rows, SA-11 §10 as the row names it): system/audit-log:list is the Platform Owner's and the Auditor's, system/audit:export the Platform Owner's only",
+    keys === "platform-auditor=system/audit-log:list,platform-owner=system/audit-log:list,platform-owner=system/audit:export", keys);
+  // The CSV export.
+  const exp0 = lines(`firm_id = '${firmA}' and action = 'audit.exported'`);
+  const csv = await fetch(`${base}/api/system/firms/${firmA}/access-report/export?${RANGE}`, { headers: { authorization: `Bearer ${ownerT}` } });
+  const csvText = await csv.text();
+  const exported = sql(`select actor || '|' || actor_type || '|' || entity || '|' || (detail->>'rows') || '|' || coalesce(correlation_id, '') from audit_event where firm_id = '${firmA}' and action = 'audit.exported' order by at desc limit 1`);
+  ok("AUD-3 DW5 pass (SA-11-9): the Platform Owner's CSV export answers a CSV file with firm A's lines and none of firm B's, and writes one audit.exported line on firm A's trail (OUR_STAFF, the row count, the request's correlation id)",
+    csv.status === 200 && /^text\/csv/.test(csv.headers.get("content-type") ?? "") && /attachment; filename="access-report-/.test(csv.headers.get("content-disposition") ?? "") && csv.headers.get("cache-control") === "no-store"
+    && wantA.every((id) => csvText.includes(id)) && notA.every((id) => !csvText.includes(id)) && lines(`firm_id = '${firmA}' and action = 'audit.exported'`) === exp0 + 1
+    && exported.startsWith(`ourstaff:${OWNER}|OUR_STAFF|plat_audit_export|`) && exported.endsWith(`|${csv.headers.get("x-request-id")}`), { status: csv.status, exported, head: csvText.slice(0, 300) });
+  ok("AUD-3 DW5 pass: the export's own read writes one platform.system.firm_read line on firm A's trail too",
+    lines(`firm_id = '${firmA}' and action = '${FIRM_READ}' and detail->>'route' = '${EXPORT_ROUTE}'`) === 1);
+  const audRead = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}`, { token: auditorT });
+  const exp1 = lines(`firm_id = '${firmA}' and action = 'audit.exported'`);
+  const audExport = await call(base, "GET", `/api/system/firms/${firmA}/access-report/export?${RANGE}`, { token: auditorT });
+  ok("AUD-3 DW5 fail (the Auditor, read-only): the Auditor reads the report (200) but the export answers 403 with no audit.exported line",
+    audRead.status === 200 && audExport.status === 403 && lines(`firm_id = '${firmA}' and action = 'audit.exported'`) === exp1, { audRead: audRead.status, audExport: audExport.status });
+  sql(`insert into plat_system_role_permission (role_code, permission_key) values ('platform-auditor', 'system/audit:export')`);
+  const audExport2 = await call(base, "GET", `/api/system/firms/${firmA}/access-report/export?${RANGE}`, { token: await tokenOf(AUDITOR) });
+  sql(`delete from plat_system_role_permission where role_code = 'platform-auditor' and permission_key = 'system/audit:export'`);
+  ok("AUD-3 DW5 pass: once the Auditor's role is granted system/audit:export, the Auditor's export answers 200 and writes its audit.exported line",
+    audExport2.status === 200 && lines(`firm_id = '${firmA}' and action = 'audit.exported' and actor = 'ourstaff:${AUDITOR}'`) === 1, audExport2.status);
+  // No line, no file (P-607 (3)): audit.exported refused at the database for one call.
+  sql(`create function aud3_refuse_export() returns trigger language plpgsql as $$ begin raise exception 'aud3 test: refused'; end $$;
+       create trigger aud3_refuse_export before insert on audit_event for each row when (new.action = 'audit.exported') execute function aud3_refuse_export()`);
+  const blockedCsv = await fetch(`${base}/api/system/firms/${firmA}/access-report/export?${RANGE}`, { headers: { authorization: `Bearer ${ownerT}` } });
+  const blockedText = await blockedCsv.text();
+  sql(`drop trigger aud3_refuse_export on audit_event; drop function aud3_refuse_export()`);
+  ok("AUD-3 DW5 fail (fail-closed): an export whose audit.exported line cannot be written answers 500 and sends no line of the report",
+    blockedCsv.status === 500 && wantA.every((id) => !blockedText.includes(id)), { status: blockedCsv.status, text: blockedText.slice(0, 200) });
 
   // --------------------------------------------------------------------------------------- DW4: fail-closed
   // Round 6 (Lead 16): the outside refusal raises one alert with the line's ids, as before the line moved onto the port.
