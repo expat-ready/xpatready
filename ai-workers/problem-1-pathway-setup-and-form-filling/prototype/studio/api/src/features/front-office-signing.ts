@@ -6,6 +6,8 @@ import { Db } from "../core.ts";
 import type { MailPort } from "../../../ports/mail.ts";
 import { LocalFiles } from "../front-office/files.ts";
 import "../front-office/signing/email-code.ts";   // part 4a: registers the firm's email-code setting (P-564) at start
+import { SigningDoorController } from "../front-office/signing/door.controller.ts";
+import { SigningDoor } from "../front-office/signing/door.ts";
 import { useSigningMail } from "../front-office/signing/handlers.ts";
 import { SigningHooksController } from "../front-office/signing/hooks.ts";
 import { SigningController } from "../front-office/signing/routes.ts";
@@ -14,6 +16,7 @@ import { PlatformClock } from "../platform/identity/port.ts";
 import { MESSAGES_MAIL } from "./platform-messages.ts";
 
 export default {
-  controllers: [SigningController, SigningHooksController],
-  providers: [{ provide: Signing, useFactory: (db: Db, files: LocalFiles, clock: PlatformClock, mail: MailPort) => { useSigningMail(mail); return new Signing(db, files, { now: () => new Date(clock.now()) }); }, inject: [Db, LocalFiles, PlatformClock, MESSAGES_MAIL] }],
+  controllers: [SigningController, SigningHooksController, SigningDoorController],   // part 4b: the public door
+  providers: [{ provide: Signing, useFactory: (db: Db, files: LocalFiles, clock: PlatformClock, mail: MailPort) => { useSigningMail(mail); return new Signing(db, files, { now: () => new Date(clock.now()) }); }, inject: [Db, LocalFiles, PlatformClock, MESSAGES_MAIL] },
+    { provide: SigningDoor, useFactory: (db: Db, clock: PlatformClock) => new SigningDoor(db, { now: () => new Date(clock.now()) }), inject: [Db, PlatformClock] }],
 } satisfies Feature;

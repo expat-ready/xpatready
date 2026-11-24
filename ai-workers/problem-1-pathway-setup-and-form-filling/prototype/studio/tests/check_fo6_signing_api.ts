@@ -356,8 +356,8 @@ try {
 
   process.env.PLATFORM_ENVIRONMENT ??= "local";   // the feature imports the platform's mail feature, which reads the settings at load
   const signingFeature = (await import("../api/src/features/front-office-signing.ts")).default;
-  ok("FO-6 G pass: the feature file registers the state read and the webhook door and provides the Signing service",
-    (signingFeature.controllers as unknown[]).includes(SigningController) && (signingFeature.controllers as unknown[]).includes(SigningHooksController) && JSON.stringify((signingFeature.providers as { provide?: { name?: string } }[]).map((p) => p.provide?.name)) === '["Signing"]');
+  ok("FO-6 G pass: the feature file registers the state read and the webhook door and provides the Signing service (part 4b adds the public door's SigningDoor)",
+    (signingFeature.controllers as unknown[]).includes(SigningController) && (signingFeature.controllers as unknown[]).includes(SigningHooksController) && JSON.stringify((signingFeature.providers as { provide?: { name?: string } }[]).map((p) => p.provide?.name)) === '["Signing","SigningDoor"]');
   // ------------------------------------------------------------- G: retired names, the bypass use
   const grep = (() => { try { return execFileSync("grep", ["-rlE", "retainer\\.executed|envelope\\.completed", join(STUDIO, "api", "src"), join(STUDIO, "ports"), join(STUDIO, "engine"), join(STUDIO, "contracts")], { encoding: "utf8" }).trim(); } catch { return ""; } })();
   // Event names are written only where events are made and read (the API, the ports, the engine, the contracts); the
