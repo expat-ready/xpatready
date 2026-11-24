@@ -58,7 +58,7 @@ ok(`W9 over 20 on a PR (${touched} journeys reached through two shared files): w
 // ENF-733: walks on merge. W10 the push plan on this tree; W11 walks.yml's push shape; W12 walk-report.yml's shape.
 const appFile = `${STUDIO}api/src/front-office/firm-seed.ts`, ids = (q: { matrix: { name: string }[] }) => q.matrix.map((m) => m.name).join(" ");
 const m1 = walkPlan({ event: "push", jdir: J, title: "runtime: R1.29 — FO-9b part 3", body: "Completes: R1.40\n", changed: [appFile], pr: "3174", sha: "c".repeat(40), root: ROOT });
-const m2 = walkPlan({ event: "push", jdir: J, title: "qa: R1.29 re-run on main (25/25)", changed: ["ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/CAPABILITIES.md"], pr: "3516", root: ROOT });
+const m2 = walkPlan({ event: "push", jdir: J, title: "qa: R1.29 re-run on main (25/25)", changed: ["records-elsewhere/notes.md"], pr: "3516", root: ROOT });
 const pathsApp = paths.filter((g) => g !== ".github/workflows/walks.yml").map((g) => g.replace(/\*\*$/, ""));
 ok("W10 on this tree a merged PR naming R1.29 (title) and R1.40 (Completes) walks j_29 and j_38 only, no fixtures; a qa-records PR naming R1.29 walks nothing; APP equals walks.yml's paths",
   ids(m1) === "j_29 j_38" && m1.pr === "3174" && m1.matrix[1].items === "R1.40" && m2.matrix.length === 0 && /changes nothing the app/.test(m2.reason) && JSON.stringify(pathsApp) === JSON.stringify(APP), { m1, m2, pathsApp, APP });

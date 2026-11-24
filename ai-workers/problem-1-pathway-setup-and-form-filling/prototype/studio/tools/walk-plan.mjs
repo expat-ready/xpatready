@@ -238,7 +238,7 @@ export function selftest() {
     t("T10 a merged PR whose title names R1.3 and (R1 row 5) walks j_3 and j_5 on main, no fixtures; R1.4.2 is no item", names(p) === "j_3 j_5" && p.matrix[0].items === "R1.3" && p.matrix[0].via === "title" && p.pr === "7", p);
     p = push("screens: R1.2 x", "Completes: R1.2, R1.6\n", [app]);
     t("T11 title and Completes: each journey once, named by both or by Completes", names(p) === "j_2 j_6" && p.matrix[0].via === "title and Completes" && p.matrix[1].via === "Completes", p);
-    p = push("qa: R1.3 re-run on main", "", ["ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/x.md"]);
+    p = push("qa: R1.3 re-run on main", "", ["records-elsewhere/notes.md"]);
     t("T12 a PR naming R1.3 that changes nothing the app runs (records, qa records) walks nothing, with a reason", p.matrix.length === 0 && /changes nothing the app or a journey runs/.test(p.reason), p);
     const p13 = [push("tooling: no item", "", [app]), push("runtime: R1.99", "", [app]), push("runtime: R1.3", "", [app], "")];
     t("T13 no item named, an item with no journey on main, or a push that merged no PR: nothing walked, each with its reason", p13.every((q) => q.matrix.length === 0) && /names no R1 item/.test(p13[0].reason) && /R1\.99 \(title\): no j_99\.ts on main/.test(p13[1].reason) && /no PR's merge commit/.test(p13[2].reason), p13);
