@@ -395,6 +395,19 @@ try {
   const paired = await op(q7.tok, {}, undefined, cookieA ? [cookieA] : []);
   ok("FO-3c QA-777 pairing: the same live cookie on a session not started at the code check's moment gets no link (a code is asked); paired again, it opens",
     unpaired.codeNeeded === true && unpaired.link === null && /^https:\/\/signing\.fake\.invalid\//.test(paired.link?.url ?? ""), { unpaired, paired: !!paired.link });
+  // QA-777 break B2 (Lead B's Minor on 55ff7dc8f): the provider failing right after the right code still hands this
+  // browser its session (the error carries it for the cookie), so the same browser's retry opens without a new code.
+  const q9 = await sendOne(T.staffId, kim, 24);
+  await clock.advance({ minutes: 2 });
+  await op(q9.tok, { consent: true });
+  const realLink = signing.embeddedLink, code9 = lastCode();
+  signing.embeddedLink = async () => { throw new Error("provider down (Sample)"); };
+  let carried: string | undefined, threw9 = false;
+  try { await op(q9.tok, { consent: true, code: code9 }); } catch (e) { threw9 = true; carried = (e as { session?: string }).session; }
+  signing.embeddedLink = realLink;
+  const retry9 = await op(q9.tok, {}, undefined, carried ? [carried] : []);
+  ok("FO-3c QA-777 B2: the provider failing after the right code still gives this browser its session (carried for the cookie); the same browser's retry opens the link with no new code",
+    threw9 && !!carried && /^https:\/\/signing\.fake\.invalid\//.test(retry9.link?.url ?? "") && retry9.codeNeeded === false, { threw9, carried: !!carried, retry9 });
   // QA-777 break B1: with no live code (none asked yet), a link holder's made-up codes are refused and never counted, so
   // they cannot lock the client out; the client's own code then works.
   const q8 = await sendOne(T.staffId, kim, 23), guesses: string[] = [];

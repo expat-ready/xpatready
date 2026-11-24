@@ -451,7 +451,14 @@ export class ConsultationAgreementService {
       return next;
     });
     if (!cur.consentedAt) return { ...base(cur), codeNeeded: false, link: null, ...(session ? { session } : {}) };
-    return { ...base(cur), codeNeeded: false, link: await this.providerLink(firmId, s0.request.providerDocumentId, cur.id), ...(session ? { session } : {}) };
+    // A provider failure after a right code still hands this browser its session: the error carries it, and the controller
+    // sets the cookie before answering, so a retry from the same browser needs no new code (QA-777 break B2, Lead B's Minor).
+    let link: Awaited<ReturnType<typeof this.providerLink>>;
+    try { link = await this.providerLink(firmId, s0.request.providerDocumentId, cur.id); } catch (e) {
+      if (session && e && typeof e === "object") Object.defineProperty(e, "session", { value: session, enumerable: false });
+      throw e;
+    }
+    return { ...base(cur), codeNeeded: false, link, ...(session ? { session } : {}) };
   }
 
   /** P-564: the one-time email code. No code given → one is sent (again only when the last has expired, or on `resend`);

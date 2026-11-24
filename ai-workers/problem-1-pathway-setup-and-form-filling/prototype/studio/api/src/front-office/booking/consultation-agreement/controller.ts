@@ -98,11 +98,16 @@ export class ConsultationAgreementPublicController {
   async open(@Body() body: unknown, @Req() req: { ip?: string; socket?: { remoteAddress?: string }; headers?: { cookie?: unknown } }, @Res({ passthrough: true }) res: { setHeader(n: string, v: string): void }) {
     const b = parseInput(OpenBody, body ?? {});
     res.setHeader("Cache-Control", "no-store");
-    const { session, ...answer } = await this.a.open(b.token, { consent: b.consent, code: b.code, resend: b.resend }, String(req.ip ?? req.socket?.remoteAddress ?? "unknown"), sessionCookies(req.headers?.cookie)) as Record<string, unknown> & { session?: string };
-    if (session) {
+    const setCookie = (session?: string) => {
+      if (!session) return;
       const secure = (process.env.PLATFORM_ENVIRONMENT ?? "local") === "local" ? "" : "; Secure";
       res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${session}; Path=${OPEN_PATH}; Max-Age=${SESSION_MINUTES * 60}; HttpOnly; SameSite=Strict${secure}`);
-    }
+    };
+    let out: Record<string, unknown> & { session?: string };
+    try { out = await this.a.open(b.token, { consent: b.consent, code: b.code, resend: b.resend }, String(req.ip ?? req.socket?.remoteAddress ?? "unknown"), sessionCookies(req.headers?.cookie)) as Record<string, unknown> & { session?: string }; }
+    catch (e) { setCookie((e as { session?: string } | null)?.session); throw e; }   // a session started before a provider failure (QA-777 B2); never in the body
+    const { session, ...answer } = out;
+    setCookie(session);
     return answer;
   }
 }
