@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_f8cf715f-189f-4312-a85f-7bf184888efc Lead 25 · 24 Nov 13:18 IST (after Lead 24, past the 200k line; Opus 5.5 medium, P-788)
+current_lead: local_b17225db-0bef-4a96-aed3-534dada14800 Lead 26 · 24 Nov 14:35 IST (after Lead 25, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 14:28 IST: Lead 25 (check 4a7e3c25). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (counted 14:01, main 872275102). **BLOCKER P1 (firm wall): #3428 merged; M2 (firm wall) #3441 labelled 14:2x, M1 #3467; first each check.** Queue: #3385, #3308 + #3430, #3421, #3420, #3431. Founder: CodeAnt account (C2, C4), the unseen account. Weekly 71%, disk 7 GB; standbys: Lead 26 local_b17225db.
+updated: 2026-11-24 14:35 IST: Lead 25 ended. **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (counted 14:01, main 872275102). **Firm wall: P1 merged; M2 #3441 labelled, NOT queued at 14:34 (look first); M1 #3467 (lane 4oPSMou).** Founder: start fresh qa + PF-17 part 4; CodeAnt account; AG-4-15; bearer link. Weekly 71%, disk 6 GB; second standby owed.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -12,7 +12,7 @@ updated: 2026-11-24 14:28 IST: Lead 25 (check 4a7e3c25). **Hand-over: the last s
 **Check script (read first; argument minutes):** `/private/tmp/claude-501/-Users-ranjansingh-Desktop-Xpatready/7197abb3-bd94-44f0-8494-0a9194e38c06/scratchpad/chk.sh`.
 **Lead reads owed:** #3277, #3174 review.ts.
 **qa asks and work with no lane:** the recovery plan file, end.
-**Sessions:** standby Lead 20; Lead B 6 local_5637ca59 (after Lead B 5); Lead O 2 local_f6d6bb60; qa A 5 (session_01MXNda8oJbGMtZ6ov38m3BR), qa B 4 (01MXNda7YhUVUEMkU93gbfaj). Lane ids: FO-7q 01MXNda7PhEdXQAhL6GMtRyG, R1.90 01MXNda67yexjnYrdQ3B9MNt, PF-31 01MXNda6DzofSEsZJa14VVec, PF-18n2 01MXNda5Q4zsDUw8f6CTRCiv, CS-D6 01MXNda6PPrG2yzjfwiFG9e9. Start limit: disk 7 GB.
+**Sessions:** Lead B 6 local_5637ca59 (after Lead B 5); Lead O 2 local_f6d6bb60; qa A 5 (session_01MXNda8oJbGMtZ6ov38m3BR), qa B 4 (01MXNda7YhUVUEMkU93gbfaj). Lane ids: FO-7q 01MXNda7PhEdXQAhL6GMtRyG, R1.90 01MXNda67yexjnYrdQ3B9MNt, PF-31 01MXNda6DzofSEsZJa14VVec, PF-18n2 01MXNda5Q4zsDUw8f6CTRCiv, CS-D6 01MXNda6PPrG2yzjfwiFG9e9. Start limit: disk 7 GB.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
@@ -53,7 +53,7 @@ Older Start here pointers and the red-row lanes line: `history/STATE-2026-11-24-
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, 09:23), Lead 21 (local_11ef6843, 10:02), Lead 22 (local_a55ecb03, 10:39), Lead 23 (local_1d6d1d97, 11:45), Lead 24 (local_9d85b0d8, 12:40), Lead 25 (local_f8cf715f, from 24 Nov 13:18 IST).
+**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, 09:23), Lead 21 (local_11ef6843, 10:02), Lead 22 (local_a55ecb03, 10:39), Lead 23 (local_1d6d1d97, 11:45), Lead 24 (local_9d85b0d8, 12:40), Lead 25 (local_f8cf715f, 13:18), Lead 26 (local_b17225db, from 24 Nov 14:35 IST).
 **Leads of 22 Nov (account before):** word for word in `history/STATE-2026-11-23-1705-lead6-cs-mv2-and-older-leads.md`.
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
