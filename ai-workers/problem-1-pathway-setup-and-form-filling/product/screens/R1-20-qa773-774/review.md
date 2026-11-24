@@ -49,3 +49,20 @@ N/A: Team and Invite people are firm-admin screens, not case-side (EXPERIENCE §
 A real screen reader; an intended user's unaided walk (D17/D20 stay with the founder); 200 % zoom as a screenshot (my zoomed browser had no session); CI on the PR (body still "Draft").
 
 Reviewer: Approve 15c7a1baf065183351b5c2fd764a6397bac7c0ff
+
+## Round 2 (diff only: 15c7a1baf..fc2e77bc3, head fc2e77bc3034eae7dc154adad228400337825900)
+Reviewer, 24 Nov 2026. The only commits in this range that touch code are in `prototype/studio`; the rest are records (break report, my round 1). The diff touches 4 files: `batch-invite.ts:67`, `invite-panel.tsx`, `j_20.ts`, `check_pf6_staff_browser.ts`.
+Run on a detached worktree of fc2e77bc3 (now removed), isolated copies on :4541 and :4543, never :4400: **j_20 46/46, pf6 93/93, pf4c1b 25/25**, all exit 0. These match the builder's results.
+* **m2 words: fixed.** DUPLICATE_IN_FORM now says "This email is also on an earlier row of this form, which counts for this person, so this row was not sent." The words are true whether or not the earlier row is still on the form, and they say nothing more is needed for this person. j_20 W1 and pf6 BR-3 assert them.
+  While the earlier row is still on the form, the client's "already on another row" still shows instead (`invite-panel.tsx:83`). That is consistent and stays as m4.
+* **m2 Remove: open, Minor.** A duplicate left as the only row still has no Remove (`invite-panel.tsx:93`, `rows.length > 1`); Close plus the discard confirm is the way out. It becomes a follow-up with m1 and m4.
+* **m3 count: fixed.** `people = rows.filter((r) => !twice(r)).length` (`invite-panel.tsx:47`) now drives `after`, `over` and "· N on this form". The new check passes: "8 of 23 seats after these invites" with 5 rows, one of them a duplicate. On 15c7a1baf the code counted `rows.length`, so this check would fail there.
+  "Send N invitations" still counts rows. That is right: every row is sent to the server.
+  A duplicate of an earlier row that is itself invalid is still counted once (no seat is used on the server). The preview errs high, as it already does for staff rows, so this is not a finding.
+* **m3 "Your plan" wording: open, Minor.** `invite-panel.tsx:27-28` still says "Your plan has N free seats" under a booked plan's limit. The Team line above names the booked plan. Follow-up.
+* Nothing else moved. No new waits, no new `.catch` after a wait. The new j_20 check reads the preview after typing, not after a wait.
+* **Head aa2ad42d4d7a28620b4f240915998b3a97629043** is a pure `git merge origin/main` on top of fc2e77bc3. None of this PR's files changed. But the merge does change `api/src/platform/firm-scope.ts`: P1's WalledPool now destroys a client that comes back inside a transaction, which is the path `seatLimitOf`'s walled read runs on. So I re-ran on a worktree of aa2ad42d4 (now removed): **pf4c1b 25/25 and j_20 46/46 on :4541**, both exit 0. W4's walled Team line and the booked-plan refusal still hold.
+
+Journey score unchanged at 9/10 ("plain words" moves up, but the open Remove keeps "next step obvious" at ½).
+
+Reviewer: Approve aa2ad42d4d7a28620b4f240915998b3a97629043
