@@ -221,8 +221,12 @@ model PlatformSignupLink {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   expiresAt   DateTime  @map("expires_at") @db.Timestamptz
   usedAt      DateTime? @map("used_at") @db.Timestamptz
+  /// R1.90: the plan and period the invited sign-up carries (PF-5 row).
+  planCode      String                @default("team") @map("plan_code")
+  billingPeriod PlatformBillingPeriod @default(MONTHLY) @map("billing_period")
 
-  firm PlatformFirm? @relation(fields: [firmId], references: [id], onDelete: Restrict)
+  firm     PlatformFirm?           @relation(fields: [firmId], references: [id], onDelete: Restrict)
+  pendings PlatformSignupPending[]
 
   @@index([firmId])
   @@map("platform_signup_link")
@@ -493,7 +497,11 @@ model PlatformSignupPending {
   usedAt          DateTime?             @map("used_at") @db.Timestamptz
   /// Why it ended: VERIFIED (the firm was made) or REPLACED (a newer sign-up for the email took its place).
   outcome         String?
+  /// R1.90: the private sign-up link this sign-up came from (null for self-serve).
+  signupLinkId    String?               @map("signup_link_id") @db.Uuid
+  signupLink      PlatformSignupLink?   @relation(fields: [signupLinkId], references: [id], onDelete: Restrict)
 
   @@index([expiresAt])
+  @@index([signupLinkId])
   @@map("platform_signup_pending")
 }
