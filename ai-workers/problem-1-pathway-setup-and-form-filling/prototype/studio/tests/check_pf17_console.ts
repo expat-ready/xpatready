@@ -335,16 +335,29 @@ try {
   const atCap = (await call(base, "/api/system/firms?q=sample", tokens.support)).body, atCapOne = (await call(base, `/api/system/firms/${firmS}`, tokens.support)).body;
   ok("PF-17 DW11 fail (part 4, m1): a read that returns the full cap is not complete: failedJobsComplete false on the page and on one firm, the counts kept as read",
     atCap.failedJobsComplete === false && atCapOne.failedJobsComplete === false && atCapOne.failedJobs === 1, { page: atCap.failedJobsComplete, one: atCapOne.failedJobsComplete, s: atCapOne.failedJobs });
-  // part 4, m3: failed jobs are shown, not judged: the same firm's health and reasons with none and with five.
+  const atCapAll = (await call(base, "/api/system/firms?page=1", tokens.support)).body, quiet = atCapAll.firms.filter((f: any) => f.id !== firmA && f.id !== firmS);
+  ok("PF-17 DW11 fail (part 4, m1; review m-1): at the cap a firm with no entries reads 0 with the page's failedJobsComplete false (the screen shows 0+, never a bare 0)",
+    atCapAll.failedJobsComplete === false && quiet.length > 0 && quiet.every((f: any) => f.failedJobs === 0), { page: atCapAll.failedJobsComplete, quiet: quiet.slice(0, 3).map((f: any) => f.failedJobs) });
+  // part 4, m3 (review M-1): failed jobs are shown, not judged: a firm OK in every fact stays OK with no reasons with five.
   dead.length = 0;
-  const calm = (await call(base, `/api/system/firms/${firmS}`, tokens.support)).body;
-  for (let i = 0; i < 5; i++) dead.push(letter(firmS, i + 1));
-  const noisy = (await call(base, `/api/system/firms/${firmS}`, tokens.support)).body;
-  ok("PF-17 DW12 pass (part 4, m3): five failed jobs change a firm's failedJobs (0 → 5) and nothing in its health or reasons",
-    calm.failedJobs === 0 && noisy.failedJobs === 5 && calm.health === noisy.health && JSON.stringify(calm.reasons) === JSON.stringify(noisy.reasons), { calm: [calm.health, calm.reasons], noisy: [noisy.health, noisy.reasons] });
+  const okList = (await call(base, "/api/system/firms?health=OK", tokens.support)).body, firmOk: string | undefined = okList.firms?.[0]?.id;
+  const calm = firmOk ? (await call(base, `/api/system/firms/${firmOk}`, tokens.support)).body : {};
+  for (let i = 0; i < 5; i++) dead.push(letter(firmOk ?? null, i + 1));
+  const noisy = firmOk ? (await call(base, `/api/system/firms/${firmOk}`, tokens.support)).body : {};
+  ok("PF-17 DW12 pass (part 4, m3; review M-1): a firm OK in every fact with five failed jobs stays OK with no reasons (failedJobs 0 → 5); failed jobs never judge",
+    !!firmOk && calm.health === "OK" && calm.reasons.length === 0 && calm.failedJobs === 0 && noisy.health === "OK" && noisy.reasons.length === 0 && noisy.failedJobs === 5, { firmOk, calm: [calm.health, calm.reasons, calm.failedJobs], noisy: [noisy.health, noisy.reasons, noisy.failedJobs] });
+  dead.length = 0;
   const { livePlanOf } = await import("../api/src/platform/system-console/live-plan.ts");
-  ok("PF-17 DW13 pass (part 4, challenge M2): one firm's plan on the Firms page is livePlanOf's (the helper the support queue uses)",
-    JSON.stringify(noisy.plan) === JSON.stringify(await livePlanOf(owner, firmS, clock.now())), { plan: noisy.plan });
+  // DW13 (challenge M2; break m2): the Firms list and one firm name livePlanOf's plan in each state (the support suite's
+  // SQ-plan holds the queue to the same helper): active → its plan, payment hold → its plan, only ENDED → null.
+  const subS = sql(`select id || '|' || status from platform_subscription where firm_id = '${firmS}' order by created_at desc limit 1`).split("|");
+  const planSeen = async () => ({ one: (await call(base, `/api/system/firms/${firmS}`, tokens.support)).body.plan, list: (await call(base, "/api/system/firms?q=sample", tokens.support)).body.firms.find((f: any) => f.id === firmS)?.plan, helper: await livePlanOf(owner, firmS, clock.now()) });
+  const seen: Record<string, any> = {};
+  for (const st of ["ACTIVE", "PAYMENT_HOLD", "ENDED"]) { sql(`update platform_subscription set status = '${st}' where id = '${subS[0]}'`); seen[st] = await planSeen(); }
+  sql(`update platform_subscription set status = '${subS[1]}' where id = '${subS[0]}'`);
+  const agree = (x: any) => JSON.stringify(x.one) === JSON.stringify(x.helper) && JSON.stringify(x.list) === JSON.stringify(x.helper);
+  ok("PF-17 DW13 pass/fail (part 4, challenge M2): the Firms list and one firm show livePlanOf's plan when active and on payment hold (a plan) and when only ended (null)",
+    agree(seen.ACTIVE) && agree(seen.PAYMENT_HOLD) && agree(seen.ENDED) && seen.ACTIVE.helper !== null && seen.PAYMENT_HOLD.helper !== null && seen.ENDED.helper === null, seen);
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

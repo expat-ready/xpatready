@@ -223,7 +223,7 @@ export class PgBossJobs implements JobPort {
     if (this.#state === "started") await this.#applySchedule(name, cron, zone);
   }
 
-  /** The dead-letter list, newest first (read from its oldest 10 000; the list keeps a year, Sample). */
+  /** The dead-letter list, newest first (read from its oldest DEAD_LETTER_CAP entries; the list keeps a year, Sample). */
   async deadLetters(limit = 100): Promise<DeadLetter[]> {
     await this.#whenStarted();
     const rows = await this.boss.findJobs<Record<string, unknown>>(DEAD_LETTER, { limit: DEAD_LETTER_CAP });

@@ -283,6 +283,10 @@ try {
   sql(`update platform_subscription set status = '${subS[1]}' where id = '${subS[0]}'`);
   ok("PF-17 SQ-plan fail: a firm whose only subscription ended shows no plan (null) on its row and its ticket, as on the Firms page",
     pEnded === null && endedRow === null && endedOne === null, { pEnded, endedRow, endedOne });
+  const supportWithoutFirmRead = sql(`select coalesce(string_agg(r.role_code, ','), '') from plat_system_role_permission r where r.permission_key = 'system/support:list'
+    and not exists (select 1 from plat_system_role_permission f where f.role_code = r.role_code and f.permission_key = 'system/firm:read')`);
+  ok("PF-17 SQ-plan fail (break m3): every role that reads the queue (system/support:list) also reads the firms list (system/firm:read), so the plan on a row tells it nothing new; a Sample remap that broke this fails here (SA10-X3 pending)",
+    supportWithoutFirmRead === "", supportWithoutFirmRead);
   const src = (f: string) => readFileSync(join(STUDIO, "api", "src", "platform", "system-console", f), "utf8");
   ok("PF-17 SQ-plan pass (challenge M2): the Firms page and the support queue both take the plan from livePlanOf, one helper",
     /livePlanOf\(/.test(src("firms.ts")) && /livePlanOf\(/.test(src("support.ts")));

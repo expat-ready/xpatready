@@ -62,7 +62,8 @@ try {
   ok("DS3 pass: the same setting with PLATFORM_ENVIRONMENT=local loads", localOk === "", localOk);
 
   // ------------------------------------------------------------------ DS1 local with the stand-in: two Sample staff, idempotent, each signs in
-  await seedSampleOnStart(env({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SYSTEM_IDENTITY: "local" }));
+  const twice = await Promise.allSettled([1, 2].map(() => seedSampleOnStart(env({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SYSTEM_IDENTITY: "local" }))));
+  ok("DS1 fail (break m1): two start-ups at once on one database both carry on (neither stops on the other's insert)", twice.every((t) => t.status === "fulfilled"), twice.map((t) => t.status === "rejected" ? String(t.reason).slice(0, 200) : "ok"));
   const rows = sql(`select s.email || '|' || s.display_name || '|' || s.status || '|' || string_agg(g.role_code, ',') from plat_system_staff s join plat_system_role_grant g on g.staff_id = s.id group by s.id order by s.email`).split("\n");
   ok("DS1 pass: local with the stand-in, the start-up seed adds the Sample Platform Owner and the Sample Support member, active, one role each",
     rows.length === 2 && rows.some((r) => r === "ops.sample@expatready.example.com|Platform Owner (Sample)|ACTIVE|platform-owner") && rows.some((r) => r === "support.sample@expatready.example.com|Support (Sample)|ACTIVE|platform-support"), rows);
