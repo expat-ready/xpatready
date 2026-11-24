@@ -86,7 +86,7 @@ try {
   const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7t3.${n}@example.org', 'seed:FO-7t-3', now()) returning id`);
   // P1 < P2 < Q by id (Lead 96's deadlock case, FO-7ts part 3 break R3-m1); PA a plain client; PB firm B's.
   const [P1, P2, Q] = [person(A, "p1"), person(A, "p2"), person(A, "q")].sort();
-  const PA = person(A, "a"), PB = person(B, "b");
+  const PA = person(A, "a"), PB = person(B, "b"), PU = person(A, "u");
   // user-R: sample-firm's Owner (every money key); user-T: a Case Manager, given agent/payment:record here; user-O: a Case
   // Officer, no money key until DW10 (then agent/payment:record, seeing no case and no client: C5 fails closed); user-S:
   // sample-solo's Owner.
@@ -95,16 +95,19 @@ try {
   const [staffR, staffT, staffO] = [staff("user-R"), staff("user-T"), staff("user-O")];
   const W = "00000000-0000-4000-8000-0000000f37a0", CLIENT_A = "00000000-0000-4000-8000-0000000f37a1", CLIENT_Q = "00000000-0000-4000-8000-0000000f37a2", CLIENT_B = "00000000-0000-4000-8000-0000000f37a3";
   const CASE = "00000000-0000-4000-8000-0000000f37b1", CASE_Q = "00000000-0000-4000-8000-0000000f37b2", CASE_B = "00000000-0000-4000-8000-0000000f37b4";
+  const CLIENT_U = "00000000-0000-4000-8000-0000000f37a5", CASE_U = "00000000-0000-4000-8000-0000000f37b5";
   sql(`set session_replication_role = replica;
     insert into workspace (id, key, label) values ('${W}', 'fo7t3-check', 'FO-7t part 3 (Sample)');
     insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values
       ('${CLIENT_A}', '${W}', 'sample-firm', '${A}', 1, 'Client a (Sample)', 'PERSON', '${PA}', 'seed:FO-7t-3'),
       ('${CLIENT_Q}', '${W}', 'sample-firm', '${A}', 2, 'Client q (Sample)', 'PERSON', '${Q}', 'seed:FO-7t-3'),
-      ('${CLIENT_B}', '${W}', 'sample-solo', '${B}', 1, 'Client b (Sample)', 'PERSON', '${PB}', 'seed:FO-7t-3');
+      ('${CLIENT_B}', '${W}', 'sample-solo', '${B}', 1, 'Client b (Sample)', 'PERSON', '${PB}', 'seed:FO-7t-3'),
+      ('${CLIENT_U}', '${W}', 'sample-firm', '${A}', 3, 'Client u (Sample)', 'PERSON', '${PU}', 'seed:FO-7t-3');
     insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status) values
       ('${CASE}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07301', 'sample-firm', '${A}', '${CLIENT_A}', 'OPEN'),
       ('${CASE_Q}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07302', 'sample-firm', '${A}', '${CLIENT_Q}', 'OPEN'),
-      ('${CASE_B}', '${W}', gen_random_uuid(), 'user-P', 'user-S', 'C-2026-07301', 'sample-solo', '${B}', '${CLIENT_B}', 'OPEN');
+      ('${CASE_B}', '${W}', gen_random_uuid(), 'user-P', 'user-S', 'C-2026-07301', 'sample-solo', '${B}', '${CLIENT_B}', 'OPEN'),
+      ('${CASE_U}', '${W}', gen_random_uuid(), 'user-P', 'user-R', 'C-2026-07305', 'sample-firm', '${A}', '${CLIENT_U}', 'OPEN');
     insert into platform_role_permission (role, permission_key) values ('CASE_MANAGER', 'agent/payment:record') on conflict do nothing`);
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, trust_details, updated_by, updated_at) values ('${f}', 'Trust account (Sample)', 'seed:FO-7t-3', now())`);
   const audits = (action: string) => Number(sql(`select count(*) from audit_event where action = '${action}'`));
@@ -112,8 +115,8 @@ try {
   const batches = () => Number(sql(`select count(*) from money_move_batch`));
   const open = (src: string) => Number(sql(`select coalesce((select open_minor from money_to_move where source_entry_id = '${src}' and direction = 'TRUST_TO_OPERATING'), 0)`));
   let k = 0;
-  const deposit = async (personId: string, caseId: string | null, amountMinor: number, t = tR) => {
-    const r = await call(t, "POST", "/deposits", { personId, ...(caseId ? { caseId } : {}), method: "E_TRANSFER", amountMinor, currency: "CAD", idempotencyKey: `fo7t3-dep-${++k}` });
+  const deposit = async (personId: string, caseId: string | null, amountMinor: number, t = tR, method = "E_TRANSFER") => {
+    const r = await call(t, "POST", "/deposits", { personId, ...(caseId ? { caseId } : {}), method, amountMinor, currency: "CAD", idempotencyKey: `fo7t3-dep-${++k}` });
     if (r.status !== 201) throw new Error(`deposit: ${JSON.stringify(r.body)}`); return r.body;
   };
   const issued = async (personId: string, caseId: string | null, unitMinor: number) => {
@@ -287,6 +290,34 @@ try {
   await fclock.advance({ days: 1 }); await reminder.sweep();
   ok("FO-7t DW14 pass (break M2): a batch undone puts old lines back on the list → the item is sent once more (unread again), and the sweep run again sends nothing more",
     back.status === 201 && afterUndo === 2 && notifyCalls() === 2 && toA().length === 2 && toA().every((n) => !n.read), { back: back.body, afterUndo, now: notifyCalls() });
+
+  // ------------------------------------- Lead 29's ruling (b) on Lead B 7's Major: uncleared money asks first (warns, never blocks)
+  // Client u's case: a cheque of CAD 500.00 not yet cleared; CAD 300.00 of it paid from trust (acknowledged at apply).
+  // What the cheque's bounce would leave this party short of, as the route reads it under the party locks: the party's
+  // money on the case (its ledger, plus what was paid out of it and still waits to move) less the uncleared cheques,
+  // cleared money counted first. A move or a refund above that asks: 409 UNCLEARED, acknowledge "unclearedAcknowledged".
+  await deposit(PU, CASE_U, 50000, tR, "CHEQUE");
+  const IU = await issued(PU, CASE_U, 30000);
+  const WU = await applied({ invoiceId: IU, amountMinor: 30000, unclearedAcknowledged: true });
+  const nb = batches();
+  const uMove = await move([{ sourceEntryId: WU, amountMinor: 30000 }]);
+  ok("FO-7t ruling (b) fail: moving CAD 300.00 paid from a cheque not yet cleared → 409 UNCLEARED naming the amount, acknowledge \"unclearedAcknowledged\"; nothing written",
+    uMove.status === 409 && uMove.body.code === "UNCLEARED" && uMove.body.acknowledge === "unclearedAcknowledged" && /300\.00/.test(uMove.body.detail ?? "") && batches() === nb && open(WU) === 30000, uMove.body);
+  await deposit(PU, CASE_U, 10000);   // CAD 100.00 by e-Transfer, cleared
+  const cMove = await move([{ sourceEntryId: WU, amountMinor: 10000 }]);
+  ok("FO-7t ruling (b) pass: with CAD 100.00 of cleared money on the case, moving CAD 100.00 → 201 without asking (cleared money counted first)", cMove.status === 201 && open(WU) === 20000, cMove.body);
+  const mixed = await move([{ sourceEntryId: WU, amountMinor: 5000 }]);
+  ok("FO-7t ruling (b) fail (mixed money): CAD 50.00 more, with the cleared money used up → 409 UNCLEARED, nothing written", mixed.status === 409 && mixed.body.code === "UNCLEARED" && open(WU) === 20000, mixed.body);
+  const acked = await move([{ sourceEntryId: WU, amountMinor: 5000 }], tR, { unclearedAcknowledged: true });
+  ok("FO-7t ruling (b) pass: the same move acknowledged → 201 (a warning, never a block); its audit line records the acknowledgement",
+    acked.status === 201 && open(WU) === 15000 && sql(`select detail->>'unclearedAcknowledged' from audit_event where action = 'trust_money.moved' and entity_key = '${acked.body.batchId}'`) === "true", acked.body);
+  const refundIn = (o: Record<string, unknown>) => call(tR, "POST", "/refunds", { currency: "CAD", method: "E_TRANSFER", reference: `ET-${++k}`, reason: "Matter closed (Sample)", ...o });
+  const uRefund = await refundIn({ personId: PU, caseId: CASE_U, amountMinor: 100 });
+  ok("FO-7t ruling (b) fail: a refund of money a cheque not yet cleared still covers → 409 UNCLEARED (Lead 25's question on refunds), nothing written",
+    uRefund.status === 409 && uRefund.body.code === "UNCLEARED" && uRefund.body.acknowledge === "unclearedAcknowledged" && Number(sql(`select count(*) from money_trust_entry where kind = 'REFUND_TO_CLIENT' and person_id = '${PU}'`)) === 0, uRefund.body);
+  const uRefundOk = await refundIn({ personId: PU, caseId: CASE_U, amountMinor: 100, unclearedAcknowledged: true });
+  const cleanRefund = await refundIn({ personId: PA, caseId: CASE, amountMinor: 100 });
+  ok("FO-7t ruling (b) pass: the refund acknowledged → 201; a refund of cleared money only (Client a's e-Transfer) → 201 without asking", uRefundOk.status === 201 && cleanRefund.status === 201, [uRefundOk.body, cleanRefund.body]);
   void Q; void staffO;
 } catch (e) {
   ok("FO-7t part 3: the check ran to the end", false, e instanceof Error ? e.stack : String(e));
