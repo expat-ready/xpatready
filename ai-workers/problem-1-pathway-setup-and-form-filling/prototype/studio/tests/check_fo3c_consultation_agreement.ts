@@ -4,6 +4,8 @@
 // staff (user-R and user-T licensed, user-O a case officer with no licence record; firm B's user-S), the real FilesPort
 // (a scratch folder) and docx render, the fake clock, jobs, mail and audit. No server, no browser, no model call (US$0).
 // Dropped at the end.
+//   QA-777 (Lead 28, 24 Nov; Lead 24's ruling on #3433): the right code binds the link to the browser that typed it (a
+//   session cookie on the door's path, only its sha256 on the signer: FO-6 part 4b's columns); consent only after the code.
 //   tsx studio/tests/check_fo3c_consultation_agreement.ts
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -68,7 +70,9 @@ try {
   await svc.registerJobs();
   // The public door counts tries per IP: each call here comes from its own address unless a case says otherwise.
   let ipN = 0;
-  const op = (t: unknown, b: Parameters<typeof svc.open>[1] = {}, ip = `10.0.${Math.floor(++ipN / 250)}.${ipN % 250}`) => svc.open(t, b, ip);
+  // `cookies`: the session cookies this browser sends (QA-777); none by default, as a fresh browser.
+  const op = (t: unknown, b: Parameters<typeof svc.open>[1] = {}, ip = `10.0.${Math.floor(++ipN / 250)}.${ipN % 250}`, cookies: string[] = []) => (svc.open as (t: unknown, b: unknown, ip: string, c: string[]) => ReturnType<typeof svc.open>)(t, b, ip, cookies);
+  const cookieOf = (a: unknown) => (a as { session?: string }).session;
   /** Consent, then the one-time code from the client's email (P-564): answers the signing link. */
   const withCode = async (t: string, email: string) => {
     const first = await op(t, { consent: true });
@@ -259,10 +263,10 @@ try {
     fresh.codeNeeded && /^https:\/\/signing\.fake\.invalid\//.test(good.link?.url ?? "") && sql(`select code_verified_at is not null and code_sha256 ~ '^[0-9a-f]{64}$' from fo_signer where id = '${r3.cl.id}'`) === "t"
     && Number(sql(`select count(*) from fo_signer where code_sha256 = '${code3}'`)) === 0, good);
   // R2-1: a checked code opens the link for 30 minutes only; then a new code is asked, from any address. R2-2: one new code a minute.
-  const within = await op(r3.tok, {}, "198.51.100.7");
+  const within = await op(r3.tok, {}, "198.51.100.7", cookieOf(good) ? [cookieOf(good)!] : []);   // the same browser (QA-777)
   await clock.advance({ minutes: 31 });
   const later = await op(r3.tok, {}, "198.51.100.8");
-  ok("FO-3c R2-1 pass: within 30 minutes of the right code the link opens again without a code", /^https:\/\/signing\.fake\.invalid\//.test(within.link?.url ?? ""), within);
+  ok("FO-3c R2-1 pass: within 30 minutes of the right code the same browser (its session cookie) opens the link again without a code", /^https:\/\/signing\.fake\.invalid\//.test(within.link?.url ?? ""), within);
   ok("FO-3c R2-1 fail: 31 minutes later the same link (another address) gets no signing link: a new code is emailed and the old one is spent",
     later.codeNeeded === true && later.link === null && await fails(() => op(r3.tok, { consent: true, code: code3 }), 422), later);
   const tooSoon = await fails(() => op(r3.tok, { consent: true, resend: true }), 429, /CODE_TOO_SOON/);
@@ -359,6 +363,24 @@ try {
   const made = prov?.useFactory?.(given, files) as { mail?: unknown } | undefined;
   ok("FO-3c PF-19r pass: the feature's ports take MESSAGES_MAIL and carry that same mail (every agreement email goes through MessagePort)", prov?.inject?.[0] === MESSAGES_MAIL && made?.mail === given, { inject: prov?.inject?.map(String) });
   ok("FO-3c PF-19r fail: a factory given another mail carries that one, not MESSAGES_MAIL's (the check tells them apart)", (prov?.useFactory?.(mail, files) as { mail?: unknown }).mail !== given);
+
+  // ---------------------------------------------------- QA-777: the code binds the link to one browser; consent after it
+  const q7 = await sendOne(T.staffId, kim, 22), lastCode = () => /\b(\d{6})\b/.exec(mail.inbox("kim@client.example").filter((x) => x.templateKey === "consultation_agreement.code").at(-1)?.text ?? "")?.[1];
+  await clock.advance({ minutes: 2 });   // clear of the earlier cases' resend gap
+  const qb0 = await op(q7.tok, { consent: true }, "203.0.113.2");   // browser B first, holding only the forwarded link
+  const consentedB0 = sql(`select (consented_at is not null)::text from fo_signer where id = '${q7.cl.id}'`);
+  const a1q = await op(q7.tok, { consent: true }, "203.0.113.1"), a2q = await op(q7.tok, { consent: true, code: lastCode() }, "203.0.113.1");
+  const cookieA = cookieOf(a2q);
+  const qb1 = await op(q7.tok, { consent: true }, "203.0.113.2"), qb2 = await op(q7.tok, {}, "203.0.113.2", ["x".repeat(43)]);
+  const a3q = await op(q7.tok, {}, "203.0.113.1", cookieA ? [cookieA] : []);
+  const stored = sql(`select coalesce(session_sha256, '') from fo_signer where id = '${q7.cl.id}'`);
+  ok("FO-3c QA-777 (2): a forwarded link alone, before any code, records no consent (consent comes after the code); it is told a code is needed",
+    qb0.codeNeeded === true && qb0.link === null && qb0.consented === false && consentedB0 === "false", { qb0, consentedB0 });
+  ok("FO-3c QA-777 control: the client (browser A) types the emailed code and gets the signing link and a session cookie (only its sha256 stored); consent is recorded then",
+    a1q.codeNeeded === true && /^https:\/\/signing\.fake\.invalid\//.test(a2q.link?.url ?? "") && !!cookieA && /^[0-9a-f]{64}$/.test(stored) && stored !== cookieA && a2q.consented === true, { a1q, a2q: { ...a2q, session: !!cookieA }, stored: !!stored });
+  ok("FO-3c QA-777 (1): browser B, with the forwarded link but not A's session (no cookie, or a made-up one), is asked for the code (200, no 429) and gets no signing link",
+    qb1.codeNeeded === true && qb1.link === null && qb2.codeNeeded === true && qb2.link === null, { qb1, qb2 });
+  ok("FO-3c QA-777 same browser: A, sending its session cookie, gets the link again without a code", /^https:\/\/signing\.fake\.invalid\//.test(a3q.link?.url ?? "") && a3q.codeNeeded === false, a3q);
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
