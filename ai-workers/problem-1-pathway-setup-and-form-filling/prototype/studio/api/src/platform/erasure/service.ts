@@ -166,6 +166,9 @@ export class Erasure {
     // SA-11-18, SA-11-40: the hold check and every eraser in the order's firm scope and one transaction (the shared hold
     // lock is kept until the erasers are done, so a hold placed meanwhile waits for this order).
     const done = await withFirm(order.firmId, () => this.db.$transaction(async (tx) => {
+      // Lead B 5 on #3235: the person may have been merged away (or left the firm) since approval. The run asks again;
+      // gone → HELD with why, nothing erased. The merge is not followed: staff choose the person (SA-11-40 rule 6, AG16-44).
+      if (!(await this.personCheck(order.firmId, order.personId))) return { kind: "gone" } as const;
       const hold = await this.holds.isHeld(tx, order.firmId, [{ kind: "PERSON", id: order.personId }]);
       if (hold.held) return { kind: "held", held: hold.holds.map((h) => `hold ${h.holdId}: ${h.reason}`) } as const;
       const results: { module: string; r: EraseOutcome }[] = [];
@@ -179,6 +182,11 @@ export class Erasure {
         const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_erasure_finish(${order.requestId}::uuid, ${outcome}, ${actions}, ${today}::date, ${ERASURE_ACTOR}, ${claim}::timestamptz) AS out`;
         if (out !== "DONE") throw new Error(`erasure finish refused (${out}): the request is no longer under this run's claim`);   // never silent (break B1)
       };
+      if (done.kind === "gone") {
+        await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_HELD', ${"The person record has been merged away or is no longer in that firm; nothing was erased. Staff choose the person: cancel, and log the request on the right record (SA-11-40 rule 6)."}, ${ERASURE_ACTOR}, true, ${claim}::timestamptz)`;
+        await finish("BLOCKED", null);
+        return "held" as const;
+      }
       if (done.kind === "held") {
         await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_HELD', ${`On legal hold; nothing was erased. ${done.held.join("; ")}`.slice(0, 2000)}, ${ERASURE_ACTOR}, true, ${claim}::timestamptz)`;
         await finish("BLOCKED", null);

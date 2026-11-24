@@ -79,3 +79,39 @@ The probes run mid-run: the second eraser waits inside the firm transaction, aft
 No Blocker or Major is open: B1, B2 and M3 are closed. R1-R4 are Minor.
 
 **Verdict: Approve** (a371f8901)
+
+## Round 3: 2d698e315 (PR #3235), only `4689c3469..2d698e315`
+The diff checks out as stated: the migration's only change is the F4 comment line (154); the suite, rows file and brief
+swap the stamp; service, routes, feature and schema code are unchanged apart from main's and #3234's merges. Fresh
+worktree. The shared `studio/node_modules` Prisma client is stale (no `erase_on`, no breach tables), so the full-app
+checks ran on a private overlay with a client generated from this head. Nothing written to the shared copy.
+* **Held, migration:** `check_pf21d_erasure` 24/0 (the stamp is after `20261124080000_pf21d_switch`; empty and demo copies
+  show "850"; `migrate diff` is empty). `prisma migrate deploy` of all 24 Nov migrations on a new database: all applied.
+  `check_pf21d_switch` 20/0, `check_pf21b_requests` 27/0, `check_pf8b_f4_migrations` 9/9, `f5_pg18_grants` 14/14,
+  `f6_pg18_nobypass` 26/26, `f7_data_walls` 17/17, `f8_seeds_nobypass` 15/15.
+* **Held, main since 23 Nov:** no later migration touches `plat_data_request`, its triggers, `erase_on`/`erasing_since` or
+  `plat_data_request_erasure*`. pf21c, fo6d and pf17 only GRANT and REVOKE CREATE for xr_wall_reader around their own
+  definers. `check_fo9b_merge` 88/0, `check_pf17_support` 29/0, `check_pf17_console` 38/0, `check_pf4s_system_signin`
+  104/104, `check_features_registry` 27/0, `check_pf14_jobs` 95/0, `check_pf23w_jobs_wired` 31/0, `check_pf1_module_routes`
+  28/28, `check_pf12_walls` 110/0, `check_pf12b_doors` 33/0. The queue `platform.register.erasure_daily` is used only by
+  this item.
+* **Held, mid-run probes** (scratch copy of the shipped suite, deleted). The second eraser waits inside the firm transaction:
+  - cancel → 409 ERASURE_RUNNING; hand move to HELD → 409 ERASURE_SCHEDULED. Both tried through the HTTP routes and
+    through the services. A GET mid-run → 200 IN_PROGRESS. The run then ends COMPLETED with two RESULT steps.
+  - The daily `sweep()` mid-run marks OVERDUE. A cancel and a move to COMPLETED are then refused (RUNNING, SCHEDULED),
+    and the finish goes OVERDUE → COMPLETED.
+* **Not a finding:** no shared database can hold the old stamp `20261123120000`, because the branch never reached main.
+  Only scratch copies applied it.
+
+| # | Attack | Expected | Actual | Sev | Where |
+|---|---|---|---|---|---|
+| R3-1 | Merge current main (a26e80b6a, which includes #3209 AUD-3 part 1, merged after this branch's base a79e246c6) into 2d698e315 (merges cleanly), then start the API (`api/src/main.ts`, scratch database, port 4493) | The API starts | **The API exits at start-up.** `SystemAccessLines.onModuleInit` → `assertFirmDataDeclared` throws: "AUD-3: each of our staff's routes declares what it does with firms' data … ErasureController.read (/api/system/erasure/requests/:id), ErasureController.approve (…/approve), ErasureController.cancel (…/cancel), PlatSwitchController.list (/api/system/switches), PlatSwitchController.set (…/:key)". Control: the unmerged head starts on :4494 and answers 401. On the merged tree `check_pf12_walls` goes 110/0 → 105/5 ("the API starts as xr_app" fails at the init hook). `check_aud3_access` stays 30/0 because its list (line 216) names fixed features and omits platform-erasure. A builder's PR runs no suites, and this PR's base is #3234's branch, not main. Its CI therefore cannot see the failure until it retargets. Once merged, the demo, which updates itself, would not start. Each route needs one of `@ReadsFirm` / `@ChangesFirm` / `@ReadsAcrossFirms` / `@NoFirmData`. The register's own routes use `@ReadsAcrossFirms` for reads and `@NoFirmData` for changes. The switch routes are #3234's, the same gap in 1a | Blocker | api/src/platform/erasure/routes.ts:15,18,21 (1a: switches/routes.ts:15,18); main's audit/access/lines.ts:115-128 |
+| R1 | Re-run: a stale claim is retaken while run 1 is alive (claim aged 31 minutes; run 2 starts while run 1's delete is uncommitted) | The record keeps what was erased | Unchanged from round 2. Run 1 fails NOT_CLAIMED (failed 1, loud). Run 2 records `test.rows: NOTHING (no rows)` and COMPLETED while 2 rows were erased | Minor | service.ts:177-180 |
+| R2-R4 | Round-2 Minors | n/a | Untouched by this diff; still as in round 2 | Minor | as round 2 |
+
+R3-1 is a Blocker that only appears once this branch takes current main. It does not come from the re-stamp. The
+migration itself holds.
+
+**Verdict: Changes** for 2d698e3152788b7b05b92cdfeadd4844939cb233 (Blocker R3-1)
+Note: at the end of this round the branch was already at 452b1e122 (1b's routes declared) on eb19e71ad (1a's switch
+routes declared). Those heads were not broken here. A re-run should start from that head.

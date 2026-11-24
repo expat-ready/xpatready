@@ -140,3 +140,83 @@ Journey score (re-walked: journeys 8, 9 and 10 now hold, journey 5 shows the fai
 **Verdict: Approve** (no open Blocker or Major). List Minors 1-4 in the PR or fix them.
 
 Reviewer: Approve a371f89019cc458b05eae2c38d6cff20a1ec387d
+
+## Round 3: `2d698e3152788b7b05b92cdfeadd4844939cb233` (PR #3235, diff only)
+Scope: the commits since the last approved head `4689c3469`. Those are two merges of #3234's branch (`19f7ddc93`,
+`e9a032f99`; through `18996be2f` they bring main up to `a79e246c6` and 1a's round 3) and `2d698e315`, the re-stamp. 1a's
+files have their own review; I read them only where 1b depends on them. I ran everything in a fresh worktree on scratch
+databases (Postgres 18 on 127.0.0.1:54329, accepting connections; never :4400) and removed the worktree afterwards.
+
+**What changed since round 2: a rename only, confirmed.**
+* `git show --remerge-diff` prints nothing for `19f7ddc93` or `e9a032f99`, so neither merge carries a hand edit.
+* `2d698e315` touches 4 files, +4/−4:
+  * the migration folder rename `20261123120000_pf21d_erasure` → `20261124085000_pf21d_erasure` (99% similar). Its one
+    changed line is the PF-8b F4 comment, now `(as 20261123200000_pf21b_data_requests)`, which is #3189's stamp on main;
+  * `NEW` in `tests/check_pf21d_erasure.ts`;
+  * the stamp in `MODULE.rows/PF-21d.md`;
+  * the stamp in `screens/PF-21d/brief.md`.
+* The PR's whole diff against 1a (`git diff d6186236...2d698e315`, review files excluded) matches round 2's diff against
+  its base (`db8ee8a8c..a371f8901`) once the stamp is normalised. The only other differences are context lines and hunk
+  offsets that moved under 1a and main (the 1a row in the card, the hunk positions in `platform-register.prisma`), plus
+  the brief line, which now differs from 1a's copy. No code changed.
+
+**Ordering and fresh copies.**
+* At this head the migrations end `…20261124030000_pf17_support_keys`, `20261124032000_fo3c2_require_agreement`,
+  `20261124080000_pf21d_switch`, `20261124085000_pf21d_erasure`. Main's newest is still `20261124032000`. No migration on
+  current main (`a26e80b6a`) is missing from this branch.
+* The suite lines "own stamp, after every one before it (newest before: 20261124080000_pf21d_switch)" and "right after its
+  own migration, on an empty and a demo copy" pass. So does "prisma migrate diff … is empty".
+* Only #3189's migration (`20261123200000`, earlier) and 1b touch `plat_data_request` in its own right. Nothing outside 1b's
+  own files names `erase_on`, `erasing_since` or `plat_data_request_erasure_*`, on this head or on a trial merge with
+  current main. `git merge-tree` of this head with `origin/main` has no textual conflict.
+
+**Suites at this head:**
+
+| Suite | Result |
+|---|---|
+| check_pf21d_erasure | 24/0, run twice |
+| check_pf21d_switch | 20/0 |
+| check_pf21b_requests | 27/0 |
+| check_fo9b_merge | 88/0 (`erasing_since` and `erase_on` are not person columns: nothing to add) |
+| check_pf8b_f4_migrations | 9/9 |
+
+**New finding:**
+
+**M1 (Major): a clash with main since 23 Nov. With AUD-3 merged, the app stops at start-up because of 1b's three routes.**
+* AUD-3 part 1 (#3209, `1c701aa08`) merged to main on 24 Nov, after `a79e246c6`, so this branch does not have it yet. Every
+  route under `/api/system` that our staff call must now declare one of `@ReadsFirm`, `@ChangesFirm`, `@ReadsAcrossFirms`
+  or `@NoFirmData` (`audit/access/declare.ts`). `SystemAccessLines.onModuleInit` stops the start-up on any route without
+  one.
+* Features register themselves (P-214), so `features/platform-erasure.ts` is always loaded.
+* Probe on a trial merge of this head with `origin/main` (a commit object only, no ref, worktree removed):
+  `undeclaredFirmData(platform-erasure.controllers)` returns
+  `ErasureController.read (/api/system/erasure/requests/:id)`,
+  `ErasureController.approve (…/:id/approve)`,
+  `ErasureController.cancel (…/:id/cancel)`,
+  plus 1a's `PlatSwitchController.list` and `.set`.
+* `check_aud3_access` still passes on that merge (30/0), but only because its start-up line lists its controllers by
+  hand and does not include `platform-erasure`. The suite therefore misses this; the real start-up does not.
+* The PR's own CI runs against 1a's branch, which has no AUD-3 yet, so CI would pass and the break would only show once 1a
+  or 1b meets main.
+* To fix, once this branch carries #3209 (through 1a's next main merge, or by merging main directly):
+  * `@ReadsAcrossFirms(…)` on `read`, matching what #3209 gave `DataRequestController.read` ("one request, which may name
+    a firm and its person");
+  * `@NoFirmData(…)` on `approve` and `cancel`, matching `DataRequestController.move`. They change only ExpatReady's own
+    register. The erasure of a firm's rows happens in the job, not in these routes. If the builder thinks
+    `@ChangesFirm` fits better, argue it in the PR;
+  * add `ErasureController` to `check_aud3_access`'s start-up list and its `@NoFirmData` allow-list.
+
+  1a's switch routes need the same, in 1a's own PR (noted here for 1a's reviewer, not 1b scope).
+
+Round 2's Minors 1-4 are unchanged by this round; they stay listed in the PR.
+
+Journey score: not re-walked. This round is a re-stamp with no change in behaviour, so round 2's **9/10, pass** stands.
+
+**Verdict: Block** for `2d698e3152788b7b05b92cdfeadd4844939cb233`. Fix list:
+1. M1: after main (#3209) reaches this branch, declare AUD-3 on `ErasureController.read` (`@ReadsAcrossFirms`),
+   `.approve` and `.cancel` (`@NoFirmData`, or `@ChangesFirm` with a reason). Add the controller to `check_aud3_access`'s
+   start-up list and its `@NoFirmData` allow-list. Then re-run check_aud3_access and check_pf21d_erasure on that head.
+
+The re-stamp itself is correct and complete. It would be approved on its own.
+
+Reviewer: Block 2d698e3152788b7b05b92cdfeadd4844939cb233

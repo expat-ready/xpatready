@@ -212,6 +212,15 @@ try {
     entered && midCancel && midMove && ran.erased.includes(r4) && rowsOf(A, P4) === 0 && statusOf(r4) === "COMPLETED|-" && !kinds(r4).includes("ERASURE_CANCELLED")
     && (kinds(r4).match(/ERASURE_RESULT/g) ?? []).length === 2, { entered, midCancel, midMove, ran, s: statusOf(r4), k: kinds(r4) });
   mode = "nothing";
+  // ------------------------------------- Lead B 5 on #3235: a person merged away between approval and the day
+  const P5 = person(A), P5s = person(A); addRows(A, P5);
+  const r5 = await deletion(A, P5); await svc.approve(as, null, r5); clock.t += 7 * DAY;
+  sql(`update fo_person set merged_into_id = '${P5s}', merged_at = now() where id = '${P5}'`);
+  seen.length = 0;
+  const gone = await svc.run(); await svc.run();
+  ok("PF-21d fail (Lead B 5, SA-11-40 rule 6): a person merged away after approval → HELD with why (one step over two runs), no eraser called, the rows stay, never a false COMPLETED; the merge is not followed",
+    gone.held.includes(r5) && seen.length === 0 && rowsOf(A, P5) === 2 && statusOf(r5).startsWith("HELD|2") && (kinds(r5).match(/ERASURE_HELD/g) ?? []).length === 1
+    && /merged away or is no longer in that firm/.test(sql(`select note from plat_data_request_event where request_id = '${r5}' and kind = 'ERASURE_HELD'`)), { gone, s: statusOf(r5), k: kinds(r5) });
   // -------------------------------------------------------------------------------------- the database's rules
   ok("PF-21d fail (database): an erase day on an access request or not after the day received, a forged mark through the job's step → refused",
     refusedBySql(`update plat_data_request set erase_on = received_on + 7 where id = '${access}'`, /plat_data_request_erase_on_set/)
