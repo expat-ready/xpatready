@@ -78,8 +78,8 @@ try {
   ok("R1.53 QA-779 E1 pass: { email } on a person with none is saved, trimmed and lower-cased, with the person's new version",
     saved.status === 200 && saved.body.email === `ana.${run}@example.com` && emailOf(ana.pid) === `ana.${run}@example.com` && typeof saved.body.version === "string", saved.body);
   const bea = person("Bea", R.id);
-  const bad = await Promise.all(["not-an-email", "name@example", "two@@example.com", "a b@example.com", `x@example.com${"\u0000"}`, `${"a".repeat(250)}@example.com`].map((e) => edit(tok.R, bea.pid, { email: e })));
-  ok("R1.53 QA-779 E1 fail: an address that is not an email (no @ or domain, two @, a space, a control mark, over 254 characters) → 422 with the field's one sentence, nothing saved",
+  const bad = await Promise.all(["not-an-email", "name@example", "two@@example.com", "a b@example.com", `x@example.com${"\u0000"}`, "a\u0085b@example.com", "a​b@example.com", `${"a".repeat(250)}@example.com`].map((e) => edit(tok.R, bea.pid, { email: e })));
+  ok("R1.53 QA-779 E1 fail: an address that is not an email (no @ or domain, two @, a space, a control or invisible mark (U+0000, U+0085, U+200B), over 254 characters) → 422 with the field's one sentence, never a 500, nothing saved",
     bad.every((a) => a.status === 422 && fieldOf(a, "email") === NOT_AN_EMAIL) && emailOf(bea.pid) === "-" && lines(bea.pid) === 0, bad.map((a) => [a.status, fieldOf(a, "email")]));
   const empty = await Promise.all([{ email: "   " }, { email: null }, { email: 12 }].map((b) => edit(tok.R, bea.pid, b)));
   ok("R1.53 QA-779 E1 fail: an empty email or none (removing an email is not asked for) → 422 \"Enter an email address.\"; not text → the field's sentence; nothing saved",

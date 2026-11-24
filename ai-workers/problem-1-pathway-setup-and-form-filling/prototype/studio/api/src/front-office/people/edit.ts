@@ -98,7 +98,8 @@ export class PeopleEdit {
     // FO-2's rule (the one every arrival door stores by); any refusal is the field's one sentence (as the phone, breaker F7).
     let address: string | null;
     try { address = emailRule(v); } catch (e) { if (e instanceof HttpException && e.getStatus() === 422) address = null; else throw e; }
-    if (!address) return unprocessable(`Email: ${NOT_AN_EMAIL}`, { email: NOT_AN_EMAIL });
+    // No control, format or separator mark at all (U+0085 passes FO-2's rule but not fo_person_email_check: never a 500).
+    if (!address || /[\p{C}\p{Z}]/u.test(address)) return unprocessable(`Email: ${NOT_AN_EMAIL}`, { email: NOT_AN_EMAIL });
     return { email: address, phone: ph === undefined ? null : this.phoneOf({ phone: ph }) };
   }
 
