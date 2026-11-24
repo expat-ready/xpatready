@@ -46,3 +46,54 @@ None in this diff. Not this PR's to fix: the breaker's M1 (`break-report.md`) is
 Reviewer: Changes a4365b0ac50c5b1a6f13c99b30fb84d5cc11443f
 
 Verdict: Changes a4365b0ac50c5b1a6f13c99b30fb84d5cc11443f
+
+# Round 2, head df7e5d15d89c4a13f9545140311f31e2c0ed2759
+
+Fresh reviewer, 24 Nov. I read `git diff a4365b0ac..df7e5d15d` (code only), pg 8.22.0 `client.js` and `query.js`, pg-pool 3.14.0 `index.js` and adapter-pg 7.8.0 `PgTransaction`/`startTransaction`. Everything ran on scratch databases on :54329. I used no port and did not touch :4400. Each mutation was made in place and then restored from a copy (same sha1 a3166ec2; `git status` clean at the end).
+
+## What I ran
+| Check | Result |
+|---|---|
+| `check_pool_tx_return.ts`, 3 runs | **16 passed, 0 failed, exit 0** each time (the exact `=== 1` / `=== 2` event counts did not flake) |
+| The same with origin/main a26e80b6a's `firm-scope.ts` | 2 passed, 14 failed, exit 1 (matches the PR comment) |
+| `typecheck.mjs` (it needed 11 GB of heap; at 6 GB tsc ran out of memory before checking any file) | **PASS: no new type errors (15 known, 0 fixed)**. B1 is fixed |
+| `check_pf12_walls` / `pf4b_session_reads` / `pf11c_close` | 110/0, 55/0, 47/0. `platform_pool_open_transaction` fired 0 times in all three |
+| `pf4r_lockout_race` | Not run: it needs a running isolated copy (`isolated.sh pf4r 4421`) |
+
+## Each round-1 item, and whether its test fails without its fix (mutations)
+| Item | Fixed? | Mutation, then result |
+|---|---|---|
+| B1 | Yes. A local `PgState` type at all three sites | typecheck PASS (above) |
+| m1 | Yes, in both guards (`idleNow`: 'I', no active query, empty queue) | `idleNow` back to status only: **15/1**, only "review m1" fails (r8 is the same pid with intx true). **But** only the release half back to status only: 16/0. Only the checkout half back to status only: 16/0. See m7 |
+| m2 | Yes. The guard's own `warn` line is counted after set-up, case 3 and the checkout case | Release guard off: 13/3 (both "destroyed" counts and "release guard" fail). Checkout guard off: 13/3 |
+| m3 | Yes, `logPort.warn` at both sites | Back to `info`: 13/3 (the three m2 counts fail, because `fired` requires `"warn"`) |
+| m4 | Yes. `notIdleError()` builds a fresh error at every release and throw | Code read. It cannot be tested from outside, and that is fine |
+| m5 | Yes | `idle(1)` changed to `idle(2)`: 15/1, only "review m5" fails ("handed out"). Checkout guard off: it fails too |
+| m6 | In part. The 07:16 PR comment gives 2/14 and 16/0 and the wider suites | The PR **body** still says "2 passed, 7 failed" and "11 passed" and "results in the next comment" |
+
+## The new questions asked
+- **Does reading `_getActiveQuery()` / `_queryQueue` misfire on a legitimate release? No.** pg clears `_activeQuery` before it calls the query's callback, both at ReadyForQuery (client.js:383-388) and on an ErrorResponse (client.js:432). So any release made in or after a callback sees nothing in flight. That covers adapter-pg (`commit`/`rollback`/`startTransaction`'s catch release only after an awaited statement), `WalledPool.query()` (releases after `await c.query`), and the callback form `connect(cb)`/`done()`. pg-pool's own releases (a timed-out pending item, maxLifetime, `verify`, a connect-hook error) call pg-pool's raw release-once, never the wrapper: the wrapper is installed only in `WalledPool.connect`'s `.then`, and pg-pool replaces `client.release` at every `_acquireClient` (index.js:342), so wrappers do not stack. `api/src` has no direct `pool.connect()`/`release()` and sets no `query_timeout`. I checked this with a scratch probe of 10 release paths (`scratchpad/probe/misfire.ts`). There were 0 guard events for: `pool.query` ok, a caught error outside a transaction then a plain release, an error inside a transaction then ROLLBACK then release, concurrent queries then release, and callback connect plus `done()`. Two paths destroy, and both are correct or fail closed (n2).
+- **Load-time check.** It covers `getTransactionStatus` and `_getActiveQuery` on the prototype. `_queryQueue` is an instance field, so the check cannot see it. If it were renamed, `idleNow` would always be false: every checkout would be destroyed twice and then refused. That fails closed, but as an outage found at the first checkout rather than at load (n1).
+- **`useLog` capture.** It is sound. `logPort` reads the module's `current` on every call, so the `JsonLog` sink set before the pool is built gets every line. `"destroyed"` with its quotes does not match `"destroyed-at-checkout"`. The `"warn"` filter makes the counts check m3 as well. The logger is not restored, which is harmless in a one-shot process. Every other log line is swallowed too, so a failing run prints no pool or log errors (a nit only).
+- **The restructured m1 case** (firm B already waiting, then `c7.query("begin")` and `c7.release()` in the same tick). It is deterministic: the BEGIN is submitted at once, so `_activeQuery` is set when `release()` runs. The client is destroyed and its BEGIN fails with "Connection terminated" (caught). pg-pool's `_remove` then pulses the queue and opens a new client for B. The assertion (another pid, firm B, not in a transaction) is right. It does not prove which guard caught it, though (m7).
+
+## Blockers
+None. B1 is fixed.
+
+## Majors
+None. The breaker's M1 is ruled its own row (Lead 24) and is not judged here. Lead B's `readyForQuery === true` Minor is routed to the M1 row by the Lead, so I do not raise it again.
+
+## Minors (none blocks)
+- **m6 (still open in part): the PR body's counts are stale.** Fix: set the body's checks to 2/14 on main and 16/0 here, and point to the 07:16 comment for the wider suites.
+- **m7: each guard's in-flight half has no test of its own.** The m1 case is caught by either half, so taking the in-flight check out of the release guard alone, or out of the checkout guard alone, still passes 16/0. The comment at the test's m1 case says "the release guard also needs nothing in flight", but nothing pins that. Fix: add round 1's original scenario for the checkout half (release idle with no waiter, then `c.query("begin")` not awaited, then a checkout must get another pid outside a transaction). For the release half, assert `fired("destroyed")` went up by one in the existing m1 case, because with only the release half gone the event comes from `destroyed-at-checkout` instead.
+
+## Notes (no change asked)
+- **n1:** the load-time check could also test `Array.isArray(new pg.Client()._queryQueue)` (a client that is never connected costs nothing), so that a pg rename stops the load instead of refusing every checkout.
+- **n2: destroys that fail closed, and the event's wording.** (a) A deferred-constraint COMMIT failure, caught and then released plainly, was destroyed with a `destroyed` warn in 1 of 2 runs. At release the state was 'T', with no active query and `readyForQuery` false: the ErrorResponse had been handled and the ReadyForQuery had not yet arrived. Round 1's status-only check had the same lag. Deferrable constraints do exist (`fo9b_person_merge`, `fo5_retainer_tables`, `r1d_none_apply`), so a COMMIT that fails this way can log a false alarm and close one connection. Nothing leaks. (b) A bind error in `toPostgres`, released plainly: pg has sent Close+Sync and not yet had its answer (`_activeQuery` is still set), so destroying it is right. Either way the event name and the error text say "inside a transaction", while the client may only be busy. Consider "not idle".
+
+## Not applicable
+Journey test (reviewer role): **N/A, no score.** There is no screen, route, words or demo step, so there is no persona journey and no journey report was written. The same goes for D1-D20 and BIC-01 to BIC-20.
+
+Reviewer: Approve df7e5d15d89c4a13f9545140311f31e2c0ed2759
+
+Verdict: Approve df7e5d15d89c4a13f9545140311f31e2c0ed2759
