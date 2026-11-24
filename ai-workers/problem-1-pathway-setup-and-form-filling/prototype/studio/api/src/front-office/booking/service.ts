@@ -29,6 +29,7 @@ import type { JobPort, JobRun } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import type { OfficeClockPort } from "../../../../ports/offices.ts";
 import { MessageRefused } from "../../../../ports/messages.ts";
+import { NOTIFICATION_KIND, type NotificationPort } from "../../../../ports/notifications.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { enterFirm, firmScope, notInFirm, withFirm } from "../../platform/firm-scope.ts";
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
@@ -41,6 +42,7 @@ import { windowsFor } from "./settings/hours.ts";
 import { hashVerifier, issueToken, liveToken, parseToken } from "./tokens.ts";
 import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../platform/http/input.ts";
 import { assertAgreementSigned } from "./consultation-agreement/gate.ts";
+import { linkFor, VIDEO_WORDS } from "./video/service.ts";
 
 type Tx = Prisma.TransactionClient;
 type Status = "SCHEDULED" | "RESCHEDULED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
@@ -64,6 +66,8 @@ export type BookingPorts = {
   warn?: (msg: string) => void;
   /** PF-18a DW6: the host's office zone (OfficeClockPort, platform's OFFICE_CLOCK in the running app). Absent → the firm's own zone. */
   offices?: OfficeClockPort;
+  /** FO-3v part 1 (AG-4-29 rule 7): the host's one home item when a Video booking has no link (PF-18n's port; absent → none). */
+  notifications?: NotificationPort<Tx>;
 };
 // Reads are limited per IP only: a per-firm read limit let a group of addresses close a firm's page for everyone (break
 // R2-1). The per-firm booking limit counts only bookings actually made, so refused or never-offered forms cannot close it
@@ -339,7 +343,7 @@ export class BookingService {
     const out = await this.create(firm.id, type, { startsAt: b.startsAt, mode: b.mode, timeZone: b.timeZone }, { word: "system:booking-page" },
       async (tx, bookingId) => this.ports.arrival.bookingArrived(tx, { firmId: firm.id, person, ...(consent ? { consent } : {}), bookingId }),
       { gate: () => this.gate(firm.id, b.formStamp), token: true });
-    return { ...this.publicAnswer(out.booking, type, firm), manageToken: out.token as string };
+    return { ...await this.publicAnswer(out.booking, type, firm), manageToken: out.token as string };
   }
 
   /** GET the self-service view by token: what, when, and whether it can still be changed here. */
@@ -348,7 +352,7 @@ export class BookingService {
     const { booking, type, firm } = await this.byToken(this.db, token);
     const open = this.selfServiceOpen(booking, type);
     return {
-      ...this.publicAnswer(booking, type, firm),
+      ...await this.publicAnswer(booking, type, firm),
       canChange: open, canReschedule: open && type.allowReschedule, canCancel: open && type.allowCancel,
       message: open ? null : "Your meeting starts soon, so it can no longer be changed here. Please reply to your confirmation email or call the firm.",
     };
@@ -374,7 +378,7 @@ export class BookingService {
     const b = parse(RescheduleBody, body);
     const { booking, type, firm } = await this.byToken(this.db, token);
     const out = await this.move(booking.firmId, booking.id, b.startsAt, b.timeZone, { word: "system:booking-link" }, token);
-    return { ...this.publicAnswer(out.booking, type, firm), manageToken: out.token ?? token };
+    return { ...await this.publicAnswer(out.booking, type, firm), manageToken: out.token ?? token };
   }
 
   /** POST a cancel by link, with the booker's optional reason (kept on the booking, FO-3pa DW7, DW10). */
@@ -383,7 +387,7 @@ export class BookingService {
     linkShape(token);
     const c = parse(CancelBody, body);
     const { booking, type, firm } = await this.byToken(this.db, token);
-    return this.publicAnswer(await this.cancelBooking(booking.firmId, booking.id, { word: "system:booking-link" }, token, c.reason || undefined), type, firm);
+    return await this.publicAnswer(await this.cancelBooking(booking.firmId, booking.id, { word: "system:booking-link" }, token, c.reason || undefined), type, firm);
   }
 
   /** GET the booking's calendar file by link: the invite the confirmation email carries (same UID, SEQUENCE and times;
@@ -393,7 +397,7 @@ export class BookingService {
     const { booking, type, firm } = await this.byToken(this.db, token);
     const person = booking.personId ? await this.ports.arrival.contactOf(this.db, booking.firmId, booking.personId) : null;
     if (!person) throw notFound();
-    return this.inviteIcs(booking, type, firm, "REQUEST", { name: `${person.givenNames} ${person.familyName}`, email: person.email });
+    return this.inviteIcs(booking, type, firm, "REQUEST", { name: `${person.givenNames} ${person.familyName}`, email: person.email }, await this.videoLink(this.db, booking));
   }
 
   // ========================================================================================= staff (services until PF-4)
@@ -576,6 +580,7 @@ export class BookingService {
             const who = await arrive(tx, bookingId);
             const booking = await tx.foBooking.update({ where: { id: row.id }, data: { personId: who.personId, prospectId: who.prospectId ?? null } });
             const token = pub?.token ? await issueToken(tx, firmId, booking.id, booking.endsAt) : undefined;
+            await this.setVideo(tx, booking, actor);   // FO-3v: saved values only, no network, never fails on its own
             await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.scheduled", entity: "fo_booking", entityKey: booking.id,
               summary: `Consultation booked (${type.name})${withWarnings(slot.warnings)}.`, detail: { bookingId: booking.id, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, startsAt: booking.startsAt.toISOString(), sequence: booking.sequence, ...warningDetail(slot.warnings, booking.overlapConfirmedByUserId) },
               before: null, after: { status: booking.status, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, mode: booking.mode, startsAt: booking.startsAt.toISOString(), endsAt: booking.endsAt.toISOString(), bookerTimeZone: booking.bookerTimeZone } });
@@ -623,6 +628,7 @@ export class BookingService {
           const staffId = slot.staffId;
           // A move clears an earlier overlap confirmation unless this move is itself confirmed over an overlap.
           const after = await tx.foBooking.update({ where: { id: b.id }, data: { startsAt: slot.startsAt, endsAt: slot.endsAt, staffId, status: "RESCHEDULED", overlapConfirmedByUserId: confirmer(slot, any), ...(zone ? { bookerTimeZone: zone } : {}) } });
+          if (staffId !== b.staffId) await this.setVideo(tx, after, actor);   // FO-3v (AG-4-29 rule 9): a new host's link
           // A new link for the self-service answer only; the emails issue their own (staff never get one, m7).
           const newToken = token ? await issueToken(tx, firmId, after.id, after.endsAt) : undefined;
           await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.rescheduled", entity: "fo_booking", entityKey: b.id,
@@ -656,6 +662,7 @@ export class BookingService {
       // The booker's reason is kept on the booking (AG-04 v2.1 Booking.cancelReason; Lead B rev 16.30), never in the audit
       // entry, which holds ids and facts (AuditPort's rule): it says only that a reason was given (FO-3pa DW7, DW10).
       const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: "CANCELLED", ...(reason ? { cancelReason: reason } : {}) } });
+      await tx.foBookingVideo.updateMany({ where: firmScope(firmId, { bookingId: b.id, voidedAt: null }), data: { voidedAt: this.ports.clock.now() } });   // FO-3v rule 9: a cancel voids the link
       await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.cancelled", entity: "fo_booking", entityKey: b.id,
         summary: token ? `Consultation cancelled by the booker.${reason ? " A reason was given." : ""}` : "Consultation cancelled.", detail: { bookingId: b.id, sequence: after.sequence },
         before: { status: b.status }, after: { status: after.status } });
@@ -708,8 +715,8 @@ export class BookingService {
     const type = await withTimings(this.db, b.firmId, await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) }));
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { key: true, operatingName: true, contactEmail: true } });
     const zone = b.bookerTimeZone, when = wallLabel(b.startsAt, zone), how = MODE_WORDS[b.mode as Mode], method = METHOD[p.kind];
-    const where = meetWhere(b, type);
-    const invite = (attendee: { name: string; email: string }) => ({ filename: "invite.ics", contentType: `text/calendar; charset=utf-8; method=${method}`, bytes: new TextEncoder().encode(this.inviteIcs(b, type, firm, method, attendee)) });
+    const where = meetWhere(b, await this.videoLink(this.db, b));
+    const invite = (attendee: { name: string; email: string }) => ({ filename: "invite.ics", contentType: `text/calendar; charset=utf-8; method=${method}`, bytes: new TextEncoder().encode(this.inviteIcs(b, type, firm, method, attendee, where.link)) });
     const verb = p.kind === "booked" ? "is booked" : p.kind === "moved" ? "has moved" : "is cancelled";
     if (p.to === "host") {
       // The host's copy holds only what runs the meeting (AG-4-42).
@@ -727,7 +734,7 @@ export class BookingService {
     const link = token ? `\n\nTo reschedule or cancel: ${this.manageLink(firm.key, token)}` : "";
     try {
       await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "TRANSACTIONAL", person: { kind: "FO_PERSON", id: b.personId! }, idempotencyKey: job.key, templateKey: `booking.${p.kind}`,
-        subject: `Your ${type.name} ${verb}`, text: `Hello ${person.givenNames},\n\nYour ${type.name} with ${firm.operatingName} ${verb}${p.kind === "cancelled" ? "" : `: ${when}. ${how}. ${where}`}${link}\n\nReplies to this email reach the firm.`,
+        subject: `Your ${type.name} ${verb}`, text: `Hello ${person.givenNames},\n\nYour ${type.name} with ${firm.operatingName} ${verb}${p.kind === "cancelled" ? "" : `: ${when}. ${how}. ${where.words}`}${link}\n\nReplies to this email reach the firm.`,
         attachments: [invite({ name: `${person.givenNames} ${person.familyName}`, email: person.email })] });
     } catch (e) {
       if (token) await this.db.foBookingToken.update({ where: { id: token.split(".")[0] }, data: { voidedAt: new Date() } }).catch(() => undefined);
@@ -761,7 +768,7 @@ export class BookingService {
     const person = await this.ports.arrival.contactOf(this.db, b.firmId, b.personId);
     if (!person) return;
     await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "FO_PERSON", id: b.personId }, idempotencyKey: job.key, templateKey: `booking.reminder_${p.kind}`,
-      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.\n\nReplies to this email reach the firm.` }).catch((e) => this.refusedIsFinal(e, b.id));
+      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.${b.mode === "VIDEO" ? ` ${meetWhere(b, await this.videoLink(this.db, b)).words}` : ""}\n\nReplies to this email reach the firm.` }).catch((e) => this.refusedIsFinal(e, b.id));
   }
 
   /** The attendance question, 30 min after the end: it is shown, not pushed (AG-4-39 rule 2, "no email, no alert"; FO-3m
@@ -925,16 +932,43 @@ export class BookingService {
   /** The public answer about a booking (book, manage, reschedule, cancel; FO-3pa DW4, DW8): the booking, its type's name
    *  and switches, the firm's contact details and the limit in hours; the join link once the booking is confirmed and
    *  active by video. No staff, firm, person or type id. */
-  private publicAnswer(b: BookingRow, type: TypeRow, firm: FirmRow) {
+  private async publicAnswer(b: BookingRow, type: TypeRow, firm: FirmRow) {
     const live = ACTIVE.includes(b.status as Status);
-    return { ...this.publicView(b), typeName: type.name, ...typeRules(type), firm: firmContact(firm), joinLink: live && b.mode === "VIDEO" ? type.meetingLink ?? null : null };
+    return { ...this.publicView(b), typeName: type.name, ...typeRules(type), firm: firmContact(firm), joinLink: live ? await this.videoLink(this.db, b) : null };
+  }
+
+  /** FO-3v part 1: the booking's own link (fo_booking_video, not voided), for Video bookings only; else null. The one
+   *  read for the emails, the .ics, the reminders and the public answers (the type's meetingLink is not a source). */
+  private async videoLink(db: Tx | PrismaClient, b: BookingRow): Promise<string | null> {
+    if (b.mode !== "VIDEO") return null;
+    const v = await db.foBookingVideo.findFirst({ where: firmScope(b.firmId, { bookingId: b.id, voidedAt: null }), select: { meetingLink: true } });
+    return v?.meetingLink ?? null;
+  }
+
+  /** FO-3v part 1 (AG-4-29 rules 2, 6, 7, 9): inside the booking's transaction, the host's link for a Video booking,
+   *  written to fo_booking_video from saved values (no network); a new host replaces it. With no source the booking
+   *  stays made, its emails say "Your join link will follow." and the host gets one home item (one per booking: the
+   *  port keeps one per person, item and kind). Audit "video link set (source: …)", never the URL (§9). Nothing here
+   *  catches an error: a caught failure would still abort the transaction. */
+  private async setVideo(tx: Tx, b: BookingRow, actor: Actor) {
+    if (b.mode !== "VIDEO") return;
+    const got = await linkFor(tx, b.firmId, b.staffId);
+    const at = { firmId: b.firmId, bookingId: b.id };
+    if (!got) {
+      await tx.foBookingVideo.deleteMany({ where: firmScope(b.firmId, { bookingId: b.id }) });
+      await this.ports.notifications?.notify(tx, { staffId: b.staffId }, NOTIFICATION_KIND.VIDEO_LINK_NEEDED, { kind: "booking", id: b.id });
+      return;
+    }
+    const row = await tx.foBookingVideo.upsert({ where: { firmId_bookingId: at }, create: { ...at, meetingLink: got.link, provider: got.provider }, update: { meetingLink: got.link, provider: got.provider, externalMeetingId: null, voidedAt: null }, select: { id: true } });
+    await this.ports.audit.record(tx, { firmId: b.firmId, actor: actor.word, action: "booking.video_link_set", entity: "fo_booking_video", entityKey: row.id,
+      summary: `Video link set (source: ${got.source === "MY_LINK" ? "my link" : got.source.toLowerCase()}).`, detail: { bookingId: b.id, staffId: b.staffId, provider: got.provider }, before: null, after: { provider: got.provider } });
   }
 
   /** The booking's invite, as the emails attach it and the link downloads it (one writer: same UID, SEQUENCE, times). */
-  private inviteIcs(b: BookingRow, type: TypeRow, firm: { operatingName: string; contactEmail: string }, method: InviteMethod, attendee: { name: string; email: string }) {
+  private inviteIcs(b: BookingRow, type: TypeRow, firm: { operatingName: string; contactEmail: string }, method: InviteMethod, attendee: { name: string; email: string }, link: string | null) {
     return bookingIcs({
       bookingId: b.id, sequence: b.sequence, method, startsAt: b.startsAt, endsAt: b.endsAt, stamp: this.ports.clock.now(),
-      summary: `${type.name} with ${firm.operatingName}`, description: `${MODE_WORDS[b.mode as Mode]}. ${meetWhere(b, type)}`, location: b.mode === "VIDEO" ? (type.meetingLink ?? undefined) : undefined,
+      summary: `${type.name} with ${firm.operatingName}`, description: `${MODE_WORDS[b.mode as Mode]}. ${meetWhere(b, link).words}`, location: b.mode === "VIDEO" ? (link ?? undefined) : undefined,
       organizer: { name: firm.operatingName, email: firm.contactEmail }, attendee,
     });
   }
@@ -1027,7 +1061,8 @@ export function firmContact(firm: FirmRow) {
 /** The type's switches for the booker (FO-3pa): reschedule and cancel by link, and the self-service limit in hours. */
 const typeRules = (t: TypeRow) => ({ allowReschedule: t.allowReschedule, allowCancel: t.allowCancel, selfServiceLimitHours: t.selfServiceLimitMinutes / 60 });
 /** Where the meeting is, in the invite's and email's words. */
-const meetWhere = (b: BookingRow, t: TypeRow) => b.mode === "VIDEO" ? (t.meetingLink ?? "Your join link will follow.") : b.mode === "PHONE" ? "The firm will call you." : "At the firm's office.";
+/** FO-3v: a Video booking's words are its own link (fo_booking_video), else "Your join link will follow." (AG-4-29 rule 7). */
+const meetWhere = (b: BookingRow, link: string | null) => b.mode === "VIDEO" ? { words: link ?? VIDEO_WORDS.noLink, link } : { words: b.mode === "PHONE" ? "The firm will call you." : "At the firm's office.", link: null };
 
 /** No free host at the asked time, found inside the write; the caller answers 409 with fresh times once the transaction
  *  has ended (reading them inside it would hold a second connection). */
