@@ -126,3 +126,54 @@ This round changes no behaviour, so I gave no journey score: the screen and the 
 **Verdict: Approve** (no open Blocker or Major).
 
 Reviewer: Approve d6186236088f2623c5fb9a9ff1ffe544454e09fc
+
+## Round 4 (eb19e71addc93d02ab6c6f9ba90079ec5432fbc9, diff only, Lead 23)
+
+Scope: AUD-3 (#3209) reached main. The API now refuses to start when an /api/system route our staff call has no firm-data declaration (`api/src/platform/audit/access/declare.ts`, `SystemAccessLines.onModuleInit`). Since the last approved head ba86ad46c the branch has two commits: the merge 92936f39c of origin/main (a26e80b6a), and eb19e71ad, which adds the declarations and the test-list change.
+
+This round changes only declarations, so I gave no journey score. Neither the screen nor the API's behaviour changed.
+
+**Checks:**
+- **The merge has no hand edits.** `git show --remerge-diff 92936f39c` (HEAD^) printed only the commit header, no diff. The merge base of eb19e71ad and origin/main is a26e80b6a, which is origin/main's tip.
+- **@NoFirmData is true for both routes.**
+  - `PlatSwitches.list` reads only `plat_switch_list()`. `set` calls only `plat_switch_set(...)` and `plat_switch_list()`, then writes our staff's own line through `identity.audit` (plat_system_audit).
+  - In migration `20261124080000_pf21d_switch`, `plat_switch` has the columns key, is_on, changed_by, changed_at. `plat_switch_event` has id, seq, key, is_on, reason, actor, at. Neither table has a firm or tenant column, and the definers refuse inside a firm's session.
+  - The answer holds only the switch key, its name, on/off, changedBy (`staff:`/`seed:`/`system:`) and changedAt. It contains no firm's data and no firm's name.
+- **The declarations follow the precedent on main.**
+  - Reads of registers that name firms are declared @ReadsAcrossFirms: #3189's `DataRequestController` GET / and GET /:id, and PF-21c's `BreachController` GET / and GET /:id.
+  - Writes to ExpatReady's own registers are declared @NoFirmData: `DataRequestController.log`/`move`, and `BreachController.open`/`fromAlert`/`change`.
+  - A switch names no firm, so its read is not a cross-firm read. @NoFirmData on the GET matches `SystemIdentityController.me`, and on the POST it matches the register writes.
+  - Both reasons are plain words that pass `words()`; if they did not, importing the module would throw.
+- **The `check_aud3_access.ts` change is right and minimal.**
+  - It imports `features/platform-erasure.ts` and adds its controllers to the start-up list (DW3 pass) and to the opt-out list (m4).
+  - It adds `PlatSwitchController.list` and `PlatSwitchController.set` to the reviewed @NoFirmData list, in sorted order, and updates the two test names to mention them.
+  - It is a +6/−5 hunk; nothing else in the file changed.
+- **Nothing else in the PR changed.** I compared `git diff origin/main...eb19e71ad` with round 3's `git diff origin/main...ba86ad46c`, ignoring index and hunk-header lines. The only differences are:
+  - the `NoFirmData` import line in `switches/routes.ts`;
+  - the decorators on its two routes;
+  - the new `check_aud3_access.ts` hunk.
+  The PR is now 15 files (+906 −5); it was 14 files (+899). The extra file and the −5 are the test-list hunk.
+
+**Runs.** All on eb19e71ad, in a scratch worktree, against Postgres 18 on 127.0.0.1:54329 (accepting connections). Nothing used :4400.
+
+| Run | Result |
+| --- | --- |
+| `check_aud3_access.ts` | 30 passed, 0 failed |
+| `check_pf21d_switch.ts`, run 1 | 20 passed, 0 failed |
+| `check_pf21d_switch.ts`, run 2 | 20 passed, 0 failed |
+| `isolated.sh rv1a 4473 start --ttl 15` | started on :4473 (xr_studio_rv1a) |
+| `GET /api/health` | 200 |
+| `GET /api/system/switches`, no token | 401 NOT_SIGNED_IN |
+| `POST /api/system/switches/platform.data-erasure`, no token | 401 |
+| `GET /api/system/no-such-route` | 404 |
+| `isolated.sh rv1a 4473 stop` | stopped; database and files removed |
+
+- The `check_aud3_access.ts` result includes the DW3 start-up pass, which now names PF-21d's switches, and the m4 opt-out list, which includes the two PlatSwitchController routes. I ran this suite a second time only to print those two lines; it gave the same result.
+- **The real start-up passed with the merged tree.** `onModuleInit` checks every controller in every module, so the start-up assertion passed with PlatSwitchController loaded. The API log shows both routes as Nest route templates (`GET /api/system/switches`, `POST /api/system/switches/:key`). The 404 on the unknown route shows that the 401s came from the real switch routes, not from a catch-all.
+- **Setup and clean-up.** As in round 3, I linked the worktree's `studio/node_modules`, `studio/api/node_modules` and `.tools` to the main copy's. I removed the `.tools` link and the worktree afterwards. The repository is unchanged apart from this section.
+
+**Findings.** None new. Round 2's open Minors are unchanged: m3 (no case for the race or for the line sharing the transaction) and m5 (owner-only insert paths and the event `at`). Neither blocks.
+
+**Verdict: Approve** (no open Blocker or Major).
+
+Reviewer: Approve eb19e71addc93d02ab6c6f9ba90079ec5432fbc9
