@@ -302,3 +302,10 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * #3433: the gate labelled 14201132f at 14:13, seconds after my round 3 line; I removed the label. Its api code read, no fault found; asked what a client sees at /sign/<token> before 4b.
 * #3235 54ad5b8c2: records pushed, Approve posted. qa 6 near its limit, hand-over on #3461: a fresh qa session is owed (his typed turn), with PF-17 part 4.
 * Disk 7.3 GB, weekly 70%.
+
+### Lead 25, check 14:28 IST 24 Nov
+* **#3428 (P1, firm wall) merged 14:24 (main 65bbd0bcc). #3441 (M2) full run 45355250435 success, labelled.** M1 = #3467 (draft, lane 4oPSMou working).
+* Read lines posted: #3433 1438deef9 (the gate labels it; 4b before any real inbox), #3464 9d06a31da (.github files only). /run full asked on #3234 eb19e71ad. #3421's full run red on shard 9 and ci only; re-run after #3454 merges (first_calls).
+* #3442 2b950dec5: Lead B 6 OK, breaker approves, reviewer running; my read of money-out.ts and service.ts owed. R1.20 = #3465 (draft): breaker approves, reviewer running.
+* qa 6 ended; a conflict for the founder: AG-4-15 "warning, never a block" against #3420's gate (Lead 22's ruling), DECISIONS row owed; not checked in the source.
+* Owed to him: fresh qa and PF-17 part 4 sessions (asked 14:16). Disk 7.7 GB, weekly 71%. Context about 330k: hand over to Lead 26 at the next check.
