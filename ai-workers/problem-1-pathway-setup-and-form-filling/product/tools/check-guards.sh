@@ -32,6 +32,7 @@ TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-merge-wake.sh"   # wake on merge
+TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
@@ -304,6 +305,25 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 15 start|product/tools/queue-gate.sh|s/^  api -X POST "\$API\/repos\/\$REPO\/actions\/workflows\/ci.yml\/dispatches"/  true/|check-queue-gate.sh
 15 start who|product/tools/queue-gate.sh|s/^  approved \(..\) { echo "#\$PR: no full run: \$why";/  true \1 { echo "x";/|check-queue-gate.sh
 15 start wake|../../.github/workflows/queue-gate.yml|s/ .. (github.event.action == .labeled. \&\& github.event.label.name == .dequeued.)//|check-queue-gate.sh
+LW speed answer|product/tools/lead-watch-pre.sh|s/return "\$(cat "\$PRE_DIR\/\$i.rc")"; fi/return 0; fi/|check-lead-watch-speed.sh
+LW speed once|product/tools/lead-watch-pre.sh|s/ && mkdir "\$PRE_DIR\/\$i.taken" 2>\/dev\/null//|check-lead-watch-speed.sh
+LW speed together|product/tools/lead-watch-pre.sh|s/ ) &$/ )/|check-lead-watch-speed.sh
+LW speed order|product/tools/lead-watch-pre.sh|s/\[ "\$first" = 0 \] .. pre_wait "\$first"; //|check-lead-watch-speed.sh
+LW speed rc|product/tools/lead-watch-pre.sh|s/ && grep -qxE .*i.rc"; then/; then/|check-lead-watch-speed.sh
+LW speed disk|product/tools/lead-watch-pre.sh|s/PRE_FREE_KB:-1048576/PRE_NONE:-0/|check-lead-watch-speed.sh
+LW speed ended|product/tools/lead-watch-pre.sh|s/i.rc" ] && continue /i.rc" ]; /|check-lead-watch-speed.sh
+LW speed nofetch|product/tools/lead-watch.sh|s/; \[ -z "\$early" \] .. pre_off//|check-lead-watch-speed.sh
+LW speed key|product/tools/lead-watch-pre.sh|s/%q /%s /|check-lead-watch-speed.sh
+LW speed off|product/tools/lead-watch-pre.sh|s/ rm -rf "\${PRE_DIR:?}";//|check-lead-watch-speed.sh
+LW speed step|product/tools/lead-watch.sh|/^nw=/d|check-lead-watch-speed.sh
+LW speed fetch|product/tools/lead-watch.sh|s/^PRE_T0=.*fetch -q origin 2>.*/PRE_T0=0; early=/|check-lead-watch-speed.sh
+LW speed sweep|product/tools/lead-watch.sh|s/ after bash .*lead-queue.sh" -- bash/ pre bash/|check-lead-watch-speed.sh
+LW speed asks|product/tools/lead-watch.sh|s/^cm=.* --paginate/cm=$(gh api "x"/|check-lead-watch-speed.sh
+LW speed shut|product/tools/lead-watch.sh|s/ACT "comments since.*/true/|check-lead-watch-speed.sh
+LW speed cut|product/tools/lead-watch.sh|/ACT "comments since $since cut short/d|check-lead-watch-speed.sh
+LW speed list|product/tools/lead-watch.sh|s/type == "array" and length > 0 and //|check-lead-watch-speed.sh
+LW speed seconds|product/tools/fresh-lib.sh|s/ && w="\$s s · "//|check-lead-watch-speed.sh
+LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch-speed.sh
 16 source|product/tools/cockpit-data.py|s/                elif st != "open":/                elif False:/|check-lead-watch-board.sh
 16 count|product/tools/lead-watch.sh|s/; echo "\$bw"; act=\$((act + \$(grep -c .^ACT. <<<"\$bw")))/; echo "$bw"/|check-lead-watch-board.sh
 17 wall|product/tools/known-failures.py|s/(1 if b > int(row\["threshold"\]) else 0)/0/|check-known-failures.sh
