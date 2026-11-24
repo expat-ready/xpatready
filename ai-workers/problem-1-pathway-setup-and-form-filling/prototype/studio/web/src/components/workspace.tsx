@@ -42,7 +42,11 @@ export const itemOf = (path: string) => { const p = parsePath(path).pathname || 
  *  are each their own. Every other page (the Studio, every firm staff page: /platform, /front-office, /home, /account,
  *  /settings, …) is one area (review on 2fd5352aa: naming only /platform and /front-office as staff cut My account's links
  *  out of open-or-focus). */
-const personAreaOf = (path: string) => { const p = itemOf(path); return /^\/(cases|clients)(\/|$)/.test(p) ? "cases" : /^\/(sign-in|link|inbox)(\/|$)/.test(p) ? p : "app"; };
+const personAreaOf = (path: string) => { const p = itemOf(path); return /^\/(cases|clients)(\/|$)/.test(p) ? "cases" : PUBLIC.test(p) ? p : "app"; };
+/** Pages for people outside the firm, or before anyone is signed in (breaker N1 on 30ab3cde2): never an in-app tab of a
+ *  staff or Studio workspace; a link to one keeps the browser's way. */
+const STAFF = /^\/(platform|front-office|home|account|settings)(\/|$)/;
+const PUBLIC = /^\/(sign-in|sign-up|link|inbox|pricing|book|invitation|front-office\/web-form)(\/|$)/;
 const here = () => window.location.pathname + window.location.search + window.location.hash;
 const newId = () => Math.random().toString(36).slice(2, 10);
 /** Until a page names itself: the address's last part in words. */
@@ -113,7 +117,10 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   now.current = { tabs, active };
 
   React.useEffect(() => {
-    if (shownOwner.current !== NOBODY) try { sessionStorage.setItem(storeOf(shownOwner.current), JSON.stringify({ tabs: tabs.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
+    // The signed-out list ("local": the Studio and the case area) never keeps a staff page's address (breaker m1 on 30ab3cde2:
+    // a reload after Sign out wrote it there).
+    const kept = shownOwner.current === "local" ? tabs.filter((t) => !STAFF.test(itemOf(t.path))) : tabs;
+    if (shownOwner.current !== NOBODY) try { sessionStorage.setItem(storeOf(shownOwner.current), JSON.stringify({ tabs: kept.map(({ id, path, title }) => ({ id, path, title })), active })); } catch { /* not kept */ }
   }, [tabs, active]);
   React.useEffect(() => { setMounted((m) => (m.has(active) ? m : new Set(m).add(active))); }, [active]);
   React.useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(t); }, [notice]);
@@ -291,21 +298,25 @@ export function WorkspaceStrip() {
     return () => { ro.disconnect(); root.style.removeProperty("--ws-top"); };
   }, [shownHere, drawn]);
   // Breaker M3 on 2fd5352aa: the strip appearing (a second item opened, often by Ctrl-click in a list) or going away must not
-  // move the page under the pointer: the shown tab scrolls by the strip's height (a page too short to scroll gets that much
-  // room at its foot while the strip shows), so the next row is still where the person is about to click.
-  const wasDrawn = React.useRef(drawn), strip = React.useRef(0);
+  // move the page under the pointer. Where the page's main sat is read just before the strip changes (in render, before the
+  // DOM does); after it, the shown tab scrolls by exactly how far main moved, which is nothing where the browser already
+  // anchored the scroll (review on 30ab3cde2: Chrome does, so a fixed scroll by the strip's height moved it twice). A page
+  // too short to scroll gets the room at its foot while the strip shows.
+  const wasDrawn = React.useRef(drawn), mainTop = React.useRef<number | null>(null);
+  if (shownHere && wasDrawn.current !== drawn && mainTop.current === null) mainTop.current = document.querySelector("main")?.getBoundingClientRect().top ?? null;
   React.useLayoutEffect(() => {
-    const before = wasDrawn.current; wasDrawn.current = drawn;
-    if (!shownHere || before === drawn) return;
-    const root = document.documentElement, old = document.querySelector("[data-ws-room]");
-    if (drawn && box.current) {
-      const h = box.current.offsetHeight; strip.current = h;
-      if (!old && root.scrollHeight - window.innerHeight - window.scrollY < h) {   // the page's own heights are fixed: room is an element at the foot
-        const room = document.createElement("div"); room.dataset.wsRoom = ""; room.setAttribute("aria-hidden", "true"); room.style.height = `${h}px`; document.body.appendChild(room);
-      }
-      window.scrollBy(0, h);
-    } else if (!drawn) { window.scrollBy(0, -strip.current); old?.remove(); }
+    const before = wasDrawn.current, at = mainTop.current; wasDrawn.current = drawn; mainTop.current = null;
+    if (!drawn) document.querySelector("[data-ws-room]")?.remove();
+    if (!shownHere || before === drawn || at === null) return;
+    const now = document.querySelector("main")?.getBoundingClientRect().top, moved = now === undefined ? 0 : now - at;
+    if (!moved) return;
+    const root = document.documentElement;
+    if (moved > 0 && !document.querySelector("[data-ws-room]") && root.scrollHeight - window.innerHeight - window.scrollY < moved) {
+      const room = document.createElement("div"); room.dataset.wsRoom = ""; room.setAttribute("aria-hidden", "true"); room.style.height = `${Math.ceil(moved)}px`; document.body.appendChild(room);
+    }
+    window.scrollBy(0, moved);
   }, [drawn, shownHere]);
+  React.useLayoutEffect(() => () => { if (shownHere) document.querySelector("[data-ws-room]")?.remove(); }, [shownHere]);   // the strip gone any other way (a session ended): no room left behind
   // Lead 13: one open item needs no strip (its one tab could not even close), so a page alone looks as it did before PF-31:
   // the "where am I" line stays at the top on a phone and nothing sits over the page's own controls. A second item brings it.
   if (!ws || !me || ws.tabs.length < 2) return null;
@@ -348,7 +359,8 @@ export function WorkspaceStrip() {
           {tabs.length > 1 ? <button type="button" aria-label={`Close ${t.title}`} onClick={() => ws.close(t.id)} className="grid size-11 place-items-center rounded-lg hover:bg-text/5"><X className="size-4" aria-hidden /></button> : null}
         </li>)}
       </ul> : null}
-      {ws.notice ? <p role="status" data-ws-notice className="px-4 py-1 text-sm text-warning-foreground">{ws.notice}</p> : null}
+      {/* Breaker N3 on 30ab3cde2: the notice floats just under the strip, so the strip never grows and the page never moves under the pointer. */}
+      {ws.notice ? <p role="status" data-ws-notice className="absolute inset-x-0 top-full border-b border-border bg-surface px-4 py-1 text-sm text-warning-foreground shadow-sm">{ws.notice}</p> : null}
     </div>
   );
 }

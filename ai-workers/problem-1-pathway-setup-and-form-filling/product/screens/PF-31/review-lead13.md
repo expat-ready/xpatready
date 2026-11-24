@@ -101,3 +101,63 @@ Fixing findings 1 and 2 raises task completed and correct data. Fixing 3 and 5 r
 - No screen reader. No intended user's unaided walk (D17 and D20 stay with the founder).
 - No separate journey-test file, screenshots, or BIC table. The task allowed only this file, and PF-31 is not a case-side screen.
 - I did not compare scroll drift (6) against 74e27fc45.
+
+## Addendum: re-review of head 30ab3cde21af8b6f94ff9c0918bc5b70c65f55a0 (24 Nov)
+
+**Verdict: Changes (Ship after fixes). One Major is open: the M3 scroll fix moves the page by the strip's height on a page that is scrolled.** Both earlier Majors are fixed.
+
+Scope: diff only, `git show 6c4ff1f54` and `git show 30ab3cde2`. I walked the fresh copy at :4747 as user-S (sample-solo) and as Studio person user-A. Synthetic clicks were used where Playwright's own scrolling would have hidden the result.
+
+### Earlier findings
+- **Major 1: fixed.** `personAreaOf` now gives "cases" for `/cases` and `/clients`, `/sign-in`, `/link` and `/inbox` each their own, and "app" for everything else (`workspace.tsx:45`).
+  - Ctrl-click on "Profile" (`/account`) from Offices opens a background app tab, and the browser keeps one page.
+  - The menu's Home (`[data-workspace-open]`) opens a new tab. A second click on Profile focuses the tab already open.
+  - bk3_links and bk4a still Ctrl-click from the Studio into `/cases`, which is still another area, so they keep their browser tab.
+  - The new pf31 line covers it.
+- **Major 2: fixed.** `if (was === NOBODY && owner === "local") return;` (`workspace.tsx:226`). After a Sign out answered 200, sessionStorage held only the old `xr.workspace.v1:local` `/sign-in` list and no staff address. The new pf31 line checks every list.
+- **Minor 3 (title): fixed.** Ctrl-click on Releases from Fields keeps "Fields · Product Studio". The title follows on activation, because `shownTab` is in the effect's dependencies.
+- **Minor 4 (menu over another tab): fixed by MenuRoot**, although the note lists it as left for later. Demo menu open, then Alt+PageDown: no `[role=menu]` left and body `pointer-events: auto`. All seven `DropdownMenu.Root` now go through `components/ui/menu-root.tsx`, and none is left.
+- **Minor 5 (focus on a mouse switch): fixed.** `focusTab` runs on click, and focus is on the shown strip item.
+- **Minors 6 and 7:** left for the follow-up, as agreed.
+- **job.tsx keys (breaker m6):** right; the listener is attached only while the tab is shown.
+- **Breaker M2, "Add an office" Close:** I agree it stays. Main's footer Close never asked (checked on main at 430ef1aca).
+
+### New findings
+1. **Major: on a scrolled page, the strip appearing or going away now moves the content by the strip's height.** Source: `web/src/components/workspace.tsx:296-308` (30ab3cde2).
+   - Chrome's scroll anchoring already keeps the content still when the sticky strip is added above the viewport. The effect then calls `window.scrollBy(0, h)` on top of that, so the correction happens twice.
+   - Measured on Studio Fields at 1440×400, from scrollY 150, with a Ctrl-click on Releases:
+
+     | Case | scrollY | Heading moved |
+     |---|---|---|
+     | Anchoring on (default) | 150 → 236 | −43 px |
+     | `overflow-anchor: none` | 150 → 193 | 0 px |
+     | Page at the top | 0 → 43 | 0 px (correct) |
+
+   - Staff `/platform/activity-log` gave the same result in both directions:
+     - appearing: scrollY 150 → 236, heading −43 px;
+     - closing the other tab: 150 → 61, heading +46 px.
+   - So breaker M3's case ("Ctrl-click Edit row after row") is fixed only at the top of the page and broken again as soon as the list is scrolled. The new check measures only at scrollY 0 (pf31 T1).
+   - **Fix:** measure the change instead of assuming it. Keep the shown box's top from the last layout in a ref, then scroll by the actual change; anchoring differs by browser (Safari has none). The alternative is to set `overflow-anchor: none` on the root while the strip toggles.
+   - Add the T1 check from a scrolled list as well.
+2. **Minor: the `[data-ws-room]` spacer is left on `<body>` when the strip unmounts without `drawn` going false.** Source: `workspace.tsx:300-307`.
+   - Example: the session ends and the Frame drops `workspace`. Seen on :4747 as room 1 with no strip after my session was ended elsewhere.
+   - It is only an aria-hidden gap at the foot of the page until a reload. Fix: remove the spacer (and undo the scroll) in the effect's cleanup.
+3. **Minor: closing back to one tab undoes the scroll only in the tab that measured the strip's appearance** (`strip.current` is 0 in any other tab). It folds into fix 1.
+
+### Test changes in the delta
+- pf31 gains four lines: My account Ctrl-click, Sign out answered 200, the strip not moving the list at the top, and a menu closing in a hidden tab. Each is a change a person sees, with its reason, and the code before fails them (67/69, then 69/71).
+- They are justified. The T1 line needs the scrolled case (finding 1).
+
+### Journey score: 9 / 10
+
+| Criterion | Change from before |
+|---|---|
+| Task completed | ½ → 1 (My account links work) |
+| Correct data | ½ → 1 (no list after Sign out) |
+| Accessibility and sizes | ½ → 1 (title and focus) |
+| Feedback and state | stays ½ (the page jumps 43 px when scrolled, finding 1) |
+| Visual quality | 1 → ½ (the same jump, and the spacer left behind) |
+
+Everything else is unchanged at 1.
+
+Not checked: full suites (shared copy, and the breaker ended my user-S session once during the walk); Firefox and Safari anchoring; a screen reader.

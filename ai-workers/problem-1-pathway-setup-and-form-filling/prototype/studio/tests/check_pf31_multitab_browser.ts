@@ -207,6 +207,13 @@ try {
   // Review on 2fd5352aa: My account's own pages (/account, /home, …) are staff pages too, so they open in the workspace.
   const pagesBefore = ctx.pages().length;
   await shown(p1).locator('nav[aria-label="My account"] a[href="/account"]').click({ modifiers: ["Control"] });
+  // Breaker N1 on 30ab3cde2: a public page (pricing, a firm's booking page) is never an in-app tab of the staff workspace.
+  const publicOpened = ctx.waitForEvent("page", { timeout: 15_000 }).catch(() => null);
+  // A link as Home shows it (Home's own Pricing link), clicked with Ctrl the moment it is in the frame.
+  await p1.evaluate(() => { const f = document.querySelector("[data-ws-panel] [data-workspace]")!, a = document.createElement("a"); a.href = "/pricing"; a.textContent = "Pricing"; f.appendChild(a); a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, ctrlKey: true })); });
+  const pub = await publicOpened;
+  ok("T7 Ctrl-click on a public page (pricing) opens a browser tab, never an in-app one", !!pub && !(await tabs(p1)).some((x) => x.path === "/pricing"), { browserTab: !!pub, tabs: (await tabs(p1)).map((x) => x.path) });
+  await pub?.close();
   ok("T7 Ctrl-click on My account's Profile opens an app tab in the background, never a browser tab", await until(async () => (await tabs(p1)).some((x) => x.path === "/account" && !x.selected)) && ctx.pages().length === pagesBefore, { tabs: (await tabs(p1)).map((x) => x.path), pages: ctx.pages().length });
 
   // B1 (review round 3 Should 2): a draft broadcast by another person's window is ignored here
@@ -268,12 +275,20 @@ try {
   const staleProfile = await api(T, "PUT", "/platform/firm/profile", { website: "https://pf31.example.ca" }, { "if-match": '"0000"' });
   ok("T9 the firm profile takes If-Match too: a stale one is 409", staleProfile.status === 409, staleProfile.status);
   // Breaker M1 on 2fd5352aa: a menu left open in a tab that is then hidden closes; nothing floats over the shown tab.
-  const sctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const sctx = await browser.newContext({ viewport: { width: 1440, height: 400 } });
   await sctx.addInitScript(() => { try { localStorage.setItem("xr-actor", "user-A"); } catch { /* none */ } });
   const st = await page(sctx);
   await st.goto(`${BASE}/library/fields`); await st.locator("[data-workspace]:visible").first().waitFor({ timeout: 60_000 });
-  await shown(st).locator('a[href="/releases"]').first().click({ modifiers: ["Control"] });
+  // Review on 30ab3cde2: from a scrolled page too, the strip appearing leaves the content where it was (the browser's own scroll
+  // anchoring and the workspace's correction together move it by nothing).
+  const releasesLink = shown(st).locator('a[href="/releases"]').first();
+  await st.waitForTimeout(1000); await st.evaluate(() => window.scrollTo(0, 150)); await releasesLink.scrollIntoViewIfNeeded(); await st.waitForTimeout(300);
+  const mainTop = () => st.evaluate(() => Math.round(document.querySelector("main")?.getBoundingClientRect().top ?? -999));
+  const scrolledBefore = await mainTop(), scrolledY = await st.evaluate(() => scrollY);
+  await releasesLink.click({ modifiers: ["Control"] });
   await until(async () => (await tabs(st)).length > 1);
+  await st.waitForTimeout(200);
+  ok("from a scrolled page the strip appearing leaves the content still (review on 30ab3cde2)", Math.abs((await mainTop()) - scrolledBefore) <= 2, { before: scrolledBefore, after: await mainTop(), scrollYBefore: scrolledY, scrollY: await st.evaluate(() => scrollY) });
   await shown(st).getByRole("button", { name: /^Demo/ }).click(); await st.getByRole("menu").waitFor();
   await st.keyboard.press("Alt+PageDown");
   ok("a menu open in a tab that is then hidden closes: no menu over the shown tab, the page takes clicks", await until(async () => (await st.getByRole("menu").count()) === 0 && await st.evaluate(() => getComputedStyle(document.body).pointerEvents !== "none")), { menus: await st.getByRole("menu").count(), url: st.url() });

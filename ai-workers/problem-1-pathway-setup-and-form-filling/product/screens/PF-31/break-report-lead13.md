@@ -74,3 +74,46 @@ Outside the diff, noted only:
 - **Test-only commits.** 95d1f6361 and 2fd5352aa only fix waits. They hide no app behaviour. PF-18s DW5 now expects the conflict state, as decided.
 
 Breaker: Changes 2fd5352aa295b9652d5f570b4136b71c11db75ac
+
+## Re-break on 30ab3cde2 (delta 6c4ff1f54 + 30ab3cde2), fresh copy :4747 (xr_studio_m1new)
+
+Diff only. My own offices BrkA–BrkD 797a in sample-solo (user-S); Studio as user-A. Nothing fixed, nothing committed. **Verdict: Changes** (one new Major, from 6c4ff1f54).
+
+### What the fixes closed
+- **M1 held for menus.** Studio "Demo" menu, plus its tooltip, open in Fields, then Alt+PageDown or Back: no `[role=menu]`, no tooltip, `body` style empty, no `data-aria-hidden`. Showing Fields again does not reopen the menu (MenuRoot, menu-root.tsx:8-11, at all 7 sites).
+- **M3 held.**
+  - Short page: Ctrl-click BrkA, then BrkB: the BrkB row stays at y=337. A `[data-ws-room]` of 43 px is added, scrollY goes to 43, and the second Ctrl-click lands on the intended row.
+  - Closing back to one with the strip's ×: y=0, row 337, room removed.
+  - Long page at its bottom (1024×500): the row stays at 192 when the strip appears. Close back to one, clicked at the pointer's coordinates: the row stays (scrollBy −43, then the room goes).
+  - A record tab opened by Edit, then Escape back to the list: no shift.
+- **m1 held for a Sign out answered 200 and for one answered 401.** No `xr.workspace.v1:*` key was kept, including after a later click while signed out. The next sign-in keeps lists again (Ctrl-click saved).
+- **m2, m3, m6.** m2: a strip click focuses the clicked tab, and ArrowLeft moves from there. m3: the Studio title follows the shown tab ("Product Studio" on Programs, not "Fields · …"). m6: job.tsx keys are on only while the tab is shown (read).
+- **My account links (reviewer's Major 1).** `/home`, `/account`, `/account/licence` and `/settings/billing` each open a background tab on Ctrl-click (the URL stays, no browser tab). A plain click on one already open focuses it; one not yet open becomes a new tab.
+- **M2 accepted** as main's behaviour before PF-31 (the coordinator's reason). m4 and m5 are left for the follow-up, as agreed.
+
+### Major
+**N1. Public pages now open as hidden in-app tabs from a staff page (6c4ff1f54, workspace.tsx:45).**
+`personAreaOf` puts every page except /cases, /clients, /sign-in, /link and /inbox in one area, "app". That includes `/pricing`, `/book/:firmKey`, `/sign-up` and `/invitation`.
+Repro (user-S, /home): Ctrl-click "/pricing", then "/book/sample-firm" (both are links on Home).
+- Expected (as before 6c4ff1f54): a browser tab each.
+- Actual:
+  - Both become hidden in-app tabs.
+  - Each mounts at once, and its `document.title` effect runs from the background: the title reads "Pricing · Expat Ready", then "Book a meeting with Sample immigration firm", while /home is shown (pricing-page.tsx:18, booking-public/frame.tsx:12).
+  - Showing the Pricing tab with the strip leaves a page with no strip and no `[data-workspace]`. Alt+PageDown then does nothing (workspace.tsx:198), so only the browser's Back leads to the other items.
+  - The firm's public booking page, the clients' view, now runs inside the staff workspace.
+
+### Minor
+- **N2. Radix tooltips still leak.** MenuRoot covers menus, not `Tooltip` (tooltip.tsx:55).
+  - Repro: /settings/billing, hover or focus the status pill, press Alt+PageDown.
+  - "Your subscription is paid and running." stays at the top-left over the Offices tab's brand and firm name. It survives mouse moves, the wheel and Tab; only Escape closes it.
+- **N3. At the 12-item cap the page still moves under the pointer.**
+  - Repro: a 13th Ctrl-click. The notice (workspace.tsx:351) makes the strip grow from 43 to 71 px, which the compensation (measured once, :296-307) ignores.
+  - BrkB moves from 337 to 365, and BrkA is under the old point for 6 s. The notice then goes and BrkB moves back.
+- **N4. The spacer is left behind, and the strip comes back with a jump.**
+  - On an expiry the strip unmounts without the `!drawn` branch, so `[data-ws-room]` stays (scrollHeight 943 on a 900 px page) while signed out. The page also jumps up 43 px.
+  - After the same person signs in again, the strip returns with no compensation: BrkB at 380 instead of 337.
+  - The spacer goes only on a later close back to one item.
+- **N5.** After the compensation at the top of a page, the "where am I" line (with its Back link) sits under the sticky strip (top 56 px, at scrollY 43) until the person scrolls up.
+- **m1 residual.** A reload after Sign out still writes the staff address into `xr.workspace.v1:local` (`/home`), through `load()`.
+
+Breaker: Changes 30ab3cde21af8b6f94ff9c0918bc5b70c65f55a0
