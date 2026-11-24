@@ -58,9 +58,6 @@ Routes: `GET /api/front-office/prospects/:id/signers` · `POST /api/front-office
 | 1 | Owner sees the button; Read only sees list + downloads, no button; Billing sees list, no downloads | role without `request-work` → no button, POST 403; Lost prospect → no button, list kept |
 | 2 | a 1-page PDF records a row | a .docx renamed .pdf → NOT_PDF words on File; an `/Encrypt` sample PDF → PDF_PROTECTED words on File; no row |
 | 3 | an ordinary PDF records | "IMM5257 sample.pdf" → government-form words on File |
-
-**Correction (b), what the API checks (read in `isGovernmentForm`, called by `checkPdf`, at origin/main f0bc60179):** any one of: an IMM or IRM form number in the file name or the title (`/(?:^|[^a-z])(?:IMM|IRM)[\s_-]?\d{4}/i`, so "IMM5257 sample.pdf" is refused by its name alone); `/NeedsRendering` or `/XFA` in the raw bytes; `/AcroForm` with `/UR3`; `/XFA` inside a deflated stream. The test's sample is named by a file name because that is the signal the API checks first; the government-form check runs before the protected-PDF check. A check of the file, not a guarantee (Unconfirmed: no immigration expert).
-
 | 4 | Corporate prospect: Client B ticked → "0 of 1 signed"; Individual Client A pre-ticked | Client C (no email) disabled; a forced POST with C's id → SIGNER_NO_EMAIL; none ticked → "Pick at least one person to sign." |
 | 5 | default sends 0 FIRM signers (db) | a firm person made inactive meanwhile → firm-signer error on the select |
 | 6 | one click → one request | double click → still one `fo_signature_request` row |
@@ -69,6 +66,9 @@ Routes: `GET /api/front-office/prospects/:id/signers` · `POST /api/front-office
 | 9 | stage unchanged in db after send and after signed | n/a (the stage-change assertion is the fail) |
 | 10 | toast, pill and notice say "Recorded…"; no pill, toast or row reads "Sent" or claims an email went out; the notice and tooltips say no one is emailed (Correction (a)) | the notice and "Recorded" go once FO-6 part 4 flags the door live (later test) |
 | M4 | abort the response after the server answers (Playwright route) → "We could not confirm the send…", list shows exactly one row | a 500 → "Nothing was sent", no row |
+
+**Correction (b), what the API checks (read in `isGovernmentForm`, called by `checkPdf`, at origin/main f0bc60179):** any one of: an IMM or IRM form number in the file name or the title (`/(?:^|[^a-z])(?:IMM|IRM)[\s_-]?\d{4}/i`, so "IMM5257 sample.pdf" is refused by its name alone); `/NeedsRendering` or `/XFA` in the raw bytes; `/AcroForm` with `/UR3`; `/XFA` inside a deflated stream. The test's sample is named by a file name because that is the signal the API checks first; the government-form check runs before the protected-PDF check. A check of the file, not a guarantee (Unconfirmed: no immigration expert).
+
 Plus: keyboard only (Tab, Enter, Space ticks, Send, focus to the new row; Esc closes); axe-core clean on page and open panel; 375/1024/1440 no sideways scroll, Send ≥44 px at 375; J-54 W9 passes.
 
 ## 6b. Capability vs scaffolding
