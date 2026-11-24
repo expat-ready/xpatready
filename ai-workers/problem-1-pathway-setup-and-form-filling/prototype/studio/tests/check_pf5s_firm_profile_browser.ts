@@ -128,11 +128,14 @@ try {
   await save(po).click();
   await problem(po).waitFor({ timeout: 15_000 });
   const inv = async (n: string) => (await field(po, n).getAttribute("aria-invalid")) === "true";
-  const focusOnPhone = await field(po, "publicPhone").evaluate((el) => el === document.activeElement);
+  // The page puts the focus on the first refused field in an effect after the render that shows the refusal (firm-profile-page
+  // focusAsk), so it is waited for, at most 5 s, and false on a timeout.
+  const focusOnPhone = await po.waitForFunction(() => document.activeElement?.getAttribute("data-profile-field") === "publicPhone", undefined, { timeout: 5_000 }).then(() => true, () => false);
+  const focusedNow = await po.evaluate(() => document.activeElement?.outerHTML.slice(0, 100) ?? null);
   const phoneNote = await po.locator(`#${await field(po, "publicPhone").getAttribute("aria-describedby")}`).innerText();
   ok("PF-5s S5 FP3 fail: a phone of letters and a website with no https:// are refused on each field in words (aria-invalid, the server's words), focus on the first; nothing written",
     (await inv("publicPhone")) && (await inv("website")) && focusOnPhone && /phone|digits/i.test(phoneNote) && /web address/i.test(await po.locator(`#${await field(po, "website").getAttribute("aria-describedby")}`).innerText())
-    && sql(`select count(*) from audit_event where at > '${t0}' and firm_id = '${A}'`) === "0" && sql(`select value #>> '{}' from platform_firm_setting where firm_id = '${A}' and key = 'platform.website'`) === site, { phoneNote, focusOnPhone });
+    && sql(`select count(*) from audit_event where at > '${t0}' and firm_id = '${A}'`) === "0" && sql(`select value #>> '{}' from platform_firm_setting where firm_id = '${A}' and key = 'platform.website'`) === site, { phoneNote, focusOnPhone, focusedNow });
   await shot(po, "field-errors-1280"); axeAll.push(...ids(await axe(po)).map((x) => `errors: ${x}`));
   ok("PF-5s S5 FP3: typing in a refused field clears its error", (await field(po, "publicPhone").fill("+1 416 555-0100"), !(await inv("publicPhone"))));
   await field(po, "website").fill(`${site}/contact`); t0 = now();

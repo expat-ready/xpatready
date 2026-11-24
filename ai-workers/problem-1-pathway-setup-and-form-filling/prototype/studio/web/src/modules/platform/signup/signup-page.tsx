@@ -151,7 +151,7 @@ export function SignUpPage() {
   );
 }
 
-function Terms({ terms, agree, error, onChange }: { terms: Plans["terms"]; agree: boolean; error?: string; onChange: (b: boolean) => void }) {
+export function Terms({ terms, agree, error, onChange }: { terms: Plans["terms"]; agree: boolean; error?: string; onChange: (b: boolean) => void }) {
   const id = React.useId();
   const docs = termsInOrder(terms);
   return (
@@ -168,7 +168,7 @@ function Terms({ terms, agree, error, onChange }: { terms: Plans["terms"]; agree
   );
 }
 
-function Resend({ sentAt, busy, onClick }: { sentAt: number; busy: boolean; onClick: () => void }) {
+export function Resend({ sentAt, busy, onClick }: { sentAt: number; busy: boolean; onClick: () => void }) {
   const [now, setNow] = React.useState(Date.now());
   React.useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const left = Math.ceil((sentAt + RESEND_MS - now) / 1000);

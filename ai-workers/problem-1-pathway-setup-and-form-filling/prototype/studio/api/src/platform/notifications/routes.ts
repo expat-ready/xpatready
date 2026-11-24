@@ -5,6 +5,7 @@ import { Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nes
 import { AnyStaff, staffOf, type StaffContext } from "../identity/keys.ts";
 import { notInFirm } from "../firm-scope.ts";
 import { MyNotifications } from "./store.ts";
+import { NotificationLabels } from "./labels.ts";
 import { OFFICE_CLOCK } from "../settings/offices/clock.ts";
 import type { OfficeClockPort } from "../../../../ports/offices.ts";
 import { FIELD_ERROR_STATUS, parseInput, query } from "../http/input.ts";
@@ -28,12 +29,19 @@ const SEEN = query("seen");
 
 @Controller("api/platform/me/notifications")
 export class MyNotificationsController {
-  constructor(@Inject(MyNotifications) private readonly mine: MyNotifications) {}
+  constructor(@Inject(MyNotifications) private readonly mine: MyNotifications, @Inject(NotificationLabels) private readonly labels: NotificationLabels,
+    @Inject(OFFICE_CLOCK) private readonly offices: OfficeClockPort) {}
+  /** PF-18n part 2: each item's `label` and `link` by its module's own view rule for this reader (labels.ts), and the
+   *  reader's zone (their office's, else the firm's: OfficeClockPort, as Needs you) for the times. */
   @Get("items") @AnyStaff("a person's own notifications")
-  items(@Req() r: R, @Query() q: Record<string, unknown>) {
+  async items(@Req() r: R, @Query() q: Record<string, unknown>) {
     parseInput(query("unread", "page", "size"), q);   // PF-28 part 2b: an unknown query key is refused 422, named
     const s = staffOf(r);
-    return this.mine.list(s.firmId, s.staffId, { unread: q.unread === "1" || q.unread === "true", page: whole(q.page), size: whole(q.size) });
+    const [list, zone] = await Promise.all([
+      this.mine.list(s.firmId, s.staffId, { unread: q.unread === "1" || q.unread === "true", page: whole(q.page), size: whole(q.size) }, (items) => this.labels.of(s, items)),
+      this.offices.officeOfStaff(s.firmId, s.staffId).then((o) => this.offices.zoneFor(s.firmId, o)),
+    ]);
+    return { ...list, zone };
   }
   @Get("unread-count") @AnyStaff("a person's own unread count")
   unread(@Req() r: R) { const s = staffOf(r); return this.mine.unreadCount(s.firmId, s.staffId); }

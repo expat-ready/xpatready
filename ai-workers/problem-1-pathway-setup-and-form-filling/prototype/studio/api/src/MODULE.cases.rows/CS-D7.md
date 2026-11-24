@@ -1,0 +1,3 @@
+Entry points: `GET|POST /api/runtime/documents/:id/flags` (`case-document-flags.ts`, CS-D7): a case document's language, translation, notarisation and expiry date, staff of the case's firm, on the version seen (409), one audit line per flag changed; the checklist (`GET cases/:id/checklist`) adds each document's flags, a line's `flag_warnings` (never a block) and the person's `translations` lines.
+Tables: caseDocument (CS-D7: `language`, `translation`, `translation_detail`, `notarisation`, `notarisation_detail`, `expires_on`, `flags_version`; Provided needs its detail, a check in SQL).
+Tests: tests/check_csd5_flags.ts, tests/check_csd5_flags_browser.ts, tests/journeys/j_70.ts.

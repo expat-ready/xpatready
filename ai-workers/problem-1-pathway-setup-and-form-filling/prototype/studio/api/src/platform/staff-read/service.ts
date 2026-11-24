@@ -92,8 +92,10 @@ export class StaffReads {
   /** PUT /api/platform/me/account: the person's own licence record (PF-4's rules and audit line). */
   async saveMyAccount(actor: StaffContext, body: { licence?: unknown }) {
     const l = (body.licence && typeof body.licence === "object" ? body.licence : {}) as Record<string, unknown>;
-    await this.id.saveCredential(actor, actor.staffId, l);
-    return this.myAccount(actor);
+    const saved = await this.id.saveCredential(actor, actor.staffId, l);
+    // PF-4c part 2 (AG-1-34): the soft warning reaches the person's own form too; the record is saved either way.
+    const warning = "warning" in saved ? saved.warning : undefined;
+    return { ...(await this.myAccount(actor)), ...(warning ? { warning } : {}) };
   }
 
   /** GET /api/platform/settings/two-step: required for all staff, shown, no switch (question 3 decided, P-567: fixed on,
