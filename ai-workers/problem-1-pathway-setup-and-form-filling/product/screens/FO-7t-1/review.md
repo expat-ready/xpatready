@@ -1,3 +1,81 @@
+# Round 13 (Lead 17/18: re-stamp 033000, merge, #3321; diff only, 24 Nov 2026; c6d66e6b0 → 401753bc7)
+
+Round 13 verdict line: `Reviewer: Block 401753bc77747498fd39a9a18bd72f58c4a6b66a`
+
+Scope: `git diff -M c6d66e6b0 401753bc7`, four commits. They are the merge 8af2a9a39 (origin/main e22a75cd7, bringing #3040 and #3321), the re-stamps 7f8cad3c4 and b3bd4552b, and the test commit 401753bc7. After the merge, only 3 files changed: migration.sql (1 comment line), rollback.sql (2 lines) and `tests/check_fo7t_trust.ts` (+20 −17). The tree was clean before and after my runs. Every probe was reverted, and `git status` was empty at the end.
+
+## 1. Merge: clean, and nothing of main's lost
+* `git merge-tree --write-tree c6d66e6b0 e22a75cd7` gives the same tree as 8af2a9a39 (`git diff` empty). The merge is git's own, with no hand edits.
+* origin/main (fetched today, still e22a75cd7) is an ancestor of the head.
+* `git diff origin/main 401753bc7 --stat` lists 18 files, +1928 −3. That is the same 18-file set as round 12's diff against its base: the FO-7t-1 code, records, migration, sample and test, plus the csw3/pf19r touches. Only the migration folder name changed. No file of main's appears, so nothing of main's is reverted.
+
+## 2. Migration: a pure rename, in the right order
+* `git diff -M c6d66e6b0 401753bc7 -- '*migrations/2026112*fo7t1*'` shows only the rename (similarity 83% and 66%), the stamp comment line in migration.sql, and rollback.sql's two references (the header and the `_prisma_migrations` delete). The SQL statements are byte-identical.
+* No stale stamp anywhere: `grep` for `20261123223000` and `20261124040000_fo7t` in prototype/ and product/*.md finds nothing.
+* Order: main's newest is `20261123220000_r190_signup_link_plan`, so 033000 comes after it. It also comes after #3225's `20261124030000_pf17_support_keys` (open) and before #3277's `20261124040000_pff2_plat_file` (open).
+* No collision: I scanned the migration stamps of all 33 open PRs. No other PR uses 033000; the nearest later ones are #3276 at 050000 and #3219 at 090000.
+* check_pf8b_f4_migrations: 9/9 on the head.
+
+## 3. #3321's rule, and the test changes against it
+* **The rule** (`visibility-adapter.ts:32-38, 64`): `parties` = the prospect-key parties ∪ the `caseLinks` parties (`case_client.fo_person_id` / `fo_company_id`) of `cases`. `reads.ts:27` `seen` opens a party only for rows with `case_id is null`. A row with a case is decided by its case alone.
+* **(a) DW3/DW4** (l. 264-272). The test now also takes away `agent/case:view.all` while it tests a writer who sees no party.
+  * This is required. With view.all, user-R sees CASE and CASE2, so it sees PA through `caseLinks`.
+  * The restore is faithful: OWNER and CASE_MANAGER hold `agent/case:view.all` in PF-3's seed (`20261114015002…/migration.sql:602, 604`), the same pair l. 255/259 already removes and restores.
+  * user-R keeps `view.own`, but it owns no file and is on no team, so its scope really is empty.
+  * Probe: with `partySeen` removed (`service.ts:211`), DW3/DW4 fail turns red, 61/1. **Purpose kept.**
+* **(c) Cancel block** (l. 350-363). This is faithful to the rule, and the checks are stronger than before.
+  * The unseen no-case request is now PC's: user-O sees no PC case and owns no prospect.
+  * CASE2 stays 404 although PA is seen, so round 11's n1 is now pinned.
+  * The by-party pass is now the scoped officer itself, through #3321's path.
+  * Probes:
+    * With no visibility check in `cancel` (`service.ts:130` → `if (!r)`), the fail check is red, 59/3.
+    * With "a seen party opens any request of the party" (case or party), it is red, 59/3. That is CASE2's 200.
+  * **Purpose kept.**
+* **(b) DW10 on-team** (l. 334-345). The expectations are faithful to #3321: CASE plus PA's no-case rows, never CASE2, and the sum compared over `(case CASE or no case)`.
+  * Probe: `seen` widened so a party opens rows with a case, too. The check goes red (61/1), so the "never another case's" half holds.
+  * **But the running-balance half no longer catches a party-wide running balance. See M1.**
+
+## 4. The write path under the wider scope (service.ts, unchanged): correct
+* `createRequest` and `recordDeposit` with no case check `partySeen`. A case-team member can now write a no-case request or deposit for the case's client, which is exactly the read rule (`seen`'s no-case branch). Writer and reader agree.
+* With a case, `caseOf` still requires `seen.cases`.
+* A deposit against a CASE2 request with no `caseId` is still 404 (`service.ts:183`, the request's case decides).
+* `cancel` (`service.ts:130`) uses the read's rule.
+* `scopeOf` is still read once, before each transaction (r9-M1).
+* No route, word or answer changed.
+
+## 5. Findings
+* **M1 (Major, test only), `tests/check_fo7t_trust.ts:339-345`: DW10 no longer fails when the running balance is summed over the party's whole (review M2, round 2's planted break B4, red then; green now).**
+  * Why: the only hidden PA money is the CASE2 deposit (l. 339). It is recorded *after* every row user-O sees, so a window over all of PA's rows gives the newest visible row exactly `caseSum`. `caseSum !== dbBal("CAD")` holds, but nothing compares against the window at that row.
+  * Probe: in `reads.ts`, `seen` was moved out of the CTE (the window at l. 61 runs over all of PA's rows, and the visible filter is applied outside it). Result: **62 passed, 0 failed**. The leak that build round 1 found (running balance 1,225.00 against a visible 300.00) would pass.
+  * Before #3321, PA's no-case rows were hidden and came before CASE's newest row, which is why B4 was red.
+  * **Fix (one line, verified):** after l. 339, record one more visible row, for example `await dep({ method: "WIRE", amountMinor: 300, caseId: CASE, idempotencyKey: "fo7t-case-after-case2" });`. Alternatively, move the CASE2 deposit before a visible one.
+  * Verified on a scratch edit, since reverted: on the head code, 62/0. With the party-wide probe added, DW10 is red, 61/1.
+  * It would help to say in the comment at l. 337-338 that the hidden row must come before the newest visible one.
+* **n1 (nit), `tests/check_fo7t_trust.ts:334-335`:** the old comment still says "sees CASE's entries only … their running balance is CASE's own money". The lines below it now say otherwise. Fix: reword it, or fold it into l. 337-338.
+* **n2 (nit), l. 341:** the ledger call now filters `currency=CAD`, so the "never another case's" test of the ledger covers CAD rows only. `/balances` (every currency) still covers the rest, so there is no gap today.
+
+## 6. Runs on 401753bc7 (mine; run-suites.sh --only, ports +14000, never :4400; live AI off; PostgreSQL 16 local)
+* check_fo7t_trust 62/0, twice (once alone, once with the others).
+* check_pf8b_f4_migrations 9/9, check_csmv1_money_visibility 33/0, check_fo7b_c5_scope 37/0, check_fo7a_money_schema 122/0.
+* Probes, each reverted:
+
+| Probe | Result |
+|---|---|
+| party-wide running balance | **green, 62/0 (M1)** |
+| `seen` opens case rows by party | red, 61/1 |
+| cancel with no visibility check | red, 59/3 |
+| cancel: party opens case requests | red, 59/3 |
+| `partySeen` removed | red, 61/1 |
+
+* `tsc -p api/tsconfig.json`: no error in the trust files.
+* Not re-run: irm_editions, csw3, forms_qa53, pf28, pf8b_f7, b164 (the builder's runs). The last two commits touch none of their inputs, except the migration name.
+
+Journey score: **8.0/10** (pass, no criterion at 0), down ½ from 8.5 on "correct data": a figure leak that the check used to catch would now pass unseen. The score returns to 8.5 with M1's fix. Report: `screens/FO-7t-1/journey-test-reviewer-2026-11-24.md` (round 13 section). D17 and D20 remain "simulated only".
+
+**Verdict: Block** (in the skill's terms, Ship after fixes). To fix: M1, one test line; n1 and n2 are optional. The merge, the re-stamp, the code and the other two test changes are approved as they are. After the fix, a diff-only re-review of the test change.
+
+Reviewer: Block 401753bc77747498fd39a9a18bd72f58c4a6b66a
+
 # Round 12 (Lead 17: B164 audit names; diff only, 24 Nov 2026; 263595b68 → 4aacdbbe8)
 
 Round 12 verdict line: `Reviewer: Approve 4aacdbbe8d02e83566aa49ff6493a72f148ae6e5`
