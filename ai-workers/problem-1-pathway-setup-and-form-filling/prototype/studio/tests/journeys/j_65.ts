@@ -1,9 +1,8 @@
 // J-65 (map row 65, R1.65: private storage in Canada: firm-prefixed keys, versions, encryption): the join-and-walk for the
 // row, written by the qa lane (22 Nov) BEFORE its parts merge, so qa only runs it when they do. Parts (MVP-CHECKLIST row
-// 65): PF-F1 (the FilesPort on S3 in ca-central-1, on a recorded fake client; open PR #2955) and PF-F1c (the bucket:
-// versioning, the KMS key, the policy; waits on the founder's AWS account). The walk also needs the S3 adapter bound into
-// the running app: #2955 binds it nowhere ("Not bound in any feature yet", its MODULE row; its review's m1), and no
-// backlog row names that binding (noted in the qa report).
+// 65): PF-F1 (the FilesPort on S3 in ca-central-1, on a recorded fake client; #2955, merged) and PF-F1c (the bucket:
+// versioning, the KMS key, the policy; #3215, merged, deployed on the staging account, AWS Step 20). The walk also needs
+// the S3 adapter bound into the running app: PF-F1b #3041, merged.
 // Done when (CAPABILITIES R1.65): "Files stored in ca-central-1 under the firm's prefix, versioned and encrypted; another
 // firm's key refused".
 //   W1 (files stored): a firm's staff member attaches a PDF to a support ticket through the API; the database keeps the

@@ -2,7 +2,7 @@
 
 These four files are **byte-for-byte copies** of AWS Step 20's raw outputs. The tech lead copied them read-only from AWS CloudShell (ca-central-1) to branch `aws/2026-11-22-staging-proof`, commit `bcc9a66650d73b62ca6a03fa249a56ec3aa83b52` (24 Nov 2026), folder `product/reports/aws-evidence/2026-11-24/r165/`. That branch is not on main. qa copied the files from there on 24 Nov 2026 (qa 11). No AWS call was made for this copy (US$0).
 
-`SHA256SUMS` holds the lines for these four files, taken from that folder's own `SHA256SUMS` without changes. `j_65` W5 checks each file against those sums and the commit's hashes before it reads anything.
+`SHA256SUMS` holds the lines for these four files, taken from that folder's own `SHA256SUMS` without changes. `j_65` W5 reads only `07` and `11`, and checks those two against the sums and the commit's hashes before it reads them. `08` and `12` are kept as evidence and are not read or hashed by the journey (`sha256sum -c SHA256SUMS` checks all four).
 
 | File | What it is (produced 24 Nov 2026, 04:08-04:15 UTC) | What W5 reads from it |
 |---|---|---|
