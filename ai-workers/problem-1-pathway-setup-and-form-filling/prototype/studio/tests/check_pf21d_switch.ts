@@ -65,6 +65,7 @@ const { DSR_KEY } = await import("../api/src/platform/register/requests/service.
 const feature = (await import("../api/src/features/platform-erasure.ts")).default;
 const { ErasureRegistry } = await import("../api/src/platform/erasure/registry.ts");
 const { PlatSwitches } = await import("../api/src/platform/switches/service.ts");
+const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts");
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 wallUnscopedQueries();
 const apps: { close(): Promise<void> }[] = [];
@@ -98,7 +99,7 @@ try {
   @Module({ controllers: [PlatformIdentityController, SystemIdentityController, ...feature.controllers] as never[],
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, SystemIdentity, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard },
-      { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, ...feature.providers] as never[] }) class TestApp {}
+      { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: PlatformJobs, useValue: { handle: async () => undefined, recurring: async () => undefined } }, ...feature.providers] as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   app.use(requestMiddleware());
   await app.listen(0, "127.0.0.1"); apps.push(app);
