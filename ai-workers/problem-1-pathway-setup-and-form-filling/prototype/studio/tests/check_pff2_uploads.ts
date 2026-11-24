@@ -72,14 +72,14 @@ const local = new LocalIdentity("pff2-check-signing-key-0123456789abcdef", () =>
 const jobCalls: string[] = [];
 const jobsSpy = { handle: async (n: string) => { jobCalls.push(`handle:${n}`); }, recurring: async (n: string, cron: string, zone: string) => { jobCalls.push(`recurring:${n}:${cron}:${zone}`); } };
 const files = new LocalFiles(join(WORK, "files"));
-let app: { close(): Promise<void>; get<T>(t: unknown): T } | null = null;
+let app: { close(): Promise<void> } | null = null;
 try {
   process.env.PLATFORM_UPLOADS_DIR = join(WORK, "staging");
   @Module({ controllers: [PlatformIdentityController, ...feature.controllers] as never[],
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: LocalFiles, useValue: files }, { provide: PlatformJobs, useValue: jobsSpy },
       (await import("../api/src/platform/register/holds/adapter.ts")).PgLegalHolds, ...feature.providers] as never[] }) class TestApp {}
-  const nest = await NestFactory.create(TestApp, { logger: false }); nest.use(requestMiddleware()); await nest.listen(0, "127.0.0.1"); app = nest as never;
+  const nest = await NestFactory.create(TestApp, { logger: false }); nest.use(requestMiddleware()); await nest.listen(0, "127.0.0.1"); app = nest;   // an INestApplication has close(); no cast, so the type check keeps app's type in finally (TS2339 on never)
   const port = (nest.getHttpServer().address() as { port: number }).port, base = `http://127.0.0.1:${port}`;
   await seedSampleFirms(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
