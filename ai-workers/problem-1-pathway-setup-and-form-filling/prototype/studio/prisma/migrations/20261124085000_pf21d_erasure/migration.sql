@@ -151,7 +151,7 @@ BEGIN
   END IF;
   RETURN 'DONE';
 END $fn$;
--- PF-8b F4 (RDS): CREATE on public for xr_wall_reader only for the hand-over (as 20261123100000_pf21b_data_requests).
+-- PF-8b F4 (RDS): CREATE on public for xr_wall_reader only for the hand-over (as 20261123200000_pf21b_data_requests).
 GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 DO $own$
 DECLARE f text;

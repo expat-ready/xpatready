@@ -78,4 +78,4 @@ scope as accepted:
   (`plat_switch`, `plat_switch_event`, migration `20261124080000_pf21d_switch`, `/api/system/switches`),
   `tests/check_pf21d_switch.ts`. About 530 lines.
 * **1b** (branch `claude/runtime-pf21d-erasure`, on 1a): approve, cancel, the daily job, `erase_on` and the ERASURE_*
-  steps (migration `20261123120000_pf21d_erasure`), `tests/check_pf21d_erasure.ts`. About 520 lines.
+  steps (migration `20261124085000_pf21d_erasure`), `tests/check_pf21d_erasure.ts`. About 520 lines.

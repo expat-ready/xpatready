@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import type { Eraser } from "../ports/erasure.ts";
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261123120000_pf21d_erasure";
+const NEW = "20261124085000_pf21d_erasure";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf21d_${process.pid}`, EMPTY = `xr_studio_pf21d_empty_${process.pid}`, DEMO = `xr_studio_pf21d_demo_${process.pid}`;
