@@ -488,14 +488,19 @@ A348 retry own|product/tools/retry-watch.py|s/ and not (m and str(n) in prs)//|c
 A348 retry search|product/tools/retry-watch.py|s/^        n += 1$/        return out, ""/|check-retry-watch.sh
 A348 retry wired|product/tools/lead-watch.sh|s/^rw=/# rw=/|check-retry-watch.sh
 A348 retry ran|product/tools/lead-watch.sh|/retry-watch.py did not run/d|check-retry-watch.sh
-A351 c2 removed|product/tools/checks-changed.py|s/ else rem.append((p, label, y)))/ else None)/|check-checks-changed.sh
-A351 c2 changed|product/tools/checks-changed.py|s/(cha.append((p, label, y, spare.pop(0)))/(spare.pop(0)/|check-checks-changed.sh
-A351 c2 moved|product/tools/checks-changed.py|s/^            if left\[y\] > 0:/            if False:/|check-checks-changed.sh
-A351 c2 skip|product/tools/checks-changed.py|s/^        if sum(now.values()) > .*/        if False:/|check-checks-changed.sh
+A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
+A351 c2 moved|product/tools/checks-changed.py|s/^            if new\[k\] > 0:.*/            if False:/|check-checks-changed.sh
+A351 c2 wrap|product/tools/checks-changed.py|s/ or squash(old) == squash(nw):/:/|check-checks-changed.sh
+A351 c2 off|product/tools/checks-changed.py|s/^            if OFF.search(l) and .*/            if False:/|check-checks-changed.sh
+A351 c2 lists|product/tools/checks-changed.py|s/^                if more:/                if False:/|check-checks-changed.sh
 A351 c2 ledger|product/tools/checks-changed.py|s/^        if path == LEDGER:/        if False:/|check-checks-changed.sh
-A351 c2 deleted|product/tools/checks-changed.py|s/^            gone.append(path)/            pass/|check-checks-changed.sh
-A351 c2 reason|product/tools/checks-changed.py|s/^    if reason:/    if True:/|check-checks-changed.sh
-A351 c2 many|product/tools/checks-changed.py|s/bare("\\n".join(body)).count("(") > /0 > /|check-checks-changed.sh
+A351 c2 gone|product/tools/checks-changed.py|s/^            if not ok:/            if False:/|check-checks-changed.sh
+A351 c2 place|product/tools/checks-changed.py|s/ok = to and bool(RUN.*/ok = to/|check-checks-changed.sh
+A351 c2 check|product/tools/checks-changed.py|s/^    elif not c + len(gone).*/    elif True:/|check-checks-changed.sh
+A351 c2 reason|product/tools/checks-changed.py|s/^    if why:/    if True:/|check-checks-changed.sh
+A351 c2 window|product/tools/checks-changed.py|s/s = max(0, k - 60)/s = 0/|check-checks-changed.sh
+A351 c2 safe|product/tools/checks-changed.py|s/.replace("::", .*replace("##\[", "[^"]*")//|check-checks-changed.sh
+A351 c2 limit|../../.github/workflows/pr-rules.yml|s/timeout 30 python3 -I "\$T.checks-changed/python3 -I "$T\/checks-changed/|check-checks-changed.sh
 A351 c2 wired|../../.github/workflows/pr-rules.yml|s/^\( *\)run: printf .*checks-changed.py.*/\1run: true/|check-checks-changed.sh
 A334 order|product/tools/app-view-check.sh|s/ -k1,1nr -k2,2nr)$/ -k1,1nr)/|check-lead-watch-idle.sh
 A334 cloud|product/tools/app-view-check.sh|s/^  lane = (\$0 ~ \/ · cloud · /  lane = (\$0 ~ \/ · /|check-lead-watch-idle.sh
