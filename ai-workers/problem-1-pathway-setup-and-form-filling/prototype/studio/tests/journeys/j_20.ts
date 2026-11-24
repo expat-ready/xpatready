@@ -13,8 +13,9 @@
 //   W4 (the seat limit, the server's row flag): two seats left, two rows typed (the form fits: "n of n seats after these
 //       invites"); someone else takes a seat before Send → the first row is invited, the second stays with the server's
 //       words naming the plan and its seat count; nothing past the limit is stored.
-//   W5 (the seat limit, the form's own count, PF-6 BR-2): one row more than the seats left → "Remove 1 person or
-//       upgrade your plan." and Send is disabled; no batch call.
+//   W5 (the seat limit, P-727 over PF-6 BR-2, Lead 19 on #3370): 2 seats free, 3 valid rows and a staff member's row →
+//       the form says "2 free seats" beforehand and Send stays on → 2 invited; the staff row (flagged for itself, using no
+//       seat) and the third valid row (OVER_SEAT_LIMIT) stay, each with its words; a seat is added and the row is sent.
 //   W6: A opens the link from the email (the demo inbox) → Accept → signed in; A's staff record carries the name typed on
 //       the form. The walk ends at the next step (R1.5/R1.6): Team lists A as active.
 //   DW1 (API): a single invite past the seat limit is refused 409 naming the limit, nothing stored.
@@ -152,14 +153,30 @@ try {
   await shot(owner, "W4-seat-taken-1440");
   await owner.keyboard.press("Escape");   // "Discard the people you typed?" is accepted by the page's dialog handler
 
-  // ---------------------------------------------------------------------------------- W5: the form's own count (BR-2)
-  limit(used() + 1);
+  // ------------------------------------------------- W5: more valid rows than free seats (P-727 over PF-6 BR-2)
+  const [Y1, Y2, Y3] = [1, 2, 3].map((k) => `j20-y${k}-${run}@sample-firm.example.com`);
+  limit(used() + 2);
   await openInvite(owner);
-  await owner.getByLabel("Email, person 1").fill(`j20-y1-${run}@sample-firm.example.com`); await owner.locator("[data-add-row]").click(); await owner.getByLabel("Email, person 2").fill(`j20-y2-${run}@sample-firm.example.com`);
-  const callsBefore = batchCalls.length;
-  await owner.locator("[data-send-invites]").click({ force: true }); await owner.waitForTimeout(500);
-  ok("J-20 W5: one more row than the seats left: \"Remove 1 person or upgrade your plan.\", Send disabled, no call", (await owner.getByText("Remove 1 person or upgrade your plan.").count()) === 1 && await owner.locator("[data-send-invites]").isDisabled() && batchCalls.length === callsBefore);
-  await shot(owner, "W5-over-the-limit-1440");
+  await owner.getByLabel("Email, person 1").fill(Y1);
+  for (const [n, email] of [[2, STAFF], [3, Y2], [4, Y3]] as const) { await owner.locator("[data-add-row]").click(); await owner.getByLabel(`Email, person ${n}`).fill(email); }
+  ok("J-20 W5: before Send the form says 2 seats are free, and Send stays on", (await owner.locator("[data-invite-seat-warning]").innerText()).includes("Your plan has 2 free seats.") && await owner.locator("[data-send-invites]").isEnabled());
+  ok("J-20 W5 fail (before Send): none of the three valid rows is invited", [Y1, Y2, Y3].every((e) => invitations(e) === 0));
+  await owner.locator("[data-send-invites]").click();
+  await owner.locator("[data-invite-form-error]").waitFor({ timeout: 20_000 });
+  const staffWords = await row(owner, 1).innerText(), overWords = await row(owner, 2).innerText();
+  ok("J-20 W5: the two free seats go to the first two valid rows; the staff row uses no seat", invitations(Y1) === 1 && invitations(Y2) === 1 && invitations(Y3) === 0 && invitations(STAFF) === 0);
+  ok("J-20 W5: the staff row and the third valid row stay in the form, each with its own words on its own row",
+    (await owner.locator("[data-invite-row]").count()) === 2 && (await owner.getByLabel("Email, person 1").inputValue()) === STAFF && (await owner.getByLabel("Email, person 2").inputValue()) === Y3
+    && staffWords.includes("This person is already on your firm's staff.") && !staffWords.includes("No seat left") && overWords.includes(`your plan (${plan[2]}) has ${used()} seats`), { staffWords, overWords });
+  for (const e of [Y1, Y2]) invited.push(sql(`select id from platform_invitation where email = '${e}'`));
+  await shot(owner, "W5-over-the-seats-1440");
+  limit(used() + 1);   // a seat is freed (or the plan upgraded)
+  await owner.getByRole("button", { name: "Remove person 1" }).click();
+  await owner.locator("[data-send-invites]").click();
+  await until("the over-seat row's invitation", () => invitations(Y3) === 1);
+  await owner.getByLabel("Email, person 1").waitFor({ state: "detached", timeout: 15_000 });
+  invited.push(sql(`select id from platform_invitation where email = '${Y3}'`));
+  ok("J-20 W5: with a seat free, the row left in the form is sent again and the panel closes", invitations(Y3) === 1);
 
   // ------------------------------------------------------------------------- DW1: a single invite past the limit (API)
   limit(used());

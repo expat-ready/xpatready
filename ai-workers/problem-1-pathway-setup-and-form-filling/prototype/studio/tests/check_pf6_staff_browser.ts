@@ -176,14 +176,19 @@ await p.locator("[data-send-invites]").click(); await p.waitForTimeout(500);
 ok("PF-6 DW2/BR-3 fail: a duplicate row is flagged on its row and nothing is sent", (await p.locator('[data-invite-row="2"]').innerText()).includes("This email is already on another row.") && posts(p, /\/staff\/invitations\/batch$/).length === sentBefore);
 await p.getByRole("button", { name: "Remove person 2" }).click(); await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations\/batch$/, sentBefore + 1);
 ok("PF-6 DW2/BR-3 fail: an existing staff member's row keeps the server's words; no invitation is made", (await p.locator('[data-invite-row="1"]').innerText()).includes("This person is already on your firm's staff.") && sql(`select count(*) from platform_invitation where email = '${O.email}'`) === "0");
-// BR-2: over the limit nothing is sent; the whole form is counted.
+// BR-2: the whole form is counted on the seat line. Over the limit, P-727 (the founder, 19 Nov) governs over the concept's
+// "nothing is sent until the form fits" (Lead 19 on #3370, R1.20): Send stays on, the free seats go to the rows in order and
+// the row past them stays in the form with the server's seat words, to send again.
 await p.keyboard.press("Escape"); limit(used() + 1);
 await team(p); await p.locator("[data-invite-open]").click(); await p.getByLabel("Email, person 1").fill(`pf6-s1-${run}@example.com`);
 ok("PF-6 DW2/BR-2 pass: one more person fits: the seat line counts the form", (await p.locator("[data-invite-seats]").innerText()) === `${used() + 1} of ${used() + 1} seats after these invites`);
 await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 2").fill(`pf6-s2-${run}@example.com`);
 const before2 = posts(p, /\/staff\/invitations\/batch$/).length;
-await p.locator("[data-send-invites]").click({ force: true }); await p.waitForTimeout(500);
-ok("PF-6 DW2/BR-2 fail: over the limit it says \"Remove 1 person or upgrade\" and sends nothing", (await p.getByText("Remove 1 person or upgrade your plan.").count()) === 1 && posts(p, /\/staff\/invitations\/batch$/).length === before2);
+ok("PF-6 DW2/BR-2 pass (P-727): over the limit the form says beforehand how many seats are free, and Send stays on", (await p.locator("[data-invite-seat-warning]").innerText()).includes("Your plan has 1 free seat.") && await p.locator("[data-send-invites]").isEnabled());
+await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations\/batch$/, before2 + 1); await p.locator("[data-invite-form-error]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW2/BR-2 fail (P-727): the row past the free seat is not sent and stays with the server's seat words; the first row is invited",
+  sql(`select count(*) from platform_invitation where email = 'pf6-s1-${run}@example.com'`) === "1" && sql(`select count(*) from platform_invitation where email = 'pf6-s2-${run}@example.com'`) === "0"
+  && (await p.getByLabel("Email, person 1").inputValue()) === `pf6-s2-${run}@example.com` && (await p.locator('[data-invite-row="1"]').innerText()).includes("No seat left for this person"));
 await p.keyboard.press("Escape");
 await staffCall(rTok, "POST", `/platform/staff/${Xs.id}/deactivate`, { reason: "seat test" }); limit(used());
 await team(p); await p.locator('[data-chip="inactive"]').click(); await openPerson(p, X); await act(p, "reactivate", "Back again"); await p.locator("[data-act-error]").waitFor({ timeout: 10_000 });
