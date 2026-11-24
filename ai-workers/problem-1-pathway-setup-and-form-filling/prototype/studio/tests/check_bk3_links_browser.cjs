@@ -63,7 +63,10 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
     // Review m1: a Ctrl/Cmd-click opens the case list in a new tab and leaves this tab as the Studio person.
     if (width === 1440) {
       const [tab] = await Promise.all([ctx.waitForEvent("page", { timeout: 15000 }), btn.click({ modifiers: ["ControlOrMeta"] })]);
-      await tab.close(); await p.waitForTimeout(300);
+      // A tab closed as it opens can hang: page.close() has no time limit (2 in 6,416 on a busy machine, CI run 45429673590).
+      await tab.waitForLoadState("load", { timeout: 15000 }).catch(() => {});
+      if (await Promise.race([tab.close().then(() => "closed"), new Promise((f) => setTimeout(f, 15000, "late"))]) === "late") console.log("NOTE  check_bk3_links_browser.cjs: the new tab was not closed after 15 s; going on");
+      await p.waitForTimeout(300);
       step(`${W}: a Ctrl/Cmd-click opens a new tab and this tab stays the Studio person's`, new URL(p.url()).pathname === `/c/${released.combination_id}` && await p.evaluate(() => localStorage.getItem("xr-actor")) === "user-A" && !/for the configuration people/.test(await p.locator("main").innerText()), await p.evaluate(() => localStorage.getItem("xr-actor")));
       await as("user-A"); await p.goto(`${BASE}/c/${released.combination_id}`); await header(); await btn.waitFor({ timeout: 15000 });
     }

@@ -119,7 +119,9 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   const [tab] = await Promise.all([p.context().waitForEvent("page"), toCases.click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] })]);
   await tab.waitForLoadState("domcontentloaded"); await p.waitForTimeout(500);
   step("frame: a Ctrl-click opens a new tab and changes nobody", await stored(p) === "user-A", await stored(p));
-  await tab.close();
+  // A tab closed as it opens can hang: page.close() has no time limit (2 in 6,416 on a busy machine, CI run 45429673590).
+  await tab.waitForLoadState("load", { timeout: 15000 }).catch(() => {});
+  if (await Promise.race([tab.close().then(() => "closed"), new Promise((f) => setTimeout(f, 15000, "late"))]) === "late") console.log("NOTE  check_bk4a_browser.cjs: the new tab was not closed after 15 s; going on");
   await toCases.click(); await p.waitForURL((u) => u.pathname === "/cases", { timeout: 15000 }).catch(() => {});
   step("frame: a plain click opens the case list as the case officer, said once", await stored(p) === "user-O" && await said(p, /Now: Case officer \(simulated\)/) && await p.getByRole("button", { name: "Open a case" }).isVisible().catch(() => false));
   await p.context().close();
