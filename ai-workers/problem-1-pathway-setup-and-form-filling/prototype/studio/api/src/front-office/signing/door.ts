@@ -39,7 +39,7 @@ const notWork = (): never => problem(404, "Not found", NOT_WORK, { code: "LINK_N
 
 type Found = {
   firmId: string; firm: string;
-  signer: { id: string; requestId: string; personId: string | null; viewedAt: Date | null; consentedAt: Date | null; signedAt: Date | null; declinedAt: Date | null; sessionSha256: string | null; sessionExpiresAt: Date | null };
+  signer: { id: string; requestId: string; personId: string | null; viewedAt: Date | null; consentedAt: Date | null; signedAt: Date | null; declinedAt: Date | null; codeVerifiedAt: Date | null; sessionSha256: string | null; sessionExpiresAt: Date | null };
   request: { id: string; status: string; cancelReason: string | null; expiresAt: Date; documentKind: keyof typeof WHAT; documentId: string; documentVersion: number; providerDocumentId: string };
 };
 export type Ended = { state: "UPDATED" | "WITHDRAWN" | "DECLINED" | "SIGNED" | "EXPIRED"; message: string };
