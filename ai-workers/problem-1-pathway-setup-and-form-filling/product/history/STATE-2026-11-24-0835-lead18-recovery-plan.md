@@ -524,3 +524,10 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * No merge since 16:53. Running: R1.104, R1.58, R1.87, R1.54 4c, R1.93, R1.86 R0, R1.68 (#3500; Opus 5.5 medium not read, its label was cut off), R1.69 (#3497, waits on its reviewers; label Opus 5.5 Medium read). 84% weekly.
 * #3487 (R1.10 A4) labelled by the gate; guard read by me, read line posted. **R1.10's rest, named on #3487: A3 (front-office words), A2 (booking), A5 (case side): three fresh lanes needed; held until the types fix lands (P-663).** 9LZXV stopped.
 * #3489 (R1.93 PR B) Blocked round 1 (focus lost on search), its lane fixing. Full runs going: #3470, #3305, #3477 (old head, started by the gate; useless once C8 is fixed; never cancelled).
+
+### Lead 29, check 17:49 IST 24 Nov (86% weekly; 6.2 GB disk; my context about 390k: hand over next, no standby)
+* #3499 merged 17:27. No product merge since 15:44-16:53's. No batch open at 17:45; #3467 preparing.
+* **Founder:** "you can start Q8": refused (Remote Control), card task_441fb829 waits on the desktop. Stale-file list given (CapCut cache 314, Codex cache 168, Notion updater 499 MB); nothing deleted until he answers. **Asked: hand merge of #3494 in the browser** (P-758/P-762/P-791 conditions met: Approve, ci green, read, no batch running, button enabled, no bypass); not clicked without his yes in chat.
+* Labelled after my read: #3495 f18145ef1 (lasting types fix), #3482 79d52002e; #3305 covered (45373887741: ci, shard (22); attempt 2 green, full run green) and relabelled. #3470's full run red on types only; round 3 allowed. #3442 full run running.
+* #3491 36a32698a: app code and migration read, no fault; pr-rules and module-cards red. #3492 module-cards red. #3497 mergify scopes and walk j_74 red. #3487 types red (heap). #3489 04e8963bd approved, waits for #3470. #3498 waits for #3460. #3493 round 3 allowed. Lead B 7 asked to read #3491, #3492, #3497, #3477, #3498.
+* #3477 28ae2601b: Approve, full run running, then label.
