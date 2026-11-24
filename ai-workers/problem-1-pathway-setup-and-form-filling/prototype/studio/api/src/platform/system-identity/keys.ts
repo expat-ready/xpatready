@@ -7,6 +7,7 @@
 // These routes accept system/* keys only; firm routes accept agent/* keys only (identity/keys.ts): the two never mix.
 // @SystemReason() marks a route whose call must carry a written reason (`reason` in the body); it lands on the audit line.
 import { SetMetadata } from "@nestjs/common";
+import type { ZodType } from "zod";
 import { unauthorized } from "../identity/keys.ts";
 
 export const SYSTEM_ACCESS = "platform:system-access";
@@ -35,7 +36,10 @@ export const SystemStepUp = () => SetMetadata(SYSTEM_STEP_UP, true);
 export const SYSTEM_CHANGE = "platform:system-change";
 export const SystemChange = () => SetMetadata(SYSTEM_CHANGE, true);
 export const SYSTEM_REASON = "platform:system-reason";
-export const SystemReason = () => SetMetadata(SYSTEM_REASON, true);
+/** A route that needs a written reason. R1.10 A4: it may name its raw body schema, which the guard reads together with the
+ *  reason when the reason needs a change, so one 422 names every field (an unknown one, the route's own and the reason)
+ *  instead of the old 400 that hid them; a route's own business rules keep their answers (reset-mfa's IDENTITY_NOT_VERIFIED). */
+export const SystemReason = (body?: ZodType) => SetMetadata(SYSTEM_REASON, body ?? true);
 /** A reason's length (Sample: no requirement gives one). */
 export const REASON_MAX = 500;
 

@@ -157,7 +157,8 @@ export const MoneyParty = z.strictObject({ personId: uuid.optional(), companyId:
 export type MoneyParty = z.infer<typeof MoneyParty>;
 /** What other modules ask client money (contracts §8: nothing else reads or writes money_*). */
 export interface ClientMoneyPort {
-  /** True when any invoice, payment or trust entry exists for the party in the firm (FO-9b asks before a merge). */
+  /** True when any invoice, payment or trust entry exists for the party in the firm, a tax treatment is set for it, or a
+   *  trust entry names it as payee (FO-9b asks before a merge by itself). */
   hasMoney(firmId: string, party: MoneyParty): Promise<boolean>;
 }
 /** The fake: the parties a test says have money, per firm. */

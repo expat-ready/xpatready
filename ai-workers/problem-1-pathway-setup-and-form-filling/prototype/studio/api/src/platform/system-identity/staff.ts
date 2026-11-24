@@ -12,7 +12,7 @@ import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { Db } from "../../core.ts";
-import { parseInput, strict } from "../http/input.ts";
+import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
 import { PlatformClock } from "../identity/port.ts";
 import { forbidden, problem, unauthorized } from "../identity/keys.ts";
 import { REASON_MAX, SYSTEM_ROLES, type SystemStaffContext } from "./keys.ts";
@@ -24,7 +24,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OWNER = "platform-owner", MANAGE = "system/platform-user:manage";
 const ROLE = z.enum(Object.keys(SYSTEM_ROLES) as [keyof typeof SYSTEM_ROLES, ...(keyof typeof SYSTEM_ROLES)[]]);
 const ROLES = z.array(ROLE).max(6).transform((r) => [...new Set(r)].sort());
-// The reason's length is the guard's (REASON_MAX, counted after cleaning: 400 REASON_TOO_LONG); here only its type.
+// The reason's length is the guard's (REASON_MAX, counted after cleaning: 422 REASON_TOO_LONG naming reason); here only its type.
 const REASON = z.string().max(REASON_MAX * 4).optional();
 /** A name a person can see: at least one letter or digit once invisible characters go (breaker n1). */
 const NAME = z.string().max(200).transform((v) => lineText(v, 200)).refine((v) => /[\p{L}\p{N}]/u.test(v), "Give a name a person can read.");
@@ -60,6 +60,8 @@ export class SystemStaffAccess {
     }
   }
 
+  /** R1.10 A4: a malformed staff id is the same not-found as an unknown one (its words and code), answered before the body. */
+  private static knownId(id: string) { if (!UUID.test(id)) problem(404, "Not found", "No ExpatReady staff member has that id.", { code: "STAFF_NOT_FOUND" }); }
   private async target(tx: Tx, id: string) {
     const t = UUID.test(id) ? await tx.platSystemStaff.findUnique({ where: { id: id.toLowerCase() }, include: { grants: { where: { endedAt: null }, select: { id: true, roleCode: true } } } }) : null;
     return t ?? problem(404, "Not found", "No ExpatReady staff member has that id.", { code: "STAFF_NOT_FOUND" });
@@ -77,7 +79,8 @@ export class SystemStaffAccess {
   private static ownerRole(actor: SystemStaffContext, touched: boolean, reason: string | null) {
     if (!touched) return;
     if (!actor.roles.includes(OWNER)) forbidden("Only a Platform Owner gives or removes the Platform Owner role.", "OWNER_ONLY");
-    if (!reason) problem(400, "Give a reason", "Giving or removing the Platform Owner role needs a written reason.", { code: "REASON_REQUIRED" });
+    // R1.10 A4: the reason is a field (422 naming it), after the Owner-only check (who may, before what is sent).
+    if (!reason) problem(FIELD_ERROR_STATUS, "Give a reason", "Giving or removing the Platform Owner role needs a written reason.", { code: "REASON_REQUIRED", fields: { reason: "Giving or removing the Platform Owner role needs a written reason." } });
   }
   /** SA-7-25: the change would leave no active Owner. Through the API it is a second wall: the sender is an active Owner
    *  checked again under the lock and never the target, so two active Owners exist whenever it runs (review m2). */
@@ -104,6 +107,7 @@ export class SystemStaffAccess {
   /** SA-7-12: give and remove roles (never one's own; the Owner role by an Owner with a reason; the floor). */
   changeRoles(actor: SystemStaffContext, line: CallLine, id: string, input: unknown) {
     return this.change(actor, line, async (tx, now) => {
+      SystemStaffAccess.knownId(id);   // R1.10 A4: a malformed id is the one not-found, before the body is read (PF-28)
       const to: string[] = parseInput(RolesBody, input).roles;
       if (id.toLowerCase() === actor.staffId) forbidden("Nobody changes their own roles. Ask another Platform Owner.", "OWN_ROLES");
       const t = await this.target(tx, id), from = SystemStaffAccess.rolesOf(t);
@@ -133,6 +137,7 @@ export class SystemStaffAccess {
   /** SA-7-23: active again (sessions from before stay ended; the fresh invite waits on the identity admin port). */
   reactivate(actor: SystemStaffContext, line: CallLine, id: string, input: unknown) {
     return this.change(actor, line, async (tx) => {
+      SystemStaffAccess.knownId(id);
       parseInput(ReasonBody, input);
       SystemStaffAccess.notSelf(actor, id, "reactivates");
       const t = await this.target(tx, id);
@@ -145,6 +150,7 @@ export class SystemStaffAccess {
   /** SA7-D5: end every session the person has (an Admin may, except on a privileged target). */
   endAllSessions(actor: SystemStaffContext, line: CallLine, id: string, input: unknown) {
     return this.change(actor, line, async (tx, now) => {
+      SystemStaffAccess.knownId(id);
       parseInput(ReasonBody, input);
       const t = await this.target(tx, id);
       SystemStaffAccess.privileged(actor, t);

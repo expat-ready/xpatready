@@ -3,7 +3,7 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Req } from "@nestjs/common";
 import { AnySystemStaff, SystemChange, SystemKeys, SystemReason, SystemSignIn, SystemStepUp, systemStaffOf, type SystemStaffContext } from "./keys.ts";
 import { SystemIdentity } from "./service.ts";
-import { SystemStaffAccess, type CallLine } from "./staff.ts";
+import { ReasonBody, ResetMfaBody, SystemStaffAccess, type CallLine } from "./staff.ts";
 import { NoFirmData } from "../audit/access/declare.ts";
 
 type R = { systemStaff?: SystemStaffContext; systemLine?: CallLine; headers: Record<string, string | string[] | undefined> };
@@ -33,7 +33,7 @@ export class SystemStaffController {
   @Put(":id/roles") @SystemKeys(MANAGE) @SystemStepUp() @SystemChange() @NoFirmData("our own staff\'s access")
   roles(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.s.changeRoles(systemStaffOf(r), lineOf(r), id, b); }
 
-  @Post(":id/deactivate") @HttpCode(200) @SystemKeys(REMOVE) @SystemStepUp() @SystemReason() @SystemChange() @NoFirmData("our own staff\'s access")
+  @Post(":id/deactivate") @HttpCode(200) @SystemKeys(REMOVE) @SystemStepUp() @SystemReason(ReasonBody) @SystemChange() @NoFirmData("our own staff\'s access")
   deactivate(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.s.deactivate(systemStaffOf(r), lineOf(r), id, b); }
 
   @Post(":id/reactivate") @HttpCode(200) @SystemKeys(MANAGE) @SystemStepUp() @SystemChange() @NoFirmData("our own staff\'s access")
@@ -42,6 +42,6 @@ export class SystemStaffController {
   @Post(":id/end-sessions") @HttpCode(200) @SystemKeys(REMOVE) @SystemStepUp() @SystemChange() @NoFirmData("our own staff\'s access")
   endSessions(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.s.endAllSessions(systemStaffOf(r), lineOf(r), id, b); }
 
-  @Post(":id/reset-mfa") @HttpCode(200) @SystemKeys(MANAGE) @SystemStepUp() @SystemReason() @SystemChange() @NoFirmData("our own staff\'s access")
+  @Post(":id/reset-mfa") @HttpCode(200) @SystemKeys(MANAGE) @SystemStepUp() @SystemReason(ResetMfaBody) @SystemChange() @NoFirmData("our own staff\'s access")
   resetMfa(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.s.resetMfa(systemStaffOf(r), lineOf(r), id, b); }
 }

@@ -328,13 +328,13 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   // A route that names a reason requires one (the lock route here is test-only; PF-27 builds the real one).
   n = lines(); handled = 0;
   const noReason = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: {} }), blank = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "   " } });
-  ok("PF-4s DW5 fail: a route that names a reason refuses a call without one (400 REASON_REQUIRED), the handler never runs, and each refusal is one line", noReason.status === 400 && noReason.body.code === "REASON_REQUIRED" && blank.status === 400 && handled === 0 && lines() === n + 2 && lastLine().code === "REASON_REQUIRED", { noReason, blank });
+  ok("PF-4s DW5 fail: a route that names a reason refuses a call without one (422 REASON_REQUIRED naming reason; R1.10 A4), the handler never runs, and each refusal is one line", noReason.status === 422 && noReason.body.code === "REASON_REQUIRED" && !!noReason.body.fields?.reason && blank.status === 422 && handled === 0 && lines() === n + 2 && lastLine().code === "REASON_REQUIRED", { noReason, blank });
   n = lines();
   const withReason = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "  A report of a stolen Owner account  " } });
   ok("PF-4s DW5 pass: with a reason the call goes through and its one line carries the reason and the firm it affected", withReason.status === 201 && handled === 1 && lines() === n + 1 && lastLine().reason === "A report of a stolen Owner account" && lastLine().target.id === firmId && lastLine().outcome === "ALLOWED", lastLine());
   n = lines(); handled = 0;
   const invisible = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "\u200b\u202e" } });
-  ok("PF-4s DW5 fail (breaker m4): a reason of invisible characters only is no reason (400 REASON_REQUIRED), one line", invisible.status === 400 && invisible.body.code === "REASON_REQUIRED" && handled === 0 && lines() === n + 1, invisible);
+  ok("PF-4s DW5 fail (breaker m4): a reason of invisible characters only is no reason (422 REASON_REQUIRED naming reason; R1.10 A4), one line", invisible.status === 422 && invisible.body.code === "REASON_REQUIRED" && !!invisible.body.fields?.reason && handled === 0 && lines() === n + 1, invisible);
   n = lines();
   const nul = await call(A.base, "POST", "/api/system/test/refunds/a%00b", { token: support, body: {} }), nulReason = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "stolen\u0000 account" } });
   ok("PF-4s DW5 fail (breaker m2): a NUL in a path parameter or a reason still leaves its one line (cleaned), the refusal stays a 403, the call with a reason goes through",
@@ -405,7 +405,7 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   x = await one(() => call(A.base, "POST", `${P2}/${OWNER}/reset-mfa`, { token: o, body: { reason: "lost phone", verified: true } }));
   ok("PF-4s DW6 fail (SA-7-31): Reset MFA on oneself is 403 OWN_ACCOUNT, one REFUSED line", x.r.status === 403 && x.r.body.code === "OWN_ACCOUNT" && x.added === 1 && x.line.code === "OWN_ACCOUNT", x);
   x = await one(() => call(A.base, "POST", `${P2}/${TSUP}/reset-mfa`, { token: o, body: { verified: true } }));
-  ok("PF-4s DW6 fail (SA-7-31): Reset MFA without a reason is 400 REASON_REQUIRED, one line", x.r.status === 400 && x.r.body.code === "REASON_REQUIRED" && x.added === 1, x);
+  ok("PF-4s DW6 fail (SA-7-31): Reset MFA without a reason is 422 REASON_REQUIRED naming reason (R1.10 A4), one line", x.r.status === 422 && x.r.body.code === "REASON_REQUIRED" && !!x.r.body.fields?.reason && x.added === 1, x);
   x = await one(() => call(A.base, "POST", `${P2}/${TSUP}/reset-mfa`, { token: o, body: { reason: "lost phone" } }));
   ok("PF-4s DW6 fail (SA7-D21): Reset MFA without the verified flag is 400 IDENTITY_NOT_VERIFIED, one line", x.r.status === 400 && x.r.body.code === "IDENTITY_NOT_VERIFIED" && x.added === 1 && x.line.code === "IDENTITY_NOT_VERIFIED", x);
   const tsupToken = await tokenOf(TSUP); clock.t += 1000;
@@ -439,7 +439,7 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   x = await one(() => call(A.base, "PUT", `${P2}/${OWNER}/roles`, { token: o, body: { roles: [] , reason: "test" } }));
   ok("PF-4s DW7 fail (SA-7-12): nobody changes their own roles (403 OWN_ROLES), one line", x.r.status === 403 && x.r.body.code === "OWN_ROLES" && x.added === 1, x);
   x = await one(() => call(A.base, "POST", P2, { token: o, body: { email: "second.owner@expatready.example", displayName: "Sample Second Owner", roles: ["platform-owner"] } }));
-  ok("PF-4s DW7 fail (SA-7-12): giving the Owner role without a reason is 400 REASON_REQUIRED, nobody created", x.r.status === 400 && x.r.body.code === "REASON_REQUIRED" && x.added === 1 && !(await db.platSystemStaff.findUnique({ where: { email: "second.owner@expatready.example" } })), x);
+  ok("PF-4s DW7 fail (SA-7-12): giving the Owner role without a reason is 422 REASON_REQUIRED naming reason (R1.10 A4), nobody created", x.r.status === 422 && x.r.body.code === "REASON_REQUIRED" && !!x.r.body.fields?.reason && x.added === 1 && !(await db.platSystemStaff.findUnique({ where: { email: "second.owner@expatready.example" } })), x);
   x = await one(() => call(A.base, "POST", P2, { token: o, body: { email: "Second.Owner@expatready.example", displayName: "Sample Second Owner", roles: ["platform-owner"], reason: "a second Owner" } }));
   const OWNER2 = x.r.body.staffId as string;
   ok("PF-4s DW7 pass (SA-7-4): an Owner adds a staff member with the Owner role and a reason (201, one ALLOWED line naming the new person)",
@@ -484,8 +484,8 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   const filler = await one(() => call(A.base, "POST", `${P2}/${TSUP}/deactivate`, { token: o4, body: { reason: "\u3164\u115F" } }));
   const long = await one(() => call(A.base, "PUT", `${P2}/${TSUP}/roles`, { token: o4, body: { roles: ["platform-support"], reason: "r".repeat(501) } }));
   const blankName = await one(() => call(A.base, "POST", P2, { token: o4, body: { email: "blank.name@expatready.example", displayName: "\u200B\u3164", roles: [] } }));
-  ok("PF-4s part 2 fail (breaker m2, n1, n2): a reason of Hangul fillers is no reason (400), a 501-character one is 400 REASON_TOO_LONG, an invisible name is 422; one line each, nothing changed",
-    filler.r.status === 400 && filler.r.body.code === "REASON_REQUIRED" && long.r.status === 400 && long.r.body.code === "REASON_TOO_LONG" && blankName.r.status === 422 && filler.added + long.added + blankName.added === 3
+  ok("PF-4s part 2 fail (breaker m2, n1, n2): a reason of Hangul fillers is no reason (422), a 501-character one is 422 REASON_TOO_LONG, an invisible name is 422; one line each, nothing changed",
+    filler.r.status === 422 && filler.r.body.code === "REASON_REQUIRED" && !!filler.r.body.fields?.reason && long.r.status === 422 && long.r.body.code === "REASON_TOO_LONG" && !!long.r.body.fields?.reason && blankName.r.status === 422 && filler.added + long.added + blankName.added === 3
     && (await db.platSystemStaff.findUniqueOrThrow({ where: { id: TSUP } })).status === "ACTIVE" && !(await db.platSystemStaff.findUnique({ where: { email: "blank.name@expatready.example" } })), { filler: filler.r, long: long.r, blankName: blankName.r });
   // PF-28's rule on our own staff's routes (its sweep cannot sign in here, so it lists them NOT TESTED and they are asked
   // here): an unknown field 422 naming it, a wrong type 422, and a bad body changes nothing (one REFUSED line, code INVALID).
