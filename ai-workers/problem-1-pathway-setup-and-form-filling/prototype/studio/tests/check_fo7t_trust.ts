@@ -25,8 +25,8 @@
 //   GET  /trust/balances?personId=          → { balances: [{ currency, caseId, amountMinor }], totals: [{ currency, amountMinor }] }
 //   (FO-7t.md names the query party=&case=; personId=/companyId=/caseId= are the same, as FO-7b's routes spell them.)
 // Field errors answer 422 (PF-28 part 6; Lead 10, 23 Nov; FO-7t.md's "400" predates it). A non-Owner may read the answer (AG-6-59
-// rule 8: "Last changed <date> by <person>" is shown to staff). Audit lines: trust.answered, trust.request_created (one
-// per request, sent or held), trust.request_cancelled, trust.deposited; old and new in `detail` as <field>_before/_after.
+// rule 8: "Last changed <date> by <person>" is shown to staff). Audit lines: trust_money.answered, trust_money.request_created (one
+// per request, sent or held), trust_money.request_cancelled, trust_money.deposited (B164: a five-letter head reads as a key); old and new in `detail` as <field>_before/_after.
 // A scratch database (every migration), a Nest app of PF-4's guard, PF-12's walls and this row's feature, with the local
 // sign-in stand-in; the API connects as xr_app; the mail is the fake. No network, no model call, no Stripe call (US$0).
 // Amounts are Sample. Dropped at the end, also when the feature is missing.
@@ -152,11 +152,11 @@ try {
   // ------------------------------------------------------------------------------------------------ DW2: the answer
   const notOwner = await call(tT, "PUT", "/answer", { answer: "YES" });
   ok("FO-7t DW2 fail: a Case Manager (not the Owner) answering → 403, the answer unchanged, no audit line for firm A",
-    notOwner.status === 403 && answerOf(A) === "UNANSWERED" && sql(`select count(*) from audit_event where action = 'trust.answered' and firm_id = '${A}'`) === "0", notOwner.body);
+    notOwner.status === 403 && answerOf(A) === "UNANSWERED" && sql(`select count(*) from audit_event where action = 'trust_money.answered' and firm_id = '${A}'`) === "0", notOwner.body);
   const bad = await call(tR, "PUT", "/answer", { answer: "MAYBE" });
   ok("FO-7t DW2 fail: an answer other than YES or NO → a field error (422), unchanged (zod, AG-6-37 rule 3)", fieldError(bad.status) && answerOf(A) === "UNANSWERED", bad.body);
   const yes = await call(tR, "PUT", "/answer", { answer: "YES" });
-  const yesAudit = sql(`select count(*) || ':' || min(actor) || ':' || min(detail->>'answer_before') || ':' || min(detail->>'answer_after') from audit_event where action = 'trust.answered' and firm_id = '${A}'`);
+  const yesAudit = sql(`select count(*) || ':' || min(actor) || ':' || min(detail->>'answer_before') || ':' || min(detail->>'answer_after') from audit_event where action = 'trust_money.answered' and firm_id = '${A}'`);
   ok("FO-7t DW2 pass: the Owner's Yes → 200, stored with who (staff) and when (the database's), one audit line by the Owner with old and new",
     yes.status === 200 && yes.body.answer === "YES" && sql(`select trust_answer || ':' || trust_answered_by || ':' || (trust_answered_at is not null) from money_payment_settings where firm_id = '${A}'`) === `YES:staff:${staffR}:true`
     && yesAudit === `1:staff:${staffR}:UNANSWERED:YES`, [yes.body, yesAudit]);
@@ -179,11 +179,11 @@ try {
     && text.includes(r1.body.number) && text.includes("600.00") && text.includes("transit 00011") && sql(`select number from money_trust_request where id = '${r1.body.id}'`) === r1.body.number, [r1.body, m1.map(words)]);
   ok("FO-7t DW3 fail (P-567 (3)): the email carries no link and no word \"card\"", !/https?:\/\//i.test(text) && !/\bcard\b/i.test(text), text);
   const noReason = await call(tR, "POST", `/requests/${r1.body.id}/cancel`, {});
-  ok("FO-7t DW3 fail: cancel without a reason → a field error (422), the request still Sent, no audit line", fieldError(noReason.status) && sql(`select cancelled_at is null from money_trust_request where id = '${r1.body.id}'`) === "t" && audits("trust.request_cancelled") === 0, noReason.body);
+  ok("FO-7t DW3 fail: cancel without a reason → a field error (422), the request still Sent, no audit line", fieldError(noReason.status) && sql(`select cancelled_at is null from money_trust_request where id = '${r1.body.id}'`) === "t" && audits("trust_money.request_cancelled") === 0, noReason.body);
   const r2 = await call(tR, "POST", "/requests", { ...reqBody, amountMinor: 20000 });
   const cancel = await call(tR, "POST", `/requests/${r2.body.id}/cancel`, { reason: "Asked twice by mistake" });
   ok("FO-7t DW3 pass: a cancelled request keeps its number (Cancelled, reason stored, one audit line)", cancel.status === 200 && cancel.body.status === "Cancelled" && cancel.body.number === r2.body.number
-    && sql(`select number || ':' || cancel_reason from money_trust_request where id = '${r2.body.id}'`) === `${r2.body.number}:Asked twice by mistake` && audits("trust.request_cancelled") === 1, cancel.body);
+    && sql(`select number || ':' || cancel_reason from money_trust_request where id = '${r2.body.id}'`) === `${r2.body.number}:Asked twice by mistake` && audits("trust_money.request_cancelled") === 1, cancel.body);
   const prospect = await call(tR, "POST", "/requests", { amountMinor: 100, currency: "CAD", purpose: "x" }), otherFirm = await call(tR, "POST", "/requests", { ...reqBody, personId: PB });
   ok("FO-7t DW3 fail: a request with no person or company (a field error), or on another firm's person (404, as DW10) → nothing written",
     fieldError(prospect.status) && otherFirm.status === 404 && sql(`select count(*) from money_trust_request where firm_id = '${A}'`) === "3", [prospect.body, otherFirm.body]);
@@ -308,7 +308,7 @@ try {
   ok("FO-7t DW1 pass: trust off with money held: the ledger and balances answer; a new request or deposit is refused, nothing written",
     heldReads.every((r) => r.status === 200) && heldNew.every((r) => r.status >= 400 && r.status < 500) && sql(`select count(*) from money_payment where idempotency_key = 'fo7t-off-held'`) === "0", heldNew.map((r) => r.body));
   await call(tR, "PUT", "/answer", { answer: "YES" });
-  ok("FO-7t DW2 pass: each change of firm A's answer is one audit line (UNANSWERED→YES, YES→NO, NO→YES)", sql(`select count(*) from audit_event where action = 'trust.answered' and firm_id = '${A}'`) === "3");
+  ok("FO-7t DW2 pass: each change of firm A's answer is one audit line (UNANSWERED→YES, YES→NO, NO→YES)", sql(`select count(*) from audit_event where action = 'trust_money.answered' and firm_id = '${A}'`) === "3");
 
   // ------------------------------------------------------------------------------------ DW10: walls, C5 and audit
   // Firm B has trust YES (above), so a 404 here is the wall, not trust off.
@@ -346,21 +346,21 @@ try {
   const mk = async (body: Record<string, unknown>) => (await call(tR, "POST", "/requests", { ...reqBody, ...body })).body.id as string;
   const rParty = await mk({}), rCase2 = await mk({ caseId: CASE2 }), rOnCase = await mk({ caseId: CASE }), rDone = await mk({ caseId: CASE2 });
   await call(tR, "POST", `/requests/${rDone}/cancel`, { reason: "Owner cancelled it (Sample)" });
-  const cancelsBefore = audits("trust.request_cancelled"), state = () => sql(`select string_agg(id || ':' || coalesce(cancel_reason, '-'), ',' order by id) from money_trust_request where id in ('${rParty}', '${rCase2}', '${rDone}')`), st0 = state();
+  const cancelsBefore = audits("trust_money.request_cancelled"), state = () => sql(`select string_agg(id || ':' || coalesce(cancel_reason, '-'), ',' order by id) from money_trust_request where id in ('${rParty}', '${rCase2}', '${rDone}')`), st0 = state();
   const cancelUnseen = await Promise.all([rParty, rCase2, rDone].map((id) => call(tO, "POST", `/requests/${id}/cancel`, { reason: "Not mine to cancel" })));
   ok("FO-7t C5 fail (cancel; Lead 17): a staff member with agent/payment:record who sees neither the request's case nor its client → 404 on an open request (by party, by case) and on a cancelled one (never \"already cancelled\"); no row changed, no audit line",
-    cancelUnseen.every((r) => r.status === 404) && state() === st0 && audits("trust.request_cancelled") === cancelsBefore, cancelUnseen.map((r) => [r.status, r.body?.code, r.body?.detail]));
+    cancelUnseen.every((r) => r.status === 404) && state() === st0 && audits("trust_money.request_cancelled") === cancelsBefore, cancelUnseen.map((r) => [r.status, r.body?.code, r.body?.detail]));
   const byCase = await call(tO, "POST", `/requests/${rOnCase}/cancel`, { reason: "Client changed plans (Sample)" });
   ok("FO-7t C5 pass (cancel, by case; Lead 17): that staff member cancels a request on the case they see (200, Cancelled, one audit line)",
-    byCase.status === 200 && byCase.body.status === "Cancelled" && sql(`select cancel_reason from money_trust_request where id = '${rOnCase}'`) === "Client changed plans (Sample)" && audits("trust.request_cancelled") === cancelsBefore + 1, byCase.body);
+    byCase.status === 200 && byCase.body.status === "Cancelled" && sql(`select cancel_reason from money_trust_request where id = '${rOnCase}'`) === "Client changed plans (Sample)" && audits("trust_money.request_cancelled") === cancelsBefore + 1, byCase.body);
   const byParty = await call(tR, "POST", `/requests/${rParty}/cancel`, { reason: "Sent in error (Sample)" });
   ok("FO-7t C5 pass (cancel, by party; Lead 17): the Owner, who sees the client, cancels the client's request with no case (200, one audit line)",
-    byParty.status === 200 && byParty.body.status === "Cancelled" && audits("trust.request_cancelled") === cancelsBefore + 2, byParty.body);
+    byParty.status === 200 && byParty.body.status === "Cancelled" && audits("trust_money.request_cancelled") === cancelsBefore + 2, byParty.body);
   sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/payment:record'`);
   ok("FO-7t DW10 pass: one audit line per change, by staff: each trust deposit, each request (held or sent), each cancel",
-    audits("trust.deposited") === Number(sql(`select count(*) from money_payment where received_into = 'TRUST'`)) && audits("trust.request_created") === Number(sql(`select count(*) from money_trust_request`))
-    && audits("trust.request_cancelled") === Number(sql(`select count(*) from money_trust_request where cancelled_at is not null`))
-    && sql(`select count(*) from audit_event where action like 'trust.%' and actor not like 'staff:%'`) === "0");
+    audits("trust_money.deposited") === Number(sql(`select count(*) from money_payment where received_into = 'TRUST'`)) && audits("trust_money.request_created") === Number(sql(`select count(*) from money_trust_request`))
+    && audits("trust_money.request_cancelled") === Number(sql(`select count(*) from money_trust_request where cancelled_at is not null`))
+    && sql(`select count(*) from audit_event where action like 'trust_money.%' and actor not like 'staff:%'`) === "0");
 
   // ------------------------------------------------------------------------------------------- DW18: the events
   const EVENT = TRUST_EVENT as Record<string, string>;

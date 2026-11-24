@@ -86,7 +86,7 @@ export class TrustMoney {
       if (!s) return refuse("PAYMENTS_NOT_SET_UP", "Set up payments first: this firm's payment settings are not saved yet. Nothing was changed.");
       if (s.answer !== answer) {
         await tx.moneyPaymentSettings.update({ where: { firmId: f }, data: { trustAnswer: answer, trustAnsweredBy: by } });
-        await this.audit.record(tx, { firmId: f, actor: by, action: "trust.answered", entity: "money_payment_settings", entityKey: f, summary: `Holds client money in trust: ${s.answer} → ${answer}.`, before: { answer: s.answer }, after: { answer } });
+        await this.audit.record(tx, { firmId: f, actor: by, action: "trust_money.answered", entity: "money_payment_settings", entityKey: f, summary: `Holds client money in trust: ${s.answer} → ${answer}.`, before: { answer: s.answer }, after: { answer } });
       }
       const held = answer === "NO" ? await heldOf(tx, f) : [];
       const message = held.length ? `${held.map((h) => `${h.currency} ${MONEY(h.amountMinor)} is held for ${h.cases} case${h.cases === 1 ? "" : "s"}.`).join(" ")} Trust screens stay visible until it is settled.` : undefined;
@@ -105,7 +105,7 @@ export class TrustMoney {
       const details = (await tx.moneyPaymentSettings.findFirst({ where: firmScope(f), select: { trustDetails: true } }))?.trustDetails?.trim() || null;
       const row = await tx.moneyTrustRequest.create({ data: { firmId: f, personId: who.personId, companyId: who.companyId, caseId, amountMinor: r.amountMinor, currency: r.currency, purpose: r.purpose, createdBy: by,
         ...(details ? { sentAt: this.clock.now(), sentBy: by } : {}) }, select: { id: true, number: true, sentAt: true } });
-      await this.audit.record(tx, { firmId: f, actor: by, action: "trust.request_created", entity: "money_trust_request", entityKey: row.id,
+      await this.audit.record(tx, { firmId: f, actor: by, action: "trust_money.request_created", entity: "money_trust_request", entityKey: row.id,
         summary: row.number ? `Trust request ${row.number} sent: ${r.currency} ${MONEY(r.amountMinor)}.` : `Trust request saved unsent (no trust payment details yet): ${r.currency} ${MONEY(r.amountMinor)}.`,
         detail: { trustRequestId: row.id, sent: !!row.number }, before: null, after: { number: row.number, personId: who.personId, companyId: who.companyId, caseId, amountMinor: r.amountMinor, currency: r.currency, purpose: r.purpose } });
       return { ...row, who, details };
@@ -131,7 +131,7 @@ export class TrustMoney {
       if (r.cancelled) refuse("CANCELLED", `${r.number ?? "This request"} is already cancelled. Nothing was changed.`);
       await textOk(tx, "reason", c.reason, 200);
       await tx.moneyTrustRequest.update({ where: { firmId_id: { firmId: f, id: rid } }, data: { cancelledAt: this.clock.now(), cancelledBy: by, cancelReason: c.reason } });
-      await this.audit.record(tx, { firmId: f, actor: by, action: "trust.request_cancelled", entity: "money_trust_request", entityKey: rid, summary: `Trust request ${r.number ?? "(unsent)"} cancelled.`,
+      await this.audit.record(tx, { firmId: f, actor: by, action: "trust_money.request_cancelled", entity: "money_trust_request", entityKey: rid, summary: `Trust request ${r.number ?? "(unsent)"} cancelled.`,
         detail: { trustRequestId: rid }, before: { status: "Open", cancelReason: null }, after: { status: "Cancelled", cancelReason: c.reason } });
       return { id: rid, status: "Cancelled", number: r.number };
     });
@@ -196,7 +196,7 @@ export class TrustMoney {
       const entry = await tx.moneyTrustEntry.create({ data: { firmId: f, personId: who.personId, companyId: who.companyId, caseId, kind: "DEPOSIT", amountMinor: d.amountMinor, currency: d.currency, paymentId: pay.id, trustRequestId: requestId, createdBy: by },
         select: { id: true, balanceAfterMinor: true } });
       const receipt = await tx.moneyReceipt.create({ data: { firmId: f, kind: "TRUST", trustEntryId: entry.id }, select: { number: true } });
-      await this.audit.record(tx, { firmId: f, actor: by, action: "trust.deposited", entity: "money_payment", entityKey: pay.id, summary: `${d.currency} ${MONEY(d.amountMinor)} received into trust for ${who.name}, receipt ${receipt.number}.`,
+      await this.audit.record(tx, { firmId: f, actor: by, action: "trust_money.deposited", entity: "money_payment", entityKey: pay.id, summary: `${d.currency} ${MONEY(d.amountMinor)} received into trust for ${who.name}, receipt ${receipt.number}.`,
         detail: { paymentId: pay.id, entryId: entry.id, receiptNumber: receipt.number, amountMinor: d.amountMinor, balanceAfterMinor: entry.balanceAfterMinor },
         before: null, after: { method: d.method, amountMinor: d.amountMinor, currency: d.currency, reference: d.reference ?? null, caseId, trustRequestId: requestId, cleared, evidenceFileKey: d.evidenceFileKey ?? null, receiptNumber: receipt.number } });
       await tx.moduleEvent.create({ data: { firmId: f, type: TRUST_EVENT.TRUST_DEPOSITED, subjectId: pay.id, payload: TrustDepositedPayload.parse({ paymentId: pay.id, entryId: entry.id, personId: who.personId, companyId: who.companyId, caseId, trustRequestId: requestId, amountMinor: d.amountMinor, currency: d.currency }) } });
