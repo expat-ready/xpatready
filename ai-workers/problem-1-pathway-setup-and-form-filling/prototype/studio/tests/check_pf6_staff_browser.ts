@@ -88,9 +88,9 @@ await team(p);
 ok("PF-6 DW1 pass: Team shows the seat line from the server", (await p.locator("[data-seat-line]").innerText()).startsWith(`${used()} of ${Number(plan[1]) + 100} seats used`));
 await p.locator("[data-invite-open]").click(); await p.getByLabel("Email, person 1").fill(X);
 ok("PF-6 DW1/BR-1 pass: Case Officer is ticked first", await p.locator('[data-invite-row="1"] [data-role="CASE_OFFICER"]').isChecked());
-await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations$/, 1);
+await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations\/batch$/, 1);
 const invX = sql(`select id from platform_invitation where email = '${X}'`);
-ok("PF-6 DW1 pass: Invite people sends one invitation for the row (Case Officer)", posts(p, /\/staff\/invitations$/).length === 1 && !!invX && sql(`select roles::text from platform_invitation where id = '${invX}'`) === "{CASE_OFFICER}");
+ok("PF-6 DW1 pass: Invite people sends one invitation for the row (Case Officer)", posts(p, /\/staff\/invitations\/batch$/).length === 1 && !!invX && sql(`select roles::text from platform_invitation where id = '${invX}'`) === "{CASE_OFFICER}");
 await p.locator('[data-chip="invited"]').click(); await row(p, X).waitFor({ timeout: 10_000 });
 ok("PF-6 DW1 pass: the Invited chip lists the pending invitation", (await row(p, X).innerText()).includes("Invited"));
 const Y = `pf6-y-${run}@example.com`, invY = (await (await staffCall(rTok, "POST", "/platform/staff/invitations", { email: Y, roles: ["READ_ONLY"] })).json() as { id: string }).id;
@@ -169,20 +169,21 @@ await team(p); await p.locator("[data-invite-open]").click();
 const ownerOffered = await p.locator('[data-invite-row="1"] [data-role]').evaluateAll((els) => els.map((e) => e.getAttribute("data-role")));
 ok("PF-6 DW2/BR-1 pass: an Owner's invite picker offers every role but Owner", !ownerOffered.includes("OWNER") && ownerOffered.length === 5, ownerOffered);
 // BR-3: the same email twice is flagged and nothing is sent; an existing staff member is flagged with the server's words.
+// R1.20: the form is one call to staff/invitations/batch (P-727), so the posts counted are batch calls.
 await p.getByLabel("Email, person 1").fill(O.email); await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 2").fill(O.email.toUpperCase());
-const sentBefore = posts(p, /\/staff\/invitations$/).length;
+const sentBefore = posts(p, /\/staff\/invitations\/batch$/).length;
 await p.locator("[data-send-invites]").click(); await p.waitForTimeout(500);
-ok("PF-6 DW2/BR-3 fail: a duplicate row is flagged on its row and nothing is sent", (await p.locator('[data-invite-row="2"]').innerText()).includes("This email is already on another row.") && posts(p, /\/staff\/invitations$/).length === sentBefore);
-await p.getByRole("button", { name: "Remove person 2" }).click(); await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations$/, sentBefore + 1);
+ok("PF-6 DW2/BR-3 fail: a duplicate row is flagged on its row and nothing is sent", (await p.locator('[data-invite-row="2"]').innerText()).includes("This email is already on another row.") && posts(p, /\/staff\/invitations\/batch$/).length === sentBefore);
+await p.getByRole("button", { name: "Remove person 2" }).click(); await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations\/batch$/, sentBefore + 1);
 ok("PF-6 DW2/BR-3 fail: an existing staff member's row keeps the server's words; no invitation is made", (await p.locator('[data-invite-row="1"]').innerText()).includes("This person is already on your firm's staff.") && sql(`select count(*) from platform_invitation where email = '${O.email}'`) === "0");
 // BR-2: over the limit nothing is sent; the whole form is counted.
 await p.keyboard.press("Escape"); limit(used() + 1);
 await team(p); await p.locator("[data-invite-open]").click(); await p.getByLabel("Email, person 1").fill(`pf6-s1-${run}@example.com`);
 ok("PF-6 DW2/BR-2 pass: one more person fits: the seat line counts the form", (await p.locator("[data-invite-seats]").innerText()) === `${used() + 1} of ${used() + 1} seats after these invites`);
 await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 2").fill(`pf6-s2-${run}@example.com`);
-const before2 = posts(p, /\/staff\/invitations$/).length;
+const before2 = posts(p, /\/staff\/invitations\/batch$/).length;
 await p.locator("[data-send-invites]").click({ force: true }); await p.waitForTimeout(500);
-ok("PF-6 DW2/BR-2 fail: over the limit it says \"Remove 1 person or upgrade\" and sends nothing", (await p.getByText("Remove 1 person or upgrade your plan.").count()) === 1 && posts(p, /\/staff\/invitations$/).length === before2);
+ok("PF-6 DW2/BR-2 fail: over the limit it says \"Remove 1 person or upgrade\" and sends nothing", (await p.getByText("Remove 1 person or upgrade your plan.").count()) === 1 && posts(p, /\/staff\/invitations\/batch$/).length === before2);
 await p.keyboard.press("Escape");
 await staffCall(rTok, "POST", `/platform/staff/${Xs.id}/deactivate`, { reason: "seat test" }); limit(used());
 await team(p); await p.locator('[data-chip="inactive"]').click(); await openPerson(p, X); await act(p, "reactivate", "Back again"); await p.locator("[data-act-error]").waitFor({ timeout: 10_000 });
