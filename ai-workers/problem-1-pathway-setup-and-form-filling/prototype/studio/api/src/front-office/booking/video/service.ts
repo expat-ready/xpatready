@@ -41,11 +41,17 @@ type Pref = { myMeetingLink: string | null; sourceChoice: VideoSource | null };
 
 const TX = { maxWait: 10_000, timeout: 20_000 };
 const MAX = 2048;
-/** One https URL with a host, no white space or control character anywhere (a calendar file or an email never reads a
- *  new line or field from it), at most 2,048 characters. */
+/** One https URL with a real host, at most 2,048 characters, in printable ASCII only (a pasted Zoom, Meet or Teams
+ *  link is ASCII; an international host is pasted as its xn-- form): no white space, control, invisible or
+ *  direction-changing character, none of " < > \ ^ ` { | }, no user or password, so a link can neither break a calendar
+ *  file or an email nor show one address and open another (breaker m1). The database checks the same (fo_video_link_ok). */
+const SHAPE = /^https:\/\/[!#-;=?-\[\]_a-z~]+$/;
 export function linkOk(s: string): boolean {
-  if ([...s].length > MAX || !/^https:\/\/[^\s\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/.test(s)) return false;
-  try { const u = new URL(s); return u.protocol === "https:" && u.hostname.length > 0 && !u.username && !u.password; } catch { return false; }
+  if (s.length > MAX || !SHAPE.test(s)) return false;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" && !u.username && !u.password && /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(u.hostname) && s.slice(8).toLowerCase().startsWith(u.hostname.toLowerCase());
+  } catch { return false; }
 }
 const Link = z.string({ error: VIDEO_WORDS.link }).refine((s) => s === "" || linkOk(s), VIDEO_WORDS.link);
 export const VideoBody = z.strictObject({
@@ -61,10 +67,11 @@ const problem = (status: number, slug: string, title: string, detail: string, ex
 export const sourcesOf = (p: Pick<Pref, "myMeetingLink">): VideoSource[] => SOURCE_ORDER.filter((s) => s === "MY_LINK" && !!p.myMeetingLink);
 /** The choice kept or moved (rules 3, 4): the one asked for, else the current one while the person still has it, else
  *  the first source they have, else none. */
+/** "No choice" is never kept while the person has a source (breaker m4): the choice is always one of their sources,
+ *  pre-set to the first, so what the panel shows is what a booking uses. */
 const settle = (p: Pref, asked: VideoSource | null | undefined): VideoSource | null => {
   const have = sourcesOf(p);
-  if (asked !== undefined && asked !== null) return asked;
-  if (asked === null) return null;
+  if (asked) return asked;
   return p.sourceChoice && have.includes(p.sourceChoice) ? p.sourceChoice : have[0] ?? null;
 };
 
@@ -83,17 +90,24 @@ export class VideoService {
   constructor(private readonly db: PrismaClient, private readonly ports: VideoPorts) {}
 
   /** GET my video settings: the link, the choice and the sources I have (what the panel lists), Zoom's door state. */
-  async get(ctx: StaffContext) {
+  async get(ctx: StaffContext, query: Record<string, unknown> = {}) {
+    if (Object.keys(query).some((k) => ["staffid", "userid", "personid", "id"].includes(k.toLowerCase().replace(/_/g, ""))))
+      throw problem(403, "not-your-record", "Not allowed", VIDEO_WORDS.notYours, { code: "OWN_RECORD_ONLY" });
     const p = await this.db.foVideoPref.findFirst({ where: firmScope(ctx.firmId, { staffId: ctx.staffId }), select: { myMeetingLink: true, sourceChoice: true } });
     return this.answer((p as Pref | null) ?? { myMeetingLink: null, sourceChoice: null });
   }
 
   /** PUT my video settings: only the fields sent change. Another person's id in the body → 403, nothing saved. */
-  async put(ctx: StaffContext, body: unknown) {
-    if (body !== null && typeof body === "object" && ["staffId", "userId", "staff_id", "personId"].some((k) => Object.hasOwn(body, k)))
+  async put(ctx: StaffContext, body: unknown, query: Record<string, unknown> = {}) {
+    const names = (o: unknown) => (o !== null && typeof o === "object" ? Object.keys(o).map((k) => k.toLowerCase().replace(/_/g, "")) : []);
+    // Another person's id anywhere in the request (body or query, any spelling) is refused, never ignored (breaker m7).
+    if ([...names(body), ...names(query)].some((k) => ["staffid", "userid", "personid", "id"].includes(k)))
       throw problem(403, "not-your-record", "Not allowed", VIDEO_WORDS.notYours, { code: "OWN_RECORD_ONLY" });
     const v = parseInput(VideoBody, body ?? {});
     return this.db.$transaction(async (tx) => {
+      // One save per person at a time (breaker m3): two tabs never write back a link the other cleared, and two first
+      // saves never write two audit lines for one change.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fo-video:${ctx.firmId}:${ctx.staffId}`}))`;
       const before = ((await tx.foVideoPref.findFirst({ where: firmScope(ctx.firmId, { staffId: ctx.staffId }), select: { myMeetingLink: true, sourceChoice: true } })) as Pref | null) ?? { myMeetingLink: null, sourceChoice: null };
       const link = v.myMeetingLink === undefined ? before.myMeetingLink : v.myMeetingLink || null;
       const next: Pref = { myMeetingLink: link, sourceChoice: null };

@@ -119,7 +119,9 @@ try {
   const empty = await me("GET", CO);
   ok("FO-3v DW1 set-up: a Case Officer with no extra keys reads their own empty settings (no link, no source, Zoom hidden)",
     empty.status === 200 && empty.body.myMeetingLink === null && empty.body.sourceChoice === null && empty.body.sources.length === 0 && empty.body.zoomAvailable === false, empty);
-  const refusedLinks = ["zoom.us/j/1234", "http://zoom.us/j/1234", `https://zoom.us/j/${"1".repeat(2049 - "https://zoom.us/j/".length)}`, "javascript:alert(1)", "https://zoom.us/j/1\r\nATTENDEE:mailto:x@evil.example", "https://zoom.us/j/1 2", "https://"];
+  const refusedLinks = ["zoom.us/j/1234", "http://zoom.us/j/1234", `https://zoom.us/j/${"1".repeat(2049 - "https://zoom.us/j/".length)}`, "javascript:alert(1)", "https://zoom.us/j/1\r\nATTENDEE:mailto:x@evil.example", "https://zoom.us/j/1 2", "https://",
+    // Look-alikes (breaker m1): invisible and direction marks, a backslash before @, no host, a dot host, markup, user:pass.
+    "https://zoom.us/j/1\u200b2", "https://zoom.us/j/\u202e1", "https://evil.example\\@zoom.us/j/1", "https:///zoom.us", "https://./x", "https://zoom.us/\"><script>", "https://user:pass@zoom.us/j/1", "https://zoom.us/j/1\u00a02"];
   const refusals = [];
   for (const l of refusedLinks) refusals.push(await me("PUT", CO, { myMeetingLink: l }));
   ok(`FO-3v DW1 fail: ${refusedLinks.length} bad links (no https, http, 2,049 characters, javascript:, a line break, a space, no host) → 422 "${VIDEO_WORDS.link}" on the field, nothing saved`,
@@ -132,6 +134,10 @@ try {
   let dbRefused = false;
   try { await db.$executeRawUnsafe(`INSERT INTO fo_video_pref (firm_id, staff_id, my_meeting_link) VALUES ('${A.id}', '${OWNER.id}', 'http://zoom.us/j/1')`); } catch { dbRefused = true; }
   ok("FO-3v DW1 fail: the database refuses a non-https link written past the API (fo_video_link_ok)", dbRefused && (await prefRows()) === 2);
+  const dbBad = ["https://zoom.us/j/1\u2028x", "https://zoom.us/j/1\u00a0x", "https://u:p@zoom.us/j/1", "https://zoom.us/\"<b>", "https://zoom.us/j/1\u202e"];
+  const dbAnswers = await db.$queryRawUnsafe<{ ok: boolean }[]>(`SELECT fo_video_link_ok(x) AS ok FROM unnest($1::text[]) AS x`, [...dbBad, LINK, exact]);
+  ok("FO-3v DW1 fail (breaker m2): the database check refuses a line separator, a non-breaking space, user:pass, markup and a direction mark, and takes the good links",
+    dbAnswers.slice(0, dbBad.length).every((r) => r.ok === false) && dbAnswers.slice(dbBad.length).every((r) => r.ok === true), dbAnswers);
   const zoom = await me("PUT", CO, { sourceChoice: "ZOOM" }), cal = await me("PUT", CO, { sourceChoice: "CALENDAR" });
   ok("FO-3v DW1 fail: a source the person does not have (Zoom hidden, no calendar) is refused 422, the choice unchanged (rule 3)",
     zoom.status === 422 && zoom.body.fields?.sourceChoice === VIDEO_WORDS.choice && cal.status === 422 && (await me("GET", CO)).body.sourceChoice === "MY_LINK", [zoom.body, cal.status]);
@@ -143,6 +149,23 @@ try {
   const otherUser = await me("PUT", OWNER, { userId: CO.id, myMeetingLink: null });
   ok("FO-3v AG-4-59 fail: a body naming another person (staffId, userId) → 403, nothing changed for either", other.status === 403 && other.body.code === "OWN_RECORD_ONLY" && otherUser.status === 403
     && (await me("GET", CO)).body.myMeetingLink === LINK && (await me("GET", OWNER)).body.myMeetingLink === null, [other.body, otherUser.status]);
+  const byQuery = await call(base, "PUT", `/api/front-office/me/video?staffId=${CO.id}`, OWNER.token, { myMeetingLink: "https://evil.example/q" });
+  const byId = await me("PUT", OWNER, { id: CO.id, myMeetingLink: null }), byCase = await me("PUT", OWNER, { StaffId: CO.id }), readOther = await call(base, "GET", `/api/front-office/me/video?staff_id=${CO.id}`, OWNER.token);
+  ok("FO-3v AG-4-59 fail (breaker m7): another person's id in the query, as `id`, or in another spelling → 403, nothing saved for anyone",
+    [byQuery, byId, byCase, readOther].every((r) => r.status === 403) && (await me("GET", OWNER)).body.myMeetingLink === null && (await me("GET", CO)).body.myMeetingLink === LINK, [byQuery.status, byId.status, byCase.status, readOther.status]);
+  const noChoice = await me("PUT", CO, { sourceChoice: null });
+  ok("FO-3v rule 3 fail (breaker m4): \"no choice\" is not kept while the person has a source; the choice stays My meeting link, as bookings use it", noChoice.status === 200 && noChoice.body.sourceChoice === "MY_LINK", noChoice.body);
+  // Breaker m3: two saves at once. One tab clears the link while another changes only the choice: the link stays cleared.
+  const linesBefore = audit.entries.filter((e) => e.action === "video.choice_changed").length;
+  await Promise.all([me("PUT", H3, { myMeetingLink: null }), me("PUT", H3, { sourceChoice: "MY_LINK" })]);
+  const h3 = await me("GET", H3);
+  const firsts = await Promise.all(Array.from({ length: 8 }, () => me("PUT", OWNER, { myMeetingLink: "https://meet.example/owner-room" })));
+  ok("FO-3v rule 4 fail (breaker m3): saves one after another per person: a cleared link is never written back, and 8 first saves at once write one row and one line each kind",
+    h3.body.myMeetingLink === null && firsts.every((r) => r.status === 200) && (await db.foVideoPref.count({ where: { staffId: OWNER.id } })) === 1
+      && audit.entries.filter((e) => e.action === "video.choice_changed").length - linesBefore <= 2
+      && audit.entries.filter((e) => e.action === "video.meeting_link_changed" && (e.detail as { staffId?: string }).staffId === OWNER.id).length === 1, [h3.body, audit.entries.filter((e) => e.action === "video.choice_changed").length - linesBefore]);
+  await me("PUT", OWNER, { myMeetingLink: null });   // the Owner has no source again for DW3
+  await me("PUT", H3, { myMeetingLink: exact });      // H3 keeps a link for §12
   const bRead = await me("GET", B1), anon = await me("GET");
   ok("FO-3v AG-4-59 pass: each person reads only their own row (another firm's Owner sees none of firm A's; no sign-in → 401)", bRead.status === 200 && bRead.body.myMeetingLink === null && anon.status === 401, [bRead.body, anon.status]);
 

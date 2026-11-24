@@ -58,10 +58,12 @@ ALTER TABLE "fo_booking_video" ADD CONSTRAINT "fo_booking_video_firm_id_booking_
 
 
 
--- The rules Prisma cannot say (AG-4-58 rule 2; AG-4-29 §10): one https URL, at most 2,048 characters, nothing a calendar
--- file or an email could read as a new line or field.
+-- The rules Prisma cannot say (AG-4-58 rule 2; AG-4-29 §10), the same as the API's linkOk: one https URL, at most 2,048
+-- characters, printable ASCII only (no white space, control, invisible or direction-changing character, none of
+-- " < > \ ^ ` { | }), so nothing a calendar file or an email could read as a new line or field, and no user or password
+-- before the host. Byte ranges, so the database's collation cannot widen them (breaker m2).
 CREATE FUNCTION fo_video_link_ok(link text) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
-  SELECT link ~ '^https://[^[:space:][:cntrl:]]+$' AND char_length(link) <= 2048
+  SELECT octet_length(link) <= 2048 AND link ~ '^https://[]!#-;=?-[_a-z~]+$' COLLATE "C" AND link !~ '^https://[^/?#]*@'
 $$;
 ALTER TABLE "fo_video_pref" ADD CONSTRAINT "fo_video_pref_link_check" CHECK ("my_meeting_link" IS NULL OR fo_video_link_ok("my_meeting_link"));
 ALTER TABLE "fo_booking_video" ADD CONSTRAINT "fo_booking_video_link_check" CHECK (fo_video_link_ok("meeting_link"));
