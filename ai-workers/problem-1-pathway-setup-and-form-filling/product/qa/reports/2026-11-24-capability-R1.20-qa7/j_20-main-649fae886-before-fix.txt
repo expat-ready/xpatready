@@ -1,0 +1,71 @@
+PASS  J-20 setup: the Sample firm, its Owner and another active staff member are seeded
+PASS  J-20 setup (W8-W12): the Solo firm, its Owner, a Case Officer and a Case Manager are seeded
+PASS  J-20 setup: D already has a pending invitation — 201
+PASS  J-20 W1: the Owner signs in on the card
+PASS  J-20 W1: the form counts five people against the seats
+PASS  J-20 W1 (BR-3): before Send, A's email typed again is named on the later row
+FAIL  J-20 W1 (review m3): the seat line counts four people, not the duplicate row (the server gives it no seat) — "9 of 23 seats after these invites"
+PASS  J-20 W2 fail (before Send): no invitation exists for A or B
+FAIL  J-20 W1 fail (QA-773): Send answers within 20 s with the form's "not everyone was invited" words
+FAIL  J-20 W1: Send invites the two good rows ("2 invitations sent."); they leave the form and the two flagged rows stay — {"toast":0,"rowsLeft":5}
+FAIL  J-20 W1 fail (QA-773): the duplicate row does not stop Send; it stays with the server's words (an earlier row of this form, which counts for this person) — "Email, person 3\nName, person 3 (optional)\nRoles\nAdmin\n\nStaff, roles, settings and billing payments; everything else except the Owner-only actions · not: Owner-only actions; case and form sign-off and reopen; plan upgrade, downgrade and billing details; l
+FAIL  J-20 W1: each flagged row shows its own reason on its own row (already staff; already invited) — {"words1":"Email, person 1\nName, person 1 (optional)\nRoles\nAdmin\n\nStaff, roles, settings and billing payments; everything else except the Owner-only actions · not: Owner-only actions; case and form sign-off and reopen; plan upgrade, downgrade and billing 
+FAIL  J-20 W1 (break m5): focus goes to the first flagged row's Email field, not the panel
+FAIL  J-20 W1: the form says how many were not invited
+FAIL  J-20 W1: each flagged row's Email field is marked invalid for screen readers
+PASS  J-20 W1: Invite people with flagged rows: axe finds no serious or critical WCAG A/AA violation — []
+FAIL  J-20 W2 fail (QA-773): the whole form, the duplicate row too, was one batch call of five rows — []
+FAIL  J-20 W2: the duplicate row made no second invitation for A's email
+FAIL  J-20 W2: A and B each have one pending invitation with the roles chosen
+FAIL  J-20 W2: A's name is stored as the invitation's display name; B (no name) has none
+FAIL  J-20 W2: one audit line each for A and B, marked as one form
+PASS  J-20 W2: no invitation for the staff member (C); D still has exactly one
+FAIL  J-20 W3: not walked: W1's Send did not go (QA-773)
+PASS  J-20 W4: two rows fit the two seats left
+PASS  J-20 W4: someone else's invite takes one of the two seats — 201
+PASS  J-20 W4 fail (before Send): no invitation exists for either row
+PASS  J-20 W4: the first row is invited; the second stays with the server's words naming the plan and its seats — "Email, person 1\n\nNo seat left for this person: your plan (Team (Sample)) has 6 seats, all taken by your staff, pending invitations and the rows above. Remove someone or upgrade your plan, then send this row again.\n\nName, person 1 (optional)\nRoles\nAdmin\
+PASS  J-20 W4 setup: a lower Sample plan is booked for the renewal, one seat above today's use
+FAIL  J-20 W4 fail (QA-774): while the lower plan is booked, Team's seat line says the limit the gate uses and names that plan — {"bookedLine":"6 of 11 seats used on Team (Sample)","lowSeats":7}
+FAIL  J-20 W4 fail (QA-774): Invite people says the one free seat the gate allows
+FAIL  J-20 W4 fail (QA-774): the first row is invited; the second stays with the gate's words naming the booked plan and its seats, never the current plan — "Email, person 1\n\nNo seat left for this person: your plan (Team (Sample)) has 7 seats, all taken by your staff, pending invitations and the rows above. Remove someone or upgrade your plan, then send this row again.\n\nName, person 1 (optional)\nRoles\nAdmin\
+PASS  J-20 W4: the booking withdrawn, Team's seat line is the plan's own limit and name again
+PASS  J-20 W5: before Send the form says 2 seats are free, and Send stays on
+PASS  J-20 W5: over the free seats the seat line counts what is used and what is on the form (never "n+2 of n")
+PASS  J-20 W5 fail (before Send): none of the three valid rows is invited
+PASS  J-20 W5: the two free seats go to the first two valid rows; the staff row uses no seat
+PASS  J-20 W5: the staff row and the third valid row stay in the form, each with its own words on its own row — {"staffWords":"Email, person 1\n\nThis person is already on your firm's staff.\n\nName, person 1 (optional)\nRoles\nAdmin\n\nStaff, roles, settings and billing payments; everything else except the Owner-only actions · not: Owner-only actions; case and form sig
+PASS  J-20 W5: with a seat free, the row left in the form is sent again and the panel closes
+PASS  J-20 DW1: a single invite past the seat limit is refused 409 naming the limit; nothing stored — {"status":409,"detail":"Your plan (Team (Sample)) allows 10 people, counting active, suspended and invited people (10 now). Revoke a pending invitation or deactivate someone first, or change the plan."}
+PASS  J-20 W8 (API): past the limit the single invite is 409 PLAN_LIMIT_REACHED (seats, its limit, used) and the batch row is OVER_SEAT_LIMIT naming the limit; nothing stored — {"one":[409,"PLAN_LIMIT_REACHED",10],"batch":{"row":1,"email":"j20-p1-mwuhl63p@sample-firm.example.com","reason":"OVER_SEAT_LIMIT","detail":"No seat left for this person: your plan (Team (Sample)) has 10 seats, all taken by your staff, pending invitations and 
+PASS  J-20 W8 (API): a batch with a duplicate accepts the good rows and flags row 2 DUPLICATE_IN_FORM and row 3 INVALID_EMAIL, each with its words — {"invited":[{"row":1,"id":"19bac1bb-d7ff-4338-9409-8abec69682c1","email":"j20-e1-mwuhl63p@sample-firm.example.com","roles":["READ_ONLY"],"status":"PENDING","expiresAt":"2026-11-27T09:23:25.209Z","emailed":true},{"row":4,"id":"e329116a-be28-4b61-8e72-861ca08f7a
+PASS  J-20 W8 (50 rows): at 50 rows the form offers no 51st and says why
+PASS  J-20 W8 (50 rows): the 50 rows go in one batch call; all 50 are invited and the panel closes — {"calls":[50],"n50":50,"invited":50,"flagged":[]}
+PASS  J-20 W8 (51 rows, API): 51 rows are refused 422 ROWS_COUNT naming 1 to 50; nothing stored — {"status":422,"code":"ROWS_COUNT","detail":"Send 1 to 50 people in one form (rows). Nothing was sent."}
+NOTE  W9 (screen): Plan and billing shows "Team (Sample) plan"; there is no change of plan on our own screens yet (R1.91 / PF-16's screen, not built), so the refusal's list is not walked on a screen.
+NOTE  W9 (API, QA-775 Gap · Minor, open): the change-plan preview to Solo answers 409 NO_BILLING_ACCOUNT (conflicts: null); on a local copy no Sample firm has a billing subscription, so the route stops before its downgrade check, which is judged below through PlanBookings.book.
+NOTE  W9 (API, QA-775): the change of plan to Solo answers 409 NO_BILLING_ACCOUNT.
+PASS  J-20 W9 (API): the change-plan route books nothing for a move that breaks a limit — {"status":409,"code":"NO_BILLING_ACCOUNT"}
+PASS  J-20 W9 (underneath: PlanBookings.book, the route's check): the move to Solo is refused 409 DOWNGRADE_CONFLICTS listing each conflict (seats: used, limit, the amount to remove, SA-4-56's words); nothing booked — {"type":"https://expatready.local/problems/downgrade-conflicts","title":"Reduce the usage first","status":409,"code":"DOWNGRADE_CONFLICTS","detail":"You have 62 staff; Solo (Sample) allows 1. Remove 61 staff or choose a larger plan. Nothing was booked.","confl
+PASS  J-20 W9 (underneath): a lower plan that breaks no limit is booked for the renewal, with one audit line — {"id":"33438271-dcc9-467a-81ea-defab1e65aaa","fromPlan":"team","toPlan":"j20-lower2-mwuhl63p","bookedAt":"2026-11-24T09:23:41.363Z","effectiveAt":"2026-12-24T09:22:47.378Z","appliedAt":null,"atOnce":false}
+FAIL  J-20 W10 (code): seats (single and batch invite), active cases (opening a case) and storage (a new upload) each call EntitlementPort.check on PgEntitlements, no gate reads a limit column itself, and Team's seat line reads the gate's own reader (seatLimitOf) — {"seatRoom":598}
+PASS  J-20 W10 setup: the configured checkpoint is loaded (an individual combination with a release) — {"status":201}
+PASS  J-20 W10: the one booked lower plan is read at once by both gates: the invite 409 PLAN_LIMIT_REACHED (seats, its limit) and the case 409 PLAN_LIMIT_REACHED (active individual cases, 0); nothing stored — {"seat":[409,62,"Your plan (Team (Sample)) allows 62 people, counting active, suspended and invited people (62 now). Revoke a pending invitation or deactivate someone first, or change the plan."],"case":[409,"active_individual_cases",0]}
+FAIL  J-20 W10 (screen): while the lower plan is booked, Team's seat line and Invite people say the limit the gate uses (no free seat), not the plan row's — {"line":"62 of 67 seats used on Team (Sample)","formSeats":"63 of 67 seats after these invites","gateLimit":62,"gateWords":"Your plan (Team (Sample)) allows 62 people, counting active, suspended and invited people (62 now). Revoke a pending invitation or deact
+PASS  J-20 W10: the booking withdrawn, both gates allow again (the invite 201, the case 201) — {"withdraw":200,"seat":201,"case":[201,null]}
+PASS  J-20 W11: a Case Officer opening Team by URL sees the refusal, no Invite people
+PASS  J-20 W11 (API): Case Officer and Case Manager are refused the batch invite (403) and the change of plan (403); nothing stored — [403,403,403,403]
+FAIL  J-20 W11: the Solo firm's Owner cannot revoke or see this firm's invitation (API 404, not listed; by URL not shown), and the downgrade check refuses another firm's usage — {"revoke":404,"soloSees":0,"cross":404}
+PASS  J-20 W12: at 400 px Team with Invite people's flagged rows has no sideways scroll and axe finds no serious or critical WCAG A/AA violation — {"wide":true,"serious":[]}
+PASS  J-20 W12: at 1024 px Team with Invite people's flagged rows has no sideways scroll and axe finds no serious or critical WCAG A/AA violation — {"wide":true,"serious":[]}
+PASS  J-20 W12: at 1440 px Team with Invite people's flagged rows has no sideways scroll and axe finds no serious or critical WCAG A/AA violation — {"wide":true,"serious":[]}
+FAIL  J-20 W6: A's invitation email reaches the inbox with its link
+/home/user/wt-main/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys/j_20.ts:463
+  if (!link) throw new Error("STOP  no invitation link for A in the inbox");
+                   ^
+
+Error: STOP  no invitation link for A in the inbox
+    at <anonymous> (/home/user/wt-main/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys/j_20.ts:463:20)
+
+Node.js v22.23.5
+exit 1
