@@ -65,3 +65,37 @@ These journeys were run as API calls through the check, not walked in the UI: th
 * No EXPLAIN plan on a large ledger; the index was confirmed from the migrations.
 
 Reviewer: Approve b3bd3c85fbe61924f0141d92d18d6a3085d3464f
+
+## Round 2: `git diff b3bd3c85f 003c0e34f -- …/prototype`, head 003c0e34fa653b0ecd2c8ad2339bcb15e44c9c40
+
+### Verdict: Approve
+
+No Blocker or Major. One Minor finding on the wording, which does not block.
+
+**What changed (diff only):**
+* `to-move.ts:169-173`: only the 409 text in `askUncleared` changed. The condition (`g.minor <= covered`), the `unclearedAcknowledged` acknowledgement, the code `UNCLEARED`, `asked = true` and the queries are unchanged.
+* `check_fo7t_to_move.ts`: Clients w and x are added, with their cases, and there are three new checks. Nothing else in the suite changed.
+
+**Is the wording branch right?**
+* `atRisk = min(uncleared, g.minor - covered)`. The branch runs only when `g.minor > covered`, so `atRisk > 0` exactly when `uncleared > 0`.
+* **Shortfall text, when nothing is uncleared.** It says `g.minor - max(0, ledger + waiting)`. Client x: ledger -500.00, waiting 500.00, so the text says 500.00, which is right.
+* **Is the shortfall always from a reversal?** With nothing uncleared, a group can be over its cover only when the ledger is below zero. The database allows that only for the reversal kinds of a deposit correction (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER; `money_trust_entry_write`). So "a reversal left it short" is accurate.
+* **Uncleared money remains:** the cheque text is unchanged, as before.
+
+**Runs at head** (prototype/, scratch DB on :54329, never :4400): `check_fo7t_to_move.ts` 49 passed, 0 failed. This matches the builder.
+
+**Mutants on scratch copies (each alone):**
+* The round 1 wording back: 48/1. Only "break m1: … naming the CAD 500.00 shortfall" fails; the text was "CAD 0.00 of this is from a cheque not yet cleared".
+* The "corrected = gone" mutant (both places): 48/1. Only "one cent more is still from the cheque … 409" fails. My round 1 m1 is closed.
+
+**Finding 3 (Minor): mixed money states only the part at risk.** I probed this on a scratch copy only. After the x reversal, I added a new CAD 100.00 cheque not yet cleared, then moved the 500.00 again.
+* The answer is 409 with "CAD 100.00 of this is from a cheque not yet cleared …".
+* The other 400.00, which a reversal left short, is not mentioned.
+* The question is still asked and must still be acknowledged, so no money moves unasked. Only the words understate what is over the cover. The round 1 text had the same gap.
+* Fix, if wanted: when `atRisk < g.minor - covered`, add "and CAD Y is more than the client's trust money here covers: a reversal left it short", where Y = `g.minor - covered - atRisk`.
+
+Findings 1 and 2 from round 1: finding 1 is fixed (Client w). Finding 2 stays: Client x also seeds its reversal by SQL. That is acceptable, as said in round 1.
+
+Not checked in round 2: anything outside the diff, and the UI. The journey score from round 1 (8/10) stands, because the new text was checked as returned by the API.
+
+Reviewer: Approve 003c0e34fa653b0ecd2c8ad2339bcb15e44c9c40
