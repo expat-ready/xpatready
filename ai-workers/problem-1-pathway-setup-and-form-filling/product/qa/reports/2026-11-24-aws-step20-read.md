@@ -8,8 +8,8 @@
 | Row | Verdict | Exactly what is left |
 |---|---|---|
 | R1.65 | **Partial** | (1) Commit Step 20's raw outputs and the cross-firm script with their sha256. (2) Put the real bucket's recorded answers where j_65 W5 reads them (`tests/fixtures/pff1c/`), then get j_65 13/13 on GitHub's runners on main. |
-| R1.13 | **Partial** | Commit Step 20's R1.13 raw outputs, and record the founder's confirmation in their own words where it can be read. No new run is needed. |
-| R1.1 | **Partial** | (1) PF-8c, deploy from CI. (2) The smoke's signed-in step on the cloud address, which needs R1.5's sign-in chain. (3) Commit the survey output. |
+| R1.13 | **Partial** | (1) Commit Step 20's R1.13 raw outputs. (2) Commit the log group's retention and region read (Step 16's `p23` output, or a fresh read-only read). (3) Record the founder's confirmation in their own words where it can be read. No new alarm run is needed. |
+| R1.1 | **Partial** | (1) PF-8c, deploy from CI. (2) The smoke's signed-in step on the cloud address, which needs R1.5's sign-in chain. (3) Commit the cloud reads: Step 20's survey, Step 15's `r11-read.sh` output, and Step 16's `p23` output. |
 
 ## Why Step 20 alone does not decide
 Step 20 says its results were "read off the CloudShell screen; the raw outputs are in CloudShell `~/run24/`, not yet in this repository". Step 19 set the bar: committed scripts plus raw outputs, each with its sha256 matching CloudShell's. Without that, every AWS answer in Step 20 is a transcription I cannot check (P-557). I checked what can be checked from here: main's code, the committed Step 19 evidence, and GitHub runs.
@@ -36,10 +36,16 @@ Step 20 says its results were "read off the CloudShell screen; the raw outputs a
 
 ## R1.13: logs, metrics, error reports, alarms (Partial)
 * **Now met with a GitHub run:** the packs above. This was the last code-side gap from the 23 Nov read.
-* **Still met from Step 19's committed outputs:** a real error reaches the alarm (`30-r113-real-error-alarm.txt`), no seeded personal data in 1,894 events (`50-log-scan.txt`), and logs kept 90 days in ca-central-1.
+* **Met from Step 19's committed outputs:** a real error reaches the alarm (`30-r113-real-error-alarm.txt`) and no seeded personal data in 1,894 events (`50-log-scan.txt`).
+* **Not committed (reviewer's catch, verified):** logs kept 90 days in ca-central-1 rests only on Step 16's `p23.sh` output, which Step 19 itself notes is still only in CloudShell. None of the 12 committed files reads the log group's retention or region.
 * **Reported in Step 20 (not checkable from here):** the on-call subscription was replaced and confirmed at 04:22:13Z, before the alarm. Then 38 × 503 and 114 × 401 with no set-alarm-state; OK → ALARM at 04:22:34Z, action run, delivered 1 and failed 0. The founder answered "Yes, received at 09:52 IST". 04:22:34Z is 09:52:34 IST, so the times agree.
 * **Weak point:** the founder picked an offered option that already contained the time, rather than typing it. This is the founder's own attestation and I accept it as the person's confirmation, but it has to be recorded where anyone can read it.
-* **To reach Works:** commit the R1.13 raw outputs (the subscription read, the alarm history, the SNS counts) with their sha256, and put the founder's confirmation in their words on a PR or in DECISIONS. No new AWS run is needed. The on-call address must not be written anywhere (Lead 20).
+* **To reach Works:**
+  1. Commit the R1.13 raw outputs (the subscription read, the alarm history, the SNS counts) with their sha256.
+  2. Commit the log group's retention and region read: Step 16's `p23` output with its sha256, or a fresh read-only read if it is lost.
+  3. Put the founder's confirmation in their own words on a PR or in DECISIONS.
+
+  No new alarm run is needed. The on-call address must not be written anywhere (Lead 20).
 
 ## R1.1: hosting in Canada (Partial)
 * **Reported:** 17 enabled regions; stacks, databases and clusters only in ca-central-1, plus the backup stacks in ca-west-1. The service ran at 2 tasks on cc349dcfe's image with health 200. This agrees with Step 15. The raw output is not committed.
@@ -47,13 +53,13 @@ Step 20 says its results were "read off the CloudShell screen; the raw outputs a
 * **Left:**
   * PF-8c, deploy from CI: no `deploy.yml` on main. This is a missing part, so P-606 applies.
   * The signed-in smoke step, which needs R1.5's chain: PF-4bc (not merged; `identity/session/provider.ts` still answers `SIGN_IN_NOT_SET_UP`), plus rows for the sign-in page, the Cognito callback, and the task role's cognito-idp actions with their check.
-  * Commit the survey output.
+  * Commit the cloud reads the Done when rests on, with their sha256: Step 20's survey; Step 15's `r11-read.sh` output (the database's region, zone and encryption, and the three buckets' region; only the script is committed, the output exists only as a transcription with ellipses); and Step 16's `p23` output (the log group's retention and region).
 
 ## Bugs
 None new.
 
 ## Questions for the Lead
-* Will the AWS session commit `~/run24/` (with sha256, as Step 19 did) and the bucket's three recorded answers? That alone moves R1.13 to Works, and R1.65 once j_65 is green.
+* Will the AWS session commit `~/run24/` (with sha256, as Step 19 did) and the bucket's three recorded answers? With Step 15's and Step 16's outputs, that would move R1.13 to Works, and R1.65 once j_65 is green.
 
 ## Suggestions
 * *Needed for the proof · Scaffolding:* the AWS session saves the raw S3 API answers (`get-bucket-versioning`, `get-bucket-location`, `get-bucket-encryption`) as j_65's fixtures in the same commit as its evidence.
