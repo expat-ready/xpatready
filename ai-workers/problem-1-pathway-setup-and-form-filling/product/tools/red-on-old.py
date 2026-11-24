@@ -9,19 +9,20 @@ without the change". Report only (red-on-old.yml): never a failure.
           of this working tree back to the base (files the PR added there go).
           Only in CI: refuses unless GITHUB_ACTIONS=true.
   report  --suites "<names>" --out FILE [--summary FILE]   reads run-suites.sh's table and the PR body on stdin.
-A suite whose copy did not start, or that the runner skipped, is not judged. A suite that cannot load on the old code (its import is not there yet) is red too, and said apart: it proves the suite needs
+A suite whose copy did not start, that was cut at its limit or that the runner skipped is not judged. prototype/contracts,
+p2 and env, and start.sh, stay the PR's. A suite that cannot load on the old code (its import is not there yet) is red too, and said apart: it proves the suite needs
 the change, not that each check does. A suite is judged whole: a new green check beside an old red one counts as red.
 Exit 0; 2 when it cannot read (said, never "red"). Test: check-red-on-old.sh."""
 import argparse, os, re, subprocess, sys
 S = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/"
-APP = [S + d for d in ("api", "web", "engine", "prisma", "contracts", "samples", "packages", "ports", "deploy", "tools", "package.json", "package-lock.json", "prisma.config.ts", "acceptance/lib")]
+APP = [S + d for d in ("api", "web", "engine", "prisma", "contracts", "samples", "packages", "ports", "deploy", "tools", "package.json", "package-lock.json", "prisma.config.ts")]
 # Everything a copy runs, built or started from; the tests, the suite runner (product/tools) and the PR's other files stay.
 DOC = re.compile(r"\.md$")
 SUITE = re.compile(r"^" + re.escape(S) + r"tests/(check_[A-Za-z0-9_.-]+\.(?:ts|cjs))$"); MAX = 4
 NOTE = re.compile(r"^\s*(//|\*|/\*)|^\s*$")
 ROW = re.compile(r"^\| (check_[A-Za-z0-9_.-]+) \| ([^|]*?) \| [^|]*\| (.*?) \|\s*$", re.M)
 LOAD = re.compile(r"Cannot find module|ERR_MODULE_NOT_FOUND|does not provide an export|SyntaxError: The requested module|\bTS\d{4}\b")
-SETUP = re.compile(r"did not start|no usage line|not found|refused|web build|start the demo", re.I)      # nothing was run: not a red check
+SETUP = re.compile(r"^isolated copy \S+ did not start$|^exit (124|137)\b")      # nothing was run, or it was cut at 5 minutes: not judged
 
 
 def git(*a):
@@ -89,7 +90,7 @@ def report(o):
     lines, red, load, green, none = [], [], [], [], []
     for s in want:
         r, w = rows.get(s, ("no row", ""))
-        kind = none if r not in ("PASS", "FAIL", "failed twice", "passed on retry") or (r == "FAIL" and SETUP.search(w) and "FAIL  " not in w) else green if r in ("PASS", "passed on retry") else load if LOAD.search(w) else red
+        kind = none if r not in ("PASS", "FAIL", "failed twice", "passed on retry") or (r == "FAIL" and SETUP.search(w)) else green if r in ("PASS", "passed on retry") else load if LOAD.search(w) else red
         kind.append(s); lines.append(f"- {s}: {'not judged (' + safe(r) + ')' if kind is none else 'PASSES on the old code' if kind is green else 'red: cannot load there' if kind is load else 'red'}" + (f": {safe(w)}" if kind in (red, load, none) and w else ""))
     y = why(sys.stdin.read())
     head = f"{len(red)} red, {len(load)} cannot load, {len(green)} pass, {len(none)} not judged, of {len(want)} suites on the old code"

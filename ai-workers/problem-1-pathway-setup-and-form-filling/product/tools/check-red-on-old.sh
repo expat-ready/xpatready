@@ -44,7 +44,9 @@ for w in "exit 1: Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/runner
 tab '| check_n.ts | FAIL | 9 s | exit 1: FAIL  N1: TypeError: x.y is not a function |'; rep check_n.ts; ok "a run-time failure is red, not a load" "$(has '1 red, 0 cannot load')" "$o"
 tab '| check_n.ts | FAIL | | isolated copy n did not start |' "$G"; rep 'check_n.ts check_a.ts'; ok "fail: a copy that did not start judges nothing, and the other suite's pass still warns" "$([ "$(has '0 red, 0 cannot load, 1 pass, 1 not judged')" = 1 ] && has 'would pass without the change')" "$o"
 tab '| check_n.ts | FAIL | 9 s | exit 1: FAIL  N1: the refused link is not found |'; rep check_n.ts; ok "a FAIL line with the same words is red" "$(has '1 red')" "$o"
-tab '| check_n.ts | FAIL | 300 s | exit 124: STOP still running at the 20 min limit; its processes below |'; rep check_n.ts; ok "a suite that hangs on the old code is red, not a pass" "$(has '1 red, 0 cannot load, 0 pass')" "$o"
+tab '| check_n.ts | FAIL | 300 s | exit 124: STOP still running at the 20 min limit; its processes below |'; rep check_n.ts; ok "a suite cut at its limit is not judged" "$(has '0 red, 0 cannot load, 0 pass, 1 not judged')" "$o"
+for w in 'exit 1: FAIL N1: the new route answers 200 (got 404 Not Found)' 'exit 1: Error: P1 the upload was refused: 409' 'exit 1: STOP  no row: page not found'; do tab "| check_n.ts | FAIL | 9 s | $w |"; rep check_n.ts; ok "red: '${w:8:40}'" "$(has '1 red')" "$o"; done
+start; mkdir -p "$R/$D/acceptance/lib"; echo 1 > "$R/$D/acceptance/lib/m.ts"; echo 'ok("n", true);' > "$R/$D/tests/check_n.ts"; plan; ok "the packs' helpers are test code" "$(has 'note=no app code changed')" "$o"
 tab '| check_n.ts | passed on retry | 9 s | x |'; rep check_n.ts; ok "passed on retry is a pass" "$(has '0 red, 0 cannot load, 1 pass')" "$o"
 tab "$G"; rep 'check_a.ts check_gone.ts'; ok "a suite with no row is not judged, never red or green" "$(has '0 red, 0 cannot load, 1 pass, 1 not judged, of 2')" "$o"
 tab '| check_n.ts | quarantined | 0 s | x |'; rep check_n.ts; ok "fail: a quarantined suite judges nothing: a warning" "$([ "$(has 'nothing was judged')" = 1 ] && has '1 not judged')" "$o"

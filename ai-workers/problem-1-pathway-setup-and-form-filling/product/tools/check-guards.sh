@@ -65,7 +65,7 @@ A351 c1 ci|product/tools/red-on-old.py|s/^    if os.environ.get("GITHUB_ACTIONS"
 A351 c1 gone|product/tools/red-on-old.py|s/^            git("rm", "-rq", "--", p)/            pass/|check-red-on-old.sh
 A351 c1 green|product/tools/red-on-old.py|s/^    if red or load:/    if True:/|check-red-on-old.sh
 A351 c1 reason|product/tools/red-on-old.py|s/^    elif green and y:/    elif green:/|check-red-on-old.sh
-A351 c1 none|product/tools/red-on-old.py|s/ or (r == "FAIL" and SETUP.search(w) and "FAIL  " not in w) else/ else/|check-red-on-old.sh
+A351 c1 none|product/tools/red-on-old.py|s/ or (r == "FAIL" and SETUP.search(w)) else/ else/|check-red-on-old.sh
 A351 c1 load|product/tools/red-on-old.py|s/ load if LOAD.search(w) else red$/ red/|check-red-on-old.sh
 A351 c1 once|../../.github/workflows/red-on-old.yml|s/types: \[opened, ready_for_review\]/types: [opened, synchronize]/|check-red-on-old.sh
 A351 c1 red check|../../.github/workflows/red-on-old.yml|/^      - id: old$/,/run:/s/^        continue-on-error: true$/        continue-on-error: false/|check-red-on-old.sh
