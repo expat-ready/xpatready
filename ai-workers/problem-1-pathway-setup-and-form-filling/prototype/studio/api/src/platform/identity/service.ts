@@ -413,7 +413,8 @@ export class PlatformIdentity implements OnModuleInit {
       return { emailed: true, ...(r.held ? { emailHeld: HELD_DAILY_LIMIT } : {}), dispatch: r.dispatch };
     } catch (e) {
       if (e instanceof MessageLimited) problem(429, "Too many emails to this address", `We send at most ${SYSTEM_PER_ADDRESS_HOUR} account emails an hour to one address, so this invitation was not sent. Try again in an hour.`, { code: "EMAIL_HOURLY_LIMIT" });
-      if (e instanceof MessageRefused) { refused.email = to; problem(409, "Invitation not sent", `We couldn't send email to ${to}. Ask your firm's Owner or Admin to check it.`, { code: "INVITATION_NOT_SENT" }); }
+      // Break R2-1: an address the form takes but email does not (josé@…, a..b@…) is refused as one that takes no email, never 500.
+      if (e instanceof MessageRefused || e instanceof z.ZodError) { refused.email = to; problem(409, "Invitation not sent", `We couldn't send email to ${to}. Ask your firm's Owner or Admin to check it.`, { code: "INVITATION_NOT_SENT" }); }
       // A MailPort that sends at once (a test's stand-in) and fails: as before, the invitation stays pending, not emailed.
       if (!(this.mail instanceof MessagesMail)) return { emailed: false, dispatch: async () => {} };
       throw e;

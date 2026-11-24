@@ -187,6 +187,16 @@ try {
   ok("PF-19e DW4 pass: an invitation to a suppressed address → 409 \"We couldn't send email to <address>. Ask your firm's Owner or Admin to check it.\", one platform.invitation.not_sent line, no invitation kept, the address still suppressed",
     inv4.status === 409 && inv4.body.code === "INVITATION_NOT_SENT" && inv4.body.detail === "We couldn't send email to dw4.gone@example.com. Ask your firm's Owner or Admin to check it."
     && audits("platform.invitation.not_sent") === invNot0 + 1 && sql(`select count(*) from platform_invitation where email = 'dw4.gone@example.com'`) === "0" && (await db.msgSuppression.count({ where: { address: "dw4.gone@example.com" } })) === 1, inv4.body);
+  // Break R2-1: an address the form takes but email does not → the same 409 in words, never 500.
+  const odd = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "a..b@example.com", roles: ["CASE_OFFICER"] } });
+  ok("PF-19e DW4 fail (break R2-1): an address email cannot take (a..b@example.com) → 409 INVITATION_NOT_SENT in words, not 500; nothing kept",
+    odd.status === 409 && odd.body.code === "INVITATION_NOT_SENT" && sql(`select count(*) from platform_invitation where email = 'a..b@example.com'`) === "0", odd);
+  // Review n1: an address both suppressed and at its hour's limit answers the suppression (409), not the limit.
+  const both = "dw4.both@example.com";
+  for (let i = 0; i < SYSTEM_PER_ADDRESS_HOUR; i++) await handleCustomEmail({ triggerSource: "CustomEmailSender_ForgotPassword", request: { code: "enc", userAttributes: { email: both } } }, { decrypt: async () => "118835", mail: new MessagesMail({ db, messages, files }), firmOf: async () => firmA.id });
+  await db.msgSuppression.create({ data: { firmId: firmA.id, channel: "EMAIL", address: both, reason: "HARD_BOUNCE", createdBy: "seed:pf19e" } });
+  const inv4b = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: both, roles: ["CASE_OFFICER"] } });
+  ok("PF-19e DW4 pass (review n1): an address suppressed and at its hour's limit → 409 INVITATION_NOT_SENT (the suppression), not 429", inv4b.status === 409 && inv4b.body.code === "INVITATION_NOT_SENT", inv4b.body);
   freeSeats();
 
   // ----------------------------------------------------------------------- DW3 the platform's own mail at the daily cap
@@ -233,11 +243,11 @@ try {
   await db.platformFirm.update({ where: { id: firmA.id }, data: { status: "ACTIVE" } });
 
   // ----------------------------------------------------------------------- DW5 no token in any log line
-  const leaks = logged.filter((l) => /invitation#t=|118833|118834|551177/.test(l));
+  const leaks = logged.filter((l) => /invitation#t=|118833|118834|118835|551177/.test(l));
   const lines = sql(`select coalesce(string_agg(concat_ws(' ', summary, detail::text), ' '), '') from audit_event`)
     + sql(`select coalesce(string_agg(concat_ws(' ', state_reason, idempotency_key), ' '), '') from msg_outbox`) + sql(`select coalesce(string_agg(detail::text, ' '), '') from msg_event`);
   ok("PF-19e DW5 pass: no line this run logged, no audit line, outbox reason or message event holds an invitation token or a code (scanned)",
-    leaks.length === 0 && !/invitation#t=|118833|118834|551177/.test(lines) && lines.length > 0, { leaks: leaks.slice(0, 3) });
+    leaks.length === 0 && !/invitation#t=|118833|118834|118835|551177/.test(lines) && lines.length > 0, { leaks: leaks.slice(0, 3) });
   ok("PF-19e DW5 fail: the scan finds a token when one is logged (its own probe)", [`x invitation#t=${"a".repeat(43)}`].some((l) => /invitation#t=/.test(l)));
 } catch (e) {
   fail++; console.log(`FAIL  the check stopped: ${e instanceof Error ? e.stack : String(e)}`);

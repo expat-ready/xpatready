@@ -40,7 +40,7 @@ const MESSAGEPORT_ITSELF = ["platform/messages/send/", "platform/messages/channe
  *  Partial while any entry is open). */
 type Entry = { counts: Partial<Record<Kind, number>>; route: string; open?: string };
 const SENDERS: Record<string, Entry> = {
-  "platform/identity/service.ts": { counts: { mailSend: 1, anySend: 1 }, route: "staff invitation: MAIL_PORT, bound useExisting MESSAGES_MAIL (features/platform-staff-read.ts; PF-19r part 1)" },
+  "platform/identity/service.ts": { counts: { mailSend: 1, anySend: 1, mailIn: 1 }, route: "staff invitation: MAIL_PORT, bound useExisting MESSAGES_MAIL (features/platform-staff-read.ts; PF-19r part 1); the single invite and resend in their own transaction (PF-19e)" },
   "platform/identity/session/service.ts": { counts: { mailIn: 1 }, route: "two-step reset notice: MAIL_PORT (MESSAGES_MAIL) in the caller's transaction (PF-19r part 1)" },
   "platform/identity/session/email-sender.ts": { counts: { mailSend: 1, anySend: 1 }, route: "the identity provider's code emails: the MailPort its caller gives (no caller in api/src; PF-19r part 1 tests it over MessagesMail). Not verified: the deployed function's wiring" },
   "platform/complaints/complaints.ts": { counts: { mailIn: 1 }, route: "complaint reminder: COMPLAINT_PORTS.mail = MESSAGES_MAIL (features/platform-complaints.ts; PF-19r part 1)" },

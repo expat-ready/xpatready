@@ -67,3 +67,33 @@ The gate is the workspace name, never the environment. This is from reading the 
 - **The switch.** `MAIL_PORT` is `useExisting: MESSAGES_MAIL` (`features/platform-staff-read.ts:18`, from PF-19r).
 
 Breaker: Changes 570c344b483ace08ee761d08c704a53d2c367de3
+
+## Round 2 (`633b89afb2f5bfb9979d5f2e1742431070e0d638`, re-tried only what changed since `570c344b4`)
+
+Same harness, run from detached worktrees in `/tmp/claude-0/pf19e-break/` (scratch databases dropped). m2-m6 and m9 now go to the tech lead as questions, so they are not re-reported.
+**Fixed and held**
+- **B1:** invite plus 5 resends → `201, 200 ×4, 429 EMAIL_HOURLY_LIMIT` "We send at most 5 account emails an hour to one address, so this invitation was not sent. Try again in an hour." The outbox holds 5 rows, one invitation is open, and its token is one of the 5 emailed; that link answers `VALID`. A new invite to an address already holding 5 code emails → 429, and no invitation is kept.
+- **B2:** invite to `B.Suppressed@Example.com` → 409 `INVITATION_NOT_SENT` "We couldn't send email to b.suppressed@example.com. Ask your firm's Owner or Admin to check it." One `platform.invitation.not_sent` line is written, with no invitation and no outbox row kept. A Resend after the address became suppressed → the same 409, and the old link stays open.
+- **Storms:** 10 concurrent resends of one id → 1 × 200, 9 × 409 `INVITATION_CLOSED`, one open invitation, and its link was emailed. In a mixed storm (8 resends, 8 code emails to the same address in another case, 8 invites to other addresses), the address got exactly 5 rows. There was no 500 and no deadlock.
+- **Resend racing accept** (6 runs at 0-15 ms offsets, twice): either accept 200 and resend 409 `INVITATION_CLOSED`, with no open invitation, or resend 200 and accept 410, with one open invitation and 2 emails. A person was never both joined and holding a live link.
+- **Unchanged from round 1:** tampering, the cap mix and the leak scan. The new "did not open" log line holds ids and the refusal code only (`TAMPERED_OR_OTHER_OWNER`), never a body.
+
+**R2-1 Major: a regression, invitations to addresses the form accepts now answer a bare 500 (item 4: "never answers 500").**
+- Steps: `POST /api/platform/staff/invitations` with `josé@example.com`, `a@exämple.com`, `a@b.c`, `a..b@example.com`, `a.@example.com` or `.a@example.com`.
+- At 570c344b4 (same probe, own worktree), each answered 201 `emailed:false`, with the invitation kept. At 633b89afb each answers 500 with an empty detail, and nothing is kept.
+- Cause: `emailOf` (`identity/service.ts:62-68`) accepts them, but `MessagesMail.write` runs `MailMessage.parse` (`send/mail.ts:62`, `to: z.email()`, ASCII only) and throws a ZodError. `invitationIn` rethrows anything that is not MessageLimited or MessageRefused (`identity/service.ts:418-419`). Resend goes through the same path.
+- `a@b-.example` correctly gets the 409 sentence, because MessagesMail turns its refusal into a MessageRefused.
+
+**R2-2 Major: CI suite red.** `tests/check_pf19r_every_sender.ts` S1 fails: `"platform/identity/service.ts: 1 mailIn call(s), the table says 0: classify the change"` (20/1; it was 21/0 at 570c344b4).
+
+**R2-3 Minor: the batch path still swallows both refusals.**
+- `inviteBatch` still emails through `emailInvitation` after the commit, with a catch-all (`identity/service.ts:402`, `:485`).
+- Rows `[c.gone (suppressed), c.full (5 codes this hour)]` → 200, both `emailed:false`. There is no 409 or 429 sentence, no `invitation.not_sent` line, and both invitations stay pending with tokens nobody received. The answer gives no flag saying why.
+- Only the API uses this path (the web's invite panel calls the single route per row), and a later Resend of such a row answers the right 409 or 429.
+
+**Suites at 633b89afb:**
+- Pass: pf19e 27/0, pf19r_senders 28/0, pf4b_session_reads 55/0, pf4c_batch_invite 24/0, pf4c1b_batch 19/0, pf6m2_invite_recheck 19/0, pf15_limits 69/0, pf19b_sending 42/0, pf19b_mail 29/0, pf19p 68/0, pf6m_money_line 12/0.
+- Fail: pf19r_every_sender 20/1 (R2-2).
+- Not run (each needs an isolated server copy): pf4_identity part B (111/112, its :4541 copy was not started), pf4dn_invite_name, pf28_inputs (b).
+
+Breaker: Changes 633b89afb2f5bfb9979d5f2e1742431070e0d638
