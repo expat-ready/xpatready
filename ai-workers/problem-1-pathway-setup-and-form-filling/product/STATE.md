@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_aa6d586e-f011-41b3-b112-f564a41cd5a9 Lead 20 · 24 Nov 09:23 IST (after Lead 19, past 200k; Opus 5.5 medium, P-788)
+current_lead: local_11ef6843-97be-454a-88c6-7b65fd7e67ac Lead 21 · 24 Nov 10:02 IST (after Lead 20, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A348): `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** #3225 merged 08:37. Queue: #3367, #3184 stacked on it; #3370 behind; #3373, #3368 labelled; my reads owed: #3375 #3376 #3382. #3366 left it: batch #3369 red on shard 12, `check_bk3_links_browser` hung 20 min (cause unknown, not its diff); full run 45322275887 runs, then cover; then #3202 (dequeued by the pf4s race; its full run started by itself) and #3033 shards 8 and 19. 53/101 (R1.70 #3372, R1.46 #3374 merged 09:05). #3370 (R1.20): name kept, P-727 over BR-2 (rows owed). Bell race: #3381 ready, in CI. #3379 held: body, qa rating (question ruled no). j_69 = two unbuilt CS-D6 parts; #3380 to merge main. #3377 approved, in CI. #3388 Q3 (Stripe, BoldSign, OAuth test accounts) is the founder's. Disk 12 GB. Standby Lead 21 local_11ef6843. Lead 19 keeps only the AWS run; **hand-over list: end of the plan file**. Cloud lanes started once each: qa near-done (session_01MXNda7crVzNL6HM2svSJCN), R1.20 (01MXNda6KvFckJUX1XzHMvUk), R1.60 (01MXNda7SW9kChAanWJLU4m5), R1.10 (01MXNda9LZXVLUuS932GFzEi), all Opus 5.5 medium. **R1.60 ruling (P-797, P-628; DECISIONS row owed; founder review):** AG-6-61 / MS-D6 wins: one trust deposit request, Ask me first, never a draft invoice; rules file only, build waits for #3033 (Lead B 5 confirmed; bounds in the plan file). #3209 6bff2d790 and #3184 2e986f3ae: Approve, Lead B OK, Lead reads posted; #3184 first, #3209 after, never together; #3193's lane told: conflict plus the 'fast' line 'fewer than 30 suites (30)'. R1.10: #3377, then probe PR, A4, A3, A2 (rulings there). Nightly missing: dispatch when idle. Weekly 56% at 09:48.
+updated: 2026-11-24 10:02 IST: Lead 20 ended. **Hand-over: last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`; the earlier status line is there word for word.** Queue: #3184 + #3370 (batch #3392), #3368 (#3393), then #3366, #3202 (covered, labelled), #3377, #3380, #3381. #3367 is back with its lane (its own suite's database name). #3209 only after #3184 lands. 53/101 by 09:05 (not recounted). Weekly 56% at 09:58, disk 11 GB. No second standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -47,7 +47,7 @@ Older Start here pointers and the red-row lanes line: `history/STATE-2026-11-24-
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, from 24 Nov 09:23 IST).
+**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, 09:23), Lead 21 (local_11ef6843, from 24 Nov 10:02 IST).
 **Leads of 22 Nov (account before):** word for word in `history/STATE-2026-11-23-1705-lead6-cs-mv2-and-older-leads.md`.
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
