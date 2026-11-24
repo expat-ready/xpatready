@@ -2,7 +2,7 @@
 
 current_lead: local_11ef6843-97be-454a-88c6-7b65fd7e67ac Lead 21 · 24 Nov 10:02 IST (after Lead 20, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 10:08 IST: Lead 21, check 4dfd36d5. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Queue: #3184 + #3370 (batch #3392), #3381 stacked (#3395), #3368 (#3393), #3380 (#3396), then #3377; #3366 waits on 'fast', #3202 labelled but dequeued. #3379 waits on the founder (refused body edit). #3367 new head 5b98ba107, full run going. #3209 only after #3184 lands. 53/101 by 09:05 (not recounted). Weekly 56%, disk 15 GB. No standby.
+updated: 2026-11-24 10:08 IST: Lead 21, check 4dfd36d5. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Queue: #3184 + #3370 (batch #3392), #3381 stacked (#3395), #3368 (#3393), #3380 (#3396), then #3377; #3366 waits on 'fast', #3202 labelled but dequeued. #3379 waits on the founder (refused body edit). #3367 new head 5b98ba107, full run going. #3209 only after #3184 lands. AWS Step 20 raw outputs: private home, path in that section. 53/101 by 09:05 (not recounted). Weekly 56%, disk 15 GB. No standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
