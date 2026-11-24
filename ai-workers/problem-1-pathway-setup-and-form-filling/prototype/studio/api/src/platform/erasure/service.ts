@@ -120,7 +120,7 @@ export class Erasure {
       if (!p.success) problem(FIELD_ERROR_STATUS, "Check the highlighted fields", "Some fields need a change.", { code: "ERASURE_FIELDS", fields: fieldsOf(p.error) });
       const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_erasure_cancel(${id.toLowerCase()}::uuid, ${p.data.note ?? null}, ${`staff:${c.staffId}`}, ${this.today()}::date) AS out`;
       if (out === "NOT_FOUND") notFound();
-      if (out === "RUNNING") problem(409, "Erasing now", "The erasure is running now and cannot be cancelled.", { code: "ERASURE_RUNNING" });
+      if (out === "RUNNING") problem(409, "Erasing now", "An erasure has started on this request and has not finished recording; it cannot be cancelled.", { code: "ERASURE_RUNNING" });
       if (out === "WINDOW_ENDED") problem(409, "Too late to cancel", "The 7-day window has ended; the erasure runs today.", { code: "WINDOW_ENDED" });
       if (out !== "CANCELLED") problem(409, "Nothing to cancel", "No erasure is scheduled for this request.", { code: "NOT_SCHEDULED" });
     });
@@ -153,7 +153,14 @@ export class Erasure {
   private async one(order: ErasureOrder, today: string): Promise<"erased" | "partial" | "held" | null> {
     const [{ claim }] = await this.db.$queryRaw<{ claim: Date | null }[]>`SELECT plat_data_request_erasure_claim(${order.requestId}::uuid, ${today}::date) AS claim`;
     if (!claim) return null;
-    try { return await this.erase(order, today, claim); } catch (e) {
+    const state = { erased: false };   // set once the erasers' firm transaction has committed
+    try { return await this.erase(order, today, claim, state); } catch (e) {
+      if (state.erased) {
+        // Lead 26 on #3235: the erasers committed but the record failed. The claim is kept, so nobody can cancel a request
+        // whose data is gone (cancel refuses any claim); a run after 30 minutes retakes it and records the result.
+        await this.db.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_RESULT', ${"The erasers ran, but recording their result failed. The request cannot be cancelled; a later run records it."}, ${ERASURE_ACTOR}, false, ${claim}::timestamptz)`.catch(() => undefined);
+        throw e;
+      }
       // Review M2 (SA-11-40 Failure): the request shows the failure as a step (the module's name only), then the claim goes
       // back with the order still scheduled. A stale claim is retaken after 30 minutes anyway.
       const what = e instanceof EraserFailed ? `${e.module}: FAILED — nothing was erased; the next run retries.` : "The erasure failed — nothing was recorded as erased; the next run retries.";
@@ -164,7 +171,7 @@ export class Erasure {
       throw e;
     }
   }
-  private async erase(order: ErasureOrder, today: string, claim: Date): Promise<"erased" | "partial" | "held"> {
+  private async erase(order: ErasureOrder, today: string, claim: Date, state: { erased: boolean }): Promise<"erased" | "partial" | "held"> {
     // SA-11-18, SA-11-40: the hold check and every eraser in the order's firm scope and one transaction (the shared hold
     // lock is kept until the erasers are done, so a hold placed meanwhile waits for this order).
     const done = await withFirm(order.firmId, () => this.db.$transaction(async (tx) => {
@@ -179,6 +186,7 @@ export class Erasure {
       }
       return { kind: "ran", results } as const;
     }, { maxWait: 10_000, timeout: 120_000 }));
+    if (done.kind === "ran") state.erased = true;
     return this.db.$transaction(async (tx) => {
       const finish = async (outcome: string, actions: string | null) => {
         const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_erasure_finish(${order.requestId}::uuid, ${outcome}, ${actions}, ${today}::date, ${ERASURE_ACTOR}, ${claim}::timestamptz) AS out`;

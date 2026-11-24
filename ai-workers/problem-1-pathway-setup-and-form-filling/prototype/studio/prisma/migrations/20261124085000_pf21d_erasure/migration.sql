@@ -58,7 +58,7 @@ BEGIN
   RETURN 'APPROVED';
 END $fn$;
 -- Cancels a scheduled erasure inside its window (before its day; SA-11-16 (a)), or one a legal hold keeps HELD:
--- 'NOT_FOUND', 'NOT_SCHEDULED', 'RUNNING' (claimed by the job), 'WINDOW_ENDED' or 'CANCELLED'.
+-- 'NOT_FOUND', 'NOT_SCHEDULED', 'RUNNING' (a job's claim, however old: a run that died may have erased already), 'WINDOW_ENDED' or 'CANCELLED'.
 CREATE FUNCTION plat_data_request_erasure_cancel(p_id uuid, p_note text, p_by text, p_today date) RETURNS text
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
 DECLARE r plat_data_request%ROWTYPE;
@@ -67,7 +67,7 @@ BEGIN
   SELECT * INTO r FROM plat_data_request x WHERE x.id = p_id FOR UPDATE;
   IF r.id IS NULL THEN RETURN 'NOT_FOUND'; END IF;
   IF r.erase_on IS NULL OR r.status = 'COMPLETED' THEN RETURN 'NOT_SCHEDULED'; END IF;
-  IF r.erasing_since IS NOT NULL AND r.erasing_since > clock_timestamp() - interval '30 minutes' THEN RETURN 'RUNNING'; END IF;
+  IF r.erasing_since IS NOT NULL THEN RETURN 'RUNNING'; END IF;   -- Lead 26: any claim, however old: its erasers may have committed
   IF p_today >= r.erase_on AND r.status <> 'HELD' THEN RETURN 'WINDOW_ENDED'; END IF;
   UPDATE plat_data_request x SET erase_on = NULL, erasing_since = NULL WHERE x.id = p_id;
   INSERT INTO plat_data_request_event (id, request_id, kind, note, actor) VALUES (gen_random_uuid(), p_id, 'ERASURE_CANCELLED', p_note, p_by);

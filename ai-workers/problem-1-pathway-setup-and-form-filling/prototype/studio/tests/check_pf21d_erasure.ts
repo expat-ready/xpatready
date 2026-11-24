@@ -79,11 +79,12 @@ try {
     const n = await tx.$executeRaw`delete from pf21d_rows where firm_id = ${currentFirm()}::uuid and person_id = ${o.personId}::uuid`;
     return n ? { outcome: "ERASED", note: `${n} row(s)` } : { outcome: "NOTHING", note: "no rows" };
   } };
-  let mode: "nothing" | "throw" | "kept" | "wait" | "merge" = "nothing", mergeTry: (() => void) | null = null, entered = false, gate: () => void = () => undefined;
+  let mode: "nothing" | "throw" | "kept" | "wait" | "merge" | "breakRecord" = "nothing", mergeTry: (() => void) | null = null, entered = false, gate: () => void = () => undefined;
   const secondEraser: Eraser<any> = { module: "test.second", async erase() {
     if (mode === "throw") throw new Error("Sample: the second module is down");
     if (mode === "wait") { entered = true; await new Promise<void>((r) => { gate = r; }); }
     if (mode === "merge" && mergeTry) mergeTry();   // review r4 M1: a merge tries to land while the run erases
+    if (mode === "breakRecord") sql(`alter function plat_data_request_erasure_finish(uuid, text, text, date, text, timestamptz) rename to pf21d_finish_away`);   // Lead 26: the record fails after the erasers commit
     return mode === "kept" ? { outcome: "KEPT", note: "client_financial: 2 rows kept 7 years, name replaced by a reference" } : { outcome: "NOTHING", note: "no rows" };
   } };
   const rowsOf = (firm: string, person: string) => Number(sql(`select count(*) from pf21d_rows where firm_id = '${firm}' and person_id = '${person}'`));
@@ -243,6 +244,22 @@ try {
   const notes7 = sql(`select string_agg(note, ' / ' order by seq) from plat_data_request_event where request_id = '${r7}' and kind = 'ERASURE_HELD'`);
   ok("PF-21d fail (review r4 m1): held for a hold, then merged away with the hold released → a second HELD step names the merge (the stale reason is not left alone); still one per reason over two runs",
     (kinds(r7).match(/ERASURE_HELD/g) ?? []).length === 2 && /an inquiry on the records/.test(notes7) && /merged away/.test(notes7) && rowsOf(A, P7) === 2 && statusOf(r7).startsWith("HELD|2"), { notes7, s: statusOf(r7) });
+  // Lead 26 on #3235: a HELD order (its hold since lifted) whose erasers commit but whose record then fails must not be
+  // cancellable: the register would read cancelled with the data gone. The claim stays (cancel → 409) until a run records it.
+  const P8 = person(A); addRows(A, P8);
+  const r8 = await deletion(A, P8); await svc.approve(as, null, r8);
+  const h8 = sql(`insert into plat_legal_hold (id, firm_id, scope_kind, target_id, reason, placed_by) values (gen_random_uuid(), '${A}', 'PERSON', '${P8}', 'Sample: a short inquiry', 'staff:${OWNER}') returning id`).split("\n")[0];
+  clock.t += 7 * DAY; await svc.run();
+  sql(`update plat_legal_hold set released_by = 'staff:${OWNER}', released_at = now(), release_reason = 'Sample: lifted' where id = '${h8}'`);
+  mode = "breakRecord"; const broke = await svc.run(); mode = "nothing";
+  sql(`alter function pf21d_finish_away(uuid, text, text, date, text, timestamptz) rename to plat_data_request_erasure_finish`);
+  const afterBreak = statusOf(r8), rowsAfter = rowsOf(A, P8);
+  const lateCancel8 = await throws(() => svc.cancel(as, null, r8, { note: "Sample: withdrawn" }), /ERASURE_RUNNING/);
+  sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r8}'`);   // a run 30 minutes later
+  const recorded = await svc.run();
+  ok("PF-21d fail (Lead 26): a HELD order whose erasers committed but whose record failed keeps its claim: cancel → 409 (never a cancelled register over erased data); a run after 30 minutes records it COMPLETED",
+    broke.failed === 1 && rowsAfter === 0 && afterBreak.startsWith("HELD|2") && lateCancel8 && !kinds(r8).includes("ERASURE_CANCELLED")
+    && recorded.erased.includes(r8) && statusOf(r8) === "COMPLETED|-", { broke, afterBreak, rowsAfter, lateCancel8, recorded, s: statusOf(r8), k: kinds(r8) });
   // -------------------------------------------------------------------------------------- the database's rules
   ok("PF-21d fail (database): an erase day on an access request or not after the day received, a forged mark through the job's step → refused",
     refusedBySql(`update plat_data_request set erase_on = received_on + 7 where id = '${access}'`, /plat_data_request_erase_on_set/)
