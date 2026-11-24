@@ -141,3 +141,48 @@ generated into an overlay; the shared copy was not written. Scratch copy of the 
 No Blocker or Major is open. R3-1 is closed; R4-1 and R4-2 are Minor.
 
 **Verdict: Approve** for 4d72360f6d69db7b0f3e4d62aa1f0b510f80608b
+
+## Round 5: 77997e39d (PR #3235), only `4d72360f6..77997e39d`
+Fresh worktree at the head. The shared Prisma client was current enough for this suite (no private client needed). The
+scratch copy of the shipped suite drove FO-9b's real `PersonMergeAdapter` (xr_app, `walledPool`, `withFirm`). The
+worktree and scratch databases are removed.
+* **Held, suites:** `check_pf21d_erasure` 27/0 (the two new lines pass), `check_fo9b_merge` 88/0.
+* **Held, R4-1 closed (real merge path):**
+  - B1: the real merge (loser = the order's person) fires from inside the eraser → `MergeBusy` after its NOWAIT back-off
+    (about 0.9 s). COMPLETED, 2 rows erased, the person still live. The same merge after the run → ok.
+  - B2: the order's person as survivor → `MergeBusy`, COMPLETED.
+  - The shipped raw-UPDATE line (lock_timeout) → refused by the lock.
+* **Held, merge holds its locks first:** the merge is done but uncommitted while the run starts.
+  - B3, the order is on the loser: the run waits on `FOR SHARE` (seen in pg_stat_activity). After the commit, the
+    re-check finds the row merged → HELD with the "merged away" why, rows stay, no eraser.
+  - B3b, the order is on the survivor: the run waits, then erases the survivor → COMPLETED.
+* **Held, Undo racing:**
+  - B4a, Undo uncommitted while the run checks the tombstoned loser: the check does not wait (the visible version fails
+    the WHERE) → HELD "merged away". The next run, after the Undo commits → COMPLETED, 2 rows. Conservative, recovers.
+  - B4b, the run holds the survivor, Undo is attempted from inside the eraser → `MergeBusy`, COMPLETED.
+* **Held, deadlock:** FO-9b's merge and Undo take every lock NOWAIT, so they never wait and cannot deadlock with the run.
+  - B5, a raw writer that is not FO-9b's (locks the person's rows, then updates the person) does deadlock with the run.
+    PostgreSQL aborts the run's eraser: failed 1, step `test.rows: FAILED — nothing was erased; the next run retries`,
+    still IN_PROGRESS with its erase day, rows intact. No false COMPLETED.
+* **Held, R4-2 closed:**
+  - One hold over 6 runs → 1 HELD step. Hold B added → 2. A released → 3. B swapped for C → 4. Merged + C released → 5,
+    each naming its current reason. Unmerged → the next run erases.
+  - Three holds placed in one statement (same `placed_at`) over 5 runs → 1 step: xr_app's `plat_legal_hold_active`
+    orders by `placed_at, id`.
+  - The SKIPPED reasons are fixed strings, so switch off and no erasers still write one step per reason.
+* **Not a finding:**
+  - Approve's check now runs in its own short firm transaction, so its FOR SHARE ends before approve commits. A merge
+    landing there is caught by the run's re-check (HELD). That is the design.
+  - The run's FOR SHARE makes staff edits of that person wait while the run erases. Bounded by the 120 s transaction.
+* **Left alone:** 12 older `xr_studio_pf21d*_<pid>` / `pf21ds_*` databases (pids 4204, 9007, 32172, 32723; no live
+  process). None was created this round, so they were not dropped.
+
+| # | Attack | Expected | Actual | Sev | Where |
+|---|---|---|---|---|---|
+| R4-1 | Re-run with FO-9b's real merge and a raw UPDATE, mid-run | No false COMPLETED | Closed: `MergeBusy` / lock refusal; COMPLETED with rows erased, or HELD when the merge committed first | n/a | service.ts:57-58, 173 |
+| R4-2 | Hold → HELD, then the reason changes | A new HELD step per new reason; one per unchanged reason | Closed (5 steps for 5 reasons, 1 over 6 runs) | n/a | mig:128-129 |
+| R1-R4 | Round-2 Minors | n/a | Untouched by this diff | Minor | as round 2 |
+
+No Blocker or Major is open.
+
+**Verdict: Approve** for 77997e39d1282cfbb2ff4bb867480f324b9f8ef1

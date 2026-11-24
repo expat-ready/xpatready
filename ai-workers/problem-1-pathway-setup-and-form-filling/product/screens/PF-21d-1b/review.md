@@ -314,3 +314,73 @@ Everything else in this round is correct and would be approved on its own: the A
 re-check's placement and test, cancel while HELD, and the source reading.
 
 Reviewer: Block 4d72360f6d69db7b0f3e4d62aa1f0b510f80608b
+
+## Round 5: `77997e39d1282cfbb2ff4bb867480f324b9f8ef1` (PR #3235, diff only: `git diff 4d72360f6 77997e39d`, Lead 24)
+
+Scope: `service.ts`, the step definer in `20261124085000_pf21d_erasure`, and `check_pf21d_erasure.ts`. Records under
+`product/screens/` were ignored.
+
+**Suites at 77997e39d** (worktree; Postgres 18 on 127.0.0.1:54329 accepting; shared Prisma client, no private client
+needed): check_pf21d_erasure 27/0 and 27/0 (two runs), check_aud3_access 30/0, check_fo9b_merge 88/0.
+
+**Each rule's test fails when its rule is removed (all three mutations were run):**
+* `service.ts` reverted to 4d72360f6: the r4 M1 line FAILS (26/1).
+* Only ` FOR SHARE` deleted, with the check still on `tx`: the r4 M1 line FAILS (26/1). The lock is what the test proves,
+  not just moving the check into the transaction.
+* The migration reverted to 4d72360f6 (kind-only `p_once`): the r4 m1 line FAILS (26/1).
+
+### r4 M1: fixed
+* **The lock.** The check is `SELECT … FROM fo_person … AND merged_into_id IS NULL FOR SHARE` (`service.ts:57-58`). It runs
+  on the run's firm transaction `tx` as that transaction's first statement, before the hold check (`:173`), so the row lock
+  is held until the erasers commit. The API pool connects as `xr_app` (`firm-scope.ts:504`), so the suite runs the lock
+  under the app role and its walls. Lock and RLS are fine.
+* **Merge arrives after the run's lock.** FO-9b takes every lock `FOR UPDATE NOWAIT`: the person's rows, then the two
+  records (`merge/service.ts:49`, `:94-108`). It does so inside a savepoint, with bounded back-off, then MergeBusy
+  (`:61-80`). `FOR UPDATE` conflicts with `FOR SHARE`, so the merge answers "busy", nothing moves, and the erasers finish
+  on the right rows. Undo (`:281-291`) uses the same `lockPairFor`, so a survivor's erasure cannot be undone mid-run.
+  The suite's stand-in is stricter than the real merge: a plain `UPDATE` that waits (`lock_timeout 300ms`) is still
+  refused, and the order ends COMPLETED with the rows erased (`check_pf21d_erasure.ts:225-233`).
+* **Merge holds its lock first.** The run's `FOR SHARE` waits. Under READ COMMITTED, Postgres re-checks the WHERE against
+  the committed version (EvalPlanQual). `merged_into_id` is now set, so no row comes back: gone → HELD. I proved this
+  with a two-session psql probe in a scratch database (dropped after): the waiter blocked 1.1 s and then returned 0 rows.
+  The suite does not cover this ordering (note n1).
+* **No deadlock with FO-9b.** When the run waits, it holds no row lock yet: its only earlier work is `set_config` at
+  checkout. The merge never waits on a row lock, because every lock is NOWAIT and a rollback to the savepoint releases
+  the partial set. Its only waiting lock is the advisory `fo_dup_merge:<id>` (`:120-121`), which the run never takes.
+  So no wait cycle can form.
+* **Approve.** It now checks in its own short firm transaction, `withFirm(firm, () => db.$transaction(...))` (`:105`).
+  That is the same pattern as the run, and the same one extra pooled connection the old `db.$queryRaw` used, so pool
+  pressure is unchanged. The lock ends when that short transaction commits, before approve commits. That is acceptable,
+  because the run re-checks under its lock.
+
+### r4 m1: fixed
+* **The change.** `p_once` now skips only when both kind and note match (`migration.sql:128-129`, `IS NOT DISTINCT FROM`).
+* **No step a day.** The held note is built in a fixed order. Holds come oldest first, with `holdId` breaking ties
+  (`ports/legal-hold.ts:92`). Each reads `hold <id>: <reason>`, and the note is cut at 2000 characters. A hold's reason is
+  never updated: release is the only change. The gone note and the two SKIPPED notes are constants.
+* **The suite confirms both sides.** A hold left on over two runs still gives one HELD (line 188). A switch left off gives
+  one SKIPPED (line 163). Hold, then merge with the hold released, gives a second HELD naming the merge, and a third run
+  adds nothing (`:235-245`). A changed set of holds writes a new step, which is correct: it is a new reason.
+
+### Notes (not findings; no fix asked in this PR)
+* **n1.** No suite line covers "merge first, run waits → HELD". It is proven above by the probe and the Postgres rule.
+  A line could be added when part 2 wires the real merge into the job's suite.
+* **n2 (for the eraser PRs).** An eraser that UPDATEs or DELETEs the `fo_person` row itself upgrades the share lock. If
+  two job processes ran two orders for the same person at once, Postgres would end one with a deadlock error (40P01).
+  That shows as `FAILED … the next run retries`, never a false status. Today `run()` handles orders one at a time, and
+  this PR registers no eraser for real data.
+
+Round 2's Minors 1-4 are untouched by this diff and stay listed in the PR.
+
+**Journey score (reviewer): changed path re-walked through the service, as in round 4.** All three cases are now right:
+* merge mid-run: the merge is refused, the rows are erased, the status is a true COMPLETED (M1 closed);
+* hold, then merge, then release: a new HELD with the true reason (m1 closed);
+* merged person: HELD with why, then cancel.
+
+Correct data and feedback and state go back to 1. The score returns to round 2's **9/10, pass, no 0**, up from round 4's
+8/10.
+
+**Verdict: Approve** for `77997e39d1282cfbb2ff4bb867480f324b9f8ef1` (no open Blocker or Major; r4 M1 and m1 are fixed and
+tested first, and each test fails when its rule is removed).
+
+Reviewer: Approve 77997e39d1282cfbb2ff4bb867480f324b9f8ef1
