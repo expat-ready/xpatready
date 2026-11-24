@@ -235,6 +235,16 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
     const took = Date.now() - t0; await holder.query("rollback"); await holder.end(); await attempt;
     ok("PF-4bc fail (#3217 R3-m1): a person's row held elsewhere after the firm lock → 503 FIRM_BUSY within about 3 s, not a wait the whole transaction long", typeof held === "object" && held?.status === 503 && held.body.code === "FIRM_BUSY" && took < 5_000, { held, took });
     ok("PF-4bc pass (break R2-M1; #3217 R3-m2): the transaction's limit covers two bounded lock waits (up to 3 s each: Postgres bounds each lock attempt, and a row lock can wait twice), the 3 s provider deadline and the commit", FIRM_TX.timeout >= 2 * 3_000 + 3_000 + 2_000, FIRM_TX);
+    // Breaker m1 and m3, the helpers themselves: a transaction too old for the provider's deadline answers 503 before the
+    // call; Prisma's P2028 is the same busy.
+    const { roomForProvider, PROVIDER_ROOM_MS, txClock } = lockMod as { roomForProvider?: (tx: unknown) => void; PROVIDER_ROOM_MS?: number; txClock?: <T>(f: () => Promise<T>) => Promise<T> };
+    const clock = txClock ?? (<T>(f: () => Promise<T>) => f());
+    const late = await problemOf(() => db.$transaction(async (tx) => clock(async () => { await lockFirm(tx as never, FIRM); await new Promise((r) => setTimeout(r, FIRM_TX.timeout - (PROVIDER_ROOM_MS ?? 0) + 200)); roomForProvider?.(tx); return "called"; }), FIRM_TX).catch(busyOnLockTimeout));
+    // Two transactions at once: each has its own clock (a shared one would refuse the fresh transaction).
+    const [early, early2] = await Promise.all([1, 2].map(() => problemOf(() => db.$transaction(async (tx) => clock(async () => { await new Promise((r) => setTimeout(r, 50)); roomForProvider?.(tx); }), FIRM_TX))));
+    ok("PF-4bc fail (breaker m1): a transaction with less than the provider's deadline plus 2 s left answers 503 FIRM_BUSY before the provider call; a fresh one goes on", late?.status === 503 && late.body.code === "FIRM_BUSY" && early === null && early2 === null, { late, early, early2 });
+    const p2028 = await problemOf(async () => busyOnLockTimeout(Object.assign(new Error("Transaction API error: Unable to start a transaction in the given time."), { code: "P2028" })));
+    ok("PF-4bc fail (breaker m3): Prisma's P2028 on these paths answers 503 FIRM_BUSY, not a 500", p2028?.status === 503 && p2028.body.code === "FIRM_BUSY", p2028);
     const { SIGN_OUT_TX } = lockMod as { SIGN_OUT_TX?: { timeout: number } };
     ok("PF-4bc fail (review m2): sign-out's limit is above FIRM_TX's, since a bounded holder may keep the firm lock that long", !!SIGN_OUT_TX && SIGN_OUT_TX.timeout > FIRM_TX.timeout, SIGN_OUT_TX);
   } finally { await db.$disconnect(); try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* prune-test-dbs.sh */ } }
@@ -252,6 +262,9 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
   const acc = body("accept"), lift = acc.indexOf("set local lock_timeout to default"), create = acc.indexOf("this.admin.createUser(");
   ok("PF-4bc fail (review m1): accept lifts the lock bound just before its provider call (what follows it waits within FIRM_TX)", lift > 0 && create > lift && acc.slice(lift, create).split("\n").length <= 3, { lift, create });
   ok("PF-4bc fail (review m3): accept's busy words are for a person not yet in the firm", /BUSY_WORDS_INVITEE/.test(acc));
+  // Breaker m1: each provider call is preceded by roomForProvider within three lines.
+  const before = (call: string) => { const at = src.indexOf(call); return at > 0 && /roomForProvider\(tx/.test(src.slice(src.lastIndexOf("\n", at - 200), at)) && src.slice(src.lastIndexOf("roomForProvider(tx", at), at).split("\n").length <= 3; };
+  ok("PF-4bc fail (breaker m1): every provider call in session/service.ts is preceded by roomForProvider (createUser, signOutEverywhere, resetTwoStep)", ["this.admin.createUser(", "this.admin.signOutEverywhere(", "this.admin.resetTwoStep("].every(before));
   ok("PF-4bc pass (#3217 r3-m3): accept takes lockFirm inside FIRM_TX and maps a lock timeout to FIRM_BUSY", /lockFirm\(/.test(body("accept")) && /FIRM_TX/.test(body("accept")) && /busyOnLockTimeout/.test(body("accept")), body("accept").length);
 }
 console.log(`\n${pass} passed, ${fail} failed`);

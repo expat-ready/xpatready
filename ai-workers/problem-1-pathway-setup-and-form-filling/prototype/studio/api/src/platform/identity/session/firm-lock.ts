@@ -1,7 +1,9 @@
 // PF-4bc (break R2-M1): the firm row lock for the session's transactions that call the sign-in provider while holding it
 // (session/service.ts: accept, sign-out everywhere, reset two-step). Its own file so a test can run it on a scratch database.
 import type { Prisma } from "@prisma/client";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { problem } from "../keys.ts";
+import { COGNITO_DEADLINE_MS } from "./provider.ts";
 
 type Tx = Prisma.TransactionClient;
 /** PF-4bc (break R2-M1; #3217 round-3 Minors): the transactions that call the sign-in provider while holding the firm's
@@ -23,8 +25,21 @@ export const BUSY_WORDS_INVITEE = "Your firm's account is busy right now. Try ag
 const isLockTimeout = (e: unknown) => { const x = e as { message?: unknown; meta?: unknown }; return /55P03|lock timeout|lock_not_available/i.test(`${String(x?.message)} ${JSON.stringify(x?.meta ?? {})}`); };
 /** A transaction's `.catch`: a lock wait that ran out anywhere in it is 503 FIRM_BUSY; anything else passes unchanged. */
 export function busyOnLockTimeout(e: unknown, words = BUSY_WORDS): never {
-  if (isLockTimeout(e)) problem(503, "Try again shortly", words, { code: "FIRM_BUSY" });
+  // Breaker m3: Prisma's P2028 (the transaction's limit reached, or no connection in time) is the same "busy", not a 500.
+  if (isLockTimeout(e) || (e as { code?: unknown })?.code === "P2028") problem(503, "Try again shortly", words, { code: "FIRM_BUSY" });
   throw e;
+}
+/** Breaker m1: Postgres bounds each lock attempt, not a statement, so overlapping holders can make one statement wait
+ *  more than twice. Just before a provider call, a transaction with less than the provider's whole deadline plus 2 s
+ *  left of FIRM_TX answers 503 FIRM_BUSY: the provider is never changed by a transaction that cannot commit in time. */
+// The transaction's start, per transaction: Prisma's transaction client is a Proxy whose property writes reach the shared
+// client, so the clock lives in the async context the transaction's callback runs in (txClock), never on `tx`.
+const started = new AsyncLocalStorage<number>();
+export const txClock = <T>(fn: () => Promise<T>): Promise<T> => started.run(Date.now(), fn);
+export const PROVIDER_ROOM_MS = COGNITO_DEADLINE_MS + 2_000;
+export function roomForProvider(_tx: Tx, words = BUSY_WORDS): void {
+  const t0 = started.getStore();   // no clock: refused (fail closed)
+  if (typeof t0 !== "number" || Date.now() - t0 > FIRM_TX.timeout - PROVIDER_ROOM_MS) problem(503, "Try again shortly", words, { code: "FIRM_BUSY" });
 }
 export async function lockFirm(tx: Tx, firmId: string) {
   await tx.$executeRawUnsafe(`set local lock_timeout = '${FIRM_LOCK_WAIT}'`);
