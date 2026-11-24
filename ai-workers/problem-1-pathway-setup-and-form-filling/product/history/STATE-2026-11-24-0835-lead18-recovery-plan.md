@@ -386,3 +386,11 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * "for consultation without a signed agreement. We follow the team's requirement AG 415" -> ruled on #3471: warn, never block (AG-4-15 r4); Lead 22's QA-772 ruling and #3420's 409 replaced; DECISIONS row owed with it. s. 23 stays "Unconfirmed: no counsel". Lane not yet seen to read it. The signing-code question stays open.
 * "moving the lead to a fresh copy of main. Yes." -> at the next hand-over. Plan: a new lead branch cut from origin/main with only records carried (STATE, the recovery plan and history files, records only here), prepared by git plumbing, no checkout switched here; the next Lead starts from it in its own folder. lane.sh whoami and current-lead.sh must accept it: check first.
 * Staleness measured elsewhere: STATE.md on main names a Lead of 22 Nov (cloud lanes read that one); cycle-plan.json on main 21 Nov; worktrees behind main: Lead O 2 898, study 255, Lead B 5 666, others 1609 to 3157; demo-main 0.
+
+### Lead 26, check 15:11 IST 24 Nov
+* 55 Works, 25 Partial, 21 Not built (main, by grep, 15:06). Nothing merged since 14:53. #3441 (M2) batch #3469 and #3433 batch #3468 testing; #3305, #3456, #3464, #3465 queued (#3465 labelled by me). Main: no failed run.
+* #3234 full run 45360687128 green, not labelled: stamp order #3277, #3174, #3234, #3235. /run full asked on #3174 (15:09). #3277 after #3464.
+* Told in their boxes, bubble seen, running: consultation lane (AG-4-15 ruling), 7qW26 (#3235 question), qa 7 (#3451, the three S17 claims, QA-775). qa 7 reads as Opus 5.5 earlier lanes; its label not read.
+* **Why the copy aged, read on main:** WAY-OF-WORKING line 106 (founder, 7 Nov, P-388) already says a fresh lead/<today> from origin/main each day and never merge main into an old one; no check enforces it, not done since 7 Nov by this branch's name. session-start.sh compares a copy with its own branch on GitHub, never with main, and only warns; lane.sh's 24 h stale test covers lanes, and the Lead is excluded.
+* Founder asked why main was not updated and whether copies sync by themselves (typed 15:07 or so): **A368**, answered in chat.
+* rule-sort subagent still running; no hand-over until it ends (P-409). Context 342k at 15:06: hand over next.

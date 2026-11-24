@@ -2,7 +2,7 @@
 
 current_lead: local_b17225db-0bef-4a96-aed3-534dada14800 Lead 26 · 24 Nov 14:35 IST (after Lead 25, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 14:59 IST: Lead 26 (check 88bd21e4). **Hand-over: the last sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (14:37, main ba2ad41e7, Lead 25's count). **Firm wall: P1 merged; M2 #3441 queued 14:34; M1 #3467 draft (lane 4oPSMou).** Founder: plain yes on #3305's checker line; CodeAnt account. AG-4-15 and the bearer link: in research (A361). Weekly 73%, disk 9 GB; second standby owed.
+updated: 2026-11-24 15:11 IST: Lead 26 (check 88bd21e4). **Read the last sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (15:06). **Firm wall: M2 #3441 in batch #3469; M1 #3467 draft.** Founder answered: #3305 yes (queued), AG-4-15 (lane building), fresh lead copy yes (next hand-over), sort the rules yes (subagent). Open: CodeAnt with Lead 25, signing-code question. Standby: Lead 27 local_d274b187. Weekly 74%.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
