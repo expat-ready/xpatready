@@ -174,11 +174,22 @@ try {
     await p.getByLabel("Firm key").fill("sample-firm"); await p.getByLabel("Work email").fill(emailA); await p.getByRole("button", { name: "Sign in" }).click();
     await p.locator("[data-account], [data-terms-page]").first().waitFor({ timeout: 20_000 }).catch(() => undefined);
     await p.goto(`${BASE}/money/invoices`); await p.waitForLoadState("networkidle").catch(() => undefined);
-    const words = (await p.locator("body").innerText()).replace(/\s+/g, " ");
     const num = String(issued?.number ?? "");   // empty when the invoice did not issue: the step cannot pass on "INV-" alone
+    // Aligned by qa 8 (24 Nov) to FO-7s1 part 1 (#3305): the list names each invoice by its number ([data-invoice-row]) and
+    // its total; its tax is on the invoice's own page (Totals › Tax, and each line's tax with its rate), which a person
+    // reaches from the number's link. The screen prints the amount and the rate, not the tax's name, so the step reads the
+    // tax figure the issue froze (issued.taxMinor, "CAD 1,234.00" as the screen's one formatter writes it).
+    const row = p.locator(`[data-invoice-row="${num || "none"}"]`), listed = num ? await row.count() : 0;
     await p.screenshot({ path: join(SHOTS, "w9-money-invoices-1440.png"), fullPage: true });
-    ok("R1.56 W9 (parts missing: FO-7s1 the invoice screens, FO-7q the invoice reads): Money › Invoices lists the issued invoice with its number and its tax",
-      /^INV-\d/.test(num) && words.includes(num) && /\bHST\b/.test(words) && (await p.locator("[data-invoice]").count()) >= 1, words.slice(0, 200));
+    if (listed) { await row.getByRole("link", { name: num }).click(); await p.locator("[data-invoice-number]").waitFor({ timeout: 20_000 }).catch(() => undefined); }
+    const cad = (m: unknown) => typeof m === "number" ? `${Math.trunc(Math.abs(m) / 100).toLocaleString("en-CA")}.${String(Math.abs(m) % 100).padStart(2, "0")}` : "none";
+    const totals = listed ? (await p.locator("[data-totals]").innerText().catch(() => "")).replace(/\s+/g, " ") : "";
+    const lineTax = listed ? (await p.locator("[data-line-tax]").allInnerTexts().catch(() => [])).join(" | ") : "";
+    await p.screenshot({ path: join(SHOTS, "w9-invoice-detail-1440.png"), fullPage: true });
+    ok("R1.56 W9 (part missing: FO-7s1 the invoice screens): Money › Invoices lists the issued invoice by its number; its page, opened from the list, shows its tax (Totals › Tax as issued, each taxed line with its rate)",
+      /^INV-\d/.test(num) && listed === 1 && (await p.locator("[data-invoice-number]").innerText().catch(() => "")) === num
+        && new RegExp(`Tax [A-Z]{3} ${cad(issued?.taxMinor).replace(".", "\\.")}`).test(totals) && (issued?.taxMinor ?? 0) > 0 && /\d%\)/.test(lineTax),
+      { num, listed, totals, lineTax, taxMinor: issued?.taxMinor ?? null });
     ok("R1.56 W9: the walk ends at R1.57's first step: the invoice offers the client a card payment link (parts missing: FO-7c, FO-7s1)",
       (await p.getByRole("button", { name: /pay(ment)? link|card/i }).count()) >= 1);
     await ctx.close();
