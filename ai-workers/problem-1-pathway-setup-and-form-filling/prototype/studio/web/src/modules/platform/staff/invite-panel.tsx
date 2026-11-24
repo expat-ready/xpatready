@@ -40,7 +40,10 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
     const form = rows;   // row k of the request is form[k - 1]
     let answer: BatchAnswer;
     try { answer = await staffChange<BatchAnswer>("/platform/staff/invitations/batch", { rows: form.map((r) => ({ email: r.email.trim(), roles: r.roles, ...(r.name.trim() ? { name: r.name.trim() } : {}) })) }); }
-    catch (e) { setBusy(false); setFormError({ title: "Nothing was sent", text: e instanceof StaffApiError ? e.message : "Could not send these invitations. Please try again." }); return; }
+    catch (e) {
+      // The staff list is read again, as after a send: a 428 there brings up the terms page (PF-5t break M2), the form kept.
+      setBusy(false); void qc.invalidateQueries({ queryKey: ["pf", "staff"] }); setFormError({ title: "Nothing was sent", text: e instanceof StaffApiError ? e.message : "Could not send these invitations. Please try again." }); return;
+    }
     const sentNs = new Set(answer.invited.map((i) => form[i.row - 1]?.n));
     const flagsOf = new Map(answer.flagged.map((f) => [form[f.row - 1]?.n, f.flags?.length ? f.flags : [{ code: f.reason, detail: f.detail }]]));
     const words = (fs: RowFlag[] | undefined, name: boolean) => fs?.filter((f) => NAME_FLAGS.has(f.code) === name).map((f) => f.detail).join(" ") || null;
