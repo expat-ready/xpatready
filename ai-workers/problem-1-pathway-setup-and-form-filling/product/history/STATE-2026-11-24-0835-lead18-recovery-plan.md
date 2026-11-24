@@ -166,3 +166,12 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 
 ### Lead 23, check 12:10 IST 24 Nov
 * qa Track B (#3308): R1.54 Partial, j_54 8/21; R1.93 Partial, j_93 21/24; R1.55 not walked. Missing: the signing door (FO-6 part 4; no PR; blocks R1.54, 55, 61), PF-17 failed jobs and part 4. walks.yml 45341961776 dispatched; #3308 and #3379 labelled. Warm lanes: 957bCvA takes FO-6 part 4 step 1 (rules and check, stop for go), 6E2XyLb21 PF-17 failed jobs. #3421 queued; #3193's label was swept off while its ci re-check runs, the gate puts it back. waves.py allow not run for these two unless shown here: the script is not on this branch; on main it is.
+
+### Lead 23, check 12:20 IST 24 Nov
+* Merged: #3408 12:13, #3209 12:16. R1.90 Works proposed by qa (#3422, walks 45341570277, j_90 34/34, its reader Approve), ci running.
+* **A358, founder typed ~12:17:** BoldSign looked at, "not a JSON file" (so not the placeholder; what it holds not seen by me); staff sign-in design left to the Lead; tools: "if you are okay, we can start"; CodeRabbit or CodeAnt, do everything yourself, he logs in, one ask at a time. Ruled: #3214 (own page, QR later, session gap with the refresh row before PR 3: BACKLOG row owed); **CodeAnt, not CodeRabbit** (study: CodeRabbit's policy says it trains on open source; CodeAnt says never), command line in the US$0 replay; study session prepares C1, installs nothing. Sentry before the first firm, the rest not adopted.
+* **Possible Blocker, firm wall (P1 on #3217):** a timed-out $transaction returns to the pool mid-transaction; breaker saw firm B's query run as firm A. Not re-reproduced. Lane 4oPSMou: red test on main first, then the pool fix; Lead B 5 reads the mechanism.
+* #3214's lane 5a3n1 told to start PR 1. FO-6 part 4: lane 957bCvA declined (too long); needs a fresh cloud lane (a start in his typed turn); its duplicate check found nothing. #3308's label removed by the guard (no Approve on its head), qa told. #3305 approved dc26588ba but fast red until his yes. #3379 requeue asked.
+
+### Ask row moved from STATE by Lead 23 (word for word)
+| A337-A340 | 23 Nov | the night plan runs (in force); the audit reports' decisions are the morning questions; word for word `history/STATE-2026-11-24-lead13-A338-row.md` |
