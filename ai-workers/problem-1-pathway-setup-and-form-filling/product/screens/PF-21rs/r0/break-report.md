@@ -58,3 +58,33 @@ None found.
 - A 60 MB stored file with a matching hash: 200 in 1.8 s, no 500 (LocalFiles has no size cap on read).
 
 Verdict: Changes 0d756d5ed64ebac1b5206a2a6bdb3e1c563cd190
+
+## Round 2 (diff-only): `git diff 0d756d5…24f576ad`, head 24f576ad1fd909b7e6fdc11d7f53f5ebadd1f4d8
+How: the new head's `studio/` was exported with `git archive` to `/tmp/claude-0/breaker/r2/`, with no branch switch. My same harness ran against it (`BRK_STUDIO`). Also run there: `check_pf21rs_r0` **23/23**, `check_pf21b_requests` **27/27** (changed in this diff) and `check_pf21c_breaches` **48/48**. My scratch databases are dropped. Only the four older `xr_studio_pf21rs_r0_*` databases remain, untouched.
+
+- **M1 fixed** (`messages.ts:172`, `files.get(…).catch(() => null)`), on S3Files over the recorded fake S3:
+  - object bytes changed in the bucket (IntegrityMismatch): **200**, words null, note;
+  - AccessDenied: **200**, note;
+  - NoSuchKey: 200, note;
+  - InternalError once: 200 with words (the SDK retries);
+  - InternalError ×6 (retries used up): 200, note;
+  - once the failures are used up: 200 with words again.
+- **m1 fixed** (`try { JSON.parse } catch` plus an object check), on LocalFiles with `rendered_hash` set to the forged file's hash:
+  - `%PDF-1.7…`: **200** + note; JSON `null`: **200** + note; a directory in the file's place (EISDIR): **200** + note.
+  - Still 200 + note: valid JSON naming another outbox or another firm, `subject: 7`, a corrupt `.meta`, a deleted file.
+  - A 60 MB file with a matching hash: 200 in 1.1 s.
+- **m2 fixed** (`breaches/service.ts:221`, one notice at a time), on the 200-notice breach:
+  - one read: 212–298 ms;
+  - 5 parallel: all 200, about 0.8 s each;
+  - **20 parallel: 20/20 → 200** (about 2.7 s each; round 1 had 8/20 → 500 P2028);
+  - 40 parallel: 40/40 → 200 (about 5.5 s); no P2028.
+- **m3 fixed** (`names.bypass.ts`):
+  - refused: `GET` and `HEAD …/holds/anything`, `POST /breaches`, `PATCH /breaches/:id`, `GET /breaches/x/notices`, `GET /api/platform/me`;
+  - allowed: `GET …/holds`, `GET …/requests/:id`, `GET …/breaches[/:id]`.
+- Re-checked and still holding: the role matrix, malformed ids, the suppressed first recipient, notice keys, reads during sends (30 firms, all 201 and 200, no notes), and the 500-breach list (91–105 ms, 422 for a limit of 0, 501 or abc). Audit lines per 6 reads: 0 on either firm's trail, 6 `cross_tenant.access` and 4 firm-names `platform.bypass` lines, all firm-less under `ourstaff:<id>`.
+- One judgment point, not a break (Minor, not blocking): the new `.catch(() => null)` is silent, and the note blames the file.
+  - An S3 outage (AccessDenied, or InternalError after retries) shows "missing or has changed since it was sent", which reads as tampering.
+  - A real IntegrityMismatch on a breach notice leaves no log line; the send worker, by contrast, records "content changed".
+  - Suggestion for later: one `logPort.warn("message_words_unreadable", { reason })` with no ids, and note wording that also covers "could not be reached".
+
+Verdict: Approve 24f576ad1fd909b7e6fdc11d7f53f5ebadd1f4d8
