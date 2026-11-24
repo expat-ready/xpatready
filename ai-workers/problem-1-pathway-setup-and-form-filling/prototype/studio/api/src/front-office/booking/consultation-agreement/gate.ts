@@ -79,7 +79,7 @@ export const NEXT_WORDS = {
 export function missingWords(causes: Cause[], started: boolean) {
   const fixes = causes.filter((c): c is keyof typeof CAUSE_WORDS => c in CAUSE_WORDS).map((c) => CAUSE_WORDS[c]);
   const head = "No consultation agreement has been sent for this booking, so the consultation cannot start.";
-  if (causes.includes("NOT_SCHEDULED")) return [head, NEXT_WORDS.inactive, ...fixes].join(" ");
+  if (causes.includes("NOT_SCHEDULED")) return `${head} ${NEXT_WORDS.inactive}`;   // fixes do nothing for this booking (review 3)
   if (!fixes.length) return `${head} ${started ? NEXT_WORDS.startedSending : NEXT_WORDS.aheadSending}`;
   return [head, ...fixes, started ? NEXT_WORDS.started : NEXT_WORDS.ahead].join(" ");
 }

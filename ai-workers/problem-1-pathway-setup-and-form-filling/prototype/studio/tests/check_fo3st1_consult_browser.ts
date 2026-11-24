@@ -191,6 +191,18 @@ try {
   await host.getByRole("dialog", { name: "Engage" }).waitFor({ timeout: 15_000 });
   ok("C7 pass: ?engage=1 for the host opens the Engage panel once and drops the flag", !host.url().includes("engage=1"));
   await host.screenshot({ path: join(SHOTS, "fo3st1-consult-engage-1440.png") });
+  // ---------------------------------------------- C8 QA-772: a type that needs the agreement, none sent: the panel says why
+  const needs = await db.foConsultationType.create({ data: { firmId: M.id, slug: "free-agr", name: "Free consultation (agreement)", modes: ["VIDEO"], hostStaffIds: [HO.id], minutes: 45, windowDays: 400, minNoticeMinutes: 0 } });
+  const nia = await db.foPerson.create({ data: { firmId: M.id, givenNames: "Nia", familyName: "Sample", createdBy: "seed:consult-test" } });   // no email
+  const st = new Date(Date.now() - 30 * MIN), held = (await db.foBooking.create({ data: { firmId: M.id, typeId: needs.id, staffId: HO.id, personId: nia.id, mode: "VIDEO", startsAt: st, endsAt: new Date(st.getTime() + 45 * MIN), bookerTimeZone: "America/Toronto" } })).id;
+  await detail(host, held);
+  const none = host.locator("[data-agreement-none]");
+  await none.waitFor({ timeout: 15_000 });
+  const noneText = await none.innerText(), refused = await api(tok.host, "POST", `/front-office/bookings/${held}/attendance`, { outcome: "COMPLETED" });
+  ok("C8 pass (QA-772): a started booking whose type needs the agreement and has none: the panel says the consultation cannot start, names the missing email and template, and says to reschedule; Attended is refused (409)",
+    /cannot start/.test(noneText) && /no email address/.test(noneText) && /Templates/.test(noneText) && /reschedule the meeting to a later time/.test(noneText) && (await host.locator('[data-agreement="NONE"]').count()) === 1 && refused.status === 409, { noneText, refused: refused.status });
+  await detail(host, B.lead);
+  ok("C8 fail: a booking whose type needs none shows no agreement line", (await host.locator("[data-agreement]").count()) === 0);
   ok("no page error in any browser", errors.length === 0, errors.slice(0, 5));
 } finally {
   await browser.close();
