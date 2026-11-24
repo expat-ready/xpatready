@@ -428,3 +428,7 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * #3277 read line posted (90def4404). Its P-776 audit check does not run on an old head; my close-and-reopen to start it was refused by the classifier ("Undermining Oversight"), not done, not routed around: for the founder.
 * #3235 d3680b44e: types red, lane running; Lead B 6 OK. qa 7's questions ruled (QA-778 Major; QA-775 counts as its reader says; #3474 merges main).
 * Open: #3479 question R3-m3 (full pool as 503); #3471 Q2 (keep P-564, warn at switching off) is the founder's. C6 yes (Lead 25's report): 28 sample PRs, command line only, run by him.
+
+### Lead 27, 15:56 IST 24 Nov: the type check runs out of memory
+* Batch #3475 (#3305 + #3442) failed only on `types`: tsc api out of memory at the 8 GB heap; #3235 the same on three heads. 4 red of 35 types jobs since 13:47 IST, all this (logs of two read by me). Bisecting: #3305 alone in #3481. Lead O 2 asked to measure, then one small PR (I read it, .github/).
+* Founder (typed, after 15:50): all approvals for the audit check, browser or terminal. The close-and-reopen was refused by the classifier a second time; not done in the browser. The uploads lane 6TCJS is asked instead to merge main into #3277 (normal path; a new full run follows).
