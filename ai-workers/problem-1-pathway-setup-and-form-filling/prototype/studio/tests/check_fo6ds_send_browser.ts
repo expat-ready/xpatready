@@ -4,8 +4,9 @@
 // no sideways scroll at 375, 1024 and 1440 px, Send at least 44 px tall at 375; screenshots. BR-8's signed request is
 // written underneath (its sealed copy put in the copy's own files), as FO-6 part 4's door and the provider's webhook would:
 // the fake adapter's envelopes live in the server's process. Seeds the Sample firms itself. Sample values; US$0, no model
-// call, no vendor call, no email. Legal points (e-signature identity): Unconfirmed: no counsel. Run from prototype/:
-//   zsh studio/tools/isolated.sh screens_fo6ds 4566 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh screens_fo6ds 4566 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo6ds_send_browser.ts 4566 screens_fo6ds
+// call, no vendor call, no email. Legal points (e-signature identity): Unconfirmed: no counsel. Arguments: the isolated
+// copy's port and database, both required (run-suites.sh passes its own copy's; the copy's files are var/isolated-<name>):
+//   zsh studio/tools/isolated.sh screens_fo6ds 4566 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo6ds_send_browser.ts 4566 xr_studio_screens_fo6ds
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -19,8 +20,9 @@ import { LocalFiles } from "../api/src/front-office/files.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
-const PORT = Number(process.argv[2] ?? 4566), NAME = process.argv[3] ?? "screens_fo6ds", DBNAME = `xr_studio_${NAME}`;
-if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
+const PORT = Number(process.argv[2]), DBNAME = process.argv[3] ?? "", NAME = DBNAME.replace(/^xr_studio_/, "");
+if (!PORT || !/^xr_studio_[a-z0-9_]+$/.test(DBNAME)) { console.log("usage: <port of an isolated copy, never 4400> <its database, xr_studio_<name>>"); process.exit(2); }
+if (PORT === 4400 || DBNAME === "xr_studio_demo") { console.log("refused: never the demo"); process.exit(2); }
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "FO-6ds", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
