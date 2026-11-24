@@ -1,0 +1,75 @@
+// P1 of PF-4bc's round-3 break (Lead 23, 24 Nov, on #3217): a pooled connection that comes back to the app's WalledPool
+// (api/src/platform/firm-scope.ts) with a transaction still open. Prisma 7.8's adapter-pg starts a transaction by sending
+// BEGIN on a checked-out client; when the engine has already given up on that start (maxWait), it drops the transaction
+// with PgTransaction.rollback(), which only releases the client and never sends ROLLBACK (adapter-pg 7.8.0 dist/index.mjs,
+// `rollback() { this.cleanup?.(); this.client.release(); }`). The pool then hands that open transaction to the next caller.
+// Each effect, a pass and a fail: (1) a write that answered success is lost (it sat in the stale transaction, invisible to
+// others, until a later refused change rolled it back); (2) firm B's next query runs as firm A (the rollback undid B's
+// set_config while the pool's tag still said B). Plus: a client released inside a transaction leaves the pool, a client
+// released idle is kept, and a failed transaction ('E') leaves too. One scratch database, a pool of one connection, no
+// RLS needed (app.firm_id is read back directly). No browser, no server, no model call (US$0).
+//   tsx studio/tests/check_pool_tx_return.ts
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+
+const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
+const DB = `xr_studio_pooltx_scratch_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
+const A = "11111111-1111-4111-8111-111111111111", B = "33333333-3333-4333-8333-333333333333";
+let pass = 0, fail = 0;
+const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); };
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
+const { WalledPool, withFirm } = await import("../api/src/platform/firm-scope.ts");
+const pool = new WalledPool({ connectionString: URL, max: 1 });
+const db = new PrismaClient({ adapter: new PrismaPg(pool) });
+const watch = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL }) });   // another connection: what others see
+try {
+  await watch.$executeRawUnsafe("create table note(who text)");
+  // Inside an open transaction the transaction started before this statement (xact_start < query_start).
+  const firmNow = () => db.$queryRawUnsafe<{ f: string; intx: boolean }[]>("select current_setting('app.firm_id', true) f, (select xact_start is not null and xact_start < query_start from pg_stat_activity where pid = pg_backend_pid()) intx").then((r) => r[0]);
+  const seen = () => watch.$queryRawUnsafe<{ n: number }[]>("select count(*)::int n from note").then((r) => r[0].n);
+
+  // Firm A holds the only connection 3 s; a second transaction in firm A gives up after maxWait (1 s). Its start is sent
+  // late (BEGIN), on the connection the first one returns, and dropped by release alone.
+  const long = withFirm(A, () => db.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); await sleep(3_000); }, { timeout: 10_000 }));
+  await sleep(100);
+  const gaveUp = await withFirm(A, () => db.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); }, { maxWait: 1_000, timeout: 5_000 })).then(() => "ran", (e: Error) => e.message);
+  await long; await sleep(300);
+  ok("set-up: the second transaction gave up waiting for the connection (Prisma's maxWait)", gaveUp !== "ran" && /transaction|timeout|wait/i.test(gaveUp), gaveUp);
+
+  // (1) firm B writes on the next checkout; a later change in firm B is refused and rolls back.
+  const b1 = await withFirm(B, firmNow);
+  ok("P1 fail: firm B's next query is not inside a transaction left open by someone else", b1.intx === false, b1);
+  await withFirm(B, () => db.$executeRawUnsafe("insert into note values ('firm B: a write that answered success')"));
+  const visible = await seen();
+  ok("P1 fail (1): a write that answered success is seen by every other connection at once (committed)", visible === 1, { visible });
+  await withFirm(B, () => db.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); throw new Error("a refused change"); })).catch(() => undefined);
+  const kept = await seen();
+  ok("P1 fail (1): a later refused change does not take firm B's earlier write with it (it stays: 1 row)", kept === 1, { kept });
+
+  // (2) firm B's next query runs in firm B.
+  const b2 = await withFirm(B, firmNow);
+  ok("P1 fail (2): firm B's next query runs as firm B (app.firm_id), never as firm A", b2.f === B, { asked: B, ranAs: b2.f });
+
+  // The pool's own rule, on its clients directly: idle back → kept; inside a transaction or a failed one → removed.
+  const q = async (c: { query: (t: string) => Promise<{ rows: Record<string, unknown>[] }> }) => (await c.query("select pg_backend_pid() p, current_setting('app.firm_id', true) f, (select xact_start is not null and xact_start < query_start from pg_stat_activity where pid = pg_backend_pid()) intx")).rows[0];
+  const c1 = await withFirm(A, () => pool.connect()); const r1 = await q(c1); c1.release();
+  const c2 = await withFirm(A, () => pool.connect()); const r2 = await q(c2);
+  ok("pass: a client released idle stays in the pool (the same connection is handed out again)", r1.p === r2.p, { r1, r2 });
+  await c2.query("begin"); c2.release();
+  const c3 = await withFirm(A, () => pool.connect()); const r3 = await q(c3).catch((e: Error) => ({ error: e.message }) as Record<string, unknown>);
+  ok("fail: a client released inside a transaction leaves the pool (a new connection, no open transaction, its firm set again)", r3.p !== r2.p && r3.intx === false && r3.f === A, { r2: r2.p, r3 });
+  await c3.query("rollback").catch(() => undefined); await c3.query("begin"); await c3.query("select 1/0").catch(() => undefined); c3.release();
+  const c4 = await withFirm(B, () => pool.connect()).catch((e: Error) => e);   // main: the checkout itself fails (set_config in an aborted transaction)
+  const r4 = c4 instanceof Error ? { error: c4.message } as Record<string, unknown> : await q(c4).catch((e: Error) => ({ error: e.message }) as Record<string, unknown>);
+  if (!(c4 instanceof Error)) { await c4.query("rollback").catch(() => undefined); c4.release(); }
+  ok("fail: a client released in a failed transaction ('E') leaves the pool too, and the next checkout runs in its own firm", !("error" in r4) && r4.p !== r3.p && r4.f === B && r4.intx === false, { r3: r3.p, r4 });
+} finally {
+  await db.$disconnect().catch(() => {}); await watch.$disconnect().catch(() => {}); await pool.end().catch(() => {});
+  try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* left for prune-test-dbs.sh */ }
+}
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
