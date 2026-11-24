@@ -16,7 +16,7 @@ import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
@@ -149,7 +149,7 @@ try {
   ok("R0-1 fail (never re-rendered): after the description changes, firm A's notice still shows the words sent, not today's record", after.text === wantA.text && !after.text?.includes("corrected description"), after.text?.slice(0, 120));
   // A stored message changed on disk: no words, and the answer says so.
   const keyB = fileKeyOf(firmB, nB.body.recipients[0].outboxId);
-  await files.put(firmB, keyB, new TextEncoder().encode(JSON.stringify({ ...wantB, subject: "Sample: forged subject" })), "application/json");
+  writeFileSync(join(files.root, firmB, keyB), JSON.stringify({ ...wantB, subject: "Sample: forged subject" }));   // on disk, past the write-once port
   const forged = noticeOf(await call(base, "GET", `/api/system/register/breaches/${id}`, { token: ownerT }), firmB);
   ok("R0-1 fail: a stored message that no longer matches its hash gives no words (subject and text null) and a note saying so; firm A's words still show",
     forged.subject === null && forged.text === null && typeof forged.wordsNote === "string" && forged.wordsNote.length > 0 && noticeOf(await call(base, "GET", `/api/system/register/breaches/${id}`, { token: ownerT }), firmA).subject === wantA.subject, forged);

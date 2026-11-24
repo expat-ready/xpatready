@@ -26,9 +26,9 @@ import { systemClock, type ClockPort } from "../../../../../ports/clock.ts";
 import { normaliseAddress, type Channel, type ConsentPort } from "../../../../../ports/consent.ts";
 import { sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import type { JobPort } from "../../../../../ports/jobs.ts";
-import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageRefused, MessageRepeated, fillFields, gateReason, isPlatformAccount, PLATFORM_ACCOUNT_NAME, render, type MessageSend, type MessagePort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
+import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageRefused, MessageRepeated, fillFields, gateReason, isPlatformAccount, PLATFORM_ACCOUNT_NAME, render, type MessageSend, type MessagePort, type MessageWordsPort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
 import type { z } from "zod";
-import { BypassNotRecorded, firmScope, touchEachFirm, touchPlatform } from "../../firm-scope.ts";
+import { BypassNotRecorded, firmScope, touchEachFirm, touchPlatform, withFirm } from "../../firm-scope.ts";
 import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
 import { logPort } from "../../observability/log.ts";
@@ -81,7 +81,7 @@ function inTransaction(tx: Tx): Tx {
   return tx;
 }
 
-export class Messages implements MessagePort<Tx> {
+export class Messages implements MessagePort<Tx>, MessageWordsPort {
   private readonly clock: ClockPort;
   constructor(private readonly d: MessagesDeps) { this.clock = d.clock ?? systemClock; }
 
@@ -156,6 +156,23 @@ export class Messages implements MessagePort<Tx> {
       data: { id, firmId: null, audience: "PLATFORM_ACCOUNT", channel: "EMAIL", address, renderedHash: put.sha256, class: "TRANSACTIONAL", state: "QUEUED", idempotencyKey: m.idempotencyKey },
     }).catch((e: { code?: string; meta?: { target?: unknown } }) => { throw e?.code === "P2002" && /idempotency/.test(JSON.stringify(e.meta ?? {})) ? new MessageRepeated(m.idempotencyKey) : e; });
     return { outboxId: id, state: "QUEUED", reason: null, repeated: false };
+  }
+
+  /** PF-21rs R0 (QA-757): a firm's message's subject and text as stored when it was written, in that firm's own scope; the
+   *  file is checked as the worker checks it before sending (rendered_hash, its own outbox id and firm). */
+  async storedWords(firmIdIn: string, outboxId: string): Promise<{ subject: string; text: string } | null> {
+    const { firmId } = firmScope(firmIdIn);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(outboxId)) return null;
+    const id = outboxId.toLowerCase();
+    return withFirm(firmId, () => this.d.db.$transaction(async (tx) => {
+      const [row] = await tx.$queryRaw<{ rendered_hash: string }[]>`SELECT "rendered_hash" FROM "msg_outbox" WHERE "firm_id" = ${firmId}::uuid AND "id" = ${id}::uuid`;
+      if (!row) return null;
+      const file = await this.d.files.get(firmId, fileKeyOf(firmId, id));
+      if (!file || (await sha256Hex(file.bytes)) !== row.rendered_hash) return null;
+      const r = JSON.parse(new TextDecoder().decode(file.bytes)) as Partial<Rendered>;
+      if (r.outboxId !== id || r.firmId !== firmId || typeof r.subject !== "string" || typeof r.text !== "string") return null;
+      return { subject: r.subject, text: r.text };
+    }));
   }
 
   async dispatch(firmIdIn: string | null, outboxIds: string[]): Promise<void> {
