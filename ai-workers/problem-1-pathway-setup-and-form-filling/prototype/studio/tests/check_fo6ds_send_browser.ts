@@ -131,6 +131,9 @@ try {
   ok("R1.54 FO-6ds BR-2 fail: no file → \"Choose a PDF to send.\" on File; nothing sent", (await fieldError(d, "File")).includes("Choose a PDF to send.") && requests(B) === n0);
   await pick(d, "Offer letter.pdf", Buffer.from("PK\u0003\u0004 a word file renamed, Sample", "latin1"));
   ok("R1.54 FO-6ds BR-7 pass: the title is pre-filled from the file name without \".pdf\"", await d.getByLabel("Title").inputValue() === "Offer letter");
+  await pick(d, `${"\u{1F600}".repeat(150)}.pdf`, pdf("emoji")); const emo = await d.getByLabel("Title").inputValue();
+  ok("R1.54 FO-6ds BR-7 (break m3, review mn-4): a long emoji file name pre-fills whole characters within the API's 200 UTF-16 units", emo.length <= 200 && emo.length >= 198 && !/[\uD800-\uDBFF]$/.test(emo) && Array.from(emo).every((c) => c === "\u{1F600}"), emo.length);
+  await pick(d, "Offer letter.pdf", Buffer.from("PK\u0003\u0004 a word file renamed, Sample", "latin1"));
   await d.getByRole("button", { name: "Send", exact: true }).click(); await d.locator("[role=alert]").first().waitFor();
   ok("R1.54 FO-6ds BR-2 fail: a .docx renamed .pdf → the API's NOT_PDF words on File; no row", (await fieldError(d, "File")).includes("This file is not a PDF. Only a PDF can be sent for signature.") && requests(B) === n0, await fieldError(d, "File"));
   await pick(d, "Protected offer.pdf", pdf("protected", "/Encrypt 5 0 R ")); await d.getByRole("button", { name: "Send", exact: true }).click();

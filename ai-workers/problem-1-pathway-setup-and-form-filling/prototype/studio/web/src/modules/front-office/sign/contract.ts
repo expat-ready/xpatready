@@ -38,4 +38,9 @@ export function statusOf(r: Pick<SignatureRequest, "status" | "signers">): { lab
 }
 export const LIVE = ["SENT", "VIEWED", "CLIENT_SIGNED"];
 /** The title a file gives (BR-7): its name without ".pdf", trimmed, at most 200 characters. */
-export const titleOf = (fileName: string) => Array.from(fileName.replace(/\.pdf$/i, "").trim()).slice(0, 200).join("").trim();   // by characters, never half an emoji (break m3)
+/** Cut by whole characters (never half an emoji, break m3) to 200 UTF-16 units, the unit the API's limit counts (review mn-4). */
+export function titleOf(fileName: string): string {
+  let out = "";
+  for (const ch of fileName.replace(/\.pdf$/i, "").trim()) { if (out.length + ch.length > 200) break; out += ch; }
+  return out.trim();
+}
