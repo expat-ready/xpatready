@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_9e9d5c2f-c57c-4143-970b-5ba71fd90ff0 Lead 32 · 24 Nov 22:09 IST (new account after the 24 Nov switch; Lead 31 stopped, founder's word; Opus 5.5 medium, P-788)
+current_lead: local_9e9d5c2f-c57c-4143-970b-5ba71fd90ff0 Lead 1 · 24 Nov 22:09 IST (new account after the 24 Nov switch; numbering restarts at 1, founder ~22:2x; was called Lead 32 in his paste; Lead 31 stopped, his word; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 22:12 IST: **Lead 32 (local_9e9d5c2f) took over on the new account (Ultra, weekly 5%, resets 1 Dec 10:29 IST); check created 3,33.** Lead 31 stopped (founder). 55/101 Works (25 Partial, 21 Not built) until re-read.
+updated: 2026-11-24 22:3x IST: **Lead 1 (local_9e9d5c2f) on the new account (Ultra, weekly 5%, resets 1 Dec 10:29 IST); check db86aa18 at 3,33; standbys Lead 2 local_0bdf05e5, Lead 3 local_48775ee3; canary qa 9 requested (cloud).** 55/101 Works, 25 Partial, 21 Not built (main 4cd0091f4, read 22:1x). Founder signing in to AWS in the pane for read-only CloudShell reads (R1.1, R1.13, R1.15).
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,6 +18,8 @@ updated: 2026-11-24 22:12 IST: **Lead 32 (local_9e9d5c2f) took over on the new a
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A377 | 24 Nov ~22:2x (typed, spoken) | approvals or standbys if needed; **Lead numbering from one**; everything discussed done when he wakes in 7-8 h; fresh perspective, full responsibility; signed in to claude.ai and GitHub in the browser; computer use approved; AWS sign-in tonight if needed | Lead 1; standbys Lead 2, 3 started; AWS: yes, he signs in now (read-only reads, US$0) |
+| A376 | 24 Nov ~22:0x (typed, paste) | Lead on the new account; goal proven up from 55; qa first (2 fresh), then Partials R1.93, R1.69, R1.87, R1.104, R1.10, R1.85, R1.68, R1.58, R1.29, R1.86, one session each; queue full, reds explained, shared-area waiting measured with one recommendation; outside steps one at a time; 30-min reports. Approvals: cloud canary then 2 qa + up to 8 builders (Opus 5.5 medium, waves.py allow, R1.10 A2 A3 A5 included); 2 standbys; labels after Approve and read, ready, retarget, re-run, requeue, dispatch, answers in briefs; end the 24-h pause only when no Partial can use a session. Still his: money, new accounts, terms, security or permission settings, merges outside the queue, deleting, a lower bar, refusals | in force; word for word in the Lead 1 transcript and RESUME block |
 | A375 | 24 Nov ~21:28 (typed to Lead 29, relayed) | plan for the account change; who is the current Lead | Lead 31; block on top of RESUME-ON-NEW-ACCOUNT; he typed to Lead 31 at 21:47 "right now"; stop order sent; prompt in the block; he also asked why 55 and for an estimate (block) |
 | A374 | 24 Nov ~17:02 and again (typed to Lead 29) | start R1.68; recover everything, diligently | R1.68 started in the cloud; in force |
 | A371, A372 | 24 Nov ~16:13, ~16:30 (typed to Lead 28) | all focus on Partials to Proven, rules held, usage no limit | plan file, end; in force |
