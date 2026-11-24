@@ -16,26 +16,34 @@ import { firmScope, ownFirm } from "../../platform/firm-scope.ts";
 import { parseInput, strict } from "../../platform/http/input.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { provinceCode, taxDefault, type TaxDefault } from "./defaults.ts";
+import { failClosed, partyInScope, seesInvoice, type ScopeOf } from "../reads/visibility.ts";
 
 const Ask = strict({ partyKind: z.enum(["PERSON", "COMPANY"]), partyId: z.guid(), invoiceId: z.guid().optional() });   // any uuid shape, as the invoice routes take
 export type TaxDefaultAnswer = TaxDefault & { partyKind: "PERSON" | "COMPANY"; partyId: string };
 
 export class TaxDefaults {
-  constructor(private readonly db: PrismaClient) {}
+  constructor(private readonly db: PrismaClient, private readonly scopeOf: ScopeOf = failClosed) {}   // C5 on the party and the invoiceId (#3305 M1)
 
   async forParty(ctx: StaffContext, query: unknown): Promise<TaxDefaultAnswer> {
     // Destructured, so no ".party…" text reads as a case-side party model to CS-W3's census (a front-office client is not one).
     const { partyKind: kind, partyId: rawId, invoiceId: rawInvoice } = parseInput(Ask, query), id = rawId.toLowerCase();
+    const scope = await this.scopeOf(ctx);   // C5, read before the transaction (Lead 14, #3321 (4))
     // One snapshot: the party, the settings and the address are read as of the same moment.
     return this.db.$transaction(async (tx) => {
       const found = kind === "PERSON"
         ? await tx.foPerson.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } })
         : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } });
-      if (!found) return problem(404, "Not found", `No such ${kind === "PERSON" ? "person" : "company"} in your firm.`, { code: "NOT_FOUND" });
+      // C5 (Lead 14, #3321 (2)): with no invoice, a party outside the caller's scope is the same 404 as a missing one; with
+      // an invoice, the invoice alone is judged below (an invoice with a case by its case: review m1, breaker m1)
+      if (!found || (rawInvoice === undefined && !partyInScope(scope, found.id))) return problem(404, "Not found", `No such ${kind === "PERSON" ? "person" : "company"} in your firm.`, { code: "NOT_FOUND" });
       let billTo: string | null = null;
       if (rawInvoice !== undefined) {   // this firm's invoice, billed to this very party; else the same 404 as a missing one
         const inv = await tx.moneyInvoice.findFirst({ where: firmScope(ctx.firmId, { id: rawInvoice.toLowerCase(), ...(kind === "PERSON" ? { personId: found.id } : { companyId: found.id }) }), select: { billToProvince: true } });
-        if (!inv) return problem(404, "Not found", "No such invoice for this client in your firm.", { code: "NOT_FOUND" });
+        // C5 (#3305 M1): an invoice outside the caller's scope is the same 404 as a missing one
+        // m5 (round 3, Lead 14): a party outside scope then answers as a missing party, so the words never tell it exists
+        if (!inv || !(await seesInvoice(tx, firmScope(ctx.firmId).firmId, rawInvoice.toLowerCase(), scope))) return partyInScope(scope, found.id)
+          ? problem(404, "Not found", "No such invoice for this client in your firm.", { code: "NOT_FOUND" })
+          : problem(404, "Not found", `No such ${kind === "PERSON" ? "person" : "company"} in your firm.`, { code: "NOT_FOUND" });
         billTo = inv.billToProvince;
       }
       const settings = await tx.moneyPaymentSettings.findFirst({ where: firmScope(ctx.firmId), select: { taxRegistered: true } });

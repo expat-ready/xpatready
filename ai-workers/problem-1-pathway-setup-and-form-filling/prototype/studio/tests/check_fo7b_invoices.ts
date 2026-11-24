@@ -29,6 +29,7 @@ import { fakeMail } from "../ports/mail.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
 import { clientMoneyPortContract } from "../ports/contracts/client-money-port.contract.ts";
+import { moneyVisible } from "./lib/money-visible.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -91,7 +92,7 @@ try {
 
   await seedSampleFirms(owner); await seedSampleFirmsFrontOffice(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
-  const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7b.${n}@example.org', 'seed:FO-7b-1a', now()) returning id`);
+  const person = (firm: string, n: string) => moneyVisible(sql, firm, "person", sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7b.${n}@example.org', 'seed:FO-7b-1a', now()) returning id`));   // C5 (#3305 M1): a client the caller sees
   const PA = person(A, "a"), PB = person(B, "b");
   const signIn = async (actorId: string, firmKey: string) => { const r = await call(undefined, "POST", "/platform/session/local", { firmKey, actorId, secondStep: true }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
   const tA = await signIn("user-R", "sample-firm"), tB = await signIn("user-S", "sample-solo"), tO = await signIn("user-O", "sample-firm");
@@ -133,7 +134,7 @@ try {
   ok("FO-7b R2 pass: 0.50 at 13 % (exact 6.5 cents) → 0.06 stored (a half goes to even, down)", R2(t2.tax), t2);
   // The planted service: the same InvoiceDrafts with half up through Math.round in place of taxForLine, run as firm A on
   // the app's walled database; the stored row is read back and the R2 case is asked of it.
-  const planted = new InvoiceDrafts(nest.get(Db), auditEvent, halfUp), ctxA = { staffId: staffA, firmId: A, firmKey: "sample-firm", roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" } as never;
+  const planted = new InvoiceDrafts(nest.get(Db), auditEvent, halfUp, undefined, async () => "ALL" as const), ctxA = { staffId: staffA, firmId: A, firmKey: "sample-firm", roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" } as never;
   const dP = await draft(); await withFirm(A, () => planted.addLine(ctxA, dP.body.id, fee(50, 130000)));
   const plantedTax = Number(sql(`select tax_minor from money_invoice_line where invoice_id = '${dP.body.id}'`));
   ok("FO-7b R2 fail (planted): the service with half up (Math.round) stores 0.07, and the case catches it", plantedTax === 7 && !R2(plantedTax), plantedTax);
@@ -456,7 +457,7 @@ try {
   const wrong = table.filter(([want, f]) => invoiceStatus({ ...F, ...f }) !== want);
   ok("FO-7b S pass: status follows payments, credits, refunds, the write-off and the due date (14 rows of facts → Draft, Open, Part paid, Paid, Overdue, Credited, Refunded, Written off)", wrong.length === 0, wrong);
   ok("FO-7b S fail (stand-in): on the due date itself an unpaid invoice is Open, not Overdue; a part credit alone is never Credited", invoiceStatus(F) !== "Overdue" && invoiceStatus({ ...F, creditedMinor: 999 }) !== "Credited");
-  const moved = new FakeClock(`${plus(today, 14)}T23:00:00Z`), reader = new InvoiceDrafts(nest.get(Db), auditEvent, undefined, moved), at = async () => (await withFirm(A, () => reader.read(ctxA, both2[0].body.invoice.id))).statusWord;
+  const moved = new FakeClock(`${plus(today, 14)}T23:00:00Z`), reader = new InvoiceDrafts(nest.get(Db), auditEvent, undefined, moved, async () => "ALL" as const), at = async () => (await withFirm(A, () => reader.read(ctxA, both2[0].body.invoice.id))).statusWord;
   const onDue = await withFirm(A, () => reader.read(ctxA, inv1.id)); await moved.advance({ hours: 2 }); const dayAfter = await withFirm(A, () => reader.read(ctxA, inv1.id));
   ok("FO-7b S pass (the clock moved): INV-0001, due in 14 days, is Open on its due date and Overdue the day after; FO-7b S fail (stand-in): the invoice due in 30 days is still Open that day",
     onDue.statusWord === "Open" && dayAfter.statusWord === "Overdue" && (await at()) === "Open", [onDue.statusWord, dayAfter.statusWord]);
