@@ -26,5 +26,33 @@
   "out": 14642,
   "outside": [],
   "tool_calls": 24
+ },
+ "S05": {
+  "cache_read": 1018139,
+  "fresh_in": 221541,
+  "out": 18777,
+  "outside": [],
+  "tool_calls": 24
+ },
+ "S06": {
+  "cache_read": 1241456,
+  "fresh_in": 157559,
+  "out": 13195,
+  "outside": [],
+  "tool_calls": 21
+ },
+ "S07": {
+  "cache_read": 1706714,
+  "fresh_in": 222756,
+  "out": 17935,
+  "outside": [],
+  "tool_calls": 30
+ },
+ "S08": {
+  "cache_read": 722381,
+  "fresh_in": 128871,
+  "out": 13467,
+  "outside": [],
+  "tool_calls": 15
  }
 }
