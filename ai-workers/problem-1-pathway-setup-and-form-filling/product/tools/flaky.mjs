@@ -291,7 +291,7 @@ async function main() {
     if (!text) return console.error("comment: nothing to post (no suite passed on retry)");
     const to = targets(o.pr, o.queue, process.env.PR_BODY || ""), tok = token(), repo = repoName(), api = process.env.GITHUB_API_URL || "https://api.github.com";
     const head = o.queue && !(to.length === 1 && to[0] === o.pr) ? `Found in merge-queue batch #${o.pr}, which holds ${to.map((n) => `#${n}`).join(", ")}.\n\n` : "";
-    for (const n of to) { postComment(n, head + text + "\n\n---\n_Posted by ci.yml (tools/flaky.mjs comment, B122 F5)_", tok, repo, api); console.error(`comment: posted on #${n}`); }
+    for (const n of to) { postComment(n, head + text + "\n\n---\n_The fix PR says so on a line of its own in its body: `Retry fix: <suite>` (A348)._ _Posted by ci.yml (tools/flaky.mjs comment, B122 F5)_", tok, repo, api); console.error(`comment: posted on #${n}`); }
   } else {
     console.error("usage: flaky.mjs events|count|quarantine|report|comment [--since <ISO>] [--now <ISO>] [--events <tsv>]... [--ledger <tsv>] [--json] | --self-test");
     process.exit(2);
