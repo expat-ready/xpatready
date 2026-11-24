@@ -188,17 +188,19 @@ try {
     otherPayer.status === 409 && otherPayer.body.code === "MONEY_RULE" && /same case/.test(otherPayer.body.detail ?? "") && caseBalance(PC, CASE_C) === 13000, otherPayer.body);
   await deposit(PA, CASE, 40000, "CHEQUE");   // CASE: 169.50 cleared + 400.00 cheque not yet cleared
   const inv3 = await issued(PA, CASE, 30000);
+  // Money is spent cleared first: the 169.50 cleared pays without a confirm; after it, what is left on CASE is the cheque.
+  const cleared = await apply({ invoiceId: inv2, amountMinor: 16950 });
+  ok("FO-7t DW8 pass: an amount within the cleared money needs no confirm (169.50 of 169.50 cleared) → 201", cleared.status === 201 && caseBalance(PA, CASE) === 40000, [cleared.body, caseBalance(PA, CASE)]);
   const uncleared = await apply({ invoiceId: inv3, amountMinor: 30000 });
   ok("FO-7t DW8 fail (AG-6-68 rule 5): money that is a cheque not yet cleared → 409 UNCLEARED asking \"Apply anyway?\" (acknowledge unclearedAcknowledged), nothing written",
     uncleared.status === 409 && uncleared.body.code === "UNCLEARED" && uncleared.body.acknowledge === "unclearedAcknowledged" && /not yet cleared\. Apply anyway\?/.test(uncleared.body.detail ?? "") && entries(`invoice_id = '${inv3}'`) === 0, uncleared.body);
   const confirmed = await apply({ invoiceId: inv3, amountMinor: 30000, unclearedAcknowledged: true });
-  const cleared = await apply({ invoiceId: inv2, amountMinor: 16950 });
-  ok("FO-7t DW8 pass: confirmed → 201; an amount within the cleared money needs no confirm (201)", confirmed.status === 201 && cleared.status === 201 && caseBalance(PA, CASE) === 40000 + 16950 - 30000 - 16950, [confirmed.body, cleared.body, caseBalance(PA, CASE)]);
+  ok("FO-7t DW8 pass: confirmed → 201, 100.00 left on the case", confirmed.status === 201 && caseBalance(PA, CASE) === 10000, [confirmed.body, caseBalance(PA, CASE)]);
   // At issue (FO-7s3b's Q5): ticked, unticked, and a refused withdrawal that rolls the issue back.
   const t1 = await draft(PA, CASE, 10000), ticked = await issue(t1, "?payFromTrustMinor=10000&unclearedAcknowledged=true");
-  ok("FO-7t DW8 pass (at issue, ticked): the invoice issued and paid from trust in the same step: a number, one withdrawal of 100.00 written after it, Paid",
+  ok("FO-7t DW8 pass (at issue, ticked): the invoice issued and paid from trust in the same step: a number, one withdrawal of 100.00 written in the issue's own transaction (the same xmin), Paid",
     ticked.status === 200 && /^INV-/.test(ticked.body.invoice?.number ?? "") && ticked.body.invoice?.statusWord === "Paid"
-    && sql(`select count(*) || ':' || min(e.amount_minor) || ':' || bool_and(e.created_at >= i.issued_at) from money_trust_entry e join money_invoice i on i.id = e.invoice_id where e.invoice_id = '${t1}'`) === "1:-10000:t", ticked.body);
+    && sql(`select count(*) || ':' || min(e.amount_minor) || ':' || bool_and(e.xmin::text = i.xmin::text) from money_trust_entry e join money_invoice i on i.id = e.invoice_id where e.invoice_id = '${t1}'`) === "1:-10000:true", [ticked.body.invoice?.statusWord, sql(`select count(*) || ':' || min(e.amount_minor) || ':' || bool_and(e.xmin::text = i.xmin::text) from money_trust_entry e join money_invoice i on i.id = e.invoice_id where e.invoice_id = '${t1}'`)]);
   const t2 = await draft(PA, CASE, 10000), plain = await issue(t2);
   ok("FO-7t DW8 pass (at issue, unticked): issued, nothing applied", plain.status === 200 && plain.body.invoice?.status === "ISSUED" && entries(`invoice_id = '${t2}'`) === 0, plain.body);
   const t3 = await draft(PA, CASE, 900000), before3 = audits("invoice.issued"), refused = await issue(t3, "?payFromTrustMinor=900000&unclearedAcknowledged=true");
@@ -246,10 +248,11 @@ try {
   ok("FO-7t DW18 pass: trust.applied once per withdrawal and trust.refunded once per refund, from TRUST_EVENT", applied > 0 && refunded > 0 && events("trust.applied") === applied && events("trust.refunded") === refunded, { a: events("trust.applied"), r: events("trust.refunded") });
   ok("FO-7t DW18 fail (AG-6-33 §10): the payloads carry ids, the amount and its currency only — no name, email, reference, reason or payee name",
     !!payloadKeys && payloadKeys.split(",").every((x) => /Id$|^amountMinor$|^currency$/.test(x)) && !/reason|reference|name|email/i.test(payloadKeys), payloadKeys);
-  ok("FO-7t DW18 pass: invoice.paid when Pay from trust settles an invoice (the route and at issue)", Number(sql(`select count(*) from module_event where type = 'invoice.paid' and subject_id in ('${draft1}', '${t1}', '${inv2}', '${inv3}')`)) === 4,
+  ok("FO-7t DW18 pass: invoice.paid when Pay from trust settles an invoice (the route and at issue)", Number(sql(`select count(*) from module_event where type = 'invoice.paid' and subject_id in ('${draft1}', '${t1}', '${inv3}', '${r1}', '${r2}')`)) === 4,
     sql(`select string_agg(subject_id::text, ',') from module_event where type = 'invoice.paid'`));
 
   // -------------------------------------------------------- DW1: Yes → No with money held (AG-6-59 rule 6)
+  await deposit(PA, CASE, 5000);   // money held when the Owner switches trust off
   await call(tR, "PUT", "/answer", { answer: "NO" });
   const inv4 = await issued(PA, CASE, 1000);
   const heldApply = await apply({ invoiceId: inv4, amountMinor: 1000, unclearedAcknowledged: true }), heldRefund = await refund({ personId: PA, caseId: CASE, amountMinor: 100, method: "CHEQUE", reference: "CHQ-1" });

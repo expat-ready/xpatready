@@ -27,6 +27,8 @@ import { MONEY, UUID, badField, notFound, parse } from "../invoices/drafts.ts";
 import { dayOf } from "../invoices/facts.ts";
 import { trustShows } from "../reads/common.ts";
 import { TrustDocuments, trustSubject, trustText, type TrustTemplate } from "./documents.ts";
+import { ApplyIn, RefundIn, applyTrust, refundTrust } from "./money-out.ts";
+import { invoiceInScope } from "../reads/visibility.ts";
 import type { MoneyVisibility } from "../../../../ports/money-visibility.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -201,6 +203,49 @@ export class TrustMoney {
         before: null, after: { method: d.method, amountMinor: d.amountMinor, currency: d.currency, reference: d.reference ?? null, caseId, trustRequestId: requestId, cleared, evidenceFileKey: d.evidenceFileKey ?? null, receiptNumber: receipt.number } });
       await tx.moduleEvent.create({ data: { firmId: f, type: TRUST_EVENT.TRUST_DEPOSITED, subjectId: pay.id, payload: TrustDepositedPayload.parse({ paymentId: pay.id, entryId: entry.id, personId: who.personId, companyId: who.companyId, caseId, trustRequestId: requestId, amountMinor: d.amountMinor, currency: d.currency }) } });
       return { paymentId: pay.id, replayed: false };
+    });
+  }
+
+  /** POST /trust/applications (FO-7t part 2, AG-6-68): Pay from trust on an issued invoice. Trust off with money held
+   *  still answers (AG-6-59 rule 6). C5: the invoice, and a picked case or payer, must be the caller's to see (404). */
+  async apply(ctx: StaffContext, body: unknown) {
+    const a = parse(ApplyIn, body), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    const seen = await this.scopeOf(ctx);   // read before the transaction (breaker r9-M1)
+    return this.write(async (tx) => {
+      if (!(await trustShows(tx, f))) notFound("trust record");
+      await invoiceInScope(tx, f, a.invoiceId, seen);
+      const payer = a.pick && (a.pick.personId || a.pick.companyId) ? await partyOf(tx, f, a.pick) : null;
+      if (a.pick) {
+        const [inv] = await tx.$queryRaw<{ case_id: string | null; party: string }[]>`select case_id::text, coalesce(person_id, company_id)::text as party from money_invoice where firm_id = ${f}::uuid and id = ${a.invoiceId}::uuid`;
+        const caseId = a.pick.caseId !== undefined ? a.pick.caseId : inv.case_id;
+        if (caseId ? !seen.cases.includes(caseId) : !seen.parties.includes(payer?.id ?? inv.party)) notFound(caseId ? "case" : "person");
+        await textOk(tx, "pick.reason", a.pick.reason, 200);
+      }
+      const done = await applyTrust(tx, this.audit, { firmId: f, by, today: dayOf(this.clock.now()), invoiceId: a.invoiceId, amountMinor: a.amountMinor, unclearedAcknowledged: a.unclearedAcknowledged,
+        pick: a.pick, ...(payer ? { payer: { personId: payer.personId, companyId: payer.companyId } } : {}) });
+      const v = done.after.view;
+      return { entryId: done.entryId, invoiceId: done.invoiceId, amountMinor: done.amountMinor, currency: done.currency, invoice: { number: v.number, statusWord: v.statusWord, dueMinor: v.dueMinor } };
+    });
+  }
+
+  /** POST /trust/refunds (FO-7t part 2, AG-6-23): an offline refund to the client from what the payer holds on a case (or
+   *  before a case); to the payer unless another payee is named with a reason. Trust off with money held still answers. */
+  async refund(ctx: StaffContext, body: unknown) {
+    const r = parse(RefundIn, body), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    const seen = await this.scopeOf(ctx);
+    return this.write(async (tx) => {
+      if (!(await trustShows(tx, f))) notFound("trust record");
+      const who = await partyOf(tx, f, r), caseId = r.caseId ? await this.caseOf(tx, ctx, seen, r.caseId, who) : this.partySeen(seen, who);
+      for (const [field, v, max] of [["reason", r.reason, 200], ["reference", r.reference, 100], ["payee.name", r.payee?.name, 200], ["payee.reason", r.payee?.reason, 200]] as const) if (v) await textOk(tx, field, v, max);
+      let payee: { personId?: string; companyId?: string; name?: string; reason?: string } | null = null;
+      if (r.payee && (r.payee.personId || r.payee.companyId || r.payee.name)) {
+        const other = r.payee.name ? null : await partyOf(tx, f, r.payee);
+        if (!other || other.id !== who.id) {
+          if (!r.payee.reason) badField("payee.reason", "Refunding to someone other than the payer needs a reason. Nothing was saved.");
+          payee = other ? { ...(other.personId ? { personId: other.personId } : { companyId: other.companyId! }), reason: r.payee.reason } : { name: r.payee.name, reason: r.payee.reason };
+        }
+      }
+      return refundTrust(tx, this.audit, { firmId: f, by, today: dayOf(this.clock.now()), party: { personId: who.personId, companyId: who.companyId }, caseId, r, payee });
     });
   }
 
