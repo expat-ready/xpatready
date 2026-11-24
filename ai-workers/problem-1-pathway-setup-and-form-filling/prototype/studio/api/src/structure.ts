@@ -257,7 +257,7 @@ export class Structure {
     const kids = b.parentKey ? g.kids(b.parentKey) : g.kids(null, b.pathwayType);
     const want = new Set(kids.map((k) => k.programNodeKey));
     if (b.keys.length !== want.size || new Set(b.keys).size !== b.keys.length || !b.keys.every((k) => want.has(k))) throw problem(409, "Changed meanwhile", "The list does not match the names there now (one was added or removed meanwhile). Refresh and reorder again.", { current: kids.map((k) => k.programNodeKey) });
-    await this.db.$transaction(async (tx) => { for (const [i, k] of b.keys.entries()) await tx.programDef.updateMany({ where: { workspaceId, programNodeKey: k }, data: { displayOrder: i } }); });   // M2: interactive, never an array batch
+    await this.db.$transaction(async (tx) => { for (const [i, k] of b.keys.entries()) await tx.programDef.updateMany({ where: { workspaceId, programNodeKey: k }, data: { displayOrder: i } }); }, { maxWait: 10_000, timeout: 5_000 });   // M2: interactive, never an array batch; M1 (Lead 25): its limits stated, not Prisma's interactive defaults (maxWait 2 s)
     const parent = b.parentKey ? g.byKey.get(b.parentKey)!.label : PATHWAY_TYPE_LABEL[b.pathwayType];
     await this.audit.log(workspaceId, actor.id, "reordered", "structure", b.parentKey, `${actor.name} reordered the names under ${parent}: ${b.keys.map((k) => g.byKey.get(k)!.label).join(", ")}`);
     return { parentKey: b.parentKey, keys: b.keys };
