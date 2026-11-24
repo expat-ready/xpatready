@@ -312,11 +312,16 @@ await main("C9.5", "Adopt a published update on an open case (Visitor visa)", as
   ok("C9.5-8e fail (breaker R2-m4): once the case has moved, a review that does not say which pin revision it read is refused, nothing recorded", yNoRev.status >= 400 && yNoRev.status < 500 && /pin revision|pin_revision/i.test(JSON.stringify(yNoRev.body)) && n(`select count(*) from filing_review where filing_id='${yf}'`) === yReviews, { status: yNoRev.status, words: words(yNoRev) });
   // Break m7 (round 1): a move that waits too long for the case's row lock answers a worded 503, never a 500; nothing changed.
   const famNow = pins(fam), famTarget = (await view(fam))?.target?.version;
-  const hold = sqlAsync(`begin; select id from runtime_case where id='${fam}' for update; select pg_sleep(17); commit;`);
-  await wait(500);
+  // The move waits 15 s for the lock, from when it reaches it: after reading the case, which takes seconds on a busy machine.
+  // So the lock is seen to be held before the move is sent, and held 25 s (it was 17 s after a fixed 0.5 s: a move that
+  // needed over 1.5 s to reach the lock got it, 200, batch run 45331636158).
+  const hold = sqlAsync(`begin; select id from runtime_case where id='${fam}' for update; select pg_sleep(25); commit;`);
+  let held = false;
+  for (let i = 0; i < 40 && !held; i++) { await wait(100); held = refused(`select id from runtime_case where id='${fam}' for update nowait`); }
+  const sent = Date.now();
   const busy = await move(fam, { target_version: famTarget, from_revision: famNow, reason: "Adopting the current release" });
-  await hold;
-  ok("C9.5-6b fail (break m7): while another session holds the case for too long, the move answers 503 in words, nothing changed", busy.status === 503 && /being changed by someone else/.test(words(busy)) && pins(fam) === famNow, { status: busy.status, words: words(busy), target: famTarget });
+  const waited = Date.now() - sent, holdExit = await hold;
+  ok("C9.5-6b fail (break m7): while another session holds the case for too long, the move answers 503 in words, nothing changed", held && holdExit === 0 && busy.status === 503 && /being changed by someone else/.test(words(busy)) && pins(fam) === famNow, { held, holdExit, waited, status: busy.status, words: words(busy), target: famTarget });
   await prisma.$disconnect();
   ok("C9.5 (US$0): no model call at any step", n("select count(*) from ai_batch where mode = 'LIVE'") <= 0 && n("select count(*) from drafting_job where mode = 'LIVE'") <= 0);
 });
