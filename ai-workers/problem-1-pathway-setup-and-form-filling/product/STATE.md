@@ -19,7 +19,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | # | Ask (IST) | Status |
 |---|---|---|
 | A348 | 24 Nov ~08:25 (typed to Lead 18) | recovery plan, clean up lanes and disk, near-done first, lessons live, keep the dates | plan file above; in progress |
-| A347 | 24 Nov ~08:15 (typed to Lead 18) | "you have my all approvals for everything which you are mentioning for needs you ... detailed report ... complete lead status full ... proven ... track A, track B, time view ... confidence level, what gone well ... learn ... Log into the browser and do everything done" | approvals above; full report given in chat |
+| A347 | 24 Nov ~08:15 | all "needs you" items approved, full report given; word for word in the recovery plan file | approvals above |
 | A346 | 24 Nov ~01:25 (typed to Lead 13) | "So you have all my approval. Go ahead and implement those as per your best recommended possible, and create enough standby so that you can run entire night flawlessly and keep monitoring as set processes." | P-814 and date option A (P-815, 12 Dec) in #3314; standbys, Lead B 5, qa A 5 and RQ shaping started |
 | A331-A336, A341, A344, A345 | 23-24 Nov | in force as recorded (A341: P-814 since merged in #3314); rows word for word `history/STATE-2026-11-24-lead14-before-handover.md`; A331-A336 in full `history/STATE-2026-11-23-lead9-ask-rows-A331-A336.md` |
 | A342, A343 | 24 Nov | CI-cost and proofs reports done, unchecked (ask for the content he meant); word for word in the recovery plan file | open |

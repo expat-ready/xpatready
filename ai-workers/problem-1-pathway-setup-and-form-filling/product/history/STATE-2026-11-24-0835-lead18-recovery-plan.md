@@ -29,3 +29,5 @@ Lessons made live: ordered to Lead O 2 (proof first, retry-only same hour, migra
 
 ## Moved from STATE by Lead 19
 **Follow-ups:** #3224's CONSULTATION lookup (own-only staff), b164 and irm guards required in ci.yml after #3313, #3209's scope text checked only at call time.
+
+| A347 | 24 Nov ~08:15 (typed to Lead 18) | "you have my all approvals for everything which you are mentioning for needs you ... detailed report ... complete lead status full ... proven ... track A, track B, time view ... confidence level, what gone well ... learn ... Log into the browser and do everything done" | approvals above; full report given in chat |
