@@ -191,6 +191,8 @@ try {
   ok("FO-7t DW12 fail: a line naming no trust entry of the firm → 404, nothing written", gone.status === 404 && batches() === 2, gone.body);
 
   // ------------------------------------------------------------------------------------------------- DW13: undo
+  const badId = await undo("not-a-uuid", {});
+  ok("FO-7t DW13 fail (PF-28: the id before the body; batch 45469373950): a malformed batch id with an empty body → 404, never 422, nothing written", badId.status === 404 && batches() === 2, [badId.status, badId.body]);
   const noReason = await undo(moved.batchId, {});
   ok("FO-7t DW13 fail (AG-6-73 rule 6): an undo without a reason → 422, nothing written", fieldError(noReason.status) && batches() === 2, noReason.body);
   const u1 = await undo(moved.batchId);

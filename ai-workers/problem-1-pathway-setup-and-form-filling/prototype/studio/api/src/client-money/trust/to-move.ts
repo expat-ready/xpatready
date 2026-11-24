@@ -124,8 +124,8 @@ export class TrustToMove {
 
   /** POST /trust/to-move/batches/:id/undo: a reversing batch naming the batch; its lines go back to the list (FO-7mv). */
   async undo(ctx: StaffContext, batchId: string, body: unknown) {
+    const bid = UUID.test(batchId) ? batchId.toLowerCase() : notFound("batch");   // the id before the body (PF-28: a malformed id is 404)
     const u = parse(UndoIn, body), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`, scope = await this.scopeOf(ctx);
-    const bid = UUID.test(batchId) ? batchId.toLowerCase() : notFound("batch");
     if (u.transferDate && u.transferDate > dayOf(this.clock.now())) badField("transferDate", "The date the bank sent the money back can't be in the future. Nothing was saved.");
     return this.write(async (tx) => {
       if (!(await trustShows(tx, f))) notFound("trust record");
