@@ -19,7 +19,11 @@ qa/CAPABILITIES.md (Works = Proven). Stdlib only, US$0, no network except `wip`,
   waves.py active           print the active wave and the waves open for lane starts
   waves.py wip [--prs F] [--lanes F]   building (an open non-draft PR or a lane naming the item) against cap 8 and
                             Built-not-Proven (status "Built...") against cap 12; one ACT line per breach and per item
-                            building outside the open waves; exit = the number of ACT lines
+                            building outside the open waves; exit = the number of ACT lines. Under the caps too
+                            (ENF-761 part 1, founder 20 Nov: the Lead "always forgets" to fill lanes): an ACT when
+                            under 8 are building while items of the open waves 1-4 (not Works, not Built) have no
+                            open non-draft PR or lane, and when under 4 qa lanes (app view titles "qa N") run while
+                            items are Built-not-Proven (skipped when the app view was not read: it is its own ACT)
 
 Active wave: the lowest wave 1-4 with more than 3 unproven items (P-745 (2): wave N+2 waits until wave N has at most 3).
 An item is named by a PR when its title says R1.x, its body has a line "Item: R1.x" or "Completes: R1.x", or its title
@@ -35,7 +39,7 @@ CAPS = os.environ.get("WAVES_CAPS") or os.path.join(PH, "qa", "CAPABILITIES.md")
 FOCUS = os.environ.get("WAVES_FOCUS") or os.path.join(PH, "focus-list.md")
 BACKLOG_DIR = os.environ.get("FOCUS_BACKLOG_DIR") or PH
 APP_VIEW = os.environ.get("WAVES_APP_VIEW") or os.path.join(PH, "state", "app-view-latest.txt")
-CAP_BUILDING, CAP_BUILT = 8, 12
+CAP_BUILDING, CAP_BUILT, CAP_QA = 8, 12, 4
 OPEN_AFTER = 3   # a wave stays active while it has more than 3 unproven items
 START = "<!-- waves.py gen: start (generated from design/waves.tsv and qa/CAPABILITIES.md; edit waves.tsv, then run tools/waves.py gen) -->"
 END = "<!-- waves.py gen: end -->"
@@ -183,7 +187,12 @@ def wip(args):
         print(f"ACT   wip: open PRs unreadable ({e}): building not counted"); return 1
     lanef = val("--lanes") or APP_VIEW
     try:
-        lanes = [l.split(" · ")[0] for l in open(lanef, encoding="utf-8").read().split("\n") if re.match(r"^(FLAG|ok) ", l)]
+        view = open(lanef, encoding="utf-8").read()
+        lanes = [l.split(" · ")[0] for l in view.split("\n") if re.match(r"^(FLAG|ok) ", l)]
+        # ENF-761 review: a saved UNREADABLE line (signed out) or no "app view N sessions" header is not a read view:
+        # 0 qa lanes from it would be a false ACT, so it counts as not read.
+        if re.search(r"^UNREADABLE", view, re.M) or not re.search(r"^app view \d+ sessions", view, re.M):
+            lanes = None
     except OSError:
         lanes = None
     by = {}
@@ -206,6 +215,15 @@ def wip(args):
         acts += 1; print(f"ACT   wip: {len(building)} items building, over the cap of {CAP_BUILDING} (P-745): no new item starts; builders help close proofs")
     if len(built) > CAP_BUILT:
         acts += 1; print(f"ACT   wip: {len(built)} items Built-not-Proven, over the cap of {CAP_BUILT} (P-745): qa and builders prove before building")
+    # ENF-761 part 1: running UNDER the caps while work waits is an ACT too (Built items wait for qa, not a lane).
+    waiting = sorted((i for i, w, _, _ in rows if w in ok - {0} and i not in by and not proven(st.get(i, ""))
+                      and not st.get(i, "").startswith("Built")), key=num)
+    if len(building) < CAP_BUILDING and waiting:
+        acts += 1; print(f"ACT   capacity: building {len(building)} of {CAP_BUILDING} while the active or next wave has {len(waiting)} items with no "
+                         f"lane or open PR: start lanes (cards if this is not a founder-typed turn) · first: {', '.join(waiting[:5])}")
+    qa = sum(1 for t in lanes if re.match(r"^(?:FLAG|ok)\s+qa\s*\d", t, re.I)) if lanes is not None else None
+    if qa is not None and qa < CAP_QA and built:
+        acts += 1; print(f"ACT   capacity: qa lanes {qa} of {CAP_QA} while {len(built)} items are built and not proven")
     for i in sorted(by, key=num):
         if i in wave and wave[i] not in ok and not note.get(i, "").startswith("allow:"):
             acts += 1; print(f"ACT   wip: {i} (wave {wave[i]}) is being built by {', '.join(dict.fromkeys(by[i]))}, outside the open waves {', '.join(map(str, sorted(ok)))} (P-745 (3)): finish the current PR, then stop")

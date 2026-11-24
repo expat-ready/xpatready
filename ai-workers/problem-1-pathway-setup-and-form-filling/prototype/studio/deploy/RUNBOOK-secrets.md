@@ -21,6 +21,7 @@ The app reads every setting once, at start, from its environment. In the cloud, 
 | `PLATFORM_ZOOM_CLIENT_SECRET`, `PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN` | yes | the Zoom app's secret and webhook token |
 | `PLATFORM_SECRET_BOX_KEYS` | yes | the key ring for firms' own connection credentials: `version:key` pairs, comma-separated, each key 32 random bytes in base64 |
 | `PLATFORM_SECRET_BOX_KEY_VERSION` | no | the version new values are sealed with; must be in the ring |
+| `PLATFORM_FILES_LINK_KEY` | yes | PF-F1c: the S3 download links' signing key; made random by Secrets Manager at the first deploy (48 letters and digits), so nobody supplies it. Rotating it ends the links already handed out (they last 5 minutes) |
 
 With `PLATFORM_ENVIRONMENT` `test` or `production`, **every** setting is required: one missing or malformed and the app does not start. The task's log then says, for example, `The app cannot start (PLATFORM_ENVIRONMENT=production). Missing required setting: PLATFORM_ZOOM_CLIENT_SECRET.` It names settings, never values. The fix is always in Secrets Manager or the task definition, never in code.
 

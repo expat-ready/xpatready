@@ -1,4 +1,4 @@
-// platform-register.prisma — complaints (later data requests, legal holds, breaches). Owner: Lead B (platform, contracts §9).
+// platform-register.prisma — complaints, legal holds and breaches (later data requests). Owner: Lead B (platform, contracts §9).
 //
 // PF-21 (P-579, P-584 (8), P-600; BACKLOG row PF-21, moved from FO-13k rev 12; contracts §0, §7, §9). The firm's complaints
 // record: a complaint made to the firm by a client, a prospect or any other person, each handling step, the outcome and
@@ -171,9 +171,113 @@ model PlatLegalHold {
   @@map("plat_legal_hold")
 }
 
+// PF-21c (map row 86; SA-11 §3.7, SA-11-14, SA-11-24, SA-11-25, BR-11; SA7-D74 (b); api/src/platform/register/breaches/):
+// ExpatReady's breach register and the notices sent to affected firms. The Platform Owner manages it
+// (system/breach:manage), the Auditor reads it (system/breach:read). Our own registers: row-level security forced with no
+// policy (PF-12's OWN list); only the definers in the migration 20261123210000_pf21c_breaches read or write them. Rules
+// Prisma cannot say are there: never deleted (kept 7 years, SA-11-14), events and notices insert-only, fixed facts, the
+// decision's who and why, one notice per breach and firm, the firms exist. Legal reading Unconfirmed: no counsel.
+
+/// DRAFT: pre-filled from an alert, not yet confirmed (nothing is sent from a draft); RECORDED: confirmed by our staff.
+enum PlatBreachStatus {
+  DRAFT
+  RECORDED
+}
+
+/// How the breach was opened: by hand, or pre-filled from a PF-23 integrity or security alert.
+enum PlatBreachSource {
+  MANUAL
+  ALERT
+}
+
+/// Whether affected firms are told (BR-11: recording is unconditional, notifying is a recorded decision).
+enum PlatBreachDecision {
+  UNDECIDED
+  NOTIFY_FIRMS
+  NO_NOTICE
+}
+
+enum PlatBreachEventKind {
+  DRAFTED
+  RECORDED
+  CHANGED
+  NOTICE_SENT
+}
+
+/// One breach of ExpatReady's security safeguards (SA-11-24). affected_firms empty: scope under investigation.
+model PlatBreach {
+  id                 String             @id @default(uuid()) @db.Uuid
+  status             PlatBreachStatus
+  source             PlatBreachSource
+  /// The alert it was pre-filled from (kind and ids only, never personal data); set exactly when source is ALERT.
+  sourceAlert        Json?              @map("source_alert")
+  discoveredAt       DateTime           @map("discovered_at") @db.Timestamptz
+  description        String
+  /// Firm ids (a check that each exists, not a relation: PlatformFirm's file is not this row's).
+  affectedFirms      String[]           @default([]) @map("affected_firms") @db.Uuid
+  /// From the Sample list in breaches/service.ts (BREACH_CATEGORIES).
+  dataCategories     String[]           @default([]) @map("data_categories")
+  rootCause          String?            @map("root_cause")
+  containment        String?
+  decision           PlatBreachDecision @default(UNDECIDED)
+  decisionReason     String?            @map("decision_reason")
+  decidedBy          String?            @map("decided_by")
+  decidedAt          DateTime?          @map("decided_at") @db.Timestamptz
+  /// SA-11-24 "Other notifications made" (free text).
+  otherNotifications String?            @map("other_notifications")
+  openedBy           String             @map("opened_by")
+  /// The Idempotency-Key the breach was opened with (1-255 visible ASCII), unique by a partial index in SQL; set once.
+  requestKey         String?            @map("request_key")
+  /// SHA-256 (hex) of the canonical request body: the same key with another body is refused.
+  requestHash        String?            @map("request_hash")
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime           @default(now()) @map("updated_at") @db.Timestamptz
+
+  events  PlatBreachEvent[]
+  notices PlatBreachNotice[]
+
+  @@index([status, discoveredAt])
+  @@map("plat_breach")
+}
+
+/// One step in a breach's record: insert-only. detail carries the changed fields before and after.
+model PlatBreachEvent {
+  id       String              @id @default(uuid()) @db.Uuid
+  seq      BigInt              @default(autoincrement())
+  breachId String              @map("breach_id") @db.Uuid
+  kind     PlatBreachEventKind
+  at       DateTime            @default(now()) @db.Timestamptz
+  actor    String
+  detail   Json
+
+  breach PlatBreach @relation(fields: [breachId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([breachId, seq])
+  @@map("plat_breach_event")
+}
+
+/// The notice sent to one affected firm's Owner and Admins (SA-11-25): who (recipients: staff ids, roles and outbox ids,
+/// never addresses), when, channel and template version. Insert-only; one per breach and firm.
+model PlatBreachNotice {
+  id                String   @id @default(uuid()) @db.Uuid
+  breachId          String   @map("breach_id") @db.Uuid
+  firmId            String   @map("firm_id") @db.Uuid
+  channel           String   @default("EMAIL")
+  recipients        Json
+  templateVersionId String   @map("template_version_id") @db.Uuid
+  sentBy            String   @map("sent_by")
+  sentAt            DateTime @default(now()) @map("sent_at") @db.Timestamptz
+
+  breach PlatBreach @relation(fields: [breachId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([breachId, firmId])
+  @@index([firmId])
+  @@map("plat_breach_notice")
+}
+
 // PF-21b part 3 (map row 85; SA-11 §3.8, SA-11-40, NFR5-14): the register of privacy requests made to ExpatReady itself,
 // worked in our console with system/compliance:dsr-manage. Our own register, forced with no policy (PF-12's OWN list),
-// reached only through the plat_data_request_* definers of 20261123100000_pf21b_data_requests, which also holds the rules
+// reached only through the plat_data_request_* definers of 20261123200000_pf21b_data_requests, which also holds the rules
 // Prisma cannot say. The target date (received + 30 days) is a code constant and a reminder (Unconfirmed: no counsel).
 
 /// Access, correction or deletion (§3.8).

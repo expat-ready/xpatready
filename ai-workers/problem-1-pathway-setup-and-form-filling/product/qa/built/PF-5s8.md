@@ -1,0 +1,1 @@
+PF-5s S8 invited sign-up (R1.90), PR expat-ready/xpatready#3202: a person given a private sign-up link by our staff opens `/sign-up/invited#token=…`, sees the link's email, Canada and plan fixed, adds a password, firm name and the terms tick, confirms the email and gets one firm in Trial; a used, expired, malformed or missing link shows one "This sign-up link doesn't work" page.

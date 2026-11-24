@@ -399,14 +399,23 @@ export class CaseDocuments {
    *  case's firm only, so the officer can see the page while checking names and dates. Never a client's other case,
    *  never another firm (404 in the same words as an unknown id). */
   async file(actor: Actor, documentId: string) {
+    const x = await this.reachDocument(actor, documentId);
+    const bytes = await x.bytes();
+    await this.audit.log(x.workspaceId, actor.id, "viewed", "case document", x.document.id, `${actor.name} viewed ${x.typeName} on case ${short(x.caseId)}`);
+    return { bytes, media: x.document.mediaType, name: x.document.fileName };
+  }
+
+  /** CS-D5 (the one export it adds here): a stored document reached exactly as `file()` reaches it (staff of the case's
+   *  firm, `"officer"`; 404 in the same words for an unknown id or another firm), WITHOUT writing "viewed": its record,
+   *  its case's workspace and number, its type's name and a reader of its checked bytes. The preview writes its own line. */
+  async reachDocument(actor: Actor, documentId: string) {
     if (!UUID.test(documentId)) fail("No such document.", HttpStatus.NOT_FOUND);
     const d = await this.db.caseDocument.findUnique({ where: { id: documentId.toLowerCase() } });
     const p = d ? await this.db.caseParticipant.findFirst({ where: { subjectId: d.subjectId }, select: { caseId: true } }) : null;
     if (!d || !p) fail("No such document.", HttpStatus.NOT_FOUND);
     const c = await this.r.reach(actor, p!.caseId, "officer").catch((e: unknown) => { if (e instanceof HttpException && e.getStatus() === HttpStatus.NOT_FOUND) fail("No such document.", HttpStatus.NOT_FOUND); throw e; });
-    const bytes = await this.bytesOf(d!.id);
-    await this.audit.log(c.workspaceId, actor.id, "viewed", "case document", d!.id, `${actor.name} viewed ${this.typeName(c, d!.documentType)} on case ${short(c.id)}`);
-    return { bytes, media: d!.mediaType, name: d!.fileName };
+    const document = d!;
+    return { document, workspaceId: c.workspaceId, caseId: c.id, typeName: this.typeName(c, document.documentType), bytes: () => this.bytesOf(document.id) };
   }
 
   /** A stored document's bytes, checked against its sha256. */
