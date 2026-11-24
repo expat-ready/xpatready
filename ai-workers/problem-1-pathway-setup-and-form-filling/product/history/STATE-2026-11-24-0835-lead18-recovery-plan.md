@@ -464,3 +464,4 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Finding: at about 16:15 one cloud builder (87D51) read Running of the list in claude.ai. Steered, bubbles seen: 7qS3eZT QA-777 (R1.104), 6PPrG R1.68 CS-D5 part 2, 9LZXV R1.10 A4, 87D51 4b only. New cloud lanes refused over Remote Control, not worked around.
 * GitHub API limit used up 16:13, resets 16:33; cause not known. My check is now ec44b31f, every 30 min (F-6Nov), to save usage.
 * Weekly 64% at 12:44, 78% at 16:13: about 4% an hour, so about 21:30 today; resets 29 Nov 22:30.
+* #3477 bf63a2b2a: api and contracts code read by me (git), no fault that holds it; tests and web not read; read line owed (API limit). Notes: the attendance answer still carries the agreement's id and causes (the record's copy does not); R1.104's Done when says "cannot start until signed", so its row and qa's judgement follow the founder's AG-4-15 ruling (DECISIONS row owed).
