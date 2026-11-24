@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "paths": { "@prisma/client": ["./check/prisma-client.ts"] } }
+}
