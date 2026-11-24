@@ -2,7 +2,7 @@
 
 current_lead: local_e583f067-e6b1-4106-8bce-70b99310c6c0 Lead 17 · 24 Nov 05:45 IST (after Lead 16; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 06:10 IST: Lead 17, check 0a0c3adb. Daily red 05:30-06:30 IST (check_csd5_flags, DST): fix #3355 approved, ci running, label it (read OK); #3225 shard 18: re-run after 06:30. Lead O 2: wake at 13:22 IST (red-batch re-measure); pilot A two-at-once held.
+updated: 2026-11-24 06:06 IST: Lead 17, check 0a0c3adb. Daily red 05:30-06:30 IST (check_csd5_flags, DST): fix #3355 approved, ci running, label it (read OK); #3225 shard 18: re-run after 06:30. Lead O 2: wake at 13:22 IST (red-batch re-measure); pilot A two-at-once held.
 
 ## Hand-over Lead 16 → Lead 17, 05:45 IST 24 Nov (this block before my edits: `history/STATE-2026-11-24-0556-lead17-before.md`; before: `…-lead16-before-handover.md`)
 
