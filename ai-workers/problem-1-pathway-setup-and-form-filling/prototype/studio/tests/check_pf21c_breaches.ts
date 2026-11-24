@@ -199,7 +199,7 @@ try {
   ok("PF-21c DW2 pass: firm B's notice → 201 to its Owner only", b1.status === 201 && outboxOf(firmB) === bOwner.email && b1.body.recipients.length === 1, b1);
   ok("PF-21c DW2 fail: a third firm the breach does not name → 422, and nothing is sent to it", c1.status === 422 && outboxOf(firmC) === "" && !outboxOf(firmC).includes(cOwner.email) && !outboxOf(firmC).includes(cAdmin.email), c1);
   const tpl = sql(`select v.id from msg_template_version v join msg_template t on t.id = v.template_id where t.key = 'platform.security_incident_notice' and t.firm_id is null`);
-  const stored = JSON.parse(readFileSync(join(WORK, "files", firmA, "msg", firmA, "outbox", `${a1.body.recipients[0].outboxId}.json`), "utf8").toString());
+  const stored = (await messages.readStored(firmA, a1.body.recipients[0].outboxId, "TRANSACTIONAL"))!;   // PF-19e: sealed on store
   ok("PF-21c DW2 pass: each notice records channel, recipients (staff ids and roles, never an address), template version and sender on the breach; the email is the Security incident notice filled for the firm",
     a1.body.channel === "EMAIL" && a1.body.templateVersionId === tpl && a1.body.sentBy === `staff:${OWNER}` && !JSON.stringify(a1.body.recipients).includes("@")
     && /Security incident notice/.test(stored.subject) && stored.text.includes("Sample Breach Firm A") && stored.text.includes(body.description) && stored.text.includes("identity documents, contact details") && stored.text.includes(id), { a1: a1.body, subject: stored.subject });

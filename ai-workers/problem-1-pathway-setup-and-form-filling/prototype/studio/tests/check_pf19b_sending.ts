@@ -144,7 +144,7 @@ try {
 
   // ------------------------------------------------------------------------------------------- DW6 content changed
   const x6 = box("dw6"), q6 = await tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: x6, content: words, idempotencyKey: uuid() }));
-  const f6 = await files.get(firmA, fileKeyOf(firmA, q6.outboxId)), stored = JSON.parse(new TextDecoder().decode(f6!.bytes)) as Rendered;
+  const stored = (await messages.readStored(firmA, q6.outboxId, "TRANSACTIONAL"))!;   // PF-19e: sealed on store
   writeFileSync(join(files.root, firmA, fileKeyOf(firmA, q6.outboxId)), JSON.stringify({ ...stored, text: "Send money to account 123." }));
   const d6 = await messages.deliver(firmA, q6.outboxId), row6 = await db.msgOutbox.findUniqueOrThrow({ where: { id: q6.outboxId } });
   ok("DW6 fail: the rendered file changed after commit → FAILED \"content changed\", a FAILED event, nothing sent",

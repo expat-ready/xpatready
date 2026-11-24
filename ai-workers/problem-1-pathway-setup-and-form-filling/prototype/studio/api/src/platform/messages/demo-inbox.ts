@@ -9,7 +9,9 @@ import type { Rendered } from "../../../../ports/messages.ts";
 import { Db, fail, isDemoWorkspace, OpenRead, RUNTIME_ACTORS } from "../../core.ts";
 import { LOCAL_PROVIDER } from "./channels/email/local.ts";
 import { unsubscribeHeaders, type UnsubscribeTokens } from "./channels/email/unsubscribe.ts";
+import type { SecretBoxPort } from "../../../../ports/secret-box.ts";
 import { fileKeyOf, filesSpaceOf } from "./send/messages.ts";
+import { bodyBoxOf, LOCAL_BODY_CONFIG, openStored } from "./send/sealed-body.ts";
 import { asBypass, touchFirms } from "../firm-scope.ts";
 
 type H = string | undefined;
@@ -18,7 +20,9 @@ export const INBOX_TEXT_MAX = 64 * 1024;
 
 /** Made by the feature's factory (api/src/features/platform-messages.ts) with the messages' own FilesPort. */
 export class PlatformInbox {
-  constructor(private readonly db: Db, private readonly files: FilesPort, private readonly demo: () => boolean = isDemoWorkspace, private readonly unsub?: { tokens: UnsubscribeTokens; publicBase: string }) {}
+  constructor(private readonly db: Db, private readonly files: FilesPort, private readonly demo: () => boolean = isDemoWorkspace, private readonly unsub?: { tokens: UnsubscribeTokens; publicBase: string },
+    /** PF-19e: the box MessagePort seals TRANSACTIONAL bodies with (default: the local copies' fixed key, as Messages'). */
+    private readonly box: SecretBoxPort = bodyBoxOf(LOCAL_BODY_CONFIG)) {}
 
   async list(address: H, xActor: H) {
     if (!this.demo()) fail("Not found.", HttpStatus.NOT_FOUND);
@@ -38,7 +42,8 @@ export class PlatformInbox {
     for (const r of rows) {
       const f = await this.files.get(filesSpaceOf(r.firmId), fileKeyOf(r.firmId, r.id));
       if (!f) continue;
-      const m = JSON.parse(new TextDecoder().decode(f.bytes)) as Rendered;
+      let m: Rendered;
+      try { m = openStored(this.box, r.firmId, r.id, r.class, f.bytes); } catch { continue; }   // PF-19e: a body that no longer opens (a key not held) is left out
       const attachments = [];
       for (const k of m.attachments) {
         const a = await this.files.get(filesSpaceOf(r.firmId), k);

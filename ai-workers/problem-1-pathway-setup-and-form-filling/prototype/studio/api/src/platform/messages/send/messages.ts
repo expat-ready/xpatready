@@ -19,6 +19,10 @@
 // the network) counts the try on the row the same way ("send failed: try n of N", updated_at the try's time), the runner
 // and the sweep try it again after the same growing wait, and the FIRM_SEND_TRIES-th refusal ends it FAILED "send failed"
 // with one FAILED msg_event. Only the adapter's throw is counted: any other error rolls back as before, uncounted.
+// PF-19e (AG-1-70): every TRANSACTIONAL rendered file is stored sealed (sealed-body.ts; rendered_hash is of the sealed
+// bytes) and opened only here, in the worker, and by the demo inbox. A system message (MessageSend.system: the platform's
+// own account and security mail, its stored key starting SYSTEM_KEY_PREFIX) is not counted on the firm's daily cap and is
+// refused (MessageLimited) above SYSTEM_PER_ADDRESS_HOUR to one address in an hour.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { AlertPort } from "../../../../../ports/alert.ts";
@@ -26,7 +30,8 @@ import { systemClock, type ClockPort } from "../../../../../ports/clock.ts";
 import { normaliseAddress, type Channel, type ConsentPort } from "../../../../../ports/consent.ts";
 import { sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import type { JobPort } from "../../../../../ports/jobs.ts";
-import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageRefused, MessageRepeated, fillFields, gateReason, isPlatformAccount, PLATFORM_ACCOUNT_NAME, render, type MessageSend, type MessagePort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
+import { SecretRefused, type SecretBoxPort } from "../../../../../ports/secret-box.ts";
+import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageLimited, MessageRefused, SYSTEM_KEY_PREFIX, SYSTEM_PER_ADDRESS_HOUR, MessageRepeated, fillFields, gateReason, isPlatformAccount, PLATFORM_ACCOUNT_NAME, render, type MessageSend, type MessagePort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
 import type { z } from "zod";
 import { BypassNotRecorded, firmScope, touchEachFirm, touchPlatform } from "../../firm-scope.ts";
 import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
@@ -35,6 +40,7 @@ import { logPort } from "../../observability/log.ts";
 import { emailBrandOf, NEUTRAL_COLOUR } from "../../branding/branding.ts";
 import { publicBaseUrl } from "../../branding/image-setting.ts";
 import { emailLayout } from "../layout/email-layout.ts";
+import { bodyBoxOf, LOCAL_BODY_CONFIG, openStored, storedBytes } from "./sealed-body.ts";
 
 type Tx = Prisma.TransactionClient;
 /** Queue names start "messages." (a short dotted head reads as a program key to B164's guard). */
@@ -67,7 +73,7 @@ const triesOf = (reason: string | null) => Number(/^send failed: try (\d+) of \d
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
 export type ChannelAdapter = { provider: string; deliver(tx: Tx, r: Rendered): Promise<{ providerId: string }> };
-export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort; log?: (line: string) => void; /** PF-13: the base of the logo's public link (default: the app's public address). */ publicBase?: string };
+export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort; log?: (line: string) => void; /** PF-13: the base of the logo's public link (default: the app's public address). */ publicBase?: string; /** PF-19e: seals TRANSACTIONAL bodies (default: the local copies' fixed key, bodyBoxOf(LOCAL_BODY_CONFIG); the app passes bodyBoxOf(config)). */ box?: SecretBoxPort };
 
 export const fileKeyOf = (firmId: string | null, outboxId: string) => `msg/${firmId ?? "platform"}/outbox/${outboxId}.json`;
 /** PF-19p: the file store space of platform account messages (FilesPort keys files by a uuid; this one is no firm's). */
@@ -76,6 +82,17 @@ export const PLATFORM_FILES_SPACE = "00000000-0000-0000-0000-000000000000";
 export const filesSpaceOf = (firmId: string | null) => firmId ?? PLATFORM_FILES_SPACE;
 const dayIn = (zone: string, at: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
 
+/** PF-19e: the stored message opened, or null when it does not open for its row (unsealed, tampered, another owner's, a
+ *  key no longer held): the worker fails it "content changed" and nothing is sent. Never logs the reason's value. */
+function opened(box: SecretBoxPort, firmId: string | null, outboxId: string, cls: "TRANSACTIONAL" | "SERVICE" | "MARKETING", bytes: Uint8Array, log?: (line: string) => void): Rendered | null {
+  try { return openStored(box, firmId, outboxId, cls, bytes); } catch (e) {
+    if (!(e instanceof SecretRefused || e instanceof SyntaxError)) throw e;
+    // Break m4: one line of ids and the refusal's code (a retired key, an unsealed file), never the body.
+    log?.(`messages: ${firmId ? `firm ${firmId}` : "platform account"} outbox ${outboxId} body did not open (${e instanceof SecretRefused ? e.code : "not JSON"}): failed "content changed"`);
+    return null;
+  }
+}
+
 function inTransaction(tx: Tx): Tx {
   if ("$disconnect" in (tx as object)) throw new TypeError("MessagePort.send: pass the caller's transaction (db.$transaction(tx => …)), not the client");
   return tx;
@@ -83,7 +100,15 @@ function inTransaction(tx: Tx): Tx {
 
 export class Messages implements MessagePort<Tx> {
   private readonly clock: ClockPort;
-  constructor(private readonly d: MessagesDeps) { this.clock = d.clock ?? systemClock; }
+  /** PF-19e: the box message bodies are sealed with (the demo inbox opens with the same one). */
+  readonly box: SecretBoxPort;
+  constructor(private readonly d: MessagesDeps) { this.clock = d.clock ?? systemClock; this.box = d.box ?? bodyBoxOf(LOCAL_BODY_CONFIG); }
+
+  /** PF-19e: a stored rendered message, opened for its row's class (the worker's read; the demo inbox's). Null: no file. */
+  async readStored(firmId: string | null, outboxId: string, cls: "TRANSACTIONAL" | "SERVICE" | "MARKETING"): Promise<Rendered | null> {
+    const file = await this.d.files.get(filesSpaceOf(firmId), fileKeyOf(firmId, outboxId));
+    return file ? openStored(this.box, firmId, outboxId, cls, file.bytes) : null;
+  }
 
   async send(txIn: Tx, input: MessageSend | PlatformAccountSendInput): Promise<SendResult> {
     const tx = inTransaction(txIn);
@@ -94,9 +119,13 @@ export class Messages implements MessagePort<Tx> {
     const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { operatingName: true, contactEmail: true, key: true } });
     if (!firm) throw new MessageRefused(`firm ${firmId} is not a platform firm`);
     await ensureMessagesFirm(tx, firmId);
+    // PF-19e: a system message's stored key carries the prefix; no other caller's key may (it would skip the cap).
+    if (m.system && m.class !== "TRANSACTIONAL") throw new MessageRefused("a system message is TRANSACTIONAL");
+    if (!m.system && m.idempotencyKey.startsWith(SYSTEM_KEY_PREFIX)) throw new MessageRefused(`an idempotency key starting "${SYSTEM_KEY_PREFIX}" is the platform's own`);
+    const key = m.system ? `${SYSTEM_KEY_PREFIX}${m.idempotencyKey}` : m.idempotencyKey;
     // One writer per firm and key: a second send with the key answers the first row (never a second message).
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:${firmId}:${m.idempotencyKey}`}))`;
-    const had = await tx.msgOutbox.findFirst({ where: firmScope(firmId, { idempotencyKey: m.idempotencyKey }), select: { id: true, state: true, stateReason: true } });
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:${firmId}:${key}`}))`;
+    const had = await tx.msgOutbox.findFirst({ where: firmScope(firmId, { idempotencyKey: key }), select: { id: true, state: true, stateReason: true } });
     if (had) return { outboxId: had.id, state: had.state, reason: had.stateReason, repeated: true };
     let words: { subject: string; text: string; html?: string }, templateVersionId: string | null = null;
     if ("templateKey" in m.content) {
@@ -112,17 +141,24 @@ export class Messages implements MessagePort<Tx> {
     } else words = m.content;
     for (const k of m.attachments) if (k.startsWith("msg/") || !(await this.d.files.exists(firmId, k))) throw new MessageRefused(`attachment ${k} is not a file of this firm`);
     const decision = await this.d.consent.allows(tx, { firmId, subject: m.person, channel: m.channel, address, class: m.class });
+    if (m.system && decision.allowed) {   // review m3: a suppressed address answers its refusal, never the limit
+      // PF-19e: one writer per firm and address counts the hour, so two sends never both take the last place.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:system:${firmId}:${address}`}))`;
+      const [{ n }] = await tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "msg_outbox" WHERE "firm_id" = ${firmId}::uuid AND "channel" = ${m.channel}::"MsgChannel" AND "address" = ${address}
+        AND "idempotency_key" LIKE ${`${SYSTEM_KEY_PREFIX}%`} AND "created_at" > now() - interval '1 hour'`;
+      if (n >= SYSTEM_PER_ADDRESS_HOUR) throw new MessageLimited();
+    }
     // PF-13: the firm's branding (sender name, colour, footer; the logo from part 1b) drawn by the one react-email layout.
     const brand = await emailBrandOf(tx, firmId, firm.operatingName, { base: this.d.publicBase ?? publicBaseUrl(), firmKey: firm.key }), id = randomUUID();
     const rendered = { ...render(id, { ...m, firmId }, { name: brand.name, replyTo: firm.contactEmail, brand }, words), html: await emailLayout(brand, words) };
-    const put = await this.d.files.put(firmId, fileKeyOf(firmId, id), new TextEncoder().encode(JSON.stringify(rendered)), "application/json");
+    const put = await this.d.files.put(firmId, fileKeyOf(firmId, id), storedBytes(this.box, rendered), "application/json");
     const state = decision.allowed ? "QUEUED" : "SUPPRESSED", reason = gateReason(decision);
     // A caller at REPEATABLE READ cannot see a row a concurrent send committed after its snapshot: its insert meets the
     // key (P2002) and its transaction is spoilt, so it gets one typed answer; its retry answers the first row (Lead B, #1824).
     await tx.msgOutbox.create({
       data: {
         id, firmId, subjectKind: m.person?.kind ?? null, subjectId: m.person?.id.toLowerCase() ?? null, channel: m.channel, address, templateVersionId,
-        renderedHash: put.sha256, class: m.class, state, stateReason: reason, consentId: decision.consentId ?? null, idempotencyKey: m.idempotencyKey,
+        renderedHash: put.sha256, class: m.class, state, stateReason: reason, consentId: decision.consentId ?? null, idempotencyKey: key,
       },
     }).catch((e: { code?: string; meta?: { target?: unknown } }) => { throw e?.code === "P2002" && /idempotency/.test(JSON.stringify(e.meta ?? {})) ? new MessageRepeated(m.idempotencyKey) : e; });
     return { outboxId: id, state, reason, repeated: false };
@@ -133,11 +169,15 @@ export class Messages implements MessagePort<Tx> {
    *  decides (this only lets a caller say so now: "held by the daily limit", never "sent"). */
   async capHolds(txIn: Tx, firmIdIn: string, outboxId: string): Promise<boolean> {
     const tx = inTransaction(txIn), { firmId } = firmScope(firmIdIn);
+    // PF-19e: a system message is never held, and system messages take no place under the cap.
+    const own = await tx.msgOutbox.findFirst({ where: firmScope(firmId, { id: outboxId }), select: { idempotencyKey: true } });
+    if (own?.idempotencyKey?.startsWith(SYSTEM_KEY_PREFIX)) return false;
     const firm = await tx.platformFirm.findUniqueOrThrow({ where: { id: firmId }, select: { status: true } });
     const day = dayIn(await readSetting<string>(tx, firmId, TIME_ZONE.key), this.clock.now()), cap = DAILY_CAP[firm.status === "ACTIVE" ? "ACTIVE" : "TRIAL"];
     const [{ sent }] = await tx.$queryRaw<{ sent: number }[]>`SELECT COALESCE(MAX("sent"), 0)::int AS sent FROM "msg_send_counter" WHERE "firm_id" = ${firmId}::uuid AND "day" = ${day}::date`;
     const [{ ahead }] = await tx.$queryRaw<{ ahead: number }[]>`SELECT count(*)::int AS ahead FROM "msg_outbox" o, "msg_outbox" me
-      WHERE me."firm_id" = ${firmId}::uuid AND me."id" = ${outboxId}::uuid AND o."firm_id" = me."firm_id" AND o."state" = 'QUEUED' AND (o."created_at", o."id") <= (me."created_at", me."id")`;
+      WHERE me."firm_id" = ${firmId}::uuid AND me."id" = ${outboxId}::uuid AND o."firm_id" = me."firm_id" AND o."state" = 'QUEUED' AND (o."created_at", o."id") <= (me."created_at", me."id")
+        AND (o."idempotency_key" IS NULL OR o."idempotency_key" NOT LIKE ${`${SYSTEM_KEY_PREFIX}%`})`;
     return sent + ahead > cap;
   }
 
@@ -151,7 +191,7 @@ export class Messages implements MessagePort<Tx> {
     if (had) return { outboxId: had.id, state: had.state, reason: had.stateReason, repeated: true };
     const id = randomUUID(), plain = render(id, m, ACCOUNT_MAIL_FROM.default, m.content);
     const rendered = { ...plain, html: await emailLayout({ name: PLATFORM_ACCOUNT_NAME, colour: NEUTRAL_COLOUR, footer: null, logoUrl: null }, m.content, false) };
-    const put = await this.d.files.put(PLATFORM_FILES_SPACE, fileKeyOf(null, id), new TextEncoder().encode(JSON.stringify(rendered)), "application/json");
+    const put = await this.d.files.put(PLATFORM_FILES_SPACE, fileKeyOf(null, id), storedBytes(this.box, rendered), "application/json");
     await tx.msgOutbox.create({
       data: { id, firmId: null, audience: "PLATFORM_ACCOUNT", channel: "EMAIL", address, renderedHash: put.sha256, class: "TRANSACTIONAL", state: "QUEUED", idempotencyKey: m.idempotencyKey },
     }).catch((e: { code?: string; meta?: { target?: unknown } }) => { throw e?.code === "P2002" && /idempotency/.test(JSON.stringify(e.meta ?? {})) ? new MessageRepeated(m.idempotencyKey) : e; });
@@ -199,8 +239,8 @@ export class Messages implements MessagePort<Tx> {
   private async deliverFirm(firmId: string, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed"> {
     let alertDay: string | null = null;
     const out = await this.d.db.$transaction(async (tx) => {
-      const [row] = await tx.$queryRaw<{ state: string; channel: Channel; address: string; class: "TRANSACTIONAL" | "SERVICE" | "MARKETING"; subject_kind: "FO_PERSON" | "CASE_PARTY" | "STAFF" | null; subject_id: string | null; rendered_hash: string }[]>`
-        SELECT "state"::text AS state, "channel"::text AS channel, "address", "class"::text AS class, "subject_kind"::text AS subject_kind, "subject_id"::text AS subject_id, "rendered_hash"
+      const [row] = await tx.$queryRaw<{ state: string; channel: Channel; address: string; class: "TRANSACTIONAL" | "SERVICE" | "MARKETING"; subject_kind: "FO_PERSON" | "CASE_PARTY" | "STAFF" | null; subject_id: string | null; rendered_hash: string; idempotency_key: string | null }[]>`
+        SELECT "state"::text AS state, "channel"::text AS channel, "address", "class"::text AS class, "subject_kind"::text AS subject_kind, "subject_id"::text AS subject_id, "rendered_hash", "idempotency_key"
         FROM "msg_outbox" WHERE "firm_id" = ${firmId}::uuid AND "id" = ${outboxId}::uuid FOR UPDATE`;
       if (!row || row.state !== "QUEUED") return "skipped" as const;
       const now = this.clock.now(), where = { firmId_id: { firmId, id: outboxId } };
@@ -210,12 +250,19 @@ export class Messages implements MessagePort<Tx> {
       };
       const file = await this.d.files.get(firmId, fileKeyOf(firmId, outboxId));
       if (!file || (await sha256Hex(file.bytes)) !== row.rendered_hash) { await end("FAILED", "content changed"); return "failed" as const; }
-      const rendered = JSON.parse(new TextDecoder().decode(file.bytes)) as Rendered;
-      if (rendered.outboxId !== outboxId || rendered.firmId !== firmId || rendered.to !== row.address) { await end("FAILED", "content changed"); return "failed" as const; }
+      const rendered = opened(this.box, firmId, outboxId, row.class, file.bytes, this.d.log);
+      if (!rendered || rendered.outboxId !== outboxId || rendered.firmId !== firmId || rendered.to !== row.address || rendered.class !== row.class) { await end("FAILED", "content changed"); return "failed" as const; }
       const decision = await this.d.consent.allows(tx, { firmId, subject: row.subject_kind && row.subject_id ? { kind: row.subject_kind, id: row.subject_id } : undefined, channel: row.channel, address: row.address, class: row.class });
       if (!decision.allowed) { await end("SUPPRESSED", gateReason(decision)!); return "suppressed" as const; }
       const adapter = this.d.channels.get(row.channel);
       if (!adapter) { await end("FAILED", `no ${row.channel.toLowerCase()} channel registered`); return "failed" as const; }
+      // PF-19e: the platform's own account and security mail is not counted on the firm's daily cap.
+      if (row.idempotency_key?.startsWith(SYSTEM_KEY_PREFIX)) {
+        const { providerId } = await adapter.deliver(tx, rendered).catch((e: unknown) => { throw new ProviderRefused(e); });
+        await tx.msgOutbox.update({ where, data: { state: "SENT", stateReason: null, providerId, sentAt: now, consentId: decision.consentId ?? null } });
+        await tx.msgEvent.create({ data: { firmId, outboxId, kind: "SENT", providerEventId: providerId, occurredAt: now, detail: { provider: adapter.provider } } });
+        return "sent" as const;
+      }
       // The firm's day, counted under a row lock so two workers never both take the last place.
       const firm = await tx.platformFirm.findUniqueOrThrow({ where: { id: firmId }, select: { status: true } });
       const day = dayIn(await readSetting<string>(tx, firmId, TIME_ZONE.key), now), cap = DAILY_CAP[firm.status === "ACTIVE" ? "ACTIVE" : "TRIAL"];
@@ -266,8 +313,8 @@ export class Messages implements MessagePort<Tx> {
       const where = { id: outboxId }, fail = async (reason: string) => { await tx.msgOutbox.update({ where, data: { state: "FAILED", stateReason: reason } }); return "failed" as const; };
       const file = await this.d.files.get(PLATFORM_FILES_SPACE, fileKeyOf(null, outboxId));
       if (!file || (await sha256Hex(file.bytes)) !== row.rendered_hash) return fail("content changed");
-      const rendered = JSON.parse(new TextDecoder().decode(file.bytes)) as Rendered;
-      if (rendered.outboxId !== outboxId || rendered.firmId !== null || rendered.to !== row.address) return fail("content changed");
+      const rendered = opened(this.box, null, outboxId, "TRANSACTIONAL", file.bytes, this.d.log);
+      if (!rendered || rendered.outboxId !== outboxId || rendered.firmId !== null || rendered.to !== row.address) return fail("content changed");
       const adapter = this.d.channels.get(row.channel);
       if (!adapter) return fail(`no ${row.channel.toLowerCase()} channel registered`);
       const { providerId } = await adapter.deliver(tx, rendered);

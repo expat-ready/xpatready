@@ -25,8 +25,8 @@ import { writeMoneyKeysGranted } from "./money-line.ts";
 import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort, type VerifiedIdentity } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
-import { heldOf } from "../messages/send/mail.ts";
-import { HELD_DAILY_LIMIT } from "../../../../ports/messages.ts";
+import { heldOf, mailIn, mailReady, MessagesMail } from "../messages/send/mail.ts";
+import { HELD_DAILY_LIMIT, MessageLimited, MessageRefused, SYSTEM_PER_ADDRESS_HOUR } from "../../../../ports/messages.ts";
 import { logPort } from "../observability/log.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -391,16 +391,39 @@ export class PlatformIdentity implements OnModuleInit {
 
   /** PF-4b: the invitation email, after the commit (a rolled-back invite sends nothing). The plain token is never in a
    *  table or a log line; it is in the email's link, which since PF-19r is the rendered message MessagePort keeps under
-   *  msg/<firm>/outbox/ until it is sent (unsealed: question to the tech lead on the PF-19r PR). A failed send leaves the
+   *  msg/<firm>/outbox/ until it is sent (sealed since PF-19e). The batch's rows still use this path, after the commit. A failed send leaves the
    *  invitation pending (resend sends a new link). `emailHeld`: the firm's daily cap holds it until the next day. */
   private async emailInvitation(actor: StaffContext, to: string, token: string, name: string | null = null): Promise<{ emailed: boolean; emailHeld?: typeof HELD_DAILY_LIMIT }> {
     if (!this.mail) return { emailed: false };
     try {
       const firm = await this.db.platformFirm.findUnique({ where: { id: actor.firmId }, select: { operatingName: true } });
-      const sent = await this.mail.send({ firmId: actor.firmId, to, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.invitation", subject: `You are invited to join ${firm?.operatingName ?? "your firm"}`.replace(/[\r\n]+/g, " ").slice(0, 200),
-        text: `${name ? `Hello ${name},\n\n` : ""}You are invited to join ${firm?.operatingName ?? "a firm"} on Expat Ready.\nOpen your invitation: /invitation#t=${token}\nIt works for 72 hours. If you did not expect this, ignore this email.` });
+      const sent = await this.mail.send(invitationMail(actor.firmId, firm?.operatingName ?? null, to, token, name));
       return heldOf(sent) ? { emailed: true, emailHeld: HELD_DAILY_LIMIT } : { emailed: true };
     } catch { return { emailed: false }; }
+  }
+
+  /** PF-19e (break B1, B2): the single invite's and resend's email, written in their own transaction, so a refusal rolls
+   *  the invitation (and resend's revoke) back: over the hourly limit 429, a suppressed address 409 in words. The caller
+   *  dispatches after its commit. Without a MailPort (some tests), nothing is written: emailed false. */
+  private async invitationIn(tx: Tx, actor: StaffContext, to: string, token: string, name: string | null, refused: { email?: string }) {
+    if (!this.mail) return { emailed: false, dispatch: async () => {} };
+    const firm = await tx.platformFirm.findUnique({ where: { id: actor.firmId }, select: { operatingName: true } });
+    try {
+      const r = await mailIn(this.mail, tx, invitationMail(actor.firmId, firm?.operatingName ?? null, to, token, name));
+      return { emailed: true, ...(r.held ? { emailHeld: HELD_DAILY_LIMIT } : {}), dispatch: r.dispatch };
+    } catch (e) {
+      if (e instanceof MessageLimited) problem(429, "Too many emails to this address", `We send at most ${SYSTEM_PER_ADDRESS_HOUR} account emails an hour to one address, so this invitation was not sent. Try again in an hour.`, { code: "EMAIL_HOURLY_LIMIT" });
+      // Break R2-1: an address the form takes but email does not (josé@…, a..b@…) is refused as one that takes no email, never 500.
+      if (e instanceof MessageRefused || e instanceof z.ZodError) { refused.email = to; problem(409, "Invitation not sent", `We couldn't send email to ${to}. Ask your firm's Owner or Admin to check it.`, { code: "INVITATION_NOT_SENT" }); }
+      // A MailPort that sends at once (a test's stand-in) and fails: as before, the invitation stays pending, not emailed.
+      if (!(this.mail instanceof MessagesMail)) return { emailed: false, dispatch: async () => {} };
+      throw e;
+    }
+  }
+  /** PF-19e: the refused invitation's line, in its own transaction (the invitation rolled back). */
+  private async refusedLine(actor: StaffContext, refused: { email?: string }, e: unknown): Promise<never> {
+    if (refused.email) { const email = refused.email; await this.inFirm(actor, (tx) => auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.not_sent", entityKey: "not-sent", summary: "an invitation could not be emailed (the address does not take email); nothing was created", detail: {}, before: null, after: { email } })); }
+    throw e;
   }
 
   /** One person's invitation checks, shared by the single invite and every row of the batch (PF-4c): the role rules, then
@@ -418,15 +441,18 @@ export class PlatformIdentity implements OnModuleInit {
 
   async invite(actor: StaffContext, body: { email?: unknown; roles?: unknown; reason?: unknown; displayName?: unknown }) {
     const email = emailOf(body.email), roles = rolesOf(body.roles), reason = reasonOf(body.reason, false), displayName = displayNameOf(body.displayName);
+    const refused: { email?: string } = {};
+    await mailReady(this.mail, actor.firmId);   // before the firm's row lock (PF-19r break m1)
     const out = await this.inFirm(actor, async (tx) => {
       await this.rowCheck(tx, actor, email, roles, reason);
       await this.seatCheck(tx, actor.firmId);
       const row = await this.insertInvitation(tx, actor.firmId, email, roles, actorWord(actor.staffId), displayName);
       await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${roles.join(", ")}; 72 hours)`, detail: { invitationId: row.id, roles, reason }, before: null, after: { email, displayName, roles, expiresAt: new Date(row.expires_at).toISOString() } });
-      return { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
-    });
-    const { token, ...answer } = out;
-    return { ...answer, ...(await this.emailInvitation(actor, email, token)) };
+      const { dispatch, ...mailed } = await this.invitationIn(tx, actor, email, row.token, null, refused);
+      return { answer: { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at, ...mailed }, dispatch };
+    }).catch((e: unknown) => this.refusedLine(actor, refused, e));
+    await out.dispatch();
+    return out.answer;
   }
 
   /** PF-4c part 1b (P-727, AG-1-69; reverses part 1's all-or-nothing): one form of 1-50 rows in one locked transaction
@@ -484,6 +510,8 @@ export class PlatformIdentity implements OnModuleInit {
    *  invitation held no seat). */
   async resend(actor: StaffContext, id: string, body: { reason?: unknown } = {}) {
     const reason = reasonOf(body.reason, false);
+    const refused: { email?: string } = {};
+    await mailReady(this.mail, actor.firmId);   // before the firm's row lock (PF-19r break m1)
     const out = await this.inFirm(actor, async (tx) => {
       const old = await this.openInvitation(tx, actor.firmId, id);
       // Break M2: resending gives the invitation's roles again, so the same rules as inviting apply (an Admin cannot resend
@@ -493,10 +521,12 @@ export class PlatformIdentity implements OnModuleInit {
       await this.seatCheck(tx, actor.firmId);
       const row = await this.insertInvitation(tx, actor.firmId, old.email, old.roles, actorWord(actor.staffId), old.displayName);   // PF-4dn: the name goes with the new link
       await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.resent", entityKey: row.id, summary: "an invitation was sent again; the old link no longer works", detail: { invitationId: row.id, replaces: old.id, roles: old.roles }, before: null, after: { email: old.email, displayName: old.displayName, roles: old.roles, expiresAt: new Date(row.expires_at).toISOString(), replaces: old.id } });
-      return { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
-    });
-    const { token, ...answer } = out;
-    return { ...answer, ...(await this.emailInvitation(actor, answer.email, token)) };
+      // PF-19e (break B1): the new link's email in this transaction: refused, the old link is not revoked.
+      const { dispatch, ...mailed } = await this.invitationIn(tx, actor, old.email, row.token, null, refused);
+      return { answer: { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at, ...mailed }, dispatch };
+    }).catch((e: unknown) => this.refusedLine(actor, refused, e));
+    await out.dispatch();
+    return out.answer;
   }
 
   async revoke(actor: StaffContext, id: string) {
@@ -507,4 +537,10 @@ export class PlatformIdentity implements OnModuleInit {
       return { id: inv.id, status: "REVOKED" as const };
     });
   }
+}
+
+/** The invitation email (PF-4b; since PF-19e a system message: TRANSACTIONAL with an identity.* template). */
+function invitationMail(firmId: string, firmName: string | null, to: string, token: string, name: string | null) {
+  return { firmId, to, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL" as const, templateKey: "identity.invitation", subject: `You are invited to join ${firmName ?? "your firm"}`.replace(/[\r\n]+/g, " ").slice(0, 200),
+    text: `${name ? `Hello ${name},\n\n` : ""}You are invited to join ${firmName ?? "a firm"} on Expat Ready.\nOpen your invitation: /invitation#t=${token}\nIt works for 72 hours. If you did not expect this, ignore this email.` };
 }

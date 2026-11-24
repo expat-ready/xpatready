@@ -43,6 +43,7 @@ import { chromium, type Page } from "playwright";
 import { fillFields } from "../../ports/messages.ts";
 import { LocalFiles } from "../../api/src/front-office/files.ts";
 import { fileKeyOf } from "../../api/src/platform/messages/send/messages.ts";
+import { bodyBoxOf, LOCAL_BODY_CONFIG, openStored } from "../../api/src/platform/messages/send/sealed-body.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
@@ -192,7 +193,8 @@ try {
     const want = expected(f), out: { outboxId: string; exact: boolean; hashOk: boolean; inbox: boolean }[] = [];
     for (const r of (Array.isArray(n.body?.recipients) ? n.body.recipients : []) as { outboxId: string }[]) {
       const file = await files.get(f.id, fileKeyOf(f.id, r.outboxId)).catch(() => null);
-      const got = file ? JSON.parse(new TextDecoder().decode(file.bytes)) as { subject?: string; text?: string } : null;
+      // PF-19e: a TRANSACTIONAL body is stored sealed (the local copy's key: this journey reads a local copy's files).
+      const got = file ? (() => { try { return openStored(bodyBoxOf(LOCAL_BODY_CONFIG), f.id, r.outboxId, "TRANSACTIONAL", file.bytes); } catch { return null; } })() : null;
       const hash = file ? createHash("sha256").update(file.bytes).digest("hex") : "";
       const address = sql(`select address from msg_outbox where id = '${r.outboxId}'`);
       const inbox = await j("GET", `/api/demo/platform-inbox?address=${encodeURIComponent(address)}`);

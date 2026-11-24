@@ -175,7 +175,7 @@ try {
   await messages.register();
   const mail = async (firmId: string) => {
     const r = await db.$transaction((t) => messages.send(t, { firmId, channel: "EMAIL", class: "TRANSACTIONAL", address: `pf13b.${randomUUID().slice(0, 6)}@example.com`, content: { subject: "Your booking (Sample)", text: "See you." }, idempotencyKey: randomUUID() }));
-    return JSON.parse(new TextDecoder().decode((await mfiles.get(firmId, fileKeyOf(firmId, r.outboxId)))!.bytes)) as { html: string };
+    return (await messages.readStored(firmId, r.outboxId, "TRANSACTIONAL"))!;   // PF-19e: a transactional body is stored sealed
   };
   const wide = await up(owner, "logo", PNG);   // the 32 × 24 sample: drawn 64 × 48 at the layout's 48 px height
   const m1 = await mail(A.id), link1 = pa.logo as string;
