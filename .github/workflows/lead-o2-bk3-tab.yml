@@ -1,0 +1,38 @@
+name: lead-o2-bk3-tab
+on: { push: { branches: [claude/lead-o2-bk3-tab] } }
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy: { fail-fast: false, matrix: { how: [now, loaded], load: [idle, busy] } }
+    env: { P: ai-workers/problem-1-pathway-setup-and-form-filling/product, S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: bash "$P/tools/cloud-setup.sh" > /dev/null 2>&1; cd "$S" && ./node_modules/.bin/playwright install chromium > /dev/null 2>&1
+      - name: a Ctrl-click opens a tab, closed at once (as check_bk3 does) or after it loaded
+        run: |
+          cd "$S"; cat > tab-probe.cjs <<'JS'
+          const { chromium } = require("playwright"), http = require("node:http");
+          const how = process.argv[2], end = Date.now() + 15 * 60e3;
+          (async () => {
+            const srv = http.createServer((q, r) => { const d = q.url.startsWith("/slow") ? Math.random() * 400 : 0; setTimeout(() => { r.setHeader("content-type", q.url.endsWith(".js") ? "text/javascript" : "text/html"); r.end(q.url.endsWith(".js") ? "for(let i=0,s=0;i<2e7;i++)s+=i;" : "<h1>x</h1><a href=/slow/p>go</a><script src=/slow/a.js></script>"); }, d); }).listen(0);
+            const U = `http://localhost:${srv.address().port}/`; let n = 0, hung = 0, slow = 0, worst = 0;
+            let b, ctx, p; const start = async () => { b = await chromium.launch(); ctx = await b.newContext(); p = await ctx.newPage(); await p.goto(U); };
+            await start();
+            while (Date.now() < end && hung < 5) {
+              const [tab] = await Promise.all([ctx.waitForEvent("page", { timeout: 15000 }), p.locator("a").click({ modifiers: ["ControlOrMeta"] })]);
+              if (how === "loaded") await tab.waitForLoadState("load", { timeout: 15000 }).catch(() => {});
+              const t = Date.now(); const r = await Promise.race([tab.close().then(() => "closed"), new Promise((f) => setTimeout(f, 20000, "hung"))]);
+              const ms = Date.now() - t; worst = Math.max(worst, ms); n++; if (ms > 2000) slow++;
+              if (r === "hung") { hung++; console.log(`PROBE ${how}: tab.close() not back after 20 s at round ${n} (page ${tab.url()})`); await Promise.race([b.close(), new Promise((f) => setTimeout(f, 5000))]); await start(); }
+              else await p.waitForTimeout(20);
+            }
+            console.log(`PROBE ${how}: ${n} rounds, ${hung} hung, ${slow} over 2 s, worst ${worst} ms`); process.exit(hung ? 1 : 0);
+          })().catch((e) => { console.log("PROBE error " + String(e).slice(0, 300)); process.exit(2); });
+          JS
+          if [ "${{ matrix.load }}" = busy ]; then for i in 1 2 3 4 5 6; do (timeout 1100 sh -c 'while :; do :; done' &) ; done; fi
+          node tab-probe.cjs ${{ matrix.how }}
