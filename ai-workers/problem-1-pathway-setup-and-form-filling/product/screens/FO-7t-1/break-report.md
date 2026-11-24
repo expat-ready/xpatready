@@ -218,3 +218,52 @@ Scope: what the merge of main (24e1ac610), the re-stamp to `20261123223000_fo7t1
 * **Unchanged and out of this round:** r2-m1 to r2-m3, d-m1, d-m2, and round 1's Minors 5-7 (with keys stored, the rollback still cannot run).
 
 Verdict for 163c35239f6cdd01513ec3a6fd9bfe76a52546c8: **Changes** for r9-M1 (Major; the merge did not cause it, but it reproduces on the merged head). Nothing the merge touched broke: guards, our-staff wall, actor words, CS-W3 walls, migration order and rollback all held. If the Lead rules r9-M1 a follow-up row, nothing else stands in the way of Approve.
+
+## Round 10 (r9-M1 fix only; head f8665b910b9cef16b39cde164db985674827b95f, 24 Nov 2026)
+
+Scope: `git diff 163c35239 b7db7b41f -- prototype/studio`. `createRequest` and `recordDeposit` now read the caller's visibility (`scopeOf`) once, before `this.write(...)`. `caseOf` and `partySeen` take it as an argument (`service.ts:100`, `:159`, `:205-219`). **How:** isolated copy `brk10_fo7t` on :4442 (full app, `PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local AI_LIVE=off`). Seeded by SQL as in round 9: PA with case KA, PC with no case, 40 more parties, and a hidden person PH (no prospect, no case) in firm A; PB with case KB in firm B. Prospects owned by each Owner. The probes ran first with walls off, then again after applying `csw3-spike-walls.sql` and restarting. Scratch scripts were not committed. The copy is stopped (database and files dropped). No Stripe call, no model call. The tree is clean.
+
+**What held: the fix**
+* **Deposits on one party and currency (PA on KA), at 10, 12, 16 and 32 at once:**
+  * The same key: one 201 and the rest 200, with one payment.
+  * Different keys: every one 201, all receipt numbers distinct.
+  * PC with no case (the `partySeen` path), different keys: every one 201.
+  * The same key with different amounts: one 201 and the rest 409 `KEY_USED`. A later changed replay is 409 `KEY_USED`.
+  * The slowest response was 714 ms at 32 (round 9: 10 × 500 after 5.1 s).
+* **Requests (`createRequest`) on PA, at 10, 16 and 32 at once,** with KA and with no case: every one 201, and the DR- numbers are distinct (132 sent, 132 distinct).
+* **Mixed load:**
+  * 32 deposits over 16 parties in CAD and USD: all 201.
+  * 32 deposits plus 16 requests on PA at once: all 201.
+  * Pushed further, 64 and 100 deposits at once on PA: all 201, slowest 1.95 s.
+* **Firm B sent meanwhile:** its `GET /answer` took 293-620 ms (round 9: 4.8 s), and its deposit was 201 in 270 ms. Under 100 at once its answer took 318 ms with walls off and 1.37 s with walls on (pool queueing, no failure).
+* **With CS-W3 walls on:** the same results (mixed 32: all 201; 64 and 100: all 201).
+* **Money invariants:**
+  * Payments = entries = TRUST receipts (377 with walls off).
+  * The R- series per firm has no gap and no repeat (`count = max = count distinct`: 376, then 608 with walls on).
+  * No idempotency key repeats in a firm, and the running balance breaks in no row (0).
+  * The log has no P2028 or "Transaction API error", and no request answered 500.
+* **The regression check:** `check_fo7t_trust.ts` on the head: 59/59. With `service.ts` put back to 163c35239 it is red, `[500 ×11, 201 ×5], 5261 ms`, so it pins the bug. The file was restored afterwards.
+* **Visibility after the move:** PH with no case → 404 `NOT_FOUND`, for a deposit and for a request. A on firm B's case → 404, for a deposit and for a request. PC on KA (another client's case) → 422.
+  * The case's existence, firm and client are still read on `tx` (`caseOf`, `service.ts:215-218`).
+  * The party is read on `tx` (`partyOf`).
+  * The permission key comes from the session.
+  * So the earlier read cannot reach another firm, a missing case or another client's case.
+* **No second connection is left under a lock:** inside every `write` callback (`setAnswer`, `createRequest`, `cancel`, `recordDeposit`) every query runs on `tx`. That includes `trustShows`, `trustOn`, `textOk`, `heldOf`, `audit.record(tx, …)` and the request's-case check (`service.ts:178`, which now uses `seen`).
+  * `this.db` is used only outside transactions: `answer` (`:76`), and after the commit (`:144`, `:148`, `firmName`).
+  * `cancel` takes no `money_trust_lock` and makes no visibility call.
+  * `reads.ts:88-93` already read the scope before its transaction.
+  * The other `money_trust_lock` callers (`invoices/refunds.ts:129`, `invoices/money.ts:196`) are not touched by this PR and make no visibility call inside.
+
+**Findings**
+* **r10-m1 (Minor; accept or note, no change needed for Approve): a write queued behind the party lock records against a party (or case) the caller stopped seeing while it waited.**
+  * Repro: psql holds `money_trust_lock(A, PC, CAD)` for 1.5 s, and 4 deposits on PC (no case) are sent. 500 ms later, PC's only prospect is deleted (PC is now unseen by everyone). Lock released: **4 × 201** after about 1.35 s. A fresh deposit afterwards → 404.
+  * Before the fix, `scopeOf` ran after the lock (`service.ts` at 163c35239, lines 174/202/210), so those 4 would have been 404.
+  * Why it hardly matters:
+    * The window is the lock wait only, which is bounded by the transaction timeout (about 5 s; under 2 s at 100 at once).
+    * The caller could see the party when they pressed Save.
+    * Firm, party, case existence and the case's client are all still checked inside the transaction.
+    * C5 visibility is a read filter, not a money rule. Any read-then-write has the same race, only shorter.
+  * Fix if the Lead wants it gone: re-check visibility on `tx` after `money_trust_lock` (for example `new PgMoneyVisibility(tx).scopeOf(ctx)`, or a `scopeOf(ctx, reader)` overload) and keep the early read only as a fast 404. Or record in the PR that visibility is judged at submission time.
+* **Unchanged and out of this round:** r9-m1 (stale migration comment), r2-m1 to r2-m3, d-m1, d-m2, and round 1's Minors 5-7.
+
+Verdict for f8665b910b9cef16b39cde164db985674827b95f: **Approve.** r9-M1 is fixed: no 500, no stall and no double payment from 10 to 100 writes at once, with no gap in the receipt or DR- numbers, and the check is red without the fix. r10-m1 is Minor and needs no change before merge.
