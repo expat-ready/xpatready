@@ -25,3 +25,7 @@ Lessons made live: ordered to Lead O 2 (proof first, retry-only same hour, migra
 | A343 | 24 Nov ~00:0x typed to Lead 11 | script on proofs (pstack, TLA+), set up the new Claude Code mode | proofs report done, unchecked: start nothing before his yes; mode report owed |
 
 | A342 | 24 Nov ~00:0x typed to Lead 11 | "For the stuff that you're asking me ... I would follow your recommendation ... You have my approval"; research how people merge "11,000 p" and pay for CI | CI-cost report done, unchecked; check the US$62,400 figure before quoting; the content he meant did not arrive: ask |
+
+
+## Moved from STATE by Lead 19
+**Follow-ups:** #3224's CONSULTATION lookup (own-only staff), b164 and irm guards required in ci.yml after #3313, #3209's scope text checked only at call time.
