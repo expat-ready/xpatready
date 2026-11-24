@@ -11,11 +11,25 @@
 //   DW3  "Check the file is unchanged" on the stored file answers unchanged and writes "checked unchanged"; after the
 //        stored bytes are altered on disk it answers changed and writes "found changed"; another firm gets 404 and
 //        writes nothing
-// Parts 2 (keep list) and 3 (Dispose) add DW4-DW8 here. Synthetic Sample documents only. No model call (US$0).
+//   DW4  (part 2) "Documents past their keep period", with the Sample firm's 6 years: a case closed 6 years ago today (the
+//        firm's date) is listed, one closed a day later is not, an open case never is, a reopened case is not; a firm
+//        with no number gets an empty list and the words; a cursor the list did not give is 400
+//   DW5  (part 2) another firm's closed cases never appear; a person with the key but not the case does not see it; no
+//        session 401, the Case officer (no agent/document:dispose) 403; the answer holds no document name
+//   DW6  (part 2) the weekly reminder on the fake clock (FakeClock, fakeJobs, fakeNotifications): over 14 days each holder
+//        is told about the past case once a week (twice), never about the others; a second weekly run in the same
+//        week queues and tells nothing; a redelivered firm job adds no notification; no file and no row is removed
+// Part 3 (Dispose) adds DW7-DW8 here. Synthetic Sample documents only. No model call (US$0).
 //   zsh studio/tools/isolated.sh runtime_csd6 4494 start PLATFORM_IDENTITY=local && tsx studio/tests/check_csd6_reads_keep.ts 4494 xr_studio_runtime_csd6
 import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
+import { FakeClock } from "../ports/clock.ts";
+import { fakeJobs, type JobHandler, type JobRun } from "../ports/jobs.ts";
+import { fakeNotifications, NOTIFICATION_KIND } from "../ports/notifications.ts";
+import { KeepPeriods } from "../api/src/platform/keep-period/service.ts";
 import { CLIENT, FAMILY, OFFICER, PORT, DB, call, main, ok, openCase, sql } from "../acceptance/lib/m3.ts";
 import { textPdf, upload } from "../acceptance/lib/fixtures.ts";
 
@@ -128,4 +142,67 @@ await main("CS-D6 reads", "Read by list, the fingerprint and the file check; sta
   ok("CS-D6 DW3 fail: a stored file that is gone (or cannot be read) answers changed with no hash found, and writes \"found changed\"", r.status === 200 && r.body?.unchanged === false && r.body?.found_sha256 === null && lineCount(doc2!, "found changed") === 1, [r.status, r.body]);
   r = await reads(doc!, owner);
   ok("CS-D6 DW3 pass: both checks show in the document's Read by list, newest first", r.body?.lines?.[0]?.action === "found changed" && (r.body?.lines ?? []).some((l: { action: string }) => l.action === "checked unchanged"), r.body?.lines?.slice(0, 3));
+
+  // ---- DW4 the keep list (part 2)
+  const KEEP = "/runtime/documents/past-keep-period";
+  const ONE = [FAMILY[0]!];
+  const [kExact, kShort, kOpen, kReopened] = [await openCase(vv!, ONE), await openCase(vv!, ONE), await openCase(vv!, ONE), await openCase(vv!, ONE)];
+  const keepName = `keep-letter-${Date.now().toString(36)}.pdf`;
+  const keepDoc = (await upload(PORT, `/runtime/cases/${kExact.id}/documents`, textPdf(["Sample synthetic letter, keep period"]), keepName, OFFICER, { subjectId: kExact.caseSubject, documentType: "letter_of_invitation" })).body?.document?.id as string | undefined;
+  ok("setup: four Sample cases for the keep list, one document on the first", !!(kExact.id && kShort.id && kOpen.id && kReopened.id && keepDoc), keepDoc);
+  let k = await staff("GET", KEEP, owner);
+  const zone = k.body?.zone as string, today = k.body?.today as string;
+  ok("CS-D6 DW4 pass: the Owner reads the list with the firm's number (Sample 6 years, firm setting), its zone and today's date", k.status === 200 && k.body?.years === 6 && k.body?.source === "firm setting" && !!zone && /^\d{4}-\d{2}-\d{2}$/.test(today ?? ""), [k.status, k.body?.years, zone, today]);
+  const closeAt = (id: string, offset: string) => sql(`update runtime_case set status = 'CLOSED', close_outcome = 'CLOSED_BY_STAFF', closed_reason = 'Sample (CS-D6 DW4)', closed_at = (('${today}'::date - interval '6 years' + interval '${offset}')::date + time '12:00') at time zone '${zone}' where id = '${id}'`);
+  closeAt(kExact.id, "0 days"); closeAt(kShort.id, "1 day"); closeAt(kReopened.id, "0 days");
+  sql(`update runtime_case set status = 'OPEN' where id = '${kReopened.id}'`);   // reopened: closed_at stays, the status decides
+  k = await staff("GET", KEEP, owner);
+  const listed = (k.body?.cases ?? []) as { case_id: string; closed_on: string; passed_on: string; documents_held: number; document_ids: string[] }[];
+  const exact = listed.find((x) => x.case_id === kExact.id);
+  ok("CS-D6 DW4 pass: a case closed 6 years ago today is listed, passed today, with its one document held (by id)", !!exact && exact.passed_on === today && exact.documents_held === 1 && exact.document_ids[0] === keepDoc, exact);
+  ok("CS-D6 DW4 fail: a case closed 6 years less a day ago is not listed", !listed.some((x) => x.case_id === kShort.id));
+  ok("CS-D6 DW4 fail: an open case and a reopened case are never listed", !listed.some((x) => x.case_id === kOpen.id || x.case_id === kReopened.id));
+  ok("CS-D6 DW4 fail: a cursor the list did not give → 400", (await staff("GET", `${KEEP}?after=${UNKNOWN}`, owner)).status === 400 && (await staff("GET", `${KEEP}?after=yesterday`, owner)).status === 400);
+  sql(`delete from platform_firm_setting where firm_id = '${soloFirm}' and key = 'legal.closed_client_files_years'`);
+  const solo0 = await staff("GET", KEEP, soloOwner);
+  ok("CS-D6 DW4 fail: a firm with no number set gets an empty list and the words", solo0.status === 200 && solo0.body?.years === null && (solo0.body?.cases ?? []).length === 0 && solo0.body?.words === "Your firm has not set a keep period for closed client files.", solo0.body);
+
+  // ---- DW5 walls, keys, no names
+  const soloSet = await fetch(`${BASE}/platform/keep-periods/closed-client-files`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${soloOwner}` }, body: JSON.stringify({ years: 1, reason: "Sample (CS-D6 DW5)" }) }).then((x) => x.status).catch(() => 0);
+  const solo1 = await staff("GET", KEEP, soloOwner);
+  ok("CS-D6 DW5 fail: the other Sample firm's Owner, with a number set, never sees this firm's closed cases", soloSet === 200 && solo1.status === 200 && solo1.body?.years === 1 && !JSON.stringify(solo1.body).includes(kExact.id), [soloSet, solo1.status, solo1.body?.years]);
+  const [kNone, kOfficer, kX] = await Promise.all([staff("GET", KEEP, null), staff("GET", KEEP, officer), staff("GET", KEEP, null, "user-R")]);
+  ok("CS-D6 DW5 fail: no session 401 (also with the Owner's x-actor), the Case officer (no agent/document:dispose) 403", kNone.status === 401 && kX.status === 401 && kOfficer.status === 403, [kNone.status, kX.status, kOfficer.status]);
+  sql(`delete from platform_role_permission where role='CASE_MANAGER' and permission_key='agent/case:view.all'; insert into platform_role_permission (role, permission_key) values ('CASE_MANAGER', 'agent/document:dispose') on conflict do nothing`);
+  const keyOnly = await tokenOf("user-T"), kScoped = await staff("GET", KEEP, keyOnly);
+  sql(`delete from platform_role_permission where role='CASE_MANAGER' and permission_key='agent/document:dispose'; insert into platform_role_permission (role, permission_key) values ('CASE_MANAGER', 'agent/case:view.all') on conflict do nothing`);
+  ok("CS-D6 DW5 fail: a person with the dispose key but not the case (own cases only, not on its team) does not see it", kScoped.status === 200 && !(kScoped.body?.cases ?? []).some((x: { case_id: string }) => x.case_id === kExact.id), [kScoped.status, kScoped.body?.cases?.length]);
+  ok("CS-D6 DW5 pass: the list names no document (no file name in the answer)", !JSON.stringify(k.body).includes(keepName) && !JSON.stringify(k.body).includes("file_name"));
+
+  // ---- DW6 the weekly reminder, on the fake clock
+  const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DB}`, options: "-c TimeZone=UTC" }) });
+  try {
+    const { KeepPeriodReminders, KEEP_REMIND_JOB, KEEP_WEEKLY_JOB } = await import("../api/src/documents/keep-period.ts");
+    const clock = new FakeClock(new Date()), jobs = fakeJobs(clock), inner = fakeNotifications({ now: () => clock.now() });
+    const told: { staffId: string; kind: string; id: string }[] = [], handlers = new Map<string, JobHandler>();
+    const notifications = { async notify(tx: unknown, rcp: { staffId: string }, kind: Parameters<typeof inner.notify>[2], item: Parameters<typeof inner.notify>[3]) { told.push({ staffId: rcp.staffId, kind, id: item.id }); return inner.notify(tx, rcp, kind, item); } };
+    const watched = { ...jobs, async handle(n: string, h: JobHandler) { handlers.set(n, h); return jobs.handle(n, h); } };
+    await new KeepPeriodReminders({ db, jobs: watched as never, notifications: notifications as never, clock, keepPeriods: new KeepPeriods(db) }).register();
+    const counts = () => sql("select (select count(*) from case_document) || '/' || (select count(*) from runtime_case)");
+    const c0 = counts();
+    for (let d = 0; d < 14; d++) await clock.advance({ days: 1 });
+    const ownerStaff = sql("select s.id from platform_staff s join platform_firm f on f.id = s.firm_id where s.actor_id = 'user-R' and f.key = 'sample-firm'");
+    const aboutExact = told.filter((t) => t.id === kExact.id && t.kind === NOTIFICATION_KIND.KEEP_PERIOD_PASSED), byOwner = aboutExact.filter((t) => t.staffId === ownerStaff);
+    const others = told.filter((t) => [kShort.id, kOpen.id, kReopened.id, c.id].includes(t.id));
+    ok("CS-D6 DW6 pass: over 14 days the Owner (a holder of the dispose key) is told about the past case once a week: twice, as keep-period-passed on the case", byOwner.length === 2 && aboutExact.every((t) => t.kind === "keep-period-passed"), { byOwner: byOwner.length, aboutExact: aboutExact.length, jobs: jobs.jobs.length });
+    ok("CS-D6 DW6 fail: never about the case short of its period, the open case or the reopened case", others.length === 0, others);
+    const n0 = told.length, q = await new KeepPeriodReminders({ db, jobs: watched as never, notifications: notifications as never, clock, keepPeriods: new KeepPeriods(db) }).weekly();
+    await clock.advance({ minutes: 1 });
+    ok("CS-D6 DW6 fail: a second weekly run in the same week queues nothing and tells nobody", q === 0 && told.length === n0, [q, told.length - n0]);
+    const sent0 = inner.sent().length, done = jobs.jobs.filter((x) => x.status === "done" && x.name === KEEP_REMIND_JOB);
+    for (const x of done) await handlers.get(KEEP_REMIND_JOB)!({ name: x.name, payload: x.payload, key: x.key, firmId: x.firmId, runAt: x.runAt, attempt: x.attempt + 1 } as JobRun).catch(() => undefined);
+    ok("CS-D6 DW6 fail: a redelivered firm job adds no notification (one per person, case and kind)", done.length > 0 && inner.sent().length === sent0, [done.length, inner.sent().length, sent0]);
+    ok("CS-D6 DW6 fail: the reminder removes no file and no row", counts() === c0 && !!storedFile(keepDoc!), [c0, counts()]);
+    ok("CS-D6 DW6 pass: the weekly job is scheduled on its own queue", handlers.has(KEEP_WEEKLY_JOB));
+  } finally { await db.$disconnect(); }
 });
