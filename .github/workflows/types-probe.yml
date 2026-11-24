@@ -1,0 +1,35 @@
+name: types-probe-2
+on: { push: { branches: [claude/lead-o2-types-probe2] } }
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy: { fail-fast: false, matrix: { prs: ["", "3235 3305 3442 3277"] } }
+    env: { P: ai-workers/problem-1-pathway-setup-and-form-filling/product, S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio, PRS: "${{ matrix.prs }}" }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - name: main with the pull requests merged in
+        run: |
+          git config user.email t@t; git config user.name t
+          git fetch -q origin main; git checkout -q origin/main
+          for n in $PRS; do git fetch -q origin "refs/pull/$n/head"; git merge -q --no-edit FETCH_HEAD; done
+          echo "PROBE tree main=$(git rev-parse --short origin/main) prs=$PRS head=$(git rev-parse --short HEAD)"
+          echo "PROBE machine cpus=$(nproc)"; free -m | sed 's/^/PROBE /'
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: bash "$P/tools/cloud-setup.sh" > /dev/null 2>&1
+      - name: peak memory
+        run: |
+          set +e; cd "$S"; sudo apt-get install -y -q time > /dev/null 2>&1 || true
+          t() { echo "PROBE == $1"; shift; NODE_OPTIONS="--max-old-space-size=$HEAP" /usr/bin/time -v "$@" > /tmp/o 2>&1; echo "PROBE exit $?"; grep -E '^(Files|Lines of|Identifiers|Symbols|Types|Instantiations|Memory used|Check time|Total time|Assignability)|Maximum resident|heap out of memory' /tmp/o | sed "s/^/PROBE $HEAP /"; }
+          X="--noEmit --noCheck false --extendedDiagnostics --pretty false"
+          errs() { grep -E 'error TS' /tmp/o | sed -E 's/\([0-9]+,[0-9]+\)//' | sort > /tmp/e.$1; echo "PROBE errors $1 $(wc -l < /tmp/e.$1)"; }
+          HEAP=12288 t "api, 12 GB heap" node_modules/.bin/tsc $X -p api/tsconfig.json; errs plain
+          HEAP=12288 t "api, 12 GB heap again" node_modules/.bin/tsc $X -p api/tsconfig.json
+          mkdir -p api/check; printf '%s\n' 'export * from "../../node_modules/.prisma/client/index.js";' 'import type { Prisma, PrismaClient as Real } from "../../node_modules/.prisma/client/index.js";' 'export type PrismaClient = Real;' 'export declare const PrismaClient: new (options: Prisma.PrismaClientOptions) => Real;' > api/check/prisma-client.d.ts
+          sed 's#"strict": true,#"strict": true, "paths": { "@prisma/client": ["./check/prisma-client.d.ts"] },#' api/tsconfig.json > api/tsconfig.check.json
+          HEAP=8192 t "A shared type by paths, 8 GB" node_modules/.bin/tsc $X -p api/tsconfig.check.json; errs shim; diff /tmp/e.plain /tmp/e.shim | sed 's/^/PROBE diff shim /' | cut -c1-260 | head -30
+          sed -i -E 's/new PrismaClient\(/new PrismaClient<import("@prisma\/client").Prisma.PrismaClientOptions>(/' tests/*.ts; git diff --stat -- tests | tail -1 | sed 's/^/PROBE /'
+          HEAP=8192 t "B explicit type in each test, 8 GB" node_modules/.bin/tsc $X -p api/tsconfig.json; errs b; diff /tmp/e.plain /tmp/e.b | sed 's/^/PROBE diff b /' | cut -c1-260 | head -30
