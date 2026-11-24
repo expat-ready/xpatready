@@ -37,7 +37,7 @@ const NEVER_RETURNED = ["E_TRANSFER", "CASH"];
 // Break M1: well formed (a lone surrogate breaks the audit line's JSON), and the database's own text rule is asked
 // before writing (textOk below), so a refused reason is a field error, never a 500.
 const typed = z.string().trim().min(1, "The reason is needed.").max(200, "At most 200 characters.").regex(/^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]*$/, "One line, no tabs or control characters.")
-  .refine((v) => v.isWellFormed(), "The reason holds a broken character.");
+  .refine((v) => !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(v), "The reason holds a broken character.");   // a lone surrogate
 export const ReverseIn = z.strictObject({
   reasonCode: z.enum(CODES, { message: "Choose a reason: RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT or OTHER." }),
   reason: typed.optional(), previewHash: z.string().regex(/^[0-9a-f]{32}$/, "Preview the reversal first: its previewHash is needed."),
