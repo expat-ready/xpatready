@@ -209,7 +209,7 @@ export class CasePrepare {
       q.filingItem.findMany({ where: { caseId: c.id, filing: { stageId: c.stage.id } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
     ] as const;
     const sync = async (tx: Tx | Db, write: boolean) => {
-      const [g0, filings0, items0] = write ? await Promise.all(read(tx)) : await this.db.$transaction([...read(this.db)], { isolationLevel: "RepeatableRead", maxWait: 10_000 }); // C7.6: as the write path (C6.12 B1, 120 reads at once)
+      const [g0, filings0, items0] = write ? await Promise.all(read(tx)) : await this.db.$transaction((snap) => Promise.all(read(snap)), { isolationLevel: "RepeatableRead", maxWait: 10_000 }); // C7.6: as the write path (C6.12 B1, 120 reads at once); M2: interactive, one snapshot on one connection
       let groups = g0;
       // BK-17 (BK-15 breaker M3): a filing recorded as submitted is kept as recorded: never made inactive, its mode, people
       // and items never changed by a later answer. A person on it stays on it: the derivation makes no other filing for
