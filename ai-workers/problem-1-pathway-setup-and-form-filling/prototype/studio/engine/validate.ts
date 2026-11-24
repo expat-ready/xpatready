@@ -426,6 +426,12 @@ export function diff(prev: Snapshot | null, next: Snapshot): Change[] {
       else if (canonical(a.get(key)) !== canonical(x)) out.push({ kind: label, key, change: "changed", needs_sme: behaviour, label: `${x.name ?? x.plain ?? key}: ${label === "Document type" ? `supplies ${(x.supplies_facts ?? []).map(factName).join(", ") || "no facts"}${x.sets?.length ? `; substitute sets: ${(x.sets as SnapSet[]).map((s) => `${s.name} (${setWords({ mode: s.mode, members: s.members })})`).join("; ")}` : ""}${x.default_provider_roles?.length ? `; provided by (when shared): ${(x.default_provider_roles as string[]).map(providerWords).join(", then ")}` : (a.get(key) as { default_provider_roles?: string[] } | undefined)?.default_provider_roles?.length ? "; provided by (when shared): not set (the person the item is for)" : ""}${defaultsLine(x, a.get(key))}` : `inputs ${(x.inputs ?? []).join(", ") || "none"}`}` });
     for (const [key, x] of a) if (!b.has(key)) out.push({ kind: label, key, change: "removed", needs_sme: behaviour, label: x.name ?? x.plain ?? key });
   }
+  // AS-1g (P-577): a score grid the release carries is named once, in words, for the immigration expert's sign-off.
+  {
+    const a = new Map(((prev?.score_grids ?? []) as { key: string; sha256: string; label: string }[]).map((x) => [x.key, x])), b = new Map(((next.score_grids ?? []) as { key: string; sha256: string; label: string; factors: unknown[] }[]).map((x) => [x.key, x]));
+    for (const [key, x] of b) if (!a.has(key) || a.get(key)!.sha256 !== x.sha256) out.push({ kind: "Score grid", key, change: a.has(key) ? "changed" : "added", needs_sme: true, label: `${x.label}: ${x.factors.length} factors (imported file ${x.sha256.slice(0, 12)})` });
+    for (const [key, x] of a) if (!b.has(key)) out.push({ kind: "Score grid", key, change: "removed", needs_sme: true, label: `${x.label}: no longer carried` });
+  }
   // W1-15 slice 1 (challenge M5): each choice over the rules' source and each Pre-qualification tick is named on Review,
   // and needs the immigration expert's sign-off (P-76: PQR picks are approved in the combination's one review).
   {

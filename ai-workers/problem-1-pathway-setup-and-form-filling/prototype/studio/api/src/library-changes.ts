@@ -29,10 +29,11 @@ import { mustVerifyView, refuseNotExpert, releaseMustVerify, withdrawApprovedMus
 import { PROVIDERS_KIND, providersView, releaseProviders, withdrawApprovedProviders } from "./document-providers.ts"; // C6.14
 import { DEFAULTS_KIND, defaultsView, releaseDefaults, withdrawApprovedDefaults } from "./document-type-defaults.ts"; // CS-D7c
 import { MUST_VERIFY_KIND } from "../../contracts/must-verify.ts";
+import { releaseScoreGrids } from "./library-score-grids.ts"; // AS-1g
 
 export const LIBRARY_KINDS = ["field", "section", "document_type", "check"] as const;
 export type LibraryKind = (typeof LIBRARY_KINDS)[number];
-export const KIND_NOUN: Record<string, string> = { library_form: "library form", answer_list: "answer list", form_accepts: "what IRCC accepts", form_role: "form", placement_fills: "a question", section_background: "section", placement_condition: "when a question is asked", form_field_condition: "when a form field is filled", document_supplies: "the facts a document supplies", document_sets: "a document's substitute sets", document_providers: "who provides a shared document", document_defaults: "a document type's defaults", field_must_verify: "must verify before filing", field: "shared field", section: "section", document_type: "document type", check: "check", structure_node: "structure name", combination: "combination" };
+export const KIND_NOUN: Record<string, string> = { library_form: "library form", answer_list: "answer list", form_accepts: "what IRCC accepts", form_role: "form", placement_fills: "a question", section_background: "section", placement_condition: "when a question is asked", form_field_condition: "when a form field is filled", document_supplies: "the facts a document supplies", document_sets: "a document's substitute sets", document_providers: "who provides a shared document", document_defaults: "a document type's defaults", score_grid: "score grid", field_must_verify: "must verify before filing", field: "shared field", section: "section", document_type: "document type", check: "check", structure_node: "structure name", combination: "combination" };
 // The lifecycle words come from the one word set (contracts/lifecycle.ts, P-116 amended 28 Oct): Delete, Retire, Restore.
 // "Remove" is kept for a form line taken off a combination (it stays in the library, P-123).
 // QA-113: the action word already says "who fills", so its noun is "a question" ("Change who fills a question: …").
@@ -416,6 +417,7 @@ export async function publishLibraryChanges(tx: Prisma.TransactionClient, worksp
   out.push(...(await releaseMustVerify(tx, workspaceId, pack))); // C7.9
   out.push(...(await releaseProviders(tx, workspaceId, pack))); // C6.14
   out.push(...(await releaseDefaults(tx, workspaceId, pack))); // CS-D7c
+  out.push(...(await releaseScoreGrids(tx, workspaceId, pack))); // AS-1g: once each of its combinations carries it
   return out;
 }
 type Status = "DRAFT" | "PUBLISHED" | "SUPERSEDED" | "RETIRED";
