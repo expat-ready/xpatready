@@ -470,10 +470,21 @@ OMG step|product/tools/own-migration-guard.py|s/^                nxt = next((j f
 OMG steploop|product/tools/own-migration-guard.py|s/^                            and any(k > j and d2 \& set(dbs) for k, d2 in loop_lines(lines, n2))), len(lines))/                            ), len(lines))/|check-own-migration-guard.sh
 OMG stepdb|product/tools/own-migration-guard.py|s/^                            and dbs and set(PSQLDB.findall/                            and True or set(PSQLDB.findall/|check-own-migration-guard.sh
 OMG late|product/tools/own-migration-guard.py|s/^                if pre and nxt < len(lines):/                if False:/|check-own-migration-guard.sh
-A348 bot|product/tools/retry-watch.py|s/ or "Passed only on retry" not in b:/ and False:/|check-retry-watch.sh
-A348 fix|product/tools/retry-watch.py|s/^        if ok:/        if fixes.get(s):/|check-retry-watch.sh
-A348 unmerged|product/tools/retry-watch.py|s/^            if p\["state"\] != "open".*/            if False:/|check-retry-watch.sh
-A348 keep|product/tools/retry-watch.py|s/"found": found}, open/"found": {}}, open/|check-retry-watch.sh
+A348 retry bot|product/tools/retry-watch.py|s/(c.get("user") or {}).get("login") != "github-actions\[bot\]"/False/|check-retry-watch.sh
+A348 retry phrase|product/tools/retry-watch.py|s/ or not PHRASE.search(b):/:/|check-retry-watch.sh
+A348 retry plain|product/tools/retry-watch.py|s/^    for l in PLAIN.findall(body):/    for l in []:/|check-retry-watch.sh
+A348 retry unread|product/tools/retry-watch.py|s/in names or \["(no suite read)"\]:/in names:/|check-retry-watch.sh
+A348 retry page|product/tools/retry-watch.py|s/page = page + 1 if last == since else 1/page = page + 1; last = since/|check-retry-watch.sh
+A348 retry second|product/tools/retry-watch.py|s/page = page + 1 if last == since else 1/page = 1/|check-retry-watch.sh
+A348 retry cut|product/tools/retry-watch.py|s/^        if not whole:/        if False:/|check-retry-watch.sh
+A348 retry keep|product/tools/retry-watch.py|s/"found": found}, open/"found": {}}, open/|check-retry-watch.sh
+A348 retry memory|product/tools/retry-watch.py|s/^    if why:/    if False:/|check-retry-watch.sh
+A348 retry line|product/tools/retry-watch.py|s/^FIX = .*/FIX = re.compile(r"Retry fix\\s*:\\s*(.+)")/|check-retry-watch.sh
+A348 retry hidden|product/tools/retry-watch.py|s/HIDDEN.sub("", (p/str((p/|check-retry-watch.sh
+A348 retry closed|product/tools/retry-watch.py|s/^            if p\["state"\] == "open" or m:/            if True:/|check-retry-watch.sh
+A348 retry back|product/tools/retry-watch.py|s/ if (m is None or m >= t) and not/ if not/|check-retry-watch.sh
+A348 retry own|product/tools/retry-watch.py|s/ and not (m and str(n) in prs)//|check-retry-watch.sh
+A348 retry search|product/tools/retry-watch.py|s/^        n += 1$/        return out, ""/|check-retry-watch.sh
 A348 retry wired|product/tools/lead-watch.sh|s/^rw=/# rw=/|check-retry-watch.sh
 A348 retry ran|product/tools/lead-watch.sh|/retry-watch.py did not run/d|check-retry-watch.sh
 A334 order|product/tools/app-view-check.sh|s/ -k1,1nr -k2,2nr)$/ -k1,1nr)/|check-lead-watch-idle.sh
