@@ -1,0 +1,20 @@
+# PROOF ONLY, branch claude/lead-o2-bk3-proof, never merged (Lead 22, 24 Nov): check_bk3_links_browser.cjs with a probe, old and fixed.
+name: lead-o2-bk3-proof
+on: { push: { branches: [claude/lead-o2-bk3-proof], paths: [bk3-proof/go] } }
+permissions: { contents: read }
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy: { fail-fast: false, matrix: { v: [old, fixed] } }
+    env: { P: ai-workers/problem-1-pathway-setup-and-form-filling/product, S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, filter: "blob:none", persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: cp "bk3-proof/proof-${{ matrix.v }}.cjs" "$S/tests/check_bk3_links_browser.cjs"
+      - run: bash "$P/tools/cloud-setup.sh" && cd "$S" && ./node_modules/.bin/playwright install chromium
+      - run: bash "$P/tools/run-suites.sh" --demo --only check_bk3_links_browser.cjs
+      - if: always()
+        run: cat "$S/var/suites/check_bk3_links_browser.log" | tail -70
