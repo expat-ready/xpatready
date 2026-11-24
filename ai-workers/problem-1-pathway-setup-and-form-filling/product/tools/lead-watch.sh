@@ -120,6 +120,11 @@ fresh "flow-buffer.py: design/board-lead-a-*.md and board-lead-b-*.md (newest by
 # One ACT per target (Q, A, L, R, B) naming its PRs, the detail on "sle" lines; --dump feeds step-age.py (5c) approval times.
 sl=$(python3 -I "$TOOLS/sle-watch.py" --grouped --dump "$STATE_DIR/sle.json" 2>&1); echo "$sl"; act=$((act + $(grep -c '^ACT' <<<"$sl"))); seen "$sl"
 fresh "sle-watch.py: GitHub open PRs, their comments, label events and ci check runs; cockpit/history.jsonl for the board time"
+# 2i. Retry-only passes (A348, founder 24 Nov): one ACT per suite that passed only on retry until a PR names its fix.
+rw=$(python3 -I "$TOOLS/retry-watch.py" --state "$STATE_DIR" 2>&1); echo "$rw"; act=$((act + $(grep -c '^ACT' <<<"$rw"))); seen "$rw"
+grep -qE '^(retry |ACT   retry)' <<<"$rw" || ACT "retry: retry-watch.py did not run ($(head -1 <<<"$rw"))"
+fresh "retry-watch.py: CI's retry comments and the PRs naming a fix (gh.sh), what earlier checks found in $STATE_DIR"
+
 # 2h. Queue blocked by checks (ENF-758, P-757, P-758): while main's guards are red, or a merge batch failed or a PR was
 # dequeued in 2 h, one ACT per open check-only PR (tests, CI, Mergify, guard tools) approved on its head with green ci: the
 # Lead reads its diff, then merges it in the built-in browser (Lead 4, 23 Nov: never before the read). 20 Nov: #2435 and #2438 held the queue ~4 h, each red without the other.
