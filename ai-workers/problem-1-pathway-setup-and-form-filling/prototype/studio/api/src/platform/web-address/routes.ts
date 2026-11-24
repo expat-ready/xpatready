@@ -16,6 +16,7 @@ import { addressHostSuffixes } from "./rules.ts";
 import { platformConfig } from "../config/settings.ts";
 import { asBypass, touchingAudit, withFirm } from "../firm-scope.ts";
 import { SystemKeys, SystemReason, systemStaffOf, type SystemStaffContext } from "../system-identity/keys.ts";
+import { ChangesFirm } from "../audit/access/declare.ts";
 import { logPort } from "../observability/log.ts";
 import { dbRuleOf } from "../observability/redact.ts";
 import { parseInput, query, strict } from "../http/input.ts";
@@ -128,6 +129,7 @@ Inject(WebAddresses)(SystemWebAddressController, undefined, 0);
   Post(":id/web-address")(proto, "change", d);
   HttpCode(200)(proto, "change", d);
   SystemKeys(ADDRESS_CHANGE_KEY)(proto, "change", d);
+  ChangesFirm("changes one firm's web address")(proto, "change", d);   // AUD-3: it writes its own ourstaff: line on the firm's trail
   SystemReason()(proto, "change", d);
   [Param("id"), Body(), Req()].forEach((p, i) => p(proto, "change", i));
 }
