@@ -122,3 +122,34 @@ Script `break4.mts` in the session scratchpad, on its own scratch database (drop
 * Pay from trust of 400 with no acknowledgement gives 201. The move of 400 gives 201, recorded `false`. The cheque is still uncleared.
 * Cause: both sums count only uncleared `DEPOSIT` rows on the same case, and moved money arrives on the case as `MOVE_TO_CASE`. A refund on that case would pass the same way.
 * No route writes `MOVE_TO_CASE` today, so this is not reachable through the API yet. It becomes a Major when a move-to-case route lands. The same gap is in part 2's `held`.
+
+## Round 5 (merge of main, 2ea622a7e)
+
+Breaker: pass 2ea622a7e (a clean merge of origin/main onto 3ed855a66; the later 3e7781bfe adds review.md only). Diff only: `git diff 3ed855a66 2ea622a7e`, 170 files.
+
+**What main changed on a money path:**
+* `api/src/client-money/port.ts` `hasMoney` and `ports/client-money.ts` (FO-9b part 2): two more reads, for a tax treatment and a trust payee. Read-only; part 3 does not call it.
+* Migration `20261124070000_fo9b_review`: the new `fo_dup_review` table with its PF-12 wall, plus a unique index on `fo_dup_merge`. It touches no `money_*` table, wall or trigger, and not `money_trust_lock`.
+* `api/src/platform/firm-scope.ts` (M1-tx-end and P1): `WalledPool` now refuses any query after a checkout's COMMIT or ROLLBACK (`refuseAfterEnd`). It also lets a connection released with a statement in flight finish, then judges it. `Db` (`core.ts:39`) is built on this pool, so every part 3 transaction and every `money_trust_lock` call goes through it.
+* New client-money web screens for invoices (FO-7s1, read-only UI). `ports/metrics.ts` narrows `scope`. Neither is on part 3's path. No other file under `client-money/trust/`, no lock function and none of part 3's ports changed.
+
+**Suites (fresh scratch databases, dropped):**
+* `check_fo7t_to_move.ts`: 43 passed, 0 failed, exit 0. This includes the 100 rounds of the lock race (200 of 200 answered 201, no 40P01, no 500) and the uncleared cases.
+* `check_fo7t_money_out.ts`: 51 passed, 0 failed, exit 0.
+* `check_fo7mv_move_list.ts`: 45 passed, 0 failed, exit 0.
+
+**Targeted attack on the new pool guard** (script `r5/attack5.mts` in the session scratchpad, not committed; own scratch database, dropped). A second session held `money_trust_lock(A, PA, CAD)` for longer than Prisma's 5 s transaction timeout. Meanwhile three "I moved these" requests (two people) and then two undos waited on that lock, so Prisma's ROLLBACK was queued behind the lock wait. That is the case the M1 guard exists for.
+* Holding 7 s and 12 s: 0 batches, 0 lines, 0 `trust_money.moved` audits, 0 `trust.moved` events, and the open amount was unchanged. Nothing ran on its own after the rollback.
+* The next plain move gave 201: the pool was not poisoned.
+* Undo with a 7 s hold: 0 undo batches and 0 audits, and the open amount was unchanged.
+* Moved plus open still equals the withdrawal (100000).
+* 6 of 9 checks pass, exit 1. The 3 failures are all the minor below.
+
+**Minor R5-1 (already there before the merge, not caused by it): a write that waits on the trust lock past Prisma's 5 s timeout answers 500.**
+* Every waiting request answered **500** "Internal server error": 3 of 3 batches at 7 s, 3 of 3 at 12 s, and 2 of 2 undos.
+* `to-move.ts:177` `write()` rethrows Prisma's expired-transaction error because it matches none of its patterns.
+* Same attack on 3ed855a66 in a temporary worktree (no `refuseAfterEnd`): the same 500s and the same zero rows. The merge did not cause it.
+* Expected: a 409 saying someone else is saving money for this client and to try again, with nothing saved.
+* It only happens when a lock is held for more than 5 s. Money is never wrong.
+
+**Verdict: pass.** Main's merged code keeps every part 3 money guarantee. The three suites pass: 139 of 139, all exit 0. The new tx-end guard holds under a lock wait past the timeout: nothing is half-written, audits and events match wins, the moved amount stays within the withdrawal, and the pool recovers. R5-1 is a Minor that was already there before the merge.
