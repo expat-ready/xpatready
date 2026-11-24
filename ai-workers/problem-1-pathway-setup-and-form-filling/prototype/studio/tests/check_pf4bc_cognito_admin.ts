@@ -195,13 +195,17 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
   const { execFileSync } = await import("node:child_process"); const { join } = await import("node:path");
   const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"], DB = `xr_studio_pf4bc_scratch_${process.pid}`;
   const { PrismaPg } = await import("@prisma/adapter-pg"); const { PrismaClient } = await import("@prisma/client");
-  const { lockFirm, FIRM_TX } = await import("../api/src/platform/identity/session/firm-lock.ts");
+  const lockMod = await import("../api/src/platform/identity/session/firm-lock.ts");
+  const { lockFirm, FIRM_TX } = lockMod;
+  // #3217 r3 follow-up: any lock wait in these transactions answers FIRM_BUSY (absent before: the error passes as it is).
+  const busyOnLockTimeout = (lockMod as { busyOnLockTimeout?: (e: unknown) => never }).busyOnLockTimeout ?? ((e: unknown) => { throw e; });
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DB}` }) });
   try {
     const FIRM = "00000000-0000-4000-8000-00000000bc01";
     await db.$executeRawUnsafe("create table platform_firm(id uuid primary key)"); await db.$executeRawUnsafe("create table audit(who text)");
     await db.$executeRawUnsafe(`insert into platform_firm values ('${FIRM}')`);
+    await db.$executeRawUnsafe("create table platform_staff(id uuid primary key)");
     const c = makeCognito(), ppl: { staffId: string; email: string; subject: string }[] = [];
     for (const e of ["race.a@example.com", "race.b@example.com"]) { ppl.push({ staffId: e, email: e, subject: (await c.admin.createUser(e)).subject }); c.fake.enrol(e); }
     c.fake.slow(900);   // a reset is 3 requests: 2.7 s, inside the 3 s deadline, longer than the 1.5 s lock wait
@@ -212,11 +216,38 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
     c.fake.slow(0);
     const audit = ((await db.$queryRawUnsafe("select who from audit")) as { who: string }[]).map((x) => x.who);
     const consistent = ppl.every((u) => audit.includes(u.email) === !c.fake.users.get(u.email)!.totp);
-    ok("PF-4bc fail (break R2-M1): two resets in one firm with a slow Cognito → the first completes, the second gets 409 FIRM_BUSY before any Cognito call, and for each person Cognito and our audit agree",
-      ra === null && rb?.status === 409 && rb.body.code === "FIRM_BUSY" && consistent && c.fake.users.get(ppl[1].email)!.totp, { ra, rb, audit });
-    ok("PF-4bc pass (break R2-M1): the transaction's limit covers the lock wait, the 3 s provider deadline and the commit", FIRM_TX.timeout >= 1_500 + 3_000 + 2_000);
+    ok("PF-4bc fail (break R2-M1; #3217 r3-m1): two resets in one firm with a slow Cognito → the first completes, the second gets 503 FIRM_BUSY (try again: the invitation page keeps its Continue) before any Cognito call, and for each person Cognito and our audit agree",
+      ra === null && rb?.status === 503 && rb.body.code === "FIRM_BUSY" && consistent && c.fake.users.get(ppl[1].email)!.totp, { ra, rb, audit });
+    // #3217 R3-m1 (breaker): after the firm lock, the person's row lock (endSessions) is bounded too: a row held elsewhere
+    // gives FIRM_BUSY within the bound, never a wait that outlasts the transaction after the provider has changed.
+    const STAFF = "00000000-0000-4000-8000-00000000bc02";
+    await db.$executeRawUnsafe(`insert into platform_staff values ('${STAFF}')`);
+    const { Client } = (await import("pg")).default;
+    const holder = new Client({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DB}` }); await holder.connect();
+    await holder.query("begin"); await holder.query(`select id from platform_staff where id = '${STAFF}' for update`);
+    const t0 = Date.now();
+    const attempt = problemOf(() => db.$transaction(async (tx) => {
+      await lockFirm(tx as never, FIRM);
+      await tx.$queryRawUnsafe(`select id from platform_staff where id = '${STAFF}' for update`);   // as endSessions
+    }, FIRM_TX).catch(busyOnLockTimeout));
+    // Without a bound the wait never ends (Prisma's limit does not stop a statement that is waiting): 6 s then counts as a fail.
+    const held = await Promise.race([attempt, new Promise<"still waiting">((r) => setTimeout(() => r("still waiting"), 6_000))]);
+    const took = Date.now() - t0; await holder.query("rollback"); await holder.end(); await attempt;
+    ok("PF-4bc fail (#3217 R3-m1): a person's row held elsewhere after the firm lock → 503 FIRM_BUSY within about 3 s, not a wait the whole transaction long", held?.status === 503 && held.body.code === "FIRM_BUSY" && took < 5_000, { held, took });
+    ok("PF-4bc pass (break R2-M1; #3217 R3-m2): the transaction's limit covers two bounded lock waits (up to 3 s each: Postgres bounds each lock attempt, and a row lock can wait twice), the 3 s provider deadline and the commit", FIRM_TX.timeout >= 2 * 3_000 + 3_000 + 2_000, FIRM_TX);
   } finally { await db.$disconnect(); try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* prune-test-dbs.sh */ } }
 }
 
+// #3217 r3-m2 and r3-m3: how session/service.ts uses the lock, read from its source. A person's own sign-out calls no
+// provider, so it never gives up on the firm lock (no revocation row would be written while the browser forgets the
+// token); every provider-calling transaction takes the bounded lock inside FIRM_TX.
+{
+  const { readFileSync } = await import("node:fs"); const { join } = await import("node:path");
+  const src = readFileSync(join(import.meta.dirname, "..", "api", "src", "platform", "identity", "session", "service.ts"), "utf8");
+  const body = (name: string) => { const at = src.search(new RegExp(`async ${name}[(<]`)); return at < 0 ? "" : src.slice(at, src.indexOf("\n  async ", at + 10) < 0 ? undefined : src.indexOf("\n  async ", at + 10)); };
+  ok("PF-4bc fail (#3217 r3-m2): signOut takes the firm lock without the bound (inFirm with bounded: false)", /bounded:\s*false/.test(body("signOut")), body("signOut").slice(0, 300));
+  ok("PF-4bc pass (#3217 r3-m3): inFirm takes lockFirm inside FIRM_TX when bounded", /lockFirm\(/.test(body("inFirm")) && /FIRM_TX/.test(body("inFirm")), body("inFirm").slice(0, 400));
+  ok("PF-4bc pass (#3217 r3-m3): accept takes lockFirm inside FIRM_TX and maps a lock timeout to FIRM_BUSY", /lockFirm\(/.test(body("accept")) && /FIRM_TX/.test(body("accept")) && /busyOnLockTimeout/.test(body("accept")), body("accept").length);
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
