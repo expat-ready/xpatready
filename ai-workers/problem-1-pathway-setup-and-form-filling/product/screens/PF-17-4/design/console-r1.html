@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Console board r1</title>
+<!-- PF-17 part 4 board r1 (24 Nov): our console's Firms page, Support page, ticket panel and sign-in card. Self-contained
+     (the builder cannot see the canvas). Colours approximate the app's tokens (web/src/styles/tokens.css); all data Sample. -->
+<style>
+:root{--primary:#1f6fd1;--surface:#f6f7f9;--raised:#fff;--text:#18212b;--muted:#5b6774;--border:#e2e6ea;--danger:#b42318;--warn:#8a4b00;--ok:#1d6b3a;font-family:system-ui,sans-serif}
+body{margin:0;background:var(--surface);color:var(--text);font-size:14px}
+.board{display:grid;gap:32px;padding:24px;max-width:1440px;margin:auto}
+h2.b{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+.frame{background:var(--raised);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.top{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--border)}
+.top b{font-size:15px}.top .sp{flex:1}.top a{color:var(--muted)}
+.wrap{display:flex}.nav{width:180px;border-right:1px solid var(--border);padding:12px}
+.nav a{display:block;padding:8px 10px;border-radius:8px;color:var(--text);text-decoration:none}.nav a.on{background:#e8f0fb;font-weight:600}
+.main{flex:1;padding:20px;min-width:0}h1{font-size:22px;margin:0 0 12px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+input{padding:8px 10px;border:1px solid var(--border);border-radius:8px;min-width:260px}
+.chip{border:1px solid var(--border);border-radius:999px;padding:6px 12px;background:var(--raised)}.chip.on{border-color:var(--primary);color:var(--primary);font-weight:600}
+.note{background:#fff7e6;border:1px solid #f2d39b;color:var(--warn);padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.tbl{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:980px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600;background:#fafbfc}td small{display:block;color:var(--muted)}
+.h{font-weight:600}.h.held{color:var(--danger)}.h.att{color:var(--warn)}.h.ok{color:var(--ok)}
+.over{color:var(--danger);font-weight:600}
+.panel{width:520px;border-left:1px solid var(--border);padding:16px;background:var(--raised)}
+.msg{border:1px solid var(--border);border-radius:8px;padding:10px;margin:8px 0}.msg.ours{background:#f2f6fc}
+textarea{width:100%;min-height:90px;border:1px solid var(--border);border-radius:8px;padding:8px;box-sizing:border-box}
+button.p{background:var(--primary);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600}
+.card{max-width:420px;margin:40px auto;border:1px solid var(--border);border-radius:12px;padding:24px;background:var(--raised)}
+.ann{font-size:12px;color:var(--muted);margin-top:8px}
+</style></head><body><div class="board">
+
+<section><h2 class="b">1 · Signed out: the console's sign-in card (local stand-in)</h2>
+<div class="frame"><div class="top"><b>ExpatReady console</b></div>
+<div class="card"><h1 style="font-size:18px">Sign in to the ExpatReady console</h1>
+<p style="color:var(--muted)">For ExpatReady's own staff. Local stand-in sign-in (second step taken) until our staff's sign-in pages are built.</p>
+<label>Work email<br><input value="ops@expatready.example.com"></label><p><button class="p">Sign in</button></p>
+<p class="ann">On a Cognito server (STAND_IN_OFF): "Sign-in for ExpatReady staff is not set up on this page yet." Session: sessionStorage "xr-system-session" {token, expiresAt}; this tab only; 401 or expiry → this card with the reason.</p></div></div></section>
+
+<section><h2 class="b">2 · Firms (/system/firms), 1440 px</h2>
+<div class="frame"><div class="top"><b>ExpatReady console</b><span class="sp"></span><span>Platform Owner (Sample)</span><a href="#">Sign out</a></div>
+<div class="wrap"><nav class="nav"><a class="on" href="#">Firms</a><a href="#">Support</a></nav>
+<div class="main"><h1>Firms</h1>
+<div class="bar"><input placeholder="Search firm name or web address"><span class="chip on">All</span><span class="chip">Held</span><span class="chip">Needs attention</span><span class="chip">OK</span><span class="chip">Not live</span></div>
+<div class="note">Only the oldest 10 000 failed jobs were read; newer ones may not be counted here. (shown only when the read hit the cap: m1)</div>
+<div class="tbl"><table><thead><tr><th>Firm</th><th>Health</th><th>Plan</th><th>Plan state</th><th>Seats</th><th>Cases (indiv. · corp.)</th><th>Storage</th><th>Failed jobs</th><th>Last staff sign-in</th></tr></thead><tbody>
+<tr><td>Maple Immigration Law (Sample)<small>maple.expatready.com</small></td><td class="h held">■ Held<small>on payment hold</small></td><td>Team</td><td>Payment hold</td><td>4 / 5</td><td>12/40 · 2/10</td><td>820 / 5 000 MB<small>as of 23 Nov</small></td><td>3+</td><td>21 Nov, 09:14</td></tr>
+<tr><td>Sample Firm<small>sample-firm.expatready.com</small></td><td class="h att">▲ Needs attention<small>seats over the limit</small></td><td>Starter</td><td>Active</td><td class="over">6 / 5 over</td><td>8/20 · 0/5</td><td>—<small>no measure yet</small></td><td>1+</td><td>24 Nov, 08:02</td></tr>
+<tr><td>Sample Solo Practice<small>sample-solo.expatready.com</small></td><td class="h ok">● OK</td><td>Solo</td><td>Trial ends 3 Dec</td><td>1 / 1</td><td>2/10 · 0/0</td><td>—</td><td>0+</td><td>23 Nov, 17:40</td></tr>
+</tbody></table></div>
+<p class="ann">Health = part 1's value and reasons (text + shape, never colour alone). Failed jobs shown, not judged (BR-3). "N+" only when the read was capped; "Not known" when the job queue could not be read. 50 a page. At 375 px the table scrolls inside its box.</p>
+</div></div></div></section>
+
+<section><h2 class="b">3 · Support (/system/support) with a ticket open</h2>
+<div class="frame"><div class="top"><b>ExpatReady console</b><span class="sp"></span><span>Support (Sample)</span><a href="#">Sign out</a></div>
+<div class="wrap"><nav class="nav"><a href="#">Firms</a><a class="on" href="#">Support</a></nav>
+<div class="main"><h1>Support</h1>
+<div class="bar"><span class="chip on">All</span><span class="chip">New</span><span class="chip">Waiting on us</span><span class="chip">Waiting on firm</span><span class="chip">Closed</span></div>
+<div class="tbl"><table><thead><tr><th>Subject</th><th>Firm</th><th>Status</th><th>Raised by</th><th>Page</th><th>Age</th><th>Waiting since</th><th>Msgs</th></tr></thead><tbody>
+<tr style="background:#f2f6fc"><td>The licences page shows two seats</td><td>Sample Firm<small>Starter</small></td><td>New</td><td>Owner R (Sample)</td><td>/platform/licences</td><td>2 h</td><td>2 h</td><td>1</td></tr>
+<tr><td>Can we change our web address?</td><td>Sample Solo Practice<small>Solo</small></td><td>Waiting on us</td><td>Owner S (Sample)</td><td>/platform/branding</td><td>1 d</td><td>5 h</td><td>3</td></tr>
+<tr><td>Invoice copy</td><td>Maple Immigration Law (Sample)<small>No live plan</small></td><td><b>Waiting on firm</b></td><td>Admin M (Sample)</td><td>/platform/billing</td><td>3 d</td><td>1 d</td><td>4</td></tr>
+</tbody></table></div></div>
+<aside class="panel" aria-label="Ticket"><h3 style="margin:0">The licences page shows two seats</h3>
+<p style="color:var(--muted);margin:4px 0">Sample Firm · Starter · New · 2 h old · raised on /platform/licences</p>
+<div class="msg">Owner R (Sample) · 24 Nov 10:12<br>The licences page shows two seats but we have three staff.</div>
+<label><b>Reply</b> (the firm will see this)<textarea></textarea></label><p style="text-align:right"><button class="p">Send reply</button></p>
+<p class="ann">Closed ticket or no system/support:manage: composer read-only with the reason. After Send: status "Waiting on firm"; blank → the API's field error under the box.</p></aside>
+</div></div></section>
+</div></body></html>
