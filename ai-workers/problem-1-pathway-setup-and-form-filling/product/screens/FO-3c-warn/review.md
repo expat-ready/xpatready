@@ -104,3 +104,22 @@ No Blocker or Major is open; m4 is a Minor to fix in the next round.
 Verdict: Approve 9e97b8aa33ee582249a434926e0c8850e7e0c67f
 
 Reviewer: Approve 9e97b8aa33ee582249a434926e0c8850e7e0c67f
+
+## Delta, 24 Nov 2026: head 533edb98ca95c417030d2fd3b6d5b15ed78aec99 (from 9e97b8aa3)
+**Change.** This covers m4 only.
+- `problemOf` (`sales/contract.ts:10-13`) now keeps `agreementWarning` when it is `{code, words}` strings. The change is additive and typed, and `tsc -p web` is clean.
+- `consult-record.tsx:81` reads that field.
+- j_104 W4 now also needs the record section to warn before its first save.
+- 533edb98c only restores the fo-4-sales screenshots, so the net diff has no fo-4 files.
+
+**Runs.**
+- **j_104:** 20/20 on `j104r` :4435.
+- **My probe on the same copy:** I marked a fresh booking Attended with no record yet. The record section shows "Consultation agreement not signed …" right after the click and again after a reload. At 9e97b8aa3 the same probe showed nothing.
+- **check_fo4_sales_browser** (shared `problemOf`): 47/47 on `fo4r` :4436.
+- I restored every screenshot my runs overwrote.
+
+**Result.** m4 is closed. No findings remain open from my list; the record's own visibility rule predates this change and is noted on the PR. Journey score: 10/10, because feedback and state is now 1.
+
+Verdict: Approve 533edb98ca95c417030d2fd3b6d5b15ed78aec99
+
+Reviewer: Approve 533edb98ca95c417030d2fd3b6d5b15ed78aec99
