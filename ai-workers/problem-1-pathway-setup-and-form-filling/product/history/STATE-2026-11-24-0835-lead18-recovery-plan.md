@@ -263,3 +263,12 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * #3277: lane 6TCJSD told the one line (bubble seen, working). #3305: round 3 allowed on 86e04deeb; the .mergify.yml change read; verdict owed, then my read line on that head.
 * #3436 (#3421) red on shard 9, not yet re-run. Disk 9.6 GB. Lane 6KvFck stopped (too long): QA-773 + QA-774 (R1.20) need a fresh cloud session (his typed turn), its brief is in that session. Lane 5a3n1 not read (page did not load).
 * Reads owed: #3217, #3235, #3418, #3411.
+
+### Lead 25, 13:46 IST 24 Nov: founder ask A360 (typed, about 13:43)
+* His words: "check with your previous lead. You should not lose anything in the handover ... what tools we are implementing ... a complete check done to basically increase the speed of proving ... keep going autonomously, and you have my approval to create the new your work is there. Also, you can log in the waiting on. So completely finish everything." Read as yes to starting sessions; NOT as yes to the CodeAnt account, terms or sending code step by step (P-551).
+* Lead 24 says: the speed of proving was never measured (its "merged code waits on qa" was a reading); R1.58's next part was called clear without confirming its inputs on main. Its full message is queued to Lead 25.
+* CodeAnt isolation: the founder ran the runner, the token check and telemetry off (seen in Lead 24's chat and as files dated 13:42). Next: account and terms, his.
+* Started: Lead 26 standby local_b17225db; R1.20 QA-773 + QA-774 cloud task_0a90d995. Opus checklist arm told to local_df9b47db. Lane 6E2Xy told PF-17 part 4 concept.
+* Lead O 2 (claude/lead-o2-os-plan 369d114d6): 26 of 70 finished batches red today (37%), 2 of 14 since 11:30; its own count, not re-run. Yes to fix check_workspace_first_calls and to the report-only wake line.
+* #3428 full run 45348775509 success, labelled. #3421 dequeued (first_calls), its full run started by itself. #3441: round 1 Block (nested transactions), fixed 694fddce by its lane, round 2 next. #3429 labelled and queued.
+* Moved from STATE: | A358 | 24 Nov ~12:17 (typed to Lead 23) | sign-in design and review tool left to the Lead; one ask at a time | CodeAnt; plan file, end; in progress |
