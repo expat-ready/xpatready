@@ -1,0 +1,2 @@
+Entry points: FO-7b C5 scope (#3305 M1, Lead 14 on #3321): every FO-7b route on an existing invoice, a new draft and the tax default answer 404 outside the caller's C5 scope (`reads/visibility.ts` invoiceInScope / seesInvoice / partyInScope); the party half of PgMoneyVisibility holds the linked parties of the caller's cases (`visibility-adapter.ts` caseLinks, moneyScopeOf).
+Tests: `tests/check_fo7b_c5_scope.ts`.

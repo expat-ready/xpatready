@@ -63,7 +63,8 @@ try {
     if (e.action === AGREEMENT_EVENT.SENT || e.action === AGREEMENT_EVENT.SIGNED) eventsAtAudit.push(await tx.moduleEvent.count({ where: { subjectId: e.entityKey, type: e.action } }));
     return inner.record(tx, e as never);
   } };
-  const svc = new ConsultationAgreementService(db, { audit: audit as never, clock, mail, jobs, signing, files, publicBaseUrl: "https://book.example" });
+  // Part 1's reads are the firm walls only; part 2's booking visibility (FO-3vr) is check_fo3c2_consultation_agreement.ts.
+  const svc = new ConsultationAgreementService(db, { audit: audit as never, clock, mail, jobs, signing, files, publicBaseUrl: "https://book.example", seeBooking: async () => undefined });
   await svc.registerJobs();
   // The public door counts tries per IP: each call here comes from its own address unless a case says otherwise.
   let ipN = 0;

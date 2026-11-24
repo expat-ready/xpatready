@@ -121,8 +121,12 @@ try {
   await tp.getByLabel("Template file (.docx)").setInputFiles(starter);
   await tp.getByRole("button", { name: "Upload version 3" }).click();
   await tp.getByText("This template is now at version 3, not version 2. Open it again.").waitFor({ timeout: 10_000 });
+  // The refusal shows first and the page's refresh follows it (templates-page.tsx: the list query is invalidated after the
+  // error is set), so "Upload version 4" is waited for, at most 10 s, and false on a timeout. Read at once with
+  // isVisible(), it was red on a busy machine (the refresh had not landed) and green alone.
+  const refreshed = await tp.getByRole("button", { name: "Upload version 4" }).waitFor({ timeout: 10_000 }).then(() => true, () => false);
   ok("R1.53 FO-5s2 fail (break M1): a panel showing version 2 cannot replace a colleague's version 3; the page refreshes and nothing is stored",
-    v3.status === 201 && sql(`select version from fo_retainer_template where id = '${tplId}'`) === "3" && await tp.getByRole("button", { name: "Upload version 4" }).isVisible().catch(() => false));
+    v3.status === 201 && sql(`select version from fo_retainer_template where id = '${tplId}'`) === "3" && refreshed);
 
   // ------------------------------------------------------------------------------- inactive: not offered
   await tp.getByRole("button", { name: "Make inactive" }).click(); await tp.getByRole("button", { name: "Make active" }).waitFor({ timeout: 10_000 });

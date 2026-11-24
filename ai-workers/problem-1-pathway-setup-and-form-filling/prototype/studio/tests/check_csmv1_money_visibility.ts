@@ -141,17 +141,22 @@ try {
   ok("CS-MV1 DW3 pass: \"everyone sees all\" on + agent/prospect:view.all → every prospect's subject (P1, P2, P3, C1)", [P1, P2, P3, C1].every((p) => onAll.parties.includes(p)), onAll.parties);
   everyoneSeesAll(A, false);
   const off = await port.scopeOf(O);
-  ok("CS-MV1 DW3 pass: \"everyone sees all\" off → user-O's own prospects' subjects only (P1 and company C1)", off.parties.length === 2 && off.parties.includes(P1) && off.parties.includes(C1), off.parties);
+  // Lead 14's ruling on #3321: the party half also holds the linked parties of the cases in scope (for invoices with no
+  // case only, scopeSql); so each expected set below is the prospect subjects plus linkedOf(the scope's cases), exactly.
+  const linkedOf = (cases: string[]) => cases.length ? sql(`select coalesce(string_agg(coalesce(c.fo_person_id, c.fo_company_id)::text, ','), '') from runtime_case k join case_client c on c.id = k.client_id and c.firm_id = k.firm_id where k.id = any('{${cases.join(",")}}'::uuid[])`).split(",").filter(Boolean) : [];
+  const exactly = (got: string[], want: string[]) => new Set(got).size === new Set(want).size && want.every((w) => got.includes(w));
+  ok("CS-MV1 DW3 pass: \"everyone sees all\" off → user-O's own prospects' subjects (P1 and company C1), plus their cases' linked parties", exactly(off.parties, [P1, C1, ...linkedOf(off.cases)]), off.parties);
   ok("CS-MV1 DW3 fail: off → R's prospect (P2) and the unassigned one (P3) are not user-O's", !off.parties.includes(P2) && !off.parties.includes(P3), off.parties);
   everyoneSeesAll(A, true);
   const ownProspects = await port.scopeOf(without(O, "agent/prospect:view.all"));
-  ok("CS-MV1 DW3 fail: on, but without agent/prospect:view.all → own only (both are needed, AG-2-64)", ownProspects.parties.length === 2 && !ownProspects.parties.includes(P2), ownProspects.parties);
+  ok("CS-MV1 DW3 fail: on, but without agent/prospect:view.all → own only (both are needed, AG-2-64), plus the cases' linked parties", exactly(ownProspects.parties, [P1, C1, ...linkedOf(ownProspects.cases)]) && !ownProspects.parties.includes(P2), ownProspects.parties);
 
   // ------------------------------------------------------------------------------- DW4: the money keys alone
   const money = await port.scopeOf({ ...O, keys: INVOICE_KEYS });
   ok("CS-MV1 DW4 pass: agent/invoice:list and :show alone → nothing, though user-O is on X's team and owns P1's prospect", money.cases.length === 0 && money.parties.length === 0, money);
   const caseOnly = await port.scopeOf({ ...O, keys: [...INVOICE_KEYS, "agent/case:view.own"] });
-  ok("CS-MV1 DW4 fail: adding agent/case:view.own gives the case (X) but still no party (no prospect key)", caseOnly.cases.length === 1 && caseOnly.cases[0] === X && caseOnly.parties.length === 0, caseOnly);
+  ok("CS-MV1 DW4 fail: adding agent/case:view.own gives the case (X) and only X's linked party (Lead 14 on #3321), no prospect's subject (no prospect key)",
+    caseOnly.cases.length === 1 && caseOnly.cases[0] === X && exactly(caseOnly.parties, linkedOf([X])) && ![P1, P2, P3, C1].some((p) => caseOnly.parties.includes(p)), caseOnly);
 
   // ------------------------------------------------------------------------------ DW5 (adapter): the contract
   const pgHarness = (): MoneyVisibilityHarness => ({

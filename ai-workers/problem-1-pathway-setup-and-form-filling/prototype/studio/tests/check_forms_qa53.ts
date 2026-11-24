@@ -58,16 +58,17 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/public/embed/form.js": "open", // FO-4b: the embed script a firm's own site loads (one fixed file, no firm or person data)
   "/api/public/invitations/:token": "open", // PF-4b: an invitation's state (its 256-bit token is the key)
   "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
+  "/api/public/signup/:token": "open", // R1.90: the invited sign-up page: what a private link offers (its 256-bit token is the key, stored as a hash; unknown, used, expired or malformed are one 404; opening changes nothing; asked in check_r190_invited_signup.ts)
   "/api/public/unsubscribe/:token": "open", // PF-19b part 2: the one-click unsubscribe page (its sealed token is the key; changes nothing)
   "/api/public/firms/:firmKey/branding": "open", // PF-13 part 1b: a client page's header (name, colours, tagline, image links; no id; an inactive or unknown firm 404; asked in check_pf13b_images.ts)
   "/api/demo/billing/invoices/:id": "open", // R1.21 (P-796): the billing stand-in's invoice page, as Stripe's hosted link (its random token is the key; 404 without the stand-in, a wrong token or another firm's id; asked in check_r121_invoice_tax.ts)
   "/api/public/firms/:firmKey/branding/:kind": "open", // PF-13 part 1b: the firm's logo, favicon or banner by its stable ?v= link (nosniff, sandbox CSP; another image or firm 404)
 };
 /** FO-2: public doors that take a write from anyone (contracts §0.6): no person to name; an unknown token answers 404. */
-const PUBLIC_WRITES = ["/api/public/consultation-agreements/open", "/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept", "/api/public/messages/ses-notices", "/api/public/unsubscribe/:token"];   // FO-3c: the client's consultation-agreement link (its token is the key; an unknown one is the one 404; per-IP limit). PF-19b part 2: one-click unsubscribe (unknown token 404) and SNS notices (signature checked first, else 400; asked in check_pf19b2_ses.ts)   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
+const PUBLIC_WRITES = ["/api/public/consultation-agreements/open", "/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept", "/api/public/messages/ses-notices", "/api/public/signup/:token", "/api/public/unsubscribe/:token"];   // R1.90 (Lead 15 on #3040): the invited sign-up form (its private link's token is the key; no account exists yet, so it names nobody; an unknown or malformed token is the one 404; per-IP limit; asked below and in check_r190_invited_signup.ts)   // FO-3c: the client's consultation-agreement link (its token is the key; an unknown one is the one 404; per-IP limit). PF-19b part 2: one-click unsubscribe (unknown token 404) and SNS notices (signature checked first, else 400; asked in check_pf19b2_ses.ts)   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
 /** PF-5 (contracts §0.6): the public sign-up doors name nobody by design (no account exists yet); each is asked below:
  *  an empty body is refused (400) or the door is shut on a copy without sign-up set up (503), never a 2xx. */
-const PUBLIC_DOOR_WRITES = ["/api/public/signup", "/api/public/signup/verify", "/api/hooks/stripe", "/api/hooks/stripe-connect"];   // PF-5 part 2: Stripe's webhook (signature first: 400, or 503 not set up); FO-7c part 1 (Lead B on #2938): Stripe's connected-accounts webhook, the same
+const PUBLIC_DOOR_WRITES = ["/api/public/signup", "/api/public/signup/verify", "/api/hooks/stripe", "/api/hooks/stripe-connect", "/api/hooks/signing/:provider"];   // PF-5 part 2: Stripe's webhook (signature first: 400, or 503 not set up); FO-7c part 1 (Lead B on #2938): Stripe's connected-accounts webhook, the same; FO-6 part 3 (Lead B, #3065): the signing provider's webhook (the provider signs the body; no person; the event is applied as the request's firm; an empty or unsigned body 400)
 /** C6.16 (B138): reads open to the shared guard because they have a guard of their own, each asked below.
  *  /api/link/*: an adult's own link (stand-in SI-21): a Bearer session from the link's code, x-actor refused (400),
  *  no session 401 (person-link.ts LinkOnlyGuard and PersonLinks.signed). /api/demo/inbox: the email stand-in SI-20,
@@ -226,9 +227,12 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok(`C6.16 fail: each write of the adult's own link (${OWN_GUARD_WRITES.length}) refuses a simulated person (400) and, with no session or a made-up token, answers 401 or 404, never a change`, wrongWrite.length === 0, wrongWrite);
   ok("QA-65: the configuration reads made by POST are exactly the reviewed three (finder plan, AI plan, condition check)", JSON.stringify(configPosts.sort()) === JSON.stringify(["/api/ai/plan", "/api/combinations/:id/forms/find/plan", "/api/conditions/check"]), configPosts);
   ok("QA-65: every other write names its person (none answers nobody by default)", unnamed.length === 0, unnamed);
-  const doorAnswers = await Promise.all(PUBLIC_DOOR_WRITES.map(async (w) => `${w} ${await post(w, null, {})}`));
+  // A door with a path parameter is posted with a value it serves (FO-6 part 3: the signing provider this copy runs, "fake";
+  // an unknown provider is 404 by PF-28's rule, which check_pf28_inputs and check_fo6_signing_api prove).
+  const doorAnswers = await Promise.all(PUBLIC_DOOR_WRITES.map(async (w) => `${w} ${await post(w.replace(":provider", "fake"), null, {})}`));
   ok("PF-5: the public sign-up doors in the code are exactly PUBLIC_DOOR_WRITES, and each refuses an empty body (400) or is shut (503), never a 2xx",
     JSON.stringify([...doorWrites].sort()) === JSON.stringify([...PUBLIC_DOOR_WRITES].sort()) && doorAnswers.every((a) => / (400|503)$/.test(a)), { doorWrites, doorAnswers });
+  ok("R1.90: the invited sign-up form with a token not of the link's shape answers nobody 404 (no change)", await postStatus(`/api/public/signup/${"x".repeat(30)}`, null, null) === 404);
   ok("FO-2: the public writes are exactly PUBLIC_WRITES, and one with an unknown token answers nobody 404 (no change)", JSON.stringify(publicWrites.sort()) === JSON.stringify(PUBLIC_WRITES) && await postStatus(`/api/public/forms/${"x".repeat(30)}/submissions`, null, null) === 404, publicWrites);
 
   // PF-4t: the platform guard's routes, asked (Lead 50 on #1775).

@@ -10,7 +10,7 @@ import { firmScope } from "../../platform/firm-scope.ts";
 import type { FirmCalendar } from "../../platform/calendar/working-days.ts";
 import { forbidden, type StaffContext } from "../../platform/identity/keys.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
-import { arrive, possibleMatch } from "./arrival.ts";
+import { arrive, possibleMatch, tellAssigned } from "./arrival.ts";
 import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx } from "./common.ts";
 import { openMinutesIn, openWindows } from "./open-minutes.ts";
 import { dayRange, ownerAsked } from "./prospects.ts";
@@ -101,7 +101,7 @@ export class Leads {
       id: lead.id, number: lead.number, label: "Lead", state: lead.state, door: lead.door, source: lead.source, sourceDetail: lead.sourceDetail,
       interestedIn: lead.interestedIn?.label ?? null, ownerStaffId: lead.ownerStaffId, owner: ownerLabel(lead.ownerStaffId ? staff.get(lead.ownerStaffId) : undefined),
       arrivedAt: lead.arrivedAt, firstResponseAt: lead.firstResponseAt, closeReason: lead.closeReason?.label ?? null, closeNote: lead.closeNote, closedAt: lead.closedAt,
-      person: { id: lead.person.id, givenNames: lead.person.givenNames, familyName: lead.person.familyName, email: lead.person.email, phone: lead.person.phone, fixNumber: !lead.person.phoneReadable },
+      person: { id: lead.person.id, givenNames: lead.person.givenNames, familyName: lead.person.familyName, email: lead.person.email, phone: lead.person.phone, fixNumber: !lead.person.phoneReadable, version: lead.person.updatedAt.toISOString() },
       possibleMatch, attribution: lead.attribution ? Object.fromEntries(Object.entries(lead.attribution).filter(([k, x]) => x !== null && !["firmId", "leadId", "createdAt"].includes(k))) : null,
     };
   }
@@ -191,6 +191,8 @@ export class Leads {
       if (l.owner_staff_id !== was && !(was === null && activeOwner === null)) { const now = l.owner_staff_id ? staff.get(l.owner_staff_id) : undefined; return conflict(now ? `${now.displayName} already has this lead.` : "This lead changed. Reload it.", "STALE_OWNER", { ownerStaffId: l.owner_staff_id }); }
       if (l.owner_staff_id === to.id) return conflict(`${to.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: to.id });
       await tx.foLead.update({ where: { id }, data: { ownerStaffId: to.id } });
+      // PF-18n part 2: the new owner is told, unless they assigned it to themselves (as Take it, AG-7-39 r4).
+      if (to.id !== ctx.staffId) await tellAssigned(tx, this.ports.notifications, ctx.firmId, to.id, id);
       return { owner: to.id, summary: `assigned the lead to staff ${to.id}`, via: "ASSIGN" };
     });
   }
