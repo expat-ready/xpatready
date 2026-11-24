@@ -36,12 +36,28 @@ export const COPY = {
   signInTitle: "Sign in to the ExpatReady console",
   signInLead: "For ExpatReady's own staff. Local stand-in sign-in (second step taken) until our staff's sign-in pages are built.",
   standInOff: "Sign-in for ExpatReady staff is not set up on this server.",
-  ended: "Your session ended. Sign in again.",
+  expired: "Your session expired. Sign in again.",
+  revoked: "Your session was ended by a Platform Owner. Sign in again.",
+  deactivated: "This ExpatReady staff account has been deactivated. Ask a Platform Owner.",
+  emailNeeded: "Enter your work email.",
+  meFailed: "Could not check who is signed in.",
   firmsEmpty: "No firms match. Clear the search or pick All.",
+  pastEnd: "No firms on this page.",
+  figuresIncomplete: "Some firms' figures were not worked out on this filter; narrow the search.",
   failedCapped: "Only the oldest 10 000 failed jobs were read; newer ones may not be counted here.",
   failedUnknown: "Not known: the job queue could not be read just now.",
   loadFailed: "Could not load the firms. Please try again.",
 } as const;
+
+/** Why the session ended, for the card (concept §4a): our words for the codes we know, else the server's own words; null
+ *  when the person signed out on purpose. */
+export function endedWords(code: string | null, detail: string | null): string | null {
+  if (!code) return null;
+  if (code === "TOKEN_EXPIRED") return COPY.expired;
+  if (code === "SESSION_REVOKED") return COPY.revoked;
+  if (code === "STAFF_NOT_ACTIVE") return COPY.deactivated;
+  return detail || COPY.expired;
+}
 
 const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const DATE_TIME = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" });

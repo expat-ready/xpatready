@@ -24,7 +24,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { client, recorder } from "./runtime/api.ts";
-import { COPY, failedJobsText, planState, SESSION_KEY, usageText } from "../web/src/modules/system/contract.ts";
+import { COPY, endedWords, failedJobsText, planState, SESSION_KEY, usageText } from "../web/src/modules/system/contract.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const [PORT, DBNAME] = [Number(process.argv[2] ?? 4447), process.argv[3] ?? "xr_studio_pf17c"];
@@ -66,6 +66,11 @@ const firmToken = async () => {
       && usageText({ metric: "storage_mb", used: 820, limit: 5000, over: false }) === "820 / 5,000 MB" && usageText({ metric: "storage_mb", used: null, limit: 5000, over: false }) === "—");
 }
 
+{
+  ok("PF-17 P pass/fail (round 2, review #3): the card says why the session ended: expired, ended by a Platform Owner, deactivated; an unknown code the server's own words; none when signed out on purpose",
+    endedWords("TOKEN_EXPIRED", null) === COPY.expired && endedWords("SESSION_REVOKED", "x") === COPY.revoked && endedWords("STAFF_NOT_ACTIVE", "x") === COPY.deactivated
+      && endedWords("SOMETHING_NEW", "The server's words.") === "The server's words." && endedWords(null, null) === null);
+}
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });
 const errors: string[] = [];
 const ctx = async (width = 1440, height = 900): Promise<BrowserContext> => browser.newContext({ viewport: { width, height }, colorScheme: "light", reducedMotion: "reduce", deviceScaleFactor: 1 });
@@ -81,6 +86,12 @@ try {
   await p1.goto(`${BASE}/system/firms`);
   const card = await seen(p1, "[data-system-sign-in]");
   ok("PF-17 B1 pass: signed out, /system/firms shows the console's sign-in card (its heading), no firm rows", card && (await p1.getByRole("heading", { name: COPY.signInTitle }).count()) === 1 && (await p1.getByRole("row").count()) === 0);
+  let blankSent = false; const spyBlank = (r: { url(): string }) => { if (r.url().includes("/api/system/session/local")) blankSent = true; };
+  p1.on("request", spyBlank);
+  await p1.getByRole("button", { name: "Sign in" }).click();
+  const blankErr = await p1.locator("[data-system-sign-in-error]").innerText({ timeout: 5000 }).catch(() => "");
+  p1.off("request", spyBlank);
+  ok("PF-17 B1 fail (round 2, review #5): a blank email is stopped on its field, nothing sent", blankErr === COPY.emailNeeded && !blankSent, { blankErr, blankSent });
   await p1.getByLabel("Work email").fill("nobody.pf17@expatready.example.com");
   await p1.getByRole("button", { name: "Sign in" }).click();
   const refusedText = await p1.locator("[data-system-sign-in-error]").innerText({ timeout: 10_000 }).catch(() => "");
@@ -91,6 +102,10 @@ try {
   const kept = await p1.evaluate((k) => { try { return JSON.parse(sessionStorage.getItem(k) ?? "null"); } catch { return null; } }, SESSION_KEY);
   ok("PF-17 B1 pass: the Sample Platform Owner signs in by work email and lands on Firms; the session is sessionStorage \"xr-system-session\" {token, expiresAt} (j_93's key)",
     inFirms && typeof kept?.token === "string" && typeof kept?.expiresAt === "number" && kept.expiresAt > Date.now(), { inFirms, kept: kept ? Object.keys(kept) : null });
+  await p1.getByRole("row").nth(1).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  const focusAfter = await p1.evaluate(() => (document.activeElement?.tagName ?? "") + "|" + (document.activeElement?.textContent ?? ""));
+  ok("PF-17 B1 pass (round 2, review #9): after sign-in the focus is on the page's heading and the tab is titled for the page",
+    focusAfter === "H1|Firms" && (await p1.title()) === "Firms · ExpatReady console", { focusAfter, title: await p1.title() });
   await p1.screenshot({ path: join(SHOTS, "01-firms-1440.png"), fullPage: true });
 
   // ---------------------------------------------------------------------------------------- B2 rows equal the API
@@ -114,6 +129,11 @@ try {
     return { row: await rowText(p1, nameA), note: await p1.locator("[data-failed-capped]").innerText().catch(() => "") };
   };
   const capped = await stubbed(0), unknown = await stubbed(null);
+  await p1.unroute("**/api/system/firms*").catch(() => undefined);
+  await p1.route("**/api/system/firms*", async (r) => { const real = await r.fetch(); const body = await real.json(); await r.fulfill({ response: real, json: { ...body, complete: false, note: "an API sentence naming q" } }); });
+  await p1.reload(); await p1.getByRole("row").filter({ hasText: nameA }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const partial = await p1.locator("[data-firms-note]").innerText().catch(() => "");
+  ok("PF-17 B2b pass (round 2, review #7): figures not all worked out on a filter show the concept's words, not the API's internal sentence", partial === COPY.figuresIncomplete, partial);
   ok("PF-17 B2b pass/fail (BR-4, m1): a read at its cap says so once and a firm with none shows \"0+\" (never a bare 0); a read that failed shows \"Not known\" with its own note",
     capped.note === COPY.failedCapped && / 0\+ /.test(` ${capped.row} `) && unknown.note === COPY.failedUnknown && unknown.row.includes("Not known"), { capped, unknown });
   await p1.unroute("**/api/system/firms*");
@@ -131,7 +151,11 @@ try {
   sql(`update platform_firm set status = 'ACTIVE' where id = '${B}'`);
   await p1.goto(`${BASE}/system/firms?health=X`);
   const fieldErr = await p1.locator("[data-firms-error]").innerText({ timeout: 15_000 }).catch(() => "");
-  ok("PF-17 B3 fail: an address the API refuses (?health=X) shows the API's words, never a blank page", /highlighted|fields|change/i.test(fieldErr), fieldErr);
+  ok("PF-17 B3 fail (round 2, review #2): an address the API refuses (?health=X) names the field and its rule, and offers Clear filters, not a Retry that repeats it",
+    /health/i.test(fieldErr) && (await p1.getByRole("button", { name: "Clear filters" }).count()) === 1 && (await p1.getByRole("button", { name: "Retry" }).count()) === 0, fieldErr);
+  await p1.goto(`${BASE}/system/firms?page=9`);
+  const past = await p1.locator("[data-firms-past-end]").innerText({ timeout: 15_000 }).catch(() => "");
+  ok("PF-17 B3 fail (round 2, breaker 2): a page past the end says so and offers page 1, never \"No firms match\"", past.includes(COPY.pastEnd) && (await p1.getByRole("button", { name: "Go to page 1" }).count()) === 1, past);
   await p1.goto(`${BASE}/system/firms`);
   await firmsHeading(p1).waitFor({ timeout: 15_000 }).catch(() => undefined);
   await p1.getByRole("searchbox", { name: /Search firm/ }).fill("solo");
@@ -141,17 +165,27 @@ try {
   await p1.getByRole("searchbox", { name: /Search firm/ }).fill("zz-no-such-firm");
   const empty = await p1.locator("[data-firms-empty]").innerText({ timeout: 10_000 }).catch(() => "");
   ok("PF-17 B3 fail: a search that matches nothing shows the empty state's words, no table rows", empty.includes(COPY.firmsEmpty), empty);
+  await p1.getByRole("navigation", { name: "Console" }).getByRole("link", { name: "Firms" }).click();
+  await p1.waitForURL((u) => !u.search.includes("q="), { timeout: 10_000 }).catch(() => undefined);
+  ok("PF-17 B3 pass (round 2, breaker 3): leaving the search by the menu clears the box with the address", (await p1.getByRole("searchbox", { name: /Search firm/ }).inputValue().catch(() => "x")) === "");
 
   // ---------------------------------------------------------------------------------------- B7 the wall, both ways
   const tFirm = await firmToken();
   const c7 = await ctx(); await c7.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tFirm);
+  const crossed: string[] = [];
+  const spy = (r: { url(): string; headers(): Record<string, string> }) => { const auth = r.headers().authorization ?? "", u = r.url();
+    if (u.includes("/api/system") && auth.includes(tFirm)) crossed.push(`firm token to ${u}`); if (!u.includes("/api/system") && u.includes("/api/") && auth.includes(tOur)) crossed.push(`our token to ${u}`); };
+  c7.on("request", spy);
   const p7 = await pageIn(c7); await p7.goto(`${BASE}/system/firms`);
   ok("PF-17 B7 fail (BR-2): a firm Owner's session alone (xr-staff-session) opens no console page: the console's sign-in card, no firm rows",
     await seen(p7, "[data-system-sign-in]") && (await p7.getByRole("row").count()) === 0);
   const c7b = await ctx(); await c7b.addInitScript(([k, x]) => sessionStorage.setItem(k, JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), [SESSION_KEY, tOur] as const);
+  c7b.on("request", spy);
   const p7b = await pageIn(c7b); await p7b.goto(`${BASE}/platform/licences`);
   ok("PF-17 B7 fail (BR-2): our session alone (xr-system-session) opens no firm page: the firm's own sign-in card",
     await seen(p7b, "[data-sign-in-card]") && (await seen(p7b, "[data-system-sign-in]", 1500)) === false);
+  await p7b.waitForTimeout(1000);
+  ok("PF-17 B7 fail (round 2, review #8): no request sent a firm token to /api/system or our token to any other route (request spy)", crossed.length === 0, crossed);
   await c7.close(); await c7b.close();
 
   // ---------------------------------------------------------------------------------------- B8 expiry and a refused token
@@ -159,7 +193,23 @@ try {
   const p8 = await pageIn(c8); await p8.goto(`${BASE}/system/firms`);
   const before = await firmsHeading(p8).waitFor({ timeout: 15_000 }).then(() => true, () => false);
   const endedCard = await p8.locator("[data-system-sign-in-ended]").innerText({ timeout: 10_000 }).catch(() => "");
-  ok("PF-17 B8 pass/fail: the session works until its expiry, then ends by itself: the card says why", before && endedCard.includes(COPY.ended), { before, endedCard });
+  ok("PF-17 B8 pass/fail: the session works until its expiry, then ends by itself: the card says why", before && endedCard.includes(COPY.expired), { before, endedCard });
+  const tRevoked = await ourToken("support.sample@expatready.example.com");
+  const c8r = await ctx(); await c8r.addInitScript(([k, x]) => { if (!sessionStorage.getItem("pf17-b8r")) { sessionStorage.setItem("pf17-b8r", "1"); sessionStorage.setItem(k, JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })); } }, [SESSION_KEY, tRevoked] as const);
+  const p8r = await pageIn(c8r); await p8r.goto(`${BASE}/system/firms`); await firmsHeading(p8r).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  sql(`update plat_system_staff set sessions_ended_at = now() + interval '1 second' where email = 'support.sample@expatready.example.com'`);
+  await p8r.waitForTimeout(1500);
+  await p8r.getByRole("button", { name: "Held", exact: true }).click();
+  const revokedCard = await p8r.locator("[data-system-sign-in-ended]").innerText({ timeout: 10_000 }).catch(() => "");
+  ok("PF-17 B8 fail (round 2, review #3): a session a Platform Owner ended says so on the card (not \"expired\")", revokedCard === COPY.revoked, revokedCard);
+  await c8r.close();
+  const c8m = await ctx(); await c8m.addInitScript(([k, x]) => sessionStorage.setItem(k, JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), [SESSION_KEY, tOur] as const);
+  const p8m = await pageIn(c8m); await p8m.route("**/api/system/me", (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ title: "Server error", detail: "Sample: down" }) }));
+  await p8m.goto(`${BASE}/system/firms`);
+  const meDown = await p8m.locator("[data-system-me-error]").innerText({ timeout: 10_000 }).catch(() => "");
+  ok("PF-17 B8 fail (round 2, review #4): a who-am-I answer that fails (500) says so with Retry, keeps the session and shows no sign-in card",
+    meDown.includes(COPY.meFailed) && (await p8m.locator("[data-system-sign-in]").count()) === 0 && (await p8m.evaluate((k) => sessionStorage.getItem(k), SESSION_KEY)) !== null, meDown);
+  await c8m.close();
   const refusedOne = ["refused", "by", "the", "server"].join("-");   // no real token: the guard reads none in git
   const c8b = await ctx(); await c8b.addInitScript(([k, x]) => sessionStorage.setItem(k, JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), [SESSION_KEY, refusedOne] as const);
   const p8b = await pageIn(c8b); await p8b.goto(`${BASE}/system/firms`);
@@ -175,7 +225,16 @@ try {
   const chipFocused = await p1.evaluate(() => document.activeElement?.getAttribute("data-chip") ?? "");
   await p1.keyboard.press("Tab"); await p1.keyboard.press("Enter");
   await p1.waitForURL(/health=HELD/, { timeout: 5000 }).catch(() => undefined);
-  ok("PF-17 B9 pass: keyboard only, the search leads to the chips and Enter on Held applies it", chipFocused !== "" && /health=HELD/.test(p1.url()), { chipFocused, url: p1.url() });
+  await p1.waitForTimeout(800);
+  const stillOn = await p1.evaluate(() => document.activeElement?.getAttribute("data-chip") ?? document.activeElement?.tagName ?? "");
+  ok("PF-17 B9 pass (round 2, review and breaker M1): keyboard only, the search leads to the chips; Enter on Held applies it and the focus stays on Held once the answer comes",
+    chipFocused !== "" && /health=HELD/.test(p1.url()) && stillOn === "HELD", { chipFocused, url: p1.url(), stillOn });
+  await p1.goto(`${BASE}/system/firms`); await firmsHeading(p1).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const box = p1.getByRole("searchbox", { name: /Search firm/ });
+  await box.click(); await p1.keyboard.type("sam"); await p1.waitForTimeout(700); await p1.keyboard.type("ple");
+  await p1.waitForTimeout(700);
+  const typed = await box.inputValue().catch(() => ""), boxFocused = await box.evaluate((e) => e === document.activeElement).catch(() => false);
+  ok("PF-17 B9 fail (round 2, review and breaker M1): typing across a pause keeps every letter and the focus in the box while the list follows", typed === "sample" && boxFocused && /q=sample/.test(p1.url()), { typed, boxFocused, url: p1.url() });
   await p1.goto(`${BASE}/system/firms`); await firmsHeading(p1).waitFor({ timeout: 15_000 }).catch(() => undefined);
   const v1440 = await axe(p1);
   const widths: Record<number, { axe: number; sideways: boolean }> = {};
@@ -185,6 +244,18 @@ try {
     widths[w] = { axe: (await axe(p)).length, sideways: await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth) };
     await p.screenshot({ path: join(SHOTS, `02-firms-${w}.png`), fullPage: true }); await c.close();
   }
+  const signInHeight = await (async () => { const c = await ctx(375, 800); const p = await pageIn(c); await p.goto(`${BASE}/system/firms`); await seen(p, "[data-system-sign-in]"); const h = (await p.getByRole("button", { name: "Sign in" }).boundingBox())?.height ?? 0; await c.close(); return h; })();
+  ok("PF-17 B9 pass (round 2, review #6, UXL-09): at 375 px the card's Sign in button is at least 44 px tall", signInHeight >= 44, signInHeight);
+  const pubEmail = "publisher.pf17b@expatready.example.com";
+  sql(`with s as (insert into plat_system_staff (id, email, display_name) values (gen_random_uuid(), '${pubEmail}', 'Content publisher (Sample)') on conflict (email) do update set display_name = excluded.display_name returning id)
+       insert into plat_system_role_grant (id, staff_id, role_code) select gen_random_uuid(), id, 'platform-content-publisher' from s where not exists (select 1 from plat_system_role_grant g where g.staff_id = s.id) returning staff_id`);
+  const tPub = await ourToken(pubEmail);
+  const cpub = await ctx(); await cpub.addInitScript(([k, x]) => sessionStorage.setItem(k, JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), [SESSION_KEY, tPub] as const);
+  const ppub = await pageIn(cpub); await ppub.goto(`${BASE}/system/firms`);
+  const noKey = await ppub.locator("[data-firms-error]").innerText({ timeout: 15_000 }).catch(() => "");
+  ok("PF-17 B9 fail (round 2, breaker 5; BR-1): a staff member without system/firm:read reads the API's words, with no search, chips, Retry or empty menu",
+    /system\/firm:read|firm read key/i.test(noKey) && (await ppub.getByRole("searchbox").count()) === 0 && (await ppub.locator("[data-chip]").count()) === 0 && (await ppub.getByRole("button", { name: "Retry" }).count()) === 0 && (await ppub.getByRole("navigation", { name: "Console" }).count()) === 0, noKey);
+  await cpub.close();
   const cardAxe = (await (async () => { const c = await ctx(); const p = await pageIn(c); await p.goto(`${BASE}/system/firms`); await seen(p, "[data-system-sign-in]"); await p.screenshot({ path: join(SHOTS, "00-sign-in-1440.png") }); const v = await axe(p); await c.close(); return v; })()).length;
   ok("PF-17 B9 pass: axe-core WCAG 2.2 A/AA finds nothing on Firms at 1440, 1024 and 375 px or on the sign-in card; no sideways page scroll at 375 or 1024",
     v1440.length === 0 && widths[1024].axe === 0 && widths[375].axe === 0 && cardAxe === 0 && !widths[375].sideways && !widths[1024].sideways, { v1440: v1440.map((v) => v.id), widths, cardAxe });
