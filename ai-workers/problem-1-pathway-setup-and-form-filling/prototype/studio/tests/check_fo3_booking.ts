@@ -62,7 +62,8 @@ try {
   await copyFirmHoursTo(db, B.id, [B1.id]);
   await copyFirmHoursTo(db, H.id, [H1.id]);
   await writeSetting(db, { firmId: A.id, key: CLOSED_DAYS.key, value: ["2026-10-28"], by: "seed:fo3", workspaceId: ws.id });
-  const type = (firmId: string, slug: string, hosts: string[], extra: Record<string, unknown> = {}) => db.foConsultationType.create({ data: { firmId, slug, name: `Free consultation ${slug}`, modes: ["VIDEO", "PHONE"], hostStaffIds: hosts, minutes: 30, ...extra } });
+  // Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+  const type = (firmId: string, slug: string, hosts: string[], extra: Record<string, unknown> = {}) => db.foConsultationType.create({ data: { requireAgreement: false, firmId, slug, name: `Free consultation ${slug}`, modes: ["VIDEO", "PHONE"], hostStaffIds: hosts, minutes: 30, ...extra } });
   const T = {
     base: await type(A.id, "free", [A1.id]),
     team: await type(A.id, "team", [A1.id, A2.id]),
