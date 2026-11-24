@@ -138,6 +138,11 @@ try {
   const offB = await Promise.all([apply({ invoiceId: NIL, amountMinor: 100 }, tS), refund({ personId: PB, amountMinor: 100 }, tS)]);
   ok("FO-7t DW1 fail: firm B UNANSWERED with nothing held: Pay from trust and a refund answer 404 (no trust route answers), nothing written",
     offB.every((r) => r.status === 404) && entries() === 0, offB.map((r) => [r.status, r.body]));
+  const bDraft = await raw(tS, "POST", "/invoices", { personId: PB, currency: "CAD" });
+  await raw(tS, "POST", `/invoices/${bDraft.body.id}/lines`, { kind: "FEE", description: "Professional fee (Sample)", unitMinor: 1000, ratePpm: 0 });
+  const offTick = await raw(tS, "POST", `/invoices/${bDraft.body.id}/issue?payFromTrustMinor=100`);
+  ok("FO-7t DW1 fail (break m3): trust unanswered, \"Pay from trust now\" ticked at issue → 409 TRUST_OFF saying the invoice was not issued; still a draft",
+    offTick.status === 409 && offTick.body.code === "TRUST_OFF" && /The invoice was not issued\./.test(offTick.body.detail ?? "") && sql(`select issued_at is null from money_invoice where id = '${bDraft.body.id}'`) === "t", offTick.body);
   await call(tR, "PUT", "/answer", { answer: "YES" }); await call(tS, "PUT", "/answer", { answer: "YES" });
   const onB = await apply({ invoiceId: NIL, amountMinor: 100 }, tS);
   ok("FO-7t DW1 pass (the same route, trust on): with YES Pay from trust on an unknown invoice is 404 for the invoice (problem names the invoice), not a missing route",
@@ -170,6 +175,13 @@ try {
   ok("FO-7t DW7 pass (AG-6-68 rule 7): two applications of CAD 1,000.00 at once from CAD 1,130.00 → one 201, the other 409 \"Only CAD 130.00 is available.\"; the case holds 130.00, never below zero",
     won.length === 1 && lost.length === 1 && (lost[0].body.detail ?? "").includes("Only CAD 130.00 is available.") && caseBalance(PC, CASE_C) === 13000
     && sql(`select count(*) from money_trust_entry where balance_after_minor < 0`) === "0", race.map((r) => [r.status, r.body.detail]));
+  // Review and break M1: a double click on Pay from trust (the same amount from the same payer on one invoice, at once).
+  const invC = await issued(PC, CASE_C, 20000);
+  const twice = await Promise.all([apply({ invoiceId: invC, amountMinor: 5000 }), apply({ invoiceId: invC, amountMinor: 5000 })]);
+  ok("FO-7t DW7 fail (M1, double click): the same Pay from trust twice at once → one 201, the other 409 DUPLICATE asking \"Pay it again?\"; one withdrawal",
+    twice.filter((r) => r.status === 201).length === 1 && twice.some((r) => r.status === 409 && r.body.code === "DUPLICATE" && r.body.acknowledge === "duplicateAcknowledged") && entries(`invoice_id = '${invC}'`) === 1, twice.map((r) => [r.status, r.body.code]));
+  const again = await apply({ invoiceId: invC, amountMinor: 5000, duplicateAcknowledged: true });
+  ok("FO-7t DW7 pass (M1): confirmed → the second one is written (201); the case holds 30.00", again.status === 201 && entries(`invoice_id = '${invC}'`) === 2 && caseBalance(PC, CASE_C) === 3000, again.body);
 
   // ------------------------------------------------------------------------------------------ DW8: apply rules
   await deposit(PA, CASE2, 50000);
@@ -178,6 +190,8 @@ try {
     noPick.status === 409 && (noPick.body.detail ?? "").includes("Only CAD 169.50 is available.") && entries(`invoice_id = '${inv2}'`) === 0, noPick.body);
   const pickNoReason = await apply({ invoiceId: inv2, amountMinor: 30000, pick: { caseId: CASE2 } });
   ok("FO-7t DW8 fail: a pick without a reason → a field error (422), nothing written", fieldError(pickNoReason.status) && entries(`invoice_id = '${inv2}'`) === 0, pickNoReason.body);
+  const pickZw = await apply({ invoiceId: inv2, amountMinor: 30000, pick: { caseId: CASE2, reason: "\u200b" } });
+  ok("FO-7t DW8 fail (review m2): a pick whose reason has no visible character (a zero-width space) → 422, nothing written", fieldError(pickZw.status) && entries(`invoice_id = '${inv2}'`) === 0, pickZw.body);
   const picked = await apply({ invoiceId: inv2, amountMinor: 30000, pick: { caseId: CASE2, reason: "Client a asked to use the PR file's deposit (Sample)" } });
   ok("FO-7t DW8 pass: the deliberate pick of another case of the same payer → 201; the entry is on CASE2, recorded with who (the writer), when and why; the audit line names the pick",
     picked.status === 201 && sql(`select case_id || ':' || picked_other_funds_by || ':' || (picked_other_funds_at is not null) || ':' || picked_other_funds_reason from money_trust_entry where invoice_id = '${inv2}'`)
@@ -185,7 +199,7 @@ try {
     && sql(`select count(*) from audit_event where action = 'trust_money.applied' and entity_key = '${picked.body.entryId}' and detail::text like '%${CASE2}%'`) === "1", [picked.body]);
   const otherPayer = await apply({ invoiceId: inv2, amountMinor: 1000, pick: { personId: PC, caseId: CASE_C, reason: "Sample" } });
   ok("FO-7t DW8 fail: another payer's money from another case → 409 with the database's words (a pick never crosses cases or clients), nothing written",
-    otherPayer.status === 409 && otherPayer.body.code === "MONEY_RULE" && /same case/.test(otherPayer.body.detail ?? "") && caseBalance(PC, CASE_C) === 13000, otherPayer.body);
+    otherPayer.status === 409 && otherPayer.body.code === "MONEY_RULE" && /same case/.test(otherPayer.body.detail ?? "") && caseBalance(PC, CASE_C) === 3000, otherPayer.body);
   await deposit(PA, CASE, 40000, "CHEQUE");   // CASE: 169.50 cleared + 400.00 cheque not yet cleared
   const inv3 = await issued(PA, CASE, 30000);
   // Money is spent cleared first: the 169.50 cleared pays without a confirm; after it, what is left on CASE is the cheque.
@@ -222,14 +236,32 @@ try {
   const tooMuch = await refund({ personId: PD, amountMinor: 60001 });
   ok("FO-7t DW9 fail (AG-6-23 rule 4): more than the payer holds (600.01 of 600.00) → 409 \"Only CAD 600.00 is available.\", nothing written",
     tooMuch.status === 409 && (tooMuch.body.detail ?? "").includes("Only CAD 600.00 is available.") && entries("kind = 'REFUND_TO_CLIENT'") === 0, tooMuch.body);
-  const toOther = await refund({ personId: PD, amountMinor: 10000, payee: { personId: PC, reason: "Client d asked for the money to go to Client c (Sample)" } });
+  const payeeOnlyReason = await refund({ personId: PD, amountMinor: 100, payee: { reason: "Sample" } }), payeeSelf = await refund({ personId: PD, amountMinor: 100, payee: { personId: PD, reason: "Sample" } });
+  ok("FO-7t DW9 fail (break m1): a payee given only a reason, or the payer named as payee with a reason → 422 each (a reason is never dropped silently), nothing written",
+    fieldError(payeeOnlyReason.status) && fieldError(payeeSelf.status) && entries("kind = 'REFUND_TO_CLIENT'") === 0, [payeeOnlyReason.body, payeeSelf.body]);
+  const dayAt = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const ahead = await refund({ personId: PD, amountMinor: 100, refundedOn: dayAt(2) });
+  // Break m2: PA's CASE money is made 100 days old; CASE2's came in today. The database checks the party's first money
+  // (any case) and would take a refund from CASE2 dated 50 days ago; the route checks the case's.
+  sql(`set session_replication_role = replica; update money_trust_entry set created_at = created_at - interval '100 days' where case_id = '${CASE}'`);
+  const early = await refund({ personId: PA, caseId: CASE2, amountMinor: 100, refundedOn: dayAt(-50) });
+  ok("FO-7t DW9 fail (review m2, break m2): a refund dated in the future, or dated before that case's money came into trust → 422 each, nothing written",
+    fieldError(ahead.status) && fieldError(early.status) && entries("kind = 'REFUND_TO_CLIENT'") === 0, [ahead.body, early.body]);
+  const toOther = await refund({ personId: PD, amountMinor: 10000, reference: "ET-0001", payee: { personId: PC, reason: "Client d asked for the money to go to Client c (Sample)" } });
   ok("FO-7t DW9 pass: another payee with a reason → 201, the payee and its reason stored", toOther.status === 201
     && sql(`select payee_person_id || ':' || payee_reason from money_trust_entry where id = '${toOther.body.entryId}'`) === `${PC}:Client d asked for the money to go to Client c (Sample)`, toOther.body);
-  const rest = await refund({ personId: PD, amountMinor: 50000 });
+  // Review and break M1: a trust refund can't be corrected (P-603), so a double click must not write two.
+  const dbl = await Promise.all([refund({ personId: PD, amountMinor: 20000, reference: "ET-555" }), refund({ personId: PD, amountMinor: 20000, reference: "ET-555" })]);
+  ok("FO-7t DW9 fail (M1, double click): the same refund twice at once → one 201, the other 409 DUPLICATE_REFERENCE asking \"Record anyway?\"; one refund written",
+    dbl.filter((r) => r.status === 201).length === 1 && dbl.some((r) => r.status === 409 && r.body.code === "DUPLICATE_REFERENCE" && r.body.acknowledge === "duplicateReferenceAcknowledged")
+    && entries("kind = 'REFUND_TO_CLIENT' and refund_reference = 'ET-555'") === 1, dbl.map((r) => [r.status, r.body.code]));
+  const sameRef = await refund({ personId: PD, amountMinor: 10000, reference: " et-555 ", duplicateReferenceAcknowledged: true });
+  ok("FO-7t DW9 pass (M1): the same reference (any case and spacing) confirmed → recorded (201)", sameRef.status === 201, sameRef.body);
+  const rest = await refund({ personId: PD, amountMinor: 20000 });
   ok("FO-7t DW9 pass (AG-6-23 test 1): refunding the rest to the payer (no payee given) → 201, a REFUND_TO_CLIENT with method, date, reference and reason, payee empty (the payer), the balance 0",
     rest.status === 201 && rest.body.balanceMinor === 0 && caseBalance(PD, null) === 0
     && sql(`select kind || ':' || amount_minor || ':' || refund_method || ':' || (refunded_on is not null) || ':' || refund_reference || ':' || reason || ':' || (payee_person_id is null) from money_trust_entry where id = '${rest.body.entryId}'`)
-      === "REFUND_TO_CLIENT:-50000:E_TRANSFER:true:ET-88213:Matter closed (Sample):true", rest.body);
+      === "REFUND_TO_CLIENT:-20000:E_TRANSFER:true:ET-88213:Matter closed (Sample):true", rest.body);
 
   // ------------------------------------------------------------------------------------- DW10: walls, C5, audit
   const unseen = await Promise.all([apply({ invoiceId: inv3, amountMinor: 1 }, tO), refund({ personId: PA, caseId: CASE, amountMinor: 1 }, tO), refund({ personId: PA, amountMinor: 1 }, tO)]);
@@ -239,9 +271,17 @@ try {
   const crossFirm = await Promise.all([apply({ invoiceId: inv3, amountMinor: 1 }, tS), refund({ personId: PA, caseId: CASE, amountMinor: 1 }, tS), refund({ personId: PB, caseId: CASE, amountMinor: 1 }, tS)]);
   ok("FO-7t DW10 fail (walls): firm B on firm A's invoice, client or case → 404, nothing written for firm A by firm B",
     crossFirm.every((r) => r.status === 404) && entries(`firm_id = '${A}' and created_by like 'staff:%' and created_by not in (select 'staff:' || id from platform_staff where firm_id = '${A}')`) === 0, crossFirm.map((r) => r.status));
+  // Review M2 (C5 on the pick): user-O is put on CASE's team, so sees CASE (and its client), never CASE2 or CASE_C.
+  sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values (gen_random_uuid(), '${W}', '${CASE}', 'user-O', 'OFFICER', 'user-R')`);
+  const invP = await issued(PA, CASE, 1000);
+  const oPlain = await apply({ invoiceId: invP, amountMinor: 1000 }, tO);
+  const oPicks = await Promise.all([apply({ invoiceId: invP, amountMinor: 100, pick: { caseId: CASE2, reason: "Sample" } }, tO), apply({ invoiceId: invP, amountMinor: 100, pick: { personId: PC, caseId: CASE_C, reason: "Sample" } }, tO)]);
+  ok("FO-7t DW10 pass (C5): the on-team officer sees CASE's invoice: Pay from trust answers about the money (409 NOT_AVAILABLE: CASE holds 0.00), not 404", oPlain.status === 409 && oPlain.body.code === "NOT_AVAILABLE", oPlain.body);
+  ok("FO-7t DW10 fail (review M2): the same officer picking money of a case it cannot see (CASE2 of the same payer; another payer's CASE_C) → 404 each, nothing written",
+    oPicks.every((r) => r.status === 404) && entries(`invoice_id = '${invP}'`) === 0 && caseBalance(PA, CASE2) === 20000, oPicks.map((r) => [r.status, r.body.code]));
   const applied = entries("kind = 'WITHDRAWAL_TO_INVOICE'"), refunded = entries("kind = 'REFUND_TO_CLIENT'");
   ok("FO-7t DW10 pass (audit): one trust_money.applied line per withdrawal written by the routes and at issue, one trust_money.refunded per refund; every refusal above wrote none",
-    applied === 6 && audits("trust_money.applied") === applied && refunded === 2 && audits("trust_money.refunded") === refunded, { applied, refunded, a: audits("trust_money.applied"), r: audits("trust_money.refunded") });
+    applied === 8 && audits("trust_money.applied") === applied && refunded === 4 && audits("trust_money.refunded") === refunded, { applied, refunded, a: audits("trust_money.applied"), r: audits("trust_money.refunded") });
 
   // ----------------------------------------------------------------------------------------- DW18: the events
   const payloadKeys = sql(`select string_agg(distinct k, ',' order by k) from module_event, jsonb_object_keys(payload) k where type in ('trust.applied', 'trust.refunded')`);

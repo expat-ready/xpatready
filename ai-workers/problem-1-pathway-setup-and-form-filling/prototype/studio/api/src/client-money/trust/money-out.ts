@@ -20,6 +20,7 @@ import { TRUST_EVENT, TrustAppliedPayload, TrustRefundedPayload } from "../../..
 import { problem } from "../../platform/identity/keys.ts";
 import { MONEY, UUID, badField, notFound } from "../invoices/drafts.ts";
 import { invoiceFacts, type Facts } from "../invoices/facts.ts";
+import { trustShows } from "../reads/common.ts";
 
 type Tx = Prisma.TransactionClient;
 const refuse = (code: string, detail: string, extra: Record<string, unknown> = {}): never => problem(409, "Not possible now", detail, { code, ...extra });
@@ -33,7 +34,7 @@ const oneOrNone = (d: Record<string, unknown>, keys: string[]) => keys.filter((k
  *  payer (personId | companyId) on the invoice's case; always with a reason. */
 export const PickIn = z.strictObject({ caseId: id("The case").nullable().optional(), personId: id("The person").optional(), companyId: id("The company").optional(), reason: words("The reason for using this money", 200) })
   .refine((p) => oneOrNone(p, ["personId", "companyId"]), { message: "Name one payer: a person or a company.", path: ["personId"] });
-export const ApplyIn = z.strictObject({ invoiceId: id("The invoice"), amountMinor: amount, unclearedAcknowledged: z.boolean().optional(), pick: PickIn.optional() });
+export const ApplyIn = z.strictObject({ invoiceId: id("The invoice"), amountMinor: amount, unclearedAcknowledged: z.boolean().optional(), duplicateAcknowledged: z.boolean().optional(), pick: PickIn.optional() });
 /** The tick at issue (`?payFromTrustMinor=N&unclearedAcknowledged=true`): query values are text. */
 export const IssueTick = z.strictObject({
   payFromTrustMinor: z.string().regex(/^[1-9]\d{0,9}$/, "The amount to pay from trust is a whole number of cents.").transform(Number).pipe(amount).optional(),
@@ -43,9 +44,13 @@ const PayeeIn = z.strictObject({ personId: id("The payee").optional(), companyId
   .refine((p) => oneOrNone(p, ["personId", "companyId", "name"]), { message: "Name one payee: a person, a company or a name.", path: ["personId"] });
 export const RefundIn = z.strictObject({
   personId: id("The person").optional(), companyId: id("The company").optional(), caseId: id("The case").optional(), currency: MoneyCurrency, amountMinor: amount,
-  reason: words("The reason", 200), reference: words("The reference", 100), refundedOn: day.optional(), payee: PayeeIn.optional(),
+  reason: words("The reason", 200), reference: words("The reference", 100), refundedOn: day.optional(), payee: PayeeIn.optional(), duplicateReferenceAcknowledged: z.boolean().optional(),
   method: z.enum(["BANK_TRANSFER", "WIRE", "CHEQUE", "CASH", "E_TRANSFER", "OTHER"], { message: "A refund from trust is offline: bank transfer, e-Transfer, wire, cheque, cash or another method, never by card." }),
 }).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] });
+
+/** A reference as a person reads it (AG-6-19's duplicate warning, as part 1's deposits read it): NFKC, no zero-width
+ *  characters, one space for any run of white space, no outer spaces, any letter case. */
+export const refKey = (x: Prisma.Sql) => Prisma.sql`btrim(regexp_replace(regexp_replace(lower(normalize(${x}, NFKC)), '[\u200b-\u200d\u2060\ufeff]', '', 'g'), '\\s+', ' ', 'g'))`;
 
 type PartyRef = { personId: string | null; companyId: string | null };
 const partyId = (p: PartyRef) => (p.personId ?? p.companyId)!;
@@ -64,7 +69,7 @@ async function held(tx: Tx, firmId: string, p: PartyRef, currency: string, caseI
   return { available: Math.max(0, Math.min(Number(r.on_case), Number(r.whole))), uncleared: Number(r.uncleared) };
 }
 
-export type ApplyArgs = { firmId: string; by: string; today: string; invoiceId: string; amountMinor: number; unclearedAcknowledged?: boolean;
+export type ApplyArgs = { firmId: string; by: string; today: string; invoiceId: string; amountMinor: number; unclearedAcknowledged?: boolean; duplicateAcknowledged?: boolean; atIssue?: boolean;
   pick?: { caseId?: string | null; personId?: string; companyId?: string; reason: string }; payer?: PartyRef };
 export type Applied = { entryId: string; invoiceId: string; amountMinor: number; currency: string; after: Facts };
 
@@ -78,13 +83,24 @@ export async function applyTrust(tx: Tx, audit: AuditPort<Tx>, a: ApplyArgs): Pr
   const payer: PartyRef = a.payer ?? own;
   const caseId = a.pick && a.pick.caseId !== undefined ? a.pick.caseId : inv.case_id;
   for (const p of [...new Set([partyId(own), partyId(payer)])].sort()) await tx.$executeRaw`select money_trust_lock(${a.firmId}::uuid, ${p}::uuid, ${inv.currency}::"MoneyCurrency")`;
-  const [row] = await tx.$queryRaw<{ issued: boolean; number: string | null }[]>`select issued_at is not null as issued, number from money_invoice where firm_id = ${a.firmId}::uuid and id = ${a.invoiceId}::uuid for update`;
-  if (!row.issued) refuse("DRAFT", "Issue the invoice first: trust pays only an issued invoice. Nothing was paid from trust.");
+  const [row] = await tx.$queryRaw<{ issued: boolean; number: string | null; person_id: string | null; company_id: string | null; case_id: string | null }[]>`
+    select issued_at is not null as issued, number, person_id::text, company_id::text, case_id::text from money_invoice where firm_id = ${a.firmId}::uuid and id = ${a.invoiceId}::uuid for update`;
+  const not = a.atIssue ? " The invoice was not issued." : " Nothing was paid from trust.";   // review m5: at issue, say the issue rolled back
+  if (!(await trustShows(tx, a.firmId))) refuse("TRUST_OFF", `This firm doesn't hold client money in trust, so nothing can be paid from trust.${not}`);   // break m3
+  if (!row.issued) refuse("DRAFT", `Issue the invoice first: trust pays only an issued invoice.${not}`);
+  // Review m4: what was read before the locks (party, case) is read again under them; a draft changed in between is refused.
+  if (row.person_id !== inv.person_id || row.company_id !== inv.company_id || row.case_id !== inv.case_id) refuse("CHANGED", `This invoice changed while it was being paid from trust: try again.${not}`);
   const before = (await invoiceFacts(tx, a.firmId, a.invoiceId, a.today))!, cur = inv.currency;
   const h = await held(tx, a.firmId, payer, cur, caseId);
-  if (a.amountMinor > h.available) refuse("NOT_AVAILABLE", `Only ${cur} ${MONEY(h.available)} is available.`, { availableMinor: h.available });
+  if (a.amountMinor > h.available) refuse("NOT_AVAILABLE", `Only ${cur} ${MONEY(h.available)} is available.${a.atIssue ? not : ""}`, { availableMinor: h.available });
   const due = Math.max(0, before.view.dueMinor);
-  if (a.amountMinor > due) refuse("OVER_DUE", `Only ${cur} ${MONEY(due)} is due on ${row.number}. Nothing was paid from trust.`, { dueMinor: due });
+  if (a.amountMinor > due) refuse("OVER_DUE", `Only ${cur} ${MONEY(due)} is due on ${row.number}.${not}`, { dueMinor: due });
+  // Review and break M1 (a double click): the same amount from the same payer on this invoice in the last 2 minutes,
+  // read under the payer's lock, so the second of two clicks sees the first. A proper idempotency key needs a column
+  // (a migration): question for the tech lead on the PR.
+  const [dup] = await tx.$queryRaw<{ n: bigint }[]>`select count(*) as n from money_trust_entry e where e.firm_id = ${a.firmId}::uuid and e.invoice_id = ${a.invoiceId}::uuid and e.kind = 'WITHDRAWAL_TO_INVOICE'
+    and e.amount_minor = ${-a.amountMinor}::int and ${partyIs(payer)} and e.created_at > now() - interval '2 minutes'`;
+  if (dup.n > 0n && !a.duplicateAcknowledged) refuse("DUPLICATE", `${cur} ${MONEY(a.amountMinor)} was paid from trust on ${row.number} a moment ago. Pay it again?`, { acknowledge: "duplicateAcknowledged" });
   const clearedPart = Math.max(0, h.available - h.uncleared);
   if (a.amountMinor > clearedPart && !a.unclearedAcknowledged)
     refuse("UNCLEARED", `${cur} ${MONEY(Math.min(h.uncleared, a.amountMinor - clearedPart))} of this is a cheque not yet cleared. Apply anyway?`, { acknowledge: "unclearedAcknowledged" });
@@ -104,23 +120,33 @@ export async function applyTrust(tx: Tx, audit: AuditPort<Tx>, a: ApplyArgs): Pr
   return { entryId: e.id, invoiceId: a.invoiceId, amountMinor: a.amountMinor, currency: cur, after };
 }
 
-export type RefundArgs = { firmId: string; by: string; today: string; party: PartyRef; caseId: string | null; r: z.infer<typeof RefundIn>; payee: { personId?: string; companyId?: string; name?: string; reason?: string } | null };
+export type RefundArgs = { firmId: string; by: string; today: string; holder: PartyRef; caseId: string | null; r: z.infer<typeof RefundIn>; payee: { personId?: string; companyId?: string; name?: string; reason?: string } | null };
 
 /** A refund to the client: one REFUND_TO_CLIENT on the payer's ledger, never more than the payer holds on that case. */
 export async function refundTrust(tx: Tx, audit: AuditPort<Tx>, a: RefundArgs) {
   const { r } = a, cur = r.currency, refundedOn = r.refundedOn ?? a.today;
   if (refundedOn > a.today) badField("refundedOn", "A refund is recorded once it is made: the date can't be in the future. Nothing was saved.");
-  await tx.$executeRaw`select money_trust_lock(${a.firmId}::uuid, ${partyId(a.party)}::uuid, ${cur}::"MoneyCurrency")`;
-  const h = await held(tx, a.firmId, a.party, cur, a.caseId);
+  await tx.$executeRaw`select money_trust_lock(${a.firmId}::uuid, ${partyId(a.holder)}::uuid, ${cur}::"MoneyCurrency")`;
+  const h = await held(tx, a.firmId, a.holder, cur, a.caseId);
   if (r.amountMinor > h.available) refuse("NOT_AVAILABLE", `Only ${cur} ${MONEY(h.available)} is available.`, { availableMinor: h.available });
-  const e = await tx.moneyTrustEntry.create({ data: { firmId: a.firmId, personId: a.party.personId, companyId: a.party.companyId, caseId: a.caseId, kind: "REFUND_TO_CLIENT", amountMinor: -r.amountMinor, currency: cur, reason: r.reason,
+  // Break m2: never dated before this case's money came in (the database checks the party's first money, any case; the
+  // same one day's slack for the time zone).
+  const on = Prisma.sql`e.firm_id = ${a.firmId}::uuid and ${partyIs(a.holder)} and e.currency = ${cur}::"MoneyCurrency" and e.case_id is not distinct from ${a.caseId}::uuid`;
+  const [first] = await tx.$queryRaw<{ d: string | null }[]>`select to_char(min(e.created_at)::date - 1, 'YYYY-MM-DD') as d from money_trust_entry e where ${on}`;
+  if (first.d && refundedOn < first.d) badField("refundedOn", "A refund is never dated before this money came into trust. Nothing was saved.");
+  // Review and break M1: a trust refund can't be corrected (P-603), so the same reference twice for this payer is asked
+  // first, under the payer's lock: the second of two clicks is refused (deposits' AG-6-19 warning, the same reading).
+  const [dup] = await tx.$queryRaw<{ n: bigint }[]>`select count(*) as n from money_trust_entry e where e.firm_id = ${a.firmId}::uuid and ${partyIs(a.holder)} and e.kind = 'REFUND_TO_CLIENT'
+    and ${refKey(Prisma.sql`e.refund_reference`)} = ${refKey(Prisma.sql`${r.reference}`)}`;
+  if (dup.n > 0n && !r.duplicateReferenceAcknowledged) refuse("DUPLICATE_REFERENCE", `A trust refund with reference ${r.reference} is already recorded for this client. Record anyway?`, { acknowledge: "duplicateReferenceAcknowledged" });
+  const e = await tx.moneyTrustEntry.create({ data: { firmId: a.firmId, personId: a.holder.personId, companyId: a.holder.companyId, caseId: a.caseId, kind: "REFUND_TO_CLIENT", amountMinor: -r.amountMinor, currency: cur, reason: r.reason,
     refundMethod: r.method, refundedOn: new Date(`${refundedOn}T00:00:00Z`), refundReference: r.reference, createdBy: a.by,
     payeePersonId: a.payee?.personId ?? null, payeeCompanyId: a.payee?.companyId ?? null, payeeName: a.payee?.name ?? null, payeeReason: a.payee?.reason ?? null }, select: { id: true, balanceAfterMinor: true } });
   const left = h.available - r.amountMinor;
   await audit.record(tx, { firmId: a.firmId, actor: a.by, action: "trust_money.refunded", entity: "money_trust_entry", entityKey: e.id,
     summary: `${cur} ${MONEY(r.amountMinor)} refunded from trust${a.payee ? " to another payee" : " to the payer"}.`,
-    detail: { entryId: e.id, amountMinor: r.amountMinor, caseId: a.caseId, payerId: partyId(a.party), otherPayee: !!a.payee, balanceAfterMinor: e.balanceAfterMinor },
+    detail: { entryId: e.id, amountMinor: r.amountMinor, caseId: a.caseId, payerId: partyId(a.holder), otherPayee: !!a.payee, balanceAfterMinor: e.balanceAfterMinor },
     before: null, after: { amountMinor: r.amountMinor, currency: cur, method: r.method, refundedOn, reference: r.reference, reason: r.reason, payeePersonId: a.payee?.personId ?? null, payeeCompanyId: a.payee?.companyId ?? null, payeeName: a.payee?.name ?? null, payeeReason: a.payee?.reason ?? null } });
-  await tx.moduleEvent.create({ data: { firmId: a.firmId, type: TRUST_EVENT.TRUST_REFUNDED, subjectId: e.id, payload: TrustRefundedPayload.parse({ entryId: e.id, personId: a.party.personId, companyId: a.party.companyId, caseId: a.caseId, amountMinor: r.amountMinor, currency: cur }) } });
-  return { entryId: e.id, amountMinor: r.amountMinor, currency: cur, balanceMinor: left };
+  await tx.moduleEvent.create({ data: { firmId: a.firmId, type: TRUST_EVENT.TRUST_REFUNDED, subjectId: e.id, payload: TrustRefundedPayload.parse({ entryId: e.id, personId: a.holder.personId, companyId: a.holder.companyId, caseId: a.caseId, amountMinor: r.amountMinor, currency: cur }) } });
+  return { entryId: e.id, amountMinor: r.amountMinor, currency: cur, balanceMinor: left };   // balanceMinor: what the payer still holds on that case (review m8)
 }

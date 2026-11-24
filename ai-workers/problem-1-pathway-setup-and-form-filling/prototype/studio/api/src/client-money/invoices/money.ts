@@ -49,8 +49,7 @@ export class InvoiceMoney {
   /** POST …/invoices/:id/issue[?dueDate=YYYY-MM-DD]: the next INV- number, the lines frozen, a due date (the firm's "Due in
    *  N days" when none is sent). The query is parsed before anything is read. */
   async issue(ctx: StaffContext, invoiceId: string, query: unknown): Promise<IssuedView> {
-    const { payFromTrustMinor, unclearedAcknowledged, ...due } = (query ?? {}) as Record<string, unknown>;   // FO-7t part 2: the "Pay from trust now" tick
-    const b = parse(IssueIn, due), tick = parse(IssueTick, { payFromTrustMinor, unclearedAcknowledged }), id = idOf(invoiceId), today = dayOf(this.clock.now());
+    const b = parse(IssueIn.extend(IssueTick.shape), query ?? {}), id = idOf(invoiceId), today = dayOf(this.clock.now());   // FO-7t part 2: the "Pay from trust now" tick
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     const view = await this.write(async (tx) => {
       await this.seen(tx, ctx, id, scope); const inv = await this.lock(tx, ctx.firmId, id);   // C5 before the locks and any write (review m2)
@@ -69,7 +68,7 @@ export class InvoiceMoney {
         detail: { invoiceId: id, number: v.number, totalMinor: v.totalMinor, taxMinor: v.taxMinor }, before: { status: "DRAFT", number: null, dueDate: null }, after: { status: "ISSUED", number: v.number, dueDate: v.dueDate, totalMinor: v.totalMinor, currency: v.currency, ...lettered(head) } });
       await this.event(tx, ctx.firmId, MONEY_EVENT.INVOICE_ISSUED, f);
       // FO-7t part 2 (FO-7s3b's Q5, Lead B): ticked → paid from trust in this transaction, after the number; a refusal rolls the issue back.
-      if (tick.payFromTrustMinor) return (await applyTrust(tx, this.audit, { firmId: firmScope(ctx.firmId).firmId, by: `staff:${ctx.staffId}`, today, invoiceId: id, amountMinor: tick.payFromTrustMinor, unclearedAcknowledged: tick.unclearedAcknowledged })).after.view;
+      if (b.payFromTrustMinor) return (await applyTrust(tx, this.audit, { firmId: firmScope(ctx.firmId).firmId, by: `staff:${ctx.staffId}`, today, invoiceId: id, amountMinor: b.payFromTrustMinor, unclearedAcknowledged: b.unclearedAcknowledged, atIssue: true })).after.view;
       return v;
     });
     return IssuedView.parse({ invoice: view, email: await this.emailInvoice(ctx.firmId, view) });
