@@ -10,12 +10,19 @@ import { Versioned } from "../../http/if-match.ts";
 
 type R = { platform?: StaffContext };
 /** PF-28 (the one input rule): the body is an object of named fields, parsed here (an array, a string or a key over 64 characters is
- *  422). Each field is then checked by its own rule in the service, every bad one named at once (SaveProfile, READ_ONLY). */
+ *  422). Each field is then checked by its own rule in the service, every bad one named at once (SaveProfile, READ_ONLY).
+ *  R1.10 (j_10 B7): its fields are declared, so a reader of the code knows them: the ones the service saves and the read-only ones it
+ *  refuses in words. Loose on purpose: any other key passes on to the service, which names it with the rest (review m4). */
+const unknownField = z.unknown().optional();
+// PF-5fp-2 (review r3-m1): plain words, never the library's "This must be a record."/"This must be a object.": a custom check first
+// (parseInput keeps its message), then the fields; a key over 64 characters keeps its own message too.
 export const ProfileBody = z.unknown()
-  // PF-5fp-2 (review r3-m1): plain words, never the library's "This must be a record." or "Invalid key in record". A custom check
-  // first (parseInput keeps its message), then the record, whose key error keeps its own message too.
   .refine((v) => v !== null && typeof v === "object" && !Array.isArray(v), "Send the firm profile as one set of named fields.")
-  .pipe(z.record(z.string().max(64), z.unknown(), { error: "A field name is at most 64 characters." }));
+  .pipe(z.looseObject({
+    version: unknownField, publicPhone: unknownField, publicEmail: unknownField, website: unknownField, language: unknownField,
+    timeZone: unknownField, currency: unknownField, billingEmail: unknownField,
+    legalName: unknownField, operatingName: unknownField, countryCode: unknownField, key: unknownField, businessAddress: unknownField,
+  }).superRefine((v, c) => { for (const k of Object.keys(v)) if (k.length > 64) c.addIssue({ code: "custom", path: [k], message: "A field name is at most 64 characters." }); }));
 
 @Controller("api/platform/firm/profile")
 export class FirmProfileController {
