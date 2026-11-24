@@ -539,3 +539,6 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **A read-only GitHub API call (rulesets, two diffs, comments) was refused by the permission layer twice at about 18:12, no reason given; the first also held a comment saying I had read a diff I had not yet read (not posted). Not routed around.** So unread: #3492 1f..1d14a564c (one card line by its lane's words; "Lead allows round 3" not posted; it is queued on a label from its old head), #3497 2836de75c (label back on it; .mergify.yml change takes the Lead's read; **my read and Lead B's re-read owed**).
 * #3477 queued (full run green). #3493 Approve 80185f1ae: my money read and Lead B's owed. #3490 built at cb742468e, in review. #3442 full run red on types only. R1.68 running; the rest idle or waiting.
 * Waiting on the founder: hand merge of #3494; qa 8 card; disk for a standby.
+
+### Lead 29, check 18:39 IST 24 Nov (87% weekly, disk 6.4 GB, context about 435k)
+* Mergify unchanged since 18:10: four batches Preparing, 0 checking, 11 queued; same batch names. Main 4e306d23c (17:27). GitHub API not called (refused at 18:12; the founder has not answered). R1.68 awaits input; #3497 queued at about 18:11 on an unread .mergify.yml change.
