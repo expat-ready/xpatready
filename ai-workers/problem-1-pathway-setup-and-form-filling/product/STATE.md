@@ -18,6 +18,7 @@ updated: 2026-11-24 09:30 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A351 | 24 Nov 09:27 (typed to Lead 17) | five delivery problems: implement from now without delaying product | `design/delivery-five-2026-11-24.md`, Lead 20's check at its end; open |
 | A350 | 24 Nov ~09:22 (typed to Lead 19) | do every needs-me step in the browser; AWS run US$2 yes; RQ-01 inside the 101, no blocker, parallel tracks; **commit 29 Nov**, 10-15 a day; research security and counsel; on-call given in chat | in progress; full in the plan file |
 | A349 | 24 Nov ~08:37 | AWS relay; replaced by A350 | done |
 | A348 | 24 Nov ~08:25 (typed to Lead 18) | recovery plan, clean up lanes and disk, near-done first, lessons live, keep the dates | plan file above; in progress |
