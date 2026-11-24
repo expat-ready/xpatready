@@ -77,7 +77,8 @@ def ambiguous(g):   # glob forms this script and Mergify may read differently
     return bool(re.search(r"[\[\]{}?]", g) or re.search(r"[^/]\*\*|\*\*[^/]", g))
 # FOLDERS: a module folder's scope; None = a known area left out of every scope on purpose (say why on its line).
 FOLDERS = {"platform": "platform", "front-office": "front-office", "client-money": "money", "money": "money",
-           "case-side": "case-side", "cases": "case-side", "forms": "forms-engine", "forms-engine": "forms-engine"}
+           "case-side": "case-side", "cases": "case-side", "forms": "forms-engine", "forms-engine": "forms-engine",
+           "system": "platform"}   # PF-17 part 4: our console's screens (web/src/modules/system/), the platform's (Lead 30 on #3489)
 # The area names, written apart from FOLDERS: a None in FOLDERS can never erase one (break 2971 round 2 m1).
 AREA_NAMES = frozenset({"platform", "front-office", "client-money", "money", "case-side", "cases", "forms", "forms-engine"})
 def is_area(name): return name in AREA_NAMES or any(name.startswith(a + "-") for a in AREA_NAMES)
