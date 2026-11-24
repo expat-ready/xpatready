@@ -27,6 +27,8 @@ import { MONEY, UUID, badField, notFound, parse } from "../invoices/drafts.ts";
 import { dayOf } from "../invoices/facts.ts";
 import { trustShows } from "../reads/common.ts";
 import { TrustDocuments, trustSubject, trustText, type TrustTemplate } from "./documents.ts";
+import { ApplyIn, RefundIn, applyTrust, refKey, refundTrust } from "./money-out.ts";
+import { invoiceInScope } from "../reads/visibility.ts";
 import type { MoneyVisibility } from "../../../../ports/money-visibility.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -204,6 +206,51 @@ export class TrustMoney {
     });
   }
 
+  /** POST /trust/applications (FO-7t part 2, AG-6-68): Pay from trust on an issued invoice. Trust off with money held
+   *  still answers (AG-6-59 rule 6). C5: the invoice, and a picked case or payer, must be the caller's to see (404). */
+  async apply(ctx: StaffContext, body: unknown) {
+    const a = parse(ApplyIn, body), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    const seen = await this.scopeOf(ctx);   // read before the transaction (breaker r9-M1)
+    return this.write(async (tx) => {
+      if (!(await trustShows(tx, f))) notFound("trust record");
+      await invoiceInScope(tx, f, a.invoiceId, seen);
+      const payer = a.pick && (a.pick.personId || a.pick.companyId) ? await partyOf(tx, f, a.pick) : null;
+      if (a.pick) {
+        const [inv] = await tx.$queryRaw<{ case_id: string | null; party: string }[]>`select case_id::text, coalesce(person_id, company_id)::text as party from money_invoice where firm_id = ${f}::uuid and id = ${a.invoiceId}::uuid`;
+        const caseId = a.pick.caseId !== undefined ? a.pick.caseId : inv.case_id;
+        if (caseId ? !seen.cases.includes(caseId) : !seen.parties.includes(payer?.id ?? inv.party)) notFound(caseId ? "case" : "person");
+        await textOk(tx, "pick", a.pick.reason, 200);
+      }
+      const done = await applyTrust(tx, this.audit, { firmId: f, by, today: dayOf(this.clock.now()), invoiceId: a.invoiceId, amountMinor: a.amountMinor, unclearedAcknowledged: a.unclearedAcknowledged, duplicateOf: a.duplicateOf,
+        pick: a.pick, ...(payer ? { payer: { personId: payer.personId, companyId: payer.companyId } } : {}) });
+      const v = done.after.view;
+      return { entryId: done.entryId, invoiceId: done.invoiceId, amountMinor: done.amountMinor, currency: done.currency, invoice: { number: v.number, statusWord: v.statusWord, dueMinor: v.dueMinor } };
+    });
+  }
+
+  /** POST /trust/refunds (FO-7t part 2, AG-6-23): an offline refund to the client from what the payer holds on a case (or
+   *  before a case); to the payer unless another payee is named with a reason. Trust off with money held still answers. */
+  async refund(ctx: StaffContext, body: unknown) {
+    const r = parse(RefundIn, body), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    const seen = await this.scopeOf(ctx);
+    return this.write(async (tx) => {
+      if (!(await trustShows(tx, f))) notFound("trust record");
+      const who = await partyOf(tx, f, r), caseId = r.caseId ? await this.caseOf(tx, ctx, seen, r.caseId, who) : this.partySeen(seen, who);
+      for (const [field, v, max] of [["reason", r.reason, 200], ["reference", r.reference, 100], ["payeeName", r.payee?.name, 200], ["payeeReason", r.payee?.reason, 200]] as const) if (v) await textOk(tx, field, v, max);
+      let payee: { personId?: string; companyId?: string; name?: string; reason?: string } | null = null;
+      if (r.payee && !(r.payee.personId || r.payee.companyId || r.payee.name)) badField("payee", "Name the payee: a person, a company or a name (or leave the payee out to refund the payer). Nothing was saved.");   // break m1
+      if (r.payee) {
+        const other = r.payee.name ? null : await partyOf(tx, f, r.payee);
+        if (other?.id === who.id && r.payee.reason) badField("payee", "This is the payer: leave the payee out, or name someone else. Nothing was saved.");   // break m1: never a reason dropped silently
+        if (!other || other.id !== who.id) {
+          if (!r.payee.reason) badField("payee", "Refunding to someone other than the payer needs a reason. Nothing was saved.");
+          payee = other ? { ...(other.personId ? { personId: other.personId } : { companyId: other.companyId! }), reason: r.payee.reason } : { name: r.payee.name, reason: r.payee.reason };
+        }
+      }
+      return refundTrust(tx, this.audit, { firmId: f, by, today: dayOf(this.clock.now()), holder: { personId: who.personId, companyId: who.companyId }, caseId, r, payee });
+    });
+  }
+
   // ------------------------------------------------------------------------------------------------- helpers
   /** With no case, the party itself must be one the caller sees (MoneyVisibilityPort; Lead B's money read): 404, as an
    *  unseen case, failing closed as the reads do. */
@@ -258,9 +305,6 @@ async function textOk(tx: Tx, field: string, value: string, max: number) {
   const [t] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${value}, ${max}::int) as ok`;
   if (!t.ok) badField(field, "This needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was saved.");
 }
-/** A reference as a person reads it (AG-6-19's duplicate warning): NFKC (full-width letters, NBSP), no zero-width
- *  characters, one space for any run of white space, no outer spaces, any letter case. */
-const refKey = (x: Prisma.Sql) => Prisma.sql`btrim(regexp_replace(regexp_replace(lower(normalize(${x}, NFKC)), '[\u200b-\u200d\u2060\ufeff]', '', 'g'), '\\s+', ' ', 'g'))`;
 /** What the firm holds in trust per currency, and on how many cases (or clients before a case) it is held. */
 async function heldOf(tx: Tx, f: string): Promise<Held[]> {
   const rows = await tx.$queryRaw<{ currency: string; amount: string; cases: number }[]>`select currency, sum(b)::text as amount, count(*)::int as cases from (
