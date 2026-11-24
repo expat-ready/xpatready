@@ -7,7 +7,6 @@
 // Part 4b: the one-time code's email (`sendSigningCode`), and Lead B's minors on #3433: the link's words name every end (a
 // signature, a decline, the expiry, a newer version), and outside `local` a copy with no STUDIO_PUBLIC_URL sends no link
 // (a localhost link would reach a client).
-import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { CODE_MINUTES } from "./door-code.ts";
 import { signingMail } from "./handlers.ts";
@@ -42,7 +41,7 @@ export async function sendPleaseSign(db: PrismaClient, o: { firmId: string; requ
 }
 
 /** The one-time code for a signer's link (part 4b's door, P-564), after the code's transaction. Never throws. */
-export async function sendSigningCode(db: PrismaClient, o: { firmId: string; requestId: string; personId: string; code: string }): Promise<boolean> {
+export async function sendSigningCode(db: PrismaClient, o: { firmId: string; requestId: string; signerId: string; personId: string; code: string; expiresAt: Date }): Promise<boolean> {
   const mail = signingMail();
   if (!mail) { console.warn("[fo-signing] no MailPort set: the one-time code was not emailed"); return false; }
   try {
@@ -50,7 +49,7 @@ export async function sendSigningCode(db: PrismaClient, o: { firmId: string; req
     const p = await db.foPerson.findFirst({ where: { firmId: o.firmId, id: o.personId }, select: { id: true, email: true } });
     if (!p?.email) { console.warn("[fo-signing] the signer has no email: the one-time code was not emailed"); return false; }
     await mail.send({ firmId: o.firmId, to: p.email, replyTo: firm.contactEmail, class: "TRANSACTIONAL", person: { kind: "FO_PERSON", id: p.id }, templateKey: "signing.code",
-      idempotencyKey: `signing:${o.requestId}:code:${createHash("sha256").update(o.code).digest("hex").slice(0, 16)}`,
+      idempotencyKey: `signing:${o.requestId}:code:${o.signerId}:${o.expiresAt.getTime()}`,   // 4b review m1: nothing of the code (a hash of 6 digits is reversed at once)
       subject: `Your code to sign with ${firm.operatingName}`.slice(0, 200),
       text: `Your one-time code is ${o.code}. It works for ${CODE_MINUTES} minutes. If you did not ask for it, ignore this email.\n` });
     return true;

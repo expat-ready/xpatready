@@ -68,7 +68,7 @@ export class SigningDoor {
   /** The request's end as this signer sees it, or null while they can still sign. */
   private ended(f: Found): Ended | null {
     const r = f.request, s = f.signer, firm = f.firm;
-    if (s.signedAt || r.status === "SIGNED" || (r.status === "CANCELLED" && r.cancelReason === "SIGNED_OFFLINE")) return { state: "SIGNED", message: "This agreement has already been signed." };
+    if (s.signedAt || r.status === "SIGNED" || (r.status === "CANCELLED" && r.cancelReason === "SIGNED_OFFLINE")) return { state: "SIGNED", message: "This agreement has been signed." };   // j_61's refusal words (4b review M1)
     if (s.declinedAt || r.status === "DECLINED") return { state: "DECLINED", message: `This agreement was declined. Reply to ${firm}'s email if that was a mistake.` };
     if (r.status === "CANCELLED") return r.cancelReason === "UPDATED"
       ? { state: "UPDATED", message: "This agreement was updated. Please use the latest email." }
@@ -80,18 +80,26 @@ export class SigningDoor {
     const e = this.ended(f);
     if (e) problem(409, "This link has ended", e.message, { code: `LINK_${e.state}`, state: e.state, firm: f.firm });
   }
-  private liveSession(f: Found, cookies: string[]): boolean {
-    const s = f.signer;
-    return !!s.sessionSha256 && !!s.sessionExpiresAt && s.sessionExpiresAt.getTime() > this.now().getTime() && cookies.some((c) => sha(c) === s.sessionSha256);
+  /** This browser holds the signer's live session. With the code on, only a session a right code started counts: one
+   *  started by a consent while the code was off ends when the firm switches the code back on (4b breaker m1). */
+  private liveSession(f: Found, cookies: string[], codeOn: boolean): boolean {
+    const s = f.signer, now = this.now().getTime();
+    if (!s.sessionSha256 || !s.sessionExpiresAt || s.sessionExpiresAt.getTime() <= now || !cookies.some((c) => sha(c) === s.sessionSha256)) return false;
+    const started = s.sessionExpiresAt.getTime() - SESSION_MINUTES * MIN;
+    return !codeOn || (!!s.codeVerifiedAt && Math.abs(s.codeVerifiedAt.getTime() - started) < 1000);
   }
-  private line(f: Found, action: string, summary: string, after: Record<string, string | number | boolean | null>) {
+  private line(f: Found, action: string, summary: string, after: Record<string, string | number | boolean | null>, before: Record<string, string | number | boolean | null> | null = null) {
     return (tx: Tx) => this.audit.record(tx, { firmId: f.firmId, actor: ACTOR, action, entity: "fo_signature_request", entityKey: f.request.id, summary,
-      detail: { requestId: f.request.id, signerId: f.signer.id, documentKind: f.request.documentKind }, before: null, after });
+      detail: { requestId: f.request.id, signerId: f.signer.id, documentKind: f.request.documentKind }, before, after });
   }
-  /** The request's row lock, then the signer as it is now (writes queue on the request, part 1 review m10). */
+  /** The request's row lock, then the request and the signer as they are now: one that ended meanwhile is refused in words
+   *  (409), never left to the database's trigger (a 500; 4b review m3). Writes queue on the request (part 1 review m10). */
   private async locked(tx: Tx, f: Found) {
     await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${f.firmId}::uuid and id = ${f.request.id}::uuid for update`;
-    return tx.foSigner.findFirstOrThrow({ where: { firmId: f.firmId, id: f.signer.id } });
+    const r = await tx.foSignatureRequest.findFirstOrThrow({ where: { firmId: f.firmId, id: f.request.id } });
+    const cur = await tx.foSigner.findFirstOrThrow({ where: { firmId: f.firmId, id: f.signer.id } });
+    this.refuseIfEnded({ ...f, signer: cur, request: { ...f.request, status: r.status, cancelReason: r.cancelReason } });
+    return cur;
   }
   /** A new session for this browser (replacing any earlier one); answers its plain token for the cookie. */
   private async startSession(tx: Tx, f: Found, why: string): Promise<string> {
@@ -118,8 +126,8 @@ export class SigningDoor {
       this.refuseIfEnded(f);
       if (!(await emailCodeOn(this.db, f.firmId))) problem(409, "No code needed", "This link needs no code. Continue to the agreement.", { code: "CODE_OFF" });
       const lineOf: CodeLine = (tx, summary, after) => this.line(f, "signing.door_code", summary, after)(tx);
-      const v = await this.db.$transaction((tx) => askCode(tx, f.firmId, f.signer.id, this.now(), { resend: b.resend, line: lineOf }));
-      if (v.verdict === "SENT" && f.signer.personId) await sendSigningCode(this.db, { firmId: f.firmId, requestId: f.request.id, personId: f.signer.personId, code: v.code });
+      const v = await this.db.$transaction(async (tx) => { await this.locked(tx, f); return askCode(tx, f.firmId, f.signer.id, this.now(), { resend: b.resend, line: lineOf }); });
+      if (v.verdict === "SENT" && f.signer.personId) await sendSigningCode(this.db, { firmId: f.firmId, requestId: f.request.id, signerId: f.signer.id, personId: f.signer.personId, code: v.code, expiresAt: v.expiresAt });
       if (v.verdict === "TOO_SOON" || v.verdict === "LOCKED") { const [st, title, detail, code] = CODE_REFUSALS[v.verdict]; problem(st, title, detail, { code }); }
       return { sent: true, to: "the email address this link was sent to" };
     });
@@ -134,6 +142,7 @@ export class SigningDoor {
       if (!given) { const [st, title, detail, code] = CODE_REFUSALS.FORMAT; problem(st, title, detail, { code }); }
       const lineOf: CodeLine = (tx, summary, after) => this.line(f, "signing.door_code", summary, after)(tx);
       const out = await this.db.$transaction(async (tx) => {
+        await this.locked(tx, f);
         const v = await checkCode(tx, f.firmId, f.signer.id, given!, this.now(), { line: lineOf });
         return v === "OK" ? { v, session: await this.startSession(tx, f, "the emailed code was right") } : { v, session: undefined };
       });
@@ -148,7 +157,7 @@ export class SigningDoor {
       this.refuseIfEnded(f);
       if (b.consentTextVersion !== CONSENT_TEXT_VERSION) problem(409, "The wording changed", "The consent wording changed. Open the link again to read it.", { code: "CONSENT_CHANGED" });
       const codeOn = await emailCodeOn(this.db, f.firmId);
-      if (codeOn && !this.liveSession(f, cookies)) problem(401, "Enter the code first", "Enter the code we emailed you first.", { code: "SESSION_NEEDED" });
+      if (codeOn && !this.liveSession(f, cookies, true)) problem(401, "Enter the code first", "Enter the code we emailed you first.", { code: "SESSION_NEEDED" });
       const session = await this.db.$transaction(async (tx) => {
         const cur = await this.locked(tx, f);
         if (!cur.consentedAt) {
@@ -165,7 +174,8 @@ export class SigningDoor {
   session(token: unknown, cookies: string[]) {
     return this.open(token, async (f) => {
       this.refuseIfEnded(f);
-      if (!this.liveSession(f, cookies)) problem(401, "Enter the code first", (await emailCodeOn(this.db, f.firmId)) ? "Enter the code we emailed you first." : "Agree to sign electronically first.", { code: "SESSION_NEEDED" });
+      const codeOn = await emailCodeOn(this.db, f.firmId);
+      if (!this.liveSession(f, cookies, codeOn)) problem(401, codeOn ? "Enter the code first" : "Agree first", codeOn ? "Enter the code we emailed you first." : "Agree to sign electronically first.", { code: "SESSION_NEEDED" });
       if (!f.signer.consentedAt) problem(409, "Agree first", "Agree to sign electronically first.", { code: "CONSENT_NEEDED" });
       let link: { url: string; expiresAt: Date };
       try { link = await signingPort().embeddedLink(f.firmId, f.request.providerDocumentId, f.signer.id); } catch (e) {
@@ -177,9 +187,10 @@ export class SigningDoor {
         const cur = await this.locked(tx, f);
         if (cur.viewedAt) return;
         await tx.foSigner.update({ where: { id: f.signer.id }, data: { viewedAt: this.now() } });
-        await tx.foSignatureRequest.updateMany({ where: { firmId: f.firmId, id: f.request.id, status: "SENT" }, data: { status: "VIEWED" } });
-        if (f.request.documentKind === "RETAINER") await tx.foRetainer.updateMany({ where: { firmId: f.firmId, id: f.request.documentId, status: "SENT" }, data: { status: "VIEWED" } });
-        await this.line(f, "signing.viewed", "The client opened the agreement to sign.", { viewed: true })(tx);
+        const moved = await tx.foSignatureRequest.updateMany({ where: { firmId: f.firmId, id: f.request.id, status: "SENT" }, data: { status: "VIEWED" } });
+        // The retainer moves only while it still shows this request's version (as the webhook's, service.ts; 4b review m2).
+        if (f.request.documentKind === "RETAINER") await tx.foRetainer.updateMany({ where: { firmId: f.firmId, id: f.request.documentId, status: "SENT", currentVersion: f.request.documentVersion }, data: { status: "VIEWED" } });
+        await this.line(f, "signing.viewed", "The client opened the agreement to sign.", { viewed: true, status: moved.count ? "VIEWED" : f.request.status }, { viewed: false, status: f.request.status })(tx);
       });
       return { url: link.url, expiresAt: link.expiresAt };
     });

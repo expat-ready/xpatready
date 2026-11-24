@@ -168,7 +168,12 @@ try {
   const a5 = await db.$transaction((tx) => askCode(tx, A, s4, at(), { line }));
   mins(11);
   const late = await db.$transaction((tx) => checkCode(tx, A, s4, a5.verdict === "SENT" ? a5.code : "x", at(), { line }));
-  ok("FO-6 4a C fail: a code past its 10 minutes is EXPIRED and counted", late === "EXPIRED" && sql(`select code_failures from fo_signer where id = '${s4}'`) === "1", late);
+  ok("FO-6 4a C fail: a code past its 10 minutes is EXPIRED and not counted (4b breaker m2: no live code, nothing to guess at)", late === "EXPIRED" && sql(`select code_failures from fo_signer where id = '${s4}'`) === "0", late);
+  const never = await prospect("Fen"), rn = await draft(never); await svc.send(R, rn, { expectedVersion: 1 });
+  const sn = sql(`select id from fo_signer where request_id = '${reqOf(rn)}' and role = 'CLIENT'`), noAsk: string[] = [];
+  for (let i = 0; i < CODE_TRIES + 1; i++) noAsk.push(await db.$transaction((tx) => checkCode(tx, A, sn, "123456", at(), { line })));
+  ok("FO-6 4b C fail: checks with no code ever asked are EXPIRED, never counted, never lock the link (a forwarded-link holder cannot lock the client out)",
+    noAsk.every((v) => v === "EXPIRED") && sql(`select code_failures || '|' || coalesce(locked_until::text, 'none') from fo_signer where id = '${sn}'`) === "0|none", noAsk);
   // Review m2: two checks of one right code at once: one OK, the other spent (the request's lock queues them).
   const p5 = await prospect("Eli"), r5 = await draft(p5); await svc.send(R, r5, { expectedVersion: 1 });
   const s5 = sql(`select id from fo_signer where request_id = '${reqOf(r5)}' and role = 'CLIENT'`);

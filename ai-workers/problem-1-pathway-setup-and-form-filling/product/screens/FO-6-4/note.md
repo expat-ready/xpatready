@@ -92,3 +92,21 @@ A fresh Opus challenger read this note, the test, the row and the code on main: 
    * Staff's message list (`GET /api/platform/messages`) shows a message's facts, never a transactional body: "transactional bodies stay sealed, PF-19e" (`platform/messages/staff-routes.ts:4`).
    * The rendered email is a file in the firm's file space. It is read only by the demo inbox (`GET /api/demo/platform-inbox`, the local adapter, demo workspace only, 404 elsewhere) and by whoever operates the file store and database (our own staff with infrastructure access).
    * With the code on, the link alone opens nothing (rule 7). With it off, it is a bearer link until signed (Lead 24, answer 2), so this exposure is the firm's choice, named in the switch's words.
+
+## Part 4b round 1 fixes (reviewer and breaker on 2ba80d7c4, `review-4b.md`, `break-report-4b.md`)
+* **Rule 10, the rate limit, changed** (breaker M1, reviewer m4):
+  * Per (address, token), Sample 30 a minute, as before.
+  * The address ceiling now counts only **misses** (malformed or unknown links), Sample 300 a minute. Past it, further misses get 429, but a live link is never refused because of other callers. With no trust-proxy, every client behind a proxy shares one address, and the old 300-a-minute ceiling on every call was one global limit.
+  * POST bodies must be JSON (415 otherwise; breaker m4).
+* **Rule 4's signed words** are now "This agreement has been signed.", which j_61's refusal words match (reviewer M1).
+* **The code:**
+  * A check with no live code (none asked, expired, or already used) is refused and not counted, so a forwarded-link holder cannot lock the client out (breaker m2).
+  * With the code on, only a session a right code started counts: a session started by consent while the code was off ends when the firm switches the code back on (breaker m1).
+  * The code's email key holds nothing of the code (reviewer m1).
+* **Small fixes:**
+  * The state is re-checked after the request's lock: 409 in words, never a 500 (reviewer m3).
+  * The retainer moves to VIEWED only at its current version (reviewer m2).
+  * The view line has before and after (reviewer m6).
+  * With the code off, the 401's words say "Agree first" (reviewer m5, breaker m3).
+  * `rollback.sql` deletes its `_prisma_migrations` row (reviewer m7).
+* **Tests** (reviewer M2): headers; consent needed; GET writes nothing; viewed and VIEWED; session replacement with the code on; the server-side expiry; checks with no code asked; JSON only; the code switched back on; SIGNED_OFFLINE in the ended-state loop; misses never blocking a live link.
