@@ -41,6 +41,11 @@ const notWork = (): never => problem(404, "Not found", NOT_WORK, { code: "LINK_N
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const side = (t: FakePageTicket) => (t.role === "CLIENT" ? "the client" : "the firm");
 
+/** An unknown, used, expired or malformed nonce: the one 404, as a page a person can read (the walk showed raw JSON). */
+function gone(res: Rs): string {
+  res.status(404);
+  return page("This test link does not work", `<p role="alert">${NOT_WORK} It may have been used already or be more than 10 minutes old. Open the signing link again to get a new one.</p>`);
+}
 function headers(res: Rs) {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
@@ -76,7 +81,7 @@ export class FakeSigningPageController {
   show(@Param("doc") doc: string, @Param("signer") signer: string, @Param("nonce") nonce: string, @Res({ passthrough: true }) res: Rs) {
     headers(res);
     const t = fake().pageTicket(doc, signer, nonce);
-    if (!t) return notWork();
+    if (!t) return gone(res);
     return page(t.title, `<p>You are signing as ${side(t)}.</p><form method="post"><button type="submit">Sign</button></form>`);
   }
 
@@ -84,7 +89,7 @@ export class FakeSigningPageController {
   async sign(@Param("doc") doc: string, @Param("signer") signer: string, @Param("nonce") nonce: string, @Res({ passthrough: true }) res: Rs) {
     headers(res);
     const f = fake(), t = f.claimTicket(doc, signer, nonce);   // taken now: a second Sign on this nonce is the 404
-    if (!t) return notWork();
+    if (!t) return gone(res);
     let calls: SigningHookCall[];
     try { calls = await f.act(t.firmId, t.providerDocumentId, t.signerId, "signed"); } catch { return page(t.title, `<p role="alert">This document can no longer be signed here. Ask the firm to send it again.</p>`); }
     for (const c of calls) {

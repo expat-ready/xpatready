@@ -69,7 +69,9 @@ try {
     html.includes("Retainer &lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;co&quot;") && !html.includes("<script") && /as the client/.test(html) && (html.match(/<button/g) ?? []).length === 1 && !html.includes("Sample-A") && !html.includes("Representative Sample"), html.slice(0, 300));
   ok("FO-6 4c fake page: its answers carry no-store, no-referrer and a CSP with default-src 'none' and form-action 'self'",
     r6.h["cache-control"] === "no-store" && r6.h["referrer-policy"] === "no-referrer" && /default-src 'none'/.test(r6.h["content-security-policy"] ?? "") && /form-action 'self'/.test(r6.h["content-security-policy"] ?? ""), r6.h);
-  ok("FO-6 4c fake page: an unknown nonce is the one 404", await statusOf(() => ctrl.show(l6.doc, l6.signer, "B".repeat(43), res())) === 404);
+  const rU: ReturnType<typeof res> & { code?: number } = Object.assign(res(), { status(c: number) { rU.code = c; } });
+  const unknown = String(ctrl.show(l6.doc, l6.signer, "B".repeat(43), rU));
+  ok("FO-6 4c fake page: an unknown nonce is the one 404, as a readable page (\"This test link does not work.\"), never raw JSON", rU.code === 404 && unknown.includes("This test link does not work.") && unknown.startsWith("<!doctype html>"), { code: rU.code });
   const env = process.env.PLATFORM_ENVIRONMENT; process.env.PLATFORM_ENVIRONMENT = "production";
   const outside = await statusOf(() => ctrl.show(l6.doc, l6.signer, l6.nonce, res()));
   process.env.PLATFORM_ENVIRONMENT = env;
