@@ -542,3 +542,8 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 
 ### Lead 29, check 18:39 IST 24 Nov (87% weekly, disk 6.4 GB, context about 435k)
 * Mergify unchanged since 18:10: four batches Preparing, 0 checking, 11 queued; same batch names. Main 4e306d23c (17:27). GitHub API not called (refused at 18:12; the founder has not answered). R1.68 awaits input; #3497 queued at about 18:11 on an unread .mergify.yml change.
+
+### Lead 29, 18:52 IST 24 Nov (founder: "Yes, carry on" = GitHub calls from the shell)
+* Refused once more with the rulesets read in it; without it, reads and comments work. Rulesets not read and not to be tried again.
+* #3492 one card line read, "Lead allows round 3" posted. #3497: difference (one .mergify.yml path, census row) read, line posted; Lead B's re-read asked. j_74 W7 date fault (red on main 4e306d23c too, the lane's words): owed to qa. #3500: Accept joins CS-D1 part 2; **web/vite.config.ts waits on the founder** (its session refused the edit). #3493 carries #3442's part 2, lands after it; my read of part 3's own code is owed, Lead B asked.
+* Open with the founder: hand merge #3494; R1.68's file; disk; qa 8 card.
