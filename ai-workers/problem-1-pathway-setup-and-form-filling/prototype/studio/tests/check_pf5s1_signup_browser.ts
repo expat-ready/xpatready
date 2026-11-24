@@ -230,7 +230,11 @@ try {
     if (held) await k.evaluate(() => (window as unknown as { __pf5s1Arm: () => void }).__pf5s1Arm());
     await k.keyboard.press("Enter");   // from the firm name: the form is sent, the tick still unticked
     await k.locator("[data-signup-terms-error]").waitFor({ timeout: 10_000 });
+    // Wait on the page's state, never on time: the refusal is over when focus has reached the summary (its frame ran),
+    // and the tick counts only once it is checked; then the button.
+    await k.waitForFunction(() => !!document.activeElement?.matches("[data-signup-summary]"), undefined, { timeout: 10_000 });
     await tabTo("[data-signup-agree]"); await k.keyboard.press("Space");
+    await k.locator("[data-signup-agree]:checked").waitFor({ timeout: 10_000 });
     await tabTo("[data-signup-submit]"); await k.keyboard.press("Enter");
     await checkScreen(k);
     return (await k.locator("[data-signup-sent-to]").innerText()) === email;
