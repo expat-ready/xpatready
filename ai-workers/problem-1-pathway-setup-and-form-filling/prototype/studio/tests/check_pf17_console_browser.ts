@@ -104,15 +104,18 @@ try {
   };
   ok("PF-17 B2 pass (j_93 W2): firm A's and firm B's rows each show their own plan, plan state, failed jobs, health and reasons as the API answers them",
     await matches(p1, A, nameA) && await matches(p1, B, nameB), { a: await rowText(p1, nameA), b: await rowText(p1, nameB) });
-  await p1.route("**/api/system/firms*", async (r) => {
-    const real = await r.fetch(); const body = await real.json();
-    await r.fulfill({ response: real, json: { ...body, failedJobsComplete: false, firms: body.firms.map((f: { id: string }) => (f.id === B ? { ...f, failedJobs: null } : { ...f, failedJobs: 0 })) } });
-  });
-  await p1.reload();
-  await firmsHeading(p1).waitFor({ timeout: 15_000 }).catch(() => undefined);
-  const capped = await rowText(p1, nameA), unknown = await rowText(p1, nameB), note = await p1.locator("[data-failed-capped]").innerText().catch(() => "");
-  ok("PF-17 B2b pass/fail (BR-4, m1): with the read at its cap the page says so once and firm A shows \"0+\" (never a bare 0); a read that failed shows \"Not known\"",
-    note.includes(COPY.failedCapped) && / 0\+ /.test(` ${capped} `) && unknown.includes("Not known"), { note, capped, unknown });
+  // The API sends one of two: the read reached its cap (counts as read, flag false) or failed (every count null, flag false).
+  const stubbed = async (failedJobs: number | null) => {
+    await p1.unroute("**/api/system/firms*").catch(() => undefined);
+    await p1.route("**/api/system/firms*", async (r) => { const real = await r.fetch(); const body = await real.json();
+      await r.fulfill({ response: real, json: { ...body, failedJobsComplete: false, firms: body.firms.map((f: object) => ({ ...f, failedJobs })) } }); });
+    await p1.reload();
+    await p1.getByRole("row").filter({ hasText: nameA }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+    return { row: await rowText(p1, nameA), note: await p1.locator("[data-failed-capped]").innerText().catch(() => "") };
+  };
+  const capped = await stubbed(0), unknown = await stubbed(null);
+  ok("PF-17 B2b pass/fail (BR-4, m1): a read at its cap says so once and a firm with none shows \"0+\" (never a bare 0); a read that failed shows \"Not known\" with its own note",
+    capped.note === COPY.failedCapped && / 0\+ /.test(` ${capped.row} `) && unknown.note === COPY.failedUnknown && unknown.row.includes("Not known"), { capped, unknown });
   await p1.unroute("**/api/system/firms*");
 
   // ---------------------------------------------------------------------------------------- B3 chips, search, errors
