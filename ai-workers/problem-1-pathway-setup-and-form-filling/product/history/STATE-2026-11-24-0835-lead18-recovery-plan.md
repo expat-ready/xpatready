@@ -347,3 +347,14 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Its count of RULES.md (enforcers not tested): 132 rows, 16 enforced, 30 in part, 4 owed, 82 prose (62%; 67% on 16 Nov; target under 30%). Its recommendation: a check that refuses a Lead report without its fixed sections. Not ruled.
 * Pace correction told to him: 1 Dec rested on one day; 22 to 24 Nov about 5 a day.
 * Row moved from STATE, still open, word for word: | A360 | 24 Nov ~13:43 (typed to Lead 25) | check with the last Lead, lose nothing; say which tools and what's next; speed check; go on by yourself; may start sessions | plan file, end; in progress |
+
+### Lead 26, 14:49 IST 24 Nov: A363
+* **A363** (founder, typed to me): "We have done a lot of hard work to basically create this software engineering pipeline and written those roles and decisions and the frameworks and the hooks ... If we are missing it ... you have to find the root cause that why after these rules being like did not miss it and how it can't happen in the future. And I'm also missing the speed. I know that if lead works properly ... The speed can reach to 50. I'm not sure what is there ... guide me on what how it needs to be done. And you have my effort to create the standby lead." Read as yes to one standby Lead session. "50" not defined by him: ask.
+
+### Lead 26, 14:52 IST 24 Nov: A363, what was measured
+* **The Lead's copy is stale:** lead/2026-11-07-lead31 left main on 11 Nov (6,372 main commits not here). In tools/, 153 files on main are absent here and 46 differ: no founder-report.py, cycle-timeline.py, waves.py, review-rounds.py, same-cause.py; lead-watch.sh 195 lines here, 362 on main; lead-watch skill here of 20 Nov, main's 23 Nov. Skill on main orders founder-report.py; this copy cannot run it. Hook names in settings.json match main's (by grep; not tested).
+* cycle-plan.json on main still holds the 21 Nov cycle (last commit 21 Nov 16:50 IST). 15 hand-overs from 00:05 to 14:35 IST, about one an hour.
+* Main's founder-report.py runs from a 9 MB sparse scratch copy of main (--short, rc 0): Proven this cycle 4 of 15, total 55 of 101, on track no; 14:51 IST.
+* Works on main at day end IST, by grep: 20 Nov 25, 21 Nov 41, 22 Nov 46, 23 Nov 50; 55 now.
+* Last 24 h on main: 126 merged PRs, 48 app code. App code medians: created to merged 704 min; first Approve to merged 586; last Approve to last label 53; last label to merged 62; 23 of 48 were dequeued at least once. Old PRs inflate the first two.
+* Standby asked for; lane-preflight refused at 14:49 (disk 6.5 GB, needs 7), not started. Two refusals are not to be worked around. lead-watch run started 14:45 not finished at 14:51.
