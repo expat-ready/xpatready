@@ -618,3 +618,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **Reports owed to the founder:** the measured stage table, the cycle timeline, A370 refresh; I gave none. Records owed: Lead 29's list, plus CS-D5 follow-ups (wasm licence files first), FO-7ts (uncleared hold in the database, date guard, credit-note Minor), the heap back to 8192 and ci-pipeline-strategy.md:141 (#3495 is merged), #3508's signal test, R1.29 parts.
 * **Local:** Lead B 7 and Lead O 2 told to report to you. Pane 800x600: prompt box at (270, 551); after navigate wait 18 s; "not displayed" means ask him to show it (typing failed once). API check commands: in the transcript; the old chk.sh is in eb84ba49's scratchpad.
 * **My errors:** a needless Approve request on #3460; "ci green" on #3460 while `fast` was rerunning; my read on #3508's 93cf7b0ca was given before its ci was green and it then went red; #3489's and #3493's next steps were first put only in PR comments, which do not wake lanes (25 min lost).
+
+## Lead 31, 21:14 to 21:17 IST 24 Nov
+* Took over 21:14; STATE named me; check 4b4573bd (3,33; the app said next run 21:37). Weekly 92%, disk 7.5 GB, my context 104k at 21:14, before the start read (no figure after it). No standby.
+* Queue 21:15: #3460 queued (waits for room in scope migrations); #3518 (#3467, #3500) and #3519 (#3516) testing, no red; #3497, #3234 wait on scopes.
+* Read lines posted: #3489 8e7f454d6 (scope fix, session, frame, contract, routes; not the firms page or test), #3508 4d3231487 (all four files). Both label only on green ci, fast, guards (running 21:16).
+* Told: Lead B 7 and Lead O 2 (order: #3508, bk3 trace, #3506 held for A1). Pane hidden: lanes not read or typed into by me.
