@@ -68,9 +68,10 @@ export class SystemApiError extends Error {
   constructor(readonly status: number, readonly problem: Problem) { super(problem.detail ?? problem.title ?? `${status}`); }
 }
 /** One call to /api/system with our token only. A 401 ends the session here (the card shows again). */
-export async function systemApi<T>(path: string, init: { method?: string; json?: unknown } = {}): Promise<T> {
+export async function systemApi<T>(path: string, init: { method?: string; json?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
   const token = systemToken();
-  const headers: Record<string, string> = { accept: "application/json" };
+  // PF-21rs A1 (challenge m3): a create's own header (Idempotency-Key); never the authorization, which is this session's.
+  const headers: Record<string, string> = { ...Object.fromEntries(Object.entries(init.headers ?? {}).filter(([k]) => k.toLowerCase() !== "authorization")), accept: "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
   if (init.json !== undefined) headers["content-type"] = "application/json";
   const res = await fetch(`/api/system${path}`, { method: init.method ?? "GET", headers, body: init.json === undefined ? undefined : JSON.stringify(init.json) });
