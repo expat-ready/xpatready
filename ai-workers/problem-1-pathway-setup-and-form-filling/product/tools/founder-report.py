@@ -62,6 +62,13 @@ CT = load_timeline()
 IST = CT.IST
 
 
+def plan_fresh(path, now):
+    spec = importlib.util.spec_from_file_location("plan_fresh", os.path.join(HERE, "plan-fresh.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.check(path, now)[1]
+
+
 def works(caps):
     return sum(1 for c in caps.values() if c.get("status") == "Works")
 
@@ -365,12 +372,15 @@ def report(a):
             lines, coming = board(plan, caps, CT.Fixture(a.fixture) if a.fixture else LiveGitHub(), now)
         except (KeyError, TypeError, AttributeError, ValueError):
             lines, coming, plan_bad = None, None, True
-    forecast = None if proven is None or coming is None else proven + coming
+    stale = not a.fixture and plan is not None and not plan_fresh(a.plan, now)   # A363: no forecast from another cycle's plan
+    forecast = None if proven is None or coming is None or stale else proven + coming
     if forecast is None:
         track = U
     else:
         track = "✅" if forecast >= TARGET else "⚠️" if forecast >= TARGET - 3 else "❌"
     out.extend(["━━ Cycle 07:00 → 07:00 IST ━━  (now %s IST)" % now.astimezone(IST).strftime("%d %b %H:%M"), ""])
+    if stale:
+        out.append("🔴 The plan is of %s, not this cycle: no forecast, and the board below is that plan's" % plan.get("cycle_start", U))
     out.append("Proven this cycle  %s   ·   Total  %s   ·   Forecast by 07:00  %s   ·   On track %s" % (
         U if proven is None else "%d / %d" % (proven, TARGET), total,
         U if forecast is None else "%d / %d" % (forecast, TARGET), track))
@@ -410,7 +420,13 @@ def main(argv=None):
     ap.add_argument("--fixture", help="answer GitHub from this JSON file (tests)")
     ap.add_argument("--capabilities", help="CAPABILITIES.md now, instead of origin/main (tests)")
     ap.add_argument("--capabilities-at-start", help="CAPABILITIES.md at the cycle's 07:00, instead of git (tests)")
-    print(report(ap.parse_args(argv)))
+    a = ap.parse_args(argv)
+    if not a.fixture:   # A363: no report from tools that are not main's newest (tests answer GitHub from a fixture)
+        r = subprocess.run(["bash", os.path.join(HERE, "tools-fresh.sh")], capture_output=True, text=True)
+        if r.returncode != 0:
+            print("NO REPORT. " + (r.stdout.strip() or "tools-fresh.sh did not run: " + r.stderr.strip()[:200]))
+            return 2
+    print(report(a))
     return 0
 
 

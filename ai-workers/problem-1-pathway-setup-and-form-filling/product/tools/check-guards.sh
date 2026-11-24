@@ -33,6 +33,7 @@ TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-merge-wake.sh"   # wake on merge
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
+TESTS="$TESTS check-lead-run.sh"   # A363, A368: the Lead runs main's tools, in a copy under 24 h old, on this cycle's plan
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
@@ -396,6 +397,22 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
+A363 fetch|product/tools/lead-run.sh|s/; exit 3; }$/; }/|check-lead-run.sh
+A363 records|product/tools/lead-run.sh|/^  rm -rf .*c.\$PR.state/d|check-lead-run.sh
+A363 root|product/tools/lead-run.sh|s/^cd "\$ROOT" .. exit 3; //|check-lead-run.sh
+A363 prune|product/tools/lead-run.sh|s/ && grep -qxE .\[0-9a-f\]{40}. <<<"\${x#\*:}"//|check-lead-run.sh
+A363 gap|product/tools/lead-run.sh|s/^if \[ "\$tool" = lead-watch.sh \].*then/if false; then/|check-lead-run.sh
+A363 name|product/tools/lead-run.sh|s/^tool=.*/tool="${1:-}"; shift/|check-lead-run.sh
+A363 age|product/tools/tools-fresh.sh|s/-le 600/-le 60000/|check-lead-run.sh
+A363 dirty|product/tools/tools-fresh.sh|s/^git -C "\$H" diff --quiet.*no "a file.*//|check-lead-run.sh
+A363 report|product/tools/founder-report.py|s/^    if not a.fixture:.*/    if False:/|check-lead-run.sh
+A363 plan|product/tools/plan-fresh.py|s/if got == cycle:/if True:/|check-lead-run.sh
+A363 seven|product/tools/plan-fresh.py|s/timedelta(hours=7))/timedelta(hours=0))/|check-lead-run.sh
+A363 first|product/tools/lead-watch.sh|/^pf=/d|check-lead-run.sh
+A368 hours|product/tools/copy-age.sh|s/^\[ "\$h" -lt 24 \]/true/|check-lead-run.sh
+A368 take|product/tools/takeover.sh|/^  \[ "\$r" = 1 \] .*REFUSED/d|check-lead-run.sh
+A368 start|product/tools/session-start.sh|s/ \[ -n "\$age" \] && echo "\$age";//|check-lead-run.sh
+A368 watch|product/tools/lead-watch.sh|s/ \[ "\$r" = 1 \] && ca="ACT .*; \[ "\$r" -gt 1 \]/ [ "$r" -gt 1 ]/|check-lead-run.sh
 31 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$fc")))/true/|check-founder-click-guard.sh
 33 E14|product/tools/check-docs.sh|s/        if miss: print(f"INDEX:/        if False: print(f"INDEX:/|check-idx-integrity.sh
 33 E14 range|product/tools/check-docs.sh|s/            ids .= {f"P-{i}" for i in range(a, b + 1)}/            pass/|check-idx-integrity.sh

@@ -30,15 +30,15 @@ echo $((NOW + 60 * 60)) > "$T/state/last-check"
 gap; ok "stamp 60 min in the future (clock jump): ACT, exit 1, not a silent ok" "$([ $r = 1 ] && grep -q '^ACT   watchdog: Lead check stamp is 60 min in the future' <<< "$out" && echo 1)" "exit $r: $out"
 # The normal run's stall guard (step 0) is lowered from 40 to 15 min; only its first lines are read (real clock, fake gh).
 # Output goes to a file (never a pipe, whose reader would wait on any child still holding it: guards hung 30 min in CI on
-# 6aa72f3/6c66a84). It is polled for the first 2 lines, then the whole run is SIGKILLed; psql, curl and gh are stubs.
+# 6aa72f3/6c66a84). It is polled for step 0's stamp (the three A363 lines come first), then the whole run is SIGKILLed; psql, curl and gh are stubs.
 for c in psql curl; do printf '#!/bin/sh\nexit 1\n' > "$T/bin/$c"; chmod +x "$T/bin/$c"; done
 SETSID=$(command -v setsid || true)
 run() { echo $(( $(date +%s) - $1 * 60 )) > "$T/state/last-check"; : > "$T/run.out"
   PATH="$T/bin:$PATH" LEAD_WATCH_STATE_DIR="$T/state" GIT_TERMINAL_PROMPT=0 $SETSID bash "$TOOLS/lead-watch.sh" > "$T/run.out" 2>/dev/null < /dev/null & local pid=$! i
-  for i in $(seq 150); do [ "$(grep -c . "$T/run.out")" -ge 2 ] && break; kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
-  kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; out=$(head -2 "$T/run.out"); }
+  for i in $(seq 150); do grep -q 'IST from the clock' "$T/run.out" && break; kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+  kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; out=$(sed -n '/^time  /,/IST from the clock/p' "$T/run.out"); }
 run 20; ok "normal run, previous check 20 min ago: the stall ACT (was silent under the 40-min guard)" "$(grep -q '^ACT   previous check ran 20 min ago' <<< "$out" && echo 1)" "$out"
-run 10; ok "normal run, previous check 10 min ago: step 0 ran and gave no stall ACT (line 2 is step 0's fresh stamp, ENF-803)" "$(grep -q '^time  ' <<< "$out" && sed -n 2p <<< "$out" | grep -qE '^ +read [0-9:]+ IST from the clock' && ! grep -q 'previous check ran' <<< "$out" && echo 1)" "$out"
+run 10; ok "normal run, previous check 10 min ago: step 0 ran and gave no stall ACT (the line after the time is step 0's fresh stamp, ENF-803)" "$(grep -q '^time  ' <<< "$out" && sed -n 2p <<< "$out" | grep -qE '^ +read [0-9:]+ IST from the clock' && ! grep -q 'previous check ran' <<< "$out" && echo 1)" "$out"
 # lead-check-guard.sh: the standby's recurring prompt "run lead-watch gap" is allowed in the Lead's copy; additions are not.
 git init -q "$T/copy" && mkdir -p "$T/copy/$PRODREL/tools" && printf '#!/bin/bash\necho "$FAKE_LANE"\n' > "$T/copy/$PRODREL/tools/lane.sh"
 guard() { local o; o=$(jq -n --arg p "$2" --arg d "$T/copy" '{tool_name:"CronCreate", tool_input:{cron:"*/10 * * * *", prompt:$p, recurring:true}, cwd:$d}' | FAKE_LANE="$1" bash "$TOOLS/lead-check-guard.sh")

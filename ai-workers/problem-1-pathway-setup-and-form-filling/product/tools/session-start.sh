@@ -17,10 +17,12 @@ elif n=$(git rev-list --count HEAD..@{upstream} 2>/dev/null) && [ "$n" -gt 0 ]; 
     behind="Pulled $n new commit(s) from GitHub at session start (P-82). Skills and hooks that changed take effect in the next session."
   else behind="NOTE: this branch is $n commit(s) behind GitHub and could not fast-forward (local changes or diverged): pull before working (P-82)."; fi
 fi
+age=$(bash "$PH/tools/copy-age.sh" 2>/dev/null); old=$?   # A368: against origin/main, for every role; the upstream above can be as old as the copy
+[ "$old" = 1 ] && [ "$LANE" = lead ] && age="$age. OVER 24 h: this Lead copy runs old rules, skills and hooks: start a fresh lead/<today> from origin/main before anything else (WAY-OF-WORKING, P-388)"
 case "$LANE" in
   lead) head="This is the tech lead's main copy (Mac). The founder types /lead here. Builders run /next <area> in their own copies; qa runs /qa. Way of working: product/WAY-OF-WORKING.md.";;
   screens|forms|evidence|runtime|qa) head="This is the $LANE builder's copy (branch $(git branch --show-current)). Command: /next $LANE (qa: /qa <mode>). Way of working: product/WAY-OF-WORKING.md; work list: product/BACKLOG.md.";;
   *) head="This copy is not bound yet: /next <area> (screens, forms, runtime, evidence) or /qa binds it. Way of working: product/WAY-OF-WORKING.md.";;
 esac
-ctx=$(echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "--- product/STATE.md ---"; cat "$PH/STATE.md")
+ctx=$(echo "$head"; [ -n "$age" ] && echo "$age"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "--- product/STATE.md ---"; cat "$PH/STATE.md")
 jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
