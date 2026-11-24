@@ -121,3 +121,4 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 ### Ask rows moved from STATE by Lead 22 (still open, word for word)
 | A347 | 24 Nov ~08:15 | all "needs you" items approved, full report given; word for word in the recovery plan file | approvals above |
 | A342, A343 | 24 Nov | reports unchecked; plan file | open |
+* 11:19 IST, A355 continued (founder, typed): compare "code and AI" too (read as CodeAnt AI, not confirmed; Qodo, once Codium AI, covered as well); best fit, best in class experience and why; US$100 a month is the most he allows, spend only what is required. Sent to the study session. #3405 2e3c85839: Lead's read posted, label on green.
