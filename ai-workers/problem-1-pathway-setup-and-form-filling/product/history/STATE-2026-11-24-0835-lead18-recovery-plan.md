@@ -117,3 +117,7 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * 11:13 IST: #3408 made a draft on the founder's typed yes (a first try at 11:09 was refused by the classifier, not routed around; the gate had labelled it meanwhile). It waits for Lead O 2's busy-API proof run. Merged: #3184 and #3370 11:05, #3366 11:07.
 * 11:17 IST, A355 (founder, typed to Lead 22; spoken, "code repeat" read as CodeRabbit), his words in short: assign an agent; analyse CodeRabbit and which is best in class to make the repository production grade autonomously (PR, quality, merging); products review, explain, verify, agent, triage and others; budget US$100, free trial; fixed price per month?; benefit; where and how it fits; visual mechanism, cost, case study; ease; alternatives and why; which products; best way; "let's start using it". Earlier record: engineering-operating-model.md:437 "Not now"; he reopens it. Study session started with no install, account, terms or setting change before his own yes to each step.
 * 11:17 IST: founder started the API keep-alive card (local_e834ebe4-e9ac-4cba-a65b-e8f7d94488ef). #3209: cover posted, gate labelled it. #3033: failed parts of 45311346283 re-run (attempt 2 takes today's main, ci.yml line 46). #3376, #3382 merged 11:14-11:15.
+
+### Ask rows moved from STATE by Lead 22 (still open, word for word)
+| A347 | 24 Nov ~08:15 | all "needs you" items approved, full report given; word for word in the recovery plan file | approvals above |
+| A342, A343 | 24 Nov | reports unchecked; plan file | open |
