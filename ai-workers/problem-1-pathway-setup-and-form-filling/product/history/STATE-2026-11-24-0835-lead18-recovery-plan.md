@@ -18,3 +18,10 @@ Lessons made live: ordered to Lead O 2 (proof first, retry-only same hour, migra
 
 ## Stamps in order: #3225 030000 · #3184 032000 · #3033 033000 · #3277 040000 · #3276 050000 · #3219 090000.
 ## Follow-ups from archived lanes: check_pf16_banner_browser trial-day text can read one day more 18 Oct to 1 Nov (tests/check_pf16_banner_browser.ts:47,86,118,139); Licences page says "Could not save" when only the read-back fails (licences-page.tsx:50); no test of two modules in two areas on PF-R1's registry; plat_data_request_event missing from pf12 OWN list.
+
+## Moved from STATE at the hand-over
+**Merged:** #3355, #3224, #3321, #3040. **Queue 08:23:** #3365 (#3225 alone); #3366 (pf4s race fix), #3202 wait.
+
+| A343 | 24 Nov ~00:0x typed to Lead 11 | script on proofs (pstack, TLA+), set up the new Claude Code mode | proofs report done, unchecked: start nothing before his yes; mode report owed |
+
+| A342 | 24 Nov ~00:0x typed to Lead 11 | "For the stuff that you're asking me ... I would follow your recommendation ... You have my approval"; research how people merge "11,000 p" and pay for CI | CI-cost report done, unchecked; check the US$62,400 figure before quoting; the content he meant did not arrive: ask |
