@@ -1,0 +1,2 @@
+# mut.sh <tools> <prefix> <test>: each row of check-guards.sh starting with prefix, in its own copy
+W=$1; grep -E "^$2" $W/check-guards.sh | tr -d "'" | while IFS='|' read -r g f e t; do M=$(mktemp -d /private/tmp/claude-501/-Users-ranjansingh-Desktop-Xpatready--claude-worktrees-pensive-easley-382eee/a46fa0a6-24b0-4b00-b7fe-e0619dabd65a/scratchpad/mu.XXXXXX); cp -R $W $M/tools; F=$M/tools/$(basename $f); sed -i.bak "$e" $F; cmp -s $F $F.bak && echo "NOCH $g"; echo "$g: $(bash $M/tools/$t 2>/dev/null | tail -1)"; rm -rf "${M:?}"; done
