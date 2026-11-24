@@ -204,3 +204,40 @@ Measured on Studio Fields at 1440×400:
 Up from 9. Feedback and state, and visual quality, are now 1: the content no longer jumps when the strip appears or goes, at the top or scrolled.
 
 Not checked: the full suites (I rely on the builder's 73/73 twice), Firefox and Safari anchoring, a screen reader, and the spacer cleanup on a live session end.
+
+## Addendum 3: re-review of head 13621c4934697cc2721a1f336264280f68a6f854 (24 Nov)
+
+**Verdict: Approve (Ship).** No Blocker or Major is open.
+
+Scope: diff only, `git show 13621c493`. I walked :4747 as user-S with my own lead L-"Reviewfin".
+
+### Product change: refetch when a tab comes forward
+The change is `workspace.tsx:130-131` (the effect is on 131): when a tab comes forward, `queryClient.refetchQueries({ type: "active", stale: true })` runs. The first show is skipped.
+
+Measured with four tabs open (lead with a phone draft, Leads, Team, Activity log):
+- **Switch after 2.5 s idle:** 12 GETs. These are every stale active query, the hidden tabs' queries included.
+- **Switch back within 2 s:** 1 GET.
+- **12 Alt+PageDown at 60 ms:** 24 GETs in total, none failed or cancelled.
+
+The amount is bounded by the 2 s staleTime, so there is no storm.
+
+Nothing a person has open is clobbered:
+- The typed phone draft stayed (`+14165550111`) over a switch-back that refetched.
+- I let another save go through first (200), then saved. The conflict box opened, and after 2.5 s away and back (which refetched the lead with the newer version), both the conflict box and my value were still there.
+- Drafts live in `useSharedDraft` and the conflict in component state, so a refetch only renews the base. That is the same thing T4's "saved" invalidation already does.
+
+### Test change in check_pf5t: justified
+- The cause is a change a person sees: PF-31 keeps Terms open in its tab, so the accept's invalidation now re-reads the list at once rather than at the next visit. The reason is written in the check (`check_pf5t_terms_browser.ts:156` and `:160-162`).
+- The 428 pass-through only stops the route rewrite from crashing on a non-list answer. No assertion is weakened.
+- Nit: the 2.1 s wait is tied to the staleTime. Waiting for the acceptances response after the click would hold if staleTime ever changes.
+
+### Minors, for the follow-up (not blocking)
+1. **Every switch also refetches queries that opt out of the staleTime, in hidden tabs too.** The activity log's `["pf","audit",…]` has `staleTime: 0` (`activity-log-page.tsx:88`), so it was fetched on all 13 of 13 fast switches between other tabs.
+   - So the claim "matches the remount of before PF-31" is broader than a remount, which refetched only that page's queries.
+   - Possible fixes: refetch only on a switch, not on each key press, or leave out queries whose observers sit in hidden tabs.
+2. **`refetchQueries` cancels any refetch already running** (`cancelRefetch` defaults to true). On a slow network, switching faster than the answers arrive keeps restarting them.
+   - Passing `{ cancelRefetch: false }` keeps the request already running. I saw no failures locally.
+
+Journey score unchanged: 10 / 10.
+
+Not checked: the full suites (I rely on pf31 73/73 twice and pf5t 35/35 three times), a slow network, and other browsers.
