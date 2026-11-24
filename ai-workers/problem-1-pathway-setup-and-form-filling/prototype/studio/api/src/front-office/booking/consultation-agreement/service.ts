@@ -440,6 +440,10 @@ export class ConsultationAgreementService {
     if (consent && !s.consentedAt) cur = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${s0.requestId}::uuid for update`;
       const c = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: s0.id } });
+      // Ended meanwhile (a decline or signature at the provider landed after the code check): the link's one not-found,
+      // never the database's final-state refusal as a 500 (QA-777 break B3).
+      const rq = await tx.foSignatureRequest.findFirstOrThrow({ where: { firmId, id: s0.requestId } });
+      if (!["SENT", "VIEWED"].includes(rq.status) || c.signedAt || c.declinedAt) notFound();
       if (c.consentedAt) return c;
       const next = await tx.foSigner.update({ where: { id: c.id }, data: { consentedAt: this.ports.clock.now(), consentTextVersion: CONSENT_TEXT_VERSION } });
       await this.ports.audit.record(tx, { firmId, actor: SYSTEM, action: "consultation_agreement.opened", entity: "fo_retainer", entityKey: s0.request.documentId, summary: "Consultation agreement: consent to sign electronically recorded (client).",
@@ -461,6 +465,8 @@ export class ConsultationAgreementService {
       const r = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId }, include: { request: true } });
       await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${r.requestId}::uuid for update`;
       const cur = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
+      const rq = await tx.foSignatureRequest.findFirstOrThrow({ where: { firmId, id: r.requestId } });   // as it is under the lock (break B3)
+      if (!["SENT", "VIEWED"].includes(rq.status) || cur.signedAt || cur.declinedAt) return "ENDED" as const;
       // QA-777: a recent check by any browser no longer passes another; only a right code (or the live session) does.
       if (cur.lockedUntil && cur.lockedUntil > now) return "LOCKED" as const;
       const line = (summary: string, after: Record<string, string | number | boolean | null>) => this.ports.audit.record(tx, { firmId, actor: SYSTEM, action: "consultation_agreement.code", entity: "fo_retainer", entityKey: agreementId, summary,
@@ -479,17 +485,20 @@ export class ConsultationAgreementService {
       }
       const live = cur.codeSha256 && cur.codeExpiresAt && cur.codeExpiresAt > now && unspent(cur);   // a used code is spent
       const right = !!live && timingSafeEqual(Buffer.from(sha(given), "hex"), Buffer.from(cur.codeSha256!, "hex"));
+      // No live code to guess at (none asked, expired or spent): refused and not counted, so a link holder typing made-up
+      // codes cannot lock the client out (QA-777 break B1; FO-6 4a's door-code.ts `checkCode` does the same).
+      if (!live) return "EXPIRED" as const;
       if (right) {
         // The right code starts this browser's session at the same moment (QA-777; FO-6 part 4b's columns and rule).
         session = randomBytes(32).toString("base64url");
         await tx.foSigner.update({ where: { id: cur.id }, data: { codeVerifiedAt: now, codeFailures: 0, lockedUntil: null, sessionSha256: sha(session), sessionExpiresAt: new Date(now.getTime() + CODE_SESSION_MS) } });
-        await line("Consultation agreement: the client's one-time code was right.", { codeFailures: 0, locked: false, verified: true });
+        await line("Consultation agreement: the client's one-time code was right; a signing session started for this browser (30 minutes).", { codeFailures: 0, locked: false, verified: true, sessionMinutes: CODE_SESSION_MS / 60_000 });   // QA-777 review m5
         return "OK" as const;
       }
       const failures = (cur.lockedUntil ? 0 : cur.codeFailures) + 1, lock = failures >= CODE_TRIES ? new Date(now.getTime() + LOCK_MINUTES * 60_000) : null;
       await tx.foSigner.update({ where: { id: cur.id }, data: { codeFailures: Math.min(failures, CODE_TRIES), lockedUntil: lock } });
       await line(lock ? "Consultation agreement: a sixth wrong code locked the link for 15 minutes." : "Consultation agreement: a wrong or expired code.", { codeFailures: Math.min(failures, CODE_TRIES), locked: !!lock });
-      return (lock ? "LOCKED" : live ? "WRONG" : "EXPIRED") as "LOCKED" | "WRONG" | "EXPIRED" | "TOO_SOON";
+      return (lock ? "LOCKED" : "WRONG") as "LOCKED" | "WRONG" | "EXPIRED" | "TOO_SOON" | "ENDED";
     });
     if (send) {
       const s = await this.db.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
@@ -499,6 +508,7 @@ export class ConsultationAgreementService {
         idempotencyKey: `consultation-agreement:${agreementId}:code:${sha(send!).slice(0, 16)}`, templateKey: "consultation_agreement.code",
         subject: `Your code to sign with ${firm.operatingName}`.slice(0, 200), text: `Your one-time code is ${send}. It works for ${CODE_MINUTES} minutes. If you did not ask for it, ignore this email.\n` }));
     }
+    if (verdict === "ENDED") notFound();
     if (verdict === "TOO_SOON") fail(429, "Wait a minute", "A code was sent less than a minute ago. Check your email, or ask again in a minute.", "CODE_TOO_SOON");
     if (verdict === "LOCKED") fail(423, "Locked for now", `Too many wrong codes. Try again in ${LOCK_MINUTES} minutes.`, "CODE_LOCKED");
     if (verdict === "WRONG") fail(422, "Wrong code", "That code is not right. Check the email and try again.", "CODE_WRONG");

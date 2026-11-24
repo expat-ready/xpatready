@@ -265,9 +265,9 @@ try {
   // R2-1: a checked code opens the link for 30 minutes only; then a new code is asked, from any address. R2-2: one new code a minute.
   const within = await op(r3.tok, {}, "198.51.100.7", cookieOf(good) ? [cookieOf(good)!] : []);   // the same browser (QA-777)
   await clock.advance({ minutes: 31 });
-  const later = await op(r3.tok, {}, "198.51.100.8");
+  const later = await op(r3.tok, {}, "198.51.100.8", cookieOf(good) ? [cookieOf(good)!] : []);   // the same browser, its cookie now 31 minutes old (QA-777 review M1)
   ok("FO-3c R2-1 pass: within 30 minutes of the right code the same browser (its session cookie) opens the link again without a code", /^https:\/\/signing\.fake\.invalid\//.test(within.link?.url ?? ""), within);
-  ok("FO-3c R2-1 fail: 31 minutes later the same link (another address) gets no signing link: a new code is emailed and the old one is spent",
+  ok("FO-3c R2-1 fail: 31 minutes later the same browser (its session cookie, expired) gets no signing link: a new code is emailed and the old one is spent",
     later.codeNeeded === true && later.link === null && await fails(() => op(r3.tok, { consent: true, code: code3 }), 422), later);
   const tooSoon = await fails(() => op(r3.tok, { consent: true, resend: true }), 429, /CODE_TOO_SOON/);
   await clock.advance({ minutes: 1, seconds: 1 });
@@ -387,6 +387,23 @@ try {
   ok("FO-3c QA-777 (1): browser B, with the forwarded link but not A's session (no cookie, or a made-up one), is asked for the code (200, no 429) and gets no signing link",
     qb1.codeNeeded === true && qb1.link === null && qb2.codeNeeded === true && qb2.link === null, { qb1, qb2 });
   ok("FO-3c QA-777 same browser: A, sending its session cookie, gets the link again without a code", /^https:\/\/signing\.fake\.invalid\//.test(a3q.link?.url ?? "") && a3q.codeNeeded === false, a3q);
+  // QA-777 review m6: a session counts only when the code check started it (expiry = check + 30 minutes): the same live
+  // cookie on a session moved off that moment (written straight to the table) gets no link.
+  sql(`update fo_signer set session_expires_at = session_expires_at + interval '1 minute' where id = '${q7.cl.id}'`);
+  const unpaired = await op(q7.tok, {}, undefined, cookieA ? [cookieA] : []);
+  sql(`update fo_signer set session_expires_at = session_expires_at - interval '1 minute' where id = '${q7.cl.id}'`);
+  const paired = await op(q7.tok, {}, undefined, cookieA ? [cookieA] : []);
+  ok("FO-3c QA-777 pairing: the same live cookie on a session not started at the code check's moment gets no link (a code is asked); paired again, it opens",
+    unpaired.codeNeeded === true && unpaired.link === null && /^https:\/\/signing\.fake\.invalid\//.test(paired.link?.url ?? ""), { unpaired, paired: !!paired.link });
+  // QA-777 break B1: with no live code (none asked yet), a link holder's made-up codes are refused and never counted, so
+  // they cannot lock the client out; the client's own code then works.
+  const q8 = await sendOne(T.staffId, kim, 23), guesses: string[] = [];
+  for (let i = 0; i < 7; i++) { try { await op(q8.tok, { code: String(100000 + i) }); guesses.push("200"); } catch (e) { const r = e as { getStatus(): number; getResponse(): { code?: string } }; guesses.push(`${r.getStatus()}:${r.getResponse().code}`); } }
+  const counted8 = sql(`select code_failures || '|' || (locked_until is not null) from fo_signer where id = '${q8.cl.id}'`);
+  await clock.advance({ minutes: 2 });
+  const ask8 = await op(q8.tok, { consent: true }), ok8 = await op(q8.tok, { consent: true, code: lastCode() });
+  ok("FO-3c QA-777 B1: with no code asked, seven made-up codes are each refused (422 CODE_EXPIRED), none counted, no lock; the client then asks for a code and signs (the link)",
+    guesses.every((g) => g === "422:CODE_EXPIRED") && counted8 === "0|false" && ask8.codeNeeded === true && /^https:\/\/signing\.fake\.invalid\//.test(ok8.link?.url ?? ""), { guesses, counted8, ok8: !!ok8.link });
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
