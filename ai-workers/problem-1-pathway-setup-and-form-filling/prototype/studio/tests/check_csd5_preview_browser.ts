@@ -202,7 +202,7 @@ try {
   await go(); await openFile(d7); await ready();
   const dark = await page.locator("[data-preview-canvas]").evaluate((e: HTMLCanvasElement) => { const g = e.getContext("2d")!.getImageData(0, 0, e.width, e.height).data; let n = 0; for (let i = 0; i < g.length; i += 4) if (g[i]! < 96 && g[i + 3]! > 0) n++; return n; });
   // A missing file may come back as the app's page (the web fallback), so "served" means a wasm body, not only a 200.
-  const decoders = await page.evaluate(async () => { const kind = async (u: string) => { const r = await fetch(u); return r.ok && new Uint8Array(await r.arrayBuffer()).slice(0, 4).join() === "0,97,115,109" ? "wasm" : "none"; }; return `${await kind("/pdfjs/wasm/jbig2.wasm")} ${await kind("/pdfjs/wasm/quickjs-eval.wasm")}`; });
+  const decoders = (await page.evaluate((urls) => Promise.all(urls.map((u) => fetch(u).then(async (r) => (r.ok && new Uint8Array(await r.arrayBuffer()).slice(0, 4).join() === "0,97,115,109" ? "wasm" : "none")))), ["/pdfjs/wasm/jbig2.wasm", "/pdfjs/wasm/quickjs-eval.wasm"])).join(" ");
   ok("CS-D5 B1: a black-and-white office scan (CCITT G4) draws its dark bars, not a blank page", dark > 1000, dark);
   ok("CS-D5 B1: the decoders are served from our own origin, and the scripting engine is not (jbig2 wasm, quickjs none)", decoders === "wasm none", decoders);
   await closePanel();
