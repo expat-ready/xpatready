@@ -271,8 +271,9 @@ card=$(sed -n 's/^\*\*Tests\.\*\*//p' "$S/api/src/client-money/MODULE.md" | grep
 mine=$(cut -f1 <<< "$sel" | sort -u)
 smoke=$(sed -n 's/^const SMOKE = \[\(.*\)\];.*/\1/p' "$TOOLS/select-suites.mjs" | grep -o 'check_[A-Za-z0-9_.-]*' | sort -u)
 rows=$(cat "$S/api/src/client-money/MODULE.rows/"*.md 2>/dev/null | sed -n 's/^Tests://p' | grep -o 'check_[A-Za-z0-9_.-]*\.\(ts\|cjs\)' | sort -u)
-extra=$(comm -23 <(echo "$mine") <(printf '%s\n' "$card" "$rows" "$smoke" | sort -u))
-ok "4. a one-module change runs only its card's suites and the always-run set" "$([ $r = 0 ] && [ -z "$extra" ] && [ -n "$card" ] && echo 1)" "exit $r; not the module's: $(echo $extra)"
+guards=$(sed -n 's/^const GUARDS = \[\(.*\)\];.*/\1/p' "$TOOLS/select-suites.mjs" | grep -o 'check_[A-Za-z0-9_.-]*' | sort -u)
+extra=$(comm -23 <(echo "$mine") <(printf '%s\n' "$card" "$rows" "$smoke" "$guards" | sort -u))
+ok "4. a one-module change runs only its card's suites, the always-run set and the pure guards" "$([ $r = 0 ] && [ -z "$extra" ] && [ -n "$card" ] && echo 1)" "exit $r; not the module's: $(echo $extra)"
 ok "4. ... every suite on its card is chosen" "$([ -z "$(comm -23 <(echo "$card") <(echo "$mine"))" ] && echo 1)" "$(echo $mine)"
 ok "4. ... and every suite on its row files (P-712)" "$([ -n "$rows" ] && [ -z "$(comm -23 <(echo "$rows") <(echo "$mine"))" ] && echo 1)" "rows: $(echo $rows); chosen: $(echo $mine)"
 ok "4. ... and the always-run set" "$([ -z "$(comm -23 <(echo "$smoke") <(echo "$mine"))" ] && echo 1)" "$(echo $mine)"
@@ -280,6 +281,19 @@ all=$(echo "$f" | node "$TOOLS/select-suites.mjs" | grep -c .)
 ok "4. ... far fewer than the path rules pick ($(grep -c . <<< "$mine") against $all)" "$([ "$(grep -c . <<< "$mine")" -lt "$all" ] && echo 1)"
 n=$(bash "$TOOLS/run-suites.sh" --changed "$(git rev-parse HEAD)..$(git rev-parse HEAD)" --modules --list 2>&1 | grep -c '^check_' || true)
 ok "4. run-suites.sh --modules is wired (an empty change picks nothing)" "$([ "$n" = 0 ] && echo 1)" "$n"
+# main's pure guards (select-suites.mjs GUARDS/guardSrc, Lead 12, 24 Nov) run for a module file in api/src too (#3035 round 7)
+for g in "$S/api/src/features/platform-reports.ts" "$f"; do
+out=$(echo "$g" | python3 -I "$TOOLS/module-suites.py" | cut -f1)
+ok "4. a module file in api/src keeps select-suites.mjs's pure guards ($(basename "$g"))" "$([ -n "$guards" ] && [ -z "$(comm -23 <(echo "$guards") <(sort -u <<< "$out"))" ] && echo 1)" "guards: $(echo $guards); chosen: $(echo $out)"
+done
+out=$(echo "$S/web/src/main.tsx" | python3 -I "$TOOLS/module-suites.py" | cut -f1)
+ok "4. ... and a web file does not take them (guardSrc is api/src, engine and p2)" "$([ -n "$out" ] && [ -z "$(comm -12 <(echo "$guards") <(sort -u <<< "$out"))" ] && echo 1)" "$(echo $out)"
+gd=$(mktemp -d "${TMPDIR:-/tmp}/spd2g.XXXXXX"); sed 's/^const guardSrc = (f) => /const guardSrc = (file) => /' "$TOOLS/select-suites.mjs" > "$gd/select-suites.mjs"
+out=$(python3 -I -c 'import importlib.util,sys
+sp=importlib.util.spec_from_file_location("ms",sys.argv[1]); m=importlib.util.module_from_spec(sp); sp.loader.exec_module(m); m.TOOLS=sys.argv[2]
+try: m.guards(); print("read")
+except ValueError as e: print("refused:", e)' "$TOOLS/module-suites.py" "$gd" 2>&1); rm -rf "$gd"
+ok "4. a guardSrc of another shape stops module-suites.py (no silent drop of the guards)" "$(grep -q '^refused:' <<< "$out" && echo 1)" "$out"
 out=$(echo "$S/tests/check_engine.ts" | python3 -I "$TOOLS/module-suites.py" | cut -f1)
 ok "4. a file outside every card keeps select-suites.mjs --direct (a changed suite runs itself)" "$(grep -qx check_engine.ts <<< "$out" && echo 1)" "$out"
 out=$(echo "$S/api/src/main.ts" | python3 -I "$TOOLS/module-suites.py" | cut -f2 | grep -vc 'always-run\|on its card' || true)

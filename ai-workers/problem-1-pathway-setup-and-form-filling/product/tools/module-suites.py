@@ -11,7 +11,9 @@ the suites on that card's `Tests.` line and on the `Tests:` lines of its row fil
 (SELECT_SUITES_GRAPH) for the files outside every card.
 Every other file goes to select-suites.mjs --direct unchanged (tests, engine, contracts, samples, a check_* file, the
 barrier files main.ts, core.ts and studio.ts, a card that lists no suite, a file no card owns); so does a module file
-whose card names no existing suite. The always-run set is select-suites.mjs's smoke set (read from it: one list).
+whose card names no existing suite. The always-run set is select-suites.mjs's smoke set (read from it: one list), and
+its pure guards (GUARDS, guardSrc: always for a change to api/src, engine or p2, Lead 12, 24 Nov) are added for a module
+file the same way, read from it too; a guardSrc this file cannot read stops it (exit 2) rather than drop the guards.
 Reads files only; US$0. Test: product/tools/test-spd-2.sh."""
 import importlib.util, os, re, subprocess, sys
 
@@ -66,9 +68,38 @@ def smoke():
     return re.findall(r'"([^"]+)"', m.group(1)) if m else []
 
 
+def guards():
+    """select-suites.mjs's GUARDS names and guardSrc test, read from it (one rule): [] and None when it has no GUARDS."""
+    t = open(os.path.join(TOOLS, "select-suites.mjs"), encoding="utf-8").read()
+    g = re.search(r"^const GUARDS = \[([^\]]*)\]", t, re.M)
+    if not g:
+        return [], None
+    names = re.findall(r'"([^"]+)"', g.group(1))
+    m = re.search(r"^const guardSrc = \(f\) => /(.+?)/\.test\(f\) && \[([^\]]*)\]\.some\(\(d\) => f\.startsWith\(d\)\);$", t, re.M)
+    if not m or not names:
+        raise ValueError("select-suites.mjs: GUARDS or guardSrc changed shape; module-suites.py cannot read it")
+    P = PROTO.rstrip("/").rsplit("/", 1)[0]
+    sub = {"${S}": STUDIO.rstrip("/"), "${PR}": PROTO.rstrip("/"), "${P}": P}
+    dirs = []
+    for d in re.findall(r"`([^`]*)`", m.group(2)):
+        for k, v in sub.items():
+            d = d.replace(k, v)
+        if "${" in d:
+            raise ValueError(f"select-suites.mjs: guardSrc directory {d!r} not readable")
+        dirs.append(d)
+    if not dirs:
+        raise ValueError("select-suites.mjs: guardSrc names no directory")
+    ext = re.compile(m.group(1))
+    return names, lambda f: bool(ext.search(f)) and any(f.startswith(d) for d in dirs)
+
+
 def main(files):
     mc, mods = load_cards()
     disk = suites_on_disk()
+    try:
+        gnames, gsrc = guards()
+    except ValueError as e:
+        print(f"module-suites: {e}", file=sys.stderr); return 2
     picked, rest = {}, []
     for f in files:
         if f in BARRIER or not mc.in_src(f):
@@ -81,6 +112,10 @@ def main(files):
             for s in card_suites(mods[o][0]):
                 if s in disk:
                     picked.setdefault(s, f"module {o} ({os.path.basename(f)}): on its card")
+        if gsrc and gsrc(f):   # select-suites.mjs adds these for --direct files itself
+            for s in gnames:
+                if s in disk:
+                    picked.setdefault(s, f"pure guard: always for a change to api/src, engine or p2 ({os.path.basename(f)})")
     out = dict(picked)
     if rest:
         r = subprocess.run(["node", os.path.join(TOOLS, "select-suites.mjs"), "--direct"], input="\n".join(rest) + "\n",
