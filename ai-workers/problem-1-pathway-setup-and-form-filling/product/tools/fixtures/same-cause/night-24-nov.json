@@ -1,0 +1,289 @@
+{
+"what": "The 15 failed merge-queue ci runs that started between 24 Nov 00:30 and 08:40 IST: their red suite rows as same-cause.py reads them from the real shard logs (read 24 Nov 09:4x-10:0x IST); green = the newest green batch then",
+"runs": [
+{
+"run": 45249581438,
+"batch": 3311,
+"start": "2026-11-23T19:30:06Z",
+"end": "2026-11-23T20:13:56Z",
+"prs": [
+3173,
+3193,
+3216,
+3289
+],
+"fails": {
+"check_s5_slice2_browser.cjs": "exit 1: FAIL  unexpected locator.innerText: Error: strict mode violation: getByRole('tab",
+"check_forms_s4_library_browser.cjs": "exit 1: FAIL  axe (WCAG 2.2 AA): row actions with a reason shown \u2014 target-size: 2 (#radi",
+"check_pf6f_callback_browser.ts": "exit 1: FAIL  PF-6f DW1 pass (Devin, #1912): refused link, Open My account, Back \u2192 Home",
+"check_bk4a_browser.cjs": "exit 1:   name: 'TimeoutError'",
+"check_aud4s_activity_log_browser.ts": "exit 1: FAIL  AUD-4s: the check stopped: locator.innerText: Error: strict mode violation",
+"check_s5_slice1_browser.cjs": "exit 1: FAIL  unexpected locator.innerText: Error: strict mode violation: getByRole('tab",
+"check_bk3_frame_browser.cjs": "exit 1: FAIL  BK-3 375 /c/# as user-A: one \"where am",
+"check_csdl3_milestones.ts": "exit 1: FAIL  CS-DL3 kind pass: CASE_MILESTONE_DEADLINE is added after the earlier kinds",
+"check_runtime_r1c.cjs": "exit 1: FAIL  officer pass: spouse and child are on the case and get their own tabs of s",
+"check_forms_c47_pqr_picks_browser.cjs": "exit 1: FAIL  axe 400 px: to-review-picks has no WCAG A/AA violation \u2014 target-size (1):",
+"check_screens_qa_1029_browser.cjs": "exit 1: locator.innerText: Error: strict mode violation: locator('main') resolved to 2 e",
+"check_pf13c_booking_brand_browser.ts": "exit 1: FAIL  R1.23 PF-13c BB3b: moving from firm A's page to firm B's inside the app (n",
+"check_pf6_staff_browser.ts": "exit 1: locator.click: Error: strict mode violation: locator('nav[aria-label=\"My account",
+"check_bk3_links_browser.cjs": "exit 1:   name: 'TimeoutError'",
+"check_pf5t_terms_browser.ts": "exit 1: locator.click: Error: strict mode violation: locator('nav[aria-label=\"My account",
+"check_csc1s_decision_browser.cjs": "exit 1:   name: 'TimeoutError'",
+"check_preview_sets_browser.cjs": "exit 1: locator.innerText: Error: strict mode violation: getByRole('tabpanel') resolved",
+"check_w115_slice3_browser.cjs": "exit 1: FAIL  axe: documents-read-only has no WCAG A/AA violation \u2014 target-size (2): but",
+"check_bk3_client_browser.cjs": "exit 1: locator.innerText: Error: strict mode violation: locator('nav[aria-label=\"Path\"]",
+"check_forms_focus_landings_browser.cjs": "exit 1: FAIL  axe (WCAG 2.2 AA) 01-sources at 1440 px: no violations \u2014 [\"target-size: 1\"",
+"check_csdl3_milestones_browser.ts": "exit 1: FAIL  CS-DL3 browser check stopped: locator.waitFor: Timeout 15000ms exceeded.",
+"check_forms_b86_panel_browser.cjs": "exit 1: FAIL  review M2: a returned change offers Withdraw, and no form to correct a nam",
+"check_pf6a_frame_browser.ts": "exit 1: locator.innerText: Error: strict mode violation: locator('main') resolved to 2 e",
+"check_qa417_counts_browser.cjs": "exit 1: FAIL  sp at 375 px: the household line wraps inside its column and the page does",
+"check_screen01_browser.cjs": "exit 2: STOPPED after \"review #6: the approver sees People read-only (no Edit), and auth",
+"check_screen02_slice2_browser.cjs": "exit 2: STOPPED after \"1024 px: edition-impact-library has no sideways scroll\": locator.",
+"check_g4_tests_tab_browser.ts": "exit 1: locator.innerText: Error: strict mode violation: getByRole('tabpanel') resolved",
+"check_pf31_multitab_browser.ts": "exit 1: [TypeError: fetch failed] {",
+"check_w1_before_forms_browser.cjs": "exit 1: FAIL  P-161 (2) pass: Before forms is the first thing on the Forms tab, above th",
+"check_w1_start_setup_browser.cjs": "exit 1: FAIL  unexpected locator.innerText: Error: strict mode violation: getByRole('tab",
+"check_csk1s_clients_browser.ts": "exit 1: locator.innerText: Error: strict mode violation: locator('main') resolved to 2 e",
+"check_pf5s_firm_profile_browser.ts": "exit 1: FAIL  PF-5s S5 FP2 pass: the Owner changes the time zone and the website and sav",
+"check_pf18s_offices_browser.ts": "exit 1: FAIL  PF-18s: the check stopped: locator.waitFor: Timeout 30000ms exceeded.",
+"check_k13_names_browser.cjs": "exit 1: FAIL  K13 break M1 fail: at 1440 px no combination tab or badge is cut off \u2014 Rel"
+}
+},
+{
+"run": 45254544646,
+"batch": 3315,
+"start": "2026-11-23T19:58:56Z",
+"end": "2026-11-23T20:32:49Z",
+"prs": [
+3173,
+3193,
+3216,
+3289,
+3296
+],
+"fails": {
+"check_pf6_staff_browser.ts": "exit 1: locator.click: Error: strict mode violation: locator('nav[aria-label=\"My account",
+"check_bk3_links_browser.cjs": "exit 1:   name: 'TimeoutError'",
+"check_preview_sets_browser.cjs": "exit 1: locator.innerText: Error: strict mode violation: getByRole('tabpanel') resolved",
+"check_k13_names_browser.cjs": "exit 1: FAIL  K13 break M1 fail: at 1440 px no combination tab or badge is cut off \u2014 Rel",
+"check_bk3_frame_browser.cjs": "exit 1: FAIL  BK-3 375 /c/# as user-A: one \"where am",
+"check_bk4a_browser.cjs": "exit 1:   name: 'TimeoutError'",
+"check_aud4s_activity_log_browser.ts": "exit 1: FAIL  AUD-4s: the check stopped: locator.innerText: Error: strict mode violation",
+"check_g4_tests_tab_browser.ts": "exit 1: locator.innerText: Error: strict mode violation: getByRole('tabpanel') resolved",
+"check_pf5t_terms_browser.ts": "exit 1: locator.click: Error: strict mode violation: locator('nav[aria-label=\"My account",
+"check_csdl3_milestones_browser.ts": "exit 1: FAIL  CS-DL3 browser check stopped: locator.waitFor: Timeout 15000ms exceeded.",
+"check_pf6a_frame_browser.ts": "exit 1: locator.innerText: Error: strict mode violation: locator('main') resolved to 2 e",
+"check_forms_b86_panel_browser.cjs": "exit 1: FAIL  review M2: a returned change offers Withdraw, and no form to correct a nam",
+"check_bk3_client_browser.cjs": "exit 1: locator.innerText: Error: strict mode violation: locator('nav[aria-label=\"Path\"]",
+"check_forms_s4_library_browser.cjs": "exit 1: FAIL  axe (WCAG 2.2 AA): row actions with a reason shown \u2014 target-size: 2 (#radi",
+"check_pf31_multitab_browser.ts": "exit 1: [TypeError: fetch failed] {",
+"check_qa417_counts_browser.cjs": "exit 1: FAIL  the walk ran to the end \u2014 \"locator.click: Timeout 30000ms exceeded.\\nCall",
+"check_screen01_browser.cjs": "exit 2: STOPPED after \"review #6: the approver sees People read-only (no Edit), and auth",
+"check_forms_c47_pqr_picks_browser.cjs": "exit 1: FAIL  axe 400 px: to-review-picks has no WCAG A/AA violation \u2014 target-size (1):",
+"check_screens_qa_1029_browser.cjs": "exit 1: locator.innerText: Error: strict mode violation: locator('main') resolved to 2 e",
+"check_pf18s_offices_browser.ts": "exit 1: FAIL  PF-18s: the check stopped: locator.waitFor: Timeout 30000ms exceeded.",
+"check_s5_slice2_browser.cjs": "exit 1: FAIL  unexpected locator.innerText: Error: strict mode violation: getByRole('tab",
+"check_runtime_r1c.cjs": "exit 1: FAIL  officer pass: spouse and child are on the case and get their own tabs of s",
+"check_pf5s_firm_profile_browser.ts": "exit 1: FAIL  PF-5s S5 FP2 pass: the Owner changes the time zone and the website and sav",
+"check_pf13c_booking_brand_browser.ts": "exit 1: FAIL  R1.23 PF-13c BB3b: moving from firm A's page to firm B's inside the app (n",
+"check_forms_focus_landings_browser.cjs": "exit 1: FAIL  axe (WCAG 2.2 AA) 01-sources at 1440 px: no violations \u2014 [\"target-size: 1\"",
+"check_screen02_slice2_browser.cjs": "exit 2: STOPPED after \"1024 px: edition-impact-library has no sideways scroll\": locator.",
+"check_s5_slice1_browser.cjs": "exit 1: FAIL  unexpected locator.innerText: Error: strict mode violation: getByRole('tab",
+"check_w1_before_forms_browser.cjs": "exit 1: FAIL  P-161 (2) pass: Before forms is the first thing on the Forms tab, above th",
+"check_csdl3_milestones.ts": "exit 1: FAIL  CS-DL3 kind pass: CASE_MILESTONE_DEADLINE is added after the earlier kinds",
+"check_pf6f_callback_browser.ts": "exit 1: FAIL  PF-6f DW1 pass (Devin, #1912): refused link, Open My account, Back \u2192 Home",
+"check_w1_start_setup_browser.cjs": "exit 1: FAIL  unexpected locator.innerText: Error: strict mode violation: getByRole('tab",
+"check_csc1s_decision_browser.cjs": "exit 1:   name: 'TimeoutError'",
+"check_w115_slice3_browser.cjs": "exit 1: FAIL  axe: documents-read-only has no WCAG A/AA violation \u2014 target-size (2): but",
+"check_csk1s_clients_browser.ts": "exit 1: locator.innerText: Error: strict mode violation: locator('main') resolved to 2 e"
+}
+},
+{
+"run": 45255249651,
+"batch": 3316,
+"start": "2026-11-23T20:02:57Z",
+"end": "2026-11-23T20:34:11Z",
+"prs": [
+3173,
+3179,
+3216,
+3289
+],
+"fails": {
+"check_csdl3_milestones.ts": "exit 1: FAIL  CS-DL3 kind pass: CASE_MILESTONE_DEADLINE is added after the earlier kinds"
+}
+},
+{
+"run": 45255283757,
+"batch": 3317,
+"start": "2026-11-23T20:03:08Z",
+"end": "2026-11-23T20:36:42Z",
+"prs": [
+3173,
+3179,
+3216,
+3289,
+3291,
+3296
+],
+"fails": {
+"check_csdl3_milestones.ts": "exit 1: FAIL  CS-DL3 kind pass: CASE_MILESTONE_DEADLINE is added after the earlier kinds"
+}
+},
+{
+"run": 45256816567,
+"batch": 3319,
+"start": "2026-11-23T20:11:45Z",
+"end": "2026-11-23T20:46:13Z",
+"prs": [
+3179,
+3280,
+3283,
+3289
+],
+"fails": {
+"check_csdl3_milestones.ts": "exit 1: FAIL  CS-DL3 kind pass: CASE_MILESTONE_DEADLINE is added after the earlier kinds"
+}
+},
+{
+"run": 45260882131,
+"batch": 3326,
+"start": "2026-11-23T20:35:07Z",
+"end": "2026-11-23T21:05:49Z",
+"prs": [
+3173,
+3179,
+3216,
+3289,
+3316
+],
+"fails": {
+"check_csdl3_milestones.ts": "exit 1: FAIL  CS-DL3 kind pass: CASE_MILESTONE_DEADLINE is added after the earlier kinds"
+}
+},
+{
+"run": 45259041082,
+"batch": 3322,
+"start": "2026-11-23T20:24:27Z",
+"end": "2026-11-23T21:06:17Z",
+"prs": [
+2933,
+3179,
+3280,
+3283,
+3289,
+3291,
+3296
+],
+"fails": {
+"check_csdl3_milestones.ts": "exit 1: FAIL  CS-DL3 kind pass: CASE_MILESTONE_DEADLINE is added after the earlier kinds"
+}
+},
+{
+"run": 45278504196,
+"batch": 3343,
+"start": "2026-11-23T22:19:05Z",
+"end": "2026-11-23T22:49:53Z",
+"prs": [
+3209,
+3282,
+3289,
+3306
+],
+"fails": {
+"check_aud1m_case_writes.ts": "exit 1: FAIL  AUD-1m CW1 pass: the direct auditEvent.create writes left are exactly what"
+}
+},
+{
+"run": 45291227015,
+"batch": 3351,
+"start": "2026-11-23T23:43:14Z",
+"end": "2026-11-24T00:15:31Z",
+"prs": [
+3302
+],
+"fails": {
+"check_pf30s_find_box_browser.ts": "exit 1: FAIL  PF-30s F12 (review r4-1): at 320 px with a long name every top-bar control"
+}
+},
+{
+"run": 45293635638,
+"batch": 3352,
+"start": "2026-11-24T00:00:54Z",
+"end": "2026-11-24T00:31:54Z",
+"prs": [
+3040,
+3302
+],
+"fails": {
+"check_pf30s_find_box_browser.ts": "exit 1: FAIL  PF-30s F12 (review r4-1): at 320 px with a long name every top-bar control",
+"check_csd5_flags.ts": "exit 1: FAIL  CS-D7 pass: a document older than the type's max age (365 days) warns, not"
+}
+},
+{
+"run": 45295068211,
+"batch": 3353,
+"start": "2026-11-24T00:11:08Z",
+"end": "2026-11-24T00:41:18Z",
+"prs": [
+3321
+],
+"fails": {
+"check_csd5_flags.ts": "exit 1: FAIL  CS-D7 pass: a document older than the type's max age (365 days) warns, not"
+}
+},
+{
+"run": 45295843069,
+"batch": 3354,
+"start": "2026-11-24T00:16:41Z",
+"end": "2026-11-24T00:47:55Z",
+"prs": [
+3040
+],
+"fails": {
+"check_pf5s1_signup_browser.ts": "exit 1:   name: 'TimeoutError'",
+"check_csd5_flags.ts": "exit 1: FAIL  CS-D7 pass: a document older than the type's max age (365 days) warns, not"
+}
+},
+{
+"run": 45297856612,
+"batch": 3356,
+"start": "2026-11-24T00:31:31Z",
+"end": "2026-11-24T01:07:58Z",
+"prs": [
+3040,
+3224
+],
+"fails": {
+"check_csd5_flags.ts": "exit 1: FAIL  CS-D7 pass: a document older than the type's max age (365 days) warns, not"
+}
+},
+{
+"run": 45309178814,
+"batch": 3364,
+"start": "2026-11-24T02:00:30Z",
+"end": "2026-11-24T02:32:26Z",
+"prs": [
+3202,
+3225,
+3302,
+3361
+],
+"fails": {
+"check_pf4s_system_signin.ts": "exit 1: FAIL  PF-4s part 2 (PF-28): each staff route answers an unknown field 422 naming"
+}
+},
+{
+"run": 45317306928,
+"batch": 3369,
+"start": "2026-11-24T03:07:43Z",
+"end": "2026-11-24T03:49:21Z",
+"prs": [
+3366
+],
+"fails": {
+"check_bk3_links_browser.cjs": "exit 124: STOP still running at the 20 min limit; its processes below, then TERM (KILL 30  \u00b7 timed out at 20 min, not retried"
+}
+}
+]
+}

@@ -26,6 +26,7 @@ TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
+TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 bad=0
 if [ "$part" = 1 ]; then
@@ -487,6 +488,18 @@ A348 retry own|product/tools/retry-watch.py|s/ and not (m and str(n) in prs)//|c
 A348 retry search|product/tools/retry-watch.py|s/^        n += 1$/        return out, ""/|check-retry-watch.sh
 A348 retry wired|product/tools/lead-watch.sh|s/^rw=/# rw=/|check-retry-watch.sh
 A348 retry ran|product/tools/lead-watch.sh|/retry-watch.py did not run/d|check-retry-watch.sh
+A351 b1 two|product/tools/same-cause.py|s/ if len({r\["run"\] for r in rs}) > 1}/}/|check-same-cause.sh
+A351 b1 once|product/tools/same-cause.py|s/^        if k not in fired:/        if len(rs) > 1:/|check-same-cause.sh
+A351 b1 words|product/tools/same-cause.py|s/by.setdefault(f"{s}.*{w}"/by.setdefault(s/|check-same-cause.sh
+A351 b1 ids|product/tools/same-cause.py|s/ID.sub("#", \(.*\))$/(\1)/|check-same-cause.sh
+A351 b1 12h|product/tools/same-cause.py|s/ if r.get("end", "9") >= since}/}/|check-same-cause.sh
+A351 b1 forget|product/tools/same-cause.py|s/^    fired = .*/    fired = dict(st["fired"])/|check-same-cause.sh
+A351 b1 whole|product/tools/same-cause.py|s/^        if not missing:/        if True:/|check-same-cause.sh
+A351 b1 left|product/tools/same-cause.py|s/^    if left or unread:/    if False:/|check-same-cause.sh
+A351 b1 memory|product/tools/same-cause.py|s/^    if why:/    if False:/|check-same-cause.sh
+A351 b1 batch|product/tools/same-cause.py|s/ if w\["head_branch"\].startswith("mergify.")\]$/]/|check-same-cause.sh
+A351 b1 wired|product/tools/lead-watch.sh|s/^sc=/# sc=/|check-same-cause.sh
+A351 b1 ran|product/tools/lead-watch.sh|/same-cause.py did not run/d|check-same-cause.sh
 A334 order|product/tools/app-view-check.sh|s/ -k1,1nr -k2,2nr)$/ -k1,1nr)/|check-lead-watch-idle.sh
 A334 cloud|product/tools/app-view-check.sh|s/^  lane = (\$0 ~ \/ · cloud · /  lane = (\$0 ~ \/ · /|check-lead-watch-idle.sh
 A334 first|product/tools/night-checklist.py|s/^    rows.sort(key=lambda r: (r\[0\], r\[1\]))$/    rows.sort(key=lambda r: r[1])/|check-lead-watch-idle.sh

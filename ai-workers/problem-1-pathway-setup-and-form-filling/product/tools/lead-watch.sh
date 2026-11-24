@@ -125,6 +125,11 @@ rw=$(python3 -I "$TOOLS/retry-watch.py" --state "$STATE_DIR" 2>&1); echo "$rw"; 
 grep -qE '^(retry |ACT   retry)' <<<"$rw" || ACT "retry: retry-watch.py did not run ($(head -1 <<<"$rw"))"
 fresh "retry-watch.py: CI's retry comments and the PRs naming a fix (gh.sh), what earlier checks found in $STATE_DIR"
 
+# 2j. Same cause twice (A351 B1, founder 24 Nov): the second failed batch in 12 h with one suite's same FAIL line. Report only.
+sc=$(python3 -I "$TOOLS/same-cause.py" --state "$STATE_DIR" 2>&1); echo "$sc"; act=$((act + $(grep -c '^ACT' <<<"$sc"))); seen "$sc"
+grep -qE '^(same cause |ACT   same cause)' <<<"$sc" || ACT "same cause: same-cause.py did not run ($(head -1 <<<"$sc"))"
+fresh "same-cause.py: failed ci runs of merge batches and their red parts' logs (GitHub; a finished run's log is read once)"
+
 # 2h. Queue blocked by checks (ENF-758, P-757, P-758): while main's guards are red, or a merge batch failed or a PR was
 # dequeued in 2 h, one ACT per open check-only PR (tests, CI, Mergify, guard tools) approved on its head with green ci: the
 # Lead reads its diff, then merges it in the built-in browser (Lead 4, 23 Nov: never before the read). 20 Nov: #2435 and #2438 held the queue ~4 h, each red without the other.
