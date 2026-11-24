@@ -1,5 +1,80 @@
 # PF-17 part 4, PR B (console sign-in, session, Firms; R1.93): independent review, 24 Nov
 
+## Round 2 (head `d6e1dcf98c6b0e4026aa01be71dc14c29393ba47`; the current verdict)
+Delta checked: `git diff 30ce5f760 d6e1dcf98 -- studio/` (6 files, +164 −35, plus the breaker's report and screenshots).
+
+**Verdict: Approve.** Major #1 is fixed: the same focus probe that failed on `30ce5f760` passes on this head. Minors #2-#9 are fixed. Nothing open is a Blocker or a Major. Four new Minors (R2-a to R2-d below) can be fixed later or recorded on the row.
+
+**What I ran (copy `rvb2` :4459, never :4400):**
+* `web-fresh.sh build` OK; `tsc -p web` exit 0.
+* `check_pf17_console_browser.ts 4459 xr_studio_rvb2`:
+  * Run 1: **32/32**.
+  * Run 2: **31/32**. The failure was "B3 pass (round 2, breaker 3)". The product is right (see R2-c).
+* `j_93.ts rvb2 4459`: **23/24**. Every W2 line passes; the one failure is W4's screen line (PR C).
+* My own walk at 1440 and 375 px, signed in as `support.sample@…` and as `ops.sample@…`, with stubs for a slow answer, a `/me` 500 and an unreadable key.
+* Copy stopped. `scan-logs.ts var/isolated-logs/rvb2-api.log` gave "0 finding(s) — ok" (exit 0, 1 188 lines, 0 error lines).
+* My runs overwrote a committed screenshot again; I restored it with `git checkout`.
+
+**Each round-1 finding, re-checked:**
+* **#1 Major: fixed.**
+  * The code: `placeholderData: keepPreviousData`, with "Loading" only before the first answer.
+  * My focus probe, at 0 ms and at 300 ms of added latency: after Enter on Held, focus stays on the HELD chip. "sam", a 350 ms pause, then "ple" gives **"sample"** with focus still in the box and `?q=sample` in the address.
+  * The new B9 lines assert both.
+* **#2: fixed.** `?health=X` shows "Check the highlighted fields · Some fields need a change. health: This is not one of the allowed choices.", with **Clear filters** and no Retry. Clear filters empties the address and the box, and both rows come back. A 101-character search gets the same treatment.
+* **#3: fixed.**
+  * `endedWords` maps TOKEN_EXPIRED, SESSION_REVOKED and STAFF_NOT_ACTIVE (all three codes exist in `system-identity/service.ts`); any other code shows the server's own words.
+  * B8 revokes a real session through `sessions_ended_at` and reads "Your session was ended by a Platform Owner." on the card.
+  * An unreadable key is cleared with no notice (walk: notice count 0, key null).
+* **#4: fixed.** A `/me` 500 shows "Not available · Could not check who is signed in. Something went wrong." with Retry, and keeps the session. Retry recovers.
+* **#5: fixed.** A blank email shows "Enter your work email." and sends no request (spy count 0). The field is still not marked invalid (R2-b).
+* **#6: fixed.** "Sign in" is 44 px tall at 375 px.
+* **#7: fixed.** The figures note uses the concept's words (new B2b line). `?page=99` shows "No firms on this page." with "Go to page 1", which works; the pager is hidden.
+* **#8: fixed.** B7 spies on every request for a crossed token in both directions.
+* **#9: fixed.** The tab reads "Firms · ExpatReady console", focus lands on the h1 "Firms" after sign-in, and the status comments are gone.
+* **The breaker's fixes hold:**
+  * The box follows the address (12 of 12 tries in my walk).
+  * Without the key, the page shows only the API's words: no search, no chips, no Retry, no empty menu (the new B9 line, a real Content-publisher grant).
+  * At 375 px: axe 0, no sideways scroll.
+
+**What the delta could have broken, checked:**
+* keepPreviousData cannot carry one person's rows to the next. The token is in the query key, sign-out removes `["sys"]`, and the page unmounts behind the sign-in card, so a new sign-in starts with no earlier answer.
+* An error after a filter change drops the old rows and shows the notice.
+* The 401 path still goes to the card with its reason.
+* The title effect puts the earlier title back when the page unmounts.
+
+**New Minors (not blocking):**
+* **R2-a. No visible "updating" cue on a slow answer (UXL-12).**
+  * With a 2.5 s stub, pressing "Not live" left both OK firms on screen under the pressed "Not live" chip for 2.5 s. The only cue is the screen-reader-only "Updating the firms…" (`firms-page.tsx`, `isFetching && d`).
+  * Locally the answer comes in under 100 ms.
+  * **Fix:** while `list.isPlaceholderData`, set `aria-busy` and dim the table, or show the same words visibly.
+* **R2-b. The blank-email field is still not marked invalid.**
+  * `Field` clones its child with its own `aria-invalid`/`aria-describedby` from `error={null}` (`controls.tsx:60`). That overrides the new attributes on the Input (`frame.tsx:43`); the walk read `aria-invalid` null. `role=alert` still announces the words.
+  * **Fix:** pass the message as `Field error={error}` and drop the separate `<p>`.
+* **R2-c. One new check is flaky** (D16; it can turn CI red at random).
+  * "B3 pass (round 2, breaker 3)" reads the box right after `waitForURL`, before React's effect clears it: it failed once in my 2 runs.
+  * My 12-try probe of the same steps, with a 900 ms wait, cleared the box every time.
+  * **Fix:** poll the box value (for example, wait for the box to equal "") instead of reading it once.
+* **R2-d. Field errors show the parameter name** ("q: This is too long…", "health: …"). **Fix:** map `q` to "Search" and `health` to "Health" in `contract.ts`.
+
+**Journey score, round 2: 9/10, pass** (no criterion at 0):
+* task completed 1
+* next step obvious 1
+* plain words ½ (R2-d)
+* feedback and state ½ (R2-a)
+* correct data 1
+* error recovery 1
+* accessibility and screen sizes 1
+* speed 1
+* visual quality 1
+* trust and sources 1
+
+**D-score changes:** D11 3→4 · D13 3→4 · D16 4 (R2-c) · D10 4. All others are as in round 1.
+
+Reviewer: Approve d6e1dcf98c6b0e4026aa01be71dc14c29393ba47
+
+---
+# Round 1 (head `30ce5f760`; kept as the record)
+
 Reviewer: a fresh context that did not build it. Head: `30ce5f7606f8dfc55acfc7aab484d96a2a2c0abc` (#3489, stacked on A `bdab2d27c`). Diff `git diff bdab2d27c...HEAD -- studio/` (8 files, +535). Against concept r2 §4a-§4c, §5, §6 B1-B3/B7-B9, BR-1 to BR-4; `design/console-r1.html`; STANDARDS, EXPERIENCE (§7 UXL), QUALITY. The journey-test report is the "Journey test" section below (one file, as briefed).
 
 **Verdict: Block** (skill scale: Ship after fixes). One open Major, a small fix. Everything else is sound or Minor.

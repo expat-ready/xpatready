@@ -1,5 +1,37 @@
 # PF-17 part 4, PR B: break report (24 Nov)
 
+## Round 2 (head `d6e1dcf98`, 24 Nov): verdict **Approve**
+
+I re-ran every round-1 attack plus new ones aimed at the delta.
+* Isolated copy `brkb2` on :4461, built fresh with `web-fresh.sh build`, seeded the same way: 125 firms including the hostile names, Content publisher, Billing, and a staff member with no roles.
+* New attacks: typing around the 300 ms pause on a slow server, edits during a load, rows left on screen while the next answer loads, sign out and new sign-in on a slow list, expiry with rows on screen, a deactivated account, a failing `/me`, and a firm token in our key.
+
+**Blockers: none. Majors: none.** All round-1 findings are fixed:
+* **M1 fixed.** The search box keeps focus and every letter: "bulk firm 01" comes out whole at 290, 310 and 320 ms gaps and with 0 to 1.5 s of latency. Enter on a chip or on Next keeps focus on that control.
+* **m1 fixed.** A refused filter names its field ("q: This is too long: at most 100 characters", "health: …", "page: …"). "Clear filters" empties both the address and the search box.
+* **m2 fixed.** `?page=4` and `?page=99999` show "No firms on this page. Go to page 1". "Page 4 of 3" is gone.
+* **m3 fixed.** The search box clears when the side menu's Firms link drops `?q`.
+* **m4 fixed.** The card names the reason: "Your session expired", "Your session was ended by a Platform Owner", or the server's words for a forged token. A deactivated account gets a 401 `STAFF_NOT_ACTIVE` and its own sentence. A corrupted key is cleared silently.
+* **m5 fixed.** Without the key, the page shows only the h1 and the API's sentence: no search, chips, Retry, or empty menu column.
+
+**Still held:**
+* The planes: 0 crossings with both keys in one tab, and planted tokens either way.
+* Leftover data: 0 rows seen across ops, then Sign out, then Content publisher on a slow list. `keepPreviousData` brings back nothing across a sign-in.
+* Expiry while rows are on screen and the next page is loading gives the card with "Your session expired".
+* Paging: 50/50/25 of 125. Long names wrap.
+* No sideways scroll at 320, 375, 1024 or 200 %. axe found 0 issues. A blank email sends nothing. "Sign in" is 44 px tall at 375. The tab title reads "Firms · ExpatReady console" and the Studio's title comes back on `/`.
+* `scan-logs.ts brkb2-api.log`: 0 findings in 1 766 lines, and no emails or tokens.
+
+**New Minors (none blocks the merge):**
+* **r2-1. Rows from the old filter stay up during a load, with no visible sign.** With a 3 s answer, clicking Held left "Sample solo practice" (OK) showing under the pressed Held chip. The table has no `aria-busy` and is not dimmed; the only signal is a screen-reader status (`firms-page.tsx:57`). Fix: mark the table `aria-busy` and dim it while `isFetching && isPlaceholderData`.
+* **r2-2. Focus drops to the page body after "Clear filters", "Go to page 1", Sign out, and a sign-in by someone without the key.** The button unmounts, or the arrival flag is never taken on the 403 view (`firms-page.tsx:34, 60, 70`; `frame.tsx:73`). Fix: focus the h1, or the card's heading, after each of these.
+* **r2-3. The blank-email fix sets no aria attributes.** `Field` clones its child and overwrites `aria-invalid` and `aria-describedby` with `undefined`, because `error={null}`. The input never gets them (`frame.tsx:43`). The message is still `role="alert"`, so it is announced. Fix: pass `error={error === COPY.emailNeeded ? error : null}` to `Field`.
+* **r2-4. A `/me` that keeps failing is a dead end in that tab.** A firm token planted in our key (403), or a 500 on `/me`, shows "Could not check who is signed in." with Retry. There is no Sign out and no card, and a reload keeps it (`frame.tsx:78`). Only a planted key reaches the 403 today. Fix: add "Sign out" next to Retry. Also, the API's title "Check the highlighted fields" shows on a 422 where nothing is highlighted.
+
+---
+
+# Round 1 (head `30ce5f760`)
+
 Breaker, did not build it. Branch `claude/runtime-pf17-screens` at `30ce5f760`. PR #3489. Scope (P-26): concept r2 §4a-§4c, BR-1 to BR-4, B1-B3 and B7-B9. Support, the ticket panel and B4-B6 are PR C: **N/A here**.
 
 **How it was run.** App = `prototype/studio`.

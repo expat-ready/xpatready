@@ -167,7 +167,9 @@ try {
   ok("PF-17 B3 fail: a search that matches nothing shows the empty state's words, no table rows", empty.includes(COPY.firmsEmpty), empty);
   await p1.getByRole("navigation", { name: "Console" }).getByRole("link", { name: "Firms" }).click();
   await p1.waitForURL((u) => !u.search.includes("q="), { timeout: 10_000 }).catch(() => undefined);
-  ok("PF-17 B3 pass (round 2, breaker 3): leaving the search by the menu clears the box with the address", (await p1.getByRole("searchbox", { name: /Search firm/ }).inputValue().catch(() => "x")) === "");
+  // Waits for the box to follow (round 2, R2-c: one read right after the address changed could race the effect).
+  const cleared = await p1.waitForFunction(() => (document.querySelector('input[type="search"]') as HTMLInputElement | null)?.value === "", null, { timeout: 5000 }).then(() => true, () => false);
+  ok("PF-17 B3 pass (round 2, breaker 3): leaving the search by the menu clears the box with the address", cleared, await p1.getByRole("searchbox", { name: /Search firm/ }).inputValue().catch(() => "x"));
 
   // ---------------------------------------------------------------------------------------- B7 the wall, both ways
   const tFirm = await firmToken();
