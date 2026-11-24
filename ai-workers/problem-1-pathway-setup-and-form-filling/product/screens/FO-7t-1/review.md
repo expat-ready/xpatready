@@ -1,3 +1,58 @@
+# Round 11 (Lead 17: cancel visibility; diff only, 24 Nov 2026; 3e8d36f5f → db39eccd6)
+
+Round 11 verdict line: `Reviewer: Approve db39eccd6b001db1f18ce866712a60e672400c1d`
+
+Scope: `git diff 3e8d36f5f db39eccd6` (3 files, +26 −3): `api/src/client-money/trust/service.ts` +7/−2, `tests/check_fo7t_trust.ts` +18, and one comment line in `prisma/migrations/20261123223000_fo7t1_evidence_key/migration.sql`. Commits: 5ed6cba0a (tests only, failing first) then db39eccd6 (fix plus comment). `git diff 5ed6cba0a db39eccd6` touches service.ts and the migration only, so the red run and the green run use the same test. The tree was clean after every run and after the probe.
+
+## 1. service.ts `cancel` against Lead 17: matches
+* **Scope read once, before the transaction** (`service.ts:125`): `const seen = await this.scopeOf(ctx)`, outside `this.write(...)`. This is the r9-M1 shape used by `createRequest` (l. 100) and `recordDeposit` (l. 164). Nothing inside the callback touches `this.db`.
+* **The order is the ruled one:**
+  1. `trustShows(tx, f)` → 404 (l. 127, unchanged).
+  2. The row lock: `select … for update` on `firm_id` and `id` (l. 128-129). It now also selects `case_id::text` and `coalesce(person_id, company_id)::text as party`.
+  3. Missing **or unseen** → `notFound("trust request")` (l. 130). This is the same call and the same words as before, and the same 404 that `GET /requests/:id` gives (`reads.ts:40`).
+  4. Only then the `CANCELLED` 409 (l. 131), so an unseen cancelled request is never told apart from a missing one, and its number is never shown.
+  5. Reason check, update and audit (unchanged).
+* **The rule is exactly the read's.** `reads.ts:27` `seen` is `case_id = any(cases)`, or `case_id is null and coalesce(person_id, company_id) = any(parties)`. l. 130 is `r.case_id ? cases.includes(case_id) : !!party && parties.includes(party)`:
+  * A request with a case is decided by its case only, with no fallback to the party, as in the read.
+  * A null party (impossible by the row's check, but handled) fails closed, as SQL's NULL does.
+  * Case: both sides are lowercase. `uuid::text` is lowercase, and `PgMoneyVisibility` lower-cases both lists (`visibility-adapter.ts:23`). So a string `includes` is equivalent to the read's `uuid = any(uuid[])`.
+* **No other behaviour change.** The visible request (any role with the key, in scope) cancels exactly as before: same 409 text, same reason check (`textOk` after visibility, so a bad reason on an unseen request is 404, which is consistent), same update, same audit line, same answer. The only added cost is one `scopeOf` read per cancel. As in round 10, a C5 change landing between the scope read and the lock is accepted by the r9-M1 ruling.
+
+## 2. The tests (`tests/check_fo7t_trust.ts:342-359`, before the DW10 audit check): real, and red before the fix
+* **The caller really has the key and is outside the scope.**
+  * `CASE_OFFICER` is granted `agent/payment:record` at l. 345 and revoked at l. 359. Before, it does not hold the key: the keyless 403 at l. 168 and l. 193 shows that. So the insert cannot collide with a seed row, and the delete removes only what the block added.
+  * Keys are read per request, not at sign-in: `tO` signed in at l. 105, and the grant works in the block.
+  * user-O's scope: `agent/case:view.all` and `agent/prospect:view.all` are taken from CASE_OFFICER (l. 132), user-O owns no prospect, and it is on CASE's team only (l. 335). So it sees CASE, not CASE2 and not PA.
+* **Coverage is what the ruling asks for.** These requests are refused by user-O: `rParty` (PA, no case: by party, open), `rCase2` (CASE2: by case, open) and `rDone` (CASE2, already cancelled by the Owner).
+  * Each must be 404.
+  * `state()` must be unchanged: id plus `cancel_reason` for the three. The update sets `cancelled_at`, `cancelled_by` and `cancel_reason` together, so one column is enough.
+  * The count of `trust.request_cancelled` audit lines must be unchanged.
+* **Both pass checks discriminate.**
+  * By case: user-O cancels `rOnCase` on CASE. It must return 200 and Cancelled, store the reason, and add exactly one audit line. A fix that checked only the party would fail this, because user-O sees no party.
+  * By party: the Owner cancels `rParty` (no case). It must return 200 and add one more audit line. A fix that required a case would fail this.
+* **The grant and revoke leave later checks alone.** No later check uses `tO` or the Case Officer's keys. The DW10 audit check (l. 360-363) counts audit lines against rows, and the block keeps that balance: three cancels, three audit lines, none on a refusal. If the block threw between grant and revoke, the catch marks a fail and `dropdb` removes the copy, so no grant can leak.
+* **Red before (my probe).** I put back the 3e8d36f5f `service.ts` (the test at head), ran it, then ran `git checkout` and the tree was clean. The result was `FAIL FO-7t C5 fail (cancel; Lead 17) … [[200,null,null],[200,null,null],[409,"CANCELLED","DR-0009 is already cancelled. Nothing was changed."]]`. The two pass checks were red as a knock-on: by case saw +3 audit lines, and by party got 409 because `rParty` was already cancelled by user-O. This is the builder's red exactly.
+
+## 3. The migration: a comment only
+`git diff 3e8d36f5f db39eccd6 -- '*migration.sql'` is one `--` line. "Stamped after main's newest (20261123020000)" becomes "Stamped 20261123223000, after main's newest (20261123213000_fo6d_any_document; Lead 15's re-stamp)". No SQL changed.
+* **The new text is true.** On origin/main (f31e27d55, fetched now), the newest migration is `20261123213000_fo6d_any_document`, and `20261123223000_fo7t1_evidence_key` is not on main. So only throwaway copies have applied the old text.
+* **The checksum.** The file's checksum changes. A database that applied the earlier text would see a modified migration under `prisma migrate dev` (`migrate deploy` does not refuse it). No shared database has it.
+* This closes rounds 9-10's n1.
+
+## My runs on db39eccd6 (run-suites.sh --only, isolated copies, ports +14000, never :4400, no model)
+* check_fo7t_trust: 62/0, twice (11 s, 10 s).
+* check_pf8b_f4_migrations: 9/9.
+* Probe on the pre-fix service.ts: check_fo7t_trust red on the Lead 17 fail check, plus the two knock-on pass checks only. This agrees with the builder's figures.
+
+## Findings (none blocking)
+* **n1 (Nit, `tests/check_fo7t_trust.ts:347-350`):** no check pins the one place where cancel's rule differs from "sees the party". That case is a request on an unseen case whose client the caller does see; it must be 404, because the case decides, as in the read. The code is right (l. 130), but a later "or the party is seen" fallback would stay green, because user-O sees no party. Optional fix: in the same block, give user-O's role `agent/prospect:view.all` for one call on `rCase2` and expect 404. Not in Lead 17's Done-when, so it is not required.
+* Round 10's m1 and m2 (crowd size and no concurrency check on createRequest) are unchanged by this diff and still optional.
+* Round 10's out-of-scope note (cancel without C5) is now ruled (Lead 17) and fixed.
+
+Journey score: **8.5/10 stands** (pass, no criterion at 0). The API-only wrong-role journey now also holds for cancel. Report: `screens/FO-7t-1/journey-test-reviewer-2026-11-24.md`.
+
+**Verdict: Approve** db39eccd6b001db1f18ce866712a60e672400c1d. No Blocker or Major is open. `cancel` matches Lead 17 and the request read's rule exactly, in the ruled order, and its checks are red without the fix.
+
 # Round 10 (diff only, 24 Nov 2026; 163c35239 → f8665b910, allowed by the tech lead)
 
 Round 10 verdict line: `Reviewer: Approve f8665b910b9cef16b39cde164db985674827b95f`
