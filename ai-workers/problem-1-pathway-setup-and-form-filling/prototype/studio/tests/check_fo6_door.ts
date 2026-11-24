@@ -20,8 +20,11 @@
 // Stand-ins, said: the prospects, the conflict check and the ended requests (B) are written by SQL; the firm setting in D
 // is written by SQL into platform_firm_setting (the Owner's switch has no route yet: note question 6). Sample values only;
 // US$0, no model call, no live mail, no vendor call. Legal points (e-signature identity): Unconfirmed: no counsel.
+// The third argument names the parts built so far (here "4a"): a line whose label names a part not yet built prints
+// PENDING and is not counted, so the suite holds what is merged while the later parts are built (P-606); with no third
+// argument every line counts (that is how it ran red on main a26e80b6a, 2 of 31, exit 1). 4c's PR drops the argument.
 // Run from prototype/:
-//   zsh studio/tools/isolated.sh fo6door 4434 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh fo6door 4434 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo6_door.ts fo6door 4434
+//   zsh studio/tools/isolated.sh fo6door 4434 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh fo6door 4434 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo6_door.ts fo6door 4434 4a
 import "reflect-metadata";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -36,7 +39,15 @@ import { client, recorder } from "./runtime/api.ts";
 const [NAME, PORT] = [process.argv[2] ?? "fo6door", Number(process.argv[3] ?? 4434)];
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
 const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
-const { ok, summary } = recorder();
+const { ok: record, summary } = recorder();
+const BUILT = process.argv[4] ? new Set(process.argv[4].split(",").map((x) => x.trim())) : null;   // null: every part counts
+let pending = 0;
+/** A line counts when every part its label names ("(part 4b+4c)", "(part 4a setting, 4b door)") is built; else PENDING. */
+const ok = (name: string, c: unknown, detail?: unknown) => {
+  const parts = (name.match(/\(part ([^)]*)\)/)?.[1] ?? "").match(/4[abc]/g) ?? [];
+  if (BUILT && parts.some((x) => !BUILT.has(x))) { pending++; console.log(`PENDING  ${name} (part ${parts.filter((x) => !BUILT.has(x)).join(", ")} not built yet)`); return !!c; }
+  return record(name, c, detail);
+};
 const { sql: rawSql, until } = client(PORT, DBNAME);
 const sql = (q: string) => rawSql(q).split("\n")[0].trim();
 const trySql = (q: string): string | null => { try { return sql(q); } catch (e) { console.log(`  note: ${String((e as { stderr?: string }).stderr ?? e).split("\n")[0]}`); return null; } };
@@ -187,7 +198,7 @@ try {
     !!right && wrong.slice(0, 5).every((s) => s === 422) && wrong[5] === 423 && afterLock.status === 423 && afterLock.cookies.length === 0 && /15 minutes/.test(afterLock.text) && sql(`select count(*) from fo_signer where request_id = '${L.rq}' and role = 'CLIENT' and locked_until > now() + interval '14 minutes'`) === "1", { wrong, after: brief(afterLock) });
 
   // ---------------------------------------------------------------------------------------------- D the code switched off
-  const off = trySql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${firmA}', 'front-office.signing.email_code', 'false', 'system:test') on conflict (firm_id, key) do update set value = 'false' returning key`);
+  const off = trySql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${firmA}', 'front_office.signing_email_code', 'false', 'system:test') on conflict (firm_id, key) do update set value = 'false' returning key`);
   const PD = person("D"), D = await sendFor(PD), TD = await linkFor(PD.email), dj = jar(), dBefore = (await inbox(PD.email)).length;
   const dState = await dj("GET", door(TD || "none")), dConsent = await dj("POST", door(TD || "none", "/consent"), { agree: true, consentTextVersion: dState.body?.consentTextVersion }), dSession = await dj("GET", door(TD || "none", "/session"));
   ok("FO-6 door D (part 4a setting, 4b door): with the firm's code switched off the state says no code is needed, the session starts at consent, and no code is mailed",
@@ -195,7 +206,7 @@ try {
   const d2 = jar(), d2Consent = await d2("POST", door(TD || "none", "/consent"), { agree: true, consentTextVersion: dState.body?.consentTextVersion }), d2Session = await d2("GET", door(TD || "none", "/session"));
   ok("FO-6 door D (part 4b; note question 2, as recommended): with the code off a second browser's consent starts its own session without writing consent again (a bearer link until signed), and replaces the first browser's session",
     d2Consent.status < 300 && d2Session.status === 200 && sql(`select count(*) from fo_signer where request_id = '${D.req || randomUUID()}' and role = 'CLIENT' and consented_at is not null`) === "1" && [401, 403].includes((await dj("GET", door(TD || "none", "/session"))).status), { consent: brief(d2Consent), session: brief(d2Session) });
-  trySql(`delete from platform_firm_setting where firm_id = '${firmA}' and key = 'front-office.signing.email_code' returning key`);
+  trySql(`delete from platform_firm_setting where firm_id = '${firmA}' and key = 'front_office.signing_email_code' returning key`);
 
   // ---------------------------------------------------------------------------------------------- E the stand-in signing page and the firm signer
   const url = String(session.body?.url ?? ""), onCopy = !!url && new URL(url, BASE).origin === new URL(BASE).origin;
@@ -238,4 +249,5 @@ try {
   ok("FO-6 door: the walk finished without an error", false, String((e as Error)?.stack ?? e).slice(0, 400));
 }
 const failed = summary();
+if (pending) console.log(`${pending} lines pending (parts not built yet)`);
 process.exit(failed ? 1 : 0);
