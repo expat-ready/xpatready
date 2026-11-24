@@ -8,7 +8,9 @@
 // routes only, run only by their declared values, and refused anywhere else;
 // DW7 an unknown or malformed id → 404, never 500; DW8 paging, the order and ?health= / ?q= return the right rows; DW9
 // (break M1, Lead 10 on #3155) 400 firms answer under 2 s, ?health= checks at most PAGE_SIZE × 4 firms' figures and says
-// so, storage is StorageWatch's stored measure with its date. One process, a
+// so, storage is StorageWatch's stored measure with its date; DW10 (PF-17's failed-jobs part, Lead 15's answer on #3225;
+// j_93 W2 "each firm's failed jobs are its own dead letters") each firm's failedJobs is the count of its own entries on
+// PF-14's dead-letter list (PlatformJobs.deadLetters), one read per call, null (never a 500) when that read fails. One process, a
 // scratch database (dropped at the end), a small Nest app built from the features' own classes. No model call (US$0).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf17_console.ts
 import "reflect-metadata";
@@ -64,7 +66,12 @@ const { SystemFirmsController } = await import("../api/src/platform/system-conso
 const { PgEntitlements, seatsUsed, mbOf } = await import("../api/src/platform/entitlements/limits.ts");
 const { PgCaseCount } = await import("../api/src/case-count.ts");
 const feature = (await import("../api/src/features/platform-system-console.ts")).default;
+const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts");
 
+/** PF-14's dead-letter list as PlatformJobs.deadLetters answers it (a fake here: the list's own reader is PF-14's suite's). */
+const dead: { name: string; key: string; firmId: string | null; error: string; failedAt: Date }[] = [];
+let deadFails = false, deadReads = 0;
+const deadLetters = async (limit = 100) => { deadReads++; if (deadFails) throw new Error("jobs: the job queue is not running"); return dead.slice(0, limit); };
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 /** Storage in bytes per firm id, measured by StorageWatch (PF-15's own measure), whose stored figure the console shows. */
 const bytes = new Map<string, number>();
@@ -81,7 +88,7 @@ try {
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, SystemIdentity, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard },
       { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor },
-      { provide: SystemFirms, useFactory: (db: InstanceType<typeof Db>) => new SystemFirms({ db, cases: (k, tx) => new PgCaseCount(tx, k), now: () => clock.now() }), inject: [Db] }] as never[] }) class TestApp {}
+      { provide: SystemFirms, useFactory: (db: InstanceType<typeof Db>) => new SystemFirms({ db, cases: (k, tx) => new PgCaseCount(tx, k), now: () => clock.now(), deadLetters }), inject: [Db] }] as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   app.use(requestMiddleware());
   await app.listen(0, "127.0.0.1"); apps.push(app);
@@ -207,7 +214,7 @@ try {
   const byUseName = await throwsLike(() => inRequest({ method: "GET", path: "/api/system/firms" }, () => asBypass(FIRMS_LIST.name, async () => 1)), (e) => e instanceof BypassRefused);
   const lookAlike = await throwsLike(() => inRequest({ method: "GET", path: "/api/system/firms" }, () => asBypass({ name: FIRMS_LIST.name, entry: FIRMS_LIST.entry }, async () => 1)), (e) => e instanceof BypassRefused);
   ok("PF-17 DW6 fail: on its own route, either use run by its name alone or by a look-alike object is refused (BypassRefused): only the declared value crosses", byUseName && lookAlike, { byUseName, lookAlike });
-  const svc = new SystemFirms({ db: owner, cases: (k, tx) => new PgCaseCount(tx, k), now: () => clock.now() });
+  const svc = new SystemFirms({ db: owner, cases: (k, tx) => new PgCaseCount(tx, k), now: () => clock.now(), deadLetters });
   const caller = { staffId: "pf17", keys: ["system/firm:read"] };
   const elsewhere = await throwsLike(() => inRequest({ method: "GET", path: "/api/platform/me" }, () => svc.list(caller, {})), (e) => e instanceof BypassRefused);
   const elsewhereOne = await throwsLike(() => inRequest({ method: "POST", path: "/api/system/signup-links" }, () => svc.one(caller, firmA)), (e) => e instanceof BypassRefused);
@@ -284,6 +291,28 @@ try {
   ok("PF-17 DW9 pass (review m1-r2): each filtered list call writes exactly one firm-less bypass line, however many firms' figures it works out", listLines() === f0 + 4, { f0, f1: listLines() });
   const narrow = (await call(base, "/api/system/firms?health=ATTENTION&q=160%20over", tokens.support)).body;
   ok("PF-17 DW9 pass: narrowed with ?q=, all 20 seat-over firms are found (complete)", narrow.total === 20 && narrow.complete === true && narrow.firms.every((f: any) => f.reasons.includes("seats over the limit")), { total: narrow.total, complete: narrow.complete });
+
+  // ------------------------------------------------- DW10: failed jobs per firm (PF-14's dead-letter list; j_93 W2)
+  ok("PF-17 DW10 pass: the feature binds the failed-jobs read to PF-14's PlatformJobs (its dead-letter list), injected beside Db and the clock",
+    (feature.providers as { provide?: unknown; inject?: unknown[] }[]).some((p) => p.provide === SystemFirms && p.inject?.includes(PlatformJobs)));
+  const letter = (firmId: string | null, n: number) => ({ name: "platform.some_queue", key: `pf17-dead-${firmId ?? "platform"}-${n}`, firmId, error: "Sample: failed after its last retry", failedAt: new Date(clock.now() - n * 1000) });
+  dead.length = 0;
+  dead.push(letter(firmA, 1), letter(firmA, 2), letter(firmS, 3), letter(null, 4));
+  const r0 = deadReads, fq = (await call(base, "/api/system/firms?q=sample", tokens.support)).body, rd = deadReads - r0;
+  const byIdA = fq.firms.find((f: any) => f.id === firmA), byIdS = fq.firms.find((f: any) => f.id === firmS);
+  ok("PF-17 DW10 pass (j_93 W2): each firm's failedJobs is its own dead letters: firm A 2, firm S 1; the platform's own dead letter (no firm) counts for neither; one read of the list per call",
+    byIdA?.failedJobs === 2 && byIdS?.failedJobs === 1 && rd === 1, { a: byIdA?.failedJobs, s: byIdS?.failedJobs, reads: rd });
+  dead.push(letter(firmS, 5));
+  const oneA = (await call(base, `/api/system/firms/${firmA}`, tokens.support)).body, oneS = (await call(base, `/api/system/firms/${firmS}`, tokens.support)).body;
+  ok("PF-17 DW10 fail: a new dead letter for firm S moves firm S's figure only (2), never firm A's (still 2), on one firm's answer too",
+    oneS.failedJobs === 2 && oneA.failedJobs === 2, { a: oneA.failedJobs, s: oneS.failedJobs });
+  const other = (await call(base, "/api/system/firms?page=1", tokens.support)).body.firms.filter((f: any) => f.id !== firmA && f.id !== firmS);
+  ok("PF-17 DW10 pass: a firm with no dead letter shows 0, never null", other.length > 0 && other.every((f: any) => f.failedJobs === 0), other.slice(0, 3).map((f: any) => f.failedJobs));
+  deadFails = true;
+  const down = await call(base, "/api/system/firms?q=sample", tokens.support), downOne = await call(base, `/api/system/firms/${firmA}`, tokens.support);
+  deadFails = false;
+  ok("PF-17 DW10 fail: when the dead-letter list cannot be read the list and one firm still answer 200, each failedJobs null (not known), never 0 and never a 500",
+    down.status === 200 && down.body.firms.every((f: any) => f.failedJobs === null) && downOne.status === 200 && downOne.body.failedJobs === null, { status: [down.status, downOne.status], one: downOne.body?.failedJobs });
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

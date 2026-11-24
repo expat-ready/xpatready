@@ -28,7 +28,7 @@ import { DOCX, renderDocx } from "../../retainers/docx.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent, type SigningPort } from "../../signing/port.ts";
 import { wallLabel } from "../service.ts";
 import { CODE_S23, s23Check } from "./items.ts";
-import { DECIDING_ORDER, ENDED_STATUSES, isEnded, isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
+import { CAN_SIGN, DECIDING_ORDER, ENDED_STATUSES, HAS_EMAIL, HAS_TEMPLATE, missingCauses, missingWords, isEnded, isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
 
 type Tx = Prisma.TransactionClient;
 /** This module's two events (the row's names). `ports/events.ts` is outside the row's touch list: J-104 moves them there. */
@@ -127,14 +127,10 @@ export class ConsultationAgreementService {
       select b.firm_id::text, b.id::text, b.starts_at from fo_booking b
        where b.status in ('SCHEDULED', 'RESCHEDULED') and b.starts_at > ${this.ports.clock.now()}
          -- only a booking that can be sent (its person has an email), so unsendable ones never fill the batch (break m6)
-         and exists (select 1 from fo_person p where p.firm_id = b.firm_id and p.id = b.person_id and p.email is not null)
+         and ${HAS_EMAIL}
          -- and someone can sign for the firm, by signatory()'s rule (R2-4, R3-2: a firm with none never fills the batch)
-         and (exists (select 1 from platform_staff s join platform_staff_credential c on c.firm_id = s.firm_id and c.staff_id = s.id where s.firm_id = b.firm_id and s.id = b.staff_id and s.status = 'ACTIVE')
-              or exists (select 1 from platform_staff s join platform_staff_credential c on c.firm_id = s.firm_id and c.staff_id = s.id
-                          where s.firm_id = b.firm_id and s.status = 'ACTIVE'
-                            and (select count(distinct rp.permission_key) from platform_role_grant g join platform_role_permission rp on rp.role = g.role
-                                  where g.firm_id = s.firm_id and g.staff_id = s.id and g.ended_at is null and rp.permission_key = any(${[...DUTY_KEYS.represent]})) = ${DUTY_KEYS.represent.length}))
-         and exists (select 1 from fo_retainer_template t where t.firm_id = b.firm_id and t.kind = 'CONSULTATION' and t.active)
+         and ${CAN_SIGN}
+         and ${HAS_TEMPLATE}   -- the same three as the hold's causes (gate.ts, QA-772)
          -- part 2 (Lead 10, W4b): only a type that needs the agreement
          and exists (select 1 from fo_consultation_type t where t.firm_id = b.firm_id and t.id = b.type_id and ${Prisma.raw(NEEDS_AGREEMENT_SQL)})
          -- no agreement that is waiting or signed: none at all, or each one ended unsigned (a fresh one is sent, P2R2-1)
@@ -344,7 +340,10 @@ export class ConsultationAgreementService {
     if (!b || !(await this.sees(ctx, b.id))) return notFound();
     const a = await this.ofBooking(this.db, ctx.firmId, b.id), required = needsAgreement(b.type);
     // `required`: the booking's type needs it (part 2): an unsigned one holds Attended and the consult record.
-    return a ? { ...(await this.read(ctx, a.id)), required } : { id: null, bookingId: b.id, status: "NONE", signed: false, words: WORDS.none, required };
+    if (a) return { ...(await this.read(ctx, a.id)), required };
+    // QA-772 (Lead 22): needs one, none yet → held; `why` is the refusal's own words (gate.ts), shown on the panel.
+    const m = required ? await missingCauses(this.db, ctx.firmId, b.id) : null;
+    return { id: null, bookingId: b.id, status: "NONE", signed: false, words: WORDS.none, required, ...(m ? { causes: m.causes, why: missingWords(m.causes, m.started) } : {}) };
   }
   /** The person's agreements, newest first. Another firm's person: 404. */
   async forPerson(ctx: StaffContext, personId: string) {

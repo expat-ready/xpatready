@@ -38,6 +38,19 @@ export const SERVICE_SECRETS = [
   "PLATFORM_ZOOM_CLIENT_ID", "PLATFORM_ZOOM_CLIENT_SECRET", "PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN", "PLATFORM_SECRET_BOX_KEYS", "PLATFORM_SECRET_BOX_KEY_VERSION",
 ] as const;
 export const POOLS = ["staff", "own-staff", "clients"] as const;
+/** PF-4bs (concept screens/PF-4bs r3 §4; Lead 23, 24 Nov): the only Cognito actions the app may call, each with its caller,
+ *  on the staff pool's ARN only (held by service-checks.ts signInTaskFindings and checks.ts ECS_TASK_ACTIONS). Sign-in and
+ *  its code: AdminInitiateAuth, AdminRespondToAuthChallenge; the set-password callback: AdminSetUserPassword, AdminGetUser;
+ *  PF-4bc: AdminCreateUser (accept), AdminSetUserMFAPreference (reset two-step), AdminUserGlobalSignOut (sign out
+ *  everywhere), AdminGetUserAuthFactors (two-step state and the first step of reset two-step: provider.ts factors(), which
+ *  tells a passkey from an app; read only; its own IAM action, Lead 24's ruling on #3429, 24 Nov). The deploy test
+ *  sign-in-task.test.ts ties this list to the commands the app imports. AssociateSoftwareToken, VerifySoftwareToken and RespondToAuthChallenge take no IAM permission (AWS: "you
+ *  can't use IAM credentials to authorize requests"), so they are not here. */
+export const SIGN_IN_ACTIONS = ["cognito-idp:AdminInitiateAuth", "cognito-idp:AdminRespondToAuthChallenge", "cognito-idp:AdminSetUserPassword", "cognito-idp:AdminGetUser",
+  "cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserMFAPreference", "cognito-idp:AdminUserGlobalSignOut", "cognito-idp:AdminGetUserAuthFactors"] as const;
+/** PF-4bs: minutes a staff member has to answer a sign-in challenge (AWS `AuthSessionValidity`, 3 to 15): a first-time
+ *  invitee installs an authenticator app inside it (challenge round 1, M4). */
+export const CHALLENGE_MINUTES = 15;
 
 export interface AppServiceProps {
   stage: Stage;
@@ -124,9 +137,9 @@ export class AppService extends Construct {
     // MFA requirements"; a passkey is never a second step to a password: EnabledMfas has no passkey). This is the pool's
     // half only: AWS also needs each person's passkey MFA switch on (`WebAuthnMfaSettings.Enabled`, SetUserMFAPreference),
     // and "the user must also have at least one other MFA method ... activated to prevent account lockout", so staff
-    // still enrol the authenticator app first. Needs the Essentials tier (the API's default, made explicit) and the
-    // client's ALLOW_USER_AUTH ("covers username-password, secure remote password (SRP), passwordless, and passkey
-    // authentication"; so a client may also send the password itself, not only SRP). The relying party is the stack's
+    // still enrol the authenticator app first. Needs the Essentials tier (the API's default, made explicit) and, once the
+    // passkey row builds the app side, the client's ALLOW_USER_AUTH (PF-4bs: off until then, so the client allows only
+    // our API's admin password flow and refresh; see addClient below). The relying party is the stack's
     // domain, so a passkey works at every `<firm>.<domain>`. No-domain staging has no domain to name: passkeys stay off
     // there (password plus app only).
     const passkeys = (staff: boolean) => staff && !noDomain;
@@ -146,7 +159,12 @@ export class AppService extends Construct {
         removalPolicy: RemovalPolicy.RETAIN,
       });
       if (passkeys(staff)) (p.node.defaultChild as cognito.CfnUserPool).webAuthnFactorConfiguration = "MULTI_FACTOR_WITH_USER_VERIFICATION"; // no L2 property in aws-cdk-lib 2.275.0
-      p.addClient("App", { generateSecret: false, preventUserExistenceErrors: true, authFlows: { userSrp: true, user: passkeys(staff) }, disableOAuth: true }); // no hosted UI yet: no OAuth flows or placeholder callbacks
+      // PF-4bs (Lead 23, 24 Nov): a staff member signs in only on our page, through our API's admin password flow (AWS:
+      // "Server-side username-password authentication"), so the one-session rule, the limits and the audit at our door
+      // cannot be gone around with the public client id; SRP and USER_AUTH stay off until passkeys are built (the pool's
+      // passkey settings stay for that row). The clients' pool is PF-4p's: unchanged. No hosted UI: no OAuth flows.
+      p.addClient("App", { generateSecret: false, preventUserExistenceErrors: true, disableOAuth: true,
+        ...(staff ? { authFlows: { adminUserPassword: true }, authSessionValidity: Duration.minutes(CHALLENGE_MINUTES) } : { authFlows: { userSrp: true } }) });
       return p;
     };
     const pools = { staff: pool("staff", true), "own-staff": pool("own-staff", true), clients: pool("clients", false) };
@@ -180,6 +198,8 @@ export class AppService extends Construct {
     taskRole.addToPrincipalPolicy(new iam.PolicyStatement({ actions: ["s3:GetObject", "s3:PutObject"], resources: [props.files.arnForObjects("*/*")] }));
     taskRole.addToPrincipalPolicy(new iam.PolicyStatement({ actions: ["s3:ListBucket"], resources: [props.files.bucketArn] }));
     taskRole.addToPrincipalPolicy(new iam.PolicyStatement({ actions: ["kms:GenerateDataKey", "kms:Decrypt"], resources: [key.keyArn], conditions: { StringEquals: { "kms:ViaService": `s3.${region}.amazonaws.com` } } }));
+    // PF-4bs: the staff pool only (never own-staff or clients)
+    taskRole.addToPrincipalPolicy(new iam.PolicyStatement({ actions: [...SIGN_IN_ACTIONS], resources: [pools.staff.userPoolArn] }));
 
     // --- the migration task: the owner's address only, the same image, `prisma migrate deploy`
     this.migration = new ecs.FargateTaskDefinition(this, "Migrate", { cpu: 512, memoryLimitMiB: 1024 }); // Sample sizes
