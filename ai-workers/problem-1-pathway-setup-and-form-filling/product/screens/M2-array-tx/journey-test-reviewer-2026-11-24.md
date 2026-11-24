@@ -43,3 +43,34 @@ With d33cb8de8's `firm-scope.ts`, J1 to J4 pass (r192 58/58) and J5 copies 5 win
 **Score: 5/10, fail (below 8, with four 0s).** The most valuable fix is B1 in `review.md` (keep `this` in the override): it restores J1 to J5, which were checked at 58/58 and green.
 
 Not tested: a real screen reader, a browser walk, the intended users' unaided walk (D17/D20 stay with the founder), and the branding, timings and batch-decision journeys end to end (reasoned from the same cause; probe b covers the lock pattern).
+
+## Round 2, head 078ebab5dad1c6c939e0a7340e6e8121ba491175 (24 Nov 13:43 IST)
+
+These are the same journeys, re-run through `run-suites.sh` isolated copies (runtime ports +14000, never :4400) and scratch-database probes. I walked no browser, because the diff has no screen.
+
+| # | Journey | Round 2 result |
+|---|---|---|
+| J1-J4 | Owner, Admin and firm B save the firm profile, plus the retry | `check_r192_firm_profile` **58/58** (round 1: 48/58, 500 with a partial write) |
+| J5 | First availability read (advisory lock, then the nested copy of the hours) | `check_fo3a_hours_timings` 47/0. Probe: a nested call keeps the outer pid and txid, so the lock is the same session's (no self-deadlock) |
+| J5b | Branding save; batch decision of marks | `check_pf13_branding` 30/0; `check_forms_qa193_batch_mark` 18/18 |
+| J8 | Case officer prepares a case (the renamed snapshot client) | `check_bk17_keep_recorded` 25/25 |
+| J9 | Firm B's request while firm A's is in flight | `check_no_array_tx` 14/0 |
+
+**Data underneath:** the outer transaction fails after a nested write, and 0 rows are left (suite case and probe). Refused batches (array, array-like, iterator, `Set`, `undefined`, promise) write nothing.
+
+**Break-it:** the `$extends` client's transaction keeps its extension and nests. A detached `$transaction` throws, as plain Prisma does (no such use in api/src). Reverting the m1 condition goes unnoticed by the suite (review m5).
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J1-J5, J8 and J9 pass |
+| Next step obvious | 1 | The saves succeed; no unexplained 500 is left |
+| Plain words | 1 | The M2 message is unchanged and plain |
+| Feedback and state | 1 | No save reports a failure while keeping a part |
+| Correct data | 1 | Nested writes are all-or-none with the outer transaction |
+| Error recovery | 1 | A refusal fails closed before anything runs |
+| Accessibility and screen sizes | 1 | No UI change (not walked) |
+| Speed | 1 | The 5 s hang is gone (fo3a 22 s for the whole suite) |
+| Visual quality | 1 | No UI change (not walked) |
+| Trust and sources | 1 | No AI or source display touched |
+
+**Score: 10/10, pass.** Not tested: a browser walk, a real screen reader, or an intended user's unaided walk (D17/D20 stay with the founder).

@@ -68,3 +68,43 @@ None besides B1.
 Reviewer: Block 4461c363b118b14f33444068b1ed8ddeeead5f43
 
 Verdict: Block 4461c363b118b14f33444068b1ed8ddeeead5f43
+
+## Round 2, head 078ebab5dad1c6c939e0a7340e6e8121ba491175 (24 Nov 13:43 IST)
+
+Same reviewer role, fresh pass. Scope: `git diff 4461c363b..078ebab5d -- ':!*/product/screens/*'` (3 files: `firm-scope.ts`, `case-prepare.ts`, `tests/check_no_array_tx.ts`). Scratch databases on :54329; isolated copies only through `run-suites.sh` (runtime copies, ports +14000), never :4400. Every swapped file was restored (`firm-scope.ts` sha1 39d82cf5 before and after), the temporary probe was moved out of `tests/`, and `git status` is clean.
+
+**Verdict: Ship.** B1 is fixed the way round 1 asked, and I found no Blocker or Major. Four Minors, none of which blocks.
+
+### What I ran
+| Check | Result |
+|---|---|
+| `tests/check_no_array_tx.ts` at the head | **14 passed, 0 failed** |
+| The same suite with 4461c363b's `firm-scope.ts` | **12 passed, 2 failed**: nested pid 13644 against 13636 and txid 209853 against 209855; the inner write survives (1 row). The third new case (an array on a tx client) **passes** there (see m6) |
+| Mutation: `transaction.call(client, …)` in place of `call(this, …)` | 12/2, the same two cases red |
+| Mutation: `Array.isArray(arg)` in place of `typeof arg !== "function"` | **14/0, nothing red** (m5) |
+| Call-shape probe (`r2rev/probe.ts` in the scratchpad; `class Db extends PrismaClient` with `oneQueryPerCaller(this)` in its constructor, as core.ts:39) | 12/12: the root runs in the caller's firm and passes options through (repeatable read seen); `tx.$transaction(fn)` and a doubly nested call keep the outer pid and txid; the `"$transaction" in c ? c.$transaction(run) : run(c)` helper opens its own transaction given `db` and nests given `tx`; a `$extends` client's tx keeps its client method and query hook, nests, and refuses an array; an array-like, an iterator, a `Set`, `undefined` and a Prisma promise are all refused with the M2 message, and nothing runs |
+| `run-suites.sh --only check_r192_firm_profile.ts` | **58/58** (48/58 at round 1) |
+| `run-suites.sh --only` fo3a hours/timings, pf13 branding, qa193 batch mark, bk17 keep recorded | 47/0, 30/0, 18/18, 25/25 |
+| Source check alone on api/src (583 files) | **0 raw matches**, even before the comment filter, so there is no false positive today |
+
+### The questions asked
+- **B1 is fixed.** `firm-scope.ts:547-552` keeps the unbound method and calls it with the receiver. Prisma's proxy `set` writes an own property on the raw client (createCompositeProxy.ts `set`). Every itx and `$extends` client reaches that property through `target[prop]`, so `this` is the itx or extended proxy. `getItxScopeContext(this)` (getPrismaClient.ts:254, 889) then reads "nested", as it does without the override.
+- **`this` in every call shape:** right in all four (probe above). The only shape that changes is a detached `const t = db.$transaction; t(fn)`. It now throws `Cannot read properties of undefined (reading '_engineConfig')`, exactly as Prisma's own method does. No such use exists in api/src (searched `$transaction` not followed by `(`: only types, `in` checks, and `typeof db.$transaction` at library-changes.ts:148).
+- **Refusing every non-function breaks no legitimate call.** All 32 `$transaction(` calls in api/src whose argument is not an inline `async` (of 324 in all) pass a callback: `(tx) => …`, `fn`, `run`, or `(snap) => …`. None spans lines. Prisma's runtime calls `$transaction` nowhere itself (searched the whole source map). Prisma also takes this same branch (`typeof input === 'function'`, getPrismaClient.ts:882).
+- **The source check** catches an array, `.map`, `.flatMap`, spread and `Array.from`, on one line or across lines. It still misses `xs.filter(p).map(`, `rows().map(`, a variable (`$transaction(ops)`), `$transaction?.([`, `$transaction<[A]>([` and bracket access. It would flag a match after a trailing `//`, in a one-line `/* */` or in a string. Neither kind occurs in api/src. This is round 1's m2, which the builder declined because the run-time refusal fails closed. I accept that.
+- **case-prepare.ts:212 rename:** a pure rename, `(tx) => Promise.all(read(tx))` to `(snap) => Promise.all(read(snap))`. It no longer shadows `sync`'s `tx`. The `snap` at :833 is in another function. Repeatable read, `maxWait` 10 s and the 5 s default timeout are unchanged. bk17 25/25.
+
+### Minors
+- **m5: the m1 change is not tested.** With `Array.isArray(arg)` restored, `check_no_array_tx` is still 14/0. **Fix:** add one case: `$transaction({ length: 1, map: (f) => [f(<insert>, 0)] } as never)` from firm B in the same tick as firm A is refused, and nothing runs. It is red with `Array.isArray`, because the breaker's a1 ran it as firm A.
+- **m6 (records): the PR comment says the three new cases were "each red at 4461c363b".** "An array batch on a transaction client is refused" passes at 4461c363b (12/2 above). It is a fair guard case, but the claim should say that two of the three were red.
+- **m7 (nit): the multi-line probe runs the regex on a literal**, not through the file-reading path. A return to `split("\n")` would keep it green. **Fix:** put the file scan in one `scan(text)` function and run the probe through it.
+- **Round 1 m3 is still open in the PR body.** Question 1 still says "the array batch had no time limit". The builder's comment says "noted for the body", but the body has not changed. **Fix:** edit the body (the old batch had Prisma's 5 s default).
+
+### Not checked
+- `typecheck.mjs`: `tsc api` was killed for lack of memory in this sandbox (148 s, no file checked); `tsc web` passed. The diff's only type surface is `function (this: unknown, arg: unknown, opts?: unknown)` assigned to the local `c.$transaction`. The builder reports PASS.
+- Full CI, `check_pf12_walls`, `check_fo3_booking` (both reported green by the builder), and the availability first-read probe (the nesting probe covers its cause).
+- **Journey score: 10/10, pass.** See `journey-test-reviewer-2026-11-24.md`, Round 2.
+
+Reviewer: Approve 078ebab5dad1c6c939e0a7340e6e8121ba491175
+
+Verdict: Approve 078ebab5dad1c6c939e0a7340e6e8121ba491175
