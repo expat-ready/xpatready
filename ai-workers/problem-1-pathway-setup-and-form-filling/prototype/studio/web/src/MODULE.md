@@ -18,6 +18,7 @@ The web app's shell: routes, the API client, module pages seam, shared words and
 - `actor` is the one current person; only `setActor` changes it (P-484).
 - The simulated person travels as `x-actor`; the server decides and refuses in plain words.
 - Firm-staff pages (`modules/front-office/`, `modules/platform/`) call `/api/platform/*` and `/api/front-office/*` with PF-4's bearer token through `modules/platform/session.ts` (`staffApi`, `useMe`; `sales/session.ts` is its re-export), never `lib/api.ts`; a change of person drops every `["fo", …]` and `["pf", …]` answer (FO-4, PF-6).
+- Our console's pages (`modules/system/`) call `/api/system/*` with our own staff's token through `modules/system/session.ts` (`systemApi`, sessionStorage `xr-system-session`), never `staffApi` or `lib/api.ts`; neither session's token is sent to the other's routes, and a change of session drops every `["sys", …]` answer (PF-17 part 4).
 - Demo-only controls sit in one menu, never part of the product (P-35); the menu offers the six agreed combinations (P-148).
 - `styles/tokens.css` is the team's tokens, copied unchanged.
 - One way to say who can be in an application (`lib/people.ts`, P-161 (2)).
