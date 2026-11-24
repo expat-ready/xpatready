@@ -139,6 +139,9 @@ try {
   if (controls) { await opener.first().click(); await p.waitForTimeout(1500); } else await p.keyboard.press("Escape");
   // NOTE, not counted: opening from the panel is CS-D5's (R1.68); R1.69's clause is proved by the reads above.
   console.log(`NOTE  J-69 W1 on screen (CS-D5, R1.68's viewer): open control on the line ${controls ? "found" : "not found"}; lines added by opening it: ${Number(viewed(docA.id)) - n2}`);
+  // Since CS-D5 part 2 (#3500, merged 46798e2a8) the file's name opens the preview panel (a dialog) over the case: close
+  // it, as a person would, before the line's ⋯ menu below (qa 10: unclosed, it covered the menu and W2 timed out on main).
+  if (await p.getByRole("dialog").count()) { await p.keyboard.press("Escape"); await p.getByRole("dialog").first().waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined); }
   await panel.screenshot({ path: join(SHOTS, "w1-documents-panel-1440.png") });
 
   // ---------------------------------------------------------------------------------------------- W2 the "Read by" panel
