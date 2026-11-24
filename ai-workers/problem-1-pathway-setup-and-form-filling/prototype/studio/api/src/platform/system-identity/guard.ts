@@ -27,6 +27,10 @@ import { SystemIdentity } from "./service.ts";
 import type { CallLine } from "./staff.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// PF-21d: a platform switch's key (POST /api/system/switches/:key, e.g. "platform.data-erasure") is the one /api/system path
+// parameter that is not a record id; the switch service checks the same shape again before the database.
+const SWITCH_KEY_RE = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
+const paramOk = (name: string, v: unknown) => typeof v === "string" && (name === "key" ? SWITCH_KEY_RE : UUID_RE).test(v);
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
 const bearerOf = (h: string | string[] | undefined) => { const a = Array.isArray(h) ? h[0] : h; return typeof a === "string" ? /^Bearer\s+(\S+)$/i.exec(a.trim())?.[1] : undefined; };
@@ -108,10 +112,11 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     const reasonOf_ = this.reflector.getAllAndOverride<ZodType | true | undefined>(SYSTEM_REASON, targets);
     const wantsReason = reasonOf_ !== undefined, bodySchema = typeof reasonOf_ === "object" ? reasonOf_ : null;
     // R1.10 A4: a malformed record id is the one not-found (404), answered after the permission and step-up checks and before
-    // any field is read, as every PF/FO door does (PF-28); every /api/system path parameter is a record id.
+    // any field is read, as every PF/FO door does (PF-28); every /api/system path parameter is a record id, except a switch's :key,
+    // checked as a key (PF-21d).
     // Only on a route that asks for a reason: there the guard reads the body, so the not-found must come first; every other route
     // answers its own not-found in its own words (PF-17's "No such support ticket.").
-    const badId = wantsReason && Object.entries((req as { params?: Record<string, unknown> }).params ?? {}).some(([, v]) => !(typeof v === "string" && UUID_RE.test(v)));
+    const badId = wantsReason && Object.entries((req as { params?: Record<string, unknown> }).params ?? {}).some(([k, v]) => !paramOk(k, v));
     // SA-7-10: a sign-in at most 5 minutes old (exactly 5 passes, as PF-4b's requireStepUp).
     const stale = this.reflector.getAllAndOverride<boolean>(SYSTEM_STEP_UP, targets) === true && now / 1000 - staff.authTime > STEP_UP_SECONDS;
     const reason = reasonOf((req.body as { reason?: unknown } | null | undefined)?.reason);
