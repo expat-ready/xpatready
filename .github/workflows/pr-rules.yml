@@ -61,13 +61,13 @@ jobs:
         env:
           TITLE: "${{ github.event.pull_request.title }}"
         run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs claim --title "$TITLE"
+      - name: a "Clean-up:" PR is a pure move or deletion; no live file names a moved path (E5, P-674 to P-677)
+        if: "${{ !cancelled() }}"
+        run: printf '%s\n' "$BODY" | bash "$T/cleanup-pr-check.sh" --base HEAD^1
       - name: existing checks this PR removes or changes, listed for the reviewer, "Checks changed:" says why (A351 C2; a warning, never a failure)
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         # Test: product/tools/check-checks-changed.sh.
         run: printf '%s\n' "$BODY" | timeout 30 python3 -I "$T/checks-changed.py" --base HEAD^1 --summary "$GITHUB_STEP_SUMMARY" || echo "::warning title=Checks changed (A351 C2)::the check could not run"
-      - name: a "Clean-up:" PR is a pure move or deletion; no live file names a moved path (E5, P-674 to P-677)
-        if: "${{ !cancelled() }}"
-        run: printf '%s\n' "$BODY" | bash "$T/cleanup-pr-check.sh" --base HEAD^1
       - name: under 800 changed lines of code and tests, or a recorded exception
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         env:
