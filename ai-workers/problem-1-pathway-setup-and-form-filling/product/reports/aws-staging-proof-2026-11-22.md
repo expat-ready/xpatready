@@ -598,3 +598,25 @@ Cost Explorer net daily: 21 Nov ~0, 22 Nov ~0, 23 Nov 0 (estimated; net unblende
 
 **End state:** service desired 0, running 0, 0 tasks listed (06:43:49Z); alarm OK. Cost, estimated from list prices, not read from a bill: about US$0.10-0.25. Still costing: about US$0.18/h idle (RDS, NAT, load balancer, public IPv4).
 **These are this session's results, not verdicts: qa decides.** Still open after it: R1.1 (signed-in smoke step, PF-8c), R1.15 (a code row that stores a firm key sealed), R1.13 (real on-call address, P-782).
+
+## Step 20: build, deploy and proofs on main cc349dcfe, 24 Nov 09:24-09:56 IST (Lead 19; founder's yes typed and chosen there, US$2 cap)
+
+Read off the CloudShell screen; the raw outputs are in CloudShell `~/run24/` (ca-central-1), **not yet in this repository**. Not verdicts: qa decides.
+
+| Check | Result |
+|---|---|
+| CodeBuild `xr-staging-image-build:dea4b0f8-328b-430c-a725-fe36399b315f` on cc349dcfe | SUCCEEDED 09:30:01 IST, digest `sha256:d04d5bb29e2d70f10aad6c607f8df54b90ea733208b68ecb71ac45c55e1e3731`; project deleted, role deleted (`get-role` NoSuchEntity) |
+| `cdk diff 0` | rc=0. New: AccessLogsBucket and its policy, secret PLATFORM_FILES_LINK_KEY; SNS on-call subscription replaced; task-role permissions (3 Allow: bucket, list, data key); Deny statements on three buckets; AppTask, AppMigrate, AppService. Nothing else replaced or destroyed in the lines read |
+| `cdk deploy 0` | rc=0, 139.73 s, 04:06:12Z, UPDATE_COMPLETE |
+| `migrate deploy` | "All migrations have been successfully applied", last `20261124030000_pf17_support_keys` |
+| R1.65 put, no encryption header / `AES256` / `aws:kms` | AccessDenied (rc 254) / AccessDenied (rc 254) / accepted (rc 0); test version deleted, 0 left. Put as root, so the bucket policy refused it |
+| R1.65 access logs, lifecycle | documents, exports, imports each log to the access-log bucket under their own prefix; access logs expire at 90 days; `unfinished-uploads` 1 day and `old-versions` 35 days on the three buckets. No log line was read (S3 delivers them later) |
+| R1.65 app task env (`xrstagingAppTask7031B6E4:8`) | PLATFORM_FILES=s3, bucket, KMS key ARN, region ca-central-1 |
+| R1.65 cross-firm, in the app image on the real bucket | Try 1 **void** (exit 0, no proof line, nothing stored: `tsx -e` ran nothing; kept). Try 2, task 51f4d716a8f54aa58a74b94b716effc8: `adapter=S3Files ownFirmReads=sample otherFirmReads=null pathTrick=refused`, rc=0. Object under firm A's prefix read back `aws:kms` with the data key; deleted, 0 left. Two Sample firm ids, no database row, no sign-in |
+| R1.1 all regions | 17 regions listed; stacks and databases and clusters only in ca-central-1 (xr-staging, CDKToolkit; 1 RDS, 1 ECS) and stacks in ca-west-1 (xr-staging-copy, CDKToolkit). Enabled regions only |
+| Service at 2 | stable rc=0, 2 of 2, task definition :8, health 200, 04:16:33Z |
+| R1.13 alarm, real errors, no set-alarm-state | 38 x 503 and 114 x 401; OK to ALARM 04:22:34Z; action executed on xr-staging-on-call; published 1, delivered 1, failed 0 |
+| R1.13 reaches a person | Subscription confirmed before the alarm (read in AWS 04:22:13Z); the founder answered in writing "Yes, received at 09:52 IST" (an option offered with that time; not typed freely) |
+| End | desired 0, running tasks 0, CodeBuild projects 0, build role gone, alarm still ALARM when last read (04:25Z, settles by itself) |
+
+Not done: R1.15's missing-secret start (not in the approved steps); `j_65` not re-run. **Cost (list prices, not a bill): under US$0.15 for the run** (build under US$0.10; 2 tasks about 8 minutes; three one-off tasks). New standing: one secret about US$0.40 a month and the access-log bucket (cents); the founder approved both before the deploy. Idle stays about US$0.18/h.
