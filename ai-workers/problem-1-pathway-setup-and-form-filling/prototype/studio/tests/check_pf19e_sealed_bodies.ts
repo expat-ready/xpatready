@@ -75,6 +75,8 @@ const { sha256Hex } = await import("../ports/files.ts");
 const { fakeJobs } = await import("../ports/jobs.ts");
 const { HELD_DAILY_LIMIT, SYSTEM_PER_ADDRESS_HOUR } = await import("../ports/messages.ts");
 const { SecretRefused } = await import("../ports/secret-box.ts");
+const { runContract } = await import("../ports/contracts/contract.ts");
+const { secretBoxPortContract } = await import("../ports/contracts/secret-box-port.contract.ts");
 
 type P = { provide?: unknown; useExisting?: unknown; useFactory?: unknown; inject?: unknown[] };
 const providerOf = (f: { providers?: unknown[] }, token: unknown) => (f.providers as P[]).find((p) => p?.provide === token);
@@ -102,6 +104,9 @@ async function appWith(mailProviders: unknown[]) {
 }
 
 try {
+  // The shared SecretBoxPort contract on bodyBoxOf (the app's box for message bodies: a key ring's versions).
+  const keysFor = [randomBytes(32).toString("base64"), randomBytes(32).toString("base64"), randomBytes(32).toString("base64")];
+  await runContract(secretBoxPortContract, "bodyBoxOf", ({ current, held }) => bodyBoxOf({ environment: "test", secretBox: { current, keys: new Map(held.map((v) => [v, new Secret(`PLATFORM_SECRET_BOX_KEYS v${v}`, keysFor[v - 1])])) } }), ok);
   await seedSampleFirms(db);
   const firmA = await db.platformFirm.findUniqueOrThrow({ where: { key: "sample-firm" } });
   const firmB = await db.platformFirm.findFirstOrThrow({ where: { id: { not: firmA.id } } });

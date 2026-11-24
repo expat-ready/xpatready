@@ -5,7 +5,7 @@
 // never opens as another message's or in another place, and a dropped or added part is refused. The outbox row's hash is
 // of these sealed bytes. Only the send worker and the demo inbox open it; nothing here logs, audits or answers the body.
 // SERVICE and MARKETING files are stored as before (plain JSON).
-import { randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { Rendered } from "../../../../../ports/messages.ts";
 import { SecretRefused, type SecretBoxPort, type SecretOwner } from "../../../../../ports/secret-box.ts";
 import { Secret } from "../../config/secret.ts";
@@ -60,18 +60,21 @@ export function openStored(box: SecretBoxPort, firmId: string | null, outboxId: 
   return JSON.parse(parts.map((p: string, n) => box.open(ownerOf(firmId, outboxId, n, parts.length), p)).join("")) as Rendered;
 }
 
-/** A key ring of one random key, held by this process only: a local copy with no PLATFORM_SECRET_BOX_KEYS still seals
- *  (as UnsubscribeTokens does); a body queued before a restart then no longer opens (the worker fails it "content changed"). */
-let processBox: SecretBoxPort | null = null;
-export function processBodyBox(): SecretBoxPort {
-  return (processBox ??= aesGcmSecretBox({ current: 1, keys: new Map([[1, new Secret("message-body process key", randomBytes(32).toString("base64"))]]) }));
-}
+/** A local copy with no PLATFORM_SECRET_BOX_KEYS (the Mac, lanes, CI's copies) seals with one fixed key derived from a
+ *  constant, the same in every process, so a body a test or a seed wrote opens in the server's worker. It is no secret:
+ *  local copies hold Sample data only (the brief's amendment: demo and test copies may keep the token readable); every
+ *  other environment needs the key ring (bodyBoxOf). */
+let localBox: SecretBoxPort | null = null;
+const localRing = () => ({ current: 1, keys: new Map([[1, new Secret("message-body local key", createHash("sha256").update("expat-ready local copies: message-body sealing (not a secret)").digest("base64"))]]) });
 
-/** The app's box for message bodies: the configured key ring; a local copy without one, the process key; elsewhere every
+/** The local copies' box (MessagePort's and the demo inbox's default: a test that builds its own Messages). */
+export const LOCAL_BODY_CONFIG = { environment: "local", secretBox: null } as const;
+
+/** The app's box for message bodies: the configured key ring; a local copy without one, the fixed local key; elsewhere every
  *  seal is refused, saying which settings to supply (a transactional body is never stored unsealed). */
 export function bodyBoxOf(config: Pick<PlatformConfig, "environment" | "secretBox">): SecretBoxPort {
   if (config.secretBox) return aesGcmSecretBox(config.secretBox);
-  if (config.environment === "local") return processBodyBox();
+  if (config.environment === "local") return (localBox ??= aesGcmSecretBox(localRing()));   // local only: the fixed key above
   const refuse = (): never => { throw new SecretRefused("NOT_CONFIGURED", "No message-body sealing key on this server: set PLATFORM_SECRET_BOX_KEYS and PLATFORM_SECRET_BOX_KEY_VERSION (deploy/RUNBOOK-secrets.md)."); };
   return { currentVersion: refuse, seal: refuse, open: refuse, versionOf: refuse, reseal: refuse };
 }

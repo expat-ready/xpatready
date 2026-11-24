@@ -11,7 +11,7 @@ import { LOCAL_PROVIDER } from "./channels/email/local.ts";
 import { unsubscribeHeaders, type UnsubscribeTokens } from "./channels/email/unsubscribe.ts";
 import type { SecretBoxPort } from "../../../../ports/secret-box.ts";
 import { fileKeyOf, filesSpaceOf } from "./send/messages.ts";
-import { openStored, processBodyBox } from "./send/sealed-body.ts";
+import { bodyBoxOf, LOCAL_BODY_CONFIG, openStored } from "./send/sealed-body.ts";
 import { asBypass, touchFirms } from "../firm-scope.ts";
 
 type H = string | undefined;
@@ -21,8 +21,8 @@ export const INBOX_TEXT_MAX = 64 * 1024;
 /** Made by the feature's factory (api/src/features/platform-messages.ts) with the messages' own FilesPort. */
 export class PlatformInbox {
   constructor(private readonly db: Db, private readonly files: FilesPort, private readonly demo: () => boolean = isDemoWorkspace, private readonly unsub?: { tokens: UnsubscribeTokens; publicBase: string },
-    /** PF-19e: the box MessagePort seals TRANSACTIONAL bodies with (default: this process's own, as Messages'). */
-    private readonly box: SecretBoxPort = processBodyBox()) {}
+    /** PF-19e: the box MessagePort seals TRANSACTIONAL bodies with (default: the local copies' fixed key, as Messages'). */
+    private readonly box: SecretBoxPort = bodyBoxOf(LOCAL_BODY_CONFIG)) {}
 
   async list(address: H, xActor: H) {
     if (!this.demo()) fail("Not found.", HttpStatus.NOT_FOUND);

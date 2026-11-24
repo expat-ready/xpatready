@@ -85,8 +85,7 @@ try {
   await messages.register();
   const mail = async (firmId: string) => {
     const r = await db.$transaction((t) => messages.send(t, { firmId, channel: "EMAIL", class: "TRANSACTIONAL", address: `pf13.${randomUUID().slice(0, 6)}@example.com`, content: { subject: "Your booking (Sample)", text: "See you on Monday.\n\nThe firm" }, idempotencyKey: randomUUID() }));
-    const f = await files.get(firmId, fileKeyOf(firmId, r.outboxId));
-    return JSON.parse(new TextDecoder().decode(f!.bytes)) as { html: string; from: { name: string } };
+    return (await messages.readStored(firmId, r.outboxId, "TRANSACTIONAL"))!;   // PF-19e: a transactional body is stored sealed
   };
 
   const before = await mail(FIRM_A.id), g0 = await get(owner);

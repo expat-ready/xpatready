@@ -40,7 +40,7 @@ import { logPort } from "../../observability/log.ts";
 import { emailBrandOf, NEUTRAL_COLOUR } from "../../branding/branding.ts";
 import { publicBaseUrl } from "../../branding/image-setting.ts";
 import { emailLayout } from "../layout/email-layout.ts";
-import { openStored, processBodyBox, storedBytes } from "./sealed-body.ts";
+import { bodyBoxOf, LOCAL_BODY_CONFIG, openStored, storedBytes } from "./sealed-body.ts";
 
 type Tx = Prisma.TransactionClient;
 /** Queue names start "messages." (a short dotted head reads as a program key to B164's guard). */
@@ -73,7 +73,7 @@ const triesOf = (reason: string | null) => Number(/^send failed: try (\d+) of \d
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
 export type ChannelAdapter = { provider: string; deliver(tx: Tx, r: Rendered): Promise<{ providerId: string }> };
-export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort; log?: (line: string) => void; /** PF-13: the base of the logo's public link (default: the app's public address). */ publicBase?: string; /** PF-19e: seals TRANSACTIONAL bodies (default: this process's own key, processBodyBox). */ box?: SecretBoxPort };
+export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort; log?: (line: string) => void; /** PF-13: the base of the logo's public link (default: the app's public address). */ publicBase?: string; /** PF-19e: seals TRANSACTIONAL bodies (default: the local copies' fixed key, bodyBoxOf(LOCAL_BODY_CONFIG); the app passes bodyBoxOf(config)). */ box?: SecretBoxPort };
 
 export const fileKeyOf = (firmId: string | null, outboxId: string) => `msg/${firmId ?? "platform"}/outbox/${outboxId}.json`;
 /** PF-19p: the file store space of platform account messages (FilesPort keys files by a uuid; this one is no firm's). */
@@ -97,7 +97,7 @@ export class Messages implements MessagePort<Tx> {
   private readonly clock: ClockPort;
   /** PF-19e: the box message bodies are sealed with (the demo inbox opens with the same one). */
   readonly box: SecretBoxPort;
-  constructor(private readonly d: MessagesDeps) { this.clock = d.clock ?? systemClock; this.box = d.box ?? processBodyBox(); }
+  constructor(private readonly d: MessagesDeps) { this.clock = d.clock ?? systemClock; this.box = d.box ?? bodyBoxOf(LOCAL_BODY_CONFIG); }
 
   /** PF-19e: a stored rendered message, opened for its row's class (the worker's read; the demo inbox's). Null: no file. */
   async readStored(firmId: string | null, outboxId: string, cls: "TRANSACTIONAL" | "SERVICE" | "MARKETING"): Promise<Rendered | null> {
