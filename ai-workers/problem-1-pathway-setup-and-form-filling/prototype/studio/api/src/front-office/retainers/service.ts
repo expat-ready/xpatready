@@ -67,19 +67,32 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const attempt = () => randomBytes(6).toString("hex");
 /** Text that looks blank, hides itself or turns the line around (B-13, B-14 of part 1): refused in names. */
 const HIDDEN = /[\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u3164\ufe00-\ufe0f\ufeff]/;
-/** PF-28 (R1.10): the new-version form's own field (multipart text, or a number from a direct call); its rule is expectedVersionOf's. */
-export const TemplateVersionBody = strict({ expectedVersion: z.union([z.string().max(12), z.number()]).optional() });
 /** PF-28 part 5 (R1.10, retainers): each door's own fields through the one input rule, so an unknown field or a body that
  *  is not an object is 422 named before anything is looked up. The values keep their own rules and words (str, feesOf,
- *  expectedVersionOf, expectedStatusOf, uuidOf); those that need no record run before the look-up too. */
+ *  expectedVersionOf, expectedStatusOf, uuidOf); those that need no record run before the look-up too.
+ *  PF-28 A3: a field whose own rule needs no record is also read here, by that rule and in its words (`rule`), so a value
+ *  of the wrong type is named on its field even when another field is missing or the record is not found; a value the
+ *  rule takes passes on unchanged, and the service reads it exactly as before. */
+const STATUSES = ["DRAFT", "SENT", "VIEWED", "CLIENT_SIGNED", "SIGNED", "SIGNED_OFFLINE", "DECLINED", "WITHDRAWN", "EXPIRED"];
 const any = z.unknown().optional();
-export const TemplateBody = strict({ name: any, kind: any });
+const rule = (takes: (v: unknown) => boolean, words: string) => z.unknown().refine((v) => v === undefined || takes(v), { error: words }).optional();
+const DIGITS = /^[1-9]\d{0,8}$/;   // a version sent as text (multipart): plain digits (FO-5f break m-4)
+const KIND = rule((v) => v === null || v === "RETAINER" || v === "CONSULTATION", "RETAINER or CONSULTATION.");
+const ID_OR_NONE = rule((v) => v === null || v === "" || (typeof v === "string" && UUID.test(v)), "Not an id.");
+const FEES = rule((v) => Array.isArray(v) && v.length <= 50, "At most 50 rows.");
+const VERSION = rule((v) => Number.isInteger(v) && (v as number) >= 1, "Send the version shown on your page.");   // JSON: a whole number
+const VERSION_TEXT = rule((v) => (Number.isInteger(v) && (v as number) >= 1) || (typeof v === "string" && DIGITS.test(v)), "Send the version shown on your page.");   // multipart: its digits
+const STATUS = rule((v) => typeof v === "string" && STATUSES.includes(v), "Send the status shown on your page.");
+/** PF-28 (R1.10): the new-version form's own field (multipart text, or a number from a direct call); its rule is expectedVersionOf's ("" is none). */
+export const TemplateVersionBody = strict({ expectedVersion: rule((v) => v === "" || (Number.isInteger(v) && (v as number) >= 1) || (typeof v === "string" && DIGITS.test(v)), "Send the version shown on your page.") });
+export const TemplateBody = strict({ name: any, kind: KIND });
 export const TemplateChangeBody = strict({ active: any, name: any });
-export const DraftBody = strict({ kind: any, templateId: any, representativeStaffId: any, signerPersonId: any, fees: any });
-export const EditBody = strict({ templateId: any, signerPersonId: any, representativeStaffId: any, fees: any, expectedVersion: any, expectedStatus: any });
-export const SendBody = strict({ expectedVersion: any });
-export const WithdrawBody = strict({ reason: any, expectedVersion: any, expectedStatus: any });
-export const OfflineBody = strict({ reason: any, expectedVersion: any, signedVersion: any });
+export const DraftBody = strict({ kind: KIND, templateId: ID_OR_NONE, representativeStaffId: ID_OR_NONE, signerPersonId: ID_OR_NONE, fees: FEES });
+export const EditBody = strict({ templateId: ID_OR_NONE, signerPersonId: ID_OR_NONE, representativeStaffId: ID_OR_NONE, fees: FEES, expectedVersion: VERSION, expectedStatus: STATUS });
+export const SendBody = strict({ expectedVersion: VERSION });
+export const WithdrawBody = strict({ reason: any, expectedVersion: VERSION, expectedStatus: STATUS });
+/** signedVersion's top (the current version) needs the record: signedVersionOf keeps it; here only its form. */
+export const OfflineBody = strict({ reason: any, expectedVersion: VERSION_TEXT, signedVersion: rule((v) => v === null || v === "" || (Number.isInteger(v) && (v as number) >= 1) || (typeof v === "string" && DIGITS.test(v)), "A version number from 1 to the current one.") });
 export const FileLinkBody = strict({ file: z.enum(["signed-offline"]).optional(), version: z.union([z.number().int(), z.string().max(12)], { error: "A version number." }).optional() });   // review m1: plain words
 /** A path id: a uuid, else the one not-found before the body is read (PF-28 part 5). */
 const idOf = (id: unknown, what = "retainer"): string => (typeof id === "string" && UUID.test(id) ? id : notFound(what));
@@ -100,7 +113,6 @@ function expectedVersionOf(body: Record<string, unknown>, multipart = false): nu
 const stale = (current: number, expected: number): never =>
   conflict(expected < current ? `This agreement has a newer version (${current}) than the one you saw (${expected}). Open it again.`
     : `This agreement is at version ${current}, not version ${expected}. Open it again.`, "CHANGED");   // FO-5f break m-3
-const STATUSES = ["DRAFT", "SENT", "VIEWED", "CLIENT_SIGNED", "SIGNED", "SIGNED_OFFLINE", "DECLINED", "WITHDRAWN", "EXPIRED"];
 /** FO-5f item 2 (B-25): the status the page showed. Send does not raise the version, so the version alone does not name the
  *  state a person acted on: Edit and Withdraw send both, and a mismatch is 409 CHANGED. Missing or unknown → 422. */
 function expectedStatusOf(body: Record<string, unknown>): string {
