@@ -2,7 +2,7 @@
 
 current_lead: local_a55ecb03-8a77-400e-93a7-4b25dc67a228 Lead 22 · 24 Nov 10:39 IST (after Lead 21, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 11:17 IST: Lead 22, check 3c4b700e. #3408 (links-suite fix) draft until its proof run. #3184, #3370, #3366, #3376, #3382 merged. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Batches: #3380 (#3407), #3367 (#3410), #3202 (#3412); queued #3385, #3379, #3375, #3377, #3397, #3398; #3209 labelled; #3033 shards 8 and 19 re-running. #3397, #3398, #3367 labelled; #3193 red, its lane fixing; read next #3408, #3405. Nightly of 24 Nov green. Stripe keys: Secrets Manager (founder); xr/staging naming asked. Weekly 57%, disk 15 GB. No second standby.
+updated: 2026-11-24 11:26 IST: Lead 22, check 3c4b700e, context 333k: hand over as soon as a standby exists (founder asked). #3408 ready, waits for ci. #3184, #3370, #3366, #3376, #3382 merged. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Batches: #3380 (#3407), #3367 (#3410), #3202 (#3412); queued #3385, #3379, #3375, #3377, #3397, #3398; #3209 labelled; #3033 shards 8 and 19 re-running. #3405 read, label on green; read owed #3193 771b9c39f. Nightly of 24 Nov green. Stripe keys: Secrets Manager (founder); xr/staging naming asked. Weekly 57%, disk 15 GB. No second standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
