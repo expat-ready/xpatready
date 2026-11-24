@@ -73,7 +73,8 @@ export type MetricFilters = z.infer<typeof MetricFilters>;
 export const ReportQuery = z.strictObject({
   metrics: z.array(MetricKey).min(1, "name at least one metric").max(QUERY_MAX_METRICS, `at most ${QUERY_MAX_METRICS} metrics`),
   filters: MetricFilters.default({}),
-  scope: z.unknown().optional(),
+  // R1.10 A4: still never read (the server works out the scope), but a value of the wrong kind is named, as every field is.
+  scope: z.enum(["own", "all", "financial"], { error: "own or all (the server works out the scope from your roles)." }).optional(),
 });
 
 const Money = z.strictObject({ currency: Currency, amount: z.string().regex(/^-?\d{1,13}\.\d{2}$/, "major units with two decimals") });

@@ -164,7 +164,7 @@ export class Leads {
       }
     }
     const out = await this.db.$transaction((tx) => arrive(tx, {
-      firmId: ctx.firmId, door: "MANUAL", intakeKey: `manual:${requestId}`, person, existingPersonId, source, interestedInServiceId, message, ownerStaffId: ctx.staffId,
+      firmId: ctx.firmId, door: "MANUAL", intakeKey: `manual:${requestId}`, person, existingPersonId, addedAsNew: b.confirmedNew === true, source, interestedInServiceId, message, ownerStaffId: ctx.staffId,
       actor: actorOf(ctx), payloadHash,
     }, this.ports));
     return this.read(ctx, out.leadId!);

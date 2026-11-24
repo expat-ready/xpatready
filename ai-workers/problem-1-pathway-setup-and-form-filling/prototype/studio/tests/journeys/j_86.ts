@@ -213,7 +213,12 @@ try {
   // ---------------------------------------------------------------------------------------------- W6 (screen) the breach's page
   const page6 = id ? await consolePage(`/system/privacy/breaches/${id}`) : "";
   const sendA = id ? await p.getByRole("button", { name: new RegExp(`(send|notify).*${A.name}`, "i") }).count() : -1;
-  const timeShown = (t: string | null) => !!t && [t.slice(0, 10), new Date(t).toLocaleDateString("en-CA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }), new Date(t).toLocaleDateString("en-CA", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })].some((d) => page6.includes(d));
+  // The notice's time is read from the page's <time datetime> cells (aligned by qa 8, 24 Nov, PF-21rs concept r2 §8 M3,
+  // #3492): the console prints "24 Nov 2026" inside <time datetime>, so the machine-readable attribute decides, the same
+  // instant or the same day; the printed day is the fallback. Never a class or a position.
+  const times6 = id ? await p.locator("time[datetime]").evaluateAll((els) => els.map((e) => e.getAttribute("datetime") ?? "")) : [];
+  const timeShown = (t: string | null) => !!t && (times6.some((d) => d === t.slice(0, 10) || (!Number.isNaN(Date.parse(d)) && d.length > 10 && Math.abs(Date.parse(d) - Date.parse(t)) < 60_000))
+    || [t.slice(0, 10), new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })].some((d) => page6.includes(d)));
   ok("J-86 W6 (parts missing: PF-21rs; the words need QA-757): the breach's page in our console shows the assessment and lists firm A's and firm B's notices, each with its time and the notice's subject; firm C is not listed",
     !!id && page6.includes(rec.description) && page6.includes(decision.decisionReason) && page6.includes(A.name) && page6.includes(B.name) && !page6.includes(C.name) && timeShown(timeA.sentAt) && !!eA && page6.includes(eA.subject),
     page6.slice(0, 240) || "no breach to open (PF-21c)");

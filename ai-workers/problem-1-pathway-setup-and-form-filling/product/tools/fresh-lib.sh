@@ -7,7 +7,8 @@
 # Test: test-enf-803.sh.
 export FRESH_MAX_MIN="${FRESH_MAX_MIN:-10}"
 fresh_now() { TZ=Asia/Kolkata date '+%H:%M'; }
-fresh() { echo "      read $(fresh_now) IST from $*"; }
+FRESH_AT=$SECONDS   # the seconds since the stamp before: what this section cost (Lead 26, 24 Nov)
+fresh() { local s=$((SECONDS - FRESH_AT)) w=""; [ "$s" -ge 2 ] && w="$s s · "; echo "      ${w}read $(fresh_now) IST from $*"; FRESH_AT=$SECONDS; }
 fresh_cache() {
   local f="$1" src="$2" max="${3:-$FRESH_MAX_MIN}" m age
   if [ ! -f "$f" ]; then echo "REFUSED stale: $src: no cached answer at $f (not printed; read it again)"; return 1; fi

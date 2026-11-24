@@ -55,6 +55,22 @@ export class PgEntitlements implements EntitlementPort {
   }
 }
 
+/** The seat limit exactly as the gate reads it (`limitOf`, the one reader) and the plan that limit is: while a lower plan
+ *  is booked for the renewal (SA-3-59) the limit is the booked plan's, so that plan is named (`booked`), never the current
+ *  plan with another plan's number (QA-774). The seat gate (identity seatRoom) and Team's seat line (StaffReads.seats)
+ *  both read it, in the caller's client or transaction. */
+export async function seatLimitOf(client: LimitsClient, firmId: string, now: () => number = Date.now): Promise<PlanLimit & { limitPlanName: string | null; booked: boolean }> {
+  const l = await new PgEntitlements(client, now).limitOf(firmId, "seats");
+  if (!l.planCode || !l.firmId) return { ...l, limitPlanName: l.planName, booked: false };
+  // The open booking platform_entitlement_limit itself counts: made on the live subscription, still on its from-plan.
+  const [b] = await client.$queryRaw<{ name: string; seats: number; current: number }[]>`SELECT t.name, t.seats_limit AS seats, f.seats_limit AS current
+    FROM platform_subscription_change c JOIN platform_subscription s ON s.id = c.subscription_id AND s.status <> 'ENDED' AND s.plan_id = c.from_plan_id
+    JOIN platform_plan t ON t.id = c.to_plan_id JOIN platform_plan f ON f.id = c.from_plan_id
+    WHERE c.firm_id = ${l.firmId}::uuid AND c.withdrawn_at IS NULL AND c.applied_at IS NULL LIMIT 1`;
+  const booked = !!b && b.seats === l.limit && b.seats !== b.current;   // the limit is the booked plan's number, not the current plan's
+  return { ...l, limitPlanName: booked ? b.name : l.planName, booked };
+}
+
 /** The 409 every refused limit gives (SA-3-5: the metric, the limit and the upgrade path; nothing created). */
 export function planLimitReached(r: Extract<EntitlementResult, { allowed: false }>, detail: string, extra: Record<string, unknown> = {}): never {
   throw new HttpException({ type: "https://expatready.local/problems/plan-limit", title: "Plan limit reached", status: 409, code: "PLAN_LIMIT_REACHED",

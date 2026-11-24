@@ -28,7 +28,7 @@ import { DOCX, renderDocx } from "../../retainers/docx.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent, type SigningPort } from "../../signing/port.ts";
 import { wallLabel } from "../service.ts";
 import { CODE_S23, s23Check } from "./items.ts";
-import { CAN_SIGN, DECIDING_ORDER, ENDED_STATUSES, HAS_EMAIL, HAS_TEMPLATE, missingCauses, missingWords, isEnded, isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
+import { agreementWarning, CAN_SIGN, DECIDING_ORDER, ENDED_STATUSES, HAS_EMAIL, HAS_TEMPLATE, missingCauses, missingWords, isEnded, isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
 
 type Tx = Prisma.TransactionClient;
 /** This module's two events (the row's names). `ports/events.ts` is outside the row's touch list: J-104 moves them there. */
@@ -130,7 +130,7 @@ export class ConsultationAgreementService {
          and ${HAS_EMAIL}
          -- and someone can sign for the firm, by signatory()'s rule (R2-4, R3-2: a firm with none never fills the batch)
          and ${CAN_SIGN}
-         and ${HAS_TEMPLATE}   -- the same three as the hold's causes (gate.ts, QA-772)
+         and ${HAS_TEMPLATE}   -- the same three as the warning's causes (gate.ts, QA-772)
          -- part 2 (Lead 10, W4b): only a type that needs the agreement
          and exists (select 1 from fo_consultation_type t where t.firm_id = b.firm_id and t.id = b.type_id and ${Prisma.raw(NEEDS_AGREEMENT_SQL)})
          -- no agreement that is waiting or signed: none at all, or each one ended unsigned (a fresh one is sent, P2R2-1)
@@ -339,9 +339,11 @@ export class ConsultationAgreementService {
     const b = UUID.test(String(bookingId)) ? await this.db.foBooking.findFirst({ where: { firmId: ctx.firmId, id: bookingId }, select: { id: true, type: { select: { requireAgreement: true, purpose: true } } } }) : null;
     if (!b || !(await this.sees(ctx, b.id))) return notFound();
     const a = await this.ofBooking(this.db, ctx.firmId, b.id), required = needsAgreement(b.type);
-    // `required`: the booking's type needs it (part 2): an unsigned one holds Attended and the consult record.
-    if (a) return { ...(await this.read(ctx, a.id)), required };
-    // QA-772 (Lead 22): needs one, none yet → held; `why` is the refusal's own words (gate.ts), shown on the panel.
+    // `required`: the booking's type needs it (part 2): an unsigned one is a warning on the booking, never a refusal.
+    // `warning`: the server's one set of words for this booking and agreement status (gate.ts; FO-3c-warn review M1),
+    // the same the attendance answer and the consult record carry; the panel shows it, never words of its own.
+    if (a) return { ...(await this.read(ctx, a.id)), required, warning: (await agreementWarning(this.db, ctx.firmId, b.id))?.words ?? null };
+    // QA-772: needs one, none yet → `why` is the warning's own words (gate.ts), shown on the panel.
     const m = required ? await missingCauses(this.db, ctx.firmId, b.id) : null;
     return { id: null, bookingId: b.id, status: "NONE", signed: false, words: WORDS.none, required, ...(m ? { causes: m.causes, why: missingWords(m.causes, m.started) } : {}) };
   }
@@ -357,12 +359,13 @@ export class ConsultationAgreementService {
   }
   /** "Needs you": one item per unsigned agreement the person signs for the firm (it goes when the agreement is signed or ended). */
   async needsYou(ctx: StaffContext) {
-    // Only while the meeting is still to happen (break m5: a cancelled booking's item goes).
+    // Only while the meeting is still to happen (break m5: a cancelled booking's item goes); a client-signed one stays for
+    // its signatory after Attended or No-show too, since the firm's signature can still be given (FO-3c-warn break F1).
     const rows = await this.db.$queryRaw<{ id: string; status: string }[]>`
       select r.id::text, r.status::text from fo_retainer r join fo_retainer_version v on v.firm_id = r.firm_id and v.retainer_id = r.id and v.n = 1
         join fo_booking b on b.firm_id = r.firm_id and b.id::text = v.merge_values->>${BOOKING_ID}
        where r.firm_id = ${ctx.firmId}::uuid and r.kind = 'CONSULTATION' and r.representative_staff_id = ${ctx.staffId}::uuid
-         and r.status in ('SENT', 'VIEWED', 'CLIENT_SIGNED') and b.status in ('SCHEDULED', 'RESCHEDULED')
+         and r.status in ('SENT', 'VIEWED', 'CLIENT_SIGNED') and (b.status in ('SCHEDULED', 'RESCHEDULED') or (r.status = 'CLIENT_SIGNED' and b.status <> 'CANCELLED'))
        order by r.created_at limit 100`;
     return { items: rows.map((r) => ({ kind: "consultation-agreement-unsigned", agreementId: r.id, words: WORDS.unsigned, yourTurn: r.status === "CLIENT_SIGNED" })) };
   }
