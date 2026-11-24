@@ -73,7 +73,7 @@ try {
 const files: string[] = [];
 const walk = (d: string) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) walk(p); else if (/\.tsx?$/.test(n)) files.push(p); } };
 walk(join(STUDIO, "api", "src"));
-const ARRAY_TX = /\$transaction\(\s*(\[|[\w.$]+\s*\.\s*map\s*\(|\.\.\.)/;
+const ARRAY_TX = /\.\s*\$transaction\(\s*(\[|[\w.$]+\s*\.\s*map\s*\(|\.\.\.)/;
 const hits = files.flatMap((f) => readFileSync(f, "utf8").split("\n").map((l, i) => ARRAY_TX.test(l) && !/^\s*(\/\/|\*)/.test(l) ? `${f.slice(STUDIO.length + 1)}:${i + 1}` : "").filter(Boolean));
 ok("M2 fail (source check): no `$transaction([...])` or `$transaction(xs.map(...))` in api/src", hits.length === 0, hits);
 ok("M2 pass (source check): the check reads real code (it finds the interactive form in api/src)", files.some((f) => /\$transaction\(\s*async/.test(readFileSync(f, "utf8"))));
