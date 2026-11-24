@@ -541,10 +541,15 @@ export function oneQueryPerCaller(client: object): void {
   // caller's scope when it starts, and is kept.
   const c = client as { $transaction?: (arg: unknown, opts?: unknown) => Promise<unknown> };
   if (typeof c.$transaction !== "function") throw new Error("M2: Prisma's $transaction was not found on the client (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
-  const transaction = c.$transaction.bind(client);
-  c.$transaction = (arg, opts) => Array.isArray(arg)
-    ? Promise.reject(new Error("M2: an array batch ($transaction([...])) is refused on the app's client: Prisma would send it in another caller's firm. Use the interactive form, $transaction(async (tx) => ...)."))
-    : transaction(arg, opts);
+  // Review B1: the receiver is kept, never bound: a transaction client reads $transaction from this client, and Prisma
+  // nests a call made on a transaction client (`this`) inside that transaction. Anything but a function is refused, as
+  // Prisma's own test for the interactive form is `typeof arg === "function"` (review m1: an array-like is a batch too).
+  const transaction = c.$transaction;
+  c.$transaction = function (this: unknown, arg: unknown, opts?: unknown) {
+    return typeof arg !== "function"
+      ? Promise.reject(new Error("M2: an array batch ($transaction([...])) is refused on the app's client: Prisma would send it in another caller's firm. Use the interactive form, $transaction(async (tx) => ...)."))
+      : transaction.call(this, arg, opts);
+  };
 }
 
 /** The API's pool (core.ts Db): xr_app, UTC session time zone. */
