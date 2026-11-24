@@ -6,7 +6,7 @@
 //      line lands on firm A's own trail, naming our staff member (ourstaff:<id>), and none on firm B's.
 //   P2 firm A's Owner sees that line in the firm's Activity log with the "ExpatReady staff access" filter
 //      (GET /api/platform/audit?ours=1, AUD-4s, R1.88); firm B's Owner sees no line of it.
-//   P3 nobody can remove one: the app's own database user cannot delete or change the line (insert-only, AUD-1a).
+//   P3 nobody can remove one: the database refuses a delete or change of the line from any user (trigger, AUD-1a).
 //   P4 our firms list (@ReadsAcrossFirms) writes one cross_tenant.access line and nothing on any firm's trail.
 //   P5 (parts missing) our side's access report GET /api/system/firms/:id/access-report and our audit search
 //      GET /api/system/audit (AUD-3 parts 2-3); a support session POST /api/system/firms/:id/support-sessions (AUD-3b).
@@ -83,7 +83,7 @@ try {
   ok("R1.87 P2 (\"who, when and why\"; part missing: AUD-3b, the support session's reason): the read's line carries a reason for the read", /reason|ticket/i.test(detail), { detail: detail.slice(0, 300) });
 
   // P3: nobody can remove one (the app's own database user)
-  ok("R1.87 P3 (AUD-1a, on main): the line cannot be deleted or changed by the app's database user (insert-only)",
+  ok("R1.87 P3 (AUD-1a, on main): the line cannot be deleted or changed: the test's database user (xr_studio) is refused, by the aud_event_no_change trigger, which refuses any user",
     refused(`delete from audit_event where id = '${lineId}'`) && refused(`update audit_event set action = 'x' where id = '${lineId}'`) && count(A) === a1);
 
   // P4: across firms

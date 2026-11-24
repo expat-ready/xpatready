@@ -24,12 +24,13 @@ The parts missing are AUD-3 part 2, AUD-3 part 3 and AUD-3b parts 1-3; the check
 * **"The firm sees those lines."** On main, through AUD-4s (R1.88).
   * Firm A's Owner reads `GET /api/platform/audit?ours=1`. The line is there as "ExpatReady staff", with the words "ExpatReady staff read the firm's records".
   * Firm B's Owner, with the same filter, does not see it.
-  * The Activity log screen shows the same line: j_86 W7 passes on screen for the breach notice line.
-* **"Nobody can remove one."** On main (AUD-1a). The app's own database user is refused both `delete` and `update` on the line, and the count is unchanged.
+  * This was checked through the Activity log's API, not on its screen. The screen is proven only for a different line (the breach notice, j_86 W7), so a screen check of this read line is still owed (j_87).
+* **"Nobody can remove one."** On main (AUD-1a). The probe connects as the database user `xr_studio`, not the API's `xr_app`, and is refused both `delete` and `update` on the line; the count is unchanged. The refusal is the `aud_event_no_change` trigger, which applies to any user.
 * **Across firms.** Our firms list writes one `cross_tenant.access` line on the platform's own trail and none on any firm's.
   * One breach read (`GET /api/system/register/breaches/:id`) names firms A and B. It is declared `@ReadsAcrossFirms`, so it writes the platform line, not a line on firm A's trail.
   * j_86 W10 expected a line on firm A's trail. As built, this follows AUD-3's own row ("a read that spans more than one firm writes one `cross_tenant.access` line on the platform chain").
   * Firm A therefore sees no line for that read today. AUD-3 part 2's access report is where our side would report it per firm.
+  * Today the two reads across firms behave differently. The support-ticket read (support-routes.ts) is also `@ReadsAcrossFirms`, but it calls `touchFirm`, so the firm gets a `platform.bypass` line there.
   * See question 2.
 
 ## Parts missing (each 404 on main)
@@ -46,7 +47,7 @@ There is no screen in our console that reads a firm's trail for our staff (AUD-3
 * No Bug or Major.
 
 ## Questions for the Lead
-1. **QA-776:** should a one-firm read by our staff outside a support session ask for a reason? The alternative is to reword the Done when to "why, where the route or the support session asks one".
+1. **QA-776:** should a one-firm read by our staff outside a support session ask for a reason? AUD-3's own test clause expects one: "our Support person opening firm A's billing page writes one line … with `OUR_STAFF` and the reason". The alternative is to reword the Done when to "why, where the route or the support session asks one".
 2. **A read across firms that names firm A** (one breach naming A and B; the firms list filtered to one firm): should firm A see a line for it? The alternative is the platform `cross_tenant.access` line, with part 2's access report naming it. If firm A should see it, AUD-3 part 2 needs a row clause for it, and j_86 W10 changes with that ruling.
 
 ## Suggestions
