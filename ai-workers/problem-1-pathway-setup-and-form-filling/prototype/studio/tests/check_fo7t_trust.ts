@@ -261,11 +261,12 @@ try {
     rCase.status === 201 && unseenReq.status === 404 && [...caseBad, unseen].every((r) => r.status === 404 || fieldError(r.status)) && before() === mid && mid !== was, [rCase.body, ...[...caseBad, unseen, unseenReq].map((r) => [r.status, r.body?.code])]);
   // Lead B's money read: with no case, a request or deposit needs a party the writer sees (MoneyVisibilityPort), else 404.
   // user-R (Owner + Case Manager, agent/payment:record) sees PA through its own prospect; with both roles' prospect view
-  // keys taken for these two calls (then put back), it sees no party.
+  // keys taken for these two calls (then put back), it sees no party. Since #3321 (Lead 14) a visible case's client joins
+  // the party scope, so its case view key goes for these two calls too (it owns no case and is on no team).
   const seenReq = await call(tR, "POST", "/requests", { ...reqBody, amountMinor: 700 }), seenDep = await dep({ method: "WIRE", amountMinor: 700, idempotencyKey: "fo7t-party-seen" }), was2 = before();
-  sql(`delete from platform_role_permission where role in ('OWNER', 'CASE_MANAGER') and permission_key in ('agent/prospect:view.all', 'agent/prospect:view.own')`);
+  sql(`delete from platform_role_permission where role in ('OWNER', 'CASE_MANAGER') and permission_key in ('agent/prospect:view.all', 'agent/prospect:view.own', 'agent/case:view.all')`);
   const unseenParty = [await call(tR, "POST", "/requests", { ...reqBody, amountMinor: 700 }), await dep({ method: "WIRE", amountMinor: 700, idempotencyKey: "fo7t-party-unseen" })];
-  sql(`insert into platform_role_permission (role, permission_key) values ('OWNER', 'agent/prospect:view.all'), ('OWNER', 'agent/prospect:view.own'), ('CASE_MANAGER', 'agent/prospect:view.all'), ('CASE_MANAGER', 'agent/prospect:view.own')`);
+  sql(`insert into platform_role_permission (role, permission_key) values ('OWNER', 'agent/prospect:view.all'), ('OWNER', 'agent/prospect:view.own'), ('CASE_MANAGER', 'agent/prospect:view.all'), ('CASE_MANAGER', 'agent/prospect:view.own'), ('OWNER', 'agent/case:view.all'), ('CASE_MANAGER', 'agent/case:view.all')`);
   ok("FO-7t DW3/DW4 pass (Lead B's money read): a writer who sees the party (no case) → request 201 and deposit 201", seenReq.status === 201 && seenDep.status === 201, [seenReq.body, seenDep.body]);
   ok("FO-7t DW3/DW4 fail (Lead B's money read): the same writer holding agent/payment:record but seeing no party → request 404 and deposit 404, nothing written",
     unseenParty.every((r) => r.status === 404) && before() === was2, unseenParty.map((r) => r.body));
@@ -333,28 +334,32 @@ try {
   // Build round 1, M2: a Case Officer on CASE's team sees CASE's entries only, and their running balance is CASE's own
   // money (summed over what they see), never the party's whole balance (which includes money outside their view).
   sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values (gen_random_uuid(), '${W}', '${CASE}', 'user-O', 'OFFICER', 'user-R')`);
-  const caseSum = Number(sql(`select sum(amount_minor) from money_trust_entry where case_id = '${CASE}' and currency = 'CAD'`));
-  const [onTeam, onTeamBal] = await Promise.all([call(tO, "GET", `/ledger?personId=${PA}`), call(tO, "GET", `/balances?personId=${PA}`)]);
+  // Since #3321 (Lead 14: a visible case's client joins the party scope) that officer also sees PA's money with no case;
+  // never money on PA's other case (CASE2, one deposit by the Owner here), so the figure is still not the party's whole.
+  await dep({ method: "WIRE", amountMinor: 2500, caseId: CASE2, idempotencyKey: "fo7t-case2-money" });
+  const caseSum = Number(sql(`select sum(amount_minor) from money_trust_entry where person_id = '${PA}' and currency = 'CAD' and (case_id = '${CASE}' or case_id is null)`));
+  const [onTeam, onTeamBal] = await Promise.all([call(tO, "GET", `/ledger?personId=${PA}&currency=CAD`), call(tO, "GET", `/balances?personId=${PA}`)]);
   const ti = onTeam.body.items ?? [];
-  ok("FO-7t DW10 pass (C5, any role; build round 1, M2): a Case Officer on the case's team gets the case's entries only, the newest running balance the case's own (as /balances says), never the party's",
-    onTeam.status === 200 && ti.length > 0 && ti.every((x: { caseId: string }) => x.caseId === CASE) && ti[0].balanceAfterMinor === caseSum && caseSum !== dbBal("CAD")
-    && (onTeamBal.body.balances ?? []).every((x: { caseId: string }) => x.caseId === CASE) && (onTeamBal.body.totals ?? []).find((x: { currency: string }) => x.currency === "CAD")?.amountMinor === caseSum, [ti, onTeamBal.body, caseSum]);
+  ok("FO-7t DW10 pass (C5, any role; build round 1, M2; #3321): a Case Officer on the case's team gets that case's entries and the client's with no case, never another case's; the newest running balance is what they see (as /balances says), never the party's whole",
+    onTeam.status === 200 && ti.length > 0 && ti.every((x: { caseId: string | null }) => x.caseId === CASE || x.caseId === null) && ti.some((x: { caseId: string | null }) => x.caseId === CASE) && ti[0].balanceAfterMinor === caseSum && caseSum !== dbBal("CAD")
+    && (onTeamBal.body.balances ?? []).every((x: { caseId: string | null }) => x.caseId === CASE || x.caseId === null) && (onTeamBal.body.totals ?? []).find((x: { currency: string }) => x.currency === "CAD")?.amountMinor === caseSum, [ti.map((x: { caseId: string | null; amountMinor: number }) => [x.caseId, x.amountMinor]), onTeamBal.body, caseSum]);
   // Lead 17 (24 Nov, money read of 3e8d36f5f): cancel checks the caller's visibility (C5) as the request read does. For
-  // this block the Case Officer role holds agent/payment:record, so user-O has the key but sees only CASE (on its team
-  // above), not CASE2 and not PA as a party. Unseen → 404 before the cancelled check, nothing changed, no audit line.
+  // this block the Case Officer role holds agent/payment:record, so user-O has the key and sees CASE (on its team above)
+  // and, since #3321, CASE's client PA; not CASE2 and not PC. Unseen → 404 before the cancelled check, nothing changed,
+  // no audit line. A request on CASE2 is unseen although PA is seen: its case decides (review n1).
   sql(`insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', 'agent/payment:record')`);
   const mk = async (body: Record<string, unknown>) => (await call(tR, "POST", "/requests", { ...reqBody, ...body })).body.id as string;
-  const rParty = await mk({}), rCase2 = await mk({ caseId: CASE2 }), rOnCase = await mk({ caseId: CASE }), rDone = await mk({ caseId: CASE2 });
+  const rPartyC = await mk({ personId: PC }), rPartyA = await mk({}), rCase2 = await mk({ caseId: CASE2 }), rOnCase = await mk({ caseId: CASE }), rDone = await mk({ caseId: CASE2 });
   await call(tR, "POST", `/requests/${rDone}/cancel`, { reason: "Owner cancelled it (Sample)" });
-  const cancelsBefore = audits("trust_money.request_cancelled"), state = () => sql(`select string_agg(id || ':' || coalesce(cancel_reason, '-'), ',' order by id) from money_trust_request where id in ('${rParty}', '${rCase2}', '${rDone}')`), st0 = state();
-  const cancelUnseen = await Promise.all([rParty, rCase2, rDone].map((id) => call(tO, "POST", `/requests/${id}/cancel`, { reason: "Not mine to cancel" })));
-  ok("FO-7t C5 fail (cancel; Lead 17): a staff member with agent/payment:record who sees neither the request's case nor its client → 404 on an open request (by party, by case) and on a cancelled one (never \"already cancelled\"); no row changed, no audit line",
+  const cancelsBefore = audits("trust_money.request_cancelled"), state = () => sql(`select string_agg(id || ':' || coalesce(cancel_reason, '-'), ',' order by id) from money_trust_request where id in ('${rPartyC}', '${rCase2}', '${rDone}')`), st0 = state();
+  const cancelUnseen = await Promise.all([rPartyC, rCase2, rDone].map((id) => call(tO, "POST", `/requests/${id}/cancel`, { reason: "Not mine to cancel" })));
+  ok("FO-7t C5 fail (cancel; Lead 17): a staff member with agent/payment:record who sees neither the request's case nor its client → 404 on an open request (by party: PC; by case: CASE2, though PA is seen) and on a cancelled one (never \"already cancelled\"); no row changed, no audit line",
     cancelUnseen.every((r) => r.status === 404) && state() === st0 && audits("trust_money.request_cancelled") === cancelsBefore, cancelUnseen.map((r) => [r.status, r.body?.code, r.body?.detail]));
   const byCase = await call(tO, "POST", `/requests/${rOnCase}/cancel`, { reason: "Client changed plans (Sample)" });
   ok("FO-7t C5 pass (cancel, by case; Lead 17): that staff member cancels a request on the case they see (200, Cancelled, one audit line)",
     byCase.status === 200 && byCase.body.status === "Cancelled" && sql(`select cancel_reason from money_trust_request where id = '${rOnCase}'`) === "Client changed plans (Sample)" && audits("trust_money.request_cancelled") === cancelsBefore + 1, byCase.body);
-  const byParty = await call(tR, "POST", `/requests/${rParty}/cancel`, { reason: "Sent in error (Sample)" });
-  ok("FO-7t C5 pass (cancel, by party; Lead 17): the Owner, who sees the client, cancels the client's request with no case (200, one audit line)",
+  const byParty = await call(tO, "POST", `/requests/${rPartyA}/cancel`, { reason: "Sent in error (Sample)" });
+  ok("FO-7t C5 pass (cancel, by party; Lead 17; #3321): that staff member, who sees PA through PA's case, cancels PA's request with no case (200, one audit line)",
     byParty.status === 200 && byParty.body.status === "Cancelled" && audits("trust_money.request_cancelled") === cancelsBefore + 2, byParty.body);
   sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/payment:record'`);
   ok("FO-7t DW10 pass: one audit line per change, by staff: each trust deposit, each request (held or sent), each cancel",
