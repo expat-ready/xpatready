@@ -67,7 +67,9 @@ ALTER TABLE "fo_video_pref" ADD CONSTRAINT "fo_video_pref_link_check" CHECK ("my
 ALTER TABLE "fo_booking_video" ADD CONSTRAINT "fo_booking_video_link_check" CHECK (fo_video_link_ok("meeting_link"));
 
 -- AG-4-58 §12: a deactivated person's saved link and choice are dropped, in the deactivation's own transaction.
-CREATE FUNCTION fo_video_drop_on_deactivate() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $fn$
+-- PF-12's rule for a trigger function on a firm table: SECURITY DEFINER, owned by xr_wall_reader, pinned search_path; it
+-- deletes only the deactivated person's own row (their firm and id), so the reader's reach goes no further.
+CREATE FUNCTION fo_video_drop_on_deactivate() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
 BEGIN
   DELETE FROM "fo_video_pref" WHERE "firm_id" = NEW."firm_id" AND "staff_id" = NEW."id";
   RETURN NEW;
@@ -75,6 +77,8 @@ END
 $fn$;
 CREATE TRIGGER "fo_video_drop_on_deactivate" AFTER UPDATE OF "status" ON "platform_staff" FOR EACH ROW
   WHEN (NEW."status" = 'DEACTIVATED' AND OLD."status" IS DISTINCT FROM NEW."status") EXECUTE FUNCTION fo_video_drop_on_deactivate();
+ALTER FUNCTION fo_video_drop_on_deactivate() OWNER TO xr_wall_reader;
+REVOKE ALL ON FUNCTION fo_video_drop_on_deactivate() FROM PUBLIC;
 
 -- PF-12's wall (forced policy on the session's firm, the firm gate first; tests/check_pf12_walls.ts).
 ALTER TABLE "fo_video_pref" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
