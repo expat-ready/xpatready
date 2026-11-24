@@ -250,6 +250,16 @@ try {
   ok("R1.53 QA-778 fail: Check and send after the typed amount is cleared saves it as version 2, then shows its blocker (\"Fee is missing.\"), focuses the summary and opens no Send panel",
     v2 && (await r.getByRole("dialog").count()) === 0 && (await ret(gus.id)).versions[1]?.fees[0]?.amountMinor === null && await r.locator("[data-error-summary] a").first().evaluate((e) => e === document.activeElement), { v2 });
   await closePanel();
+  // Review m1: a colleague saves a newer version while you have an edit typed; Check and send is refused (409), opens no
+  // Send panel on their version and makes no version of yours. Then the page shows theirs and you type again.
+  await r.getByLabel("Fee 1: amount").fill("1600");
+  const theirs = await call(tok.T, "PATCH", `/front-office/retainers/${gr.body.id}`, { expectedVersion: 2, expectedStatus: "DRAFT", fees: [{ label: "Deposit on signing", amountMinor: 120000, when: "ON_SIGNING" }] });
+  await r.locator("[data-check-and-send]").click();
+  const stale = await seen(r.getByText(/newer version \(3\)/), 10_000) && await seen(r.locator("[data-version]", { hasText: "Version 3" }), 15_000);
+  await r.waitForTimeout(500);   // the page now shows their version 3: room for a wrongly armed check to open the panel on it
+  ok("R1.53 QA-778 fail (review m1): a colleague saved version 3 meanwhile: Check and send with your typed edit says so, opens no Send panel on their version and saves nothing of yours (still 3 versions)",
+    theirs.status === 200 && stale && (await r.getByRole("dialog").count()) === 0 && (await ret(gus.id)).versions.length === 3, { theirs: theirs.status, stale });
+  await closePanel();
   await r.getByLabel("Fee 1: amount").fill("1750");   // typed, not saved: the qa replay's step (S17 M1)
   const hint = (await r.locator("[data-unsaved-hint]").count()) ? await r.locator("[data-unsaved-hint]").innerText() : "";
   await shot(r, "qa778-unsaved-hint-1440");
@@ -257,13 +267,13 @@ try {
   const gs = r.getByRole("dialog", { name: /^Send to .* to sign$/ }); await gs.waitFor({ timeout: 15_000 });
   const gsText = (await gs.innerText()).replace(/\s+/g, " ");
   await shot(r, "qa778-send-panel-after-typing-1440");
-  ok("R1.53 QA-778 pass: with 1750 typed over the saved fee and not saved, the page says Check and send saves it as version 3 first; Check and send saves version 3 and its Send panel shows Version 3 and CAD 1,750.00",
-    hint.includes("saves them as version 3 first") && gsText.includes("Version 3") && gsText.includes("CAD 1,750.00") && (await ret(gus.id)).versions.length === 3, { hint, panel: gsText.slice(0, 200) });
+  ok("R1.53 QA-778 pass: with 1750 typed over the saved fee and not saved, the page says Check and send saves it as version 4 first; Check and send saves version 4 and its Send panel shows Version 4 and CAD 1,750.00",
+    hint.includes("saves them as version 4 first") && gsText.includes("Version 4") && gsText.includes("CAD 1,750.00") && (await ret(gus.id)).versions.length === 4, { hint, panel: gsText.slice(0, 200) });
   await gs.getByRole("button", { name: /^Send to / }).click();
   await r.locator("[data-retainer-status]", { hasText: "Sent" }).waitFor({ timeout: 15_000 });
   const gSent = await ret(gus.id);
-  ok("R1.53 QA-778 pass: Send sends version 3 at CAD 1,750.00, the typed fee; versions 1 and 2 are kept as they were and never sent",
-    gSent.status === "SENT" && gSent.currentVersion === 3 && !!gSent.versions[2]?.sentAt && gSent.versions[2]?.fees[0]?.amountMinor === 175000n && gSent.versions[0].fees[0].amountMinor === 150000n && gSent.versions[0].sentAt === null && gSent.versions[1]?.sentAt === null,
+  ok("R1.53 QA-778 pass: Send sends version 4 at CAD 1,750.00, the typed fee; versions 1 to 3 are kept as they were and never sent",
+    gSent.status === "SENT" && gSent.currentVersion === 4 && !!gSent.versions[3]?.sentAt && gSent.versions[3]?.fees[0]?.amountMinor === 175000n && gSent.versions[0].fees[0].amountMinor === 150000n && gSent.versions[2]?.fees[0]?.amountMinor === 120000n && gSent.versions.slice(0, 3).every((v) => v.sentAt === null),
     gSent.versions.map((v) => `${v.n}:${String(v.fees[0]?.amountMinor)}:${v.sentAt ? "sent" : "-"}`));
 
   // ------------------------------------------------------------------------------- widths

@@ -93,9 +93,9 @@ function RetainerBody({ id }: { id: string }) {
   const checkAndSend = () => {
     if (!changed) return blockers.length ? document.querySelector<HTMLElement>("[data-error-summary] a")?.focus() : setSending(true);
     const fees = typedFees();
-    if (!fees) return;
-    checkOnce.current = next;
-    save.mutate(fees, { onError: () => { checkOnce.current = null; } });
+    // Armed from the save's own answer (review m3): a colleague's version read meanwhile is never checked as ours, and a
+    // refused save (409) arms nothing. The cache shows the version only after this runs (query-core notifies on a later tick).
+    if (fees) save.mutate(fees, { onSuccess: (x) => { checkOnce.current = x.version.n; } });
   };
   const fieldError = (f: string) => (error?.field === f ? error.text : null);
   const blockers = Object.entries(r.blockers), missing = new Set(r.missing);
@@ -188,8 +188,8 @@ function RetainerBody({ id }: { id: string }) {
             <Button variant="link" size="sm" className="mt-1" onClick={() => setShowItems(true)}>See the items and how we check</Button>
           </section> : null}
           {draft && r.mayChange && can(me, R_KEY.send) ? <>
-            <Button data-check-and-send busy={save.isPending} onClick={checkAndSend}>Check and send</Button>
-            {form && changed ? <p className="-mt-2 text-xs text-text-muted" data-unsaved-hint>You have unsaved changes. Check and send saves them as version {next} first.</p> : null}
+            <Button data-check-and-send busy={save.isPending} onClick={checkAndSend} aria-describedby={form && changed ? "fo-unsaved-hint" : undefined}>Check and send</Button>
+            {form && changed ? <p id="fo-unsaved-hint" className="-mt-2 text-xs text-text-muted" data-unsaved-hint>You have unsaved changes. Check and send saves them as version {next} first.</p> : null}
           </> : null}
         </aside>
       </div>
