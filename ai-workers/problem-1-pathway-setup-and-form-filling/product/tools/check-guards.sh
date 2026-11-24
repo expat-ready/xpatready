@@ -21,6 +21,7 @@ done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
 TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh"
 TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
+TESTS="$TESTS check-rules-settled.sh"   # A348: rules before review
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
 TESTS="$TESTS check-lane-cleanup.sh"   # A348: lane clean-up list
 TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
@@ -53,6 +54,14 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 3 touch|product/tools/lane-preflight.sh|s/ python3 -I "\$DIR\/touch-overlap.py" 2>\&1)/ cat >\/dev\/null)/|check-touch-overlap.sh
 3 hit|product/tools/touch-overlap.py|s/^            if paths:/            if False:/|check-touch-overlap.sh
 3 closed|product/tools/touch-overlap.py|s/^        return 2$/        return 0/|check-touch-overlap.sh
+A348 rules cite|product/tools/rules-settled.py|s/^        bad = .*/        bad = []/|check-rules-settled.sh
+A348 rules none|product/tools/rules-settled.py|s/^    if r is None:/    if False:/|check-rules-settled.sh
+A348 rules kinds|product/tools/rules-settled.py|s/^    ("permission", /    ("permission", re.compile("^none$")), ("x", /|check-rules-settled.sh
+A348 rules fence|product/tools/rules-settled.py|s/^        if fence:/        if False:/|check-rules-settled.sh
+A348 rules gap|product/tools/rules-settled.py|s/^        elif not BULLET.match(l) and (FIELD.*/        elif False:/|check-rules-settled.sh
+A348 rules html|product/tools/rules-settled.py|s/^    body = re.sub(.*/    pass/|check-rules-settled.sh
+A348 rules wired|../../.github/workflows/pr-rules.yml|s/^\( *\)printf .*rules-settled.py" --files.*/\1true/|check-rules-settled.sh
+A348 rules unread|../../.github/workflows/pr-rules.yml|s/else echo "::warning title=Rules settled (A348)::the PR.*/else echo ok; fi/|check-rules-settled.sh
 3 own|product/tools/touch-overlap.py|s/^        if n in own:/        if False:/|check-touch-overlap.sh
 3 dot|product/tools/touch-overlap.py|s/re.sub(r"^(\\.\/)+", "", /(/|check-touch-overlap.sh
 3 run|product/tools/check-lane-preflight.sh|/check-touch-overlap.sh" 2>\&1)/d|check-touch-overlap.sh
