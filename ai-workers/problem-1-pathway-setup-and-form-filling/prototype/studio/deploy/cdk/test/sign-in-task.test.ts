@@ -32,7 +32,7 @@ test("PF-4bs: the seven actions are exactly the concept's, each with its caller 
 
 for (const [mode, all] of [["with a domain", withDomain], ["no domain", noDomain]] as const) {
   for (const s of homes(all)) {
-    const stage = stageOf(s.name), domain = mode === "no domain" ? NO_DOMAIN : stage === "production" ? DEFAULT_DOMAIN : `staging.${DEFAULT_DOMAIN}`;
+    const stage = stageOf(s.name), domain = stage === "production" ? DEFAULT_DOMAIN : mode === "no domain" ? NO_DOMAIN : `staging.${DEFAULT_DOMAIN}`; // production keeps its domain
     test(`PF-4bs pass (${s.name}, ${mode}): the service's task role calls exactly the seven actions on the staff pool's ARN, nothing else calls Cognito; both staff clients admin password + refresh, 15 minutes, no existence errors`, () => {
       assert.deepEqual(signInTaskFindings(s.template, stage), []);
       assert.deepEqual(poolFindings(s.template, stage, domain), []);
@@ -58,6 +58,7 @@ test("PF-4bs fail: an eighth action, cognito-idp:*, the own-staff or clients poo
   const cases: [string, (st: Record<string, any>, t: Template) => void, string][] = [
     ["an eighth action", (st) => { st.Action = [...st.Action, "cognito-idp:AdminDeleteUser"]; }, "not the sign-in grant"],
     ["cognito-idp:*", (st) => { st.Action = "cognito-idp:*"; }, "not the sign-in grant"],
+    ["a glob", (st) => { st.Action = [...st.Action, "cognito-idp:Admin*"]; }, "not the sign-in grant"],
     ["the own-staff pool", (st, t) => { st.Resource = { "Fn::GetAtt": [poolId(t, "production", "own-staff"), "Arn"] }; }, "not the sign-in grant"],
     ["the clients pool", (st, t) => { st.Resource = { "Fn::GetAtt": [poolId(t, "production", "clients"), "Arn"] }; }, "not the sign-in grant"],
     ["a joined ARN naming the staff pool", (st, t) => { st.Resource = { "Fn::Join": ["", ["arn:aws:cognito-idp:ca-central-1:", { Ref: "AWS::AccountId" }, ":userpool/", { Ref: poolId(t, "production", "staff") }]] }; }, "not the sign-in grant"],
@@ -92,6 +93,10 @@ test("PF-4bs fail: a second grant beside the exact one, Cognito given to the mig
   })();
   toMigration.Resources!.MigrateCognitoSlip = { Type: "AWS::IAM::Policy", Properties: { PolicyName: "slip", Roles: [{ Ref: roleId }], PolicyDocument: { Statement: [clone(signInStatements(t0)[0])], Version: "2012-10-17" } } };
   assert.ok(signInTaskFindings(toMigration, "production").some((l) => l.includes("only the service's task role may call Cognito")), signInTaskFindings(toMigration, "production").join("; "));
+  for (const act of ["*", "cogn*", "cognito-idp:Admin?etUser"]) { // a wildcard reaching Cognito on another statement is the grant's business too
+    const t = clone(t0); signInStatements(t); (Object.values(t.Resources!).find((r) => r.Type === "AWS::IAM::Policy" && JSON.stringify(r).includes("cognito-idp:"))!.Properties!.PolicyDocument as { Statement: unknown[] }).Statement.push({ Action: act, Effect: "Allow", Resource: "*" });
+    assert.ok(signInTaskFindings(t, "production").some((l) => l.includes("not the sign-in grant")), act);
+  }
   const none = breakGrant((st) => { st.Action = "ses:SendEmail"; });
   assert.ok(signInTaskFindings(none, "production").some((l) => l.includes("lacks the sign-in grant")));
 });
@@ -101,7 +106,7 @@ test("PF-4bs fail: a staff client with a challenge other than 15 minutes, or one
   for (const [t1, stage, domain] of [[t0, "production", DEFAULT_DOMAIN], [nd0, "staging", NO_DOMAIN]] as const) for (const name of ["staff", "own-staff"]) {
     const cases: [string, (c: Record<string, any>) => void][] = [
       ["lasts 3 minutes, not 15", (c) => { c.AuthSessionValidity = 3; }],
-      ["lasts undefined minutes, not 15", (c) => { delete c.AuthSessionValidity; }],
+      ["lasts null minutes, not 15", (c) => { delete c.AuthSessionValidity; }],
       ["tells whether a person exists", (c) => { c.PreventUserExistenceErrors = "LEGACY"; }],
     ];
     for (const [want, edit] of cases) {

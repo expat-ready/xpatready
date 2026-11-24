@@ -3,6 +3,7 @@
 // so a check that cannot fail is caught. PF-8rc adds the backup checks (`backupFindings`, `vaultFindings`,
 // `bypassFindings`) and a whole-stack allowance for the ca-west-1 copy vault (`REGION_ALLOW`).
 import { BYPASS_ACTIONS, COPY_REGION, KEY_DESTROY_ACTIONS, RETENTION_DAYS } from "./backup.ts";
+import { SIGN_IN_ACTIONS } from "./service.ts";
 type Resource = { Type: string; Properties?: Record<string, unknown> };
 export type Template = { Resources?: Record<string, Resource>; Parameters?: unknown; Outputs?: unknown; Mappings?: unknown; Conditions?: unknown; Rules?: unknown };
 export type SynthStack = { name: string; region: string; template: Template };
@@ -404,7 +405,9 @@ export const ECS_EXEC_ACTIONS = ["ecr:BatchCheckLayerAvailability", "ecr:BatchGe
 // an execution role pulls and reads; a task role only sends (review r1). PF-F1c: and reads and writes firms' files in its
 // bucket, through the data key: allowed here for any task role, and held by service-checks.ts filesTaskFindings to the
 // service's task role only, each statement exact (review M1)
-export const ECS_TASK_ACTIONS = ["ses:SendEmail", "ses:SendRawEmail", "s3:GetObject", "s3:PutObject", "s3:ListBucket", "kms:GenerateDataKey", "kms:Decrypt"];
+// PF-4bs: and calls the seven sign-in actions, held by service-checks.ts signInTaskFindings to the service's task role
+// and the staff pool's ARN only, exactly
+export const ECS_TASK_ACTIONS = ["ses:SendEmail", "ses:SendRawEmail", "s3:GetObject", "s3:PutObject", "s3:ListBucket", "kms:GenerateDataKey", "kms:Decrypt", ...SIGN_IN_ACTIONS];
 const SERVICE_ACTIONS: Record<string, string[]> = { "backup.amazonaws.com": ROLE_ACTIONS, "ecs-tasks.amazonaws.com": [] };
 /** The only principals that may assume a role: AWS Backup, and ECS tasks (PF-8b). */
 export const TRUSTED_SERVICES = Object.keys(SERVICE_ACTIONS);
