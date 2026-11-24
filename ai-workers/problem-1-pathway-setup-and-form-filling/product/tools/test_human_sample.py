@@ -146,6 +146,46 @@ class Answered(Base):
         self.assertTrue(self.run_check("2026-11-26 12:00", text)[0][0].startswith("ACT   founder: human sample due ("))
 
 
+class OnGitHub(Base):
+    """ENF-782b (P-557): an ask or answer counts only once GitHub has it (24 Nov: due 23 Nov 10:00 IST, on no branch)."""
+    def check(self, now, text, pushed):
+        return hs.check(I(now), text, self.proven, hs.rows(caps()), self.j, True, pushed)
+
+    def test_an_ask_only_in_this_copy_is_a_red_not_on_github_act_every_check(self):
+        lines, new = self.check("2026-11-24 09:00", ASKED, "")
+        self.assertIsNone(new)
+        self.assertTrue(lines[0].startswith("ACT   \033[31mNot on GitHub\033[0m: the 2026-11-23 10:05 IST ask (R1.4, R1.5) only in this copy"), lines)
+        self.assertTrue(lines[1].startswith("ACT   founder: human sample due (R1.4, R1.5 unanswered"), lines)
+
+    def test_an_ask_github_has_says_nothing_more(self):
+        lines, _ = self.check("2026-11-24 09:00", ASKED, ASKED)
+        self.assertFalse(any("Not on GitHub" in l for l in lines), lines)
+
+    def test_an_answer_only_in_this_copy_is_named(self):
+        lines, _ = self.check("2026-11-24 09:00", ASKED + "answer: R1.4 yes (2026-11-23 12:00 IST)\n", ASKED)
+        self.assertIn("the answer for R1.4 (2026-11-23 10:05 IST ask) only in this copy", lines[0])
+
+    def test_a_copy_behind_github_reads_github_and_never_asks_twice(self):
+        lines, new = self.check("2026-11-24 09:00", "", ASKED)   # alone, an empty file is due and would write a new ask
+        self.assertIsNone(new)
+        self.assertTrue(lines[0].startswith("warn  this copy's product/qa/human-sample.md lacks the 2026-11-23 10:05 IST ask GitHub has"), lines)
+        self.assertTrue(lines[1].startswith("ACT   founder: human sample due (R1.4, R1.5 unanswered"), lines)
+        self.assertIsNotNone(hs.check(I("2026-11-24 09:00"), "", self.proven, hs.rows(caps()), self.j, True)[1])   # unchanged when GitHub is unknown
+
+    def test_on_github_reads_the_upstream_or_origin_main_whichever_has_the_newest_ask(self):
+        d = tempfile.mkdtemp(); g = lambda *a: subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", *a], capture_output=True, text=True, check=True)
+        g("init", "-q", "-b", "work"); g("remote", "add", "origin", d); write(os.path.join(d, "x.txt"), "x"); g("add", "."); g("commit", "-qm", "a")
+        g("update-ref", "refs/remotes/origin/main", "HEAD")
+        os.makedirs(os.path.join(d, "q")); write(os.path.join(d, "q", "hs.md"), ASKED); g("add", "."); g("commit", "-qm", "b")
+        root = hs.ROOT; hs.ROOT = d
+        try:
+            self.assertEqual(hs.on_github("q/hs.md", "origin/main"), "")   # no upstream, main lacks it: not on GitHub
+            g("update-ref", "refs/remotes/origin/work", "HEAD"); g("config", "branch.work.remote", "origin"); g("config", "branch.work.merge", "refs/heads/work")
+            self.assertEqual(hs.on_github("q/hs.md", "origin/main"), ASKED)   # the pushed upstream has it
+        finally:
+            hs.ROOT = root
+
+
 class Cli(Base):
     def test_answer_appends_a_line_and_refuses_a_row_not_asked(self):
         d = tempfile.mkdtemp(); f = os.path.join(d, "hs.md"); write(f, ASKED)
@@ -161,6 +201,15 @@ class Cli(Base):
         r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "human-sample.py"), "check", "--file", f, "--caps-log", lg, "--caps", cp,
                             "--journeys", self.j, "--now", "2026-11-30T04:35:00Z"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)   # due + Needs you
+
+    def test_check_reads_github_s_file_and_counts_not_on_github(self):
+        d = tempfile.mkdtemp(); f, lg, cp, gh = (os.path.join(d, x) for x in ("hs.md", "log", "caps", "gh.md"))
+        write(f, ASKED); write(lg, LOG); write(cp, caps()); write(gh, "")
+        r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "human-sample.py"), "check", "--file", f, "--caps-log", lg, "--caps", cp, "--pushed", gh,
+                            "--journeys", self.j, "--now", "2026-11-24T04:35:00Z"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)   # Not on GitHub + due
+        self.assertIn("Not on GitHub", r.stdout)
+        self.assertTrue("on_github(os.path.relpath(os.path.abspath(a.file), ROOT), ref)" in open(os.path.join(HERE, "human-sample.py")).read())   # lead-watch's run (no --caps-log) reads GitHub
 
 
 if __name__ == "__main__":

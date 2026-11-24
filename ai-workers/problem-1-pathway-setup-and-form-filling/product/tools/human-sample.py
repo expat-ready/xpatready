@@ -11,8 +11,13 @@
 #   no         an answer "no" whose row is still Works on main: ACT "reopen R1.n as Partial and log a qa bug" (qa sets the
 #              status, P-314; the line stops once main no longer says Works).
 #   answered   every row of the newest ask answered and nothing due: one quiet line.
+#   on GitHub  (ENF-782b, P-557) an ask or answer counts only once it is on GitHub: origin/main's file, or this branch's
+#              pushed upstream. Measured 24 Nov 23:3x IST: the first ask was due Monday 23 Nov 10:00 IST and no copy, branch
+#              or PR held qa/human-sample.md, while each check that wrote one locally then read it back as "asked". Now an
+#              ask or answer only in this copy is a red "Not on GitHub" ACT every check until it is pushed; a copy that lacks
+#              an ask GitHub has is read from GitHub and writes nothing (it never asks a second time; pull first).
 # Answers are recorded by the Lead from the founder's click: `human-sample.py answer R1.n yes|no "note"`, then committed.
-# Usage: python3 -I product/tools/human-sample.py [check] [--now <ISO>] [--file F] [--caps-log F --caps F] [--journeys D]
+# Usage: python3 -I product/tools/human-sample.py [check] [--now <ISO>] [--file F] [--caps-log F --caps F [--pushed F]] [--journeys D]
 #        python3 -I product/tools/human-sample.py answer R1.26 no "the source filter is missing"
 # Exit (check): number of ACT lines. Test: test_human_sample.py (no network, no git; run by cockpit-tests.yml).
 import argparse, os, random, re, subprocess, sys
@@ -133,7 +138,33 @@ def ask_block(now, picked, info, jdir, n_fresh):
     return "\n".join(out) + "\n"
 
 
-def check(now, text, proven, info, jdir, write):
+def github_gap(text, pushed):
+    """What of this copy's file is not on GitHub, and what GitHub has that this copy lacks (P-557).
+    → (asks only here, answers only here as (ask time, row), asks only on GitHub)."""
+    la, pa = read_asks(text), read_asks(pushed)
+    pk, lk = {a["at"]: a for a in pa}, {a["at"] for a in la}
+    here = [a for a in la if a["at"] not in pk]
+    ans = [(a["at"], r) for a in la if a["at"] in pk for r in a["answers"] if r not in pk[a["at"]]["answers"]]
+    return here, ans, [a for a in pa if a["at"] not in lk]
+
+
+def check(now, text, proven, info, jdir, write, pushed=None):
+    """→ (lines, new_text or None). pushed: the file as GitHub has it (None: not known, as before)."""
+    pre = []
+    if pushed is not None:
+        here, ans, behind = github_gap(text, pushed)
+        if behind:   # this copy is behind GitHub: judge GitHub's file, write nothing here
+            pre.append(f"warn  this copy's product/qa/human-sample.md lacks the {', '.join(ist(a['at']) for a in behind)} IST ask GitHub has: read from GitHub; pull this copy")
+            text, write = pushed, False
+        elif here or ans:
+            what = "; ".join([f"the {ist(a['at'])} IST ask ({', '.join(a['rows'])})" for a in here] + [f"the answer for {r} ({ist(t)} IST ask)" for t, r in ans])
+            pre.append(f"ACT   \033[31mNot on GitHub\033[0m: {what} only in this copy's product/qa/human-sample.md, not on origin/main or this "
+                       "branch's upstream (P-557): push it in a records PR now; until then the founder was not asked on the record")
+    lines, new = check_text(now, text, proven, info, jdir, write)
+    return pre + lines, new
+
+
+def check_text(now, text, proven, info, jdir, write):
     """→ (lines, new_text or None)."""
     lines, asks = [], read_asks(text)
     for a in asks:   # a "no" stays an ACT while main says Works from before the answer (re-proven after it: done)
@@ -175,12 +206,27 @@ def git(*a):
     return subprocess.run(["git", "-C", ROOT, *a], capture_output=True, text=True).stdout
 
 
+def on_github(rel, ref):
+    """The file as GitHub has it: of this branch's upstream and origin/main (ref), the copy with the newest ask ("" when
+    neither holds it). Tests pass --caps-log and skip this (no git)."""
+    best = ""
+    for r in ("@{u}", ref):
+        if not git("rev-parse", "--verify", "-q", r).strip():
+            continue
+        t = git("show", f"{r}:{rel}") if subprocess.run(["git", "-C", ROOT, "cat-file", "-e", f"{r}:{rel}"], capture_output=True).returncode == 0 else ""
+        newest = lambda x: max((q["at"] for q in read_asks(x)), default=datetime.min.replace(tzinfo=timezone.utc))
+        if newest(t) > newest(best):
+            best = t
+    return best
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", nargs="?", default="check", choices=["check", "answer"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--now"); ap.add_argument("--file", default=FILE); ap.add_argument("--journeys", default=JOURNEYS)
     ap.add_argument("--caps-log"); ap.add_argument("--caps"); ap.add_argument("--no-write", action="store_true")
+    ap.add_argument("--pushed", help="the file as GitHub has it (tests); default: read from this branch's upstream and origin/main")
     a = ap.parse_args()
     now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -196,7 +242,8 @@ def main():
     caps = open(a.caps).read() if a.caps else git("show", f"{ref}:{CAPS}")
     if not caps:
         print(f"ACT   human sample not checked: {CAPS} unreadable on {ref}"); return 1
-    lines, new = check(now, text, proven_since(log), rows(caps), a.journeys, not a.no_write)
+    pushed = open(a.pushed, encoding="utf-8").read() if a.pushed else None if a.caps_log else on_github(os.path.relpath(os.path.abspath(a.file), ROOT), ref)
+    lines, new = check(now, text, proven_since(log), rows(caps), a.journeys, not a.no_write, pushed)
     if new and not a.no_write:
         open(a.file, "w", encoding="utf-8").write(new)
     print("\n".join(lines))
