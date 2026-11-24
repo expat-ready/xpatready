@@ -76,7 +76,11 @@ try {
   ok("strip: none while only one item is open", (await p1.locator("[data-workspace-strip]").count()) === 0 && (await p1.locator("main").count()) === 1, await tabs(p1));
 
   // T1: Ctrl-click a menu link and a record link → background tabs; the page stays
+  const rowTop = async () => (await shown(p1).locator(`[data-office-row="${O1.name}"] [data-office-edit]`).boundingBox())?.y ?? -1;
+  const topBefore = await rowTop();
   await shown(p1).locator('nav[aria-label="My account"] a[href="/platform/team"]').click({ modifiers: ["Control"] });
+  await until(async () => (await p1.locator("[data-workspace-strip]").count()) > 0);
+  ok("T1 the strip appearing does not move the list under the pointer (breaker M3 on 2fd5352aa)", Math.abs((await rowTop()) - topBefore) <= 2, { before: topBefore, after: await rowTop() });
   await shown(p1).locator(`[data-office-row="${O1.name}"] [data-office-edit]`).click({ modifiers: ["Control"] });
   await until(async () => (await tabs(p1)).length === 3);
   let t = await tabs(p1);
@@ -263,6 +267,18 @@ try {
   ok("T9 a malformed If-Match (\"*\") and a body version that differs from the header are 422; nothing written", bad.status === 422 && differ.status === 422 && officeName(O1.id) === `${O1.name} etag ${run}`, { bad: bad.status, differ: differ.status });
   const staleProfile = await api(T, "PUT", "/platform/firm/profile", { website: "https://pf31.example.ca" }, { "if-match": '"0000"' });
   ok("T9 the firm profile takes If-Match too: a stale one is 409", staleProfile.status === 409, staleProfile.status);
+  // Breaker M1 on 2fd5352aa: a menu left open in a tab that is then hidden closes; nothing floats over the shown tab.
+  const sctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await sctx.addInitScript(() => { try { localStorage.setItem("xr-actor", "user-A"); } catch { /* none */ } });
+  const st = await page(sctx);
+  await st.goto(`${BASE}/library/fields`); await st.locator("[data-workspace]:visible").first().waitFor({ timeout: 60_000 });
+  await shown(st).locator('a[href="/releases"]').first().click({ modifiers: ["Control"] });
+  await until(async () => (await tabs(st)).length > 1);
+  await shown(st).getByRole("button", { name: /^Demo/ }).click(); await st.getByRole("menu").waitFor();
+  await st.keyboard.press("Alt+PageDown");
+  ok("a menu open in a tab that is then hidden closes: no menu over the shown tab, the page takes clicks", await until(async () => (await st.getByRole("menu").count()) === 0 && await st.evaluate(() => getComputedStyle(document.body).pointerEvents !== "none")), { menus: await st.getByRole("menu").count(), url: st.url() });
+  await sctx.close();
+
   // B1 (break) and review round 3: drafts and tabs belong to the person. A session that ends by itself keeps them for the
   // same person; another person signing in here never sees them. Last: it ends T's session. It signs in user-T, so a breaker
   // running user-T on the same copy at the same time loses its session (one session per person).

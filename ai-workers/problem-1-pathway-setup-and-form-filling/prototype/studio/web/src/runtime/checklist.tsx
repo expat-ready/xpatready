@@ -5,6 +5,7 @@
 // from contracts/documents.ts, the words of each line from the engine; a refusal shows the server's own words.
 import * as React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MenuRoot } from "@/components/ui/menu-root";   // PF-31: open only while its workspace tab is shown
 import { MoreHorizontal } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, useActorId, useApi } from "@/lib/api";
@@ -177,7 +178,7 @@ function LineRow({ caseId, p, people, l, nameOf }: { caseId: string; p: Person; 
       <div className="flex items-start justify-end">
         <input ref={file} type="file" className="sr-only" tabIndex={-1} aria-hidden accept="application/pdf,image/jpeg,image/png" data-upload-input
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void upload(f); }} />
-        <DropdownMenu.Root modal={false}>
+        <MenuRoot modal={false}>
           <DropdownMenu.Trigger asChild><Button ref={trigger} size="sm" variant="ghost" aria-label={`Actions for ${label}`} aria-busy={busy || undefined} data-line-menu>
             {/* Review r2: a spinner while the line's request runs, without disabling the button (focus stays on it). */}
             {busy ? <span className="size-3.5 animate-spin motion-reduce:animate-none rounded-full border-2 border-current border-t-transparent" aria-hidden data-line-busy /> : <MoreHorizontal />}</Button></DropdownMenu.Trigger>
@@ -193,7 +194,7 @@ function LineRow({ caseId, p, people, l, nameOf }: { caseId: string; p: Person; 
               <DropdownMenu.Item className={item} onSelect={() => setHistory(true)} data-action="history">History</DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+        </MenuRoot>
       </div>
       {na ? <NotApplicableDialog l={l} label={label} waive={na === "waive"} close={() => { setNa(false); back(); }} done={reload} /> : null}
       {flags ? <DocumentFlagsDialog documentId={flags} label={label} close={() => { setFlags(null); back(); }} done={reload} /> : null}

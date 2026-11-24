@@ -290,6 +290,22 @@ export function WorkspaceStrip() {
     put(); const ro = new ResizeObserver(put); ro.observe(el);
     return () => { ro.disconnect(); root.style.removeProperty("--ws-top"); };
   }, [shownHere, drawn]);
+  // Breaker M3 on 2fd5352aa: the strip appearing (a second item opened, often by Ctrl-click in a list) or going away must not
+  // move the page under the pointer: the shown tab scrolls by the strip's height (a page too short to scroll gets that much
+  // room at its foot while the strip shows), so the next row is still where the person is about to click.
+  const wasDrawn = React.useRef(drawn), strip = React.useRef(0);
+  React.useLayoutEffect(() => {
+    const before = wasDrawn.current; wasDrawn.current = drawn;
+    if (!shownHere || before === drawn) return;
+    const root = document.documentElement, old = document.querySelector("[data-ws-room]");
+    if (drawn && box.current) {
+      const h = box.current.offsetHeight; strip.current = h;
+      if (!old && root.scrollHeight - window.innerHeight - window.scrollY < h) {   // the page's own heights are fixed: room is an element at the foot
+        const room = document.createElement("div"); room.dataset.wsRoom = ""; room.setAttribute("aria-hidden", "true"); room.style.height = `${h}px`; document.body.appendChild(room);
+      }
+      window.scrollBy(0, h);
+    } else if (!drawn) { window.scrollBy(0, -strip.current); old?.remove(); }
+  }, [drawn, shownHere]);
   // Lead 13: one open item needs no strip (its one tab could not even close), so a page alone looks as it did before PF-31:
   // the "where am I" line stays at the top on a phone and nothing sits over the page's own controls. A second item brings it.
   if (!ws || !me || ws.tabs.length < 2) return null;
@@ -310,7 +326,7 @@ export function WorkspaceStrip() {
           return (
             <button key={t.id} ref={(el) => { if (el) refs.current.set(t.id, el); }} type="button" aria-current={on ? "page" : undefined} tabIndex={on ? 0 : -1} title={t.path}
               aria-keyshortcuts={tabs.length > 1 ? "Delete" : undefined} data-ws-tab={t.id} data-ws-path={t.path}
-              onClick={() => ws.activate(t.id)} onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); ws.close(t.id); } }} onKeyDown={(e) => onKey(e, i, t.id)}
+              onClick={() => { ws.activate(t.id); focusTab(t.id); }} onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); ws.close(t.id); } }} onKeyDown={(e) => onKey(e, i, t.id)}
               className={cn("group relative flex h-9 max-w-56 min-w-24 shrink-0 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                 on ? "border-border bg-surface-raised font-medium text-text" : "border-transparent text-text-muted hover:bg-text/5")}>
               {ws.dirty.has(t.id) ? <span aria-hidden data-ws-dirty className="size-2 shrink-0 rounded-full bg-primary" /> : null}
