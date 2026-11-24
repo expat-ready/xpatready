@@ -40,6 +40,7 @@ import { phoneE164Exact } from "../duplicates/phone.ts";
 import { windowsFor } from "./settings/hours.ts";
 import { hashVerifier, issueToken, liveToken, parseToken } from "./tokens.ts";
 import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../platform/http/input.ts";
+import { assertAgreementSigned } from "./consultation-agreement/gate.ts";
 
 type Tx = Prisma.TransactionClient;
 type Status = "SCHEDULED" | "RESCHEDULED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
@@ -451,6 +452,9 @@ export class BookingService {
       if (!["SCHEDULED", "RESCHEDULED", "COMPLETED", "NO_SHOW"].includes(b.status)) throw problem(409, "not-active", "Cancelled", "A cancelled booking has no attendance.");
       if (b.startsAt > now) throw problem(409, "too-early", "Not yet", "Attendance is recorded once the meeting has started.");
       if (b.status === o) return b;
+      // FO-3c part 2 (R1.104, Lead 10 W4): Attended is the consultation starting: refused while its type needs the
+      // consultation agreement and it is not signed (No-show stays open: nothing started).
+      if (o === "COMPLETED") await assertAgreementSigned(tx, ctx.firmId, b.id);
       const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: o } });
       await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: staffActor(ctx).word, action: o === "COMPLETED" ? "booking.completed" : "booking.no_show", entity: "fo_booking", entityKey: b.id,
         summary: `Attendance recorded: ${o === "COMPLETED" ? "attended" : "did not attend"}.`, detail: { bookingId: b.id, sequence: after.sequence }, before: { status: b.status }, after: { status: o } });
