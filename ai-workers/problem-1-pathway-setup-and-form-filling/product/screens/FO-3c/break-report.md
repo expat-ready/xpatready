@@ -196,3 +196,250 @@ Not new in this diff (behaviour since round 1):
 No Blocker or Major in this round's diff.
 
 Verdict: Approve 8a09b9609ae6fcc25883a338a1668fcaa0035c30
+
+## Part 2, round 1 (f40ebc7e3)
+
+Scope: `git diff origin/main...f40ebc7e3`. Tested in three ways. A scratch suite at the services, on its own database (dropped afterwards). An isolated copy `brk3c2` on :4415 (`PLATFORM_IDENTITY=local`, stopped afterwards), driven by HTTP and Playwright at 1440 px. The row test passes 17/17.
+
+**P2-1. When the firm's signatory is not the host, they cannot sign while "Everyone sees all" is off. (Major)**
+- Steps:
+  1. Firm A turns `platform.everyone_sees_all` off.
+  2. The host, user-O (a Case Officer with no licence record), books Kim. Kim's lead is owned by user-O.
+  3. The agreement goes out with the representative of record, user-R (Owner, licensed), as the firm's signer. The client signs (CLIENT_SIGNED).
+- Expected: user-R signs. FO-5's BR-3 says "The representative always may read it".
+- Actual:
+  - `needsYou(R)` lists the agreement with `yourTurn: true`.
+  - `hostLink(R)` answers 404 NOT_FOUND, and so does `read(R)`.
+  - FO-5's `GET retainers/:id` answers 200 for the same person, and its `download-link` gives the .docx.
+  - The agreement can never reach SIGNED, so the booking's Attended and consult record are held for good.
+- Where:
+  - `mine()` now requires the booking's visibility (`consultation-agreement/service.ts:294-296`).
+  - `hostLink` goes through it (`service.ts:457`).
+  - The representative is not exempted, unlike the host in `staffBooking`.
+
+**P2-2. A declined agreement holds the consultation for good, and the screen's words are wrong for it. (Major)**
+- Steps: the client declines (status DECLINED). The meeting starts and the host presses Attended.
+- Expected: some way to start the consultation, or words that say what to do.
+- Actual:
+  - Attended answers 409 AGREEMENT_NOT_SIGNED.
+  - `send()` answers ALREADY_SENT, so no new agreement can be sent.
+  - FO-5's signed-offline answers 409 "A declined agreement cannot be recorded as signed" (`retainers/service.ts:42,644`).
+  - With "Everyone sees all" off, signed-offline answers 404 even for the Owner. The booking has no prospect, so FO-5's `visible(change)` refuses.
+  - The same applies to WITHDRAWN: the firm's signer declines after the client signed.
+  - The panel still says "The client signs from the link in their email, then … signs; or record it as signed offline" (`agreement.tsx:31`), and the 409 says the same (`gate.ts:156`). Neither is possible.
+  - The only ways out are switching the type's agreement off for every booking (see P2-4), or cancelling and rebooking.
+- Where: `gate.ts:160-168` holds on any status that is not signed, ended ones included.
+
+**P2-3. The poller writes a `platform.bypass` line to a firm's trail every catch-up with nothing to do, and retries a failing send with no backoff. (Major)**
+- Steps: firm A has one agreement SIGNED within the last 7 days, and nothing else is pending. 46 `tick()`s on a fresh `AgreementPoll` run 4 catch-ups.
+- Actual, idle firm:
+  - Firm A gets 4 bypass lines, one per catch-up. At the default 2 s × 15 that is one every 30 s: about 2,880 lines a day for 7 days after every signature.
+  - The cause: the "signed copy re-queue" branch runs through `each()`, and so through `touchFirms`, for every SIGNED request of the last 7 days (`service.ts:137,142`; `live.ts:48`).
+  - The copy job's key makes the queueing a no-op, but the audit line is written each time.
+- Steps, failing send: in firm B, the provider refuses a booking's send.
+- Actual, failing send: 46 runs made 3 provider calls and wrote 3 bypass lines to firm B. That is one try and one line every 30 s until the meeting, plus a log line each time.
+- Expected: a line only when a firm's rows are actually handled. This is CS-K1's break M1 of 20 Nov: `case-clients/live.ts` `touchedEach` added a doubling backoff (at most about 33 lines a day). `consultation-agreement/live.ts` has none.
+
+**P2-4. Switching a type off after its agreement was sent lifts the hold. Switching it back on blocks the consult record of a booking already Attended. (Minor)**
+- Steps:
+  1. The agreement is sent (SENT, unsigned).
+  2. An Admin PATCHes `requireAgreement: false`. Attended answers 200.
+  3. The Admin PATCHes `requireAgreement: true`. The consult record answers 409 AGREEMENT_NOT_SIGNED.
+- Expected: the rule is fixed when the agreement is sent, or the switch says it applies to bookings already sent.
+- Where: the gate reads the type's switch at the moment of the check (`gate.ts:165`).
+- Mitigation: needs the type-edit key (a Case Officer gets 403) and is audited.
+- Also seen: the 24-hour reminder is still sent for a type that is switched off (`runReminder` never asks `needsAgreement`).
+
+**P2-5. Once a type's choice is stored, the API cannot return it to the purpose default. (Minor)**
+- `requireAgreement: null` answers 422 on both PATCH and POST (`settings/types.ts:93`: `z.boolean()`).
+- A type saved once keeps `true` even if its purpose is later changed to FOLLOW_UP.
+- On screen, the checkbox writes a stored value on its first click (`types-page.tsx:201`), with no "use the default" choice.
+- The hint "What a booker may do from the link in their email." now sits under the agreement checkbox, which is not something a booker does.
+
+**P2-6. The signed-copy link is not a usable link, and a paper copy is never offered. (Minor)**
+- The `<a href>` points at the token URL (`agreement.tsx:83`). Middle-click or "open in new tab" answers 401 `not-signed-in` JSON, because the token is sent only by the click handler.
+- Each signed row POSTs a new download link on render, and again on window focus (staleTime 60 s), before anyone clicks.
+- A SIGNED_OFFLINE agreement shows "Agreement signed" with no copy: `signedCopy` is null and `signed-copy/download-link` answers 409 NO_SIGNED_COPY. R1.104 asks for "the signed copy is on the person"; for a paper signature it is only on FO-5's page.
+- The lead page lists each agreement as "status · Sent <date>" with no booking, type or meeting date. Three rows for one person cannot be told apart (screenshot at 1440 px; nothing clipped or overflowing).
+
+What held:
+- **Reads by booking, id, person and link:**
+  - The host gets 200.
+  - A same-firm Case Officer who does not see the booking gets 404. The Owner with "Everyone sees all" off gets 404.
+  - Billing (no list key) gets 404 by booking and 403 by id, by person and on the link route. Firm B's Owner gets 404 everywhere.
+  - Malformed ids answer 404.
+- **The download link:**
+  - The host's link downloads (200, `application/pdf`, `attachment`, `no-store`, `nosniff`).
+  - The same link used by a colleague, by firm B or with one character changed answers 404. Used by Billing it answers 403.
+  - The same link at FO-5's `/files/:token` answers 404.
+  - An unsigned agreement's link answers 409 NO_SIGNED_COPY.
+  - A viewer who sees the booking only through "Everyone sees all" loses both the key (404) and the download once the setting goes off.
+  - Keyboard Enter on the link downloads the file.
+- **The hold:**
+  - Two Attended requests at once both answer 409, and the booking stays SCHEDULED.
+  - No-show answers 200; Attended after it answers 409.
+  - Over HTTP, Attended answers 409 AGREEMENT_NOT_SIGNED and the panel shows the server's words.
+  - SIGNED_OFFLINE opens the gate. A follow-up type is never held.
+- **The poller:**
+  - It sent the live booking's agreement within seconds on the running copy.
+  - A firm-B outbox event naming a firm-A booking sends nothing in either firm.
+  - A restart replays a day of events with no second agreement.
+  - The advisory lock still guards a raced send.
+- **The types API:** `requireAgreement` set to `"false"`, `0`, `"yes"`, `[]` or `{}` answers 422. A Case Officer's PATCH answers 403.
+- **Not a finding:** a first run of the copy answered 500 on by-booking (`PrismaClientValidationError`). Another session regenerated the shared Prisma client while the copy was starting (`node_modules/.prisma/client/index.js` stamped 05:24:04). After a restart every call answered as above.
+
+Verdict: Changes f40ebc7e38e0e3d774538626afa28203e29649a1
+
+## Part 2, round 2 (f89c066a6; head e8511e156)
+
+Scope: `git diff f40ebc7e3..f89c066a6`. e8511e156 only re-adds the four J-104 screenshots, and d560df8e0 is test-only, so no code changed after f89c066a6. Tested with a scratch suite at the services, on its own database (dropped afterwards). The poller ran on simulated time: 2 s per run, as the default. No isolated copy this round.
+
+**P2R2-1. The hold can be lifted while the agreement can still be signed, and nothing replaces it. (Major)**
+- Steps:
+  1. "Everyone sees all" is on (the default). Lee's booking has ended and its agreement is SENT. Attended answers 409.
+  2. The Owner calls FO-5's `withdraw` on the agreement (`retainers/:id/withdraw`, reason "skip it"). It answers 200 and the agreement becomes WITHDRAWN.
+  3. Attended answers 200 (COMPLETED), and the consult record answers 200.
+- The client can do the same from their emailed link: they decline, and then Attended and the consult record both answer 200. The screen reads "Agreement ended unsigned".
+- In both cases `send()` refuses a new agreement: ALREADY_SENT before the booking is attended, NOT_SCHEDULED after.
+- From the code, not run: FO-5's `edit` of a SENT agreement on a booking with a prospect sets it to DRAFT (`retainers/service.ts:546`). DRAFT is not in LIVE either. The panel then says "declined, withdrawn or has expired".
+- Expected (R1.104, "cannot start until signed"): either an ended agreement still holds and can be sent again, or this lift is the Lead's explicit ruling. Today one FO-5 click, or a client's decline, means the consultation goes ahead with no agreement.
+- Where: `gate.ts:42` (only LIVE holds). The code calls this "Question for the Lead", and it is still open.
+
+**P2R2-2. The backoff can outlast the meeting, so the agreement is never sent and nothing holds. (Minor)**
+- Steps:
+  1. Firm B's provider refuses every send for 70 minutes.
+  2. A booking starts 100 minutes from now.
+  3. The provider comes back at 70 minutes.
+- Actual:
+  - During the outage there were 8 tries and 8 bypass lines. The wait doubled as designed.
+  - The next try was due about an hour after the provider came back, which is after the meeting. The catch-up only looks at future meetings, so the booking never got an agreement.
+  - A booking with no agreement is not held, so its consultation can start unsigned.
+- Expected: the wait never runs past the time left before the meeting.
+- Where: `live.ts:52-57`, together with `service.ts:122`'s `starts_at > now`.
+
+**P2R2-3. A send that fails without throwing still writes a bypass line on every catch-up. (Minor)**
+- Steps: firm B has an active CONSULTATION template, but its file is missing from the store. A booking is 5 days ahead.
+- Actual: `send()` answers `NO_TEMPLATE` with no error (`service.ts:210`). Only errors start the backoff, so 30 minutes gave 60 bypass lines: one every catch-up, about 2,880 a day until the meeting.
+- Needs a broken store. The other reasons that return without an error are excluded by the catch-up's filter; for example, an empty email is refused by `fo_person_email_check`.
+
+What held:
+- **P2-1, the signer's exception:**
+  - The signer of record reads the agreement, gets the signing link and signs (SIGNED), and gets the signed copy's key.
+  - A colleague in the same firm who is not the signer and does not see the booking gets 404 on read, signing link and copy key, before and after signing.
+  - Firm B's Owner gets 404.
+  - The exception covers only the agreement itself, by id. By-booking stays 404 for the signer and the person's list leaves it out, so nothing wider opens.
+- **P2-3, the idle flood:** 10 minutes idle, with signed copies from the last 7 days, wrote 0 bypass lines in either firm. Re-queued copies are skipped before the firm is touched.
+- **The backoff itself:** a failing row writes one line per try, at 30 s, 60 s, 120 s and so on, up to an hour (8 in 70 minutes).
+- **P2-4:** the reminder skips a type that has been switched off (code read).
+- **P2-5:** PATCH `requireAgreement: null` answers 200, stores NULL, and reads back as `requireAgreement: true, requireAgreementSet: false` (the default). The hint is back under the booker choices.
+- **P2-6:** each lead row names its meeting (`meetingAt`, read only for agreements the viewer can already see). The new-tab 401 and the paper-signed copy are the declared gaps.
+
+Verdict: Changes e8511e15673206e0c9b46a2a6028f78b50f375e4
+
+## Part 2, round 3 (9f2754207)
+
+Scope: `git diff d47aca316..9f2754207`, under the Lead's ruling of 23 Nov: every unsigned agreement holds, and an ended one is replaced while the meeting is ahead. Tested with a scratch suite at the services, built on the row suite's set-up, on its own database (dropped afterwards). "Everyone sees all" was on, so FO-5's actions could run. The row suite passes 36/36, and `check_pf19r_every_sender` passes 21/21. No isolated copy this round.
+
+**P2R3-1. The hold reads only the newest agreement, so a signed older one never lifts it, and the catch-up then never replaces an ended newest one. (Major)**
+- Steps, case 1 (e-signed):
+  1. A CASE_REVIEW booking with a prospect is sent its agreement (A1).
+  2. FO-5's `edit` adds a fee, which puts A1 back to DRAFT. The next catch-up sends a fresh agreement (A2): a second "Please sign" email.
+  3. FO-5's `send` of the edited draft answers 200. Now both A1 and A2 are SENT.
+  4. The client signs A1 from the link in the first email, then the firm signs. A1 is SIGNED, with its sealed copy stored.
+- Actual, case 1: `agreementHold` still holds on A2 (SENT). By-booking shows A2: "Agreement not signed yet". Attended and the consult record stay refused although a fully signed agreement exists.
+- Steps, case 2 (paper):
+  1. After the same edit (A1 DRAFT) and the fresh A2, FO-5's `signedOffline` on A1 answers 200 (SIGNED_OFFLINE). The hold stays on A2.
+  2. The firm withdraws A2, since the paper one is the one that counts. The statuses are SIGNED_OFFLINE, then WITHDRAWN. The hold stays, now on A2 WITHDRAWN.
+  3. `catchUp` sends nothing: its filter sees a non-ended agreement, A1.
+- Actual, case 2: the booking is held while the meeting is still ahead. The panel promises "a new agreement is emailed to the client", and none is sent. Only a reschedule frees it, because `onBookingEvent` and `send()` read the newest agreement (WITHDRAWN) and do send.
+- The same split applies when the client declines A2 but signs A1.
+- Expected: the hold, `send()` and the catch-up ask one question. Under the ruling that question is "is any agreement of this booking signed?" A signed agreement lifts the hold, and an ended newest one is replaced only when nothing is signed or waiting.
+- Where:
+  - `gate.ts:44-48`: the newest agreement only (`order by r.created_at desc … limit 1`, then `!isSigned`).
+  - `service.ts:140-142`: the catch-up's "no non-ended agreement" filter.
+  - `service.ts:172,201,236`: `ofBooking` reads the newest agreement.
+
+**P2R3-2. Nothing limits or stops the fresh agreements. (Minor)**
+- Steps: the client declines 4 times, with a catch-up after each decline.
+- Actual:
+  - The client gets 5 "Please sign your consultation agreement" emails, each within about 30 s of a decline. There is no count, no wait and no staff control.
+  - A firm that withdraws an agreement on purpose (for example, the client asked not to be emailed) has the next catch-up email a fresh one. The only stop is switching the type's agreement off, which applies to every booking of that type.
+- This follows the ruling. Recorded so the Lead can confirm that an unlimited re-send after each "no" is intended.
+
+**P2R3-3. After an FO-5 withdraw or edit, the first email's link still opens next to the fresh one. (Minor; the root is outside the diff)**
+- Steps:
+  1. FO-5 `withdraw` answers 200. The signing request stays SENT.
+  2. The catch-up sends A2.
+- Actual:
+  - The old token's `open` answers 200 and offers consent.
+  - Signing through it ends in a webhook 500: `fo_retainer: a WITHDRAWN retainer does not change`.
+  - After `edit`, the old link likewise stays open. In P2R3-1 case 1 it signed version 1's file while version 2 was the one "sent".
+- Why it matters now: FO-5 never ends FO-3c's request, so the diff's fresh send leaves the client with two working-looking links in two emails.
+
+**P2R3-4. The panel tells staff to reschedule, or promises a new agreement, on a cancelled or completed booking. (Minor)**
+- Steps: a booking's agreement is declined, then the booking is cancelled (`staffCancel` 200). By-booking still answers DECLINED with `required`.
+- Actual: `agreement.tsx` shows "The consultation still cannot start: while the meeting is ahead, a new agreement is emailed to the client. If the meeting time has passed, reschedule it…". `staffReschedule` answers 409 "This booking is no longer active", and the catch-up skips cancelled bookings.
+- `agreementNextStep` handles only NO_SHOW (`agreement-words.ts:6`). CANCELLED and COMPLETED get the reschedule advice too.
+
+What held:
+- **Concurrency:** after a decline, two `send()`s, a `catchUp`, a reschedule event and a third `send()` run at once. Exactly one fresh agreement is made (DECLINED, then SENT) and the client gets 2 emails in all. The others answer ALREADY_SENT: the advisory lock and the in-lock `isEnded` re-check hold.
+- **Re-sends:** a re-sent ended agreement goes out once. A waiting fresh one is never duplicated by a repeated `send()` or catch-up (row suite B2, B6).
+- **P2R2-1:**
+  - A declined agreement and a withdrawn one both hold.
+  - A past meeting gets no fresh agreement until it is rescheduled.
+  - The reschedule sends one for the new time.
+  - The fresh agreement's signature lifts the hold.
+- **P2R2-2:** the wait is `min(doubled wait, max(30 s, half the time left))`. It stays bounded near the meeting: about 7 extra tries in the last hour, and the floor of one catch-up means a meeting under 30 s away may be missed. Row suite B5 passes.
+- **P2R2-3:** NO_TEMPLATE backs off with no bypass line while held back, and recovers once the file is back (B8).
+- **r2-1 and r2-2:** the reminder skips a type that is switched off (B9). On No-show, the panel says to make a new booking (B7).
+- **Permissions:** the controller and the read rules are not in the diff. `forBooking` now reads the newest agreement, the same one the hold reads.
+
+Verdict: Changes 9f2754207cdd532db0094c26e69e1a6e478821b1
+
+## Part 2, round 3 re-check (8927036b4)
+
+Scope: `git diff 9f2754207..8927036b4`. Tested with a scratch suite at the services, built on the row suite's set-up, on its own database (dropped afterwards). "Everyone sees all" was on, so FO-5's actions could run. The row suite passes 45/45.
+
+**P2R3-1: fixed.**
+- Case 1, re-run:
+  1. FO-5's `edit` puts A1 back to DRAFT, and the catch-up sends A2.
+  2. FO-5's `send` of A1 answers 200, and the client and the firm sign A1. The statuses are SIGNED, then SENT.
+  3. The hold is lifted. By-booking shows A1 "Agreement signed", and a further catch-up sends 0.
+- Case 2, re-run:
+  1. `signedOffline` on A1 answers 200, and the hold lifts at once.
+  2. The firm withdraws A2. The hold stays lifted, and the catch-up sends 0.
+  3. A reschedule event answers ALREADY_SENT, pointing at A1. The panel shows A1 SIGNED_OFFLINE, "Agreement signed".
+- The hold, `send()`, the reschedule event and the catch-up now agree:
+  - The client declines A2 while the re-sent A1 is still waiting (SENT, then DECLINED). No third agreement is sent: the catch-up sends 0, `send()` answers ALREADY_SENT pointing at A1, and the hold is on A1.
+  - A1 and A2 are both signed. The hold is lifted, the panel shows the newer signed one, and the lead page lists both.
+
+**P2R3R-1. When an older agreement is client-signed and a newer one is only sent, the panel shows the newer one and hides that the firm's signature is due. (Minor)**
+- Steps: as case 1, but only the client signs A1 (CLIENT_SIGNED). A2 is SENT.
+- Actual:
+  - `DECIDING_ORDER` puts the waiting agreements newest first, so the hold and by-booking name A2.
+  - The panel reads "Agreement not signed yet" with no "The client signed …: the firm signs next." line.
+  - The signature that would lift the hold, the firm's on A1, appears only in that signer's "Needs you".
+- Where: `gate.ts:30`. All waiting statuses rank the same, so CLIENT_SIGNED does not come before SENT or VIEWED.
+
+**P2R3R-2. Once one agreement is signed, the other that is still open keeps asking for signatures. (Minor)**
+- Steps: as case 1 (A1 SIGNED, A2 SENT).
+- Actual:
+  - A2 stays in the signer's "Needs you" (`service.ts:366`).
+  - At 23 hours before the meeting, the firm's signer gets the reminder "Agreement not signed yet: … tomorrow" for A2 (`service.ts:275` reads only A2's own status).
+  - The client's A2 link stays open. In the double-sign case above, the client signed A2 as well.
+- The hold is right. The noise is in the reminder, "Needs you" and the client's link.
+
+**P2R3R-3. On an Attended booking the waiting text still tells the client to sign from the link. (Minor)**
+- Steps: an Attended booking whose consult record is held, with a waiting agreement (only reachable by switching the type back on, as in P2-4).
+- Actual: the panel reads "The client signs from the link in their email, then … signs. This booking is already marked Attended, so it cannot be rescheduled…" (`agreement.tsx:46`). The client's link answers 404 once the booking is not active (`openAs` `bookingActive`).
+- The server's refusal, `HOLD_WORDS_INACTIVE`, says it correctly.
+
+What held:
+- **P2R3-4:** a cancelled booking's panel says "nothing more is sent for it". The promise of a new agreement now shows only for Scheduled or Rescheduled bookings (`sendsFresh`).
+- **m3-1:** the 409's wording follows the booking's status.
+- **m3-2:** the cap is read again at each check (row suite B12).
+- **m3-3:** only NO_TEMPLATE, NO_LICENSED and NO_CLIENT_EMAIL back off. The catch-up's filter matches `send()`'s reasons, so no other reason repeats every catch-up.
+- **`DECIDING_ORDER`:** built only from constants, through `Prisma.raw`.
+- **Permissions:** unchanged.
+
+Verdict: Approve 8927036b47dc0ed68e25d61b89c8297ac4abf514

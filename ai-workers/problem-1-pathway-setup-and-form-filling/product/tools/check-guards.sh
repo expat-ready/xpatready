@@ -21,14 +21,16 @@ done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
 TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh"
 TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
-TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
+TESTS="$TESTS check-lane-cleanup.sh"   # A348: lane clean-up list
 TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
+TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
+TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 bad=0
 if [ "$part" = 1 ]; then
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
@@ -42,22 +44,6 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 2|product/tools/label-guard.sh|s/^# No review for the head.*/exit 0/|check-label-guard.sh
 2 walk|product/tools/label-guard.sh|s/^  c=\$next; merges=.*/  exit 0/|check-label-guard.sh
 2 who|product/tools/label-guard.sh|s/^team=.*/team=true/|check-label-guard.sh
-2 labeled|../../.github/workflows/label-guard.yml|s/types: \[synchronize, labeled, opened\]/types: [synchronize, opened]/|check-label-guard.sh
-2 after|../../.github/workflows/label-guard.yml|s/^\( *AFTER: \).*/\1${{ github.event.after }}/|check-label-guard.sh
-2 full|product/tools/label-guard.sh|s/^    \[ "\$p" = 1 \] \&\& break/    true/|check-label-guard.sh
-2 records|product/tools/label-guard.sh|s/^records_pr() {  #/records_pr() { return 0; }\n_off() {  #/|check-label-guard.sh
-2 relabel|../../.github/workflows/label-guard.yml|/^ *LABELED: /d|check-label-guard.sh
-2 reviewers|../../.github/workflows/label-guard.yml|/^          REVIEWERS: /{x;s/^/x/;/^x$/{x;d;};x;}|check-label-guard.sh
-3|product/tools/lane-preflight.sh|/under ${min} GB;/d|check-lane-preflight.sh
-3 touch|product/tools/lane-preflight.sh|s/ python3 -I "\$DIR\/touch-overlap.py" 2>\&1)/ cat >\/dev\/null)/|check-touch-overlap.sh
-3 hit|product/tools/touch-overlap.py|s/^            if paths:/            if False:/|check-touch-overlap.sh
-3 closed|product/tools/touch-overlap.py|s/^        return 2$/        return 0/|check-touch-overlap.sh
-3 own|product/tools/touch-overlap.py|s/^        if n in own:/        if False:/|check-touch-overlap.sh
-3 dot|product/tools/touch-overlap.py|s/re.sub(r"^(\\.\/)+", "", /(/|check-touch-overlap.sh
-3 run|product/tools/check-lane-preflight.sh|/check-touch-overlap.sh" 2>\&1)/d|check-touch-overlap.sh
-4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
-4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
-5|product/tools/factory-board.sh|s/; gh() { bash "\$TOOLS\/gh.sh" "\$@"; }//|check-gh-fallback.sh
 A351 c1 app|product/tools/red-on-old.py|s/ + (" ".join(all_\[:MAX\]) if app else "")/ + " ".join(all_[:MAX])/|check-red-on-old.sh
 A351 c1 note|product/tools/red-on-old.py|s/ and not NOTE.match(l\[1:\])//|check-red-on-old.sh
 A351 c1 max|product/tools/red-on-old.py|s/MAX = 4/MAX = 40/|check-red-on-old.sh
@@ -74,7 +60,51 @@ A351 c1 only|../../.github/workflows/red-on-old.yml|s/ --only "\$SUITES"//|check
 A351 c1 depth|../../.github/workflows/red-on-old.yml|s/fetch-depth: 0/fetch-depth: 1/|check-red-on-old.sh
 A351 c1 batch|../../.github/workflows/red-on-old.yml|s/^    if: .*/    if: true/|check-red-on-old.sh
 A351 c1 ports|product/tools/red-on-old.py|s/"packages", "ports", /"packages", /|check-red-on-old.sh
+2 labeled|../../.github/workflows/label-guard.yml|s/types: \[synchronize, labeled, opened\]/types: [synchronize, opened]/|check-label-guard.sh
+2 after|../../.github/workflows/label-guard.yml|s/^\( *AFTER: \).*/\1${{ github.event.after }}/|check-label-guard.sh
+2 full|product/tools/label-guard.sh|s/^    \[ "\$p" = 1 \] \&\& break/    true/|check-label-guard.sh
+2 records|product/tools/label-guard.sh|s/^records_pr() {  #/records_pr() { return 0; }\n_off() {  #/|check-label-guard.sh
+2 relabel|../../.github/workflows/label-guard.yml|/^ *LABELED: /d|check-label-guard.sh
+2 reviewers|../../.github/workflows/label-guard.yml|/^          REVIEWERS: /{x;s/^/x/;/^x$/{x;d;};x;}|check-label-guard.sh
+3|product/tools/lane-preflight.sh|/under ${min} GB;/d|check-lane-preflight.sh
+3 touch|product/tools/lane-preflight.sh|s/ python3 -I "\$DIR\/touch-overlap.py" 2>\&1)/ cat >\/dev\/null)/|check-touch-overlap.sh
+3 hit|product/tools/touch-overlap.py|s/^            if paths:/            if False:/|check-touch-overlap.sh
+3 closed|product/tools/touch-overlap.py|s/^        return 2$/        return 0/|check-touch-overlap.sh
+3 own|product/tools/touch-overlap.py|s/^        if n in own:/        if False:/|check-touch-overlap.sh
+3 dot|product/tools/touch-overlap.py|s/re.sub(r"^(\\.\/)+", "", /(/|check-touch-overlap.sh
+3 run|product/tools/check-lane-preflight.sh|/check-touch-overlap.sh" 2>\&1)/d|check-touch-overlap.sh
+4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
+4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
+5|product/tools/factory-board.sh|s/; gh() { bash "\$TOOLS\/gh.sh" "\$@"; }//|check-gh-fallback.sh
+A348 clean all|product/tools/lane-cleanup.py|s/all(p in merged for p in prs)/any(p in merged for p in prs)/|check-lane-cleanup.sh
+A348 clean dirty|product/tools/lane-cleanup.py|s/ and not git(path, "status", "--porcelain").strip()//|check-lane-cleanup.sh
+A348 clean ahead|product/tools/lane-cleanup.py|s/ and not git(repo, "rev-list".*strip() and/ and/|check-lane-cleanup.sh
+A348 clean pr|product/tools/lane-cleanup.py|s/clean = prs and not git/clean = not git/|check-lane-cleanup.sh
+A348 clean status|product/tools/lane-cleanup.py|s/ or m.group(3) != "completed"//|check-lane-cleanup.sh
+A348 clean idle|product/tools/lane-cleanup.py|s/ or int(idle\[-1\]) < IDLE_MIN//|check-lane-cleanup.sh
+A348 clean need|product/tools/lane-cleanup.py|s/ or rest.split(.*)\[0\] != "none"//|check-lane-cleanup.sh
+A348 clean link|product/tools/lane-cleanup.py|s/^PR = .*/PR = re.compile(r"#(\\d{2,})")/|check-lane-cleanup.sh
+A348 clean stale|product/tools/lane-cleanup.py|s/^    if not 0 <= age <= STALE_MIN:/    if False:/|check-lane-cleanup.sh
+A348 clean whole|product/tools/lane-cleanup.py|s/^    if "UNREADABLE" in head .*/    if False:/|check-lane-cleanup.sh
+A348 clean lock|product/tools/lane-cleanup.py|s/"git", "--no-optional-locks", /"git", /|check-lane-cleanup.sh
+A348 clean me|product/tools/lane-cleanup.py|s/ or os.path.realpath(path) == me//|check-lane-cleanup.sh
+A348 clean wired|product/tools/lead-watch.sh|s/^cl=/# cl=/|check-lane-cleanup.sh
 6|product/tools/check-docs.sh|/STATE TOO BIG/d|check-state-page.sh
+A348 cap standbys|product/tools/capacity-watch.py|s/^    elif int(v) < MIN_STANDBYS:/    elif False:/|check-capacity-watch.sh
+A348 cap given|product/tools/capacity-watch.py|s/^    if not (v.isascii.*/    if False:/|check-capacity-watch.sh
+A348 cap disk|product/tools/capacity-watch.py|s/^    if gb < START_GB:/    if False:/|check-capacity-watch.sh
+A348 cap remote|product/tools/capacity-watch.py|s/^    miss = len(fs) - .*/    miss = 0/|check-capacity-watch.sh
+A348 cap odd|product/tools/capacity-watch.py|s/miss = len(fs) - len(plain) + /miss = /|check-capacity-watch.sh
+A348 cap dead|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--remotes=origin", "--stdin"/|check-capacity-watch.sh
+A348 cap local|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--branches", "--stdin"/|check-capacity-watch.sh
+A348 cap copy|product/tools/capacity-watch.py|s/^    if any(os.path.basename(p) == ".git".*/    if False:/|check-capacity-watch.sh
+A348 cap whole|product/tools/capacity-watch.py|s/os.walk(d, onerror=stop)/os.walk(d)/|check-capacity-watch.sh
+A348 cap age|product/tools/capacity-watch.py|s/ or now - newest < o.age.*/:/|check-capacity-watch.sh
+A348 cap ctime|product/tools/capacity-watch.py|s/st.st_mtime, st.st_ctime/st.st_mtime/|check-capacity-watch.sh
+A348 cap cut|product/tools/capacity-watch.py|s/^    if c\["cut"\]:/    if False:/|check-capacity-watch.sh
+A348 cap cr|product/tools/capacity-watch.py|s/and not set(.*) & set(p)\]/]/|check-capacity-watch.sh
+A348 cap dark|product/tools/capacity-watch.py|s/^    if c.get("dark"):/    if False:/|check-capacity-watch.sh
+A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 7|product/tools/check-docs.sh|s/if m > 30:/if False:/|check-state-page.sh
 7 mine|product/tools/check-docs.sh|s/^  mine=1; c=""$/  mine=0; c=""/|check-state-page.sh
 7 read|product/tools/check-docs.sh|s/^  if \[ -z "\$u" \]; then msg=/  if false; then msg=/|check-state-page.sh

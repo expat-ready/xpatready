@@ -77,6 +77,11 @@ pn=$(python3 -I "$TOOLS/proof-number.py" 2>&1); echo "$pn"; act=$((act + $(grep 
 grep -qE '^(proven |ACT   proven)' <<<"$pn" || ACT "proven: proof-number.py did not run ($(head -1 <<<"$pn"))"
 fresh "proof-number.py: qa/CAPABILITIES.md and app code on origin/main (git only)"
 
+# 1e. Capacity (A348, founder 24 Nov): under 2 standbys (LEAD_STANDBYS=<n>), under 7 GB, old exports over 100 MB. Never deletes.
+cp=$(python3 -I "$TOOLS/capacity-watch.py" --state "$STATE_DIR" 2>&1); echo "$cp"; act=$((act + $(grep -c '^ACT' <<<"$cp"))); seen "$cp"
+grep -qE '^(capacity |ACT   capacity)' <<<"$cp" || ACT "capacity: capacity-watch.py did not run ($(head -1 <<<"$cp"))"
+fresh "capacity-watch.py: LEAD_STANDBYS from the Lead's list_sessions, the disk, /private/tmp (exports: read at most once an hour, time printed)"
+
 # 2. Merges and the queue.
 since=$(date -u -v-"${SINCE}"M '+%Y-%m-%dT%H:%M:%SZ')
 merged=$(gh pr list --state merged --search "merged:>=$since" --json number,title -q '.[]|"#\(.number) \(.title[0:55])"')
@@ -275,6 +280,11 @@ fresh "product/state/app-view-latest.txt (app-view-check.sh)"
 # not done (done = a PR number merged on main, never prose), and "operating system: n done of m". Data: design/night-checklist.json.
 nc=$(python3 -I "$TOOLS/night-checklist.py" 2>&1); echo "$nc"; act=$((act + $(grep -c '^ACT' <<<"$nc"))); seen "$nc"
 fresh "night-checklist.py: design/night-checklist.json and origin/main's merge subjects (fetched in step 4)"
+
+# 10c. Lane clean-up list (A348, founder 24 Nov): sessions whose PRs have all merged; the Lead archives, nothing here does.
+cl=$(python3 -I "$TOOLS/lane-cleanup.py" 2>&1); echo "$cl"; act=$((act + $(grep -c '^ACT' <<<"$cl"))); seen "$cl"
+grep -qE '^(lanes to clean up|ACT   lane clean-up)' <<<"$cl" || ACT "lane clean-up list: lane-cleanup.py did not run ($(head -1 <<<"$cl"))"
+fresh "lane-cleanup.py: git worktrees, main's merges (fetched in step 4) and the app view saved in step 10"
 
 # 11. What the founder's board shows (B201, founder A117 16 Nov: the check missed six stuck items his board showed; P-639:
 # never take the board's word blindly). The board's own Today card and Stuck panel (cockpit-data.py --watch reads the
