@@ -79,16 +79,22 @@ try {
     const n = await tx.$executeRaw`delete from pf21d_rows where firm_id = ${currentFirm()}::uuid and person_id = ${o.personId}::uuid`;
     return n ? { outcome: "ERASED", note: `${n} row(s)` } : { outcome: "NOTHING", note: "no rows" };
   } };
-  let mode: "nothing" | "throw" | "kept" | "wait" | "merge" | "breakRecord" = "nothing", mergeTry: (() => void) | null = null, entered = false, gate: () => void = () => undefined;
+  let mode: "nothing" | "throw" | "kept" | "wait" | "merge" | "breakRecord" | "loseCommit" = "nothing", mergeTry: (() => void) | null = null, entered = false, gate: () => void = () => undefined;
   const secondEraser: Eraser<any> = { module: "test.second", async erase() {
     if (mode === "throw") throw new Error("Sample: the second module is down");
     if (mode === "wait") { entered = true; await new Promise<void>((r) => { gate = r; }); }
     if (mode === "merge" && mergeTry) mergeTry();   // review r4 M1: a merge tries to land while the run erases
+    if (mode === "loseCommit") testDb.loseNextCommit = true;   // Lead 27: this transaction commits, then its answer is lost
     if (mode === "breakRecord") sql(`alter function plat_data_request_erasure_finish(uuid, text, text, date, text, timestamptz) rename to pf21d_finish_away`);   // Lead 26: the record fails after the erasers commit
     return mode === "kept" ? { outcome: "KEPT", note: "client_financial: 2 rows kept 7 years, name replaced by a reference" } : { outcome: "NOTHING", note: "no rows" };
   } };
   const rowsOf = (firm: string, person: string) => Number(sql(`select count(*) from pf21d_rows where firm_id = '${firm}' and person_id = '${person}'`));
   const addRows = (firm: string, person: string, n = 2) => { for (let i = 0; i < n; i++) sql(`insert into pf21d_rows (firm_id, person_id) values ('${firm}', '${person}')`); };
+  // Lead 27: a database client whose next transaction commits and then answers with an error (the connection was lost
+  // while COMMIT was answered: the database committed, the client cannot know).
+  class TestDb extends (Db as any) { loseNextCommit = false;
+    $transaction(...a: unknown[]) { return (super.$transaction as any)(...a).then((v: unknown) => { if (this.loseNextCommit) { this.loseNextCommit = false; throw new Error("Sample: the connection was lost while COMMIT was answered"); } return v; }); } }
+  let testDb: { loseNextCommit: boolean } = { loseNextCommit: false };
   // ------------------------------------------------------------------------------------------- the test app
   const clock = new (class extends PlatformClock { t = Date.parse("2026-11-24T15:00:00Z"); override now() { return this.t; } })();
   const firmLocal = new LocalIdentity("pf21d-firm-standin-key-0123456789abcdef", () => clock.now());
@@ -96,13 +102,14 @@ try {
   const jobCalls: string[] = [];
   const stubJobs = { handle: async (n: string) => { jobCalls.push(`handle ${n}`); }, recurring: async (n: string, c: string) => { jobCalls.push(`recurring ${n} ${c}`); } };
   @Module({ controllers: [PlatformIdentityController, SystemIdentityController, ...requestsFeature.controllers, ...feature.controllers] as never[],
-    providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
+    providers: [{ provide: Db, useClass: TestDb }, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, SystemIdentity, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard },
       { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: PlatformJobs, useValue: stubJobs }, ...requestsFeature.providers, ...feature.providers] as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   app.use(requestMiddleware());
   await app.listen(0, "127.0.0.1"); apps.push(app);
   const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
+  testDb = app.get(Db) as unknown as { loseNextCommit: boolean };
   const svc = app.get(Erasure), requests = app.get(DataRequests);
   ok("PF-21d pass: the feature registers the daily job on PF-14's runner (handler and schedule)",
     app.get(ERASURE_DAILY) === true && jobCalls.includes(`handle ${ERASURE_QUEUE}`) && jobCalls.includes(`recurring ${ERASURE_QUEUE} ${ERASURE_CRON}`), jobCalls);
@@ -260,6 +267,20 @@ try {
   ok("PF-21d fail (Lead 26): a HELD order whose erasers committed but whose record failed keeps its claim: cancel → 409 (never a cancelled register over erased data); a run after 30 minutes records it COMPLETED",
     broke.failed === 1 && rowsAfter === 0 && afterBreak.startsWith("HELD|2") && lateCancel8 && !kinds(r8).includes("ERASURE_CANCELLED")
     && recorded.erased.includes(r8) && statusOf(r8) === "COMPLETED|-", { broke, afterBreak, rowsAfter, lateCancel8, recorded, s: statusOf(r8), k: kinds(r8) });
+  // Lead 27: the same order shape, but the erasers' COMMIT succeeds and its answer is lost: the claim must stay too.
+  const P9 = person(A); addRows(A, P9);
+  const r9 = await deletion(A, P9); await svc.approve(as, null, r9);
+  const h9 = sql(`insert into plat_legal_hold (id, firm_id, scope_kind, target_id, reason, placed_by) values (gen_random_uuid(), '${A}', 'PERSON', '${P9}', 'Sample: a short inquiry', 'staff:${OWNER}') returning id`).split("\n")[0];
+  clock.t += 7 * DAY; await svc.run();
+  sql(`update plat_legal_hold set released_by = 'staff:${OWNER}', released_at = now(), release_reason = 'Sample: lifted' where id = '${h9}'`);
+  mode = "loseCommit"; const lost = await svc.run(); mode = "nothing";
+  const lostRows = rowsOf(A, P9), lostState = statusOf(r9);
+  const lostCancel = await throws(() => svc.cancel(as, null, r9, { note: "Sample: withdrawn" }), /ERASURE_RUNNING/);
+  sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r9}'`);
+  const lostRecorded = await svc.run();
+  ok("PF-21d fail (Lead 27): the erasers' COMMIT succeeds but its answer is lost → the claim stays (an unknown outcome is never a rollback): cancel → 409; a run after 30 minutes records it COMPLETED",
+    lost.failed === 1 && lostRows === 0 && lostState.startsWith("HELD|2") && lostCancel && !kinds(r9).includes("ERASURE_CANCELLED") && lostRecorded.erased.includes(r9) && statusOf(r9) === "COMPLETED|-",
+    { lost, lostRows, lostState, lostCancel, lostRecorded, s: statusOf(r9), k: kinds(r9) });
   // -------------------------------------------------------------------------------------- the database's rules
   ok("PF-21d fail (database): an erase day on an access request or not after the day received, a forged mark through the job's step → refused",
     refusedBySql(`update plat_data_request set erase_on = received_on + 7 where id = '${access}'`, /plat_data_request_erase_on_set/)

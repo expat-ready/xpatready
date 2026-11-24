@@ -153,12 +153,15 @@ export class Erasure {
   private async one(order: ErasureOrder, today: string): Promise<"erased" | "partial" | "held" | null> {
     const [{ claim }] = await this.db.$queryRaw<{ claim: Date | null }[]>`SELECT plat_data_request_erasure_claim(${order.requestId}::uuid, ${today}::date) AS claim`;
     if (!claim) return null;
-    const state = { erased: false };   // set once the erasers' firm transaction has committed
+    // Set inside the erasers' transaction once every eraser has returned: from then on the outcome is "erased, or not
+    // known" (a COMMIT can succeed while its answer is lost, Lead 27). Only a throw before it is a certain rollback.
+    const state = { erased: false };
     try { return await this.erase(order, today, claim, state); } catch (e) {
       if (state.erased) {
-        // Lead 26 on #3235: the erasers committed but the record failed. The claim is kept, so nobody can cancel a request
-        // whose data is gone (cancel refuses any claim); a run after 30 minutes retakes it and records the result.
-        await this.db.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_RESULT', ${"The erasers ran, but recording their result failed. The request cannot be cancelled; a later run records it."}, ${ERASURE_ACTOR}, false, ${claim}::timestamptz)`.catch(() => undefined);
+        // Lead 26, 27 on #3235: the erasers may have committed (the record failed, or COMMIT's answer was lost). The claim is
+        // kept, so nobody can cancel a request whose data may be gone (cancel refuses any claim); a run after 30 minutes
+        // retakes it and records the result.
+        await this.db.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_RESULT', ${"The erasers ran, but their result could not be recorded. The request cannot be cancelled; a later run records it."}, ${ERASURE_ACTOR}, false, ${claim}::timestamptz)`.catch(() => undefined);
         throw e;
       }
       // Review M2 (SA-11-40 Failure): the request shows the failure as a step (the module's name only), then the claim goes
@@ -184,9 +187,9 @@ export class Erasure {
       for (const e of this.registry.erasers()) {
         try { results.push({ module: e.module, r: EraseOutcome.parse(await e.erase(tx, order)) }); } catch (err) { throw new EraserFailed(e.module, err); }
       }
+      state.erased = true;   // from here a failure (COMMIT, its lost answer, the record) keeps the claim
       return { kind: "ran", results } as const;
     }, { maxWait: 10_000, timeout: 120_000 }));
-    if (done.kind === "ran") state.erased = true;
     return this.db.$transaction(async (tx) => {
       const finish = async (outcome: string, actions: string | null) => {
         const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_erasure_finish(${order.requestId}::uuid, ${outcome}, ${actions}, ${today}::date, ${ERASURE_ACTOR}, ${claim}::timestamptz) AS out`;
