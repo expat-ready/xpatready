@@ -11,6 +11,12 @@
 //   for the invoice party (FO-7ts part 3 break R3-m1). An undo takes the same locks for the lines of the batch it undoes.
 // * Who sees a line (C5, as the ledger, FO-7t.md's ruling): its case is visible, or its person or company when it has no
 //   case (MoneyVisibilityPort); a line, or a batch with a line, the person cannot see is 404, as another firm's.
+// * Uncleared money asks first (Lead 29's ruling (b) on Lead B 7's read; Lead 25's condition on #3442): under the locks,
+//   for each party, case and currency of the batch's trust → operating lines, what the party's money there covers if its
+//   uncleared cheques bounce: its ledger on the case, plus what was paid out of it and still waits to move, less the
+//   uncleared deposits, cleared money counted first (the reading of part 2's `held`, so mixed money too). Moving more
+//   answers 409 UNCLEARED until acknowledged (unclearedAcknowledged); it warns, never blocks. Holding it in the database
+//   as well is FO-7ts's (a named gap). Legal reading: Unconfirmed: no counsel.
 // * One audit line per batch or undo (AuditPort, in its transaction) and trust.moved last (ids, total, currency).
 import { HttpException } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -39,6 +45,7 @@ const words = (what: string, max: number) => z.string({ error: `${what} is neede
 
 export const ListIn = z.strictObject({ currency: MoneyCurrency.optional() });
 export const BatchIn = z.strictObject({ currency: MoneyCurrency, direction: Direction, transferDate: day,
+  unclearedAcknowledged: z.boolean().optional(),
   lines: z.array(z.strictObject({ sourceEntryId: id("The line's trust entry"), amountMinor: amount }), { error: "Tick at least one line." }).min(1, "Tick at least one line.").max(100, "At most 100 lines in one batch.") });
 export const UndoIn = z.strictObject({ reason: words("The reason", 200), transferDate: day.optional() });
 
@@ -89,12 +96,13 @@ export class TrustToMove {
     const ids = [...new Set(b.lines.map((l) => l.sourceEntryId))];
     return this.write(async (tx) => {
       if (!(await trustShows(tx, f))) notFound("trust record");
-      const found = await tx.$queryRaw<{ id: string; kind: string; currency: string; visible: boolean }[]>`
-        select e.id::text, e.kind::text, e.currency::text, ${seen(scope, "e")} as visible from money_trust_entry e where e.firm_id = ${f}::uuid and e.id = any(${ids}::uuid[])`;
+      const found = await tx.$queryRaw<{ id: string; kind: string; currency: string; party: string; case_id: string | null; visible: boolean }[]>`
+        select e.id::text, e.kind::text, e.currency::text, coalesce(e.person_id, e.company_id)::text as party, e.case_id::text, ${seen(scope, "e")} as visible from money_trust_entry e where e.firm_id = ${f}::uuid and e.id = any(${ids}::uuid[])`;
       if (found.length !== ids.length || found.some((e) => !e.visible)) notFound("trust entry");
       if (found.some((e) => e.currency !== b.currency))
         badField("lines", `One batch per currency: CAD and USD never share a batch, and this batch is ${b.currency}. Record each currency's moves as its own batch. Nothing was saved.`);
       await takeLocks(tx, f, ids);
+      const acknowledged = b.direction === "TRUST_TO_OPERATING" ? await this.askUncleared(tx, f, b, found) : false;
       const [batch] = await tx.$queryRaw<{ id: string }[]>`insert into money_move_batch (firm_id, currency, direction, transfer_date, recorded_by)
         values (${f}::uuid, ${b.currency}::"MoneyCurrency", ${b.direction}::"MoneyMoveDirection", ${b.transferDate}::date, ${by}) returning id::text`;
       const kindOf = new Map(found.map((e) => [e.id, e.kind === "CORRECTION" ? "WRONG_ACCOUNT" : "TRUST_APPLIED"]));   // the line's kind names its source's kind; the database checks it
@@ -107,7 +115,7 @@ export class TrustToMove {
       const total = lines.reduce((s, l) => s + l.amountMinor, 0);
       await this.audit.record(tx, { firmId: f, actor: by, action: "trust_money.moved", entity: "money_move_batch", entityKey: batch.id,
         summary: `${b.currency} ${MONEY(total)} recorded as moved ${b.direction === "TRUST_TO_OPERATING" ? "from trust to operating" : "from operating to trust"} (${lines.length} line${lines.length === 1 ? "" : "s"}).`,
-        detail: { batchId: batch.id, currency: b.currency, direction: b.direction, transferDate: b.transferDate, totalMinor: total, lines: lines.length },
+        detail: { batchId: batch.id, currency: b.currency, direction: b.direction, transferDate: b.transferDate, totalMinor: total, lines: lines.length, unclearedAcknowledged: acknowledged },
         before: null, after: { sourceEntryIds: lines.map((l) => l.sourceEntryId), amountsMinor: lines.map((l) => l.amountMinor) } });
       await tx.moduleEvent.create({ data: { firmId: f, type: TRUST_EVENT.TRUST_MOVED, subjectId: batch.id, payload: TrustMovedPayload.parse({ batchId: batch.id, undoesBatchId: null, amountMinor: total, currency: b.currency }) } });
       return { batchId: batch.id, currency: b.currency, direction: b.direction, transferDate: b.transferDate, totalMinor: total, lines };
@@ -137,6 +145,31 @@ export class TrustToMove {
       if (total > 0) await tx.moduleEvent.create({ data: { firmId: f, type: TRUST_EVENT.TRUST_MOVED, subjectId: undo.id, payload: TrustMovedPayload.parse({ batchId: undo.id, undoesBatchId: bid, amountMinor: total, currency: b.currency }) } });
       return { batchId: undo.id, undoesBatchId: bid };
     });
+  }
+
+  /** Ruling (b): each party and case's lines against what its cleared money covers, read under the locks. True when the
+   *  question applied and was acknowledged (the audit line records it); refuses 409 UNCLEARED when not acknowledged. */
+  private async askUncleared(tx: Tx, f: string, b: z.infer<typeof BatchIn>, found: { id: string; party: string; case_id: string | null }[]): Promise<boolean> {
+    const of = new Map(found.map((e) => [e.id, e])), groups = new Map<string, { party: string; caseId: string | null; minor: number }>();
+    for (const l of b.lines) {   // adds the person's own amounts per party and case; reads every money figure from the database
+      const e = of.get(l.sourceEntryId)!, key = `${e.party} ${e.case_id ?? "-"}`;
+      const g = groups.get(key) ?? { party: e.party, caseId: e.case_id, minor: 0 };
+      g.minor += l.amountMinor; groups.set(key, g);
+    }
+    let asked = false;
+    for (const g of groups.values()) {
+      const on = Prisma.sql`x.firm_id = ${f}::uuid and coalesce(x.person_id, x.company_id) = ${g.party}::uuid and x.currency = ${b.currency}::"MoneyCurrency" and x.case_id is not distinct from ${g.caseId}::uuid`;
+      const [r] = await tx.$queryRaw<{ ledger: string; waiting: string; uncleared: string }[]>`select
+          (select coalesce(sum(x.amount_minor), 0) from money_trust_entry x where ${on})::text as ledger,
+          (select coalesce(sum(x.open_minor), 0) from money_to_move x where ${on} and x.direction = 'TRUST_TO_OPERATING')::text as waiting,
+          (select coalesce(sum(x.amount_minor), 0) from money_trust_entry x join money_payment p on p.firm_id = x.firm_id and p.id = x.payment_id where ${on} and x.kind = 'DEPOSIT' and not p.cleared)::text as uncleared`;
+      const uncleared = Number(r.uncleared), covered = Math.max(0, Number(r.ledger) + Number(r.waiting) - uncleared);
+      if (g.minor <= covered) continue;
+      if (!b.unclearedAcknowledged) problem(409, "Not possible now", `${b.currency} ${MONEY(Math.min(uncleared, g.minor - covered))} of this is from a cheque not yet cleared. If it bounces, the firm will have moved money it doesn't hold. Move anyway?`,
+        { code: "UNCLEARED", acknowledge: "unclearedAcknowledged" });
+      asked = true;
+    }
+    return asked;
   }
 
   /** One writing transaction; the database's refusal (its own words name the rule) is 409 MOVE_REFUSED, never a 500. */
