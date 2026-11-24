@@ -169,6 +169,7 @@ try {
   await owner.getByLabel("Email, person 1").fill(Y1);
   for (const [n, email] of [[2, STAFF], [3, Y2], [4, Y3]] as const) { await owner.locator("[data-add-row]").click(); await owner.getByLabel(`Email, person ${n}`).fill(email); }
   ok("J-20 W5: before Send the form says 2 seats are free, and Send stays on", (await owner.locator("[data-invite-seat-warning]").innerText()).includes("Your plan has 2 free seats.") && await owner.locator("[data-send-invites]").isEnabled());
+  ok("J-20 W5: over the free seats the seat line counts what is used and what is on the form (never \"n+2 of n\")", (await owner.locator("[data-invite-seats]").innerText()) === `${used()} of ${used() + 2} seats used · 4 on this form`);
   ok("J-20 W5 fail (before Send): none of the three valid rows is invited", [Y1, Y2, Y3].every((e) => invitations(e) === 0));
   await owner.locator("[data-send-invites]").click();
   await owner.locator("[data-invite-form-error]").waitFor({ timeout: 20_000 });

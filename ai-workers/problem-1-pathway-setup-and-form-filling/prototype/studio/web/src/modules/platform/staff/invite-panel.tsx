@@ -24,7 +24,7 @@ const NAME_FLAGS = new Set(["INVALID_NAME"]);
 const BATCH_MAX = 50;
 /** P-727: what Send will do with more rows than free seats, said before Send. */
 const seatWords = (free: number, over: number) => free === 0
-  ? "Your plan has no free seat. Every row comes back marked, to send after you free a seat or upgrade your plan."
+  ? "Your plan has no free seat, so Send invites no one now: every row stays here, marked, to send after you free a seat or upgrade your plan."
   : `Your plan has ${free} free ${free === 1 ? "seat" : "seats"}. The first ${free === 1 ? "person" : `${free} people`} who can be invited ${free === 1 ? "is" : "are"} sent; the other ${over === 1 ? "row stays" : `${over} rows stay`} here, marked, to send after you free a seat or upgrade your plan.`;
 type Row = { n: number; name: string; email: string; roles: string[]; error: string | null; nameError: string | null };
 /** Case Officer ticked first (AG-1-69) when the inviter may give it; an Admin may not (SA-06: Admin lacks two of its keys). */
@@ -62,7 +62,7 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
     if (sent) toast.push(unmailed ? { tone: "danger", text: `${sent} ${sent === 1 ? "invitation" : "invitations"} made; ${unmailed} could not be emailed. Use Resend under Invited.` } : { tone: "ok", text: `${sent} ${sent === 1 ? "invitation" : "invitations"} sent.` });
     // Break m5: focus goes to the first flagged row's field (its words are read with it), not the panel.
     if (flagged) requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-invite-row="1"] input[aria-invalid="true"]')?.focus());
-    if (flagged) setFormError({ title: "Not everyone was invited", text: `${flagged} ${flagged === 1 ? "person was" : "people were"} not invited. Fix ${flagged === 1 ? "the row" : "each row"} below and send again.` });
+    if (flagged) setFormError({ title: "Not everyone was invited", text: `${flagged} ${flagged === 1 ? "person was" : "people were"} not invited. Each row below says why: fix it, or free a seat, then send again.` });
     else if (sent === form.length) onOpenChange(false);
   };
   return (
@@ -70,7 +70,7 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button busy={busy} onClick={() => void send()} data-send-invites>Send {rows.length === 1 ? "invitation" : `${rows.length} invitations`}</Button></>}>
       {/* Break M1: the form is locked while the batch is in flight, so the answer always maps onto the rows as sent. */}
       <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" data-invite-form>
-        <p className="text-sm" data-invite-seats>{after} of {seats.limit} seats after these invites</p>
+        <p className="text-sm" data-invite-seats>{over > 0 ? `${seats.used} of ${seats.limit} seats used · ${rows.length} on this form` : `${after} of ${seats.limit} seats after these invites`}</p>
         {formError ? <div data-invite-form-error><Notice tone="danger" title={formError.title}>{formError.text}</Notice></div> : null}
         {over > 0 ? <div data-invite-seat-warning><Notice tone="warn" title="More people than free seats">{seatWords(free, over)}</Notice></div> : null}
         {rows.map((r, i) => {
