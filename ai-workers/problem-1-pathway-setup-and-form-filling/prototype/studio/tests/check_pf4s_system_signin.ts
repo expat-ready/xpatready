@@ -449,6 +449,18 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   const refusedRace = [r1, r2].find((r) => r.status === 409);
   ok("PF-4s DW7 fail (SA-7-25): two Owners removing each other's Owner role at once: exactly one succeeds (the other 409 ROLES_CHANGED or LAST_OWNER), one active Owner stays, two lines",
     [r1.status, r2.status].sort().join() === "200,409" && ["ROLES_CHANGED", "LAST_OWNER"].includes(refusedRace?.body.code) && owners === 1 && lines() - before2 === 2, { r1, r2, owners });
+  // QA-755 (Lead 18 on #3202): either Owner may win the race, so what follows must sign in the one left (soleOwner).
+  // PF4S_FORCE_SOLE_OWNER=OWNER|OWNER2 (proof only) makes that person the winner after the race: the one active Owner
+  // grant moves to them in the database, so both outcomes can be run on purpose.
+  const forced = process.env.PF4S_FORCE_SOLE_OWNER;
+  if (forced === "OWNER" || forced === "OWNER2") {
+    const want = forced === "OWNER2" ? OWNER2 : OWNER, other = forced === "OWNER2" ? OWNER : OWNER2;
+    if (sql(`select count(*) from plat_system_role_grant where staff_id = '${want}' and role_code = 'platform-owner' and ended_at is null`) === "0") {
+      sql(`update plat_system_role_grant set ended_at = now() where staff_id = '${other}' and role_code = 'platform-owner' and ended_at is null returning id`);
+      sql(`update plat_system_role_grant set ended_at = null where id = (select id from plat_system_role_grant where staff_id = '${want}' and role_code = 'platform-owner' order by ended_at desc limit 1) returning id`);
+    }
+    console.log(`  forced: ${forced} is the one active Owner after the race`);
+  }
   // Review m2: the floor itself, asked directly (through the API it is a second wall: the sender is an active Owner and
   // never the target, so two active Owners exist whenever it runs).
   const soleOwner = sql(`select g.staff_id from plat_system_role_grant g join plat_system_staff s on s.id = g.staff_id where g.role_code = 'platform-owner' and g.ended_at is null and s.status = 'ACTIVE'`);
