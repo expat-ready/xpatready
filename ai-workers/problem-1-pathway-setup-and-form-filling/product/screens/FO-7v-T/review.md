@@ -141,3 +141,29 @@ Correct data goes from ½ to 1 (M1 and M2). The other scores are unchanged: acce
 A screen (FO-7s3a/b); EXPLAIN of the plan lookup; the breaker's own 200k re-time; whether a pick through the routes can produce n1's shape.
 
 Reviewer: Approve 6c98404ede1da416d702a1522687bc0235be7100
+
+## Round 3: diff-only re-review (Lead 3 allowed it), head `b5085b937`
+**Read:** `git diff 1f7e1cbb1 b5085b937`. It touches only two files in the whole repo: `reverse.ts` (+2/−2) and `check_fo7v_reversals.ts` (+8/−1). Nothing else changed. **Ports:** the check's own Nest app on port 0 and PostgreSQL on :54329. :4400 was never used.
+
+### Verdict: Approve (Ship)
+Both changes are correct and both bite. No Blocker, Major or new Minor. Round 2's n1 is closed. n2 (no test of which reversal is latest) and n3 (the `audit_write_failed` alarm not asserted) stay open as notes.
+
+### Evidence
+* **Check at the head:** **28 passed, 0 failed, exit 0**.
+* **`typecheck.mjs`:** exit 1, with 25 new errors, all unrelated (for example `front-office/duplicates/merge/review.ts`, `tests/check_fo9b_review.ts`). **None names `reversals`, `reverse.ts` or `check_fo7v`, and no TS2550 remains.**
+* **(1) The broken-character regex** `[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]`, without the `u` flag, so it reads UTF-16 units. It refuses exactly an unpaired high half and an unpaired low half. In Node 22 it agrees with `String.prototype.isWellFormed` on every case I tried:
+  * Refused: a lone high, a lone low, a high at the end, a low at the start, two highs then a low, a pair followed by a stray low, and a reversed pair.
+  * Accepted: an emoji pair, 100 emoji, a ZWJ family, a flag, CJK extension B, Arabic and French.
+  * A sweep of U+D700-U+E000 against 7 neighbours, both orders, gave 0 disagreements.
+  * It runs after zod's trim, which never splits a pair.
+  * Mutant: refine set to `true` → 27/1, and the lone surrogate gives 500 again. The test bites.
+* **(2) n1.** The change is `having bool_and(coalesce(seen, false))`.
+  * The new test gives client e 10.00 with no case and uses a scope of `{cases:[E1,E2], parties:[]}`: no row.
+  * The pass test now expects −90.00 for a caller who sees both cases and client e. That is right: −100.00 + 10.00.
+  * Mutant: back to `bool_and(seen)` → **27/1**, only the round 3 test red, as the builder says. With the fix, my round 2 probe also shows no row.
+* **The `--` comment in the template:** it is safe. It sits on line 144, at the end of the `whole` CTE line, after the closing `)`. It has no `${…}` after it and no quote, and the line ends before `select` on line 145. Prisma sees only literal text there, so the comment cannot swallow a parameter or the select. The 28/28 run and the mutant above both execute this query.
+
+### Journey test
+Unchanged from round 2: **9/10**.
+
+Reviewer: Approve b5085b9376362e2d3397bea5596410866d1ec32d
