@@ -1,20 +1,30 @@
-# CodeRabbit for our pull requests: evaluation, 24 Nov 2026
+# CodeRabbit and CodeAnt AI for our pull requests: evaluation, 24 Nov 2026
 
 Read-only study for the tech lead. Nothing installed, no account, US$0. Web pages read 24 Nov 2026. **[V]** = the vendor's own claim, not tested by us. **[I]** = our inference. "Unknown" = not stated on the pages read. Draft settings: `coderabbit-draft-2026-11-24.yaml` (not live).
 
+**Names.** "Code Rabbit" is read as CodeRabbit. "Code and AI" is read as **CodeAnt AI**; the founder has not confirmed this. It could be Codium AI, now Qodo (section 5). **Budget (founder, 24 Nov):** at most US$100 a month, a cap and not a target.
+
 ## Recommendation
 
-**Do not install the GitHub App today. Replay our own known misses through CodeRabbit's command-line tool first (25-26 Nov, US$0), and install the App, advisory only on 40 risky PRs, only if the replay passes. Buy nothing now.**
+**Buy nothing and install no GitHub App today. On 25-26 Nov, replay our own known misses through three reviewers on the same 28 PRs: our Opus reviewer with a better checklist, CodeRabbit's command line and CodeAnt AI's command line. Keep only what finds something the others miss. Spend: US$0.**
+
+| His question | Answer |
+|---|---|
+| Best fit for us | **Our own Opus reviewer, given the requirement clause and a checklist of escaped Majors.** No per-author limit, no new access, already the gate. It must still prove it in the replay |
+| Best outside fit | **CodeRabbit's free route**, if he accepts that it may train on our code: US$0, published limits, a review can be run without giving it write access. **CodeAnt AI if he does not accept that** |
+| Best in class experience | **CodeRabbit, by its documentation:** on-demand review, deepest settings, published limits, structured output for agents. Nobody's quality on our code is proven |
+| Where CodeAnt AI is better | Its data promise ("We never train AI models on your data"), a flat price with no published per-author limit, no write to workflows, security scanning and quality gates sold with review |
+| Two side by side? | **No, until the replay shows each finds true Majors the other missed.** Two paid seats would be US$60 a month, inside the cap but not justified |
 
 * **The need is real.** qa logged 11 Majors from 17 to 24 Nov that a reader of the diff could arguably have seen (section 6). Our own reopen rule was "3+ diff-visible Majors in a week". Even the strict count is 5.
 * **The fit is awkward.** One account opens all our PRs. CodeRabbit's limits follow that account, and its docs call this "a trap when automation opens the pull requests".
 * **The price of free is our code.** Its privacy policy says of open source: "We use OSS to train our systems." Our repository is public but "All rights reserved". Whether we count as "OSS" is unknown; its OSS page says being public is "the whole bar", so assume yes.
 * **The App asks for a lot:** write access to code and workflow files. P-662 (17 Nov) limited Apps to three because of "fewer apps with write access to a public repository". Installing needs the founder to reverse that by name.
 * **Independent proof of quality is thin.** The only per-tool figures we could read are a rival's.
-* **Cost:** trial US$0 a month. If it later earns its place: Essentials, one seat, **US$30 a month (US$360 a year; US$288 if paid yearly)**, usage charges off.
-* **First founder click:** none on GitHub yet. Answer one question: may CodeRabbit receive our code, knowing it may train on it? A yes leads to set-up step A1.
+* **Cost:** recommended now **US$0 a month, US$0 a year**. If one later earns a seat: CodeRabbit Essentials **US$30 a month (US$360 a year; US$288 paid yearly)** or CodeAnt review **US$24-30 a month (US$288-360 a year)**. Usage charges off either way.
+* **First founder click:** none on GitHub yet. Answer one question: may CodeRabbit receive our code, knowing it may train on it? Yes leads to step A1. No leads to the CodeAnt steps only (C1).
 
-## 1. Products, under today's names
+## 1. CodeRabbit products, under today's names
 
 The names the founder gave all exist: Review, Explain, Verify, Agent, Triage. Plans were renamed: Pro is now Essentials, Pro+ is now Team (docs.coderabbit.ai/management/plans).
 
@@ -68,13 +78,13 @@ Sources: docs.coderabbit.ai pages `/change-stack`, `/verify`, `/triage`, `/agent
 
 The path rule is a filename match (client-money, migrations, permission), so 74 is an approximation. The API count goes by creation date and the main count by merge date, so 534 and 549 differ.
 
-**What US$100 covers (unknown whether he means in total or a month):**
+**What US$100 a month would cover (a cap, not a target):**
 
-| If US$100 buys | It covers |
+| Way of paying | Inside the cap? |
 |---|---|
-| Essentials, one seat | 3 months (US$90) |
-| Team, one seat | 1 month (US$60) |
-| Advanced, one seat | 1 month (US$90) |
+| Essentials, one seat | Yes, US$30; US$70 unspent |
+| Team, one seat | Yes, US$60; US$40 unspent |
+| Advanced, one seat | Yes, US$90; US$10 unspent |
 | Extra files only | 400 files, about 49 product PRs at our mean of 8.1 files |
 | Every product PR by usage only | 1,904 x US$0.25 = US$476 a week: about 1.5 days |
 | Only the 74 risky PRs by usage | 738 x US$0.25 = US$184.50 a week: about 3.8 days |
@@ -139,6 +149,34 @@ Arithmetic: Greptile 74 x US$1 x 4.33 = US$320. Qodo US$30 / 14 = US$2.14 a revi
 
 **Quality evidence.** Martian's Code Review Bench is the open benchmark (50 PRs, 173 known issues) and lists CodeRabbit; its per-tool scores did not load, so we quote none. A rival's blog (Augment, dataset edited by the rival): CodeRabbit precision 36%, recall 43%; Bugbot 60/41; Greptile 45/45; Claude Code 23/51; Copilot 20/34. Read as direction only: about two in three CodeRabbit comments were not on that list of real issues, and over half the issues were missed.
 
+### CodeRabbit and CodeAnt AI, same criteria
+
+| Criterion | CodeRabbit | CodeAnt AI |
+|---|---|---|
+| Products | Section 1 | AI Code Review; Code Quality (gates, coverage, dead code); Code Security (SAST, dependencies, secrets, SBOM, infrastructure code); Cloud Security; DAST; attack surface; pentest; command line; editor plug-ins; MCP; Claude Code skills |
+| Which we need | Review only, as a trial | Review only, as a trial. Code Security later, before the first customer |
+| Price, one developer | US$30 monthly, US$24 yearly (Essentials) | Review US$24 paid yearly; "$24-30 / user / mo" on its comparison page; an older blog says US$10. **Prices conflict: confirm before paying.** Review plus Security US$40 paid yearly. Cloud, DAST and pentest (US$199 to US$4,000 and up) are outside the cap |
+| A year, one seat | US$288-360 | US$288-360 (review); US$480 with security |
+| One account, 600 PRs | Slows to 1 an hour | "Unlimited code reviews", "No charge per pull request, ever" [V]; bots and shared accounts: not stated |
+| Public-repository plan | Free; manual under 10 stars | **Not found.** GitHub Marketplace shows a US$0 entry, contents not stated |
+| Trial | 14 days, no card | 14 days [V blog]; card and what follows: not stated |
+| App permissions | Write code, PRs, issues, checks, statuses, **workflows** | Write code, PRs, issues, checks, statuses, **and profile**; read **administration**, hooks, organisation administration. **No workflows write** |
+| Approve | Off by default | "The default is Disable" |
+| Merge, labels, commits | Triage rules can merge; agents commit | Merge not found; can add labels; commits from a person's click; security fix PRs sold |
+| Training | Says OSS is used to train | "We never train AI models on your data"; terms 7.3 the same. No public-code exception found |
+| Retention | Cache up to 7 days unless off | Source "Never stored. Deleted when each scan or review completes." Findings kept for the contract |
+| Where processed | Providers named: OpenAI, Anthropic | US, UK, India, or EEA if chosen; model vendors not named on the pages read |
+| Certificates [V] | SOC 2 Type II | SOC 2 Type II and HIPAA programme |
+| Terms | Auto-renews; 45 days' notice in terms; cap 12 months' fees | Auto-renews; cancel any time, ends at period end; no refund; cap 12 months' fees (twice for data protection); California |
+| Incident or injection statement | 2025 code-execution finding, fixed; no injection statement found | None found for either; absence proves nothing |
+| Set-up and daily use by our agents | Local command line `--agent` output and `--base-commit`; settings file; label and on-demand control | `codeant review --headless` JSON, `--base-commit`, MCP "read-only by default", Claude Code skills. **The command line falls back to a signed-in `gh` token by itself**, so run it with none present |
+| Automatic review | Off in our draft | "reviews new pull requests automatically"; setting exists, default and label control not found |
+| Merge fit | Advice only, section 4 | Same; its failing status check and auto-labels must stay off. Our gates ignore its Approve for the same reason |
+| Security scanning | Security review on Advanced; free for OSS PRs [V] | Broader, as a paid product |
+| Quality evidence | Rival's blog: 36% precision, 43% recall | Its own post of a Martian table: 52% precision, 51% recall, third. **CodeRabbit is missing from that table, so the two figures cannot be compared** |
+
+Independent user-review pages were blocked or thin. On set-up and daily experience this table compares documents, not use. Sources: codeant.ai/pricing, codeant.ai/comparison/coderabbit, codeant.ai/lp/coderabbit, codeant.ai/privacy-policy, codeant.ai/terms-and-conditions, github.com/marketplace/codeant-ai, docs.codeant.ai (`/cli/review`, `/cli/setup`, `/cli/mcp-server`, `/pull_request/features/auto_approve_pr`).
+
 ## 6. Back-test on our own history
 
 **qa Majors.** Sample: every Major or Critical row in `qa/BUGS.md` and `qa/BUGS-CLOSED.md` whose found or re-raised date is 10 to 24 Nov: 47 rows, sorted by hand by one reader from the row text. The introducing diffs were not opened, and no tool was run. This says what was arguably visible, not what CodeRabbit would find.
@@ -165,16 +203,16 @@ Arithmetic: Greptile 74 x US$1 x 4.33 = US$320. Qodo US$30 / 14 = US$2.14 a revi
 | | Phase A: replay, command line | Phase B: live, App |
 |---|---|---|
 | Dates (IST) | 25-26 Nov | 27 Nov to 3 Dec; decision 4 Dec |
-| PRs | 14 with a known escaped Major, plus 14 clean controls of like size, each at its original commit | Next 40 merged-path PRs touching money, migrations, permissions or a new screen |
-| Baseline | Our original verdict (0 of 14 by construction), and a fresh Opus reviewer with the new checklist, blind | Our Opus verdict, already posted |
+| PRs | 14 with a known escaped Major, plus 14 clean controls of like size, each at its original commit | Next 40 PRs touching money, migrations, permissions or a new screen |
+| Baseline | Our original verdict (0 of 14 by construction), fresh Opus reviewer with the new checklist, blind; CodeRabbit and CodeAnt command lines, same commits | Our Opus verdict, already posted |
 | True finding | Matches the known Major; or a new Major+ that a second fresh judge reproduces or proves from code | Not in our reviewer's text; reproduced or proved; would be qa Major or above |
 | False alarm | A Major+ claim the judge refutes | Same |
-| Pass | At least 4 of 14 found, at least half of Major+ claims true, **and at least 2 that the improved Opus reviewer missed** | At least 3 unique true Majors in 40, at least half true, at most 10 minutes' triage a PR |
+| Pass | At least 4 of 14 found, at least half of Major+ claims true, **and at least 2 that the improved Opus reviewer missed.** Two tools pass together only if each finds 2 the other missed | At least 3 unique true Majors in 40, at least half true, at most 10 minutes' triage a PR |
 | Stop | Any paid prompt; output not attributable; under 4 of 14 | Any write outside comments, any wrong merge, outsider use, over 70% false after 15 PRs, any charge |
 
 Small samples: 14 and 40 can justify more testing, not a rate. Judges do not see which tool wrote a finding. Report limits reached and minutes spent. If B passes: Essentials, one seat, or stay on OSS if it keeps up. If A fails and the Opus checklist does better: adopt the checklist and close this.
 
-**Effort:** A about 6 hours (3 to find introducing PRs, 1 set-up, 2 judging). B about 8 hours over the week. Easy to install (about 10 minutes); harder to keep safe and to measure.
+**Effort:** A about 9 hours (3 to find introducing PRs, 2 set-up, 4 judging). B about 8 hours over the week. Easy to install (about 10 minutes); harder to keep safe and to measure.
 
 ## 8. Risks and rollback
 
@@ -187,14 +225,14 @@ Small samples: 14 and 40 can justify more testing, not a rate. Judges do not see
 | Rate limit looks like a pass | Never a required check |
 | Cost surprise | No card; usage off |
 | Two reviewers, one blames the other | Opus line stays the only gate |
-| Time from Release 1 | 14 hours capped; P-542: no product row waits |
+| Time from Release 1 | 17 hours capped; P-542: no product row waits |
 
 **Rollback (about 5 minutes):** uninstall the App, sign out of the command line and remove it, delete the CodeRabbit organisation, ask privacy deletion in writing, remove the settings file by PR. Old comments stay on PRs. Code already sent cannot be recalled.
 
 ## 9. Gate record (STANDARDS section 1)
 
 * **Problem:** diff-visible Majors reach qa (11 in a week by the generous count, 5 strict).
-* **Options:** section 5. **Integration and upkeep:** one settings file, one triage reader, 14 hours; then about 1 hour a week [I].
+* **Options:** section 5. **Integration and upkeep:** one settings file, one triage reader, 17 hours; then about 1 hour a week [I].
 * **Data and licence:** code goes to the vendor and its model providers; may train on it; proprietary service; open beta command line.
 * **Decisions it touches:** P-376 (11) deferred a one-week report-only trial to the founder's OK; P-662 allows three Apps only, so phase B needs it changed by name; P-551 account by the founder only; P-423 the settings file is not in `.github/` but is read as if it were; P-504 public repository.
 * **Verdict:** gate **passed for phase A only, once the founder answers the data question; not passed for the App or any purchase.**
@@ -212,6 +250,15 @@ Phase A, no GitHub App:
 | A3 | Say yes to installing the command line (version 0.9.6 or the current one, from docs.coderabbit.ai/cli; checksum checked if published) | A program on the Mac, in a throwaway clone | Remove the program |
 | A4 | Run `coderabbit auth login` and finish in the browser | A sign-in kept on the Mac; lets reviews send diffs | `coderabbit auth logout` |
 
+CodeAnt AI arm of phase A (can run alone if A0 is no):
+
+| Step | Click | What it grants | Undo |
+|---|---|---|---|
+| C1 | Yes to sending the 28 sample diffs, and files it reads around them, to CodeAnt AI, after reading codeant.ai/terms-and-conditions and /privacy-policy | The decision | Written deletion request |
+| C2 | Open https://app.codeant.ai and sign in. **If it asks to install the GitHub App, stop and tell the tech lead** | An account; the screen's own sign-in scopes (not seen by us); the 14-day trial may start | Revoke at github.com/settings/applications; delete the account |
+| C3 | Say yes to installing `codeant-cli` from npm, exact version and hash recorded first | A program, in a throwaway clone with no `gh` sign-in and no tokens | Remove the program |
+| C4 | Run `codeant login`, finish in the browser. No card; if a card is asked, stop | A key stored on the Mac | Remove the key; revoke in the app |
+
 Phase B, only after A passes:
 
 | Step | Click | What it grants | Undo |
@@ -226,4 +273,4 @@ Phase B, only after A passes:
 
 ## 11. Not known
 
-His US$100 scope; hourly limit at 0 stars; whether a label starts a review under the manual rule; whether a paid plan lifts it; whether we are "OSS" for training; whether A1 starts the 14-day clock or the sign-in forces an install; real precision on our code; token cost of triage; who may run non-writing commands beyond the chat setting; main's ruleset today (the one command that would have read it was refused and not retried).
+Whether "code and AI" means CodeAnt AI; hourly limit at 0 stars; whether a label starts a review under the manual rule; whether a paid plan lifts it; whether we are "OSS" for training; whether A1 starts the 14-day clock or the sign-in forces an install; real precision on our code; token cost of triage; who may run non-writing commands beyond the chat setting; main's ruleset today (the one command that would have read it was refused and not retried).
