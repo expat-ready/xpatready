@@ -1,4 +1,4 @@
-// FO-3c part 2 (review r2-2, break P2R3-4): the booking panel's next step while its consultation agreement holds. Only a
+// FO-3c part 2 (review r2-2, break P2R3-4): the booking panel's next step while its consultation agreement is unsigned. Only a
 // booking still to happen (Scheduled, Rescheduled) can be rescheduled and is sent a fresh agreement; for a No-show,
 // Attended or cancelled booking the booking service refuses a reschedule (409) and the catch-up sends nothing, so the
 // panel never advises one there. No imports: the row's suite checks it at the services.

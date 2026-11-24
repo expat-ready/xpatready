@@ -20,11 +20,11 @@ export const isSigned = (status: string) => (SIGNED_STATUSES as readonly string[
 /** The statuses still waiting for a signature. */
 export const LIVE_STATUSES = ["SENT", "VIEWED", "CLIENT_SIGNED"] as const;
 /** The statuses of an agreement no one can sign any more (declined, withdrawn, expired, or FO-5's edit put it back to
- *  draft): it still holds, and the catch-up sends the booking a fresh one (Lead 1's ruling on #3184). */
+ *  draft): it still warns, and the catch-up sends the booking a fresh one (Lead 1's ruling on #3184). */
 export const ENDED_STATUSES = ["DECLINED", "WITHDRAWN", "EXPIRED", "DRAFT"] as const;
 export const isEnded = (status: string) => (ENDED_STATUSES as readonly string[]).includes(status);
-/** The one order that picks a booking's deciding agreement, for the hold, the send, the reschedule and the panel alike
- *  (break P2R3-1): a signed one first (any signed agreement lifts the hold), then one still waiting, then the newest that
+/** The one order that picks a booking's deciding agreement, for the warning, the send, the reschedule and the panel alike
+ *  (break P2R3-1): a signed one first (any signed agreement ends the warning), then one still waiting, then the newest that
  *  ended. So a fresh one is sent only when every agreement of the booking has ended, which is also the catch-up's filter. */
 const list = (xs: readonly string[]) => xs.map((x) => `'${x}'`).join(", ");
 export const DECIDING_ORDER = `order by (r.status::text in (${list(SIGNED_STATUSES)})) desc, (r.status::text not in (${list(ENDED_STATUSES)})) desc, r.created_at desc, r.id desc`;
@@ -33,7 +33,7 @@ export const DECIDING_ORDER = `order by (r.status::text in (${list(SIGNED_STATUS
 export function needsAgreement(t: { requireAgreement: boolean | null; purpose: string }) {
   return t.requireAgreement ?? t.purpose !== "FOLLOW_UP";
 }
-/** The same rule in SQL, over `fo_consultation_type t` (catch-up's and the hold's reads). */
+/** The same rule in SQL, over `fo_consultation_type t` (the catch-up's and the warning's reads). */
 export const NEEDS_AGREEMENT_SQL = "coalesce(t.require_agreement, t.purpose::text <> 'FOLLOW_UP')";
 
 export const WARN_WORDS = "The consultation agreement is not signed yet. The client signs from the link in their email, then the firm. Attended and the consult record can still be saved; once Attended is saved, the client's link no longer opens.";
@@ -47,7 +47,7 @@ export const warnWords = (bookingStatus: string, agreementStatus = "") =>
   agreementStatus === "CLIENT_SIGNED" ? WARN_WORDS_FIRM : ACTIVE_BOOKING.includes(bookingStatus) ? WARN_WORDS : WARN_WORDS_INACTIVE;
 export type Hold = { agreementId: string | null; status: string; bookingStatus: string; causes?: Cause[]; started?: boolean };
 
-// ---- what stops an agreement being sent (send()'s reasons, as SQL over `fo_booking b`): the catch-up's filter and the hold
+// ---- what stops an agreement being sent (send()'s reasons, as SQL over `fo_booking b`): the catch-up's filter and the warning
 /** The booking's person has an email. */
 export const HAS_EMAIL = Prisma.sql`exists (select 1 from fo_person p where p.firm_id = b.firm_id and p.id = b.person_id and p.email is not null)`;
 /** The firm has an active consultation agreement template. */

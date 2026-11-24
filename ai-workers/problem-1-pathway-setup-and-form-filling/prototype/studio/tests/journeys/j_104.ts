@@ -2,7 +2,8 @@
 // (22 Nov) ahead of FO-3c (#2922, API only on SigningPort's fake), because no j_104 was on main. It walks a firm's
 // licensed Case Officer (the host) and the person who books, on an isolated copy of the running app (its own database
 // and port, never :4400). Done when (CAPABILITIES R1.104): "A booking whose type needs it cannot start until signed; the
-// reminder goes; the signed copy is on the person. Unconfirmed: no counsel".
+// reminder goes; the signed copy is on the person. Unconfirmed: no counsel". "Cannot start" was ruled out on 24 Nov (the
+// founder, relayed by Lead 26 on #3471: AG-4-15 rule 4, warn, never block); W4 and W9 judge that ruling.
 //   Setup (Sample rows written to the copy's database, as j_39 does): firm `maple104` with an Owner, a licensed Case
 //   Officer (Client C, a Sample licence record), a Billing and finance host (Client D: no list key); firm `birch104` with
 //   its own Owner (Client X); Mon-Fri 09:00-17:00 hours; a "Free consultation" type (FREE_CONSULT); a lead (Client P,

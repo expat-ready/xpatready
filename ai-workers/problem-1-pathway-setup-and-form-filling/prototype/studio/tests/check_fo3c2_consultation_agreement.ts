@@ -540,9 +540,11 @@ try {
   const w1 = await book(A, free, R.staffId, wPerson, -180);
   const w1att = await answer(() => bookings.recordAttendance(R, w1.id, { outcome: "COMPLETED" }));
   const w1rec = await answer(() => consult.put(R, w1.id, RECORD)), w1panel = await svc.forBooking(R, w1.id) as { why?: string };
-  ok("FO-3c2 W1 pass (AG-4-15 r4): with no agreement sent (no client email), Attended is saved (Attended) and its answer warns, naming the cause; the consult record is saved (one row) with the same warning; the panel still warns",
+  ok("FO-3c2 W1 pass (AG-4-15 r4): with no agreement sent (no client email), Attended is saved (Attended) and its answer warns, naming the cause; the consult record is saved (one row) with the warning for a booking now Attended (make a new booking); the panel still warns",
     w1att.status === 200 && statusOf(w1.id) === "COMPLETED" && warningOf(w1att)?.code === "AGREEMENT_NOT_SIGNED" && (warningOf(w1att)?.causes ?? []).includes("NO_CLIENT_EMAIL")
-    && w1rec.status === 200 && Number(sql(`select count(*) from fo_consult_record where booking_id = '${w1.id}'`)) === 1 && (warningOf(w1rec)?.causes ?? []).includes("NO_CLIENT_EMAIL") && !!w1panel.why, { w1att, w1rec, w1panel });
+    && w1rec.status === 200 && Number(sql(`select count(*) from fo_consult_record where booking_id = '${w1.id}'`)) === 1 && String(warningOf(w1rec)?.words).includes(NEXT_WORDS.inactive) && !!w1panel.why, { w1att, w1rec, w1panel });
+  ok("FO-3c2 W1 record (review m3): the consult record's warning carries only its code and words, never the agreement's id nor its causes (the record's key may not read the agreement)",
+    Object.keys(warningOf(w1rec) ?? {}).sort().join(",") === "code,words" && Object.keys(warningOf(rec4) ?? {}).sort().join(",") === "code,words", { w1rec: warningOf(w1rec), rec4: warningOf(rec4) });
   ok("FO-3c2 W1 fail: a booking type that needs none gives Attended no warning, and the warning's words never say the consultation cannot start",
     warningOf(attF) === null && !/cannot start|wait/.test(String(warningOf(w1att)?.words)) && !/cannot start/.test(WARN_WORDS + WARN_WORDS_INACTIVE), { words: warningOf(w1att)?.words });
   // W2: a paper copy (FO-5's Signed offline, written straight to the table) ends the warning; until then it shows.
@@ -580,8 +582,9 @@ try {
   await clock.set(today);
   const w5att = await answer(() => bookings.recordAttendance(R, w5.id, { outcome: "COMPLETED" }));
   const w5needs = (await svc.needsYou(R)).items.some((i) => i.agreementId === a5w), w5host = await answer(() => svc.hostLink(R, a5w, { consent: true }));
-  ok("FO-3c2 W5 (break F1): client signed, then Attended: the warning says the firm signs next (never that it can no longer be signed); it stays in the signatory's Needs you; the firm's link still opens",
-    sql(`select status from fo_retainer where id = '${a5w}'`) === "CLIENT_SIGNED" && w5att.status === 200 && warningOf(w5att)?.words === WARN_WORDS_FIRM && w5needs && w5host.status === 200, { w5att: warningOf(w5att), w5needs, w5host: w5host.status });
+  const w5panel = await svc.forBooking(R, w5.id) as { warning?: string | null };
+  ok("FO-3c2 W5 (break F1, review M1): client signed, then Attended: the warning (in the answer and on the panel, one set of words) says the firm signs next; it stays in the signatory's Needs you; the firm's link still opens",
+    sql(`select status from fo_retainer where id = '${a5w}'`) === "CLIENT_SIGNED" && w5att.status === 200 && warningOf(w5att)?.words === WARN_WORDS_FIRM && w5panel.warning === WARN_WORDS_FIRM && w5needs && w5host.status === 200, { w5att: warningOf(w5att), w5panel: w5panel.warning, w5needs, w5host: w5host.status });
   // W6 (break F1): sent, unsigned, then Attended: the words say the client's link no longer opens, and it does not.
   const w6 = await book(A, free, R.staffId, lee, -180);
   await clock.set(new Date(w6.startsAt.getTime() - 10 * MIN));
@@ -589,9 +592,9 @@ try {
   await clock.set(today);
   const w6before = await warnAt(R, w6.id), w6att = await answer(() => bookings.recordAttendance(R, w6.id, { outcome: "COMPLETED" }));
   const tok6 = /#([0-9a-f]{32}\.[\w-]{43})/.exec(mail.inbox("lee@client.example").find((m) => m.idempotencyKey === `consultation-agreement:${a6w}:sent`)?.text ?? "")?.[1] ?? "";
-  const open6 = await answer(() => svc.open(tok6, {}, "10.9.0.6"));
+  const open6 = await answer(() => svc.open(tok6, {}, "10.9.0.6")), w6panel = await svc.forBooking(R, w6.id) as { warning?: string | null };
   ok("FO-3c2 W6 (break F1): before Attended the warning says saving it ends the client's link; after it, the warning says the link no longer opens (never that the client signs from it), and the link is the one not-found",
-    /no longer opens/.test(w6before.body) && warningOf(w6att)?.words === WARN_WORDS_INACTIVE && !/signs from the link/.test(WARN_WORDS_INACTIVE) && open6.status === 404, { w6before: w6before.body.slice(0, 200), w6att: warningOf(w6att), open6: open6.status });
+    /no longer opens/.test(w6before.body) && warningOf(w6att)?.words === WARN_WORDS_INACTIVE && !/signs from the link/.test(WARN_WORDS_INACTIVE) && open6.status === 404 && w6panel.warning === WARN_WORDS_INACTIVE, { w6before: w6before.body.slice(0, 200), w6att: warningOf(w6att), open6: open6.status, w6panel: w6panel.warning });
   // W7 (break F4, F5): the no-record answer carries the warning; a booking no longer scheduled is not told what it can save.
   const w7 = await book(A, free, R.staffId, wPerson, -180);
   await answer(() => bookings.recordAttendance(R, w7.id, { outcome: "COMPLETED" }));

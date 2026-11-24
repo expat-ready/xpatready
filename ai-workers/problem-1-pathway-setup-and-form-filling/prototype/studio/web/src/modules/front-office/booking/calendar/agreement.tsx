@@ -25,13 +25,14 @@ const Agreement = z.object({
   signedCopy: z.object({ sha256: z.string(), storedAt: z.string() }).nullable().optional(),
   meetingAt: z.string().nullable().optional(),
   why: z.string().optional(),   // QA-772: none sent yet on a type that needs one: the warning, in the server's words
+  warning: z.string().nullable().optional(),   // the server's warning for this booking and agreement status (review M1)
 });
 /** Still waiting for a signature (the server's gate.ts: these and an ended one both warn until a signed one). */
 const LIVE = ["SENT", "VIEWED", "CLIENT_SIGNED"];
 type Agreement = z.infer<typeof Agreement>;
 
-/* FO-3c-warn break F1: the words follow what still works: the client's link only while the booking is scheduled
-   (the server's openAs), the firm's signature whatever the booking (hostLink, Needs you). */
+/* FO-3c-warn break F1, review M1: the warning is the server's words (gate.ts `warnWords`), which follow what still works:
+   the client's link only while the booking is scheduled (openAs), the firm's signature whatever the booking (hostLink). */
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" }) : "");
 
 /** The booking's agreement line (nothing when the viewer may not read it, or no agreement is needed and none was sent). */
@@ -47,11 +48,7 @@ export function BookingAgreement({ bookingId, bookingStatus }: { bookingId: stri
       <p className="flex flex-wrap items-center gap-2"><Pill tone={a.signed ? "ok" : (a.status === "NONE" && !a.why) || ended ? "neutral" : "warn"}>{a.words}</Pill>
         {a.signed && a.signedCopy ? <span className="text-text-muted">Signed copy stored {day(a.signedCopy.storedAt)}</span> : null}
         {!a.signed && a.clientSignedAt ? <span className="text-text-muted">The client signed {day(a.clientSignedAt)}: the firm signs next.</span> : null}</p>
-      {unsigned && !ended ? <p className="mt-1 text-text-warn" data-agreement-why>{a.status === "CLIENT_SIGNED"
-        ? <>Not signed by the firm yet: {a.signatory?.name ?? "the person it names"} signs it from Needs you.</>
-        : sendsFresh(bookingStatus)
-          ? <>Not signed yet. The client signs from the link in their email, then {a.signatory?.name ?? "the firm"} signs. Attended and the consult record can still be saved; once Attended is saved, the client's link no longer opens. {next}</>
-          : <>Not signed, and the client's link no longer opens for this booking. {next}</>}</p> : null}
+      {unsigned && !ended && a.warning ? <p className="mt-1 text-text-warn" data-agreement-why>{a.warning}{a.status !== "CLIENT_SIGNED" && sendsFresh(bookingStatus) ? ` ${next}` : ""}</p> : null}
       {ended ? <p className="mt-1 text-text-muted" data-agreement-ended>This agreement was declined, withdrawn, has expired or was put back to draft, so it can no longer be signed.{unsigned ? <>{sendsFresh(bookingStatus) ? " While the meeting is ahead, a new agreement is emailed to the client." : ""} {next}</> : null}</p> : null}
       {a.status === "NONE" ? <p className="mt-1 text-text-muted" data-agreement-none>{a.why ?? "No agreement was sent for this booking (the firm has no active consultation agreement template, the person has no email, nobody can sign for the firm, or sending has not succeeded yet)."}</p> : null}
       {a.signatory?.note ? <p className="mt-1 text-text-muted">{a.signatory.note}</p> : null}

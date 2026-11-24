@@ -28,7 +28,7 @@ import { DOCX, renderDocx } from "../../retainers/docx.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent, type SigningPort } from "../../signing/port.ts";
 import { wallLabel } from "../service.ts";
 import { CODE_S23, s23Check } from "./items.ts";
-import { CAN_SIGN, DECIDING_ORDER, ENDED_STATUSES, HAS_EMAIL, HAS_TEMPLATE, missingCauses, missingWords, isEnded, isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
+import { agreementWarning, CAN_SIGN, DECIDING_ORDER, ENDED_STATUSES, HAS_EMAIL, HAS_TEMPLATE, missingCauses, missingWords, isEnded, isSigned, needsAgreement, NEEDS_AGREEMENT_SQL } from "./gate.ts";
 
 type Tx = Prisma.TransactionClient;
 /** This module's two events (the row's names). `ports/events.ts` is outside the row's touch list: J-104 moves them there. */
@@ -130,7 +130,7 @@ export class ConsultationAgreementService {
          and ${HAS_EMAIL}
          -- and someone can sign for the firm, by signatory()'s rule (R2-4, R3-2: a firm with none never fills the batch)
          and ${CAN_SIGN}
-         and ${HAS_TEMPLATE}   -- the same three as the hold's causes (gate.ts, QA-772)
+         and ${HAS_TEMPLATE}   -- the same three as the warning's causes (gate.ts, QA-772)
          -- part 2 (Lead 10, W4b): only a type that needs the agreement
          and exists (select 1 from fo_consultation_type t where t.firm_id = b.firm_id and t.id = b.type_id and ${Prisma.raw(NEEDS_AGREEMENT_SQL)})
          -- no agreement that is waiting or signed: none at all, or each one ended unsigned (a fresh one is sent, P2R2-1)
@@ -340,7 +340,9 @@ export class ConsultationAgreementService {
     if (!b || !(await this.sees(ctx, b.id))) return notFound();
     const a = await this.ofBooking(this.db, ctx.firmId, b.id), required = needsAgreement(b.type);
     // `required`: the booking's type needs it (part 2): an unsigned one is a warning on the booking, never a refusal.
-    if (a) return { ...(await this.read(ctx, a.id)), required };
+    // `warning`: the server's one set of words for this booking and agreement status (gate.ts; FO-3c-warn review M1),
+    // the same the attendance answer and the consult record carry; the panel shows it, never words of its own.
+    if (a) return { ...(await this.read(ctx, a.id)), required, warning: (await agreementWarning(this.db, ctx.firmId, b.id))?.words ?? null };
     // QA-772: needs one, none yet → `why` is the warning's own words (gate.ts), shown on the panel.
     const m = required ? await missingCauses(this.db, ctx.firmId, b.id) : null;
     return { id: null, bookingId: b.id, status: "NONE", signed: false, words: WORDS.none, required, ...(m ? { causes: m.causes, why: missingWords(m.causes, m.started) } : {}) };
