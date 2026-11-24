@@ -230,6 +230,8 @@ try {
   await run();   // every email so far is sent before the day's count is set
 
   // ----------------------------------------------------------------------- DW5 the trial firm's daily cap
+  // PF-19e (amendment 18 Nov, ruling 6987664663): the platform's own account and security mail (these invitations, the
+  // reset notice, the provider's codes) is not counted on the cap; only the firm's other mail is held there.
   await db.platformFirm.update({ where: { id: firmA.id }, data: { status: "TRIAL" } });
   const counted = () => sql(`select coalesce(max(sent), 0) from msg_send_counter where firm_id = '${firmA.id}'`);
   const sentSoFar = Number(counted());
@@ -238,24 +240,28 @@ try {
   const b5 = await call(base, "POST", "/api/platform/staff/invitations/batch", { token: tR, body: { rows: [{ email: "dw5.fiftieth@example.com", roles: ["CASE_OFFICER"] }, { email: "dw5.fiftyfirst@example.com", roles: ["CASE_OFFICER"] }] } });
   await run();
   const f50 = (await rowsTo("dw5.fiftieth@example.com"))[0], f51 = (await rowsTo("dw5.fiftyfirst@example.com"))[0];
-  ok("DW5 pass: on a trial firm the 50th email of the day is sent and the 51st is held: QUEUED with the reason \"daily limit\", nothing in the inbox, one alert",
-    sentSoFar > 0 && b5.status === 200 && f50?.state === "SENT" && f51?.state === "QUEUED" && f51.stateReason === HELD_DAILY_LIMIT && (await inbox.list("dw5.fiftyfirst@example.com", undefined)).messages.length === 0 && alerts.raised.some((a) => a.kind === "send_cap_reached"), { b5: b5.body, f50, f51, alerts: alerts.raised });
-  const held = await db.msgOutbox.findMany({ where: { firmId: firmA.id, state: "QUEUED", stateReason: HELD_DAILY_LIMIT }, select: { address: true } });
-  const rowOf = (e: string) => (b5.body.invited ?? []).find((x: { email: string }) => x.email === e);
-  ok("DW5 pass: the batch's answer reports the held row: heldRows [2], and row 2 says emailHeld \"daily limit\" (row 1 does not); the outbox holds exactly that one",
-    held.length === 1 && held[0].address === "dw5.fiftyfirst@example.com" && JSON.stringify(b5.body.heldRows) === "[2]" && rowOf("dw5.fiftyfirst@example.com")?.emailHeld === HELD_DAILY_LIMIT && rowOf("dw5.fiftieth@example.com")?.emailHeld === undefined, { held, b5: b5.body });
-  // The two-step reset notice at the cap (break M1): never left for tomorrow, so nothing is reset.
+  ok("DW5 pass (PF-19e): on a trial firm one place from its cap, two invitations are both sent and not counted (the day stays at 49); the batch reports no held row",
+    sentSoFar > 0 && b5.status === 200 && f50?.state === "SENT" && f51?.state === "SENT" && b5.body.heldRows === undefined && counted() === "49", { b5: b5.body, f50, f51 });
+  const receipt = (n: number) => appMail.send({ firmId: firmA.id, to: `dw5.receipt${n}@example.com`, replyTo: firmA.contactEmail, class: "TRANSACTIONAL", subject: "Your receipt", text: "Receipt words." });
+  const h50 = await receipt(50), h51 = await receipt(51);
+  await run();
+  const g51 = (await rowsTo("dw5.receipt51@example.com"))[0];
+  ok("DW5 fail: the firm's other mail is still held at the cap: the 50th receipt is sent, the 51st QUEUED \"daily limit\", nothing in the inbox, one alert",
+    h50.held === false && h51.held === true && (await rowsTo("dw5.receipt50@example.com"))[0]?.state === "SENT" && g51?.state === "QUEUED" && g51.stateReason === HELD_DAILY_LIMIT
+    && (await inbox.list("dw5.receipt51@example.com", undefined)).messages.length === 0 && alerts.raised.some((a) => a.kind === "send_cap_reached"), { h50, h51, g51, alerts: alerts.raised });
+  // The two-step reset notice at the cap (break M1 before PF-19e): now sent at once, so the reset goes through.
   const resetsAtCap = resets();
   const capped = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR });
-  ok("DW5 fail (break M1): a two-step reset whose notice the daily limit would hold is refused in words (409 NOTICE_HELD_DAILY_LIMIT): no audit line, no outbox row kept",
-    capped.status === 409 && capped.body.code === "NOTICE_HELD_DAILY_LIMIT" && /not reset/.test(capped.body.detail ?? "") && resets() === resetsAtCap && (await rowsTo(tEmail)).filter((r) => r.state === "QUEUED").length === 0, capped.body);
+  await run();
+  ok("DW5 pass (PF-19e): a two-step reset at the cap is no longer refused (no NOTICE_HELD_DAILY_LIMIT): 200, its audit line, its notice sent",
+    capped.status === 200 && resets() === resetsAtCap + 1 && (await rowsTo(tEmail)).at(-1)?.state === "SENT", capped.body);
   const codeHeld = await handleCustomEmail({ triggerSource: "CustomEmailSender_ForgotPassword", request: { code: "enc", userAttributes: { email: tEmail } } }, { decrypt: async () => "118833", mail: appMail, firmOf: async () => firmA.id });
-  ok("DW5 fail (break m5): a sign-in code the daily limit holds is not reported as sent", codeHeld.sent === false && /daily email limit/.test(codeHeld.reason ?? ""), codeHeld);
+  ok("DW5 pass (PF-19e): a sign-in code at the cap is sent", codeHeld.sent === true, codeHeld);
   await db.platformFirm.update({ where: { id: firmA.id }, data: { status: "ACTIVE" } });
   await run();
   // Fail: the same 51st email on an active firm (cap 2,000) is sent by the sweep that picks held rows up again.
   await mclock.advance({ minutes: 20 }); await run();
-  ok("DW5 fail: on an active firm (cap 2,000) the same held email is not held: the sweep sends it", (await rowsTo("dw5.fiftyfirst@example.com"))[0]?.state === "SENT", await rowsTo("dw5.fiftyfirst@example.com"));
+  ok("DW5 fail: on an active firm (cap 2,000) the same held email is not held: the sweep sends it", (await rowsTo("dw5.receipt51@example.com"))[0]?.state === "SENT", await rowsTo("dw5.receipt51@example.com"));
 
   // ----------------------------------------------------------------------- DW6 no feature binds the stand-ins
   const featureDir = join(API, "features"), offenders: string[] = [];
