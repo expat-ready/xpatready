@@ -225,6 +225,13 @@ try {
   await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="/account/licence"]`).click(); await p1.waitForTimeout(2_600);
   await p1.locator(`[data-workspace]:visible [data-ws-tab][data-ws-path="/account"]`).click(); await p1.waitForTimeout(1_000);
   ok("T7 with My account and Licence both open, switching between them after 2 s keeps the app drawn (breaker F1)", errs.length === errsBefore && (await p1.locator("main").count()) === 1 && (await p1.locator("[data-ws-failed]").count()) === 0, errs.slice(errsBefore));
+  // Review on 91cb4a742: each open tab has its own notification bell; a new count is said once, by the shown tab's bell,
+  // even when the shown tab is not the first one open (a hidden bell used to take the announcement).
+  const rStaff = sql("select id from platform_staff where actor_id = 'user-R' limit 1"), rFirm = sql(`select firm_id from platform_staff where id = '${rStaff}'`);
+  sql(`insert into msg_notification (id, firm_id, staff_id, kind, "group", item_kind, item_id) select gen_random_uuid(), '${rFirm}', '${rStaff}', 'lead-assigned', 'WORK_HANDED_TO_ME', 'lead', gen_random_uuid() from generate_series(1, 2)`);
+  await p1.locator('[data-workspace]:visible [data-ws-tab][data-ws-path="/account/licence"]').click();
+  ok("T7 two new notifications are said once by the shown tab's bell, not by a hidden tab's (review on 91cb4a742)", await until(async () => /^\d+ unread notifications?$/.test((await p1.locator("[data-notifications-live]").innerText().catch(() => "")).trim()), 8_000) && (await p1.locator("[data-notifications-live]").count()) === 1, await p1.locator("[data-notifications-live]").allInnerTexts());
+  sql(`delete from msg_notification where staff_id = '${rStaff}' and kind = 'lead-assigned' and item_id not in (select id from fo_lead)`);
 
   // B1 (review round 3 Should 2): a draft broadcast by another person's window is ignored here
   const forgedKey = `platform-office:${O2.id}`;
@@ -297,6 +304,7 @@ try {
   await st.waitForTimeout(1000); await st.evaluate(() => window.scrollTo(0, 150)); await studioLink.scrollIntoViewIfNeeded(); await st.waitForTimeout(300);
   const mainTop = () => st.evaluate(() => Math.round(document.querySelector("main")?.getBoundingClientRect().top ?? -999));
   const scrolledBefore = await mainTop(), scrolledY = await st.evaluate(() => scrollY);
+  ok("the scrolled-page line starts from a scrolled page (review on 91cb4a742)", scrolledY > 0, scrolledY);
   await studioLink.click({ modifiers: ["Control"] });
   await until(async () => (await tabs(st)).length > 1);
   await st.waitForTimeout(200);
