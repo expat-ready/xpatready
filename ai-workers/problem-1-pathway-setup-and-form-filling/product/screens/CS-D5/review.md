@@ -90,3 +90,27 @@
 **Verdict: Block** (the skill's "Ship after fixes"). Fix list: Major 1 (409 mapping and its test) · Major 2 (record BR-8 and get the Lead's ruling on the PR) · Major 3 (gate note) · Major 4 (wrap the header title, with a check). Minors m1 to m8: fix them, or list them with a follow-up.
 
 Reviewer: Changes cc09ef692c6c282d744aba82803b3e8a7acc70c2
+
+## Round 2 (944c7290f, diff only)
+Reviewer, 24 Nov 2026, P-277. Read: `git diff cc09ef692..944c7290f -- prototype/studio`, `challenge.md` › Build discoveries, the PR body. Ran on :4495 (db `xr_studio_csd5_rv2`): `check_csd5_preview_browser.ts` **49/49** (screenshots restored), plus my own probe (scratchpad, not committed) at DPR 2 and 375 px. Journey score **8/10** (pass): `journey-test-reviewer-2026-11-24.md` › Round 2.
+
+**Round-1 findings**
+* M1 **fixed**. Only a 409 whose words are "Checking for viruses…" gets the scan state (`document-preview.tsx:42-43`). The new check edits the stored file and expects "could not be opened" with no Try again. It fails if the fix is reverted.
+* M2 **recorded and asked** (Build discoveries 1, PR Question 1). The ruling is the Lead's. The BR-8 inversion (`test`: no Accept) stays until then.
+* M3 **fixed**. The gate note is in the PR body: options, licence, upkeep, CVE-2024-4367, `isEvalSupported`, `@napi-rs/canvas`, P-587. Check (4) is Unconfirmed and (6) Scorecard is not checked; both are left openly to the Lead on the Mac. I accept that.
+* M4 **fixed**. The `Panel` title has `min-w-0 [overflow-wrap:anywhere]`, so every panel gets it. At 375 px a 160-character name wraps to 168 px tall and ends 16 px before the ✕ (no overlap); dialog scrollWidth = clientWidth.
+* Breaker M1 **fixed**. `density()` caps the canvas at 2^25 px and 16384 px a side. A 4000 x 3000 PNG at 200 % on DPR 2 now uses 6689 x 5017 (33.6 MP; before the fix, 192 MP).
+* m1 (retry only on 404) **fixed**: a 500 gives 1 link, 1 "previewed" line and "could not be opened". m2 (abandoned load) **fixed**: 0 workers after three openings closed mid-load. m3 **fixed** for the pill, zoom and Rotate (the pill's tip opens on keyboard focus), but see R2-1. m4 (words) **fixed**. Breaker m1 (one draw at a time) **fixed**: the dblclick check passes, and a 0 ms burst of six controls ended "ready", page 2, rotation 90. Breaker m4 (facts kept on error) **fixed**.
+* m5 (the DW6 check cannot fail), m7 (retrofit mapping: only partly covered by the gate note) and m8 (five type sizes; `:145` is still `text-[13px]`) are **not addressed**. Fix them, or name them on a follow-up row (Should).
+
+**New in this diff**
+* **R2-1 (Must, regression):** Previous and Next are icon-only and lost their tooltip. `title=` was removed and no `Tip` was added (`:150`, `:152`). Hovering Next shows no tooltip. This breaks EXPERIENCE §4 item 10 [M] and BIC-14 ("every … icon-only button"), so it is a Must under §6 severity. Fix: wrap both in `Tip` like Rotate, wrapping the button in a span so the tip still shows when it is disabled.
+* Should: rounding lets the canvas go just over the cap: 33,558,713 px against 2^25 = 33,554,432 at DPR 2 (`Math.round` at `:29` and its callers). Use `Math.floor`. There is no practical risk.
+* Should: the comment `"100%" as Mozilla's viewer means it…` moved from `CSS_PER_PT` (`:26`) to the end of the `density` line (`:29`). Move it back.
+* Note for R1.66, not a finding now: the scan 409 is recognised by its exact detail words. When the scan gate lands, recognise it by its problem code.
+
+**Breaker B1 (Question 2).** I agree with the fix: build-time copy of `pdfjs-dist`'s `wasm/`, `cmaps/`, `standard_fonts/` and `iccs/` into our own origin, leaving out `quickjs-eval.*`, then pass `wasmUrl`, `cMapUrl` with `cMapPacked: true`, `standardFontDataUrl` and `iccUrl`. Add a fail check that a CCITT page has dark pixels. BR-3 ("our own origin") still holds, and the app sends no CSP that would block the wasm. Check that the `.wasm` files are served as `application/wasm`. Without that fix, I would approve this PR only on the Lead's explicit ruling on Question 2 (ship now, with a BACKLOG X-row naming the blank-scan risk, and R1.68 not marked Complete until it lands). That is the Lead's call, not mine. It is the same as M2: both are open with the Lead, not with the builder.
+
+**Verdict: Block** (the skill's "Ship after fixes"). Fix list: R2-1 (tooltips on Previous and Next). After that, Approve on the next head, provided the Lead has ruled on Question 1 (BR-8) and Question 2 (B1) on the PR.
+
+Reviewer: Changes 944c7290f9e5502f9472581cb9a46e7c5a341e40

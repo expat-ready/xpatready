@@ -56,3 +56,27 @@ Double click on the file name: one panel and one link. Non-English name: stored 
 * A line holding a set of several current files.
 * A real scanner's 409 or 410 (R1.66 is not built).
 * An unaided walk by an intended user: D17 and D20 stay with the founder.
+
+## Round 2 (944c7290f): re-walk of the failed and partly-held journeys
+Same role, :4495 (db `xr_studio_csd5_rv2`), headless Chromium at DPR 2, US$0. Builder's check 49/49, plus my probe.
+* J5 changed file: **held**. "The file could not be opened…", no Try again, and the header keeps the name and facts.
+* J8 recovery: **held**. A 0 ms burst (Next, 200%, Next, Rotate, Prev, Fit) ended "ready", page 2, rotation 90. After three openings closed mid-load, 0 workers were left. A 500 on the bytes gives one link and one "previewed" line.
+* J9 long name and sizes: **held**. At 375 px the title wraps and does not reach the ✕. A 12 MP photo at 200 % on DPR 2 uses a 33.6 MP canvas (it was 192 MP).
+* J10 Accept: still missing, waiting for the Lead (Question 1).
+* New: Previous and Next have no tooltip (review R2-1). The breaker's B1 (blank CCITT, JBIG2, JPX and CJK pages) is open with the Lead (Question 2).
+
+| Criterion | R1 | R2 | Why |
+|---|---|---|---|
+| Task completed | ½ | ½ | The decision step is missing (BR-8). Some scans draw blank (B1). |
+| Next step obvious | ½ | ½ | No Accept after reading. |
+| Plain words | ½ | 1 | The changed-file words are right; the pill tip is plain. |
+| Feedback and state | ½ | ½ | The states are right except B1: a blank page shows as "ready". |
+| Correct data | 1 | 1 | One "previewed" line per opening, also on a 500. |
+| Error recovery | ½ | 1 | No futile Try again; no retry on a 500. |
+| Accessibility and screen sizes | ½ | ½ | Titles wrap, and the tips open on focus. Previous and Next have no tooltip. |
+| Speed | 1 | 1 | Page 150 of 200 in 92 ms. |
+| Visual quality | 1 | 1 | Unchanged. |
+| Trust and sources | 1 | 1 | Unchanged. |
+| **Total** | 7 | **8 / 10** | **Pass** (8 or more, no 0). |
+
+**Not tested:** a visible browser, a screen reader, an intended user's unaided walk (D17 and D20 stay with the founder).

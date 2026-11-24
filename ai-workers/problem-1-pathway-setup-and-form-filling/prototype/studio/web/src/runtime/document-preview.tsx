@@ -23,10 +23,10 @@ type Zoom = "fit" | "100" | "200";
 
 const TYPES: Record<string, string> = { "application/pdf": "PDF", "image/png": "PNG", "image/jpeg": "JPEG" };
 const BROKEN = { kind: "refused", title: "The file could not be opened", text: "The file could not be opened. It may be damaged, or it changed since it was uploaded. Ask for it again." } as const;
-const CSS_PER_PT = 96 / 72;
+const CSS_PER_PT = 96 / 72;   // "100%" as Mozilla's viewer means it: one PDF point at its printed size on screen
 /** Pixels per CSS pixel for a canvas of this CSS size: the screen's own, but at most 2^25 pixels and 16384 a side, as
  *  Mozilla's viewer caps it (break M1); past that the page is drawn softer, never blank or out of memory. */
-const density = (w: number, h: number) => Math.min(window.devicePixelRatio || 1, Math.sqrt(2 ** 25 / Math.max(1, w * h)), 16384 / Math.max(1, w), 16384 / Math.max(1, h));   // "100%" as Mozilla's viewer means it: one PDF point at its printed size on screen
+const density = (w: number, h: number) => Math.min(window.devicePixelRatio || 1, Math.sqrt(2 ** 25 / Math.max(1, w * h)), 16384 / Math.max(1, w), 16384 / Math.max(1, h));
 const day = (at: string) => new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
@@ -60,7 +60,7 @@ async function drawer(media: string, bytes: ArrayBuffer): Promise<Drawn> {
     return { pages: 1, close: () => img.close(), draw: async (_p, canvas, width, rotation) => {
       const turned = rotation % 180 !== 0, w0 = turned ? img.height : img.width, h0 = turned ? img.width : img.height;
       const css = width(w0 / CSS_PER_PT), scale = css / w0, dpr = density(w0 * scale, h0 * scale);
-      canvas.width = Math.round(w0 * scale * dpr); canvas.height = Math.round(h0 * scale * dpr);
+      canvas.width = Math.floor(w0 * scale * dpr); canvas.height = Math.floor(h0 * scale * dpr);
       canvas.style.width = `${Math.round(w0 * scale)}px`; canvas.style.height = `${Math.round(h0 * scale)}px`;
       const g = canvas.getContext("2d")!; g.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
       g.translate(w0 / 2, h0 / 2); g.rotate((rotation * Math.PI) / 180); g.drawImage(img, -img.width / 2, -img.height / 2);
@@ -81,7 +81,7 @@ async function drawer(media: string, bytes: ArrayBuffer): Promise<Drawn> {
       const base = page.getViewport({ scale: 1, rotation: turn }), vp = page.getViewport({ scale: width(base.width) / base.width, rotation: turn });
       if (me !== newest) return;
       const dpr = density(vp.width, vp.height);
-      canvas.width = Math.round(vp.width * dpr); canvas.height = Math.round(vp.height * dpr);
+      canvas.width = Math.floor(vp.width * dpr); canvas.height = Math.floor(vp.height * dpr);
       canvas.style.width = `${Math.round(vp.width)}px`; canvas.style.height = `${Math.round(vp.height)}px`;
       task = page.render({ canvas, viewport: vp, transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0] });
       try { await task.promise; } catch (e) { if ((e as Error)?.name !== "RenderingCancelledException") throw e; }
@@ -147,9 +147,9 @@ export function DocumentPreview({ file, label, uploadedBy, close, returnFocus }:
           {link.contains_scripts ? <Notice tone="warn" title="Contains scripts: opened only in the safe viewer"><span data-preview-scripts>The file is shown as pictures of its pages. Nothing in it runs.</span></Notice> : null}
           <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Page view">
             {pages > 1 ? <>
-              <Button size="sm" variant="ghost" aria-label="Previous page" disabled={page <= 1} onClick={() => turn(page - 1)} data-preview-prev><ChevronLeft /></Button>
+              <Tip tip="Previous page"><span><Button size="sm" variant="ghost" aria-label="Previous page" disabled={page <= 1} onClick={() => turn(page - 1)} data-preview-prev><ChevronLeft /></Button></span></Tip>
               <span className="text-sm tabular-nums" aria-live="polite" data-preview-page>Page {page} of {pages}</span>
-              <Button size="sm" variant="ghost" aria-label="Next page" disabled={page >= pages} onClick={() => turn(page + 1)} data-preview-next><ChevronRight /></Button>
+              <Tip tip="Next page"><span><Button size="sm" variant="ghost" aria-label="Next page" disabled={page >= pages} onClick={() => turn(page + 1)} data-preview-next><ChevronRight /></Button></span></Tip>
             </> : null}
             <div role="group" aria-label="Zoom" className="flex gap-1">{zoomBtn("fit", "Fit width", "The page fills the width of the panel")}{zoomBtn("100", "100%", "The page at its printed size")}{zoomBtn("200", "200%", "Twice the printed size")}</div>
             <Tip tip="Turns the view only; the file is not changed"><Button size="sm" variant="ghost" onClick={() => setRotation((r) => (r + 90) % 360)} data-preview-rotate><RotateCw />Rotate</Button></Tip>

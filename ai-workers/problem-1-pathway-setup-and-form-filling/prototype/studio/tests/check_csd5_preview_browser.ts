@@ -198,6 +198,8 @@ try {
   ok("CS-D5 W1: page 150 of 200 is drawn within 2 s of Next page, and the toolbar answers a click meanwhile", ms <= 2000 && answered, ms);
   await page.locator("[data-preview-next]").dblclick(); await ready();
   ok("CS-D5 W1: two quick clicks on Next turn two pages and never break the panel (break m1)", (await page.locator("[data-preview-page]").textContent()) === "Page 152 of 200" && (await page.locator('[data-preview-state="ready"]').count()) === 1, await page.locator("[data-preview-page]").textContent());
+  await page.locator("[data-preview-next]").hover();
+  ok("CS-D5 W1: the icon-only Next page button has a tooltip on hover (review R2-1, BIC-14)", await page.getByRole("tooltip").filter({ hasText: "Next page" }).first().waitFor({ timeout: 3_000 }).then(() => true, () => false));
   await closePanel();
   // Break M1: a very large page at 200% is drawn into a canvas of at most 2^25 pixels (Mozilla's viewer's cap).
   const d6 = await put(L3, HUGE, "scanner-app-page-sample.pdf");
