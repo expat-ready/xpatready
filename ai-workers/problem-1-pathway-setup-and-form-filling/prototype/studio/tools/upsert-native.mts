@@ -69,6 +69,13 @@ const sample = (c: Col): unknown => {
   return "x";
 };
 let failed = 0;
+// The list is kept by hand, so a new upsert in api/src without a line here fails the tool (review m6, breaker).
+const { readFileSync, statSync } = await import("node:fs");
+const inSrc: string[] = [];
+const walk = (d: string) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) walk(p); else if (/\.tsx?$/.test(n)) readFileSync(p, "utf8").split("\n").forEach((l, i) => { if (/\.upsert\(/.test(l) && !/^\s*(\/\/|\*)/.test(l)) inSrc.push(`${p.slice(join(STUDIO, "api", "src").length + 1)}:${i + 1}`); }); } };
+walk(join(STUDIO, "api", "src"));
+const listed = new Set(SITES.map((x) => x.at)), missing = inSrc.filter((x) => !listed.has(x)), gone = [...listed].filter((x) => !inSrc.includes(x));
+if (missing.length || gone.length) { console.log(`LIST   out of date: in api/src but not listed ${JSON.stringify(missing)}; listed but not found ${JSON.stringify(gone)}`); failed++; }
 try {
   for (const s of SITES) {
     const cols = await db.$queryRawUnsafe<Col[]>("select column_name, data_type, udt_name, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = $1", s.table);

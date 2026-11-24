@@ -123,6 +123,25 @@ try {
   const c6b = await fs.withFirm(B, () => pool.connect()); await begun6; const r6 = await q(c6b); c6b.release();
   ok("P1 fail (m7, checkout guard): a pooled client with a statement in flight at checkout is destroyed, never handed out", fired("destroyed-at-checkout") === before6 + 1 && r6.p !== p6 && r6.intx === false && r6.f === B, { atCheckout: fired("destroyed-at-checkout") - before6, p6, r6 });
   ok("P1 pass (wording): the guard's error and event say busy or inside a transaction, not only a transaction", lines.some((l) => /busy or inside a transaction/.test(l)) || fs.notIdleWords === "a pooled connection came back busy or inside a transaction: destroyed, not reused", fs.notIdleWords);
+  // (5b) Breaker m2, m3: endsTransaction reads the text in one pass as PostgreSQL does (each row checked against what the
+  // server does with that text); an unclosed comment takes linear time.
+  const table: [string, boolean][] = [
+    ["select E'it\\'s'; commit", true], ["select E'\\''; commit", true], ["select '$$'; commit", true], ["select 1 as \"a'b\"; commit", true],
+    ["select 1 -- it's\n; commit", true], ["select 'it''s'; end", true], ["prepare transaction 'm1'", true], ["  ROLLBACK WORK", true], ["commit transaction", true],
+    ["select 1 /* a /* nested */ commit */", false], ["do $fn$ begin perform 1; end $fn$", false], ["select $1::text, $2", false], ["rollback to savepoint s", false],
+    ["release savepoint s", false], ["commit prepared 'x'", false], ["select 1 /* unclosed ; commit", false], ["select $é$ ; commit $é$", false], ["select \"end\" from t", false],
+  ];
+  const wrong = table.filter(([sql, want]) => fs.endsTransaction(sql) !== want).map(([sql, want]) => ({ sql, want }));
+  ok("M1 pass (breaker m2): endsTransaction agrees with PostgreSQL on every row of the table (quotes, E'' escapes, nested comments, dollar tags, PREPARE TRANSACTION)", wrong.length === 0, wrong);
+  const t0 = Date.now(); fs.endsTransaction(`select 1 /* ${"x".repeat(60_000)}`);
+  ok("M1 pass (breaker m3): an unclosed comment of 60 KB is read in under 50 ms", Date.now() - t0 < 50, Date.now() - t0);
+  // (5c) Breaker m5: a client whose backend ends while its release waits for a statement is destroyed, never kept.
+  const c5e = await fs.withFirm(A, () => pool.connect()); const p5e = (await q(c5e)).p;
+  const long5e = c5e.query("select pg_sleep(5)").catch(() => undefined);
+  c5e.release();
+  psql(`select pg_terminate_backend(${p5e})`); await long5e; await sleep(200);
+  const c5f = await fs.withFirm(B, () => pool.connect()); const r5f = await q(c5f); c5f.release();
+  ok("P1 fail (breaker m5): a backend ended while its release waits is destroyed; the next caller gets a new connection in its own firm", r5f.p !== p5e && r5f.f === B && r5f.intx === false, { p5e, r5f });
   // (6) Review m1: a second release while the first waits for its statement throws to that caller (as pg-pool's own does)
   // and never inside pg's socket handler, which would end the process.
   const c7 = await fs.withFirm(A, () => pool.connect());

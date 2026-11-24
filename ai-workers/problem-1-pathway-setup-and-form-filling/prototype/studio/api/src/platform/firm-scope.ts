@@ -513,9 +513,31 @@ function closeOnOpenTransaction(c: Tagged): void {
  *  ROLLBACK PREPARED, and words inside quotes, dollar-quoted bodies or comments do not. The state is new at each checkout. */
 const ENDED = Symbol("m1.ended"), END_NAMES = Symbol("m1.endNames"), GUARDED = Symbol("m1.guarded");
 type Guarded = Tagged & { [ENDED]?: boolean; [END_NAMES]?: Set<string>; [GUARDED]?: true };
-const unquoted = (sql: string) => sql.replace(/\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1\$/g, " ").replace(/'(?:[^']|'')*'/g, " ").replace(/"(?:[^"]|"")*"/g, " ").replace(/--[^\n]*/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ");
+/** The statements of a SQL text with their quoted parts, comments and dollar-quoted bodies removed, read left to right in
+ *  one pass as PostgreSQL reads them (breaker m2, m3): '…' with '' inside, E'…' with backslash escapes, "…" identifiers,
+ *  $tag$…$tag$ (any tag), -- to the end of the line, and nested /* … *\/. An unclosed quote or comment runs to the end. */
+function statementsOf(sql: string): string[] {
+  const out: string[] = []; let cur = "", k = 0;
+  const n = sql.length;
+  while (k < n) {
+    const ch = sql[k], nx = sql[k + 1];
+    if (ch === "-" && nx === "-") { const e = sql.indexOf("\n", k); k = e < 0 ? n : e; cur += " "; continue; }
+    if (ch === "/" && nx === "*") { let depth = 1; k += 2; while (k < n && depth > 0) { if (sql[k] === "/" && sql[k + 1] === "*") { depth++; k += 2; } else if (sql[k] === "*" && sql[k + 1] === "/") { depth--; k += 2; } else k++; } cur += " "; continue; }
+    if ((ch === "E" || ch === "e") && nx === "'" && !/[\w$]/.test(sql[k - 1] ?? "")) { k += 2; while (k < n) { if (sql[k] === "\\") k += 2; else if (sql[k] === "'" && sql[k + 1] === "'") k += 2; else if (sql[k] === "'") { k++; break; } else k++; } cur += " "; continue; }
+    if (ch === "'") { k++; while (k < n) { if (sql[k] === "'" && sql[k + 1] === "'") k += 2; else if (sql[k] === "'") { k++; break; } else k++; } cur += " "; continue; }
+    if (ch === '"') { k++; while (k < n) { if (sql[k] === '"' && sql[k + 1] === '"') k += 2; else if (sql[k] === '"') { k++; break; } else k++; } cur += " x "; continue; }
+    if (ch === "$" && !/[\w$]/.test(sql[k - 1] ?? "")) {
+      const m = /^\$((?:[A-Za-z_\u0080-\uffff][\w\u0080-\uffff]*)?)\$/u.exec(sql.slice(k, k + 64));   // a tag is empty or an identifier
+      if (m) { const end = sql.indexOf(m[0], k + m[0].length); k = end < 0 ? n : end + m[0].length; cur += " "; continue; }
+    }
+    if (ch === ";") { out.push(cur); cur = ""; k++; continue; }
+    cur += ch; k++;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim().toLowerCase()).filter(Boolean);
+}
 export function endsTransaction(sql: string): boolean {
-  return unquoted(sql).split(";").map((x) => x.trim().toLowerCase()).some((x) => /^(commit|end|abort|rollback)\b/.test(x) && !/^rollback(\s+(work|transaction))?\s+to\b/.test(x) && !/^(commit|rollback)\s+prepared\b/.test(x));
+  return statementsOf(sql).some((x) => (/^(commit|end|abort|rollback)\b/.test(x) && !/^rollback(\s+(work|transaction))?\s+to\b/.test(x) && !/^(commit|rollback)\s+prepared\b/.test(x)) || /^prepare\s+transaction\b/.test(x));
 }
 function refuseAfterEnd(c: Guarded): void {
   c[ENDED] = false;   // new at each checkout
