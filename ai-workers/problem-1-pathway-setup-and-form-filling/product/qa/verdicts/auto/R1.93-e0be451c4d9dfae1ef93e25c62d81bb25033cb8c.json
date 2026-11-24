@@ -1,0 +1,30 @@
+{
+  "item": "R1.93",
+  "name": "93 Our team's console; health per firm; support button",
+  "pr": 3517,
+  "sha": "e0be451c4d9dfae1ef93e25c62d81bb25033cb8c",
+  "run_id": "45477380452",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45477380452",
+  "at": "2026-11-24T20:10:35.369Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_93.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45477380452/artifacts/14959807104",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.93-e0be451c4d9dfae1ef93e25c62d81bb25033cb8c.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
