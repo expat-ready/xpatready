@@ -110,3 +110,36 @@ A fresh Opus challenger read this note, the test, the row and the code on main: 
   * With the code off, the 401's words say "Agree first" (reviewer m5, breaker m3).
   * `rollback.sql` deletes its `_prisma_migrations` row (reviewer m7).
 * **Tests** (reviewer M2): headers; consent needed; GET writes nothing; viewed and VIEWED; session replacement with the code on; the server-side expiry; checks with no code asked; JSON only; the code switched back on; SIGNED_OFFLINE in the ended-state loop; misses never blocking a live link.
+
+## Hand-over: FO-6 part 4c (written 24 Nov at 4b's Approve; Lead 28: no 4c in this session)
+**State.** 4a is on main (#3433). 4b (#3460) has round 3 approved by the reviewer and the breaker on fcb8e3ad8. Still owed, by the Lead, before the label: Lead B's re-read, the Lead's read line, and `ci` on the final head. Its stamp 20261124130000 lands after #3234 and #3235 (Lead 28). **Start 4c only once #3460 has merged**, on a new branch from origin/main (never build on an unmerged PR).
+
+**4c builds** (rules 11 and 12 above; the concept first, Lead 28: "Start 4c's concept now"):
+1. **The fake's stand-in signing page** (local only):
+   * `fakeSigning`'s `embeddedLink` points at a page on the copy's own origin, never `signing.fake.invalid`. That origin is `signingPublicBase()` from `link-mail.ts`, which is null outside local.
+   * The page checks a single-use nonce (10 minutes, held in the fake) and has a Sign button. Sign runs the fake's `act("signed")` and hands its webhook calls to `Signing.receive`, so part 3's order, consent and evidence rules apply unchanged.
+   * The route is registered only when `PLATFORM_ENVIRONMENT=local`. In test and production it does not exist (404), and a start-up assertion checks that it is not registered there. **4a review m5:** a unit line proves the 404 outside local.
+   * After a restart the fake has forgotten its envelopes, so `/session` answers 409 "Ask … to send it again" (already in `door.ts`).
+2. **The firm signer's link:** `POST /api/front-office/retainers/:id/firm-signing-link`.
+   * Keys: `@PermissionKeys("agent/retainer:show")`, `@OwnOrAll("agent/prospect")`, and the caller must be the retainer's representative (403 `NOT_THE_REPRESENTATIVE`).
+   * Only after every client signed (409 before). The body is `{ consent: true, consentTextVersion }`, which records the firm signer's consent once (part 3's webhook refuses a signature without it, `signing/service.ts:211`); without it, 422.
+   * It answers the adapter's link, which on the copy is item 1's page.
+3. **Lead B 6's two Minors on #3460:**
+   * `session` asks the provider for the embedded link before the lock. Re-check the end and the session under the lock after the link is fetched, and refuse if the request ended meanwhile.
+   * The limiter is in one process and its map is swept only of expired keys. Carry both as **known limits** in the module card (Lead 28: fine until two tasks share a limit).
+4. **The test:** `check_fo6_door.ts` drops its third argument (`4a,4b`), so every line counts; E's six lines must go green. If the door's page path changes, j_54 W3's `{}` body is qa's to change (Lead 24, answer 10).
+5. **Records:** `break-report-4b.md` is 107 lines after three rounds; the facts were kept, nothing cut (rule 8).
+
+**Size:** about 400 changed lines; no migration. Breaker: yes (a staff permission route and a public page).
+**Journey lines 4c turns green:**
+* j_54 W2 (signs) and W3;
+* j_61 W3 (signs), and W6 and W7 API;
+* it unblocks j_54 W4-W6.
+
+**Not 4c:**
+* FO-6v, the vendor (held, P-561);
+* part 5: expiry by JobPort, reminders, Send updated version, the representative's "needs you", PF-27;
+* FO-5d (decline, withdraw);
+* FO-5s, the client's `/sign/:token` page;
+* QA-777 (the R1.104 lane);
+* FO-6d's link emails (a small row after 4b, Lead 25).

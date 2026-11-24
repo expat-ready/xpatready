@@ -120,3 +120,23 @@ The six M2 coverage lines (headers, CONSENT_NEEDED, GET writes nothing, viewed a
 `Reviewer: Approve c234bda62cb2a7ba2fdf4f4441eb813a14cae784`
 
 Verdict: Approve. No open Blocker or Major. The new Minor can go in this PR or the QA-777 follow-up.
+
+## Round 3 (diff only, Lead 28 allows it for this diff): `b268982ea..fcb8e3ad82532b93d2f9d890b49d45d3dbaa64fc`
+Scope: 4 files, +16 −9: `door.controller.ts`, `door.ts`, `MODULE.rows/FO-6-4b.md`, `tests/check_forms_qa53.ts`. The records (`review-4b.md`, `break-report-4b.md`) are unchanged against b268982ea.
+
+* **QA-53 marks:**
+  * Both GETs now carry `@OpenRead("…")` before `@Get`, with no bracket inside the text. The wording keeps its meaning.
+  * `REVIEWED` gains the two GETs as `open`, each with a reason.
+  * `PUBLIC_WRITES` gains code, code/verify and consent. The list stays sorted, and the exact-equality check still holds.
+  * A new line posts a valid JSON body to each of the three writes, using an unknown token whose firm prefix is all zeros. Each must answer exactly 404. The `post` helper sends `application/json`, so the answer is the door's own 404, not a 415 and not a field error.
+* **Module card:** the rows file now names `api/src/platform/audit/access/declare.ts`. The coordinator reports module-cards.py pr PASS; I did not run it myself.
+* **My round-2 clock Minor: fixed.**
+  * `verify` takes one `now` and passes it to both `checkCode` and `startSession` (`door.ts:144-148`).
+  * `liveSession` now compares exactly (`door.ts:89`). Both values are written from the same JS millisecond into `timestamptz`, which keeps microseconds, so they read back equal.
+  * A session started by consent while the code was off still fails the comparison, as intended.
+* **Runs at fcb8e3ad8:** `run-suites.sh --only "check_forms_qa53.ts check_fo6_door.ts"` gives qa53 **48/0 PASS** and fo6_door **36/36 PASS** (6 pending).
+* **New findings:** none.
+
+`Reviewer: Approve fcb8e3ad82532b93d2f9d890b49d45d3dbaa64fc`
+
+Verdict: Approve
