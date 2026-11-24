@@ -80,6 +80,7 @@ def main():
                     return True
             return os.path.isdir(at(p)) or (os.path.islink(at(p)) and have.get(p) != want[p])
         stuck = [p for p in want if clash(p)]
+        stuck += [p for p in want if p not in have and p not in stuck and os.path.lexists(at(p))]   # there under another case, or a name not read here
         missing = [p for p in want if p not in have and p not in stuck]
         extra = [p for p in have if p not in want]
         old, edited = [], []
@@ -99,7 +100,7 @@ def main():
     what = "; ".join(w for w in ("old %s" % names(old) if old else "", "missing %s" % names(missing) if missing else "",
                                  "edited here %s" % names(edited) if edited else "") if w)
     print("ACT   tools: not %s: %s%s. %s" % (said, what, ext, "REFUSED a fix: the edited files are nobody's on main: commit or move them first"
-          if edited else "The files stay unstaged (before a later branch change: git restore --worktree -- <tools>, and move the new ones away). Run: " + LINE % (shlex.quote(TOP), sha)))
+          if edited else "The files stay unstaged (before a later branch change: commit your own edits, git restore --worktree -- <tools>, and move the new ones away). Run: " + LINE % (shlex.quote(TOP), sha)))
     return 1
 
 

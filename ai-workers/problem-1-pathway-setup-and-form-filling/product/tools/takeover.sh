@@ -9,7 +9,7 @@ br=$(git rev-parse --abbrev-ref HEAD)
 # A363, A368: whose tools, and how old this copy is. A copy that left main over 24 h ago takes over nothing: it would lead by
 # the rules and tools of that day. No flag goes round it; a fresh branch is one step.
 r=0; if [ -f "$TOOLS/copy-age.sh" ]; then
-  python3 -I "$TOOLS/tools-fresh.py"; f=$?; fe=1; [ "$f" -gt 1 ] && fe=""
+  tf=$(python3 -I "$TOOLS/tools-fresh.py" 2>&1); echo "$tf"; f=0; fe=1; grep -qE '^(tools  |ACT   tools: not main)' <<<"$tf" || { f=2; fe=""; }   # a crash is not a yes
   ca=$(FETCHED=$fe bash "$TOOLS/copy-age.sh"); r=$?; echo "$ca"
   [ "$r" != 1 ] && { [ "$f" -gt 1 ] || [ "$r" -gt 1 ]; } && { echo "REFUSED: main could not be read now, so this copy's age is unknown: reach GitHub, then run takeover.sh again."; exit 3; }
 fi

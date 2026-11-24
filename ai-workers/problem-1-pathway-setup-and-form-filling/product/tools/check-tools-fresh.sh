@@ -42,11 +42,13 @@ o=$(tf); r=$?; ok "a folder, a file and a link of this copy where main has anoth
 rm -f "$L/$D/fixt" "$L/$D/lnk" "$L/$D/newtool/mywork.txt"; rmdir "$L/$D/newtool"; chmod +x "$U/$D/more.sh"; git -C "$U" add -A; at $((NOWT - 14)) mode; (cd "$L" && eval "$(fix "$(tf)")"); chmod -x "$L/$D/more.sh"; o=$(tf); ok "a file that is executable on main and not here is old" "$(has 'old 1 (more.sh)' "$o")" "$o"; (cd "$L" && eval "$(fix "$o")")
 git -C "$U" checkout -q -b s1; printf 'a\nmid\nz\n' > "$U/$D/m.sh"; git -C "$U" add -A; git -C "$U" commit -qm m; git -C "$U" checkout -q main; git -C "$U" merge -q --no-ff s1 -m m1
 git -C "$U" checkout -q -b s2; printf 'A\nmid\nz\n' > "$U/$D/m.sh"; git -C "$U" commit -qam s2; git -C "$U" checkout -q -b s3 main; printf 'a\nmid\nZ\n' > "$U/$D/m.sh"; git -C "$U" commit -qam s3; git -C "$U" checkout -q main; git -C "$U" merge -q --no-ff s2 -m m2; git -C "$U" merge -q --no-ff s3 -m m3
-(cd "$L" && eval "$(fix "$(tf)")"); git -C "$U" checkout -q -b s4; printf 'A\nnew\nZ\n' > "$U/$D/m.sh"; git -C "$U" commit -qam s4; git -C "$U" checkout -q main; git -C "$U" merge -q --no-ff s4 -m m4; o=$(tf); ok "a file that was only ever a merge's result on main is old, never an edit" "$([ "$(has 'old 1 (m.sh)' "$o")" = 1 ] && ! grep -q edited <<<"$o" && echo 1)" "$o"
-mkdir -p "$T/other/tools"; cp "$L/$D/tools-fresh.py" "$T/other/tools/"; o=$(python3 -I "$T/other/tools/tools-fresh.py" 2>&1); r=$?; ok "run from another folder: unknown" "$([ $r = 2 ] && echo 1)" "$o"
-o=$(tf); (cd "$L" && eval "$(fix "$o")"); b=$(cd "$L" && git checkout -q -b lead/x origin/main 2>/dev/null; git branch --show-current); u=$(git -C "$L" ls-files -o -- "$D")
-git -C "$L" restore --worktree -- "$D"; mkdir -p "$T/moved"; for f in $u; do mv "$L/$f" "$T/moved/"; done; n=$(cd "$L" && git fetch -q && git checkout -q -b lead/x origin/main 2>/dev/null; git branch --show-current)
-ok "after the line a fresh branch is refused by git, and the step the ACT names (put back, move the new ones) makes it work, with no -f (review N5)" "$([ "$b" = lead/old ] && [ "$n" = lead/x ] && grep -q 'before a later branch change: git restore --worktree -- <tools>, and move the new ones away' <<<"$o" && echo 1)" "$b / $n / $o"; git -C "$L" checkout -q lead/old
+(cd "$L" && eval "$(fix "$(tf)")")
+# the merge's result (A mid Z) is next changed by two branches again, each from a state of its own: no plain commit has it on either side
+git -C "$U" checkout -q s2; printf 'A\nmid\nz\nq\n' > "$U/$D/m.sh"; git -C "$U" commit -qam s2b; git -C "$U" checkout -q main; git -C "$U" merge -q --no-ff s2 -m m4 >/dev/null 2>&1 || { printf 'A\nmid\nZ\nq\n' > "$U/$D/m.sh"; git -C "$U" commit -qam m4; }
+o=$(tf); ok "a file that was only ever a merge's result on main is old, never an edit" "$([ "$(has 'old 1 (m.sh)' "$o")" = 1 ] && ! grep -q edited <<<"$o" && echo 1)" "$o"
+mkdir -p "$L/other/tools"; cp "$L/$D/tools-fresh.py" "$L/other/tools/"; o=$(python3 -I "$L/other/tools/tools-fresh.py" --few 2>&1); r=$?; ok "run from another folder of the same copy: unknown" "$([ $r = 2 ] && echo 1)" "$o"; rm -f "$L/other/tools/tools-fresh.py"
+python3 -I -c 'import os,sys; sys.exit(0 if os.path.exists(sys.argv[1]) else 1)' "$(printf '%s' "$TOOLS/GUARD-TEST-LIB.SH")" && ci=1 || ci=""
+echo c > "$U/$D/NewCase.sh"; git -C "$U" add -A; git -C "$U" commit -qm case; echo precious > "$L/$D/newcase.sh"; o=$(tf); [ -n "$ci" ] && w="edited here 1 (NewCase.sh)" || w="missing 1 (NewCase.sh)"; ok "an untracked file that differs only in case: on the Mac it is the same file, so no line" "$([ "$(has "$w" "$o")" = 1 ] && { [ -z "$ci" ] || ! grep -q 'Run: ' <<<"$o"; } && echo 1)" "$o"; rm -f "$L/$D/newcase.sh"
 git -C "$L" checkout -q -- .; git -C "$L" clean -qfd "$D"
 
 # the copy's age
@@ -57,6 +59,7 @@ o=$(FETCHED=1 NOW=$((NOWT + 14 * DAY)) age "$T/new"); r=$?; ok "... however quie
 git -C "$U" merge -q --no-ff -m "records PR" "$(git -C "$U" fetch -q "$L" lead/old && git -C "$U" rev-parse FETCH_HEAD)" 2>/dev/null; echo r > "$U/rule"; git -C "$U" add -A; at "$NOWT" rule; git -C "$L" fetch -q; o=$(age "$L"); r=$?; ok "the Lead's own records merged into main do not make its copy fresh" "$([ $r = 1 ] && has 'is 48 h old' "$o")" "exit $r: $o"
 o=$(NOW=$((NOWT - 2 * DAY + DAY)) age "$L"); r=$?; ok "24 h to the second is over" "$([ $r = 1 ] && echo 1)" "exit $r: $o"
 o=$(NOW=$((NOWT - 3 * DAY)) age "$L"); r=$?; ok "a commit dated after the clock: not readable, exit 2" "$([ $r = 2 ] && echo 1)" "exit $r: $o"
+o=$(NOW=$((NOWT + 13 * DAY)) age "$T/new"); r=$?; ok "... and not fetched now: not readable, exit 2, never fresh" "$([ $r = 2 ] && grep -q 'was not fetched now' <<<"$o" && echo 1)" "exit $r: $o"
 git init -q "$T/lone"; o=$(age "$T/lone"); r=$?; ok "no origin/main: not readable, exit 2, never 'fresh'" "$([ $r = 2 ] && echo 1)" "exit $r: $o"
 for f in takeover.sh copy-age.sh tools-fresh.py; do cp "$TOOLS/$f" "$L/$D/"; done
 git -C "$L" remote set-url origin "$T/none"; git clone -q "$U" "$T/off" 2>/dev/null; git -C "$T/off" remote set-url origin "$T/none"; cp "$TOOLS"/{takeover.sh,copy-age.sh,tools-fresh.py} "$T/off/$D/"; o=$(cd "$T/off" && NOW=$((NOWT + 13 * DAY)) bash "$D/takeover.sh" 2>&1); r=$?

@@ -44,7 +44,7 @@ GH_TOKEN="${GH_TOKEN:-$(command gh auth token 2>/dev/null)}"; if [ -n "$GH_TOKEN
 
 # 00. Whose tools, how old a copy, whose plan: before anything else (A363, A368, founder 24 Nov), each a line or the first ACTs.
 fr=$(python3 -I "$TOOLS/tools-fresh.py" 2>&1); grep -qE '^(tools  |ACT   tools)' <<<"$fr" || fr="ACT   tools: tools-fresh.py did not run ($(head -1 <<<"$fr"))"
-fe=1; grep -q '^ACT   tools: \(unknown\|tools-fresh\)' <<<"$fr" && fe=""; ca=$(FETCHED=$fe bash "$TOOLS/copy-age.sh" 2>&1); r=$?; [ "$r" = 1 ] && ca="ACT   $ca: over 24 h: start a fresh lead/<today> from origin/main (WAY-OF-WORKING, P-388)"; [ "$r" -gt 1 ] && ca="ACT   $ca"
+fe=""; grep -qE '^(tools  |ACT   tools: not main)' <<<"$fr" && fe=1; ca=$(FETCHED=$fe bash "$TOOLS/copy-age.sh" 2>&1); r=$?; [ "$r" = 1 ] && ca="ACT   $ca: over 24 h: start a fresh lead/<today> from origin/main (WAY-OF-WORKING, P-388)"; [ "$r" -gt 1 ] && ca="ACT   $ca"
 pf=$(python3 -I "$TOOLS/plan-fresh.py" 2>&1); grep -qE '^(plan  |ACT   plan)' <<<"$pf" || pf="ACT   plan: plan-fresh.py did not run ($(head -1 <<<"$pf"))"
 for l in "$fr" "$ca" "$pf"; do echo "$l"; seen "$l"; act=$((act + $(grep -c '^ACT' <<<"$l"))); done
 bo=$(git diff --name-only origin/main HEAD -- "${TOOLS_REL:=ai-workers/problem-1-pathway-setup-and-form-filling/product}/DECISIONS.md" "$TOOLS_REL/RULES.md" "$TOOLS_REL/cycle-plan.json" "$TOOLS_REL/design/board-lead-*" 2>/dev/null | sed 's#.*/##' | paste -sd ' ' -)
