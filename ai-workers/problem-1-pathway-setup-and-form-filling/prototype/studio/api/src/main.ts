@@ -212,6 +212,10 @@ class ProblemErrors implements ExceptionFilter {
     if (e?.type === "entity.parse.failed" || (e?.status === 400 && e?.expose === true && typeof e?.type === "string" && e.type.startsWith("entity."))) return send(400, "Request refused", "The request body is not valid JSON. Nothing was saved or started.", { code: "BODY_NOT_JSON" });
     // P-179 break m6: a JSON body over its limit is refused by the body parser before any route: say so (it was a 500).
     // PF-28: the words name no size, as the limit depends on the address (256 KB on the platform doors, 5 MB elsewhere).
+    // QA-507 (R1.10): a JSON body in a charset or Content-Encoding the parser cannot read is its own 415 (it was a 500); the
+    // parser's message quotes the sender's value, so neither the answer nor the log repeats it.
+    if (e?.type === "charset.unsupported") return send(415, "Unsupported body", "The request body must be JSON in UTF-8. Nothing was saved or started.", { code: "BODY_CHARSET" });
+    if (e?.type === "encoding.unsupported") return send(415, "Unsupported body", "The request body is compressed in a way this address does not read: send it uncompressed, or as gzip, deflate or br. Nothing was saved or started.", { code: "BODY_ENCODING" });
     if (e?.type === "entity.too.large" || e?.status === 413) return send(413, "Too large", "This request is larger than this address takes. Nothing was saved or started.", { code: "BODY_TOO_LARGE" });
     // C4.2 (QA-125, QA-13): plain words, never "the database": a duplicate is someone else's save at the same moment, or the thing exists already.
     if (e?.code === "P2002") return send(409, "Already exists", "This already exists, or someone else saved the same thing at the same moment. Reload to see the current state.");
