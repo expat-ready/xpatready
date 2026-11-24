@@ -110,13 +110,47 @@ export const CaseEntry = z.strictObject({
 });
 export type CaseEntry = z.input<typeof CaseEntry>;
 /** A case line names its workspace; a platform or front-office line never does (AuditEntry is strict). */
-export const isCaseEntry = (e: AuditEntry | CaseEntry): e is CaseEntry => !!e && typeof e === "object" && "workspaceId" in e;
+export const isCaseEntry = (e: AuditEntry | CaseEntry | OurStaffPlatformEntry): e is CaseEntry => !!e && typeof e === "object" && "workspaceId" in e;
+
+/** AUD-3c (Lead 10's ruling on #3040, 23 Nov; Lead B's points): our own staff's firm-less `platform.bypass` line, a narrow
+ *  entry kind of its own, never a case-side line. Firm null (it names no firm and takes none), no case, no workspace (the
+ *  adapter finds the platform audit workspace: a `workspaceId` would make it a case entry), action `platform.bypass` only,
+ *  entity `plat_bypass_use` (the bypass use's name is the key), actor an `ourstaff:<id>` word. The adapter also refuses
+ *  it outside our staff's request, under any actor but the request's own, and in a request or job that acts for a firm. */
+export const OurStaffPlatformEntry = z.strictObject({
+  firmId: z.null(),
+  actor: z.string().regex(/^ourstaff:[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/, "ourstaff:<id>"),
+  action: z.literal("platform.bypass"),
+  entity: z.literal("plat_bypass_use"),
+  /** The bypass use's name. */
+  entityKey: z.string().min(1).max(200),
+  summary: z.string().trim().min(1).max(600),
+  /** Never a firm in detail (breaker m3): older readers take detail.firmId as a line's firm (AUD-1a's delete rule, FO's
+   *  timeline filters), and this line names none. */
+  detail: AuditDetail.default({}).refine((d) => !Object.keys(d).some((k) => /^firm_?id$/i.test(k)), "a firm-less line holds no firm id in detail"),
+});
+export type OurStaffPlatformEntry = z.input<typeof OurStaffPlatformEntry>;
+/** The firm-less kind: no workspace and a firm of null (an AuditEntry's firm is always a firm id). */
+export const isOurStaffPlatformEntry = (e: AuditEntry | CaseEntry | OurStaffPlatformEntry): e is OurStaffPlatformEntry => !!e && typeof e === "object" && !("workspaceId" in e) && (e as { firmId?: unknown }).firmId === null;
+/** Its one entity, never written as an ordinary firm-trail entry. */
+export const OUR_STAFF_PLATFORM_ENTITY = "plat_bypass_use";
+
+/** What the request a line is written in says about who acts (the adapter's audit context; a fake may be given one). */
+export type AuditRequestContext = { actor?: string; actorType?: string; firmId?: string };
+/** AUD-3c: the refusals of the firm-less kind, shared by the real adapter and the fake. Returns the reason, or null. */
+export function ourStaffPlatformRefusal(e: z.output<typeof OurStaffPlatformEntry>, ctx: AuditRequestContext | undefined): string | null {
+  if (ctx?.actorType !== "OUR_STAFF") return "audit line refused: a firm-less platform.bypass line under an ourstaff: word is written only in a request our staff make";
+  if (ctx.actor !== e.actor) return `audit line refused: the line names ${e.actor}, but this request is ${ctx.actor ?? "nobody"}'s`;
+  if (ctx.firmId) return `audit line refused: this request or job acts for firm ${ctx.firmId}, so its line is that firm's, not a firm-less one`;
+  return null;
+}
 
 /** The port. `Tx` is the caller's transaction (a Prisma transaction client in the API); the port never opens its own. */
 export interface AuditPort<Tx = unknown> {
   /** Records one line inside `tx`. Throws on a refused entry or a failed write, so the caller's transaction rolls back.
-   *  A CaseEntry (AUD-1m: it names a workspace) is a case-side or configuration line; any other entry is an AuditEntry. */
-  record(tx: Tx, entry: AuditEntry | CaseEntry): Promise<void>;
+   *  A CaseEntry (AUD-1m: it names a workspace) is a case-side or configuration line; an OurStaffPlatformEntry (AUD-3c: firm
+   *  null, no workspace) is our staff's firm-less platform.bypass line; any other entry is an AuditEntry. */
+  record(tx: Tx, entry: AuditEntry | CaseEntry | OurStaffPlatformEntry): Promise<void>;
 }
 
 /** The forced failure of the fake (a test's `failOn` matched). */
@@ -129,6 +163,8 @@ export type FakeAudit = AuditPort<unknown> & {
   readonly entries: ReadonlyArray<z.output<typeof AuditEntry>>;
   /** AUD-1m: the case-side lines recorded, in order (kept apart: a case line is never read as a platform line). */
   readonly caseEntries: ReadonlyArray<z.output<typeof CaseEntry>>;
+  /** AUD-3c: our staff's firm-less platform.bypass lines recorded, in order. */
+  readonly platformEntries: ReadonlyArray<z.output<typeof OurStaffPlatformEntry>>;
   /** How many records were refused by `failOn`. */
   readonly failures: number;
   /** Drops the lines recorded under `tx` (a test standing in for a rolled-back transaction). */
@@ -142,20 +178,40 @@ export type FakeAudit = AuditPort<unknown> & {
  *  database). `entries` does not follow a real transaction's rollback: lines recorded earlier in a Prisma transaction
  *  that then rolls back stay listed unless the test calls `discard(tx)` with that transaction (it is the `tx` the row's
  *  code passed; `failOn` receives it too). */
-export function fakeAudit(opts: { failOn?: (e: z.output<typeof AuditEntry>, tx: unknown) => boolean } = {}): FakeAudit {
+export function fakeAudit(opts: { failOn?: (e: z.output<typeof AuditEntry>, tx: unknown) => boolean; context?: () => AuditRequestContext | undefined } = {}): FakeAudit {
   const rows: { tx: unknown; entry: z.output<typeof AuditEntry> }[] = [], caseRows: { tx: unknown; entry: z.output<typeof CaseEntry> }[] = [];
+  const platformRows: { tx: unknown; entry: z.output<typeof OurStaffPlatformEntry> }[] = [];
   let failures = 0;
   const fake: FakeAudit = {
     async record(tx, entry) {
       if (isCaseEntry(entry)) { caseRows.push({ tx, entry: CaseEntry.parse(entry) }); return; }
+      // AUD-3c: the firm-less kind, with the real adapter's refusals (the request's facts from `context`, when given;
+      // without one the fake knows of no request, so it refuses the kind, as the adapter does outside every request).
+      if (isOurStaffPlatformEntry(entry)) {
+        const p = OurStaffPlatformEntry.parse(entry), why = ourStaffPlatformRefusal(p, opts.context?.());
+        if (why) throw new Error(why);
+        // Breaker m1: a test's failOn reaches this kind too (it receives the parsed entry; its firm is null).
+        if (opts.failOn?.(p as never, tx)) { failures++; throw new AuditFailure(entry as never); }
+        platformRows.push({ tx, entry: p });
+        return;
+      }
       const e = AuditEntry.parse(entry);
+      if (e.entity === OUR_STAFF_PLATFORM_ENTITY) throw new Error(`audit line refused: ${OUR_STAFF_PLATFORM_ENTITY} is the firm-less kind's entity, never a firm's line`);
+      // Breaker m2: given a context, the fake keeps AUD-3a's rule as the adapter does: our staff's word only in our staff's
+      // request, and in such a request only their own word (without a context it knows no request, as before).
+      if (opts.context) {
+        const c = opts.context(), ours = e.actor.startsWith("ourstaff:");
+        if ((c?.actorType === "OUR_STAFF") !== ours) throw new Error(ours ? `audit line refused: ${e.actor} is our staff's word, written only in a request our staff make` : `audit line refused: this request is our staff's, so its line names them, not ${e.actor}`);
+        if (c?.actor && e.actor !== c.actor) throw new Error(`audit line refused: the line names ${e.actor}, but this request is ${c.actor}'s`);
+      }
       if (opts.failOn?.(e, tx)) { failures++; throw new AuditFailure(entry); }
       rows.push({ tx, entry: e });
     },
     get entries() { return rows.map((r) => r.entry); },
     get caseEntries() { return caseRows.map((r) => r.entry); },
+    get platformEntries() { return platformRows.map((r) => r.entry); },
     get failures() { return failures; },
-    discard(tx) { for (const list of [rows, caseRows] as { tx: unknown }[][]) for (let i = list.length - 1; i >= 0; i--) if (list[i].tx === tx) list.splice(i, 1); },
+    discard(tx) { for (const list of [rows, caseRows, platformRows] as { tx: unknown }[][]) for (let i = list.length - 1; i >= 0; i--) if (list[i].tx === tx) list.splice(i, 1); },
     async transaction(fn) {
       const tx = {};
       try { return await fn(tx); } catch (err) { fake.discard(tx); throw err; }

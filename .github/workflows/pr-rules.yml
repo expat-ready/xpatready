@@ -61,6 +61,15 @@ jobs:
         env:
           TITLE: "${{ github.event.pull_request.title }}"
         run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs claim --title "$TITLE"
+      - name: a money, permission or migration PR names the decision or requirement of each rule, "Rules settled:" (A348; a warning, never a failure)
+        if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          set -o pipefail   # test: product/tools/check-rules-settled.sh
+          if gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/rs-files"; then
+            printf '%s\n' "$BODY" | python3 -I "$T/rules-settled.py" --files "$RUNNER_TEMP/rs-files" || echo "::warning title=Rules settled (A348)::the check could not run"
+          else echo "::warning title=Rules settled (A348)::the PR's file list could not be read, so the rules were not checked"; fi
       - name: a "Clean-up:" PR is a pure move or deletion; no live file names a moved path (E5, P-674 to P-677)
         if: "${{ !cancelled() }}"
         run: printf '%s\n' "$BODY" | bash "$T/cleanup-pr-check.sh" --base HEAD^1

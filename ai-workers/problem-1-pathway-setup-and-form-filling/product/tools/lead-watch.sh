@@ -71,6 +71,17 @@ fresh "df / and PostgreSQL 127.0.0.1:54329"
 lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$TOOLS/../STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 fresh "lead-upkeep.py context: STATE.md in this copy and LEAD_CONTEXT from the Lead's get_usage"
 
+# 1d. Proof number first (A348, founder 24 Nov): Proven today (net since 00:00 IST), last 24 h and the forecast, above merges.
+git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || ACT "proven: origin/main not fetched, the number below may be old"
+pn=$(python3 -I "$TOOLS/proof-number.py" 2>&1); echo "$pn"; act=$((act + $(grep -c '^ACT' <<<"$pn"))); seen "$pn"
+grep -qE '^(proven |ACT   proven)' <<<"$pn" || ACT "proven: proof-number.py did not run ($(head -1 <<<"$pn"))"
+fresh "proof-number.py: qa/CAPABILITIES.md and app code on origin/main (git only)"
+
+# 1e. Capacity (A348, founder 24 Nov): under 2 standbys (LEAD_STANDBYS=<n>), under 7 GB, old exports over 100 MB. Never deletes.
+cp=$(python3 -I "$TOOLS/capacity-watch.py" --state "$STATE_DIR" 2>&1); echo "$cp"; act=$((act + $(grep -c '^ACT' <<<"$cp"))); seen "$cp"
+grep -qE '^(capacity |ACT   capacity)' <<<"$cp" || ACT "capacity: capacity-watch.py did not run ($(head -1 <<<"$cp"))"
+fresh "capacity-watch.py: LEAD_STANDBYS from the Lead's list_sessions, the disk, /private/tmp (exports: read at most once an hour, time printed)"
+
 # 2. Merges and the queue.
 since=$(date -u -v-"${SINCE}"M '+%Y-%m-%dT%H:%M:%SZ')
 merged=$(gh pr list --state merged --search "merged:>=$since" --json number,title -q '.[]|"#\(.number) \(.title[0:55])"')
@@ -120,6 +131,16 @@ fresh "flow-buffer.py: design/board-lead-a-*.md and board-lead-b-*.md (newest by
 # One ACT per target (Q, A, L, R, B) naming its PRs, the detail on "sle" lines; --dump feeds step-age.py (5c) approval times.
 sl=$(python3 -I "$TOOLS/sle-watch.py" --grouped --dump "$STATE_DIR/sle.json" 2>&1); echo "$sl"; act=$((act + $(grep -c '^ACT' <<<"$sl"))); seen "$sl"
 fresh "sle-watch.py: GitHub open PRs, their comments, label events and ci check runs; cockpit/history.jsonl for the board time"
+# 2i. Retry-only passes (A348, founder 24 Nov): one ACT per suite that passed only on retry until a PR names its fix.
+rw=$(python3 -I "$TOOLS/retry-watch.py" --state "$STATE_DIR" 2>&1); echo "$rw"; act=$((act + $(grep -c '^ACT' <<<"$rw"))); seen "$rw"
+grep -qE '^(retry |ACT   retry)' <<<"$rw" || ACT "retry: retry-watch.py did not run ($(head -1 <<<"$rw"))"
+fresh "retry-watch.py: CI's retry comments and the PRs naming a fix (gh.sh), what earlier checks found in $STATE_DIR"
+
+# 2j. Same cause twice (A351 B1, founder 24 Nov): the second failed batch in 12 h with one suite's same FAIL line. Report only.
+sc=$(python3 -I "$TOOLS/same-cause.py" --state "$STATE_DIR" 2>&1); echo "$sc"; act=$((act + $(grep -c '^ACT' <<<"$sc"))); seen "$sc"
+grep -qE '^(same cause |ACT   same cause)' <<<"$sc" || ACT "same cause: same-cause.py did not run ($(head -1 <<<"$sc"))"
+fresh "same-cause.py: failed ci runs of merge batches and their red parts' logs (GitHub; a finished run's log is read once)"
+
 # 2h. Queue blocked by checks (ENF-758, P-757, P-758): while main's guards are red, or a merge batch failed or a PR was
 # dequeued in 2 h, one ACT per open check-only PR (tests, CI, Mergify, guard tools) approved on its head with green ci: the
 # Lead reads its diff, then merges it in the built-in browser (Lead 4, 23 Nov: never before the read). 20 Nov: #2435 and #2438 held the queue ~4 h, each red without the other.
@@ -264,6 +285,11 @@ fresh "product/state/app-view-latest.txt (app-view-check.sh)"
 # not done (done = a PR number merged on main, never prose), and "operating system: n done of m". Data: design/night-checklist.json.
 nc=$(python3 -I "$TOOLS/night-checklist.py" 2>&1); echo "$nc"; act=$((act + $(grep -c '^ACT' <<<"$nc"))); seen "$nc"
 fresh "night-checklist.py: design/night-checklist.json and origin/main's merge subjects (fetched in step 4)"
+
+# 10c. Lane clean-up list (A348, founder 24 Nov): sessions whose PRs have all merged; the Lead archives, nothing here does.
+cl=$(python3 -I "$TOOLS/lane-cleanup.py" 2>&1); echo "$cl"; act=$((act + $(grep -c '^ACT' <<<"$cl"))); seen "$cl"
+grep -qE '^(lanes to clean up|ACT   lane clean-up)' <<<"$cl" || ACT "lane clean-up list: lane-cleanup.py did not run ($(head -1 <<<"$cl"))"
+fresh "lane-cleanup.py: git worktrees, main's merges (fetched in step 4) and the app view saved in step 10"
 
 # 11. What the founder's board shows (B201, founder A117 16 Nov: the check missed six stuck items his board showed; P-639:
 # never take the board's word blindly). The board's own Today card and Stuck panel (cockpit-data.py --watch reads the

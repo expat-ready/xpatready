@@ -1,6 +1,7 @@
 // FO-6 part 2 (P-606 (8)): SigningPort's contract (./port.ts), run by fakeSigning here and by FO-6v's vendor adapter on
 // recorded responses, so the fake never promises what the vendor adapter does not do. The port file's sentences: a send
-// takes no email and no vendor option, needs at least one client and exactly one firm signer; a second send of one
+// takes no email and no vendor option, needs at least one client and at most one firm signer (FO-6d: a
+// clients-only send is accepted and completes once every client signed); a second send of one
 // request is refused; each signer gets an embedded link; another firm's or an unknown document or signer reads as not
 // found; a cancelled envelope gives no link and cancelling again changes nothing; the files come only once all signed,
 // sealed and audit apart; a webhook verifies only with its own signature on the exact body, a malformed one is null and
@@ -35,15 +36,27 @@ export const signingPortContract = defineContract("SigningPort", (make: () => Pr
     },
   },
   {
-    name: "a send with an email address, a vendor-email option, no firm signer, two firm signers, one signer twice or a single signer is refused",
+    name: "a send with an email address, a vendor-email option, two firm signers, one signer twice or a firm signer alone is refused",
     async run() {
       const { port } = await make(), base = { firmId: FIRM_A, requestId: id(3), title: "Sample", document: doc };
       await expectRefused(() => port.send({ ...base, signers, sendEmails: true } as never), "a vendor-email option");
       await expectRefused(() => port.send({ ...base, signers: signers.map((s) => ({ ...s, email: "a@example.com" })) } as never), "a signer's email address");
-      await expectRefused(() => port.send({ ...base, signers: signers.filter((s) => s.role === "CLIENT") }), "no firm signer");
       await expectRefused(() => port.send({ ...base, signers: [...signers, { signerId: id(22), role: "FIRM", name: "Second" }] }), "two firm signers");
       await expectRefused(() => port.send({ ...base, signers: [signers[0], signers[0], signers[2]] }), "one signer twice");
       await expectRefused(() => port.send({ ...base, signers: [signers[2]] }), "a firm signer alone (no client)");
+    },
+  },
+  {
+    name: "FO-6d: a send with clients only (no firm signer) is accepted, and its files come once every client signed",
+    async run() {
+      const h = await make(), only = signers.filter((s) => s.role === "CLIENT");
+      const { providerDocumentId: d } = await h.port.send({ firmId: FIRM_A, requestId: id(4), title: "Sample document", document: doc, signers: only });
+      await h.act(FIRM_A, d, CLIENT_1, "signed");
+      await expectRefused(() => h.port.fetchFiles(FIRM_A, d), "the files before the second client signed", (e) => e instanceof SigningNotCompleted);
+      const calls = await h.act(FIRM_A, d, CLIENT_2, "signed");
+      expect(calls.length === 2, "the last client's signature brings the completed event");
+      const f = await h.port.fetchFiles(FIRM_A, d);
+      expect(f.sealed.bytes.length > 0 && f.audit.bytes.length > 0, "the sealed and audit files come once every client signed");
     },
   },
   {

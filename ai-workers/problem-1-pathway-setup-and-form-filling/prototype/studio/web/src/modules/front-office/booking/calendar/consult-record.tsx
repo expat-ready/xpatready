@@ -128,6 +128,11 @@ function RecordForm({ booking, record, bookedMinutes, suggested, onSaved, onRelo
   const [errors, setErrors] = React.useState<Errors>({});
   const [busy, setBusy] = React.useState(false), [saved, setSaved] = React.useState(false), [failed, setFailed] = React.useState<{ text: string; reload?: boolean } | null>(null);
   const addRef = React.useRef<HTMLInputElement>(null), saveRef = React.useRef<HTMLButtonElement>(null);
+  // The busy Save let go of the focus (break m7): it goes back after the render that enables Save again (an effect on a
+  // counter). A requestAnimationFrame asked before that render could run first, on a still-disabled Save, and the dialog
+  // kept the focus (c2 J-S6 red on a busy machine: the focus on the dialog, not Save).
+  const [focusSave, setFocusSave] = React.useState(0);
+  React.useEffect(() => { if (focusSave) saveRef.current?.focus(); }, [focusSave]);
   /** The version this form last read or saved (STANDARDS §4): a first save names none. */
   const version = React.useRef<number | null>(record?.version ?? null);
   const changed = () => { setSaved(false); };
@@ -179,7 +184,7 @@ function RecordForm({ booking, record, bookedMinutes, suggested, onSaved, onRelo
         text: code === "STALE_VERSION" ? WORDS.stale : code === "NOT_ATTENDED" || code === "CANCELLED" ? WORDS.notAttended : err instanceof StaffApiError && err.status === 403 ? WORDS.refused : err instanceof Error ? err.message : "Not saved. Please try again.",
         reload: code === "STALE_VERSION" || code === "NOT_ATTENDED" || code === "CANCELLED",
       });
-    } finally { setBusy(false); requestAnimationFrame(() => saveRef.current?.focus()); }   // the busy button let go of the focus (break m7)
+    } finally { setBusy(false); setFocusSave((n) => n + 1); }   // the busy button let go of the focus (break m7)
   };
 
   return (

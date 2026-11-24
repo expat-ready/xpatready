@@ -15,10 +15,11 @@
 // or shown from here is Sample. Legal points (e-signature identity, D-6): Unconfirmed: no counsel.
 
 /// What is signed (rows rev 16.16): a retainer agreement or a consultation agreement (both FO-5's fo_retainer kinds).
-/// A database enum so FO-6d adds OTHER with one value.
+/// A database enum so FO-6d adds OTHER with one value: OTHER is a PDF the firm uploads (fo_signing_document, FO-6d).
 enum FoSigningDocumentKind {
   RETAINER
   CONSULTATION
+  OTHER
 }
 
 /// Who carries the envelope: our in-memory fake (CI, the demo) or the vendor adapter (FO-6v, P-563).
@@ -161,4 +162,25 @@ model FoSigningHookReceipt {
   @@unique([firmId, provider, providerDocumentId, eventId])
   @@index([firmId, requestId])
   @@map("fo_signing_hook_receipt")
+}
+
+/// FO-6d (AG-5-61): a PDF a firm uploads to send for signature (a request of kind OTHER names it: document_id and
+/// document_version_id are its id, version 1). Its FilesPort key under signing/ and sha256, the prospect it was sent from
+/// and who uploaded it (the firm and the uploader keyed as fo_signature_request's; the prospect a plain uuid checked by the API). Insert-only, never deleted (migration fo6d_any_document).
+model FoSigningDocument {
+  id         String   @id @default(uuid()) @db.Uuid
+  firmId     String   @map("firm_id") @db.Uuid
+  title      String
+  fileKey    String   @map("file_key")
+  sha256     String
+  prospectId String?  @map("prospect_id") @db.Uuid
+  uploadedBy String   @map("uploaded_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  firm     PlatformFirm  @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  uploader PlatformStaff @relation("FoSigningDocumentUploadedBy", fields: [firmId, uploadedBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, id])
+  @@index([firmId, prospectId])
+  @@map("fo_signing_document")
 }

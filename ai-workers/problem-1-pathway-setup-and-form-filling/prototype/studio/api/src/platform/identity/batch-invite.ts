@@ -4,8 +4,8 @@
 // never a 400 for the whole form. The service (PlatformIdentity.inviteBatch) adds the checks that need the database (role
 // rules, already staff, already invited) through the same row check the single invite uses, then one seat check for the
 // valid rows (the rows past the limit are flagged OVER_SEAT_LIMIT), all inside one locked transaction; the rows with no
-// flag are sent. The name is only the email's greeting: the batch never stores it (part 1's rule; the single invite's
-// displayName is PF-4dn's, and the batch does not pass it).
+// flag are sent. The name is the email's greeting and, since R1.20's screen (the Invite people form sends one batch),
+// the invitation's display name, as the single invite's (PF-4dn); nameOf's rule is within displayNameOf's.
 // A row with a field we do not know ("nmae") is the body's problem, not the row's data (PF-28's one input rule): the whole
 // form is refused 422 ROWS_FLAGGED with those rows and `fields`, and nothing is sent, so a typo never sends an invitation
 // without what the sender meant to give.

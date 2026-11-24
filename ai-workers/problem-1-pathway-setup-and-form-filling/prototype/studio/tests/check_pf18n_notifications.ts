@@ -242,9 +242,9 @@ try {
   };
   const mine = await call("GET", "/api/platform/me/notifications/items", OFF);
   const deadline = mine.body.items?.find((i: { item: { id: string } }) => i.item.id === WORK);
-  ok("PF-18n DW6 pass: GET …/items returns the reminder with the case's link (/cases/<case id>), ids only",
-    mine.status === 200 && deadline?.kind === "case-stage-deadline" && deadline.group === "MY_DEADLINES" && deadline.item.kind === "case-stage" && deadline.link === `/cases/${CASE}` && deadline.readAt === null
-    && Object.keys(deadline).sort().join() === "createdAt,group,id,item,kind,link,readAt", mine.body);
+  ok("PF-18n DW6 pass: GET …/items returns the reminder with the case's link (/cases/<case id>) and, since part 2, its case number as label and the reader's zone; ids only",
+    mine.status === 200 && deadline?.kind === "case-stage-deadline" && deadline.group === "MY_DEADLINES" && deadline.item.kind === "case-stage" && deadline.link === `/cases/${CASE}` && deadline.label === "C-2026-90001" && deadline.readAt === null
+    && Object.keys(deadline).sort().join() === "createdAt,group,id,item,kind,label,link,readAt" && typeof mine.body.zone === "string", mine.body);
   ok("PF-18n DW4 pass: my list is newest first and holds only my rows (every row from msg_notification for me, none of the representative's)",
     mine.body.items.length === (await rowsOf(OFF)).length && mine.body.items.every((i: { createdAt: string }, n: number, a: { createdAt: string }[]) => n === 0 || a[n - 1]!.createdAt >= i.createdAt)
     && (await call("GET", "/api/platform/me/notifications/items", REP)).body.items.every((i: { id: string }) => !mine.body.items.some((m: { id: string }) => m.id === i.id)), mine.body);
