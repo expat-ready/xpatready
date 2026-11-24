@@ -132,3 +132,56 @@ Feedback and state, and accessibility, rise from ½ to 1: the change is said onc
 Not tested: a real screen reader (this result comes from reading the DOM). D17 and D20 stay with the founder.
 
 (b) Approve de662c50549d4cdb01ce221bc62775eb3e786bf5
+
+---
+
+## Round 3: re-review of 68f88f261 (diff only)
+Head reviewed: `68f88f261eab1fb9b233c26e93e8a8371a7d7cd8`. The diff is `workspace.tsx` only. Running copy: :4747, db xr_studio_so, built from this head. Tested as user-S of sample-solo. No rows were inserted.
+
+**Verdict: Ship.** Nothing is open at Blocker or Major.
+
+### What changed
+- `onForget` now only sets `NOBODY` (`workspace.tsx:256`).
+- The reset to a single page (`startAlone`, `:232-236`) now runs from `onStaffChange` when `was === NOBODY && owner === "local"` (`:244`).
+- That branch is checked before the "ended by itself" branch, so a 401 with a reason still leaves the page alone.
+
+The reset now happens only after the token has gone, so remounted pages (the bell with refetch on mount) can no longer call with the old token. This is the check_pf6a DW5 cause.
+
+### Is there a path where NOBODY is set but the session never ends?
+I read every caller of `signOutHere()` and `forget()`. All of them end the session.
+
+| Path | How the session ends | Code |
+|---|---|---|
+| Server answers 200 | `endSession(null)` | `platform/frame.tsx:92` |
+| Server answers 401 | `staffApi` ends it, with the server's reason, when `staffToken() === token` | `session.ts:99` |
+| Other failure (network error, 5xx, malformed answer) | the `catch` calls `endSession(null)` | `platform/frame.tsx:94` |
+| Sales frame | `setStaffToken(null)` straight after `signOutHere()` | `sales-frame.tsx:63` |
+| Another window's Sign out | `forget(); endSession(null)` | `drafts.tsx:76` |
+
+Each one calls `setStaffToken(null)`, which runs `changed()` synchronously. `onStaffChange` passes its "same scope" guard because `lastScope` still holds the person.
+
+A window whose session had already ended by itself never hears the broadcast (`!who` at `drafts.tsx:74`). That was already so before this commit.
+
+Browser probe: Sign out with three tabs open. I forced the sign-out request's answer with Playwright routing and counted mounted tab boxes, meaning portal boxes that still have content.
+
+| Answer | Mounted before → after | Tab lists kept | Staff token | Calls with the old token after the click |
+|---|---|---|---|---|
+| 200 | 3 → 1 | none | null | none |
+| 401 | 3 → 1 | none | null | none |
+| 500 | 3 → 1 | none | null | none |
+| Network failure (aborted) | 3 → 1 | none | null | none |
+| Answer delayed 5 s | 3 during the wait, 1 after | none, also during the wait | null | none |
+
+In every case the sign-in card showed and there were no page errors.
+
+### Minor notes, not blocking
+1. **A slow server keeps the tabs on screen until it answers.** The session is still live then and nothing is stored, so the screen stays consistent. Before this commit the tabs went at once. The Sign out button shows busy meanwhile.
+2. **A narrow theoretical gap.**
+   - **When.** The token passes its client-side `expiresAt` while the sign-out request is in flight.
+   - **What happens.** `staffToken()` is then `null`, which is not the token sent, so a 401 neither ends the session nor runs the `catch`. `NOBODY` stays and the tabs are not reset.
+   - **Recovery.** A second click on Sign out ends it, through the null-token 401 at `session.ts:99`. The window is milliseconds within a one-hour token. No fix is needed for this PR.
+
+### Journey score
+Unchanged at **10/10**. Sign out leaves one page, keeps nothing and sends nothing with the old token, whatever the server answers.
+
+(b) Approve 68f88f261eab1fb9b233c26e93e8a8371a7d7cd8
