@@ -1,3 +1,34 @@
+# Journey test, reviewer role: FO-7t part 1, round 14 (round 13 M1; head 0e3456abf)
+
+Run 24 Nov by the Opus 5.5 reviewer. The row is API only, so the journeys are simulated through the routes: no browser walk.
+* How it was run: check_fo7t_trust's own Nest app on isolated copies (run-suites.sh --only, ports +14000). :4400 was not touched, and no model was called.
+* What was re-walked: only round 13's journey 4. The diff is one test deposit and a comment.
+
+## Journeys re-walked
+1. **Case Officer on CASE's team reads Client A's ledger and balances.**
+   * The newest row they see is now a CASE deposit of 3.00, recorded after CASE2's hidden 25.00.
+   * They see CASE's rows and the no-case rows only.
+   * The running balance at the newest row equals the visible sum, and `/balances` agrees.
+   * **Held:** 62/0, twice.
+2. **Break-it: a party-wide running balance planted in `reads.ts`.**
+   * The visibility filter was moved out of the window CTE to the outer select.
+   * The check goes red, 61/1, on the DW10 on-team check.
+   * The officer's rows stay correctly filtered, so only the figure leaks, and the check catches it.
+   * Reverted afterwards.
+   * **Held by the check** (round 13 M1 fixed).
+
+## Data underneath
+* I compared `money_trust_entry`'s sum over (case CASE or no case) against the newest `balanceAfterMinor` and the `/balances` total. The party's whole (`dbBal`) still differs by CASE2's money.
+* The audit and event counts (DW10, DW18) still compare live counts, and they still match with the extra deposit.
+
+## Score
+**8.5/10 (pass, no criterion at 0).**
+* "Correct data" is back to 1.
+* Every other criterion stays as in round 10 (table in `journey-test-reviewer-2026-11-23.md`).
+
+## Not tested
+* A real screen reader, an intended user's unaided walk, and widths or zoom: there is no screen, and D17/D20 stay with the founder.
+
 # Journey test, reviewer role: FO-7t part 1, round 13 (merge of #3321, re-stamp; head 401753bc7)
 
 Run 24 Nov by the Opus 5.5 reviewer. The row is API only, so the journeys are simulated through the routes: no browser walk.

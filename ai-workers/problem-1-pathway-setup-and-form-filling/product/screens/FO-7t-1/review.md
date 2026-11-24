@@ -1,3 +1,53 @@
+# Round 14 (round 13 M1; diff only, 24 Nov 2026; 401753bc7 → 0e3456abf)
+
+Round 14 verdict line: `Reviewer: Approve 0e3456abf46da2379f68ec3c80548a28453ef20a`
+
+Scope: `git log 401753bc7..0e3456abf`, two commits. The first, 8647bd829, is the round-13 record (review.md and the journey report, notes only). The second, 0e3456abf, changes only `prototype/studio/tests/check_fo7t_trust.ts` (+5 −2). No app code, migration or other suite changed. The tree was clean before and after my runs, and the probe was reverted with `git checkout -- api/src/client-money/trust/reads.ts`.
+
+## 1. M1 (round 13): fixed
+* The fix is round 13's suggested line. `tests/check_fo7t_trust.ts:342` records `dep({ method: "WIRE", amountMinor: 300, caseId: CASE, idempotencyKey: "fo7t-case-after-case2" })` after the hidden CASE2 deposit (l. 339). The idempotency key appears only once in the file.
+* As a result, the officer's newest visible row (`ti[0]`, CASE 3.00) is newer than the hidden CASE2 row.
+  * A window over all of PA's CAD rows gives that row the party's whole, `dbBal("CAD")`.
+  * The real code gives it `caseSum`.
+  * The two differ by CASE2's money, and `ti[0].balanceAfterMinor === caseSum` (l. 347) now tells them apart.
+* **My probe** in `api/src/client-money/trust/reads.ts`:
+  * I removed `seen(scope, "e")` from the CTE's conditions (l. 55), added `e.person_id, e.company_id` to `v`, and put `${seen(scope, "v")}` in the outer `where`.
+  * The window at l. 61 then runs over all of PA's rows, and visibility is applied only afterwards.
+  * Result: **61 passed, 1 failed**. The failure is the DW10 on-team check ("…never the party's whole"). Its detail shows the officer's rows still filtered correctly (CASE and no-case only, newest CASE 300), so only the running balance tripped it.
+  * After restoring the file: 62/0.
+* Review M2 / break B4 is guarded again.
+
+## 2. The added deposit does not change any later check's meaning
+* l. 343 `caseSum` is read after the new deposit, so it includes the 3.00. `caseSum !== dbBal("CAD")` still holds by CASE2's 25.00.
+* l. 348 compares the officer's `/balances` total with that same `caseSum`.
+* l. 368-371 (DW10 audit): every count compares two live counts. The audit lines for `trust_money.deposited` are counted against TRUST payments, so the extra deposit adds one of each and the equality holds.
+* l. 377-381 (DW18): one `trust.deposited` event per TRUST payment, also two live counts. The key `fo7t-case-after-case2` has no `fo7t.` and is not in the payload.
+* l. 395 (DW6 order): `dbBal` is read live, by the Owner, after a later deposit and refund. It is unaffected.
+* The checks before l. 339 (l. 274-305 totals, held figure) run before the new row.
+* The cancel block (l. 350-366) uses requests, not entries. The crowd check (l. 238) is on PC.
+
+## 3. n1 (comment): addressed
+* l. 334-335 now say "gets a running balance summed over what they see, never the party's whole balance". The stale "sees CASE's entries only … CASE's own money" is gone, and the comment agrees with l. 336-338 (#3321).
+* l. 340-341 record why the visible row must come after the hidden one. That was the hint from round 13.
+* n2 (CAD-only ledger filter) was optional and is unchanged. It is not a finding, because `/balances` covers every currency.
+
+## 4. Runs on 0e3456abf (mine)
+* How: `run-suites.sh --only check_fo7t_trust.ts`, which uses its own Nest app and database (copies runtime_*, ports +14000). :4400 was not touched, live AI was off, and no model was called.
+* Results:
+  * Head code: 62/0, twice.
+  * Party-wide window probe: **red, 61/1**.
+  * The probe was reverted and `git status` was empty.
+* Not re-run: the other suites from round 13 (check_pf8b_f4_migrations, check_csmv1_money_visibility, check_fo7b_c5_scope, check_fo7a_money_schema). The diff touches none of their inputs.
+
+## 5. Findings
+None open. M1 is fixed and n1 is addressed. n2 is still optional.
+
+Journey score: **8.5/10** (pass, no criterion at 0). "Correct data" is back to 1, because the check again guards the running balance against a C5 leak. Report: `screens/FO-7t-1/journey-test-reviewer-2026-11-24.md` (round 14 section). D17 and D20 remain "simulated only".
+
+**Verdict: Approve** (Ship). No Blocker or Major is open. Round 13 already approved the merge, the re-stamp to 20261124033000, the code, and the DW3/DW4 and cancel test changes, and this round does not touch them.
+
+Reviewer: Approve 0e3456abf46da2379f68ec3c80548a28453ef20a
+
 # Round 13 (Lead 17/18: re-stamp 033000, merge, #3321; diff only, 24 Nov 2026; c6d66e6b0 → 401753bc7)
 
 Round 13 verdict line: `Reviewer: Block 401753bc77747498fd39a9a18bd72f58c4a6b66a`
