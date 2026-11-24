@@ -50,3 +50,36 @@ Break-it was covered by the review's mutations and probes. They included lock ti
 3. Use neutral busy words (m3). This raises plain words.
 
 Not tested: a real screen reader, an intended user's unaided walk (D17/D20 stay with the founder), a live Cognito pool, and a reset two-step through the page (it needs step-up; covered by the PR's race test).
+
+## Round 2 (head b902813c001a0b5747564f0a2c2a80f85abe9e34)
+
+**How I tested:** an isolated copy on :4437 (runtime lane) with PLATFORM_IDENTITY=local and the sample seed, started fresh for each run, then stopped and its database dropped. I re-ran round 1's journeys (scratchpad `r2/journey.ts`, `r2/j5.ts`) twice in headless Chromium, with the same results both times. Journey 5 adds a 16 s holder.
+
+1. **Invitee, main path:** Continue goes to `/sign-in/callback` in 79-99 ms, 1 staff row. Held.
+2. **Invitee, firm busy, keyboard only:**
+   * Refused after 1.81-1.82 s. The notice is `role="alert"` and Continue stays.
+   * axe 0; 400/1024 px with no sideways scroll.
+   * The retry goes through in 36-46 ms, and the data is exact: 1 staff row, 1 accepted invitation, 1 audit line, 1 joined event.
+   * **The words are unchanged:** "Someone else in your firm is changing staff right now". The invitee's new words never reach this case (review R2-m1). Focus still leaves Continue after the refusal (outside the diff).
+3. **Error state:** the only console line is the expected 503.
+4. **Owner signs a person out everywhere while busy:** 503 FIRM_BUSY at 1520 ms, and the retry gives 200. Held.
+5. **Own sign-out while busy:**
+   * 3 s holder: 200 at 2.7 s, then 401.
+   * **7 s holder: 200 at 6.7 s, 1 revocation, then 401** (round 1: 500 with a live token).
+   * 16 s holder: 500 at 15.7 s, 0 revocations, and the token still gets 200 (R2-m3; beyond any bounded holder).
+6. **Invitee while the global `module_event_seq` lock is held 4 s:** **200 after 3716 ms**, 1 staff row (twice). Round 1 gave 503 after the provider call.
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | Journeys 1, 2, 4 and 6 complete; 6 now without a retry |
+| Next step obvious | 1 | Continue stays under the 503 (journey 2) |
+| Plain words | ½ | The invitee is still told "someone else in your firm" (journey 2, R2-m1) |
+| Feedback and state | 1 | A 7 s holder now gives a real sign-out; only a holder of more than 15 s still shows done with a live token (R2-m3) |
+| Correct data | 1 | Journey 6 commits once; no provider change without our records in any repro |
+| Error recovery | 1 | Every refusal rolls back and a retry works |
+| Accessibility and screen sizes | 1 | axe 0; 400/1024/1440 px; keyboard path completes |
+| Speed | 1 | Refusals in 1.5-1.8 s; journey 6 waits only as long as the holder |
+| Visual quality | 1 | Unchanged team notice (`r2/shots/j2-busy-1024.png`) |
+| Trust and sources | 1 | No AI output; limits stated in the code header and PR |
+
+**9.5/10, a pass, none at 0.** To raise it: pass the invitee's words through `lockFirm` (R2-m1). Not tested: a real screen reader, an intended user's unaided walk (D17/D20 stay with the founder), a live Cognito pool.

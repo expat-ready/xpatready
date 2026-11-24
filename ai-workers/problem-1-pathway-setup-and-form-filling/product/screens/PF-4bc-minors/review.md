@@ -64,3 +64,80 @@ Details: `screens/PF-4bc-minors/journey-test-reviewer-2026-11-24.md`.
 A live Cognito pool (C21); a real screen reader; an intended user's unaided walk (D17/D20 stay with the founder); `tsc`.
 
 Verdict: Approve e83c22ccdc0e7d38ef3f6441a3e7589139039144
+
+## Round 2
+
+Reviewer: a fresh session, 24 Nov 2026. Head `b902813c001a0b5747564f0a2c2a80f85abe9e34`. I reviewed only `git diff e83c22ccd..b902813c0 -- ':!*/product/screens/*'`: firm-lock.ts, service.ts, provider.ts (a comment) and the PR test.
+
+**Verdict: Ship (Approve).** The breaker's M1 is fixed, and so are breaker m1, breaker m3 and review m1, m2, m4 and m5. There are no Blockers and no Majors. One claimed fix is not delivered in its main case: the invitee's words (review m3 / breaker m4), shown below as R2-m1.
+
+### What I ran
+* PR test: **56 passed, 0 failed**. `graph.mjs --check`: exit 0. `git status` is clean afterwards, and every scratch database I made was dropped.
+* **M1, the breaker's own script** (`pf4bcm/a.mts A1,A1q` at head): A1 gives **200 in 2514 ms**, with 1 Cognito user, 1 staff row and `accepted_at` set (the retry is a correct 410). A1q gives **200 in 2511 ms**, with 1 Cognito user and 1 staff row. Through the app on an isolated copy (:4437), a 4 s `module_event_seq` holder gives **200 in 3716 ms** (run twice). Round 1 gave 503 after the provider call. **M1 is fixed.**
+* **Breaker m1** (A2 and A2s, overlapping key-share stream on the person's row): reset and sign-out-everywhere give **503 FIRM_BUSY at 10.0 s, Cognito untouched** (`totp=true`, `signOuts 0→0`), 0 audit lines and 0 revocations. With the stream at 14 s (past FIRM_TX, the P2028 path): 503 at 14.6 s, Cognito untouched. Round 1 gave 500 with Cognito changed. **Fixed.**
+* **Breaker m3 / review m2:**
+  * A6 (40 sign-out-everywhere requests behind a 6 s holder): 10 × 200 and 30 × 503, no 500 (round 1 had 3 × 500).
+  * A3 (own sign-out behind a 6 s holder): 200 with the token ended.
+  * A4 mixed burst: only 200 or 503, and Cognito and our records agree for each person.
+  * A5: 503 at 1577 ms with 0 Cognito calls.
+* **Real P2028 shapes** (scratchpad `r2/p2028.mts`): an expired transaction ("A query cannot be executed on an expired transaction") and maxWait ("Unable to start a transaction in the given time") are both `PrismaClientKnownRequestError` with `code === "P2028"`, and both map to 503. The PR test uses a synthetic error, but the real ones match.
+* **Mutations** (in place, each file restored and checked with `cmp`):
+
+  | Mutation | PR test |
+  |---|---|
+  | Mu1 txClock stores nothing | 1 fails |
+  | Mu6 P2028 dropped | 1 fails |
+  | Mu7 no lift before createUser | 1 fails |
+  | Mu8 room margin removed | 1 fails |
+  | Mu9 sign-out back to Prisma's defaults | 1 fails |
+  | Mu2 inFirm without txClock | **passes 56**; caught by check_pf4b_session_reads (3 fail) |
+  | Mu3 accept without txClock | **passes 56**; caught by check_pf4b_session_reads and check_pf6m2_invite_recheck (3 fail each) |
+  | Mu4 one shared clock reset on each start (fails open for older transactions) | **passes 56** (R2-m2) |
+  | Mu5 roomForProvider fails *open* with no clock | **passes 56** (R2-m2) |
+  | Mu10 accept's outer catch without the invitee words | **passes 56** (R2-m1) |
+
+### The checks asked for
+* **txClock covers the whole callback** in inFirm (service.ts:49-57) and accept (:114-155): every statement and all three provider calls run inside `started.run`. Its context survives Prisma's awaits, and this was shown three ways. A probe ran `$queryRaw`, `$executeRawUnsafe` and `Promise.all` of thenables, then `roomForProvider` answered "room ok". Reset, sign-out-everywhere and accept answer 200 through the app, which they could not do if the store were lost, since it fails closed. And Mu2 and Mu3 turn those suites red. Node 22.23.
+* **Fails closed:** with no store, the probe returns 503 FIRM_BUSY (firm-lock.ts:41-42). This is not pinned (R2-m2).
+* **Refusing legitimate changes:** the refusal comes after 7 s of the transaction (12 s − 3 s − 2 s). The clock starts after BEGIN, so it never runs ahead of Prisma's own timer. The bounded waits before a provider call add up to about 1.5 s per lock attempt, so only multi-wait contention gets there, which is the case m1 means to refuse. A5b and A4 succeed in 37 ms and in under 4 s. I found no legitimate fast change that is refused.
+* **A P2028 after the provider changed** can only come at commit, or, in accept, at the now-unbounded `module_event` insert. A retry is safe for all three calls:
+  * createUser: UsernameExists → AdminGetUser, so the same subject is used (A1 retry, round 1).
+  * resetTwoStep: MFA turned off again; `factors` then reads null, so it is a no-op.
+  * signOutEverywhere: AdminUserGlobalSignOut repeats harmlessly.
+  * What is left is "provider changed, records rolled back" until the person retries. That needs a commit slower than about 2 s, or the global sequence lock held for more than about 2-5 s after a 3 s provider call. It is narrow and stated in the header, so it is not counted.
+* **The 503 on the bounded paths** keeps the accept page's Continue (journey 2) and shows the words in the person panel.
+
+### Blockers
+None.
+
+### Majors
+None.
+
+### Minors (Should)
+* **R2-m1. The invitee still gets "Someone else in your firm is changing staff right now" in the usual busy case**, so review m3 / breaker m4 is not fixed there.
+  * Why: `lockFirm` maps its own timeout with the default words (firm-lock.ts:46, `busyOnLockTimeout(e)`). The 503 HttpException it throws then passes accept's outer `.catch` unchanged (service.ts:155).
+  * Evidence: probe W1 (firm A's row held 2.5 s, then accept) gives 503 at 1596 ms with the old words. Journey 2 in the browser shows the same, twice.
+  * When the new words do appear: only for a room refusal or a P2028.
+  * Why the pin missed it: the pin at check_pf4bc_cognito_admin.ts:264 is satisfied by the `roomForProvider(tx, BUSY_WORDS_INVITEE)` call. Mu10 passes.
+  * Fix: `lockFirm(tx, firmId, words = BUSY_WORDS)` passing `BUSY_WORDS_INVITEE` from accept (:116), plus a test: accept with the firm row held answers with `detail === BUSY_WORDS_INVITEE`.
+  * Note: the new words still say "Your firm's account". r3-m1's condition was words without "your firm"; this reads acceptably as the firm being joined, so I do not count it.
+* **R2-m2. Two properties of the room check are not pinned.**
+  * Fail-closed with no clock (Mu5): a future fourth provider call outside txClock would fail open silently.
+  * A clock per transaction (Mu4): the comment at check_pf4bc_cognito_admin.ts:243 ("a shared one would refuse the fresh transaction") holds only for a clock set once. One reset on each start fails open and passes.
+  * Fix: assert `roomForProvider` outside `txClock` → 503. Then start transaction A, wait past 7 s, start B, and check that A is still refused.
+* **R2-m3. An own sign-out behind a firm-lock holder of more than 15 s is still a 500 with a live token** (the rest of breaker m2).
+  * Journey 4, twice: a 16 s holder gives **500 after 15.7 s**, 0 revocations, and the old token still gets 200. The browser forgets it (frame.tsx:92).
+  * The unbounded path does not map P2028 (service.ts:57, `Promise.reject(e)`). PF-11c's close or plan change can hold the firm lock that long.
+  * A 7 s holder now gives 200 and the token ended (round 1: 500). Review m2's condition, a limit above any bounded holder, is met.
+  * Fix (optional): map P2028 to 503 on the unbounded path as well.
+
+### Dimensions changed since round 1
+D2 5/5 (M1, breaker m1) · D11 4/5 (R2-m3, rarer than round 1's m2) · D10 4/5 (R2-m1) · D16 4/5 (honest pins for every changed line except R2-m1/R2-m2; Mu2/Mu3 caught by neighbouring suites) · the rest as round 1. BIC-01–20: N/A (not a case-side screen).
+
+### Journey score: 9.5/10, a pass (none at 0)
+Details: Round 2 in `screens/PF-4bc-minors/journey-test-reviewer-2026-11-24.md`.
+
+### Could not check
+A live Cognito pool; a real screen reader; an intended user's unaided walk (D17/D20 stay with the founder); `tsc`. Two databases named `xr_studio_pf4bc_scratch_13331` and `_13458`, with no live process behind them, were on :54329 after my runs. I could not tell whether they are mine, so I left them for `tools/prune-test-dbs.sh`.
+
+Verdict: Approve b902813c001a0b5747564f0a2c2a80f85abe9e34
