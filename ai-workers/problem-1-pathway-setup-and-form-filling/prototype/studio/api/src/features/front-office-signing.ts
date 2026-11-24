@@ -1,6 +1,9 @@
 // FO-6 part 3 and part 4a: retainer signing on the fake vendor (api/src/front-office/signing/): the state read and the provider's
 // webhook door; the platform's MailPort for "Your signed agreement"; the file store is the retainer feature's
 // (LocalFiles, front-office-retainers.ts) and the clock the platform's. The send step is called from FO-5's Send.
+// Part 4c: the firm signer's link (on the state read's controller), and on a lane copy only (PLATFORM_ENVIRONMENT=local) the
+// stand-in signing page with the fake's links pointing at it; anywhere else the page is not registered, and a start that
+// registers it fails (`assertStandInPageAllowed`, Lead 29 on #3490).
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
 import type { MailPort } from "../../../ports/mail.ts";
@@ -8,15 +11,32 @@ import { LocalFiles } from "../front-office/files.ts";
 import "../front-office/signing/email-code.ts";   // part 4a: registers the firm's email-code setting (P-564) at start
 import { SigningDoorController } from "../front-office/signing/door.controller.ts";
 import { SigningDoor } from "../front-office/signing/door.ts";
-import { useSigningMail } from "../front-office/signing/handlers.ts";
+import { assertStandInPageAllowed, FakeSigningPageController } from "../front-office/signing/fake-page.ts";
+import { useSigningMail, useSigningPort } from "../front-office/signing/handlers.ts";
 import { SigningHooksController } from "../front-office/signing/hooks.ts";
+import { signingPublicBase } from "../front-office/signing/link-mail.ts";
+import { fakeSigning } from "../front-office/signing/port.ts";
 import { SigningController } from "../front-office/signing/routes.ts";
 import { Signing } from "../front-office/signing/service.ts";
 import { PlatformClock } from "../platform/identity/port.ts";
 import { MESSAGES_MAIL } from "./platform-messages.ts";
 
-export default {
-  controllers: [SigningController, SigningHooksController, SigningDoorController],   // part 4b: the public door
-  providers: [{ provide: Signing, useFactory: (db: Db, files: LocalFiles, clock: PlatformClock, mail: MailPort) => { useSigningMail(mail); return new Signing(db, files, { now: () => new Date(clock.now()) }); }, inject: [Db, LocalFiles, PlatformClock, MESSAGES_MAIL] },
+/** The feature for one environment (plan challenge m6: testable without a start). */
+export function signingFeatureFor(env: string | undefined) {
+  const local = env === "local";
+  const feature = {
+    controllers: [SigningController, SigningHooksController, SigningDoorController, ...(local ? [FakeSigningPageController] : [])],   // 4b: the public door; 4c: the stand-in page (local only)
+    providers: [{ provide: Signing, useFactory: (db: Db, files: LocalFiles, clock: PlatformClock, mail: MailPort) => {
+      useSigningMail(mail);
+      const now = () => new Date(clock.now());
+      // Part 4c: on a lane copy the fake's embedded links open the copy's own stand-in page (else signing.fake.invalid).
+      if (local) useSigningPort(fakeSigning({ now, linkBase: signingPublicBase }));
+      return new Signing(db, files, { now });
+    }, inject: [Db, LocalFiles, PlatformClock, MESSAGES_MAIL] },
     { provide: SigningDoor, useFactory: (db: Db, clock: PlatformClock) => new SigningDoor(db, { now: () => new Date(clock.now()) }), inject: [Db, PlatformClock] }],
-} satisfies Feature;
+  } satisfies Feature;
+  assertStandInPageAllowed(feature.controllers, env);
+  return feature;
+}
+
+export default signingFeatureFor(process.env.PLATFORM_ENVIRONMENT);
