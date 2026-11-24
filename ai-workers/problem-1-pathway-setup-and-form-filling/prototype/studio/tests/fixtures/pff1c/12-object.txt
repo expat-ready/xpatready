@@ -1,0 +1,3 @@
+aws:kms	arn:aws:kms:ca-central-1:581508167097:key/5719e23a-2b19-49b9-bc53-35fe1c8462ac	03vw6IesfkCxc05KttZUAD8wzrdi0vCd
+03vw6IesfkCxc05KttZUAD8wzrdi0vCd
+left=0

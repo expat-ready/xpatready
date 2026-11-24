@@ -18,8 +18,11 @@
 //   W4 (the adapter itself, PF-F1 #2955's recorded fake client): S3Files puts under `<firm id>/<key>` on the bucket's
 //       ca-central-1 host with SSE-KMS; firm B's get of the same key is absent; the bucket policy refuses an unencrypted
 //       put; the settings refuse a region outside Canada.
-//   W5 (versioned): the real bucket's versioning reads Enabled in ca-central-1: PF-F1c's recorded answer (no AWS call
-//       here; the path of that record is this journey's guess, tests/fixtures/pff1c/).
+//   W5 (versioned, on the real bucket): PF-F1c's recorded answers from AWS Step 20 (tests/fixtures/pff1c/, byte copies of
+//       branch aws/2026-11-22-staging-proof bcc9a6665's r165/ folder; no AWS call here): the files' sha256 match that
+//       folder's SHA256SUMS; the bucket the app task writes to (its PLATFORM_FILES_BUCKET) has versioning Enabled, is in
+//       ca-central-1, and its default encryption is aws:kms under the task's PLATFORM_FILES_KMS_KEY_ID, with the policy
+//       refusing puts without aws:kms.
 // Fails on main today (P-606) only on the steps whose parts are not merged; each failing label names the part.
 // Sample data only (firms sample-firm and sample-solo, a run tag in every ticket); US$0, no model call, no AWS call,
 // no live mail. Run from prototype/:
@@ -158,17 +161,17 @@ try {
   const T3: string = t3?.body?.id ?? "", key3 = `support/${T3.toLowerCase()}/1`, objKey3 = `${A.toLowerCase()}/${key3}`;
   const puts3 = seen.filter((s) => s.method === "PUT" && s.key === objKey3);
   const auth3 = puts3[0]?.headers.authorization ?? "";
-  ok("R1.65 W3 (parts missing: binding the S3 adapter into the running app (no backlog row named; PF-F1 review m1) on PF-F1 #2955): on the copy restarted with PLATFORM_FILES=s3, an attachment reaches S3 as one PUT signed for ca-central-1 into the configured bucket",
+  ok("R1.65 W3 (PF-F1 #2955 and the S3 adapter's binding into the running app, PF-F1b #3041): on the copy restarted with PLATFORM_FILES=s3, an attachment reaches S3 as one PUT signed for ca-central-1 into the configured bucket",
     restarted && t3?.status === 201 && puts3.length >= 1 && puts3[0].bucket === BUCKET && /\/ca-central-1\/s3\/aws4_request/.test(auth3),
     { restarted, status: t3?.status, putsSeen: seen.filter((s) => s.method === "PUT").length, scope: /Credential=[^,]*/.exec(auth3)?.[0]?.replace(/Credential=[^/]*/, "Credential=…") ?? null });
-  ok("R1.65 W3 (parts missing: the binding (no row named) on PF-F1 #2955): the object's key is the firm's prefix then the file's key (<firm A id>/support/<ticket>/1), and the database keeps only the file's key",
+  ok("R1.65 W3 (PF-F1 #2955, its binding PF-F1b #3041): the object's key is the firm's prefix then the file's key (<firm A id>/support/<ticket>/1), and the database keeps only the file's key",
     puts3.length >= 1 && objects.has(objKey3) && !!T3 && sql(`select file_keys::text from platform_support_message where ticket_id = '${T3}'`) === `{${key3}}`, { want: objKey3, keys: [...objects.keys()].slice(0, 4) });
-  ok("R1.65 W3 (parts missing: the binding (no row named) on PF-F1 #2955): the PUT asks for server-side encryption with the configured KMS key (aws:kms), and the server keeps no copy on its own disk",
+  ok("R1.65 W3 (PF-F1 #2955, its binding PF-F1b #3041): the PUT asks for server-side encryption with the configured KMS key (aws:kms), and the server keeps no copy on its own disk",
     puts3.length >= 1 && puts3.every((p) => p.headers["x-amz-server-side-encryption"] === "aws:kms" && p.headers["x-amz-server-side-encryption-aws-kms-key-id"] === KMS) && !!T3 && !onDisk(A, key3),
     { sse: puts3[0]?.headers["x-amz-server-side-encryption"] ?? null, kmsKey: puts3[0]?.headers["x-amz-server-side-encryption-aws-kms-key-id"] === KMS, onLocalDisk: T3 ? onDisk(A, key3) : null });
   const d3 = T3 ? await download(TA, T3) : null;
   const viaS3 = d3?.got && (d3.got.raw.equals(bytes3) || (d3.got.status >= 300 && d3.got.status < 400 && /X-Amz-Credential=[^&]*ca-central-1/.test(decodeURIComponent(d3.got.headers.get("location") ?? ""))));
-  ok("R1.65 W3 (parts missing: the binding (no row named) on PF-F1 #2955): the S3-stored file downloads through the app's link (its bytes, or a redirect signed for ca-central-1)",
+  ok("R1.65 W3 (PF-F1 #2955, its binding PF-F1b #3041): the S3-stored file downloads through the app's link (its bytes, or a redirect signed for ca-central-1)",
     puts3.length >= 1 && d3?.link.status === 200 && !!viaS3, { link: d3?.link.status, dl: d3?.got?.status });
   const b3 = d3?.url ? await api(TB, "GET", d3.url) : null, b3l = T3 ? await api(TB, "POST", `/platform/support/tickets/${T3}/files/1/link`) : null;
   ok(`R1.65 W3 fail: on the copy restarted with PLATFORM_FILES=s3 firm B is refused firm A's new file through the link and the ticket (404 each, none of the bytes)${puts3.length ? "" : " (vacuous for S3 today: the file went to the local folder, the binding is missing)"}`,
@@ -197,24 +200,42 @@ try {
         unencrypted: await fake.rawPut(`${A.toLowerCase()}/j65/${run}/plain.pdf`, new Uint8Array(bytes4), { "content-type": "application/pdf" }) };
     } catch (e) { console.log(`  note: the adapter walk stopped: ${String(e).split("\n")[0]}`); }
   }
-  ok("R1.65 W4 (part missing: PF-F1, #2955): S3Files puts a firm's file on the bucket's ca-central-1 host (the default region) under <firm id>/<key>",
+  ok("R1.65 W4 (PF-F1, #2955): S3Files puts a firm's file on the bucket's ca-central-1 host (the default region) under <firm id>/<key>",
     !!w4?.put && w4.host.endsWith(".s3.ca-central-1.amazonaws.com") && w4.key === `${A.toLowerCase()}/${KEY4}` && s3m?.DEFAULT_FILES_REGION === "ca-central-1", w4 ? { host: w4.host, key: w4.key } : "adapter not on this tree");
-  ok("R1.65 W4 (part missing: PF-F1, #2955): the stored object is encrypted with SSE-KMS under the configured key; the bucket's policy refuses an unencrypted put (403)",
+  ok("R1.65 W4 (PF-F1, #2955): the stored object is encrypted with SSE-KMS under the configured key; the bucket's policy refuses an unencrypted put (403)",
     w4?.sse === "aws:kms" && w4.kms && w4.unencrypted === 403, w4 ? { sse: w4.sse, kms: w4.kms, unencrypted: w4.unencrypted } : "adapter not on this tree");
-  ok("R1.65 W4 fail (part missing: PF-F1, #2955): firm B asking for the same key gets nothing (get null, exists false): another firm's key reads as absent",
+  ok("R1.65 W4 fail (PF-F1, #2955): firm B asking for the same key gets nothing (get null, exists false): another firm's key reads as absent",
     !!w4?.put && w4.otherFirm === null && w4.otherExists === false, w4 ? { otherFirm: w4.otherFirm === null ? null : "bytes", otherExists: w4.otherExists } : "adapter not on this tree");
   const refusesUs = (() => { try { chm?.s3SettingsOf({ PLATFORM_FILES_BUCKET: "pff1-j65-sample", PLATFORM_FILES_KMS_KEY_ID: "alias/j65-sample", PLATFORM_FILES_REGION: "us-east-1" }); return false; } catch (e) { return /Canada/.test(String(e)); } })();
   const unsetIsCanada = (() => { try { return chm?.s3SettingsOf({ PLATFORM_FILES_BUCKET: "pff1-j65-sample", PLATFORM_FILES_KMS_KEY_ID: "alias/j65-sample" }).region === "ca-central-1"; } catch { return false; } })();
-  ok("R1.65 W4 fail (part missing: PF-F1, #2955): the settings refuse a bucket region outside Canada (us-east-1) in words, and an unset region is ca-central-1",
+  ok("R1.65 W4 fail (PF-F1, #2955): the settings refuse a bucket region outside Canada (us-east-1) in words, and an unset region is ca-central-1",
     !!chm && refusesUs && unsetIsCanada, { loaded: !!chm, refusesUs, unsetIsCanada });
 
   // ----------------------------------------------------------------------------------------------- W5: versioned
-  // No AWS call here (US$0): the bucket's versioning is read from PF-F1c's recorded answer of the real bucket.
+  // No AWS call here (US$0): PF-F1c's recorded answers of the real staging bucket, AWS Step 20 (24 Nov 2026), copied byte
+  // for byte from branch aws/2026-11-22-staging-proof bcc9a6665, product/reports/aws-evidence/2026-11-24/r165/ (README).
   const FIX = join(STUDIO, "tests", "fixtures", "pff1c");
   const read = (f: string) => { try { return readFileSync(join(FIX, f), "utf8"); } catch { return ""; } };
-  const versioning = read("get-bucket-versioning.xml"), location = read("get-bucket-location.xml"), encryption = read("get-bucket-encryption.xml");
-  ok("R1.65 W5 (part missing: PF-F1c, the bucket, waits on the founder's AWS account; its recorded answers' path is this journey's guess): the real bucket's versioning is Enabled, it is in ca-central-1, and its default encryption is aws:kms",
-    /<Status>Enabled<\/Status>/.test(versioning) && /ca-central-1/.test(location) && /<SSEAlgorithm>aws:kms<\/SSEAlgorithm>/.test(encryption), { dir: "tests/fixtures/pff1c/", versioning: !!versioning, location: !!location, encryption: !!encryption });
+  const STEP20: Record<string, string> = {   // bcc9a6665's r165/SHA256SUMS lines for the two files W5 reads
+    "07-r165-read.txt": "91693f22d5de79be91348117f6fb5a76d4695a7ddc7685ea3f973685cf3f04ae",
+    "11-xfirm-2.txt": "d6db80052afe88e57fc5157104d4bd31b0e8ecab29ac056506658529348ed4c8",
+  };
+  const sums = read("SHA256SUMS");
+  const intact = Object.entries(STEP20).every(([f, h]) => {
+    const bytes = (() => { try { return readFileSync(join(FIX, f)); } catch { return null; } })();
+    return !!bytes && createHash("sha256").update(bytes).digest("hex") === h && sums.includes(`${h}  ${f}`);
+  });
+  const task = read("11-xfirm-2.txt");
+  const env = (n: string) => (task.match(new RegExp(`'name': '${n}', 'value': '([^']+)'`)) ?? [])[1] ?? "";
+  const bucket = env("PLATFORM_FILES_BUCKET"), taskKey = env("PLATFORM_FILES_KMS_KEY_ID");
+  const block = (() => { const all = read("07-r165-read.txt"); const at = bucket ? all.indexOf(`== ${bucket}\n`) : -1; if (at < 0) return ""; const next = all.indexOf("\n== ", at + 3); return all.slice(at, next < 0 ? undefined : next); })();
+  const field = (n: string) => (block.match(new RegExp(`^${n}: (.*)$`, "m")) ?? [])[1] ?? "";
+  const [sseAlg, sseKey, bucketKey] = field("encryption").split("\t");
+  const w5 = { intact, s3: env("PLATFORM_FILES") === "s3", bucket: bucket || null, region: field("region"), versioning: field("versioning"), sse: sseAlg ?? "", keyIsTasks: !!taskKey && sseKey === taskKey, bucketKey: bucketKey === "True",
+    denyNotKms: field("policy").includes("('Deny', 's3:PutObject', {'StringNotEquals': {'s3:x-amz-server-side-encryption': 'aws:kms'}})"),
+    denyNoHeader: field("policy").includes("('Deny', 's3:PutObject', {'Null': {'s3:x-amz-server-side-encryption': 'true'}})") };
+  ok("R1.65 W5 (PF-F1c, the real staging bucket: AWS Step 20's recorded answers in tests/fixtures/pff1c/, from aws/2026-11-22-staging-proof bcc9a6665): the files match Step 20's sha256; the bucket the app task writes to (PLATFORM_FILES=s3, its PLATFORM_FILES_BUCKET) has versioning Enabled, is in ca-central-1, and its default encryption is aws:kms under the task's PLATFORM_FILES_KMS_KEY_ID, the policy refusing puts without aws:kms",
+    w5.intact && w5.s3 && !!w5.bucket && w5.region === "ca-central-1" && w5.versioning === "Enabled" && w5.sse === "aws:kms" && w5.keyIsTasks && w5.denyNotKms && w5.denyNoHeader, w5);
 } finally {
   await db.$disconnect();
   fakeS3.close();
