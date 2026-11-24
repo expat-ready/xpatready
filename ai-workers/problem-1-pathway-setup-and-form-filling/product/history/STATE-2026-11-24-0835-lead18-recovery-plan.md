@@ -581,3 +581,10 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **#3487: types red is a real error** (check_pf28_system_reason.ts 65 and 89), label off, lane 9LZXV told 19:31, bubble seen.
 * Lane replies read: 9LZXV 56%, 87D51 60% (ended), 6wAJfK 42%, 83343o 38% (both body fixes for #3491 made, checks not seen re-run), 91RbN 38%, 7wnHW 48% (retargets #3489 when #3470 merges), 7qW26 72%, 9L8jjd 36%. Running: 6KjpxK, qS3eZT, qa 8, Lead O 2. Not read: 6aMfE4, 6E2XyLb, qa 7.
 * BACKLOG rows owed, added: CS-D5 (wasm licence files first; blank page on a failed decoder; dev server; m5, m7, m8). Stage table not measured.
+
+### Lead 30, check 19:41 to 19:45 IST 24 Nov (90% weekly, disk 4.4 GB, context about 265k)
+* #3492 merged 19:39 (main 5cb528830). Testing, no red at 19:41: #3503 (1 running), #3502 (1 running), #3507 (#3470). #3505 (qa 8: j_74 date fix) labelled by the gate; after it merges, dispatch walks j_74 on main for R1.74.
+* #3460 still 12 running, read line owed. #3487 461b44e30 pushed, its round 3 running. #3490: round 4 allowed (pure merge, same tree); its m5 question not found by me, asked to be re-read. #3491 pr-rules and module-cards not re-run on the new body.
+* Lead O 2: #3506 (PR A) draft, ruled: an ACT line, no automatic deletion; traces pf5s1 fixed on main (its words), C9.5-6b proof in CI, bk3 unproven, Node-report row allowed without environment in its output. Told to clear its own scratch (1.45 GB).
+* Lead B 7: #3490 7c454f295, #3460 cdbeac417, #3493 OK; Minor for FO-7ts (money a credit note owes back to trust).
+* lead-watch run once, from this copy's old tools; GitHub gave 504 on one read, so no queue section; it named 46-odd old branches with commits and no PR (not acted on). "Previous check 257 min ago" is the tool's own log, the Leads ran lean checks.
