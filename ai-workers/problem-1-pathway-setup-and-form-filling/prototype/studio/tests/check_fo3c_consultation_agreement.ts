@@ -218,10 +218,10 @@ try {
     (await svc.signingEvent(cdecl)).applied && sql(`select status || '|' || coalesce(withdrawn_reason, '-') from fo_retainer where id = '${m1b.id}'`) === "DECLINED|-" && await fails(() => op(m1b.tok), 404));
   // M2: the provider ended the client's part before its event reached us (the client signed and reloads).
   const m2 = await sendOne(T.staffId, kim, 11);
-  await withCode(m2.tok, "kim@client.example");
+  const m2s = cookieOf((await withCode(m2.tok, "kim@client.example")).done), m2c = m2s ? [m2s] : [];   // the client's browser (QA-777)
   const early2 = await signing.act(A, m2.q.providerDocumentId, m2.cl.id, "signed");   // not handed to us yet
-  ok("FO-3c M2 pass: the client reloading after signing at the provider gets 409 SIGNING_ENDED (never a 500), with the words that the copy follows",
-    await fails(() => op(m2.tok, { consent: true }), 409, /SIGNING_ENDED/) && await fails(() => op(m2.tok), 409, /signed copy/));
+  ok("FO-3c M2 pass: the client reloading after signing at the provider (the same browser) gets 409 SIGNING_ENDED (never a 500), with the words that the copy follows",
+    await fails(() => op(m2.tok, { consent: true }, undefined, m2c), 409, /SIGNING_ENDED/) && await fails(() => op(m2.tok, {}, undefined, m2c), 409, /signed copy/));
   for (const h of early2) await svc.signingEvent(h);
   ok("FO-3c M2 fail: once the client's signature is applied, their link is the one not-found (not a 409, not a 500)", await fails(() => op(m2.tok), 404));
   // m4: a double click on the host's link records the consent once; m3: a seal that failed is retried by the provider's repeat.
@@ -299,10 +299,16 @@ try {
   const ok31 = await op(r31c.tok, { consent: true, code: code31 });
   ok("FO-3c r3-1 pass/fail: after a stale session the new code is accepted (the link opens), and the code used before it is refused", /^https:\/\/signing\.fake\.invalid\//.test(ok31.link?.url ?? "") && newCode !== code31, ok31);
   const r3b = await sendOne(T.staffId, kim, 15);
-  await op(r3b.tok, { consent: true });   // consent recorded, code not checked
+  const r3bAsk = await op(r3b.tok, { consent: true });   // QA-777: no code, so no consent is recorded (only a code is emailed)
   const [noCode] = await signing.act(A, r3b.q.providerDocumentId, r3b.cl.id, "signed");
-  const nc = await svc.signingEvent(noCode);
-  ok("FO-3c M3 fail: a provider \"signed\" for a client whose code was never checked is stored and not applied (NO_CODE)", nc.reason === "NO_CODE" && sql(`select signed_at is null from fo_signer where id = '${r3b.cl.id}'`) === "t", nc);
+  const ncNoConsent = await svc.signingEvent(noCode);
+  // The rule behind it still holds on its own: a consent written straight to the table, with no code checked, is refused NO_CODE.
+  const r3c2 = await sendOne(T.staffId, kim, 16);
+  sql(`update fo_signer set consented_at = now(), consent_text_version = 'sign-electronically-v1' where id = '${r3c2.cl.id}'`);
+  const [noCode2] = await signing.act(A, r3c2.q.providerDocumentId, r3c2.cl.id, "signed");
+  const nc = await svc.signingEvent(noCode2);
+  ok("FO-3c M3 fail: a provider \"signed\" for a client whose code was never checked is stored and not applied: refused NO_CONSENT when the door recorded nothing (QA-777), NO_CODE when a consent exists without a code",
+    r3bAsk.consented === false && ncNoConsent.reason === "NO_CONSENT" && nc.reason === "NO_CODE" && sql(`select (signed_at is null)::text from fo_signer where id in ('${r3b.cl.id}', '${r3c2.cl.id}') group by 1`) === "true", { r3bAsk: r3bAsk.consented, ncNoConsent, nc });
   const r3c = await sendOne(T.staffId, kim, 17);
   const [noConsent3] = await signing.act(A, r3c.q.providerDocumentId, r3c.cl.id, "signed");
   const ncs = await svc.signingEvent(noConsent3);

@@ -15,6 +15,10 @@ import { PlatformJobs } from "../../../platform/jobs/platform-jobs.ts";
 import { idParam, parseInput, strict, text } from "../../../platform/http/input.ts";
 import { z } from "zod";
 import { fakeSigning, type SigningPort } from "../../signing/port.ts";
+// QA-777: FO-6 part 4b's session cookie (its name, length and reader), on this door's own path, so the two doors' cookies
+// never meet (a browser sends a cookie only where its Path matches).
+import { SESSION_COOKIE, SESSION_MINUTES, sessionCookies } from "../../signing/door.ts";
+const OPEN_PATH = "/api/public/consultation-agreements/open";
 import { ConsultationAgreementService, type AgreementPorts } from "./service.ts";
 import { Booking } from "../public.controller.ts";
 
@@ -86,11 +90,19 @@ export class ConsultationAgreementController {
 @Controller("api/public/consultation-agreements")
 export class ConsultationAgreementPublicController {
   constructor(@Inject(ConsultationAgreements) private readonly a: ConsultationAgreements) {}
-  /** The client's link: `{ token }` records the view; `{ token, consent: true }` records the consent and emails the one-time
-   *  code (P-564); `{ token, consent: true, code }` checks it and answers the signing link; `resend: true` sends a new code. */
+  /** The client's link: `{ token }` records the view; `{ token, consent: true }` emails the one-time code (P-564);
+   *  `{ token, consent: true, code }` checks it, starts this browser's session (an http-only cookie on this door's path:
+   *  QA-777), records the consent and answers the signing link; the same browser then goes on without a code for 30
+   *  minutes, any other is asked for one. `resend: true` sends a new code. */
   @Post("open") @HttpCode(200)
-  open(@Body() body: unknown, @Req() req: { ip?: string; socket?: { remoteAddress?: string } }) {
+  async open(@Body() body: unknown, @Req() req: { ip?: string; socket?: { remoteAddress?: string }; headers?: { cookie?: unknown } }, @Res({ passthrough: true }) res: { setHeader(n: string, v: string): void }) {
     const b = parseInput(OpenBody, body ?? {});
-    return this.a.open(b.token, { consent: b.consent, code: b.code, resend: b.resend }, String(req.ip ?? req.socket?.remoteAddress ?? "unknown"));
+    res.setHeader("Cache-Control", "no-store");
+    const { session, ...answer } = await this.a.open(b.token, { consent: b.consent, code: b.code, resend: b.resend }, String(req.ip ?? req.socket?.remoteAddress ?? "unknown"), sessionCookies(req.headers?.cookie)) as Record<string, unknown> & { session?: string };
+    if (session) {
+      const secure = (process.env.PLATFORM_ENVIRONMENT ?? "local") === "local" ? "" : "; Secure";
+      res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${session}; Path=${OPEN_PATH}; Max-Age=${SESSION_MINUTES * 60}; HttpOnly; SameSite=Strict${secure}`);
+    }
+    return answer;
   }
 }

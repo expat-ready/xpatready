@@ -42,8 +42,9 @@ const EXPIRES_DAYS = 14, DAY = 24 * 60 * 60_000;
 /** P-564 (on by default): a one-time email code before signing. Sample: 10 minutes, the sixth wrong code locks 15 minutes
  *  (FO-6's fo_signer columns and check). The firm's switch to turn it off is FO-6's setting (not on main): always on here. */
 const CODE_MINUTES = 10, CODE_TRIES = 6, LOCK_MINUTES = 15;
-/** A checked code opens the signing link for 30 minutes (FO-6's signing session, Sample); after that a new code is asked
- *  (break R2-1: a forwarded link never signs on an old code). A new code at most once a minute per signer (R2-2). */
+/** A checked code opens the signing link for 30 minutes, in the browser that typed it only (QA-777, Lead 24's ruling on
+ *  #3433: FO-6 part 4b's session columns, a random token in an http-only cookie, only its sha256 on the signer); after that
+ *  a new code is asked (break R2-1). A new code at most once a minute per signer (R2-2). */
 const CODE_SESSION_MS = 30 * 60_000, RESEND_GAP_MS = 60_000;
 /** A code is unspent when it was sent after the last check (its send time is its expiry less its life). code_verified_at
  *  is never cleared: it is the last time the client checked a code, which the provider's "signed" needs (break R3-1). */
@@ -386,16 +387,24 @@ export class ConsultationAgreementService {
       throw e;
     }
   }
-  /** The client's door (no sign-in; the emailed link's token). Records the first view; with `consent: true` records the
-   *  consent and answers the provider's embedded link. A wrong, ended or signed link is the one not-found. */
-  async open(token: unknown, body: { consent?: unknown; code?: unknown; resend?: unknown } = {}, ip = "unknown") {
+  /** The client's door (no sign-in; the emailed link's token). Records the first view. A browser without the signer's
+   *  live session is asked for the one-time code (QA-777): the right code starts that browser's session (`session`, the
+   *  cookie's plain token, for the controller only). Only then is `consent: true` recorded and the provider's embedded link
+   *  answered. A wrong, ended or signed link is the one not-found. */
+  async open(token: unknown, body: { consent?: unknown; code?: unknown; resend?: unknown } = {}, ip = "unknown", cookies: string[] = []) {
     this.limit(ip);
     const m = typeof token === "string" ? /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})\.[A-Za-z0-9_-]{43}$/.exec(token) : null;
     if (!m) return notFound();
     const firm = m.slice(1, 6).join("-");
-    return withFirm(firm, () => this.openAs(firm, token as string, body));
+    return withFirm(firm, () => this.openAs(firm, token as string, body, cookies));
   }
-  private async openAs(firm: string, token: string, body: { consent?: unknown; code?: unknown; resend?: unknown }) {
+  /** This browser holds the signer's live session: its cookie's sha256, not expired, and started by a right code (the code
+   *  check and the session are written at one moment: FO-6 part 4b's rule). */
+  private liveSession(s: { sessionSha256: string | null; sessionExpiresAt: Date | null; codeVerifiedAt: Date | null }, cookies: string[], now: Date) {
+    if (!s.sessionSha256 || !s.sessionExpiresAt || s.sessionExpiresAt <= now || !cookies.some((c) => timingSafeEqual(Buffer.from(sha(c), "hex"), Buffer.from(s.sessionSha256!, "hex")))) return false;
+    return !!s.codeVerifiedAt && s.codeVerifiedAt.getTime() === s.sessionExpiresAt.getTime() - CODE_SESSION_MS;
+  }
+  private async openAs(firm: string, token: string, body: { consent?: unknown; code?: unknown; resend?: unknown }, cookies: string[]) {
     const s0 = await this.db.foSigner.findFirst({ where: { firmId: firm, linkTokenSha256: sha(token), role: "CLIENT" }, include: { request: true } });
     if (!s0 || s0.request.documentKind !== "CONSULTATION" || !["SENT", "VIEWED"].includes(s0.request.status) || s0.signedAt || s0.declinedAt) return notFound();
     const firmId = s0.firmId, now = this.ports.clock.now(), consent = body.consent === true;
@@ -404,45 +413,64 @@ export class ConsultationAgreementService {
     const s = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${s0.requestId}::uuid for update`;
       const cur = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: s0.id } });
-      const data = { ...(cur.viewedAt ? {} : { viewedAt: now }), ...(consent && !cur.consentedAt ? { consentedAt: now, consentTextVersion: CONSENT_TEXT_VERSION } : {}) };
+      // The view only: consent waits for the code (QA-777 (2)).
+      const data = cur.viewedAt ? {} : { viewedAt: now };
       if (!Object.keys(data).length) return cur;
       const next = await tx.foSigner.update({ where: { id: cur.id }, data });
       if (!cur.viewedAt) {
         await tx.foSignatureRequest.updateMany({ where: { firmId, id: s0.requestId, status: "SENT" }, data: { status: "VIEWED" } });
         await tx.foRetainer.updateMany({ where: { firmId, id: s0.request.documentId, status: "SENT" }, data: { status: "VIEWED" } });
       }
-      const what = [cur.viewedAt ? null : "opened", data.consentedAt ? "consent to sign electronically recorded" : null].filter(Boolean).join("; ");
-      await this.ports.audit.record(tx, { firmId, actor: SYSTEM, action: "consultation_agreement.opened", entity: "fo_retainer", entityKey: s0.request.documentId, summary: `Consultation agreement: ${what} (client).`,
-        detail: { agreementId: s0.request.documentId, signerId: cur.id, consentTextVersion: data.consentedAt ? CONSENT_TEXT_VERSION : null }, before: { viewed: !!cur.viewedAt, consented: !!cur.consentedAt }, after: { viewed: true, consented: !!next.consentedAt } });
+      await this.ports.audit.record(tx, { firmId, actor: SYSTEM, action: "consultation_agreement.opened", entity: "fo_retainer", entityKey: s0.request.documentId, summary: "Consultation agreement: opened (client).",
+        detail: { agreementId: s0.request.documentId, signerId: cur.id, consentTextVersion: null }, before: { viewed: false, consented: !!cur.consentedAt }, after: { viewed: true, consented: !!next.consentedAt } });
       return next;
     });
-    const base = { agreementId: s0.request.documentId, consentText: CONSENT_TEXT, consentTextVersion: CONSENT_TEXT_VERSION, consented: !!s.consentedAt };
-    if (!s.consentedAt) return { ...base, codeNeeded: false, link: null };
-    const fresh = !!s.codeVerifiedAt && now.getTime() - s.codeVerifiedAt.getTime() < CODE_SESSION_MS;
-    const verified = fresh ? true : await this.code(firmId, s0.id, s0.request.documentId, body);
-    if (!verified) return { ...base, codeNeeded: true, codeSentTo: "the email address this link was sent to", link: null };
-    return { ...base, codeNeeded: false, link: await this.providerLink(firmId, s0.request.providerDocumentId, s.id) };
+    const base = (c: { consentedAt: Date | null }) => ({ agreementId: s0.request.documentId, consentText: CONSENT_TEXT, consentTextVersion: CONSENT_TEXT_VERSION, consented: !!c.consentedAt });
+    // QA-777 (1): only the browser holding the signer's live session goes on; any other is asked for the code. A plain
+    // look before the client ever agreed sends none (the code is emailed when they agree, give a code or ask again).
+    let session: string | undefined;
+    if (!this.liveSession(s, cookies, now)) {
+      const asks = consent || body.code !== undefined || body.resend === true || !!s.consentedAt;
+      const r = asks ? await this.code(firmId, s0.id, s0.request.documentId, body) : { ok: false as const };
+      if (!r.ok) return { ...base(s), codeNeeded: true, codeSentTo: "the email address this link was sent to", link: null };
+      session = r.session;
+    }
+    // This browser proved the code: now, and only now, the consent (QA-777 (2)).
+    let cur = s;
+    if (consent && !s.consentedAt) cur = await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${s0.requestId}::uuid for update`;
+      const c = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: s0.id } });
+      if (c.consentedAt) return c;
+      const next = await tx.foSigner.update({ where: { id: c.id }, data: { consentedAt: this.ports.clock.now(), consentTextVersion: CONSENT_TEXT_VERSION } });
+      await this.ports.audit.record(tx, { firmId, actor: SYSTEM, action: "consultation_agreement.opened", entity: "fo_retainer", entityKey: s0.request.documentId, summary: "Consultation agreement: consent to sign electronically recorded (client).",
+        detail: { agreementId: s0.request.documentId, signerId: c.id, consentTextVersion: CONSENT_TEXT_VERSION }, before: { viewed: true, consented: false }, after: { viewed: true, consented: true } });
+      return next;
+    });
+    if (!cur.consentedAt) return { ...base(cur), codeNeeded: false, link: null, ...(session ? { session } : {}) };
+    return { ...base(cur), codeNeeded: false, link: await this.providerLink(firmId, s0.request.providerDocumentId, cur.id), ...(session ? { session } : {}) };
   }
 
   /** P-564: the one-time email code. No code given → one is sent (again only when the last has expired, or on `resend`);
    *  a code given → checked under the request's lock: right → verified (true); wrong → counted, the sixth locks the link
    *  15 minutes (423); a locked link answers 423 until then. Only the code's sha256 is stored. */
-  private async code(firmId: string, signerId: string, agreementId: string, body: { code?: unknown; resend?: unknown }): Promise<boolean> {
+  private async code(firmId: string, signerId: string, agreementId: string, body: { code?: unknown; resend?: unknown }): Promise<{ ok: true; session: string } | { ok: false }> {
     const now = this.ports.clock.now(), given = typeof body.code === "string" && /^\d{6}$/.test(body.code.trim()) ? body.code.trim() : null;
     if (body.code !== undefined && !given) fail(422, "Check the code", "The code is the 6 digits in the email we sent you.", "CODE_FORMAT");
-    let send: string | null = null;
+    let send: string | null = null, session: string | undefined;
     const verdict = await this.db.$transaction(async (tx) => {
       const r = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId }, include: { request: true } });
       await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${r.requestId}::uuid for update`;
       const cur = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
-      if (cur.codeVerifiedAt && now.getTime() - cur.codeVerifiedAt.getTime() < CODE_SESSION_MS) return "OK" as const;
+      // QA-777: a recent check by any browser no longer passes another; only a right code (or the live session) does.
       if (cur.lockedUntil && cur.lockedUntil > now) return "LOCKED" as const;
       const line = (summary: string, after: Record<string, string | number | boolean | null>) => this.ports.audit.record(tx, { firmId, actor: SYSTEM, action: "consultation_agreement.code", entity: "fo_retainer", entityKey: agreementId, summary,
         detail: { agreementId, signerId }, before: { codeFailures: cur.codeFailures, locked: !!cur.lockedUntil }, after });
       if (!given) {
         const live = !!cur.codeSha256 && !!cur.codeExpiresAt && cur.codeExpiresAt > now && unspent(cur);
         if (live && body.resend !== true) return "SENT" as const;
-        if (cur.codeExpiresAt && cur.codeExpiresAt.getTime() - CODE_MINUTES * 60_000 > now.getTime() - RESEND_GAP_MS) return "TOO_SOON" as const;
+        // Within a minute of the last code: an explicit "send again" is refused (429); any other visit is just asked for the
+        // code already sent (QA-777: a second browser is told a code is needed, never a 429).
+        if (cur.codeExpiresAt && cur.codeExpiresAt.getTime() - CODE_MINUTES * 60_000 > now.getTime() - RESEND_GAP_MS) return (body.resend === true ? "TOO_SOON" : "SENT") as "TOO_SOON" | "SENT";
         send = String(randomInt(0, 1_000_000)).padStart(6, "0");
         const failures = cur.lockedUntil ? 0 : cur.codeFailures;
         await tx.foSigner.update({ where: { id: cur.id }, data: { codeSha256: sha(send), codeExpiresAt: new Date(now.getTime() + CODE_MINUTES * 60_000), codeFailures: failures, lockedUntil: null } });   // code_verified_at stays: the client did check a code once (R3-1)
@@ -452,7 +480,9 @@ export class ConsultationAgreementService {
       const live = cur.codeSha256 && cur.codeExpiresAt && cur.codeExpiresAt > now && unspent(cur);   // a used code is spent
       const right = !!live && timingSafeEqual(Buffer.from(sha(given), "hex"), Buffer.from(cur.codeSha256!, "hex"));
       if (right) {
-        await tx.foSigner.update({ where: { id: cur.id }, data: { codeVerifiedAt: now, codeFailures: 0, lockedUntil: null } });
+        // The right code starts this browser's session at the same moment (QA-777; FO-6 part 4b's columns and rule).
+        session = randomBytes(32).toString("base64url");
+        await tx.foSigner.update({ where: { id: cur.id }, data: { codeVerifiedAt: now, codeFailures: 0, lockedUntil: null, sessionSha256: sha(session), sessionExpiresAt: new Date(now.getTime() + CODE_SESSION_MS) } });
         await line("Consultation agreement: the client's one-time code was right.", { codeFailures: 0, locked: false, verified: true });
         return "OK" as const;
       }
@@ -473,7 +503,7 @@ export class ConsultationAgreementService {
     if (verdict === "LOCKED") fail(423, "Locked for now", `Too many wrong codes. Try again in ${LOCK_MINUTES} minutes.`, "CODE_LOCKED");
     if (verdict === "WRONG") fail(422, "Wrong code", "That code is not right. Check the email and try again.", "CODE_WRONG");
     if (verdict === "EXPIRED") fail(422, "Code expired", "That code has expired. Ask for a new one.", "CODE_EXPIRED");
-    return verdict === "OK";
+    return verdict === "OK" && session ? { ok: true, session } : { ok: false };
   }
 
   /** The firm's signer asks for their signing link (`consent: true`, the same consent text). Refused until the client has
