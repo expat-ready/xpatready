@@ -133,3 +133,142 @@ Reviewer: Block 0eb3cdb1410f7afcbe97e960cf61cb06e5879a27
 **Verdict round 3: Approve `3b13faf61c560179ea6ae8cbdd04714be51d5067`.**
 
 Reviewer: Approve 3b13faf61c560179ea6ae8cbdd04714be51d5067
+
+## Round 4 (diff only, 35694aca3..2dd912dc0)
+**Scope.** The Lead allowed this round. Three commits of this PR's own, plus two merges of main. Context: Lead B 4's reads, and Lead 10's and Lead 11's rulings on #3040.
+
+**Merges are automatic.**
+* `git show --remerge-diff` prints 0 lines for d8d32b94f and for 92e1721bf, so nothing was edited by hand in either merge.
+* I compared this PR's diff against its merge base, at round 3 and now. The two diffs differ in exactly three ways, and nothing else in its 13 files moved:
+  * the migration folder's name;
+  * the first line of `rollback.sql`;
+  * `createdBy` plus the test's new pass/fail line.
+* `origin/main` is now 4742387cd, 25 commits ahead. `git merge-tree` with it is clean, and main has no migration newer than 20261123200000.
+
+**Own commits.**
+* **fbe9f2065 is a pure rename** to `20261124070000_r190_signup_link_plan` (0 lines changed), which is Lead B 4's stamp.
+  * No other folder shares that timestamp, and it is the newest.
+  * Main's `20261123030000` is now `aud_ourstaff_actor_word`.
+* **137ab4a6f:** the first line of `rollback.sql` now names the new folder. Nothing else changed.
+* **2dd912dc0:** `signup.ts:232` stores `created_by` as `ourstaff:<staffId>`.
+  * This is AUD-3a's word, the same one used by `observability/hook.ts:49`, `holds/service.ts:30` and `web-address/routes.ts:103`.
+  * `platform_signup_link.created_by` is TEXT NOT NULL with no CHECK (`20261114015002_pf3_platform_tables`), so no constraint needed to change.
+  * No code reads the column.
+  * The new pass/fail line (`check_r190_invited_signup.ts:75-76`) compares the column exactly against `ourstaff:${OWNER.id}`. Putting back the `system:` word makes this line fail.
+* **Audit path after AUD-3c (#3296).** `makeLinkWork`'s `touchPlatform` now goes through the port's narrow `OurStaffPlatformEntry` kind (`firm-scope.ts:360-380`), as Lead 10 ruled. This PR adds no exemption and puts no `system:` word on a staff member's act.
+
+**Runs (my copy `rev_r190i` on :4436, both local identity stand-ins, live AI off; stopped afterwards).**
+* `check_r190_invited_signup` **18/18**, exit 0. This includes the new line: `{"by":"ourstaff:3bf42090-…"}`.
+* Database, after the run:
+  * Three links were made: two by the Owner, one by the Admin.
+  * There are three `audit_event` lines with `ourstaff:<id>`, `OUR_STAFF`, `firm_id` null, `platform.bypass` and `plat_bypass_use`.
+  * Each line's `detail.key` is its link's id, with `use` = `platform.firms.signup-link` and `step` = `signup-link.create`. No token appears in any line.
+* The copy's api.log has 0 answers of 500 and 0 `AuditRefused` or `audit_write_error`. This red was the round's starting fault: `audit-event.ts:86` on d8d32b94f.
+* `check_bypass_uses` **52/52**. `check_aud3c_platform_line` **16/16** (it needs `--tsconfig api/tsconfig.json`).
+* The working tree was clean after the run: no screenshot was rewritten.
+
+**#3209's firm-data declaration: I agree it belongs to whichever of #3040 and #3209 lands second.**
+* `audit/access/declare.ts` is only on #3209's branch (`claude/runtime-aud3-lines`, 8c19e203e), so this PR cannot import it today.
+* The rule enforces itself on the second PR to land:
+  * `assertFirmDataDeclared` stops the start-up on any undeclared route our staff call (`audit/access/lines.ts:115,128` on that branch).
+  * `check_aud3_access.ts:192-195` lists every `@NoFirmData` route exactly.
+* So the second PR must add `@NoFirmData(<why>)` on `signup-links.ts`'s POST, and add that route to the list. A link has no firm until it is used, so `@NoFirmData` is the right declaration, not `@ChangesFirm`.
+
+**Findings.**
+* **n1 (Nit, Should, not blocking):** `check_r190_invited_signup.ts:114` seeds the expired link with `created_by` = `staff:${OWNER.id}`, which is a firm staff member's word, for a Platform Owner. It is a fixture only, but the check now states the rule as `ourstaff:<id>`. Use `ourstaff:` there too.
+* **Lead B 4's Minor (`system:` on `created_by`) is closed.** **Lead B 4's fault (the 500 on POST) is closed** by #3296 being on main, with no change from this PR.
+
+**Journey score.** Round 1's reviewer score stands at **8/10, pass** (`journey-test-reviewer-2026-11-23.md`). Not re-walked: this round changes one stored word and a folder name, nothing a person sees. Journeys IS1-IS8 replay green (18/18).
+
+**Could not check:** the full run on this head, which waits on the Lead (stamp steps), and the j_90 browser walk.
+
+**Open:** none at Major or above.
+
+Verdict: Approve at 2dd912dc07a9f825cedf160bcc8abc79b444ccb9
+
+## Round 5 (diff only, b0c13674b..47a0b7635)
+
+**Scope.** Lead 15 allowed this round for two faults only, both from full run 45272503115 on b0c13674b. The diff is 3 files: the migration, `api/src/platform/firms/routes.ts` and `tests/check_forms_qa53.ts`. A fresh reviewer read it; the code was not written by me.
+
+**1. PF-8b F7 (`check_pf8b_f7_data_walls`): the lift is correct and complete.**
+* The new `DO $pf8b_f7$` block matches `20261123010000_fo9b_person_merge` line for line. The only differences are the `walls` array (`platform_signup_link`, `platform_signup_pending`) and the one `ADD CONSTRAINT` statement inside it. In order, the block:
+  * checks `rolsuper OR rolbypassrls` and lifts only for a runner that is neither;
+  * takes ACCESS EXCLUSIVE on both tables before the lift;
+  * reads the list of forced tables from `pg_class.relforcerowsecurity`, so a table that is not forced is never touched;
+  * turns `0_pf12_firm_first` off only where it is on (`tgenabled = 'O'`);
+  * adds the key, then turns the gate back on and FORCE back on.
+* Both tables are lifted. The referenced `platform_signup_link` is lifted with the walled table, as fo9b lifts `fo_lead`.
+* The block is one statement. If validation fails, the lift rolls back with it, so FORCE cannot stay lifted.
+* These stay outside the block, which is right: the two `ADD COLUMN` statements (a constant default, so no rows are read through RLS) and the `CREATE INDEX` (DDL; the F7 rule's own pass case "DDL on the table").
+* `rollback.sql` is unchanged, which is right. `DROP INDEX`, `DROP CONSTRAINT` and `DROP COLUMN` read no rows, so FORCE does not affect them.
+* No F7 checksum entry is needed. That list (the 10 migrations F7 edited) covers edited migrations on main, and this migration is new.
+* Same schema result. The F7 database half applies every migration, this one included, as an owner that is neither superuser nor BYPASSRLS, and every walled table is forced again at the end.
+
+**2. QA-53 (`check_forms_qa53`): the cause is proven, and the REVIEWED entry is legitimate, not a loosening.**
+* **Proof.** I ran the reader's own regexes on the old and new lines:
+  * The old line, `@OpenRead("…offers (R1.90); …") @Get("signup/:token")`, matches `/^@OpenRead\(.*\)$/` after trimming. It is taken as a controller-level mark and skipped (`continue`), so the GET was never read.
+  * The new line ends in `}`, so it is not taken as a mark. The route regex now reads `signup/:token` with its mark.
+  * With the words' parentheses kept on the one line, the route would be found unmarked: `[^)]*` stops at "R1.90)". It would then be asked as a configuration read (401 to nobody), and that ask fails. Dropping the parentheses is needed, not cosmetic.
+  * The suite now reports `{"found":235,"declared":235}`.
+* **Precedent.** `plans` (line 23) and the two branding reads already put mark, route and handler on one line. The FO-2 form uses a trailing `// QA-53 REVIEWED` comment for the same reason.
+* **The REVIEWED entry.** The check requires every route marked in the code to be on REVIEWED, and every REVIEWED entry to be marked: "a new exception fails here until reviewed". So the entry is the check working as designed, not an exemption added to make it pass.
+  * The route is open by design: an invitee who has no account yet opens a private link, and the 256-bit token, stored as a hash, is the key. That is the same as `/api/public/invitations/:token` and `/api/public/unsubscribe/:token`.
+  * Its behaviour is asked in `check_r190_invited_signup` IS2, IS3, IS4 and IS6: an unknown, used, expired or malformed token all get the one 404 on GET.
+  * Before this fix the route was not checked at all. It is now counted, and its open status is written down and reviewed.
+
+**3. QA-65 (`check_forms_qa53`): `PUBLIC_WRITES` is sound, and neither check is loosened.**
+* **Why `PUBLIC_DOOR_WRITES` would not work.** That check posts each listed path literally with `{}` and requires 400 or 503. Literally `/api/public/signup/:token` fails `LINK_TOKEN` before `ready()` and answers 404 (`signup.ts:272-273`). Listing the route there would need that assertion widened, which is the loosening Lead 15 forbade.
+* **Why `PUBLIC_WRITES` fits.** Its contract is "a write from anyone… an unknown token answers 404", and this door keeps it:
+  * a malformed token gets 404 before the body is read;
+  * a well-formed unknown token with a valid body gets 404 from `liveLink`;
+  * a bad body gets 422 first, by design (PF-28's order, so the answer says nothing about which links exist).
+* **The list stays sorted.** The equality check compares a sorted copy with the literal list, and the entry sits between `messages/ses-notices` and `unsubscribe/:token`.
+* **The new probe line is real.** It asks a 30-character token, which answers 404 before the rate limit and before `ready()`, so the result is the same on every copy.
+* **The deviation is recorded.** The PR names the change from the list Lead 15 named, with its reason, in the 22:23 comment, and Lead B 5 read it OK at 22:32.
+
+**Runs (`run-suites.sh --only`, copies on ports +11000, never :4400), all exit 0:**
+
+| Suite | Result |
+|---|---|
+| `check_pf8b_f7_data_walls` | 17/17 (44 guarded statements in 17 migrations; the database half as a non-BYPASSRLS owner) |
+| `check_forms_qa53` | 47/47 (235 of 235 GET routes; the new R1.90 404 line passes) |
+| `check_r190_invited_signup` | 18/18 |
+
+The working tree was clean afterwards: no screenshot was rewritten.
+
+**Findings.**
+* **n1 (Nit, for qa, out of this round's scope, not blocking):** the QA-53 reader is fragile in two ways.
+  * `/^@OpenRead\(.*\)$/` swallows any route line that ends in `)`. The `pending` mark it sets is then carried to the next `@Controller` in the same file. Here, `firms/routes.ts` has only one controller, so nothing leaked.
+  * `[^)]*` misreads a mark whose words contain `)`.
+  * A tighter `^@OpenRead\("[^"]*"\)$` and a planted pass/fail line would close both. This is a qa row, not this PR's work.
+* **Round 4's n1** (`staff:` in the IS4 fixture) is still open as a Nit. It is not part of this round.
+
+**Journey score.** Round 1's reviewer score stands at **8/10, pass** (`journey-test-reviewer-2026-11-23.md`). I did not re-walk it: this round changes no behaviour a person sees (a source line reformat, a migration lift with the same schema result, and two test lists). Journeys IS1-IS8 replay green (18/18).
+
+**Not part of this verdict (Lead's steps, for the record):**
+* Lead 15's 22:49 ruling re-stamps the migration folder to 20261123220000 as a pure rename. That head will need its own diff-only Approve, which the Lead has allowed. This Approve covers 47a0b7635 only.
+* By the same ruling, #3209 lands last and adds `@NoFirmData`, so no declaration is owed here.
+* The full run on the final head is still owed.
+
+**Could not check:** the full CI run on this head merged with main, and the j_90 browser walk.
+
+**Open:** none at Major or above.
+
+Verdict: Approve at 47a0b7635c15c13026e2f0f7027bbcbb204e3fdf
+
+### Round 5 addendum: the re-stamp (diff only, 47a0b7635..97b43aaec)
+
+**Scope.** Lead 15's 22:49 ruling re-stamps the migration folder to 20261123220000. This is one commit, `97b43aaec`, with no other change.
+
+**What I checked:**
+* **`migration.sql` is a pure rename.** `git diff -M` reports similarity 100% (R100), so the round 5 SQL I approved above is byte-identical.
+* **`rollback.sql` changes one comment line**, to name the new folder. Its statements are unchanged.
+* **The stamp is free and in order.** On `origin/main`, fetched now, the newest stamp is 20261123210000 (`pf21c_breaches`). No folder on main uses 20261123220000. The new stamp is also above #3207's 20261123213000, as the coordinator reports. Main has no stamp between 20261123210000 and the old 20261124070000, so the order against main is the same as before.
+* **Main merges cleanly.** `git merge-tree --write-tree origin/main 97b43aaec` exits 0.
+* **Nothing else names the old folder.** No test or API file on the new head mentions `20261124070000` or `20261123220000`. The remaining mentions are past rounds' records, left as written.
+
+**Not re-run by me:** I did not re-run F7 on this head; the builder reports 17/17. The SQL is identical and the migration order against main is unchanged, so F7's static rule and database half have nothing new to read. The full CI run on this head is still owed.
+
+**Open:** none at Major or above.
+
+Verdict: Approve at 97b43aaecc66dcc86841d02099c5081181e3d13f

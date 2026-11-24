@@ -119,7 +119,7 @@ test("PF-8rc buckets pass and fail: old versions expire after 35 days; a TLS den
   for (const p of of(t, "AWS::S3::BucketPolicy")) for (const st of (p.Properties!.PolicyDocument as { Statement: Record<string, unknown>[] }).Statement) st.Resource = [(st.Resource as unknown[])[0]];
   const f = bucketFindings(t);
   assert.equal(f.filter((l) => l.includes("old versions do not expire after 35 days")).length, 3);
-  assert.equal(f.filter((l) => l.includes("plain HTTP")).length, 3);
+  assert.equal(f.filter((l) => l.includes("plain HTTP")).length, 4); // PF-F1c: the access-log bucket's TLS deny too
 });
 
 // ---- Round 2: the breaker's B2–B8 and the reviewer's R1–R6 at 0ab64811e, each now caught ----

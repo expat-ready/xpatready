@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { taxForLine } from "../api/src/client-money/invoices/tax-round.ts";
 import { assertCited, CRA_RATES_URL, PROVINCE_CODES, PROVINCE_TAX_RATES, tableProblems, type ProvinceTaxTable } from "../api/src/client-money/tax/canada-gst-hst.ts";
 import { lineRatePpm, NO_PROVINCE_WARNING, provinceCode, taxDefault, TaxRuleRefused } from "../api/src/client-money/tax/defaults.ts";
+import { moneyVisible } from "./lib/money-visible.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -115,6 +116,13 @@ ok("FO-7g DW4 pass (the rule alone): not registered → 0 and no tax name for ev
   && taxDefault({ firmProvince: "ON", registered: true }).ratePpm === T.ON.ratePpm);
 ok("FO-7g DW4 fail: anything but true (\"true\", 1, \"false\", null, nothing) is not registered → 0", ["true", 1, "false", null, undefined, {}].every((r) => { const d = taxDefault({ firmProvince: "ON", registered: r as boolean }); return d.ratePpm === 0 && d.registered === false; }));
 
+// FO-7g part 3 (pure; P-797): the client's province (an invoice's Bill-to) wins over the firm's when it is one of the 13.
+ok("FO-7g part 3 pass (the rule alone): partyProvince NS for an Ontario firm → NS's entry, source PARTY_PROVINCE; for each of the 13 the party's entry",
+  PROVINCE_CODES.every((c) => { const d = taxDefault({ firmProvince: "ON", partyProvince: c, registered: true }); return d.source === "PARTY_PROVINCE" && d.ratePpm === T[c].ratePpm && d.taxName === T[c].taxName && d.warning === null && !d.outsideCanada; }));
+ok("FO-7g part 3 fail (the rule alone): a party province that is not one of the 13 (a name, ZZ, empty, a number, null) is never a guess: the firm's ON with source FIRM_PROVINCE; not registered → 0 whatever the party's",
+  ["Nova Scotia", "ZZ", "", 13, null, undefined, ["NS"]].every((p) => { const d = taxDefault({ firmProvince: "ON", partyProvince: p as string, registered: true }); return d.source === "FIRM_PROVINCE" && d.ratePpm === T.ON.ratePpm; })
+  && taxDefault({ firmProvince: "ON", partyProvince: "NS", registered: false }).ratePpm === 0 && taxDefault({ firmProvince: null, partyProvince: "NS", registered: true }).source === "PARTY_PROVINCE");
+
 // DW12 (pure): the default goes through QA-482's rounding (FO-7b's taxForLine, read only).
 const halfUp = (amount: number, ppm: number) => Math.round(amount * ppm / 1_000_000);
 const on = taxDefault({ firmProvince: "ON", registered: true });
@@ -186,9 +194,9 @@ try {
 
   await seedSampleFirms(owner); await seedSampleFirmsFrontOffice(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
-  const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7g.${n}@example.org', 'seed:FO-7g-1', now()) returning id`);
+  const person = (firm: string, n: string) => moneyVisible(sql, firm, "person", sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7g.${n}@example.org', 'seed:FO-7g-1', now()) returning id`));   // C5 (#3305 M1): a client the caller sees
   const PA = person(A, "a"), PB = person(B, "b");
-  const CA = sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Employer Sample Ltd', 'employer sample ltd', 'seed:FO-7g-1', now()) returning id`);
+  const CA = moneyVisible(sql, A, "company", sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Employer Sample Ltd', 'employer sample ltd', 'seed:FO-7g-1', now()) returning id`));
   const signIn = async (actorId: string, firmKey: string) => { const r = await call(undefined, "POST", "/platform/session/local", { firmKey, actorId, secondStep: true }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
   const tA = await signIn("user-R", "sample-firm"), tB = await signIn("user-S", "sample-solo"), tO = await signIn("user-O", "sample-firm");
   const province = (firm: string, v: string) => sql(`update platform_firm set business_address = ${v} where id = '${firm}'`);
@@ -291,7 +299,7 @@ try {
     w1r.status === 201 && W1(rows(w1)) && T.ON.ratePpm === 130000, [w1r.body, rows(w1)]);
   const staffA = sql(`select id from platform_staff where actor_id = 'user-R' and firm_id = '${A}'`);
   const ctxA = { staffId: staffA, firmId: A, firmKey: "sample-firm", roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" } as never;
-  const plantedDrafts = new InvoiceDrafts(nest.get(Db), auditEvent, halfUp), w1p = await fresh();
+  const plantedDrafts = new InvoiceDrafts(nest.get(Db), auditEvent, halfUp, undefined, async () => "ALL" as const), w1p = await fresh();
   await withFirm(A, () => plantedDrafts.addLine(ctxA, w1p, feeLine(50)));
   ok("FO-7g 1w case 1 fail (planted): the same draft step with half up (Math.round) in place of taxForLine stores 0.07, and the case catches it", rows(w1p) === `FEE:50:${T.ON.ratePpm}:7` && !W1(rows(w1p)), rows(w1p));
 
@@ -343,7 +351,9 @@ try {
   ok("FO-7g 1w (break m1) pass (stand-in): with it off again, the same line is added at the default", m1b.status === 201 && rows(lockId) === `FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}`, rows(lockId));
   // Break m2: an in-process caller passing ratePpm: undefined gets the default, not 0 (undefined is "not sent").
   const realDrafts = nest.get(InvoiceDrafts), m2 = await fresh();
-  await withFirm(A, () => realDrafts.addLine(ctxA, m2, feeLine(100000, { ratePpm: undefined })));
+  // the app's own service is C5-scoped (#3305 M1): its caller holds the OWNER role's real keys, not none
+  const ownerCtx = { ...(ctxA as object), keys: sql(`select string_agg(permission_key, ',') from platform_role_permission where role::text = 'OWNER'`).split(",") } as never;
+  await withFirm(A, () => realDrafts.addLine(ownerCtx, m2, feeLine(100000, { ratePpm: undefined })));
   ok("FO-7g 1w (break m2): ratePpm: undefined from an in-process caller is \"not sent\" → the default, not 0", rows(m2) === `FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}`, rows(m2));
   const m3 = await addTo(await fresh(), feeLine(100000, { ratePpm: 150000 }));
   ok("FO-7g 1w (review minor 2): the refusal names the rate as a person reads it (HST 13 %) beside its parts per million", m3.status === 422 && /HST 13 %/.test(m3.body.detail) && /130000 \(parts per million\)/.test(m3.body.detail), m3.body.detail);

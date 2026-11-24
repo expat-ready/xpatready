@@ -231,7 +231,7 @@ export class FirmSignUp {
     const token = randomBytes(32).toString("base64url");
     const link = await this.db.$transaction(async (tx) => {
       const now = await dbNow(tx);
-      const row = await tx.platformSignupLink.create({ data: { tokenHash: sha(token), email, countryCode: b.countryCode, planCode: plan.code, billingPeriod: b.period, createdBy: `system:${staff.staffId}`, createdAt: now, expiresAt: new Date(now.getTime() + LINK_DAYS * 86_400_000) }, select: { id: true, expiresAt: true } });
+      const row = await tx.platformSignupLink.create({ data: { tokenHash: sha(token), email, countryCode: b.countryCode, planCode: plan.code, billingPeriod: b.period, createdBy: `ourstaff:${staff.staffId}`, createdAt: now, expiresAt: new Date(now.getTime() + LINK_DAYS * 86_400_000) }, select: { id: true, expiresAt: true } });
       await touchPlatform(tx, { step: "signup-link.create", key: row.id });   // PF-12b: the firm-less line (the link's id, never the token or email)
       return row;
     });

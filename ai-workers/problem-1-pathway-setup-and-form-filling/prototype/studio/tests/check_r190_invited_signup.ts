@@ -72,6 +72,8 @@ try {
   ok("R1.90 IS1 pass: a Platform Owner makes the link → 201 with the link (token shown once) and its 14-day end", made.status === 201 && !!token && Math.abs(Date.parse(made.body?.expiresAt) - (Date.now() + 14 * 86_400_000)) < 120_000, made);
   if (!token) throw new Error("STOP  no link made: the rest needs one (test first: the routes are not built yet)");
   const stored = sql(`select token_hash from platform_signup_link where email = '${invited}'`);
+  const by = sql(`select created_by from platform_signup_link where email = '${invited}'`);
+  ok("R1.90 IS1 pass/fail (Lead B 4, AUD-3a): the link names who made it in our staff's own word, ourstaff:<id>, never system:", by === `ourstaff:${OWNER.id}` && !by.startsWith("system:"), { by });
   ok("R1.90 IS1 pass: only the token's hash is stored (sha256), never the token", stored === createHash("sha256").update(token).digest("hex") && !sql(`select row_to_json(l)::text from platform_signup_link l where email = '${invited}'`).includes(token));
 
   const ADMIN = person("Admin", "platform-admin"), tAdmin = await staffToken(ADMIN.email);

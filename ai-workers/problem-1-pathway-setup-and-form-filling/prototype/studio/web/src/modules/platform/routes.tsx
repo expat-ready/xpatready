@@ -17,9 +17,11 @@ import { InvitedSignUpPage } from "./signup/invited-page";
 import { BillingPage } from "./saas/billing-page";
 import { OfficesPage } from "./settings/offices-page";
 import { BrandingPage } from "./branding/branding-page";
+import { FirmProfilePage } from "./settings/firm-profile-page";
 import { SupportPage, SupportTicketPage } from "./settings/support-page";
 import { NotificationsPage } from "./settings/notifications-page";
 import { ActivityLogPage } from "./audit/activity-log-page";
+import { TemplatePage, TemplatesPage } from "./messages/templates/templates-page";
 
 export const routes: ModuleRoute[] = [
   { path: "/sign-in/callback", element: <CallbackPage /> },
@@ -39,8 +41,11 @@ export const routes: ModuleRoute[] = [
   { path: "/settings/billing", element: <BillingPage /> },   // PF-5s part 2: Plan and billing (PF-5 part 2 returns from Stripe here)
   { path: "/platform/offices", element: <OfficesPage /> },   // PF-18s part 1: Offices (Owner and Admin)
   { path: "/platform/branding", element: <BrandingPage /> },   // PF-13 part 2: Branding (Owner and Admin; R1.23)
+  { path: "/platform/firm-profile", element: <FirmProfilePage /> },   // PF-5s S5: Firm profile (R1.92)
   { path: "/platform/support", element: <SupportPage /> },   // PF-18s part 2: Help & support
   { path: "/platform/support/:id", element: <SupportTicketPage /> },   // PF-18s part 2: one ticket
   { path: "/account/notifications", element: <NotificationsPage /> },   // PF-18s part 3: My account → Notifications (everyone's own)
   { path: "/platform/activity-log", element: <ActivityLogPage /> },   // AUD-4s: the firm's Activity log (agent/audit:read)
+  { path: "/platform/templates", element: <TemplatesPage /> },   // PF-19s (R1.46): Templates (agent/template:list)
+  { path: "/platform/templates/:key", element: <TemplatePage /> },   // PF-19s: one template's editor and preview
 ];
