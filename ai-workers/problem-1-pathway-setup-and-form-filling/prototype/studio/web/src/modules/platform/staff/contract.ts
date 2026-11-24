@@ -3,7 +3,8 @@
 // reads it in Node. The screens show what the API answers; the server decides every rule.
 import { z } from "zod";
 
-export const Seats = z.object({ used: z.number(), limit: z.number(), plan: z.string().nullable(), line: z.string() });
+/** `booked`: the limit is a lower plan booked for the renewal, named in `plan` (QA-774). */
+export const Seats = z.object({ used: z.number(), limit: z.number(), plan: z.string().nullable(), booked: z.boolean().optional(), line: z.string() });
 export const StaffRow = z.object({
   id: z.string(), displayName: z.string(), email: z.string(), roles: z.array(z.string()), status: z.string(),
   twoStep: z.object({ method: z.string().nullable() }).passthrough().nullable(), lastSignInAt: z.string().nullable(), licensed: z.boolean(),

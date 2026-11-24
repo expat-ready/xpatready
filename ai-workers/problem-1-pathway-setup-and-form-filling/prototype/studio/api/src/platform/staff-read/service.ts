@@ -5,6 +5,7 @@ import { HttpException, Inject, Injectable } from "@nestjs/common";
 import { PlatformRole, Prisma } from "@prisma/client";
 import { Db } from "../../core.ts";
 import { catalogueMismatches, type KeyClass, type Scope } from "../identity/catalogue.ts";
+import { seatLimitOf, seatsUsed } from "../entitlements/limits.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
 import { FIRM_KEY, type StaffContext } from "../identity/keys.ts";
 import { PlatformIdentity } from "../identity/service.ts";
@@ -25,14 +26,16 @@ export class StaffReads {
     try { return await this.admin.twoStep({ staffId: s.id, subject: s.identitySubject, email: s.email }); } catch (e) { if (e instanceof HttpException) return null; throw e; }
   }
 
+  /** Team's seat line: the limit through the gate's own reader (seatLimitOf → PgEntitlements.limitOf) and the usage
+   *  through seatsUsed, so the line never shows a free seat the gate refuses (QA-774); `plan` is the plan that limit is. */
   async seats(firmId: string) {
-    const sub = await this.db.platformSubscription.findFirst({ where: firmScope(firmId, { status: { not: "ENDED" as const } }), include: { plan: { select: { seatsLimit: true, name: true } } } });
+    const lim = await seatLimitOf(this.db, firmId);
     const [c] = await this.db.$queryRaw<{ active: number; suspended: number; pending: number }[]>`select
       (select count(*) from platform_staff where firm_id = ${firmId}::uuid and status = 'ACTIVE')::int as active,
       (select count(*) from platform_staff where firm_id = ${firmId}::uuid and status = 'SUSPENDED')::int as suspended,
       (select count(*) from platform_invitation where firm_id = ${firmId}::uuid and accepted_at is null and revoked_at is null and expires_at > now())::int as pending`;
-    const used = c.active + c.suspended + c.pending, limit = sub?.plan.seatsLimit ?? 0;
-    return { used, limit, plan: sub?.plan.name ?? null, active: c.active, suspended: c.suspended, pending: c.pending, line: `${used} of ${limit} seats used` };
+    const used = await seatsUsed(this.db, firmId), limit = lim.limit ?? 0;
+    return { used, limit, plan: lim.planCode ? lim.limitPlanName : null, booked: lim.booked, active: c.active, suspended: c.suspended, pending: c.pending, line: `${used} of ${limit} seats used` };
   }
 
   private async row(s: { id: string; displayName: string; email: string; status: string; identitySubject: string | null; lastSignInAt: Date | null; grants: { role: string }[]; credential: { representativeType: string; licensingBody: string } | null; office: { officeId: string } | null }) {
