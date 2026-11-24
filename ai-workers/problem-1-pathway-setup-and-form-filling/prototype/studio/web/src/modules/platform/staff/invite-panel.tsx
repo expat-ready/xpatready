@@ -40,10 +40,11 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
   React.useEffect(() => { if (open) { setRows([fresh(1, offered)]); setFormError(null); next.current = 2; } }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form on each opening
   const set = (n: number, p: Partial<Row>) => setRows((rs) => rs.map((r) => (r.n === n ? { ...r, ...p } : r)));
   const after = seats.used + rows.length, over = after - seats.limit, free = Math.max(0, seats.limit - seats.used);
-  // BR-3: the same email twice on this form is flagged on the later row (the server flags staff and pending invitations).
+  // BR-3: the same email twice on this form is named on the later row before Send. It never stops Send (QA-773, R1.20
+  // "accepts the good rows"): the server flags that row DUPLICATE_IN_FORM, as it flags staff and pending invitations,
+  // and invites the rest.
   const twice = (r: Row) => !!r.email.trim() && rows.some((o) => o.n < r.n && o.email.trim().toLowerCase() === r.email.trim().toLowerCase());
   const send = async () => {
-    if (rows.some(twice)) return;
     setBusy(true); setFormError(null);
     const form = rows;   // row k of the request is form[k - 1]
     let answer: BatchAnswer;
