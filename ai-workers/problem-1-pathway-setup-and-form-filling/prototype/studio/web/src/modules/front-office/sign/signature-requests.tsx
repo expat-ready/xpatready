@@ -97,8 +97,8 @@ export function SignatureRequestsSection({ prospectId, name, lost }: { prospectI
       </div>
       {rows.isPending ? <p className="mt-2 text-sm text-text-muted" data-loading>Loading signature requests…</p>
         : rows.isError ? (rows.error instanceof StaffApiError && rows.error.status === 404
-          ? <p className="mt-2 text-sm text-text-muted">You cannot see this prospect's signature requests.</p>
-          : <div className="mt-2 flex flex-wrap items-center gap-3 text-sm"><span className="text-text-muted">Could not load the signature requests.</span><Button variant="link" size="sm" onClick={() => void rows.refetch()}>Try again</Button></div>)
+          ? <p data-load-error className="mt-2 text-sm text-text-muted">You cannot see this prospect's signature requests.</p>
+          : <div data-load-error className="mt-2 flex flex-wrap items-center gap-3 text-sm"><span className="text-text-muted">Could not load the signature requests.</span><Button variant="link" size="sm" onClick={() => void rows.refetch()}>Try again</Button></div>)
           : !rows.data.length ? <p className="mt-2 text-sm text-text-muted" data-empty>No documents sent for signature yet.{maySend ? " Upload a PDF such as an offer letter for this person to sign." : ""}</p>
             : <ul className="mt-3 flex flex-col gap-2">{rows.data.map((r) => <RequestRow key={r.id} r={r} mayDownload={mayDownload} download={download} />)}</ul>}
       <Panel open={open} onOpenChange={setOpen} title="Send for signature" description={`For ${name}. Nothing is recorded until you click Send.`}
