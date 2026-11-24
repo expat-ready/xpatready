@@ -15,6 +15,8 @@ on:
       - ".github/workflows/label-guard.yml"
       - ".github/workflows/nightly.yml"
       - ".github/workflows/guards.yml"
+      - ".github/workflows/studio-audit.yml"   # check-npm-audit-report.sh reads it
+      - ".github/workflows/red-on-old.yml"   # A351 C1: check-red-on-old.sh reads it
       - ".github/workflows/pr-rules.yml"   # E5: check-cleanup-pr.sh reads it
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves.tsv"   # B204 guard 28 (check-waves.sh)

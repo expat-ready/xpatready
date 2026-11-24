@@ -10,7 +10,9 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.argv[2] ?? 4466), DB = process.argv[3] ?? "xr_studio_runtime_wsfirst", NAME = DB.replace(/^xr_studio_/, "");
 const STUDIO = join(dirname(fileURLToPath(import.meta.url)), ".."), BASE = `http://localhost:${PORT}/api`;
-const H = { "x-actor": "user-A", "content-type": "application/json" };
+// Each call on its own connection: fresh() restarts the API while this process is blocked (execFileSync), so a kept connection
+// to the old server is sent on before its close is seen ("other side closed"; batches #3436, #3437, runs 45347486222, 45347964397).
+const H = { "x-actor": "user-A", "content-type": "application/json", connection: "close" };
 let pass = 0, fail = 0;
 const ok = (name: string, good: boolean, detail?: unknown) => { good ? pass++ : fail++; console.log(`${good ? "PASS" : "FAIL"}  ${name}${detail === undefined ? "" : ` — ${JSON.stringify(detail).slice(0, 400)}`}`); };
 const sql = (q: string) => execFileSync("psql", ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio", "-d", DB, "-tAc", q], { encoding: "utf8" }).trim();
