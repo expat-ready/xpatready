@@ -23,7 +23,10 @@ type Zoom = "fit" | "100" | "200";
 
 const TYPES: Record<string, string> = { "application/pdf": "PDF", "image/png": "PNG", "image/jpeg": "JPEG" };
 const BROKEN = { kind: "refused", title: "The file could not be opened", text: "The file could not be opened. It may be damaged, or it changed since it was uploaded. Ask for it again." } as const;
-const CSS_PER_PT = 96 / 72;   // "100%" as Mozilla's viewer means it: one PDF point at its printed size on screen
+const CSS_PER_PT = 96 / 72;
+/** Pixels per CSS pixel for a canvas of this CSS size: the screen's own, but at most 2^25 pixels and 16384 a side, as
+ *  Mozilla's viewer caps it (break M1); past that the page is drawn softer, never blank or out of memory. */
+const density = (w: number, h: number) => Math.min(window.devicePixelRatio || 1, Math.sqrt(2 ** 25 / Math.max(1, w * h)), 16384 / Math.max(1, w), 16384 / Math.max(1, h));   // "100%" as Mozilla's viewer means it: one PDF point at its printed size on screen
 const day = (at: string) => new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
@@ -56,7 +59,7 @@ async function drawer(media: string, bytes: ArrayBuffer): Promise<Drawn> {
     const img = await createImageBitmap(new Blob([bytes], { type: media }));
     return { pages: 1, close: () => img.close(), draw: async (_p, canvas, width, rotation) => {
       const turned = rotation % 180 !== 0, w0 = turned ? img.height : img.width, h0 = turned ? img.width : img.height;
-      const css = width(w0 / CSS_PER_PT), scale = css / w0, dpr = window.devicePixelRatio || 1;
+      const css = width(w0 / CSS_PER_PT), scale = css / w0, dpr = density(w0 * scale, h0 * scale);
       canvas.width = Math.round(w0 * scale * dpr); canvas.height = Math.round(h0 * scale * dpr);
       canvas.style.width = `${Math.round(w0 * scale)}px`; canvas.style.height = `${Math.round(h0 * scale)}px`;
       const g = canvas.getContext("2d")!; g.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
@@ -67,22 +70,30 @@ async function drawer(media: string, bytes: ArrayBuffer): Promise<Drawn> {
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
   const loading = pdfjs.getDocument({ data: new Uint8Array(bytes), enableXfa: false, disableAutoFetch: true, disableStream: true, stopAtErrors: true });
   const pdf = await loading.promise;
-  let task: { cancel: () => void; promise: Promise<void> } | null = null;
-  return { pages: pdf.numPages, close: () => { task?.cancel(); void loading.destroy(); }, draw: async (n, canvas, width, rotation) => {
-    task?.cancel();
-    const page = await pdf.getPage(n), turn = (page.rotate + rotation) % 360;
-    const base = page.getViewport({ scale: 1, rotation: turn }), vp = page.getViewport({ scale: width(base.width) / base.width, rotation: turn });
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(vp.width * dpr); canvas.height = Math.round(vp.height * dpr);
-    canvas.style.width = `${Math.round(vp.width)}px`; canvas.style.height = `${Math.round(vp.height)}px`;
-    task = page.render({ canvas, viewport: vp, transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0] });
-    try { await task.promise; } catch (e) { if ((e as Error)?.name !== "RenderingCancelledException") throw e; }
+  // One draw on the canvas at a time (break m1: two quick clicks drew on it at once): a newer draw cancels the one
+  // running, waits for it to stop, and a draw that is no longer the newest is skipped.
+  let task: { cancel: () => void; promise: Promise<void> } | null = null, chain = Promise.resolve(), newest = 0;
+  return { pages: pdf.numPages, close: () => { task?.cancel(); void loading.destroy(); }, draw: (n, canvas, width, rotation) => {
+    const me = ++newest; task?.cancel();
+    const run = chain.then(async () => {
+      if (me !== newest) return;
+      const page = await pdf.getPage(n), turn = (page.rotate + rotation) % 360;
+      const base = page.getViewport({ scale: 1, rotation: turn }), vp = page.getViewport({ scale: width(base.width) / base.width, rotation: turn });
+      if (me !== newest) return;
+      const dpr = density(vp.width, vp.height);
+      canvas.width = Math.round(vp.width * dpr); canvas.height = Math.round(vp.height * dpr);
+      canvas.style.width = `${Math.round(vp.width)}px`; canvas.style.height = `${Math.round(vp.height)}px`;
+      task = page.render({ canvas, viewport: vp, transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0] });
+      try { await task.promise; } catch (e) { if ((e as Error)?.name !== "RenderingCancelledException") throw e; }
+    });
+    chain = run.catch(() => undefined); return run;
   } };
 }
 
 /** The preview panel (concept §4): header facts, toolbar (page, zoom, rotate), one page drawn at a time in the only
  *  scrolling area, footer Close. Accept joins the footer with CS-D1 part 2's accept route (not on main yet). */
-export function DocumentPreview({ documentId, label, uploadedBy, close, returnFocus }: { documentId: string; label: string; uploadedBy: string; close: () => void; returnFocus: () => HTMLElement | null }) {
+export function DocumentPreview({ file, label, uploadedBy, close, returnFocus }: { file: { id: string; file_name: string; media_type: string; size_bytes: number; uploaded_at: string }; label: string; uploadedBy: string; close: () => void; returnFocus: () => HTMLElement | null }) {
+  const documentId = file.id;
   const [shown, setShown] = React.useState<Shown>({ kind: "loading" });
   const [page, setPage] = React.useState(1), [zoom, setZoom] = React.useState<Zoom>("fit"), [rotation, setRotation] = React.useState(0);
   const [avail, setAvail] = React.useState(0), [drawing, setDrawing] = React.useState(false);
@@ -123,15 +134,16 @@ export function DocumentPreview({ documentId, label, uploadedBy, close, returnFo
   const link = shown.kind === "ready" ? shown.link : null;
   const zoomBtn = (z: Zoom, words: string, tip: string) => <Tip key={z} tip={tip}><Button size="sm" variant={zoom === z ? "secondary" : "ghost"} aria-pressed={zoom === z} onClick={() => setZoom(z)} data-preview-zoom={z}>{words}</Button></Tip>;
   return (
-    <TipProvider><Panel open wide onOpenChange={(o) => { if (!o) close(); }} returnFocus={returnFocus} title={link?.file_name ?? "Preview"} description={label}
+    <TipProvider><Panel open wide onOpenChange={(o) => { if (!o) close(); }} returnFocus={returnFocus} title={file.file_name} description={label}
       badge={link ? (link.scan === "CLEAN" ? <Tip focusable tip="Scanned for viruses before it could be opened"><span><Pill tone="ok">Checked: clean</Pill></span></Tip>
         : <Tip focusable tip="This file has not been through a virus check. It is shown only as pictures of its pages, so nothing in it runs."><span><Pill tone="warn">Not scanned yet</Pill></span></Tip>) : null}
       footer={<Button variant="secondary" onClick={close} data-preview-close>Close</Button>}>
       <div className="flex h-full min-h-0 flex-col gap-3" data-document-preview data-preview-state={shown.kind}>
         {shown.kind === "loading" ? <div className="space-y-2" role="status"><p className="text-sm text-text-muted">Opening the file…</p><Skeleton className="h-96 w-full" /></div> : null}
         {shown.kind === "refused" ? <Notice tone={shown.again ? "info" : "danger"} title={shown.title} action={shown.again ? <Button size="sm" variant="secondary" onClick={open}>Try again</Button> : undefined}><span data-preview-refused>{shown.text}</span></Notice> : null}
+        {/* Break m4: the file's own facts (from its line) stay shown when it cannot be opened. */}
+        <p className="text-[13px] text-text-muted [overflow-wrap:anywhere]" data-preview-facts>{TYPES[file.media_type] ?? file.media_type} · {kb(file.size_bytes)} · Uploaded {day(file.uploaded_at)} by {uploadedBy}</p>
         {link ? <>
-          <p className="text-[13px] text-text-muted [overflow-wrap:anywhere]" data-preview-facts>{TYPES[link.media_type]} · {kb(link.size_bytes)} · Uploaded {day(link.uploaded_at)} by {uploadedBy}</p>
           {link.contains_scripts ? <Notice tone="warn" title="Contains scripts: opened only in the safe viewer"><span data-preview-scripts>The file is shown as pictures of its pages. Nothing in it runs.</span></Notice> : null}
           <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Page view">
             {pages > 1 ? <>

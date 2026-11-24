@@ -38,14 +38,14 @@ const { upload } = await import("../acceptance/lib/fixtures.ts");
 
 // ------------------------------------------------------------------------------------------------ Sample PDFs
 /** A PDF with one page per entry, Helvetica at `pt`, on A4 (595 x 842 pt); `js` adds an /OpenAction JavaScript (DW6). */
-function pdf(pages: string[][], pt = 10, js?: string): Buffer {
+function pdf(pages: string[][], pt = 10, js?: string, box: [number, number] = [595, 842]): Buffer {
   const esc = (s: string) => s.replace(/[\\()]/g, (c) => `\\${c}`);
   const objs: string[] = [`<< /Type /Catalog /Pages 2 0 R${js ? " /OpenAction 4 0 R" : ""} >>`, "", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", js ? `<< /S /JavaScript /JS (${esc(js)}) >>` : "<< >>"];
   const kids: number[] = [];
   for (const lines of pages) {
     const content = ["BT", `/F1 ${pt} Tf`, "40 800 Td", `${pt + 3} TL`, ...lines.map((l) => `(${esc(l)}) '`), "ET"].join("\n");
     objs.push(`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`);
-    objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${objs.length} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`);
+    objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${box[0]} ${box[1]}] /Contents ${objs.length} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`);
     kids.push(objs.length);
   }
   objs[1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(" ")}] /Count ${kids.length} >>`;
@@ -59,6 +59,7 @@ const SPEC = "SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID";
 const THREE = pdf([1, 2, 3].map((n) => [SPEC, `Sample bank statement, page ${n} of 3`, ...Array.from({ length: 50 }, (_, i) => `Line ${i + 1}: Sample entry 100.00 CAD`)]));
 const SCRIPTED = pdf([[SPEC, "Sample form with a script (DW6)"]], 10, "window.__csd5_ran = 1; app.alert('ran');");
 const LONG = pdf(Array.from({ length: 200 }, (_, i) => [SPEC, `Sample long document, page ${i + 1} of 200`]));
+const HUGE = pdf([[SPEC, "Sample scanner-app page, 2480 x 3508 pt"]], 10, undefined, [2480, 3508]);
 const A4 = pdf([[SPEC, "Sample A4 letter in 9 pt print: Balance 12,345.67 CAD, account holder SAMPLE CLIENT A"]], 9);
 // A 2 x 1 PNG (red, blue), so a quarter turn shows as a 1 x 2 picture.
 const chunk = (type: string, data: Buffer) => { const t = Buffer.concat([Buffer.from(type, "latin1"), data]), n = Buffer.alloc(4), k = Buffer.alloc(4); n.writeUInt32BE(data.length); k.writeUInt32BE(crc32(t)); return Buffer.concat([n, t, k]); };
@@ -176,6 +177,7 @@ try {
   // Review M1: a file changed on disk since upload (the API's 409 in its own words) is "could not open", never the scan's state.
   const f3 = fileOf(d3); ok("CS-D5 setup: the stored PNG is found on this copy", !!f3); if (f3) appendFileSync(f3, Buffer.from([0]));
   await openFile(d3); await page.locator('[data-preview-state="refused"]').waitFor({ timeout: 10_000 });
+  ok("CS-D5 BR-1 fail: the panel still names the file and its facts when it cannot be opened (break m4)", (await page.getByRole("heading", { name: "photo-sample.png" }).count()) === 1 && /^PNG · /.test((await page.locator("[data-preview-facts]").textContent()) ?? ""));
   ok("CS-D5 BR-1 fail: a file changed on disk shows \"The file could not be opened…\", not \"Checking for viruses…\", no Try again", (await panel.locator("[data-preview-refused]").textContent())?.startsWith("The file could not be opened.") === true && (await panel.getByText("Checking for viruses…").count()) === 0 && (await panel.getByRole("button", { name: "Try again" }).count()) === 0);
   await closePanel();
 
@@ -194,6 +196,14 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-preview-page]")?.textContent === "Page 150 of 200" && !document.querySelector("[data-preview-area][aria-busy]"), undefined, { timeout: 5_000 });
   const ms = Date.now() - t0;
   ok("CS-D5 W1: page 150 of 200 is drawn within 2 s of Next page, and the toolbar answers a click meanwhile", ms <= 2000 && answered, ms);
+  await page.locator("[data-preview-next]").dblclick(); await ready();
+  ok("CS-D5 W1: two quick clicks on Next turn two pages and never break the panel (break m1)", (await page.locator("[data-preview-page]").textContent()) === "Page 152 of 200" && (await page.locator('[data-preview-state="ready"]').count()) === 1, await page.locator("[data-preview-page]").textContent());
+  await closePanel();
+  // Break M1: a very large page at 200% is drawn into a canvas of at most 2^25 pixels (Mozilla's viewer's cap).
+  const d6 = await put(L3, HUGE, "scanner-app-page-sample.pdf");
+  await go(); await openFile(d6); await ready(); await page.locator('[data-preview-zoom="200"]').click(); await ready();
+  const px2 = await page.locator("[data-preview-canvas]").evaluate((e: HTMLCanvasElement) => [e.width * e.height, parseFloat(e.style.width)]);
+  ok("CS-D5 W1: a 2480 x 3508 pt page at 200% draws at full CSS size into at most 2^25 canvas pixels", px2[0]! <= 2 ** 25 && px2[1]! > 6000, px2);
   await closePanel();
   // Keyboard only, from the line's file name (the start point is focused; everything in the panel is reached by Tab).
   const tabTo = async (sel: string) => { for (let i = 0; i < 25; i++) { if (await page.evaluate((q) => !!document.activeElement?.matches(q), sel)) return true; await page.keyboard.press("Tab"); } return false; };

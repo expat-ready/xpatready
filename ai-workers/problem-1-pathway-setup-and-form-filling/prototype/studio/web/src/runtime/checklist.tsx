@@ -211,7 +211,7 @@ function LineRow({ caseId, p, people, l, nameOf }: { caseId: string; p: Person; 
           {currents.map((d) => <div key={d.id} className="space-y-2">{currents.length > 1 ? <p className="font-medium">{d.file_name}{d.member ? ` (${d.member.name})` : ""}</p> : null}<DocumentReads doc={d} /></div>)}
         </div>
       </Dialog> : null}
-      {preview ? <DocumentPreview documentId={preview.id} label={label} uploadedBy={nameOf(preview.uploaded_by)} close={() => setPreview(null)}
+      {preview ? <DocumentPreview file={preview} label={label} uploadedBy={nameOf(preview.uploaded_by)} close={() => setPreview(null)}
         returnFocus={() => document.querySelector<HTMLElement>(`[data-line="${l.id}"] [data-preview-open="${preview.id}"]`) ?? trigger.current} /> : null}
       {history ? <Dialog open onOpenChange={(o) => { if (!o) { setHistory(false); back(); } }} title={`History: ${label}`}>
         <div className="min-w-0 space-y-2 text-sm [overflow-wrap:anywhere]" data-history>
