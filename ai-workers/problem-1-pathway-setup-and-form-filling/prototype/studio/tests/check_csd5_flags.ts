@@ -106,7 +106,9 @@ await main("CS-D7", "flags on each document, read by the checklist", async () =>
   r = await set(doc, { expires_on: "2099-12-31" });
   me = await list();
   ok("CS-D7 fail: a future expiry gives no expiry warning", !me.lines.find((x) => x.id === pass!.id)!.flag_warnings.some((w) => /Expired|expiry date/.test(w)), me.lines.find((x) => x.id === pass!.id)!.flag_warnings);
-  sql(`update case_document set uploaded_at = now() - interval '400 days' where id='${doc}'`);
+  // Hours, not days: in an America/Toronto database "400 days" is counted on the local calendar, so across the winter
+  // clock change it is 400 days and 1 hour, and between 00:00 and 01:00 UTC the app (which counts UTC dates) says 401.
+  sql(`update case_document set uploaded_at = now() - interval '9600 hours' where id='${doc}'`);
   me = await list();
   ok("CS-D7 pass: a document older than the type's max age (365 days) warns, nothing blocked", me.lines.find((x) => x.id === pass!.id)!.flag_warnings.some((w) => /Uploaded 400 days ago/.test(w)) && me.lines.find((x) => x.id === pass!.id)!.state === before.state, me.lines.find((x) => x.id === pass!.id)!.flag_warnings);
   // Review N1 / break R2-M1: a passed "too old" warning stays passed the next day (its key never holds the day count).
@@ -114,7 +116,7 @@ await main("CS-D7", "flags on each document, read by the checklist", async () =>
   const ageW = (x: any) => flagWarns(x).find((w: any) => /Uploaded \d+ days ago/.test(w.words)); // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely
   const ageFiling = ((pr?.readiness ?? []) as any[]).find((f) => (f.warns ?? []).some((w: any) => w === ageW(pr) || (w.code === "document_flag" && /Uploaded/.test(w.words))))?.filing; // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely
   const passAge = await call("POST", `/runtime/filings/${ageFiling}/warnings/document_flag/pass`, { key: ageW(pr)?.key, reason: "Test: the client confirmed the passport is still the latest one." }, c.officer);
-  sql(`update case_document set uploaded_at = uploaded_at - interval '1 day' where id='${doc}'`);
+  sql(`update case_document set uploaded_at = uploaded_at - interval '24 hours' where id='${doc}'`);
   pr = await prep();
   const passedAge = ((pr?.readiness ?? []) as any[]).flatMap((f) => f.passed ?? []).filter((w: any) => w.code === "document_flag" && /Uploaded 401 days ago/.test(w.words)); // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely
   ok("review N1 pass: a passed \"too old\" warning is still passed a day later (Uploaded 401 days ago), not open again", passAge.status === 200 && passedAge.length >= 1 && !ageW(pr), [passAge.status, words(passAge), ageW(pr)?.words]);
