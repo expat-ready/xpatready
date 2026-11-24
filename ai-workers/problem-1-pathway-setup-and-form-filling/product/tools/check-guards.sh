@@ -477,10 +477,20 @@ A334 proof|product/tools/night-checklist.py|s/^            done = p\["pr"\] in m
 A334 prose|product/tools/night-checklist.py|s/ from ", s)$/", s) or re.search(r"\\(#(\\d+)\\)", s)/|check-lead-watch-idle.sh
 A334 brackets|product/tools/app-view-check.sh|s/^  rs = why; gsub.*/  rs = why/|check-lead-watch-idle.sh
 A334 wired|product/tools/lead-watch.sh|/night-checklist.py" 2>&1); echo/d|check-lead-watch-idle.sh
-A348 act|product/tools/proof-number.py|s/^    if apps and not new:/    if False:/|check-proof-number.sh
-A348 net|product/tools/proof-number.py|s/^    today = None if edge else .*/    today = len(hist)/|check-proof-number.sh
+A348 act|product/tools/proof-number.py|s/^    if apps and rp.*/    if False:/|check-proof-number.sh
+A348 4h|product/tools/proof-number.py|s/^HOURS = 4/HOURS = 0/|check-proof-number.sh
+A348 ist|product/tools/proof-number.py|s/^    mid = now.astimezone(fm.IST).replace/    mid = now.replace/|check-proof-number.sh
+A348 streak|product/tools/proof-number.py|s/map(fm.proven_at, hist.values())/[ev[-1] for ev in hist.values()]/|check-proof-number.sh
+A348 shallow|product/tools/proof-number.py|s/^    shallow = set(open.*/    shallow = set()/|check-proof-number.sh
+A348 live|product/tools/proof-number.py|s/^    if live != .*/    if False:/|check-proof-number.sh
+A348 first|product/tools/proof-number.py|s/git("log", "--first-parent", "-s",/git("log", "-s",/|check-proof-number.sh
+A348 app|product/tools/proof-number.py|s/"web.src", //|check-proof-number.sh
+A348 paths|product/tools/proof-number.py|s/^        if not git("ls-tree".*/        if False:/|check-proof-number.sh
 A348 edge|product/tools/proof-number.py|s/^    if today is None or rp.*/    if False:/|check-proof-number.sh
-A348 wired|product/tools/lead-watch.sh|/proof-number.py" 2>&1); echo/d|check-proof-number.sh'
+A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 12, 13/RELEASE_END = datetime(2026, 11, 30/|check-proof-number.sh
+A348 fetch|product/tools/lead-watch.sh|/origin.main not fetched/d|check-proof-number.sh
+A348 ran|product/tools/lead-watch.sh|/proof-number.py did not run/d|check-proof-number.sh
+A348 wired|product/tools/lead-watch.sh|s/^pn=/# pn=/|check-proof-number.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1

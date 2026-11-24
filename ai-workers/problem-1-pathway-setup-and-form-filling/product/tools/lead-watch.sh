@@ -72,9 +72,9 @@ lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$TOOLS/../STATE.md" 2>&
 fresh "lead-upkeep.py context: STATE.md in this copy and LEAD_CONTEXT from the Lead's get_usage"
 
 # 1d. Proof number first (A348, founder 24 Nov): Proven today (net since 00:00 IST), last 24 h and the forecast, above merges.
-git fetch -q origin main 2>/dev/null || ACT "proven: origin/main not fetched, the number below may be old"
+git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || ACT "proven: origin/main not fetched, the number below may be old"
 pn=$(python3 -I "$TOOLS/proof-number.py" 2>&1); echo "$pn"; act=$((act + $(grep -c '^ACT' <<<"$pn"))); seen "$pn"
-grep -q '^proven \|^ACT   proven' <<<"$pn" || ACT "proven: proof-number.py did not run ($(head -1 <<<"$pn"))"
+grep -qE '^(proven |ACT   proven)' <<<"$pn" || ACT "proven: proof-number.py did not run ($(head -1 <<<"$pn"))"
 fresh "proof-number.py: qa/CAPABILITIES.md and app code on origin/main (git only)"
 
 # 2. Merges and the queue.
