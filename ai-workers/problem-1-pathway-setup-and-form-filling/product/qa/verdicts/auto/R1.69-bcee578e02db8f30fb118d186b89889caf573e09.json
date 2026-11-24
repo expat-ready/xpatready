@@ -1,0 +1,32 @@
+{
+  "item": "R1.69",
+  "name": "69 Read log, fingerprint, keep-period reminder",
+  "pr": 3497,
+  "sha": "bcee578e02db8f30fb118d186b89889caf573e09",
+  "run_id": "45483747415",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45483747415",
+  "at": "2026-11-24T20:50:42.245Z",
+  "overall": "FAIL",
+  "why": [
+    "tests/journeys/j_69.ts: fail"
+  ],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_69.ts",
+      "result": "fail",
+      "exit": 1
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": null,
+  "trace": "https://github.com/expat-ready/xpatready/actions/runs/45483747415/artifacts/14962278740",
+  "file": "product/qa/verdicts/auto/R1.69-bcee578e02db8f30fb118d186b89889caf573e09.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
