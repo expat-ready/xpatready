@@ -4,6 +4,7 @@
 // names the version the screen read; when someone moved the prospect first, nothing changes and the rows are read again.
 import * as React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MenuRoot } from "@/components/ui/menu-root";   // PF-31: open only while its workspace tab is shown
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
@@ -67,7 +68,7 @@ export function MoveMenu({ prospect, from, stages, version, move }: { prospect: 
   const to = stages.filter((s) => s.kind === "ACTIVE" && s.id !== from);
   if (!to.length) return null;
   return (
-    <DropdownMenu.Root>
+    <MenuRoot>
       <DropdownMenu.Trigger asChild><Button size="sm" variant="outline" busy={move.isPending && move.variables?.id === prospect.id} aria-label={`Move to…: ${prospect.name}, ${prospect.number}`} data-move={prospect.number}>Move to…</Button></DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={4} className="z-50 min-w-56 rounded-lg border border-border bg-surface-raised p-1 shadow-lg">
@@ -75,6 +76,6 @@ export function MoveMenu({ prospect, from, stages, version, move }: { prospect: 
           <DropdownMenu.Label className="max-w-64 px-2 py-1.5 text-xs text-text-muted">Won is set when the retainer is signed, or by Convert to client.</DropdownMenu.Label>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+    </MenuRoot>
   );
 }
