@@ -39,11 +39,13 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
   const qc = useQueryClient(), toast = useToast();
   React.useEffect(() => { if (open) { setRows([fresh(1, offered)]); setFormError(null); next.current = 2; } }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form on each opening
   const set = (n: number, p: Partial<Row>) => setRows((rs) => rs.map((r) => (r.n === n ? { ...r, ...p } : r)));
-  const after = seats.used + rows.length, over = after - seats.limit, free = Math.max(0, seats.limit - seats.used);
   // BR-3: the same email twice on this form is named on the later row before Send. It never stops Send (QA-773, R1.20
   // "accepts the good rows"): the server flags that row DUPLICATE_IN_FORM, as it flags staff and pending invitations,
   // and invites the rest.
   const twice = (r: Row) => !!r.email.trim() && rows.some((o) => o.n < r.n && o.email.trim().toLowerCase() === r.email.trim().toLowerCase());
+  // A duplicate row takes no seat (the server gives it none), so the seat line and the warning do not count it (review m3).
+  const people = rows.filter((r) => !twice(r)).length;
+  const after = seats.used + people, over = after - seats.limit, free = Math.max(0, seats.limit - seats.used);
   const send = async () => {
     setBusy(true); setFormError(null);
     const form = rows;   // row k of the request is form[k - 1]
@@ -71,7 +73,7 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button busy={busy} onClick={() => void send()} data-send-invites>Send {rows.length === 1 ? "invitation" : `${rows.length} invitations`}</Button></>}>
       {/* Break M1: the form is locked while the batch is in flight, so the answer always maps onto the rows as sent. */}
       <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" data-invite-form>
-        <p className="text-sm" data-invite-seats>{over > 0 ? `${seats.used} of ${seats.limit} seats used · ${rows.length} on this form` : `${after} of ${seats.limit} seats after these invites`}</p>
+        <p className="text-sm" data-invite-seats>{over > 0 ? `${seats.used} of ${seats.limit} seats used · ${people} on this form` : `${after} of ${seats.limit} seats after these invites`}</p>
         {formError ? <div data-invite-form-error><Notice tone="danger" title={formError.title}>{formError.text}</Notice></div> : null}
         {over > 0 ? <div data-invite-seat-warning><Notice tone="warn" title="More people than free seats">{seatWords(free, over)}</Notice></div> : null}
         {rows.map((r, i) => {

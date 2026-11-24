@@ -64,7 +64,7 @@ export function batchRowsOf(body: { rows?: unknown }, actorIsOwner: boolean): Ba
     if (out.roles?.includes("OWNER")) out.flags.push({ code: "OWNER_BY_SINGLE_INVITE", detail: actorIsOwner ? OWNER_WORDS : OWNER_ONLY_WORDS });
     // emailOf keeps one spelling per address (lower case, no spaces or invisible characters), so case and spacing cannot
     // hide a duplicate. Flagged on the second and later rows.
-    if (out.email) { if (seen.has(out.email)) out.flags.push({ code: "DUPLICATE_IN_FORM", detail: "This email is already on an earlier row of this form." }); seen.add(out.email); }
+    if (out.email) { if (seen.has(out.email)) out.flags.push({ code: "DUPLICATE_IN_FORM", detail: "This email is also on an earlier row of this form, which counts for this person, so this row was not sent." }); seen.add(out.email); }
     return out;
   });
   const typos = read.filter((r) => r.flags.some((f) => f.code === "UNKNOWN_FIELD"));

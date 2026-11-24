@@ -107,6 +107,8 @@ try {
   await tick(owner, 2, "READ_ONLY");
   ok("J-20 W1: the form counts five people against the seats", (await owner.locator("[data-send-invites]").innerText()).trim() === "Send 5 invitations");
   ok("J-20 W1 (BR-3): before Send, A's email typed again is named on the later row", (await row(owner, 5).innerText()).includes("This email is already on another row."));
+  const preview = (await owner.locator("[data-invite-seats]").innerText()).trim();
+  ok("J-20 W1 (review m3): the seat line counts four people, not the duplicate row (the server gives it no seat)", preview.startsWith(`${used() + 4} of `) && preview.endsWith("seats after these invites"), preview);
   await shot(owner, "W1-four-rows-1440");
   // P-606: W2's judges before Send.
   ok("J-20 W2 fail (before Send): no invitation exists for A or B", invitations(A) === 0 && invitations(B) === 0);
@@ -118,7 +120,7 @@ try {
   const words1 = await row(owner, 1).innerText(), words2 = await row(owner, 2).innerText();
   ok("J-20 W1: Send invites the two good rows (\"2 invitations sent.\"); they leave the form and the two flagged rows stay", toast === 1 && rowsLeft === 3 && (await owner.getByLabel("Email, person 1").inputValue()) === STAFF && (await owner.getByLabel("Email, person 2").inputValue()) === D, { toast, rowsLeft });
   const words3 = await row(owner, 3).innerText().catch(() => "");
-  ok("J-20 W1 fail (QA-773): the duplicate row does not stop Send; it stays with the server's words (an earlier row of this form)", rowsLeft === 3 && (await owner.getByLabel("Email, person 3").inputValue().catch(() => "")) === A_TWICE && words3.includes("This email is already on an earlier row of this form."), words3);
+  ok("J-20 W1 fail (QA-773): the duplicate row does not stop Send; it stays with the server's words (an earlier row of this form, which counts for this person)", rowsLeft === 3 && (await owner.getByLabel("Email, person 3").inputValue().catch(() => "")) === A_TWICE && words3.includes("This email is also on an earlier row of this form, which counts for this person, so this row was not sent."), words3);
   ok("J-20 W1: each flagged row shows its own reason on its own row (already staff; already invited)", words1.includes("This person is already on your firm's staff.") && !words1.includes("invitation") && /already (has a pending invitation|invited)/i.test(words2) && !words2.includes("already on your firm's staff"), { words1, words2 });
   ok("J-20 W1 (break m5): focus goes to the first flagged row's Email field, not the panel", await owner.evaluate(() => document.activeElement?.getAttribute("aria-invalid") === "true" && !!document.activeElement?.closest('[data-invite-row="1"]')));
   ok("J-20 W1: the form says how many were not invited", (await owner.locator("[data-invite-form-error]").innerText({ timeout: 2_000 }).catch(() => "")).includes("3 people were not invited."));

@@ -180,7 +180,7 @@ await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invita
 ok("PF-6 DW2/BR-3 fail (QA-773): Send answers within 10 s with the form's words (a timeout is this FAIL)", await p.locator("[data-invite-form-error]").waitFor({ timeout: 10_000 }).then(() => true, () => false));
 ok("PF-6 DW2/BR-3 fail (QA-773): a duplicate row does not stop Send: one batch call; the first row is invited once and leaves the form; the duplicate stays with the server's words",
   posts(p, /\/staff\/invitations\/batch$/).length === sentBefore + 1 && sql(`select count(*) from platform_invitation where lower(email) = '${G}'`) === "1"
-  && (await p.getByLabel("Email, person 1").inputValue().catch(() => "")) === G.toUpperCase() && (await p.locator('[data-invite-row="1"]').innerText().catch(() => "")).includes("This email is already on an earlier row of this form."));
+  && (await p.getByLabel("Email, person 1").inputValue().catch(() => "")) === G.toUpperCase() && (await p.locator('[data-invite-row="1"]').innerText().catch(() => "")).includes("This email is also on an earlier row of this form, which counts for this person, so this row was not sent."));
 ok("PF-6 DW2/BR-3 fail: an existing staff member's row keeps the server's words; no invitation is made", (await p.locator('[data-invite-row="2"]').innerText().catch(() => "")).includes("This person is already on your firm's staff.") && sql(`select count(*) from platform_invitation where email = '${O.email}'`) === "0");
 // BR-2: the whole form is counted on the seat line. Over the limit, P-727 (the founder, 19 Nov) governs over the concept's
 // "nothing is sent until the form fits" (Lead 19 on #3370, R1.20): Send stays on, the free seats go to the rows in order and
