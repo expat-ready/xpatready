@@ -25,6 +25,9 @@
 // file "signed" and "evidence"; the person's documents GET /api/front-office/people/:id/documents; FO-6d's send
 // POST /api/front-office/signature-requests (multipart: file, title, prospectId, signerPersonIds). The fake adapter's
 // signing link (port.ts) points at signing.fake.invalid, which no browser opens: W2's label names the missing page.
+// Parts as of 24 Nov (qa 11, run on #3490's head 9b3ac365a: 14/21 twice): the door FO-6 part 4b #3460 and the stand-in page
+// and firm link 4c #3490 (W2-W3); the e-signed retainer's downloads 4d #3536 (W4-W5); FO-5s's signed-copy button on the card
+// (W6, no PR); QA-782, no OTHER signer is emailed a link (W7, no part); FO-6v, the vendor's sandbox (W1, held P-561).
 // Sample values only; US$0, no model call, no live mail, no vendor call (the browser refuses the vendor and fake hosts).
 // No screenshots are written. Legal points (e-signature identity): Unconfirmed: no counsel. Run from prototype/:
 //   zsh studio/tools/isolated.sh j54 4454 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j54 4454 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_54.ts j54 4454
@@ -179,52 +182,52 @@ try {
 
   // ---------------------------------------------------------------------------------------------- W1 signing in the vendor's sandbox (no priced call)
   const r1 = requestOf(ra.id), REQ = r1.split("|")[0] ?? "";
-  ok("J-54 W1 (part missing: FO-6's routes, Send makes the signing request): Send made one live RETAINER signing request with one client signer and the firm signer", /^[0-9a-f-]{36}\|RETAINER\|SENT\|\w+\|1\|1$/.test(r1), r1 || "no fo_signature_request row");
+  ok("J-54 W1 (FO-6 part 3, on main): Send made one live RETAINER signing request with one client signer and the firm signer", /^[0-9a-f-]{36}\|RETAINER\|SENT\|\w+\|1\|1$/.test(r1), r1 || "no fo_signature_request row");
   ok("J-54 W1 (part missing: FO-6v, the vendor's sandbox adapter, held P-561; fails on every isolated copy, which has no sandbox key and so prices no call, until FO-6v runs on the Mac with the sandbox key): the request is carried by the vendor's sandbox (provider BOLDSIGN)",
     r1.split("|")[3] === "BOLDSIGN", r1 || "no request");
 
   // ---------------------------------------------------------------------------------------------- W2-W3 the signature (fake adapter standing in for the sandbox)
   const w2 = await signByEmail(PA, REQ, PA.pid);
-  ok("J-54 W2 (part missing: FO-6's routes, the signing email and the public door: code, consent, session): client A opens their emailed link, verifies the code, consents, and the signing session opens",
+  ok("J-54 W2 (FO-6 part 4b, the public door, #3460): client A opens their emailed link, verifies the code, consents, and the signing session opens",
     w2.link && w2.door === 200 && w2.gotCode && w2.verify < 300 && w2.consent < 300 && w2.session === 200, w2);
-  ok("J-54 W2 (part missing: FO-6's routes, a signing page for the fake adapter on the running copy; the fake's link points at signing.fake.invalid): client A signs; their signer row is signed and the request reads CLIENT_SIGNED",
+  ok("J-54 W2 (FO-6 part 4c, the fake's stand-in signing page, #3490, on 4b #3460): client A signs; their signer row is signed and the request reads CLIENT_SIGNED",
     w2.signed && REQ !== "" && requestOf(ra.id).split("|")[2] === "CLIENT_SIGNED", { how: w2.how, request: requestOf(ra.id) || "none" });
   // The firm signer agrees to sign electronically on the way in: FO-6 part 4c's strict body (#3490, routes.ts
   // FirmSigningLinkBody; the words' version is door.ts's CONSENT_TEXT_VERSION). Aligned by qa 8, 24 Nov: it posted {}
   // before, which part 4c answers 422.
   const fl = await api("POST", `/api/front-office/retainers/${ra.id}/firm-signing-link`, { consent: true, consentTextVersion: "sign-electronically-v1" }, tok);
   const fc = await fresh(); const firmHow = await finish(fc.page, String(fl.body?.url ?? ""), () => requestOf(ra.id).split("|")[2] === "SIGNED"); await fc.ctx.close();
-  ok("J-54 W3 (part missing: FO-6's routes, the firm signer's link (guessed route) and the fake's signing page): the representative signs last; the request reads SIGNED",
+  ok("J-54 W3 (FO-6 part 4c, the firm signer's link and the stand-in page, #3490): the representative signs last; the request reads SIGNED",
     fl.status === 200 && requestOf(ra.id).split("|")[2] === "SIGNED", { link: brief(fl), how: firmHow });
 
   // ---------------------------------------------------------------------------------------------- W4 returns the signed file
   const ev = REQ ? sql(`select coalesce((select sealed_file_key || '|' || sealed_sha256 || '|' || audit_file_key || '|' || audit_sha256 || '|' || consent_text_version from fo_signing_evidence where request_id = '${REQ}'), '')`) : "";
   const [sealedKey, sealedSha, auditKey, auditSha, consentV] = ev.split("|");
-  ok("J-54 W4 (part missing: FO-6 part 3, the evidence): the sealed copy is stored with us under signing/ and hashed (fo_signing_evidence)", !!sealedKey && /^[0-9a-f]{64}$/.test(sealedSha ?? ""), ev || "no evidence row");
+  ok("J-54 W4 (FO-6 part 3, the evidence, on main; signed through 4b #3460 and 4c #3490): the sealed copy is stored with us under signing/ and hashed (fo_signing_evidence)", !!sealedKey && /^[0-9a-f]{64}$/.test(sealedSha ?? ""), ev || "no evidence row");
   const download = async (file: string) => {
     const l = await api("POST", `/api/front-office/retainers/${ra.id}/download-link`, { file }, tok);
     const f = l.status === 200 && l.body?.url ? await api("GET", String(l.body.url), undefined, tok) : null;
     return { link: l.status, file: f?.status ?? 0, type: f?.type ?? "", sha: f ? sha256(f.bytes) : "" };
   };
   const signedFile = await download("signed");
-  ok("J-54 W4 (part missing: FO-6 part 3, the signed copy's download; guessed body file \"signed\"): the firm downloads the signed file: a PDF whose sha256 is the stored one",
+  ok("J-54 W4 (part missing: FO-6 part 4d, the e-signed retainer's downloads, #3536; body file \"signed\"): the firm downloads the signed file: a PDF whose sha256 is the stored one",
     !!sealedSha && signedFile.file === 200 && /pdf/.test(signedFile.type) && signedFile.sha === sealedSha, signedFile);
 
   // ---------------------------------------------------------------------------------------------- W5 and its evidence
   const signerConsent = REQ ? sql(`select coalesce(string_agg(distinct consent_text_version, ','), '') from fo_signer where request_id = '${REQ}'`) : "";
-  ok("J-54 W5 (part missing: FO-6 part 3, the evidence): the provider's audit file is stored and hashed, with the consent text version every signer agreed to",
+  ok("J-54 W5 (FO-6 part 3, the evidence, on main): the provider's audit file is stored and hashed, with the consent text version every signer agreed to",
     !!auditKey && auditKey !== sealedKey && /^[0-9a-f]{64}$/.test(auditSha ?? "") && !!consentV && signerConsent === consentV, { ev: ev || "none", signerConsent });
   const auditFile = await download("evidence");
-  ok("J-54 W5 (part missing: FO-6 part 3, the evidence's download; guessed body file \"evidence\"): the firm downloads the evidence file and its sha256 is the stored one",
+  ok("J-54 W5 (part missing: FO-6 part 4d, #3536; body file \"evidence\"): the firm downloads the evidence file and its sha256 is the stored one",
     !!auditSha && auditFile.file === 200 && auditFile.sha === auditSha, auditFile);
 
   // ---------------------------------------------------------------------------------------------- W6 stored on the person
   const docs = await api("GET", `/api/front-office/people/${PA.pid}/documents`, undefined, tok);
-  ok("J-54 W6 (part missing: FO-6 part 3, the signed copy on the person; guessed route GET /api/front-office/people/:id/documents): client A's person record lists the signed copy (its sha256)",
+  ok("J-54 W6 (FO-6d, the person's documents, on main): client A's person record lists the signed copy (its sha256)",
     !!sealedSha && docs.status === 200 && docs.text.includes(sealedSha), brief(docs));
   await p.goto(`${BASE}/front-office/prospects/${A.id}`); await card.waitFor({ timeout: 30_000 }).catch(() => undefined);
   const cardWords = (await card.innerText().catch(() => "")).replace(/\s+/g, " ");
-  ok("J-54 W6 (parts missing: FO-6 part 3 and its screen on FO-5s' card): the prospect's page says the retainer is signed and offers the signed copy",
+  ok("J-54 W6 (part missing: FO-5s, the retainer card's signed-copy button; no open PR): the prospect's page says the retainer is signed and offers the signed copy",
     requestOf(ra.id).split("|")[2] === "SIGNED" && /signed/i.test(cardWords) && (await card.getByRole("button", { name: /signed copy/i }).or(card.getByRole("link", { name: /signed copy/i })).count()) >= 1, cardWords.slice(0, 200));
 
   // ---------------------------------------------------------------------------------------------- W7 any uploaded PDF can be sent for signature (FO-6d)
@@ -237,31 +240,31 @@ try {
   const other = await send({ name: "addendum.pdf", type: "application/pdf", bytes: PDF }, tok);
   const OTHER_ID = String(other.body?.id ?? other.body?.requestId ?? "");
   const ro = OTHER_ID ? sql(`select coalesce((select document_kind || '|' || status || '|' || (select count(*) from fo_signer s where s.request_id = r.id and s.role = 'CLIENT') from fo_signature_request r where r.id = '${OTHER_ID}'), '')`) : "";
-  ok("J-54 W7 (part missing: FO-6d, send any document; guessed route POST /api/front-office/signature-requests): an uploaded PDF is sent to the prospect's two people: one OTHER request with two client signers",
+  ok("J-54 W7 (FO-6d, on main): an uploaded PDF is sent to the prospect's two people: one OTHER request with two client signers",
     (other.status === 201 || other.status === 200) && ro === "OTHER|SENT|2", { send: brief(other), row: ro || "none" });
   const sb = await signByEmail(PB, OTHER_ID, PB.pid), sc = await signByEmail(PC, OTHER_ID, PC.pid);
-  ok("J-54 W7 (parts missing: FO-6d; FO-6's door and the fake's signing page): each of the two people signs by their own emailed link", sb.signed && sc.signed, { B: sb, C: sc });
+  ok("J-54 W7 (part missing: QA-782, no OTHER signer is emailed a link; no part named): each of the two people signs by their own emailed link", sb.signed && sc.signed, { B: sb, C: sc });
   const oev = OTHER_ID ? sql(`select coalesce((select sealed_sha256 from fo_signing_evidence where request_id = '${OTHER_ID}'), '')`) : "";
   const docsB = await api("GET", `/api/front-office/people/${PB.pid}/documents`, undefined, tok), docsC = await api("GET", `/api/front-office/people/${PC.pid}/documents`, undefined, tok);
-  ok("J-54 W7 (parts missing: FO-6d, FO-6 part 3): the sealed copy of the uploaded PDF is filed, hashed, and listed on both people",
+  ok("J-54 W7 (part missing: QA-782; FO-6d files it once signed): the sealed copy of the uploaded PDF is filed, hashed, and listed on both people",
     /^[0-9a-f]{64}$/.test(oev) && docsB.text.includes(oev) && docsC.text.includes(oev), { sealed: oev || "none", B: docsB.status, C: docsC.status });
-  ok("J-54 W7 (part missing: FO-6d): an OTHER document never moves the prospect (its stage unchanged, no prospect.won)",
+  ok("J-54 W7 (part missing: QA-782): an OTHER document never moves the prospect (its stage unchanged, no prospect.won)",
     !!OTHER_ID && sb.signed && sc.signed && sql(`select stage_id from fo_prospect where id = '${B.id}'`) === stageBefore
       && sql(`select count(*) from audit_event where firm_id = '${firmId}' and action = 'prospect.won' and (entity_key = '${B.id}' or detail::text like '%${B.id}%')`) === "0", { sent: !!OTHER_ID, signed: sb.signed && sc.signed });
 
   // ---------------------------------------------------------------------------------------------- W8 fails: not a PDF, no session
   const before8 = sql(`select count(*) from fo_signature_request where firm_id = '${firmId}'`);
   const notPdf = await send({ name: "addendum.pdf", type: "application/pdf", bytes: Buffer.from("not a pdf at all") }, tok);
-  ok("J-54 W8 fail (part missing: FO-6d): a file that is not a PDF (named .pdf) is refused in words (422, \"PDF\"); nothing is sent",
+  ok("J-54 W8 fail (FO-6d, on main): a file that is not a PDF (named .pdf) is refused in words (422, \"PDF\"); nothing is sent",
     notPdf.status === 422 && /PDF/.test(notPdf.text) && sql(`select count(*) from fo_signature_request where firm_id = '${firmId}'`) === before8, brief(notPdf));
   const anon = await send({ name: "addendum.pdf", type: "application/pdf", bytes: PDF });
-  ok("J-54 W8 fail (part missing: FO-6d; a missing route answers 404): with no session the send is refused (401); nothing is sent",
+  ok("J-54 W8 fail (FO-6d, on main): with no session the send is refused (401); nothing is sent",
     anon.status === 401 && sql(`select count(*) from fo_signature_request where firm_id = '${firmId}'`) === before8, anon.status);
 
   // ---------------------------------------------------------------------------------------------- W9 by screens (FO-6ds)
   await p.goto(`${BASE}/front-office/prospects/${B.id}`); await p.locator("main").waitFor({ timeout: 30_000 }); await card.waitFor({ timeout: 15_000 }).catch(() => undefined);
   const offer = await p.getByRole("button", { name: /send for signature/i }).count();
-  ok("J-54 W9 (part missing: FO-6ds, the \"Send for signature\" screen): the prospect's page offers Send for signature", offer >= 1, `${offer} buttons`);
+  ok("J-54 W9 (FO-6ds, on main): the prospect's page offers Send for signature", offer >= 1, `${offer} buttons`);
 
   ok("J-54: no page error during the walk", errors.length === 0, errors.slice(0, 5));
 } finally {
