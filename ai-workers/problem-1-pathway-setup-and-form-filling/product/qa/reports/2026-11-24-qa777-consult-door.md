@@ -8,8 +8,8 @@
 On main there is no client page for the door: the emailed link opens at the signing vendor's side, and the door is `POST /api/public/consultation-agreements/open`. The check uses two Playwright browser contexts, each with its own cookies and user agent, posting to that door on the running copy:
 1. Client C, a licensed Case Officer, books Client P three days ahead through the staff route. The answer is 201.
 2. The copy's poller sends the agreement. Client P's email with the link arrives in the copy's demo inbox.
-3. **Browser B**, the person the link was forwarded to, posts `{token, consent: true}` before the client ever opens it. The answer is 200 with `codeNeeded: true`, but **the client's consent is now recorded** (`fo_signer.consented_at`, with the audit line "consent to sign electronically recorded (client)").
-4. **Browser A**, the client, posts `{token, consent: true}` and is asked for the code. The code arrives by email; typed back, it returns the signing link. This step is the control, and it passes.
+3. **Browser B**, the person the link was forwarded to, posts `{token, consent: true}` before the client ever opens it. The answer is 200 with `codeNeeded: true`, but **the client's consent is now recorded** (`fo_signer.consented_at`, with the audit line "consent to sign electronically recorded (client)"). B's call also emails the client a code.
+4. **Browser A**, the client, posts `{token, consent: true}` and is asked for the code. No new email goes, because B's call already sent a live code. The client types that code back and gets the signing link. This step is the control, and it passes.
 5. **Browser B** posts `{token, consent: true}` again, with no code. The answer is **200 with `codeNeeded: false` and the signing link**. It does the same with no `consent` at all.
 
 | Step | Run 1 | Run 2 |
@@ -25,7 +25,7 @@ On main there is no client page for the door: the emailed link opens at the sign
 * `:408`: consent is written on any `open` with `consent: true`, before the code is checked.
 
 ## Severity: Major
-* **What breaks:** someone other than the client, holding a forwarded link (a shared mailbox, a forwarded email), reaches the signing step of the client's consultation agreement inside the 30 minutes after the client types the code. The client's consent can also be recorded by whoever opens the link first. Both weaken what "signed by the client" means for R1.104. P-564's code exists to prove the person, and AG-5-21 says "a forwarded link cannot be reused".
+* **What breaks:** someone other than the client, holding a forwarded link (a shared mailbox, a forwarded email), reaches the signing step of the client's consultation agreement inside the 30 minutes after the client types the code. The client's consent can also be recorded by whoever opens the link first. Both weaken what "signed by the client" means for R1.104. P-564's code exists to prove the person. This is also in the spirit of AG-5-21, whose row says "a forwarded link cannot be reused" while it is about links going dead on sign, decline, replace, withdraw or expiry.
 * **Why not Critical:** it needs the link and a 30-minute window. The vendor's own page may still apply its own checks, which are not tested here because there is no live vendor (US$0). Data is Sample, and there are no customers yet.
 * **Effect on the board:** a Major naming R1.104 keeps R1.104 Partial under gate B (P-305, P-317) until it is fixed. R1.104 is already Partial on QA-772.
 
