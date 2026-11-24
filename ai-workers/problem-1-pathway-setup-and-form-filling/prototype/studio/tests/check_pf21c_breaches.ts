@@ -82,7 +82,7 @@ const { Messages } = await import("../api/src/platform/messages/send/messages.ts
 const { fakeAlerts } = await import("../ports/alert.ts");
 const { FakeClock } = await import("../ports/clock.ts");
 const { fakeJobs } = await import("../ports/jobs.ts");
-const { BREACH_MESSAGES, BREACH_AUDIT, BREACH_MANAGE_KEY, BREACH_READ_KEY, Breaches } = await import("../api/src/platform/register/breaches/service.ts");
+const { BREACH_MESSAGES, BREACH_WORDS, BREACH_AUDIT, BREACH_MANAGE_KEY, BREACH_READ_KEY, Breaches } = await import("../api/src/platform/register/breaches/service.ts");
 const feature = (await import("../api/src/features/platform-register-breaches.ts")).default;
 
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
@@ -112,11 +112,11 @@ try {
   const clock = new (class extends PlatformClock { t = Date.now(); override now() { return this.t; } })();
   const firmLocal = new LocalIdentity("pf21c-firm-standin-key-0123456789abcdef", () => clock.now());
   const systemLocal = new SystemLocalIdentity("pf21c-system-standin-key-0123456789abc", () => clock.now());
-  const providers = feature.providers.filter((p) => !(typeof p === "object" && "provide" in p && p.provide === BREACH_MESSAGES));
+  const providers = feature.providers.filter((p) => !(typeof p === "object" && "provide" in p && (p.provide === BREACH_MESSAGES || p.provide === BREACH_WORDS)));
   @Module({ controllers: [PlatformIdentityController, SystemIdentityController, ...feature.controllers] as never[],
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, SystemIdentity, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard },
-      { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: BREACH_MESSAGES, useValue: messages }, ...providers] as never[] }) class TestApp {}
+      { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: BREACH_MESSAGES, useValue: messages }, { provide: BREACH_WORDS, useValue: messages }, ...providers] as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   app.use(requestMiddleware());
   await app.listen(0, "127.0.0.1"); apps.push(app);

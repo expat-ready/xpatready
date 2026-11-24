@@ -52,7 +52,7 @@ for (const k of Object.keys(process.env)) if (/^PLATFORM_/.test(k)) delete proce
 process.env.PLATFORM_ENVIRONMENT = "local";
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
-const { wallUnscopedQueries, withFirm } = await import("../api/src/platform/firm-scope.ts");
+const { inRequest, wallUnscopedQueries, withFirm } = await import("../api/src/platform/firm-scope.ts");
 const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
@@ -174,7 +174,8 @@ try {
   clock.t = start + 31 * DAY; const r31 = await svc.sweep(); await svc.sweep();
   // (Our staff's session tokens expire as the fake clock moves on: from here the service is called as the Platform Owner.)
   const as = { staffId: OWNER, keys: [DSR_KEY] };
-  const after31 = { body: await svc.read(as, fid) };
+  // PF-21rs R0: the read names the request's firm under its GET route's own bypass use, so it runs in that route's scope.
+  const after31 = { body: await inRequest({ method: "GET", url: `/api/system/register/requests/${fid}` }, () => svc.read(as, fid)) };
   ok("PF-21b DW5 pass/fail: on day 31 it reads OVERDUE with one overdue alert (two runs), never a second near-date alert",
     r31.overdue.includes(fid) && after31.body.status === "OVERDUE" && JSON.stringify(freshAlerts().map((a) => a.detail.rule)) === '["NFR5-14","NFR5-14.overdue"]'
     && kinds(fid) === "RECEIVED,NEAR_DATE_ALERTED,STATUS_CHANGED,OVERDUE_ALERTED", { r31, alerts: freshAlerts(), status: after31.body.status });
