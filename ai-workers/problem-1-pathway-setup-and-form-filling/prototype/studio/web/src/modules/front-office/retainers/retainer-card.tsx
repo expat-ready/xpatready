@@ -5,7 +5,7 @@
 // eligible); the draft is made with the client's details and opens on its own page.
 // FO-5cr (AG-4-50 rule 4): arriving with ?consultRecord=<id> (the consult record's "Prepare retainer") opens the panel
 // once and sends the record's id: the server fills the first fee row from the record's recommended items and quoted fee
-// (nothing is typed twice, nothing is sent), and its warnings show as notices. The mark then leaves the address.
+// (nothing is typed twice, nothing is sent), and its warnings show as notices on the retainer page. The mark then leaves the address.
 import * as React from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -29,7 +29,7 @@ export function RetainerCard({ prospectId, name, working }: { prospectId: string
   React.useEffect(() => { if (reps.data?.some((r) => r.staffId === me.staffId)) setRepId((r) => r || me.staffId); }, [reps.data, me.staffId]);
   const prepare = useMutation({
     mutationFn: async () => Retainer.parse(await staffApi(`/front-office/prospects/${prospectId}/retainers`, { method: "POST", json: { templateId, representativeStaffId: repId, ...(recordId ? { consultRecordId: recordId } : {}) } })),
-    onSuccess: (r) => { for (const w of r.warnings ?? []) toast.push({ tone: "info", text: w }); nav(`/front-office/retainers/${r.id}`); },
+    onSuccess: (r) => nav(`/front-office/retainers/${r.id}`, { state: { warnings: r.warnings ?? [] } }),   // FO-5cr review m2: the draft's notices stay on its page
     onError: (e) => {
       const field = e instanceof StaffApiError ? (["templateId", "representativeStaffId"].find((f) => e.field(f)) ?? null) : null;
       setError({ field, text: e instanceof StaffApiError ? (field ? e.field(field)! : e.message) : "Could not prepare the retainer. Please try again." });
@@ -92,7 +92,7 @@ export function RetainerCard({ prospectId, name, working }: { prospectId: string
               {(reps.data ?? []).map((r) => <option key={r.staffId} value={r.staffId}>{r.name}</option>)}
             </Select>
           </Field>
-          {recordId ? <p className="text-xs text-text-muted" data-from-consult>The first fee row is filled in from the consultation record: its recommended items and the quoted fee. You check them on the next page.</p>
+          {recordId ? <p className="text-xs text-text-muted" data-from-consult>The first fee row is filled in from the consultation record (its recommended items and the quoted fee) when the record is this prospect's. You check it on the next page.</p>
             : <p className="text-xs text-text-muted">The first fee row is "Deposit on signing", with no amount yet: you add the amount on the next page.</p>}
         </form>
       </Panel>

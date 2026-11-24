@@ -85,8 +85,8 @@ function LeadBody({ id }: { id: string }) {
   // R1.32 (AG-2-13c, X-4): Assign or Reassign for people who may assign; a one-user firm sees no owner, Take it or Assign.
   const owners = useOwners(), [assigning, setAssigning] = React.useState(false);
   const assignPanel = (o: boolean) => setAssigning(o);   // focus returns to Assign/Reassign as the panel closes (Panel returnFocus)
-  const panel = (o: boolean) => { if (o) { focus.mark(); engage.reset(); } else focus.back(); setEngaging(o); };
   const fromRecord = React.useRef<string | null>(null);
+  const panel = (o: boolean) => { if (o) { focus.mark(); engage.reset(); } else { focus.back(); fromRecord.current = null; } setEngaging(o); };   // FO-5cr review n3: a cancelled Engage forgets the record
   const engage = useMutation({
     mutationFn: async () => Prospect.parse(await staffApi(`/front-office/leads/${id}/engage`, { method: "POST" })),
     onSuccess: (p) => { toast.push({ tone: "ok", text: p.message ?? `Prospect ${p.number} started in ${p.stage.label}.` }); void qc.invalidateQueries({ queryKey: ["fo"] }); go(`/front-office/prospects/${p.id}${fromRecord.current ? `?consultRecord=${encodeURIComponent(fromRecord.current)}` : ""}`); },   // FO-5cr: on to the pre-filled retainer

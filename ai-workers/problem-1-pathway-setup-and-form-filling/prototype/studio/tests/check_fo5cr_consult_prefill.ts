@@ -121,7 +121,8 @@ try {
   const long = only({ ...base, recommended: Array.from({ length: 12 }, (_v, i) => `Programme number ${i + 1}`), quotedFee: null }).fees[0].label;
   ok("FO-5cr fail: a long list is cut to the fee row's 120 characters with \"…\", never refused", long.length <= 120 && long.endsWith("…") && long.startsWith(`${QUOTED}: Programme number 1, `), long);
   const p8 = prospect(), r8 = rec(A, u(7008), { kind: "prospect", id: p8.id }, Array.from({ length: 20 }, () => "é".repeat(60) + "😀"), null);
-  ok("FO-5cr pass: the cut label is one the draft accepts (whole characters, at most 120)", (await svc.draft(R, p8.id, { templateId: tpl.id, consultRecordId: r8.recordId })).version.fees[0].label.length <= 120);
+  const d8 = await svc.draft(R, p8.id, { templateId: tpl.id, consultRecordId: r8.recordId });
+  ok("FO-5cr pass: the cut label is one the draft accepts: at most 120, no character split (review n4: no lone surrogate)", (() => { const l = d8.version.fees[0].label; return l.length <= 120 && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(l) && l.endsWith("…") && [...l.slice(QUOTED.length + 2, -1)].every((c) => c === "é" || c === "😀" || c === "," || c === " "); })(), d8.version.fees[0].label);
 
   // 6. The input: a malformed id and an id beside fee rows are refused at the field, before anything is read.
   const p9 = prospect();
