@@ -54,7 +54,7 @@ bad() { has 'ACT   proven: not measured' "$1"; }
 new Works Partial; o=$(run 2026-11-01T11:00:00); ok "fail: no history before 00:00 IST is an ACT, never +0" "$(both 'Proven today not readable' 'ACT   proven: the change is not readable' "$o")" "$o"
 new Works Partial; rows Works Works; com 2026-11-24T07:00:00; git clone -q --depth 1 "file://$R" "$T/sh" 2>/dev/null
 o=$(python3 -I "$TOOLS/proof-number.py" --repo "$T/sh" --ref main --now 2026-11-24T08:00:00+05:30); ok "fail: a copy cut short at today's commit (shallow) is an ACT, never a gain" "$(both 'Proven today not readable' 'ACT   proven: the change is not readable' "$o")" "$o"
-new Works Partial; rows Works Partial@again; com 2026-11-24T07:00:00; git clone -q --depth 1 "file://$R" "$T/sh2" 2>/dev/null
+new Partial Partial; rows Partial Partial@again; com 2026-11-24T07:00:00; git clone -q --depth 1 "file://$R" "$T/sh2" 2>/dev/null
 o=$(python3 -I "$TOOLS/proof-number.py" --repo "$T/sh2" --ref main --now 2026-11-24T12:00:00+05:30); ok "pass: the shallow edge adds every file, it is not an app-code merge" "$(! grep -q 'app-code merges since' <<<"$o" && echo 1)" "$o"
 new Works Partial; : > "$R/$C"; com 2026-11-24T07:00:00; ok "fail: an emptied CAPABILITIES.md is an ACT, never frozen numbers" "$(bad "$(run 2026-11-24T08:00:00)")"
 new Works Partial; rm "${R:?}/${C:?}"; com 2026-11-24T07:00:00; ok "fail: a deleted CAPABILITIES.md is an ACT" "$(bad "$(run 2026-11-24T08:00:00)")"
