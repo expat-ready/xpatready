@@ -108,7 +108,7 @@ function pf5Diff(): string[] {
   writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(URL)} } });\n`);
   const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--script"], { cwd: STUDIO, encoding: "utf8" });
   if (r.status !== 0) throw new Error(`migrate diff: ${r.stdout}${r.stderr}`);
-  return r.stdout.split("\n").filter((l) => /terms|signup_pending|PlatformBillingPeriod/i.test(l) && !/billing_period/.test(l));   // part 3's column has its own measure (P3)
+  return r.stdout.split("\n").filter((l) => /terms|signup_pending|PlatformBillingPeriod/i.test(l) && !/billing_period/.test(l) && !/signup_link_id/.test(l));   // part 3's column has its own measure (P3); R1.90's later link column is check_r190_invited_signup.ts's
 }
 /** PF-5 part 3's migration (the billing period on the subscription): the diff lines that name its column. */
 function p3Diff(): string[] {
@@ -117,7 +117,7 @@ function p3Diff(): string[] {
   writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(URL)} } });\n`);
   const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--script"], { cwd: STUDIO, encoding: "utf8" });
   if (r.status !== 0) throw new Error(`migrate diff: ${r.stdout}${r.stderr}`);
-  return r.stdout.split("\n").filter((l) => /billing_period/.test(l));
+  return r.stdout.split("\n").filter((l) => /billing_period/.test(l) && !/platform_signup_link/.test(l));   // R1.90's later column on the link is not part 3's
 }
 
 const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
@@ -362,7 +362,8 @@ try {
     const h = (PlatformSignUpController.prototype as unknown as Record<string, () => unknown>)[k];
     return `${["GET", "POST"][Reflect.getMetadata(METHOD_METADATA, h) as number] ?? "?"} ${Reflect.getMetadata(PATH_METADATA, h)}`;
   });
-  ok("PF-5 fail: the verification is POST only (opening the email's link changes nothing)", routes.includes("POST signup/verify") && !routes.some((r) => r.startsWith("GET signup")), routes);
+  // R1.90: the one GET under signup is a private link's page (OpenRead; it changes nothing: check_r190_invited_signup.ts IS2).
+  ok("PF-5 fail: the verification is POST only (opening the email's link changes nothing)", routes.includes("POST signup/verify") && !routes.some((r) => r.startsWith("GET signup") && r !== "GET signup/:token"), routes);
 
   // ----------------------------------------------------------------------------- part 2: Stripe's events and the moves
   const bp = { audit: ports.audit, billing, clock, appUrl: ports.appUrl }, hooks = new BillingEvents(db, bp), acct = new BillingAccount(db, bp);
