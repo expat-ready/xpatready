@@ -96,7 +96,7 @@ try {
 
   // ------------------------------------------------------------------------------- W1: from the signed retainer
   const w1 = await api(TA, "POST", "/front-office/money/invoices", { personId: PA, currency: "CAD", retainerId: RET });
-  ok("R1.56 W1 (part missing: invoice from retainer (row to be named by Lead B); FO-7s1 'Start from retainer'): a draft started from the client's signed retainer carries its 1,500.00 fee row",
+  ok("R1.56 W1 (part missing: FO-7w1, the draft from a signed retainer; FO-7s1's 'Start from retainer'): a draft started from the client's signed retainer carries its 1,500.00 fee row",
     w1.status === 201 && /FEE:150000:/.test(lines(w1.body?.id ?? "00000000-0000-0000-0000-000000000000")), { status: w1.status, detail: w1.body?.detail ?? w1.body?.errors ?? null, retainerSeeded: !!RET });
   // The rest of the walk drafts by hand (FO-7b part 1a) so each later step is scored on its own part.
   const d = w1.status === 201 ? w1 : await api(TA, "POST", "/front-office/money/invoices", { personId: PA, currency: "CAD" });
@@ -186,11 +186,11 @@ try {
     const totals = listed ? (await p.locator("[data-totals]").innerText().catch(() => "")).replace(/\s+/g, " ") : "";
     const lineTax = listed ? (await p.locator("[data-line-tax]").allInnerTexts().catch(() => [])).join(" | ") : "";
     await p.screenshot({ path: join(SHOTS, "w9-invoice-detail-1440.png"), fullPage: true });
-    ok("R1.56 W9 (part missing: FO-7s1 the invoice screens): Money › Invoices lists the issued invoice by its number; its page, opened from the list, shows its tax (Totals › Tax as issued, each taxed line with its rate)",
+    ok("R1.56 W9 (FO-7s1 part 1, #3305, on main): Money › Invoices lists the issued invoice by its number; its page, opened from the list, shows its tax (Totals › Tax as issued, each taxed line with its rate)",
       /^INV-\d/.test(num) && listed === 1 && (await p.locator("[data-invoice-number]").innerText().catch(() => "")) === num
         && new RegExp(`Tax [A-Z]{3} ${cad(issued?.taxMinor).replace(".", "\\.")}`).test(totals) && (issued?.taxMinor ?? 0) > 0 && /\d%\)/.test(lineTax),
       { num, listed, totals, lineTax, taxMinor: issued?.taxMinor ?? null });
-    ok("R1.56 W9: the walk ends at R1.57's first step: the invoice offers the client a card payment link (parts missing: FO-7c, FO-7s1)",
+    ok("R1.56 W9: the walk ends at R1.57's first step: the invoice offers the client a card payment link (parts missing: FO-7c, FO-7s2's Copy or Send pay link)",
       (await p.getByRole("button", { name: /pay(ment)? link|card/i }).count()) >= 1);
     await ctx.close();
   } finally { await browser.close(); }
