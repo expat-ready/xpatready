@@ -27,7 +27,7 @@ import { Prospects } from "../api/src/front-office/sales/prospects.ts";
 import { askCode, checkCode, codeOf, CODE_TRIES, type CodeLine } from "../api/src/front-office/signing/door-code.ts";
 import { emailCodeOn, SIGNING_EMAIL_CODE } from "../api/src/front-office/signing/email-code.ts";
 import { useSigningMail, useSigningPort } from "../api/src/front-office/signing/handlers.ts";
-import { signingPublicBase } from "../api/src/front-office/signing/link-mail.ts";
+import { sendPleaseSign, signingLink, signingPublicBase } from "../api/src/front-office/signing/link-mail.ts";
 import { fakeSigning } from "../api/src/front-office/signing/port.ts";
 import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
 import { dutiesOf, type StaffContext } from "../api/src/platform/identity/keys.ts";
@@ -110,6 +110,18 @@ try {
   const sent3 = await svc.send(R, r3, { expectedVersion: 1 }).then(() => true, () => false);
   useSigningMail(mail);
   ok("FO-6 4a S pass: a failing email does not undo the Send (logged; the request stands)", sent3 && reqOf(r3) !== "" && sql(`select status from fo_retainer where id = '${r3}'`) === "SENT");
+
+  ok("FO-6 4b S pass: the email names every end of the link: a signature, a decline, the expiry, a newer version (Lead B, #3433 minor 1)",
+    /until you sign or decline, until it expires, or until .+ sends you a newer version\./.test(toClient[0]?.text ?? ""), toClient[0]?.text);
+  // Lead B, #3433 minor 2: outside local, a copy with no STUDIO_PUBLIC_URL sends no link (never a localhost one).
+  const envWas = { env: process.env.PLATFORM_ENVIRONMENT, url: process.env.STUDIO_PUBLIC_URL }, mB = mail.sent.length;
+  process.env.PLATFORM_ENVIRONMENT = "test"; delete process.env.STUDIO_PUBLIC_URL;
+  const noBase = signingLink("x"), sentNoBase = await sendPleaseSign(db, { firmId: A, requestId: randomUUID(), personId: p1.personId, token: token || "x", kind: "RETAINER" });
+  process.env.STUDIO_PUBLIC_URL = "https://sign.example.test/";
+  const withBase = signingLink("abc");
+  if (envWas.env === undefined) delete process.env.PLATFORM_ENVIRONMENT; else process.env.PLATFORM_ENVIRONMENT = envWas.env;
+  if (envWas.url === undefined) delete process.env.STUDIO_PUBLIC_URL; else process.env.STUDIO_PUBLIC_URL = envWas.url;
+  ok("FO-6 4b S fail: outside local with no STUDIO_PUBLIC_URL no link is made and no email is sent; with it set the link uses it", noBase === null && sentNoBase === false && mail.sent.length === mB && withBase === "https://sign.example.test/sign/abc", { noBase, sentNoBase, withBase });
 
   // ------------------------------------------------------------- K: the firm's email-code setting
   ok("FO-6 4a K pass: the setting is registered for the front office, changed with agent/legal-settings:manage, on by default", SIGNING_EMAIL_CODE.key === "front_office.signing_email_code" && SIGNING_EMAIL_CODE.default === true
