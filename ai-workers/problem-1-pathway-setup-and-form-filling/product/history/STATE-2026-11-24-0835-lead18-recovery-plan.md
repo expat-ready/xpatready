@@ -289,3 +289,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * #3418: CodeQL found 6 new alerts (5 high in a test, 1 medium in video/service.ts:48); its lane had read it as a repository failure; asked on the PR (unseen account, not confirmed seen).
 * #3447, #3451: pr-rules red on their bodies; qa 6 told (bubble seen). Disk swung 5.3 to 8.8 GB between 13:5x readings; nothing deleted (13.3 GB in .claude/worktrees, 3.7 GB in /private/tmp/claude-501).
 * Weekly 68%.
+
+### Lead 25, check 14:09 IST 24 Nov
+* Merged 14:01: #3431, #3434. #3428's batch #3455 and #3441's full run 45355250435 running, none red seen at 14:03. #3429 in #3449.
+* claude.ai list read (50 rows, Show more clicked while found). Running: 87D51, qa 6, 7cB52GQts2tRVKAKh (R1.20 bugs), Lead O 2, the replay study. Replies read: 84kEb, 6TCJS, 4oPSM, 6E2Xy, 6uSsa, 7qW26, 5a3n1, 6aMfE. 4oPSM told to start M1 (sent, seen in page text); 7qW26 told to push its review records.
+* #3305 86e04deeb: my read line posted. #3442 (FO-7t part 2, trust money) held for Lead B 6's read. #3433 14201132f: Approve, Lead B 6 asked; my read owed. #3277 waits on a CI npm audit step (P-776; Lead O 2 asked) and a full run.
+* PF-17 part 4 needs a fresh cloud session (his typed turn): hand-over on claude/runtime-pf17-part4 3a1f0faf0. PF-4bs PR 2a: m1 (CI path) first.
