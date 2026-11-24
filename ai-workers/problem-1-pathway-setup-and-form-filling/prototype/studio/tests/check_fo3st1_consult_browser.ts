@@ -40,8 +40,9 @@ const staff = async (name: string, role: string) => {
   return s;
 };
 const OW = await staff("Owner", "OWNER"), HO = await staff("Host", "CASE_OFFICER"), RO = await staff("Reader", "READ_ONLY");
-const free = await db.foConsultationType.create({ data: { firmId: M.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [HO.id, OW.id], minutes: 45, windowDays: 400, minNoticeMinutes: 0 } });
-const follow = await db.foConsultationType.create({ data: { firmId: M.id, slug: "follow", name: "Follow-up", purpose: "FOLLOW_UP", modes: ["VIDEO"], hostStaffIds: [HO.id], minutes: 30, windowDays: 400, minNoticeMinutes: 0 } });
+// Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+const free = await db.foConsultationType.create({ data: { requireAgreement: false, firmId: M.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [HO.id, OW.id], minutes: 45, windowDays: 400, minNoticeMinutes: 0 } });
+const follow = await db.foConsultationType.create({ data: { requireAgreement: false, firmId: M.id, slug: "follow", name: "Follow-up", purpose: "FOLLOW_UP", modes: ["VIDEO"], hostStaffIds: [HO.id], minutes: 30, windowDays: 400, minNoticeMinutes: 0 } });
 const service = await db.foService.create({ data: { firmId: M.id, label: "Sample: Express Entry assessment", sortOrder: 1, createdBy: "seed:consult-test" } });   // a firm's own service (no combination)
 const client = async (given: string, interested: string | null = null) => {
   const p = await db.foPerson.create({ data: { firmId: M.id, givenNames: given, familyName: "Sample", email: `${given.toLowerCase()}@client.example`, createdBy: "seed:consult-test" } });
@@ -190,6 +191,18 @@ try {
   await host.getByRole("dialog", { name: "Engage" }).waitFor({ timeout: 15_000 });
   ok("C7 pass: ?engage=1 for the host opens the Engage panel once and drops the flag", !host.url().includes("engage=1"));
   await host.screenshot({ path: join(SHOTS, "fo3st1-consult-engage-1440.png") });
+  // ---------------------------------------------- C8 QA-772: a type that needs the agreement, none sent: the panel says why
+  const needs = await db.foConsultationType.create({ data: { firmId: M.id, slug: "free-agr", name: "Free consultation (agreement)", modes: ["VIDEO"], hostStaffIds: [HO.id], minutes: 45, windowDays: 400, minNoticeMinutes: 0 } });
+  const nia = await db.foPerson.create({ data: { firmId: M.id, givenNames: "Nia", familyName: "Sample", createdBy: "seed:consult-test" } });   // no email
+  const st = new Date(Date.now() - 30 * MIN), held = (await db.foBooking.create({ data: { firmId: M.id, typeId: needs.id, staffId: HO.id, personId: nia.id, mode: "VIDEO", startsAt: st, endsAt: new Date(st.getTime() + 45 * MIN), bookerTimeZone: "America/Toronto" } })).id;
+  await detail(host, held);
+  const none = host.locator("[data-agreement-none]");
+  await none.waitFor({ timeout: 15_000 });
+  const noneText = await none.innerText(), refused = await api(tok.host, "POST", `/front-office/bookings/${held}/attendance`, { outcome: "COMPLETED" });
+  ok("C8 pass (QA-772): a started booking whose type needs the agreement and has none: the panel says the consultation cannot start, names the missing email and template, and says to reschedule; Attended is refused (409)",
+    /cannot start/.test(noneText) && /no email address/.test(noneText) && /Templates/.test(noneText) && /reschedule the meeting to a later time/.test(noneText) && (await host.locator('[data-agreement="NONE"]').count()) === 1 && refused.status === 409, { noneText, refused: refused.status });
+  await detail(host, B.lead);
+  ok("C8 fail: a booking whose type needs none shows no agreement line", (await host.locator("[data-agreement]").count()) === 0);
   ok("no page error in any browser", errors.length === 0, errors.slice(0, 5));
 } finally {
   await browser.close();
