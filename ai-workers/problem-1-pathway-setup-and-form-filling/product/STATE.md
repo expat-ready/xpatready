@@ -2,7 +2,7 @@
 
 current_lead: local_ad7d2e71-0c90-411c-af23-1b03820779d6 Lead 29 · 24 Nov 16:55 IST (after Lead 28, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 16:55 IST: Lead 28 ended. **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`; action list (A370).** 55/101 Works. Weekly 81%.
+updated: 2026-11-24 17:13 IST: Lead 29. **Read the plan file's last section (`history/STATE-2026-11-24-0835-lead18-recovery-plan.md`); action list (A370).** 55/101 Works. Weekly 82% at 16:57.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,6 +18,7 @@ updated: 2026-11-24 16:55 IST: Lead 28 ended. **Hand-over: the last section of `
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A374 | 24 Nov ~17:02 and again (typed to Lead 29) | start R1.68; recover everything, diligently | R1.68 started in the cloud; in force |
 | A371, A372 | 24 Nov ~16:13, ~16:30 (typed to Lead 28) | all focus on Partials to Proven, rules held, usage no limit | plan file, end; in force |
 | A359 | 24 Nov, after 13:06 (typed to Lead 24) | prove faster; follow the Lead's recommendations; final tooling decision, dates, outcomes | plan file, end; #3305 line pushed; three sessions started; CodeAnt C1 and C3 yes |
 | A370 | 24 Nov ~15:27 (typed to Lead 26, relayed) | one action list in every 30-minute report | `design/action-list-2026-11-24.md`; in force |
