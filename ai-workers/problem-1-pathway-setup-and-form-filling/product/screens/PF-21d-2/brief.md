@@ -32,6 +32,15 @@ out, so the eraser classifies the same list. The first map was made on main at `
    * **R7-3:** name the module in a retake's own eraser failure, and say "may".
    * **R7-4:** a test for the retake's gone path; `.slice(0, 2000)` must not cut "Nothing more was erased."
 
+## Rulings (Lead 3, 25 Nov 05:2x IST, #3583 comment 7147590364): all five recommendations agreed
+* **Q1:** the narrow database exception, exactly as recommended below. The reviewer and the breaker read it as a permissions
+  and schema change, and the Lead reads the migration (P-423).
+* **Q2:** KEPT under a Sample class name, "Unconfirmed: no counsel", no period invented. The classes and periods (or a source)
+  go to the founder as one question.
+* **Q3:** `msg_suppression.address` is KEPT as "do not contact" (Sample).
+* **Q4:** 2a, 2b and 2c, each under 800 lines. No eraser is registered until 2a has merged, with cancel-while-off.
+* **Q5:** the follow-up row is **PF-21d-f1**, items (a)-(d). The Lead shapes it into BACKLOG; it does not block 2a.
+
 ## Questions for the tech lead (each with my recommendation)
 **Q1. Tables that refuse UPDATE in the database but hold the person's own text.**
 * The tables:
