@@ -140,3 +140,14 @@ Scope: 4 files, +16 −9: `door.controller.ts`, `door.ts`, `MODULE.rows/FO-6-4b.
 `Reviewer: Approve fcb8e3ad82532b93d2f9d890b49d45d3dbaa64fc`
 
 Verdict: Approve
+
+## Round 4 (Lead 29 allows this diff only, reviewer only): `5c7031362..8d013d3cc63d43ce0bf9b2a2dc01b2d941c13b24`
+* **c12f86d85, one line:** `codeVerifiedAt: Date | null` is added to `Found.signer`'s type (`door.ts:42`). It is a type-only fix. At runtime the signer is the whole `fo_signer` row (`findFirst` with `include: { request: true }`, `door.ts:60`), so round 3's exact compare already read the real value, which is why the suites passed.
+* **My miss in round 3:** I ran the suites, not the type check. The `types` job on fcb8e3ad8 caught it.
+* **8d013d3cc** merges origin/main 7d2d14e2d. It brings 49 files, and none of them is in this PR's file list (`comm -12` of the two name lists is empty). 20261124130000 is still the newest migration.
+* **Run:** `NODE_OPTIONS=--max-old-space-size=8192 node product/tools/typecheck.mjs` at 8d013d3cc exits 0. tsc api: 15 errors in 1472 files, all among the known ones; tsc web: 0. Result: "PASS no new type errors (15 known, 0 fixed)".
+* **New findings:** none.
+
+`Reviewer: Approve 8d013d3cc63d43ce0bf9b2a2dc01b2d941c13b24`
+
+Verdict: Approve
