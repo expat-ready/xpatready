@@ -89,6 +89,7 @@ try {
   // A charset or Content-Encoding the parser cannot read was a 500; each is its own 415 in words, neither the answer nor
   // the log repeats the sent value, and the encoding answer names the encodings it reads (RFC 9110 15.5.16).
   const cs = await post("/api/front-office/leads", "{}", token, { "content-type": "application/json; charset=klingon", "idempotency-key": "pf0bp-cs" });
+  await new Promise((r) => setTimeout(r, 300));   // the log line, if any, has arrived (as DW3)
   ok(`PF-0bp DW5 ${cs.status === 415 ? "pass" : "fail"}: a JSON body in charset=klingon → 415 BODY_CHARSET in words, the charset not repeated (QA-507)`,
     cs.status === 415 && /application\/problem\+json/.test(cs.type) && cs.body?.code === "BODY_CHARSET" && /UTF-8/.test(cs.body?.detail ?? "") && !/klingon/i.test(cs.text) && !/klingon/i.test(log.slice(logAt)), cs);
   const enc = await new Promise<Res & { accept: string }>((done, failed) => {
@@ -98,13 +99,14 @@ try {
     });
     rq.on("error", failed); rq.end("{}");
   });
+  await new Promise((r) => setTimeout(r, 300));
   ok(`PF-0bp DW5 ${enc.status === 415 ? "pass" : "fail"}: a JSON body with Content-Encoding zstd-nope → 415 BODY_ENCODING in words with Accept-Encoding, the encoding not repeated (QA-507)`,
     enc.status === 415 && enc.body?.code === "BODY_ENCODING" && /gzip/.test(enc.accept) && !/zstd-nope/i.test(enc.text) && !/zstd-nope/i.test(log.slice(logAt)), enc);
 
   // ---------------------------------------------------------------------------------------------------------- DW4
   const after = rows();
   ok("PF-0bp DW4: neither error reached a handler (no lead and no complaint written by the broken, oversized or marked bodies; the valid ones were refused by their handlers)", after === before, { before, after });
-  ok("PF-0bp DW4 fail: no answer above was a 500, and the server logged no 500 for them", !/"status":\s*500|statusCode":\s*500/.test(log.slice(logAt)) && !/Something went wrong on the server/.test([anon, tooBig, formBig, marked, bare].map((x) => x.text).join("")), log.slice(logAt).slice(-600));
+  ok("PF-0bp DW4 fail: no answer above was a 500, and the server logged no 500 for them", !/"status":\s*500|statusCode":\s*500/.test(log.slice(logAt)) && !/Something went wrong on the server/.test([anon, tooBig, formBig, marked, bare, cs, enc].map((x) => x.text).join("")), log.slice(logAt).slice(-600));
 } finally {
   p.kill("SIGTERM");
   await new Promise((r) => setTimeout(r, 500));
