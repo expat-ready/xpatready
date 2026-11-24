@@ -44,9 +44,19 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   const rel = views.find((x) => x.id === released?.combination_id)?.v?.releases?.[0]?.release;
   step("setup: a released combination a case can open on, its release number, and a combination with no release", !!(released && rel && none), { released, rel, none: none?.id });
 
-  // PROBE (claude/lead-o2-bk3-proof only, never merged): the suite's own api() called twice with an idle of 5.985 to 6.015 s.
-  for (let ms = 5985; ms <= 6015; ms += 2) { await api("/session"); const t0 = performance.now(); await new Promise((f) => setTimeout(f, ms - 5)); while (performance.now() - t0 < ms) { /* to the millisecond */ } await api("/session").catch((e) => { console.log(`PROBE idle ${ms} ms: ${e.code ?? e.message}`); throw e; }); }
-  console.log("PROBE done: 16 idles round 6.0 s, no call failed");
+  // PROBE (claude/lead-o2-bk3-proof only, never merged): the suite's own api() twice, 5.9 to 6.4 s apart, while the page's own
+  // requests keep the API busy as 6.0 s passes (the real run: the page was opening the new case just then). The page's requests
+  // use the browser's connections, never api()'s.
+  let seen = 0;
+  for (let k = 0; k < 24; k++) {
+    const ms = 5900 + k * 20; await api("/session"); const t0 = performance.now();
+    await new Promise((f) => setTimeout(f, 5850));
+    const busy = p.evaluate(async (ids) => { await Promise.all(Array.from({ length: 4 }, () => [fetch("/api/runtime/openable", { headers: { "x-actor": "user-O" }, cache: "no-store" }), ...ids.map((i) => fetch(`/api/combinations/${i}`, { headers: { "x-actor": "user-A" }, cache: "no-store" }))]).flat().map((r) => r.then((x) => x.text()).catch(() => 0))); }, combos.map((c) => c.id));
+    await new Promise((f) => setTimeout(f, Math.max(0, ms - (performance.now() - t0))));
+    await api("/session").catch((e) => { seen++; console.log(`PROBE idle ${Math.round(performance.now() - t0)} ms: ${e.code ?? e.message}`); if (seen === 3) throw e; });
+    await busy;
+  }
+  console.log(`PROBE done: 24 idles of 5.9 to 6.4 s with a busy API, ${seen} calls failed`); if (seen) process.exit(1);
   const as = async (actor) => { await p.goto(`${BASE}/inbox`); await p.evaluate((a) => { try { localStorage.setItem("xr-actor", a); } catch { /* ignore */ } }, actor); };
   const header = (id) => p.locator("h1").first().waitFor({ timeout: 30000 }).then(() => p.waitForFunction(() => !!document.querySelector("[data-status], [data-header-next]"), null, { timeout: 30000 })).then(() => p.waitForTimeout(300));
 
