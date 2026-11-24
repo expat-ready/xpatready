@@ -102,14 +102,14 @@ try {
   // B4b chips and the firm filter
   await p4.getByRole("button", { name: "Waiting on firm", exact: true }).click();
   await p4.waitForURL(/status=WAITING_ON_FIRM/, { timeout: 10_000 }).catch(() => undefined);
-  await rowOf(p4, `Sample ${run} two`).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  await rowOf(p4, `Sample ${run} one`).waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined);   // the last answer stays until the next arrives
   ok("PF-17 B4b pass: the \"Waiting on firm\" chip narrows to firm B's ticket (?status=WAITING_ON_FIRM), pressed state announced",
     (await textOf(p4, `Sample ${run} two`)) !== "" && (await textOf(p4, `Sample ${run} one`)) === "" && (await p4.getByRole("button", { name: "Waiting on firm", exact: true }).getAttribute("aria-pressed")) === "true");
   await p4.getByRole("button", { name: "All", exact: true }).click();
   await rowOf(p4, `Sample ${run} one`).waitFor({ timeout: 10_000 }).catch(() => undefined);
   await rowOf(p4, `Sample ${run} one`).getByRole("link", { name: nameA }).click();
   await p4.waitForURL(new RegExp(`firm=${A}`), { timeout: 10_000 }).catch(() => undefined);
-  await p4.waitForTimeout(500);
+  await rowOf(p4, `Sample ${run} two`).waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined);
   ok("PF-17 B4b pass: the firm's name on a row filters by that firm (?firm=), and \"Clear firm\" shows its name",
     (await textOf(p4, `Sample ${run} one`)) !== "" && (await textOf(p4, `Sample ${run} two`)) === "" && (await p4.getByRole("button", { name: new RegExp(`Clear firm.*${nameA}`) }).count()) === 1);
   await p4.goto(`${BASE}/system/support?status=NOPE`);
@@ -121,7 +121,7 @@ try {
   await rowOf(p4, `Sample ${run} one`).waitFor({ timeout: 15_000 }).catch(() => undefined);
   await rowOf(p4, `Sample ${run} one`).getByRole("button", { name: new RegExp(`Sample ${run} one`) }).click();
   const panel = p4.getByRole("dialog");
-  const opened = await panel.waitFor({ timeout: 10_000 }).then(() => true, () => false);
+  const opened = await panel.locator("[data-ticket-head]").waitFor({ timeout: 10_000 }).then(() => true, () => false);
   const head = opened ? (await panel.innerText()).replace(/\s+/g, " ") : "";
   ok("PF-17 B5 pass (SA-10 §3.4): a row opens the ticket's panel: its subject, firm A's name and plan, status and the firm's message",
     opened && head.includes(`Sample ${run} one`) && head.includes(nameA) && head.includes(itemA?.firm?.plan?.name ?? "—") && head.includes("New") && head.includes("shows two seats"), head.slice(0, 300));
@@ -132,13 +132,13 @@ try {
   ok("PF-17 B5 fail (BR-7): a blank reply shows the API's words on the box and stores nothing", blankErr !== "" && msgs() === 1, { blankErr, msgs: msgs() });
   await panel.getByLabel(SUPPORT_COPY.replyLabel).fill(`Sample ${run}: thanks, we are looking at your seats.`);
   await panel.getByRole("button", { name: "Send reply" }).click();
-  await panel.getByText(`Sample ${run}: thanks`).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  await p4.waitForFunction((w) => { const d = document.querySelector('[role="dialog"]'); return !!d && d.textContent!.includes(w) && d.textContent!.includes("Waiting on firm"); }, `Sample ${run}: thanks`, { timeout: 10_000 }).catch(() => undefined);
   const after = (await panel.innerText()).replace(/\s+/g, " ");
   ok("PF-17 B5 pass: the reply shows in the thread as ExpatReady support, the ticket is then Waiting on firm, stored once as ours (SUPPORT)",
     after.includes(`Sample ${run}: thanks`) && after.includes("ExpatReady support") && after.includes("Waiting on firm")
       && sql(`select status from platform_support_ticket where id = '${tA}'`) === "WAITING_ON_FIRM" && sql(`select count(*) from platform_support_message where ticket_id = '${tA}' and author_kind = 'SUPPORT'`) === "1", after.slice(0, 300));
   await p4.keyboard.press("Escape");
-  await rowOf(p4, `Sample ${run} one`).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  await rowOf(p4, `Sample ${run} one`).filter({ hasText: "Waiting on firm" }).waitFor({ timeout: 10_000 }).catch(() => undefined);
   ok("PF-17 B5 pass: closing the panel, the row now reads Waiting on firm (the list follows the reply)", (await textOf(p4, `Sample ${run} one`)).includes("Waiting on firm"));
   // B5b a closed ticket
   await p4.goto(`${BASE}/system/support?ticket=${tC}`);
