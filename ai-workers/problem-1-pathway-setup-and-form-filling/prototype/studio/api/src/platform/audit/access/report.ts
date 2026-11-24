@@ -20,6 +20,11 @@
 // sent (at most EXPORT_MAX lines, Sample) and answered as a StreamableFile, so it passes the access interceptor (no
 // @Res(): "no line, no answer"). HEAD is refused 405 (breaker m1: it would log an export nobody received).
 // The two branches are read as a UNION ALL (breaker m2), each on audit_event_firm_id_at_idx (the firm's id, or null).
+// At most EXPORTS_AT_ONCE exports run at once, EXPORTS_WAITING wait, more get 503 (review m4).
+// Stated (round 1): SA-11-9's "emit CROSS_TENANT_ACCESS" is met here by audit.exported plus the export's own
+// platform.system.firm_read line, both on the firm's trail (a per-firm export spans one firm). Not in any firm's report:
+// an unfiltered read across firms, and a one-record read part 1 declares as a read across firms (support/tickets/:id,
+// register/breaches/:id, register/requests/:id: the firm gets only touchFirm's platform.bypass line, which is shown).
 // Who: "ExpatReady staff" or, under a support session, "ExpatReady support", with the actor word; no name for our staff
 // is read (as AUD-4: contract gap).
 import { randomUUID } from "node:crypto";
@@ -41,6 +46,8 @@ import { ACCESS_REPORT } from "./report.bypass.ts";
 export const AUDIT_LOG_LIST = "system/audit-log:list", AUDIT_EXPORT = "system/audit:export";
 /** Lines a page, and at most this many in one export (Sample: no requirement gives either number). */
 export const PAGE = 50, EXPORT_MAX = 50_000;
+/** Exports made at once, and waiting for a place; past that, 503 with nothing written (AUD-4's numbers; Sample). */
+export const EXPORTS_AT_ONCE = 2, EXPORTS_WAITING = 8;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const REPORT_QUERY = query("from", "to", "cursor"), EXPORT_QUERY = query("from", "to");
 const AT_TEXT = Prisma.sql`to_char(e.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
@@ -74,6 +81,19 @@ type Client = Pick<Prisma.TransactionClient, "$queryRaw">;
 @Injectable()
 export class AccessReport {
   constructor(@Inject(Db) private readonly db: Db) {}
+  /** The export's line limit: EXPORT_MAX; a suite lowers it on its own instance to test the 413. */
+  exportMax = EXPORT_MAX;
+  private running = 0;
+  private readonly waiting: (() => void)[] = [];
+  /** One of EXPORTS_AT_ONCE places (review m4): more wait; past EXPORTS_WAITING, 503 before any line is written. */
+  private async slot(): Promise<() => void> {
+    if (this.running >= EXPORTS_AT_ONCE) {
+      if (this.waiting.length >= EXPORTS_WAITING) problem(503, "Exports are busy", "Several exports are being made right now. Nothing was exported: try again in a minute.", { code: "EXPORTS_BUSY" });
+      await new Promise<void>((go) => this.waiting.push(go));
+    } else this.running++;
+    let freed = false;
+    return () => { if (freed) return; freed = true; const next = this.waiting.shift(); if (next) next(); else this.running--; };
+  }
 
   /** The firm the report names, on its bypass use (its platform.bypass line on that firm); 404 when there is none. */
   private firm(id: string): Promise<{ id: string; name: string }> {
@@ -118,13 +138,18 @@ export class AccessReport {
   }
 
   async exportCsv(id: string, q: unknown): Promise<{ name: string; rows: number; csv: Buffer }> {
+    const release = await this.slot();
+    try { return await this.made(id, q); } finally { release(); }
+  }
+
+  private async made(id: string, q: unknown): Promise<{ name: string; rows: number; csv: Buffer }> {
     const f = parseFilter(parseInput(EXPORT_QUERY, q ?? {}));
     const firm = await this.firm(id), iso = (d: Date) => d.toISOString();
     const { actor } = ourStaff();
     // (1) Count and log the export, committed before any data: no line, no file.
     const logged = await this.db.$transaction(async (tx) => {
       const [{ n }] = await this.count(tx, firm.id, f);
-      if (n > EXPORT_MAX) problem(413, "Narrow the dates", `This export would hold ${n} lines; the limit is ${EXPORT_MAX} (Sample). Narrow the dates.`, { code: "EXPORT_TOO_LARGE", rows: n, limit: EXPORT_MAX });
+      if (n > this.exportMax) problem(413, "Narrow the dates", `This export would hold ${n} lines; the limit is ${this.exportMax} (Sample). Narrow the dates.`, { code: "EXPORT_TOO_LARGE", rows: n, limit: this.exportMax });
       const key = randomUUID();
       await auditEvent.record(tx, { firmId: firm.id, actor, action: "audit.exported", entity: "plat_audit_export", entityKey: key,
         summary: `ExpatReady staff exported this firm's access report: ${n} line${n === 1 ? "" : "s"} from ${iso(f.from)} to ${iso(f.to)}.`,
