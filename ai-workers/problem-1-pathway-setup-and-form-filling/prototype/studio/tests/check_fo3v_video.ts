@@ -236,6 +236,12 @@ try {
   ok("FO-3v DW6 pass: the audit lines are there (meeting link changed, video choice changed, video link set (source: my link))",
     audit.entries.some((e) => e.action === "video.meeting_link_changed") && audit.entries.some((e) => e.action === "video.choice_changed")
       && audit.entries.some((e) => e.action === "booking.video_link_set" && e.summary === "Video link set (source: my link)."), audit.entries.map((e) => e.action));
+  // Review m2: the real AuditPort (audit_event) on a save, then the table is read back as text.
+  const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
+  const { VideoService } = await import("../api/src/front-office/booking/video/service.ts");
+  await new VideoService(db, { audit: auditEvent as never }).put({ firmId: A.id, staffId: H2.id, firmKey: "fo3v-a", roles: [], keys: [], duties: [], authTime: Date.now(), via: "local" }, { myMeetingLink: "https://meet.example/audit-room" });
+  const realLines = await db.$queryRawUnsafe<{ n: number; leaked: number }[]>(`SELECT count(*) FILTER (WHERE action = 'video.meeting_link_changed')::int AS n, count(*) FILTER (WHERE row_to_json(a)::text ~ '(meet\\.example|zoom\\.us)')::int AS leaked FROM audit_event a`);
+  ok("FO-3v DW6 pass/fail (review m2): through the real AuditPort the save writes its audit_event line, and no audit_event row holds a link", realLines[0].n >= 1 && realLines[0].leaked === 0, realLines);
   ok(`FO-3v DW6 fail: no link is in any audit line or any of the ${logged.filter((l) => !own(l)).length} captured log lines (console, stdout, stderr)`, !urls.some((u) => audits.includes(u)) && !logged.some((l) => !own(l) && urls.some((u) => l.includes(u))),
     logged.filter((l) => !own(l) && urls.some((u) => l.includes(u))).slice(0, 3));
 } catch (e) {

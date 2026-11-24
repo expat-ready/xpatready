@@ -955,7 +955,9 @@ export class BookingService {
     const got = await linkFor(tx, b.firmId, b.staffId);
     const at = { firmId: b.firmId, bookingId: b.id };
     if (!got) {
-      await tx.foBookingVideo.deleteMany({ where: firmScope(b.firmId, { bookingId: b.id }) });
+      const gone = await tx.foBookingVideo.deleteMany({ where: firmScope(b.firmId, { bookingId: b.id }) });
+      if (gone.count) await this.ports.audit.record(tx, { firmId: b.firmId, actor: actor.word, action: "booking.video_link_removed", entity: "fo_booking", entityKey: b.id,
+        summary: "Video link removed (the new host has no video source).", detail: { bookingId: b.id, staffId: b.staffId }, before: { hasLink: true }, after: { hasLink: false } });
       await this.ports.notifications?.notify(tx, { staffId: b.staffId }, NOTIFICATION_KIND.VIDEO_LINK_NEEDED, { kind: "booking", id: b.id });
       return;
     }
