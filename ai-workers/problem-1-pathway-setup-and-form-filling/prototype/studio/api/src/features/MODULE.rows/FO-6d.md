@@ -1,1 +1,1 @@
-Entry points: `front-office-signing-any-document.ts` (FO-6d: AnyDocumentsController, AnyDocuments).
+Entry points: `front-office-signing-any-document.ts` (FO-6d: AnyDocumentsController, AnyDocuments; part 2: AnyDocumentCompletion (the signing webhook's OTHER handler), PersonDocumentsController, PersonDocuments).
