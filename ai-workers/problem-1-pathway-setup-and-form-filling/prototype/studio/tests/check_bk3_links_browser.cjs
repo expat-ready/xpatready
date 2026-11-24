@@ -22,7 +22,11 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
   p.on("pageerror", (e) => errs.push(e.message));
-  const api = async (pth, init = {}) => { const r = await p.request.fetch(`${BASE}/api${pth}`, { method: init.method ?? "GET", headers: { "x-actor": init.actor ?? "user-A", "content-type": "application/json" }, ...(init.data ? { data: init.data } : {}), timeout: 600000 }); let body = null; try { body = await r.json(); } catch { /* no body */ } return { status: r.status(), body }; };
+  // Each call the test itself sends has its own connection. The browser's request pool (p.request and a route's r.fetch share
+  // it) keeps idle ones, and the API, like any Node server, closes an idle one at 6.0 s (5 s + 1 s): a call sent at that
+  // moment is answered ECONNRESET and never reaches the API (batch #3401, run 45330343481: 05:18:12.6 to 05:18:18.6).
+  const OWN = { connection: "close" };
+  const api = async (pth, init = {}) => { const r = await p.request.fetch(`${BASE}/api${pth}`, { method: init.method ?? "GET", headers: { "x-actor": init.actor ?? "user-A", "content-type": "application/json", ...OWN }, ...(init.data ? { data: init.data } : {}), timeout: 600000 }); let body = null; try { body = await r.json(); } catch { /* no body */ } return { status: r.status(), body }; };
   const axe = async (name, sel) => {
     const r = await new AxeBuilder({ page: p }).include(sel).withTags(TAGS).analyze();
     step(`${name}: axe finds no WCAG A/AA violation`, r.violations.length === 0, r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target?.join(" ")}`).join(" | "));
@@ -126,7 +130,7 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
     step(`${W}: a reload after Cancel does not reopen the dialog`, await p.getByRole("dialog").count() === 0);
     // Review m3: a released combination that is not ready for new cases (the server's startable check, here answered so
     // by the test) is named in the dialog's notice, never swapped silently.
-    await p.route("**/api/runtime/openable", async (r) => { const res = await r.fetch(); const rows = await res.json(); await r.fulfill({ response: res, json: rows.map((x) => x.combination_id === released.combination_id ? { ...x, startable: false, items: 1, why: `"${x.combination}" is not ready for new cases: 1 item to fix.` } : x) }); });
+    await p.route("**/api/runtime/openable", async (r) => { const res = await r.fetch({ headers: { ...r.request().headers(), ...OWN } }); const rows = await res.json(); await r.fulfill({ response: res, json: rows.map((x) => x.combination_id === released.combination_id ? { ...x, startable: false, items: 1, why: `"${x.combination}" is not ready for new cases: 1 item to fix.` } : x) }); });
     await p.goto(`${BASE}/cases?open=${released.combination_id}`);
     await p.locator("[data-asked-off]").waitFor({ timeout: 15000 }).catch(() => {});
     const off = (await p.locator("[data-asked-off]").textContent().catch(() => "")) ?? "";
