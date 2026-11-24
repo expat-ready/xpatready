@@ -49,3 +49,17 @@ N/A, all 20: 4a has no case-side screen and no page. The scorecard applies to FO
 A real mail provider; a screen reader; an intended user's walk (D17, D20 stay with the founder); `graph.mjs`. The web `/inbox` page does not list MailPort emails at any width, because it reads `/demo/inbox`, not `/api/demo/platform-inbox`. This predates 4a and is not a finding.
 
 Verdict: Approve
+
+## Round 2 (diff only, P-277): `8a2c69cc5..dfef2c1fe0cc3a8a8f49818a7d0b3b3b56fc9fff`
+Read `git diff 8a2c69cc5 dfef2c1fe -- ai-workers/`: 5 code and record files. The round-1 review and journey files the builder committed are identical to mine. I re-ran at dfef2c1fe with `run-suites.sh --only`: door_code **21/21**, door **4/4, 27 pending, none passing while pending**, signing_api **51/51**.
+* **m1 fixed** (`check_fo6_door_code.ts:101-107`): a `module_event` trigger on `retainer.sent` fails Send after `record()` returns. The line asserts no mail and no request. It proves itself: had the trigger not fired, the line would read "sent" and fail. The trigger is dropped right after.
+* **m2 fixed** (`door-code.ts:35-40`): `lockedSigner` reads the immutable `request_id`, takes the request's `FOR UPDATE`, then re-reads the signer. Both `askCode` and `checkCode` use it, and the test helpers no longer lock for it. **Mutation check:** I deleted the lock line and ran door_code 3 times. The new concurrent line failed every time (`["OK","OK"]`, 20/21). I restored the file with `git checkout` and the tree is clean.
+* **m3 fixed** (`check_fo6_door.ts:47-56`): a pending line that passes is now recorded as a FAIL ("add its part to the third argument"). No 4b or 4c line passes at 4a today (the run is green), so 4b's PR has to change the argument.
+* **m4 fixed** (`MODULE.rows/FO-6-4a.md:1`): the known gap now says the link opens the not-found page until 4b and FO-5s ship.
+* **m6 fixed** (note rule 10): the Referer is governed by FO-5s's `/sign/:token` page, which sends `no-referrer`. The API header is described as harmless, not the protection.
+* **m5 open by agreement**, for 4c (a line showing the stand-in route is absent in test and production).
+* New findings: none.
+
+`Reviewer: Approve dfef2c1fe0cc3a8a8f49818a7d0b3b3b56fc9fff`
+
+Verdict: Approve
