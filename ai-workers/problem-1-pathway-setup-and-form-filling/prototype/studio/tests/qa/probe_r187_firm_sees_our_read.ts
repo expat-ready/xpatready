@@ -92,9 +92,36 @@ try {
   const x1 = Number(sql(`select count(*) from audit_event where action = 'cross_tenant.access'`)), all1 = Number(sql(`select count(*) from audit_event where actor_type::text = 'OUR_STAFF' and firm_id is not null`));
   ok("R1.87 P4 (AUD-3 part 1, #3209): our firms list (200) writes one cross_tenant.access line and nothing on any firm's trail", list.status === 200 && x1 === x0 + 1 && all1 === all0, { list: list.status, x: [x0, x1], firmLines: [all0, all1] });
 
-  // P5: the parts not on main
+  // P6 (moved here from j_86 W10 by the tech lead, #3533, after #3538's question 2): our staff's read of a breach on our
+  // register (PF-21c, on main) that names firm A is a read of firm A's data, so it writes one OUR_STAFF line on firm A's
+  // own trail (AUD-3). On main the read answers 200 and writes a platform-trail cross_tenant.access line only.
+  const rec = { reason: "Sample: recording the incident (R1.87 probe)", discoveredAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+    description: `Sample: a storage bucket's files were readable by link for two hours (R1.87 ${run}).`, affectedFirms: [A], dataCategories: ["contact_details"] };
+  const breach = await j("POST", "/api/system/register/breaches", rec, ourTok, { "idempotency-key": `r187-${run}` });
+  const breachId = typeof breach.body === "object" ? breach.body?.id : undefined;
+  const p6a = count(A);
+  const breachRead = breachId ? await j("GET", `/api/system/register/breaches/${breachId}`, undefined, ourTok) : { status: 0, body: null };
+  ok("R1.87 P6 (part missing: AUD-3, a breach read naming the firm; from j_86 W10): our staff's read of a breach that names firm A (200) writes one OUR_STAFF line on firm A's own trail",
+    breach.status === 201 && breachRead.status === 200 && count(A) === p6a + 1, { recorded: breach.status, read: breachRead.status, firmA: [p6a, count(A)] });
+
+  // P5 AUD-3 part 2 (#3491, aligned by qa 10 on its head 36a32698a): our side's per-firm access report
+  // (SA-11-31 "strictly firm-scoped; CSV"). Firm B gets a read of its own first, so "strictly firm A" is counted.
+  const readB = await j("GET", `/api/system/firms/${B}`, undefined, ourTok);
+  const lineB = sql(`select coalesce((select id::text from audit_event where firm_id = '${B}' and actor_type::text = 'OUR_STAFF' and action = 'platform.system.firm_read' order by at desc limit 1), '')`);
+  const reads0 = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'platform.system.firm_read'`));
   const rep = await j("GET", `/api/system/firms/${A}/access-report?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, ourTok);
-  ok("R1.87 P5 (part missing: AUD-3 part 2): our side's access report for firm A answers (200, firm A's OUR_STAFF lines)", rep.status === 200, { status: rep.status });
+  const reads1 = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'platform.system.firm_read'`));
+  const repIds: string[] = Array.isArray(rep.body?.lines) ? rep.body.lines.map((l: { id: string }) => l.id) : [];
+  ok("R1.87 P5 (part missing: AUD-3 part 2): our side's access report for firm A answers (200) with firm A's OUR_STAFF lines (P1's read among them), never firm B's read, and the report's own read writes one more line on firm A's trail",
+    rep.status === 200 && repIds.includes(lineId) && readB.status === 200 && !!lineB && !repIds.includes(lineB) && reads1 === reads0 + 1, { status: rep.status, n: repIds.length, hasA: repIds.includes(lineId), hasB: repIds.includes(lineB), reads: [reads0, reads1] });
+  const exp0 = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'audit.exported'`));
+  const csvR = await fetch(`${BASE}/api/system/firms/${A}/access-report/export?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { headers: { authorization: `Bearer ${ourTok}` } });
+  const csv = await csvR.text();
+  const exp1 = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'audit.exported'`));
+  ok("R1.87 P5 (part missing: AUD-3 part 2, the CSV): the export downloads as CSV with P1's line and not firm B's, and writes one audit.exported line on firm A's trail (SA-11-9)",
+    csvR.status === 200 && /text\/csv/.test(csvR.headers.get("content-type") ?? "") && csv.includes(lineId) && !csv.includes(lineB) && exp1 === exp0 + 1, { status: csvR.status, type: csvR.headers.get("content-type"), hasA: csv.includes(lineId), exported: [exp0, exp1] });
+  const repFirm = await j("GET", `/api/system/firms/${A}/access-report?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, tA);
+  ok("R1.87 P5 fail (AUD-3 part 2): firm A's own Owner (a firm session, not ours) cannot open our side's report (401 or 403)", repFirm.status === 401 || repFirm.status === 403, { status: repFirm.status });
   const search = await j("GET", `/api/system/audit?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, ourTok);
   ok("R1.87 P5 (part missing: AUD-3 part 3): our audit search answers (200)", search.status === 200, { status: search.status });
   const sess = await j("POST", `/api/system/firms/${A}/support-sessions`, { reason: "Sample: ticket 42" }, ourTok);
