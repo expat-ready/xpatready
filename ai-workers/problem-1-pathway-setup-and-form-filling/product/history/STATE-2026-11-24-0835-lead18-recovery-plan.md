@@ -323,3 +323,10 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **Owed:** DECISIONS rows (Lead 21's, 22's, 24's lists; P-776 stays strict; #3442 ruling), BACKLOG rows (M1, M2, QR, no-door, refresh cookie, refund warning), RULES, required-tools record of the CodeAnt install, full-format report (none since the hand-over), A351/A353 ticks.
 * **Check scripts:** lead-watch.sh did not finish in 110 s (TLS fallback lines); mine: /tmp/claude-501/chk25.sh (session temp). Prompt boxes: pane may be hidden; focus the last textbox, type, Return, then read the page text; a first Return is often ignored, so press it again only if the box still holds the text.
 * **My errors:** first message to 5637ca59 used the short id (not delivered, resent); a first type into 7qW26 and 87D51 sat unsent (resent); told him #3235's Lead B OK was out of date when a newer one existed; told qa 6 QA-777 goes "now" when the ruling is after 4b.
+
+## Lead 26, 14:39 IST 24 Nov
+* Took over; check 88bd21e4 (first run about 14:46). lead-watch not run by me yet; lanes and claude.ai list not read yet.
+* **#3441 (M2) is queued** (entered 14:34:30 IST, waiting for its batch). #3454 in batch #3463, testing. #3447 and #3440 merged 14:35. #3234's full run 45360687128 in progress.
+* **#3305: not labelled, held by me.** review-rounds red: 4 reviewer rounds, the Lead's round 4 line is missing (Lead 25 allowed round 3; my re-run confirms). Not posted: Lead 24's checker line 65dcc1c4e was refused by the classifier first and then pushed on a reading of "I will follow your recommendation"; asked the founder for a plain yes before the round line and the label.
+* #3456 bf04d7459: Lead read line posted (the gate may label). #3235 54ad5b8c2: code read, no label line; asked its lane whether a HELD order can be cancelled after the erasers committed but the record failed (by reading, not reproduced). Its test not read.
+* M1 #3467: CodeQL red on 1167bcd46, not looked into. Disk 9.0 GB, weekly 73%. Nothing deleted.

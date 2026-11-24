@@ -2,7 +2,7 @@
 
 current_lead: local_b17225db-0bef-4a96-aed3-534dada14800 Lead 26 · 24 Nov 14:35 IST (after Lead 25, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 14:35 IST: Lead 25 ended. **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (counted 14:01, main 872275102). **Firm wall: P1 merged; M2 #3441 labelled, NOT queued at 14:34 (look first); M1 #3467 (lane 4oPSMou).** Founder: start fresh qa + PF-17 part 4; CodeAnt account; AG-4-15; bearer link. Weekly 71%, disk 6 GB; second standby owed.
+updated: 2026-11-24 14:39 IST: Lead 26 (check 88bd21e4). **Hand-over: the last sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 55/101 Works (counted 14:01, main 872275102). **Firm wall: P1 merged; M2 #3441 queued 14:34; M1 #3467 draft (lane 4oPSMou).** Founder: plain yes on #3305's checker line; start fresh qa + PF-17 part 4; CodeAnt account; AG-4-15; bearer link. Weekly 73%, disk 9 GB; second standby owed.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
