@@ -244,6 +244,17 @@ try {
   ok("PF-21rs A2 pass: History lists Recorded, the decision (Not decided → Notify firms) and each notice by firm, each by our staff member's name",
     /Recorded/.test(hist) && hist.includes("Decision: Not decided → Notify firms") && hist.includes(`Notice sent to ${X.name}`) && hist.includes(`Notice sent to ${Y.name}`) && hist.includes("Platform Owner (Sample)"), hist.slice(0, 300));
   await p1.screenshot({ path: join(SHOTS, "a2-01-breach-notices-1440.png"), fullPage: true });
+  // Break M1: a stale page never overwrites: the breach changes by the API while the dialog is open; Save stores nothing.
+  await p1.getByRole("button", { name: "Edit the record" }).click();
+  const st = p1.getByRole("dialog", { name: "Edit the record" }); await st.waitFor();
+  const other = await api(tOwner, `${BREACHES}/${w4.body?.id}`, "PATCH", { reason: "Sample: another tab", rootCause: "Sample: changed in another tab" });
+  await st.getByLabel("Root cause").fill("Sample: this tab's stale words"); await st.getByLabel("Reason for the audit line").fill("Sample: stale");
+  await st.getByRole("button", { name: "Save the changes" }).click();
+  const staleSaid = await st.locator("[data-record-error]").innerText({ timeout: 10_000 }).catch(() => "");
+  await st.getByRole("button", { name: "Cancel" }).click(); await st.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+  await p1.getByText("Sample: changed in another tab").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
+  ok("PF-21rs A2 fail (break M1, STANDARDS §4): a breach changed elsewhere while Edit is open → nothing saved, the dialog says so, the page shows the other change",
+    other.status === 200 && staleSaid === COPY.stale && sql(`select root_cause from plat_breach where id = '${w4.body?.id}'`) === "Sample: changed in another tab" && (await p1.getByText("Sample: changed in another tab").count()) > 0, { status: other.status, staleSaid });
   // Edit the record: a change of containment is stored and listed; a notified firm cannot be removed.
   await p1.getByRole("button", { name: "Edit the record" }).click();
   const ed = p1.getByRole("dialog", { name: "Edit the record" }); await ed.waitFor();
@@ -259,6 +270,13 @@ try {
   const draftNoSend = (await p1.getByRole("button", { name: "Decide" }).count()) === 0 && (await p1.locator("[data-breach-status]").innerText()).includes("Draft");
   await p1.getByRole("button", { name: "Confirm the record" }).click();
   const cd = p1.getByRole("dialog", { name: "Confirm the record" }); await cd.waitFor();
+  const alertWords = await cd.locator("[data-draft-words]").innerText();
+  const boxStart = await cd.getByLabel("What happened").inputValue();
+  await cd.getByLabel("What happened").fill(alertWords); await cd.getByLabel("Reason for the audit line").fill("Sample: confirming");
+  await cd.getByRole("button", { name: "Confirm the record" }).click();
+  const sameErr = await cd.locator("[data-field=description] ~ [role=alert]").innerText({ timeout: 5000 }).catch(() => "");
+  ok("PF-21rs A2 fail (break M2): Confirm starts with an empty description, shows the alert's words apart, and refuses them as the firms' words; still a draft",
+    boxStart === "" && alertWords.startsWith("Draft from an alert") && sameErr === COPY.draftSame && sql(`select status from plat_breach where id = '${draft.body?.id}'`) === "DRAFT", { boxStart, sameErr });
   await cd.getByLabel("What happened").fill(`Sample: the activity log did not verify (PF-21rs draft ${run}).`); await cd.getByLabel("Reason for the audit line").fill("Sample: confirming");
   await cd.getByRole("button", { name: "Confirm the record" }).click(); await cd.waitFor({ state: "hidden", timeout: 15_000 }).catch(() => undefined);
   await p1.getByText("Decision owed").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
@@ -275,9 +293,10 @@ try {
   await ps2.context().close();
   const a2widths: Record<number, { axe: string[]; sideways: boolean }> = {};
   for (const w of [1440, 1024, 400]) { await p1.setViewportSize({ width: w, height: 900 }); await p1.goto(`${BASE}${bp}`); await p1.locator("[data-breach-status]").waitFor({ timeout: 15_000 }).catch(() => undefined);
+    for (const sm of await p1.locator("details summary").all()) await sm.click();   // break M3: the words open, as a person reads them
     a2widths[w] = { axe: await serious(p1), sideways: await p1.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth > 1) }; }
   await p1.setViewportSize({ width: 1440, height: 900 });
-  ok("PF-21rs A2 W6: the breach page at 1440, 1024 and 400 px: axe-core 0 serious, no sideways page scroll", Object.values(a2widths).every((x) => !x.axe.length && !x.sideways), a2widths);
+  ok("PF-21rs A2 W6 (break M3): the breach page at 1440, 1024 and 400 px with every \"Words sent\" open: axe-core 0 serious, no sideways page scroll", Object.values(a2widths).every((x) => !x.axe.length && !x.sideways), a2widths);
 
   // ---------------------------------------------------------------------------------------- W5 the walls (A1's page)
   const firmEmail = sql(`select email from platform_staff where actor_id = 'user-R'`);

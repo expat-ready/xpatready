@@ -56,13 +56,13 @@ function NoticeRow({ firm, notice, canSend, why, error, onSend }: { firm: { id: 
         {notice ? <div className="mt-1 flex flex-col gap-1 text-sm">
           <p><span className="font-medium text-text-ok"><span aria-hidden>● </span>Sent</span> <time dateTime={notice.sentAt}>{momentUtc(notice.sentAt)}</time> to {notice.recipients.length} {notice.recipients.length === 1 ? "person" : "people"} ({[...new Set(notice.recipients.flatMap((r) => r.roles))].map((r) => r[0] + r.slice(1).toLowerCase()).join(", ")}) · by {actorWords(notice.sentBy, notice.sentByName)}</p>
           {notice.subject !== null ? <p>Subject: <span data-notice-subject>{notice.subject}</span></p> : null}
-          {notice.text !== null ? <details><summary className="cursor-pointer text-text-link">Words sent</summary><pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-3 font-sans text-sm [overflow-wrap:anywhere]" data-notice-words>{notice.text}</pre></details>
+          {notice.text !== null ? <details><summary className="cursor-pointer text-text-link">Words sent</summary><pre tabIndex={0} role="region" aria-label={`Words sent to ${name}`} className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-3 font-sans text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [overflow-wrap:anywhere]" data-notice-words>{notice.text}</pre></details>
             : <p className="text-text-muted" data-words-note>{notice.wordsNote}</p>}
           <p className="text-xs text-text-muted">{COPY.sentNoMore}</p>
         </div> : <p className="mt-1 text-sm text-text-muted">Not sent{why ? `: ${why}` : ""}</p>}
         {error ? <p role="alert" className="mt-1 text-sm text-text-danger" data-notice-error>{error}</p> : null}
       </div>
-      {!notice && canSend ? <Button variant="outline" onClick={onSend} className="self-start whitespace-normal text-left">Send notice to {name}</Button> : null}
+      {!notice && canSend ? <Button variant="outline" onClick={onSend} className="h-auto min-h-9 max-w-full self-start whitespace-normal text-left [overflow-wrap:anywhere]">Send notice to {name}</Button> : null}
     </li>
   );
 }
@@ -73,8 +73,18 @@ function BreachBody() {
   const [editing, setEditing] = React.useState(false), [deciding, setDeciding] = React.useState(false), [sending, setSending] = React.useState<{ id: string; name: string | null } | null>(null);
   const [choice, setChoice] = React.useState<"NOTIFY_FIRMS" | "NO_NOTICE" | null>(null), [why, setWhy] = React.useState("");
   const [rowError, setRowError] = React.useState<Record<string, string>>({}), [done, setDone] = React.useState<string | null>(params.get("recorded") ? COPY.recorded : null);
-  const editButton = React.useRef<HTMLButtonElement>(null), decideButton = React.useRef<HTMLButtonElement>(null);
+  const editButton = React.useRef<HTMLButtonElement>(null), decideButton = React.useRef<HTMLButtonElement>(null), heading = React.useRef<HTMLHeadingElement>(null);
+  const [, setParams] = useSearchParams();
+  // A recorded breach's page says so once: the mark leaves the address (a reload does not repeat it), the focus goes to the heading.
+  React.useEffect(() => { if (params.get("recorded")) setParams({}, { replace: true }); }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- once, on arrival
+  React.useEffect(() => { if (one.data && done === COPY.recorded) heading.current?.focus(); }, [!!one.data]);   // eslint-disable-line react-hooks/exhaustive-deps -- the first answer
   const reload = () => { void qc.invalidateQueries({ queryKey: ["sys", "breach", id] }); void qc.invalidateQueries({ queryKey: ["sys", "breaches"] }); };
+  /** Break M1: before a change, the breach is read again; if someone changed it since this page read it, nothing is sent and the
+   *  page reloads (the PATCH itself takes no version yet: a runtime row, asked of the tech lead on #3538). */
+  const unchanged = async () => {
+    const now = BreachOne.parse(await systemApi(`/register/breaches/${encodeURIComponent(id)}`));
+    if (now.updatedAt !== one.data?.updatedAt || now.notices.length !== one.data?.notices.length) { reload(); throw new SystemApiError(409, { status: 409, code: "STALE", detail: COPY.stale }); }
+  };
   const b = one.data;
   if (!b && !one.isError) return <p role="status" className="text-sm text-text-muted" data-loading>Loading the breach…</p>;
   const refused = one.error instanceof SystemApiError ? one.error : null;
@@ -92,8 +102,8 @@ function BreachBody() {
     <div className="mx-auto flex max-w-5xl flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold">Breach discovered <time dateTime={b.discoveredAt}>{whenWords(b.discoveredAt)}</time> UTC</h1>
-          <p className="mt-1 text-sm"><span className={cn("font-medium", s.tone)} data-breach-status><span aria-hidden>{s.mark} </span>{s.word}</span>
+          <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">Breach discovered <time dateTime={b.discoveredAt}>{whenWords(b.discoveredAt)}</time> UTC</h1>
+          <p className="mt-1 text-sm"><span className={cn("font-medium", s.tone)} title={s.hint} data-breach-status><span aria-hidden>{s.mark} </span>{s.word}</span>
             {b.decision === "NOTIFY_FIRMS" && b.status === "RECORDED" ? <span className="text-text-muted">: {noticesText(b)}</span> : null}
             <span className="text-text-muted"> · recorded by {actorWords(b.openedBy, b.openedByName)} · Kept 7 years; never deleted</span></p>
           <p className="mt-1 text-sm text-text-muted" data-next-step>{NEXT_STEP[status]}</p>
@@ -116,7 +126,7 @@ function BreachBody() {
 
       <Card title="Decision" id="breach-decision" action={manage && b.status === "RECORDED" && !fixed ? <Button ref={decideButton} variant={b.decision === "UNDECIDED" ? "default" : "outline"} size="sm" onClick={() => { setChoice(b.decision === "UNDECIDED" ? null : b.decision); setWhy(""); setDeciding(true); }}>{b.decision === "UNDECIDED" ? "Decide" : "Change the decision"}</Button> : undefined}>
         <dl>
-          <Row label="Decision">{b.status === "DRAFT" ? `${DECISION_WORDS[b.decision]} (${COPY.draftFirst.toLowerCase()})` : b.decision === "NOTIFY_FIRMS" ? "Notify the affected firms" : DECISION_WORDS[b.decision]}</Row>
+          <Row label="Decision">{b.status === "DRAFT" ? `${DECISION_WORDS[b.decision]} (confirm the record first)` : b.decision === "NOTIFY_FIRMS" ? "Notify the affected firms" : DECISION_WORDS[b.decision]}</Row>
           {b.decisionReason ? <Row label="Why">{b.decisionReason}</Row> : null}
           {b.decidedAt ? <Row label="Who, when">{actorWords(b.decidedBy ?? "", b.decidedByName)}, <time dateTime={b.decidedAt}>{momentUtc(b.decidedAt)}</time></Row> : null}
         </dl>
@@ -132,16 +142,16 @@ function BreachBody() {
 
       <Card title="History" id="breach-history">
         <ol className="flex flex-col gap-1 text-sm" aria-label="History">
-          {[...b.events].reverse().map((e) => <li key={e.seq} data-event={e.kind}><time dateTime={e.at} className="text-text-muted">{momentUtc(e.at)}</time> · {historyWords(e, firmName)} · {actorWords(e.actor, e.actorName)}</li>)}
+          {[...b.events].reverse().map((e) => <li key={e.seq} data-event={e.kind} className="[overflow-wrap:anywhere]"><time dateTime={e.at} className="text-text-muted">{momentUtc(e.at)}</time> · {historyWords(e, firmName)} · {actorWords(e.actor, e.actorName)}</li>)}
         </ol>
       </Card>
 
       {manage ? <>
-        <RecordBreach open={editing} onOpenChange={(o) => { setEditing(o); if (!o) reload(); }} breach={b} returnFocus={() => editButton.current}
+        <RecordBreach before={unchanged} open={editing} onOpenChange={(o) => { setEditing(o); if (!o) reload(); }} breach={b} returnFocus={() => editButton.current}
           onRecorded={() => { setEditing(false); setDone(b.status === "DRAFT" ? "Confirmed. Next: decide whether firms are told." : "Saved."); reload(); }} onMaybeRecorded={reload} />
         <ChangeDialog open={deciding} onOpenChange={setDeciding} title="Decide whether firms are told" description="The decision names who and why. It is fixed once a notice is sent." submit="Record the decision"
           returnFocus={() => decideButton.current ?? document.getElementById("breach-decision")}
-          send={async (reason) => { await systemApi(`/register/breaches/${b.id}`, { method: "PATCH", json: { reason, ...(choice ? { decision: choice, decisionReason: why } : {}) } }); setDeciding(false); setDone("Decision recorded."); reload(); }}>
+          send={async (reason) => { try { await unchanged(); } catch (x) { setDeciding(false); setDone(COPY.stale); throw x; } await systemApi(`/register/breaches/${b.id}`, { method: "PATCH", json: { reason, ...(choice ? { decision: choice, decisionReason: why } : {}) } }); setDeciding(false); setDone("Decision recorded."); reload(); }}>
           {(errors) => <>
             <fieldset className="flex flex-col gap-2"><legend className="text-xs font-medium text-text">Decision</legend>
               {(["NOTIFY_FIRMS", "NO_NOTICE"] as const).map((v) => <label key={v} className="flex items-center gap-2 text-sm"><input type="radio" name="decision" className="size-4 accent-[var(--color-primary)]" checked={choice === v} onChange={() => setChoice(v)} data-decision={v} />
@@ -156,7 +166,7 @@ function BreachBody() {
           send={async (reason) => {
             const f = sending!;
             try { await systemApi(`/register/breaches/${b.id}/notices`, { method: "POST", json: { reason, firmId: f.id } }); setRowError((o) => { const { [f.id]: _gone, ...rest } = o; return rest; }); setDone(`Notice sent to ${firmWords(f)}.`); }
-            catch (x) { if (!(x instanceof SystemApiError) || x.status !== 409) throw x; setRowError((o) => ({ ...o, [f.id]: x.message })); }   // the API's words on that firm's row, the page reloaded
+            catch (x) { if (!(x instanceof SystemApiError) || x.status !== 409) { reload(); throw x; } setRowError((o) => ({ ...o, [f.id]: x.message })); }   // the API's words on that firm's row, the page reloaded
             setSending(null); reload();
           }} />
       </> : null}

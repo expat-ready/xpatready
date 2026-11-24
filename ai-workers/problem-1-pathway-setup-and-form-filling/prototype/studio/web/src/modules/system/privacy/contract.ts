@@ -96,7 +96,7 @@ export function recordBody(d: RecordDraft): Record<string, unknown> {
 }
 /** A 422's field names as the dialog's own fields ("affectedFirms.1" → "affectedFirms"); anything else under "other". */
 export function fieldErrors(fields: Record<string, string> | undefined): Record<string, string> {
-  const known = ["reason", "discoveredAt", "description", "affectedFirms", "dataCategories", "rootCause", "containment", "otherNotifications"];
+  const known = ["reason", "discoveredAt", "description", "affectedFirms", "dataCategories", "rootCause", "containment", "otherNotifications", "decision", "decisionReason"];
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(fields ?? {})) { const top = k.split(".")[0]; const at = known.includes(top) ? top : "other"; out[at] = out[at] ? `${out[at]} ${v}` : v; }
   return out;
@@ -129,7 +129,10 @@ export const COPY = {
   noticeConfirm: "Its active Owner and Admins get ExpatReady's Security incident notice now. It cannot be withdrawn or sent twice; the decision and this firm stay fixed on the record.",
   decisionFixed: "Fixed once a notice is sent.",
   draftFirst: "Confirm the record first.", decideFirst: "Record the decision first.", noNotice: "No notice is sent: the decision is No notice.",
-  sentNoMore: "Sent: cannot be sent again.", breachMissing: "No such breach.",
+  sentNoMore: "Sent: cannot be sent again.",
+  stale: "This breach was changed by someone else since you opened it: nothing was saved. The page now shows the latest; try again.",
+  draftWords: "From the alert (our own words; firms never read these):",
+  draftSame: "Write the description firms will read: the alert's own words cannot be sent to them.", breachMissing: "No such breach.",
   maybeRecorded: "An earlier try may already have recorded this breach: check the list behind this dialog before recording it again.",
 } as const;
 

@@ -16,7 +16,7 @@ type Firm = { id: string; name: string | null };
 const blank = (): RecordDraft => ({ discoveredAt: localBox(new Date()), description: "", firms: [], categories: [], rootCause: "", containment: "", otherNotifications: "", reason: "" });
 const Recorded = z.object({ id: z.string() });
 /** PF-21rs A2: the same fields edit a breach or confirm a draft (concept §6, challenge M5): its current words to start from. */
-const draftOf = (b: BreachOne): RecordDraft => ({ discoveredAt: "", description: b.description, firms: b.firms, categories: b.dataCategories, rootCause: b.rootCause ?? "",
+const draftOf = (b: BreachOne): RecordDraft => ({ discoveredAt: "", description: b.status === "DRAFT" ? "" : b.description, firms: b.firms, categories: b.dataCategories, rootCause: b.rootCause ?? "",
   containment: b.containment ?? "", otherNotifications: b.otherNotifications ?? "", reason: "" });
 
 function FirmPicker({ chosen, onChange, error, kept = [] }: { chosen: Firm[]; onChange: (f: Firm[]) => void; error?: string; kept?: string[] }) {
@@ -54,8 +54,9 @@ function FirmPicker({ chosen, onChange, error, kept = [] }: { chosen: Firm[]; on
   );
 }
 
-export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMaybeRecorded, breach }: { open: boolean; onOpenChange: (o: boolean) => void; onRecorded: (id: string) => void; returnFocus: () => HTMLElement | null; onMaybeRecorded: () => void;
-  /** A2: edit this breach (or confirm it, when a draft) instead of recording a new one. */ breach?: BreachOne }) {
+export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMaybeRecorded, breach, before }: { open: boolean; onOpenChange: (o: boolean) => void; onRecorded: (id: string) => void; returnFocus: () => HTMLElement | null; onMaybeRecorded: () => void;
+  /** A2: edit this breach (or confirm it, when a draft) instead of recording a new one. */ breach?: BreachOne;
+  /** A2 (break M1): run before a change is sent; throws when the breach changed since the page read it. */ before?: () => Promise<void> }) {
   const confirm = breach?.status === "DRAFT";
   const [d, setD] = React.useState<RecordDraft>(blank), [key, setKey] = React.useState("");
   const [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false);
@@ -71,8 +72,11 @@ export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMa
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    // Break M2: a draft is confirmed only with words firms may read, never the alert's own.
+    if (confirm && (!d.description.trim() || d.description.trim() === breach!.description.trim())) { setErrors({ description: COPY.draftSame }); setRefused((n) => n + 1); return; }
     setBusy(true); setErrors({});
     try {
+      if (breach && before) await before();
       if (breach) onRecorded(Recorded.parse(await systemApi(`/register/breaches/${breach.id}`, { method: "PATCH", json: changeBody(breach, d, confirm) })).id);
       else onRecorded(Recorded.parse(await systemApi("/register/breaches", { method: "POST", json: recordBody(d), headers: { "idempotency-key": key } })).id);
     }
@@ -91,6 +95,7 @@ export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMa
       <form id="record-breach" ref={form} onSubmit={send} noValidate className="flex flex-col gap-4">
         {!breach ? <Field label="Discovered at" hint={COPY.discoveredHint} error={errors.discoveredAt}>
           <Input type="datetime-local" value={d.discoveredAt} max={localBox(new Date())} onChange={(e) => put("discoveredAt", e.target.value)} data-field="discoveredAt" /></Field> : null}
+        {confirm ? <div className="rounded-lg bg-surface p-3 text-sm"><p className="text-xs font-medium text-text-muted">{COPY.draftWords}</p><p className="mt-1 [overflow-wrap:anywhere]" data-draft-words>{breach!.description}</p></div> : null}
         {text("description", "What happened", COPY.descriptionHint, 3)}
         <FirmPicker chosen={d.firms} onChange={(f) => put("firms", f)} error={errors.affectedFirms} kept={breach?.notices.map((n) => n.firmId)} />
         <fieldset className="flex flex-col gap-1.5">
