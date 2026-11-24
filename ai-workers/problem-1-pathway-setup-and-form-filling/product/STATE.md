@@ -2,7 +2,7 @@
 
 current_lead: local_48775ee3 Lead 3 · 24 Nov 23:58 IST (after Lead 2 local_0bdf05e5, past its 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 02:05 IST: **Lead 3 check 02:03.** Weekly 20%. Merged since 00:00: 15 (new: #3234 R1.85 1a, #3517 R1.93 C, #3540). Walks on main run 45477318897: j_65 j_13 PASS, j_56 16/18 (FO-7w1, FO-7c missing). #3491 conflicts after #3234 (R1.87 fixer told: merge main, re-stamp migration, then Lead read); #3235 retarget to main (R1.85 told). R1.65 Works via #3572 (queued). Queue: #3497 #3536 #3552 #3556 #3541 #3534; #3493 dequeued, full run. Demo green. 55/101 Works.
+updated: 2026-11-25 02:37 IST: **Lead 3 check 02:33.** **56/101 Works (R1.65 proven, #3572).** Weekly 21%. Merged since 00:00: 22 (new: #3497 R1.69, #3552 R1.58 T, #3556 R1.53, #3536 R1.54 4d, #3538 R1.86 A1, #3534 ENF-733 walks on merge). Labelled: #3491 (migration read), #3569 (start.sh deps fix), #3580 (records: P-816 size for #3235, P-817 Lead 3 rulings). #3235 waits on P-816 reaching main. Owed by the Lead: RULES Enforced-by text for P-733, P-734, P-738, IDX-25 (OS-2); Lead 1's rulings rows. In queue: #3541. #3493 merging main (conflicts).
 
 ## Hand-over Lead 2 → Lead 3, 23:58 IST 24 Nov (Lead 2 ~265k; earlier block: `history/STATE-2026-11-24-2358-lead2-handover-lead1-block.md`)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 2's 99e4e813 is deleted. **No standby left** (P-286 asks two: start two at the founder's next typed turn). Weekly 15% at 23:56 (11% at 23:12, 7% at 22:4x: ~5-6%/h, 16 lanes; at that rate 96% ~14:00 IST 25 Nov: tell the founder in the morning report, recommend fewer lanes or ask). My context 26%. Disk 10 GB.
