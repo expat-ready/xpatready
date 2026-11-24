@@ -1,0 +1,2 @@
+Entry points: M1 (Lead 24/25, 24 Nov): `WalledPool` (`firm-scope.ts`) refuses any query on a checkout after that checkout's COMMIT, ROLLBACK, END or ABORT (string, config object or prepared statement; not a savepoint's; state new at each checkout); idle also needs pg's readyForQuery; a release with a statement in flight waits for pg's drain (10 s at most) before it is judged; `endsTransaction(sql)`, `notIdleWords`.
+Tests: tests/check_tx_end_guard.ts, tests/check_pool_tx_return.ts, tests/check_no_array_tx.ts
