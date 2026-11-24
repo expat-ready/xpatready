@@ -61,3 +61,32 @@ There is no browser walk. This PR changes no screen, and the door that opens the
 Not checked: a real email client, a person's unaided walk (D17/D20 stay with the founder), and the end-to-end click from the email into the door (#3460 is on main, not on this branch).
 
 Verdict: Changes
+
+## Round 2 (diff 5b5978832..9b7ca65e0)
+
+I reviewed only this diff: `git diff 5b5978832..9b7ca65e0 -- ':!…/product/screens'`. It changes 2 files: `any-document/service.ts` (+1/-1) and `tests/check_fo6d_any_document.ts` (+20).
+
+| Run (from `prototype/`, same command as round 1) | Result |
+|---|---|
+| Suite at 9b7ca65e0 | `42 passed, 0 failed` |
+| Mutation 4 again (email loop moved ahead of `$transaction`) | `41 passed, 1 failed`: the new M1 line, `{"status":500,"mails":2,"cancels":1}` |
+| Mutation 5: stop the loop at the first failed email (`if (!(await sendPleaseSign(…))) break;`) | `41 passed, 1 failed`: the new m1 line, `{"status":201,"sent":[]}` |
+| Mutation 6: a failed email undoes the send (`… throw new Error("mail")`) | `41 passed, 1 failed`: the new m1 line, `{"status":500,"sent":[]}` |
+| Temporary probe of origin/main's door `TOKEN_SHAPE` on both emailed links | `SHAPE true,true`; still 42 passed |
+
+I restored every temporary edit with `git checkout -- <file>`. `git status --short` is then clean apart from this appended section.
+
+- **M1: closed.** The trigger on `fo_signature_request` makes the transaction fail after `port.send`. The new line checks the send is refused, no "Please sign" email went out, there is exactly one more adapter cancel and no new request. Mutation 4 turns this line red and only this line.
+- **m1: closed.** With a `failOn` mail for Bea, the send returns 201, the request is SENT and only Cy gets an email. Both "stop at the first failure" and "undo the send" turn the line red.
+- **Note: closed.** `firmId.toLowerCase().replace(/-/g, "")` (service.ts:129) now matches the retainer path (`signing/service.ts:64`).
+- **Scope:** still no migration, route, permission key or mail sender.
+
+Two small observations, not findings:
+- Mutation 5 is caught only because Bea is emailed before Cy. The signer order comes from a `findMany` with no `orderBy`, so the line depends on that order.
+- The temporary trigger is dropped right after `call()`. If `call()` threw, the trigger would stay, but only in this suite's own throwaway database.
+
+**Blocker:** none. **Major:** none open. **Minor:** none open.
+
+Journey score: 8/10, unchanged and still provisional (no browser walk, as in round 1). "Error recovery" is now covered by the M1 line.
+
+Verdict: Approve
