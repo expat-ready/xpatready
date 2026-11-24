@@ -13,6 +13,8 @@
 //   BR-6 rotate, close, reopen → upright; the stored file's SHA-256 is unchanged
 //   BR-7 a link used up before its one fetch is asked for once more and the file opens / used up twice → "could not open"
 //   BR-8 Accept is CS-D1 part 2's route, not on main: no Accept and no Reject show in the panel (question on the PR)
+//   B1   (break round 1) a black-and-white office scan (CCITT G4 image) draws dark pixels: PDF.js's decoders are served
+//        from our own origin (dist/pdfjs/, vite.config.ts); without them the page drew blank and looked real
 //   W1   keyboard only: from the line, open, page, zoom, rotate, Escape, focus back on the file name; axe 0 serious;
 //        375/1024/1440 px with no sideways page scroll; page 150 of 200 drawn within 2 s of Next page while the toolbar
 //        answers; at 1440 px 9 pt print on an A4 page draws at least 11 px at Fit width; at 1024 px 200% only the page
@@ -59,6 +61,20 @@ const SPEC = "SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID";
 const THREE = pdf([1, 2, 3].map((n) => [SPEC, `Sample bank statement, page ${n} of 3`, ...Array.from({ length: 50 }, (_, i) => `Line ${i + 1}: Sample entry 100.00 CAD`)]));
 const SCRIPTED = pdf([[SPEC, "Sample form with a script (DW6)"]], 10, "window.__csd5_ran = 1; app.alert('ran');");
 const LONG = pdf(Array.from({ length: 200 }, (_, i) => [SPEC, `Sample long document, page ${i + 1} of 200`]));
+/** An A4 page holding one 320 x 160 CCITT Group 4 image (two black bars), as office scanners write them (break B1). */
+function scanPdf(): Buffer {
+  const g4 = Buffer.from("JqBmG///////IaG6v//////////////////////////8f/////////IaJB/////////////////////////////////+P/////8AEAE=", "base64");
+  const content = "q 400 0 0 200 100 500 cm /Im1 Do Q";
+  const parts: (string | Buffer)[] = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width 320 /Height 160 /ColorSpace /DeviceGray /BitsPerComponent 1 /Filter /CCITTFaxDecode /DecodeParms << /K -1 /Columns 320 /Rows 160 >> /Length ${g4.length} >>\nstream\n`, "latin1"), g4, Buffer.from("\nendstream", "latin1")])];
+  const chunks: Buffer[] = [Buffer.from("%PDF-1.4\n", "latin1")]; const offs: number[] = []; let at = chunks[0]!.length;
+  parts.forEach((o, i) => { const b = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`, "latin1"), typeof o === "string" ? Buffer.from(o, "latin1") : o, Buffer.from("\nendobj\n", "latin1")]); offs.push(at); at += b.length; chunks.push(b); });
+  chunks.push(Buffer.from(`xref\n0 ${parts.length + 1}\n0000000000 65535 f \n${offs.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${parts.length + 1} /Root 1 0 R >>\nstartxref\n${at}\n%%EOF\n`, "latin1"));
+  return Buffer.concat(chunks);
+}
+const SCAN = scanPdf();
 const HUGE = pdf([[SPEC, "Sample scanner-app page, 2480 x 3508 pt"]], 10, undefined, [2480, 3508]);
 const A4 = pdf([[SPEC, "Sample A4 letter in 9 pt print: Balance 12,345.67 CAD, account holder SAMPLE CLIENT A"]], 9);
 // A 2 x 1 PNG (red, blue), so a quarter turn shows as a 1 x 2 picture.
@@ -179,6 +195,16 @@ try {
   await openFile(d3); await page.locator('[data-preview-state="refused"]').waitFor({ timeout: 10_000 });
   ok("CS-D5 BR-1 fail: the panel still names the file and its facts when it cannot be opened (break m4)", (await page.getByRole("heading", { name: "photo-sample.png" }).count()) === 1 && /^PNG · /.test((await page.locator("[data-preview-facts]").textContent()) ?? ""));
   ok("CS-D5 BR-1 fail: a file changed on disk shows \"The file could not be opened…\", not \"Checking for viruses…\", no Try again", (await panel.locator("[data-preview-refused]").textContent())?.startsWith("The file could not be opened.") === true && (await panel.getByText("Checking for viruses…").count()) === 0 && (await panel.getByRole("button", { name: "Try again" }).count()) === 0);
+  await closePanel();
+
+  // B1: a CCITT G4 scan draws dark pixels (PDF.js's decoders served from /pdfjs/); a blank canvas would read 0.
+  const d7 = await put(L3, SCAN, "scanned-statement-g4-sample.pdf");
+  await go(); await openFile(d7); await ready();
+  const dark = await page.locator("[data-preview-canvas]").evaluate((e: HTMLCanvasElement) => { const g = e.getContext("2d")!.getImageData(0, 0, e.width, e.height).data; let n = 0; for (let i = 0; i < g.length; i += 4) if (g[i]! < 96 && g[i + 3]! > 0) n++; return n; });
+  // A missing file may come back as the app's page (the web fallback), so "served" means a wasm body, not only a 200.
+  const decoders = await page.evaluate(async () => { const kind = async (u: string) => { const r = await fetch(u); return r.ok && new Uint8Array(await r.arrayBuffer()).slice(0, 4).join() === "0,97,115,109" ? "wasm" : "none"; }; return `${await kind("/pdfjs/wasm/jbig2.wasm")} ${await kind("/pdfjs/wasm/quickjs-eval.wasm")}`; });
+  ok("CS-D5 B1: a black-and-white office scan (CCITT G4) draws its dark bars, not a blank page", dark > 1000, dark);
+  ok("CS-D5 B1: the decoders are served from our own origin, and the scripting engine is not (jbig2 wasm, quickjs none)", decoders === "wasm none", decoders);
   await closePanel();
 
   // W1: the A4 bar at 1440 px, the 200-page fixture, keyboard only, axe, widths.

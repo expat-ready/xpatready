@@ -23,6 +23,7 @@ type Zoom = "fit" | "100" | "200";
 
 const TYPES: Record<string, string> = { "application/pdf": "PDF", "image/png": "PNG", "image/jpeg": "JPEG" };
 const BROKEN = { kind: "refused", title: "The file could not be opened", text: "The file could not be opened. It may be damaged, or it changed since it was uploaded. Ask for it again." } as const;
+const DATA = "/pdfjs/";   // PDF.js's decoders, fonts, cMaps and colour profiles, copied into the build by vite.config.ts (break B1)
 const CSS_PER_PT = 96 / 72;   // "100%" as Mozilla's viewer means it: one PDF point at its printed size on screen
 /** Pixels per CSS pixel for a canvas of this CSS size: the screen's own, but at most 2^25 pixels and 16384 a side, as
  *  Mozilla's viewer caps it (break M1); past that the page is drawn softer, never blank or out of memory. */
@@ -68,7 +69,8 @@ async function drawer(media: string, bytes: ArrayBuffer): Promise<Drawn> {
   }
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-  const loading = pdfjs.getDocument({ data: new Uint8Array(bytes), enableXfa: false, disableAutoFetch: true, disableStream: true, stopAtErrors: true });
+  const loading = pdfjs.getDocument({ data: new Uint8Array(bytes), enableXfa: false, disableAutoFetch: true, disableStream: true, stopAtErrors: true,
+    wasmUrl: `${DATA}wasm/`, cMapUrl: `${DATA}cmaps/`, cMapPacked: true, standardFontDataUrl: `${DATA}standard_fonts/`, iccUrl: `${DATA}iccs/` });
   const pdf = await loading.promise;
   // One draw on the canvas at a time (break m1: two quick clicks drew on it at once): a newer draw cancels the one
   // running, waits for it to stop, and a draw that is no longer the newest is skipped.
