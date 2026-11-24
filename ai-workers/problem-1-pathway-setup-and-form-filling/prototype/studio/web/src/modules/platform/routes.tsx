@@ -19,6 +19,7 @@ import { BrandingPage } from "./branding/branding-page";
 import { FirmProfilePage } from "./settings/firm-profile-page";
 import { SupportPage, SupportTicketPage } from "./settings/support-page";
 import { NotificationsPage } from "./settings/notifications-page";
+import { AllNotificationsPage } from "./notifications/all-page";
 import { ActivityLogPage } from "./audit/activity-log-page";
 import { TemplatePage, TemplatesPage } from "./messages/templates/templates-page";
 
@@ -43,6 +44,7 @@ export const routes: ModuleRoute[] = [
   { path: "/platform/support", element: <SupportPage /> },   // PF-18s part 2: Help & support
   { path: "/platform/support/:id", element: <SupportTicketPage /> },   // PF-18s part 2: one ticket
   { path: "/account/notifications", element: <NotificationsPage /> },   // PF-18s part 3: My account → Notifications (everyone's own)
+  { path: "/account/notifications/all", element: <AllNotificationsPage /> },   // PF-18ns: My account → Notifications → All
   { path: "/platform/activity-log", element: <ActivityLogPage /> },   // AUD-4s: the firm's Activity log (agent/audit:read)
   { path: "/platform/templates", element: <TemplatesPage /> },   // PF-19s (R1.46): Templates (agent/template:list)
   { path: "/platform/templates/:key", element: <TemplatePage /> },   // PF-19s: one template's editor and preview
