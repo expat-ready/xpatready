@@ -99,3 +99,49 @@ export function firmsQuery(p: URLSearchParams): string {
   const s = out.toString();
   return s ? `?${s}` : "";
 }
+
+// ------------------------------------------------------------------------------------------------ PR C: the support queue
+// PF-17 part 4 PR C (concept r2 §4d, §4e, BR-5 to BR-7; SA-10 §3.2, §3.4): the queue's and one ticket's shapes (PF-17 part
+// 2's answers, part 4's `firm.plan`) and their words.
+/** SA-10 §10 (Sample, Unconfirmed: SA10-X3 pending): reading the queue, and replying. */
+export const SUPPORT_LIST_KEY = "system/support:list";
+export const SUPPORT_MANAGE_KEY = "system/support:manage";
+export const TicketStatus = z.enum(["OPEN", "WAITING_ON_SUPPORT", "WAITING_ON_FIRM", "CLOSED"]);
+export type TicketStatus = z.infer<typeof TicketStatus>;
+const FirmRef = z.object({ id: z.string(), key: z.string(), name: z.string(), plan: z.object({ code: z.string(), name: z.string() }).nullable() });
+export const QueueItem = z.object({ id: z.string(), firm: FirmRef, subject: z.string(), status: TicketStatus, page: z.string(), raisedByName: z.string().nullable(), messages: z.number(), createdAt: z.string(), updatedAt: z.string() });
+export type QueueItem = z.infer<typeof QueueItem>;
+export const QueuePage = z.object({ tickets: z.array(QueueItem), page: z.number(), pageSize: z.number(), total: z.number() });
+export const QueueMessage = z.object({ id: z.string(), authorKind: z.enum(["FIRM_STAFF", "SUPPORT"]), authorName: z.string().nullable(), body: z.string(), files: z.array(z.number()), createdAt: z.string() });
+export const QueueTicket = QueueItem.omit({ messages: true }).extend({ messages: z.array(QueueMessage) });
+export type QueueTicket = z.infer<typeof QueueTicket>;
+
+/** The status chips (`?status=`), All first: the server already puts the tickets waiting on us first (SA-10 §3.2). */
+export const STATUS_CHIPS: { value: TicketStatus | null; label: string }[] = [
+  { value: null, label: "All" }, { value: "OPEN", label: "New" }, { value: "WAITING_ON_SUPPORT", label: "Waiting on us" }, { value: "WAITING_ON_FIRM", label: "Waiting on firm" }, { value: "CLOSED", label: "Closed" }];
+export const STATUS_WORDS: Record<TicketStatus, string> = { OPEN: "New", WAITING_ON_SUPPORT: "Waiting on us", WAITING_ON_FIRM: "Waiting on firm", CLOSED: "Closed" };
+
+export const SUPPORT_COPY = {
+  empty: "No tickets here. Pick All to see every ticket.",
+  closed: "This ticket is closed. The firm can reopen it by writing again.",
+  noManage: "You can read this ticket. Replying needs the support manage key.",
+  replyLabel: "Reply (the firm will see this)",
+  loadFailed: "Could not load the support queue. Please try again.",
+  noPlan: "No live plan",
+} as const;
+
+/** A ticket's age or wait in plain words: minutes, hours, then days (BR-6; whole units, rounded down). */
+export function ageWords(fromIso: string, now: number): string {
+  const m = Math.max(0, Math.floor((now - Date.parse(fromIso)) / 60_000));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h} h` : `${Math.floor(h / 24)} d`;
+}
+
+/** The API's query for the Support page's address: status, firm and page only. */
+export function queueQuery(p: URLSearchParams): string {
+  const out = new URLSearchParams();
+  for (const k of ["status", "firm", "page"]) { const v = p.get(k); if (v) out.set(k, v); }
+  const s = out.toString();
+  return s ? `?${s}` : "";
+}
