@@ -213,7 +213,7 @@ try {
   const reads = await dialog.locator("[data-read-lines]").waitFor({ timeout: 30_000 }).then(() => dialog.locator("[data-read-lines] li").allInnerTexts(), () => [] as string[]);
   await p.screenshot({ path: join(SHOTS, "w8-file-details-read-by-1440.png") }).catch(() => undefined);
   ok("J-68 W8 (part missing: CS-D5 part 2): the walk ends at R1.69's first step: the line's File details shows \"Read by\" with the officer's preview in words (Case officer · Previewed)",
-    reads.some((l) => /Case officer/.test(l) && /Previewed/i.test(l)), { reads: reads.slice(0, 5) });
+    shown && reads.some((l) => /Case officer/.test(l) && /Previewed/i.test(l)), { panel: shown, reads: reads.slice(0, 5) });   // only after the panel opened: W5's API fetch writes a "previewed" line too
 } finally {
   await browser.close();
   await db.$disconnect();
