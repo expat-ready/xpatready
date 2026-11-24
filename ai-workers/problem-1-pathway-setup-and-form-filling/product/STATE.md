@@ -46,7 +46,7 @@ Older Start here pointers and the red-row lanes line: `history/STATE-2026-11-24-
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 23 Nov:** Lead 1 (local_a085acf2, from 23 Nov 11:24 IST), Lead 2 (local_2158cd24, from 23 Nov 11:59 IST), Lead 3 (local_cf20dbb4, from 23 Nov 12:47 IST), Lead 4 (local_86bd4439, from 23 Nov 13:54 IST), Lead 5 (local_6cdede15, from 23 Nov 15:13 IST), Lead 6 (local_f2d41d71, from 23 Nov 16:57 IST), Lead 7 (local_1117b08b, from 23 Nov 18:39 IST), Lead 8 (local_9c46a890, from 23 Nov 20:02 IST), Lead 9 (local_878222c4, from 23 Nov 21:49 IST), Lead 10 (local_1d7473d3, from 23 Nov 22:48 IST), Lead 11 (local_5f4a7ece, from 23 Nov 23:41 IST), Lead 12 (local_4e13ee93, from 24 Nov 00:05 IST), Lead 13 (local_def18400, from 24 Nov 00:48 IST), Lead 14 (local_8f15b847, from 24 Nov 01:48 IST), Lead 15 (local_610436f9, from 24 Nov 03:03 IST), Lead 16 (local_c598a0e1, from 24 Nov 04:26 IST), Lead 17 (local_e583f067, from 24 Nov 05:45 IST), Lead 18 (local_799486c7, from 24 Nov 07:20 IST).
+**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST).
 **Leads of 22 Nov (account before):** word for word in `history/STATE-2026-11-23-1705-lead6-cs-mv2-and-older-leads.md`.
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
