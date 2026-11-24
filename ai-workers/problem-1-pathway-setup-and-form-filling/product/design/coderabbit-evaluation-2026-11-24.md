@@ -13,7 +13,7 @@ Read-only study for the tech lead. Nothing installed, no account, US$0. Web page
 | Best fit for us | **Our own Opus reviewer, given the requirement clause and a checklist of escaped Majors.** No per-author limit, no new access, already the gate. It must still prove it in the replay |
 | Best outside fit | **CodeRabbit's free route**, if he accepts that it may train on our code: US$0, published limits, a review can be run without giving it write access. **CodeAnt AI if he does not accept that** |
 | Best in class experience | **CodeRabbit, by its documentation:** on-demand review, deepest settings, published limits, structured output for agents. Nobody's quality on our code is proven |
-| Where CodeAnt AI is better | Its data promise ("We never train AI models on your data"), a flat price with no published per-author limit, no write to workflows, security scanning and quality gates sold with review |
+| Where CodeAnt AI is better | Its data promise ("We never train AI models on your data"), a flat price with no published per-author limit (its command line has a 10-file limit a review), no write to workflows, security scanning and quality gates sold with review |
 | Two side by side? | **No, until the replay shows each finds true Majors the other missed.** Two paid seats would be US$60 a month, inside the cap but not justified |
 
 * **The need is real.** qa logged 11 Majors from 19 to 23 Nov that a reader of the diff could arguably have seen (5 strict). At least two had been noted before merge; without them, 9 and 4 (section 6). Our own reopen rule was "3+ diff-visible Majors in a week": met either way.
@@ -122,7 +122,7 @@ Builder's PR, then in parallel CI and **the fresh Opus reviewer (the only approv
 * **A label it put on would be removed:** `label-guard` re-checks for our Approve on every `review: approved`.
 * **Never make its check required:** a rate-limited review posts a passing or neutral check that does not block. With the draft no check normally appears; its comment is the signal.
 * **Default settings would hurt us on day one.** Its summary edits the PR description; `pr-rules`, `lead-read`, `module-cards` and `records-label` run on `edited`. A settings file on main is not enough: branches cut before it read defaults until the source is pinned (steps B2a, B4).
-* **One allowed command.** Only `@coderabbitai review` (once, `@coderabbitai configuration`). A local hook should refuse any other comment, title or body containing `@coderabbitai`: Autofix, `local commit`, `generate configuration`, `emit path instructions`, title or summary placeholders and `review --with-config` write or drop the draft, and YAML cannot switch them off.
+* **One allowed command.** Only `@coderabbitai review` (once, `@coderabbitai configuration`). A hook kept in the repository, so cloud lanes carry it too, should refuse any other comment, title or body containing `@coderabbitai`: Autofix, `local commit`, `generate configuration`, `emit path instructions`, title or summary placeholders and `review --with-config` write or drop the draft, and YAML cannot switch them off.
 * **Noise:** each comment starts events for four workflows; most jobs skip, but `review-rounds` runs when the text says "reviewer". Automatic review would add up to one walkthrough per PR (600 a week).
 * **Token cost to lanes:** unknown until measured. Rule: lanes never read or obey its text. One triage reader judges findings once a day and passes only confirmed ones to the lead.
 
@@ -158,7 +158,7 @@ Arithmetic: Greptile 74 x US$1 x 4.33 = US$320. Qodo US$30 / 14 = US$2.14 a revi
 | Which we need | Review only, as a trial | Review only, as a trial. Code Security later, before the first customer |
 | Price, one developer | US$30 monthly, US$24 yearly (Essentials) | Review US$24 paid yearly; "$24-30 / user / mo" on its comparison page; an older blog says US$10. **Prices conflict: confirm before paying.** Review plus Security US$40 paid yearly. Cloud, DAST and pentest (US$199 to US$4,000 and up) are outside the cap |
 | A year, one seat | US$288-360 | US$288-360 (review); US$480 with security |
-| One account, 600 PRs | Slows to 1 an hour | "Unlimited code reviews", "No charge per pull request, ever" [V]; bots and shared accounts: not stated |
+| One account, 600 PRs | Slows to 1 an hour | "Unlimited code reviews", "No charge per pull request, ever" [V]; bots and shared accounts: not stated; its command line reviews at most 10 files, 5,000 lines each, and skips the rest |
 | Public-repository plan | Free; manual under 10 stars | **Not found.** GitHub Marketplace shows a US$0 entry, contents not stated |
 | Trial | 14 days, no card | 14 days [V blog]; card and what follows: not stated |
 | App permissions | Write code, PRs, issues, checks, statuses, **workflows** | Write code, PRs, issues, checks, statuses, **and profile**; read **administration**, hooks, organisation administration. **No workflows write** |
@@ -166,9 +166,9 @@ Arithmetic: Greptile 74 x US$1 x 4.33 = US$320. Qodo US$30 / 14 = US$2.14 a revi
 | Merge, labels, commits | Triage rules can merge; agents commit | Merge not found; can add labels; commits from a person's click; security fix PRs sold |
 | Training | Says OSS is used to train | "We never train AI models on your data"; terms 7.3 the same. No public-code exception found |
 | Retention | Cache up to 7 days unless off | Source "Never stored. Deleted when each scan or review completes." Findings kept for the contract |
-| Where processed | Providers named: OpenAI, Anthropic | US, UK, India, or EEA if chosen; model vendors not named on the pages read |
+| Where processed | Providers named: OpenAI, Anthropic | US, UK, India, or EEA if chosen; model vendors in a separate list, codeantai.trust.site/subprocessors, not read; no prompt or output retention and no training by providers [V] |
 | Certificates [V] | SOC 2 Type II | SOC 2 Type II and HIPAA programme |
-| Terms | Auto-renews; 45 days' notice in terms; cap 12 months' fees | Auto-renews; cancel any time, ends at period end; no refund; cap 12 months' fees (twice for data protection); California |
+| Terms | Auto-renews; 45 days' notice in terms; cap 12 months' fees | Auto-renews; cancel any time, ends at period end; no refund; cap 12 months' fees (twice for data protection); California; may use name and logo until told to stop (10.3); trials "as is" (4.3); 30 days' notice of a price rise (8.3) |
 | Incident or injection statement | 2025 code-execution finding, fixed; no injection statement found | None found for either; absence proves nothing |
 | Set-up and daily use by our agents | Local command line `--agent` output and `--base-commit`; settings file; label and on-demand control | `codeant review --headless` JSON, `--base-commit`, MCP "read-only by default", Claude Code skills. **The command line falls back to a signed-in `gh` token by itself**, so run it with none present |
 | Automatic review | Off in our draft | "reviews new pull requests automatically"; setting exists, default and label control not found |
@@ -176,7 +176,7 @@ Arithmetic: Greptile 74 x US$1 x 4.33 = US$320. Qodo US$30 / 14 = US$2.14 a revi
 | Security scanning | Security review on Advanced; free for OSS PRs [V] | Broader, as a paid product |
 | Quality evidence | Rival's blog: 36% precision, 43% recall | Its own post of a Martian table: 52% precision, 51% recall, third. **CodeRabbit is missing from that table, so the two figures cannot be compared** |
 
-Independent user-review pages were blocked or thin. On set-up and daily experience this table compares documents, not use. Sources: codeant.ai/pricing, codeant.ai/comparison/coderabbit, codeant.ai/lp/coderabbit, codeant.ai/privacy-policy, codeant.ai/terms-and-conditions, github.com/marketplace/codeant-ai, docs.codeant.ai (`/cli/review`, `/cli/setup`, `/cli/mcp-server`, `/pull_request/features/auto_approve_pr`).
+Independent user-review pages were blocked or thin. On set-up and daily experience this table compares documents, not use. Sources: codeant.ai/pricing, codeant.ai/comparison/coderabbit, codeant.ai/lp/coderabbit, codeant.ai/privacy-policy, codeant.ai/terms-and-conditions, github.com/marketplace/codeant-ai, codeant.ai/blogs/coderabbit-alternatives (US$10, 14 days), codeant.ai/blogs/ai-code-review-benchmark-results-from-200-000-real-pull-requests (52/51), docs.codeant.ai (`/cli/review`, `/cli/setup`, `/cli/mcp-server`, `/pull_request/features/auto_approve_pr`).
 
 ## 6. Back-test on our own history
 
@@ -213,7 +213,7 @@ Independent user-review pages were blocked or thin. On set-up and daily experien
 
 Small samples: 14 and 40 can justify more testing, not a rate. Judges do not see which tool wrote a finding. Report limits reached and minutes spent. If B passes: Essentials, one seat, or stay on OSS if it keeps up. If A fails and the Opus checklist does better: adopt the checklist and close this.
 
-**Waiting:** 28 PRs at 3 an hour is at least 9.3 hours for one CodeRabbit pass; CodeAnt limits are not stated. CodeRabbit says command-line and PR reviews differ, so a failed replay does not settle the App.
+**Waiting:** 28 PRs at 3 an hour is at least 9.3 hours for one CodeRabbit pass; CodeAnt states no hourly limit, but its command line reads at most 10 files a run, so each larger PR is run in slices of 10 files or fewer (`--include`), the same slices for every reviewer; a finding lost only to the limit is reported apart. CodeRabbit says command-line and PR reviews differ, so a failed replay does not settle the App.
 
 **Effort:** A about 9 hours (3 to find introducing PRs, 2 set-up, 4 judging). B about 8 hours over the week. Easy to install (about 10 minutes); harder to keep safe and to measure.
 
@@ -258,10 +258,10 @@ CodeAnt AI arm of phase A (can run alone if A0 is no):
 
 | Step | Click | What it grants | Undo |
 |---|---|---|---|
-| C1 | Yes to sending the 28 sample diffs, and files it reads around them, to CodeAnt AI, after reading codeant.ai/terms-and-conditions and /privacy-policy | The decision | Written deletion request |
+| C1 | Yes to sending the 28 sample diffs, and files it reads around them, to CodeAnt AI, which may use our name and logo, after reading codeant.ai/terms-and-conditions and /privacy-policy | The decision | Written deletion request |
 | C2 | Open https://app.codeant.ai and sign in. **If it asks to install the GitHub App, stop and tell the tech lead** | An account; the screen's own sign-in scopes (not seen by us); the 14-day trial may start | Revoke at github.com/settings/applications; delete the account |
-| C3 | Say yes to installing `codeant-cli` from npm, exact version and hash recorded first | A program, in a throwaway clone with no `gh` sign-in and no tokens | Remove the program |
-| C4 | Run `codeant login`, finish in the browser. No card; if a card is asked, stop | A key stored on the Mac | Remove the key; revoke in the app |
+| C3 | Say yes to installing `codeant-cli` from npm (0.5.17 or the current one, integrity hash recorded, `--ignore-scripts`) | A program, in a throwaway clone with no `gh` sign-in and no tokens | Remove the program |
+| C4 | Run `codeant login`, finish in the browser. No card; if a card is asked, stop. The lane turns usage analytics off with the documented command before the first run | A key stored on the Mac | Remove the key; revoke in the app |
 
 Phase B, only after A passes:
 

@@ -56,7 +56,7 @@ reviews:
     issue_assessment: { mode: "off" }
     custom_checks: []
   path_filters:
-    # records, evidence and reports; product/tools (our gate scripts) stays in
+    # the largest record folders; product/tools (our gate scripts) stays in
     - "!ai-workers/**/product/{qa,screens,design,history,library,inbox}/**"
     - "!ai-workers/**/product/*.md"
     - "!**/package-lock.json"
