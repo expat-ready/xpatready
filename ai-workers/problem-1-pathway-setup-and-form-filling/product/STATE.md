@@ -2,7 +2,7 @@
 
 current_lead: local_48775ee3 Lead 3 · 24 Nov 23:58 IST (after Lead 2 local_0bdf05e5, past its 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 03:07 IST: **Lead 3 check 03:03.** 56/101 Works. Weekly 22%. Merged since 00:00: 24 (new: #3541 R1.53 QA-780, #3566 R1.104 m8). Records PR #3580 (P-816, P-817): Impact lines added (e66ae1554), fresh Opus reviewer Approve posted; the queue gate labels on green ci. #3493: read on ebfb04ace, round 6 allowed, R4-1 a follow-up. In queue: #3491 #3569 #3585 #3575 #3542. #3235 waits on P-816 on main. Owed by the Lead: RULES Enforced-by text (P-733, P-734, P-738, IDX-25); Lead 1's rulings rows.
+updated: 2026-11-25 03:35 IST: **Lead 3 check 03:33.** 56/101 Works. Weekly 22%. Merged since 00:00: 29 (new: #3580 P-816 P-817, #3569 start.sh deps fix, #3542 FO-6d part 3, #3575 qa R1.68 R1.93 all parts on main, #3585 qa R1.53 Partial). #3491 dequeued: shard 8 check_pf4s_system_signin DW4 lacks the two new keys in its Appendix A table (R1.87 fixer told). #3235 reopened (lead-pr.sh) so pr-rules sees P-816. In queue: #3493 #3587. Use lead-pr.sh approve-records for records PRs. Owed: RULES Enforced-by text (P-733, P-734, P-738, IDX-25); Lead 1's rulings rows.
 
 ## Hand-over Lead 2 → Lead 3, 23:58 IST 24 Nov (Lead 2 ~265k; earlier block: `history/STATE-2026-11-24-2358-lead2-handover-lead1-block.md`)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 2's 99e4e813 is deleted. **No standby left** (P-286 asks two: start two at the founder's next typed turn). Weekly 15% at 23:56 (11% at 23:12, 7% at 22:4x: ~5-6%/h, 16 lanes; at that rate 96% ~14:00 IST 25 Nov: tell the founder in the morning report, recommend fewer lanes or ask). My context 26%. Disk 10 GB.
