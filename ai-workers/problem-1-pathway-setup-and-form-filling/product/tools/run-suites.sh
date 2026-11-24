@@ -292,9 +292,9 @@ REPORT_OK=""; [ -d /proc/self/fd ] && node --report-exclude-env --report-exclude
 askreport() {  # askreport <timeout's pid> <folder>: SIGUSR2 to the node processes of the suite's own group that catch it and report there
   local p c; [ -n "$2" ] || return 0
   for p in $(ps -A -o pid=,pgid= 2>/dev/null | awk -v g="$1" '$2 == g { print $1 }'); do
-    tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -qF -- "--report-directory=$2" || continue
+    { tr '\0' '\n' < "/proc/$p/environ"; } 2>/dev/null | grep -qF -- "--report-directory=$2" || continue
     [ "$(basename "$(readlink "/proc/$p/exe" 2>/dev/null)")" = node ] || continue
-    c=$(awk '$1 == "SigCgt:" { print $2 }' "/proc/$p/status" 2>/dev/null); [ -n "$c" ] && [ $(( 16#${c: -3} & 16#800 )) -ne 0 ] && kill -USR2 "$p" 2>/dev/null
+    c=$(awk '$1 == "SigCgt:" { print $2 }' "/proc/$p/status" 2>/dev/null); [ -n "$c" ] && [ $(( 16#${c: -3} & 16#800 )) -ne 0 ] && kill -USR2 "$p" 2>/dev/null && : > "$2/asked"
   done
 }
 hangdump() {  # hangdump <timeout's pid>: the suite's processes while they still run
@@ -318,7 +318,7 @@ guarded() {  # guarded <log> <command...>: the exit code is timeout's (124 timed
   : > "$log"; env ${opt:+"NODE_OPTIONS=$opt"} "$TIMEOUT" -k "$KILL_AFTER" "$LIMIT" "$@" < /dev/null >> "$log" 2>&1 &
   pid=$!
   ( s=""; trap '[ -n "$s" ] && kill "$s" 2>/dev/null; exit 0' TERM
-    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; hangdump "$pid" >> "$log"; askreport "$pid" "$rd" ) < /dev/null &
+    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; askreport "$pid" "$rd"; hangdump "$pid" >> "$log" ) < /dev/null &
   w=$!
   wait "$pid"; code=$?
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null

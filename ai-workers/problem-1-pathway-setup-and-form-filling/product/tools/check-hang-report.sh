@@ -10,17 +10,19 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/hr.XXXXXXXX") && [ -d "$T" ] || { echo "no temp d
 trap 'rm -rf "${T:?}"' EXIT
 mkdir "$T/raw"; cat > "$T/raw/report.1.json" <<'E2'
 {"header":{"commandLine":["node","PLANTED_ARG"],"cwd":"/PLANTED_CWD","host":"PLANTED_HOST","networkInterfaces":[{"address":"PLANTED_ADDR"}]},
- "javascriptStack":{"message":"PLANTED_MESSAGE","stack":["at waitALittle (/home/PLANTED_DIR/suite.cjs:62:34)","at async Frame.waitForTimeout (/x/PLANTED_DIR/frame.js:1:2)","PLANTED_LINE token=abc"],"errorProperties":{"k":"PLANTED_PROP"}},
- "nativeStack":[{"pc":"0x1","symbol":"uv__io_poll/PLANTED_SYMBOL"}],
+ "javascriptStack":{"message":"PLANTED_MESSAGE","stack":["at waitALittle (/home/PLANTED_DIR/suite.cjs:62:34)","at async Frame.waitForTimeout (/x/PLANTED_DIR/frame.js:1:2)","PLANTED_LINE token=abc","at f (https://u:pw@h/PLANTEDURL.js:1:1)","at f (/x/y.js?token=PLANTEDQ:1:1)","at f (data:text/javascript,PLANTEDD:1:1)","at postgres:PLANTEDPW@h:1:1","at Object.password PLANTED_FN (/a/b.js:1:1)"],"errorProperties":{"k":"PLANTED_PROP"}},
+ "nativeStack":[{"pc":"0x1","symbol":"node::TriggerNodeReport(x)"},{"pc":"0x1","symbol":"uv__io_poll PLANTED_SYMBOL [node]"}],
  "libuv":[{"type":"timer","is_active":true,"is_referenced":true,"firesInMsFromNow":300,"address":"0xPLANTED"},{"type":"tcp","is_active":true,"is_referenced":true,"localEndpoint":{"host":"PLANTED_EP"}},{"type":"tcp","is_active":true,"is_referenced":true},{"type":"PLANTED KIND"}],
  "sharedObjects":["/PLANTED_SO"],"userLimits":{"x":"PLANTED"}}
 E2
 o=$(python3 -I "$TOOLS/hang-report.py" "$T/raw")
-ok "the JavaScript stack: function, file and line, no folder" "$(grep -qx '  js      at waitALittle suite.cjs:62:34' <<<"$o" && grep -qx '  js      at Frame.waitForTimeout frame.js:1:2' <<<"$o" && echo 1)" "$o"
-ok "the native symbol and each handle (timers with their time, alike ones counted)" "$(grep -q '^  native  uv__io_poll' <<<"$o" && grep -qx '  uv      timer active=True referenced=True fires in 300 ms' <<<"$o" && grep -qx '  uv      tcp active=True referenced=True x2' <<<"$o" && echo 1)" "$o"
+ok "the JavaScript stack: function, file and line, no folder" "$(grep -qx '  js      at waitALittle suite.cjs:62:34' <<<"$o" && grep -qx '  js      at async Frame.waitForTimeout frame.js:1:2' <<<"$o" && echo 1)" "$o"
+ok "the native symbol and each handle (timers with their time, alike ones counted)" "$(grep -q '^  native  uv__io_poll$' <<<"$o" && ! grep -q TriggerNodeReport <<<"$o" && grep -qx '  uv      timer active=True referenced=True fires in 300 ms' <<<"$o" && grep -qx '  uv      tcp active=True referenced=True x2' <<<"$o" && [ "$(grep '^  uv' <<<"$o" | head -1 | cut -c11-15)" = timer ] && echo 1)" "$o"
 ok "nothing planted is printed (argument, folder, host, address, message, property, endpoint, odd line)" "$(! grep -q PLANTED <<<"$o" && ! grep -q 'token=abc' <<<"$o" && echo 1)" "$(grep PLANTED <<<"$o")"
 echo '{"environmentVariables":{"K":"PLANTED_ENVIRONMENT"},"javascriptStack":{"stack":["at f (/a/b.js:1:1)"]}}' > "$T/raw/report.1.json"; o=$(python3 -I "$TOOLS/hang-report.py" "$T/raw"); ok "a report with the environment in it is not shown at all" "$(grep -q 'not shown' <<<"$o" && ! grep -qE 'PLANTED|b.js' <<<"$o" && echo 1)" "$o"
 echo 'PLANTED {' > "$T/raw/report.1.json"; o=$(python3 -I "$TOOLS/hang-report.py" "$T/raw"); ok "an unreadable report says so and shows nothing of it" "$([ "$o" = 'node report 1: unreadable' ] && echo 1)" "$o"
+for b in '{"javascriptStack":{"stack":{"a":1}}}' '{"libuv":[{"type":"timer","firesInMsFromNow":Infinity}]}'; do echo "$b" > "$T/raw/report.1.json"; o="$(python3 -I "$TOOLS/hang-report.py" "$T/raw")" || odd="${odd:-} $b"; done; ok "odd shapes do not stop it" "$([ -z "${odd:-}" ] && echo 1)" "${odd:-}"
+mkdir "$T/ask"; : > "$T/ask/asked"; o=$(python3 -I "$TOOLS/hang-report.py" "$T/ask"); ok "asked and nothing written: it says so" "$(grep -q '^node report: asked, none written' <<<"$o" && echo 1)" "$o"
 mkdir "$T/none"; o=$(python3 -I "$TOOLS/hang-report.py" "$T/none"); ok "no report: no line" "$([ -z "$o" ] && echo 1)" "$o"
 
 R="$TOOLS/run-suites.sh"
