@@ -422,3 +422,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 ### Lead 27, check 15:37 IST 24 Nov
 * Asks A369 (keep the copy current, hooks, speed, SLA, 55 stuck) and A370 (one action list, every 30-minute report) typed in Lead 26's chat, relayed: `design/action-list-2026-11-24.md`, section F. Pause 24 h: there.
 * #3451 merged 15:34. #3174 full run still on (two regressions, eight shards, none red). Lead B 6 asks for a Lead B 7: founder-typed turn needed; it reads on. Read: 7wnHW (reviewing PR A), qa 6 (finished at its limit).
+
+### Lead 27, check 15:48 IST 24 Nov
+* #3174 full run 45366995113 green on 85bd020ef (label after #3277). #3465 (R1.20) merged 15:44; qa 7 re-scores it. Full runs asked 15:45 on #3467 (M1) and #3277, two at once (nothing was waiting for a machine at 15:25).
+* #3277 read line posted (90def4404). Its P-776 audit check does not run on an old head; my close-and-reopen to start it was refused by the classifier ("Undermining Oversight"), not done, not routed around: for the founder.
+* #3235 d3680b44e: types red, lane running; Lead B 6 OK. qa 7's questions ruled (QA-778 Major; QA-775 counts as its reader says; #3474 merges main).
+* Open: #3479 question R3-m3 (full pool as 503); #3471 Q2 (keep P-564, warn at switching off) is the founder's. C6 yes (Lead 25's report): 28 sample PRs, command line only, run by him.
