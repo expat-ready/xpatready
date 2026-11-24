@@ -46,7 +46,7 @@ export async function seedSampleOnStart(env: NodeJS.ProcessEnv = process.env, se
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url, options: "-c TimeZone=UTC" }) });
   try {
     const r = await seed(db), c = configOf(env);
-    if (sampleSystemStaffDecision(c).run) console.log(`platform: Sample ExpatReady staff ${JSON.stringify(await seedSampleSystemStaff(db, c))}`);
+    if (sampleSystemStaffDecision(c).run) console.log(`platform: Sample ExpatReady staff added: ${(await seedSampleSystemStaff(db, c)).added}`);   // a count, never an email (SA-11 BR-16)
     return r;
   } finally { await db.$disconnect(); }
 }

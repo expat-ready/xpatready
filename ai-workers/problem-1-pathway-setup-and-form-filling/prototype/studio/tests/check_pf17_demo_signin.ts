@@ -62,7 +62,15 @@ try {
   ok("DS3 pass: the same setting with PLATFORM_ENVIRONMENT=local loads", localOk === "", localOk);
 
   // ------------------------------------------------------------------ DS1 local with the stand-in: two Sample staff, idempotent, each signs in
-  const twice = await Promise.allSettled([1, 2].map(() => seedSampleOnStart(env({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SYSTEM_IDENTITY: "local" }))));
+  // DS6 (Lead 28 on #3470, SA-11 BR-16): the start-up's own lines name no person: counts only, never an email.
+  const said: string[] = [], keep = { log: console.log, warn: console.warn, error: console.error };
+  for (const k of ["log", "warn", "error"] as const) console[k] = (...a: unknown[]) => { said.push(a.map(String).join(" ")); };
+  let twice: PromiseSettledResult<unknown>[];
+  try { twice = await Promise.allSettled([1, 2].map(() => seedSampleOnStart(env({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SYSTEM_IDENTITY: "local" })))); }
+  finally { Object.assign(console, keep); }
+  const staffLines = said.filter((l) => /ExpatReady staff/.test(l));
+  ok("DS6 fail (Lead 28, SA-11 BR-16): the seed's start-up lines hold no email address, only how many were added",
+    staffLines.length > 0 && said.every((l) => !/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(l)) && staffLines.some((l) => /added: [0-9]+/.test(l)), said.map((l) => l.replace(/[^\s"]+@[^\s"]+/g, "<email>")));
   ok("DS1 fail (break m1): two start-ups at once on one database both carry on (neither stops on the other's insert)", twice.every((t) => t.status === "fulfilled"), twice.map((t) => t.status === "rejected" ? String(t.reason).slice(0, 200) : "ok"));
   const rows = sql(`select s.email || '|' || s.display_name || '|' || s.status || '|' || string_agg(g.role_code, ',') from plat_system_staff s join plat_system_role_grant g on g.staff_id = s.id group by s.id order by s.email`).split("\n");
   ok("DS1 pass: local with the stand-in, the start-up seed adds the Sample Platform Owner and the Sample Support member, active, one role each",
