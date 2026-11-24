@@ -597,3 +597,11 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Comments posted (pane hidden, so not typed into lanes): #3489 (7wnHW: retarget, ready, PR C), #3493 (6wAJfK: module-cards and pr-rules). Next: when the pane shows, type them. #3491: pr-rules and module-cards are green on its newest run (the red is old); relabel after #3234.
 * Lead O 2: #3506 rebuilt without copies (0bd14ef4a), draft, re-review running, merge held; #3511 queued; #3508 hang report. Owed by #3495 merging: the heap back to 8192 and library/ci-pipeline-strategy.md:141.
 * Asked the founder twice: delete Lead 29's scratch copy (1.1 GB); no answer.
+
+### Lead 30, check 20:41 to 20:45 IST 24 Nov (91% weekly, disk 5.7 GB, context about 355k: hand over at the next check, to Lead 31)
+* Merged: #3482 20:24, #3487 (R1.10 A4) 20:34. Main 41eb7e7d7. Batches, no red: #3515 (#3305 with #3442, 33 running), #3513 (#3511, 5 running, open since 20:13). Waiting: #3467, #3234, #3500, #3497.
+* #3460 left the queue 20:37: conflict in tests/check_pf28_inputs.ts (after #3487). Lane 87D51 told (bubble seen), round 5 allowed; then my read of the new head, ci, label. The other queued PRs merge cleanly with main (merge-tree, 20:42).
+* Typed, bubbles seen: 7wnHW (#3489 to main, then PR C), 6wAJfK (#3493 body checks), 87D51, qa 8 (R1.74 record, R1.29 trace, QA line of #3487). 9LZXV stopped (57%).
+* Run 45418213518 on main b6fdc65e8: j_74 25 PASS 0 FAIL; j_29 13 PASS 9 FAIL (R1.29 stays Partial).
+* Lead O 2: #3506 Approve 672da5809, draft, held for A1; #3508 at 236fbef46 (the first Approve and my read there are void), ci running, then its reviewer line, then my read. No PR B, no fix 1.
+* Asked again: delete Lead 29's scratch copy (1.1 GB): no answer.
