@@ -158,8 +158,11 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   // author's card lands on Immigration programs, not on a page with nothing to do (the session's answer changed in the
   // browser only, as check_bk5_start_browser does).
   await p.route("**/api/session", async (r) => { const res = await r.fetch(); const j = await res.json(); j.workspace = { ...j.workspace, demo: false }; await r.fulfill({ response: res, json: j }); });
+  // Wait for the session answer from before the navigation: it arrives 1-4 ms after [data-sign-in] shows (on main too), so a
+  // wait started after the page could miss it, sit out 15 s, and leave a later request in flight at the unroute (PF-31, Lead 13).
+  const sessionAnswered = p.waitForResponse((r) => new URL(r.url()).pathname === "/api/session", { timeout: 15000 }).catch(() => {});
   await p.goto(`${BASE}/sign-in`); await p.locator("[data-sign-in]").waitFor({ timeout: 15000 });
-  await p.waitForResponse((r) => new URL(r.url()).pathname === "/api/session", { timeout: 15000 }).catch(() => {});
+  await sessionAnswered;
   await p.locator('[data-sign-in-as="user-A"]').click(); await p.waitForURL((u) => u.pathname !== "/sign-in", { timeout: 15000 });
   step("BK-5 PR 2 fail side (break m1): outside the demo workspace the author lands on Immigration programs, not Starting points", new URL(p.url()).pathname === "/" && await stored(p) === "user-A", p.url());
   await p.unroute("**/api/session");

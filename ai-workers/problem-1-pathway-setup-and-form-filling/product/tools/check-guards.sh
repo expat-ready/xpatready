@@ -25,6 +25,7 @@ TESTS="$TESTS check-rules-settled.sh"   # A348: rules before review
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
 TESTS="$TESTS check-lane-cleanup.sh"   # A348: lane clean-up list
 TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
+TESTS="$TESTS check-checks-changed.sh"   # A351 C2: checks weakened or removed
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
 TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
@@ -32,6 +33,7 @@ TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
+TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 bad=0
 if [ "$part" = 1 ]; then
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
@@ -45,6 +47,22 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 2|product/tools/label-guard.sh|s/^# No review for the head.*/exit 0/|check-label-guard.sh
 2 walk|product/tools/label-guard.sh|s/^  c=\$next; merges=.*/  exit 0/|check-label-guard.sh
 2 who|product/tools/label-guard.sh|s/^team=.*/team=true/|check-label-guard.sh
+A351 c1 app|product/tools/red-on-old.py|s/ + (" ".join(all_\[:MAX\]) if app else "")/ + " ".join(all_[:MAX])/|check-red-on-old.sh
+A351 c1 note|product/tools/red-on-old.py|s/ and not NOTE.match(l\[1:\])//|check-red-on-old.sh
+A351 c1 max|product/tools/red-on-old.py|s/MAX = 4/MAX = 40/|check-red-on-old.sh
+A351 c1 ci|product/tools/red-on-old.py|s/^    if os.environ.get("GITHUB_ACTIONS") != "true":/    if False:/|check-red-on-old.sh
+A351 c1 gone|product/tools/red-on-old.py|s/^            git("rm", "-rq", "--", p)/            pass/|check-red-on-old.sh
+A351 c1 green|product/tools/red-on-old.py|s/^    if red or load:/    if True:/|check-red-on-old.sh
+A351 c1 reason|product/tools/red-on-old.py|s/^    elif green and y:/    elif green:/|check-red-on-old.sh
+A351 c1 none|product/tools/red-on-old.py|s/ or (r == "FAIL" and SETUP.search(w)) else/ else/|check-red-on-old.sh
+A351 c1 load|product/tools/red-on-old.py|s/ load if LOAD.search(w) else red$/ red/|check-red-on-old.sh
+A351 c1 once|../../.github/workflows/red-on-old.yml|s/types: \[opened, ready_for_review\]/types: [opened, synchronize]/|check-red-on-old.sh
+A351 c1 red check|../../.github/workflows/red-on-old.yml|/^      - id: old$/,/run:/s/^        continue-on-error: true$/        continue-on-error: false/|check-red-on-old.sh
+A351 c1 base|../../.github/workflows/red-on-old.yml|s/old --base HEAD^1/old --base HEAD/|check-red-on-old.sh
+A351 c1 only|../../.github/workflows/red-on-old.yml|s/ --only "\$SUITES"//|check-red-on-old.sh
+A351 c1 depth|../../.github/workflows/red-on-old.yml|s/fetch-depth: 0/fetch-depth: 1/|check-red-on-old.sh
+A351 c1 batch|../../.github/workflows/red-on-old.yml|s/^    if: .*/    if: true/|check-red-on-old.sh
+A351 c1 ports|product/tools/red-on-old.py|s/"packages", "ports", /"packages", /|check-red-on-old.sh
 2 labeled|../../.github/workflows/label-guard.yml|s/types: \[synchronize, labeled, opened\]/types: [synchronize, opened]/|check-label-guard.sh
 2 after|../../.github/workflows/label-guard.yml|s/^\( *AFTER: \).*/\1${{ github.event.after }}/|check-label-guard.sh
 2 full|product/tools/label-guard.sh|s/^    \[ "\$p" = 1 \] \&\& break/    true/|check-label-guard.sh
@@ -94,6 +112,24 @@ A351 b1 ran|product/tools/lead-watch.sh|/same-cause.py did not run/d|check-same-
 3 run|product/tools/check-lane-preflight.sh|/check-touch-overlap.sh" 2>\&1)/d|check-touch-overlap.sh
 4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
+A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
+A351 c2 moved|product/tools/checks-changed.py|s/^            if to and (re.search.*/            if False:/|check-checks-changed.sh
+A351 c2 wrap|product/tools/checks-changed.py|s/ or words(old) == words(nw):/:/|check-checks-changed.sh
+A351 c2 off|product/tools/checks-changed.py|s/^            if OFF.search(l) and .*/            if False:/|check-checks-changed.sh
+A351 c2 lists|product/tools/checks-changed.py|s/^                if more:/                if False:/|check-checks-changed.sh
+A351 c2 ledger|product/tools/checks-changed.py|s/^        if path == LEDGER:/        if False:/|check-checks-changed.sh
+A351 c2 gone|product/tools/checks-changed.py|s/^            if not ok:/            if False:/|check-checks-changed.sh
+A351 c2 place|product/tools/checks-changed.py|s/ok = to and bool(RUN.*/ok = to/|check-checks-changed.sh
+A351 c2 check|product/tools/checks-changed.py|s/^    elif not c + len(gone).*/    elif True:/|check-checks-changed.sh
+A351 c2 reason|product/tools/checks-changed.py|s/^    if why:/    if True:/|check-checks-changed.sh
+A351 c2 window|product/tools/checks-changed.py|s/s = max(0, k - 60)/s = 0/|check-checks-changed.sh
+A351 c2 text|product/tools/checks-changed.py|s/ "--text",//|check-checks-changed.sh
+A351 c2 moved to|product/tools/checks-changed.py|s/({"\*"} if RUN.match(path) else set())/{"*"}/|check-checks-changed.sh
+A351 c2 like|product/tools/checks-changed.py|s/ and not PLAIN.match(l)$/ and "ok(" in l/|check-checks-changed.sh
+A351 c2 pair|product/tools/checks-changed.py|s/best = max(pool, key=.*/best = pool[0] if pool else None/|check-checks-changed.sh
+A351 c2 safe|product/tools/checks-changed.py|s/.replace("::", .*replace("##\[", "[^"]*")//|check-checks-changed.sh
+A351 c2 limit|../../.github/workflows/pr-rules.yml|s/timeout 30 python3 -I "\$T.checks-changed/python3 -I "$T\/checks-changed/|check-checks-changed.sh
+A351 c2 wired|../../.github/workflows/pr-rules.yml|s/^\( *\)run: printf .*checks-changed.py.*/\1run: true/|check-checks-changed.sh
 5|product/tools/factory-board.sh|s/; gh() { bash "\$TOOLS\/gh.sh" "\$@"; }//|check-gh-fallback.sh
 A348 clean all|product/tools/lane-cleanup.py|s/all(p in merged for p in prs)/any(p in merged for p in prs)/|check-lane-cleanup.sh
 A348 clean dirty|product/tools/lane-cleanup.py|s/ and not git(path, "status", "--porcelain").strip()//|check-lane-cleanup.sh

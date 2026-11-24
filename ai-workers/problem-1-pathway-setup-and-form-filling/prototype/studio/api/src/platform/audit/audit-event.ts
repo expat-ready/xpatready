@@ -14,9 +14,10 @@
 // so the caller's transaction rolls the change back. One try: inside PostgreSQL a failed statement aborts the
 // transaction, so a retry there could never succeed.
 import type { Prisma } from "@prisma/client";
-import { AuditEntry, CaseActor, CaseEntry, flattenValues, isCaseEntry, isOurStaffPlatformEntry, OUR_STAFF_PLATFORM_ENTITY, OurStaffPlatformEntry, ourStaffPlatformRefusal, type AuditPort } from "../../../../ports/audit.ts";
+import { AuditEntry, CaseActor, CaseEntry, flattenValues, isCaseEntry, isOurStaffPlatformEntry, OUR_STAFF_PLATFORM_ENTITIES, OurStaffPlatformEntry, ourStaffPlatformRefusal, type AuditPort } from "../../../../ports/audit.ts";
 import { writeAuditWithAlarm } from "../observability/alerts.ts";
 import { actorTypeOfWord, auditContext } from "./context.ts";
+import { noteOurStaffLine } from "./access/tracker.ts";
 
 type Tx = Prisma.TransactionClient;
 export const PLATFORM_AUDIT_WORKSPACE = "platform-audit";
@@ -49,7 +50,7 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       const ctx = auditContext();
       if (ctx?.firmId) ids.firmId = ctx.firmId;
       const e = AuditEntry.parse(entry), firmId = e.firmId.toLowerCase();
-      if (e.entity === OUR_STAFF_PLATFORM_ENTITY) throw new AuditRefused(`audit line refused: ${OUR_STAFF_PLATFORM_ENTITY} is the firm-less kind's entity (AUD-3c), never a firm's line`);
+      if (OUR_STAFF_PLATFORM_ENTITIES.has(e.entity)) throw new AuditRefused(`audit line refused: ${e.entity} is the firm-less kind's entity (AUD-3c), never a firm's line`);
       if (ctx?.firmId && ctx.firmId !== firmId) throw new AuditRefused(`audit line refused: the line names firm ${firmId}, but this request or job acts for firm ${ctx.firmId} (a line never lands on another firm's trail)`);
       const actorType = actorTypeOfWord(e.actor);
       // AUD-3a: our staff's line is written under our staff's own word (ourstaff:<id>, OUR_STAFF) and only in our staff's
@@ -65,14 +66,16 @@ export class AuditEventAdapter implements AuditPort<Tx> {
         data: { workspaceId, firmId, caseId: e.caseId?.toLowerCase() ?? null, actorType, correlationId: ctx?.correlationId ?? null, supportSessionId: ctx?.supportSessionId ?? null,
           actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: { ...e.detail, ...flattenValues(e.before, e.after), firmId } as Prisma.InputJsonValue },
       });
+      if (actorType === "OUR_STAFF") noteOurStaffLine(firmId);   // AUD-3: the changes-firm check counts it (access/lines.ts)
     }, ids, { attempts: 1 });
   }
 
-  /** AUD-3c (Lead 10's ruling on #3040): our own staff's firm-less platform.bypass line. Its own narrow kind, never a
+  /** AUD-3c (Lead 10's ruling on #3040; Lead 15's on #3209): our own staff's firm-less line, one of two fixed pairs
+   *  (platform.bypass / plat_bypass_use; cross_tenant.access / plat_system_access). Its own narrow kind, never a
    *  case-side line (recordCase's refusal of our staff stays as AUD-3a wrote it): firm and case null, the platform audit
    *  workspace (never reset, P-571 (1)), OUR_STAFF, the request's correlation id. Refused (ports/audit.ts
    *  ourStaffPlatformRefusal): outside our staff's request, under any actor but the request's own, in a request or job
-   *  that acts for a firm; the schema refuses any firm or case id, a workspace, another action or entity. One alert with
+   *  that acts for a firm; the schema refuses any firm or case id, a workspace, a crossed pair or another action or entity. One alert with
    *  ids only and the error thrown on any failure, one try (fail-closed, P-607 (3)). */
   private async recordOurStaffPlatform(tx: Tx, entry: OurStaffPlatformEntry): Promise<void> {
     const raw = (entry ?? {}) as Partial<Record<"entity" | "entityKey", unknown>>;

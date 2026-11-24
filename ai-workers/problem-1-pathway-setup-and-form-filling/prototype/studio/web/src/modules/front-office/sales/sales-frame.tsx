@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Frame, useWhere, type Crumb } from "@/components/frame";
 import { Button } from "@/components/ui/controls";
 import { SignInCard as SignIn } from "@/modules/platform/frame";
+import { signOutHere } from "@/lib/sync/drafts";   // PF-31: Sign out forgets the person's drafts and tabs
 import { FindBox } from "@/modules/platform/find/find-box";
 import { NotificationBell } from "@/modules/platform/notifications/bell";   // PF-18ns (Lead 10 on #3279 Q1): the bell here too
 import { cn } from "@/lib/utils";
@@ -59,11 +60,11 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
   const token = useStaffToken();
   const me = useMe();
   const qc = useQueryClient();
-  const signOut = () => { setStaffToken(null); qc.removeQueries({ queryKey: ["fo"] }); };
+  const signOut = () => { signOutHere(); setStaffToken(null); qc.removeQueries({ queryKey: ["fo"] }); };
   const who = me.data;
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
-    <Frame area="outside" title="Sales" subtitle={who ? who.displayName : undefined} home="/front-office/leads"
+    <Frame area="outside" workspace={!!who} title="Sales" subtitle={who ? who.displayName : undefined} home="/front-office/leads"
       controls={who ? <><FindBox /><NotificationBell /><Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button></> : null}
       menu={who ? <Menu me={who} /> : null}>
       <Place crumbs={crumbs} back={back ?? null} />
