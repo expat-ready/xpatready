@@ -2,7 +2,8 @@
 // team's right-hand panel, read from FO-3a part 2b's `feed/:id` (its host, or the list key and the record rule; else
 // the one not-found). When (the office zone and the booker's), Who, Attendance; Reschedule and Cancel booking under
 // "More". Buttons show only where the feed says the viewer may (`canAnswerAttendance`, `canEdit`). Part 2: the consult
-// record and the next step (consult-record.tsx), under Attendance, for the same people who answer it.
+// record and the next step (consult-record.tsx), under Attendance, for the same people who answer it. FO-3c part 2: the
+// consultation agreement's line (agreement.tsx) under Who; Attended refused while it is unsigned shows the server's words.
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog, Notice, Panel, Pill } from "@/components/ui/controls";
@@ -13,6 +14,7 @@ import { FeedItem, hhmm, longWhen, MODE_WORDS, personOf, STATUS } from "./contra
 const short = (s: string) => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
 import { bookingWrite, TimeChooser, useBookAnyway } from "./new-booking";
 import { ConsultRecordSection } from "./consult-record";
+import { BookingAgreement } from "./agreement";
 
 /** "Attended" / "No-show": one click, by a person; it can be changed later (AG-4-39 rules 3-5). */
 export function AttendanceButtons({ booking }: { booking: FeedItem }) {
@@ -79,6 +81,7 @@ export function BookingPanel({ id, onClose, onSaved, returnFocus }: { id: string
                 <p><bdi>{who}</bdi>{b.person?.email ? <> · <bdi>{b.person.email}</bdi></> : null} · Host: <bdi>{b.host.name}</bdi> · {MODE_WORDS[b.mode] ?? b.mode}</p>
                 {b.hangsOn ? <p className="text-text-muted">On {b.hangsOn.kind} {b.hangsOn.name}</p> : null}
                 {b.outsideHours ? <p className="text-text-warn" data-outside-hours>Outside {b.host.name}'s hours</p> : null}</section>
+              <BookingAgreement bookingId={b.id} bookingStatus={b.status} />
               {b.canAnswerAttendance ? (
                 <section aria-labelledby="fo-att" className="border-t border-border pt-3"><h3 id="fo-att" className="font-semibold">Attendance</h3>
                   <p className="mb-2"><b>Did {who} attend?</b></p><AttendanceButtons booking={b} /></section>

@@ -6,7 +6,7 @@
 // 1. `scopeOf(ctx)` answers for the session's firm only (`ctx.firmId`, never a value from a request); another firm's
 //    case or party id is never in it.
 // 2. `cases`: the cases the case side lets this person see; `parties`: the persons and companies (front-office ids) the
-//    front office lets them see, for invoices with no case. Lists of ids, never "ALL": the app's answer is always a list.
+//    front office lets them see, and the linked parties of those cases (Lead 14 on #3321), for invoices with no case. Lists of ids, never "ALL": the app's answer is always a list.
 // 3. Holding only invoice keys (`agent/invoice:list`, `:show`) gives nothing: visibility comes from case and prospect
 //    access, never from the money keys.
 // 4. Each list holds each id once, lower case.

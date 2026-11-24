@@ -3,4 +3,5 @@
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
 import { TaxDefaultController, TaxDefaults } from "../client-money/tax/routes.ts";
-export default { controllers: [TaxDefaultController], providers: [{ provide: TaxDefaults, useFactory: (db: Db) => new TaxDefaults(db), inject: [Db] }] } satisfies Feature;
+import { moneyScopeOf } from "../client-money/visibility-adapter.ts";
+export default { controllers: [TaxDefaultController], providers: [{ provide: TaxDefaults, useFactory: (db: Db) => new TaxDefaults(db, moneyScopeOf(db)), inject: [Db] }] } satisfies Feature;

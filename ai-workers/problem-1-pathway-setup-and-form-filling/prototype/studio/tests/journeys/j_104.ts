@@ -191,6 +191,9 @@ try {
 
   // --------------------------------------------------------------------------------------------- W4 cannot start
   const b2 = await book(new Date(Math.floor((Date.now() - 70 * MIN) / (30 * MIN)) * 30 * MIN));   // ended about 40 minutes ago: its attendance question is open
+  // The stand-in sends it 10 minutes before the meeting (FO-3c part 2, #3184): W6 signs during the meeting, and FO-6's
+  // fo_signature_request_times_check wants a request's end at or after its send (sent now and signed at a rewound clock fails).
+  if (svc) await clock.set(new Date(b2.startsAt.getTime() - 10 * MIN));
   const s2 = svc ? await svc.onBookingEvent(eventOf(b2)) : null;
   const a2: string | null = s2?.sent ? s2.agreementId : null;
   ok("J-104 W4 setup (stand-in): the ended booking's agreement is sent and unsigned", !!a2, s2 ?? NOT_BUILT);

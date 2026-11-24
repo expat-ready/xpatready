@@ -3,6 +3,8 @@
 // no invoice (a trust deposit) is answered only while trust shows and the scope is the whole firm. "Received into" and
 // the trust request are answered only while trust shows (AG-6-59 rules 5-6). Each amount with its currency; never summed.
 import { Prisma, type PrismaClient } from "@prisma/client";
+import type { AuditPort } from "../../../../ports/audit.ts";
+import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
 import { z } from "zod";
 import { HandMethod } from "../../../../ports/client-money.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
@@ -11,6 +13,8 @@ import type { StaffContext } from "../../platform/identity/keys.ts";
 import { UUID, notFound } from "../invoices/drafts.ts";
 import { Day, Stamp, bad, cursorOf, cursorText, pageSizeOf, trustShows } from "./common.ts";
 import { failClosed, scopeSql, type MoneyScope, type ScopeOf } from "./visibility.ts";
+import { paymentActions, type PaymentAction } from "./actions.ts";
+import { Refunds } from "../invoices/refunds.ts";
 
 type Tx = Prisma.TransactionClient;
 const Method = z.enum([...HandMethod.options, "CARD"]);
@@ -19,7 +23,9 @@ const PaymentCursor = z.strictObject({ t: Stamp, id: z.string().regex(UUID) });
 
 export type PaymentRow = { id: string; invoiceId: string | null; invoiceNumber: string | null; method: string; amountMinor: number; currency: string; receivedOn: string;
   reference: string | null; cleared: boolean; receiptNumber: string | null; refundedMinor: number;
-  refunds: { id: string; amountMinor: number; currency: string; reason: string; createdAt: string }[]; receivedInto?: string; trustRequestId?: string | null };
+  refunds: { id: string; amountMinor: number; currency: string; reason: string; createdAt: string }[]; receivedInto?: string; trustRequestId?: string | null;
+  /** FO-7q part 2, on the detail and the one-payment read only: what the refund routes would take now, and the actions offered. */
+  refundableMinor?: number; waitingMinor?: number; allowedActions?: PaymentAction[] };
 
 type Where = { invoiceId?: string; trustRequestId?: string; paymentId?: string; method?: string; from?: string; to?: string; after?: { t: string; id: string } | null; scope?: MoneyScope; limit?: number };
 
@@ -53,8 +59,24 @@ export async function paymentRows(tx: Tx, firm: string, w: Where, showTrust: boo
 }
 const strip = ({ t: _t, ...p }: PaymentRow & { t: string }): PaymentRow => p;
 
+/** A read never writes: the Refunds this file asks for its standing is given an audit port that refuses (never called). */
+const READ_ONLY: AuditPort<Prisma.TransactionClient> = { record: async () => { throw new Error("FO-7q reads write nothing"); } };
+export const refundsReader = (db: PrismaClient, clock: ClockPort) => new Refunds(db, READ_ONLY, clock);
+
+/** FO-7q part 2: each payment on an invoice with Refunds.standing's figures (invoices/refunds.ts, its own rules) and the
+ *  payment actions the caller's keys allow (actions.ts). A payment on no invoice is left as it is. */
+export async function withPaymentActions<P extends PaymentRow>(tx: Prisma.TransactionClient, refunds: Refunds, firm: string, keys: readonly string[], rows: P[]): Promise<P[]> {
+  const out: P[] = [];
+  for (const p of rows) {
+    const st = p.invoiceId ? await refunds.standing(tx, firm, p.id) : null;
+    out.push(st ? { ...p, ...st, allowedActions: paymentActions({ keys, ...st }) } : p);
+  }
+  return out;
+}
+
 export class PaymentReads {
-  constructor(private readonly db: PrismaClient, private readonly scopeOf: ScopeOf = failClosed) {}
+  private readonly refunds: Refunds;
+  constructor(private readonly db: PrismaClient, private readonly scopeOf: ScopeOf = failClosed, clock: ClockPort = systemClock) { this.refunds = refundsReader(db, clock); }
 
   /** GET /api/front-office/money/payments. */
   async list(ctx: StaffContext, query: unknown): Promise<{ items: PaymentRow[]; pageSize: number; next: string | null }> {
@@ -71,7 +93,8 @@ export class PaymentReads {
   async one(ctx: StaffContext, paymentId: string): Promise<PaymentRow> {
     if (!UUID.test(paymentId)) notFound("payment");
     const scope = await this.scopeOf(ctx);
-    const [p] = await this.db.$transaction(async (tx) => paymentRows(tx, ctx.firmId, { paymentId: paymentId.toLowerCase(), scope }, await trustShows(tx, ctx.firmId)), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    const [p] = await this.db.$transaction(async (tx) => withPaymentActions(tx, this.refunds, ctx.firmId, ctx.keys,
+      await paymentRows(tx, ctx.firmId, { paymentId: paymentId.toLowerCase(), scope }, await trustShows(tx, ctx.firmId))), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
     return p ? strip(p) : notFound("payment");
   }
 }

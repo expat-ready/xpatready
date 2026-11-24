@@ -1,0 +1,18 @@
+PASS unset: the suffixes are expatready.com and localhost (the default)
+PASS unset: sample-firm.expatready.com → firm sample-firm
+PASS unset: a staging host is two labels deep, never a firm (production does not serve another estate's hosts; review m3)
+PASS staging.expatready.com: sample-firm.staging.expatready.com → firm sample-firm
+PASS staging.expatready.com: production's host and the bare staging host are ExpatReady's own site, never a firm
+PASS staging.example-test.com: sample-firm.staging.example-test.com → firm sample-firm, also with upper case, a port and one trailing dot
+PASS staging.example-test.com: expatready hosts, other domains and look-alikes are never a firm
+PASS staging.example-test.com: two labels deep or a refused label is never a firm
+PASS staging.example-test.com: a redirect keeps the suffix it came in on (host.ts builds Location from it)
+PASS localhost is kept whatever the setting
+PASS longest first: with dev.localhost as the setting, x.dev.localhost is firm x under it, never label x.dev under localhost
+PASS the service uses the suffixes it is given, else the default
+PASS the app's wiring passes PLATFORM_ADDRESS_SUFFIX from the loader, and the host middleware and resolver read the service's list
+PASS the app builds the address service in one place only (routes.ts, with the setting)
+PASS the loader reads it (unset: expatready.com; set: the value)
+PASS the loader refuses an invalid suffix, naming the setting and never the value (one message for every value)
+PASS rules.ts refuses an invalid suffix too (never a silent fallback)
+17/17 passed

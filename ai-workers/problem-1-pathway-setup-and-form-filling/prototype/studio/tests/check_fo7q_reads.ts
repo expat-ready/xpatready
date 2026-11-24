@@ -1,4 +1,5 @@
-// FO-7q (R1.56; brief design/briefs/FO-7q.md): the money reads, paged on the server. DW1 performance and the plan
+// FO-7q (R1.56; brief design/briefs/FO-7q.md): the money reads, paged on the server. Part 2 (BACKLOG FO-7q part 2): the
+// refund actions on a payment, by invoices/refunds.ts's own rules (offered and withheld, each against the route). DW1 performance and the plan
 // (10,000 invoices in each of two firms; the time is printed, not a gate: AG-6-30's 300 ms is an example), DW2 paging,
 // DW3 the SQL status agrees with FO-7b's invoiceStatus on every word, DW4 allowedActions, DW5 trust off, DW6 currencies
 // never summed, DW7 the firm walls, DW9 C5 through CS-MV1's PgMoneyVisibility (bound in the app; real cases and prospects). DW8 (the party money, ledger and To move reads) is not here:
@@ -17,7 +18,8 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fakeMail } from "../ports/mail.ts";
 import { FakeClock } from "../ports/clock.ts";
-import { allowedActions, type ActionFacts } from "../api/src/client-money/reads/actions.ts";
+import { allowedActions, paymentActions, type ActionFacts } from "../api/src/client-money/reads/actions.ts";
+import { moneyVisible } from "./lib/money-visible.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -66,6 +68,7 @@ const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm
 const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
 const invoicesFeature = (await import("../api/src/features/client-money-invoices.ts")).default;
 const readsFeature = (await import("../api/src/features/client-money-reads.ts")).default;
+const refundsFeature = (await import("../api/src/features/client-money-refunds.ts")).default;   // part 2: its routes answer the "route agrees" cases
 const { InvoiceReads } = await import("../api/src/client-money/reads/invoices.ts");
 const { PaymentReads, paymentRows } = await import("../api/src/client-money/reads/payments.ts");
 const { InvoiceReadsController } = await import("../api/src/client-money/reads/routes.ts");
@@ -79,18 +82,18 @@ type Res = { status: number; body: any };   // eslint-disable-line @typescript-e
 let app: { close(): Promise<void> } | null = null;
 try {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
-    { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: MAIL_PORT, useValue: fakeMail() }, ...invoicesFeature.providers, ...readsFeature.providers];
-  @Module({ controllers: [PlatformIdentityController, ...invoicesFeature.controllers, ...readsFeature.controllers] as never[], providers: providers as never[] }) class TestApp {}
+    { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: MAIL_PORT, useValue: fakeMail() }, ...invoicesFeature.providers, ...readsFeature.providers, ...refundsFeature.providers];
+  @Module({ controllers: [PlatformIdentityController, ...invoicesFeature.controllers, ...readsFeature.controllers, ...refundsFeature.controllers] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
-  ok("setup: the reads feature registers its two controllers and its two services", readsFeature.controllers.length === 2 && readsFeature.controllers[0] === InvoiceReadsController && readsFeature.providers.length === 2);
+  ok("setup: the reads feature registers its three controllers and its three services (part 3 adds the party search)", readsFeature.controllers.length === 3 && readsFeature.controllers[0] === InvoiceReadsController && readsFeature.providers.length === 3);
   const call = async (token: string | undefined, method: string, path: string, body?: unknown): Promise<Res> => {
     const r = await fetch(`${base}/api${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
     const t = await r.text(); let b: unknown = t; try { b = JSON.parse(t); } catch { /* text */ } return { status: r.status, body: b };
   };
   await seedSampleFirms(owner); await seedSampleFirmsFrontOffice(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
-  const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7q.${n}@example.org', 'seed:FO-7q', now()) returning id`);
+  const person = (firm: string, n: string) => moneyVisible(sql, firm, "person", sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7q.${n}@example.org', 'seed:FO-7q', now()) returning id`));   // C5 (#3305 M1): a client the caller sees
   const PA = person(A, "a"), PA2 = person(A, "a2"), PB = person(B, "b");
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'seed:FO-7q', now())`);
   const signIn = async (actorId: string, firmKey: string) => { const r = await call(undefined, "POST", "/platform/session/local", { firmKey, actorId, secondStep: true }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
@@ -183,6 +186,44 @@ try {
   ok("FO-7q pass: the detail holds the invoice's payments and credit notes (Paid: one CASH payment with its receipt; Credited: one full credit note)",
     dPaid.payments.length === 1 && dPaid.payments[0].receiptNumber?.startsWith("R-") && !("t" in dPaid.payments[0]) && (await inA(() => all.detail(ctxR, S.Credited))).creditNotes[0]?.full === true, dPaid.payments);
 
+  // ------------------------------------- FO-7q part 2: refund actions on a payment, by invoices/refunds.ts's own rules
+  const pa = (keys: string[], refundableMinor: number, waitingMinor: number) => paymentActions({ keys, refundableMinor, waitingMinor });
+  const RF = "agent/refund:create", PR = "agent/payment:record";
+  ok("FO-7q part 2 pass (table): Refund with the refund key and something left; Keep as credit and Refund the extra with both keys and an extra waiting",
+    eq(pa([RF], 1000, 0), ["REFUND"]) && eq(pa([RF, PR], 1300, 300), ["REFUND", "KEEP_AS_CREDIT", "REFUND_EXTRA"]));
+  ok("FO-7q part 2 fail (table): no refund key → no Refund and no Refund of the extra (Keep stays); no payment:record → no choice; nothing left or waiting → nothing",
+    eq(pa([PR], 1000, 300), ["KEEP_AS_CREDIT"]) && eq(pa([RF], 0, 300), []) && eq(pa([RF, PR], 0, 0), []));
+  type PayRow = { id: string; refundableMinor?: number; waitingMinor?: number; allowedActions?: string[] };
+  const payIn = async (ctx: never, inv: string, id: string) => ((await inA(() => all.detail(ctx, inv))).payments as PayRow[]).find((x) => x.id === id);
+  const noRefund = { ...(ctxR as { keys: string[] }), keys: (ctxR as { keys: string[] }).keys.filter((k) => k !== RF) } as never;
+  const rbody = (amountMinor: number) => ({ amountMinor, method: "E_TRANSFER", reason: "Sample refund", idempotencyKey: `fo7q-r-${++key}` });
+  const paidRow = await payIn(ctxR, S.Paid, paidPay.id);
+  ok("FO-7q part 2 pass: a cleared operating payment with money left offers Refund to an Owner (refundable CAD 10.00), and no choice (nothing waiting)",
+    paidRow?.refundableMinor === 1000 && paidRow?.waitingMinor === 0 && eq(paidRow?.allowedActions ?? [], ["REFUND"]), paidRow);
+  ok("FO-7q part 2 fail (key missing): the same payment offers no Refund to a person without agent/refund:create", !(await payIn(noRefund, S.Paid, paidPay.id))?.allowedActions?.includes("REFUND"));
+  const trustRow = await payIn(ctxR, tInv, tPay.id);
+  ok("FO-7q part 2 fail (trust): money received into trust offers nothing here (refunds.ts's TRUST_REFUND): refundable 0, no action", trustRow?.refundableMinor === 0 && eq(trustRow?.allowedActions ?? ["x"], []), trustRow);
+  const cInv = await make(1000); await issue(cInv);
+  const chq = (await call(tA, "POST", `${M}/${cInv}/payments`, { method: "CHEQUE", amountMinor: 400, idempotencyKey: `fo7q-chq-${++key}` })).body;
+  const chqRow = await payIn(ctxR, cInv, chq.id), chqRoute = await call(tA, "POST", `/front-office/money/payments/${chq.id}/refunds`, rbody(100));
+  ok("FO-7q part 2 fail (uncleared): a cheque not yet cleared offers no Refund, and the refund route agrees (409 NOT_CLEARED)",
+    chq?.cleared === false && chqRow?.refundableMinor === 0 && !chqRow?.allowedActions?.includes("REFUND") && chqRoute.status === 409 && chqRoute.body?.code === "NOT_CLEARED", { chqRow, r: chqRoute.body?.code });
+  const doneRow = await payIn(ctxR, S.Refunded, rp.id), doneRoute = await call(tA, "POST", `/front-office/money/payments/${rp.id}/refunds`, rbody(1));
+  ok("FO-7q part 2 fail (nothing left): a payment refunded in full offers no Refund, and the route agrees (409 OVER_REFUND)",
+    doneRow?.refundableMinor === 0 && !doneRow?.allowedActions?.includes("REFUND") && doneRoute.status === 409 && doneRoute.body?.code === "OVER_REFUND", { doneRow, r: doneRoute.body?.code });
+  const xInv = await make(1000); await issue(xInv); const over = await pay(xInv, 1300);
+  const xR = await payIn(ctxR, xInv, over.id), xNo = await payIn(noRefund, xInv, over.id), xO = await payIn(ctxO, xInv, over.id);
+  ok("FO-7q part 2 pass (extra waiting): CAD 3.00 paid over the invoice offers Refund, Keep as credit and Refund the extra to an Owner; without the refund key only Keep as credit",
+    xR?.waitingMinor === 300 && eq(xR?.allowedActions ?? [], ["REFUND", "KEEP_AS_CREDIT", "REFUND_EXTRA"]) && eq(xNo?.allowedActions ?? [], ["KEEP_AS_CREDIT"]), { xR, xNo });
+  ok("FO-7q part 2 fail (keys): a Case Officer (neither agent/payment:record nor agent/refund:create) gets no action on it", eq(xO?.allowedActions ?? ["x"], []), xO);
+  const kept = await call(tA, "POST", `/front-office/money/payments/${over.id}/extra`, { choice: "KEEP_AS_CREDIT" }), xAfter = await payIn(ctxR, xInv, over.id);
+  ok("FO-7q part 2 fail (nothing waiting): once the extra is kept as credit (the route answers 201), Keep and Refund the extra are no longer offered",
+    kept.status === 201 && xAfter?.waitingMinor === 0 && !xAfter?.allowedActions?.includes("KEEP_AS_CREDIT") && !xAfter?.allowedActions?.includes("REFUND_EXTRA"), { k: kept.status, xAfter });
+  const offered = await call(tA, "POST", `/front-office/money/payments/${paidPay.id}/refunds`, rbody(100)), oneRead = await inA(() => allPay.one(ctxR, paidPay.id)) as PayRow;
+  ok("FO-7q part 2 pass (route agrees): an offered Refund is taken by the route (201), and the one-payment read then shows CAD 9.00 left with Refund still offered",
+    offered.status === 201 && oneRead.refundableMinor === 900 && eq(oneRead.allowedActions ?? [], ["REFUND"]), { s: offered.status, oneRead });
+  ok("FO-7q part 2: the payments list carries no actions (they are read per payment on the detail and the one-payment read)", (await inA(() => allPay.list(ctxR, {}))).items.every((x) => !("allowedActions" in x)));
+
   // ---------------------------------------------------------------------------------------------- DW6: currencies
   const mixed = await listA({});
   ok("FO-7q DW6 pass: a CAD and a USD invoice in one page: each row carries its own currency and the page has no total field", mixed.items.some((r) => r.currency === "USD") && mixed.items.some((r) => r.currency === "CAD")
@@ -201,11 +242,17 @@ try {
 
   // ------------------------------------------------- DW9: C5 through CS-MV1's adapter (PgMoneyVisibility), real cases
   // Firm A's cases X (user-O on its team) and Y (user-T's), and a prospect of user-O's whose subject is PA2 (Sample).
+  // DW9 needs PA with no prospect and "everyone sees all" off: the fixture's money-visible prospects (#3305 M1) are put
+  // away for this block and back after it, so FO-7b's routes reach PA's invoices again for DW1 + DW2.
+  sql(`delete from fo_prospect where firm_id = '${A}' and created_by = 'seed:money-visible'; update platform_firm_setting set value = 'false'::jsonb where firm_id = '${A}' and key = 'platform.everyone_sees_all'`);
   const WS = randomUUID(); let cn = 0;
   sql(`insert into workspace (id, key, label) values ('${WS}', 'fo7q-${WS.slice(0, 8)}', 'FO-7q (Sample)')`);
+  // the cases' client is PK, not PA (Lead 14 on #3321: a case's linked party joins its viewers' party scope; PA stays a
+  // person with no case and no prospect, so DW9's fail-closed cases still hold)
+  const PK = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Client k', 'Sample', 'fo7q.k@example.org', 'seed:FO-7q', now()) returning id`);
   const realCase = () => { const id = randomUUID(), client = randomUUID(); cn++;
     sql(`set session_replication_role = replica;
-      insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values ('${client}', '${WS}', 'sample-firm', '${A}', ${cn}, 'Client ${cn} (Sample)', 'PERSON', '${PA}', 'seed:FO-7q');
+      insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values ('${client}', '${WS}', 'sample-firm', '${A}', ${cn}, 'Client ${cn} (Sample)', 'PERSON', '${PK}', 'seed:FO-7q');
       insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status) values ('${id}', '${WS}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(cn).padStart(5, "0")}', 'sample-firm', '${A}', '${client}', 'OPEN')`);
     return id; };
   const team = (caseId: string, userId: string) => sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values ('${randomUUID()}', '${WS}', '${caseId}', '${userId}', 'OFFICER', 'user-R')`);
@@ -240,6 +287,8 @@ try {
   // the adapter's own answer for firm B, not only the list's wall (review n1): a leak of A's ids would show here
   ok("FO-7q DW9 fail: firm B's widest scope through the adapter names none of firm A's cases or parties, and its list holds none of A's invoices",
     ![X, Y].some((c) => bScope.cases.includes(c)) && ![PA, PA2].some((p) => bScope.parties.includes(p)) && bReal.items.every((r) => ![iX, iY, usd, S.Paid].includes(r.id)), bScope);
+
+  moneyVisible(sql, A, "person", PA); moneyVisible(sql, A, "person", PA2);   // back, after DW9 (above)
 
   // ------------------------------------------------------------------------- DW1 + DW2: 10,000 invoices per firm
   for (const [f, p] of [[A, PA], [B, PB]]) {

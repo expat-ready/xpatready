@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { fakeAlerts } from "../ports/alert.ts";
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261123100000_pf21b_data_requests";
+const NEW = "20261123200000_pf21b_data_requests";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf21b3_${process.pid}`, EMPTY = `xr_studio_pf21b3_empty_${process.pid}`, DEMO = `xr_studio_pf21b3_demo_${process.pid}`;
