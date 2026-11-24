@@ -229,6 +229,11 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
   // every other staff member's kept tabs in this browser tab. Round 3: the same person after an expiry gets theirs back.
   // Lead 13: a session that ends by itself changes nothing on the screen (each page says the session was lost, in place);
   // the tabs stay that person's, and the next sign-in decides: the same person carries on, anyone else starts afresh.
+  const startAlone = React.useCallback(() => {
+    const t: Tab = { id: newId(), path: here(), title: guess(here()), nav: 0, type: NavigationType.Pop, scroll: 0 };
+    now.current = { tabs: [t], active: t.id };
+    dirtyOwners.current.clear(); setDirtySet(new Set()); setMounted(new Set([t.id])); setWs({ tabs: [t], active: t.id });
+  }, []);
   const lastScope = React.useRef(staffScope());
   React.useEffect(() => onStaffChange(() => {
       const scope = staffScope();
@@ -236,7 +241,7 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
       lastScope.current = scope;
       const owner = ownerNow(), was = shownOwner.current;
       if (owner === was) return;
-      if (was === NOBODY && owner === "local") return;   // the Sign out this tab just made: keep nothing until the next sign-in
+      if (was === NOBODY && owner === "local") { startAlone(); return; }   // the Sign out this tab just made: this page alone, nothing kept
       if (owner === "local" && sessionEndReason()) return;   // ended by itself: the screen stays as it is
       if (owner === "local" && was !== "local") try { sessionStorage.removeItem(storeOf(was)); } catch { /* none kept */ }   // signed out on purpose: their tabs go
       shownOwner.current = owner;
@@ -245,13 +250,10 @@ export function WorkspaceRouter({ children }: { children: React.ReactNode }) {
       now.current = { tabs: next.tabs, active: next.active };
       dirtyOwners.current.clear(); setDirtySet(new Set()); setMounted(new Set([next.active])); setWs({ tabs: next.tabs, active: next.active });
     }), []);
-  // Sign out on purpose (round 5): this page alone, and nothing kept, whatever the server answers (a 401 too).
-  React.useEffect(() => onForget(() => {
-    shownOwner.current = NOBODY;
-    const t: Tab = { id: newId(), path: here(), title: guess(here()), nav: 0, type: NavigationType.Pop, scroll: 0 };
-    now.current = { tabs: [t], active: t.id };
-    dirtyOwners.current.clear(); setDirtySet(new Set()); setMounted(new Set([t.id])); setWs({ tabs: [t], active: t.id });
-  }), []);
+  // Sign out on purpose (round 5): nothing is kept from now, whatever the server answers (a 401 too); the page is left alone
+  // once the session has ended (Lead 19: resetting at once remounted the pages while the old token was still in place, and
+  // the remounted bell read its count with it, check_pf6a DW5).
+  React.useEffect(() => onForget(() => { shownOwner.current = NOBODY; }), []);
   // Break M2: a tab with a stored draft shows its dot even when it is not mounted.
   const tick = useDraftTick();
   const dirtyAll = React.useMemo(() => new Set([...dirty, ...tabs.filter((t) => draftsAt(itemOf(t.path)).length).map((t) => t.id)]), [dirty, tabs, tick]);   // eslint-disable-line react-hooks/exhaustive-deps -- tick: any draft change
