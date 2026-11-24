@@ -96,3 +96,36 @@ While this review ran, the branch moved to `9c4aeca51` (breaker round 1). **This
 * The CI run itself (`gh pr view` GraphQL is blocked here; head SHA confirmed through REST).
 
 Verdict: Changes 0d756d5ed64ebac1b5206a2a6bdb3e1c563cd190
+
+## Round 2 (diff only), head 24f576ad1fd909b7e6fdc11d7f53f5ebadd1f4d8
+Scope: `git diff 0d756d5ed..24f576ad1` (commits `9c4aeca51` breaker round 1 and `24f576ad1` review round 1). Not switched, committed or pushed.
+
+**Run here at 24f576ad1:**
+* `check_pf21rs_r0.ts`: 23 passed, 0 failed.
+* `check_pf21b_requests.ts`: 27 passed, 0 failed.
+* `module-cards.py pr` (with no PR body): PASS, 2 modules touched.
+* Size: 398 lines added and 23 removed under `prototype/` (under 800).
+* Not rerun here, as asked: the type check (builder running), `check_pf21b_holds.ts` and `check-port-contracts.mjs` (builder: 67/67, 0 problems).
+
+| Round-1 item | Answer in the diff | Status |
+|---|---|---|
+| M1 requests suite | `check_pf21b_requests.ts:178` reads inside `inRequest({ method: "GET", url: "/api/system/register/requests/<id>" })`. `routeOf` takes `url` when `path` is absent, so the route matches the declared use. The suite is back to 27/27. | Closed |
+| M2 type error | `check_pf21rs_r0.ts:104` casts the array (`as unknown[]`). The type check is the builder's to confirm. | Closed, pending the builder's type check |
+| M3 module card | `api/src/platform/MODULE.rows/PF-21rs-R0.md` and `api/src/features/MODULE.rows/PF-21rs-R0.md` (2 lines each, Entry points and Tests). The check passes. | Closed. The PR body still describes the design stage; updating it is the builder's hand-off. |
+| m1 all notices at once | `breaches/service.ts:218-224`: one notice at a time, in a `for … of` loop. | Closed |
+| m2 storage error gives 500 | `messages.ts:172` `files.get(...).catch(() => null)`; `:174-175` a guarded `JSON.parse` plus an object check. Tested with a throwing store and a non-JSON body whose hash matches (the hash and `.meta` are rewritten, so the `JSON.parse` branch is really reached). | Closed |
+| m3 missing file untested | The new R0-1 line deletes B's file and asserts 200, null words and `WORDS_UNREADABLE`. Without the `!file` guard, `sha256Hex(null.bytes)` throws inside the transaction, giving 500, so the line fails as it should. | Closed |
+| m4 route pattern too wide | `names.bypass.ts:3`: `GET …/(breaches\|requests)(/:id)?` plus `GET …/holds` exactly, which is the five real GET routes. | Closed |
+
+**New in this diff (checked):**
+* `ports/contracts/message-words-port.contract.ts` is run against the real `Messages`: own message, upper-case ids, another firm's message, a changed file, and malformed or unknown ids, each null and never an error.
+* The changed-file case uses firm A's second recipient. If that recipient were missing, the break-m1 line before it fails rather than passing vacuously.
+* No product behaviour changed beyond the null paths above. Firm walls, the module wall, the bypass and AUD-3 are as in round 1.
+
+**Minor (new, optional; does not block):**
+* `messages.ts:172` turns any store error into null with no operations log line. During a storage outage our staff then read "missing or has changed since it was sent", which reads like tampering, and nothing in the logs says why.
+* Fix if wanted: one `logPort.warn` (outbox id and error name only) in the catch. It is cheap and stays inside the current design.
+
+**Blockers: none. Majors: none.** All seven round-1 findings are closed.
+
+Verdict: Approve 24f576ad1fd909b7e6fdc11d7f53f5ebadd1f4d8
