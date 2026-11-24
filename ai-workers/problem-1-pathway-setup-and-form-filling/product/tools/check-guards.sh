@@ -474,7 +474,7 @@ A348 rules cite|product/tools/rules-settled.py|s/^        bad = .*/        bad =
 A348 rules none|product/tools/rules-settled.py|s/^    if r is None:/    if False:/|check-rules-settled.sh
 A348 rules kinds|product/tools/rules-settled.py|s/^    ("permission", /    ("permission", re.compile("^none$")), ("x", /|check-rules-settled.sh
 A348 rules fence|product/tools/rules-settled.py|s/^        if fence:/        if False:/|check-rules-settled.sh
-A348 rules gap|product/tools/rules-settled.py|s/^        elif FIELD.match(l) or .*/        elif False:/|check-rules-settled.sh
+A348 rules gap|product/tools/rules-settled.py|s/^        elif not BULLET.match(l) and (FIELD.*/        elif False:/|check-rules-settled.sh
 A348 rules html|product/tools/rules-settled.py|s/^    body = re.sub(.*/    pass/|check-rules-settled.sh
 A348 rules wired|../../.github/workflows/pr-rules.yml|s/^\( *\)printf .*rules-settled.py" --files.*/\1true/|check-rules-settled.sh
 A348 rules unread|../../.github/workflows/pr-rules.yml|s/else echo "::warning title=Rules settled (A348)::the PR.*/else echo ok; fi/|check-rules-settled.sh

@@ -50,6 +50,8 @@ warn "fail: the second bullet of a loose list names nothing" "$M" '- **Rules set
 warn "fail: an empty line before a bold field that cites" "$M" 'Rules settled:
 
 **Done when:** check_x passes (P-801)' 'names no rule'
+okk "pass: none, wrapped" "$M" 'Rules settled: none (an index only, no
+  rule changes)'
 okk "pass: none with a reason, then a bold field" "$M" 'Rules settled: none (an index only; no rule changes)
 **Done when:** x'
 warn "fail: a rule on the next line that looks like a field" "$M" 'Rules settled: a (P-801)
@@ -70,6 +72,19 @@ for x in 'Annex A12 of the form' 'step BK-P-2' 'P-99999' 'https://example.com/ca
 for f in platform/system-identity/guard.ts platform/audit/access/lines.ts; do warn "fail: $f is a permission file" "$D/api/src/$f" x 'changes permission'; done
 okk "pass: a test beside the money code" "$D/api/src/client-money/tests/refunds.ts" x
 okk "pass: a form's roles are people, not permissions" "$D/api/src/features/checkpoint/100-form-roles.ts" x
+
+for x in '- Risk: trust may go negative' '- Cost of a refund: the firm bears it' 'trust may go negative' '  
+- What a role may do: void an invoice'; do warn "fail: an uncited rule after a cited one: $(head -c 24 <<<"$x")" "$M" "Rules settled:
+- a (P-801)
+$x" 'name no decision or requirement'; done
+warn "fail: one line per rule, no bullets, the second uncited" "$M" 'Rules settled:
+a refund needs a second person (P-801)
+trust may go negative' '1 of 2 rules'
+warn "fail: uncited, on the line under a cited inline rule" "$M" 'Rules settled: a (P-801)
+trust may go negative' '1 of 2 rules'
+warn "fail: an empty line run into a bold field" "$M" 'Rules settled:
+**Before and after:** P-801' 'names no rule'
+for f in tax/fee-rules.ts platform/billing/plan.ts platform/wall.ts; do o=$(run "$D/api/src/$f" x); ok "fail: $f is a money or permission file" "$(grep -q '^::warning' <<<"$o" && echo 1)" "$o"; done
 
 # The step of pr-rules.yml itself: its condition, and its script run as written with a stand-in gh and python3
 W="$TOOLS/../../../../.github/workflows/pr-rules.yml"

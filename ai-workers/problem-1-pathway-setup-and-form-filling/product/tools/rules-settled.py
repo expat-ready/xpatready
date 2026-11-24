@@ -17,7 +17,7 @@ KINDS = [
 ]
 HEAD = re.compile(r"^[\s>*_-]*Rules settled[*_]*\s*:[*_]*\s*(.*)$", re.I)
 CITE = re.compile(r"(?<![\w-])(?:P|QA|A)-\d{1,4}\b|(?<![\w-])A[1-9]\d{2}\b|(?<![\w-])[A-Z]{2,3}-\d+[A-Z]?-\d+@[0-9a-f]{7,40}\b|domain/requirements-\S+/\S+|https://([a-z0-9-]+\.)*(canada\.ca|gc\.ca)/\S+")
-FIELD = re.compile(r"(?i)^[\s*_#-]*(done when|duplicate check|items?|completes|size exception|cost|sources?( checked)?|touches|why|what|kind|tests?|risk|model|standards §1|questions? for the founder)\b[^:\n]{0,40}:")
+FIELD = re.compile(r"(?i)^[\s*_]*(before and after|on the demo|checks and results|plan|done when|duplicate check|items?|completes|size exception|cost|sources?( checked)?|touches|why|what|kind|tests?|risk|model|standards §1|questions? for the founder)\b[^:\n]{0,40}:")
 BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 
 
@@ -27,10 +27,10 @@ def kinds(paths):
 
 def rules(body):
     """The rules after "Rules settled:": those on its line (split by ";") and the lines right under it, or a list (blank
-    lines between its bullets allowed). A line that is no bullet goes on from the one above. None: no such line outside
+    lines between its bullets allowed). An indented line goes on from its bullet; any other line is a rule of its own. None: no such line outside
     code blocks, HTML comments and quotes."""
     body = re.sub(r"<!--.*?(?:-->|\Z)", "", body.replace("\r", ""), flags=re.S)
-    out, gap, fence = None, False, ""
+    out, gap, fence, bul = None, False, "", False
     for l in body.split("\n"):
         f = re.match(r"^\s*(`{3,}|~{3,})", l)
         if fence:
@@ -46,17 +46,14 @@ def rules(body):
                 out = [s] if re.match(r"(?i)none\b", s) else [x.strip() for x in s.split(";") if x.strip(" .")]
         elif not l.strip():
             gap = True
-        elif FIELD.match(l) or l.lstrip().startswith("#"):
+        elif not BULLET.match(l) and (FIELD.match(l) or l.lstrip().startswith("#")):
             break
         elif BULLET.match(l):
-            out += [x.strip() for x in BULLET.sub("", l).split(";") if x.strip(" .")]; gap = False
+            bul = True; out += [x.strip() for x in BULLET.sub("", l).split(";") if x.strip(" .")]; gap = False
         elif gap and not l[0].isspace():
             break
-        elif out:
-            if re.match(r"^\S[^.:]{2,60}:\s", l) and not gap:
-                out.append(l.strip())      # "Trust balance: may go below zero" is a rule of its own
-            else:
-                out[-1] += " " + l.strip()
+        elif out and l[0].isspace() and not gap and (bul or re.match(r"(?i)none\b", out[0])):
+            out[-1] += " " + l.strip()      # an indented line goes on from the bullet above
         else:
             out.append(l.strip())
     return out
