@@ -1,6 +1,37 @@
 # PF-17 part 4, PR C (console Support page and ticket panel; R1.93): independent review, 24 Nov
 
-## Round 2 (head `3c703b98555a3745ed76754b54b4215bf13a4025`; the current verdict)
+## Round 3 (diff only; head `6f3eedda628aa0f05d72a2541877daba161d6771`; the current verdict; allowed by the Lead)
+Delta checked: `git diff 3c703b985 5852b3dc0 -- '*.ts' '*.tsx'` (support-page.tsx +15/−3, check_pf17_support_browser.ts +17/−4). The merge of PR B's scope fix `8e7f454d6` (`.mergify.yml`, `check-mergify-scopes.sh`, already approved on #3489) was not reviewed again.
+
+**Verdict: Approve.** R2-1 is fixed, and the selection Minor is fixed. No Blocker or Major is open.
+
+**What I ran (copy `rvc4` :4479, never :4400):**
+* `web-fresh.sh build` OK; `tsc -p web --noEmit` exit 0.
+* `check_pf17_support_browser.ts 4479 xr_studio_rvc4`: **24/24, twice**. The R2-1 line, the one that failed 2 of 2 in round 2, now reads early `H1|` and late `H1|` on both runs.
+* Copy stopped. `scan-logs.ts var/isolated-logs/rvc4-api.log`: "0 finding(s) — ok" (exit 0, 588 lines).
+* My runs overwrote three committed screenshots; I restored them with `git checkout`.
+* The shared local database (:54329) had stopped between rounds, with no shutdown line in its log. I started only the database with `pg_ctl`, as `start.sh` does first. I did not start the :4400 demo.
+
+**R2-1, re-probed on the running app.** The steps were round 2's: the only open ticket, `?status=OPEN`, Send, "Reply sent", Escape.
+* With reduced motion, focus events were `Send reply → dialog → row button → H1 Support`. Round 2 ended on BODY here.
+* With reduced motion plus a 1.5 s delay on the queue answer, the order was the same: focus stayed on the row until the list re-read, then moved to the h1 (H1 at 1 500 ms).
+* The code is sound:
+  * The effect sits above the early return, so React's hook order holds.
+  * It acts only after a panel close (`refocus`), and only when focus is on the body or a removed node. A Tab to a chip during the refetch is left alone.
+  * It clears itself once `isFetching` is false. A fresh load or a window-focus refetch never moves focus; the new B9c line checks that the body keeps it.
+* The check samples focus twice (100 ms and 1.5 s). It would catch both the round-2 failure and a late drop.
+
+**Selection Minor: fixed.** The row click returns early when `getSelection()` holds text. The new B9c line drags across a cell and expects no panel and no `?ticket=`. A plain click clears any earlier selection on mousedown, so a normal row click still opens the ticket (B5 clicks the Age cell, green).
+
+**Still open (Minor, as recorded in round 2):** #2 (the blank reply shows the firm-facing words; no `maxLength`), #4, #5, #9, #10. Record them on the row.
+
+**Journey score, round 3: 9/10, pass:** accessibility and screen sizes rises to 1 (#5 and #9 are small). Plain words ½ (#2) and feedback and state ½ (#4) are unchanged. **D-score changes:** D13 3→4 · D16 3→4.
+
+Reviewer: Approve 6f3eedda628aa0f05d72a2541877daba161d6771
+
+---
+
+## Round 2 (head `3c703b98555a3745ed76754b54b4215bf13a4025`; superseded by round 3)
 Delta checked: `git diff 67aece028 3c703b985` (support-page.tsx, contract.ts, the shared Panel title in controls.tsx, the check, challenge.md BD-1, the breaker's report).
 
 **Verdict: Block** (last round allowed). Round 1's Major #1 is fixed. But the breaker's M2 fix (focus after the panel closes) only works when the close animation outlasts the queue's refetch. Its own new check fails **2 of 2** on my copy. That makes one new Major, and the fix is small.
