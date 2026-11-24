@@ -79,13 +79,25 @@ const errors: string[] = [];
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
 const p: Page = await ctx.newPage(); p.on("pageerror", (e) => errors.push(String(e)));
 const shot = (name: string) => p.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
+/** Opens a console page as a person does: our console keeps its session in this tab's sessionStorage ("xr-system-session",
+ *  PF-17 part 4 PR B, #3489), so a bare goto lands on its sign-in card; when the card shows ("Work email" and "Sign in",
+ *  and no "Firm key"), our Platform Owner signs in through it (PF-4s's local stand-in). Aligned by qa 8 (24 Nov, PF-21rs
+ *  concept r2 §8 M3, #3492): j_85's browser never signed in before. */
+const consoleGoto = async (path: string) => {
+  await p.goto(`${BASE}${path}`); await p.waitForLoadState("networkidle").catch(() => undefined); await p.waitForTimeout(500);
+  const email = p.getByLabel("Work email");
+  if (ourEmail && await email.count() && !(await p.getByLabel("Firm key").count())) {
+    await email.fill(ourEmail); await p.getByRole("button", { name: "Sign in" }).click();
+    await p.waitForLoadState("networkidle").catch(() => undefined); await p.waitForTimeout(800);
+  }
+};
 
 try {
   // ---------------------------------------------------------------------------------------------- W1 a privacy request is logged
   // Our console: PF-4s part 1 (#2927) signs our own staff in; PF-17 is the console; PF-21rs its Privacy pages.
   const ourSignIn = await j("GET", "/api/system/register/requests");
   ok("J-85 W1 (PF-4s part 1, PF-21b part 3, on main): our register answers as a guarded area (401 with no session, never 404)", ourSignIn.status === 401, ourSignIn.status);
-  await p.goto(`${BASE}/system/privacy/requests`); await p.waitForLoadState("networkidle").catch(() => undefined); await p.waitForTimeout(800);
+  await consoleGoto("/system/privacy/requests");
   const consoleWords = (await p.locator("body").innerText()).replace(/\s+/g, " ");
   ok("J-85 W1 (parts missing: PF-21rs, PF-17): our console's Privacy › Requests page opens with \"Log a request\"", (await p.getByRole("heading", { name: /privacy|data requests/i }).count()) > 0 && (await p.getByRole("button", { name: /log a request/i }).count()) > 0, consoleWords.slice(0, 200));
   await shot("W1-console-privacy-requests");
@@ -103,7 +115,7 @@ try {
   const moved = reqId ? [await j("POST", `/api/system/register/requests/${reqId}/status`, { status: "IN_PROGRESS" }, ourTok), await j("POST", `/api/system/register/requests/${reqId}/status`, { status: "COMPLETED", actionsTaken: "Sent the person's records (Sample)" }, ourTok)] : [];
   const evs = table("plat_data_request_event") && reqId ? sql(`select count(*) from plat_data_request_event where request_id = '${reqId}'`) : "no table";
   ok("J-85 W2 (PF-21b part 3, on main): the request moves In progress then Completed, each change an insert-only event (plat_data_request_event)", moved.length === 2 && moved.every((m) => m.status === 200) && Number(evs) >= 3, { moved: moved.map((m) => m.status), evs });
-  if (reqId) { await p.goto(`${BASE}/system/privacy/requests/${reqId}`); await p.waitForLoadState("networkidle").catch(() => undefined); }
+  if (reqId) await consoleGoto(`/system/privacy/requests/${reqId}`);
   const reqPage = reqId ? (await p.locator("main").innerText().catch(() => "")).replace(/\s+/g, " ") : "";
   ok("J-85 W2 (part missing: PF-21rs, our console's Privacy pages): the request's page lists each event and its outcome", !!reqId && /in progress/i.test(reqPage) && /completed/i.test(reqPage) && reqPage.includes("Sent the person's records"), reqPage.slice(0, 200) || "no request to open");
 
@@ -161,7 +173,7 @@ try {
   ok("J-85 W6 (PF-4s part 1, PF-21b parts 2-3, on main): a firm's own Owner is refused on our register and on placing a hold (403, never 404: the routes exist and refuse)", firmReg.status === 403 && firmHold.status === 403, [firmReg.status, firmHold.status]);
 
   // ---------------------------------------------------------------------------------------------- W7 R1.86's first step
-  await p.goto(`${BASE}/system/privacy/breaches`); await p.waitForLoadState("networkidle").catch(() => undefined); await p.waitForTimeout(500);
+  await consoleGoto("/system/privacy/breaches");
   ok("J-85 W7 (parts missing: PF-21rs, PF-21c): the walk ends at R1.86's first step: our console's Breaches page offers \"Record a breach\"", (await p.getByRole("button", { name: /record a breach/i }).count()) > 0);
   await shot("W7-console-breaches");
   ok("J-85: no page error during the walk", errors.length === 0, errors.slice(0, 5));
