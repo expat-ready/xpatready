@@ -84,7 +84,7 @@ ok("W12 walk-report.yml: main's copy on walks' completed runs, only for a push t
   && /id: plan\s*\n\s*continue-on-error: true\s*\n\s*uses: actions\/download-artifact@v4\s*\n\s*with: \{ name: walk-plan, path: "\$\{\{ runner\.temp \}\}\/walk-data\/plan"/.test(rc)
   && /id: results\s*\n\s*continue-on-error: true\s*\n\s*uses: actions\/download-artifact@v4\s*\n\s*with: \{ pattern: "walk-result-\*", path: "\$\{\{ runner\.temp \}\}\/walk-data\/results"/.test(rc)
   && /d="\$RUNNER_TEMP\/walk-data"/.test(rc) && /--plan "\$d\/plan\/plan\.json" --results "\$d\/results"/.test(rc)
-  && /\[ "\$PLAN_DL" = success \] && \[ -f "\$d\/plan\/plan\.json" \] \|\| \{ [^}\n]*exit 1; \}/.test(rc) && /\[ "\$RESULTS_DL" = success \] \|\| \{ [^}\n]*exit 1; \}/.test(rc)
+  && /if \[ "\$PLAN_DL" != success \] \|\| \[ ! -f "\$d\/plan\/plan\.json" \]; then\n[^\n]*exit 1\n\s*fi/.test(rc) && /\[ "\$RESULTS_DL" = success \] \|\| \{ [^}\n]*exit 1; \}/.test(rc)
   && /PLAN_DL: "\$\{\{ steps\.plan\.outcome \}\}", RESULTS_DL: "\$\{\{ steps\.results\.outcome \}\}"/.test(rc) && !/run:[^\n]*\$\{\{/.test(rc) && !/\$\{\{[^}]*(head_branch|display_title|head_commit)[^}]*\}\}/.test(rc.replace(/\n    if: .*/, "")), rc.slice(0, 800));
 // W13: the comment walk-report.yml posts, built here from two made-up walk.json files and one missing.
 const tmp = mkdtempSync(join(tmpdir(), "walk-report-"));

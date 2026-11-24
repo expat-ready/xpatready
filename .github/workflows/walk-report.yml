@@ -45,7 +45,9 @@ jobs:
         env: { GH_TOKEN: "${{ github.token }}", PLAN_DL: "${{ steps.plan.outcome }}", RESULTS_DL: "${{ steps.results.outcome }}", ATTEMPT: "${{ github.event.workflow_run.run_attempt }}" }
         run: |
           set -o pipefail; d="$RUNNER_TEMP/walk-data"
-          [ "$PLAN_DL" = success ] && [ -f "$d/plan/plan.json" ] || { echo "::error title=walk-report::walks run $RUN_ID: its plan could not be downloaded (walks keeps one on every push): re-run this run"; exit 1; }
+          if [ "$PLAN_DL" != success ] || [ ! -f "$d/plan/plan.json" ]; then
+            echo "::error title=walk-report::walks run $RUN_ID: its plan could not be downloaded (walks keeps one on every push): re-run this run"; exit 1
+          fi
           node -e 'const p=require(process.argv[1]); process.exit(Array.isArray(p.matrix)&&p.matrix.length&&p.pr?0:3)' "$d/plan/plan.json" || { echo "walks run $RUN_ID walked nothing for a merged PR: $(node -p 'require(process.argv[1]).reason' "$d/plan/plan.json")" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
           [ "$RESULTS_DL" = success ] || { echo "::error title=walk-report::walks run $RUN_ID: its walk.json files could not be downloaded: re-run this run (no comment, so no journey reads as \"no result\" by mistake)"; exit 1; }
           PR=$(node -p 'String(require(process.argv[1]).pr ?? "")' "$d/plan/plan.json")
