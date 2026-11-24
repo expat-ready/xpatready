@@ -3,7 +3,35 @@
 Reviewer: a fresh context that did not build it. Head reviewed: `34f58ea0b4be249431cf1f793538b43e9f36b916` (#3470, branch `claude/festive-hawking-3i8mgi`); diff `git diff origin/main...HEAD -- studio/` (13 files, +276 −28). App = `prototype/studio`.
 Read: concept r2 (§3 BR-3/4/5, §6, §7 Q4), `challenge.md` (M1, M2, m1), `handover.md` (m1-m3), Lead 26's approval comment, STANDARDS, QUALITY. PR A builds no screen, so the screen parts of the skill (keyboard, 1024 px, BIC table, look) are **N/A here** and go to PRs B and C.
 
-## Round 2 (head `d4b5ea3fbd19a95eff64b368cc1c371525a444c3`): the current verdict
+## Round 3 (log fix, diff only; head `bdab2d27cb45abe713beb4dad9a91f6f0e189293`): the current verdict
+Lead 28 on #3470 asked for this. The fix answers batch #3485's "no personal data in logs" failure (SA-11 BR-16). I checked only `git diff 1d2cf9221 bdab2d27c` (3 files, +15 −6).
+
+**Verdict: Approve.** The leak is closed and DS6 is a real failing test.
+
+**The leak is closed.**
+* `seedSampleSystemStaff` now returns `{ added: number }` (`sample-staff.ts`).
+* The start-up line is `platform: Sample ExpatReady staff added: <n>` (`sample-seed.ts:49`). No email reaches it.
+* The refusal message (`SampleStaffRefused`) carries only the setting's name.
+
+**DS6 is a real failing test.**
+* It captures `console.log`, `warn` and `error` around the two concurrent seeds and restores them in `finally`.
+* It fails on any email address in any captured line. It also requires a staff line saying `added: N`, so a silent seed cannot pass it.
+* I put the emails back into the line on a scratch copy: DS6 went red (`added: 2 <email> <email>`). With the line restored, `check_pf17_demo_signin` passes 16/0.
+
+**A copy scanned by me:**
+* I started `isolated.sh rvlog 4451` with both stand-ins. A Sample sign-in answered 200 and an unknown email 401.
+* Log line 2 reads `…staff added: 2`.
+* After stopping the copy, `scan-logs.ts var/isolated-logs/rvlog-api.log` answered "0 finding(s) — ok" (exit 0).
+* The only "@" in that log is a tool hint on line 1, which is not an email.
+
+**Nothing else in PR A writes an email to a server log.**
+* `live-plan.ts`, `support.ts`, `firms.ts` and `sample-staff.ts` make no log call (grep).
+* The request lines carry the route and status only.
+* The sign-in by email is PF-4s's existing code, and it logged no email on the copy, even on a refused sign-in.
+
+Reviewer: Approve bdab2d27cb45abe713beb4dad9a91f6f0e189293
+
+## Round 2 (head `d4b5ea3fbd19a95eff64b368cc1c371525a444c3`): superseded by round 3
 **Verdict: Approve.** No Blocker and no Major is open; round 1's M-1 and m-1 to m-3 are closed. The delta since `34f58ea0b` is 6 files, +38 −14: tests, the MODULE row, one comment, and the seed's catch for a race.
 
 **Suites, run by me on this head:**
