@@ -69,7 +69,8 @@ export function inputs(dir: string): CodeInput[] {
  *  notice whose envelope breaks the schema" (its schema `SnsNotice` runs through parseInput after the signature); the
  *  "PF-28 HOOK" check below ties that exemption to its proof (review m1 on #3039). */
 const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body", "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body",
-  "client-money/card/routes.ts POST /api/hooks/stripe-connect body"]);   // FO-7c part 1 (Lead B on #2938): its signature and schema pairs over HTTP are in check_fo7c_card_payments.ts
+  "client-money/card/routes.ts POST /api/hooks/stripe-connect body",   // FO-7c part 1 (Lead B on #2938): its signature and schema pairs over HTTP are in check_fo7c_card_payments.ts
+  "front-office/signing/hooks.ts POST /api/hooks/signing/:provider body"]);   // FO-6 part 3 (#3065): the signature first (unverified 400), then the port's strict schema; pairs in check_fo6_signing_api.ts W1 and B
 // Review m1 (#3039): the SNS exemption holds only while its proof does: the door parses SnsNotice after verify, and the
 // named case in check_pf19b2_ses.ts exists (a deleted or renamed case fails here).
 { const b = readFileSync(join(API, "platform/messages/channels/email/bounces.ts"), "utf8"), v = b.indexOf("await this.verify(n);"), p = b.indexOf("parseInput(SnsNotice, n)");
@@ -223,7 +224,10 @@ if (all.some((d) => d.path.startsWith("/api/public/forms/:token"))) REAL[":formT
 // The doors check the shape (else the one not-found), then read the body or query, then look the link up, so a body probe
 // here must be a field error: a door that looked the link up first would answer 404 and fail (the rule's M1 holds).
 REAL[":linkToken"] = `${randomUUID()}.${"A".repeat(43)}`;
-const keyOf = (path: string, p: string) => (p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p === ":token" && path.startsWith("/api/public/bookings/") ? ":linkToken" : p);
+// R1.90: a private sign-up link's token in its own shape (43 base64url characters) that no link has: the invited door
+// checks the shape, then reads the body, then looks the link up, so a body probe here is a field error too.
+REAL[":inviteToken"] = "A".repeat(43);
+const keyOf = (path: string, p: string) => (p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p === ":token" && path.startsWith("/api/public/bookings/") ? ":linkToken" : p === ":token" && path.startsWith("/api/public/signup/") ? ":inviteToken" : p);
 const isKey = (path: string, p: string) => keyOf(path, p) in REAL || (path.startsWith("/api/public/") && p !== ":id");
 const fill = (path: string, bad?: string) => path.replace(/:[A-Za-z_]+/g, (m) => (m === bad ? "not-a-uuid" : REAL[keyOf(path, m)] || randomUUID()));
 /** Whether a 404 may stand for "this random record does not exist": only when some path value is a random id. */

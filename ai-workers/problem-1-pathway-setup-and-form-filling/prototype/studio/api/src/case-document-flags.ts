@@ -47,6 +47,11 @@ export function flagWarnings(d: DocRow, t: SnapTypeDefaults | undefined, today: 
   const out: { key: string; words: string }[] = [], exp = d.expiresOn ? day(d.expiresOn) : null;
   if (exp && exp < today) out.push({ key: `expired|${d.id}|${exp}`, words: `Expired on ${exp}: check whether it is still accepted, or ask for a newer one. Nothing is blocked.` });
   if (!exp && t?.has_expiry) out.push({ key: `no_expiry|${d.id}`, words: "Its type has an expiry date: enter the date on the document." });
+  // QA-758 (Lead 14's ruling on #3323; AG-9 3.9's notarisation chip, AG-7 checklist rule 4): notarisation Required (set by
+  // staff, else the type's default) and not Provided is a warning like expiry, never a block. Its key names where the
+  // Required comes from, so a pass given for the type's rule does not cover a Required staff set later.
+  const notarisation = d.notarisation ?? t?.notarisation_rule ?? null;
+  if (notarisation === "REQUIRED") out.push({ key: `notarisation|${d.id}|${d.notarisation ? "staff" : "type"}`, words: "Needs notarisation: when it is notarised, mark it Provided in Document flags with who notarised it and when. Nothing is blocked." });
   if (t?.max_age_days) { const age = daysBetween(day(d.uploadedAt), today); if (age > t.max_age_days) out.push({ key: `age|${d.id}|${t.max_age_days}`, words: `Uploaded ${age} days ago; its type asks for one no older than ${t.max_age_days} days. Nothing is blocked.` }); }
   return out;
 }

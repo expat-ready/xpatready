@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { taxForLine } from "../api/src/client-money/invoices/tax-round.ts";
 import { PROVINCE_CODES, PROVINCE_TAX_RATES as T } from "../api/src/client-money/tax/canada-gst-hst.ts";
 import { BILL_TO_PROVINCES } from "../ports/client-money.ts";
+import { moneyVisible } from "./lib/money-visible.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const NEW = "20261123020000_fo7g3_bill_to_province";
@@ -78,7 +79,7 @@ try {
 
   await seedSampleFirms(owner); await seedSampleFirmsFrontOffice(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
-  const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7g3.${n}@example.org', 'seed:FO-7g-3', now()) returning id`);
+  const person = (firm: string, n: string) => moneyVisible(sql, firm, "person", sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7g3.${n}@example.org', 'seed:FO-7g-3', now()) returning id`));   // C5 (#3305 M1): a client the caller sees
   const PA = person(A, "a"), PB = person(B, "b");
   const signIn = async (actorId: string, firmKey: string) => { const r = await call(undefined, "POST", "/platform/session/local", { firmKey, actorId, secondStep: true }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
   // user-R: sample-firm's Owner (agent/invoice:edit); user-O: a Case Officer (drafts, no agent/invoice:edit); user-S: sample-solo's Owner.
@@ -178,7 +179,7 @@ try {
   const notId = await forInv("not-an-id"), twice = await call(tA, "GET", `${TD}&partyId=${PA}&invoiceId=${d7.body.id}&invoiceId=${d1.body.id}`);
   ok("FO-7g3 B8 fail (walls): another client's invoice, firm B's invoice, firm B asking with firm A's, and an id nobody has → the same 404, no rate",
     [otherParty, otherFirm, bAsks, nobody].every((r) => r.status === 404 && r.body.ratePpm === undefined) && otherParty.body.detail === nobody.body.detail && otherFirm.body.detail === nobody.body.detail, [otherParty.body, otherFirm.body, bAsks.body, nobody.body]);
-  const CA = sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Employer Sample Ltd', 'employer sample ltd', 'seed:FO-7g-3', now()) returning id`);
+  const CA = moneyVisible(sql, A, "company", sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Employer Sample Ltd', 'employer sample ltd', 'seed:FO-7g-3', now()) returning id`));
   const dC = await call(tA, "POST", M, { companyId: CA, currency: "CAD" }); await setTo(dC.body.id, "NB");
   const coAns = await call(tA, "GET", `/front-office/money/tax-default?partyKind=COMPANY&partyId=${CA}&invoiceId=${dC.body.id}`);
   const coAsPerson = await call(tA, "GET", `${TD}&partyId=${CA}&invoiceId=${dC.body.id}`), personInvAsCo = await call(tA, "GET", `/front-office/money/tax-default?partyKind=COMPANY&partyId=${CA}&invoiceId=${d7.body.id}`);

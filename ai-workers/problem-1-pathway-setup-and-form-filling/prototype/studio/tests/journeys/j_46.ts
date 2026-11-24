@@ -72,8 +72,8 @@ type Registry = { LIMITS: { subject: number; body: number }; FIELDS: Record<stri
 const REGISTRY = join(STUDIO, "api", "src", "platform", "messages", "templates", "registry.ts");
 const reg = existsSync(REGISTRY) ? (await import(pathToFileURL(REGISTRY).href).catch(() => null)) as Registry | null : null;
 const LIMIT = reg?.LIMITS?.body ?? null;
-const KIND = reg?.KINDS.find((k) => k.key === "lead.going_cold") ?? null;
-const KEY = KIND?.key ?? "lead.going_cold", KNAME = KIND?.name ?? "Going-cold nudge";
+const KIND = reg?.KINDS.find((k) => k.key === "sales.lead.going_cold") ?? null;
+const KEY = KIND?.key ?? "sales.lead.going_cold", KNAME = KIND?.name ?? "Going-cold nudge";
 const LEAD_FIELDS = reg?.FIELDS[KIND?.recordType ?? "lead"] ?? [];
 const sampleOf = (k: string) => LEAD_FIELDS.find((f) => f.key === k)?.sample ?? null;
 const labelOf = (k: string) => LEAD_FIELDS.find((f) => f.key === k)?.label ?? null;

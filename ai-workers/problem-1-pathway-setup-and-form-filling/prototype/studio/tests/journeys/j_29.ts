@@ -140,14 +140,17 @@ try {
   // ---------------------------------------------------------------------- W4: never automatic with money
   // Omar has money: a draft invoice (FO-7b part 1a). A new lead with Omar's email is then added as new by the Owner.
   sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${A}', 'seed:J-29', now()) on conflict (firm_id) do nothing`);
-  const inv = await api(tR, "POST", "/front-office/money/invoices", { personId: OMAR, currency: "CAD" });
+  // Omar is a lead, not a client the Owner may invoice: FO-7b's draft route is C5-scoped (Lead 14 on #3321: a party outside
+  // the caller's scope is 404), so his money is a fixture row, as the step needs only "a person with money"
+  const invId = sql(`insert into money_invoice (firm_id, person_id, currency, created_by, updated_at) values ('${A}', '${OMAR}', 'CAD', 'seed:J-29', now()) returning id`);
+  const invStored = !!invId;   // a fixture row, not an API answer
   const omar2 = await addLead(tR, { givenNames: `Omar${run}`, familyName: "Haddad", email: `omar.haddad.${run}@example.org`, phone: "+1 416 555 0177", confirmedNew: true });
   const OMAR2 = personOf(`omar.haddad.${run}@example.org`);
   await new Promise((r) => setTimeout(r, 1500));   // any automatic merge runs after the add
   const hasTomb = sql(`select count(*) from information_schema.columns where table_name = 'fo_person' and column_name = 'merged_into_id'`) === "1";
   const bothStay = sql(`select count(*) from fo_person where id in ('${OMAR}', '${OMAR2 || OMAR}')`) === "2" && (!hasTomb || sql(`select count(*) from fo_person where id in ('${OMAR}', '${OMAR2}') and merged_into_id is null`) === "2");
   ok("R1.29 W4 fail: a person with money (a draft invoice) is never merged by itself: both Omar records stay, neither a tombstone (vacuous until FO-9b part 2 merges: no merge runs today)",
-    inv.status === 201 && omar2.status === 201 && !!OMAR2 && bothStay, { invoice: inv.status, add: omar2.status, hasTomb });
+    invStored && omar2.status === 201 && !!OMAR2 && bothStay, { invoiceFixture: invStored, add: omar2.status, hasTomb });
   const list4 = await api(tR, "GET", "/front-office/duplicates/review");
   ok("R1.29 W4 (part missing: FO-9b part 2, the review list): the Omar pair waits on the review list for a person to decide",
     list4.status === 200 && JSON.stringify(list4.body).includes(OMAR) && JSON.stringify(list4.body).includes(OMAR2), { status: list4.status });

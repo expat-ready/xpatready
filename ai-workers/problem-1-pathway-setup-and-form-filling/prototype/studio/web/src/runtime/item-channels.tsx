@@ -140,7 +140,9 @@ function ChannelDialog({ caseId, item, recorded, portal, version, reload, close 
       description={<>For {item.person} only. The combination files it as {CHANNEL_WORDS[item.line_channel]}; its line stays as released.</>}
       footer={<><Button variant="ghost" onClick={close}>Cancel</Button><Button busy={busy} disabled={same || recorded} aria-describedby={same ? "ch-same" : undefined} onClick={() => void save()}>Save</Button></>}>
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void save(); }} data-channel-form>
-        {errors.refused ? <Notice tone="warn" title={errors.refused.title} action={recorded ? undefined : <Button size="sm" variant="secondary" onClick={() => { void reload().then((v) => { setRead(v); setErrors({}); }); }}>Reload</Button>}>{errors.refused.detail}</Notice> : null}
+        {/* Reload is type="button": inside this form a plain button submits it, so Reload also sent a Save on the older version
+            (a second 409, Save busy while the reload ran; c116 red on a busy machine). */}
+        {errors.refused ? <Notice tone="warn" title={errors.refused.title} action={recorded ? undefined : <Button type="button" size="sm" variant="secondary" onClick={() => { void reload().then((v) => { setRead(v); setErrors({}); }); }}>Reload</Button>}>{errors.refused.detail}</Notice> : null}
         {recorded ? <Notice tone="info" title="Submitted to IRCC">How {item.form} is filed for {item.person} no longer changes.</Notice> : null}
         {errors.other ? <Notice tone="danger" title="Not saved">{errors.other}</Notice> : null}
         <fieldset className="space-y-2" aria-describedby={`ch-accepts-${item.id}${errors.channel ? " ch-refused" : ""}`}>
