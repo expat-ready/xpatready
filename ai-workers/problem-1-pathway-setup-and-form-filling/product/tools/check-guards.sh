@@ -26,6 +26,7 @@ TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
+TESTS="$TESTS check-checks-changed.sh"   # A351 C2: checks weakened or removed
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 bad=0
 if [ "$part" = 1 ]; then
@@ -487,6 +488,15 @@ A348 retry own|product/tools/retry-watch.py|s/ and not (m and str(n) in prs)//|c
 A348 retry search|product/tools/retry-watch.py|s/^        n += 1$/        return out, ""/|check-retry-watch.sh
 A348 retry wired|product/tools/lead-watch.sh|s/^rw=/# rw=/|check-retry-watch.sh
 A348 retry ran|product/tools/lead-watch.sh|/retry-watch.py did not run/d|check-retry-watch.sh
+A351 c2 removed|product/tools/checks-changed.py|s/ else rem.append((p, label, y)))/ else None)/|check-checks-changed.sh
+A351 c2 changed|product/tools/checks-changed.py|s/(cha.append((p, label, y, spare.pop(0)))/(spare.pop(0)/|check-checks-changed.sh
+A351 c2 moved|product/tools/checks-changed.py|s/^            if left\[y\] > 0:/            if False:/|check-checks-changed.sh
+A351 c2 skip|product/tools/checks-changed.py|s/^        if sum(now.values()) > .*/        if False:/|check-checks-changed.sh
+A351 c2 ledger|product/tools/checks-changed.py|s/^        if path == LEDGER:/        if False:/|check-checks-changed.sh
+A351 c2 deleted|product/tools/checks-changed.py|s/^            gone.append(path)/            pass/|check-checks-changed.sh
+A351 c2 reason|product/tools/checks-changed.py|s/^    if reason:/    if True:/|check-checks-changed.sh
+A351 c2 many|product/tools/checks-changed.py|s/bare("\\n".join(body)).count("(") > /0 > /|check-checks-changed.sh
+A351 c2 wired|../../.github/workflows/pr-rules.yml|s/^\( *\)run: printf .*checks-changed.py.*/\1run: true/|check-checks-changed.sh
 A334 order|product/tools/app-view-check.sh|s/ -k1,1nr -k2,2nr)$/ -k1,1nr)/|check-lead-watch-idle.sh
 A334 cloud|product/tools/app-view-check.sh|s/^  lane = (\$0 ~ \/ · cloud · /  lane = (\$0 ~ \/ · /|check-lead-watch-idle.sh
 A334 first|product/tools/night-checklist.py|s/^    rows.sort(key=lambda r: (r\[0\], r\[1\]))$/    rows.sort(key=lambda r: r[1])/|check-lead-watch-idle.sh
