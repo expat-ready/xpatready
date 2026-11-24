@@ -267,3 +267,55 @@ Scope: `git diff 163c35239 b7db7b41f -- prototype/studio`. `createRequest` and `
 * **Unchanged and out of this round:** r9-m1 (stale migration comment), r2-m1 to r2-m3, d-m1, d-m2, and round 1's Minors 5-7.
 
 Verdict for f8665b910b9cef16b39cde164db985674827b95f: **Approve.** r9-M1 is fixed: no 500, no stall and no double payment from 10 to 100 writes at once, with no gap in the receipt or DR- numbers, and the check is red without the fix. r10-m1 is Minor and needs no change before merge.
+
+## Round 11 (Lead 17: cancel visibility; head db39eccd6b001db1f18ce866712a60e672400c1d, 24 Nov 2026)
+
+Scope: `git diff 3e8d36f5f db39eccd6`. `cancel` reads `scopeOf` once before `this.write` and answers 404 for a request whose case (or, with no case, its client) the caller does not see, before the "already cancelled" check (`service.ts:125-131`). Plus one comment line in `20261123223000_fo7t1_evidence_key/migration.sql`. **How:** isolated copy `brk11_fo7t` on :4443 (full app, `PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local AI_LIVE=off`), seeded by SQL as in rounds 9-10. Firm A has PA with cases KA and KA2, PC with case KC, and PH with no prospect and no case. Firm B has PB with case KB. CASE_OFFICER lost `case:view.all` and `prospect:view.all` and gained `agent/payment:record`, so it holds view.own only. CASE_MANAGER also gained `agent/payment:record`. The callers:
+* user-O: a Case Officer on KA's team only, owning no prospect.
+* user-V: a Case Officer owning PA's prospect, on no team.
+* user-W: a Case Officer who is file owner of KC's client.
+* user-T: the Case Manager.
+* user-R: the Owner.
+* user-S: firm B's Owner.
+
+The scratch scripts were not committed. The copy is stopped (database and files dropped). No Stripe call, no model call. While this round ran, the reviewer committed 9b0d04bbf on the branch (review record, docs only; the code is unchanged). The tree is clean.
+
+**What held**
+* **Cancel agrees with the request read, for every caller and request.** Each caller asked `GET /requests/:id` and then the cancel on each of 17 requests: by party, on KA, KA2 and KC, held (unsent, no number) and sent, open and cancelled, PH's, firm B's by case and by party, and a missing id. That is 85 pairs plus 20 held pairs. There were **0 disagreements**: GET 404 ⇔ cancel 404; GET 200 open ⇔ cancel 200; GET 200 Cancelled ⇔ cancel 409 `CANCELLED`.
+  * Sees the case but not the client: user-O gets 200 on KA's requests and 404 on PA's party-only ones.
+  * Sees the client but not the case: user-V gets 200 on PA's party-only requests and 404 on KA's and KA2's.
+  * user-W sees only KC's requests. user-T and user-R see everything in firm A except PH.
+  * A row written by SQL on another client's case (PA on KC) is judged by its case: V gets 404/404, W gets 200/200.
+  * Firm B on firm A's open request: 404, still open.
+* **A refusal tells nothing apart.** On an unseen request (open, cancelled, held or sent) the 404 body is byte-identical to a missing id's, and to the GET's: "No such trust request in your firm.", `NOT_FOUND`. It never names a DR- number and never says "already cancelled".
+  * Bad bodies are refused before visibility, so unseen and missing answer the same: empty or `{}` 422, extra field 422, over 200 characters 422, control character or NUL 422, not JSON 400, an array 422.
+  * The text check (`textOk`) runs after visibility: a bidi or zero-width-only reason answers 404 unseen and missing, 422 when seen. An Arabic reason is stored as typed.
+  * With no key, the answer is 403 `MISSING_PERMISSION` with the same body for seen, held and missing.
+  * After user-O's team row ends, both routes answer 404.
+* **Nothing is written on a refusal.** Every 404 and 409 was checked: the `audit_event` count and a hash of every request row (`cancel_reason`, `cancelled_by`, `updated_at`) are unchanged.
+* **Odd ids answer the same for unseen and missing**, on GET and cancel alike: upper case, braces, `urn:uuid:`, a leading or trailing space, a newline, NUL, no dashes, a trailing slash, `..%2F`, 5,000 characters, an SQL quote, mixed case. All are 404.
+  * A seen request in upper case cancels its lower-case row (200).
+* **Timing at rest is noise.** 400 alternating cancels each, by user-O:
+  * Unseen open: p50 11.53 ms. Unseen cancelled: 11.51 ms. Missing: 11.47 ms. A second missing id: 11.43 ms.
+  * Mann-Whitney z: 0.26 and 0.94 against missing. The control (missing against missing) was -0.62.
+* **Concurrency:**
+  * Deposit against cancel on one request, 40 trials with a staggered start: 34 × (201, 200) and 6 × (409 `MONEY_RULE` "only a sent, not cancelled, trust request takes a payment", 200). No 500, and no payment created after `cancelled_at`.
+  * Deposit plus two cancels, 20 trials: always one 200 and one 409.
+  * 16 and 32 cancels on one request: one 200, the rest 409 `CANCELLED`, one audit line; slowest 219 ms.
+  * 16, 32 and 64 cancels on distinct requests, half unseen: the seen ones 200 and the unseen 404 every time, the audit lines exactly the seen count, the unseen requests still open. Slowest 339 ms at 64. Firm B's `/answer` answered 200 meanwhile.
+  * 32 unseen cancels and 8 deposits on one request: 32 × 404 and 8 × 201.
+  * The log has no P2028, no "Transaction API error" and no 500. `scopeOf` runs on `this.db` before the transaction, and everything inside runs on `tx`, so the r9-M1 shape holds.
+* **The check:** `check_fo7t_trust.ts` on the head: 62/62. With `service.ts` put back to 3e8d36f5f it is red, 3 failures (`[200, 200, 409 "DR-0009 is already cancelled"]`), so it pins the fix. The file was restored afterwards.
+* **The migration diff is comment-only:** line 7, the stamp comment (this closes r9-m1). `rollback.sql` and every statement are unchanged. The checksum changes, but no kept database has applied this migration (as r9-m1 said).
+
+**Findings**
+* **r11-m1 (Minor): the cancel locks the row before it checks visibility, so a locked unseen request answers late.**
+  * Code: `service.ts:128-130`. The `select … for update` runs on `firm_id` and `id` alone, and the C5 test is applied afterwards in JavaScript.
+  * Repro: psql holds `for no key update` on KA2's open request (unseen by user-O) for 2 s, then 7 s. During the hold, user-O's cancel on it answers 404 after **1,599 ms** (6,604 ms for the 7 s hold). A missing id answers 404 in 53 ms, and the GET on the same request in 54 ms (the read takes no lock).
+  * So while a deposit or cancel is in flight on a request, a same-firm key holder who knows its uuid can tell "exists and is being written" from "missing". Their cancels also queue legitimate writers on a request they cannot see, though only for milliseconds.
+  * At rest there is no difference (z 0.26). Status and body are always the same, and the id is a v4 uuid.
+  * Fix: put the C5 condition in the locking query, as `reads.ts:39` does (`seen(scope, "q")`, exported and shared), so an unseen row is never locked and the two routes use one predicate: `… and id = ${rid}::uuid and (case_id = any(${seen.cases}::uuid[]) or (case_id is null and coalesce(person_id, company_id) = any(${seen.parties}::uuid[]))) for update`, then `if (!r) notFound`.
+* **Unchanged and accepted:** r10-m1. Visibility is judged when the request arrives, as for deposits: a team row ended in the milliseconds between `scopeOf` and the lock still lets that cancel through.
+* **Not tested live:** a company party. The predicate uses `coalesce(person_id, company_id)`, as the read does.
+
+Verdict for db39eccd6b001db1f18ce866712a60e672400c1d: **Approve.** Cancel and the request read agree for every caller, request and state tried. A refusal writes nothing, audits nothing, and differs from a missing id in nothing at rest. No pool exhaustion at 64 at once. r11-m1 is Minor and can be a follow-up.
