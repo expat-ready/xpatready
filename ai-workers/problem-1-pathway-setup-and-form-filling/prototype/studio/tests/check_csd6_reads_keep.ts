@@ -155,7 +155,9 @@ await main("CS-D6 reads", "Read by list, the fingerprint and the file check; sta
   ok("CS-D6 DW4 pass: the Owner reads the list with the firm's number (Sample 6 years, firm setting), its zone and today's date", k.status === 200 && k.body?.years === 6 && k.body?.source === "firm setting" && !!zone && /^\d{4}-\d{2}-\d{2}$/.test(today ?? ""), [k.status, k.body?.years, zone, today]);
   const closeAt = (id: string, offset: string) => sql(`update runtime_case set status = 'CLOSED', close_outcome = 'CLOSED_BY_STAFF', closed_reason = 'Sample (CS-D6 DW4)', closed_at = (('${today}'::date - interval '6 years' + interval '${offset}')::date + time '12:00') at time zone '${zone}' where id = '${id}'`);
   closeAt(kExact.id, "0 days"); closeAt(kShort.id, "1 day"); closeAt(kReopened.id, "0 days");
-  sql(`update runtime_case set status = 'OPEN' where id = '${kReopened.id}'`);   // reopened: closed_at stays, the status decides
+  // Reopened as case-close.ts reopens: back to OPEN with the closing fields cleared.
+  sql(`update runtime_case set status = 'OPEN', closed_at = null, closed_reason = null, close_outcome = null where id = '${kReopened.id}'`);
+  ok("setup: the reopened case is OPEN again", sql(`select status from runtime_case where id = '${kReopened.id}'`) === "OPEN");
   k = await staff("GET", KEEP, owner);
   const listed = (k.body?.cases ?? []) as { case_id: string; closed_on: string; passed_on: string; documents_held: number; document_ids: string[] }[];
   const exact = listed.find((x) => x.case_id === kExact.id);
@@ -184,8 +186,8 @@ await main("CS-D6 reads", "Read by list, the fingerprint and the file check; sta
   try {
     const { KeepPeriodReminders, KEEP_REMIND_JOB, KEEP_WEEKLY_JOB } = await import("../api/src/documents/keep-period.ts");
     const clock = new FakeClock(new Date()), jobs = fakeJobs(clock), inner = fakeNotifications({ now: () => clock.now() });
-    const told: { staffId: string; kind: string; id: string }[] = [], handlers = new Map<string, JobHandler>();
-    const notifications = { async notify(tx: unknown, rcp: { staffId: string }, kind: Parameters<typeof inner.notify>[2], item: Parameters<typeof inner.notify>[3]) { told.push({ staffId: rcp.staffId, kind, id: item.id }); return inner.notify(tx, rcp, kind, item); } };
+    const told: { staffId: string; kind: string; id: string; at: Date }[] = [], handlers = new Map<string, JobHandler>();
+    const notifications = { async notify(tx: unknown, rcp: { staffId: string }, kind: Parameters<typeof inner.notify>[2], item: Parameters<typeof inner.notify>[3]) { told.push({ staffId: rcp.staffId, kind, id: item.id, at: clock.now() }); return inner.notify(tx, rcp, kind, item); } };
     const watched = { ...jobs, async handle(n: string, h: JobHandler) { handlers.set(n, h); return jobs.handle(n, h); } };
     await new KeepPeriodReminders({ db, jobs: watched as never, notifications: notifications as never, clock, keepPeriods: new KeepPeriods(db) }).register();
     const counts = () => sql("select (select count(*) from case_document) || '/' || (select count(*) from runtime_case)");
@@ -193,9 +195,13 @@ await main("CS-D6 reads", "Read by list, the fingerprint and the file check; sta
     for (let d = 0; d < 14; d++) await clock.advance({ days: 1 });
     const ownerStaff = sql("select s.id from platform_staff s join platform_firm f on f.id = s.firm_id where s.actor_id = 'user-R' and f.key = 'sample-firm'");
     const aboutExact = told.filter((t) => t.id === kExact.id && t.kind === NOTIFICATION_KIND.KEEP_PERIOD_PASSED), byOwner = aboutExact.filter((t) => t.staffId === ownerStaff);
-    const others = told.filter((t) => [kShort.id, kOpen.id, kReopened.id, c.id].includes(t.id));
+    const others = told.filter((t) => [kOpen.id, kReopened.id, c.id].includes(t.id));
     ok("CS-D6 DW6 pass: over 14 days the Owner (a holder of the dispose key) is told about the past case once a week: twice, as keep-period-passed on the case", byOwner.length === 2 && aboutExact.every((t) => t.kind === "keep-period-passed"), { byOwner: byOwner.length, aboutExact: aboutExact.length, jobs: jobs.jobs.length });
-    ok("CS-D6 DW6 fail: never about the case short of its period, the open case or the reopened case", others.length === 0, others);
+    ok("CS-D6 DW6 fail: never about the open case or the reopened case", others.length === 0, others);
+    // The case a day short passes on the firm's tomorrow, inside the 14 days: told only once its date has come.
+    const shortPass = sql(`select to_char(((closed_at at time zone '${zone}')::date + interval '6 years')::date, 'YYYY-MM-DD') from runtime_case where id = '${kShort.id}'`)!;
+    const early = told.filter((t) => t.id === kShort.id && new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(t.at) < shortPass);
+    ok("CS-D6 DW6 fail: the case a day short of its period is never told about before the day it passes", early.length === 0 && told.some((t) => t.id === kShort.id), { shortPass, early: early.length, later: told.filter((t) => t.id === kShort.id).length });
     const n0 = told.length, q = await new KeepPeriodReminders({ db, jobs: watched as never, notifications: notifications as never, clock, keepPeriods: new KeepPeriods(db) }).weekly();
     await clock.advance({ minutes: 1 });
     ok("CS-D6 DW6 fail: a second weekly run in the same week queues nothing and tells nobody", q === 0 && told.length === n0, [q, told.length - n0]);
