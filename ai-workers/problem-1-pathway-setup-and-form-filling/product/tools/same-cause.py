@@ -21,7 +21,7 @@ spec = importlib.util.spec_from_file_location("mqc", os.path.join(HERE, "merge-q
 mqc = importlib.util.module_from_spec(spec); spec.loader.exec_module(mqc)
 Z = "%Y-%m-%dT%H:%M:%SZ"
 ROW = re.compile(r"\| (check_[A-Za-z0-9_.-]+) \| (FAIL|failed twice) \| [^|]*\| (.*?) \|\s*$", re.M)
-NAMED = re.compile(r"FAIL  ?\S|(?<!name: ')\bError: \S")      # a FAIL line or an error with words; "name: 'TimeoutError'" names no cause
+NAMED = re.compile(r"\bFAIL +\S|(?<![\w\[])\w*Error(?: \[\w+\])?: \S|\bSTOPPED after \S")   # a FAIL or STOPPED line, or an error with words; a bare "name: 'TimeoutError'", "STOP the copy" or an empty reason names no cause
 ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}(?:-[0-9a-f]*)*|\b[0-9a-f]{12,}\b|\b\d{4}-\d\d-\d\d(?:T[\d:.]+Z?)?")
 
 
@@ -99,15 +99,17 @@ def live(st, since):
                 st["runs"][str(w["id"])] = r
         except Exception as e:
             bad.append(f"run {w['id']}: {str(e)[:60]}"); continue
-        todo = [str(j) for j in r["jobs"] if str(j) not in st["logs"]][:budget if time.time() < end else 0]; budget -= len(todo)
+        todo = [str(j) for j in r["jobs"] if str(j) not in st["logs"] and st["tries"].get(str(j), 0) < 3][:budget if time.time() < end else 0]; budget -= len(todo)
         with ThreadPoolExecutor(8) as pool:
             for i, k, err in pool.map(log, todo):
                 if err:
-                    bad.append(f"part {i} of run {w['id']}: {err}")
+                    st["tries"][i] = st["tries"].get(i, 0) + 1
                 else:
                     st["logs"][i] = k
         missing = [j for j in r["jobs"] if str(j) not in st["logs"]]
-        left += len(missing)
+        dead = [j for j in missing if st["tries"].get(str(j))]; left += len(missing) - len(dead)
+        if dead:
+            bad.append(f"part {dead[0]}" + (f" and {len(dead) - 1} more" if len(dead) > 1 else "") + f" of run {w['id']}: log not given (3 tries, then left alone)")
         if not missing:
             r["fails"], r["blank"] = {}, 0
             for j in r["jobs"]:
@@ -134,7 +136,7 @@ def live(st, since):
 def memory(f):
     try:
         st = json.load(open(f))
-        ok = all(isinstance(st.get(k), dict) for k in ("runs", "logs", "fired", "ran")) and all(
+        ok = all(isinstance(st.get(k), dict) for k in ("runs", "logs", "fired", "ran", "tries")) and all(
             isinstance(r, dict) and isinstance(r.get("end"), str) and isinstance(r.get("prs"), list) and (not r.get("done") or isinstance(r.get("fails"), dict)) for r in st["runs"].values())
         return (st, "") if ok else (None, "not as written")
     except FileNotFoundError:
@@ -148,7 +150,7 @@ def main():
     now = (datetime.fromisoformat(o.now.replace("Z", "+00:00")) if o.now else datetime.now(timezone.utc)).astimezone(timezone.utc)
     since = (now - timedelta(hours=HOURS)).strftime(Z); f = os.path.join(o.state, "same-cause.json"); os.makedirs(o.state, exist_ok=True)
     st, why = memory(f)
-    st = st or {"runs": {}, "logs": {}, "fired": {}, "ran": {}}
+    st = st or {"runs": {}, "logs": {}, "fired": {}, "ran": {}, "tries": {}}
     if why:
         print(f"ACT   same cause: memory {why}: {f}; the last {HOURS} h are read again")
     (left, unread, bad), green = (0, 0, []), None

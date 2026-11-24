@@ -6,7 +6,7 @@ set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/sc.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "${T:?}"' EXIT
 N="$TOOLS/fixtures/same-cause/night-24-nov.json"; k=0
-new() { k=$((k + 1)); mkdir "$T/s$k"; printf '{"runs":{},"logs":{},"fired":{},"ran":{}}' > "$T/s$k/same-cause.json"; }
+new() { k=$((k + 1)); mkdir "$T/s$k"; printf '{"runs":{},"logs":{},"fired":{},"ran":{},"tries":{}}' > "$T/s$k/same-cause.json"; }
 run() { o=$(python3 -I "$TOOLS/same-cause.py" --state "$T/s$k" --fixture "$1" --now "$2" 2>&1); }
 has() { grep -qF -- "$1" <<<"$o" && echo 1; }; not() { ! grep -qF -- "$1" <<<"$o" && echo 1; }; acts() { grep -c '^ACT' <<<"$o"; }
 pick() { python3 -I -c '
@@ -35,17 +35,18 @@ mk $E1 '[1,2]' '{"check_a.ts":"exit 1: FAIL  x"}' $E2 '[3]' '{"check_b.ts":"exit
 mk $E1 '[1]' '{"check_a.ts":"exit 1: FAIL  x"}' $E2 '[3]' '{"check_a.ts":"exit 1: FAIL  x"}'; new; run "$T/m.json" 2026-11-24T03:00:00Z; ok "fail: no pull request in both is said" "$(has 'pull requests in both: none;')" "$o"
 mk 2026-11-23T13:00:00Z '[1]' '{"check_a.ts":"exit 1: FAIL  x"}' $E2 '[3]' '{"check_a.ts":"exit 1: FAIL  x"}'; new; run "$T/m.json" 2026-11-24T03:00:00Z; ok "pass: 13 h apart is not the same night" "$([ "$(acts)" = 0 ] && echo 1)" "$o"
 mk $E1 '[1]' '{"check_a.ts":"exit 1: FAIL  x"}' $E2 '[3]' '{"check_a.ts":"exit 1: FAIL  x"}'; new; run "$T/m.json" 2026-11-24T03:00:00Z; run "$T/m.json" 2026-11-24T23:00:00Z; mk 2026-11-25T01:00:00Z '[1]' '{"check_a.ts":"exit 1: FAIL  x"}' 2026-11-25T02:00:00Z '[3]' '{"check_a.ts":"exit 1: FAIL  x"}'; run "$T/m.json" 2026-11-25T03:00:00Z; ok "fail: after 12 h without it, the cause is told again" "$([ "$(acts)" = 1 ] && echo 1)" "$o"
-for m in '' '{' '[]' '{"runs":{},"logs":[],"fired":{},"ran":{}}'; do new; printf '%s' "$m" > "$T/s$k/same-cause.json"; run "$T/five.json" 2026-11-23T20:40:00Z; ok "fail: a memory of '$m' is an ACT, and the 12 h are judged again" "$([ "$(acts)" = 2 ] && has 'ACT   same cause: memory ')" "$o"; done
+for m in '' '{' '[]' '{"runs":{},"logs":[],"fired":{},"ran":{},"tries":{}}'; do new; printf '%s' "$m" > "$T/s$k/same-cause.json"; run "$T/five.json" 2026-11-23T20:40:00Z; ok "fail: a memory of '$m' is an ACT, and the 12 h are judged again" "$([ "$(acts)" = 2 ] && has 'ACT   same cause: memory ')" "$o"; done
 k=$((k + 1)); run "$T/five.json" 2026-11-23T20:40:00Z; ok "fail: a missing memory is an ACT" "$(has 'ACT   same cause: memory missing')" "$o"
 new; run "$T/none.json" $E1; ok "fail: an unreadable input is an ACT" "$(has 'ACT   same cause: not measured')" "$o"
 
 mk $E1 '[1]' '{"check_a.ts":"exit 1:   name: '"'TimeoutError'"'","check_b.ts":"exit 1: ","check_c.ts":"exit 1: [TypeError: fetch failed] {"}' $E2 '[3]' '{"check_a.ts":"exit 1:   name: '"'TimeoutError'"'","check_b.ts":"exit 1: "}'; new; run "$T/m.json" 2026-11-24T03:00:00Z
 ok "pass: rows that name no cause are counted, never compared" "$([ "$(acts)" = 0 ] && has '5 red rows name no cause')" "$o"
 mk $E1 '[1]' '{"check_a.ts":"exit 1: locator.click: Error: strict mode violation: nav resolved to 2"}' $E2 '[3]' '{"check_a.ts":"exit 1: locator.click: Error: strict mode violation: nav resolved to 2"}'; new; run "$T/m.json" 2026-11-24T03:00:00Z; ok "fail: an error with words is a cause" "$([ "$(acts)" = 1 ] && echo 1)" "$o"
+for w in 'ReferenceError: foo is not defined' 'PrismaClientKnownRequestError: P2003 fk' 'AssertionError [ERR_ASSERTION]: 3 !== 4' 'STOPPED after \"the approver sees\": locator.'; do mk $E1 '[1]' "{\"check_a.ts\":\"exit 1: $w\"}" $E2 '[3]' "{\"check_a.ts\":\"exit 1: $w\"}"; new; run "$T/m.json" 2026-11-24T03:00:00Z; ok "fail: '${w:0:24}' is a cause" "$([ "$(acts)" = 1 ] && echo 1)" "$o"; done
 many() { python3 -I -c 'import json; print(json.dumps({"check_%02d.ts" % i: "exit 1: FAIL  x" for i in range(9)}))'; }
 mk $E1 '[1]' "$(many)" $E2 '[3]' "$(many)"; new; run "$T/m.json" 2026-11-24T03:00:00Z; ok "fail: the one ACT names every suite" "$([ "$(acts)" = 1 ] && has '| and in check_03.ts check_04.ts check_05.ts check_06.ts check_07.ts check_08.ts')" "$o"
 run "$T/m.json" 2026-11-24T03:10:00Z; ok "the info lines say how many more" "$([ "$(grep -c '      again  2 runs' <<<"$o")" = 5 ] && has 'again  4 more causes')" "$o"
-for m in '{"runs":{"1":5},"logs":{},"fired":{},"ran":{}}' '{"runs":{"1":{"done":true,"end":"2026-11-23T20:30:00Z","prs":[]}},"logs":{},"fired":{},"ran":{}}'; do new; printf '%s' "$m" > "$T/s$k/same-cause.json"; run "$T/five.json" 2026-11-23T20:40:00Z; ok "fail: a memory that is wrong inside is an ACT and is read again" "$([ "$(acts)" = 2 ] && has 'memory not as written')" "$o"; run "$T/five.json" 2026-11-23T20:40:00Z; ok "and it is whole at the next check" "$([ "$(acts)" = 0 ] && echo 1)" "$o"; done
+for m in '{"runs":{"1":5},"logs":{},"fired":{},"ran":{},"tries":{}}' '{"runs":{"1":{"done":true,"end":"2026-11-23T20:30:00Z","prs":[]}},"logs":{},"fired":{},"ran":{},"tries":{}}'; do new; printf '%s' "$m" > "$T/s$k/same-cause.json"; run "$T/five.json" 2026-11-23T20:40:00Z; ok "fail: a memory that is wrong inside is an ACT and is read again" "$([ "$(acts)" = 2 ] && has 'memory not as written')" "$o"; run "$T/five.json" 2026-11-23T20:40:00Z; ok "and it is whole at the next check" "$([ "$(acts)" = 0 ] && echo 1)" "$o"; done
 
 # The live reader: a curl that answers as GitHub does, from a list of runs, parts and raw log rows ($T/g.json)
 mkdir "$T/bin"; cat > "$T/bin/curl" <<'G'
@@ -112,7 +113,8 @@ new; g_ stop; live; ok "pass: two causes whose retries stopped alike" "$([ "$(ac
 new; g_ bytes; live; ok "a log with odd bytes is read" "$([ "$(acts)" = 1 ] && echo 1)" "$o"
 new; g_ blank; live; ok "fail: red parts with no suite row are an ACT, never green" "$(has 'ACT   same cause: 2 red parts hold no suite row (set-up, a cut log')" "$o"
 new; g_ pages; live; ok "fail: batches on the second page of runs, and the green one too" "$([ "$(acts)" = 1 ] && has 'run 7, 24 Nov 06:00 IST')" "$o"
-new; g_ lost; live; ok "fail: one log that cannot be read is an ACT, and the other two runs are still compared" "$([ "$(acts)" = 3 ] && [ "$(has 'ACT   same cause: not read: part 11 of run 1')" = 1 ] && has 'alike in batch #298 (run 2')" "$o"
+new; g_ lost; live; ok "fail: one log that cannot be read is an ACT, and the other two runs are still compared" "$([ "$(acts)" = 2 ] && [ "$(has 'ACT   same cause: not read: part 11 of run 1: log not given')" = 1 ] && has 'alike in batch #298 (run 2')" "$o"
+live; live; : > "$T/calls"; live; ok "a log refused three times is left alone and still said" "$(! grep -q 'jobs/11/logs' "$T/calls" && has 'not read: part 11 of run 1')" "$o"
 new; g_ nopr; live; ok "fail: a batch whose pull request is not found is an ACT, not read as none" "$([ "$(has 'ACT   same cause: not read: run 2: no pull request found')" = 1 ] && not 'pull requests in both')" "$o"
 new; g_ norec; python3 -I -c 'import json,sys; f=sys.argv[1]; d=json.load(open(f)); d["down"]=["workflows"]; json.dump(d,open(f,"w"))' "$T/g.json"; live; ok "fail: runs that cannot be read are an ACT" "$(has 'ACT   same cause: not read')" "$o"
 new; g_ green2; live; ok "pass: one failed batch only" "$([ "$(acts)" = 0 ] && echo 1)" "$o"
