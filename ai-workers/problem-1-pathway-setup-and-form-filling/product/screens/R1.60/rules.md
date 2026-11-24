@@ -13,6 +13,17 @@ Lane: runtime. Status: **rules only; no code, no migration until the Lead types 
 - The bounds below (B1-B10) are the Lead's, word for word in substance.
 - It is never built at the same time as FO-7t part 2, which also changes `trust/service.ts`.
 
+**Lead 19, 24 Nov, #3371 comment 7121082140 (P-294, P-628; recorded for the founder's review).** Answers to O1-O4:
+- **O1:** yes to the stored state and its CHECK. The stamp is given with "go", after #3033, above main's newest stamp at that time.
+- **O2:** G1, G2 and G3 as recommended. A missing row or port is stated in the PR, and the Lead adds a BACKLOG X-row for it (P-582).
+- **O4:** two PRs, part a then part b. Lead B 5 reads part a (money, migration).
+
+**Lead 19, #3371 comment 7121209423: corrections, which win over the rulings above.**
+1. **Pay link.** P-567 (3) defers card into trust only. AG-6-61 rule 5 stands: the request carries its no-login link and the trust payment details, and **card is not offered**. #3033 builds no such link, so it is gap G4, never a P-567 departure.
+2. **Send automatically** numbers and sends at signing; a person is needed only under Ask me first. With the trust details missing it still waits (rule 6). G2 stands as a named gap.
+3. **O3 changed:** a **person** cancels, with a reason (rule 11). An undone retainer cancels nothing by itself. Its PREPARED request refuses Send, says why, and offers Cancel with a reason. A sent one is left to a person.
+4. "Cancelled keeps its number" applies only to a request already sent. A PREPARED one has no number (rules 5, 11).
+
 **Source:** the team requirement `domain/requirements-2026-11-02/02-functional-requirements/agent/AG-06-billing-and-payments_v2.1_2026-10-27.md`, AG-6-61 "Deposit request" (decisions MS-D6, MS-D20(2)(8)(9)(11)(17), MS-D21(3)(4)(11), AG05-D1(5), AG05-D2(4), AG05-D4(5)), read 24 Nov. R1.60's old Done when ("one draft deposit invoice") is replaced.
 
 ## Bounds (Lead 19, after Lead B 5)
@@ -27,14 +38,12 @@ Lane: runtime. Status: **rules only; no code, no migration until the Lead types 
 | B6 | **#3033's "unsent" is never PREPARED.** #3033 stores a staff-made request unsent while the trust details block is empty. That is a different state, and nothing reads one as the other (see O1). | — (the Lead's bound) |
 | B7 | **No trust details: the request waits, even under Send automatically.** | §5.6: "if the trust details block is empty, the request waits in the Needs you item with 'Add your trust payment details', even under Send automatically." |
 | B8 | **AG-6-61 rules 12, 13, 14 and author default D7** are in this part (R12-R15 below). | §5.12, §5.13, §5.14; §5.4 and §5.11 "*(Author default D7.)*" |
-| B9 | **Pay link: P-567 (3) governs.** A trust request has **no pay link in R1**. See the named departure below. | §5.5: "The email … holds: DR-0001, amount incl. estimated tax, a no-login pay link, and the trust payment details block." |
+| B9 | **Pay link (corrected):** AG-6-61 rule 5 stands. The sent request carries its no-login pay link and the trust payment details block. **Card is not offered**, because no trust card account exists (P-567 (3) defers card into trust). #3033 builds no such link, so it is **gap G4**, not a departure. | §5.5: "The email … holds: DR-0001, amount incl. estimated tax, a no-login pay link, and the trust payment details block (AG-6-71). Card is offered only when the trust card account is connected (MS-D10(3))." |
 | B10 | **Needs you and Automatic messages** go through the case side's port where one exists, or are stated as a gap (see "Ports and gaps"). | §5.4, §3 "AG-12 Automatic messages row 'Deposit request' (AG12-D21). AG-11 Needs you." |
 
-### Named departure (B9)
-- **AG-6-61 §5.5** puts "a no-login pay link" in the deposit request's email, and **§5.8** allows "Card through the trust card account".
-- **P-567 (3)** (the founder, 14 Nov) says: "card only for invoiced fees into the operating account; card into trust waits on a verified processor set-up …; AG-6-70's optional trust card account is not in month one". The schema agrees: `payLinkTokenHash` is "unused in R1: no pay link on a trust request (P-567 (3))".
-- **So in R1:** the deposit request's email carries the `DR-` number, the amount including estimated tax, and the trust payment details block, with **no pay link and no card**. Payment is offline only (§5.8, recorded by staff through #3033's deposits route).
-- J-61 says the same: "a trust deposit on signing is never taken by card (it stays an offline trust request)".
+### Pay link and card (B9, corrected by Lead 19)
+- **Pay link.** AG-6-61 §5.5's no-login pay link stands. On main, `money_trust_request.payLinkTokenHash` exists but nothing writes it, and its schema comment ("unused in R1: no pay link on a trust request (P-567 (3))") reads P-567 (3) the way the Lead has now corrected. #3033 builds no link, so it is **gap G4**. This part writes no link, and the Lead adds an X-row. The stale schema comment is fixed in that row, not here.
+- **Card.** It is not offered on a deposit request: §5.5 offers card "only when the trust card account is connected", and P-567 (3) defers that account ("Ledger now, trust card later"). J-61: "a trust deposit on signing is never taken by card". Payment is offline, recorded by staff through #3033's deposits route (§5.8).
 - Unconfirmed: no counsel.
 
 ## The rules
@@ -46,16 +55,17 @@ Lane: runtime. Status: **rules only; no code, no migration until the Lead types 
 | R3 | Conditions | §5.2 | B1. |
 | R4 | **Amount source** | §5.3: "Amount = the deposit row + estimated tax (MS-D21(4)): *Example:* row 1,000, Ontario → 'CAD 1,130 incl. estimated HST'. Currency = the case's (or prospect's)." | The signed version's own first fee row (the event's `fees[]`; for offline, the signed version's stored fees), never an editable draft. Estimated tax is the GST/HST rate of the Bill to's province (P-701: GST/HST only), rounded once by FO-7b's stated rule (R1.59), and stored apart (O1). The currency is the retainer's. |
 | R5 | **Holder and addressee** | §5.3: "Holder = the case, or the person or company if no case exists yet (moves later, AG-6-60). Addressed to the case's Bill to, or the retainer's client before a case exists." | `caseId` if the won prospect has a case in the signing transaction, else `personId` / `companyId`. |
-| R6 | **Ask me first; never sent by itself** | §5.4: "Ask me first: one item in the Needs you of the case lead, or the file owner before a case exists (MS-D20(8)) … It also shows to every holder of `agent/payment:record`, and any of them may send it (AG16-60)." §10: "Ask me first by default (AG16-76)." | PREPARED. A person sends it (B5). Send automatically and Off wait for the Automatic messages row (gap G2). |
+| R6 | **Ask me first; never sent by itself** | §5.4: "Ask me first: one item in the Needs you of the case lead, or the file owner before a case exists (MS-D20(8)) … It also shows to every holder of `agent/payment:record`, and any of them may send it (AG16-60)." §10: "Ask me first by default (AG16-76)." | PREPARED. A person sends it (B5). §5.4 "Send automatically: sent at signing": it numbers and sends with no person, except that with the trust details missing it still waits (B7). That choice, and Off, wait for the Automatic messages row (gap G2); until then every firm is Ask me first. |
 | R7 | Trust details missing | §5.6 | B7. Send is refused with "Add your trust payment details" while the block is empty, and the request stays PREPARED. |
 | R8 | Idempotent | §5.7, §9 | B4. The second delivery is a quiet no-op, not an error, and writes no audit line. |
 | R9 | **Who may see and act** | §8: "Send, edit, cancel: `agent/payment:record` (a deposit request is a trust request, MS-D21(11))." | Reads go through `MoneyVisibilityPort` (C5, fail closed), as in #3033's request read. Another firm gets 404. A client sees nothing until it is sent. |
 | R10 | **Edit amount** (D7) | §5.4: "[Send] [Edit amount] [Don't send]. *(Edit amount and Don't send: author default D7.)*" | Only while PREPARED. The amount and estimated tax are re-entered (integer cents, above 0, the same currency), with one audit line showing before and after. Not allowed once sent. |
-| R11 | **Don't send / Cancel** (D7) | §5.11: "An unpaid request may be cancelled by a person with a reason; it keeps its number and shows 'Cancelled'. *(Author default D7.)*" §6: "`PREPARED \| SENT \| PART_PAID` → `CANCELLED` (with reason; a part-paid request keeps its money in trust)." | "Don't send" cancels a PREPARED request with a reason, and it has no number. A sent one is cancelled through #3033's route. Either keeps its version (B4). |
+| R11 | **Don't send / Cancel** (D7) | §5.11: "An unpaid request may be cancelled by a person with a reason; it keeps its number and shows 'Cancelled'. *(Author default D7.)*" §6: "`PREPARED \| SENT \| PART_PAID` → `CANCELLED` (with reason; a part-paid request keeps its money in trust)." | Only a person cancels, always with a reason; nothing cancels by itself. "Don't send" cancels a PREPARED request: it has no number and never gets one (rule 5). A sent request is cancelled through #3033's route and **keeps its `DR-` number**. Either one keeps its version (B4). |
 | R12 | **AG-05 check** (rule 12) | §5.12: "AG-06 answers 'money received on this retainer's deposit request?' so AG-05 can allow or refuse 'Marked signed by mistake'." | One method on `ClientMoneyPort`, `depositReceived(firm, retainerVersionId): boolean` (fake and adapter on one contract test). Nothing on the retainer side calls it in this part; the AG-05 refusal is the retainers module's row. |
 | R13 | **Signed before trust YES** (rule 13) | §5.13: "When the Owner answers Yes, one deposit request is prepared for each signed retainer whose deposit row is unpaid and has no request, as Ask me first, in the case lead's Needs you." | Done in the same transaction as the Owner's YES answer (#3033's `PUT answer`, which this part extends). The signed retainers come from the retainers module's read through a port (gap G3). B4 makes a repeat answer harmless. |
 | R14 | **Amendment "On signing" row** (rule 14) | §5.14: "A signed amendment with an 'On signing' row … prepares a deposit request for that row, … one per amendment version." | Same path as R2: the amendment's own version id is the B4 key. |
 | R15 | Billing stays separate | §5.9: "The deposit row is still billed by Bill this, and paid from trust (MS-D21(3)); billed equals agreed." | Nothing here writes an invoice. Ready to bill keeps the row. |
+| R17 | **A retainer undone after signing** (Lead 19 correction 3) | §5.11: "An unpaid request may be cancelled by a person with a reason". §5.12: AG-05's "Marked signed by mistake". | Nothing is cancelled by itself. At Send, a PREPARED request whose retainer version is no longer signed **refuses Send**, says why ("This retainer is no longer signed. Cancel this request with a reason, or sign the retainer again."), and offers Cancel with a reason. A sent one is left to a person. The check is a read at Send time through a front-office port (gap G5). |
 | R16 | **Audit and events** | §9: "Audit: prepared, sent (by whom or automatically), cancelled." | `trust.request_prepared`, `trust.request_amount_edited`, and `trust.request_cancelled` for Don't send, each in its own transaction, written before the event row (contracts §0.5). Sent comes from #3033. Actor: `system:signing-webhook`, the offline signer, or the Owner (R13). |
 
 ## Ports and gaps (B10)
@@ -64,8 +74,10 @@ Lane: runtime. Status: **rules only; no code, no migration until the Lead types 
 |---|---|---|
 | **Needs you item** | `ports/notifications.ts` `NotificationPort.notify(tx, recipient, kind, item)` (PF-18np): one per person, item and kind, so a repeat never makes a second; group `NEEDS_YOU`. | Uses it. It adds one `NOTIFICATION_KIND` line `deposit-request-prepared` (group `NEEDS_YOU`) and one item kind `trust-request`, adding lines only, as the port's header requires. |
 | **Who gets it** (the case lead, or the file owner before a case; every holder of `agent/payment:record`) | **Gap G1.** No port names a case's lead or lists the holders of a key. | **Recommended:** before a case exists, the retainer's `representativeStaffId` (in `signing.completed`; the signer for offline) as the file owner. With a case, a new `caseLead(firm, caseId)` on `MoneyVisibilityPort`, with fake and adapter on one contract test (the same shape as #3033's proposed `caseClient`). The holders of `agent/payment:record` see PREPARED requests in a list read (`GET …/money/trust/requests?state=PREPARED`), not by a notification each, until a key-holders port exists. Stated gap. |
-| **Automatic messages row** (Send automatically · Ask me first · Off) | **Gap G2.** It does not exist on main. | One reader, `depositRequestMode(firm)`, answers `ASK_FIRST` for every firm until the AG-12-127 row adds the setting. Off and Send automatically, and B7's "even under Send automatically" case, are tested in that row. |
-| **Signed retainers without a request** (R13) | **Gap G3.** No cross-module read. | A `signedUnrequested(firm)` method on a front-office port, with fake and adapter on one contract test. If the Lead prefers, R13 splits into a part b. |
+| **Automatic messages row** (Send automatically · Ask me first · Off) | **Gap G2** (ruled; X-row by the Lead). It does not exist on main. | One reader, `depositRequestMode(firm)`, answers `ASK_FIRST` for every firm until the AG-12-127 row adds the setting. Send automatically (numbers and sends at signing), Off, and B7's "even under Send automatically" case are tested in that row. |
+| **Signed retainers without a request** (R13) | **Gap G3** (ruled). No cross-module read. | A `signedUnrequested(firm)` method on a front-office port, with fake and adapter on one contract test, in part b. |
+| **No-login pay link on a trust request** (B9) | **Gap G4** (X-row by the Lead). #3033 builds none, and `payLinkTokenHash` is never written. | This part writes no link. The sent email carries the `DR-` number, the amount with estimated tax and the trust details. The link joins in G4's row. |
+| **Is this retainer version still signed?** (R17) | **Gap G5.** "Marked signed by mistake" does not exist on main (`git grep` finds nothing). | A `retainerVersionSigned(firm, retainerVersionId)` read on a front-office port, with fake and adapter on one contract test, called at Send. Until AG-05's undo exists, it answers from the version's signed state, so R17's refusal is proven on the fake. |
 
 ## Acceptance test (`tests/journeys/j_60.ts` plus cases in `check_fo7t_trust.ts`); each case has a pass and a planted fail
 
@@ -83,32 +95,38 @@ Fixtures are Sample: a Sample firm in Ontario, deposit row CAD 1,000.00, Sample 
 5. A first row that is not `ON_SIGNING`, or an amount that is null or 0: nothing is prepared.
 6. A consultation agreement or an `OTHER` document signed: nothing is prepared.
 7. A request made by staff and stored unsent by #3033 (empty details) never reads as PREPARED, never shows in the PREPARED list, and never counts for B4. (Planted fail: PREPARED read as `number IS NULL AND sent_at IS NULL`.)
-8. Empty trust details: the request is PREPARED, and Send is refused with "Add your trust payment details". After the details are filled, Send takes `DR-0001` and its email has **no pay link** (B9).
+8. Empty trust details: the request is PREPARED, and Send is refused with "Add your trust payment details". After the details are filled, Send takes `DR-0001`, and its email holds the number, the amount with estimated tax and the trust details, and **offers no card** (B9). (Planted fail: a card option in the email or the request read.) The pay link's case waits for G4's row.
 9. Send, Edit amount and Don't send with `agent/payment:record` work, and without the key are refused. Firm B reads firm A's request as 404. A Case Officer outside C5 cannot see it.
 10. Edit amount while PREPARED: the new figures are stored with a before-and-after audit line. After send, editing is refused.
-11. Don't send with a reason gives CANCELLED with no number. A replay of the signing then writes nothing (B4).
+11. Don't send with a reason gives CANCELLED with **no number**; one with an empty reason is refused. A replay of the signing then writes nothing (B4). A request sent and then cancelled by a person **keeps its `DR-` number**. (Planted fail: a number given to a cancelled PREPARED request.)
 12. `depositReceived`: false for a PREPARED request, true after a trust deposit to it, false for another firm.
 13. A retainer signed while trust was `UNANSWERED`, then the Owner answers YES: one PREPARED request. Answering YES again writes none.
 14. A signed amendment with an `ON_SIGNING` row of CAD 500.00: one PREPARED request keyed by the amendment's version.
 15. A planted invoice-service call from the handler is caught: no `money_invoice` row exists after any case.
+16. **A retainer undone after signing** (R17, on G5's fake):
+    - the PREPARED request is **still PREPARED** (nothing cancelled by itself);
+    - Send is refused with "This retainer is no longer signed …";
+    - Cancel with a reason works;
+    - a request that was already sent is untouched.
+    (Planted fail: an automatic cancel on the undo.)
+
+**Part a** covers cases 1-11, 15 and 16. **Part b** covers cases 12-14 (rules 12-14).
 
 The pass counts of `check_fo7t_trust`, `check_fo7b_invoices`, `check_fo5_retainers`, `check_fo7a_money_schema`, `check_ports_events` and `j_59` stay unchanged.
 
-## Open points for the Lead before "go"
+## Settled points (Lead 19 on #3371; the corrections win)
 
-* **O1 — schema; needs a migration and its stamp.** B6 means PREPARED can't be inferred from "no number, not sent".
-  - **Recommended:** one migration on `money_trust_request`: `prepared_at timestamptz NULL` and `estimated_tax_minor integer NULL`.
-  - A CHECK that `prepared_at` set means `retainer_version_id` is set and `estimated_tax_minor >= 0`.
-  - PREPARED = `prepared_at` set, `sent_at` null and `cancelled_at` null.
-  - Please give the stamp.
-* **O2 — gaps G1 to G3:** accept the stated recommendations, or name the case side's port to use.
-* **O3 — a retainer undone after signing.** Not in AG-6-61.
-  - **Recommended:** a PREPARED request is cancelled in the same transaction with the reason "Retainer marked signed by mistake", and a sent one is left for a person.
-  - That needs the retainers module to call this part. Otherwise it is a stated gap.
-* **O4 — size.** With R12-R14 and the migration, this may pass 800 lines.
-  - **Recommended:** split it in two. Part a: R1-R11, R16 and the migration. Part b: R12-R14.
-  - The alternative is one PR with a P-row size exception.
-* **O5 — the version key.** `signing.completed` carries `documentVersionId`; `retainer.signed_offline` carries the signed version. The build first checks that both map to the same retainer version id before relying on B4.
-* **O6 — order.** This starts after #3033 merges. It is never built at the same time as FO-7t part 2 (both touch `trust/service.ts`), so it takes the `client-money/trust/` baton from whichever holds it.
+* **O1 — schema: settled; the migration stamp is given with "go".**
+  - The migration is on `money_trust_request`: `prepared_at timestamptz NULL` and `estimated_tax_minor integer NULL`.
+  - A CHECK: if `prepared_at` is set, `retainer_version_id` is set and `estimated_tax_minor >= 0`.
+  - PREPARED = `prepared_at` set, `sent_at` null and `cancelled_at` null. A PREPARED request has no number (correction 4).
+  - The stamp comes after #3033, above main's newest stamp at that time. None is named now.
+* **O2 — gaps: settled.** G1, G2 and G3 as recommended. G4 (the pay link) and G5 (the "still signed" read) are named above. Each missing row or port is stated in the PR, and the Lead adds a BACKLOG X-row (P-582).
+* **O3 — a retainer undone after signing: settled by correction 3.** Nothing is cancelled by itself; R17 applies.
+* **O4 — size: settled.** Two PRs:
+  - **Part a:** R1-R11, R16, R17 and the migration. Lead B 5 reads it.
+  - **Part b:** R12-R14.
+* **O5 — the version key (still to check at the build).** `signing.completed` carries `documentVersionId`; `retainer.signed_offline` carries the signed version. Part a's first test checks that both map to the same retainer version id before relying on B4.
+* **O6 — order.** This starts after #3033 merges and the Lead types "go". It is never built at the same time as FO-7t part 2 (both touch `trust/service.ts`), so it takes the `client-money/trust/` baton from whichever holds it.
 
-Legal readings (trust, deposit as money held, no pay link in R1): Unconfirmed: no counsel. Tax figures and wording: Sample; Unconfirmed: no accountant.
+Legal readings (trust, deposit as money held, card deferred under P-567 (3)): Unconfirmed: no counsel. Tax figures and wording: Sample; Unconfirmed: no accountant.
