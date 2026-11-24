@@ -553,3 +553,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **Mergify stall ended by pause then resume in its dashboard (paused about 19:02, resumed 19:06, one confirm missed so it stood paused about 3 min):** batches #3502 (#3313, #3483), #3503 (#3174, #3477), #3504 (#3492) opened 19:06-19:07. Mergify gave no reason; last checks start before was 17:20. If it returns: the same.
 * qa 8 running (7XMcWzHaBpPx6z3yf). Disk: the sandbox refused the three deletions, nothing deleted; he runs the command. R1.68's lane told of his yes, round 3 allowed. #3493: Lead B 7 NOT OK (uncleared money), ruling (b) plus the refund question, round 4 allowed. #3497 Lead B OK. #3490 Approve 18b64a0b7, stacked on #3460. #3442's batch also had shard (15) red: read it before its label.
 * Counts on main 7d2d14e2d: Works 55, Partial 25, Not built 21; midnight 50/23/28; 24 h ago (18:59, 23 Nov) 48/25/28. +5 today, +7 in 24 h.
+
+### Lead 29, check 19:11 IST 24 Nov (88% weekly, disk 5.8 GB, context about 525k, over half, no standby)
+* Batches #3502, #3503, #3504 testing, no red at 19:08.
+* **#3460's types red is a real error** (door.ts(89), codeVerifiedAt missing on Found.signer), not memory: lane 87D51 asked for that field and a main merge, round 4 allowed. #3490 round 3 allowed (tests only), its m5 comment not read. #3487 and #3234 lanes asked to merge main once. /run full posted on #3470 and #3442; on #3442 it restarted the 12:07Z run (an old workflow, likely useless): check.
+* #3442's batch shard (15): check_uxa1_counts_browser.cjs failed twice ("Error"), cause not read further; the head's own full run was green on it (red: types, ci).
+* R1.68 #3500: B1 fixed, 53 tests pass (its words), 760 lines by the rule's count, round 3 running. Owed: BACKLOG rows (FO-7ts date guard; resolve on PF-18np; heap back; j_74 W7 to qa 8).
