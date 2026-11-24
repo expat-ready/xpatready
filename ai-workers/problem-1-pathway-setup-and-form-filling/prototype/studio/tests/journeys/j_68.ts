@@ -112,15 +112,15 @@ try {
   const hasName = (await name.count()) === 1;
   const viewed0 = count("viewed"), previewed0 = count("previewed");
   if (hasName) await name.click();
-  const region = p.getByRole("region").filter({ has: p.getByRole("heading", { name: FILE }) });
+  const region = p.getByRole("dialog", { name: FILE });   // the panel beside the case (UI kit Panel): a dialog titled with the file's name
   const shown = hasName && await region.waitFor({ timeout: 15_000 }).then(() => true, () => false);
   const canvas = region.locator("canvas").first();
-  await p.waitForFunction(() => { const c = document.querySelector("[data-document-preview] canvas, [role=region] canvas") as HTMLCanvasElement | null; return !!c && c.width > 0; }, undefined, { timeout: 15_000 }).catch(() => undefined);
+  await p.waitForFunction(() => { const c = document.querySelector("[data-document-preview] canvas") as HTMLCanvasElement | null; return !!c && c.width > 0; }, undefined, { timeout: 15_000 }).catch(() => undefined);
   await p.waitForTimeout(500);
   const dark = shown ? await canvas.evaluate((c: HTMLCanvasElement) => { const x = c.getContext("2d"); if (!x || !c.width) return 0; const d = x.getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] < 300 && d[i + 3] > 0) n++; return n; }).catch(() => 0) : 0;
   const regionText = shown ? (await region.innerText()).replace(/\s+/g, " ") : "";
   await p.screenshot({ path: join(SHOTS, "w1-preview-1440.png") }).catch(() => undefined);
-  ok("J-68 W1 (part missing: CS-D5 part 2): the officer clicks the file's name on its line (\"Preview bank-statements.pdf\") and a panel beside the case shows the name as its heading, type, size and upload date, and draws page 1 of 3 (dark pixels on the canvas)",
+  ok("J-68 W1 (part missing: CS-D5 part 2): the officer clicks the file's name on its line (\"Preview bank-statements.pdf\") and a panel beside the case titled with the file's name, shows its type, size and upload date, and draws page 1 of 3 (dark pixels on the canvas)",
     shown && /PDF/i.test(regionText) && /KB|MB|bytes/i.test(regionText) && /Uploaded/i.test(regionText) && /Page 1 of 3/.test(regionText) && dark > 200, { button: hasName, panel: shown, dark, text: regionText.slice(0, 220) });
   ok("J-68 W1 fail (part missing: CS-D5 part 2): a file with no scan yet says \"Not scanned yet\" and never \"Checked: clean\" (PF-F3 is R1.66's part)", shown && /Not scanned yet/.test(regionText) && !/Checked: clean/.test(regionText), { text: regionText.slice(0, 220) });
 
@@ -149,7 +149,7 @@ try {
     await region.getByRole("button", { name: "Rotate" }).click(); await p.waitForTimeout(500);
     sized = [s0, s1, await shot()];
     await p.screenshot({ path: join(SHOTS, "w4-zoom-rotate-1440.png") }).catch(() => undefined);
-    await region.getByRole("button", { name: "Close" }).click();
+    await region.getByRole("button", { name: "Close" }).last().click();   // the footer's Close
     await region.waitFor({ state: "detached", timeout: 5_000 }).catch(() => undefined);
     focusBack = await p.evaluate((n) => document.activeElement?.getAttribute("aria-label") === n, `Preview ${FILE}`);
   }
@@ -193,7 +193,7 @@ try {
     await p.goto(`/cases/${caseA}`); await row.filter({ hasText: FILE }).waitFor({ timeout: 30_000 }).catch(() => undefined);
     const open = hasName && await name.click().then(() => region.waitFor({ timeout: 15_000 })).then(() => true, () => false);
     const wide = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    const axe = open ? (await new AxeBuilder({ page: p }).include("[role=region]").withTags(TAGS).analyze()).violations.map((v) => `${v.id}(${v.nodes.length})`) : ["no panel"];
+    const axe = open ? (await new AxeBuilder({ page: p }).include("[role=dialog]").withTags(TAGS).analyze()).violations.map((v) => `${v.id}(${v.nodes.length})`) : ["no panel"];
     await p.screenshot({ path: join(SHOTS, `w7-preview-${w}.png`) }).catch(() => undefined);
     ok(`J-68 W7 (part missing: CS-D5 part 2): the preview open at ${w} px: nothing cut off sideways, axe clean on the panel`, open && wide <= 0 && axe.length === 0, { wide, axe });
   }
