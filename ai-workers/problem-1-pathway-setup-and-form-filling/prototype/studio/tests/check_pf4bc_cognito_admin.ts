@@ -5,6 +5,7 @@
 // a raw AWS message; no credential in a log line. Plus: not set up → 503 with no call; passkeys; who Cognito is asked
 // about. One scratch database (two tables) for the firm-lock race. No AWS account, no network, no server, no model call (US$0).
 //   tsx studio/tests/check_pf4bc_cognito_admin.ts
+import { randomBytes } from "node:crypto";
 import { runContract } from "../ports/contracts/contract.ts";
 import { identityAdminPortContract, type IdentityAdminHarness } from "../ports/contracts/identity-admin-port.contract.ts";
 import { fakeCognito } from "./fixtures/pf4bc-cognito/fake-cognito.ts";
@@ -16,7 +17,7 @@ for (const s of [process.stdout, process.stderr]) { const w = s.write.bind(s); s
 
 const { LocalIdentityAdmin, CognitoIdentityAdmin } = await import("../api/src/platform/identity/session/provider.ts");
 // Made by this run, never real: the SDK signs with them and the fake never checks a signature.
-const KEY_ID = `AKIAPF4BC${Math.random().toString(36).slice(2, 12).toUpperCase().padEnd(10, "X")}`, SECRET = `pf4bc-secret-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+const KEY_ID = `AKIAPF4BC${randomBytes(8).toString("hex").toUpperCase().slice(0, 11)}`, SECRET = `pf4bc-secret-${randomBytes(24).toString("base64url")}`;   // CodeQL: crypto random
 const POOL = "ca-central-1_Pf4bcPool", config = { userPoolId: POOL, clientId: "pf4bc-client", mfaRequired: true };
 const makeCognito = () => {
   let t = Date.parse("2026-11-23T06:00:00Z");
