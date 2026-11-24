@@ -36,19 +36,24 @@ function RetainerBody({ id }: { id: string }) {
   // (nothing sent); a template id is sent, and the server makes the version from that template's newest version. The list
   // has its own key (review M1: the Retainer templates page caches a wider shape under ["fo", "retainer-templates", "all"]).
   const [templateId, setTemplateId] = React.useState("");
+  const focusSend = React.useRef(false);   // review r2 n4: after "Save version n with the disclosure", focus moves to Check and send
   const templates = useQuery({ enabled: can(me, R_KEY.draft), queryKey: ["fo", "retainer-templates", "pick"], queryFn: async () => Templates.parse(await staffApi("/front-office/retainer-templates")) });
   // A pick the list no longer offers (switched off meanwhile, review m5) falls back to keeping the draft's template.
   React.useEffect(() => { if (templateId && templates.data && !templates.data.some((t) => t.id === templateId && t.active)) setTemplateId(""); }, [templates.data, templateId]);
   const [error, setError] = React.useState<{ field: string | null; text: string; code?: string } | null>(null);
   const [sending, setSending] = React.useState(false), [showItems, setShowItems] = React.useState(false), [warnings, setWarnings] = React.useState<string[]>([]);
   const r = one.data;
+  React.useEffect(() => { if (r && focusSend.current) { focusSend.current = false; document.querySelector<HTMLElement>("[data-check-and-send]")?.focus(); } }, [r]);
   const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); setSignerId(x.signerPersonId ?? ""); setTemplateId(""); }, []);
   React.useEffect(() => { if (r) reset(r); }, [r, reset]);
   const checklist = useQuery({ enabled: showItems && !!r, queryKey: ["fo", "retainer-template-checklist", r?.template.id], queryFn: async () => TemplateChecklist.parse(await staffApi(`/front-office/retainer-templates/${r!.template.id}/checklist`)) });
   const after = (x: Retainer, text: string) => { qc.setQueryData(key, x); void qc.invalidateQueries({ queryKey: ["fo", "retainers", "of"] }); setEditing(false); setError(null); setWarnings(x.warnings ?? []); toast.push({ tone: "ok", text }); };
   const fail = (e: unknown) => {
     const field = e instanceof StaffApiError ? (Object.keys(e.problem.fields ?? {})[0] ?? null) : null;
-    setError({ field, text: e instanceof StaffApiError ? e.message : "Could not save. Please try again.", code: e instanceof StaffApiError ? e.problem.code : undefined });
+    // QA-780 review r2 m2: the pick then falls back to this draft's template, so the field says which one was refused.
+    const refused = field === "templateId" ? templates.data?.find((t) => t.id === templateId) : undefined;
+    setError({ field, text: refused ? `${refused.name} was switched off meanwhile, so you can no longer choose it. Nothing was saved.` : e instanceof StaffApiError ? e.message : "Could not save. Please try again.", code: e instanceof StaffApiError ? e.problem.code : undefined });
+    focusSend.current = false;
     if (e instanceof StaffApiError && e.status === 409) void one.refetch();   // a colleague changed or sent it (break m1)
     if (field === "templateId") void templates.refetch();   // QA-780 review m5: switched off meanwhile, so the pick stops offering it
   };
@@ -89,7 +94,7 @@ function RetainerBody({ id }: { id: string }) {
   const toTemplate = () => document.querySelector<HTMLElement>("#fo-template select")?.focus();
   const noDisclosure = error?.code === "CONFLICT_DISCLOSURE_NOT_PRINTED";
   /** Its own template prints it but this version was made before the check: a new version prints it (gate.ts NO_DISCLOSURE). */
-  const resave = () => submit();
+  const resave = () => { focusSend.current = true; submit(); };
   const company = r.subject === "COMPANY", blocked = new Set([...(r.blockers["client.name"] ? ["client.name"] : []), ...(r.blockers.signerPersonId ? ["signer.name", "signer.email"] : [])]);
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -119,8 +124,8 @@ function RetainerBody({ id }: { id: string }) {
       {!EDITABLE.includes(r.status) ? <Notice tone="info" title={r.status === "WITHDRAWN" ? "This retainer is withdrawn. Prepare a new one from the prospect." : `${client} has already signed. This retainer can no longer change.`} /> : null}
       {warnings.map((w) => <Notice key={w} tone="warn" title={w} />)}
       {error && !error.field && error.code !== "SEND_BLOCKED" ? <Notice tone="danger" title={error.text} action={noDisclosure && form ? (options[0].prints && !templateId ? <Button variant="link" size="sm" busy={save.isPending} onClick={resave}>Save version {next} with the disclosure</Button>
-        : options.slice(1).some((o) => o.prints) ? <Button variant="link" size="sm" onClick={toTemplate}>Choose a template that prints it</Button>
-        : templates.isSuccess ? <span className="text-sm" data-no-disclosure-template>None of your firm's templates prints it yet. {can(me, "agent/retainer:configure-template") ? <><Link to="/front-office/settings/retainer-templates" className="text-text-link hover:underline">Add {"{conflict.disclosure}"} to one in Retainer templates</Link>, then choose it here.</> : "Ask your firm's Owner or Admin to add {conflict.disclosure} to a retainer template, then choose it here."}</span>
+        : options.some((o) => o.prints) ? <Button variant="link" size="sm" onClick={toTemplate}>Choose a template that prints it</Button>
+        : templates.isSuccess ? <span className="text-sm" data-no-disclosure-template>None of your firm's templates prints it yet. {can(me, "agent/retainer:configure-template") ? <><Link to="/front-office/settings/retainer-templates" className="text-text-link underline">Add {"{conflict.disclosure}"} to one in Retainer templates</Link>, then choose it here.</> : "Ask your firm's Owner or Admin to add {conflict.disclosure} to a retainer template, then choose it here."}</span>
         : undefined)
         : error.code?.startsWith("CONFLICT_") && r.prospect ? <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-sm text-text-link hover:underline">Open the prospect's conflict check</Link> : undefined} /> : null}
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">

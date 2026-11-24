@@ -210,7 +210,7 @@ try {
   const refusedNone = await refuse(r), noneText = (await shown(none, 5_000)) ? await none.innerText() : "";
   ok("R1.53 QA-780 fail: with no active template that prints the disclosure, the refusal says so and, for the Owner, links to Retainer templates",
     refusedNone && noneText.includes("None of your firm's templates prints it yet.") && noneText.includes("then choose it here.") && (await none.getByRole("link", { name: /Retainer templates/ }).count()) === 1, noneText);
-  await shot(r, "qa780-refused-none-prints-1440");
+  await shot(r, "qa780-refused-none-prints-1440"); await axe(r, "QA-780: the refusal with no template that prints the disclosure (review r2 M1: its link)");
   const tp = await pageAs(tok.T); await tp.goto(idaUrl);
   const tSends = await shown(tp.locator("[data-check-and-send]"), 30_000), refusedT = tSends && await refuse(tp);
   const noneT = refusedT && await shown(tp.locator("[data-no-disclosure-template]"), 5_000) ? await tp.locator("[data-no-disclosure-template]").innerText() : "";
@@ -243,9 +243,9 @@ try {
     await pick.selectOption(discT.body.id);
     const offNow = await onOff(discT, false);   // a colleague switches it off meanwhile
     await r.getByRole("button", { name: "Save as version 2" }).click();
-    const refusedOff = await shown(r.getByText("This template is switched off."), 10_000);
+    const refusedOff = await shown(r.getByText(`Disclosure retainer ${run} was switched off meanwhile, so you can no longer choose it. Nothing was saved.`), 10_000);
     const gone = await pick.locator("option", { hasText: `Disclosure retainer ${run}` }).waitFor({ state: "detached", timeout: 10_000 }).then(() => true, () => false);
-    ok("R1.53 QA-780 fail (review m5): a template switched off before Save is refused on the Template pick, nothing is saved, and the pick then stops offering it",
+    ok("R1.53 QA-780 fail (review m5, r2 m2): a template switched off before Save is refused on the Template pick in words that name it, nothing is saved, and the pick then stops offering it",
       offNow.status === 200 && refusedOff && gone && (await pick.inputValue()) === "" && (await ret(ida.id)).versions.length === 1 && (await ret(ida.id)).templateId === tpl.body.id, { refusedOff, gone });
     await onOff(discT, true);
     await r.reload(); await pick.locator("option", { hasText: `Disclosure retainer ${run}` }).waitFor({ state: "attached", timeout: 15_000 });
@@ -269,10 +269,8 @@ try {
       jr.status === 201 && pv2.status < 300 && newest && jopts[0] === `Plain retainer ${run} · version 1 (this draft's)` && await r.getByRole("button", { name: "Save as version 2" }).isDisabled(), { pv2: pv2.status, jopts });
     ok("R1.53 QA-780 pass (review M2): the newer version of the draft's own template is offered on its own, saying it prints the disclosure",
       jopts.includes(`Plain retainer ${run} · version 2 (newest) · prints the conflict disclosure`), jopts);
-    await pick.selectOption(plainT.body.id);
-    await r.getByRole("button", { name: "Save as version 2" }).click();
-    await r.locator("[data-version]", { hasText: "Version 2" }).waitFor({ timeout: 15_000 });
-    const jv = await call(tok.R, "GET", `/front-office/retainers/${jr.body.id}`), sentJo = await sendIt();
+    const joSaved = newest && await pick.selectOption(plainT.body.id).then(() => r.getByRole("button", { name: "Save as version 2" }).click()).then(() => shown(r.locator("[data-version]", { hasText: "Version 2" }), 15_000), () => false);
+    const jv = await call(tok.R, "GET", `/front-office/retainers/${jr.body.id}`), sentJo = joSaved && await sendIt();   // review r2 n5: a FAIL here is a line, not a stopped run
     ok("R1.53 QA-780 pass (review M2): choosing it saves version 2 from template version 2, which prints the disclosure, and Send sends it",
       jv.body.template?.version === 2 && jv.body.version?.values?.["conflict.disclosure"] === DISC && sentJo, { template: jv.body.template, sentJo });
 
@@ -281,10 +279,13 @@ try {
     await r.goto(`${BASE}/front-office/retainers/${kr.body.id}`); await r.locator("[data-check-and-send]").waitFor({ timeout: 30_000 });
     const resave = r.getByRole("button", { name: "Save version 2 with the disclosure" });
     const offered = await refuse(r) && await shown(resave, 10_000);
-    if (offered) { await resave.click(); await r.locator("[data-version]", { hasText: "Version 2" }).waitFor({ timeout: 15_000 }); }
-    const sentKai = offered && await sendIt();
+    if (offered) await axe(r, "QA-780: the refusal whose fix is a new version (Save version 2 with the disclosure)");
+    const kaiSaved = offered && await resave.click().then(() => shown(r.locator("[data-version]", { hasText: "Version 2" }), 15_000));
+    const focusedSend = !!kaiSaved && await r.waitForFunction(() => document.activeElement?.hasAttribute("data-check-and-send"), null, { timeout: 5_000 }).then(() => true, () => false);
+    const sentKai = !!kaiSaved && await sendIt();
     ok("R1.53 QA-780 pass: a version made before the check, from a template that prints it, is refused; \"Save version 2 with the disclosure\" makes a version that prints it, and Send sends it",
-      offered && sentKai && (await call(tok.R, "GET", `/front-office/retainers/${kr.body.id}`)).body.version?.values?.["conflict.disclosure"] === DISC, { offered, sentKai });
+      offered && sentKai && (await call(tok.R, "GET", `/front-office/retainers/${kr.body.id}`)).body.version?.values?.["conflict.disclosure"] === DISC, { offered, kaiSaved, sentKai });
+    ok("R1.53 QA-780 (review r2 n4): after \"Save version 2 with the disclosure\", focus is on Check and send, the next step", focusedSend);
     await onOff(plainT, false);
   }
   await onOff(discT, false);   // later steps expect one active template

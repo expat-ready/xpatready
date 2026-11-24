@@ -72,3 +72,92 @@ Journeys: J1 a Case Manager or Owner with a Potential conflict and a draft on th
 * The headless browser only; no visible-browser walk.
 
 Reviewer: Changes 85d4feebb05d5155c0b076b5225f8cf6597e3cea
+
+## Round 2 (diff only, 9df5fbf1f)
+
+Head `9df5fbf1f11334fb745abb1aaf7de455dd1076da` · `git diff 85d4feebb 9df5fbf1f` (`retainer-page.tsx`, the browser check) · second independent reviewer (built neither round) · 2026-11-24 · Live AI off, US$0.
+
+**Verdict: Ship after fixes.** Both round-1 Majors are fixed, and the tests catch them coming back. One new Major is a WCAG A failure on a state this PR adds. There are two Minors where the notice states something false.
+
+### What was run (isolated copy `rv780b` on :4445 only)
+* `vite build`, then `check_fo5s_retainer_screens_browser.ts 4445 xr_studio_rv780b`: **55/55**, twice, on fresh copies (47 s each).
+* Mutations, each restored byte for byte (`git diff` clean on code):
+  * The pick's key put back to `"all"`: **54/55**. Only the "(review M1) the refusal's link opens Retainer templates" step fails.
+  * The M2 logic put back (prints from the list row, the draft's own template left out of the later options): both "(review M2)" steps FAIL. The run then stops with a TimeoutError (nit 5).
+* Reviewer probes in the scratchpad (P1–P6, not committed): the 422 fall-back, a switched-off version made before the check, an unsaved pick then Send, the resave state (axe at 1440 and 1024 px, keyboard), the none state (axe), a sent retainer under Edit.
+* Regenerated screenshots restored with `git checkout`. The copy is stopped.
+
+### Round-1 findings
+| # | Status | Evidence |
+|---|---|---|
+| M1 key | **Fixed** | `:40` `["fo","retainer-templates","pick"]`. It is still under the page's prefix invalidation. The new step `:223` follows the link and finds the table row. |
+| M2 newer version | **Fixed** | `:84-88` labels the draft's own version "(this draft's)" and offers the newest as "(newest)". Picking it sends `templateId` (`:56`). The server takes the newest row (`service.ts:454-458`, `:559`, `:568` placeholders), and the step reads `template.version === 2` and the disclosure. Save stays off until a change. |
+| m3 copy | **Fixed** | The Case Manager T step reads the exact sentence. No link is shown. |
+| m4 none line | **Fixed** (code) | `:123` waits for `templates.isSuccess`. While the list loads or fails, no claim is shown. Not failure-tested. |
+| m5 stale pick | **Fixed, one gap** | `:53` refetches, and `:41` falls back to "". There is no loop: the reset sets "" once, does nothing while `data` is undefined, and keeps the old data while a refetch runs. The field's error is left behind (finding 2). |
+| m6 tests | **Fixed, one gap** | There are new steps for none as Owner and as Case Manager T, the link, the newer version, and a version made before the check. None of these new states runs axe (finding 1). |
+
+Checked and sound:
+* **Option values are unique.** The draft's own template is "". Its id appears only as "(newest)" when the version differs.
+* **The precedence** is resave, then choose, then none, then nothing.
+* **A read-only person** gets no pick, because the query and `form` both need the draft right. The representative who cannot see the prospect still gets no Save (suite break M4).
+* **A sent retainer under Edit** (P6) shows only the draft's template on "", and Save is off until a change. A refusal cannot happen there, because only a Draft has Check and send.
+* **A non-empty value** means the made-from template names the placeholder (`service.ts:369`, `:384`). A save without `templateId` reuses that file and its placeholders (`:560`, `:568`, `:589`), even when the template is switched off. So "Save version n with the disclosure" is true whenever it shows. P4 checked this: pressed with Enter, version 2 prints the disclosure.
+
+### Issues, ranked
+1. **Major (Must): the none line's link is told apart by colour only.**
+   * *Where:* `retainer-page.tsx:123`. axe WCAG 2.2 AA, **serious**: `link-in-text-block` on `span[data-no-disclosure-template] > .text-text-link`. This fails WCAG 1.4.1 (A) and `STANDARDS.md` "[M] axe-core on every screen state".
+   * *Scenario:* as the Owner, a Potential conflict, no active template prints it, Send. "Add {conflict.disclosure} to one in Retainer templates" sits inside the sentence and is underlined only on hover (probe P5).
+   * *Why the tests missed it:* the structure dates from 85d4, and round 1 ran axe only on the choose state. The suite runs no axe on the none or resave states.
+   * *Fix:* give this link `underline` at all times, or move it out of the sentence. Add `axe(...)` after the none step (`:212`) and the resave step (`:285`).
+2. **Minor (Should): after the m5 fall-back, the field says the draft's own template is switched off.**
+   * *Where:* `:41` resets the pick but keeps `error`. `:138` still shows `fieldError("templateId")`.
+   * *Scenario (P1):* pick "Disclosure retainer", a colleague switches it off, Save. The field then reads "Standard retainer … · version 1 / This template is switched off.", and Save is off.
+   * *Fix:* when the effect falls back, replace the error with words about the dropped choice, for example "The template you chose was switched off. This draft keeps its own template; choose another." Assert the field text in `:248`.
+3. **Minor (Should): "None of your firm's templates prints it yet" can be false** (`:121-123`, `:86`).
+   * (a) *An unsaved pick.* P3: a draft on "Disclosure retainer" made before the check. The person picks "Standard retainer" without saving and sends. The notice says none prints it, while the first option reads "… · prints the conflict disclosure". Resave needs `!templateId`, and "Choose" looks only at `options.slice(1)`. *Fix:* base "Choose" on `options.some((o) => o.prints)`.
+   * (b) *The brief's fall-back case.* P2: the draft's template is switched off, its version names `{conflict.disclosure}`, and it was made before the check. The same happens when a newer version dropped the placeholder. `printsHere` is false, so the Owner is sent to Retainer templates, and a Case Manager is told to ask the Owner. A plain save would print it: PATCH without `templateId` gives 200 with the disclosure, then Send gives 200.
+     * It is not a dead end: adding the placeholder to an active template, or switching this one back on, works.
+     * The page cannot tell this case today. `missing` leaves the disclosure out (`service.ts:417`), and Code item (o) is marked by either placeholder.
+     * *Fix:* have `read` return whether the made-from placeholders include it (`madeFrom` is already computed at `service.ts:497`), and use that for `printsHere`.
+4. **Nit: focus is lost after "Save version n with the disclosure".** P4: the button leaves with the notice and focus goes to `<body>`. Move focus to Check and send.
+5. **Nit: a FAIL in the M2 steps stops the run.** It stops with a TimeoutError at `:272` (`selectOption` on an option that is missing), not with FAIL lines and the summary. That is loud, not silent. Guard the step on `newest`.
+
+### D1–D20 / BIC (changes since round 1)
+* **D1, D9, D18, D19 now 1:** the newer-version path closes.
+* **D3, D5 now 1:** an own key, so no crash.
+* **D10 1.**
+* **D11 ½:** findings 2 and 3.
+* **D13 ½:** finding 1.
+* **D16 ½:** no axe on the new states.
+* **D17, D20:** simulated only.
+* **BIC-13 Met:** the refusal names a working next step on every tested path.
+* **BIC-18 Partly:** finding 3.
+* Others as in round 1.
+
+### Journey test (reviewer role; the one score for this check)
+J1 main (refused, Choose, Save, Send): held. J2 error (switched off meanwhile): held, with a stale error (2). J3 empty (none prints it, so the Owner follows the link to Retainer templates): held. The axe failure (1) is on this state. J4 alternate (newer version of the same template): held. J5 wrong role (a Case Manager is told to ask the Owner or Admin): held. J6 recovery (a version made before the check, then "Save version 2 with the disclosure", then Send): held. J7 unsaved pick, then Send: wrong words (3a).
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J1, J3, J4 and J6 end in Sent with the disclosure printed (suite) |
+| Next step obvious | 1 | every tested refusal offers a working action; P2 and P3 are longer routes, not dead ends |
+| Plain words | 1 | second person; "(this draft's)", "(newest)"; m3 fixed |
+| Feedback and state | ½ | a stale "switched off" under the wrong template (2) |
+| Correct data | 1 | template version 2 used; disclosure equals the check's text; nothing sent on refusal |
+| Error recovery | 1 | the 422 falls back, the link works, resave works |
+| Accessibility and screen sizes | ½ | axe serious on the none state (1); focus lost (4); 375/1024/1440 px no sideways scroll |
+| Speed | 1 | one list request; no per-row requests |
+| Visual quality | 1 | team Notice, Field and Select |
+| Trust and sources | ½ | "None … prints it yet" is false in P2 and P3 (3) |
+
+**Score 8.5/10: a pass (8 or more, no 0).** It is Changes only because of the open Major 1. Most valuable raises: 1 (accessibility), then 3 (trust), then 2 (feedback).
+
+### Could not check
+* An intended user's unaided walk (D17, D20).
+* A real screen reader.
+* A visible browser: headless only.
+* 200 % zoom: the suite's 375 px reflow stands in.
+* `graph.mjs`: not run, because it rewrites `qa/GRAPH.md`.
+
+Reviewer: Changes 9df5fbf1f11334fb745abb1aaf7de455dd1076da
