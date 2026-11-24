@@ -12,11 +12,13 @@ import argparse, re, sys
 
 KINDS = [
     ("migration", re.compile(r"/prisma/migrations/[^/]+/[^/]+\.sql$")),
-    ("permission", re.compile(r"/api/src/(platform/identity/|platform/firm-scope|core\.ts$)|/api/src/.*(permission|(?<!form-)role|grant|access|wall)[^/]*\.(ts|json)$", re.I)),
+    ("permission", re.compile(r"/api/src/(platform/(system-)?identity/|platform/firm-scope|core\.ts$|(.*/)?access/)|/api/src/.*(permission|(?<!form-)role|grant|access|wall)[^/]*\.(ts|json)$", re.I)),
     ("money", re.compile(r"/api/src/(.*/)?[^/]*(money|trust|payment|invoice|refund|billing|ledger|retainer|fee)s?([^a-z].*|/.*)?\.(ts|json)$", re.I)),
 ]
 HEAD = re.compile(r"^[\s>*_-]*Rules settled[*_]*\s*:[*_]*\s*(.*)$", re.I)
-CITE = re.compile(r"\b(P|A|QA)-\d+\b|\bA\d{2,}\b|\b[A-Z]{2,3}-\d+[A-Z]?-\d+@[0-9a-f]{7,40}\b|domain/requirements-\S+/\S+|https://([a-z0-9-]+\.)*(canada\.ca|gc\.ca)/\S+")
+CITE = re.compile(r"(?<![\w-])(?:P|QA|A)-\d{1,4}\b|(?<![\w-])A[1-9]\d{2}\b|(?<![\w-])[A-Z]{2,3}-\d+[A-Z]?-\d+@[0-9a-f]{7,40}\b|domain/requirements-\S+/\S+|https://([a-z0-9-]+\.)*(canada\.ca|gc\.ca)/\S+")
+FIELD = re.compile(r"(?i)^[\s*_#-]*(done when|duplicate check|items?|completes|size exception|cost|sources?( checked)?|touches|why|what|kind|tests?|risk|model|standards §1|questions? for the founder)\b[^:\n]{0,40}:")
+BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 
 
 def kinds(paths):
@@ -24,23 +26,39 @@ def kinds(paths):
 
 
 def rules(body):
-    """The rules after "Rules settled:", up to a blank line or a heading; None when there is no such line (fences skipped)."""
-    out, on, fence = None, False, False
-    for l in body.replace("\r", "").split("\n"):
-        if re.match(r"^\s*(```|~~~)", l):
-            fence = not fence
-            continue
+    """The rules after "Rules settled:": those on its line (split by ";") and the lines right under it, or a list (blank
+    lines between its bullets allowed). A line that is no bullet goes on from the one above. None: no such line outside
+    code blocks, HTML comments and quotes."""
+    body = re.sub(r"<!--.*?(?:-->|\Z)", "", body.replace("\r", ""), flags=re.S)
+    out, gap, fence = None, False, ""
+    for l in body.split("\n"):
+        f = re.match(r"^\s*(`{3,}|~{3,})", l)
         if fence:
+            if f and f.group(1)[0] == fence[0] and len(f.group(1)) >= len(fence):
+                fence = ""
             continue
-        m = HEAD.match(l)
-        if m and out is None:
-            out, on = [x.strip() for x in m.group(1).split(";") if x.strip(" .")], True
-            continue
-        if on:
-            if l.lstrip().startswith("#") or re.match(r"^[A-Z][A-Za-z ]{2,30}:\s", l) or (not l.strip() and out):
-                on = False
-            elif l.strip():
-                out.append(l.strip(" \t-*>"))
+        if f:
+            fence = f.group(1); continue
+        if out is None:
+            m = HEAD.match(l) if not l.lstrip().startswith(">") else None
+            if m:
+                s = m.group(1).strip()
+                out = [s] if re.match(r"(?i)none\b", s) else [x.strip() for x in s.split(";") if x.strip(" .")]
+        elif not l.strip():
+            gap = True
+        elif FIELD.match(l) or l.lstrip().startswith("#"):
+            break
+        elif BULLET.match(l):
+            out += [x.strip() for x in BULLET.sub("", l).split(";") if x.strip(" .")]; gap = False
+        elif gap and not l[0].isspace():
+            break
+        elif out:
+            if re.match(r"^\S[^.:]{2,60}:\s", l) and not gap:
+                out.append(l.strip())      # "Trust balance: may go below zero" is a rule of its own
+            else:
+                out[-1] += " " + l.strip()
+        else:
+            out.append(l.strip())
     return out
 
 
@@ -59,7 +77,7 @@ def main():
     elif not r:
         warn('"Rules settled:" names no rule.')
     elif len(r) == 1 and re.match(r"(?i)none\b", r[0]):
-        if re.match(r"(?i)none\s*\(\s*\S.{4,}\)", r[0]):
+        if re.match(r"(?i)none\s*(\(\s*\S.{4,}\)|[-:,]\s*\S.{4,})", r[0]):
             print(f"ok    rules settled: {what}, {r[0][:100]}")
         else:
             warn('"none" gives no reason: "Rules settled: none (reason)".')

@@ -36,6 +36,51 @@ warn "the next field ends the list" "$M" 'Rules settled:
 - keep both names
 Item: R1.4 P-801' '1 of 1 rules'
 o=$(run "" "x"); ok "fail: an empty file list is said, exit 2, never ok" "$(grep -q 'not checked' <<<"$o" && grep -q 'rc=2' <<<"$o" && echo 1)" "$o"
+okk "pass: a loose list, blank lines between bullets" "$M" 'Rules settled:
+
+- a (P-801)
+
+- b (A348)
+
+Other text'
+warn "fail: the second bullet of a loose list names nothing" "$M" '- **Rules settled:**
+- a (P-801)
+
+- trust may go negative' '1 of 2 rules'
+warn "fail: an empty line before a bold field that cites" "$M" 'Rules settled:
+
+**Done when:** check_x passes (P-801)' 'names no rule'
+okk "pass: none with a reason, then a bold field" "$M" 'Rules settled: none (an index only; no rule changes)
+**Done when:** x'
+warn "fail: a rule on the next line that looks like a field" "$M" 'Rules settled: a (P-801)
+Trust balance: may go below zero' '1 of 2 rules'
+okk "pass: a rule wrapped to a second line" "$M" 'Rules settled:
+- the receipt is kept seven years,
+  by the decision P-801'
+warn "fail: two rules on one bullet, one cited" "$M" 'Rules settled:
+- a (P-801); trust may go negative' '1 of 2 rules'
+warn "fail: an HTML comment" "$M" '<!-- x
+Rules settled: example (P-801) -->' 'no "Rules settled:" line'
+warn "fail: a quote" "$M" '> Rules settled: a (P-801)' 'no "Rules settled:" line'
+warn "fail: a longer fence" "$M" '````
+```
+Rules settled: a (P-801)
+````' 'no "Rules settled:" line'
+for x in 'Annex A12 of the form' 'step BK-P-2' 'P-99999' 'https://example.com/canada.ca'; do warn "fail: '$x' is no decision or requirement" "$M" "Rules settled: a ($x)" '1 of 1 rules'; done
+for f in platform/system-identity/guard.ts platform/audit/access/lines.ts; do warn "fail: $f is a permission file" "$D/api/src/$f" x 'changes permission'; done
+okk "pass: a test beside the money code" "$D/api/src/client-money/tests/refunds.ts" x
+okk "pass: a form's roles are people, not permissions" "$D/api/src/features/checkpoint/100-form-roles.ts" x
+
+# The step of pr-rules.yml itself: its condition, and its script run as written with a stand-in gh and python3
 W="$TOOLS/../../../../.github/workflows/pr-rules.yml"
-ok "pr-rules.yml runs it on the PR's own file list, and a failed read is a warning, never a pass" "$(grep -q 'rules-settled.py" --files "$RUNNER_TEMP/rs-files"' "$W" && grep -A12 'Rules settled' "$W" | grep -q 'set -o pipefail' && echo 1)"
+awk '/names the decision or requirement of each rule/ {on = 1} on {print} on && /file list could not be read/ {exit}' "$W" > "$T/step.yml"
+ok "pr-rules.yml runs the step on every PR that is not records only" "$(grep -qxF "        if: \"\${{ !cancelled() && steps.rec.outputs.records != 'yes' }}\"" "$T/step.yml" && echo 1)" "$(head -3 "$T/step.yml")"
+sed -n '/run: |/,$p' "$T/step.yml" | tail -n +2 | sed -e 's/^          //' -e 's/\${{ github.repository }}/o\/r/' -e 's/\${{ github.event.pull_request.number }}/77/' > "$T/step.sh"; mkdir -p "$T/bin" "$T/tools" "$T/tmp"
+cp "$TOOLS/rules-settled.py" "$T/tools/"
+printf '#!/bin/sh\ncase "$*" in *repos/o/r/pulls/77/files*previous_filename*) [ -n "$DOWN" ] && exit 1; echo "$F";; *) exit 1;; esac\n' > "$T/bin/gh"; chmod +x "$T/bin/gh"
+base="$T"; step() { o=$(PATH="$T/bin:$PATH" DOWN="${3:-}" F="$1" BODY="$2" RUNNER_TEMP="$T/tmp" T="$T/tools" bash "$base/step.sh" 2>&1; echo "rc=$?"); }
+step "$M" x; ok "the step warns, exit 0" "$(grep -q '^::warning' <<<"$o" && grep -q 'changes migration' <<<"$o" && grep -q 'rc=0' <<<"$o" && echo 1)" "$o"
+step "$M" "Rules settled: a (P-801)"; ok "the step passes a settled body" "$(grep -q '^ok ' <<<"$o" && ! grep -q '::warning' <<<"$o" && echo 1)" "$o"
+step "$M" "Rules settled: a (P-801)" 1; ok "fail: a file list that cannot be read is a warning, never ok" "$(grep -q 'file list could not be read' <<<"$o" && ! grep -q '^ok' <<<"$o" && grep -q 'rc=0' <<<"$o" && echo 1)" "$o"
+mv "$T/tools/rules-settled.py" "$T/tools/x"; step "$M" x; ok "fail: a check that cannot run is a warning" "$(grep -q 'could not run' <<<"$o" && grep -q 'rc=0' <<<"$o" && echo 1)" "$o"
 finish
