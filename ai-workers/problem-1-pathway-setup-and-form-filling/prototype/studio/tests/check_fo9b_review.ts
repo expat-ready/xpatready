@@ -115,8 +115,8 @@ try {
   const crossMerged = sqlErr(`insert into fo_dup_review (firm_id, low_id, high_id, score, reasons, status, decided_by, decided_at, merge_id) values ('${B}', '${b1}', '${b2}', 100, '[]', 'MERGED', 'seed:fo9b', now(), '${auto.mergeRef}')`);
   ok("FO-9b review fail: a pair in firm B naming firm A's merge (merge_id or noted_by_merge_id) is refused by the (firm, merge) keys",
     /fo_dup_review_firm_id_noted_by_merge_id_fkey/.test(crossNoted) && /fo_dup_review_firm_id_merge_id_fkey/.test(crossMerged) && sql(`select count(*) from fo_dup_review where firm_id = '${B}' and low_id = '${b1}'`) === "0", { crossNoted, crossMerged });
-  const frozen = ["firm_id = '" + B + "'", "kind = 'COMPANY'", `low_id = '${u1}'`, `high_id = '${u3}'`, "first_seen_at = now() - interval '1 day'"].map((set) => sqlErr(`update fo_dup_review set ${set} where id = '${P1}'`));
-  ok("FO-9b review fail: a pair's firm, kind, people and first-seen time never change on UPDATE; its decision columns still do",
+  const frozen = ["firm_id = '" + B + "'", "kind = 'COMPANY'", `low_id = '${u1}'`, `high_id = '${u3}'`, "first_seen_at = now() - interval '1 day'", `noted_by_merge_id = '${auto.mergeRef}'`].map((set) => sqlErr(`update fo_dup_review set ${set} where id = '${P1}'`));
+  ok("FO-9b review fail: a pair's firm, kind, people, first-seen time and noting merge never change on UPDATE; its decision columns still do",
     frozen.every((e) => /never change/.test(e)) && sqlErr(`update fo_dup_review set decided_by = decided_by where id = '${P1}'`) === "", frozen.map((e) => e.split("\n")[0].slice(0, 80)));
   const again = await inTx((tx) => mergeIfSafe(tx, A, P1, ports)) as { mergeRef?: string };
   ok("FO-9b DW7 fail: a second run merges nothing (one merge record for the pair)", !again.mergeRef && sql(`select count(*) from fo_dup_merge where loser_id = '${L2}' or survivor_id = '${L2}'`) === "1");

@@ -6,4 +6,5 @@ DROP TABLE "fo_dup_review";
 DROP FUNCTION fo_dup_review_no_delete();
 DROP FUNCTION fo_dup_review_frozen();
 DROP INDEX "fo_dup_merge_firm_id_id_key";
+DELETE FROM "_prisma_migrations" WHERE "migration_name" = '20261124070000_fo9b_review';
 DROP TYPE "FoDupReviewStatus";

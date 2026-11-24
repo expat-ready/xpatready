@@ -4,10 +4,11 @@
 -- first seen. Its status is OPEN, MERGED (names the merge record) or KEPT_SEPARATE; an Undo of the merge opens it again.
 -- noted_by_merge_id names the merge that wrote the pair (the survivor meeting the loser's matches); while that merge
 -- is undone and the two no longer match, the pair is not listed (product/screens/FO-9b-2/pair-model.md).
--- Never deleted or truncated (fo_dup_review_no_delete); a pair's facts (firm, kind, the two ids, when first seen) never
--- change (fo_dup_review_frozen). merge_id and noted_by_merge_id name a merge of the same firm: the keys are
--- (firm_id, merge id) on fo_dup_merge (firm_id, id), since a foreign-key check does not apply row security (Lead B 4). The pair's ids are plain uuids, like fo_dup_merge's: a pair is a
--- decision record, so a MERGED pair keeps naming the merged-away record (read through merged_into_id).
+-- Never deleted or truncated (fo_dup_review_no_delete); a pair's facts (firm, kind, the two ids, when first seen, the
+-- merge that wrote it) never change (fo_dup_review_frozen). merge_id and noted_by_merge_id name a merge of the same
+-- firm: the keys are (firm_id, merge id) on fo_dup_merge (firm_id, id), since a foreign-key check does not apply row
+-- security (Lead B 4). The pair's ids are plain uuids, like fo_dup_merge's: a pair is a decision record, so a MERGED
+-- pair keeps naming the merged-away record (read through merged_into_id).
 CREATE TYPE "FoDupReviewStatus" AS ENUM ('OPEN', 'MERGED', 'KEPT_SEPARATE');
 
 CREATE TABLE "fo_dup_review" (
@@ -45,8 +46,9 @@ CREATE TRIGGER "fo_dup_review_no_delete" BEFORE DELETE ON "fo_dup_review" FOR EA
 CREATE TRIGGER "fo_dup_review_no_truncate" BEFORE TRUNCATE ON "fo_dup_review" FOR EACH STATEMENT EXECUTE FUNCTION fo_dup_review_no_delete();
 CREATE FUNCTION fo_dup_review_frozen() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF (NEW."firm_id", NEW."kind", NEW."low_id", NEW."high_id", NEW."first_seen_at") IS DISTINCT FROM (OLD."firm_id", OLD."kind", OLD."low_id", OLD."high_id", OLD."first_seen_at") THEN
-    RAISE EXCEPTION 'fo_dup_review: a pair''s firm, kind, people and first-seen time never change' USING ERRCODE = 'insufficient_privilege';
+  IF (NEW."firm_id", NEW."kind", NEW."low_id", NEW."high_id", NEW."first_seen_at", NEW."noted_by_merge_id")
+     IS DISTINCT FROM (OLD."firm_id", OLD."kind", OLD."low_id", OLD."high_id", OLD."first_seen_at", OLD."noted_by_merge_id") THEN
+    RAISE EXCEPTION 'fo_dup_review: a pair''s firm, kind, people, first-seen time and noting merge never change' USING ERRCODE = 'insufficient_privilege';
   END IF;
   RETURN NEW;
 END $$;
