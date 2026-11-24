@@ -4,4 +4,6 @@
 DROP POLICY "pf12_firm" ON "fo_dup_review";
 DROP TABLE "fo_dup_review";
 DROP FUNCTION fo_dup_review_no_delete();
+DROP FUNCTION fo_dup_review_frozen();
+DROP INDEX "fo_dup_merge_firm_id_id_key";
 DROP TYPE "FoDupReviewStatus";

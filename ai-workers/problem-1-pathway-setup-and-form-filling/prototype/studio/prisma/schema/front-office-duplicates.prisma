@@ -38,6 +38,7 @@ model FoDupMerge {
   reviews        FoDupReview[] @relation("FoDupReviewMerge")
   notedReviews   FoDupReview[]  @relation("FoDupReviewNotedBy")
 
+  @@unique([firmId, id])
   @@index([firmId, survivorId])
   @@index([firmId, loserId])
   @@map("fo_dup_merge")
@@ -69,10 +70,10 @@ model FoDupReview {
   decidedBy   String?           @map("decided_by")
   decidedAt   DateTime?         @map("decided_at") @db.Timestamptz
   mergeId     String?           @map("merge_id") @db.Uuid
-  merge       FoDupMerge?       @relation("FoDupReviewMerge", fields: [mergeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  merge       FoDupMerge?       @relation("FoDupReviewMerge", fields: [firmId, mergeId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
   /// The merge that wrote this pair (the survivor meeting the loser's matches), or null (an arrival or an Undo wrote it).
   notedByMergeId String?        @map("noted_by_merge_id") @db.Uuid
-  notedBy     FoDupMerge?       @relation("FoDupReviewNotedBy", fields: [notedByMergeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  notedBy     FoDupMerge?       @relation("FoDupReviewNotedBy", fields: [firmId, notedByMergeId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([firmId, lowId, highId])
   @@index([firmId, status])

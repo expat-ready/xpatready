@@ -4,7 +4,9 @@
 -- first seen. Its status is OPEN, MERGED (names the merge record) or KEPT_SEPARATE; an Undo of the merge opens it again.
 -- noted_by_merge_id names the merge that wrote the pair (the survivor meeting the loser's matches); while that merge
 -- is undone and the two no longer match, the pair is not listed (product/screens/FO-9b-2/pair-model.md).
--- Never deleted or truncated (fo_dup_review_no_delete). The pair's ids are plain uuids, like fo_dup_merge's: a pair is a
+-- Never deleted or truncated (fo_dup_review_no_delete); a pair's facts (firm, kind, the two ids, when first seen) never
+-- change (fo_dup_review_frozen). merge_id and noted_by_merge_id name a merge of the same firm: the keys are
+-- (firm_id, merge id) on fo_dup_merge (firm_id, id), since a foreign-key check does not apply row security (Lead B 4). The pair's ids are plain uuids, like fo_dup_merge's: a pair is a
 -- decision record, so a MERGED pair keeps naming the merged-away record (read through merged_into_id).
 CREATE TYPE "FoDupReviewStatus" AS ENUM ('OPEN', 'MERGED', 'KEPT_SEPARATE');
 
@@ -31,8 +33,9 @@ CREATE TABLE "fo_dup_review" (
 );
 CREATE UNIQUE INDEX "fo_dup_review_firm_id_low_id_high_id_key" ON "fo_dup_review"("firm_id", "low_id", "high_id");
 CREATE INDEX "fo_dup_review_firm_id_status_idx" ON "fo_dup_review"("firm_id", "status");
-ALTER TABLE "fo_dup_review" ADD CONSTRAINT "fo_dup_review_merge_id_fkey" FOREIGN KEY ("merge_id") REFERENCES "fo_dup_merge"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-ALTER TABLE "fo_dup_review" ADD CONSTRAINT "fo_dup_review_noted_by_merge_id_fkey" FOREIGN KEY ("noted_by_merge_id") REFERENCES "fo_dup_merge"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+CREATE UNIQUE INDEX "fo_dup_merge_firm_id_id_key" ON "fo_dup_merge"("firm_id", "id");
+ALTER TABLE "fo_dup_review" ADD CONSTRAINT "fo_dup_review_firm_id_merge_id_fkey" FOREIGN KEY ("firm_id", "merge_id") REFERENCES "fo_dup_merge"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "fo_dup_review" ADD CONSTRAINT "fo_dup_review_firm_id_noted_by_merge_id_fkey" FOREIGN KEY ("firm_id", "noted_by_merge_id") REFERENCES "fo_dup_merge"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 CREATE FUNCTION fo_dup_review_no_delete() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -40,6 +43,14 @@ BEGIN
 END $$;
 CREATE TRIGGER "fo_dup_review_no_delete" BEFORE DELETE ON "fo_dup_review" FOR EACH ROW EXECUTE FUNCTION fo_dup_review_no_delete();
 CREATE TRIGGER "fo_dup_review_no_truncate" BEFORE TRUNCATE ON "fo_dup_review" FOR EACH STATEMENT EXECUTE FUNCTION fo_dup_review_no_delete();
+CREATE FUNCTION fo_dup_review_frozen() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF (NEW."firm_id", NEW."kind", NEW."low_id", NEW."high_id", NEW."first_seen_at") IS DISTINCT FROM (OLD."firm_id", OLD."kind", OLD."low_id", OLD."high_id", OLD."first_seen_at") THEN
+    RAISE EXCEPTION 'fo_dup_review: a pair''s firm, kind, people and first-seen time never change' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER "fo_dup_review_frozen" BEFORE UPDATE ON "fo_dup_review" FOR EACH ROW EXECUTE FUNCTION fo_dup_review_frozen();
 
 -- PF-12's wall (forced policy naming the session's firm; the firm-first gate before the area's own triggers); the trigger
 -- function runs as xr_wall_reader (tests/check_pf12_walls.ts).
@@ -49,4 +60,6 @@ CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_dup_review" FO
 GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION fo_dup_review_no_delete() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
 ALTER FUNCTION fo_dup_review_no_delete() OWNER TO xr_wall_reader;
+ALTER FUNCTION fo_dup_review_frozen() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION fo_dup_review_frozen() OWNER TO xr_wall_reader;
 REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;

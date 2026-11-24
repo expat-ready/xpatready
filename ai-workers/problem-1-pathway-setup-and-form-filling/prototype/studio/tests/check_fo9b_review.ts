@@ -54,7 +54,7 @@ try {
   ok("FO-9b review setup: its stamp is later than every migration before it and unique", all.filter((d) => d < NEW).every((d) => d.slice(0, 14) < NEW.slice(0, 14)) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1);
   for (const d of all.filter((x) => x <= NEW)) psql(["-f", join(MIG, d, "migration.sql")]);
   ok("FO-9b review setup: fo_dup_review is walled (forced policy) and its trigger function runs as the wall reader",
-    sql(`select relforcerowsecurity from pg_class where relname = 'fo_dup_review'`) === "t" && sql(`select pg_get_userbyid(proowner) from pg_proc where proname = 'fo_dup_review_no_delete'`) === "xr_wall_reader");
+    sql(`select relforcerowsecurity from pg_class where relname = 'fo_dup_review'`) === "t" && sql(`select string_agg(distinct pg_get_userbyid(proowner), ',') from pg_proc where proname in ('fo_dup_review_no_delete', 'fo_dup_review_frozen')`) === "xr_wall_reader");
   for (const d of all.filter((x) => x > NEW)) psql(["-f", join(MIG, d, "migration.sql")]);
 
   const db = new Db();
@@ -109,6 +109,15 @@ try {
   ok("FO-9b DW7 pass: a safe pair merges by itself once (the newer into the older), logged automatic, by system:fo-duplicates; the pair is MERGED",
     !!auto.mergeRef && sql(`select automatic || ':' || by || ':' || survivor_id || ':' || loser_id from fo_dup_merge where id = '${auto.mergeRef}'`) === `true:${SYSTEM_ACTOR}:${L1}:${L2}`
     && sql(`select status || ':' || merge_id from fo_dup_review where id = '${P1}'`) === `MERGED:${auto.mergeRef}` && sql(`select merged_into_id from fo_person where id = '${L2}'`) === L1, auto);
+  // Lead 12's ruling on Lead B 4's read: a pair names only its own firm's merge (a foreign key skips row security), and its facts are frozen
+  const [b1, b2] = ["00000000-0000-4000-8000-0000000000b1", "00000000-0000-4000-8000-0000000000b2"];
+  const crossNoted = sqlErr(`insert into fo_dup_review (firm_id, low_id, high_id, score, reasons, noted_by_merge_id) values ('${B}', '${b1}', '${b2}', 100, '[]', '${auto.mergeRef}')`);
+  const crossMerged = sqlErr(`insert into fo_dup_review (firm_id, low_id, high_id, score, reasons, status, decided_by, decided_at, merge_id) values ('${B}', '${b1}', '${b2}', 100, '[]', 'MERGED', 'seed:fo9b', now(), '${auto.mergeRef}')`);
+  ok("FO-9b review fail: a pair in firm B naming firm A's merge (merge_id or noted_by_merge_id) is refused by the (firm, merge) keys",
+    /fo_dup_review_firm_id_noted_by_merge_id_fkey/.test(crossNoted) && /fo_dup_review_firm_id_merge_id_fkey/.test(crossMerged) && sql(`select count(*) from fo_dup_review where firm_id = '${B}' and low_id = '${b1}'`) === "0", { crossNoted, crossMerged });
+  const frozen = ["firm_id = '" + B + "'", "kind = 'COMPANY'", `low_id = '${u1}'`, `high_id = '${u3}'`, "first_seen_at = now() - interval '1 day'"].map((set) => sqlErr(`update fo_dup_review set ${set} where id = '${P1}'`));
+  ok("FO-9b review fail: a pair's firm, kind, people and first-seen time never change on UPDATE; its decision columns still do",
+    frozen.every((e) => /never change/.test(e)) && sqlErr(`update fo_dup_review set decided_by = decided_by where id = '${P1}'`) === "", frozen.map((e) => e.split("\n")[0].slice(0, 80)));
   const again = await inTx((tx) => mergeIfSafe(tx, A, P1, ports)) as { mergeRef?: string };
   ok("FO-9b DW7 fail: a second run merges nothing (one merge record for the pair)", !again.mergeRef && sql(`select count(*) from fo_dup_merge where loser_id = '${L2}' or survivor_id = '${L2}'`) === "1");
 
