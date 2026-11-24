@@ -1,0 +1,22 @@
+name: lead-o2-c95-proof
+on: { push: { branches: [claude/lead-o2-c95-proof] } }
+permissions: { contents: read }
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy: { fail-fast: false, matrix: { pack: [old, new] } }
+    env: { P: ai-workers/problem-1-pathway-setup-and-form-filling/product, S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - name: the old pack, and 2.5 s before the move's lock in both (a busy machine)
+        run: |
+          [ "${{ matrix.pack }}" = new ] || git checkout -q origin/main -- "$S/acceptance/C9.5.test.ts"
+          sed -i 's/^    const made = await busyWords(/    await new Promise((f) => setTimeout(f, 2500));\n    const made = await busyWords(/' "$S/api/src/release-update.ts"; git diff --stat; grep -c 'setTimeout(f, 2500)' "$S/api/src/release-update.ts"
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - run: bash "$P/tools/cloud-setup.sh" > /dev/null 2>&1
+      - run: cd "$S" && ./node_modules/.bin/playwright install chromium > /dev/null 2>&1
+      - env: { CAPS: "C9.5", GATE_B_JOBS: "1", GATE_B_NO_DIFF: "1" }
+        run: node "$S/tools/works-set.mjs" --pool "$CAPS"
