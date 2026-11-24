@@ -33,7 +33,8 @@ export const ConsultRecord = z.object({
 });
 export type ConsultRecord = z.infer<typeof ConsultRecord>;
 /** The route's answer: the record, or none yet with the booked length (404 NO_RECORD). */
-type Read = { record: ConsultRecord | null; bookedMinutes: number };
+type Warning = { code: string; words: string } | null | undefined;
+type Read = { record: ConsultRecord | null; bookedMinutes: number; warning?: Warning };
 
 const WORDS = {
   currency: "Choose a currency for the quoted fee.",
@@ -73,10 +74,11 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   const q = useQuery({
     queryKey: ["fo", "bookings", "consult", booking.id], retry: false,
     queryFn: async (): Promise<Read> => {
-      try { const record = ConsultRecord.parse(await staffApi(`/front-office/bookings/${booking.id}/consult-record`)); return { record, bookedMinutes: record.bookedMinutes }; }
+      try { const record = ConsultRecord.parse(await staffApi(`/front-office/bookings/${booking.id}/consult-record`)); return { record, bookedMinutes: record.bookedMinutes, warning: record.agreementWarning }; }
       catch (e) {
         const booked = e instanceof StaffApiError && e.status === 404 && e.problem.code === "NO_RECORD" ? bookedOf(booking) : null;
-        if (booked !== null) return { record: null, bookedMinutes: booked };
+        // Before the first save the no-record answer carries the agreement warning too (FO-3c-warn break F4).
+        if (booked !== null) return { record: null, bookedMinutes: booked, warning: ((e as StaffApiError).problem as { agreementWarning?: Warning }).agreementWarning };
         throw e;
       }
     },
@@ -90,7 +92,7 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   const [loads, setLoads] = React.useState(0), [justSaved, setJustSaved] = React.useState(false);
   if (q.isPending || (lead.fetchStatus === "fetching" && lead.isPending)) return <Loading label="Loading the consult record" rows={2} />;
   if (q.isError) return <Notice tone="danger" title="Could not load the consult record.">{q.error instanceof StaffApiError && q.error.status === 403 ? WORDS.refused : q.error.message}</Notice>;
-  const { record, bookedMinutes } = q.data;
+  const { record, bookedMinutes, warning } = q.data;
   if (record?.attendanceChanged === "NO_SHOW") return <><Notice tone="warn" title="Attendance changed to No-show." /><RecordReadOnly r={record} /></>;
   if (booking.attendance !== "COMPLETED") return null;
   // A lead the viewer may not read leaves the list empty, as typed by hand.
@@ -98,7 +100,7 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   const suggested = interested && chars(interested) <= 120 ? [interested] : [];
   return (
     <>
-      {record?.agreementWarning ? <div className="mb-2" data-consult-agreement-warning><Notice tone="warn" title="Consultation agreement not signed">{record.agreementWarning.words}</Notice></div> : null}
+      {warning ? <div className="mb-2" data-consult-agreement-warning><Notice tone="warn" title="Consultation agreement not signed">{warning.words}</Notice></div> : null}
       <RecordForm key={loads} booking={booking} record={record} bookedMinutes={bookedMinutes} suggested={suggested} onSaved={() => setJustSaved(true)}
         onReload={() => void qc.invalidateQueries({ queryKey: ["fo", "bookings"] }).then(() => setLoads((n) => n + 1))} />
       {record ? <NextStep booking={booking} record={record} reveal={justSaved} /> : null}

@@ -24,6 +24,9 @@
 //       names the agreement. N5: a No-show booking with none; a type needing none
 //   W1-W4 (the founder's ruling, 24 Nov): Attended and the consult record with none sent are saved with the warning; a
 //       paper copy ends it; a person without the key is still refused; no regulator or statute named in the words
+//   W5-W7 (FO-3c-warn break F1, F4, F5): after Attended the words say only what still works (the client's link no longer
+//       opens; a client-signed one is finished by the firm's signer, still listed in Needs you); the no-record answer warns;
+//       a booking no longer scheduled is never told what it can still save
 //   tsx studio/tests/check_fo3c2_consultation_agreement.ts
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -61,7 +64,7 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, opt
 
 const { ConsultationAgreementService, WORDS } = await import("../api/src/front-office/booking/consultation-agreement/service.ts");
 const { AgreementPoll } = await import("../api/src/front-office/booking/consultation-agreement/live.ts");
-const { CAUSE_WORDS, NEXT_WORDS, WARN_WORDS, WARN_WORDS_INACTIVE, agreementWarning, missingWords, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
+const { CAUSE_WORDS, NEXT_WORDS, WARN_WORDS, WARN_WORDS_INACTIVE, WARN_WORDS_FIRM, agreementWarning, missingWords, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
 const { agreementNextStep, sendsFresh, NEXT_CANCELLED, NEXT_COMPLETED, NEXT_NO_SHOW, NEXT_RESCHEDULE } = await import("../contracts/consultation-agreement-words.ts");
 const { BookingService } = await import("../api/src/front-office/booking/service.ts");
 const { ConsultRecordService } = await import("../api/src/front-office/booking/consult/service.ts");
@@ -563,6 +566,38 @@ try {
   // W4: AG-04 Rule 7: the words name no regulator or statute.
   const allWords = [WARN_WORDS, WARN_WORDS_INACTIVE, ...Object.values(CAUSE_WORDS), ...Object.values(NEXT_WORDS), missingWords(["NO_CLIENT_EMAIL", "NO_TEMPLATE", "NO_LICENSED"], true), missingWords(["SENDING"], false)].join(" ");
   ok("FO-3c2 W4 (AG-04 Rule 7): no warning word names a regulator or a statute", !/College|Code|SOR\/|regulat|statute|s\. ?23/i.test(allWords), allWords.slice(0, 200));
+  // W5 (break F1): client signed, then Attended: the firm's signer is told, still listed, and can still sign.
+  const w5 = await book(A, free, R.staffId, pat, -180);
+  await clock.set(new Date(w5.startsAt.getTime() - 10 * MIN));
+  const s5w = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, w5)), a5w = s5w?.sent ? s5w.agreementId : "";
+  await clock.set(new Date(w5.startsAt.getTime() + 5 * MIN));
+  const tok5 = /#([0-9a-f]{32}\.[\w-]{43})/.exec(mail.inbox("pat@client.example").find((m) => m.idempotencyKey === `consultation-agreement:${a5w}:sent`)?.text ?? "")?.[1] ?? "";
+  await svc.open(tok5, {}, "10.9.0.5"); await svc.open(tok5, { consent: true }, "10.9.0.5");
+  const code5 = /\b(\d{6})\b/.exec(mail.inbox("pat@client.example").filter((m) => m.templateKey === "consultation_agreement.code").at(-1)?.text ?? "")?.[1];
+  await svc.open(tok5, { consent: true, code: code5 }, "10.9.0.5");
+  const req5 = await db.foSignatureRequest.findFirstOrThrow({ where: { documentId: a5w }, include: { signers: true } });
+  for (const step of ["viewed", "signed"] as const) for (const h of await signing.act(req5.firmId, req5.providerDocumentId, req5.signers.find((x) => x.role === "CLIENT")!.id, step)) await svc.signingEvent(h);
+  await clock.set(today);
+  const w5att = await answer(() => bookings.recordAttendance(R, w5.id, { outcome: "COMPLETED" }));
+  const w5needs = (await svc.needsYou(R)).items.some((i) => i.agreementId === a5w), w5host = await answer(() => svc.hostLink(R, a5w, { consent: true }));
+  ok("FO-3c2 W5 (break F1): client signed, then Attended: the warning says the firm signs next (never that it can no longer be signed); it stays in the signatory's Needs you; the firm's link still opens",
+    sql(`select status from fo_retainer where id = '${a5w}'`) === "CLIENT_SIGNED" && w5att.status === 200 && warningOf(w5att)?.words === WARN_WORDS_FIRM && w5needs && w5host.status === 200, { w5att: warningOf(w5att), w5needs, w5host: w5host.status });
+  // W6 (break F1): sent, unsigned, then Attended: the words say the client's link no longer opens, and it does not.
+  const w6 = await book(A, free, R.staffId, lee, -180);
+  await clock.set(new Date(w6.startsAt.getTime() - 10 * MIN));
+  const s6w = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, w6)), a6w = s6w?.sent ? s6w.agreementId : "";
+  await clock.set(today);
+  const w6before = await warnAt(R, w6.id), w6att = await answer(() => bookings.recordAttendance(R, w6.id, { outcome: "COMPLETED" }));
+  const tok6 = /#([0-9a-f]{32}\.[\w-]{43})/.exec(mail.inbox("lee@client.example").find((m) => m.idempotencyKey === `consultation-agreement:${a6w}:sent`)?.text ?? "")?.[1] ?? "";
+  const open6 = await answer(() => svc.open(tok6, {}, "10.9.0.6"));
+  ok("FO-3c2 W6 (break F1): before Attended the warning says saving it ends the client's link; after it, the warning says the link no longer opens (never that the client signs from it), and the link is the one not-found",
+    /no longer opens/.test(w6before.body) && warningOf(w6att)?.words === WARN_WORDS_INACTIVE && !/signs from the link/.test(WARN_WORDS_INACTIVE) && open6.status === 404, { w6before: w6before.body.slice(0, 200), w6att: warningOf(w6att), open6: open6.status });
+  // W7 (break F4, F5): the no-record answer carries the warning; a booking no longer scheduled is not told what it can save.
+  const w7 = await book(A, free, R.staffId, wPerson, -180);
+  await answer(() => bookings.recordAttendance(R, w7.id, { outcome: "COMPLETED" }));
+  const w7get = await answer(() => consult.get(R, w7.id));
+  ok("FO-3c2 W7 (break F4, F5): before the first save, the consult record's no-record answer (404 NO_RECORD) carries the warning; words for a booking no longer scheduled never say what can still be saved",
+    w7get.status === 404 && /NO_RECORD/.test(w7get.body) && /AGREEMENT_NOT_SIGNED/.test(w7get.body) && !/can still be saved/.test(missingWords(["NOT_SCHEDULED"], true)) && !/can still be saved/.test(WARN_WORDS_INACTIVE + WARN_WORDS_FIRM), { w7get });
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

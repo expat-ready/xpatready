@@ -451,17 +451,19 @@ export class BookingService {
       const b = await this.lock(tx, ctx.firmId, bookingId);
       if (!["SCHEDULED", "RESCHEDULED", "COMPLETED", "NO_SHOW"].includes(b.status)) throw problem(409, "not-active", "Cancelled", "A cancelled booking has no attendance.");
       if (b.startsAt > now) throw problem(409, "too-early", "Not yet", "Attendance is recorded once the meeting has started.");
-      if (b.status === o) return b;
+      // FO-3c-warn break F3: the warning is read in the same transaction, so a failed read saves nothing (never a 500 after
+      // the commit); a repeated answer gets it too.
+      const warn = async (row: BookingRow) => (row.status === "COMPLETED" ? agreementWarning(tx, ctx.firmId, row.id) : null);
+      if (b.status === o) return { row: b, warning: await warn(b) };
       // FO-3c part 2 (R1.104; AG-4-15 rule 4, the founder's ruling of 24 Nov): Attended is saved whatever the consultation
       // agreement's state; an unsigned one is a warning in the answer (`agreementWarning`), never a refusal.
       const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: o } });
       await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: staffActor(ctx).word, action: o === "COMPLETED" ? "booking.completed" : "booking.no_show", entity: "fo_booking", entityKey: b.id,
         summary: `Attendance recorded: ${o === "COMPLETED" ? "attended" : "did not attend"}.`, detail: { bookingId: b.id, sequence: after.sequence }, before: { status: b.status }, after: { status: o } });
       await this.outbox(tx, after, o === "COMPLETED" ? EVENT.BOOKING_COMPLETED : EVENT.BOOKING_NO_SHOW);
-      return after;
+      return { row: after, warning: await warn(after) };
     }, TX);
-    const warning = done.status === "COMPLETED" ? await agreementWarning(this.db, ctx.firmId, done.id) : null;
-    return { ...this.view(done), agreementWarning: warning };
+    return { ...this.view(done.row), agreementWarning: done.warning };
   }
 
   /** Bookings whose attendance question is due (30 min after the end, still unanswered): the host's own, or the firm's

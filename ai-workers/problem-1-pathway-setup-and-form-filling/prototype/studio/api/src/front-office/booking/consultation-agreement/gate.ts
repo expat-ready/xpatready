@@ -36,10 +36,15 @@ export function needsAgreement(t: { requireAgreement: boolean | null; purpose: s
 /** The same rule in SQL, over `fo_consultation_type t` (catch-up's and the hold's reads). */
 export const NEEDS_AGREEMENT_SQL = "coalesce(t.require_agreement, t.purpose::text <> 'FOLLOW_UP')";
 
-export const WARN_WORDS = "The consultation agreement is not signed yet. The client signs from the link in their email, then the firm. Attended and the consult record can still be saved.";
-/** The same warning for a booking that can no longer be signed for nor rescheduled (No-show, Attended: review m3-1). */
-export const WARN_WORDS_INACTIVE = "The consultation agreement for this booking is not signed, and this booking can no longer be signed for or rescheduled: a new booking sends a new agreement.";
-export const warnWords = (bookingStatus: string) => (bookingStatus === "SCHEDULED" || bookingStatus === "RESCHEDULED" ? WARN_WORDS : WARN_WORDS_INACTIVE);
+export const WARN_WORDS = "The consultation agreement is not signed yet. The client signs from the link in their email, then the firm. Attended and the consult record can still be saved; once Attended is saved, the client's link no longer opens.";
+/** A booking no longer scheduled (Attended, No-show: review m3-1; break F1): the client's link no longer opens
+ *  (service.ts `openAs`, `bookingActive`), so it is never said to. */
+export const WARN_WORDS_INACTIVE = "The consultation agreement for this booking was not signed, and the client's link no longer opens: to meet the client again, make a new booking, and a new agreement is sent for it.";
+/** The client has signed, the firm has not (break F1): the firm's signer still signs, whatever the booking's status. */
+export const WARN_WORDS_FIRM = "The client has signed the consultation agreement; the firm has not signed it yet. The person it names signs it for the firm from Needs you.";
+const ACTIVE_BOOKING = ["SCHEDULED", "RESCHEDULED"];
+export const warnWords = (bookingStatus: string, agreementStatus = "") =>
+  agreementStatus === "CLIENT_SIGNED" ? WARN_WORDS_FIRM : ACTIVE_BOOKING.includes(bookingStatus) ? WARN_WORDS : WARN_WORDS_INACTIVE;
 export type Hold = { agreementId: string | null; status: string; bookingStatus: string; causes?: Cause[]; started?: boolean };
 
 // ---- what stops an agreement being sent (send()'s reasons, as SQL over `fo_booking b`): the catch-up's filter and the hold
@@ -68,15 +73,16 @@ export const CAUSE_WORDS: Record<Exclude<Cause, "SENDING" | "NOT_SCHEDULED">, st
 export const NEXT_WORDS = {
   ahead: "The agreement is then sent to the client within a minute.",
   aheadSending: "It is being sent now; a send that fails is tried again, up to an hour apart. If it does not arrive, check the consultation template's file in Templates.",
-  started: "None is sent for a meeting that has started: to have it signed, reschedule the meeting to a later time and the agreement is sent to the client for the new time.",
-  startedSending: "None was sent before the meeting started: reschedule the meeting to a later time and the agreement is sent to the client for the new time. If it still does not arrive, check the consultation template's file in Templates.",
+  started: "None is sent for a meeting that has started: if the meeting did not take place, reschedule it to a later time and the agreement is sent to the client for the new time.",
+  startedSending: "None was sent before the meeting started: if the meeting did not take place, reschedule it to a later time and the agreement is sent to the client for the new time. If it still does not arrive, check the consultation template's file in Templates.",
   inactive: "This booking is no longer scheduled, so none is sent for it: to meet the client, make a new booking.",
 } as const;
 /** The warning for "needs one, none yet": the cause(s) and the way out. */
 export function missingWords(causes: Cause[], started: boolean) {
   const fixes = causes.filter((c): c is keyof typeof CAUSE_WORDS => c in CAUSE_WORDS).map((c) => CAUSE_WORDS[c]);
+  // A booking no longer scheduled is never told what it can still save (break F5): it is past that.
+  if (causes.includes("NOT_SCHEDULED")) return `No consultation agreement was sent for this booking. ${NEXT_WORDS.inactive}`;   // fixes do nothing for this booking (review 3)
   const head = "No consultation agreement has been sent for this booking yet. Attended and the consult record can still be saved.";
-  if (causes.includes("NOT_SCHEDULED")) return `${head} ${NEXT_WORDS.inactive}`;   // fixes do nothing for this booking (review 3)
   if (!fixes.length) return `${head} ${started ? NEXT_WORDS.startedSending : NEXT_WORDS.aheadSending}`;
   return [head, ...fixes, started ? NEXT_WORDS.started : NEXT_WORDS.ahead].join(" ");
 }
@@ -115,5 +121,5 @@ export type AgreementWarning = { code: "AGREEMENT_NOT_SIGNED"; agreementId: stri
 export async function agreementWarning(q: Q, firmId: string, bookingId: string): Promise<AgreementWarning | null> {
   const h = await unsigned(q, firmId, bookingId);
   if (!h) return null;
-  return { code: "AGREEMENT_NOT_SIGNED", agreementId: h.agreementId, words: h.causes ? missingWords(h.causes, h.started ?? true) : warnWords(h.bookingStatus), ...(h.causes ? { causes: h.causes } : {}) };
+  return { code: "AGREEMENT_NOT_SIGNED", agreementId: h.agreementId, words: h.causes ? missingWords(h.causes, h.started ?? true) : warnWords(h.bookingStatus, h.status), ...(h.causes ? { causes: h.causes } : {}) };
 }

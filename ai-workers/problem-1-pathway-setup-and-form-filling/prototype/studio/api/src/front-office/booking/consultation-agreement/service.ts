@@ -357,12 +357,13 @@ export class ConsultationAgreementService {
   }
   /** "Needs you": one item per unsigned agreement the person signs for the firm (it goes when the agreement is signed or ended). */
   async needsYou(ctx: StaffContext) {
-    // Only while the meeting is still to happen (break m5: a cancelled booking's item goes).
+    // Only while the meeting is still to happen (break m5: a cancelled booking's item goes); a client-signed one stays for
+    // its signatory after Attended or No-show too, since the firm's signature can still be given (FO-3c-warn break F1).
     const rows = await this.db.$queryRaw<{ id: string; status: string }[]>`
       select r.id::text, r.status::text from fo_retainer r join fo_retainer_version v on v.firm_id = r.firm_id and v.retainer_id = r.id and v.n = 1
         join fo_booking b on b.firm_id = r.firm_id and b.id::text = v.merge_values->>${BOOKING_ID}
        where r.firm_id = ${ctx.firmId}::uuid and r.kind = 'CONSULTATION' and r.representative_staff_id = ${ctx.staffId}::uuid
-         and r.status in ('SENT', 'VIEWED', 'CLIENT_SIGNED') and b.status in ('SCHEDULED', 'RESCHEDULED')
+         and r.status in ('SENT', 'VIEWED', 'CLIENT_SIGNED') and (b.status in ('SCHEDULED', 'RESCHEDULED') or (r.status = 'CLIENT_SIGNED' and b.status <> 'CANCELLED'))
        order by r.created_at limit 100`;
     return { items: rows.map((r) => ({ kind: "consultation-agreement-unsigned", agreementId: r.id, words: WORDS.unsigned, yourTurn: r.status === "CLIENT_SIGNED" })) };
   }

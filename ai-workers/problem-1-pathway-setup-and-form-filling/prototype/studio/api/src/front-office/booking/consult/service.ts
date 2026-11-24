@@ -115,7 +115,8 @@ export class ConsultRecordService {
   async get(ctx: StaffContext, bookingId: string) {
     const b = await this.booking(this.db, ctx, bookingId);
     const r = await this.db.foConsultRecord.findFirst({ where: firmScope(ctx.firmId, { bookingId: b.id }) });
-    if (!r) throw problem(404, "not-found", "Not found", WORDS.noRecord, { code: "NO_RECORD", bookedMinutes: bookedMinutes(b) });
+    // FO-3c-warn break F4: before the first save, the no-record answer carries the warning too.
+    if (!r) throw problem(404, "not-found", "Not found", WORDS.noRecord, { code: "NO_RECORD", bookedMinutes: bookedMinutes(b), agreementWarning: await agreementWarning(this.db, ctx.firmId, b.id) });
     return { ...this.view(ctx, b, r), agreementWarning: await agreementWarning(this.db, ctx.firmId, b.id) };
   }
 
@@ -132,7 +133,7 @@ export class ConsultRecordService {
     const fee = v.quotedFeeMinor ?? null;
     if (fee !== null && !v.quotedFeeCurrency) throw problem(FIELD_ERROR_STATUS, "consult-refused", NOT_SAVED, WORDS.currency, { code: "INVALID", fields: { quotedFeeCurrency: WORDS.currency }, issues: [`quotedFeeCurrency: ${WORDS.currency}`] });
     await this.booking(this.db, ctx, bookingId);   // who may, before the lock (a 404 or 403 takes no lock)
-    const { b, saved } = await this.db.$transaction(async (tx) => {
+    const { b, saved, warning } = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM fo_booking WHERE firm_id = ${firmScope(ctx.firmId).firmId}::uuid AND id = ${bookingId}::uuid FOR UPDATE`;
       const b = await this.booking(tx, ctx, bookingId);
       if (b.status === "CANCELLED") throw problem(409, "not-active", "Cancelled", WORDS.cancelled, { code: "CANCELLED" });
@@ -153,11 +154,11 @@ export class ConsultRecordService {
         detail: { recordId: saved.id, bookingId: b.id, ...facts(before, "before"), ...facts(saved, "after"), notesChanged: (before?.notes ?? null) !== saved.notes },
         before: before ? values(before) : null, after: values(saved),
       });
-      return { b, saved };
+      // FO-3c part 2 (AG-4-15 rule 4, the founder's ruling of 24 Nov): saved whatever the agreement's state; an unsigned
+      // one is the record's warning, never a refusal; read in the transaction, so a failed read saves nothing (break F3).
+      return { b, saved, warning: await agreementWarning(tx, ctx.firmId, b.id) };
     }, TX);
-    // FO-3c part 2 (AG-4-15 rule 4, the founder's ruling of 24 Nov): saved whatever the agreement's state; an unsigned one
-    // is the record's warning, never a refusal.
-    return { ...this.view(ctx, b, saved), agreementWarning: await agreementWarning(this.db, ctx.firmId, b.id) };
+    return { ...this.view(ctx, b, saved), agreementWarning: warning };
   }
 
   /** The adapter's read (ports/consult-record.ts): the firm's record by its id, or null. */

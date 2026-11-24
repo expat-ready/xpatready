@@ -3,7 +3,7 @@
 // Attended or cancelled booking the booking service refuses a reschedule (409) and the catch-up sends nothing, so the
 // panel never advises one there. No imports: the row's suite checks it at the services.
 export const ACTIVE = ["SCHEDULED", "RESCHEDULED"];
-export const NEXT_RESCHEDULE = "If the meeting time has passed, reschedule it: the client can sign before the new time.";
+export const NEXT_RESCHEDULE = "If the meeting time has passed and it did not take place, reschedule it: the client can sign before the new time.";
 export const NEXT_NO_SHOW = "This booking is marked No-show, so it cannot be rescheduled: to meet the client, make a new booking, and a new agreement is sent for it.";
 export const NEXT_COMPLETED = "This booking is already marked Attended, so it cannot be rescheduled: to meet the client again, make a new booking, and a new agreement is sent for it.";
 export const NEXT_CANCELLED = "This booking is cancelled: nothing more is sent for it.";
