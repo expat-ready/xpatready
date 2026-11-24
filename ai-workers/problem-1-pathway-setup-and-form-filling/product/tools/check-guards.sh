@@ -24,6 +24,7 @@ TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-67
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
 TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #2473
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
+TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
@@ -58,6 +59,21 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 5|product/tools/factory-board.sh|s/; gh() { bash "\$TOOLS\/gh.sh" "\$@"; }//|check-gh-fallback.sh
 6|product/tools/check-docs.sh|/STATE TOO BIG/d|check-state-page.sh
+A348 cap standbys|product/tools/capacity-watch.py|s/^    elif int(v) < MIN_STANDBYS:/    elif False:/|check-capacity-watch.sh
+A348 cap given|product/tools/capacity-watch.py|s/^    if not (v.isascii.*/    if False:/|check-capacity-watch.sh
+A348 cap disk|product/tools/capacity-watch.py|s/^    if gb < START_GB:/    if False:/|check-capacity-watch.sh
+A348 cap remote|product/tools/capacity-watch.py|s/^    miss = len(fs) - .*/    miss = 0/|check-capacity-watch.sh
+A348 cap odd|product/tools/capacity-watch.py|s/miss = len(fs) - len(plain) + /miss = /|check-capacity-watch.sh
+A348 cap dead|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--remotes=origin", "--stdin"/|check-capacity-watch.sh
+A348 cap local|product/tools/capacity-watch.py|s/"rev-list", "--objects", "--stdin"/"rev-list", "--objects", "--branches", "--stdin"/|check-capacity-watch.sh
+A348 cap copy|product/tools/capacity-watch.py|s/^    if any(os.path.basename(p) == ".git".*/    if False:/|check-capacity-watch.sh
+A348 cap whole|product/tools/capacity-watch.py|s/os.walk(d, onerror=stop)/os.walk(d)/|check-capacity-watch.sh
+A348 cap age|product/tools/capacity-watch.py|s/ or now - newest < o.age.*/:/|check-capacity-watch.sh
+A348 cap ctime|product/tools/capacity-watch.py|s/st.st_mtime, st.st_ctime/st.st_mtime/|check-capacity-watch.sh
+A348 cap cut|product/tools/capacity-watch.py|s/^    if c\["cut"\]:/    if False:/|check-capacity-watch.sh
+A348 cap cr|product/tools/capacity-watch.py|s/and not set(.*) & set(p)\]/]/|check-capacity-watch.sh
+A348 cap dark|product/tools/capacity-watch.py|s/^    if c.get("dark"):/    if False:/|check-capacity-watch.sh
+A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 7|product/tools/check-docs.sh|s/if m > 30:/if False:/|check-state-page.sh
 7 mine|product/tools/check-docs.sh|s/^  mine=1; c=""$/  mine=0; c=""/|check-state-page.sh
 7 read|product/tools/check-docs.sh|s/^  if \[ -z "\$u" \]; then msg=/  if false; then msg=/|check-state-page.sh

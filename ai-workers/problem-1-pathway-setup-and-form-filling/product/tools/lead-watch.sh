@@ -77,6 +77,11 @@ pn=$(python3 -I "$TOOLS/proof-number.py" 2>&1); echo "$pn"; act=$((act + $(grep 
 grep -qE '^(proven |ACT   proven)' <<<"$pn" || ACT "proven: proof-number.py did not run ($(head -1 <<<"$pn"))"
 fresh "proof-number.py: qa/CAPABILITIES.md and app code on origin/main (git only)"
 
+# 1e. Capacity (A348, founder 24 Nov): under 2 standbys (LEAD_STANDBYS=<n>), under 7 GB, old exports over 100 MB. Never deletes.
+cp=$(python3 -I "$TOOLS/capacity-watch.py" --state "$STATE_DIR" 2>&1); echo "$cp"; act=$((act + $(grep -c '^ACT' <<<"$cp"))); seen "$cp"
+grep -qE '^(capacity |ACT   capacity)' <<<"$cp" || ACT "capacity: capacity-watch.py did not run ($(head -1 <<<"$cp"))"
+fresh "capacity-watch.py: LEAD_STANDBYS from the Lead's list_sessions, the disk, /private/tmp (exports: read at most once an hour, time printed)"
+
 # 2. Merges and the queue.
 since=$(date -u -v-"${SINCE}"M '+%Y-%m-%dT%H:%M:%SZ')
 merged=$(gh pr list --state merged --search "merged:>=$since" --json number,title -q '.[]|"#\(.number) \(.title[0:55])"')
