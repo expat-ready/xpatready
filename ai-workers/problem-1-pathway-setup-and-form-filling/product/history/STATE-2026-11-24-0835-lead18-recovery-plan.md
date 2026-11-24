@@ -208,3 +208,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Lead reads posted: #3234 eb19e71ad (delta only; Approve and a full run on that head owed), #3174 85bd020ef (Approve is there; ci and a full run owed; stamp order). #3420: gate.ts and service.ts read, tests in part, not posted; its ci still running. Still owed: #3411, #3418, #3431, #3217.
 * Disk 9.1 GB at 12:44. Weekly 64%. Founder: the #3305 line asked again (one ask).
 * 12:45 IST: Lead B 6: #3418 e0e4ef70c OK; #3235 4d72360f6 OK (exact-head Approve, Lead read of the whole PR and full run owed; #3234 first); its carried Major is on BACKLOG row PF-21d part 2. My read of #3235 so far: erasure/service.ts's delta from 452b1e122 only.
+
+### Lead 24, check 12:50 IST 24 Nov
+* #3428 moved to df7e5d15d (B1, m1 to m6 fixed; the lane: 16 passed here, 2 passed 14 failed on main). firm-scope.ts and test deltas read by me, no fault; nothing run. Round-2 reviewer and breaker, and Lead B 6's re-read, running. Owed: verdicts, my read line on the approved head, one full run, ready, label.
+* M1 ruled on #3428: Major, latent, own row in lane 4oPSMou after #3428's approval, before #3217's minors; red test first, plus which upserts Prisma runs natively. Evidence is the lane's (main 2 of 2 without a key; nothing kept with the real key); BACKLOG row owed.
+* Queue: #3033, #3276, #3405, #3193, #3398, #3385, #3379, #3421, #3422, #3420, #3308 carry queued; batches #3423, #3425, #3426, #3427 running, no red seen (#3426 has one cancelled check, not looked into). Last merge 12:19 IST. Full runs 45344502243 (#3234's old head) and 45344518667 (#3277) still going.
+* Disk 9.3 GB free at 12:46, below the 10 GB line; nothing deleted. claude.ai list read (50 rows): Running: 4oPSMou, 5a3n1, 87D51, this session; 4p8aWF "Tooling · idle-lane alarm" Cloud, its state not read.
