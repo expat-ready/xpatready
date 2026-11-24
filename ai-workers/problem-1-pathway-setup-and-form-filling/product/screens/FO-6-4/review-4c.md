@@ -56,3 +56,45 @@ D1 4: rules 11-12 and the QA-770 guard are as approved, with Minors 1-2 as devia
 * The breaker's report (`break-report-4c.md`, untracked, from a parallel session) was not read.
 
 Reviewer: Block cb742468eb2eb489cc03407610a05fd296b8ebb3
+
+## Round 2 (diff only, P-277): `cb742468e..18b64a0b7cd38a2662ec256b53b807c2fdcc6557`
+The diff is 10 files. The code and test changes are `fake-page.ts`, `firm-link.ts`, `port.ts`, `routes.ts`, `check_fo6_fake_page.ts` and `check_fo6_signing_api.ts`, plus plan-4c.md's "Round 1 fixes" section. Checked against the round 1 findings above.
+
+**Runs, at 18b64a0b7, each on its own isolated copy (never :4400):** signing_api **57/0**, fake_page **18/18**, fo6_door **42/42**, qa53 **49/0**, pf28 **51/51**, features_registry 27/0, signing_port 17/0. All PASS. The coordinator's numbers are confirmed.
+
+**Per-rule removal (Major 1).** One rule removed at a time, signing_api run alone, then restored. `git status` is clean afterwards.
+
+| Rule removed | Result |
+|---|---|
+| CLIENTS_FIRST (`firm-link.ts:134`) | **red** on "before the client signed → 409 CLIENTS_FIRST". With the rule gone, the new under-lock re-check answers 409 CHANGED instead, and the line's code check catches it |
+| `SIGNABLE_RETAINER` filter (`:128`) | **red** on "withdrawn retainer → 409 NO_LIVE_REQUEST" (it answers CLIENTS_FIRST instead) |
+| Consent once: the outer `if (!firmSigner.consentedAt)` together with `if (done.count)` | **red** on "consent written once with one `signing.consent_recorded` line" |
+| Consent once: the outer guard alone | green. The conditional `updateMany` (`consentedAt: null`) and the count check still hold the rule, so behaviour does not change. This is defence in depth, not a gap |
+| QA-770 newer-version check (`service.ts:205`) | **red** on the new m3 line |
+
+The m2 line (422) would fail on round 1's code, which answered 409.
+
+**Major 1: closed.**
+
+**Minors:**
+* **m1: closed.** The deviation is recorded in plan-4c.md and in the code comment at `fake-page.ts:114-115`.
+* **m2: closed.** `z.literal(CONSENT_TEXT_VERSION)` in the strict body gives 422 before any lookup (`routes.ts:17`). The check at `firm-link.ts:127` is now unreachable through the route. It is left as a guard inside the exported function, which is acceptable.
+* **m3: closed** for the newer version. SIGNED_OFFLINE shares one array with WITHDRAWN, and the plan states why it has no separate line, which is accepted.
+* **m4: closed.** The request is re-read under its row lock, and anything but CLIENT_SIGNED gives 409 CHANGED with nothing written.
+* **m5: closed.** Raw codes are gone. "Try again" is shown only when the door did not take the call: a 429, a 5xx, no answer, or a NOT_YET or CHANGED after the retries. "Ask the firm for the latest agreement" is shown when it was refused.
+* **m6: closed.** Expired nonces are swept on every new link (`port.ts:155-156`), and the pending map is swept on every look-up.
+
+**New code checked:**
+* **The Try again store** (`fake-page.ts:83-92, 116-131`):
+  * Entries are keyed by nonce and checked against document and signer. They live for 10 minutes and are taken synchronously, so two Try agains at once give one delivery and one 404 page.
+  * The fake is asked to sign only once (fake_page's 429 → Try again → Signed line, `acts === 1`).
+  * A re-sent call that the door had already stored comes back `duplicate`, and the page treats it as delivered. The webhook's receipt keeps that idempotent.
+* **The start guard in the controller's constructor** fails when the controller is created outside local, however the controller is registered. fake_page has a line for it. Nest makes controllers at start, so this meets Lead 29's "the start fails".
+
+**New findings:** none at Blocker, Major or Minor.
+* One open wording point from the journey report stays a note: the used-link page says "Open the signing link again" to someone who has just signed.
+* The browser walk was not repeated in round 2. door E covers the live path on a copy, and fake_page covers Try again with a stubbed door. The journey score stays 8.5 from round 1. The m5 fix addresses its two ½ points on words.
+
+**Verdict: Approve.** No Blocker or Major is open.
+
+Reviewer: Approve 18b64a0b7cd38a2662ec256b53b807c2fdcc6557
