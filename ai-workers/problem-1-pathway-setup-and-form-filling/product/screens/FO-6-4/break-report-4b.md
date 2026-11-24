@@ -97,3 +97,11 @@ Verdict: Changes
 - Accept, or say so in the note's rule 10.
 
 Verdict (round 2, `c234bda62`): Approve. Only Minors are left; r2-m1's fix is already sitting uncommitted in the checkout.
+
+## Round 3: diff only, `b268982ea..fcb8e3ad8`
+Fresh copy `brk4b3` on :4449 (8 links), stopped afterwards. No 5xx. **r2-m1 fixed.**
+- The r2-m1 reproduction, 3 times: a right code, the code switched off, an attacker consent 43-75 ms after the session the code started (going by the stored `code_verified_at`), the code back on. The attacker's session got **401** and its consent got **401**. At `c234bda62` the same steps gave 200.
+- **No false 401s from the exact comparison.** Right code, then consent, then session: 200 / 200 / 200, with `code_verified_at` exactly equal to the session start, on 2 links. A code-started session across code off and then on: 200 and 200. A code-off consent session works (200). The state shows `codeRequired:false` while off.
+- **The GETs answer as before.** Live state 200 WAITING. The unknown-token 404 still carries `no-store` and `no-referrer`. Session without a cookie: 401. The moved `@OpenRead` marks changed only their text.
+
+Verdict (round 3, `fcb8e3ad8`): Approve.
