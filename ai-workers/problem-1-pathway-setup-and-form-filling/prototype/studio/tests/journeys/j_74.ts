@@ -220,7 +220,7 @@ try {
   await reach(gov("cancel").locator("[data-gov-cancel-send]")); await p.keyboard.press("Enter"); await gov("cancel").waitFor({ state: "detached", timeout: 15_000 });
   await steps.locator('[data-gov-state="cancelled"]').waitFor();
   // Recorded again a week later (aligned by qa 8, 24 Nov, QA-781): the walk's clock already stands at the first step's
-  // 7-day run (W6b), and the app never arms a reminder whose day has passed (stillToCome, reminders.ts), so a due date one
+  // 7-day run (W6b), and the app never arms a reminder whose day has passed (stillToCome, `case-deadlines/plan.ts:35`), so a due date one
   // day earlier (as before) left 2 armed on most run days, 3 only when it fell on a weekend. A week later keeps all three
   // ahead of the clock on any day, and its 7-day reminder falls on or before the cancelled step's 2-day point (W7b NR).
   const due2 = new Date(Date.parse(`${due}T00:00:00Z`) + 7 * 86_400_000).toISOString().slice(0, 10);
