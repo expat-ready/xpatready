@@ -21,7 +21,8 @@
 // is written by SQL into platform_firm_setting (the Owner's switch has no route yet: note question 6). Sample values only;
 // US$0, no model call, no live mail, no vendor call. Legal points (e-signature identity): Unconfirmed: no counsel.
 // The third argument names the parts built so far (here "4a"): a line whose label names a part not yet built prints
-// PENDING and is not counted, so the suite holds what is merged while the later parts are built (P-606); with no third
+// PENDING and is not counted, but a pending line that passes fails (its part is built: add it to the argument), so the
+// suite holds what is merged while the later parts are built (P-606); with no third
 // argument every line counts (that is how it ran red on main a26e80b6a, 2 of 31, exit 1). 4c's PR drops the argument.
 // Run from prototype/:
 //   zsh studio/tools/isolated.sh fo6door 4434 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo6_door.ts 4434 xr_studio_fo6door 4a
@@ -46,7 +47,12 @@ let pending = 0;
 /** A line counts when every part its label names ("(part 4b+4c)", "(part 4a setting, 4b door)") is built; else PENDING. */
 const ok = (name: string, c: unknown, detail?: unknown) => {
   const parts = (name.match(/\(part ([^)]*)\)/)?.[1] ?? "").match(/4[abc]/g) ?? [];
-  if (BUILT && parts.some((x) => !BUILT.has(x))) { pending++; console.log(`PENDING  ${name} (part ${parts.filter((x) => !BUILT.has(x)).join(", ")} not built yet)`); return !!c; }
+  if (BUILT && parts.some((x) => !BUILT.has(x))) {
+    // Review m3: a pending line that passes means its part is built and the argument was not updated: fail loudly, so a
+    // later part's real failures can never hide as PENDING.
+    if (c) return record(`${name} — passes while marked pending: add its part to the third argument`, false);
+    pending++; console.log(`PENDING  ${name} (part ${parts.filter((x) => !BUILT.has(x)).join(", ")} not built yet)`); return false;
+  }
   return record(name, c, detail);
 };
 const { sql: rawSql, until } = client(PORT, DBNAME);

@@ -5,7 +5,8 @@
 //   * a new code at most once a minute per signer; a live unspent code is not sent again unless asked (`resend`);
 //   * a wrong or expired code counts; the sixth locks the link 15 minutes, and while locked even the right code is
 //     refused; a code asked after the lock ends starts the count again.
-// The caller holds the request's row lock (`select … for update`, part 1 review m10) and passes its own audit writer, so
+// Each call takes the request's row lock itself (`select … for update`, part 1 review m10; again is harmless when the
+// caller holds it already), so two calls on one signer queue and a code is used once. The caller passes its audit writer, so
 // each change writes one line in its transaction, naming the signer, never the code. The browser-bound session a right
 // code opens is part 4b's (its two fo_signer columns); here a right code only sets code_verified_at. FO-3c moves onto this
 // file after 4b (Lead 24 on #3433, answer 3). Every value is Sample.
@@ -31,12 +32,19 @@ const unspent = (c: Signer) => !c.codeVerifiedAt || (!!c.codeExpiresAt && c.code
 const liveCode = (c: Signer, now: Date) => !!c.codeSha256 && !!c.codeExpiresAt && c.codeExpiresAt > now && unspent(c);
 export const isLocked = (c: { lockedUntil: Date | null }, now: Date) => !!c.lockedUntil && c.lockedUntil > now;
 
+/** The signer, read after its request's row lock (review m2: the single-use code and the count hold under concurrent calls). */
+async function lockedSigner(tx: Tx, firmId: string, signerId: string): Promise<Signer> {
+  const s = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId }, select: { requestId: true } });
+  await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${s.requestId}::uuid for update`;
+  return tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
+}
+
 export type AskVerdict = { verdict: "SENT"; code: string } | { verdict: "ALREADY_SENT" | "TOO_SOON" | "LOCKED" };
 
 /** Asks for a code. SENT carries the new code for the caller to email after its commit; ALREADY_SENT: a live unspent
  *  code exists and no resend was asked (nothing changes); TOO_SOON: the last code is under a minute old; LOCKED. */
 export async function askCode(tx: Tx, firmId: string, signerId: string, now: Date, o: { resend?: boolean; line: CodeLine }): Promise<AskVerdict> {
-  const cur = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
+  const cur = await lockedSigner(tx, firmId, signerId);
   if (isLocked(cur, now)) return { verdict: "LOCKED" };
   if (liveCode(cur, now) && o.resend !== true) return { verdict: "ALREADY_SENT" };
   if (cur.codeExpiresAt && cur.codeExpiresAt.getTime() - CODE_MINUTES * MIN > now.getTime() - RESEND_GAP_MS) return { verdict: "TOO_SOON" };
@@ -52,7 +60,7 @@ export type CheckVerdict = "OK" | "WRONG" | "EXPIRED" | "LOCKED";
 /** Checks a code. OK: right, live and unspent (it is spent now: code_verified_at is set, the count cleared); WRONG or
  *  EXPIRED: counted; the sixth counted try answers LOCKED and locks the link LOCK_MINUTES; LOCKED: refused, not counted. */
 export async function checkCode(tx: Tx, firmId: string, signerId: string, given: string, now: Date, o: { line: CodeLine }): Promise<CheckVerdict> {
-  const cur = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
+  const cur = await lockedSigner(tx, firmId, signerId);
   if (isLocked(cur, now)) return "LOCKED";
   const live = liveCode(cur, now);
   const right = live && timingSafeEqual(Buffer.from(sha(given), "hex"), Buffer.from(cur.codeSha256!, "hex"));

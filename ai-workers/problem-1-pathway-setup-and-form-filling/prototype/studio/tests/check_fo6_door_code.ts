@@ -98,6 +98,13 @@ try {
   const p2 = await prospect("Bea"), r2 = await draft(p2), m2 = mail.sent.length;
   const broken = await new Retainers(db, files, clock, failingOn("signing.request_sent")).send(R, r2, { expectedVersion: 1 }).then(() => "sent", () => "refused");
   ok("FO-6 4a S fail: a Send whose transaction does not commit emails nothing (no link to a request that does not exist)", broken === "refused" && mail.sent.length === m2 && reqOf(r2) === "", { broken, mails: mail.sent.length - m2 });
+  // Review m1: a failure after record() (the retainer.sent event, written last in Send's transaction) emails nothing either.
+  sql(`create function fo6code_fail_event() returns trigger language plpgsql as $$ begin raise exception 'forced failure on the event'; end $$;
+    create trigger fo6code_fail_event before insert on module_event for each row when (new.type = 'retainer.sent') execute function fo6code_fail_event()`);
+  const p2b = await prospect("Bo"), r2b = await draft(p2b), m2b = mail.sent.length;
+  const afterRecord = await svc.send(R, r2b, { expectedVersion: 1 }).then(() => "sent", () => "refused");
+  sql(`drop trigger fo6code_fail_event on module_event; drop function fo6code_fail_event()`);
+  ok("FO-6 4a S fail: a failure after the request is recorded (its event, last in the transaction) emails nothing and leaves no request", afterRecord === "refused" && mail.sent.length === m2b && reqOf(r2b) === "", { afterRecord, mails: mail.sent.length - m2b });
   const p3 = await prospect("Cal"), r3 = await draft(p3), down = fakeMail({ failOn: () => true });
   useSigningMail(down);
   const sent3 = await svc.send(R, r3, { expectedVersion: 1 }).then(() => true, () => false);
@@ -118,7 +125,7 @@ try {
   const at = () => new Date(t), mins = (m: number) => { t += m * 60_000; };
   const lines: string[] = [];
   const line: CodeLine = async (tx, summary, after) => { lines.push(summary); await auditEvent.record(tx, { firmId: A, actor: "system:test-door", action: "signing.code", entity: "fo_signer", entityKey: signer, summary, detail: { signerId: signer }, before: null, after }); };
-  const run = <T>(f: (tx: Tx) => Promise<T>) => db.$transaction(async (tx) => { await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${A}::uuid and id = ${q1}::uuid for update`; return f(tx); });
+  const run = <T>(f: (tx: Tx) => Promise<T>) => db.$transaction((tx) => f(tx));   // door-code takes the request's lock itself (review m2)
   const ask = (resend?: boolean) => run((tx) => askCode(tx, A, signer, at(), { resend, line }));
   const check = (c: string) => run((tx) => checkCode(tx, A, signer, c, at(), { line }));
   ok("FO-6 4a C: codeOf takes exactly 6 digits (trimmed) and nothing else", codeOf(" 012345 ") === "012345" && [undefined, 12345, "12345", "1234567", "12a456", ""].every((x) => codeOf(x) === null));
@@ -146,10 +153,16 @@ try {
     right === "OK" && reuse === "EXPIRED" && sql(`select (code_verified_at = '${at().toISOString()}'::timestamptz) from fo_signer where id = '${signer}'`) === "t", { right, reuse });
   const p4 = await prospect("Dov"), r4 = await draft(p4); await svc.send(R, r4, { expectedVersion: 1 });
   const s4 = sql(`select id from fo_signer where request_id = '${reqOf(r4)}' and role = 'CLIENT'`), q4 = reqOf(r4);
-  const a5 = await db.$transaction(async (tx) => { await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${A}::uuid and id = ${q4}::uuid for update`; return askCode(tx, A, s4, at(), { line }); });
+  const a5 = await db.$transaction((tx) => askCode(tx, A, s4, at(), { line }));
   mins(11);
   const late = await db.$transaction((tx) => checkCode(tx, A, s4, a5.verdict === "SENT" ? a5.code : "x", at(), { line }));
   ok("FO-6 4a C fail: a code past its 10 minutes is EXPIRED and counted", late === "EXPIRED" && sql(`select code_failures from fo_signer where id = '${s4}'`) === "1", late);
+  // Review m2: two checks of one right code at once: one OK, the other spent (the request's lock queues them).
+  const p5 = await prospect("Eli"), r5 = await draft(p5); await svc.send(R, r5, { expectedVersion: 1 });
+  const s5 = sql(`select id from fo_signer where request_id = '${reqOf(r5)}' and role = 'CLIENT'`);
+  const a6 = await db.$transaction((tx) => askCode(tx, A, s5, at(), { line })), c6 = a6.verdict === "SENT" ? a6.code : "x";
+  const both = await Promise.all([db.$transaction((tx) => checkCode(tx, A, s5, c6, at(), { line })), db.$transaction((tx) => checkCode(tx, A, s5, c6, at(), { line }))]);
+  ok("FO-6 4a C fail: the same right code checked twice at once is OK once and spent once (the lock is door-code's own)", both.filter((v) => v === "OK").length === 1 && both.filter((v) => v === "EXPIRED").length === 1, both);
   const audit = sql(`select count(*) || '|' || count(*) filter (where to_jsonb(a)::text like '%${code1}%' or to_jsonb(a)::text like '%${code2}%') from audit_event a where action = 'signing.code'`);
   ok("FO-6 4a C pass: every change wrote one audit line in its transaction and none holds a code", Number(audit.split("|")[0]) === lines.length && audit.split("|")[1] === "0", { audit, lines: lines.length });
 } finally {
