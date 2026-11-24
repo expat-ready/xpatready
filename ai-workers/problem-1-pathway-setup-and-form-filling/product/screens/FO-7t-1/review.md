@@ -1,5 +1,34 @@
 Reviewer: Approve 15be06bf0396bf7fefe98c22045cf8d2ba195410 (diff-only rounds over 0738e381814805ccdadd08220485e367ccb4608c..15be06bf; M1 fixed). Earlier: Block c83d2017 (M1); Approve 0738e381 (round 7, PR comment).
 
+# Round 9 (diff only, 24 Nov 2026; approved 7f99ccd1b → 163c35239, Lead 16)
+
+Round 9 verdict line: `Reviewer: Approve 163c35239f6cdd01513ec3a6fd9bfe76a52546c8`
+
+Scope: only this PR's own change since 7f99ccd1b. That is the merge 24e1ac610 (parents 7f99ccd1b and origin/main bbc4e3695), 053869eed (the rollback) and 163c35239 (the census). I compared `git diff origin/main...7f99ccd1b` with `git diff origin/main...163c35239` line by line, and read `git diff -M 7f99ccd1b 163c35239` over the migrations and the census. I re-read the trust routes and audit lines against what landed on main since the approval. Nothing in the worktree changed except this file (`git status` was empty after every run).
+
+## The PR's own change since the approval: three things, and nothing else
+* **Migration re-stamp: a pure rename.** `migration.sql` is 100 % similar, byte-identical under `20261123223000_fo7t1_evidence_key`. `rollback.sql` changed in exactly two places: its header line and the `DELETE FROM _prisma_migrations` name, both now the new stamp. The old stamp would have collided with main's `20261123030000_aud_ourstaff_actor_word`. The new stamp sorts last, after main's newest (`20261123213000_fo6d_any_document`), so it runs after every migration it could depend on. No file in the tree names the old stamp except a dated board line (`design/track-b-board.md:9`, a record, not a finding).
+* **CS-W3 census (`tests/check_csw3_firm_scope.ts:267-281`).** Compared with origin/main, main's text is kept word for word: the case-document-flags and client-money/reads/parties reasons, and both entries on ALLOW. The PR adds three things only: its reason sentence (l. 270-273), `client-money/trust/service` on ALLOW (l. 274), and the count 52→53 with "53 with FO-7t part 1" (l. 281). 163c35239 rightly moved the entry from main's comment onto the list itself. The reason is accurate: `service.ts:211-212` is one plain query on `runtime_case` and `case_client` with `rc.firm_id` = the session's firm, after the MoneyVisibilityPort scope check (l. 210). Its follow-up row exists (BACKLOG.md:361, FO-7t part 1p: the read moves into the port and the census drops by one).
+* **The sender census (`check_pf19r_every_sender.ts`)** is unchanged from the approved line. The range-diff only shows main's new neighbour rows as context.
+* **Merge resolution: nothing of main's lost.** `git diff origin/main 163c35239` touches exactly the PR's 17 files, with 1554 insertions and 3 deletions. All 3 deletions are the census lines the PR extends (the ALLOW line, the count line, and the "with the walls on." comment line, which is kept and continued). No file of main's is reverted.
+
+## Against what landed on main since the approval
+* **AUD-3a / AUD-3c (actor words): met.** On main, a firm staff request's audit context is `staff:<id>`, FIRM_STAFF (`platform/observability/hook.ts:54`). OUR_STAFF / `ourstaff:<id>` comes only from the system guard's request (`platform/audit/context.ts:43-49`). The adapter refuses `ourstaff:` outside our staff's request, and any line whose actor is not exactly the request's own (`platform/audit/audit-event.ts:59-62`). All four trust audit lines write `staff:${ctx.staffId}` from `staffOf(req)`, under firm `firmScope(ctx.firmId)` (`client-money/trust/service.ts:83/89, 99/107, 120/128, 155/190`), the same as main's firm-side services (`settings/profile/service.ts:177`, `billing/account.ts:88`). No trust line uses the AUD-3c firm-less kind or `plat_bypass_use`. Evidence: `check_fo7t_trust` 58/0 on the merged head, against the real adapter in an isolated copy, including DW10's "no trust.% line whose actor is not staff:%" (l. 336-339) and DW2's `YES:staff:<id>` (l. 161-162). `check_aud3c_platform_line` 16/0.
+* **CS-W3 census: met** (above). There is no migration-order rule in the census. Migration order is met separately (the stamp sorts last).
+* **PF-8b F7 (data walls) and F4: met.** The migration has no data statement and no function. It only drops and re-adds one CHECK on `money_payment`. `check_pf8b_f7_data_walls` 17/17, `check_pf8b_f4_migrations` 9/9.
+* **QA-53 / QA-65 (`api/src/core.ts:77-109`): met.** ConfigReadGuard hands every `/api/front-office/*` path to the platform guard (l. 97). That guard refuses an undeclared route both at boot (`platform/identity/guard.ts:58`) and per request (l. 104, AUTHZ_UNCONFIGURED). All 8 trust routes declare access (`client-money/trust/routes.ts:17-40`): 6 with `@PermissionKeys` and the 2 answer routes with `@AnyStaff`. The PUT's Owner-only rule is enforced in `service.ts:82`, and DW2 proves it (a Case Manager gets 403 and the answer is unchanged). `check_forms_qa53` 46/0.
+
+## My runs on 163c35239 (run-suites.sh --only, isolated copies, ports +14000, never :4400, no model)
+check_csw3_firm_scope 48/48 · check_fo7t_trust 58/0 · check_pf8b_f4_migrations 9/9 · check_pf8b_f7_data_walls 17/17 · check_forms_qa53 46/0 · check_aud3c_platform_line 16/0 · check_pf12_walls 110/0 · check_pf19r_every_sender 21/0 · check_fo7a_money_schema 122/0 · check_csmv1_money_visibility 33/0 · check-own-migration-guard.sh 47/0 · typecheck.mjs: no new errors (15 known). These agree with the builder's figures.
+
+## Findings
+* **n1 (Nit, non-blocking): `prisma/migrations/20261123223000_fo7t1_evidence_key/migration.sql:7`** still says "Stamped after main's newest (20261123020000)". After the re-stamp, main's newest below it is 20261123213000. Fix: change it to "(20261123213000_fo6d_any_document)", or drop the clause. No database holds this migration yet (the demo runs main), so editing the comment changes no applied checksum.
+* There are no other findings. Earlier open notes (n4, n6; m4, m5) are unchanged and remain the tech lead's to rule on.
+
+Journey score: 8.5/10 stands (pass, no criterion at 0; build round 2). I did not re-walk it, because this round changes no route, screen or word. The API journeys still run on the merged head under main's stricter AUD-3a adapter (check_fo7t_trust 58/0). D17 and D20 remain "simulated only".
+
+**Verdict: Approve** 163c35239f6cdd01513ec3a6fd9bfe76a52546c8. No Blocker or Major is open. n1 is optional.
+
 # Diff-only round on 15be06bf (23 Nov 2026; c83d20173 → 15be06bf0, review.md excluded)
 
 * **Test (M1):** the fix adds `unseenReq`, a deposit with `trustRequestId: rCase.body.id` and no `caseId`. It runs inside the same window as `unseen` (`agent/case:view.all` removed from OWNER and CASE_MANAGER, put back right after). It is asserted `=== 404` in the existing DW6 fail case, under the same `before() === mid` nothing-written condition, and its status is added to the failure detail. This is what M1 asked for. PA stays visible, so this exercises l. 174 and not `partySeen`.

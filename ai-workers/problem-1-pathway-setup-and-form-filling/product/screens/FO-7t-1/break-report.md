@@ -173,3 +173,48 @@ Scope: only `git diff 0f1acb674..c83d20173`, i.e. the DocumentRenderPort contrac
 The tree was left clean except this file. `screens/FO-7t-1/review.md` already had changes from someone else when this round began; this round did not touch it.
 
 Verdict: pass (Approve)
+
+## Round 9 (diff only, merge of main; head 163c35239f6cdd01513ec3a6fd9bfe76a52546c8, 24 Nov 2026)
+
+Scope: what the merge of main (24e1ac610), the re-stamp to `20261123223000_fo7t1_evidence_key` and the CS-W3 allow-list line could break for the trust routes. The trust code (`api/src/client-money/trust/`, `features/client-money-trust.ts`) is byte-identical to 7f99ccd1b. **How:** isolated copy `brk9_fo7t` on :4441 (full app: QA-53/65 `ConfigReadGuard`, PF-4 guard, PF-4s `SystemPlaneWall`, PF-12 walls), restarted with `PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local AI_LIVE=off`. Seeded by SQL: one person and one case per firm, a prospect for C5, payment settings, one ExpatReady staff member with every system role. Probes in scratch scripts (not committed). The copy was stopped (database and files dropped). No Stripe call, no model call. The tree is clean.
+
+**What held**
+* **Guards, on all 8 routes** (GET/PUT answer, POST requests, cancel, GET request, POST deposits, ledger, balances):
+  * No token, an unknown `x-actor`, a configuration person (`user-A`) and a client (`user-P`): 401 `NOT_SIGNED_IN`. A garbage bearer: 401 `TOKEN_REFUSED`. `ConfigReadGuard` gives `/api/front-office` to the PF-4 guard, and the simulated-person header gives nothing.
+  * A firm bearer on `/api/FRONT-OFFICE/...`: 403.
+  * Firm R's bearer plus `x-actor: user-S` reads firm A's ledger: the header is ignored, the firm comes from the session.
+  * Officer O, who lacks `agent/payment:record`, posting a deposit: 403 `MISSING_PERMISSION`. A non-Owner PUT on the answer: 403 `OWNER_ONLY`.
+* **Our own staff (AUD-3a/3c):** an ExpatReady staff session never reaches these routes. Every route answers 403 `SYSTEM_SESSION_ELSEWHERE`, also with `x-actor: user-A` and on `/api/Front-Office/...`, before any guard or handler runs. So no trust line can carry an `ourstaff:` or `system:` word.
+  * A firm token on `/api/system/me` → 403 `firm-session-refused`.
+  * Every trust audit line written was `staff:<platform_staff.id>`, `actor_type` FIRM_STAFF, with the right `firm_id` and a correlation id (`trust.answered`, `trust.request_created`, `trust.deposited`).
+* **CS-W3 walls** (`tests/fixtures/csw3/csw3-spike-walls.sql` applied to the copy and the app restarted; as xr_app with no firm, `runtime_case` reads 0 rows):
+  * Firm A's deposit and request on its own case → 201. The ledger with a case filter pages correctly (p1 26690, p2 25690).
+  * A on B's case, B on A's case or person, and B reading, cancelling or depositing on A's request → 404 each. B's ledger or balances on A's person → 404.
+  * A on A's person with B's case as the filter → an empty page.
+  * The answers are the same as with walls off. Trust's `runtime_case ⋈ case_client` read works under the walls because the PF-4 guard sets the firm.
+* **CS-W3 census:** `check_csw3_firm_scope.ts`: census pass at 53 with `client-money/trust/service`, and the planted file fails. Its API section needs the `rt_csw3` copy on :4496 and was not run here; the walls part was done by hand above.
+* **Migration order:** on a fresh copy, all 160 migrations apply in folder order (the applied list is identical to `ls`). `223000_fo7t1` is last, after main's `213000_fo6d_any_document`, and the check is the new one. No `030000_fo7t1` row exists, and nothing in the code still names the old stamp.
+* **Rollback:** `psql -1 -v ON_ERROR_STOP=1 -f rollback.sql` (no key stored) exits 0. It puts the old check back and deletes only the `20261123223000_fo7t1_evidence_key` row. A restart then re-applies it.
+* **Old-stamp database:** a database whose `_prisma_migrations` row says `20261123030000_fo7t1_evidence_key` deploys `223000` cleanly. DROP/ADD keeps the rows; the old row is left behind and is harmless.
+* **Evidence keys:** a 21-character key and a 300-character key store (201). 301 characters and `/etc/passwd` → 422.
+* **PF-8b:** `check_pf8b_f7_data_walls.ts 15581`: 17/17, 98 forced tables. The migration has no data statement. `check_pf8b_f4_migrations.ts`: 9/9. `check_fo7t_trust.ts` on the merged head: 58/58.
+* **Money invariants:**
+  * Replay → 200 with the same receipt. A changed amount or reference → 409 `KEY_USED`. 2-9 parallel copies of the same key → one 201, the rest 200, one payment. Six at once with different amounts → one 201 and five `KEY_USED`.
+  * Yes → No with money held → "CAD 266.90 is held for 1 case", and a new deposit → 409 `TRUST_OFF`.
+  * The same key in another firm → 201 (keys are per firm, by design).
+  * The ledger's running balance is consistent row by row, and the newest row equals `/balances` (29195).
+
+**Findings**
+* **r9-M1 (Major, pre-existing: not caused by the merge, first tried now): ten or more trust writes at once all fail with 500, and the whole API's connection pool stalls for about 5 s.** Repro on the copy, same party and currency:
+  * 9 parallel deposits: all 201 (or 201 plus 200s for the same key).
+  * **10 parallel deposits: 10 × 500 after about 5.1 s**, same key or different keys. 12: 12 × 500.
+  * Different parties with no case: 10 → all 201, but **16 → 11 × 500**.
+  * A firm-B `GET /answer` sent meanwhile took **4.8 s**.
+  * Nothing is saved (no double payment, no lost receipt number), but the caller gets 500, not 201/200/409. The log shows Prisma P2028 (transaction timeout).
+  * Cause: `recordDeposit` (`service.ts:156-176`) holds a pooled connection and, for one party, the advisory lock `money_trust_lock` (line 158). Inside that transaction it calls `this.scopeOf(ctx)` through `caseOf` (line 210) or `partySeen` (line 202, also line 174), and `scopeOf` queries on `this.db`, outside `tx` (`features/client-money-trust.ts:16`, `PgMoneyVisibility(db)`). Once the pool's 10 connections are held by transactions (the waiters sit blocked on the lock), the holder cannot get one for `scopeOf`, so all of them time out. `createRequest` (`service.ts:100-102`) has the same pattern.
+  * `check_fo7t_trust.ts` never sends more than 2 at once. Round 1's "25 at once" ran before `caseOf`/`partySeen` existed.
+  * Fix: read `const scope = await this.scopeOf(ctx)` before `this.write(...)` and pass it into `caseOf`/`partySeen`, or run it on `tx`. Add a check with 16 parallel deposits: all 201/200, none slower than about 1 s.
+* **r9-m1 (Minor, wording): `migration.sql` line 7 still says "Stamped after main's newest (20261123020000)".** Main's newest is now `20261123213000_fo6d_any_document`. The re-stamp was a pure rename, so the comment is stale. Editing it changes the checksum, but no kept database has applied this migration (only throwaway copies). Fix: update the comment, or leave it and note it in the PR.
+* **Unchanged and out of this round:** r2-m1 to r2-m3, d-m1, d-m2, and round 1's Minors 5-7 (with keys stored, the rollback still cannot run).
+
+Verdict for 163c35239f6cdd01513ec3a6fd9bfe76a52546c8: **Changes** for r9-M1 (Major; the merge did not cause it, but it reproduces on the merged head). Nothing the merge touched broke: guards, our-staff wall, actor words, CS-W3 walls, migration order and rollback all held. If the Lead rules r9-M1 a follow-up row, nothing else stands in the way of Approve.
