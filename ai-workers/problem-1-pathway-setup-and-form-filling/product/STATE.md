@@ -2,7 +2,7 @@
 
 current_lead: local_a55ecb03-8a77-400e-93a7-4b25dc67a228 Lead 22 · 24 Nov 10:39 IST (after Lead 21, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 11:06 IST: Lead 22, check 3c4b700e. #3401 red on check_bk3_links_browser (fix #3408 in review), #3380 retried alone (#3407). **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Batches: #3184 + #3370 (#3400), #3366 (#3402), #3380 + #3379 (#3401); #3202 + #3385 (#3404); queued #3376, #3382, #3375, #3377; #3209 only after #3184. #3397, #3398, #3367 labelled; #3193 red, its lane fixing; read next #3408, #3405. Nightly of 24 Nov green. Stripe keys: Secrets Manager (founder); xr/staging naming asked. Weekly 57%, disk 15 GB. No second standby.
+updated: 2026-11-24 11:17 IST: Lead 22, check 3c4b700e. #3408 (links-suite fix) draft until its proof run. #3184, #3370, #3366, #3376, #3382 merged. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Batches: #3380 (#3407), #3367 (#3410), #3202 (#3412); queued #3385, #3379, #3375, #3377, #3397, #3398; #3209 labelled; #3033 shards 8 and 19 re-running. #3397, #3398, #3367 labelled; #3193 red, its lane fixing; read next #3408, #3405. Nightly of 24 Nov green. Stripe keys: Secrets Manager (founder); xr/staging naming asked. Weekly 57%, disk 15 GB. No second standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,6 +18,7 @@ updated: 2026-11-24 11:06 IST: Lead 22, check 3c4b700e. #3401 red on check_bk3_l
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A355 | 24 Nov before 11:17 (typed to Lead 22) | CodeRabbit: agent studies products, cost (US$100, trial), fit, alternatives, visual case study, then start using it | study session started; no install before his yes; plan file |
 | A354 | 24 Nov ~10:22 (typed to Lead 21) | Mac slow: check and optimize, all approvals; signed in to Stripe | measured; plan file; open |
 | A353 | 24 Nov, before 10:10 (typed to Lead 17; relayed) | check us against the AI-native SDLC playbook; implement only what helps quality or speed | `design/sdlc-playbook-alignment-2026-11-24.md`; read by Lead 21, seven facts spot-checked true on main; N2-N4 finish ordered work; founder 10:22 IST to Lead 21: implement; N2-N4 ordered to Lead O 2, N1 in the next five risky briefs; notes: plan file; open |
 | A352 | 24 Nov ~10:11 IST (typed to Lead 21) | yes to #3379's wording; concurs with the Lead's 'decide when you can'; the Lead drives the sandbox set-up (Stripe test mode, BoldSign, Google and Microsoft OAuth test apps) in the browser, one step and one question at a time; he watches and logs in | #3379 reworded; Stripe first; in progress |
