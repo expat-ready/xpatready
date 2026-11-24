@@ -272,3 +272,11 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Lead O 2 (claude/lead-o2-os-plan 369d114d6): 26 of 70 finished batches red today (37%), 2 of 14 since 11:30; its own count, not re-run. Yes to fix check_workspace_first_calls and to the report-only wake line.
 * #3428 full run 45348775509 success, labelled. #3421 dequeued (first_calls), its full run started by itself. #3441: round 1 Block (nested transactions), fixed 694fddce by its lane, round 2 next. #3429 labelled and queued.
 * Moved from STATE: | A358 | 24 Nov ~12:17 (typed to Lead 23) | sign-in design and review tool left to the Lead; one ask at a time | CodeAnt; plan file, end; in progress |
+
+### Lead 25, 13:48 IST 24 Nov: what Lead 24's written hand-over left out (its message, shortened; not re-checked by me)
+* Promised to the founder: the made-up two-file run first, its result and hosts contacted shown before any code (C6); account, terms, passwords, installs asked one at a time; each ruling recorded; Opus checklist arm 25-26 Nov with CodeAnt, US$0; wake-on-merge "build next, no date"; #3429 looked at each check.
+* Not answered by him: the bearer-link point (#3433 q2); C2 and C4. He was told: accept the three npm audit warnings for a short public-code test, never npm audit fix --force; later writes in ~/codeant-replay need his command unless he allows the folder in the sandbox.
+* Isolation: token check covers gh, glab and environment tokens only; the keychain is not tested, raise it before C6. Repeats of the token check were not read.
+* Sent, no reply seen: 6uSsaj, 7qW26 (#3235 round 5), 87D51 (FO-6 4a), 4oPSMou (M2 pairs). PR comments not confirmed seen: #3411, #3219, #3277, #3439. Not looked into: cancelled checks in #3426 and #3435. FO-7g part 1 on main not confirmed.
+* Nearest named to him: R1.104 after #3420, R1.10 after #3385 (merged). "R1.86 waits only on #3209" is wrong: PF-21rs is missing. waves.py active: wave 3, starts open for 0-4. Scratch ref refs/lead24/3305 in the main copy.
+* Lead B 6: #3235 OK 77997e39d (the PF-21d carry can close); #3277 OK 7bb39be68 (head since moved to 90def4404); #3441 NOT OK 4461c363b, asked for the new head. Told the founder 4d72360f6 was out of date; the newer OK came after.
