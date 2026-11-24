@@ -2,7 +2,7 @@
 
 current_lead: local_11ef6843-97be-454a-88c6-7b65fd7e67ac Lead 21 · 24 Nov 10:02 IST (after Lead 20, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 10:22 IST: Lead 21, check 4dfd36d5. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** #3368 merged 10:09. Queue: #3184 + #3370 (#3392), #3381 (#3395), #3380 (#3396), #3377, #3379 (labelled), #3366 and #3202 (requeued by me); #3209 only after #3184. #3367 5b98ba107 full run going. #3376 has a new head 956541313. #3385's ruling owed (A4, ses-notices). Stripe: founder signed in, in the built-in pane's tab. AWS Step 20 raw outputs: private home, path in that section. 53/101 by 09:05 (not recounted). Weekly 57%, disk 13 GB. No standby.
+updated: 2026-11-24 10:28 IST: Lead 21, check 4dfd36d5. **Hand-over: the last two sections of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** Batch #3392 (#3184 + #3370) red on shard 21: PF-18ns bell race, failed twice; #3381 fixes it, stacked behind (#3395); my merge of #3381 (P-757) was refused by the classifier, not routed around: founder asked. In CI: #3380 (#3396), #3379 (#3399); queued #3377, #3366, #3202, #3394. #3209 only after #3184. #3193 2e859bd73 approved, full run going. #3376 read (956541313), label on green; then #3382 5fa43f14e, #3375 413f14d54 (partly read). #3385 ruling owed. Founder asked: archive ended Leads. Stripe signed in. AWS raw outputs: private home. 53/101 by 09:05 (not recounted). Weekly 57%, disk 13 GB, load 20. No standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
