@@ -256,6 +256,7 @@ async function main() {
     // C6.16 (challenge m1): the adult's link page sends no referrer (its token lives in the fragment, never sent anyway).
     app.getHttpAdapter().getInstance().get(/^\/(?!api\/).*/, (req: any, res: any) => { if (req.path === "/link") res.setHeader("Referrer-Policy", "no-referrer"); res.sendFile(index, { dotfiles: "allow" }); });
   }
+  (await import("./platform/http/keep-alive.ts")).outlastBalancer(app.getHttpServer());   // an idle connection outlasts the load balancer's idle time (no 502 on a reused one)
   await app.listen(port, "127.0.0.1");
   console.log(`Product Studio on http://localhost:${port}`);
 }

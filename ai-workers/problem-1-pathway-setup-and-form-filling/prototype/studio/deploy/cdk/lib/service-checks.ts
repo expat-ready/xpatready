@@ -207,6 +207,16 @@ export function listenerFindings(t: Template): string[] {
   return out;
 }
 
+/** Every load balancer states an idle time shorter than the server's keep-alive (seconds). */
+export function idleTimeFindings(t: Template, keepAliveSeconds: number): string[] {
+  const lbs = all(t, "AWS::ElasticLoadBalancingV2::LoadBalancer");
+  return lbs.length ? lbs.flatMap(([id, lb]) => {
+    const idle = (arr(lb.Properties?.LoadBalancerAttributes) as { Key?: unknown; Value?: unknown }[]).find((a) => a.Key === "idle_timeout.timeout_seconds")?.Value;
+    if (typeof idle !== "string" || !/^[1-9][0-9]*$/.test(idle)) return [`${id}: no idle time stated (${json(idle)})`];
+    return Number(idle) < keepAliveSeconds ? [] : [`${id}: idle time ${idle} s is not shorter than the server's keep-alive ${keepAliveSeconds} s`];
+  }) : ["no load balancer"];
+}
+
 /** A DNS-validated wildcard certificate for `*.<domain>` on the HTTPS listener, and `*.<domain>` pointing at the load balancer. */
 export function wildcardFindings(t: Template, domain: string): string[] {
   const out: string[] = [];
