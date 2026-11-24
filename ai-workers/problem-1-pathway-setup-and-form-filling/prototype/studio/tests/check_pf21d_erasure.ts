@@ -169,11 +169,21 @@ try {
   clock.t = start + 14 * DAY; const skipped = await svc.run(); await svc.run();
   ok("PF-21d fail (SA-11-16 (d)): with the switch off, day 14 erases nothing: one ERASURE_SKIPPED step over two runs; the order stays scheduled",
     again.eraseOn === addDays(addDays(day0, 7), 7) && skipped.skipped.includes(r1) && rowsOf(A, P1) === 2 && (kinds(r1).match(/ERASURE_SKIPPED/g) ?? []).length === 1 && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { skipped, k: kinds(r1) });
-  const lateCancel = await throws(() => svc.cancel(as, null, r1, {}), /WINDOW_ENDED/);
   const byHand = await throws(() => requests.move(as, null, r1, { status: "COMPLETED", actionsTaken: "Sample: done by hand" }), /ERASURE_SCHEDULED/);
-  ok("PF-21d fail (break M3): on its day the window has ended (cancel → 409); a hand move of a scheduled request → 409 ERASURE_SCHEDULED; the request unchanged",
-    lateCancel && byHand && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { lateCancel, byHand, s: statusOf(r1) });
+  ok("PF-21d fail (break M3): a hand move of a scheduled request → 409 ERASURE_SCHEDULED; the request unchanged",
+    byHand && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { byHand, s: statusOf(r1) });
+  // PF-21d part 2a, item 1 (Lead 4, #3235 comment 7095583893): while "Data erasure" is off (the emergency stop), an approved
+  // erasure past its day can still be withdrawn; erasure cannot be undone. With the switch on, the window has ended (409).
+  const wDay = clock.t, PW = person(A); addRows(A, PW);
+  const rW = await deletion(A, PW); await svc.approve(as, null, rW); clock.t = wDay + 8 * DAY;
+  const offCancel = await svc.cancel(as, null, rW, { note: "Sample: withdrawn during the emergency stop" }).then((b) => ({ ok: true, b }), (e) => ({ ok: false, e: `${(e as any)?.response?.code ?? ""} ${String(e)}` }));
+  clock.t = wDay;
+  ok("PF-21d pass (part 2a item 1, Lead 4): with the switch off, cancel after the day goes through (eraseOn cleared, an ERASURE_CANCELLED step); the person's rows stay",
+    offCancel.ok && (offCancel as any).b.eraseOn === null && kinds(rW).endsWith("ERASURE_CANCELLED") && statusOf(rW).endsWith("|-") && rowsOf(A, PW) === 2, { offCancel, k: kinds(rW), s: statusOf(rW) });
   const turnedOn = await swOn(); seen.length = 0;
+  const lateCancel = await throws(() => svc.cancel(as, null, r1, {}), /WINDOW_ENDED/);
+  ok("PF-21d fail (break M3, part 2a item 1): with the switch on, on its day the window has ended (cancel → 409); the request unchanged",
+    lateCancel && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { lateCancel, s: statusOf(r1) });
   const empty = await svc.run();
   ok("PF-21d fail (review M1, SA-11-28): with no module registered, nothing is erased and nothing reads COMPLETED; the order stays scheduled",
     empty.skipped.includes(r1) && empty.erased.length === 0 && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { empty, s: statusOf(r1) });
