@@ -89,3 +89,9 @@ The concept's §8 corrections are carried into `design/briefs/CS-D5.md` (follow-
 Concept r2.1 (30cd601c1) answers B: none, M1-M4, m1-m5 (concept §8); reviewer Approve on 30cd601c1 (#3005); Lead approval above.
 
 ## Build discoveries
+Part 2 (screens lane, 24 Nov, PR #3500), found while building on main 30e97254c:
+1. **BR-8 Accept is not in the panel.** CS-D1 part 2's `POST /checklist-lines/:id/accept` is not on main (`api/src/case-checklist.ts` routes: request, waive, not-applicable, providers, documents). The panel ships with Close only; no Reject either. Recommended: Accept joins the panel footer in CS-D1 part 2's PR (one button, its route, its 409 in the panel, focus to the line). Asked on #3500 under "Question for the tech lead".
+2. **BR-1 has no scan state to read.** Case files have none until PF-F3 (part 1 answers `scan: "NOT_SCANNED"`, Lead 10's ruling on #3188). The Preview button shows on every current file; the panel's badge says "Not scanned yet", never "Checked: clean"; the 409/410 race states are built and checked by network injection only. A 409 whose words are not "Checking for viruses…" (a file changed on disk) shows "could not open" (review M1).
+3. **Images are drawn on the same canvas** (`createImageBitmap`), not in an `<img>` with a Blob URL: no URL to the file at all, one draw path for rotate and zoom.
+4. **pdfjs-dist 6 has no `isEvalSupported`**: the option and every `eval`/`Function` path were removed after CVE-2024-4367 (fixed in 4.2.67); 6.5.438 is pinned. BR-3 holds by having no annotation, scripting or XFA layer.
+5. **No journey j_68** (qa's): `Completes: R1.68` cannot be stated until it exists (P-782 (2) check in pr-rules).
