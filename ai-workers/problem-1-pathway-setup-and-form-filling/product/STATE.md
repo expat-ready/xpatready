@@ -2,7 +2,7 @@
 
 current_lead: local_48775ee3 Lead 3 · 24 Nov 23:58 IST (after Lead 2 local_0bdf05e5, past its 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 04:04 IST: **Lead 3 check 04:03.** 56/101 Works. Weekly 23%. Merged since 00:00: 31 (new: #3493 R1.58 FO-7t part 3, #3587 R1.53 QA-779 b). **ENF-733 proven live:** walks ran by themselves on #3493's merge (j_58 21/24, comment on #3493). qa 9 told: align j_58 W5 to #3552's routes, re-run j_10, score R1.10 R1.56 R1.58. #3491 fixing DW4 (new head ca4cc22ec). In queue: #3235. Owed: RULES Enforced-by text (P-733, P-734, P-738, IDX-25); Lead 1's rulings rows.
+updated: 2026-11-25 04:35 IST: **Lead 3 check 04:33.** 56/101 Works. Weekly 24%. Merged since 00:00: 32 (new: #3235 R1.85 PF-21d 1b). #3491 dirty after #3235 (fixer told: merge main, keep 170000 after 140000). Records PR #3596 (RULES Enforced-by for P-733, P-734, P-738, IDX-25) labelled via lead-pr.sh approve-records. In queue: #3594 #3596. Owed: Lead 1's rulings rows (history/STATE-2026-11-24-2335-lead2-rulings-and-research-lines.md).
 
 ## Hand-over Lead 2 → Lead 3, 23:58 IST 24 Nov (Lead 2 ~265k; earlier block: `history/STATE-2026-11-24-2358-lead2-handover-lead1-block.md`)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 2's 99e4e813 is deleted. **No standby left** (P-286 asks two: start two at the founder's next typed turn). Weekly 15% at 23:56 (11% at 23:12, 7% at 22:4x: ~5-6%/h, 16 lanes; at that rate 96% ~14:00 IST 25 Nov: tell the founder in the morning report, recommend fewer lanes or ask). My context 26%. Disk 10 GB.
