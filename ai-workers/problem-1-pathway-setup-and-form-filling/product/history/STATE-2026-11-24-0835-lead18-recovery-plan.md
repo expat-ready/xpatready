@@ -340,3 +340,10 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 ### Ask rows moved from STATE by Lead 26 (answered; A355's training question still his; word for word)
 | A357 | 24 Nov ~11:55 (typed to Lead 23) | verify Linear, Qodo, CodeRabbit, Harness, Sentry; lean, cost? | researched; plan file, end; told 12:04 |
 | A355 | 24 Nov before 11:17 (typed to Lead 22) | CodeRabbit: agent studies products, cost (US$100, trial), fit, alternatives, visual case study, then start using it | study done (page in the plan file); nothing installed; his answer on training next |
+
+### Lead 26, 14:44 IST 24 Nov: A362
+* **A362** (founder, typed in Lead 25's chat about 14:41, relayed): how many rules, decisions, frameworks are enforced; are the full, 10- and 30-minute reports followed as decided, with the timeline and Track A and B views; which tools (CodeAnt only, or Qodo, Sentry too), work and value, drive in parallel; what was recovered, how many proven. Lead 25 answered from its audit.
+* Its admitted gaps, owed by me: full format at :03 and :33 (cycle-timeline.py, flow-measure.py, Track A and B apart; track-b-board.md on main last changed 23 Nov 10:21); lead-watch.sh whole; private-sync.sh; get_usage on other Mac sessions; Show more; model labels of four cloud starts (R1.20, qa 7, PF-17 part 4, consult-gate); RULES refresh; DECISIONS rows.
+* Its count of RULES.md (enforcers not tested): 132 rows, 16 enforced, 30 in part, 4 owed, 82 prose (62%; 67% on 16 Nov; target under 30%). Its recommendation: a check that refuses a Lead report without its fixed sections. Not ruled.
+* Pace correction told to him: 1 Dec rested on one day; 22 to 24 Nov about 5 a day.
+* Row moved from STATE, still open, word for word: | A360 | 24 Nov ~13:43 (typed to Lead 25) | check with the last Lead, lose nothing; say which tools and what's next; speed check; go on by yourself; may start sessions | plan file, end; in progress |

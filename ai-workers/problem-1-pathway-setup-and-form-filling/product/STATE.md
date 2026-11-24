@@ -19,7 +19,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | # | Ask (IST) | Status |
 |---|---|---|
 | A359 | 24 Nov, after 13:06 (typed to Lead 24) | prove faster; follow the Lead's recommendations; final tooling decision, dates, outcomes | plan file, end; #3305 line pushed; three sessions started; CodeAnt C1 and C3 yes |
-| A360 | 24 Nov ~13:43 (typed to Lead 25) | check with the last Lead, lose nothing; say which tools and what's next; speed check; go on by yourself; may start sessions | plan file, end; in progress |
+| A362 | 24 Nov ~14:41 (typed to Lead 25, relayed) | rules enforced; reports as decided; tools; proven | answered by Lead 25; repairs owed: plan file, end |
 | A361 | 24 Nov ~14:37 (typed to Lead 25, relayed) | open fresh qa + PF-17 part 4; consultation gate and signing code: research best practice, keep flexible, recommend and implement; update | sessions requested by Lead 25; research stops for ruling; plan file, end |
 | A356 | 24 Nov, after 11:45 (relayed by Lead 22) | why not delivering, the bottleneck, unblock by hand, finish partials, one tool | ledger in the plan file, end; lanes woken; in progress |
 | A353, A354 | 24 Nov | open; rows word for word in the plan file, end |
