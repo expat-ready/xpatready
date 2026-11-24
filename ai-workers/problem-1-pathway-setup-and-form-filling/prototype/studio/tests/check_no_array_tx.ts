@@ -112,10 +112,11 @@ const firstArg = (t: string, open: number) => {   // `open` is the index just af
   }
   return t.slice(open).trim();
 };
+const escapeRegExp = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");   // CodeQL: every special character
 const arrayish = (arg: string, file: string) => {
   if (/^(async\b|function\b)/.test(arg) || /^(\([^)]*\)|[A-Za-z_$][\w$]*)\s*(:[^=]*)?=>/.test(arg)) return false;   // a function: the interactive form
   if (/^(\[|\.\.\.|Array\.from\s*\()/.test(arg) || /\.\s*(map|flatMap)\s*\([\s\S]*\)\s*$/.test(arg)) return true;
-  if (/^[A-Za-z_$][\w$]*$/.test(arg)) return new RegExp(`\\b${arg.replace(/\$/g, "\\$")}\\s*=\\s*(\\[|[^;\\n]*\\.\\s*(map|flatMap)\\s*\\()|\\b${arg.replace(/\$/g, "\\$")}\\.push\\(`).test(file);
+  if (/^[A-Za-z_$][\w$]*$/.test(arg)) { const name = escapeRegExp(arg); return new RegExp(`\\b${name}\\s*=\\s*(\\[|[^;\\n]*\\.\\s*(map|flatMap)\\s*\\()|\\b${name}\\.push\\(`).test(file); }
   return false;
 };
 export function arrayBatches(dir: string, root = dir): string[] {

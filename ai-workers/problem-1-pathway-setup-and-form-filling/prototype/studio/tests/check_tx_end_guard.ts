@@ -123,9 +123,52 @@ try {
   const c6b = await fs.withFirm(B, () => pool.connect()); await begun6; const r6 = await q(c6b); c6b.release();
   ok("P1 fail (m7, checkout guard): a pooled client with a statement in flight at checkout is destroyed, never handed out", fired("destroyed-at-checkout") === before6 + 1 && r6.p !== p6 && r6.intx === false && r6.f === B, { atCheckout: fired("destroyed-at-checkout") - before6, p6, r6 });
   ok("P1 pass (wording): the guard's error and event say busy or inside a transaction, not only a transaction", lines.some((l) => /busy or inside a transaction/.test(l)) || fs.notIdleWords === "a pooled connection came back busy or inside a transaction: destroyed, not reused", fs.notIdleWords);
+  // (6) Review m1: a second release while the first waits for its statement throws to that caller (as pg-pool's own does)
+  // and never inside pg's socket handler, which would end the process.
+  const c7 = await fs.withFirm(A, () => pool.connect());
+  const slow7 = c7.query("select pg_sleep(0.2)").catch(() => undefined);
+  c7.release(); let twice: unknown = null; try { c7.release(); } catch (e) { twice = e; }
+  await slow7; await sleep(100);
+  const c7b = await fs.withFirm(A, () => pool.connect()); const r7 = await q(c7b); c7b.release();
+  ok("P1 fail (review m1): a second release while the first settles throws to its caller, and the pool keeps serving", twice instanceof Error && /already been released/.test((twice as Error).message) && r7.f === A, { twice: String(twice), r7 });
 } finally {
-  await db.$disconnect().catch(() => {}); await pool.end().catch(() => {});
+  await db.$disconnect().catch(() => {});
+  // Review m3: a client never released would hold pool.end() for ever; a limit makes that a failure, not a hang.
+  const ended = await Promise.race([pool.end().then(() => true, () => true), sleep(15_000).then(() => false)]);
+  if (!ended) ok("the pool ends within 15 s (every client was released)", false);
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* left for prune-test-dbs.sh */ }
+}
+
+// (7) Lead 25: one real split upsert from the app, `tx.govFormDef.upsert` with `update: {}` (finder.ts:713, sources.ts:892),
+// on a scratch database with every migration. Prisma runs it as SELECT → INSERT → SELECT; another connection holds the
+// table locked 0.6 s, so the first SELECT is still waiting when the transaction's 300 ms timeout fires. Without the guard
+// the INSERT went out after the ROLLBACK and committed alone; with it nothing is stored.
+{
+  const MIG = join(import.meta.dirname, "..", "prisma", "migrations"), DB2 = `xr_studio_txend_full_${process.pid}`;
+  const OWNER2 = `postgresql://xr_studio@127.0.0.1:54329/${DB2}`, APP2 = `postgresql://xr_app@127.0.0.1:54329/${DB2}`;
+  const { readdirSync } = await import("node:fs");
+  execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB2]); execFileSync(join(BIN, "createdb"), [...PG, DB2]);
+  for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [OWNER2, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  const psql2 = (sql: string) => execFileSync(join(BIN, "psql"), [OWNER2, "-v", "ON_ERROR_STOP=1", "-q", "-Atc", sql], { encoding: "utf8" }).trim();
+  const ws = psql2("insert into workspace (id, key, label) values (gen_random_uuid(), 'm1-split', 'M1 split upsert') returning id");
+  const pool2 = new fs.WalledPool({ connectionString: APP2, max: 2 }), db2 = new PrismaClient({ adapter: new PrismaPg(pool2) });
+  fs.oneQueryPerCaller(db2);
+  const { Client } = (await import("pg")).default;
+  const holder = new Client({ connectionString: OWNER2 }); await holder.connect();
+  try {
+    await holder.query("begin"); await holder.query("lock table gov_form_def in access exclusive mode");
+    const released = sleep(600).then(() => holder.query("commit"));
+    const r8 = await db2.$transaction(async (tx) => {
+      await tx.govFormDef.upsert({ where: { workspaceId_formKey: { workspaceId: ws, formKey: "IMM-M1" } }, update: {}, create: { workspaceId: ws, formKey: "IMM-M1", displayName: "M1 split", formKind: "data_form" } });
+    }, { timeout: 300 }).then(() => "committed", (e: Error) => e.message.split("\n").pop()!);
+    await released; await sleep(500);
+    const stored = Number(psql2(`select count(*) from gov_form_def where form_key = 'IMM-M1'`));
+    ok("M1 fail (Lead 25, a real split upsert): tx.govFormDef.upsert with update {} whose SELECT outlasts the timeout stores nothing (the caller is told it failed)", r8 !== "committed" && stored === 0, { r8, stored });
+  } finally {
+    await holder.end().catch(() => {}); await db2.$disconnect().catch(() => {});
+    await Promise.race([pool2.end().catch(() => {}), sleep(15_000)]);
+    try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB2]); } catch { /* prune-test-dbs.sh */ }
+  }
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

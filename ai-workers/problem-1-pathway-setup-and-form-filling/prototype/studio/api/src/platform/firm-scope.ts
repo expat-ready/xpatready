@@ -489,11 +489,15 @@ export const RELEASE_SETTLE_MS = 10_000;
 function closeOnOpenTransaction(c: Tagged): void {
   const release = c.release;   // pg-pool gives each checkout its own release-once function
   const judge = () => { if (idleNow(c)) return release(); c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed" }); return release(notIdleError()); };
+  let released = false;   // review m1: a second release while the first settles throws to its caller, as pg-pool's own does
   c.release = ((err?: Error | boolean) => {
+    if (released) throw new Error("Release called on client which has already been released to the pool.");
+    released = true;
     if (err) return release(err);
     if (!busy(c)) return judge();
     let done = false;
-    const settle = (fn: () => void) => () => { if (done) return; done = true; clearTimeout(t); c.removeListener("drain", onDrain); c.removeListener("end", onEnd); fn(); };
+    // Called from pg's socket handler: an error here would end the process, so it is logged, never thrown (review m1).
+    const settle = (fn: () => void) => () => { if (done) return; done = true; clearTimeout(t); c.removeListener("drain", onDrain); c.removeListener("end", onEnd); try { fn(); } catch (e) { logPort.error("platform_pool_release_failed", e); } };
     const onDrain = settle(judge), onEnd = settle(() => release(notIdleError()));
     const t = setTimeout(settle(() => { c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed-unsettled" }); release(notIdleError()); }), RELEASE_SETTLE_MS);
     c.on("drain", onDrain); c.on("end", onEnd);
@@ -526,6 +530,12 @@ function refuseAfterEnd(c: Guarded): void {
       const err = new Error("M1: a query after this connection's COMMIT or ROLLBACK is refused: it would run outside the transaction");
       const cb = typeof a[a.length - 1] === "function" ? a[a.length - 1] as (e: Error) => void : typeof cfg === "object" && typeof cfg?.callback === "function" ? cfg.callback as (e: Error) => void : undefined;
       if (cb) { process.nextTick(() => cb(err)); return undefined; }
+      // A Submittable (a query object pg drives itself) gets the error the way pg gives it one (review m2).
+      if (typeof cfg === "object" && cfg && typeof (cfg as { submit?: unknown }).submit === "function") {
+        const sub = cfg as { handleError?: (e: Error) => void };
+        process.nextTick(() => sub.handleError?.(err));
+        return cfg;
+      }
       return Promise.reject(err);
     }
     const ends = text !== undefined ? endsTransaction(text) : name !== undefined && !!c[END_NAMES]?.has(name);
