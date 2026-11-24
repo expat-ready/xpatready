@@ -372,7 +372,7 @@ try {
   const stale = await seen(r.getByText(/newer version \(3\)/), 10_000) && await seen(r.locator("[data-version]", { hasText: "Version 3" }), 15_000);
   await r.waitForTimeout(500);   // the page now shows their version 3: room for a wrongly armed check to open the panel on it
   ok("R1.53 QA-778 fail (review m1): a colleague saved version 3 meanwhile: Check and send with your typed edit says so, opens no Send panel on their version and saves nothing of yours (still 3 versions)",
-    theirs.status === 200 && stale && (await r.getByRole("dialog").count()) === 0 && (await ret(gus.id)).versions.length === 3, { theirs: theirs.status, stale });
+    theirs.status === 200 && stale && (await r.getByRole("dialog").count()) === 0 && (await ret(gus.id)).versions.length === 3, { theirs: theirs.status, stale, dialogs: await r.getByRole("dialog").count(), versions: (await ret(gus.id)).versions.length });
   await closePanel();
   await r.getByLabel("Fee 1: amount").fill("1750");   // typed, not saved: the qa replay's step (S17 M1)
   const hint = (await r.locator("[data-unsaved-hint]").count()) ? await r.locator("[data-unsaved-hint]").innerText() : "";
@@ -389,6 +389,30 @@ try {
   ok("R1.53 QA-778 pass: Send sends version 4 at CAD 1,750.00, the typed fee; versions 1 to 3 are kept as they were and never sent",
     gSent.status === "SENT" && gSent.currentVersion === 4 && !!gSent.versions[3]?.sentAt && gSent.versions[3]?.fees[0]?.amountMinor === 175000n && gSent.versions[0].fees[0].amountMinor === 150000n && gSent.versions[2]?.fees[0]?.amountMinor === 120000n && gSent.versions.slice(0, 3).every((v) => v.sentAt === null),
     gSent.versions.map((v) => `${v.n}:${String(v.fees[0]?.amountMinor)}:${v.sentAt ? "sent" : "-"}`));
+
+  // ------------------------------------------------------------------------------- QA-779 (b): the draft takes the email added on the record
+  const hal = prospect("Hal", R.id, false), hr = await call(tok.R, "POST", `/front-office/prospects/${hal.id}/retainers`, { templateId: tpl.body.id, fees: [{ label: "Fee", amountMinor: 90000, when: "ON_SIGNING" }] });
+  await r.goto(`${BASE}/front-office/retainers/${hr.body.id}`); await r.locator('[data-blocker="signer"]').waitFor({ timeout: 30_000 });
+  await r.waitForTimeout(500);   // room for the record's read to (wrongly) offer the save
+  const halSave = r.getByRole("button", { name: "Save as version 2" });
+  ok("R1.53 QA-779 (b) fail: while the client's record has no email, Save as version 2 stays off and no line says the record has one",
+    hr.status === 201 && await halSave.isDisabled() && (await r.locator("[data-record-email]").count()) === 0 && (await ret(hal.id)).versions.length === 1, { draft: hr.status, line: await r.locator("[data-record-email]").count() });
+  const halEmail = `fo5s.hal.${run}@example.com`;
+  await r.locator('[data-blocker="signer"]').getByRole("link").click();
+  await r.locator("[data-email-edit-open]").click(); await r.locator("[data-email-input]").fill(halEmail); await r.locator("[data-email-save]").click();
+  const emailSaved = await seen(r.getByText("Email saved.").first(), 10_000);
+  await r.goBack();
+  const recLine = await seen(r.locator("[data-record-email]"), 15_000) ? await r.locator("[data-record-email]").innerText() : "";
+  const enabled = await halSave.isEnabled();
+  await shot(r, "qa779b-record-email-1440");
+  ok("R1.53 QA-779 (b) pass: with the email added on the client's record (prospect page), Save as version 2 is pressable with no typed change and the line says so",
+    emailSaved && enabled && recLine === `${hal.name}'s record now has an email. Save version 2 to use it.`, { emailSaved, enabled, recLine });
+  if (enabled) await halSave.click();
+  const halV2 = await seen(r.locator("[data-version]", { hasText: "Version 2" }), 15_000);
+  const halRow = await ret(hal.id);
+  ok("R1.53 QA-779 (b) pass: saving makes version 2 with the same fee; the values show the email and the signer blocker is gone",
+    halV2 && (await r.locator("[data-values]").innerText()).includes(halEmail) && (await r.locator('[data-blocker="signer"]').count()) === 0 && (await r.locator("[data-record-email]").count()) === 0
+    && halRow.versions.length === 2 && halRow.versions[1].fees[0]?.amountMinor === 90000n, { halV2, versions: halRow.versions.length });
 
   // ------------------------------------------------------------------------------- widths
   for (const w of [375, 1024, 1440]) {

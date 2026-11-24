@@ -161,3 +161,100 @@ J1 main (refused, Choose, Save, Send): held. J2 error (switched off meanwhile): 
 * `graph.mjs`: not run, because it rewrites `qa/GRAPH.md`.
 
 Reviewer: Changes 9df5fbf1f11334fb745abb1aaf7de455dd1076da
+
+## Round 3 (diff only, d85b8c92e)
+
+Head `d85b8c92ebbe8fcb14f9f0546b4a2eb74a59b04e` · `git diff 9df5fbf1f d85b8c92e` (`retainer-page.tsx`, the browser check) · same reviewer as round 2 · 2026-11-24 · Live AI off, US$0.
+
+**Verdict: Ship.** Every round-2 Must and Should in scope is fixed, and each fix has a test that fails when the fix is removed. m3b is the Lead's follow-up row and is not judged here.
+
+### What was run (isolated copy `rv780b` on :4445 only)
+* `vite build`, then `check_fo5s_retainer_screens_browser.ts 4445 xr_studio_rv780b`: **58/58**.
+* Mutation A, two changes in one run (the link back to `hover:underline`, and the focus call in the `focusSend` effect removed): **56/58**. The two FAIL lines are the none-state axe (`link-in-text-block`) and "(review r2 n4) … focus is on Check and send".
+* Mutation B (the round-1 M2 logic put back): **55/58**. The three "(review M2)" FAIL lines print and the run reaches its summary, so n5 is fixed.
+* Both mutations were restored byte for byte (`git diff` clean on code). Regenerated screenshots restored with `git checkout`. The copy is stopped.
+* Round-2 probes P1–P6 re-run (scratchpad, not committed), with one new step P3b.
+
+### Round-2 findings
+| # | Status | Evidence |
+|---|---|---|
+| r2 M1, link told apart by colour only | **Fixed** | `:128` link is `underline`. axe now runs on the none state (`tests :213`) and the resave state (`:282`), and passes. Probe P5 is clean, and so is the resave state at 1024 px. |
+| r2 m2, stale "switched off" | **Fixed** | `:55-56` names the refused pick. Probe P1: "Standard retainer … · version 1 / Disclosure retainer … was switched off meanwhile, so you can no longer choose it. Nothing was saved." It is asserted at `tests :246`. |
+| r2 m3a, unsaved pick | **Fixed** | `:127` uses `options.some(o => o.prints)`. Probe P3 now shows "Choose a template that prints it" and no false "None". |
+| r2 m3b, fallback | **Out of scope** | The Lead's follow-up row (needs `service.ts`). P2 is unchanged: still "None … prints it yet" while a plain save prints it. |
+| r2 n4, focus | **Fixed** | `:39`, `:46`, `:97`: after resave, focus lands on Check and send. Bounded `waitForFunction` at `tests :284`. |
+| r2 n5, stopped run | **Fixed** | `tests :272-273`, `:283` are bounded, and mutation B prints FAIL lines and the summary. |
+
+### New code checked
+* **The message is hard-coded to "switched off" on any `templateId` 422** (`:55`). In the page the only reachable case is a template switched off meanwhile:
+  * There is no template delete route, so "No such template" needs a made-up id.
+  * A template's kind is fixed, so "Another kind" cannot happen from the pick.
+  * If the id is not in the list, the server's words are kept.
+* **The `focusSend` ref** is cleared on any server failure (`:58`) and when it fires. One gap: `submit` can stop on a fee row before any request (`:103-105`), and the ref stays set (nit 1).
+
+### Nits (no change needed to approve)
+1. **The focus flag can survive a resave that stops on a fee row** (`retainer-page.tsx:97`). *Scenario:* an unsaved fee "abc", Send refused, "Save version 2 with the disclosure" stops on that row and the ref stays set. The next change to the retainer, for example the person's later Save, moves focus to Check and send. That is harmless and leads to the next step. Set the flag in `submit` only once the rows are valid.
+2. **The P3 route takes two extra steps.** P3b: "Choose a template that prints it" focuses the pick, and choosing the draft's own template clears the notice and turns Save off. A second Check and send then offers "Save version 2 with the disclosure", which works. This is not a dead end.
+
+### D1–D20 / BIC (changes since round 2)
+* **D11 1, D13 1, D16 1.**
+* **D18 ½:** m3b, the follow-up row.
+* **D17, D20:** simulated only.
+* **BIC-18 Partly:** m3b only.
+* Others as in round 2.
+
+### Journey test (reviewer role; the one score for this check)
+J1–J6 as in round 2: all held.
+* J2 now names the refused template.
+* J3's link passes axe.
+* J6 ends with focus on Check and send.
+* J7 (an unsaved pick, then Send) now offers "Choose a template that prints it" and ends in a resave and Send (P3b).
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J1, J3, J4, J6 and J7 end in Sent with the disclosure (suite, P3b) |
+| Next step obvious | 1 | every tested refusal offers a working action |
+| Plain words | 1 | the 422 line names the template and says nothing was saved |
+| Feedback and state | 1 | P1 fixed |
+| Correct data | 1 | unchanged since round 2 (template version 2 used; disclosure equals the check's text) |
+| Error recovery | 1 | the 422 falls back and says so |
+| Accessibility and screen sizes | 1 | axe clean on the none and resave states; focus moves to Check and send |
+| Speed | 1 | one list request |
+| Visual quality | 1 | the underlined link sits inside the sentence (screenshot `qa780-refused-none-prints-1440`) |
+| Trust and sources | ½ | P2 (m3b, the follow-up row) still claims none prints it |
+
+**Score 9.5/10: a pass.** Most valuable raise: the m3b follow-up row.
+
+### Could not check
+The same as round 2: an intended user's unaided walk (D17, D20), a real screen reader, a visible browser, 200 % zoom, and `graph.mjs`.
+
+Reviewer: Approve d85b8c92ebbe8fcb14f9f0546b4a2eb74a59b04e
+
+## Round 4 (diff only, 03a0d9dc0)
+
+Head `03a0d9dc0db2a2c5e82b075edb577dcbde102fae` · `git diff d85b8c92e 03a0d9dc0` (one line, `tests/check_fo5s_retainer_screens_browser.ts:186`) · same reviewer as rounds 2 and 3 · 2026-11-24 · Live AI off, US$0.
+
+**Verdict: Ship.** The one-line change fixes CI's `types` failure (TS2322: `Uint8Array<ArrayBufferLike>` is not assignable to `BlobPart`) and changes nothing else.
+
+### The change
+* `new Blob([buildDocx(lines)])` becomes `new Blob([new Uint8Array(buildDocx(lines))])`.
+* `buildDocx` returns a `Uint8Array` (`api/src/front-office/retainers/docx.ts:307`). `new Uint8Array(x)` copies the same bytes into a buffer typed `ArrayBuffer`, so the uploaded file is byte for byte the same.
+* 39 other places in `studio/tests/` already build their Blobs this way.
+* It touches only the test helper, not the product code.
+
+### What was run
+* `NODE_OPTIONS=--max-old-space-size=12288 node ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/typecheck.mjs`:
+  * api: 15 errors, all known; web: 0 errors.
+  * Result: **"PASS no new type errors (15 known, 0 fixed)"**.
+* CI check runs on `03a0d9dc0` (REST `commits/…/check-runs`): `types`, `ci`, `fast`, `parts (1)`–`(11)`, CodeQL, `pr-rules`, `plan`, `kind`, `skeleton` and `outside-wave` all **success**. The rest were skipped. None failed.
+* The FO-5s browser suite was **not re-run**. After the container restart, `isolated.sh` answered "start the demo database first (studio/start.sh)", and I did not start the shared database on :4400. The brief made the suite optional for this change. The builder reports 58/58. Round 3's 58/58 on `d85b8c92e` used the same helper with identical bytes.
+
+### Findings
+None. Round 3's nits 1 and 2 and the m3b follow-up row stand as written.
+
+### Journey test
+Unchanged since round 3: **9.5/10, a pass**. This change touches no screen.
+
+Reviewer: Approve 03a0d9dc0db2a2c5e82b075edb577dcbde102fae
+
+Verdict: Approve
