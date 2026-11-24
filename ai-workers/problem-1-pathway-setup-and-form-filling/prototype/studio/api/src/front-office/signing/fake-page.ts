@@ -70,7 +70,7 @@ async function deliver(call: SigningHookCall): Promise<{ ok: boolean; status: nu
   return last;
 }
 
-@Controller(STAND_IN_ROUTE)
+@Controller("api/public/sign-fake")   // STAND_IN_ROUTE, written out: QA-53 reads the path from the decorator
 export class FakeSigningPageController {
   @OpenRead("the copy's stand-in for the signing vendor's frame on the fake adapter, local only, its nonce the key, FO-6 part 4c") @Get(":doc/:signer/:nonce")   // QA-53 REVIEWED
   show(@Param("doc") doc: string, @Param("signer") signer: string, @Param("nonce") nonce: string, @Res({ passthrough: true }) res: Rs) {
