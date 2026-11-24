@@ -79,6 +79,7 @@ try {
   const c2 = await withFirm(A, () => pool.connect()); const r2 = await q(c2);
   ok("pass: a client released idle stays in the pool (the same connection is handed out again)", r1.p === r2.p, { r1, r2 });
   await c2.query("begin"); c2.release();
+  ok("fail (release guard): a client released inside a transaction leaves the pool at once, never kept idle for the next caller", pool.totalCount === 0 && pool.idleCount === 0, { total: pool.totalCount, idle: pool.idleCount });
   const c3 = await withFirm(A, () => pool.connect()); const r3 = await q(c3).catch((e: Error) => ({ error: e.message }) as Record<string, unknown>);
   ok("fail: a client released inside a transaction leaves the pool (a new connection, no open transaction, its firm set again)", r3.p !== r2.p && r3.intx === false && r3.f === A, { r2: r2.p, r3 });
   await c3.query("rollback").catch(() => undefined); await c3.query("begin"); await c3.query("select 1/0").catch(() => undefined); c3.release();
@@ -86,6 +87,14 @@ try {
   const r4 = c4 instanceof Error ? { error: c4.message } as Record<string, unknown> : await q(c4).catch((e: Error) => ({ error: e.message }) as Record<string, unknown>);
   if (!(c4 instanceof Error)) { await c4.query("rollback").catch(() => undefined); c4.release(); }
   ok("fail: a client released in a failed transaction ('E') leaves the pool too, and the next checkout runs in its own firm", !("error" in r4) && r4.p !== r3.p && r4.f === B && r4.intx === false, { r3: r3.p, r4 });
+  // The checkout guard alone (Lead B 5): a client used after its release (BEGIN sent on a handle already back in the
+  // pool, idle when it was released) is caught at the next checkout: destroyed, and another connection handed out.
+  const c5 = await withFirm(A, () => pool.connect()); const r5 = await q(c5); c5.release();
+  await c5.query("begin");   // a misuse after release: the pooled client is now inside a transaction
+  const c6 = await withFirm(B, () => pool.connect()).catch((e: Error) => e);
+  const r6 = c6 instanceof Error ? { error: c6.message } as Record<string, unknown> : await q(c6).catch((e: Error) => ({ error: e.message }) as Record<string, unknown>);
+  if (!(c6 instanceof Error)) c6.release();
+  ok("fail (checkout guard): a pooled client found inside a transaction at checkout is destroyed and another handed out, in its own firm, outside any transaction", !("error" in r6) && r6.p !== r5.p && r6.f === B && r6.intx === false, { r5: r5.p, r6 });
 } finally {
   await db.$disconnect().catch(() => {}); await watch.$disconnect().catch(() => {}); await pool.end().catch(() => {});
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* left for prune-test-dbs.sh */ }
