@@ -1,8 +1,9 @@
 // FO-6d (BACKLOG row FO-6d; AG-5-61; P-564): send any PDF for signature. Each Done-when line with a passing and a failing
 // case, on one scratch database (every migration, PF-3's and FO-1a's Sample seeds), dropped at the end. A Nest app is
 // built from the retainers feature (files, links) and this row's feature beside PF-4's guard and the local sign-in
-// stand-in. Part 1: upload, send and the reads; the signing itself (the webhook's OTHER handler, the sealed copy filed) is
-// part 2's suite. Fake adapter: no vendor call, no network, no model call (US$0). Sample values. Legal points (e-signature identity): Unconfirmed: no counsel.
+// stand-in; the provider's webhook goes through FO-6 part 3's own controller (part 2: the OTHER handler, the sealed copy
+// filed, the person's signed copies). The signers' consent is written as FO-6 part 4's door will write it (that door is
+// not this row). Fake adapter, fake mail: no vendor call, no network, no model call (US$0). Sample values. Legal points (e-signature identity): Unconfirmed: no counsel.
 //   npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo6d_any_document.ts
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
@@ -40,8 +41,10 @@ const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/id
 const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { EVERYONE_SEES_ALL, writeSetting } = await import("../api/src/platform/settings.ts");
 const { platformAuditWorkspaceId } = await import("../api/src/platform/audit/audit-event.ts");
+const { fakeMail } = await import("../ports/mail.ts");
+const { SIGNING_EVENT, SigningCompletedPayload } = await import("../ports/events/signing.ts");
 const { fakeSigning } = await import("../api/src/front-office/signing/port.ts");
-const { useSigningPort } = await import("../api/src/front-office/signing/handlers.ts");
+const { useSigningMail, useSigningPort } = await import("../api/src/front-office/signing/handlers.ts");
 const { Signing } = await import("../api/src/front-office/signing/service.ts");
 const { SigningHooksController } = await import("../api/src/front-office/signing/hooks.ts");
 const { LocalFiles } = await import("../api/src/front-office/files.ts");
@@ -74,8 +77,8 @@ try {
   const R = { id: sid("user-R"), token: token(sid("user-R")) }, RO = await staff(A, "read-only", "READ_ONLY");
   const other = await staff(A, "case-officer", "CASE_OFFICER");
 
-  const signing = fakeSigning();
-  useSigningPort(signing);
+  const signing = fakeSigning(), mail = fakeMail();
+  useSigningPort(signing); useSigningMail(mail);
     const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: { now: () => Date.now() } }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
     ...retainers.providers, ...anyDoc.providers];
   @Module({ controllers: [...retainers.controllers, ...anyDoc.controllers] as never[], providers: providers as never[] }) class TestApp {}
@@ -90,6 +93,11 @@ try {
     const bytes = Buffer.from(await r.arrayBuffer()), text = bytes.toString("utf8"); let b: unknown = text; try { b = JSON.parse(text); } catch { /* bytes */ }
     return { status: r.status, body: b, text, bytes };
   };
+
+  const hooks = new SigningHooksController(new Signing(db, new LocalFiles(join(WORK, "files"))));
+  let ip = 0;
+  const post = (c: { headers: Record<string, string | undefined>; body: Uint8Array }) => hooks.receive("fake", { ip: `10.0.1.${(++ip % 200) + 1}`, headers: c.headers, body: JSON.parse(new TextDecoder().decode(c.body)) });
+  const refusal = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { const x = e as { getStatus?: () => number; getResponse?: () => unknown }; return { status: x.getStatus?.() ?? 0, body: (x.getResponse?.() ?? {}) as Record<string, unknown> }; } };
 
   // A Corporate prospect owned by user-R: its company has a primary contact (B) and a signatory (C); D is on no prospect.
   const person = (given: string, firm = A) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', '${given}', 'Sample', '${given.toLowerCase()}.fo6d@example.com', 'test', now()) returning id`);
@@ -181,22 +189,61 @@ try {
   const certified = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, bytes: Buffer.concat([PDF, Buffer.from("<< /AcroForm << /Fields [] >> /Perms << /DocMDP 7 0 R >> >>")]), title: "قرارداد\u200cنامه (Sample)" }));
   ok("FO-6d S2 pass: a certified (DocMDP) PDF with a form is not taken for a government form, and a Persian title with a zero-width non-joiner is plain text (201)", certified.status === 201, certified.text.slice(0, 200));
 
-  // Review r2 on #3207: until part 2 registers its handler, the provider's events for an OTHER request are stored once and
-  // answered "no handler" by FO-6 part 3's door; nothing is applied (never the retainer path).
-  const hooks = new SigningHooksController(new Signing(db, new LocalFiles(join(WORK, "files"))));
-  const pdQ1 = sql(`select provider_document_id from fo_signature_request where id = '${Q1}'`);
-  const [viewed] = await signing.act(A, pdQ1, sql(`select id from fo_signer where request_id = '${Q1}' and person_id = '${PB}'`), "viewed");
-  const hv = await hooks.receive("fake", { ip: "10.0.2.1", headers: viewed.headers, body: JSON.parse(new TextDecoder().decode(viewed.body)) });
-  ok("FO-6d S3 fail: with no OTHER handler registered, a viewed event is stored once and answered \"no handler\"; the signer and the request are unchanged, no retainer line",
-    hv.applied === false && hv.reason === "no handler" && count("fo_signing_hook_receipt", `request_id = '${Q1}'`) === 1 && count("fo_signer", `request_id = '${Q1}' and viewed_at is not null`) === 0
-      && sql(`select status from fo_signature_request where id = '${Q1}'`) === "SENT" && count("audit_event", `entity_key = '${Q1}' and action like 'signing.viewed'`) === 0, hv);
+  // ------------------------------------------------------------------------------- S4: two people sign; the sealed copy is filed
+  const pd1 = sql(`select provider_document_id from fo_signature_request where id = '${Q1}'`), signerOf = (p: string) => sql(`select id from fo_signer where request_id = '${Q1}' and person_id = '${p}'`);
+  const [early] = await signing.act(A, pd1, signerOf(PB), "signed");
+  const noConsent = await refusal(() => post(early));
+  ok("FO-6d S4 fail: a signature with no recorded consent → 409 (the provider asks again), the signer unsigned", noConsent?.status === 409 && count("fo_signer", `request_id = '${Q1}' and signed_at is not null`) === 0, noConsent);
+  sql(`update fo_signer set consented_at = now(), consent_text_version = '${CONSENT}' where request_id = '${Q1}'`);
+  const b1 = await post(early), [c1, done] = await signing.act(A, pd1, signerOf(PC), "signed");
+  const c1a = await post(c1), mails0 = mail.sent.length, d1 = await post(done);
+  const ev = sql(`select sealed_file_key || '|' || sealed_sha256 || '|' || audit_sha256 from fo_signing_evidence where request_id = '${Q1}'`).split("|");
+  ok("FO-6d S4 pass: both people sign, then completed → SIGNED with the sealed copy and the audit file stored with us and hashed",
+    b1.applied && c1a.applied && d1.applied && sql(`select status from fo_signature_request where id = '${Q1}'`) === "SIGNED" && /^signing\//.test(ev[0]) && /^[0-9a-f]{64}$/.test(ev[1] ?? ""), { b1, c1a, d1, ev });
+  const link = await call("POST", `/api/front-office/signature-requests/${Q1}/download-link`, R.token, { file: "signed" });
+  const file = link.status === 200 ? await call("GET", link.body.url, R.token) : null;
+  ok("FO-6d S4 pass: the firm downloads the signed copy through a short-lived link; its sha256 is the stored one", file?.status === 200 && sha(file.bytes) === ev[1], { link: link.status, file: file?.status });
+  const onB = await call("GET", `/api/front-office/people/${PB}/documents`, R.token), onC = await call("GET", `/api/front-office/people/${PC}/documents`, R.token), onD = await call("GET", `/api/front-office/people/${PD}/documents`, R.token);
+  ok("FO-6d S4 pass: the sealed copy is filed on both people (their documents list its sha256); a person on no visible prospect is 404", onB.text.includes(ev[1]) && onC.text.includes(ev[1]) && onD.status === 404, [onB.status, onC.status, onD.status]);
+  const evt = await db.moduleEvent.findFirst({ where: { firmId: A, type: SIGNING_EVENT.SIGNING_COMPLETED, subjectId: Q1 } });
+  ok("FO-6d S4 pass: one signing.completed of kind OTHER (schema-checked) and \"Your signed document\" emailed once to each signer",
+    !!evt && SigningCompletedPayload.safeParse(evt.payload).success && (evt.payload as { documentKind: string }).documentKind === "OTHER"
+      && mail.sent.slice(mails0).filter((m) => m.subject === "Your signed document").length === 2, { evt: evt?.payload, mails: mail.sent.slice(mails0).map((m) => m.subject) });
+  ok("FO-6d S4 fail: OTHER never moves the prospect or makes a client (stage unchanged; no prospect.won, no retainer, no case)",
+    stage() === stage0 && count("audit_event", `firm_id = '${A}' and action = 'prospect.won'`) === 0 && count("fo_retainer", `prospect_id = '${PRO}'`) === 0
+      && count("module_event", `firm_id = '${A}' and type = 'prospect.won'`) === 0);
+  const again = await post(done);
+  ok("FO-6d S4 fail: the same completed event again → handled once (one receipt, one evidence row, one event, no new email)", !!again && count(`fo_signing_hook_receipt`, `request_id = '${Q1}' and event_type = 'completed'`) === 1 && count("module_event", `subject_id = '${Q1}'`) === 1 && count("fo_signing_evidence", `request_id = '${Q1}'`) === 1 && mail.sent.length === mails0 + 2, again);
 
   // ------------------------------------------------------------------------------- S5: an added firm signer signs last
   const s5 = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, firm: other.id, title: "Countersigned letter (Sample)" }));
-  const Q5 = String(s5.body?.id ?? "00000000-0000-4000-8000-000000000000");
+  const Q5 = String(s5.body?.id ?? "00000000-0000-4000-8000-000000000000"), pd5 = sql(`select provider_document_id from fo_signature_request where id = '${Q5}'`);
   ok("FO-6d S5 pass: a send with one firm person added has one client and one firm signer (order 2)", s5.status === 201 && sql(`select string_agg(role || ':' || sign_order, ',' order by sign_order) from fo_signer where request_id = '${Q5}'`) === "CLIENT:1,FIRM:2", s5.text.slice(0, 200));
+  sql(`update fo_signer set consented_at = now(), consent_text_version = '${CONSENT}' where request_id = '${Q5}'`);
+  const firm5 = sql(`select id from fo_signer where request_id = '${Q5}' and role = 'FIRM'`), client5 = sql(`select id from fo_signer where request_id = '${Q5}' and role = 'CLIENT'`);
+  const [f5] = await signing.act(A, pd5, firm5, "signed"), firstFirm = await refusal(() => post(f5));
+  ok("FO-6d S5 fail: the firm signing before the client → 409, nothing signed", firstFirm?.status === 409 && count("fo_signer", `request_id = '${Q5}' and signed_at is not null`) === 0, firstFirm);
+  const [c5] = await signing.act(A, pd5, client5, "signed"); await post(c5); const f5b = await post(f5);
+  ok("FO-6d S5 pass: once the client signed, the firm's redelivered signature applies", f5b.applied && count("fo_signer", `request_id = '${Q5}' and signed_at is not null`) === 2, f5b);
   const badFirm = await call("POST", "/api/front-office/signature-requests", R.token, form({ signers: PB, firm: sql(`select id from platform_staff where firm_id = '${B}' limit 1`) }));
   ok("FO-6d S5 fail: firm B's staff as the firm signer → 422, nothing sent", badFirm.status === 422 && badFirm.body.code === "FIRM_SIGNER_NOT_IN_FIRM", badFirm.text.slice(0, 200));
+
+  // ------------------------------------------------------------------------------- S6: each signed copy follows its own prospect
+  // Review M2 on #3207: Cy is the company's signatory, so Cy is on a second Corporate prospect of the same company, owned by
+  // a Case Officer. A document signed there is listed on Cy's record for that owner only; user-R (own-only: the firm's
+  // "everyone sees all" is off) sees only the copy from user-R's own prospect.
+  sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, state, engaged_at, engaged_by, created_by, updated_at) values (gen_random_uuid(), '${A}', '${PC}', 'MANUAL', 'WEBSITE', '${other.id}', 'ENGAGED', now(), 'test', 'test', now())`);
+  const PRO2 = sql(`insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
+    select gen_random_uuid(), '${A}', l.id, 'CORPORATE', (select id from fo_stage where firm_id = '${A}' and pipeline = 'CORPORATE' and key = 'ENGAGED'), '${co}', '${PC}', '${other.id}', 'test', now() from fo_lead l where l.person_id = '${PC}' returning id`);
+  sql(`insert into fo_stage_move (firm_id, prospect_id, to_stage_id, cause, by_actor) select firm_id, id, stage_id, 'PERSON', 'test' from fo_prospect where id = '${PRO2}'`);
+  const s6 = await call("POST", "/api/front-office/signature-requests", other.token, form({ prospectId: PRO2, signers: PC, title: "Employment offer (Sample, other owner)" }));
+  const Q6 = String(s6.body?.id ?? "00000000-0000-4000-8000-000000000000"), pd6 = sql(`select provider_document_id from fo_signature_request where id = '${Q6}'`);
+  sql(`update fo_signer set consented_at = now(), consent_text_version = '${CONSENT}' where request_id = '${Q6}'`);
+  const [c6, done6] = await signing.act(A, pd6, sql(`select id from fo_signer where request_id = '${Q6}'`), "signed"); await post(c6); await post(done6);
+  const sealed6 = sql(`select coalesce((select sealed_sha256 from fo_signing_evidence where request_id = '${Q6}'), '')`);
+  const asR = await call("GET", `/api/front-office/people/${PC}/documents`, R.token), asOther = await call("GET", `/api/front-office/people/${PC}/documents`, other.token);
+  ok("FO-6d S6 pass: the Case Officer sees, on Cy's record, the copy signed from their own prospect (and not user-R's)", /^[0-9a-f]{64}$/.test(sealed6) && asOther.status === 200 && asOther.text.includes(sealed6) && !asOther.text.includes(ev[1]), { s6: s6.status, other: asOther.text.slice(0, 200) });
+  ok("FO-6d S6 fail: user-R, own-only, does not see on Cy's record the title or hash of the copy from the Case Officer's prospect", asR.status === 200 && asR.text.includes(ev[1]) && !asR.text.includes(sealed6) && !asR.text.includes("other owner"), asR.text.slice(0, 300));
 
   // ------------------------------------------------------------------------------- D: the database keeps the rules
   const doc1 = sql(`select document_id from fo_signature_request where id = '${Q1}'`);

@@ -43,5 +43,7 @@ export const SigningCompletedPayload = z.discriminatedUnion("documentKind", [
     currency: z.string().regex(/^[A-Z]{3}$/),
   }),
   z.strictObject({ documentKind: z.literal("CONSULTATION"), ...Common }),
+  /** FO-6d (AG-5-61): any other PDF the firm sent; it never moves a prospect or makes a client. */
+  z.strictObject({ documentKind: z.literal("OTHER"), ...Common }),
 ]);
 export type SigningCompletedPayload = z.infer<typeof SigningCompletedPayload>;
