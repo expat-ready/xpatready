@@ -26,7 +26,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A362 | 24 Nov ~14:41 (typed to Lead 25, relayed) | rules enforced; reports as decided; tools; proven | answered by Lead 25; repairs owed: plan file, end |
 | A361 | 24 Nov ~14:37 (typed to Lead 25, relayed) | open fresh qa + PF-17 part 4; consultation gate and signing code: research best practice, keep flexible, recommend and implement; update | sessions requested by Lead 25; research stops for ruling; plan file, end |
 | A356 | 24 Nov, after 11:45 (relayed by Lead 22) | why not delivering, the bottleneck, unblock by hand, finish partials, one tool | ledger in the plan file, end; lanes woken; in progress |
-| A353, A354 | 24 Nov | open; rows word for word in the plan file, end |
+| A353, A354 | 24 Nov | open; plan file, end |
 | A352 | 24 Nov ~10:11 IST (typed to Lead 21) | yes to #3379's wording; concurs with the Lead's 'decide when you can'; the Lead drives the sandbox set-up (Stripe test mode, BoldSign, Google and Microsoft OAuth test apps) in the browser, one step and one question at a time; he watches and logs in | #3379 reworded; Stripe first; in progress |
 | A351 | 24 Nov 09:27 (typed to Lead 17) | five delivery problems: implement from now without delaying product | `design/delivery-five-2026-11-24.md` (end); C4 done: `design/p702-evaluation-2026-11-24.md`; open |
 | A350 | 24 Nov ~09:22 (typed to Lead 19) | do every needs-me step in the browser; AWS run US$2 yes; RQ-01 inside the 101, no blocker, parallel tracks; **commit 29 Nov**, 10-15 a day; research security and counsel; on-call given in chat | in progress; full in the plan file |
