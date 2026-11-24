@@ -96,7 +96,8 @@ try {
   const p: Page = await ctx.newPage();
   const errors: string[] = []; p.on("pageerror", (e) => errors.push(String(e)));
   const bodies: unknown[] = [];
-  p.on("request", (r) => { if (r.method() === "POST" && new URL(r.url()).pathname === "/api/platform/staff/invitations") bodies.push(r.postDataJSON()); });
+  // R1.20: the screen sends the whole form as one batch (P-727); each row of it is one body here (its name in `name`).
+  p.on("request", (r) => { if (r.method() === "POST" && new URL(r.url()).pathname === "/api/platform/staff/invitations/batch") bodies.push(...((r.postDataJSON() as { rows?: unknown[] }).rows ?? [])); });
   await p.goto(`${BASE}/platform/team`); await p.locator("[data-seat-line]").waitFor({ timeout: 30_000 });
   await p.locator("[data-invite-open]").click();
   await p.getByLabel("Email, person 1").waitFor({ timeout: 15_000 });
@@ -113,16 +114,16 @@ try {
   await p.getByLabel("Email, person 2").fill(s2);   // row 2 without a name
   await p.locator("[data-send-invites]").click();
   for (let i = 0; i < 100 && invitations(s2) === 0; i++) await p.waitForTimeout(100);
-  const sent = bodies as { email: string; displayName?: string }[];
+  const sent = bodies as { email: string; name?: string }[];
   ok("PF-4dn DW4 screen: the Name typed on a row reaches the request and is stored; a row without a name sends none",
-    sent.find((b) => b.email === s1)?.displayName === "Client B Staff" && sent.find((b) => b.email === s2) !== undefined && !("displayName" in (sent.find((b) => b.email === s2) ?? {}))
+    sent.find((b) => b.email === s1)?.name === "Client B Staff" && sent.find((b) => b.email === s2) !== undefined && !("name" in (sent.find((b) => b.email === s2) ?? {}))
     && sql(`select display_name from platform_invitation where email = '${s1}'`) === "Client B Staff" && sql(`select coalesce(display_name, 'NULL') from platform_invitation where email = '${s2}'`) === "NULL", sent);
   // Review m1: a name the server refuses (an invisible character) shows on the Name field, never under Email.
   const s3 = `pf4dn-ui3-${run}@example.com`;
   await p.locator("[data-invite-open]").click(); await p.getByLabel("Email, person 1").waitFor({ timeout: 15_000 });
   await p.getByLabel("Email, person 1").fill(s3); await p.getByLabel("Name, person 1 (optional)").fill("Client\u200bD");
   await p.locator("[data-send-invites]").click();
-  const nameErr = p.locator('[data-invite-row="1"]').getByText("The name has a line break or an invisible character. Type it again on one line.");
+  const nameErr = p.locator('[data-invite-row="1"]').getByText("Give the person's name in 1 to 100 characters, on one line.")   // R1.20: the batch's words (nameOf);
   await nameErr.waitFor({ timeout: 15_000 });   // fails loudly when the feedback never shows (WAY-OF-WORKING, Devin)
   ok("PF-4dn review m1 fail: a refused name shows on the Name field (aria-invalid there, not on Email), nothing stored",
     await nameErr.isVisible() && await p.getByLabel("Name, person 1 (optional)").getAttribute("aria-invalid") === "true" && await p.getByLabel("Email, person 1").getAttribute("aria-invalid") !== "true" && invitations(s3) === 0,

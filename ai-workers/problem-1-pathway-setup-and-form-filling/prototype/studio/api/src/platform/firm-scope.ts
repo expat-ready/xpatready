@@ -59,6 +59,7 @@ import pg from "pg";
 import { logPort, requestScope } from "./observability/log.ts";
 import { currentJobFirm } from "./jobs/pgboss-jobs.ts";
 import { auditEvent, platformAuditWorkspaceId } from "./audit/audit-event.ts";
+import { auditContext } from "./audit/context.ts";
 import type { AuditPort } from "../../../ports/audit.ts";
 import type { PrismaClient } from "@prisma/client";
 
@@ -136,7 +137,7 @@ export type BypassEntry = { why: string; routes: readonly RegExp[]; outside?: bo
 export const BYPASS_USES: Readonly<Record<string, BypassEntry>> = Object.freeze({
   "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true, audit: "per-firm" },
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true, audit: "per-firm" },
-  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true, audit: "per-firm" },
+  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5); a private link's page and form, R1.90 (the link has no firm until it is used)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i, /^(GET|POST) \/api\/public\/signup\/[^/]{1,400}$/i], direct: true, audit: "per-firm" },
   "platform.billing.stripe-webhook": { why: "Stripe's event names a customer or subscription, not our firm: the door finds the firm, then updates it as that firm (PF-5 part 2)", routes: [/^POST \/api\/hooks\/stripe$/i], direct: true, audit: "per-firm" },
   "job:platform.billing.webhook_sweep": { why: "Stripe events whose handling did not finish, every firm's (PF-5 part 2)", routes: [], outside: true, audit: "per-firm" },
   "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true, audit: "platform" },
@@ -144,7 +145,7 @@ export const BYPASS_USES: Readonly<Record<string, BypassEntry>> = Object.freeze(
   "job:platform.entitlements.storage_daily": { why: "the daily storage measure lists every firm, then measures each in its own firm scope (PF-15, SA-3-40)", routes: [], outside: true, audit: "per-firm" },
   "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b), and the firm-less PLATFORM_ACCOUNT rows due a retry (PF-19p; their firm-less line: PF-12b part 4)", routes: [], outside: true, audit: "per-firm" },
   "job:messages.send": { why: "a platform job (JobPort platform: true, no firm) sends one platform account message, a PLATFORM_ACCOUNT row with no firm; a firm's send job runs as its firm (PF-19p)", routes: [], outside: true, audit: "platform" },
-  "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], outside: true, direct: true, audit: "platform", inside: ["platform.firms.signup"] },
+  "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p; R1.90's invited form too)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i, /^POST \/api\/public\/signup\/[^/]{1,400}$/i], outside: true, direct: true, audit: "platform", inside: ["platform.firms.signup"] },
   "cases.prospect-won.catch-up": { why: "at start and every few seconds, every firm's won prospects with no client yet are listed (each is then made a client as its own firm, never on this use; the link jobs are queued after it) (FO-8, CS-K1 part 2)", routes: [], outside: true, audit: "per-firm" },
   "job:platform.billing.exit_notices": { why: "the payment-hold notices list every firm on hold, then send each its due notice in its own firm scope (PF-5 part 4, SA-2-6)", routes: [], outside: true, audit: "per-firm" },
   "job:platform.entitlements.booking_daily": { why: "the daily job lists every firm with a booked plan change now due, then applies each in its own firm scope (PF-15 part 1b, SA-3-60)", routes: [], outside: true, audit: "per-firm" },
@@ -319,9 +320,11 @@ const touched = new WeakMap<object, Set<string>>();
  *  any other shape is kept as null. */
 const CORRELATION = /^(job:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;   // observability/jobs.ts makes job:<pg-boss uuid>
 /** PF-12b: inside a bypass use, the firm whose rows this transaction reads or writes. Writes one platform.bypass line to
- *  that firm's trail inside `tx` (once per firm and transaction): the use, the method (never the path), the actor
- *  (system:<use>; none of the per-firm uses runs in a staff session) and the correlation id. A failed write throws
- *  BypassNotRecorded, so `tx` rolls back. Outside a bypass use it does nothing: nothing crossed a wall. */
+ *  that firm's trail inside `tx` (once per firm and transaction): the use, the method (never the path), the actor and the
+ *  correlation id. The actor is system:<use>, except in a request our own staff make (PF-4s's /api/system routes: a
+ *  firm's staff session never runs a bypass use), where it is the request's own ourstaff:<id>, as an ordinary entry on
+ *  that firm's trail (AUD-3c, Lead B's point 1 on #3040: AUD-3a refuses any other word in such a request). A failed write
+ *  throws BypassNotRecorded, so `tx` rolls back. Outside a bypass use it does nothing: nothing crossed a wall. */
 export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
   const s = scope.getStore(), use = s?.bypass;
   if (!use) return;
@@ -335,17 +338,22 @@ export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
   const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
   const given = requestScope.getStore()?.correlationId, correlationId = given && CORRELATION.test(given) ? given : null;
   try {
-    await recorder().record(tx, { firmId: id, actor: `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
+    const ours = ourStaffActor();
+    await recorder().record(tx, { firmId: id, actor: ours ?? `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
       summary: `Our platform read or changed this firm's records across the firm walls (${use}).`, detail: { use, method, correlationId } });
   } catch (e) { seen.delete(id); throw new BypassNotRecorded(use, e); }
 }
+/** AUD-3c: the request's own ourstaff:<id> when this is a request our own staff make, else undefined. */
+const ourStaffActor = (): string | undefined => { const c = auditContext(); return c?.actorType === "OUR_STAFF" && c.actor?.startsWith("ourstaff:") ? c.actor : undefined; };
+
 /** PF-12b part 3: inside a "platform" bypass use, one firm-less platform.bypass line in `tx` (once per transaction), on
  *  the platform's own audit workspace (never reset, P-571 (1)): the use, the method (never the path) and the correlation
  *  id. A failed write throws BypassNotRecorded, so `tx` rolls back (P-607). Outside a "platform" use it does nothing.
  *  A recorded departure (review m3): AuditPort's AuditEntry requires a firm, so the line goes through the case/configuration
  *  entry shape (it names the platform workspace, no case, no firm) rather than a port change (P-423; a firm-less platform
- *  entry is the tech lead's later row). That shape takes the request's or job's firm when one is in scope, so a "platform"
- *  use in a firm's scope is refused here (fail-closed) rather than land its line on that firm's trail (break m3). */
+ *  entry is the tech lead's later row; AUD-3c built it for our own staff's requests, below). That shape takes the
+ *  request's or job's firm when one is in scope, so a "platform" use in a firm's scope is refused here (fail-closed)
+ *  rather than land its line on that firm's trail (break m3). */
 /** `step` (Lead 15's ruling on #2814): a per-firm use's step that touches no firm (sign-up's new-email lookup and pending
  *  row; a refused verify) names itself and writes the same firm-less line; `key` is a pending id, never a secret, code
  *  or email. Without a step, only a "platform" use writes. */
@@ -361,9 +369,17 @@ export async function touchPlatform(tx: unknown, at?: { step: string; key?: stri
   const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
   const given = requestScope.getStore()?.correlationId, correlationId = given && CORRELATION.test(given) ? given : null;
   try {
-    const workspaceId = await platformAuditWorkspaceId(tx as Parameters<typeof platformAuditWorkspaceId>[0]);
-    await recorder().record(tx, { workspaceId, actor: `system:${use}`, action: "platform.bypass", entity: "bypass use", entityKey: use,
-      summary: `Our platform used the bypass role for its own records, no firm's (${use}${at ? `, ${at.step}` : ""}).`, detail: { use, method, correlationId, ...(at ? { step: at.step, key: at.key ?? null } : {}) } });
+    const detail = { use, method, correlationId, ...(at ? { step: at.step, key: at.key ?? null } : {}) };
+    // AUD-3c (Lead 10's ruling on #3040): in a request our own staff make, the line is the port's firm-less kind under the
+    // request's own ourstaff:<id> (no workspace: the adapter finds it), never a case-side line, never a system: word.
+    const ours = ourStaffActor();
+    if (ours) await recorder().record(tx, { firmId: null, actor: ours, action: "platform.bypass", entity: "plat_bypass_use", entityKey: use,
+      summary: `ExpatReady staff used the bypass role for the platform's own records, no firm's (${use}${at ? `, ${at.step}` : ""}).`, detail });
+    else {
+      const workspaceId = await platformAuditWorkspaceId(tx as Parameters<typeof platformAuditWorkspaceId>[0]);
+      await recorder().record(tx, { workspaceId, actor: `system:${use}`, action: "platform.bypass", entity: "bypass use", entityKey: use,
+        summary: `Our platform used the bypass role for its own records, no firm's (${use}${at ? `, ${at.step}` : ""}).`, detail });
+    }
   } catch (e) { seen.delete(""); throw new BypassNotRecorded(use, e); }
 }
 /** For a use that only reads firms' rows (a sweep's read, a lookup): each firm's line in a transaction of its own. Returns
@@ -445,6 +461,112 @@ export function appDatabaseUrl(databaseUrl: string, env: NodeJS.ProcessEnv = pro
 
 const SET = Symbol("pf12.set"), swallow = () => undefined;   // swallow: pg rejects the query in flight and drops the client; this only stops a late 'error' killing the API
 type Tagged = pg.PoolClient & { [SET]?: string };
+/** P1 (PF-4bc round-3 break; Lead 23, 24 Nov): a client may come back with a transaction still open. Prisma 7.8's
+ *  adapter-pg drops a transaction whose start came after the engine gave up (maxWait) by `release()` alone, never sending
+ *  ROLLBACK, so the next caller ran inside it: its writes were lost at the next rollback, and a rollback undid its
+ *  set_config while the tag above still named its firm (the next query ran as the earlier firm). The server tells pg the
+ *  transaction state after every statement (ReadyForQuery: 'I' idle, 'T' in a transaction, 'E' failed); a client that is
+ *  not idle (not 'I', or a statement sent and not yet answered) when released is destroyed, never kept, and its tag cleared (fail closed). And at checkout (Lead B 5): a
+ *  client the pool cannot prove idle has its tag cleared and is destroyed, and another is taken (one more try; then the
+ *  checkout fails). Clearing the tag alone would not do: the lost write would stay. tests/check_pool_tx_return.ts. */
+export const notIdleWords = "a pooled connection came back busy or inside a transaction: destroyed, not reused";
+const notIdleError = () => new Error(notIdleWords);
+/** What pg 8 keeps per client (@types/pg does not declare it): the server's last transaction state, the statement in
+ *  flight, the queue, and whether the server's ready message for the last statement has been read. Idle means 'I' with
+ *  nothing sent and unanswered (review m1: a BEGIN still in flight reads 'I') and that ready message read (Lead B 6: after
+ *  an error pg clears the statement before the ready message, so for that moment the state is the one before it). */
+type PgState = { getTransactionStatus(): "I" | "T" | "E" | null; _getActiveQuery(): unknown; _queryQueue: unknown[]; readyForQuery: boolean };
+const proto = pg.Client.prototype as unknown as Partial<PgState>, unconnected = new pg.Client() as unknown as Partial<PgState>;
+if (typeof proto.getTransactionStatus !== "function" || typeof proto._getActiveQuery !== "function" || !Array.isArray(unconnected._queryQueue))
+  throw new Error("P1: pg no longer reports a connection's transaction state (Client.getTransactionStatus, _getActiveQuery, _queryQueue), so the pool cannot refuse an open transaction (firm-scope.ts; pg changed)");
+// readyForQuery is set at the first ready message, so a client not yet connected cannot show it; busy() requires it to be
+// true, so if pg renamed it every client would read busy and be destroyed (fail closed).
+const busy = (c: object) => { const s = c as unknown as PgState; return !!s._getActiveQuery() || !Array.isArray(s._queryQueue) || s._queryQueue.length > 0 || s.readyForQuery !== true; };
+function idleNow(c: object): boolean { return (c as unknown as PgState).getTransactionStatus() === "I" && !busy(c); }
+/** P1 break m6: a client released with a statement still in flight is judged once pg has had every answer (its 'drain'),
+ *  at most this long; destroying it at once killed a caller's statement that had not failed. */
+export const RELEASE_SETTLE_MS = 10_000;
+function closeOnOpenTransaction(c: Tagged): void {
+  const release = c.release;   // pg-pool gives each checkout its own release-once function
+  const judge = () => { if (idleNow(c)) return release(); c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed" }); return release(notIdleError()); };
+  let released = false;   // review m1: a second release while the first settles throws to its caller, as pg-pool's own does
+  c.release = ((err?: Error | boolean) => {
+    if (released) throw new Error("Release called on client which has already been released to the pool.");
+    released = true;
+    if (err) return release(err);
+    if (!busy(c)) return judge();
+    let done = false;
+    // Called from pg's socket handler: an error here would end the process, so it is logged, never thrown (review m1).
+    const settle = (fn: () => void) => () => { if (done) return; done = true; clearTimeout(t); c.removeListener("drain", onDrain); c.removeListener("end", onEnd); try { fn(); } catch (e) { logPort.error("platform_pool_release_failed", e); } };
+    const onDrain = settle(judge), onEnd = settle(() => release(notIdleError()));
+    const t = setTimeout(settle(() => { c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed-unsettled" }); release(notIdleError()); }), RELEASE_SETTLE_MS);
+    c.on("drain", onDrain); c.on("end", onEnd);
+    return undefined;
+  }) as typeof c.release;
+}
+
+/** M1 (P1-pool round-1 break; Lead 24 and 25): a checkout that has sent COMMIT or ROLLBACK refuses any later query before
+ *  it is sent. A Prisma interactive transaction's timeout queues its ROLLBACK behind a running statement; the same
+ *  operation's next statement then went out after it and ran on its own (autocommit), so half a write stayed while the
+ *  caller was told it failed (tests/check_tx_end_guard.ts). A transaction's end counts in a plain string, a config object
+ *  or a prepared statement (and a prepared name seen ending one before); a savepoint's rollback or release, COMMIT or
+ *  ROLLBACK PREPARED, and words inside quotes, dollar-quoted bodies or comments do not. The state is new at each checkout. */
+const ENDED = Symbol("m1.ended"), END_NAMES = Symbol("m1.endNames"), GUARDED = Symbol("m1.guarded");
+type Guarded = Tagged & { [ENDED]?: boolean; [END_NAMES]?: Set<string>; [GUARDED]?: true };
+/** The statements of a SQL text with their quoted parts, comments and dollar-quoted bodies removed, read left to right in
+ *  one pass as PostgreSQL reads them (breaker m2, m3): '…' with '' inside, E'…' with backslash escapes, "…" identifiers,
+ *  $tag$…$tag$ (any tag), -- to the end of the line, and nested /* … *\/. An unclosed quote or comment runs to the end. */
+function statementsOf(sql: string): string[] {
+  const out: string[] = []; let cur = "", k = 0;
+  const n = sql.length;
+  while (k < n) {
+    const ch = sql[k], nx = sql[k + 1];
+    if (ch === "-" && nx === "-") { const e = sql.indexOf("\n", k); k = e < 0 ? n : e; cur += " "; continue; }
+    if (ch === "/" && nx === "*") { let depth = 1; k += 2; while (k < n && depth > 0) { if (sql[k] === "/" && sql[k + 1] === "*") { depth++; k += 2; } else if (sql[k] === "*" && sql[k + 1] === "/") { depth--; k += 2; } else k++; } cur += " "; continue; }
+    if ((ch === "E" || ch === "e") && nx === "'" && !/[\w$]/.test(sql[k - 1] ?? "")) { k += 2; while (k < n) { if (sql[k] === "\\") k += 2; else if (sql[k] === "'" && sql[k + 1] === "'") k += 2; else if (sql[k] === "'") { k++; break; } else k++; } cur += " "; continue; }
+    if (ch === "'") { k++; while (k < n) { if (sql[k] === "'" && sql[k + 1] === "'") k += 2; else if (sql[k] === "'") { k++; break; } else k++; } cur += " "; continue; }
+    if (ch === '"') { k++; while (k < n) { if (sql[k] === '"' && sql[k + 1] === '"') k += 2; else if (sql[k] === '"') { k++; break; } else k++; } cur += " x "; continue; }
+    if (ch === "$" && !/[\w$]/.test(sql[k - 1] ?? "")) {
+      const m = /^\$((?:[A-Za-z_\u0080-\uffff][\w\u0080-\uffff]*)?)\$/u.exec(sql.slice(k, k + 64));   // a tag is empty or an identifier
+      if (m) { const end = sql.indexOf(m[0], k + m[0].length); k = end < 0 ? n : end + m[0].length; cur += " "; continue; }
+    }
+    if (ch === ";") { out.push(cur); cur = ""; k++; continue; }
+    cur += ch; k++;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim().toLowerCase()).filter(Boolean);
+}
+export function endsTransaction(sql: string): boolean {
+  return statementsOf(sql).some((x) => (/^(commit|end|abort|rollback)\b/.test(x) && !/^rollback(\s+(work|transaction))?\s+to\b/.test(x) && !/^(commit|rollback)\s+prepared\b/.test(x)) || /^prepare\s+transaction\b/.test(x));
+}
+function refuseAfterEnd(c: Guarded): void {
+  c[ENDED] = false;   // new at each checkout
+  if (c[GUARDED]) return;
+  c[GUARDED] = true;
+  const query = c.query;
+  (c as { query: unknown }).query = function (this: unknown, ...a: unknown[]) {
+    const cfg = a[0] as { text?: unknown; name?: unknown; callback?: unknown } | string | undefined;
+    const text = typeof cfg === "string" ? cfg : typeof cfg?.text === "string" ? cfg.text : undefined;
+    const name = typeof cfg === "object" && cfg && typeof cfg.name === "string" ? cfg.name : undefined;
+    if (c[ENDED]) {
+      const err = new Error("M1: a query after this connection's COMMIT or ROLLBACK is refused: it would run outside the transaction");
+      const cb = typeof a[a.length - 1] === "function" ? a[a.length - 1] as (e: Error) => void : typeof cfg === "object" && typeof cfg?.callback === "function" ? cfg.callback as (e: Error) => void : undefined;
+      if (cb) { process.nextTick(() => cb(err)); return undefined; }
+      // A Submittable (a query object pg drives itself) gets the error the way pg gives it one (review m2).
+      if (typeof cfg === "object" && cfg && typeof (cfg as { submit?: unknown }).submit === "function") {
+        const sub = cfg as { handleError?: (e: Error) => void };
+        process.nextTick(() => sub.handleError?.(err));
+        return cfg;
+      }
+      return Promise.reject(err);
+    }
+    const ends = text !== undefined ? endsTransaction(text) : name !== undefined && !!c[END_NAMES]?.has(name);
+    if (ends && name !== undefined) (c[END_NAMES] ??= new Set()).add(name);
+    if (ends) c[ENDED] = true;
+    return (query as (...x: unknown[]) => unknown).apply(this, a);
+  };
+}
+
 /** A pg pool whose every checkout first sets the context's firm and role on the connection (once per change). */
 export class WalledPool extends pg.Pool {
   override connect(): Promise<pg.PoolClient>;
@@ -453,8 +575,18 @@ export class WalledPool extends pg.Pool {
     const s = scope.getStore(), direct = !s && unscoped === "direct";
     if (direct && !saidDirect) { saidDirect = true; logPort.info("platform_bypass", { use: "direct-process", method: "none" }); }
     const firm = s?.bypass || direct ? "" : (s?.firmId ?? ""), role = s?.bypass || direct ? BYPASS_ROLE : "none", want = `${firm}|${role}`;
-    const p = (super.connect() as Promise<pg.PoolClient>).then(async (c: Tagged) => {
+    const idle = async (tries: number): Promise<Tagged> => {
+      const c = (await super.connect()) as Tagged;
+      if (idleNow(c)) return c;
+      c[SET] = undefined; c.release(notIdleError());   // P1 (Lead B 5): not provably idle at checkout: destroyed, never handed out
+      logPort.warn("platform_pool_open_transaction", { use: "destroyed-at-checkout" });
+      if (tries <= 0) throw notIdleError();
+      return idle(tries - 1);
+    };
+    const p = idle(1).then(async (c: Tagged) => {
       if (!c.listeners("error").includes(swallow)) c.on("error", swallow);   // a dropped socket fails its query, never the process (Devin review)
+      refuseAfterEnd(c);           // M1: nothing more after this checkout's COMMIT or ROLLBACK
+      closeOnOpenTransaction(c);   // P1: a client released inside a transaction is destroyed
       if (c[SET] === want) return c;
       try { await c.query("select set_config('app.firm_id', $1, false), set_config('role', $2, false)", [firm, role]); c[SET] = want; return c; }
       catch (e) { c.release(e as Error); throw e; }
@@ -473,14 +605,30 @@ export class WalledPool extends pg.Pool {
 
 /** Prisma merges findUnique calls made in the same tick into one query, sent from the first caller's scope: two firms'
  *  lookups would run as one firm, and the other's row would read "not found" (tests/check_pf12_walls.ts shows it). Outside
- *  a transaction each call is sent on its own, in its own caller's firm; a transaction's batch is one caller's and stays
- *  as it is. Stops the start-up if Prisma's batching is not where this expects it (a Prisma upgrade). */
+ *  a transaction each call is sent on its own, in its own caller's firm; an interactive transaction's queries run on its own
+ *  connection and stay batched; an array batch is refused (M2, below). Stops the start-up if Prisma's batching is not where this expects it (a Prisma upgrade). */
 export function oneQueryPerCaller(client: object): void {
   type Loader = { batchBy?: (r: { transaction?: unknown }) => string | undefined };
   const o = (client as { _requestHandler?: { dataloader?: { options?: Loader } } })._requestHandler?.dataloader?.options;
   if (typeof o?.batchBy !== "function") throw new Error("PF-12: Prisma's request batching was not found, so firms' lookups could be merged (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
   const by = o.batchBy;
   o.batchBy = (r) => (r.transaction ? by(r) : undefined);
+  // M2 (P1-pool round-2 break; Lead 24, 24 Nov): an array batch, `$transaction([...])`, is dispatched with every other
+  // batch queued in that tick from one process.nextTick set up by the first request, so it checks out the pool in that
+  // first caller's scope: another firm's, or the bypass role (tests/check_no_array_tx.ts). No array batch through this
+  // client: it is refused before anything in it runs. An interactive transaction takes its connection in its own
+  // caller's scope when it starts, and is kept.
+  const c = client as { $transaction?: (arg: unknown, opts?: unknown) => Promise<unknown> };
+  if (typeof c.$transaction !== "function") throw new Error("M2: Prisma's $transaction was not found on the client (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
+  // Review B1: the receiver is kept, never bound: a transaction client reads $transaction from this client, and Prisma
+  // nests a call made on a transaction client (`this`) inside that transaction. Anything but a function is refused, as
+  // Prisma's own test for the interactive form is `typeof arg === "function"` (review m1: an array-like is a batch too).
+  const transaction = c.$transaction;
+  c.$transaction = function (this: unknown, arg: unknown, opts?: unknown) {
+    return typeof arg !== "function"
+      ? Promise.reject(new Error("M2: an array batch ($transaction([...])) is refused on the app's client: Prisma would send it in another caller's firm. Use the interactive form, $transaction(async (tx) => ...)."))
+      : transaction.call(this, arg, opts);
+  };
 }
 
 /** The API's pool (core.ts Db): xr_app, UTC session time zone. */

@@ -12,10 +12,13 @@ import { cn } from "@/lib/utils";
 import { ACCOUNT_SECTIONS, visibleSections } from "./account-sections";
 import { endSession, staffApi, StaffApiError, useLocalSignIn, useMe, useSessionEnd, useStaffToken } from "./session";
 import { SignedInElsewhere } from "./signed-in-elsewhere";
+import { signOutHere } from "@/lib/sync/drafts";
 import { TermsPage, useTermsPending } from "./terms/terms-gate";
 import { FindBox } from "./find/find-box";
 import { HelpButton } from "./settings/help-button";   // PF-18s part 2: the "?" on every staff page (AG-16-63)
+import { NotificationBell } from "./notifications/bell";   // PF-18ns: the bell on every staff page (R1.50)
 import { SUPPORT_CREATE_KEY } from "./settings/support-contract";
+import { TrialBanner } from "./trial-banner";
 
 /** FO-4's sign-in card (moved here from sales-frame.tsx): PF-4's local stand-in until the provider's sign-in pages. */
 export function SignInCard({ failed, focus, embedded }: { failed?: string | null; /** Moves focus to the card when it appears in place of a page (break m6). */ focus?: boolean;
@@ -85,6 +88,7 @@ export function PlatformFrame({ crumbs = [], back = null, area, intro, children 
   if (token) had.current = true;
   const signOut = async () => {
     setLeaving(true);
+    signOutHere();   // PF-31: the person's drafts and tabs go here and in their other windows, whatever the server answers
     try { await staffApi("/platform/session/sign-out", { method: "POST" }); endSession(null); }
     // A 401 has ended the session already, with its reason; anything else still ends it here.
     catch (e) { if (!(e instanceof StaffApiError && e.status === 401)) endSession(null); }
@@ -94,9 +98,10 @@ export function PlatformFrame({ crumbs = [], back = null, area, intro, children 
   const pending = useTermsPending(token, !!who);   // PF-5t part 2: terms to accept (428 TERMS_PENDING) replace the page
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
-    <Frame area="outside" title={who ? who.firmKey : "Your firm"} home="/home"
-      controls={who ? <>{pending.checked && !pending.terms ? <FindBox /> : null}{pending.checked && !pending.terms && who.keys.includes(SUPPORT_CREATE_KEY) ? <HelpButton /> : null}<span className="min-w-0 max-w-[30%] truncate text-sm font-medium max-[359px]:hidden sm:max-w-none" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
+    <Frame area="outside" workspace={!!who} title={who ? who.firmKey : "Your firm"} home="/home"
+      controls={who ? <>{pending.checked && !pending.terms ? <FindBox /> : null}{pending.checked && !pending.terms ? <NotificationBell /> : null}{pending.checked && !pending.terms && who.keys.includes(SUPPORT_CREATE_KEY) ? <HelpButton /> : null}<span className="min-w-0 max-w-[30%] truncate text-sm font-medium max-[359px]:hidden sm:max-w-none" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
       menu={who ? (area ? area.menu(who) : <AccountMenu me={who} />) : null}>
+      {who && pending.checked && !pending.terms ? <TrialBanner me={who} /> : null}
       <Place crumbs={crumbs} back={back} area={area} />{intro}
       {!token ? (because === "SIGNED_IN_ELSEWHERE" ? <SignedInElsewhere /> : <SignInCard focus={had.current} />)
         : me.isError && !who ? <SignInCard failed={refused} />

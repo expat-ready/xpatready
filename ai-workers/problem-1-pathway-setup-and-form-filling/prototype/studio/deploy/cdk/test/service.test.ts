@@ -408,13 +408,13 @@ test("QA-643 pass: each staff pool takes a passkey with user verification as bot
       assert.equal(P.WebAuthnUserVerification, staff ? "required" : undefined, id);
       assert.equal(P.WebAuthnRelyingPartyID, staff ? domainOf(s.name) : undefined, id);
       assert.equal(P.UserPoolTier, "ESSENTIALS", id);
-      assert.equal(flows.includes("ALLOW_USER_AUTH"), staff, id);
-      assert.ok(flows.includes("ALLOW_USER_SRP_AUTH"), id); // password plus app still signs in
+      // PF-4bs (Lead 23, 24 Nov): a staff client signs in only through our API's admin password flow until passkeys are built
+      assert.deepEqual([...flows].sort(), staff ? ["ALLOW_ADMIN_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"] : ["ALLOW_REFRESH_TOKEN_AUTH", "ALLOW_USER_SRP_AUTH"], id);
     }
   }
 });
 
-test("QA-643 fail: a passkey off, an extra first factor, an email or SMS second step, a remembered device, one without user verification, a passkey as one factor only, another relying party, the Lite tier, a client without USER_AUTH or with more flows are caught", () => {
+test("QA-643 fail: a passkey off, an extra first factor, an email or SMS second step, a remembered device, one without user verification, a passkey as one factor only, another relying party, the Lite tier, a staff client with any flow but the admin password flow and refresh (PF-4bs) are caught", () => {
   const cases: [string, (P: Record<string, any>, c: Record<string, any>) => void][] = [
     ["not exactly a password and a passkey", (P) => { P.Policies.SignInPolicy.AllowedFirstAuthFactors = ["PASSWORD"]; }],
     ["not exactly a password and a passkey", (P) => { delete P.Policies.SignInPolicy; }],
@@ -422,14 +422,15 @@ test("QA-643 fail: a passkey off, an extra first factor, an email or SMS second 
     ["not the authenticator app only", (P) => { P.EnabledMfas = ["EMAIL_OTP"]; }],
     ["not the authenticator app only", (P) => { P.EnabledMfas = ["SOFTWARE_TOKEN_MFA", "SMS_MFA"]; }],
     ["could skip the second step", (P) => { P.DeviceConfiguration = { ChallengeRequiredOnNewDevice: false, DeviceOnlyRememberedOnUserPrompt: false }; }],
-    ["not SRP, USER_AUTH and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_USER_PASSWORD_AUTH"]; }],
-    ["not SRP, USER_AUTH and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_CUSTOM_AUTH"]; }],
+    ["not the admin password flow and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_USER_PASSWORD_AUTH"]; }],
+    ["not the admin password flow and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_CUSTOM_AUTH"]; }],
     ["user verification \"preferred\", not required", (P) => { P.WebAuthnUserVerification = "preferred"; }],
     ["a passkey is \"SINGLE_FACTOR\"", (P) => { P.WebAuthnFactorConfiguration = "SINGLE_FACTOR"; }],
     ["a passkey is null", (P) => { delete P.WebAuthnFactorConfiguration; }],
     ["relying party \"evil.example\", not expatready.com", (P) => { P.WebAuthnRelyingPartyID = "evil.example"; }],
     ["tier \"LITE\" has no passkey sign-in", (P) => { P.UserPoolTier = "LITE"; }],
-    ["does not allow USER_AUTH", (_P, c) => { c.ExplicitAuthFlows = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]; }],
+    ["not the admin password flow and refresh only", (_P, c) => { c.ExplicitAuthFlows = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]; }],
+    ["not the admin password flow and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_USER_AUTH"]; }],
   ];
   for (const name of ["-staff", "-own-staff"]) for (const [want, breakIt] of cases) {
     const t = clone(t0);
@@ -446,7 +447,8 @@ test("QA-643 fail: a passkey off, an extra first factor, an email or SMS second 
     ["passkeys on with no domain", (P) => { P.WebAuthnRelyingPartyID = "example.com"; }],
     ["passkeys on with no domain", (P) => { P.WebAuthnFactorConfiguration = "MULTI_FACTOR_WITH_USER_VERIFICATION"; }],
     ["passkeys on with no domain", (P) => { P.WebAuthnUserVerification = "required"; }],
-    ["not SRP and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_USER_AUTH"]; }],
+    ["not the admin password flow and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_USER_AUTH"]; }],
+    ["not the admin password flow and refresh only", (_P, c) => { c.ExplicitAuthFlows = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]; }],
     ["not the authenticator app only", (P) => { P.EnabledMfas = ["EMAIL_OTP"]; }],
   ];
   for (const [want, breakIt] of nd) {

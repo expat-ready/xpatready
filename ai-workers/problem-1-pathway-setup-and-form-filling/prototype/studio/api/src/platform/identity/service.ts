@@ -20,7 +20,7 @@ import { readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
 import { LocalIdentity } from "./local.ts";
-import { PgEntitlements, seatsUsed } from "../entitlements/limits.ts";
+import { PgEntitlements, seatLimitOf, seatsUsed } from "../entitlements/limits.ts";
 import { writeMoneyKeysGranted } from "./money-line.ts";
 import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort, type VerifiedIdentity } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
@@ -37,6 +37,8 @@ export const ONLY_OWNER = "This is your firm's only active Owner. Give the Owner
 export const ANOTHER_DEVICE = "You signed in on another device";
 /** A Cognito sign-in that raced the person's deactivation (J-5 B2): refused, in the words a deactivated token gets. */
 const NOT_ACTIVE_NOW = "This staff account has been deactivated. Ask your firm's Owner or Admin.";
+/** PF-11c: the words a closed firm's staff see at sign-in (our own fact only, SA-2-38). */
+export const FIRM_CLOSED = "This firm's ExpatReady account is closed. Sign-in is no longer possible.";
 /** An Owner change needs an identity check this recent (AG-1-42). */
 export { STEP_UP_SECONDS } from "./session/step-up.ts";
 /** PF-28 part 2a: the local sign-in door's body (untrimmed: emailOf reads spaces). Read after the door's gate. */
@@ -132,8 +134,10 @@ export class PlatformIdentity implements OnModuleInit {
 
   /** authenticate, as the person's own firm (PF-12b part 2). */
   private async authenticateIn(firmId: string, where: { id?: string; identitySubject?: string }, id: VerifiedIdentity): Promise<StaffContext> {
-    const staff = await this.db.platformStaff.findFirst({ where: firmScope(firmId, where), include: { firm: { select: { key: true } }, grants: { where: { endedAt: null }, select: { role: true } } } });
+    const staff = await this.db.platformStaff.findFirst({ where: firmScope(firmId, where), include: { firm: { select: { key: true, status: true } }, grants: { where: { endedAt: null }, select: { role: true } } } });
     if (!staff) return unauthorized("This sign-in is not a staff member of any firm here.", "UNKNOWN_STAFF");
+    // PF-11c (SA-2-21): a firm closed on day 90 refuses every sign-in, whatever the session.
+    if (staff.firm.status === "DELETED") return problem(401, "Account closed", FIRM_CLOSED, { code: "FIRM_CLOSED" });
     if (staff.status !== "ACTIVE") return unauthorized(staff.status === "DEACTIVATED" ? "This staff account has been deactivated. Ask your firm's Owner or Admin." : "This staff account is suspended. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     const authMs = id.authTime * 1000;
     // Cognito: a session with a later sign-in time than the last one seen is a new sign-in, which ends the older one.
@@ -185,7 +189,9 @@ export class PlatformIdentity implements OnModuleInit {
     if (typeof body.firmKey !== "string" || !body.firmKey) return problem(FIELD_ERROR_STATUS, "Choose the firm", "Give the firm key.", { code: "FIRM_REQUIRED" });
     // PF-12b part 2: the firm through the narrow definer lookup (its id only), then its row is read as that firm.
     const key = body.firmKey, firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select platform_firm_of_key(${key}) as f`)[0]?.f;
-    const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true } })) : null;
+    const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true, status: true } })) : null;
+    // PF-11c (break m1): a closed firm's door issues no token and writes no sign-in line.
+    if (firm?.status === "DELETED") return problem(401, "Account closed", FIRM_CLOSED, { code: "FIRM_CLOSED" });
     if (firm) enterFirm(firm.id);   // PF-12: the rest of the sign-in runs as this firm
     const who = typeof body.actorId === "string" && body.actorId ? { actorId: body.actorId } : { email: emailOf(body.email) };
     const staff = firm && await this.db.platformStaff.findFirst({ where: firmScope(firm.id, who) });
@@ -226,8 +232,8 @@ export class PlatformIdentity implements OnModuleInit {
    *  transaction (PF-15: the one plan-limit check; fail closed with no live plan). One check for `adding` more people:
    *  `fit` is how many of them the plan takes (all of them when allowed). Shared by seatCheck and the batch (PF-4c1b). */
   private async seatRoom(tx: Tx, firmId: string, adding: number) {
-    const limits = new PgEntitlements(tx, () => this.clock.now());
-    const plan = await limits.limitOf(firmId, "seats");
+    const now = () => this.clock.now(), limits = new PgEntitlements(tx, now);
+    const plan = await seatLimitOf(tx, firmId, now);   // the limit and the plan it is (a booked lower plan: that plan, QA-774)
     const used = await seatsUsed(tx, firmId);
     const r = await limits.check(firmId, "seats", used + Math.max(adding, 1) - 1);   // one more is allowed below the limit, so `adding` fit while used + adding - 1 is below it
     const limit = r.allowed ? (plan.limit ?? 0) : r.limit;
@@ -240,7 +246,7 @@ export class PlatformIdentity implements OnModuleInit {
     const { allowed, limit, used, plan } = await this.seatRoom(tx, firmId, adding);
     const afterInvites = used + adding, removeCount = allowed ? 0 : Math.max(1, afterInvites - limit);
     if (!allowed) problem(409, "Plan limit reached", plan.planCode
-      ? `Your plan (${plan.planName}) allows ${limit} ${limit === 1 ? "person" : "people"}, counting active, suspended and invited people (${used} now). Revoke a pending invitation or deactivate someone first, or change the plan.`
+      ? `Your ${plan.booked ? "booked plan" : "plan"} (${plan.limitPlanName}) allows ${limit} ${limit === 1 ? "person" : "people"}, counting active, suspended and invited people (${used} now). Revoke a pending invitation or deactivate someone first, or change the plan.`
       : "Your firm has no live subscription, so nobody can be added.", { code: "PLAN_LIMIT_REACHED", metric: "seats", limit, used, upgradePath: "Change the plan in Settings, Billing.", seatsLimit: limit, seatsUsed: used, afterInvites, removeCount });
     return { seatsLimit: limit, seatsUsed: used, afterInvites };
   }
@@ -440,12 +446,12 @@ export class PlatformIdentity implements OnModuleInit {
       }
       const valid = rows.filter((r) => !r.flags.length);
       const room = await this.seatRoom(tx, actor.firmId, valid.length);   // the form's one EntitlementPort check (seatRoom)
-      const over = overSeatWords(room.limit, room.plan.planName);
+      const over = overSeatWords(room.limit, room.plan.planCode ? room.plan.limitPlanName : null, room.plan.booked);
       for (const r of valid.slice(room.fit)) r.flags.push({ code: "OVER_SEAT_LIMIT", detail: over });
       const made = [];
       for (const r of valid.slice(0, room.fit)) {
-        const row = await this.insertInvitation(tx, actor.firmId, r.email!, r.roles!, actorWord(actor.staffId));
-        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${room.fit} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: null, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
+        const row = await this.insertInvitation(tx, actor.firmId, r.email!, r.roles!, actorWord(actor.staffId), r.name);   // R1.20: the row's name is kept, as the single invite's (PF-4dn)
+        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${room.fit} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: r.name, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
         made.push({ row: r.row, id: row.id, email: r.email!, roles: r.roles!, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token, name: r.name });
       }
       return { made, seatsLimit: room.limit, seatsUsed: room.used + made.length };

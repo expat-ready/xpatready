@@ -19,9 +19,11 @@ import { caseType, CONFIGURE, dayWords, embedCode, HostSets, MODES, Preview, pub
 
 const why = (e: unknown) => (e instanceof StaffApiError ? e.message : "Something went wrong. Please try again.");
 const REFUSED = "You do not have permission to do this. Ask an Owner or Admin.";
-type Draft = { name: string; description: string; slug: string; minutes: string; purpose: string; modes: string[]; hostStaffIds: string[]; active: boolean; showOnBookingPage: boolean; allowReschedule: boolean; allowCancel: boolean };
-const EMPTY: Draft = { name: "", description: "", slug: "", minutes: "30", purpose: "FREE_CONSULT", modes: ["VIDEO"], hostStaffIds: [], active: true, showOnBookingPage: true, allowReschedule: true, allowCancel: true };
-const draftOf = (t: BookingType): Draft => ({ name: t.name, description: t.description ?? "", slug: t.slug, minutes: String(t.minutes), purpose: t.purpose, modes: t.modes, hostStaffIds: t.hostStaffIds, active: t.active, showOnBookingPage: t.showOnBookingPage, allowReschedule: t.allowReschedule, allowCancel: t.allowCancel });
+type Draft = { name: string; description: string; slug: string; minutes: string; purpose: string; modes: string[]; hostStaffIds: string[]; active: boolean; showOnBookingPage: boolean; allowReschedule: boolean; allowCancel: boolean; requireAgreement: boolean | null };
+const EMPTY: Draft = { name: "", description: "", slug: "", minutes: "30", purpose: "FREE_CONSULT", modes: ["VIDEO"], hostStaffIds: [], active: true, showOnBookingPage: true, allowReschedule: true, allowCancel: true, requireAgreement: null };
+const draftOf = (t: BookingType): Draft => ({ name: t.name, description: t.description ?? "", slug: t.slug, minutes: String(t.minutes), purpose: t.purpose, modes: t.modes, hostStaffIds: t.hostStaffIds, active: t.active, showOnBookingPage: t.showOnBookingPage, allowReschedule: t.allowReschedule, allowCancel: t.allowCancel, requireAgreement: t.requireAgreementSet ? (t.requireAgreement ?? null) : null });
+/** FO-3c part 2 (Lead 10, W4b): the choice, else the purpose's default (on for all but a follow-up; the server's gate.ts). */
+const needsAgreement = (d: Draft) => d.requireAgreement ?? d.purpose !== "FOLLOW_UP";
 const pageCell = (t: BookingType) => (caseType(t.purpose) ? "Never (case type)" : t.onBookingPage ? "Yes" : "No");
 
 export function BookingTypesPage() {
@@ -116,7 +118,7 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
     e.preventDefault(); setBusy(true); setErrors({}); setProblem(null);
     const minutes = /^\d+$/.test(draft.minutes.trim()) ? Number(draft.minutes) : NaN;
     const body = { name: draft.name, description: draft.description.trim() ? draft.description : null, minutes: Number.isNaN(minutes) ? draft.minutes : minutes, purpose: draft.purpose, modes: draft.modes,
-      hostStaffIds: draft.hostStaffIds, active: draft.active, showOnBookingPage: draft.showOnBookingPage, allowReschedule: draft.allowReschedule, allowCancel: draft.allowCancel, ...(draft.slug.trim() ? { slug: draft.slug.trim() } : {}) };
+      hostStaffIds: draft.hostStaffIds, active: draft.active, showOnBookingPage: draft.showOnBookingPage, allowReschedule: draft.allowReschedule, allowCancel: draft.allowCancel, ...(draft.requireAgreement !== null ? { requireAgreement: draft.requireAgreement } : {}), ...(draft.slug.trim() ? { slug: draft.slug.trim() } : {}) };
     try {
       const saved = t ? TypeDetail.omit({ futureBookings: true, hostSets: true }).parse(await staffApi(`/front-office/booking-types/${t.id}`, { method: "PATCH", json: { ...body, version: t.version } }))
         : TypeList.shape.types.element.parse(await staffApi("/front-office/booking-types", { method: "POST", json: body }));
@@ -164,6 +166,7 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
                     <dt className="text-text-muted">Show on booking page</dt><dd>{draft.showOnBookingPage ? "Yes" : "No"}</dd>
                     <dt className="text-text-muted">Allow reschedule</dt><dd>{draft.allowReschedule ? "Yes" : "No"}</dd>
                     <dt className="text-text-muted">Allow cancellation</dt><dd>{draft.allowCancel ? "Yes" : "No"}</dd>
+                    <dt className="text-text-muted">Consultation agreement sent to sign</dt><dd>{needsAgreement(draft) ? "Yes" : "No"}</dd>
                   </dl>
                 ) : (<>
                   <Field label="Name" error={errors.name}><Input value={draft.name} onChange={(e) => set("name", e.target.value)} /></Field>
@@ -196,6 +199,7 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
                     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowReschedule} onChange={(e) => set("allowReschedule", e.target.checked)} /> Allow reschedule</label>
                     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowCancel} onChange={(e) => set("allowCancel", e.target.checked)} /> Allow cancellation</label>
                     <p className="text-xs text-text-muted">What a booker may do from the link in their email.</p>
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={needsAgreement(draft)} onChange={(e) => set("requireAgreement", e.target.checked)} data-require-agreement /> Send the client our consultation agreement to sign before the consultation</label>
                   </> : null}
                   {t ? <TypeTimingsSection typeId={t.id} onSaved={(version, sent) => { if (sent !== t.version) { void qc.invalidateQueries({ queryKey: ["fo", "booking-types", "one", t.id] }); return; } timingVersion.current = version; qc.setQueryData<TypeDetail>(["fo", "booking-types", "one", t.id], (o) => (o ? { ...o, version } : o)); }} />
                     : <p className="text-xs text-text-muted">This type uses the firm's timings. Save it first to change them for this type.</p>}

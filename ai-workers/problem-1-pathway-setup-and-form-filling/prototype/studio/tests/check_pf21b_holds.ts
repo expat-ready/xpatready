@@ -240,8 +240,8 @@ try {
   const noReason = await call(base, "POST", "/api/system/register/holds", { token: ownerT, body: { firmId: sampleFirm, scope: { kind: "CASE", id: c } } });
   const badScope = await call(base, "POST", "/api/system/register/holds", { token: ownerT, body: { ...body, scope: { kind: "CATEGORY", category: "everything" } } });
   const noFirm = await call(base, "POST", "/api/system/register/holds", { token: ownerT, body: { ...body, firmId: uuid() } });
-  ok("PF-21b DW3 fail: the Platform Owner without a reason (400, the guard), with an unknown category (422) or an unknown firm (404) places nothing",
-    noReason.status === 400 && badScope.status === 422 && noFirm.status === 404 && noFirm.body.code === "FIRM_NOT_FOUND" && Number(sql(`select count(*) from plat_legal_hold`)) === rowsBefore, { noReason, badScope, noFirm });
+  ok("PF-21b DW3 fail: the Platform Owner without a reason (422 naming reason, the guard; R1.10 A4), with an unknown category (422) or an unknown firm (404) places nothing",
+    noReason.status === 422 && !!noReason.body.fields?.reason && badScope.status === 422 && noFirm.status === 404 && noFirm.body.code === "FIRM_NOT_FOUND" && Number(sql(`select count(*) from plat_legal_hold`)) === rowsBefore, { noReason, badScope, noFirm });
   const placed = await call(base, "POST", "/api/system/register/holds", { token: ownerT, body });
   ok("PF-21b DW3 pass: the Platform Owner places a hold → 201 with scope, reason, placed by staff:<id>, active; one audit line on the held firm's trail",
     placed.status === 201 && placed.body.scope.kind === "CASE" && placed.body.scope.id === c && placed.body.reason === body.reason && placed.body.placedBy === `staff:${OWNER}` && placed.body.active === true

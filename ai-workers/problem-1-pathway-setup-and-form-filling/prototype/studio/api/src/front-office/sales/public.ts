@@ -11,6 +11,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ConsentPort } from "../../../../ports/consent.ts";
+import type { NotificationPort } from "../../../../ports/notifications.ts";
 import { Db, OpenRead } from "../../core.ts";
 import { z } from "zod";
 import { parseInput, strict } from "../../platform/http/input.ts";
@@ -22,6 +23,8 @@ import { email, phone, text, UUID, type Tx } from "./common.ts";
 export const SALES_PORTS = "FO2_SALES_PORTS";
 export type SalesPorts = {
   audit: AuditPort<Tx>; consent: ConsentPort<Tx>;
+  /** PF-18n part 2: a lead handed to someone tells them (arrival.ts, leads.ts Assign), in the change's transaction; none: nobody is told. */
+  notifications?: NotificationPort<Tx> | null;
   now?: () => number;
   formKey?: Buffer;
   /** Our own origin, where the hosted form page lives (always allowed). */

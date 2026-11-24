@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy pages board r1</title>
+<!-- PF-21rs board r1 (24 Nov): our console's Privacy pages (Breaches, Requests to us, Legal holds), inside PF-17 part 4's
+     console frame (#3489: "ExpatReady console", side menu by keys, Sign out set apart). Self-contained: the builder cannot
+     see the canvas. Colours approximate web/src/styles/tokens.css, as PF-17-4's board r1. All data Sample. -->
+<style>
+:root{--primary:#1f6fd1;--surface:#f6f7f9;--raised:#fff;--text:#18212b;--muted:#5b6774;--border:#e2e6ea;--danger:#b42318;--warn:#8a4b00;--ok:#1d6b3a;font-family:system-ui,sans-serif}
+body{margin:0;background:var(--surface);color:var(--text);font-size:14px}
+.board{display:grid;gap:32px;padding:24px;max-width:1440px;margin:auto}
+h2.b{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+.frame{background:var(--raised);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.top{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--border)}.top b{font-size:15px}.top .sp{flex:1}.top a{color:var(--muted)}
+.wrap{display:flex}.nav{width:180px;border-right:1px solid var(--border);padding:12px}
+.nav a{display:block;padding:8px 10px;border-radius:8px;color:var(--text);text-decoration:none}.nav a.on{background:#e8f0fb;font-weight:600}
+.nav .g{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 10px 4px}
+.main{flex:1;padding:20px;min-width:0}h1{font-size:22px;margin:0 0 4px}.lead{color:var(--muted);margin:0 0 12px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.bar .sp{flex:1}
+.chip{border:1px solid var(--border);border-radius:999px;padding:6px 12px;background:var(--raised)}.chip.on{border-color:var(--primary);color:var(--primary);font-weight:600}
+.tbl{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600;background:#fafbfc}td small{display:block;color:var(--muted)}
+button{font:inherit;border-radius:8px;padding:8px 14px;border:1px solid var(--border);background:var(--raised)}button.p{background:var(--primary);color:#fff;border:0;font-weight:600}
+button.d{color:var(--danger);border-color:#f0c4c0}button[disabled]{opacity:.55}
+.card{border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px;background:var(--raised)}
+.card h3{margin:0 0 8px;font-size:15px}.kv{display:grid;grid-template-columns:200px 1fr;gap:6px 12px}.kv dt{color:var(--muted)}.kv dd{margin:0}
+.st{font-weight:600}.st.red{color:var(--danger)}.st.amber{color:var(--warn)}.st.green{color:var(--ok)}
+.note{background:#fff7e6;border:1px solid #f2d39b;color:var(--warn);padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.info{background:#eef4fc;border:1px solid #c7d9f2;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.dlg{max-width:560px;border:1px solid var(--border);border-radius:12px;padding:20px;background:var(--raised);box-shadow:0 8px 24px rgba(0,0,0,.08)}
+label{display:block;margin:10px 0 4px;font-weight:600}input,textarea,select{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit}
+textarea{min-height:70px}.hint{font-size:12px;color:var(--muted);font-weight:400}.err{color:var(--danger);font-size:13px}
+.foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.ann{font-size:12px;color:var(--muted);margin-top:8px}.words{white-space:pre-wrap;background:#fafbfc;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px}
+.ev li{margin:4px 0}
+</style></head><body><div class="board">
+
+<section><h2 class="b">Menu (all three pages): the console's side menu gains a "Privacy" group, each link shown only with its key</h2>
+<div class="frame"><div class="wrap"><nav class="nav"><a href="#">Firms</a><a href="#">Support</a><div class="g">Privacy</div><a class="on" href="#">Breaches</a><a href="#">Requests to us</a><a href="#">Legal holds</a></nav>
+<div class="main"><p class="ann">Breaches: system/breach:read (Platform Owner, Auditor). Requests to us: system/compliance:dsr-manage (Platform Owner). Legal holds: system/compliance:legal-hold (Platform Owner). A page opened without its key shows the API's own 403 words, never an empty table. Phones: the console's top link row (PF-17-4) carries the same links.</p></div></div></div></section>
+
+<section><h2 class="b">1 · Breaches (/system/privacy/breaches), 1440 px, Platform Owner</h2>
+<div class="frame"><div class="top"><b>ExpatReady console</b><span class="sp"></span><span>Platform Owner (Sample)</span><a href="#">Sign out</a></div>
+<div class="wrap"><nav class="nav"><a href="#">Firms</a><a href="#">Support</a><div class="g">Privacy</div><a class="on" href="#">Breaches</a><a href="#">Requests to us</a><a href="#">Legal holds</a></nav>
+<div class="main"><div class="bar"><div><h1>Breaches</h1><p class="lead">Every breach of our security safeguards, kept 7 years. Times in UTC.</p></div><span class="sp"></span><button class="p">Record a breach</button></div>
+<div class="tbl"><table><thead><tr><th>Discovered</th><th>What happened</th><th>Firms</th><th>Decision</th><th>Notices</th><th>Status</th></tr></thead><tbody>
+<tr><td>24 Nov 2026, 07:10</td><td><a href="#">Sample: a storage bucket's files were readable by link for two hours.</a></td><td>Sample Firm, Maple Immigration Law (Sample)</td><td>Notify firms</td><td>1 of 2 sent</td><td class="st amber">▲ Notices owed</td></tr>
+<tr><td>22 Nov 2026, 18:02</td><td><a href="#">Draft from an alert (audit_chain_break): the activity log's hash chain did not verify…</a></td><td>Under investigation</td><td>Not decided</td><td>—</td><td class="st amber">◇ Draft: confirm it</td></tr>
+<tr><td>3 Nov 2026, 11:45</td><td><a href="#">Sample: a support export was sent to the wrong address.</a></td><td>Sample Solo Practice</td><td>No notice<small>why: no client data in the export</small></td><td>—</td><td class="st green">● Recorded</td></tr>
+</tbody></table></div>
+<p class="ann">Order: the API's (newest discovered first). Status is calculated: Draft (from an alert, not confirmed) · Decision owed (recorded, Not decided) · Notices owed (Notify firms, fewer notices than firms) · Recorded (decided, nothing owed). One next action per status. Empty: "No breach is recorded. Record one the moment a breach of our safeguards is known: whether firms are told is decided after." Auditor: no "Record a breach" button; the lead line says "Read only: you hold system/breach:read." "truncated" → "Showing the newest 500."</p>
+</div></div></div></section>
+
+<section><h2 class="b">2 · Record a breach (dialog over the list)</h2>
+<div class="dlg"><h3 style="margin:0">Record a breach</h3><p class="hint">Record it now, even with little known (it can be completed later). Nothing is sent to anyone.</p>
+<label>Discovered at <span class="hint">(your local time; stored in UTC)</span></label><input value="2026-11-24 12:40">
+<label>What happened <span class="hint">firms will read this in their notice</span></label><textarea>Sample: a storage bucket's files were readable by link for two hours.</textarea>
+<label>Affected firms <span class="hint">pick from the firm list; leave empty while under investigation</span></label><input value="Sample Firm ×   Maple Immigration Law (Sample) ×   Search firms…">
+<label>Data categories</label><div>☑ identity documents ☑ contact details ☐ immigration records ☐ financial details ☐ sign-in credentials ☐ messages and files ☐ other data</div>
+<details><summary>Root cause, containment, other notifications (optional now)</summary><label>Root cause</label><textarea></textarea><label>Containment</label><textarea></textarea><label>Other notifications made</label><textarea></textarea></details>
+<label>Reason for the audit line</label><input value="Recording the incident reported by on-call"><div class="err" hidden>Give a reason.</div>
+<div class="foot"><button>Cancel</button><button class="p">Record the breach</button></div>
+<p class="ann">Idempotency-Key: one per open dialog (a double click records once). 422 field errors land under their fields. Firms picker reads GET /api/system/firms?q= (system/firm:read). After 201: the breach's page opens with "Recorded. Next: decide whether firms are told."</p></div></section>
+
+<section><h2 class="b">3 · A breach's page (/system/privacy/breaches/:id), Notify firms decided, one firm sent</h2>
+<div class="frame"><div class="top"><b>ExpatReady console</b><span class="sp"></span><span>Platform Owner (Sample)</span><a href="#">Sign out</a></div>
+<div class="wrap"><nav class="nav"><a href="#">Firms</a><a href="#">Support</a><div class="g">Privacy</div><a class="on" href="#">Breaches</a><a href="#">Requests to us</a><a href="#">Legal holds</a></nav>
+<div class="main"><p class="hint">ExpatReady console › Breaches › Discovered 24 Nov 2026, 07:10</p>
+<div class="bar"><div><h1>Breach discovered 24 Nov 2026, 07:10 UTC</h1><p class="lead"><span class="st amber">▲ Notices owed: 1 of 2 firms</span> · recorded by Platform Owner (Sample) · kept until Nov 2033</p></div><span class="sp"></span><button>Edit the record</button></div>
+<div class="card"><h3>What happened</h3><dl class="kv"><dt>Description</dt><dd>Sample: a storage bucket's files were readable by link for two hours.</dd><dt>Affected firms</dt><dd>Sample Firm · Maple Immigration Law (Sample)</dd><dt>Data categories</dt><dd>identity documents, contact details</dd><dt>Root cause</dt><dd>Sample: a wrong bucket policy</dd><dt>Containment</dt><dd>Sample: the policy was corrected and the links revoked.</dd><dt>Other notifications made</dt><dd>None yet</dd></dl></div>
+<div class="card"><h3>Decision</h3><dl class="kv"><dt>Decision</dt><dd>Notify the affected firms</dd><dt>Why</dt><dd>Sample: identity documents may have been seen.</dd><dt>Who, when</dt><dd>Platform Owner (Sample), 24 Nov 2026, 09:02 UTC</dd></dl><p class="hint">Fixed once a notice is sent.</p></div>
+<div class="card"><h3>Notices to firms</h3><div class="info">ExpatReady's Security incident notice goes to each firm's active Owner and Admins. The firm decides about its clients. Wording: Sample until counsel's (Unconfirmed: no counsel).</div>
+<div class="tbl"><table><thead><tr><th>Firm</th><th>Notice</th><th></th></tr></thead><tbody>
+<tr><td>Sample Firm</td><td><span class="st green">● Sent 24 Nov 2026, 09:05 UTC</span> to 2 people (Owner, Admin)<small>Subject: Security incident notice from ExpatReady</small><details><summary>Words sent</summary><div class="words">Dear Sample Firm,
+
+On 2026-11-24 07:10 UTC we discovered a security incident… (the notice exactly as sent, from the message store; QA-757)</div></details></td><td><span class="hint">Sent: cannot be sent again</span></td></tr>
+<tr><td>Maple Immigration Law (Sample)</td><td>Not sent</td><td><button class="p">Send notice to Maple Immigration Law (Sample)</button></td></tr>
+</tbody></table></div>
+<p class="ann">Other states of this card: Draft → "Confirm the record first" (button "Confirm the record", which asks for the description firms will read). Not decided → "Record the decision first" with "Decide" (Notify firms / No notice, Why required). No notice → no send buttons, the why shown. 409 NO_RECIPIENTS / NOT_DELIVERABLE / BREACH_CHANGED → the API's words on that firm's row, page reloaded. A firm never notified and not named is never listed.</p></div>
+<div class="card"><h3>History</h3><ol class="ev"><li>24 Nov 09:05 · Notice sent to Sample Firm · Platform Owner (Sample)</li><li>24 Nov 09:02 · Decision: Not decided → Notify firms · Platform Owner (Sample)</li><li>24 Nov 08:40 · Recorded · Platform Owner (Sample)</li></ol></div>
+</div></div></div></section>
+
+<section><h2 class="b">4 · Send one notice (in-page confirmation, irreversible)</h2>
+<div class="dlg"><h3 style="margin:0">Send the notice to Maple Immigration Law (Sample)?</h3><p>Its active Owner and Admins get ExpatReady's Security incident notice now. It cannot be withdrawn or sent twice; the decision and this firm stay fixed on the record.</p>
+<label>Reason for the audit line</label><input value="">
+<div class="foot"><button>Cancel</button><button class="p">Send the notice</button></div></div></section>
+
+<section><h2 class="b">5 · Requests to us (/system/privacy/requests) and one request</h2>
+<div class="frame"><div class="wrap"><nav class="nav"><a href="#">Firms</a><a href="#">Support</a><div class="g">Privacy</div><a href="#">Breaches</a><a class="on" href="#">Requests to us</a><a href="#">Legal holds</a></nav>
+<div class="main"><div class="bar"><div><h1>Requests to us</h1><p class="lead">Access, correction and deletion requests made to ExpatReady itself. A client's request to their firm is the firm's and is not here.</p></div><span class="sp"></span><button class="p">Log a request</button></div>
+<div class="bar"><span class="chip on">All</span><span class="chip">Pending</span><span class="chip">In progress</span><span class="chip">Overdue</span><span class="chip">Held</span><span class="chip">Completed</span></div>
+<div class="tbl"><table><thead><tr><th>Received</th><th>Requester</th><th>Type</th><th>Target date</th><th>Status</th></tr></thead><tbody>
+<tr><td>15 Oct 2026</td><td><a href="#">Requester B (Sample)</a><small>requester.b@example.com</small></td><td>Deletion</td><td class="st red">14 Nov 2026 · 10 days late</td><td class="st red">■ Overdue</td></tr>
+<tr><td>20 Nov 2026</td><td><a href="#">Requester A (Sample)</a><small>requester.a@example.com</small></td><td>Access</td><td>20 Dec 2026 · in 26 days</td><td>◆ In progress</td></tr>
+</tbody></table></div>
+<div class="card" style="margin-top:16px"><h3>Requester A (Sample) · Access · ◆ In progress</h3><dl class="kv"><dt>Received</dt><dd>20 Nov 2026</dd><dt>Target date</dt><dd>20 Dec 2026 (received + 30 days; our own target, a reminder)</dd><dt>Firm and person</dt><dd>Sample Firm · person record 3f2a…c91e <button>Hold this person</button></dd></dl>
+<div class="bar" style="margin-top:8px"><button class="p">Mark completed</button><button>Mark held</button></div>
+<ol class="ev"><li>21 Nov 10:02 · Pending → In progress · Platform Owner (Sample)</li><li>20 Nov 16:40 · Logged · Platform Owner (Sample)</li></ol>
+<p class="ann">One next action per status: Pending → "Start work" (In progress); In progress / Overdue → "Mark completed" (asks "What was done", required); Held → as the API allows. Overdue is set only by the daily check (or at once when logged past its date): never a button. "Hold this person" opens §6 with the firm and person filled.</p></div></div></div></div></section>
+
+<section><h2 class="b">6 · Legal holds (/system/privacy/holds) and Place a hold</h2>
+<div class="frame"><div class="wrap"><nav class="nav"><a href="#">Firms</a><a href="#">Support</a><div class="g">Privacy</div><a href="#">Breaches</a><a href="#">Requests to us</a><a class="on" href="#">Legal holds</a></nav>
+<div class="main"><div class="bar"><div><h1>Legal holds</h1><p class="lead">A hold stops deletion of what it covers, the erasure job and a closed firm's purge included, until it is released.</p></div><span class="sp"></span><button class="p">Hold a firm's data</button></div>
+<div class="bar"><span class="chip on">Active</span><span class="chip">Released</span><span class="chip">All</span></div>
+<div class="tbl"><table><thead><tr><th>Firm</th><th>Covers</th><th>Reason</th><th>Placed</th><th></th></tr></thead><tbody>
+<tr><td>Sample Firm</td><td>One person record 3f2a…c91e</td><td>Sample: litigation notice received</td><td>24 Nov 2026 · Platform Owner (Sample)</td><td><button class="d">Release</button></td></tr>
+</tbody></table></div>
+<div class="dlg" style="margin-top:16px"><h3 style="margin:0">Hold a firm's data</h3><label>Firm</label><input value="Sample Firm">
+<details open><summary>Narrower scope (Advanced)</summary><label>Covers</label><select><option>All of the firm's data</option><option selected>One person record</option><option>One case</option><option>A data category</option><option>Records dated between</option></select><label>Person record id <span class="hint">filled when opened from a request</span></label><input value="3f2a…c91e"></details>
+<label>Reason</label><textarea>Sample: litigation notice received</textarea><div class="foot"><button>Cancel</button><button class="p">Place the hold</button></div></div>
+<p class="ann">SA-11-34: "Hold this firm" + reason first; narrower scopes under Advanced. Release asks its own reason (in-page confirmation). 409 ALREADY_RELEASED → the API's words, list reloaded.</p></div></div></div></section>
+</div></body></html>

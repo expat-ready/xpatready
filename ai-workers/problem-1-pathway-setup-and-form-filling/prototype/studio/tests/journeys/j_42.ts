@@ -179,7 +179,10 @@ try {
   await pw.context().close();
   // Times every 5 minutes (the slot interval) is not a timing a person sets (AG-4-4's Timings has no interval): Sample set-up.
   console.log("setup (not through the product): the type offers a time every 5 minutes (slot interval, not on the Timings screen)");
-  await db.foConsultationType.update({ where: { id: typeRow!.id }, data: { slotIntervalMinutes: 5 } });
+  // J-42 is the booking journey, not the agreement's (J-104): its type needs no consultation agreement, so W7's Attended
+  // is not held by QA-772's rule (a type that needs one and has none yet is held; this firm has no agreement template).
+  console.log("setup (not through the product): the type needs no consultation agreement (J-104 walks the agreement)");
+  await db.foConsultationType.update({ where: { id: typeRow!.id }, data: { slotIntervalMinutes: 5, requireAgreement: false } });
 
   // ---------------------------------------------------------------------------------------------- W1: two bookings
   const pa = await pageAs(null), pb = await pageAs(null);

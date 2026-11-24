@@ -40,8 +40,9 @@ const staff = async (name: string, role: string) => {
   return s;
 };
 const OW = await staff("Owner", "OWNER"), HO = await staff("Host", "CASE_OFFICER"), RO = await staff("Reader", "READ_ONLY");
-const free = await db.foConsultationType.create({ data: { firmId: M.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [HO.id, OW.id], minutes: 45, windowDays: 400, minNoticeMinutes: 0 } });
-const follow = await db.foConsultationType.create({ data: { firmId: M.id, slug: "follow", name: "Follow-up", purpose: "FOLLOW_UP", modes: ["VIDEO"], hostStaffIds: [HO.id], minutes: 30, windowDays: 400, minNoticeMinutes: 0 } });
+// Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+const free = await db.foConsultationType.create({ data: { requireAgreement: false, firmId: M.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [HO.id, OW.id], minutes: 45, windowDays: 400, minNoticeMinutes: 0 } });
+const follow = await db.foConsultationType.create({ data: { requireAgreement: false, firmId: M.id, slug: "follow", name: "Follow-up", purpose: "FOLLOW_UP", modes: ["VIDEO"], hostStaffIds: [HO.id], minutes: 30, windowDays: 400, minNoticeMinutes: 0 } });
 const service = await db.foService.create({ data: { firmId: M.id, label: "Sample: Express Entry assessment", sortOrder: 1, createdBy: "seed:consult-test" } });   // a firm's own service (no combination)
 const client = async (given: string, interested: string | null = null) => {
   const p = await db.foPerson.create({ data: { firmId: M.id, givenNames: given, familyName: "Sample", email: `${given.toLowerCase()}@client.example`, createdBy: "seed:consult-test" } });
@@ -122,8 +123,12 @@ try {
   await host.getByLabel("Currency").selectOption("USD"); await host.getByRole("button", { name: "Save record" }).click();
   await host.locator("[data-consult-saved]").waitFor({ timeout: 15_000 });
   const fees = await record(B.fees);
+  // The form gives the focus back to Save in an effect after the render that shows "Saved" and enables Save
+  // (consult-record.tsx focusSave), so it is waited for, at most 5 s, and false on a timeout. Read at once, it was red on a
+  // busy machine and green alone.
+  const saveFocused = await host.waitForFunction(() => document.activeElement?.textContent === "Save record", undefined, { timeout: 5_000 }).then(() => true, () => false);
   ok('C2 J-S6 pass: "1,500.50" USD saves as 150050 minor units, "Saved"; the Save button keeps the focus', fees?.quotedFeeMinor === 150050 && fees.quotedFeeCurrency === "USD"
-    && (await host.evaluate(() => document.activeElement?.textContent ?? "")) === "Save record", fees);
+    && saveFocused, { focused: await host.evaluate(() => document.activeElement?.outerHTML.slice(0, 160) ?? null), fee: [fees?.quotedFeeMinor, fees?.quotedFeeCurrency] });
 
   // ------------------------------------------------------------------------------------------------ C3 the route's issues at their fields
   await host.getByLabel("Notes (optional)").fill("bad \u0001 text"); await host.getByRole("button", { name: "Save record" }).click();
@@ -186,6 +191,20 @@ try {
   await host.getByRole("dialog", { name: "Engage" }).waitFor({ timeout: 15_000 });
   ok("C7 pass: ?engage=1 for the host opens the Engage panel once and drops the flag", !host.url().includes("engage=1"));
   await host.screenshot({ path: join(SHOTS, "fo3st1-consult-engage-1440.png") });
+  // ---------------------------------------------- C8 QA-772: a type that needs the agreement, none sent: the panel says why
+  // (AG-4-15 rule 4, the founder's ruling of 24 Nov on #3471/#3477: warn, never block; it replaced the 409 this case pinned)
+  const needs = await db.foConsultationType.create({ data: { firmId: M.id, slug: "free-agr", name: "Free consultation (agreement)", modes: ["VIDEO"], hostStaffIds: [HO.id], minutes: 45, windowDays: 400, minNoticeMinutes: 0 } });
+  const nia = await db.foPerson.create({ data: { firmId: M.id, givenNames: "Nia", familyName: "Sample", createdBy: "seed:consult-test" } });   // no email
+  const st = new Date(Date.now() - 30 * MIN), held = (await db.foBooking.create({ data: { firmId: M.id, typeId: needs.id, staffId: HO.id, personId: nia.id, mode: "VIDEO", startsAt: st, endsAt: new Date(st.getTime() + 45 * MIN), bookerTimeZone: "America/Toronto" } })).id;
+  await detail(host, held);
+  const none = host.locator("[data-agreement-none]");
+  await none.waitFor({ timeout: 15_000 });
+  const noneText = await none.innerText(), attended = await api(tok.host, "POST", `/front-office/bookings/${held}/attendance`, { outcome: "COMPLETED" });
+  ok("C8 pass (QA-772; AG-4-15 r4): a started booking whose type needs the agreement and has none: the panel warns (Attended and the record can still be saved), names the missing email and template, and says to reschedule if the meeting did not take place; Attended is saved with the warning",
+    /can still be saved/.test(noneText) && !/cannot start/.test(noneText) && /no email address/.test(noneText) && /Templates/.test(noneText) && /reschedule it to a later time/.test(noneText) && (await host.locator('[data-agreement="NONE"]').count()) === 1
+    && attended.status === 200 && attended.body?.status === "COMPLETED" && (attended.body?.agreementWarning as { code?: string } | undefined)?.code === "AGREEMENT_NOT_SIGNED", { noneText, attended: [attended.status, (attended.body?.agreementWarning as { code?: string } | undefined)?.code] });
+  await detail(host, B.lead);
+  ok("C8 fail: a booking whose type needs none shows no agreement line", (await host.locator("[data-agreement]").count()) === 0);
   ok("no page error in any browser", errors.length === 0, errors.slice(0, 5));
 } finally {
   await browser.close();

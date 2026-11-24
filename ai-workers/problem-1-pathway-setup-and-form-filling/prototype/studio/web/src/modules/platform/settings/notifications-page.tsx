@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Notice, Table } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
 import { PlatformFrame } from "../frame";
+import { NotificationTabs } from "../notifications/all-page";
 import { staffApi, StaffApiError, useStaffToken } from "../session";
 import { changedGroups, draftOf, isDefault, overlay, PrefsView, type Draft } from "./notifications-contract";
 
@@ -36,6 +37,7 @@ function NotificationsBody() {
 
   const header = (
     <header>
+      <NotificationTabs />{/* PF-18ns: "Settings | All" (Lead 10 on #3279 Q2) */}
       <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">Notifications</h1>
       <p className="mt-1 text-sm text-text-muted">Choose how you hear about your work. You only see the groups that can reach you.</p>
     </header>

@@ -533,7 +533,8 @@ jobs:
       - name: type check, api and web (typecheck.mjs; only errors not in typecheck-known.txt fail)
         # 19 Nov (P-214): tsc for api died at node's default ~4 GB heap in merge batches #2245 and #2246 (six PRs each,
         # "JavaScript heap out of memory", 0 files checked), failing `ci` for every member. tsc inherits this env.
-        env: { NODE_OPTIONS: "--max-old-space-size=8192" }
+        # 24 Nov: 8192 was too little for main with #3235 (10.5 GB used); 12288 passes on the 16 GB runner, 4.9 GB left.
+        env: { NODE_OPTIONS: "--max-old-space-size=12288" }
         run: node "$P/tools/typecheck.mjs" | tee -a "$GITHUB_STEP_SUMMARY"; exit ${PIPESTATUS[0]}
   regression-plan:
     # P-320 (b): a merge-queue batch re-runs every Works capability's acceptance pack (qa/CAPABILITIES.md at the base).

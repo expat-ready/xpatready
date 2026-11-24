@@ -28,10 +28,13 @@ export const ConsultRecord = z.object({
   recommended: z.array(z.string()), quotedFee: z.object({ amountMinor: z.number(), currency: z.string() }).nullable(),
   attendanceChanged: z.literal("NO_SHOW").nullable(), nextSteps: z.array(z.enum(["ENGAGE_AND_PREPARE_RETAINER", "CLOSE_LEAD", "PREPARE_RETAINER"])),
   createdAt: z.string(), updatedAt: z.string(),
+  // FO-3c part 2 (AG-4-15 rule 4): the consultation agreement is not signed: a warning, never a refusal (the server's words).
+  agreementWarning: z.object({ code: z.string(), words: z.string() }).nullable().optional(),
 });
 export type ConsultRecord = z.infer<typeof ConsultRecord>;
 /** The route's answer: the record, or none yet with the booked length (404 NO_RECORD). */
-type Read = { record: ConsultRecord | null; bookedMinutes: number };
+type Warning = { code: string; words: string } | null | undefined;
+type Read = { record: ConsultRecord | null; bookedMinutes: number; warning?: Warning };
 
 const WORDS = {
   currency: "Choose a currency for the quoted fee.",
@@ -71,10 +74,11 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   const q = useQuery({
     queryKey: ["fo", "bookings", "consult", booking.id], retry: false,
     queryFn: async (): Promise<Read> => {
-      try { const record = ConsultRecord.parse(await staffApi(`/front-office/bookings/${booking.id}/consult-record`)); return { record, bookedMinutes: record.bookedMinutes }; }
+      try { const record = ConsultRecord.parse(await staffApi(`/front-office/bookings/${booking.id}/consult-record`)); return { record, bookedMinutes: record.bookedMinutes, warning: record.agreementWarning }; }
       catch (e) {
         const booked = e instanceof StaffApiError && e.status === 404 && e.problem.code === "NO_RECORD" ? bookedOf(booking) : null;
-        if (booked !== null) return { record: null, bookedMinutes: booked };
+        // Before the first save the no-record answer carries the agreement warning too (FO-3c-warn break F4).
+        if (booked !== null) return { record: null, bookedMinutes: booked, warning: (e as StaffApiError).problem.agreementWarning };
         throw e;
       }
     },
@@ -88,7 +92,7 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   const [loads, setLoads] = React.useState(0), [justSaved, setJustSaved] = React.useState(false);
   if (q.isPending || (lead.fetchStatus === "fetching" && lead.isPending)) return <Loading label="Loading the consult record" rows={2} />;
   if (q.isError) return <Notice tone="danger" title="Could not load the consult record.">{q.error instanceof StaffApiError && q.error.status === 403 ? WORDS.refused : q.error.message}</Notice>;
-  const { record, bookedMinutes } = q.data;
+  const { record, bookedMinutes, warning } = q.data;
   if (record?.attendanceChanged === "NO_SHOW") return <><Notice tone="warn" title="Attendance changed to No-show." /><RecordReadOnly r={record} /></>;
   if (booking.attendance !== "COMPLETED") return null;
   // A lead the viewer may not read leaves the list empty, as typed by hand.
@@ -96,6 +100,7 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   const suggested = interested && chars(interested) <= 120 ? [interested] : [];
   return (
     <>
+      {warning ? <div className="mb-2" data-consult-agreement-warning><Notice tone="warn" title="Consultation agreement not signed">{warning.words}</Notice></div> : null}
       <RecordForm key={loads} booking={booking} record={record} bookedMinutes={bookedMinutes} suggested={suggested} onSaved={() => setJustSaved(true)}
         onReload={() => void qc.invalidateQueries({ queryKey: ["fo", "bookings"] }).then(() => setLoads((n) => n + 1))} />
       {record ? <NextStep booking={booking} record={record} reveal={justSaved} /> : null}
@@ -128,6 +133,11 @@ function RecordForm({ booking, record, bookedMinutes, suggested, onSaved, onRelo
   const [errors, setErrors] = React.useState<Errors>({});
   const [busy, setBusy] = React.useState(false), [saved, setSaved] = React.useState(false), [failed, setFailed] = React.useState<{ text: string; reload?: boolean } | null>(null);
   const addRef = React.useRef<HTMLInputElement>(null), saveRef = React.useRef<HTMLButtonElement>(null);
+  // The busy Save let go of the focus (break m7): it goes back after the render that enables Save again (an effect on a
+  // counter). A requestAnimationFrame asked before that render could run first, on a still-disabled Save, and the dialog
+  // kept the focus (c2 J-S6 red on a busy machine: the focus on the dialog, not Save).
+  const [focusSave, setFocusSave] = React.useState(0);
+  React.useEffect(() => { if (focusSave) saveRef.current?.focus(); }, [focusSave]);
   /** The version this form last read or saved (STANDARDS §4): a first save names none. */
   const version = React.useRef<number | null>(record?.version ?? null);
   const changed = () => { setSaved(false); };
@@ -179,7 +189,7 @@ function RecordForm({ booking, record, bookedMinutes, suggested, onSaved, onRelo
         text: code === "STALE_VERSION" ? WORDS.stale : code === "NOT_ATTENDED" || code === "CANCELLED" ? WORDS.notAttended : err instanceof StaffApiError && err.status === 403 ? WORDS.refused : err instanceof Error ? err.message : "Not saved. Please try again.",
         reload: code === "STALE_VERSION" || code === "NOT_ATTENDED" || code === "CANCELLED",
       });
-    } finally { setBusy(false); requestAnimationFrame(() => saveRef.current?.focus()); }   // the busy button let go of the focus (break m7)
+    } finally { setBusy(false); setFocusSave((n) => n + 1); }   // the busy button let go of the focus (break m7)
   };
 
   return (

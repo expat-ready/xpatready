@@ -69,6 +69,7 @@ scopes:
           # P-785 (2) step 2: the area's own screens, tests and feature files (check-mergify-scopes.sh, path owners)
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo7*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/client-money-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/client-money/**"   # FO-7s1: the Money area's screens
       case-side:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts"
@@ -257,6 +258,11 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-entitlements.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-entitlements__*/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-import:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-import.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-import__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
       mig-platform-messages:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-messages.prisma"
@@ -365,6 +371,7 @@ scopes:
     mig-pathways: 1
     mig-platform: 1
     mig-platform-entitlements: 1
+    mig-platform-import: 1
     mig-platform-messages: 1
     mig-platform-offices: 1
     mig-platform-permissions: 1

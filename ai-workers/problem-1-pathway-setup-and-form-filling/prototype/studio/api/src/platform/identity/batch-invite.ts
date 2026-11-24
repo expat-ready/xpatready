@@ -4,8 +4,8 @@
 // never a 400 for the whole form. The service (PlatformIdentity.inviteBatch) adds the checks that need the database (role
 // rules, already staff, already invited) through the same row check the single invite uses, then one seat check for the
 // valid rows (the rows past the limit are flagged OVER_SEAT_LIMIT), all inside one locked transaction; the rows with no
-// flag are sent. The name is only the email's greeting: the batch never stores it (part 1's rule; the single invite's
-// displayName is PF-4dn's, and the batch does not pass it).
+// flag are sent. The name is the email's greeting and, since R1.20's screen (the Invite people form sends one batch),
+// the invitation's display name, as the single invite's (PF-4dn); nameOf's rule is within displayNameOf's.
 // A row with a field we do not know ("nmae") is the body's problem, not the row's data (PF-28's one input rule): the whole
 // form is refused 422 ROWS_FLAGGED with those rows and `fields`, and nothing is sent, so a typo never sends an invitation
 // without what the sender meant to give.
@@ -64,7 +64,7 @@ export function batchRowsOf(body: { rows?: unknown }, actorIsOwner: boolean): Ba
     if (out.roles?.includes("OWNER")) out.flags.push({ code: "OWNER_BY_SINGLE_INVITE", detail: actorIsOwner ? OWNER_WORDS : OWNER_ONLY_WORDS });
     // emailOf keeps one spelling per address (lower case, no spaces or invisible characters), so case and spacing cannot
     // hide a duplicate. Flagged on the second and later rows.
-    if (out.email) { if (seen.has(out.email)) out.flags.push({ code: "DUPLICATE_IN_FORM", detail: "This email is already on an earlier row of this form." }); seen.add(out.email); }
+    if (out.email) { if (seen.has(out.email)) out.flags.push({ code: "DUPLICATE_IN_FORM", detail: "This email is also on an earlier row of this form, which counts for this person, so this row was not sent." }); seen.add(out.email); }
     return out;
   });
   const typos = read.filter((r) => r.flags.some((f) => f.code === "UNKNOWN_FIELD"));
@@ -74,7 +74,7 @@ export function batchRowsOf(body: { rows?: unknown }, actorIsOwner: boolean): Ba
 }
 
 /** The words on a row past the seat limit (P-727): the rows before it took the plan's last seats. */
-export function overSeatWords(limit: number, planName: string | null): string {
+export function overSeatWords(limit: number, planName: string | null, booked = false): string {
   if (planName === null) return "Your firm has no live subscription, so nobody can be added.";
-  return `No seat left for this person: your plan (${planName}) has ${limit} ${limit === 1 ? "seat" : "seats"}, all taken by your staff, pending invitations and the rows above. Remove someone or upgrade your plan, then send this row again.`;
+  return `No seat left for this person: your ${booked ? "booked plan" : "plan"} (${planName}) has ${limit} ${limit === 1 ? "seat" : "seats"}, all taken by your staff, pending invitations and the rows above. Remove someone or upgrade your plan, then send this row again.`;
 }

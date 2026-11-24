@@ -23,56 +23,78 @@ import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
 import { IdentityCheckPanel } from "../compliance/identity/identity-panel";
+import { PersonAgreements } from "../booking/calendar/agreement";
 import { arrivedLabel, sinceLabel } from "./time";
+import { useTabDirty } from "@/components/workspace";
+import { ConflictNotice } from "@/lib/sync/conflict";
+import { DraftLine, useSharedDraft } from "@/lib/sync/drafts";
 const ATTRIBUTION: Record<string, string> = { utmSource: "Campaign source", utmMedium: "Medium", utmCampaign: "Campaign", utmTerm: "Term", utmContent: "Content", clickId: "Click id", clickIdKind: "Click id kind", landingPage: "Landing page", referrerUrl: "Referring page" };
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="grid grid-cols-[8rem_1fr] gap-2 py-1.5 text-sm"><dt className="text-text-muted">{label}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{children}</dd></div>;
 }
-function PhoneRow({ person, mayEdit }: { person: Lead["person"]; mayEdit: boolean }) {
+function PhoneRow({ person, mayEdit, leadId }: { person: Lead["person"]; mayEdit: boolean; leadId: string }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const [editing, setEditing] = React.useState(false);
-  const [value, setValue] = React.useState("");
+  // PF-31 (EXPERIENCE §2.13): the number being typed is the person's one shared draft: it shows in every view of this lead
+  // (another window mirrors it), survives a reload, opens the field wherever a draft exists, and is saved once with If-Match.
+  const draft = useSharedDraft<string>(mayEdit ? `fo-person:${person.id}:phone` : null, person.phone ?? "", person.version ?? null, ["fo", "leads"]);
+  const [open, setOpen] = React.useState(false);
+  const editing = open || draft.dirty, value = draft.values ?? "";
   const [error, setError] = React.useState<string | null>(null);
+  const [conflict, setConflict] = React.useState<{ phone: string; version: string; message: string } | null>(null);
+  useTabDirty(draft.dirty, draft.discard);
   const field = React.useRef<HTMLInputElement>(null);
   // Focus goes back to the control that opened the field (Edit or Fix number) when it closes (breaker F6).
   const opener = React.useRef<HTMLButtonElement | null>(null);
   const wasEditing = React.useRef(false);
   const sending = React.useRef(false);   // one save at a time, also for two clicks in one frame (breaker F4)
-  const open = (e: React.MouseEvent<HTMLButtonElement>) => { opener.current = e.currentTarget; setValue(person.phone ?? ""); setError(null); setEditing(true); };
+  const openIt = (e: React.MouseEvent<HTMLButtonElement>) => { opener.current = e.currentTarget; setError(null); setOpen(true); };
+  const close = () => { draft.discard(); setOpen(false); setConflict(null); };
   React.useEffect(() => {
-    if (editing) field.current?.focus();
-    else if (wasEditing.current) (opener.current?.isConnected ? opener.current : document.querySelector<HTMLButtonElement>("[data-phone-edit-open]"))?.focus();
+    if (editing && !wasEditing.current && open) field.current?.focus();
+    else if (!editing && wasEditing.current) (opener.current?.isConnected ? opener.current : document.querySelector<HTMLButtonElement>("[data-phone-edit-open]"))?.focus();
     wasEditing.current = editing;
-  }, [editing]);
+  }, [editing, open]);
   const save = useMutation({
-    mutationFn: async (phone: string) => staffApi(`/front-office/people/${encodeURIComponent(person.id)}`, { method: "PATCH", json: { phone } }),
-    onSuccess: async () => { setEditing(false); toast.push({ tone: "ok", text: "Phone number saved." }); await qc.invalidateQueries({ queryKey: ["fo", "leads"] }); },
-    onError: (e) => setError(e instanceof StaffApiError ? e.field("phone") ?? e.message : "Could not save the number. Please try again."),
+    mutationFn: async (phone: string) => staffApi(`/front-office/people/${encodeURIComponent(person.id)}`, { method: "PATCH", json: { phone }, headers: draft.version ? { "if-match": `"${draft.version}"` } : undefined }),
+    onSuccess: async () => { setOpen(false); setConflict(null); draft.saved(); toast.push({ tone: "ok", text: "Phone number saved." }); await qc.invalidateQueries({ queryKey: ["fo", "leads"] }); },
+    onError: async (e) => {
+      if (e instanceof StaffApiError && e.status === 409 && e.problem.code === "STALE") {
+        const l = await staffApi(`/front-office/leads/${encodeURIComponent(leadId)}`).then((r) => Lead.parse(r)).catch(() => null);
+        // The conflict is the answer: this save is over, so "Keep mine, then Save" at once is never swallowed by the one-save guard.
+        if (l) { sending.current = false; setConflict({ phone: l.person.phone ?? "", version: l.person.version ?? "", message: e.message }); void qc.invalidateQueries({ queryKey: ["fo", "leads"] }); return; }
+      }
+      setError(e instanceof StaffApiError ? e.field("phone") ?? e.message : "Could not save the number. Please try again.");
+    },
   });
   const fix = person.fixNumber && person.phone;
   if (editing) {
     return (
-      <form data-phone-edit className="flex flex-col gap-1.5" noValidate onKeyDown={(e) => { if (e.key === "Escape" && !save.isPending) setEditing(false); }}
-        onSubmit={(e) => { e.preventDefault(); if (sending.current) return; sending.current = true; save.mutate(value, { onSettled: () => { sending.current = false; } }); }}>
-        <label htmlFor="fo-phone-edit" className="sr-only">Phone</label>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input id="fo-phone-edit" ref={field} type="tel" inputMode="tel" autoComplete="off" maxLength={40} className="max-w-xs" value={value} aria-invalid={!!error} aria-describedby={error ? "fo-phone-edit-error" : "fo-phone-edit-hint"}
-            onChange={(e) => { setValue(e.target.value); setError(null); }} />
-          <Button type="submit" size="sm" busy={save.isPending}>Save</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
-        </div>
-        {error ? <p id="fo-phone-edit-error" role="alert" className="text-xs text-danger">{error}</p>
-          : <p id="fo-phone-edit-hint" className="text-xs text-text-muted">With the country code if it is outside Canada, for example +44 20 7946 0000.</p>}
-      </form>
+      <div className="flex flex-col gap-2">
+        {conflict ? <ConflictNotice message={conflict.message} rows={[{ label: "Phone", saved: conflict.phone, mine: value }]}
+          onSaved={() => { setConflict(null); close(); }} onMine={() => { draft.rebase(conflict.phone, conflict.version); setConflict(null); }} /> : null}
+        <form data-phone-edit className="flex flex-col gap-1.5" noValidate onKeyDown={(e) => { if (e.key === "Escape" && !save.isPending) close(); }}
+          onSubmit={(e) => { e.preventDefault(); if (sending.current) return; sending.current = true; save.mutate(value, { onSettled: () => { sending.current = false; } }); }}>
+          <label htmlFor="fo-phone-edit" className="sr-only">Phone</label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input id="fo-phone-edit" ref={field} type="tel" inputMode="tel" autoComplete="off" maxLength={40} className="max-w-xs" value={value} aria-invalid={!!error} aria-describedby={error ? "fo-phone-edit-error" : "fo-phone-edit-hint"}
+              onChange={(e) => { draft.set(e.target.value); setError(null); }} data-phone-input />
+            <Button type="submit" size="sm" busy={save.isPending} data-phone-save>Save</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={close}>Cancel</Button>
+          </div>
+          {error ? <p id="fo-phone-edit-error" role="alert" className="text-xs text-danger">{error}</p>
+            : <p id="fo-phone-edit-hint" className="text-xs text-text-muted">With the country code if it is outside Canada, for example +44 20 7946 0000.</p>}
+          <DraftLine draft={draft} what="the phone number" />
+        </form>
+      </div>
     );
   }
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       {person.phone ?? <span className="text-text-muted">Not given</span>}
-      {fix && mayEdit ? <button type="button" data-fix-number onClick={open} title="This number could not be read as a phone number with its country. Fix it." className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"><Pill tone="warn">Fix number</Pill></button>
+      {fix && mayEdit ? <button type="button" data-fix-number onClick={openIt} title="This number could not be read as a phone number with its country. Fix it." className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"><Pill tone="warn">Fix number</Pill></button>
         : fix ? <Pill tone="warn" title="This number could not be read as a phone number with its country.">Fix number</Pill> : null}
-      {mayEdit ? <Button type="button" size="sm" variant="ghost" aria-label="Edit phone" data-phone-edit-open onClick={open}>Edit</Button> : null}
+      {mayEdit ? <Button type="button" size="sm" variant="ghost" aria-label="Edit phone" data-phone-edit-open onClick={openIt}>Edit</Button> : null}
     </span>
   );
 }
@@ -137,10 +159,11 @@ function LeadBody({ id }: { id: string }) {
             <h2 id="fo-person" className="text-sm font-semibold">Person</h2>
             <dl className="mt-2">
               <Row label="Email">{l.person.email ?? <span className="text-text-muted">Not given</span>}</Row>
-              <Row label="Phone"><PhoneRow person={l.person} mayEdit={can(me, KEY.edit)} /></Row>
+              <Row label="Phone"><PhoneRow person={l.person} mayEdit={can(me, KEY.edit)} leadId={l.id} /></Row>
             </dl>
           </section>
           <IdentityCheckPanel personId={l.person.id} name={[l.person.givenNames, l.person.familyName].filter((x) => x && x.trim()).join(" ")} />
+          <PersonAgreements personId={l.person.id} />{/* FO-3c part 2 (R1.104): the person's consultation agreements and signed copies */}
           <section aria-labelledby="fo-enquiry" className="rounded-xl border border-border bg-surface-raised p-4">
             <h2 id="fo-enquiry" className="text-sm font-semibold">Enquiry</h2>
             <dl className="mt-2">

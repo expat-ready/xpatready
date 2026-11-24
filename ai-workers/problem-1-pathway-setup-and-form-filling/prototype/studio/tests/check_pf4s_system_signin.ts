@@ -289,6 +289,14 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
     ["system/billing:refund", "Approved-discount list · refunds · monthly written-off report", [Own, Bil]],
     // PF-21b part 2's migration (P-601 (1)): "Place and release legal holds (system/compliance:legal-hold — G-Q5)" — Own (SA7-D74 (a)).
     ["system/compliance:legal-hold", "Place and release legal holds", [Own]],
+    // PF-21c's migration (P-601 (1)): "ExpatReady's data-incident (breach) register — Owner manages, Auditor read-only" (SA7-D74 (b)).
+    ["system/breach:manage", "ExpatReady's data-incident (breach) register", [Own]],
+    ["system/breach:read", "ExpatReady's data-incident (breach) register", [Own, Aud]],
+    // PF-21b part 3 (P-601 (1)): no Appendix A row; SA-11 v2.16 line 778 "Manage the register of requests made to ExpatReady" — Own, Sample (brief PF-21b).
+    ["system/compliance:dsr-manage", "Manage the register of requests made to ExpatReady (SA-11, Sample)", [Own]],
+    // PF-17 part 2's migration (Lead 1's ruling on #3155; SA-10 §10, SA10-D8): no Appendix A row yet, Sample (Unconfirmed: SA10-X3 pending).
+    ["system/support:list", "(SA10-X3 pending) See the support queue", [Own, Adm, Sup, Aud]],
+    ["system/support:manage", "(SA10-X3 pending) Work the support queue", [Own, Sup]],
   ];
   const seeded = new Map(sql(`select permission_key || '=' || string_agg(role_code, ',' order by role_code) from plat_system_role_permission group by permission_key`).split("\n").map((l) => l.split("=") as [string, string]));
   const wrong = APPENDIX_A.filter(([key, , r]) => seeded.get(key) !== [...r].sort().join(","));
@@ -320,13 +328,13 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   // A route that names a reason requires one (the lock route here is test-only; PF-27 builds the real one).
   n = lines(); handled = 0;
   const noReason = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: {} }), blank = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "   " } });
-  ok("PF-4s DW5 fail: a route that names a reason refuses a call without one (400 REASON_REQUIRED), the handler never runs, and each refusal is one line", noReason.status === 400 && noReason.body.code === "REASON_REQUIRED" && blank.status === 400 && handled === 0 && lines() === n + 2 && lastLine().code === "REASON_REQUIRED", { noReason, blank });
+  ok("PF-4s DW5 fail: a route that names a reason refuses a call without one (422 REASON_REQUIRED naming reason; R1.10 A4), the handler never runs, and each refusal is one line", noReason.status === 422 && noReason.body.code === "REASON_REQUIRED" && !!noReason.body.fields?.reason && blank.status === 422 && handled === 0 && lines() === n + 2 && lastLine().code === "REASON_REQUIRED", { noReason, blank });
   n = lines();
   const withReason = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "  A report of a stolen Owner account  " } });
   ok("PF-4s DW5 pass: with a reason the call goes through and its one line carries the reason and the firm it affected", withReason.status === 201 && handled === 1 && lines() === n + 1 && lastLine().reason === "A report of a stolen Owner account" && lastLine().target.id === firmId && lastLine().outcome === "ALLOWED", lastLine());
   n = lines(); handled = 0;
   const invisible = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "\u200b\u202e" } });
-  ok("PF-4s DW5 fail (breaker m4): a reason of invisible characters only is no reason (400 REASON_REQUIRED), one line", invisible.status === 400 && invisible.body.code === "REASON_REQUIRED" && handled === 0 && lines() === n + 1, invisible);
+  ok("PF-4s DW5 fail (breaker m4): a reason of invisible characters only is no reason (422 REASON_REQUIRED naming reason; R1.10 A4), one line", invisible.status === 422 && invisible.body.code === "REASON_REQUIRED" && !!invisible.body.fields?.reason && handled === 0 && lines() === n + 1, invisible);
   n = lines();
   const nul = await call(A.base, "POST", "/api/system/test/refunds/a%00b", { token: support, body: {} }), nulReason = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "stolen\u0000 account" } });
   ok("PF-4s DW5 fail (breaker m2): a NUL in a path parameter or a reason still leaves its one line (cleaned), the refusal stays a 403, the call with a reason goes through",
@@ -397,7 +405,7 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   x = await one(() => call(A.base, "POST", `${P2}/${OWNER}/reset-mfa`, { token: o, body: { reason: "lost phone", verified: true } }));
   ok("PF-4s DW6 fail (SA-7-31): Reset MFA on oneself is 403 OWN_ACCOUNT, one REFUSED line", x.r.status === 403 && x.r.body.code === "OWN_ACCOUNT" && x.added === 1 && x.line.code === "OWN_ACCOUNT", x);
   x = await one(() => call(A.base, "POST", `${P2}/${TSUP}/reset-mfa`, { token: o, body: { verified: true } }));
-  ok("PF-4s DW6 fail (SA-7-31): Reset MFA without a reason is 400 REASON_REQUIRED, one line", x.r.status === 400 && x.r.body.code === "REASON_REQUIRED" && x.added === 1, x);
+  ok("PF-4s DW6 fail (SA-7-31): Reset MFA without a reason is 422 REASON_REQUIRED naming reason (R1.10 A4), one line", x.r.status === 422 && x.r.body.code === "REASON_REQUIRED" && !!x.r.body.fields?.reason && x.added === 1, x);
   x = await one(() => call(A.base, "POST", `${P2}/${TSUP}/reset-mfa`, { token: o, body: { reason: "lost phone" } }));
   ok("PF-4s DW6 fail (SA7-D21): Reset MFA without the verified flag is 400 IDENTITY_NOT_VERIFIED, one line", x.r.status === 400 && x.r.body.code === "IDENTITY_NOT_VERIFIED" && x.added === 1 && x.line.code === "IDENTITY_NOT_VERIFIED", x);
   const tsupToken = await tokenOf(TSUP); clock.t += 1000;
@@ -431,7 +439,7 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   x = await one(() => call(A.base, "PUT", `${P2}/${OWNER}/roles`, { token: o, body: { roles: [] , reason: "test" } }));
   ok("PF-4s DW7 fail (SA-7-12): nobody changes their own roles (403 OWN_ROLES), one line", x.r.status === 403 && x.r.body.code === "OWN_ROLES" && x.added === 1, x);
   x = await one(() => call(A.base, "POST", P2, { token: o, body: { email: "second.owner@expatready.example", displayName: "Sample Second Owner", roles: ["platform-owner"] } }));
-  ok("PF-4s DW7 fail (SA-7-12): giving the Owner role without a reason is 400 REASON_REQUIRED, nobody created", x.r.status === 400 && x.r.body.code === "REASON_REQUIRED" && x.added === 1 && !(await db.platSystemStaff.findUnique({ where: { email: "second.owner@expatready.example" } })), x);
+  ok("PF-4s DW7 fail (SA-7-12): giving the Owner role without a reason is 422 REASON_REQUIRED naming reason (R1.10 A4), nobody created", x.r.status === 422 && x.r.body.code === "REASON_REQUIRED" && !!x.r.body.fields?.reason && x.added === 1 && !(await db.platSystemStaff.findUnique({ where: { email: "second.owner@expatready.example" } })), x);
   x = await one(() => call(A.base, "POST", P2, { token: o, body: { email: "Second.Owner@expatready.example", displayName: "Sample Second Owner", roles: ["platform-owner"], reason: "a second Owner" } }));
   const OWNER2 = x.r.body.staffId as string;
   ok("PF-4s DW7 pass (SA-7-4): an Owner adds a staff member with the Owner role and a reason (201, one ALLOWED line naming the new person)",
@@ -444,6 +452,18 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   const refusedRace = [r1, r2].find((r) => r.status === 409);
   ok("PF-4s DW7 fail (SA-7-25): two Owners removing each other's Owner role at once: exactly one succeeds (the other 409 ROLES_CHANGED or LAST_OWNER), one active Owner stays, two lines",
     [r1.status, r2.status].sort().join() === "200,409" && ["ROLES_CHANGED", "LAST_OWNER"].includes(refusedRace?.body.code) && owners === 1 && lines() - before2 === 2, { r1, r2, owners });
+  // QA-755 (Lead 18 on #3202): either Owner may win the race, so what follows must sign in the one left (soleOwner).
+  // PF4S_FORCE_SOLE_OWNER=OWNER|OWNER2 (proof only) makes that person the winner after the race: the one active Owner
+  // grant moves to them in the database, so both outcomes can be run on purpose.
+  const forced = process.env.PF4S_FORCE_SOLE_OWNER;
+  if (forced === "OWNER" || forced === "OWNER2") {
+    const want = forced === "OWNER2" ? OWNER2 : OWNER, other = forced === "OWNER2" ? OWNER : OWNER2;
+    if (sql(`select count(*) from plat_system_role_grant where staff_id = '${want}' and role_code = 'platform-owner' and ended_at is null`) === "0") {
+      sql(`update plat_system_role_grant set ended_at = now() where staff_id = '${other}' and role_code = 'platform-owner' and ended_at is null returning id`);
+      sql(`update plat_system_role_grant set ended_at = null where id = (select id from plat_system_role_grant where staff_id = '${want}' and role_code = 'platform-owner' order by ended_at desc limit 1) returning id`);
+    }
+    console.log(`  forced: ${forced} is the one active Owner after the race`);
+  }
   // Review m2: the floor itself, asked directly (through the API it is a second wall: the sender is an active Owner and
   // never the target, so two active Owners exist whenever it runs).
   const soleOwner = sql(`select g.staff_id from plat_system_role_grant g join plat_system_staff s on s.id = g.staff_id where g.role_code = 'platform-owner' and g.ended_at is null and s.status = 'ACTIVE'`);
@@ -464,12 +484,12 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   const filler = await one(() => call(A.base, "POST", `${P2}/${TSUP}/deactivate`, { token: o4, body: { reason: "\u3164\u115F" } }));
   const long = await one(() => call(A.base, "PUT", `${P2}/${TSUP}/roles`, { token: o4, body: { roles: ["platform-support"], reason: "r".repeat(501) } }));
   const blankName = await one(() => call(A.base, "POST", P2, { token: o4, body: { email: "blank.name@expatready.example", displayName: "\u200B\u3164", roles: [] } }));
-  ok("PF-4s part 2 fail (breaker m2, n1, n2): a reason of Hangul fillers is no reason (400), a 501-character one is 400 REASON_TOO_LONG, an invisible name is 422; one line each, nothing changed",
-    filler.r.status === 400 && filler.r.body.code === "REASON_REQUIRED" && long.r.status === 400 && long.r.body.code === "REASON_TOO_LONG" && blankName.r.status === 422 && filler.added + long.added + blankName.added === 3
+  ok("PF-4s part 2 fail (breaker m2, n1, n2): a reason of Hangul fillers is no reason (422), a 501-character one is 422 REASON_TOO_LONG, an invisible name is 422; one line each, nothing changed",
+    filler.r.status === 422 && filler.r.body.code === "REASON_REQUIRED" && !!filler.r.body.fields?.reason && long.r.status === 422 && long.r.body.code === "REASON_TOO_LONG" && !!long.r.body.fields?.reason && blankName.r.status === 422 && filler.added + long.added + blankName.added === 3
     && (await db.platSystemStaff.findUniqueOrThrow({ where: { id: TSUP } })).status === "ACTIVE" && !(await db.platSystemStaff.findUnique({ where: { email: "blank.name@expatready.example" } })), { filler: filler.r, long: long.r, blankName: blankName.r });
   // PF-28's rule on our own staff's routes (its sweep cannot sign in here, so it lists them NOT TESTED and they are asked
   // here): an unknown field 422 naming it, a wrong type 422, and a bad body changes nothing (one REFUSED line, code INVALID).
-  const ow = await signedNow(OWNER), probeId = TSUP, staffBefore = sql(`select count(*) from plat_system_staff`);
+  const ow = await signedNow(soleOwner), probeId = TSUP, staffBefore = sql(`select count(*) from plat_system_staff`);
   const p28: [string, string, unknown][] = [["POST", P2, { pf28Unknown: "x" }], ["PUT", `${P2}/${probeId}/roles`, { pf28Unknown: "x" }], ["POST", `${P2}/${probeId}/deactivate`, { reason: "x", pf28Unknown: "x" }],
     ["POST", `${P2}/${probeId}/reactivate`, { pf28Unknown: "x" }], ["POST", `${P2}/${probeId}/end-sessions`, { pf28Unknown: "x" }], ["POST", `${P2}/${probeId}/reset-mfa`, { reason: "x", verified: true, pf28Unknown: "x" }]];
   const p28Wrong: string[] = [];

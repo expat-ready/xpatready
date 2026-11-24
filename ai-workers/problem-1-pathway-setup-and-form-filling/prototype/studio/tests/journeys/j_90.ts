@@ -14,15 +14,16 @@
 //   W3 (the trial counts days): the Owner signs in; Plan and billing says "Free trial: N days left (ends <date>)" from
 //       the stored trial end and counts down when the end moves nearer (3 days, then the last day). The trial banner on
 //       every page (PF-16: GET /api/platform/billing/banner; amber in the last 3 days) is looked for on Home and Team.
-//   W4 (the private plan link): our staff make a single-use link (POST /api/platform/signup-links), the invited person
-//       opens it (GET|POST /api/public/signup/:token), and a second use is refused.
+//   W4 (the private plan link): our staff make a single-use link (POST /api/system/signup-links; a firm's Owner → 403),
+//       the invited person walks it by screens (PF-5s S8: open, password, firm name, terms → Check your email → Confirm:
+//       one firm), and the link opened again → "This sign-up link doesn't work".
 //   W5: the walk ends at R1.91's first step: Plan and billing offers the Owner "Manage plan and billing".
 //   W6: Pricing, Sign up and Plan and billing at 400, 1024 and 1440 px: no sideways scroll, axe WCAG 2.2 A/AA clean.
 // Fails on the fake (P-606): no firm exists before Confirm; the trial line is read before and after each move of the
 // trial end; the late sign-up is read pending and unused before its link is opened.
 // Sample data only; US$0, no model call, no live mail, no Stripe call (the fake BillingPort; no Stripe key on the copy).
 // Screenshots: product/screens/J-90/screenshots/. Run from prototype/ (HEADED=1 opens a visible browser):
-//   zsh studio/tools/isolated.sh j90 4490 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j90 4490 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_90.ts j90 4490
+//   zsh studio/tools/isolated.sh j90 4490 start --ttl 30 PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j90 4490 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_90.ts j90 4490
 import "reflect-metadata";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
@@ -41,6 +42,7 @@ const sql = (q: string) => rawSql(q).split("\n")[0].trim();
 const run = Date.now().toString(36);
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- answers read loosely, as the other journeys
+const PASSWORD = "correct horse invited j90 staple 9";   // Sample (the invited person's, W4), the form check_pf5_signup_billing.ts uses
 const j = async (method: string, path: string, body?: unknown, token?: string): Promise<{ status: number; body: any }> => {
   const r = await fetch(`${BASE}${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
   const t = await r.text(); let b: unknown = t; try { b = JSON.parse(t); } catch { /* text */ } return { status: r.status, body: b };
@@ -74,7 +76,11 @@ try {
   await shot(p, "w1-pricing-1440");
   await p.locator(`[data-start="${plan}"]`).click();
   await p.locator("[data-signup]").waitFor({ timeout: 20_000 });
-  ok("R1.90 W1: Sign up asks for no card (no card field on the page)", (await cardWords(p)) === 0 && (await p.getByLabel("Work email").count()) === 1);
+  // qa 24 Nov: wait for the form's own field before counting (a snapshot right after [data-signup] read 0 fields once in 2
+  // local runs on a79e246c6); the claims are unchanged: no card words, exactly one Work email field.
+  await p.getByLabel("Work email").first().waitFor({ timeout: 20_000 }).catch(() => undefined);
+  const w1Card = await cardWords(p), w1Email = await p.getByLabel("Work email").count();
+  ok("R1.90 W1: Sign up asks for no card (no card field on the page)", w1Card === 0 && w1Email === 1, { cardWords: w1Card, workEmail: w1Email });
   // The error path a person meets first: sending the form empty names each field in words.
   await wait(3300);   // the door's minimum fill time is 3 s
   await p.locator("[data-signup-submit]").click();
@@ -163,13 +169,40 @@ try {
   ok("R1.90 W3 (PF-16): the banner's read answers the days left, the card on file and amber in the last 3 days", banner.status === 200 && Number(banner.body?.daysLeft) === 3, { status: banner.status, body: typeof banner.body === "string" ? banner.body.slice(0, 120) : banner.body });
 
   // ------------------------------------------------------------------------------------------ W4: the private plan link
-  const invited = `invited.j90.${run}@example.com`;
-  const made = await j("POST", "/api/platform/signup-links", { email: invited, countryCode: "CA", planCode: plan, period: "MONTHLY" }, tok);
-  const routeMissing = made.status === 404 && /Cannot POST/i.test(JSON.stringify(made.body));
-  ok("R1.90 W4 (PF-5): a private single-use sign-up link can be made (POST /api/platform/signup-links answers, to our staff or with a refusal by role)", !routeMissing, { status: made.status, body: JSON.stringify(made.body).slice(0, 160) });
-  const opened = await j("GET", "/api/public/signup/qa-j90-not-a-token");
-  ok("R1.90 W4 (PF-5): the invited door exists (GET /api/public/signup/:token answers its own 404 for an unknown link, not 'Cannot GET')", !(opened.status === 404 && /Cannot GET/i.test(JSON.stringify(opened.body))), { status: opened.status, body: JSON.stringify(opened.body).slice(0, 160) });
-  ok("R1.90 W4: a private plan link works once (made, used to sign up one firm, refused the second time)", made.status === 201 && firmsOf(invited) === "1" && false, "not walked: no route makes or opens a private link on this commit (platform_signup_link has " + sql("select count(*) from platform_signup_link") + " rows)");
+  // Our staff (PF-4s's local stand-in on this copy) make the link by the API: their console is not built (concept
+  // pf-5s-saas §2); the invited person walks it by screens (PF-5s S8, /sign-up/invited).
+  const invited = `invited.j90.${run}@example.com`, ask = { email: invited, countryCode: "CA", planCode: plan, period: "MONTHLY", reason: "Sales-led firm (Sample, j_90)" };
+  const byFirm = await j("POST", "/api/system/signup-links", ask, tok);
+  ok("R1.90 W4 fail: a firm's Owner cannot make a private link (our staff's plane, PF-4s: 403); nothing stored", byFirm.status === 403 && sql(`select count(*) from platform_signup_link where email = '${invited}'`) === "0", { status: byFirm.status });
+  const staffEmail = `owner.j90.${run}@expatready.example`;
+  const staffId = sql(`insert into plat_system_staff (id, email, display_name) values (gen_random_uuid(), '${staffEmail}', 'Sample Platform Owner ${run}') returning id`);
+  sql(`insert into plat_system_role_grant (id, staff_id, role_code) values (gen_random_uuid(), '${staffId}', 'platform-owner') returning id`);
+  const staffTok = (await j("POST", "/api/system/session/local", { email: staffEmail, secondStep: true })).body?.token as string | undefined;
+  const made = await j("POST", "/api/system/signup-links", ask, staffTok);
+  const linkPath = String(made.body?.link ?? "").match(/\/sign-up\/invited#token=[A-Za-z0-9_-]{43}$/)?.[0];
+  ok("R1.90 W4 (PF-5): our staff make a private single-use sign-up link (POST /api/system/signup-links → 201, the link shown once)", made.status === 201 && !!linkPath, { status: made.status, body: JSON.stringify(made.body).slice(0, 160) });
+  const ictx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" }), ip = await ictx.newPage();
+  ip.on("pageerror", (e) => errors.push(String(e)));
+  if (linkPath) {
+    await ip.goto(`${BASE}${linkPath}`); await ip.locator("[data-invited='form']").waitFor({ timeout: 20_000 });
+    ok("R1.90 W4: the invited person opens the link: the email is fixed, the plan is the link's default, nothing is made by opening it", (await ip.locator("[data-invited-email]").innerText()) === invited && (await ip.getByLabel("Work email").count()) === 0 && firmsOf(invited) === "0");
+    await shot(ip, "w4-invited-form-1440");
+    await ip.getByLabel("Password").fill(PASSWORD); await ip.getByLabel("Firm name").fill(`Sample Invited Firm ${run}`);
+    await ip.locator("[data-signup-agree]").check(); await ip.locator("[data-signup-submit]").click();
+    await ip.locator("[data-invited='sent']").waitFor({ timeout: 20_000 });
+    const confirmLink = await linkFor(invited);
+    if (confirmLink) { await ip.goto(`${BASE}${confirmLink}`); await ip.locator("[data-signup-confirm]").click(); await ip.locator("[data-signup-verify='done']").waitFor({ timeout: 30_000 }); }
+    await ip.goto(`${BASE}${linkPath}`); await ip.locator("[data-invited='gone']").waitFor({ timeout: 20_000 });
+    await shot(ip, "w4-invited-used-1440");
+    ok("R1.90 W4: a private plan link works once (made, used to sign up one firm, refused the second time)", made.status === 201 && firmsOf(invited) === "1" && (await ip.locator("[data-invited-words]").innerText()).startsWith("This sign-up link doesn't work"),
+      { firms: firmsOf(invited), used: sql(`select used_at is not null from platform_signup_link where email = '${invited}'`) });
+    // qa 24 Nov (rating of #3202's W4): the used link refused at the API too, not only on reopening the page: a second
+    // sign-up POST with a well-formed body reaches the link check (the body is parsed first) and answers its 404; still one firm.
+    const token = linkPath.split("#token=")[1] ?? "", termIds = sql(`select coalesce(string_agg(id::text, ','), '') from platform_terms_version`).split(",").filter(Boolean);
+    const again = await j("POST", `/api/public/signup/${token}`, { password: PASSWORD, firmName: `Sample Invited Firm again ${run}`, acceptedTerms: termIds });
+    ok("R1.90 W4 fail: the used link is refused by the API on a second sign-up (404 in words), and still exactly one firm for the invited email", again.status === 404 && firmsOf(invited) === "1", { status: again.status, body: JSON.stringify(again.body).slice(0, 160), firms: firmsOf(invited) });
+  } else ok("R1.90 W4: the invited person's steps ran (no link came back, so nothing was walked)", false, { status: made.status });
+  await ictx.close();
 
   // ------------------------------------------------------------------------------------------ W5: R1.91's first step
   await p.goto(`${BASE}/settings/billing`); await p.locator("[data-billing-summary]").waitFor({ timeout: 30_000 });

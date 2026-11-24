@@ -7,9 +7,12 @@ import { randomUUID } from "node:crypto";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts";
 import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
-import { firmScope } from "../../platform/firm-scope.ts";
+import { currentFirm, firmScope, withFirm } from "../../platform/firm-scope.ts";
+import { NOTIFICATION_KIND, type NotificationPort } from "../../../../ports/notifications.ts";
 import { conflict, notFound, UUID, written, type Tx } from "./common.ts";
 import { eligible, NO_RULE, placeNewLead, type Placement } from "../assignment/place.ts";
+import { notePairs } from "../duplicates/merge/review.ts";
+import { logPort } from "../../platform/observability/log.ts";
 import { livePersonId } from "../duplicates/merge/follow.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
@@ -32,6 +35,7 @@ export type ArrivalIn = {
   onOpenProspectPersonId?: string;
   ipHash?: string | null;
   existingPersonId?: string;   // Add a lead for a person already on file (the known-person check): no new person
+  addedAsNew?: boolean;   // FO-9b part 2: Add a lead's "Add as new" (confirmedNew): the new person's pairs are written Kept separate
   ownerStaffId?: string | null;   // the adder (AG-2-4 rule 8); none for a form lead, except a one-user firm's one user (X-4)
   /** FO-10 part 2 (AG-2-85 rule 1(b)): the host of the booking that brought the person; BOOKING door only. */
   bookingHostStaffId?: string;
@@ -61,7 +65,7 @@ function placedWords(p: Placement, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null
   return `, left in Unassigned leads: ${p.fallback === "OWNER_INACTIVE" ? "the rule's person is not active or cannot work leads" : p.fallback === "POSSIBLE_MATCH" ? "a possible match waits for a person" : "no one in the rule's turn is active"}`;
 }
 
-export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>; consent: ConsentPort<Tx> }): Promise<ArrivalOut> {
+export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>; consent: ConsentPort<Tx>; notifications?: NotificationPort<Tx> | null }): Promise<ArrivalOut> {
   const firmId = firmScope(a.firmId).firmId;
   // The receipt first (AG-2-84 rule 3). A second post with the same key waits on the unique key until the first commits,
   // then finds its receipt and makes nothing.
@@ -101,6 +105,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     match = await possibleMatch(tx, firmId, a.person);
     personId = randomUUID();
     await tx.foPerson.create({ data: { id: personId, firmId, givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null, phoneReadable: a.person.phone?.readable ?? true, createdBy: a.actor } });
+    // FO-9b part 2 (concept M8): the new person's pairs go on the duplicate review list; a failure never refuses the arrival.
+    await tx.$executeRaw`savepoint fo_dup_pairs`; try { await notePairs(tx, firmId, personId, a.addedAsNew ? { by: a.actor } : null); await tx.$executeRaw`release savepoint fo_dup_pairs`; } catch (e) { await tx.$executeRaw`rollback to savepoint fo_dup_pairs`; logPort.error("fo9b_note_pairs_failed", e); }
   }
   let owner = a.ownerStaffId ?? null, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null = null;
   // FO-10 part 2 (AG-2-85 rules 1(b), 18): a lead born from a one-to-one booking is its host's, whatever any rule says;
@@ -137,5 +143,20 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
       ...(a.existingPersonId ? {} : { givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null }) },
     event: { type: EVENT.LEAD_CREATED, subjectId: lead.id, payload: LeadEventPayload.parse({ leadId: lead.id, personId, door: a.door, state: "OPEN", ownerStaffId: owner, possibleMatchPersonId: match }) },
   });
+  // PF-18n part 2 (AG-16-10 test 1, AG-10-29a): the person the lead was handed to (the firm's rule, a one-user firm's one
+  // user; a booking's host only once the booking door passes the port: booking/runtime-ports.ts passes none yet, a
+  // follow-up for the booking module) is told, in this transaction; an adder who owns their own lead (a.ownerStaffId) is not.
+  if (owner && !a.ownerStaffId) await tellAssigned(tx, ports.notifications, firmId, owner, lead.id);
   return { leadId: lead.id, personId, created: true };
+}
+
+/** PF-18n part 2: one lead-assigned notification to `staffId` for this lead, inside the caller's transaction and in the
+ *  lead's own firm (NotificationPort writes in the firm in scope; a door or test with none in scope gets the lead's). The
+ *  port asks the person's In-app switch and skips a person who is not this firm's active staff. No port: nobody is told. */
+export async function tellAssigned(tx: Tx, port: NotificationPort<Tx> | null | undefined, firmId: string, staffId: string, leadId: string): Promise<void> {
+  if (!port) return;
+  // Never a silent switch of firm (review m6): inside another firm's scope this is a fault, refused before anything is written.
+  const inScope = currentFirm();
+  if (inScope !== undefined && inScope !== firmId) throw new Error("tellAssigned: called in another firm's scope");
+  await withFirm(firmId, () => port.notify(tx, { staffId }, NOTIFICATION_KIND.LEAD_ASSIGNED, { kind: "lead", id: leadId }));
 }

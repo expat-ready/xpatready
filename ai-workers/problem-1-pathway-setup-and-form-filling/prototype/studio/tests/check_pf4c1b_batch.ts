@@ -181,6 +181,38 @@ try {
   await call(base, "PATCH", `/api/platform/staff/${O}/roles`, { token: tR, body: { roles: ["READ_ONLY"], reason: "batch check" } });
   const readOnly = await batch([row("nokey@example.com")], await signIn("user-O"));
   ok("PF-4c1b fail: a person without agent/staff:manage → 403, nothing sent", readOnly.status === 403 && sql(`select count(*) from platform_invitation where email = 'nokey@example.com'`) === "0", readOnly.body);
+
+  // ------------- DW7 (QA-774, R1.20 "every gated action asks one check"): while a lower plan is booked (SA-3-59) the gate
+  // uses the booked plan's seat limit; its refusal names that plan, and Team's seat line (StaffReads.seats) reads the same
+  // limit through the same check. Sample plan, booked through the table's own trigger (it stamps the rest).
+  seatsLeft(10);
+  const curName = sql(`select p.name from platform_plan p join platform_subscription s on s.plan_id = p.id where s.firm_id = '${FIRM_A}' and s.status <> 'ENDED'`);
+  const LOW = `pf4c1b-lower-${process.pid}`, LOW_NAME = "Sample Lower (PF-4c1b)", lowSeats = used() + 1;
+  sql(`insert into platform_plan (id, code, name, seats_limit) values (gen_random_uuid(), '${LOW}', '${LOW_NAME}', ${lowSeats})`);
+  sql(`insert into platform_subscription_change (id, firm_id, subscription_id, from_plan_id, to_plan_id, booked_by, booked_at, effective_at)
+    select gen_random_uuid(), s.firm_id, s.id, s.plan_id, p.id, 'seed:pf4c1b', now(), now() from platform_subscription s, platform_plan p where s.firm_id = '${FIRM_A}' and s.status <> 'ENDED' and p.code = '${LOW}'`);
+  const { StaffReads } = await import("../api/src/platform/staff-read/service.ts");
+  const reads = new StaffReads(db as never, {} as never, {} as never);
+  ok("setup: a lower Sample plan is booked for the renewal (open, not applied), its seats one above today's use",
+    sql(`select count(*) from platform_subscription_change where firm_id = '${FIRM_A}' and withdrawn_at is null and applied_at is null`) === "1" && limit() === used() + 10);
+  const line = await reads.seats(FIRM_A);
+  ok("PF-4c1b DW7 fail (QA-774): Team's seat line reads the limit the gate uses (the booked plan's) and names that plan, not the plan row's",
+    line.limit === lowSeats && line.used === used() && line.plan === LOW_NAME && line.line === `${used()} of ${lowSeats} seats used`, line);
+  before = snap();
+  const twoRows = await batch([row("low.one@example.com"), row("low.two@example.com")]);
+  const lowWords = twoRows.body.flagged?.[0]?.detail ?? "";
+  ok("PF-4c1b DW7 pass: the batch gives the one seat left under the booked plan; row 2 OVER_SEAT_LIMIT; the answer's limit is the booked one",
+    twoRows.status === 200 && invitedRows(twoRows.body) === "1" && reasons(twoRows.body) === "2:OVER_SEAT_LIMIT" && twoRows.body.seatsLimit === lowSeats && invites() === before.i + 1, twoRows.body);
+  ok("PF-4c1b DW7 fail (QA-774): the row's words name the plan whose seat count they quote (the booked one), never the current plan with the booked plan's number",
+    lowWords.includes(LOW_NAME) && lowWords.includes(`${lowSeats} seats`) && !lowWords.includes(curName), lowWords);
+  const single = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "low.single@example.com", roles: ["CASE_OFFICER"] } });
+  const singleWords = String(single.body?.detail ?? "");
+  ok("PF-4c1b DW7 fail (QA-774): a single invite past the booked limit is refused 409 naming the booked plan and its limit, not the current plan",
+    single.status === 409 && single.body.code === "PLAN_LIMIT_REACHED" && single.body.limit === lowSeats && singleWords.includes(LOW_NAME) && !singleWords.includes(curName)
+    && sql(`select count(*) from platform_invitation where email = 'low.single@example.com'`) === "0", single.body);
+  sql(`update platform_subscription_change set withdrawn_at = now() where firm_id = '${FIRM_A}' and withdrawn_at is null and applied_at is null`);
+  const back = await reads.seats(FIRM_A);
+  ok("PF-4c1b DW7 pass: the booking withdrawn, the seat line is the current plan's limit and name again", back.limit === limit() && back.plan === curName, back);
 } finally {
   PgEntitlements.prototype.check = realCheck;
   await app?.close().catch(() => {});
