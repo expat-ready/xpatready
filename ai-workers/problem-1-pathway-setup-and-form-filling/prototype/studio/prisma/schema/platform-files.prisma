@@ -1,3 +1,4 @@
+// platform-files.prisma — the record of each finished upload (plat_file), written by the upload rail. Owner: Lead B (platform).
 // PF-F2 part 1 (map row 64; batch 5): the platform's one record of a stored upload. tus keeps its own records of
 // unfinished uploads (the staging store); a row here is written only once every byte has arrived, passed PF-F4's check
 // and been stored through FilesPort, so no row ever names a half-finished file. PF-F3's scan job reads the SCANNING rows
