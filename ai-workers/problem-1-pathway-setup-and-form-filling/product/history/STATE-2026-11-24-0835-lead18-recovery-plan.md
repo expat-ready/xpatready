@@ -624,3 +624,10 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Queue 21:15: #3460 queued (waits for room in scope migrations); #3518 (#3467, #3500) and #3519 (#3516) testing, no red; #3497, #3234 wait on scopes.
 * Read lines posted: #3489 8e7f454d6 (scope fix, session, frame, contract, routes; not the firms page or test), #3508 4d3231487 (all four files). Both label only on green ci, fast, guards (running 21:16).
 * Told: Lead B 7 and Lead O 2 (order: #3508, bk3 trace, #3506 held for A1). Pane hidden: lanes not read or typed into by me.
+
+### Lead 31, check 21:39 to 21:45 IST (93% weekly, disk 6.6 GB, context 234k)
+* Founder (typed to Lead 29, relayed): "Yes, switch at 95%". Stop order not sent. Main 3049b8d21, no merge since 20:56.
+* Queue: #3520 (#3467 alone) running 28, no red. Waiting by scope: #3508 and #3489 (labelled 21:38), #3460, #3497, #3234. #3500 red in #3518/#3519 (check_pfle_libraries; check_csd5_flags_browser), new head 1374574f2, label off, lane 9L8jjd running. #3516 dequeued with it: covered line posted for 45426912783; its full run started by itself and the bot relabels on green.
+* #3517: round 3 allowed, head 2df7793ef. #3493 ruled (a). bk3: tab.close() hung 2 in 6,416 in CI (45429673590), cause of the batch hang not proven; test-only limit in 3 places allowed to Lead O 2, its PR then needs an Approve and my read.
+* Lanes: list expanded to 50 rows ("Load more sessions" not pressed); last reply read in 13 that are in flight; all wait on the queue or have ended except 9L8jjd (running) and 7wnHW (unread reply). Not opened: 4oPSM (R1.5), 6TCJS (R1.64), 6E2Xy, older qa and research rows.
+* lead-watch run from this copy's old tools (its script exit code read 126 as a count); gh's own TLS fails in the sandbox and it fell back to curl. No stage table from it. Disk: nothing deleted.
