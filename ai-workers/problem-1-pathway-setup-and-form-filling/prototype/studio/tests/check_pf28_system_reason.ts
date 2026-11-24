@@ -62,7 +62,7 @@ const n0 = lines(none.id);
 let pCalls = 0;
 for (const [m, p] of ROUTES) {
   const asks: [string, string][] = [["{}", path(p)], ['{"pf28Unknown":1}', path(p)], ["[1]", path(p)], [JSON.stringify({ reason: LONG }), path(p)]];
-  if (p.includes(":id")) asks.push(["{}", path(p, "not-a-uuid")]);
+  if (p.includes(":id")) asks.push(["{}", path(p, "not-a-uuid" as ReturnType<typeof randomUUID>)]);
   for (const [body, url] of asks) {
     pCalls++;
     const a = await call(m, url, tNone, body);
@@ -86,7 +86,7 @@ for (const [m, p] of ROUTES) {
   if (!(long.status === 422 && typeof long.body?.fields?.reason === "string")) rBad.push(`${m} ${p} 501-character reason → ${long.status} ${JSON.stringify(long.body?.fields ?? long.body?.code)}`);
   if (p.includes(":id")) {
     rCalls++;
-    const bad = await call(m, path(p, "not-a-uuid"), tOwner, JSON.stringify({ reason: "Sample reason" }));
+    const bad = await call(m, path(p, "not-a-uuid" as ReturnType<typeof randomUUID>), tOwner, JSON.stringify({ reason: "Sample reason" }));
     if (bad.status !== 404) rBad.push(`${m} ${p} malformed id → ${bad.status} ${bad.body?.code ?? ""}`);
   }
 }
