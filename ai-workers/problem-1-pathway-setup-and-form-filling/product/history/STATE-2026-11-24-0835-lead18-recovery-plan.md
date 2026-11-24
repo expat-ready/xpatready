@@ -532,3 +532,4 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * #3491 36a32698a: app code and migration read, no fault; pr-rules and module-cards red. #3492 module-cards red. #3497 mergify scopes and walk j_74 red. #3487 types red (heap). #3489 04e8963bd approved, waits for #3470. #3498 waits for #3460. #3493 round 3 allowed. Lead B 7 asked to read #3491, #3492, #3497, #3477, #3498.
 * #3477 28ae2601b: Approve, full run running, then label.
 * After Lead B 7's reads (17:49): #3497 NOT OK (census row), label off; #3491 OK but label off for the migration order (relabel after #3174, #3234); #3492, #3477, #3498 OK.
+* 17:59: queue stalled: #3467 "Preparing checks" with no batch since about 17:36, all scopes behind it. refresh and requeue did nothing; dequeue then queue at 17:56 (no batch running) moved it behind #3174 and #3313, which then read "In merge queue". #3305 requeued 17:52. Check that batches now open.
