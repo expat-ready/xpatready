@@ -74,3 +74,15 @@ Built by `build.py` (seeded order); file lists in `sample.json`.
 * **Headline "found" = named at Major or above** (a Minor would not have stopped the merge). Named only as a Minor is reported apart.
 * Reviewers run at Opus **high** effort, not medium: the repository's hook (P-608 (2)) refused medium.
 * S04, S05 and S12 carry no requirement rows (none under the ids in their titles).
+
+## Arm 2 (CodeAnt command line): rule fixed before any run on our code (24 Nov 2026, Lead 25)
+
+C6: Lead 25 reports the founder's answer "Yes, send the 28", about 15:30 IST, to whether the 28 sample PRs' public code may go to CodeAnt. The founder starts the run. The made-up run (Lead 25's account of it) returned label, text, file and line, and no severity.
+
+* Every claim CodeAnt makes is judged blind by the same judge rule as arm 1 (`TRUE` / `MINOR` / `FALSE`; tool and label hidden).
+* **Found** = a claim names the same wrong behaviour on the same code path. With no severity of its own, a claim counts as found only if the judge rates it TRUE, or the matcher finds it is the known miss itself (a known miss is Major by qa).
+* **The bar, unchanged:** at least 4 of 14 found; at least half of all claims TRUE (Major or above); at least 2 found that arm 1 did not find at Major (its 7 unfound: QA-499, 510, 517, 526, 595, 608, 750).
+* **Reported beside it, not the bar:** claims real at any severity (TRUE plus MINOR), because the reviewer was never asked to rate and half-at-Major is harder for a tool that also reports small things. Arm 1's same number was 124 of 124.
+* A slice that never finished is reported as not run; the bar is read only on 41 of 41. A file CodeAnt skips is named; a miss lost only to that is reported apart.
+* One claim repeated across slices of a PR counts once.
+* `arm2/PASS-RULE.md` (Lead 27's severity-free proposal) is kept as a proposal and is not the bar.
