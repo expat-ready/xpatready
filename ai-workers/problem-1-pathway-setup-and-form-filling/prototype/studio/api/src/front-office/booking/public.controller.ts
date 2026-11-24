@@ -34,25 +34,19 @@ Optional()(Booking, undefined, 2);
 @Controller("api/public")
 export class BookingPublicController {
   constructor(@Inject(Booking) private readonly b: Booking) {}
-  @Get("booking-site") @OpenRead("the public booking page on a firm's own address: which firm's page it is (QA-756)")
-  site(@Req() req: R) { return this.b.publicSite(publicFirmOf(req), ipOf(req)); }
-  @Get("firms/:firmKey/book") @OpenRead("the public booking page: a firm's listed consultation types (FO-3pa; contracts §0.6)")
-  list(@Param("firmKey") firmKey: string, @Req() req: R) { return this.b.publicList(firmKey, ipOf(req)); }
-  @Get("firms/:firmKey/book/:slug/slots") @OpenRead("the public booking page: free times of a firm's public consultation type (contracts §0.6)")
-  slots(@Param("firmKey") firmKey: string, @Param("slug") slug: string, @Query() q: Q, @Req() req: R) { return this.b.publicSlots(firmKey, slug, q, ipOf(req)); }
+  @OpenRead("the public booking page on a firm's own address: which firm's page it is (QA-756)") @Get("booking-site") site(@Req() req: R) { return this.b.publicSite(publicFirmOf(req), ipOf(req)); }
+  @OpenRead("the public booking page: a firm's listed consultation types (FO-3pa; contracts §0.6)") @Get("firms/:firmKey/book") list(@Param("firmKey") firmKey: string, @Req() req: R) { return this.b.publicList(firmKey, ipOf(req)); }
+  @OpenRead("the public booking page: free times of a firm's public consultation type (contracts §0.6)") @Get("firms/:firmKey/book/:slug/slots") slots(@Param("firmKey") firmKey: string, @Param("slug") slug: string, @Query() q: Q, @Req() req: R) { return this.b.publicSlots(firmKey, slug, q, ipOf(req)); }
   @Post("firms/:firmKey/book/:slug/bookings")
   book(@Param("firmKey") firmKey: string, @Param("slug") slug: string, @Body() body: unknown, @Req() req: R) { return this.b.publicBook(firmKey, slug, body, ipOf(req)); }
-  @Get("bookings/:token") @OpenRead("the booker's own self-service link (its token is the key; one identical not-found otherwise)")
-  manage(@Param("token") token: string, @Req() req: R) { return this.b.manageView(token, ipOf(req)); }
-  @Get("bookings/:token/slots") @OpenRead("the booker's own self-service link: the times it may move to")
-  manageSlots(@Param("token") token: string, @Query() q: Q, @Req() req: R) { return this.b.manageSlots(token, q, ipOf(req)); }
+  @OpenRead("the booker's own self-service link (its token is the key; one identical not-found otherwise)") @Get("bookings/:token") manage(@Param("token") token: string, @Req() req: R) { return this.b.manageView(token, ipOf(req)); }
+  @OpenRead("the booker's own self-service link: the times it may move to") @Get("bookings/:token/slots") manageSlots(@Param("token") token: string, @Query() q: Q, @Req() req: R) { return this.b.manageSlots(token, q, ipOf(req)); }
   @Post("bookings/:token/reschedule") @HttpCode(200)
   reschedule(@Param("token") token: string, @Body() body: unknown, @Req() req: R) { return this.b.selfReschedule(token, body, ipOf(req)); }
   @Post("bookings/:token/cancel") @HttpCode(200)
   cancel(@Param("token") token: string, @Body() body: unknown, @Req() req: R) { return this.b.selfCancel(token, ipOf(req), body); }
   /** The file's headers are set only on success, so a not-found or a limit answers as JSON, not as a download (break M2). */
-  @Get("bookings/:token/ics") @OpenRead("the booker's own self-service link: the booking's calendar file (FO-3pa)")
-  async ics(@Param("token") token: string, @Req() req: R, @Res({ passthrough: true }) res: { setHeader(k: string, v: string): void }) {
+  @OpenRead("the booker's own self-service link: the booking's calendar file (FO-3pa)") @Get("bookings/:token/ics") async ics(@Param("token") token: string, @Req() req: R, @Res({ passthrough: true }) res: { setHeader(k: string, v: string): void }) {
     const body = await this.b.publicIcs(token, ipOf(req));
     res.setHeader("Content-Type", "text/calendar; charset=utf-8; method=REQUEST");
     res.setHeader("Content-Disposition", 'attachment; filename="invite.ics"');

@@ -67,8 +67,7 @@ export class WebAddressController {
   constructor(@Inject(WebAddresses) private readonly addresses: WebAddresses, @Inject(Db) private readonly db: Db) {}
 
   /** Is this address free? `{ address, available }`, or the plain reason and a suggestion. */
-  @Get("web-address/availability") @OpenRead(SIGN_UP)
-  async availability(@Query() q: unknown, @Req() req: PublicReq, @Res() res: PublicRes) {
+  @OpenRead(SIGN_UP) @Get("web-address/availability") async availability(@Query() q: unknown, @Req() req: PublicReq, @Res() res: PublicRes) {
     if (publicFirmOf(req)) return sendPublicNotFound(req, res);
     const { address } = parseInput(AVAILABILITY_QUERY, q);   // PF-28 part 4 (listed there by the sweep's path rule): an unknown query key is refused 422, named
     res.setHeader("Cache-Control", "no-store");
@@ -76,8 +75,7 @@ export class WebAddressController {
   }
 
   /** A free address made from the firm's operating name. */
-  @Get("web-address/suggestion") @OpenRead(SIGN_UP)   // PF-28 part 2b: the whole query, read through the rule
-  async suggestion(@Query() q: unknown, @Req() req: PublicReq, @Res() res: PublicRes) {
+  @OpenRead(SIGN_UP) @Get("web-address/suggestion") async suggestion(@Query() q: unknown, @Req() req: PublicReq, @Res() res: PublicRes) {   // PF-28 part 2b: the whole query, read through the rule
     if (publicFirmOf(req)) return sendPublicNotFound(req, res);
     const { name } = parseInput(SUGGESTION_QUERY, q);   // PF-28 part 2b (R1.10): an unknown query key is refused 422, named
     res.setHeader("Cache-Control", "no-store");
@@ -85,8 +83,7 @@ export class WebAddressController {
   }
 
   /** The address this public page is on (a firm's address only; elsewhere the plain not-found). */
-  @Get("site") @OpenRead("someone on a firm's public page, who has no account")
-  async site(@Req() req: PublicReq, @Res() res: PublicRes) {
+  @OpenRead("someone on a firm's public page, who has no account") @Get("site") async site(@Req() req: PublicReq, @Res() res: PublicRes) {
     const firmId = publicFirmOf(req);
     const own = firmId ? await this.db.platformFirmWebAddress.findUnique({ where: { firmId }, select: { address: true } }) : null;
     if (!own) return sendPublicNotFound(req, res);
