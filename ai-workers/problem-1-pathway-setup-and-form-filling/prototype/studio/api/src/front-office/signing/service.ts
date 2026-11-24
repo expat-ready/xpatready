@@ -198,6 +198,14 @@ export class Signing {
       const notYet = (reason: string): never => conflict(`${reason}. The provider may send the event again.`, "NOT_YET");
       if (ev.type === "declined" || ev.type === "other") return refuse(ev.type === "declined" ? "a decline is applied by FO-5d" : "nothing to apply");
       if (!live) return refuse(`the request is ${q.status.toLowerCase()}`);
+      // Part 4c (QA-770's signing path; Lead 29, answer 1): a view or a signature on an agreement that was withdrawn, signed
+      // on paper, declined, expired or replaced by a newer version is refused, stored once and never applied. The retainer's
+      // row is locked here, so a withdraw cannot slip in between (challenge m9). FO-5d ends the request itself.
+      if (ev.type === "viewed" || ev.type === "signed") {
+        const [ret] = await tx.$queryRaw<{ status: string; current_version: number }[]>`select status::text, current_version from fo_retainer where firm_id = ${firmId}::uuid and id = ${q.document_id}::uuid for update`;
+        if (!ret || ["WITHDRAWN", "SIGNED_OFFLINE", "DECLINED", "EXPIRED"].includes(ret.status)) return refuse(`the agreement is ${ret ? ret.status.toLowerCase().replace("_", " ") : "gone"}`);
+        if (ret.current_version !== q.document_version) return refuse("a newer version was made");
+      }
       const line = (action: string, summary: string, detail: Record<string, string | number | boolean | null>, before: Record<string, string | number | null>, after: Record<string, string | number | null>) =>
         this.audit.record(tx, { firmId, actor: SIGNING_ACTOR, action, entity: "fo_signature_request", entityKey: q.id, summary, detail: { requestId: q.id, retainerId: q.document_id, ...detail }, before, after });
       const moveRetainer = (from: string[], to: string) => tx.foRetainer.updateMany({ where: { firmId, id: q.document_id, status: { in: from as never[] }, currentVersion: q.document_version }, data: { status: to as never } });

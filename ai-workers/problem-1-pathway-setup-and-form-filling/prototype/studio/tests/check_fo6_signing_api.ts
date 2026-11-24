@@ -79,7 +79,7 @@ try {
   clearingConflicts(db, { retainers: Retainers.prototype, prospects: Prospects.prototype });   // FO-13c: the conflict check first (Send and the win ask for it)
   const salesPorts = { audit: auditEvent, consent: new ConsentStore(auditEvent), publicOrigin: "http://localhost:4400" };
   const leads = new Leads(db, salesPorts), pros = new Prospects(db, salesPorts);
-  const hooks = new SigningHooksController(api), state = new SigningController(api, svc);
+  const hooks = new SigningHooksController(api), state = new SigningController(api, svc, db as never);
 
   const tpl = await svc.uploadTemplate(R, { name: "FO-6 part 3 retainer (Sample)" }, { bytes: buildDocx(["Client {client.name}", "{#fees}", "{label}: {amount}", "{/fees}"]), size: 1000 });
   let n = 0;
@@ -341,6 +341,50 @@ try {
   const wd = await post(fin[1]);
   ok("FO-6 B fail (break m3): completed after a withdraw → 200 not applied, stored once, no evidence, no files", wd.applied === false && /withdrawn/.test(wd.reason ?? "")
     && count("fo_signing_evidence", `request_id = '${q11}'`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q11}'`) === 3, wd);
+
+  // part 4c (QA-770's signing path, Lead 29 answer 1): a view or a signature on a withdrawn agreement is refused, stored once
+  const p13 = await prospect("Lea"), r13 = await draft(p13);
+  await sendIt(r13);
+  const [q13, d13] = reqOf(r13);
+  consent(q13);
+  const [v13] = await signing.act(A, d13, signerOf(q13, "CLIENT"), "viewed"), [s13] = await signing.act(A, d13, signerOf(q13, "CLIENT"), "signed");
+  await svc.withdraw(R, r13, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed their mind" });
+  const wv = await post(v13), wsg = await post(s13);
+  ok("FO-6 B fail (part 4c, QA-770): viewed and signed after a withdraw → 200 not applied (\"withdrawn\"), both stored once; the signer stays unsigned and unviewed, the request SENT",
+    wv.applied === false && wsg.applied === false && /withdrawn/.test(`${wv.reason} ${wsg.reason}`) && reqOf(r13)[2] === "SENT"
+      && count("fo_signer", `request_id = '${q13}' and (signed_at is not null or viewed_at is not null)`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q13}'`) === 2, { wv, wsg });
+
+  // part 4c review round 1 M1: the firm signer's link rules, each with a line that fails without it (through the route itself)
+  const routes = new SigningController(api, svc, db as never);
+  const repOf = (rid: string) => { const actor = sql(`select s.actor_id from fo_retainer r join platform_staff s on s.id = r.representative_staff_id where r.id = '${rid}'`); return ctxOf(actor, "sample-firm"); };
+  const firmLink = (ctx: StaffContext, rid: string) => routes.firmLink({ platform: ctx }, rid, { consent: true, consentTextVersion: CONSENT });
+  const p14 = await prospect("Max"), r14 = await draft(p14);
+  await sendIt(r14);
+  const [q14, d14] = reqOf(r14), rep14 = repOf(r14);
+  const tooEarly = await refusal(() => firmLink(rep14, r14));
+  ok("FO-6 4c E fail (review M1): the firm signer's link before the client signed → 409 CLIENTS_FIRST, and no firm consent is written",
+    tooEarly?.status === 409 && tooEarly.body.code === "CLIENTS_FIRST" && count("fo_signer", `request_id = '${q14}' and role = 'FIRM' and consented_at is not null`) === 0, tooEarly);
+  sql(`update fo_signer set consented_at = now(), consent_text_version = '${CONSENT}' where request_id = '${q14}' and role = 'CLIENT'`);   // the client only: the firm link writes the firm's
+  await post((await signing.act(A, d14, signerOf(q14, "CLIENT"), "signed"))[0]);
+  const once1 = await firmLink(rep14, r14), once2 = await firmLink(rep14, r14);
+  ok("FO-6 4c E pass (review M1): after the client signed, two calls both answer a link, and the firm signer's consent is written once with one signing.consent_recorded line",
+    !!once1.url && !!once2.url && count("fo_signer", `request_id = '${q14}' and role = 'FIRM' and consent_text_version = '${CONSENT}'`) === 1
+      && count("audit_event", `entity_key = '${q14}' and action = 'signing.consent_recorded' and actor = 'staff:${rep14.staffId}'`) === 1, { once1: once1.url.slice(0, 60) });
+  const gone13 = await refusal(() => firmLink(repOf(r13), r13));
+  ok("FO-6 4c E fail (review M1): the firm signer's link on a withdrawn retainer → 409 NO_LIVE_REQUEST, nothing written",
+    gone13?.status === 409 && gone13.body.code === "NO_LIVE_REQUEST" && count("audit_event", `entity_key = '${q13}' and action = 'signing.consent_recorded'`) === 0, gone13);
+  const badV = await refusal(() => routes.firmLink({ platform: rep14 }, r14, { consent: true, consentTextVersion: "sign-electronically-v0" }));
+  ok("FO-6 4c E fail (review m2): a consent version that is not the current one → 422 on the body, before any lookup", badV?.status === 422, badV);
+  // review round 1 m3: QA-770's guard on a newer version (an Edit leaves the old request live until the next Send)
+  const p15 = await prospect("Nia"), r15 = await draft(p15);
+  await sendIt(r15);
+  const [q15, d15] = reqOf(r15);
+  consent(q15);
+  const [s15] = await signing.act(A, d15, signerOf(q15, "CLIENT"), "signed");
+  await svc.edit(R, r15, { expectedVersion: 1, expectedStatus: "SENT", fees: [{ label: "Deposit on signing", amountMinor: 170000, when: "ON_SIGNING" }] });
+  const nv = await post(s15);
+  ok("FO-6 B fail (part 4c, QA-770, review m3): a signature on version 1 after an Edit made version 2 → 200 not applied (\"a newer version\"), the signer unsigned",
+    nv.applied === false && /newer version/.test(nv.reason ?? "") && count("fo_signer", `request_id = '${q15}' and signed_at is not null`) === 0, nv);
 
   // break R2-M1: a completed that arrives before the signatures is "not yet" (409, nothing kept), then applies
   const p12 = await prospect("Kim"), r12 = await draft(p12);
