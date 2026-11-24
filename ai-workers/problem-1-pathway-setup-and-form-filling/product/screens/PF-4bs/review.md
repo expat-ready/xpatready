@@ -92,3 +92,35 @@ None.
 **Verdict: Block.** Fix M1 and M2 (and ideally m1–m4), then re-review the new head.
 
 Reviewer: Block bd9d8149561e6925875907ff399778fd75b4232d
+
+## Round 2 (9fe17105a)
+**Verdict: Approve** for commit `9fe17105ad710fbbc4db811242dfc732a676e478`. No open Blocker or Major.
+
+Reviewed only `git diff bd9d81495..9fe17105a`: `lib/service-checks.ts`, `README.md`, `test/sign-in-task.test.ts`, plus round-1 records committed by the builder.
+- `service.ts` and `checks.ts` are untouched, so the synthesized templates are the same as in round 1.
+- `npm ci`: exit 0. `npm test`: **exit 0, twice** (137/137 pass).
+
+**Round-1 findings:**
+- **M1, fixed.** `service-checks.ts:440-443` reads a one-object `Statement` as a list of one, and a non-object one is a finding. My round-1 probes are now refused by `signInTaskFindings`: a one-object grant on own-staff (service role), and the same on the staff pool (migration role). Fail tests are at `sign-in-task.test.ts:132-153`.
+- **M2, fixed.** `service-checks.ts:248-252` requires every client's `UserPoolId` to be exactly `{Ref: <pool of this stack>}`. With the existing one-client-per-pool count (`:254`), this means the per-pool rules see every staff client. My `Fn::Sub` client probe is refused. The test covers `Fn::Sub`, `Fn::Join`, `Fn::GetAtt` and a literal id, in both modes.
+- **m1, fixed.** Inline-policy cases were added (array and one-object). Deleting the inline route now fails a test.
+- **m2, fixed.** `service-checks.ts:434` refuses any other task definition running as the service's task role, and it is tested.
+- **m3, fixed.**
+  - The docstring (`:418-421`) and README `:79` now credit `bypassFindings` for the shapes `signInTaskFindings` does not read.
+  - The mixed-case test and the "found 2" test are added. Removing the `/i` flag or loosening `exact !== 1` now fails a test.
+- **m4, fixed.** README `:82` now lists only the app code that calls Cognito (PF-4bs parts 2-4, PF-4bc).
+- **Also fixed:** the break report's M4 (a setting named twice, `:429-431`, tested).
+
+**Anything new the fixes break:** nothing found.
+- Mutation check: removing each new rule fails a test (one-object read, plain-`Ref` client, shared role, named twice, inline route, `/i`, exact count).
+- All 15 probes from round 1 are refused by at least one check. The five `signInTaskFindings` does not read (`NotAction`, `Fn::If` in Action, `*:ListUsers`, an AWS managed policy, the execution role) are refused by `bypassFindings`, as the docstring now says.
+- One note, not a finding: a `Statement` that is a single `Fn::If` object is read by `signInTaskFindings` as an action-less statement and skipped. `bypassFindings` refuses it ("a statement uses Fn::If"), which is the split the docstring describes.
+
+**Journey score (round 2):**
+- Task completed rises to 1. Error recovery rises to 1. Trust and sources rises to 1.
+- **8 of 8 applicable, 10 scaled to 10.** Accessibility and visual quality are N/A (no UI).
+- Live AWS behaviour stays on the staging proof list.
+
+**Verdict: Approve**
+
+Reviewer: Approve 9fe17105ad710fbbc4db811242dfc732a676e478
