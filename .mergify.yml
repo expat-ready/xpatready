@@ -70,6 +70,7 @@ scopes:
           # P-785 (2) step 2: the area's own screens, tests and feature files (check-mergify-scopes.sh, path owners)
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo7*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/client-money-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/client-money/**"   # FO-7s1: the Money area's screens
       case-side:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts"
