@@ -2,7 +2,7 @@
 
 current_lead: local_1d6d1d97-b8eb-40fa-b5e8-60a9a78ea74c Lead 23 · 24 Nov 11:45 IST (after Lead 22, at the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 12:04 IST: Lead 23 (check c7d18bd1). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 53/101 Works (counted 11:45), 24 Partial, 24 Not built. Queue: #3408, #3209, #3377, #3398, #3405, #3033 queued; #3202, #3375, #3397 merged; #3385 dequeued (C9.5); #3193, #3276 labelled; #3305 needs his yes. Founder: xr/staging agreed, key check with him next; then CodeRabbit's training question (A355, study done). Weekly 59%, disk 13 GB. Standby Lead 24 local_9d85b0d8.
+updated: 2026-11-24 12:10 IST: Lead 23 (check c7d18bd1). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 53/101 Works (counted 11:45), 24 Partial, 24 Not built. Queue: #3408, #3209, #3377, #3398, #3405, #3033 queued; #3202, #3375, #3397 merged; #3385 dequeued (C9.5); #3193, #3276 labelled; #3305 needs his yes. Founder: xr/staging agreed, key check with him next; then CodeRabbit's training question (A355, study done). Weekly 59%, disk 13 GB. Standby Lead 24 local_9d85b0d8.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
