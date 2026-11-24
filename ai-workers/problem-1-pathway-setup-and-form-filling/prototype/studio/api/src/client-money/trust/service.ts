@@ -97,9 +97,10 @@ export class TrustMoney {
   /** POST /trust/requests: create and send in one step (AG-6-62 §6); unsent while the trust details block is empty. */
   async createRequest(ctx: StaffContext, body: unknown) {
     const r = parse(RequestIn, body), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    const seen = await this.scopeOf(ctx);   // breaker r9-M1: read before the transaction, never on a second connection inside it
     const made = await this.write(async (tx) => {
       await this.trustOn(tx, f);
-      const who = await partyOf(tx, f, r), caseId = r.caseId ? await this.caseOf(tx, ctx, r.caseId, who) : await this.partySeen(ctx, who);
+      const who = await partyOf(tx, f, r), caseId = r.caseId ? await this.caseOf(tx, ctx, seen, r.caseId, who) : this.partySeen(seen, who);
       await textOk(tx, "purpose", r.purpose, 500);
       const details = (await tx.moneyPaymentSettings.findFirst({ where: firmScope(f), select: { trustDetails: true } }))?.trustDetails?.trim() || null;
       const row = await tx.moneyTrustRequest.create({ data: { firmId: f, personId: who.personId, companyId: who.companyId, caseId, amountMinor: r.amountMinor, currency: r.currency, purpose: r.purpose, createdBy: by,
@@ -151,8 +152,11 @@ export class TrustMoney {
     return { paymentId: done.paymentId, entryId: v.entryId, receiptNumber: v.receiptNumber, cleared: v.cleared, receiptEmail, replayed: done.replayed };
   }
 
-  private recordDeposit(ctx: StaffContext, d: z.infer<typeof DepositIn>) {
+  private async recordDeposit(ctx: StaffContext, d: z.infer<typeof DepositIn>) {
     const f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`, requestId = d.trustRequestId?.toLowerCase() ?? null;
+    // Breaker r9-M1: the caller's visibility is read once, before the transaction. Read inside it (on another pooled
+    // connection), the lock's holder waited for a connection the lock's waiters held: 10 writes at once all timed out.
+    const seen = await this.scopeOf(ctx);
     return this.write(async (tx) => {
       const who = await partyOf(tx, f, d);
       await tx.$executeRaw`select money_trust_lock(${f}::uuid, ${who.id}::uuid, ${d.currency}::"MoneyCurrency")`;
@@ -165,16 +169,16 @@ export class TrustMoney {
         return { paymentId: had.id, replayed: true };
       }
       await this.trustOn(tx, f);   // after the replay: a retry of money already recorded answers it, also after Yes → No
-      let caseId = d.caseId ? await this.caseOf(tx, ctx, d.caseId, who) : null;
+      let caseId = d.caseId ? await this.caseOf(tx, ctx, seen, d.caseId, who) : null;
       if (requestId) {
         const q = await tx.moneyTrustRequest.findFirst({ where: firmScope(f, { id: requestId }), select: { personId: true, companyId: true, caseId: true } });
         if (!q) return notFound("trust request");
         if ((q.personId ?? q.companyId) !== who.id) badField("trustRequestId", "This trust request is for another client. Nothing was saved.");
         if (caseId && q.caseId && caseId !== q.caseId) badField("caseId", "This trust request is for another case: a deposit on it keeps the request's case. Nothing was saved.");
-        if (!caseId && q.caseId && !(await this.scopeOf(ctx)).cases.includes(q.caseId)) notFound("case");   // the request's case, unseen
+        if (!caseId && q.caseId && !seen.cases.includes(q.caseId)) notFound("case");   // the request's case, unseen
         caseId ??= q.caseId;
       }
-      if (!caseId) await this.partySeen(ctx, who);
+      if (!caseId) this.partySeen(seen, who);
       if (d.reference) {
         await textOk(tx, "reference", d.reference, 200);
         const [dup] = await tx.$queryRaw<{ n: bigint }[]>`select count(*) as n from money_payment p join money_trust_entry e on e.firm_id = p.firm_id and e.payment_id = p.id
@@ -198,16 +202,16 @@ export class TrustMoney {
   // ------------------------------------------------------------------------------------------------- helpers
   /** With no case, the party itself must be one the caller sees (MoneyVisibilityPort; Lead B's money read): 404, as an
    *  unseen case, failing closed as the reads do. */
-  private async partySeen(ctx: StaffContext, who: Party): Promise<null> {
-    if (!(await this.scopeOf(ctx)).parties.includes(who.id)) notFound(who.personId ? "person" : "company");
+  private partySeen(seen: MoneyVisibility, who: Party): null {
+    if (!seen.parties.includes(who.id)) notFound(who.personId ? "person" : "company");
     return null;
   }
   /** A case given on a request or deposit: one the caller sees (MoneyVisibilityPort: of this firm, existing, in their C5
    *  scope; fail closed, 404) and of this client (422). The client is read from case_client's front-office link
    *  (fo_person_id / fo_company_id, "no foreign key, contract §1 rule 4"): a plain read, no case-side code imported. */
-  private async caseOf(tx: Tx, ctx: StaffContext, caseId: string, who: Party): Promise<string> {
+  private async caseOf(tx: Tx, ctx: StaffContext, seen: MoneyVisibility, caseId: string, who: Party): Promise<string> {
     const id = caseId.toLowerCase();
-    if (!(await this.scopeOf(ctx)).cases.includes(id)) return notFound("case");
+    if (!seen.cases.includes(id)) return notFound("case");
     const [c] = await tx.$queryRaw<{ party: string | null }[]>`select coalesce(cc.fo_person_id, cc.fo_company_id)::text as party from runtime_case rc join case_client cc on cc.id = rc.client_id
       where rc.firm_id = ${firmScope(ctx.firmId).firmId}::uuid and rc.id = ${id}::uuid`;
     if (!c) return notFound("case");

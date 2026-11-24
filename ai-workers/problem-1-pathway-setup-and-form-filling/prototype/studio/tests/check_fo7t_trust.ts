@@ -231,6 +231,12 @@ try {
   ok("FO-7t DW5 fail: across the firm the TRUST and PAYMENT receipts share one R- series with no gap and no repeat",
     sql(`select count(*) = max(substr(number, 3)::int) and count(*) = count(distinct number) from money_receipt where firm_id = '${A}'`) === "t");
 
+  // Breaker r9-M1 (round 9): more writes at once than the pool has connections, on one party's lock. Each waits for the
+  // lock inside its transaction; the visibility scope is read before the transaction, so the holder never needs a second
+  // connection while the others hold theirs (before: 10 or more at once all failed with 500 after about 5 s).
+  const t0 = Date.now(), crowd = await Promise.all(Array.from({ length: 16 }, (_, i) => dep({ personId: PC, method: "WIRE", amountMinor: 1, idempotencyKey: `fo7t-crowd-${i}` })));
+  ok("FO-7t r9-M1 pass: 16 deposits at once on one party and currency (PC, so PA's ledger checks below are untouched; more than the pool's 10 connections) are each recorded (201), none times out", crowd.every((r) => r.status === 201) && Date.now() - t0 < 4000 && sql(`select count(*) from money_payment where idempotency_key like 'fo7t-crowd-%'`) === "16", [crowd.map((r) => r.status), Date.now() - t0]);
+
   // --------------------------------------------------------------------------------------- DW6: ledger and balances
   // CASE: firm A's Sample case on PA (set up above, for C5); money_trust_entry.case_id has no key across the module wall.
   const onCase = await dep({ method: "E_TRANSFER", amountMinor: 30000, caseId: CASE, reference: "ET-case", idempotencyKey: "fo7t-case" }), usd = await dep({ method: "WIRE", amountMinor: 12345, currency: "USD", reference: "W-USD", idempotencyKey: "fo7t-usd" });
