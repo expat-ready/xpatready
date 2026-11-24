@@ -1,0 +1,358 @@
+<title>Two-Track Delivery Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column, summary first, two track tables side by side on wide screens, stacked on phones */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --fg:#1b2230; --muted:#5b6577; --line:#dde2ea;
+  --accent:#2f5bd3; --ok:#1f8a4c; --warn:#b26a00; --bad:#c23a3a; --okbg:#e6f4ec; --warnbg:#fff3e0; --badbg:#fde8e8; --chip:#eef1f6;
+  --display:"Space Grotesk",system-ui,sans-serif; --body:"Inter",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11151c; --panel:#181e27; --fg:#e6e9ef; --muted:#9aa4b5; --line:#2a3240;
+  --accent:#7aa0ff; --ok:#4cc581; --warn:#f0a63a; --bad:#ff7a7a; --okbg:#173326; --warnbg:#3a2a10; --badbg:#3b1b1b; --chip:#222a36; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151c; --panel:#181e27; --fg:#e6e9ef; --muted:#9aa4b5; --line:#2a3240;
+  --accent:#7aa0ff; --ok:#4cc581; --warn:#f0a63a; --bad:#ff7a7a; --okbg:#173326; --warnbg:#3a2a10; --badbg:#3b1b1b; --chip:#222a36; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1120px;margin:0 auto;padding-block:28px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:28px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:1.9rem}
+h2{font-size:1.3rem;margin-bottom:10px}
+h3{font-size:1.05rem;margin-bottom:6px}
+p{margin:0;max-width:70ch}
+.sub{color:var(--muted)}
+.eyebrow{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.kpi b{display:block;font-family:var(--display);font-size:1.7rem;font-variant-numeric:tabular-nums}
+.kpi span{color:var(--muted);font-size:.85rem}
+.alert{border-radius:10px;padding:14px 16px;display:grid;gap:6px}
+.alert.red{background:var(--badbg)} .alert.amber{background:var(--warnbg)} .alert.green{background:var(--okbg)}
+.alert ul{margin:0;padding-left:20px;display:grid;gap:4px}
+section{display:grid;gap:10px;min-width:0}
+.scroll{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:.75rem;font-weight:600;white-space:nowrap}
+.p-ok{background:var(--okbg);color:var(--ok)} .p-warn{background:var(--warnbg);color:var(--warn)} .p-bad{background:var(--badbg);color:var(--bad)} .p-n{background:var(--chip);color:var(--muted)}
+.stages{display:flex;gap:3px}
+.stages i{width:16px;height:10px;border-radius:2px;background:var(--chip);display:block}
+.stages i.d{background:var(--ok)} .stages i.n{background:var(--warn)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:860px){.two{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:8px;min-width:0}
+.card ul,.card ol{margin:0;padding-left:20px;display:grid;gap:5px}
+pre{font-family:var(--mono);font-size:.8rem;line-height:1.55;margin:0;padding:14px;white-space:pre;color:var(--fg)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--muted);align-items:center}
+.legend .stages{display:inline-flex}
+.bar{height:12px;background:var(--chip);border-radius:6px;overflow:hidden;display:flex}
+.bar span{display:block;height:100%}
+small{color:var(--muted)}
+</style>
+
+<div class="wrap">
+
+<header style="display:grid;gap:6px">
+  <div class="eyebrow">Expat Ready · Pathway Configurator · Lead 4 · 22 Nov, 14:29 IST · Version 5 by Lead 9, 23 Nov 09:4x IST</div>
+  <h1>Two tracks, 12 to 15 capabilities each</h1>
+  <p class="sub">Your ask at 14:2x IST: drive Track A and Track B each to 12-15 proven capabilities, put builders and qa lanes where the goal is, and show the whole pipeline, the plan, how we watch it and how we adjust. Numbers come from GitHub, qa's capability board on main and claude.ai/code, read 14:20-14:29 IST. Times marked "Lead estimate" are my forecasts, not measurements.</p>
+</header>
+
+<section class="card" style="border-color:var(--accent)">
+  <div class="eyebrow">Version 5 · Lead 9 · 23 Nov, 09:4x IST · read from qa's board on main, GitHub and claude.ai/code</div>
+  <h2>Where we are this morning</h2>
+  <div class="kpis">
+    <div class="kpi"><b>48 / 101</b><span>Release 1 capabilities proven on main (qa's independent verdict)</span></div>
+    <div class="kpi"><b>+2</b><span>Proven since 00:00 IST: R1.102 find a person or case, R1.21 our invoices with tax · target was 10-15</span></div>
+    <div class="kpi"><b>A 5/15 · B 0/12</b><span>Track A proven: R1.39, R1.88, R1.89, R1.102, R1.21. Track B: all 12 now partly built, none proven</span></div>
+    <div class="kpi"><b>24 · 29</b><span>Partly built · not built yet (53 left)</span></div>
+    <div class="kpi"><b>23</b><span>Pull requests merged since 00:00 IST (code, tests and records)</span></div>
+    <div class="kpi"><b>+5 / day</b><span>Proven in the last 24 h (43 → 48). At this rate all 101 by about 3 Dec (Lead estimate, 5 rows in 24 h)</span></div>
+    <div class="kpi"><b>82%</b><span>Weekly plan used (76% at 02:27) · resets 27 Nov 04:30 IST</span></div>
+    <div class="kpi"><b>Green</b><span>Nightly full run, 06:28 IST: first green after red on 21 and 22 Nov (#2602 fixed it)</span></div>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Day (00:00 IST)</th><th>16 Nov</th><th>17</th><th>18</th><th>19</th><th>20</th><th>21</th><th>22</th><th>23</th><th>now</th></tr></thead>
+    <tbody><tr><td>Proven</td><td class="num">2</td><td class="num">11</td><td class="num">11</td><td class="num">11</td><td class="num">12</td><td class="num">23</td><td class="num">38</td><td class="num">46</td><td class="num"><b>48</b></td></tr></tbody>
+  </table></div>
+
+  <div class="alert red">
+    <strong>Why the night gave 2, not 10-15</strong>
+    <p>Merging was not the limit: 23 PRs landed. Each merge was one <i>part</i> of a capability, and qa walked every Track B row within an hour of its merge: R1.58 6/22, R1.76 20/27, R1.65 12/13, R1.56 13/17, R1.29 12/22. All Partial, each waiting on 1-6 more parts that were not yet built or had no lane. Three hold-ups added about 3 hours: runs on many branches were cancelled together at 02:46 IST (cause unknown; re-run by hand), a test from #3017 failed every PR with a migration (fixed by #3157 at 06:00), and the queue's batches waited about an hour on cancelled jobs.</p>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3>What went well</h3>
+      <ul>
+        <li>Two capabilities proven (R1.102, R1.21) and every Track B row moved from "not built" or idle to Partial with a measured journey score.</li>
+        <li>Faults were caught before they reached main and fixed at the root: a migration that broke the walls check (#3042), a slow invoice list 696 ms → under 300 ms (#3001), a tax re-rate gap (#3156), a test that blocked all migrations (#3157).</li>
+        <li>The nightly full run is green again; Lead B and the Lead read every money and permission change before its label.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>What did not</h3>
+      <ul>
+        <li>The goal counted proven rows, but the night's work was single parts; no row had all its parts in flight together.</li>
+        <li>Lanes went idle after a merge until the next check (up to 10 min) and some stopped at 45-80% context.</li>
+        <li>New sessions can start only in a turn you type, so the qa Track B replacement, FO-9b part 2 and a standby waited all night.</li>
+        <li>AWS is still blocked on your sign-in since 22 Nov 00:3x: R1.1, R1.5 (real pool), R1.13, R1.15, R1.65 cannot be proven without it.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>In flight now (09:4x)</h3>
+  <ul>
+    <li><b>Queue / labelled:</b> #3165 PF-Fw file limits (requeued after a full run), #3065 FO-6 part 3 retainer signing (R1.54/R1.61; one list entry to add, then relabel).</li>
+    <li><b>Building:</b> #3033 FO-7t part 1 trust money in (R1.58), #3155 PF-17 part 1 our team's firms list (R1.93; answered 09:4x), PF-25w firm web address (R1.24; started 09:4x), R1.92 licence warning (waits on your "Move session" press).</li>
+    <li><b>Needs a fresh lane (your next message):</b> qa Track B 3 (the last one ended at 07:5x), FO-9b part 2 (R1.29), one standby Lead (card is up).</li>
+  </ul>
+
+  <h3>Decisions and documents</h3>
+  <ul>
+    <li><b>Live on main:</b> DECISIONS up to P-807 (size exception for #3065, added this morning); RULES.md one page; the DW6 test fix (#3157).</li>
+    <li><b>Not live yet:</b> Lead B 2's records (BACKLOG rows FO-7q part 2 and FO-9b part 1m, Track B board notes) on branch lead-b/2026-11-23-track-b-records: waiting on your yes to open its PR.</li>
+  </ul>
+
+  <div class="alert amber">
+    <strong>🔴 Needs you</strong>
+    <ul>
+      <li><b>R1.92 lane:</b> press <b>Move session</b> yourself at https://claude.ai/code/session_01Ln6TiPzgv1F4fXY7mcuxqb (the page ignores an automated press by design).</li>
+      <li><b>AWS:</b> sign in as root with MFA in the AWS session's built-in browser, then approve CodeBuild there. Five capabilities wait on it.</li>
+    </ul>
+    <strong>🟡 Decide when you can</strong>
+    <ul>
+      <li>Today's goal (below). Lead B 2's records PR: yes or no.</li>
+    </ul>
+  </div>
+
+  <h3>Proposed goal for today (07:00 23 Nov → 07:00 24 Nov)</h3>
+  <p><b>8 proven</b>, counted on finished capabilities, not merges: put every missing part of the nearest rows in flight at once, and let a qa lane walk each one the hour its last part merges. Nearest rows (Lead estimate, to confirm with qa by 11:00): Track A R1.10, R1.104, R1.23, R1.92, R1.90, R1.24; Track B R1.85, R1.105. With AWS today, add R1.13, R1.15, R1.65 (11). Without new lanes today: about 3-4.</p>
+</section>
+
+<section class="card">
+  <div class="eyebrow">Update · Lead 7 · 22 Nov, 23:5x IST · read from qa's board on main and GitHub</div>
+  <h2>Where we are tonight</h2>
+  <div class="kpis">
+    <div class="kpi"><b>46 / 101</b><span>Release 1 capabilities proven on main (qa's independent verdict)</span></div>
+    <div class="kpi"><b>+8</b><span>Proven since 00:00 IST today: R1.4, R1.19, R1.39, R1.42, R1.47, R1.53, R1.88, R1.89</span></div>
+    <div class="kpi"><b>24 · 31</b><span>Partly built · not built yet (55 left)</span></div>
+    <div class="kpi"><b>2 → 46</b><span>Proven on 16 Nov (first scored board) → tonight</span></div>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Day (00:00 IST)</th><th>16 Nov</th><th>17</th><th>18</th><th>19</th><th>20</th><th>21</th><th>22</th><th>now</th></tr></thead>
+    <tbody><tr><td>Proven</td><td class="num">2</td><td class="num">11</td><td class="num">11</td><td class="num">11</td><td class="num">12</td><td class="num">23</td><td class="num">38</td><td class="num"><b>46</b></td></tr></tbody>
+  </table></div>
+  <h3>Merged today (in the queue since this morning's plan)</h3>
+  <p>R1.21 our invoices with tax (#2987), R1.92 firm profile API (#3003), FO-7g 1w tax default on every invoice line (#3048), FO-7b 1c refunds (#3036), FO-7c 1 payment account (#2938), PF-F1 private file storage on AWS (#2955), PF-8b F7 and F8 (AWS database and sample seeds, #3068, #3097), PF-30s find-box fix (#3109), FO-3c consultation agreement (#2922).</p>
+  <h3>In the queue or one step away</h3>
+  <ul>
+    <li><b>Queued:</b> R1.5 staff sign-in part 1 (#2927), P-785 step 2 (#3032), R1.58 trust ledger part 3 (#2368), PF-F1b files binding (#3041, after #2927).</li>
+    <li><b>Full test run going, then labelled:</b> R1.102 case finder (#2913, then #3073 invoice visibility), R1.92 profile version (#3104).</li>
+    <li><b>Lanes re-pointed tonight:</b> R1.56 money reads (#3001, merge main), FO-7c lane handing over (78% context), CS-W3 part 2 to a fresh lane.</li>
+  </ul>
+  <div class="alert amber">
+    <strong>AWS is still the open risk</strong>
+    <p>R1.1 hosting, R1.13 alarms, R1.15 secrets, R1.24 firm web address and R1.65 file storage wait on the staging proof. The proof is ready to run; it needs the founder's root sign-in with MFA inside the AWS session's own browser pane (a sign-in in Chrome does not reach it).</p>
+  </div>
+</section>
+
+<div class="kpis">
+  <div class="kpi"><b>43 / 101</b><span>Release 1 capabilities proven on main (qa board) · at 14:29 IST</span></div>
+  <div class="kpi"><b>0 + 2</b><span>Proven since 07:00 IST · R1.39 and R1.89 passed qa's walk, their records are merging</span></div>
+  <div class="kpi"><b>10-12</b><span>Track A forecast by 07:00 IST 23 Nov (Lead estimate, needs AWS today)</span></div>
+  <div class="kpi"><b>0-1</b><span>Track B forecast by 09:00 IST 23 Nov (R1.106 if its re-walk passes); R1.56 moved to 24 Nov</span></div>
+  <div class="kpi"><b>33%</b><span>Weekly plan used · resets 27 Nov 04:30 IST · room to add lanes</span></div>
+</div>
+
+<div class="alert red">
+  <strong>The honest gap: Track B cannot reach 12 by tomorrow morning</strong>
+  <p>Track B was planned around 15 deep rows (each 3 to 10 parts left) with 4 builders, and its own plan forecast 0 proven by 07:00. Seven capabilities that are already partly built sat with neither track, and qa worked only Track A. That is why Track B is not delivering. The fix below re-points Track B at the rows nearest to done, gives it one builder per open part and its own qa lane. With that, Track B reaches about 12 proven by 26 Nov (Lead estimate), not 23 Nov.</p>
+</div>
+
+<div class="alert amber">
+  <strong>🔴 Needs you (one click)</strong>
+  <ul>
+    <li>When #2968 (AWS database fix) merges, type the CodeBuild OK in the <b>AWS · staging proof</b> session. Track A rows R1.13, R1.15, R1.5 and R1.24 depend on that deploy.</li>
+  </ul>
+  <strong>🟡 Decide when you can</strong>
+  <ul>
+    <li>Whose province sets the tax on a client invoice (R1.56)? Recommend: the firm's province for Release 1. No database change is needed, and R1.56 can prove tomorrow.</li>
+  </ul>
+</div>
+
+<section>
+  <h2>The pipeline now</h2>
+  <p class="sub">One row per stage, product PRs only, counted by hand from the open PR list and claude.ai/code at 14:2x IST.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Stage</th><th>Items</th><th>What is in it</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td>Shaped and ready</td><td class="num">A 2 · B 4</td><td>A: R1.92 firm-profile API and R1.20 seat limits have no lane. B: CS-W3 forms, CS-W2 filings, FO-7t, FO-7g 1w are briefed</td><td><span class="pill p-warn">thin for B</span></td></tr>
+      <tr><td>Building</td><td class="num">A 9 · B 5</td><td>A: R1.21 (new), R1.90 #2935, R1.5 #2927, R1.104 #2922, R1.102 #2921, R1.23 #2910, R1.24, AWS proof. B: FO-7g 1w, PF-F1b, CS-W3 review, #2368, #2320</td><td><span class="pill p-ok">moving</span></td></tr>
+      <tr><td>Waiting on the Lead</td><td class="num">9</td><td>"Question for the tech lead" on #2913 #2919 #2921 #2922 #2933 #2938 #2964 #2968 #2972; 4 lanes "Awaiting input"</td><td><span class="pill p-bad">being answered now</span></td></tr>
+      <tr><td>Approved, red</td><td class="num">2</td><td>#2916 R1.88 (waits on decision P-793 reaching main), #2913 R1.102 (approved, not queued)</td><td><span class="pill p-warn">blocked by records</span></td></tr>
+      <tr><td>Merge queue</td><td class="num">9</td><td>#2980 module-card fix (unblocks every PR), #2979 #2912 qa, #2968 AWS, #2955 #2953 #2938 Track B, #2933 #2908 R1.10</td><td><span class="pill p-warn">6 runs wait for a machine</span></td></tr>
+      <tr><td>qa proof</td><td class="num">2 passed · 1 lane</td><td>R1.39 (20/20 twice), R1.89 (17/17 twice). One qa lane, Track A only</td><td><span class="pill p-bad">constraint next</span></td></tr>
+    </tbody>
+  </table></div>
+  <p><b>The constraint today is the path from "approved" to "on main".</b> Two records changes hold six PRs: #2980 (one line too many on a module card turns a check red on every PR) and #2952 (decisions P-790 and P-793, which three PRs cite to be allowed). Both are queued or fixed this hour. The next constraint is qa: one lane cannot walk 24 capabilities in a day.</p>
+</section>
+
+<section>
+  <h2>Track A: 15 rows, the 12 we count on</h2>
+  <div class="legend"><span>Five steps per row:</span><span class="stages"><i class="d"></i></span> done <span class="stages"><i class="n"></i></span> now <span class="stages"><i></i></span> to do <span>· build → review → queue → journey written → qa proof</span></div>
+  <div class="scroll"><table>
+    <thead><tr><th>#</th><th>Capability</th><th>Steps</th><th>Where it is</th><th>Waits on</th><th>Proven by (Lead estimate)</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>R1.39 staff calendar</td><td><span class="stages"><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="n"></i></span></td><td>qa Pass, record #2979 queued</td><td>queue</td><td class="num">15:30</td></tr>
+      <tr><td>2</td><td>R1.89 public pricing page</td><td><span class="stages"><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="n"></i></span></td><td>qa Pass, record #2978 needs label</td><td>Lead label</td><td class="num">16:00</td></tr>
+      <tr><td>3</td><td>R1.10 checking every input</td><td><span class="stages"><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i></span></td><td>p3a, p3b, p6 merged; p4 #2908, p5 #2933 queued</td><td>queue; journey j_10</td><td class="num">18:00</td></tr>
+      <tr><td>4</td><td>R1.88 firm reads its audit log</td><td><span class="stages"><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i></span></td><td>#2916 approved, out of queue</td><td>#2952 (P-793) on main</td><td class="num">18:30</td></tr>
+      <tr><td>5</td><td>R1.102 find a person or case</td><td><span class="stages"><i class="d"></i><i class="n"></i><i></i><i></i><i></i></span></td><td>#2884 merged; #2913 approved; #2921 draft</td><td>lane answer; journey</td><td class="num">20:00</td></tr>
+      <tr><td>6</td><td>R1.23 firm branding</td><td><span class="stages"><i class="n"></i><i></i><i></i><i></i><i></i></span></td><td>panel #2910 open; client-pages part not named</td><td>lane names last part</td><td class="num">22:00</td></tr>
+      <tr><td>7</td><td>R1.104 consultation agreement</td><td><span class="stages"><i class="n"></i><i></i><i></i><i></i><i></i></span></td><td>#2922 draft, lane awaiting input</td><td>Lead answer</td><td class="num">23:00</td></tr>
+      <tr><td>8</td><td>R1.13 logs and alarms</td><td><span class="stages"><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i></span></td><td>proof only, on AWS</td><td>#2968 then your CodeBuild OK</td><td class="num">01:00</td></tr>
+      <tr><td>9</td><td>R1.15 secrets in a managed store</td><td><span class="stages"><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i></span></td><td>proof only, on AWS</td><td>same AWS deploy</td><td class="num">01:30</td></tr>
+      <tr><td>10</td><td>R1.5 staff sign-in, two-step</td><td><span class="stages"><i class="d"></i><i class="n"></i><i></i><i></i><i></i></span></td><td>#2927 (1,082 lines, allowed by P-790)</td><td>#2952; Lead read; AWS</td><td class="num">03:00</td></tr>
+      <tr><td>11</td><td>R1.90 sign-up and trial</td><td><span class="stages"><i class="n"></i><i></i><i></i><i></i><i></i></span></td><td>trial banner #2935; invited sign-up after R1.5</td><td>R1.5</td><td class="num">05:00</td></tr>
+      <tr><td>12</td><td>R1.21 our invoices with tax</td><td><span class="stages"><i class="n"></i><i></i><i></i><i></i><i></i></span></td><td>lane started 14:2x (your "re-word", P-796)</td><td>build</td><td class="num">05:30</td></tr>
+      <tr><td>13</td><td>R1.24 firm web address</td><td><span class="stages"><i class="d"></i><i class="n"></i><i></i><i></i><i></i></span></td><td>#2885 part merged; PF-25w left</td><td>R1.5, AWS</td><td class="num">07:00+</td></tr>
+      <tr><td>14</td><td>R1.92 firm profile, offices</td><td><span class="stages"><i class="d"></i><i></i><i></i><i></i><i></i></span></td><td>help and notifications merged; profile API not shaped</td><td>shaping</td><td class="num">not today</td></tr>
+      <tr><td>15</td><td>R1.20 seat limits</td><td><span class="stages"><i></i><i></i><i></i><i></i><i></i></span></td><td>three serial parts, no lane</td><td>a lane</td><td class="num">not today</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Track B: re-pointed at the 12 nearest rows</h2>
+  <p class="sub">Before: 15 deep rows, 4 builders, 0 forecast. After: the 12 rows with the fewest parts left, including 7 partly built rows that no track owned (marked "new to B"). Parts left from qa's board on main.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>#</th><th>Capability</th><th>Steps</th><th>Lanes (started 14:4x unless named)</th><th>Waits on</th><th>Proven by (Lead estimate)</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>R1.56 client invoices, provincial tax</td><td><span class="stages"><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i><i></i></span></td><td>FO-7b 1b #2953 queued · FO-7g 1w · FO-7s1 screens <span class="pill p-ok">new</span> · qa-B writes j_56</td><td>FO-7g part 3 (client province) and a "from retainer" part; journey needs both</td><td class="num">24 Nov</td></tr>
+      <tr><td>2</td><td>R1.29 duplicate warning, safe merge <span class="pill p-n">new to B</span></td><td><span class="stages"><i class="n"></i><i></i><i></i><i class="n"></i><i></i></span></td><td>FO-9b merge <span class="pill p-ok">new</span> · FO-9s screens <span class="pill p-ok">new</span> · qa-B j_29</td><td>screen concept approval (Lead)</td><td class="num">23 Nov 18:00</td></tr>
+      <tr><td>3</td><td>R1.106 assessment AS-1 <span class="pill p-n">new to B</span></td><td><span class="stages"><i class="d"></i><i class="d"></i><i class="d"></i><i class="n"></i><i></i></span></td><td>qa-B re-walks it on today's main</td><td>re-walk result</td><td class="num">23 Nov</td></tr>
+      <tr><td>4</td><td>R1.55 withdraw, re-issue, decline <span class="pill p-n">new to B</span></td><td><span class="stages"><i class="n"></i><i></i><i></i><i class="n"></i><i></i></span></td><td>decline route + FO-5s screens <span class="pill p-ok">new</span> · qa-B j_55</td><td>FO-6 lane (withdraw)</td><td class="num">24 Nov</td></tr>
+      <tr><td>5</td><td>R1.105 keep periods, leaving firm <span class="pill p-n">new to B</span></td><td><span class="stages"><i class="n"></i><i></i><i></i><i class="n"></i><i></i></span></td><td>AUD-5 p2 <span class="pill p-ok">new</span> · PF-11c <span class="pill p-ok">new</span> · qa-B j_105</td><td>none</td><td class="num">24 Nov</td></tr>
+      <tr><td>6</td><td>R1.85 data requests, legal hold <span class="pill p-n">new to B</span></td><td><span class="stages"><i class="n"></i><i></i><i></i><i class="n"></i><i></i></span></td><td>PF-21b <span class="pill p-ok">new</span> · qa-B j_85</td><td>none</td><td class="num">24 Nov</td></tr>
+      <tr><td>7</td><td>R1.93 our team's console <span class="pill p-n">new to B</span></td><td><span class="stages"><i class="n"></i><i></i><i></i><i></i><i></i></span></td><td>PF-17 <span class="pill p-ok">new</span></td><td>#2927 PF-4s on main</td><td class="num">25 Nov</td></tr>
+      <tr><td>8</td><td>R1.58 trust or operating, ledger</td><td><span class="stages"><i class="n"></i><i></i><i></i><i></i><i></i></span></td><td>#2368 owner <span class="pill p-ok">new</span> · FO-7t 1-3 next</td><td>#2368, then FO-7t</td><td class="num">25 Nov</td></tr>
+      <tr><td>9</td><td>R1.65 private storage in Canada</td><td><span class="stages"><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i></span></td><td>PF-F1 #2955 queued · PF-F1b</td><td>AWS session (PF-F1c)</td><td class="num">25 Nov</td></tr>
+      <tr><td>10</td><td>R1.61 sign and pay by one link</td><td><span class="stages"><i class="n"></i><i></i><i class="n"></i><i></i><i></i></span></td><td>FO-6 routes <span class="pill p-ok">new</span> · FO-7c p1 #2938 queued</td><td>FO-7c p2</td><td class="num">26 Nov</td></tr>
+      <tr><td>11</td><td>R1.54 e-signature with evidence <span class="pill p-n">new to B</span></td><td><span class="stages"><i class="n"></i><i></i><i></i><i></i><i></i></span></td><td>FO-6 routes (shared with #10) · FO-6d next</td><td>FO-6</td><td class="num">26 Nov</td></tr>
+      <tr><td>12</td><td>R1.76 notes, one timeline</td><td><span class="stages"><i></i><i></i><i></i><i></i><i></i></span></td><td>#2320 owner <span class="pill p-warn">card: start it</span></td><td>you start the card (app limit of 10)</td><td class="num">26 Nov</td></tr>
+    </tbody>
+  </table></div>
+  <p><small>Kept in Track B but after these 12: R1.3 walls between firms (10 database parts), R1.98 corporate and LMIA, R1.96, R1.111, R1.75, R1.64, R1.66, R1.68-70, R1.57.</small></p>
+</section>
+
+<section>
+  <h2>Strategy</h2>
+  <div class="two">
+    <div class="card">
+      <h3>Where people go</h3>
+      <ul>
+        <li><b>Track A:</b> keep one builder per open part (about 10 now). Add 1 qa lane, so 2 in total, each walking a row the hour its last part merges.</li>
+        <li><b>Track B:</b> grow from 5 builders to about 12, one per open part across the 12 rows above, never two parts of one file at once. Add 1 qa lane of its own that writes the journeys for B's rows before the builds finish.</li>
+        <li><b>Lead B</b> shapes the next part of each "new to B" row within the hour; I start the builders as the briefs land.</li>
+        <li>Weekly plan is at 33% with 4.5 days left, so tokens are not the limit (your words, P-786). Opus 5.5 medium everywhere (P-788).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>How rows get to "proven" faster</h3>
+      <ul>
+        <li>Nearest-to-done first: a row with 2 parts left beats a row with 10.</li>
+        <li>Journeys are written before the build ends, so qa only runs them.</li>
+        <li>A label goes on only after a green run (a red label cost 34 minutes today).</li>
+        <li>Records changes that other PRs cite go first in the queue.</li>
+        <li>Database changes take turns per area, not one turn for the whole product.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>How we watch and adjust</h2>
+  <div class="two">
+    <div class="card">
+      <h3>Watch</h3>
+      <ul>
+        <li>A check every 10 minutes (03, 13, 23 ... past the hour); the full report at 03 and 33.</li>
+        <li>Each check opens claude.ai/code with "Show more" clicked until it is gone, reads every lane and its model label, and answers each waiting lane.</li>
+        <li>Each check updates both boards above: the five steps per row and each row's time against the estimate.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Adjust: the trigger and what I do (tightened 14:5x, P-798)</h3>
+      <ul>
+        <li>A lane that ended its turn or waits for input → answered at the next check (10 min at most), not after 90 min.</li>
+        <li>A question for the tech lead → answered at the check that sees it (10 min), not 30.</li>
+        <li>Approved but not in the queue for 2 checks (20 min) → read Mergify's reason and fix it, not after 60.</li>
+        <li>A step older than twice its usual time today (measured by flow-measure) → find what holds it and add or move a builder.</li>
+        <li>A lane with work left and no push for 30 min → send its next step; still silent at the next check → replace it.</li>
+        <li>More than 10% of merge batches failing → keep PRs that touch the same checks apart.</li>
+        <li>qa behind by 2 or more rows → add a qa lane.</li>
+        <li>Weekly plan at 96% → every lane finishes its step, pushes and stops.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Timeline, 07:00 → 07:00 cycle (IST)</h2>
+  <div class="scroll"><pre>HH:MM  · row    · name                       · build → review → queue → walk → qa · waits on
+── 8 by 19:00 (Track A) ─────────────────────────────────────────────────────────────────
+15:30  · R1.39  · staff calendar             · ✔ → ✔ → ✔ → ✔ → queue   · #2979 merge       on time
+16:00  · R1.89  · public pricing page        · ✔ → ✔ → ✔ → ✔ → label   · Lead label         on time
+18:00  · R1.10  · checking every input       · ✔ → ✔ → queue → j_10    · #2908 #2933        on time
+18:30  · R1.88  · firm reads its audit log   · ✔ → ✔ → requeue → j_88  · #2952 on main      late 2 h
+20:00  · R1.102 · find a person or case      · ✔ → review → …          · lane answer        late 1 h
+── 7 by 07:00 (Track A) ─────────────────────────────────────────────────────────────────
+22:00  · R1.23  · firm branding              · build → …               · last part named
+23:00  · R1.104 · consultation agreement     · build → …               · Lead answer
+01:00  · R1.13  · logs and alarms            · ✔ → AWS proof           · your CodeBuild OK
+01:30  · R1.15  · secrets in managed store   · ✔ → AWS proof           · AWS deploy
+03:00  · R1.5   · staff sign-in, two-step    · review → …              · #2952, AWS
+05:00  · R1.90  · sign-up and trial          · build → …               · R1.5
+05:30  · R1.21  · our invoices with tax      · build (14:2x) → …       · build
+── Track B ──────────────────────────────────────────────────────────────────────────────
+09:00  · R1.56  · client invoices, tax       · ✔ → ✔ → queue → j_56    · #2980 #2952, FO-7g 1w
+23 Nov · R1.29, R1.106 · 24 Nov · R1.55, R1.105, R1.85 · 25 Nov · R1.93, R1.58, R1.65
+26 Nov · R1.61, R1.76, R1.54  → about 12 for Track B (Lead estimate)</pre></div>
+</section>
+
+<section>
+  <h2>Lead-watch, full report at 14:24 IST</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Item</th><th>Reading</th><th>Action this check</th></tr></thead>
+    <tbody>
+      <tr><td>Merges, last 30 min</td><td class="num">3 app code, 4 in all</td><td>#2967 FO-7g p1 (Track B), #2906 R1.92 p2, #2884 R1.102 find door</td></tr>
+      <tr><td>Checks missed</td><td>62 min gap 13:21-14:24 (Lead hand-over)</td><td>new check created 14:19, every 10 min</td></tr>
+      <tr><td>Machines</td><td class="num">6 runs waiting</td><td>watching; no runs cancelled</td></tr>
+      <tr><td>Lanes awaiting input</td><td class="num">4</td><td>R1.102 CS-S1, R1.10 PF-28 (merge conflict), Track B PF-F1, R1.104: answered now</td></tr>
+      <tr><td>Lead questions on PRs</td><td class="num">9</td><td>technical ones answered now; product ones come to you one at a time</td></tr>
+      <tr><td>Money read</td><td>#2953 FO-7b 1b</td><td>read OK and labelled 14:2x</td></tr>
+      <tr><td>Records PR #2952</td><td>a decision row was missing a tag</td><td>fixed 14:2x; adds your R1.21 decision (P-796)</td></tr>
+      <tr><td>Old branches</td><td class="num">~45 with no PR</td><td>noise from before 20 Nov; clean-up row, not today</td></tr>
+      <tr><td>Resources</td><td>weekly 33% · disk 13 GB · Lead context 19%</td><td>room to add lanes; standby Lead 5 ready</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>What happens next</h2>
+  <div class="card">
+    <ol>
+      <li>Now: message Lead B with the 12-row list and ask for the next part of each "new to B" row, shaped within the hour.</li>
+      <li>Now: start Track B's own qa lane (journeys for R1.56, R1.29, R1.55, R1.85, R1.105, R1.106) and a second Track A qa lane.</li>
+      <li>As each brief lands: start one cloud builder per part, Opus 5.5 medium, and check its model label.</li>
+      <li>Each check: both boards updated; any row late more than 60 min named with its fix.</li>
+    </ol>
+  </div>
+</section>
+
+</div>
