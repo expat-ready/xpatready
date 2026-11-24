@@ -117,3 +117,61 @@ test("PF-4bs fail: a staff client with a challenge other than 15 minutes, or one
     }
   }
 });
+
+// Review and break round 1 (bd9d81495): each shape that slipped past every check, now a fail test.
+const serviceRole = (t: Template) => (taskDefinitions(t).service![1].Properties!.TaskRoleArn as { "Fn::GetAtt": [string] })["Fn::GetAtt"][0];
+const addPolicy = (t: Template, roleId: string, statement: unknown) => { t.Resources!.SlipPolicy = { Type: "AWS::IAM::Policy", Properties: { PolicyName: "slip", Roles: [{ Ref: roleId }], PolicyDocument: { Statement: statement, Version: "2012-10-17" } } }; };
+const giveMigrationRole = (t: Template) => {
+  const id = "MigrateTaskRoleSlip";
+  t.Resources![id] = { Type: "AWS::IAM::Role", Properties: { AssumeRolePolicyDocument: { Statement: [{ Action: "sts:AssumeRole", Effect: "Allow", Principal: { Service: "ecs-tasks.amazonaws.com" } }], Version: "2012-10-17" } } };
+  (taskDefinitions(t).migration![1].Properties as Record<string, unknown>).TaskRoleArn = { "Fn::GetAtt": [id, "Arn"] };
+  return id;
+};
+
+test("PF-4bs fail (review M1, break B1): a policy whose Statement is one object, not a list, is read: another pool, the migration role, a condition, a second copy, an inline policy", () => {
+  const exact = () => clone(signInStatements(t0)[0]);
+  const cases: [string, (t: Template) => void, string][] = [
+    ["one object on the own-staff pool", (t) => addPolicy(t, serviceRole(t), { ...exact(), Resource: { "Fn::GetAtt": [poolId(t, "production", "own-staff"), "Arn"] } }), "not the sign-in grant"],
+    ["one object on the clients pool", (t) => addPolicy(t, serviceRole(t), { ...exact(), Resource: { "Fn::GetAtt": [poolId(t, "production", "clients"), "Arn"] } }), "not the sign-in grant"],
+    ["one object on the migration role", (t) => addPolicy(t, giveMigrationRole(t), exact()), "only the service's task role may call Cognito"],
+    ["one object with a condition", (t) => addPolicy(t, serviceRole(t), { ...exact(), Condition: { Bool: { "aws:SecureTransport": "true" } } }), "not the sign-in grant"],
+    ["one object, a second exact copy with a Sid", (t) => addPolicy(t, serviceRole(t), { ...exact(), Sid: "Again" }), "not the sign-in grant"],
+    ["an inline policy on the role, own-staff pool", (t) => { (t.Resources![serviceRole(t)].Properties as Record<string, unknown>).Policies = [{ PolicyName: "inline", PolicyDocument: { Statement: [{ ...exact(), Resource: { "Fn::GetAtt": [poolId(t, "production", "own-staff"), "Arn"] } }], Version: "2012-10-17" } }]; }, "not the sign-in grant"],
+    ["an inline policy whose Statement is one object", (t) => { (t.Resources![serviceRole(t)].Properties as Record<string, unknown>).Policies = [{ PolicyName: "inline", PolicyDocument: { Statement: { ...exact(), Resource: "*" }, Version: "2012-10-17" } }]; }, "not the sign-in grant"],
+    ["an unreadable document", (t) => addPolicy(t, serviceRole(t), "not a statement"), "cannot be read"],
+    ["mixed case", (t) => addPolicy(t, serviceRole(t), [{ ...exact(), Action: "Cognito-IDP:AdminDeleteUser" }]), "not the sign-in grant"],
+  ];
+  for (const [name, edit, want] of cases) {
+    const t = clone(t0); edit(t);
+    const f = signInTaskFindings(t, "production");
+    assert.ok(f.some((l) => l.includes(want)), `${name}: ${f.join("; ")}`);
+  }
+  // a second exact grant (two statements) is counted, not passed
+  const twice = clone(t0); addPolicy(twice, serviceRole(twice), [clone(signInStatements(t0)[0])]);
+  assert.ok(signInTaskFindings(twice, "production").some((l) => l.includes("found 2")), signInTaskFindings(twice, "production").join("; "));
+});
+
+test("PF-4bs fail (review m2, break M3): the migration task, or any other task, running as the service's task role is caught", () => {
+  const t = clone(t0);
+  (taskDefinitions(t).migration![1].Properties as Record<string, unknown>).TaskRoleArn = { "Fn::GetAtt": [serviceRole(t), "Arn"] };
+  assert.ok(signInTaskFindings(t, "production").some((l) => l.includes("also runs as the service's task role")), signInTaskFindings(t, "production").join("; "));
+});
+
+test("PF-4bs fail (break M4): a second PLATFORM_COGNITO_USER_POOL_ID (or any repeated setting name) on the service's container is caught", () => {
+  const t = clone(t0);
+  const c = (taskDefinitions(t).service![1].Properties!.ContainerDefinitions as { Environment: { Name: string; Value: unknown }[] }[])[0];
+  c.Environment.unshift({ Name: "PLATFORM_COGNITO_USER_POOL_ID", Value: { Ref: poolId(t, "production", "own-staff") } });
+  assert.ok(signInTaskFindings(t, "production").some((l) => l.includes("named twice")), signInTaskFindings(t, "production").join("; "));
+});
+
+test("PF-4bs fail (review M2, break B2): an app client whose UserPoolId is not a plain Ref to a pool of this stack is caught (an extra staff client, or the own-staff client moved, beside a decoy)", () => {
+  const nd0 = noDomain.find((s) => s.name === "xr-staging")!.template;
+  for (const [t1, stage, domain] of [[t0, "production", DEFAULT_DOMAIN], [nd0, "staging", NO_DOMAIN]] as const) {
+    for (const form of [(id: string) => ({ "Fn::Sub": `\${${id}}` }), (id: string) => ({ "Fn::Join": ["", [{ Ref: id }]] }), (id: string) => ({ "Fn::GetAtt": [id, "UserPoolId"] }), () => "ca-central-1_outside"]) {
+      const t = clone(t1);
+      t.Resources!.SlipClient = { Type: "AWS::Cognito::UserPoolClient", Properties: { UserPoolId: form(poolId(t, stage, "staff")), ExplicitAuthFlows: ["ALLOW_USER_SRP_AUTH", "ALLOW_USER_PASSWORD_AUTH", "ALLOW_USER_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"], PreventUserExistenceErrors: "LEGACY", AuthSessionValidity: 3 } };
+      const f = poolFindings(t, stage, domain).join("\n");
+      assert.ok(f.includes("SlipClient: its pool") && f.includes("not a plain Ref to a pool of this stack"), `${stage} ${JSON.stringify(form("X"))}:\n${f}`);
+    }
+  }
+});
