@@ -19,7 +19,7 @@ let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
 
 const st = spawnSync("node", [TOOL, "selftest"], { encoding: "utf8" });
-ok("W1 walk-plan.mjs selftest (T1-T9: imports followed, Completes read, machinery walks the fixtures only, no PR cap, dispatch cap and input checks; T10-T15: the push plan and the comment) exits 0", st.status === 0 && /T1-T15 hold/.test(st.stdout), st.stdout + st.stderr);
+ok("W1 walk-plan.mjs selftest (T1-T9: imports followed, Completes read, machinery walks the fixtures only, no PR cap, dispatch cap and input checks; T10-T18: the push plan and the comment) exits 0", st.status === 0 && /T1-T18 hold/.test(st.stdout), st.stdout + st.stderr);
 
 const real = readdirSync(join(ROOT, J)).filter((f) => /^j_[1-9]\d*\.ts$/.test(f));
 const p = walkPlan({ event: "pull_request", jdir: J, changed: [`${J}/j_6.ts`], body: "Done when: x\n", root: ROOT });
@@ -64,10 +64,12 @@ ok("W10 on this tree a merged PR naming R1.29 (title) and R1.40 (Completes) walk
   ids(m1) === "j_29 j_38" && m1.pr === "3174" && m1.matrix[1].items === "R1.40" && m2.matrix.length === 0 && /changes nothing the app/.test(m2.reason) && JSON.stringify(pathsApp) === JSON.stringify(APP), { m1, m2, pathsApp, APP });
 const onPush = /\n  push:\s*\n\s*branches: \[main\]/.test(code) && !/\n  push:[\s\S]*?branches: \[(?!main\])/.test(code);
 const planIf = (plan.match(/\n    if: (.*)/) ?? [])[1] ?? "";
-ok("W11 walks.yml runs on a push to main: the plan finds the merged PR from this commit (commits/$SHA/pulls, merged, merge_commit_sha, base main), reads title and body into files, passes --event push with --pr; the walk checks out this commit; plan and walk.json kept only on a push; no write scope in walks.yml",
-  onPush && /github\.event_name == 'push'/.test(planIf) && /commits\/\$SHA\/pulls/.test(plan) && /merge_commit_sha == \\"\$SHA\\"/.test(plan) && /base\.ref == \\"main\\"/.test(plan)
+ok("W11 walks.yml runs on a push to main: the plan finds the merged PR from this commit (commits/$SHA/pulls, merged, merge_commit_sha, base main; the fallback checks merged and merge_commit_sha too), reads title and body into files, passes --event push with --pr; the walk checks out this commit; the plan kept on every push, walk.json on a push; on a push a FAIL step never fails the job (review M1); no write scope in walks.yml",
+  onPush && /github\.event_name == 'push'/.test(planIf) && /commits\/\$SHA\/pulls/.test(plan) && /merge_commit_sha == \\"\$SHA\\" and \.base\.ref == \\"main\\"/.test(plan)
+  && /pulls\/\$n" --jq "select\(\.merged_at != null and \.merge_commit_sha == \\"\$SHA\\"\) \| \.number"/.test(plan)
+  && /continue-on-error: \$\{\{ matrix\.j\.expect == 'fail' \|\| github\.event_name == 'push' \}\}/.test(walk)
   && /--title-file "\$RUNNER_TEMP\/title\.txt" --pr "\$PRN"/.test(plan) && /echo "pr=\$PRN"/.test(plan) && /pr: \$\{\{ steps\.p\.outputs\.pr \}\}/.test(code)
-  && /if: github\.event_name == 'push' && steps\.p\.outputs\.pr != '' && steps\.p\.outputs\.matrix != '\[\]'\s*\n\s*uses: actions\/upload-artifact@v4\s*\n\s*with: \{ name: walk-plan,/.test(plan)
+  && /if: github\.event_name == 'push'\s*\n\s*uses: actions\/upload-artifact@v4\s*\n\s*with: \{ name: walk-plan,/.test(plan)
   && /if: always\(\) && github\.event_name == 'push'\s*\n\s*uses: actions\/upload-artifact@v4\s*\n\s*with:\s*\n\s*name: walk-result-\$\{\{ matrix\.j\.name \}\}\s*\n\s*path: \$\{\{ runner\.temp \}\}\/walk\/walk\.json/.test(walk)
   && /- if: github\.event_name != 'pull_request'\s*\n\s*uses: actions\/checkout@v4\s*\n/.test(walk) && !/:\s*write\b/.test(code), { planIf, onPush });
 const r = readFileSync(join(ROOT, ".github", "workflows", "walk-report.yml"), "utf8"), rc = r.replace(/^\s*#.*$/gm, "");
@@ -77,7 +79,13 @@ ok("W12 walk-report.yml: main's copy on walks' completed runs, only for a push t
   && /permissions: \{ contents: read, actions: read, pull-requests: write, issues: write \}/.test(rc) && (rc.match(/write/g) ?? []).length === 2
   && /uses: actions\/checkout@v4\s*\n\s*with: \{ persist-credentials: false \}/.test(rc) && !/\bref:/.test(rc) && (rc.match(/run-id: "\$\{\{ github\.event\.workflow_run\.id \}\}"/g) ?? []).length === 2
   && /\[\[ "\$PR" =~ \^\[1-9\]\[0-9\]\{0,6\}\$ \]\]/.test(rc) && /merge_commit_sha == "'"\$SHA"'"/.test(rc) && /\n\s*\[ "\$m" = true \] \|\| \{ [^}\n]*exit 1; \}\n/.test(rc) && rc.indexOf('[ "$m" = true ]') < rc.indexOf("issues/$PR/comments")
-  && /walk-plan\.mjs" comment --plan/.test(rc) && !/secrets\./.test(rc) && !/run:[^\n]*\$\{\{/.test(rc) && !/\$\{\{[^}]*(head_branch|display_title|head_commit)[^}]*\}\}/.test(rc.replace(/\n    if: .*/, "")), rc.slice(0, 800));
+  && /walk-plan\.mjs" comment --plan/.test(rc) && /--attempt "\$ATTEMPT"/.test(rc) && !/secrets\./.test(rc)
+  // review m4: a download that failed is red (exit 1), never "merged no PR"; the paths read are the paths downloaded to
+  && /id: plan\s*\n\s*continue-on-error: true\s*\n\s*uses: actions\/download-artifact@v4\s*\n\s*with: \{ name: walk-plan, path: "\$\{\{ runner\.temp \}\}\/walk-data\/plan"/.test(rc)
+  && /id: results\s*\n\s*continue-on-error: true\s*\n\s*uses: actions\/download-artifact@v4\s*\n\s*with: \{ pattern: "walk-result-\*", path: "\$\{\{ runner\.temp \}\}\/walk-data\/results"/.test(rc)
+  && /d="\$RUNNER_TEMP\/walk-data"/.test(rc) && /--plan "\$d\/plan\/plan\.json" --results "\$d\/results"/.test(rc)
+  && /\[ "\$PLAN_DL" = success \] && \[ -f "\$d\/plan\/plan\.json" \] \|\| \{ [^}\n]*exit 1; \}/.test(rc) && /\[ "\$RESULTS_DL" = success \] \|\| \{ [^}\n]*exit 1; \}/.test(rc)
+  && /PLAN_DL: "\$\{\{ steps\.plan\.outcome \}\}", RESULTS_DL: "\$\{\{ steps\.results\.outcome \}\}"/.test(rc) && !/run:[^\n]*\$\{\{/.test(rc) && !/\$\{\{[^}]*(head_branch|display_title|head_commit)[^}]*\}\}/.test(rc.replace(/\n    if: .*/, "")), rc.slice(0, 800));
 // W13: the comment walk-report.yml posts, built here from two made-up walk.json files and one missing.
 const tmp = mkdtempSync(join(tmpdir(), "walk-report-"));
 try {

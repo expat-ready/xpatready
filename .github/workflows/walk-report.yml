@@ -7,7 +7,10 @@
 # this job; no secret, no cache, no model call, US$0.
 # Safety: it acts only on a walks run for a push to main of this repository; the PR number from the artifact must
 # be a number and GitHub must return that PR as merged with this run's head commit as its merge commit; PR-written
-# text (title, body) never reaches it. Test: studio/tests/check_walk_plan.ts W11-W13.
+# text (title, body) never reaches it; walk-plan.mjs comment shows only plan entries shaped as journey ids and R1 ids.
+# Faults are red, never a silent green: walks keeps a plan on every push, so a plan or a result that cannot be
+# downloaded fails this run (re-run it). "Re-run failed jobs" on walks posts again; each comment names its attempt.
+# Test: studio/tests/check_walk_plan.ts W11-W13.
 name: walk-report
 on:
   workflow_run:
@@ -28,25 +31,29 @@ jobs:
       # main's code (a workflow_run checks out the default branch); the token is not kept.
       - uses: actions/checkout@v4
         with: { persist-credentials: false }
-      - name: walks' plan (none when the push merged no PR or walked nothing)
+      - name: walks' plan (kept on every push)
+        id: plan
         continue-on-error: true
         uses: actions/download-artifact@v4
         with: { name: walk-plan, path: "${{ runner.temp }}/walk-data/plan", run-id: "${{ github.event.workflow_run.id }}", github-token: "${{ github.token }}" }
       - name: each journey's walk.json
+        id: results
         continue-on-error: true
         uses: actions/download-artifact@v4
         with: { pattern: "walk-result-*", path: "${{ runner.temp }}/walk-data/results", run-id: "${{ github.event.workflow_run.id }}", github-token: "${{ github.token }}" }
       - name: one comment on the merged PR
-        env: { GH_TOKEN: "${{ github.token }}" }
+        env: { GH_TOKEN: "${{ github.token }}", PLAN_DL: "${{ steps.plan.outcome }}", RESULTS_DL: "${{ steps.results.outcome }}", ATTEMPT: "${{ github.event.workflow_run.run_attempt }}" }
         run: |
           set -o pipefail; d="$RUNNER_TEMP/walk-data"
-          [ -f "$d/plan/plan.json" ] || { echo "walks run $RUN_ID kept no plan: the push merged no PR, or named no journey on main" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
+          [ "$PLAN_DL" = success ] && [ -f "$d/plan/plan.json" ] || { echo "::error title=walk-report::walks run $RUN_ID: its plan could not be downloaded (walks keeps one on every push): re-run this run"; exit 1; }
+          node -e 'const p=require(process.argv[1]); process.exit(Array.isArray(p.matrix)&&p.matrix.length&&p.pr?0:3)' "$d/plan/plan.json" || { echo "walks run $RUN_ID walked nothing for a merged PR: $(node -p 'require(process.argv[1]).reason' "$d/plan/plan.json")" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
+          [ "$RESULTS_DL" = success ] || { echo "::error title=walk-report::walks run $RUN_ID: its walk.json files could not be downloaded: re-run this run (no comment, so no journey reads as \"no result\" by mistake)"; exit 1; }
           PR=$(node -p 'String(require(process.argv[1]).pr ?? "")' "$d/plan/plan.json")
           [[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "the plan's PR is not a number: nothing posted"; exit 1; }
           m=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '(.merged_at != null) and (.merge_commit_sha == "'"$SHA"'") and (.base.ref == "main")')
           [ "$m" = true ] || { echo "#$PR is not merged into main with $SHA as its merge commit: nothing posted"; exit 1; }
           st=0; node "$T/walk-plan.mjs" comment --plan "$d/plan/plan.json" --results "$d/results" --run-id "$RUN_ID" \
-            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --sha "$SHA" > "$RUNNER_TEMP/comment.md" || st=$?
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --sha "$SHA" --attempt "$ATTEMPT" > "$RUNNER_TEMP/comment.md" || st=$?
           [ "$st" = 0 ] || { echo "nothing to post (walk-plan.mjs comment exit $st)"; exit 0; }
           cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
           gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F "body=@$RUNNER_TEMP/comment.md" > /dev/null

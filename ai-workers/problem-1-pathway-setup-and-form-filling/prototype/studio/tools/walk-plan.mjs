@@ -23,9 +23,11 @@
 //        [--changed <file of changed paths>] [--body-file <PR body>] [--title-file <PR title>] [--pr <n>] [--sha <s>]
 //   → stdout {"matrix":[{name,file,expect[,items,via]}],"reason":"...","warn":"..."[,"pr","sha"]}; exit 1 on a refusal.
 //   node <studio>/tools/walk-plan.mjs comment --plan <plan.json> --results <dir> --run-id <id> --run-url <u> --sha <s>
-//   → stdout the merged PR's comment (walk-report.yml): per journey PASS or FAIL with its PASS/FAIL/HELD step counts,
-//     from <dir>/walk-result-<journey>/walk.json; a journey with no walk.json is FAIL ("no result"). Exit 3 and
-//     nothing printed when the plan walked nothing or names no PR.
+//        [--attempt <n>]
+//   → stdout the merged PR's comment (walk-report.yml): per journey PASS (exit 0 and no FAIL step) or FAIL with its
+//     PASS/FAIL/HELD step counts, from <dir>/walk-result-<journey>/walk.json; a journey with no walk.json is FAIL ("no
+//     result"); a plan entry not shaped as a journey id with R1 ids is not shown (named as such). Exit 3 and nothing
+//     printed when the plan walked nothing or names no PR.
 //   node <studio>/tools/walk-plan.mjs selftest   the rules on a made-up tree (walks.yml runs it first, every run).
 // Test: studio/tests/check_walk_plan.ts. No dependency (the plan job installs nothing); US$0.
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
@@ -154,9 +156,14 @@ export function walkPlan({ event, jdir, want = "", changed = [], body = "", titl
 }
 
 /** The merged PR's comment from a push plan and its walks' walk.json files (walk-report.yml). null: nothing to post. */
-export function walkComment({ plan, results, runId, runUrl, sha }) {
+const VIA = /^(title|Completes|title and Completes)(, (title|Completes|title and Completes))*$/;
+/** A plan entry the comment may show: walks' artifact is data, so its values must be what pushPlan writes (review m3). */
+const shaped = (j) => !!j && ID.test(String(j.name)) && /^R1\.[1-9]\d{0,2}( R1\.[1-9]\d{0,2})*$/.test(String(j.items)) && VIA.test(String(j.via));
+export function walkComment({ plan, results, runId, runUrl, sha, attempt = "" }) {
   if (!plan || !Array.isArray(plan.matrix) || !plan.matrix.length || !/^[1-9]\d{0,6}$/.test(String(plan.pr ?? ""))) return null;
-  const rows = plan.matrix.map((j) => {
+  const bad = plan.matrix.filter((j) => !shaped(j)).length, good = plan.matrix.filter(shaped);
+  if (!good.length) return null;
+  const rows = good.map((j) => {
     let w = null;
     try { w = JSON.parse(readFileSync(join(results, `walk-result-${j.name}`, "walk.json"), "utf8")); } catch { w = null; }
     const num = (v) => (Number.isInteger(v) ? v : null);
@@ -168,7 +175,7 @@ export function walkComment({ plan, results, runId, runUrl, sha }) {
   const out = [
     `## Walks on merge (ENF-733, P-733): ${passed} PASS, ${failed} FAIL of ${rows.length} journey${rows.length === 1 ? "" : "s"}`,
     "",
-    `Walked on main \`${String(sha).slice(0, 9)}\` (this PR's merge commit) by walks run [${runId}](${runUrl}).`,
+    `Walked on main \`${String(sha).slice(0, 9)}\` (this PR's merge commit) by walks run [${runId}](${runUrl})${/^[1-9]\d{0,3}$/.test(String(attempt)) ? `, attempt ${attempt}` : ""}.`,
     "",
     "| Journey | Item (named by) | Verdict | PASS | FAIL | HELD | Exit | Seconds |",
     "|---|---|---|---|---|---|---|---|",
@@ -179,6 +186,7 @@ export function walkComment({ plan, results, runId, runUrl, sha }) {
   if (lines.length) out.push("", "First failing steps (up to 5 a journey):", "```", ...lines, "```");
   if (none.length) out.push("", `No walk.json for ${none.join(" ")}: the walk ended before its verdict (see the run).`);
   if (plan.warn) out.push("", `Note: ${clean(plan.warn)}`);
+  if (bad) out.push("", `${bad} plan entr${bad === 1 ? "y" : "ies"} not shown: not a journey id with R1 items (see the run).`);
   out.push("", `Recordings: the run's artifacts walk-<journey>-${sha} (video, trace, a screenshot per step; kept 30 days). This is the journey walk only; an item on a Completes line also gets item-proof's verdict (pack, suites, journey). qa reads this comment instead of waiting for a dispatch.`);
   return out.join("\n") + "\n";
 }
@@ -241,6 +249,15 @@ export function selftest() {
       /^## Walks on merge \(ENF-733, P-733\): 1 PASS, 2 FAIL of 3 journeys\n/.test(c) && c.includes("run [123](https://x/runs/123)") && c.includes("| j_3 | R1.3 (title) | PASS | 9 | 0 | 1 | 0 | 80 |")
       && c.includes("| j_5 | R1.5 (title) | FAIL | 4 | 2 | 0 | 1 | 90 |") && c.includes("| j_6 | R1.6 (title) | FAIL (no result) |") && c.includes("```\nj_5: FAIL W2 the 'total' is 0 more\n```"), c);
     t("T15 no comment for a plan that walked nothing or names no PR", walkComment({ plan: p13[0], results: rdir, runId: "1", runUrl: "u", sha: "s" }) === null && walkComment({ plan: { ...plan14, pr: "" }, results: rdir, runId: "1", runUrl: "u", sha: "s" }) === null, "");
+    put("results/walk-result-j_6/walk.json", JSON.stringify({ exit: 0, pass: 7, fail: 2, held: 0, seconds: 50, failed: [] }));
+    const c16 = walkComment({ plan: plan14, results: rdir, runId: "9", runUrl: "u", sha: "s", attempt: "2" }) ?? "";
+    t("T16 exit 0 with FAIL steps is FAIL, never PASS (item-proof's review m4); the attempt is named", c16.includes("| j_6 | R1.6 (title) | FAIL | 7 | 2 |") && /run \[9\]\(u\), attempt 2\./.test(c16), c16);
+    const forged = { ...plan14, matrix: [{ name: "../../etc", file: "x", expect: "pass", items: "R1.3", via: "title" }, { name: "j_3", file: "j_3", expect: "pass", items: "R1.3 <img>", via: "title" }, { name: "j_5", file: "j_5", expect: "pass", items: "R1.5", via: "@someone" }, plan14.matrix[0]] };
+    const c17 = walkComment({ plan: forged, results: rdir, runId: "9", runUrl: "u", sha: "s" }) ?? "";
+    t("T17 plan entries not shaped as a journey id, R1 ids and a fixed \"named by\" are not shown, only counted", /: 1 PASS, 0 FAIL of 1 journey\n/.test(c17) && c17.includes("3 plan entries not shown") && !/etc|<img>|@someone/.test(c17), c17);
+    for (let n = 1; n <= 25; n++) put(`${J}/j_${n}.ts`, "");
+    const p18 = push(`runtime: ${Array.from({ length: 25 }, (_, i) => `R1.${i + 1}`).join(", ")}`, "", [app]);
+    t("T18 a merged PR naming 25 items walks the first 20 and warns naming the rest", p18.matrix.length === 20 && /25 journeys named \(over 20\): walking the first 20; not walked: j_21 j_22 j_23 j_24 j_25$/.test(p18.warn), { n: p18.matrix.length, warn: p18.warn });
   } finally { rmSync(root, { recursive: true, force: true }); }
   return out;
 }
@@ -248,11 +265,11 @@ export function selftest() {
 function main(argv) {
   const [cmd] = argv, opt = {};
   for (let i = cmd === "selftest" || cmd === "comment" ? 1 : 0; i < argv.length; i++) if (argv[i].startsWith("--")) opt[argv[i].slice(2)] = argv[++i] ?? "";
-  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T15 hold (with T1b, T5b, T5c, T9b)"); return f.length ? 1 : 0; }
+  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T18 hold (with T1b, T5b, T5c, T9b)"); return f.length ? 1 : 0; }
   const file = (k) => (opt[k] && existsSync(opt[k]) ? readFileSync(opt[k], "utf8") : "");
   if (cmd === "comment") {
     let plan = null; try { plan = JSON.parse(file("plan")); } catch { plan = null; }
-    const c = walkComment({ plan, results: opt.results ?? "", runId: opt["run-id"] ?? "", runUrl: opt["run-url"] ?? "", sha: opt.sha ?? "" });
+    const c = walkComment({ plan, results: opt.results ?? "", runId: opt["run-id"] ?? "", runUrl: opt["run-url"] ?? "", sha: opt.sha ?? "", attempt: opt.attempt ?? "" });
     if (c === null) { console.error("nothing to post: the plan walked nothing or names no PR"); return 3; }
     process.stdout.write(c); return 0;
   }

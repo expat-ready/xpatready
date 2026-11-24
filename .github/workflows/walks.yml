@@ -15,9 +15,12 @@
 #     tests/check_walk_plan.ts checks the rule and this file's shape.
 #   * On merge (ENF-733, P-733, P-728 (3)): each push to main that is a PR's merge commit walks, on that commit, the
 #     journey of each R1 item the PR's title names or its "Completes:" line names (walk-plan.mjs --event push; none, or
-#     a PR that changes nothing under studio/, contracts/, p2/, p5/: skipped with a reason). No fixtures. The plan and
-#     each walk.json are kept as small artifacts; walk-report.yml (main's code, the only write token) then posts one
-#     comment on the merged PR: the run id, each journey's PASS or FAIL and its step counts. qa reads it there.
+#     a PR that changes nothing under studio/, contracts/, p2/, p5/: skipped with a reason). No fixtures. The plan (every
+#     push, so a missing plan is a fault) and each walk.json are kept as small artifacts; walk-report.yml (main's code,
+#     the only write token) then posts one comment on the merged PR: the run id, each journey's PASS or FAIL and its step
+#     counts. qa reads it there. On a push a FAIL step never fails the walk job (ENF-733 review M1): journeys of items
+#     still in parts fail by design, and a red check on main's head reads as "fix main first" (cockpit-data.py); the
+#     verdict travels in walk.json to the comment instead.
 #   * One job a journey, all at once (fail-fast off): the app starts as the packs job starts it (cloud-setup.sh, then
 #     the journey header's own isolated.sh line: own database, own port, never :4400), the journey runs in Playwright's
 #     Chromium with video, trace and a screenshot per step (tests/journeys/walk.mjs + record.ts), and its recording is
@@ -123,8 +126,8 @@ jobs:
           [ -z "$warn" ] || echo "::warning title=walks::$warn"
           echo "matrix=$m" >> "$GITHUB_OUTPUT"; echo "sha=$SHA" >> "$GITHUB_OUTPUT"; echo "pr=$PRN" >> "$GITHUB_OUTPUT"
           { echo "walks at $SHA: $reason"; echo; echo "matrix: $m"; } | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: keep the plan for walk-report.yml (a push that merged a PR and walks something)
-        if: github.event_name == 'push' && steps.p.outputs.pr != '' && steps.p.outputs.matrix != '[]'
+      - name: keep the plan for walk-report.yml (every push, so a missing plan is a fault, never "nothing to walk")
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with: { name: walk-plan, path: "${{ runner.temp }}/plan.json", retention-days: 30 }
   walk:
@@ -158,7 +161,7 @@ jobs:
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
       - id: w
         name: walk ${{ matrix.j.name }} on its own copy, recorded (walk.mjs; live AI off, US$0)
-        continue-on-error: ${{ matrix.j.expect == 'fail' }}
+        continue-on-error: ${{ matrix.j.expect == 'fail' || github.event_name == 'push' }}
         env: { FILE: "${{ matrix.j.file }}", WALK_SHA: "${{ needs.plan.outputs.sha }}" }
         run: |
           node "$S/tests/journeys/walk.mjs" "$FILE" "$RUNNER_TEMP/walk"
