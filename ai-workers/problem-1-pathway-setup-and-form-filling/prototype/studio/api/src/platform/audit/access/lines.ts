@@ -48,7 +48,7 @@ AuditActionNames.register("platform", { [FIRM_READ]: "ExpatReady staff read the 
 
 // --------------------------------------------------------------------------------------------------- the writers
 type Call = { method: string; route: string };
-const ourStaff = () => {
+export const ourStaff = () => {
   const ctx = auditContext();
   if (ctx?.actorType !== "OUR_STAFF" || !ctx.actor?.startsWith("ourstaff:")) throw new AuditRefused("audit line refused: an access line is written only in a request our staff make, under their own ourstaff:<id> word");
   return ctx as { actor: string; correlationId?: string };
@@ -150,7 +150,7 @@ export class SystemAccessLines implements NestInterceptor, OnModuleInit {
   private async committedLines(): Promise<number> {
     const firms = ourStaffFirmsInRequest(), ctx = auditContext();
     if (!firms.length || !ctx?.actor || !ctx.correlationId) return 0;
-    const [row] = await this.db.$queryRaw<{ n: number }[]>`select count(*)::int as n from audit_event where correlation_id = ${ctx.correlationId} and actor = ${ctx.actor} and firm_id::text = any(${firms}) and action <> 'platform.bypass'`;   // round 5 (Lead B): a bypass use's own line (touchFirm, AUD-3c) is not the change's line
+    const [row] = await this.db.$queryRaw<{ n: number }[]>`select count(*)::int as n from audit_event where correlation_id = ${ctx.correlationId} and actor = ${ctx.actor} and firm_id = any(${firms}::uuid[]) and action <> 'platform.bypass'`;   // part 2 (#3209 round-2 minor 1): uuid against uuid, so audit_event_firm_id_at_idx can serve it   // round 5 (Lead B): a bypass use's own line (touchFirm, AUD-3c) is not the change's line
     return row?.n ?? 0;
   }
 
@@ -164,7 +164,10 @@ export class SystemAccessLines implements NestInterceptor, OnModuleInit {
       await this.db.$transaction(async (tx) => { await recordFirmRead(tx, firm.toLowerCase(), call); });
       return;
     }
-    const f = req.query?.firm, filters: Record<string, string> = typeof f === "string" && UUID.test(f) ? { firm: f.toLowerCase() } : {};
+    // Part 2 (breaker M1): the firm filter is recorded only for a route that declares it narrows by `?firm=` (its own
+    // strict query reads it); on any other route a caller's `?firm=` is ignored by the handler, so it is never recorded,
+    // and no line can be planted in a firm's access report.
+    const f = data.firmFilter ? req.query?.firm : undefined, filters: Record<string, string> = typeof f === "string" && UUID.test(f) ? { firm: f.toLowerCase() } : {};
     await this.db.$transaction(async (tx) => { await recordCrossTenant(tx, data.scope, call, filters); });
   }
 }
