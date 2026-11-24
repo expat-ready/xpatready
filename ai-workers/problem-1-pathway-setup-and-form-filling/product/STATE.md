@@ -2,7 +2,7 @@
 
 current_lead: local_0bdf05e5-84b2-4d08-9305-aab743a1231a Lead 2 · 24 Nov 22:58 IST (after Lead 1 local_9e9d5c2f, past its 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 22:58 IST: **Lead 1 handed over to Lead 2 (read the hand-over block below first).** 55/101 Works on main; 16 cloud lanes running; founder asleep, wants "at least 10" more proven when he wakes (A379).
+updated: 2026-11-24 23:3x IST: **Lead 2 took over 22:59 IST; check 99e4e813 (3,33) created.** Owed done: (1) #3498 read line posted (lane retargets after #3460); (4) #3500: round 4 allowed, read line, labelled. #3234: lane's Approve owed, then `/run full` (refused before it). R1.58 told to merge main into #3493 now (no wait for #3497). Research report committed: `design/why-targets-missed-2026-11-24.md`. Earlier line: **Lead 1 handed over to Lead 2 (read the hand-over block below first).** 55/101 Works on main; 16 cloud lanes running; founder asleep, wants "at least 10" more proven when he wakes (A379).
 
 ## Hand-over Lead 1 → Lead 2, 22:58 IST 24 Nov (Lead 1 ~410k; start read ~150k)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 1's db86aa18 is deleted. Standby left: Lead 3 local_48775ee3 (P-286 asks two: top up at the founder's next typed turn). Account Ultra, weekly 7% at 22:4x, resets 1 Dec 10:29 IST. Disk 12.3 GB.
