@@ -168,14 +168,20 @@ await staffCall(rTok, "PATCH", `/platform/staff/${T.id}/roles`, { roles: ["CASE_
 await team(p); await p.locator("[data-invite-open]").click();
 const ownerOffered = await p.locator('[data-invite-row="1"] [data-role]').evaluateAll((els) => els.map((e) => e.getAttribute("data-role")));
 ok("PF-6 DW2/BR-1 pass: an Owner's invite picker offers every role but Owner", !ownerOffered.includes("OWNER") && ownerOffered.length === 5, ownerOffered);
-// BR-3: the same email twice is flagged and nothing is sent; an existing staff member is flagged with the server's words.
+// BR-3 (QA-773, R1.20 "accepts the good rows"): the same email twice is named on the later row before Send, and Send still
+// goes: the server flags that row DUPLICATE_IN_FORM and invites the rest; an existing staff member keeps the server's words.
 // R1.20: the form is one call to staff/invitations/batch (P-727), so the posts counted are batch calls.
-await p.getByLabel("Email, person 1").fill(O.email); await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 2").fill(O.email.toUpperCase());
+const G = `pf6-dup-${run}@example.com`;
+await p.getByLabel("Email, person 1").fill(G); await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 2").fill(G.toUpperCase());
+await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 3").fill(O.email);
+ok("PF-6 DW2/BR-3 pass: before Send the duplicate is named on the later row", (await p.locator('[data-invite-row="2"]').innerText()).includes("This email is already on another row."));
 const sentBefore = posts(p, /\/staff\/invitations\/batch$/).length;
-await p.locator("[data-send-invites]").click(); await p.waitForTimeout(500);
-ok("PF-6 DW2/BR-3 fail: a duplicate row is flagged on its row and nothing is sent", (await p.locator('[data-invite-row="2"]').innerText()).includes("This email is already on another row.") && posts(p, /\/staff\/invitations\/batch$/).length === sentBefore);
-await p.getByRole("button", { name: "Remove person 2" }).click(); await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations\/batch$/, sentBefore + 1);
-ok("PF-6 DW2/BR-3 fail: an existing staff member's row keeps the server's words; no invitation is made", (await p.locator('[data-invite-row="1"]').innerText()).includes("This person is already on your firm's staff.") && sql(`select count(*) from platform_invitation where email = '${O.email}'`) === "0");
+await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations\/batch$/, sentBefore + 1);
+await p.locator("[data-invite-form-error]").waitFor({ timeout: 10_000 }).catch(() => undefined);
+ok("PF-6 DW2/BR-3 fail (QA-773): a duplicate row does not stop Send: one batch call; the first row is invited once and leaves the form; the duplicate stays with the server's words",
+  posts(p, /\/staff\/invitations\/batch$/).length === sentBefore + 1 && sql(`select count(*) from platform_invitation where lower(email) = '${G}'`) === "1"
+  && (await p.getByLabel("Email, person 1").inputValue().catch(() => "")) === G.toUpperCase() && (await p.locator('[data-invite-row="1"]').innerText().catch(() => "")).includes("This email is already on an earlier row of this form."));
+ok("PF-6 DW2/BR-3 fail: an existing staff member's row keeps the server's words; no invitation is made", (await p.locator('[data-invite-row="2"]').innerText().catch(() => "")).includes("This person is already on your firm's staff.") && sql(`select count(*) from platform_invitation where email = '${O.email}'`) === "0");
 // BR-2: the whole form is counted on the seat line. Over the limit, P-727 (the founder, 19 Nov) governs over the concept's
 // "nothing is sent until the form fits" (Lead 19 on #3370, R1.20): Send stays on, the free seats go to the rows in order and
 // the row past them stays in the form with the server's seat words, to send again.
