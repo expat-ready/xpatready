@@ -531,3 +531,4 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Labelled after my read: #3495 f18145ef1 (lasting types fix), #3482 79d52002e; #3305 covered (45373887741: ci, shard (22); attempt 2 green, full run green) and relabelled. #3470's full run red on types only; round 3 allowed. #3442 full run running.
 * #3491 36a32698a: app code and migration read, no fault; pr-rules and module-cards red. #3492 module-cards red. #3497 mergify scopes and walk j_74 red. #3487 types red (heap). #3489 04e8963bd approved, waits for #3470. #3498 waits for #3460. #3493 round 3 allowed. Lead B 7 asked to read #3491, #3492, #3497, #3477, #3498.
 * #3477 28ae2601b: Approve, full run running, then label.
+* After Lead B 7's reads (17:49): #3497 NOT OK (census row), label off; #3491 OK but label off for the migration order (relabel after #3174, #3234); #3492, #3477, #3498 OK.
