@@ -123,3 +123,40 @@ I made two mutants on `git archive` copies. Both go red:
 Verdict: Approve 5445767089cdc95f8db99220515a41bb4da65239
 
 Reviewer: Approve 5445767089cdc95f8db99220515a41bb4da65239
+
+## Round 5 (merge of main, 2ea622a7e)
+This is a diff-only check (P-277). The last Approve was on `3ed855a66`. That commit holds only records on top of the round 4 code `5445767089`: nothing under `api/src/client-money` or the test changed between the two.
+
+The new head `2ea622a7e` is a merge commit. Its parents are `3ed855a66` and main's `a040b46d5`, and main's `086f2d06c` is included.
+
+**1. Part 3's files are unchanged.**
+* `git diff 3ed855a66 2ea622a7e --stat` covers 170 files, all from main.
+* `git diff --stat 3ed855a66 2ea622a7e` on part 3's files prints nothing (exit 0). The files checked:
+  * `api/src/client-money/trust/` (all of `to-move*.ts` and `money-out.ts`)
+  * `api/src/features/client-money-trust.ts`
+  * `ports/events/client-money-trust.ts` and `ports/notifications.ts`
+  * `tests/check_fo7t_to_move.ts`
+* One correction to the brief: the ports are at `studio/ports/`, not `api/src/ports/`. I checked them at that path.
+
+**2. What main brought in that part 3 could touch.** None of it changes a contract part 3 relies on.
+* **`api/src/client-money/port.ts`** (FO-9b part 2): `ClientMoney.hasMoney` now also reads `money_party_tax_treatment` and the trust entry's payee. These are reads only, for the merge check. Part 3 does not call `hasMoney`.
+* **`ports/client-money.ts`**: only the comment on `ClientMoneyPort.hasMoney` changed. Part 3 imports `MINOR_MAX`, `MoneyCurrency`, `InvoiceEventPayload` and `MONEY_EVENT` from this file (`to-move.ts:26`, `money-out.ts:18`), and none of those changed.
+* **`ports/messages.ts`**: adds a new `MessageWordsPort` (PF-21rs R0). `MessagePort` is unchanged. Part 3 does not use the new port.
+* **`ports/metrics.ts`**: `ReportQuery.scope` changes from `unknown` to an enum. Part 3 does not use it.
+* **The migration `20261124070000_fo9b_review`**: only `fo_dup_review` and `fo_dup_merge`. No `money_*` table is touched.
+* **`api/src/platform/firm-scope.ts`**: the pool that part 3's transactions run on is hardened in two ways. The firm-scope helpers that `to-move*.ts` import are unchanged.
+  * A connection now refuses any query sent after its COMMIT or ROLLBACK.
+  * A client released while a statement is still running is now judged only after its answers arrive.
+
+  This is no contract change for code that ends its own transaction correctly, and the run below is green on it.
+* **`web/src/modules/client-money/`** (FO-7s1 part 1): web only. Part 3 is API only.
+
+**3. The check, run once at `2ea622a7e`:**
+
+`npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo7t_to_move.ts` gives **43 passed, 0 failed, exit code 0**. That is the same count as round 4.
+
+There are no new findings. The two round 4 Minors are still open and still not blocking.
+
+Verdict: Approve 2ea622a7ed9179a0b55e84f56a841a6c9b94b929
+
+Reviewer: Approve 2ea622a7ed9179a0b55e84f56a841a6c9b94b929
