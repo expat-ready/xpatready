@@ -2,7 +2,7 @@
 // the row, written by the qa lane (22 Nov) BEFORE its parts merge, so qa only runs it when they do. Parts (MVP-CHECKLIST
 // row 58): FO-7a (+ FO-7a2, FO-7mv, FO-7lk, FO-7ts parts 1-2: the money_* tables and their trust checks, on main),
 // FO-7ts part 3 (refund details and the same-case pick; open PR #2368), FO-7t (the trust routes: answer, deposits,
-// Pay from trust, refunds, To move; not built), FO-7s3a, FO-7s3b (the screens), FO-7m (the monthly check). The walk also
+// Pay from trust, refunds, To move; part 1 (answer, deposits, ledger, balances) merged as #3033, parts 2-3 not built), FO-7s3a, FO-7s3b (the screens), FO-7m (the monthly check). The walk also
 // needs parts the checklist row does not list (noted in the qa report): FO-7b's offline payment route and issue step
 // (part 1b, #2953), FO-7v (the reversal route), a move-to-case route (ruled into "a new FO-7t part", unnamed) and a read
 // and screen of the shortfall list (no row names one; FO-7a2 built the view money_trust_shortfall only).
@@ -83,6 +83,14 @@ try {
     console.error(`STOP  local sign-in refused for ${email} (start the copy with PLATFORM_IDENTITY=local): ${r.body?.detail}`); process.exit(2);
   };
   const emailA = staff("user-R"), TA = await signIn("sample-firm", emailA), TB = await signIn("sample-solo", staff("user-S"));
+  // C5 (#3305 M1, CS-MV1): the money routes see a party only as a prospect's subject or a visible case's client, so each
+  // Sample client is the subject of a won prospect owned by firm A's Owner (as j_56 seeds its client; Sample).
+  const staffA = sql(`select id from platform_staff where actor_id = 'user-R'`);
+  for (const pid of [PA, PB, PC, PR]) {
+    sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, state, engaged_at, engaged_by, created_by, updated_at) values (gen_random_uuid(), '${A}', '${pid}', 'MANUAL', 'WEBSITE', '${staffA}', 'ENGAGED', now(), 'seed:J-58', 'seed:J-58', now())`);
+    sql(`insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, owner_staff_id, won_via, won_at, created_by, updated_at)
+      select gen_random_uuid(), '${A}', l.id, 'INDIVIDUAL', (select id from fo_stage where firm_id = '${A}' and pipeline = 'INDIVIDUAL' and key = 'RETAINER_SIGNED'), '${pid}', '${pid}', '${staffA}', 'E_SIGNED', now(), 'seed:J-58', now() from fo_lead l where l.person_id = '${pid}'`);
+  }
   ok("J-58 setup: both Sample firms with payment settings, firm A's Owner and firm B's Owner signed in, four Sample clients of firm A", !!A && !!B && fo.failed.length === 0 && !!PA && !!PB && !!PC && !!PR && !!TA && !!TB);
 
   // database helpers (reads; and the stand-ins' writes, used only when a route is missing)
@@ -96,7 +104,7 @@ try {
     rawSql(`begin; insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, reference, idempotency_key, recorded_by, cleared) values ('${p}', '${A}', '${method}', ${amount}, 'CAD', 'TRUST', now(), 'J58-${run}-${keyN}', '${key()}', 'seed:J-58', ${cleared}); ${entryQ("DEPOSIT", amount, pid, { pay: p })}; commit;`); return p; };
   /** A deposit through FO-7t part 1's route; the payment's id, and whether the route took it. */
   const deposit = async (pid: string, amount: number, method = "E_TRANSFER") => {
-    const r = await api(TA, "POST", `${M}/trust/deposits`, { personId: pid, currency: "CAD", amountMinor: amount, method, reference: `J58-${run}-${keyN}`, idempotencyKey: key(), receivedAt: new Date().toISOString().slice(0, 10) });
+    const r = await api(TA, "POST", `${M}/trust/deposits`, { personId: pid, currency: "CAD", amountMinor: amount, method, reference: `J58-${run}-${keyN}`, idempotencyKey: key() });   // DepositIn (#3033) is strict; the server stamps the time received
     const id = String(r.body?.paymentId ?? r.body?.id ?? "");
     const viaApi = (r.status === 201 || r.status === 200) && !!id && sql(`select received_into from money_payment where id = '${id}' and firm_id = '${A}'`) === "TRUST";
     return { r, viaApi, id: viaApi ? id : (note(`deposit of ${amount} for a client written by SQL (POST ${M}/trust/deposits answered ${r.status})`), sqlDeposit(pid, amount, method, method !== "CHEQUE")) };
@@ -122,13 +130,13 @@ try {
 
   // ---------------------------------------------------------------------------------------------- W0: trust on
   const w0 = await api(TA, "PUT", `${M}/trust/answer`, { answer: "YES" });
-  ok("R1.58 W0 (part missing: FO-7t part 1, PUT /trust/answer): the firm's Owner answers the trust question Yes through the API; the database keeps YES with who and when",
+  ok("R1.58 W0 (FO-7t part 1, #3033, on main: PUT /trust/answer): the firm's Owner answers the trust question Yes through the API; the database keeps YES with who and when",
     w0.status === 200 && sql(`select trust_answer || ':' || (trust_answered_by is not null) || ':' || (trust_answered_at is not null) from money_payment_settings where firm_id = '${A}'`) === "YES:true:true", { status: w0.status, body: w0.body?.detail ?? null });
   if (sql(`select trust_answer from money_payment_settings where firm_id = '${A}'`) !== "YES") { note("trust answer YES written by SQL"); rawSql(`update money_payment_settings set trust_answer = 'YES', trust_answered_by = 'seed:J-58', trust_answered_at = now() where firm_id = '${A}'`); }
 
   // ------------------------------------------------------------------------- W1: every payment is trust or operating
   const d1 = await deposit(PA, 100000);
-  ok("R1.58 W1 (part missing: FO-7t part 1, POST /trust/deposits): a trust deposit of CAD 1,000.00 recorded through the API is kept as received into TRUST with its DEPOSIT entry; the client's trust balance is 1,000.00",
+  ok("R1.58 W1 (FO-7t part 1, #3033, on main: POST /trust/deposits): a trust deposit of CAD 1,000.00 recorded through the API is kept as received into TRUST with its DEPOSIT entry; the client's trust balance is 1,000.00",
     d1.viaApi && sql(`select count(*) from money_trust_entry where payment_id = '${d1.id}' and kind = 'DEPOSIT' and amount_minor = 100000`) === "1" && balance(PA) === 100000, { status: d1.r.status, detail: d1.r.body?.detail ?? null });
   const INV0 = await issuedInvoice(PC, 25000);
   const op = await api(TA, "POST", `${M}/invoices/${INV0}/payments`, { method: "CHEQUE", amountMinor: 25000, currency: "CAD", reference: `J58-${run}-OP`, idempotencyKey: key(), receivedInto: "OPERATING", receivedOn: new Date().toISOString().slice(0, 10) });   // the PaymentIn body (ports/client-money.ts)
@@ -265,8 +273,10 @@ try {
 
   // ------------------------------------------------------------------------------------------------ W6: roles
   const depA = sql(`select coalesce((select id::text from money_trust_entry where person_id = '${PA}' and kind = 'DEPOSIT' order by seq limit 1), '')`);
-  const mine = await api(TA, "GET", `${M}/trust/ledger?party=${PA}&currency=CAD`), theirs = await api(TB, "GET", `${M}/trust/ledger?party=${PA}&currency=CAD`), anon = await api(null, "GET", `${M}/trust/ledger?party=${PA}&currency=CAD`);
-  ok("R1.58 W6 (part missing: FO-7t part 1, GET /trust/ledger): firm A's Owner reads the client's ledger (200, its entries); firm B gets 404 and no session 401",
+  // W5's browser sign-in as the same Owner ends the API session TA (one session per person), so W6 signs in again.
+  const TA2 = await signIn("sample-firm", emailA);
+  const mine = await api(TA2, "GET", `${M}/trust/ledger?personId=${PA}&currency=CAD`), theirs = await api(TB, "GET", `${M}/trust/ledger?personId=${PA}&currency=CAD`), anon = await api(null, "GET", `${M}/trust/ledger?personId=${PA}&currency=CAD`);
+  ok("R1.58 W6 (FO-7t part 1, #3033, on main: GET /trust/ledger?personId=): firm A's Owner reads the client's ledger (200, its entries); firm B gets 404 and no session 401",
     mine.status === 200 && /^[0-9a-f-]{36}$/.test(depA) && words(mine).includes(depA) && theirs.status === 404 && anon.status === 401, { mine: mine.status, theirs: theirs.status, anon: anon.status });
 } finally {
   await db.$disconnect();
