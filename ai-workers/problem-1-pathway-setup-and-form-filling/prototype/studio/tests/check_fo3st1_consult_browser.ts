@@ -40,8 +40,9 @@ const staff = async (name: string, role: string) => {
   return s;
 };
 const OW = await staff("Owner", "OWNER"), HO = await staff("Host", "CASE_OFFICER"), RO = await staff("Reader", "READ_ONLY");
-const free = await db.foConsultationType.create({ data: { firmId: M.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [HO.id, OW.id], minutes: 45, windowDays: 400, minNoticeMinutes: 0 } });
-const follow = await db.foConsultationType.create({ data: { firmId: M.id, slug: "follow", name: "Follow-up", purpose: "FOLLOW_UP", modes: ["VIDEO"], hostStaffIds: [HO.id], minutes: 30, windowDays: 400, minNoticeMinutes: 0 } });
+// Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+const free = await db.foConsultationType.create({ data: { requireAgreement: false, firmId: M.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [HO.id, OW.id], minutes: 45, windowDays: 400, minNoticeMinutes: 0 } });
+const follow = await db.foConsultationType.create({ data: { requireAgreement: false, firmId: M.id, slug: "follow", name: "Follow-up", purpose: "FOLLOW_UP", modes: ["VIDEO"], hostStaffIds: [HO.id], minutes: 30, windowDays: 400, minNoticeMinutes: 0 } });
 const service = await db.foService.create({ data: { firmId: M.id, label: "Sample: Express Entry assessment", sortOrder: 1, createdBy: "seed:consult-test" } });   // a firm's own service (no combination)
 const client = async (given: string, interested: string | null = null) => {
   const p = await db.foPerson.create({ data: { firmId: M.id, givenNames: given, familyName: "Sample", email: `${given.toLowerCase()}@client.example`, createdBy: "seed:consult-test" } });
