@@ -88,3 +88,44 @@ PR #3497, head `8d1b712a5225f5ab2493c52cc3730e9be5699e86` (branch `claude/runtim
 * **A newer commit:** `1c3b1ae00`, the breaker's fixes (one transaction per notification, no 10 000 cap, only firms with a number set), was pushed on top while I wrote this review. **It is not reviewed here.** The verdict holds for `8d1b712a5` only, and the next round must re-check M1 on the new head.
 
 Verdict: Changes 8d1b712a5225f5ab2493c52cc3730e9be5699e86
+
+## Round 2 (diff only: `8d1b712a5..74fb5af8ce8985a7c0675956d6d2f551a5ad36ac`)
+Scope: the breaker's fix `1c3b1ae00` and the review fixes `74fb5af8c`.
+
+**Verdict: Ship** (`Reviewer: Approve 74fb5af8ce8985a7c0675956d6d2f551a5ad36ac`). No Blocker or Major is open.
+
+**Ran:** `check_csd6_reads_keep.ts` from a clean worktree at `74fb5af8c` against :4494 → **49/49**, exit 0.
+
+**Mutation check (each mutation in the worktree only, then restored):**
+| Rule removed | Result | The check that failed |
+|---|---|---|
+| The scope filter (`const seen = cases`) | 48/49 | "a holder of the dispose key who cannot see the case … is never told" |
+| `s.status = 'ACTIVE'` | 48/49 | "the same person suspended … is told nothing" |
+| The stale-week guard | 48/49 | "a job for an earlier week … tells nobody" |
+
+* The zone rule's new check (the 21:30 local close, `check_csd6_reads_keep.ts:167`) goes through the server's HTTP list. I did not rebuild the server, so I did not run that mutation.
+* By reading: a version that counts UTC dates dates that close the next day, so it passes tomorrow and is not listed, and the check fails.
+* The 29 February check runs `pastKeepPeriod` in the test process with a given today: listed on 2026-02-28, not on 2026-02-27.
+
+**Fixes, judged:**
+* **M1: fixed.** During the 14-day run, CASE_MANAGER holds the dispose key with own cases only (in a `try/finally`) and is never told. With `view.all` it is told (the pass side). Proved by the mutation above.
+* **m1: fixed.** The 21:30 local close is listed with the firm's close date; the 29 February case gives a pass and a fail.
+* **m2: fixed.** Suspended staff get nothing; a late week tells nobody.
+* **m7: fixed** by the breaker's commit. There is no cap (keyset pages of 500, `allPast`), and the job no longer reads document ids.
+* **m8: fixed.** `try/finally` around every role change; the card has a part-2 `Tests:` line.
+* **Breaker M1 (one transaction per notification): correct.** A failing notify is logged, the others commit, and the job then throws so the runner retries. The retry re-marks already-sent items unread (the port's upsert), which is acceptable and stated. The flaky-port check proves the others are still sent and the job fails.
+* **Breaker m5 (the weekly query joins `platform_firm_setting`):** correct. That table has forced RLS. Under the bypass use the pool runs as `xr_staff_bypass` (BYPASSRLS), and that role has SELECT on it. Run as `xr_staff_bypass` on the copy, the query returns the Sample firm only. The solo firm has a number but no closed case.
+
+**Still open (Minors, not blocking):**
+* m3: keep-list paging is untested. It is now stated in the test header.
+* m4-m6: questions for the Lead in the PR (the route path, the per-case item and the bell's words, the follow-up row for the screen).
+
+**New Minor:**
+* **n1:** `allPast` pages through `pastKeepPeriod`, which re-checks the cursor. If a listed case is reopened between two pages of the same run, the next page throws a 400 inside the job and the run fails. The runner retries, and the retry succeeds. That costs only a retry. To avoid it, skip the cursor's membership check when paging inside the job.
+* The new test also leaves `kOpen` closed on 2020-02-29 on the copy. That is harmless, since each run makes its own cases.
+
+**Not checked:**
+* The full `ci` on this head: `module-cards` shows "cancelled" (a superseded run), and the rest is skipped until the label.
+* `eb97fe579` (a break report only) came after this head. I did not review it.
+
+Verdict: Approve 74fb5af8ce8985a7c0675956d6d2f551a5ad36ac
