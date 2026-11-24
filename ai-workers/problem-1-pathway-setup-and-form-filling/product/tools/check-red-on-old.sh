@@ -40,6 +40,7 @@ Red on old code: because I say so
 ```'; do rep check_a.ts "$b"; ok "fail: '$(head -1 <<<"$b")' gives no reason" "$(has 'would pass without the change')" "$o"; done
 for w in 'exit 1: Error [ERR_MODULE_NOT_FOUND]: Cannot find module ../src/y' 'exit 1: SyntaxError: x does not provide an export named y'; do tab "| check_n.ts | FAIL | 1 s | $w |"; rep check_n.ts; ok "a suite that cannot load there is said apart" "$([ "$(has '0 red, 1 cannot load')" = 1 ] && has 'check_n.ts: red: cannot load there')" "$o"; done
 tab "$G"; rep 'check_a.ts check_gone.ts'; ok "a suite with no row is not judged, never red or green" "$(has '0 red, 0 cannot load, 1 pass, 1 not judged, of 2')" "$o"
+tab '| check_n.ts | timed out | 1200 s | no end |'; rep check_n.ts; ok "a suite that hangs on the old code is not a pass" "$(has '1 red, 0 cannot load, 0 pass')" "$o"
 tab '| check_n.ts | quarantined | 0 s | x |'; rep check_n.ts; ok "fail: a quarantined suite judges nothing: a warning" "$([ "$(has 'nothing was judged')" = 1 ] && has '1 not judged')" "$o"
 tab '| check_n.ts | FAIL | 9 s | exit 1: FAIL  ::error title=x::y ##[stop] <b> |'; rep check_n.ts; ok "no workflow command or markup can be made of a row" "$(! grep -qE '::error|##\[' <<<"$o" && ! grep -q '<b>' "$T/sum" && echo 1)" "$o"
 o=$(echo | python3 -I "$PY" report --suites x --out "$T/nope" 2>&1; echo "rc=$?"); ok "fail: a table that cannot be read is said, exit 2" "$([ "$(has 'not read')" = 1 ] && has rc=2)" "$o"
