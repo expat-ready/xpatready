@@ -385,7 +385,7 @@ HANG fn|product/tools/hang-report.py|s/fn + " " if NAME.fullmatch(fn) else ""/fn
 HANG sym|product/tools/hang-report.py|s/^SYMBOL = .*/SYMBOL = re.compile(r".+")/|check-hang-report.sh
 HANG kind|product/tools/hang-report.py|s/if re.fullmatch(r"\[a-z_\]{1,20}", kind):/if True:/|check-hang-report.sh
 HANG ask|product/tools/run-suites.sh|s/ --report-exclude-env --report-exclude-network --report-directory/ --report-directory/|check-hang-report.sh
-HANG wired|product/tools/run-suites.sh|s/askreport "\$pid" "\$rd"; hangdump/hangdump/|check-hang-report.sh
+HANG wired|product/tools/run-suites.sh|s/; askreport "\$pid" "\$rd" ) </ ) </|check-hang-report.sh
 HANG raw|product/tools/run-suites.sh|s/ rm -rf "\${rd:?}"; }/ }/|check-hang-report.sh
 HANG catch|product/tools/run-suites.sh|s/ \&\& \[ \$(( 16#.* -ne 0 \]//;s/^    \[ "\$(basename .*//;s/^    { tr .*//|check-hang-report.sh
 31 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$fc")))/true/|check-founder-click-guard.sh

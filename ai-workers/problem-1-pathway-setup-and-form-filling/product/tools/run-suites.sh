@@ -318,7 +318,7 @@ guarded() {  # guarded <log> <command...>: the exit code is timeout's (124 timed
   : > "$log"; env ${opt:+"NODE_OPTIONS=$opt"} "$TIMEOUT" -k "$KILL_AFTER" "$LIMIT" "$@" < /dev/null >> "$log" 2>&1 &
   pid=$!
   ( s=""; trap '[ -n "$s" ] && kill "$s" 2>/dev/null; exit 0' TERM
-    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; askreport "$pid" "$rd"; hangdump "$pid" >> "$log" ) < /dev/null &
+    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; hangdump "$pid" >> "$log"; askreport "$pid" "$rd" ) < /dev/null &
   w=$!
   wait "$pid"; code=$?
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
