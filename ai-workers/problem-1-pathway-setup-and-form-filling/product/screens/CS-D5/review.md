@@ -114,3 +114,21 @@ Reviewer, 24 Nov 2026, P-277. Read: `git diff cc09ef692..944c7290f -- prototype/
 **Verdict: Block** (the skill's "Ship after fixes"). Fix list: R2-1 (tooltips on Previous and Next). After that, Approve on the next head, provided the Lead has ruled on Question 1 (BR-8) and Question 2 (B1) on the PR.
 
 Reviewer: Changes 944c7290f9e5502f9472581cb9a46e7c5a341e40
+
+## Round 3 (dda380e1f, diff only)
+Reviewer, 24 Nov 2026. Read: `git diff 944c7290f..dda380e1f -- prototype/studio` (3 files, +55/−9), plus the Lead's rulings 1 and 2 on the PR. Ran on :4497 (db `xr_studio_csd5_rv3`): `check_csd5_preview_browser.ts` **53/53** (screenshot restored), plus my own probe (scratchpad, not committed). Journey score **9/10** (pass): `journey-test-reviewer-2026-11-24.md` › Round 3.
+
+* R2-1 **fixed**. Previous and Next sit in `Tip` around a span (`document-preview.tsx:152,154`). Next shows its tip on hover and on keyboard focus. The disabled Previous shows its tip on hover. There is a new hover check.
+* B1 **fixed**, within the founder's allowance. `vite.config.ts` copies `cmaps/`, `standard_fonts/`, `iccs/` and five files from `wasm/` into `dist/pdfjs/`, and never `quickjs-eval.*`. `getDocument` gets `wasmUrl`, `cMapUrl` with `cMapPacked`, `standardFontDataUrl` and `iccUrl`. The `.wasm` files are served as `application/wasm`. `quickjs-eval.wasm` returns only the app page (text/html), and the check tells the two apart by the wasm magic bytes. The check can fail: with `/pdfjs/**` answered 404, the CCITT page draws 0 dark pixels (87,896 when served).
+* The round-2 Shoulds are **fixed**: `Math.floor` (a 33,549,430 px canvas, under 2^25) and the comment back on `CSS_PER_PT`.
+* BR-8 (Lead ruling 1) and the size count (ruling 3) are settled on the PR. R1.68 must not claim BR-8.
+
+**Should (not blocking):**
+* If the decoder files fail to load, the page is drawn blank and the state still says "ready". PDF.js only logs "Unable to decode image". Showing "could not be drawn" would make this honest.
+* The wasm binaries go out without their licence files (`wasm/LICENSE_JBIG2`, `LICENSE_OPENJPEG` and `LICENSE_QCMS` are BSD/MIT, and need the notice when redistributed). Copy them into `dist/pdfjs/wasm/` as well.
+* The Vite dev server (:4401) does not serve `/pdfjs/` (`apply: "build"`), so scans draw blank in dev mode only. Note it in the comment.
+* m5, m7 and m8 from round 2 are still open. Fix them, or name them on a follow-up row.
+
+**Verdict: Approve** (no open Blocker or Major).
+
+Reviewer: Approve dda380e1fa0cda409657ed495da3401b9feb81ad

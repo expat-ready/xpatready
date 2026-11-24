@@ -80,3 +80,18 @@ Same role, :4495 (db `xr_studio_csd5_rv2`), headless Chromium at DPR 2, US$0. Bu
 | **Total** | 7 | **8 / 10** | **Pass** (8 or more, no 0). |
 
 **Not tested:** a visible browser, a screen reader, an intended user's unaided walk (D17 and D20 stay with the founder).
+
+## Round 3 (dda380e1f): re-walk of B1 and R2-1
+Same role, :4497 (db `xr_studio_csd5_rv3`), headless Chromium, US$0. Builder's check 53/53, plus my probe (scratchpad).
+* B1 scan: **held**. A CCITT G4 scan draws 87,896 dark pixels; with `/pdfjs/**` answered 404 it draws 0 and the panel still says "ready" (so the check can fail). `jbig2.wasm` is served as `application/wasm`. `quickjs-eval.*` is not served (only the app page comes back).
+* R2-1 tooltips: **held**. Next shows "Next page" on hover and on keyboard focus. The disabled Previous shows its tip on hover. axe finds nothing serious in the panel.
+* J10 Accept: still missing, by the Lead's ruling (it joins with CS-D1 part 2).
+
+| Criterion | R2 | R3 | Why |
+|---|---|---|---|
+| Task completed | ½ | ½ | Scans now draw. The decision step is still missing (BR-8, deferred by the Lead). |
+| Next step obvious | ½ | ½ | No Accept after reading. |
+| Feedback and state | ½ | 1 | Scans draw. A blank "ready" page now happens only if the decoder files are missing from the build, and the check catches that. |
+| Accessibility and screen sizes | ½ | 1 | Previous and Next have tips on hover and on focus. |
+| Other six | 6 | 6 | Unchanged. |
+| **Total** | 8 | **9 / 10** | **Pass** (8 or more, no 0). |
