@@ -23,6 +23,7 @@ const Agreement = z.object({
   signatory: z.object({ name: z.string().nullable(), note: z.string().nullable() }).optional(),
   signedCopy: z.object({ sha256: z.string(), storedAt: z.string() }).nullable().optional(),
   meetingAt: z.string().nullable().optional(),
+  why: z.string().optional(),   // QA-772: none sent yet on a type that needs one: held, and why (the server's words)
 });
 /** Still waiting for a signature (the server's gate.ts: these and an ended one both hold until a signed one). */
 const LIVE = ["SENT", "VIEWED", "CLIENT_SIGNED"];
@@ -40,12 +41,12 @@ export function BookingAgreement({ bookingId, bookingStatus }: { bookingId: stri
   return (
     <section aria-labelledby="fo-agreement" className="border-t border-border pt-3" data-agreement={a.status}>
       <h3 id="fo-agreement" className="font-semibold">Consultation agreement</h3>
-      <p className="flex flex-wrap items-center gap-2"><Pill tone={a.signed ? "ok" : a.status === "NONE" || ended ? "neutral" : "warn"}>{a.words}</Pill>
+      <p className="flex flex-wrap items-center gap-2"><Pill tone={a.signed ? "ok" : (a.status === "NONE" && !a.why) || ended ? "neutral" : "warn"}>{a.words}</Pill>
         {a.signed && a.signedCopy ? <span className="text-text-muted">Signed copy stored {day(a.signedCopy.storedAt)}</span> : null}
         {!a.signed && a.clientSignedAt ? <span className="text-text-muted">The client signed {day(a.clientSignedAt)}: the firm signs next.</span> : null}</p>
       {held && !ended ? <p className="mt-1 text-text-muted" data-agreement-why>The consultation cannot start until it is signed: Attended and the consult record wait. The client signs from the link in their email, then {a.signatory?.name ?? "the firm"} signs. {next}</p> : null}
       {ended ? <p className="mt-1 text-text-muted" data-agreement-ended>This agreement was declined, withdrawn, has expired or was put back to draft, so it can no longer be signed.{held ? <> The consultation still cannot start.{sendsFresh(bookingStatus) ? " While the meeting is ahead, a new agreement is emailed to the client." : ""} {next}</> : null}</p> : null}
-      {a.status === "NONE" ? <p className="mt-1 text-text-muted">No agreement was sent for this booking (the firm has no active consultation agreement template, the person has no email, nobody can sign for the firm, or sending has not succeeded yet).</p> : null}
+      {a.status === "NONE" ? <p className="mt-1 text-text-muted" data-agreement-none>{a.why ?? "No agreement was sent for this booking (the firm has no active consultation agreement template, the person has no email, nobody can sign for the firm, or sending has not succeeded yet)."}</p> : null}
       {a.signatory?.note ? <p className="mt-1 text-text-muted">{a.signatory.note}</p> : null}
     </section>
   );

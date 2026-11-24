@@ -12,9 +12,10 @@
 // email check, break M2), or none was and it was published after the person (privacy notice) or the firm (firm terms)
 // joined. A version already current when a person joined and never accepted is not asked by this row (sign-up accepts
 // it for the Owner, PF-5); see the PR's question on invited staff.
-// "Current" is the newest version of each kind published at or before now (the same rule as PF-5's currentTerms).
+// "Current" is the newest version of each kind published at or before now: one rule, `currentVersions` below, which
+// sign-up (PF-5's currentTerms) and this gate both read (PF-5tv).
 import { Inject, Injectable } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import { Db } from "../../core.ts";
@@ -36,6 +37,15 @@ export const SAMPLE_NOTE = "Wording Sample. Unconfirmed: no counsel.";
 type Row = { id: string; kind: TermsKind; version: string; url: string; published_at: Date };
 const view = (r: Row) => ({ id: r.id, kind: r.kind, version: r.version, url: r.url, publishedAt: r.published_at.toISOString() });
 
+/** PF-5tv: the one rule for "the current terms", read by sign-up and by the gate alike. The newest version of each kind
+ *  published at or before `now`, ordered `published_at desc, version desc, id desc`: the last key makes the order total,
+ *  so two versions published at the same instant are never ordered by chance (#1957 point 3: the two reads disagreed). */
+const currentSql = (now: number) => Prisma.sql`select distinct on (kind) id, kind::text as kind, version, url, published_at from platform_terms_version
+  where published_at <= ${new Date(now)} order by kind, published_at desc, version desc, id desc`;
+export function currentVersions(q: Pick<Tx, "$queryRaw">, now: number): Promise<Row[]> {
+  return q.$queryRaw<Row[]>`select id::text as id, kind, version, url, published_at from (${currentSql(now)}) c order by kind`;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const AcceptBody = z.strictObject({ versionIds: z.array(z.string().regex(UUID, "versionIds: version ids (uuid)")).min(1, "versionIds: at least one version").max(10, "versionIds: at most 10") });
 const isOwner = (s: StaffContext) => s.roles.includes("OWNER");
@@ -45,16 +55,12 @@ export class PlatformTerms implements TermsGate {
   constructor(@Inject(Db) private readonly db: Db, @Inject(PlatformClock) private readonly clock: PlatformClock) {}
 
   /** The current version of each kind. */
-  private async current(q: Q): Promise<Row[]> {
-    return q.$queryRaw<Row[]>`select distinct on (kind) id::text as id, kind::text as kind, version, url, published_at from platform_terms_version
-      where published_at <= ${new Date(this.clock.now())} order by kind, published_at desc, version desc`;
-  }
+  private current(q: Q): Promise<Row[]> { return currentVersions(q, this.clock.now()); }
 
   /** The versions this person must accept now: one read (the guard's per-request check and GET /me/terms). */
   async pending(s: StaffContext, q: Q = this.db): Promise<Row[]> {
     const firmId = firmScope(s.firmId).firmId;
-    return q.$queryRaw<Row[]>`with cur as (select distinct on (kind) id, kind::text as kind, version, url, published_at from platform_terms_version
-        where published_at <= ${new Date(this.clock.now())} order by kind, published_at desc, version desc)
+    return q.$queryRaw<Row[]>`with cur as (${currentSql(this.clock.now())})
       select c.id::text as id, c.kind, c.version, c.url, c.published_at from cur c
         join platform_staff p on p.id = ${s.staffId}::uuid and p.firm_id = ${firmId}::uuid
         join platform_firm f on f.id = p.firm_id

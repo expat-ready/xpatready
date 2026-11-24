@@ -17,6 +17,9 @@
 //   B7  the panel's next step on a No-show booking (review r2-2)   B8  NO_TEMPLATE backs off (P2R2-3)
 //   B9  the reminder reads the type's switch (review r2-1)   B10  any signed agreement lifts the hold (P2R3-1)
 //   B11 one fresh agreement under concurrent sends; a draft counts as ended (review M2)   B12 the cap at each check (m3-2)
+//   N1-N4 (QA-772; Lead 22's ruling, 24 Nov): a type that needs it and has none yet is held, the refusal naming the cause
+//       (no client email, no active template, nobody licensed to sign, a send still being made); removing the cause lets
+//       the catch-up send, and the hold then names the agreement. N5: a No-show booking with none; a type needing none
 //   tsx studio/tests/check_fo3c2_consultation_agreement.ts
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -54,7 +57,7 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, opt
 
 const { ConsultationAgreementService, WORDS } = await import("../api/src/front-office/booking/consultation-agreement/service.ts");
 const { AgreementPoll } = await import("../api/src/front-office/booking/consultation-agreement/live.ts");
-const { HOLD_WORDS, HOLD_WORDS_INACTIVE, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
+const { CAUSE_WORDS, NEXT_WORDS, HOLD_WORDS, HOLD_WORDS_INACTIVE, needsAgreement } = await import("../api/src/front-office/booking/consultation-agreement/gate.ts");
 const { agreementNextStep, sendsFresh, NEXT_CANCELLED, NEXT_COMPLETED, NEXT_NO_SHOW, NEXT_RESCHEDULE } = await import("../contracts/consultation-agreement-words.ts");
 const { BookingService } = await import("../api/src/front-office/booking/service.ts");
 const { ConsultRecordService } = await import("../api/src/front-office/booking/consult/service.ts");
@@ -454,6 +457,69 @@ try {
   await clock.set(today);
   ok("FO-3c2 B9 pass (review r2-1): a type switched off after its agreement was sent gets no 24-hour reminder", s13.sent && !off13, { s13, off13 });
   ok("FO-3c2 B9 fail: a type still on gets its reminder", s12.sent && on12, { s12, on12 });
+
+  // ------------------------------------------------------- QA-772: needs one, none yet (Lead 22's ruling, 24 Nov)
+  // Each booking is over (its attendance question is open) and was never sent an agreement (no event read). Attended is
+  // refused naming the cause and the way out (on old code it was saved). The way out is the real one (break QA772-1): the
+  // cause fixed, the meeting rescheduled to a later time, and the catch-up, at today's clock, sends the agreement.
+  const att = (c: StaffContext, b: { id: string }) => answer(() => bookings.recordAttendance(c, b.id, { outcome: "COMPLETED" }));
+  const causesOf = (r: { body: string }) => { try { return (JSON.parse(r.body).causes ?? []).join(","); } catch { return "?"; } };
+  let later = 12 * 24;   // hours ahead, a fresh time for each reschedule
+  const sendAfter = async (c: StaffContext, b: { id: string }) => {
+    later += 3;
+    const at = new Date(clock.now().getTime() + later * HOUR).toISOString(), go = (w?: string[]) => answer(() => bookings.staffReschedule(c, b.id, { startsAt: at, timeZone: "America/Toronto", ...(w ? { bookAnyway: true, acceptedWarnings: w } : {}) } as never));
+    let moved = await go();
+    if (moved.status === 409 && /"WARNINGS"/.test(moved.body)) moved = await go((JSON.parse(moved.body).warnings as { code: string }[]).map((w) => w.code));   // "Book anyway?" answered yes, as a person does
+    await svc.catchUp((_f, fn) => fn());
+    return { moved: moved.status, n: agreementsOf(b.id), why: moved.status === 200 ? "" : moved.body.slice(0, 300) };
+  };
+  const heldOn = async (c: StaffContext, bookingId: string) => (await svc.forBooking(c, bookingId)).status === "SENT";
+  // N1: the client has no email.
+  const noe = await db.foPerson.create({ data: { firmId: A, givenNames: "Noe", familyName: "Sample", createdBy: "seed:qa772" } });
+  const n1 = await book(A, free, R.staffId, noe, -180);
+  const n1a = await att(R, n1), n1panel = await svc.forBooking(R, n1.id) as { why?: string; causes?: string[] };
+  ok("FO-3c2 N1 fail-before (QA-772): no client email: Attended is refused (409) naming the cause and the way out; the panel says the same; nothing is saved",
+    n1a.status === 409 && /AGREEMENT_NOT_SIGNED/.test(n1a.body) && causesOf(n1a) === "NO_CLIENT_EMAIL" && n1a.body.includes(CAUSE_WORDS.NO_CLIENT_EMAIL) && n1a.body.includes(NEXT_WORDS.started) && !n1a.body.includes(NEXT_WORDS.ahead) && n1panel.why?.includes(CAUSE_WORDS.NO_CLIENT_EMAIL) === true && statusOf(n1.id) === "SCHEDULED", { n1a, n1panel });
+  await db.foPerson.update({ where: { id: noe.id }, data: { email: "noe@client.example" } });
+  const n1cu = await svc.catchUp((_f, fn) => fn()), n1c = await att(R, n1);
+  ok("FO-3c2 N1 started (break QA772-1): with only the email added, a meeting already started is not sent one, and the refusal says to reschedule (it promises no send)",
+    agreementsOf(n1.id) === 0 && n1c.status === 409 && causesOf(n1c) === "SENDING" && n1c.body.includes(NEXT_WORDS.startedSending) && !/within a minute|being sent now/.test(n1c.body), { n1cu, n1c });
+  const n1sent = await sendAfter(R, n1);
+  ok("FO-3c2 N1 pass: rescheduled to a later time, the catch-up sends the agreement (the booking now waits on it, sent, not signed)", n1sent.moved === 200 && n1sent.n === 1 && await heldOn(R, n1.id), n1sent);
+  // N2: the firm has no active consultation template (firm B's switched off).
+  const n2 = await book(B, await type(B, "qa772-solo", [S.staffId]), S.staffId, await person(B, "Tam"), -180);
+  sql(`set session_replication_role = replica; update fo_retainer_template set active = false where firm_id = '${B}' and kind = 'CONSULTATION'`);
+  const n2a = await att(S, n2);
+  sql(`set session_replication_role = replica; update fo_retainer_template set active = true where firm_id = '${B}' and kind = 'CONSULTATION'`);
+  ok("FO-3c2 N2 fail-before (QA-772): no active template: Attended is refused naming it (Templates)",
+    n2a.status === 409 && causesOf(n2a) === "NO_TEMPLATE" && n2a.body.includes(CAUSE_WORDS.NO_TEMPLATE) && statusOf(n2.id) === "SCHEDULED", n2a);
+  const n2sent = await sendAfter(S, n2);
+  ok("FO-3c2 N2 pass: with the template on again and the meeting rescheduled, the catch-up sends it", n2sent.moved === 200 && n2sent.n === 1 && await heldOn(S, n2.id), n2sent);
+  // N3: nobody can sign for the firm (firm B's staff suspended: no licensed host, no representative of record).
+  const n3 = await book(B, await type(B, "qa772-solo-2", [S.staffId]), S.staffId, await person(B, "Uma"), -180);
+  const staffB = sql(`select string_agg(id::text || '=' || status::text, ',') from platform_staff where firm_id = '${B}'`);
+  sql(`set session_replication_role = replica; update platform_staff set status = 'SUSPENDED' where firm_id = '${B}'`);
+  const n3a = await att(S, n3);
+  for (const kv of staffB.split(",")) { const [id, st] = kv.split("="); sql(`set session_replication_role = replica; update platform_staff set status = '${st}' where id = '${id}'`); }
+  ok("FO-3c2 N3 fail-before (QA-772): nobody licensed to sign: Attended is refused naming it",
+    n3a.status === 409 && causesOf(n3a) === "NO_LICENSED" && n3a.body.includes(CAUSE_WORDS.NO_LICENSED), n3a);
+  const n3sent = await sendAfter(S, n3);
+  ok("FO-3c2 N3 pass: with the signer active again and the meeting rescheduled, the catch-up sends it", n3sent.moved === 200 && n3sent.n === 1 && await heldOn(S, n3.id), n3sent);
+  // N4: nothing stops the send, but none has been made yet (the event not read, or a send backing off).
+  const n4 = await book(A, free, R.staffId, pat, -180);
+  const n4a = await att(R, n4);
+  ok("FO-3c2 N4 fail-before (QA-772): nothing missing but none sent before the meeting started: Attended is refused, saying to reschedule (no promise of a send)",
+    n4a.status === 409 && causesOf(n4a) === "SENDING" && n4a.body.includes(NEXT_WORDS.startedSending) && agreementsOf(n4.id) === 0, n4a);
+  const n4sent = await sendAfter(R, n4);
+  ok("FO-3c2 N4 pass: rescheduled to a later time, the catch-up sends it", n4sent.moved === 200 && n4sent.n === 1 && await heldOn(R, n4.id), n4sent);
+  // N5: a No-show booking with none is told to make a new booking; a type that needs none is never held (unchanged).
+  const n5 = await book(A, free, R.staffId, noe, -180), n5f = await book(A, follow, R.staffId, noe, -180);
+  const n5ns = await answer(() => bookings.recordAttendance(R, n5.id, { outcome: "NO_SHOW" })), n5a = await att(R, n5), n5b = await att(R, n5f);
+  const n5c = await book(A, free, R.staffId, noe, -180);
+  await db.foBooking.update({ where: { id: n5c.id }, data: { status: "CANCELLED" } });
+  const n5panel = await svc.forBooking(R, n5c.id) as { why?: string };
+  ok("FO-3c2 N5 (QA-772; break QA772-4): No-show stays open; Attended on that No-show booking with none says to make a new booking (cause NOT_SCHEDULED); a follow-up with none is saved; a cancelled booking's panel shows no hold",
+    n5ns.status === 200 && n5a.status === 409 && causesOf(n5a) === "NOT_SCHEDULED" && n5a.body.includes(NEXT_WORDS.inactive) && !/reschedule/.test(n5a.body) && n5b.status === 200 && statusOf(n5f.id) === "COMPLETED" && n5panel.why === undefined, { n5ns: n5ns.status, n5a, n5b: n5b.status, n5panel });
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
