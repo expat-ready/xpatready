@@ -302,3 +302,23 @@ Three suites at once (K=3), three repeats, one 4-CPU GitHub machine a shard, at 
 * **Shards that cannot pack:** shard 20 as dealt. Red once in three: 11, 15 (two suites), 16, 18, 21, 22. Never red in three: 1-10, 12-14, 17, 19, 23, 24 (3's only red was my checkout).
 * **Untested:** K=2; --retry with packing; a serial run at f33cbe803 without --retry; regression, pack and guards jobs; a full run's wall time; larger servers; whether a packed shard hides a real fault.
 * **Reading:** not ready to go live at K=3. Next cheapest step, for the Lead to decide: K=2 on shards 11, 15, 16, 18, 20, 21, 22 (three repeats, about 21 jobs), with check_pf4_identity moved to the serial tail.
+
+# Two suites at once on seven shards, with a serial control (Lead O 2, 24 Nov 06:05 IST). Measurement only; nothing goes live
+Main f33cbe803, no --retry, check_pf4_identity in the serial tail, at most 2 machines, two shards a push, each push sent when no full run or batch job had waited over 2 min. 16 runs, 23 Nov 23:48 to 24 Nov 06:04 IST: 45236767041 45242108165 45246457104 45252972717 (K=2 r1), 45255826840 45260274619 45266948000 45271788593 (serial), 45275462688 45278701492 45282225717 45285165072 (K=2 r2), 45287601574 45290830343 45293444077 45296127864 (K=2 r3). 28 of 28 jobs have totals. A batch that began to wait in the middle of a push was not looked for.
+
+| Shard | Serial, one run | K=2 r1 | r2 | r3 |
+|---|---|---|---|---|
+| 11 | 17.9 | 13.1 | 14.1 | 14.1 |
+| 15 | 20.1 | 13.4 | 14.4 | 16.8 |
+| 16 | 19.6 | 13.1 red | 9.1 | 12.8 |
+| 18 | 22.8 | 15.0 | 15.7 red | 15.6 |
+| 20 | 23.4 | 11.2 red | 12.6 red | 13.6 |
+| 21 | 17.1 | 12.2 | 11.0 | 15.2 |
+| 22 | 15.6 | 12.7 | 12.1 | 12.6 |
+| **All (minutes)** | **136.5** | 90.7 | 89.0 | 100.7 |
+
+* **Time:** K=2 mean 93.5 against 136.5 serial, 1.46 times faster (K=3 on the same seven shards: about 75.6, 1.81 times, with pf4 packed then). Most memory 5.69 GB, no swap, processor 2.1 to 2.6 of 4.
+* **Reds at K=2: 4 of 21 jobs, three suites, each green alone once:** check_c69_page_browser (shard 16 r1, focus after Mark reviewed), check_c83_review_browser (shard 20 r1 and r2, timeouts), check_forms_channels_browser (shard 18 r2). Repeat 3 had none. Serial control: 0 of 7 jobs red.
+* **The same three suites were red at K=3** (c69 and c83 in r3, forms_channels in r2). The other K=3 reds (fo8, c116, w1_qa51, c76_ready, cost_override) were not red in three runs at K=2; pf4_identity was green in the serial tail every time.
+* **What this does not show:** one serial run a shard cannot show a rare flake, and 0 of 7 against 4 of 21 is too few to prove packing causes the three. c69 and c83 also appear among known batch failures read earlier (name matches, not measured rates).
+* **Reading:** K=2 is also not green as it stands. If pursued, put c69_page, c83_review and forms_channels in the serial tail beside pf4_identity and run all 24 shards at K=2; a saving of about a third of suite minutes is the most these seven shards suggest. Not run, not proposed for live.
