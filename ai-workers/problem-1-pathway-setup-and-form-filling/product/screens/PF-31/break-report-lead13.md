@@ -215,3 +215,35 @@ Diff only. My own offices BrkA–BrkD 58rc (sample-solo, user-S); user-T as the 
   - Read only, not walked: no Studio fields on this copy.
 
 Breaker: Block 13621c4934697cc2721a1f336264280f68a6f854
+
+## Re-break of F1 on 6c1d1f232, copy :4747 (xr_studio_fin2)
+
+Diff only. user-S (sample-solo) and Studio as user-A. I changed user-S's licence number for one walk and put it back by API (R000001, read back). Nothing fixed, nothing committed. **Verdict: Approve.** The Blocker is gone. Two Minors on the new fallback.
+
+### What held
+- **F1 is fixed.**
+  - Profile and Licence open, then Alt+PageDown four times, 2.6 s apart: no page error, no white page, no failed tab.
+  - No-switch variant: `/account`, wait 2.6 s, Ctrl-click Licence, show Profile. Profile still lists "Roles: Owner, Case manager" and the licence.
+  - Reverse order (Licence, wait, Profile, two switches): clean.
+  - Licence now reads `["pf","account",token,"licence"]` (licence-page.tsx:21-22).
+- **No other shared key with two shapes.**
+  - Every literal `useQuery` / `useInfiniteQuery` key used in more than one file was scanned:
+    - `["pf","staff","list",token]` (team, licences, booking types, availability);
+    - `["pf","complaints","handlers"]` (two drawers);
+    - `["fo","booking-timings"]` (two booking-timings pages).
+  - Each pair uses the same schema from the same contract file.
+  - Studio `useApi` keys with the same key use the same address and keep the raw JSON.
+  - The `setQueryData` writers write the reader's own shape.
+- **A licence saved in one tab shows in My account in another.** Save R000777 in the Licence tab, then show Profile: "rcic · CICC · R000777". A second save (R000888), with Profile shown within 0.4 s: R000888. The exact invalidation of `["pf","account",token]` makes the open Profile read it again.
+- **One tab can no longer take the app down.**
+  - A Studio Fields tab was forced to crash (its list answered `{"broken":true}`) while hidden. `#root` stayed, Programs kept working, and Fields showed "This page could not be shown" only when brought forward.
+  - Back returned to Programs with its strip.
+  - Everything rendered for a tab now sits inside its boundary: frame, strip, toasts, and portals through the React tree. So a render or effect error in one page stays in that tab. Event-handler errors never unmount anything.
+
+### Minor
+- **G1. The failed tab is a dead end inside the app.** The fallback (workspace.tsx:276-279) draws a bare `main` with no frame, strip or menu. So `[data-workspace]` is missing, and Alt+PageDown, Alt+Shift+W and the strip's × all do nothing. The copy says "open another item", but only the browser's Back or a reload leaves the tab.
+- **G2. A failed tab does not recover when shown again after the cause is gone.** The route was restored, and Fields was shown again after 2.5 s: still the fallback. Only a change of the tab's address resets it (`componentDidUpdate` on `at`), or a reload, which the copy does name.
+
+The Studio forms minor goes to the follow-up, as agreed.
+
+Breaker: Approve 6c1d1f2320707c357308de664daa8f879c99843b
