@@ -35,6 +35,13 @@ function RetainerBody({ id }: { id: string }) {
   const r = one.data;
   const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); setSignerId(x.signerPersonId ?? ""); }, []);
   React.useEffect(() => { if (r) reset(r); }, [r, reset]);
+  // QA-778: the version Check and send is saving; once the page shows it, it is checked (its blockers, or the Send panel).
+  const checkOnce = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!r || checkOnce.current !== r.version.n) return;
+    checkOnce.current = null;
+    if (Object.keys(r.blockers).length) document.querySelector<HTMLElement>("[data-error-summary] a")?.focus(); else setSending(true);
+  }, [r]);
   const checklist = useQuery({ enabled: showItems && !!r, queryKey: ["fo", "retainer-template-checklist", r?.template.id], queryFn: async () => TemplateChecklist.parse(await staffApi(`/front-office/retainer-templates/${r!.template.id}/checklist`)) });
   const after = (x: Retainer, text: string) => { qc.setQueryData(key, x); void qc.invalidateQueries({ queryKey: ["fo", "retainers", "of"] }); setEditing(false); setError(null); setWarnings(x.warnings ?? []); toast.push({ tone: "ok", text }); };
   const fail = (e: unknown) => {
@@ -69,16 +76,26 @@ function RetainerBody({ id }: { id: string }) {
   const form = mayEdit && (draft || editing), next = r.version.n + 1;
   const changed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && !!signerId && signerId !== (r.signerPersonId ?? ""));   // an empty pick is no change (break re-check)
   const company = r.subject === "COMPANY", blocked = new Set([...(r.blockers["client.name"] ? ["client.name"] : []), ...(r.blockers.signerPersonId ? ["signer.name", "signer.email"] : [])]);
-  const submit = (e?: React.FormEvent) => {
-    e?.preventDefault();
+  /** The typed fee rows as the PATCH takes them, or null with the first wrong field said. */
+  const typedFees = (): unknown[] | null => {
     const fees: unknown[] = [];
     for (const [i, x] of rows.entries()) {
-      if (!x.label.trim()) return setError({ field: `fees[${i}].label`, text: `Fee row ${i + 1}: say what it is for.` });
+      if (!x.label.trim()) { setError({ field: `fees[${i}].label`, text: `Fee row ${i + 1}: say what it is for.` }); return null; }
       const c = centsIn(x.amount);
-      if ("refused" in c) return setError({ field: `fees[${i}].amountMinor`, text: `Fee row ${i + 1}: ${c.refused}` });
+      if ("refused" in c) { setError({ field: `fees[${i}].amountMinor`, text: `Fee row ${i + 1}: ${c.refused}` }); return null; }
       fees.push({ label: x.label.trim(), amountMinor: c.cents, when: x.when, dueOn: x.when === "ON_DATE" && x.dueOn ? x.dueOn : null });
     }
-    setError(null); save.mutate(fees);
+    setError(null); return fees;
+  };
+  const submit = (e?: React.FormEvent) => { e?.preventDefault(); const fees = typedFees(); if (fees) save.mutate(fees); };
+  // QA-778: Check and send never drops what was typed. Typed edits are saved first as the next version (each save is a
+  // version, BR-9; a wrong field stops it, nothing saved), then that version is checked: its blockers, or the Send panel.
+  const checkAndSend = () => {
+    if (!changed) return blockers.length ? document.querySelector<HTMLElement>("[data-error-summary] a")?.focus() : setSending(true);
+    const fees = typedFees();
+    if (!fees) return;
+    checkOnce.current = next;
+    save.mutate(fees, { onError: () => { checkOnce.current = null; } });
   };
   const fieldError = (f: string) => (error?.field === f ? error.text : null);
   const blockers = Object.entries(r.blockers), missing = new Set(r.missing);
@@ -170,7 +187,10 @@ function RetainerBody({ id }: { id: string }) {
             <FoldOut className="mt-2" summaryClassName="text-xs text-text-muted" summary="Each item, marked or not"><ul className="mt-2 flex flex-wrap gap-1" aria-label="Code s. 24(3) items">{r.codeChecklist.items.map((i) => <li key={i.letter}><Pill tone={i.present ? "ok" : "neutral"} title={`s. ${i.section}: ${i.present ? "marked" : "not marked"} in this agreement's template`}>({i.letter}) {i.present ? "marked" : "not marked"}</Pill></li>)}</ul></FoldOut>
             <Button variant="link" size="sm" className="mt-1" onClick={() => setShowItems(true)}>See the items and how we check</Button>
           </section> : null}
-          {draft && r.mayChange && can(me, R_KEY.send) ? <Button data-check-and-send onClick={() => (blockers.length ? document.querySelector<HTMLElement>("[data-error-summary] a")?.focus() : setSending(true))}>Check and send</Button> : null}
+          {draft && r.mayChange && can(me, R_KEY.send) ? <>
+            <Button data-check-and-send busy={save.isPending} onClick={checkAndSend}>Check and send</Button>
+            {form && changed ? <p className="-mt-2 text-xs text-text-muted" data-unsaved-hint>You have unsaved changes. Check and send saves them as version {next} first.</p> : null}
+          </> : null}
         </aside>
       </div>
       <Panel open={sending} onOpenChange={setSending} title={`Send to ${client} to sign`} description={`Version ${r.version.n}. Once sent, this version never changes.`}
