@@ -266,8 +266,8 @@ nc=$(python3 -I "$TOOLS/night-checklist.py" 2>&1); echo "$nc"; act=$((act + $(gr
 fresh "night-checklist.py: design/night-checklist.json and origin/main's merge subjects (fetched in step 4)"
 
 # 10c. Lane clean-up list (A348, founder 24 Nov): sessions whose PRs have all merged; the Lead archives, nothing here does.
-lc=$(python3 -I "$TOOLS/lane-cleanup.py" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
-grep -qE '^(lanes to clean up|ACT   lane clean-up)' <<<"$lc" || ACT "lane clean-up list: lane-cleanup.py did not run ($(head -1 <<<"$lc"))"
+cl=$(python3 -I "$TOOLS/lane-cleanup.py" 2>&1); echo "$cl"; act=$((act + $(grep -c '^ACT' <<<"$cl"))); seen "$cl"
+grep -qE '^(lanes to clean up|ACT   lane clean-up)' <<<"$cl" || ACT "lane clean-up list: lane-cleanup.py did not run ($(head -1 <<<"$cl"))"
 fresh "lane-cleanup.py: git worktrees, main's merges (fetched in step 4) and the app view saved in step 10"
 
 # 11. What the founder's board shows (B201, founder A117 16 Nov: the check missed six stuck items his board showed; P-639:
