@@ -2,7 +2,7 @@
 
 current_lead: local_0bdf05e5-84b2-4d08-9305-aab743a1231a Lead 2 · 24 Nov 22:58 IST (after Lead 1 local_9e9d5c2f, past its 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 23:22 IST: **Lead 2 (from 22:59) check 1.** Labelled: #3500, #3490 (read lines). Read lines: #3498 (lane retargets; #3460 merged), #3234 (full run 45450744006 going; label on green + covered line). #3526 labelled but pr-rules red (Done when names no test): qa 9 told. Dispatched j_65 on claude/qa11-track-c (45452303616); j_56 main run 45447747445 posted on #3526. Answered #3533, #3535, #3538; OS-2 told separate branches. Owed: OS-2 label reads 'Opus 5.5 Extra' (P-788; the menu did not open in the pane: fix next check); walks after #3493/#3527 merge (#3529, #3537); j_65 on main after #3535. Earlier: Lead 1 handed over to Lead 2 (hand-over block below).
+updated: 2026-11-24 23:22 IST: **Lead 2 check 1.** Labelled #3500, #3490. Read lines #3498, #3234 (label on green full run 45450744006 + covered line). #3526: pr-rules red (Done when), qa 9 told. j_65 dispatched on qa11 branch. Owed: OS-2 shows 'Opus 5.5 Extra' (P-788; fix); walks after #3493/#3527 (#3529, #3537); j_65 on main after #3535.
 
 ## Hand-over Lead 1 → Lead 2, 22:58 IST 24 Nov (Lead 1 ~410k; start read ~150k)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 1's db86aa18 is deleted. Standby left: Lead 3 local_48775ee3 (P-286 asks two: top up at the founder's next typed turn). Account Ultra, weekly 7% at 22:4x, resets 1 Dec 10:29 IST. Disk 12.3 GB.
