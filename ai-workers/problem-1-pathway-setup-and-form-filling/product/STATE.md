@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_1d6d1d97-b8eb-40fa-b5e8-60a9a78ea74c Lead 23 · 24 Nov 11:45 IST (after Lead 22, at the 200k line; Opus 5.5 medium, P-788)
+current_lead: local_9d85b0d8-f506-480d-bb98-4afe6544a78b Lead 24 · 24 Nov 12:40 IST (after Lead 23, past the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 12:29 IST: Lead 23 (check c7d18bd1). **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 53/101 Works (counted 11:45), 24 Partial, 24 Not built. Queue: #3408, #3209, #3377, #3398, #3405, #3033 queued; #3202, #3375, #3397 merged; #3385 dequeued (C9.5); #3193, #3276 labelled; #3305 needs his yes. Founder: xr/staging agreed, key check with him next; then CodeRabbit's training question (A355, study done). Weekly 59%, disk 13 GB. Standby Lead 24 local_9d85b0d8.
+updated: 2026-11-24 12:40 IST: Lead 23 ended. **Hand-over: the last section of `history/STATE-2026-11-24-0835-lead18-recovery-plan.md`.** 53/101 Works (counted 11:45). **BLOCKER P1 (firm wall): draft #3428, first each check.** Batches #3423, #3425, #3426 (#3033 + #3276), #3427 (#3379 + #3422 Works); queued #3385, #3421, #3308; runners short. Founder: #3305 one line, CodeAnt C1, the unseen account. Weekly 63%, disk 10.3 GB. No second standby.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -53,7 +53,7 @@ Older Start here pointers and the red-row lanes line: `history/STATE-2026-11-24-
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, 09:23), Lead 21 (local_11ef6843, 10:02), Lead 22 (local_a55ecb03, 10:39), Lead 23 (local_1d6d1d97, from 24 Nov 11:45 IST).
+**New account from 23 Nov:** Leads 1 to 17 word for word in `history/STATE-2026-11-24-0800-lead18-leads-line.md`; Lead 18 (local_799486c7, from 24 Nov 07:20 IST), Lead 19 (local_abd52603, 08:31), Lead 20 (local_aa6d586e, 09:23), Lead 21 (local_11ef6843, 10:02), Lead 22 (local_a55ecb03, 10:39), Lead 23 (local_1d6d1d97, 11:45), Lead 24 (local_9d85b0d8, from 24 Nov 12:40 IST).
 **Leads of 22 Nov (account before):** word for word in `history/STATE-2026-11-23-1705-lead6-cs-mv2-and-older-leads.md`.
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
