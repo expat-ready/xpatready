@@ -94,3 +94,40 @@ I did not run the deployed two-task stack. I did not run a real tus-js-client (p
 Reviewer: Approve dc3301c778341d9504c14ecffa2ddd9fca38cef6
 
 **Verdict: Approve** (head `dc3301c778341d9504c14ecffa2ddd9fca38cef6`). No open Blocker or Major. Before the label: m7's body line, so `pr-rules` is green. The Minors (m3, m4, m5, F5, n1-n3) go in the PR's list.
+
+## Round 3 (Lead 23: merge, types, re-stamp, size): head `eee137d1c6931c265dc6294705ec6e04d8fb5130`
+
+**Scope:** `554f3123..eee137d1` only, covering Lead 23's four steps. I did not re-review code that earlier rounds approved, because the merge touched none of it.
+**Runs on this head:**
+- `check_pff2_uploads.ts`: **40 passed, 0 failed**. DW9 names `20261124032000_fo3c2_require_agreement` as the newest migration before this one.
+- `run-suites.sh --only "check_pf8b_f4_migrations.ts check_pf12_walls.ts"`: 9/9 and 110/110.
+- `typecheck.mjs` after `prisma generate`: **PASS, no new type errors (15 known, 0 fixed)**. api exited 2 on the 15 known errors, web exited 0.
+- The size gate run locally (`pr-size.sh 941 0 no` with the live body): "recorded exception P-776", exit 0.
+- `npm audit --omit=dev` on main's lockfile and on this branch's: 17 findings each (9 high, 8 moderate), none in a `@tus` package.
+
+1. **Merge `9139f406` (parents `554f3123` and `a79e246c`): no conflict in the PR's own files.** `git diff 554f3123 9139f406` over the PR's file list (both migration paths) is empty. Since the last Approve, only three PR files changed, all in `d7d4a606` and `eee137d1`: the card row, the migration and the suite. Main's schema changes (`platform.prisma` back-relations, signing, register) do not touch `plat_file`, which has no foreign key, and `prisma migrate diff` is still empty (DW9).
+2. **Types `d7d4a606`: correct.** The suite now has `app = nest` and `app` is typed `{ close(): Promise<void> } | null`, so `finally` keeps the type. Nothing used the removed `get<T>`, because typecheck passes.
+3. **Re-stamp `eee137d1`: a pure rename.**
+   - `git show -M` shows 95 % similarity. The only changes are a two-line "Stamp:" header and the folder name in the rollback comment. The DDL is byte-for-byte unchanged.
+   - The card row `platform/MODULE.rows/PF-F2.md` and the suite's `NEW` follow the new name.
+   - `git grep 20261124040000` finds only the history line in the migration's header (line 8).
+   - Main's latest migration (fetched at `4ad7f0e2d`) is `20261124032000`. No other folder starts with `20261124060000`.
+   - The stamps of the open migration PRs are 3276 → 050000, 3033 → 033000, 3174 → 070000, 3234 → 080000, 3235 → 085000, 3219 → 090000, 3418 → 100000 and 3411 → 120000, so 060000 is unique and after #3276.
+4. **Size exception P-776: the body meets it except for one condition, which the PR discloses.**
+   - The body has the line "Size exception: P-776" and states the split.
+   - GitHub's count, which leaves out `product/screens` and `product/qa`, is 941 = code, tests, migration and records 772 + `package-lock.json` 169. That is under 800 without the lockfile.
+   - The lockfile diff only adds lines (169 additions, 0 deletions), so nothing already on main is touched.
+   - P-776's "`npm ci` and `npm audit` step in CI on that package" is only half met. CI runs `npm ci --no-audit` for the studio package (`cloud-setup.sh:29`), and the only `npm audit` in CI is in `deploy-synth.yml`, on the CDK package. The local before-and-after audit (which I reproduced) stands in for it, and the PR puts that to the Lead as a Question. This is the Lead's call (see r2).
+
+**Findings (no Blocker, no Major):**
+- **r1 (Minor). The size split in the body is two lines stale.** The body says 939 = 770 + 169, but the count on this head is 941 = 772 + 169: the re-stamp's two-line header was added after the count was taken. *Failure scenario:* a Lead checks the split against the gate's log, sees 941, and has to work out why it differs. The gate still passes, because the line names a valid size row. *Fix:* update the body to 941 = 772 + 169.
+- **r2 (Minor, for the Lead). The audit-in-CI condition of P-776 is met locally, not in CI.** *Failure scenario:* a later lockfile change on the studio package brings a vulnerable transitive package, and no CI step notices, because the condition was met once by hand. *Fix:* the Lead decides on the PR's Question before the label. The PR's own recommendation (accept the local run; add a pipeline row for `npm audit --omit=dev --audit-level=high` on the studio package, ratcheted against main's 17) satisfies it. This is not a code fix in this PR.
+- **r3 (Minor). The PR depends on merge order with #3276.** *Failure scenario:* if this PR merges before #3276, #3276's `20261124050000` lands earlier than a migration already on main. Its own "later than every one before it" test fails, and it needs another re-stamp. *Fix:* keep #3276 ahead in the queue, as the body states. Otherwise #3276 re-stamps after 060000.
+- The lane note in the body is accurate and complete: a local database that applied the old stamp fails `migrate deploy` until it is rolled back and both `_prisma_migrations` rows are deleted. Main and the deployment never had the old stamp.
+
+**Journey score:** not scored this round. Part 1 is API only, with no screen. The scripted API journeys DW0-DW9 are the evidence (40/40), and the browser journey is part 2's DW8 (#3303).
+**Not checked:** CI on `eee137d1` itself (I read the PR, not its check runs). I did not walk the old-stamp lane recovery on a real dirty database.
+
+Reviewer: Approve eee137d1c6931c265dc6294705ec6e04d8fb5130
+
+**Verdict: Approve** (head `eee137d1c6931c265dc6294705ec6e04d8fb5130`). No open Blocker or Major. Before the label: the Lead answers r2's Question, and `pr-rules` turns green with the size line.
