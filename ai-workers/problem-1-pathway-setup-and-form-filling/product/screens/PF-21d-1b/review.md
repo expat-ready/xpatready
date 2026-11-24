@@ -475,3 +475,79 @@ path; it already existed there, in a worse form.
 was erased"; the probe as a fail line). Fix m1 and m2 or list them in the PR.
 
 Reviewer: Block d3680b44ef3965777fdbfbbdbba46030c9b26ae2
+
+## Round 7: `88cfadbe57a24e2fd6dcbf6a14e4d7c87de7b021` (PR #3235, diff only: `git diff d3680b44e 88cfadbe5`, Lead 27)
+
+Scope: `service.ts`, the claim definer in `20261124085000_pf21d_erasure` (same stamp; the PR is unmerged), and
+`check_pf21d_erasure.ts`. The records under `screens/` are not reviewed. Size (825 lines) is with the founder (Lead).
+
+**Suites at 88cfadbe5** (worktree; Postgres 18 on 127.0.0.1:54329, accepting once the coordinator restarted it; my first try
+was refused and I did not start it): check_pf21d_erasure **31/0 and 31/0** (two runs); check_aud3_access **30/0**.
+`tsc --noEmit -p api`: 12 errors, all in other suites' files (`check_x2b_bulk_apply.ts` and others); none in the diff.
+
+**Mutations (each run in the worktree, then reverted; the tree was clean afterwards):**
+| Piece removed | Result | Lines that fail |
+|---|---|---|
+| Cancel back to the 30-minute rule (r6 M1) | 29/2 | Lead 26, Lead 27 (the new stale-claim cancels) |
+| Claim returns `retaken = false` | 28/3 | Lead 26 (no "not recorded" prefix), r6 M2 hold, r6 M2 eraser failure |
+| `state.erased \|\| retaken` back to `state.erased` | 30/1 | r6 M2 eraser failure (claim released) |
+| Retake held/gone block skipped | 30/1 | r6 M2 hold (BLOCKED, `HELD|<day>`, cancellable) |
+| "An earlier run's result was not recorded" prefix removed | 30/1 | Lead 26 |
+Each test fails without its fix. r6 M1 and r6 M2 are fixed.
+
+### Judged correct
+* **Every path a retake can take; none leaves the order cancellable while its data may be gone.**
+  * Ran, nothing KEPT → COMPLETED. Ran, something KEPT → PARTIAL (HELD). Both clear `erase_on`, and the actions start with
+    "An earlier run's result was not recorded; it may have erased first. This run: …".
+  * Gone or held → one ERASURE_HELD step, then `finish PARTIAL`: status HELD, `erase_on` and the claim cleared, and cancel
+    answers NOT_SCHEDULED (409). The words are true: an earlier run may have erased, what was erased is not known, the
+    reason (merge, or the holds with their reasons), and nothing more was erased.
+  * An eraser fails, or the person/hold check throws → `retaken` keeps the claim (cancel 409; tested).
+  * The record fails, COMMIT's answer is lost, or `finish` answers NOT_CLAIMED → `state.erased` keeps the claim.
+  * The kept-claim step itself fails → it is `.catch`ed, and nothing releases the claim.
+  * Switch off, or no eraser registered → SKIPPED, no claim taken, the old claim stays. "This run erased nothing" is true.
+* **PARTIAL with `erase_on` cleared is a sane end.** It matches SA-11-28 and SA-11 §3.6 ("marked HELD / partial … never a
+  false done"). The approve definer allows HELD with no `erase_on` → IN_PROGRESS plus a new day. A new approval followed
+  by a cancel cancels only that new order: neither definer touches `actions_taken`, and the trail keeps the "may have
+  erased" step, so the register never reads "nothing happened". Acceptable.
+* **`retaken` is set when it should be: exactly when an earlier claim was still on the row.** That covers a run that
+  died, a kept claim, and a failed release. `r` is the row read before the UPDATE, so the old value is the one read.
+  * A run that died before erasing also counts. The words say "may", so they stay true. Cautious, acceptable.
+  * No false negative: only `release` (on a certain rollback, never on a retake), `finish` and cancel (refused while a
+    claim exists) clear the claim.
+* **The TABLE return and how the service reads it.** No row means not claimable, and `const [got]` / `if (!got)` handles
+  it. The OUT names `claim` and `retaken` clash with no column the body uses. The grant loop is keyed by the argument
+  list, which did not change. Two runs at once are serialised by `FOR UPDATE`.
+* **"Once" on the kept-claim step hides no outcome.** It suppresses only an identical latest erasure step. Any later
+  HELD, SKIPPED or RESULT step breaks the run of identical steps, and each daily failure is still logged
+  (`erasure_order_failed`). What it does hide is m2 below.
+
+### Minor (not blocking; fix, or list them in the PR)
+* **r7 m1. The retake's held/gone words give no next step, and a held retake no longer resumes by itself.** A hold
+  normally suspends the order: BLOCKED, and the run after the hold's release erases. On a retake the order ends instead.
+  Nothing tells staff that they must approve again once the hold is lifted. A gone person cannot be approved again
+  (PERSON_NOT_IN_FIRM). Fix: add one sentence. Held: "When the hold is lifted, approve the erasure again." Gone: "Log the
+  request on the right person record (SA-11-40 rule 6)."
+* **r7 m2. A retake whose eraser fails does not show the failure on the request.**
+  * The non-retake path writes `<module>: FAILED …`. The retake path writes only the kept step, and "once" suppresses
+    even that when it repeats.
+  * If the earlier run died before writing any step, the kept step says "The erasers ran", which may be false.
+  * Fix: on a retake, name the module and say "may", with once kept. For example: "test.second: FAILED. An earlier run
+    may have erased; the request cannot be cancelled; the next daily run tries again."
+* **r7 m3 (nit).** The retake's gone branch has no test of its own: it is the same branch as held, only `why` differs.
+  `.slice(0, 2000)` can cut off "Nothing more was erased." when there are many holds; put that sentence before the list.
+
+Round 2's Minors 1-4 and round 6's m1 and m2 (both fixed here) are otherwise unchanged.
+
+**Journey score (reviewer): changed path re-walked through the service and the suite (no screen in this item).**
+* The r6 M2 journey now holds: record broken, then a new hold, then the retake gives HELD with true words, no erase day
+  and cancel 409.
+* A completed retake says that the earlier result was not recorded.
+* Correct data goes back to 1. Next step obvious goes to ½ (r7 m1). Error recovery stays ½ (round 2 Minor 2).
+* That makes 7 of 8 applicable criteria (8.75 scaled): **8.5/10, pass, no 0**. The number is the same as round 6, but the
+  reason changed: round 6's ½ was correct data (a Major); round 7's ½ is a Minor on words.
+
+**Verdict: Approve** for `88cfadbe57a24e2fd6dcbf6a14e4d7c87de7b021` (no open Blocker or Major; r6 M1 and r6 M2 are fixed,
+each fix's test fails without it). Fix r7 m1-m3 or list them in the PR.
+
+Reviewer: Approve 88cfadbe57a24e2fd6dcbf6a14e4d7c87de7b021

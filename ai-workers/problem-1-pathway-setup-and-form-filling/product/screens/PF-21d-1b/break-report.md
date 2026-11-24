@@ -226,3 +226,47 @@ The shipped suite at head: 29/0.
 R6-1/R6-2 are open, each Major: a retake can still end with the register cancelled over erased data.
 
 **Verdict: Changes** for d3680b44ef3965777fdbfbbdbba46030c9b26ae2
+
+## Round 7 (diff only: `git diff d3680b44e 88cfadbe5`, Lead 27)
+
+How it was tested: **Postgres 18 on 127.0.0.1:54329 refused connections** (`pg_isready`: no response; psql: connection
+refused). I did not start it, so no scratch database or proxy run happened this round. Runtime evidence comes from CI at
+88cfadbe5: `check_pf21d_erasure.ts | PASS | 31 passed, 0 failed` (parts job 138376018710). That run covers probe 1
+(r10: retake under a new hold), probe 4 (r11: retake whose eraser throws), and probe 3 without the hold (r8: COMPLETED
+with the "not recorded" prefix). I walked probes 2, 3 (hold placed then lifted), 5, 6, 7 and 8 through
+service.ts and the migration at head. CI's `types` failure is tsc running out of heap (exit SIGABRT), not this diff.
+
+| # | Attack | Expected | Actual | Sev | Where |
+|---|---|---|---|---|---|
+| R7-1 | Probe 7 with the hold **still on**. After a retaken PARTIAL end, staff re-approve (the code invites it: "staff may approve it again") | Never cancellable over data that may be gone; no "nothing was erased" | Approve sets HELD → IN_PROGRESS with a new erase day. The day's run is not retaken (no claim), so it takes the plain hold path: `ERASURE_HELD` "On legal hold; **nothing was erased**." and `BLOCKED`. Cancel then returns **200** (a HELD order skips WINDOW_ENDED). The data the first run erased may be gone. This needs a deliberate staff action, and `actions_taken` keeps "An earlier run may have erased…" (BLOCKED and cancel do not touch it). The words are the same R6-5 ambiguity that this diff fixed for SKIPPED only | Minor | service.ts:215-217; mig:50-56, 69-72, 148 |
+| R7-2 | Probe 7 with the hold lifted: re-approve, then a later run | Erases what is left; the record keeps the unknown | The run erases what is left → COMPLETED, which is correct. But `actions_taken` is overwritten with this run's `NOTHING (no rows)`, so "an earlier run may have erased" survives only in the trail (the r6 M2 second symptom, back after a re-approve). The re-approve also announces a fresh 7-day recovery window over data that may already be gone | Minor | service.ts:223-225; mig:148 |
+| R7-3 | Probe 4 wording. A retake whose eraser throws | The failure is visible on the request | Claim kept, cancel 409: correct (CI r11). But the kept-claim step is written with `p_once = true` and the same note, so it collapses onto the first run's step: the retake's `<module>: FAILED` never becomes a step and is only in the log. Where the first step was never written (the run died before erasing, or the step's connection was also lost), the retake writes "The erasers **ran** …" although its own eraser failed. While the eraser keeps failing there is no way out (R6-3 continues; the 409 text names no remedy) | Minor | service.ts:161-165 |
+| R7-4 | Probe 2 as a test | Each fixed outcome has a fail line | There is no fail line for "retake → person gone". By reading: narrowing `done.kind !== "ran"` to `=== "held"` sends a gone retake to `BLOCKED`, which releases the claim, so cancel → 200. The suite stays green, because r10 covers only the hold case. Not run (no database) | Minor | service.ts:203; check_pf21d_erasure.ts:286-299 |
+| R7-5 | Many or long hold reasons on a retake | Words stay whole | `${unknown} ${why} Nothing more was erased.`.slice(0, 2000) can cut off the closing sentence. What is left is still true | Minor | service.ts:205 |
+| R7-6 | Probe 6: the run died **before** erasing; the retake says "may have erased" | Honest | Acceptable. "May" is true, and a claim alone cannot tell before from after (as R6-4). The cost: if a hold lands first, the order ends HELD with no erase day, so a cancel that would have been legitimate is lost and staff must re-approve | accepted | mig:105 |
+
+* **Held (CI or by reading):**
+  - **(1) New hold, then retake** (CI r10): the order ends HELD with erase_on null (`HELD|-`). The step and
+    `actions_taken` say an earlier run may have erased and its result was not recorded. There is no "On legal hold;
+    nothing was erased" step, cancel → 409 NOT_SCHEDULED (erase_on null, mig:69), and no eraser is called (the hold
+    returns before the loop, service.ts:186).
+  - **(2) Person merged, then retake:** the same branch (service.ts:203-208). `finish('PARTIAL')` clears erase_on, so
+    cancel → 409. A re-approve is refused with 422 PERSON_NOT_IN_FIRM (service.ts:105), so this order cannot be
+    re-opened into a cancel.
+  - **(3) Hold placed, then lifted, then retake:** the erasers run again (idempotent) → COMPLETED. `actions_taken` is
+    prefixed "An earlier run's result was not recorded; it may have erased first." (service.ts:224; prefix shown in CI r8).
+  - **(4)** CI r11: failed 1, `erasing_since` still set, cancel → 409 ERASURE_RUNNING.
+  - **(5) Switch off:** `run()` writes SKIPPED "this run erased nothing" before `claim()` is called, so the claim is
+    untouched and cancel → 409 RUNNING (mig:70). The words are true.
+  - **(8) Every retaken outcome:** COMPLETED, KEPT-PARTIAL and held/gone PARTIAL all clear erase_on. A throw, a failed
+    record, a refused finish and a lost record-COMMIT answer (finish committed: the order is ended, and the kept step
+    no-ops) all keep or end the claim. None leaves the order cancellable. The only way to a cancel is R7-1's deliberate
+    re-approve.
+  - **`retaken`** is true exactly when a claim older than 30 minutes was replaced (mig:102-105). A fresh claim
+    returns no row, so a second concurrent run skips the order.
+* **Cleaned up:** the worktree, its symlinks and `.tools` are removed. No scratch database was created.
+
+R6-1 and R6-2 are closed. Of the open findings none is a Blocker or Major (R7-1 needs a deliberate re-approve, and the
+record keeps the unknown).
+
+**Verdict: Approve** for 88cfadbe57a24e2fd6dcbf6a14e4d7c87de7b021
