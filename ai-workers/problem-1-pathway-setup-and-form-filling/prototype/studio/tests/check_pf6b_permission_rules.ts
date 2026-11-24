@@ -47,6 +47,8 @@ const { platformAuditWorkspaceId } = await import("../api/src/platform/identity/
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { Signing } = await import("../api/src/front-office/signing/service.ts");
 const { SigningController } = await import("../api/src/front-office/signing/routes.ts");
+const { AnyDocuments } = await import("../api/src/front-office/signing/any-document/service.ts");
+const { PersonDocuments } = await import("../api/src/front-office/signing/any-document/person-documents.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
 const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
 const { PlatformGuard, controllerRoutes } = await import("../api/src/platform/identity/guard.ts");
@@ -234,6 +236,16 @@ try {
     on: { "view.all holder (user-R)": [P1, P2], "own-only role copy (user-O)": [P2], "representative (user-T)": [P1, P2], "firm B (user-S)": [] },
     off: { "view.all holder (user-R)": [P1], "own-only role copy (user-O)": [P2], "representative (user-T)": [], "firm B (user-S)": [] },
   };
+  // FO-6d: one document sent from each prospect, by its owner (fake adapter, the scratch file store).
+  const anyDocs = new AnyDocuments(db, new LocalFiles(join(WORK, "files")), { now: () => new Date(clock.now()) });
+  const pdf = { bytes: new TextEncoder().encode("%PDF-1.4\n% PF-6b sweep (Sample)\n%%EOF\n"), size: 40, name: "probe.pdf" };
+  const Q1 = (await anyDocs.send(live(ctx(R)), { title: "PF-6b document 1", prospectId: P1, signerPersonIds: [u(600)] }, pdf)).id;
+  const Q2 = (await anyDocs.send(live(ctx(O)), { title: "PF-6b document 2", prospectId: P2, signerPersonIds: [u(610)] }, pdf)).id;
+  const K1 = await anyDocs.fileKey(live(ctx(R)), Q1, "original"), K2 = await anyDocs.fileKey(live(ctx(O)), Q2, "original");
+  /** PROSPECTS' table with its two ids replaced by the records that hang on P1 and P2. */
+  const byProspect = ([a, b]: [string, string]): typeof EXPECT => Object.fromEntries((["on", "off"] as const).map((k) => [k, Object.fromEntries(Object.entries(PROSPECTS[k]).map(([w, ids]) => [w, ids.map((x) => (x === P1 ? a : b))]))])) as typeof EXPECT;
+  /** A send's refusal after the visibility check (422: no signer) means the prospect was seen; a 404 that it was not. */
+  const refusedButSeen = async (f: () => Promise<unknown>) => { try { await f(); return true; } catch (e) { if ((e as { getStatus?: () => number }).getStatus?.() === 422) return true; throw e; } };
   /** The sweep table: every @OwnOrAll route, with how to read one record through it (DW7 fails a marked route missing here). */
   const SWEEP: Record<string, Entry> = {
     "RetainersController.read": { read: (c, id) => svc.read(c, id) },
@@ -248,6 +260,14 @@ try {
     "SalesController.leadTimeline": { read: (c, id) => timeline.lead(live(c), id), ids: [L1, L2], expect: LEADS },
     "SalesController.prospectTimeline": { read: (c, id) => timeline.prospect(live(c), id), ids: [P1, P2], expect: PROSPECTS },
     "SalesController.sources": { read: async (c, id) => (await leads.sources(live(c))).sources.includes(SOURCE_OF[id]), ids: [L1, L2], expect: LEADS },
+    // FO-6d: a document sent for signature follows its prospect's read (the prospects' table), by prospect, request, file and person.
+    "AnyDocumentsController.send": { read: (c, id) => refusedButSeen(() => anyDocs.send(live(c), { title: "PF-6b probe", prospectId: id, signerPersonIds: [] }, undefined)), ids: [P1, P2], expect: PROSPECTS },
+    "AnyDocumentsController.list": { read: (c, id) => anyDocs.listForProspect(live(c), id), ids: [P1, P2], expect: PROSPECTS },
+    "AnyDocumentsController.signers": { read: (c, id) => anyDocs.signersFor(live(c), id), ids: [P1, P2], expect: PROSPECTS },
+    "AnyDocumentsController.state": { read: (c, id) => anyDocs.state(live(c), id), ids: [Q1, Q2], expect: byProspect([Q1, Q2]) },
+    "AnyDocumentsController.link": { read: (c, id) => anyDocs.fileKey(live(c), id, "original"), ids: [Q1, Q2], expect: byProspect([Q1, Q2]) },
+    "AnyDocumentsController.download": { read: async (c, id) => { await anyDocs.assertKeyVisible(live(c), id); return true; }, ids: [K1, K2], expect: byProspect([K1, K2]) },
+    "PersonDocumentsController.list": { read: (c, id) => new PersonDocuments(db).list(live(c), id), ids: [u(600), u(610)], expect: byProspect([u(600), u(610)]) },
   };
   const sweep = async (entry: Entry) => {
     const wrong: string[] = [];

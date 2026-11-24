@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/controls";
 import { SignInCard as SignIn } from "@/modules/platform/frame";
 import { signOutHere } from "@/lib/sync/drafts";   // PF-31: Sign out forgets the person's drafts and tabs
 import { FindBox } from "@/modules/platform/find/find-box";
+import { NotificationBell } from "@/modules/platform/notifications/bell";   // PF-18ns (Lead 10 on #3279 Q1): the bell here too
 import { cn } from "@/lib/utils";
 import { Assignees, can, LeadRows, seesUnassigned, type Me } from "./contract";
 import { Loading } from "./loading";
@@ -64,7 +65,7 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
     <Frame area="outside" workspace={!!who} title="Sales" subtitle={who ? who.displayName : undefined} home="/front-office/leads"
-      controls={who ? <><FindBox /><Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button></> : null}
+      controls={who ? <><FindBox /><NotificationBell /><Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button></> : null}
       menu={who ? <Menu me={who} /> : null}>
       <Place crumbs={crumbs} back={back ?? null} />
       {!token || (me.isError && !who) ? <SignIn failed={token ? refused : null} />
