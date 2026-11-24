@@ -16,7 +16,7 @@ Read-only study for the tech lead. Nothing installed, no account, US$0. Web page
 | Where CodeAnt AI is better | Its data promise ("We never train AI models on your data"), a flat price with no published per-author limit, no write to workflows, security scanning and quality gates sold with review |
 | Two side by side? | **No, until the replay shows each finds true Majors the other missed.** Two paid seats would be US$60 a month, inside the cap but not justified |
 
-* **The need is real.** qa logged 11 Majors from 17 to 24 Nov that a reader of the diff could arguably have seen (section 6). Our own reopen rule was "3+ diff-visible Majors in a week". Even the strict count is 5.
+* **The need is real.** qa logged 11 Majors from 19 to 23 Nov that a reader of the diff could arguably have seen (5 strict). At least two had been noted before merge; without them, 9 and 4 (section 6). Our own reopen rule was "3+ diff-visible Majors in a week": met either way.
 * **The fit is awkward.** One account opens all our PRs. CodeRabbit's limits follow that account, and its docs call this "a trap when automation opens the pull requests".
 * **The price of free is our code.** Its privacy policy says of open source: "We use OSS to train our systems." Our repository is public but "All rights reserved". Whether we count as "OSS" is unknown; its OSS page says being public is "the whole bar", so assume yes.
 * **The App asks for a lot:** write access to code and workflow files. P-662 (17 Nov) limited Apps to three because of "fewer apps with write access to a public repository". Installing needs the founder to reverse that by name.
@@ -37,7 +37,7 @@ The names the founder gave all exist: Review, Explain, Verify, Agent, Triage. Pl
 | CodeRabbit Verify, open beta since 17 Nov | Runs the app and checks behaviour; "free during the beta" | Beta | One PR comment; bugs to Coding Agent | Later: compare with qa walks on a throwaway copy |
 | CodeRabbit Triage | One ranked queue of open PRs; rules can merge, close, auto-fix | Team; free for open source | Yes | No: Mergify and the lead board do this |
 | CodeRabbit Agent (Slack early access, Discord limited) | Chat agent that can open PRs | US$0.40 a minute | Yes | No |
-| Coding Agent, open beta; Fix comments; Autofix; Fix CI; conflicts; unit tests; simplify | Writes code to the branch or a stacked PR | Fix comments Essentials; most others Team; Autofix unknown | Commits | No: our builders own fixes |
+| Coding Agent, open beta; Fix comments; Autofix; Fix CI; conflicts; unit tests; simplify | Writes code to the branch or a stacked PR | Fix comments Essentials; most others Team; Autofix command listed for all plans, checked per repository | Commits | No: our builders own fixes |
 | Plan and Issue Planner | Coding plan from an issue | Team | Issue comment | No |
 | Pre-merge checks | Title, description, issue checks; own checks from Team | Essentials, Team | Check | Later: we have pr-rules |
 | Post-merge actions | Follow-up work after merge | Team | PRs, tickets | No |
@@ -109,9 +109,9 @@ These usage rows are a ceiling: one review per PR and nothing included in a seat
 | Training | Customer code: no. **"The above representation does not apply to open-source projects (OSS). We use OSS to train our systems."** The terms (3.3) say customer code is not used; the two texts conflict for us | privacy policy; terms |
 | Model providers | OpenAI, Anthropic or others; zero-retention policy with them [V] | terms 3.3 |
 | Certificates | SOC 2 Type II claimed [V]; report not seen; ISO not found | privacy policy |
-| Terms | Auto-renews; 45 days' written notice; no refund for ordinary ending; liability capped at 12 months' fees; California. The FAQ has a self-serve cancel: the two texts differ | terms 5.1, 5.4, 11.2, 13; FAQ |
+| Terms | Auto-renews; 45 days' written notice; no refund for ordinary ending; liability capped at 12 months' fees; California; it may use our name and logo, and open-source reviews in marketing. The FAQ has a self-serve cancel: the two texts differ | terms 5.1, 5.4, 11.2, 12, 13; FAQ |
 | Past incident | Kudelski Security: code execution through a PR's linter settings, disclosed Jan 2025, published 19 Aug 2025; "about 1 million repositories" reachable (their article, part read through a summary). CodeRabbit: fixed within hours, "no evidence that any customer data was accessed" [V] | kudelskisecurity.com; coderabbit.ai/blog |
-| Prompt injection | No statement found on the pages read. It reads attacker-controlled PR text on a public repository, so assume it can be steered; its comments can in turn steer our lanes [I] | - |
+| Prompt injection | No statement found on the pages read. It reads attacker-controlled PR text on a public repository, so assume it can be steered; its comments can in turn steer our lanes [I]. All lanes post as one account with write access, so a steered lane could start Autofix | - |
 | Fork PRs | Settings come from the base commit; Fix comments does not run. General fork review: unknown | `/configuration/branch` |
 
 ## 4. Where it would fit
@@ -120,8 +120,9 @@ Builder's PR, then in parallel CI and **the fresh Opus reviewer (the only approv
 
 * **Its "approve" cannot count as ours.** `queue-gate.sh` (lines 189-190) counts only the owner's or a `REVIEWERS` login with OWNER, MEMBER or COLLABORATOR association. `review-rounds.py` (lines 40-43) ignores bots. Never add it to `REVIEWERS`. Not in `.mergify.yml`: no condition names a `CodeRabbit` check in the queues we read.
 * **A label it put on would be removed:** `label-guard` re-checks for our Approve on every `review: approved`.
-* **Never make its check required:** a rate-limited review posts a passing check, "Review rate limited".
-* **Default settings would hurt us on day one.** Its summary edits the PR description; `pr-rules` and `lead-read` run on `edited`. So the settings file must be on main before the App is installed.
+* **Never make its check required:** a rate-limited review posts a passing or neutral check that does not block. With the draft no check normally appears; its comment is the signal.
+* **Default settings would hurt us on day one.** Its summary edits the PR description; `pr-rules`, `lead-read`, `module-cards` and `records-label` run on `edited`. A settings file on main is not enough: branches cut before it read defaults until the source is pinned (steps B2a, B4).
+* **One allowed command.** Only `@coderabbitai review` (once, `@coderabbitai configuration`). A local hook should refuse any other comment, title or body containing `@coderabbitai`: Autofix, `local commit`, `generate configuration`, `emit path instructions`, title or summary placeholders and `review --with-config` write or drop the draft, and YAML cannot switch them off.
 * **Noise:** each comment starts events for four workflows; most jobs skip, but `review-rounds` runs when the text says "reviewer". Automatic review would add up to one walkthrough per PR (600 a week).
 * **Token cost to lanes:** unknown until measured. Rule: lanes never read or obey its text. One triage reader judges findings once a day and passes only confirmed ones to the lead.
 
@@ -147,7 +148,7 @@ Arithmetic: Greptile 74 x US$1 x 4.33 = US$320. Qodo US$30 / 14 = US$2.14 a revi
 
 **Why this order.** Best in class is not proven for our code by any source. The cheapest strong rival is our own reviewer with the misses as a checklist, so the replay runs both on the same PRs. Sourcery is the fallback if training is the founder's blocker (its claim untested).
 
-**Quality evidence.** Martian's Code Review Bench is the open benchmark (50 PRs, 173 known issues) and lists CodeRabbit; its per-tool scores did not load, so we quote none. A rival's blog (Augment, dataset edited by the rival): CodeRabbit precision 36%, recall 43%; Bugbot 60/41; Greptile 45/45; Claude Code 23/51; Copilot 20/34. Read as direction only: about two in three CodeRabbit comments were not on that list of real issues, and over half the issues were missed.
+**Quality evidence.** Martian's Code Review Bench is the open benchmark (50 PRs, 173 known issues: github.com/withmartian/code-review-benchmark README, read raw) and lists CodeRabbit; its per-tool scores did not load, so we quote none. A rival's blog (Augment, dataset edited by the rival): CodeRabbit precision 36%, recall 43%; Bugbot 60/41; Greptile 45/45; Claude Code 23/51; Copilot 20/34. Read as direction only: about two in three CodeRabbit comments were not on that list of real issues, and over half the issues were missed.
 
 ### CodeRabbit and CodeAnt AI, same criteria
 
@@ -179,18 +180,18 @@ Independent user-review pages were blocked or thin. On set-up and daily experien
 
 ## 6. Back-test on our own history
 
-**qa Majors.** Sample: every Major or Critical row in `qa/BUGS.md` and `qa/BUGS-CLOSED.md` whose found or re-raised date is 10 to 24 Nov: 47 rows, sorted by hand by one reader from the row text. The introducing diffs were not opened, and no tool was run. This says what was arguably visible, not what CodeRabbit would find.
+**qa Majors.** Sample: every Major or Critical row in `qa/BUGS.md` and `qa/BUGS-CLOSED.md` whose found or re-raised date is 10 to 24 Nov, plus QA-427 and QA-439 (from the 12 Nov walk, no date in their found column): 49 rows, sorted by hand by one reader from the row text. The introducing diffs were not opened, and no tool was run. Rule used: visible means changed code does the wrong thing or skips a rule next to it; not visible means a missing feature, a design-wide gap or a wording ruling. Some rows could be argued either way (QA-482, 594, 622). This says what was arguably visible, not what CodeRabbit would find.
 
 | Class | Rows | Share |
 |---|---|---|
-| Arguably visible in a diff | 14 | 30% |
-| of which clear without the requirement text (strict) | 5 | 11% |
-| Not visible: feature not built, wording, usability, flaky test, CI or environment | 33 | 70% |
+| Arguably visible in a diff | 14 | 29% |
+| of which clear without the requirement text (strict) | 5 | 10% |
+| Not visible: feature not built, wording, usability, flaky test, CI or environment | 35 | 71% |
 
 * Strict 5: QA-517 (a Read-only handler could act), QA-520 (damaged PDF stored), QA-526 (normaliser on one route only), QA-601 (failed send counted wrongly), QA-770 (withdraw leaves the signing request live).
 * Other 9: QA-397, QA-453, QA-499, QA-510, QA-595, QA-608, QA-701, QA-750, QA-751. Most need the requirement clause, which our reviewer could be given and CodeRabbit would not have.
-* 17 to 24 Nov: 11 (QA-510, 517, 520, 526, 595, 601, 608, 701, 750, 751, 770); strict 5. **The operating model's reopen trigger (3 in a week) is met.**
-* All 14 passed our fresh Opus review, or were built before it read that path [I]; the introducing PR of each is still to be found.
+* 19 to 23 Nov (five days): 11 (QA-510, 517, 520, 526, 595, 601, 608, 701, 750, 751, 770); strict 5. **The operating model's reopen trigger (3 in a week) is met.**
+* Whether our reviewer or breaker saw each of the 14 is not established; the introducing PRs are not yet found. At least two were noted before merge (QA-701: PF-12b3 break m2; QA-770: FO-6-3 break report, left to FO-5d), and QA-517 was found by our breaker on a later PR. QA-499, 608 and 701 are one requirement clause. Leaving out 770 and 701: 9 in 19 to 23 Nov, 4 of them strict; the trigger is still met.
 
 **Batch failures.** The last full cause study (`merge-queue-causes-2026-11-16.md`, 24 failed batches): 11 real breaks, every one "a member's own check meeting newer code"; 8 cascades; 5 flaky. A one-PR diff reader would plausibly have stopped about **0 of 24**. In the newest sample (2,998 PR comments, 22 Nov 06:09 to 24 Nov 05:53 UTC) 37 PRs left the queue on failed checks; their causes were not studied.
 
@@ -204,13 +205,15 @@ Independent user-review pages were blocked or thin. On set-up and daily experien
 |---|---|---|
 | Dates (IST) | 25-26 Nov | 27 Nov to 3 Dec; decision 4 Dec |
 | PRs | 14 with a known escaped Major, plus 14 clean controls of like size, each at its original commit | Next 40 PRs touching money, migrations, permissions or a new screen |
-| Baseline | Our original verdict (0 of 14 by construction), fresh Opus reviewer with the new checklist, blind; CodeRabbit and CodeAnt command lines, same commits | Our Opus verdict, already posted |
+| Baseline | Our original reviewer and breaker record for each PR, read before the replay (a finding already noted there is not a miss); fresh Opus reviewer with the new checklist, blind; CodeRabbit and CodeAnt command lines, same commits | Our Opus verdict, already posted |
 | True finding | Matches the known Major; or a new Major+ that a second fresh judge reproduces or proves from code | Not in our reviewer's text; reproduced or proved; would be qa Major or above |
 | False alarm | A Major+ claim the judge refutes | Same |
 | Pass | At least 4 of 14 found, at least half of Major+ claims true, **and at least 2 that the improved Opus reviewer missed.** Two tools pass together only if each finds 2 the other missed | At least 3 unique true Majors in 40, at least half true, at most 10 minutes' triage a PR |
 | Stop | Any paid prompt; output not attributable; under 4 of 14 | Any write outside comments, any wrong merge, outsider use, over 70% false after 15 PRs, any charge |
 
 Small samples: 14 and 40 can justify more testing, not a rate. Judges do not see which tool wrote a finding. Report limits reached and minutes spent. If B passes: Essentials, one seat, or stay on OSS if it keeps up. If A fails and the Opus checklist does better: adopt the checklist and close this.
+
+**Waiting:** 28 PRs at 3 an hour is at least 9.3 hours for one CodeRabbit pass; CodeAnt limits are not stated. CodeRabbit says command-line and PR reviews differ, so a failed replay does not settle the App.
 
 **Effort:** A about 9 hours (3 to find introducing PRs, 2 set-up, 4 judging). B about 8 hours over the week. Easy to install (about 10 minutes); harder to keep safe and to measure.
 
@@ -220,8 +223,8 @@ Small samples: 14 and 40 can justify more testing, not a rate. Judges do not see
 |---|---|
 | Code used for training | Founder's explicit yes first; cannot be taken back |
 | App with write to code and workflows | Select one repository; check main's ruleset first (not verified in this study); uninstall ends access |
-| Steered by PR text | Outsiders off, lanes ignore its text, no write feature on |
-| Default behaviour before settings land | Settings file on main first, source pinned |
+| Steered by PR text, or a steered lane starts Autofix | Outsiders off, lanes ignore its text, only one command allowed (hook) |
+| Default behaviour before settings land | Organisation defaults off first, file on main, source pinned. Open branches without the file read defaults until then |
 | Rate limit looks like a pass | Never a required check |
 | Cost surprise | No card; usage off |
 | Two reviewers, one blames the other | Opus line stays the only gate |
@@ -231,10 +234,11 @@ Small samples: 14 and 40 can justify more testing, not a rate. Judges do not see
 
 ## 9. Gate record (STANDARDS section 1)
 
-* **Problem:** diff-visible Majors reach qa (11 in a week by the generous count, 5 strict).
+* **Problem:** diff-visible Majors reach qa (11 in five days by the generous count, 5 strict; 9 and 4 without two noted before merge).
 * **Options:** section 5. **Integration and upkeep:** one settings file, one triage reader, 17 hours; then about 1 hour a week [I].
 * **Data and licence:** code goes to the vendor and its model providers; may train on it; proprietary service; open beta command line.
-* **Decisions it touches:** P-376 (11) deferred a one-week report-only trial to the founder's OK; P-662 allows three Apps only, so phase B needs it changed by name; P-551 account by the founder only; P-423 the settings file is not in `.github/` but is read as if it were; P-504 public repository.
+* **Decisions it touches:** P-376 (11) deferred a one-week report-only trial to the founder's OK; P-662 allows three Apps only, so phase B needs it changed by name; P-551 no new account or key without him; P-423 the settings file should get the Lead's read, by habit only until `lead-read-guard.sh` matches it; P-504 public repository.
+* **Guidelines:** `knowledge_base.code_guidelines` (on by default, kept on purpose) lets it use our instruction files as review criteria.
 * **Verdict:** gate **passed for phase A only, once the founder answers the data question; not passed for the App or any purchase.**
 * **Reconsider:** 4 Dec, or if the repository goes private (OSS tier ends), or if CodeRabbit puts in writing that we are not training data.
 
@@ -244,10 +248,10 @@ Phase A, no GitHub App:
 
 | Step | Click | What it grants | Undo |
 |---|---|---|---|
-| A0 | Answer: may our code go to CodeRabbit, which may train on it? | The decision | None after sending |
+| A0 | Answer: may our code go to CodeRabbit, which may train on it and may use our name, logo and reviews in marketing? | The decision | None after sending |
 | A1 | Open https://app.coderabbit.ai/login and press **Login with GitHub**, then **Authorize coderabbitai**. Read the terms and the GitHub screen first | Read of your organisations, teams and email; an account; possibly the 14-day clock starts (unknown) | github.com/settings/applications, Authorized OAuth Apps, Revoke |
 | A2 | If asked to install or choose repositories: **stop, close the page** | Nothing | - |
-| A3 | Say yes to installing the command line (version 0.9.6 or the current one, from docs.coderabbit.ai/cli; checksum checked if published) | A program on the Mac, in a throwaway clone | Remove the program |
+| A3 | Say yes to installing the command line (version 0.9.6 or the current one, from docs.coderabbit.ai/cli; by Homebrew or a downloaded release, checksum checked if published; never pipe the install script) | A program on the Mac, in a throwaway clone | Remove the program |
 | A4 | Run `coderabbit auth login` and finish in the browser | A sign-in kept on the Mac; lets reviews send diffs | `coderabbit auth logout` |
 
 CodeAnt AI arm of phase A (can run alone if A0 is no):
@@ -266,9 +270,10 @@ Phase B, only after A passes:
 | B0 | Yes by name: change P-662 for a one-week trial | The decision | Say stop |
 | B1 | github.com/expat-ready/xpatready/settings/rules: confirm main blocks direct and force pushes and has no bypass for new Apps | Nothing, only a look | - |
 | B2 | Tech lead merges `.coderabbit.yaml` (the draft) through a normal PR | Settings only | Revert PR |
-| B3 | app.coderabbit.ai, pick `expat-ready`, **Only select repositories**, tick `xpatready`, read, **Install & Authorize** | Write to code, PRs, issues, checks, statuses, workflows on that one repository | github.com/organizations/expat-ready/settings/installations, CodeRabbit, Uninstall |
-| B4 | CodeRabbit, repository settings: **Configuration source: Default branch**; switch **Allow configuration changes from trusted PRs** off; Save | PRs cannot loosen the rules | Switch back |
-| B5 | Subscription and Billing: no plan, no card; usage-based reviews **Off** where shown (trial over-limit reviews are US$0) | Nothing | - |
+| B2a | In the CodeRabbit organisation defaults switch off automatic review, summary, review status, slop detection, finishing touches and planning. If the page needs an install, first install on a throwaway repository only, set these, then add `xpatready` | Settings only (a throwaway install grants B3's rights on that repository) | Switch back; uninstall |
+| B3 | app.coderabbit.ai, pick `expat-ready`, **Only select repositories**, tick `xpatready`, read, **Install & Authorize** | Write to code, PRs, issues, checks, statuses, workflows on that one repository; read of actions, discussions, members, metadata, merge queues | github.com/organizations/expat-ready/settings/installations, CodeRabbit, Uninstall |
+| B4 | CodeRabbit, repository settings: **Configuration source: Default branch**; switch **Allow configuration changes from trusted PRs** off; Save. Same sitting as B3, queue quiet | PRs cannot loosen the rules | Switch back |
+| B5 | Subscription and Billing: no plan, no card; usage-based reviews **Off** where shown (trial over-limit reviews are US$0). Verify: automatic PR runs off. Security: **Publish CodeRabbit Security check** off | Nothing | - |
 | B6 | Comment `@coderabbitai configuration` on one test PR; tech lead compares with the draft | One comment | Uninstall |
 
 ## 11. Not known

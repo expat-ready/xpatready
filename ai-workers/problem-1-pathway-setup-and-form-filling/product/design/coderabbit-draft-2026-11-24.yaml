@@ -1,5 +1,8 @@
 # DRAFT, NOT LIVE. Design appendix to coderabbit-evaluation-2026-11-24.md. Only a file named .coderabbit.yaml at the
-# repository root takes effect. Advisory only: no automatic review, no approval, no labels, no commits, no PR-text edits.
+# repository root takes effect. Advisory by default: nothing it does on its own
+# writes code, labels, approvals or PR text. A person with write access can still make it write by command (Autofix,
+# local commit, generate configuration, emit path instructions, a summary or title placeholder, --with-config); YAML
+# cannot switch these off.
 # Keys and defaults: docs.coderabbit.ai/reference/configuration (V2), read 24 Nov 2026.
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 language: en-US
@@ -23,6 +26,12 @@ reviews:
   changed_files_summary: false
   collapse_walkthrough: true
   poem: false
+  review_status: false                  # else "review skipped" comments
+  enable_prompt_for_ai_agents: false    # default true writes instructions for our agents
+  in_progress_fortune: false
+  estimate_code_review_effort: false
+  related_issues: false
+  related_prs: false
   suggested_labels: false
   auto_apply_labels: false              # never near "review: approved"
   suggested_reviewers: false
@@ -37,15 +46,19 @@ reviews:
   finishing_touches:                    # every one of these writes code
     unit_tests: { enabled: false }
     simplify: { enabled: false }
-    autofix: { enabled: false }
+    autofix: { enabled: false }         # Fix comments only, not "@coderabbitai autofix"
+    custom: []
     fix_ci: { enabled: false }
     resolve_merge_conflict: { enabled: false }
   pre_merge_checks:
     title: { mode: "off" }
     description: { mode: "off" }
     issue_assessment: { mode: "off" }
+    custom_checks: []
   path_filters:
-    - "!ai-workers/**/product/**"       # records, evidence and reports are not code
+    # records, evidence and reports; product/tools (our gate scripts) stays in
+    - "!ai-workers/**/product/{qa,screens,design,history,library,inbox}/**"
+    - "!ai-workers/**/product/*.md"
     - "!**/package-lock.json"
     - "!**/samples/**"
     - "!**/*.pdf"
@@ -59,6 +72,9 @@ reviews:
       instructions: "Report only data loss, a missing firm scope, a missing constraint, or no path back. No style."
 chat:
   auto_reply: false
+  integrations:
+    jira: { usage: disabled }
+    linear: { usage: disabled }
   allow_non_org_members: false          # default true: anyone on a public PR could talk to it
 knowledge_base:
   opt_out: true                         # no stored learnings; on first use in the file it also deletes what is stored
