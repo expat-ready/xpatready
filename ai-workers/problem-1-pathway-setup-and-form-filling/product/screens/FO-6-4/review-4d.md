@@ -86,3 +86,43 @@ The breaker's m1 and m2 (the 409 says "yet" for an agreement that can never be e
 * HTTP over a running copy: the breaker did this (break report, attack 20). I relied on the booted copy of `check_screen01_api.ts` for the wiring.
 
 Verdict: Changes
+
+## Round 2 (diff d192b8313..5d0476bde)
+
+I read `git diff d192b8313..5d0476bde` without the `product/screens` folder: three files. The branch head is now 31c3a0bcd. That commit adds only the breaker's round 2 record, so the code reviewed is 5d0476bde's. Nothing was committed or pushed, every mutation was restored, and `git status` was clean at the end.
+
+### Runs
+
+* PR suite: 25 passed, 0 failed.
+* `run-suites.sh --only "check_fo5_retainers.ts check_pf28_inputs.ts check_pf6b_permission_rules.ts check_features_registry.ts"`: 248/248, 51/51, 41/41, 27/27.
+* `module-cards.py tree`: PASS.
+
+### Mutations (`e-signed-files.ts`, each restored)
+
+| Removed | Result |
+|---|---|
+| key equality (`:52`) | 24/25. FAIL "(review M1): a file stored in another attempt folder … → 404" |
+| `documentKind: "RETAINER"` in `assertKeyVisible` | 24/25. FAIL "(review M2): a link naming that consultation agreement's sealed or audit file → 404" |
+| `documentKind: "RETAINER"` in `fileKey` | 24/25. FAIL "(review M2): an e-signed consultation agreement … → 409 NO_E_SIGNED_COPY, no link" |
+| body and read-rule order swapped | 24/25. FAIL "(review M3, PF-28): a bad body is 422 named before the read rule …" (got 404) |
+| `r?.kind === "RETAINER"` in the 409's words | 23/25. FAIL on both consultation 409 lines |
+| `LIVE` in the 409's words | 24/25. FAIL "(breaker m1): a retainer that is not out for signing (a draft) → 409 NO_E_SIGNED_COPY" |
+| `assertFileVisible` in `assertKeyVisible` / in `fileKey` | still red: 1 line / 3 lines, as in round 1 |
+
+The live-RETAINER branch (NOT_SIGNED "… yet") is still pinned by the CLIENT_SIGNED line (`check_fo6_4d_signed_downloads.ts:116-117`).
+
+### Findings
+
+* **Majors 1, 2 and 3: closed.** Each rule now has its own line, and each line fails without its rule (table above). The consultation fixture is inserted through the signing tables' own triggers, with none disabled. Unlike my round 1 crafted row, it is a real kind-CONSULTATION `fo_retainer` with its own CONSULTATION request and evidence.
+* **New 409 words:**
+  * The added `foRetainer.findFirst` is firm-scoped, selects only `kind` and `status`, and runs after the read rule, so the state does not leak to someone who cannot see the retainer.
+  * A missing row falls to NO_E_SIGNED_COPY, not a 500.
+  * `kind` and `status` match `prisma/schema/front-office-retainers.prisma` (`FoRetainerKind` RETAINER/CONSULTATION; LIVE = SENT, VIEWED, CLIENT_SIGNED).
+  * No new findings.
+* **Minor 3: closed.** The enum's error text is removed.
+* **Minor 1: open, answer accepted.** These filters are defence in depth that real data cannot reach. Not blocking.
+* **Minor 2: open, answer accepted.** `gh api repos/expat-ready/xpatready/pulls/3490` gives `open base=main merged=false labels=review: approved`. The sentence becomes true when 4c merges. Not blocking.
+
+Round 2 counts: 0 Blockers, 0 Majors, 2 Minors (open, answered).
+
+Verdict: Approve
