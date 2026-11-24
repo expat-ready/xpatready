@@ -281,3 +281,11 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * Nearest named to him: R1.104 after #3420, R1.10 after #3385 (merged). "R1.86 waits only on #3209" is wrong: PF-21rs is missing. waves.py active: wave 3, starts open for 0-4. Scratch ref refs/lead24/3305 in the main copy.
 * Lead B 6: #3235 OK 77997e39d (the PF-21d carry can close); #3277 OK 7bb39be68 (head since moved to 90def4404); #3441 NOT OK 4461c363b, asked for the new head. Told the founder 4d72360f6 was out of date; the newer OK came after.
 * 13:50 IST: #3441 648adace4 (M2): reviewer and breaker Approve, Lead B 6 OK, my read posted (API code only), /run full asked; label when green, after #3428 (queued). #3277 90def4404 Lead B 6 OK; its full run is next, then #3234, #3174. Lead 26 standby says standing by; R1.20 bugs cloud session started.
+
+### Lead 25, check 14:01 IST 24 Nov
+* Previous script check 12:46 to 13:51: lead-watch.sh was not run for 64 min (Lead 24's script checks were by its own chk.sh). This run hit its 110 s limit (rc 124) after the queue part; the rest not read.
+* Merged since 13:20: #3439, #3450, #3448, #3420 (by qa 6's words). Counted on main 872275102 by grep: 55 Works, 24 Partial, 22 Not built.
+* R1.104 waits only on QA-777 (Major, the consultation door is not bound to a browser; qa 6, not re-run by me). Given to lane 87D51 after FO-6 4b; three answers on #3433.
+* #3418: CodeQL found 6 new alerts (5 high in a test, 1 medium in video/service.ts:48); its lane had read it as a repository failure; asked on the PR (unseen account, not confirmed seen).
+* #3447, #3451: pr-rules red on their bodies; qa 6 told (bubble seen). Disk swung 5.3 to 8.8 GB between 13:5x readings; nothing deleted (13.3 GB in .claude/worktrees, 3.7 GB in /private/tmp/claude-501).
+* Weekly 68%.
