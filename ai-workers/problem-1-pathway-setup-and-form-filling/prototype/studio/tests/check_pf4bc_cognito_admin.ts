@@ -233,7 +233,7 @@ for (const [what, cfg] of [["no pool configured", { ...config, userPoolId: null 
     // Without a bound the wait never ends (Prisma's limit does not stop a statement that is waiting): 6 s then counts as a fail.
     const held = await Promise.race([attempt, new Promise<"still waiting">((r) => setTimeout(() => r("still waiting"), 6_000))]);
     const took = Date.now() - t0; await holder.query("rollback"); await holder.end(); await attempt;
-    ok("PF-4bc fail (#3217 R3-m1): a person's row held elsewhere after the firm lock → 503 FIRM_BUSY within about 3 s, not a wait the whole transaction long", held?.status === 503 && held.body.code === "FIRM_BUSY" && took < 5_000, { held, took });
+    ok("PF-4bc fail (#3217 R3-m1): a person's row held elsewhere after the firm lock → 503 FIRM_BUSY within about 3 s, not a wait the whole transaction long", typeof held === "object" && held?.status === 503 && held.body.code === "FIRM_BUSY" && took < 5_000, { held, took });
     ok("PF-4bc pass (break R2-M1; #3217 R3-m2): the transaction's limit covers two bounded lock waits (up to 3 s each: Postgres bounds each lock attempt, and a row lock can wait twice), the 3 s provider deadline and the commit", FIRM_TX.timeout >= 2 * 3_000 + 3_000 + 2_000, FIRM_TX);
   } finally { await db.$disconnect(); try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* prune-test-dbs.sh */ } }
 }
