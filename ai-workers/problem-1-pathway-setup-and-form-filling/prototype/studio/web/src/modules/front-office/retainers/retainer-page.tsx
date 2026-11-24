@@ -11,7 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FoldOut } from "@/components/fold-out";
 import { Button, Field, Input, Notice, Panel, Pill, Select } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
-import { can } from "../sales/contract";
+import { can, Prospect } from "../sales/contract";
 import { Loading } from "../sales/loading";
 import { SalesFrame, useStaff } from "../sales/sales-frame";
 import { staffApi, StaffApiError, staffToken } from "../sales/session";
@@ -43,6 +43,10 @@ function RetainerBody({ id }: { id: string }) {
   const [error, setError] = React.useState<{ field: string | null; text: string; code?: string } | null>(null);
   const [sending, setSending] = React.useState(false), [showItems, setShowItems] = React.useState(false), [warnings, setWarnings] = React.useState<string[]>([]);
   const r = one.data;
+  // QA-779 (b): an Individual client had no email when this version was made. Once the record has one (added on the
+  // prospect page), a new version takes it (the save re-reads the record), so Save is pressable with no typed change.
+  const needsEmail = !!r?.prospect && r.mayChange && r.subject !== "COMPANY" && !!r.blockers.signerPersonId;
+  const record = useQuery({ enabled: needsEmail, queryKey: ["fo", "prospects", "one", r?.prospect?.id], queryFn: async () => Prospect.parse(await staffApi(`/front-office/prospects/${encodeURIComponent(r!.prospect!.id)}`)) });
   React.useEffect(() => { if (r && focusSend.current) { focusSend.current = false; document.querySelector<HTMLElement>("[data-check-and-send]")?.focus(); } }, [r]);
   const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); setSignerId(x.signerPersonId ?? ""); setTemplateId(""); }, []);
   React.useEffect(() => { if (r) reset(r); }, [r, reset]);
@@ -80,7 +84,7 @@ function RetainerBody({ id }: { id: string }) {
       const a = document.createElement("a"); a.href = URL.createObjectURL(await res.blob()); a.download = `retainer-v${n}.docx`; a.click(); URL.revokeObjectURL(a.href);
     } catch { toast.push({ tone: "danger", text: "Could not download the file. Please try again." }); }
   };
-  if (one.isPending) return <Loading label="Loading the retainer" rows={3} />;
+  if (one.isPending || (needsEmail && record.isPending)) return <Loading label="Loading the retainer" rows={3} />;   // the page opens once it knows (QA-779 b)
   if (one.isError || !r) {
     const gone = one.error instanceof StaffApiError && one.error.status === 404;
     return <section className="mx-auto max-w-xl rounded-xl border border-border bg-surface-raised p-6"><h1 className="text-lg font-semibold">{gone ? "Retainer not found" : "Could not load the retainer"}</h1><p className="mt-1 text-sm text-text-muted">{gone ? "There is no such retainer in your firm, or it is not one you may see." : "Please try again."}</p><Link to="/front-office/pipeline" className="mt-3 inline-block text-sm text-text-link hover:underline">Back to Pipeline</Link></section>;
@@ -89,7 +93,9 @@ function RetainerBody({ id }: { id: string }) {
   const client = String(v["client.name"] ?? "") || "the client", to = String(v["signer.email"] ?? v["client.email"] ?? "");
   const mayEdit = r.mayChange && can(me, R_KEY.draft) && EDITABLE.includes(r.status), draft = r.status === "DRAFT";
   const form = mayEdit && (draft || editing), next = r.version.n + 1;
-  const changed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && !!signerId && signerId !== (r.signerPersonId ?? "")) || !!templateId;   // an empty pick is no change (break re-check)
+  const emailNow = needsEmail && form && !!record.data?.person?.email;
+  const typed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && !!signerId && signerId !== (r.signerPersonId ?? "")) || !!templateId;   // an empty pick is no change (break re-check)
+  const changed = typed || emailNow;   // QA-779 (b): the record's new email is a change to save (Check and send saves it first)
   // QA-780: what the next version may be made from. First this draft's template at its own version: it prints the disclosure
   // when the list's entry is that same version and names it, or (an older or switched-off version) when this version printed
   // one; then the firm's active templates of this kind, the draft's own template only when it has a newer version (review M2:
@@ -154,7 +160,7 @@ function RetainerBody({ id }: { id: string }) {
               <dl className="grid gap-1 text-sm sm:grid-cols-[9rem_1fr]">
                 {!form ? <><dt className="text-text-muted">Template</dt><dd className="[overflow-wrap:anywhere]">{r.template.name ?? "(removed)"} · version {r.template.version}</dd></> : null}
                 {!(form && company) ? <><dt className="text-text-muted">Signer</dt><dd id="fo-signer" tabIndex={-1} className="[overflow-wrap:anywhere]">{String(v["signer.name"] ?? "") || "Not chosen"}{to ? ` · ${to}` : ""}
-                  {r.blockers.signerPersonId && EDITABLE.includes(r.status) ? <span className="block text-text-danger" data-blocker="signer">{r.blockers.signerPersonId}{!company && r.prospect && r.mayChange ? <> <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-text-link hover:underline">Add it on {client}'s record</Link>, then save a new version here.</> : null}</span> : null}</dd></> : null}
+                  {r.blockers.signerPersonId && EDITABLE.includes(r.status) ? <span className="block text-text-danger" data-blocker="signer">{r.blockers.signerPersonId}{emailNow ? <span id="fo-record-email" className="block text-text" data-record-email>{client}'s record now has an email. Save version {next} to use it.</span> : !company && r.prospect && r.mayChange ? <> <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-text-link hover:underline">Add it on {client}'s record</Link>, then save a new version here.</> : null}</span> : null}</dd></> : null}
                 {!form ? <><dt className="text-text-muted">Representative</dt><dd>{repName(r.representativeStaffId)}</dd></> : null}
               </dl>
               {form ? <div id="fo-template"><Field label="Template" hint="The next version you save is made from this template." error={fieldError("templateId")}>
@@ -183,7 +189,7 @@ function RetainerBody({ id }: { id: string }) {
                 {form ? <Button type="button" variant="link" size="sm" className="self-start" onClick={() => setRows((all) => [...all, { label: "", amount: "", when: "ON_SIGNING", dueOn: "" }])}>Add a fee row</Button> : null}
               </fieldset>
               {form ? <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" variant={draft ? "outline" : "default"} busy={save.isPending} disabled={!changed}>Save as version {next}</Button>
+                <Button type="submit" variant={draft ? "outline" : "default"} busy={save.isPending} disabled={!changed} aria-describedby={emailNow ? "fo-record-email" : undefined}>Save as version {next}</Button>
                 {!draft ? <Button type="button" variant="ghost" onClick={() => { setEditing(false); reset(r); setError(null); }}>Cancel</Button> : null}
                 <span className="text-xs text-text-muted">{draft ? "Each save is a new version." : `Saving stops the link ${client} has for version ${r.version.n} (it stays as it was sent); version ${next} is then a draft you send again.`}</span>
               </div> : null}
@@ -222,8 +228,8 @@ function RetainerBody({ id }: { id: string }) {
             <Button variant="link" size="sm" className="mt-1" onClick={() => setShowItems(true)}>See the items and how we check</Button>
           </section> : null}
           {draft && r.mayChange && can(me, R_KEY.send) ? <>
-            <Button data-check-and-send busy={save.isPending} onClick={checkAndSend} aria-describedby={form && changed ? "fo-unsaved-hint" : undefined}>Check and send</Button>
-            {form && changed ? <p id="fo-unsaved-hint" className="-mt-2 text-xs text-text-muted" data-unsaved-hint>You have unsaved changes. Check and send saves them as version {next} first.</p> : null}
+            <Button data-check-and-send busy={save.isPending} onClick={checkAndSend} aria-describedby={form && typed ? "fo-unsaved-hint" : undefined}>Check and send</Button>
+            {form && typed ? <p id="fo-unsaved-hint" className="-mt-2 text-xs text-text-muted" data-unsaved-hint>You have unsaved changes. Check and send saves them as version {next} first.</p> : null}
           </> : null}
         </aside>
       </div>
