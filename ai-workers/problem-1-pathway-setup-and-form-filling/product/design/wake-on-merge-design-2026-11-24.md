@@ -1,8 +1,8 @@
-# Wake on merge: design (Lead O 2, 24 Nov 13:45 IST). Design only, nothing built, US$0
+# Wake on merge: design (Lead O 2, 24 Nov 13:35 IST). Design only, nothing built, US$0
 
 **Need (founder, through Lead 25):** when a pull request merges, the lane that waits for it starts its next step without a person noticing first. Today a merge wakes nobody.
 
-**Duplicate check (origin/main fa337044c):** `proof-read-watch.py` (a): a merged "Completes:" with no qa PR after 30 min is an ACT. `sle-watch.py` L: an open PR quiet 30 min. `app-view-check.sh` (A334): a cloud lane idle 10 min with work left. `owed-watch.py` starts: starts owed at a typed turn. `lane-cleanup.py`: lanes whose PRs all merged. `workflow comment-run.yml`: a comment starts test runs, not sessions. **None links a merge to who waits for it.**
+**Duplicate check (origin/main fa337044c):** `proof-read-watch.py` (a): a merged "Completes:" with no qa PR after 30 min is an ACT. `sle-watch.py` L: an open PR quiet 30 min. `app-view-check.sh` (A334): a cloud lane idle 10 min with work left. `owed-watch.py` starts: starts owed at a typed turn. `lane-cleanup.py`: lanes whose PRs all merged. `comment-run.yml`: a comment starts test runs, not sessions. **None links a merge to who waits for it.**
 
 **What limits it (our own records, not re-tested today):** an idle cloud lane does not act on a message from another session; only text typed in its claude.ai prompt box wakes it (the Lead does that). New sessions start only in a founder-typed turn. So "wake" today means: the Lead types, and the tool says whom, why and what to type.
 
