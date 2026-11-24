@@ -451,3 +451,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 * **Tools:** main's copy in /private/tmp/claude-501/-Users-ranjansingh-Desktop-Xpatready/908aa93b-9731-48a8-9547-34ba694ee47b/scratchpad/mv; pr.py and api.sh beside it. gh's TLS fails: curl with gh auth token. GitHub answered 429 at 15:31: keep calls few. One commit call was blocked at 16:05 by a hook time-out, nothing had run; retried in smaller steps.
 * **Records owed:** Lead 26's list, plus the pause and AG-4-15 DECISIONS rows; BACKLOG row M1 r1 (statement reader); B1 update (C6 yes by Lead 25's report).
 * **My errors:** the 15:33 report had no measured stages and none went at 16:03; a wrong option was selected on qa 7's card before I corrected it (never submitted); two /run full at once made one useless (#3277's old head).
+
+## Lead 28, 16:10 IST 24 Nov
+* Took over 16:07; check d8e1e247. Lead O 2 and Lead B 6 told (O 2's reply on the types memory fault not seen; its types PR not open yet).
+* #3470 labelled 16:09 on 1d2cf9221 (Approve, Lead 27's read, ci green; the queue gate had misjudged its last verdict). #3483: read line posted on fa17e8c2b; not labelled, pr-rules red on its body (testable Done when, Duplicate check line).
+* Going, no red: M1 full run 45373097708 (13 green, 22 running), #3481 (#3305 alone; types green), #3484 (#3474). #3482's `tests` red, 45 passed 1 failed. 40 PRs open, 4 labelled.
+* Stage ages, claude.ai lanes and #3480 (R1.20, reader's Approve) not checked yet: next check.
