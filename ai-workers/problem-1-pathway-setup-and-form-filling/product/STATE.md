@@ -18,7 +18,7 @@ updated: 2026-11-24 21:13 IST: Lead 30 ended. **Hand-over: the last section of `
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A375 | 24 Nov ~21:28 (typed to Lead 29, relayed) | plan for the account change; who is the current Lead | Lead 31; block drafted on top of RESUME-ON-NEW-ACCOUNT; date, trigger and new account asked; open |
+| A375 | 24 Nov ~21:28 (typed to Lead 29, relayed) | plan for the account change; who is the current Lead | Lead 31; block on top of RESUME-ON-NEW-ACCOUNT; he answered Lead 29 "Yes, switch at 95%" (relayed); stop order at 95%, open |
 | A374 | 24 Nov ~17:02 and again (typed to Lead 29) | start R1.68; recover everything, diligently | R1.68 started in the cloud; in force |
 | A371, A372 | 24 Nov ~16:13, ~16:30 (typed to Lead 28) | all focus on Partials to Proven, rules held, usage no limit | plan file, end; in force |
 | A359 | 24 Nov, after 13:06 (typed to Lead 24) | prove faster; follow the Lead's recommendations; final tooling decision, dates, outcomes | plan file, end; #3305 line pushed; three sessions started; CodeAnt C1 and C3 yes |
