@@ -191,7 +191,7 @@ try {
   const day7 = await runOn(plus7, [{ module: "qa.stand-in", erase: async () => { standInCalls++; return { outcome: "NOTHING", note: "J-85 stand-in eraser" }; } }]);
   const steps = delId ? sql(`select coalesce(string_agg(kind::text || ':' || coalesce(note, ''), ' | ' order by seq), '') from plat_data_request_event where request_id = '${delId}'`) : "";
   const statusAfter = delId ? sql(`select status::text from plat_data_request where id = '${delId}'`) : "";
-  ok("J-85 W5 (part missing: PF-21d part 1b; the daily job run here on day 7 on a fake clock, one stand-in eraser, said): the held person's order is carried out as HELD: no eraser called, the hold's reason on the request's step, the person's row stays",
+  ok("J-85 W5 (part missing: PF-21d part 1b; the daily job's Erasure.run called in this process on day 7 on a fake clock, one stand-in eraser, said; its 07:40 Toronto schedule is not proven here): the held person's order is carried out as HELD: no eraser called, the hold's reason on the request's step, the person's row stays",
     !!day7.result && day7.result.held.includes(delId) && standInCalls === 0 && statusAfter === "HELD" && steps.includes("Sample litigation (J-85)") && sql(`select count(*) from fo_person where id = '${personId}'`) === "1",
     { error: day7.error, held: day7.result?.held, calls: standInCalls, status: statusAfter, steps: steps.slice(-300) });
   // The same for a person with no hold, with the app's own erasers (part 2). Until part 2 merges the registry here is
@@ -203,7 +203,7 @@ try {
   const day7b = await runOn(plus7, []);
   const other2 = sql(`select coalesce((select given_names from fo_person where id = '${otherPerson}'), 'gone')`);
   ok("J-85 W5 (part missing: PF-21d part 2, the platform and front-office erasers): an approved DELETION for a person with no hold is carried out on day 7: the request Completed and the person's record anonymised in place",
-    approved2.status === 200 && !!day7b.result && day7b.result.erased.includes(del2Id) && sql(`select status::text from plat_data_request where id = '${del2Id ?? "00000000-0000-0000-0000-000000000000"}'`) === "COMPLETED" && other2 !== `Other${run}`,
+    approved2.status === 200 && !!day7b.result && day7b.result.erased.includes(del2Id) && sql(`select status::text from plat_data_request where id = '${del2Id ?? "00000000-0000-0000-0000-000000000000"}'`) === "COMPLETED" && other2 !== "gone" && other2 !== `Other${run}`,   // the row stays, its name replaced (reviewer m3, #3533)
     { approved: approved2.status, error: day7b.error, erased: day7b.result?.erased, skipped: day7b.result?.skipped, givenNames: other2 });
 
   // ---------------------------------------------------------------------------------------------- W6 roles
