@@ -1,6 +1,6 @@
 // PF-4s part 1 (SA-7-1, SA-7-11, SA-7-14, SA-7-20; SA-6-4): the one guard of /api/system/*, and the wall around it.
 // The guard: bearer token → one of our own staff (service.ts: two-step done, active, session not ended) → the route's
-// declared system/* keys, all of them (403 otherwise), and its reason when it asks for one (400 otherwise) → one audit
+// declared system/* keys, all of them (403 otherwise), and its reason when it asks for one (422 naming it otherwise) → one audit
 // line, allowed or refused, written before the handler runs (no line, no call) → { staffId, name, roles, keys } on the
 // request (req.systemStaff; read with systemStaffOf). It never sets a firm: these requests have none (SA-7-1).
 // Every other path is left exactly as it was. Matching is by the route's declared access first, so a route is guarded
@@ -124,7 +124,7 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     const fields: Record<string, string> = {};
     if (!notObject) {
       // Only when the reason itself needs a change: with a good reason the route reads its own body in its own words and codes.
-      if (wantsReason && bodySchema && (tooLong || !reason)) { const r = bodySchema.safeParse(req.body); if (!r.success) Object.assign(fields, fieldsOf(r.error)); }
+      if (wantsReason && bodySchema && (tooLong || !reason) && !missing.length && !stale && !badId) {   // review m1: never parsed for a caller who is refused first const r = bodySchema.safeParse(req.body); if (!r.success) Object.assign(fields, fieldsOf(r.error)); }
       // A reason over its length is refused on every route that is sent one, as before (an optional reason too: breaker n2).
       if (tooLong) fields.reason = `A reason is at most ${REASON_MAX} characters.`;
       else if (wantsReason && !reason) fields.reason = `This needs a written reason (up to ${REASON_MAX} characters).`;
