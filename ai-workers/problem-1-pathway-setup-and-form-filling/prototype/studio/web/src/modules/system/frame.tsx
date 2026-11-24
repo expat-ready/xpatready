@@ -9,7 +9,7 @@ import { NavLink } from "react-router-dom";
 import { Frame, useWhere, type Crumb } from "@/components/frame";
 import { Button, Field, Input, Notice } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
-import { COPY, endedWords, FIRM_READ_KEY, type SystemMe } from "./contract";
+import { COPY, endedWords, FIRM_READ_KEY, SUPPORT_LIST_KEY, type SystemMe } from "./contract";
 import { endSystemSession, SystemApiError, systemSignIn, useSystemMe, useSystemSessionEnd, useSystemToken } from "./session";
 
 /** Set by a sign-in on the card: the next page moves the focus to its heading once its first answer is in (review #9). */
@@ -20,7 +20,7 @@ const MeCtx = React.createContext<SystemMe | null>(null);
 /** The signed-in staff member, inside a console page. */
 export const useSystemStaff = () => React.useContext(MeCtx)!;
 
-const SECTIONS = [{ path: "/system/firms", label: "Firms", key: FIRM_READ_KEY }];
+const SECTIONS = [{ path: "/system/firms", label: "Firms", key: FIRM_READ_KEY }, { path: "/system/support", label: "Support", key: SUPPORT_LIST_KEY }];
 
 function SignInCard({ because }: { because: string | null }) {
   const [email, setEmail] = React.useState(""), [busy, setBusy] = React.useState(false), [error, setError] = React.useState<string | null>(null);
