@@ -2,7 +2,9 @@
 
 Breaker: qa helper agent, 24 Nov 2026. PR #3367 at 7d30fe3ef3 (branch claude/screens-fo6ds-send). Isolated copy `fo6ds_brk` on :4582 (`PLATFORM_IDENTITY=local`), seeded with `seedSampleFirms` + `seedSampleFirmsFrontOffice` and the test's SQL patterns; Playwright Chromium; stopped afterwards (log `studio/var/isolated-logs/fo6ds_brk-api.log`). Sample values only; no AI, no vendor, no email. Scope: concept §3-§6 only ("Not built" items not checked). File refs are `web/src/modules/front-office/sign/signature-requests.tsx` (SR) unless named.
 
-**Verdict: Changes**: no Blocker. Three Majors: after a refused send the panel keeps a pick the person can no longer see or change, so every later Send fails the same way (M1-M3). And a send that fails after the panel is closed says nothing (M4).
+**Verdict: Approve** (round 2, on 232d508ec): M1-M4 and m1, m2, m5, m7 are fixed. No new Blocker or Major; five new Minors (r2-m1 to r2-m5 below).
+
+Round 1 (7d30fe3ef) verdict was Changes: no Blocker. Three Majors: after a refused send the panel keeps a pick the person can no longer see or change, so every later Send fails the same way (M1-M3). And a send that fails after the panel is closed says nothing (M4).
 
 ## Blocker
 None.
@@ -48,3 +50,27 @@ Actual: no toast and no message. `onError` writes into the closed panel's state,
 - Honesty (BR-10): the pill reads "Recorded", the toast reads "Recorded for signature: … No one is emailed yet.", and no "Sent" pill or emailed claim appears in any state checked. No page errors in either run.
 
 Evidence: scripts and screenshots (`s1-stuck-disabled-ticked.png`, `s2-removed-signer-still-picked.png`, `s20-firm-signer-gone-still-sent.png`, `s3b-…`, `s11-…`, `s12-…`, `s15-same-names.png`) are in the breaker's session scratchpad `brk/` (not committed). Each step above can be repeated with the seed shown.
+
+## Round 2: re-break of 232d508ec (`git diff 7d30fe3ef..232d508ec`)
+Fresh copy `fo6ds_brk2` on :4584, seeded as in round 1. I re-ran the round-1 scripts, then attacked the new paths (the reload effect that drops picks, the toast when the panel is closed, the opener disabled while sending). The copy is stopped; its log is `studio/var/isolated-logs/fo6ds_brk2-api.log`. Caveat: this working copy is shared. Another session moved HEAD to dda1ed320 and rebuilt the shared `web/dist` mid-run, so my last runs served f158b559b's `titleOf`. `signature-requests.tsx` is the same in both commits. The round-1 re-runs ran on 232d508ec.
+
+**Fixed (re-run of the round-1 steps):**
+- M1: D reloads disabled and **unticked**. Send then says "Pick at least one person to sign.", and nothing is stuck.
+- M2: the removed signer leaves the pick as well as the list. The next Send gives the same recoverable "Pick at least one person…".
+- M3: the select is cleared, and the next Send records with no firm signer.
+- M4: Esc mid-send, then a 500, gives the toast "Could not send. Nothing was sent; please try again." This also works after navigating away from the page. A success with the panel closed toasts and puts focus on the new row.
+- m1: ticking 12 gives "At most 9 people sign one document." and nothing is sent.
+- m2: the opener is disabled while recording, so the panel cannot be reopened mid-send.
+- m5: a typed title is kept when the file is changed.
+- m7: "Try again" works by keyboard and pre-ticks the one person.
+- Other held paths: after a drop, ticking Client B records. Changing prospect mid-send causes no stray row and no disabled opener on the other prospect. No page errors.
+
+**New Minors on 232d508ec (none blocks):**
+- **r2-m1. The m3 fix cut file names by characters, not UTF-16 units, so the screen refused its own pre-filled title.** `titleOf` at 232d508ec (`contract.ts:41`) gives 201 UTF-16 units for `"a"×199 + "😀tail.pdf"`, and 300 for 150 emoji. Its own check (`title.trim().length > 200`) then shows "The title has at most 200 characters." on a title the person never typed. They must edit the title before Send works (seen in the S5 re-run; the old function was re-run in node). **Already fixed in f158b559b** (cuts whole characters within 200 UTF-16 units). On the rebuilt bundle, 199/200/200 units were recorded with no error.
+- **r2-m2. Focus is lost when the panel is closed during "Recording…".** The Panel returns focus to the opener, which is now `disabled={send.isPending}` (SR:109), so focus falls to `<body>`. It stays there after a failed answer (N1: `BODY` both times). A keyboard user starts again from the top of the page (WCAG 2.4.3). After a success, focus does reach the new row.
+- **r2-m3. A cancelled file chooser makes the next file keep the old file's title.** Choose "Alpha offer.pdf", open the chooser and cancel (the input clears: `pick(null)` sets `file` to null), then choose "Beta contract.pdf". The title stays "Alpha offer" although the hint shows Beta contract.pdf. The keep-typed-title rule (SR:78) compares against `file`, which is now null, so it treats the old pre-fill as typed text.
+- **r2-m4. A cleared firm signer can go out unnoticed.** After FIRM_SIGNER_NOT_IN_FIRM the select is cleared and the error explains it. But any edit (e.g. the title) clears the error (SR:127), and the next Send records with **no firm signer** although the person chose one. No warning stays near the select (N9).
+- **r2-m5. When the panel is closed, the refusal toast passes the API's raw summary.** A real 422 for a title with a tab gives "Not recorded: One field needs a change: title: This must be plain text on one line. Nothing was saved." (a field key and a doubled sentence). The no-email case reads well: "Not recorded: ClientA Sample has no email address. Add an email first."
+
+Round-2 scripts: the breaker's scratchpad `brk/r2/` (`ui.mts`, `ui2.mts`, `n.mts`, `n3.mts`), not committed.
+
