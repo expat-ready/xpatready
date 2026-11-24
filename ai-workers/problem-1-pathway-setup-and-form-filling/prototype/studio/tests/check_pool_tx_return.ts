@@ -24,6 +24,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 const { WalledPool, withFirm } = await import("../api/src/platform/firm-scope.ts");
+const { JsonLog, useLog } = await import("../api/src/platform/observability/log.ts");
+const lines: string[] = []; useLog(new JsonLog((line) => { lines.push(line); }));   // review m2: the guard's own event, counted
+const fired = (use: string) => lines.filter((l) => l.includes('"platform_pool_open_transaction"') && l.includes(`"${use}"`) && l.includes('"warn"')).length;
 const pool = new WalledPool({ connectionString: URL, max: 1 });
 const db = new PrismaClient({ adapter: new PrismaPg(pool) });
 const watch = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL }) });   // another connection: what others see
@@ -40,6 +43,7 @@ try {
   const gaveUp = await withFirm(A, () => db.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); }, { maxWait: 1_000, timeout: 5_000 })).then(() => "ran", (e: Error) => e.message);
   await long; await sleep(300);
   ok("set-up: the second transaction gave up waiting for the connection (Prisma's maxWait)", gaveUp !== "ran" && /transaction|timeout|wait/i.test(gaveUp), gaveUp);
+  ok("pass (review m2): the guard fired on that leak (one warn line, \"destroyed\"), so the cases below test the guard, not luck", fired("destroyed") === 1, { destroyed: fired("destroyed") });
 
   // (1) firm B writes on the next checkout; a later change in firm B is refused and rolls back.
   const b1 = await withFirm(B, firmNow);
@@ -69,6 +73,7 @@ try {
       await withFirm(B, who);
       await withFirm(B, () => db2.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); throw new Error("a refused change"); })).catch(() => undefined);
       const b = await withFirm(B, who);
+      ok("pass (review m2): the guard fired on the bypass-role leak too", fired("destroyed") === 2, { destroyed: fired("destroyed") });
       ok("P1 fail (3): after a leaked bypass-role use, firm B's next query runs as firm B with no role, never as the bypass role", late !== "ran" && b.f === B && b.r !== "xr_staff_bypass" && b.u !== "xr_staff_bypass", { late, b });
     } finally { await db2.$disconnect().catch(() => {}); await pool2.end().catch(() => {}); }
   }
@@ -95,6 +100,29 @@ try {
   const r6 = c6 instanceof Error ? { error: c6.message } as Record<string, unknown> : await q(c6).catch((e: Error) => ({ error: e.message }) as Record<string, unknown>);
   if (!(c6 instanceof Error)) c6.release();
   ok("fail (checkout guard): a pooled client found inside a transaction at checkout is destroyed and another handed out, in its own firm, outside any transaction", !("error" in r6) && r6.p !== r5.p && r6.f === B && r6.intx === false, { r5: r5.p, r6 });
+  ok("pass (review m2): the checkout guard's case fired its own event", fired("destroyed-at-checkout") >= 1, { atCheckout: fired("destroyed-at-checkout") });
+
+  // Review m1: a BEGIN sent and not yet answered reads 'I' (pg updates the state only on the server's answer); the
+  // release guard also needs nothing in flight. The released client must not be handed to firm B inside that BEGIN.
+  // Firm B is already waiting for the pool's one connection, so pg-pool hands it over the moment it is released.
+  const c7 = await withFirm(A, () => pool.connect()); const r7 = await q(c7);
+  const waiting = withFirm(B, () => pool.connect()).catch((e: Error) => e);
+  await sleep(50);
+  const begun = c7.query("begin").catch(() => undefined); c7.release();   // destroyed with it in flight: "Connection terminated"
+  const c8 = await waiting; await begun;
+  const r8 = c8 instanceof Error ? { error: c8.message } as Record<string, unknown> : await q(c8).catch((e: Error) => ({ error: e.message }) as Record<string, unknown>);
+  if (!(c8 instanceof Error)) c8.release();
+  ok("fail (review m1): a client released with its BEGIN still unanswered is destroyed; firm B gets a fresh connection outside any transaction", !("error" in r8) && r8.p !== r7.p && r8.f === B && r8.intx === false, { r7: r7.p, r8 });
+
+  // Review m5: every pooled client dirty → after one retry the checkout fails (fail closed), and the pool recovers after.
+  const pool3 = new WalledPool({ connectionString: URL, max: 2 });
+  try {
+    const [d1, d2] = [await withFirm(A, () => pool3.connect()), await withFirm(A, () => pool3.connect())];
+    d1.release(); d2.release(); await d1.query("begin"); await d2.query("begin");   // both misused after release
+    const both = await withFirm(B, () => pool3.connect()).then((c) => { c.release(); return "handed out"; }, (e: Error) => e.message);
+    const next = await withFirm(B, () => pool3.connect()); const rn = await q(next); next.release();
+    ok("fail (review m5): with every pooled client inside a transaction the checkout fails after one retry, never hands one out; the next checkout opens a clean one", /inside a transaction/.test(both) && rn.f === B && rn.intx === false, { both, rn });
+  } finally { await pool3.end().catch(() => {}); }
 } finally {
   await db.$disconnect().catch(() => {}); await watch.$disconnect().catch(() => {}); await pool.end().catch(() => {});
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* left for prune-test-dbs.sh */ }

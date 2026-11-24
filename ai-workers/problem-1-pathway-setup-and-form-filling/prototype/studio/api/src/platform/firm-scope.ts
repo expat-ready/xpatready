@@ -466,17 +466,25 @@ type Tagged = pg.PoolClient & { [SET]?: string };
  *  ROLLBACK, so the next caller ran inside it: its writes were lost at the next rollback, and a rollback undid its
  *  set_config while the tag above still named its firm (the next query ran as the earlier firm). The server tells pg the
  *  transaction state after every statement (ReadyForQuery: 'I' idle, 'T' in a transaction, 'E' failed); a client that is
- *  not idle when released is destroyed, never kept, and its tag cleared (fail closed). And at checkout (Lead B 5): a
+ *  not idle (not 'I', or a statement sent and not yet answered) when released is destroyed, never kept, and its tag cleared (fail closed). And at checkout (Lead B 5): a
  *  client the pool cannot prove idle has its tag cleared and is destroyed, and another is taken (one more try; then the
  *  checkout fails). Clearing the tag alone would not do: the lost write would stay. tests/check_pool_tx_return.ts. */
-const NOT_IDLE = new Error("a pooled connection came back inside a transaction: destroyed, not reused");
-if (typeof (pg.Client.prototype as { getTransactionStatus?: unknown }).getTransactionStatus !== "function")
-  throw new Error("P1: pg no longer reports a connection's transaction state (Client.getTransactionStatus), so the pool cannot refuse an open transaction (firm-scope.ts; pg changed)");
+const notIdleError = () => new Error("a pooled connection came back inside a transaction: destroyed, not reused");
+/** What pg 8 keeps per client (@types/pg does not declare it): the server's last transaction state, the statement in
+ *  flight and the queue. Idle means 'I' with nothing sent and unanswered (review m1: a BEGIN still in flight reads 'I'). */
+type PgState = { getTransactionStatus(): "I" | "T" | "E" | null; _getActiveQuery(): unknown; _queryQueue: unknown[] };
+const proto = pg.Client.prototype as unknown as Partial<PgState>;
+if (typeof proto.getTransactionStatus !== "function" || typeof proto._getActiveQuery !== "function")
+  throw new Error("P1: pg no longer reports a connection's transaction state (Client.getTransactionStatus, _getActiveQuery), so the pool cannot refuse an open transaction (firm-scope.ts; pg changed)");
+function idleNow(c: object): boolean {
+  const s = c as unknown as PgState;
+  return s.getTransactionStatus() === "I" && !s._getActiveQuery() && Array.isArray(s._queryQueue) && s._queryQueue.length === 0;
+}
 function closeOnOpenTransaction(c: Tagged): void {
   const release = c.release;   // pg-pool gives each checkout its own release-once function
   c.release = ((err?: Error | boolean) => {
     if (err) return release(err);
-    if ((c as unknown as pg.Client).getTransactionStatus() !== "I") { c[SET] = undefined; logPort.info("platform_pool_open_transaction", { use: "destroyed" }); return release(NOT_IDLE); }
+    if (!idleNow(c)) { c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed" }); return release(notIdleError()); }
     return release();
   }) as typeof c.release;
 }
@@ -491,10 +499,10 @@ export class WalledPool extends pg.Pool {
     const firm = s?.bypass || direct ? "" : (s?.firmId ?? ""), role = s?.bypass || direct ? BYPASS_ROLE : "none", want = `${firm}|${role}`;
     const idle = async (tries: number): Promise<Tagged> => {
       const c = (await super.connect()) as Tagged;
-      if ((c as unknown as pg.Client).getTransactionStatus() === "I") return c;
-      c[SET] = undefined; c.release(NOT_IDLE);   // P1 (Lead B 5): not provably idle at checkout: destroyed, never handed out
-      logPort.info("platform_pool_open_transaction", { use: "destroyed-at-checkout" });
-      if (tries <= 0) throw NOT_IDLE;
+      if (idleNow(c)) return c;
+      c[SET] = undefined; c.release(notIdleError());   // P1 (Lead B 5): not provably idle at checkout: destroyed, never handed out
+      logPort.warn("platform_pool_open_transaction", { use: "destroyed-at-checkout" });
+      if (tries <= 0) throw notIdleError();
       return idle(tries - 1);
     };
     const p = idle(1).then(async (c: Tagged) => {
