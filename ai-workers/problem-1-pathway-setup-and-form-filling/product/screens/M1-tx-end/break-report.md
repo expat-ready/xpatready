@@ -83,3 +83,83 @@ Head 1167bcd46 (PR #3467, stacked on #3441 648adace4; own diff `648adace4..1167b
 - **Minor:** the site list is kept by hand as file:line. Nothing fails when a new upsert is added. Fix: compare against a grep count and exit non-zero on a mismatch.
 
 Verdict: Approve 1167bcd46410285f81940e51643c806695978c19
+
+## Round 2 (head f824febdd, own diff `1167bcd46..f824febdd`), 24 Nov
+
+The breaker who did not build the fix. Scratch databases `xr_studio_m1brk2_*`; PostgreSQL 18.3. New scripts in the same folder: b5_parse2.ts (18 new texts, each checked on the real server by comparing the xid before and after; plus timings), b6_scale.ts, b7_round2.ts, b8_staledone.ts, and r2/{base,head} (the Lead 25 block on its own). No network, US$0.
+
+### Findings (no Blocker, no Major)
+
+**r1 (Minor, the m2 class narrowed but still open): `statementsOf` still misreads some texts PostgreSQL reads differently.** b5: 11 of 18 new texts disagree with the server.
+- **Missed ends (later statements autocommit):**
+  - `select 1 -- c\r; commit`: PostgreSQL ends `--` at `\r` or `\n`; the scanner looks only for `\n` (`firm-scope.ts:524`).
+  - A dollar tag longer than 62 characters (`slice(k, k + 64)`, :530), or one with an astral character (the `\u0080-￿` range), is not seen as a tag. An apostrophe inside its body then opens a string that never closes: `select $<63-char tag>$it's$<tag>$; commit; select 'x'`.
+  - `$tag$` or `e'` straight after a non-ASCII identifier character: `/[\w$]/` (:526, :529) is ASCII only, while PostgreSQL's identifier characters include every byte ≥ 0x80. Examples: `select 1 as é$a$; commit; select 2 as é$a$`, and `select donnée'a\'; commit; select 'b'` (a domain named donnée).
+  - With `standard_conforming_strings = off`, `'x\''; commit; select ''`.
+- **Through Prisma (b7):** H11 (`-- c\r`) and H12 (63-char tag) run `$executeRawUnsafe(text)`, then an insert, then throw. In both, the insert is stored although the transaction failed.
+- **False ends (fail closed: the rest of the transaction is refused, and the next caller is clean):**
+  - `create function … begin atomic select 1; end`. H13: a legitimate transaction is refused.
+  - A long or astral tag whose body holds `; commit`.
+  - `prepare transaction as select 1` (a prepared statement named "transaction"; the server stays in the transaction).
+  - `rollback -- x\rto savepoint s`.
+- **Reach:** none today. No app raw SQL has these shapes (the 53 `RawUnsafe` calls are single statements with parameters, and multi-statement text cannot carry parameters). Prisma's own COMMIT, ROLLBACK and savepoint text is literal.
+- **Fix:**
+  - End `--` at `\n` or `\r`.
+  - Match a tag with no length cap, counting any non-ASCII character (astral included) as an identifier character.
+  - Use the same character class in the "follows an identifier" test.
+  - Name BEGIN ATOMIC and `standard_conforming_strings = off` as stated limits.
+  - Add these rows to the test's table.
+
+**Note (not counted): a 10× slowdown on the largest Prisma text.** A 309 KB, 20k-row insert takes 12.5 to 15.8 ms per call on head, against 1.25 to 1.75 ms for round 1's regexes. A normal Prisma select takes 0.00 ms. Likely cause: building `cur` one character at a time. Cost stays linear (see below).
+
+**Note (outside this diff, from 80ac0e72d; no app path): a stale `done()` releases someone else's checkout.**
+- **Where:** callback `connect`'s `done` (`firm-scope.ts:595`) reads `c.release` when it is called.
+- **What happens:** firm A calls `done()` a second time after the client has gone to firm B. That releases B's checkout: idleCount becomes 1 while B still holds the client, and B's own `release()` then throws (b8).
+- **pg-pool's own `done`** is bound to its checkout and throws instead.
+- **Reach:** no caller uses callback connect. The adapter uses the promise form, and pg-boss has its own pool. This is the same family as review m8.
+
+**Round-1 items still open, unchanged:**
+- **m4:** b4 still has 2 held, 2 broke. The split upsert and the nested create get the M1 `Error`, not the worded 503.
+- **m6:** b3 `MODE=end`: `pool.end()` resolves at 10 004 ms, but the 30 s backend is still active.
+
+### What held
+
+**Parser correctness:**
+- **Round-1 table:** all 36 texts now agree with PostgreSQL (round 1: 10 wrong), including H9 and H10 through Prisma.
+- **New texts that agree:** `E'\\'; commit`; adjacent strings `'a'\n'b'; commit`; identifier `x$a$`; `U&'\0027; commit'`; `"x""; commit"`; CRLF after `--`.
+- **PREPARE TRANSACTION:** the server ends the transaction even when it errors (max_prepared_transactions=0), and the guard counts it as an end.
+- **The test's 18-row table** matches the server.
+
+**Linear time (m3 fixed):**
+- **1 MB inputs, each 2 to 90 ms:** unclosed `'`, `E'`, `$q$` and `/*`; 333k nested `/* */`; `$a$` pairs; `+$` with 62 letters; `;` ×1M; `rollback` plus 1M spaces; `--` lines.
+- **Scaling at 1, 2 and 4 MB:**
+
+| Input | 1 MB | 2 MB | 4 MB |
+|---|---|---|---|
+| `$a$` pairs | 103 ms | 179 ms | 375 ms |
+| `;` repeated | 65 ms | 114 ms | 253 ms |
+| Prisma parameters | 120 ms | 278 ms | 356 ms |
+| Unclosed `/*` | 13 ms | 10 ms | 20 ms |
+
+- **Round 1's regexes** were quadratic on unclosed `/*` (the 1 MB case did not finish in 300 s).
+
+**The release wrapper (m1 fixed):**
+- **`MODE=double` and `MODE=thenerr`:** the second call throws "already been released" at once, the statement finishes, and the process lives.
+- **`kill`, `waiter`, `rawburst` and `burst` all held.**
+  - Burst: nothing kept; 5 slots equal 5 backends, with 0 idle in transaction; 0 drain waits; each firm reads only its own rows.
+- **`platform_pool_release_failed`** was never logged in any run. The try/catch is a guard only.
+
+**Submittable (S1):**
+- **`new pg.Query(insert)` after COMMIT:** the query gets an `error` event, the same object is returned, and nothing is sent or stored.
+- **With a callback:** the callback gets the refusal. Nit: the wrapper returns `undefined` where pg returns the Query; no caller depends on it.
+
+**Half-write attacks:** b2 H1 to H10, 17 of 17 held, and the next firm-B caller was clean each time.
+
+**Lead 25 test** (the block run on its own, r2/):
+- **With 648adace4's firm-scope.ts:** FAIL, `{"r8":"Connection terminated","stored":1}`.
+- **On head:** PASS, 4 of 4 runs.
+- **Full suites on head:** check_tx_end_guard 21 of 21, check_pool_tx_return 16 of 16, check_no_array_tx 14 of 14.
+
+**upsert-native LIST check:** the `.upsert(` sites in api/src (23) match SITES (23) exactly, so the check would pass.
+
+Verdict: Approve f824febdd2f079fbef32cc7115a670d31f128bae
