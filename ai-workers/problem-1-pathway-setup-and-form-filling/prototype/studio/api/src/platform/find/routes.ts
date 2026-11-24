@@ -4,7 +4,7 @@
 // logged: the request line names the route pattern only (PF-23 hook.ts), and nothing here writes it.
 import { Controller, Get, Inject, Query, Req } from "@nestjs/common";
 import { FindText, type FindResult } from "../../../../ports/find.ts";
-import { parseInput, strict } from "../http/input.ts";
+import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
 import { z } from "zod";
 import { AnyStaff, problem, staffOf, type StaffContext } from "../identity/keys.ts";
 import { FindRegistry } from "./registry.ts";
@@ -20,7 +20,8 @@ export class FindController {
   find(@Req() r: R, @Query() all: unknown): Promise<FindResult> {
     const ctx = staffOf(r);
     const { q } = parseInput(FindQueryKeys, all ?? {});   // a misspelt key → 422 naming it (PF-28)
-    if (!FindText.safeParse(q).success) return problem(400, "Check the search", "Type 2 to 100 characters to search.", { code: "QUERY_LENGTH" });
+    // R1.10 A2: a query of the wrong length is a field error (422 naming q, as the one rule answers), never a bare 400.
+    if (!FindText.safeParse(q).success) return problem(FIELD_ERROR_STATUS, "Check the search", "Type 2 to 100 characters to search.", { code: "QUERY_LENGTH", fields: { q: "Type 2 to 100 characters to search." } });
     return this.registry.find(ctx, q);
   }
 }

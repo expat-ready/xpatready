@@ -59,11 +59,16 @@ export class WebAddressCatchUp {
 type PublicReq = { path: string; publicFirm?: { firmId: string } };
 type PublicRes = { status(code: number): PublicRes; setHeader(k: string, v: string): unknown; end(body?: string): unknown; json(body: unknown): unknown };
 
+/** PF-28 A2 (R1.10): the routes in @ form (api/tsconfig.json compiles decorators for src/platform/**), so the code's route
+ *  finder (tests/lib/routes.ts) reads each query and follows it to its parse; paths, open reads and arguments unchanged. */
+const SIGN_UP = "a person choosing their firm's web address at sign-up, before they have an account";
+@Controller("api/public")
 export class WebAddressController {
-  constructor(private readonly addresses: WebAddresses, private readonly db: Db) {}
+  constructor(@Inject(WebAddresses) private readonly addresses: WebAddresses, @Inject(Db) private readonly db: Db) {}
 
   /** Is this address free? `{ address, available }`, or the plain reason and a suggestion. */
-  async availability(q: unknown, req: PublicReq, res: PublicRes) {
+  @Get("web-address/availability") @OpenRead(SIGN_UP)
+  async availability(@Query() q: unknown, @Req() req: PublicReq, @Res() res: PublicRes) {
     if (publicFirmOf(req)) return sendPublicNotFound(req, res);
     const { address } = parseInput(AVAILABILITY_QUERY, q);   // PF-28 part 4 (listed there by the sweep's path rule): an unknown query key is refused 422, named
     res.setHeader("Cache-Control", "no-store");
@@ -71,7 +76,8 @@ export class WebAddressController {
   }
 
   /** A free address made from the firm's operating name. */
-  async suggestion(q: unknown, req: PublicReq, res: PublicRes) {
+  @Get("web-address/suggestion") @OpenRead(SIGN_UP)   // PF-28 part 2b: the whole query, read through the rule
+  async suggestion(@Query() q: unknown, @Req() req: PublicReq, @Res() res: PublicRes) {
     if (publicFirmOf(req)) return sendPublicNotFound(req, res);
     const { name } = parseInput(SUGGESTION_QUERY, q);   // PF-28 part 2b (R1.10): an unknown query key is refused 422, named
     res.setHeader("Cache-Control", "no-store");
@@ -79,7 +85,8 @@ export class WebAddressController {
   }
 
   /** The address this public page is on (a firm's address only; elsewhere the plain not-found). */
-  async site(req: PublicReq, res: PublicRes) {
+  @Get("site") @OpenRead("someone on a firm's public page, who has no account")
+  async site(@Req() req: PublicReq, @Res() res: PublicRes) {
     const firmId = publicFirmOf(req);
     const own = firmId ? await this.db.platformFirmWebAddress.findUnique({ where: { firmId }, select: { address: true } }) : null;
     if (!own) return sendPublicNotFound(req, res);
@@ -95,9 +102,12 @@ export const ChangeBody = strict({ address: z.unknown().optional(), reason: z.un
 /** PF-25w: ExpatReady's own staff change a firm's web address (SA-2-27). The system guard has checked the key and the
  *  reason and written its line; the change runs inside the firm's own scope (PF-12's walls see that one firm), and its
  *  line on the firm's trail names our staff as `ourstaff:<id>` (AUD-3a). An id that is not a firm's is the one 404. */
+@Controller("api/system/firms")
 export class SystemWebAddressController {
-  constructor(private readonly addresses: WebAddresses) {}
-  async change(id: string, body: unknown, req: { systemStaff?: SystemStaffContext }) {
+  constructor(@Inject(WebAddresses) private readonly addresses: WebAddresses) {}
+  // AUD-3: it writes its own ourstaff: line on the firm's trail.
+  @Post(":id/web-address") @HttpCode(200) @SystemKeys(ADDRESS_CHANGE_KEY) @ChangesFirm("changes one firm's web address") @SystemReason(ChangeBody)
+  async change(@Param("id") id: string, @Body() body: unknown, @Req() req: { systemStaff?: SystemStaffContext }) {
     const staff = systemStaffOf(req);
     if (!UUID.test(id)) throw new HttpException({ type: "https://expatready.local/problems/not-found", title: "Not found", status: 404, detail: "No such firm.", code: "NOT_FOUND" }, 404);
     const input = parseInput(ChangeBody, body);   // review M1: PF-28's one rule (the guard has already refused a body that is not an object)
@@ -105,31 +115,8 @@ export class SystemWebAddressController {
   }
 }
 
-// Decorators as calls (this folder is outside api/tsconfig.json's decorator files, as PF-4's identity/guard.ts).
+// The providers' decorators as calls (as PF-4's identity/guard.ts); the controllers' are in @ form above (PF-28 A2).
 Injectable()(WebAddressHostRouting);
 Injectable()(WebAddressCatchUp);
 Inject(Db)(WebAddressCatchUp, undefined, 0);
 [HttpAdapterHost, WebAddresses].forEach((token, i) => Inject(token)(WebAddressHostRouting, undefined, i));
-Controller("api/public")(WebAddressController);
-[WebAddresses, Db].forEach((token, i) => Inject(token)(WebAddressController, undefined, i));
-const SIGN_UP = "a person choosing their firm's web address at sign-up, before they have an account";
-const route = (method: "availability" | "suggestion" | "site", path: string, why: string, params: ((t: object, k: string, i: number) => void)[]) => {
-  const proto = WebAddressController.prototype, d = Object.getOwnPropertyDescriptor(proto, method)!;
-  Get(path)(proto, method, d);
-  OpenRead(why)(proto, method, d);
-  params.forEach((p, i) => p(proto, method, i));
-};
-route("availability", "web-address/availability", SIGN_UP, [Query(), Req(), Res()]);
-route("suggestion", "web-address/suggestion", SIGN_UP, [Query(), Req(), Res()]);   // PF-28 part 2b: the whole query, read through the rule
-route("site", "site", "someone on a firm's public page, who has no account", [Req(), Res()]);
-Controller("api/system/firms")(SystemWebAddressController);
-Inject(WebAddresses)(SystemWebAddressController, undefined, 0);
-{
-  const proto = SystemWebAddressController.prototype, d = Object.getOwnPropertyDescriptor(proto, "change")!;
-  Post(":id/web-address")(proto, "change", d);
-  HttpCode(200)(proto, "change", d);
-  SystemKeys(ADDRESS_CHANGE_KEY)(proto, "change", d);
-  ChangesFirm("changes one firm's web address")(proto, "change", d);   // AUD-3: it writes its own ourstaff: line on the firm's trail
-  SystemReason(ChangeBody)(proto, "change", d);
-  [Param("id"), Body(), Req()].forEach((p, i) => p(proto, "change", i));
-}
