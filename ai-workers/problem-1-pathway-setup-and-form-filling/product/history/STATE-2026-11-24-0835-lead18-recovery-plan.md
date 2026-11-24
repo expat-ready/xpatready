@@ -177,3 +177,8 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 | A337-A340 | 23 Nov | the night plan runs (in force); the audit reports' decisions are the morning questions; word for word `history/STATE-2026-11-24-lead13-A338-row.md` |
 * 12:21 IST: Lead B 5 (code read, nothing run) confirms P1's mechanism on main: Blocker, with the bypass role as a worse third case; fix and cases on #3217 and to lane 4oPSMou.
 * 12:22 IST: Lead B 5 read #3217 7a7740278 OK; label only after the P1 fix is on main (it makes a full pool likelier); Lead's read still owed.
+
+### Lead 23, check 12:29 IST 24 Nov
+* P1: the lane says its tests are red on main (8 of 10) and 11 of 11 with the fix; draft #3428 a4365b0ac, reviewer and breaker running; firm-scope.ts read by me, no fault. Not run by a second machine yet.
+* Merged: #3377 12:19. Lead reads posted and /run full asked: #3234 ba86ad46c, #3277 de8976408 (Lead B's read owed on both heads; one orphan-file question on #3277). #3174: ruled to freeze noted_by_merge_id now. #3385 requeue asked. Batches: #3423 (#3193), #3425, #3426 (#3033 + #3276), #3427 (#3379 + #3422). Disk 10.1 GB; worktrees 13 GB.
+* New lanes of the unseen account: #3424 (FO-5cr, R1.55 family), #3418.
