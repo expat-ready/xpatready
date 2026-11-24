@@ -258,3 +258,33 @@ Not findings: R2-m2 (throughput) is unchanged and was not asked of this round. M
 Reviewer: Changes 628b26e9d3c342eefa266438315887febc519d29
 
 Round 3 verdict: Changes
+
+## Round 4
+
+* Reviewer: independent, Opus 5.5. Date: 24 Nov 2026. **Commit `e4171028d36b5f107df8ec8c847a5549850bc38b`.** Diff only (Lead 3 on #3527, comment 7142315517): `git diff 628b26e9d..e4171028d -- '*.ts'`, which is two lines in `at-arrival.ts`.
+* The round-3 Minors (m-r3-1 to m-r3-4) are not re-graded here. By the Lead's ruling they are a separate follow-up change, due before the label. The Lead's hold for part 2m still applies.
+
+### Runs (mine, never :4400)
+| Run | Result |
+|---|---|
+| `product/tools/typecheck.mjs` (CI's `types` job) | **PASS**: no new type errors (api 15 known, 0 fixed; web 0) |
+| `check_fo9b_auto_merge` (Postgres 127.0.0.1:54329) | 29/29 |
+
+The local cluster was stopped when I began. I started it from its own data folder for the run and stopped it afterwards. My scratch database (`xr_studio_fo9bam_688`) was dropped by the suite. Two older `xr_studio_fo9bam_*` databases from other runs (pids 24752, 20579) were already there, and I left them alone. Nothing was committed and no file was left behind except this section.
+
+### Each round-3 Must: fixed?
+| Finding | Fixed | Evidence |
+|---|---|---|
+| M-r3-1 (TS2322 at `at-arrival.ts:113`) | **Yes** | `async (job) => { await this.run(job); }` matches `JobHandler = (job) => Promise<void>` (`ports/jobs.ts:46`). The type check is green. |
+| Busy still makes the queue retry | **Yes** | The wrapper awaits `run()`, so a `MergeBusy` thrown at `:129` rejects the handler's promise. The suite's Busy line (`check_fo9b_auto_merge.ts:130`) goes through the registered handler, because `jobs.runDue()` calls `handlers.get(name)` and does not call `auto.run`. That line asserts `status === "failed"` with a "busy" error, and it is green. |
+| Nit (comment at `:72-74`) | **Yes** | It now says that the pairs a merge wrote "are not tried (only pairs written before this run)". This matches `r."first_seen_at" < ${started}` at `:97`. A wording point, not graded: "so a burst … becomes one record" now follows the exclusion, but it is the follow-up query on older pairs that does that. |
+
+Nothing else changed in `*.ts`. The handler's return value was never used: pg-boss and the fake both take `Promise<void>`. So nothing changes at run time (tsx already stripped the types), and no new finding comes from this diff.
+
+**Journey score (reviewer), round 4: 8.5 / 10, pass (carried from round 3).** This round's diff changes only types and a comment, and run-time behaviour is the same. So I did not re-walk the journeys. The round-3 walk at `628b26e9d` stands (`journey-test-reviewer-2026-11-24.md`, Round 3).
+
+**Verdict: Approve** for `e4171028d`. No Blocker or Major is open. This Approve holds only for this head. The label still waits for two things: the round-3 Minors follow-up (m-r3-1 to m-r3-4), which by the Lead's ruling is due before the label, and the Lead's hold until part 2m is on main. A new head needs a new Approve.
+
+Reviewer: Approve e4171028d36b5f107df8ec8c847a5549850bc38b
+
+Round 4 verdict: Approve
