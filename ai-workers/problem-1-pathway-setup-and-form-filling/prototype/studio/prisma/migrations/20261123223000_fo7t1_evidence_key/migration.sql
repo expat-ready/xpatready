@@ -4,7 +4,7 @@
 -- regular expression: invalid repetition count(s)" for every key that is not null, so no evidence key could be stored.
 -- The same rule, written so PostgreSQL can evaluate it: at most 300 characters, the first a letter or digit, the rest
 -- letters, digits, '/', '.', '_' or '-'. Same name, same meaning; no row holds a key today (none could be written).
--- Stamped after main's newest (20261123020000). No data statement (F7); no function changes owner (F4).
+-- Stamped 20261123223000, after main's newest (20261123213000_fo6d_any_document; Lead 15's re-stamp). No data statement (F7); no function changes owner (F4).
 -- Rollback: rollback.sql in this folder (Prisma reads only migration.sql).
 ALTER TABLE "money_payment" DROP CONSTRAINT "money_payment_evidence_check";
 ALTER TABLE "money_payment" ADD CONSTRAINT "money_payment_evidence_check"

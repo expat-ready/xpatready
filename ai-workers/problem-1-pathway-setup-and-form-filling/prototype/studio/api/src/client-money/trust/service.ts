@@ -119,10 +119,15 @@ export class TrustMoney {
   /** POST /trust/requests/:id/cancel: a reason is required; the request keeps its number. */
   async cancel(ctx: StaffContext, requestId: string, body: unknown) {
     const rid = idOf(requestId, "trust request"), c = parse(CancelIn, body), f = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    // Lead 17 (C5): the caller must see the request's case, or with no case its client, as the request read requires.
+    // Read once before the transaction (the r9-M1 shape); an unseen request is 404 before the cancelled check, so nothing
+    // tells it apart from a missing one.
+    const seen = await this.scopeOf(ctx);
     return this.write(async (tx) => {
       if (!(await trustShows(tx, f))) notFound("trust request");
-      const [r] = await tx.$queryRaw<{ number: string | null; cancelled: boolean }[]>`select number, cancelled_at is not null as cancelled from money_trust_request where firm_id = ${f}::uuid and id = ${rid}::uuid for update`;
-      if (!r) return notFound("trust request");
+      const [r] = await tx.$queryRaw<{ number: string | null; cancelled: boolean; case_id: string | null; party: string | null }[]>`select number, cancelled_at is not null as cancelled, case_id::text, coalesce(person_id, company_id)::text as party
+        from money_trust_request where firm_id = ${f}::uuid and id = ${rid}::uuid for update`;
+      if (!r || !(r.case_id ? seen.cases.includes(r.case_id) : !!r.party && seen.parties.includes(r.party))) return notFound("trust request");
       if (r.cancelled) refuse("CANCELLED", `${r.number ?? "This request"} is already cancelled. Nothing was changed.`);
       await textOk(tx, "reason", c.reason, 200);
       await tx.moneyTrustRequest.update({ where: { firmId_id: { firmId: f, id: rid } }, data: { cancelledAt: this.clock.now(), cancelledBy: by, cancelReason: c.reason } });
