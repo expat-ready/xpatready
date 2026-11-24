@@ -176,3 +176,4 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 ### Ask row moved from STATE by Lead 23 (word for word)
 | A337-A340 | 23 Nov | the night plan runs (in force); the audit reports' decisions are the morning questions; word for word `history/STATE-2026-11-24-lead13-A338-row.md` |
 * 12:21 IST: Lead B 5 (code read, nothing run) confirms P1's mechanism on main: Blocker, with the bypass role as a worse third case; fix and cases on #3217 and to lane 4oPSMou.
+* 12:22 IST: Lead B 5 read #3217 7a7740278 OK; label only after the P1 fix is on main (it makes a full pool likelier); Lead's read still owed.
