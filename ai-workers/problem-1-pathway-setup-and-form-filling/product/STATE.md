@@ -2,7 +2,7 @@
 
 current_lead: local_1baa984b-182a-4f72-af99-af155226d9d4 Lead 28 · 24 Nov 16:06 IST (after Lead 27, near the 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-24 16:21 IST: Lead 28. **A371: Partials first; see the plan file's end (`history/STATE-2026-11-24-0835-lead18-recovery-plan.md`) and the action list (A370).** 54/101 Works. **M1 #3467 full run going.** Weekly 78%.
+updated: 2026-11-24 16:37 IST: Lead 28. **A371: Partials first; see the plan file's end (`history/STATE-2026-11-24-0835-lead18-recovery-plan.md`) and the action list (A370).** 54/101 Works. **M1 #3467 queued.** Weekly 78%.
 
 ## Hand-over Lead 18 → Lead 19, 08:31 IST 24 Nov (follow-ups: the recovery plan file; fuller: `history/STATE-2026-11-24-lead16-before-handover.md`)
 
@@ -18,7 +18,7 @@ updated: 2026-11-24 16:21 IST: Lead 28. **A371: Partials first; see the plan fil
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A371 | 24 Nov ~16:13 (typed to Lead 28) | Partials to Proven first, rules held by code, manage resources | plan file, end; in progress |
+| A371, A372 | 24 Nov ~16:13, ~16:30 (typed to Lead 28) | all focus on Partials to Proven, rules held, usage no limit | plan file, end; in force |
 | A359 | 24 Nov, after 13:06 (typed to Lead 24) | prove faster; follow the Lead's recommendations; final tooling decision, dates, outcomes | plan file, end; #3305 line pushed; three sessions started; CodeAnt C1 and C3 yes |
 | A370 | 24 Nov ~15:27 (typed to Lead 26, relayed) | one action list in every 30-minute report | `design/action-list-2026-11-24.md`; in force |
 | A369 | 24 Nov ~15:25 (typed to Lead 26, relayed) | keep the copy current; enforce by code; speed, SLA | dated plan owed |

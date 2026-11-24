@@ -469,3 +469,9 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 
 ### Ask row moved from STATE by Lead 28 (word for word)
 | A353, A354 | 24 Nov | open; rows word for word in the plan file, end |
+
+### Lead 28, 16:37 IST 24 Nov: A372 (founder, typed before 16:32)
+* "you have all my approvals. Don't worry about the weekly usage ... entire focus ... convert the partials into full ... if urgent, ask right away; otherwise I'll assume I've answered all your questions" (shortened). Taken as: option 1 plus no usage holding back, and the yes on #3235's 825 lines (asked with a yes recommended). Not taken as: hand merges, skipped gates, spend, hook or settings edits, #3471 Q2 (P-564 stays on until he rules), the classifier's refusals.
+* M1 #3467 full run 45373097708 green (36 jobs), labelled, queued. #3313 read and labelled. **#3174 (R1.29) and #3234 (R1.85) labelled ahead of #3277**, which re-stamps to 20261124150000. #3235: size allowed, then retarget, Lead B line, read line, full run when types passes. #3460 (FO-6 4b) code and migration read, no fault; owes module-cards, Lead B, ci; lands after #3235. #3479 and #3217's code read in #3479's diff, no fault found; #3217 first, then #3479; read lines not posted. #3477 waits on its Approve line.
+* Batches 16:37: #3481 (#3305) 48 green, 1 running; #3485 (#3470), #3486 (#3480) running, no red.
+* Lanes: 7wnHW told PR B (R1.93), seen running. R1.10's lane opened #3487 (A4). Not used: 5tq8F (62% context), 84kEb (40%). Fresh cloud lane for R1.87 (AUD-3 part 2) refused twice: first by our hook (no Duplicate check line, my miss), then by the app (Remote Control). Waiting for the desktop app: R1.87 AUD-3 part 2, R1.86 PF-21rs, R1.58 FO-7t part 3, R1.69 parts, a standby Lead, Lead B 7.
