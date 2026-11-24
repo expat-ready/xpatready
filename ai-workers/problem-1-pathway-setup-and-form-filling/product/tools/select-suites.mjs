@@ -61,6 +61,10 @@ const ROOT = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).tri
 const P = "ai-workers/problem-1-pathway-setup-and-form-filling", PR = `${P}/prototype`, S = `${PR}/studio`;
 const SKIP = new Set(["check_catalogue_scale.cjs"]);   // as in run-suites.sh: not a regression suite
 const SMOKE = ["check_engine.ts", "check_case_engine.ts", "check_w1_structure.ts", "check_screen01_api.ts", "check_w1_start_setup.ts", "check_dv_backbone_browser.cjs"];
+// Lead 12, founder 24 Nov 00:4x IST: two pure guards (no server, no database; measured ~12 s and ~2 s) that read engine/,
+// api/src/ and p2/ as text always run for a change there, --direct included: 2 of 2 product reds that night were these.
+const GUARDS = ["check_b164_no_engine_keys.ts", "check_irm_editions.ts"];
+const guardSrc = (f) => /\.(ts|tsx|mjs|cjs|js)$/.test(f) && [`${S}/api/src/`, `${S}/engine/`, `${PR}/p2/`].some((d) => f.startsWith(d));
 const CONTRACT_CHECK = "check_contract_seams.ts", SCHEMA_CHECK = "check_prisma_schema.ts";   // B121, P-376 (7)
 const RUNTIME_GROUP = ["check_runtime_r1c.cjs", "check_runtime_r1d.ts", "check_runtime_r1a.ts"];
 const DOCS0 = /\.(md|txt|png|jpe?g|gif|webp|svg|pdf)$/i;
@@ -544,6 +548,7 @@ if (alls.length) { console.log(`ALL\t${alls[0]}${alls.length > 1 ? ` (+${alls.le
 if (browserWhy.length) for (const n of browser) add(n, `every browser suite: ${browserWhy[0]}${browserWhy.length > 1 ? ` (+${browserWhy.length - 1} more)` : ""}`);
 if (covUsed) for (const n of COV.unmapped) add(n, "coverage graph: unmapped (no data, always runs)");
 if (covUsed) for (const n of COV.unseen) add(n, "coverage graph: not in the graph (newer than it), always runs");
+{ const g = changed.find(guardSrc); if (g) for (const n of GUARDS) if (suites.has(n)) add(n, `pure guard: always for a change to api/src, engine or p2 (${basename(g)})`); }
 if (RUNTIME_GROUP.some((n) => why.has(n))) for (const n of RUNTIME_GROUP) if (!why.has(n) && suites.has(n)) add(n, "runtime R1 suites run together (one copy, in order)");
 for (const n of SMOKE) if (suites.has(n)) add(n, "smoke");
 for (const n of suites.keys()) if (why.has(n)) {
