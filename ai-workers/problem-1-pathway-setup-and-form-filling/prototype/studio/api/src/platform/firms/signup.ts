@@ -28,6 +28,7 @@ import type { MailPort } from "../../../../ports/mail.ts";
 import { asBypass, firmScope, touchFirm, touchFirms, touchPlatform } from "../firm-scope.ts";
 import { writeMoneyKeysGranted } from "../identity/money-line.ts";
 import { emailOf } from "../identity/service.ts";
+import { currentVersions } from "../terms/service.ts";
 import type { SignUpIdentity } from "./signup-identity.ts";
 import { SIGNUP_LINK_USE } from "./signup-link.bypass.ts";
 
@@ -120,9 +121,10 @@ export class FirmSignUp {
   }
 
   /** The current version of each kind: its newest published one that is not in the future. */
+  /** PF-5tv: the gate's own rule (terms/service.ts currentVersions), so a firm signs up to exactly the versions the gate
+   *  calls current, even when two share a publish time. */
   async currentTerms(db: Tx | PrismaClient = this.db) {
-    const rows = await db.platformTermsVersion.findMany({ where: { publishedAt: { lte: this.ports.clock.now() } }, orderBy: { publishedAt: "desc" } });
-    return [...new Map(rows.map((r) => [r.kind, r] as const).reverse()).values()].sort((a, b) => a.kind.localeCompare(b.kind));
+    return currentVersions(db, this.ports.clock.now().getTime());
   }
 
   async plans() {

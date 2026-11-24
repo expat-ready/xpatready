@@ -461,6 +461,34 @@ export function appDatabaseUrl(databaseUrl: string, env: NodeJS.ProcessEnv = pro
 
 const SET = Symbol("pf12.set"), swallow = () => undefined;   // swallow: pg rejects the query in flight and drops the client; this only stops a late 'error' killing the API
 type Tagged = pg.PoolClient & { [SET]?: string };
+/** P1 (PF-4bc round-3 break; Lead 23, 24 Nov): a client may come back with a transaction still open. Prisma 7.8's
+ *  adapter-pg drops a transaction whose start came after the engine gave up (maxWait) by `release()` alone, never sending
+ *  ROLLBACK, so the next caller ran inside it: its writes were lost at the next rollback, and a rollback undid its
+ *  set_config while the tag above still named its firm (the next query ran as the earlier firm). The server tells pg the
+ *  transaction state after every statement (ReadyForQuery: 'I' idle, 'T' in a transaction, 'E' failed); a client that is
+ *  not idle (not 'I', or a statement sent and not yet answered) when released is destroyed, never kept, and its tag cleared (fail closed). And at checkout (Lead B 5): a
+ *  client the pool cannot prove idle has its tag cleared and is destroyed, and another is taken (one more try; then the
+ *  checkout fails). Clearing the tag alone would not do: the lost write would stay. tests/check_pool_tx_return.ts. */
+const notIdleError = () => new Error("a pooled connection came back inside a transaction: destroyed, not reused");
+/** What pg 8 keeps per client (@types/pg does not declare it): the server's last transaction state, the statement in
+ *  flight and the queue. Idle means 'I' with nothing sent and unanswered (review m1: a BEGIN still in flight reads 'I'). */
+type PgState = { getTransactionStatus(): "I" | "T" | "E" | null; _getActiveQuery(): unknown; _queryQueue: unknown[] };
+const proto = pg.Client.prototype as unknown as Partial<PgState>;
+if (typeof proto.getTransactionStatus !== "function" || typeof proto._getActiveQuery !== "function")
+  throw new Error("P1: pg no longer reports a connection's transaction state (Client.getTransactionStatus, _getActiveQuery), so the pool cannot refuse an open transaction (firm-scope.ts; pg changed)");
+function idleNow(c: object): boolean {
+  const s = c as unknown as PgState;
+  return s.getTransactionStatus() === "I" && !s._getActiveQuery() && Array.isArray(s._queryQueue) && s._queryQueue.length === 0;
+}
+function closeOnOpenTransaction(c: Tagged): void {
+  const release = c.release;   // pg-pool gives each checkout its own release-once function
+  c.release = ((err?: Error | boolean) => {
+    if (err) return release(err);
+    if (!idleNow(c)) { c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed" }); return release(notIdleError()); }
+    return release();
+  }) as typeof c.release;
+}
+
 /** A pg pool whose every checkout first sets the context's firm and role on the connection (once per change). */
 export class WalledPool extends pg.Pool {
   override connect(): Promise<pg.PoolClient>;
@@ -469,8 +497,17 @@ export class WalledPool extends pg.Pool {
     const s = scope.getStore(), direct = !s && unscoped === "direct";
     if (direct && !saidDirect) { saidDirect = true; logPort.info("platform_bypass", { use: "direct-process", method: "none" }); }
     const firm = s?.bypass || direct ? "" : (s?.firmId ?? ""), role = s?.bypass || direct ? BYPASS_ROLE : "none", want = `${firm}|${role}`;
-    const p = (super.connect() as Promise<pg.PoolClient>).then(async (c: Tagged) => {
+    const idle = async (tries: number): Promise<Tagged> => {
+      const c = (await super.connect()) as Tagged;
+      if (idleNow(c)) return c;
+      c[SET] = undefined; c.release(notIdleError());   // P1 (Lead B 5): not provably idle at checkout: destroyed, never handed out
+      logPort.warn("platform_pool_open_transaction", { use: "destroyed-at-checkout" });
+      if (tries <= 0) throw notIdleError();
+      return idle(tries - 1);
+    };
+    const p = idle(1).then(async (c: Tagged) => {
       if (!c.listeners("error").includes(swallow)) c.on("error", swallow);   // a dropped socket fails its query, never the process (Devin review)
+      closeOnOpenTransaction(c);   // P1: a client released inside a transaction is destroyed
       if (c[SET] === want) return c;
       try { await c.query("select set_config('app.firm_id', $1, false), set_config('role', $2, false)", [firm, role]); c[SET] = want; return c; }
       catch (e) { c.release(e as Error); throw e; }
@@ -489,14 +526,30 @@ export class WalledPool extends pg.Pool {
 
 /** Prisma merges findUnique calls made in the same tick into one query, sent from the first caller's scope: two firms'
  *  lookups would run as one firm, and the other's row would read "not found" (tests/check_pf12_walls.ts shows it). Outside
- *  a transaction each call is sent on its own, in its own caller's firm; a transaction's batch is one caller's and stays
- *  as it is. Stops the start-up if Prisma's batching is not where this expects it (a Prisma upgrade). */
+ *  a transaction each call is sent on its own, in its own caller's firm; an interactive transaction's queries run on its own
+ *  connection and stay batched; an array batch is refused (M2, below). Stops the start-up if Prisma's batching is not where this expects it (a Prisma upgrade). */
 export function oneQueryPerCaller(client: object): void {
   type Loader = { batchBy?: (r: { transaction?: unknown }) => string | undefined };
   const o = (client as { _requestHandler?: { dataloader?: { options?: Loader } } })._requestHandler?.dataloader?.options;
   if (typeof o?.batchBy !== "function") throw new Error("PF-12: Prisma's request batching was not found, so firms' lookups could be merged (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
   const by = o.batchBy;
   o.batchBy = (r) => (r.transaction ? by(r) : undefined);
+  // M2 (P1-pool round-2 break; Lead 24, 24 Nov): an array batch, `$transaction([...])`, is dispatched with every other
+  // batch queued in that tick from one process.nextTick set up by the first request, so it checks out the pool in that
+  // first caller's scope: another firm's, or the bypass role (tests/check_no_array_tx.ts). No array batch through this
+  // client: it is refused before anything in it runs. An interactive transaction takes its connection in its own
+  // caller's scope when it starts, and is kept.
+  const c = client as { $transaction?: (arg: unknown, opts?: unknown) => Promise<unknown> };
+  if (typeof c.$transaction !== "function") throw new Error("M2: Prisma's $transaction was not found on the client (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
+  // Review B1: the receiver is kept, never bound: a transaction client reads $transaction from this client, and Prisma
+  // nests a call made on a transaction client (`this`) inside that transaction. Anything but a function is refused, as
+  // Prisma's own test for the interactive form is `typeof arg === "function"` (review m1: an array-like is a batch too).
+  const transaction = c.$transaction;
+  c.$transaction = function (this: unknown, arg: unknown, opts?: unknown) {
+    return typeof arg !== "function"
+      ? Promise.reject(new Error("M2: an array batch ($transaction([...])) is refused on the app's client: Prisma would send it in another caller's firm. Use the interactive form, $transaction(async (tx) => ...)."))
+      : transaction.call(this, arg, opts);
+  };
 }
 
 /** The API's pool (core.ts Db): xr_app, UTC session time zone. */

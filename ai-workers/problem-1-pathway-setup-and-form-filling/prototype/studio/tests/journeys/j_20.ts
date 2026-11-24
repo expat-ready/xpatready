@@ -3,16 +3,19 @@
 // running app (its own database and port, never :4400), at 1440 px. No j_20 was on main; written from CAPABILITIES
 // R1.20's Done when: "an invite past the seat limit refused naming the limit; ... a 1-50 row invite accepts the good rows
 // and names each bad row's reason".
-//   W1 (screens): the Owner signs in on the card → Team → Invite people → four rows: A (named, Case Officer), B (no name,
-//       Read only), C (an email already on the staff), D (an email already invited) → Send: "2 invitations sent.", A and
-//       B leave the form, C and D stay, each with its own words on its own row, and the form says 2 were not invited.
-//   W2 (underneath): one batch call for the whole form; A and B each one pending invitation with the roles chosen; A's
+//   W1 (screens): the Owner signs in on the card → Team → Invite people → five rows: A (named, Case Officer), B (no name,
+//       Read only), C (an email already on the staff), D (an email already invited), E (A's email again, in capitals: named
+//       on its row before Send) → Send (QA-773: a duplicate never stops Send): "2 invitations sent.", A and B leave the
+//       form, C, D and E stay, each with its own words on its own row, and the form says 3 were not invited.
+//   W2 (underneath): one batch call for the whole form (five rows, the duplicate too; no second invitation for A); A and B each one pending invitation with the roles chosen; A's
 //       name stored as the invitation's display name, B none; one audit line each (batch); no invitation for C; D still
 //       has exactly one.
 //   W3 (fix and send again): C's email corrected, D removed → Send → invited, the panel closes.
 //   W4 (the seat limit, the server's row flag): two seats left, two rows typed (the form fits: "n of n seats after these
 //       invites"); someone else takes a seat before Send → the first row is invited, the second stays with the server's
 //       words naming the plan and its seat count; nothing past the limit is stored.
+//       Then (QA-774) a lower Sample plan booked for the renewal: Team's seat line, the form's free seats and the gate's row
+//       words all say the booked plan's limit and name that plan; withdrawn, the plan's own limit again.
 //   W5 (the seat limit, P-727 over PF-6 BR-2, Lead 19 on #3370): 2 seats free, 3 valid rows and a staff member's row →
 //       the form says "2 free seats" beforehand and Send stays on → 2 invited; the staff row (flagged for itself, using no
 //       seat) and the third valid row (OVER_SEAT_LIMIT) stay, each with its words; a seat is added and the row is sent.
@@ -80,7 +83,9 @@ const tick = async (p: Page, n: number, role: string) => { const r = row(p, n); 
 const until = async (what: string, test: () => boolean | Promise<boolean>, ms = 15_000) => { for (let t = 0; t < ms; t += 100) { if (await test()) return; await new Promise((r) => setTimeout(r, 100)); } throw new Error(`STOP  timed out waiting for ${what}`); };
 
 const A = `j20-a-${run}@sample-firm.example.com`, B = `j20-b-${run}@sample-firm.example.com`, D = `j20-d-${run}@sample-firm.example.com`, C2 = `j20-c2-${run}@sample-firm.example.com`;
-const A_NAME = `Client A Staff ${run}`;
+const A_NAME = `Client A Staff ${run}`, A_TWICE = A.toUpperCase();
+const LOWER = `j20-lower-${run}`, LOWER_NAME = `Sample Lower (J-20 ${run})`;
+const withdraw = () => sql(`update platform_subscription_change set withdrawn_at = now() where firm_id = '${A_FIRM}' and withdrawn_at is null and applied_at is null`);
 limit(used() + 20);   // lent for the walk; given back in the finally
 try {
   const dInv = await api("POST", "/platform/staff/invitations", { email: D, roles: ["READ_ONLY"] });
@@ -98,21 +103,27 @@ try {
   ok("J-20 W1: the Owner signs in on the card", !!tR);
   await openInvite(owner);
   await owner.getByLabel("Email, person 1").fill(A); await owner.getByLabel("Name, person 1 (optional)").fill(A_NAME);
-  for (const [n, email] of [[2, B], [3, STAFF], [4, D]] as const) { await owner.locator("[data-add-row]").click(); await owner.getByLabel(`Email, person ${n}`).fill(email); }
+  for (const [n, email] of [[2, B], [3, STAFF], [4, D], [5, A_TWICE]] as const) { await owner.locator("[data-add-row]").click(); await owner.getByLabel(`Email, person ${n}`).fill(email); }
   await tick(owner, 2, "READ_ONLY");
-  ok("J-20 W1: the form counts four people against the seats", (await owner.locator("[data-send-invites]").innerText()).trim() === "Send 4 invitations");
+  ok("J-20 W1: the form counts five people against the seats", (await owner.locator("[data-send-invites]").innerText()).trim() === "Send 5 invitations");
+  ok("J-20 W1 (BR-3): before Send, A's email typed again is named on the later row", (await row(owner, 5).innerText()).includes("This email is already on another row."));
+  const preview = (await owner.locator("[data-invite-seats]").innerText()).trim();
+  ok("J-20 W1 (review m3): the seat line counts four people, not the duplicate row (the server gives it no seat)", preview.startsWith(`${used() + 4} of `) && preview.endsWith("seats after these invites"), preview);
   await shot(owner, "W1-four-rows-1440");
   // P-606: W2's judges before Send.
   ok("J-20 W2 fail (before Send): no invitation exists for A or B", invitations(A) === 0 && invitations(B) === 0);
   await owner.locator("[data-send-invites]").click();
-  await owner.locator("[data-invite-form-error]").waitFor({ timeout: 20_000 });
+  // QA-773: on main Send stopped here; the wait is a check of its own, so a timeout fails loudly and W2 and W4 still report.
+  ok("J-20 W1 fail (QA-773): Send answers within 20 s with the form's \"not everyone was invited\" words", await owner.locator("[data-invite-form-error]").waitFor({ timeout: 20_000 }).then(() => true, () => false));
   const toast = await owner.getByText("2 invitations sent.").count();
   const rowsLeft = await owner.locator("[data-invite-row]").count();
   const words1 = await row(owner, 1).innerText(), words2 = await row(owner, 2).innerText();
-  ok("J-20 W1: Send invites the two good rows (\"2 invitations sent.\"); they leave the form and the two flagged rows stay", toast === 1 && rowsLeft === 2 && (await owner.getByLabel("Email, person 1").inputValue()) === STAFF && (await owner.getByLabel("Email, person 2").inputValue()) === D, { toast, rowsLeft });
+  ok("J-20 W1: Send invites the two good rows (\"2 invitations sent.\"); they leave the form and the two flagged rows stay", toast === 1 && rowsLeft === 3 && (await owner.getByLabel("Email, person 1").inputValue()) === STAFF && (await owner.getByLabel("Email, person 2").inputValue()) === D, { toast, rowsLeft });
+  const words3 = await row(owner, 3).innerText().catch(() => "");
+  ok("J-20 W1 fail (QA-773): the duplicate row does not stop Send; it stays with the server's words (an earlier row of this form, which counts for this person)", rowsLeft === 3 && (await owner.getByLabel("Email, person 3").inputValue().catch(() => "")) === A_TWICE && words3.includes("This email is also on an earlier row of this form, which counts for this person, so this row was not sent."), words3);
   ok("J-20 W1: each flagged row shows its own reason on its own row (already staff; already invited)", words1.includes("This person is already on your firm's staff.") && !words1.includes("invitation") && /already (has a pending invitation|invited)/i.test(words2) && !words2.includes("already on your firm's staff"), { words1, words2 });
   ok("J-20 W1 (break m5): focus goes to the first flagged row's Email field, not the panel", await owner.evaluate(() => document.activeElement?.getAttribute("aria-invalid") === "true" && !!document.activeElement?.closest('[data-invite-row="1"]')));
-  ok("J-20 W1: the form says how many were not invited", (await owner.locator("[data-invite-form-error]").innerText()).includes("2 people were not invited."));
+  ok("J-20 W1: the form says how many were not invited", (await owner.locator("[data-invite-form-error]").innerText({ timeout: 2_000 }).catch(() => "")).includes("3 people were not invited."));
   ok("J-20 W1: each flagged row's Email field is marked invalid for screen readers", await owner.getByLabel("Email, person 1").getAttribute("aria-invalid") === "true" && await owner.getByLabel("Email, person 2").getAttribute("aria-invalid") === "true");
   const axe = await new AxeBuilder({ page: owner }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   const serious = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
@@ -120,7 +131,8 @@ try {
   await shot(owner, "W1-flagged-rows-1440");
 
   // ------------------------------------------------------------------------------------------------- W2: underneath
-  ok("J-20 W2: the whole form was one batch call of four rows", batchCalls.filter((c) => c.page === owner).length === 1 && batchCalls[0]?.rows === 4, batchCalls.map((c) => c.rows));
+  ok("J-20 W2 fail (QA-773): the whole form, the duplicate row too, was one batch call of five rows", batchCalls.filter((c) => c.page === owner).length === 1 && batchCalls[0]?.rows === 5, batchCalls.map((c) => c.rows));
+  ok("J-20 W2: the duplicate row made no second invitation for A's email", sql(`select count(*) from platform_invitation where lower(email) = '${A}'`) === "1");
   ok("J-20 W2: A and B each have one pending invitation with the roles chosen", invitations(A) === 1 && invitations(B) === 1 && sql(`select roles::text from platform_invitation where email = '${A}'`) === "{CASE_OFFICER}" && sql(`select roles::text from platform_invitation where email = '${B}'`) === "{READ_ONLY}");
   ok("J-20 W2: A's name is stored as the invitation's display name; B (no name) has none", sql(`select coalesce(display_name, 'NULL') from platform_invitation where email = '${A}'`) === A_NAME && sql(`select coalesce(display_name, 'NULL') from platform_invitation where email = '${B}'`) === "NULL");
   ok("J-20 W2: one audit line each for A and B, marked as one form", sql(`select count(*) from audit_event where action = 'platform.invitation.created' and detail->>'batch' = 'true' and entity_key in (select id::text from platform_invitation where email in ('${A}','${B}'))`) === "2");
@@ -128,20 +140,23 @@ try {
   for (const e of [A, B]) invited.push(sql(`select id from platform_invitation where email = '${e}'`));
 
   // ------------------------------------------------------------------------------------------ W3: fix and send again
-  await owner.getByLabel("Email, person 1").fill(C2);
-  await owner.getByRole("button", { name: "Remove person 2" }).click();
-  ok("J-20 W3: correcting a flagged row clears its words", !(await row(owner, 1).innerText()).includes("already on your firm's staff"));
-  // Break M1: while the batch is in flight the form is locked, so nothing typed then can be lost or get another row's words.
-  let release!: () => void; const held = new Promise<void>((r) => { release = r; });
-  await owner.route("**/api/platform/staff/invitations/batch", async (r) => { await held; await r.continue(); }, { times: 1 });
-  await owner.locator("[data-send-invites]").click();
-  await owner.locator("[data-invite-form]:disabled").waitFor({ timeout: 10_000 });
-  ok("J-20 W3 fail (break M1): while sending, the rows cannot be edited, removed or added to", await owner.getByLabel("Email, person 1").isDisabled() && await owner.locator("[data-add-row]").isDisabled());
-  release();
-  await until("the corrected row's invitation", () => invitations(C2) === 1);
-  await owner.getByLabel("Email, person 1").waitFor({ state: "detached", timeout: 15_000 });
-  invited.push(sql(`select id from platform_invitation where email = '${C2}'`));
-  ok("J-20 W3: the corrected row is invited and the panel closes", invitations(C2) === 1 && (await owner.locator("[data-invite-row]").count()) === 0);
+  if (rowsLeft === 3) {   // W1's Send went; when it did not (QA-773 on main) W3 has nothing to fix, and W4 still runs
+    await owner.getByLabel("Email, person 1").fill(C2);
+    await owner.getByRole("button", { name: "Remove person 3" }).click();   // the duplicate row
+    await owner.getByRole("button", { name: "Remove person 2" }).click();
+    ok("J-20 W3: correcting a flagged row clears its words", !(await row(owner, 1).innerText()).includes("already on your firm's staff"));
+    // Break M1: while the batch is in flight the form is locked, so nothing typed then can be lost or get another row's words.
+    let release!: () => void; const held = new Promise<void>((r) => { release = r; });
+    await owner.route("**/api/platform/staff/invitations/batch", async (r) => { await held; await r.continue(); }, { times: 1 });
+    await owner.locator("[data-send-invites]").click();
+    await owner.locator("[data-invite-form]:disabled").waitFor({ timeout: 10_000 });
+    ok("J-20 W3 fail (break M1): while sending, the rows cannot be edited, removed or added to", await owner.getByLabel("Email, person 1").isDisabled() && await owner.locator("[data-add-row]").isDisabled());
+    release();
+    await until("the corrected row's invitation", () => invitations(C2) === 1);
+    await owner.getByLabel("Email, person 1").waitFor({ state: "detached", timeout: 15_000 });
+    invited.push(sql(`select id from platform_invitation where email = '${C2}'`));
+    ok("J-20 W3: the corrected row is invited and the panel closes", invitations(C2) === 1 && (await owner.locator("[data-invite-row]").count()) === 0);
+  } else { ok("J-20 W3: not walked: W1's Send did not go (QA-773)", false); await owner.keyboard.press("Escape"); }
 
   // ------------------------------------------------------------------- W4: the seat taken while the form was open (server)
   const S1 = `j20-s1-${run}@sample-firm.example.com`, S2 = `j20-s2-${run}@sample-firm.example.com`, X = `j20-x-${run}@sample-firm.example.com`;
@@ -161,6 +176,32 @@ try {
   invited.push(sql(`select id from platform_invitation where email = '${S1}'`));
   await shot(owner, "W4-seat-taken-1440");
   await owner.keyboard.press("Escape");   // "Discard the people you typed?" is accepted by the page's dialog handler
+
+  // ------------- W4 (QA-774, "every gated action asks one check"): a lower plan booked for the renewal (SA-3-59) lowers the
+  // seat limit the gate uses; Team's seat line, the form's free seats and the gate's words follow that one limit and name
+  // that plan. Labelled setup (Sample): the plan row and the booking are inserted (the booking through its table's trigger).
+  limit(used() + 5);
+  const lowSeats = used() + 1, [L1, L2] = [1, 2].map((k) => `j20-l${k}-${run}@sample-firm.example.com`);
+  sql(`insert into platform_plan (id, code, name, seats_limit) values (gen_random_uuid(), '${LOWER}', '${LOWER_NAME}', ${lowSeats})`);
+  sql(`insert into platform_subscription_change (id, firm_id, subscription_id, from_plan_id, to_plan_id, booked_by, booked_at, effective_at) select gen_random_uuid(), s.firm_id, s.id, s.plan_id, p.id, 'seed:j20', now(), now() from platform_subscription s, platform_plan p where s.firm_id = '${A_FIRM}' and s.status <> 'ENDED' and p.code = '${LOWER}'`);
+  ok("J-20 W4 setup: a lower Sample plan is booked for the renewal, one seat above today's use", sql(`select count(*) from platform_subscription_change where firm_id = '${A_FIRM}' and withdrawn_at is null and applied_at is null`) === "1");
+  await team(owner);
+  const bookedLine = (await owner.locator("[data-seat-line]").innerText()).trim();
+  ok("J-20 W4 fail (QA-774): while the lower plan is booked, Team's seat line says the limit the gate uses and names that plan", bookedLine.startsWith(`${used()} of ${lowSeats} seats used`) && bookedLine.includes(LOWER_NAME), { bookedLine, lowSeats });
+  await owner.locator("[data-invite-open]").click(); await owner.getByLabel("Email, person 1").waitFor({ timeout: 15_000 });
+  await owner.getByLabel("Email, person 1").fill(L1); await owner.locator("[data-add-row]").click(); await owner.getByLabel("Email, person 2").fill(L2);
+  ok("J-20 W4 fail (QA-774): Invite people says the one free seat the gate allows", (await owner.locator("[data-invite-seat-warning]").count()) === 1 && (await owner.locator("[data-invite-seat-warning]").innerText()).includes("Your plan has 1 free seat."));
+  await shot(owner, "W4-seat-line-while-booked-1440");
+  await owner.locator("[data-send-invites]").click();
+  await owner.locator("[data-invite-form-error]").waitFor({ timeout: 20_000 });
+  const lowWords = await row(owner, 1).innerText();
+  ok("J-20 W4 fail (QA-774): the first row is invited; the second stays with the gate's words naming the booked plan and its seats, never the current plan",
+    invitations(L1) === 1 && invitations(L2) === 0 && lowWords.includes(`your booked plan (${LOWER_NAME}) has ${lowSeats} seats`) && !lowWords.includes(plan[2]), lowWords);
+  invited.push(sql(`select id from platform_invitation where email = '${L1}'`));
+  await owner.keyboard.press("Escape");
+  withdraw();
+  await team(owner);
+  ok("J-20 W4: the booking withdrawn, Team's seat line is the plan's own limit and name again", (await owner.locator("[data-seat-line]").innerText()).trim() === `${used()} of ${used() + 4} seats used on ${plan[2]}`);
 
   // ------------------------------------------------- W5: more valid rows than free seats (P-727 over PF-6 BR-2)
   const [Y1, Y2, Y3] = [1, 2, 3].map((k) => `j20-y${k}-${run}@sample-firm.example.com`);
@@ -219,6 +260,7 @@ try {
   await owner.keyboard.press("Escape");
   ok("J-20: no page error", errors.length === 0, errors);
 } finally {
+  withdraw(); sql(`update platform_plan set active = false where code = '${LOWER}'`);
   limit(Number(plan[1]));
   for (const id of invited.filter(Boolean)) await api("POST", `/platform/staff/invitations/${id}/revoke`, {}).catch(() => undefined);
   const aId = sql(`select coalesce((select id::text from platform_staff where email = '${A}'), '')`);

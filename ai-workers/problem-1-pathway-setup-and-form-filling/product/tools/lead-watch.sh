@@ -194,6 +194,11 @@ alive=$(git for-each-ref --sort=-committerdate --format='%(committerdate:unix) %
 say "lanes pushed in 90 min: $(echo "$alive" | grep -c .)"; [ -n "$alive" ] && echo "$alive" | head -12 | sed 's/^/      /'
 fresh "origin after git fetch, local-lanes.sh"
 
+# 4b. Wake on merge (24 Nov, design option A): an open PR whose "Waits on: #n" are all on main, with the words to type. Report only.
+mw=$(python3 -I "$TOOLS/merge-wake.py" --prs "$STATE_DIR/prs-body.json" 2>&1); echo "$mw"; act=$((act + $(grep -c '^ACT' <<<"$mw"))); seen "$mw"
+grep -qE '^(wake |ACT   wake)' <<<"$mw" || ACT "wake: merge-wake.py did not run ($(head -1 <<<"$mw"))"
+fresh "merge-wake.py: main's merges and branch tips (fetched in step 4), open PRs read in 2b (gh.sh), the app view saved in step 10's file"
+
 # 5. The founder's five changes, kept (founder 4 Nov ~10:50 IST "Go, start now"; "Yes, two standby"): builders in the
 # cloud, machine testing on GitHub, the Mac copy cap, and four numbers every check. A rule nobody measures drifts (the
 # cloud-only rule of 1 Nov, P-224, was not followed for three days), so each is read from the machine, never from prose.
