@@ -167,10 +167,13 @@ export class Messages implements MessagePort<Tx>, MessageWordsPort {
     return withFirm(firmId, () => this.d.db.$transaction(async (tx) => {
       const [row] = await tx.$queryRaw<{ rendered_hash: string }[]>`SELECT "rendered_hash" FROM "msg_outbox" WHERE "firm_id" = ${firmId}::uuid AND "id" = ${id}::uuid`;
       if (!row) return null;
-      const file = await this.d.files.get(firmId, fileKeyOf(firmId, id));
+      // Break M1, m1 (#3492): a store that refuses or throws (S3's IntegrityMismatch, AccessDenied, EISDIR) or a body that
+      // is not a JSON object is "cannot be read back", never an error for the whole read.
+      const file = await this.d.files.get(firmId, fileKeyOf(firmId, id)).catch(() => null);
       if (!file || (await sha256Hex(file.bytes)) !== row.rendered_hash) return null;
-      const r = JSON.parse(new TextDecoder().decode(file.bytes)) as Partial<Rendered>;
-      if (r.outboxId !== id || r.firmId !== firmId || typeof r.subject !== "string" || typeof r.text !== "string") return null;
+      let r: Partial<Rendered> | null = null;
+      try { r = JSON.parse(new TextDecoder().decode(file.bytes)) as Partial<Rendered>; } catch { return null; }
+      if (typeof r !== "object" || r === null || r.outboxId !== id || r.firmId !== firmId || typeof r.subject !== "string" || typeof r.text !== "string") return null;
       return { subject: r.subject, text: r.text };
     }));
   }

@@ -69,6 +69,7 @@ const { Messages, fileKeyOf } = await import("../api/src/platform/messages/send/
 const { fakeAlerts } = await import("../ports/alert.ts");
 const { FakeClock } = await import("../ports/clock.ts");
 const { fakeJobs } = await import("../ports/jobs.ts");
+const { sha256Hex } = await import("../ports/files.ts");
 const { BREACH_MESSAGES, BREACH_WORDS } = await import("../api/src/platform/register/breaches/service.ts") as Record<string, unknown> & typeof import("../api/src/platform/register/breaches/service.ts");
 const breaches = (await import("../api/src/features/platform-register-breaches.ts")).default;
 const holds = (await import("../api/src/features/platform-register-holds.ts")).default;
@@ -159,6 +160,21 @@ try {
   const own = await words.storedWords(firmA, nA.body.recipients[0].outboxId), cross = await words.storedWords(firmB, nA.body.recipients[0].outboxId);
   ok("R0-2 pass: the port gives firm A's message's subject and text, and nothing else", !!own && own.subject === wantA.subject && own.text === wantA.text && Object.keys(own).sort().join(",") === "subject,text", own);
   ok("R0-2 fail: firm A's message id asked as firm B gives nothing (the firm's walls and the file's own firm)", cross === null, cross);
+  // Break M1 (#3492): a store that throws on read (S3's IntegrityMismatch, AccessDenied) gives nothing, never an error.
+  const throwing = new Messages({ db: walled as never, consent: new ConsentStore(auditEvent, mclock), files: { ...files, get: async () => { throw new Error("Sample: S3FilesError (IntegrityMismatch)"); } } as never,
+    jobs: fakeJobs(mclock), alerts: () => fakeAlerts(), channels: channelsOf([["EMAIL", localEmail]]), clock: mclock });
+  const thrown = await throwing.storedWords(firmA, nA.body.recipients[0].outboxId).then((v) => ({ v }), (e) => ({ e: String(e) }));
+  ok("R0-2 fail (break M1): a file store that throws on read gives no words (null), not an error", "v" in thrown && thrown.v === null, thrown);
+  // Break m1: a stored body whose hash matches but that is not a JSON object gives nothing, never an error.
+  const odd = nA.body.recipients[1]?.outboxId as string | undefined;
+  let oddOut: unknown = "no second recipient";
+  if (odd) {
+    writeFileSync(join(files.root, firmA, fileKeyOf(firmA, odd)), "%PDF-1.7 Sample");
+    writeFileSync(join(files.root, firmA, `${fileKeyOf(firmA, odd)}.meta`), JSON.stringify({ contentType: "application/json", sha256: await sha256Hex(new TextEncoder().encode("%PDF-1.7 Sample")) }));
+    sql(`update msg_outbox set rendered_hash = encode(sha256('%PDF-1.7 Sample'::bytea), 'hex') where id = '${odd}'`);
+    oddOut = await words.storedWords(firmA, odd).then((v) => ({ v }), (e) => ({ e: String(e) }));
+  }
+  ok("R0-2 fail (break m1): a stored body that matches its hash but is not a JSON object gives no words (null), not an error", typeof oddOut === "object" && oddOut !== null && "v" in oddOut && (oddOut as { v: unknown }).v === null, oddOut);
 
   // R0-3 names
   const list = await call(base, "GET", "/api/system/register/breaches", { token: ownerT });

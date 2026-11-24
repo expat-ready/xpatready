@@ -215,10 +215,13 @@ export class Breaches {
     const events = await this.db.$queryRaw<{ seq: bigint; kind: string; at: Date; actor: string; detail: unknown }[]>`SELECT seq, kind, at, actor, detail FROM plat_breach_events(${id.toLowerCase()}::uuid)`;
     const [b] = await this.named([viewOf(row.b)]), people = await staffNames(this.db, events.map((e) => e.actor));
     // QA-757: the words each firm was sent, from its first recipient's stored message (one firm's recipients share them).
-    const notices = await Promise.all(b.notices.map(async (n) => {
+    // Break m2 (#3492): one notice at a time (each read is its firm's own short transaction), never all of a 200-firm
+    // breach at once against the pool.
+    const notices: (NamedNotice & { subject: string | null; text: string | null; wordsNote: string | null })[] = [];
+    for (const n of b.notices) {
       const w = n.recipients[0] ? await this.words.storedWords(n.firmId, n.recipients[0].outboxId) : null;
-      return { ...n, subject: w?.subject ?? null, text: w?.text ?? null, wordsNote: w ? null : WORDS_UNREADABLE };
-    }));
+      notices.push({ ...n, subject: w?.subject ?? null, text: w?.text ?? null, wordsNote: w ? null : WORDS_UNREADABLE });
+    }
     return { ...b, notices, events: events.map((e) => ({ seq: Number(e.seq), kind: e.kind, at: e.at.toISOString(), actor: e.actor, actorName: people.get(e.actor) ?? null, detail: e.detail })) };
   }
 
