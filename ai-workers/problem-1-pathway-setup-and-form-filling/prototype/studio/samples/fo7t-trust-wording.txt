@@ -1,0 +1,34 @@
+# FO-7t part 1: the trust request and the TRUST receipt, as the client reads them (AG-6-62, AG-6-71 rule 2, AG-6-63).
+# Sample wording. Legal reading (Code SOR/2022-128 s. 32-33, as FO-7a cites it): Unconfirmed: no counsel.
+# A request carries the firm's trust details block and nothing to click: no pay link and no card (P-567 (3)).
+# Each part starts with a line "== <name> ==". Lines starting with # are notes, never sent. {{name}} is filled by the
+# route from stored facts; a name with no value stops the message (never a blank on a money document).
+== trust_request.subject ==
+Trust deposit request {{number}} from {{firmName}}
+== trust_request ==
+{{firmName}}
+
+TRUST DEPOSIT REQUEST {{number}}
+Date {{sentOn}}
+To: {{party}}
+
+Please pay {{currency}} {{amount}} into our trust account for: {{purpose}}.
+We hold this money in trust for you. It leaves trust only to pay an invoice we have issued to you, or back to you.
+
+How to pay into trust:
+{{trustDetails}}
+
+Please quote {{number}} with your payment. We send you a receipt when it arrives.
+== trust_receipt.subject ==
+Trust receipt {{number}} from {{firmName}}
+== trust_receipt ==
+{{firmName}}
+
+TRUST RECEIPT {{number}}
+Date {{issuedOn}}
+Received from: {{party}}
+
+Received into trust: {{currency}} {{amount}} by {{method}} on {{receivedOn}}{{reference}}
+{{request}}
+{{cleared}}
+We hold this money in trust for {{party}}. It leaves trust only to pay an invoice we have issued to you, or back to you.
