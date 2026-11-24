@@ -47,6 +47,7 @@ export const CONFIG_ENTITIES: ReadonlySet<string> = new Set([
 export const PLATFORM_ENTITIES: ReadonlySet<string> = new Set([
   "platform_firm_setting" /* PF-3 a firm's setting changed, platform/settings.ts */,
   "platform_staff", "platform_invitation" /* PF-4 staff, roles, licence records, sessions, invitations, platform/identity/audit.ts (Lead 43 OK on #1744) */,
+  "plat_system_access" /* AUD-3 our staff's firm-less cross_tenant.access line, platform/audit/access/lines.ts */,
 ]);
 /** A configuration entity: listed, or a library change's ("library field", "library document_type", "library section" …;
  *  review-proposals.ts, screen02.ts). */

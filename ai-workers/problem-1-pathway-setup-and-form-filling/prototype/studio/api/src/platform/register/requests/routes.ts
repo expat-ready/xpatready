@@ -5,6 +5,7 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
 import { SystemChange, SystemKeys, systemStaffOf, type SystemStaffContext } from "../../system-identity/keys.ts";
 import { DataRequests, DSR_KEY, type CallLine } from "./service.ts";
+import { NoFirmData, ReadsAcrossFirms } from "../../audit/access/declare.ts";
 
 type R = { systemStaff?: SystemStaffContext; systemLine?: CallLine };
 const lineOf = (r: R): CallLine => { if (!r.systemLine) throw new Error("PF-21b: a change route without its guard line"); return r.systemLine; };
@@ -13,15 +14,15 @@ const lineOf = (r: R): CallLine => { if (!r.systemLine) throw new Error("PF-21b:
 export class DataRequestController {
   constructor(@Inject(DataRequests) private readonly requests: DataRequests) {}
 
-  @Get() @SystemKeys(DSR_KEY)
+  @Get() @SystemKeys(DSR_KEY) @ReadsAcrossFirms("requests made to ExpatReady, which may name a firm and its person")
   list(@Req() r: R, @Query() q: Record<string, unknown>) { return this.requests.list(systemStaffOf(r), q); }
 
-  @Get(":id") @SystemKeys(DSR_KEY)
+  @Get(":id") @SystemKeys(DSR_KEY) @ReadsAcrossFirms("one request, which may name a firm and its person")
   read(@Req() r: R, @Param("id") id: string) { return this.requests.read(systemStaffOf(r), id); }
 
-  @Post() @HttpCode(201) @SystemKeys(DSR_KEY) @SystemChange()
+  @Post() @HttpCode(201) @SystemKeys(DSR_KEY) @SystemChange() @NoFirmData("ExpatReady's own register of requests, which may name a firm but is not its record")
   log(@Req() r: R, @Body() b: unknown) { return this.requests.log(systemStaffOf(r), lineOf(r), b); }
 
-  @Post(":id/status") @HttpCode(200) @SystemKeys(DSR_KEY) @SystemChange()
+  @Post(":id/status") @HttpCode(200) @SystemKeys(DSR_KEY) @SystemChange() @NoFirmData("ExpatReady's own register of requests, which may name a firm but is not its record")
   move(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.requests.move(systemStaffOf(r), lineOf(r), id, b); }
 }
