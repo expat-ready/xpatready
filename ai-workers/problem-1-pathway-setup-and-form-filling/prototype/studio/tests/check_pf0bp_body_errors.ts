@@ -85,6 +85,22 @@ try {
   ok("PF-0bp DW3 pass (bare marker): a body that is only secret-marker-123 → 400 BODY_NOT_JSON; neither the answer nor the log repeats it",
     notJson(bare) && !bare.text.includes("secret-marker-123") && !log.includes("secret-marker-123"), { answer: bare.text, log: log.slice(logAt).slice(-600) });
 
+  // ------------------------------------------------------------------------------- DW5 (QA-507, R1.10): the parser's 415s
+  // A charset or Content-Encoding the parser cannot read was a 500; each is its own 415 in words, neither the answer nor
+  // the log repeats the sent value, and the encoding answer names the encodings it reads (RFC 9110 15.5.16).
+  const cs = await post("/api/front-office/leads", "{}", token, { "content-type": "application/json; charset=klingon", "idempotency-key": "pf0bp-cs" });
+  ok(`PF-0bp DW5 ${cs.status === 415 ? "pass" : "fail"}: a JSON body in charset=klingon → 415 BODY_CHARSET in words, the charset not repeated (QA-507)`,
+    cs.status === 415 && /application\/problem\+json/.test(cs.type) && cs.body?.code === "BODY_CHARSET" && /UTF-8/.test(cs.body?.detail ?? "") && !/klingon/i.test(cs.text) && !/klingon/i.test(log.slice(logAt)), cs);
+  const enc = await new Promise<Res & { accept: string }>((done, failed) => {
+    const rq = request({ host: "127.0.0.1", port: PORT, path: "/api/front-office/leads", method: "POST", headers: { "content-type": "application/json", "content-encoding": "zstd-nope", "content-length": "2", authorization: `Bearer ${token}`, "idempotency-key": "pf0bp-enc" } }, (rs) => {
+      let d = ""; rs.setEncoding("utf8"); rs.on("data", (c) => (d += c));
+      rs.on("end", () => { let body: any = null; try { body = JSON.parse(d); } catch { /* not JSON */ } done({ status: rs.statusCode ?? 0, type: String(rs.headers["content-type"] ?? ""), body, text: d, accept: String(rs.headers["accept-encoding"] ?? "") }); });
+    });
+    rq.on("error", failed); rq.end("{}");
+  });
+  ok(`PF-0bp DW5 ${enc.status === 415 ? "pass" : "fail"}: a JSON body with Content-Encoding zstd-nope → 415 BODY_ENCODING in words with Accept-Encoding, the encoding not repeated (QA-507)`,
+    enc.status === 415 && enc.body?.code === "BODY_ENCODING" && /gzip/.test(enc.accept) && !/zstd-nope/i.test(enc.text) && !/zstd-nope/i.test(log.slice(logAt)), enc);
+
   // ---------------------------------------------------------------------------------------------------------- DW4
   const after = rows();
   ok("PF-0bp DW4: neither error reached a handler (no lead and no complaint written by the broken, oversized or marked bodies; the valid ones were refused by their handlers)", after === before, { before, after });
