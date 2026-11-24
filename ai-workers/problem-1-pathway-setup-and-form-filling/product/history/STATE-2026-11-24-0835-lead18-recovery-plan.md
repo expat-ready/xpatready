@@ -519,3 +519,8 @@ updated: 2026-11-24 09:50 IST: Lead 20. Check bec76afc runs. **Recovery plan (A3
 ### Lead 29, 17:15 IST 24 Nov: Lead O 2's reports
 * #3494 queued 17:13. **#3495 (f18145ef1) is the lasting types fix** (one shared client type; 3.0 GB, 40 s, its measure): label on its Approve, ci and my read. #3482 not labelled: guards part 4/4 red (761 tls), Lead O 2 told. #3496 (#3442) red on types only, so it waits on #3494.
 * Records owed: a row to take the heap back to 8192 after #3495; library/ci-pipeline-strategy.md:141 still says 8192.
+
+### Lead 29, check 17:17 IST 24 Nov
+* No merge since 16:53. Running: R1.104, R1.58, R1.87, R1.54 4c, R1.93, R1.86 R0, R1.68 (#3500; Opus 5.5 medium not read, its label was cut off), R1.69 (#3497, waits on its reviewers; label Opus 5.5 Medium read). 84% weekly.
+* #3487 (R1.10 A4) labelled by the gate; guard read by me, read line posted. **R1.10's rest, named on #3487: A3 (front-office words), A2 (booking), A5 (case side): three fresh lanes needed; held until the types fix lands (P-663).** 9LZXV stopped.
+* #3489 (R1.93 PR B) Blocked round 1 (focus lost on search), its lane fixing. Full runs going: #3470, #3305, #3477 (old head, started by the gate; useless once C8 is fixed; never cancelled).
