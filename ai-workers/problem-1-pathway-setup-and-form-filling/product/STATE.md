@@ -2,7 +2,7 @@
 
 current_lead: local_48775ee3 Lead 3 · 24 Nov 23:58 IST (after Lead 2 local_0bdf05e5, past its 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 00:1x IST: **Lead 3 (local_48775ee3) took over; check 0427567f created (3,33).** #3497 not labelled: walk j_74 W7 red (notifications, asked the R1.69 builder on the PR) and full run 45452575395 shard 22 red (c76 C8.2, re-run alone when the run ends). #3547, #3550 CI still running. 55/101 Works; 16 cloud lanes; founder asleep (A379).
+updated: 2026-11-25 00:3x IST: **Lead 3 (local_48775ee3) check 00:03.** Weekly 16% (00:0x; ~5%/h → 96% ~16:00 25 Nov). Labelled #3547, #3550 (OS-2, Lead read posted). #3497 held: j_74 W7 red (R1.69 builder told in its lane), shard 22 re-run alone (rerun-failed-jobs 45452575395). Round 3 allowed: #3541 (R1.53), #3527 (R1.29; that lane at context limit: FO-9s part 2 needs a fresh session at the founder's next turn). 55/101 Works; 16 cloud lanes.
 
 ## Hand-over Lead 2 → Lead 3, 23:58 IST 24 Nov (Lead 2 ~265k; earlier block: `history/STATE-2026-11-24-2358-lead2-handover-lead1-block.md`)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 2's 99e4e813 is deleted. **No standby left** (P-286 asks two: start two at the founder's next typed turn). Weekly 15% at 23:56 (11% at 23:12, 7% at 22:4x: ~5-6%/h, 16 lanes; at that rate 96% ~14:00 IST 25 Nov: tell the founder in the morning report, recommend fewer lanes or ask). My context 26%. Disk 10 GB.
