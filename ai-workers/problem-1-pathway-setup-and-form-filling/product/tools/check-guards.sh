@@ -31,8 +31,10 @@ TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
+TESTS="$TESTS check-merge-wake.sh"   # wake on merge
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
+TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 bad=0
 if [ "$part" = 1 ]; then
@@ -71,6 +73,18 @@ A351 c1 ports|product/tools/red-on-old.py|s/"packages", "ports", /"packages", /|
 2 reviewers|../../.github/workflows/label-guard.yml|/^          REVIEWERS: /{x;s/^/x/;/^x$/{x;d;};x;}|check-label-guard.sh
 3|product/tools/lane-preflight.sh|/under ${min} GB;/d|check-lane-preflight.sh
 3 touch|product/tools/lane-preflight.sh|s/ python3 -I "\$DIR\/touch-overlap.py" 2>\&1)/ cat >\/dev\/null)/|check-touch-overlap.sh
+P776 count|product/tools/npm-audit-report.py|s/^    if len(v) != c\["total"\]:/    if False:/|check-npm-audit-report.sh
+P776 error|product/tools/npm-audit-report.py|s/ or e or "metadata" not in d:/ or "metadata" not in d:/|check-npm-audit-report.sh
+P776 new|product/tools/npm-audit-report.py|s/ or ORDER.index(s) < ORDER.index(w\[k\])}/}/|check-npm-audit-report.sh
+P776 base|product/tools/npm-audit-report.py|s/^            line += "; the base could not be read"; warn = .*/            pass/|check-npm-audit-report.sh
+P776 safe|product/tools/npm-audit-report.py|s/.replace("::", ": :")//|check-npm-audit-report.sh
+P776 order|product/tools/npm-audit-report.py|s/for k, _ in order\[:5\]/for k in list(new)[:5]/|check-npm-audit-report.sh
+P776 folder|../../.github/workflows/studio-audit.yml|s/npm audit --prefix "\$RUNNER_TEMP.\$v"/npm audit --prefix "$S"/|check-npm-audit-report.sh
+P776 show|../../.github/workflows/studio-audit.yml|s/> "\$RUNNER_TEMP.base.\$f" .. true$/> "$RUNNER_TEMP\/base\/$f"/|check-npm-audit-report.sh
+P776 depth|../../.github/workflows/studio-audit.yml|s/fetch-depth: 2/fetch-depth: 1/|check-npm-audit-report.sh
+P776 block|../../.github/workflows/studio-audit.yml|/^      - id: ci$/,/run:/s/^        continue-on-error: true$/        continue-on-error: false/|check-npm-audit-report.sh
+P776 scripts|../../.github/workflows/studio-audit.yml|s/ --ignore-scripts//|check-npm-audit-report.sh
+P776 token|../../.github/workflows/studio-audit.yml|s/permissions: { contents: read }/permissions: { contents: write }/|check-npm-audit-report.sh
 3 hit|product/tools/touch-overlap.py|s/^            if paths:/            if False:/|check-touch-overlap.sh
 3 closed|product/tools/touch-overlap.py|s/^        return 2$/        return 0/|check-touch-overlap.sh
 A348 rules cite|product/tools/rules-settled.py|s/^        bad = .*/        bad = []/|check-rules-settled.sh
@@ -111,6 +125,22 @@ A351 b1 ran|product/tools/lead-watch.sh|/same-cause.py did not run/d|check-same-
 3 dot|product/tools/touch-overlap.py|s/re.sub(r"^(\\.\/)+", "", /(/|check-touch-overlap.sh
 3 run|product/tools/check-lane-preflight.sh|/check-touch-overlap.sh" 2>\&1)/d|check-touch-overlap.sh
 4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
+W24 all|product/tools/merge-wake.py|s/any(x not in merged for x in w)/all(x not in merged for x in w)/|check-merge-wake.sh
+W24 holds|product/tools/merge-wake.py|s/^        if has_all(.*/        if False:/|check-merge-wake.sh
+W24 lost|product/tools/merge-wake.py|s/^        if lost:/        if False:/|check-merge-wake.sh
+W24 line|product/tools/merge-wake.py|s/if ws and all(got) and len(ws) <= MANY:/if ws and any(got):/|check-merge-wake.sh
+W24 fence|product/tools/merge-wake.py|s/^            fence = f.group(1); continue/            pass/|check-merge-wake.sh
+W24 late|product/tools/merge-wake.py|s/t = max(merged/t = min(merged/|check-merge-wake.sh
+W24 lane|product/tools/merge-wake.py|s/got = by\["branch"\] or by\["number"\]/got = by["number"] or by["branch"]/|check-merge-wake.sh
+W24 empty|product/tools/merge-wake.py|s/ or not prs:/:/|check-merge-wake.sh
+W24 queued|product/tools/merge-wake.py|s/^        if labels \& .*/        if False:/|check-merge-wake.sh
+W24 clean|product/tools/merge-wake.py|s/^    s = re.sub(r"\[.x00.*/    s = str(s)/|check-merge-wake.sh
+W24 unread|product/tools/merge-wake.py|s/^    if unread:/    if False:/|check-merge-wake.sh
+W24 limit|product/tools/merge-wake.py|s/^    if len(prs) >= LIMIT:/    if False:/|check-merge-wake.sh
+W24 html|product/tools/merge-wake.py|s/in re.sub(r"<!--.*flags=re.S)/in (body or "").replace("\\r", "")/|check-merge-wake.sh
+W24 many|product/tools/merge-wake.py|s/^        if len(w) > MANY: .*/        if False:/|check-merge-wake.sh
+W24 wired|product/tools/lead-watch.sh|s/^mw=/# mw=/|check-merge-wake.sh
+W24 ran|product/tools/lead-watch.sh|/merge-wake.py did not run/d|check-merge-wake.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
 A351 c2 moved|product/tools/checks-changed.py|s/^            if to and (re.search.*/            if False:/|check-checks-changed.sh

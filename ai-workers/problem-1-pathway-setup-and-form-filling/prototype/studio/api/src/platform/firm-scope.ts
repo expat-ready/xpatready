@@ -526,14 +526,30 @@ export class WalledPool extends pg.Pool {
 
 /** Prisma merges findUnique calls made in the same tick into one query, sent from the first caller's scope: two firms'
  *  lookups would run as one firm, and the other's row would read "not found" (tests/check_pf12_walls.ts shows it). Outside
- *  a transaction each call is sent on its own, in its own caller's firm; a transaction's batch is one caller's and stays
- *  as it is. Stops the start-up if Prisma's batching is not where this expects it (a Prisma upgrade). */
+ *  a transaction each call is sent on its own, in its own caller's firm; an interactive transaction's queries run on its own
+ *  connection and stay batched; an array batch is refused (M2, below). Stops the start-up if Prisma's batching is not where this expects it (a Prisma upgrade). */
 export function oneQueryPerCaller(client: object): void {
   type Loader = { batchBy?: (r: { transaction?: unknown }) => string | undefined };
   const o = (client as { _requestHandler?: { dataloader?: { options?: Loader } } })._requestHandler?.dataloader?.options;
   if (typeof o?.batchBy !== "function") throw new Error("PF-12: Prisma's request batching was not found, so firms' lookups could be merged (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
   const by = o.batchBy;
   o.batchBy = (r) => (r.transaction ? by(r) : undefined);
+  // M2 (P1-pool round-2 break; Lead 24, 24 Nov): an array batch, `$transaction([...])`, is dispatched with every other
+  // batch queued in that tick from one process.nextTick set up by the first request, so it checks out the pool in that
+  // first caller's scope: another firm's, or the bypass role (tests/check_no_array_tx.ts). No array batch through this
+  // client: it is refused before anything in it runs. An interactive transaction takes its connection in its own
+  // caller's scope when it starts, and is kept.
+  const c = client as { $transaction?: (arg: unknown, opts?: unknown) => Promise<unknown> };
+  if (typeof c.$transaction !== "function") throw new Error("M2: Prisma's $transaction was not found on the client (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
+  // Review B1: the receiver is kept, never bound: a transaction client reads $transaction from this client, and Prisma
+  // nests a call made on a transaction client (`this`) inside that transaction. Anything but a function is refused, as
+  // Prisma's own test for the interactive form is `typeof arg === "function"` (review m1: an array-like is a batch too).
+  const transaction = c.$transaction;
+  c.$transaction = function (this: unknown, arg: unknown, opts?: unknown) {
+    return typeof arg !== "function"
+      ? Promise.reject(new Error("M2: an array batch ($transaction([...])) is refused on the app's client: Prisma would send it in another caller's firm. Use the interactive form, $transaction(async (tx) => ...)."))
+      : transaction.call(this, arg, opts);
+  };
 }
 
 /** The API's pool (core.ts Db): xr_app, UTC session time zone. */
