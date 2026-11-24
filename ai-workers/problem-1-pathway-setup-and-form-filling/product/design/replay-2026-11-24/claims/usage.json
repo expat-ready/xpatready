@@ -54,5 +54,33 @@
   "out": 13467,
   "outside": [],
   "tool_calls": 15
+ },
+ "S09": {
+  "cache_read": 1503089,
+  "fresh_in": 187322,
+  "out": 20722,
+  "outside": [],
+  "tool_calls": 25
+ },
+ "S10": {
+  "cache_read": 1748652,
+  "fresh_in": 233762,
+  "out": 21048,
+  "outside": [],
+  "tool_calls": 37
+ },
+ "S11": {
+  "cache_read": 1266970,
+  "fresh_in": 183901,
+  "out": 19123,
+  "outside": [],
+  "tool_calls": 27
+ },
+ "S12": {
+  "cache_read": 755981,
+  "fresh_in": 114758,
+  "out": 13165,
+  "outside": [],
+  "tool_calls": 18
  }
 }
