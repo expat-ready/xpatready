@@ -417,6 +417,28 @@ try {
   const ask8 = await op(q8.tok, { consent: true }), ok8 = await op(q8.tok, { consent: true, code: lastCode() });
   ok("FO-3c QA-777 B1: with no code asked, seven made-up codes are each refused (422 CODE_EXPIRED), none counted, no lock; the client then asks for a code and signs (the link)",
     guesses.every((g) => g === "422:CODE_EXPIRED") && counted8 === "0|false" && ask8.codeNeeded === true && /^https:\/\/signing\.fake\.invalid\//.test(ok8.link?.url ?? ""), { guesses, counted8, ok8: !!ok8.link });
+  // QA-777 m8 (review round 2 on #3498): B2's controller half. Through the public controller itself, the provider failing
+  // right after the right code still sends this browser's Set-Cookie (same attributes as a success) and re-throws the
+  // same error with no token in its body; the retry with that cookie opens with no new code.
+  const { ConsultationAgreementPublicController } = await import("../api/src/front-office/booking/consultation-agreement/controller.ts");
+  const door = new ConsultationAgreementPublicController(svc as unknown as ConstructorParameters<typeof ConsultationAgreementPublicController>[0]);
+  const resOf = () => { const h: Record<string, string> = {}; return { h, res: { setHeader: (n: string, v: string) => { h[n.toLowerCase()] = v; } } }; };
+  const reqOf = (cookie?: string) => ({ ip: `10.9.0.${++ipN % 250}`, headers: cookie ? { cookie } : {} });
+  const q10 = await sendOne(T.staffId, kim, 25);
+  await clock.advance({ minutes: 2 });
+  await door.open({ token: q10.tok, consent: true }, reqOf(), resOf().res);
+  const code10 = lastCode(), down = resOf(), realLink10 = signing.embeddedLink;
+  signing.embeddedLink = async () => { throw new Error("provider down (Sample)"); };
+  let err10: unknown;
+  try { await door.open({ token: q10.tok, consent: true, code: code10 }, reqOf(), down.res); } catch (e) { err10 = e; }
+  signing.embeddedLink = realLink10;
+  const set10 = down.h["set-cookie"] ?? "", tok10 = /^xr_sign=([^;]+);/.exec(set10)?.[1];
+  const attrs10 = ["Path=/api/public/consultation-agreements/open", "Max-Age=1800", "HttpOnly", "SameSite=Strict"].every((a) => set10.split("; ").includes(a));
+  const leaked10 = !!tok10 && (JSON.stringify(err10) ?? "").includes(tok10);
+  const retry10 = await door.open({ token: q10.tok }, reqOf(tok10 ? `xr_sign=${tok10}` : undefined), resOf().res) as { codeNeeded?: boolean; link?: { url?: string } | null };
+  ok("FO-3c QA-777 m8: through the public controller, a provider failure after the right code re-throws the provider's error, still sets this browser's xr_sign cookie (door path, 30 minutes, HttpOnly, SameSite=Strict) with no token in the error, and the retry with that cookie opens the link with no new code",
+    (err10 as Error)?.message === "provider down (Sample)" && !!tok10 && attrs10 && !leaked10 && down.h["cache-control"] === "no-store" && retry10.codeNeeded === false && /^https:\/\/signing\.fake\.invalid\//.test(retry10.link?.url ?? ""),
+    { err: String(err10), set10: set10.replace(/=[^;]+;/, "=…;"), attrs10, leaked10, retry10 });
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
