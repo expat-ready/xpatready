@@ -251,7 +251,8 @@ try {
     v2 && (await r.getByRole("dialog").count()) === 0 && (await ret(gus.id)).versions[1]?.fees[0]?.amountMinor === null && await r.locator("[data-error-summary] a").first().evaluate((e) => e === document.activeElement), { v2 });
   await closePanel();
   await r.getByLabel("Fee 1: amount").fill("1750");   // typed, not saved: the qa replay's step (S17 M1)
-  const hint = await r.locator("[data-unsaved-hint]").innerText().catch(() => "");
+  const hint = (await r.locator("[data-unsaved-hint]").count()) ? await r.locator("[data-unsaved-hint]").innerText() : "";
+  await shot(r, "qa778-unsaved-hint-1440");
   await r.locator("[data-check-and-send]").click();
   const gs = r.getByRole("dialog", { name: /^Send to .* to sign$/ }); await gs.waitFor({ timeout: 15_000 });
   const gsText = (await gs.innerText()).replace(/\s+/g, " ");
