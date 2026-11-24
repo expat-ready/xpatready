@@ -97,3 +97,41 @@ Branch `claude/busy-goldberg-jyerm9` at exact commit `cb742468e` (PR #3490, stac
 ## Not findings (noted)
 * In local, `useSigningPort(fakeSigning(...))` always replaces the port (`front-office-signing.ts:33`). Challenge m6 said "only if no other adapter has been set". No other adapter exists today; FO-6v should revisit this.
 * The page offers Sign on a withdrawn retainer until Sign is refused. QA-770's source fix is FO-5d's.
+
+## Round 2 (diff only: `cb742468e..18b64a0b7`, head `18b64a0b7`)
+
+**Run.** Isolated copy `brk4c2` on :4491, set up as in round 1 and stopped at the end. `check_fo6_door.ts` passed 42/42 and `check_fo6_fake_page.ts` passed 18/18. No 5xx, and no raw nonce in the log.
+
+**Verdict: Pass.** All 4 round-1 Minors are fixed. Part of m1 remains as **m5** below (Minor). No new Blocker or Major.
+
+* **m1, fixed.**
+  * Repro (`r2`): four retainers, each with the client's stand-in page open. 125 junk calls to `POST /api/hooks/signing/fake` from loopback, then Sign on each page.
+  * Each Sign got 409 "The signature was not recorded yet. Wait a moment and try again." with a Try again button. No raw code is shown. Reopening the page (GET) shows Try again.
+  * After waiting 62 s, Try again gave 200 "Signed". The request reads CLIENT_SIGNED, with 1 receipt and 1 `signing.signed` line.
+  * The firm signer, flooded the same way before Sign: Try again after 62 s gave SIGNED|SIGNED and 1 evidence row.
+  * **Try again abuse:**
+    * Three concurrent Try agains gave [200, 404, 404]: one signature. One more Try again gave 404.
+    * The pending nonce on another document and signer, on the same document with the firm signer, or on the same document with another client's signer id: 404 each.
+    * The signer's other unused nonce while a delivery waited: 404.
+    * Withdrawn while waiting, then Try again: 409 "This agreement can no longer be signed here. Ask the firm for the latest agreement.", VIEWED|WITHDRAWN, 0 signatures. A further Try again gave 404.
+* **m2, fixed.** A wrong version gives 422 INVALID, before the lookup: a random id with a wrong version also gives 422. A padded version now gives 422 too.
+* **m3, fixed.** Checked with a small Nest module holding only `FakeSigningPageController`. `local` starts. `test` and `production` are refused at `NestFactory.create` with "the stand-in signing page is registered with PLATFORM_ENVIRONMENT=…; it exists only in local".
+* **m4, fixed** (read in the code): expired nonces are swept on every new link (`port.ts:156`).
+* **The firm link's re-check under the lock** (read in the code): `firm-link.ts:37-39`. It is a 409 CHANGED inside the transaction, with no write. I could not race it on the copy.
+
+### Minor (round 2)
+**m5. Try again works only from the original tab, and only for 10 minutes. After that, the round-1 dead end returns.**
+* Repro (`r3`): flood the door, Sign (Try again shown), wait 10 min 5 s, then Try again.
+* Actual:
+  * Try again gives 404 "…Open the signing link again to get a new one."
+  * Opening the link again gives `/session` 409 **LINK_ENDED** "This agreement can no longer be signed". The door still says WAITING, and the request stays VIEWED|VIEWED.
+  * While a delivery waits, the client's `/session`, and for the firm signer `firm-signing-link`, also answer LINK_ENDED. So a signer who closed the tab is stuck at once.
+* Cause:
+  * The fake has already marked the signer signed.
+  * The undelivered calls live only in the page's `pending` map, keyed by that one nonce, for 10 minutes (`fake-page.ts:83-92`). `embeddedLink` throws `SigningEnded("signed")`.
+* Impact: much narrower than round 1, and local only. Recovery is still withdraw and send again.
+* Possible fixes:
+  * When `embeddedLink` meets an undelivered signature, give a fresh link to the pending page.
+  * Or keep pending calls until delivered rather than for 10 minutes.
+
+**Note, not a finding:** `deliver` treats any `duplicate: true` answer as delivered, even an earlier stored refusal (`fake-page.ts:74`). A refusal is final and never kept for Try again, so this can only happen if the first answer was lost after the door committed. I did not reach it.
