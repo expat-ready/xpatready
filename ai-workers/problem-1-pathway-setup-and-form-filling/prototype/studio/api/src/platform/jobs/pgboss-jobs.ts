@@ -30,6 +30,9 @@ import { logPort } from "../observability/log.ts";
 export const JOBS_SCHEMA = "platform_jobs";
 /** The one dead-letter list: every job that failed after its last retry, with its error. */
 export const DEAD_LETTER = "platform.dead_letter";
+/** The most dead-letter entries one read returns: pg-boss findJobs orders by created_on, so a read keeps the list's OLDEST
+ *  entries up to this cap (PF-17 part 4, m1: the console says when a read reached it). */
+export const DEAD_LETTER_CAP = 10_000;
 
 /** A job never waits for a fetch longer than this before pg-boss would delete it (and free its key): 10 years. */
 const KEEP_WAITING_SECONDS = 10 * 365 * 24 * 3600;
@@ -220,10 +223,10 @@ export class PgBossJobs implements JobPort {
     if (this.#state === "started") await this.#applySchedule(name, cron, zone);
   }
 
-  /** The dead-letter list, newest first (read from its oldest 10 000; the list keeps a year, Sample). */
+  /** The dead-letter list, newest first (read from its oldest DEAD_LETTER_CAP entries; the list keeps a year, Sample). */
   async deadLetters(limit = 100): Promise<DeadLetter[]> {
     await this.#whenStarted();
-    const rows = await this.boss.findJobs<Record<string, unknown>>(DEAD_LETTER, { limit: 10_000 });
+    const rows = await this.boss.findJobs<Record<string, unknown>>(DEAD_LETTER, { limit: DEAD_LETTER_CAP });
     return rows.map(toDeadLetter).sort((a, b) => b.failedAt.getTime() - a.failedAt.getTime()).slice(0, limit);
   }
 
