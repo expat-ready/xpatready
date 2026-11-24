@@ -241,11 +241,18 @@ try {
   const dE3 = await raw(tR, "POST", "/trust/deposits", { personId: PE, caseId: E1, method: "E_TRANSFER", amountMinor: 5000, currency: "CAD", idempotencyKey: "fo7v-dep-e3" });
   const pE3 = await preview(dE3.body.paymentId), revE3 = await reverse(dE3.body.paymentId, { reasonCode: "RECORDED_BY_MISTAKE", previewHash: pE3.body.hash });
   if (rE.status !== 201 || revE.status !== 201 || revE3.status !== 201) throw new Error(`client e: ${JSON.stringify([rE.body, revE.body, revE3.body])}`);
+  // Round 3 (n1): 10.00 of client e's money before a case (no case), so a scope of both cases and no parties sees all
+  // of e's case money but not that entry.
+  const dE4 = await raw(tR, "POST", "/trust/deposits", { personId: PE, method: "E_TRANSFER", amountMinor: 1000, currency: "CAD", idempotencyKey: "fo7v-dep-e4" });
+  if (dE4.status !== 201) throw new Error(`client e no case: ${JSON.stringify(dE4.body)}`);
   const ctxA = { firmId: A, staffId: staffR } as never;
   const listFor = (scope: { cases: string[]; parties: string[] }) => new Reversals(owner, auditEvent, async () => scope).shortfall(ctxA, {}) as Promise<{ items: { personId: string | null; balanceMinor: number }[] }>;
   const partial = await listFor({ cases: [E1], parties: [PE] }), whole = await listFor({ cases: [E1, E2], parties: [PE] });
   ok("FO-7v DW11 fail (review M2): an officer who sees case E1 only never gets client e's row, though the latest reversal is on E1 (its −100.00 is money on E2)", !partial.items.some((x) => x.personId === PE), partial.items);
-  ok("FO-7v DW11 pass: a caller who sees both of client e's cases gets the row at −100.00", whole.items.find((x) => x.personId === PE)?.balanceMinor === -10000, whole.items);
+  ok("FO-7v DW11 pass: a caller who sees both of client e's cases and client e gets the row at −90.00", whole.items.find((x) => x.personId === PE)?.balanceMinor === -9000, whole.items);
+  const noParty = await listFor({ cases: [E1, E2], parties: [] });
+  ok("FO-7v DW11 fail (round 3, n1): a scope of both cases but not client e (so not e's money before a case) never gets the row: the list fails closed by itself, not only through the visibility adapter",
+    !noParty.items.some((x) => x.personId === PE), noParty.items);
 
   const ghost = await preview("00000000-0000-4000-8000-000000000999");
   ok("FO-7v DW11 fail: an unknown payment id → 404", ghost.status === 404, ghost.body);

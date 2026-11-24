@@ -141,7 +141,7 @@ export class Reversals {
           last as (select distinct on (person_id, company_id, currency) person_id, company_id, currency, balance_after_minor from e order by person_id, company_id, currency, seq desc),
           rev as (select distinct on (person_id, company_id, currency) person_id, company_id, currency, id, case_id, corrects_entry_id, correction_kind from e
             where kind = 'CORRECTION' and correction_kind in ('RETURNED', 'RECORDED_BY_MISTAKE', 'WRONG_CLIENT', 'OTHER') order by person_id, company_id, currency, seq desc),
-          whole as (select person_id, company_id, currency from e group by person_id, company_id, currency having bool_and(seen))
+          whole as (select person_id, company_id, currency from e group by person_id, company_id, currency having bool_and(coalesce(seen, false)))   -- round 3 (n1): an entry the caller cannot see is false, never a skipped NULL
         select l.person_id::text as "personId", l.company_id::text as "companyId", coalesce(nullif(btrim(concat_ws(' ', fp.given_names, fp.family_name)), ''), fc.operating_name) as name,
           l.currency::text as currency, l.balance_after_minor as "balanceMinor", r.id::text as "reversalEntryId", d.payment_id::text as "paymentId", r.case_id::text as "caseId", r.correction_kind::text as "reasonCode"
         from last l join whole w on w.person_id is not distinct from l.person_id and w.company_id is not distinct from l.company_id and w.currency = l.currency
