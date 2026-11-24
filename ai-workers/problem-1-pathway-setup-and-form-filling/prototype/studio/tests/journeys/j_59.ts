@@ -19,6 +19,7 @@ import { PrismaClient } from "@prisma/client";
 import { seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
+import { moneyVisible } from "../lib/money-visible.ts";
 
 const [NAME, PORT] = [process.argv[2] ?? "j59", Number(process.argv[3] ?? 4459)];
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
@@ -46,7 +47,8 @@ try {
   // the sample firms are in Ontario (samples/firms.json), whose cited default is the 13 % these steps use.
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'seed:J-59', now()) on conflict (firm_id) do nothing`);
   for (const f of [A, B]) sql(`update money_payment_settings set tax_registered = true, tax_number = coalesce(tax_number, '123456789RT0001') where firm_id = '${f}'`);
-  const PA = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Ana${run}', 'Sample', 'j59.${run}@example.org', 'seed:J-59', now()) returning id`);
+  // a client the caller sees: FO-7b's routes are C5-scoped (#3305 M1), as FO-7q's reads
+  const PA = moneyVisible(sql, A, "person", sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Ana${run}', 'Sample', 'j59.${run}@example.org', 'seed:J-59', now()) returning id`));
   ok("J-59 setup: both Sample firms, their front office, payment settings with \"Prices include tax\" off, and one client of firm A", !!A && !!B && fo.failed.length === 0 && !!PA
     && sql(`select count(*) from money_payment_settings where firm_id in ('${A}', '${B}') and not prices_include_tax`) === "2", fo.failed);
   const staff = (actor: string) => sql(`select email from platform_staff where actor_id = '${actor}'`);

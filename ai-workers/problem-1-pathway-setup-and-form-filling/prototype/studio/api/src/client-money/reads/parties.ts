@@ -25,6 +25,7 @@ import { billToProvince } from "../invoices/bill-to.ts";
 import { provinceCode } from "../tax/defaults.ts";
 import type { ProvinceCode } from "../tax/canada-gst-hst.ts";
 import { failClosed, type ScopeOf } from "./visibility.ts";
+import { caseLinks } from "../visibility-adapter.ts";
 
 type Reader = PrismaClient | Prisma.TransactionClient;
 export type BillTo = { kind: "PERSON" | "COMPANY"; name: string | null } | null;
@@ -86,7 +87,7 @@ export class PartyReads {
       // one list, cut at 20 by the very name it shows (review m2): people and companies together, by name, then id
       const hits = await tx.$queryRaw<{ kind: "PERSON" | "COMPANY"; id: string; name: string }[]>`
         with won as materialized (select subject_person_id as pid, subject_company_id as cid from fo_prospect where firm_id = ${firmId}::uuid and won_at is not null),
-          on_case as materialized (select k.id as case_id, c.fo_person_id as pid, c.fo_company_id as cid from runtime_case k join case_client c on c.id = k.client_id and c.firm_id = k.firm_id where k.firm_id = ${firmId}::uuid),
+          on_case as materialized (${caseLinks(firmId)}),
           in_scope as materialized (select unnest(${parties}::uuid[]) as id union select pid from on_case where case_id = any(${cases}::uuid[]) and pid is not null
             union select cid from on_case where case_id = any(${cases}::uuid[]) and cid is not null)
         select * from (

@@ -19,6 +19,7 @@ import { firmScope } from "../../platform/firm-scope.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { MONEY, UUID, badField, notFound, parse } from "./drafts.ts";
+import { failClosed, invoiceInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { dayOf, invoiceFacts } from "./facts.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -28,12 +29,17 @@ const TRUST_WORDS = "Money received into trust is refunded from the trust ledger
 type Pay = { id: string; invoiceId: string; amountMinor: number; cleared: boolean; currency: "CAD" | "USD"; receivedInto: "OPERATING" | "TRUST"; method: string; receiptNumber: string | null; personId: string | null; companyId: string | null; caseId: string | null };
 
 export class Refunds {
-  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly clock: ClockPort) {}
+  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly clock: ClockPort, private readonly scopeOf: ScopeOf = failClosed) {}   // C5 (#3305 M1)
+
+  /** C5: the payment's invoice in the caller's scope, else the same 404 as a missing payment, before anything is written. */
+  private async seen(tx: Tx, ctx: StaffContext, p: { invoiceId: string }, scope: MoneyScope) { await invoiceInScope(tx, firmScope(ctx.firmId).firmId, p.invoiceId, scope, "payment"); }
 
   /** POST /api/front-office/money/payments/:paymentId/refunds (agent/refund:create on the route). */
   async refund(ctx: StaffContext, paymentId: string, body: unknown): Promise<RefundView> {
     const id = UUID.test(paymentId) ? paymentId.toLowerCase() : notFound("payment"), r = parse(RefundIn, body);
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
+      const pre = await this.row(tx, ctx.firmId, id); if (pre) await this.seen(tx, ctx, pre, scope);   // C5 before the locks and any write (review m2)
       const p = await this.lock(tx, ctx.firmId, id);
       const refundedOn = this.day("refundedOn", r.refundedOn);
       const had = await this.replay(tx, ctx.firmId, r.idempotencyKey, { paymentId: id, fromExtra: false, amountMinor: r.amountMinor, reason: r.reason, method: r.method, reference: r.reference ?? null, refundedOn: r.refundedOn ?? null });
@@ -69,7 +75,9 @@ export class Refunds {
     const id = UUID.test(paymentId) ? paymentId.toLowerCase() : notFound("payment"), c = parse(ExtraChoiceIn, body);
     if (c.choice === "REFUND" && !(await holdsKey(this.db, firmScope(ctx.firmId).firmId, ctx.staffId, REFUND_KEY)))
       problem(403, "Not allowed", "Refunding money needs the refund permission. Nothing was refunded.", { code: "MISSING_PERMISSION", missing: [REFUND_KEY] });
+    const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
+      const pre = await this.row(tx, ctx.firmId, id); if (pre) await this.seen(tx, ctx, pre, scope);   // C5 before the locks and any write (review m2)
       const p = await this.lock(tx, ctx.firmId, id);
       const refundedOn = c.choice === "REFUND" ? this.day("refundedOn", c.refundedOn) : null;
       if (c.choice === "REFUND") {   // the same key again: the one refund of the extra, answered again (never a plain refund's key)
