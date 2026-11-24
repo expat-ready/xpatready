@@ -11,7 +11,8 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, "..");
@@ -60,6 +61,12 @@ try {
   const before = psql("select count(*) from note");
   const r3 = await fs.withFirm(A, () => db.$transaction([db.$executeRawUnsafe(`insert into note values ('${A}', 'A-batched')`)])).then(() => "ran", (e: Error) => e);
   ok("M2 fail (refusal): `$transaction([...])` through the app's client is refused, saying why, and nothing in it runs", refused(r3) && psql("select count(*) from note") === before, { r3: r3 instanceof Error ? r3.message : r3, before, after: psql("select count(*) from note") });
+  // (3b) P1-pool review m5: anything but a function is refused, not only a true array (an array-like has .map and length).
+  const likeBefore = psql("select count(*) from note");
+  const insert = db.$executeRawUnsafe(`insert into note values ('${A}', 'A-arraylike')`);
+  const arrayLike = { length: 1, 0: insert, map: (f: (x: unknown) => unknown) => [f(insert)] };
+  const r3b = await fs.withFirm(A, () => db.$transaction(arrayLike as never)).then(() => "ran", (e: Error) => e);
+  ok("M2 fail (review m5): an array-like (length and .map, not an Array) is refused too, and nothing in it runs", refused(r3b) && psql("select count(*) from note") === likeBefore, { r3b: r3b instanceof Error ? r3b.message : r3b });
   // (4) interactive transactions from two firms at once still run, each in its own firm.
   const inter = (firm: string) => fs.withFirm(firm, () => db.$transaction(async (t) => (await t.$queryRawUnsafe<Who[]>(sel))[0]));
   const [a4, b4] = await Promise.all([inter(A), inter(B)]);
@@ -87,16 +94,65 @@ try {
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* left for prune-test-dbs.sh */ }
 }
 
-// (5) the source check: no array batch in api/src (a literal array, or `.map(...)` / a variable handed to $transaction).
-const files: string[] = [];
-const walk = (d: string) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) walk(p); else if (/\.tsx?$/.test(n)) files.push(p); } };
-walk(join(STUDIO, "api", "src"));
-// Whole files, so a call broken over lines is read too (breaker m3); a line comment is skipped.
-const ARRAY_TX = /\.\s*\$transaction\(\s*(\[|[\w.$]+\s*\.\s*(map|flatMap)\s*\(|\.\.\.|Array\.from\()/g;
-const hits = files.flatMap((f) => { const t = readFileSync(f, "utf8"); return [...t.matchAll(ARRAY_TX)].map((m) => ({ line: t.slice(0, m.index).split("\n").length, text: t.slice(t.lastIndexOf("\n", m.index) + 1, m.index) })).filter((h) => !/^\s*(\/\/|\*)/.test(h.text)).map((h) => `${f.slice(STUDIO.length + 1)}:${h.line}`); });
-ok("M2 fail (source check): no `$transaction([...])` or `$transaction(xs.map(...))` in api/src", hits.length === 0, hits);
-const probe = "await db.$transaction(\n  xs.map((x) => db.a.update(x)))";
-ok("M2 pass (source check): a call broken over lines is caught (breaker m3)", [...probe.matchAll(ARRAY_TX)].length === 1);
-ok("M2 pass (source check): the check reads real code (it finds the interactive form in api/src)", files.some((f) => /\$transaction\(\s*async/.test(readFileSync(f, "utf8"))));
+// (5) the source check: no array batch in api/src. Reads whole files (a call broken over lines, breaker m3), takes the
+// first argument of each `.$transaction(` by matching brackets, and flags it when it is an array literal, a spread,
+// Array.from(...), a chain ending in .map(...) or .flatMap(...) (filter(...).map(...) too), or a name the same file fills
+// with an array or a .map(...) (Lead 25: a variable). A name it cannot see into is left to the run-time refusal.
+const firstArg = (t: string, open: number) => {   // `open` is the index just after "(": text up to the top-level , or )
+  let depth = 0, q: string | null = null;
+  for (let k = open; k < t.length; k++) {
+    const ch = t[k];
+    if (q) { if (ch === "\\") k++; else if (ch === q) q = null; continue; }
+    if (ch === "/" && t[k + 1] === "/") { k = t.indexOf("\n", k); if (k < 0) break; continue; }   // a line comment
+    if (ch === "/" && t[k + 1] === "*") { k = t.indexOf("*/", k + 2) + 1; if (k <= 0) break; continue; }
+    if (ch === '"' || ch === "'" || ch === "`") q = ch;
+    else if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) { if (depth === 0) return t.slice(open, k).trim(); depth--; }
+    else if (ch === "," && depth === 0) return t.slice(open, k).trim();
+  }
+  return t.slice(open).trim();
+};
+const arrayish = (arg: string, file: string) => {
+  if (/^(async\b|function\b)/.test(arg) || /^(\([^)]*\)|[A-Za-z_$][\w$]*)\s*(:[^=]*)?=>/.test(arg)) return false;   // a function: the interactive form
+  if (/^(\[|\.\.\.|Array\.from\s*\()/.test(arg) || /\.\s*(map|flatMap)\s*\([\s\S]*\)\s*$/.test(arg)) return true;
+  if (/^[A-Za-z_$][\w$]*$/.test(arg)) return new RegExp(`\\b${arg.replace(/\$/g, "\\$")}\\s*=\\s*(\\[|[^;\\n]*\\.\\s*(map|flatMap)\\s*\\()|\\b${arg.replace(/\$/g, "\\$")}\\.push\\(`).test(file);
+  return false;
+};
+export function arrayBatches(dir: string, root = dir): string[] {
+  const out: string[] = [];
+  for (const n of readdirSync(dir)) {
+    const p = join(dir, n);
+    if (statSync(p).isDirectory()) { out.push(...arrayBatches(p, root)); continue; }
+    if (!/\.tsx?$/.test(n)) continue;
+    const t = readFileSync(p, "utf8");
+    for (const m of t.matchAll(/\.\s*\$transaction\s*\(/g)) {
+      const at = m.index!, lineStart = t.lastIndexOf("\n", at) + 1;
+      if (/^\s*(\/\/|\*)/.test(t.slice(lineStart, at))) continue;   // a comment
+      if (arrayish(firstArg(t, at + m[0].length), t)) out.push(`${p.slice(root.length + 1)}:${t.slice(0, at).split("\n").length}`);
+    }
+  }
+  return out;
+}
+const hits = arrayBatches(join(STUDIO, "api", "src"));
+ok("M2 fail (source check): no array batch handed to .$transaction( in api/src", hits.length === 0, hits);
+// The reader itself, on a folder of examples (P1 review m7: the multi-line case through the file reader, not the regex).
+const tmp = mkdtempSync(join(tmpdir(), "m2-src-"));
+try {
+  writeFileSync(join(tmp, "bad.ts"), [
+    "await db.$transaction(\n  xs.map((x) => db.a.update(x)));",
+    "await db.$transaction(rows.filter((r) => r.ok).map((r) => db.a.update(r)));",
+    "await db.$transaction([db.a.findMany()]);",
+    "const ops = xs.map((x) => db.a.update(x));\nawait db.$transaction(ops);",
+    "await db.$transaction([...more], { isolationLevel: 'Serializable' });",
+  ].join("\n"));
+  writeFileSync(join(tmp, "good.ts"), [
+    "await db.$transaction(async (tx) => { await tx.a.update(x); });",
+    "const run = async (tx: unknown) => 1;\nawait db.$transaction(run);",
+    "await db.$transaction((snap) => Promise.all(read(snap)), { maxWait: 10_000 });",
+    "// await db.$transaction([old]);",
+  ].join("\n"));
+  const found = arrayBatches(tmp);
+  ok("M2 pass (source check): the reader flags the five array forms (multi-line .map, filter().map, a literal, a variable from .map, a spread) and nothing in the good file", found.length === 5 && found.every((h) => h.startsWith("bad.ts:")), found);
+} finally { rmSync(tmp, { recursive: true, force: true }); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -469,24 +469,70 @@ type Tagged = pg.PoolClient & { [SET]?: string };
  *  not idle (not 'I', or a statement sent and not yet answered) when released is destroyed, never kept, and its tag cleared (fail closed). And at checkout (Lead B 5): a
  *  client the pool cannot prove idle has its tag cleared and is destroyed, and another is taken (one more try; then the
  *  checkout fails). Clearing the tag alone would not do: the lost write would stay. tests/check_pool_tx_return.ts. */
-const notIdleError = () => new Error("a pooled connection came back inside a transaction: destroyed, not reused");
+export const notIdleWords = "a pooled connection came back busy or inside a transaction: destroyed, not reused";
+const notIdleError = () => new Error(notIdleWords);
 /** What pg 8 keeps per client (@types/pg does not declare it): the server's last transaction state, the statement in
- *  flight and the queue. Idle means 'I' with nothing sent and unanswered (review m1: a BEGIN still in flight reads 'I'). */
-type PgState = { getTransactionStatus(): "I" | "T" | "E" | null; _getActiveQuery(): unknown; _queryQueue: unknown[] };
-const proto = pg.Client.prototype as unknown as Partial<PgState>;
-if (typeof proto.getTransactionStatus !== "function" || typeof proto._getActiveQuery !== "function")
-  throw new Error("P1: pg no longer reports a connection's transaction state (Client.getTransactionStatus, _getActiveQuery), so the pool cannot refuse an open transaction (firm-scope.ts; pg changed)");
-function idleNow(c: object): boolean {
-  const s = c as unknown as PgState;
-  return s.getTransactionStatus() === "I" && !s._getActiveQuery() && Array.isArray(s._queryQueue) && s._queryQueue.length === 0;
-}
+ *  flight, the queue, and whether the server's ready message for the last statement has been read. Idle means 'I' with
+ *  nothing sent and unanswered (review m1: a BEGIN still in flight reads 'I') and that ready message read (Lead B 6: after
+ *  an error pg clears the statement before the ready message, so for that moment the state is the one before it). */
+type PgState = { getTransactionStatus(): "I" | "T" | "E" | null; _getActiveQuery(): unknown; _queryQueue: unknown[]; readyForQuery: boolean };
+const proto = pg.Client.prototype as unknown as Partial<PgState>, unconnected = new pg.Client() as unknown as Partial<PgState>;
+if (typeof proto.getTransactionStatus !== "function" || typeof proto._getActiveQuery !== "function" || !Array.isArray(unconnected._queryQueue))
+  throw new Error("P1: pg no longer reports a connection's transaction state (Client.getTransactionStatus, _getActiveQuery, _queryQueue), so the pool cannot refuse an open transaction (firm-scope.ts; pg changed)");
+// readyForQuery is set at the first ready message, so a client not yet connected cannot show it; busy() requires it to be
+// true, so if pg renamed it every client would read busy and be destroyed (fail closed).
+const busy = (c: object) => { const s = c as unknown as PgState; return !!s._getActiveQuery() || !Array.isArray(s._queryQueue) || s._queryQueue.length > 0 || s.readyForQuery !== true; };
+function idleNow(c: object): boolean { return (c as unknown as PgState).getTransactionStatus() === "I" && !busy(c); }
+/** P1 break m6: a client released with a statement still in flight is judged once pg has had every answer (its 'drain'),
+ *  at most this long; destroying it at once killed a caller's statement that had not failed. */
+export const RELEASE_SETTLE_MS = 10_000;
 function closeOnOpenTransaction(c: Tagged): void {
   const release = c.release;   // pg-pool gives each checkout its own release-once function
+  const judge = () => { if (idleNow(c)) return release(); c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed" }); return release(notIdleError()); };
   c.release = ((err?: Error | boolean) => {
     if (err) return release(err);
-    if (!idleNow(c)) { c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed" }); return release(notIdleError()); }
-    return release();
+    if (!busy(c)) return judge();
+    let done = false;
+    const settle = (fn: () => void) => () => { if (done) return; done = true; clearTimeout(t); c.removeListener("drain", onDrain); c.removeListener("end", onEnd); fn(); };
+    const onDrain = settle(judge), onEnd = settle(() => release(notIdleError()));
+    const t = setTimeout(settle(() => { c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed-unsettled" }); release(notIdleError()); }), RELEASE_SETTLE_MS);
+    c.on("drain", onDrain); c.on("end", onEnd);
+    return undefined;
   }) as typeof c.release;
+}
+
+/** M1 (P1-pool round-1 break; Lead 24 and 25): a checkout that has sent COMMIT or ROLLBACK refuses any later query before
+ *  it is sent. A Prisma interactive transaction's timeout queues its ROLLBACK behind a running statement; the same
+ *  operation's next statement then went out after it and ran on its own (autocommit), so half a write stayed while the
+ *  caller was told it failed (tests/check_tx_end_guard.ts). A transaction's end counts in a plain string, a config object
+ *  or a prepared statement (and a prepared name seen ending one before); a savepoint's rollback or release, COMMIT or
+ *  ROLLBACK PREPARED, and words inside quotes, dollar-quoted bodies or comments do not. The state is new at each checkout. */
+const ENDED = Symbol("m1.ended"), END_NAMES = Symbol("m1.endNames"), GUARDED = Symbol("m1.guarded");
+type Guarded = Tagged & { [ENDED]?: boolean; [END_NAMES]?: Set<string>; [GUARDED]?: true };
+const unquoted = (sql: string) => sql.replace(/\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1\$/g, " ").replace(/'(?:[^']|'')*'/g, " ").replace(/"(?:[^"]|"")*"/g, " ").replace(/--[^\n]*/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ");
+export function endsTransaction(sql: string): boolean {
+  return unquoted(sql).split(";").map((x) => x.trim().toLowerCase()).some((x) => /^(commit|end|abort|rollback)\b/.test(x) && !/^rollback(\s+(work|transaction))?\s+to\b/.test(x) && !/^(commit|rollback)\s+prepared\b/.test(x));
+}
+function refuseAfterEnd(c: Guarded): void {
+  c[ENDED] = false;   // new at each checkout
+  if (c[GUARDED]) return;
+  c[GUARDED] = true;
+  const query = c.query;
+  (c as { query: unknown }).query = function (this: unknown, ...a: unknown[]) {
+    const cfg = a[0] as { text?: unknown; name?: unknown; callback?: unknown } | string | undefined;
+    const text = typeof cfg === "string" ? cfg : typeof cfg?.text === "string" ? cfg.text : undefined;
+    const name = typeof cfg === "object" && cfg && typeof cfg.name === "string" ? cfg.name : undefined;
+    if (c[ENDED]) {
+      const err = new Error("M1: a query after this connection's COMMIT or ROLLBACK is refused: it would run outside the transaction");
+      const cb = typeof a[a.length - 1] === "function" ? a[a.length - 1] as (e: Error) => void : typeof cfg === "object" && typeof cfg?.callback === "function" ? cfg.callback as (e: Error) => void : undefined;
+      if (cb) { process.nextTick(() => cb(err)); return undefined; }
+      return Promise.reject(err);
+    }
+    const ends = text !== undefined ? endsTransaction(text) : name !== undefined && !!c[END_NAMES]?.has(name);
+    if (ends && name !== undefined) (c[END_NAMES] ??= new Set()).add(name);
+    if (ends) c[ENDED] = true;
+    return (query as (...x: unknown[]) => unknown).apply(this, a);
+  };
 }
 
 /** A pg pool whose every checkout first sets the context's firm and role on the connection (once per change). */
@@ -507,6 +553,7 @@ export class WalledPool extends pg.Pool {
     };
     const p = idle(1).then(async (c: Tagged) => {
       if (!c.listeners("error").includes(swallow)) c.on("error", swallow);   // a dropped socket fails its query, never the process (Devin review)
+      refuseAfterEnd(c);           // M1: nothing more after this checkout's COMMIT or ROLLBACK
       closeOnOpenTransaction(c);   // P1: a client released inside a transaction is destroyed
       if (c[SET] === want) return c;
       try { await c.query("select set_config('app.firm_id', $1, false), set_config('role', $2, false)", [firm, role]); c[SET] = want; return c; }

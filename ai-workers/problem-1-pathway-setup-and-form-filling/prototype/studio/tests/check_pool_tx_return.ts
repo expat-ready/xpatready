@@ -87,7 +87,9 @@ try {
   ok("fail (release guard): a client released inside a transaction leaves the pool at once, never kept idle for the next caller", pool.totalCount === 0 && pool.idleCount === 0, { total: pool.totalCount, idle: pool.idleCount });
   const c3 = await withFirm(A, () => pool.connect()); const r3 = await q(c3).catch((e: Error) => ({ error: e.message }) as Record<string, unknown>);
   ok("fail: a client released inside a transaction leaves the pool (a new connection, no open transaction, its firm set again)", r3.p !== r2.p && r3.intx === false && r3.f === A, { r2: r2.p, r3 });
-  await c3.query("rollback").catch(() => undefined); await c3.query("begin"); await c3.query("select 1/0").catch(() => undefined); c3.release();
+  // M1: no query after a checkout's ROLLBACK, so the failed-transaction case takes its own checkout.
+  await c3.query("rollback").catch(() => undefined); c3.release();
+  const c3e = await withFirm(A, () => pool.connect()); await c3e.query("begin"); await c3e.query("select 1/0").catch(() => undefined); c3e.release();
   const c4 = await withFirm(B, () => pool.connect()).catch((e: Error) => e);   // main: the checkout itself fails (set_config in an aborted transaction)
   const r4 = c4 instanceof Error ? { error: c4.message } as Record<string, unknown> : await q(c4).catch((e: Error) => ({ error: e.message }) as Record<string, unknown>);
   if (!(c4 instanceof Error)) { await c4.query("rollback").catch(() => undefined); c4.release(); }
