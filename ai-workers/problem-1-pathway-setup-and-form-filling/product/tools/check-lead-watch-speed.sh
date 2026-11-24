@@ -14,8 +14,8 @@ case_() { rm -rf "$T/st"; mkdir -p "$T/st"; : > "$T/log"; LOG="$T/log" STATE_DIR
 o=$(case_ 'pre bash "$J" a 0 3; x=$(bash "$J" a 0 3); echo "$x rc=$?"')
 ok "the step gets the early answer: its output and its exit code" "$([ "$o" = 'out a rc=3' ] && [ "$(grep -c '^start a' "$T/log")" = 1 ] && echo 1)" "$o / $(cat "$T/log")"
 o=$(case_ 'pre bash "$J" a 0 3; bash "$J" a 0 3 2>&1'); ok "... and what it wrote on stderr" "$(grep -qx 'err a' <<<"$o" && echo 1)" "$o"
-o=$(case_ 'pre bash "$J" a 2 0; pre bash "$J" b 2 0; pre bash "$J" c 2 0; sleep 1; cat "$LOG"; x=$(bash "$J" a 2 0)')
-ok "three 2-second jobs run together (all started before any ended)" "$([ "$(grep -c '^start' <<<"$o")" = 3 ] && ! grep -q '^end' <<<"$o" && echo 1)" "$o"
+o=$(case_ 'for k in a b c; do pre bash "$J" $k 20 0; done; for i in $(seq 100); do [ "$(grep -c ^start "$LOG")" = 3 ] && break; sleep 0.1; done; cat "$LOG"')
+ok "three 20-second jobs run together (all started before any ended)" "$([ "$(grep -c '^start' <<<"$o")" = 3 ] && ! grep -q '^end' <<<"$o" && echo 1)" "$o"
 o=$(case_ 'pre bash "$J" a 0 0; bash "$J" a 0 0; bash "$J" a 0 0'); ok "the same command asked twice: the second is read again, never repeated" "$([ "$(grep -c '^out a' <<<"$o")" = 2 ] && [ "$(grep -c '^start a' "$T/log")" = 2 ] && echo 1)" "$(cat "$T/log")"
 o=$(case_ 'pre bash "$J" a 0 0; bash "$J" b 0 4; echo "rc=$?"'); ok "a command that was not started early runs at its step" "$([ "$o" = $'out b\nrc=4' ] && echo 1)" "$o"
 o=$(case_ 'pre bash "$J" "a 0" 0; bash "$J" a 0 0'); ok "other arguments that print alike are not the same command" "$(grep -q '^start a' "$T/log" && [ "$(grep -c '^start' "$T/log")" = 2 ] && echo 1)" "$(cat "$T/log")"
@@ -25,22 +25,35 @@ o=$(case_ 'pre bash "$J" a 1 0; after bash "$J" a 1 0 -- bash "$J" b 0 0; bash "
 case_ 'pre bash "$J" a 30 0; sleep 0.3'; n=$(ls "$T/st" | wc -l | tr -d ' '); ok "pre_off leaves no folder behind" "$([ "$n" = 0 ] && echo 1)" "$n left"
 o=$(case_ 'rm -rf "$PRE_DIR"; PRE_DIR=""; pre bash "$J" a 0 0; bash "$J" a 0 5; echo "rc=$?"'); ok "no folder to work in: every step runs as before" "$([ "$o" = $'out a\nrc=5' ] && echo 1)" "$o"
 
+o=$(case_ 'pre bash "$J" a 0 3; pre_wait 1; : > "$PRE_DIR/1.rc"; bash "$J" a 0 3; echo "rc=$?"'); ok "an answer whose exit code was cut (a full disk) is no answer: the step runs the command" "$([ "$o" = $'out a\nrc=3' ] && [ "$(grep -c '^start' "$T/log")" = 2 ] && echo 1)" "$o"
+o=$(PRE_FREE_KB=99999999999 case_ 'pre bash "$J" a 0 5; bash "$J" a 0 5; echo "rc=$? n=$PRE_N"'); ok "under the free space asked for, nothing starts early and the step runs as before" "$([ "$o" = $'out a\nrc=5 n=0' ] && echo 1)" "$o"
+case_ 'pre bash "$J" a 0 0; pre_wait 1; sleep 30 & x=$!; PRE_PIDS=" $x"; pre_off; kill -0 $x 2>/dev/null && echo alive > "$LOG"; kill $x'; ok "a job that ended is not signalled (its number may be another's)" "$(grep -qx alive "$T/log" && echo 1)"
+
 # lead-watch.sh: every early command is a step's own command, word for word, or it is work for nothing
 bad=""; n=0
 while IFS= read -r c; do n=$((n + 1)); [ "$(grep -vE '^(pre|SWEEP_STATE_DIR="\$STATE_DIR" after) ' "$L" | grep -cF -- "$c")" -ge 1 ] || bad="$bad [$c]"; done < <(grep -E '^pre |^SWEEP_STATE_DIR="\$STATE_DIR" after ' "$L" | sed -E 's/^pre //; s/^.* -- //; s/   #.*//')
 ok "each of the $n early commands is also a step, word for word" "$([ "$n" -ge 15 ] && [ -z "$bad" ] && echo 1)" "no step:$bad"
-p=$(grep -n '^pre ' "$L" | tail -1 | cut -d: -f1); f=$(grep -n '^git .*fetch -q origin 2>' "$L" | head -1 | cut -d: -f1); ok "git is fetched before the early commands start" "$([ -n "$f" ] && [ "$f" -lt "$(grep -n '^pre ' "$L" | head -1 | cut -d: -f1)" ] && echo 1)" "fetch ${f:-none}, last pre ${p:-none}"
+p=$(grep -n '^pre ' "$L" | tail -1 | cut -d: -f1); f=$(grep -n '^PRE_T0=.*fetch -q origin 2>' "$L" | head -1 | cut -d: -f1); ok "git is fetched before the early commands start" "$([ -n "$f" ] && [ "$f" -lt "$(grep -n '^pre ' "$L" | head -1 | cut -d: -f1)" ] && echo 1)" "fetch ${f:-none}, last pre ${p:-none}"
+ok "the private sync, which writes and has its own limit, is not started early" "$(! grep -qE '^pre .*sync' "$L" && grep -q '^ps=.*lead-upkeep.py" sync' "$L" && echo 1)"
+# the block itself, with a fetch that fails: nothing starts early, and the section says so; with one that works: they start
+sed -n '/^PRE_T0=/,/^fresh "git fetch origin;/p' "$L" > "$T/block.sh"
+block() { local rc=$1; rm -rf "$T/st"; mkdir -p "$T/st"; ( STATE_DIR="$T/st"; git() { return "$rc"; }; fresh() { echo "fresh $*"; }; TOOLS_REAL="$TOOLS"; mkdir -p "$T/tl"; cp "$TOOLS_REAL/lead-watch-pre.sh" "$T/tl/"; TOOLS="$T/tl"; . "$T/block.sh"; echo "started $PRE_N"; pre_off ) 2>/dev/null; }
+o=$(block 1); ok "the fetch failed: nothing is started early, and the stamp says it" "$(grep -qx 'started 0' <<<"$o" && grep -q 'not started early, origin was not fetched' <<<"$o" && echo 1)" "$o"
+o=$(block 0); ok "the fetch worked: they start" "$(grep -qE '^started 1[0-9]$' <<<"$o" && grep -q 'start now, together, so a stamp' <<<"$o" && echo 1)" "$o"
 ok "branch-sweep.sh, which reads items.json, waits for lead-queue.sh, which writes it" "$(grep -qF 'after bash "$TOOLS/lead-queue.sh" -- bash "$TOOLS/branch-sweep.sh"' "$L" && echo 1)"
 # steps 3 and 3b, cut out and run as written, on three comments: an open PR's question and lane report, a closed PR's question
 sed -n '/^# One read of every comment/,/^git fetch/p' "$L" | grep -v '^git fetch' > "$T/asks.sh"; mkdir -p "$T/a"
 c() { jq -nc --argjson n "$1" --arg b "$2" '{n: ($n | tostring), b: $b}'; }
-asks() { ( STATE_DIR="$T/a"; since=x; gh() { [ "${RC:-0}" = 0 ] || return 1; c 7 "x Question for the tech lead: y"; c 7 "again: Question for the tech lead"; c 8 "Ready for Lead 5"; c 9 "Question for the tech lead"; c 10 "thanks"; }
+asks() { ( STATE_DIR="$T/a"; since=x; gh() { [ "${RC:-0}" = 0 ] || return 1; [ -z "${NONE:-}" ] || return 0; c 7 "x Question for the tech lead: y"; c 7 "again: Question for the tech lead"; c 8 "Ready for Lead 5"; c 9 "Question for the tech lead"; c 10 "thanks"; [ -z "${CUT:-}" ] || printf '{"n":"8","b":"Question fo\n'; [ -z "${HALF:-}" ]; }
   ACT() { echo "ACT $1"; }; fresh() { :; }; . "$T/asks.sh" ) 2>&1; }
 echo '[{"number":7},{"number":8},{"number":10}]' > "$T/a/prs-body.json"; o=$(asks)
 ok "one ACT for an open PR's question and one for a lane report, none for a closed PR" "$([ "$(grep -c '^ACT' <<<"$o")" = 2 ] && grep -q '#7 has a new question' <<<"$o" && grep -q '#8 has a lane report' <<<"$o" && echo 1)" "$o"
 echo '[]' > "$T/a/prs-body.json"; o=$(asks); ok "an empty open-PR list drops no question" "$(grep -q '#9 has a new question' <<<"$o" && echo 1)" "$o"
 echo 'not json' > "$T/a/prs-body.json"; o=$(asks); ok "an unreadable open-PR list drops no question" "$(grep -q '#9 has a new question' <<<"$o" && grep -q '#7 ' <<<"$o" && echo 1)" "$o"
 o=$(RC=1 asks); ok "comments that cannot be read are an ACT, never 'no questions'" "$(grep -q '^ACT comments since x unreadable' <<<"$o" && echo 1)" "$o"
+o=$(CUT=1 asks); ok "an answer cut short is an ACT, and what was whole before the cut is still shown" "$(grep -q '^ACT comments since x cut short' <<<"$o" && grep -q '#7 has a new question' <<<"$o" && echo 1)" "$o"
+o=$(NONE=1 asks); ok "no comment in the window is no ACT" "$([ -z "$o" ] && echo 1)" "$o"
+o=$(HALF=1 asks); ok "a later page that fails is an ACT, with the first page's questions shown" "$(grep -q '^ACT comments since x unreadable' <<<"$o" && grep -q '#7 has a new question' <<<"$o" && echo 1)" "$o"
 ok "the comments are read by time, in full, not found by a search" "$(grep -q 'issues/comments?since=$since&per_page=100" --paginate' "$L" && ! grep -qE '^[a-z]+=\$\(gh search prs' "$L" && echo 1)"
 ok "the last line says the seconds of the whole check" "$(tail -2 "$L" | head -1 | grep -q '^echo "spent ' && echo 1)"
 

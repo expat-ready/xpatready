@@ -56,10 +56,10 @@ fresh "the clock and $stamp"
 
 # 0b. Speed (Lead 26, 24 Nov): the steps' own commands, started together after one fetch; each step below still runs its
 # command as written and is given this run's answer (lead-watch-pre.sh). A line here that matches no step only costs time.
-git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin 2>/dev/null   # 1d, 3b and 4 fetch again and say so if it fails
+# The private sync (6b) is not among them: it writes, and its own 90 s limit must outlive a check that dies.
+PRE_T0=$SECONDS; early=""; git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin 2>/dev/null || early="not started early, origin was not fetched: each step reads at its own turn, after its own fetch"
 export FLOW_TOKEN="${FLOW_TOKEN:-${GH_TOKEN:-}}"; [ -n "$FLOW_TOKEN" ] || unset FLOW_TOKEN
-. "$TOOLS/lead-watch-pre.sh"
-echo "early  the slow reads below started together at $(TZ=Asia/Kolkata date '+%H:%M:%S') IST; a stamp further down can be later than its read by this run's length"
+. "$TOOLS/lead-watch-pre.sh"; [ -z "$early" ] || pre_off   # no folder: every pre below starts nothing, and the steps run as they did before
 pre python3 -I "$TOOLS/proof-number.py"
 pre python3 -I "$TOOLS/capacity-watch.py" --state "$STATE_DIR"
 pre python3 -I "$TOOLS/queue-batches.py" ${QB_PULLS:+--pulls "$QB_PULLS"} ${QB_CHECKS:+--checks "$QB_CHECKS"}
@@ -73,12 +73,12 @@ pre python3 -I "$TOOLS/queue-blocked.py"
 pre bash "$TOOLS/lead-queue.sh"
 SWEEP_STATE_DIR="$STATE_DIR" after bash "$TOOLS/lead-queue.sh" -- bash "$TOOLS/branch-sweep.sh"   # reads the items.json that lead-queue.sh writes
 pre python3 -I "$TOOLS/flow-measure.py" --since today --lead
-pre python3 -I "$TOOLS/lead-upkeep.py" sync
 pre python3 "$TOOLS/library-freshness.py"
 pre python3 -I "$TOOLS/conformance-check.py" --quiet
 pre python3 -I "$TOOLS/lane-cleanup.py"
 pre python3 -I "$TOOLS/queue-depth.py" ${QUEUE_DEPTH_RUNS:+--runs "$QUEUE_DEPTH_RUNS"} ${QUEUE_DEPTH_MERGIFY:+--mergify "$QUEUE_DEPTH_MERGIFY"}
 pre python3 -I "$TOOLS/cycle-timeline.py"
+fresh "git fetch origin; the slow reads below: ${early:-start now, together, so a stamp further down can be later than its read by the length of the run}"
 
 # 1. Disk and test databases (P-308 disk rule: under 10 GB the Lead frees space, under 4 GB Mac suites pause).
 free=$(df -g / | awk 'NR==2 {print $4}')
@@ -178,6 +178,7 @@ fresh "queue-blocked.py: GitHub open PRs, their comments and labels, and the gua
 # One read of every comment since the window's start, for 3 and 3b (Lead 26, 24 Nov): it was two searches and one read per PR
 # found, and a search can lag or stop at 30. Only open PRs count, as before; an unreadable answer is an ACT.
 cm=$(gh api "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --paginate -q ".[] | select(.created_at >= \"$since\") | {n: (.issue_url | split(\"/\") | last), b: .body} | @json" 2>/dev/null) || ACT "comments since $since unreadable: questions and lane reports (3, 3b) not read this check"
+jq -e . >/dev/null 2>&1 <<<"${cm:-null}" || [ -z "$cm" ] || ACT "comments since $since cut short (a line of the answer is not whole): some questions and lane reports (3, 3b) may be missing this check"
 asked() { grep . <<<"$cm" | jq -r --arg re "$1" 'select((.b // "") | test($re)) | .n' 2>/dev/null | sort -un | while read -r n; do
   # dropped only when the open-PR list was read and does not hold it; an unreadable list keeps every PR
   jq -e --argjson n "$n" 'type == "array" and length > 0 and (any(.[]; .number == $n) | not)' "$STATE_DIR/prs-body.json" >/dev/null 2>&1 || echo "$n"; done; }
