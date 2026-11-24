@@ -18,10 +18,11 @@
 //   file folder (a stand-in, said, not hidden: the poller and FO-6's signing webhook are not wired, and the only signer is
 //   SigningPort's fake, whose state lives in the process that calls it). Its clock, jobs and mail are fakes. On main the
 //   service does not exist yet, so every such step is a FAIL ("not built"), never a throw.
-//   W4 cannot start until signed: a booking of Client C's that ended about 40 minutes ago (its attendance question is
-//      open), its agreement sent and unsigned. On screen she presses Attended on its panel: the panel's own message refuses it in plain words naming
-//      the agreement, the booking stays Scheduled; by API the attendance answer and a valid consult record (ConsultBody)
-//      are refused for the agreement (the refusal names it), nothing changes.
+//   W4 warn, never block (AG-4-15 rule 4; the founder's ruling of 24 Nov relayed by Lead 26 on #3471, replacing the
+//      block this walk first judged): a booking of Client C's that ended about 40 minutes ago (its attendance question is
+//      open), its agreement sent and unsigned. On screen its panel warns that it is not signed; she presses Attended and
+//      it is saved, the warning still shown; by API the attendance answer and a valid consult record (ConsultBody) are
+//      saved, each answer carrying the warning that names the agreement.
 //   W4b fails on the fake for "whose type needs it": a Follow-up booking of Client P's, ended, gets no agreement and its
 //      Attended is saved without any signing (red on a build with no per-type switch).
 //   W5 the reminder goes: a booking three days ahead, unsigned: an hour before the 24-hour mark no reminder (fails on the
@@ -35,8 +36,8 @@
 //      stored copy's sha256; the lead's page on screen says "Agreement signed" and offers the signed copy as a link that
 //      opens the file (red until a screen shows it).
 //   W8 others: firm birch104's Owner reads it as not found (404); Client D (no list key) is refused (403).
-//   W9 after signing the consultation can start: Attended on the W4 booking is saved on screen, and its consult record
-//      (the same valid body) is accepted by API.
+//   W9 after signing the warning goes: the signed booking's panel reads "Agreement signed" with no warning, while W4's
+//      unsigned booking still warns on its panel and in its consult record.
 //   W10 the booking panel at 1440 px: no serious axe violation (WCAG 2.2 A/AA); no page error.
 // Every value is Sample. Every legal reading (Code SOR/2022-128 s. 23 "signed", e-signature identity): Unconfirmed: no
 // counsel. US$0, no model call, live AI off, no live mail (fakes in this process; the copy's own mail stays local).
@@ -189,7 +190,7 @@ try {
   const eventOf = (b: { id: string; firmId: string; sequence: number; status: string; typeId: string; staffId: string; personId: string | null; prospectId: string | null; mode: string; startsAt: Date; endsAt: Date; bookerTimeZone: string }) =>
     ({ type: EVENT.BOOKING_SCHEDULED, firmId: b.firmId, payload: { key: `${b.id}:${b.sequence}`, bookingId: b.id, sequence: b.sequence, status: b.status, typeId: b.typeId, staffId: b.staffId, personId: b.personId, prospectId: b.prospectId, mode: b.mode, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), bookerTimeZone: b.bookerTimeZone } });
 
-  // --------------------------------------------------------------------------------------------- W4 cannot start
+  // ------------------------------------------------------------------------------------ W4 warn, never block
   const b2 = await book(new Date(Math.floor((Date.now() - 70 * MIN) / (30 * MIN)) * 30 * MIN));   // ended about 40 minutes ago: its attendance question is open
   // The stand-in sends it 10 minutes before the meeting (FO-3c part 2, #3184): W6 signs during the meeting, and FO-6's
   // fo_signature_request_times_check wants a request's end at or after its send (sent now and signed at a rewound clock fails).
@@ -199,27 +200,26 @@ try {
   ok("J-104 W4 setup (stand-in): the ended booking's agreement is sent and unsigned", !!a2, s2 ?? NOT_BUILT);
   await go(c, `/front-office/bookings/${b2.id}`);
   await c.locator("[data-booking-detail]").waitFor({ timeout: 15_000 });
+  const warn2 = (await c.locator("[data-booking-detail] [data-agreement-why]").innerText({ timeout: 5000 }).catch(() => "")).trim();
   const answers2 = c.locator(`[data-booking-detail] [data-attendance="${b2.id}"]`);
   await answers2.getByRole("button", { name: "Attended", exact: true }).click().catch(() => undefined);
   let afterClick0 = ""; for (let i = 0; i < 10 && afterClick0 !== "COMPLETED"; i++) { await wait(300); afterClick0 = (await db.foBooking.findUniqueOrThrow({ where: { id: b2.id } })).status; }
   const afterClick = (await db.foBooking.findUniqueOrThrow({ where: { id: b2.id } })).status;
-  const refusal = (await answers2.locator('[role="alert"]').innerText({ timeout: 3000 }).catch(() => "")).trim();
+  const refusal = (await answers2.locator('[role="alert"]').innerText({ timeout: 1000 }).catch(() => "")).trim();
+  const warnAfter = (await c.locator("[data-booking-detail] [data-agreement-why]").innerText({ timeout: 5000 }).catch(() => "")).trim();
   await shot(c, "w4-attended-before-signing-1440");
-  ok("J-104 W4 (screen): before the agreement is signed, Attended on that booking's panel is refused by the panel's own message, in plain words naming the agreement, and the booking stays Scheduled",
-    !!a2 && afterClick === "SCHEDULED" && /agreement/i.test(refusal) && /sign/i.test(refusal), { a2: !!a2, afterClick, refusal });
+  ok("J-104 W4 (screen): before the agreement is signed, the booking's panel warns in plain words that it is not signed; Attended on the panel is saved (no refusal) and the warning stays",
+    !!a2 && /not signed/i.test(warn2) && /sign/i.test(warn2) && afterClick === "COMPLETED" && !/agreement/i.test(refusal) && /not signed/i.test(warnAfter), { a2: !!a2, warn2, afterClick, refusal, warnAfter });
   // A second ended booking for the API judge (a status that moved cannot be put back: the table's own guard).
   const b3 = await book(new Date(Math.floor((Date.now() - 130 * MIN) / (30 * MIN)) * 30 * MIN));
   const s3 = svc ? await svc.onBookingEvent(eventOf(b3)) : null;
   const att = await api(tc, "POST", `/front-office/bookings/${b3.id}/attendance`, { outcome: "COMPLETED" });
   const rec = await api(tc, "PUT", `/front-office/bookings/${b3.id}/consult-record`, RECORD);
   const still = (await db.foBooking.findUniqueOrThrow({ where: { id: b3.id } })).status;
-  const forAgreement = (r: { status: number; body: unknown }) => r.status >= 400 && r.status < 500 && /agreement/i.test(JSON.stringify(r.body));
-  // The record opens only once Attended is saved (main's consult/service.ts: 409 NOT_ATTENDED), so with Attended refused
-  // that answer is the record's honest refusal; an agreement reason is accepted too.
-  const recRefused = forAgreement(rec) || (rec.status === 409 && rec.body?.code === "NOT_ATTENDED");
+  const warned = (r: { status: number; body: any }) => r.status === 200 && r.body?.agreementWarning?.code === "AGREEMENT_NOT_SIGNED" && /agreement/i.test(String(r.body?.agreementWarning?.words));
   const records3 = await db.foConsultRecord.count({ where: { firmId: M.id, bookingId: b3.id } });
-  ok("J-104 W4 (API): with its agreement unsigned, the attendance answer is refused for the agreement (the refusal names it) and a valid consult record is refused (the agreement, or not attended); the booking stays Scheduled and no record is stored",
-    !!s3?.sent && forAgreement(att) && recRefused && still === "SCHEDULED" && records3 === 0, { sent: !!s3?.sent, attendance: [att.status, att.body?.detail], record: [rec.status, rec.body?.code ?? rec.body?.detail], still, records3 });
+  ok("J-104 W4 (API): with its agreement unsigned, the attendance answer is saved (Attended) and a valid consult record is stored, each answer carrying the warning that names the agreement",
+    !!s3?.sent && warned(att) && warned(rec) && still === "COMPLETED" && records3 === 1, { sent: !!s3?.sent, attendance: [att.status, att.body?.agreementWarning?.code], record: [rec.status, rec.body?.agreementWarning?.code ?? rec.body?.detail], still, records3 });
   // W4b: the type that does not need it (fails on the fake for "whose type needs it").
   const b5 = await book(new Date(Math.floor((Date.now() - 190 * MIN) / (30 * MIN)) * 30 * MIN), followUp.id);
   const s5 = svc ? await svc.onBookingEvent(eventOf(b5)) : null;
@@ -301,13 +301,17 @@ try {
   await x.context().close(); await d.context().close();
 
   // --------------------------------------------------------------------------------------------- W9, W10
+  const signedBooking = w4Open ? b2 : b4;
+  await go(c, `/front-office/bookings/${signedBooking.id}`);
+  await c.locator("[data-booking-detail] [data-agreement]").waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const signedPanel = (await c.locator("[data-booking-detail] [data-agreement]").innerText({ timeout: 5000 }).catch(() => "")).trim();
+  const signedWarns = await c.locator("[data-booking-detail] [data-agreement-why]").count();
+  const rec3 = await api(tc, "GET", `/front-office/bookings/${b3.id}/consult-record`);
   await go(c, `/front-office/bookings/${b2.id}`);
   await c.locator("[data-booking-detail]").waitFor({ timeout: 15_000 });
-  await c.locator(`[data-booking-detail] [data-attendance="${b2.id}"]`).getByRole("button", { name: "Attended", exact: true }).click().catch(() => undefined);
-  let started = ""; for (let i = 0; i < 20 && started !== "COMPLETED"; i++) { await wait(300); started = (await db.foBooking.findUniqueOrThrow({ where: { id: b2.id } })).status; }
-  const rec2 = await api(tc, "PUT", `/front-office/bookings/${b2.id}/consult-record`, RECORD);
-  ok("J-104 W9: once the agreement is signed, Attended on that booking is saved on screen and its consult record (the same body as W4) is accepted (the consultation can start; both were refused in W4)",
-    sealedOk && afterClick === "SCHEDULED" && started === "COMPLETED" && rec2.status >= 200 && rec2.status < 300, { sealedOk, beforeSigning: afterClick, started, record: [rec2.status, rec2.body?.detail] });
+  const stillWarns = (await c.locator("[data-booking-detail] [data-agreement-why]").innerText({ timeout: 5000 }).catch(() => "")).trim();
+  ok("J-104 W9: once signed, that booking's panel reads \"Agreement signed\" with no warning; W4's unsigned, attended bookings still warn (on the panel and in the consult record)",
+    sealedOk && /Agreement signed/.test(signedPanel) && signedWarns === 0 && (w4Open || /not signed/i.test(stillWarns)) && warned(rec3), { sealedOk, signedPanel: signedPanel.slice(0, 120), signedWarns, stillWarns: stillWarns.slice(0, 80), record: [rec3.status, rec3.body?.agreementWarning?.code] });
   const bad = (await new AxeBuilder({ page: c }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id);
   ok("J-104 W10: the booking panel at 1440 px has no serious axe violation", bad.length === 0, bad);
   await shot(c, "w9-attended-after-signing-1440");
