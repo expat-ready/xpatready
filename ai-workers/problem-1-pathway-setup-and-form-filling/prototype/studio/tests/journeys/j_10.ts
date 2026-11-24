@@ -49,7 +49,8 @@
 //   B2 the case side is asked with the session each door takes (a firm token where it declares keys, else its actor), and one
 //      firm token on an actor door must stay 403; B3 token doors get a real Sample value (a sign-up link made by the operator, a
 //      booking's manage token, the template registry's key, the Sample web form live for this copy's origin); B4 the public
-//      booking doors' probes come from loopback addresses 127.0.0.10 up (macOS: `sudo ifconfig lo0 alias 127.0.0.N` for each),
+//      booking and sign-up doors' probes come from loopback addresses 127.0.0.10-49, the seed booking from .250 and the control
+//      from .200 (Linux has them all; macOS once: `for n in $(seq 10 49) 200 250; do sudo ifconfig lo0 alias 127.0.0.$n; done`),
 //      and a control proves the per-address limit still answers 429 to an 11th booking; B5, B6 W3 reads the allow-list's
 //      by-design lines by exact route and status; B7 a schema name is read in its own file and through its imports.
 // Sample data only; US$0, no model call, live AI off. Screenshots: product/screens/J-10/screenshots/.
@@ -330,6 +331,7 @@ try {
   const sampleFirm = sql(`select id from platform_firm where key = 'sample-firm'`);
   const slug0 = sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = '${sampleFirm}' and active and show_on_booking_page and deleted_at is null`);
   let bookingToken = "";
+  const seedBooking = { id: "", state: "" };
   if (slug0) {
     const page = await call("GET", `/api/public/firms/sample-firm/book/${slug0}/slots`, { from: "127.0.0.250" });
     const slot = (page.body?.slots as { startsAt: string }[] | undefined)?.[0], type = page.body?.type as { modes?: string[] } | undefined;
@@ -338,8 +340,10 @@ try {
       const mode = type?.modes?.includes("VIDEO") ? "VIDEO" : (type?.modes?.[0] ?? "VIDEO");
       const made = await call("POST", `/api/public/firms/sample-firm/book/${slug0}/bookings`, { from: "127.0.0.250", body: JSON.stringify({ givenNames: "Sample", familyName: "Booker J10", email: `j10.booker.${run}@example.com`, ...(mode === "PHONE" ? { phone: "+1 416 555 0100" } : {}), mode, startsAt: slot.startsAt, timeZone: String(page.body.timeZone ?? "America/Toronto"), formStamp: page.body.formStamp }) });
       bookingToken = String(made.body?.manageToken ?? "");
+      seedBooking.id = sql(`select coalesce((select booking_id::text from fo_booking_token where id = '${bookingToken.split(".")[0].replace(/[^0-9a-f-]/g, "")}'), '')`);
     }
   }
+  if (seedBooking.id) seedBooking.state = sql(`select status || ',' || starts_at::text from fo_booking where id = '${seedBooking.id}'`);
   // The Sample web form, live for this copy with its own address as an allowed site (the door checks the page's origin); a live
   // form needs a consent wording (fo_web_form_consent_check): the firm's own.
   const wording = sql(`select coalesce((select id::text from msg_consent_wording where firm_id = '${sampleFirm}' order by published_at limit 1), '')`);
@@ -372,7 +376,7 @@ try {
   let overLongTried = 0;
   // B4: loopback source addresses for the public booking doors (127.0.0.10 up; 127.0.0.200 is the control's).
   let sent = 0;
-  const nextFrom = () => `127.0.0.${10 + Math.floor(sent++ / 8) % 180}`;
+  const nextFrom = () => `127.0.0.${10 + Math.floor(sent++ / 8) % 40}`;   // 127.0.0.10-49 (the header names them)
   // B5, B6 (Lead 19 on #3377): W3 reads the same allow-list, by exact route and status: an over-long probe of these keys is by
   // design only while the named allow-list line stands and only with the status that line's reason gives.
   const W3_BY_DESIGN: Record<string, [string, number]> = {
@@ -486,6 +490,15 @@ try {
   // the Sample operator's, and a change it completed would show in the other tables (staff, firms, register), which are counted.
   const otherAudit = sql(`select count(*) from plat_system_audit where at >= '${auditAt}'::timestamptz and staff_id <> '${opId}'`);
   if (otherAudit !== "0") changed.push(`plat_system_audit: ${otherAudit} lines not by the Sample operator`);
+  // B3 (review m1): with real token values a probe could act by an update, which no row count shows: the seed booking keeps its
+  // state and slot, its link tokens stay live, and the sign-up link stays unused.
+  if (seedBooking.id) {
+    const now2 = sql(`select status || ',' || starts_at::text from fo_booking where id = '${seedBooking.id}'`);
+    if (now2 !== seedBooking.state) changed.push(`fo_booking ${seedBooking.id}: ${seedBooking.state} → ${now2}`);
+    const voided = sql(`select count(*) from fo_booking_token where booking_id = '${seedBooking.id}' and voided_at is not null`);
+    if (voided !== "0") changed.push(`fo_booking_token: ${voided} of the seed booking's tokens voided`);
+  }
+  if (signUpToken && sql(`select count(*) from platform_signup_link where token_hash = '${createHash("sha256").update(signUpToken).digest("hex")}' and used_at is null`) !== "1") changed.push("platform_signup_link: the seed sign-up link was used");
   ok("J-10 W4: nothing stored by any probe (the PF/FO tables' row counts are unchanged)", changed.length === 0, changed);
   ok("J-10 W4: no probe answered 500", five.length === 0, five);
 
