@@ -18,6 +18,7 @@ import { MessagesPublicController } from "../platform/messages/public-routes.ts"
 import { appChannels, emailAdapter } from "../platform/messages/send/channels.ts";
 import { MessagesMail } from "../platform/messages/send/mail.ts";
 import { Messages } from "../platform/messages/send/messages.ts";
+import { bodyBoxOf } from "../platform/messages/send/sealed-body.ts";
 import { currentAlerts } from "../platform/observability/alerts.ts";
 import { PlatformJobs } from "../platform/jobs/platform-jobs.ts";
 
@@ -28,12 +29,14 @@ const config = platformConfig(), tokens = new UnsubscribeTokens(config.secretBox
 /** Where the unsubscribe link points (the same address PF-5's sign-up links use). */
 const publicBase = process.env.STUDIO_PUBLIC_URL ?? `http://localhost:${process.env.STUDIO_PORT ?? 4400}`;
 const email = emailAdapter(config, { files, tokens, publicBase });
+/** PF-19e: TRANSACTIONAL bodies are sealed with the configured key ring (a local copy without one: the process key). */
+const box = bodyBoxOf(config);
 export default {
   controllers: [PlatformInboxController, MessagesPublicController, StaffMessagesController],
   providers: [
-    { provide: MESSAGE_PORT, useFactory: (db: Db, jobs: PlatformJobs) => new Messages({ db, consent: consentStore, files, jobs, alerts: currentAlerts, channels: appChannels(email), log: (l) => console.warn(l) }), inject: [Db, PlatformJobs] },
+    { provide: MESSAGE_PORT, useFactory: (db: Db, jobs: PlatformJobs) => new Messages({ db, consent: consentStore, files, jobs, alerts: currentAlerts, channels: appChannels(email), log: (l) => console.warn(l), box }), inject: [Db, PlatformJobs] },
     { provide: MESSAGES_MAIL, useFactory: (db: Db, messages: Messages) => new MessagesMail({ db, messages, files, log: (l) => console.warn(l) }), inject: [Db, MESSAGE_PORT] },
-    { provide: PlatformInbox, useFactory: (db: Db) => new PlatformInbox(db, files, undefined, { tokens, publicBase }), inject: [Db] },
+    { provide: PlatformInbox, useFactory: (db: Db) => new PlatformInbox(db, files, undefined, { tokens, publicBase }, box), inject: [Db] },
     { provide: Unsubscribe, useFactory: (db: Db) => new Unsubscribe({ db, consent: consentStore, tokens }), inject: [Db] },
     { provide: SesNotices, useFactory: (db: Db) => {
       const n = new SesNotices({ db, consent: consentStore, requireTopics: config.environment !== "local" });

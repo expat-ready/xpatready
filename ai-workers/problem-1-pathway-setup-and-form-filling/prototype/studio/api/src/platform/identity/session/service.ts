@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { EVENT, StaffJoinedPayload } from "../../../../../ports/events.ts";
 import type { AuditValues } from "../../../../../ports/audit.ts";
 import type { MailPort } from "../../../../../ports/mail.ts";
-import { MessageRefused } from "../../../../../ports/messages.ts";
+import { MessageLimited, MessageRefused, SYSTEM_PER_ADDRESS_HOUR } from "../../../../../ports/messages.ts";
 import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
 import { mailIn, mailReady } from "../../messages/send/mail.ts";
@@ -201,7 +201,7 @@ export class PlatformSession {
    *  step-up; OWASP "Resetting MFA"): nobody resets their own; an Owner's only by an Owner; the person's sessions end, they
    *  are emailed through MailPort, and they set up the second step again at their next sign-in. */
   async resetTwoStep(actor: StaffContext, id: string) {
-    let dispatch = async () => {};
+    let dispatch = async () => {}, refused: string | null = null;
     await mailReady(this.mail, actor.firmId);   // before the firm's row lock (break m1)
     const out = await this.inFirm(actor, async (tx) => {
       const t = await this.target(tx, actor.firmId, id);
@@ -219,6 +219,9 @@ export class PlatformSession {
         ({ dispatch, held } = await mailIn(this.mail, tx, { firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
           person: { kind: "STAFF", id: t.id }, text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." }));
       } catch (e) {
+        // PF-19e: the platform's own notices are limited per address an hour (never 500).
+        if (e instanceof MessageLimited) problem(429, "Too many emails to this address", `We send at most ${SYSTEM_PER_ADDRESS_HOUR} account emails an hour to one address, so the notice to this person could not go now and their two-step sign-in was not reset. Try again in an hour.`, { code: "EMAIL_HOURLY_LIMIT" });
+        if (e instanceof MessageRefused) refused = t.id;
         if (e instanceof MessageRefused) problem(409, "Notice not sent", "Update this person's email address first; we can't send them the reset notice (their address does not take email from the firm, for example after a bounce), so their two-step sign-in was not reset.", { code: "NOTICE_NOT_SENT" });
         throw e;
       }
@@ -226,6 +229,10 @@ export class PlatformSession {
       if (held) problem(409, "Daily email limit reached", "Your firm has sent its email limit for today, so the notice to this person could not go now and their two-step sign-in was not reset. Try again tomorrow.", { code: "NOTICE_HELD_DAILY_LIMIT" });
       await this.admin.resetTwoStep({ staffId: t.id, subject: t.identitySubject, email: t.email });
       return { staffId: t.id, twoStep: { method: null }, notified: true };
+    }).catch(async (e: unknown) => {
+      // PF-19e: the refused notice leaves its line (in its own transaction: the reset itself rolled back). Ids only.
+      if (refused) { const id = refused; await this.inFirm(actor, (tx) => this.audit(tx, actor, "platform.staff.notice_not_sent", id, "the two-step reset notice could not be emailed (the address does not take email); nothing was reset", { staffId: id, notice: "two_step_reset" }, null, null)); }
+      throw e;
     });
     await dispatch();
     return out;

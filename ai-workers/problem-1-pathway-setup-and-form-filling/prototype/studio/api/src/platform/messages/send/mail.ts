@@ -76,8 +76,11 @@ export class MessagesMail implements MailPort {
       return { messageId: r.outboxId, held: false, dispatch };
     }
     const { firmId } = firmScope(m.firmId);
+    // PF-19e: the platform's own account and security mail (the identity templates: invitation, two-step reset notice,
+    // the provider's code emails) is a system message: off the firm's daily cap, limited per address instead.
+    const system = m.class === "TRANSACTIONAL" && (m.templateKey?.startsWith("identity.") ?? false);
     const input = {
-      firmId, ...(m.person ? { person: m.person } : {}), channel: "EMAIL" as const, class: m.class, address: m.to,
+      firmId, ...(m.person ? { person: m.person } : {}), ...(system ? { system: true as const } : {}), channel: "EMAIL" as const, class: m.class, address: m.to,
       content: { subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) }, idempotencyKey: `mail:${m.idempotencyKey ?? mailId}`,
     };
     // (Above: an address MailPort's schema takes and the channel does not (`a@b-.example`) is refused without quoting the

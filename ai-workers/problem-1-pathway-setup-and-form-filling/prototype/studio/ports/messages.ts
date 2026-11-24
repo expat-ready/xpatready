@@ -19,6 +19,10 @@ export const PLATFORM_FROM = "messages@mail.expatready.example";
 /** Sample (row 48's F14 risk): messages a firm may send in one day of its own time zone. */
 export const DAILY_CAP = { TRIAL: 50, ACTIVE: 2000 } as const;
 export const HELD_DAILY_LIMIT = "daily limit";
+/** Sample (PF-19e): account and security messages the platform sends one address in one hour (they skip the daily cap). */
+export const SYSTEM_PER_ADDRESS_HOUR = 5;
+/** PF-19e: the stored idempotency key of a system message starts so (the worker reads it from the row it locked). */
+export const SYSTEM_KEY_PREFIX = "system:";
 /** PF-19p: the sender name of a platform account message. */
 export const PLATFORM_ACCOUNT_NAME = "ExpatReady";
 /** Sample (PF-19p): platform.account_mail_from's default, the From and Reply-To of platform account messages. */
@@ -45,6 +49,10 @@ export const MessageSend = z.strictObject({
   attachments: z.array(FileKey).max(10).default([]),
   /** The caller's key: the same key in the same firm is the same message (a retry returns the first row). */
   idempotencyKey: z.string().min(1).max(200),
+  /** PF-19e: account and security mail the platform itself sends (an invitation, a code, a reset notice; never staff
+   *  writing to a client): TRANSACTIONAL only, not counted on the firm's daily cap, at most SYSTEM_PER_ADDRESS_HOUR an hour
+   *  to one address (MessageLimited above it). */
+  system: z.literal(true).optional(),
 });
 /** PF-19p: a platform account message. Never a firm's, never marketing, never a copy (no person, no attachment). */
 export const PlatformAccountSend = z.strictObject({
@@ -94,6 +102,10 @@ export class MessageRefused extends Error {
 
 /** A concurrent send with the same key committed first, after this caller's snapshot (REPEATABLE READ): nothing was
  *  written; run the caller's transaction again and send answers the first row (repeated: true). */
+/** PF-19e: a system message over SYSTEM_PER_ADDRESS_HOUR to one address this hour; nothing was written. */
+export class MessageLimited extends Error {
+  constructor() { super(`not sent: at most ${SYSTEM_PER_ADDRESS_HOUR} account emails an hour go to one address`); this.name = "MessageLimited"; }
+}
 export class MessageRepeated extends Error {
   constructor(readonly idempotencyKey: string) { super(`a concurrent send used idempotency key ${idempotencyKey} first: retry, and the retry answers that message`); this.name = "MessageRepeated"; }
 }

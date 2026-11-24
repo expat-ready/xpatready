@@ -56,6 +56,7 @@ AuditActionNames.register("platform", {
   "platform.staff.signed_out": "Signed out",
   "platform.staff.signed_out_everywhere": "Signed a person out everywhere",
   "platform.staff.two_step_reset": "Reset a person's two-step sign-in",
+  "platform.staff.notice_not_sent": "Could not email a person their reset notice",
   "platform.staff.only_owner_refused": "Refused: the firm's only Owner",
   "platform.staff.money_keys_granted": "Gave a role with money permissions",
   "platform.invitation.created": "Invited a person",
