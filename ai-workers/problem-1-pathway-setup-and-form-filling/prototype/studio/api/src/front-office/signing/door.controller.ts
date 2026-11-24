@@ -10,7 +10,7 @@ import { z } from "zod";
 import { OpenRead } from "../../core.ts";
 import { parseInput, strict, text } from "../../platform/http/input.ts";
 import { problem } from "../../platform/identity/keys.ts";
-import { SESSION_COOKIE, SESSION_MINUTES, sessionCookies, SigningDoor, type DoorAnswer } from "./door.ts";
+import { NOT_WORK, SESSION_COOKIE, SESSION_MINUTES, sessionCookies, SigningDoor, TOKEN_SHAPE, type DoorAnswer } from "./door.ts";
 
 const WINDOW_MS = 60_000, PER_TOKEN = 30, PER_ADDRESS = 300, MAX_KEYS = 50_000;   // Sample
 const hits = new Map<string, number[]>();
@@ -40,11 +40,13 @@ const ConsentBody = strict({ agree: z.literal(true), consentTextVersion: text(40
 export class SigningDoorController {
   constructor(@Inject(SigningDoor) private readonly door: SigningDoor) {}
 
-  /** Headers every answer carries, then the limiter (a refusal keeps the headers). */
+  /** Headers every answer carries, the limiter (a refusal keeps the headers), then the token's shape: a malformed link is
+   *  the one 404 before any body is read (PF-28: a bad path key is not found before a field error). */
   private begin(r: Rq, res: Rs, token: string) {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Referrer-Policy", "no-referrer");
     limit(ipOf(r), token);
+    if (typeof token !== "string" || !TOKEN_SHAPE.test(token)) problem(404, "Not found", NOT_WORK, { code: "LINK_NOT_WORKING" });
   }
   private finish<T>(res: Rs, token: string, a: DoorAnswer<T>): T {
     if (a.session) {

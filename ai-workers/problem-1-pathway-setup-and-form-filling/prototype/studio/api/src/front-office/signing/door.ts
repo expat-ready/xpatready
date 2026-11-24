@@ -31,7 +31,7 @@ export const NOT_WORK = "This link does not work.";
 export const SESSION_MINUTES = 30, SESSION_COOKIE = "xr_sign";
 /** The consent wording and its version (Sample: ExpatReady's default; a firm's own text is AG-5-20's later row). */
 export const CONSENT_TEXT_VERSION = "sign-electronically-v1", CONSENT_TEXT = "I agree to sign this agreement electronically.";
-const TOKEN = /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})\.[A-Za-z0-9_-]{43}$/;
+export const TOKEN_SHAPE = /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})\.[A-Za-z0-9_-]{43}$/;
 const ACTOR = "system:signing-door", MIN = 60_000;
 const WHAT = { RETAINER: "retainer agreement", CONSULTATION: "consultation agreement", OTHER: "document" } as const;
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -53,7 +53,7 @@ export class SigningDoor {
 
   /** Parses the token, then runs `fn` as the token's firm with its client signer (else the one 404). */
   private open<T>(token: unknown, fn: (f: Found) => Promise<T>): Promise<T> {
-    const m = typeof token === "string" ? TOKEN.exec(token) : null;
+    const m = typeof token === "string" ? TOKEN_SHAPE.exec(token) : null;
     if (!m) return notWork();
     const firmId = m.slice(1, 6).join("-");
     return withFirm(firmId, async () => {
