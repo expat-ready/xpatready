@@ -61,3 +61,39 @@ Branch `claude/runtime-fo6-door-4b` at exact commit `2ba80d7c4`, draft PR #3460.
   - 73 door audit lines: no 43-character token and no 6-digit code.
 
 Verdict: Changes
+
+## Round 2: diff only, on `c234bda62`
+
+**Run.** Fresh isolated copy `brk4b2` on :4448 (10 live links made through the API), stopped afterwards. I ran every test between 10:45 and 10:55 UTC against the committed `c234bda62`. At 10:56 an uncommitted edit to `door.ts` appeared in this shared checkout; it is not mine (see r2-m1). No 5xx; no token or code in the API log.
+
+### Re-attacks
+- **M1, fixed.** 310 distinct random tokens from one address: the 404s turned into 429 after the ceiling, and a malformed token then also got 429. A live link from the same address then got **200**, and its `code` and `verify` got 200 and 200. A second flood of 40 000 misses: a live link still got 200.
+- **m1, fixed except a 1-second window (r2-m1).** Sequence: code off, browser Y consents and gets a session, code back on. Y's session and consent then get 401. A client's code-started session survives off and then on: 200, 200. With a 2 s gap between the client's verify and an attacker's code-off consent, the attacker's session got 401 after the code went back on.
+- **m2, fixed.**
+  - 8 verifies with no code asked: 422 each, `code_failures` stays 0, no lock.
+  - 10 parallel replays of a spent code: 422, nothing counted.
+  - With a live code, 6 wrong tries still give 423, and the right code while locked still gives 423.
+- **m3, fixed.** With the code off, the 401 now reads "Agree first" / "Agree to sign electronically first."
+- **m4, fixed.**
+  - No body, `text/plain`, form-encoded and `application/jsonx` each give 415.
+  - `application/json; charset=utf-8`, `Application/JSON` and an empty JSON body each give 200.
+  - The API sets no CORS, so a cross-site JSON POST is blocked by the preflight.
+  - A malformed token still gives 404 before 415. An unknown well-formed token and a live one both give 415, so this tells nothing about the token.
+- **New re-check after the row lock.** Withdrawing the request while 6 consents run gave 409 on all 6; no 500.
+- **The 404 wrapper.** An unknown token on all five routes, a malformed token and another firm's token all give the 404 byte-identical to the reference. `counted` only maps `LINK_NOT_WORKING` and always rethrows.
+- **Getting round the per-token limit.** Hammering a live token gave 429 within the 30. Variants of the token (`%2E`, `%32`, a trailing `/`, `?x=1`, `#a`) all reach the same key and get 429. Misses cannot be avoided to buy more calls on a live token.
+
+### Round 2 findings
+**r2-m1 (Minor). The m1 fix still lets a code-off session through if it starts within 1 s of a right code.** `liveSession` accepts `|code_verified_at - session start| < 1000 ms` (`door.ts:89` at `c234bda62`).
+- `checkCode` and `startSession` each call `now()`, hence the tolerance. But a code-off consent that starts within 1 s of the client's verify also passes.
+- Repro: client verifies; the setting goes off; the attacker consents within about 300 ms; the setting goes back on. The attacker's session got **200**.
+- Real exposure is tiny: the firm must switch the code off within that second.
+- Fix: one moment for the check and the session, and test for exact equality. The uncommitted working-tree edit seen at 10:56 does exactly that (`now` passed to `startSession`, compared with `===`). I did not test it: commit it and re-run the `m1` line.
+
+**r2-m2 (Minor, information only). Past the miss ceiling, each guess still costs a lookup.**
+- `missed` answers 429 only after `open()` has looked the token up. A flood of distinct tokens still sends every guess to Postgres: about 920 a second from one caller, against about 1 900 a second for one token, which `limit` refuses before any lookup.
+- After the ceiling an unknown token gets 429 while a live one gets 200, so the ceiling no longer slows guessing. This does not matter with 256-bit tokens.
+- Server memory rose 444 MB → 1.16 GB on the first 40k flood and only +80 MB on the second. It levels off; it is not a leak.
+- Accept, or say so in the note's rule 10.
+
+Verdict (round 2, `c234bda62`): Approve. Only Minors are left; r2-m1's fix is already sitting uncommitted in the checkout.

@@ -83,3 +83,40 @@ The vendor's frame and the real cookie behaviour in a browser behind the FO-5s p
 `Reviewer: Changes 2ba80d7c4d5f771fc22bf234cb9a832c6d33da69`
 
 Verdict: Changes. Fix Major 1 and Major 2. The Minors can be fixed in this PR or recorded on it. The label `review: approved` does not apply to this commit.
+
+## Round 2 (diff only, P-277): `2ba80d7c4..c234bda62cb2a7ba2fdf4f4441eb813a14cae784`
+Scope: `door.ts`, `door.controller.ts`, `door-code.ts`, `link-mail.ts`, `rollback.sql`, `check_fo6_door.ts` (+11 lines), `check_fo6_door_code.ts`, and the note's "Part 4b round 1 fixes".
+
+### The fail-without-fix check
+I ran round 2's `check_fo6_door.ts` against round 1's code, a 2ba80d7c4 worktree on :4438: **31/36, 5 FAIL**. The five are:
+* SIGNED_OFFLINE wording;
+* no-code verifies locking the link (`[422×5, 423, 423]`);
+* the non-JSON POST (200);
+* code switched back on (200);
+* misses blocking a live link.
+
+The same file against c234bda62 on :4438: **36/36** (6 pending).
+
+The six M2 coverage lines (headers, CONSENT_NEEDED, GET writes nothing, viewed and VIEWED, replacement with the code on, server expiry) pass on both commits. That is expected: they pin behaviour that was already correct, and I verified each by hand in round 1. The new SIGNED_OFFLINE line's regex fails on the old words, so the loop now guards rule 4's wording itself. Both copies are stopped and the worktree is removed.
+
+### Each finding
+* **M1:** fixed. `door.ts:71` "This agreement has been signed." matches j_61's `REFUSED` ("has been signed").
+* **M2:** fixed; the lines are listed above.
+* **m1:** fixed. The key is `signing:<request>:code:<signer>:<expiry ms>`, with nothing of the code (`link-mail.ts:52`).
+* **m2:** fixed. `currentVersion` is in the retainer's where (`door.ts:194`).
+* **m3:** fixed. `locked()` re-reads the request and the signer under the lock and refuses in words. It is called in code, verify, consent and view.
+* **m4:** fixed differently, and better. The address ceiling now counts only misses, so a live link is never refused because of other callers.
+* **m5, m6, m7:** fixed.
+* **Breaker m1/m2/m4:** read and correct.
+  * A session counts with the code on only if a right code started it.
+  * A check with no live code is EXPIRED, writes nothing and is not counted. This changes 4a's `door-code.ts` semantics, and the 4a C line was changed to match. FO-3c does not use `door-code.ts` yet. The note records it for the tech lead.
+  * 415 comes after the token shape. The journeys `j_54` and `j_61` send `application/json`.
+
+### New, Minor (does not block)
+1. **The code-on session test depends on two clock reads.** `liveSession` (`door.ts:86-90`) treats a session as code-started when `codeVerifiedAt` is within 1 s of `sessionExpiresAt − 30 min`. Those come from two separate `this.now()` calls: in `checkCode` (`door.ts:146`) and in `startSession` (`door.ts:106`), with a read, an update and an audit insert between them. A database stall over 1 s inside that transaction would answer a right code with a cookie whose session then reads 401.
+   * **Fix:** take `now` once in `verify` and pass it to both `checkCode` and `startSession`, so the two times are equal by construction.
+   * **Better fix:** say in a comment that the pairing is an invariant `door-code.ts` must keep when FO-3c moves onto it (QA-777).
+
+`Reviewer: Approve c234bda62cb2a7ba2fdf4f4441eb813a14cae784`
+
+Verdict: Approve. No open Blocker or Major. The new Minor can go in this PR or the QA-777 follow-up.
