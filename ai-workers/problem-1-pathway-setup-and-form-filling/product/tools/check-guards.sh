@@ -697,7 +697,7 @@ P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/
 MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
 P823 calls|product/tools/migration-additive.py|s/ or calls(s) or dots(s) or ops(s):/ or dots(s) or ops(s):/|check-queue-gate.sh
-P823 quoted call|product/tools/migration-additive.py|s/^        if not re.search(r'(\\bREFERENCES/        if False and re.search(r'(\\bREFERENCES/|check-queue-gate.sh
+P823 quoted call|product/tools/migration-additive.py|s/^        if not \(re.search(r.(.bREFERENCES\)/        if False and \1/|check-queue-gate.sh
 P823 dots|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or ops(s):/|check-queue-gate.sh
 P823 ops|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or dots(s):/|check-queue-gate.sh
 P823 narrow index|product/tools/migration-additive.py|s/^            ok = key(t.group(7) + (t.group(8) or "")) in created   # an index/            ok = True   # an index/|check-queue-gate.sh

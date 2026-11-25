@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
 """P-823: is a migration's added SQL additive? Used by queue-gate.sh destructive() (read first unless this says yes).
 
-An allowlist, not a word list (reviews of #3661), narrowed by the tech lead (Lead 5, 25 Nov 12:50 IST: "CREATE TABLE/INDEX
-on new tables and ADD COLUMN with a built-in type and no default; everything else is read first"). The added lines of a
-new migration.sql (GitHub's patch, on stdin) are additive only when every statement, read by a small SQL scanner, is one
-of the three below; the rest of this list is the history of what each review refused and stays refused:
-  CREATE TABLE <name> (...)          not AS, OF, PARTITION OF or INHERITS
-  CREATE [UNIQUE] INDEX ... ON <t>   (any table: a short write lock on an existing one, review m5 noted)
-  CREATE SEQUENCE · CREATE TYPE <name> AS ENUM (...) · ALTER TYPE <name> ADD VALUE '...'   (never COMMENT ON)
-  ALTER TABLE <t> ADD ...            and none of DROP, RENAME, ALTER, DISABLE, ENABLE, FORCE, OWNER, REPLICA, CLUSTER,
-                                     SET, RESET, INHERIT, OF, ATTACH, DETACH, VALIDATE, GENERATED
-  (CREATE TRIGGER: never; its function may be any existing one, review 3 B3)
-  INSERT INTO <t> [(cols)] VALUES    only into a table this migration creates, never SELECT or ON CONFLICT
-and no statement holds an operator character (review 6: a user operator runs a function), nor calls a function: a name followed by "(" counts only when it is a type size or a constraint word
-(VARCHAR(n), DECIMAL(p,s), TIMESTAMP(3), KEY, UNIQUE, CHECK, VALUES, ENUM, a column list); DEFAULT now() is read first.
-The scanner skips -- comments and reads 'strings' ('' and E'\\' escapes) and "names" whole, keeping names (for the
-tables-created check); it refuses (read first) a block comment, ANY $ outside a string or name (dollar quotes with
-any tag, $-names: review 2 B1-B2), U& strings, an unclosed string or name, and a patch line it cannot place.
+The tech lead's narrowing (Lead 5 on #3661, 25 Nov 12:50 IST, P-610): "CREATE TABLE/INDEX on new tables and ADD COLUMN with
+a built-in type and no default; everything else is read first". The added lines of a new migration.sql (GitHub's patch,
+on stdin) are additive only when every statement is one of
+  CREATE TABLE <name> (...)                        not IF NOT EXISTS, AS, OF, PARTITION, INHERITS or LIKE
+  CREATE [UNIQUE] INDEX [<name>] ON <t> (...)      only on a table this migration created before it
+  ALTER TABLE <t> ADD COLUMN <name> <built-in type>[(n[,m])][[]] [NOT] NULL     one column, no default, no constraint
+and, inside them, nothing calls a function (a name, quoted or not, before "(" other than a type size or a constraint
+word), nothing uses a "." outside a table reference (attribute notation runs a function), nothing holds an operator
+character (a user operator runs a function), and nothing casts to a non-built-in type. Every review of #3661 found one
+more PostgreSQL feature; the list grows only with evidence. The scanner skips -- comments and reads 'strings' ('' and
+E'\\' escapes) and "names" whole, keeping names exactly (hex); it refuses a block comment, any $ outside a string or
+name, U& strings, an unclosed string or name, and a patch line it cannot place.
 Prints "yes" or "no: <the first statement or reason, 80 characters>"; exit 0. Test: check-queue-gate.sh (P-823 rows).
 """
 import re, sys
