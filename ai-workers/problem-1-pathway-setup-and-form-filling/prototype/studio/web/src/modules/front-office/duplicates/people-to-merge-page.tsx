@@ -31,7 +31,7 @@ const EMPTY: Record<Tab, string> = {
 };
 
 function People({ p }: { p: ReviewPair }) {
-  return <ul className="flex flex-col gap-0.5">{p.people.map((x) => <li key={x.personId} className="[overflow-wrap:anywhere]"><span className="font-medium">{x.name}</span>{x.lead ? <span className="text-text-muted"> · {x.lead}</span> : null}</li>)}</ul>;
+  return <ul className="flex flex-col gap-0.5">{p.people.map((x) => <li key={x.personId} className="break-words"><span className="font-medium">{x.name}</span>{x.lead ? <span className="whitespace-nowrap text-text-muted"> · {x.lead}</span> : null}</li>)}</ul>;
 }
 function Score({ n }: { n: number }) {
   return <Tooltip><TooltipTrigger asChild><span tabIndex={0} aria-label={`Match ${n} of 100. ${MATCH_TIP}`} className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring" data-match-score={n}><Pill tone="warn">{n}</Pill></span></TooltipTrigger><TooltipContent>{MATCH_TIP}</TooltipContent></Tooltip>;
@@ -49,19 +49,34 @@ function PeopleToMergeBody() {
   const staff = useQuery({ ...assigneesQuery, enabled: allowed && tab === "MERGED" });
   const staffNames = React.useMemo(() => new Map((staff.data?.assignees ?? []).map((a) => [a.staffId, a.displayName])), [staff.data]);
   const [confirm, setConfirm] = React.useState<ReviewPair | null>(null);
+  // Focus (review r1 M1, WCAG 2.4.3): the dialog returns focus to what opened it; when that row has gone (kept separate)
+  // or its button was replaced (Undo), focus moves to the next row's action, else the tab, once the list has refreshed.
+  const opener = React.useRef<HTMLElement | null>(null), sending = React.useRef(false);   // one POST per click (review r1 m1)
+  const [focusNext, setFocusNext] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!focusNext) return;
+    const el = document.querySelector<HTMLElement>(focusNext) ?? document.querySelector<HTMLElement>(`[data-dup-tab="${TABS.find((t) => t.tab === tab)!.param}"]`);
+    if (el) { el.focus(); setFocusNext(null); }
+  });
   const [refused, setRefused] = React.useState<Record<string, string>>({});   // BR-10: the server's reason in Undo's place
-  const refresh = () => void qc.invalidateQueries({ queryKey: ["fo", "duplicates"] });
+  const refresh = () => qc.invalidateQueries({ queryKey: ["fo", "duplicates"] });
+  /** The next pair's Keep separate after `id` in the To review list, as a selector (or the tab when it was the last). */
+  const nextAfter = (id: string) => { const items = open.data?.items ?? [], i = items.findIndex((x) => x.id === id), n = items[i + 1] ?? items[i - 1];
+    return n ? `[data-dup-pair="${n.id}"] [data-dup-keep]` : `[data-dup-tab="review"]`; };
   const keep = useMutation({
     mutationFn: async (p: ReviewPair) => staffApi(`/front-office/duplicates/review/${p.id}/keep-separate`, { method: "POST" }),
-    onSuccess: (_, p) => { setConfirm(null); refresh(); toast.push({ tone: "ok", text: `${names(p)} are kept separate.` }); },
-    onError: (e, p) => { setConfirm(null); refresh(); toast.push({ tone: "danger", text: e instanceof StaffApiError ? e.message : `Could not keep ${names(p)} separate. Nothing changed.` }); },
+    onSettled: () => { sending.current = false; },
+    onSuccess: async (_, p) => { const next = nextAfter(p.id); opener.current = null; setConfirm(null); toast.push({ tone: "ok", text: `${names(p)} are kept separate.` }); await refresh(); setFocusNext(next); },
+    onError: (e, p) => { opener.current = null; setConfirm(null); void refresh().then(() => setFocusNext(nextAfter(p.id))); toast.push({ tone: "danger", text: e instanceof StaffApiError ? e.message : `Could not keep ${names(p)} separate. Nothing changed.` }); },
   });
   const undo = useMutation({
     mutationFn: async (m: MergeRecord) => staffApi(`/front-office/duplicates/merges/${m.id}/undo`, { method: "POST" }),
     // The names on a merge record are the records' current ones (after a merge both may carry the chosen name), so the
     // toast names no one.
-    onSuccess: () => { refresh(); toast.push({ tone: "ok", text: "Merge undone: the two records are separate again, each with its own leads." }); },
-    onError: (e, m) => { if (e instanceof StaffApiError && e.status !== 401) setRefused((r) => ({ ...r, [m.id]: e.message })); else toast.push({ tone: "danger", text: "Could not undo the merge. Nothing changed." }); },
+    onSettled: () => { sending.current = false; },
+    onSuccess: async (_, m) => { toast.push({ tone: "ok", text: "Merge undone: the two records are separate again, each with its own leads." }); await refresh(); setFocusNext(`[data-dup-merge="${m.id}"] [data-dup-after]`); },
+    // A refusal shows the server's sentence in the button's place, and the list is read again (review r1 m5).
+    onError: (e, m) => { if (e instanceof StaffApiError && e.status !== 401) setRefused((r) => ({ ...r, [m.id]: e.message })); else toast.push({ tone: "danger", text: "Could not undo the merge. Nothing changed." }); void refresh(); setFocusNext(`[data-dup-merge="${m.id}"] [data-dup-after]`); },
   });
   if (!allowed) return <div className="mx-auto flex max-w-6xl flex-col gap-4"><h1 className="text-2xl font-semibold text-text">People to merge</h1><Notice tone="info" title="You need access to People to merge. Ask an Owner or Admin." /></div>;
   const live = merges.data?.filter((m) => !m.undoneAt) ?? [];
@@ -70,19 +85,19 @@ function PeopleToMergeBody() {
   const empty = (t: Tab) => <section data-dup-empty={t} className="rounded-xl border border-border bg-surface-raised p-6 text-sm">{EMPTY[t]}</section>;
   const pairs = (q: typeof open, t: "OPEN" | "KEPT_SEPARATE") => q.isPending ? <Loading label="Loading the pairs" rows={3} /> : q.isError ? failed("the pairs", () => void q.refetch())
     : !q.data.items.length ? empty(t)
-      : <Table label={t === "OPEN" ? "People to review" : "People kept separate"} head={["People", "What matched", "Match", t === "OPEN" ? "First seen" : "Kept separate", ""]}>
+      : <Table label={t === "OPEN" ? "People to review" : "People kept separate"} head={["People", "What matched", "Match", t === "OPEN" ? "First seen" : "Kept separate", ""]} headClass={[undefined, "hidden sm:table-cell", undefined, "hidden sm:table-cell", undefined]}>
         {q.data.items.map((p) => (
           <tr key={p.id} data-dup-pair={p.id} className="border-t border-border align-top">
-            <td className="max-w-[22rem] px-3 py-2"><People p={p} /></td>
-            <td className="px-3 py-2">{reasonWords(p.reasons)}</td>
+            <td className="min-w-[9rem] max-w-[22rem] px-3 py-2"><People p={p} /><p className="mt-1 text-xs text-text-muted sm:hidden">{reasonWords(p.reasons)}</p></td>
+            <td className="hidden px-3 py-2 sm:table-cell">{reasonWords(p.reasons)}</td>
             <td className="px-3 py-2"><Score n={p.score} /></td>
-            <td className="whitespace-nowrap px-3 py-2">{when(t === "OPEN" ? p.firstSeenAt : p.decidedAt ?? p.firstSeenAt)}</td>
+            <td className="hidden whitespace-nowrap px-3 py-2 sm:table-cell">{when(t === "OPEN" ? p.firstSeenAt : p.decidedAt ?? p.firstSeenAt)}</td>
             <td className="px-3 py-2">
               {t === "OPEN" ? <div className="flex flex-col items-start gap-1">
                 <div className="flex flex-wrap gap-1">
                   {/* BR-7: a case pair's Merge… is off with the sentence; the guided merge itself is part 3 (brief FO-9s-2). */}
                   {can(me, MERGE_KEY) ? <Button variant="outline" size="sm" disabled data-dup-merge-open aria-describedby={p.needsCaseSide ? `dup-case-${p.id}` : undefined}>Merge…</Button> : null}
-                  <Button variant="ghost" size="sm" onClick={() => setConfirm(p)}>Keep separate</Button>
+                  <Button variant="ghost" size="sm" data-dup-keep onClick={(e) => { opener.current = e.currentTarget; setConfirm(p); }}>Keep separate</Button>
                 </div>
                 {p.needsCaseSide ? <p id={`dup-case-${p.id}`} className="text-xs text-text-muted" data-needs-case-side>{CASE_SIDE_LINE}</p> : null}
               </div> : <span className="text-xs text-text-muted">{p.automatic ? "Decided automatically" : "Decided by staff"}</span>}
@@ -95,14 +110,16 @@ function PeopleToMergeBody() {
       : <Table label="People merged" head={["People", "How", "When", ""]}>
         {merges.data.map((m) => (
           <tr key={m.id} data-dup-merge={m.id} className="border-t border-border align-top">
-            <td className="max-w-[22rem] px-3 py-2 [overflow-wrap:anywhere]"><span className="font-medium">{m.loser.name}</span> <span className="text-text-muted">into</span> <span className="font-medium">{m.survivor.name}</span></td>
+            {/* After a merge both records can carry the chosen name (review r1 m3): then one name, said as two records. */}
+            <td className="min-w-[9rem] max-w-[22rem] px-3 py-2 break-words">{m.loser.name === m.survivor.name ? <><span className="font-medium">{m.survivor.name}</span> <span className="text-text-muted">(two records)</span></>
+              : <><span className="font-medium">{m.loser.name}</span> <span className="text-text-muted">into</span> <span className="font-medium">{m.survivor.name}</span></>}</td>
             <td className="px-3 py-2">{mergedBy(m, me.staffId, staffNames)}</td>
             <td className="whitespace-nowrap px-3 py-2">{when(m.at)}</td>
             <td className="max-w-[18rem] px-3 py-2">
-              {m.undoneAt ? <Pill tone="neutral">Undone {when(m.undoneAt)}</Pill>
-                : refused[m.id] ? <p role="status" className="text-xs text-text-warn" data-undo-refused>{refused[m.id]}</p>
-                  : can(me, MERGE_KEY) ? <Button variant="outline" size="sm" busy={undo.isPending && undo.variables?.id === m.id} onClick={() => undo.mutate(m)}>Undo merge</Button>
-                    : <span className="text-xs text-text-muted">An Owner or Case Manager can undo it.</span>}
+              {m.undoneAt ? <span tabIndex={-1} data-dup-after className="outline-none"><Pill tone="neutral">Undone {when(m.undoneAt)}</Pill></span>
+                : refused[m.id] ? <p role="status" tabIndex={-1} data-dup-after className="text-xs text-text-warn outline-none" data-undo-refused>{refused[m.id]}</p>
+                  : can(me, MERGE_KEY) ? <Button variant="outline" size="sm" busy={undo.isPending && undo.variables?.id === m.id} onClick={() => { if (sending.current) return; sending.current = true; undo.mutate(m); }}>Undo merge</Button>
+                    : <span className="text-xs text-text-muted">Someone who may merge people (an Owner, Admin or Case Manager) can undo it.</span>}
             </td>
           </tr>
         ))}
@@ -122,9 +139,9 @@ function PeopleToMergeBody() {
           <TabsContent value="MERGED" className="mt-3">{mergedTab}</TabsContent>
           <TabsContent value="KEPT_SEPARATE" className="mt-3">{pairs(kept, "KEPT_SEPARATE")}</TabsContent>
         </Tabs>
-        <Dialog open={!!confirm} onOpenChange={(o) => { if (!o && !keep.isPending) setConfirm(null); }} title="Keep these people separate?"
+        <Dialog open={!!confirm} onOpenChange={(o) => { if (!o && !keep.isPending) setConfirm(null); }} title="Keep these people separate?" returnFocus={() => opener.current}
           description={confirm ? `${names(confirm)} stay two records. The pair leaves To review and is not suggested again.` : undefined}
-          footer={<><Button variant="ghost" disabled={keep.isPending} onClick={() => setConfirm(null)}>Cancel</Button><Button busy={keep.isPending} onClick={() => confirm && keep.mutate(confirm)}>Keep separate</Button></>}>
+          footer={<><Button variant="ghost" disabled={keep.isPending} onClick={() => setConfirm(null)}>Cancel</Button><Button busy={keep.isPending} onClick={() => { if (!confirm || sending.current) return; sending.current = true; keep.mutate(confirm); }}>Keep separate</Button></>}>
           <p className="text-sm text-text-muted">Their leads, notes and calls do not change.</p>
         </Dialog>
       </div>
