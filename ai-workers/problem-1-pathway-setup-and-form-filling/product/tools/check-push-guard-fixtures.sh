@@ -55,6 +55,8 @@ s1 "S1 fail: a 20-character mixed value under the key is refused" "  $K: \"$V\",
 s1 "S1 fail: an unquoted mixed value under the key is refused" "  $K=$V," refused
 s1 "S1 fail: an upper-case start that turns mixed is refused" "  $K: ABCDEFGHIJKLMNOPq1," refused
 s1 "S1 fail: a quoted all-capitals value is not a bare constant, refused" "  $K: \"ABCDEFGHIJKLMNOPQRST\"," refused
+A="AKIA""ABCDEFGHIJKLMNOP"
+s1 "S1 fail: an all-capitals key with no underscore (an AWS key ID) under the key is refused" "  secret: $A," refused
 s1 "S1 fail: a constant on the line does not hide a real secret after it" "  $K: $C, secret: $V" refused
 
 echo "$pass passed, $fail failed"
