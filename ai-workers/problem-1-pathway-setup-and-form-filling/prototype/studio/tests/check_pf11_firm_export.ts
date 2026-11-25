@@ -46,7 +46,7 @@ const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
 const { withFirm } = await import("../api/src/platform/firm-scope.ts");
 const { PgFirmExport } = await import("../api/src/platform/firm-export/registry.ts");
 const { platformSections } = await import("../api/src/platform/firm-export/platform-sections.ts");
-const { FirmExports, BUILD_JOB } = await import("../api/src/platform/firm-export/service.ts");
+const { FirmExports, BUILD_JOB, SWEEP_JOB } = await import("../api/src/platform/firm-export/service.ts");
 const { buildPackage, ExportTooLarge } = await import("../api/src/platform/firm-export/package.ts");
 const { PgLegalHolds } = await import("../api/src/platform/register/holds/adapter.ts");
 const { FirmExportController } = await import("../api/src/platform/firm-export/routes.ts");
@@ -70,8 +70,8 @@ try {
   let theDb: never;
   const nestDb = () => theDb;
   const holds = { on: false, real: new PgLegalHolds(), isHeld(tx: never, f: string, q: never) { return this.on ? Promise.resolve({ held: true as const, holds: [] }) : this.real.isHeld(tx, f, q); } };
-  const make = (cap?: number, extra?: (f: string) => Promise<void>) => { const port = new PgFirmExport(nestDb()); port.register("platform", platformSections); port.register("test-module", async (f) => { await extra?.(f); return testModule(f); });
-    return new FirmExports({ db: nestDb(), port, files, jobs, audit: auditEvent as never, holds: holds as never, now: () => fc.now(), cap }); };
+  const make = (cap?: number, extra?: (f: string) => Promise<void>, over: { db?: never; files?: never } = {}) => { const port = new PgFirmExport(nestDb()); port.register("platform", platformSections); port.register("test-module", async (f) => { await extra?.(f); return testModule(f); });
+    return new FirmExports({ db: over.db ?? nestDb(), port, files: over.files ?? files, jobs, audit: auditEvent as never, holds: holds as never, now: () => fc.now(), cap }); };
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
     { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: PaymentHoldGate }, { provide: FirmExports, useFactory: (db: never) => { theDb = db; return make(); }, inject: [Db] }];
   @Controller("api/platform/pf11-probe") class Probe { @Get() @AnyStaff("PF-11's check of the hold gate") get() { return { ok: true }; } }
@@ -182,6 +182,57 @@ try {
   ok("PF-11 DW7 pass: request, ready, download and expiry are one line each, with the actor, the counts and the hash",
     lines.length === 4 && lines[0].startsWith(`platform.firm_export.requested|staff:${R}|`) && lines[1].startsWith("platform.firm_export.ready|system:firm-export|") && /"rowCounts": \[.*"platform\/staff:\d+"/.test(lines[1]) && lines[2].includes(got.body?.sha256 ?? sql(`select sha256 from platform_firm_export where id = '${first.body.id}'`)) && lines[3].startsWith("platform.firm_export.expired|"), lines);
   ok("PF-11 DW7 fail: no line holds a name, an email or a value from the export", !lines.some((l) => /@|Sample|Representative|HYPERLINK/.test(l)), lines);
+
+  // ------------------------------------------------------------------------------------------ DW8 (part 1b): export hygiene
+  const fresh = async () => { const r = await ask(await signIn("user-R")); await jobs.runDue(); return r.body.id as string; };
+  const st = (id: string) => sql(`select state from platform_firm_export where id = '${id}'`);
+  const raced = await fresh();
+  const expiring = { ...files, get: async (f: string, k: string) => { sql(`update platform_firm_export set state = 'EXPIRED' where id = '${raced}'`); return files.get(f, k); } } as never;
+  const racer = make(undefined, undefined, { files: expiring });
+  const rd = await withFirm(FIRM_A, () => racer.download(ctx(R), raced).then(() => 200, (e) => e.getStatus?.()));
+  ok("PF-11 DW8 fail (m1): a download racing the expiry answers 410 and leaves the row EXPIRED; no download line",
+    rd === 410 && st(raced) === "EXPIRED" && sql(`select count(*) from audit_event where entity_key = '${raced}' and action = 'platform.firm_export.downloaded'`) === "0", [rd, st(raced)]);
+  const twice = await fresh(); await fc.advance({ days: 7, minutes: 1 });
+  sql(`update platform_firm_export set state = 'DOWNLOADED', downloaded_at = now() where id = '${twice}' and state = 'EXPIRED'`);   // as if a download committed before the job
+  const twin = { on: true, isHeld(tx: never, f: string, q: never) { if (this.on) { this.on = false; sql(`update platform_firm_export set state = 'EXPIRED' where id = '${twice}'`); } return holds.isHeld(tx, f, q); } };
+  await withFirm(FIRM_A, () => new FirmExports({ db: nestDb(), port: new PgFirmExport(nestDb()), files, jobs, audit: auditEvent as never, holds: twin as never, now: () => fc.now() }).expire(twice, FIRM_A));
+  ok("PF-11 DW8 fail (m1): an expiry whose row moved under it writes nothing (compare-and-set from READY or DOWNLOADED)",
+    sql(`select count(*) from audit_event where entity_key = '${twice}' and action = 'platform.firm_export.expired'`) === "1", sql(`select string_agg(action, ' ') from audit_event where entity_key = '${twice}'`));
+  const daily = sql(`select count(*) from audit_event where entity_key = '${kept.body.id}' and action = 'platform.firm_export.file_deleted'`);
+  ok("PF-11 DW8 pass (m3): the daily sweep on the runner deleted the zip kept under DW4's hold once the hold was gone, one line", daily === "1" && !(await files.get(FIRM_A, sql(`select file_key from platform_firm_export where id = '${kept.body.id}'`))), daily);
+  const ok200 = await call("GET", `/api/platform/firm-export/${await fresh()}/download`, await signIn("user-R"));
+  ok("PF-11 DW8 pass: an open download still answers 200 after the change (zip read before the transaction)", ok200.status === 200 && new PizZip(ok200.bytes!).file("README.txt") !== null, ok200.status);
+  const lost = await fresh(), lostKey = sql(`select file_key from platform_firm_export where id = '${lost}'`);
+  await jobs.cancel(`firm-export:${lost}:expire`); sql(`update platform_firm_export set expires_at = now() - interval '1 day' where id = '${lost}'`);
+  holds.on = true; const heldSweep = await svc.sweep(); holds.on = false;
+  ok("PF-11 DW8 fail (m2): an export whose expiry job never came is expired by the sweep; under a hold its zip is kept", st(lost) === "EXPIRED" && !!(await files.get(FIRM_A, lostKey)) && heldSweep.expired === 1 && heldSweep.deleted === 0, heldSweep);
+  const swept = await svc.sweep();
+  ok("PF-11 DW8 pass (m3): once no hold covers the firm the sweep deletes that zip, one line",
+    (await files.get(FIRM_A, lostKey)) === null && swept.deleted === 1 && sql(`select count(*) from audit_event where entity_key = '${lost}' and action = 'platform.firm_export.file_deleted'`) === "1", swept);
+  ok("PF-11 DW8 pass: a second sweep finds nothing to delete (no repeat line)", (await svc.sweep()).deleted === 0 && sql(`select count(*) from audit_event where entity_key = '${lost}' and action = 'platform.firm_export.file_deleted'`) === "1");
+  ok("PF-11 DW8 pass: the sweep runs on the runner (a recurring run of its queue was queued)", jobs.jobs.some((j) => j.name === SWEEP_JOB));
+  const caseReg = exportRegistry<string>((f, ex) => ex(f, "tx")); caseReg.register("twins", async (f) => ({ module: "twins", files: [{ key: "a", name: "a.pdf", sha256: "0".repeat(64) }, { key: "b", name: "A.pdf", sha256: "0".repeat(64) }], sections: [] }));
+  ok("PF-11 DW8 fail (m4): two stored files whose names differ only in letter case are refused", await caseReg.collect(FIRM_A).then(() => false, (e) => e instanceof FirmExportRefused));
+  // m5: the four fixes without a failing test
+  let gateOpen = () => {}; const g = new Promise<void>((r) => { gateOpen = r; }); let collects = 0;
+  const dbReal = nestDb() as any, slowRead = new Proxy(dbReal, { get(t, k) { const v = t[k]; if (k !== "platformFirmExport") return typeof v === "function" ? v.bind(t) : v;
+    return new Proxy(v, { get(m, kk) { const f = m[kk]; return kk === "findFirst" ? async (a: unknown) => { const r = await f.call(m, a); await g; return r; } : typeof f === "function" ? f.bind(m) : f; } }); } });
+  const claimId = op(); sql(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, updated_at) values ('${claimId}', '${FIRM_A}', '${claimId}', '${R}', now())`);
+  let bGo = () => {}; const bGate = new Promise<void>((r) => { bGo = r; });
+  const counting = make(undefined, async () => { collects++; await bGate; });   // B claims attempt 1, then waits mid-build
+  const a = withFirm(FIRM_A, () => make(undefined, async () => { collects++; }, { db: slowRead as never }).build(claimId, FIRM_A));   // A read attempt 0, waits
+  await new Promise((r) => setTimeout(r, 200)); const b = withFirm(FIRM_A, () => counting.build(claimId, FIRM_A));
+  await new Promise((r) => setTimeout(r, 300)); gateOpen(); await a; bGo(); await b;
+  ok("PF-11 DW8 fail (m5, the claim's compare-and-set): a build that read attempt 0 after another claimed it builds nothing", collects === 1 && sql(`select state || '|' || attempt from platform_firm_export where id = '${claimId}'`) === "READY|1", [collects, sql(`select state || '|' || attempt from platform_firm_export where id = '${claimId}'`)]);
+  const mods = await (() => { const p = new PgFirmExport(nestDb()); p.register("test-module", testModule); return p.collect(FIRM_A); })();
+  const big = await buildPackage({ title: "t", madeAt: fc.now(), modules: mods, file: async () => blob, cap: 10_000_000 });
+  const raw = Object.values(new PizZip(big.bytes).files).filter((f) => !f.dir).reduce((n, f) => n + f.asUint8Array().byteLength, 0);
+  ok("PF-11 DW8 fail (m5, the zip headers counted): a cap a little above the entries' bytes alone is refused", await buildPackage({ title: "t", madeAt: fc.now(), modules: mods, file: async () => blob, cap: raw + 20 }).then(() => false, (e) => e instanceof ExportTooLarge), raw);
+  const chk = (q: string) => { try { sql(q); return "stored"; } catch { return "refused"; } };
+  const cid = op();
+  ok("PF-11 DW8 fail (m5, the CHECK's IS NOT NULL): a READY row with no hash, or a DOWNLOADED one with no date, is refused by the database",
+    chk(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, state, file_key, size_bytes, expires_at, updated_at) values ('${cid}', '${FIRM_A}', '${cid}', '${R}', 'READY', 'k', 1, now(), now())`) === "refused"
+    && chk(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, state, file_key, sha256, size_bytes, expires_at, updated_at) values ('${cid}', '${FIRM_A}', '${cid}', '${R}', 'DOWNLOADED', 'k', '${"0".repeat(64)}', 1, now(), now())`) === "refused");
 } catch (e) { ok("no unexpected error", false, String((e as Error)?.stack ?? e)); } finally {
   await app?.close();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);

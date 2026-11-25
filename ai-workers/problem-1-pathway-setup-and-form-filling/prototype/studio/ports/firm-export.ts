@@ -49,15 +49,15 @@ export class FirmExportRefused extends Error {
 }
 
 /** The one check of every adapter: the shape and module name; each row as long as its columns, each cell of its kind; a
- *  minor column's currency present; file names unique; any `firm_id` cell this firm's only (PF-11 DW6). */
+ *  minor column's currency present; file names unique, letter case aside; any `firm_id` cell this firm's only (PF-11 DW6). */
 export function checkModuleExport(firmId: string, module: string, raw: unknown): ModuleExport {
   const firm = FirmId.parse(firmId).toLowerCase();
   const p = ModuleExport.safeParse(raw);
   if (!p.success) throw new FirmExportRefused(`${module}: ${p.error.issues[0]?.path.join(".")} ${p.error.issues[0]?.message}`);
   const out = p.data;
   if (out.module !== module) throw new FirmExportRefused(`${module}: the answer names module ${out.module}`);
-  const keys = new Set<string>(), names = new Set(out.files.map((f) => f.name));
-  if (names.size !== out.files.length) throw new FirmExportRefused(`${module}: two stored files share a name`);
+  const keys = new Set<string>(), names = new Set(out.files.map((f) => f.name.toLowerCase()));   // case-blind: a.pdf and A.pdf are one file on most disks (part 1b)
+  if (names.size !== out.files.length) throw new FirmExportRefused(`${module}: two stored files share a name (letter case aside)`);
   for (const s of out.sections) {
     if (keys.has(s.key)) throw new FirmExportRefused(`${module}: section ${s.key} twice`);
     keys.add(s.key);

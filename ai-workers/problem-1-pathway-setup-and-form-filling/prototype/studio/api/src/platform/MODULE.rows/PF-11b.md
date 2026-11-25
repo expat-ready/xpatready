@@ -1,0 +1,3 @@
+Entry points: PF-11 part 1b: job `platform.firm_export.sweep` (daily 07:45 America/Toronto; `FirmExports.sweep`, bypass use `job:platform.firm_export.sweep` in `firm-export/export.bypass.ts`): expires a READY or DOWNLOADED export past its date whose expiry job never came, and deletes an expired zip still stored once no legal hold covers the firm.
+Tables: PF-11 part 1b reads and updates platformFirmExport only; audit line `platform.firm_export.file_deleted`.
+Tests: `tests/check_pf11_firm_export.ts` DW8 (part 1b: the download and expiry compare-and-sets, the sweep, letter-case file names, the claim, the zip headers, the CHECK).
