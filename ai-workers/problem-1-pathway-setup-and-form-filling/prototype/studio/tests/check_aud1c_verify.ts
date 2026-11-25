@@ -102,7 +102,7 @@ try {
   const first = jobs.jobs.filter((j) => j.name === CHAIN_CHECK_QUEUE && j.status === "done").length;
   ok("AUD-1c DW10 pass: the feature registers the 30-minute check on the job runner; a run of it writes one heartbeat and every chain is INTACT",
     first >= 1 && beats() - runs0 === first && Number(sql(`select count(*) from aud_chain_check where status = 'INTACT'`)) === Number(sql(`select count(distinct chain_key) from audit_event`)), { first, beats: beats() - runs0 });
-  ok("AUD-1c DW10 fail: no deep (weekly) pass ran on a Wednesday half hour", !jobs.jobs.some((j) => j.name === CHAIN_DEEP_QUEUE && j.status === "done"));
+  ok("AUD-1c DW10 fail: no deep pass ran in the first half hour (the deep check runs at :40)", !jobs.jobs.some((j) => j.name === CHAIN_DEEP_QUEUE && j.status === "done"));
   const long1 = await v.pass("incremental"), long2 = await v.pass("full"), dRow = (await v.all()).find((i) => i.chainKey === D);
   ok("AUD-1c DW6 fail (break Blocker): a clean chain of 25 lines is no break, in the 30-minute and the weekly pass (lines read in number order, not text order)",
     !long1.findings.length && !long2.findings.length && dRow?.status === "INTACT" && dRow.verifiedSeq === "25", [long1.findings, long2.findings, dRow]);
@@ -185,10 +185,18 @@ try {
   const sliceRuns: number[] = []; for (let s = 0; s < DEEP_SLICES; s++) { try { sliceRuns.push((await v.pass("full", s)).chains); } catch { sliceRuns.push(-1); } }
   ok("AUD-1c part 5 pass: the weekly check's 24 slices take every chain exactly once between them (a stable hash), each slice checking only its own",
     wholeKeys.length > 3 && wholeKeys.every((k) => seen.get(k) === 1) && sliceRuns.reduce((a, b) => a + b, 0) === wholeKeys.length && Math.max(...sliceRuns) < wholeKeys.length, { n: wholeKeys.length, sliceRuns });
+  // The feature's own handler (review M1): each hourly run passes its hour's slice, never the whole check.
+  const calls: (number | undefined)[] = [], realPass = v.pass.bind(v);
+  (v as { pass: typeof v.pass }).pass = async (m, s) => { if (m === "full") calls.push(s); return realPass(m, s); };
+  await jobClock.set("2026-11-26T00:00:00Z"); calls.length = 0;   // the hours up to midnight ran their slices: count from here
   const deep0 = jobs.jobs.filter((j) => j.name === CHAIN_DEEP_QUEUE).length;
-  await jobClock.set("2026-11-29T00:00:00Z"); await jobClock.advance({ hours: 24 });   // a Sunday, UTC
+  await jobClock.advance({ hours: 24 });   // a whole day, UTC
   const deepRuns = jobs.jobs.filter((j) => j.name === CHAIN_DEEP_QUEUE).length - deep0;
-  ok("AUD-1c part 5 fail: a Sunday runs the weekly check 24 times, once an hour (one slice each), never in one run", deepRuns === DEEP_SLICES, { deepRuns });
+  ok("AUD-1c part 5 fail (review M1): a day runs the deep check 24 times, once an hour, each run on its own slice (0 to 23, each once), never the whole check in one run",
+    deepRuns === DEEP_SLICES && calls.length === DEEP_SLICES && calls.every((s) => typeof s === "number") && new Set(calls).size === DEEP_SLICES, { deepRuns, calls });
+  calls.length = 0; await jobClock.advance({ hours: 24 });
+  ok("AUD-1c part 5 pass (review M2): the next day runs every slice again, so a run lost to a worker that was down is made good within a day", new Set(calls).size === DEEP_SLICES, calls);
+  (v as { pass: typeof v.pass }).pass = realPass;
 
   // ------------------------------------------------------------------- DW10: heartbeat and the key
   const beat0 = beats();

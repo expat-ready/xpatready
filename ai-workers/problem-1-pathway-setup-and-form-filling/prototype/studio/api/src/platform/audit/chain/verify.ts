@@ -21,12 +21,16 @@ import { log } from "../../observability/log.ts";
 import { entryHash, ZERO_HASH, type CanonicalLine } from "../canonical.ts";
 
 export const CHAIN_CHECK_QUEUE = "audit.chain_check", CHAIN_DEEP_QUEUE = "audit.chain_deep_check";
-/** SA-11-6: every 30 minutes; the weekly deep check on Sunday, in DEEP_SLICES slices, one an hour at :40 UTC (the day
- *  and minute Sample). AUD-1c part 5 (Lead 5 on #2129): each slice checks only the chains whose stable hash falls in its
- *  hour, so no run comes near the job runner's 15 minutes and no cursor is kept (a lost run costs one slice that week). */
-export const CHAIN_CHECK_CRON = "*/30 * * * *", CHAIN_DEEP_CRON = "40 * * * 0", CHAIN_ZONE = "UTC";
+/** SA-11-6: every 30 minutes; the deep check (SA-11-6's weekly one, here stricter) in DEEP_SLICES slices, one every hour
+ *  of every day at :40 UTC (the minute Sample). AUD-1c part 5 (Lead 5 on #2129): each slice checks only the chains whose
+ *  stable hash falls in its hour of the day, so no run comes near the job runner's 15 minutes, every chain is checked
+ *  in full every day, and a run lost to a worker that was down is made good by the same hour the next day (review M2:
+ *  resumable with no cursor to keep or lose; a failed run is retried by the runner with the same hour). */
+export const CHAIN_CHECK_CRON = "*/30 * * * *", CHAIN_DEEP_CRON = "40 * * * *", CHAIN_ZONE = "UTC";
 export const DEEP_SLICES = 24;
-/** The slice (0 to DEEP_SLICES - 1) a chain's weekly check falls in: the first four bytes of sha256(chain key). */
+/** The slice (0 to DEEP_SLICES - 1) a chain's deep check falls in: the first four bytes of sha256(chain key). */
+/** The slice a deep-check run takes: its scheduled hour of the day (a retry keeps the run's time, so its slice). */
+export const sliceAt = (runAt: Date): number => runAt.getUTCHours() % DEEP_SLICES;
 export const sliceOf = (k: string): number => createHash("sha256").update(k).digest().readUInt32BE(0) % DEEP_SLICES;
 /** Lines read at a time (Sample). */
 export const CHAIN_PAGE = 500;

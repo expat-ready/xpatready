@@ -298,6 +298,10 @@ try {
   ok("PF-21c DW5 pass: an integrity alert pre-fills a DRAFT (source ALERT, the alert kept, the firm it names, discovered at the alert's time), and sends nothing",
     draft.status === 201 && draft.body.status === "DRAFT" && draft.body.source === "ALERT" && draft.body.sourceAlert.kind === "audit_chain_break" && JSON.stringify(draft.body.affectedFirms) === JSON.stringify([firmC])
     && draft.body.discoveredAt === alert.raisedAt && /nothing has been sent/.test(draft.body.description) && !draft.body.description.includes(alert.detail.entityKey) && outboxAll() === outbox1 && Number(sql(`select count(*) from plat_breach where status = 'DRAFT'`)) === drafts0 + 1, draft);
+  // AUD-1c part 5 (review M3): the kind the checker now raises, SA-11-6's name, opens a draft too.
+  const renamed = await call(base, "POST", "/api/system/register/breaches/from-alert", { token: ownerT, body: { reason: "Sample: from the renamed alarm", alert: { ...alert, kind: "audit.chain_integrity_failure", detail: { ...alert.detail, entityKey: uuid() } } } });
+  ok("PF-21c DW5 pass (AUD-1c part 5): the chain alert under its SA-11-6 name, audit.chain_integrity_failure, opens a DRAFT with the chain's words",
+    renamed.status === 201 && renamed.body.status === "DRAFT" && renamed.body.sourceAlert.kind === "audit.chain_integrity_failure" && /hash chain did not verify/.test(renamed.body.description), renamed.body);
   const notIntegrity = await call(base, "POST", "/api/system/register/breaches/from-alert", { token: ownerT, body: { reason: "Sample", alert: { ...alert, kind: "job_stuck" } } });
   const personal = await call(base, "POST", "/api/system/register/breaches/from-alert", { token: ownerT, body: { reason: "Sample", alert: { ...alert, detail: { rule: "BR-2", entity: "jane@example.com" } } } });
   const ghost = await call(base, "POST", "/api/system/register/breaches/from-alert", { token: ownerT, body: { reason: "Sample", alert: { ...alert, detail: { rule: "BR-5", firmId: uuid() } } } });
