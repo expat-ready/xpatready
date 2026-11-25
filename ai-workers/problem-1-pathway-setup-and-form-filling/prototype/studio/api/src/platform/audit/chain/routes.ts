@@ -2,7 +2,9 @@
 // for our staff, every chain. Ids and seq numbers only, never a line's content. No firm id is taken from the request:
 // the firm is the session's. The demo-only check-now route runs a pass at once, so a person (or a journey) can see a
 // change found without waiting 30 minutes; it is 404 outside the demo workspace.
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Post, Query, Req } from "@nestjs/common";
+import { ArchiveKeyExists, ArchiveRetained } from "../../../../../ports/audit-archive.ts";
+import { AuditChainExport } from "../archive/daily-export.ts";
 import { actorOf, fail, isDemoWorkspace, need } from "../../../core.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../identity/keys.ts";
 import { SystemKeys } from "../../system-identity/keys.ts";
@@ -30,7 +32,38 @@ export class SystemAuditIntegrityController {
 
 @Controller("api/demo/audit-chain")
 export class DemoAuditChainController {
-  constructor(@Inject(AuditChainVerifier) private readonly v: AuditChainVerifier) {}
+  constructor(@Inject(AuditChainVerifier) private readonly v: AuditChainVerifier, @Inject(AuditChainExport) private readonly x: AuditChainExport) {}
+  private demo(a: string | undefined) { if (!isDemoWorkspace()) fail("Not found.", HttpStatus.NOT_FOUND); need(actorOf(a), "author"); }
+
+  /** Demo only (AUD-2 part 2): today's export now, as the daily job. */
+  @Post("export") @HttpCode(200)
+  async export(@Headers("x-actor") a: string | undefined) { this.demo(a); return this.x.run(); }
+
+  /** Demo only: the archive's keys under a prefix, each with its digest and keep-until date (never its bytes). */
+  @Get("archive")
+  async archive(@Headers("x-actor") a: string | undefined, @Query("prefix") prefix: string | undefined) {
+    this.demo(a);
+    const store = this.x.store(), keys = await store.list(prefix ?? "audit/"), objects = [];
+    for (const k of keys.slice(0, 200)) { const o = await store.get(k); if (o) objects.push({ key: k, bytes: o.bytes.byteLength, sha256: o.sha256, retainUntil: o.retainUntil.toISOString() }); }
+    return { objects };
+  }
+
+  /** Demo only: tries to replace or delete one archived object, to show the store refuses both (409 and 423). */
+  @Post("archive/tamper") @HttpCode(200)
+  async tamper(@Headers("x-actor") a: string | undefined, @Body() b: { key?: unknown; how?: unknown } | null) {
+    this.demo(a);
+    const key = typeof b?.key === "string" ? b.key : fail("Name the key."), store = this.x.store();
+    try {
+      if (b?.how === "replace") await store.put(key, Buffer.from("replaced (Sample)"), new Date(Date.now() + 86_400_000));
+      else if (b?.how === "delete") await store.remove(key);
+      else fail('how is "replace" or "delete".');
+    } catch (e) {
+      if (e instanceof ArchiveKeyExists) fail("Refused: an archived object is written once and never replaced.", HttpStatus.CONFLICT);
+      if (e instanceof ArchiveRetained) fail(`Refused: kept until ${e.retainUntil.toISOString()}; nothing is deleted inside its keep period.`, HttpStatus.LOCKED);
+      throw e;
+    }
+    return { done: true };
+  }
   /** Demo only: one pass now, as the 30-minute job (or the weekly one with {"mode":"full"}); the author duty. */
   @Post("check") @HttpCode(200)
   async check(@Headers("x-actor") a: string | undefined, @Body() b: { mode?: unknown } | null) {

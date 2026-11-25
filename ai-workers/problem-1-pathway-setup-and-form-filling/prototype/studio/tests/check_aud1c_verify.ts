@@ -67,10 +67,9 @@ const jobClock = new FakeClock(new Date("2026-11-25T10:00:00Z")), jobs = fakeJob
 
 let app: { close(): Promise<void> } | null = null;
 try {
-  const verifierProvider = feature.providers[0] as { provide: unknown; useFactory: (...a: unknown[]) => unknown; inject: unknown[] };
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
     { provide: IDENTITY_ADMIN_PORT, useValue: new LocalIdentityAdmin(() => clock.now()) }, { provide: MAIL_PORT, useValue: fakeMail() }, PlatformSession,
-    { provide: PlatformJobs, useValue: jobs }, verifierProvider];
+    { provide: PlatformJobs, useValue: jobs }, ...feature.providers];
   @Module({ controllers: [PlatformIdentityController, PlatformSessionController, FirmAuditIntegrityController] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false });
   nest.use(requestMiddleware());

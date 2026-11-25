@@ -27,7 +27,7 @@ export const CHAIN_PAGE = 500;
 export const HEARTBEAT = "audit.chain_verify_ok";
 
 export type Mode = "incremental" | "full";
-export type Why = "hash" | "link" | "gap" | "missing" | "verified-changed";
+export type Why = "hash" | "link" | "gap" | "missing" | "verified-changed" | "anchor";
 export type Finding = { chainKey: string; fromSeq: string; toSeq: string; why: Why };
 export type PassResult = { mode: Mode; chains: number; linesRead: number; findings: Finding[] };
 export type Integrity = { chainKey: string; status: "INTACT" | "BROKEN" | "NOT_CHECKED"; lastCheckedAt: string | null; verifiedSeq: string; failingFromSeq: string | null; failingToSeq: string | null };
@@ -47,7 +47,8 @@ const asLine = (k: string, r: Row): CanonicalLine => ({ chainKey: k, seq: r.seq,
 const buf = (b: Uint8Array | null) => (b === null ? null : Buffer.from(b));
 
 export class AuditChainVerifier {
-  constructor(private readonly d: { db: Db; alerts: AlertPort; now: () => Date; page?: number }) {}
+  /** `anchors` (AUD-2 part 2): the newest exported head of a chain, from the write-once archive; compared on every pass. */
+  constructor(private readonly d: { db: Db; alerts: AlertPort; now: () => Date; page?: number; anchors?: { latestAnchor(k: string): Promise<{ seq: string; entryHash: string } | null> } }) {}
 
   /** One pass over every chain. Throws (and writes no heartbeat) when the database does not answer. */
   async pass(mode: Mode): Promise<PassResult> {
@@ -93,6 +94,14 @@ export class AuditChainVerifier {
       }
     }
     if (head === null && !sample && c && BigInt(c.verified_seq) > 0n) return this.found(tx, k, c, { chainKey: k, fromSeq: "1", toSeq: c.verified_seq, why: "missing" }, read);
+    // AUD-2 part 2: the newest exported anchor must still be the database's line at its seq. This finds a line changed
+    // after its export even when the chain after it was recomputed, and newest lines removed after an export.
+    const a = sample ? null : await this.d.anchors?.latestAnchor(k);
+    if (a) {
+      const at = BigInt(a.seq), [l] = await tx.$queryRaw<{ h: Uint8Array }[]>`select entry_hash h from audit_event where chain_key = ${k} and seq = ${at}`;
+      if (!l || Buffer.from(l.h).toString("hex") !== a.entryHash)
+        return this.found(tx, k, c, { chainKey: k, fromSeq: a.seq, toSeq: String(head !== null && BigInt(head) > at ? BigInt(head) : at), why: "anchor" }, read);
+    }
     await tx.$executeRaw`insert into aud_chain_check (chain_key, verified_seq, verified_hash, checked_at, status, failing_from_seq, failing_to_seq)
       values (${k}, ${last}, ${lastHash}::bytea, ${this.d.now()}, 'INTACT', null, null)
       on conflict (chain_key) do update set verified_seq = excluded.verified_seq, verified_hash = excluded.verified_hash, checked_at = excluded.checked_at,
