@@ -267,8 +267,8 @@ try {
   await sendIt(r6);
   const [q6, d6] = reqOf(r6);
   const dec = await post((await signing.act(A, d6, signerOf(q6, "CLIENT"), "declined"))[0]);
-  ok("FO-6 W5 pass: a declined event → 200, stored, request and retainer unchanged (FO-5d applies it)",
-    dec.applied === false && reqOf(r6)[2] === "SENT" && sql(`select status from fo_retainer where id = '${r6}'`) === "SENT" && count("fo_signing_hook_receipt", `request_id = '${q6}'`) === 1, dec);
+  ok("FO-6 W5 pass (since FO-5d): a declined event → 200, stored once, applied: request and retainer DECLINED (tests/check_fo5d_decline_withdraw.ts has the rest)",
+    dec.applied === true && reqOf(r6)[2] === "DECLINED" && sql(`select status from fo_retainer where id = '${r6}'`) === "DECLINED" && count("fo_signing_hook_receipt", `request_id = '${q6}'`) === 1, dec);
   const unknown = await post((await (async () => { const f = fakeSigning(); useSigningPort(f); const x = await f.send({ firmId: A, requestId: randomUUID(), title: "x", document: { bytes: new Uint8Array([1]), contentType: "application/pdf" }, signers: [{ signerId: randomUUID(), role: "CLIENT", name: "C" }, { signerId: randomUUID(), role: "FIRM", name: "F" }] }); return f.other(A, x.providerDocumentId); })()));
   useSigningPort(signing);
   ok("FO-6 W5 pass: a verified event for a document no request names → 200, nothing stored", unknown.applied === false && unknown.reason === "unknown document");
@@ -400,8 +400,9 @@ try {
 
   process.env.PLATFORM_ENVIRONMENT ??= "local";   // the feature imports the platform's mail feature, which reads the settings at load
   const signingFeature = (await import("../api/src/features/front-office-signing.ts")).default;
-  ok("FO-6 G pass: the feature file registers the state read and the webhook door and provides the Signing service (part 4b adds the public door's SigningDoor)",
-    (signingFeature.controllers as unknown[]).includes(SigningController) && (signingFeature.controllers as unknown[]).includes(SigningHooksController) && JSON.stringify((signingFeature.providers as { provide?: { name?: string } }[]).map((p) => p.provide?.name)) === '["Signing","SigningDoor"]');
+  ok("FO-6 G pass: the feature file registers the state read and the webhook door and provides the Signing service (part 4b adds the public door's SigningDoor; FO-5d the retainer items' labeller)",
+    (signingFeature.controllers as unknown[]).includes(SigningController) && (signingFeature.controllers as unknown[]).includes(SigningHooksController) && JSON.stringify((signingFeature.providers as { provide?: { name?: string } }[]).map((p) => p.provide?.name ?? (p as { name?: string }).name)) === '["Signing","RetainerNotificationLabels","SigningDoor"]',   // FO-5d: the retainer items' labeller
+    (signingFeature.providers as { provide?: { name?: string }; name?: string }[]).map((p) => p.provide?.name ?? p.name));
   // ------------------------------------------------------------- G: retired names, the bypass use
   const grep = (() => { try { return execFileSync("grep", ["-rlE", "retainer\\.executed|envelope\\.completed", join(STUDIO, "api", "src"), join(STUDIO, "ports"), join(STUDIO, "engine"), join(STUDIO, "contracts")], { encoding: "utf8" }).trim(); } catch { return ""; } })();
   // Event names are written only where events are made and read (the API, the ports, the engine, the contracts); the

@@ -22,7 +22,8 @@ import { withFirm } from "../../platform/firm-scope.ts";
 import { problem } from "../../platform/identity/keys.ts";
 import { askCode, checkCode, codeOf, CODE_REFUSALS, type CodeLine } from "./door-code.ts";
 import { emailCodeOn } from "./email-code.ts";
-import { signingPort } from "./handlers.ts";
+import { applyDecline } from "./decline.ts";
+import { signingNotifications, signingPort } from "./handlers.ts";
 import { sendSigningCode } from "./link-mail.ts";
 import { SigningEnded, SigningNotFound } from "./port.ts";
 
@@ -107,6 +108,26 @@ export class SigningDoor {
     await tx.foSigner.update({ where: { id: f.signer.id }, data: { sessionSha256: sha(token), sessionExpiresAt: expires } });
     await this.line(f, "signing.session_started", `A signing session started for the client (${why}).`, { sessionMinutes: SESSION_MINUTES })(tx);
     return token;
+  }
+
+  /** POST …/decline, FO-5d (1) (AG-5-68, AG05-D2(6), D4(7)): the client declines with an optional reason of their own
+   *  (trimmed; empty is none; the 500 limit is the route's schema). The link alone is enough, as for reading it (the row:
+   *  a decline ends nothing a resend cannot replace), with the email code on or off. One decline declines all
+   *  (./decline.ts); a signer who signed, or a request that ended, is refused in words (409), as every other write here.
+   *  The envelope is cancelled at the provider after the commit (never throws). */
+  decline(token: unknown, b: { reason?: string }) {
+    return this.open(token, async (f) => {
+      this.refuseIfEnded(f);
+      const out = await this.db.$transaction(async (tx) => {
+        const cur = await this.locked(tx, f);
+        const [r] = await tx.$queryRaw<{ status: string }[]>`select status::text from fo_signature_request where firm_id = ${f.firmId}::uuid and id = ${f.request.id}::uuid`;
+        return applyDecline(tx, { firmId: f.firmId, request: { ...f.request, status: r.status }, signer: { id: cur.id, role: "CLIENT" }, reason: b.reason ?? null, actor: ACTOR, audit: this.audit, now: this.now(), notifications: signingNotifications() });
+      });
+      try { await signingPort().cancel(f.firmId, f.request.providerDocumentId); } catch (e) {
+        if (!(e instanceof SigningEnded || e instanceof SigningNotFound)) console.error(`[fo-signing] cancel after a decline did not finish: ${(e as Error)?.name ?? "error"}`);
+      }
+      return { state: "DECLINED" as const, message: `You declined this agreement. ${f.firm} has been told.`, firm: f.firm, agreement: out.agreement };
+    });
   }
 
   /** GET: the link's state. Live: the firm, the document, whether a code is asked, the consent text. Writes nothing. */
