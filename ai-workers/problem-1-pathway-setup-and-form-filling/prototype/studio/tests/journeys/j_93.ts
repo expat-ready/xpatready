@@ -135,8 +135,13 @@ try {
   const sawFirms = await firmsHeading.waitFor({ timeout: 15_000 }).then(() => true, () => false);
   const rowA = cp.getByRole("row").filter({ hasText: nameA }), rowB = cp.getByRole("row").filter({ hasText: nameB });
   const rowAText = sawFirms && (await rowA.count()) === 1 ? (await rowA.innerText()).replace(/\s+/g, " ") : "";
-  ok("J-93 W2 (parts missing: PF-17 screens, PF-4s part 1): our console's Firms page lists firm A and firm B, firm A's row with its failed jobs and plan state",
-    sawFirms && (await rowB.count()) === 1 && rowAText.includes(String(deadOf(A))) && new RegExp(pA.split("|")[1] ?? "-", "i").test(rowAText), { heading: sawFirms, rowA: rowAText.slice(0, 160) });
+  // Aligned by qa 10 on #3489's head 8e7f454d6 (PF-17 part 4 PR B): each row's "Failed jobs" cell ([data-failed-jobs],
+  // a count, "n+" past the cap) read on its own, firm A's and firm B's each against its own dead letters (the row's
+  // text alone held "150", so "1" was found in any row).
+  const cellOf = async (row: typeof rowA) => (await row.count()) === 1 && (await row.locator("[data-failed-jobs]").count()) === 1 ? (await row.locator("[data-failed-jobs]").innerText()).trim() : "";   // no cell: the step fails, never a timeout (reviewer m4, #3533)
+  const [cellA, cellB] = sawFirms ? [await cellOf(rowA), await cellOf(rowB)] : ["", ""];
+  ok("J-93 W2 (parts missing: PF-17 screens, PF-4s part 1): our console's Firms page lists firm A and firm B, each row's Failed jobs cell its own dead letters, firm A's row with its plan state",
+    sawFirms && (await rowB.count()) === 1 && cellA === String(deadOf(A)) && cellB === String(deadOf(B)) && new RegExp(pA.split("|")[1] ?? "-", "i").test(rowAText), { heading: sawFirms, cells: [cellA, cellB], dead: [deadOf(A), deadOf(B)], rowA: rowAText.slice(0, 160) });
 
   // ---------------------------------------------------------------------------------------- W3 opening a firm writes a line the firm sees
   const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
@@ -188,6 +193,35 @@ try {
   const sawQueue = await cp.getByRole("heading", { level: 1, name: /support/i }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
   ok("J-93 W4 (parts missing: PF-17 screens, PF-4s part 1): our console's support page shows the ticket with firm A's name",
     sawQueue && (await cp.getByRole("row").filter({ hasText: `Sample question ${run}` }).filter({ hasText: nameA }).count()) === 1, { page: sawQueue });
+
+  // ---------------------------------------------------------------------------------------- W5 the next capability's first step (gate A, P-348c)
+  // Added by qa 10 (25 Nov) after the R1.93 reader's Major: the walk must end where the next step begins. Our Platform
+  // Owner opens the ticket from its subject, writes a reply and presses Send reply (PF-17 part 4 PR C, the ticket panel;
+  // POST /api/system/support/tickets/:id/replies); firm A's Owner then opens the ticket on Help & support
+  // (/platform/support/:id, PF-18s part 2) and reads our reply: where the support thread's own capability continues.
+  const reply = `Sample reply ${run}: the second seat is the Sample owner's own (J-93)`;
+  const qrow = cp.getByRole("row").filter({ hasText: `Sample question ${run}` });
+  let sentReply = false;
+  if (sawQueue && (await qrow.count()) === 1) {
+    await qrow.getByRole("button").first().click();
+    const box = cp.getByLabel(/^Reply/);
+    if (await box.waitFor({ timeout: 15_000 }).then(() => true, () => false)) {
+      await box.fill(reply);
+      await cp.getByRole("button", { name: "Send reply" }).click();
+      sentReply = await cp.locator("[data-reply-sent]").waitFor({ timeout: 15_000 }).then(() => true, () => false);
+    }
+  }
+  const stored = ticketId ? sql(`select coalesce(string_agg(t.status::text || '|' || m.author_kind::text, ','), '') from platform_support_ticket t join platform_support_message m on m.ticket_id = t.id where t.id = '${ticketId}' and m.body = '${reply.replace(/'/g, "''")}'`) : "";
+  ok("J-93 W5 (gate A's next step): our Platform Owner opens the ticket on the console's Support page, writes a reply and presses Send reply; it is stored once as ExpatReady support's message and the ticket waits on the firm",
+    sentReply && /^[A-Z_]+\|SUPPORT$/.test(stored) && !stored.includes(","), { sent: sentReply, stored });
+  let firmSees = false;
+  if (ticketId) {
+    await ap.goto(`${BASE}/platform/support/${ticketId}`);
+    const msgs = ap.getByRole("list", { name: "Messages" });
+    firmSees = await msgs.waitFor({ timeout: 15_000 }).then(async () => (await msgs.innerText()).includes(reply), () => false);
+  }
+  ok("J-93 W5 (gate A's next step): firm A's Owner opens the ticket on Help & support and reads our reply in its messages, where the support thread continues",
+    firmSees, { firmSees });
   ok("J-93: no page error during the walk", errors.length === 0, errors.slice(0, 5));
 } finally {
   await browser.close();

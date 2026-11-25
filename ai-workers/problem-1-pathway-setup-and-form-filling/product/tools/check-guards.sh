@@ -19,7 +19,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh test-spd-2.sh"
 TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
 TESTS="$TESTS check-rules-settled.sh"   # A348: rules before review
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
@@ -32,6 +32,8 @@ TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-merge-wake.sh"   # wake on merge
+TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
+TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
@@ -199,6 +201,9 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 8|product/tools/lead-check-guard.sh|s/^\[ -z "\$why" \] \&\& exit 0/exit 0/|check-lead-cron.sh
 9|product/tools/label-sweep.sh|s/^  if \[ "\$who" != "\$BOT" \]; then/  if true; then/|check-label-sweep.sh
 9 sched|../../.github/workflows/label-guard.yml|/cron: "\*\/10 \* \* \* \*"/d|check-label-sweep.sh
+9 off|product/tools/label-sweep.sh|s/was already off"; continue; }/was already off"; }/|check-label-sweep.sh
+9 on|product/tools/label-sweep.sh|s/ = false \] / != x ] /|check-label-sweep.sh
+9 left|product/tools/label-sweep.sh|s/left=\(.*\)labels") \&\& /left=\1labels"); left=${left:-[]}; /|check-label-sweep.sh
 9 queued|../../.github/workflows/label-guard.yml|/event_name == .schedule./s/ .. (github.event.action == .labeled. \&\& github.event.label.name == .queued.)//|check-label-sweep.sh
 9 guardq|../../.github/workflows/label-guard.yml|/review: approved.) .. (github.event.action/s/ .. github.event.label.name == .queued.)"/)"/|check-label-guard.sh
 9 batch|../../.github/workflows/label-guard.yml|s/types: \[synchronize, labeled, opened\]/types: [synchronize, labeled]/|check-label-sweep.sh
@@ -301,6 +306,25 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 15 start|product/tools/queue-gate.sh|s/^  api -X POST "\$API\/repos\/\$REPO\/actions\/workflows\/ci.yml\/dispatches"/  true/|check-queue-gate.sh
 15 start who|product/tools/queue-gate.sh|s/^  approved \(..\) { echo "#\$PR: no full run: \$why";/  true \1 { echo "x";/|check-queue-gate.sh
 15 start wake|../../.github/workflows/queue-gate.yml|s/ .. (github.event.action == .labeled. \&\& github.event.label.name == .dequeued.)//|check-queue-gate.sh
+LW speed answer|product/tools/lead-watch-pre.sh|s/return "\$(cat "\$PRE_DIR\/\$i.rc")"; fi/return 0; fi/|check-lead-watch-speed.sh
+LW speed once|product/tools/lead-watch-pre.sh|s/ && mkdir "\$PRE_DIR\/\$i.taken" 2>\/dev\/null//|check-lead-watch-speed.sh
+LW speed together|product/tools/lead-watch-pre.sh|s/ ) &$/ )/|check-lead-watch-speed.sh
+LW speed order|product/tools/lead-watch-pre.sh|s/\[ "\$first" = 0 \] .. pre_wait "\$first"; //|check-lead-watch-speed.sh
+LW speed rc|product/tools/lead-watch-pre.sh|s/ && grep -qxE .*i.rc"; then/; then/|check-lead-watch-speed.sh
+LW speed disk|product/tools/lead-watch-pre.sh|s/PRE_FREE_KB:-1048576/PRE_NONE:-0/|check-lead-watch-speed.sh
+LW speed ended|product/tools/lead-watch-pre.sh|s/i.rc" ] && continue /i.rc" ]; /|check-lead-watch-speed.sh
+LW speed nofetch|product/tools/lead-watch.sh|s/; \[ -z "\$early" \] .. pre_off//|check-lead-watch-speed.sh
+LW speed key|product/tools/lead-watch-pre.sh|s/%q /%s /|check-lead-watch-speed.sh
+LW speed off|product/tools/lead-watch-pre.sh|s/ rm -rf "\${PRE_DIR:?}";//|check-lead-watch-speed.sh
+LW speed step|product/tools/lead-watch.sh|/^nw=/d|check-lead-watch-speed.sh
+LW speed fetch|product/tools/lead-watch.sh|s/^PRE_T0=.*fetch -q origin 2>.*/PRE_T0=0; early=/|check-lead-watch-speed.sh
+LW speed sweep|product/tools/lead-watch.sh|s/ after bash .*lead-queue.sh" -- bash/ pre bash/|check-lead-watch-speed.sh
+LW speed asks|product/tools/lead-watch.sh|s/^cm=.* --paginate/cm=$(gh api "x"/|check-lead-watch-speed.sh
+LW speed shut|product/tools/lead-watch.sh|s/ACT "comments since.*/true/|check-lead-watch-speed.sh
+LW speed cut|product/tools/lead-watch.sh|/ACT "comments since $since cut short/d|check-lead-watch-speed.sh
+LW speed list|product/tools/lead-watch.sh|s/type == "array" and length > 0 and //|check-lead-watch-speed.sh
+LW speed seconds|product/tools/fresh-lib.sh|s/ && w="\$s s · "//|check-lead-watch-speed.sh
+LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch-speed.sh
 16 source|product/tools/cockpit-data.py|s/                elif st != "open":/                elif False:/|check-lead-watch-board.sh
 16 count|product/tools/lead-watch.sh|s/; echo "\$bw"; act=\$((act + \$(grep -c .^ACT. <<<"\$bw")))/; echo "$bw"/|check-lead-watch-board.sh
 17 wall|product/tools/known-failures.py|s/(1 if b > int(row\["threshold"\]) else 0)/0/|check-known-failures.sh
@@ -376,6 +400,17 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
+HANG env|product/tools/hang-report.py|s/if d.get("environmentVariables"):/if False:/|check-hang-report.sh
+HANG dir|product/tools/hang-report.py|s/^FILE = .*/FILE = re.compile(r"(.*)(:\\d+:\\d+)")/|check-hang-report.sh
+HANG line|product/tools/hang-report.py|s/(f or "(line not shown)")/(f or s)/|check-hang-report.sh
+HANG url|product/tools/hang-report.py|s/ or (None if re.search(.* else FILE/ or (FILE/|check-hang-report.sh
+HANG fn|product/tools/hang-report.py|s/fn + " " if NAME.fullmatch(fn) else ""/fn + " "/|check-hang-report.sh
+HANG sym|product/tools/hang-report.py|s/^SYMBOL = .*/SYMBOL = re.compile(r".+")/|check-hang-report.sh
+HANG kind|product/tools/hang-report.py|s/if re.fullmatch(r"\[a-z_\]{1,20}", kind):/if True:/|check-hang-report.sh
+HANG ask|product/tools/run-suites.sh|s/ --report-exclude-env --report-exclude-network --report-directory/ --report-directory/|check-hang-report.sh
+HANG wired|product/tools/run-suites.sh|s/; askreport "\$pid" "\$rd" ) </ ) </|check-hang-report.sh
+HANG raw|product/tools/run-suites.sh|s/ rm -rf "\${rd:?}"; }/ }/|check-hang-report.sh
+HANG catch|product/tools/run-suites.sh|s/ \&\& \[ \$(( 16#.* -ne 0 \]//;s/^    \[ "\$(basename .*//;s/^    { tr .*//|check-hang-report.sh
 31 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$fc")))/true/|check-founder-click-guard.sh
 33 E14|product/tools/check-docs.sh|s/        if miss: print(f"INDEX:/        if False: print(f"INDEX:/|check-idx-integrity.sh
 33 E14 range|product/tools/check-docs.sh|s/            ids .= {f"P-{i}" for i in range(a, b + 1)}/            pass/|check-idx-integrity.sh
@@ -641,6 +676,12 @@ A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 11, 30/R
 A348 fetch|product/tools/lead-watch.sh|/origin.main not fetched/d|check-proof-number.sh
 A348 ran|product/tools/lead-watch.sh|/proof-number.py did not run/d|check-proof-number.sh
 A348 wired|product/tools/lead-watch.sh|s/^pn=/# pn=/|check-proof-number.sh'
+# SPD2 (P-802, #3035): migration slots; each row switches one of migration-slots.py's rules off.
+MUT="$MUT"'
+SPD2 stamp|product/tools/migration-slots.py|s/^        elif s.group(1) <= floor:/        elif False:/|test-spd-2.sh
+SPD2 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
+SPD2 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    for rx in []:/|test-spd-2.sh
+SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1

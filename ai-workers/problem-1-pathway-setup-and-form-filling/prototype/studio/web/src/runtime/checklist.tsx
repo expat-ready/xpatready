@@ -17,6 +17,7 @@ import { lineId, noRetryOnRefusal } from "./questionnaire";
 import { FoldOut } from "@/components/fold-out";
 import { DocumentFlagsDialog } from "@/pages/case/document-flags/panel"; // CS-D7
 import { DocumentReads } from "./document-reads";
+import { DocumentPreview } from "./document-preview"; // CS-D5 part 2
 
 /** What the panel reads of a line as the API answers it (api/src/case-checklist.ts StoredLine, from the engine's PersonLine
  *  in engine/runtime/case-checklist.ts). Declared here, not imported: the engine file reads Node modules the web build has not. */
@@ -136,6 +137,7 @@ function LineRow({ caseId, p, people, l, nameOf }: { caseId: string; p: Person; 
   const [providers, setProviders] = React.useState(false);
   const [flags, setFlags] = React.useState<string | null>(null); // CS-D7: the document whose flags are open
   const [details, setDetails] = React.useState(false);   // CS-D6 part 1: the current files' fingerprint, check and "Read by"
+  const [preview, setPreview] = React.useState<StoredDocument | null>(null);   // CS-D5 part 2: the file being previewed
   const file = React.useRef<HTMLInputElement>(null);
   const member = React.useRef<string | null>(null); // C6.15: which member of the line's set the chosen file is
   // Review and break M1 (WCAG 2.4.3): after every action and when a dialog closes, focus goes back to this line's ⋯ button,
@@ -169,11 +171,14 @@ function LineRow({ caseId, p, people, l, nameOf }: { caseId: string; p: Person; 
         {l.never_waivable ? <p className="mt-0.5 text-xs font-medium" data-never-waivable>{l.state === "not_applicable" || l.state === "waived" ? "Never waived now: it still blocks Ready to file; request it again" : l.never_if?.length ? `Never waived if ${l.never_if.join(", ")} calls for it: Ready to file waits until it is received or that answer rules it out` : "Never waived: Ready to file waits until it is received"}</p> : null}
         {l.state_reason ? <p className="mt-0.5 text-xs text-text-muted [overflow-wrap:anywhere]">{l.state_reason}</p> : null}</div>
       <div className="min-w-0 text-[13px] [overflow-wrap:anywhere]"><p data-reason>{l.reason}</p>
-        {l.quote ? <FoldOut className="mt-0.5" summaryClassName="text-xs text-text-link" summary="Source"><p className="mt-1 text-xs text-text-muted [overflow-wrap:anywhere]" data-quote>{l.quote}</p></FoldOut> : null}
+        {/* WCAG 2.5.8 (batch #3518): a 24 px target, as the file name below it now is a button too. */}
+        {l.quote ? <FoldOut className="mt-0.5" summaryClassName="inline-flex min-h-6 items-center text-xs text-text-link" summary="Source"><p className="mt-1 text-xs text-text-muted [overflow-wrap:anywhere]" data-quote>{l.quote}</p></FoldOut> : null}
         {l.set ? <div className="mt-1 text-xs" data-line-set={l.set.mode}><p>{l.set.words}</p>
           {l.set.members.filter((m) => m.when_staff).map((m) => <p key={m.key} className="text-text-muted">{m.name} is acceptable when: {m.when_staff}</p>)}
           {l.set_status ? <p className={l.set_status.met ? "text-text-muted" : "font-medium"} data-set-status={l.set_status.met ? "met" : "open"}>{l.set_status.words}</p> : null}</div> : null}
-        <p className="mt-0.5 text-xs text-text-muted">{current ? <>{currents.length > 1 || current.member ? "Files" : "File"}: <span className="[overflow-wrap:anywhere]">{currents.map((d) => `${d.file_name}${d.member ? ` (${d.member.name})` : ""}`).join(", ")}</span>{earlier ? ` · ${earlier} earlier` : ""}</> : "No file yet"}{l.state_at ? ` · Last change ${when(l.state_at)}${l.state_by ? ` by ${nameOf(l.state_by)}` : ""}` : ""}</p>
+        <p className="mt-0.5 text-xs text-text-muted">{current ? <>{currents.length > 1 || current.member ? "Files" : "File"}: <span className="[overflow-wrap:anywhere]">{currents.map((d, i) => <React.Fragment key={d.id}>{i ? ", " : ""}
+          {/* CS-D5 part 2 (concept S1): each current file's name opens its preview beside the case. */}
+          <button type="button" className="inline-flex min-h-6 max-w-full items-center text-left text-text-link underline [overflow-wrap:anywhere]" aria-label={`Preview ${d.file_name}`} onClick={() => setPreview(d)} data-preview-open={d.id}>{d.file_name}</button>{d.member ? ` (${d.member.name})` : ""}</React.Fragment>)}</span>{earlier ? ` · ${earlier} earlier` : ""}</> : "No file yet"}{l.state_at ? ` · Last change ${when(l.state_at)}${l.state_by ? ` by ${nameOf(l.state_by)}` : ""}` : ""}</p>
         {l.on_file ? <p className="mt-0.5 text-xs font-medium text-text-warn" data-on-file>{l.on_file.words}</p> : null}
         {(l.flag_warnings ?? []).map((w) => <p key={w} className="mt-0.5 text-xs font-medium text-text-warn" data-flag-warning>{w}</p>)}
         {error ? <p role="alert" className="mt-1 text-xs text-text-danger" data-line-error>{error}</p> : null}</div>
@@ -207,6 +212,8 @@ function LineRow({ caseId, p, people, l, nameOf }: { caseId: string; p: Person; 
           {currents.map((d) => <div key={d.id} className="space-y-2">{currents.length > 1 ? <p className="font-medium">{d.file_name}{d.member ? ` (${d.member.name})` : ""}</p> : null}<DocumentReads doc={d} /></div>)}
         </div>
       </Dialog> : null}
+      {preview ? <DocumentPreview file={preview} label={label} uploadedBy={nameOf(preview.uploaded_by)} close={() => setPreview(null)}
+        returnFocus={() => document.querySelector<HTMLElement>(`[data-line="${l.id}"] [data-preview-open="${preview.id}"]`) ?? trigger.current} /> : null}
       {history ? <Dialog open onOpenChange={(o) => { if (!o) { setHistory(false); back(); } }} title={`History: ${label}`}>
         <div className="min-w-0 space-y-2 text-sm [overflow-wrap:anywhere]" data-history>
           <p>State: {l.state_words}{l.state_at ? `, since ${when(l.state_at)}${l.state_by ? ` by ${nameOf(l.state_by)}` : ""}` : ""}{l.state_reason ? `. Reason: ${l.state_reason}` : ""}.</p>

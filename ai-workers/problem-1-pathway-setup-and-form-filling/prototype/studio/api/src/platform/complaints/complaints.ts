@@ -110,7 +110,7 @@ export const RecordComplaint = z.object({
 export type RecordComplaint = z.input<typeof RecordComplaint>;
 
 const At = z.object({ at: instant, note: text(4000).optional() }).strict();
-const Step = z.object({ kind: z.enum(["STEP", "NOTE"]), note: text(4000), at: instant.optional() }).strict();
+const Step = z.object({ kind: z.enum(["STEP", "NOTE"], { error: "Choose STEP (a step taken) or NOTE (a note)." }), note: text(4000), at: instant.optional() }).strict();
 const Handler = z.object({ handlerStaffId: uuid, note: text(4000).optional() }).strict();
 const Close = z.object({ outcome: z.enum(OUTCOMES, { error: "choose the outcome" }), at: instant, note: text(4000) }).strict();
 export const LIST_VIEWS = ["open", "overdue", "closed", "all"] as const;

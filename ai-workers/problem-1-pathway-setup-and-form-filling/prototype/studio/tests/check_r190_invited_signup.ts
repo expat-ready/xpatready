@@ -2,7 +2,7 @@
 // written first (P-606) on PF-4s part 1's staff sign-in (#2927). A pass and a fail per line, on an isolated copy with both
 // local stand-ins (PLATFORM_IDENTITY=local, PLATFORM_SYSTEM_IDENTITY=local), the fake BillingPort; US$0, no Stripe call.
 //   IS1 who makes a link: our staff with `system/signup-link:manage` (Platform Owner, Admin: the PF-4s seed, Appendix A)
-//       → 201 with the link once; Support → 403; a firm's Owner token → 403 (PF-4s's wall); no reason → 400; a country
+//       → 201 with the link once; Support → 403; a firm's Owner token → 403 (PF-4s's wall); no reason → 422 naming reason (R1.10 A4); a country
 //       other than CA → 422 on the field; the token is stored only as its hash.
 //   IS2 the invited person opens it: GET /api/public/signup/:token shows the email, the plan and the period, and makes
 //       nothing; an unknown token → 404 in the same words as a used or expired one.
@@ -65,7 +65,7 @@ try {
   const byFirm = await call("POST", "/api/system/signup-links", { token: firmTok, body: ask });
   const noReason = await call("POST", "/api/system/signup-links", { token: tOwner, body: { ...ask, reason: undefined } });
   const notCA = await call("POST", "/api/system/signup-links", { token: tOwner, body: { ...ask, countryCode: "US" } });
-  ok("R1.90 IS1 fail: Support (no system/signup-link:manage) → 403; a firm's Owner token → 403; no reason → 400; country US → 422 on countryCode; no link stored", bySupport.status === 403 && byFirm.status === 403 && noReason.status === 400 && notCA.status === 422 && JSON.stringify(notCA.body).includes("countryCode") && sql(`select count(*) from platform_signup_link where email = '${invited}'`) === "0", { bySupport: bySupport.status, byFirm: byFirm.status, noReason: noReason.status, notCA: notCA.status });
+  ok("R1.90 IS1 fail: Support (no system/signup-link:manage) → 403; a firm's Owner token → 403; no reason → 422 naming reason (R1.10 A4); country US → 422 on countryCode; no link stored", bySupport.status === 403 && byFirm.status === 403 && noReason.status === 422 && !!noReason.body?.fields?.reason && notCA.status === 422 && JSON.stringify(notCA.body).includes("countryCode") && sql(`select count(*) from platform_signup_link where email = '${invited}'`) === "0", { bySupport: bySupport.status, byFirm: byFirm.status, noReason: noReason.status, notCA: notCA.status });
   const auditBefore = Number(sql(`select count(*) from plat_system_audit where staff_id = '${OWNER.id}'`));   // after the refused calls (each writes its own line)
   const made = await call("POST", "/api/system/signup-links", { token: tOwner, body: ask });
   const token = tokenOf(made.body?.link);

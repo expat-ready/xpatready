@@ -18,7 +18,7 @@ import { parseInput, strict } from "../../platform/http/input.ts";
 import { problem } from "../../platform/identity/keys.ts";
 import { enterFirm, withFirm } from "../../platform/firm-scope.ts";
 import { arrive, type Attribution } from "./arrival.ts";
-import { email, phone, text, UUID, type Tx } from "./common.ts";
+import { email, phone, text, textUpTo, UUID, type Tx } from "./common.ts";
 
 export const SALES_PORTS = "FO2_SALES_PORTS";
 export type SalesPorts = {
@@ -43,11 +43,13 @@ const tooBig = () => problem(413, "Too large", "This form is too long. Please sh
 const ATTRIBUTION_KEYS = ["utmSource", "utmMedium", "utmCampaign", "utmTerm", "utmContent", "clickId", "clickIdKind", "landingPage", "referrerUrl"] as const;
 /** PF-28 part 3b (R1.10): the post through a strict schema (an unknown field 422, named; outer bounds, the 32 KB parser
  *  caps the whole), after the door's own limits, form lookup and site check, so a miss is still the one not-found. The
- *  submission id and load stamp are always needed. `website` (the trap field) takes any value: a bot still learns nothing.
+ *  submission id and load stamp are always needed. `website` (the trap field) takes any text: a bot still learns nothing
+ *  (a value that is not text, or over 1000 characters, is refused on its field like any other field's; PF-28 A3). The
+ *  message takes its own length here (textUpTo: 5000, text()'s count and words), so it is named before the names' rules.
  *  Attribution is captured, cut and never refused for length (attributionOf). Every other rule stays in submit. */
 const s = (max: number) => z.string().max(max).nullish();
-const PUBLIC_BODY = strict({ givenNames: s(1000), familyName: s(1000), email: s(1000), phone: s(1000), interestedIn: s(100), message: s(20_000),
-  consent: z.boolean().optional(), submissionId: z.string().max(100), loadStamp: z.string().max(500), website: z.unknown().optional(),
+const PUBLIC_BODY = strict({ givenNames: s(1000), familyName: s(1000), email: s(1000), phone: s(1000), interestedIn: s(100), message: textUpTo(5000).nullish(),
+  consent: z.boolean().optional(), submissionId: z.string().max(100), loadStamp: z.string().max(500), website: s(1000),
   attribution: strict(Object.fromEntries(ATTRIBUTION_KEYS.map((k) => [k, z.string().max(40_000).nullish()]))).nullish() });   // 40 000 > the 32 KB parser: never refused for length (break m1)
 const CAPTURED_JUNK = /[\u0000-\u001f\u007f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2069\u3164\ufeff\u{e0000}-\u{e007f}]/gu;
 /** At most `max` characters (what text() measures), never splitting one; normalised first so it cannot grow (break M4). */

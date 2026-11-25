@@ -27,7 +27,7 @@ import { Prospects } from "../api/src/front-office/sales/prospects.ts";
 import { askCode, checkCode, codeOf, CODE_TRIES, type CodeLine } from "../api/src/front-office/signing/door-code.ts";
 import { emailCodeOn, SIGNING_EMAIL_CODE } from "../api/src/front-office/signing/email-code.ts";
 import { useSigningMail, useSigningPort } from "../api/src/front-office/signing/handlers.ts";
-import { signingPublicBase } from "../api/src/front-office/signing/link-mail.ts";
+import { sendPleaseSign, signingLink, signingPublicBase } from "../api/src/front-office/signing/link-mail.ts";
 import { fakeSigning } from "../api/src/front-office/signing/port.ts";
 import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
 import { dutiesOf, type StaffContext } from "../api/src/platform/identity/keys.ts";
@@ -111,6 +111,18 @@ try {
   useSigningMail(mail);
   ok("FO-6 4a S pass: a failing email does not undo the Send (logged; the request stands)", sent3 && reqOf(r3) !== "" && sql(`select status from fo_retainer where id = '${r3}'`) === "SENT");
 
+  ok("FO-6 4b S pass: the email names every end of the link: a signature, a decline, the expiry, a newer version (Lead B, #3433 minor 1)",
+    /until you sign or decline, until it expires, or until .+ sends you a newer version\./.test(toClient[0]?.text ?? ""), toClient[0]?.text);
+  // Lead B, #3433 minor 2: outside local, a copy with no STUDIO_PUBLIC_URL sends no link (never a localhost one).
+  const envWas = { env: process.env.PLATFORM_ENVIRONMENT, url: process.env.STUDIO_PUBLIC_URL }, mB = mail.sent.length;
+  process.env.PLATFORM_ENVIRONMENT = "test"; delete process.env.STUDIO_PUBLIC_URL;
+  const noBase = signingLink("x"), sentNoBase = await sendPleaseSign(db, { firmId: A, requestId: randomUUID(), personId: p1.personId, token: token || "x", kind: "RETAINER" });
+  process.env.STUDIO_PUBLIC_URL = "https://sign.example.test/";
+  const withBase = signingLink("abc");
+  if (envWas.env === undefined) delete process.env.PLATFORM_ENVIRONMENT; else process.env.PLATFORM_ENVIRONMENT = envWas.env;
+  if (envWas.url === undefined) delete process.env.STUDIO_PUBLIC_URL; else process.env.STUDIO_PUBLIC_URL = envWas.url;
+  ok("FO-6 4b S fail: outside local with no STUDIO_PUBLIC_URL no link is made and no email is sent; with it set the link uses it", noBase === null && sentNoBase === false && mail.sent.length === mB && withBase === "https://sign.example.test/sign/abc", { noBase, sentNoBase, withBase });
+
   // ------------------------------------------------------------- K: the firm's email-code setting
   ok("FO-6 4a K pass: the setting is registered for the front office, changed with agent/legal-settings:manage, on by default", SIGNING_EMAIL_CODE.key === "front_office.signing_email_code" && SIGNING_EMAIL_CODE.default === true
     && SIGNING_EMAIL_CODE.changePermission === "agent/legal-settings:manage" && (await emailCodeOn(db, A)) === true && (await emailCodeOn(db, B)) === true);
@@ -156,7 +168,12 @@ try {
   const a5 = await db.$transaction((tx) => askCode(tx, A, s4, at(), { line }));
   mins(11);
   const late = await db.$transaction((tx) => checkCode(tx, A, s4, a5.verdict === "SENT" ? a5.code : "x", at(), { line }));
-  ok("FO-6 4a C fail: a code past its 10 minutes is EXPIRED and counted", late === "EXPIRED" && sql(`select code_failures from fo_signer where id = '${s4}'`) === "1", late);
+  ok("FO-6 4a C fail: a code past its 10 minutes is EXPIRED and not counted (4b breaker m2: no live code, nothing to guess at)", late === "EXPIRED" && sql(`select code_failures from fo_signer where id = '${s4}'`) === "0", late);
+  const never = await prospect("Fen"), rn = await draft(never); await svc.send(R, rn, { expectedVersion: 1 });
+  const sn = sql(`select id from fo_signer where request_id = '${reqOf(rn)}' and role = 'CLIENT'`), noAsk: string[] = [];
+  for (let i = 0; i < CODE_TRIES + 1; i++) noAsk.push(await db.$transaction((tx) => checkCode(tx, A, sn, "123456", at(), { line })));
+  ok("FO-6 4b C fail: checks with no code ever asked are EXPIRED, never counted, never lock the link (a forwarded-link holder cannot lock the client out)",
+    noAsk.every((v) => v === "EXPIRED") && sql(`select code_failures || '|' || coalesce(locked_until::text, 'none') from fo_signer where id = '${sn}'`) === "0|none", noAsk);
   // Review m2: two checks of one right code at once: one OK, the other spent (the request's lock queues them).
   const p5 = await prospect("Eli"), r5 = await draft(p5); await svc.send(R, r5, { expectedVersion: 1 });
   const s5 = sql(`select id from fo_signer where request_id = '${reqOf(r5)}' and role = 'CLIENT'`);

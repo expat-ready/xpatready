@@ -21,7 +21,7 @@ Row: BACKLOG **FO-6** (rows rev 16.8, 16.13, 16.16; contracts §2.4, §7). Items
 | 8 | Code switched off: `codeRequired: false`, no code is mailed, and `POST …/consent` itself starts the session (sets the cookie). A second browser's consent (consent already recorded, not written again) starts its own session and replaces the first: **with the code off a live link is a bearer link until signed** (question 2). The setting is read on each door call, not fixed at Send (question 8). | FO-6 row ("with the code off the session starts at consent"); P-564 | D |
 | 9 | `GET …/session` answers the adapter's embedded link (`SigningPort.embeddedLink`); the link reopens (state and session again) until its signer signs or declines. | AG-5-21; FO-6 row | C ×2 |
 | 10 | Rate limited per (caller address, token), Sample 30 a minute, plus a per-address ceiling (Sample 300 a minute), so one caller cannot block other clients' links. The address is `req.ip`; no trust-proxy is set in the API today, so behind a proxy every caller shares one address and only the per-token limit protects a link (question 9). Every door answer carries `Cache-Control: no-store`. The Referer the vendor's frame sees is set by the page that holds the token in its address, so FO-5s's `/sign/:token` page sends `Referrer-Policy: no-referrer` (4a review m6); the API answers carry it too, which is harmless but not the protection. A malformed token is refused before any read and a well-formed one after a lookup; the time difference tells nothing an attacker lacks (256-bit tokens, firm ids not secret). | FO-6 row | F |
-| 11 | **The copy's stand-in signing page (fake adapter only):** the fake's `embeddedLink` points at a page on the copy's own origin (`<public base>/api/public/sign-fake/<doc>/<signer>/<nonce>`, a short-lived nonce, the fake's 10 minutes) with Sign; Sign makes the fake's `act("signed")` and hands its webhook calls to our own `Signing.receive`, so the ordering, consent and evidence rules of part 3 apply unchanged. The page checks its nonce against the one the fake issued (in memory, single use, 10 minutes); after a restart the fake forgets its envelopes and `/session` answers 409 "Ask the firm to send it again" (local only). Registered only when `PLATFORM_ENVIRONMENT` is `local` (the only values are local, test, production, `config/settings.ts:18`); in test and production the route does not exist (404), and a start-up assertion checks it is not registered there; it never stops the app. | FO-6 row; P-561 (no vendor call in this part) | E ×2 |
+| 11 | **The copy's stand-in signing page (fake adapter only):** the fake's `embeddedLink` points at a page on the copy's own origin (`<public base>/api/public/sign-fake/<doc>/<signer>/<nonce>`, a short-lived nonce, the fake's 10 minutes) with Sign; Sign makes the fake's `act("signed")` and POSTs its webhook calls, exact bytes and signature, over loopback to the copy's own webhook door `POST /api/hooks/signing/fake` (4c plan challenge B1: the webhook's bypass use is bound to that route only), so the ordering, consent and evidence rules of part 3 apply unchanged. The page checks its nonce against the one the fake issued (in memory, single use, 10 minutes); after a restart the fake forgets its envelopes and `/session` answers 409 "Ask the firm to send it again" (local only). Registered only when `PLATFORM_ENVIRONMENT` is `local` (the only values are local, test, production, `config/settings.ts:18`); in test and production the route does not exist (404), and a start that registers it there **fails** (Lead 29 on #3490: fail closed), besides a check on every call. | FO-6 row; P-561 (no vendor call in this part) | E ×2 |
 | 12 | **The firm signer's link:** `POST /api/front-office/retainers/:id/firm-signing-link`, `@PermissionKeys("agent/retainer:show")`, `@OwnOrAll("agent/prospect")`, and the caller must be the retainer's representative (403 otherwise); only once every client signed (409 before). The body takes `{ consent: true, consentTextVersion }` and records the firm signer's consent once (AG-5-25: part 3's webhook refuses a signature with no consent, `signing/service.ts:211`; FO-3c's `hostLink` does the same); without it 422. Answers the adapter's link (on the copy: rule 11's page). | FO-6 row ("declares `agent/retainer:show` and checks the caller is the retainer's representative") | E ×3 |
 | 13 | Every door write (code sent, wrong code, lock, session started, consent) writes one audit line in its transaction through `AuditPort` (actor `system:signing-door`), never the code or token. | FO-6 row ("every change writes one audit line") | C (audit line) |
 
@@ -35,7 +35,7 @@ Row: BACKLOG **FO-6** (rows rev 16.8, 16.13, 16.16; contracts §2.4, §7). Items
 |---|---|---|---|---|
 | **4a** | Rule 1 (the "Please sign" email after Send's commit, through `afterCommit`, which `Retainers.send` already calls, so `retainers/service.ts` is not touched; no overlap with #3424 FO-5cr), rule 5's setting registered, and a shared `signing/door-code.ts` (code send, verify and lock only: FO-3c's logic on part 1's columns; the session waits for 4b's columns) with its own unit tests; no route yet | `signing/service.ts`, new `signing/link-mail.ts`, new `signing/door-code.ts`, `features/front-office-signing.ts`, `MODULE.rows/FO-6-4a.md` | ~450 | no |
 | **4b** | Rules 2-10, 13: the five door routes, the session cookie, the rate limit | new `signing/door.ts`, new `signing/door.controller.ts`, `features/front-office-signing.ts`, `prisma/schema/front-office-signing.prisma`, one migration folder, `MODULE.rows/FO-6-4b.md` | ~700 | **yes** |
-| **4c** | Rules 11-12: the fake's stand-in page and the firm signer's link | `signing/port.ts` (the fake's link base), new `signing/fake-page.ts`, `signing/routes.ts`, `MODULE.rows/FO-6-4c.md` | ~400 | no |
+| **4c** | Rules 11-12: the fake's stand-in page and the firm signer's link | `signing/port.ts` (the fake's link base), new `signing/fake-page.ts`, new `signing/firm-link.ts`, `signing/routes.ts`, `signing/service.ts` (QA-770's guard, Lead 29 answer 1), `features/front-office-signing.ts`, `tests/check_forms_qa53.ts`, `MODULE.rows/FO-6-4c.md` (plan-4c.md) | ~450 | no |
 
 The test is one file for the three parts; each part's PR carries its lines green and leaves the later parts' lines red, named by part in each label. Breaker on 4b and 4c (external door, permissions).
 
@@ -84,3 +84,62 @@ A fresh Opus challenger read this note, the test, the row and the code on main: 
 * Majors: rule 12 now takes the firm signer's consent (part 3 refuses a signature without it); the code-off bearer exposure is stated (rule 8) and question 2 rewritten; 4a no longer needs 4b's columns; the stand-in page is local only, and test and production never register it; the cookie path is anchored, `SameSite=Strict` is checked and the test's cookie jar honours `Path`; the non-representative is a fixed case officer and the 403's own code is asserted; the rate limit is keyed per (address, token), with question 9 added.
 * Minors: the migration reasoning is honest and names the code-column fallback; the setting is read live (question 8); `no-store` and `no-referrer` are added; timing is addressed; the right code is refused while locked (tested); consent is written once (tested); an audit line per door write (tested); GET writes nothing and the session writes `viewed_at`; a new session token on every verify; the nonce is checked; the "signed" wording matches j_61's; question 10 (j_54 W3's body).
 * Not taken: no rule was cut. The test keeps its stand-ins by SQL, said in its header.
+
+## Part 4b additions (Lead B's three Minors on #3433, 4a's first read)
+1. **The email's words** name every end: "It works until you sign or decline, until it expires, or until <firm> sends you a newer version." (`link-mail.ts`; test `check_fo6_door_code` S).
+2. **No localhost link outside local:** `signingPublicBase()` is null outside `PLATFORM_ENVIRONMENT=local` when `STUDIO_PUBLIC_URL` is unset, and then no "Please sign" email is sent (logged as an error). The copy still starts, because refusing to start would stop every other module (test `check_fo6_door_code` S).
+3. **Who can read the stored email (and so the full link):**
+   * Staff's message list (`GET /api/platform/messages`) shows a message's facts, never a transactional body: "transactional bodies stay sealed, PF-19e" (`platform/messages/staff-routes.ts:4`).
+   * The rendered email is a file in the firm's file space. It is read only by the demo inbox (`GET /api/demo/platform-inbox`, the local adapter, demo workspace only, 404 elsewhere) and by whoever operates the file store and database (our own staff with infrastructure access).
+   * With the code on, the link alone opens nothing (rule 7). With it off, it is a bearer link until signed (Lead 24, answer 2), so this exposure is the firm's choice, named in the switch's words.
+
+## Part 4b round 1 fixes (reviewer and breaker on 2ba80d7c4, `review-4b.md`, `break-report-4b.md`)
+* **Rule 10, the rate limit, changed** (breaker M1, reviewer m4):
+  * Per (address, token), Sample 30 a minute, as before.
+  * The address ceiling now counts only **misses** (malformed or unknown links), Sample 300 a minute. Past it, further misses get 429, but a live link is never refused because of other callers. With no trust-proxy, every client behind a proxy shares one address, and the old 300-a-minute ceiling on every call was one global limit.
+  * POST bodies must be JSON (415 otherwise; breaker m4).
+* **Rule 4's signed words** are now "This agreement has been signed.", which j_61's refusal words match (reviewer M1).
+* **The code:**
+  * A check with no live code (none asked, expired, or already used) is refused and not counted, so a forwarded-link holder cannot lock the client out (breaker m2).
+  * With the code on, only a session a right code started counts: a session started by consent while the code was off ends when the firm switches the code back on (breaker m1).
+  * The code's email key holds nothing of the code (reviewer m1).
+* **Small fixes:**
+  * The state is re-checked after the request's lock: 409 in words, never a 500 (reviewer m3).
+  * The retainer moves to VIEWED only at its current version (reviewer m2).
+  * The view line has before and after (reviewer m6).
+  * With the code off, the 401's words say "Agree first" (reviewer m5, breaker m3).
+  * `rollback.sql` deletes its `_prisma_migrations` row (reviewer m7).
+* **Tests** (reviewer M2): headers; consent needed; GET writes nothing; viewed and VIEWED; session replacement with the code on; the server-side expiry; checks with no code asked; JSON only; the code switched back on; SIGNED_OFFLINE in the ended-state loop; misses never blocking a live link.
+
+## Hand-over: FO-6 part 4c (written 24 Nov at 4b's Approve; Lead 28: no 4c in this session)
+**State.** 4a is on main (#3433). 4b (#3460) has round 3 approved by the reviewer and the breaker on fcb8e3ad8. Still owed, by the Lead, before the label: Lead B's re-read, the Lead's read line, and `ci` on the final head. Its stamp 20261124130000 lands after #3234 and #3235 (Lead 28). **Start 4c only once #3460 has merged**, on a new branch from origin/main (never build on an unmerged PR).
+
+**4c builds** (rules 11 and 12 above; the concept first, Lead 28: "Start 4c's concept now"):
+1. **The fake's stand-in signing page** (local only):
+   * `fakeSigning`'s `embeddedLink` points at a page on the copy's own origin, never `signing.fake.invalid`. That origin is `signingPublicBase()` from `link-mail.ts`, which is null outside local.
+   * The page checks a single-use nonce (10 minutes, held in the fake) and has a Sign button. Sign runs the fake's `act("signed")` and hands its webhook calls to `Signing.receive`, so part 3's order, consent and evidence rules apply unchanged.
+   * The route is registered only when `PLATFORM_ENVIRONMENT=local`. In test and production it does not exist (404), and a start-up assertion checks that it is not registered there. **4a review m5:** a unit line proves the 404 outside local.
+   * After a restart the fake has forgotten its envelopes, so `/session` answers 409 "Ask … to send it again" (already in `door.ts`).
+2. **The firm signer's link:** `POST /api/front-office/retainers/:id/firm-signing-link`.
+   * Keys: `@PermissionKeys("agent/retainer:show")`, `@OwnOrAll("agent/prospect")`, and the caller must be the retainer's representative (403 `NOT_THE_REPRESENTATIVE`).
+   * Only after every client signed (409 before). The body is `{ consent: true, consentTextVersion }`, which records the firm signer's consent once (part 3's webhook refuses a signature without it, `signing/service.ts:211`); without it, 422.
+   * It answers the adapter's link, which on the copy is item 1's page.
+3. **Lead B 6's two Minors on #3460:**
+   * `session` asks the provider for the embedded link before the lock. Re-check the end and the session under the lock after the link is fetched, and refuse if the request ended meanwhile.
+   * The limiter is in one process and its map is swept only of expired keys. Carry both as **known limits** in the module card (Lead 28: fine until two tasks share a limit).
+4. **The test:** `check_fo6_door.ts` drops its third argument (`4a,4b`), so every line counts; E's six lines must go green. If the door's page path changes, j_54 W3's `{}` body is qa's to change (Lead 24, answer 10).
+5. **Records:** `break-report-4b.md` is 107 lines after three rounds; the facts were kept, nothing cut (rule 8).
+
+**Size:** about 400 changed lines; no migration. Breaker: yes (a staff permission route and a public page).
+**Journey lines 4c turns green:**
+* j_54 W2 (signs) and W3;
+* j_61 W3 (signs), and W6 and W7 API;
+* it unblocks j_54 W4-W6.
+
+**Not 4c:**
+* FO-6v, the vendor (held, P-561);
+* part 5: expiry by JobPort, reminders, Send updated version, the representative's "needs you", PF-27;
+* FO-5d (decline, withdraw);
+* FO-5s, the client's `/sign/:token` page;
+* QA-777 (the R1.104 lane);
+* FO-6d's link emails (a small row after 4b, Lead 25).

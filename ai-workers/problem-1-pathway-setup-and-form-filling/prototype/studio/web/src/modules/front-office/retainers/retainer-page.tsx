@@ -11,11 +11,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FoldOut } from "@/components/fold-out";
 import { Button, Field, Input, Notice, Panel, Pill, Select } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
-import { can } from "../sales/contract";
+import { can, Prospect } from "../sales/contract";
 import { Loading } from "../sales/loading";
 import { SalesFrame, useStaff } from "../sales/sales-frame";
 import { staffApi, StaffApiError, staffToken } from "../sales/session";
-import { cad, centsIn, isNoFee, NO_FEE, EDITABLE, R_KEY, Representatives, Retainer, STATUS, TemplateChecklist, VALUE_LABELS, WHEN } from "./contract";
+import { cad, centsIn, isNoFee, NO_FEE, EDITABLE, R_KEY, Representatives, Retainer, STATUS, TemplateChecklist, Templates, VALUE_LABELS, WHEN } from "./contract";
 
 type Row = { label: string; amount: string; when: string; dueOn: string };
 const rowsOf = (r: Retainer): Row[] => r.version.fees.map((f) => ({ label: f.label, amount: f.amountMinor === null ? "" : (Number(f.amountMinor) / 100).toFixed(2), when: f.when, dueOn: f.dueOn ?? "" }));
@@ -24,26 +24,52 @@ const day = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-CA",
 /** A company contact's role in words (review n3). */
 const ROLE: Record<string, string> = { SIGNATORY: "Signatory", PRIMARY: "Primary contact", HR: "HR", BILLING: "Billing", OTHER: "Other" };
 const BLOCKER_FIELD: Record<string, string> = { fees: "fo-fees", representativeStaffId: "fo-rep", "client.name": "fo-values", signerPersonId: "fo-signer" };
+/** QA-780: the placeholder a potential conflict's disclosure prints through (Code s. 24(3)(o); gate.ts NO_DISCLOSURE). */
+const DISCLOSURE = "conflict.disclosure";
 
 function RetainerBody({ id }: { id: string }) {
   const me = useStaff(), qc = useQueryClient(), toast = useToast(), key = ["fo", "retainers", "one", id];
   const one = useQuery({ queryKey: key, retry: false, queryFn: async () => Retainer.parse(await staffApi(`/front-office/retainers/${encodeURIComponent(id)}`)) });
   const reps = useQuery({ enabled: can(me, R_KEY.draft), queryKey: ["fo", "retainer-representatives"], queryFn: async () => Representatives.parse(await staffApi("/front-office/retainer-representatives")) });
   const [editing, setEditing] = React.useState(false), [rows, setRows] = React.useState<Row[]>([]), [repId, setRepId] = React.useState(""), [signerId, setSignerId] = React.useState("");
+  // QA-780: the draft's template can be changed (the PATCH takes templateId). "" keeps this draft's template at its version
+  // (nothing sent); a template id is sent, and the server makes the version from that template's newest version. The list
+  // has its own key (review M1: the Retainer templates page caches a wider shape under ["fo", "retainer-templates", "all"]).
+  const [templateId, setTemplateId] = React.useState("");
+  const focusSend = React.useRef(false);   // review r2 n4: after "Save version n with the disclosure", focus moves to Check and send
+  const templates = useQuery({ enabled: can(me, R_KEY.draft), queryKey: ["fo", "retainer-templates", "pick"], queryFn: async () => Templates.parse(await staffApi("/front-office/retainer-templates")) });
+  // A pick the list no longer offers (switched off meanwhile, review m5) falls back to keeping the draft's template.
+  React.useEffect(() => { if (templateId && templates.data && !templates.data.some((t) => t.id === templateId && t.active)) setTemplateId(""); }, [templates.data, templateId]);
   const [error, setError] = React.useState<{ field: string | null; text: string; code?: string } | null>(null);
   const [sending, setSending] = React.useState(false), [showItems, setShowItems] = React.useState(false), [warnings, setWarnings] = React.useState<string[]>([]);
   const r = one.data;
-  const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); setSignerId(x.signerPersonId ?? ""); }, []);
+  // QA-779 (b): an Individual client had no email when this version was made. Once the record has one (added on the
+  // prospect page), a new version takes it (the save re-reads the record), so Save is pressable with no typed change.
+  const needsEmail = !!r?.prospect && r.mayChange && r.subject !== "COMPANY" && !!r.blockers.signerPersonId;
+  const record = useQuery({ enabled: needsEmail, queryKey: ["fo", "prospects", "one", r?.prospect?.id], queryFn: async () => Prospect.parse(await staffApi(`/front-office/prospects/${encodeURIComponent(r!.prospect!.id)}`)) });
+  React.useEffect(() => { if (r && focusSend.current) { focusSend.current = false; document.querySelector<HTMLElement>("[data-check-and-send]")?.focus(); } }, [r]);
+  const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); setSignerId(x.signerPersonId ?? ""); setTemplateId(""); }, []);
   React.useEffect(() => { if (r) reset(r); }, [r, reset]);
+  // QA-778: the version Check and send is saving; once the page shows it, it is checked (its blockers, or the Send panel).
+  const checkOnce = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!r || checkOnce.current !== r.version.n) return;
+    checkOnce.current = null;
+    if (Object.keys(r.blockers).length) document.querySelector<HTMLElement>("[data-error-summary] a")?.focus(); else setSending(true);
+  }, [r]);
   const checklist = useQuery({ enabled: showItems && !!r, queryKey: ["fo", "retainer-template-checklist", r?.template.id], queryFn: async () => TemplateChecklist.parse(await staffApi(`/front-office/retainer-templates/${r!.template.id}/checklist`)) });
   const after = (x: Retainer, text: string) => { qc.setQueryData(key, x); void qc.invalidateQueries({ queryKey: ["fo", "retainers", "of"] }); setEditing(false); setError(null); setWarnings(x.warnings ?? []); toast.push({ tone: "ok", text }); };
   const fail = (e: unknown) => {
     const field = e instanceof StaffApiError ? (Object.keys(e.problem.fields ?? {})[0] ?? null) : null;
-    setError({ field, text: e instanceof StaffApiError ? e.message : "Could not save. Please try again.", code: e instanceof StaffApiError ? e.problem.code : undefined });
+    // QA-780 review r2 m2: the pick then falls back to this draft's template, so the field says which one was refused.
+    const refused = field === "templateId" ? templates.data?.find((t) => t.id === templateId) : undefined;
+    setError({ field, text: refused ? `${refused.name} was switched off meanwhile, so you can no longer choose it. Nothing was saved.` : e instanceof StaffApiError ? e.message : "Could not save. Please try again.", code: e instanceof StaffApiError ? e.problem.code : undefined });
+    focusSend.current = false;
     if (e instanceof StaffApiError && e.status === 409) void one.refetch();   // a colleague changed or sent it (break m1)
+    if (field === "templateId") void templates.refetch();   // QA-780 review m5: switched off meanwhile, so the pick stops offering it
   };
   const save = useMutation({
-    mutationFn: async (fees: unknown[]) => Retainer.parse(await staffApi(`/front-office/retainers/${id}`, { method: "PATCH", json: { expectedVersion: r!.version.n, expectedStatus: r!.status, representativeStaffId: repId, fees, ...(r!.subject === "COMPANY" && signerId ? { signerPersonId: signerId } : {}) } })),
+    mutationFn: async (fees: unknown[]) => Retainer.parse(await staffApi(`/front-office/retainers/${id}`, { method: "PATCH", json: { expectedVersion: r!.version.n, expectedStatus: r!.status, representativeStaffId: repId, fees, ...(r!.subject === "COMPANY" && signerId ? { signerPersonId: signerId } : {}), ...(templateId ? { templateId } : {}) } })),
     onSuccess: (x) => after(x, `Saved as version ${x.version.n}.`), onError: fail,
   });
   const send = useMutation({
@@ -58,7 +84,7 @@ function RetainerBody({ id }: { id: string }) {
       const a = document.createElement("a"); a.href = URL.createObjectURL(await res.blob()); a.download = `retainer-v${n}.docx`; a.click(); URL.revokeObjectURL(a.href);
     } catch { toast.push({ tone: "danger", text: "Could not download the file. Please try again." }); }
   };
-  if (one.isPending) return <Loading label="Loading the retainer" rows={3} />;
+  if (one.isPending || (needsEmail && record.isPending)) return <Loading label="Loading the retainer" rows={3} />;   // the page opens once it knows (QA-779 b)
   if (one.isError || !r) {
     const gone = one.error instanceof StaffApiError && one.error.status === 404;
     return <section className="mx-auto max-w-xl rounded-xl border border-border bg-surface-raised p-6"><h1 className="text-lg font-semibold">{gone ? "Retainer not found" : "Could not load the retainer"}</h1><p className="mt-1 text-sm text-text-muted">{gone ? "There is no such retainer in your firm, or it is not one you may see." : "Please try again."}</p><Link to="/front-office/pipeline" className="mt-3 inline-block text-sm text-text-link hover:underline">Back to Pipeline</Link></section>;
@@ -67,18 +93,42 @@ function RetainerBody({ id }: { id: string }) {
   const client = String(v["client.name"] ?? "") || "the client", to = String(v["signer.email"] ?? v["client.email"] ?? "");
   const mayEdit = r.mayChange && can(me, R_KEY.draft) && EDITABLE.includes(r.status), draft = r.status === "DRAFT";
   const form = mayEdit && (draft || editing), next = r.version.n + 1;
-  const changed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && !!signerId && signerId !== (r.signerPersonId ?? ""));   // an empty pick is no change (break re-check)
+  const emailNow = needsEmail && form && !!record.data?.person?.email;
+  const typed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && !!signerId && signerId !== (r.signerPersonId ?? "")) || !!templateId;   // an empty pick is no change (break re-check)
+  const changed = typed || emailNow;   // QA-779 (b): the record's new email is a change to save (Check and send saves it first)
+  // QA-780: what the next version may be made from. First this draft's template at its own version: it prints the disclosure
+  // when the list's entry is that same version and names it, or (an older or switched-off version) when this version printed
+  // one; then the firm's active templates of this kind, the draft's own template only when it has a newer version (review M2:
+  // "prints" is that version's, and picking it sends templateId).
+  const active = (templates.data ?? []).filter((t) => t.kind === r.kind && t.active), mine = active.find((t) => t.id === r.template.id);
+  const same = !!mine && mine.version === r.template.version, printsHere = same ? !!mine.placeholders?.includes(DISCLOSURE) : !!v[DISCLOSURE];
+  const options = [{ value: "", label: `${r.template.name ?? "(removed)"} · version ${r.template.version}${mine && !same ? " (this draft's)" : ""}`, prints: printsHere, off: templates.isSuccess && !mine },
+    ...active.filter((t) => t.id !== r.template.id || t.version !== r.template.version).map((t) => ({ value: t.id, label: `${t.name} · version ${t.version}${t.id === r.template.id ? " (newest)" : ""}`, prints: !!t.placeholders?.includes(DISCLOSURE), off: false }))];
+  const toTemplate = () => document.querySelector<HTMLElement>("#fo-template select")?.focus();
+  const noDisclosure = error?.code === "CONFLICT_DISCLOSURE_NOT_PRINTED";
+  /** Its own template prints it but this version was made before the check: a new version prints it (gate.ts NO_DISCLOSURE). */
+  const resave = () => { focusSend.current = true; submit(); };
   const company = r.subject === "COMPANY", blocked = new Set([...(r.blockers["client.name"] ? ["client.name"] : []), ...(r.blockers.signerPersonId ? ["signer.name", "signer.email"] : [])]);
-  const submit = (e?: React.FormEvent) => {
-    e?.preventDefault();
+  /** The typed fee rows as the PATCH takes them, or null with the first wrong field said. */
+  const typedFees = (): unknown[] | null => {
     const fees: unknown[] = [];
     for (const [i, x] of rows.entries()) {
-      if (!x.label.trim()) return setError({ field: `fees[${i}].label`, text: `Fee row ${i + 1}: say what it is for.` });
+      if (!x.label.trim()) { setError({ field: `fees[${i}].label`, text: `Fee row ${i + 1}: say what it is for.` }); return null; }
       const c = centsIn(x.amount);
-      if ("refused" in c) return setError({ field: `fees[${i}].amountMinor`, text: `Fee row ${i + 1}: ${c.refused}` });
+      if ("refused" in c) { setError({ field: `fees[${i}].amountMinor`, text: `Fee row ${i + 1}: ${c.refused}` }); return null; }
       fees.push({ label: x.label.trim(), amountMinor: c.cents, when: x.when, dueOn: x.when === "ON_DATE" && x.dueOn ? x.dueOn : null });
     }
-    setError(null); save.mutate(fees);
+    setError(null); return fees;
+  };
+  const submit = (e?: React.FormEvent) => { e?.preventDefault(); const fees = typedFees(); if (fees) save.mutate(fees); };
+  // QA-778: Check and send never drops what was typed. Typed edits are saved first as the next version (each save is a
+  // version, BR-9; a wrong field stops it, nothing saved), then that version is checked: its blockers, or the Send panel.
+  const checkAndSend = () => {
+    if (!changed) return blockers.length ? document.querySelector<HTMLElement>("[data-error-summary] a")?.focus() : setSending(true);
+    const fees = typedFees();
+    // Armed from the save's own answer (review m3): a colleague's version read meanwhile is never checked as ours, and a
+    // refused save (409) arms nothing. The cache shows the version only after this runs (query-core notifies on a later tick).
+    if (fees) save.mutate(fees, { onSuccess: (x) => { checkOnce.current = x.version.n; } });
   };
   const fieldError = (f: string) => (error?.field === f ? error.text : null);
   const blockers = Object.entries(r.blockers), missing = new Set(r.missing);
@@ -96,7 +146,11 @@ function RetainerBody({ id }: { id: string }) {
       {r.status === "SENT" || r.status === "VIEWED" ? <Notice tone="info" title={`Waiting for ${client} to sign version ${r.version.n}.`}>{mayEdit ? "Edit makes a new version; the sent one stays as it was and the new one is sent again." : null}</Notice> : null}
       {!EDITABLE.includes(r.status) ? <Notice tone="info" title={r.status === "WITHDRAWN" ? "This retainer is withdrawn. Prepare a new one from the prospect." : `${client} has already signed. This retainer can no longer change.`} /> : null}
       {warnings.map((w) => <Notice key={w} tone="warn" title={w} />)}
-      {error && !error.field && error.code !== "SEND_BLOCKED" ? <Notice tone="danger" title={error.text} action={error.code?.startsWith("CONFLICT_") && r.prospect ? <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-sm text-text-link hover:underline">Open the prospect's conflict check</Link> : undefined} /> : null}
+      {error && !error.field && error.code !== "SEND_BLOCKED" ? <Notice tone="danger" title={error.text} action={noDisclosure && form ? (options[0].prints && !templateId ? <Button variant="link" size="sm" busy={save.isPending} onClick={resave}>Save version {next} with the disclosure</Button>
+        : options.some((o) => o.prints) ? <Button variant="link" size="sm" onClick={toTemplate}>Choose a template that prints it</Button>
+        : templates.isSuccess ? <span className="text-sm" data-no-disclosure-template>None of your firm's templates prints it yet. {can(me, "agent/retainer:configure-template") ? <><Link to="/front-office/settings/retainer-templates" className="text-text-link underline">Add {"{conflict.disclosure}"} to one in Retainer templates</Link>, then choose it here.</> : "Ask your firm's Owner or Admin to add {conflict.disclosure} to a retainer template, then choose it here."}</span>
+        : undefined)
+        : error.code?.startsWith("CONFLICT_") && r.prospect ? <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-sm text-text-link hover:underline">Open the prospect's conflict check</Link> : undefined} /> : null}
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <div className="flex min-w-0 flex-col gap-4">
           <section aria-labelledby="fo-agreement" className="rounded-xl border border-border bg-surface-raised p-4">
@@ -104,11 +158,14 @@ function RetainerBody({ id }: { id: string }) {
               {mayEdit && !draft && !editing ? <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button> : null}</div>
             <form onSubmit={submit} className="mt-3 flex flex-col gap-4" noValidate>
               <dl className="grid gap-1 text-sm sm:grid-cols-[9rem_1fr]">
-                <dt className="text-text-muted">Template</dt><dd className="[overflow-wrap:anywhere]">{r.template.name ?? "(removed)"} · version {r.template.version}</dd>
+                {!form ? <><dt className="text-text-muted">Template</dt><dd className="[overflow-wrap:anywhere]">{r.template.name ?? "(removed)"} · version {r.template.version}</dd></> : null}
                 {!(form && company) ? <><dt className="text-text-muted">Signer</dt><dd id="fo-signer" tabIndex={-1} className="[overflow-wrap:anywhere]">{String(v["signer.name"] ?? "") || "Not chosen"}{to ? ` · ${to}` : ""}
-                  {r.blockers.signerPersonId && EDITABLE.includes(r.status) ? <span className="block text-text-danger" data-blocker="signer">{r.blockers.signerPersonId}{!company && r.prospect && r.mayChange ? <> <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-text-link hover:underline">Add it on {client}'s record</Link>, then save a new version here.</> : null}</span> : null}</dd></> : null}
+                  {r.blockers.signerPersonId && EDITABLE.includes(r.status) ? <span className="block text-text-danger" data-blocker="signer">{r.blockers.signerPersonId}{emailNow ? <span id="fo-record-email" className="block text-text" data-record-email>{client}'s record now has an email. Save version {next} to use it.</span> : !company && r.prospect && r.mayChange ? <> <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-text-link hover:underline">Add it on {client}'s record</Link>, then save a new version here.</> : null}</span> : null}</dd></> : null}
                 {!form ? <><dt className="text-text-muted">Representative</dt><dd>{repName(r.representativeStaffId)}</dd></> : null}
               </dl>
+              {form ? <div id="fo-template"><Field label="Template" hint="The next version you save is made from this template." error={fieldError("templateId")}>
+                <Select value={templateId} onChange={(e) => { setTemplateId(e.target.value); setError(null); }}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}{o.prints ? " · prints the conflict disclosure" : ""}{o.off ? " · switched off" : ""}</option>)}</Select>
+              </Field></div> : null}
               {form && company ? <div id="fo-signer"><Field label="Who signs" hint="One of the company's contacts. A signatory contact is chosen first; any contact may sign." error={fieldError("signerPersonId") ?? r.blockers.signerPersonId ?? null}>
                 <Select value={signerId} onChange={(e) => { setSignerId(e.target.value); setError(null); }}><option value="">Choose who signs</option>{r.signerOptions.map((o) => <option key={o.personId} value={o.personId}>{o.name} · {ROLE[o.role] ?? o.role}{o.email ? ` · ${o.email}` : " · no email"}</option>)}</Select>
               </Field></div> : null}
@@ -132,7 +189,7 @@ function RetainerBody({ id }: { id: string }) {
                 {form ? <Button type="button" variant="link" size="sm" className="self-start" onClick={() => setRows((all) => [...all, { label: "", amount: "", when: "ON_SIGNING", dueOn: "" }])}>Add a fee row</Button> : null}
               </fieldset>
               {form ? <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" variant={draft ? "outline" : "default"} busy={save.isPending} disabled={!changed}>Save as version {next}</Button>
+                <Button type="submit" variant={draft ? "outline" : "default"} busy={save.isPending} disabled={!changed} aria-describedby={emailNow ? "fo-record-email" : undefined}>Save as version {next}</Button>
                 {!draft ? <Button type="button" variant="ghost" onClick={() => { setEditing(false); reset(r); setError(null); }}>Cancel</Button> : null}
                 <span className="text-xs text-text-muted">{draft ? "Each save is a new version." : `Saving stops the link ${client} has for version ${r.version.n} (it stays as it was sent); version ${next} is then a draft you send again.`}</span>
               </div> : null}
@@ -170,7 +227,10 @@ function RetainerBody({ id }: { id: string }) {
             <FoldOut className="mt-2" summaryClassName="text-xs text-text-muted" summary="Each item, marked or not"><ul className="mt-2 flex flex-wrap gap-1" aria-label="Code s. 24(3) items">{r.codeChecklist.items.map((i) => <li key={i.letter}><Pill tone={i.present ? "ok" : "neutral"} title={`s. ${i.section}: ${i.present ? "marked" : "not marked"} in this agreement's template`}>({i.letter}) {i.present ? "marked" : "not marked"}</Pill></li>)}</ul></FoldOut>
             <Button variant="link" size="sm" className="mt-1" onClick={() => setShowItems(true)}>See the items and how we check</Button>
           </section> : null}
-          {draft && r.mayChange && can(me, R_KEY.send) ? <Button data-check-and-send onClick={() => (blockers.length ? document.querySelector<HTMLElement>("[data-error-summary] a")?.focus() : setSending(true))}>Check and send</Button> : null}
+          {draft && r.mayChange && can(me, R_KEY.send) ? <>
+            <Button data-check-and-send busy={save.isPending} onClick={checkAndSend} aria-describedby={form && typed ? "fo-unsaved-hint" : undefined}>Check and send</Button>
+            {form && typed ? <p id="fo-unsaved-hint" className="-mt-2 text-xs text-text-muted" data-unsaved-hint>You have unsaved changes. Check and send saves them as version {next} first.</p> : null}
+          </> : null}
         </aside>
       </div>
       <Panel open={sending} onOpenChange={setSending} title={`Send to ${client} to sign`} description={`Version ${r.version.n}. Once sent, this version never changes.`}
