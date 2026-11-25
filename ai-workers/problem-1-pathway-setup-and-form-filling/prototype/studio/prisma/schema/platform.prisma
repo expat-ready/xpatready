@@ -522,7 +522,7 @@ model PlatformSignupPending {
 // the person record (fo_person, checked by the service: no foreign key across areas), who asked and why (a reason in
 // their own words, AG-2-93 rule 7 and the capability's "who and why"), the file once built (person-export/<id>.json),
 // its sha256, READY for the Sample 7 days, then EXPIRED; FAILED names the module only. Checks in migration
-// 20261125090000_platform__pf26_person_export.
+// 20261125150000_platform__pf26_person_export.
 enum PlatformPersonExportState {
   QUEUED
   READY
