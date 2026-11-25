@@ -40,8 +40,8 @@ export class StripeConnectHookController {
 
 /** No body, or JSON: a body of another type is refused (415), never read as "no fields" (break m3, review minor). */
 function notJson(h: Record<string, string | string[] | undefined> | undefined) {
-  const type = h?.["content-type"], length = Number(h?.["content-length"] ?? 0);
-  if (length > 0 && !(typeof type === "string" && /^application\/json\s*(;|$)/i.test(type))) problem(415, "Send JSON", "This route takes no body, or a JSON one.", { code: "UNSUPPORTED_MEDIA_TYPE" });
+  const type = h?.["content-type"], length = Number(h?.["content-length"] ?? 0), chunked = h?.["transfer-encoding"] !== undefined;   // break n1: a chunked body has no length
+  if ((length > 0 || chunked) && !(typeof type === "string" && /^application\/json\s*(;|$)/i.test(type))) problem(415, "Send JSON", "This route takes no body, or a JSON one.", { code: "UNSUPPORTED_MEDIA_TYPE" });
 }
 
 @Controller("api/front-office/money/invoices")

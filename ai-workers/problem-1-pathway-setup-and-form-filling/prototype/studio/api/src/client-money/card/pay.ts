@@ -37,8 +37,8 @@ export const LINK_NOT_WORKING = "This payment link does not work. It may have be
 /** PF-27's neutral refusal (SA-2-35): it never says why. */
 export const NOT_AVAILABLE = "Online payment is not available for this firm right now. Nothing was charged.";
 export const CARD_DOWN = "Online payment is temporarily unavailable.";
-/** A hosted page lives 30 to 40 minutes (Sample): it expires at the end of the next 10-minute slot plus 30 minutes. */
-const SLOT_MS = 10 * 60_000, MIN_LIFE_MS = 30 * 60_000;
+/** A hosted page lives 31 to 41 minutes (Sample): it expires at the end of the next 10-minute slot plus 30 minutes. */
+const SLOT_MS = 10 * 60_000, MIN_LIFE_MS = 31 * 60_000;   // break n3: a minute above Stripe's least, for latency and clock skew
 const sha = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
 const notWork = (): never => problem(404, "Not found", LINK_NOT_WORKING, { code: "LINK_NOT_WORKING" });
 const refuse = (code: string, detail: string): never => problem(409, "Not possible now", detail, { code });
@@ -138,33 +138,40 @@ export class CardPay {
   }
 
   /** POST /api/public/pay/:token/session: the hosted payment for the full amount due, on the firm's own account.
-   *  Break M1-M2 (#3633): the amount due and the payment count are read in one snapshot; the session expires in 30 to 40
-   *  minutes (Sample; Stripe's least is 30), so a page handed out before the invoice changed stops taking cards soon (money
-   *  paid past what is due in that window is FO-7b's "extra", part 2b); the idempotency key is a hash of every parameter
-   *  sent, so the same click while nothing changed is the same page, and a new link, a new amount or a renamed firm is a
-   *  new page (never Stripe's "key reused with other parameters"). */
+   *  Break and review rounds 1-2 (#3633): under the invoice's row lock (an offline payment waits, so the amount due and
+   *  the payment count read together), the idempotency key hashes every parameter sent (the same click in the same
+   *  10-minute slot is the same page; a new link, amount, name or slot a new one, never Stripe's "key reused"); each page
+   *  expires 31 to 41 minutes on (Sample; Stripe's least is 30); and every other open page of the invoice is expired
+   *  before the new one is answered, so one page at most takes a card. A page paid in the moments before an offline
+   *  payment lands is money past what is due: FO-7b's "extra" (part 2b), never fees earned. */
   session(token: unknown): Promise<{ url: string }> {
-    return this.open(token, async (db, firmId, _v, firm) => {
+    return this.open(token, async (db, firmId, first, firm) => {
       if (this.p.notReady && !this.saidNotReady) { this.saidNotReady = true; logPort.warn("card_pay_not_set_up", { why: this.p.notReady }); }
       if (!(await payAllowed(db, firmId))) refuse("NOT_AVAILABLE", NOT_AVAILABLE);
-      const snap = await db.$transaction(async (tx) => {
-        const f = await invoiceFacts(tx, firmId, _v.id, dayOf(this.p.clock.now()));
-        return { f, payments: await tx.moneyPayment.count({ where: firmScope(firmId, { invoiceId: _v.id }) }) };
-      }, { isolationLevel: "RepeatableRead" });
-      if (!snap.f || notPayable(snap.f.view)) return notWork();
-      const v = snap.f.view, account = await this.cardAccount(db, firmId);
-      if (!account) return problem(409, "Not possible now", CARD_DOWN, { code: "CARD_NOT_OFFERED", offline: await this.offline(db, firmId, v, firm) });
-      const back = `${this.p.appUrl}${PAY_PATH}/${token as string}`, slot = Math.floor(this.p.clock.now().getTime() / SLOT_MS) * SLOT_MS;
-      const ask = { account, amountMinor: v.dueMinor, currency: v.currency, description: `Invoice ${v.number} from ${firm.name}`.slice(0, 200),
-        metadata: { firm_id: firmId, invoice_id: v.id }, successUrl: `${back}/done`, cancelUrl: back, expiresAtSec: Math.floor((slot + SLOT_MS + MIN_LIFE_MS) / 1000) };
-      try {
-        const s = await this.p.rail.createHostedPayment({ ...ask, idempotencyKey: `fo7c-pay-${v.id}-${snap.payments}-${sha(JSON.stringify(ask)).slice(0, 40)}` });
-        return { url: s.url };
-      } catch (e) {
-        if (!(e instanceof RailRefused || e instanceof RailAccountGone)) throw e;   // refused, or the account is no longer ours to charge
-        logPort.info("card_pay_refused_by_rail", { invoiceId: v.id });
-        return problem(409, "Not possible now", CARD_DOWN, { code: "CARD_NOT_OFFERED", offline: await this.offline(db, firmId, v, firm) });
-      }
+      const account = await this.cardAccount(db, firmId);
+      if (!account) return problem(409, "Not possible now", CARD_DOWN, { code: "CARD_NOT_OFFERED", offline: await this.offline(db, firmId, first, firm) });
+      const back = `${this.p.appUrl}${PAY_PATH}/${token as string}`;
+      const made = await db.$transaction(async (tx) => {
+        await tx.$queryRaw`select 1 from money_invoice where firm_id = ${firmId}::uuid and id = ${first.id}::uuid for update`;
+        const f = await invoiceFacts(tx, firmId, first.id, dayOf(this.p.clock.now()));
+        if (!f || notPayable(f.view)) return null;
+        const v = f.view, payments = await tx.moneyPayment.count({ where: firmScope(firmId, { invoiceId: v.id }) });
+        const slot = Math.floor(this.p.clock.now().getTime() / SLOT_MS) * SLOT_MS;
+        const ask = { account, amountMinor: v.dueMinor, currency: v.currency, description: `Invoice ${v.number} from ${firm.name}`.slice(0, 200),
+          metadata: { firm_id: firmId, invoice_id: v.id }, successUrl: `${back}/done`, cancelUrl: back, expiresAtSec: Math.floor((slot + SLOT_MS + MIN_LIFE_MS) / 1000) };
+        try {
+          const s = await this.p.rail.createHostedPayment({ ...ask, idempotencyKey: `fo7c-pay-${v.id}-${payments}-${sha(JSON.stringify(ask)).slice(0, 40)}` });
+          await this.p.rail.expireOtherHostedPayments(account, v.id, s.id);
+          return { url: s.url };
+        } catch (e) {
+          if (!(e instanceof RailRefused || e instanceof RailAccountGone)) throw e;   // refused, Stripe down, or the account no longer ours
+          logPort.warn("card_pay_refused_by_rail", { invoiceId: v.id, reason: e instanceof RailAccountGone ? "account gone" : e.message });
+          return { offline: true as const };
+        }
+      }, { timeout: 30_000 });
+      if (!made) return notWork();
+      if ("offline" in made) return problem(409, "Not possible now", CARD_DOWN, { code: "CARD_NOT_OFFERED", offline: await this.offline(db, firmId, first, firm) });
+      return made;
     });
   }
 }

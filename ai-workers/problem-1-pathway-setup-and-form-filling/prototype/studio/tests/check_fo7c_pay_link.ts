@@ -51,11 +51,11 @@ const local = new LocalIdentity("fo7c2a-check-signing-key-0123456789abcdef", () 
 const rail0 = fakeCardRail(), asked: HostedPaymentInput[] = [];
 /** The fake rail, keeping each hosted-payment request's parameters (break M1-M2: the key, the URLs, the expiry). */
 const rail = { ...rail0, createHostedPayment: (i: HostedPaymentInput) => { asked.push(i); return rail0.createHostedPayment(i); } };
-let scoped = true;   // false: the C5 scope fails closed (FO-7b's own suite tests the real one)
+let scoped = true, skew = 0;   // skew: the door's clock moved ahead (break N1: a click in a later 10-minute slot)   // false: the C5 scope fails closed (FO-7b's own suite tests the real one)
 type Res = { status: number; body: any; headers: Headers };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other checks
 let app: { close(): Promise<void> } | null = null;
 try {
-  const ports = (db: InstanceType<typeof Db>) => new CardPay(db, { rail, audit: auditEvent, clock: { now: () => new Date() }, appUrl: "https://app.example.test", scopeOf: async (ctx) => (scoped ? "ALL" : failClosed(ctx)) });
+  const ports = (db: InstanceType<typeof Db>) => new CardPay(db, { rail, audit: auditEvent, clock: { now: () => new Date(Date.now() + skew) }, appUrl: "https://app.example.test", scopeOf: async (ctx) => (scoped ? "ALL" : failClosed(ctx)) });
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
     { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: CardPay, useFactory: ports, inject: [Db] }];
   @Module({ controllers: [PlatformIdentityController, PayLinkController, PublicPayController] as never[], providers: providers as never[] }) class TestApp {}
@@ -177,16 +177,25 @@ try {
   sql(`update platform_firm set operating_name = '${name0} Renamed' where id = '${A}'`); const sRen = await call(undefined, "POST", `/public/pay/${T2}/session`); sql(`update platform_firm set operating_name = '${name0.replace(/'/g, "''")}' where id = '${A}'`);
   ok("FO-7c DW11 fail (break M1): the firm renamed between two clicks → a new hosted page with the new name, not a 500", sRen.status === 200 && asked.at(-1)?.description.endsWith("Renamed") === true, sRen.body);
   const exp = asked.at(-1)?.expiresAtSec ?? 0, inS = exp - Date.now() / 1000;
-  ok("FO-7c pass (break M2): every hosted page expires in 30 to 40 minutes (Sample; Stripe's least is 30), so a page handed out before the invoice changed stops taking cards soon", asked.length > 0 && asked.every((a) => !!a.expiresAtSec) && inS >= 29 * 60 && inS <= 41 * 60, inS);
+  ok("FO-7c pass (break M2): every hosted page expires in 31 to 41 minutes (Sample; a minute above Stripe's least of 30), so a page handed out before the invoice changed stops taking cards soon", asked.length > 0 && asked.every((a) => !!a.expiresAtSec) && inS >= 30.5 * 60 && inS <= 41.1 * 60, inS);
+  { const idOf = (url: string) => url.split("/").at(-1) ?? "", p1 = idOf((await call(undefined, "POST", `/public/pay/${T2}/session`)).body.url);
+    skew = 10 * 60_000; const r2 = await call(undefined, "POST", `/public/pay/${T2}/session`), p2 = idOf(r2.body.url); skew = 0;
+    const paysOld = (() => { try { rail0.succeed(acct, p1, new Date()); return true; } catch { return false; } })();
+    ok("FO-7c DW11 fail (break round 2 N1): a click in a later 10-minute slot on an unchanged invoice gets a new page AND the earlier page is expired: only one page can take the card",
+      r2.status === 200 && p2 !== p1 && !paysOld && rail0.calls().some((c) => c.name === "expireOtherHostedPayments"), { p1, p2, paysOld });
+    const late = asked.at(-1)?.expiresAtSec ?? 0, paysLate = (() => { try { rail0.succeed(acct, p2, new Date(late * 1000 + 1000)); return true; } catch { return false; } })();
+    ok("FO-7c pass (break round 2 n4): the fake rail, as Stripe, takes no card on a page past its expiry", !paysLate); }
   await pay(A, I1, "user-R", 60000, "fo7c2a-rest-offline");
   const settled = await call(undefined, "GET", `/public/pay/${T2}`), settledS = await call(undefined, "POST", `/public/pay/${T2}/session`);
-  ok("FO-7c DW5 fail: once paid in full the link is the same not-found as an unknown one (GET and POST), no session", settled.status === 404 && settledS.status === 404 && settled.body.detail === LINK_NOT_WORKING && sessions().length === before + 6, settled.body);
+  ok("FO-7c DW5 fail: once paid in full the link is the same not-found as an unknown one (GET and POST), no session", settled.status === 404 && settledS.status === 404 && settled.body.detail === LINK_NOT_WORKING && sessions().length === before + 8, settled.body);
   const unknown = await call(undefined, "GET", `/public/pay/${A.replace(/-/g, "")}.${"A".repeat(43)}`), malformed = await call(undefined, "GET", "/public/pay/nonsense");
   ok("FO-7c DW5 fail: an unknown and a malformed link → the same 404 and words", unknown.status === 404 && malformed.status === 404 && unknown.body.detail === malformed.body.detail, [unknown.body, malformed.body]);
 
   const plain = await read(await fetch(`${base}/api${LINK(IB)}`, { method: "POST", headers: { "content-type": "text/plain", authorization: `Bearer ${tB}` }, body: "amountMinor=1" }));
   const plainS = await read(await fetch(`${base}/api/public/pay/${B.replace(/-/g, "")}.${"B".repeat(43)}/session`, { method: "POST", headers: { "content-type": "text/plain" }, body: "x" }));
-  ok("FO-7c door fail (review minor): a body that is not JSON on the client's session door → 415, no hosted payment", plainS.status === 415 && sessions().length === before + 6, plainS.body);
+  ok("FO-7c door fail (review minor): a body that is not JSON on the client's session door → 415, no hosted payment", plainS.status === 415 && sessions().length === before + 8, plainS.body);
+  const chunked = await read(await fetch(`${base}/api${LINK(IB)}`, { method: "POST", headers: { "content-type": "text/plain", authorization: `Bearer ${tB}` }, body: new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("x")); c.close(); } }), duplex: "half" } as RequestInit));
+  ok("FO-7c DW5 fail (break round 2 n1): a chunked body that is not JSON (no Content-Length) → 415 too, no new link", chunked.status === 415 && hashOf(IB, B) === createHash("sha256").update(TB).digest("hex"), chunked.body);
   ok("FO-7c DW5 fail (break m3): a body that is not JSON on the pay-link route → 415, no new link", plain.status === 415 && hashOf(IB, B) === createHash("sha256").update(TB).digest("hex"), plain.body);
   // Break m1: on the Stripe adapter, the processor's refusals end as the offline answer (RailAccountGone or RailRefused),
   // never a 500. Stripe's own error bodies, answered by a stand-in fetch (no network).
@@ -197,9 +206,10 @@ try {
   const kinds = [await kindOf(stripeSays(403, { type: "invalid_request_error", message: "The provided key does not have access to account (Sample)." })),
     await kindOf(stripeSays(400, { type: "invalid_request_error", code: "account_invalid", message: "Sample" })),
     await kindOf(stripeSays(400, { type: "invalid_request_error", message: "Your account cannot currently make live charges (Sample)." })),
-    await kindOf(stripeSays(400, { type: "idempotency_error", message: "Keys for idempotent requests can only be used with the same parameters (Sample)." }))];
-  ok("FO-7c DW8 fail (break m1): on the Stripe adapter a revoked account (403), account_invalid, \"cannot make live charges\" and a reused key are gone, gone, refused, refused: each the offline answer, never a 500",
-    JSON.stringify(kinds) === JSON.stringify(["gone", "gone", "refused", "refused"]), kinds);
+    await kindOf(stripeSays(400, { type: "idempotency_error", message: "Keys for idempotent requests can only be used with the same parameters (Sample)." })),
+    await kindOf(stripeSays(500, { type: "api_error", message: "Sample outage" })), await kindOf(stripeSays(401, { type: "invalid_request_error", message: "Invalid API Key provided (Sample)" }))];
+  ok("FO-7c DW8 fail (break m1): on the Stripe adapter a revoked account (403), account_invalid, \"cannot make live charges\", a reused key, Stripe down (500) and a refused key (401, round 2 n2) are gone, gone, refused ×4: each the offline answer, never a 500",
+    JSON.stringify(kinds) === JSON.stringify(["gone", "gone", "refused", "refused", "refused", "refused"]), kinds);
 
   // -------------------------------------------------------------------------------------------------- the limit
   const burst: number[] = [];

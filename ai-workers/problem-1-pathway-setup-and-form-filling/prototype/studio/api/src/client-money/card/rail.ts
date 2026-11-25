@@ -47,6 +47,8 @@ export interface CardRail {
   /** Part 2: a hosted payment page for the full amount, charged on the firm's account (a direct charge). */
   createHostedPayment(input: HostedPaymentInput): Promise<{ id: string; url: string }>;
   /** Part 2: one payment intent of the firm's account. */
+  /** Break N1 (#3633): expires every other open hosted payment of this invoice on the account, so one page at most takes a card. */
+  expireOtherHostedPayments(account: string, invoiceId: string, keepId: string): Promise<number>;
   readPaymentIntent(account: string, intentId: string): Promise<RailIntent>;
   /** Part 2: the account's succeeded intents created since `since` (the reconciliation poll). */
   listSucceededIntents(account: string, since: Date): Promise<RailIntent[]>;
@@ -77,7 +79,7 @@ export type FakeCardRail = CardRail & {
 export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } = {}): FakeCardRail {
   const signing = opts.webhookSecret ?? "fake-rail-signing-value", now = opts.now ?? (() => new Date());
   const accounts = new Map<string, RailAccount>(), byKey = new Map<string, unknown>(), gone = new Set<string>(), log: { name: string; key?: string }[] = [];
-  const payments = new Map<string, { account: string; intent: RailIntent; created: Date; paid: Date | null }>(), sent = new Map<string, string>();
+  const payments = new Map<string, { account: string; intent: RailIntent; created: Date; paid: Date | null; expiresAt: number | null; open: boolean }>(), sent = new Map<string, string>();
   let n = 0, refusing = false;
   const once = <T>(name: string, key: string, make: () => T): T => { log.push({ name, key }); if (!byKey.has(`${name}:${key}`)) byKey.set(`${name}:${key}`, make()); return byKey.get(`${name}:${key}`) as T; };
   const have = (account: string) => { const a = gone.has(account) ? undefined : accounts.get(AccountId.parse(account)); if (!a) throw new RailAccountGone(); return a; };
@@ -94,7 +96,12 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
       const { idempotencyKey: _k, ...asked } = i, said = JSON.stringify(asked), was = sent.get(i.idempotencyKey);
       if (was !== undefined && was !== said) { log.push({ name: "createHostedPayment", key: i.idempotencyKey }); throw new RailRefused("this idempotency key was used with other parameters"); }
       sent.set(i.idempotencyKey, said);
-      return once("createHostedPayment", i.idempotencyKey, () => { const id = `cs_fake_${++n}`, intent: RailIntent = { id: `pi_fake_${n}`, status: "requires_payment_method", amountMinor: i.amountMinor, currency: i.currency, metadata: { ...i.metadata } }; payments.set(id, { account: i.account, intent, created: now(), paid: null }); return { id, url: `https://pay.fake-rail.example/${id}` }; });
+      return once("createHostedPayment", i.idempotencyKey, () => { const id = `cs_fake_${++n}`, intent: RailIntent = { id: `pi_fake_${n}`, status: "requires_payment_method", amountMinor: i.amountMinor, currency: i.currency, metadata: { ...i.metadata } }; payments.set(id, { account: i.account, intent, created: now(), paid: null, expiresAt: i.expiresAtSec ? i.expiresAtSec * 1000 : null, open: true }); return { id, url: `https://pay.fake-rail.example/${id}` }; });
+    },
+    async expireOtherHostedPayments(account, invoiceId, keepId) {
+      have(account); log.push({ name: "expireOtherHostedPayments" }); let n = 0;
+      for (const [id, p] of payments) if (p.account === account && id !== keepId && p.open && !p.paid && p.intent.metadata.invoice_id === invoiceId) { p.open = false; n++; }
+      return n;
     },
     async readPaymentIntent(account, intentId) { have(account); const p = [...payments.values()].find((x) => x.account === account && x.intent.id === intentId); if (!p) throw new Error("no such payment intent on this account"); return { ...p.intent }; },
     async listSucceededIntents(account, since) { have(account); return [...payments.values()].filter((p) => p.account === account && p.intent.status === "succeeded" && p.created >= since)   // by creation time, as Stripe lists them (review m6)
@@ -112,7 +119,9 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
     },
     set(account, state) { Object.assign(have(account), state); },
     deauthorize(account) { gone.add(account); },
-    succeed(account, paymentId, at) { const p = payments.get(paymentId); if (!p || p.account !== account) throw new Error("no such hosted payment on this account"); p.intent.status = "succeeded"; p.paid = at; return { ...p.intent }; },
+    succeed(account, paymentId, at) { const p = payments.get(paymentId); if (!p || p.account !== account) throw new Error("no such hosted payment on this account");
+      // As Stripe (break n4): an expired page, or one past its expires_at, takes no card.
+      if (!p.open || (p.expiresAt !== null && at.getTime() >= p.expiresAt)) throw new Error("this hosted payment has expired"); p.intent.status = "succeeded"; p.paid = at; return { ...p.intent }; },
     refuseRefunds(on) { refusing = on; },
     sign(rawBody, withSecret = signing, at = now()) { return Stripe.webhooks.generateTestHeaderString({ payload: rawBody, secret: withSecret, timestamp: Math.floor(at.getTime() / 1000) }); },
     calls: () => log.map((c) => ({ ...c })),
