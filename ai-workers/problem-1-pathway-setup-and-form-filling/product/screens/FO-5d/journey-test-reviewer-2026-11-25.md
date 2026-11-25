@@ -36,3 +36,23 @@ Fixes that would raise the low lines, most valuable first: m1 (say "has been tol
 
 ## Could not test
 A real screen reader, and an intended user's unaided walk (D17 and D20 stay with the founder). The client's Decline page (not built). The real e-signature vendor (fake adapter only). A deadlock against #3648's withdraw (not merged): read from code only (review m6).
+
+## Round 2 (e7bee6efb), diff-only, reviewer
+Walked in process with the PR's own controller, on a scratch copy of `studio/` (no HTTP copy this round; never :4400).
+* **J3b. A client writes a two-line reason** ("We chose another firm.\nThanks for your time (Sample)"). Expected: DECLINED, the reason kept. **Failed.** The check `fo_signer_decline_reason_check` refuses the newline (`migration.sql:14` `[[:cntrl:]]`). Over HTTP this is a 500 "Something went wrong", the request stays SENT, and the reason goes to the server log in the error's detail. CRLF and tab inside the text fail the same way. Round 1 accepted these reasons.
+* **J3c. Persian with ZWNJ, emoji ZWJ sequences.** DECLINED, but the reason is altered: the joiners are removed (`decline.ts:33`).
+* **Held.** "has been told" only for a declined retainer, and the consultation stand-in answers plainly. 500 emoji are accepted and 501 get 422. Invisible-only and NUL-only reasons are no reason. `"a\u0000b"` is kept as "ab" (it was a 404).
+
+| Criterion | R1 | R2 | Why it changed |
+|---|---|---|---|
+| Task completed | 1 | ½ | J3b: a multi-line reason cannot be declined |
+| Next step obvious | ½ | ½ | words unchanged (review m3) |
+| Plain words | ½ | 1 | "has been told" true now; emoji counted right |
+| Feedback and state | 1 | 1 | |
+| Correct data | 1 | ½ | J3c: joiners removed, not word for word |
+| Error recovery | 1 | ½ | J3b: 500, no field error, nothing kept |
+| Accessibility and screen sizes | ½ | ½ | no screen |
+| Speed | 1 | 1 | |
+| Visual quality | ½ | ½ | no screen |
+| Trust and sources | 1 | 1 | |
+| **Total** | **8** | **7 / 10** | **Fail** (below 8). The most valuable fix is J3b (one rule for app and DB on tab, LF and CR), then J3c |

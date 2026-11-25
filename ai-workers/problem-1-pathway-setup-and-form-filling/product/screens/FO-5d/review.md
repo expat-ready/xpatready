@@ -97,3 +97,53 @@ BIC-01 to BIC-20: N/A (no case-side screen in this PR).
 A real vendor (fake adapter only). The deadlock with #3648 (not merged; read from code). The client's page and keyboard path (FO-5s S7). A screen reader and an intended user (D17 and D20 stay with the founder).
 
 Reviewer: Block d2c603bd38cfec50738400003470d3720aef7ec3
+
+## Round 2 (e7bee6efb, diff-only against d2c603bd3)
+
+**Verdict: Block.** M1, M2 and M3 are closed, and each test line now goes red when its rule is removed. But the round's new database check refuses a line break or a tab *inside* a reason, which the app keeps. A client who writes a reason in two lines cannot decline at all and gets a 500. That is one new Major.
+
+**Ran:** `check_fo5d_decline_withdraw.ts`: exit 0, 37/37. I made two scratch copies of `studio/` (the worktree has no edits; `git status` is clean). One copy was for the mutations, one for the probes (a copy of the suite with extra declines).
+
+**Mutations at e7bee6efb** (red means the suite catches the removed rule):
+* Red: recipient always the representative (M1 line) · recipient the owner only (crash) · `r.kind === "RETAINER"` (M2) · `canOpen` (M3) · `s.role === "CLIENT"` (m3 line) · "told" always true, or true regardless of kind (M2 line) · no character removal (NUL → 22021 crash) · length counted in UTF-16 units, slice by UTF-16 units (m2 line) · the schema's refine · the check's `\u00a0` and `[[:cntrl:]]` (D-DB) · app trim of spaces only (check violation).
+* Green: the 409 mapping for P2034 or deadlock (`door.ts:127`). It is untested, which is acceptable for a deadlock path, but the PR body should say so.
+
+**Round-1 findings:**
+* **M1 closed.** The owner is told when owner and representative differ. With no owner, the representative is told.
+* **M2 closed.** The stand-in is honest. It is said in the test, and it flips `kind` on both `fo_retainer` and `fo_signature_request`. The door's decline then runs the same `applyDecline` path a real consultation link reaches (`booking/consultation-agreement/service.ts:237-241` creates exactly these two kinds). A real FO-3c booking would be stronger, but it is not required.
+* **M3 closed.** It uses the right pattern: everyone-sees-all off, the reader given the prospect, then reassigned away.
+* **m1 closed.** "Has been told" appears only for a RETAINER that became DECLINED. That matches the notify rule, since the door's signer is always CLIENT.
+* **m2 closed.** The length is counted in code points in the schema, the slice and the DB.
+* **Breaker m3 closed.** A NUL is now removed, not answered 404.
+* **Breaker m4 closed.** Every whitespace kind is refused at either end.
+* **Breaker m5 closed,** but it goes too far (see m10).
+* **Breaker m6 / reviewer m3 (who declined) closed.**
+* **m5 partly closed.** M9 (provider decline after signing) now has a line. M1 (version check) and M4 (limiter) still have none.
+* **Postgres escape works.** `\u00a0` inside the bracket is accepted as intended (ARE character-entry escape in a standard-conforming literal). A probe over every code point under C, C.utf8, en_US.utf8, und-x-icu and pg_c_utf8 shows two things. First, `[[:cntrl:]]` is U+0001-001F, U+007F-009F in all five. Second, every edge character the DB refuses is one `cleanReason` already trims or removes. So the edges agree under every collation.
+
+**Major (Must), new: a reason with a line break, CR or tab inside is refused by the database, so the decline fails with a 500** (`migration.sql:14` vs `decline.ts:33`).
+* Cause: `cleanReason` deliberately keeps U+0009, U+000A and U+000D (its class skips them), but `!~ '[[:cntrl:]]'` refuses them anywhere in the text.
+* Probe (in process, the PR's own controller): `"We chose another firm.\nThanks for your time (Sample)"`, `"Line one\r\nLine two"` and `"Fee\ttoo high"` each threw a check violation (`fo_signer_decline_reason_check`). The request stays SENT and nothing is kept. `main.ts:230` turns that into 500 "Something went wrong" and `console.error`s the Prisma error, whose `detail` holds the failing row, so the client's reason also lands in the server log (round 1: "the reason appears in no … api.log line").
+* Reach: FO-5s S7's reason box will be a multi-line field. Round 1 accepted these reasons; this round broke them. The over-cleaning (m10) ran across every code point, and the 500 occurs under all five collations.
+* Fix: make the two rules one, either way:
+  * the check refuses `[[:cntrl:]]` other than tab, LF and CR (e.g. `!~ '[\x01-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]'`), or
+  * the app also strips or normalises tab and line breaks (it should still keep a line break, since the reason is the client's own words).
+  * Add a pass line for a two-line reason, kept word for word, plus a D-DB pass for `E'a\nb'`.
+
+**Minors still open or new:**
+* **m3 (words) open.** `web/src/modules/platform/notifications/contract.ts:35` still reads "A client declined a retainer". The row's next step "Edit and resend" is still missing, and the deviation is not stated.
+* **m4 (lead) open.** Home's Needs you does not list the item.
+* **m6 open (lead).** The 409 is added but untested, and the lock order against #3648 still has to be settled by whichever PR merges second.
+* **m7 open.** The labeller still makes one `canOpen` per row (`notification-labels.ts:30`).
+* **m8 open (nit).**
+* **Breaker m7, m8 (provider decline past expiry) and m9 (no retry of the vendor cancel) open.**
+* **m9 (new, Should): the PR body is not updated.** It still says head `d2c603bd3`, "26 passed" and "trimmed, 1-500". It does not list the findings left open above, as the round requires.
+* **m10 (new, Should): `cleanReason` removes characters that carry meaning** (`decline.ts:33`, U+200C-200F, U+2060-2069).
+  * Probe: the Persian `می‌خواهم` (with ZWNJ) is kept as `میخواهم`. 👨‍👩‍👧 is kept as 👨👩👧. LRM and RLM in mixed-direction text are dropped.
+  * So the reason is no longer "word for word" (D18).
+  * Fix: use the removal only to decide "nothing left is no reason", or remove only the bidi overrides U+202A-202E and U+2066-2069 plus the controls, and keep ZWJ, ZWNJ, LRM and RLM.
+* **nit:** the cap of `8 × 500` UTF-16 units (`door.controller.ts:55`) refuses 4,000 spaces followed by "x" with "At most 500 characters", though it cleans to 1. That is harmless, but the words are untrue.
+
+**Journey score at e7bee6efb: 7/10, fail** (see the journey report's Round 2): task ½ (a two-line reason cannot be declined) · next step ½ · words 1 · feedback 1 · data ½ (m10) · recovery ½ (500, no field error) · accessibility ½ · speed 1 · visual ½ · trust 1.
+
+Reviewer: Block e7bee6efb318b60634c48a3ba8ef11e3cdfbfe65

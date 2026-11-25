@@ -249,12 +249,27 @@ try {
   ok("FO-5d review m4-m5 pass: control and zero-width characters are removed and every whitespace trimmed before keeping",
     sql(`select decline_reason from fo_signer where request_id = '${e5.q}' and role = 'CLIENT'`) === "Ok with a bell");
 
+  // Review round 2 Major and m10: a multi-line reason is kept as written (line breaks, tabs, joiners and direction marks).
+  const ml = await sent("Mia"), two = "We chose another firm.\r\nThanks for your time.\tAll the best", fa = "می\u200Cخواهم 👨\u200D👩\u200D👧";
+  const dMl = await refusal(() => decline(ml.token, { reason: two }));
+  ok("FO-5d review r2 Major pass: a two-line reason with CRLF and a tab is accepted and kept word for word (never a 500)",
+    dMl === null && sql(`select replace(replace(replace(decline_reason, chr(13), '<CR>'), chr(10), '<LF>'), chr(9), '<TAB>') from fo_signer where request_id = '${ml.q}' and role = 'CLIENT'`) === "We chose another firm.<CR><LF>Thanks for your time.<TAB>All the best", dMl);
+  const fp = await sent("Fae");
+  await decline(fp.token, { reason: fa });
+  ok("FO-5d review m10 pass: joiners (ZWNJ in Persian, ZWJ in an emoji family) are kept, so the reason is word for word",
+    (await db.foSigner.findFirstOrThrow({ where: { requestId: fp.q, role: "CLIENT" } })).declineReason === fa);
+  const zw = await sent("Zed");
+  await decline(zw.token, { reason: "\u200C\u200D\u200E \u2060" });
+  ok("FO-5d review m10 fail: a reason of marks only (joiners, direction marks) is still no reason", sql(`select coalesce(decline_reason, 'null') from fo_signer where request_id = '${zw.q}' and role = 'CLIENT'`) === "null");
+
   // ---------------------------------------------------------------- D-DB: the database keeps the reason honest
   const g = await sent("Gus");
   const gs = signerOf(g.q, "CLIENT");
   ok("FO-5d D-DB fail: a reason without declined_at → refused by the database", sqlFails(`update fo_signer set decline_reason = 'x' where id = '${gs}'`) !== null);
   ok("FO-5d D-DB fail: an untrimmed (space, newline, tab or no-break space), control-character or over-500 reason → refused by the database",
     [`' x'`, `E'\\n'`, `E'\\tx'`, `'x' || chr(160)`, `'a' || chr(7) || 'b'`, `repeat('x', 501)`].every((v) => sqlFails(`update fo_signer set declined_at = now(), decline_reason = ${v} where id = '${gs}'`) !== null));
+  ok("FO-5d D-DB pass (review round 2 Major): a reason with a line break, CRLF or a tab inside is accepted by the database",
+    [`E'a\\nb'`, `E'a\\r\\nb'`, `E'a\\tb'`].every((v) => sqlFails(`begin; update fo_signer set declined_at = now(), decline_reason = ${v} where id = '${gs}'; rollback`) === null));
   ok("FO-5d D-DB pass: 500 emoji are 500 characters to the database too", sqlFails(`begin; update fo_signer set declined_at = now(), decline_reason = repeat(chr(128512), 500) where id = '${gs}'; rollback`) === null);
   ok("FO-5d D-DB fail: a kept reason never changes (part 1's signer trigger)", sqlFails(`update fo_signer set decline_reason = 'another' where request_id = '${a.q}' and role = 'CLIENT'`) !== null
     && sql(`select decline_reason from fo_signer where request_id = '${a.q}' and role = 'CLIENT'`) === REASON);

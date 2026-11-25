@@ -25,13 +25,16 @@ import { withFirm } from "../../platform/firm-scope.ts";
 type Tx = Prisma.TransactionClient;
 /** The reason's limit after trimming (AG05-D4(7)), in characters (code points, as the database's char_length counts). */
 export const DECLINE_REASON_MAX = 500;
-/** Review round 1 (break m2-m5): control characters (a NUL included), zero-width and bidi marks are removed, then the
- *  text is trimmed of every kind of whitespace; nothing left is no reason. Counted in characters, never cut mid-character. */
+/** Review rounds 1-2 (break m2-m5, round 2 Major and m10): control characters except tab, line feed and carriage return
+ *  (a NUL included), the zero-width space, the byte-order mark and the bidi overrides (U+202A-202E) are removed; joiners
+ *  and direction marks that carry meaning (ZWJ, ZWNJ, LRM, RLM, U+2060-2069) are kept, so the client's words stay word for
+ *  word; then every kind of whitespace is trimmed from both ends. Text that is only marks and whitespace is no reason.
+ *  The database's check (20261125150000) holds the same rule. Counted in characters, never cut mid-character. */
 export function cleanReason(raw: string | null | undefined): string | null {
   if (typeof raw !== "string") return null;
   // eslint-disable-next-line no-control-regex -- removing control characters is the point
-  const t = raw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "").replace(/^[\s\u00A0]+|[\s\u00A0]+$/g, "");
-  return t ? t : null;
+  const t = raw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B\u202A-\u202E\uFEFF]/g, "").replace(/^[\s\u00A0]+|[\s\u00A0]+$/g, "");
+  return t.replace(/[\u200C-\u200F\u2060-\u2069\s\u00A0]/g, "") ? t : null;
 }
 export const reasonLength = (t: string) => [...t].length;
 export const FIRM_DECLINED_AFTER_CLIENT = "The firm's signer declined to sign after the client signed.";
