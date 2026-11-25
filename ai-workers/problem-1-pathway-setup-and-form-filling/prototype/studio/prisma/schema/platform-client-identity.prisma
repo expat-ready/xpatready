@@ -4,8 +4,8 @@
 // A third sign-in group, walled from the firm's staff (platform.prisma) and from ExpatReady's own staff
 // (platform-system.prisma): a client account belongs to one firm and names that firm's front-office person (fo_person),
 // whose cases (case_client.fo_person_id) are the only ones the client reads. No Prisma relation to platform.prisma or
-// front-office-sales.prisma (their files are other owners'; no back-relation lines are needed): the foreign keys
-// (firm_id, person_id) → fo_person (firm_id, id) and (firm_id, account_id) → this file's account are in the migration
+// front-office-sales.prisma (their files are other owners'; no back-relation lines are needed): the person rule (the
+// firm's own fo_person, never changed; a trigger) and the invitation's key (firm_id, account_id) → the account are in the migration
 // 20261125100000_pf4p_client_identity, with PF-12's firm wall on both tables and the rules Prisma cannot say.
 
 /// AG-15-3, AG-15-4, AG-15-6: an account's life. Only ACTIVE signs in.

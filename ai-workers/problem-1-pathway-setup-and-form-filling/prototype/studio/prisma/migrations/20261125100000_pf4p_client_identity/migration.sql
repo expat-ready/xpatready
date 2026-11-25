@@ -3,7 +3,7 @@
 -- enum, two new tables, their keys, checks, one definer lookup and PF-12's wall on both. No existing table, row or function
 -- is changed.
 --   * platform_client_account: one per (firm, person) and one per (firm, email); the person is the firm's own fo_person
---     ((firm_id, person_id) → fo_person (firm_id, id): an account can never name another firm's person). The email is
+--     (trigger pf4p_client_person_ok: an account can never name another firm's person, and its person never changes). The email is
 --     stored lower case and trimmed (a check). Never deleted: a revoked account is kept (AG-15-6).
 --   * platform_client_invitation: (firm_id, account_id) → the account; the token's SHA-256 only (64 lower-case hex),
 --     expiring after its creation; used and voided at most once each (the code writes them, part 2).
@@ -29,7 +29,22 @@ CREATE TABLE "platform_client_account" (
 CREATE UNIQUE INDEX "platform_client_account_firm_id_id_key" ON "platform_client_account"("firm_id", "id");
 CREATE UNIQUE INDEX "platform_client_account_firm_id_person_id_key" ON "platform_client_account"("firm_id", "person_id");
 CREATE UNIQUE INDEX "platform_client_account_firm_id_email_key" ON "platform_client_account"("firm_id", "email");
-ALTER TABLE "platform_client_account" ADD CONSTRAINT "platform_client_account_person_fkey" FOREIGN KEY ("firm_id", "person_id") REFERENCES "fo_person"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+-- The person is the firm's own fo_person, and never changes. A trigger, not a foreign key: a key into fo_person needs a
+-- Prisma relation and a back-relation line in front-office-sales.prisma (another owner's file), and a key in SQL only
+-- would be dropped by `prisma migrate diff` (check_pf0p_ports). fo_person rows are never deleted (FO-9b merges keep a
+-- tombstone), so checking at insert holds. SECURITY INVOKER: it reads fo_person as the writer's firm under PF-12's wall.
+CREATE FUNCTION pf4p_client_person_ok() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF TG_OP = 'UPDATE' AND (NEW.person_id IS DISTINCT FROM OLD.person_id OR NEW.firm_id IS DISTINCT FROM OLD.firm_id) THEN
+    RAISE EXCEPTION 'platform_client_account_person_fixed: a client account''s firm and person never change' USING ERRCODE = 'check_violation';
+  END IF;
+  IF TG_OP = 'INSERT' AND NOT EXISTS (SELECT 1 FROM fo_person p WHERE p.id = NEW.person_id AND p.firm_id = NEW.firm_id) THEN
+    RAISE EXCEPTION 'platform_client_account_person_fkey: the person is not one of this firm''s people' USING ERRCODE = 'foreign_key_violation';
+  END IF;
+  RETURN NEW;
+END $fn$;
+CREATE TRIGGER "pf4p_client_person_ok" BEFORE INSERT OR UPDATE ON "platform_client_account" FOR EACH ROW EXECUTE FUNCTION pf4p_client_person_ok();
+REVOKE ALL ON FUNCTION pf4p_client_person_ok() FROM PUBLIC;
 
 CREATE TABLE "platform_client_invitation" (
     "id" UUID NOT NULL,
