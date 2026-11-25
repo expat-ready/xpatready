@@ -9,7 +9,7 @@
 // The survivor's id is named only when the caller sees it (C5 scope); otherwise the same words without it. A party not
 // of this firm reads as missing (404), as the writers' own reads already answer; so does a merged-away party the caller
 // does not see (review M1, m1 on #3702: a payee or payer named by id never tells an unseen person was merged).
-// Also called by a draft's lines and Bill-to (break m3). Not called by an invoice's send, a trust request's cancel, nor
+// Also called by a draft's lines and Bill-to (break m3) and by a write-off (review m4 on #3702). Not called by an invoice's send, a trust request's cancel, nor
 // To move's record and undo (review n1): each acts on money already on file (an invoice, a request, a trust entry), so
 // the guided merge refuses its party (HAS_MONEY); mergeRecords itself has no money check, and nothing calls it but that
 // merge and the automatic one (whyNotSafe: no money). The survivor named is the live end of a chain of merges (break m2).

@@ -57,7 +57,7 @@ try {
   const { MERGE_KEY } = await import("../ports/person-merge.ts");
   const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
   const { ConsentStore } = await import("../api/src/platform/messages/consent/consent-store.ts");
-  const features = await Promise.all(["client-money-trust", "client-money-invoices", "client-money-refunds", "client-money-reversals"].map(async (n) => (await import(`../api/src/features/${n}.ts`)).default));
+  const features = await Promise.all(["client-money-trust", "client-money-invoices", "client-money-refunds", "client-money-reversals", "client-money-write-offs"].map(async (n) => (await import(`../api/src/features/${n}.ts`)).default));
   const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
   const local = new LocalIdentity("fo9b2m-check-signing-key-0123456789abcdef", () => clock.now());
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
@@ -100,7 +100,7 @@ try {
   const tomb = (kind: "person" | "company", id: string, into: string | null) => sql(`set session_replication_role = replica; update fo_${kind} set merged_into_id = ${into ? `'${into}'` : "null"}, merged_at = ${into ? "now()" : "null"} where id = '${id}'`);
   const writes = () => sql(`select (select count(*) from money_invoice) || '/' || (select count(*) from money_invoice_line) || '/' || (select count(*) from money_payment) || '/' || (select count(*) from money_trust_entry) || '/' || (select count(*) from money_trust_request)
     || '/' || (select count(*) from money_credit_note) || '/' || (select count(*) from money_refund) || '/' || (select count(*) from money_credit_entry) || '/' || (select count(*) from audit_event where action like 'invoice.%' or action like 'trust_money.%' or action like 'payment.%' or action like 'refund.%')
-    || '/' || (select count(*) from money_invoice where issued_at is not null)`);
+    || '/' || (select count(*) from money_invoice where issued_at is not null) || '/' || (select count(*) from money_write_off)`);
   let k = 0; const key = (w: string) => `fo9b2m-${w}-${++k}`;
   const today = () => new Date().toISOString().slice(0, 10);
   const draft = async (party: Record<string, string>) => { const d = await raw(tR, "POST", "/invoices", { ...party, currency: "CAD" }); if (d.status !== 201) throw new Error(`draft: ${JSON.stringify(d.body)}`); return d.body.id as string; };
@@ -141,6 +141,7 @@ try {
     ["pay from trust (POST /trust/applications)", () => raw(tR, "POST", "/trust/applications", { invoiceId: invM3, amountMinor: 1000 })],
     ["trust refund, the payer (POST /trust/refunds)", () => trustRefund({ personId: PM }, 1000)],
     ["trust refund, a payee on file (POST /trust/refunds, payee)", () => trustRefund({ personId: PA }, 1000, { personId: PM })],
+    ["write-off (POST /invoices/:id/write-off)", () => raw(tR, "POST", `/invoices/${invM}/write-off`, { reason: "Client cannot pay (Sample)" })],
     ["reversal (POST /payments/:id/reverse)", () => raw(tR, "POST", `/payments/${depM}/reverse`, { reasonCode: "RECORDED_BY_MISTAKE", previewHash: prev.hash })],
   ];
   ok("FO-9b 2m setup: the extra waits on the overpayment (so its choice is a real write)", over.extra?.waitingMinor === 5000, over.extra);
