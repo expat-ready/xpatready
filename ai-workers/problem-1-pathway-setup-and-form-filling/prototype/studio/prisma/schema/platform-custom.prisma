@@ -1,0 +1,111 @@
+// platform-custom.prisma — a firm's own fields on the records modules register, and the saved views of the lists they
+// register. Owner: Lead B (platform, P-559). Rows PF-22a and PF-22v (R1.95, map row 95; Doc-1 "per-entity custom fields",
+// ADR C1-2; AG-2-23; P-570, P-584 (2)). Read and written only through api/src/platform/custom-fields/ and
+// api/src/platform/saved-views/ (PF-22a part 2, PF-22v); other modules reach them through CustomFieldPort and SavedViewPort
+// (ports/custom-fields.ts, ports/saved-views.ts) and never read these tables.
+//
+// Rules Prisma cannot say are pf_custom_ checks, functions and triggers in this row's migration (prisma/migrations/
+// <stamp>_pf22a_custom_fields): a field's type is one of ten, its key and kind are names, its options are a list of distinct
+// labels and only a SELECT or MULTI_SELECT has any (at least one); a field is never deleted (archived instead, its values kept
+// and hidden), and its firm, kind, key and creator never change; its type never changes once it has a value; a value is
+// checked against its field's type and options by the database too, and names its field's own entity kind; a saved view's
+// filter is a JSON object and its columns a list of names. Every table is firm-scoped with PF-12's forced policy, and a staff
+// key is the pair (firm_id, staff_id) → platform_staff(firm_id, id), so a row of firm A never names firm B's staff or fields.
+// The permission key agent/custom-field:manage (Owner and Admin, Sample) is added by the same migration. Sharing a front-office
+// view needs agent/prospect:configure-pipeline, already a catalogue row (PF-3's seed).
+
+/// A field's type (PF-22a; Sample set, question 8: the founder may narrow it).
+enum PlatCustomFieldType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  DATE
+  SELECT
+  MULTI_SELECT
+  CHECKBOX
+  EMAIL
+  PHONE
+  URL
+}
+
+/// One field a firm adds to one kind of record (entityKind: a kind a module registered through CustomFieldPort, such as
+/// fo_prospect). key is the field's stable name (filters and exports use it); label is what people read. options: the
+/// choices of a SELECT or MULTI_SELECT (a JSON list of distinct labels), [] for every other type. required: a person must
+/// fill it before saving the record's fields (PF-22a part 2 checks it; the database never invents a value). archivedAt set →
+/// hidden from the panel and filters, its values kept; cleared → shown again. Never deleted.
+model PlatCustomField {
+  id         String              @id @default(uuid()) @db.Uuid
+  firmId     String              @map("firm_id") @db.Uuid
+  entityKind String              @map("entity_kind")
+  key        String
+  label      String
+  type       PlatCustomFieldType
+  required   Boolean             @default(false)
+  options    Json                @default("[]")
+  helpText   String?             @map("help_text")
+  position   Int                 @default(0)
+  archivedAt DateTime?           @map("archived_at") @db.Timestamptz
+  /// The staff member who added it: staff of firm_id (the (firm_id, created_by) key).
+  createdBy  String              @map("created_by") @db.Uuid
+  createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  firm    PlatformFirm      @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  creator PlatformStaff     @relation("PlatCustomFieldCreatedBy", fields: [firmId, createdBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  values  PlatCustomValue[]
+
+  @@unique([firmId, id])
+  @@unique([firmId, entityKind, key])
+  @@index([firmId, entityKind, position])
+  @@map("plat_custom_field")
+}
+
+/// One record's value of one field (PF-22a). value is JSON checked against the field's type and options (a string, a
+/// number, true or false, or a list of option labels); an empty value is no row. entityKind repeats the field's kind (the
+/// database checks they match) and entityId is that module's record id: the module's own visibility check runs before any
+/// read or write (CustomFieldPort.registerEntity), so a value never shows more than its record does.
+model PlatCustomValue {
+  id         String   @id @default(uuid()) @db.Uuid
+  firmId     String   @map("firm_id") @db.Uuid
+  fieldId    String   @map("field_id") @db.Uuid
+  entityKind String   @map("entity_kind")
+  entityId   String   @map("entity_id") @db.Uuid
+  value      Json
+  /// Who wrote it last: staff of firm_id (the (firm_id, updated_by) key).
+  updatedBy  String   @map("updated_by") @db.Uuid
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  firm    PlatformFirm    @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  field   PlatCustomField @relation(fields: [firmId, fieldId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  updater PlatformStaff   @relation("PlatCustomValueUpdatedBy", fields: [firmId, updatedBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, fieldId, entityId])
+  @@index([firmId, entityKind, entityId])
+  @@map("plat_custom_value")
+}
+
+/// A saved view of one registered list (PF-22v, AG-2-23): its filter (a JSON object the list's own schema checks), its
+/// columns (a list of names) and its sort. ownerStaffId set → personal, seen by that person only; null → shared with the
+/// firm (sharing needs the list's share key). createdBy is who made it, kept when it is shared and when that person leaves.
+/// A view never widens what its viewer may see: the list applies the viewer's own visibility at query time.
+model PlatSavedView {
+  id           String   @id @default(uuid()) @db.Uuid
+  firmId       String   @map("firm_id") @db.Uuid
+  ownerStaffId String?  @map("owner_staff_id") @db.Uuid
+  listKind     String   @map("list_kind")
+  name         String
+  filter       Json     @default("{}")
+  columns      Json     @default("[]")
+  sort         Json?
+  createdBy    String   @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  firm    PlatformFirm   @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  owner   PlatformStaff? @relation("PlatSavedViewOwner", fields: [firmId, ownerStaffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  creator PlatformStaff  @relation("PlatSavedViewCreatedBy", fields: [firmId, createdBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, id])
+  @@index([firmId, listKind, ownerStaffId])
+  @@map("plat_saved_view")
+}
