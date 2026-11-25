@@ -115,7 +115,7 @@ try {
   await r.screenshot({ path: join(SHOTS, "fo9s2-01-to-review-1440.png"), fullPage: true });
   ok("FO-9s R1 BR-6 pass: the Owner sees their own pair with names, lead numbers, what matched and the score",
     /Dan\w* Fischer · L-\d+/.test(await row(r, P_DAN).innerText()) && /Similar name \(82%\)/.test(await row(r, P_DAN).innerText()) && (await row(r, P_DAN).locator("[data-match-score='82']").count()) === 1);
-  ok("FO-9s R2 BR-6 pass: Merge… is shown to the Owner (agent/prospect:merge), off in part 2", (await row(r, P_DAN).getByRole("button", { name: "Merge…" }).count()) === 1);
+  ok("FO-9s R2 BR-6 pass: Merge… is shown to the Owner (agent/prospect:merge)", (await row(r, P_DAN).getByRole("button", { name: "Merge…" }).count()) === 1);
   ok("FO-9s R3 BR-7 pass: the case pair's Merge… is off with the sentence word for word, tied to the button",
     await row(r, P_KIM).getByRole("button", { name: "Merge…" }).isDisabled() && (await row(r, P_KIM).locator("[data-needs-case-side]").innerText()) === CASE_LINE
     && (await row(r, P_KIM).getByRole("button", { name: "Merge…" }).getAttribute("aria-describedby")) === `dup-case-${P_KIM}`);

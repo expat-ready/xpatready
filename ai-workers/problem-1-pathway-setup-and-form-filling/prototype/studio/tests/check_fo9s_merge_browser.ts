@@ -10,7 +10,7 @@
 //   G5       a record changed after the dialog opened → "One of these records changed. Reload to see it." with Reload;
 //            nothing merged; Reload shows the new value and the merge then goes through
 //   G6       money arriving after the dialog opened → the server's sentence; nothing merged
-//   G7       Cancel and Escape merge nothing; keyboard only (radios by arrow keys, Next by Enter); axe on the dialog (no
+//   G7       Cancel and Escape merge nothing; after a merge focus is on the notice's Undo; at 375 px the dialog fits; keyboard only (radios by arrow keys, Next by Enter); axe on the dialog (no
 //            serious); 375 px with no sideways scroll; no page error
 // Sample rows only; US$0, no model call. Usage, from prototype/:
 //   zsh studio/tools/isolated.sh screens_mrg 4573 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo9s_merge_browser.ts 4573 xr_studio_screens_mrg
@@ -135,6 +135,8 @@ try {
   await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).click();
   await p.locator("[data-merged-notice]").waitFor({ timeout: 15_000 });
   await p.screenshot({ path: join(SHOTS, "fo9s3-04-merged-notice-1440.png"), fullPage: true });
+  const focusUndo = await p.waitForFunction(() => document.activeElement?.hasAttribute("data-merged-undo"), null, { timeout: 5_000 }).then(() => true, () => false);
+  ok("FO-9s G7 fail: after the merge (its row gone), focus is on the notice's Undo, never the page body", focusUndo);
   ok("FO-9s G4 pass: Merge 2 people merges the loser into the survivor; the pair is MERGED and leaves To review; the notice names the survivor",
     / will be merged into /.test(sentence) && mergedInto(L.person) === S.person && sql(`select status from fo_dup_review where id = '${P_LENA}'`) === "MERGED"
     && (await p.locator(`[data-dup-pair="${P_LENA}"]`).count()) === 0 && /^Merged into /.test((await p.getByText(/^Merged into /).innerText())), sentence);
@@ -183,6 +185,8 @@ try {
   await m.waitForTimeout(800);
   ok("FO-9s G7: keyboard only: an arrow key moves which record stays", await m.getByRole("radiogroup", { name: "Which record stays" }).getByRole("radio").nth(1).isChecked());
   await m.screenshot({ path: join(SHOTS, "fo9s3-06-choose-375.png"), fullPage: true });
+  const fits = await m.locator("[data-merge-dialog]").evaluate((el) => { const box = el.closest("[role=dialog]")!.getBoundingClientRect(); const st = el.querySelector("[role=radiogroup]")!.getBoundingClientRect(); return st.right <= box.right + 1 && box.right <= window.innerWidth; });
+  ok("FO-9s G7 fail: at 375 px the dialog and its \"which record stays\" choice fit the screen (nothing clipped)", fits);
   ok("FO-9s G7: no sideways page scroll with the dialog open at 375 px", !(await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
   await m.context().close();
   ok("FO-9s part 3: no page error", errors.length === 0, errors);
