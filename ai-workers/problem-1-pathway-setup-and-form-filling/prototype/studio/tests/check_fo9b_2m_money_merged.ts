@@ -53,6 +53,10 @@ try {
   const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
   const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
   const { liveParty } = await import("../api/src/client-money/live-party.ts");
+  const { mergeRecords, MergeBusy } = await import("../api/src/front-office/duplicates/merge/service.ts");
+  const { MERGE_KEY } = await import("../ports/person-merge.ts");
+  const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
+  const { ConsentStore } = await import("../api/src/platform/messages/consent/consent-store.ts");
   const features = await Promise.all(["client-money-trust", "client-money-invoices", "client-money-refunds", "client-money-reversals"].map(async (n) => (await import(`../api/src/features/${n}.ts`)).default));
   const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
   const local = new LocalIdentity("fo9b2m-check-signing-key-0123456789abcdef", () => clock.now());
@@ -86,7 +90,10 @@ try {
   for (const id of [CO, CS]) prospect("company", id);
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, trust_details, updated_by, updated_at) values ('${f}', 'Trust account (Sample)', 'seed:FO-9b-2m', now())`);
   // user-R: sample-firm's Owner (every money key, sees every client: the survivor's id is named to it).
-  const tR = await signIn("user-R", "sample-firm"), tS = await signIn("user-S", "sample-solo");
+  // user-O: a Case Officer given agent/payment:record here but seeing no case and no client (C5 fails closed).
+  sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key in ('agent/case:view.all', 'agent/prospect:view.all');
+    insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', 'agent/payment:record') on conflict do nothing`);
+  const tR = await signIn("user-R", "sample-firm"), tS = await signIn("user-S", "sample-solo"), tO = await signIn("user-O", "sample-firm");
   await raw(tR, "PUT", "/trust/answer", { answer: "YES" }); await raw(tS, "PUT", "/trust/answer", { answer: "YES" });
 
   // The tombstone a merge writes (duplicates/merge/service.ts: merged_into_id, merged_at), planted; Undo clears it.
@@ -122,6 +129,8 @@ try {
   // ------------------------------------------------------------------------------------- each writer: 409 PARTY_MERGED
   const cases: [string, () => Promise<Res>][] = [
     ["draft create (POST /invoices)", () => raw(tR, "POST", "/invoices", { personId: PM, currency: "CAD" })],
+    ["a line on the party's draft (POST /invoices/:id/lines)", () => raw(tR, "POST", `/invoices/${dM}/lines`, { kind: "FEE", description: "Another fee (Sample)", unitMinor: 1000, ratePpm: 0 })],
+    ["the draft's Bill-to (PUT /invoices/:id/bill-to)", () => raw(tR, "PUT", `/invoices/${dM}/bill-to`, { province: "BC" })],
     ["issue (POST /invoices/:id/issue) of the party's draft", () => raw(tR, "POST", `/invoices/${dM}/issue`)],
     ["record a payment (POST /invoices/:id/payments)", () => pay(invM, 5000)],
     ["credit note (POST /invoices/:id/credit-notes)", () => raw(tR, "POST", `/invoices/${invM}/credit-notes`, { amountMinor: 1000, reason: "Fee reduced (Sample)" })],
@@ -143,6 +152,13 @@ try {
   const hidden = await owner.$transaction((tx) => liveParty(tx, A, PM, { parties: [PM] })).then(() => null, (e: { getStatus?: () => number; getResponse?: () => Record<string, unknown> }) => ({ status: e.getStatus?.(), body: e.getResponse?.() }));
   ok("FO-9b 2m pass: a caller who does not see the survivor gets the same 409 PARTY_MERGED without survivorId", hidden?.status === 409 && hidden.body?.code === "PARTY_MERGED" && hidden.body.survivorId === undefined && /Ask someone who sees/.test(String(hidden.body.detail)), hidden);
 
+  const od = await raw(tO, "POST", "/trust/deposits", { personId: PM, method: "BANK_TRANSFER", amountMinor: 1000, currency: "CAD", idempotencyKey: key("dep-o") });
+  const oq = await raw(tO, "POST", "/trust/requests", { personId: PM, amountMinor: 1000, currency: "CAD", purpose: "Retainer (Sample)" });
+  ok("FO-9b 2m fail (review M1): a caller who does not see the merged-away person gets 404, the same as a missing person, for a deposit and a trust request; nothing written",
+    od.status === 404 && oq.status === 404 && od.body.code !== "PARTY_MERGED" && writes() === before, [od, oq]);
+  const unseen = await owner.$transaction((tx) => liveParty(tx, A, PM, { parties: [] })).then(() => null, (e: { getStatus?: () => number }) => e.getStatus?.());
+  ok("FO-9b 2m fail (review m1): a payee or payer named by id that the caller does not see answers 404 when merged away, never 409", unseen === 404, unseen);
+
   // ------------------------------------------------------------------------------------- live, Undo, firm B, a company
   const live = await deposit({ personId: PA }, 1500);
   ok("FO-9b 2m pass: the survivor (a live party) is unchanged: a deposit on it → 201", live.status === 201, live.body);
@@ -151,6 +167,13 @@ try {
   ok("FO-9b 2m pass: Undo of the merge (the tombstone cleared) makes the party payable again: a deposit and a payment → 201", again.status === 201 && againPay.status === 201, [again.body, againPay.body]);
   const fb = await raw(tR, "POST", "/invoices", { personId: PB, currency: "CAD" }), fbd = await deposit({ personId: PB }, 1000);
   ok("FO-9b 2m fail: another firm's person → 404 (draft and deposit), never a 409 that tells it exists", fb.status === 404 && fbd.status === 404, [fb, fbd]);
+  {   // a chain (break m2): PM → PA, then PA → PC: the survivor named is PC, the live end
+    const PC = person(A, "c"); prospect("person", PC);
+    tomb("person", PM, PA); tomb("person", PA, PC);
+    const ch = await deposit({ personId: PM }, 1000);
+    ok("FO-9b 2m fail (break m2): a chain of merges (M into A, then A into C) names the live end, C, as the survivor", merged(ch, PC), ch.body);
+    tomb("person", PA, null); tomb("person", PM, null);
+  }
   tomb("company", CO, CS);
   const co = await deposit({ companyId: CO }, 1000), cod = await raw(tR, "POST", "/invoices", { companyId: CO, currency: "CAD" });
   ok("FO-9b 2m fail: a merged-away company → 409 PARTY_MERGED naming its survivor (deposit and draft create)", merged(co, CS) && merged(cod, CS) && /This company/.test(co.body.detail), [co.body, cod.body]);
@@ -174,11 +197,31 @@ try {
   for (const [name, who, call] of races) {
     const c = await holdMerge(who, PA), w0 = writes();
     let settled = false; const p = call().then((r) => { settled = true; return r; });
-    await sleep(600);
-    const waited = !settled;
+    // The writer is shown waiting on the row lock (review m2): a lock request not granted, held by the merge's session.
+    let waited = false;
+    for (let i = 0; i < 100 && !waited && !settled; i++) {
+      waited = Number(sql(`select count(*) from pg_locks w join pg_locks h on h.locktype = w.locktype and h.relation is not distinct from w.relation and h.page is not distinct from w.page and h.tuple is not distinct from w.tuple and h.transactionid is not distinct from w.transactionid and h.granted
+        where not w.granted and h.pid = ${(c as unknown as { processID: number }).processID}`)) > 0;
+      if (!waited) await sleep(50);
+    }
+    waited &&= !settled;
     await c.query("commit"); await c.end();
     const r = await p;
     ok(`FO-9b 2m race: a merge holding its locks while ${name} waits → ${name} waits for it (not answered while the merge is open), then 409 PARTY_MERGED and writes nothing`, waited && merged(r, PA) && writes() === w0, { waited, status: r.status, body: r.body, writes: [w0, writes()] });
+  }
+  // The other way round, through the merge itself (review m3): while a money write holds the person, mergeRecords is
+  // Busy (its NOWAIT locks, retried, then MergeBusy); nothing is merged.
+  {
+    const other = person(A, "r6");
+    let out = "";
+    await owner.$transaction(async (tx) => {
+      await liveParty(tx, A, R.busy, "ALL");
+      out = await owner.$transaction((m) => mergeRecords(m as never, { staffId: staffR, firmId: A, firmKey: "sample-firm", roles: [], keys: [MERGE_KEY], duties: [], authTime: 0, via: "local" } as never,
+        { kind: "PERSON", survivor_fo_id: other, loser_fo_id: R.busy, reason: "FO-9b 2m busy check (Sample)" }, { audit: auditEvent, consent: new ConsentStore(auditEvent) }))
+        .then(() => "merged", (e: Error) => e instanceof MergeBusy ? "busy" : `other: ${e.message}`);
+    }, { timeout: 60_000 });
+    ok("FO-9b 2m race: while a money write holds the person (FOR KEY SHARE), the merge itself (mergeRecords) answers Busy and merges nothing; the guided merge re-reads money under its locks (review.ts, HAS_MONEY)",
+      out === "busy" && sql(`select coalesce(merged_into_id::text, '-') from fo_person where id = '${R.busy}'`) === "-", out);
   }
   // The other way round: an open money write holds the row FOR KEY SHARE; the merge's NOWAIT lock is refused (busy).
   {

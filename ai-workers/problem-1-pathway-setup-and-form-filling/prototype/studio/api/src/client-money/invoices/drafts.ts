@@ -103,6 +103,7 @@ export class InvoiceDrafts {
       await this.seen(tx, ctx, id, scope);   // C5 before the row lock and any write (review m2)
       const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string; personId: string | null; companyId: string | null; billTo: string | null }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by, person_id::text as "personId", company_id::text as "companyId", bill_to_province as "billTo" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
+      await liveParty(tx, firmId, inv.personId ?? inv.companyId, scope);   // FO-9b part 2m (break m3): never a line on a merged-away client's draft
       if (inv.by !== `staff:${ctx.staffId}` && !(await holdsKey(tx, firmId, ctx.staffId, EDIT_KEY)))
         problem(403, "Not allowed", "Only the person who started this draft, or someone who may edit invoices, can add to it. Nothing was saved.", { code: "MISSING_PERMISSION", missing: [EDIT_KEY] });
       if (inv.issued) problem(409, "Not possible now", "This invoice is issued: it can't be edited. Use a credit note. Nothing was saved.", { code: "ISSUED" });
@@ -148,6 +149,7 @@ export class InvoiceDrafts {
       await this.seen(tx, ctx, id, scope);   // C5 before the row lock and any write (review m2)
       const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; billTo: string | null; personId: string | null; companyId: string | null; currency: string }[]>`select issued_at is not null as issued, number, bill_to_province as "billTo", person_id::text as "personId", company_id::text as "companyId", currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
+      await liveParty(tx, firmId, inv.personId ?? inv.companyId, scope);   // FO-9b part 2m (break m3)
       if (inv.issued) problem(409, "Not possible now", `This invoice is issued (${inv.number}): its Bill-to province is fixed. Nothing was saved.`, { code: "ISSUED" });
       if (inv.billTo === b.province) return this.view(tx, ctx.firmId, id);
       // The two defaults, from one read of the firm's facts after the invoice's lock (as addLine reads them).

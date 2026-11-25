@@ -7,8 +7,13 @@
 // * a merge that comes while this holds the row finds it held (NOWAIT, busy, retried) until this commits, and then its own
 //   hasMoney read sees the money (HAS_MONEY): a merge of a person with money stays refused.
 // The survivor's id is named only when the caller sees it (C5 scope); otherwise the same words without it. A party not
-// of this firm reads as missing (404), as the writers' own reads already answer.
-import type { Prisma } from "@prisma/client";
+// of this firm reads as missing (404), as the writers' own reads already answer; so does a merged-away party the caller
+// does not see (review M1, m1 on #3702: a payee or payer named by id never tells an unseen person was merged).
+// Also called by a draft's lines and Bill-to (break m3). Not called by an invoice's send, a trust request's cancel, nor
+// To move's record and undo (review n1): each acts on money already on file (an invoice, a request, a trust entry), so
+// the guided merge refuses its party (HAS_MONEY); mergeRecords itself has no money check, and nothing calls it but that
+// merge and the automatic one (whyNotSafe: no money). The survivor named is the live end of a chain of merges (break m2).
+import { Prisma } from "@prisma/client";
 import { firmScope } from "../platform/firm-scope.ts";
 import { problem } from "../platform/identity/keys.ts";
 
@@ -26,7 +31,14 @@ export async function liveParty(tx: Tx, firm: string, partyId: string | null | u
   if (!r) { [r] = await tx.$queryRaw<{ merged: string | null }[]>`select merged_into_id::text as merged from fo_company where firm_id = ${f}::uuid and id = ${id}::uuid for key share`; kind = "company"; }
   if (!r) return problem(404, "Not found", "No such person or company in your firm.", { code: "NOT_FOUND" });
   if (!r.merged) return;
-  const shown = seen !== undefined && (seen === "ALL" || seen.parties.includes(r.merged));
+  let end = r.merged;   // the live end of a chain (a→b, then b→c: c), at most 20 hops (follow.ts's bound)
+  for (let i = 0; i < 20; i++) {
+    const [n] = await tx.$queryRaw<{ merged: string | null }[]>`select merged_into_id::text as merged from ${kind === "person" ? Prisma.sql`fo_person` : Prisma.sql`fo_company`} where firm_id = ${f}::uuid and id = ${end}::uuid`;
+    if (!n?.merged) break;
+    end = n.merged;
+  }
+  if (seen !== undefined && seen !== "ALL" && !seen.parties.includes(id)) return problem(404, "Not found", `No such ${kind} in your firm.`, { code: "NOT_FOUND" });
+  const shown = seen !== undefined && (seen === "ALL" || seen.parties.includes(end));
   problem(409, "Not possible now", `This ${kind} was merged into another record, so no money is recorded on it. ${shown ? "Use the record it was merged into." : "Ask someone who sees the record it was merged into."} Nothing was saved.`,
-    { code: "PARTY_MERGED", ...(shown ? { survivorId: r.merged } : {}) });
+    { code: "PARTY_MERGED", ...(shown ? { survivorId: end } : {}) });
 }

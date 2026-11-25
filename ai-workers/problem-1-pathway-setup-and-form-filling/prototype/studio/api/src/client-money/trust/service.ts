@@ -169,7 +169,6 @@ export class TrustMoney {
     return this.write(async (tx) => {
       const who = await partyOf(tx, f, d);
       await tx.$executeRaw`select money_trust_lock(${f}::uuid, ${who.id}::uuid, ${d.currency}::"MoneyCurrency")`;
-      await liveParty(tx, f, who.id, seen);   // FO-9b part 2m, under the party's lock
       const had = await tx.moneyPayment.findFirst({ where: firmScope(f, { idempotencyKey: d.idempotencyKey }), include: { trustEntry: true } });
       if (had) {   // a double click, or a retry: the one payment, never a second
         const e = had.trustEntry;
@@ -189,6 +188,7 @@ export class TrustMoney {
         caseId ??= q.caseId;
       }
       if (!caseId) this.partySeen(seen, who);
+      await liveParty(tx, f, who.id, seen);   // FO-9b part 2m, under the party's lock, after C5's 404 (review M1)
       if (d.reference) {
         await textOk(tx, "reference", d.reference, 200);
         const [dup] = await tx.$queryRaw<{ n: bigint }[]>`select count(*) as n from money_payment p join money_trust_entry e on e.firm_id = p.firm_id and e.payment_id = p.id
