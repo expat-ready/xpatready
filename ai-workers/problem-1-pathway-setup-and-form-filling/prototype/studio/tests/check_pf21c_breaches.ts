@@ -325,12 +325,14 @@ try {
     && (one.body.events as { actor: string }[]).every((e) => e.actor === `staff:${OWNER}`) && one.body.notices.length === 2, { kinds, changeEv });
   // AUD-3, the breach read naming firms (R1.87 P6, #3491's stated limit): our staff's read of one breach is a read of each
   // firm it names, so one platform.system.firm_read line lands on each named firm's own trail, beside the platform line.
-  const readOf = (firm: string, rid: string | null) => sql(`select count(*) || '|' || coalesce(string_agg(actor || '|' || actor_type || '|' || (detail->>'route') || '|' || (detail->>'scope'), ','), '') from audit_event
+  // Round 1 (breaker M1): the firm's line names neither the route nor the scope, so it never tells the firm that our breach
+  // register names it (whatever we decided to tell it); both stay on the platform line, under the same correlation id.
+  const readOf = (firm: string, rid: string | null) => sql(`select count(*) || '|' || coalesce(string_agg(actor || '|' || actor_type || '|' || (detail->>'route') || '|' || coalesce(detail->>'scope', 'none') || '|' || (detail::text ~* 'breach')::text, ','), '') from audit_event
     where firm_id = '${firm}' and action = 'platform.system.firm_read' and correlation_id = '${rid}'`);
-  const wantRead = `1|ourstaff:${OWNER}|OUR_STAFF|/api/system/register/breaches/:id|one breach and the firms it names`;
-  ok("PF-21c DW6 pass (AUD-3, R1.87 P6): reading a breach that names firms A and B writes one OUR_STAFF firm-read line on firm A's trail and one on firm B's, naming our staff member, the route and the scope, plus one cross_tenant.access line on the platform's own trail",
+  const wantRead = `1|ourstaff:${OWNER}|OUR_STAFF|/api/system|none|false`;
+  ok("PF-21c DW6 pass (AUD-3, R1.87 P6): reading a breach that names firms A and B writes one OUR_STAFF firm-read line on firm A's trail and one on firm B's, naming our staff member, the route and the scope, plus one cross_tenant.access line on the platform's own trail naming the route and scope (the firm's line names neither)",
     one.status === 200 && readOf(firmA, one.requestId) === wantRead && readOf(firmB, one.requestId) === wantRead
-    && sql(`select count(*) from audit_event where firm_id is null and action = 'cross_tenant.access' and correlation_id = '${one.requestId}'`) === "1", { a: readOf(firmA, one.requestId), b: readOf(firmB, one.requestId) });
+    && sql(`select detail->>'route' || '|' || (detail->>'scope') from audit_event where firm_id is null and action = 'cross_tenant.access' and correlation_id = '${one.requestId}'`) === "/api/system/register/breaches/:id|one breach and the firms it names", { a: readOf(firmA, one.requestId), b: readOf(firmB, one.requestId) });
   ok("PF-21c DW6 fail (AUD-3, R1.87 P6): firm C, which the breach does not name, gets no read line", readOf(firmC, one.requestId) === "0|");
   const listed = await call(base, "GET", "/api/system/register/breaches", { token: ownerT });
   ok("PF-21c DW6 fail (AUD-3): the register's list (a read across firms that names no one firm's records) writes no line on any firm's trail, only its platform line",
