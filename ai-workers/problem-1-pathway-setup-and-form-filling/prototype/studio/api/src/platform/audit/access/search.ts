@@ -10,11 +10,13 @@
 // The route is @ReadsAcrossFirms("our audit search", { firmFilter: true }): each successful search writes one
 // cross_tenant.access line on the platform's own trail naming the staff member, the route and, when `firm` is a firm's
 // id, that firm (`detail.firm`), so the firm's access report (part 2) shows that we searched its lines. A search
-// narrowed to the platform's trail, or not narrowed, names no firm.
+// narrowed to the platform's trail, or not narrowed, names no firm there. And each firm whose lines the page holds gets
+// one platform.system.firm_read line on its own trail (round 1, breaker M1: a search narrowed by an entity key or a
+// correlation id reads one firm's lines without naming it), so a firm always sees that we read its lines.
 // audit_event has no row wall (PF-12 walls the platform_* tables only), and this reads no platform_* table, so no bypass use.
 // Stated: no CSV of the search here (SA-11-9's export would need a firm-less `audit.exported` pair on the port, AUD-3c's
 // fixed pairs: a later part); an unnarrowed range is read by `at` with no index of its own (no schema in this part).
-import { Controller, Get, Inject, Injectable, Query } from "@nestjs/common";
+import { Controller, Get, Inject, Injectable, Query, Req } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { Db } from "../../../core.ts";
 import { FIELD_ERROR_STATUS, parseInput, query } from "../../http/input.ts";
@@ -23,6 +25,7 @@ import { SystemKeys } from "../../system-identity/keys.ts";
 import { AuditActionNames } from "../firm-read/action-names.ts";
 import { parseFilter, type Filter } from "../firm-read/service.ts";
 import { ReadsAcrossFirms } from "./declare.ts";
+import { noteFirmsRead } from "./tracker.ts";
 import { AT_TEXT, AUDIT_LOG_LIST, PAGE, UUID, decode, encode } from "./report.ts";
 
 const SEARCH_QUERY = query("from", "to", "firm", "actorType", "ours", "action", "entity", "entityKey", "correlationId", "cursor");
@@ -62,12 +65,19 @@ export class AuditSearch {
     const input = parseInput(SEARCH_QUERY, q ?? {}), after = decode(input.cursor);
     const f: Search = parseFilter(input);
     if (input.firm !== undefined && input.firm !== "") f.firm = input.firm === "platform" ? "platform" : UUID.test(input.firm) ? input.firm.toLowerCase() : bad("firm", `"firm" is a firm's id, or "platform" for the platform's own trail.`);
+    // Breaker m2: a NUL byte is refused here (the database cannot hold one in text), never a 500.
+    for (const k of ["action", "entity", "entityKey", "correlationId"] as const) if (input[k]?.includes("\u0000")) bad(k, `"${k}" holds a character that cannot be searched for.`);
     if (input.correlationId !== undefined && input.correlationId !== "") f.correlationId = input.correlationId.length <= 200 ? input.correlationId : bad("correlationId", `"correlationId" is one value of at most 200 characters.`);
     const page = after ? Prisma.sql`and (e.at, e.id) < (${after.at}::timestamptz, ${after.id}::uuid)` : Prisma.empty;
     const got = await this.db.$queryRaw<Row[]>`select e.id::text as id, ${AT_TEXT} as at, e.firm_id::text as firm_id, e.actor, e.actor_type::text as actor_type, e.action,
       e.entity, e.entity_key, e.correlation_id, e.support_session_id::text as support_session_id, e.summary, e.detail
       from audit_event e where ${this.where(f)} ${page} order by e.at desc, e.id desc limit ${PAGE + 1}`;
-    return { from: f.from.toISOString(), to: f.to.toISOString(), firm: f.firm ?? null, lines: got.slice(0, PAGE).map(line), next: got.length > PAGE ? encode(got[PAGE - 1]) : null };
+    const lines = got.slice(0, PAGE).map(line);
+    // Breaker M1: a search narrowed to one firm by any filter (an entity key, a correlation id, an action) is a read of
+    // that firm's lines, whatever the `firm` filter says: each firm whose lines this page holds gets one firm-read line on
+    // its own trail (noteFirmsRead, written by lines.ts with the platform line), so the firm and its access report see it.
+    noteFirmsRead(lines.flatMap((l) => (l.firmId ? [l.firmId] : [])));
+    return { from: f.from.toISOString(), to: f.to.toISOString(), firm: f.firm ?? null, lines, next: got.length > PAGE ? encode(got[PAGE - 1]) : null };
   }
 }
 
@@ -76,5 +86,9 @@ export class AuditSearchController {
   constructor(@Inject(AuditSearch) private readonly search: AuditSearch) {}
 
   @Get() @SystemKeys(AUDIT_LOG_LIST) @ReadsAcrossFirms(SEARCH_SCOPE, { firmFilter: true })
-  page(@Query() q: Record<string, unknown>) { return this.search.page(q); }
+  page(@Req() req: { method?: string }, @Query() q: Record<string, unknown>) {
+    // Breaker m3: a HEAD would write the search's lines for an answer nobody reads (as part 2's export).
+    if (req.method === "HEAD") problem(405, "Search with GET", "The audit search answers a GET only: a HEAD request would log a search nobody read.", { code: "SEARCH_HEAD_REFUSED" });
+    return this.search.page(q);
+  }
 }

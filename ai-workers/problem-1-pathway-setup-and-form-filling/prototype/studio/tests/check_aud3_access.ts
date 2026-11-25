@@ -349,17 +349,30 @@ try {
   // ---------------------------------------------------------------------------- DW7: our audit search (part 3)
   const SEARCH = "/api/system/audit", SEARCH_SCOPE = "our audit search";
   const searchLine = (rid: string | null) => sql(`select coalesce(firm_id::text, 'none') || '|' || actor || '|' || (detail->>'scope') || '|' || coalesce(detail->>'firm', 'none') from audit_event where action = '${CROSS_TENANT}' and correlation_id = '${rid}'`);
-  const fA0 = lines("firm_id is not null"), x0 = lines(`action = '${CROSS_TENANT}'`);
-  const sA = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmA}`, { token: ownerT });
+  const x0 = lines(`action = '${CROSS_TENANT}'`), b7 = lines(`firm_id = '${firmB}'`);
   const wantSA = idsWhere(`firm_id = '${firmA}' and at >= '${day(-1)}' and at < '${day(2)}'`).length;
+  const sA = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmA}`, { token: ownerT });
+  const searchRead = (firm: string, rid: string | null) => sql(`select count(*) || '|' || coalesce(string_agg(actor || '|' || (detail->>'route') || '|' || (detail->>'scope'), ','), '') from audit_event
+    where firm_id = '${firm}' and action = '${FIRM_READ}' and correlation_id = '${rid}'`);
   const allSA: any[] = [];
   for (let r = sA, n = 0; r.status === 200 && n < 20; n++) { allSA.push(...r.body.lines); if (!r.body.next) break; r = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmA}&cursor=${r.body.next}`, { token: ownerT }); }
   ok("AUD-3 DW7 pass (SA-11-8): our search narrowed to firm A answers 200 with every line on firm A's trail in the range (any actor type), newest first, each with its firm, trail, who and plain action words",
     sA.status === 200 && sA.body.firm === firmA && allSA.length === wantSA && allSA.every((l) => l.firmId === firmA && l.trail === "firm") && allSA.some((l) => l.who === "Firm staff" && l.actorType === "FIRM_STAFF")
     && allSA.some((l) => l.action === FIRM_READ && l.actionWords === "ExpatReady staff read the firm's records") && new Set(allSA.map((l) => l.id)).size === allSA.length, { status: sA.status, got: allSA.length, wantSA });
   ok("AUD-3 DW7 fail (narrowed): the search narrowed to firm A holds none of firm B's lines and no platform-trail line", allSA.every((l) => l.firmId !== firmB) && !allSA.some((l) => l.firmId === null));
-  ok("AUD-3 DW7 pass (SA-11-12, BR-14: the query that produced the evidence logs itself): each search page wrote one cross_tenant.access line on the platform's own trail, naming the staff member, the scope and firm A, and nothing on any firm's trail",
-    searchLine(sA.requestId) === `none|ourstaff:${OWNER}|${SEARCH_SCOPE}|${firmA}` && lines("firm_id is not null") === fA0, { line: searchLine(sA.requestId), firmLines: [fA0, lines("firm_id is not null")], x: [x0, lines(`action = '${CROSS_TENANT}'`)] });
+  ok("AUD-3 DW7 pass (SA-11-12, BR-14: the query that produced the evidence logs itself): each search page wrote one cross_tenant.access line on the platform's own trail naming the staff member, the scope and firm A, and one firm-read line on firm A's own trail (the firm whose lines it read)",
+    searchLine(sA.requestId) === `none|ourstaff:${OWNER}|${SEARCH_SCOPE}|${firmA}` && searchRead(firmA, sA.requestId) === `1|ourstaff:${OWNER}|${SEARCH}|${SEARCH_SCOPE}`, { line: searchLine(sA.requestId), read: searchRead(firmA, sA.requestId) });
+  ok("AUD-3 DW7 fail: a search of firm A's lines writes nothing on firm B's trail", lines(`firm_id = '${firmB}'`) === b7);
+  // Round 1, breaker M1: narrowed to firm A by an entity key or a correlation id, never naming the firm: firm A still gets
+  // its read line, and firm A's access report shows it.
+  const sKey = await call(base, "GET", `${SEARCH}?${RANGE}&entityKey=${firmA}&action=platform.aud3_test.firm_staff`, { token: ownerT });
+  const repAfter = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}`, { token: ownerT });
+  ok("AUD-3 DW7 pass (round 1, breaker M1): a search narrowed to firm A's lines by entity key alone (no firm filter) writes one firm-read line on firm A's trail, shown in firm A's access report",
+    sKey.status === 200 && sKey.body.lines.length === 1 && searchRead(firmA, sKey.requestId).startsWith("1|") && searchLine(sKey.requestId).endsWith("|none")
+    && (repAfter.body?.lines ?? []).some((l: any) => l.correlationId === sKey.requestId && l.action === FIRM_READ), { sKey: sKey.body?.lines?.length, read: searchRead(firmA, sKey.requestId) });
+  const sNone = await call(base, "GET", `${SEARCH}?${RANGE}&action=platform.aud3_test.nothing`, { token: ownerT });
+  ok("AUD-3 DW7 fail (round 1): a search that finds no firm's line writes no line on any firm's trail, only its platform line",
+    sNone.status === 200 && sNone.body.lines.length === 0 && lines(`firm_id is not null and correlation_id = '${sNone.requestId}'`) === 0 && searchLine(sNone.requestId).startsWith("none|"));
   const sAll = await call(base, "GET", `${SEARCH}?${RANGE}`, { token: auditorT });
   ok("AUD-3 DW7 pass: an unnarrowed search by the Auditor (read-only) answers 200 with lines of firm A, firm B and the platform's own trail, and its line names no firm (it is in no firm's report)",
     sAll.status === 200 && sAll.body.lines.length === 50 && typeof sAll.body.next === "string" && searchLine(sAll.requestId) === `none|ourstaff:${AUDITOR}|${SEARCH_SCOPE}|none`, { status: sAll.status, line: searchLine(sAll.requestId) });
@@ -384,6 +397,14 @@ try {
   const sBadType = await call(base, "GET", `${SEARCH}?${RANGE}&actorType=ROBOT`, { token: ownerT });
   const sUnknown = await call(base, "GET", `${SEARCH}?${RANGE}&person=${OWNER}`, { token: ownerT });
   const sBadCursor = await call(base, "GET", `${SEARCH}?${RANGE}&cursor=nope`, { token: ownerT });
+  const feb30 = Buffer.from(JSON.stringify(["2026-02-30T00:00:00.000000Z", uuid()])).toString("base64url");
+  const sFeb30 = await call(base, "GET", `${SEARCH}?${RANGE}&cursor=${feb30}`, { token: ownerT }), rFeb30 = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}&cursor=${feb30}`, { token: ownerT });
+  const sNul = await call(base, "GET", `${SEARCH}?${RANGE}&action=a%00`, { token: ownerT }), sNulCorr = await call(base, "GET", `${SEARCH}?${RANGE}&correlationId=a%00`, { token: ownerT });
+  const all1b = lines("true");
+  const sHead = await fetch(`${base}${SEARCH}?${RANGE}&firm=${firmA}`, { method: "HEAD", headers: { authorization: `Bearer ${ownerT}` } });
+  ok("AUD-3 DW7 fail (round 1, breaker m1-m3): a cursor of 30 February → 422 BAD_CURSOR (search and access report), a NUL byte in a filter → 422, HEAD → 405; none writes a line (the report's own crossing aside)",
+    sFeb30.status === 422 && sFeb30.body.code === "BAD_CURSOR" && rFeb30.status === 422 && sNul.status === 422 && sNulCorr.status === 422 && sHead.status === 405 && lines("true") === all1b,
+    { sFeb30: sFeb30.status, rFeb30: rFeb30.status, sNul: sNul.status, sNulCorr: sNulCorr.status, sHead: sHead.status });
   ok("AUD-3 DW7 fail (date range required): no dates → 422 DATES_REQUIRED; over a year → 422 RANGE_TOO_LONG; a malformed firm, an unknown actor type, a filter this search does not take, a cursor it did not give → 422; none writes any line",
     sNoDates.status === 422 && sNoDates.body.code === "DATES_REQUIRED" && sLong.status === 422 && sLong.body.code === "RANGE_TOO_LONG" && sBadFirm.status === 422 && sBadFirm.body.fields?.firm
     && sBadType.status === 422 && sUnknown.status === 422 && sBadCursor.status === 422 && lines("true") === all1, { sNoDates: sNoDates.body, sLong: sLong.status, sBadFirm: sBadFirm.body, sBadType: sBadType.status, sUnknown: sUnknown.status, sBadCursor: sBadCursor.status });

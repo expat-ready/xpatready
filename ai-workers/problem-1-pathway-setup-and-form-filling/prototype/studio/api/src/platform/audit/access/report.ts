@@ -66,11 +66,13 @@ const cells = (l: AccessLine): unknown[] => [l.at, l.trail, l.who, l.actor, l.ac
 const notFound = (): never => problem(404, "Firm not found", "No firm has this id.", { code: "FIRM_NOT_FOUND" });
 const badCursor = (): never => problem(FIELD_ERROR_STATUS, "Check the filter", "The page cursor is not one this report gave: start again from the first page.", { code: "BAD_CURSOR", fields: { cursor: "Not a cursor this report gave." } });
 export const encode = (r: { at: string; id: string }) => Buffer.from(JSON.stringify([r.at, r.id])).toString("base64url");
+/** Part 3 (breaker m1): a real moment from 1970 (no 30 February, which Date.parse rolls over and the database refuses). */
+const realAt = (at: string) => { const d = new Date(`${at.slice(0, 23)}Z`); return !Number.isNaN(d.getTime()) && d.getUTCFullYear() >= 1970 && d.toISOString().slice(0, 23) === at.slice(0, 23); };
 export function decode(c: string | undefined): { at: string; id: string } | undefined {
   if (c === undefined || c === "") return undefined;
   try {
     const v = JSON.parse(Buffer.from(c, "base64url").toString("utf8")) as unknown;
-    if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(v[0]) && !Number.isNaN(Date.parse(v[0].slice(0, 23) + "Z"))
+    if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(v[0]) && realAt(v[0])
       && typeof v[1] === "string" && UUID.test(v[1])) return { at: v[0], id: v[1] };
   } catch { /* below */ }
   return badCursor();
