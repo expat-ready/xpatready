@@ -17,7 +17,7 @@ firm exporter and person exporter can share their table readers; that is a later
 | Part | What a person gets | Touch | Proof (pass and fail each) |
 |---|---|---|---|
 | **1** (this PR) | nothing visible: the seam every module plugs into | new `ports/person-export.ts`, `ports/contracts/person-export-port.contract.ts`, `api/src/platform/person-export/registry.ts`, `api/src/features/platform-person-export.ts`, `tests/check_pf26_person_export_port.ts`, two `MODULE.rows/PF-26.md` | contract on fake and registry; exporterCases pass on a good module and catch a family member swept in, a deleted item dropped, an empty section left out; one failing exporter fails the whole build |
-| **2** (migration) | the request, the job, the download, the log, the refusals (API) | migration: key `agent/data-export:request` (catalogue + Owner, Admin, Case Manager, per AG-2-93 §8), table `platform_person_export` (walled, PF-12); new `api/src/platform/person-export/{service,routes,visibility}.ts`, the job on PF-14's runner, the file through FilesPort; `tests/check_pf26_person_export.ts`; one `ADDED_BY_LATER_ROWS` line in `check_pf3_platform_schema.ts` | a Case Manager who sees the person exports and downloads; no key → 403; key but cannot see the person (view.own, another's prospects) → 404; a person with no lead, prospect or client file → only `view.all`; another staff member's download → 404; expired → 410; a failing module → FAILED, no file; audit lines hold who, the person's id, the reason, the time and the file hash, never content; firm A never exports firm B's person |
+| **2** (migration) | the request, the job, the download, the log, the refusals (API) | migration: key `agent/data-export:request` (catalogue + Owner, Admin, Case Manager, per AG-2-93 §8), table `platform_person_export` (walled, PF-12); new `api/src/platform/person-export/{service,routes,visibility}.ts`, the job on PF-14's runner, the file through FilesPort; `tests/check_pf26_person_export.ts`; one `ADDED_BY_LATER_ROWS` line in `check_pf3_platform_schema.ts` | a Case Manager who sees the person exports and downloads; no key → 403; key but cannot see the person (view.own, another's prospects) → 404; a person with no lead, prospect or client file → only `view.all`; another staff member's download → 404; expired → 410; a failing module → FAILED, no file; audit lines hold who, the person's id, the time and the file hash, never the reason text or the content (question (a); the reason is on the export row); firm A never exports firm B's person |
 | **3a** | the front office's sales sections | new `api/src/front-office/person-export/sales.ts` + its registration line: person and channels, leads, prospects (closed and lost too), calls, notes (Recently deleted marked), duplicate flags, company links; merged records (FO-9b lineage) | exporterCases on a seeded firm pair; a merged record's rows in it; a deleted note marked |
 | **3b** | the rest of the front office and the platform | `api/src/front-office/person-export/{consent,booking,retainers,signing,compliance}.ts`, platform messages and consent; the completeness test: every table with a person column is a section or on the excluded list with a reason (AG-2-93 rule 9) | exporterCases; a new table with a person column and no section fails the completeness test |
 | **4** | the case side's and client money's sections (CS-X1) | new `api/src/case-export/exporter.ts`, `api/src/features/case-export.ts`, `api/src/client-money/person-export.ts`; `tests/check_csx1_export.ts` | two cases both in it; a spouse on the same case never; a removed answer marked; an infected file listed, not attached; invoices, payments, trust entries of the person only |
@@ -27,7 +27,8 @@ firm exporter and person exporter can share their table readers; that is a later
 Each part is complete on its own, and unfinished work merges switched off (review m7):
 * Before part 6 no screen shows the action.
 * From part 2 on, the API refuses a request with 503 "Not available yet" until every module R1.34 names has registered its
-  exporter. The list is a code constant in part 2: `front-office.*`, `case-side`, `client-money`. So no key holder ever
+  exporter. The list is an exact code constant in part 2 (no wildcard): `front-office.person` (part 2),
+  `front-office.sales` (3a), `front-office.services` and `platform.messages` (3b), `case-side` and `client-money` (4). So no key holder ever
   gets a package without the case side's or money sections, offered as complete. Part 4 completes the list and the
   test turns from "refused" to "built".
 
@@ -37,6 +38,8 @@ Each part is complete on its own, and unfinished work merges switched off (revie
   English, with that gap named in its PR.
 * Rule 4, family and company links and front-office tasks: part 3a (`fo_company_contact`; the person's tasks where
   front-office tasks exist on main, else a "not built" line in the PR).
+* Family links (`party_relationship`, cases.prisma): part 4, the case side's section.
+* The package's size limit: the file store's own (`FILE_MAX_BYTES`, 25 MB). A larger package fails whole, as "(too-large)".
 * AG16-60, the possible duplicate: part 6 shows "Possible match: <other record>" on the dialog when the person carries an
   unresolved possible match, so the user can export that record too.
 * The failure step: j_34 step 3 (Failure). A failing module leads to "Export failed" and "Try again", and no file is offered.
@@ -46,7 +49,7 @@ Each part is complete on its own, and unfinished work merges switched off (revie
 ## Journey j_34 (by screens, 1440 px; the next capability's first step is the person's record again)
 1. A Case Manager who can see Client B opens Client B's record (FO-4) and picks **More › Export personal data**.
 2. The dialog names Client B, says the file holds every module's data about this one person and is logged, and asks **why**
-   (required). Empty → "Say why you are exporting this person's data." Sent → the record shows "Preparing export…".
+   (required). Empty → the platform's "This is required." on the reason field. Sent → the record shows "Preparing export…".
 3. The job finishes: "Download (expires <date>)" for the requester only. The file holds the front office's, the case side's
    and client money's sections; a family member on the same case is not in it; a deleted note is marked.
    Failure: a module fails → "Export failed" and "Try again", no file offered.
