@@ -2,7 +2,7 @@
 
 current_lead: local_d66eb914-4168-4cdd-a293-10bec03b586f Lead 4 · 25 Nov 08:06 IST (after Lead 3 local_48775ee3 at 45% context; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 10:1x IST (clock): **Lead 4 check 10:06.** 61/101 Works; 19 Partial; 21 Not built. Merged: #3625 (records P-824..P-826, RULES as of P-826), #3593 (R1.58 R4-1), #3579 (R1.86 A2). Queued: #3035 (OS-1), #3615 (R1.13 Works). R1.58 lane told: neither (O) nor (N); build FO-7s3a then FO-7s3b next (operating reversal is R1.96's). qa 9 told: update j_58 W5, re-walk j_58; walk j_86 and score R1.86. OS-3 ended a turn (PR open). **The 10 builder tasks requested ~09:2x are still not created on claude.ai (45 min): the founder starts them from their cards.** Disk was 6 GB: Lead 4's two scratch clones (5.2 GB, pushed, merged) deleted, 12 GB free. Lead 4 context ~35%.
+updated: 2026-11-25 10:4x IST (clock): **Lead 4.** 61/101 Works; 19 Partial; 21 Not built. Merged since 09:36: #3625 (P-824..P-826), #3593 (R1.58), #3579 (R1.86), #3035 (OS-1). Queued: #3615 (R1.13 Works), #3641 (P-827, P-828). 20 builders running from cards; OS-3 running; OS-1 on pipeline-first. Disk 12 GB. Lead 4 context ~40%.
 
 ## Hand-over Lead 3 → Lead 4, 08:1x IST 25 Nov (Lead 3 at 45% context; earlier block: `history/STATE-2026-11-25-0810-lead3-handover-lead2-block.md`)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 3's 0427567f is deleted. Standby: Lead 5 local_9bab465f (start one more at the founder's next typed turn, P-286). Weekly 27% at 08:04 (claude.ai warns "on pace to hit your weekly limit early"): report the rate hourly today.
