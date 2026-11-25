@@ -39,6 +39,7 @@ TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
+TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 bad=0
@@ -406,6 +407,9 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
+E-a age|product/tools/question-gate.py|s/        if age > limit:/        if False:/|check-question-gate.sh
+E-a tooling|product/tools/question-gate.py|s/^PRODUCT_MIN, TOOLING_MIN, STALE_MIN = 20, 60, 35/PRODUCT_MIN, TOOLING_MIN, STALE_MIN = 20, 20, 35/|check-question-gate.sh
+E-a wired|product/tools/stop-check.sh|/question-gate.py" --sle/d|check-question-gate.sh
 HANG env|product/tools/hang-report.py|s/if d.get("environmentVariables"):/if False:/|check-hang-report.sh
 HANG dir|product/tools/hang-report.py|s/^FILE = .*/FILE = re.compile(r"(.*)(:\\d+:\\d+)")/|check-hang-report.sh
 HANG line|product/tools/hang-report.py|s/(f or "(line not shown)")/(f or s)/|check-hang-report.sh
