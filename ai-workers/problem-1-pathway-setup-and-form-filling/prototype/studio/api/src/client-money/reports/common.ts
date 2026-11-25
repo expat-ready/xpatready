@@ -38,3 +38,8 @@ export function seenSql(s: MoneyScope, x: string): Prisma.Sql {
   if (!s.cases.length && !s.parties.length) return Prisma.sql`false`;
   return Prisma.sql`(${Prisma.raw(x)}.case_id = any(${s.cases}::uuid[]) or (${Prisma.raw(x)}.case_id is null and coalesce(${Prisma.raw(x)}.person_id, ${Prisma.raw(x)}.company_id) = any(${s.parties}::uuid[])))`;
 }
+
+/** The statement sorts every line of the client (43,000 for 10,000 invoices with their facts) for its running balance:
+ *  past PostgreSQL's default 4 MB it sorts on disk (break M2: 5.7 MB spilled, 80 ms). 32 MB for this read's transaction
+ *  only (`set local`: it ends with the transaction; Sample size, measured on the 10,000-invoice mix of S8). */
+export async function sortMemory(tx: Tx): Promise<void> { await tx.$executeRaw`set local work_mem = '32MB'`; }

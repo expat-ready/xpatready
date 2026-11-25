@@ -135,9 +135,10 @@ try {
   const today = dayOf(new Date());
   const factsOf = (ids: string[]) => inA(() => db.$transaction(async (tx) => Promise.all(ids.map(async (id) => (await invoiceFacts(tx, A, id, today))!.view))));
   const views = await factsOf([inv1, inv2, inv3, inv4, inv5, usd]);
-  const ledger = (cur: string) => views.filter((v) => v.currency === cur).reduce((s, v) => s + v.totalMinor - v.creditedMinor - v.writtenOffMinor - v.paidMinor, 0);
+  // the ledger: what is owed less what was paid beyond the bill and still waits for a choice, invoice by invoice (facts.ts's dueMinor, extraMinor)
+  const ledger = (cur: string) => views.filter((v) => v.currency === cur).reduce((s, v) => s + v.dueMinor - v.extraMinor, 0);
   const all = await walk(allStmt, PA), closing = (acct: string, cur: string) => all.accounts.find((a: any) => a.account === acct && a.currency === cur)?.closingMinor;   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
-  ok(`FO-7r S1 pass: the closing INVOICES balance per currency equals Σ (total − credited − written off − paid) of invoiceFacts (CAD ${ledger("CAD")}, USD ${ledger("USD")})`,
+  ok(`FO-7r S1 pass: the closing INVOICES balance per currency equals Σ (due − extra) of invoiceFacts (CAD ${ledger("CAD")}, USD ${ledger("USD")})`,
     closing("INVOICES", "CAD") === ledger("CAD") && closing("INVOICES", "USD") === ledger("USD") && ledger("CAD") === 265550 - 100000 - 10000 + (100000 - 100000 + 30000) + 0 + (40000 - 25000) + 30000, { accounts: all.accounts, ledger: [ledger("CAD"), ledger("USD")] });
   const chained = (lines: any[]) => { const last = new Map<string, number>(); return lines.every((l) => { const k = `${l.account}|${l.currency}`, prev = last.get(k) ?? 0; last.set(k, l.balanceAfterMinor); return l.balanceAfterMinor === prev + l.amountMinor; }); };   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
   ok("FO-7r S1 pass: each line's running balance is the one before it plus its amount, and the last line's equals the closing balance", chained(all.items)
@@ -194,16 +195,24 @@ try {
   const z = await make(8000, PC); await issue(z);
   const ap1 = sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, invoice_id, created_by) values ('${A}', '${PC}', 'APPLIED', -3000, 'CAD', '${z}', 'seed:FO-7r') returning id`);
   sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, reverses_entry_id, reason, created_by) values ('${A}', '${PC}', 'REVERSED', 1000, 'CAD', '${ap1}', 'Applied too much (Sample)', 'seed:FO-7r')`);
+  const w = await make(5000, PC); await issue(w); await pay(w, 7000, tA, "CASH");   // CAD 20.00 beyond the bill, no choice made yet
   const sc = await walk(allStmt, PC), sumC = await inA(() => allSum.summary(ctxR, "person", PC)), cC = sumC.totals[0]!;
-  const vC = await factsOf([x, y, z]), ledgerC = vC.reduce((s, v) => s + v.totalMinor - v.creditedMinor - v.writtenOffMinor - v.paidMinor, 0);
+  const vC = await factsOf([x, y, z, w]), ledgerC = vC.reduce((s, v) => s + v.dueMinor - v.extraMinor, 0);
   const dueC = (await inA(() => allInv.list(ctxR, { partyKind: "PERSON", partyId: PC, pageSize: "200" }))).items.reduce((s, r) => s + r.dueMinor, 0);
   const kindsC = new Set(sc.items.map((l: any) => l.kind)), closingC = sc.accounts.find((a: any) => a.account === "INVOICES")?.closingMinor;   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
-  ok("setup S9: the trust payment, both credit notes, the overpayment kept as credit and the credit rows are accepted by the database's checks", wx.status === 201 && moved.status === 201 && keep.status === 201 && !!ap1, { wx: wx.body, moved: moved.body, keep: keep.body });
-  ok("FO-7r S9 pass: the corrected trust payment, the money returned from trust, credit applied and its reversal each show as a line", ["PAID_FROM_TRUST", "PAID_FROM_TRUST_CORRECTED", "RETURNED_FROM_TRUST", "CREDIT_APPLIED", "CREDIT_APPLIED_REVERSED", "CREDIT_NOTE", "PAYMENT"].every((k) => kindsC.has(k)), [...kindsC]);
-  ok(`FO-7r S9 pass: with every fact, the closing balance equals Σ invoiceFacts (CAD ${ledgerC}) and owed equals the invoice list's due (CAD ${dueC})`, closingC === ledgerC && cC.owedMinor === dueC && chained(sc.items), { closingC, ledgerC, owed: cC.owedMinor, dueC });
-  ok("FO-7r S9 pass: closing = owed − the CAD 50.00 paid beyond the bill and kept as credit; the summary's credit is CAD 30.00 (50.00 kept, 30.00 applied, 10.00 back)", closingC === cC.owedMinor - 5000 && cC.creditMinor === 5000 - 3000 + 1000, { closingC, owed: cC.owedMinor, credit: cC.creditMinor });
-  ok("FO-7r S9 fail: the same equation without the kept overpayment fails (closing is not owed)", closingC !== cC.owedMinor);
+  ok("setup S9: the trust payment and its move, both credit notes, the overpayment kept as credit and the credit rows are accepted by the database's checks", wx.status === 201 && moved.status === 201 && keep.status === 201 && !!ap1, { wx: wx.body, moved: moved.body, keep: keep.body });
+  ok("FO-7r S9 pass: the corrected trust payment, the money returned from trust, credit kept, credit applied and its reversal each show as a line",
+    ["PAID_FROM_TRUST", "PAID_FROM_TRUST_CORRECTED", "RETURNED_FROM_TRUST", "KEPT_AS_CREDIT", "CREDIT_APPLIED", "CREDIT_APPLIED_REVERSED", "CREDIT_NOTE", "PAYMENT"].every((k) => kindsC.has(k)), [...kindsC]);
+  ok(`FO-7r S9 pass: with every fact, the closing balance equals Σ (due − extra) of invoiceFacts (CAD ${ledgerC}), owed equals the invoice list's due (CAD ${dueC}), the chain holds`, closingC === ledgerC && cC.owedMinor === dueC && chained(sc.items), { closingC, ledgerC, owed: cC.owedMinor, dueC });
+  ok("FO-7r S9 pass (break M1): closing = owed − the CAD 20.00 still waiting for a choice (60.00 − 20.00); kept credit applied elsewhere is never counted twice",
+    closingC === cC.owedMinor - cC.waitingMinor && cC.owedMinor === 6000 && cC.waitingMinor === 2000 && closingC === 4000, { closingC, owed: cC.owedMinor, waiting: cC.waitingMinor });
+  const withoutKept = sc.items.filter((l: any) => l.account === "INVOICES" && !l.kind.startsWith("KEPT_AS_CREDIT")).reduce((s: number, l: any) => s + l.amountMinor, 0);   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  ok("FO-7r S9 fail (break M1): without the kept-as-credit line the balance would be CAD 50.00 lower than owed − waiting (the double count)", withoutKept === closingC - 5000 && withoutKept !== cC.owedMinor - cC.waitingMinor, { withoutKept, closingC });
+  ok("FO-7r S9 pass: the summary's paid is money received (trust 350.00 + 150.00 + 70.00), credit applied its own figure (20.00), credit held 30.00 (50.00 kept, 30.00 applied, 10.00 back)",
+    cC.paidMinor === 35000 + 15000 + 7000 && cC.creditAppliedMinor === 2000 && cC.creditMinor === 5000 - 3000 + 1000, { paid: cC.paidMinor, applied: cC.creditAppliedMinor, credit: cC.creditMinor });
   ok("FO-7r S9 pass: paid from trust is what trust paid less what came back (600.00 − 200.00 − 50.00 = 350.00), as FACTS_LATERAL counts it", cC.paidFromTrustMinor === 35000 && vC[0]!.paidMinor === 35000, { trust: cC.paidFromTrustMinor, factsPaid: vC[0]!.paidMinor });
+  const q422 = await call(tA, "GET", `/front-office/money/parties/person/${PC}/summary?foo=1`);
+  ok("FO-7r S9 fail (break m1): the summary refuses a query field it does not take, 422 naming it", q422.status === 422 && JSON.stringify(q422.body).includes("foo"), q422.body);
 
   // ---------------------------------------------------------------------------------------------------- S3
   const yesterday = dayOf(new Date(Date.now() - 86_400_000)), tomorrow = dayOf(new Date(Date.now() + 86_400_000));
@@ -257,6 +266,12 @@ try {
       select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${PBULK}';
     insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by)
       select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'bulk-' || i.id, 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}' and i.number like 'BULK-%5';
+    -- break M2's realistic mix on the same client: a credit note and a trust withdrawal on every invoice, 1,000 corrections
+    -- of a withdrawal, 100 credit applications (performance rows: written with triggers off)
+    insert into money_credit_note (firm_id, invoice_id, number, amount_minor, currency, reason, created_by) select '${A}', i.id, 'BCN-' || i.number, 10, 'CAD', 'Bulk (Sample)', 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}';
+    insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PBULK}', 'WITHDRAWAL_TO_INVOICE', -20, 'CAD', row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}';
+    insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, corrects_entry_id, correction_kind, reason, created_by) select '${A}', '${PBULK}', 'CORRECTION', 20, 'CAD', 20000 + row_number() over (), 0, e.id, 'OTHER', 'Bulk (Sample)', 'seed:FO-7r-bulk' from money_trust_entry e where e.person_id = '${PBULK}' and e.kind = 'WITHDRAWAL_TO_INVOICE' and e.seq <= 1000;
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PBULK}', 'APPLIED', -5, 'CAD', row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}' and i.number like 'BULK-%00';
     -- other clients' facts in the same firm (review M1: an OR join cost grew with the firm's credit entries): 3,000 invoices
     -- of another client, each with credit applied and a trust withdrawal (performance rows: written with triggers off)
     insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PA2}', 'OTHER-' || g, 'CAD', date '2026-03-01', now(), 'seed:FO-7r-bulk', 'seed:FO-7r-bulk', now() from generate_series(1, 3000) g;
@@ -266,9 +281,15 @@ try {
   await inA(() => allStmt.statement(ctxR, "person", PBULK, {}));   // warm
   let t0 = performance.now(); const bs = await inA(() => allStmt.statement(ctxR, "person", PBULK, {})); const msS = Math.round(performance.now() - t0);
   t0 = performance.now(); const bsum = await inA(() => allSum.summary(ctxR, "person", PBULK)); const msSum = Math.round(performance.now() - t0);
-  ok(`FO-7r S8 pass: 10,000 invoices (and 3,000 of another client's with credit and trust rows): the statement's page 1 (50 lines) in ${msS} ms and the summary in ${msSum} ms, both within 300 ms`, msS < 300 && msSum < 300 && bs.items.length === 50 && !!bs.next
-    && bsum.totals[0]!.billedMinor === 10_000_000 && bsum.totals[0]!.paidMinor === 1000 * 400 && bs.accounts[0]!.closingMinor === 10_000_000 - 400_000, { msS, msSum, closing: bs.accounts, billed: bsum.totals });
-  ok("FO-7r S8 fail (AG-6-30's failure case): a request without a page size gets the default, 50, never every line", bs.pageSize === 50 && bs.items.length === 50 && bs.accounts[0]!.lines === 11000, { pageSize: bs.pageSize, n: bs.items.length });
+  await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement`);   // warm the route
+  t0 = performance.now(); const viaRoute = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement`); const msRoute = Math.round(performance.now() - t0);
+  t0 = performance.now(); const sumRoute = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/summary`); const msSumRoute = Math.round(performance.now() - t0);
+  const inv0 = bs.accounts.find((x) => x.account === "INVOICES")!, b0 = bsum.totals[0]!;
+  ok(`FO-7r S8 pass: 10,000 invoices, each with a credit note and a trust withdrawal, plus 1,000 payments, 1,000 corrections, 100 credit applications and 3,000 of another client's: page 1 in ${msS} ms (route ${msRoute} ms), the summary in ${msSum} ms (route ${msSumRoute} ms), each within 300 ms`,
+    msS < 300 && msSum < 300 && msRoute < 300 && msSumRoute < 300 && viaRoute.status === 200 && sumRoute.status === 200 && bs.items.length === 50 && !!bs.next
+    && b0.billedMinor === 10_000_000 && b0.paidMinor === 400_000 + 180_000 && b0.creditedMinor === 100_000 && b0.creditAppliedMinor === 500 && inv0.closingMinor === 10_000_000 - 100_000 - 580_000 - 500 && inv0.closingMinor === b0.owedMinor,
+    { msS, msSum, msRoute, msSumRoute, closing: bs.accounts, totals: bsum.totals });
+  ok("FO-7r S8 fail (AG-6-30's failure case): a request without a page size gets the default, 50, never every line", bs.pageSize === 50 && bs.items.length === 50 && inv0.lines === 10_000 + 1_000 + 10_000 + 10_000 + 1_000 + 100, { pageSize: bs.pageSize, n: bs.items.length, lines: inv0.lines });
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${(e as Error).stack ?? e}`);
 } finally {

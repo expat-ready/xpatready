@@ -14,7 +14,7 @@ export class MoneyReportsController {
   constructor(@Inject(MoneySummary) private readonly summaries: MoneySummary, @Inject(MoneyStatement) private readonly statements: MoneyStatement) {}
 
   @Get(":kind/:id/summary") @PermissionKeys("agent/invoice:show")
-  summary(@Req() r: R, @Param("kind") kind: string, @Param("id") id: string) { return this.summaries.summary(staffOf(r), kind, id); }
+  summary(@Req() r: R, @Param("kind") kind: string, @Param("id") id: string, @Query() q: unknown) { return this.summaries.summary(staffOf(r), kind, id, q); }
 
   @Get(":kind/:id/statement") @PermissionKeys("agent/invoice:show")
   statement(@Req() r: R, @Param("kind") kind: string, @Param("id") id: string, @Query() q: unknown) { return this.statements.statement(staffOf(r), kind, id, q); }

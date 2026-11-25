@@ -3,12 +3,14 @@
 //   * INVOICES: every fact that changes what the client owes on their issued invoices, in time order, each signed as it
 //     moves the balance: the invoice issued (+ its stored total, money_invoice_total), a payment into operating (−), a
 //     refund of a payment (+), trust applied (− the withdrawal) and a correction of it (+), money a credit note's "Refund
-//     to the client" sent back from trust (+), credit applied (−) and its reversal (+), a credit note (−), a write-off (−).
-//     These are, term for term, the facts status-sql.ts FACTS_LATERAL reads (total − credited − written − paid, paid =
-//     operating − refunded + trust + applied), so the closing balance is Σ of (total − credited − written off − paid)
-//     over the same invoices: the invoice list's own figures (the row's rule: "the statement's running balance equals
-//     the ledger"; tests/check_fo7r_statement.ts S1). A balance below zero is money paid beyond what was billed (shown,
-//     never hidden); what is owed is the summary's (never below zero per invoice). Credit kept is a holding, in the summary.
+//     to the client" sent back from trust (+), credit applied (−) and its reversal (+), a credit note (−), a write-off (−),
+//     and money paid beyond the bill and kept as credit (+, it leaves the invoice for the client's credit; its reversal −:
+//     break M1, else kept credit applied elsewhere counted twice). These are, term for term, the facts status-sql.ts
+//     FACTS_LATERAL reads (total − credited − written − paid + kept, paid = operating − refunded + trust + applied), so
+//     the closing balance is Σ (due − extra) over the same invoices: what is owed less what was paid beyond the bill and
+//     still waits for a person's choice (refund or keep), the invoice list's own figures (the row's rule: "the
+//     statement's running balance equals the ledger"; tests/check_fo7r_statement.ts S1, S9). Credit held is the client's
+//     own holding, in the summary, never in this balance.
 //     Known limit: FACTS_LATERAL takes greatest(trust paid − returned, 0) per invoice; a return above what trust paid
 //     would differ here by the excess (no write path on main allows it: FO-7a2's checks).
 //   * TRUST (only while trust shows, AG-6-59 rules 5-6): the client's trust entries in the ledger's own order (seq, as
@@ -25,10 +27,10 @@ import type { StaffContext } from "../../platform/identity/keys.ts";
 import { UUID } from "../invoices/drafts.ts";
 import { Day, Stamp, bad, cursorOf, cursorText, pageSizeOf, trustShows } from "../reads/common.ts";
 import { failClosed, scopeSql, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
-import { kindOf, partyCol, partyFor, seenSql, type Party } from "./common.ts";
+import { kindOf, partyCol, partyFor, seenSql, sortMemory, type Party } from "./common.ts";
 
 type Tx = Prisma.TransactionClient;
-export const LINE_KINDS = ["INVOICE", "PAYMENT", "REFUND", "PAID_FROM_TRUST", "PAID_FROM_TRUST_CORRECTED", "RETURNED_FROM_TRUST", "CREDIT_APPLIED", "CREDIT_APPLIED_REVERSED", "CREDIT_NOTE", "WRITE_OFF"] as const;
+export const LINE_KINDS = ["INVOICE", "PAYMENT", "REFUND", "PAID_FROM_TRUST", "PAID_FROM_TRUST_CORRECTED", "RETURNED_FROM_TRUST", "CREDIT_APPLIED", "CREDIT_APPLIED_REVERSED", "CREDIT_NOTE", "WRITE_OFF", "KEPT_AS_CREDIT", "KEPT_AS_CREDIT_REVERSED"] as const;
 export type Account = "INVOICES" | "TRUST";
 export type StatementLine = { account: Account; currency: "CAD" | "USD"; at: string; kind: string; reference: string | null; invoiceId: string | null; caseId: string | null; amountMinor: number; balanceAfterMinor: number };
 export type AccountTotals = { account: Account; currency: "CAD" | "USD"; openingMinor: number; closingMinor: number; lines: number };
@@ -49,45 +51,48 @@ export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: strin
         left join money_trust_request r on r.firm_id = e.firm_id and r.id = e.trust_request_id left join money_invoice i on i.firm_id = e.firm_id and i.id = e.invoice_id
       where e.firm_id = ${f}::uuid and ${partyCol(p, "e")} = ${p.id}::uuid and ${seenSql(scope, "e")} ${onCase("e")}` : Prisma.empty;
   // inv: the client's issued invoices in scope; each later branch is one fact of FACTS_LATERAL, joined to them by invoice
-  // the stored total: money_invoice_total's own sum, by the line index (firm, invoice), once per invoice
-  return Prisma.sql`with inv as materialized (select i.id, i.case_id, i.currency, i.number, i.issued_at, i.due_date, coalesce(t.total, 0) as total from money_invoice i
-        left join lateral (select sum(x.amount_minor::bigint + x.tax_minor) as total from money_invoice_line x where x.firm_id = i.firm_id and x.invoice_id = i.id) t on true
+  // the stored total: money_invoice_total's own sum, read for the client's invoices in one grouped (hashed) read
+  return Prisma.sql`with inv0 as materialized (select i.id, i.case_id, i.currency, i.number, i.issued_at, i.due_date from money_invoice i
       where i.firm_id = ${f}::uuid and ${partyCol(p, "i")} = ${p.id}::uuid and i.issued_at is not null and ${scopeSql(scope)} ${onCase("i")}),
+    inv as materialized (select inv0.*, coalesce(t.total, 0) as total from inv0 left join (select x.invoice_id, sum(x.amount_minor::bigint + x.tax_minor) as total
+        from money_invoice_line x join inv0 on inv0.id = x.invoice_id where x.firm_id = ${f}::uuid group by x.invoice_id) t on t.invoice_id = inv0.id),
     -- credit applied to one of these invoices: money_invoice_credit's "e.invoice_id = inv or p.invoice_id = inv", as two
     -- plain joins the database can hash (an OR join loops over every credit entry of the firm: review M1), the second
     -- only where the payment's invoice is another one (so an entry naming one invoice both ways counts once, as the OR does)
-    ca as materialized (select e.id, e.created_at, e.amount_minor, e.invoice_id as inv from money_credit_entry e join inv on inv.id = e.invoice_id where e.firm_id = ${f}::uuid and e.kind = 'APPLIED'
-      union all select e.id, e.created_at, e.amount_minor, p.invoice_id from money_credit_entry e join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id join inv on inv.id = p.invoice_id
-        where e.firm_id = ${f}::uuid and e.kind = 'APPLIED' and e.invoice_id is distinct from p.invoice_id),
-    f0 (acct, currency, k, o, id, inv, at, kind, reference, invoice_id, case_id, amount) as (
-      select 0, i.currency::text, i.issued_at, 1, i.id, i.id, i.issued_at, 'INVOICE', i.number, i.id, i.case_id, i.total::bigint from inv i
-      union all select 0, i.currency::text, p.received_at, 2, p.id, i.id, p.received_at, 'PAYMENT', coalesce(p.reference, i.number), i.id, i.case_id, -p.amount_minor::bigint
-        from money_payment p join inv i on i.id = p.invoice_id where p.firm_id = ${f}::uuid and p.received_into = 'OPERATING'
-      union all select 0, i.currency::text, r.created_at, 3, r.id, i.id, r.created_at, 'REFUND', coalesce(p.reference, i.number), i.id, i.case_id, r.amount_minor::bigint
-        from money_refund r join money_payment p on p.firm_id = r.firm_id and p.id = r.payment_id join inv i on i.id = p.invoice_id where r.firm_id = ${f}::uuid
-      union all select 0, i.currency::text, e.created_at, 4, e.id, i.id, e.created_at, 'PAID_FROM_TRUST', i.number, i.id, i.case_id, e.amount_minor::bigint
-        from money_trust_entry e join inv i on i.id = e.invoice_id where e.firm_id = ${f}::uuid and e.kind = 'WITHDRAWAL_TO_INVOICE'
-      union all select 0, i.currency::text, c.created_at, 5, c.id, i.id, c.created_at, 'PAID_FROM_TRUST_CORRECTED', i.number, i.id, i.case_id, c.amount_minor::bigint
-        from money_trust_entry c join money_trust_entry w on w.firm_id = c.firm_id and w.id = c.corrects_entry_id join inv i on i.id = w.invoice_id where c.firm_id = ${f}::uuid and c.kind = 'CORRECTION'
-      union all select 0, i.currency::text, c.created_at, 6, c.id, i.id, c.created_at, 'RETURNED_FROM_TRUST', coalesce(c.number, i.number), i.id, i.case_id, coalesce(c.overpaid_minor, 0)::bigint
-        from money_credit_note c join inv i on i.id = c.invoice_id where c.firm_id = ${f}::uuid and c.overpaid_choice = 'OVERPAID_REFUND'
-      union all select 0, i.currency::text, e.created_at, 7, e.id, i.id, e.created_at, 'CREDIT_APPLIED', i.number, i.id, i.case_id, e.amount_minor::bigint
-        from ca e join inv i on i.id = e.inv
-      union all select 0, i.currency::text, r.created_at, 8, r.id, i.id, r.created_at, 'CREDIT_APPLIED_REVERSED', i.number, i.id, i.case_id, r.amount_minor::bigint
-        from money_credit_entry r join ca e on e.id = r.reverses_entry_id join inv i on i.id = e.inv where r.firm_id = ${f}::uuid
-      union all select 0, i.currency::text, c.created_at, 9, c.id, i.id, c.created_at, 'CREDIT_NOTE', coalesce(c.number, i.number), i.id, i.case_id, -c.amount_minor::bigint
-        from money_credit_note c join inv i on i.id = c.invoice_id where c.firm_id = ${f}::uuid
-      union all select 0, i.currency::text, w.created_at, 10, w.id, i.id, w.created_at, 'WRITE_OFF', i.number, i.id, i.case_id, -w.amount_minor::bigint
-        from money_write_off w join inv i on i.id = w.invoice_id where w.firm_id = ${f}::uuid
-    ),
+    ca as materialized (select e.id, e.kind, e.created_at, e.amount_minor, e.invoice_id as inv from money_credit_entry e join inv on inv.id = e.invoice_id where e.firm_id = ${f}::uuid and e.kind in ('APPLIED', 'KEPT')
+      union all select e.id, e.kind, e.created_at, e.amount_minor, p.invoice_id from money_credit_entry e join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id join inv on inv.id = p.invoice_id
+        where e.firm_id = ${f}::uuid and e.kind in ('APPLIED', 'KEPT') and e.invoice_id is distinct from p.invoice_id),
     -- a fact dated before its invoice was issued (a payment recorded with its real day, stored at 00:00 UTC; credit applied
-    -- to the draft) counts from the issue: it never sorts before the invoice, nor falls in a period before it (review m1, m2)
-    l as (select f0.acct, f0.currency, greatest(f0.k, inv.issued_at) as k, f0.o, f0.id, f0.inv, greatest(f0.at, inv.issued_at) as at, f0.kind, f0.reference, f0.invoice_id, f0.case_id, f0.amount
-        from f0 join inv on inv.id = f0.inv
+    -- to the draft) counts from the issue: greatest(…, i.issued_at) in each branch, so it never sorts before the invoice,
+    -- nor falls in a period before it (review m1, m2)
+    l (acct, currency, k, o, id, inv, at, kind, reference, invoice_id, case_id, amount) as (
+      select 0, i.currency::text, i.issued_at, 1, i.id, i.id, i.issued_at, 'INVOICE', i.number, i.id, i.case_id, i.total::bigint from inv i
+      union all select 0, i.currency::text, greatest(p.received_at, i.issued_at), 2, p.id, i.id, greatest(p.received_at, i.issued_at), 'PAYMENT', coalesce(p.reference, i.number), i.id, i.case_id, -p.amount_minor::bigint
+        from money_payment p join inv i on i.id = p.invoice_id where p.firm_id = ${f}::uuid and p.received_into = 'OPERATING'
+      union all select 0, i.currency::text, greatest(r.created_at, i.issued_at), 3, r.id, i.id, greatest(r.created_at, i.issued_at), 'REFUND', coalesce(p.reference, i.number), i.id, i.case_id, r.amount_minor::bigint
+        from money_refund r join money_payment p on p.firm_id = r.firm_id and p.id = r.payment_id join inv i on i.id = p.invoice_id where r.firm_id = ${f}::uuid
+      union all select 0, i.currency::text, greatest(e.created_at, i.issued_at), 4, e.id, i.id, greatest(e.created_at, i.issued_at), 'PAID_FROM_TRUST', i.number, i.id, i.case_id, e.amount_minor::bigint
+        from money_trust_entry e join inv i on i.id = e.invoice_id where e.firm_id = ${f}::uuid and e.kind = 'WITHDRAWAL_TO_INVOICE'
+      union all select 0, i.currency::text, greatest(c.created_at, i.issued_at), 5, c.id, i.id, greatest(c.created_at, i.issued_at), 'PAID_FROM_TRUST_CORRECTED', i.number, i.id, i.case_id, c.amount_minor::bigint
+        from money_trust_entry c join money_trust_entry w on w.firm_id = c.firm_id and w.id = c.corrects_entry_id join inv i on i.id = w.invoice_id where c.firm_id = ${f}::uuid and c.kind = 'CORRECTION'
+      union all select 0, i.currency::text, greatest(c.created_at, i.issued_at), 6, c.id, i.id, greatest(c.created_at, i.issued_at), 'RETURNED_FROM_TRUST', coalesce(c.number, i.number), i.id, i.case_id, coalesce(c.overpaid_minor, 0)::bigint
+        from money_credit_note c join inv i on i.id = c.invoice_id where c.firm_id = ${f}::uuid and c.overpaid_choice = 'OVERPAID_REFUND'
+      union all select 0, i.currency::text, greatest(e.created_at, i.issued_at), 7, e.id, i.id, greatest(e.created_at, i.issued_at), 'CREDIT_APPLIED', i.number, i.id, i.case_id, e.amount_minor::bigint
+        from ca e join inv i on i.id = e.inv where e.kind = 'APPLIED'
+      union all select 0, i.currency::text, greatest(r.created_at, i.issued_at), 8, r.id, i.id, greatest(r.created_at, i.issued_at), 'CREDIT_APPLIED_REVERSED', i.number, i.id, i.case_id, r.amount_minor::bigint
+        from money_credit_entry r join ca e on e.id = r.reverses_entry_id join inv i on i.id = e.inv where r.firm_id = ${f}::uuid and e.kind = 'APPLIED'
+      union all select 0, i.currency::text, greatest(e.created_at, i.issued_at), 11, e.id, i.id, greatest(e.created_at, i.issued_at), 'KEPT_AS_CREDIT', i.number, i.id, i.case_id, e.amount_minor::bigint
+        from ca e join inv i on i.id = e.inv where e.kind = 'KEPT'
+      union all select 0, i.currency::text, greatest(r.created_at, i.issued_at), 12, r.id, i.id, greatest(r.created_at, i.issued_at), 'KEPT_AS_CREDIT_REVERSED', i.number, i.id, i.case_id, r.amount_minor::bigint
+        from money_credit_entry r join ca e on e.id = r.reverses_entry_id join inv i on i.id = e.inv where r.firm_id = ${f}::uuid and e.kind = 'KEPT'
+      union all select 0, i.currency::text, greatest(c.created_at, i.issued_at), 9, c.id, i.id, greatest(c.created_at, i.issued_at), 'CREDIT_NOTE', coalesce(c.number, i.number), i.id, i.case_id, -c.amount_minor::bigint
+        from money_credit_note c join inv i on i.id = c.invoice_id where c.firm_id = ${f}::uuid
+      union all select 0, i.currency::text, greatest(w.created_at, i.issued_at), 10, w.id, i.id, greatest(w.created_at, i.issued_at), 'WRITE_OFF', i.number, i.id, i.case_id, -w.amount_minor::bigint
+        from money_write_off w join inv i on i.id = w.invoice_id where w.firm_id = ${f}::uuid
       ${trust})`;
 }
 /** ledgerCtes plus `run`: each line with its running balance per account and currency. */
-const runSql = (ctes: Prisma.Sql) => Prisma.sql`${ctes}, run as (select l.*, sum(l.amount) over (partition by l.acct, l.currency order by l.k, l.o, l.id, l.inv rows unbounded preceding) as balance from l)`;
+const runSql = (ctes: Prisma.Sql) => Prisma.sql`${ctes}, run as materialized (select l.*, sum(l.amount) over (partition by l.acct, l.currency order by l.k, l.o, l.id, l.inv rows unbounded preceding) as balance from l)`;
 
 export class MoneyStatement {
   constructor(private readonly db: PrismaClient, private readonly scopeOf: ScopeOf = failClosed) {}
@@ -98,6 +103,7 @@ export class MoneyStatement {
     if (q.from && q.to && q.from > q.to) bad("to", "to is before from.");
     const f = firmScope(ctx.firmId).firmId, scope = await this.scopeOf(ctx), caseId = q.caseId?.toLowerCase();
     return this.db.$transaction(async (tx) => {
+      await sortMemory(tx);
       const party = await partyFor(tx, f, kind, id, scope), showTrust = await trustShows(tx, f);
       return { party, period: { from: q.from ?? null, to: q.to ?? null }, trustShows: showTrust, ...(await read(tx, runSql(ledgerCtes(f, party, scope, caseId, showTrust)), q.from, q.to, pageSize, after)) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
@@ -108,15 +114,20 @@ export class MoneyStatement {
 async function read(tx: Tx, base: Prisma.Sql, from: string | undefined, to: string | undefined, pageSize: number, after: z.infer<typeof Cursor> | null) {
   const start = from ? Prisma.sql`(${from}::date::timestamp at time zone 'UTC')` : null, end = to ? Prisma.sql`((${to}::date + 1)::timestamp at time zone 'UTC')` : null;
   const inPeriod = Prisma.sql`${start ? Prisma.sql`run.at >= ${start}` : Prisma.sql`true`} and ${end ? Prisma.sql`run.at < ${end}` : Prisma.sql`true`}`;
-  const totals = await tx.$queryRaw<{ acct: number; currency: "CAD" | "USD"; opening: string; closing: string; lines: number }[]>`${base}
-    select run.acct, run.currency, coalesce(sum(run.amount) filter (where ${start ? Prisma.sql`run.at < ${start}` : Prisma.sql`false`}), 0)::text as opening,
-      coalesce(sum(run.amount) filter (where ${end ? Prisma.sql`run.at < ${end}` : Prisma.sql`true`}), 0)::text as closing, (count(*) filter (where ${inPeriod}))::int as lines
-    from run group by run.acct, run.currency order by run.acct, run.currency`;
   const cur = after ? Prisma.sql`(run.acct, run.currency, run.k, run.o, run.id, run.inv) > (${after.a}::int, ${after.c}::text, (${after.t}::timestamp at time zone 'UTC'), ${after.o}::int, ${after.id}::uuid, ${after.v}::uuid)` : Prisma.sql`true`;
-  const rows = await tx.$queryRaw<{ acct: number; currency: "CAD" | "USD"; k: string; o: number; id: string; inv: string; at: string; kind: string; reference: string | null; invoiceId: string | null; caseId: string | null; amount: string; balance: string }[]>`${base}
-    select run.acct, run.currency, to_char(run.k at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as k, run.o, run.id::text as id, run.inv::text as inv,
-      to_char(run.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as at, run.kind, run.reference, run.invoice_id::text as "invoiceId", run.case_id::text as "caseId", run.amount::text as amount, run.balance::text as balance
-    from run where ${inPeriod} and ${cur} order by run.acct, run.currency, run.k, run.o, run.id, run.inv limit ${pageSize + 1}`;
+  // one statement: the lines and their running balance are computed once (run, read twice: materialized), the totals
+  // and the page both read from it (break M2: two statements computed the whole ledger twice)
+  const [one] = await tx.$queryRaw<{ totals: { acct: number; currency: "CAD" | "USD"; opening: string; closing: string; lines: number }[];
+      rows: { acct: number; currency: "CAD" | "USD"; k: string; o: number; id: string; inv: string; at: string; kind: string; reference: string | null; invoiceId: string | null; caseId: string | null; amount: string; balance: string }[] }[]>`${base},
+    t as (select run.acct, run.currency, coalesce(sum(run.amount) filter (where ${start ? Prisma.sql`run.at < ${start}` : Prisma.sql`false`}), 0)::text as opening,
+        coalesce(sum(run.amount) filter (where ${end ? Prisma.sql`run.at < ${end}` : Prisma.sql`true`}), 0)::text as closing, (count(*) filter (where ${inPeriod}))::int as lines
+      from run group by run.acct, run.currency),
+    p as (select run.acct, run.currency, to_char(run.k at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as k, run.o, run.id::text as id, run.inv::text as inv,
+        to_char(run.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as at, run.kind, run.reference, run.invoice_id::text as "invoiceId", run.case_id::text as "caseId", run.amount::text as amount, run.balance::text as balance,
+        row_number() over (order by run.acct, run.currency, run.k, run.o, run.id, run.inv) as n
+      from run where ${inPeriod} and ${cur} order by run.acct, run.currency, run.k, run.o, run.id, run.inv limit ${pageSize + 1})
+    select (select coalesce(json_agg(t order by t.acct, t.currency), '[]'::json) from t) as totals, (select coalesce(json_agg(p order by p.n), '[]'::json) from p) as rows`;
+  const totals = one?.totals ?? [], rows = one?.rows ?? [];
   const page = rows.slice(0, pageSize), last = page.at(-1), acct = (a: number): Account => a === 0 ? "INVOICES" : "TRUST";
   return {
     accounts: totals.map((t) => ({ account: acct(t.acct), currency: t.currency, openingMinor: Number(t.opening), closingMinor: Number(t.closing), lines: t.lines })),
