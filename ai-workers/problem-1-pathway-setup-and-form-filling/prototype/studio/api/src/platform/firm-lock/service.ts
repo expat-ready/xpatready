@@ -44,7 +44,7 @@ const notFound = (): never => problem(404, "Not found", "No such firm.", { code:
 export class FirmLocks {
   constructor(private readonly d: { db: Db; identity: Pick<SystemIdentity, "audit">; audit: AuditPort<Tx>; now: () => Date }) {}
 
-  /** One change: the firm row FOR UPDATE, the move, the firm's line, the event, our console's line, in one transaction;
+  /** One change: billing's lock, the firm row FOR NO KEY UPDATE, the move, the firm's line, the event, our console's line, in one transaction;
    *  a refusal writes our console's REFUSED line (the guard leaves the line to the change, SystemChange). */
   private async change(c: SystemStaffContext, line: CallLine, rawId: string, body: unknown, fn: (tx: Tx, id: string, status: PlatformFirmStatus) => Promise<LockView>): Promise<LockView> {
     try {
@@ -53,7 +53,7 @@ export class FirmLocks {
       const id = rawId.toLowerCase();
       return await asBypass(FIRM_LOCK, () => this.d.db.$transaction(async (tx) => {
         await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`plat_billing:${id}`}))`;   // billing's lock first (B1)
-        const [f] = await tx.$queryRaw<{ status: PlatformFirmStatus }[]>`select status from platform_firm where id = ${id}::uuid for update`;
+        const [f] = await tx.$queryRaw<{ status: PlatformFirmStatus }[]>`select status from platform_firm where id = ${id}::uuid for no key update`;   // as inFirm (J-5 B1): a sign-in's key-share on the firm never deadlocks the lock (round 2 Major)
         if (!f) return notFound();
         await touchFirm(tx, id);
         const v = await fn(tx, id, f.status);
@@ -70,8 +70,11 @@ export class FirmLocks {
     await tx.platformFirm.update({ where: { id }, data: { status: to } });
     let sessionsEnded = 0;
     if (locked) {
-      const staff = await tx.platformStaff.findMany({ where: { firmId: id }, select: { id: true }, orderBy: { id: "asc" } });
-      if (staff.length) await tx.platformSessionRevocation.createMany({ data: staff.map((s) => ({ firmId: id, staffId: s.id, revokedAt: this.d.now(), reason: LOCK_REVOKE_REASON })) });
+      // Each person's row locked in id order (as endSessions), so a sign-in in progress is seen and a later one waits; the
+      // revocation dated at least that person's latest sign-in, so no session started before the lock lives on (round 2).
+      const staff = await tx.$queryRaw<{ id: string; last: Date | null }[]>`select id, last_sign_in_at as last from platform_staff where firm_id = ${id}::uuid order by id for update`;
+      const now = this.d.now().getTime();
+      if (staff.length) await tx.platformSessionRevocation.createMany({ data: staff.map((s) => ({ firmId: id, staffId: s.id, revokedAt: new Date(Math.max(now, s.last?.getTime() ?? 0)), reason: LOCK_REVOKE_REASON })) });
       sessionsEnded = staff.length;
     }
     await this.d.audit.record(tx, { firmId: id, actor: `ourstaff:${c.staffId}`, action: locked ? "platform.firm.locked" : "platform.firm.unlocked", entity: "platform_firm", entityKey: id,

@@ -163,6 +163,16 @@ try {
   const session = new PlatformSession(app.get(Db) as never, {} as never, {} as never, { now: () => Date.now() } as never, app.get(PlatformIdentity) as never);
   const acc = await session.accept(token).then(() => ({}), (e) => { const x = e as { getStatus?: () => number; getResponse?: () => { code?: string } }; return { status: x.getStatus?.(), code: x.getResponse?.().code }; });
   ok("PF-27 fail (review M5, breaker M3): a pending invitation of a locked firm cannot be accepted (410); no staff member is added", st(B) === "SECURITY_LOCK" && (acc as { status?: number }).status === 410 && Number(sql(`select count(*) from platform_staff where firm_id = '${B}'`)) === staffBefore, acc);
+  // round 2 Major: a lock racing sign-ins of the same firm never deadlocks (each answers in words, never a 500)
+  sql(`update platform_firm set status = 'ACTIVE' where id = '${B}'; update platform_subscription set status = 'ACTIVE' where firm_id = '${B}'`);
+  let fivehundreds = 0;
+  for (let i = 0; i < 12; i++) {
+    const [lk, ...ins] = await Promise.all([call(base, "POST", LB, { token: ownerT, body: { reason: "Sample: race" } }), firmSignIn("sample-solo"), firmSignIn("sample-solo")]);
+    fivehundreds += [lk, ...ins].filter((r) => r.status >= 500).length;
+    if (st(B) === "SECURITY_LOCK") await call(base, "POST", UB, { token: ownerT, body: { reason: "Sample" } });
+    clock.t += 2000;
+  }
+  ok("PF-27 fail (review round 2 Major): 12 rounds of a lock racing two sign-ins: no 500 (no deadlock)", fivehundreds === 0 && Number(sql(`select deadlocks from pg_stat_database where datname = current_database()`)) === 0, fivehundreds);
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
