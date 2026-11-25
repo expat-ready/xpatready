@@ -80,6 +80,10 @@ try {
   const nest = await NestFactory.create(TestApp, { logger: false });
   nest.use(requestMiddleware());
   await nest.listen(0, "127.0.0.1"); app = nest;
+  // AUD-1c: a bulk insert below (120,000 chained lines, synchronous psql) holds this process's event loop past Node's 5 s
+  // keep-alive; the server would then close an idle socket just as the next request is sent on it (ECONNRESET). Idle
+  // sockets are kept for a minute in this test, so no request meets a closing socket.
+  nest.getHttpServer().keepAliveTimeout = 60_000;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
 
   await seedSampleFirms(db);
