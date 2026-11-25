@@ -26,7 +26,12 @@ export const DraftIn = z.strictObject({
   personId: id("The person").optional(),
   companyId: id("The company").optional(),
   currency: MoneyCurrency.optional(),
-}).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] });
+  /** FO-7w1 (AG-6-65 r1): start the draft from this client's signed retainer, with its fee rows. */
+  retainerId: id("The retainer").optional(),
+  /** FO-7w1: only these rows of the retainer (an "On signing" deposit row is copied only when named here). */
+  feeRowIds: z.array(id("A fee row")).min(1, "Name at least one fee row, or leave the list out.").max(50, "At most 50 fee rows.").optional(),
+}).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] })
+  .refine((d) => !d.feeRowIds || d.retainerId, { message: "Fee rows come from a retainer: name the retainer too.", path: ["feeRowIds"] });
 export type DraftIn = z.infer<typeof DraftIn>;
 
 /** PUT /api/front-office/money/invoices/:id/bill-to (FO-7g part 3, P-797): the province a draft's tax follows, one of the
@@ -53,6 +58,8 @@ export type LineIn = z.infer<typeof LineIn>;
 export const LineView = z.strictObject({
   id: z.string(), position: z.number().int(), kind: LineKind, description: z.string(), quantity: z.number().int(),
   unitMinor: z.number().int(), amountMinor: z.number().int(), ratePpm: z.number().int(), taxMinor: z.number().int(), currency: MoneyCurrency,
+  /** FO-7w1: the retainer fee row this line bills, or null (typed by hand). */
+  sourceFeeRowId: z.string().nullable(),
 });
 export type LineView = z.infer<typeof LineView>;
 
@@ -83,6 +90,8 @@ export const InvoiceView = z.strictObject({
   subtotalMinor: z.number().int(), taxMinor: z.number().int(), totalMinor: z.number().int(),
   statusWord: StatusWord, dueDate: z.string().nullable(), paidMinor: z.number().int(), creditedMinor: z.number().int(),
   writtenOffMinor: z.number().int(), dueMinor: z.number().int(), extraMinor: z.number().int(),
+  /** FO-7w1: the invoice bills a retainer's "On signing" row (a deposit, AG-6-61): never a card pay link (P-567 (3)). */
+  deposit: z.boolean(),
 });
 export type InvoiceView = z.infer<typeof InvoiceView>;
 

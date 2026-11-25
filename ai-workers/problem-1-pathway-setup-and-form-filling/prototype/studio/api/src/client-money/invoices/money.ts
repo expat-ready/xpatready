@@ -25,6 +25,7 @@ import { MoneyDocuments, creditNoteData, documentText, invoiceData, receiptData,
 import { MONEY, UUID, badField, notFound, parse } from "./drafts.ts";
 import { dayOf, invoiceFacts, type Facts } from "./facts.ts";
 import { failClosed, invoiceInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
+import { liveParty } from "../live-party.ts";
 import { IssueTick, applyTrust } from "../trust/money-out.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -52,7 +53,7 @@ export class InvoiceMoney {
     const b = parse(IssueIn.extend(IssueTick.shape), query ?? {}), id = idOf(invoiceId), today = dayOf(this.clock.now());   // FO-7t part 2: the "Pay from trust now" tick
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     const view = await this.write(async (tx) => {
-      await this.seen(tx, ctx, id, scope); const inv = await this.lock(tx, ctx.firmId, id);   // C5 before the locks and any write (review m2)
+      await this.seen(tx, ctx, id, scope); const inv = await this.lock(tx, ctx.firmId, id, scope);   // C5 before the locks and any write (review m2)
       if (inv.issued) refuse("ISSUED", `This invoice is already issued (${inv.number}). Nothing was changed.`);
       const s = await tx.moneyPaymentSettings.findFirst({ where: firmScope(ctx.firmId), select: { dueInDays: true, pricesIncludeTax: true } });
       if (!s) return refuse("PAYMENTS_NOT_SET_UP", "Set up payments first: this firm's payment settings are not saved yet. Nothing was changed.");
@@ -68,7 +69,7 @@ export class InvoiceMoney {
         detail: { invoiceId: id, number: v.number, totalMinor: v.totalMinor, taxMinor: v.taxMinor }, before: { status: "DRAFT", number: null, dueDate: null }, after: { status: "ISSUED", number: v.number, dueDate: v.dueDate, totalMinor: v.totalMinor, currency: v.currency, ...lettered(head) } });
       await this.event(tx, ctx.firmId, MONEY_EVENT.INVOICE_ISSUED, f);
       // FO-7t part 2 (FO-7s3b's Q5, Lead B): ticked → paid from trust in this transaction, after the number; a refusal rolls the issue back.
-      if (b.payFromTrustMinor) return (await applyTrust(tx, this.audit, { firmId: firmScope(ctx.firmId).firmId, by: `staff:${ctx.staffId}`, today, invoiceId: id, amountMinor: b.payFromTrustMinor, unclearedAcknowledged: b.unclearedAcknowledged, atIssue: true })).after.view;
+      if (b.payFromTrustMinor) return (await applyTrust(tx, this.audit, { firmId: firmScope(ctx.firmId).firmId, by: `staff:${ctx.staffId}`, today, invoiceId: id, amountMinor: b.payFromTrustMinor, unclearedAcknowledged: b.unclearedAcknowledged, atIssue: true, seen: scope })).after.view;
       return v;
     });
     return IssuedView.parse({ invoice: view, email: await this.emailInvoice(ctx.firmId, view) });
@@ -92,7 +93,7 @@ export class InvoiceMoney {
     const firmId = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     const done = await this.write(async (tx) => {
-      await this.seen(tx, ctx, id, scope); const inv = await this.lock(tx, ctx.firmId, id);   // C5 before the locks and any write (review m2)
+      await this.seen(tx, ctx, id, scope); const inv = await this.lock(tx, ctx.firmId, id, scope);   // C5 before the locks and any write (review m2)
       const had = await tx.moneyPayment.findFirst({ where: firmScope(ctx.firmId, { idempotencyKey: p.idempotencyKey }) });
       if (had) {   // a double click, or a retry: the one payment, never a second
         if (had.invoiceId !== id || had.amountMinor !== p.amountMinor || had.method !== p.method || had.receivedInto !== into) refuse("KEY_USED", "This idempotency key already recorded a different payment. Nothing was saved.");
@@ -149,7 +150,7 @@ export class InvoiceMoney {
     const id = idOf(invoiceId), c = parse(CreditNoteIn, body), today = dayOf(this.clock.now()), firmId = firmScope(ctx.firmId).firmId;
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
-      await this.seen(tx, ctx, id, scope); const inv = await this.lock(tx, ctx.firmId, id), cur = inv.currency;   // C5 before the locks and any write (review m2)
+      await this.seen(tx, ctx, id, scope); const inv = await this.lock(tx, ctx.firmId, id, scope), cur = inv.currency;   // C5 before the locks and any write (review m2)
       if (!inv.issued) refuse("DRAFT", "A draft is edited, not credited: a credit note is for an issued invoice. Nothing was saved.");
       const before = await this.facts(tx, ctx.firmId, id, today);
       if (before.view.statusWord === "Written off") refuse("WRITTEN_OFF", "Already settled by write-off. Nothing was saved.");
@@ -204,11 +205,12 @@ export class InvoiceMoney {
     }
   }
   /** The party's trust lock first, then the invoice row, held to the end of the transaction (FO-7lk's one order). */
-  private async lock(tx: Tx, firm: string, id: string): Promise<Locked> {
+  private async lock(tx: Tx, firm: string, id: string, scope: MoneyScope): Promise<Locked> {
     const firmId = firmScope(firm).firmId;
     const [p] = await tx.$queryRaw<{ party: string; currency: string }[]>`select coalesce(person_id, company_id)::text as party, currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid`;
     if (!p) return notFound("invoice");
     await tx.$executeRaw`select money_trust_lock(${firmId}::uuid, ${p.party}::uuid, ${p.currency}::"MoneyCurrency")`;
+    await liveParty(tx, firmId, p.party, scope);   // FO-9b part 2m: never money on a merged-away client, under its lock
     const [inv] = await tx.$queryRaw<Locked[]>`select issued_at is not null as issued, number, currency::text as currency, person_id::text as "personId", company_id::text as "companyId" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
     return inv ?? notFound("invoice");
   }

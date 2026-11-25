@@ -34,10 +34,12 @@ TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-merge-wake.sh"   # wake on merge
 TESTS="$TESTS check-full-run-ask.sh"   # OS-06: full run on ask
 TESTS="$TESTS check-startup-failures.sh"   # OS-52: runs that never started
+TESTS="$TESTS check-founder-wait.sh"   # OS-18: the 🔴 founder line is an ACT each check
 TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
+TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 bad=0
@@ -405,6 +407,9 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
+E-a age|product/tools/question-gate.py|s/        if age > limit:/        if False:/|check-question-gate.sh
+E-a tooling|product/tools/question-gate.py|s/^PRODUCT_MIN, TOOLING_MIN, STALE_MIN = 20, 60, 35/PRODUCT_MIN, TOOLING_MIN, STALE_MIN = 20, 20, 35/|check-question-gate.sh
+E-a wired|product/tools/stop-check.sh|/question-gate.py" --sle/d|check-question-gate.sh
 HANG env|product/tools/hang-report.py|s/if d.get("environmentVariables"):/if False:/|check-hang-report.sh
 HANG dir|product/tools/hang-report.py|s/^FILE = .*/FILE = re.compile(r"(.*)(:\\d+:\\d+)")/|check-hang-report.sh
 HANG line|product/tools/hang-report.py|s/(f or "(line not shown)")/(f or s)/|check-hang-report.sh
@@ -677,7 +682,7 @@ A348 first|product/tools/proof-number.py|s/git("log", "--first-parent", "-s",/gi
 A348 app|product/tools/proof-number.py|s/"web.src", //|check-proof-number.sh
 A348 paths|product/tools/proof-number.py|s/^        if not git("ls-tree".*/        if False:/|check-proof-number.sh
 A348 edge|product/tools/proof-number.py|s/^    if today is None or rp.*/    if False:/|check-proof-number.sh
-A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 11, 30/RELEASE_END = datetime(2026, 12, 13/|check-proof-number.sh
+A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 12, 13/RELEASE_END = datetime(2026, 11, 30/|check-proof-number.sh
 A348 fetch|product/tools/lead-watch.sh|/origin.main not fetched/d|check-proof-number.sh
 A348 ran|product/tools/lead-watch.sh|/proof-number.py did not run/d|check-proof-number.sh
 A348 wired|product/tools/lead-watch.sh|s/^pn=/# pn=/|check-proof-number.sh'
@@ -687,6 +692,13 @@ SPD2 stamp|product/tools/migration-slots.py|s/^        elif s.group(1) <= floor:
 SPD2 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
 SPD2 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    for rx in []:/|test-spd-2.sh
 SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh'
+# OS-18 (P-530): the 🔴 Waiting on the founder line; each row switches one of founder-wait.py's rules off.
+MUT="$MUT"'
+OS18 wait|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if since is None or since >= EVERY_MIN:/|check-founder-wait.sh
+OS18 hourly|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if waited >= WAIT_MIN:/|check-founder-wait.sh
+OS18 scope|product/tools/founder-wait.py|s/^            scope = ln\[3:\].strip().startswith("Start here")/            scope = True/|check-founder-wait.sh
+OS18 memory|product/tools/founder-wait.py|s/^            push = now$/            pass/|check-founder-wait.sh
+OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$fw")))/act=$act/|check-founder-wait.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
