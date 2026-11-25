@@ -28,19 +28,19 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
   # ENF-778a E-c (P-778): "also matches close, archive, reopen, label, dispatch, Run workflow, merge and press"
   # The verb and its own object (review of #3665: a bare "press" or "dispatch" blocked "Press coverage is fine", "the
   # nightly dispatch result"; "merge conflicts on the branch" is no ask): the, this, its, up to two words, then the thing.
-  r"|\b(close|archive|merge|reopen)\s+((the|this|that|its|both|all)\s+(of the\s+)?)?((?!(of|on|in|at|for|to|from|with|by|after|before)\b)[\w#-]+\s+){0,4}(#\d+|prs?|pull requests?|issues?|sessions?|lanes?|branch(es)?|it|them)\b"
+  r"|\b(close|closed|archive|archived|merge|merged|reopen|reopened)\s+((the|this|that|its|both|all)\s+(of the\s+)?)?((?!(of|on|in|at|for|to|from|with|by|after|before)\b)[\w#-]+\s+){0,4}(#\d+|prs?|pull requests?|issues?|sessions?|lanes?|branch(es)?|it|them)\b"
   r"|\b(dispatch|trigger)\s+((the|this|that|its)\s+)?((?!(of|on|in|at|for|to|with|after|before)\b)[\w#-]+\s+){0,3}(workflows?|runs?|nightly|jobs?|#\d+|it|by hand|from the actions)\b"
   r"|\b(dispatch|trigger)\s+[\w-]+(\.ya?ml)?\s+by hand\b|\brun (the |this )?workflow\b"
   r"|\bpress\s+((the|this|that|its)\s+)?([\w-]+\s+){0,2}(button|run workflow|merge|approve|edit|return|enter|ready|re-?run|#\d+)\b"
   + (r"|\b(close|merge|label|archive|dispatch) #\d+" if mode == "state" else ""), I)
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
 # Not an ask (review 2 of #3665): the Lead offering to do it, or telling the founder not to.
-NOT_ASK = re.compile(r"(\b(would you like me to|do you want me to|want me to|shall i|should i)|\bi can(?!not\b)(?=\s))(\s+(?!(please|pls|could|so|but|otherwise|you|your|or|while|if|when)\b)[\w#][\w#-]*)*"  # an offer: to the end of its clause, whose verbs the Lead does
+NOT_ASK = re.compile(r"(\b(would you like me to|do you want me to|want me to|shall i|should i)|\bi can(?!not\b)(?=\s))((\s+|,\s+then\s+)(?!(please|pls|could|so|but|otherwise|you|your|or|while|if|when)\b)[\w#][\w#-]*)*"  # an offer: to the end of its clause, whose verbs the Lead does
   r"|(\b(should|must|need|do|does)( not|n.t)\b(?!\s+(forget|hesitate)\b)|\bno need\b|\bnever\b(?!\s+(forget|hesitate)\b)|\bnothing (left )?for you( to do)?\b)(\s+(?!(please|pls|could|so|but|otherwise)\b)[\w#][\w#-]*){0,4}", I)  # a "not": with its own verbs, never past please or could; "do not forget to" stays an ask
-YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
+YOU = re.compile(r"\bif you \w+ed\b|\byou can (?!see\b|now see\b|also see\b)\w|\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
   r"yourself|needs you|your (click|turn|side))", I)
 IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
-  r"(then |and |just |now |otherwise,? |if not,? )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit|close|archive|merge|dispatch|trigger|label"
+  r"(then |and |just |now |otherwise,? |if not,? |first,? |kindly |go ahead and )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit|close|archive|merge|dispatch|trigger|label"
   r"|run (the )?workflow(?! (was|is|ran|has)\b))\b", I)   # E-c verbs as a plain command too (review of #3665)
 # Only the founder can: sign-in, password, 2FA/one-time code, payment, new account or key (P-551), permission widening (P-387).
 ONLY = re.compile(r"sign(ed)?[- ]?(in|out)|log(ged)?[- ]?(in|out)|password|\b2fa\b|two[- ]factor|one[- ]time (code|password)|\botp\b|passkey"
@@ -53,7 +53,7 @@ def asks(chunk, need_you):
         # Review 3 of #3665: an offer or a "not" span (with the next four words) is cut out, never the whole sentence, so
         # "No need to wait: please merge #12" still asks and "Would you like me to merge it?" does not.
         k = NOT_ASK.sub(" OFFERED ", s) if need_you else s
-        imp = any(IMP.search(p) for p in re.split(r"OFFERED[\s,:;-]*", k))   # an imperative right after a cut span counts too
+        imp = any(IMP.search(p) for p in re.split(r"OFFERED[\s,:;-]*|,\s+", k))   # after a cut span, or after a leading clause (Lead 7)
         if k and ASK.search(k) and (not need_you or YOU.search(k) or imp) and not ONLY.search(s):
             out.append(re.sub(r"\s+", " ", s)[:140])
     return out

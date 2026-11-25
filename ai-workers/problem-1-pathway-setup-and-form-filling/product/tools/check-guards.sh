@@ -400,7 +400,7 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
-31 E-c words|product/tools/founder-click-guard.sh|s/(close.archive.merge.reopen).s+/(Xclose)\\s+/|check-founder-click-guard.sh
+31 E-c words|product/tools/founder-click-guard.sh|s/(close.closed.archive.archived.merge.merged.reopen.reopened).s+/(Xclose)\\s+/|check-founder-click-guard.sh
 31 E-c run|product/tools/founder-click-guard.sh|s/.b(dispatch.trigger).s+((the/\\bXdispatch\\s+((the/|check-founder-click-guard.sh
 31 E-c imp|product/tools/founder-click-guard.sh|s/\(.edit\).close.archive.merge.dispatch.trigger.label"/\1"/|check-founder-click-guard.sh
 31 E-c offer|product/tools/founder-click-guard.sh|s/k = NOT_ASK.sub(" OFFERED ", s) if need_you else s/k = s/|check-founder-click-guard.sh

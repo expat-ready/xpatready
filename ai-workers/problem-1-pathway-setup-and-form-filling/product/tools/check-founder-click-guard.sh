@@ -84,6 +84,13 @@ for m in 'I can wait while you close #3601 and archive the lane yourself.' 'Do y
   r=$(stop lead "$m"); ok "refused (#3665 review 6, an ask after an offer): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
 for m in 'Never click Convert to draft yourself; I handle it.' "You don't have to label the PR; Mergify does it."; do
   r=$(stop lead "$m"); ok "passes (#3665 review 6): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+# Lead 7 on #3665 (13:29 IST), the last round: a command after a leading clause or after first, kindly, go ahead and;
+# "you can" and "if you ...ed" as request words; past-tense verbs; an offer's cut carries through ", then"
+for m in 'When you get a moment, merge #12.' 'First, archive the forms-2 session, then tell me.' 'Kindly close all of the stale PRs.' \
+         'Go ahead and merge the PR when CI is green.' 'I can prepare it so you can merge #12 tonight.' 'It would help if you reopened #3601.'; do
+  r=$(stop lead "$m"); ok "refused (Lead 7, last round): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'I can merge #12 now, then archive the forms lane.' 'You can see #2322 is now ready for review.' 'The queue merged #2413, then closed the issue.'; do
+  r=$(stop lead "$m"); ok "passes (Lead 7, last round): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 q=$(sed -n '/python3 -I -c /,/^. "\$1"; }/p' "$G" | sed '1d;$d' | grep -c "'")
 ok "the Python program inside the bash single quotes has no ' (one would end it, and every check would pass silently)" "$([ "$q" = 0 ] && echo 1)" "$q line(s) with '"
 r=$(stop lead 'Nothing for you to do: I will close #3601 myself.'); ok "passes (#3665 review 4): nothing for you to do" "$([ "$r" = pass ] && echo 1)" "got $r"
