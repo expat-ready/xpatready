@@ -20,7 +20,7 @@ acts() { grep -c '^ACT' <<<"$o"; }; has() { grep -qF -- "$1" <<<"$o"; }
 clear() { rm -f "$T"/page*.json; }
 
 clear; page 1 "$(r ci success 2026-11-25T05:10:00Z main)" "$(r walks failure 2026-11-25T05:11:00Z a)"; run
-ok "no startup failure: no ACT, the summary counts the runs, exit 0" "$([ "$rc" = 0 ] && [ "$(acts)" = 0 ] && has 'startup failures: 0 run(s) in 0 workflow(s) of 2 runs' && echo 1)" "$o"
+ok "no startup failure: no ACT, the summary counts the runs, exit 0" "$([ "$rc" = 0 ] && [ "$(acts)" = 0 ] && has 'startup failures: 0 run(s) in 0 workflow(s) since 2026-11-25T05:00:00Z (2 listed)' && grep -q 'status=startup_failure&created=%3E%3D2026-11-25T05:00:00Z' "$T/calls" && echo 1)" "$o"
 clear; page 1 "$(r label-guard startup_failure 2026-11-25T05:20:00Z b1)" "$(r label-guard startup_failure 2026-11-25T05:25:00Z b2)" "$(r ci startup_failure 2026-11-25T05:21:00Z main)" "$(r ci success 2026-11-25T05:22:00Z x)"; run
 ok "one ACT per workflow, with its count, path, newest run and branch" "$([ "$(acts)" = 2 ] && has 'workflow label-guard (.github/workflows/label-guard.yml): 2 run(s)' && has 'newest https://x/runs/25 on b2' && has 'workflow ci (' && echo 1)" "$o"
 clear; page 1 "$(r ci startup_failure 2026-11-25T04:59:00Z main)"; run
@@ -32,10 +32,12 @@ ok "a full page reads the next one" "$([ "$(acts)" = 1 ] && has 'workflow guards
 clear; page 1 "$(r ci startup_failure 2026-11-25T05:10:00Z main)"; FAIL=1 run
 ok "an unreadable page is an ACT, never 'none'" "$([ "$(acts)" = 1 ] && has 'runs page 1 unreadable (HTTP 502)' && has '(read cut short)' && echo 1)" "$o"
 clear; page 1 "${L[@]}"; page 2 "$(r ci startup_failure 2026-11-25T05:10:00Z m)"; FAIL=2 run
-ok "a later page that fails: an ACT, and the first page is still judged" "$(has 'runs page 2 unreadable' && has 'of 100 runs' && echo 1)" "$o"
+ok "a later page that fails: an ACT, and the first page is still judged" "$(has 'runs page 2 unreadable' && has '(100 listed)' && echo 1)" "$o"
 clear; for p in $(seq 1 10); do page "$p" "${L[@]}"; done; run
-ok "more than 1,000 runs: an ACT that the oldest are not judged" "$([ "$(acts)" = 1 ] && has 'more than 1000 runs' && echo 1)" "$o"
+ok "more than 1,000 runs: an ACT that the oldest are not judged" "$([ "$(acts)" = 1 ] && has 'more than 1000 startup_failure runs' && echo 1)" "$o"
 clear; echo 'not json' > "$T/page1.json"; run; ok "a page that is not JSON is an ACT" "$([ "$(acts)" = 1 ] && has 'unreadable' && echo 1)" "$o"
+clear; page 1 "$(r ci startup_failure 2026-11-25T05:10:00Z main)"; printf '#!/bin/sh\nsleep 100\n' > "$T/gslow"; chmod +x "$T/gslow"; o=$(STARTUP_GH="$T/gslow" timeout 150 python3 -I "$TOOLS/startup-failures.py" --since "$S" 2>&1); rc=$?
+ok "a read with no answer in 90 s is an ACT, exit 0" "$([ "$rc" = 0 ] && [ "$(acts)" = 1 ] && has 'TimeoutExpired' && echo 1)" "$o"
 clear; SINCE='5 min ago; rm -rf /' run; ok "a --since that is not an ISO time is an ACT and calls nothing" "$([ "$(acts)" = 1 ] && [ ! -s "$T/calls" ] && echo 1)" "$o"
 clear; page 1 "$(r $'ci\x1b[31m' startup_failure 2026-11-25T05:10:00Z $'b\nACT   fake')"; run
 ok "control characters in names are cleaned: still one ACT line" "$([ "$(acts)" = 1 ] && echo 1)" "$o"
