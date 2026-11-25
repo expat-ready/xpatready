@@ -140,16 +140,14 @@ export function numericText(lexeme: string): string {
 }
 
 /** The shared test vector (tests/check_aud1c_chain.ts checks the database gives the same text and hash for each). */
-export const VECTOR: { name: string; line: CanonicalLine }[] = (() => {
-  const base: CanonicalLine = { chainKey: "00000000-0000-4000-8000-0000000a1cf1", seq: "7", id: "00000000-0000-4000-8000-0000000a1c01", at: "2026-11-18T09:30:15.123456Z",
+const base: CanonicalLine = { chainKey: "00000000-0000-4000-8000-0000000a1cf1", seq: "7", id: "00000000-0000-4000-8000-0000000a1c01", at: "2026-11-18T09:30:15.123456Z",
     workspaceId: "00000000-0000-4000-8000-0000000a1c0a", firmId: "00000000-0000-4000-8000-0000000a1cf1", caseId: null, combinationId: null, actor: "staff:00000000-0000-4000-8000-0000000a1c5f",
     actorType: "FIRM_STAFF", action: "check", entity: "aud1c", entityKey: "vector", summary: "Sample line", correlationId: null, supportSessionId: null, detail: null };
-  return [
+export const VECTOR: { name: string; line: CanonicalLine }[] = [
     { name: "nulls everywhere they may be", line: base },
     { name: "keys of different lengths, nested objects, a repeated key", line: { ...base, detail: '{"zz": 1, "a": {"bbb": [true, null], "cc": "x"}, "ab": 2, "a": {"dd": [], "c": {}}}' } },
     { name: "numbers: 1.0, 1e2, 1.50E-1, -0, -0.0, 0.00e3, 12345678901234567890.5", line: { ...base, detail: '[1.0, 1e2, 1.50E-1, -0, -0.0, 0.00e3, 12345678901234567890.5, 2E+1, 1.23e1]' } },
     { name: "a non-Latin string, escapes and controls", line: { ...base, summary: "Échantillon: 申请人 — résumé ✓", detail: '{"note": "Привет \\"quoted\\" \\/ tab\\t nl\\n \\u0001 \\u001f \\u001F \\u00e9 \\ud83d\\ude00", "é": "ü"}' } },
     { name: "a platform line with every optional field", line: { ...base, chainKey: "platform", firmId: null, caseId: "00000000-0000-4000-8000-0000000a1cca", combinationId: "00000000-0000-4000-8000-0000000a1ccb", correlationId: "req-1", supportSessionId: "00000000-0000-4000-8000-0000000a1cdd", actor: "system", actorType: "SYSTEM", entityKey: "", detail: '"just a string"' } },
     { name: "JSON null as detail, seq 1", line: { ...base, seq: "1", detail: "null" } },
-  ];
-})();
+];
