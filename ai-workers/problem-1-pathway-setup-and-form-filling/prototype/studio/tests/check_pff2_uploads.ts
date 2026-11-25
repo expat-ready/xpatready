@@ -90,11 +90,12 @@ try {
   const doors = nest.get(UploadDoors), rail = nest.get(UploadRail);
   const completed: string[] = [];
   const P_FAILS = randomUUID();   // the test door's onComplete throws for this person (break F3)
+  const healed = new Set<string>();   // part 1b: once healed, the same person's onComplete works (a door back after a failure)
   doors.register("STAFF", {
     allowedKinds: ["pdf", "png"],
     authorize: async (_ctx, meta) => (meta.personId && /^[0-9a-f-]{36}$/.test(meta.personId) ? { personId: meta.personId } : null),
     keyOf: (t, id) => `uploads/${t.personId}/${id}`,
-    onComplete: async (_tx, f) => { if (f.target.personId === P_FAILS) throw new Error("door internals: /home/secret/path tx failed"); completed.push(f.id); },
+    onComplete: async (_tx, f) => { if (f.target.personId === P_FAILS && !healed.has(P_FAILS)) throw new Error("door internals: /home/secret/path tx failed"); completed.push(f.id); },
   });
   ok("setup: the feature registers the route, the registry and the rail; the hourly cleanup is on PF-14's runner (UTC)",
     feature.controllers.length === 1 && jobCalls.includes(`handle:${UPLOAD_CLEANUP_QUEUE}`) && jobCalls.includes(`recurring:${UPLOAD_CLEANUP_QUEUE}:17 * * * *:UTC`), jobCalls);
@@ -218,6 +219,45 @@ try {
   const rF = await patch(tOwner, idF, 0, docF);
   ok("PF-F2 DW0 fail (break F3): a door's onComplete failing → 500 in plain words (no path, no internal message); the plat_file row rolls back",
     rF.status === 500 && /could not be finished/.test(rF.text) && !/home|secret|tx failed|Error/.test(rF.text) && fileRows() === rowsF, rF);
+  // Part 1b (review m4, the Known gap): a plain tus client asks HEAD after that 500. HEAD of an upload whose bytes are all in
+  // runs finish first: while the door still fails it answers the failure's status (a HEAD answer has no body, so the words
+  // stay the PATCH's), never 200 with the full offset, which tus-js-client reads as success with no file; once the door
+  // works, HEAD stores it once and names it.
+  const hF = await head(tOwner, idF);
+  ok("PF-F2 DW0 fail (part 1b): HEAD after a failed finish answers 500 (not complete): no offset, no file id, no row",
+    hF.status === 500 && !hF.headers.get("upload-offset") && !hF.headers.get("upload-file-id") && fileRows() === rowsF, [hF.status, hF.text]);
+  healed.add(P_FAILS);
+  const hF2 = await head(tOwner, idF), hF3 = await head(tOwner, idF), fileF = hF2.headers.get("upload-file-id");
+  ok("PF-F2 DW0 pass (part 1b): once the door works, HEAD finishes the upload: 200, offset = size, its Upload-File-Id; a second HEAD names the same file; one row, one onComplete",
+    hF2.status === 200 && Number(hF2.headers.get("upload-offset")) === docF.length && !!fileF && hF3.headers.get("upload-file-id") === fileF && fileRows() === rowsF + 1 && completed.filter((c) => c === fileF).length === 1,
+    [hF2.status, fileF, hF3.headers.get("upload-file-id"), fileRows() - rowsF]);
+  const rF2 = await patch(tOwner, idF, docF.length, new Uint8Array(0));
+  ok("PF-F2 DW0 pass (part 1b): the client's confirming empty PATCH then gets the same file", rF2.status === 204 && rF2.headers.get("upload-file-id") === fileF, [rF2.status, rF2.headers.get("upload-file-id")]);
+  // Review M1 of #3640: HEADs racing the last chunk while the door fails (a second tab, a buffering proxy). The finish runs
+  // inside tus's own locked read, so no HEAD may answer 200 at the full size with no file. A check made before tus took
+  // its lock leaked here (the reviewer: 89 of 96 HEADs).
+  healed.delete(P_FAILS);
+  let leaks = 0, patch500 = 0, heads = 0;
+  for (let n = 0; n < 4; n++) {
+    const d = pdfOf(2_000_000), idR = idOf(await create(tOwner, d.length, { personId: P_FAILS }));
+    await patch(tOwner, idR, 0, d.subarray(0, 100_000));
+    const all = await Promise.all([patch(tOwner, idR, 100_000, d.subarray(100_000)), ...Array.from({ length: 12 }, (_, k) => new Promise<R>((r) => setTimeout(() => r(head(tOwner, idR)), k * 2)))]);
+    if (all[0].status === 500) patch500++;
+    for (const h of all.slice(1)) { heads++; if (h.status === 200 && Number(h.headers.get("upload-offset")) === d.length && !h.headers.get("upload-file-id")) leaks++; }
+  }
+  healed.add(P_FAILS);
+  ok("PF-F2 DW0 fail (part 1b, review M1): HEADs racing the last chunk while the door fails never read complete with no file",
+    leaks === 0 && patch500 === 4 && fileRows() === rowsF + 1, { leaks, heads, patch500, rows: fileRows() - rowsF });
+  // Review m1 of #3640: a repeated finish names the file as the first did (the client's name corrected from the bytes).
+  const named = await create(tOwner, PNG.length, { filename: "../../scan.pdf", filetype: "application/pdf" }), idN = idOf(named);
+  await patch(tOwner, idN, 0, PNG);
+  const upN = await rail.store.getUpload(idN), n1 = await rail.finish(upN), n2 = await rail.finish(upN);
+  ok("PF-F2 DW0 pass (part 1b, review m1): a repeated finish gives the same file and the same corrected name", n1.id === n2.id && n1.name === "scan.png" && n2.name === "scan.png", [n1.name, n2.name]);
+  // Review n1 of #3640: a HEAD without Tus-Resumable (tus's 412) finishes nothing.
+  const d412 = pdfOf(4000), id412 = idOf(await create(tOwner, d412.length, { personId: P_FAILS }));
+  healed.delete(P_FAILS); await patch(tOwner, id412, 0, d412); healed.add(P_FAILS);
+  const rows412 = fileRows(), h412 = await fetch(`${base}/api/platform/files/uploads/${id412}`, { method: "HEAD", headers: { authorization: `Bearer ${tOwner}` } });
+  ok("PF-F2 DW0 pass (part 1b, review n1): a HEAD without Tus-Resumable answers 412 and finishes nothing", h412.status === 412 && !h412.headers.get("upload-file-id") && fileRows() === rows412 && !!(await head(tOwner, id412)).headers.get("upload-file-id") && fileRows() === rows412 + 1, h412.status);
 
   // ------------------------------------------------------------------------------------ DW7: the declared size
   const before7 = readdirSync(join(WORK, "staging")).length;
