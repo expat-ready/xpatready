@@ -61,3 +61,50 @@ Reviewer: Changes 5455a704dc5c039c6a4de43a516b3bf9fd709291
 3. Raise n2 on #3303.
 
 Verdict: Changes 5455a704dc5c039c6a4de43a516b3bf9fd709291
+
+## Round 2 (c04861ed)
+
+**Head reviewed:** `c04861ed9d21301cbb1eedb2eb81922b06e10557`. Diff only: `git diff 5455a704d c04861ed9`.
+- **Code:** `rail.ts` (+27/−18) and `check_pff2_uploads.ts` (+25).
+- **Records:** this file and the journey-test report, which the builder committed as I wrote them in round 1, unchanged.
+
+**Runs:**
+- **Suite:** `check_pff2_uploads.ts` on this head: **46 passed, 0 failed**.
+- **The new checks fail without the fix:** with `rail.ts` reset to `5455a704d`, exactly the 3 new checks fail, and the other 43 pass:
+  - the M1 race: `{"leaks":45,"heads":48,"patch500":4}`;
+  - the m1 name: `["../../scan.pdf","../../scan.pdf"]`;
+  - the n1 412 case.
+- **Breaker scratch:** my B1–B8 plus B3b, re-applied to this head's suite. **53 passed, 0 failed.** The scratch was untracked, deleted afterwards and not committed.
+  - **B3b:** 0 leaks; every racing HEAD answered 500 (or 200 at a partial offset).
+  - **B6:** 412, no `Upload-File-Id`, no row.
+  - **B7:** `"scan.png"` on both the first and the repeat finish.
+  - **B1, B2, B4, B5 and B5b:** still hold.
+- **Typecheck:** `typecheck.mjs` exits 1 on 8 errors. All of them are in `../p2/*` and `../contracts/portal-capture.ts`: `ajv` and `@anthropic-ai/sdk` are not installed in this worktree (only `studio/node_modules` is symlinked). There are none in `rail.ts` or the suite. This is an environment gap, not a finding.
+
+**M1: closed.**
+- **Where the finish now runs:** inside `store.getUpload`, which tus's `HeadHandler` calls under its lock (`HeadHandler.js:12-18`). A PATCH releases the lock before `onUploadFinish`, and its `finish()` registers in `#finishing` at once. So a HEAD that was waiting for the lock either shares that promise or finds the stored row; it can no longer read "complete" before the finish has settled.
+- **Who sets `headRes`:** only `handle()`, only for HEAD with an id and `Tus-Resumable`, and only around `tus.handle`. The rail's own pre-check read carries no `headRes`, so the 404 (`:110`) and 410 (`:111`) checks still run before any finish (B1, B2).
+- **A wrong `Tus-Resumable` value:** tus answers 400 in its header check (`HeaderValidator.js:69`) before the handler runs, so nothing is finished.
+- **Failures:** they throw `#words(e) ?? e`. Because the error carries a status, tus's `onError` answers with it: 500 for the door, 415 for refused bytes (B4), with no body on HEAD.
+
+**m1: closed.**
+- **What changed:** `#stored` now builds the name with `correctedName(clientName, kind)`, where the kind is looked up in `KINDS` by the stored media type, for all three callers.
+- **Why it matches the first finish:** `checkFile` sets its `name` with the same `correctedName(file.name, i.kind)` (`file-type.ts:240`), and the media types in `KINDS` are unique. The fallback `clientName ?? "document"` is reached only for a media type outside `KINDS`, which the database row cannot have from this rail.
+
+**n1: closed.** A HEAD without `Tus-Resumable` is tus's 412 and finishes nothing. The test proves this; the next proper HEAD then finishes the upload.
+
+**New finding:**
+- **r2-n1 (Note, no action):** the HEAD's finish now holds tus's per-upload lock while it runs. A PATCH or HEAD for the same upload arriving meanwhile asks for the lock: `MemoryLocker` calls the HEAD's `context.cancel()` (a delayed abort that the HEAD handler never checks) and waits. A finish longer than tus's 30 s lock timeout would turn the waiter into tus's lock-timeout 500, which part 2 retries. Finishes take milliseconds here, and only the uploader can reach this.
+
+**Still open from round 1:** n2 belongs to part 2 (#3303). The tus-js-client note stands as written.
+
+**Journey score, round 2:** J7 now holds (B3b: 0 of 96 leaks).
+- "Feedback and state" goes from ½ to 1, and "error recovery" goes from ½ to 1.
+- "Next step obvious" stays ½ (n2, part 2).
+- Total: **7.5 of 8 applicable = 9.4/10 (scaled)**, with no criterion at 0. Accessibility and visual quality remain N/A.
+
+**Could not check:** CI on `c04861ed9`. The browser walk stays with part 2's DW8.
+
+Reviewer: Approve c04861ed9d21301cbb1eedb2eb81922b06e10557
+
+Verdict: Approve c04861ed9d21301cbb1eedb2eb81922b06e10557
