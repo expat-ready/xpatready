@@ -76,6 +76,9 @@ BEGIN
   END LOOP;
 END $$;
 ALTER TABLE "audit_event" ENABLE TRIGGER "aud_event_no_change";
+-- Only the back-fill above and the insert trigger (which runs as its owner) call it: nobody else may (main's rule for
+-- every lookup the reader owns, pf12 and later; review of 56423f9, m2).
+REVOKE ALL ON FUNCTION aud_chain_key_of(uuid, uuid) FROM PUBLIC;
 
 ALTER TABLE "audit_event" ALTER COLUMN "chain_key" SET NOT NULL, ALTER COLUMN "seq" SET NOT NULL,
   ALTER COLUMN "prev_hash" SET NOT NULL, ALTER COLUMN "entry_hash" SET NOT NULL,
