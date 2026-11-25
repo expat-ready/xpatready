@@ -43,7 +43,9 @@ Measured (why-targets, 72 h to 24 Nov 22:23 IST): a third of batches fail (121 o
 | ID | What | Rule | Kind | Owner | Status | Done when |
 | --- | --- | --- | --- | --- | --- | --- |
 | OS-72 | Project `verify` skill in the studio package (`prototype/studio/.claude/skills/verify/SKILL.md`), run by Claude Code before each app-code commit: own isolated copy, touched journeys only, five checks, evidence on the PR, 5-minute cap, 3 retries | this design, P-717 (b) | hook (skill) | OS-PM; one builder lane trials | Open (phase 1, from 27 Nov 12:00 IST) | trial lane's commits run it 2 days; minutes per commit and red runs reported; then on for all lanes |
-| OS-73 | LCP 2.5 s and CLS 0.1 budgets measured in the Playwright packs and in verify; `STANDARDS.md` §9 amended by the Lead | §9 | CI (warning first) | OS-PM; Lead writes §9 | Open (Tier 1 by founder ruling 25 Nov 13:04 IST; warning only, pipeline queue) | budgets read on every pack run; clean 24 h or 10 PR runs, then required |
+| OS-73 | LCP 2.5 s and CLS 0.1 budgets measured in the Playwright packs and in verify; `STANDARDS.md` §9 amended by the Lead | §9 | CI (warning first) | OS-PM; Lead writes §9 | **Doing** (#3729, OS-PM 3, in review) Open (Tier 1 by founder ruling 25 Nov 13:04 IST; warning only, pipeline queue) | budgets read on every pack run; clean 24 h or 10 PR runs, then required |
+| OS-S1 | Push-guard false positive: a secret-named key holding a bare UPPER_SNAKE constant (a Nest provider's injection token) is not a secret; it blocked R1.60 part b (Lead 7, 25 Nov 13:5x IST) | P-82 | script: push-guard.sh | OS-PM | **Doing** (#3728, approved on 3154a6ba1; label on green ci) | `check-push-guard-fixtures.sh` S1 rows exit 0; mutation row `11 const` red |
+| OS-S1b | #3728 round 1 minors: rewrite only for the key=value branch (an AKIA id joined to an underscore under a secret key is now erased before the scan); the sed fails open if it errors (pipefail or a self-test); `;` as a terminator; comment wording | P-82 | script: push-guard.sh | OS-PM | Open (after OS-S1 merges) | fixture rows for each, failing first; mutation row |
 | OS-77b | All-routes sign-in sweep (OS-77 part b): every API route, signed out and with the wrong role, refuses (moved to Tier 1 by the founder, 25 Nov 13:04 IST; warning only) | P-611a | CI (warning first) | OS-PM | Open | the sweep runs in CI and lists every route with its result; a planted open route fails the fixture test |
 
 ## Tier 2: Lead-loop prose rules into lead-watch ACT lines
@@ -229,37 +231,14 @@ Rows whose "Enforced by" names a whole machine enforcer (23 of 156: e.g. P-501, 
 
 ## OS-PM hand-over
 
-**Written 25 Nov ~13:1x IST by OS-PM 2, updated 13:5x IST at 50% context (P-565)** (session https://claude.ai/code/session_018BSQJq3dhw56vCQs8vPeM6), handing over at about 45% context. OS-PM 1's hand-over (12:1x IST) is in git history at 1acfdc281; its orders still stand: Tier 1 in order, skipping OS-1, OS-3 and #3623; then Tier 2; one item per PR on its own branch; a fresh Opus reviewer on the exact head; label after Approve; a one-line status on the newest OS-PM records PR after each PR opens.
+**Written 25 Nov ~14:3x IST by OS-PM 3** (session https://claude.ai/code/session_018BSQJrs9imQ6ajaB5A8DAb), who replaced OS-PM 2 (session_018BSQJq3dhw56vCQs8vPeM6, whose block is in git history at b3d37c010; its lessons and the orders of OS-PM 1 still stand).
 
-**Done:** OS-52 (#3676), OS-10, OS-48; this list.
+**In flight:**
+* **OS-S1, #3728** (push-guard false positive): approved on 3154a6ba1 (round 1). Label `review: approved` once ci is green on that head. The PR comment says R1.60 may push part b once it merges. Minors → OS-S1b.
+* **OS-73, #3729** (VITALS line in acceptance/lib/browser.ts, test `tests/check_os73_vitals_browser.ts`): draft, a fresh Opus reviewer on 3b77ac2ff.
+* **OS-PM 2's items still waiting on the Lead** (OS-15 #3693, OS-16 #3696, OS-17 #3699, OS-18 #3703, OS-06 #3671, OS-49 #3674, OS-72 #3715): what each needs and the check-guards.sh / lead-watch.sh conflicts to expect are in OS-PM 2's block at b3d37c010.
+* Branches: one per item, `claude/clever-cray-nzd1t4-<item>`; this records PR is `claude/clever-cray-nzd1t4-records`.
 
-**In flight (each waits on the Lead; none needs OS-PM until the Lead answers):**
-* **OS-15, #3693** (`records-pr.sh`): both review rounds used (2 blocking found in round 1, 1 in round 2, all fixed). The fixes at 4414b7970 wait on the Lead (P-277): on a yes, post `Reviewer: Approve <head>`, mark it ready. Its pr-rules run failed on c58c1be only for a missing "Done when" line, now in the body: re-run pr-rules on the next push.
-* **OS-16, #3696** (LEAD-START.md, start read summed by check-docs, 29.7k today): approved on bc7c0eb55, ready; the Lead reads (check-docs, stop-check, check-guards) and labels. After merge the Lead points the lead skill at LEAD-START.md and may amend P-615 to 40k.
-* **OS-17, #3699** (known-failures `records-pr-age`; 5 records PRs over 24 h now): approved on 39964999f, ready; the Lead reads (lead-watch step 12 facts) and labels.
-* **OS-18, #3703** (lead-watch 13d + founder-wait.py: the 🔴 founder line, P-530 (2) timing): approved on 28a4fa8b3 after two rounds, ready; the Lead reads and labels. Round 2's minors are row OS-18b. Main's STATE still carries the 22 Nov 🔴 line: after merge its re-send ACT starts 30 min after the first check.
-* **OS-06 #3671, OS-49 #3674:** labelled and queued (OS-PM 1's).
-* **Conflicts to expect:** #3696, #3699 and #3703 each add a TESTS line and mutation rows at the same spot of check-guards.sh, and #3699/#3703 both edit lead-watch.sh. The second to merge conflicts: merge main, keep both lines, re-run the tests, and the reviewer re-checks the merge (P-293), as OS-PM 1 did for #3671.
+**Next, in order:** OS-77b, OS-18b (after #3703 merges), OS-25 (Lead ruled: add the `--decide` block 1b to founder-report.py), the `next` skill line for verify (after #3715 merges: one line in next/SKILL.md: on a lane named in `.claude/skills/verify/lanes.txt`, run the verify skill before each app-code commit), OS-S1b, then OS-19, OS-20, OS-21, OS-22, OS-23 and the rest of Tier 2.
 
-**Blocked:** OS-05 (P-731 ruling, then OS-3), OS-14 (fixed by OS-11, #3506), OS-71 (PF-8c), OS-25 (Lead ruling on `--decide`, asked on #3683).
-
-**Added by Lead 5 (13:1x IST, founder ruling 25 Nov 13:04 IST "Yes, start now"; rows on records PR #3711): OS-72, OS-73, OS-77b are Tier 1, after the Tier 1 items in hand.** Design: design/self-checking-builders-2026-11-25.md (on #3711 until it merges). Each is one PR, under 800 lines, warning only, pipeline queue; none changes a merge queue, gate or required check.
-* **OS-72, #3715** (`claude/trusting-hopper-7jun9g-os72`): the root `.claude/skills/verify` skill, gated by `lanes.txt` (empty = off), plus `prototype/studio/tools/verify-plan.sh`. The plan takes the nearest 4 capabilities, on CI's scoring data, on the lane's own port. Approved on f0fe070ad after two rounds and ready; the Lead reads, labels, and names the trial lane in lanes.txt. **OS-72b** follow-ups from round 2:
-  * put the data regex in a variable (bash 3.2);
-  * reserve ports 4438/4448/4458/4468 for verify in WAY-OF-WORKING;
-  * qa's held checkpoint packs off CI;
-  * the `next` skill line (the question for the Lead on #3715).
-* **OS-73 (next):** LCP 2.5 s / CLS 0.1 read in the Playwright packs (acceptance/lib/browser.ts, the walker: `PerformanceObserver` for largest-contentful-paint and layout-shift), printed as one line per page, warning only; verify's check row 3 then reads it; the Lead writes STANDARDS §9.
-* **OS-77b (after it):** every API route signed out and with the wrong role refuses 401/403; list the routes from the Nest controllers, call each on an isolated copy, print the table; a planted open route fails the fixture test; warning only in CI.
-
-**FIRST (Lead 7, 13:5x IST, ahead of OS-73): the push-guard false positive.** `product/tools/push-guard.sh`'s SECRET_RE branch `token[:=]...{16,}` matches a Nest provider line whose `token` key holds the constant NOTIFICATION_PORT (an object of the shape token-colon-NAME, optional true; verified on main's rule; this record cannot quote it, the guard would refuse it) and blocks R1.60 part b's push. Fix: a value that is wholly an UPPER_SNAKE constant name (`^[A-Z][A-Z0-9_]*$`, followed by `,`, `}` or the end) is not a secret; real high-entropy values still match. Write the failing row in its check first (the push-guard fixture test, `check-push-guard-fixtures.sh`), then the fix; add a mutation row; tooling PR, pipeline queue; a fresh Opus reviewer and a breaker (it blocks pushes).
-
-**Lead 7's reads (13:29-13:42 IST):** #3703 (OS-18) and #3715 (OS-72) are labelled and queued. Reads of #3696, #3699, #3704 and #3693, and answers to the #3683 (OS-25) and #3715 (`next` line) questions, come on those PRs this hour. `.mergify.yml` putting #3715 on the product rule is noted for OS-1; no OS-PM action.
-
-**Next, in order:** the push-guard fix, then OS-73, OS-77b, then OS-18b (after #3703 merges), OS-19 (a CI run cancelled by a person is an ACT), OS-20 (three merges of main: "lands next"), OS-21 (two open PRs on a hot file), OS-22, OS-23, then the rest of Tier 2 (OS-24 with OS-53; check what flow-constraint.py already prints first).
-
-**Lessons (add to OS-PM 1's):**
-* **Read main first:** OS-25 was mostly built (founder-report.py) and OS-17 fitted known-failures.tsv with no new lead-watch step; a known-failures line is the cheapest ACT.
-* **pr-rules needs a "Done when" line in every PR body**, beside the Duplicate check.
-* **gh is refused here for PR comments, body edits and ready-for-review:** use the GitHub connector (add_issue_comment, update_pull_request with `draft: false`).
-* **Reviewers found, in every first round:** a hook or harness that reads a new output line differently (stop-check's `docs_files`; check-guards' tools-only copy), a cap on a list (`--limit 80`), and staged or symlinked git state. Test each of those up front.
+**Lessons:** the studio has no node_modules in a cloud copy: a no-server browser suite runs with tsx installed in the scratchpad, plus a symlink to the preinstalled /opt/node22/lib/node_modules/playwright (remove the link before commit). Rows that test the push guard build their lines at run time, so the test file never holds a refusable line.
