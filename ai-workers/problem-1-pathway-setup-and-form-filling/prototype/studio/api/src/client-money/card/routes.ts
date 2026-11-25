@@ -42,7 +42,12 @@ export class StripeConnectHookController {
 export class PayLinkController {
   constructor(@Inject(CardPay) private readonly pay: CardPay) {}
   @Post(":id/pay-link") @HttpCode(200) @PermissionKeys("agent/payment:online")
-  make(@Param("id") id: string, @Body() body: unknown, @Req() r: R) { parseInput(strict({}), body ?? {}); return this.pay.makeLink(staffOf(r), id); }
+  make(@Param("id") id: string, @Body() body: unknown, @Req() r: R & { headers?: Record<string, string | string[] | undefined> }) {
+    // Break m3 (#3633): no body, or JSON; a body of another type is refused (415), never read as "no fields".
+    const type = r.headers?.["content-type"], length = Number(r.headers?.["content-length"] ?? 0);
+    if (length > 0 && !(typeof type === "string" && /^application\/json\s*(;|$)/i.test(type))) problem(415, "Send JSON", "This route takes no body, or a JSON one.", { code: "UNSUPPORTED_MEDIA_TYPE" });
+    parseInput(strict({}), body ?? {}); return this.pay.makeLink(staffOf(r), id);
+  }
 }
 
 const WINDOW_MS = 60_000, PER_TOKEN = 30, MISSES_PER_ADDRESS = 300, MAX_KEYS = 50_000;   // Sample, as the signing door
@@ -50,6 +55,8 @@ const hits = new Map<string, number[]>();
 let swept = 0;
 function over(key: string, max: number, now: number): boolean {
   if (hits.size > MAX_KEYS && now - swept > WINDOW_MS) { swept = now; for (const [k, v] of hits) if (!v.some((t) => now - t < WINDOW_MS)) hits.delete(k); }
+  // Break m2 (#3633): a hard cap inside the minute too: the oldest keys go first (a Map keeps insertion order).
+  for (const k of hits.keys()) { if (hits.size <= MAX_KEYS) break; hits.delete(k); }
   const list = (hits.get(key) ?? []).filter((t) => now - t < WINDOW_MS), full = list.length >= max;
   if (!full) list.push(now);
   hits.set(key, list);

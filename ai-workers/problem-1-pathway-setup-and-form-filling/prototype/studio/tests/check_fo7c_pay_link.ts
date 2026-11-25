@@ -14,7 +14,8 @@ import { createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { CARD_DOWN, CardPay, LINK_NOT_WORKING, NOT_AVAILABLE } from "../api/src/client-money/card/pay.ts";
-import { fakeCardRail } from "../api/src/client-money/card/rail.ts";
+import { RailAccountGone, RailRefused, fakeCardRail, type HostedPaymentInput } from "../api/src/client-money/card/rail.ts";
+import { StripeCardRail } from "../api/src/client-money/card/stripe-rail.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -47,7 +48,9 @@ const { failClosed } = await import("../api/src/client-money/reads/visibility.ts
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(), options: "-c TimeZone=UTC" }) });
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
 const local = new LocalIdentity("fo7c2a-check-signing-key-0123456789abcdef", () => clock.now());
-const rail = fakeCardRail();
+const rail0 = fakeCardRail(), asked: HostedPaymentInput[] = [];
+/** The fake rail, keeping each hosted-payment request's parameters (break M1-M2: the key, the URLs, the expiry). */
+const rail = { ...rail0, createHostedPayment: (i: HostedPaymentInput) => { asked.push(i); return rail0.createHostedPayment(i); } };
 let scoped = true;   // false: the C5 scope fails closed (FO-7b's own suite tests the real one)
 type Res = { status: number; body: any; headers: Headers };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other checks
 let app: { close(): Promise<void> } | null = null;
@@ -146,10 +149,10 @@ try {
   const open = await call(undefined, "GET", `/public/pay/${T1}`), s1 = await call(undefined, "POST", `/public/pay/${T1}/session`), s2 = await call(undefined, "POST", `/public/pay/${T1}/session`);
   const made = sessions().slice(before);
   ok("FO-7c DW11 pass: ACTIVE with charges on → the card offered, no offline block; each POST asks the rail once with the same idempotency key while nothing changed, and gets the same hosted page",
-    open.body.card.offered === true && open.body.offline === null && s1.status === 200 && /^https:\/\/pay\.fake-rail\.example\/cs_fake_/.test(s1.body.url) && s2.body.url === s1.body.url && made.length === 2 && made[0].key === made[1].key && made[0].key === `fo7c-pay-${I1}-100000-0`, { open: open.body, made });
+    open.body.card.offered === true && open.body.offline === null && s1.status === 200 && /^https:\/\/pay\.fake-rail\.example\/cs_fake_/.test(s1.body.url) && s2.body.url === s1.body.url && made.length === 2 && made[0].key === made[1].key && made[0].key?.startsWith(`fo7c-pay-${I1}-0-`) && asked.at(-1)?.amountMinor === 100000, { open: open.body, made });
   await pay(A, I1, "user-R", 40000, "fo7c2a-part-offline");
   const s3 = await call(undefined, "POST", `/public/pay/${T1}/session`), k3 = sessions().at(-1)?.key;
-  ok("FO-7c DW5 pass (AG-6-14 rule 2): after 400.00 paid another way, the session is for exactly the 600.00 still due, under a new key", s3.status === 200 && k3 === `fo7c-pay-${I1}-60000-1` && (await call(undefined, "GET", `/public/pay/${T1}`)).body.invoice.dueMinor === 60000, k3);
+  ok("FO-7c DW5 pass (AG-6-14 rule 2): after 400.00 paid another way, the session is for exactly the 600.00 still due, under a new key", s3.status === 200 && k3?.startsWith(`fo7c-pay-${I1}-1-`) && k3 !== made[0].key && asked.at(-1)?.amountMinor === 60000 && (await call(undefined, "GET", `/public/pay/${T1}`)).body.invoice.dueMinor === 60000, k3);
   sql(`update platform_firm set status = 'SECURITY_LOCK' where id = '${A}'`);
   const lg = await call(undefined, "GET", `/public/pay/${T1}`), ls = await call(undefined, "POST", `/public/pay/${T1}/session`); sql(`update platform_firm set status = 'ACTIVE' where id = '${A}'`);
   ok("FO-7c DW5 fail (PF-27's stand-in): a locked firm's link offers no card and its session is refused in PF-27's neutral words (no word \"lock\")",
@@ -159,11 +162,34 @@ try {
   const mk2 = await call(tOwner, "POST", LINK(I1)), T2 = tokenOf(mk2), oldOne = await call(undefined, "GET", `/public/pay/${T1}`);
   ok("FO-7c DW5 pass: a new link replaces the old one: the old answers the one not-found, the new one opens; the audit line says so", mk2.status === 200 && oldOne.status === 404 && oldOne.body.detail === LINK_NOT_WORKING && (await call(undefined, "GET", `/public/pay/${T2}`)).status === 200
     && sql(`select (detail->>'replaced') from audit_event where action = 'invoice.pay_link_made' and entity_key = '${I1}' order by at desc limit 1`) === "true", oldOne.body);
+  const sNew = await call(undefined, "POST", `/public/pay/${T2}/session`), aNew = asked.at(-1);
+  ok("FO-7c DW11 fail (break M1): after a new link, its session is a new hosted page whose return addresses are the new link's, never Stripe's \"key reused with other parameters\" (the fake refuses that as Stripe does)",
+    sNew.status === 200 && sNew.body.url !== s3.body.url && aNew?.successUrl.endsWith(`/money/pay/${T2}/done`) === true && aNew?.cancelUrl.endsWith(`/money/pay/${T2}`) === true, { s: sNew.body, a: aNew });
+  const name0 = sql(`select operating_name from platform_firm where id = '${A}'`);
+  sql(`update platform_firm set operating_name = '${name0} Renamed' where id = '${A}'`); const sRen = await call(undefined, "POST", `/public/pay/${T2}/session`); sql(`update platform_firm set operating_name = '${name0.replace(/'/g, "''")}' where id = '${A}'`);
+  ok("FO-7c DW11 fail (break M1): the firm renamed between two clicks → a new hosted page with the new name, not a 500", sRen.status === 200 && asked.at(-1)?.description.endsWith("Renamed") === true, sRen.body);
+  const exp = asked.at(-1)?.expiresAtSec ?? 0, inS = exp - Date.now() / 1000;
+  ok("FO-7c pass (break M2): every hosted page expires in 30 to 40 minutes (Sample; Stripe's least is 30), so a page handed out before the invoice changed stops taking cards soon", asked.length > 0 && asked.every((a) => !!a.expiresAtSec) && inS >= 29 * 60 && inS <= 41 * 60, inS);
   await pay(A, I1, "user-R", 60000, "fo7c2a-rest-offline");
   const settled = await call(undefined, "GET", `/public/pay/${T2}`), settledS = await call(undefined, "POST", `/public/pay/${T2}/session`);
-  ok("FO-7c DW5 fail: once paid in full the link is the same not-found as an unknown one (GET and POST), no session", settled.status === 404 && settledS.status === 404 && settled.body.detail === LINK_NOT_WORKING && sessions().length === before + 3, settled.body);
+  ok("FO-7c DW5 fail: once paid in full the link is the same not-found as an unknown one (GET and POST), no session", settled.status === 404 && settledS.status === 404 && settled.body.detail === LINK_NOT_WORKING && sessions().length === before + 5, settled.body);
   const unknown = await call(undefined, "GET", `/public/pay/${A.replace(/-/g, "")}.${"A".repeat(43)}`), malformed = await call(undefined, "GET", "/public/pay/nonsense");
   ok("FO-7c DW5 fail: an unknown and a malformed link → the same 404 and words", unknown.status === 404 && malformed.status === 404 && unknown.body.detail === malformed.body.detail, [unknown.body, malformed.body]);
+
+  const plain = await read(await fetch(`${base}/api${LINK(IB)}`, { method: "POST", headers: { "content-type": "text/plain", authorization: `Bearer ${tB}` }, body: "amountMinor=1" }));
+  ok("FO-7c DW5 fail (break m3): a body that is not JSON on the pay-link route → 415, no new link", plain.status === 415 && hashOf(IB, B) === createHash("sha256").update(TB).digest("hex"), plain.body);
+  // Break m1: on the Stripe adapter, the processor's refusals end as the offline answer (RailAccountGone or RailRefused),
+  // never a 500. Stripe's own error bodies, answered by a stand-in fetch (no network).
+  const stripeSays = (status: number, error: Record<string, string>) => StripeCardRail.fromKey(["sk", "test", "0".repeat(24)].join("_"), null,
+    (async () => new Response(JSON.stringify({ error }), { status, headers: { "content-type": "application/json", "request-id": "req_fo7c2a" } })) as unknown as typeof fetch);
+  const askOf = { account: "acct_1Fo7c2aSample", amountMinor: 100, currency: "CAD" as const, description: "Invoice (Sample)", metadata: {}, successUrl: "https://app.example.test/a", cancelUrl: "https://app.example.test/b", idempotencyKey: "fo7c2a-m1" };
+  const kindOf = async (r: StripeCardRail) => { try { await r.createHostedPayment(askOf); return "made"; } catch (e) { return e instanceof RailAccountGone ? "gone" : e instanceof RailRefused ? "refused" : `other:${(e as Error).name}`; } };
+  const kinds = [await kindOf(stripeSays(403, { type: "invalid_request_error", message: "The provided key does not have access to account (Sample)." })),
+    await kindOf(stripeSays(400, { type: "invalid_request_error", code: "account_invalid", message: "Sample" })),
+    await kindOf(stripeSays(400, { type: "invalid_request_error", message: "Your account cannot currently make live charges (Sample)." })),
+    await kindOf(stripeSays(400, { type: "idempotency_error", message: "Keys for idempotent requests can only be used with the same parameters (Sample)." }))];
+  ok("FO-7c DW8 fail (break m1): on the Stripe adapter a revoked account (403), account_invalid, \"cannot make live charges\" and a reused key are gone, gone, refused, refused: each the offline answer, never a 500",
+    JSON.stringify(kinds) === JSON.stringify(["gone", "gone", "refused", "refused"]), kinds);
 
   // -------------------------------------------------------------------------------------------------- the limit
   const burst: number[] = [];
