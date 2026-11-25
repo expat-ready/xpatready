@@ -79,14 +79,14 @@ try {
     const n = await tx.$executeRaw`delete from pf21d_rows where firm_id = ${currentFirm()}::uuid and person_id = ${o.personId}::uuid`;
     return n ? { outcome: "ERASED", note: `${n} row(s)` } : { outcome: "NOTHING", note: "no rows" };
   } };
-  let mode: "nothing" | "throw" | "kept" | "wait" | "merge" | "breakRecord" | "loseCommit" = "nothing", mergeTry: (() => void) | null = null, entered = false, gate: () => void = () => undefined;
+  let mode: "nothing" | "throw" | "kept" | "wait" | "merge" | "breakRecord" | "loseCommit" | "keptThenBreak" = "nothing", mergeTry: (() => void) | null = null, entered = false, gate: () => void = () => undefined;
   const secondEraser: Eraser<any> = { module: "test.second", async erase() {
     if (mode === "throw") throw new Error("Sample: the second module is down");
     if (mode === "wait") { entered = true; await new Promise<void>((r) => { gate = r; }); }
     if (mode === "merge" && mergeTry) mergeTry();   // review r4 M1: a merge tries to land while the run erases
     if (mode === "loseCommit") testDb.loseNextCommit = true;   // Lead 27: this transaction commits, then its answer is lost
-    if (mode === "breakRecord") sql(`alter function plat_data_request_erasure_finish(uuid, text, text, date, text, timestamptz) rename to pf21d_finish_away`);   // Lead 26: the record fails after the erasers commit
-    return mode === "kept" ? { outcome: "KEPT", note: "client_financial: 2 rows kept 7 years, name replaced by a reference" } : { outcome: "NOTHING", note: "no rows" };
+    if (mode === "breakRecord" || mode === "keptThenBreak") sql(`alter function plat_data_request_erasure_finish(uuid, text, text, date, text, timestamptz) rename to pf21d_finish_away`);   // Lead 26: the record fails after the erasers commit
+    return mode === "kept" || mode === "keptThenBreak" ? { outcome: "KEPT", note: "client_financial: 2 rows kept 7 years, name replaced by a reference" } : { outcome: "NOTHING", note: "no rows" };
   } };
   const rowsOf = (firm: string, person: string) => Number(sql(`select count(*) from pf21d_rows where firm_id = '${firm}' and person_id = '${person}'`));
   const addRows = (firm: string, person: string, n = 2) => { for (let i = 0; i < n; i++) sql(`insert into pf21d_rows (firm_id, person_id) values ('${firm}', '${person}')`); };
@@ -357,6 +357,24 @@ try {
   const held14 = await svc.run();
   ok("PF-21d fail (part 2a item 4): an order still claimed by another run → counted as skipped, nothing erased",
     held14.skipped.includes(r14) && rowsOf(A, P14) === 2, { held14 });
+  // Round 1 of #3583 (reviewer m2, breaker m3): an earlier run's KEPT mark makes the end PARTIAL, never COMPLETED, even when
+  // an eraser that kept something answers NOTHING the next time (port rule 4 broken). This run's results come first, so
+  // the 2000-character limit never hides them (reviewer m3, breaker m1).
+  const P15 = person(A); addRows(A, P15);
+  const r15 = await deletion(A, P15); await svc.approve(as, null, r15); clock.t += 7 * DAY;
+  // r14 keeps its fresh claim: every run below counts it as skipped and never touches it.
+  mode = "keptThenBreak"; await svc.run(); mode = "nothing";
+  sql(`alter function pf21d_finish_away(uuid, text, text, date, text, timestamptz) rename to plat_data_request_erasure_finish`);
+  sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r15}'`);
+  const kept15 = await svc.run();
+  const actions15 = sql(`select coalesce(actions_taken, '') from plat_data_request where id = '${r15}'`);
+  ok("PF-21d fail (#3583 round 1: reviewer m2, m3): an earlier run's KEPT mark → PARTIAL (HELD), never COMPLETED; the words start with this run's results",
+    kept15.partial.includes(r15) && statusOf(r15) === "HELD|-" && actions15.startsWith("This run: ") && /its marks say: [^]*KEPT/.test(actions15), { kept15, s: statusOf(r15), actions15 });
+  // The port's rules on the table itself (reviewer m1, breaker m2): a module name, a note of at most 300 characters, no "@".
+  ok("PF-21d fail (#3583 round 1: reviewer m1, breaker m2): the mark table refuses a bad module name, a note over 300 characters, or one with \"@\"",
+    refusedBySql(`insert into plat_data_request_erasure_mark (request_id, claim, module, outcome, note) values ('${r15}', now(), 'Bad Name', 'ERASED', 'x')`, /plat_data_request_erasure_mark_rules/)
+    && refusedBySql(`insert into plat_data_request_erasure_mark (request_id, claim, module, outcome, note) values ('${r15}', now(), 'test.rows', 'ERASED', '${"x".repeat(301)}')`, /plat_data_request_erasure_mark_rules/)
+    && refusedBySql(`insert into plat_data_request_erasure_mark (request_id, claim, module, outcome, note) values ('${r15}', now(), 'test.rows', 'ERASED', 'mail a@b.c')`, /plat_data_request_erasure_mark_rules/));
   // -------------------------------------------------------------------------------------- the database's rules
   ok("PF-21d fail (database): an erase day on an access request or not after the day received, a forged mark through the job's step → refused",
     refusedBySql(`update plat_data_request set erase_on = received_on + 7 where id = '${access}'`, /plat_data_request_erase_on_set/)

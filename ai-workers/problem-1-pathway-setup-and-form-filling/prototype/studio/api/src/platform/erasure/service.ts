@@ -231,11 +231,13 @@ export class Erasure {
       }
       for (const { module, r } of done.results)
         await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_RESULT', ${`${module}: ${r.outcome} — ${r.note}`}, ${ERASURE_ACTOR}, false, ${claim}::timestamptz)`;
-      const kept = done.results.filter((x) => x.r.outcome === "KEPT");
+      // #3583 round 1: an earlier run's KEPT mark keeps the end PARTIAL even if an eraser later answers NOTHING (port rule 4
+      // broken), and this run's results lead, so the 2000-character limit cuts the earlier words, never these.
+      const kept = done.results.filter((x) => x.r.outcome === "KEPT").length + earlier.filter((m) => m.outcome === "KEPT").length;
       const found = done.results.map(({ module, r }) => `${module}: ${r.outcome} (${r.note})`).join("; ");
-      const actions = (retaken ? `${earlier.length ? `An earlier run's result was not recorded at the time; its marks say: ${marked}.` : "An earlier run's result was not recorded; it may have erased first."} This run: ${found}` : found).slice(0, 2000);
-      await finish(kept.length ? "PARTIAL" : "COMPLETED", actions);
-      return kept.length ? "partial" as const : "erased" as const;
+      const actions = (retaken ? `This run: ${found}. ${earlier.length ? `An earlier run's result was not recorded at the time; its marks say: ${marked}.` : "An earlier run's result was not recorded; it may have erased first."}` : found).slice(0, 2000);
+      await finish(kept ? "PARTIAL" : "COMPLETED", actions);
+      return kept ? "partial" as const : "erased" as const;
     });
   }
 }

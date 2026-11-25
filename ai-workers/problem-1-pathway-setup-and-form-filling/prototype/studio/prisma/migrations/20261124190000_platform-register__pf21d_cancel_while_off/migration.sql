@@ -22,7 +22,11 @@ CREATE TABLE "plat_data_request_erasure_mark" (
     -- or a hand move mid-run (FOR UPDATE) would then wait for the erasers instead of answering at once. The mark's definer
     -- checks the request exists under that claim, and neither table ever deletes a row.
     CONSTRAINT "plat_data_request_erasure_mark_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "plat_data_request_erasure_mark_outcome" CHECK ("outcome" IN ('ERASED', 'NOTHING', 'KEPT'))
+    CONSTRAINT "plat_data_request_erasure_mark_outcome" CHECK ("outcome" IN ('ERASED', 'NOTHING', 'KEPT')),
+    -- ErasurePort's own rules (ports/erasure.ts ModuleName, EraseOutcome.note; BR-16: ids, counts and class names only),
+    -- held by the table too: whatever reaches the definer, no free text or address lands in the register's words.
+    CONSTRAINT "plat_data_request_erasure_mark_rules" CHECK ("module" ~ '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$' AND char_length("module") <= 60
+      AND char_length("note") BETWEEN 1 AND 300 AND position('@' in "note") = 0)
 );
 CREATE UNIQUE INDEX "plat_data_request_erasure_mark_request_id_claim_module_key" ON "plat_data_request_erasure_mark"("request_id", "claim", "module");
 CREATE TRIGGER "plat_data_request_erasure_mark_kept" BEFORE UPDATE OR DELETE ON "plat_data_request_erasure_mark" FOR EACH ROW EXECUTE FUNCTION plat_data_request_kept();
