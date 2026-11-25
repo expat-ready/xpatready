@@ -1,0 +1,30 @@
+{
+  "item": "R1.45",
+  "name": "45 Firm templates, field picker, preview with a real record",
+  "pr": 3645,
+  "sha": "649e520a965a26f24c2f2512bed206c5f26d707f",
+  "run_id": "45558883751",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45558883751",
+  "at": "2026-11-25T06:18:31.490Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_45.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45558883751/artifacts/14996633897",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.45-649e520a965a26f24c2f2512bed206c5f26d707f.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
