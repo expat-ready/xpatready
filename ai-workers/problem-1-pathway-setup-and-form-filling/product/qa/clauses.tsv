@@ -1,0 +1,279 @@
+# A389 clauses (tools/clauses.py). Status: confirmed / not, set only by qa (P-219, P-314) on a walk, with its
+# evidence (a qa/ report path), the commit it tested and the date. Clause text is the row's Done when, cut at ";".
+row	no	clause	status	evidence	commit	date
+R1.1	1	The app runs in ca-central-1 from PF-7's image	not			
+R1.1	2	database, files and logs in Canada, read from the cloud account	not			
+R1.1	3	the smoke passes against the cloud address	not			
+R1.2	1	PF-3's tables and rules exist by migration from empty and on top of demo data	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
+R1.2	2	each database rule refuses a bad row (a pass and a fail each)	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
+R1.2	3	check_pf3_platform_schema.ts green on main's head on GitHub's runners	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
+R1.3	1	With two firms, every PF/FO table (and every case-side table once it has a row) refuses a read and a write of the other firm's row at the database, even for a query with no firm filter	not			
+R1.3	2	the cross-firm test is a merge-queue gate	not			
+R1.4	1	A request's firm is set for its database session from the signed-in person only	confirmed	qa/reports/2026-11-21-r14-main-f747.md	fc77752e	2026-11-22
+R1.4	2	a query with no firm set returns nothing (fail case)	confirmed	qa/reports/2026-11-21-r14-main-f747.md	fc77752e	2026-11-22
+R1.4	3	the bypass role is used only by named platform jobs and every use writes an audit line Pack: check_pf12_walls.ts, check_pf12b_bypass_audit.ts, check_pf12b_doors.ts, check_pf4_identity.ts	confirmed	qa/reports/2026-11-21-r14-main-f747.md	fc77752e	2026-11-22
+R1.4	4	journey j_4	confirmed	qa/reports/2026-11-21-r14-main-f747.md	fc77752e	2026-11-22
+R1.5	1	Sign-in only with the second step	not			
+R1.5	2	a wrong code, an expired code and repeated wrong tries refused in words	not			
+R1.5	3	a passkey signs in on the real pool	not			
+R1.5	4	a removed or deactivated member is signed out of every device at the next request	not			
+R1.5	5	walked by screens once a sign-in screen exists	not			
+R1.6	1	A route with no permission key is refused (403)	confirmed	qa/reports/2026-11-19-gate-a-night.md	c600f215	2026-11-19
+R1.6	2	"own" keys return only the person's own records, "all" the firm's	confirmed	qa/reports/2026-11-19-gate-a-night.md	c600f215	2026-11-19
+R1.6	3	money and licence keys never come with another key	confirmed	qa/reports/2026-11-19-gate-a-night.md	c600f215	2026-11-19
+R1.6	4	wrong role by URL refused on screen and API	confirmed	qa/reports/2026-11-19-gate-a-night.md	c600f215	2026-11-19
+R1.8	1	Every create, change and delete on PF/FO tables writes who, when, before and after	confirmed	qa/reports/2026-11-21-capability-R1.8.md	d67a5c77	2026-11-21
+R1.8	2	UPDATE or DELETE on the audit table refused by the database even for the app's role (fail case)	confirmed	qa/reports/2026-11-21-capability-R1.8.md	d67a5c77	2026-11-21
+R1.8	3	a line with another firm's id refused	confirmed	qa/reports/2026-11-21-capability-R1.8.md	d67a5c77	2026-11-21
+R1.9	1	A job queued twice with one key runs once	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
+R1.9	2	a failing job retries with back-off, then shows in a failed list with its reason	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
+R1.9	3	a reminder fires at its time in the firm's zone	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
+R1.9	4	stopping the worker mid-job loses nothing	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
+R1.10	1	Every PF/FO route checks body, query and params against one schema	not			
+R1.10	2	wrong type, missing, unknown and over-long fields each answer 400 Problem Details naming the field in plain words	not			
+R1.10	3	qa probes every route in the route table	not			
+R1.11	1	PF-7: one container image from a clean clone, PostgreSQL beside it, migrations first	confirmed	qa/reports/2026-11-16-capability-platform.md	6ee7a805	2026-11-16
+R1.11	2	/api/health and the first page 200	confirmed	qa/reports/2026-11-16-capability-platform.md	6ee7a805	2026-11-16
+R1.11	3	non-root	confirmed	qa/reports/2026-11-16-capability-platform.md	6ee7a805	2026-11-16
+R1.11	4	no secret in the image	confirmed	qa/reports/2026-11-16-capability-platform.md	6ee7a805	2026-11-16
+R1.11	5	the seeded fails (database stopped; root image with a key) make the smoke fail	confirmed	qa/reports/2026-11-16-capability-platform.md	6ee7a805	2026-11-16
+R1.11	6	all on main's code on GitHub's runners	confirmed	qa/reports/2026-11-16-capability-platform.md	6ee7a805	2026-11-16
+R1.12	1	PF-1: a module's pages appear by adding its own routes.tsx only	confirmed	qa/reports/2026-11-16-capability-platform.md	e593accc	2026-11-16
+R1.12	2	existing pages unchanged	confirmed	qa/reports/2026-11-16-capability-platform.md	e593accc	2026-11-16
+R1.12	3	a clash names both sides and stops the app	confirmed	qa/reports/2026-11-16-capability-platform.md	e593accc	2026-11-16
+R1.12	4	check_pf1_module_routes.ts green on main's head on GitHub's runners	confirmed	qa/reports/2026-11-16-capability-platform.md	e593accc	2026-11-16
+R1.12	5	later screens judged against the one kit in qa's walks	confirmed	qa/reports/2026-11-16-capability-platform.md	e593accc	2026-11-16
+R1.13	1	One logger, structured lines, no personal data (a seeded email, name or passport number never appears: fail case)	confirmed	qa/reports/2026-11-24-qa11-r113.md	b1cb81d8	2026-11-25
+R1.13	2	an error reaches the alarm	confirmed	qa/reports/2026-11-24-qa11-r113.md	b1cb81d8	2026-11-25
+R1.13	3	an alarm reaches a person	confirmed	qa/reports/2026-11-24-qa11-r113.md	b1cb81d8	2026-11-25
+R1.13	4	logs kept 90 days in Canada	confirmed	qa/reports/2026-11-24-qa11-r113.md	b1cb81d8	2026-11-25
+R1.14	1	Point-in-time restore and a ca-west-1 copy on (read from the account)	confirmed	qa/reports/2026-11-21-capability-R1.14-qa.md	2821fb78	2026-11-21
+R1.14	2	one drill restores a named moment into a fresh database within 4 h with at most 15 min lost, times recorded	confirmed	qa/reports/2026-11-21-capability-R1.14-qa.md	2821fb78	2026-11-21
+R1.15	1	Every secret read at start from the managed store only	not			
+R1.15	2	image, repository, logs and env hold none	not			
+R1.15	3	a missing secret stops start-up naming it, never its value	not			
+R1.15	4	firms' own keys stored encrypted	not			
+R1.16	1	Every suite runs on every merge batch on GitHub's runners and a red suite blocks it	confirmed	qa/reports/2026-11-20-capability-R1.16-required.md	41482067	2026-11-20
+R1.16	2	an API error never reads green	confirmed	qa/reports/2026-11-20-capability-R1.16-required.md	41482067	2026-11-20
+R1.16	3	the container smoke and its seeded fails run on main's code	confirmed	qa/reports/2026-11-20-capability-R1.16-required.md	41482067	2026-11-20
+R1.16	4	Release 1 packs join the protected set once Works (Question 2)	confirmed	qa/reports/2026-11-20-capability-R1.16-required.md	41482067	2026-11-20
+R1.19	1	Self-serve sign-up makes exactly one firm with plan, trial end and one Owner	confirmed	qa/reports/2026-11-21-capability-R1.19-q9.md	828263498	2026-11-22
+R1.19	2	the same verified email again is refused in words	confirmed	qa/reports/2026-11-21-capability-R1.19-q9.md	828263498	2026-11-22
+R1.19	3	firm, subscription and Owner stored as entered, with audit lines (QA-483's wording, qa Q9 21 Nov)	confirmed	qa/reports/2026-11-21-capability-R1.19-q9.md	828263498	2026-11-22
+R1.20	1	Every gated action asks one check	confirmed	qa/reports/2026-11-24-capability-R1.20-qa7.md	30e97254	2026-11-24
+R1.20	2	an invite past the seat limit refused naming the limit	confirmed	qa/reports/2026-11-24-capability-R1.20-qa7.md	30e97254	2026-11-24
+R1.20	3	a downgrade that breaks a limit refused listing what to remove	confirmed	qa/reports/2026-11-24-capability-R1.20-qa7.md	30e97254	2026-11-24
+R1.20	4	a 1-50 row invite accepts the good rows and names each bad row's reason	confirmed	qa/reports/2026-11-24-capability-R1.20-qa7.md	30e97254	2026-11-24
+R1.21	1	A firm's invoice carries its province's tax from the billing provider's test mode (no priced call, P-175)	confirmed	qa/reports/2026-11-23-capability-trackA-lane2-night.md	9787e68a	2026-11-23
+R1.21	2	listed and downloadable on the billing page	confirmed	qa/reports/2026-11-23-capability-trackA-lane2-night.md	9787e68a	2026-11-23
+R1.22	1	A failed test payment puts the firm on read-only hold with a banner	not			
+R1.22	2	cancel keeps data to the period end, then closes	not			
+R1.22	3	the Owner of a closed firm downloads its data	not			
+R1.22	4	every change audited	not			
+R1.23	1	An Owner sets all five	confirmed	qa/reports/2026-11-23-capability-R1-23-R1-24.md	09b3893d	2026-11-23
+R1.23	2	a colour below WCAG AA and a wrong file type or size refused on the field	confirmed	qa/reports/2026-11-23-capability-R1-23-R1-24.md	09b3893d	2026-11-23
+R1.23	3	client pages and emails show them	confirmed	qa/reports/2026-11-23-capability-R1-23-R1-24.md	09b3893d	2026-11-23
+R1.24	1	<firm>.expatready.com opens that firm's public pages only	confirmed	qa/reports/2026-11-23-capability-R1-23-R1-24.md	09b3893d	2026-11-23
+R1.24	2	a taken, reserved or malformed address refused in words	confirmed	qa/reports/2026-11-23-capability-R1-23-R1-24.md	09b3893d	2026-11-23
+R1.24	3	another firm's address never shows this firm's data	confirmed	qa/reports/2026-11-23-capability-R1-23-R1-24.md	09b3893d	2026-11-23
+R1.26	1	A visitor's enquiry becomes a lead	confirmed	qa/reports/2026-11-21-capability-R1.26-qa12d.md	ca3b24fa	2026-11-21
+R1.26	2	a bot (hidden field, too-fast send, rate limit) refused without saying why	confirmed	qa/reports/2026-11-21-capability-R1.26-qa12d.md	ca3b24fa	2026-11-21
+R1.26	3	the same send twice within minutes makes one lead	confirmed	qa/reports/2026-11-21-capability-R1.26-qa12d.md	ca3b24fa	2026-11-21
+R1.26	4	each field's message on the field	confirmed	qa/reports/2026-11-21-capability-R1.26-qa12d.md	ca3b24fa	2026-11-21
+R1.27	1	Every lead has a source (form, embed with campaign, manual; import when AG-18's engine lands)	confirmed	qa/reports/2026-11-21-capability-R1.27-works-qa12.md	9dc4d5b2	2026-11-21
+R1.27	2	a lead without one refused by the database (fail case)	confirmed	qa/reports/2026-11-21-capability-R1.27-works-qa12.md	9dc4d5b2	2026-11-21
+R1.27	3	lists filter by source	confirmed	qa/reports/2026-11-21-capability-R1.27-works-qa12.md	9dc4d5b2	2026-11-21
+R1.28	1	Each purpose recorded with time, wording and source	confirmed	qa/reports/2026-11-19-after-merge-r128.md	95fbf96bf	2026-11-19
+R1.28	2	withdrawing one keeps the others	confirmed	qa/reports/2026-11-19-after-merge-r128.md	95fbf96bf	2026-11-19
+R1.28	3	a record is never edited, only superseded	confirmed	qa/reports/2026-11-19-after-merge-r128.md	95fbf96bf	2026-11-19
+R1.29	1	Adding a lead that matches name, email or phone warns before saving	not			
+R1.29	2	merge keeps both histories, never automatic when either has a case or money	not			
+R1.29	3	a merge can be undone from the review list	not			
+R1.30	1	Filter by stage, owner, source and date	confirmed	qa/reports/2026-11-20-r130-qa12.md	ce8e05b1	2026-11-20
+R1.30	2	the board moves a lead by drag and by keyboard	confirmed	qa/reports/2026-11-20-r130-qa12.md	ce8e05b1	2026-11-20
+R1.30	3	400, 1024, 1440 px	confirmed	qa/reports/2026-11-20-r130-qa12.md	ce8e05b1	2026-11-20
+R1.31	1	Only a signature, Signed offline or Convert moves a prospect to Won (any other move refused)	confirmed	qa/reports/2026-11-20-capability-R1.31-main.md	568e240f	2026-11-20
+R1.31	2	totals per currency, never mixed	confirmed	qa/reports/2026-11-20-capability-R1.31-main.md	568e240f	2026-11-20
+R1.32	1	A new lead follows the rule or lands in Unassigned	confirmed	qa/reports/2026-11-21-r132b-qa12.md	2821fb78	2026-11-21
+R1.32	2	take and reassign record who and when	confirmed	qa/reports/2026-11-21-r132b-qa12.md	2821fb78	2026-11-21
+R1.32	3	a person without the key cannot reassign	confirmed	qa/reports/2026-11-21-r132b-qa12.md	2821fb78	2026-11-21
+R1.33	1	Stored as E.164 with country	confirmed	qa/reports/2026-11-19-wave0-carry-forward.md	d07a08fbc	2026-11-20
+R1.33	2	an impossible number refused on the field	confirmed	qa/reports/2026-11-19-wave0-carry-forward.md	d07a08fbc	2026-11-20
+R1.33	3	two spellings of one number match as duplicates	confirmed	qa/reports/2026-11-19-wave0-carry-forward.md	d07a08fbc	2026-11-20
+R1.34	1	A holder of the key exports one person's data from every module in one file	not			
+R1.34	2	logged with who and why	not			
+R1.34	3	others refused	not			
+R1.35	1	Preview, column mapping, each bad row's reason	not			
+R1.35	2	good rows imported once (a re-import adds no duplicate), with source and consent set	not			
+R1.36	1	A recipe sends at its time only to people with the purpose's consent	not			
+R1.36	2	message-many skips and counts those without	not			
+R1.36	3	switching a recipe off stops queued sends	not			
+R1.37	1	A client books a type and a free time on the firm's page	confirmed	qa/reports/2026-11-18-capability-R1-rescore-A-F.md	c66a41c96	2026-11-20
+R1.37	2	two bookings of one host and time at once give one booking and one refusal in words (database rule, two connections)	confirmed	qa/reports/2026-11-18-capability-R1-rescore-A-F.md	c66a41c96	2026-11-20
+R1.37	3	confirmation in the client's zone	confirmed	qa/reports/2026-11-18-capability-R1-rescore-A-F.md	c66a41c96	2026-11-20
+R1.38	1	A slot shown in the client's zone, stored in UTC, appears in the staff zone and in the invite with the right offset across a daylight-saving change	confirmed	qa/reports/2026-11-21-r138-r110-qa12/reader-verdict-r138-w9.md	51b04d9b	2026-11-21
+R1.39	1	Day, week and list views of own bookings and time off	confirmed	qa/reports/2026-11-22-capability-R1.39-works.md	71984ae8	2026-11-22
+R1.39	2	open a booking	confirmed	qa/reports/2026-11-22-capability-R1.39-works.md	71984ae8	2026-11-22
+R1.39	3	another person's calendar only with the key	confirmed	qa/reports/2026-11-22-capability-R1.39-works.md	71984ae8	2026-11-22
+R1.40	1	Each booking and change sends an .ics with the same time	confirmed	qa/reports/2026-11-21-r138-r110-qa12.md	d3d01485	2026-11-21
+R1.40	2	an update replaces the event (same UID)	confirmed	qa/reports/2026-11-21-r138-r110-qa12.md	d3d01485	2026-11-21
+R1.40	3	a cancel removes it	confirmed	qa/reports/2026-11-21-r138-r110-qa12.md	d3d01485	2026-11-21
+R1.41	1	Weekly hours and time off set	confirmed	qa/reports/2026-11-18-after-merge.md	292847c32	2026-11-20
+R1.41	2	no slot offered inside time off or outside hours	confirmed	qa/reports/2026-11-18-after-merge.md	292847c32	2026-11-20
+R1.41	3	overlapping hours within one hour set are refused by the database (worded by the tech lead's QA-524 ruling, 20 Nov, P-294)	confirmed	qa/reports/2026-11-18-after-merge.md	292847c32	2026-11-20
+R1.42	1	The client's single-use link reschedules or cancels inside the firm's notice rule (later refused in words)	confirmed	qa/reports/2026-11-21-capability-R1.42-qa12b.md	bfd1b2de	2026-11-21
+R1.42	2	used or expired link refused	confirmed	qa/reports/2026-11-21-capability-R1.42-qa12b.md	bfd1b2de	2026-11-21
+R1.42	3	staff record the outcome and the note	confirmed	qa/reports/2026-11-21-capability-R1.42-qa12b.md	bfd1b2de	2026-11-21
+R1.43	1	A busy event in the connected calendar blocks the slot within minutes	not			
+R1.43	2	a booking appears there	not			
+R1.43	3	disconnecting stops both	not			
+R1.45	1	A template uses only picker fields	not			
+R1.45	2	preview fills it from a chosen real record	not			
+R1.45	3	an unknown field refused on save, named	not			
+R1.46	1	The box saves	confirmed	qa/reports/2026-11-24-capability-R1.46.md	f0bc6017	2026-11-24
+R1.46	2	a field goes in from the picker	confirmed	qa/reports/2026-11-24-capability-R1.46.md	f0bc6017	2026-11-24
+R1.46	3	over the length limit refused with the limit	confirmed	qa/reports/2026-11-24-capability-R1.46.md	f0bc6017	2026-11-24
+R1.47	1	Every email on both sides uses the one layout with the firm's branding, checked on every send path	confirmed	qa/reports/2026-11-21-capability-R1.47-q4.md	bfd1b2de	2026-11-21
+R1.48	1	Each message shows Sent, Delivered, Bounced or Failed from the provider's test events	confirmed	qa/reports/2026-11-20-capability-R1.48-main.md	f0b4fb03	2026-11-20
+R1.48	2	a hard bounce stops sends to that address	confirmed	qa/reports/2026-11-20-capability-R1.48-main.md	f0b4fb03	2026-11-20
+R1.48	3	the from-name is the firm's	confirmed	qa/reports/2026-11-20-capability-R1.48-main.md	f0b4fb03	2026-11-20
+R1.49	1	A send without the purpose's consent refused before it leaves, on every path (fail case each)	confirmed	qa/reports/2026-11-21-capability-r149.md	56275477	2026-11-21
+R1.49	2	one-click unsubscribe withdraws that purpose	confirmed	qa/reports/2026-11-21-capability-r149.md	56275477	2026-11-21
+R1.49	3	service messages for an active case still go	confirmed	qa/reports/2026-11-21-capability-r149.md	56275477	2026-11-21
+R1.50	1	An event notifies its people	confirmed	qa/reports/2026-11-24-capability-R1.50.md	bdcf1e7b	2026-11-24
+R1.50	2	read per person	confirmed	qa/reports/2026-11-24-capability-R1.50.md	bdcf1e7b	2026-11-24
+R1.50	3	a kind switched off stops for that person only	confirmed	qa/reports/2026-11-24-capability-R1.50.md	bdcf1e7b	2026-11-24
+R1.52	1	A connected mailbox sends from the staff address and files replies on the record	not			
+R1.52	2	WhatsApp sends a template only with consent	not			
+R1.52	3	no SMS anywhere	not			
+R1.53	1	A draft shows the Code's items, each present or missing (non-blocking, P-566)	confirmed	qa/reports/2026-11-25-qa11-r153/reader-verdict.md	e397c7dc	2026-11-25
+R1.53	2	edits make versions until sent	confirmed	qa/reports/2026-11-25-qa11-r153/reader-verdict.md	e397c7dc	2026-11-25
+R1.53	3	a sent retainer cannot change. Unconfirmed: no counsel	confirmed	qa/reports/2026-11-25-qa11-r153/reader-verdict.md	e397c7dc	2026-11-25
+R1.54	1	Signing in the vendor's sandbox (no priced call) returns the signed file and its evidence, stored on the person	not			
+R1.54	2	any uploaded PDF can be sent for signature	not			
+R1.55	1	Withdraw stops the link	not			
+R1.55	2	re-issue makes a new version	not			
+R1.55	3	a decline kept with its reason	not			
+R1.55	4	Signed offline needs the uploaded file and moves the prospect as a signature does	not			
+R1.56	1	An invoice from a signed retainer adds the client's province's tax from a cited table	not			
+R1.56	2	the government fee is its own untaxed line	not			
+R1.56	3	totals in integer cents	not			
+R1.57	1	A client pays by card through the firm's own account in test mode	not			
+R1.57	2	the money is booked to operating, never trust (P-567)	not			
+R1.57	3	a failed card leaves the invoice unpaid with the reason	not			
+R1.58	1	Every payment is trust or operating (the database refuses neither)	not			
+R1.58	2	a client's trust balance never goes below zero through a payment out, a transfer or a move (fail case)	not			
+R1.58	3	a reversal of a payment recorded by hand is always accepted and may take it below zero, and the party then shows red on the shortfall list (P-634, P-653 (2))	not			
+R1.58	4	earned trust money is on "to move" until moved. Unconfirmed: no counsel	not			
+R1.59	1	Integer cents with currency	confirmed	qa/reports/2026-11-20-capability-R1.59.md	ff699741	2026-11-20
+R1.59	2	tax rounded per line by one stated rule	confirmed	qa/reports/2026-11-20-capability-R1.59.md	ff699741	2026-11-20
+R1.59	3	mixed currencies refused	confirmed	qa/reports/2026-11-20-capability-R1.59.md	ff699741	2026-11-20
+R1.59	4	a pass and a fail test per rule	confirmed	qa/reports/2026-11-20-capability-R1.59.md	ff699741	2026-11-20
+R1.60	1	A signed retainer with a deposit makes one draft deposit invoice	not			
+R1.60	2	the same signature event again makes none	not			
+R1.61	1	One link opens the document to sign, then the invoice to pay	not			
+R1.61	2	it works once and expires	not			
+R1.61	3	a used or forwarded-after-use link refused in words	not			
+R1.62	1	A client signs in and sees only their own cases and the progress stream with "last update"	not			
+R1.62	2	another client's case by URL refused	not			
+R1.63	1	As C6.4	confirmed	qa/CAPABILITIES.md	fe388b64	2026-11-16
+R1.64	1	A dropped upload resumes where it stopped (tus)	not			
+R1.64	2	a finished file is stored once	not			
+R1.65	1	Files stored in ca-central-1 under the firm's prefix, versioned and encrypted	confirmed	qa/reports/2026-11-24-qa11-r165/reader-verdict.md	9b5a93fc	2026-11-25
+R1.65	2	another firm's key refused	confirmed	qa/reports/2026-11-24-qa11-r165/reader-verdict.md	9b5a93fc	2026-11-25
+R1.66	1	A file is not served until its scan is clean	not			
+R1.66	2	an infected test file is held and named	not			
+R1.67	1	A file whose content does not match its type is refused in words	confirmed	qa/reports/2026-11-19-r167-gate-a.md	09b3893d	2026-11-23
+R1.67	2	a damaged PDF is refused	confirmed	qa/reports/2026-11-19-r167-gate-a.md	09b3893d	2026-11-23
+R1.68	1	Staff preview an uploaded document without downloading it	confirmed	qa/reports/2026-11-25-qa10-works-r168-r169.md	e397c7dc	2026-11-25
+R1.69	1	Each read of a document writes a line	confirmed	qa/reports/2026-11-25-qa10-works-r168-r169.md	e397c7dc	2026-11-25
+R1.69	2	each file has a fingerprint	confirmed	qa/reports/2026-11-25-qa10-works-r168-r169.md	e397c7dc	2026-11-25
+R1.69	3	a keep-period reminder fires	confirmed	qa/reports/2026-11-25-qa10-works-r168-r169.md	e397c7dc	2026-11-25
+R1.70	1	A document carries expiry, translation and notarisation flags that the checklist reads	confirmed	qa/reports/2026-11-24-capability-R1.70.md	f0bc6017	2026-11-24
+R1.72	1	A won prospect hands over into a case with its applicants, representative and pinned release	confirmed	qa/reports/2026-11-20-capability-r172-screen.md	ff699741	2026-11-20
+R1.73	1	As C6.17	confirmed	qa/CAPABILITIES.md	fe388b64	2026-11-16
+R1.74	1	A stage's government deadline is worked out from its rule and shown	confirmed	qa/reports/2026-11-21-capability-R1.74-works-qa12.md	b6fdc65e	2026-11-24
+R1.74	2	it reminds the case's people before it falls due	confirmed	qa/reports/2026-11-21-capability-R1.74-works-qa12.md	b6fdc65e	2026-11-24
+R1.74	3	a period in working days skips weekends and the firm's holidays (a pass and a fail each)	confirmed	qa/reports/2026-11-21-capability-R1.74-works-qa12.md	b6fdc65e	2026-11-24
+R1.74	4	judged on the checklist row's words (no BACKLOG row)	confirmed	qa/reports/2026-11-21-capability-R1.74-works-qa12.md	b6fdc65e	2026-11-24
+R1.75	1	My Tasks, Unassigned and handover on screen and API	not			
+R1.76	1	Staff add a note to a case or a person, kept add-only with who and when	not			
+R1.76	2	each case, person and prospect has its own timeline of what happened to it	not			
+R1.76	3	another firm's lines never appear	not			
+R1.76	4	judged on the checklist row's words (no BACKLOG row)	not			
+R1.77	1	Submission number and UCI recorded (C8.2)	confirmed	qa/reports/2026-11-18-rescore-g-l.md	c66a41c96	2026-11-20
+R1.77	2	a case decided, withdrawn, closed and reopened with audit lines (CS-C1)	confirmed	qa/reports/2026-11-18-rescore-g-l.md	c66a41c96	2026-11-20
+R1.79	1	Dashboards for the front office, cases and the firm read from the records, within the person's rights	not			
+R1.80	1	Each applicant's IRCC forms fill from one set of answers (C7.1, C7.8), pass IRCC's own Validate with barcodes matching (C7.2), BK-10, BK-16, BK-22 to BK-24 merged	confirmed	qa/reports/2026-11-19-qa6-after-merge/r180-reader-3.md	4a4b6bc0	2026-11-19
+R1.80	2	judged on the checklist row's words	confirmed	qa/reports/2026-11-19-qa6-after-merge/r180-reader-3.md	4a4b6bc0	2026-11-19
+R1.82	1	As C7.6, C7.10, C8.3	confirmed	qa/CAPABILITIES.md	fe388b64	2026-11-16
+R1.83	1	As C4.4	confirmed	qa/CAPABILITIES.md	fe388b64	2026-11-16
+R1.84	1	As M2's rows (60/60 Works)	confirmed	qa/CAPABILITIES.md	fe388b64	2026-11-16
+R1.85	1	A privacy request is logged and worked to an outcome within its time	not			
+R1.85	2	a legal hold stops deletion	not			
+R1.86	1	A breach is recorded with its assessment and the firms notified, each with time and words	confirmed	qa/reports/2026-11-25-capability-R1.86-works-qa9.md	a9269080	2026-11-25
+R1.87	1	Every read of a firm's data by our staff writes who, when and why	not			
+R1.87	2	the firm sees those lines	not			
+R1.87	3	nobody can remove one	not			
+R1.88	1	An Owner or Admin filters by person, record and date and exports	confirmed	qa/reports/2026-11-22-capability-R1.88.md	f198c943	2026-11-22
+R1.88	2	other roles refused	confirmed	qa/reports/2026-11-22-capability-R1.88.md	f198c943	2026-11-22
+R1.89	1	Plans, prices and trial read from the plan table (no number typed into the page)	confirmed	qa/reports/2026-11-22-capability-R1.89-works.md	71984ae8	2026-11-22
+R1.89	2	a plan change shows without a deploy	confirmed	qa/reports/2026-11-22-capability-R1.89-works.md	71984ae8	2026-11-22
+R1.89	3	keyboard, 400 px, axe clean	confirmed	qa/reports/2026-11-22-capability-R1.89-works.md	71984ae8	2026-11-22
+R1.90	1	Sign-up with no card	confirmed	qa/reports/2026-11-24-capability-R1.90.md	a79e246c	2026-11-24
+R1.90	2	email confirmed by link (expired or used link refused in words)	confirmed	qa/reports/2026-11-24-capability-R1.90.md	a79e246c	2026-11-24
+R1.90	3	trial banner counts days	confirmed	qa/reports/2026-11-24-capability-R1.90.md	a79e246c	2026-11-24
+R1.90	4	a private plan link works once	confirmed	qa/reports/2026-11-24-capability-R1.90.md	a79e246c	2026-11-24
+R1.91	1	On our own screens an Owner changes plan (proration shown first), goes yearly, updates the card (test mode), cancels, sees invoices	not			
+R1.91	2	each change sends its email	not			
+R1.91	3	a non-Owner refused	not			
+R1.92	1	Profile and offices save with a valid IANA zone	confirmed	qa/reports/2026-11-24-after-merge-trackA5.md	d9954de6	2026-11-24
+R1.92	2	a licence number in the wrong shape warned on the field, never refused (AG-1-34; BACKLOG PF-4c; was "refused", corrected by qa 24 Nov)	confirmed	qa/reports/2026-11-24-after-merge-trackA5.md	d9954de6	2026-11-24
+R1.92	3	office times shown in each office's zone	confirmed	qa/reports/2026-11-24-after-merge-trackA5.md	d9954de6	2026-11-24
+R1.93	1	Our staff sign in on their own pool	confirmed	qa/reports/2026-11-25-qa10-works-r193.md	ab4ec5e0	2026-11-25
+R1.93	2	the console lists firms with health (last sign-in, failed jobs, plan state)	confirmed	qa/reports/2026-11-25-qa10-works-r193.md	ab4ec5e0	2026-11-25
+R1.93	3	opening a firm's data writes a line the firm sees (R1.87)	confirmed	qa/reports/2026-11-25-qa10-works-r193.md	ab4ec5e0	2026-11-25
+R1.93	4	"?" opens a ticket that reaches the console	confirmed	qa/reports/2026-11-25-qa10-works-r193.md	ab4ec5e0	2026-11-25
+R1.95	1	An Admin adds a field (type, required) shown on the record and in filters	not			
+R1.95	2	a saved view keeps its filters per person	not			
+R1.95	3	a field in use is not removed without a confirm	not			
+R1.96	1	A refund or credit note never exceeds what was paid	not			
+R1.96	2	instalments sum exactly to the invoice	not			
+R1.96	3	a write-off needs a reason and the key	not			
+R1.96	4	the ledger stays balanced each time	not			
+R1.97	1	Each line holds the hash of the one before	not			
+R1.97	2	a changed or removed line is detected by the check	not			
+R1.97	3	the daily export lands in S3 Object Lock in ca-central-1	not			
+R1.98	1	A corporate prospect with company and contacts is created and won	not			
+R1.98	2	employer and contacts carry onto the case	not			
+R1.98	3	LMIA case work gets its own capability rows	not			
+R1.99	1	Proposed values and document reading run on the guardrails on any pathway's forms (BK-14), C3.1, C6.5 and C7.5 Works on main's head	confirmed	qa/reports/2026-11-16-capability-R1-eight.md	90ea6cfe	2026-11-16
+R1.99	2	judged on the checklist row's words	confirmed	qa/reports/2026-11-16-capability-R1-eight.md	90ea6cfe	2026-11-16
+R1.100	1	Sign-up cannot finish without accepting the current versions	confirmed	qa/reports/2026-11-21-capability-r1100-screen.md	3abfe81c	2026-11-21
+R1.100	2	who, when and which version stored and shown	confirmed	qa/reports/2026-11-21-capability-r1100-screen.md	3abfe81c	2026-11-21
+R1.100	3	a new version asks again at the next sign-in. Unconfirmed: no counsel	confirmed	qa/reports/2026-11-21-capability-r1100-screen.md	3abfe81c	2026-11-21
+R1.101	1	As C6.2, C6.16	confirmed	qa/CAPABILITIES.md	fe388b64	2026-11-16
+R1.102	1	A search by name, email or file number finds the firm's people and cases only, within the person's rights	confirmed	qa/reports/2026-11-22-capability-trackA-lane2.md	0e244033	2026-11-23
+R1.104	1	A booking whose type needs it cannot start until signed	confirmed	qa/reports/2026-11-25-capability-R1.104-R1.55-R1.61-qa9.md	e397c7dc	2026-11-25
+R1.104	2	the reminder goes	confirmed	qa/reports/2026-11-25-capability-R1.104-R1.55-R1.61-qa9.md	e397c7dc	2026-11-25
+R1.104	3	the signed copy is on the person. Unconfirmed: no counsel	confirmed	qa/reports/2026-11-25-capability-R1.104-R1.55-R1.61-qa9.md	e397c7dc	2026-11-25
+R1.105	1	Each record kind has a keep period	not			
+R1.105	2	deleting inside it refused	not			
+R1.105	3	a leaving firm is read-only, exported, closed at 90 days, never deleted early	not			
+R1.106	1	Answers give the scores from cited official rules (page, quote, date, P-170), each score with its parts	not			
+R1.106	2	a missing answer says what is needed	not			
+R1.107	1	Each stream says eligible or not with its cited rule	not			
+R1.107	2	a client copy can be sent	not			
+R1.108	1	Before a person becomes a client, a search over past and current clients, prospects and company contacts is recorded with who	confirmed	qa/reports/2026-11-21-capability-r108.md	56275477	2026-11-21
+R1.108	2	no client without a recorded check (fail case). Unconfirmed: no counsel	confirmed	qa/reports/2026-11-21-capability-r108.md	56275477	2026-11-21
+R1.109	1	A complaint recorded with who, about what, dates and outcome	confirmed	qa/reports/2026-11-19-gate-a-night.md	6f6efac88	2026-11-20
+R1.109	2	never deleted	confirmed	qa/reports/2026-11-19-gate-a-night.md	6f6efac88	2026-11-20
+R1.109	3	the list filters by state	confirmed	qa/reports/2026-11-19-gate-a-night.md	6f6efac88	2026-11-20
+R1.110	1	Method, document type, issuing country and expiry recorded with who and when	confirmed	qa/reports/2026-11-21-r138-r110-qa12.md	d3d01485	2026-11-21
+R1.110	2	an expired document refused as the basis	confirmed	qa/reports/2026-11-21-r138-r110-qa12.md	d3d01485	2026-11-21
+R1.110	3	shown on the client	confirmed	qa/reports/2026-11-21-r138-r110-qa12.md	d3d01485	2026-11-21
+R1.111	1	The statement's running balance equals the ledger	not			
+R1.111	2	a period export sums to the same totals	not			
+R1.112	1	A video booking carries the host's provider link in the confirmation and invite	not			
+R1.112	2	a change keeps or replaces it	not			
+R1.112	3	none for in-person types	not			

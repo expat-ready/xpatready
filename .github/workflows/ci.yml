@@ -321,6 +321,7 @@ jobs:
         run: |
           bash "$P/tools/check-docs.sh"
           bash "$P/tools/decision-impact.sh"
+          python3 -I "$P/tools/clauses.py" check   # A389 part 1: a Works row has every clause confirmed, each with qa evidence (guard 41)
       - name: graph, official PDFs, explicit-any count, the tools' own checks, && lists, queue-run scope
         run: |
           # One command per line: bash -e passes over a failed command before the last && of a list (P-376 (3), ci-and-lists.mjs).
