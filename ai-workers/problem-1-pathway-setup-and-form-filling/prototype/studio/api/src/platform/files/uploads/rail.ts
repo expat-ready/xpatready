@@ -96,6 +96,16 @@ export class UploadRail {
       const up = await this.store.getUpload(id).catch(() => null);
       if (!up || up.metadata?.xr_firm !== ctx.firmId.toLowerCase() || up.metadata?.xr_actor !== actorWord(ctx)) return answer(404, "Not found");
       if (this.#expired(up)) return answer(410, EXPIRED_WORDS);
+      // Rule 4 (review m4, part 1b): an upload whose bytes are all in is finished before HEAD answers, so a client whose
+      // last PATCH failed in finish (500) never reads "complete" with no stored file; HEAD then answers the failure's status
+      // (no body on a HEAD; the words were the PATCH's), or names the stored file (Upload-File-Id). finish() is safe to repeat.
+      if (method === "HEAD" && up.size !== undefined && up.offset === up.size) {
+        const failed = await this.#ctx.run({ ctx, id }, async () => {
+          try { res.setHeader("Upload-File-Id", (await this.finish(up)).id); return null; }
+          catch (e) { return this.#words(e as Error) ?? (e as Refusal); }
+        });
+        if (failed) return answer(failed.status_code, failed.body.trim());
+      }
     }
     await this.#ctx.run({ ctx, id: id && method !== "OPTIONS" ? id : null }, () => this.tus.handle(req, res));
   }
@@ -153,12 +163,15 @@ export class UploadRail {
     const firmId = meta.xr_firm!, doorName = meta.xr_door as UploadDoor, door = this.d.doors.get(doorName);
     if (!firmId || !door) throw refusal(404, "Not found");
     const target = JSON.parse(meta.xr_target ?? "{}") as UploadTarget;
+    const key = this.d.doors.keyFor(doorName, target, upload.id);
+    // Rule 4: finished before (a retry, a HEAD): the same file, no second onComplete, and no second read of the bytes.
+    const before = await this.#stored(firmId, key, doorName, target, meta.filename ?? "");
+    if (before) return before;
     const chunks: Buffer[] = [];
     for await (const c of this.store.read(upload.id)) chunks.push(c as Buffer);
     const bytes = new Uint8Array(Buffer.concat(chunks));
     const checked = checkFile({ bytes, name: meta.filename ?? undefined, mediaType: meta.filetype ?? undefined }, door.allowedKinds);
     if (!checked.ok) { await this.store.remove(upload.id); throw refusal(REFUSAL_STATUS[checked.reason], checked.message); }
-    const key = this.d.doors.keyFor(doorName, target, upload.id);
     const name = checked.name;
     const already = await this.#stored(firmId, key, doorName, target, name);
     if (already) return already;   // rule 4: finished before (a retry); the same file, no second onComplete

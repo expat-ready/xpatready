@@ -90,11 +90,12 @@ try {
   const doors = nest.get(UploadDoors), rail = nest.get(UploadRail);
   const completed: string[] = [];
   const P_FAILS = randomUUID();   // the test door's onComplete throws for this person (break F3)
+  const healed = new Set<string>();   // part 1b: once healed, the same person's onComplete works (a door back after a failure)
   doors.register("STAFF", {
     allowedKinds: ["pdf", "png"],
     authorize: async (_ctx, meta) => (meta.personId && /^[0-9a-f-]{36}$/.test(meta.personId) ? { personId: meta.personId } : null),
     keyOf: (t, id) => `uploads/${t.personId}/${id}`,
-    onComplete: async (_tx, f) => { if (f.target.personId === P_FAILS) throw new Error("door internals: /home/secret/path tx failed"); completed.push(f.id); },
+    onComplete: async (_tx, f) => { if (f.target.personId === P_FAILS && !healed.has(P_FAILS)) throw new Error("door internals: /home/secret/path tx failed"); completed.push(f.id); },
   });
   ok("setup: the feature registers the route, the registry and the rail; the hourly cleanup is on PF-14's runner (UTC)",
     feature.controllers.length === 1 && jobCalls.includes(`handle:${UPLOAD_CLEANUP_QUEUE}`) && jobCalls.includes(`recurring:${UPLOAD_CLEANUP_QUEUE}:17 * * * *:UTC`), jobCalls);
@@ -218,6 +219,20 @@ try {
   const rF = await patch(tOwner, idF, 0, docF);
   ok("PF-F2 DW0 fail (break F3): a door's onComplete failing → 500 in plain words (no path, no internal message); the plat_file row rolls back",
     rF.status === 500 && /could not be finished/.test(rF.text) && !/home|secret|tx failed|Error/.test(rF.text) && fileRows() === rowsF, rF);
+  // Part 1b (review m4, the Known gap): a plain tus client asks HEAD after that 500. HEAD of an upload whose bytes are all in
+  // runs finish first: while the door still fails it answers the failure's status (a HEAD answer has no body, so the words
+  // stay the PATCH's), never 200 with the full offset, which tus-js-client reads as success with no file; once the door
+  // works, HEAD stores it once and names it.
+  const hF = await head(tOwner, idF);
+  ok("PF-F2 DW0 fail (part 1b): HEAD after a failed finish answers 500 (not complete): no offset, no file id, no row",
+    hF.status === 500 && !hF.headers.get("upload-offset") && !hF.headers.get("upload-file-id") && fileRows() === rowsF, [hF.status, hF.text]);
+  healed.add(P_FAILS);
+  const hF2 = await head(tOwner, idF), hF3 = await head(tOwner, idF), fileF = hF2.headers.get("upload-file-id");
+  ok("PF-F2 DW0 pass (part 1b): once the door works, HEAD finishes the upload: 200, offset = size, its Upload-File-Id; a second HEAD names the same file; one row, one onComplete",
+    hF2.status === 200 && Number(hF2.headers.get("upload-offset")) === docF.length && !!fileF && hF3.headers.get("upload-file-id") === fileF && fileRows() === rowsF + 1 && completed.filter((c) => c === fileF).length === 1,
+    [hF2.status, fileF, hF3.headers.get("upload-file-id"), fileRows() - rowsF]);
+  const rF2 = await patch(tOwner, idF, docF.length, new Uint8Array(0));
+  ok("PF-F2 DW0 pass (part 1b): the client's confirming empty PATCH then gets the same file", rF2.status === 204 && rF2.headers.get("upload-file-id") === fileF, [rF2.status, rF2.headers.get("upload-file-id")]);
 
   // ------------------------------------------------------------------------------------ DW7: the declared size
   const before7 = readdirSync(join(WORK, "staging")).length;
