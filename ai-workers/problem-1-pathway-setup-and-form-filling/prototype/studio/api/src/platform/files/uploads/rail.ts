@@ -51,6 +51,9 @@ type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 type Refusal = { status_code: number; body: string };
 const refusal = (status_code: number, body: string): Refusal => ({ status_code, body: `${body}\n` });
 const actorWord = (c: UploadContext) => `${c.door}:${c.actorId}`;
+/** The status a thrown answer carries (a refusal, an HttpException), else 500. */
+const statusOf = (e: unknown) => e instanceof HttpException ? e.getStatus() : typeof (e as Refusal)?.status_code === "number" ? (e as Refusal).status_code : 500;
+const tooLarge = (max: number) => `This file is too large: at most ${Math.round(max / (1024 * 1024))} MB here. Nothing was stored.`;
 
 export type UploadRailDeps = { db: PrismaClient; files: FilesPort; doors: UploadDoors; holds: LegalHoldPort<Tx>; now: () => number; dir?: string; expiryMs?: number; off?: boolean };
 export type SweepResult = { removed: number; kept: { uploadId: string; firmId: string; holdIds: string[] }[] };
@@ -146,6 +149,7 @@ export class UploadRail {
     if (upload.sizeIsDeferred || upload.size === undefined) throw refusal(400, "Say the file's size when the upload starts (Upload-Length).");
     const declared = checkDeclared({ size: upload.size, name: meta.filename ?? undefined, mediaType: meta.filetype ?? undefined }, door.allowedKinds);
     if (!declared.ok) throw refusal(REFUSAL_STATUS[declared.reason], declared.message);
+    if (door.maxBytes !== undefined && upload.size > door.maxBytes) throw refusal(413, tooLarge(door.maxBytes));
     const target = await door.authorize(ctx, meta);
     if (!target) throw refusal(404, "Not found");
     return { metadata: { ...meta, xr_firm: ctx.firmId.toLowerCase(), xr_door: ctx.door, xr_actor: actorWord(ctx), xr_target: JSON.stringify(target), xr_born: String(this.d.now()) } };
@@ -177,7 +181,14 @@ export class UploadRail {
     const bytes = new Uint8Array(Buffer.concat(chunks));
     const checked = checkFile({ bytes, name: meta.filename ?? undefined, mediaType: meta.filetype ?? undefined }, door.allowedKinds);
     if (!checked.ok) { await this.store.remove(upload.id); throw refusal(REFUSAL_STATUS[checked.reason], checked.message); }
+    if (door.maxBytes !== undefined && bytes.length > door.maxBytes) { await this.store.remove(upload.id); throw refusal(413, tooLarge(door.maxBytes)); }
     const name = checked.name;
+    // The door's own checks, before any byte is stored and outside the transaction (review round 1 on #3698): a refusal
+    // removes the staging copy; a 5xx keeps it, so a retry checks again.
+    if (door.check) {
+      try { await door.check(bytes, { firmId, name, mediaType: checked.mediaType, target }); }
+      catch (e) { if (statusOf(e) < 500) await this.store.remove(upload.id); throw e; }
+    }
     const already = await this.#stored(firmId, key, doorName, target, meta.filename ?? undefined);
     if (already) return already;   // rule 4: finished before (a retry); the same file, no second onComplete
     await this.d.files.put(firmId, key, bytes, checked.mediaType);
@@ -193,6 +204,10 @@ export class UploadRail {
       // Another process finished the same upload first (the unique key): its file is this one.
       const other = (e as { code?: string })?.code === "P2002" ? await this.#stored(firmId, key, doorName, target, meta.filename ?? undefined) : null;
       if (other) return other;
+      // The bytes are stored but no row names them. A refusal (4xx: the door said no) is final: the key and the staging
+      // copy go, so "Nothing was stored." is true. Anything else keeps both for a retry, which stores the same bytes under
+      // the same key; an upload never finished is removed with its key by the expiry cleanup (sweep).
+      if (statusOf(e) < 500) { await this.d.files.delete(firmId, key).catch(() => undefined); await this.store.remove(upload.id).catch(() => undefined); }
       throw e;
     }
   }
@@ -230,6 +245,9 @@ export class UploadRail {
         await withFirm(firmId, () => this.d.db.$transaction(async (tx) => {
           const held = await this.d.holds.isHeld(tx, firmId, holdSubjectsOf(target));
           if (held.held) { out.kept.push({ uploadId: id, firmId, holdIds: held.holds.map((h) => h.holdId) }); return; }
+          // Bytes a failed finish stored that no plat_file row names go with the upload (review round 1 on #3698).
+          const door = this.d.doors.get(up.metadata?.xr_door), key = door ? this.d.doors.keyFor(up.metadata!.xr_door as UploadDoor, target, id) : null;
+          if (key && !(await tx.platFile.findUnique({ where: { firmId_key: { firmId, key } }, select: { id: true } }))) await this.d.files.delete(firmId, key);
           await this.store.remove(id); out.removed++;
         }));
       } catch (e) { logPort.error("upload_cleanup_failed", e, { firmId }); }
