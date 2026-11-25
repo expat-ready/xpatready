@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261125060000_pf19m_mailboxes";
+const NEW = "20261125060000_platform-messages__pf19m_mailboxes";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const EMPTY = `xr_studio_pf19m_empty_${process.pid}`, DEMO = `xr_studio_pf19m_demo_${process.pid}`, BARE = `xr_studio_pf19m_bare_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;

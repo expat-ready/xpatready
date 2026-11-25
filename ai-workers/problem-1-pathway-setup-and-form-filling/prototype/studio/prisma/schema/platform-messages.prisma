@@ -17,7 +17,7 @@
 // PF-19m (R1.52, map row 52; AG-10-3, -4, -9, -12, -62, -69, SA-11-37): connected mailboxes and the email they bring
 // (msg_mailbox, msg_email, msg_unmatched, msg_address_link), written only by api/src/platform/messages/mailbox/. A token is
 // never a column: msg_mailbox.credential is SecretBoxPort's sealed value. Subjects, bodies and addresses are personal data:
-// never in a log line or an audit detail (SA-11-37). Rules Prisma cannot say are in 20261125060000_pf19m_mailboxes.
+// never in a log line or an audit detail (SA-11-37). Rules Prisma cannot say are in 20261125060000_platform-messages__pf19m_mailboxes.
 
 /// Who a consent or a message is about: a front-office person, a case party, or a staff member. The id is that side's
 /// own row id (no foreign key across modules: each side owns its people).
