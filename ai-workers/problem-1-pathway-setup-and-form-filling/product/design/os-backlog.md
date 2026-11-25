@@ -36,6 +36,7 @@ Measured (why-targets, 72 h to 24 Nov 22:23 IST): a third of batches fail (121 o
 | OS-50 | Mergify priority for near-Proven product PRs (full-power #129) | P-733, P-820 | CI: .mergify.yml | OS-1 (its file) | Open (after OS-03) | `check-mergify-scopes.sh` asserts the priority rule; exits 0 |
 | OS-51 | Fix the top flaky suites and the nightly's reds (full-power #146); feeds OS-08 | P-822, P-371 | product tests | the area's builder lane (product code; OS-PM only lists it) | Open | retry-watch.py names no suite with two retry-only passes in 24 h |
 | OS-52 | Runs that end `startup_failure` are an ACT (full-power #158) | P-339b | ACT | OS-PM | Doing (#3676, branch `claude/stoic-dirac-myysar-os52`; Reviewer: Approve 6143bc7b3, ready, waits on the auto-label and queue) | fixture runs list with a `startup_failure` → one ACT naming the workflow; test exits 0 |
+| OS-71 | A staging deploy runs by itself after a secret changes, so new account values reach the app with no Lead step (Lead 5, 25 Nov 11:19 IST; founder ask A385). Placed in Tier 1 because each secret change today waits on a Lead turn; the gain is not measured yet (count Lead deploy steps per day first) | P-821, P-824 | CI (with PF-8c) | OS-PM with the PF-8c lane | Open | a workflow test shows a secret change (or its dispatch event) starts one staging deploy and reports its result; no deploy without a change; test exits 0 |
 
 ## Tier 2: Lead-loop prose rules into lead-watch ACT lines
 
@@ -59,6 +60,8 @@ Measured: 32 Lead sessions in 35 h; start read 170-205k tokens; each hand-over d
 | OS-27 | Lanes' "Question for the tech lead" and LANE-REPORTs become queue items without a Lead read (full-power #202: items.py ingests lane questions) | P-611b, P-293b | ACT | OS-PM | Open | a fixture PR comment with the heading → one item in items.json and an ACT until acked; `check-items.sh` exits 0 |
 | OS-28 | WIP limits per group: `wip-guard.py` (hook on starting a builder; check-wip-guard.sh in check-guards.sh) already enforces them at start; the ACT adds a group already over its limit (lanes started outside the hook, cloud lanes) at each check (B193 part 4; full-power #188) | P-622, P-623 | ACT | OS-PM | Open (confirm the hook is in force first; if it covers cloud lanes, Retire) | fixture with a group over its limit → one ACT; test exits 0 |
 | OS-29 | Push before stop: `stop-check.sh:84` already notes unpushed commits (in `.claude/settings.json`); only the test is missing (full-power #165 A7) | P-557 | hook (test only) | OS-PM | Open | `check-stop-check.sh` cases: an unpushed commit → the note; a branch with no upstream → no crash; exits 0 |
+| OS-68 | lead-watch reads the claude.ai sidebar ("Show more" until gone) and prints one ACT for each lane idle over 30 min with its last line; today the Lead does this by hand with a browser script (Lead 5, 25 Nov 11:19 IST; A385) | P-647, P-339b | ACT (built-in browser script → a saved app view, as app-view.js does) | OS-PM | Open (check what app-view.js and lead-watch-idle already cover first) | fixture app view with a lane idle 31 min → one ACT with its last line; idle 29 min → none; a cut list ("Show more" still there) → an ACT; test exits 0 |
+| OS-69 | A lane whose PR merged over 1 h ago and is still not archived is an ACT (Lead 5; A385) | P-337, P-468 | ACT (lane-cleanup.py lists them today, no ACT) | OS-PM | Open | fixture: a completed lane whose PRs all merged 61 min ago → one ACT; 59 min → none; test exits 0 |
 | OS-53 | Per-stage flow measures as ACT lines (full-power #189); folded with OS-24 when built | P-646, P-738 | ACT | OS-PM | Open (with OS-24) | as OS-24 |
 | OS-54 | Routines: a turn cap, a WIP brake, a run log, a starter script (full-power #176); the 30-queued-runs brake retuned (#133) | P-622 | script | Lead (routine prompts) | Open | each routine prompt names its cap; the run log is written; a script prints the last run of each |
 | OS-55 | Unattended nights: a push alert at 85% of the plan, trim lanes over 4%/h after 22:00 (full-power #177); with OS-23 | P-440d, P-461 | ACT | OS-PM | Open (with OS-23) | fixture usage at 86% → one ACT; test exits 0 |
@@ -70,6 +73,7 @@ Measured: 32 Lead sessions in 35 h; start read 170-205k tokens; each hand-over d
 |---|---|---|---|---|---|---|
 | OS-12 | Make `pr-rules` steps that say "not yet a required check" required in the ruleset: 800 lines (P-610) and the Duplicate check line (P-526) | P-610, P-526 | CI: ruleset | Lead (ruleset admin) | Open (precondition: full-power #163, pr-rules false failures) | a ruleset read (`gh api .../rulesets`) lists `pr-rules` as required; RULES rows drop "not yet a required check" (Lead) |
 | OS-30 | Approve on the branch before the PR leaves draft; builder skill and night queue still say draft (full-power #120) | P-683 | CI: pr-rules step | OS-PM (skill text: Lead) | Open | a non-draft PR with no `Reviewer: Approve` line gets the warning; test exits 0 |
+| OS-70 | Every lane brief carries "post through the GitHub connector when gh is refused" (R1.112 stalled on this, 25 Nov; Lead 5; A385) | P-293b, P-486b | CI: brief-check.sh (warning first) | OS-PM | Open | brief-check.sh warns on a brief without the line and passes one with it; its test exits 0 |
 | OS-31 | Builders never edit STATE, RULES, DECISIONS, BACKLOG: the Stop hook's rule also in CI for non-Lead branches | P-314, P-521 | CI: pr-rules step | OS-PM | Open | a fixture non-Lead PR touching STATE.md → warning (later failure); a `lead/` branch → none; test exits 0 |
 | OS-32 | No combination key, form number or program-specific branch in engine code (slice guards retired 8 Nov) | P-319 | CI: grep check on engine paths | OS-PM | Open | a fixture engine file with a form number → warning; test exits 0 |
 | OS-33 | Live AI off by default: a check fails a default-on `STUDIO_*_LIVE` | P-175, P-175b | CI | OS-PM | Open | fixture with a default-on flag → failure; test exits 0 |
@@ -214,11 +218,13 @@ Rows whose "Enforced by" names a whole machine enforcer (23 of 156: e.g. P-501, 
 **In flight:**
 * **OS-06, #3671:** both review rounds used. The round-2 fixes at c6de9a833 wait on the Lead's read under P-277 (question posted on the PR). On the Lead's yes: post `Reviewer: Approve <head>` and mark it ready.
 * **OS-49, #3674:** round-2 review was running on eebf5ce90. If it ends in Changes requested, the Lead decides (P-277).
-* **OS-52, #3676:** approved on 6143bc7b3 and marked ready; it waits on queue-gate's label and the queue. If ci is red, fix the cause.
+* **OS-52, #3676:** approved on 6143bc7b3 and marked ready. queue-gate did not auto-label it, because its paths (lead-watch.sh, check-guards.sh, a new check) keep the Lead's read (P-423): it waits on the Lead's read, then the label. If ci is red, fix the cause.
 
 **Blocked:** OS-05 (a P-731 ruling, then OS-3). OS-14 (fixed by OS-11, #3506).
 
-**Next, in order:** OS-15 (records PR + RULES refresh as one script), OS-16 (one-page Lead start read: warn at 40k, fail at 70k until P-615 is amended), OS-25 (a script prints the 30-minute report), then the rest of Tier 2.
+**Added by Lead 5 (11:19 IST):** OS-68, OS-69 (Tier 2), OS-70 (Tier 3), OS-71 (Tier 1, with PF-8c).
+
+**Next, in order:** OS-71 (after a measure of Lead deploy steps), OS-15 (records PR + RULES refresh as one script), OS-16 (one-page Lead start read: warn at 40k, fail at 70k until P-615 is amended), OS-25 (a script prints the 30-minute report), then the rest of Tier 2.
 
 **Lessons for the next OS-PM:**
 * **Worktrees:** use one per branch (`git worktree add <scratchpad>/wt/osNN <branch>`). A reviewer subagent reads the shared copy, and a branch switch under it spoiled one review.
