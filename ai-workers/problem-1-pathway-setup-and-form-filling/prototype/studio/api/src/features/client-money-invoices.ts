@@ -14,8 +14,9 @@ import { auditEvent } from "../platform/audit/audit-event.ts";
 import { PlatformClock } from "../platform/identity/port.ts";
 import { MAIL_PORT } from "../platform/identity/session/mail.ts";
 import { moneyScopeOf } from "../client-money/visibility-adapter.ts";
+import { retainerFeesPort } from "../front-office/retainers/retainer-fees-port.ts";   // FO-7w1: RetainerFeesPort's adapter
 const clockOf = (c: PlatformClock) => ({ now: () => new Date(c.now()) });
 export default { controllers: [InvoiceDraftsController, InvoiceMoneyController], providers: [
-  { provide: InvoiceDrafts, useFactory: (db: Db, c: PlatformClock) => new InvoiceDrafts(db, auditEvent, undefined, clockOf(c), moneyScopeOf(db)), inject: [Db, PlatformClock] },
+  { provide: InvoiceDrafts, useFactory: (db: Db, c: PlatformClock) => new InvoiceDrafts(db, auditEvent, undefined, clockOf(c), moneyScopeOf(db), retainerFeesPort), inject: [Db, PlatformClock] },
   { provide: InvoiceMoney, useFactory: (db: Db, c: PlatformClock, mail?: MailPort) => new InvoiceMoney(db, auditEvent, clockOf(c), mail ?? null, undefined, moneyScopeOf(db)), inject: [Db, PlatformClock, { token: MAIL_PORT, optional: true }] },
   { provide: ClientMoney, useFactory: (db: Db) => new ClientMoney(db), inject: [Db] }] } satisfies Feature;
