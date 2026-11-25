@@ -7,13 +7,15 @@
 // "never exceeds what is left on the invoice" (AG-6-48; Lead 4's shape approval on #3631).
 //   W1 a reversal: a trust deposit recorded by mistake is reversed through its preview, and the money returns;
 //   W2 a refund never exceeds what was paid: 400.01 on a 400.00 payment refused, 150.00 refunded, then 250.01 refused;
-//   W3 a credit note never exceeds what is left: 300.01 on a 300.00 invoice refused, 100.00 credited;
+//   W3 a credit note never exceeds what is left: 300.01 on a 300.00 invoice refused, 100.00 credited, then 200.01 refused;
 //   W4 a write-off needs a reason and the key: no reason → 422, a Case Officer without agent/invoice:void → 403, the Owner
 //      with a reason → Written off; a credit note afterwards → "Already settled by write-off";
 //   W5 instalments sum exactly: 1 cent short → 409 naming the difference, exact → a plan; a payment settles instalment 1;
 //      underneath, the database refuses a short plan written past the route;
 //   W6 roles: firm B gets 404 on firm A's invoice; no session 401.
-//   After every write, the ledger check (api/src/client-money/ledger-check.ts, L1-L6) is balanced for the firm.
+//   After every write, the ledger check (api/src/client-money/ledger-check.ts, L1-L6) is balanced for the firm;
+//   W7 an unbalanced ledger stops the write: a planted L1 imbalance is named, and a write-off and a plan (the two writes
+//      that run the check inside their transaction) are each rolled back with 409 UNBALANCED.
 // Sample amounts and names (a run tag in every name, key and reference); US$0, no model call, no Stripe call, no live mail.
 // Legal and accounting readings: Unconfirmed: no counsel; no accountant. Run from prototype/:
 //   zsh studio/tools/isolated.sh j96 4496 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j96 4496 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_96.ts j96 4496
@@ -98,11 +100,11 @@ try {
   const refund = (amountMinor: number) => api(TA, "POST", `${M}/payments/${p2}/refunds`, { amountMinor, method: "E_TRANSFER", reason: "Refund (Sample)", idempotencyKey: key() });
   const refunded = () => Number(sql(`select coalesce(sum(amount_minor), 0) from money_refund where payment_id = '${p2}'`));
   const r2a = await refund(40001);
-  ok("J-96 W2 fail: a refund of 400.01 on a 400.00 payment is refused in words; nothing refunded", [400, 409, 422].includes(r2a.status) && refunded() === 0, r2a.body);
+  ok("J-96 W2 fail: a refund of 400.01 on a 400.00 payment → 409 OVER_REFUND \"Only CAD 400.00 of this payment is left to refund\"; nothing refunded", r2a.status === 409 && r2a.body?.code === "OVER_REFUND" && /Only CAD 400\.00 of this payment is left to refund/.test(String(r2a.body?.detail)) && refunded() === 0, r2a.body);
   const r2b = await refund(15000);
   ok("J-96 W2 pass (API step): 150.00 of the 400.00 is refunded", r2b.status === 201 && refunded() === 15000, r2b.body);
   const r2c = await refund(25001);
-  ok("J-96 W2 fail: then 250.01 (past the 250.00 left) is refused; refunds stay 150.00", [400, 409, 422].includes(r2c.status) && refunded() === 15000, r2c.body);
+  ok("J-96 W2 fail: then 250.01 (past the 250.00 left) → 409 OVER_REFUND \"Only CAD 250.00 …\"; refunds stay 150.00", r2c.status === 409 && r2c.body?.code === "OVER_REFUND" && r2c.body?.leftMinor === 25000 && refunded() === 15000, r2c.body);
   await balanced("refunds");
 
   // ------------------------------------------------------------------------------------------ W3: a credit note never exceeds what is left
@@ -111,6 +113,9 @@ try {
   ok("J-96 W3 fail: a credit note of 300.01 on a 300.00 invoice → 409 OVER_CREDIT; nothing credited", c3a.status === 409 && c3a.body?.code === "OVER_CREDIT" && credited() === 0, c3a.body);
   const c3b = await api(TA, "POST", `${M}/invoices/${i3}/credit-notes`, { amountMinor: 10000, reason: "Fee reduced (Sample)" });
   ok("J-96 W3 pass (API step): a credit note of 100.00 with a reason; 200.00 is still due", c3b.status === 201 && credited() === 10000 && c3b.body?.invoice?.dueMinor === 20000, c3b.body);
+  const c3c = await api(TA, "POST", `${M}/invoices/${i3}/credit-notes`, { amountMinor: 20001, reason: "Past what is left (Sample)" });
+  ok("J-96 W3 fail: after it, a credit note of 200.01 (past the 200.00 left, though under the 300.00 total) → 409 OVER_CREDIT naming 200.00 left; still 100.00 credited",
+    c3c.status === 409 && c3c.body?.code === "OVER_CREDIT" && c3c.body?.leftMinor === 20000 && credited() === 10000, c3c.body);
   await balanced("a credit note");
 
   // ------------------------------------------------------------------------------------------ W4: a write-off needs a reason and the key
@@ -155,6 +160,21 @@ try {
   const own = await api(TA, "GET", `${M}/invoices/${i5}/plan`);
   ok("J-96 W6 pass (stand-in): firm A's own Owner reads the plan", own.status === 200 && own.body?.invoiceId === i5, own.status);
   await balanced("the whole journey");
+
+  // ------------------------------------------------------------------------------------------ W7: an unbalanced ledger stops the write
+  // A trust entry whose balance is not the running sum of its party's entries (written past the database's triggers, as
+  // pack WO10 does) stands for a ledger gone wrong; the check must name it (L1), and the write-off and the plan, which
+  // run the check inside their own transaction, must each be rolled back with nothing written.
+  const PZ = person("Zed"), i7 = await issued(PZ, 30000), p7 = await pay(i7, 10000);
+  sql(`set session_replication_role = replica; insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, payment_id, created_by) values ('${A}', '${PZ}', 'DEPOSIT', 500, 'CAD', 1, 700, '${p7}', 'seed:J-96')`);
+  const broken = await ledgerCheck(db, A, i7);
+  ok("J-96 W7 fail (stand-in): the check names the planted imbalance (L1) on that client's invoice", !broken.balanced && broken.problems.some((x) => x.startsWith("L1 ")), broken.problems);
+  const before7 = () => sql(`select (select count(*) from money_write_off where invoice_id = '${i7}') || ':' || (select count(*) from money_payment_plan where invoice_id = '${i7}') || ':' || (select count(*) from audit_event where entity_key in (select id::text from money_write_off where invoice_id = '${i7}'))`), b7s = before7();
+  const w7a = await api(TA, "POST", `${M}/invoices/${i7}/write-off`, { reason: "On a broken ledger (Sample)" });
+  const w7b = await api(TA, "POST", `${M}/invoices/${i7}/plan`, { instalments: [{ dueDate: addDays(1), amountMinor: 10000 }, { dueDate: addDays(2), amountMinor: 10000 }] });
+  ok("J-96 W7 fail: on that unbalanced ledger a write-off and a plan each get 409 UNBALANCED naming L1, and nothing is written",
+    w7a.status === 409 && w7a.body?.code === "UNBALANCED" && w7a.body?.problems?.some((x: string) => x.startsWith("L1 "))
+      && w7b.status === 409 && w7b.body?.code === "UNBALANCED" && w7b.body?.problems?.some((x: string) => x.startsWith("L1 ")) && before7() === b7s && b7s === "0:0:0", [w7a.body, w7b.body, b7s]);
 } finally {
   await db.$disconnect();
 }
