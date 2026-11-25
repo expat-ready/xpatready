@@ -111,6 +111,7 @@ const TRUST = /\btrust\b|\bdeposit\b|to move|received into/i, REFUSAL = /can't b
 const axeAll: string[] = [];
 
 let failed = 0;
+let restoreSeesAll: (() => void) | null = null;   // review M4: the firm's setting is put back whatever happens
 try {
   // ---------------------------------------------------------------------------------------------- W1, DW11, DW1, K: the walk
   const pb = await tab(TBILL);
@@ -245,12 +246,14 @@ try {
   // C5 decides alone: "everyone sees all" off, so a person sees only the parties of the prospects they own (CS-MV1)
   const seesAll = (on: boolean) => sql(`delete from platform_firm_setting where firm_id = '${A}' and key = 'platform.everyone_sees_all'; insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${A}', 'platform.everyone_sees_all', '${on}'::jsonb, 'seed:FO-7s3a')`);
   const before = sql(`select coalesce((select value::text from platform_firm_setting where firm_id = '${A}' and key = 'platform.everyone_sees_all'), 'none')`);
+  restoreSeesAll = () => { if (before === "none") sql(`delete from platform_firm_setting where firm_id = '${A}' and key = 'platform.everyone_sees_all'`); else seesAll(before === "true"); };
   seesAll(false);
   const hidPay = await api(TBILL, "POST", `${M}/invoices/${INVH}/payments`, { method: "CASH", amountMinor: 5000, currency: "CAD", idempotencyKey: `dw10-${run}-hid` });
   const hidReceipt = hidPay.body?.receiptNumber as string;
+  ok("FO-7s3a DW10 setup: the Billing person records a payment on Client H's invoice", hidPay.status === 201 && /^R-/.test(hidReceipt ?? ""), { status: hidPay.status });
   const po = await tab(TOFF); await payments(po);
   ok("FO-7s3a DW10 fail: the Case Officer, who cannot see Client B or Client H, finds no row for their payments in Payments",
-    hidPay.status === 201 && (await po.locator(`[data-payment-row="${p1[5]}"]`).count()) === 0 && (await po.locator(`[data-payment-row="${hidReceipt}"]`).count()) === 0);
+    (await po.locator(`[data-payment-row="${p1[5]}"]`).count()) === 0 && (await po.locator(`[data-payment-row="${hidReceipt}"]`).count()) === 0);
   await po.goto(`${BASE}/money/payments/${p1[0]}`); await po.locator("[data-payment-missing], [data-payment-receipt]").first().waitFor({ timeout: 30_000 });
   ok("FO-7s3a DW10 fail: the Case Officer opening the payment's address gets the plain \"Payment not found\", no amount",
     (await po.locator("[data-payment-missing]").count()) === 1 && !/CAD/.test(await po.locator("main").innerText()));
@@ -289,6 +292,7 @@ try {
   ok("FO-7s3a: no page error in any tab", errs.length === 0, errs);
 } catch (e) { failed++; ok(`FO-7s3a: the walk stopped: ${(e as Error).message.split("\n")[0]}`, false, process.env.DEBUG ? await Promise.all(browser.contexts().flatMap((c) => c.pages()).map((p, i) => p.screenshot({ path: `${process.env.DEBUG}/fail-${i}.png`, fullPage: true }).then(() => i).catch(() => -1))) : undefined); }
 finally {
+  restoreSeesAll?.();
   await api(TOWNER, "PATCH", `/platform/staff/${BIL}/roles`, { roles: ["CASE_MANAGER"], reason: "FO-7s3a check: put user-T back" });
   await browser.close();
 }

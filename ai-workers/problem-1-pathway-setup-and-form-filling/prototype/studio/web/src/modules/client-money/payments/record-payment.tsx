@@ -95,7 +95,6 @@ export function RecordPaymentPanel({ open, onOpenChange, invoiceId, number, curr
               {waiting ? <>
                 <p className="text-sm text-text-muted">More than was due was received. Choose what happens to it.</p>
                 <div><Button variant="outline" busy={keeping} onClick={() => void keep()} data-pay-keep>Keep as credit</Button></div>
-                <p className="text-xs text-text-muted">A refund of it is made from the payment's page once refunds are on this screen.</p>
               </> : kept ? <p className="text-sm" data-pay-kept>{kept}</p> : null}
             </div>
           ) : null}
