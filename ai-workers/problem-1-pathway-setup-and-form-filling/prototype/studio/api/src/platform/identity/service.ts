@@ -39,6 +39,8 @@ export const ANOTHER_DEVICE = "You signed in on another device";
 const NOT_ACTIVE_NOW = "This staff account has been deactivated. Ask your firm's Owner or Admin.";
 /** PF-11c: the words a closed firm's staff see at sign-in (our own fact only, SA-2-38). */
 export const FIRM_CLOSED = "This firm's ExpatReady account is closed. Sign-in is no longer possible.";
+/** PF-27 (SA-2-34): a locked firm's staff, at sign-in and on every request (the reason is never said). */
+export const FIRM_LOCKED = "This firm's ExpatReady account is locked, so sign-in is not possible at the moment. ExpatReady will contact the firm's Owner.";
 /** An Owner change needs an identity check this recent (AG-1-42). */
 export { STEP_UP_SECONDS } from "./session/step-up.ts";
 /** PF-28 part 2a: the local sign-in door's body (untrimmed: emailOf reads spaces). Read after the door's gate. */
@@ -138,6 +140,8 @@ export class PlatformIdentity implements OnModuleInit {
     if (!staff) return unauthorized("This sign-in is not a staff member of any firm here.", "UNKNOWN_STAFF");
     // PF-11c (SA-2-21): a firm closed on day 90 refuses every sign-in, whatever the session.
     if (staff.firm.status === "DELETED") return problem(401, "Account closed", FIRM_CLOSED, { code: "FIRM_CLOSED" });
+    // PF-27 (SA-2-34): a security lock ends every staff session at once: the guard refuses the next request.
+    if (staff.firm.status === "SECURITY_LOCK") return problem(401, "Account locked", FIRM_LOCKED, { code: "FIRM_LOCKED" });
     if (staff.status !== "ACTIVE") return unauthorized(staff.status === "DEACTIVATED" ? "This staff account has been deactivated. Ask your firm's Owner or Admin." : "This staff account is suspended. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     const authMs = id.authTime * 1000;
     // Cognito: a session with a later sign-in time than the last one seen is a new sign-in, which ends the older one.
@@ -192,6 +196,7 @@ export class PlatformIdentity implements OnModuleInit {
     const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true, status: true } })) : null;
     // PF-11c (break m1): a closed firm's door issues no token and writes no sign-in line.
     if (firm?.status === "DELETED") return problem(401, "Account closed", FIRM_CLOSED, { code: "FIRM_CLOSED" });
+    if (firm?.status === "SECURITY_LOCK") return problem(401, "Account locked", FIRM_LOCKED, { code: "FIRM_LOCKED" });
     if (firm) enterFirm(firm.id);   // PF-12: the rest of the sign-in runs as this firm
     const who = typeof body.actorId === "string" && body.actorId ? { actorId: body.actorId } : { email: emailOf(body.email) };
     const staff = firm && await this.db.platformStaff.findFirst({ where: firmScope(firm.id, who) });
