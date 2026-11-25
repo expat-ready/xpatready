@@ -514,9 +514,11 @@ suites $HEAD1 completed success; rm -f "$T/fx/run-88.json"; SG=block run eligibl
 ok "P-822 block: the pr-suites run cannot be read: not eligible, exit 3 (the sweep keeps the label, tries again)" "$([ $r = 3 ] && echo 1)" "exit $r: $out"
 suites $HEAD1 completed failure; SG=block run eligible 7
 ok "P-822 block: eligible says no on a red pr-suites (the sweep takes a bot's label off)" "$([ $r = 1 ] && grep -q 'pr-suites is not green' <<< "$out" && echo 1)" "exit $r: $out"
-run label 7
-ok "P-822 warn (the default, P-717 (2), first 24 h): pr-suites red: labelled, and the comment warns it will refuse" "$(grep -qx 'LABEL 7' <<< "$log" && grep -q "^COMMENT 7 .*put on: .*\*\*Warning:\*\* pr-suites is not green on ${HEAD1:0:9}: failure.*warn-only for its first 24 h" <<< "$log" && echo 1)" "$out / $log"
-ok "P-822: the switch is one line in queue-gate.sh, warn until the Lead flips it" "$([ "$(grep -c '^SUITES_GATE=' "$G")" = 1 ] && grep -qx 'SUITES_GATE="${QG_SUITES_GATE:-warn}"   # warn | block (any other value blocks)' "$G" && echo 1)" "$(grep -n '^SUITES_GATE=' "$G")"
+SG=warn run label 7
+ok "P-822 warn (the kill switch): pr-suites red: labelled, and the comment warns it will refuse" "$(grep -qx 'LABEL 7' <<< "$log" && grep -q "^COMMENT 7 .*put on: .*\*\*Warning:\*\* pr-suites is not green on ${HEAD1:0:9}: failure.*warn-only for its first 24 h" <<< "$log" && echo 1)" "$out / $log"
+ok "P-822: the switch is one line in queue-gate.sh, block by default (founder, 25 Nov: blocks on landing)" "$([ "$(grep -c '^SUITES_GATE=' "$G")" = 1 ] && grep -qx 'SUITES_GATE="${QG_SUITES_GATE:-block}"   # block | warn (the kill switch; any other value blocks)' "$G" && echo 1)" "$(grep -n '^SUITES_GATE=' "$G")"
+suites $HEAD1 completed failure; run label 7
+ok "P-822 default (no switch set): pr-suites red: refused, the comment says pr-suites is not green" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'pr-suites is not green' <<< "$out" && echo 1)" "$out / $log"
 # a person's label (label-guard.sh asks proof with RELABEL=1): the same rule, on the head or its walk back to the Approve
 SG=block HEADS="$HEAD1" RELABEL=1 run proof 7
 ok "P-822 block proof: a label just put on with pr-suites red: exit 1 naming it" "$([ $r = 1 ] && grep -q 'pr-suites is not green' <<< "$out" && echo 1)" "exit $r: $out"
@@ -527,7 +529,7 @@ ok "P-822 block proof: green on the head (HEADS as label-guard.sh gives it, a le
 suites $HEAD1 completed failure
 SG=block HEADS="$HEAD1" run proof 7
 ok "P-822 proof: a push (not a new label) never takes the label off for pr-suites (a merge of main re-runs it)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
-HEADS="$HEAD1" RELABEL=1 run proof 7
+SG=warn HEADS="$HEAD1" RELABEL=1 run proof 7
 ok "P-822 warn proof: a label just put on with pr-suites red is kept (warn)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 # breaker M1: a check run counts only in its own run's check suite, that run on this head, of this PR into main, ended green
 for c in "SR_CS=881:a check run in another check suite (made by another workflow's token)" "SR_HEAD=$OLD:a run of another commit" \
@@ -543,7 +545,7 @@ suites $HEAD1 in_progress ""; SG=block run eligible 7
 ok "P-822 block (review m3): a re-run in progress: eligible exits 3, the sweep keeps the label and tries again" "$([ $r = 3 ] && echo 1)" "exit $r: $out"
 suites $HEAD1 completed failure; SG=Block run label 7
 ok "P-822: a switch value other than warn blocks (fails closed)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
-suites $HEAD1 completed success; rm -f "$T/fx/run-88.json"; run eligible 7
+suites $HEAD1 completed success; rm -f "$T/fx/run-88.json"; SG=warn run eligible 7
 ok "P-822 warn (review m2): an unreadable pr-suites never makes eligible exit 3 by itself: eligible" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 suites $HEAD1 completed success
 W2="$(git -C "$TOOLS" rev-parse --show-toplevel)/.github/workflows/queue-gate.yml"
