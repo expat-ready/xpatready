@@ -171,7 +171,7 @@ try {
     ok(`R1.57 W6: Stripe declines test card 4000 0000 0000 0002 on its page${T5}`, declined);
     for (let i = 0; declined && Number(sql(`select count(*) from audit_event where action = 'payment.failed' and entity_key = '${INV2.id}'`)) === 0 && i < 45; i++) await new Promise((r) => setTimeout(r, 2000));
     const inv2 = await api(TA2, "GET", `/front-office/money/invoices/${INV2.id}/detail`), pub2 = await api(null, "GET", `/public/pay/${token2}`);
-    ok("R1.57 W6 fail: the declined card leaves the invoice unpaid (its amount due unchanged, no card payment)", inv2.body?.invoice?.dueMinor === INV2.dueMinor && sql(`select count(*) from money_payment where invoice_id = '${INV2.id}'`) === "0", inv2.body?.invoice?.dueMinor ?? inv2.status);
+    ok(`R1.57 W6 fail: the declined card leaves the invoice unpaid (its amount due unchanged, no card payment)${T5}`, declined && inv2.body?.invoice?.dueMinor === INV2.dueMinor && sql(`select count(*) from money_payment where invoice_id = '${INV2.id}'`) === "0", inv2.body?.invoice?.dueMinor ?? inv2.status);
     ok(`R1.57 W6 (part missing: FO-7c part 2b, the failed card's reason): the client's answer and the invoice's trail carry the reason Stripe gave${T5}`,
       /declined/i.test(JSON.stringify(pub2.body?.lastFailure ?? "")) && Number(sql(`select count(*) from audit_event where action = 'payment.failed' and entity_key = '${INV2.id}'`)) === 1, pub2.body?.lastFailure ?? null);
     await clientCtx.close();

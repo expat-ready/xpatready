@@ -150,6 +150,9 @@ try {
   const made = sessions().slice(before);
   ok("FO-7c DW11 pass: ACTIVE with charges on → the card offered, no offline block; each POST asks the rail once with the same idempotency key while nothing changed, and gets the same hosted page",
     open.body.card.offered === true && open.body.offline === null && s1.status === 200 && /^https:\/\/pay\.fake-rail\.example\/cs_fake_/.test(s1.body.url) && s2.body.url === s1.body.url && made.length === 2 && made[0].key === made[1].key && made[0].key?.startsWith(`fo7c-pay-${I1}-0-`) && asked.at(-1)?.amountMinor === 100000, { open: open.body, made });
+  const q = asked.at(-1);
+  ok("FO-7c DW5 pass (review M3): what Stripe is asked to charge is exactly the amount due, in the invoice's currency, on the firm's own account, with only firm_id and invoice_id as metadata",
+    q?.amountMinor === 100000 && q?.currency === "CAD" && q?.account === acct && JSON.stringify(q?.metadata) === JSON.stringify({ firm_id: A, invoice_id: I1 }) && q?.description.includes(sql(`select number from money_invoice where id = '${I1}'`)), q);
   await pay(A, I1, "user-R", 40000, "fo7c2a-part-offline");
   const s3 = await call(undefined, "POST", `/public/pay/${T1}/session`), k3 = sessions().at(-1)?.key;
   ok("FO-7c DW5 pass (AG-6-14 rule 2): after 400.00 paid another way, the session is for exactly the 600.00 still due, under a new key", s3.status === 200 && k3?.startsWith(`fo7c-pay-${I1}-1-`) && k3 !== made[0].key && asked.at(-1)?.amountMinor === 60000 && (await call(undefined, "GET", `/public/pay/${T1}`)).body.invoice.dueMinor === 60000, k3);
@@ -158,6 +161,11 @@ try {
   ok("FO-7c DW5 fail (PF-27's stand-in): a locked firm's link offers no card and its session is refused in PF-27's neutral words (no word \"lock\")",
     lg.status === 200 && lg.body.card.offered === false && ls.status === 409 && ls.body.code === "NOT_AVAILABLE" && !/lock/i.test(JSON.stringify([lg.body, ls.body])), [lg.body, ls.body]);
 
+  { const U = sql(`insert into money_invoice (firm_id, person_id, currency, created_by, updated_at) values ('${A}', '${PA}', 'USD', 'seed:FO-7c-2a', now()) returning id`);
+    sql(`insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) values ('${A}', '${U}', 1, 'FEE', 'Professional fee (Sample)', 1, 25000, 25000, 0, 0, 'USD')`);
+    await withFirm(A, () => money.issue(ctxOf(A, "user-R"), U, {}));
+    const su = await call(undefined, "POST", `/public/pay/${tokenOf(await call(tOwner, "POST", LINK(U)))}/session`), qu = asked.at(-1);
+    ok("FO-7c DW5 fail (review M3): a USD invoice is charged in USD for its own amount due, never CAD and never another invoice's amount", su.status === 200 && qu?.currency === "USD" && qu?.amountMinor === 25000 && qu?.metadata.invoice_id === U, qu); }
   // ---------------------------------------------------------------------- a replaced or settled link stops working
   const mk2 = await call(tOwner, "POST", LINK(I1)), T2 = tokenOf(mk2), oldOne = await call(undefined, "GET", `/public/pay/${T1}`);
   ok("FO-7c DW5 pass: a new link replaces the old one: the old answers the one not-found, the new one opens; the audit line says so", mk2.status === 200 && oldOne.status === 404 && oldOne.body.detail === LINK_NOT_WORKING && (await call(undefined, "GET", `/public/pay/${T2}`)).status === 200
@@ -172,11 +180,13 @@ try {
   ok("FO-7c pass (break M2): every hosted page expires in 30 to 40 minutes (Sample; Stripe's least is 30), so a page handed out before the invoice changed stops taking cards soon", asked.length > 0 && asked.every((a) => !!a.expiresAtSec) && inS >= 29 * 60 && inS <= 41 * 60, inS);
   await pay(A, I1, "user-R", 60000, "fo7c2a-rest-offline");
   const settled = await call(undefined, "GET", `/public/pay/${T2}`), settledS = await call(undefined, "POST", `/public/pay/${T2}/session`);
-  ok("FO-7c DW5 fail: once paid in full the link is the same not-found as an unknown one (GET and POST), no session", settled.status === 404 && settledS.status === 404 && settled.body.detail === LINK_NOT_WORKING && sessions().length === before + 5, settled.body);
+  ok("FO-7c DW5 fail: once paid in full the link is the same not-found as an unknown one (GET and POST), no session", settled.status === 404 && settledS.status === 404 && settled.body.detail === LINK_NOT_WORKING && sessions().length === before + 6, settled.body);
   const unknown = await call(undefined, "GET", `/public/pay/${A.replace(/-/g, "")}.${"A".repeat(43)}`), malformed = await call(undefined, "GET", "/public/pay/nonsense");
   ok("FO-7c DW5 fail: an unknown and a malformed link → the same 404 and words", unknown.status === 404 && malformed.status === 404 && unknown.body.detail === malformed.body.detail, [unknown.body, malformed.body]);
 
   const plain = await read(await fetch(`${base}/api${LINK(IB)}`, { method: "POST", headers: { "content-type": "text/plain", authorization: `Bearer ${tB}` }, body: "amountMinor=1" }));
+  const plainS = await read(await fetch(`${base}/api/public/pay/${B.replace(/-/g, "")}.${"B".repeat(43)}/session`, { method: "POST", headers: { "content-type": "text/plain" }, body: "x" }));
+  ok("FO-7c door fail (review minor): a body that is not JSON on the client's session door → 415, no hosted payment", plainS.status === 415 && sessions().length === before + 6, plainS.body);
   ok("FO-7c DW5 fail (break m3): a body that is not JSON on the pay-link route → 415, no new link", plain.status === 415 && hashOf(IB, B) === createHash("sha256").update(TB).digest("hex"), plain.body);
   // Break m1: on the Stripe adapter, the processor's refusals end as the offline answer (RailAccountGone or RailRefused),
   // never a 500. Stripe's own error bodies, answered by a stand-in fetch (no network).

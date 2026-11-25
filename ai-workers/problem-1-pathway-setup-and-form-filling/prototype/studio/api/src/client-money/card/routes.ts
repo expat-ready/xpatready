@@ -38,15 +38,19 @@ export class StripeConnectHookController {
   event(@Req() r: R, @Headers("stripe-signature") signature?: string) { return this.accounts.receive(r.body, signature); }
 }
 
+/** No body, or JSON: a body of another type is refused (415), never read as "no fields" (break m3, review minor). */
+function notJson(h: Record<string, string | string[] | undefined> | undefined) {
+  const type = h?.["content-type"], length = Number(h?.["content-length"] ?? 0);
+  if (length > 0 && !(typeof type === "string" && /^application\/json\s*(;|$)/i.test(type))) problem(415, "Send JSON", "This route takes no body, or a JSON one.", { code: "UNSUPPORTED_MEDIA_TYPE" });
+}
+
 @Controller("api/front-office/money/invoices")
 export class PayLinkController {
   constructor(@Inject(CardPay) private readonly pay: CardPay) {}
   @Post(":id/pay-link") @HttpCode(200) @PermissionKeys("agent/payment:online")
   make(@Param("id") id: string, @Body() body: unknown, @Req() r: R & { headers?: Record<string, string | string[] | undefined> }) {
     // Break m3 (#3633): no body, or JSON; a body of another type is refused (415), never read as "no fields".
-    const type = r.headers?.["content-type"], length = Number(r.headers?.["content-length"] ?? 0);
-    if (length > 0 && !(typeof type === "string" && /^application\/json\s*(;|$)/i.test(type))) problem(415, "Send JSON", "This route takes no body, or a JSON one.", { code: "UNSUPPORTED_MEDIA_TYPE" });
-    parseInput(strict({}), body ?? {}); return this.pay.makeLink(staffOf(r), id);
+    notJson(r.headers); parseInput(strict({}), body ?? {}); return this.pay.makeLink(staffOf(r), id);
   }
 }
 
@@ -87,5 +91,7 @@ export class PublicPayController {
   read(@Param("token") token: string, @Req() r: Rq, @Res({ passthrough: true }) res: Rs) { return this.door(token, r, res, () => this.pay.read(token)); }
 
   @Post(":token/session") @HttpCode(200)
-  session(@Param("token") token: string, @Req() r: Rq, @Res({ passthrough: true }) res: Rs) { return this.door(token, r, res, () => this.pay.session(token)); }
+  session(@Param("token") token: string, @Req() r: Rq & { headers?: Record<string, string | string[] | undefined> }, @Res({ passthrough: true }) res: Rs) {
+    return this.door(token, r, res, () => { notJson(r.headers); return this.pay.session(token); });
+  }
 }
