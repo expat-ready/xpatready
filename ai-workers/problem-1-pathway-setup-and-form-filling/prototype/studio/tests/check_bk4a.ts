@@ -88,7 +88,7 @@ ok("BR-1: every use of the person-changing helpers is listed (frame link, releas
 const writers = files.filter((f) => !f.endsWith("lib/api.ts") && /localStorage\.setItem\(\s*["']xr-actor/.test(readFileSync(f, "utf8"))).map((f) => relative(WEB, f));
 ok("BR-1: nothing but lib/api.ts writes the stored person", writers.length === 0, writers);
 ok("BR-1 fail side: a new setActor call in a page would be caught", (() => { const s = { ...sites, "pages/review.tsx": 1 }; return Object.entries(s).some(([f, n]) => (ALLOWED[f] ?? 0) !== n); })());
-ok("BR-1: every change of person is said once by the frame's notice, mounted once outside the routes", /<BrowserRouter><PersonNotice \/>/.test(read("App.tsx")) && /Now: \$\{p\.name\} \(simulated\)/.test(read("components/frame.tsx")));
+ok("BR-1: every change of person is said once by the frame's notice, mounted once outside the routes", /<(BrowserRouter|)><PersonNotice \/><(WorkspaceRouter|Routes)>/.test(read("App.tsx")) && /Now: \$\{p\.name\} \(simulated\)/.test(read("components/frame.tsx")));
 
 // (4) BK-4a's own scope: no "switch to" words left in its files (4b and 4c guard theirs; the last to merge checks web/src).
 for (const f of ["App.tsx", "components/frame.tsx", "pages/sign-in.tsx", "runtime/cases.tsx"]) ok(`BK-4a (4): no "switch to" words in ${f}`, !/switch to/i.test(read(f)), (read(f).match(/.{0,40}switch to.{0,40}/i) ?? [])[0]);

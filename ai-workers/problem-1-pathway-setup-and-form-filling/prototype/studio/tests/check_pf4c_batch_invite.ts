@@ -93,9 +93,12 @@ try {
     && fitEmails.map((m) => m.to).join() === "one@example.com,two@example.com,three@example.com" && fits.body.invited.every((i: any) => i.emailed === true && i.status === "PENDING")
     && fits.body.seatsUsed === fits.body.seatsLimit && fits.body.seatsLimit === limit(), fits.body);
   ok("PF-4c DW1 pass: no token in the answer; each invitation keeps its own roles", !/token/i.test(JSON.stringify(fits.body)) && fits.body.invited[2]?.roles.join() === "CASE_OFFICER,READ_ONLY", fits.body);
-  ok("PF-4c pass: the greeting names the person (\"Hello Ana Silva,\") and the name is stored nowhere (no invitation or audit line holds it)",
+  // R1.20 (held for the tech lead, PR question 1): the name is now the invitation's display name, as the single invite's
+  // (PF-4dn), and nothing else: one invitation and its one audit line (after.displayName) hold it.
+  ok("PF-4c pass: the greeting names the person (\"Hello Ana Silva,\"); the name is kept only as that invitation's display name and its audit line's",
     /^Hello Ana Silva,\n/.test(fitEmails[0]?.text ?? "") && !/Hello/.test(fitEmails[1]?.text ?? "")
-    && sql(`select count(*) from platform_invitation i where i::text like '%Ana Silva%'`) === "0" && sql(`select count(*) from audit_event a where a::text like '%Ana Silva%'`) === "0", fitEmails[0]?.text);
+    && sql(`select count(*) from platform_invitation i where i::text like '%Ana Silva%'`) === "1" && sql(`select count(*) from platform_invitation where display_name = 'Ana Silva'`) === "1"
+    && sql(`select count(*) from audit_event a where a::text like '%Ana Silva%'`) === "1", fitEmails[0]?.text);
 
   // ------------------------------------------------------------------------------- DW2: duplicates and existing people
   seatsLeft(10);

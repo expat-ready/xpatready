@@ -12,6 +12,7 @@ import { centsOf, CURRENCIES, CURRENCY_REFUSED } from "../../../../../contracts/
 import { Board, can, KEY, LostReasons, money, Prospect, ValueCurrencies } from "./contract";
 import { Loading } from "./loading";
 import { MoveMenu, STALE_NOTE, useLock, useMove, useOwners, useReturnFocus } from "./prospect-actions";
+import { PersonEmail } from "./person-email";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { arrivedLabel } from "./time";
@@ -19,6 +20,7 @@ import { IdentityCheckPanel } from "../compliance/identity/identity-panel";
 import { ConflictCheckPanel, ConvertConflictNote, useConflictList } from "../compliance/conflict/conflict-panel";
 import { FIXED_BY_A_CHECK } from "../compliance/conflict/contract";
 import { RetainerCard } from "../retainers/retainer-card";
+import { SignatureRequestsSection } from "../sign/signature-requests";
 /** AG-2-47 rule 16's words, shown before Convert while no retainer is signed (the same text the server answers with). */
 const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";
 type Act = "lost" | "convert" | "undo" | "value";
@@ -130,6 +132,7 @@ function ProspectBody({ id }: { id: string }) {
             {p.stage.kind === "WON" ? row("Won by", p.wonVia === "CONVERTED" ? "Convert to client" : "A signed retainer") : null}
             {p.lostReason ? row("Why lost", <span data-lost-reason>{p.lostReason.label}{p.lostNote ? ` · ${p.lostNote}` : ""}</span>) : null}
           </dl>
+          {p.person ? <PersonEmail prospectId={p.id} person={p.person} mayEdit={can(me, KEY.edit)} /> : null}   {/* QA-779 part (a) */}
         </section>
         <aside aria-label="Actions" className="flex flex-col items-stretch gap-2 rounded-xl border border-border bg-surface-raised p-4">
           {mayMove ? <MoveMenu prospect={{ id: p.id, number: p.number, name }} from={p.stage.id} stages={board.data?.stages ?? []} version={p.version} move={move} /> : null}
@@ -140,6 +143,7 @@ function ProspectBody({ id }: { id: string }) {
         </aside>
       </div>
       <RetainerCard prospectId={p.id} name={name} working={working} />   {/* FO-5s part 1 (S2) */}
+      <SignatureRequestsSection prospectId={p.id} name={name} lost={p.stage.kind === "LOST"} />   {/* FO-6ds */}
       <ConflictCheckPanel prospectId={p.id} corporate={p.type === "CORPORATE"} />
       {p.person ? <IdentityCheckPanel personId={p.person.id} name={p.person.name === "(no name)" ? "" : p.person.name} /> : null}
       <Panel open={open === "lost"} onOpenChange={(o) => start(o ? "lost" : null)} title="Mark lost" description={`${name}, ${p.number}. It leaves the board and is found in the List under Stage: Lost.`}

@@ -126,6 +126,11 @@ model PlatformFirm {
   // back-relation slot: firm export (PF-11)
   firmExports PlatformFirmExport[] // platform-firm-export.prisma
 
+  // back-relation slot: import (PF-10a)
+  platImportBatches      PlatImportBatch[]       // platform-import.prisma
+  platImportMappings     PlatImportMapping[]
+  platImportAttestations PlatImportAttestation[]
+
   @@map("platform_firm")
 }
 
@@ -295,6 +300,11 @@ model PlatformStaff {
 
   // back-relation slot: firm export (PF-11)
   firmExportsRequested PlatformFirmExport[] // platform-firm-export.prisma (the requester)
+
+  // back-relation slot: import (PF-10a)
+  platImportBatches      PlatImportBatch[]       // platform-import.prisma (the importer)
+  platImportMappings     PlatImportMapping[]     // (who saved it last)
+  platImportAttestations PlatImportAttestation[] // (the attesting Owner)
 
   @@unique([firmId, email])
   /// The target of the (firm_id, staff_id) keys below: a row of firm A can never point at firm B's staff (break B-2).

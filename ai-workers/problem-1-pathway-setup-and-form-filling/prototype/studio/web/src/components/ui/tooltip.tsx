@@ -2,6 +2,7 @@
 import * as React from 'react';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { cn } from '@/lib/utils';
+import { useTabActive } from "@/components/workspace";
 
 /**
  * Tooltip primitive — Radix passthrough for Provider/Root/Trigger, house
@@ -51,7 +52,7 @@ TooltipTrigger.displayName = TooltipPrimitive.Trigger.displayName;
 const TooltipContent = React.forwardRef<
   React.ComponentRef<typeof TooltipPrimitive.Content>,
   React.ComponentProps<typeof TooltipPrimitive.Content>
->(({ className, sideOffset = 6, children, ...props }, ref) => (
+>(({ className, sideOffset = 6, children, ...props }, ref) => (useTabActive() ? (
   <TooltipPrimitive.Portal>
     <TooltipPrimitive.Content
       ref={ref}
@@ -67,7 +68,7 @@ const TooltipContent = React.forwardRef<
       {children}
     </TooltipPrimitive.Content>
   </TooltipPrimitive.Portal>
-));
+) : null));   // PF-31 (breaker N2 on 30ab3cde2): a hidden workspace tab's tooltip never stays over the shown tab
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, useIsInsideTooltipTrigger };

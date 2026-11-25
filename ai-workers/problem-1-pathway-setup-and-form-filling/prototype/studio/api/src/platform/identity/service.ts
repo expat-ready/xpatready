@@ -20,7 +20,7 @@ import { readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
 import { LocalIdentity } from "./local.ts";
-import { PgEntitlements, seatsUsed } from "../entitlements/limits.ts";
+import { PgEntitlements, seatLimitOf, seatsUsed } from "../entitlements/limits.ts";
 import { writeMoneyKeysGranted } from "./money-line.ts";
 import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort, type VerifiedIdentity } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
@@ -232,8 +232,8 @@ export class PlatformIdentity implements OnModuleInit {
    *  transaction (PF-15: the one plan-limit check; fail closed with no live plan). One check for `adding` more people:
    *  `fit` is how many of them the plan takes (all of them when allowed). Shared by seatCheck and the batch (PF-4c1b). */
   private async seatRoom(tx: Tx, firmId: string, adding: number) {
-    const limits = new PgEntitlements(tx, () => this.clock.now());
-    const plan = await limits.limitOf(firmId, "seats");
+    const now = () => this.clock.now(), limits = new PgEntitlements(tx, now);
+    const plan = await seatLimitOf(tx, firmId, now);   // the limit and the plan it is (a booked lower plan: that plan, QA-774)
     const used = await seatsUsed(tx, firmId);
     const r = await limits.check(firmId, "seats", used + Math.max(adding, 1) - 1);   // one more is allowed below the limit, so `adding` fit while used + adding - 1 is below it
     const limit = r.allowed ? (plan.limit ?? 0) : r.limit;
@@ -246,7 +246,7 @@ export class PlatformIdentity implements OnModuleInit {
     const { allowed, limit, used, plan } = await this.seatRoom(tx, firmId, adding);
     const afterInvites = used + adding, removeCount = allowed ? 0 : Math.max(1, afterInvites - limit);
     if (!allowed) problem(409, "Plan limit reached", plan.planCode
-      ? `Your plan (${plan.planName}) allows ${limit} ${limit === 1 ? "person" : "people"}, counting active, suspended and invited people (${used} now). Revoke a pending invitation or deactivate someone first, or change the plan.`
+      ? `Your ${plan.booked ? "booked plan" : "plan"} (${plan.limitPlanName}) allows ${limit} ${limit === 1 ? "person" : "people"}, counting active, suspended and invited people (${used} now). Revoke a pending invitation or deactivate someone first, or change the plan.`
       : "Your firm has no live subscription, so nobody can be added.", { code: "PLAN_LIMIT_REACHED", metric: "seats", limit, used, upgradePath: "Change the plan in Settings, Billing.", seatsLimit: limit, seatsUsed: used, afterInvites, removeCount });
     return { seatsLimit: limit, seatsUsed: used, afterInvites };
   }
@@ -446,12 +446,12 @@ export class PlatformIdentity implements OnModuleInit {
       }
       const valid = rows.filter((r) => !r.flags.length);
       const room = await this.seatRoom(tx, actor.firmId, valid.length);   // the form's one EntitlementPort check (seatRoom)
-      const over = overSeatWords(room.limit, room.plan.planName);
+      const over = overSeatWords(room.limit, room.plan.planCode ? room.plan.limitPlanName : null, room.plan.booked);
       for (const r of valid.slice(room.fit)) r.flags.push({ code: "OVER_SEAT_LIMIT", detail: over });
       const made = [];
       for (const r of valid.slice(0, room.fit)) {
-        const row = await this.insertInvitation(tx, actor.firmId, r.email!, r.roles!, actorWord(actor.staffId));
-        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${room.fit} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: null, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
+        const row = await this.insertInvitation(tx, actor.firmId, r.email!, r.roles!, actorWord(actor.staffId), r.name);   // R1.20: the row's name is kept, as the single invite's (PF-4dn)
+        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${room.fit} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: r.name, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
         made.push({ row: r.row, id: row.id, email: r.email!, roles: r.roles!, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token, name: r.name });
       }
       return { made, seatsLimit: room.limit, seatsUsed: room.used + made.length };

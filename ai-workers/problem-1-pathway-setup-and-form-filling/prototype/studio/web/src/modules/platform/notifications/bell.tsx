@@ -11,6 +11,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import { Button, Notice, Panel } from "@/components/ui/controls";
+import { useTabActive } from "@/components/workspace";
 import { Skeleton } from "@/components/ui/skeleton";
 import { staffApi, StaffApiError } from "../session";
 import { announcementFor, badgeOf, bellName, COPY, NotificationList, pageless, PANEL_SIZE, POLL_MS, timeWords, UnreadCount, whatOf, zoneLine, type NotificationItem } from "./contract";
@@ -144,7 +145,10 @@ export function NotificationBell() {
   const [open, setOpen] = React.useState(false), btn = React.useRef<HTMLButtonElement>(null);
   const [said, setSaid] = React.useState("");
   const n = q.data?.unread;
-  React.useEffect(() => { if (n === undefined) return; const words = announcementFor(n); if (words) setSaid(words); }, [n]);
+  // PF-31 (review on 91cb4a742): with several workspace tabs open each has its own bell; only the shown tab's bell speaks,
+  // and a hidden one keeps its live region empty, so a change is said once, where the person is.
+  const shown = useTabActive();
+  React.useEffect(() => { if (!shown) { setSaid(""); return; } if (n === undefined) return; const words = announcementFor(n); if (words) setSaid(words); }, [n, shown]);
   if (q.error instanceof StaffApiError && (q.error.status === 401 || q.error.status === 428 || q.error.status === 402)) return null;
   const count = n ?? 0, badge = badgeOf(count), name = bellName(q.isError ? null : count);   // a failed count is said as such (review m4)
   return (

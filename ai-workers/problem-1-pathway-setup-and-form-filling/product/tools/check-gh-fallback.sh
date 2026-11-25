@@ -12,6 +12,7 @@ cat > "$T/bin/gh" <<'EOF'
 #!/bin/bash
 echo "gh $*" >> "$FX/gh.log"
 [ "$1 $2" = "auth token" ] && { echo tok123; exit 0; }
+[ -z "${FAKE_FLAG:-}" ] || : > "$FAKE_FLAG"
 [ "${FAKE_GH:-tls}" = ok ] && { echo '[{"number":1}]'; exit 0; }
 [ "${FAKE_GH:-tls}" = 404 ] && { echo "HTTP 404: Not Found (https://api.github.com/repos/o/r/pulls/9)" >&2; exit 1; }
 echo 'Post "https://api.github.com/graphql": tls: failed to verify certificate: x509: OSStatus -26276' >&2; exit 1
@@ -61,6 +62,9 @@ ok "pr list --state merged --search: a GraphQL search with is:merged and the ter
 # ENF-761 part 5: with GH_TLS_NOTE_ONCE (lead-watch.sh sets one per run) three TLS fallbacks say so once; without it, each says so.
 rm -f "$T/once"; e3=""; for i in 1 2 3; do run env GH_TLS_NOTE_ONCE="$T/once" bash "$GH" run list --limit 2 --json databaseId; e3="$e3$err"$'\n'; done
 ok "GH_TLS_NOTE_ONCE: three fallbacks in one run print the curl notice once" "$([ "$(grep -c 'answered through curl' <<< "$e3")" = 1 ] && echo 1)" "$e3"
+# lead-watch.sh's reads start together (24 Nov): another read can make the flag while this one's gh is still failing.
+rm -f "$T/once"; run env GH_TLS_NOTE_ONCE="$T/once" FAKE_FLAG="$T/once" bash "$GH" run list --limit 2 --json databaseId
+ok "... the flag made by another read while gh fails here: answered, and the notice is not printed again" "$([ $r = 0 ] && ! grep -q 'answered through curl' <<< "$err" && echo 1)" "exit $r: $err"
 e3=""; for i in 1 2 3; do run bash "$GH" run list --limit 2 --json databaseId; e3="$e3$err"$'\n'; done
 ok "... and without it, each fallback prints it (3)" "$([ "$(grep -c 'answered through curl' <<< "$e3")" = 3 ] && echo 1)" "$e3"
 rm -f "$T/once"; run env GH_TLS_NOTE_ONCE="$T/no-such-dir/once" bash "$GH" run list --limit 2 --json databaseId

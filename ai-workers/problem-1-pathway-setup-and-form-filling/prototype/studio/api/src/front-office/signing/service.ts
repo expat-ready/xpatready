@@ -28,6 +28,7 @@ import { asBypass, touchFirms, withFirm } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { onSigningCompleted, SIGNING_ACTOR } from "../retainers/on-signing-completed.ts";
 import { signingHandlerFor, signingMail, signingPort } from "./handlers.ts";
+import { sendPleaseSign } from "./link-mail.ts";
 import { SIGNING_WEBHOOK } from "./webhook.bypass.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent } from "./port.ts";
 
@@ -57,13 +58,20 @@ export async function prepareRetainerSigning(db: PrismaClient, files: FilesPort,
   const requestId = randomUUID(), clientSigner = randomUUID(), firmSigner = randomUUID();
   const { providerDocumentId } = await port.send({ firmId, requestId, title: `Retainer agreement (version ${version.n})`, document: { bytes: new Uint8Array(file.bytes), contentType: file.contentType },
     signers: [{ signerId: clientSigner, role: "CLIENT", name: nameOf(person) || "Client" }, { signerId: firmSigner, role: "FIRM", name: rep.displayName }] });
-  // The link tokens: only their sha256 is kept (part 4 emails the client's link; FO-3c's token shape, the firm first).
+  // The link tokens: only their sha256 is kept (FO-3c's token shape, the firm first). Part 4a: the client's token stays
+  // in memory only until afterCommit emails it ("Please sign", ./link-mail.ts); the firm signer's is never emailed (its
+  // link comes from a staff route, part 4c).
   const token = () => `${firmId.replace(/-/g, "").toLowerCase()}.${randomBytes(32).toString("base64url")}`;
+  const clientToken = token(), firmToken = token();
   const endedEnvelopes: string[] = [];
+  let recorded = false;
   return {
     requestId,
-    /** After the commit: the envelopes of the requests this send ended (never throws). */
-    async afterCommit() { for (const d of endedEnvelopes.splice(0)) { try { await port.cancel(firmId, d); } catch { /* ended at the provider already */ } } },
+    /** After the commit: the envelopes of the requests this send ended, then the client's "Please sign" email (never throws). */
+    async afterCommit() {
+      for (const d of endedEnvelopes.splice(0)) { try { await port.cancel(firmId, d); } catch { /* ended at the provider already */ } }
+      if (recorded) { recorded = false; await sendPleaseSign(db, { firmId, requestId, personId: person.id, token: clientToken, kind: "RETAINER", version: version.n }); }
+    },
     async record(tx: Tx) {
       const now = o.now();
       // An Edit made a newer version and ended the old one's FO-5 request (UPDATED) but left its signing request live
@@ -78,11 +86,12 @@ export async function prepareRetainerSigning(db: PrismaClient, files: FilesPort,
       }
       await tx.foSignatureRequest.create({ data: { id: requestId, firmId, documentKind: "RETAINER", documentId: r.id, documentVersionId: version.id, documentVersion: version.n, provider: port.provider, providerDocumentId, sentBy: ctx.staffId, sentAt: now, expiresAt: new Date(now.getTime() + EXPIRES_DAYS * DAY) } });
       await tx.$queryRaw`select id from fo_signature_request where firm_id = ${firmId}::uuid and id = ${requestId}::uuid for update`;   // review m10: the request before its signers
-      await tx.foSigner.create({ data: { id: clientSigner, firmId, requestId, role: "CLIENT", signOrder: 1, personId: person.id, linkTokenSha256: sha(token()) } });
-      await tx.foSigner.create({ data: { id: firmSigner, firmId, requestId, role: "FIRM", signOrder: 2, staffId: rep.id, linkTokenSha256: sha(token()) } });
+      await tx.foSigner.create({ data: { id: clientSigner, firmId, requestId, role: "CLIENT", signOrder: 1, personId: person.id, linkTokenSha256: sha(clientToken) } });
+      await tx.foSigner.create({ data: { id: firmSigner, firmId, requestId, role: "FIRM", signOrder: 2, staffId: rep.id, linkTokenSha256: sha(firmToken) } });
       await audit.record(tx, { firmId, actor: `staff:${ctx.staffId}`, action: "signing.request_sent", entity: "fo_signature_request", entityKey: requestId, summary: `Sent for signing (retainer, version ${version.n}): the client, then the representative`,
         detail: { requestId, retainerId: r.id, version: version.n, signerPersonId: person.id, representativeStaffId: rep.id, provider: port.provider },
         before: null, after: { status: "SENT", documentKind: "RETAINER", version: version.n, signers: 2, expiresAt: new Date(now.getTime() + EXPIRES_DAYS * DAY).toISOString() } });
+      recorded = true;   // the email goes only after this transaction commits (Retainers.send calls afterCommit after it)
     },
     async cancel() { try { await port.cancel(firmId, providerDocumentId); } catch (e) { if (!(e instanceof SigningEnded || e instanceof SigningNotFound)) console.error(`[fo-signing] cancel after a failed send did not finish: ${(e as Error)?.name ?? "error"}`); } },
   };
@@ -189,6 +198,14 @@ export class Signing {
       const notYet = (reason: string): never => conflict(`${reason}. The provider may send the event again.`, "NOT_YET");
       if (ev.type === "declined" || ev.type === "other") return refuse(ev.type === "declined" ? "a decline is applied by FO-5d" : "nothing to apply");
       if (!live) return refuse(`the request is ${q.status.toLowerCase()}`);
+      // Part 4c (QA-770's signing path; Lead 29, answer 1): a view or a signature on an agreement that was withdrawn, signed
+      // on paper, declined, expired or replaced by a newer version is refused, stored once and never applied. The retainer's
+      // row is locked here, so a withdraw cannot slip in between (challenge m9). FO-5d ends the request itself.
+      if (ev.type === "viewed" || ev.type === "signed") {
+        const [ret] = await tx.$queryRaw<{ status: string; current_version: number }[]>`select status::text, current_version from fo_retainer where firm_id = ${firmId}::uuid and id = ${q.document_id}::uuid for update`;
+        if (!ret || ["WITHDRAWN", "SIGNED_OFFLINE", "DECLINED", "EXPIRED"].includes(ret.status)) return refuse(`the agreement is ${ret ? ret.status.toLowerCase().replace("_", " ") : "gone"}`);
+        if (ret.current_version !== q.document_version) return refuse("a newer version was made");
+      }
       const line = (action: string, summary: string, detail: Record<string, string | number | boolean | null>, before: Record<string, string | number | null>, after: Record<string, string | number | null>) =>
         this.audit.record(tx, { firmId, actor: SIGNING_ACTOR, action, entity: "fo_signature_request", entityKey: q.id, summary, detail: { requestId: q.id, retainerId: q.document_id, ...detail }, before, after });
       const moveRetainer = (from: string[], to: string) => tx.foRetainer.updateMany({ where: { firmId, id: q.document_id, status: { in: from as never[] }, currentVersion: q.document_version }, data: { status: to as never } });
