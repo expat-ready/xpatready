@@ -8,8 +8,9 @@ const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwr
 const [NAME, PORT, OUT] = [process.argv[2], Number(process.argv[3]), process.argv[4]];
 if (PORT === 4400) process.exit(2);
 const BASE = `http://localhost:${PORT}`;
-import { execSync } from "node:child_process";
-const sql = (q: string) => execSync(`psql -h 127.0.0.1 -p 54329 -U xr_studio -d xr_studio_${NAME} -At -c "${q.replace(/"/g, '\\"')}"`).toString().trim();
+import { execFileSync } from "node:child_process";
+// No shell: psql gets the query as one argument, so nothing in it needs escaping.
+const sql = (q: string) => execFileSync("psql", ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio", "-d", `xr_studio_${NAME}`, "-At", "-c", q]).toString().trim();
 const A = sql(`select id from platform_firm where key = 'sample-firm'`);
 const mail = (a: string) => sql(`select email from platform_staff where actor_id = '${a}' and firm_id = '${A}'`);
 const token = async (m: string) => ((await (await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email: m, secondStep: true }) })).json()) as { token: string }).token;
