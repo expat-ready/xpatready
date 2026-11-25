@@ -1,0 +1,2 @@
+Entry points: FO-7c part 2a: `POST /api/front-office/money/invoices/:id/pay-link` (key `agent/payment:online`, no body: the full amount due; a firm-first token, only its SHA-256 in `pay_link_token_hash`); the client's door `GET /api/public/pay/:token` (creates nothing) and `POST /api/public/pay/:token/session` (a hosted payment on the firm's own account, ACTIVE with charges on; else the offline details or the contact line, AG-6-49); `card/pay.ts` `CardPay`, `payAllowed` (PF-27's stand-in).
+Tests: tests/check_fo7c_pay_link.ts
