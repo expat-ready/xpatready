@@ -65,8 +65,9 @@ async function held(tx: Tx, firmId: string, p: PartyRef, currency: string, caseI
   const [r] = await tx.$queryRaw<{ on_case: string; whole: string; uncleared: string }[]>`select
       (select coalesce(sum(e.amount_minor), 0) from money_trust_entry e where ${on} and ${here})::text as on_case,
       coalesce((select e.balance_after_minor from money_trust_entry e where ${on} order by e.seq desc limit 1), 0)::text as whole,
-      (select coalesce(sum(e.amount_minor), 0) from money_trust_entry e join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id
-        where ${on} and ${here} and e.kind = 'DEPOSIT' and not p.cleared)::text as uncleared`;
+      (select coalesce(sum(greatest(0, e.amount_minor + coalesce((select sum(c.amount_minor) from money_trust_entry c where c.firm_id = e.firm_id and c.corrects_entry_id = e.id), 0))), 0)
+        from money_trust_entry e join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id
+        where ${on} and ${here} and e.kind = 'DEPOSIT' and not p.cleared)::text as uncleared`;   // R4-1: only what is left of each cheque (a reversed one is none)
   return { available: Math.max(0, Math.min(Number(r.on_case), Number(r.whole))), uncleared: Number(r.uncleared) };
 }
 
