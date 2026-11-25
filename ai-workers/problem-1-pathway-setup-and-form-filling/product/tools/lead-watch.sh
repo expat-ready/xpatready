@@ -347,7 +347,7 @@ else ACT "board: $bc (run the cockpit refresh, then the check)"; BOARD=/dev/null
 # Lines already printed above (questions, approved then red, records off main (step 7), sle-watch, local lanes, the board's
 # idle lanes) are counted, not repeated: say() and ACT() record every line in $SEEN. Keep 12 after every step it reuses.
 kf_subj=$(for b in $alive; do printf '%s\t%s\n' "$b" "$(git log -1 --format=%s "origin/$b" 2>/dev/null)"; done)   # one git call per pushing branch
-P_DIR="${D%/*}" KF_PRS="$prs" KF_ALIVE="$alive" KF_SUBJ="$kf_subj" KF_SEEN="$SEEN" KF_BOARD="$BOARD" \
+P_DIR="${D%/*}" KF_PRS="$prs" KF_PRS_BODY="$STATE_DIR/prs-body.json" KF_ALIVE="$alive" KF_SUBJ="$kf_subj" KF_SEEN="$SEEN" KF_BOARD="$BOARD" \
 python3 -I -c '
 import json, os, time
 from datetime import datetime, timezone
@@ -355,11 +355,13 @@ E = os.environ; P = E["P_DIR"]
 size = lambda f: os.path.getsize(f) if os.path.exists(f) else None
 try: prs = json.loads(E["KF_PRS"] or "null")
 except ValueError: prs = None
+try: prs_all = json.load(open(E["KF_PRS_BODY"]))   # step 2b: up to 200 open PRs with createdAt (OS-17, #3699 review)
+except (OSError, ValueError): prs_all = None
 try: board = json.load(open(E["KF_BOARD"]))
 except (OSError, ValueError): board = None
 subj = dict(l.split("\t", 1) for l in E["KF_SUBJ"].splitlines() if "\t" in l)
 print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULES.md": size(P + "/RULES.md"), "STATE.md": size(P + "/STATE.md")},
-  "prs": prs, "alive_subjects": subj, "board": board,
+  "prs": prs, "prs_all": prs_all, "prs_all_limit": 200, "prs_limit": 80, "alive_subjects": subj, "board": board,
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 fresh "this check's own reads above (known-facts.json) and tools/known-failures.tsv"
