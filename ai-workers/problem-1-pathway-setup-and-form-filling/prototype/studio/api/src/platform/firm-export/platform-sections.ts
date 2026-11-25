@@ -44,5 +44,5 @@ async function section(tx: Tx, firmId: string, [key, title, model]: (typeof TABL
 export async function platformSections(firmId: string, tx: Tx): Promise<ModuleExportInput> {
   const sections: ExportSection[] = [];
   for (const t of TABLES) sections.push(await section(tx, firmId, t));
-  return { module: "platform", sections, files: [], words: "Client files and their closed dates come with the case side's sections; this download does not hold them yet (SA-2-33)." };
+  return { module: "platform", sections, files: [], words: "Client files and their closed dates come with the case side's sections; this download does not hold them yet (SA-2-33). Data import history (import batches, their rows and mappings) and the front office's records (leads, bookings, retainers, invoices) are not in this download yet either; they are added in a later version." };
 }
