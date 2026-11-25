@@ -47,7 +47,9 @@ try {
   const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
   const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
   const { ledgerCheck } = await import("../api/src/client-money/ledger-check.ts");
-  const feats = await Promise.all(["client-money-trust", "client-money-invoices", "client-money-refunds", "client-money-write-offs"].map(async (f) => (await import(`../api/src/features/${f}.ts`)).default as { controllers: unknown[]; providers: unknown[] }));
+  type F = { controllers: unknown[]; providers: unknown[] };
+  const feats: F[] = [(await import("../api/src/features/client-money-trust.ts")).default, (await import("../api/src/features/client-money-invoices.ts")).default,
+    (await import("../api/src/features/client-money-refunds.ts")).default, (await import("../api/src/features/client-money-write-offs.ts")).default];
   const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
   const local = new LocalIdentity("r196-check-signing-key-0123456789abcdef", () => clock.now());
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
