@@ -66,7 +66,8 @@ export class PaymentPlans {
       const plan = await tx.moneyPaymentPlan.create({ data: { firmId, invoiceId: id, currency: inv.currency, createdBy: by }, select: { id: true } });
       await tx.moneyInstalment.createMany({ data: b.instalments.map((x, i) => ({ firmId, planId: plan.id, position: i + 1, dueDate: new Date(`${x.dueDate}T00:00:00Z`), amountMinor: x.amountMinor, currency: inv.currency })) });
       await this.audit.record(tx, { firmId, actor: by, action: "invoice.plan_created", entity: "money_payment_plan", entityKey: plan.id,
-        summary: `Payment plan on ${inv.number}: ${b.instalments.length} instalments, ${inv.currency} ${MONEY(due)}.`, detail: { invoiceId: id, planId: plan.id, amountMinor: due, instalments: b.instalments.length } });
+        summary: `Payment plan on ${inv.number}: ${b.instalments.length} instalments, ${inv.currency} ${MONEY(due)}.`, detail: { invoiceId: id, planId: plan.id, amountMinor: due, instalments: b.instalments.length },
+        before: { plan: "none", dueMinor: due }, after: { plan: "ACTIVE", amountMinor: due, instalments: b.instalments.length } });
       await this.balanced(tx, firmId, id);
       return (await this.view(tx, firmId, id, today))!;
     });
@@ -91,7 +92,7 @@ export class PaymentPlans {
       if (!plan) return refuse("NO_PLAN", `${inv.number ?? "This invoice"} has no active plan. Nothing was saved.`);
       await tx.moneyPaymentPlan.update({ where: { id: plan.id }, data: { status: "CANCELLED", cancelledBy: by, cancelReason: c.reason } });
       await this.audit.record(tx, { firmId, actor: by, action: "invoice.plan_cancelled", entity: "money_payment_plan", entityKey: plan.id,
-        summary: `Payment plan on ${inv.number} cancelled.`, detail: { invoiceId: id, planId: plan.id }, after: { reason: c.reason } });
+        summary: `Payment plan on ${inv.number} cancelled.`, detail: { invoiceId: id, planId: plan.id }, before: { status: "ACTIVE" }, after: { status: "CANCELLED", reason: c.reason } });
       await this.balanced(tx, firmId, id);
       return (await this.view(tx, firmId, id, today))!;
     });
