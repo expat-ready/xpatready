@@ -14,7 +14,9 @@ const NUMBER = new Set(["Int", "Float", "Decimal", "BigInt"]);
 
 /** A section's table: [section key, title, Prisma model (its client delegate is the name in lower camel case), the order
  *  for a table with no `id` column (its key fields)]. */
-export type TableSpec = readonly [string, string, string, (readonly string[])?];
+export type TableSpec = readonly [string, string, string, (readonly string[] | undefined)?, (readonly string[])?];
+// The 5th element: columns (database names) held back from this table though not named like a secret: a login secret's
+// sha256, for one (part 2 review Major 2: a signer's one-time code and session).
 /** The sections. */
 const TABLES: readonly TableSpec[] = [
   ["firm-profile", "Firm profile", "PlatformFirm"], ["staff", "Staff", "PlatformStaff"], ["staff-roles", "Staff roles", "PlatformRoleGrant"],
@@ -35,14 +37,17 @@ const valueOf = (v: unknown, kind: ExportColumn["kind"]): string | number | bool
 
 /** One table as a section: every scalar column but the secret-named ones, the rows ordered by id (else by the spec's key
  *  fields; settings by key). Part 2: the front office's exporter reads its tables through this too. */
-export async function tableSection(tx: Tx, firmId: string, [key, title, model, order]: TableSpec): Promise<ExportSection> {
+export async function tableSection(tx: Tx, firmId: string, [key, title, model, order, held]: TableSpec): Promise<ExportSection> {
   const m = (Prisma.dmmf.datamodel.models as readonly Model[]).find((x) => x.name === model);
   if (!m) throw new Error(`firm export: no model ${model}`);
-  const fields = m.fields.filter((f) => (f.kind === "scalar" || f.kind === "enum") && !SECRET_FIELD.test(f.dbName ?? f.name));
-  const columns = fields.map((f) => ({ key: f.dbName ?? f.name, kind: f.kind === "enum" ? "text" as const : kindOf(f.type) }));
+  const fields = m.fields.filter((f) => (f.kind === "scalar" || f.kind === "enum") && !SECRET_FIELD.test(f.dbName ?? f.name) && !held?.includes(f.dbName ?? f.name));
+  // An amount in minor units beside its table's own `currency` column is a minor column naming it (AG-16-22, port check).
+  const hasCurrency = fields.some((f) => (f.dbName ?? f.name) === "currency");
+  const columns: ExportColumn[] = fields.map((f) => { const k = f.dbName ?? f.name;
+    return f.kind === "enum" ? { key: k, kind: "text" } : hasCurrency && /_minor$/.test(k) && NUMBER.has(f.type) ? { key: k, kind: "minor", currency: "currency" } : { key: k, kind: kindOf(f.type) }; });
   const where = model === "PlatformFirm" ? { id: firmId } : { firmId };
   const rows = await (tx as unknown as Record<string, { findMany(a: unknown): Promise<Record<string, unknown>[]> }>)[model[0].toLowerCase() + model.slice(1)].findMany({ where, orderBy: m.fields.some((f) => f.name === "id") ? { id: "asc" } : (order ?? ["key"]).map((k) => ({ [k]: "asc" })) });
-  return { key, title, columns, rows: rows.map((r) => fields.map((f, i) => valueOf(r[f.name], columns[i].kind))) };
+  return { key, title, columns, rows: rows.map((r) => fields.map((f, i) => valueOf(r[f.name], columns[i].kind === "minor" ? "number" : columns[i].kind))) };
 }
 
 /** The platform module's exporter (registered by the feature file). */

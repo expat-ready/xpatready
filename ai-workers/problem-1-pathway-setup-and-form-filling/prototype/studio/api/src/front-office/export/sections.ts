@@ -5,7 +5,8 @@
 // forms and arrivals, services and assignment rules; bookings and their set-up; conflict and identity checks;
 // consultation records; duplicate reviews and merges; retainers with their versions, fee rows and templates; signature
 // requests, signers, signing documents and evidence. Stored files: each signing document, each sealed document and its
-// audit trail, each retainer version's file and each template's current file. Left out on purpose: booking links
+// audit trail, each retainer version's file, a retainer's offline-signed copy, a kept identity document copy and each
+// template's current file. A signer's one-time code and session (their sha256) are held back. Left out on purpose: booking links
 // (fo_booking_token: an access link, its hash only) and the signing provider's raw webhook receipts (plumbing, no firm
 // content). Client money (invoices, payments, trust entries) registers its own exporter (the money lane, FO-7*).
 import type { ModuleExportInput } from "../../../../ports/firm-export.ts";
@@ -13,6 +14,8 @@ import { tableSection, type TableSpec } from "../../platform/firm-export/platfor
 import type { Tx } from "../../platform/firm-export/registry.ts";
 
 export const FRONT_OFFICE_MODULE = "front-office";
+/** The two front-office tables left out on purpose (the check compares the schema's fo_ tables with FO_TABLES plus these). */
+export const FO_LEFT_OUT = Object.freeze(["FoBookingToken", "FoSigningHookReceipt"] as const);
 
 /** The front office's tables, in the order a person reads them. */
 export const FO_TABLES: readonly TableSpec[] = [
@@ -26,12 +29,12 @@ export const FO_TABLES: readonly TableSpec[] = [
   ["consultation-records", "Consultation records", "FoConsultRecord"], ["conflict-checks", "Conflict checks", "FoConflictCheck"], ["identity-checks", "Identity checks", "FoIdentityCheck"],
   ["duplicate-reviews", "Duplicate reviews", "FoDupReview"], ["duplicate-merges", "Duplicate merges", "FoDupMerge"],
   ["retainer-templates", "Retainer templates", "FoRetainerTemplate"], ["retainers", "Retainers", "FoRetainer"], ["retainer-versions", "Retainer versions", "FoRetainerVersion"],
-  ["retainer-fee-rows", "Retainer fee rows", "FoRetainerFeeRow"], ["signature-requests", "Signature requests", "FoSignatureRequest"], ["signers", "Signers", "FoSigner"],
+  ["retainer-fee-rows", "Retainer fee rows", "FoRetainerFeeRow"], ["signature-requests", "Signature requests", "FoSignatureRequest"], ["signers", "Signers", "FoSigner", undefined, ["code_sha256", "session_sha256"]],
   ["signing-documents", "Documents sent for signing", "FoSigningDocument"], ["signing-evidence", "Signing evidence (sealed documents and audit trails)", "FoSigningEvidence"],
 ];
 
 /** A stored file's name in the zip: the section, the row id, then the last part of its stored key (keeps its extension). */
-const fileName = (prefix: string, id: string, key: string) => `${prefix}-${id}-${(key.split("/").pop() ?? "file").replace(/[^A-Za-z0-9._-]/g, "_")}`.slice(0, 150);
+const fileName = (prefix: string, id: string, key: string) => `${prefix}-${id}-${key.split("/").pop()!.replace(/[^A-Za-z0-9._-]/g, "_")}`.slice(0, 150);
 
 /** The front office module's exporter. */
 export async function frontOfficeSections(firmId: string, tx: Tx): Promise<ModuleExportInput> {
@@ -44,6 +47,10 @@ export async function frontOfficeSections(firmId: string, tx: Tx): Promise<Modul
     files.push({ key: e.auditFileKey, name: fileName("signing-audit", e.requestId, e.auditFileKey), sha256: e.auditSha256 });
   }
   for (const v of await tx.foRetainerVersion.findMany({ where, orderBy: { id: "asc" }, select: { id: true, fileKey: true, originalSha256: true } })) files.push({ key: v.fileKey, name: fileName("retainer-version", v.id, v.fileKey), sha256: v.originalSha256 });
+  for (const r of await tx.foRetainer.findMany({ where: { firmId, offlineFileKey: { not: null } }, orderBy: { id: "asc" }, select: { id: true, offlineFileKey: true, offlineFileSha256: true } }))
+    if (r.offlineFileKey && r.offlineFileSha256) files.push({ key: r.offlineFileKey, name: fileName("retainer-signed-offline", r.id, r.offlineFileKey), sha256: r.offlineFileSha256 });
+  for (const c of await tx.foIdentityCheck.findMany({ where: { firmId, copyFileKey: { not: null } }, orderBy: { id: "asc" }, select: { id: true, copyFileKey: true, copySha256: true } }))
+    if (c.copyFileKey && c.copySha256) files.push({ key: c.copyFileKey, name: fileName("identity-document-copy", c.id, c.copyFileKey), sha256: c.copySha256 });
   for (const t of await tx.foRetainerTemplate.findMany({ where, orderBy: { id: "asc" }, select: { id: true, fileKey: true, fileSha256: true } })) files.push({ key: t.fileKey, name: fileName("retainer-template", t.id, t.fileKey), sha256: t.fileSha256 });
-  return { module: FRONT_OFFICE_MODULE, sections, files, words: "Each signed document is listed with its sealed copy and its audit trail. Booking links and the signing provider's raw notices are not included. Client money (invoices, payments and trust entries) is not in this download yet." };
+  return { module: FRONT_OFFICE_MODULE, sections, files, words: "Each signed document is listed with its sealed copy and its audit trail; a retainer signed offline has its signed copy; a kept identity document copy is included. Each retainer template's current file is included, not its earlier files. Booking links, a signer's one-time code and session, and the signing provider's raw notices are not included." };
 }

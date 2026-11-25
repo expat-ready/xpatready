@@ -52,7 +52,7 @@ const { PgLegalHolds } = await import("../api/src/platform/register/holds/adapte
 const { FirmExportController } = await import("../api/src/platform/firm-export/routes.ts");
 const feature = (await import("../api/src/features/platform-firm-export.ts")).default;
 const foFeature = (await import("../api/src/features/front-office-firm-export.ts")).default;
-const { FO_TABLES, frontOfficeSections, FRONT_OFFICE_MODULE } = await import("../api/src/front-office/export/sections.ts");
+const { FO_TABLES, FO_LEFT_OUT, frontOfficeSections, FRONT_OFFICE_MODULE } = await import("../api/src/front-office/export/sections.ts");
 
 const fc = new FakeClock("2026-11-24T10:00:00Z"), jobs = fakeJobs(fc), files = fakeFiles();
 const clock = new (class extends PlatformClock { override now() { return fc.now().getTime(); } })();
@@ -259,8 +259,32 @@ try {
   ok("PF-11 DW9 fail (DW6 on every front-office table): every section has a firm_id column and holds firm A's rows only; firm B's document and file are absent",
     foFirmCols.every((c) => c.hasFirm && c.ids.every((id) => id === FIRM_A)) && foFirmCols.find((c) => c.n.endsWith("/sales-setup.csv"))!.ids.length === 1 && !foCsv("front-office/signing-documents.csv").includes(docB) && !foNames.some((n) => n.includes(docB)), foFirmCols.filter((c) => !c.hasFirm || c.ids.some((id) => id !== FIRM_A)));
   ok("PF-11 DW9 fail: no front-office column named like a secret (a booking link's hash, a payload hash) reaches the zip", !foFirmCols.some((c) => /hash|token/i.test(foCsv(c.n).split("\r\n")[0])), foFirmCols.map((c) => foCsv(c.n).split("\r\n")[0]).filter((h) => /hash|token/i.test(h)));
-  const direct = await withFirm(FIRM_B, () => nestDb().$transaction((tx: never) => frontOfficeSections(FIRM_A, tx)));
-  ok("PF-11 DW9 fail: an exporter call run as firm B for firm A reads none of A's rows (the walls and the firm filter)", direct.sections.every((x) => x.rows.length === 0 || x.rows.every((r) => r.includes(FIRM_A))) && (direct.files ?? []).every((f) => f.key !== fA.key), direct.sections.filter((x) => x.rows.length).map((x) => x.key));
+  const theClient = nestDb() as unknown as import("@prisma/client").PrismaClient;
+  const direct = await withFirm(FIRM_B, () => theClient.$transaction((tx) => frontOfficeSections(FIRM_A, tx)));
+  ok("PF-11 DW9 fail: an exporter call run as firm B for firm A reads none of A's rows (the walls and the firm filter)", direct.sections.every((x) => x.rows.length === 0) && (direct.files ?? []).every((f) => f.key !== fA.key), direct.sections.filter((x) => x.rows.length).map((x) => x.key));
+  const { Prisma: P } = await import("@prisma/client");
+  const schemaFo = (P.dmmf.datamodel.models as readonly { name: string; dbName: string | null }[]).filter((m) => (m.dbName ?? "").startsWith("fo_")).map((m) => m.name).sort();
+  const covered = [...FO_TABLES.map((t) => t[2]), ...FO_LEFT_OUT].sort();
+  ok("PF-11 DW9 fail (review Major 3): every fo_ table in the schema is a section or named as left out (a new fo_ table fails this until it is placed)", JSON.stringify(schemaFo) === JSON.stringify(covered), schemaFo.filter((m) => !covered.includes(m)));
+  const signerHead = foCsv("front-office/signers.csv").split("\r\n")[0].split(",");
+  ok("PF-11 DW9 fail (review Major 2): a signer's one-time code and session sha256 are not in the zip; the stored files' sha256 are", !signerHead.includes("code_sha256") && !signerHead.includes("session_sha256") && foCsv("front-office/signing-documents.csv").split("\r\n")[0].split(",").includes("sha256"), signerHead);
+  ok("PF-11 DW9 pass: a fee row's amount is a minor column naming its own currency column (AG-16-22)", (await withFirm(FIRM_A, () => theClient.$transaction((tx) => frontOfficeSections(FIRM_A, tx)))).sections.find((x) => x.key === "retainer-fee-rows")!.columns.some((c) => c.key === "amount_minor" && c.kind === "minor" && c.currency === "currency"));
+  // Each kind of stored file, on a stand-in reader: one row per file-bearing table, every other read empty.
+  const sha = (n: number) => String(n).repeat(64).slice(0, 64), fakeRows: Record<string, unknown[]> = {
+    foSigningDocument: [{ id: "d1", fileKey: "k/doc.pdf", sha256: sha(1) }], foSigningEvidence: [{ requestId: "q1", sealedFileKey: "k/sealed.pdf", sealedSha256: sha(2), auditFileKey: "k/audit.pdf", auditSha256: sha(3) }],
+    foRetainerVersion: [{ id: "v1", fileKey: "k/v1.docx", originalSha256: sha(4) }], foRetainer: [{ id: "r1", offlineFileKey: "k/offline.pdf", offlineFileSha256: sha(5) }],
+    foIdentityCheck: [{ id: "i1", copyFileKey: "k/passport.jpg", copySha256: sha(6) }], foRetainerTemplate: [{ id: "t1", fileKey: "k/template.docx", fileSha256: sha(7) }] };
+  const fakeTx = new Proxy({}, { get: (_t, model: string) => ({ findMany: async (a: { select?: unknown }) => (a?.select ? fakeRows[model] ?? [] : []) }) });
+  const kinds = await frontOfficeSections(FIRM_A, fakeTx as never);
+  ok("PF-11 DW9 fail (review Major 1, Minor 3): every kind of stored file is listed: signing document, sealed copy, audit trail, retainer version, offline-signed retainer, identity document copy, template",
+    ["signing-document-d1-doc.pdf", "signed-q1-sealed.pdf", "signing-audit-q1-audit.pdf", "retainer-version-v1-v1.docx", "retainer-signed-offline-r1-offline.pdf", "identity-document-copy-i1-passport.jpg", "retainer-template-t1-template.docx"].every((n) => (kinds.files ?? []).some((f) => f.name === n)), (kinds.files ?? []).map((f) => f.name));
+  const lostDoc = crypto.randomUUID();
+  sql(`insert into fo_signing_document (id, firm_id, title, file_key, sha256, uploaded_by) values ('${lostDoc}', '${FIRM_A}', 'Lost', 'signing/lost/agreement.pdf', '${"9".repeat(64)}', '${R}')`);
+  const lostId = op(); sql(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, updated_at) values ('${lostId}', '${FIRM_A}', '${lostId}', '${R}', now())`);
+  await withFirm(FIRM_A, () => foSvc.build(lostId, FIRM_A));
+  const lostZip = sql(`select state from platform_firm_export where id = '${lostId}'`) === "READY" ? new PizZip((await files.get(FIRM_A, sql(`select file_key from platform_firm_export where id = '${lostId}'`)))!.bytes) : null;
+  ok("PF-11 DW9 fail (review Major 4): one listed file missing from the store does not fail the download: READY, the README names it, the other files are there",
+    !!lostZip && new RegExp(`signing-document-${lostDoc}-agreement\\.pdf: listed, but missing`).test(lostZip.file("README.txt")!.asText()) && !!lostZip.file(`front-office/files/signing-document-${docA}-agreement.pdf`), sql(`select state || '|' || coalesce(failed_reason, '') from platform_firm_export where id = '${lostId}'`));
 } catch (e) { ok("no unexpected error", false, String((e as Error)?.stack ?? e)); } finally {
   await app?.close();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);

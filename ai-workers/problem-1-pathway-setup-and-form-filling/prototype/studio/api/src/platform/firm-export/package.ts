@@ -31,7 +31,8 @@ export type PackageInput = {
   /** Lines the README adds after its own (the caller's gaps). */
   notes?: string[];
 };
-export type Package = { bytes: Uint8Array; rowCounts: Record<string, number> };
+/** `missing`: the listed files the store did not have (module, name; never content): skipped, named in the README (part 2). */
+export type Package = { bytes: Uint8Array; rowCounts: Record<string, number>; missing: { module: string; name: string }[] };
 
 export async function buildPackage(p: PackageInput): Promise<Package> {
   const zip = new PizZip(), enc = new TextEncoder(), rowCounts: Record<string, number> = {};
@@ -53,16 +54,19 @@ export async function buildPackage(p: PackageInput): Promise<Package> {
     for (const f of m.files) readme.push(`${m.module}/files/${f.name}: a stored file (sha256 ${f.sha256}).`);
     if (m.words) readme.push(`${m.module}: ${m.words}`);
   }
-  add("README.txt", [...readme, "", ...(p.notes ?? [])].join("\r\n") + "\r\n");
+  // The sections, then the stored files (each size checked before it is added), then the README, which names any listed
+  // file the store did not have: one lost object never blocks the firm's whole download (PF-11 part 2, review Major 4).
+  const missing: Package["missing"] = [];
   for (const m of p.modules) {
     for (const s of m.sections) add(`${m.module}/${s.key}.csv`, sectionCsv(s));
     for (const f of m.files) {
       const bytes = await p.file(f.key);
-      if (!bytes) throw new Error(`${m.module}: a listed file is missing from the store`);
+      if (!bytes) { missing.push({ module: m.module, name: f.name }); readme.push(`${m.module}/files/${f.name}: listed, but missing from the store when this download was made; it is not in this download.`); continue; }
       add(`${m.module}/files/${f.name}`, bytes);
     }
   }
+  add("README.txt", [...readme, "", ...(p.notes ?? [])].join("\r\n") + "\r\n");
   const bytes = new Uint8Array(zip.generate({ type: "uint8array", compression: "DEFLATE" }));
   if (bytes.byteLength > p.cap) throw new ExportTooLarge();
-  return { bytes, rowCounts };
+  return { bytes, rowCounts, missing };
 }
