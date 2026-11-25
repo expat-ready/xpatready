@@ -7,14 +7,14 @@
 // * Read: the plan with each instalment's settled part, derived, never stored: what the invoice no longer owes since the
 //   plan (paid, credited or written off) settles the instalments in order. So a payment is never the plan's and cancelling
 //   a plan leaves every payment as it was.
-// * Cancel: ACTIVE → CANCELLED, by a person, with a reason.
+// * Cancel: ACTIVE → CANCELLED, by a person, with a reason; its unsettled instalments then read "Cancelled".
 // * Each write: one transaction, the FO-7lk lock order, one audit line, then the ledger check (409 UNBALANCED rolls back).
 // Keys (routes.ts): make and cancel agent/invoice:issue (BACKLOG FO-7s4p note: P-578 adds no key), read agent/invoice:show.
 import { HttpException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
+import { PlanCancelIn, PlanIn } from "../../../../ports/client-money.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { MONEY, UUID, badField, notFound, parse } from "../invoices/drafts.ts";
@@ -24,26 +24,21 @@ import { failClosed, invoiceInScope, type ScopeOf } from "../reads/visibility.ts
 
 type Tx = Prisma.TransactionClient;
 type Reader = Tx | PrismaClient;
-/** At most 12 instalments: Sample (BACKLOG FO-7p "at most 12, Sample"; no source value). */
-export const MAX_INSTALMENTS = 12;
 const refuse = (code: string, detail: string, extra: Record<string, unknown> = {}): never => problem(409, "Not possible now", detail, { code, ...extra });
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "A date as YYYY-MM-DD.").refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d, "A real date as YYYY-MM-DD.");
-const reason = z.string({ error: "The reason is needed." }).trim().min(1, "The reason is needed.").refine((t) => [...t].length <= 200, "At most 200 characters.");
-export const PlanIn = z.strictObject({
-  instalments: z.array(z.strictObject({ dueDate: day, amountMinor: z.number({ error: "The amount (in cents) is needed." }).int("A whole number of cents.").min(1, "At least 1 cent.").max(1_000_000_000, "Too large.") }), { error: "The instalments are needed." })
-    .min(2, "A plan has at least 2 instalments.").max(MAX_INSTALMENTS, `A plan has at most ${MAX_INSTALMENTS} instalments (Sample).`),
-});
-export const CancelIn = z.strictObject({ reason });
-export type InstalmentView = { position: number; dueDate: string; amountMinor: number; settledMinor: number; status: "Settled" | "Part settled" | "Due" | "Overdue" };
-export type PlanView = { id: string; invoiceId: string; currency: "CAD" | "USD"; amountMinor: number; status: "ACTIVE" | "CANCELLED"; createdBy: string; cancelledBy: string | null; cancelReason: string | null;
-  settledMinor: number; instalments: InstalmentView[] };
+export type InstalmentView = { position: number; dueDate: string; amountMinor: number; settledMinor: number; status: "Settled" | "Part settled" | "Due" | "Overdue" | "Cancelled" };
+export type PlanView = { id: string; invoiceId: string; currency: "CAD" | "USD"; amountMinor: number; status: "ACTIVE" | "CANCELLED"; createdBy: string; cancelledBy: string | null; cancelledAt: string | null; cancelReason: string | null;
+  /** What the invoice no longer owes since the plan (paid, credited or written off), at most the plan's amount. */
+  settledMinor: number;
+  /** What is due on the invoice now, and the part of it the plan's unsettled instalments do not cover (a refund of money
+   *  paid before the plan raises what is due past the plan: review m4; cancel and plan again to cover it). */
+  dueNowMinor: number; uncoveredMinor: number; instalments: InstalmentView[] };
 
 /** Settles instalments in order with what the invoice no longer owes since the plan (pure; tested on its own). */
-export function settle(rows: { position: number; dueDate: string; amountMinor: number }[], settledMinor: number, today: string): InstalmentView[] {
+export function settle(rows: { position: number; dueDate: string; amountMinor: number }[], settledMinor: number, today: string, cancelled = false): InstalmentView[] {
   let left = Math.max(0, settledMinor);
   return [...rows].sort((a, b) => a.position - b.position).map((r) => {
     const s = Math.min(r.amountMinor, left); left -= s;
-    const status = s === r.amountMinor ? "Settled" : s > 0 ? "Part settled" : r.dueDate < today ? "Overdue" : "Due";
+    const status = s === r.amountMinor ? "Settled" : cancelled ? "Cancelled" : s > 0 ? "Part settled" : r.dueDate < today ? "Overdue" : "Due";
     return { position: r.position, dueDate: r.dueDate, amountMinor: r.amountMinor, settledMinor: s, status };
   });
 }
@@ -85,7 +80,7 @@ export class PaymentPlans {
 
   /** POST …/invoices/:id/plan/cancel { reason } → 200 the cancelled plan; payments are untouched. */
   async cancel(ctx: StaffContext, invoiceId: string, body: unknown): Promise<PlanView> {
-    const id = idOf(invoiceId), c = parse(CancelIn, body), today = dayOf(this.clock.now()), firmId = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    const id = idOf(invoiceId), c = parse(PlanCancelIn, body), today = dayOf(this.clock.now()), firmId = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
     const scope = await this.scopeOf(ctx);
     return this.write(async (tx) => {
       await invoiceInScope(tx, firmId, id, scope);
@@ -105,9 +100,11 @@ export class PaymentPlans {
   private async view(tx: Reader, firmId: string, id: string, today: string): Promise<PlanView | null> {
     const p = await tx.moneyPaymentPlan.findFirst({ where: firmScope(firmId, { invoiceId: id }), orderBy: [{ status: "asc" }, { createdAt: "desc" }], include: { instalments: true } });
     if (!p) return null;
-    const settled = Math.min(p.amountMinor, Math.max(0, p.amountMinor - (await dueOf(tx, firmId, id))));
-    return { id: p.id, invoiceId: id, currency: p.currency, amountMinor: p.amountMinor, status: p.status, createdBy: p.createdBy, cancelledBy: p.cancelledBy, cancelReason: p.cancelReason, settledMinor: settled,
-      instalments: settle(p.instalments.map((x) => ({ position: x.position, dueDate: dayOf(x.dueDate), amountMinor: x.amountMinor })), settled, today) };
+    const due = Math.max(0, await dueOf(tx, firmId, id)), settled = Math.min(p.amountMinor, Math.max(0, p.amountMinor - due));
+    return { id: p.id, invoiceId: id, currency: p.currency, amountMinor: p.amountMinor, status: p.status, createdBy: p.createdBy, cancelledBy: p.cancelledBy,
+      cancelledAt: p.cancelledAt?.toISOString() ?? null, cancelReason: p.cancelReason, settledMinor: settled, dueNowMinor: due,
+      uncoveredMinor: p.status === "ACTIVE" ? Math.max(0, due - (p.amountMinor - settled)) : 0,
+      instalments: settle(p.instalments.map((x) => ({ position: x.position, dueDate: dayOf(x.dueDate), amountMinor: x.amountMinor })), settled, today, p.status === "CANCELLED") };
   }
   private async balanced(tx: Tx, firmId: string, id: string) {
     const check = await ledgerCheck(tx, firmId, id);

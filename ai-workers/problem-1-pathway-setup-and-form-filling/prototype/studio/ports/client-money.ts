@@ -103,11 +103,23 @@ export const PaymentIn = z.strictObject({
   duplicateReferenceAcknowledged: z.boolean().optional(), unclearedAcknowledged: z.boolean().optional(),
 });
 export type PaymentIn = z.infer<typeof PaymentIn>;
-/** POST …/invoices/:id/credit-notes: `full` credits all that is left (a cancel, AG-6-48 rule 2), else `amountMinor`: the
- *  gross amount (Lead B (Track B) ruling 3: any tax split is Sample. Unconfirmed: no accountant). */
 /** POST …/invoices/:id/write-off (R1.96 part 1; AG-6-76): only the reason; the amount is what is still due. */
 export const WriteOffIn = z.strictObject({ reason: words("The reason", 200) });
 export type WriteOffIn = z.infer<typeof WriteOffIn>;
+/** At most 12 instalments in a payment plan: Sample (BACKLOG FO-7p "at most 12, Sample"; no source value). */
+export const MAX_INSTALMENTS = 12;
+/** POST …/invoices/:id/plan (R1.96 part 2; FO-7p, P-574 (5), P-578): 2 to 12 instalments, each a due date and a whole
+ *  amount; the route checks the sum against what is due, the dates against today and each other. */
+export const PlanIn = z.strictObject({
+  instalments: z.array(z.strictObject({ dueDate: day, amountMinor: whole("The amount (in cents)", 1, MINOR_MAX) }), { error: "The instalments are needed." })
+    .min(2, "A plan has at least 2 instalments.").max(MAX_INSTALMENTS, `A plan has at most ${MAX_INSTALMENTS} instalments (Sample).`),
+});
+export type PlanIn = z.infer<typeof PlanIn>;
+/** POST …/invoices/:id/plan/cancel (R1.96 part 2): only the reason. */
+export const PlanCancelIn = z.strictObject({ reason: words("The reason", 200) });
+export type PlanCancelIn = z.infer<typeof PlanCancelIn>;
+/** POST …/invoices/:id/credit-notes: `full` credits all that is left (a cancel, AG-6-48 rule 2), else `amountMinor`: the
+ *  gross amount (Lead B (Track B) ruling 3: any tax split is Sample. Unconfirmed: no accountant). */
 export const CreditNoteIn = z.strictObject({ full: z.boolean().optional(), amountMinor: whole("The amount (in cents)", 1, MINOR_MAX).optional(), reason: words("The reason", 200) })
   .refine((c) => (c.full === true) !== (c.amountMinor !== undefined), { message: "Give an amount, or choose a full credit note: one of the two.", path: ["amountMinor"] });
 

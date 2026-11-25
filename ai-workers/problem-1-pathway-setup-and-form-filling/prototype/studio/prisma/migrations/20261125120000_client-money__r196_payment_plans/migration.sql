@@ -103,7 +103,7 @@ CREATE TRIGGER "money_instalment_no_change" BEFORE UPDATE OR DELETE ON "money_in
 CREATE TRIGGER "money_instalment_no_truncate" BEFORE TRUNCATE ON "money_instalment" FOR EACH STATEMENT EXECUTE FUNCTION money_plan_no_delete();
 
 -- An instalment: of an ACTIVE plan written in this same transaction (so a plan's instalments are fixed when it commits),
--- in the plan's currency.
+-- in the plan's currency, due today or later.
 CREATE FUNCTION money_instalment_write() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE p record;
 BEGIN
@@ -116,6 +116,10 @@ BEGIN
   END IF;
   IF p.currency <> NEW.currency THEN
     RAISE EXCEPTION 'money_instalment: an instalment is in its plan''s currency (%)', p.currency USING ERRCODE = 'check_violation';
+  END IF;
+  -- Today or later, by the UTC day the API uses too (Sample: the firm's own time zone is not read yet, facts.ts dayOf).
+  IF NEW.due_date < (now() AT TIME ZONE 'UTC')::date THEN
+    RAISE EXCEPTION 'money_instalment: an instalment is due today or later (% given)', NEW.due_date USING ERRCODE = 'check_violation';
   END IF;
   NEW.created_at := now();
   RETURN NEW;

@@ -96,7 +96,7 @@ try {
   const three = (a: number, b: number, c: number) => [{ dueDate: today, amountMinor: a }, { dueDate: addDays(30), amountMinor: b }, { dueDate: addDays(60), amountMinor: c }];
 
   // ---------------------------------------------------------------------------------- P1: sums exactly (pass and fail)
-  const i1 = await issued(PA, 100000); await pay(i1, 10000, "E_TRANSFER");
+  const i1 = await issued(PA, 100000), p1first = await pay(i1, 10000, "E_TRANSFER");
   const off = await plan(i1, three(30000, 30000, 29999)), over = await plan(i1, three(30000, 30000, 30001));
   ok("R1.96 P1 fail: instalments 1 cent short of the 900.00 due → 409 SUM_MISMATCH naming 0.01 to add; 1 cent over → names 0.01 to remove; nothing written",
     off.status === 409 && off.body.code === "SUM_MISMATCH" && off.body.differenceMinor === 1 && /add CAD 0\.01/.test(off.body.detail)
@@ -147,16 +147,39 @@ try {
       && refused(`update money_instalment set amount_minor = 1 where plan_id = '${pid5}'`, /never removed/) && refused(`delete from money_instalment where plan_id = '${pid5}'`, /never removed/)
       && refused(`delete from money_payment_plan where id = '${pid5}'`, /never removed/) && refused(`update money_payment_plan set amount_minor = 1 where id = '${pid5}'`, /only changes once/)
       && refused(`update money_payment_plan set status = 'CANCELLED' where id = '${pid5}'`, /only changes once|cancel_check/));
-  ok("R1.96 P4 fail (database): a plan on a draft is refused; its amount is always what is due (a given 1 is replaced)",
+  ok("R1.96 P4 fail (database): a plan on a draft is refused; the plan written by SQL covers exactly what was due (the database writes its amount)",
     refused(`begin; insert into money_payment_plan (firm_id, invoice_id, currency, created_by) values ('${A}', '${d3}', 'CAD', 'seed:R1.96'); commit;`, /only for an issued invoice/)
       && sql(`select amount_minor from money_payment_plan where id = '${pid5}'`) === "30000");
+
+  // One failing SQL write per database rule (review M2), each in its own transaction and refused in its own words.
+  const planSql = (inv: string, rows: [number, number, number, string?][], cur = "CAD") => `begin; with p as (insert into money_payment_plan (firm_id, invoice_id, currency, created_by) values ('${A}', '${inv}', '${cur}', 'seed:R1.96') returning id, firm_id)
+    insert into money_instalment (firm_id, plan_id, position, due_date, amount_minor, currency) select firm_id, id, r.pos, current_date + r.d, r.amt, r.cur::"MoneyCurrency" from p,
+    (values ${rows.map(([pos, d, amt, c]) => `(${pos}, ${d}, ${amt}, '${c ?? "CAD"}')`).join(", ")}) as r(pos, d, amt, cur); commit;`;
+  const i7 = await issued(PD, 30000), plans7 = () => plans(i7);
+  const dbRules: [string, string, RegExp][] = [
+    ["one instalment, summing exactly", planSql(i7, [[1, 1, 30000]]), /2 to 12 instalments/],
+    ["positions 1 and 3 (a gap)", planSql(i7, [[1, 1, 15000], [3, 2, 15000]]), /2 to 12 instalments, numbered 1 to n/],
+    ["position 13", planSql(i7, [[1, 1, 15000], [13, 2, 15000]]), /money_instalment_position_check/],
+    ["two instalments on one date", planSql(i7, [[1, 5, 15000], [2, 5, 15000]]), /due after the one before/],
+    ["dates falling", planSql(i7, [[1, 9, 15000], [2, 5, 15000]]), /due after the one before/],
+    ["an instalment in USD", planSql(i7, [[1, 1, 15000], [2, 2, 15000, "USD"]]), /in its plan's currency/],
+    ["a plan in USD on a CAD invoice", planSql(i7, [[1, 1, 15000, "USD"], [2, 2, 15000, "USD"]], "USD"), /in its invoice's currency/],
+    ["an instalment due yesterday", planSql(i7, [[1, -1, 15000], [2, 2, 15000]]), /due today or later/],
+    ["a plan on a paid invoice", planSql(i3, [[1, 1, 10000], [2, 2, 10000]]), /nothing is due on this invoice/],
+    ["a second ACTIVE plan (i5 has one)", planSql(i5, [[1, 1, 15000], [2, 2, 15000]]), /money_payment_plan_one_active/],
+    ["an instalment for a plan cancelled in the same transaction", `begin; insert into money_payment_plan (firm_id, invoice_id, currency, created_by) values ('${A}', '${i7}', 'CAD', 'seed:R1.96');
+      update money_payment_plan set status = 'CANCELLED', cancelled_by = 'seed:R1.96', cancel_reason = 'Test (Sample)' where invoice_id = '${i7}';
+      insert into money_instalment (firm_id, plan_id, position, due_date, amount_minor, currency) select '${A}', id, 1, current_date + 1, 30000, 'CAD' from money_payment_plan where invoice_id = '${i7}'; commit;`, /written with their plan/],
+  ];
+  for (const [what, q, re] of dbRules) ok(`R1.96 P4 fail (database): ${what} → refused in its words; nothing written`, refused(q, re) && plans7() === 0 && plans(i3) === 0 && plans(i5) === 1);
+  ok("R1.96 P4 pass (database): the same plan with 2 rising instalments in CAD summing exactly commits", !refused(planSql(i7, [[1, 1, 15000], [2, 2, 15000]]), /./) && plans7() === 1);
 
   // ---------------------------------------------------------------------------------- P5: settled in order, derived
   await pay(i1, 30000, "E_TRANSFER");
   const r1 = await raw(tR, "GET", `/invoices/${i1}/plan`);
   await pay(i1, 15000, "E_TRANSFER");
   const r2 = await raw(tR, "GET", `/invoices/${i1}/plan`);
-  ok("R1.96 P5 pass: 300.00 paid settles instalment 1; 150.00 more part-settles instalment 2; nothing about the plan is stored as paid",
+  ok("R1.96 P5 pass: 300.00 paid settles instalment 1; 150.00 more part-settles instalment 2; the instalment rows keep only their amounts (no paid column), so settling is derived",
     r1.status === 200 && r1.body.settledMinor === 30000 && r1.body.instalments.map((x: { status: string }) => x.status).join() === "Settled,Due,Due"
       && r2.body.settledMinor === 45000 && r2.body.instalments[1].settledMinor === 15000 && r2.body.instalments[1].status === "Part settled" && insts() >= 3, [r1.body, r2.body]);
   await balanced("payments under a plan", i1);
@@ -176,6 +199,24 @@ try {
   const due1 = 100000 - 10000 - 30000 - 15000;
   const p6 = await plan(i1, [{ dueDate: addDays(1), amountMinor: due1 - 20000 }, { dueDate: addDays(31), amountMinor: 20000 }]);
   ok("R1.96 P6 pass: after the cancel a new plan covers exactly what is still due (450.00)", p6.status === 201 && p6.body.amountMinor === due1 && plans(i1) === 2, p6.body);
+  ok("R1.96 P6 pass (review m5): the cancelled plan's unsettled instalments read Cancelled, its settled one stays Settled, with when it was cancelled; one audit line for the cancel",
+    c1.body.instalments.map((x: { status: string }) => x.status).join() === "Settled,Cancelled,Cancelled" && Boolean(c1.body.cancelledAt) && c1.body.uncoveredMinor === 0
+      && Number(sql(`select count(*) from audit_event where action = 'invoice.plan_cancelled'`)) === 1, c1.body);
+  const ref = await raw(tR, "POST", `/payments/${p1first}/refunds`, { amountMinor: 10000, method: "E_TRANSFER", reason: "Paid before the plan, sent back (Sample)", idempotencyKey: "r196p-ref-1" });
+  const after = await raw(tR, "GET", `/invoices/${i1}/plan`);
+  ok("R1.96 P6 pass (review m4): a refund of money paid before the plan raises what is due past it; the plan says 100.00 is not covered",
+    ref.status === 201 && after.body.dueNowMinor === due1 + 10000 && after.body.uncoveredMinor === 10000 && after.body.status === "ACTIVE", [ref.body, after.body]);
+  const odd = await Promise.all(["Small \ud800 balance", "Client\u0000asked", "Two\nlines", "\u200b"].map((reason) => raw(tR, "POST", `/invoices/${i1}/plan/cancel`, { reason })));
+  ok("R1.96 P6 fail (review M1): a cancel reason with a broken character, a NUL, a line break or only a hidden character → 422 naming the reason, never a 500; the plan stays active",
+    odd.every((r) => r.status === 422 && r.body.fields?.reason) && /One line/.test(String(odd[2].body.detail)) && sql(`select status from money_payment_plan where id = '${p6.body.id}'`) === "ACTIVE", odd.map((r) => [r.status, r.body.detail]));
+  // C5 (review M2): an officer holding the keys but seeing no case and no client gets the same 404 on make, read and cancel.
+  const i8 = await issued(PD, 20000);
+  sql(`insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', 'agent/invoice:issue') on conflict do nothing;
+       delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key in ('agent/case:view.all', 'agent/prospect:view.all')`);
+  const scoped = [await plan(i8, [{ dueDate: addDays(1), amountMinor: 10000 }, { dueDate: addDays(2), amountMinor: 10000 }], tO), await raw(tO, "GET", `/invoices/${i1}/plan`), await raw(tO, "POST", `/invoices/${i1}/plan/cancel`, { reason: "Out of scope (Sample)" })];
+  sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/invoice:issue'`);
+  ok("R1.96 P3 fail (C5): an officer with the keys who sees no case and no client → 404 to make, read and cancel; nothing written or changed",
+    scoped.every((r) => r.status === 404) && plans(i8) === 0 && sql(`select status from money_payment_plan where id = '${p6.body.id}'`) === "ACTIVE", scoped.map((r) => [r.status, r.body.code]));
   await balanced("a cancel and a new plan", i1);
   await balanced("every write of this check (the whole firm)");
   ok("R1.96: no plan ever reached firm B", Number(sql(`select count(*) from money_payment_plan where firm_id = '${B}'`)) === 0 && PB.length > 0);
