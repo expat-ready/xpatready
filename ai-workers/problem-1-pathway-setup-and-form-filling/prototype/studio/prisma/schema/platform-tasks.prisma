@@ -1,4 +1,4 @@
-// platform-tasks.prisma — the firm's tasks (PF-29a, R1.75; owner: the R1.75 screens lane). One file per area (DB-SPLIT).
+// platform-tasks.prisma — the firm's tasks (PF-29a, R1.75; one file per area, DB-SPLIT). Owner: the R1.75 screens lane.
 // Migration 20261125100000_platform-tasks__pf29a_plat_task holds the rules Prisma cannot say. Written only by api/src/platform/tasks/.
 
 /// One task (AG-13-1, -2, -5, -8, -62; BR-19) on a host a module registers (tasks/hosts.ts): fo_person, case, case_client or
