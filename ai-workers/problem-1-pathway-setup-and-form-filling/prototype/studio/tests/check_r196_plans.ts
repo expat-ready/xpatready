@@ -156,6 +156,14 @@ try {
     insert into money_instalment (firm_id, plan_id, position, due_date, amount_minor, currency) select firm_id, id, r.pos, current_date + r.d, r.amt, r.cur::"MoneyCurrency" from p,
     (values ${rows.map(([pos, d, amt, c]) => `(${pos}, ${d}, ${amt}, '${c ?? "CAD"}')`).join(", ")}) as r(pos, d, amt, cur); commit;`;
   const i7 = await issued(PD, 30000), plans7 = () => plans(i7);
+  // A deposit invoice (FO-7w1's "On signing" bill, money_invoice.deposit; review round 4): a draft marked deposit is made
+  // as the retainer route makes it (written here as a seed row), then issued through the API.
+  const iDep = sql(`insert into money_invoice (id, firm_id, person_id, currency, deposit, created_by, updated_at) values (gen_random_uuid(), '${A}', '${PD}', 'CAD', true, 'seed:R1.96', now()) returning id`);
+  sql(`insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, currency) values ('${A}', '${iDep}', 1, 'FEE', 'On signing (Sample)', 1, 20000, 20000, 'CAD')`);
+  const depIssued = await raw(tR, "POST", `/invoices/${iDep}/issue`);
+  const depPlan = await plan(iDep, [{ dueDate: addDays(1), amountMinor: 10000 }, { dueDate: addDays(2), amountMinor: 10000 }]);
+  ok("R1.96 P3 fail (P-567, review round 4): a plan on an issued deposit invoice → 409 DEPOSIT in words; no plan",
+    depIssued.status === 200 && depPlan.status === 409 && depPlan.body.code === "DEPOSIT" && /never by a plan/.test(depPlan.body.detail) && plans(iDep) === 0, [depIssued.body, depPlan.body]);
   const dbRules: [string, string, RegExp][] = [
     ["one instalment, summing exactly", planSql(i7, [[1, 1, 30000]]), /2 to 12 instalments/],
     ["positions 1 and 3 (a gap)", planSql(i7, [[1, 1, 15000], [3, 2, 15000]]), /2 to 12 instalments, numbered 1 to n/],
@@ -166,12 +174,13 @@ try {
     ["a plan in USD on a CAD invoice", planSql(i7, [[1, 1, 15000, "USD"], [2, 2, 15000, "USD"]], "USD"), /in its invoice's currency/],
     ["an instalment due yesterday", planSql(i7, [[1, -1, 15000], [2, 2, 15000]]), /due today or later/],
     ["a plan on a paid invoice", planSql(i3, [[1, 1, 10000], [2, 2, 10000]]), /nothing is due on this invoice/],
+    ["a plan on a deposit invoice (P-567)", planSql(iDep, [[1, 1, 10000], [2, 2, 10000]]), /a deposit invoice is never paid by a plan/],
     ["a second ACTIVE plan (i5 has one)", planSql(i5, [[1, 1, 15000], [2, 2, 15000]]), /money_payment_plan_one_active/],
     ["an instalment for a plan cancelled in the same transaction", `begin; insert into money_payment_plan (firm_id, invoice_id, currency, created_by) values ('${A}', '${i7}', 'CAD', 'seed:R1.96');
       update money_payment_plan set status = 'CANCELLED', cancelled_by = 'seed:R1.96', cancel_reason = 'Test (Sample)' where invoice_id = '${i7}';
       insert into money_instalment (firm_id, plan_id, position, due_date, amount_minor, currency) select '${A}', id, 1, current_date + 1, 30000, 'CAD' from money_payment_plan where invoice_id = '${i7}'; commit;`, /written with their plan/],
   ];
-  for (const [what, q, re] of dbRules) ok(`R1.96 P4 fail (database): ${what} → refused in its words; nothing written`, refused(q, re) && plans7() === 0 && plans(i3) === 0 && plans(i5) === 1);
+  for (const [what, q, re] of dbRules) ok(`R1.96 P4 fail (database): ${what} → refused in its words; nothing written`, refused(q, re) && plans7() === 0 && plans(i3) === 0 && plans(i5) === 1 && plans(iDep) === 0);
   ok("R1.96 P4 pass (database): the same plan with 2 rising instalments in CAD summing exactly commits", !refused(planSql(i7, [[1, 1, 15000], [2, 2, 15000]]), /./) && plans7() === 1);
 
   // ---------------------------------------------------------------------------------- P5: settled in order, derived

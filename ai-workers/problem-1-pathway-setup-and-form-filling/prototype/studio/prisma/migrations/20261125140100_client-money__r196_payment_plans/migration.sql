@@ -9,7 +9,8 @@
 --   * At commit (a deferred constraint trigger): a plan has 2 to 12 instalments, at positions 1..n, with dates strictly
 --     rising, and their amounts sum exactly to the plan's amount. Instalments are never stored as paid: what is paid is
 --     derived from the invoice (payments in order), so cancelling leaves every payment as it was.
---   * Trust requests (deposits) are another table, so a plan is never on a deposit or trust money (P-567).
+--   * Never on a deposit (P-567): not on a trust request (another table) and not on a deposit invoice (money_invoice.deposit,
+--     FO-7w1's "On signing" bill).
 -- Rollback: DROP TABLE "money_instalment", "money_payment_plan"; DROP TYPE "MoneyPlanStatus"; DROP FUNCTION
 --   money_payment_plan_write(), money_payment_plan_change(), money_instalment_write(), money_payment_plan_sums(),
 --   money_plan_no_delete().
@@ -55,18 +56,21 @@ CREATE TABLE "money_instalment" (
 CREATE UNIQUE INDEX "money_instalment_firm_id_plan_id_position_key" ON "money_instalment"("firm_id", "plan_id", "position");
 ALTER TABLE "money_instalment" ADD CONSTRAINT "money_instalment_firm_id_plan_id_fkey" FOREIGN KEY ("firm_id", "plan_id") REFERENCES "money_payment_plan"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
--- A new plan: on an issued invoice, in its currency, while something is due; the amount it covers is the database's
+-- A new plan: on an issued invoice that is not a deposit, in its currency, while something is due; the amount it covers is the database's
 -- (what is due now, money_invoice_due), the time and the status too. The invoice row is locked first, so a payment or
 -- credit note at the same moment waits for the plan or the plan for it.
 CREATE FUNCTION money_payment_plan_write() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE i record; due bigint;
 BEGIN
-  SELECT x.issued_at, x.currency INTO i FROM "money_invoice" x WHERE x.firm_id = NEW.firm_id AND x.id = NEW.invoice_id FOR UPDATE;
+  SELECT x.issued_at, x.currency, x.deposit INTO i FROM "money_invoice" x WHERE x.firm_id = NEW.firm_id AND x.id = NEW.invoice_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'money_payment_plan: no such invoice in this firm' USING ERRCODE = 'foreign_key_violation';
   END IF;
   IF i.issued_at IS NULL THEN
     RAISE EXCEPTION 'money_payment_plan: a plan is only for an issued invoice' USING ERRCODE = 'check_violation';
+  END IF;
+  IF i.deposit THEN
+    RAISE EXCEPTION 'money_payment_plan: a deposit invoice is never paid by a plan (P-567)' USING ERRCODE = 'check_violation';
   END IF;
   IF i.currency <> NEW.currency THEN
     RAISE EXCEPTION 'money_payment_plan: a plan is in its invoice''s currency (%)', i.currency USING ERRCODE = 'check_violation';

@@ -2,8 +2,8 @@
 // plan of one issued invoice, ledger rules only (no pay link, no autopay, no card: FO-7p's later part).
 // * Make: 2 to 12 instalments (Sample), each a due date (today or later, strictly rising) and a whole amount; they must
 //   sum exactly to what is due on the invoice now, else 409 SUM_MISMATCH naming the difference (the database checks the
-//   same at commit, money_payment_plan_sums). One ACTIVE plan per invoice. Trust requests are another table: a plan is
-//   never on a deposit or trust money (P-567).
+//   same at commit, money_payment_plan_sums). One ACTIVE plan per invoice. Never on a deposit (P-567): a deposit invoice
+//   (money_invoice.deposit) is refused here and by the database; trust requests are another table.
 // * Read: the plan with each instalment's settled part, derived, never stored: what the invoice no longer owes since the
 //   plan (paid, credited or written off) settles the instalments in order. So a payment is never the plan's and cancelling
 //   a plan leaves every payment as it was.
@@ -58,6 +58,7 @@ export class PaymentPlans {
       await invoiceInScope(tx, firmId, id, scope);
       const inv = await lock(tx, firmId, id);
       if (!inv.issued) refuse("DRAFT", "A plan is for an issued invoice: issue it first. Nothing was saved.");
+      if (inv.deposit) refuse("DEPOSIT", `${inv.number} is a deposit ("On signing"): a deposit is paid in full, never by a plan. Nothing was saved.`);
       if (await tx.moneyPaymentPlan.findFirst({ where: firmScope(firmId, { invoiceId: id, status: "ACTIVE" as const }), select: { id: true } })) refuse("PLAN_EXISTS", `${inv.number} already has a plan: cancel it first. Nothing was saved.`);
       const due = await dueOf(tx, firmId, id);
       if (due <= 0) refuse("NOTHING_DUE", `Nothing is due on ${inv.number}, so there is nothing to plan. Nothing was saved.`);
@@ -133,6 +134,6 @@ async function lock(tx: Tx, firmId: string, id: string) {
   const [p] = await tx.$queryRaw<{ party: string; currency: string }[]>`select coalesce(person_id, company_id)::text as party, currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid`;
   if (!p) return notFound("invoice");
   await tx.$executeRaw`select money_trust_lock(${firmId}::uuid, ${p.party}::uuid, ${p.currency}::"MoneyCurrency")`;
-  const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; currency: "CAD" | "USD" }[]>`select issued_at is not null as issued, number, currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
+  const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; currency: "CAD" | "USD"; deposit: boolean }[]>`select issued_at is not null as issued, number, currency::text as currency, deposit from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
   return inv ?? notFound("invoice");
 }
