@@ -96,6 +96,7 @@ export class ConfigReadGuard implements CanActivate {
     const auth = req.headers.authorization, path = req.path ?? req.url ?? "";
     if (/^\/api\/(platform|front-office)(\/|$)/.test(path)) return true;   // PF-4 (Lead 43 OK on #1744): these paths belong to the platform guard (api/src/platform/identity/guard.ts)
     if (/^\/api\/system(\/|$)/i.test(path)) return true;   // PF-4s (Lead 1's OK on #2885, 22 Nov): our own staff's paths, in any letter case, belong to the system guard (api/src/platform/system-identity/guard.ts)
+    if (/^\/api\/portal(\/|$)/i.test(path)) return true;   // PF-4p (R1.62): clients' own paths, in any letter case, belong to the client guard (api/src/platform/client-identity/guard.ts)
     if (path.startsWith("/api/runtime/") && this.reflector.getAllAndOverride<PlatformAccess>(PLATFORM_ACCESS, [ctx.getHandler(), ctx.getClass()])?.kind === "keys") return true;   // CS-C1a (Lead 58's OK, #1818 comment 6892215478): a case route declaring permission keys (never AnyStaff or StaffSignIn) is the platform guard's; exact case only (PF-4 break M1)
     if (typeof auth === "string" && /^bearer\s/i.test(auth) && !path.startsWith("/api/link/")) throw new HttpException({ type: "https://expatready.local/problems/link-only", title: "Not for a link session", status: 403, detail: "A person's own link reaches only their own questions, never the firm's or the client's pages." }, HttpStatus.FORBIDDEN);
     const scope = this.reflector.getAllAndOverride<string>(READ_SCOPE, [ctx.getHandler(), ctx.getClass()]);
