@@ -156,3 +156,37 @@ Head reviewed: `7bb39be681ee540aa0f60739250539d50e47acb7`. The review was fresh 
 Reviewer: Approve 7bb39be681ee540aa0f60739250539d50e47acb7
 
 **Verdict: Approve** (head `7bb39be681ee540aa0f60739250539d50e47acb7`). No open Blocker or Major.
+
+## Round 5 (diff-only, a2acd4caa), 25 Nov 2026
+
+Head reviewed: `a2acd4caa55d547f859059aa9a785af00e9aae9e` on `claude/quirky-mayer-g0iinz` (PR #3277), after `git fetch origin`. Local and `origin` both point at this head. This round reads only `git diff 7f59eb08 a2acd4caa`, measured from the last Approve on `7f59eb0884a435b8c1b6875e398fda2f6017b117`. It covers two commits. I did not re-review code that earlier rounds approved.
+
+**1. Merge of main (`0f599be1c`).**
+- The merge's parents are `7f59eb08` and `63f5cc913`, and `63f5cc913` is `origin/main` at review time, so main is fully included.
+- `git show --remerge-diff 0f599be1c` and `git diff-tree --cc 0f599be1c` are both empty. Nobody resolved a conflict by hand.
+- The PR's own content did not change. Its delta against main before the merge (`245e2ce8e..7f59eb08`) and after it (`63f5cc913..0f599be1c`) is the same patch, once index and hunk lines are ignored: 14 files, +1183, insertions only.
+- Main and the PR overlap in two files, `package.json` and `package-lock.json`. Main added `pdfjs-dist` 6.5.438 and the `@napi-rs/canvas` packages; the PR added `@tus/server` 2.4.7 and `@tus/file-store` 2.1.2. The two edits auto-merged cleanly. I checked the lockfile: every package.json entry, both dependency kinds, matches the lock's root entry and has its own `node_modules/` entry at that version.
+- Main's new migrations do not touch the rail:
+  - `fo9b_review` grants and then revokes CREATE on public for `xr_wall_reader`.
+  - `pf21d_switch` adds the switch tables, with no grant for `xr_data`.
+  - `pf21d_erasure` adds columns and a trigger to `plat_data_request`.
+  - `aud3_audit_log_keys` adds permission rows on PF-12's wall.
+  - `fo6_signing_session` has no grant and no `plat_` reference.
+  - None of them names `plat_file`, `plat_file_write` or `PlatFileScanState`, or changes `xr_data`'s rights on `plat_file`.
+- Main's other changes also miss the rail. It changed no file under `platform/files/` and nothing in FilesPort. Its new feature files (`case-keep-period`, `client-money-reversals`, `front-office-merge`, `platform-erasure`) leave `platform-files.ts` alone, and `check_features_registry` is green with them.
+- PF-21d's eraser runs on modules that register an eraser. It has no list of tables, so `plat_file` creates no gap that this PR has to close.
+
+**2. Re-stamp (`a2acd4caa`).** The folder moves from `20261124060000_pff2_plat_file` to `20261125120000_pff2_plat_file` and git sees it as a rename (similarity 93 %). The SQL is unchanged: the only lines that differ are the `-- Stamp:` header comment (two lines) and the folder name in the `-- Rollback` comment. The test constant `NEW` in `check_pff2_uploads.ts:26` and the `Tables:` line in `platform/MODULE.rows/PF-F2.md` both name the new folder. At head, the old stamp appears only in the header's own "re-stamped from" note and in earlier records (this file, the break report).
+- On ordering, main's newest migration is `20261124170000_aud3_audit_log_keys`, so the new stamp sorts after every migration on `origin/main`. DW9 also asserts that it sorts last and is unique.
+- On uniqueness, I listed the migration folders of every remote branch, including the mergify queue. Three folders on other branches are stamped 20261125: `20261125050000_shared__pf11_firm_export` (runtime-pf11-export), `20261125090000_pf22a_custom_fields` (nice-turing-ue036e) and `20261125113000_aud1c_audit_chain` (runtime-aud1c-chain). Only this branch and the stacked #3640 branch (`runtime-pff2-head-finish`) contain `20261125120000_pff2_plat_file`. In #3640 the migration folder is identical to this head's.
+
+**Run:** on `a2acd4caa` I ran `run-suites.sh --only "check_prisma_schema.ts check_pff2_uploads.ts check_pf8b_f4_migrations.ts check_pf12_walls.ts check_pf21b_holds.ts check_pf3_platform_schema.ts check_features_registry.ts"`, exit 0. The suites passed with 8, 40 (including DW9), 9/9, 110, 67, 75 and 27, the same counts as the builder's. Postgres 18 was on :54329, never :4400. The run left the working tree clean.
+
+**Findings:** none. No Blocker, no Major, no new Minor. One note for whoever lands later: the three open branches named above have stamps earlier than this one. If this PR merges first, each of them needs a re-stamp past `20261125120000` under P-600. That work belongs to them, not to this PR.
+
+**Journey score:** not scored this round, as in rounds 3 and 4. The change is API and schema only, with no screen.
+**Not checked:** I did not look at CI check runs on `a2acd4caa`; the only run is my local one above. The carried Known gap (HEAD after a failed finish) is out of scope here, because stacked PR #3640 fixes it.
+
+Verdict: Approve a2acd4caa55d547f859059aa9a785af00e9aae9e
+
+**Verdict: Approve** (head `a2acd4caa55d547f859059aa9a785af00e9aae9e`). No open Blocker or Major.
