@@ -72,7 +72,7 @@ export class MoneySummary {
       const held = showTrust ? await tx.$queryRaw<{ caseId: string | null; currency: "CAD" | "USD"; amount: string }[]>`select e.case_id::text as "caseId", e.currency::text as currency, sum(e.amount_minor)::text as amount
         from money_trust_entry e where e.firm_id = ${f}::uuid and ${partyCol(party, "e")} = ${party.id}::uuid and ${seenSql(scope, "e")} group by e.case_id, e.currency` : [];
       const credit = await tx.$queryRaw<{ caseId: string | null; currency: "CAD" | "USD"; amount: string }[]>`select e.case_id::text as "caseId", e.currency::text as currency, sum(e.amount_minor)::text as amount
-        from money_credit_entry e where e.firm_id = ${f}::uuid and ${partyCol(party, "e")} = ${party.id}::uuid and ${seenSql(scope, "e")} group by e.case_id, e.currency`;
+        from money_credit_entry e where e.firm_id = ${f}::uuid and coalesce(e.person_id, e.company_id) = ${party.id}::uuid and ${partyCol(party, "e")} = ${party.id}::uuid and ${seenSql(scope, "e")} group by e.case_id, e.currency`;   // the coalesce matches money_credit_entry_party_seq (firm, coalesce(person, company), currency, seq; entries before a case), so those are read by the index, not by a scan of the firm (review m: no party index)
       // one row per (case, currency) any of the three reads names
       const rows = new Map<string, CaseFigures>(), key = (c: string | null, cur: string) => `${c ?? "-"}|${cur}`;
       const at = (caseId: string | null, currency: "CAD" | "USD") => { const k = key(caseId, currency); let r = rows.get(k); if (!r) { r = { ...zero(currency, showTrust), caseId, caseLabel: null }; rows.set(k, r); } return r; };

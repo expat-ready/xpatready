@@ -214,6 +214,15 @@ try {
   const q422 = await call(tA, "GET", `/front-office/money/parties/person/${PC}/summary?foo=1`);
   ok("FO-7r S9 fail (break m1): the summary refuses a query field it does not take, 422 naming it", q422.status === 422 && JSON.stringify(q422.body).includes("foo"), q422.body);
 
+  // break round 2 m1: payments received on three days before the invoice was issued all count from the issue, and keep
+  // the order they were received in (the fact's own time breaks the tie, never the row's random id)
+  const PD = person(A, "d"), dInv = await make(10000, PD); await issue(dInv);
+  for (const [days, amount] of [[3, 2000], [2, 1000], [1, 500]] as const)
+    await call(tA, "POST", `${M}/${dInv}/payments`, { method: "CASH", amountMinor: amount, receivedOn: dayOf(new Date(Date.now() - days * 86_400_000)), idempotencyKey: `fo7r-pre-${days}` });
+  const dPays = (await walk(allStmt, PD)).items.filter((l: any) => l.kind === "PAYMENT").map((l: any) => l.amountMinor);   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  ok("FO-7r S1 pass: payments received before the issue follow the invoice in the order received (−20.00, −10.00, −5.00)", JSON.stringify(dPays) === JSON.stringify([-2000, -1000, -500]), dPays);
+  ok("FO-7r S1 fail: the same three in any other order fail the comparison", JSON.stringify([...dPays].reverse()) !== JSON.stringify([-2000, -1000, -500]));
+
   // ---------------------------------------------------------------------------------------------------- S3
   const yesterday = dayOf(new Date(Date.now() - 86_400_000)), tomorrow = dayOf(new Date(Date.now() + 86_400_000));
   const pToday = await walk(allStmt, PA, { from: today, to: today }), pPast = await walk(allStmt, PA, { from: "2025-01-01", to: yesterday }), pNext = await walk(allStmt, PA, { from: tomorrow });
@@ -277,6 +286,14 @@ try {
     insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PA2}', 'OTHER-' || g, 'CAD', date '2026-03-01', now(), 'seed:FO-7r-bulk', 'seed:FO-7r-bulk', now() from generate_series(1, 3000) g;
     insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PA2}', 'APPLIED', -100, 'CAD', 1000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.number like 'OTHER-%';
     insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PA2}', 'WITHDRAWAL_TO_INVOICE', -100, 'CAD', 1000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.number like 'OTHER-%';
+    -- break round 2 M1: a large firm: another client with 50,000 invoices, each with a line, a payment, a credit note, credit
+    -- applied and a trust withdrawal (performance rows: written with triggers off)
+    insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PA2}', 'BIG-' || g, 'CAD', date '2026-03-01', now(), 'seed:FO-7r-bulk', 'seed:FO-7r-bulk', now() from generate_series(1, 50000) g;
+    insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.number like 'BIG-%';
+    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 100, 'CAD', 'OPERATING', now(), 'big-' || i.id, 'seed:FO-7r-bulk' from money_invoice i where i.number like 'BIG-%';
+    insert into money_credit_note (firm_id, invoice_id, number, amount_minor, currency, reason, created_by) select '${A}', i.id, 'BIGCN-' || i.number, 10, 'CAD', 'Bulk (Sample)', 'seed:FO-7r-bulk' from money_invoice i where i.number like 'BIG-%';
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PA2}', 'APPLIED', -5, 'CAD', 10000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.number like 'BIG-%';
+    insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PA2}', 'WITHDRAWAL_TO_INVOICE', -20, 'CAD', 10000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.number like 'BIG-%';
     analyze`);
   await inA(() => allStmt.statement(ctxR, "person", PBULK, {}));   // warm
   let t0 = performance.now(); const bs = await inA(() => allStmt.statement(ctxR, "person", PBULK, {})); const msS = Math.round(performance.now() - t0);
@@ -285,7 +302,7 @@ try {
   t0 = performance.now(); const viaRoute = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement`); const msRoute = Math.round(performance.now() - t0);
   t0 = performance.now(); const sumRoute = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/summary`); const msSumRoute = Math.round(performance.now() - t0);
   const inv0 = bs.accounts.find((x) => x.account === "INVOICES")!, b0 = bsum.totals[0]!;
-  ok(`FO-7r S8 pass: 10,000 invoices, each with a credit note and a trust withdrawal, plus 1,000 payments, 1,000 corrections, 100 credit applications and 3,000 of another client's: page 1 in ${msS} ms (route ${msRoute} ms), the summary in ${msSum} ms (route ${msSumRoute} ms), each within 300 ms`,
+  ok(`FO-7r S8 pass: 10,000 invoices, each with a credit note and a trust withdrawal, plus 1,000 payments, 1,000 corrections, 100 credit applications, in a firm holding 53,000 other invoices with their payments, credit and trust rows: page 1 in ${msS} ms (route ${msRoute} ms), the summary in ${msSum} ms (route ${msSumRoute} ms), each within 300 ms`,
     msS < 300 && msSum < 300 && msRoute < 300 && msSumRoute < 300 && viaRoute.status === 200 && sumRoute.status === 200 && bs.items.length === 50 && !!bs.next
     && b0.billedMinor === 10_000_000 && b0.paidMinor === 400_000 + 180_000 && b0.creditedMinor === 100_000 && b0.creditAppliedMinor === 500 && inv0.closingMinor === 10_000_000 - 100_000 - 580_000 - 500 && inv0.closingMinor === b0.owedMinor,
     { msS, msSum, msRoute, msSumRoute, closing: bs.accounts, totals: bsum.totals });
