@@ -235,12 +235,11 @@ try {
       && /estimated_tax_check/.test(dbRule(`update money_trust_request set estimated_tax_minor = -1 where id = '${q1}'`))
       && /estimated_tax_check/.test(dbRule(`update money_trust_request set estimated_tax_minor = 5 where id = '${staff7.id}'`)));
 
-  ok("R1.60 B4 fail (break a1 m5): the database keeps a version's request: no delete, no change of its version, and no version on a request a signing did not prepare",
-    /never deleted/.test(dbRule(`delete from money_trust_request where id = '${q1}'`))
-      && /never changes/.test(dbRule(`update money_trust_request set retainer_version_id = gen_random_uuid() where id = '${q1}'`))
-      && /never changes/.test(dbRule(`update money_trust_request set retainer_version_id = gen_random_uuid() where id = '${staff7.id}'`))
-      && /only a deposit request prepared/.test(dbRule(`insert into money_trust_request (firm_id, person_id, amount_minor, purpose, created_by, retainer_version_id, updated_at) values ('${A}', '${p1.personId}', 100, 'x', 'test', gen_random_uuid(), now())`)));
-  ok("R1.60 B4 pass: #3033's unsent request (no version) may still be deleted, as before", dbRule(`begin; delete from money_trust_request where id = '${staff7.id}'; rollback`) === "ok");
+  ok("R1.60 B4 fail (break a1 m5): the database never deletes a prepared request, so its version stays held (B4)",
+    /never deleted/.test(dbRule(`delete from money_trust_request where id = '${q1}'`)) && count("money_trust_request", `id = '${q1}'`) === 1);
+  ok("R1.60 B4 pass: #3033's unsent request may still be deleted, and FO-7ts's version rules are unchanged (an unsent request's version may change)",
+    dbRule(`begin; delete from money_trust_request where id = '${staff7.id}'; rollback`) === "ok"
+      && dbRule(`begin; update money_trust_request set retainer_version_id = gen_random_uuid() where id = '${staff7.id}'; rollback`) === "ok");
   // break a1 m4: the size check counts the estimated tax (13 % on 21,474,836.47 is past one request)
   const big = await db.$transaction((tx) => prepareDepositOnSigning(tx, { audit: auditEvent, notifications: null }, A, { ...facts1, retainerVersionId: randomUUID(), fees: [{ ...facts1.fees[0], amountMinor: "2147483647" }] }));
   const fits = await db.$transaction((tx) => prepareDepositOnSigning(tx, { audit: auditEvent, notifications: null }, A, { ...facts1, retainerVersionId: randomUUID(), fees: [{ ...facts1.fees[0], amountMinor: "1900000000" }] }));
