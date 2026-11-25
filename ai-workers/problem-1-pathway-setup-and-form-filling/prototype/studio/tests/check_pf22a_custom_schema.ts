@@ -72,13 +72,7 @@ try {
       const altered = [...s.matchAll(/ALTER TABLE "(\w+)"/g)].map((m) => m[1]).filter((t) => !TABLES.includes(t));
       const inserts = [...s.matchAll(/^\s*INSERT INTO "(\w+)"/gm)].map((m) => m[1]).sort().join(",");
       return altered.length === 0 && !/\bDROP\b/i.test(s) && !/^\s*(UPDATE|DELETE)\b/im.test(s) && inserts === "platform_permission_key,platform_role_permission"; })());
-  const later = all.filter((d) => d > NEW);
-  for (const d of later) psqlFile(EMPTY, join(MIG, d, "migration.sql"));
-  mkdirSync(WORK, { recursive: true });
-  const cfg = join(WORK, "prisma.config.ts");
-  writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(urlOf(EMPTY))} } });\n`);
-  const diff = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
-  ok(`PF-22a DW1 pass: prisma migrate diff between the fully migrated database (this migration, then the ${later.length} after it) and the schema is empty`, diff.status === 0, `${diff.stdout}${diff.stderr}`.slice(0, 800));
+  // The rollback runs on the demo copy right after its own migration, before any later one (own-migration guard, P-600).
   ok("PF-22a DW1 pass: rollback.sql undoes it on the demo copy (no table, function, type or key left), and the migration applies again",
     (() => { // psql-applied copies have no _prisma_migrations: a stand-in lets rollback's last line run as it would after Prisma
       sqlOn(DEMO, `create table if not exists "_prisma_migrations" (migration_name text); insert into "_prisma_migrations" values ('${NEW}')`);
@@ -86,7 +80,13 @@ try {
       const left = sqlOn(DEMO, `select (select count(*) from pg_class where relname like 'plat_custom_%' or relname = 'plat_saved_view') + (select count(*) from pg_proc where proname like 'pf_custom_%') + (select count(*) from pg_type where typname = 'PlatCustomFieldType') + (select count(*) from platform_permission_key where key = 'agent/custom-field:manage') + (select count(*) from "_prisma_migrations" where migration_name = '${NEW}')`);
       psqlFile(DEMO, join(MIG, NEW, "migration.sql"));
       return left === "0" && walled(DEMO) === "ttt" && demoFacts(DEMO) === demoBefore; })());
-
+  const later = all.filter((d) => d > NEW);
+  for (const d of later) psqlFile(EMPTY, join(MIG, d, "migration.sql"));
+  mkdirSync(WORK, { recursive: true });
+  const cfg = join(WORK, "prisma.config.ts");
+  writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(urlOf(EMPTY))} } });\n`);
+  const diff = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
+  ok(`PF-22a DW1 pass: prisma migrate diff between the fully migrated database (this migration, then the ${later.length} after it) and the schema is empty`, diff.status === 0, `${diff.stdout}${diff.stderr}`.slice(0, 800));
   // ------------------------------------------------------------------------------- the working database (all, seeded)
   for (const d of all) psqlFile(DB, join(MIG, d, "migration.sql"));
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
