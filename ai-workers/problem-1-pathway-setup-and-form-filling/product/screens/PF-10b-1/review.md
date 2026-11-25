@@ -101,3 +101,29 @@ Scope: `git diff 36321e5..44e66d4` under `prototype/studio/` (engine.ts, csv.ts,
 **Verdict: Block**: fix N1 (one header-length unit for the reader and `Mapping`, with a fail test). M1 to M4 are fixed. N2, N3 and the rest of Minor 6 are recommended.
 
 Reviewer: Block 44e66d41434b178d0ab82483cf7ee989f5ef08f4
+
+## Round 3 27ea390 (diff only)
+
+Scope: `git diff 44e66d4..27ea390` under `prototype/studio/`, three files: csv.ts (1 line plus a comment), engine.ts (the catch), and the check (one fail test). Round 3 was allowed by the tech lead. Reviewer: a session that did not build it.
+
+**Evidence run**
+* The builder's check (`tsx --tsconfig api/tsconfig.json tests/check_pf10b_import_engine.ts`): **46 passed, 0 failed**.
+* The reviewer's script (scratchpad `rr3b.mts`, not committed) is round 2's `rr44.mts` harness (Nest on :4436, fake jobs, a target that writes a real table). It runs upload, dry run, Run and the job for each header case. A probe (`probe3.mts`) records the Prisma 7 + adapter-pg error shapes.
+* The scratch database `xr_studio_pf10b_rr3_*` was dropped. No :4400 and no paid call (US$0). Two older databases, `xr_studio_pf10b_2289` and `_2685`, were created about an hour before this round with no sessions attached. They are not from this review and were left alone (`prune-test-dbs.sh`).
+
+**Round-2 findings**
+| # | Status | Evidence |
+|---|---|---|
+| N1 (Major) | **Fixed** | csv.ts:55 now uses `h.length` (UTF-16 units), the same unit as `Mapping`'s `z.string().max(200)` (ports/import-target.ts:64). Upload results by header: `"😀"×101` (202 units, the round-2 repro) gives **422 HEADER_TOO_LONG**. `"😀"×100 + "a"` (201 units) and `"h"×199 + "😀"` (201 units, 200 code points) give 422. `"h"×201` gives 422. Headers that pass, and the run gets through for each: `"😀"×100` (200 units), `"h"×200` and `"é"×200` each go 201 → DRY_RUN_READY → Run 201 RUNNING → job done → **COMPLETED** 1 created. A 200-unit astral header sent back as `null` in the dry run also ends COMPLETED. The check's DW1 fail test now includes the 101-emoji header (tests/check_pf10b_import_engine.ts:55). The error text still says "over 200 characters", which a non-technical importer reads as close enough: no finding. |
+| N2 (Minor) | Not changed | Not in this diff; it stays a Should. |
+| N3 (Minor) | **Partly fixed** | engine.ts:221 now re-throws P1001, P1002, P1008, P1017 and P2024, so the job stops and is retried. With Prisma 7 + `@prisma/adapter-pg` (the app's wiring), the codes that can happen are the socket ones: ECONNREFUSED → P1001 (probe: "Can't reach database server"), ECONNRESET → P1017, ETIMEDOUT → P1008. Those now stop and retry, which is sound and adds no new risk. When the stop happens after the retries run out, the batch stays RUNNING and a Run click resumes it, the same path as `ImportTargetUnavailable`. Still open: a server-side termination (a restart or failover, SQLSTATE 57P01) arrives as **P2010** with `meta.driverAdapterError.cause.code = "57P01"` and still becomes a lasting row error. Repro: `pg_terminate_backend` on the job's connection during row 1's transaction. The job did not stop: row 1 is `ERROR write_failed`, rows 2 and 3 CREATE, the batch is **PARTIAL**, and Run again gives 409 ALREADY_RUN. Deadlock and serialization faults are also still row errors: 40001 → P2034 is not in the list, and 40P01 is not mapped by the adapter. P1002 and P2024 cannot occur with this adapter (the pg pool has no acquire timeout here), so they are harmless dead entries. |
+
+**New findings**
+* **N4, Minor (Should), the rest of N3:** engine.ts:221 should also treat a driver-adapter SQLSTATE in classes `08` (connection) or `57P0x` (admin or crash shutdown), plus `40001` and `40P01`, as stop-and-retry. Those reach the catch as `meta.driverAdapterError.cause.code` or as P2034. The impact is unchanged from N3: the words are true ("could not be saved"), nothing is duplicated, and re-importing the file creates the row. Add one fail test with a target that throws a P1017-coded error, so the new branch is covered (no test exercises it today).
+* No new Blocker or Major. The csv.ts change only makes the reader stricter (astral headers of 101 to 200 code points are now refused at upload, with words), and nothing else reads `MAX_HEADER`.
+
+**Journey (reviewer, API-level only, no screen in part 1): 8/10.** This is up from 7. Round 2's dead end (a preview that passes, then a Run that can never happen) is gone. Every header that passes upload can now be run. The open Minors keep the score below 9: a same-minute Run click that queues nothing (N2), and a database restart mid-run that leaves a row as an error rather than retrying it (N4). No separate journey report was written (the caller limited the files written to this section).
+
+**Verdict: Approve**: N1 is fixed with a fail test. M1 to M4 stay fixed (the builder's check, 46/46). N2, N4 and the rest of Minor 6 are recommended, not blocking.
+
+Reviewer: Approve 27ea390fbd2e8e56e49983a693ff218d2a326988
