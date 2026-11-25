@@ -2,7 +2,7 @@
 
 current_lead: local_d66eb914-4168-4cdd-a293-10bec03b586f Lead 4 · 25 Nov 08:06 IST (after Lead 3 local_48775ee3 at 45% context; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 10:4x IST (clock): **Lead 4.** 61/101 Works; 19 Partial; 21 Not built. Merged since 09:36: #3625 (P-824..P-826), #3593 (R1.58), #3579 (R1.86), #3035 (OS-1). Queued: #3615 (R1.13 Works), #3641 (P-827, P-828). 20 builders running from cards; OS-3 running; OS-1 on pipeline-first. Disk 12 GB. Lead 4 context ~40%.
+updated: 2026-11-25 10:5x IST (clock): **Lead 4 check 10:40.** 62/101 Works (+R1.13 via #3615); #3630 (R1.86 Works) queued. 27 lanes running, OS-PM included. 13 shape questions answered 10:4x (approved; R1.57 and R1.91 share the repo secret STRIPE_TEST_SECRET_KEY); #3411 migration re-read done; #3527 round 5 allowed. Cards: R1.58 screens task_c8545cd8 (from the #3593 hand-over), R1.87 fresh task_1055cb29. **Founder: R1.107's lane waits on an environment prompt (allow canada.ca and provincial sites); the GitHub secret STRIPE_TEST_SECRET_KEY needs his own step (the classifier refused the Lead's relay to the accounts session).** #3641 (P-827, P-828) waits on fast. Lead 4 context ~45%: hand-over soon.
 
 ## Hand-over Lead 3 → Lead 4, 08:1x IST 25 Nov (Lead 3 at 45% context; earlier block: `history/STATE-2026-11-25-0810-lead3-handover-lead2-block.md`)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 3's 0427567f is deleted. Standby: Lead 5 local_9bab465f (start one more at the founder's next typed turn, P-286). Weekly 27% at 08:04 (claude.ai warns "on pace to hit your weekly limit early"): report the rate hourly today.
