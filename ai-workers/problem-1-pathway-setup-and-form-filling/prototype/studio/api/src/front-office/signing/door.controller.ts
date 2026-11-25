@@ -12,7 +12,7 @@ import { z } from "zod";
 import { OpenRead } from "../../core.ts";
 import { parseInput, strict, text } from "../../platform/http/input.ts";
 import { problem } from "../../platform/identity/keys.ts";
-import { DECLINE_REASON_MAX } from "./decline.ts";
+import { cleanReason, DECLINE_REASON_MAX, reasonLength } from "./decline.ts";
 import { NOT_WORK, SESSION_COOKIE, SESSION_MINUTES, sessionCookies, SigningDoor, TOKEN_SHAPE, type DoorAnswer } from "./door.ts";
 
 const WINDOW_MS = 60_000, PER_TOKEN = 30, MISSES_PER_ADDRESS = 300, MAX_KEYS = 50_000;   // Sample
@@ -51,7 +51,9 @@ const ipOf = (r: Rq) => String(r.ip ?? r.socket?.remoteAddress ?? "unknown");
 const CodeBody = strict({ resend: z.boolean().optional() });
 const VerifyBody = strict({ code: text(20) });
 const ConsentBody = strict({ agree: z.literal(true), consentTextVersion: text(40) });
-const DeclineBody = strict({ reason: text(DECLINE_REASON_MAX).optional() });   // FO-5d: trimmed, at most 500 (AG05-D4(7)); empty is none
+// FO-5d: at most 500 characters once cleaned (AG05-D4(7); counted in characters, review m2); empty is none.
+const DeclineBody = strict({ reason: z.string().max(8 * DECLINE_REASON_MAX).optional()
+  .refine((v) => v === undefined || reasonLength(cleanReason(v) ?? "") <= DECLINE_REASON_MAX, { message: `At most ${DECLINE_REASON_MAX} characters.` }) });
 
 @Controller("api/public/sign")
 export class SigningDoorController {

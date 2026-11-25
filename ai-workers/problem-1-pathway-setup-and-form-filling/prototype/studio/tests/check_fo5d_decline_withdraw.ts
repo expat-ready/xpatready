@@ -191,12 +191,71 @@ try {
     reqOf(f.q) === "DECLINED:true" && sql(`select status || '|' || withdrawn_reason from fo_retainer where id = '${f.rid}'`) === "WITHDRAWN|The firm's signer declined to sign after the client signed."
       && notes.sent().filter((x) => x.item.id === f.rid).length === 0);
 
+  // ---------------------------------------------------------------- review round 1: who is told, and who sees the item
+  const T = ctxOf("user-T", "sample-firm");
+  const h = await sent("Hal");
+  sql(`update fo_prospect set owner_staff_id = '${T.staffId}' where id = '${h.p.id}'`);   // a case officer owns it; R represents
+  await decline(h.token, { reason: "Not now (Sample)" });
+  const toldH = notes.sent().filter((x) => x.item.id === h.rid);
+  ok("FO-5d review M1 pass: the prospect's owner is told, not the representative, when they differ (one item, to the owner)",
+    toldH.length === 1 && toldH[0].staffId === T.staffId && T.staffId !== R.staffId, toldH);
+  const i = await sent("Ivy");
+  sql(`update fo_prospect set owner_staff_id = null where id = '${i.p.id}'`);
+  await decline(i.token, {});
+  const toldI = notes.sent().filter((x) => x.item.id === i.rid), rep = sql(`select representative_staff_id from fo_retainer where id = '${i.rid}'`);
+  ok("FO-5d review M1 pass: with no owner, the retainer's representative is told (one item)", toldI.length === 1 && toldI[0].staffId === rep, toldI);
+  // Stand-in, said: a consultation agreement is an fo_retainer row of kind CONSULTATION whose link has the same shape; a sent
+  // retainer is turned into one by SQL (triggers off) rather than walking FO-3c's booking flow, so the kind rule is what runs.
+  const k = await sent("Kai");
+  sql(`set session_replication_role = replica; update fo_retainer set kind = 'CONSULTATION' where id = '${k.rid}'; update fo_signature_request set document_kind = 'CONSULTATION' where id = '${k.q}'; set session_replication_role = origin; select 1`);
+  const dK = await decline(k.token, { reason: "Not for me (Sample)" }) as { message?: string };
+  ok("FO-5d review M2 pass: a consultation agreement declined on the door → DECLINED, and no item (AG-5-68 r6); the answer does not claim the firm was told",
+    retOf(k.rid) === "DECLINED" && notes.sent().filter((x) => x.item.id === k.rid).length === 0 && dK.message === "You declined this agreement.", { ret: retOf(k.rid), dK });
+  // The firm's own signer declining at the provider (Sent, before the client signed) tells nobody (review m3).
+  const fs = await sent("Flo");
+  await post((await signing.act(A, fs.d, signerOf(fs.q, "FIRM"), "declined"))[0]);
+  ok("FO-5d review m3 pass: the firm's signer declining at the provider makes the retainer DECLINED and no \"client declined\" item",
+    retOf(fs.rid) === "DECLINED" && notes.sent().filter((x) => x.item.id === fs.rid).length === 0);
+  // The labeller follows the retainer page's own rule (review M3): with "everyone sees all" off, a person who neither owns the
+  // prospect nor represents the retainer gets no name and no link; once the prospect is theirs, they do.
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  const before = await labels.of(T, [{ kind: "retainer", id: a.rid }]);
+  sql(`update fo_prospect set owner_staff_id = '${T.staffId}' where id = '${a.p.id}'`);
+  const after = await labels.of(T, [{ kind: "retainer", id: a.rid }]);
+  sql(`update fo_prospect set owner_staff_id = '${R.staffId}' where id = '${a.p.id}'`);
+  const away = await labels.of(T, [{ kind: "retainer", id: a.rid }]);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  ok("FO-5d review M3 fail/pass: with \"everyone sees all\" off, a reader who may not open the retainer gets no label; given the prospect, they do; reassigned away, none again",
+    T.keys.includes("agent/retainer:show") && before.size === 0 && after.get(`retainer|${a.rid}`)?.link === `/front-office/retainers/${a.rid}` && away.size === 0, { before: [...before], after: [...after], away: [...away] });
+  // The provider's decline for a client who already signed is refused and stored, never a 500 (review m5).
+  const j2 = await sent("Joy");
+  sql(`update fo_signer set consented_at = now(), consent_text_version = '${CONSENT}' where request_id = '${j2.q}'`);
+  await post((await signing.act(A, j2.d, signerOf(j2.q, "CLIENT"), "signed"))[0]);
+  const [lateDecl] = await signing.act(A, j2.d, signerOf(j2.q, "CLIENT"), "declined").catch(() => [null as unknown as SigningHookCall]);
+  const ld = lateDecl ? await post(lateDecl) : { applied: false, reason: "the vendor refused it" };
+  ok("FO-5d review m5 fail: the provider's decline for a client who signed → not applied (answered already), the request stays CLIENT_SIGNED", ld.applied === false && reqOf(j2.q) === "CLIENT_SIGNED:false", ld);
+  // Reasons are cleaned and counted in characters (review m2-m5).
+  const e3 = await sent("Ema"), emoji = "😀".repeat(500);
+  const dE = await refusal(() => decline(e3.token, { reason: emoji }));
+  ok("FO-5d review m2 pass: 500 emoji (500 characters) is a valid reason, kept whole", dE === null && [...sql(`select decline_reason from fo_signer where request_id = '${e3.q}' and role = 'CLIENT'`)].length === 500, dE);
+  const e4 = await sent("Eva");
+  const tooMany = await refusal(() => decline(e4.token, { reason: "😀".repeat(501) }));
+  ok("FO-5d review m2 fail: 501 emoji → 422 on the reason, nothing kept", tooMany?.status === 422 && reqOf(e4.q) === "SENT:false", tooMany);
+  await decline(e4.token, { reason: "\u200B\u200B \u0000\n" });
+  ok("FO-5d review m3-m5 pass: a reason of only zero-width, control and whitespace characters (a NUL included) is no reason: DECLINED, decline_reason null",
+    retOf(e4.rid) === "DECLINED" && sql(`select coalesce(decline_reason, 'null') from fo_signer where request_id = '${e4.q}' and role = 'CLIENT'`) === "null");
+  const e5 = await sent("Eli2");
+  await decline(e5.token, { reason: "\tOk\u200B with a\u0007 bell\u00A0" });
+  ok("FO-5d review m4-m5 pass: control and zero-width characters are removed and every whitespace trimmed before keeping",
+    sql(`select decline_reason from fo_signer where request_id = '${e5.q}' and role = 'CLIENT'`) === "Ok with a bell");
+
   // ---------------------------------------------------------------- D-DB: the database keeps the reason honest
   const g = await sent("Gus");
   const gs = signerOf(g.q, "CLIENT");
   ok("FO-5d D-DB fail: a reason without declined_at → refused by the database", sqlFails(`update fo_signer set decline_reason = 'x' where id = '${gs}'`) !== null);
-  ok("FO-5d D-DB fail: an untrimmed or over-500 reason → refused by the database",
-    sqlFails(`update fo_signer set declined_at = now(), decline_reason = ' x' where id = '${gs}'`) !== null && sqlFails(`update fo_signer set declined_at = now(), decline_reason = repeat('x', 501) where id = '${gs}'`) !== null);
+  ok("FO-5d D-DB fail: an untrimmed (space, newline, tab or no-break space), control-character or over-500 reason → refused by the database",
+    [`' x'`, `E'\\n'`, `E'\\tx'`, `'x' || chr(160)`, `'a' || chr(7) || 'b'`, `repeat('x', 501)`].every((v) => sqlFails(`update fo_signer set declined_at = now(), decline_reason = ${v} where id = '${gs}'`) !== null));
+  ok("FO-5d D-DB pass: 500 emoji are 500 characters to the database too", sqlFails(`begin; update fo_signer set declined_at = now(), decline_reason = repeat(chr(128512), 500) where id = '${gs}'; rollback`) === null);
   ok("FO-5d D-DB fail: a kept reason never changes (part 1's signer trigger)", sqlFails(`update fo_signer set decline_reason = 'another' where request_id = '${a.q}' and role = 'CLIENT'`) !== null
     && sql(`select decline_reason from fo_signer where request_id = '${a.q}' and role = 'CLIENT'`) === REASON);
 } finally {

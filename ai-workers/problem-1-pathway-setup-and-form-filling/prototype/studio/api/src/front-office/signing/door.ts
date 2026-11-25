@@ -122,11 +122,17 @@ export class SigningDoor {
         const cur = await this.locked(tx, f);
         const [r] = await tx.$queryRaw<{ status: string }[]>`select status::text from fo_signature_request where firm_id = ${f.firmId}::uuid and id = ${f.request.id}::uuid`;
         return applyDecline(tx, { firmId: f.firmId, request: { ...f.request, status: r.status }, signer: { id: cur.id, role: "CLIENT" }, reason: b.reason ?? null, actor: ACTOR, audit: this.audit, now: this.now(), notifications: signingNotifications() });
+      }).catch((e) => {
+        // Review m6: a decline racing a staff change (a lock wait, a deadlock, a serialisation) is asked again, never a 500.
+        if (/P2034|deadlock|could not serialize/i.test(String((e as Error)?.message ?? e))) problem(409, "Try again", "This agreement changed at the same time. Open the link again.", { code: "CHANGED" });
+        throw e;
       });
       try { await signingPort().cancel(f.firmId, f.request.providerDocumentId); } catch (e) {
         if (!(e instanceof SigningEnded || e instanceof SigningNotFound)) console.error(`[fo-signing] cancel after a decline did not finish: ${(e as Error)?.name ?? "error"}`);
       }
-      return { state: "DECLINED" as const, message: `You declined this agreement. ${f.firm} has been told.`, firm: f.firm, agreement: out.agreement };
+      // Review m1: "has been told" only when the firm's agreement itself became Declined (a retainer: one item, AG-5-68 r4).
+      const told = out.agreement === "DECLINED" && f.request.documentKind === "RETAINER";
+      return { state: "DECLINED" as const, message: told ? `You declined this agreement. ${f.firm} has been told.` : "You declined this agreement.", firm: f.firm, agreement: out.agreement };
     });
   }
 

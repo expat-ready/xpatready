@@ -10,8 +10,9 @@
 //     version, SENT or VIEWED becomes DECLINED and that version ends (DECLINED). After the client signed only the firm's
 //     signer can decline (through the provider): FO-5's states move CLIENT_SIGNED only to SIGNED, WITHDRAWN or
 //     SIGNED_OFFLINE, so it ends WITHDRAWN with that reason (as FO-3c's own handler does).
-//   * A retainer's decline tells the prospect's owner, or the representative when there is none, by one "needs you" item
-//     (AG-5-68 r4; kind `retainer-declined`, item `retainer`); a consultation agreement or another document tells nobody (r6).
+//   * A client's decline of a retainer tells the prospect's owner, or the representative when there is none, by one "needs
+//     you" item (AG-5-68 r4; kind `retainer-declined`, item `retainer`); a consultation agreement, another document or the
+//     firm's own signer declining tells nobody (r6).
 //   * One audit line for the request and one for the agreement, in this transaction; the reason is kept on the signer and
 //     shown on the agreement's signing state, never copied into an audit line or an event (the booking's cancel reason rule).
 // The provider's envelope is cancelled by the caller after the commit (the door's decline; the provider's own decline has
@@ -22,8 +23,17 @@ import { NOTIFICATION_KIND, type NotificationPort } from "../../../../ports/noti
 import { withFirm } from "../../platform/firm-scope.ts";
 
 type Tx = Prisma.TransactionClient;
-/** The reason's limit after trimming (AG05-D4(7)). */
+/** The reason's limit after trimming (AG05-D4(7)), in characters (code points, as the database's char_length counts). */
 export const DECLINE_REASON_MAX = 500;
+/** Review round 1 (break m2-m5): control characters (a NUL included), zero-width and bidi marks are removed, then the
+ *  text is trimmed of every kind of whitespace; nothing left is no reason. Counted in characters, never cut mid-character. */
+export function cleanReason(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  // eslint-disable-next-line no-control-regex -- removing control characters is the point
+  const t = raw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "").replace(/^[\s\u00A0]+|[\s\u00A0]+$/g, "");
+  return t ? t : null;
+}
+export const reasonLength = (t: string) => [...t].length;
 export const FIRM_DECLINED_AFTER_CLIENT = "The firm's signer declined to sign after the client signed.";
 
 export type DeclineInput = {
@@ -41,7 +51,7 @@ export type DeclineInput = {
 /** Applies one decline (see the file's head). Answers what the agreement became, or null when it shows another version. */
 export async function applyDecline(tx: Tx, d: DeclineInput): Promise<{ agreement: "DECLINED" | "WITHDRAWN" | null }> {
   const { firmId, request: q, signer: s, now } = d;
-  const reason = d.reason && d.reason.trim() ? d.reason.trim().slice(0, DECLINE_REASON_MAX) : null;
+  const clean = cleanReason(d.reason), reason = clean ? [...clean].slice(0, DECLINE_REASON_MAX).join("") : null;
   await tx.foSigner.update({ where: { id: s.id }, data: { declinedAt: now, declineReason: reason } });
   await tx.foSignatureRequest.update({ where: { id: q.id }, data: { status: "DECLINED", endedAt: now } });
   const who = s.role === "CLIENT" ? "client" : "representative";
@@ -64,7 +74,8 @@ export async function applyDecline(tx: Tx, d: DeclineInput): Promise<{ agreement
     detail: { retainerId: r.id, requestId: q.id, version: r.current_version, signerRole: s.role, withReason: !!reason },
     before: { status: r.status }, after: { status: after, withReason: !!reason } });
 
-  if (r.kind === "RETAINER" && after === "DECLINED" && d.notifications) {
+  // Only a client's decline of a retainer tells anyone (AG-5-68 r4, r6): the firm's own signer declining is the firm's act.
+  if (r.kind === "RETAINER" && after === "DECLINED" && s.role === "CLIENT" && d.notifications) {
     const owner = r.prospect_id ? (await tx.foProspect.findFirst({ where: { firmId, id: r.prospect_id }, select: { ownerStaffId: true } }))?.ownerStaffId ?? null : null;
     const to = owner ?? r.representative_staff_id;
     await withFirm(firmId, () => d.notifications!.notify(tx, { staffId: to }, NOTIFICATION_KIND.RETAINER_DECLINED, { kind: "retainer", id: r.id }));
