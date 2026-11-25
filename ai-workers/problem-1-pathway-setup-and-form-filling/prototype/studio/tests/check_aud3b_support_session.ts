@@ -25,6 +25,8 @@ const urlOf = (db: string, user = "xr_studio") => `postgresql://${user}@127.0.0.
 const psqlFile = (f: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", f], { stdio: ["ignore", "ignore", "pipe"] });
 const sql = (q: string, user = "xr_studio") => execFileSync(join(BIN, "psql"), [urlOf(DB, user), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const refused = (q: string, user = "xr_studio") => { try { sql(q, user); return false; } catch { return true; } };
+/** As the app's role in one transaction acting for `firm` (PF-21b's helper): refused with words matching `like`. */
+const refusedAsApp = (firm: string | null, q: string, like: RegExp) => { try { sql(`begin; select set_config('app.firm_id', '${firm ?? ""}', true); ${q}; commit`, "xr_app"); return false; } catch (e) { return like.test(String((e as { stderr?: unknown }).stderr ?? e)); } };
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
 const uuid = () => globalThis.crypto.randomUUID();
@@ -168,6 +170,9 @@ try {
     exp.status === 403 && exp.body.code === "SUPPORT_SESSION_REFUSED" && /bulk export/.test(exp.body.detail) && lines(`firm_id = '${oFirm}' and action = 'audit.exported'`) === x0 && rep.status === 200, { exp: exp.body, rep: rep.status });
   const head = await fetch(`${base}/api/system/firms/${oFirm}`, { method: "HEAD", headers: { authorization: `Bearer ${ownerT}`, "x-support-session": O } });
   ok("AUD-3b SS3 pass (round 1, breaker m6): HEAD of the session's own firm is a read (200), never refused as a change", head.status === 200, head.status);
+  const reactivate = await call(base, "POST", `/api/system/staff/${BILLING}/reactivate`, { token: ownerT, session: O });
+  ok("AUD-3b SS3 fail (round 2, reviewer S1: read-only covers every change): a change to our own staff's access (a @NoFirmData POST) in a session → 403 with one refusal line",
+    reactivate.status === 403 && reactivate.body.code === "SUPPORT_SESSION_REFUSED" && /read-only/.test(reactivate.body.detail) && lines(`action = '${REFUSED}' and correlation_id = '${reactivate.requestId}'`) === 1, reactivate.body);
   const h0 = Number(sql(`select count(*) from plat_legal_hold`));
   const hold = await call(base, "POST", "/api/system/register/holds", { token: ownerT, session: O, body: { reason: REASON, firmId: oFirm, scope: { kind: "FIRM" } } });
   ok("AUD-3b SS3 fail (read-only, P-607 (4)): a change in a session (our Platform Owner placing a legal hold) → 403 before it runs; no hold placed; one refusal line on the session's firm",
@@ -196,6 +201,9 @@ try {
   sql(`update plat_support_session set ended_at = now(), end_reason = 'Sample: test end' where id = '${O}'`);
   ok("AUD-3b SS5 pass/fail: an open session ends once (its end the database's time, at most its 60 minutes); a second end is refused",
     sql(`select (ended_at <= ends_at)::text from plat_support_session where id = '${O}'`) === "true" && refused(`update plat_support_session set ended_at = now(), end_reason = 'again' where id = '${O}'`));
+  ok("AUD-3b SS5 fail (round 2, reviewer S2: the database wall): inside a firm's session the app's role is refused both definers (start and open), whatever the code does",
+    refusedAsApp(firmA, `select * from plat_support_session_start('${firmA}'::uuid, '${OWNER}'::uuid, 'Sample: from a firm')`, /only ExpatReady's own staff/)
+    && refusedAsApp(firmA, `select * from plat_support_session_open('${O}'::uuid, '${OWNER}'::uuid)`, /only ExpatReady's own staff/) && sessions(`reason = 'Sample: from a firm'`) === 0);
   ok("AUD-3b SS5 fail (walls, PF-12's OWN list): the app's own role reads no session directly, and cannot insert one; a CHANGE session is refused at the database in this part",
     sql(`select count(*) from plat_support_session`, "xr_app") === "0" && refused(`insert into plat_support_session (id, firm_id, staff_id, reason, ends_at) values (gen_random_uuid(), '${firmA}', '${OWNER}', 'x', now())`, "xr_app")
     && refused(`insert into plat_support_session (id, firm_id, staff_id, reason, mode, ends_at) values (gen_random_uuid(), '${firmA}', '${OWNER}', 'x', 'CHANGE', now())`));

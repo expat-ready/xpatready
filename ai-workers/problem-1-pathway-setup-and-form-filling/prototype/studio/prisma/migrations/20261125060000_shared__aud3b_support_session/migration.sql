@@ -1,12 +1,12 @@
 -- AUD-3b part 1 (R1.87; SA-2-16 start with a step-up check and a reason or ticket, read-only; SA-2-17 always blocked;
 -- SA-2-18 fixed 60 minutes, never refreshed; SA-11-11 every action stamped with the support person and the session;
 -- P-607 (4) read-only sessions in Release 1; BACKLOG AUD-3b, amendment 2: its own area file). Additive: one enum, one
--- table, two indexes, five functions, four triggers, two checks, three definers, and two data rows in PF-4s's permission
+-- table, two indexes, six functions (three trigger functions, a system-plane check and two definers), four triggers, two checks, and two data rows in PF-4s's permission
 -- catalogue. No existing table, function or row is changed. Area `shared`: the table is platform-support-session's, the
 -- seed rows platform-system's (SPD-2).
 --
 -- Walls: plat_support_session is one of our own registers (PF-12's OWN list, tests/check_pf12_walls.ts): row-level
--- security forced with no policy, so xr_app reads and writes nothing in it directly. Three narrow definers (owned by
+-- security forced with no policy, so xr_app reads and writes nothing in it directly. Two narrow definers (owned by
 -- xr_wall_reader, search_path pinned, EXECUTE for xr_data's members only) are the only ways in, each refused inside a
 -- firm's session (platform_session_firm() set): who may call them with no firm is the code's gate (PF-4s's guard and
 -- the key system/firm:impersonate), the model of PF-21b's legal holds.
@@ -21,7 +21,7 @@
 -- session (read-only unless the firm allowed changes)": Own and Sup ticked).
 --
 -- Rollback (by hand): DELETE the seeded permission rows; DROP TABLE plat_support_session (CASCADE drops its triggers);
--- DROP the five functions and the enum.
+-- DROP the six functions and the enum.
 
 -- CreateEnum
 CREATE TYPE "PlatSupportSessionMode" AS ENUM ('READ', 'CHANGE');

@@ -66,7 +66,7 @@ export class SupportSessions {
       const [r] = await tx.$queryRaw<{ status: string; id: string | null; started_at: Date | null; ends_at: Date | null }[]>`
         select status, id::text as id, started_at, ends_at from plat_support_session_start(${firm}::uuid, ${staff.staffId}::uuid, ${reason})`;
       if (r?.status === "FIRM_NOT_FOUND") problem(404, "Firm not found", "No firm has this id.", { code: "FIRM_NOT_FOUND" });
-      if (r?.status === "OPEN") problem(409, "A support session is open", `You already have a support session open until ${r.ends_at?.toISOString()}. Finish it first: one session at a time.`, { code: "SUPPORT_SESSION_OPEN", sessionId: r.id });
+      if (r?.status === "OPEN") problem(409, "A support session is open", `You already have a support session open until ${r.ends_at?.toISOString()} (it ends by itself then). One session at a time: start the next one after it ends.`, { code: "SUPPORT_SESSION_OPEN", sessionId: r.id });
       if (r?.status !== "STARTED" || !r.id || !r.started_at || !r.ends_at) problem(500, "Not started", "The support session could not be started. Nothing was opened.", { code: "SUPPORT_SESSION_NOT_STARTED" });
       if (req) req.supportSession = { id: r!.id!, reason: reason! };   // round 1 (breaker m1): the start line is the session's own (its column)
       await auditEvent.record(tx, { firmId: firm, actor, action: STARTED, entity: SESSION_ENTITY, entityKey: r!.id!,
