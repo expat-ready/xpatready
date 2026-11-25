@@ -62,3 +62,28 @@ after every step, firm-wide for A, and firm B has 0 plans. Roles are enforced on
 ## Not tested
 A real screen reader and an intended user's unaided walk (no screen; D17/D20 stay with the founder). A card webhook payment racing
 a plan (no Stripe in scope).
+
+## Round 2 (d3ccb560b, diff only)
+* Journey 8 now holds. A broken-character, NUL, line-break or zero-width-only reason gets 422 on `reason`, never 500, and the plan stays ACTIVE.
+* Journey 10 now holds. After the pre-plan refund the plan shows `dueNowMinor` and `uncoveredMinor` 100.00.
+* A cancelled plan's open instalments read "Cancelled", with `cancelledAt`.
+* The database now refuses a past-dated instalment.
+* Journey 9 is unchanged: instalment 1 reads "Settled" from a credit note, and the question is with the Lead.
+* 38/38, run twice.
+
+Score:
+
+| Criterion | Score |
+|---|---|
+| Task completed | 1 |
+| Next step obvious | 1 |
+| Plain words | ½ (journey 9's "Settled") |
+| Feedback and state | 1 |
+| Correct data | 1 |
+| Error recovery | 1 |
+| Speed | 1 |
+| Trust and sources | 1 |
+
+Two criteria are N/A (no screen). **7.5 of 8 = 9.4, recorded as 9.0 / 10 (rounded down to the half point). Pass.**
+
+To raise plain words: once the Lead rules, make "Settled" match the ruling.

@@ -92,3 +92,39 @@ reports 42 green). A real user's walk (D17/D20 stay with the founder).
 **Verdict: Block** — fix 1 and 2. Minors 3-11: fix them or list them in the PR.
 
 Reviewer: Block ceb41501ff15aa3eb08bf3251ba184cbe87b705e
+
+## Round 2 (diff only: `git diff ceb41501f..d3ccb560b`)
+Head `d3ccb560b7bfd2e5a11b2fc55825b687d55c58f5`. `545650f42` is a pure rename (R100) to `20261125120000_client-money__r196_payment_plans`.
+`b5eb87699` adds the breaker's report. `d3ccb560b` holds the fixes (plan.ts, ports/client-money.ts, the migration's
+`money_instalment_write`, the check). I ran a new worktree of the exact head with its own Prisma client and scratch DBs on 54329.
+* `check_r196_plans.ts` **38/38, exit 0, run twice**. Also green: `check_fo7b_invoices` 108, `check_fo7b_refunds` 29,
+  `check_fo7g3_bill_to` 30 (all three import the ports file), `check_r196_write_offs` 40, `check_pf12_walls` 110,
+  `check_fo7a_money_schema` 122, `check_fo7lk_lock_order` 16, `check_features_registry` 27, `check_prisma_schema` 8.
+  `tsc --noEmit` reports nothing in the changed files.
+* **M1 closed.** `PlanCancelIn = { reason: words("The reason", 200) }` and `PlanIn` (`day`, `whole(…, 1, MINOR_MAX)`) are in
+  `ports/client-money.ts` beside `WriteOffIn`. P6 sends a lone surrogate, a NUL, a line break and a zero-width-only reason, and
+  each gets 422 on `reason` ("One line…" for the break), never 500, with the plan left ACTIVE.
+* **M2 closed.** I repeated the mutations at this head, removing one rule at a time. **All 22 runs turn the check red.**
+  * Database (12): the count, positions 1..n, rising dates, the sum, the instalment's and the plan's currency, ACTIVE-only
+    instalments, the late-insert gate, nothing due, the one-ACTIVE index, the new past-date rule, and the draft rule.
+  * API (10): C5 removed separately from make, from read and from cancel; the cancel audit line; the cancel text check;
+    `words()` put back to trim-only; the API sum; the API past date; "Cancelled"; `uncoveredMinor`.
+* **Minors.**
+  * 4 fixed: `dueNowMinor` and `uncoveredMinor` are in the view, tested after a refund of the pre-plan payment (100.00 uncovered).
+  * 5 fixed: a cancelled plan reads "Settled,Cancelled,Cancelled" and has `cancelledAt`.
+  * 6 fixed: `money_instalment_write` refuses a due date before the UTC day, the same day the API uses (migration:120-123).
+    One edge: a request that crosses UTC midnight between the API's day and the transaction's `now()` gets 409 MONEY_RULE, not a 500.
+  * 8 fixed: the line-break wording. A zero-width space inside visible text is still stored; this is the shared
+    `money_text_ok` (breaker m6) and not this part's to change.
+  * 9 and 10 fixed: the test labels; the inputs are in ports. `PlanView` stays a TS type in plan.ts, which is acceptable for an API part.
+  * 3 open: asked of the Lead on the PR.
+  * 7 and 11 open: unchanged, and stay listed as before.
+* New Minor 12 (Should): the new database rows in P4 share one invoice (`i7`) and assert `plans7() === 0`. When one rule is missing,
+  every later row and the exact pass fail too (e.g. removing the count rule fails 12 rows). Detection is right, but the report
+  names more rules than are broken. Give each row its own invoice (check_r196_plans.ts:160-175).
+
+No Blocker or Major is open. Minors 3, 7, 11 and 12: fix them or list them in the PR.
+
+**Verdict: Ship (Approve).**
+
+Reviewer: Approve d3ccb560b7bfd2e5a11b2fc55825b687d55c58f5
