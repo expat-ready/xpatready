@@ -13,7 +13,7 @@ type R = { systemStaff?: SystemStaffContext };
 export class SystemSupportController {
   constructor(@Inject(SystemSupport) private readonly support: SystemSupport) {}
 
-  @Get() @SystemKeys(SUPPORT_LIST_KEY) @ReadsAcrossFirms("the support queue, every firm's tickets with their firm")
+  @Get() @SystemKeys(SUPPORT_LIST_KEY) @ReadsAcrossFirms("the support queue, every firm's tickets with their firm", { firmFilter: true })
   list(@Req() r: R, @Query() q: Record<string, unknown>) { return this.support.list(systemStaffOf(r), q); }
 
   @Get(":id") @SystemKeys(SUPPORT_LIST_KEY) @ReadsAcrossFirms("one support ticket and its firm, named by the ticket's id")
