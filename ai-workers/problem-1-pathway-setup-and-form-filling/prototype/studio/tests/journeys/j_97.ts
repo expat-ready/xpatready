@@ -71,6 +71,11 @@ try {
   const again = await api("GET", `/demo/audit-chain/archive?prefix=${encodeURIComponent(`audit/${A}/`)}`, { actor: "user-A" });
   ok("J-97 W5: replacing an archived file is refused (409) and deleting it is refused (423); it is still there with the same digest",
     replace.status === 409 && remove.status === 423 && (again.body.objects as { key: string; sha256: string }[]).find((o) => o.key === exA?.file)?.sha256 === fileA?.sha256, [replace, remove]);
+  const plant = await api("POST", "/demo/audit-chain/archive/tamper", { actor: "user-A", body: { key: `audit/${A}/anchors/2099-01-01-999.json`, how: "replace" } });
+  const badKey = await api("POST", "/demo/audit-chain/archive/tamper", { actor: "user-A", body: { key: "../etc", how: "delete" } });
+  const after = await api("GET", `/demo/audit-chain/archive?prefix=${encodeURIComponent(`audit/${A}/`)}`, { actor: "user-A" });
+  ok("J-97 W5: the demo's tamper button never writes a new key (404, nothing added) and refuses a key that is not one (400)",
+    plant.status === 404 && badKey.status === 400 && (after.body.objects as unknown[]).length === (again.body.objects as unknown[]).length, [plant.status, badKey.status]);
 
   // ------------------------------------------------------------------------------- W6: a rewrite the chain alone misses
   const at = Number(exA?.toSeq);
