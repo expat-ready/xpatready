@@ -10,7 +10,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import type { FilesPort } from "../../../../ports/files.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import { ENGINE_RULE, ImportTargetUnavailable, MAX_REASONS, Mapping, Reason, mappingFaults, suggestMapping, type ImportContext, type ImportTarget, type ImportTargets } from "../../../../ports/import-target.ts";
-import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
+import { FIELD_ERROR_STATUS, idParam, parseInput, query } from "../http/input.ts";
 import { actorWord } from "../identity/audit.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
 import { CsvRefused, readCsv, type Csv } from "./csv.ts";
@@ -49,7 +49,9 @@ const RunBody = z.strictObject({ dryRunHash: z.string().regex(/^[0-9a-f]{64}$/, 
 const AttestBody = z.strictObject({ version: z.literal(ATTESTATION.version, { message: "The attestation's wording has changed: read it again." }), confirm: z.literal(true, { message: "Tick the box to confirm." }) });
 
 const fail = (status: number, code: string, detail: string, extra: Record<string, unknown> = {}): never => problem(status, status === 409 ? "Not now" : "Not imported", detail, { code, ...extra });
-const parseBody = <S extends z.ZodTypeAny>(s: S, raw: unknown): z.output<S> => { const r = s.safeParse(raw ?? {}); if (!r.success) problem(FIELD_ERROR_STATUS, "Not imported", "Check the fields named.", { code: "INVALID_INPUT", fields: fieldsOf(r.error) }); return r.data; };
+/** PF-28: the query strings, each key named (an unknown one is refused 422, naming it). */
+export const UploadQuery = query("target", "source", "name");
+export const RowsQuery = query("outcome", "page");
 
 export class ImportService {
   private readonly now: () => Date;
@@ -80,7 +82,7 @@ export class ImportService {
   /** POST attestation: an Owner attests the current wording (AG-18-49); the database also refuses anyone else. */
   async attest(s: StaffContext, raw: unknown) {
     if (!s.roles.includes("OWNER")) fail(403, "OWNER_ONLY", "Only an Owner of the firm gives this confirmation.");
-    parseBody(AttestBody, raw);
+    parseInput(AttestBody, raw ?? {});
     return this.d.db.$transaction(async (tx) => {
       const a = await tx.platImportAttestation.create({ data: { firmId: s.firmId, ownerStaffId: s.staffId, wordingVersion: ATTESTATION.version } });
       await this.d.audit.record(tx, { firmId: s.firmId, actor: actorWord(s.staffId), action: "platform.import.attested", entity: "plat_import_attestation", entityKey: a.id, summary: "An Owner confirmed the firm may import personal data.", detail: { wordingVersion: ATTESTATION.version }, before: null, after: { wordingVersion: ATTESTATION.version } });
@@ -89,7 +91,7 @@ export class ImportService {
   }
   /** POST /imports (a text/csv body): stores the file and makes a DRAFT batch; answers its columns, the first rows'
    *  cells (for the person mapping them) and the mapping offered (the saved one for this source, else by header). */
-  async upload(s: StaffContext, q: { target?: string; source?: string; name?: string }, bytes: Uint8Array) {
+  async upload(s: StaffContext, q: z.output<typeof UploadQuery>, bytes: Uint8Array) {
     const t = this.target(String(q.target ?? ""));
     const src = SourceName.safeParse(q.source ?? "");
     if (!src.success) problem(FIELD_ERROR_STATUS, "Not imported", "Name where the file comes from.", { code: "INVALID_INPUT", fields: { source: src.error.issues[0].message } });
@@ -110,8 +112,8 @@ export class ImportService {
   }
   /** POST /imports/:id/dry-run: checks the mapping, then every row; writes the preview rows and the dry-run hash. */
   async dryRun(s: StaffContext, id: string, raw: unknown) {
-    const body = parseBody(DryRunBody, raw);
-    const b0 = await this.batch(this.d.db, s, id), t = this.target(b0.targetKey);
+    const b0 = await this.batch(this.d.db, s, idParam(id, "import")), t = this.target(b0.targetKey);
+    const body = parseInput(DryRunBody, raw ?? {});
     if (!["DRAFT", "DRY_RUN_READY"].includes(b0.state)) fail(409, "ALREADY_RUN", "This import has run: start a new import to change it.");
     const csv = await this.file(s, b0);
     const mapping: Mapping = { columns: Object.fromEntries(csv.header.map((h) => [h, Object.hasOwn(body.columns, h) ? body.columns[h] : null])), declared: body.declared };
@@ -168,8 +170,8 @@ export class ImportService {
    *  the batch to RUNNING and queues the job (STANDARDS §3: never inside a web request); a RUNNING batch whose job
    *  stopped (the worker was lost) is queued again, and the job goes on from the first row it has not written. */
   async run(s: StaffContext, id: string, raw: unknown) {
-    const body = parseBody(RunBody, raw);
-    const b0 = await this.batch(this.d.db, s, id), t = this.target(b0.targetKey);
+    const b0 = await this.batch(this.d.db, s, idParam(id, "import")), t = this.target(b0.targetKey);
+    const body = parseInput(RunBody, raw ?? {});
     if (["COMPLETED", "PARTIAL", "FAILED", "UNDOING", "UNDONE"].includes(b0.state)) fail(409, "ALREADY_RUN", "This import has already run.");
     if (b0.state === "DRAFT" || !b0.dryRunHash) fail(409, "DRY_RUN_NEEDED", "Run the preview (the dry run) first: nothing is imported without one.");
     if (body.dryRunHash !== b0.dryRunHash) fail(409, "DRY_RUN_CHANGED", "The preview has changed since you looked at it (a new mapping or a new preview): check the new preview, then run it.");
@@ -263,8 +265,8 @@ export class ImportService {
     };
   }
   /** GET /imports/:id/rows: one page of the preview's or the run's rows, each reason in words (never a cell's value). */
-  async rows(s: StaffContext, id: string, q: { outcome?: string; page?: string }) {
-    const b = await this.batch(this.d.db, s, id), t = this.d.targets.get(b.targetKey);
+  async rows(s: StaffContext, id: string, raw: unknown) {
+    const b = await this.batch(this.d.db, s, idParam(id, "import")), t = this.d.targets.get(b.targetKey), q = parseInput(RowsQuery, raw ?? {});
     const phase = ["DRAFT", "DRY_RUN_READY"].includes(b.state) ? "DRY_RUN" : "RUN";
     const outcome = q.outcome && ["CREATE", "MERGE", "SKIP", "ERROR"].includes(q.outcome) ? (q.outcome as "CREATE") : undefined;
     const page = Math.max(1, Math.min(10_000, Number.parseInt(q.page ?? "1", 10) || 1));

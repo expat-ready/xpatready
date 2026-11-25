@@ -6,7 +6,8 @@ import { Body, Controller, Get, Inject, Param, Post, Query, Req } from "@nestjs/
 import type { Request } from "express";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../identity/keys.ts";
 import { MAX_BYTES } from "./csv.ts";
-import { ImportService, RUN_KEY, VIEW_KEY } from "./engine.ts";
+import { parseInput } from "../http/input.ts";
+import { ImportService, RUN_KEY, UploadQuery, VIEW_KEY } from "./engine.ts";
 
 type R = Request & { platform?: StaffContext };
 
@@ -35,11 +36,11 @@ export class ImportController {
   @Post("attestation") @PermissionKeys(RUN_KEY)
   attest(@Req() r: R, @Body() b: unknown) { return this.svc.attest(staffOf(r), b); }
   @Post() @PermissionKeys(RUN_KEY)
-  async upload(@Req() r: R, @Query() q: { target?: string; source?: string; name?: string }) { const s = staffOf(r); return this.svc.upload(s, q, await csvBody(r)); }
+  async upload(@Req() r: R, @Query() q: unknown) { const s = staffOf(r), query = parseInput(UploadQuery, q ?? {}); return this.svc.upload(s, query, await csvBody(r)); }   // the query first (PF-28: an unknown key is 422)
   @Get(":id") @PermissionKeys(VIEW_KEY)
   view(@Req() r: R, @Param("id") id: string) { return this.svc.view(staffOf(r), id); }
   @Get(":id/rows") @PermissionKeys(VIEW_KEY)
-  rows(@Req() r: R, @Param("id") id: string, @Query() q: { outcome?: string; page?: string }) { return this.svc.rows(staffOf(r), id, q); }
+  rows(@Req() r: R, @Param("id") id: string, @Query() q: unknown) { return this.svc.rows(staffOf(r), id, q); }
   @Post(":id/dry-run") @PermissionKeys(RUN_KEY)
   dryRun(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.dryRun(staffOf(r), id, b); }
   @Post(":id/run") @PermissionKeys(RUN_KEY)
