@@ -24,7 +24,7 @@ import { parseInput, strict } from "../../platform/http/input.ts";
 import { z } from "zod";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 import { winProspect } from "../sales/prospects.ts";
-import { endRetainerSigning, prepareRetainerSigning } from "../signing/service.ts";
+import { endRetainerSigning, lockRetainerSigning, prepareRetainerSigning } from "../signing/service.ts";
 import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf } from "../compliance/conflict/gate.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
@@ -187,6 +187,8 @@ export class Retainers {
     try { return await this.db.$transaction(fn); } catch (e) {
       if (e instanceof HttpException) throw e;
       const m = String((e as Error)?.message ?? e) + JSON.stringify((e as { meta?: unknown })?.meta ?? "");
+      // QA-770 review m2: the transaction ran out of time (a slow signing provider inside it): nothing was saved.
+      if ((e as { code?: unknown })?.code === "P2028") problem(503, "Try again", "That took too long, so nothing changed. Try again in a minute.", { code: "TIMED_OUT" });
       for (const [k, f] of Object.entries(unique)) if (m.includes(k)) f();
       // Only what a race produces (review r2-m1): a unique key, a serialization or deadlock, or part 1's state triggers
       // refusing a move another transaction made first. Anything else is a fault: logged and answered 500, never hidden.
@@ -582,6 +584,7 @@ export class Retainers {
     const n = r.currentVersion + 1, values = await this.mergeValues(ctx.firmId, p, s.signer, repId, n, fees, usedPh);
     const file = await this.renderVersion(ctx.firmId, r.id, n, t.fileKey, values);
     await this.tx(async (tx) => {
+      await lockRetainerSigning(tx, ctx.firmId, r.id);   // review m1: the webhook's lock order (the request, then the retainer)
       const locked = await tx.$queryRaw<{ status: string; current_version: number }[]>(Prisma.sql`select status::text, current_version from fo_retainer where firm_id = ${ctx.firmId}::uuid and id = ${r.id}::uuid for update`);
       if (locked[0]?.status !== r.status || locked[0]?.current_version !== r.currentVersion) conflict("This agreement changed at the same time (for example the client signed). Open it again.", "CHANGED");
       const ends = !!cur.sentAt && !cur.endedAt;
@@ -667,6 +670,7 @@ export class Retainers {
     if (!WITHDRAWABLE.includes(r.status)) conflict(r.status === "SIGNED" || r.status === "SIGNED_OFFLINE" ? "A signed agreement cannot be withdrawn." : r.status === "DRAFT" ? "A draft has not been sent: edit it or leave it." : `A ${r.status.toLowerCase()} agreement cannot be withdrawn.`, "NOT_WITHDRAWABLE");
     let signing: Awaited<ReturnType<typeof endRetainerSigning>> | null = null;
     await this.tx(async (tx) => {
+      await lockRetainerSigning(tx, ctx.firmId, r.id);   // review m1: the webhook's lock order
       const now = new Date(this.clock.now());
       const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion, endedAt: null }, data: { endedAt: now, endReason: "WITHDRAWN" } });
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: r.status, currentVersion: r.currentVersion }, data: { status: "WITHDRAWN", withdrawnAt: now, withdrawnBy: `staff:${ctx.staffId}`, withdrawnReason: reason } });
@@ -739,6 +743,7 @@ export class Retainers {
     const filed = copy ? r.currentVersion + 1 : r.currentVersion;
     const filedValues = copy ? copy.values : (await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: k } })).mergeValues as Record<string, unknown>;
     await this.tx(async (tx) => {
+      await lockRetainerSigning(tx, ctx.firmId, r.id);   // review m1: the webhook's lock order (the request, then the party and the retainer)
       if (r.kind === "RETAINER" && r.prospectId) {   // FO-13c (review r2, r3): the party's lock first, as Send takes it; the gate and the disclosure again
         const party = await partyOf(tx, ctx.firmId, r.prospectId);
         if (party) await lockParty(tx, ctx.firmId, party);

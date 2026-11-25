@@ -22,6 +22,7 @@ import { Leads } from "../api/src/front-office/sales/leads.ts";
 import { Prospects } from "../api/src/front-office/sales/prospects.ts";
 import type { Tx } from "../api/src/front-office/sales/common.ts";
 import { registerSigningHandler, useSigningMail, useSigningPort } from "../api/src/front-office/signing/handlers.ts";
+import { SigningDoor } from "../api/src/front-office/signing/door.ts";
 import { SigningHooksController } from "../api/src/front-office/signing/hooks.ts";
 import { fakeSigning, type SigningHookCall } from "../api/src/front-office/signing/port.ts";
 import { SigningController } from "../api/src/front-office/signing/routes.ts";
@@ -332,7 +333,8 @@ try {
       && signing.calls.filter((c) => c.op === "cancel" && c.providerDocumentId === d10).length === cancelsBefore + 1
       && count("fo_signature_request", `document_id = '${r10}' and status in ('SENT','VIEWED','CLIENT_SIGNED')`) === 1);
   ok("FO-6 B fail (deviation 4): the old envelope gives no signing link any more", (await refusal(() => signing.embeddedLink(A, d10, signerOf(q10, "CLIENT")))) !== null);
-  // break m3: a withdrawn retainer's completion is final: stored, 200, no files, never retried as 409
+  // QA-770 review round 1 M1 (AG-5-34: refused once executed): everyone signed at the vendor and its `completed` is late.
+  // A withdraw or an edit then is refused (409 SIGNED_AT_PROVIDER), nothing changes, and the late completion still applies.
   const p11 = await prospect("Jon"), r11 = await draft(p11);
   await sendIt(r11);
   const [q11, d11] = reqOf(r11);
@@ -340,10 +342,25 @@ try {
   await post((await signing.act(A, d11, signerOf(q11, "CLIENT"), "signed"))[0]);
   const fin = await signing.act(A, d11, signerOf(q11, "FIRM"), "signed");
   await post(fin[0]);
-  await svc.withdraw(R, r11, { expectedVersion: 1, expectedStatus: "CLIENT_SIGNED", reason: "Client changed their mind" });
+  const mails11 = mail.sent.length;
+  const wd11 = await refusal(() => svc.withdraw(R, r11, { expectedVersion: 1, expectedStatus: "CLIENT_SIGNED", reason: "Client changed their mind" }));
+  ok("QA-770 M1 fail: a withdraw over an envelope the vendor completed → 409 SIGNED_AT_PROVIDER; the retainer stays CLIENT_SIGNED, the request live, no withdrawn email",
+    wd11?.status === 409 && wd11.body.code === "SIGNED_AT_PROVIDER" && sql(`select status from fo_retainer where id = '${r11}'`) === "CLIENT_SIGNED" && reqOf(r11)[2] === "CLIENT_SIGNED"
+      && mail.sent.length === mails11 && count("audit_event", `entity_key = '${r11}' and action = 'retainer.withdrawn'`) === 0, wd11);
+  const ed11 = await refusal(() => svc.edit(R, r11, { expectedVersion: 1, expectedStatus: "CLIENT_SIGNED", fees: [{ label: "Deposit on signing", amountMinor: 1, when: "ON_SIGNING" }] }));
+  ok("QA-770 M1 fail: an edit then is refused too (409), still version 1", ed11?.status === 409 && sql(`select current_version from fo_retainer where id = '${r11}'`) === "1", ed11);
   const wd = await post(fin[1]);
-  ok("FO-6 B fail (break m3): completed after a withdraw → 200 not applied, stored once, no evidence, no files", wd.applied === false && /withdrawn|cancelled/.test(wd.reason ?? "")
-    && count("fo_signing_evidence", `request_id = '${q11}'`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q11}'`) === 3, wd);
+  ok("QA-770 M1 pass: the late completion then applies (SIGNED, evidence stored)", wd.applied === true && reqOf(r11)[2] === "SIGNED" && count("fo_signing_evidence", `request_id = '${q11}'`) === 1, wd);
+  // break m3 (kept): once withdrawn, the vendor's envelope is cancelled, so the firm can no longer sign there at all.
+  const p12w = await prospect("Kim"), r12w = await draft(p12w);
+  await sendIt(r12w);
+  const [q12w, d12w] = reqOf(r12w);
+  consent(q12w);
+  await post((await signing.act(A, d12w, signerOf(q12w, "CLIENT"), "signed"))[0]);
+  await svc.withdraw(R, r12w, { expectedVersion: 1, expectedStatus: "CLIENT_SIGNED", reason: "Client changed their mind" });
+  const late12 = await refusal(() => signing.act(A, d12w, signerOf(q12w, "FIRM"), "signed"));
+  ok("FO-6 B fail (break m3, since QA-770): after a withdraw the firm cannot sign at the vendor (envelope cancelled); no evidence, request CANCELLED",
+    late12 !== null && count("fo_signing_evidence", `request_id = '${q12w}'`) === 0 && reqOf(r12w)[2] === "CANCELLED", late12);
 
   // part 4c (QA-770's signing path, Lead 29 answer 1): a view or a signature on a withdrawn agreement is refused, stored once
   const p13 = await prospect("Lea"), r13 = await draft(p13);
@@ -424,8 +441,36 @@ try {
   const [s15] = await signing.act(A, d15, signerOf(q15, "CLIENT"), "signed");
   await svc.edit(R, r15, { expectedVersion: 1, expectedStatus: "SENT", fees: [{ label: "Deposit on signing", amountMinor: 170000, when: "ON_SIGNING" }] });
   const nv = await post(s15);
-  ok("FO-6 B fail (part 4c, QA-770, review m3): a signature on version 1 after an Edit made version 2 → 200 not applied (\"a newer version\" or, since QA-770, \"cancelled\"), the signer unsigned",
-    nv.applied === false && /newer version|cancelled/.test(nv.reason ?? "") && count("fo_signer", `request_id = '${q15}' and signed_at is not null`) === 0, nv);
+  ok("FO-6 B fail (part 4c, QA-770): a signature on version 1 after an Edit made version 2 → 200 not applied: the Edit ended that request (\"the request is cancelled\"); the newer-version guard stays behind it as a second wall, no longer reachable by a route; the signer unsigned",
+    nv.applied === false && /cancelled/.test(nv.reason ?? "") && count("fo_signer", `request_id = '${q15}' and signed_at is not null`) === 0, nv);
+  // QA-770 review m4: the door reads the ended link after a withdraw and after an edit (the client's own view of it).
+  const door = new SigningDoor(db);
+  const tokenOf = (rid: string) => { const m = [...mail.sent].reverse().find((x) => x.templateKey === "signing.please_sign" && x.text.includes(`version`) && sql(`select count(*) from fo_signature_request where document_id = '${rid}'`) !== "0" && x.to === sql(`select lower(p.email) from fo_retainer r join fo_person p on p.id = r.signer_person_id where r.id = '${rid}'`));
+    return m?.text.match(/\/sign\/([0-9a-f]{32}\.[A-Za-z0-9_-]{43})/)?.[1] ?? ""; };
+  const pD = await prospect("Ola"), rD = await draft(pD);
+  await sendIt(rD);
+  const tD = tokenOf(rD);
+  await svc.withdraw(R, rD, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed plans" });
+  const sD = await door.state(tD) as { state: string };
+  const pE = await prospect("Pia"), rE = await draft(pE);
+  await sendIt(rE);
+  const tE = tokenOf(rE);
+  await svc.edit(R, rE, { expectedVersion: 1, expectedStatus: "SENT", fees: [{ label: "Deposit on signing", amountMinor: 140000, when: "ON_SIGNING" }] });
+  const sE = await door.state(tE) as { state: string };
+  ok("QA-770 m4 pass: the client's door reads WITHDRAWN after a withdraw and UPDATED after an edit (the old link ended)", !!tD && !!tE && sD.state === "WITHDRAWN" && sE.state === "UPDATED", { sD, sE });
+  // QA-770 review m4: an Edit whose vendor cancel fails is rolled back (503), still version 1, the request live.
+  const pF = await prospect("Quin"), rF = await draft(pF);
+  await sendIt(rF);
+  useSigningPort({ ...signing, cancel: async () => { throw new Error("vendor down"); } });
+  const edF = await refusal(() => svc.edit(R, rF, { expectedVersion: 1, expectedStatus: "SENT", fees: [{ label: "Deposit on signing", amountMinor: 130000, when: "ON_SIGNING" }] }));
+  useSigningPort(signing);
+  ok("QA-770 m4 fail: an Edit the vendor cannot cancel → 503 \"Try again\", rolled back: still version 1, SENT, the request live",
+    edF?.status === 503 && sql(`select status || ':' || current_version from fo_retainer where id = '${rF}'`) === "SENT:1" && reqOf(rF)[2] === "SENT", edF);
+  // QA-770 review m2: a vendor cancel slower than the time limit counts as no answer (503), rolled back.
+  useSigningPort({ ...signing, cancel: () => new Promise<void>((ok2) => setTimeout(ok2, 3_500)) });
+  const slow = await refusal(() => svc.withdraw(R, rF, { expectedVersion: 1, expectedStatus: "SENT", reason: "Slow vendor" }));
+  useSigningPort(signing);
+  ok("QA-770 m2 fail: a vendor cancel slower than 3 s → 503 \"Try again\", nothing withdrawn", slow?.status === 503 && sql(`select status from fo_retainer where id = '${rF}'`) === "SENT", slow);
 
   // break R2-M1: a completed that arrives before the signatures is "not yet" (409, nothing kept), then applies
   const p12 = await prospect("Kim"), r12 = await draft(p12);

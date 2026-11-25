@@ -97,6 +97,23 @@ export async function prepareRetainerSigning(db: PrismaClient, files: FilesPort,
   };
 }
 
+/** Review round 1 m2: the provider's cancel inside a transaction answers within this (Prisma's interactive transaction
+ *  ends at 5 s), else it counts as no answer: 503 "Try again", rolled back. */
+const CANCEL_MS = 3_000;
+class CancelTimeout extends Error { constructor() { super("the signing provider did not answer in time"); this.name = "CancelTimeout"; } }
+function withinMs<T>(ms: number, p: Promise<T>): Promise<T> {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<never>((_, no) => { t = setTimeout(() => no(new CancelTimeout()), ms); })]).finally(() => clearTimeout(t));
+}
+
+/** Review round 1 m1: the retainer's live signing requests are locked first, in the order the webhook takes them (the
+ *  request, then the retainer), so Withdraw, Edit and Signed offline never deadlock against a provider event. Call it as
+ *  the first statement of their transaction. */
+export async function lockRetainerSigning(tx: Tx, firmId: string, retainerId: string) {
+  await tx.$queryRaw`select id from fo_signature_request where firm_id = ${firmId}::uuid and document_kind = 'RETAINER' and document_id = ${retainerId}::uuid
+    and status in ('SENT', 'VIEWED', 'CLIENT_SIGNED') order by id for update`;
+}
+
 /** QA-770 (R1.55 W1; FO-5d (2), (3)): Withdraw, Edit and Signed offline end the retainer's live signing request in their
  *  own transaction (CANCELLED with WITHDRAWN, UPDATED or SIGNED_OFFLINE, one `signing.request_cancelled` line each).
  *  `cancelNow()` cancels the envelopes at the provider before the commit (Withdraw and Edit, FO-5d (2)): a failed cancel
@@ -117,14 +134,17 @@ export async function endRetainerSigning(tx: Tx, ctx: StaffContext, retainerId: 
       detail: { requestId: s.id, retainerId, version: s.documentVersion, reason }, before: { status: s.status }, after: { status: "CANCELLED", cancelReason: reason } });
   }
   const owed = live.map((s) => s.providerDocumentId);
-  const ended = (e: unknown) => e instanceof SigningEnded || e instanceof SigningNotFound;
+  // Ended at the provider already: cancelled, declined or unknown is no change; *completed* (everyone signed there and its
+  // event is on its way) is never undone by a withdraw or an edit (AG-5-34: refused once executed; review round 1 M1).
+  const ended = (e: unknown) => (e instanceof SigningEnded && e.state !== "completed") || e instanceof SigningNotFound;
   return {
     ended: live.length,
     async cancelNow() {
       const port = signingPort();
       for (const d of owed.splice(0)) {
-        try { await port.cancel(firmId, d); } catch (e) {
+        try { await withinMs(CANCEL_MS, port.cancel(firmId, d)); } catch (e) {
           if (ended(e)) continue;
+          if (e instanceof SigningEnded) conflict("Everyone has signed this agreement at the signing service; the signed copy is on its way. It can no longer be withdrawn or changed.", "SIGNED_AT_PROVIDER");
           console.error(`[fo-signing] the provider did not cancel the envelope: ${(e as Error)?.name ?? "error"}`);
           problem(503, "Try again", "The signing service did not answer, so nothing changed. Try again in a minute.", { code: "SIGNING_UNAVAILABLE" });
         }
