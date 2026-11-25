@@ -24,7 +24,8 @@
 // Stated (round 1): SA-11-9's "emit CROSS_TENANT_ACCESS" is met here by audit.exported plus the export's own
 // platform.system.firm_read line, both on the firm's trail (a per-firm export spans one firm). Not in any firm's report:
 // an unfiltered read across firms, and a one-record read part 1 declares as a read across firms (support/tickets/:id,
-// register/breaches/:id, register/requests/:id: the firm gets only touchFirm's platform.bypass line, which is shown).
+// register/requests/:id: the firm gets only touchFirm's platform.bypass line, which is shown). Since the breach read
+// (R1.87 P6), register/breaches/:id writes one platform.system.firm_read line on each firm the breach names, so it is shown.
 // Who: "ExpatReady staff" or, under a support session, "ExpatReady support", with the actor word; no name for our staff
 // is read (as AUD-4: contract gap).
 import { randomUUID } from "node:crypto";
