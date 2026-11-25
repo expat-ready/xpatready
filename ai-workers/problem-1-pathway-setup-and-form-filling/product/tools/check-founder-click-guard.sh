@@ -55,6 +55,14 @@ for m in 'Please close #2413, it is superseded.' 'Could you archive the session 
 for m in 'I closed #2413 and archived the forms-2 session in the built-in browser.' 'I dispatched the nightly myself (run 4551).' \
          'The merge queue merged #2413.' 'I pressed Run workflow on the nightly; it is running.'; do
   r=$(stop lead "$m"); ok "passes (E-c, the Lead's own report): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+# Review of #3665: a verb needs its own object (no false block on a report), and the E-c verbs as plain commands
+for m in 'Press coverage is fine for now.' 'Dispatching the qa lane now, so you need not wait.' 'No need for you to press anything; I did it in the built-in browser.' \
+         'You should see the nightly dispatch result by 03:00.' 'Merge conflicts on the branch were fixed.' 'I will dispatch it next.' \
+         'Run workflow was pressed by the Lead.' 'Could you confirm the wording? I will merge the PR after that.'; do
+  r=$(stop lead "$m"); ok "passes (#3665 review, a report): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+for m in 'Archive the forms-2 session.' 'Merge #2413.' 'Dispatch the nightly.' 'Run workflow on the nightly.' 'Label #2413 blocked.' \
+         'Please archive it.' 'Could you merge it?' 'Please label the issue blocked.' 'Please run the workflow.' 'Could you dispatch it?'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
 printf '%s\n' '**Needs you:** archive the forms-2 session; dispatch the nightly' '- ask: Run workflow on lead-watch by hand' '| A300 | the Lead archives its own lanes | not an ask |' > "$T/STATE2.md"
 out=$(bash "$G" --state "$T/STATE2.md")
 ok "lead-watch (E-c): Needs you and ask lines with archive, dispatch, Run workflow are flagged" "$([ "$(grep -c '^ACT' <<<"$out")" -ge 3 ] && grep -q 'archive the forms-2' <<<"$out" && grep -q 'dispatch the nightly' <<<"$out" && grep -q 'Run workflow on lead-watch' <<<"$out" && ! grep -q A300 <<<"$out" && echo 1)" "$out"

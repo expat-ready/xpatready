@@ -16,7 +16,7 @@ import re, sys
 mode, text = sys.argv[1], sys.stdin.read()
 I = re.I
 # A step on github.com, claude.ai or a cloud console.
-ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draft\b|\badd(ing)?\b[^.\n]{0,40}\blabel\b|\blabel (#\d+|it|this|that|the (pr|pull request))\b"
+ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draft\b|\badd(ing)?\b[^.\n]{0,40}\blabel\b|\blabel (#\d+|it|this|that|the (pr|pull request|issue))\b"
   r"|\b(mark|set|make|move|press|hit|select)\b[^.\n]{0,30}\bready for review\b|\breopen(ing)?\b|\b(merge|approve)\b (the (pr|pull request)|#\d+)"
   r"|\bopen #\d+\b[^.\n]{0,60}\band (then )?(click|press|hit|add|convert|mark|reopen|merge|approve|label|select)\b|\bin the ([\w.-]+ ){0,3}console\b"
   r"|\b(press|hit) (the )?[\w ]{0,20}button\b|\bgo to (https?://)?(github\.com|claude\.ai)"
@@ -26,14 +26,18 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
   r"|\bedit (the |its |this )?(pr |pull request )?(description|body|title)\b"
   r"|\badd\b[^.\n]{0,40}\bline\b[^.\n]{0,40}(#\d+|\bdescription\b|\bbody\b|\bpr\b|pull request)"
   # ENF-778a E-c (P-778): "also matches close, archive, reopen, label, dispatch, Run workflow, merge and press"
-  r"|\b(close|closing|archive|archiving|merge|merging)\b[^.\n]{0,25}(#\d+|\bpr\b|pull request|\bissue\b|\bsession\b|\blane\b|\bbranch\b)"
-  r"|\bdispatch(es|ing)?\b|\brun workflow\b|\b(press|pressing)\b"
+  # The verb and its own object (review of #3665: a bare "press" or "dispatch" blocked "Press coverage is fine", "the
+  # nightly dispatch result"; "merge conflicts on the branch" is no ask): the, this, its, up to two words, then the thing.
+  r"|\b(close|archive|merge|reopen)\s+((the|this|that|its)\s+)?([\w#-]+\s+){0,2}(#\d+|prs?|pull requests?|issues?|sessions?|lanes?|branch(es)?|it|them)\b"
+  r"|\bdispatch\s+((the|this|that|its)\s+)?([\w-]+\s+){0,2}(workflows?|runs?|nightly|jobs?|#\d+|it)\b|\brun (the |this )?workflow\b"
+  r"|\bpress\s+((the|this|that|its)\s+)?([\w-]+\s+){0,2}(button|run workflow|merge|approve|edit|return|enter|ready|re-?run|#\d+)\b"
   + (r"|\b(close|merge|label|archive|dispatch) #\d+" if mode == "state" else ""), I)
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
 YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
   r"yourself|needs you|your (click|turn|side))", I)
 IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
-  r"(then |and |just |now )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit)\b", I)
+  r"(then |and |just |now )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit|close|archive|merge|dispatch|label"
+  r"|run (the )?workflow(?! (was|is|ran|has)\b))\b", I)   # E-c verbs as a plain command too (review of #3665)
 # Only the founder can: sign-in, password, 2FA/one-time code, payment, new account or key (P-551), permission widening (P-387).
 ONLY = re.compile(r"sign(ed)?[- ]?(in|out)|log(ged)?[- ]?(in|out)|password|\b2fa\b|two[- ]factor|one[- ]time (code|password)|\botp\b|passkey"
   r"|verification code|payment|billing|credit card|\bnew (account|key|token)\b|create (a |an )?(new )?account|\b(api|access|secret|ssh) key"
