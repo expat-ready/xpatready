@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Wake on merge (founder 24 Nov, through Lead 25; design/wake-on-merge-design-2026-11-24.md, option A): an open pull request
 that waits for others is an ACT in the Lead's check as soon as all of them are on main, with the words to type in its lane.
-Report only: it types, posts and starts nothing.
+Without --post it types, posts and starts nothing. With --post (OS-49, design/os-backlog.md; lead-watch 4b in the Lead's copy)
+the wake is a comment on the waiting PR, once per PR and set of waits: a cloud lane is subscribed to its own PR, so the
+comment wakes it with no Lead turn. Posted is an info line; still not taken 60 min after the post is an ACT again; a failed
+post is the ACT with the words to type. Memory: <state>/merge-wake.json ({"<pr>:<waits>": epoch posted}).
   Waits    a line of its own in the PR's body, "Waits on: #12" or "Stacked on: #12, #13" (nothing else on the line but
            numbers; not in a code block, HTML comment or quote). Prose is not read; a wait line that cannot be read is an ACT.
   Wake     every number merged on main ("Merge pull request #n"), and the PR's branch does not hold those merges yet. It stays
@@ -9,11 +12,13 @@ Report only: it types, posts and starts nothing.
   Broken   a number that is neither open nor merged (closed, or no pull request) is an ACT of its own.
 The lane is the app view's line that names the PR or its branch; not found is said. Reads git, the open PRs step 2b saved
 and the saved app view; no network, US$0. What cannot be read is an ACT. Exit 0. Test: check-merge-wake.sh.
-   python3 -I product/tools/merge-wake.py --prs prs-body.json [--app-view FILE] [--repo DIR] [--ref origin/main] [--now EPOCH]"""
-import argparse, json, os, re, subprocess, time
+   python3 -I product/tools/merge-wake.py --prs prs-body.json [--app-view FILE] [--repo DIR] [--ref origin/main] [--now EPOCH]
+                                          [--post --state DIR]"""
+import argparse, json, os, re, shlex, subprocess, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 MERGE = re.compile(r"^(\d+) ([0-9a-f]{40}) Merge pull request #(\d+) from ")
 WAIT = re.compile(r"^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?(?:waits|stacked) on(?:\*\*)?[ \t]*:(?:\*\*)?([^\n]*)$", re.I)
+AGAIN = 3600  # seconds after a post with no merge of main before the Lead is asked again
 ONE = re.compile(r"(?:expat-ready/xpatready)?#(\d{1,6})\.?|\[#(\d{1,6})\]\(\S{1,200}\)\.?"); LIMIT, MANY = 200, 12
 
 
@@ -83,7 +88,18 @@ def has_all(repo, branch, shas):
 def main():
     a = argparse.ArgumentParser(); a.add_argument("--prs", required=True); a.add_argument("--repo", default=os.path.join(HERE, "..", "..", "..", ".."))
     a.add_argument("--app-view", default=os.path.join(HERE, "..", "state", "app-view-latest.txt")); a.add_argument("--ref", default="origin/main"); a.add_argument("--now", type=float)
+    a.add_argument("--post", action="store_true"); a.add_argument("--state")
     o = a.parse_args(); now = o.now or time.time()
+    mem, mpath = {}, os.path.join(o.state, "merge-wake.json") if o.state else None
+    if o.post and not mpath:
+        raise RuntimeError("--post needs --state")
+    if o.post:
+        try:
+            mem = json.load(open(mpath)); assert isinstance(mem, dict)
+        except FileNotFoundError:
+            mem = {}
+        except Exception:
+            mem = {}; print("wake  memory unreadable, rebuilt empty (a wake may be posted twice)")
     prs = json.load(open(o.prs, encoding="utf-8"))
     if not isinstance(prs, list) or not prs:
         raise RuntimeError("no open pull request read")
@@ -125,10 +141,28 @@ def main():
         labels = {(x.get("name") if isinstance(x, dict) else x) for x in p.get("labels") or []}
         if labels & {"queued", "review: approved"}:
             print(f"wake  #{p['number']} waited on {ws}, all on main; it is approved or queued: nothing to type (a new commit would void its Approve)"); continue
-        wake += 1
-        print(f"ACT   wake: {ws} on main since {ist(t)} ({(now - t) / 60:.0f} min); #{p['number']} waited: {lane(view, p['number'], p['headRefName'])}. Type: \"{ws} {'is' if len(w) == 1 else 'are'} on main: merge main once and go on with #{p['number']}\"")
+        wake += 1; failed = ""
+        if o.post:
+            k, words = f"{p['number']}:{ws}", f"{ws} {'is' if len(w) == 1 else 'are'} on main: merge main once and go on with #{p['number']}"
+            if k in mem:
+                if now - mem[k] < AGAIN:
+                    print(f"wake  #{p['number']}: woken by a PR comment {(now - mem[k]) / 60:.0f} min ago ({ws} on main); waiting for its lane to merge main"); continue
+                print(f"ACT   wake: #{p['number']} was woken by a PR comment {(now - mem[k]) / 60:.0f} min ago and has not merged {ws} yet: {lane(view, p['number'], p['headRefName'])}. Type: \"{words}\""); continue
+            gh = shlex.split(os.environ.get("MERGE_WAKE_GH") or f"bash {shlex.quote(os.path.join(HERE, 'gh.sh'))}")
+            body = f"**Wake on merge (OS-49, lead-watch):** {words}. (Posted once by the tech lead's check; P-339b.)"
+            r = subprocess.run(gh + ["pr", "comment", str(p["number"]), "--body", body], capture_output=True, text=True, timeout=60)
+            if r.returncode == 0:
+                mem[k] = now; print(f"wake  #{p['number']}: {ws} on main since {ist(t)}; wake comment posted on the PR (its lane is woken by it)"); continue
+            failed = f" (posting the wake on #{p['number']} failed: {clean(r.stderr or r.stdout, 80)})"
+        print(f"ACT   wake{failed}: {ws} on main since {ist(t)} ({(now - t) / 60:.0f} min); #{p['number']} waited: {lane(view, p['number'], p['headRefName'])}. Type: \"{ws} {'is' if len(w) == 1 else 'are'} on main: merge main once and go on with #{p['number']}\"")
     if unread:
         print(f"ACT   wake: {len(unread)} pull request{'s' * (len(unread) > 1)} with a wait line that cannot be read (numbers only, at most {MANY}: \"Waits on: #12, #13\"): " + " ".join("#%d" % x for x in unread[:10]))
+    if o.post:
+        mem = {k: v for k, v in mem.items() if int(k.split(":")[0]) in up}   # closed PRs leave the memory
+        try:
+            os.makedirs(o.state, exist_ok=True); open(mpath + ".tmp", "w").write(json.dumps(mem)); os.replace(mpath + ".tmp", mpath)
+        except Exception as e:
+            print(f"ACT   wake: memory not written ({type(e).__name__}): a wake may be posted again")
     print(f"wake  {n} of {len(prs)} open pull requests say what they wait on, {wake} may go on; {sum(1 for t in merged.values() if now - t < 3600)} merges in the last hour")
 
 

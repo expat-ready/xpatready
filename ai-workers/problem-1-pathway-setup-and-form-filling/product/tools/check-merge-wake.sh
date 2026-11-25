@@ -55,4 +55,19 @@ step 'ACT   wake: x'; ok "lead-watch.sh counts its ACT line" "$(has 'acts=1')" "
 step Traceback; ok "fail: a merge-wake.py that dies is an ACT" "$(has 'ACT   wake: merge-wake.py did not run')" "$o"
 a=$(grep -n '^# 4b\. Wake on merge' "$TOOLS/lead-watch.sh" | cut -d: -f1); b=$(grep -n '^git fetch -q origin 2' "$TOOLS/lead-watch.sh" | tail -1 | cut -d: -f1); c=$(grep -n 'prs-body.json" 2>/dev/null' "$TOOLS/lead-watch.sh" | head -1 | cut -d: -f1)
 ok "the step comes after the fetch and after step 2b wrote the PR list" "$([ -n "$a" ] && [ "$a" -gt "$b" ] && [ "$a" -gt "$c" ] && echo 1)" "step $a fetch $b prs $c"
+# OS-49: --post wakes the lane by a PR comment, once; a stand-in gh records the posts
+printf '#!/bin/sh\n[ -n "${GHFAIL:-}" ] && { echo "HTTP 403" >&2; exit 1; }\necho "$@" >> "%s/posts"\n' "$T" > "$T/gh"; chmod +x "$T/gh"
+runp() { : > "$T/posts"; printf '[%s]' "$(IFS=,; echo "$*")" > "$T/p.json"; o=$(MERGE_WAKE_GH="$T/gh" python3 -I "$TOOLS/merge-wake.py" --prs "$T/p.json" --repo "$R" --app-view "$T/av" --now "${PNOW:-$NOW}" --post --state "$T/ps" 2>&1); }
+posts() { grep -c . "$T/posts"; }; hp() { grep -qF -- "$1" <<<"$o"; }
+P=$(pr 207 c/waits 'Waits on: #101'); rm -rf "$T/ps"
+runp "$X" "$P"; ok "post: the wake is a comment on the waiting PR, no ACT, said" "$([ "$(posts)" = 1 ] && grep -q '^pr comment 207 --body \*\*Wake on merge (OS-49, lead-watch):\*\* #101 is on main: merge main once and go on with #207' "$T/posts" && [ "$(acts)" = 0 ] && hp 'wake comment posted on the PR' && echo 1)" "$o $(cat "$T/posts")"
+runp "$X" "$P"; ok "post: the next check posts nothing and says it waits" "$([ "$(posts)" = 0 ] && [ "$(acts)" = 0 ] && hp 'woken by a PR comment' && echo 1)" "$o"
+PNOW=$((NOW + 3700)) runp "$X" "$P"; ok "post: not taken 60 min after the post is an ACT with the words, no second post" "$([ "$(posts)" = 0 ] && [ "$(acts)" = 1 ] && hp 'has not merged #101 yet' && echo 1)" "$o"
+rm -rf "$T/ps"; GHFAIL=1 runp "$X" "$P"; ok "post: a failed post is the ACT, and not remembered" "$([ "$(acts)" = 1 ] && hp 'ACT   wake (posting the wake on #207 failed: HTTP 403): #101 on main' && echo 1)" "$o"
+runp "$X" "$P"; ok "post: after a failed post the next check posts" "$([ "$(posts)" = 1 ] && echo 1)" "$o"
+runp "$X" "$(pr 217 c/waits 'Waits on: #101' 'review: approved')"; ok "post: an approved PR gets no comment" "$([ "$(posts)" = 0 ] && echo 1)" "$o"
+runp "$X" "$(pr 210 late 'Waits on: #101')"; ok "post: a branch that holds main gets no comment" "$([ "$(posts)" = 0 ] && echo 1)" "$o"
+runp "$X"; ok "post: a closed PR leaves the memory" "$(python3 -c 'import json,sys; sys.exit(0 if "207:#101" not in json.load(open(sys.argv[1])) else 1)' "$T/ps/merge-wake.json" && echo 1)" "$(cat "$T/ps/merge-wake.json")"
+echo '{broken' > "$T/ps/merge-wake.json"; runp "$X" "$P"; ok "post: an unreadable memory is rebuilt and said; the wake is posted" "$([ "$(posts)" = 1 ] && hp 'memory unreadable' && echo 1)" "$o"
+o=$(python3 -I "$TOOLS/merge-wake.py" --prs "$T/p.json" --repo "$R" --app-view "$T/av" --now "$NOW" --post 2>&1); ok "post: --post with no --state is an ACT, nothing posted" "$(hp 'ACT   wake: not read' && echo 1)" "$o"
 finish

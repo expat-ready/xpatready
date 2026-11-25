@@ -220,8 +220,9 @@ alive=$(git for-each-ref --sort=-committerdate --format='%(committerdate:unix) %
 say "lanes pushed in 90 min: $(echo "$alive" | grep -c .)"; [ -n "$alive" ] && echo "$alive" | head -12 | sed 's/^/      /'
 fresh "origin after git fetch, local-lanes.sh"
 
-# 4b. Wake on merge (24 Nov, design option A): an open PR whose "Waits on: #n" are all on main, with the words to type. Report only.
-mw=$(python3 -I "$TOOLS/merge-wake.py" --prs "$STATE_DIR/prs-body.json" 2>&1); echo "$mw"; act=$((act + $(grep -c '^ACT' <<<"$mw"))); seen "$mw"
+# 4b. Wake on merge (24 Nov, design option A): an open PR whose "Waits on: #n" are all on main. OS-49: the wake is posted once
+# as a comment on that PR (its cloud lane is subscribed to it), an ACT again only if not taken in 60 min; LEAD_WATCH_WAKE_POST=0: report only.
+mw=$(python3 -I "$TOOLS/merge-wake.py" --prs "$STATE_DIR/prs-body.json" $([ "${LEAD_WATCH_WAKE_POST:-1}" = 0 ] || echo --post --state "$STATE_DIR") 2>&1); echo "$mw"; act=$((act + $(grep -c '^ACT' <<<"$mw"))); seen "$mw"
 grep -qE '^(wake |ACT   wake)' <<<"$mw" || ACT "wake: merge-wake.py did not run ($(head -1 <<<"$mw"))"
 fresh "merge-wake.py: main's merges and branch tips (fetched in step 4), open PRs read in 2b (gh.sh), the app view saved in step 10's file"
 
