@@ -2,11 +2,11 @@
 
 current_lead: local_b3dca92e-931b-4e47-bbf5-7bfcd6f6a69d Lead 9 · 25 Nov 17:37 IST (after Lead 8 local_89852a53, past 200k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 19:15 IST (clock): **Lead 9 took over at 17:38 (Lead 8 handed over; its block below is still the to-do list).** Check 4901ca0f created (cron 3,33). Weekly 86% at 17:4x, about 3%/h: push STATE and RESUME by 94%, about 20:30 IST.
+updated: 2026-11-25 19:45 IST (clock): **Lead 9 took over at 17:38 (Lead 8 handed over; its block below is still the to-do list).** Check 4901ca0f created (cron 3,33). Weekly 86% at 17:4x, about 3%/h: push STATE and RESUME by 94%, about 20:30 IST.
 
 ## Hand-over Lead 8 → Lead 9, 17:37 IST 25 Nov (Lead 8 past 200k beyond its start read, P-446; Lead 7's block and every Lead 8 check, word for word: `history/` files named STATE-2026-11-25-*lead8*)
 
-**Lead 9 check 19:07-19:15:** weekly 87%; disk 5 GB. P-423 reads posted and labelled: #2129 (audit chain), #3647 (client sign-in tables); #3649 read, sent back to merge main (conflict). Next: cloud qa for R1.29, R1.45 (founder turn); #3693; over 24 h #3479 #3219 #3217 #3194; human sample R1.2, R1.82.
+**Lead 9 check 19:37-19:45:** weekly 88%; disk 5 GB; 1 app-code merge in 30 min. Relabelled on new heads: #2129 (re-stamped, same SQL), #3647 (covered lines), #3649 (merge of main, same SQL). #3692: fo9s in #3760's quarantine. Human sample R1.24/R1.109 (16:31) stands; a duplicate R1.2/R1.82 ask dropped. Next: cloud qa for R1.29, R1.45 (founder turn); #3693; over 24 h #3479 #3219 #3217 #3194.
 Earlier Lead 9 lines (first check; P-842 records PR #3769): `history/STATE-2026-11-25-1755-lead9-first-check.md`.
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 8's 32e9c6fc is deleted. **Standbys after you:** Lead 10 local_d682100b, Lead 11 local_fef3e227 (never archive Lead 5 or Lead 7). **Weekly 85% at 17:36, about 3%/h: 94% about 20:30 IST: push STATE and RESUME by then, tell the founder the time** (he switches at 95-96%, A386).
 **Tools (A390):** this copy's tools are about 2,940 commits stale: run main's from a scratch clone (`git clone --reference <repo> --filter=blob:none` into $TMPDIR, sparse `product/`, reset to origin/main each check, `bash tools/lead-watch.sh 30`; add allowed_domains github.com, api.github.com, *.blob.core.windows.net). #3506 (queued) makes stale tools refuse; once merged, move this copy to a fresh lead/<today> from origin/main. Rewrite `cycle-plan.json` for today and refresh the cockpit: founder-report.py prints no forecast from the 21 Nov plan.
