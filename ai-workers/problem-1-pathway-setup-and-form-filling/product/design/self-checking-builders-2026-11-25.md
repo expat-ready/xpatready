@@ -6,14 +6,14 @@ Builders check their own change in a real browser before every commit, five more
 
 ## Founder's recommendation and plan
 
-Adopt all six items, in three build phases from 27 Nov to 6 Dec, built by the pipeline owner lane (OS-PM) and the qa lane. Each check runs as a warning before it can block anything. Phase 1 starts after the 48-hour plan ends (27 Nov 12:00 IST), so nothing touches today's queue. Windows are proposed; the Lead confirms them against OS-PM's queue.
+Adopt all six items, in three build phases from 27 Nov to 6 Dec, built by the pipeline owner lane (OS-PM) and the qa lane. Each check runs as a warning before it can block anything. **Founder ruling 25 Nov 13:04 IST ("Yes, start now"): phase 1 starts now**, with verify (item 1), the budgets (item 2) and the sign-in sweep (item 6b) in Tier 1 of the OS backlog. Nothing changes the merge queue, gates A and B or the required checks during the 48-hour plan. Windows confirmed by Lead 5.
 
 | Phase | Window (IST) | Items | Owners | Gate to the next phase |
 | --- | --- | --- | --- | --- |
 | 0 Approve | 25 to 26 Nov | founder's decisions; six rows in `design/os-backlog.md`; budgets into `STANDARDS.md` §9 | founder, Lead | founder's go (given 25 Nov 12:56) |
-| 1 Verify loop trial | 27 Nov 12:00 to 29 Nov | verify skill (item 1); LCP and CLS budgets (item 2); one lane, warning only | OS-PM, one builder lane | trial: about 5 minutes a commit or less, fewer red runs |
-| 2 Widen | 30 Nov to 2 Dec | verify on all lanes; visual compare (item 3); sign-in sweep (item 6b) | OS-PM, qa lane | each check clean for 24 h or 10 pull-request runs, then required |
-| 3 Deepen | 3 to 6 Dec | design-system check (item 4); mutation testing (item 5); first-time-user agent (item 6a) | OS-PM, qa lane | all six live by 6 Dec |
+| 1 Verify loop trial | 25 Nov to 27 Nov 12:00 | verify skill (item 1); LCP and CLS budgets (item 2); sign-in sweep (item 6b); one builder lane on a non-critical row from 26 Nov morning, warning only; at 27 Nov 12:00 the Lead decides from the trial numbers | OS-PM, one builder lane | trial: about 5 minutes a commit or less, fewer red runs |
+| 2 Widen | 27 Nov 12:00 to 30 Nov | verify on all lanes (if the trial passes); visual compare (item 3) and the design-system rules list: qa starts both at 27 Nov 12:00 | OS-PM, qa lane | each check clean for 24 h or 10 pull-request runs, then required |
+| 3 Deepen | 1 to 4 Dec | design-system check (item 4); mutation testing (item 5); first-time-user agent (item 6a) | OS-PM, qa lane | all six live by 4 Dec (mutation after its §1 gate entry) |
 
 | Who | Does | When |
 | --- | --- | --- |
