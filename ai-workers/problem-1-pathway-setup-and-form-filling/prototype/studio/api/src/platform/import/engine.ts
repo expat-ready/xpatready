@@ -112,8 +112,8 @@ export class ImportService {
   }
   /** POST /imports/:id/dry-run: checks the mapping, then every row; writes the preview rows and the dry-run hash. */
   async dryRun(s: StaffContext, id: string, raw: unknown) {
-    const b0 = await this.batch(this.d.db, s, idParam(id, "import")), t = this.target(b0.targetKey);
-    const body = parseInput(DryRunBody, raw ?? {});
+    const bid = idParam(id, "import"), body = parseInput(DryRunBody, raw ?? {});   // PF-28: the id's form, then the input, then the lookup
+    const b0 = await this.batch(this.d.db, s, bid), t = this.target(b0.targetKey);
     if (!["DRAFT", "DRY_RUN_READY"].includes(b0.state)) fail(409, "ALREADY_RUN", "This import has run: start a new import to change it.");
     const csv = await this.file(s, b0);
     const mapping: Mapping = { columns: Object.fromEntries(csv.header.map((h) => [h, Object.hasOwn(body.columns, h) ? body.columns[h] : null])), declared: body.declared };
@@ -170,8 +170,8 @@ export class ImportService {
    *  the batch to RUNNING and queues the job (STANDARDS §3: never inside a web request); a RUNNING batch whose job
    *  stopped (the worker was lost) is queued again, and the job goes on from the first row it has not written. */
   async run(s: StaffContext, id: string, raw: unknown) {
-    const b0 = await this.batch(this.d.db, s, idParam(id, "import")), t = this.target(b0.targetKey);
-    const body = parseInput(RunBody, raw ?? {});
+    const bid = idParam(id, "import"), body = parseInput(RunBody, raw ?? {});
+    const b0 = await this.batch(this.d.db, s, bid), t = this.target(b0.targetKey);
     if (["COMPLETED", "PARTIAL", "FAILED", "UNDOING", "UNDONE"].includes(b0.state)) fail(409, "ALREADY_RUN", "This import has already run.");
     if (b0.state === "DRAFT" || !b0.dryRunHash) fail(409, "DRY_RUN_NEEDED", "Run the preview (the dry run) first: nothing is imported without one.");
     if (body.dryRunHash !== b0.dryRunHash) fail(409, "DRY_RUN_CHANGED", "The preview has changed since you looked at it (a new mapping or a new preview): check the new preview, then run it.");
@@ -266,7 +266,8 @@ export class ImportService {
   }
   /** GET /imports/:id/rows: one page of the preview's or the run's rows, each reason in words (never a cell's value). */
   async rows(s: StaffContext, id: string, raw: unknown) {
-    const b = await this.batch(this.d.db, s, idParam(id, "import")), t = this.d.targets.get(b.targetKey), q = parseInput(RowsQuery, raw ?? {});
+    const bid = idParam(id, "import"), q = parseInput(RowsQuery, raw ?? {});
+    const b = await this.batch(this.d.db, s, bid), t = this.d.targets.get(b.targetKey);
     const phase = ["DRAFT", "DRY_RUN_READY"].includes(b.state) ? "DRY_RUN" : "RUN";
     const outcome = q.outcome && ["CREATE", "MERGE", "SKIP", "ERROR"].includes(q.outcome) ? (q.outcome as "CREATE") : undefined;
     const page = Math.max(1, Math.min(10_000, Number.parseInt(q.page ?? "1", 10) || 1));
