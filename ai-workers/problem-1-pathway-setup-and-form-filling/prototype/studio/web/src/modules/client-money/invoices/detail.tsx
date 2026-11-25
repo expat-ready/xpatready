@@ -2,7 +2,7 @@
 // `GET …/money/invoices/:id/detail`): one page with sections Overview · Lines · Payments and credits · History, no tabs. The
 // header: number, Bill to, status chip, Balance due. Actions only from `allowedActions` (BR-10; a missing route is a missing
 // button, never a disabled one): part 1 shows "Use a credit note" (CREDIT_NOTE) and "Download PDF" (DOWNLOAD_PDF); the builder
-// and issue (EDIT, ISSUE) are part 2's, Record payment FO-7s3a's, Send FO-7s2's. Every figure is the API's, in its currency.
+// and issue (EDIT, ISSUE) are part 2's, Send FO-7s2's; Record payment… (RECORD_PAYMENT) opens FO-7s3a's panel. Every figure is the API's, in its currency.
 // A trust figure shows only when the read answers it (trust shows); otherwise no trust word at all (BR-1).
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -15,6 +15,7 @@ import { endSession, setStaffToken, staffApi, StaffApiError, staffToken, useStaf
 import { MONEY_AREA, MoneyMenuSmall } from "../area";
 import { billToWord, day, Detail, INVOICES_HOME, KIND_WORD, money, rateWord, STATUS_HINT, STATUS_TONE } from "./contract";
 import { CreditNotePanel } from "./credit-note-panel";
+import { RecordPaymentPanel } from "../payments/record-payment";
 
 /** The PDF needs the bearer token, so it is fetched and saved, not linked. */
 async function downloadPdf(id: string, number: string) {
@@ -42,6 +43,7 @@ const taxWords = (l: Detail["invoice"]["lines"][number]) => l.kind === "GOVERNME
 function DetailBody() {
   const { id = "" } = useParams(), token = useStaffToken(), me = usePlatformStaff();
   const q = useQuery({ queryKey: ["fo", "money", "invoice", token, id], enabled: !!token, retry: false, queryFn: async () => Detail.parse(await staffApi(`/front-office/money/invoices/${encodeURIComponent(id)}/detail`)) });
+  const [paying, setPaying] = React.useState(false), payOpener = React.useRef<HTMLButtonElement>(null);
   const [crediting, setCrediting] = React.useState(false), [pdfProblem, setPdfProblem] = React.useState<string | null>(null), [pdfBusy, setPdfBusy] = React.useState(false);
   const opener = React.useRef<HTMLButtonElement>(null), heading = React.useRef<HTMLHeadingElement>(null), pdfBox = React.useRef<HTMLDivElement>(null);
   if (q.isError) {
@@ -68,7 +70,8 @@ function DetailBody() {
           <p className="mt-1 text-base">Balance due: <strong className="tabular-nums" data-figure data-balance>{money(inv.dueMinor, c)}</strong></p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {acts.has("CREDIT_NOTE") ? <Button ref={opener} className="max-sm:h-11" onClick={() => setCrediting(true)} data-action="CREDIT_NOTE">Use a credit note</Button> : null}
+          {acts.has("RECORD_PAYMENT") && inv.number ? <Button ref={payOpener} className="max-sm:h-11" onClick={() => setPaying(true)} data-action="RECORD_PAYMENT">Record payment…</Button> : null}
+          {acts.has("CREDIT_NOTE") ? <Button ref={opener} variant={acts.has("RECORD_PAYMENT") ? "outline" : undefined} className="max-sm:h-11" onClick={() => setCrediting(true)} data-action="CREDIT_NOTE">Use a credit note</Button> : null}
           {acts.has("DOWNLOAD_PDF") ? <Button variant="outline" className="max-sm:h-11" busy={pdfBusy} data-action="DOWNLOAD_PDF" onClick={() => { setPdfBusy(true); setPdfProblem(null); downloadPdf(inv.id, number).catch((e) => { setPdfProblem(e instanceof StaffApiError ? e.message : "Could not download the PDF."); requestAnimationFrame(() => pdfBox.current?.focus()); }).finally(() => setPdfBusy(false)); }}>Download PDF</Button> : null}
         </div>
       </header>
@@ -116,6 +119,8 @@ function DetailBody() {
       <Section id="history" title="History">
         {!history.length ? <p className="text-sm text-text-muted">A draft: nothing has happened to it yet.</p> : <ol className="flex flex-col gap-1 text-sm" data-history>{history.map((h, i) => <li key={i}><span className="text-text-muted">{day(h.at)}</span> · {h.text}</li>)}</ol>}
       </Section>
+      {/* kept while open: a payment that settles the invoice drops RECORD_PAYMENT, and the panel still shows its answer and the extra choice */}
+      {(acts.has("RECORD_PAYMENT") || paying) && inv.number ? <RecordPaymentPanel open={paying} onOpenChange={setPaying} invoiceId={inv.id} number={inv.number} currency={c} dueMinor={inv.dueMinor} party={billToWord(d.billTo)} returnFocus={() => (payOpener.current?.isConnected ? payOpener.current : heading.current)} /> : null}
       {acts.has("CREDIT_NOTE") && inv.number ? <CreditNotePanel open={crediting} onOpenChange={setCrediting} invoiceId={inv.id} number={inv.number} currency={c} creditableMinor={d.creditableMinor} returnFocus={() => (opener.current?.isConnected ? opener.current : heading.current)} /> : null}
     </div>
   );

@@ -32,6 +32,9 @@ TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-merge-wake.sh"   # wake on merge
+TESTS="$TESTS check-full-run-ask.sh"   # OS-06: full run on ask
+TESTS="$TESTS check-startup-failures.sh"   # OS-52: runs that never started
+TESTS="$TESTS check-founder-wait.sh"   # OS-18: the 🔴 founder line is an ACT each check
 TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
@@ -143,6 +146,9 @@ W24 html|product/tools/merge-wake.py|s/in re.sub(r"<!--.*flags=re.S)/in (body or
 W24 many|product/tools/merge-wake.py|s/^        if len(w) > MANY: .*/        if False:/|check-merge-wake.sh
 W24 wired|product/tools/lead-watch.sh|s/^mw=/# mw=/|check-merge-wake.sh
 W24 ran|product/tools/lead-watch.sh|/merge-wake.py did not run/d|check-merge-wake.sh
+W24 once|product/tools/merge-wake.py|s/^            if k in mem:/            if False:/|check-merge-wake.sh
+W24 unwritable|product/tools/merge-wake.py|s/o.post = False; print(f"ACT   wake: memory {clean/print(f"ACT   wake: memory {clean/|check-merge-wake.sh
+W24 cap|product/tools/merge-wake.py|s/if posted >= POSTS:/if False:/|check-merge-wake.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
 A351 c2 moved|product/tools/checks-changed.py|s/^            if to and (re.search.*/            if False:/|check-checks-changed.sh
@@ -692,6 +698,13 @@ P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.con
 P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
 P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \]; then exit 0; fi/exit 0/|check-pr-suites-job.sh
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
+# OS-18 (P-530): the 🔴 Waiting on the founder line; each row switches one of founder-wait.py's rules off.
+MUT="$MUT"'
+OS18 wait|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if since is None or since >= EVERY_MIN:/|check-founder-wait.sh
+OS18 hourly|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if waited >= WAIT_MIN:/|check-founder-wait.sh
+OS18 scope|product/tools/founder-wait.py|s/^            scope = ln\[3:\].strip().startswith("Start here")/            scope = True/|check-founder-wait.sh
+OS18 memory|product/tools/founder-wait.py|s/^            push = now$/            pass/|check-founder-wait.sh
+OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$fw")))/act=$act/|check-founder-wait.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
