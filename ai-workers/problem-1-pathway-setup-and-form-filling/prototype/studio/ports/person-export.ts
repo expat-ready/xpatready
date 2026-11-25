@@ -1,7 +1,8 @@
 // PF-26 part 1 (map row 34, R1.34; AG-2-93, SA-11-36, SA-11-40; shape product/screens/PF-26/shape.md): the person export
 // port. Each module registers one exporter; the export job (part 2, api/src/platform/person-export/) asks every registered
-// exporter for its sections about one person record of one firm and builds one package (JSON; the PDF is part 3). Part 3
-// registers the platform's and front office's exporters; the case side registers its own (CS-X1, part 4).
+// exporter for its sections about one person record of one firm and builds one package (JSON; the PDF is part 5). Parts
+// 3a and 3b register the platform's and front office's exporters; the case side and client money register theirs (CS-X1,
+// part 4).
 // The rules every registry keeps (ports/contracts/person-export-port.contract.ts proves them on each):
 // 1. A module registers once (a second register of the same module is refused); its name is a dotted lower-case word, and
 //    it declares the section names it may answer (lower-case words), at least one, each once.
@@ -26,13 +27,14 @@ export const SectionName = z.string().regex(/^[a-z][a-z0-9-]*$/, "a section name
 
 /** The one person record of one firm the package is about. `records` is that record's id first, then every earlier record
  *  merged into it (FO-9b's merge lineage; AG-2-93 rule 3), each once. */
+const LowerUuid = Uuid.transform((u) => u.toLowerCase());   // review m5: one spelling of every id in the package
 export const ExportSubject = z.strictObject({
-  firmId: FirmId,
-  personId: Uuid,
-  records: z.array(Uuid).min(1).max(200),
-}).refine((s) => s.records[0]?.toLowerCase() === s.personId.toLowerCase(), "records start with the person's own id")
-  .refine((s) => new Set(s.records.map((r) => r.toLowerCase())).size === s.records.length, "each record once");
-export type ExportSubject = z.infer<typeof ExportSubject>;
+  firmId: FirmId.transform((u) => u.toLowerCase()),
+  personId: LowerUuid,
+  records: z.array(LowerUuid).min(1).max(200),
+}).refine((s) => s.records[0] === s.personId, "records start with the person's own id")
+  .refine((s) => new Set(s.records).size === s.records.length, "each record once");
+export type ExportSubject = z.input<typeof ExportSubject>;
 
 /** Plain JSON only: a value a JSON reader gets back exactly (rule 5). */
 type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
@@ -106,13 +108,26 @@ export type PersonPackage = {
   modules: { module: string; sections: ExportSection[] }[];
 };
 
-/** Rules 3 to 5 checked on one exporter's answer; ExporterFailed names what broke. */
+/** A key a JSON reader would not get back as data: `__proto__` is dropped by zod's record and by object spread, so an item
+ *  holding one would lose data silently (review m2). Depth-first over the raw answer, before zod reads it. */
+function hasProtoKey(v: unknown, depth = 0): boolean {
+  if (depth > 64 || v === null || typeof v !== "object") return false;
+  if (Array.isArray(v)) return v.some((x) => hasProtoKey(x, depth + 1));
+  return Object.prototype.hasOwnProperty.call(v, "__proto__") || Object.values(v).some((x) => hasProtoKey(x, depth + 1));
+}
+
+/** Rules 3 to 5 checked on one exporter's answer; ExporterFailed names what broke, never a key or value of the data
+ *  (review m3: a key may be an email). A RangeError (an item nested too deep for the check) is the module's failure too. */
 export function checkAnswer(exporter: Pick<PersonExporter, "module" | "declares">, answer: unknown): ExportSection[] {
   if (!Array.isArray(answer)) throw new ExporterFailed(exporter.module, "its answer is not a list of sections");
   const seen = new Set<string>(), out: ExportSection[] = [];
   for (const raw of answer) {
-    const s = ExportSection.safeParse(raw);
-    if (!s.success) throw new ExporterFailed(exporter.module, `a section is not well formed (${s.error.issues[0]?.path.join(".") || "section"}: ${s.error.issues[0]?.message})`);
+    let s: ReturnType<typeof ExportSection.safeParse>;
+    try {
+      if (hasProtoKey(raw)) throw new ExporterFailed(exporter.module, "an item holds a __proto__ key");
+      s = ExportSection.safeParse(raw);
+    } catch (e) { throw e instanceof ExporterFailed ? e : new ExporterFailed(exporter.module, "a section could not be checked (too deep or too large)", e); }
+    if (!s.success) throw new ExporterFailed(exporter.module, `a section is not well formed (${s.error.issues[0]?.code ?? "invalid"})`);
     if (!exporter.declares.includes(s.data.name)) throw new ExporterFailed(exporter.module, `section ${s.data.name} was not declared`);
     if (seen.has(s.data.name)) throw new ExporterFailed(exporter.module, `section ${s.data.name} answered twice`);
     seen.add(s.data.name); out.push(s.data);
@@ -143,7 +158,9 @@ export async function buildPersonPackage<Tx>(port: PersonExportPort<Tx>, run: <T
 /** The package as the bytes stored and downloaded (UTF-8 JSON, two-space indent) and their sha256 (hex), for the audit
  *  line (which never holds the content). */
 export async function packageBytes(p: PersonPackage): Promise<{ bytes: Uint8Array; sha256: string }> {
-  const bytes = new TextEncoder().encode(`${JSON.stringify(p, null, 2)}\n`);
+  let text: string;
+  try { text = `${JSON.stringify(p, null, 2)}\n`; } catch (e) { throw new ExporterFailed("(package)", "the package is too large to write as one file", e); }   // review m4
+  const bytes = new TextEncoder().encode(text);
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return { bytes, sha256: [...digest].map((b) => b.toString(16).padStart(2, "0")).join("") };
 }

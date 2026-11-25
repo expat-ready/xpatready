@@ -81,7 +81,7 @@ export const personExportPortContract = defineContract("PersonExportPort", (make
 ]);
 
 /** What a module's test hands exporterCases: its exporter, a transaction runner in a firm's scope, and a seed (fresh per
- *  call) of one person whose rows carry `marker` (one of them deleted, carrying `deletedMarker`; one on an earlier record
+ *  call) of one person whose live rows carry `marker` (and no other marker; one of them deleted, carrying `deletedMarker`; one on an earlier record
  *  merged into the person, carrying `mergedMarker`), a family member's rows carrying `familyMarker`, and the same person's
  *  rows in another firm carrying `otherFirmMarker`. A module with nothing deletable or mergeable passes null for those. */
 export type ExporterHarness<Tx> = {
@@ -100,9 +100,14 @@ export function exporterCases<Tx>(make: () => Promise<ExporterHarness<Tx>>): Con
         const text = JSON.stringify(sections);
         expect(text.includes(s.marker), "the person's rows are in it");
         if (s.mergedMarker) expect(text.includes(s.mergedMarker), "the merged record's rows are in it");
+        const items = sections.flatMap((x) => x.items), holding = (m: string) => items.filter((i) => JSON.stringify(i).includes(m));
+        // Review M1: the live item is never marked deleted (a `deletedAt !== undefined` on a null column marks every item),
+        // and every item holding the deleted marker is marked (answering it twice, marked and unmarked, is caught).
+        expect(holding(s.marker).length > 0 && holding(s.marker).every((i) => !("deleted" in i)), "the person's live rows are not marked deleted", holding(s.marker));
+        if (s.mergedMarker) expect(holding(s.mergedMarker).every((i) => !("deleted" in i)), "the merged record's live rows are not marked deleted");
         if (s.deletedMarker) {
-          const item = sections.flatMap((x) => x.items).find((i) => JSON.stringify(i).includes(s.deletedMarker!));
-          expect(item?.deleted === true, "the deleted item is in it, marked deleted", item);
+          const del = holding(s.deletedMarker);
+          expect(del.length > 0 && del.every((i) => i.deleted === true), "the deleted item is in it, marked deleted, and only so", del);
         }
         expect(!text.includes(s.familyMarker), "no family member's rows");
         expect(!text.includes(s.otherFirmMarker), "no other firm's rows");

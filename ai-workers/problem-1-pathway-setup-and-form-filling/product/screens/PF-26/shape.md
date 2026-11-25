@@ -24,7 +24,24 @@ firm exporter and person exporter can share their table readers; that is a later
 | **5** | the PDF beside the JSON (AG-2-93 rule 10) | the job renders through DocumentRenderPort; download picks `?format=pdf` | the PDF names every module's sections; a render failure fails the export (no half package) |
 | **6** | the screen (PF-26s) and the journey | new `web/src/modules/front-office/person-export/`, one line in FO-4's record-screen "More" menu, `tests/check_pf26s_export_browser.ts`, `tests/journeys/j_34.ts`, the `walks.yml` line, `qa/built/R1.34.md`, `Completes: R1.34` | below |
 
-Each part is complete on its own (unfinished work merges switched off: before part 6 no screen shows the action).
+Each part is complete on its own, and unfinished work merges switched off (review m7):
+* Before part 6 no screen shows the action.
+* From part 2 on, the API refuses a request with 503 "Not available yet" until every module R1.34 names has registered its
+  exporter. The list is a code constant in part 2: `front-office.*`, `case-side`, `client-money`. So no key holder ever
+  gets a package without the case side's or money sections, offered as complete. Part 4 completes the list and the
+  test turns from "refused" to "built".
+
+**Requirement points placed (review m9):**
+* Rule 6, the person's language: part 2 writes the person's language (`fo_person.language`) at the top of the package.
+  The sections' titles in another language are **not known** (no requirement gives the wording). Part 5's PDF uses
+  English, with that gap named in its PR.
+* Rule 4, family and company links and front-office tasks: part 3a (`fo_company_contact`; the person's tasks where
+  front-office tasks exist on main, else a "not built" line in the PR).
+* AG16-60, the possible duplicate: part 6 shows "Possible match: <other record>" on the dialog when the person carries an
+  unresolved possible match, so the user can export that record too.
+* The failure step: j_34 step 3 (Failure). A failing module leads to "Export failed" and "Try again", and no file is offered.
+* The read-only build: part 2 proves that an exporter writing inside the build transaction fails the export
+  (`set transaction read only`).
 
 ## Journey j_34 (by screens, 1440 px; the next capability's first step is the person's record again)
 1. A Case Manager who can see Client B opens Client B's record (FO-4) and picks **More › Export personal data**.
@@ -32,6 +49,7 @@ Each part is complete on its own (unfinished work merges switched off: before pa
    (required). Empty → "Say why you are exporting this person's data." Sent → the record shows "Preparing export…".
 3. The job finishes: "Download (expires <date>)" for the requester only. The file holds the front office's, the case side's
    and client money's sections; a family member on the same case is not in it; a deleted note is marked.
+   Failure: a module fails → "Export failed" and "Try again", no file offered.
 4. The firm's activity log (AUD-4) shows who, Client B, why and when, apart from list exports.
 5. Refusals: a Reception user (no key) sees no action and a direct call answers 403; a Case Manager with `view.own` who
    cannot see Client B gets 404; a second staff member opening the link gets 404; an expired link shows "This download
@@ -39,7 +57,14 @@ Each part is complete on its own (unfinished work merges switched off: before pa
 6. Keyboard only, axe-core clean, 375/1024/1440.
 
 ## Question for the tech lead (one, with my recommendation)
-**"Logged with who and why":** AG-2-93 rule 7 audits the request, requester, person and time; the capability row adds
-**why**. Recommendation: the request takes a required reason (1-300 characters, Sample wording), kept on the export row
-and copied into the audit line (the requester's own words, like a support reason; the package's content never). Part 2
-builds this unless the tech lead says otherwise.
+**"Logged with who and why":** AG-2-93 rule 7 audits the request, requester, person and time. The **why** comes only from
+the capability row in `qa/CAPABILITIES.md`, not from a requirement (review m8: this is scope beyond AG-2-93, so I am asking
+rather than assuming).
+* (a) **Recommended:** a required reason (1-300 characters, Sample wording), kept on the export row, with the audit line
+  naming the export row's id. The reason text stays out of the audit trail, because free text can hold personal data
+  and the trail is append-only for 7 years (SA-11-33). "Who and why" are then read together on the firm's activity log
+  from the row.
+* (b) Copy the reason into the audit line too.
+* (c) No reason; rule 7 as written.
+
+Part 2 builds (a) unless the tech lead says otherwise.

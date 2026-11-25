@@ -9,7 +9,7 @@ import "reflect-metadata";
 import { createHash } from "node:crypto";
 import { runContract } from "../ports/contracts/contract.ts";
 import { exporterCases, personExportPortContract, type ExporterHarness } from "../ports/contracts/person-export-port.contract.ts";
-import { buildPersonPackage, fakePersonExport, packageBytes, PACKAGE_FORMAT, type ExportSubject, type PersonExporter } from "../ports/person-export.ts";
+import { buildPersonPackage, checkAnswer, ExporterFailed, fakePersonExport, packageBytes, PACKAGE_FORMAT, type ExportSubject, type PersonExporter } from "../ports/person-export.ts";
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
@@ -26,14 +26,16 @@ ok("PF-26 pass/fail (AG-2-93 rules 3, 4; Failure state): PersonExportPort's cont
 
 // ------------------------------------------------------------------- the exporter rules on an in-memory module
 type Row = { firm: string; person: string; text: string; deleted?: boolean };
-type Flaw = "none" | "family" | "drops-deleted" | "omits-empty";
+type Flaw = "none" | "family" | "drops-deleted" | "omits-empty" | "all-deleted" | "twice-deleted" | "any-firm" | "own-only";
 const harness = (flaw: Flaw) => async (): Promise<ExporterHarness<Row[]>> => {
   const rows: Row[] = [];
   const exporter: PersonExporter<Row[]> = {
     module: "test-module", declares: ["notes", "calls"],
     async sections(tx, s) {
-      const mine = tx.filter((r) => r.firm === s.firmId && (s.records.includes(r.person) || (flaw === "family" && r.text.startsWith("family"))));
-      const notes = mine.filter((r) => flaw !== "drops-deleted" || !r.deleted).map((r) => ({ text: r.text, ...(r.deleted ? { deleted: true as const } : {}) }));
+      const records = flaw === "own-only" ? [s.personId] : s.records;
+      const mine = tx.filter((r) => (flaw === "any-firm" || r.firm === s.firmId) && (records.includes(r.person) || (flaw === "family" && r.text.startsWith("family"))));
+      const notes = mine.filter((r) => flaw !== "drops-deleted" || !r.deleted).map((r) => ({ text: r.text, ...(r.deleted || flaw === "all-deleted" ? { deleted: true as const } : {}) }));
+      if (flaw === "twice-deleted") notes.push(...mine.filter((r) => r.deleted).map((r) => ({ text: r.text })));
       const out = [{ name: "notes", title: "Notes", items: notes }];
       return flaw === "omits-empty" ? out : [...out, { name: "calls", title: "Calls", items: [] }];
     },
@@ -61,6 +63,26 @@ ok("PF-26 pass (AG-2-93 rules 3, 4, 11; SA-11-40): exporterCases pass on a modul
 const family = await runCases("family"), dropped = await runCases("drops-deleted"), omits = await runCases("omits-empty");
 ok("PF-26 fail (SA-11-40; AG-2-93 rules 4, 11): exporterCases catch a module that sweeps in a family member, one that leaves out a deleted note, and one that leaves out an empty section",
   !family[0].ok && /family/.test(family[0].why ?? "") && !dropped[0].ok && /deleted/.test(dropped[0].why ?? "") && omits.every((r) => !r.ok), { family, dropped, omits });
+const allDel = await runCases("all-deleted"), twice = await runCases("twice-deleted"), anyFirm = await runCases("any-firm"), ownOnly = await runCases("own-only");
+ok("PF-26 fail (AG-2-93 rules 3, 11; SA-11-40; review M1, m1): exporterCases catch a module that marks every item deleted, one that answers the deleted note twice (marked and not), one that reads every firm, and one that skips the records merged into the person",
+  !allDel[0].ok && /not marked deleted/.test(allDel[0].why ?? "") && !twice[0].ok && /only so/.test(twice[0].why ?? "") && !anyFirm[0].ok && /other firm/.test(anyFirm[0].why ?? "") && !ownOnly[0].ok && /merged/.test(ownOnly[0].why ?? ""),
+  { allDel, twice, anyFirm, ownOnly });
+
+// ------------------------------------------------------------------- review m2-m5: the port's own edges
+{
+  const e = { module: "front-office", declares: ["notes"] }, sec = (items: unknown[]) => [{ name: "notes", title: "Notes", items }];
+  const fails = (answer: unknown) => { try { checkAnswer(e, answer); return null; } catch (x) { return x; } };
+  const proto = fails(sec([JSON.parse('{"text":"a","__proto__":{"x":1}}')]));
+  const email = fails(sec([{ "client.b@example.com": Number.NaN }]));
+  let deep: unknown = "x"; for (let i = 0; i < 20_000; i++) deep = [deep];
+  const tooDeep = fails(sec([{ v: deep }]));
+  ok("PF-26 fail (review m2, m3, m4): an item holding a __proto__ key, a NaN under an email-like key, and an item nested 20,000 deep each fail as the module's ExporterFailed, and no message holds the key",
+    proto instanceof ExporterFailed && /__proto__/.test(proto.message) && email instanceof ExporterFailed && !email.message.includes("example.com") && tooDeep instanceof ExporterFailed && tooDeep.module === "front-office",
+    [String(proto), String(email), String(tooDeep)]);
+  const p = fakePersonExport(); p.register({ module: "front-office", declares: ["notes"], sections: async () => sec([]) as never });
+  const UP = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", pkg = await buildPersonPackage(p, (fn) => fn(undefined), { firmId: UP.replace(/A/g, "B"), personId: UP, records: [UP.toLowerCase()] }, new Date(0));
+  ok("PF-26 pass (review m5): ids are written in one spelling, lower case, whatever case they came in", pkg.personId === UP.toLowerCase() && pkg.records[0] === UP.toLowerCase() && pkg.firmId === UP.replace(/A/g, "B").toLowerCase(), pkg);
+}
 
 // ------------------------------------------------------------------- the package and its bytes
 {
