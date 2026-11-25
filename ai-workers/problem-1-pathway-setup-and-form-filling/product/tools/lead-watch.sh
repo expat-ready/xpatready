@@ -230,6 +230,12 @@ mw=$(python3 -I "$TOOLS/merge-wake.py" --prs "$STATE_DIR/prs-body.json" 2>&1); e
 grep -qE '^(wake |ACT   wake)' <<<"$mw" || ACT "wake: merge-wake.py did not run ($(head -1 <<<"$mw"))"
 fresh "merge-wake.py: main's merges and branch tips (fetched in step 4), open PRs read in 2b (gh.sh), the app view saved in step 10's file"
 
+# 4c (OS-52, design/os-backlog.md; full-power #158): runs since the window's start that ended startup_failure ran no job (a
+# broken workflow file, so its check never reports): one ACT per workflow.
+sf=$(python3 -I "$TOOLS/startup-failures.py" --since "$since" 2>&1); sfrc=$?; echo "$sf"; seen "$sf"
+act=$((act + $(grep -c '^ACT' <<<"$sf"))); [ "$sfrc" = 0 ] && grep -q '^startup failures: ' <<<"$sf" || ACT "startup failures: startup-failures.py did not run ($(tail -1 <<<"$sf"))"
+fresh "startup-failures.py: GitHub Actions runs created since the window's start (gh.sh)"
+
 # 5. The founder's five changes, kept (founder 4 Nov ~10:50 IST "Go, start now"; "Yes, two standby"): builders in the
 # cloud, machine testing on GitHub, the Mac copy cap, and four numbers every check. A rule nobody measures drifts (the
 # cloud-only rule of 1 Nov, P-224, was not followed for three days), so each is read from the machine, never from prose.
