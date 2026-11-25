@@ -9,9 +9,10 @@ import { z } from "zod";
 export const FirmId = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a firm id (uuid)");
 
 /** Who did it: `staff:<staff id>` (a firm's signed-in staff member, PF-4's actor word), `ourstaff:<staff id>` (one of
- *  ExpatReady's own staff, PF-4s; AUD-3a), `system:<door>` (a job, a webhook, a public door) or `seed:<row>` (a seed or
- *  a demo loader). */
-export const AuditActor = z.string().regex(/^(staff|ourstaff|system|seed):[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/, "staff:<id>, ourstaff:<id>, system:<door> or seed:<row>");
+ *  ExpatReady's own staff, PF-4s; AUD-3a), `person:<fo_person id>` (a client signed in to their own portal, PF-4p;
+ *  AG-15-38: AUD-1a's trigger types it CLIENT), `system:<door>` (a job, a webhook, a public door) or `seed:<row>` (a seed
+ *  or a demo loader). */
+export const AuditActor = z.string().regex(/^(staff|ourstaff|person|system|seed):[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/, "staff:<id>, ourstaff:<id>, person:<id>, system:<door> or seed:<row>");
 
 const EMAILISH = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const DetailScalar = z.union([z.string().max(200), z.number(), z.boolean(), z.null()]);
