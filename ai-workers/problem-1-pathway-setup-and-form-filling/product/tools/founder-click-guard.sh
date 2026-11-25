@@ -2,7 +2,8 @@
 # ENF-763 (founder 20 Nov: "Everything has to be done by the agent, either using API or built-in browser ... Is this rule
 # not enforced yet?"; P-752, P-758 (3), P-762, P-763). In the Lead's copy only (lane.sh whoami = lead), a turn may not
 # end on a message asking the founder to do a step on github.com, claude.ai or a cloud console (click, Convert to draft,
-# add the label, Ready for review, reopen, "open #NNNN ... and", in the console) unless the same message names a step only
+# add the label, Ready for review, reopen, close, archive, merge, press, dispatch, Run workflow: ENF-778a E-c, P-778;
+# "open #NNNN ... and", in the console) unless the same message names a step only
 # the founder can do: sign-in, password, 2FA or one-time code, payment, a new account or key (P-551), a permission
 # widening (P-387). Run by stop-check.sh part (4) on the Stop hook's JSON; prints {decision:"block",reason} or nothing.
 #   bash product/tools/founder-click-guard.sh < hook.json          (Stop hook part)
@@ -15,7 +16,7 @@ import re, sys
 mode, text = sys.argv[1], sys.stdin.read()
 I = re.I
 # A step on github.com, claude.ai or a cloud console.
-ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draft\b|\badd(ing)?\b[^.\n]{0,40}\blabel\b|\blabel #\d+"
+ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draft\b|\badd(ing)?\b[^.\n]{0,40}\blabel\b|\blabel (#\d+|it|this|that|the (pr|pull request))\b"
   r"|\b(mark|set|make|move|press|hit|select)\b[^.\n]{0,30}\bready for review\b|\breopen(ing)?\b|\b(merge|approve)\b (the (pr|pull request)|#\d+)"
   r"|\bopen #\d+\b[^.\n]{0,60}\band (then )?(click|press|hit|add|convert|mark|reopen|merge|approve|label|select)\b|\bin the ([\w.-]+ ){0,3}console\b"
   r"|\b(press|hit) (the )?[\w ]{0,20}button\b|\bgo to (https?://)?(github\.com|claude\.ai)"
@@ -24,7 +25,10 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
   r"|\bopen (https?://)?(github\.com|claude\.ai)\S*[^.\n]{0,60}\b(press|click|hit|add|edit|type|convert|mark|reopen|merge|approve|label|select)\b|\b(press|click|hit|use|choose) (the )?edit\b"
   r"|\bedit (the |its |this )?(pr |pull request )?(description|body|title)\b"
   r"|\badd\b[^.\n]{0,40}\bline\b[^.\n]{0,40}(#\d+|\bdescription\b|\bbody\b|\bpr\b|pull request)"
-  + (r"|\b(close|merge|label) #\d+" if mode == "state" else ""), I)
+  # ENF-778a E-c (P-778): "also matches close, archive, reopen, label, dispatch, Run workflow, merge and press"
+  r"|\b(close|closing|archive|archiving|merge|merging)\b[^.\n]{0,25}(#\d+|\bpr\b|pull request|\bissue\b|\bsession\b|\blane\b|\bbranch\b)"
+  r"|\bdispatch(es|ing)?\b|\brun workflow\b|\b(press|pressing)\b"
+  + (r"|\b(close|merge|label|archive|dispatch) #\d+" if mode == "state" else ""), I)
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
 YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
   r"yourself|needs you|your (click|turn|side))", I)
@@ -44,7 +48,7 @@ def asks(chunk, need_you):
 if mode == "text":
     hits = [] if ONLY.search(text) else asks(text, True)
 else:  # the lines of STATE that ask the founder for something
-    hits = [h for l in text.splitlines() if re.search(r"for the founder|founder asks open|needs you", l, I) for h in asks(l, False)]
+    hits = [h for l in text.splitlines() if re.search(r"for the founder|founder asks open|needs you|(^|[\s*(-])ask:", l, I) for h in asks(l, False)]
 for h in hits: print("ask: " + h)
 ' "$1"; }
 case "${1:-}" in
@@ -69,4 +73,4 @@ fi
 [ -n "$msg" ] || exit 0
 hits=$(printf '%s' "$msg" | judge text)
 [ -z "$hits" ] && exit 0
-jq -n --arg h "$hits" '{decision:"block",reason:("- The last message asks the founder to do a GitHub, claude.ai or console step. Do it yourself in the built-in browser now (P-752/P-763), then tell the founder it is done. Only sign-in, password, 2FA or one-time code, payment, a new account or key (P-551) or a permission widening (P-387) go to the founder, named as the reason in the same message:\n" + $h + "\n")}'
+jq -n --arg h "$hits" '{decision:"block",reason:("- The last message asks the founder to do a GitHub, claude.ai or console step. Do it yourself now: do it in the built-in browser (P-752; P-763, P-778 E-c), then tell the founder it is done. Only sign-in, password, 2FA or one-time code, payment, a new account or key (P-551) or a permission widening (P-387) go to the founder, named as the reason in the same message:\n" + $h + "\n")}'

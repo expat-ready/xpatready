@@ -400,6 +400,9 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
+31 E-c words|product/tools/founder-click-guard.sh|s/(close.closing.archive.archiving.merge.merging)/(Xclose)/|check-founder-click-guard.sh
+31 E-c run|product/tools/founder-click-guard.sh|s/dispatch(es.ing)?.b..brun workflow.b..b(press.pressing)/Xd/|check-founder-click-guard.sh
+31 E-c ask|product/tools/founder-click-guard.sh|s/needs you.(^.\[\\s\*(-\])ask:/needs you/|check-founder-click-guard.sh
 HANG env|product/tools/hang-report.py|s/if d.get("environmentVariables"):/if False:/|check-hang-report.sh
 HANG dir|product/tools/hang-report.py|s/^FILE = .*/FILE = re.compile(r"(.*)(:\\d+:\\d+)")/|check-hang-report.sh
 HANG line|product/tools/hang-report.py|s/(f or "(line not shown)")/(f or s)/|check-hang-report.sh

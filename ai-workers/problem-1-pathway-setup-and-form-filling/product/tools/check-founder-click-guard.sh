@@ -46,7 +46,18 @@ for m in 'Next step: add the Done when line to #2578 (I will do it in the built-
 r=$(stop qa "$click"); ok "a non-Lead copy is untouched" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop unbound "$click"); ok "... and an unbound copy" "$([ "$r" = pass ] && echo 1)" "got $r"
 out=$(jq -n --arg d "$T/copy" --arg m "$click" '{cwd:$d,last_assistant_message:$m}' | FAKE_LANE=lead bash "$G")
-ok "the refusal tells the Lead to do it in the built-in browser now" "$(jq -e '.reason | contains("Do it yourself in the built-in browser now (P-752/P-763)")' <<<"$out" >/dev/null && echo 1)" "$out"
+ok "the refusal says the fix text: do it in the built-in browser (P-752) (P-778 E-c)" "$(jq -e '.reason | contains("do it in the built-in browser (P-752")' <<<"$out" >/dev/null && echo 1)" "$out"
+# ENF-778a E-c (P-778): close, archive, reopen, label, dispatch, "Run workflow", merge and press, in a message or an ask line
+for m in 'Please close #2413, it is superseded.' 'Could you archive the session of lane forms-2?' 'You need to merge the PR when green.' \
+         'Please press Run workflow on the nightly.' 'Can you dispatch the nightly workflow?' 'Please hit Run workflow on lead-watch.' \
+         'Reopen #2210 please.' 'Please label it review: approved.' 'Could you press the green button?'; do
+  r=$(stop lead "$m"); ok "refused (E-c): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'I closed #2413 and archived the forms-2 session in the built-in browser.' 'I dispatched the nightly myself (run 4551).' \
+         'The merge queue merged #2413.' 'I pressed Run workflow on the nightly; it is running.'; do
+  r=$(stop lead "$m"); ok "passes (E-c, the Lead's own report): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+printf '%s\n' '**Needs you:** archive the forms-2 session; dispatch the nightly' '- ask: Run workflow on lead-watch by hand' '| A300 | the Lead archives its own lanes | not an ask |' > "$T/STATE2.md"
+out=$(bash "$G" --state "$T/STATE2.md")
+ok "lead-watch (E-c): Needs you and ask lines with archive, dispatch, Run workflow are flagged" "$([ "$(grep -c '^ACT' <<<"$out")" -ge 3 ] && grep -q 'archive the forms-2' <<<"$out" && grep -q 'dispatch the nightly' <<<"$out" && grep -q 'Run workflow on lead-watch' <<<"$out" && ! grep -q A300 <<<"$out" && echo 1)" "$out"
 # lead-watch: STATE's asks to the founder that are clicks.
 cat > "$T/STATE.md" <<'EOF'
 **For the founder (open):** (a) R1.20 vs PF-4c invite rule: done; (b) close #2088; (c) sign in to claude.ai again (signed out)
