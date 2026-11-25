@@ -43,6 +43,8 @@ const generated = () => ({
   PLATFORM_SECRET_BOX_KEY_VERSION: "2",
   PLATFORM_LOCAL_SECRET: rand(40),   // PF-24w: PF-4's stand-in key is a secret setting of the loader too (optional)
   PLATFORM_SYSTEM_LOCAL_SECRET: rand(40),   // PF-4s: our own staff's stand-in key, a secret setting too (optional; never PLATFORM_LOCAL_SECRET's value)
+  PLATFORM_GOOGLE_CLIENT_ID: `${String(100000000000 + randomBytes(4).readUInt32BE())}-${rand(32)}.apps.googleusercontent.com`,   // R1.43 part 0: optional pair
+  PLATFORM_GOOGLE_CLIENT_SECRET: ["GOCSPX", rand(28)].join("-"),   // R1.43 part 0: a secret setting (redacted and scrubbed like the rest)
   PLATFORM_FILES_LINK_KEY: key32(),   // PF-F1b: the S3 download links' key is a secret setting of the loader too (optional)
 } as Record<string, string>);
 /** Every secret value in a generated set (each secret-box key on its own), to look for in messages, logs and responses. */
@@ -127,8 +129,10 @@ console.log("== 2. a held secret never prints, logs or serialises its value");
   const mine = generated();
   for (const n of SCRUBBED_FROM_ENV) process.env[n] = mine[n];
   process.env.PLATFORM_SECRET_BOX_KEY_VERSION = mine.PLATFORM_SECRET_BOX_KEY_VERSION;
+  process.env.PLATFORM_GOOGLE_CLIENT_ID = mine.PLATFORM_GOOGLE_CLIENT_ID;   // R1.43 part 0: the secret's pair (not secret)
   process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
   const live = platformConfig();
+  delete process.env.PLATFORM_GOOGLE_CLIENT_ID;
   delete process.env.PLATFORM_SECRET_BOX_KEY_VERSION;   // not secret; removed only so the copies started below inherit nothing of this
   ok("pass (break M1): the loaded configuration still holds every secret for its adapter", SCRUBBED_FROM_ENV.every((n) => n === "PLATFORM_SECRET_BOX_KEYS" ? live.secretBox?.keys.size === 2 : JSON.stringify(live).includes(`[secret ${n}]`)) && live.zoom.clientSecret?.reveal() === mine.PLATFORM_ZOOM_CLIENT_SECRET);
   const childEnv = execFileSync(process.execPath, ["-e", "process.stdout.write(JSON.stringify(process.env))"], { encoding: "utf8" });
