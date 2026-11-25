@@ -52,3 +52,24 @@ Neither touched the demo.
 5. Aligned columns in the PDF rows (visual quality).
 
 **Not tested:** a real screen reader or tagged-PDF reader; MessagesMail with a real channel (the cap is from ports/messages.ts and measured lengths); a real case (`runtime_case`); an intended user's unaided walk (D17 and D20 stay with the founder).
+
+## Round 2 (head `bbeb2bd7e112bb743dfe07cd6077f46e848c72de`)
+I walked J1–J10 again over HTTP, using the check (26/26) and my probe (scratch databases, dropped).
+* **J6 now holds:** a 4,000-line statement and a 5,000-line statement are each SENT, with a cover note of about 310 characters and every line in the PDF.
+* **J7 now holds:** a case's statement shows that case's figures and says "case C-… only"; another client's case, or an unknown one, gets 404.
+* **J9 now holds:** if the audit line fails, the answer is 500 and nothing is sent. A refused or failed email answers NOT_SENT with no audit line; this was run through the real MessagesMail path with a stubbed message layer.
+* **J8 is unchanged:** a double click still sends two emails (a stated limit).
+
+| Criterion | R1 | R2 | Evidence |
+|---|---|---|---|
+| Task completed | ½ | 1 | J1–J7 complete |
+| Next step obvious | ½ | ½ | NOT_SENT still gives no reason |
+| Plain words | 1 | 1 | "Date:" fixed |
+| Feedback and state | ½ | 1 | SENT / HELD / NOT_SENT; a 500 now means nothing was sent |
+| Correct data | ½ | 1 | one snapshot; the case's figures only |
+| Error recovery | ½ | ½ | J8 double send |
+| Accessibility and screen sizes | ½ | ½ | unchanged (text PDF, untagged) |
+| Speed | 1 | 1 | 460 lines 56 ms; 5,000 lines 203 ms |
+| Visual quality | ½ | ½ | unchanged (columns not aligned) |
+| Trust and sources | 1 | 1 | unchanged |
+| **Total** | 6.5 | **8 / 10** | **Pass**, with no 0 |

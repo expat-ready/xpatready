@@ -58,3 +58,41 @@ D1 Requirement fit 3: r3 PDF, period, trust words and person-only send hold; the
 **Could not check:** MessagesMail end to end with a real channel (M1 is from the port's schema plus measured text lengths); a real case's statement (M3 is from the code); production query plans (a 5,000-line PDF read straight after a bulk insert, before ANALYZE, went past the 300 s fetch limit; with statistics it took 0.5 s).
 
 Reviewer: Block 9245f58089458dc2b66534f96116ee025620127e
+
+## Round 2 (diff-only, bbeb2bd…)
+**Verdict: Approve. Head `bbeb2bd7e112bb743dfe07cd6077f46e848c72de`.** No open Blocker or Major. I reviewed only `git diff 9245f580..bbeb2bd7 -- prototype` (8 files, +195 −72); it answers my round 1 and the breaker's (break-report.md). **Checks:** `check_fo7r_statement_send` **26 passed, 0 failed**; `check_fo7r_statement` **46 passed, 0 failed**, S8 included (load average 0.6). My round-1 probe ran again on this head, and a new probe sent through the real `MessagesMail` with a stubbed message layer. Every scratch database was dropped.
+* **M1 fixed.** The email body is `coverText` (statement-document.ts): 306–312 characters, with the full statement only in the PDF. The check's mail port now applies the 100,000-character limit, and a 4,000-line statement is SENT with all 4,000 lines in the PDF. A body put back to the full text would fail that test. My probe: 5,000 lines SENT in 239 ms.
+* **M2 fixed.** `audit.record`, then `mailIn`, run in one transaction (send.ts:155–164), with `dispatch` after the commit and `mailReady` first. Probe on the real `MessagesMail.sendIn` path:
+
+  | What happens | Answer | Audit lines |
+  |---|---|---|
+  | Message queued | SENT | 1 |
+  | SUPPRESSED or FAILED | NOT_SENT | 0 (rolled back) |
+  | Database error inside the send | NOT_SENT | 0, nothing committed |
+  | Audit write refused (trigger) | 500 | 0, and 0 emails (round 1: 1 email) |
+
+  The daily cap now answers HELD (my round-1 m6); I read it in the code but did not run it, because capHolds needs the real `Messages`.
+* **M3 fixed.**
+  * **Figures:** a `caseId` takes owed, credit, waiting and held from that case's `sum.cases` rows only, and the period reads "…, case C-… only" (statement-document.ts:228–246). The check's case statement shows CAD 1,655.50 and no USD.
+  * **Which cases are allowed:** `caseOfClient` (send.ts:209) gives 404 for a case outside the scope's cases or not linked to this party (`caseLinks`). My probe's unknown case now gets 404; round 1 sent it.
+* **M4 fixed.** The seeded Case Officer, checked to hold show only, gets the PDF (200) and 403 on Send, before show is removed. A send route keyed on show would now fail that test.
+* **Round-1 Minors:**
+  * m2 (pages and summary in separate snapshots) fixed: `allLines` is part 1's `read` with `limit + 1` as one page, and it runs with `summaryIn`, the letterhead and the party in one repeatable-read transaction. Probe: 460 lines match the JSON exactly in 56 ms; 5,000 lines print in 203 ms; 5,002 → 422 in 166 ms.
+  * m1 (multi-page path untested) is moot: there are no pages now, and the 4,000-line test covers the long read.
+  * m4 fixed: "As of <today>:" heads the summary.
+  * m5 fixed: a case not this client's is 404.
+  * m6 fixed: HELD is answered. m7: "Date:" now has its colon.
+* **Breaker items:** a merged-away party is 404 in `partyFor` (part 1's reads too; part 1 still passes 46/46), and an address the mail port refuses is 422 naming `to`.
+* **Held again on this head (probe):**
+  * escaping of `( ) \` in names and references;
+  * negatives ("-50.00", "-0.05", "0.00");
+  * Case Officer C5: out of scope gets 404 on both routes and no email; default gets PDF 200 and Send 403;
+  * a company with no contact gets 422;
+  * strict inputs.
+
+**Still open, Minor (accepted as a stated limit in send.ts's header):** round-1 m3. Two quick sends still give two emails and two lines (probe 200/200). Part 4's button should be disabled while sending.
+**New, Minor:** a case with no money rows prints "case on file only" and an "As of …:" heading with no figures under it. Name the case, or print "Nothing owed on this case".
+**Observation, not a finding:** `caseOfClient` accepts only the case's own linked client. When AG-6-41's "Bill to another party" lands (AG-7-52), a payer with invoices on someone else's case would get 404 for that case's statement. No route on main bills a case to another party today.
+**Journey (re-scored on this head):** 8/10, pass with no 0. Task completed, feedback, correct data and speed each move to 1; next step obvious, error recovery, accessibility and visual quality stay ½.
+
+Reviewer: Approve bbeb2bd7e112bb743dfe07cd6077f46e848c72de
