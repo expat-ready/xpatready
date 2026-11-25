@@ -173,3 +173,24 @@ Reviewer: Block ea647490a0ff15528fb03bfb1933b50c2850affa
 **Still open, Minor (stated limit):** the "Held in trust" sentence goes to part 2 (round-1 m4). Round-1 m3 is now fixed by R3-2.
 
 Reviewer: Approve 0561097c276f7747bc0f7af580972ab10db64c18
+
+## Round 5 (diff-only, dd0f538…)
+**Verdict: Approve. Head `dd0f53829dfb0936d90476056b49bb86f1ed6d90`.** No open Blocker or Major. I reviewed only `git diff 089c137b..dd0f5382`: 3 files, +48 −39.
+* **B164 move: no SQL text changed.** A line-multiset comparison of the removed and added lines of statement.ts and summary.ts leaves only the FactTime refine and the label lines. `readSql` and `summarySql` are byte-identical.
+* **`labelsOf` gives the same `caseLabel`** (reads/parties.ts:48).
+  * The query is the same as the old read: `case.findMany({ firmId: f, id in caseIds }, caseNumber)`, firm-scoped.
+  * Rows come back in input order and ids are lowercased before lookup. An unknown case, another firm's case or a null number gives `null`, the same as the old `labels.get(...) ?? null`.
+  * The read is skipped when there are no cases.
+  * The census (`csw3-spike.sh census`) no longer lists any `client-money/reports` file, and `reads/parties.ts` is on the allow-list.
+* **R4-1 fixed. FactTime's check is right** (statement.ts:42–43). It refuses year 0000, then requires a JS `Date` round trip of the first 23 characters. That refuses month 99, day 30 Feb, 24:00 and second 60, and accepts any real time from 0001 to 9999. Postgres's `to_char(…, 'YYYY…')` writes the same 4-digit form, so every cursor the list itself gives still parses. The new S7 line covers 2026-99-99 (422), 0000 (422) and a real 1999 time (200).
+* **Checks:**
+
+  | Check | Result |
+  |---|---|
+  | `check_b164_no_engine_keys` | 67/67 |
+  | `check_csw3_firm_scope` | its static parts pass, census included; its HTTP part needs an isolated copy on :4496, which I did not start (not a builder port) |
+  | `check_fo7r_statement` | **46/46** on its last run |
+
+* **`check_fo7r_statement` timing, Minor (not this diff):** three earlier runs on the loaded machine each failed only S8's 300 ms bound, at 306 ms, 320 ms and 340 ms; the figures were right each time. Back to back at 08:16–08:17 UTC, round 4's exact tree (exported from 0561097) gave page 1 in 293 ms (route 266 ms), and this head gave 258 ms (route 293 ms). So this is noise near the bound, not a regression: the SQL is unchanged, page 1 never parses a cursor, and the bulk client has no cases. Under load S8 runs at about 85–113 % of its budget, so CI may flake on it; re-run that part alone if it does.
+
+Reviewer: Approve dd0f53829dfb0936d90476056b49bb86f1ed6d90
