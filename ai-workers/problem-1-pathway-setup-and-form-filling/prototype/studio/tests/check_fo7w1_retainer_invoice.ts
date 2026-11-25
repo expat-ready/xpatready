@@ -28,7 +28,7 @@ import { PROVINCE_TAX_RATES as T } from "../api/src/client-money/tax/canada-gst-
 import { moneyVisible } from "./lib/money-visible.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
-const NEW = "20261125140000_fo7w1_invoice_from_retainer";
+const NEW = "20261125140000_client-money__fo7w1_invoice_from_retainer";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo7w1_scratch_${process.pid}`, urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
 const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();

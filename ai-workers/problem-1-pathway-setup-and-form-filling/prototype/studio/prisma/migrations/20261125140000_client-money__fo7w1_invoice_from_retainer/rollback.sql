@@ -1,5 +1,5 @@
 -- FO-7w1 rollback (not a migration: Prisma reads only migration.sql). Run in one transaction:
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261125140000_fo7w1_invoice_from_retainer/rollback.sql
+--   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261125140000_client-money__fo7w1_invoice_from_retainer/rollback.sql
 -- Drops the gates, the index and both columns: which lines came from which retainer row, and which invoices are
 -- deposits, is then only in the invoice.draft_created audit lines. Then delete this folder's row from _prisma_migrations.
 DROP TRIGGER money_invoice_line_source_fixed ON "money_invoice_line";
