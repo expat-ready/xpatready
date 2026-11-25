@@ -14,3 +14,6 @@ Key choices, in short:
 * Cost about US$9,000 to 12,000 a month (approximate, not looked up), plus pen test and counsel review.
 
 Decided 26 Nov (founder): the beta is all of Release 1 at launch minimum (about 110 capabilities), not one journey first.
+
+## Version 1.0, 26 Nov 2026 (full blueprint)
+The same doc now holds the full blueprint the founder asked for, in 15 numbered sections: document control and change log; 12 core principles; responsibility matrix; architecture detail (tenancy, identity, RBAC, audit, jobs, storage, cache, AI); trunk-based branching with semantic versioning (the brief's develop pipeline maps to the main pipeline); 3 environments plus per-PR previews (staging folded into QA); the CI/CD stage table and flow; the agent loop with copy-paste builder, reviewer, row and PR templates; coding standards; testing with defect severities and the regression rule; security and compliance; observability; the go-live checklist; a 5-phase timeline (P0 weeks 1-3, P1 4-6, P2 7-9, P3 10-11, P4 12; gates G1-G5); change management with a five-step tool swap; a one-page poster; and a day-by-day Week 1 checklist for the CTO. Legal points stay "Unconfirmed: no counsel"; cost figures stay approximate.
