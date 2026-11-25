@@ -179,7 +179,8 @@ try {
   const name0 = sql(`select operating_name from platform_firm where id = '${A}'`);
   sql(`update platform_firm set operating_name = '${name0} Renamed' where id = '${A}'`); const sRen = await call(undefined, "POST", `/public/pay/${T2}/session`); sql(`update platform_firm set operating_name = '${name0.replace(/'/g, "''")}' where id = '${A}'`);
   ok("FO-7c DW11 fail (break M1, round 3 m2): the firm renamed between two clicks → the same live page, never a 500 nor an expired page (the description names the invoice only)", sRen.status === 200 && sRen.body.url === sNew.body.url && !(asked.at(-1)?.description ?? "").includes("Renamed"), sRen.body);
-  const exp = asked.at(-1)?.expiresAtSec ?? 0, inS = exp - Date.now() / 1000;
+  const exp = asked.at(-1)?.expiresAtSec ?? 0, inS = exp - Date.now() / 1000, slotNow = Math.floor(Date.now() / 600_000) * 600_000;
+  ok("FO-7c pass (review round 3 n3): the expiry is exactly the end of the next 10-minute slot plus 31 minutes (never Stripe's bare 30)", [slotNow, slotNow - 600_000].some((t) => exp * 1000 === t + 600_000 + 31 * 60_000), { exp, slotNow });
   ok("FO-7c pass (break M2): every hosted page expires in 31 to 41 minutes (Sample; a minute above Stripe's least of 30), so a page handed out before the invoice changed stops taking cards soon", asked.length > 0 && asked.every((a) => !!a.expiresAtSec) && inS >= 30.5 * 60 && inS <= 41.1 * 60, inS);
   { const idOf = (url: string) => url.split("/").at(-1) ?? "", p1 = idOf((await call(undefined, "POST", `/public/pay/${T2}/session`)).body.url);
     skew = 10 * 60_000; const r2 = await call(undefined, "POST", `/public/pay/${T2}/session`), p2 = idOf(r2.body.url); skew = 0;
@@ -187,7 +188,9 @@ try {
     ok("FO-7c DW11 fail (break round 2 N1): a click in a later 10-minute slot on an unchanged invoice gets a new page AND the earlier page is expired: only one page can take the card",
       r2.status === 200 && p2 !== p1 && !paysOld && rail0.calls().some((c) => c.name === "expireOtherHostedPayments"), { p1, p2, paysOld });
     const late = asked.at(-1)?.expiresAtSec ?? 0, paysLate = (() => { try { rail0.succeed(acct, p2, new Date(late * 1000 + 1000)); return true; } catch { return false; } })();
-    ok("FO-7c pass (break round 2 n4): the fake rail, as Stripe, takes no card on a page past its expiry", !paysLate); }
+    ok("FO-7c pass (break round 2 n4): the fake rail, as Stripe, takes no card on a page past its expiry", !paysLate);
+    const paysKept = (() => { try { rail0.succeed(acct, p2, new Date(late * 1000 - 60_000)); return true; } catch { return false; } })();
+    ok("FO-7c DW11 pass (review round 3 Minor 7): the page handed out last is the one left open: it takes the card before its expiry", paysKept); }
   await pay(A, I1, "user-R", 60000, "fo7c2a-rest-offline");
   const settled = await call(undefined, "GET", `/public/pay/${T2}`), settledS = await call(undefined, "POST", `/public/pay/${T2}/session`);
   ok("FO-7c DW5 fail: once paid in full the link is the same not-found as an unknown one (GET and POST), no session", settled.status === 404 && settledS.status === 404 && settled.body.detail === LINK_NOT_WORKING && sessions().length === before + 8, settled.body);
