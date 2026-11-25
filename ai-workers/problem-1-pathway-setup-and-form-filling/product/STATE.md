@@ -2,7 +2,7 @@
 
 current_lead: local_b3dca92e-931b-4e47-bbf5-7bfcd6f6a69d Lead 9 · 25 Nov 17:37 IST (after Lead 8 local_89852a53, past 200k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 21:45 IST (clock): **Lead 9 took over at 17:38 (Lead 8 handed over; its block below is still the to-do list).** Check 4901ca0f created (cron 3,33). Weekly 86% at 17:4x, about 3%/h: push STATE and RESUME by 94%, about 20:30 IST.
+updated: 2026-11-25 21:45 IST (clock): **Lead 9 took over at 17:38 (Lead 8 handed over; its block below is still the to-do list).** Check 4901ca0f (cron 3,33). Weekly 90% at 21:37, about 1%/h: push STATE and RESUME by 94%.
 
 ## Hand-over Lead 8 → Lead 9, 17:37 IST 25 Nov (Lead 8 past 200k beyond its start read, P-446; Lead 7's block and every Lead 8 check, word for word: `history/` files named STATE-2026-11-25-*lead8*)
 
