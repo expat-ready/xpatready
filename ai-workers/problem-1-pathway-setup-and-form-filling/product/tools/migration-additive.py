@@ -5,12 +5,12 @@ An allowlist, not a word list (reviews of #3661): the added lines of a new migra
 additive only when every statement, read by a small SQL scanner, is one of
   CREATE TABLE <name> (...)          not AS, OF, PARTITION OF or INHERITS
   CREATE [UNIQUE] INDEX ... ON <t>   (any table: a short write lock on an existing one, review m5 noted)
-  CREATE SEQUENCE · CREATE TYPE <name> AS ENUM (...) · ALTER TYPE <name> ADD VALUE '...' · COMMENT ON ...
+  CREATE SEQUENCE · CREATE TYPE <name> AS ENUM (...) · ALTER TYPE <name> ADD VALUE '...'   (never COMMENT ON)
   ALTER TABLE <t> ADD ...            and none of DROP, RENAME, ALTER, DISABLE, ENABLE, FORCE, OWNER, REPLICA, CLUSTER,
                                      SET, RESET, INHERIT, OF, ATTACH, DETACH, VALIDATE, GENERATED
   (CREATE TRIGGER: never; its function may be any existing one, review 3 B3)
   INSERT INTO <t> [(cols)] VALUES    only into a table this migration creates, never SELECT or ON CONFLICT
-and no statement calls a function: a name followed by "(" counts only when it is a type size or a constraint word
+and no statement holds an operator character (review 6: a user operator runs a function), nor calls a function: a name followed by "(" counts only when it is a type size or a constraint word
 (VARCHAR(n), DECIMAL(p,s), TIMESTAMP(3), KEY, UNIQUE, CHECK, VALUES, ENUM, a column list); DEFAULT now() is read first.
 The scanner skips -- comments and reads 'strings' ('' and E'\\' escapes) and "names" whole, keeping names (for the
 tables-created check); it refuses (read first) a block comment, ANY $ outside a string or name (dollar quotes with
@@ -103,6 +103,14 @@ def dots(s):
     return None
 
 
+def ops(s):
+    """Review 6 B1: a user-defined operator (###, #~#) runs a function with no "(". After strings and names are read, a
+    statement may hold only letters, digits, spaces and ( ) , [ ] : . (dots() polices the dot): any operator character at
+    all is refused, so a CHECK, a negative default or an expression is read first."""
+    m = re.search(r"[^A-Za-z0-9_\s\"'(),\[\]:.]", s)
+    return m.group(0) if m else None
+
+
 def judge(patch):
     added = []
     for l in patch.replace("\r", "").split("\n"):
@@ -121,7 +129,7 @@ def judge(patch):
         if m:
             created.add(key(m.group(1) + (m.group(2) or "")))
         u, ok = s.upper(), False
-        if NEVER.search(s) or calls(s) or dots(s):
+        if NEVER.search(s) or calls(s) or dots(s) or ops(s):
             return "no: " + s[:80]
         if re.match(r"^CREATE TABLE (IF NOT EXISTS )?" + NAME + r" \(", s, I):
             ok = not TABLE_BAD.search(s[s.index("("):])

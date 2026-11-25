@@ -704,6 +704,7 @@ P823 created|product/tools/migration-additive.py|s/ in created and "ON CONFLICT"
 P823 quoted call|product/tools/migration-additive.py|s/^        if not re.search(r'(\\bREFERENCES/        if False and re.search(r'(\\bREFERENCES/|check-queue-gate.sh
 P823 cascade|product/tools/migration-additive.py|s/ok = (new or not re.search/ok = (True or not re.search/|check-queue-gate.sh
 P823 dots|product/tools/migration-additive.py|s/ or calls(s) or dots(s):/ or calls(s):/|check-queue-gate.sh
+P823 ops|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or dots(s):/|check-queue-gate.sh
 P823 markers|product/tools/queue-gate.sh|s/ "read-after migration" "read-after public"; do/; do/|check-queue-gate.sh
 P823 config|product/tools/lead-read-paths.txt|/^\/prisma\\\.config/d|check-queue-gate.sh
 P823 author|product/tools/after-read-owed.sh|s/\$l != (\$author . ascii_downcase) and //|check-after-read-owed.sh

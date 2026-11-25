@@ -630,6 +630,10 @@ a sequence owned by an existing column|CREATE SEQUENCE "s" OWNED BY "User"."id";
 an insert before the CREATE TABLE of its name|INSERT INTO "User" ("id") VALUES (99); CREATE TABLE "User" ("id" INT);
 a cascade before the CREATE TABLE of its name|ALTER TABLE "User" ADD CONSTRAINT "f" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE CASCADE; CREATE TABLE "User" ("id" INT);
 a comment overwritten|COMMENT ON TABLE "User" IS 'pwned';
+a user operator in VALUES|CREATE TABLE "t" ("a" INT); INSERT INTO "t" ("a") VALUES (1 ### 2);
+a user operator in a CHECK|ALTER TABLE "User" ADD CONSTRAINT "c" CHECK ("n" ### 1 = 1);
+a user operator in a DEFAULT|CREATE TABLE "t" ("a" INT DEFAULT 1 ### 2);
+a user operator in an index|CREATE INDEX "i" ON "User" (("n" #~# 1));
 SQL
 )
 while IFS='|' read -r what sql; do [ -n "$what" ] || continue
