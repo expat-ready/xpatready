@@ -1,4 +1,4 @@
--- Rollback of 20261124190000_pf21d_cancel_while_off (PF-21d part 2a), by hand, in this order: the cancel and claim
+-- Rollback of 20261124190000_platform-register__pf21d_cancel_while_off (PF-21d part 2a), by hand, in this order: the cancel and claim
 -- definers as 20261124140000_pf21d_erasure left them, the two mark definers and their table, the flag, and the check
 -- with its old brackets. Ownership and grants of the two replaced definers are kept by CREATE OR REPLACE.
 CREATE OR REPLACE FUNCTION plat_data_request_erasure_cancel(p_id uuid, p_note text, p_by text, p_today date) RETURNS text
