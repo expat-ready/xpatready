@@ -127,3 +127,8 @@ Scope: `git diff 44e66d4..27ea390` under `prototype/studio/`, three files: csv.t
 **Verdict: Approve**: N1 is fixed with a fail test. M1 to M4 stay fixed (the builder's check, 46/46). N2, N4 and the rest of Minor 6 are recommended, not blocking.
 
 Reviewer: Approve 27ea390fbd2e8e56e49983a693ff218d2a326988
+
+## Round 4 f43faf3 (diff only: 27ea390..f43faf3, one line)
+CI's `types` job failed on 27ea390 (TS2345, engine.ts:43: `Uint8Array<ArrayBufferLike>` is not a `BufferSource`). The fix copies the hash input into a fresh `Uint8Array`. Checked: `product/tools/typecheck.mjs` → "PASS no new type errors (15 known, 0 fixed)", none in engine.ts; `check_pf10b_import_engine.ts` 46/46; the new and old `sha256` give the same hash as node's `createHash` for 7 inputs (strings, byte arrays, Buffers, sliced views). No new finding.
+
+**Verdict: Approve** (f43faf38e29da7608ba252679275857ef6e82377)
