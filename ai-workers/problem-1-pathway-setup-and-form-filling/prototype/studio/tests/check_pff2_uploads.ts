@@ -233,6 +233,31 @@ try {
     [hF2.status, fileF, hF3.headers.get("upload-file-id"), fileRows() - rowsF]);
   const rF2 = await patch(tOwner, idF, docF.length, new Uint8Array(0));
   ok("PF-F2 DW0 pass (part 1b): the client's confirming empty PATCH then gets the same file", rF2.status === 204 && rF2.headers.get("upload-file-id") === fileF, [rF2.status, rF2.headers.get("upload-file-id")]);
+  // Review M1 of #3640: HEADs racing the last chunk while the door fails (a second tab, a buffering proxy). The finish runs
+  // inside tus's own locked read, so no HEAD may answer 200 at the full size with no file. A check made before tus took
+  // its lock leaked here (the reviewer: 89 of 96 HEADs).
+  healed.delete(P_FAILS);
+  let leaks = 0, patch500 = 0, heads = 0;
+  for (let n = 0; n < 4; n++) {
+    const d = pdfOf(2_000_000), idR = idOf(await create(tOwner, d.length, { personId: P_FAILS }));
+    await patch(tOwner, idR, 0, d.subarray(0, 100_000));
+    const all = await Promise.all([patch(tOwner, idR, 100_000, d.subarray(100_000)), ...Array.from({ length: 12 }, (_, k) => new Promise<R>((r) => setTimeout(() => r(head(tOwner, idR)), k * 2)))]);
+    if (all[0].status === 500) patch500++;
+    for (const h of all.slice(1)) { heads++; if (h.status === 200 && Number(h.headers.get("upload-offset")) === d.length && !h.headers.get("upload-file-id")) leaks++; }
+  }
+  healed.add(P_FAILS);
+  ok("PF-F2 DW0 fail (part 1b, review M1): HEADs racing the last chunk while the door fails never read complete with no file",
+    leaks === 0 && patch500 === 4 && fileRows() === rowsF + 1, { leaks, heads, patch500, rows: fileRows() - rowsF });
+  // Review m1 of #3640: a repeated finish names the file as the first did (the client's name corrected from the bytes).
+  const named = await create(tOwner, PNG.length, { filename: "../../scan.pdf", filetype: "application/pdf" }), idN = idOf(named);
+  await patch(tOwner, idN, 0, PNG);
+  const upN = await rail.store.getUpload(idN), n1 = await rail.finish(upN), n2 = await rail.finish(upN);
+  ok("PF-F2 DW0 pass (part 1b, review m1): a repeated finish gives the same file and the same corrected name", n1.id === n2.id && n1.name === "scan.png" && n2.name === "scan.png", [n1.name, n2.name]);
+  // Review n1 of #3640: a HEAD without Tus-Resumable (tus's 412) finishes nothing.
+  const d412 = pdfOf(4000), id412 = idOf(await create(tOwner, d412.length, { personId: P_FAILS }));
+  healed.delete(P_FAILS); await patch(tOwner, id412, 0, d412); healed.add(P_FAILS);
+  const rows412 = fileRows(), h412 = await fetch(`${base}/api/platform/files/uploads/${id412}`, { method: "HEAD", headers: { authorization: `Bearer ${tOwner}` } });
+  ok("PF-F2 DW0 pass (part 1b, review n1): a HEAD without Tus-Resumable answers 412 and finishes nothing", h412.status === 412 && !h412.headers.get("upload-file-id") && fileRows() === rows412 && !!(await head(tOwner, id412)).headers.get("upload-file-id") && fileRows() === rows412 + 1, h412.status);
 
   // ------------------------------------------------------------------------------------ DW7: the declared size
   const before7 = readdirSync(join(WORK, "staging")).length;
