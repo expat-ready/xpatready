@@ -21,6 +21,7 @@ import { lineRatePpm, provinceCode, taxDefault } from "../tax/defaults.ts";
 import { billToProvince, type BillToParty } from "./bill-to.ts";
 import { failClosed, invoiceInScope, partyInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { taxForLine } from "./tax-round.ts";
+import { SIGNED_STATES, type RetainerFeeRow, type RetainerFeesPort } from "../../../../ports/retainer-fees.ts";
 
 type Tx = Prisma.TransactionClient;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -55,7 +56,8 @@ const percent = (ppm: number) => { const whole = Math.trunc(ppm / 10_000), rest 
 export class InvoiceDrafts {
   /** `tax` is the one rule (taxForLine); a test passes a planted wrong rule to prove its cases catch it, never the app. */
   constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly tax: (amountMinor: number, ratePpm: number) => number = taxForLine, private readonly clock: ClockPort = systemClock,
-    private readonly scopeOf: ScopeOf = failClosed) {}   // C5 (#3305 M1): the app binds PgMoneyVisibility; fail closed otherwise
+    private readonly scopeOf: ScopeOf = failClosed,   // C5 (#3305 M1): the app binds PgMoneyVisibility; fail closed otherwise
+    private readonly retainers: RetainerFeesPort<Tx> | null = null) {}   // FO-7w1: the front office's RetainerFeesPort (the app binds its adapter)
 
   /** C5 on an existing invoice (reads/visibility.ts invoiceInScope): out of scope is the same 404, before any write. */
   private async seen(tx: Tx, ctx: StaffContext, id: string, scope: MoneyScope) { await invoiceInScope(tx, firmScope(ctx.firmId).firmId, id, scope); }
@@ -71,14 +73,24 @@ export class InvoiceDrafts {
         : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: d.companyId!.toLowerCase() }), select: { id: true } });
       // C5 (Lead 14, #3321 (2)): a party outside the caller's scope is the same 404 as a missing one, before anything is written
       if (!client || !partyInScope(scope, client.id)) notFound(d.personId ? "person" : "company");
-      const currency = d.currency ?? settings.defaultCurrency;
+      // FO-7w1 (break m4): a retainer's fee rows are CAD only (fo_retainer_fee_row_currency_check), so a draft from one
+      // with no currency sent is CAD, never the firm's default (a USD default would refuse every row at a field not sent).
+      const currency = d.currency ?? (d.retainerId ? "CAD" : settings.defaultCurrency);
       // FO-7g part 3 (P-797): the Bill-to province starts as the client's Canadian address, else the firm's province, as a
       // code (null while the firm's province is not one of the 13: the tax default then warns, never guesses).
       const [firm] = await tx.$queryRaw<{ address: unknown }[]>`select business_address as address from platform_firm where id = ${firmScope(ctx.firmId).firmId}::uuid`;
-      const billTo = provinceCode(billToProvince({ businessAddress: firm?.address ?? null }, d.personId ? { kind: "PERSON", id: client!.id } : { kind: "COMPANY", id: client!.id }));
-      const inv = await tx.moneyInvoice.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, billToProvince: billTo, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
-      await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.draft_created", entity: "money_invoice", entityKey: inv.id, summary: `Draft invoice started in ${currency}.`, detail: { invoiceId: inv.id, currency },
-        before: null, after: { personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, billToProvince: billTo, status: "DRAFT" } });   // R1.8 (QA-594): the draft as created
+      const party: NonNullable<BillToParty> = d.personId ? { kind: "PERSON", id: client!.id } : { kind: "COMPANY", id: client!.id };
+      const billTo = provinceCode(billToProvince({ businessAddress: firm?.address ?? null }, party));
+      const rows = d.retainerId ? await this.retainerRows(tx, ctx.firmId, d, party, currency) : null;   // FO-7w1, before anything is written
+      // Break m1: nothing left to bill is a refusal, never an empty draft (a double click or a reload made one each time).
+      if (rows && !rows.length) problem(409, "Not possible now", "Nothing to bill from this retainer: every fee with an amount is already on an invoice, and a deposit (\"On signing\") is billed only when named. Nothing was saved.", { code: "NOTHING_TO_BILL" });
+      const deposit = !!rows?.some((r) => r.when === "ON_SIGNING");
+      const inv = await tx.moneyInvoice.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, billToProvince: billTo, deposit, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
+      const lines = rows ? await this.copyRows(tx, ctx.firmId, inv.id, currency, party, billTo, firm?.address ?? null, rows) : [];
+      const from: Record<string, string | boolean | string[]> = d.retainerId ? { retainerId: d.retainerId.toLowerCase(), feeRowIds: rows!.map((r) => r.id), deposit } : {};
+      await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.draft_created", entity: "money_invoice", entityKey: inv.id,
+        summary: d.retainerId ? `Draft invoice started in ${currency} from a signed retainer, with ${lines.length} fee line${lines.length === 1 ? "" : "s"}${deposit ? " (a deposit)" : ""}.` : `Draft invoice started in ${currency}.`, detail: { invoiceId: inv.id, currency, ...from },
+        before: null, after: { personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, billToProvince: billTo, status: "DRAFT", ...(d.retainerId ? { deposit, lineSourceFeeRowIds: lines.map((l) => l.sourceFeeRowId), lineAmountsMinor: lines.map((l) => l.amountMinor), lineTaxMinor: lines.map((l) => l.taxMinor) } : {}) } });   // R1.8 (QA-594): the draft as created
       return this.view(tx, ctx.firmId, inv.id);
     });
   }
@@ -184,6 +196,63 @@ export class InvoiceDrafts {
     const id = invoiceId.toLowerCase();
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.db.$transaction(async (tx) => { await this.seen(tx, ctx, id, scope); return this.view(tx, ctx.firmId, id); }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+
+  // ------------------------------------------------------------------------------- FO-7w1: from a signed retainer
+  /** The retainer's rows this draft bills (AG-6-65 r1), checked before anything is written: the retainer of this firm,
+   *  kind RETAINER, whose signer (or company) is the draft's client, else 404; signed (SIGNED, SIGNED_OFFLINE), else 409
+   *  RETAINER_NOT_SIGNED (AG-6-64 r2). Without `feeRowIds`: every row with an amount except an "On signing" row, a deposit
+   *  (Code s. 32; AG-6-61), never copied by itself; with them, exactly the rows named. A row already on an invoice is
+   *  skipped, or 409 ROW_ON_INVOICE when named; the retainer's billing is one at a time (a transaction lock on its id), so
+   *  the second of two drafts at once reads the first's lines (the unique index stands behind it). */
+  private async retainerRows(tx: Tx, firmId: string, d: DraftIn, party: NonNullable<BillToParty>, currency: string): Promise<RetainerFeeRow[]> {
+    const r = this.retainers ? await this.retainers.read(tx, firmScope(firmId).firmId, d.retainerId!) : null;
+    const signer = party.kind === "PERSON" ? r?.personId : r?.companyId;
+    if (!r || r.kind !== "RETAINER" || !signer || signer !== party.id) return notFound("retainer for this client");
+    if (!(SIGNED_STATES as readonly string[]).includes(r.status))
+      problem(409, "Not possible now", "This retainer is not signed yet: only a signed retainer's fees can be billed from it. Nothing was saved.", { code: "RETAINER_NOT_SIGNED" });
+    const named = d.feeRowIds ? [...new Set(d.feeRowIds.map((x) => x.toLowerCase()))] : null;
+    if (named) {
+      const missing = named.filter((x) => !r.rows.some((row) => row.id === x));
+      if (missing.length) badField("feeRowIds", "A fee row named is not on this retainer's current version. Nothing was saved.");
+      if (r.rows.some((row) => named.includes(row.id) && row.amountMinor === null)) badField("feeRowIds", "A fee row named has no amount on the retainer: type that line by hand. Nothing was saved.");
+    }
+    const chosen = r.rows.filter((row) => (named ? named.includes(row.id) : row.amountMinor !== null && row.when !== "ON_SIGNING"));
+    const other = chosen.find((row) => row.currency !== currency);
+    if (other) badField("currency", `This draft is in ${currency}; the retainer's fee "${other.label.slice(0, 80)}" is in ${other.currency}, so it can't be copied. Nothing was saved.`);
+    const big = chosen.find((row) => (row.amountMinor ?? 0) > MINOR_MAX);
+    if (big) badField("feeRowIds", `A fee row's amount is more than one line can hold (${MONEY(MINOR_MAX)}). Nothing was saved.`);
+    await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`money.bill-retainer:${r.id}`}, 0))`;
+    const ids = chosen.map((row) => row.id);
+    const billed = new Set(ids.length ? (await tx.moneyInvoiceLine.findMany({ where: firmScope(firmId, { sourceFeeRowId: { in: ids } }), select: { sourceFeeRowId: true } })).map((l) => l.sourceFeeRowId!) : []);
+    if (named && billed.size) problem(409, "Not possible now", "A fee row named is already on an invoice: it is billed once. Nothing was saved.", { code: "ROW_ON_INVOICE", feeRowIds: [...billed] });
+    return chosen.filter((row) => !billed.has(row.id));
+  }
+
+  /** One FEE line per row (label, quantity 1, the row's amount), taxed by the draft's own default as a typed line
+   *  (taxDefault through lineRatePpm, taxForLine). Returns the lines as written, for the one audit line. */
+  private async copyRows(tx: Tx, firmId: string, invoiceId: string, currency: string, party: BillToParty, billTo: string | null, address: unknown, rows: RetainerFeeRow[]) {
+    const [facts] = await tx.$queryRaw<{ registered: boolean | null }[]>`select tax_registered as registered from money_payment_settings where firm_id = ${firmScope(firmId).firmId}::uuid`;
+    const dflt = taxDefault({ firmProvince: billToProvince({ businessAddress: address }, party, billTo), registered: facts?.registered === true });
+    const ratePpm = lineRatePpm({ kind: "FEE", taxable: true }, dflt);
+    // Break m2: invisible format and direction marks (which money_text_ok refuses) are dropped from the label, not the bill.
+    const planned = rows.map((row, i) => ({ row, position: i + 1, amountMinor: row.amountMinor!, taxMinor: this.tax(row.amountMinor!, ratePpm),
+      description: [...row.label.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").replace(/[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, "").trim()].slice(0, 500).join("") }));
+    // Break m3: the draft must be one that can be issued (FO-7b part 1b refuses a total above MINOR_MAX at issue).
+    if (planned.reduce((t, l) => t + l.amountMinor + l.taxMinor, 0) > MINOR_MAX) badField("feeRowIds", `These fees with their tax come to more than one invoice can hold (${MONEY(MINOR_MAX)}): bill fewer rows at once (name them in feeRowIds). Nothing was saved.`);
+    const out: { position: number; sourceFeeRowId: string; amountMinor: number; taxRatePpm: number; taxMinor: number }[] = [];
+    for (const { row, position, amountMinor, taxMinor, description } of planned) {
+      const [text] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${description}, 500) as ok`;
+      if (!text?.ok) badField("feeRowIds", `Fee row ${row.position} ("${description.slice(0, 60)}") has a label that can't be printed on an invoice: correct it on the retainer, or leave that row out and type the line by hand. Nothing was saved.`);
+      try {
+        await tx.moneyInvoiceLine.create({ data: { firmId: firmScope(firmId).firmId, invoiceId, position, kind: "FEE", description, quantity: 1, unitAmountMinor: amountMinor, amountMinor, taxRatePpm: ratePpm, taxMinor, currency: currency as "CAD" | "USD", sourceFeeRowId: row.id } });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") problem(409, "Not possible now", "A fee row of this retainer is already on an invoice: it is billed once. Nothing was saved.", { code: "ROW_ON_INVOICE", feeRowIds: [row.id] });   // review m8
+        throw e;
+      }
+      out.push({ position, sourceFeeRowId: row.id, amountMinor, taxRatePpm: ratePpm, taxMinor });
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------------------------------------- helpers

@@ -1,0 +1,3 @@
+Entry points: FO-7w1: `POST /api/front-office/money/invoices` takes `retainerId` (and optional `feeRowIds`): a draft holding the signed retainer's fee rows, one FEE line each (`invoices/drafts.ts` `retainerRows`, `copyRows`), read through RetainerFeesPort (ports/retainer-fees.ts); 404 not this client's or firm's, 409 `RETAINER_NOT_SIGNED`, 409 `ROW_ON_INVOICE`, 422 currency; an "On signing" row only when named, and that draft has `deposit` true (never a card pay link).
+Tables: FO-7w1: moneyInvoiceLine.sourceFeeRowId (unique per firm: a row is billed once), moneyInvoice.deposit; both fixed once written (`money_invoice_source_fixed`).
+Tests: `tests/check_fo7w1_retainer_invoice.ts`.
