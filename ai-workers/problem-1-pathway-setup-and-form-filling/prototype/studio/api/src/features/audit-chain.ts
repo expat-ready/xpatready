@@ -16,7 +16,7 @@ export default {
   providers: [
     { provide: AuditChainExport, useFactory: async (db: Db, jobs: PlatformJobs) => {
       const x = new AuditChainExport({ db, archive: chooseAuditArchive().archive, now: () => new Date() });
-      await jobs.handle(EXPORT_QUEUE, async () => { await x.run(); });
+      await jobs.handle(EXPORT_QUEUE, async () => { const r = await x.run(); if (r.failed.length) throw new Error(`audit export: ${r.failed.length} chain(s) not exported`); });
       await jobs.recurring(EXPORT_QUEUE, EXPORT_CRON, EXPORT_ZONE);
       return x;
     }, inject: [Db, PlatformJobs] },

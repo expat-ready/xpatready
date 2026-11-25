@@ -52,7 +52,15 @@ await runContract(auditArchivePortContract, "S3AuditArchive", () => { const h = 
   ok("AUD-2 DW1 pass: the S3 put is write-once and locked: If-None-Match *, Object Lock COMPLIANCE until the date asked, its SHA-256 checksum, to the bucket in ca-central-1",
     put.headers["if-none-match"] === "*" && put.headers["x-amz-object-lock-mode"] === "COMPLIANCE" && Date.parse(put.headers["x-amz-object-lock-retain-until-date"]!) === until.getTime()
       && put.headers["x-amz-checksum-sha256"] === Buffer.from(h.bucket.object("audit/c1/2026-11-25-1-3.jsonl")!.meta.sha256!, "hex").toString("base64"), put.headers);
-  ok("AUD-2 DW1 fail: a DELETE sent straight to the bucket before the keep-until date is refused (403), whatever the adapter says", (await h.bucket.rawDelete("audit/c1/2026-11-25-1-3.jsonl")) === 403);
+  const K = "audit/c1/2026-11-25-1-3.jsonl", firstVersion = h.bucket.versions(K)[0]!.id;
+  ok("AUD-2 DW1 fail: deleting the locked version straight at the bucket, before the keep-until date, is refused (403)", (await h.bucket.rawDelete(K, firstVersion)) === 403);
+  // review M1: a DELETE with no version id is allowed on a versioned bucket and writes a delete marker; a later put then
+  // adds a new version. Neither hides or replaces what was written first, as the adapter reads it.
+  const marker = await h.bucket.rawDelete(K), reput = await h.bucket.rawPut(K, Buffer.from("forged\n"));
+  const after = await h.archive.get(K), listed = await h.archive.list("audit/c1/");
+  ok("AUD-2 DW1 fail (review M1): a delete marker and a later put under the same key, sent straight to the bucket, hide nothing: the adapter still lists the key and reads the first bytes",
+    marker === 204 && reput === 200 && after?.bytes.toString() === "a\nb\nc\n" && listed.includes(K) && h.bucket.versions(K).length === 3, { marker, reput, got: after?.bytes.toString() });
+  ok("AUD-2 DW1 fail (review M1): the adapter refuses to put a key that has any version, even one hidden behind a delete marker", (await refused(() => h.archive.put(K, Buffer.from("again"), until))) instanceof ArchiveKeyExists);
   const lockless = s3Harness(true);
   const e = await refused(() => lockless.archive.put("audit/c1/x.json", Buffer.from("x"), until));
   ok("AUD-2 DW1 fail: a bucket that does not apply the lock is an error after the put (LockNotApplied), never a silent unlocked copy", e instanceof S3AuditArchiveError && e.code === "LockNotApplied", String(e));
@@ -103,20 +111,33 @@ try {
   c.advance(86_400_000);
   // A crash between the file and its anchor: the anchor's put fails once.
   const flaky: AuditArchivePort = { ...store, put: async (k, b, u) => { if (k.includes("/anchors/") && k.includes(A)) throw new Error("the store did not answer (Sample)"); return store.put(k, b, u); }, get: (k) => store.get(k), list: (p) => store.list(p), remove: (k) => store.remove(k) };
-  const crashed = await refused(() => new AuditChainExport({ db, archive: flaky, now: c.now }).run());
+  const crashed = await new AuditChainExport({ db, archive: flaky, now: c.now }).run();
+  ok("AUD-2 DW6 fail (break M3): one chain's failure stops no other: firm A is reported failed, every other chain with new lines is exported", crashed.failed.map((y) => y.chainKey).join() === A, crashed);
+  c.advance(86_400_000); add(A, 1);   // review M3: the anchor's put failed all of 26 Nov; the run on 27 Nov, with a new line, finishes that file
   const resumed = await x.run(), aFiles = (await store.list(`audit/${A}/`)).filter((k) => k.endsWith(".jsonl"));
-  ok("AUD-2 DW6 fail: a run that stopped after the file and before its anchor resumes the next time: one file 6-7, its anchor, no second file",
-    crashed instanceof Error && aFiles.join() === `audit/${A}/2026-11-25-1-5.jsonl,audit/${A}/2026-11-26-6-7.jsonl` && resumed.exports.find((e) => e.chainKey === A)?.resumed === true, [aFiles, resumed]);
+  ok("AUD-2 DW6 fail (review M3): a run that stopped after the file and before its anchor resumes on a later day: the file 6-7 and its anchor, no second overlapping file",
+    aFiles.join() === `audit/${A}/2026-11-25-1-5.jsonl,audit/${A}/2026-11-26-6-7.jsonl` && resumed.exports.find((e) => e.chainKey === A)?.resumed === true && resumed.failed.length === 0, [aFiles, resumed]);
 
   // ----------------------------------------------------------------------------------- the anchor in the checker
   const alerts = fakeAlerts(), v = new AuditChainVerifier({ db, alerts, now: c.now, anchors: x });
   const clean = await v.pass("full");
   ok("AUD-2 DW7 pass: with the anchors in the archive, every chain verifies and matches its newest anchor", clean.findings.length === 0, clean.findings);
-  // An owner rewrites firm A's line 7 (the exported head) and recomputes its hash, so the chain itself verifies again.
-  const row = (await db.$queryRaw<{ id: string; at: string; prev: Uint8Array; detail: string | null }[]>`select id::text id, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at, prev_hash prev, detail::text detail from audit_event where chain_key = ${A} and seq = 7`)[0]!;
-  const forged = entryHash(Buffer.from(row.prev), { chainKey: A, seq: "7", id: row.id, at: row.at, workspaceId: WS, firmId: A, caseId: null, combinationId: null, actor: "system:aud2", actorType: "SYSTEM", action: "check.line", entity: "aud2", entityKey: null, summary: "Rewritten line (Sample)", correlationId: null, supportSessionId: null, detail: row.detail });
-  sql(`begin; alter table audit_event disable trigger aud_event_no_change; update audit_event set summary = 'Rewritten line (Sample)', entry_hash = '\\x${forged.toString("hex")}' where chain_key = '${A}' and seq = 7; alter table audit_event enable trigger aud_event_no_change;
-       update aud_chain_check set verified_hash = '\\x${forged.toString("hex")}' where chain_key = '${A}'; commit;`);   // and moves the checker's own record (xr_app may write it: part 1's breaker minor 5)
+  // An owner rewrites firm A's line 7 (the exported anchor's line), recomputes it and every later hash, and moves the
+  // checker's own record to match (xr_app may write it: part 1's breaker minor 5), so the chain alone verifies again.
+  type R7 = { seq: string; id: string; at: string; atype: string; summary: string; detail: string | null };
+  const rows7 = await db.$queryRaw<R7[]>`select seq::text seq, id::text id, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at, actor_type::text atype, summary, detail::text detail from audit_event where chain_key = ${A} and seq >= 7 order by audit_event.seq`;
+  let prevH: Buffer = Buffer.from((await db.$queryRaw<{ h: Uint8Array }[]>`select entry_hash h from audit_event where chain_key = ${A} and seq = 6`)[0]!.h);
+  const rechained = rows7.map((r) => {
+    const summary = r.seq === "7" ? "Rewritten line (Sample)" : r.summary, prev = prevH;
+    prevH = entryHash(prev, { chainKey: A, seq: r.seq, id: r.id, at: r.at, workspaceId: WS, firmId: A, caseId: null, combinationId: null, actor: "system:aud2", actorType: r.atype, action: "check.line", entity: "aud2", entityKey: null, summary, correlationId: null, supportSessionId: null, detail: r.detail });
+    return { seq: BigInt(r.seq), summary, prev, hash: prevH };
+  });
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`alter table audit_event disable trigger aud_event_no_change`;
+    for (const r of rechained) await tx.$executeRaw`update audit_event set summary = ${r.summary}, prev_hash = ${r.prev}, entry_hash = ${r.hash} where chain_key = ${A} and seq = ${r.seq}`;
+    await tx.$executeRaw`alter table audit_event enable trigger aud_event_no_change`;
+    await tx.$executeRaw`update aud_chain_check c set verified_hash = e.entry_hash from audit_event e where c.chain_key = ${A} and e.chain_key = ${A} and e.seq = c.verified_seq`;
+  });
   const noAnchor = await new AuditChainVerifier({ db, alerts: fakeAlerts(), now: c.now }).pass("full");
   const withAnchor = await v.pass("full"), f = withAnchor.findings.find((y) => y.chainKey === A);
   ok("AUD-2 DW7 fail: without the archive the rewritten, re-hashed line, with the checker's own record moved to match, passes the chain check (why the export exists)", !noAnchor.findings.some((y) => y.chainKey === A), noAnchor.findings);
@@ -127,6 +148,37 @@ try {
   const tail = await v.pass("full"), fB = tail.findings.find((y) => y.chainKey === B);
   ok("AUD-2 DW8 fail: firm B's newest exported line removed and the checker's record moved back to seq 2 (the chain alone still verifies 1-2) is found against its anchor; firm B's break never marks the platform chain",
     fB?.why === "anchor" && fB.fromSeq === "3" && !tail.findings.some((y) => y.chainKey === "platform"), tail.findings);
+
+  // ----------------------------------------------------------------------------------- the ledger read whole
+  const G = "00000000-0000-4000-8000-0000000a2a07", H = "00000000-0000-4000-8000-0000000a2a08", P = "00000000-0000-4000-8000-0000000a2a09";
+  add(G, 4); add(H, 4); add(P, 3); c.advance(86_400_000);
+  const day4 = await x.run();
+  ok("AUD-2 DW9 setup: three more firms exported whole", [G, H, P].every((k) => day4.exports.some((y) => y.chainKey === k)), day4);
+  // break M1: a forged newest anchor (another day's name, a higher seq, holding a real hash) hides a rewrite.
+  const gHead = (await store.list(`audit/${G}/anchors/`))[0]!, real = JSON.parse((await store.get(gHead))!.bytes.toString()) as { entryHash: string };
+  await store.put(`audit/${G}/anchors/2026-12-31-9.json`, Buffer.from(JSON.stringify({ chainKey: G, seq: "4", entryHash: real.entryHash, file: `audit/${G}/2026-11-28-1-4.jsonl`, fileSha256: "0".repeat(64) })), new Date(Date.now() + 86_400_000 * 400));
+  const forgedPass = await v.pass("incremental"), fG = forgedPass.findings.find((y) => y.chainKey === G);
+  const gExport = await (add(G, 1), c.advance(86_400_000), x.run());
+  ok("AUD-2 DW9 fail (break M1): an anchor that is not its file's (a forged one under another name) makes the chain's archive not whole: an anchor finding, and the export refuses that chain while the others go on",
+    fG?.why === "anchor" && gExport.failed.some((y) => y.chainKey === G) && !gExport.failed.some((y) => y.chainKey === H), [forgedPass.findings, gExport.failed]);
+  // break "not caught": lines after the newest anchor rewritten and re-hashed are never exported as if whole.
+  add(H, 2);
+  const hRows = await db.$queryRaw<{ seq: string; id: string; at: string; prev: Uint8Array; detail: string | null }[]>`select seq::text seq, id::text id, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at, prev_hash prev, detail::text detail from audit_event where chain_key = ${H} and seq >= 5 order by audit_event.seq`;
+  const h5 = hRows[0]!, f5 = entryHash(Buffer.from(h5.prev), { chainKey: H, seq: "5", id: h5.id, at: h5.at, workspaceId: WS, firmId: H, caseId: null, combinationId: null, actor: "system:aud2", actorType: "SYSTEM", action: "check.line", entity: "aud2", entityKey: null, summary: "Changed before export (Sample)", correlationId: null, supportSessionId: null, detail: h5.detail });
+  sql(`begin; alter table audit_event disable trigger aud_event_no_change; update audit_event set summary = 'Changed before export (Sample)', entry_hash = '\\x${f5.toString("hex")}' where chain_key = '${H}' and seq = 5; alter table audit_event enable trigger aud_event_no_change; commit;`);
+  c.advance(86_400_000);
+  const hExport = await x.run(), hFiles = (await store.list(`audit/${H}/`)).filter((k) => k.endsWith(".jsonl"));
+  ok("AUD-2 DW9 fail (break): a chain whose lines after its anchor no longer link (line 6's prev_hash is not line 5's new hash) is refused, not archived; the chain's files stay 1-4",
+    hExport.failed.some((y) => y.chainKey === H && /does not verify from seq 6/.test(y.why)) && hFiles.length === 1, [hExport.failed, hFiles]);
+  // review M2: a chain removed whole from the database, with the checker's own record, is still checked from the archive.
+  sql(`begin; alter table audit_event disable trigger aud_event_no_change; set local app.audit_sample_reset = 'off'; delete from audit_event where chain_key = '${P}'; alter table audit_event enable trigger aud_event_no_change; delete from aud_chain_check where chain_key = '${P}'; commit;`);
+  const gone = await v.pass("full"), fP = gone.findings.find((y) => y.chainKey === P);
+  ok("AUD-2 DW10 fail (review M2): a chain deleted whole with its check row is still found from its archive (an anchor finding at seq 3)", fP?.why === "anchor" && fP.fromSeq === "3", gone.findings);
+  // break M4: a bucket that does not apply the lock never ends with unlocked exports, however many runs.
+  const lk = s3Harness(true), lx = new AuditChainExport({ db, archive: lk.archive, now: c.now });
+  const r1 = await lx.run(), r2 = await lx.run(), r3 = await lx.run();
+  ok("AUD-2 DW10 fail (break M4): with a bucket that does not lock, every run refuses every chain (LockNotApplied, then 'not kept until a future date'); no anchor is ever written",
+    [r1, r2, r3].every((r) => r.exports.length === 0 && r.failed.length > 0) && !lk.bucket.seen.some((y) => y.method === "PUT" && y.key.includes("/anchors/")), [r1.failed.slice(0, 2), r3.failed.slice(0, 2)]);
 } finally {
   await db.$disconnect();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);

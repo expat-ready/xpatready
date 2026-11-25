@@ -33,6 +33,7 @@ export type PassResult = { mode: Mode; chains: number; linesRead: number; findin
 export type Integrity = { chainKey: string; status: "INTACT" | "BROKEN" | "NOT_CHECKED"; lastCheckedAt: string | null; verifiedSeq: string; failingFromSeq: string | null; failingToSeq: string | null };
 
 type Db = Pick<PrismaClient, "$transaction" | "$queryRaw">;
+type Anchors = { check(k: string, full: boolean): Promise<{ ok: true; anchors: { seq: string; entryHash: string }[] } | { ok: false; fromSeq: string } | null>; chains(): Promise<string[]> };
 type Tx = Pick<Prisma.TransactionClient, "$queryRaw" | "$executeRaw">;
 type Row = { seq: string; id: string; at: string; ws: string; firm: string | null; cas: string | null; combo: string | null; actor: string; atype: string; action: string;
   entity: string; entity_key: string | null; summary: string; correlation_id: string | null; sup: string | null; detail: string | null; prev_hash: Uint8Array; entry_hash: Uint8Array };
@@ -49,15 +50,16 @@ const asLine = (k: string, r: Row): CanonicalLine => ({ chainKey: k, seq: r.seq,
 const buf = (b: Uint8Array | null) => (b === null ? null : Buffer.from(b));
 
 export class AuditChainVerifier {
-  /** `anchors` (AUD-2 part 2): the newest exported head of a chain, from the write-once archive; compared on every pass. */
-  constructor(private readonly d: { db: Db; alerts: AlertPort; now: () => Date; page?: number; anchors?: { latestAnchor(k: string): Promise<{ seq: string; entryHash: string } | null> } }) {}
+  /** `anchors` (AUD-2 part 2): the write-once archive's ledger of each chain (all its anchors on the weekly pass, the
+   *  newest on the 30-minute one), compared with the database on every pass; and the chains it holds. */
+  constructor(private readonly d: { db: Db; alerts: AlertPort; now: () => Date; page?: number; anchors?: Anchors }) {}
 
   /** One pass over every chain. A chain that cannot be checked (the database does not answer; a check row whose key is
    *  no chain's) never stops the others (break M3): every other chain is still checked and any break raised, then the
    *  pass throws and writes no heartbeat, so the job fails and the heartbeat's absence alarms. */
   async pass(mode: Mode): Promise<PassResult> {
-    const keys = (await this.d.db.$queryRaw<{ k: string }[]>`select chain_key k from audit_event group by chain_key
-      union select chain_key from aud_chain_check order by 1`).map((r) => r.k);
+    const keys = [...new Set([...(await this.d.db.$queryRaw<{ k: string }[]>`select chain_key k from audit_event group by chain_key
+      union select chain_key from aud_chain_check order by 1`).map((r) => r.k), ...(await this.d.anchors?.chains() ?? [])])].sort();
     const out: PassResult = { mode, chains: 0, linesRead: 0, findings: [] };
     let failed = 0;
     for (const k of keys) {
@@ -112,13 +114,15 @@ export class AuditChainVerifier {
       }
     }
     if (head === null && !sample && c && BigInt(c.verified_seq) > 0n) return this.found(tx, k, c, { chainKey: k, fromSeq: "1", toSeq: c.verified_seq, why: "missing" }, read);
-    // AUD-2 part 2: the newest exported anchor must still be the database's line at its seq. This finds a line changed
-    // after its export even when the chain after it was recomputed, and newest lines removed after an export.
-    const a = sample ? null : await this.d.anchors?.latestAnchor(k);
-    if (a) {
-      const at = BigInt(a.seq), [l] = await tx.$queryRaw<{ h: Uint8Array }[]>`select entry_hash h from audit_event where chain_key = ${k} and seq = ${at}`;
-      if (!l || Buffer.from(l.h).toString("hex") !== a.entryHash)
-        return this.found(tx, k, c, { chainKey: k, fromSeq: a.seq, toSeq: String(head !== null && BigInt(head) > at ? BigInt(head) : at), why: "anchor" }, read);
+    // AUD-2 part 2: the archive's ledger must be whole, and each anchor compared must still be the database's line at its
+    // seq. This finds a line changed after its export even when the chain after it was recomputed and the checker's own
+    // record moved, exported lines removed, a chain removed whole, and an archive altered or added to.
+    const a = sample ? null : await this.d.anchors?.check(k, mode === "full");
+    if (a && !a.ok) return this.found(tx, k, c, { chainKey: k, fromSeq: a.fromSeq, toSeq: head ?? a.fromSeq, why: "anchor" }, read);
+    for (const an of a?.ok ? a.anchors : []) {
+      const at = BigInt(an.seq), [l] = await tx.$queryRaw<{ h: Uint8Array }[]>`select entry_hash h from audit_event where chain_key = ${k} and seq = ${at}`;
+      if (!l || Buffer.from(l.h).toString("hex") !== an.entryHash)
+        return this.found(tx, k, c, { chainKey: k, fromSeq: an.seq, toSeq: String(head !== null && BigInt(head) > at ? BigInt(head) : at), why: "anchor" }, read);
     }
     await tx.$executeRaw`insert into aud_chain_check (chain_key, verified_seq, verified_hash, checked_at, status, failing_from_seq, failing_to_seq)
       values (${k}, ${last}, ${lastHash}::bytea, ${this.d.now()}, 'INTACT', null, null)

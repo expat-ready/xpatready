@@ -11,11 +11,12 @@
 | The `x-amz-object-lock-mode` and `x-amz-object-lock-retain-until-date` headers on GET and HEAD | `GetObjectOutput.ObjectLockMode` and `ObjectLockRetainUntilDate`, which the SDK reads from those headers, as the test proves |
 | A 400 `InvalidRequest` for an Object Lock put with no checksum | The SDK's `PutObjectRequest` documentation: "The `Content-MD5` or `x-amz-sdk-checksum-algorithm` header is required for any request to upload an object with a retention period configured using Amazon S3 Object Lock" |
 | A 403 `AccessDenied` for a DELETE of a COMPLIANCE version before its date | The SDK's `ObjectLockRetentionMode` documentation for compliance mode |
+| A DELETE with no version id writing a delete marker (204), which hides the current version without removing any; a later PUT adding a new version; `ListObjectVersions` listing both (review M1) | The SDK's `DeleteObjectRequest` and `ListObjectVersionsOutput` documentation (versioned buckets); Object Lock requires versioning |
 | A 412 `PreconditionFailed` for `If-None-Match: *` on a taken key | PF-F1's README |
 
 **Not verified against a real bucket (owed, P-821, with AUD-2c's bucket in `ca-central-1`):**
 * the exact status and code S3 gives a locked-version delete (403 here);
-* a DELETE without a version id on a versioned bucket, which writes a delete marker and does not refuse. The adapter always sends the version id it read;
+* the exact `ListVersionsResult` XML S3 sends: the fake's is built from the SDK's model, and the SDK's own deserialiser reads it in the test;
 * the retain-until date's precision as S3 returns it;
 * the error a bucket without Object Lock gives for the lock headers. Here, `lockless: true` ignores them, and the adapter's own check after the put catches it.
 
