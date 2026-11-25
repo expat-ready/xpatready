@@ -9,15 +9,17 @@
 * **File:** `qa/clauses.tsv`, one line per clause: `row · no · clause · status · evidence · commit · date`. Status is `confirmed` or `not`. A confirmed clause carries a qa/ report path that exists, the commit it tested and the date (YYYY-MM-DD).
 * **Where the clauses come from:** the row's **Done when (what qa tests)** cell, cut at `;` outside brackets. On main that gives 276 clauses over 101 rows (1 to 6 per row; 45 rows have 3). **This differs from the brief's wording, and the Lead needs to rule on it:** the brief says to split the "Capability" cell. In the R1 table that cell is a title ("3 Walls between firms", "56 Client invoices, tax by province, government-fee line"), so it has no acceptance clauses to split. Done when is the row's acceptance text, and qa already tests against it. Changing the source later is one line (`rows()` in `clauses.py`).
 * **Seed (`tools/clauses.py seed`):** a Works row's clauses take qa's own row verdict: its Tested-on commit and date, plus the first qa report path in its note that exists. Six rows (R1.63, 73, 82, 83, 84, 101) were judged on their C rows with no report path, so their evidence is the row's note in `qa/CAPABILITIES.md`. The script sets no other status: **every clause of the 17 Partial and 21 Not built rows starts `not`.** The seed copies qa's recorded verdicts only and makes no judgement of its own, so P-219 holds. If a row's Done when is reworded later, the seed splits it again: a clause whose text is unchanged keeps its status, and a new or reworded clause starts `not`.
-* **Check (`tools/clauses.py check`; test `tools/check-clauses.sh`, guard 41 with 7 mutation rows):** it refuses:
-  * a Works row with an unconfirmed clause;
-  * a confirmed clause without evidence, a commit or a date, or whose evidence is outside qa/ or missing;
+* **Check (`tools/clauses.py check`; test `tools/check-clauses.sh`, guard 41 with 12 mutation rows):** it refuses:
+  * a Works row with an unconfirmed clause (a status such as "Works (held …)" counts as Works);
+  * a confirmed clause without a commit, without a real date, or without evidence that exists under qa/reports/ or qa/verdicts/ (or, for the six C-row rows, the row's own note in qa/CAPABILITIES.md);
+  * an R1 row too short to read;
   * a bad status;
   * an R1 row with no clauses;
   * clauses that no longer match the Done when;
   * a line for a row that is not R1.
 
-  It runs in ci's records step on every PR. That step is in `.github/workflows/ci.yml`, a P-423 path.
+  It runs in ci's tools step, on every PR and in merge batches, so two PRs that are each green cannot merge into a red main. The step is in `.github/workflows/ci.yml`, a P-423 path.
+* **What this means for a builder:** if a builder rewords the Done when of a Works row and runs seed, the reworded clause starts `not`, and the check fails that PR until qa confirms the clause. This is intended (P-219), and the refusal says so ("needs a qa walk").
 * **qa skill:** one line under §4 Record. The skill was at 10,227 of its 10,240-byte limit, so the line went in by trimming four history asides; no rule changed.
 
 **Question for the tech lead (1), the count today:** the 17 Partials show **0 of n** until qa scores their clauses. The note's "parts missing CS-W2…" prose cannot be turned into clause verdicts by a tooling lane (P-219). Proposal: one `/qa capability` paper pass over the 17 Partials. It reads their own reports, runs nothing, sets each clause with its evidence, and fits one qa session. Until then, part 2 prints "0/n, not yet scored by qa", so a 0 is never shown as measured.

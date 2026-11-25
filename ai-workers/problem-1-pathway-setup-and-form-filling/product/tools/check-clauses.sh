@@ -32,6 +32,9 @@ bad 's/^R1.1\t2\t\(.*\)\tconfirmed\t.*/R1.1\t2\t\1\tnot\t\t\t/' "a Works row wit
 bad 's/^R1.2\t1\tFirst c\tconfirmed\tqa\/reports\/r.md/R1.2\t1\tFirst c\tconfirmed\t/' "a confirmed clause with no evidence fails" '^CLAUSES: R1.2 clause 1: confirmed without evidence'
 bad 's/^R1.2\t1\tFirst c\tconfirmed\tqa\/reports\/r.md/R1.2\t1\tFirst c\tconfirmed\tqa\/reports\/gone.md/' "a confirmed clause whose report does not exist fails" '^CLAUSES: R1.2 clause 1: confirmed without evidence'
 bad 's/^R1.2\t1\tFirst c\tconfirmed\tqa\/reports\/r.md/R1.2\t1\tFirst c\tconfirmed\tSTATE.md/' "evidence outside qa/ fails (only qa's records count)" '^CLAUSES: R1.2 clause 1: confirmed without evidence'
+bad 's/^R1.2\t1\tFirst c\tconfirmed\tqa\/reports\/r.md/R1.2\t1\tFirst c\tconfirmed\tqa\/..\/qa\/clauses.tsv/' "evidence that climbs out of qa/reports (qa/../) fails" '^CLAUSES: R1.2 clause 1: confirmed without evidence'
+bad 's/^R1.2\t1\tFirst c\tconfirmed\tqa\/reports\/r.md/R1.2\t1\tFirst c\tconfirmed\tqa\/clauses.tsv/' "evidence that is a qa/ file but not a report (clauses.tsv itself) fails" '^CLAUSES: R1.2 clause 1: confirmed without evidence'
+bad 's/\t2026-11-20$/\t2026-13-45/' "a date that is not a real day fails" 'confirmed without a date'
 bad 's/^\(R1.2\t1\t.*\)\tabcdef12\t/\1\t\t/' "a confirmed clause with no commit fails" '^CLAUSES: R1.2 clause 1: confirmed without the commit'
 bad 's/^\(R1.2\t1\t.*\)\t2026-11-20$/\1\t20 Nov/' "a confirmed clause with no proper date fails" '^CLAUSES: R1.2 clause 1: confirmed without a date'
 bad 's/^R1.2\t2\tsecond d\tnot/R1.2\t2\tsecond d\tpartly/' "a status other than confirmed or not fails" '^CLAUSES: R1.2 clause 2: status "partly"'
@@ -39,7 +42,13 @@ bad '/^R1.3\t/d' "a row with no clauses fails" '^CLAUSES: R1.3: no clauses'
 bad 's/^R1.2\t3\tthird e/R1.2\t3\tthird E reworded/' "clause text that no longer matches the Done when fails" '^CLAUSES: R1.2: clauses no longer match'
 bad 's/^R1.2\t3\t/R1.2\t4\t/' "clause numbers out of order fail" '^CLAUSES: R1.2: clauses no longer match'
 bad '$a R1.9\t1\tx\tnot\t\t\t' "a line for a row that is not R1 in CAPABILITIES.md fails" '^CLAUSES: R1.9: in clauses.tsv but not an R1 row'
-run check; ok "the check counts its problems in the last line" "$(tail -1 <<<"$out" | grep -q ' 1 problems$' && echo 1)" "$out"
+sed -i.bak 's/| R1.1 | 1 A | P | Works |/| R1.1 | 1 A | P | Works (held, QA-1) |/' "$CLAUSES_CAPS"
+bad 's/^R1.1\t2\t\(.*\)\tconfirmed\t.*/R1.1\t2\t\1\tnot\t\t\t/' "a Works row with words after Works and an unconfirmed clause fails too" '^CLAUSES: R1.1 clause 2: the row is Works'
+sed -i.bak 's/| R1.1 | 1 A | P | Works (held, QA-1) |/| R1.1 | 1 A | P | Works |/' "$CLAUSES_CAPS"
+cp "$CLAUSES_CAPS" "$T/caps.keep"; printf '| R1.4 | 4 D | P |\n' >> "$CLAUSES_CAPS"
+bad 's/x/x/' "an R1 row too short to read fails, naming it" '^CLAUSES: R1.4: an R1 row of qa/CAPABILITIES.md with fewer than 8 cells'
+cp "$T/caps.keep" "$CLAUSES_CAPS"
+good | sed '/^R1.3\t/d' > "$CLAUSES_TSV"; run check; ok "the check counts its problems in the last line" "$(tail -1 <<<"$out" | grep -q ' 1 problems$' && echo 1)" "$out"
 
 # 2. The valid file passes; seed and pct.
 good > "$CLAUSES_TSV"; run check; ok "a valid file passes" "$([ $r = 0 ] && echo 1)" "$out"

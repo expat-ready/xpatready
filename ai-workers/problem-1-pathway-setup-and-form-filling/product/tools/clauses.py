@@ -5,13 +5,13 @@
 #   clauses.py seed     add the clauses of any R1 row missing from clauses.tsv, and re-split a row whose acceptance text
 #                       changed (a clause whose text is unchanged keeps its status; a new or reworded clause starts "not")
 #   clauses.py check    exit 1 on: an R1 row with no clauses or clauses that no longer match its acceptance text, a bad
-#                       status, a Works row with an unconfirmed clause, a confirmed clause without evidence (a qa/ file
-#                       that exists, a commit, a date), a line for a row that is not R1
+#                       status, a Works row with an unconfirmed clause, a confirmed clause without evidence (a qa/reports/ or qa/verdicts/ file,
+#                       or the row's note in qa/CAPABILITIES.md, that exists, a commit, a date), a line for a row that is not R1
 #   clauses.py pct      row → confirmed/all and % (tab-separated), for the two-sided board (part 2)
 # Seeding a Works row confirms its clauses from qa's own row verdict (its Tested-on commit and date, the first qa report
 # path in its note that exists, else the row's note in qa/CAPABILITIES.md); every other row starts with every clause "not".
 # Paths: CLAUSES_ROOT (the product folder), CLAUSES_TSV, CLAUSES_CAPS override the files (the check's throwaway copies).
-import os, re, sys
+import datetime, os, re, sys
 
 P = os.environ.get("CLAUSES_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TSV = os.environ.get("CLAUSES_TSV", os.path.join(P, "qa", "clauses.tsv"))
@@ -29,7 +29,7 @@ def split(text):
     """Clauses of an acceptance text: cut at ";" outside brackets; empty parts dropped."""
     out, depth, cur = [], 0, ""
     for ch in text:
-        depth += (ch in "([") - (ch in ")]")
+        depth = max(0, depth + (ch in "([") - (ch in ")]"))
         if ch == ";" and depth <= 0:
             out.append(cur); cur = ""
         else:
@@ -38,15 +38,18 @@ def split(text):
     return [c for c in map(clean, out) if c]
 
 
+MALFORMED = []
+
+
 def rows():
-    """R1 rows of CAPABILITIES.md: id → dict(status, tested, note, accept)."""
+    """R1 rows of CAPABILITIES.md: id → dict(status, tested, note, accept); a short row goes to MALFORMED."""
     r = {}
     for line in open(CAPS, encoding="utf-8"):
         if not line.startswith("| R1."):
             continue
         c = [x.strip() for x in line.split("|")]
         if len(c) < 9:
-            continue
+            MALFORMED.append(c[1]); continue
         r[c[1]] = {"status": c[4].replace("*", "").strip(), "tested": c[5], "note": c[8], "accept": c[7] or c[2]}
     return r
 
@@ -112,8 +115,19 @@ def seed():
     print(f"clauses.tsv: {len(out)} clauses for {len(caps)} R1 rows ({added} rows added, {resplit} re-split)")
 
 
+EVIDENCE = re.compile(r"qa/(reports|verdicts)/[^/].*\Z|qa/CAPABILITIES\.md\Z")   # qa's reports, or a row's own qa note
+
+
+def real_date(d):
+    try:
+        return bool(re.fullmatch(r"\d{4}-\d\d-\d\d", d)) and bool(datetime.date.fromisoformat(d))
+    except ValueError:
+        return False
+
+
 def check():
     caps, lines, bad = rows(), read(), []
+    bad += [f"{m}: an R1 row of qa/CAPABILITIES.md with fewer than 8 cells, so its clauses cannot be read" for m in MALFORMED]
     by = {}
     for l in lines:
         by.setdefault(l["row"], []).append(l)
@@ -126,20 +140,20 @@ def check():
         if not ls:
             bad.append(f"{rid}: no clauses (run tools/clauses.py seed)"); continue
         if [l["clause"] for l in ls] != split(caps[rid]["accept"]) or [l["no"] for l in ls] != [str(i) for i in range(1, len(ls) + 1)]:
-            bad.append(f"{rid}: clauses no longer match its Done when (run tools/clauses.py seed; reworded clauses start \"not\")")
+            bad.append(f"{rid}: clauses no longer match its Done when (run tools/clauses.py seed; a new or reworded clause starts \"not\" and needs a qa walk, P-219)")
         for l in ls:
             w = f"{rid} clause {l['no']}"
             if l["status"] not in STATUS:
                 bad.append(f"{w}: status \"{l['status']}\" is not confirmed or not (line {l['line']})"); continue
             if l["status"] == "confirmed":
                 ev = l["evidence"]
-                if not (ev.startswith("qa/") and os.path.exists(os.path.join(P, ev))):
-                    bad.append(f"{w}: confirmed without evidence (a qa/ report path that exists; got \"{ev}\")")
+                if not (EVIDENCE.match(os.path.normpath(ev)) and os.path.exists(os.path.join(P, ev))):
+                    bad.append(f"{w}: confirmed without evidence (a qa/reports/ or qa/verdicts/ path that exists; got \"{ev}\")")
                 if not re.fullmatch(r"[0-9a-f]{7,40}", l["commit"]):
                     bad.append(f"{w}: confirmed without the commit it tested")
-                if not re.fullmatch(r"\d{4}-\d\d-\d\d", l["date"]):
+                if not real_date(l["date"]):
                     bad.append(f"{w}: confirmed without a date (YYYY-MM-DD)")
-            elif st == "Works":
+            elif st.split(" ")[0] == "Works":
                 bad.append(f"{w}: the row is Works but this clause is not confirmed: \"{l['clause'][:80]}\"")
     for b in bad:
         print("CLAUSES: " + b)
