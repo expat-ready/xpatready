@@ -115,7 +115,7 @@ try {
   await r.screenshot({ path: join(SHOTS, "fo9s2-01-to-review-1440.png"), fullPage: true });
   ok("FO-9s R1 BR-6 pass: the Owner sees their own pair with names, lead numbers, what matched and the score",
     /Dan\w* Fischer · L-\d+/.test(await row(r, P_DAN).innerText()) && /Similar name \(82%\)/.test(await row(r, P_DAN).innerText()) && (await row(r, P_DAN).locator("[data-match-score='82']").count()) === 1);
-  ok("FO-9s R2 BR-6 pass: Merge… is shown to the Owner (agent/prospect:merge), off in part 2", (await row(r, P_DAN).getByRole("button", { name: "Merge…" }).count()) === 1);
+  ok("FO-9s R2 BR-6 pass: Merge… is shown to the Owner (agent/prospect:merge)", (await row(r, P_DAN).getByRole("button", { name: "Merge…" }).count()) === 1);
   ok("FO-9s R3 BR-7 pass: the case pair's Merge… is off with the sentence word for word, tied to the button",
     await row(r, P_KIM).getByRole("button", { name: "Merge…" }).isDisabled() && (await row(r, P_KIM).locator("[data-needs-case-side]").innerText()) === CASE_LINE
     && (await row(r, P_KIM).getByRole("button", { name: "Merge…" }).getAttribute("aria-describedby")) === `dup-case-${P_KIM}`);
@@ -241,6 +241,11 @@ try {
     if (w === 375) {
       const cell = await p.locator("[data-dup-pair] td").first().evaluate((td) => ({ w: td.getBoundingClientRect().width, h: td.getBoundingClientRect().height }));
       ok("FO-9s R7 fail (review r1 m2): at 375 px the People column keeps a readable width (names do not break letter by letter)", cell.w >= 140 && cell.h < 160, cell);
+    }
+    if (w === 375) {
+      await openPage(p, "merged"); await settle(p);
+      const undoRight = await p.getByRole("button", { name: "Undo merge" }).first().evaluate((b) => b.getBoundingClientRect().right).catch(() => 9999);
+      ok("FO-9s R7 fail (review r2 should): at 375 px the Merged tab's Undo merge is on screen (How and When sit under the names)", undoRight <= 375, undoRight);
     }
     if (w === 375) ok("FO-9s R7: the phone's Sales links reach People to merge", (await p.getByRole("navigation", { name: "Sales pages" }).getByRole("link", { name: "People to merge" }).count()) === 1);
     await p.context().close();
