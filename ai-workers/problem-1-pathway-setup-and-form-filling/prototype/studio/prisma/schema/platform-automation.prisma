@@ -1,0 +1,197 @@
+// platform-automation.prisma — the automation engine's tables (PF-20, moved from FO-12a by P-584 (2)) and message many's
+// (FO-12c, AG-2-90, -91), one migration for R1.36 ("simple automation, message many with consent"). Owner: the platform
+// (Lead B, P-559). Code: api/src/platform/automation/ (the engine) and the front office's registered recipes and bulk
+// sends. Every table is firm-scoped behind PF-12's forced policy; rules Prisma cannot say are auto_ checks and triggers
+// in this row's migration (prisma/migrations/<stamp>_pf20_automation_tables).
+// Each module registers its own recipes (AutomationRegistry, api/src/platform/automation/registry.ts); a firm's recipe row
+// keeps only its on/off and its steps' wording, timing and mode (AG-2-31 rule 2: the library has no on/off of its own,
+// the firm's row has). The consent gate is PF-19b's: a step or a bulk recipient is sent through MessagePort, which
+// answers SUPPRESSED with the reason when the person has no consent for the purpose (AG-2-33).
+
+/// What a step does when its time comes (AG-12-52's three choices on the Automatic messages page).
+enum AutoStepMode {
+  AUTO
+  ASK
+  OFF
+}
+
+/// A run's state (AG-11): running until its last step or an exit (AG-2-31 rule 8), then ended with the reason.
+enum AutoRunState {
+  RUNNING
+  ENDED
+}
+
+/// A step run's state (AG-2-31 §6: Queued → Success, Skipped, Awaiting approval, Failed; Cancelled when the recipe is
+/// switched off or the run ends before its time).
+enum AutoStepState {
+  QUEUED
+  SUCCESS
+  SKIPPED
+  AWAITING_APPROVAL
+  FAILED
+  CANCELLED
+}
+
+/// One Message many action's state (AG-2-90 §6).
+enum AutoBulkState {
+  SENDING
+  SENT
+  CANCELLED
+}
+
+/// Who gets it (AG-2-91 rule 5): eligible, or skipped for the first reason in this order.
+enum AutoBulkEligibility {
+  ELIGIBLE
+  SKIPPED_NO_CONSENT
+  SKIPPED_OPTED_OUT
+  SKIPPED_QUIET
+  SKIPPED_NO_CHANNEL
+  SKIPPED_FREQUENCY_LIMIT
+}
+
+/// One recipient's send (AG-2-91 §6, the states this row writes; DELIVERED, REPLIED and OPTED_OUT are read from the
+/// message's own outbox row and events, never copied here).
+enum AutoBulkSendState {
+  QUEUED
+  SENT
+  SKIPPED
+  FAILED
+  CANCELLED
+}
+
+/// A firm's copy of one registered recipe (module + key): on or off (AG-2-31 rule 1). Made from the registry the first
+/// time the firm's recipes are read; a recipe whose module no longer registers it is never run.
+model AutoRecipe {
+  id        String   @id @default(uuid()) @db.Uuid
+  firmId    String   @map("firm_id") @db.Uuid
+  module    String
+  key       String
+  on        Boolean
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  updatedBy String   @map("updated_by")
+
+  firm  PlatformFirm     @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  steps AutoRecipeStep[]
+  runs  AutoRun[]
+
+  @@unique([firmId, key])
+  @@unique([firmId, id])
+  @@map("auto_recipe")
+}
+
+/// One step of a firm's recipe: its place, its wait after the run starts (minutes), its message class (SERVICE or
+/// MARKETING: the gate's purpose) and its wording and mode, editable per firm (AG-2-31 rule 2).
+model AutoRecipeStep {
+  id           String       @id @default(uuid()) @db.Uuid
+  firmId       String       @map("firm_id") @db.Uuid
+  recipeId     String       @map("recipe_id") @db.Uuid
+  position     Int
+  delayMinutes Int          @map("delay_minutes")
+  class        String
+  mode         AutoStepMode @default(AUTO)
+  subject      String
+  body         String
+
+  recipe AutoRecipe @relation(fields: [firmId, recipeId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, recipeId, position])
+  @@unique([firmId, id])
+  @@map("auto_recipe_step")
+}
+
+/// One person in one recipe (AG-2-31 rule 4): the person (subject kind and id), the address the steps go to, the context
+/// (a lead or prospect), who enrolled them, and how it ended (rule 8). At most one RUNNING run per firm, recipe and person
+/// (two triggers never make two runs; a partial unique index in the migration).
+model AutoRun {
+  id          String       @id @default(uuid()) @db.Uuid
+  firmId      String       @map("firm_id") @db.Uuid
+  recipeId    String       @map("recipe_id") @db.Uuid
+  subjectKind String       @map("subject_kind")
+  subjectId   String       @map("subject_id") @db.Uuid
+  channel     String
+  address     String
+  contextKind String?      @map("context_kind")
+  contextId   String?      @map("context_id") @db.Uuid
+  state       AutoRunState @default(RUNNING)
+  exitReason  String?      @map("exit_reason")
+  enrolledBy  String       @map("enrolled_by")
+  startedAt   DateTime     @default(now()) @map("started_at") @db.Timestamptz
+  endedAt     DateTime?    @map("ended_at") @db.Timestamptz
+
+  recipe AutoRecipe    @relation(fields: [firmId, recipeId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  steps  AutoStepRun[]
+
+  @@unique([firmId, id])
+  @@index([firmId, subjectKind, subjectId])
+  @@index([firmId, recipeId, state])
+  @@map("auto_run")
+}
+
+/// One step of one run, due at its time (the run's start plus the step's wait). Written QUEUED at enrolment; the step's
+/// job moves it once (Success with the outbox row, Skipped with the gate's reason, Awaiting approval, Failed, Cancelled).
+model AutoStepRun {
+  id       String        @id @default(uuid()) @db.Uuid
+  firmId   String        @map("firm_id") @db.Uuid
+  runId    String        @map("run_id") @db.Uuid
+  position Int
+  dueAt    DateTime      @map("due_at") @db.Timestamptz
+  state    AutoStepState @default(QUEUED)
+  reason   String?
+  outboxId String?       @map("outbox_id") @db.Uuid
+  doneAt   DateTime?     @map("done_at") @db.Timestamptz
+
+  run AutoRun @relation(fields: [firmId, runId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, runId, position])
+  @@index([firmId, state, dueAt])
+  @@map("auto_step_run")
+}
+
+/// One Message many action (AG-2-90 §7): who sent it, the channel, the words, the list's filter as given, the preview's
+/// counts and the send's.
+model AutoBulkSend {
+  id               String        @id @default(uuid()) @db.Uuid
+  firmId           String        @map("firm_id") @db.Uuid
+  createdByStaffId String        @map("created_by_staff_id") @db.Uuid
+  channel          String
+  subject          String
+  body             String
+  filter           Json
+  state            AutoBulkState @default(SENDING)
+  recipientCount   Int           @default(0) @map("recipient_count")
+  skippedCount     Int           @default(0) @map("skipped_count")
+  sentCount        Int           @default(0) @map("sent_count")
+  startedAt        DateTime      @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt       DateTime?     @map("finished_at") @db.Timestamptz
+  cancelledAt      DateTime?     @map("cancelled_at") @db.Timestamptz
+
+  firm       PlatformFirm        @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy  PlatformStaff       @relation(fields: [firmId, createdByStaffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  recipients AutoBulkRecipient[]
+
+  @@unique([firmId, id])
+  @@index([firmId, startedAt])
+  @@map("auto_bulk_send")
+}
+
+/// One person on one Message many send (AG-2-91 §7): the address used, the eligibility judged at preview, the send's
+/// state and reason (the gate's at send time, which can be stricter: rule 7), the outbox row.
+model AutoBulkRecipient {
+  id          String              @id @default(uuid()) @db.Uuid
+  firmId      String              @map("firm_id") @db.Uuid
+  bulkSendId  String              @map("bulk_send_id") @db.Uuid
+  subjectKind String              @map("subject_kind")
+  subjectId   String              @map("subject_id") @db.Uuid
+  address     String?
+  eligibility AutoBulkEligibility
+  sendState   AutoBulkSendState   @map("send_state")
+  reason      String?
+  outboxId    String?             @map("outbox_id") @db.Uuid
+  sentAt      DateTime?           @map("sent_at") @db.Timestamptz
+
+  bulkSend AutoBulkSend @relation(fields: [firmId, bulkSendId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, bulkSendId, subjectKind, subjectId])
+  @@index([firmId, bulkSendId, sendState])
+  @@map("auto_bulk_recipient")
+}
