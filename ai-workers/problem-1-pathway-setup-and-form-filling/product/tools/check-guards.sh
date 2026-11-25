@@ -267,7 +267,7 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 15 full records|product/tools/queue-gate.sh|s/^  records \&\& return 0/  true \&\& return 0/|check-queue-gate.sh
 15 full reclabel|product/tools/queue-gate.sh|s/^records() { has records \&\& /records() { /|check-queue-gate.sh
 15 full recfiles|product/tools/queue-gate.sh|s/^records() { has records \&\& .*/records() { has records; }/|check-queue-gate.sh
-15 full unread|product/tools/queue-gate.sh|s/ \[ "\${full_state:-}" = unread \] \&\& exit 3; exit 1;;/ exit 1;;/|check-queue-gate.sh
+15 full unread|product/tools/queue-gate.sh|s/{ \[ "\${full_state:-}" = unread \] .. /{ /|check-queue-gate.sh
 15 full sweep3|product/tools/label-sweep.sh|s/^    if \[ "\$g" = 3 \]; then/    if false; then/|check-label-sweep.sh
 15 full nottested|../../.github/workflows/ci.yml|s/, FULL_PR: "\${{ inputs.pr }}", GATE_B_NOT_TESTED: "[^"]*" }/, FULL_PR: "${{ inputs.pr }}" }/|check-queue-gate.sh
 15 batch only|product/tools/queue-gate.sh|s/(map(select(. != "ci")) . if length > 0 then . else empty end) \/\/ ./map(select(. != "ci"))/|check-queue-gate.sh
@@ -691,7 +691,7 @@ P822 own run|product/tools/queue-gate.sh|s/^    \[ "\$ok" = true \] .. continue/
 P822 proof|product/tools/queue-gate.sh|s/if \[ "\${RELABEL:-}" = 1 \]; then suitesok/if false; then suitesok/|check-queue-gate.sh
 P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.conclusion .. "")\(.\) <<< "\$r")" = "completed success" \] \&\& { suites_state=success/{ suites_state=success/|check-queue-gate.sh
 P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
-P822 part|../../.github/workflows/pr-suites.yml|s/\[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \] \&\& exit 0/exit 0/|check-pr-suites-job.sh
+P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \]; then exit 0; fi/exit 0/|check-pr-suites-job.sh
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
 # P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
 MUT="$MUT"'
