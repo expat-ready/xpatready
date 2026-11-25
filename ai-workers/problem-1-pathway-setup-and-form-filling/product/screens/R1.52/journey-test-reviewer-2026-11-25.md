@@ -58,3 +58,27 @@ folder name) is a pipeline refusal, fixed in 4e2c002.
 To raise it, most valuable first: refuse inserts into a DISCONNECTED mailbox and freeze its cursor (m1); record Lead 5's rulings in
 shape.md (m9); add the missing failing case and the exact-code asserts (m8).
 Could not test: a real screen reader and an intended user's unaided walk (D17 and D20 stay with the founder). There is no UI in this part.
+
+## Round 2 (14c4b737dd9c8f67d45cac6b3c1e8caa35208fb4)
+Diff-only. Same surface (xr_app with the firm set). My own `git archive` copy and scratch database `xr_studio_rv2_pf19m` (dropped). No
+server and no port (never :4400). Changed journeys:
+* **8, disconnect and purge:** two sessions, both orders. The late sync email is purged, or it is refused with 23514. 0 emails are left.
+* **8b, after the disconnect, an Admin moves a misfiled email to the right client (AG-10-83):** **refused** with 23514, and so is Un-file
+  (review R2-M1).
+* **10b, the 5-minute job runs twice at once on one mailbox:** one run gets 40P01 "deadlock detected" (review r2-m1).
+* **4b, Unmatched, then filed from the thread:** the entry stays OPEN on a filed email (review r2-m2).
+The test suite has 44 lines, 44/44 passing. The RDS-shaped run passes.
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | Every Done-when line holds, and every round-1 Blocker and Major is fixed |
+| Next step obvious | ½ | The erasure note is wrong (r2-m4); the sync's lock order is unstated (r2-m1) |
+| Plain words | 1 | The new messages are plain; only the TRUNCATE text says "write-once" (n1) |
+| Feedback and state | 1 | 23514, 23505, 23503, 42501 and 23001, one per rule |
+| Correct data | ½ | An OPEN entry on a filed email is still possible (r2-m2) |
+| Error recovery | ½ | Move and Un-file are refused after a disconnect (R2-M1); a double sync deadlocks (r2-m1) |
+| Accessibility, Visual | N/A | No page |
+| Speed | 1 | The suite runs in about 20 s |
+| Trust and sources | 1 | Every rule cites its requirement; the credential has the real box's exact shape |
+
+**6.5 of 8 applicable, which is 8.1/10. Pass.** To raise it: R2-M1 first, then r2-m4 and r2-m1.

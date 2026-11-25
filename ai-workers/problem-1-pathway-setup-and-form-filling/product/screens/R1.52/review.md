@@ -101,3 +101,73 @@ PF-12 lines that start the API (my partial extract). An intended user's walk (D1
 
 Reviewer: Changes ca2e17127b1830b458544077e39ec7c31705ab43
 Reviewer: Approve 4e2c0028fabb0915b619b6d0f9f500afe2e96c67 (B1 fixed; only Minor findings open)
+
+## Round 2 (14c4b73)
+Diff-only re-review of `ca2e171..14c4b73` at head **14c4b737dd9c8f67d45cac6b3c1e8caa35208fb4**, by a fresh reviewer agent, 25 Nov 2026.
+It covers the migration (renamed to `20261125060000_platform-messages__pf19m_mailboxes`), the test, the schema comment and `shape.md`,
+checked against the reasons in the PR comment "Reviewer: Block ca2e171…". My own `git archive 14c4b73` copy (the migration's sha256 is
+`ae030e57…`, the same as the commit's). Postgres 127.0.0.1:54329 with my own scratch database `xr_studio_rv2_pf19m` (now dropped). The
+RDS cluster ran on 15631. No server started; :4400 was never used. Probes: `scratchpad/probe2/` (`race.sh`, `deadlock.sh`).
+
+**What I ran:** `check_pf19m_mailbox_schema.ts` **44/44**. `check_pf8b_f4_migrations.ts` **9/9**. `tools/rds-shape-check.sh` **all passed**
+(every migration applies as a non-superuser admin). `migration-slots.py check origin/main..14c4b73` **PASS**. Mutations: with the
+"delete only from a DISCONNECTED mailbox" rule removed, 3 tests fail; with the OPEN-entry check removed, 1 fails; with the share lock
+removed, **44/44 still pass** (r2-m1).
+
+**Round-1 findings, each checked**
+* Breaker B1 (RDS): **fixed.** The F4 pairing is in place, and the RDS-shaped run applies every migration.
+* Breaker M1 and reviewer m2 (a filed email rewritten or removed): **fixed.** Un-filing and deleting a filed email in one transaction now
+  gets 23514. A filed email cannot be deleted from any mailbox, nor un-filed in a DISCONNECTED one.
+* Breaker M2 and reviewer m1 (the purge race): **fixed.** Two sessions as xr_app, both orders (`race.sh`). Sync first: the disconnect
+  waits on the share lock, then the purge removes the late email (0 left). Disconnect first: the sync's insert waits, then gets 23514.
+  The cursor and last check are frozen once DISCONNECTED.
+* Breaker m1 and reviewer m6 (credential): **fixed.** The `sb1` form now matches aes-gcm.ts:46-50 exactly (16-character iv, 22-character
+  tag, length ≤ 12000 covers MAX_PLAIN 8192). Keeping `fake1.` is a sound choice: the running app never uses that box (secret-box.ts:104).
+* Breaker m2: **fixed** (the live mailbox's Unmatched email stays). Breaker m3 and reviewer m5 (addresses): **fixed** with `msg_address_ok`,
+  and to, cc and via are lower case. Leaving `%@gmail.com` in is sound: it is a valid address, and matching is by equality.
+* Breaker m4 and reviewer m3 (Unmatched): the size limit is **fixed**. The open-entry rule is **half fixed** (r2-m2).
+* Reviewer m4 and m7: **named in the header** with their owners (PF-19mi, PF-19mc). That is sound for part 1.
+* Reviewer m8: **fixed.** There is a failing case for "a DISCONNECTED mailbox is never main", and the firm-B write must get exactly 42501.
+  Reviewer m9: **fixed** (the Approved block is in shape.md). Reviewer m10: **fixed** (`*_no_truncate`, 23001).
+* Reviewer m5 (actor columns): **changed, not reused.** The new pattern is narrower than `msg_actor_ok` (r2-m3).
+
+**New findings**
+* **R2-M1 (Major, Must). Move and Un-file of a filed email are refused once its mailbox is DISCONNECTED.** migration.sql:212-214:
+  `IF st = 'DISCONNECTED'` refuses every UPDATE, including the filing columns. AG-10-83 says a filed email "SHALL offer **Move** and
+  **Un-file**", and this item's own part 4 builds them (shape.md:39, SA-11-39). Scenario: a staff member leaves, their mailbox is
+  disconnected, and an email of theirs filed to the wrong client can never be moved. As xr_app, firm A, a filed email in a DISCONNECTED
+  mailbox: `update msg_email set filed_kind='fo-client', filed_id=…, filed_by='STAFF', filed_rule=null` gets 23514 "a disconnected mailbox
+  takes no email and changes none", and the un-file gets the same. Round 1 asked only that no email enter and no sync state move; this
+  freeze goes further. Fix: in a DISCONNECTED mailbox, refuse INSERT but allow an UPDATE that changes only the filing (the content check
+  below it still applies). An un-filed email there is then purgeable, so the app's un-file purges it. Add a pass case (a move in a
+  disconnected mailbox) beside the existing late-insert fail case.
+
+**Minor** (Should)
+* **r2-m1. Two syncs of one mailbox deadlock** (`deadlock.sh`). Each inserts an email, taking FOR SHARE on the mailbox (line 202). Each
+  then updates `sync_cursor`. The result is `ERROR: deadlock detected … while locking tuple (0,1) in relation "msg_mailbox"` (40P01) for
+  one of them. The old foreign key's KEY SHARE never conflicted with that update. The lock is needed for M2. Fix: name it in the header
+  for PF-19mi: one sync per mailbox at a time, or lock the mailbox row first (FOR NO KEY UPDATE) and then insert, and retry on 40P01.
+  The lock also has no failing case: with it removed, 44/44 still pass.
+* **r2-m2. "An OPEN Unmatched entry is for an unfiled email" holds only when the entry is written.** Insert the email, insert an OPEN
+  entry, then file the email: accepted, and the row reads OPEN and filed. Fix: in `msg_email_write`, refuse filing while an OPEN entry
+  exists, or have the header say "when the entry is written" and give PF-19mi a failing case.
+* **r2-m3. The "by" pattern (lines 160, 174, 178) leaves out `seed:` and `ourstaff:` of the shared AuditActor (ports/audit.ts:14).**
+  `connected_by` or `created_by` = `'seed:PF-19m'` gets 23514. The Sample loaders use `seed:<row>` (seed-sample-firms.ts:31), and PF-19mi's
+  Sample sync will need it. Fix: add `seed:[A-Za-z0-9-]{1,40}`, or use `msg_actor_ok` with a length limit.
+* **r2-m4. The erasure note (header lines 18-19) cannot work as written.** A function owned by xr_wall_reader still fires `msg_email_write`.
+  My probe (a definer owned by the reader, with DELETE granted) got 23514 "a filed email is kept". Fix: reword it so part 4 or PF-21d
+  replaces `msg_email_write`'s DELETE branch (and the DISCONNECTED freeze) to admit the eraser, gated on the job's claim
+  (`plat_data_request.erasing_since`, pf21d_erasure).
+* Nit n1. The TRUNCATE message reads "msg_email is write-once: TRUNCATE refused" (msg_write_once). The table is not write-once. A
+  `msg_mailbox_` function of its own would say it plainly.
+* Nit n2. The cursor shape (line 159) fits Gmail and IMAP only. MICROSOFT is in the enum but deferred (P-621). Say in the header that it
+  widens the check.
+
+Dimensions changed since round 1: D2 4 (r2-m2 open), D5 3 (R2-M1, r2-m1), D6 4 (r2-m4), D16 4 (r2-m1 has no failing case). The others
+are unchanged. Journey test round 2: **8.1/10, pass** (`journey-test-reviewer-2026-11-25.md`, Round 2).
+Could not check: the Lead's read (P-600 (e)), the full CI run, and an intended user's walk (D17 and D20 stay with the founder).
+
+**Verdict: Block** for 14c4b73 (Ship after fixes): the label must not go on this commit. To fix: R2-M1. The Minors r2-m1 to r2-m4 should
+be fixed here or named in the hand-over.
+
+Reviewer: Changes 14c4b737dd9c8f67d45cac6b3c1e8caa35208fb4

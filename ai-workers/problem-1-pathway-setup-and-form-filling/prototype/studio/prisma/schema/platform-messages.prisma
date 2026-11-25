@@ -493,6 +493,8 @@ model MsgEmail {
   filedBy            MsgFiledBy?       @map("filed_by")
   filedRule          String?           @map("filed_rule")
   filedAt            DateTime?         @map("filed_at") @db.Timestamptz
+  /// Set only by the trigger: once filed, an email is never purged, even un-filed (break round 2 n1).
+  wasFiled           Boolean           @default(false) @map("was_filed")
   createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz
 
   firm      MsgFirm       @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)

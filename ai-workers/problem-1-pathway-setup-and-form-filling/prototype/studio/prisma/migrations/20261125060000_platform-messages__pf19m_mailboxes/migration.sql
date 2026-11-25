@@ -15,14 +15,25 @@
 --     on its mailbox so a sync mid-run serialises with the disconnect (M2); the sealed credential has the real box's exact
 --     shape (`fake1.` is the test box's, kept for the fakes' tests, m1); the "by" columns and the sync cursor take no free
 --     text (m1); addresses are plain ASCII lower case (m3); an OPEN Unmatched entry is for an unfiled email, and its
---     suggestions are small (m4). The erasure job (PF-21d) will delete a person's email through a function of part 4's,
---     owned like these, not through a plain delete (noted for part 4).
+--     suggestions are small (m4). Not yet here: erasure (PF-21d) of a person's filed email. Its own migration adds a branch
+--     to msg_email_write's DELETE, gated on an erasing plat_data_request (review round 2 r2-m4), with its failing case.
+--   * review round 2 (14c4b73): a DISCONNECTED mailbox's filed email can still be moved or un-filed (AG-10-83, SA-11-39;
+--     R2-M1), only no new email enters; an insert takes the mailbox row FOR NO KEY UPDATE, so two syncs of one mailbox
+--     queue instead of deadlocking on a cursor update and a disconnect waits for a sync mid-run (r2-m1); an email with an
+--     OPEN Unmatched entry is filed only once that entry is resolved (r2-m2); the "by" columns take AuditActor's four
+--     words, an id without dots or slashes (r2-m3); TRUNCATE says what it refuses (n1). The cursor check fits Gmail's
+--     history id and an IMAP UID pair; Microsoft's delta link (deferred, P-621) widens it in its own migration (n2).
+--   * break round 2 (14c4b73): an email once filed is never purged, even un-filed (was_filed, set only by the trigger; n1);
+--     the Unmatched entry rules close its other ways in (n5); the credential cap fits the box's largest seal (n7). Left to
+--     the parts that write, with their own failing cases: the disconnect's purge runs at READ COMMITTED (a REPEATABLE READ
+--     purge misses an email inserted while it waited; n2); a writer that also updates the mailbox row locks it first or
+--     retries 40P01 (n3).
 --   * left to the app, named here (review m4, m7): a personal mailbox's unfiled email is shown only to its owner (AG-10-69;
 --     PF-19mi's routes, with a failing case there); moving the main address is unset-then-set in one transaction (PF-19mc).
 --   * every function is msg_mailbox_ / msg_email_ / msg_unmatched_ (area prefix msg_, rows rev 15.2); PF-12's walls on all
 --     four; the functions are owned by xr_wall_reader with its CREATE granted and taken back around it (RDS, P-8b F4).
 -- Rollback (in this order): DROP TABLE "msg_address_link", "msg_unmatched", "msg_email", "msg_mailbox"; DROP FUNCTION
---   msg_mailbox_write(), msg_email_write(), msg_unmatched_write(); DROP TYPE "MsgUnmatchedState", "MsgFiledBy", "MsgEmailDirection",
+--   msg_mailbox_write(), msg_email_write(), msg_unmatched_write(), msg_mailbox_no_truncate(); DROP TYPE "MsgUnmatchedState", "MsgFiledBy", "MsgEmailDirection",
 --   "MsgMailboxStatus", "MsgMailboxProvider"; delete this folder's row from _prisma_migrations.
 -- Prisma's DDL (prisma migrate diff), then the rules.
 CREATE TYPE "MsgMailboxProvider" AS ENUM ('GOOGLE', 'MICROSOFT', 'IMAP');
@@ -77,6 +88,7 @@ CREATE TABLE "msg_email" (
     "filed_by" "MsgFiledBy",
     "filed_rule" TEXT,
     "filed_at" TIMESTAMPTZ,
+    "was_filed" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "msg_email_pkey" PRIMARY KEY ("id")
@@ -154,10 +166,10 @@ ALTER TABLE "msg_mailbox"
   -- AG-16-18: a SecretBoxPort sealed value (ports/secret-box.ts SealedSecret), never a raw token.
   -- The real box's exact form, sb1.v<n>.<iv 12 bytes>.<tag 16 bytes>.<ciphertext> in base64url (secret-box/aes-gcm.ts), or the
   -- test box's fake1.v<n>.<one part> (ports/secret-box.ts fakeSecretBox, tests only).
-  ADD CONSTRAINT "msg_mailbox_credential_check" CHECK ("credential" IS NULL OR (("credential" ~ '^sb1\.v[1-9][0-9]{0,5}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]+$' OR "credential" ~ '^fake1\.v[1-9][0-9]{0,5}\.[A-Za-z0-9_-]+$') AND length("credential") <= 12000)),
+  ADD CONSTRAINT "msg_mailbox_credential_check" CHECK ("credential" IS NULL OR (("credential" ~ '^sb1\.v[1-9][0-9]{0,5}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]+$' OR "credential" ~ '^fake1\.v[1-9][0-9]{0,5}\.[A-Za-z0-9_-]+$') AND length("credential") <= 48000)),
   -- A provider's cursor (Gmail's history id, an IMAP UID pair), never free text (break m1).
   ADD CONSTRAINT "msg_mailbox_cursor_check" CHECK ("sync_cursor" IS NULL OR "sync_cursor" ~ '^[0-9]{1,30}(:[0-9]{1,30})?$'),
-  ADD CONSTRAINT "msg_mailbox_by_check" CHECK ("connected_by" ~ '^(staff:[0-9a-f-]{36}|system:[a-z][a-z0-9-]{0,39})$'),
+  ADD CONSTRAINT "msg_mailbox_by_check" CHECK ("connected_by" ~ '^(staff|ourstaff|system|seed):[A-Za-z0-9][A-Za-z0-9_:-]{0,99}(\.[A-Za-z0-9][A-Za-z0-9_:-]{0,99}){0,3}$'),
   ADD CONSTRAINT "msg_mailbox_status_check" CHECK (("status" <> 'CONNECTED' OR "credential" IS NOT NULL) AND ("status" <> 'DISCONNECTED' OR ("credential" IS NULL AND NOT "is_main"))),
   ADD CONSTRAINT "msg_mailbox_error_check" CHECK ("last_error_code" IS NULL OR ("last_error_code" ~ '^[a-z][a-z0-9_]*$' AND length("last_error_code") <= 64));
 ALTER TABLE "msg_email"
@@ -171,11 +183,11 @@ ALTER TABLE "msg_email"
   ADD CONSTRAINT "msg_email_arrays_check" CHECK ("references" IS NOT NULL AND "to_addresses" IS NOT NULL AND "cc_addresses" IS NOT NULL AND "attachment_file_keys" IS NOT NULL);
 ALTER TABLE "msg_unmatched"
   ADD CONSTRAINT "msg_unmatched_suggestions_check" CHECK (jsonb_typeof("suggestions") = 'array' AND jsonb_array_length("suggestions") <= 20 AND length("suggestions"::text) <= 4000),
-  ADD CONSTRAINT "msg_unmatched_by_check" CHECK ("resolved_by" IS NULL OR "resolved_by" ~ '^(staff:[0-9a-f-]{36}|system:[a-z][a-z0-9-]{0,39})$'),
+  ADD CONSTRAINT "msg_unmatched_by_check" CHECK ("resolved_by" IS NULL OR "resolved_by" ~ '^(staff|ourstaff|system|seed):[A-Za-z0-9][A-Za-z0-9_:-]{0,99}(\.[A-Za-z0-9][A-Za-z0-9_:-]{0,99}){0,3}$'),
   ADD CONSTRAINT "msg_unmatched_resolved_check" CHECK (("state" = 'OPEN') = ("resolved_by" IS NULL AND "resolved_at" IS NULL));
 ALTER TABLE "msg_address_link"
   ADD CONSTRAINT "msg_address_link_address_check" CHECK (msg_address_ok('EMAIL', "address")),
-  ADD CONSTRAINT "msg_address_link_by_check" CHECK ("created_by" ~ '^(staff:[0-9a-f-]{36}|system:[a-z][a-z0-9-]{0,39})$'),
+  ADD CONSTRAINT "msg_address_link_by_check" CHECK ("created_by" ~ '^(staff|ourstaff|system|seed):[A-Za-z0-9][A-Za-z0-9_:-]{0,99}(\.[A-Za-z0-9][A-Za-z0-9_:-]{0,99}){0,3}$'),
   ADD CONSTRAINT "msg_address_link_kind_check" CHECK ("record_kind" ~ '^[a-z][a-z0-9]*(-[a-z0-9]+)*$' AND length("record_kind") <= 64);
 -- A mailbox stays its firm's, its owner's, its provider's and its address's; DISCONNECTED is final.
 CREATE FUNCTION msg_mailbox_write() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -193,15 +205,25 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER msg_mailbox_write BEFORE UPDATE OR DELETE ON "msg_mailbox" FOR EACH ROW EXECUTE FUNCTION msg_mailbox_write();
--- An email's message never changes; only its filing does. An email enters only a mailbox that is not DISCONNECTED (a share
--- lock on the mailbox row, so a sync mid-run waits for, or is refused after, the disconnect: break M2), and leaves only by
--- the purge: unfiled, from a DISCONNECTED mailbox (break M1, m2).
+-- An email's message never changes; only its filing does, in any mailbox (a disconnected one's filed email is still moved
+-- or un-filed: R2-M1). An email enters only a mailbox that is not DISCONNECTED: the insert locks the mailbox row FOR NO KEY
+-- UPDATE, so a sync mid-run and the disconnect run one after the other (break M2) and two syncs of one mailbox queue
+-- (r2-m1). It leaves only by the purge: unfiled, from a DISCONNECTED mailbox (break M1, m2); DISCONNECTED is final, so the
+-- delete needs no lock. Filing an email that has an OPEN Unmatched entry waits for that entry to be resolved (r2-m2).
 CREATE FUNCTION msg_email_write() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE st text;
 BEGIN
-  SELECT m.status::text INTO st FROM msg_mailbox m WHERE m.firm_id = COALESCE(NEW.firm_id, OLD.firm_id) AND m.id = COALESCE(NEW.mailbox_id, OLD.mailbox_id) FOR SHARE;
+  IF TG_OP = 'INSERT' THEN
+    NEW.was_filed := NEW.filed_id IS NOT NULL;
+    SELECT m.status::text INTO st FROM msg_mailbox m WHERE m.firm_id = NEW.firm_id AND m.id = NEW.mailbox_id FOR NO KEY UPDATE;
+    IF st = 'DISCONNECTED' THEN
+      RAISE EXCEPTION 'msg_email: a disconnected mailbox takes no new email' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  SELECT m.status::text INTO st FROM msg_mailbox m WHERE m.firm_id = OLD.firm_id AND m.id = OLD.mailbox_id;
   IF TG_OP = 'DELETE' THEN
-    IF OLD.filed_id IS NOT NULL THEN
+    IF OLD.filed_id IS NOT NULL OR OLD.was_filed THEN
       RAISE EXCEPTION 'msg_email: a filed email is kept (only unfiled email is purged)' USING ERRCODE = 'check_violation';
     END IF;
     IF st IS DISTINCT FROM 'DISCONNECTED' THEN
@@ -209,29 +231,48 @@ BEGIN
     END IF;
     RETURN OLD;
   END IF;
-  IF st = 'DISCONNECTED' THEN
-    RAISE EXCEPTION 'msg_email: a disconnected mailbox takes no email and changes none' USING ERRCODE = 'check_violation';
-  END IF;
-  IF TG_OP = 'INSERT' THEN RETURN NEW; END IF;
   IF (NEW.id, NEW.firm_id, NEW.mailbox_id, NEW.direction, NEW.provider_message_id, NEW.rfc_message_id, NEW.in_reply_to, NEW."references", NEW.thread_key, NEW.from_address, NEW.to_addresses, NEW.cc_addresses, NEW.subject, NEW.sent_at, NEW.body_file_key, NEW.attachment_file_keys, NEW.via_address, NEW.created_at)
      IS DISTINCT FROM (OLD.id, OLD.firm_id, OLD.mailbox_id, OLD.direction, OLD.provider_message_id, OLD.rfc_message_id, OLD.in_reply_to, OLD."references", OLD.thread_key, OLD.from_address, OLD.to_addresses, OLD.cc_addresses, OLD.subject, OLD.sent_at, OLD.body_file_key, OLD.attachment_file_keys, OLD.via_address, OLD.created_at) THEN
     RAISE EXCEPTION 'msg_email: only an email''s filing changes' USING ERRCODE = 'check_violation';
   END IF;
+  -- Once filed, always kept (break round 2 n1): un-filing never makes an email purgeable.
+  NEW.was_filed := OLD.was_filed OR NEW.filed_id IS NOT NULL;
+  IF NEW.filed_id IS NOT NULL AND (NEW.filed_kind, NEW.filed_id) IS DISTINCT FROM (OLD.filed_kind, OLD.filed_id)
+     AND EXISTS (SELECT 1 FROM msg_unmatched u WHERE u.firm_id = NEW.firm_id AND u.email_id = NEW.id AND u.state = 'OPEN') THEN
+    RAISE EXCEPTION 'msg_email: resolve its open Unmatched entry before filing it' USING ERRCODE = 'check_violation';
+  END IF;
   RETURN NEW;
 END $$;
 CREATE TRIGGER msg_email_write BEFORE INSERT OR UPDATE OR DELETE ON "msg_email" FOR EACH ROW EXECUTE FUNCTION msg_email_write();
--- An OPEN Unmatched entry is for an email nobody has filed (break m4).
+-- An OPEN Unmatched entry is for an email nobody has filed (break m4); it stays its email's, a resolved entry never
+-- re-opens, and an OPEN entry is never deleted on its own (AG-10-12 "never dropped"; break round 2 n5): it goes only with
+-- its email, by the purge's cascade (pg_trigger_depth() > 1 there).
 CREATE FUNCTION msg_unmatched_write() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.state = 'OPEN' AND pg_trigger_depth() <= 1 THEN
+      RAISE EXCEPTION 'msg_unmatched: an open entry is never dropped (link it or dismiss it)' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF TG_OP = 'UPDATE' AND (NEW.email_id IS DISTINCT FROM OLD.email_id OR (OLD.state <> 'OPEN' AND NEW.state = 'OPEN')) THEN
+    RAISE EXCEPTION 'msg_unmatched: an entry stays its email''s, and a resolved one never re-opens' USING ERRCODE = 'check_violation';
+  END IF;
   IF NEW.state = 'OPEN' AND EXISTS (SELECT 1 FROM msg_email e WHERE e.firm_id = NEW.firm_id AND e.id = NEW.email_id AND e.filed_id IS NOT NULL) THEN
     RAISE EXCEPTION 'msg_unmatched: an open entry is for an unfiled email' USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER msg_unmatched_write BEFORE INSERT OR UPDATE ON "msg_unmatched" FOR EACH ROW EXECUTE FUNCTION msg_unmatched_write();
--- Kept rows are never emptied wholesale (review m10): TRUNCATE refused as on PF-19a's write-once tables.
-CREATE TRIGGER "msg_mailbox_no_truncate" BEFORE TRUNCATE ON "msg_mailbox" FOR EACH STATEMENT EXECUTE FUNCTION msg_write_once();
-CREATE TRIGGER "msg_email_no_truncate" BEFORE TRUNCATE ON "msg_email" FOR EACH STATEMENT EXECUTE FUNCTION msg_write_once();
+CREATE TRIGGER msg_unmatched_write BEFORE INSERT OR UPDATE OR DELETE ON "msg_unmatched" FOR EACH ROW EXECUTE FUNCTION msg_unmatched_write();
+-- Kept rows are never emptied wholesale (review m10, n1).
+CREATE FUNCTION msg_mailbox_no_truncate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION '%: TRUNCATE refused (a mailbox is disconnected and its unfiled email purged, row by row)', TG_TABLE_NAME USING ERRCODE = 'restrict_violation';
+END $$;
+CREATE TRIGGER "msg_mailbox_no_truncate" BEFORE TRUNCATE ON "msg_mailbox" FOR EACH STATEMENT EXECUTE FUNCTION msg_mailbox_no_truncate();
+CREATE TRIGGER "msg_email_no_truncate" BEFORE TRUNCATE ON "msg_email" FOR EACH STATEMENT EXECUTE FUNCTION msg_mailbox_no_truncate();
+CREATE TRIGGER "msg_unmatched_no_truncate" BEFORE TRUNCATE ON "msg_unmatched" FOR EACH STATEMENT EXECUTE FUNCTION msg_mailbox_no_truncate();
+CREATE TRIGGER "msg_address_link_no_truncate" BEFORE TRUNCATE ON "msg_address_link" FOR EACH STATEMENT EXECUTE FUNCTION msg_mailbox_no_truncate();
 -- ------------------------------------------------------------------------------------------------------ PF-12's walls
 ALTER TABLE "msg_mailbox" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
 ALTER TABLE "msg_email" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
@@ -252,4 +293,6 @@ ALTER FUNCTION msg_email_write() SECURITY DEFINER SET search_path = pg_catalog, 
 ALTER FUNCTION msg_email_write() OWNER TO xr_wall_reader;
 ALTER FUNCTION msg_unmatched_write() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
 ALTER FUNCTION msg_unmatched_write() OWNER TO xr_wall_reader;
+ALTER FUNCTION msg_mailbox_no_truncate() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION msg_mailbox_no_truncate() OWNER TO xr_wall_reader;
 REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;

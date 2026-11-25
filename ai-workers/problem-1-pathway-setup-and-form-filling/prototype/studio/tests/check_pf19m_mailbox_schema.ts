@@ -13,6 +13,7 @@ import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import pg from "pg";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -57,7 +58,7 @@ try {
   const fns = [...migSql.matchAll(/CREATE (?:OR REPLACE )?FUNCTION\s+"?([a-z0-9_]+)/gi)].map((m) => m[1]!);
   const trg = [...migSql.matchAll(/CREATE TRIGGER\s+"?([a-z0-9_]+)/gi)].map((m) => m[1]!).filter((n) => n !== "0_pf12_firm_first");
   ok(`PF-19m (P-600 (3)): every function and trigger it creates is prefixed msg_ (PF-12's shared first-gate trigger aside; ${fns.length} functions, ${trg.length} triggers)`,
-    fns.length === 3 && trg.length === 5 && [...fns, ...trg].every((n) => n.startsWith("msg_")), [...fns, ...trg]);
+    fns.length === 4 && trg.length === 7 && [...fns, ...trg].every((n) => n.startsWith("msg_")), [...fns, ...trg]);
   ok("PF-19m (P-600 (2)): additive on its own tables only: it alters no other table and drops nothing",
     [...migSql.matchAll(/ALTER\s+TABLE\s+"?([a-z0-9_]+)/gi)].every((m) => TABLES.includes(m[1]!)) && !/\bDROP\s+(TABLE|TYPE|FUNCTION|INDEX|COLUMN)\b/i.test(migSql.replace(/^--.*$/gm, "")));
 
@@ -123,7 +124,7 @@ try {
     sql(DEMO, `select count(*) from pg_class c where c.relname = any('{${TABLES.join(",")}}') and c.relrowsecurity and c.relforcerowsecurity
       and exists (select 1 from pg_policy p where p.polrelid = c.oid and pg_get_expr(p.polqual, p.polrelid) ~ 'platform_session_firm')
       and exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname = '0_pf12_firm_first')`) === "4"
-    && sql(DEMO, `select count(*) from pg_proc where proname in ('msg_mailbox_write', 'msg_email_write', 'msg_unmatched_write') and prosecdef and pg_get_userbyid(proowner) = 'xr_wall_reader'`) === "3");
+    && sql(DEMO, `select count(*) from pg_proc where proname in ('msg_mailbox_write', 'msg_email_write', 'msg_unmatched_write', 'msg_mailbox_no_truncate') and prosecdef and pg_get_userbyid(proowner) = 'xr_wall_reader'`) === "4");
 
   // DW5 the message never changes; only unfiled email is purged (AG-10-4)
   ok("PF-19m DW5 fail: an email's subject, sender or thread never changes after insert (23514)",
@@ -150,10 +151,45 @@ try {
   ok("PF-19m DW5 pass: after the disconnect, the purge as the app removes the unfiled email and its Unmatched entry with it",
     asAppCode(DEMO, firmA, `delete from msg_email where mailbox_id = '${purge}' and filed_id is null`) === "" && sql(DEMO, `select count(*) from msg_email where id = '${pu}'`) === "0" && sql(DEMO, `select count(*) from msg_unmatched where email_id = '${pu}'`) === "0");
   ok("PF-19m DW5 fail: the purge keeps the filed email of the disconnected mailbox (delete refused, 23514)", code(DEMO, `delete from msg_email where id = '${pf}'`) === "23514");
-  ok("PF-19m DW5 fail (break M2): a disconnected mailbox takes no new email, its emails' filing does not change, and its cursor and last check stay (23514)",
-    code(DEMO, email(firmA, purge, "late1")) === "23514" && code(DEMO, `update msg_email set filed_kind = 'fo-prospect' where id = '${pf}'`) === "23514"
+  ok("PF-19m DW5 fail (break M2): a disconnected mailbox takes no new email, and its cursor and last check stay (23514)",
+    code(DEMO, email(firmA, purge, "late1")) === "23514"
     && code(DEMO, `update msg_mailbox set sync_cursor = '99' where id = '${purge}'`) === "23514" && code(DEMO, `update msg_mailbox set last_checked_at = now() where id = '${purge}'`) === "23514");
-  ok("PF-19m DW5 fail (review m10): msg_mailbox and msg_email refuse TRUNCATE (23001)", code(DEMO, `truncate msg_email cascade`) === "23001" && code(DEMO, `truncate msg_mailbox cascade`) === "23001");
+  ok("PF-19m DW5 pass (review R2-M1; AG-10-83, SA-11-39): a disconnected mailbox's filed email is still moved, then un-filed",
+    asAppCode(DEMO, firmA, `update msg_email set filed_kind = 'fo-prospect', filed_id = gen_random_uuid(), filed_by = 'STAFF', filed_rule = null, filed_at = now() where id = '${pf}'`) === ""
+    && asAppCode(DEMO, firmA, `update msg_email set filed_kind = null, filed_id = null, filed_by = null, filed_rule = null, filed_at = null where id = '${pf}'`) === "");
+  ok("PF-19m DW5 fail (break round 2 n1): an email once filed is never purged, even un-filed in a disconnected mailbox (23514), so it cannot be dropped and re-inserted with other words",
+    asAppCode(DEMO, firmA, `delete from msg_email where id = '${pf}'`) === "23514" && sql(DEMO, `select was_filed from msg_email where id = '${pf}'`) === "t");
+  ok("PF-19m DW5 fail: moving still keeps the message itself (its subject is refused even in a disconnected mailbox, 23514)",
+    code(DEMO, `update msg_email set subject = 'changed' where id = '${pf}'`) === "23514" && code(DEMO, `update msg_email set subject = 'changed' where id = '${e1}'`) === "23514");
+  ok("PF-19m DW5 fail (review m10, n1): msg_mailbox and msg_email refuse TRUNCATE (23001), saying so", code(DEMO, `truncate msg_email cascade`) === "23001" && code(DEMO, `truncate msg_mailbox cascade`) === "23001");
+
+  // Review r2-m1, break M2: the insert locks its mailbox row, so a disconnect waits for a sync mid-run, and two syncs of one
+  // mailbox queue instead of deadlocking when each then moves the cursor. Two real connections (the owner's).
+  {
+    const conn = () => { const c = new pg.Client({ connectionString: urlOf(DEMO) }); return c.connect().then(() => c); };
+    const [a, b, watch] = [await conn(), await conn(), await conn()];
+    const pids = new Map<pg.Client, number>();
+    for (const c of [a, b]) pids.set(c, (await c.query("select pg_backend_pid() p")).rows[0].p as number);
+    const waiting = async (c: pg.Client) => { const pid = pids.get(c); for (let i = 0; i < 50; i++) { const r = await watch.query("select wait_event_type from pg_stat_activity where pid = $1", [pid]); if (r.rows[0]?.wait_event_type === "Lock") return true; await new Promise((r2) => setTimeout(r2, 100)); } return false; };
+    const box = sql(DEMO, mailbox(firmA, "race@sample-firm.example.com")).split("\n")[0]!;
+    const ins = (pid: string) => email(firmA, box, pid).replace(" returning id", "");
+    let deadlock = "";
+    try {
+      await a.query("begin"); await a.query(ins("s1"));
+      await b.query("begin"); const bIns = b.query(ins("s2")).then(() => "", (e: { code?: string }) => e.code ?? "?");
+      const bWaited = await waiting(b);
+      await a.query(`update msg_mailbox set sync_cursor = '1' where id = '${box}'`); await a.query("commit");
+      deadlock = await bIns; if (!deadlock) { await b.query(`update msg_mailbox set sync_cursor = '2' where id = '${box}'`).catch((e: { code?: string }) => { deadlock = e.code ?? "?"; }); }
+      await b.query(deadlock ? "rollback" : "commit");
+      ok("PF-19m r2-m1 pass: a second sync's insert waits for the first, and both move the cursor with no deadlock (40P01)", bWaited && deadlock === "" && sql(DEMO, `select sync_cursor from msg_mailbox where id = '${box}'`) === "2", { bWaited, deadlock });
+      await a.query("begin"); await a.query(ins("s3"));
+      const disc = b.query(`update msg_mailbox set status = 'DISCONNECTED', credential = null where id = '${box}'`).then(() => "", (e: { code?: string }) => e.code ?? "?");
+      const dWaited = await waiting(b);
+      await a.query("commit"); const dErr = await disc;
+      ok("PF-19m r2-m1 / break M2 fail: a disconnect waits for the sync mid-run, so that sync's email is in before it and the purge then finds it",
+        dWaited && dErr === "" && asAppCode(DEMO, firmA, `delete from msg_email where mailbox_id = '${box}' and filed_id is null`) === "" && sql(DEMO, `select count(*) from msg_email where mailbox_id = '${box}'`) === "0", { dWaited, dErr });
+    } finally { for (const c of [a, b, watch]) await c.end().catch(() => undefined); }
+  }
   ok("PF-19m DW5 fail: suggestions must be a list; a resolved entry names who resolved it (23514)",
     code(DEMO, `insert into msg_unmatched (id, firm_id, email_id, suggestions) values (gen_random_uuid(), '${firmA}', '${e1}', '{"kind":"x"}')`) === "23514"
     && code(DEMO, `insert into msg_unmatched (id, firm_id, email_id, state) values (gen_random_uuid(), '${firmA}', '${e1}', 'LINKED')`) === "23514");
@@ -172,6 +208,18 @@ try {
     code(DEMO, `update msg_mailbox set status = 'DISCONNECTED', credential = null where id = '${own}'`) === "" && code(DEMO, mailbox(firmA, "rep@sample-firm.example.com", ", owner_staff_id", `, '${staffR}'`)) === "");
   ok("PF-19m DW6 fail: a disconnected mailbox stays disconnected, and keeps no credential (23514)",
     code(DEMO, `update msg_mailbox set status = 'CONNECTED', credential = '${SEALED}' where id = '${own}'`) === "23514" && code(DEMO, `update msg_mailbox set credential = '${SEALED}' where id = '${own}'`) === "23514");
+  ok("PF-19m r2-m2 fail: an email with an OPEN Unmatched entry is not filed until the entry is resolved (23514); then it is",
+    code(DEMO, `update msg_email set filed_kind = 'fo-prospect', filed_id = gen_random_uuid(), filed_by = 'STAFF', filed_at = now() where id = '${e2}'`) === "23514"
+    && code(DEMO, `begin; update msg_unmatched set state = 'LINKED', resolved_by = 'staff:${staffR}', resolved_at = now() where email_id = '${e2}'; update msg_email set filed_kind = 'fo-prospect', filed_id = gen_random_uuid(), filed_by = 'STAFF', filed_at = now() where id = '${e2}'; commit;`) === "");
+  const e3 = sql(DEMO, email(firmA, info, "open3")).split("\n")[0]!;
+  sql(DEMO, `insert into msg_unmatched (id, firm_id, email_id) values (gen_random_uuid(), '${firmA}', '${e3}')`);
+  ok("PF-19m break round 2 n5 fail: an OPEN Unmatched entry of a live mailbox is never deleted, never re-pointed to another email, and a resolved one never re-opens (23514); its table and the links refuse TRUNCATE (23001)",
+    code(DEMO, `delete from msg_unmatched where email_id = '${e3}'`) === "23514"
+    && code(DEMO, `update msg_unmatched set email_id = '${e1}' where email_id = '${e2}'`) === "23514"
+    && code(DEMO, `update msg_unmatched set state = 'OPEN', resolved_by = null, resolved_at = null where email_id = '${e2}'`) === "23514"
+    && code(DEMO, `truncate msg_unmatched`) === "23001" && code(DEMO, `truncate msg_address_link`) === "23001");
+  ok("PF-19m r2-m3 pass: the 'by' columns take AuditActor's words (seed:, ourstaff:, system:), ids without dots",
+    code(DEMO, mailbox(firmA, "seed@sample-firm.example.com").replace(`'staff:${staffR}'`, "'seed:PF-19m'")) === "" && code(DEMO, mailbox(firmA, "ours@sample-firm.example.com").replace(`'staff:${staffR}'`, `'ourstaff:${staffR}'`)) === "" && code(DEMO, mailbox(firmA, "sys@sample-firm.example.com").replace(`'staff:${staffR}'`, "'system:platform.mailbox-sync'")) === "");
   ok("PF-19m DW6 fail (review m8): a disconnected mailbox can never be the main one (23514)", code(DEMO, `update msg_mailbox set is_main = false where id = '${info}'`) === "" && code(DEMO, `insert into msg_mailbox (id, firm_id, provider, address, status, is_main, connected_by, updated_at) values (gen_random_uuid(), '${firmA}', 'GOOGLE', 'old@sample-firm.example.com', 'DISCONNECTED', true, 'staff:${staffR}', now())`) === "23514");
   ok("PF-19m DW6 fail (break m1): a credential of the real box's prefix around a raw token, a sync cursor or a 'by' holding free text are refused (23514)",
     code(DEMO, `update msg_mailbox set credential = 'sb1.v1.plain-access-value-not-sealed-at-all' where id = '${info}'`) === "23514"
