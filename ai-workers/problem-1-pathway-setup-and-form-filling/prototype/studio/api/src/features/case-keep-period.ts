@@ -2,7 +2,7 @@
 // weekly reminder. The list sits behind PF-4's guard (a staff session and agent/document:dispose, never x-actor), as part
 // 1's routes. The reminder registers at start once NotificationPort is bound (PF-18n's adapter, features/platform-
 // notifications.ts); without it the app says so once in its log and reminds nobody. The clock is the system's (P-607).
-import { Controller, Get, Inject, Injectable, Optional, Query, Req, type OnModuleInit } from "@nestjs/common";
+import { Controller, Get, HttpException, HttpStatus, Inject, Injectable, Optional, Query, Req, type OnModuleInit } from "@nestjs/common";
 import { systemClock } from "../../../ports/clock.ts";
 import type { JobPort } from "../../../ports/jobs.ts";
 import type { NotificationPort } from "../../../ports/notifications.ts";
@@ -24,7 +24,11 @@ export class CaseKeepPeriodController {
 
   /** SA-11-33: the closed client files past the firm's keep period, each only if the person can see the case (AG-9-53). */
   @Get("past-keep-period") @PermissionKeys(DISPOSE_KEY)
-  list(@Req() r: R, @Query("after") after?: string) {
+  list(@Req() r: R, @Query() query: Record<string, unknown> = {}) {
+    // R1.10 A5 (W5): the list takes only ?after=; any other key is refused 400 and named, as the case side's other doors.
+    const other = Object.keys(query ?? {}).find((k) => k !== "after");
+    if (other !== undefined) throw new HttpException({ type: "https://expatready.local/problems/validation", title: "Some details need fixing", status: 400, detail: `${other.slice(0, 64)} is not a field of this list.`, errors: [{ field: other.slice(0, 64), message: "This field is not allowed here." }] }, HttpStatus.BAD_REQUEST);
+    const after = query?.after;
     const q = KeepListCursor.safeParse(after);   // CS-V1: the query's zod parse; a cursor the list did not give is 400
     return q.success ? keepListFor(this.db, this.keep, systemClock, staffOf(r), q.data) : badCursor();
   }

@@ -38,6 +38,8 @@ import { aiLive, Sources } from "./sources.ts";
 type H = string | undefined;
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const round2 = (n: number) => Math.round(n * 100) / 100;
+/** R1.10 A5 (W5): a malformed case id is the one not-found, before the body is read. */
+const caseShape = (id: string) => { if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) fail("No such case.", HttpStatus.NOT_FOUND); };
 const problem = (status: number, title: string, detail: string, extra: Record<string, unknown> = {}): never => {
   throw new HttpException({ type: `https://expatready.local/problems/${title.toLowerCase().replace(/[^a-z]+/g, "-")}`, title, status, detail, ...extra }, status);
 };
@@ -178,6 +180,7 @@ export class ReviewRuns {
   private runFile(file: string) { return madeUpRuns() ? `made-up-review-runs/${file.replace(/^.*\//, "")}` : file; }
 
   async plan(actor: Actor, caseId: string, body: unknown): Promise<ReviewRunPlan> {
+    caseShape(caseId);
     const b = parse(ReviewRunPlanBody, body);
     const c = await this.r.reach(actor, caseId, "officer");
     const { person, prepared } = await this.prepare(c, b.subject, b.forms);
@@ -208,6 +211,7 @@ export class ReviewRuns {
   }
 
   async run(actor: Actor, caseIdIn: string, body: unknown): Promise<ReviewRunResult> {
+    caseShape(caseIdIn);
     const b = parse(ReviewRunBody, body);
     // Review n2: ids are compared in one spelling, so an upper-case id never gets a slot of its own.
     const caseId = caseIdIn.toLowerCase();
