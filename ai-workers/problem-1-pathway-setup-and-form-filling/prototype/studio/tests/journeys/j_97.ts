@@ -9,7 +9,8 @@
 //       the Owner's integrity read is INTACT up to the chain's head;
 //   W5: the daily export writes firm A's lines and an anchor to the write-once archive, kept 7 years; replacing a file
 //       is refused (409) and deleting one is refused (423);
-//   W6: the database's owner rewrites firm A's exported newest line and recomputes its hash (the chain alone verifies):
+//   W6: the database's owner rewrites firm A's exported newest line, recomputes its hash and moves the checker's own
+//       record to match (the chain alone verifies):
 //       the check names firm A at that seq as an anchor mismatch, and the Owner's read is BROKEN;
 //   W4: firm B's Owner reads firm B's chain: INTACT, untouched by firm A's break;
 //   W2: the owner changes one old line of firm B (no recomputation): the check names firm B from that seq (hash);
@@ -78,6 +79,7 @@ try {
   const forged = entryHash(row.prev_hash, { chainKey: A, seq: String(at), id: row.id, at: row.at, workspaceId: row.ws, firmId: row.firm, caseId: row.cas, combinationId: row.combo, actor: row.actor,
     actorType: row.atype, action: row.action, entity: row.entity, entityKey: row.entity_key, summary: "Rewritten by the database owner (J-97, Sample)", correlationId: row.correlation_id, supportSessionId: row.sup, detail: row.detail });
   await asOwner(`update audit_event set summary = 'Rewritten by the database owner (J-97, Sample)', entry_hash = $1 where chain_key = $2 and seq = $3`, [forged, A, at]);
+  await db.query(`update aud_chain_check set verified_hash = $1 where chain_key = $2`, [forged, A]);   // and moves the checker's own record to match
   const c6 = await check("full"), bA = breakOf(c6, A), i6 = await api("GET", "/platform/audit/integrity", { token: tA });
   ok("J-97 W6: the database owner rewrote firm A's exported line and recomputed its hash: the check names firm A at that seq as an anchor mismatch",
     bA?.why === "anchor" && Number(bA.fromSeq) === at, c6.body);
