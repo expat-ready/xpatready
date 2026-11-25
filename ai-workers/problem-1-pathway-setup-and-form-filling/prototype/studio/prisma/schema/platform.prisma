@@ -129,8 +129,7 @@ model PlatformFirm {
   platImportAttestations PlatImportAttestation[]
 
   // back-relation slot: automation (PF-20, R1.36)
-  autoRecipes   AutoRecipe[]   // platform-automation.prisma
-  autoBulkSends AutoBulkSend[]
+  autoRecipes AutoRecipe[] // platform-automation.prisma
 
   @@map("platform_firm")
 }
@@ -303,9 +302,6 @@ model PlatformStaff {
   platImportBatches      PlatImportBatch[]       // platform-import.prisma (the importer)
   platImportMappings     PlatImportMapping[]     // (who saved it last)
   platImportAttestations PlatImportAttestation[] // (the attesting Owner)
-
-  // back-relation slot: automation (PF-20, R1.36)
-  autoBulkSends AutoBulkSend[] // platform-automation.prisma (who sent it)
 
   @@unique([firmId, email])
   /// The target of the (firm_id, staff_id) keys below: a row of firm A can never point at firm B's staff (break B-2).

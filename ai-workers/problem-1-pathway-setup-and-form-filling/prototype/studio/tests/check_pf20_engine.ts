@@ -53,8 +53,8 @@ try {
   writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(URL)} } });\n`);
   const diff = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
   ok("PF-20 DW0 pass: prisma migrate diff between the fully migrated database and the schema is empty", diff.status === 0, `${diff.stdout}${diff.stderr}`.slice(0, 600));
-  ok("PF-20 DW0 pass: the six auto_ tables each have PF-12's forced policy",
-    sql(`select count(*) from pg_class c where relname in ('auto_recipe','auto_recipe_step','auto_run','auto_step_run','auto_bulk_send','auto_bulk_recipient') and relrowsecurity and relforcerowsecurity and exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'pf12_firm')`) === "6");
+  ok("PF-20 DW0 pass: the four auto_ tables each have PF-12's forced policy",
+    sql(`select count(*) from pg_class c where relname in ('auto_recipe','auto_recipe_step','auto_run','auto_step_run') and relrowsecurity and relforcerowsecurity and exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'pf12_firm')`) === "4");
 
   await seedSampleFirms(db);
   const firmA = sql(`select id from platform_firm where key='sample-firm'`), firmB = sql(`select id from platform_firm where key='sample-solo'`);
