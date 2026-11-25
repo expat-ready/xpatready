@@ -92,3 +92,54 @@ A real screen reader (step changes have no live announcement; only `aria-current
 Reviewer: Approve b6522db08704f7bf3e18a8a0b937e6058934c352
 
 Verdict: Approve (no Blocker or Major open; Shoulds 1-5 to fix or list as follow-ups in the PR)
+
+## Round 2 (25 Nov, commit `9f717a61ed57e3edc8ed1b7ecc6ffd5925dd0e5d`, diff since `b6522db08`)
+Diff in `studio/`: `merge-dialog.tsx`, `review-contract.ts`, `people-to-merge-page.tsx`, `check_fo9s_merge_browser.ts`, `check_fo9s_review_browser.ts` and the module row. Re-checked on my copy `rev3` on :4587, and on `j29r` on :4591 for j_29; both are stopped and the screenshots are restored:
+* `check_fo9s_merge_browser.ts` **24/24 twice**.
+* `check_fo9s_review_browser.ts` 38/38.
+* `j_29.ts` 27/27.
+* `tsc -p web` 0 errors.
+* My own walk (headless; clicks and keys only; database read only to verify). No page errors.
+
+**The breaker's Majors: both closed.**
+* **M1 closed.** I made the merge's answer get lost after the server had merged (`route.fetch()` then abort). The dialog says "We did not hear back, so the merge may have gone through. The list was read again: check the Merged tab before trying again." Merge 2 people is off, and the pair has already left the list behind the dialog. The database shows the pair `MERGED`.
+  * Kept separate in another tab (409): Merge is off, and after Cancel the row is gone.
+  * A case added meanwhile (409): Merge is off, and after Cancel the row shows Merge… off with BR-7's sentence.
+  * A 503 problem answer: the server's "… Try again." shows, Merge stays on, and the retry merges.
+  * A 500 with an HTML body: "Could not merge. Nothing changed." word for word (G8).
+  * Code: `merge-dialog.tsx:52-60`, and `onRefresh` at `people-to-merge-page.tsx:160`.
+* **M2 closed.** With focus on Next, 12 quick Enters moved exactly one step (step 2) and sent 0 POSTs. Focus is on the heading "Step 2 of 3: What moves", and the dialog's own `aria-live` region says the same. Step 3 and Back do the same (`:32`, `:77-78`). Three fast clicks on Merge 2 people send one POST (the `sending` ref).
+
+**My Shoulds: all closed.**
+* **S1:** I kept the other record's first name, and the notice reads "Merged into <the name the record now carries>.", which matches the database (`afterName`; G4 asserts it).
+* **S2:** for same-name records the title reads "Merge Same Name · L-00040 and Same Name · L-00039", and step 3 reads "Same Name · L-00039 will be merged into Same Name · L-00040. 1 lead and 1 note move."
+* **S3:** covered by M1.
+* **S4:** at 375 px there is the hint "Scroll the table sideways to see both records.", and the table sits in a region you can reach by keyboard (`role=region`, `tabIndex=0`). The other column now shows at the edge. No page sideways scroll; axe (WCAG 2.2 AA) clean.
+* **S5:** G8 covers the lost answer and the server failure; G2 now asserts that the choices reset and that the screen says so; G7 holds Enter. Spot-check by reading the code: removing `onRefresh()`, the `MERGE_UNKNOWN` branch, `final`, the heading focus or `setPicks({})` would each fail a named check.
+
+**Minors.**
+* Closed:
+  * "· keep this one instead" on the other column's header.
+  * "and" in the step lists.
+  * `fieldWhy` handles a tie ("the record that stays").
+  * The stray outside click: the guard asks "Discard your unsaved changes?" and the dialog stays open on dismiss; a double click on Next stays on step 2.
+  * No preview runs for the last pair's survivor (`mine`).
+  * Focus after Back now goes to the step heading.
+  * Switching who stays is said ("Your field choices were reset…").
+  * Part 2's carried-over Should: the Merged tab at 375 px has Undo merge at x 309 of 375, and How and When sit under the names.
+* Still open (Minor, follow-ups only, not blocking):
+  * (a) After the lost-answer message, Back then Next clears the error (`go()` at `:32`) and turns Merge 2 people on again. A second click gets 409 "This pair was already decided.", which is safe but drops the "check the Merged tab" advice.
+  * (b) The breaker's m5: very long unbroken names in the column headers (`:94`) and in the "… stays" labels still overflow at 1024 and 375 px.
+  * (c) The breaker's m6: the notice can still read "Merged into …" after the merge was undone in another tab.
+  * (d) `fieldWhy`'s blank test still does not trim like the server's.
+  * (e) The primary buttons are 36 px at 375 px (UXL-09, the shared `Button`).
+  * (f) `j_29.ts:190` still has a fixed 500 ms wait.
+  * (g) The step 3 sentence names the survivor by its current name, not the name it will carry (the notice is right).
+
+**Journey score, round 2: 8.5 → 9.5/10.** Feedback and state goes from ½ to 1 (S1, S3 and M1). Accessibility and screen sizes stays ½ because of the 375 px button height and the long-name overflow.
+
+**Round 2 verdict: Ship (Approve).** No Blocker, Major or Should is open.
+
+Reviewer: Approve 9f717a61ed57e3edc8ed1b7ecc6ffd5925dd0e5d
+
+Verdict: Approve 9f717a61ed57e3edc8ed1b7ecc6ffd5925dd0e5d
