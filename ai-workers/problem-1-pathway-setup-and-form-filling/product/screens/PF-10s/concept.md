@@ -1,0 +1,45 @@
+# PF-10s concept: Settings › Import (R1.35 contacts import from a spreadsheet)
+
+Status: draft for the tech lead's approval after a fresh challenge (P-223 (4); no board). Builder: runtime lane, R1.35 part 4. Board: `design/board-import.html` (self-contained; three steps and the imports list).
+
+## 1. Job and journey
+**Job:** a firm's Owner or Admin brings the people they already have (an old CRM, a spreadsheet) into the front office once, sees exactly what will happen before anything is written, and can do it again without making duplicates. **Persona:** the Owner of a small RCIC firm moving off spreadsheets (P-566). **Journey j_35** (`tests/journeys/j_35.ts`): Settings › Import → New import → upload → map → preview → run → result (each row "Imported from {source}"); the same file again → "Nothing new to import". Source and consent are proven underneath (the j_35 check reads `GET imports/origin/fo_person/:id` and the consent row). Imported people have no front-office page yet (no lead or prospect): the result is the journey's end (challenge B1; question 1). Requirement: BACKLOG PF-10s (AG-18-5, -15, -21, -39, -56) on PF-10b part 1's API (#3644) and PF-10t's People target.
+
+## 2. Layers (STANDARDS §2)
+Data: PF-10a's four tables (on main). Rules and engine: PF-10b part 1 (#3644) and PF-10t (people). Contract: `/api/platform/imports/*` (below). UI: new `web/src/modules/platform/import/` (page, steps, rows table), one line in `account-sections.ts`, one route line in `routes.tsx`. AI: none. Governance: keys `agent/import:run` (steps) and `agent/import:view-report` (list, rows); Owner-only attestation. The team's code has no import screen (ERv2-frontend newest capture: none under `features/`).
+
+## 3. Business rules
+* BR-1 Nothing is written to a record before the preview has been seen and Run pressed for that preview (AG-18-15, -16). Source: PF-10b; engine code `DRY_RUN_CHANGED`.
+* BR-2 A changed mapping makes a new preview; Run is disabled with the reason until it is run (BACKLOG PF-10s test).
+* BR-3 A consent column needs the importer's declaration ticked (AG-18-45); people data needs an Owner's attestation, once per wording (AG-18-49).
+* BR-4 Each bad row's reason is shown in words, never the cell's value (AG-18-12); the reasons table pages at 50.
+* BR-5 A person without `agent/import:view-report` sees no Import entry; without `agent/import:run`, no New import (BACKLOG PF-10s test).
+* BR-6 A re-import of the same file shows 0 to create in the preview (R1.35 Done when).
+
+## 4. Layout (pattern: Dialog / wizard, ≤3 steps; Library list for the imports)
+* **Imports page** (`/platform/import`): title "Import", one line "Bring people in from a spreadsheet (CSV). You see a preview before anything is saved." Primary button **New import**. Table: Started, What (People), Source, State chip (Draft · Preview ready · Running · Done · Done with errors · Nothing imported), Created / Merged / Skipped / Errors, By. Empty state teaches: "No imports yet. Download the template, fill it in, then choose New import." + **Download the template** (a CSV with the People headers).
+* **Step 1 — File:** What are you importing (People; one choice now, shown as a fixed line, not a picker of one); Where it comes from (text, e.g. "Old CRM": the saved mapping key); Choose a CSV file (drag or pick; 5 MB / 5,000 rows named). Errors on the field (not UTF-8, too large, header repeated).
+* **Step 2 — Columns:** a table, one line per file column: column name · first three values (muted) · "Import as" select (the People fields, "Don't import"). A field already used is disabled in the other selects (one column per field). Banner "Mapping from your last import from Old CRM" when saved. If a consent column is mapped: the declaration checkbox with its words. If the firm has no current attestation: the Owner sees the attestation box (wording + "Unconfirmed: no counsel" in Details); an Admin sees "An Owner of your firm must confirm this once before people can be imported" (challenge M1). Primary **Preview**.
+* **Step 3 — Preview:** four totals as filter chips (To create 2 · To merge 1 · Skip 1 · Errors 1); a rows table (Row · Outcome chip · Reason in words · the record linked for merge/skip). "Merge fills only empty fields; nothing already on a person is changed." Primary **Import 3 people** (the count of create + merge), disabled with its reason: the preview is stale ("The columns changed. Preview again before importing."), nothing to import ("Nothing new to import."), or no attestation behind this preview (`attestationNeeded`: "An Owner must confirm first; then Preview again.", challenge M1). Secondary Back to columns. Merge rows read "Fills only empty fields"; no names or links (challenge m1, B1).
+* **Running / result:** Import answers at once (the rows are a background job); the page reads `GET imports/:id` every 2 s and shows the rows written so far of the total (no invented percentage). A batch still Running with no new row for 60 s shows **Continue import** (re-sends Run; the engine goes on from the first row not written, each row once; challenge M2). Then "Done: 2 created, 1 merged, 1 skipped, 1 not imported." with the rows table on the run's outcomes, each created row reading "Imported from {source}"; "Undo is not available yet" is NOT shown (no promise of a feature not built).
+* **List rows open:** Draft → Columns; Preview ready → Preview; Running → the running view; finished states → the result (challenge m3). A re-import whose preview is "To create 0 · To merge 0" stays Preview ready with Import disabled: "Nothing new to import."
+States: empty, loading (skeleton rows), normal, long names (one line, full on hover), needs work (unmapped required field named), running, error on field, read-only (view-report only: list and rows, no New import), conflict (preview changed: Run disabled, "Preview again").
+
+## 4b. Best in class (product help pages, read from memory, not re-fetched today: Unverified)
+HubSpot import (column matching with "don't import", an error file per row) · Salesforce Data Import Wizard (match by email, "add new and update existing", fill-empty choice) · Mailchimp audience import (a required consent attestation before marketing contacts) · Flatfile / OneSchema (in-page column matching with sample values, per-row errors in words). We copy: sample values beside each column, one-field-per-column enforced in the selects, the attestation before personal data, errors per row in plain words. We beat them: the preview is mandatory and Run is bound to it (no surprise), merges never overwrite, a re-import is safe by design.
+
+## 5. Copy
+Tooltips: Merge "This person is already in your firm (same email or phone). Only empty fields are filled." · Skip "Nothing new for this person, or a repeat of an earlier row." · Errors chip "Rows that will not be imported, with the reason." Run disabled: "The columns changed. Preview again before importing." Empty rows filter: "No rows with this outcome."
+
+## 6. Contract and tests
+`GET imports/targets` · `GET|POST imports/attestation` · `GET imports?page` · `POST imports?target&source` (text/csv) · `POST imports/:id/dry-run {columns, declared, saveMapping}` · `POST imports/:id/run {dryRunHash}` · `GET imports/:id` · `GET imports/:id/rows?outcome&page` · `GET imports/origin/fo_person/:id`. Tests `tests/check_pf10s_import_browser.ts`: BR-1 Run absent before a preview / present after; BR-2 a changed select disables Import with the reason, Preview again re-enables; BR-3 declaration unticked → the field error, an Admin without attestation → the Owner line; BR-4 the error row's words, no cell value in the table; BR-5 a Case Officer sees no Import entry and `/platform/import` says no access; BR-6 the same file again → "To create 0". Keyboard only; axe-core clean; 1024, 1440 and 375 px.
+
+## 6b. Capability or scaffolding
+Every element is capability (needed for the proof). The template download is capability (AG-18-5). Not built here: undo, the result report CSV, notifications, .xlsx, companies and leads, value mapping (a cell such as "English" is an error with the reason; the template and the Language help teach `en`/`fr`), a front-office contacts view (follow-up rows; challenge m4, B1).
+
+## 7. Questions (recommendation first)
+1. Where an imported person shows: in R1.35 the result rows ("Imported from {source}", no links: no page exists for a person without a lead); a front-office contacts view is a follow-up row. Recommend yes.
+2. Menu place: "Import" after "Templates", visible with `agent/import:view-report`; New import only with `agent/import:run` (challenge m2). Recommend yes.
+
+## Definition of ready
+Acceptance test: `tests/journeys/j_35.ts` and `tests/check_pf10s_import_browser.ts`. Row text: R1.35 Done when (PF-10s's undo, report and value-mapping lines are out by the approved shape on #3644). Decisions: the shape approved (Lead 4, #3644); questions 1-2 answered. Challenge: `challenge.md` (Build after these changes): B1, M1, M2, m1-m4 taken in above.
