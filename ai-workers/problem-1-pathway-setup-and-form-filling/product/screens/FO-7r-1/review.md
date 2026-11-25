@@ -113,3 +113,34 @@ Reviewer: Block 432fba2023523f8952f0aa7c85684ebd5e252426
 **Observation, not a finding:** `set local work_mem = '32MB'` holds for the read's transaction only.
 
 Reviewer: Approve 3f88a5d304c8172d572a49cc940c60630883526d
+
+## Round 3 (diff-only, ea64749…)
+**Verdict: Block. Head `ea647490a0ff15528fb03bfb1933b50c2850affa`.** One Major, a regression from this round; its fix is deleting one condition, then re-review. I reviewed only `git diff 3f88a5d3..ea647490 -- prototype`. The check gave **41 passed, 0 failed**.
+
+**The running balance against the old window (the coordinator's question): equal, except in m3's case.** My probe compared every page line with the old `sum(amount) over (partition by acct, currency order by k, o, r, id, inv)` computed over all lines.
+* **Normal ledger:** one client with CAD and USD lines, INVOICES and TRUST; 5 periods (none, from only, to only, from to, one day) × 5 page sizes (1, 2, 3, 7, 200), walking every cursor. **1,210 of 1,210 lines are equal.**
+* **Why:** an INVOICES line's sort time `k` is the same expression as its period time `at`, so a period is one unbroken run of lines in sort order. `st` (the sum before the page's first line of its group) plus the page's own running sum is then exactly the old figure.
+* **Minor R3-2 (m3, wider than before):** TRUST lines sort by seq but are cut by `created_at`. When those orders disagree across a period edge, a line outside the period that sits between page lines is left out of the page's running sum (statement.ts readSql `pg`/`st`/`p`). The figure now depends on page size: 1 Mar only, pageSize 3, the expected balance is 182.00 but the read gives 179.00 (missing the inverted entry's 3.00); pageSize 1 is right. The old window was wrong only at the opening. Rare (concurrent writes across 00:00 UTC). **Fix:** take the page's running sum over every `run` line of the group from `g1` to the page's last key, whatever its period, then keep the `pg` lines. Or state the limit.
+
+**Major R3-1: reversed credit is now quadratic, and the read fails at scale (statement.ts, the CREDIT_APPLIED_REVERSED and KEPT_AS_CREDIT_REVERSED branches)**
+* **Cause:** round 3 added `and r.reverses_entry_id = any((select ca_ids.a from ca_ids)::uuid[])` beside the join's `reverses_entry_id = e.id`. EXPLAIN ANALYZE shows both as Index Cond on `money_credit_entry_firm_id_reverses_entry_id_idx`, so every probe also handles the client's whole array of credit ids: **1.035 ms × 5,000 loops = 5.2 s**.
+* **Measured** (statement page 1, readSql alone):
+
+  | Client | As built | Without that condition (same totals) |
+  |---|---|---|
+  | 10,000 invoices, 2,000 applied credits | 817 ms | 108 ms |
+  | 20,000 invoices, 5,000 applied credits, 5,000 withdrawals | 5,405 ms; through the service both the statement and the summary pass Prisma's 5 s limit and fail | 269 ms |
+
+  Round 2 at 20,000 / 5,000 / 5,000: 289 ms. At 10,000 / 1,000 / 1,000 it is 269 ms against round 2's 113 ms.
+* **Why the check missed it:** S8 seeds only 100 applied credits.
+* **Fix:** delete that condition (and `ca_ids`); the join already drives the index. Seed S8 with a few thousand of the client's own applied credits.
+
+**Minor R3-3:** the comment on summary.ts's credit read says it reads `money_credit_entry_party_seq`. That index is partial (`WHERE case_id IS NULL`), so Postgres can use it only when the scope holds no cases; my EXPLAIN shows the index used then and a firm scan otherwise. The app's PgMoneyVisibility lists cases, and "ALL" adds no condition, so both still scan the firm. Within budget today (S8: summary 206 ms). Correct the comment.
+
+**Held:**
+* the `ids` / `= any(...)` reads of the other fact tables;
+* the round-2 figures: closing 170.00 = Σ(due − extra) = owed;
+* `r` in the key and the cursor (S1's three pre-issue payments keep the order received);
+* the top-N page.
+
+Reviewer: Block ea647490a0ff15528fb03bfb1933b50c2850affa

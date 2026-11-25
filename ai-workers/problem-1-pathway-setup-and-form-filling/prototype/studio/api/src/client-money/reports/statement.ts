@@ -67,7 +67,6 @@ export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: strin
     ca as materialized (select e.id, e.kind, e.created_at, e.amount_minor, e.invoice_id as inv from money_credit_entry e join inv on inv.id = e.invoice_id where e.firm_id = ${f}::uuid and e.invoice_id = any(${IDS}) and e.kind in ('APPLIED', 'KEPT')
       union all select e.id, e.kind, e.created_at, e.amount_minor, p.invoice_id from money_credit_entry e join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id join inv on inv.id = p.invoice_id
         where e.firm_id = ${f}::uuid and p.invoice_id = any(${IDS}) and e.kind in ('APPLIED', 'KEPT') and e.invoice_id is distinct from p.invoice_id),
-    ca_ids as materialized (select coalesce(array_agg(ca.id), '{}'::uuid[]) as a from ca),
     -- a fact dated before its invoice was issued (a payment recorded with its real day, stored at 00:00 UTC; credit applied
     -- to the draft) counts from the issue: greatest(…, i.issued_at) in each branch, so it never sorts before the invoice,
     -- nor falls in a period before it (review m1, m2)
@@ -86,11 +85,11 @@ export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: strin
       union all select 0, i.currency::text, greatest(e.created_at, i.issued_at), 7, e.created_at, e.id, i.id, greatest(e.created_at, i.issued_at), 'CREDIT_APPLIED', i.number, i.id, i.case_id, e.amount_minor::bigint
         from ca e join inv i on i.id = e.inv where e.kind = 'APPLIED'
       union all select 0, i.currency::text, greatest(r.created_at, i.issued_at), 8, r.created_at, r.id, i.id, greatest(r.created_at, i.issued_at), 'CREDIT_APPLIED_REVERSED', i.number, i.id, i.case_id, r.amount_minor::bigint
-        from money_credit_entry r join ca e on e.id = r.reverses_entry_id join inv i on i.id = e.inv where r.firm_id = ${f}::uuid and r.reverses_entry_id = any((select ca_ids.a from ca_ids)::uuid[]) and e.kind = 'APPLIED'
+        from money_credit_entry r join ca e on e.id = r.reverses_entry_id join inv i on i.id = e.inv where r.firm_id = ${f}::uuid and e.kind = 'APPLIED'
       union all select 0, i.currency::text, greatest(e.created_at, i.issued_at), 11, e.created_at, e.id, i.id, greatest(e.created_at, i.issued_at), 'KEPT_AS_CREDIT', i.number, i.id, i.case_id, e.amount_minor::bigint
         from ca e join inv i on i.id = e.inv where e.kind = 'KEPT'
       union all select 0, i.currency::text, greatest(r.created_at, i.issued_at), 12, r.created_at, r.id, i.id, greatest(r.created_at, i.issued_at), 'KEPT_AS_CREDIT_REVERSED', i.number, i.id, i.case_id, r.amount_minor::bigint
-        from money_credit_entry r join ca e on e.id = r.reverses_entry_id join inv i on i.id = e.inv where r.firm_id = ${f}::uuid and r.reverses_entry_id = any((select ca_ids.a from ca_ids)::uuid[]) and e.kind = 'KEPT'
+        from money_credit_entry r join ca e on e.id = r.reverses_entry_id join inv i on i.id = e.inv where r.firm_id = ${f}::uuid and e.kind = 'KEPT'
       union all select 0, i.currency::text, greatest(c.created_at, i.issued_at), 9, c.created_at, c.id, i.id, greatest(c.created_at, i.issued_at), 'CREDIT_NOTE', coalesce(c.number, i.number), i.id, i.case_id, -c.amount_minor::bigint
         from money_credit_note c join inv i on i.id = c.invoice_id where c.firm_id = ${f}::uuid and c.invoice_id = any(${IDS})
       union all select 0, i.currency::text, greatest(w.created_at, i.issued_at), 10, w.created_at, w.id, i.id, greatest(w.created_at, i.issued_at), 'WRITE_OFF', i.number, i.id, i.case_id, -w.amount_minor::bigint
@@ -142,14 +141,19 @@ export function readSql(base: Prisma.Sql, start: Prisma.Sql | null, end: Prisma.
       from run group by run.acct, run.currency),
     -- the page: the first lines after the cursor, by a top-N sort (never a sort of every line: break round 2 M1); each
     -- line's running balance is everything of its account and currency before the page's first line of that group (one
-    -- linear sum per group on the page), plus the page's own lines up to it: the same figure as a running sum over all
+    -- linear sum per group on the page), plus every line from there up to it: the same figure as a running sum over all
     pg as materialized (select run.* from run where ${inPeriod} and ${cur} order by run.acct, run.currency, run.k, run.o, run.r, run.id, run.inv limit ${pageSize + 1}),
     g1 as materialized (select distinct on (pg.acct, pg.currency) pg.acct, pg.currency, pg.k, pg.o, pg.r, pg.id, pg.inv from pg order by pg.acct, pg.currency, pg.k, pg.o, pg.r, pg.id, pg.inv),
+    g9 as materialized (select distinct on (pg.acct, pg.currency) pg.acct, pg.currency, pg.k, pg.o, pg.r, pg.id, pg.inv from pg order by pg.acct, pg.currency, pg.k desc, pg.o desc, pg.r desc, pg.id desc, pg.inv desc),
     st as materialized (select g1.acct, g1.currency, (select coalesce(sum(x.amount), 0) from run x where x.acct = g1.acct and x.currency = g1.currency and (x.k, x.o, x.r, x.id, x.inv) < (g1.k, g1.o, g1.r, g1.id, g1.inv)) as s from g1),
+    -- the running sum over every line of the group from the page's first line to its last, whatever its period (review
+    -- R3-2: a trust line sorts by seq but is cut by its time, so one outside the period can sit between the page's lines)
+    sp as materialized (select x.acct, x.currency, x.k, x.o, x.r, x.id, x.inv, st.s + sum(x.amount) over (partition by x.acct, x.currency order by x.k, x.o, x.r, x.id, x.inv rows unbounded preceding) as balance
+      from run x join g1 on g1.acct = x.acct and g1.currency = x.currency join g9 on g9.acct = x.acct and g9.currency = x.currency join st on st.acct = x.acct and st.currency = x.currency
+      where (x.k, x.o, x.r, x.id, x.inv) >= (g1.k, g1.o, g1.r, g1.id, g1.inv) and (x.k, x.o, x.r, x.id, x.inv) <= (g9.k, g9.o, g9.r, g9.id, g9.inv)),
     p as (select pg.acct, pg.currency, to_char(pg.k at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as k, pg.o, to_char(pg.r at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as r, pg.id::text as id, pg.inv::text as inv,
-        to_char(pg.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as at, pg.kind, pg.reference, pg.invoice_id::text as "invoiceId", pg.case_id::text as "caseId", pg.amount::text as amount,
-        (st.s + sum(pg.amount) over (partition by pg.acct, pg.currency order by pg.k, pg.o, pg.r, pg.id, pg.inv rows unbounded preceding))::text as balance,
+        to_char(pg.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as at, pg.kind, pg.reference, pg.invoice_id::text as "invoiceId", pg.case_id::text as "caseId", pg.amount::text as amount, sp.balance::text as balance,
         row_number() over (order by pg.acct, pg.currency, pg.k, pg.o, pg.r, pg.id, pg.inv) as n
-      from pg join st on st.acct = pg.acct and st.currency = pg.currency)
+      from pg join sp on sp.acct = pg.acct and sp.currency = pg.currency and sp.k = pg.k and sp.o = pg.o and sp.r = pg.r and sp.id = pg.id and sp.inv = pg.inv)
     select (select coalesce(json_agg(t order by t.acct, t.currency), '[]'::json) from t) as totals, (select coalesce(json_agg(p order by p.n), '[]'::json) from p) as rows`;
 }

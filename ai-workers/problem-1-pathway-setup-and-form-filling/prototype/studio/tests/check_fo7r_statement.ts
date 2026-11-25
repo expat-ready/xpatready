@@ -223,6 +223,23 @@ try {
   ok("FO-7r S1 pass: payments received before the issue follow the invoice in the order received (−20.00, −10.00, −5.00)", JSON.stringify(dPays) === JSON.stringify([-2000, -1000, -500]), dPays);
   ok("FO-7r S1 fail: the same three in any other order fail the comparison", JSON.stringify([...dPays].reverse()) !== JSON.stringify([-2000, -1000, -500]));
 
+  // review R3-2: trust lines run by seq but a period cuts them by time. Entry 2 was written in the last second before
+  // today (its transaction started then) but took its seq after entry 1 of today: with today as the period, entry 3's
+  // running balance still counts entry 2, on any page size
+  const PE = person(A, "e"), today0 = `${dayOf(new Date())}T00:00:00Z`;
+  for (const [n, amount] of [[1, 10000], [2, 300], [3, 5000]] as const)
+    await call(tA, "POST", "/front-office/money/trust/deposits", { personId: PE, method: "E_TRANSFER", amountMinor: amount, currency: "CAD", reference: `ET-E${n}`, idempotencyKey: `fo7r-dep-e${n}` });
+  // the times as two transactions racing past midnight would leave them (the rows' own times only; insert-only trigger off for the fixture)
+  sql(`set session_replication_role = replica;
+    update money_trust_entry set created_at = '${today0}'::timestamptz + interval '1 minute' where person_id = '${PE}' and seq = 1;
+    update money_trust_entry set created_at = '${today0}'::timestamptz - interval '1 second' where person_id = '${PE}' and seq = 2;
+    update money_trust_entry set created_at = '${today0}'::timestamptz + interval '2 minutes' where person_id = '${PE}' and seq = 3`);
+  const eQ = { from: dayOf(new Date()), to: dayOf(new Date()) };
+  const eBy = async (pageSize: string) => (await walk(allStmt, PE, { ...eQ, pageSize })).items.map((l: any) => l.balanceAfterMinor);   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  const e1 = await eBy("1"), e3 = await eBy("3");
+  ok("FO-7r S5 pass (review R3-2): today's trust lines show 100.00 then 153.00 (the 3.00 written before midnight, ordered between them, counts) on pages of 1 and of 3", JSON.stringify(e1) === "[10000,15300]" && JSON.stringify(e3) === "[10000,15300]", { e1, e3 });
+  ok("FO-7r S5 fail: a running sum of the period's own lines only (150.00) is not the ledger's balance", 10000 + 5000 !== e3.at(-1));
+
   // ---------------------------------------------------------------------------------------------------- S3
   const yesterday = dayOf(new Date(Date.now() - 86_400_000)), tomorrow = dayOf(new Date(Date.now() + 86_400_000));
   const pToday = await walk(allStmt, PA, { from: today, to: today }), pPast = await walk(allStmt, PA, { from: "2025-01-01", to: yesterday }), pNext = await walk(allStmt, PA, { from: tomorrow });
@@ -281,6 +298,9 @@ try {
     insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PBULK}', 'WITHDRAWAL_TO_INVOICE', -20, 'CAD', row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}';
     insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, corrects_entry_id, correction_kind, reason, created_by) select '${A}', '${PBULK}', 'CORRECTION', 20, 'CAD', 20000 + row_number() over (), 0, e.id, 'OTHER', 'Bulk (Sample)', 'seed:FO-7r-bulk' from money_trust_entry e where e.person_id = '${PBULK}' and e.kind = 'WITHDRAWAL_TO_INVOICE' and e.seq <= 1000;
     insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PBULK}', 'APPLIED', -5, 'CAD', row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}' and i.number like 'BULK-%00';
+    -- review R3-1: thousands of the client's own credit applications, each reversed in part (a reversal looked up per entry)
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PBULK}', 'APPLIED', -5, 'CAD', 50000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk-r3' from money_invoice i where i.person_id = '${PBULK}' and substring(i.number from 6)::int % 3 = 1;
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, reverses_entry_id, reason, created_by) select '${A}', '${PBULK}', 'REVERSED', 2, 'CAD', 90000 + row_number() over (), 0, e.id, 'Bulk (Sample)', 'seed:FO-7r-bulk-r3' from money_credit_entry e where e.created_by = 'seed:FO-7r-bulk-r3';
     -- other clients' facts in the same firm (review M1: an OR join cost grew with the firm's credit entries): 3,000 invoices
     -- of another client, each with credit applied and a trust withdrawal (performance rows: written with triggers off)
     insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PA2}', 'OTHER-' || g, 'CAD', date '2026-03-01', now(), 'seed:FO-7r-bulk', 'seed:FO-7r-bulk', now() from generate_series(1, 3000) g;
@@ -301,12 +321,13 @@ try {
   await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement`);   // warm the route
   t0 = performance.now(); const viaRoute = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement`); const msRoute = Math.round(performance.now() - t0);
   t0 = performance.now(); const sumRoute = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/summary`); const msSumRoute = Math.round(performance.now() - t0);
-  const inv0 = bs.accounts.find((x) => x.account === "INVOICES")!, b0 = bsum.totals[0]!;
-  ok(`FO-7r S8 pass: 10,000 invoices, each with a credit note and a trust withdrawal, plus 1,000 payments, 1,000 corrections, 100 credit applications, in a firm holding 53,000 other invoices with their payments, credit and trust rows: page 1 in ${msS} ms (route ${msRoute} ms), the summary in ${msSum} ms (route ${msSumRoute} ms), each within 300 ms`,
+  const inv0 = bs.accounts.find((x) => x.account === "INVOICES")!, b0 = bsum.totals[0]!, nR3 = Number(sql(`select count(*) from money_credit_entry where created_by = 'seed:FO-7r-bulk-r3' and kind = 'APPLIED'`));
+  const applied = 500 + nR3 * 3;   // 100 × 5.00 cents, then each R3 application of 5 less its reversal of 2
+  ok(`FO-7r S8 pass: 10,000 invoices, each with a credit note and a trust withdrawal, plus 1,000 payments, 1,000 corrections, 3,433 credit applications (3,333 of them reversed in part), in a firm holding 53,000 other invoices with their payments, credit and trust rows: page 1 in ${msS} ms (route ${msRoute} ms), the summary in ${msSum} ms (route ${msSumRoute} ms), each within 300 ms`,
     msS < 300 && msSum < 300 && msRoute < 300 && msSumRoute < 300 && viaRoute.status === 200 && sumRoute.status === 200 && bs.items.length === 50 && !!bs.next
-    && b0.billedMinor === 10_000_000 && b0.paidMinor === 400_000 + 180_000 && b0.creditedMinor === 100_000 && b0.creditAppliedMinor === 500 && inv0.closingMinor === 10_000_000 - 100_000 - 580_000 - 500 && inv0.closingMinor === b0.owedMinor,
+    && b0.billedMinor === 10_000_000 && b0.paidMinor === 400_000 + 180_000 && b0.creditedMinor === 100_000 && nR3 > 3000 && b0.creditAppliedMinor === applied && inv0.closingMinor === 10_000_000 - 100_000 - 580_000 - applied && inv0.closingMinor === b0.owedMinor,
     { msS, msSum, msRoute, msSumRoute, closing: bs.accounts, totals: bsum.totals });
-  ok("FO-7r S8 fail (AG-6-30's failure case): a request without a page size gets the default, 50, never every line", bs.pageSize === 50 && bs.items.length === 50 && inv0.lines === 10_000 + 1_000 + 10_000 + 10_000 + 1_000 + 100, { pageSize: bs.pageSize, n: bs.items.length, lines: inv0.lines });
+  ok("FO-7r S8 fail (AG-6-30's failure case): a request without a page size gets the default, 50, never every line", bs.pageSize === 50 && bs.items.length === 50 && inv0.lines === 10_000 + 1_000 + 10_000 + 10_000 + 1_000 + 100 + 2 * nR3, { pageSize: bs.pageSize, n: bs.items.length, lines: inv0.lines });
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${(e as Error).stack ?? e}`);
 } finally {
