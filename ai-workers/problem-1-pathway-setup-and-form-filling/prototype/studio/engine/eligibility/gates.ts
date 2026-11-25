@@ -20,6 +20,11 @@ export type StoredEligibility = { gates: Gate[]; judgement: string[]; disclaimer
 export type SnapshotEligibility = { gates: Gate[]; judgement: string[]; disclaimer: string; assessment_only?: true };
 /** AS-2a: an assessment-only release (with at least one gate: zero gates is no result, BR-10). */
 export const isAssessmentOnly = (e: Partial<Pick<SnapshotEligibility, "gates" | "assessment_only">> | null | undefined): boolean => !!e?.assessment_only && !!e.gates?.length;
+/** AS-2a, break B1 on 6f71259ea: what makes a release assessment only is the flag, at least one gate, and no form and no
+ *  document line. The flag on a combination that still files is refused at validation (engine/validate.ts), so it never
+ *  switches a filing release's checks off; every check that treats a release as assessment only reads this. */
+export const assessmentOnlyRelease = (s: { forms?: unknown[]; document_requirements?: unknown[]; eligibility?: unknown }): boolean =>
+  isAssessmentOnly(s.eligibility as never) && !(s.forms ?? []).length && !(s.document_requirements ?? []).length;
 /** AS-2a: the words a person reads on such a release (P-650 (2)). */
 export const ASSESSMENT_ONLY_WORDS = "Assessment only: no forms";
 /** The facts a set of gates reads, in gate order, once each. */

@@ -96,10 +96,17 @@ function lineProblem(x: string, what: string, max: number): string | null {
   return null;
 }
 
-export const SOURCE_SECTION_MAX = 200, SOURCE_QUOTE_MAX = 2000, SOURCE_URL_MAX = 500;
+export const SOURCE_SECTION_MAX = 200, SOURCE_QUOTE_MAX = 2000, SOURCE_URL_MAX = 500, SOURCE_YEAR_MIN = 2000;
+/** Break B4 on 6f71259ea: marks that hide in a quote but that INVISIBLE lets through (Arabic letter mark, word joiner and
+ *  the invisible operators, soft hyphen, byte-order mark, zero-width and direction marks). */
+const HIDDEN = /[\u00AD\u061C\u200B-\u200F\u2060-\u2064\uFEFF]/;
+/** A host a page of a government can be on: a name with a dot, never an address, localhost or a single label. */
+const PUBLIC_HOST = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/;
 /** AS-2a (AGENTS rule 4, P-170): a gate's source as given, checked: `{ url, section, quote, date }` (an https page, the
- *  section, the words quoted from it, the day it was read, never in the future) or `{ sample: true }`. Returns the
- *  source to store, or the refusal in words. `today` is YYYY-MM-DD (the caller's clock; the engine reads none). */
+ *  section, the words quoted from it, the day it was read) or `{ sample: true }`. Returns the source to store, or the
+ *  refusal in words. Lengths are counted as the port counts them (UTF-16 units, break B3), so a saved source always fits
+ *  EligibilityPort. The page is stored in its normal form (`URL.href`). `today` is YYYY-MM-DD (the caller's clock in UTC);
+ *  one day ahead is allowed, so an author east of UTC (IST) is not refused just after midnight. */
 export function checkSource(raw: unknown, today: string): { source?: GateSource; problem?: string } {
   if (raw === undefined || raw === null) return {};
   if (typeof raw !== "object" || Array.isArray(raw)) return { problem: "Give the source as { url, section, quote, date } from the official page, or { sample: true }." };
@@ -109,16 +116,21 @@ export function checkSource(raw: unknown, today: string): { source?: GateSource;
   const extra = keys.filter((k) => !["url", "section", "quote", "date"].includes(k));
   if (extra.length) return { problem: `Not part of a source: ${extra.join(", ")} (only url, section, quote and date).` };
   const str = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : "");
-  const url = str("url"), section = str("section"), quote = str("quote"), date = str("date");
-  let host = "";
-  try { const u = new URL(url); host = u.protocol === "https:" ? u.hostname : ""; } catch { /* refused below */ }
-  if (!host || chars(url) > SOURCE_URL_MAX || unclean(url, true)) return { problem: `The source needs the official page's https address (at most ${SOURCE_URL_MAX} characters).` };
-  if (!section || blank(section) || unclean(section, true) || chars(section) > SOURCE_SECTION_MAX) return { problem: `Name the section of the page the rule is under, in one line of at most ${SOURCE_SECTION_MAX} characters.` };
-  if (!quote || blank(quote) || unclean(quote, false) || chars(quote) > SOURCE_QUOTE_MAX) return { problem: `Quote the page's own words for the rule (at most ${SOURCE_QUOTE_MAX} characters).` };
+  const typed = str("url"), section = str("section"), quote = str("quote"), date = str("date");
+  const pageWords = `The source needs the official page's address: https://, a public host name (no address, no user name), at most ${SOURCE_URL_MAX} characters.`;
+  if (!typed || typed.length > SOURCE_URL_MAX || !/^[\x21-\x7e]+$/.test(typed)) return { problem: pageWords };
+  let u: URL;
+  try { u = new URL(typed); } catch { return { problem: pageWords }; }
+  if (u.protocol !== "https:" || !/^https:\/\/[^/\\]/i.test(typed) || u.username || u.password || u.port || !PUBLIC_HOST.test(u.hostname) || u.href.length > SOURCE_URL_MAX) return { problem: pageWords };
+  const hidden = (x: string, oneLine: boolean) => unclean(x, oneLine) || HIDDEN.test(x);
+  if (!section || blank(section) || hidden(section, true) || section.length > SOURCE_SECTION_MAX) return { problem: `Name the section of the page the rule is under, in one line of at most ${SOURCE_SECTION_MAX} characters.` };
+  if (!quote || blank(quote) || hidden(quote, false) || quote.length > SOURCE_QUOTE_MAX) return { problem: `Quote the page's own words for the rule (plain text, at most ${SOURCE_QUOTE_MAX} characters).` };
   const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date), real = !!d && new Date(Date.UTC(+d[1], +d[2] - 1, +d[3])).getUTCDate() === +d[3] && +d[2] >= 1 && +d[2] <= 12;
   if (!real) return { problem: "Give the date the page was read as YYYY-MM-DD (a real day)." };
-  if (date > today) return { problem: `The date the page was read (${date}) is after today (${today}).` };
-  return { source: { url, section, quote, date } };
+  if (+d![1] < SOURCE_YEAR_MIN) return { problem: `The date the page was read (${date}) is before ${SOURCE_YEAR_MIN}: give the day it was read.` };
+  const t = new Date(`${today}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + 1);
+  if (date > t.toISOString().slice(0, 10)) return { problem: `The date the page was read (${date}) is after today (${today}).` };
+  return { source: { url: u.href, section, quote, date } };
 }
 
 /** BR-2, BR-2a: the gates, judgement lines and disclaimer a save may store, or the refusals on their fields. A condition
@@ -148,7 +160,7 @@ export function checkGates(input: { gates: { key?: unknown; label?: unknown; con
     // AS-2a: the gate's source (stored only when given); on an assessment-only combination every gate needs one.
     const src = checkSource(g.source, today);
     if (src.problem) errors.push({ field: `gates.${i}.source`, message: src.problem });
-    else if (!src.source && only) errors.push({ field: `gates.${i}.source`, message: `${ASSESSMENT_ONLY_WORDS}: each gate cites its official page (url, section, quote, date) or is labelled { sample: true }.` });
+    else if (!src.source && only) errors.push({ field: `gates.${i}.source`, message: `${ASSESSMENT_ONLY_WORDS}: each gate cites its official page (the address, the section, the words quoted and the date read) or is labelled Sample.` });
     const cited = src.source ? { source: src.source } : {};
     const raw = g.condition;
     if (raw == null || typeof raw !== "object" || Array.isArray(raw) || !Object.keys(raw).length) {
@@ -281,7 +293,7 @@ export function eligibilityChanges(prev: SnapshotEligibility | undefined, next: 
   const keptA = [...a.keys()].filter((k) => b.has(k)), keptB = [...b.keys()].filter((k) => a.has(k));
   if (keptA.join("|") !== keptB.join("|")) line("gate_order", "changed", `Gates reordered: ${(next?.gates ?? []).map((g) => g.label).join(" · ")}`);
   for (const [k, g] of a) if (!b.has(k)) line(k, "removed", `Gate: ${g.label}`);
-  if (!!prev?.assessment_only !== !!next?.assessment_only) line("assessment_only", next?.assessment_only ? "added" : "removed", next?.assessment_only ? `${ASSESSMENT_ONLY_WORDS}: no case opens on it; it is used to assess a person` : `No longer ${ASSESSMENT_ONLY_WORDS.toLowerCase()}`);
+  if (!!prev?.assessment_only !== !!next?.assessment_only) line("assessment-only", next?.assessment_only ? "added" : "removed", next?.assessment_only ? `${ASSESSMENT_ONLY_WORDS}: no case opens on it; it is used to assess a person` : `No longer ${ASSESSMENT_ONLY_WORDS.toLowerCase()}`);
   const ja = prev?.judgement ?? [], jb = next?.judgement ?? [];
   if (canonical(ja) !== canonical(jb)) line("officers_judgement", !ja.length ? "added" : !jb.length ? "removed" : "changed", jb.length ? `Officer's judgement, not checked by rules: ${jb.join("; ")}` : "Officer's judgement: no lines");
   const da = prev?.disclaimer ?? null, db = next?.disclaimer ?? null;

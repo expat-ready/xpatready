@@ -5,7 +5,7 @@
 // with no spouse on the application does not apply. Gates saved today are all per person (checkGates), so the spouse's
 // list stays empty until a release carries a spouse's rule (AS-1g, AS-1s). `scores` is empty until AS-1s.
 import type { Snapshot } from "../../../engine/snapshot.ts";
-import { gateFacts, isAssessmentOnly, type Gate, type SnapshotEligibility } from "../../../engine/eligibility/gates.ts";
+import { assessmentOnlyRelease, gateFacts, type Gate, type SnapshotEligibility } from "../../../engine/eligibility/gates.ts";
 import { gateResult, outcomeOf, type GateResult } from "../../../engine/eligibility/assess.ts";
 import { kkey, type Known } from "../../../engine/resolver.ts";
 import {
@@ -54,7 +54,7 @@ export class ConfiguratorEligibility implements EligibilityPort {
       const was = newest.get(r.combinationId);
       if (!was || r.version > was.version) newest.set(r.combinationId, r);
     }
-    return [...newest.values()].map((r) => ({ combination_id: r.combinationId, name: (r.snapshot as Snapshot).combination.label, release_id: r.id, version: r.version, content_hash: r.sha256, assessment_only: isAssessmentOnly(rulesOf(r.snapshot as Snapshot)) }))
+    return [...newest.values()].map((r) => ({ combination_id: r.combinationId, name: (r.snapshot as Snapshot).combination.label, release_id: r.id, version: r.version, content_hash: r.sha256, assessment_only: assessmentOnlyRelease(r.snapshot as Snapshot) }))
       .sort((a, b) => a.name.localeCompare(b.name) || a.release_id.localeCompare(b.release_id));
   }
 

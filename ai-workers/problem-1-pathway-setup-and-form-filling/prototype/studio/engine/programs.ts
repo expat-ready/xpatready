@@ -2,7 +2,7 @@
 // startable check, SA-1B-90/91, BR-8), its single status (In setup · Not ready · Ready), the counts the row shows
 // (BR-10: every question any person on the row could be asked), when its sources were last checked (BR-11) and its one
 // next action (BR-13). The API calls these with snapshots it built; tests call them directly.
-import { isAssessmentOnly, ASSESSMENT_ONLY_WORDS } from "./eligibility/gates.ts";
+import { assessmentOnlyRelease, ASSESSMENT_ONLY_WORDS } from "./eligibility/gates.ts";
 import { sharedStep, type MissingItem, type NextAction, type Status } from "../contracts/programs.ts";
 import type { Problem } from "./validate.ts";
 import type { Snapshot } from "./snapshot.ts";
@@ -71,7 +71,7 @@ export function missingItems(s: Snapshot, participants: Participant[], problems:
     return { code, step, cause, text: `${cause} Next step: ${step}${pending ? "" : why}.` };
   };
   // AS-2a (P-650 (2)): an assessment-only release is not for cases: one line says so, in place of the form lines.
-  if (isAssessmentOnly(s.eligibility as never) && !s.forms.length) return [{ code: "assessment_only", step: "Assess a person", text: ASSESSMENT_ONLY_CASE_WORDS }];
+  if (assessmentOnlyRelease(s)) return [{ code: "assessment_only", step: "Assess a person", text: ASSESSMENT_ONLY_CASE_WORDS }];
   const forms = s.forms as FormLine[];
   if (!forms.length) {
     const n = setup?.sources ?? 0;
@@ -192,7 +192,7 @@ export function documentLineProblem(s: Pick<Snapshot, "forms" | "document_requir
 /** G5 (P-248, the whole rule): what a release needs on it, a form line and a document line, each said in its own words. */
 /** AS-2a (P-650 (2)): an assessment-only release (gates and no form) needs neither line: it assesses a person, no case
  *  opens on it (missingItems says so). */
-export const releaseLineProblems = (s: Pick<Snapshot, "forms" | "document_requirements"> & { eligibility?: unknown }): Problem[] => (isAssessmentOnly(s.eligibility as never) && !s.forms.length ? [] : [...formLineProblem(s), ...documentLineProblem(s)]);
+export const releaseLineProblems = (s: Pick<Snapshot, "forms" | "document_requirements"> & { eligibility?: unknown }): Problem[] => (assessmentOnlyRelease(s) ? [] : [...formLineProblem(s), ...documentLineProblem(s)]);
 /** QA-180 (BR-8, P-297 (3)): the one rule Review and release (engine/validate.ts) and Open a case (missingItems, through
  *  api/src/programs.ts startableMissing) both read. A data form can be filled on a case only when its edition in use
  *  (pdfMapInUse, P-32: the newest PDF edition, the one a case fills) has form fields mapped; an Online line is read from

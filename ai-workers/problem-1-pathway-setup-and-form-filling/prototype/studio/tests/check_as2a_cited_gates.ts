@@ -54,14 +54,30 @@ const gate2 = (extra: Record<string, unknown> = {}) => ({ key: "s.job", label: "
     ["no section", { ...CITED, section: " " }],
     ["no quote", { ...CITED, quote: "" }],
     ["a day that does not exist", { ...CITED, date: "2026-02-30" }],
-    ["a date in the future", { ...CITED, date: "2026-11-26" }],
+    ["a date in the future", { ...CITED, date: "2026-11-27" }],
     ["a date not written YYYY-MM-DD", { ...CITED, date: "25 Nov 2026" }],
     ["a page and Sample at once", { ...CITED, sample: true }],
     ["a key that is not part of a source", { ...CITED, page: 3 }],
     ["sample: false", { sample: false }],
     ["a quote holding invisible characters", { ...CITED, quote: "at least​ 4" }],
     ["text in place of a source", "see the page"],
+    ["a user name in the page's address (break B4)", { ...CITED, url: "https://www.canada.ca@evil.example/x" }],
+    ["localhost", { ...CITED, url: "https://localhost/x" }],
+    ["an IP address", { ...CITED, url: "https://10.0.0.1/x" }],
+    ["a single-label host", { ...CITED, url: "https://intranet/x" }],
+    ["a malformed https:/ address", { ...CITED, url: "https:/www.example.gov/x" }],
+    ["a backslash address", { ...CITED, url: "https:\\\\www.example.gov\\x" }],
+    ["a space in the address", { ...CITED, url: "https://www.example.gov/a b" }],
+    ["a port", { ...CITED, url: "https://www.example.gov:8443/x" }],
+    ["a year before 2000", { ...CITED, date: "1066-10-14" }],
+    ["year 0000", { ...CITED, date: "0000-01-01" }],
+    ["a soft hyphen in the quote", { ...CITED, quote: "at least\u00ad 4" }],
+    ["an Arabic letter mark in the quote", { ...CITED, quote: "at least\u061c 4" }],
+    ["a word joiner in the section", { ...CITED, section: "Eligibility\u2060" }],
+    ["a quote longer than the port takes (emoji count twice, break B3)", { ...CITED, quote: "a" + "\u{1F600}".repeat(1000) }],
   ];
+  ok("S pass: the page is stored in its normal form", checkSource({ ...CITED, url: "https://WWW.Example.gov/a" }, TODAY).source && (checkSource({ ...CITED, url: "https://WWW.Example.gov/a" }, TODAY).source as { url: string }).url === "https://www.example.gov/a");
+  ok("S pass: a page read one day ahead of UTC (IST just after midnight) is accepted; two days ahead is not", !!checkSource({ ...CITED, date: "2026-11-26" }, TODAY).source && !!checkSource({ ...CITED, date: "2026-11-27" }, TODAY).problem);
   for (const [what, raw] of refusals) ok(`S fail: ${what} is refused in words`, !!checkSource(raw, TODAY).problem && !checkSource(raw, TODAY).source, checkSource(raw, TODAY));
 }
 
@@ -125,13 +141,13 @@ const snapOf = (flag: boolean, forms: unknown[] = []) => ({ forms, document_requ
 {
   const a = snapshotEligibility(stored([{ ...gate(), source: CITED }], true));
   const added = eligibilityChanges(undefined, a);
-  ok("W pass: an added gate's line shows its page, section, date and the words quoted; the flag has its own line", added.some((l) => l.key === "s.language" && l.label.includes(CITED.url) && l.label.includes(CITED.quote) && l.label.includes(CITED.date)) && added.some((l) => l.key === "assessment_only" && l.label.startsWith(ASSESSMENT_ONLY_WORDS)), added);
+  ok("W pass: an added gate's line shows its page, section, date and the words quoted; the flag has its own line", added.some((l) => l.key === "s.language" && l.label.includes(CITED.url) && l.label.includes(CITED.quote) && l.label.includes(CITED.date)) && added.some((l) => l.key === "assessment-only" && l.label.startsWith(ASSESSMENT_ONLY_WORDS)), added);
   const b = snapshotEligibility(stored([{ ...gate(), source: { sample: true } }], true));
   const changed = eligibilityChanges(a, b);
   ok("W pass: a changed source is a changed line saying so (now Sample)", changed.length === 1 && changed[0].change === "changed" && /source changed — source: Sample/.test(changed[0].label), changed);
   ok("W fail: the same gates and source give no line", eligibilityChanges(a, snapshotEligibility(stored([{ ...gate(), source: CITED }], true))).length === 0);
   const unflag = eligibilityChanges(a, snapshotEligibility(stored([{ ...gate(), source: CITED }])));
-  ok("W pass: removing the flag is its own line", unflag.length === 1 && unflag[0].key === "assessment_only" && unflag[0].change === "removed", unflag);
+  ok("W pass: removing the flag is its own line", unflag.length === 1 && unflag[0].key === "assessment-only" && unflag[0].change === "removed", unflag);
 }
 
 // ------------------------------------------------------------------ D: the door
@@ -143,9 +159,11 @@ const snapOf = (flag: boolean, forms: unknown[] = []) => ({ forms, document_requ
     { id: "00000000-0000-4000-8000-000000000001", combinationId: "c1", version: 1, status: "RELEASED", sha256: "h1", snapshot: snap("Sample stream", snapshotEligibility(stored(both, true))) },
     { id: "00000000-0000-4000-8000-000000000002", combinationId: "c2", version: 1, status: "RELEASED", sha256: "h2", snapshot: snap("Sample filing", snapshotEligibility(stored(both))) },
   ];
+  rows.push({ id: "00000000-0000-4000-8000-000000000003", combinationId: "c3", version: 1, status: "RELEASED", sha256: "h3", snapshot: { ...snap("Sample flagged with a form", snapshotEligibility(stored(both, true))), forms: [{ form_number: "S-1" }] } as unknown as Snapshot });
   const door = new ConfiguratorEligibility({ released: async () => rows, byId: async (id) => rows.find((r) => r.id === id) ?? null });
   const list = await door.listAssessable();
   ok("D pass: the door lists the assessment-only release as such, and the other one not", list.find((x) => x.name === "Sample stream")?.assessment_only === true && list.find((x) => x.name === "Sample filing")?.assessment_only === false, list);
+  ok("D fail (break B1): a release flagged but with a form is not assessment only to the door", list.find((x) => x.name === "Sample flagged with a form")?.assessment_only === false, list);
   const yes = await door.assess({ release_id: rows[0].id, persons: [{ role: "principal", known: { "person.language_level": 5, "person.job_offer": true } }] });
   ok("D pass: Likely eligible lists every rule met, the cited one with its page and quote, the uncited one with none", EligibilityResult.safeParse(yes).success && yes.outcome === "LIKELY_ELIGIBLE" && yes.rules.length === 2 && yes.rules.every((r) => r.state === "met") && JSON.stringify(yes.rules[0].source) === JSON.stringify(CITED) && yes.rules[1].source === null, yes.rules);
   const no = await door.assess({ release_id: rows[0].id, persons: [{ role: "principal", known: { "person.language_level": 3, "person.job_offer": true } }] });
@@ -187,7 +205,7 @@ const snapOf = (flag: boolean, forms: unknown[] = []) => ({ forms, document_requ
   const sub = await call("POST", `/combinations/${combo}/submit`, { note: "AS-2a check: assessment only (Sample)" }, AUTHOR);
   ok("A pass: submitted for review with no form and no filing mode asked", sub.status < 300, sub.body?.detail ?? sub.body?.message ?? sub.status);
   const lines = ((await call("GET", `/combinations/${combo}/review`, undefined, REVIEWER)).body?.submission?.changeSummary ?? []) as { kind: string; key: string; label: string }[];
-  ok("A pass: the reviewer sees the gate with its page and quote, and the Assessment only line", lines.some((x) => x.kind === "Eligibility" && x.key === "s.history" && x.label.includes(CITED.url) && x.label.includes(CITED.quote)) && lines.some((x) => x.key === "assessment_only"), lines.filter((x) => x.kind === "Eligibility"));
+  ok("A pass: the reviewer sees the gate with its page and quote, and the Assessment only line", lines.some((x) => x.kind === "Eligibility" && x.key === "s.history" && x.label.includes(CITED.url) && x.label.includes(CITED.quote)) && lines.some((x) => x.key === "assessment-only"), lines.filter((x) => x.kind === "Eligibility"));
   await call("POST", `/combinations/${combo}/signoff`, { items: lines.map((x) => `${x.kind}|${x.key}`), action: "signed" }, REVIEWER);
   const self = await call("POST", `/combinations/${combo}/approve`, undefined, AUTHOR);
   const appr = await call("POST", `/combinations/${combo}/approve`, undefined, APPROVER);
@@ -198,6 +216,34 @@ const snapOf = (flag: boolean, forms: unknown[] = []) => ({ forms, document_requ
   const list = await call("GET", "/runtime/openable", undefined, "user-O");
   const row = (Array.isArray(list.body) ? list.body : list.body?.releases ?? []).find((x: { combination_id: string }) => x.combination_id === combo);
   ok("A pass: the New case list shows it as not startable, saying Assessment only", !!row && row.startable === false && String(row.why).includes("Assessment only: no forms"), { status: list.status, row });
+  ok("A pass (review m5): the New case list's line does not repeat the name", !!row && !String(row.why).includes(`"Sample assessment stream`), row?.why);
+
+  // ---------------------------------------------------------------- B1, B2 (break report on 6f71259ea): a combination that files
+  const vv = sql("select id from combination where combination_key='vv.single'");
+  const vvUrl = `/combinations/${vv}/eligibility-gates`;
+  const vvGates = () => call("GET", vvUrl, undefined, AUTHOR);
+  const opened = await call("POST", "/runtime/cases", { combinationId: vv, clientActor: "user-P", principal: { displayName: "Client B (Sample)" } }, "user-O");
+  const caseId = String(opened.body?.id ?? opened.body?.case?.id ?? "");
+  ok("setup B: a case is open on the Visitor visa's release (it has forms)", opened.status < 300 && !!caseId, opened.body?.detail ?? opened.status);
+  let v0 = (await vvGates()).body;
+  r = await call("PUT", vvUrl, { gates: [...(v0?.gates ?? []), { ...g, key: "s.flag_probe", label: "Flag probe (Sample)", source: { sample: true } }].map((x: { source?: unknown }) => ({ ...x, source: x.source ?? { sample: true } })), judgement: v0?.judgement ?? [], assessmentOnly: true, version: v0?.version }, AUTHOR);
+  const flagged = await call("POST", `/combinations/${vv}/submit`, { note: "AS-2a check B1: must be refused (Sample)" }, AUTHOR);
+  ok("B1 fail: the flag on a combination that still has forms → saved as draft but refused at submit, in words", r.status === 200 && flagged.status >= 400 && /is for a combination with no form and no document line/.test(JSON.stringify(flagged.body)), { save: r.status, submit: flagged.status, detail: flagged.body?.detail });
+  const vvRelease = sql(`select id from config_release where combination_id='${vv}' and status='RELEASED' order by version desc limit 1`);
+  const openVv = await call("POST", "/runtime/cases", { combinationId: vv, clientActor: "user-P", principal: { displayName: "Client C (Sample)" } }, "user-O");
+  ok("B1 pass: cases still open on its released version (the flag on a filing draft changes nothing released)", openVv.status < 300, openVv.body?.detail ?? openVv.status);
+  // B2: the forms and document lines removed, the flag kept: the draft is assessment only and is released; the open case must not move onto it.
+  for (const code of ["IMM 5257", "IMM 5707"]) await call("DELETE", `/combinations/${vv}/forms/${encodeURIComponent(code)}`, {}, AUTHOR);
+  sql(`delete from document_requirement where combination_id='${vv}'`); // test-only: stands in for the author removing its document lines (no single route does)
+  const sub2 = await call("POST", `/combinations/${vv}/submit`, { note: "AS-2a check B2: the forms removed (Sample)" }, AUTHOR);
+  const lines2 = ((await call("GET", `/combinations/${vv}/review`, undefined, REVIEWER)).body?.submission?.changeSummary ?? []) as { kind: string; key: string }[];
+  await call("POST", `/combinations/${vv}/signoff`, { items: [...new Set(lines2.map((x) => `${x.kind}|${x.key}`))], action: "signed" }, REVIEWER);
+  const appr2 = await call("POST", `/combinations/${vv}/approve`, undefined, APPROVER);
+  const nowRel = JSON.parse(sql(`select json_build_object('id', id, 'forms', jsonb_array_length(snapshot->'forms'), 'flag', snapshot->'eligibility'->'assessment_only') from config_release where combination_id='${vv}' and status='RELEASED' order by version desc limit 1`));
+  ok("setup B2: with its forms and document lines removed the Visitor visa is released as assessment only", sub2.status < 300 && appr2.status < 300 && nowRel.id !== vvRelease && nowRel.forms === 0 && nowRel.flag === true, { sub: sub2.body?.detail ?? sub2.status, appr: appr2.body?.detail ?? appr2.status, nowRel });
+  const view = await call("GET", `/runtime/cases/${caseId}/release-update`, undefined, "user-O");
+  const move = await call("POST", `/runtime/cases/${caseId}/release-update`, { target_version: view.body?.target?.version, from_revision: view.body?.current?.revision, reason: "AS-2a check B2 (Sample)" }, "user-O");
+  ok("B2 fail: the open case cannot move onto the assessment-only release: refused in its words, the pin unchanged", view.body?.refused?.code === "assessment_only" && move.status === 409 && String(move.body?.detail ?? "").includes(ASSESSMENT_ONLY_CASE_WORDS), { view: view.body?.refused ?? view.status, move: move.status, detail: move.body?.detail });
 }
 
 console.log(`\n${pass}/${pass + fail} passed`);

@@ -1,6 +1,6 @@
 // Product Studio application service: programs and combinations, the shared library (versioned edits), the
 // combination's own configuration, previews through the common renderer, validation, review and release.
-import { isAssessmentOnly } from "../../engine/eligibility/gates.ts";
+import { assessmentOnlyRelease } from "../../engine/eligibility/gates.ts";
 import { itemState, libraryFilter, lockItem, openItemChanges, originWords, refuseRetired, retiredFieldKeys } from "./library-items.ts";
 import { current } from "../../engine/where-used.ts";
 import { FILLS_LOCK } from "./who-fills.ts";
@@ -117,7 +117,7 @@ function retiredPeople(c: { label: string; retiredAt: Date | null }) {
 // combination ("2 forms · 0 set up"), so this never says "no forms" beside a count that says 2.
 export const EMPTY_WORDS = "Nothing to release yet: no form is set up on this combination and it has no documents. Set up the forms it files (Find forms, add one from the Form library, or finish one attached) before sending it for review.";
 export const emptyProblem = (s: Pick<Snapshot, "forms" | "document_requirements"> & { eligibility?: unknown }) =>
-  s.forms.length || (s.document_requirements ?? []).length || isAssessmentOnly(s.eligibility as never) ? [] : [{ level: "error" as const, where: "Release", item: "", message: EMPTY_WORDS }];
+  s.forms.length || (s.document_requirements ?? []).length || assessmentOnlyRelease(s) ? [] : [{ level: "error" as const, where: "Release", item: "", message: EMPTY_WORDS }];
 /** What a release needs on it before anything else is judged: F8 (something), then G5 (P-248: a form line and a document line). */
 export const contentProblems = (s: Pick<Snapshot, "forms" | "document_requirements"> & { eligibility?: unknown }) => [...emptyProblem(s), ...releaseLineProblems(s)];
 export { FORM_LINE_WORDS, formLineProblem, isFormLine }; // G5: the rule itself is engine/programs.ts (pure, for the C5.1 pack)
@@ -467,7 +467,7 @@ export class Studio {
     // engine/filing-modes.ts FILING_NOT_SET_BLOCKS).
     const roles = await this.personRoles(workspaceId);
     // AS-2a (P-650 (2)): nobody files on an assessment-only release, so no filing mode is asked of its people.
-    const filing = isAssessmentOnly(s.eligibility) ? [] : filingProblems((s.combination?.participants ?? []) as { role: string; label?: string; max: number; filingMode?: unknown }[], roles);
+    const filing = assessmentOnlyRelease(s) ? [] : filingProblems((s.combination?.participants ?? []) as { role: string; label?: string; max: number; filingMode?: unknown }[], roles);
     // G1 BR-7 (challenge M1): every published number needs a source entry; the draft only, never a released snapshot.
     // Only a draft that will be submitted (it differs from its release, or there is none): a Live row with no draft
     // changes lists none, as on the catalogue (tech lead on #568; EXPERIENCE §2.5, one status everywhere).

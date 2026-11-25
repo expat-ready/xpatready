@@ -148,7 +148,8 @@ export function pleaseCheckWords(documentName: string, changedSince: boolean): s
 }
 
 /** AS-2a (P-650 (2)): an assessment-only release is not for cases at all, so the refusal says that, not "items to fix". */
-const whyNotForCases = (label: string, missing: { code: string }[]) => (missing.some((m) => m.code === "assessment_only") ? `"${label}": ${ASSESSMENT_ONLY_CASE_WORDS}` : notReadyForCases(label, missing.length));
+/** Review m5: the New case list already names the release, so its line leaves the name out (`named` false). */
+export const whyNotForCases = (label: string, missing: { code: string }[], named = true) => (missing.some((m) => m.code === "assessment_only") ? `${named ? `"${label}": ` : ""}${ASSESSMENT_ONLY_CASE_WORDS}` : notReadyForCases(label, missing.length));
 
 @Injectable()
 export class Runtime {
@@ -444,7 +445,7 @@ export class Runtime {
       const on = routeOf(routes, r.combination.combinationKey);
       const stage = on && on.at > 0 ? { route: on.route.key, route_label: on.route.label, key: on.route.stages[on.at].key, name: on.route.stages[on.at].staff_name,
         earlier: on.route.stages.slice(0, on.at).map((x) => ({ key: x.key, name: x.staff_name, key_details: (x.key_details ?? []).map((d) => ({ field: d.field, label: d.label, type: d.type, same_every_stage: !!d.same_every_stage })) })) } : undefined;
-      return { combination_id: r.combinationId, combination: r.combination.label, version: r.version, startable: !missing.length, items: missing.length, why: missing.length ? whyNotForCases(r.combination.label, missing) : null, ...(stage ? { stage } : {}) };
+      return { combination_id: r.combinationId, combination: r.combination.label, version: r.version, startable: !missing.length, items: missing.length, why: missing.length ? whyNotForCases(r.combination.label, missing, false) : null, ...(stage ? { stage } : {}) };
     }));
     return out.sort((a, b) => Number(b.startable) - Number(a.startable) || a.combination.localeCompare(b.combination));
   }

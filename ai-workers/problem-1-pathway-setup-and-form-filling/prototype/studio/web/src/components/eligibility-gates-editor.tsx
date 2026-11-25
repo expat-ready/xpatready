@@ -122,6 +122,12 @@ function GatesEditor({ id, taken, waiting, close }: { id: string; taken: Set<str
   return <GatesForm key={gen} id={id} read={g.data} taken={taken} waiting={waiting} close={close} reload={() => void g.refetch().then(() => setGen((n) => n + 1))} />;
 }
 
+/** AS-2a: a gate's source in words: the page, its section and the day read, or Sample. */
+const sourceLine = (x: unknown): string | null => {
+  if (!x || typeof x !== "object") return null;
+  const o = x as { sample?: boolean; url?: string; section?: string; date?: string };
+  return o.sample ? "Sample (not from an official page)" : o.url ? `${o.url} · ${o.section ?? ""} · read ${o.date ?? ""}` : null;
+};
 type Row = { uid: number; key?: string; label: string; condition: Tree | null; whenNotMet: "not_eligible" | "needs_review"; confirm?: boolean; source?: unknown };
 type Line = { uid: number; text: string };
 let uidSeq = 0;
@@ -188,6 +194,9 @@ function GatesForm({ id, read, taken, waiting, close, reload }: { id: string; re
                 {(["not_eligible", "needs_review"] as const).map((w) => <label key={w} className="flex items-center gap-1.5"><input type="radio" name={`not-met-${r.uid}`} checked={r.whenNotMet === w} onChange={() => set(r.uid, { whenNotMet: w })} />{NOT_MET[w]}</label>)}
                 {errors[`gates.${i}.whenNotMet`] ? <p className="text-xs text-text-danger">{errors[`gates.${i}.whenNotMet`]}</p> : null}
               </fieldset>
+              {/* AS-2a, review M3 on 6f71259ea: the gate's source, as read (edited through the import, not here), and its refusal. */}
+              {sourceLine(r.source) ? <p className="text-xs text-text-muted [overflow-wrap:anywhere]" data-gate-source={i}>Source: {sourceLine(r.source)}</p> : null}
+              {errors[`gates.${i}.source`] ? <p className="text-xs text-text-danger" role="alert" data-gate-source-error={i}>{errors[`gates.${i}.source`]}</p> : null}
               {r.key ? <FoldOut className="text-xs text-text-muted" summary="Details">Key: <span className="mono">{r.key}</span> (kept when the label changes; tests and earlier checks name it)</FoldOut> : null}
               {r.confirm ? (
                 <div className="flex flex-wrap items-center gap-2 rounded-md bg-danger/10 px-3 py-2 text-xs" role="group" aria-label={`Remove ${r.label || `gate ${i + 1}`}?`} data-gate-confirm>

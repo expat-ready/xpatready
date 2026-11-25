@@ -60,7 +60,9 @@ export class EligibilityGates {
       this.db.canonicalField.findMany({ where: { workspaceId: c.workspaceId }, select: { canonicalFieldKey: true, valueType: true, status: true } }),
       this.db.derivedField.findMany({ where: { workspaceId: c.workspaceId }, select: { derivedKey: true } }),
     ]);
-    const checked = checkGates(b, new Map(fields.filter((f) => f.status !== "RETIRED").map((f) => [f.canonicalFieldKey, f.valueType])), new Set(derived.map((d) => d.derivedKey)));
+    // AS-2a, break B4 on 6f71259ea: a save that leaves the flag out keeps it as stored; only false (or true) changes it.
+    const stored = (c.eligibility as StoredEligibility | null)?.assessment_only === true;
+    const checked = checkGates({ ...b, assessmentOnly: b.assessmentOnly === undefined || b.assessmentOnly === null ? stored : b.assessmentOnly }, new Map(fields.filter((f) => f.status !== "RETIRED").map((f) => [f.canonicalFieldKey, f.valueType])), new Set(derived.map((d) => d.derivedKey)));
     // Re-review minor 1: the question's name, not its key.
     const words = new Map((await this.db.canonicalField.findMany({ where: { workspaceId: c.workspaceId }, select: { canonicalFieldKey: true, label: true } })).filter((f) => f.label).map((f) => [f.canonicalFieldKey, `"${f.label}"`]));
     const empty = b.gates.flatMap((g, i) => emptyValues(g.condition).map((f) => ({ field: `gates.${i}.condition`, message: `The rule compares ${words.get(f) ?? f} with an empty value, which no answer meets: give the value, or choose "is answered".` })));
