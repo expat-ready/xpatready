@@ -76,3 +76,55 @@ Reviewer: Block ecee6634a52d1d121630104fdf46435e19ceb977
 * Blockers: none.
 * Majors: M1 (`check_prisma_schema` red: Owner line), M2 (type and options freeze defeated at RR/SERIALIZABLE).
 * Minors: m1 (untested rules: `created_at`, `help_text`/`position`/options bounds, locks, and others), m2 (`id` not frozen), m3 (`btrim` misses non-ASCII blanks), m4 (IMMUTABLE label on `pf_custom_value_ok`).
+
+## Round 2 (diff-only re-review, 25 Nov 2026)
+
+Commit reviewed: **05d4820a19ebaec55b54b2551da41bb40eef1207** (the PR's head on GitHub). Scope: `git diff ecee6634a..05d4820a1 -- prototype/studio`. That is the migration and its rollback, `platform-custom.prisma` lines 1-2, the PF-22a suite (+13 checks), and one line in `check_pf3_platform_schema.ts`. The `product/screens` records in the diff are not code and I did not review them. This round is still schema only: there is no screen. **Journey score: N/A.**
+
+### What I ran
+* `npx tsx tests/check_pf22a_custom_schema.ts`: **86 passed, 0 failed** (21 s). `npx tsx tests/check_prisma_schema.ts`: **8 passed, 0 failed**. `check_pf3_platform_schema` (`--tsconfig api/tsconfig.json`): 75/75.
+* Scratch database (dropped afterwards), built from every migration in order on PostgreSQL 18.3:
+  * `rollback.sql` in one transaction leaves 0 `pf_custom_*` functions, 0 tables and 0 types, including the two new functions. The migration then re-applies cleanly.
+* Mutations on copies of the migration (copies removed afterwards). Each was **caught by exactly one failing check**:
+  * (A) the value trigger's field `FOR SHARE` removed: the two-session race fails, `waited` 27 ms;
+  * (B) `OR DELETE` removed from the value trigger: m6 (c) fails;
+  * (F) `normalize(…, NFC)` removed: m2 fails;
+  * (G) `COLLATE pg_c_utf8` removed: m2 fails, because the cluster's collation is C.
+* `pg_c_utf8` needs PostgreSQL 17 or later. Local, `compose.test.yml` (18.3) and CDK RDS (`VER_18_3`) all qualify.
+
+### Round-1 findings
+| # | Fixed? | Fail test |
+|---|---|---|
+| M1 `check_prisma_schema` Owner line | **Yes.** Line 1 is one sentence ending with `Owner: Lead B (platform, P-559).` | `check_prisma_schema` F 8/8 |
+| M2 type/options freeze at RR/SERIALIZABLE | **Yes, via fix (b).** `pf_custom_field_kept` refuses a type or options change when `transaction_isolation <> 'read committed'` (SQLSTATE 55000). Label, position and archive still change at RR. The reverse order (a value writer at RR or SERIALIZABLE after a committed field change) already got a serialization failure from the trigger's `FOR SHARE`. | "break M1 fail" (RR options, SERIALIZABLE type); "break M1 pass" (RR label/order, RC options); a two-session RC race that shows the wait and the refusal (mutation A proves it bites) |
+| m1 untested rules | **Yes.** Now tested: `created_at` on fields and views; `help_text` 300/301; `position` -1; 100/101 options; label and option 80/81; 50/51 columns; value `field_id`/`entity_kind`/`firm_id`/`id`; view `id`/`firm_id`/`created_at`; the value-side lock (two sessions). | The checks listed. The field trigger's `FOR SHARE` on value rows is still untested, but at READ COMMITTED the protection comes from the value-side lock (mutation A), so this is not a finding. |
+| m2 `id` not frozen | **Yes.** Fields, values and views now all freeze `id`. | "review m2 / m1 fail", "value's … id never change", view `id` case |
+| m3 `btrim` ASCII-only | **Yes.** `pf_custom_trim` covers `[:space:]` plus U+00A0, U+1680, U+2000-200B, U+2028/2029, U+202F, U+205F, U+3000 and U+FEFF. It is used for labels, choices, view names and values. | "TEXT" bad cases (`\t\n`, U+00A0, U+200B, U+3000), "break m1 fail" |
+| m4 IMMUTABLE `pf_custom_value_ok` | **Yes.** It is now STABLE and called only from triggers; the comment says so. | (a label, not a behaviour; nothing to test) |
+| Breaker m2, m3, m4, m6 (a)/(c)/(d) | Fixed, each with a fail case. m5 and m6 (b) are documented for part 2 in the value trigger's comment, as round 1 asked (N1, N3). | as listed in the suite |
+
+### New in this round
+**m5 (Minor, Should): the NUMBER round-trip check refuses ordinary JavaScript numbers.**
+* Where: `migration.sql:162`, `x = ((v #>> '{}')::float8)::numeric`.
+* Cause: PostgreSQL's float8 to numeric cast keeps only 15 significant digits (DBL_DIG). The check therefore means "at most 15 significant digits", not "equal to its double reading" as the comment says.
+* Refused on PG 18.3, all of them numbers JS writes and reads back unchanged: `3.141592653589793` (`Math.PI`), `0.30000000000000004` (`0.1 + 0.2`), `1234567890.123456`, `123456789012.3456`.
+* No check in the suite uses a 16-17 digit number, so nothing caught it.
+* Fix (one line): compare through float8's shortest text, `x = ((v #>> '{}')::float8::text)::numeric`. I checked it accepts all four values above, still refuses `0.1234567890123456789` and `9007199254740993`, and `1e-400` still raises and is refused. Add one of these numbers as a "good" NUMBER value.
+* Why not Major: no stored value is wrong and nothing is defeated. It refuses a rare input, and the zod parity test in part 2 (N5) would also have caught it.
+
+**Notes for part 2's zod parity (N5; not findings):**
+* The database counts U+200B as blank, while JS `String.prototype.trim` does not. A value of only U+200B passes zod's `.trim().min(1)` and the database refuses it.
+* The URL host must start with an ASCII letter or digit, so `https://例子.cn` is refused while zod's `.url()` accepts it.
+* EMAIL accepts `.a@b.co` and `a.@b.co`.
+* A field edit made inside a RepeatableRead transaction (for example with an audit line) now fails with 55000 on a type or choices change, so the route must run it at READ COMMITTED.
+* With deletes of an archived field's values refused, a "clear all values of a record" PUT and FO-9b's merge must skip archived fields (N2 now applies to DELETE too).
+* The tests for value `firm_id` and view `firm_id` accept `never change|foreign key`. That is looser than the other checks, but the firm-first gate and the key also refuse the change, so it is not a finding.
+
+### Could not check
+* CI's full run on this head: the `ci` and `regression` jobs show skipped. `module-cards`, `pr-rules` and `guard` are green, and CodeQL (javascript-typescript) was still running.
+
+Reviewer: Approve 05d4820a19ebaec55b54b2551da41bb40eef1207
+
+**Verdict: Approve**
+* Blockers: none. Majors: none open (M1 and M2 fixed with fail tests).
+* Minor to fix (in this PR if cheap, or as the first item in part 2): m5 (the NUMBER round-trip uses the 15-digit cast; compare through `::float8::text`, and add a 16-17 digit good value).
