@@ -156,6 +156,7 @@ try {
   const keptFile = upload4 && existsSync(join(VAR, "front-office-files", sql(`select id from platform_firm where key = 'sample-firm'`).toLowerCase(), "case-documents", person, upload4));
   ok("R1.64 W4: a .pdf-named file whose bytes are not an allowed kind shows PF-F4's words on screen; no plat_file row, no document, no stored file",
     /Allowed here: PDF, JPEG and PNG\./.test(w4.refused ?? "") && /Nothing was stored\./.test(w4.refused ?? "") && fileRows() === files4 && docRows() === docs4 && !keptFile, { refused: w4.refused, files: [files4, fileRows()], docs: [docs4, docRows()], keptFile });
+  ok("R1.64 W4: the refusal is said once (the alert; the status line is empty)", (await w4.page.locator("[data-upload-words]").textContent()) === "", await w4.page.locator("[data-upload-words]").textContent());
   await w4.page.locator(`[data-other-documents="${person}"]`).screenshot({ path: join(SHOTS, "w4-refused-1440.png") });
   await w4.ctx.close();
 
@@ -177,6 +178,10 @@ try {
   }, person);
   ok("R1.64 W5: the Other documents block fits the phone: nothing of it past the right edge", fit.over.length === 0, fit);
   if (fit.page > 0) console.log(`NOTE  W5: the case page scrolls sideways by ${fit.page} px on a Pixel 7, from ${fit.wide.join(", ") || "another element"} (not this row's panel)`);
+  const block5 = w5.page.locator(`[data-other-documents="${person}"]`);
+  ok("R1.64 W5: the current file is marked \"current\"; the earlier one is folded behind \"1 earlier version\" with when it was replaced",
+    /invitation-letter-phone\.pdf .*· current/.test(await block5.locator("[data-other-document][data-current]").innerText()) && (await block5.locator("[data-other-earlier] summary").innerText()).trim() === "1 earlier version"
+    && /· replaced \d/.test(await block5.locator("[data-other-earlier] [data-other-document]").textContent() ?? ""), await block5.innerText());
   await w5.page.locator(`[data-other-documents="${person}"]`).screenshot({ path: join(SHOTS, "w5-pixel7-listed.png") });
   await w5.ctx.close();
 
