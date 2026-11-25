@@ -250,7 +250,10 @@ try {
   const SWEEP: Record<string, Entry> = {
     "RetainersController.read": { read: (c, id) => svc.read(c, id) },
     // FO-6 part 3: a retainer's signing state follows the retainer read (its visibility is svc.read's).
-    "SigningController.state": { read: (c, id) => new SigningController(new Signing(db, new LocalFiles(join(WORK, "files"))), svc).state({ platform: c }, id) },
+    "SigningController.state": { read: (c, id) => new SigningController(new Signing(db, new LocalFiles(join(WORK, "files"))), svc, db as never).state({ platform: c }, id) },
+    // FO-6 part 4c: the firm signer's link follows the retainer read too: any answer past it (409 no live request, 403 not
+    // the representative) means the record was seen; only the read's 404 means it was not.
+    "SigningController.firmLink": { read: async (c, id) => { try { return await new SigningController(new Signing(db, new LocalFiles(join(WORK, "files"))), svc, db as never).firmLink({ platform: c }, id, { consent: true, consentTextVersion: "sign-electronically-v1" }); } catch (e) { if ((e as { getStatus?: () => number }).getStatus?.() === 404) throw e; return true; } } },
     "SalesController.read": { read: (c, id) => leads.read(live(c), id), ids: [L1, L2], expect: LEADS },
     "SalesController.list": { read: async (c, id) => (await leads.list(live(c), "all")).find((l) => l.id === id), ids: [L1, L2], expect: LEADS },
     // FO-2 part 3: prospects follow the leads' table (the representative of a retainer owns no prospect).
