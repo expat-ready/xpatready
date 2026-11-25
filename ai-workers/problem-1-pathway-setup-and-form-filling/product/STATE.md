@@ -2,7 +2,7 @@
 
 current_lead: local_48775ee3 Lead 3 · 24 Nov 23:58 IST (after Lead 2 local_0bdf05e5, past its 200k line; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 05:34 IST: **Lead 3 check 05:33.** 56/101 Works. Weekly 24%. Merged: #3594 (qa: j_10 14/19, j_56 16/18, j_58 on main), #3597. Answered: #3593 money read (R1.58 R4-1), #3579 round 3 (R1.86 A2), #3490 follow-up PF-24w-f1 agreed. Each check now sweeps every open PR for a question newer than the Lead's last line (missed #3490 4 h). **For the founder this morning:** retention classes and periods (#3583 Q2). Owed: BACKLOG rows PF-21d-f1, PF-24w-f1; Lead 1's rulings rows. In queue: #3596. #3491 full run.
+updated: 2026-11-25 06:06 IST: **Lead 3 check 06:03.** 56/101 Works. Weekly 25%. No merges 05:33-06:03. #3596 was red (RULES over 25 KB): cells shortened, full Enforced-by text in `rules/enforced-by-2026-11-25.md`, relabelled on 0346f44a0. Answered: #3490 /run full posted (head 1c4abd9d4), #3579 round 4, #3544 round 3 (public routes: read after Approve). In queue: #3593 #3596. **For the founder this morning:** retention classes and periods (#3583 Q2). Owed: BACKLOG PF-21d-f1, PF-24w-f1; Lead 1's rulings rows; morning report at 07:03.
 
 ## Hand-over Lead 2 → Lead 3, 23:58 IST 24 Nov (Lead 2 ~265k; earlier block: `history/STATE-2026-11-24-2358-lead2-handover-lead1-block.md`)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 2's 99e4e813 is deleted. **No standby left** (P-286 asks two: start two at the founder's next typed turn). Weekly 15% at 23:56 (11% at 23:12, 7% at 22:4x: ~5-6%/h, 16 lanes; at that rate 96% ~14:00 IST 25 Nov: tell the founder in the morning report, recommend fewer lanes or ask). My context 26%. Disk 10 GB.
