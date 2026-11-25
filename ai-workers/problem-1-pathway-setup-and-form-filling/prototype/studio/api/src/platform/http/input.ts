@@ -46,6 +46,11 @@ function words(i: z.core.$ZodIssue): string {
   }
 }
 
+/** PF-28 A2 (R1.10): a per-parse error map, `schema.safeParse(v, { error: plainIssue })`, for a door that builds its own
+ *  answer from each issue's message: a field's own words (set on its schema) still win, and every other issue gets the
+ *  one rule's plain words instead of zod's ("Invalid input: expected boolean, received string"). */
+export const plainIssue = (iss: z.core.$ZodRawIssue): string => (iss.code === "invalid_type" && iss.input === undefined ? "This is required." : words(iss as unknown as z.core.$ZodIssue));
+
 /** The fields of a failed parse, each with its plain words; an unknown field gets "This field is not allowed here." */
 export function fieldsOf(error: z.ZodError): Record<string, string> {
   // Own keys only, so "constructor" or "toString" is named like any other field (break m2); at most 20 fields.
