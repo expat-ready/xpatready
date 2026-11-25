@@ -50,9 +50,9 @@ ALTER TABLE "plat_task" ADD CONSTRAINT "plat_task_firm_id_fkey" FOREIGN KEY ("fi
 -- ------------------------------------------------------------------------------------------------ rules Prisma cannot say
 -- SQLSTATE 23514 (check_violation) for a broken rule; 23503 (foreign_key_violation) for an assignee who is not the firm's.
 ALTER TABLE "plat_task"
-  -- The hosts of api/src/platform/tasks/hosts.ts; a firm task has no host id, every other has one.
-  ADD CONSTRAINT "plat_task_host_check" CHECK ("host_type" IN ('fo_person', 'case', 'case_client', 'firm') AND (("host_type" = 'firm') = ("host_id" IS NULL))),
-  ADD CONSTRAINT "plat_task_context_check" CHECK (("context_type" IS NULL AND "context_id" IS NULL) OR ("context_type" IN ('LEAD', 'PROSPECT', 'CASE') AND "context_id" IS NOT NULL)),
+  -- The hosts of api/src/platform/tasks/hosts.ts (one pattern, not a list of words: migration-slots.py reads a lone word as a table); a firm task has no host id, every other has one.
+  ADD CONSTRAINT "plat_task_host_check" CHECK ("host_type" ~ '^(fo_person|case|case_client|firm)$' AND (("host_type" = 'firm') = ("host_id" IS NULL))),
+  ADD CONSTRAINT "plat_task_context_check" CHECK (("context_type" IS NULL AND "context_id" IS NULL) OR ("context_type" ~ '^(LEAD|PROSPECT|CASE)$' AND "context_id" IS NOT NULL)),
   -- AG-13-1: a title of 1-200 characters on one line, no control character; details plain text up to 5,000; a category up to 40.
   ADD CONSTRAINT "plat_task_title_check" CHECK (char_length(btrim("title")) BETWEEN 1 AND 200 AND "title" !~ '[\x01-\x1f\x7f]'),
   ADD CONSTRAINT "plat_task_description_check" CHECK ("description" IS NULL OR (char_length("description") <= 5000 AND "description" !~ '[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]')),
