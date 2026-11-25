@@ -1,7 +1,8 @@
 // J-45 (map row 45, R1.45: "Firm templates, field picker, preview with a real record"), the acceptance journey for the
 // row. The capability itself landed with R1.46's part (#3179: PF-19s screens with the thin PF-19c part 1 API); this walk
 // proves R1.45's own clauses by screens, as the firm's Owner on an isolated copy (its own database and port, never
-// :4400), with the API and the database read underneath (AG-12-44, -45, -66, -70, -89; SA-05 §3.6.1).
+// :4400), with the API and the database read underneath (AG-12-44, -66, -70, -89; AG-12-45's publish half only: drafts
+// are PF-19c part 2, not built; SA-05 §3.6.1).
 // Done when (CAPABILITIES R1.45), word for word as the steps:
 //   W1 "A template uses only picker fields": the Owner signs in on the sign-in card, reaches Templates from My account's
 //      menu; the Follow-up is "ExpatReady's wording" until the firm publishes (a firm template, AG-12-44); in the editor
@@ -15,7 +16,7 @@
 //      it "not a field"; Publish says "Not published", the message field is aria-invalid and its note names
 //      {{ passport_number }}; nothing stored. The API refuses the same on its field (422), and a typed unknown field in
 //      the subject too. Pass: with the unknown field removed, Publish stores version n+1 holding only picker fields, and
-//      the list then says "Your wording, version n+1" (AG-12-45).
+//      the list then says "Your wording, version n+1" (AG-12-45, its publish half).
 //   W4 1440 px: the editor with a real lead's preview has no sideways scroll and no WCAG 2.2 A/AA violation (axe); no
 //      page error on any page walked.
 //   W5 the walk ends at R1.46's first step (the next item in J3): the message is one plain text box ready to type in.
@@ -92,7 +93,7 @@ const errors: string[] = [];
 const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `j45-${name}.png`), fullPage: true }).catch(() => undefined);
 async function signIn(mail: string): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, colorScheme: "light", reducedMotion: "reduce" });
-  const p = await ctx.newPage(); p.on("pageerror", (e) => errors.push(String(e)));
+  const p = await ctx.newPage(); p.on("pageerror", (e) => errors.push(String(e))); p.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text())) errors.push(`console: ${m.text()}`); });   // a refused 422 or 404 is a step's own check, not an error
   p.on("dialog", (d) => { void (d.type() === "beforeunload" ? d.accept() : d.dismiss()); });
   await p.goto(`${BASE}/account`);
   await p.getByLabel("Firm key").fill("sample-firm"); await p.getByLabel("Work email").fill(mail); await p.getByRole("button", { name: "Sign in" }).click();
@@ -123,10 +124,12 @@ try {
   const hasEditor = await seen(p.locator("[data-template-form]"), 20_000);
   const pick = p.getByLabel("Insert field");
   const offered = hasEditor ? (await pick.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).filter(Boolean) : [];
-  const keys = LEAD_FIELDS.map((f) => f.key);
+  // The lead's fields as the agreed concept lists them (screens/PF-19s-templates/concept.md §5), not read back from the
+  // registry, so a field added to the registry without a decision fails here (review m3).
+  const keys = ["lead_first_name", "lead_full_name", "lead_number", "firm_name", "owner_name"];
   const starter = KIND ? `${KIND.starter.subject}\n${KIND.starter.body}` : "";
-  ok(`J-45 W1: the editor's Insert field list offers exactly the lead's fields from the product's registry (${keys.join(", ")}), none a passport or financial field (SA-5-63), and every field in ExpatReady's starter is one of them (AG-12-70)`,
-    hasEditor && offered.length === keys.length && keys.every((k) => offered.includes(k)) && !offered.some((k) => /passport|bank|card|account|sin\b|income|fund/i.test(k))
+  ok(`J-45 W1: the editor's Insert field list offers exactly the lead's fields the concept agreed (${keys.join(", ")}), the registry's too, none a passport or financial field (SA-5-63), and every field in ExpatReady's starter is one of them (AG-12-70)`,
+    hasEditor && offered.length === keys.length && keys.every((k) => offered.includes(k)) && LEAD_FIELDS.length === keys.length && !offered.some((k) => /passport|bank|card|account|sin\b|income|fund/i.test(k))
       && fieldsIn(starter).length > 0 && fieldsIn(starter).every((f) => keys.includes(f)), { offered, starter: fieldsIn(starter) });
   const v1 = versions(), before = await box(p).inputValue().catch(() => "");
   if (hasEditor) {
@@ -205,7 +208,7 @@ try {
   await until(async () => (await whoseEl.innerText().catch(() => "")) === `Your wording, version ${v3 + 1}`);   // the list may show its last answer first, then refetch
   const whose1 = await whoseEl.innerText({ timeout: 20_000 }).catch(() => "");
   await shot(p, "w3-list-your-wording-1440");
-  ok(`J-45 W3 pass: with the unknown field removed, Publish says "Published: version ${v3 + 1}", the store holds only picker fields, and the list says "Your wording, version ${v3 + 1}" (AG-12-45)`,
+  ok(`J-45 W3 pass: with the unknown field removed, Publish says "Published: version ${v3 + 1}", the store holds only picker fields, and the list says "Your wording, version ${v3 + 1}" (AG-12-45, its publish half)`,
     pub.includes(`Published: version ${v3 + 1}`) && versions() === v3 + 1 && stored === withField && fieldsIn(stored).every((f) => keys.includes(f)) && whose1 === `Your wording, version ${v3 + 1}`,
     { pub, versions: [v3, versions()], whose1 });
 
@@ -215,12 +218,12 @@ try {
   if (await seen(p.locator("[data-preview-find]"), 20_000) && held) {
     await p.locator("[data-preview-find]").fill(`Rahimi${run}`);
     if (await seen(p.locator(`[data-preview-pick*="${held.number}"]`), 15_000)) await p.locator(`[data-preview-pick*="${held.number}"]`).click();
-    await until(async () => (await preview(p)).startsWith(`Dear ${held.first},`));
-    axeBad = (await new AxeBuilder({ page: p }).include("main").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations.map((x) => `${x.id}: ${x.nodes[0]?.target}`);
+    const real = await until(async () => (await preview(p)).startsWith(`Dear ${held.first},`)) && (await p.locator("[data-preview-record]").innerText()).includes(held.number);
+    axeBad = !real ? ["the real lead's preview never showed"] : (await new AxeBuilder({ page: p }).include("main").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations.map((x) => `${x.id}: ${x.nodes[0]?.target}`);
   }
   const fits = await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
   ok("J-45 W4: the editor with a real lead's preview at 1440 px has no sideways scroll and no WCAG 2.2 A/AA violation (axe)", fits && axeBad.length === 0, { fits, axeBad });
-  ok("J-45 W4: no page error on any page walked", errors.length === 0, errors.slice(0, 3));
+  ok("J-45 W4: no page error and no console error on any page walked", errors.length === 0, errors.slice(0, 3));
 
   // ---------------------------------------------------------------------------------------------- W5 R1.46's first step
   const plain = (await p.locator("textarea[data-template-body]").count()) === 1 && (await p.locator('[data-template-form] [contenteditable="true"]').count()) === 0
