@@ -37,7 +37,7 @@ import { AuditDetail } from "../../../../ports/audit.ts";
 import { SYSTEM_ACCESS, SYSTEM_PATH, SystemKeys, SystemReason, SystemStepUp, systemStaffOf, type SystemAccess, type SystemStaffContext } from "../system-identity/keys.ts";
 
 export const IMPERSONATE_KEY = "system/firm:impersonate", SESSION_HEADER = "x-support-session";
-export const STARTED = "platform.support_session.started", REFUSED = "platform.support_session.refused", SESSION_ENTITY = "plat_support_session";
+export const STARTED = "platform.support_session.started", REFUSED = "platform.support_session.refused";   // the lines' entity is the literal "plat_support_session" (check_case_feed reads literals only)
 export const REASON_LIMIT = 200;
 AuditActionNames.register("platform", { [STARTED]: "ExpatReady support started a read-only support session", [REFUSED]: "ExpatReady support was refused an action in a support session" });
 /** SA-2-17's always-blocked actions, as the start answers them (for the banner, PF-6sb); a read-only session refuses every change besides. */

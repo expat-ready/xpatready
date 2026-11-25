@@ -185,3 +185,43 @@ Data: 5 sessions opened (J1, J11b, J14c, J15, the emoji), and every start line's
 Fix that would raise it: one limit and one wording above 500 (plain words).
 
 Not tested: any screen, a screen reader, an intended user's walk (D17 and D20), the firm Owner's view (unchanged in this diff).
+
+---
+
+# Round 5 (head 068d8e3e2; the journeys the diff touches)
+**Setup:**
+* Scratch worktree of the head, `isolated.sh rv5068 4437 start --ttl 20 PLATFORM_SYSTEM_IDENTITY=local` (runtime-lane port, never :4400); stopped afterwards.
+* Script: `scratchpad/tools/journey5.sh`, output in `scratchpad/j5.txt`. Each start is by a new Support person.
+* Still API only.
+
+| # | Journey | Result |
+|---|---|---|
+| J1 | Support starts with a ticket reason | 201 (64 ms) |
+| J14 | The reason names the client by email | 422, "…without an email address…" |
+| J14c | Recovery: "Client A" instead of the email | 201 |
+| Break | A lone surrogate `\uD800` | 422 "The reason holds a broken character. Type it again in plain text. Nothing was opened." (own words now; R4-m1) |
+| Break | A lone surrogate plus `a@b.co` | 422, the broken-character words (that check runs first) |
+| Break | An email split by ZWSP, by a tab, by a BOM, by a newline | 422, the email words, every time |
+| Break | `a@` ZWSP `.co` (cleaned: `a@.co`, no email) | 201, stored as `a@.co` |
+| Break | A valid emoji pair | 201 |
+
+Data: 4 sessions opened (J1, J14c, `a@.co`, the emoji), and every start line's reason equals the register's. No session for any refusal. The API log (`scratchpad/rv5068-api.log`) has no `audit_write_failed` and no 5xx.
+
+## Score (each 0, ½ or 1)
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J1, J14c |
+| Next step obvious | 1 | Each refusal says what to change; J14c succeeds right after |
+| Plain words | ½ | The lone surrogate now has its own words; "at most 500" above 500 is unchanged (R2-S1, outside the round) |
+| Feedback and state | 1 | Every refusal is a 422 with a field message, and nothing was opened |
+| Correct data | 1 | The reason is the same in the register and on the start line |
+| Error recovery | 1 | J14 → J14c |
+| Accessibility and screen sizes | N/A | No screen |
+| Speed | 1 | 33-64 ms per call |
+| Visual quality | N/A | No screen |
+| Trust and sources | 1 | Unchanged |
+
+**7.5 of the 8 criteria that apply = 9.4 / 10: a pass, no criterion at 0.**
+Fix that would raise it: one limit and one wording above 500 (plain words).
+
+Not tested: any screen, a screen reader, an intended user's walk (D17 and D20), the firm Owner's view (unchanged in this diff).

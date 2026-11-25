@@ -290,3 +290,82 @@ Journey (reviewer, round 4): **9.4 / 10, a pass, no criterion at 0** (`journey-t
 Not checked: browser, keyboard, zoom and BIC (no screen); a screen reader; D17 and D20; the full api and web tsc run (12 GB heap; only service.ts and the check, with everything they import).
 
 Reviewer: Changes 82081ec02068072dce40086907bf548be9b0adb9
+
+---
+
+# Round 5 (diff-only, 82081ec02..068d8e3e2, the last round; reviewer, fresh context; the Lead's "diff-only check of the es2023-safe isWellFormed helper line, the zero-width split check and its test, plus a types check")
+
+## Verdict: Ship → **Verdict: Approve** (no open Blocker or Major; one Should, R5-S1, is a test gap only)
+The type error is gone: the full api project has no new type error. The helper is the same form as `ports/files.ts:23`. The split check gives a lone surrogate its own words. Every email split by an invisible character is refused at the head (J-zwsp, J-tab, J-bom, J-nl). But the new test does not catch the check moving to `raw` (R5-S1).
+
+## What I ran
+* PR worktree at 068d8e3e2 (run only; `git status` clean): `check_aud3b_support_session.ts` passes 26/0 (`scratchpad/r5_head.log`).
+* Scratch worktree of the head (`scratchpad/r5wt`, packages linked; the PR worktree untouched):
+  * **Types, scoped:** `api/tsconfig.r5.json` (extends `api/tsconfig.json`; files = `support-session/service.ts`, `features/platform-support-session.ts`, `tests/check_aud3b_support_session.ts`; 102 files with imports). tsc gives 0 errors. `typecheck.mjs --project api=…tsconfig.r5.json` gives `PASS no new type errors`. Sanity check: putting back round 4's `reason!.isWellFormed()` gives TS2550 at `service.ts:69`, so the config does catch it.
+  * **Types, full:** `NODE_OPTIONS=--max-old-space-size=12288 node product/tools/typecheck.mjs --project api=prototype/studio/api/tsconfig.json` gives `tsc api: 1533 source file(s), 15 error(s) in files … PASS no new type errors (15 known, 0 fixed)` in 204 s (`scratchpad/r5_typecheck_full12.txt`). With 8 GB it ran out of heap (`r5_typecheck_full.txt`). **R4-M1 is fixed.**
+  * Mutations (`scratchpad/r5mut.py`, `r5mut-out.txt`), each reverted.
+  * The API journeys on the full app (`isolated.sh rv5068 4437`, the runtime-lane port, stopped afterwards; `journey-test-reviewer-2026-11-25.md`, Round 5).
+
+## The helper and the split (service.ts:49-50, 69-70)
+* `service.ts:50` has the same form as `ports/files.ts:23` (same cast, `.call`). Node 24 has the method at runtime, and the emoji pair gives 201.
+* `service.ts:69`: a lone surrogate gets "The reason holds a broken character. Type it again in plain text. Nothing was opened." Its field says "Plain text only: a character in it is broken." This runs before the email check, so a lone surrogate plus an email gets the broken-character words. Both are 422, and nothing is opened. **R4-m1 is fixed.**
+* `service.ts:70`: the AuditDetail check reads the cleaned `reason`, as before.
+
+## Mutations (scratch, each reverted)
+| Mutation | Result |
+|---|---|
+| `isWellFormed` check dropped | **Killed** (`lone`: 500) |
+| AuditDetail check dropped | **Killed** (`email` and `hidden`: 500) |
+| AuditDetail reads `raw`, not the cleaned `reason` | **Survived, 26/0** (R5-S1) |
+| The same mutation with the test's ZWSP changed to a tab (`client.a@\tsample-firm.example`) | Killed (`hidden`: 500, the round-3 failure). Unmutated: 26/0 |
+
+## Issues (ranked)
+1. **Should, R5-S1: the zero-width test cannot tell `raw` from the cleaned reason.**
+   * Where: `tests/check_aud3b_support_session.ts:124`.
+   * Why: `EMAILISH` (`ports/audit.ts:16`) is `[^\s@]+@[^\s@]+\.[^\s@]+`. U+200B is not `\s`, so it is just one more character of the email. `client.a@​sample-firm.example` is an email both before and after cleaning, so the `raw` check refuses it too.
+   * The case that does differ: an invisible character that `\s` covers and `lineText` strips. These are tab, newline, CR, VT, FF and U+FEFF. Raw, these break the email. Cleaned, the email joins up again.
+   * Correction to round 4: E8 (`a@` ZWSP `b.co`) was not that case either. The R4-S1 scenario holds for a tab or a BOM, not for a ZWSP.
+   * Fix: use `\t` (or `﻿`) in place of `​`, or add it beside it. I checked that this kills the mutation, so this is a one-line change.
+   * The head itself is right: J-tab, J-bom and J-nl give 422.
+2. Not a finding, noted: in `raw` form, `a@​.co` would be refused while its cleaned text `a@.co` is no email. The head checks the cleaned text, so it gives 201, and the start line equals the register.
+
+Round-4 findings: **R4-M1 fixed** (types, scoped and full). **R4-m1 fixed** (own words). **R4-S1 partly fixed**: a test was added, but it does not catch the mutation (R5-S1).
+
+Outside the round, not findings: R2-S1 ("at most 500" above 500, unchanged); the guard's own reason handling; other routes that put free text into AuditDetail.
+
+## D1-D20 changes from round 4 (the rest unchanged)
+| D | Score | Evidence |
+|---|---|---|
+| D10 | 4 | A lone surrogate now gets its own words. "At most 500" remains above 500 (R2-S1, outside the round). |
+| D16 | 4 | The type check is clean (full api project). Dropping either check is killed. The `raw` mutation survives (R5-S1). |
+
+Journey (reviewer, round 5): **9.4 / 10, a pass, no criterion at 0** (`journey-test-reviewer-2026-11-25.md`, Round 5).
+
+Not checked: browser, keyboard, zoom and BIC (no screen); a screen reader; D17 and D20; the web tsc project (not in this diff).
+
+Reviewer: Approve 068d8e3e2d402e7cab8d4ff10ba776d69f2c5264
+
+# Round 6 (diff-only, 068d8e3e2..485e04b71; reviewer, fresh context; the Lead's "round 6: diff-only check of 068d8e3e2..485e04b71 (the literal audit entity at two calls)")
+
+## Verdict: Ship → **Verdict: Approve** (no open Blocker or Major in this diff)
+
+Round 5 approved 068d8e3e2. CI's `fast` job then failed on that commit: `check_case_feed.ts` reported `platform/support-session/service.ts:80` and `:98` as "entity SESSION_ENTITY is dynamic and not known to this check: list its values". This round checks only the 2-line fix.
+
+## What I ran (head 485e04b715735ae04ed78d8c3e037516d1ce6ed1, confirmed with `git rev-parse HEAD`; worktree clean)
+* The diff: `entity: SESSION_ENTITY` becomes `entity: "plat_support_session"` on the start line (`service.ts:80`) and the refusal line (`:98`). Nothing else changed.
+* Same value: `service.ts:40` still declares `SESSION_ENTITY = "plat_support_session"`, so the literal is byte-identical. The stored `entity` on both lines is unchanged, and no test or fixture needed to change (`check_aud4_firm_log.ts:103` already uses the literal).
+* `check_case_feed.ts`: **42/42 passed** (461 entity uses, 70 naming a case).
+* Mutations in a scratch worktree at the head (never the PR worktree; removed afterwards):
+  * `:98` put back to `SESSION_ENTITY` gives **41/42**, with `FAIL ... service.ts:98 (entity SESSION_ENTITY is dynamic ...)`.
+  * `:80` put back on its own gives **41/42**, with the same failure at `:80`.
+  * So each literal is load-bearing for the sweep.
+* `check_aud3b_support_session.ts`: **26 passed, 0 failed** on Postgres 127.0.0.1:54329. The cluster was down and I started it with the 18 `pg_ctl` as the `postgres` user. This includes SS3 "each refusal wrote one platform.support_session.refused line ... under the session".
+* `SESSION_ENTITY` is now unused. A grep of `studio/` (`*.ts`, `*.tsx`, no node_modules) finds only its declaration at `service.ts:40`. It is `export`ed, so `tsc` does not flag it (unused-locals rules ignore exports). The studio has no ESLint, knip or unused-export check, and CI's type job is `typecheck.mjs`.
+* `typecheck.mjs` (12 GB heap) here reports 8 errors. All 8 are `TS2307` (missing `ajv` / `@anthropic-ai/sdk`) or follow from them, in `contracts/` and `p2/`. The `prototype/env/node` packages are not installed in this session. None is in `support-session` or caused by this diff.
+
+## Issues
+1. **Nit, R6-n1: `SESSION_ENTITY` is now a dead export** (`service.ts:40`). It no longer names the entity anywhere, so a later edit to it would silently change nothing. Either drop it or add a one-line comment that the audit calls use the literal because `check_case_feed.ts` reads only literal entities. It breaks no check. Not blocking.
+
+Not checked: anything outside this diff, including the rest of CI (`fast` is expected to pass now, since the reported sweep is green); the journey (this diff does not change behaviour, so the round-4 score of 9.4 / 10 stands).
+
+Reviewer: Approve 485e04b715735ae04ed78d8c3e037516d1ce6ed1
