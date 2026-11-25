@@ -65,3 +65,21 @@ The round-1 journeys were replayed with J-64 W1 to W6 plus the staff-door suite 
 | Trust and sources | 1 | unchanged |
 
 **Score 9.5 / 10, pass.** Fix first: R2-1, so the scripted replay is reliable. Not tested: a real screen reader, and an unaided walk by an intended user (D17/D20 stay with the founder).
+
+## Round 3 (diff-only, 7bfe76ab)
+J-64 W1 to W6 were replayed as committed, twice: 16/16 both times. The file-chooser race (R2-1) is gone. While an upload is busy, the Add button now looks greyed (`w5-pixel7-paused.png`). A probe shows that the W6 helper hides a focus loss that happens after the sign-in check (review R3-1, Minor, test strength only). The product's focus is right: `focusAfterSignIn` and `focusAfterUpload` are both true.
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | W1, W5, W6 (keyboard), 2 of 2 runs |
+| Next step obvious | 1 | unchanged |
+| Plain words | 1 | unchanged; the Read-only words were shown in both runs |
+| Feedback and state | 1 | Add is greyed while busy, next to "Upload paused: reconnecting" (R2-2 closed) |
+| Correct data | 1 | unchanged (W1, W2, W4 underneath) |
+| Error recovery | 1 | unchanged |
+| Accessibility and screen sizes | 1 | focus back on Add after sign-in and after upload; axe 0 at 1024 px; the busy label is 3.9:1, as an inactive control (R3-2 Nit) |
+| Speed | 1 | unchanged |
+| Visual quality | 1 | the house greyed look (`start-setup.tsx:39`) |
+| Trust and sources | 1 | unchanged |
+
+**Score 10 / 10, pass.** Fix first: R3-1, so W6 also turns red when focus drifts off Add. Not tested: a real screen reader, and an unaided walk by an intended user (D17/D20 stay with the founder).

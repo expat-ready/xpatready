@@ -88,3 +88,34 @@ The screenshots j_64 rewrote are restored with `git checkout`. Someone else chan
 **#3640, commit 38ddab45 (the rail part: `rail.ts`, `doors.ts`, `check_pff2_uploads.ts`, identical at this head):** no Blocker or Major. Minors R2-3 and R2-5 are follow-ups. My verdict on that commit is **Approve** for #3640. R2-1 is in `j_64.ts`, not in that commit.
 
 Verdict: Changes cba94bbbe5926f683f47114fcfda786a96dd4ac4
+
+## Round 3 (diff-only, 7bfe76ab)
+
+**Verdict: Approve.** R2-1 and R2-2 are closed. Nothing new is Blocker or Major. Commit reviewed: `7bfe76abce802735ed8ab5b68ccf9bbbd8c8c609`. Diff read: `git diff cba94bbbe 7bfe76abc -- ':!*.md'` (`j_64.ts` and `other-documents.tsx`; de30e67b holds records only). Reviewer: the same independent session role (not the builder). **Journey score: 10 / 10, pass** (round 3 in `journey-test-reviewer-2026-11-25.md`).
+
+### Round-2 findings
+| Finding | Status | Evidence |
+|---|---|---|
+| R2-1 (Major): W6 file-chooser race | **Closed** | `enterOnAdd` (`j_64.ts:206-211`) arms `waitForEvent("filechooser")` before `add6.press("Enter")`, at both former `Promise.all` sites (`:214`, `:228`). As committed, J-64 passed 16/16 in 2 of 2 runs (round 2: 0 of 2). The W6 keyboard check reads `focusAfterSignIn` (`:212`) before the helper runs, and it is still in the `ok` (`:219`). So a sign-in that leaves focus off Add still fails W6. The helper presses Enter, a key, not a click. The focus that `locator.press` gives is the same programmatic focus `signInByKeys` already uses (`:197`). |
+| R2-2 (Minor): Add looks enabled while busy | **Closed** | `cn(…, busy && "cursor-not-allowed opacity-60")` (`other-documents.tsx:55`). This is the house look for a greyed non-primary button (`start-setup.tsx:39`, `activity-log-page.tsx:184`, `add-to-structure.tsx:48`). `w5-pixel7-paused.png`, rewritten by my run, shows Add faded beside "Upload paused: reconnecting". The name stays readable. |
+| R2-3, R2-4, R2-5 | **Carried** | Follow-ups, as agreed in round 2. This diff does not touch them. |
+
+### New findings, worst first
+1. **R3-1 Minor (test strength): the helper hides a focus loss that happens after the sign-in check.** Its first wait (`j_64.ts:208`) swallows its own 10 s timeout (`.catch(() => undefined)`). Then `add6.press` puts focus back on Add. Probe (a scratch copy, deleted): after `focusAfterSignIn` passed, I blurred focus to `<body>` before `enterOnAdd`. W6 still passed 16/16, after a silent 10,024 ms wait. The round-2 code would have failed there, because Enter on `<body>` opens no chooser. The check named in W6 is still made at its moment. Only a later drift (for example a late re-render that takes focus) goes unseen. Fix, one line: keep the wait's result (`const ready = await p6.waitForFunction(…).then(() => true, () => false)`), return it, and add it to the W6 `ok`. Or press with `p6.keyboard.press("Enter")` once `ready` is true. The waits are bounded: 10 s, then 60 s (W6) or 15 s (Read only). A missing chooser at W6 throws, and the run exits non-zero.
+2. **R3-2 Nit (contrast while busy, within the rule):** at `opacity-60` on white, the label is #818181, 3.9:1 (13.8:1 when idle). The focus ring is 30 % blue, 1.6:1 (2.3:1 when idle). WCAG 1.4.3 and 1.4.11 exempt an inactive control. EXPERIENCE.md #12 ("4.5:1 contrast") reads with that WCAG exemption, as the house precedents above do. In dark mode it is about 6:1. axe in W6 runs on the idle state, so it does not check this. If the team wants the busy label at 4.5:1, `aria-disabled:text-text-muted` on a solid surface (the primary's DV-d1-4 look) would meet it. This is not required.
+
+**Regression:** none found. The product change is class names only. `aria-disabled`, the `onClick` guard and focus handling are unchanged. `cn` is imported from `@/lib/utils`, as elsewhere. `npx tsc -p studio/web --noEmit`: exit 0.
+
+### What I ran (isolated copy j64 on 4434, never :4400; US$0)
+| Run | Result |
+|---|---|
+| `journeys/j_64.ts` j64 4434, as committed (header line), run 1 | exit 0, 16/16 |
+| the same, run 2 | exit 0, 16/16 |
+| probe: a scratch copy of j_64 with focus blurred to `<body>` before `enterOnAdd` (file deleted) | exit 0, 16/16, a 10,024 ms silent wait (R3-1) |
+| `npx tsc -p studio/web --noEmit` | exit 0 |
+
+The screenshots the runs rewrote are restored with `git checkout -- '*.png'`.
+
+**Not checked:** a real screen reader; the full CI; dark-mode screenshots of the busy state.
+
+Verdict: Approve 7bfe76abce802735ed8ab5b68ccf9bbbd8c8c609
