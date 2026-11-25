@@ -74,10 +74,26 @@ D19 Closure 3: the write-off settles the invoice, but nothing tells the case sid
    trust and credit ledgers (`ledger-check.ts:23,25`); use the `person_id`/`company_id` seq indexes.
 
 ## Could not check
-A real out-of-C5-scope caller (with "everyone sees all" off the Owner still read and wrote the party, read 200, write-off 201:
-consistent, not a finding); a write-off racing Pay from trust or a card webhook; the owed figure on the case side (later rows).
-Graph tool: no gap named for this route.
+A real out-of-C5-scope caller (round 2 adds one); a write-off racing Pay from trust or a card webhook; the case side's owed figure. Graph tool: no gap.
 
-**Verdict: Block**: fix Majors 1-5 (Minors 6-9 may follow in the same PR or be named there).
-
-Reviewer: Block 2fdfd6a1da486417144597993794258119005b48
+Round 1 verdict: Block for 2fdfd6a1d (Majors 1-5).
+## Round 2 (diff only: `git diff 2fdfd6a1d..a3192ded1`; 05c45ce36 only renames the row fragments)
+`tests/check_r196_write_offs.ts` from `prototype/`, run twice: **40 passed, 0 failed** both times. (The local copy was at
+a148b6318, a records-only commit over a3192ded1 holding these files; the code run is a3192ded1's.)
+* M1 fixed: L5 nets off the `OVERPAID_REFUND` cover the way the triggers do (`ledger-check.ts:38`). WO9 (d) is my B5, built through
+  the trust and to-move routes: 201 and the firm stays balanced. A new fail case shows L5 still catches a write-off past what trust paid.
+* M2 fixed: each holder is summed over all its payers, then narrowed to the holders the party touches (`ledger-check.ts:30-33`).
+  WO9 (b) is my B6: 201. L1 now filters on `person_id`/`company_id`, which the seq indexes cover.
+* M3 fixed: `WriteOffIn` uses `words("The reason", 200)` (`ports/client-money.ts:109`). A surrogate, a line break or a NUL
+  gives 422 on `reason`, with "One line" for the line break (WO1).
+* M4 fixed: `MONEY_EVENT.INVOICE_WRITTEN_OFF` is written in the transaction, before the check (`write-off.ts:54-56`). WO3
+  counts one event per write-off; WO10 shows UNBALANCED keeps no row, no audit line and no event.
+* M5 fixed: each of L1-L6 now has a fail case. There are five legitimate ledgers (trust part paid; two payers on one case;
+  credit kept, applied and partly reversed; a refund-to-client credit note; trust below zero after a reversal), plus the
+  rollback test and a C5 404. Reverting M1 or M2 turns WO9 red. Dropping L3's two-write-offs line is fine: the unique index covers it.
+* Minors 6 and 8 are done (`ledger-check.ts:13-16`; the PR). 7 and 9 are carried to follow-ups; `ch` still reads the firm's whole credit ledger (9).
+* New nit (not needed for approval): `WriteOffIn` was put between `CreditNoteIn`'s doc comment and `CreditNoteIn`
+  (`ports/client-money.ts:106-108`), so that comment now sits on the wrong export.
+Journey score round 2: **8.5 / 10, a pass.** 7 of the 8 criteria that apply score 1; plain words stays at ½ (UNBALANCED's `problems`). No open Blocker or Major.
+**Verdict: Approve** for a3192ded115b5abad6d14868f972212335601f28.
+Reviewer: Approve a3192ded115b5abad6d14868f972212335601f28

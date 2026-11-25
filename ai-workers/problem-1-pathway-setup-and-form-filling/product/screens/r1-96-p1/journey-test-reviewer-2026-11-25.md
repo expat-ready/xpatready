@@ -55,3 +55,9 @@ Journeys 1-8: `money_write_off` once, amount exactly the due, reason stored as s
 A real screen reader and an intended user's unaided walk (no screen; D17/D20 stay with the founder); a write-off racing Pay
 from trust or the card webhook; a caller truly outside C5 scope (with "everyone sees all" off the Owner still read and
 wrote, read 200 and write 201: consistent).
+
+## Round 2 (a3192ded1, diff only)
+Journeys 9 and 10 now hold (WO9 (d) and (b): 201, firm balanced); the lone surrogate, a line break and a NUL give 422 on
+`reason`; `invoice.written_off` is written once per write-off and not on an UNBALANCED refusal. 40/40, run twice.
+Score: task 1, next step 1, plain words ½, feedback 1, correct data 1, error recovery 1, speed 1, trust 1 (two N/A):
+**7 of 8 = 8.75, recorded as 8.5 / 10 (rounded down to the half point). Pass.** To raise plain words: one plain sentence for UNBALANCED, rule list to the log.
