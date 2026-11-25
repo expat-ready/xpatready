@@ -76,7 +76,7 @@ export class PreparedRequests {
       await tx.moneyTrustRequest.update({ where: { firmId_id: { firmId: f, id: rid } }, data: { sentAt: this.clock.now(), sentBy: by } });
       const [sent] = await tx.$queryRaw<{ number: string; sentAt: Date }[]>`select number, sent_at as "sentAt" from money_trust_request where firm_id = ${f}::uuid and id = ${rid}::uuid`;
       const total = r.amount + (r.tax ?? 0);
-      await this.audit.record(tx, { firmId: f, actor: by, action: "trust.request_sent", entity: "money_trust_request", entityKey: rid,
+      await this.audit.record(tx, { firmId: f, actor: by, action: "trust_money.request_sent", entity: "money_trust_request", entityKey: rid,
         summary: `Deposit request ${sent.number} sent: ${r.currency} ${MONEY(total)} including ${MONEY(r.tax ?? 0)} estimated tax.`,
         detail: { trustRequestId: rid, retainerVersionId: r.version }, before: { status: "Prepared", number: null }, after: { status: "Sent", number: sent.number, totalMinor: total } });
       return { ...r, ...sent, details, total };
@@ -100,7 +100,7 @@ export class PreparedRequests {
       this.mustBePrepared(r);
       if (r.amount === a.amountMinor && (r.tax ?? 0) === a.estimatedTaxMinor) return { id: rid, status: "Prepared", amountMinor: r.amount, estimatedTaxMinor: r.tax ?? 0, changed: false };
       await tx.moneyTrustRequest.update({ where: { firmId_id: { firmId: f, id: rid } }, data: { amountMinor: a.amountMinor, estimatedTaxMinor: a.estimatedTaxMinor } });
-      await this.audit.record(tx, { firmId: f, actor: by, action: "trust.request_amount_edited", entity: "money_trust_request", entityKey: rid,
+      await this.audit.record(tx, { firmId: f, actor: by, action: "trust_money.request_amount_edited", entity: "money_trust_request", entityKey: rid,
         summary: `Deposit request amount edited: ${r.currency} ${MONEY(r.amount)} + ${MONEY(r.tax ?? 0)} → ${MONEY(a.amountMinor)} + ${MONEY(a.estimatedTaxMinor)} estimated tax.`,
         detail: { trustRequestId: rid }, before: { amountMinor: r.amount, estimatedTaxMinor: r.tax ?? 0 }, after: { amountMinor: a.amountMinor, estimatedTaxMinor: a.estimatedTaxMinor } });
       return { id: rid, status: "Prepared", amountMinor: a.amountMinor, estimatedTaxMinor: a.estimatedTaxMinor, changed: true };

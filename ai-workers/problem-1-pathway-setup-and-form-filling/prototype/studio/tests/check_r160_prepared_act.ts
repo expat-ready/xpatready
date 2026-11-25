@@ -144,7 +144,7 @@ try {
   const read1 = await call(tR, "GET", `/requests/${s1.q}`);
   ok("R1.60 case 8 pass: the request now reads Sent with its number; a second Send → 409 ALREADY_SENT",
     read1.body.status === "Sent" && read1.body.number === "DR-0001" && (await call(tR, "POST", `/requests/${s1.q}/send`)).body.code === "ALREADY_SENT", read1);
-  ok("R1.60 case 8 pass (R16): one trust.request_sent audit line by the Owner", count("audit_event", `action = 'trust.request_sent' and entity_key = '${s1.q}' and actor = 'staff:${R.staffId}'`) === 1);
+  ok("R1.60 case 8 pass (R16): one trust.request_sent audit line by the Owner", count("audit_event", `action = 'trust_money.request_sent' and entity_key = '${s1.q}' and actor = 'staff:${R.staffId}'`) === 1);
 
   // ------------------------------------------------------------- review a1 m5: Paid counts the estimated tax
   const dep = (amountMinor: number) => call(tR, "POST", "/deposits", { personId: s1.personId, trustRequestId: s1.q, method: "BANK_TRANSFER", amountMinor, currency: "CAD", idempotencyKey: `r160a2-${amountMinor}-${randomUUID().slice(0, 8)}` });
@@ -162,7 +162,7 @@ try {
   const ed = await call(tR, "PUT", `/requests/${s2.q}/amount`, { amountMinor: 120000, estimatedTaxMinor: 15600 });
   ok("R1.60 case 10 pass (R10): Edit amount while prepared stores the new figures with one audit line naming before and after",
     ed.status === 200 && ed.body.changed === true && sql(`select amount_minor || ':' || estimated_tax_minor from money_trust_request where id = '${s2.q}'`) === "120000:15600"
-      && sql(`select detail::text from audit_event where action = 'trust.request_amount_edited' and entity_key = '${s2.q}'`) .includes("120000"), { ed, detail: sql(`select detail::text from audit_event where action = 'trust.request_amount_edited' and entity_key = '${s2.q}'`) });
+      && sql(`select detail::text from audit_event where action = 'trust_money.request_amount_edited' and entity_key = '${s2.q}'`) .includes("120000"), { ed, detail: sql(`select detail::text from audit_event where action = 'trust_money.request_amount_edited' and entity_key = '${s2.q}'`) });
   const bad10 = await Promise.all([call(tR, "PUT", `/requests/${s2.q}/amount`, { amountMinor: 0, estimatedTaxMinor: 0 }), call(tR, "PUT", `/requests/${s2.q}/amount`, { amountMinor: 10.5, estimatedTaxMinor: 0 }),
     call(tR, "PUT", `/requests/${s2.q}/amount`, { amountMinor: 100, estimatedTaxMinor: -1 }), call(tR, "PUT", `/requests/${s2.q}/amount`, { amountMinor: 100, estimatedTaxMinor: 0, currency: "USD" }), call(tR, "PUT", `/requests/${s1.q}/amount`, { amountMinor: 100, estimatedTaxMinor: 0 })]);
   ok("R1.60 case 10 fail: a zero, a fraction, a negative tax or a currency → 422; a sent request (DR-0001) → 409 SENT; nothing changed",
