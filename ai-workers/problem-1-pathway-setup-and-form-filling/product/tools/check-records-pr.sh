@@ -83,4 +83,10 @@ fresh 5 5; echo x >> "$Q/STATE.md"; git -C "$C" commit -qam rec; run
 ok "commits ahead and no change in the tree: pushes and opens the PR" "$([ "$rc" = 0 ] && [ "$(pushed)" = 1 ] && [ "$(posts)" = 1 ] && echo 1)" "$o"
 fresh 5 5; git -C "$C" checkout -q -b 'lead/x&state=closed'; echo x >> "$Q/STATE.md"; run --dry-run
 ok "a branch name with & and =: encoded in the PR read" "$(grep -qF 'head=expat-ready%3Alead%2Fx%26state%3Dclosed&per_page=5' "$T/calls" && echo 1)" "$(cat "$T/calls")"
+fresh 5 5; mkdir -p "$Q/qa"; git -C "$C" mv "$Q/STATE.md" "$Q/qa/S.md"; run
+ok "a record moved with git mv (staged): both sides committed" "$([ "$rc" = 0 ] && git -C "$C" show --no-renames --name-status HEAD | grep -qP "^D\t$P/STATE.md" && git -C "$C" show --no-renames --name-status HEAD | grep -qP "^A\t$P/qa/S.md" && [ "$(clean)" = 1 ] && echo 1)" "$o"
+fresh 5 5; git -C "$C" rm -q "$Q/STATE.md"; run
+ok "a record removed with git rm (staged): the deletion is committed" "$([ "$rc" = 0 ] && git -C "$C" show --no-renames --name-status HEAD | grep -qP "^D\t$P/STATE.md" && [ "$(clean)" = 1 ] && echo 1)" "$o"
+fresh 5 7 6 7; sed -i '1s/.*/# R as of **P-5** - earlier: history\/RULES-old.md/' "$Q/RULES.md"; git -C "$C" commit -qam shape; run --dry-run --as-of P-7
+ok "a first line with neither ; nor ) after the as-of: its end is kept" "$(grep -qE 'RULES first line: # R as of \*\*P-7\*\*, [0-9]{1,2} [A-Z][a-z]{2} [0-9:]{5} IST - earlier: history/RULES-old.md$' <<<"$o" && echo 1)" "$o"
 finish

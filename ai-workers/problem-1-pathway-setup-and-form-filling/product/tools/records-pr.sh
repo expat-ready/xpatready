@@ -54,8 +54,9 @@ if [ -n "$ASOF" ]; then
   if [ "$to" = "$old" ]; then say "note: RULES.md is already as of P-$old; its first line is left as it is"; else
   [ -n "$newest" ] && [ "$to" -gt "$newest" ] && refuse "--as-of P-$to is above DECISIONS.md's newest row, P-$newest"
   stamp="$(TZ=Asia/Kolkata date '+%-d %b %H:%M') IST"
-  # only "as of **P-n**[, <time up to the next ; or )>]" changes; the rest of the line stays as the Lead wrote it
-  new1=$(printf '%s\n' "$line1" | sed -E "s/as of \*\*P-[0-9]+\*\*([, ][^;)]*)?/as of **P-$to**, $stamp/")
+  # only "as of **P-n**" and the time right after it ("[,] 25 Nov 10:3x[ IST]", else a lone comma) change; the rest of
+  # the line stays as the Lead wrote it (#3693 review, round 2: a looser pattern ate the line's end)
+  new1=$(printf '%s\n' "$line1" | sed -E "s/as of \*\*P-[0-9]+\*\*(,? [0-9]{1,2} [A-Z][a-z]{2} [0-9]{1,2}:[0-9][0-9x]( IST)?|,)?/as of **P-$to**, $stamp/")
   # rows between the old and the new number that RULES.md does not name, alone or inside "P-a to P-b"
   n=$((old + 1)); while [ "$n" -le "$to" ]; do
     if ! grep -qE "P-$n([^0-9]|$)" "$R" && ! grep -oE 'P-[0-9]+ (to|-) P-[0-9]+' "$R" | awk -v n="$n" '{ split($0, a, /[^0-9]+/); if (a[2] + 0 <= n && n <= a[3] + 0) f = 1 } END { exit !f }'; then
@@ -105,7 +106,10 @@ say "check-docs.sh: OK"
 # 4. commit, push, open or update
 if [ "${#recs[@]}" -gt 0 ]; then
   # --only: exactly these paths, whatever else the Lead had staged (a staged tool stays staged, never committed here)
-  git --literal-pathspecs add -A -- "${recs[@]}" && git --literal-pathspecs commit -q --only -m "$TITLE" -m "records-pr.sh: ${#recs[@]} record file(s); RULES as of P-$to, lag $lag (P-440); check-docs OK." -- "${recs[@]}" || { say "git commit failed"; exit 1; }
+  # git add only what is still on disk (a record already removed by git rm or git mv is gone from both the index and the
+  # tree, and git add would refuse it); commit --only takes every path, deletions included (#3693 review, round 2)
+  adds=(); for f in "${recs[@]}"; do [ -e "$f" ] || [ -L "$f" ] && adds+=("$f"); done
+  { [ "${#adds[@]}" = 0 ] || git --literal-pathspecs add -A -- "${adds[@]}"; } && git --literal-pathspecs commit -q --only -m "$TITLE" -m "records-pr.sh: ${#recs[@]} record file(s); RULES as of P-$to, lag $lag (P-440); check-docs OK." -- "${recs[@]}" || { say "git commit failed"; exit 1; }
   say "committed $(git rev-parse --short HEAD): ${#recs[@]} file(s)"
 fi
 git push -q -u origin "$BR" 2>&1 | sed 's/^/  /'; [ "${PIPESTATUS[0]}" = 0 ] || { say "git push failed: the commit is local only; push again before stopping (P-557)"; exit 1; }
