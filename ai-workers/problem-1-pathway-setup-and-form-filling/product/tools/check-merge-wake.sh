@@ -60,7 +60,7 @@ printf '#!/bin/sh\n[ -n "${GHFAIL:-}" ] && { echo "HTTP 403" >&2; exit 1; }\nech
 runp() { : > "$T/posts"; printf '[%s]' "$(IFS=,; echo "$*")" > "$T/p.json"; o=$(MERGE_WAKE_GH="$T/gh" python3 -I "$TOOLS/merge-wake.py" --prs "$T/p.json" --repo "$R" --app-view "$T/av" --now "${PNOW:-$NOW}" --post --state "$T/ps" 2>&1); }
 posts() { grep -c . "$T/posts"; }; hp() { grep -qF -- "$1" <<<"$o"; }
 P=$(pr 207 c/waits 'Waits on: #101'); rm -rf "$T/ps"
-runp "$X" "$P"; ok "post: the wake is a comment on the waiting PR, no ACT, said" "$([ "$(posts)" = 1 ] && grep -q '^pr comment 207 --body \*\*Wake on merge (OS-49, lead-watch):\*\* #101 is on main: merge main once and go on with #207' "$T/posts" && [ "$(acts)" = 0 ] && hp 'wake comment posted on the PR' && echo 1)" "$o $(cat "$T/posts")"
+runp "$X" "$P"; ok "post: the wake is a comment on the waiting PR, no ACT, said" "$([ "$(posts)" = 1 ] && grep -qF 'api -X POST repos/{owner}/{repo}/issues/207/comments -f body=**Wake on merge (OS-49, lead-watch):** #101 is on main: merge main once and go on with #207' "$T/posts" && [ "$(acts)" = 0 ] && hp 'wake comment posted on the PR' && echo 1)" "$o $(cat "$T/posts")"
 runp "$X" "$P"; ok "post: the next check posts nothing and says it waits" "$([ "$(posts)" = 0 ] && [ "$(acts)" = 0 ] && hp 'woken by a PR comment' && echo 1)" "$o"
 PNOW=$((NOW + 3700)) runp "$X" "$P"; ok "post: not taken 60 min after the post is an ACT with the words, no second post" "$([ "$(posts)" = 0 ] && [ "$(acts)" = 1 ] && hp 'has not merged #101 yet' && echo 1)" "$o"
 rm -rf "$T/ps"; GHFAIL=1 runp "$X" "$P"; ok "post: a failed post is the ACT, and not remembered" "$([ "$(acts)" = 1 ] && hp 'ACT   wake (posting the wake on #207 failed: HTTP 403): #101 on main' && echo 1)" "$o"
@@ -70,4 +70,16 @@ runp "$X" "$(pr 210 late 'Waits on: #101')"; ok "post: a branch that holds main 
 runp "$X"; ok "post: a closed PR leaves the memory" "$(python3 -c 'import json,sys; sys.exit(0 if "207:#101" not in json.load(open(sys.argv[1])) else 1)' "$T/ps/merge-wake.json" && echo 1)" "$(cat "$T/ps/merge-wake.json")"
 echo '{broken' > "$T/ps/merge-wake.json"; runp "$X" "$P"; ok "post: an unreadable memory is rebuilt and said; the wake is posted" "$([ "$(posts)" = 1 ] && hp 'memory unreadable' && echo 1)" "$o"
 o=$(python3 -I "$TOOLS/merge-wake.py" --prs "$T/p.json" --repo "$R" --app-view "$T/av" --now "$NOW" --post 2>&1); ok "post: --post with no --state is an ACT, nothing posted" "$(hp 'ACT   wake: not read' && echo 1)" "$o"
+printf '#!/bin/sh\necho "$@" >> "%s/posts"\nsleep 70\n' "$T" > "$T/ghslow"; chmod +x "$T/ghslow"
+rm -rf "$T/ps"; : > "$T/posts"; printf '[%s]' "$X,$P" > "$T/p.json"; o=$(MERGE_WAKE_GH="$T/ghslow" timeout 120 python3 -I "$TOOLS/merge-wake.py" --prs "$T/p.json" --repo "$R" --app-view "$T/av" --now "$NOW" --post --state "$T/ps" 2>&1)
+ok "post: a post with no answer in 60 s is an ACT, remembered (it may have landed)" "$(hp 'it may have landed' && grep -q '207:#101' "$T/ps/merge-wake.json" && echo 1)" "$o"
+runp "$X" "$P"; ok "post: after a timed-out post nothing is posted again" "$([ "$(posts)" = 0 ] && echo 1)" "$o"
+rm -rf "$T/ps"; mkdir -p "$T/ps"; printf '{"abc":1,"207:#101":"x","300:#5":true}' > "$T/ps/merge-wake.json"; runp "$X" "$P"
+ok "post: bad memory entries are dropped and said, and the wake still posts once" "$([ "$(posts)" = 1 ] && hp '3 entries not of the form' && echo 1)" "$o"
+runp "$X" "$P"; ok "post: and not again at the next check (the memory healed)" "$([ "$(posts)" = 0 ] && echo 1)" "$o"
+rm -rf "$T/ps"; mkdir -p "$T/ps/merge-wake.json.tmp"; runp "$X" "$P"
+ok "post: a memory that cannot be written posts nothing, one ACT says so, the words stay" "$([ "$(posts)" = 0 ] && hp 'cannot be written' && hp 'Type: "#101 is on main' && echo 1)" "$o"
+rm -rf "$T/ps"; L=("$X"); for n in 221 222 223 224 225; do L+=("$(pr $n c/waits 'Waits on: #101')"); done; runp "${L[@]}"
+ok "post: at most 3 wake comments a check; the rest are ACT lines with the words" "$([ "$(posts)" = 3 ] && [ "$(grep -c 'not posted: 3 wakes posted this check already' <<<"$o")" = 2 ] && echo 1)" "$o"
+runp "${L[@]}"; ok "post: the next check posts the other 2" "$([ "$(posts)" = 2 ] && echo 1)" "$o"
 finish

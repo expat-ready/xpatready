@@ -19,6 +19,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MERGE = re.compile(r"^(\d+) ([0-9a-f]{40}) Merge pull request #(\d+) from ")
 WAIT = re.compile(r"^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?(?:waits|stacked) on(?:\*\*)?[ \t]*:(?:\*\*)?([^\n]*)$", re.I)
 AGAIN = 3600  # seconds after a post with no merge of main before the Lead is asked again
+POSTS = 3     # wake comments per check at most; the rest stay ACT lines with the words to type
+KEY = re.compile(r"^\d+:#\d+(?: #\d+)*$")
+
+
+def save(path, mem):
+    """Write the memory at once (after each post), so a later failure never makes a wake post twice."""
+    with open(path + ".tmp", "w") as f:
+        f.write(json.dumps(mem))
+    os.replace(path + ".tmp", path)
 ONE = re.compile(r"(?:expat-ready/xpatready)?#(\d{1,6})\.?|\[#(\d{1,6})\]\(\S{1,200}\)\.?"); LIMIT, MANY = 200, 12
 
 
@@ -100,6 +109,14 @@ def main():
             mem = {}
         except Exception:
             mem = {}; print("wake  memory unreadable, rebuilt empty (a wake may be posted twice)")
+        good = {k: v for k, v in mem.items() if KEY.match(str(k)) and isinstance(v, (int, float)) and not isinstance(v, bool)}
+        if len(good) != len(mem):
+            print(f"wake  memory: {len(mem) - len(good)} entr{'y' if len(mem) - len(good) == 1 else 'ies'} not of the form \"<pr>:#<n>\": <epoch> dropped")
+        mem = good
+        try:
+            os.makedirs(o.state, exist_ok=True); save(mpath, mem)
+        except Exception as e:   # a memory that cannot be written would post again every check: post nothing
+            o.post = False; print(f"ACT   wake: memory {clean(mpath, 60)} cannot be written ({type(e).__name__}): no wake posted, the words to type below")
     prs = json.load(open(o.prs, encoding="utf-8"))
     if not isinstance(prs, list) or not prs:
         raise RuntimeError("no open pull request read")
@@ -115,7 +132,7 @@ def main():
         print(f"ACT   wake: {len(prs)} open pull requests read, the list may be cut at {LIMIT}: a wait may be missed or called closed")
     if not view:
         print("wake  no app view in this copy: no lane can be named")
-    up, n, wake, unread = {p["number"] for p in prs}, 0, 0, []
+    up, n, wake, unread, posted = {p["number"] for p in prs}, 0, 0, [], 0
     for p in sorted(prs, key=lambda x: x["number"]):
         w, bad = waits(p.get("body")); w = [x for x in w if x != p["number"]]
         if bad or len(w) > MANY:
@@ -148,21 +165,40 @@ def main():
                 if now - mem[k] < AGAIN:
                     print(f"wake  #{p['number']}: woken by a PR comment {(now - mem[k]) / 60:.0f} min ago ({ws} on main); waiting for its lane to merge main"); continue
                 print(f"ACT   wake: #{p['number']} was woken by a PR comment {(now - mem[k]) / 60:.0f} min ago and has not merged {ws} yet: {lane(view, p['number'], p['headRefName'])}. Type: \"{words}\""); continue
-            gh = shlex.split(os.environ.get("MERGE_WAKE_GH") or f"bash {shlex.quote(os.path.join(HERE, 'gh.sh'))}")
-            body = f"**Wake on merge (OS-49, lead-watch):** {words}. (Posted once by the tech lead's check; P-339b.)"
-            r = subprocess.run(gh + ["pr", "comment", str(p["number"]), "--body", body], capture_output=True, text=True, timeout=60)
-            if r.returncode == 0:
-                mem[k] = now; print(f"wake  #{p['number']}: {ws} on main since {ist(t)}; wake comment posted on the PR (its lane is woken by it)"); continue
-            failed = f" (posting the wake on #{p['number']} failed: {clean(r.stderr or r.stdout, 80)})"
+            if posted >= POSTS:
+                failed = f" (not posted: {POSTS} wakes posted this check already)"
+            else:
+                # gh api, not gh pr comment: tools/gh.sh's curl fallback (P-363, the Mac's TLS) answers api calls only
+                gh = shlex.split(os.environ["MERGE_WAKE_GH"]) if os.environ.get("MERGE_WAKE_GH") else ["bash", os.path.join(HERE, "gh.sh")]
+                body = f"**Wake on merge (OS-49, lead-watch):** {words}. (Posted once by the tech lead's check; P-339b.)"
+                posted += 1
+                try:
+                    r = subprocess.run(gh + ["api", "-X", "POST", f"repos/{{owner}}/{{repo}}/issues/{p['number']}/comments", "-f", f"body={body}"],
+                                       capture_output=True, text=True, timeout=60)
+                    rc, why = r.returncode, clean(r.stderr or r.stdout, 80)
+                except subprocess.TimeoutExpired:
+                    rc, why = "timeout", "no answer in 60 s"
+                except OSError as e:
+                    rc, why = 1, clean(f"{type(e).__name__}: {e}", 80)
+                if rc == 0 or rc == "timeout":   # a timed-out post may have landed: remembered, never posted twice
+                    mem[k] = now
+                    try:
+                        save(mpath, mem)
+                    except Exception as e:
+                        o.post = False; print(f"ACT   wake: memory not written after the post on #{p['number']} ({type(e).__name__}): no more wakes posted this check")
+                    if rc == 0:
+                        print(f"wake  #{p['number']}: {ws} on main since {ist(t)}; wake comment posted on the PR (its lane is woken by it)"); continue
+                    print(f"ACT   wake: the wake post on #{p['number']} got {why}; it may have landed (look at the PR; not posted again): {words}"); continue
+                failed = f" (posting the wake on #{p['number']} failed: {why})"
         print(f"ACT   wake{failed}: {ws} on main since {ist(t)} ({(now - t) / 60:.0f} min); #{p['number']} waited: {lane(view, p['number'], p['headRefName'])}. Type: \"{ws} {'is' if len(w) == 1 else 'are'} on main: merge main once and go on with #{p['number']}\"")
     if unread:
         print(f"ACT   wake: {len(unread)} pull request{'s' * (len(unread) > 1)} with a wait line that cannot be read (numbers only, at most {MANY}: \"Waits on: #12, #13\"): " + " ".join("#%d" % x for x in unread[:10]))
     if o.post:
         mem = {k: v for k, v in mem.items() if int(k.split(":")[0]) in up}   # closed PRs leave the memory
         try:
-            os.makedirs(o.state, exist_ok=True); open(mpath + ".tmp", "w").write(json.dumps(mem)); os.replace(mpath + ".tmp", mpath)
+            save(mpath, mem)
         except Exception as e:
-            print(f"ACT   wake: memory not written ({type(e).__name__}): a wake may be posted again")
+            print(f"ACT   wake: memory not pruned ({type(e).__name__})")
     print(f"wake  {n} of {len(prs)} open pull requests say what they wait on, {wake} may go on; {sum(1 for t in merged.values() if now - t < 3600)} merges in the last hour")
 
 
