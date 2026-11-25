@@ -105,3 +105,12 @@ Tax matches a typed line in an ON firm (13 %), a BC firm (5 %) and an unregister
 **8 / 10, no 0: pass.** Fix r1 first (Correct data back to 1), then r4.
 
 **Not tested:** a screen reader, a visible-browser walk, an intended user's walk (D17 and D20 stay with the founder).
+
+## Re-run on 6dc148b1e (diff only, reviewer role)
+The diff adds RetainerFeesPort's contract and its run (R11). The adapter now returns null for a firm id that is not a uuid. Its only caller, `drafts.ts:209`, passes `firmScope(ctx.firmId).firmId`, so the API never reaches that case.
+
+**What I ran:** the check, **39/39**. Journeys 1–8 (R1–R10) pass as before. I did not re-run j_56, because no route, answer or data changed.
+
+**Journeys that changed:** none.
+
+**Score:** **8/10, pass**, unchanged (the table above, from c5e9aede5). The low criterion is still Correct data at ½ because of review r1.
