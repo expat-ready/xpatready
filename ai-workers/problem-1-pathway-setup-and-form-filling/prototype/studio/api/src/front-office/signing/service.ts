@@ -98,6 +98,83 @@ export async function prepareRetainerSigning(db: PrismaClient, files: FilesPort,
   };
 }
 
+/** Review round 1 m2: the provider's cancel inside a transaction answers within this (Prisma's interactive transaction
+ *  ends at 5 s), else it counts as no answer: 503 "Try again", rolled back. */
+const CANCEL_MS = 3_000;
+class CancelTimeout extends Error { constructor() { super("the signing provider did not answer in time"); this.name = "CancelTimeout"; } }
+function withinMs<T>(ms: number, p: Promise<T>): Promise<T> {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<never>((_, no) => { t = setTimeout(() => no(new CancelTimeout()), ms); })]).finally(() => clearTimeout(t));
+}
+
+/** Review round 1 m1: the retainer's live signing requests are locked first, in the order the webhook takes them (the
+ *  request, then the retainer), so Withdraw, Edit and Signed offline never deadlock against a provider event. Call it as
+ *  the first statement of their transaction. */
+export async function lockRetainerSigning(tx: Tx, firmId: string, retainerId: string) {
+  await tx.$queryRaw`select id from fo_signature_request where firm_id = ${firmId}::uuid and document_kind = 'RETAINER' and document_id = ${retainerId}::uuid
+    and status in ('SENT', 'VIEWED', 'CLIENT_SIGNED') order by id for update`;
+}
+
+/** QA-770 (R1.55 W1; FO-5d (2), (3)): Withdraw, Edit and Signed offline end the retainer's live signing request in their
+ *  own transaction (CANCELLED with WITHDRAWN, UPDATED or SIGNED_OFFLINE, one `signing.request_cancelled` line each).
+ *  `cancelNow()` cancels the envelopes at the provider before the commit (Withdraw and Edit, FO-5d (2)): a failed cancel
+ *  throws 503 "Try again", so the transaction rolls back; an envelope the provider has already ended or does not know is
+ *  no change. `afterCommit()` cancels any envelope still owed (Signed offline: a paper signature is never held up by the
+ *  provider; logged, never thrown), then, after a withdraw only, emails each client signer "Agreement withdrawn" once
+ *  (AG-5-34 r3). The door then reads the link ended, and a late provider event is refused (the request is not live). */
+export async function endRetainerSigning(tx: Tx, ctx: StaffContext, retainerId: string, reason: "WITHDRAWN" | "UPDATED" | "SIGNED_OFFLINE", o: { db: PrismaClient; audit?: AuditPort<Tx>; now: Date }) {
+  const firmId = ctx.firmId, audit = o.audit ?? auditEvent;
+  const live = await tx.foSignatureRequest.findMany({ where: { firmId, documentKind: "RETAINER", documentId: retainerId, status: { in: ["SENT", "VIEWED", "CLIENT_SIGNED"] } },
+    select: { id: true, providerDocumentId: true, documentVersion: true, status: true, signers: { where: { role: "CLIENT" }, select: { personId: true } } } });
+  const why = { WITHDRAWN: "the agreement was withdrawn", UPDATED: "the agreement was edited", SIGNED_OFFLINE: "the agreement was signed on paper" }[reason];
+  for (const s of live) {
+    const n = await tx.foSignatureRequest.updateMany({ where: { firmId, id: s.id, status: s.status }, data: { status: "CANCELLED", cancelReason: reason, endedAt: o.now } });
+    if (n.count !== 1) conflict("This agreement's signing changed at the same time. Open it again.", "CHANGED");
+    await audit.record(tx, { firmId, actor: `staff:${ctx.staffId}`, action: "signing.request_cancelled", entity: "fo_signature_request", entityKey: s.id,
+      summary: `Signing request for version ${s.documentVersion} ended: ${why}`,
+      detail: { requestId: s.id, retainerId, version: s.documentVersion, reason }, before: { status: s.status }, after: { status: "CANCELLED", cancelReason: reason } });
+  }
+  const owed = live.map((s) => s.providerDocumentId);
+  // Ended at the provider already: cancelled, declined or unknown is no change; *completed* (everyone signed there and its
+  // event is on its way) is never undone by a withdraw or an edit (AG-5-34: refused once executed; review round 1 M1).
+  const ended = (e: unknown) => (e instanceof SigningEnded && e.state !== "completed") || e instanceof SigningNotFound;
+  return {
+    ended: live.length,
+    async cancelNow() {
+      const port = signingPort();
+      for (const d of owed.splice(0)) {
+        try { await withinMs(CANCEL_MS, port.cancel(firmId, d)); } catch (e) {
+          if (ended(e)) continue;
+          if (e instanceof SigningEnded) conflict("Everyone has signed this agreement at the signing service; the signed copy is on its way. It can no longer be withdrawn or changed.", "SIGNED_AT_PROVIDER");
+          console.error(`[fo-signing] the provider did not cancel the envelope: ${(e as Error)?.name ?? "error"}`);
+          problem(503, "Try again", "The signing service did not answer, so nothing changed. Try again in a minute.", { code: "SIGNING_UNAVAILABLE" });
+        }
+      }
+    },
+    async afterCommit() {
+      if (owed.length) {
+        const port = signingPort();
+        for (const d of owed.splice(0)) { try { await port.cancel(firmId, d); } catch (e) { if (!ended(e)) console.error(`[fo-signing] cancel after the commit did not finish: ${(e as Error)?.name ?? "error"}`); } }
+      }
+      if (reason === "WITHDRAWN") for (const s of live) for (const c of s.signers) if (c.personId) await sendWithdrawn(o.db, { firmId, requestId: s.id, personId: c.personId, version: s.documentVersion });
+    },
+  };
+}
+
+/** "Agreement withdrawn", once per client signer and request (after the commit; a failure is logged, the withdraw stands). */
+async function sendWithdrawn(db: PrismaClient, o: { firmId: string; requestId: string; personId: string; version: number }) {
+  const mail = signingMail();
+  if (!mail) { console.warn("[fo-signing] no MailPort set: the withdrawn notice was not emailed"); return; }
+  try {
+    const firm = await db.platformFirm.findFirstOrThrow({ where: { id: o.firmId }, select: { operatingName: true, contactEmail: true } });
+    const p = await db.foPerson.findFirst({ where: { firmId: o.firmId, id: o.personId }, select: { id: true, email: true, givenNames: true } });
+    if (!p?.email) return;
+    await mail.send({ firmId: o.firmId, to: p.email, replyTo: firm.contactEmail, class: "TRANSACTIONAL", person: { kind: "FO_PERSON", id: p.id }, templateKey: "signing.withdrawn",
+      idempotencyKey: `signing:${o.requestId}:withdrawn:${p.id}`, subject: `Agreement withdrawn: ${firm.operatingName}`.slice(0, 200),
+      text: `Hello${p.givenNames ? ` ${p.givenNames}` : ""},\n\n${firm.operatingName} has withdrawn the retainer agreement (version ${o.version}) it sent you to sign. The signing link no longer works and there is nothing for you to do.\n\nReply to this email to reach ${firm.operatingName}.` });
+  } catch (e) { console.error(`[fo-signing] the withdrawn notice's email failed: ${(e as Error)?.name ?? "error"}`); }
+}
+
 /** The signing module's reads and its webhook door. */
 export class Signing {
   constructor(private readonly db: PrismaClient, private readonly files: FilesPort, private readonly o: { audit?: AuditPort<Tx>; now?: () => Date } = {}) {}

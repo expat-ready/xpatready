@@ -32,7 +32,9 @@ const Province = z.string().max(40).nullable();
 const Fields = { name: Name, country: Country.optional(), province: Province.optional(), timeZone: z.unknown().optional(), businessHours: z.unknown().optional(), closedDays: z.unknown().optional() };
 export const AddOffice = z.strictObject(Fields);
 /** A change names the version it was made from (the office's `version`); a stale one is 409 (STANDARDS §4, break B2). */
-export const ChangeOffice = z.strictObject({ ...Fields, name: Name.optional(), version: z.string() });
+// PF-28 A2: the version is the office's updatedAt as read (an ISO time, 24 characters): bounded, so an over-long one is named,
+// never the office's 404 or a 409.
+export const ChangeOffice = z.strictObject({ ...Fields, name: Name.optional(), version: z.string().max(40) });
 const parse = <T extends z.ZodType>(schema: T, body: unknown): z.output<T> => {
   const r = schema.safeParse(body ?? {});
   return r.success ? r.data : refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`), fieldsOf(r.error));
