@@ -155,7 +155,7 @@ try {
     open.body.card.offered === true && open.body.offline === null && s1.status === 200 && /^https:\/\/pay\.fake-rail\.example\/cs_fake_/.test(s1.body.url) && s2.body.url === s1.body.url && made.length === 2 && made[0].key === made[1].key && made[0].key?.startsWith(`fo7c-pay-${I1}-0-`) && asked.at(-1)?.amountMinor === 100000, { open: open.body, made });
   const q = asked.at(-1);
   ok("FO-7c DW5 pass (review M3): what Stripe is asked to charge is exactly the amount due, in the invoice's currency, on the firm's own account, with only firm_id and invoice_id as metadata",
-    q?.amountMinor === 100000 && q?.currency === "CAD" && q?.account === acct && JSON.stringify(q?.metadata) === JSON.stringify({ firm_id: A, invoice_id: I1 }) && q?.description.includes(sql(`select number from money_invoice where id = '${I1}'`)), q);
+    q?.amountMinor === 100000 && q?.currency === "CAD" && q?.account === acct && JSON.stringify(q?.metadata) === JSON.stringify({ firm_id: A, invoice_id: I1 }) && q?.description === `Invoice ${sql(`select number from money_invoice where id = '${I1}'`)}`, q);
   await pay(A, I1, "user-R", 40000, "fo7c2a-part-offline");
   const s3 = await call(undefined, "POST", `/public/pay/${T1}/session`), k3 = sessions().at(-1)?.key;
   ok("FO-7c DW5 pass (AG-6-14 rule 2): after 400.00 paid another way, the session is for exactly the 600.00 still due, under a new key", s3.status === 200 && k3?.startsWith(`fo7c-pay-${I1}-1-`) && k3 !== made[0].key && asked.at(-1)?.amountMinor === 60000 && (await call(undefined, "GET", `/public/pay/${T1}`)).body.invoice.dueMinor === 60000, k3);
@@ -178,7 +178,7 @@ try {
     sNew.status === 200 && sNew.body.url !== s3.body.url && aNew?.successUrl.endsWith(`/money/pay/${T2}/done`) === true && aNew?.cancelUrl.endsWith(`/money/pay/${T2}`) === true, { s: sNew.body, a: aNew });
   const name0 = sql(`select operating_name from platform_firm where id = '${A}'`);
   sql(`update platform_firm set operating_name = '${name0} Renamed' where id = '${A}'`); const sRen = await call(undefined, "POST", `/public/pay/${T2}/session`); sql(`update platform_firm set operating_name = '${name0.replace(/'/g, "''")}' where id = '${A}'`);
-  ok("FO-7c DW11 fail (break M1): the firm renamed between two clicks → a new hosted page with the new name, not a 500", sRen.status === 200 && asked.at(-1)?.description.endsWith("Renamed") === true, sRen.body);
+  ok("FO-7c DW11 fail (break M1, round 3 m2): the firm renamed between two clicks → the same live page, never a 500 nor an expired page (the description names the invoice only)", sRen.status === 200 && sRen.body.url === sNew.body.url && !(asked.at(-1)?.description ?? "").includes("Renamed"), sRen.body);
   const exp = asked.at(-1)?.expiresAtSec ?? 0, inS = exp - Date.now() / 1000;
   ok("FO-7c pass (break M2): every hosted page expires in 31 to 41 minutes (Sample; a minute above Stripe's least of 30), so a page handed out before the invoice changed stops taking cards soon", asked.length > 0 && asked.every((a) => !!a.expiresAtSec) && inS >= 30.5 * 60 && inS <= 41.1 * 60, inS);
   { const idOf = (url: string) => url.split("/").at(-1) ?? "", p1 = idOf((await call(undefined, "POST", `/public/pay/${T2}/session`)).body.url);
@@ -232,14 +232,32 @@ try {
     ok("FO-7c DW11 fail (review round 2 R2-M1, break N1): on Stripe the other open page of the same invoice is expired on the firm's account; the kept page and another invoice's are not",
       n === 1 && reqs.filter((r) => r.method === "POST").map((r) => r.url.split("/v1/")[1]).join() === "checkout/sessions/cs_same/expire" && reqs.every((r) => r.headers["stripe-account"] === "acct_1Fo7c2aSample") && /status=open/.test(reqs[0]?.url ?? ""), reqs.map((r) => `${r.method} ${r.url}`)); }
 
+  // Round 3 M1: no lock or connection is held across Stripe: a slow rail does not hold up a staff payment on the same invoice.
+  { const I9 = await invoice(A, PA, "user-R"), T9 = tokenOf(await call(tOwner, "POST", LINK(I9)));
+    let release: () => void = () => undefined; const gate = new Promise<void>((r) => { release = r; }), slow = rail.createHostedPayment;
+    rail.createHostedPayment = async (i) => { await gate; return slow(i); };
+    const clicked = call(undefined, "POST", `/public/pay/${T9}/session`);
+    await new Promise((r) => setTimeout(r, 300));
+    const t0 = Date.now(); let staffOk = false; try { await pay(A, I9, "user-R", 1000, "fo7c2a-r3-during-stripe"); staffOk = true; } catch { /* refused */ }
+    const waited = Date.now() - t0; release(); const c = await clicked; rail.createHostedPayment = slow;
+    ok("FO-7c pass (break round 3 M1): while Stripe is slow on a client's click, staff record an offline payment on the same invoice at once (no row lock or connection held across Stripe)", staffOk && waited < 3000 && c.status === 200, { staffOk, waited, s: c.status });
+    rail0.set(acct, { chargesEnabled: true });
+    const gate2 = new Promise<void>((r) => setTimeout(r, 400)), slow2 = rail.createHostedPayment; rail.createHostedPayment = async (i) => { await gate2; return slow2(i); };
+    const burst = await Promise.all(Array.from({ length: 6 }, () => call(undefined, "POST", `/public/pay/${T9}/session`))); rail.createHostedPayment = slow2;
+    ok("FO-7c door fail (break round 3 M1): six clicks at once on one invoice go one at a time, at most 3 waiting (the rest 429), never tying up the pool", burst.some((r) => r.status === 429) && burst.filter((r) => r.status === 200).length >= 1 && burst.every((r) => r.status === 200 || r.status === 429), burst.map((r) => r.status));
+    const ex = rail0.expireOtherHostedPayments; rail0.expireOtherHostedPayments = async () => { throw new Error("Sample: Stripe 500 on list"); };
+    rail.expireOtherHostedPayments = rail0.expireOtherHostedPayments; skew = 20 * 60_000;
+    const exf = await call(undefined, "POST", `/public/pay/${T9}/session`); skew = 0; rail0.expireOtherHostedPayments = ex; rail.expireOtherHostedPayments = ex;
+    ok("FO-7c pass (break round 3 m1): Stripe failing on the expire still answers the new page (the old lapses by its own expiry), logged at warn", exf.status === 200 && /^https:/.test(exf.body.url ?? ""), exf.body); }
+
   // -------------------------------------------------------------------------------------------------- the limit
   const burst: number[] = [];
   for (let i = 0; i < 32; i++) burst.push((await call(undefined, "GET", `/public/pay/${TB}`)).status);
   ok("FO-7c door fail: more than 30 calls a minute on one link from one address → 429 (Sample limit), the first 30 answered", burst.slice(0, 29).every((s) => s === 200) && burst.slice(-2).every((s) => s === 429), burst);
 
   // ------------------------------------------------------------------------------------------- no trust, no money
-  ok("FO-7c pass: part 2a writes no payment, refund or trust entry of its own (the four payments are FO-7b's, recorded here by staff), and no card payment at all",
-    sql(`select (select count(*) from money_payment where method = 'CARD') + (select count(*) from money_refund) + (select count(*) from money_trust_entry)`) === "0" && sql(`select count(*) from money_payment`) === "3");
+  ok("FO-7c pass: part 2a writes no payment, refund or trust entry of its own (the payments are FO-7b's, recorded here by staff), and no card payment at all",
+    sql(`select (select count(*) from money_payment where method = 'CARD') + (select count(*) from money_refund) + (select count(*) from money_trust_entry)`) === "0" && sql(`select count(*) from money_payment`) === "4");
 } finally {
   await app?.close(); await owner.$disconnect();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);
