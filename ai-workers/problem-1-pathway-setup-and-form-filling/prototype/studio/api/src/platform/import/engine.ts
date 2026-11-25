@@ -40,7 +40,7 @@ export const reasonWords = (t: ImportTarget<unknown> | undefined, r: Reason) => 
 
 export type ImportDeps = { db: PrismaClient; audit: AuditPort<Tx>; files: FilesPort; targets: ImportTargets<Tx>; jobs: JobPort; now?: () => Date };
 
-const sha256 = async (s: string | Uint8Array) => Buffer.from(await crypto.subtle.digest("SHA-256", typeof s === "string" ? new TextEncoder().encode(s) : s)).toString("hex");
+const sha256 = async (s: string | Uint8Array) => Buffer.from(await crypto.subtle.digest("SHA-256", new Uint8Array(typeof s === "string" ? new TextEncoder().encode(s) : s))).toString("hex");
 const canonical = (m: Mapping) => JSON.stringify({ columns: Object.fromEntries(Object.entries(m.columns).sort(([a], [b]) => (a < b ? -1 : 1))), declared: m.declared });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SourceName = z.string().trim().min(1, "This is required.").max(200, "At most 200 characters.").refine((v) => /[\p{L}\p{N}]/u.test(v) && !/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(v), "Name the source in ordinary words (letters or digits, one line).");
