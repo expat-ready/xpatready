@@ -36,7 +36,10 @@ out, so the eraser classifies the same list. The first map was made on main at `
 * **Q1:** the narrow database exception, exactly as recommended below. The reviewer and the breaker read it as a permissions
   and schema change, and the Lead reads the migration (P-423).
 * **Q2:** KEPT under a Sample class name, "Unconfirmed: no counsel", no period invented. The classes and periods (or a source)
-  go to the founder as one question.
+  go to the founder as one question. **Founder, 25 Nov (#3583 comment 7150714913, "Sample for now"):** consent proof, signing
+  and retainer evidence, identity checks and conflict checks are KEPT under a Sample class, "Unconfirmed: no counsel", with no
+  period invented. The request names what was kept; real periods or a source come later. 2b and 2c build on this. The Lead
+  records it as a DECISIONS row.
 * **Q3:** `msg_suppression.address` is KEPT as "do not contact" (Sample).
 * **Q4:** 2a, 2b and 2c, each under 800 lines. No eraser is registered until 2a has merged, with cancel-while-off.
 * **Q5:** the follow-up row is **PF-21d-f1**, items (a)-(d). The Lead shapes it into BACKLOG; it does not block 2a.
