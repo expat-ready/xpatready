@@ -48,3 +48,17 @@ The persona is our Platform Owner, or the read-only Auditor, searching the audit
 To raise it: (1) give the firm's operating name beside `firmId`; that is the console screen's item, so here it is a note, not scope. (2) Fix m1 so every bad cursor answers 422.
 
 **Not tested:** a real screen reader, and an intended user's unaided walk (D17/D20 stay with the founder). The console screen that will read this API is a later item.
+
+## Round 2 (head 179dd9a11, diff from 7cb4008a5)
+I re-walked the journeys as HTTP calls in a scratch worktree at 179dd9a (database on 54329, random port, US$0). The suite: 67 passed.
+| # | Change since round 1 | Result |
+|---|---|---|
+| 3 | `ours=1` (and actorType, entity, entityKey, `to`) each alone exclude the firm-staff line | Held, and now proved by DW7 (each removal fails) |
+| 7 | 30 Feb, 31 Apr, year 0000 and `T24:00` cursors; NUL in action, entity, entityKey or correlationId | 422 each, nothing written (was 500) |
+| 8 | firm token | 403, no line (now in DW7) |
+| 10 | Owner searches `entityKey=<A>` with no firm filter, then opens firm A's access report | Firm A's report shows our firm-read line for that search (breaker M1 fixed) |
+| new | Auditor browses 60 lines across 60 firms | 50 firm-read lines for page 1 and 10 for page 2, one per firm; 82 ms a page |
+| new | One firm's line cannot be written | 500, nothing sent, nothing written (platform line rolled back too) |
+| break | HEAD | 405 (Owner), 403 (Support), 401 (no token); no line |
+
+Score unchanged: **8.75 / 10 (pass), no 0.** The two ½ scores (next step obvious, plain words: the firm is an id with no name) are the console screen's item. Error recovery holds without the 500 path. Speed: about 80 ms per page with the firm lines, which meets the 200 ms budget.

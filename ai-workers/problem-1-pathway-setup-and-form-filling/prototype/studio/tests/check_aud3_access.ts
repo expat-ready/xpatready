@@ -409,13 +409,14 @@ try {
   const sBadType = await call(base, "GET", `${SEARCH}?${RANGE}&actorType=ROBOT`, { token: ownerT });
   const sUnknown = await call(base, "GET", `${SEARCH}?${RANGE}&person=${OWNER}`, { token: ownerT });
   const sBadCursor = await call(base, "GET", `${SEARCH}?${RANGE}&cursor=nope`, { token: ownerT });
+  const all1b = lines("true");
   const feb30 = Buffer.from(JSON.stringify(["2026-02-30T00:00:00.000000Z", uuid()])).toString("base64url");
   const sFeb30 = await call(base, "GET", `${SEARCH}?${RANGE}&cursor=${feb30}`, { token: ownerT }), rFeb30 = await call(base, "GET", `/api/system/firms/${firmA}/access-report?${RANGE}&cursor=${feb30}`, { token: ownerT });
   const sNul = await call(base, "GET", `${SEARCH}?${RANGE}&action=a%00`, { token: ownerT }), sNulCorr = await call(base, "GET", `${SEARCH}?${RANGE}&correlationId=a%00`, { token: ownerT });
-  const all1b = lines("true");
+  const sNulEnt = await call(base, "GET", `${SEARCH}?${RANGE}&entity=a%00`, { token: ownerT }), sNulKey = await call(base, "GET", `${SEARCH}?${RANGE}&entityKey=a%00`, { token: ownerT });
   const sHead = await fetch(`${base}${SEARCH}?${RANGE}&firm=${firmA}`, { method: "HEAD", headers: { authorization: `Bearer ${ownerT}` } });
   ok("AUD-3 DW7 fail (round 1, breaker m1-m3): a cursor of 30 February → 422 BAD_CURSOR (search and access report), a NUL byte in a filter → 422, HEAD → 405; none writes a line (the report's own crossing aside)",
-    sFeb30.status === 422 && sFeb30.body.code === "BAD_CURSOR" && rFeb30.status === 422 && sNul.status === 422 && sNulCorr.status === 422 && sHead.status === 405 && lines("true") === all1b,
+    sFeb30.status === 422 && sFeb30.body.code === "BAD_CURSOR" && rFeb30.status === 422 && sNul.status === 422 && sNulCorr.status === 422 && sNulEnt.status === 422 && sNulKey.status === 422 && sHead.status === 405 && lines("true") === all1b,
     { sFeb30: sFeb30.status, rFeb30: rFeb30.status, sNul: sNul.status, sNulCorr: sNulCorr.status, sHead: sHead.status });
   ok("AUD-3 DW7 fail (date range required): no dates → 422 DATES_REQUIRED; over a year → 422 RANGE_TOO_LONG; a malformed firm, an unknown actor type, a filter this search does not take, a cursor it did not give → 422; none writes any line",
     sNoDates.status === 422 && sNoDates.body.code === "DATES_REQUIRED" && sLong.status === 422 && sLong.body.code === "RANGE_TOO_LONG" && sBadFirm.status === 422 && sBadFirm.body.fields?.firm

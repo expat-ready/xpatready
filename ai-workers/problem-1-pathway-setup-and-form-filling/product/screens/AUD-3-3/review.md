@@ -115,3 +115,80 @@ Scope: BACKLOG row AUD-3 item (3); brief `design/briefs/AUD-3.md` (DW7); SA-11-8
 * D17/D20 stay with the founder.
 
 Journey test: `screens/AUD-3-3/journey-test-reviewer-2026-11-25.md`, **8.75 / 10 (pass)**.
+
+## Round 2 (diff-only: 7cb4008a5..179dd9a11)
+
+Reviewed head **179dd9a11e10b31c397008d79622cca801411478** only (the diff from 7cb4008a5: `search.ts`, `report.ts`, `lines.ts`, `tracker.ts`, `declare.ts`, the test). During this review the branch moved again, to bf4f1dd87 ("round 3: a firm's read line names no route or scope"). I did not review that commit, and this verdict does not carry over to it.
+
+**Verdict: Approve.** This is "Ship": every round-1 finding is fixed, and there is no open Blocker or Major. `Reviewer: Approve 179dd9a11e10b31c397008d79622cca801411478`
+
+### What I ran
+* The suite at 179dd9a (worktree, scratch database on 54329, random port, US$0): exit 0, **67 passed, 0 failed**. The builder's result reproduces.
+* `tracker.ts`, `lines.ts` and `declare.ts` are byte-identical to PR #3660's head dd8df1ca7 (sha1 match). Both branches share merge base 63f5cc913, and `git merge-tree` of the two heads, and of this head with main, is clean.
+* `tsc --noEmit -p api/tsconfig.json`: no error in the touched files. CI on 179dd9a: CodeQL passed; `ci` and `types` were skipped (as in round 1).
+* **Rule removal.** I made one change at a time in a scratch worktree at 179dd9a and reran the whole suite each time:
+
+| Removed or changed | Suite |
+|---|---|
+| `ours` clause (search.ts:56) | 1 FAIL (round-2 filter check) |
+| `actorType` clause (:55) | 1 FAIL |
+| `entity` clause (:58) | 1 FAIL |
+| `entityKey` clause (:59) | 1 FAIL |
+| `correlationId` clause (:60) | 2 FAIL |
+| `e.at < to` bound (:52) | 1 FAIL |
+| firm uuid clause (:54) | 4 FAIL |
+| `noteFirmsRead(...)` call (search.ts:79) | 2 FAIL (SA-11-12 line, breaker M1 check) |
+| per-firm `recordFirmRead` loop (lines.ts:178) | 2 FAIL |
+| `realAt` put back to `Date.parse` (report.ts:75) | 2 FAIL |
+| the whole NUL check (search.ts:69) | 1 FAIL |
+| NUL check limited to `action`, `correlationId` | **67 passed** (minor 1 below) |
+| HEAD refusal (search.ts:91) | 3 FAIL |
+| `or e.support_session_id is not null` half of `ours` | 67 passed (an equivalent mutant: see note 2) |
+
+* **Reviewer probes** (a scratch copy of the test, with the code unchanged):
+  * 60 lines on 60 distinct firms: page 1 writes 50 firm-read lines on 50 distinct firms, plus one platform line; page 2 writes 10. A page therefore writes at most 50 firm lines, one per distinct firm on the page, never one for the look-ahead row.
+  * That 50-firm page takes 82 ms on average over 10 calls; an unnarrowed page takes 75–97 ms (STANDARDS §9: < 200 ms).
+  * Fail-closed: a trigger refused the firm-read line of only the 8th firm on the page. The call answered 500 with no lines in the body, and **0 rows were written** (the platform line rolled back with it).
+  * Refused calls write nothing:
+    * `entity=a%00` and `entityKey=a%00` → 422 BAD_FILTER;
+    * cursors at 31 Apr, `0000-01-01` and `T24:00` → 422 BAD_CURSOR;
+    * Support on `firm=A` → 403;
+    * HEAD by Support → 403, and HEAD with no token → 401.
+    * Valid edge cursors (29 Feb 2024, 1970-01-01) answer 200, and each writes only its own platform line.
+  * `firm=platform` writes no firm line. `firm=<A in upper case>` writes exactly one firm-read line, on A.
+
+### Round-1 findings
+| Round 1 | Status at 179dd9a |
+|---|---|
+| Major: ours, actorType, entity, entityKey and `to` untested | **Fixed.** Test :393-401: each of them, plus `firm` and `correlationId`, alone excludes the one firm-staff line that `action` alone finds; each removal fails (table above) |
+| m1 30 Feb cursor → 500 | **Fixed.** `realAt` (report.ts:70) round-trips the moment and refuses before 1970. Search and access report both answer 422; test :412-417 |
+| m2 (row's test) firm token → 403 | **Fixed.** Test :402-404, no line |
+| m3 HEAD wrote a line | **Fixed.** 405 SEARCH_HEAD_REFUSED, nothing written |
+| m5 page 2 untested | **Fixed.** Test :430-438: three tie pages, three lines |
+| Breaker M1 (narrowed by key, correlation id or action, firm not named) | **Fixed.** `noteFirmsRead` with the page's firm ids; one firm-read line per firm, in the platform line's transaction (lines.ts:175-179). Firm A's access report shows the entity-key search (test :368-371) |
+| Breaker m2 NUL → 500 | **Fixed** for all four fields (search.ts:69); the test covers two (minor 1) |
+| Nit: `Row`/`line` copy | Open (Nit; not blocking) |
+
+### Issues (round 2)
+1. **Minor (Should): the NUL refusal for `entity` and `entityKey` has no test that fails when it is removed.**
+   * Where: `tests/check_aud3_access.ts:414`, which sends `action=a%00` and `correlationId=a%00` only.
+   * Scenario: change `search.ts:69` to check `["action", "correlationId"]` only, and the suite stays at 67/67, while `entity=a%00` would answer 500 again. The code is right today (my probe: 422).
+   * Fix: add `entity=a%00` and `entityKey=a%00` to the same check (STANDARDS §7 [M]).
+2. **Nit: test wording.** The m1–m3 check says "none writes a line", but its own count (`all1b`, :417) is taken after the 30-Feb and NUL calls, so it covers HEAD only. The next check's `lines("true") === all1` does cover them, so the claim holds; only the wording is off.
+
+**Notes, not counted:**
+* Removing `or e.support_session_id is not null` from `ours` changes nothing that can happen: AUD-3b's support-session lines are `actor_type = OUR_STAFF` (BACKLOG AUD-3b), so no line reaches that half.
+* A `firm=A` search page that holds A's lines now shows twice in A's access report: once as the platform line naming A, and once as the firm-read line on A's trail, under one correlation id. Both facts are true. Grouping them is the console screen's job.
+* At 179dd9a, the firm-read line's detail carries `route` and `scope: "our audit search"`. #3660's breaker M1 (breach register) has the builder removing both in bf4f1dd87, which I did not review. On this head, the only caller of `noteFirmsRead` is the search, so what a firm learns from the line ("our audit search read your lines") is what SA-11-12 wants it to see. This is not a finding here.
+* The unnarrowed page is slower than in round 1 (10.9 ms then, now about 80 ms on a bigger scratch database with up to 50 inserts). It is within budget.
+
+### D1–D20 changes from round 1
+* D5 Stability **5**: m1, m2 and m3 answer 422 or 405.
+* D6 Governance **5**: each firm whose lines a page holds gets its own line.
+* D16 Testability **4**: every clause and fix now has a failing test except minor 1.
+* All other scores as in round 1.
+* BIC, browser, keyboard and axe: N/A (no screen).
+
+Journey test (round 2 appended): `screens/AUD-3-3/journey-test-reviewer-2026-11-25.md`, **8.75 / 10 (pass)**.
+
+`Reviewer: Approve 179dd9a11e10b31c397008d79622cca801411478`
