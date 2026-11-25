@@ -6,7 +6,7 @@
 // * After it: the invoice reads "Written off" (ports/client-money.ts invoiceStatus), a credit note is refused "Already
 //   settled by write-off" (invoices/money.ts), and a later payment counts as extra money (facts.ts).
 // * One transaction, the FO-7lk lock order (the party's trust lock, then the invoice row), one audit line
-//   `invoice.written_off` (fail-closed), then the ledger check on that invoice and its party: anything unbalanced rolls
+//   `invoice.written_off` (fail-closed), the event `invoice.written_off` (MONEY_EVENT), then the ledger check on that invoice and its party: anything unbalanced rolls
 //   the whole write back (409 UNBALANCED), so the ledger is balanced after each write-off.
 // * C5: an invoice outside the caller's scope is the same 404, read before any lock or write (as InvoiceMoney).
 // Legal and accounting reading: Unconfirmed: no counsel; no accountant.
@@ -15,7 +15,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
-import { InvoiceView } from "../../../../ports/client-money.ts";
+import { InvoiceEventPayload, InvoiceView, MONEY_EVENT, WriteOffIn } from "../../../../ports/client-money.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { MONEY, UUID, badField, notFound, parse } from "../invoices/drafts.ts";
@@ -25,9 +25,6 @@ import { ledgerCheck } from "../ledger-check.ts";
 
 type Tx = Prisma.TransactionClient;
 const refuse = (code: string, detail: string, extra: Record<string, unknown> = {}): never => problem(409, "Not possible now", detail, { code, ...extra });
-export const WriteOffIn = z.strictObject({
-  reason: z.string({ error: "The reason is needed." }).trim().min(1, "The reason is needed.").refine((t) => [...t].length <= 200, "At most 200 characters."),
-});
 export const WriteOffView = z.strictObject({ id: z.string(), invoiceId: z.string(), amountMinor: z.number().int().positive(), currency: z.enum(["CAD", "USD"]), reason: z.string(), createdBy: z.string(), invoice: InvoiceView });
 export type WriteOffView = z.infer<typeof WriteOffView>;
 
@@ -54,6 +51,9 @@ export class WriteOffs {
       await this.audit.record(tx, { firmId, actor: by, action: "invoice.written_off", entity: "money_write_off", entityKey: row.id,
         summary: `${inv.number} written off: ${inv.currency} ${MONEY(amount)}.`, detail: { invoiceId: id, writeOffId: row.id, amountMinor: amount },
         before: { dueMinor: before.view.dueMinor, statusWord: before.view.statusWord }, after: { dueMinor: after.view.dueMinor, statusWord: after.view.statusWord, reason: w.reason } });
+      const v = after.view;   // the event, last (contracts §0.5): ids and the stored figures, as InvoiceMoney's invoice events
+      await tx.moduleEvent.create({ data: { firmId, type: MONEY_EVENT.INVOICE_WRITTEN_OFF, subjectId: id, payload: InvoiceEventPayload.parse({ invoiceId: id, number: v.number, personId: v.personId, companyId: v.companyId, caseId: after.caseId,
+        currency: v.currency, subtotalMinor: v.subtotalMinor, taxMinor: v.taxMinor, totalMinor: v.totalMinor, dueDate: v.dueDate }) } });
       const check = await ledgerCheck(tx, firmId, id);
       if (!check.balanced) refuse("UNBALANCED", "The ledger would not balance after this write-off. Nothing was saved.", { problems: check.problems });
       return WriteOffView.parse({ id: row.id, invoiceId: id, amountMinor: amount, currency: inv.currency, reason: w.reason, createdBy: by, invoice: after.view });

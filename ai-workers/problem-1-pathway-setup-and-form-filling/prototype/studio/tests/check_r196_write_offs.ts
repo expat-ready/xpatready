@@ -17,6 +17,7 @@ import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { fakeMail } from "../ports/mail.ts";
 import { moneyVisible } from "./lib/money-visible.ts";
 
@@ -151,6 +152,76 @@ try {
   await balanced("a credit note and a write-off", i9);
   await balanced("every write of this check (the whole firm)");
 
+  // ---------------------------------------------------------------------------------- WO9: legitimate ledgers stay balanced (review M1, M2)
+  // Each shape a firm really writes; the write-off on it is 201 and the check finds nothing (no false UNBALANCED).
+  const tryq = (q: string) => { try { return sql(q); } catch (e) { return `ERR ${String((e as { stderr?: string }).stderr ?? e).slice(0, 300)}`; } };
+  const deposit = async (personId: string, amountMinor: number) => { const r = await raw(tR, "POST", "/trust/deposits", { personId, method: "E_TRANSFER", amountMinor, currency: "CAD", reference: `DEP-${++k}`, idempotencyKey: `r196-dep-${k}` }); if (r.status !== 201) throw new Error(`deposit: ${JSON.stringify(r.body)}`); return r.body.paymentId as string; };
+  const apply = async (invoiceId: string, amountMinor: number) => { const r = await raw(tR, "POST", "/trust/applications", { invoiceId, amountMinor, unclearedAcknowledged: true }); if (r.status !== 201) throw new Error(`apply: ${JSON.stringify(r.body)}`); };
+  const legit = async (what: string, inv: string, wantMinor: number) => {
+    const w = await writeOff(inv, { reason: `${what} (Sample)` }), c = await ledgerCheck(owner, A);
+    ok(`R1.96 WO9 pass: ${what} → the write-off takes ${wantMinor / 100} and the firm's ledger stays balanced`, w.status === 201 && w.body.amountMinor === wantMinor && c.balanced, { w: w.body, problems: c.problems });
+  };
+  // (a) part paid from trust: only what trust did not pay is written off
+  const PT = person(A, "t"); await deposit(PT, 30000); const ia = await issued(PT, 50000); await apply(ia, 30000);
+  await legit("an invoice part paid from trust", ia, 20000);
+  // (b) review M2: one case's credit ledger holding two payers; a write-off on one payer's other invoice
+  const PE = person(A, "e"), PF = person(A, "f"), CASE = randomUUID();
+  const caseInv = (pid: string) => { const id = randomUUID();
+    sql(`insert into money_invoice (id, firm_id, person_id, case_id, currency, due_date, created_by, updated_at) values ('${id}', '${A}', '${pid}', '${CASE}', 'CAD', '${today}', 'seed:R1.96', now());
+      insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, currency) values ('${A}', '${id}', 1, 'FEE', 'Fee (Sample)', 1, 10000, 10000, 'CAD');
+      update money_invoice set issued_at = now(), issued_by = 'seed:R1.96' where id = '${id}'`); return id; };
+  // A case the reader cannot see through C5 (no runtime_case row), so its payments are written as FO-7b writes them.
+  const opPay = (inv: string, amount: number) => sql(`insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${A}', '${inv}', 'E_TRANSFER', ${amount}, 'CAD', 'OPERATING', now(), 'r196-op-${randomUUID()}', 'seed:R1.96') returning id`);
+  const ie = caseInv(PE), iF = caseInv(PF), pe = opPay(ie, 15000), pf = opPay(iF, 13000);
+  const kept = [tryq(`insert into money_credit_entry (firm_id, person_id, case_id, kind, amount_minor, currency, payment_id, created_by) values ('${A}', '${PE}', '${CASE}', 'KEPT', 5000, 'CAD', '${pe}', 'seed:R1.96') returning balance_after_minor`),
+    tryq(`insert into money_credit_entry (firm_id, person_id, case_id, kind, amount_minor, currency, payment_id, created_by) values ('${A}', '${PF}', '${CASE}', 'KEPT', 3000, 'CAD', '${pf}', 'seed:R1.96') returning balance_after_minor`)];
+  ok("R1.96 WO9 setup: the case's credit ledger holds 50.00 then 80.00 from two payers", kept.join() === "5000,8000", kept);
+  await legit("an invoice of a payer whose case credit also holds another payer's", await issued(PF, 2000), 2000);
+  // (c) credit kept, then applied to another invoice and partly reversed
+  const PK = person(A, "k"), k1 = await issued(PK, 10000), kp = await pay(k1, 15000, "E_TRANSFER");
+  const keep = await raw(tR, "POST", `/payments/${kp}/extra`, { choice: "KEEP_AS_CREDIT" }), k2 = await issued(PK, 20000);
+  const ap = tryq(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, invoice_id, created_by) values ('${A}', '${PK}', 'APPLIED', -5000, 'CAD', '${k2}', 'seed:R1.96') returning id`);
+  const rv = tryq(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, reverses_entry_id, reason, created_by) values ('${A}', '${PK}', 'REVERSED', 2000, 'CAD', '${ap}', 'Undo part (Sample)', 'seed:R1.96') returning id`);
+  ok("R1.96 WO9 setup: 50.00 kept as credit, applied to a second invoice, 20.00 of it reversed", keep.status < 300 && !ap.startsWith("ERR") && !rv.startsWith("ERR"), [keep.body, ap, rv]);
+  await legit("an invoice paid in part by applied credit, partly reversed", k2, 17000);
+  // (d) review M1: paid from trust, moved to operating, a credit note sending part back ("Refund to the client"), the
+  //     unmoved part returned to trust
+  const PO = person(A, "o"); await deposit(PO, 10000); const io = await issued(PO, 10000); await apply(io, 10000);
+  const wd = sql(`select id from money_trust_entry where invoice_id = '${io}' and kind = 'WITHDRAWAL_TO_INVOICE'`);
+  const batch = await raw(tR, "POST", "/trust/to-move/batches", { currency: "CAD", direction: "TRUST_TO_OPERATING", transferDate: today, lines: [{ sourceEntryId: wd, amountMinor: 5000 }] });
+  const cnr = tryq(`insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, reason, created_by, overpaid_choice, overpaid_entry_id, overpaid_minor) values ('${A}', '${io}', 5000, 'CAD', 'Fee reduced (Sample)', 'seed:R1.96', 'OVERPAID_REFUND', '${wd}', 5000) returning id`);
+  const back = tryq(`insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, corrects_entry_id, reason, created_by) values ('${A}', '${PO}', 'CORRECTION', 5000, 'CAD', '${wd}', 'Returned to trust (Sample)', 'seed:R1.96') returning id`);
+  ok("R1.96 WO9 setup: 100.00 paid from trust, 50.00 moved to operating, a 50.00 credit note sending the moved 50.00 back to the client, the unmoved 50.00 returned to trust", batch.status === 201 && !back.startsWith("ERR") && !cnr.startsWith("ERR"), [batch.body, back, cnr]);
+  const due = (await raw(tR, "GET", `/invoices/${io}`)).body.dueMinor as number;
+  ok("R1.96 WO9 setup: 50.00 is due again", due === 5000, due);
+  await legit("an invoice whose credit note sent trust money back to the client", io, due);
+  // (e) a reversal below zero (P-634): the party's trust goes negative; a write-off on its other invoice still balances
+  const PN = person(A, "n"), dn = await deposit(PN, 10000), inn = await issued(PN, 10000); await apply(inn, 10000);
+  const dep = sql(`select id from money_trust_entry where payment_id = '${dn}' and kind = 'DEPOSIT'`);
+  const neg = tryq(`insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, corrects_entry_id, correction_kind, reason, created_by) values ('${A}', '${PN}', 'CORRECTION', -10000, 'CAD', '${dep}', 'RECORDED_BY_MISTAKE', 'Recorded by mistake (Sample)', 'seed:R1.96') returning balance_after_minor`);
+  ok("R1.96 WO9 setup: the deposit reversed as Recorded by mistake takes the party's trust to -100.00", neg === "-10000", neg);
+  await legit("an invoice of a party whose trust is below zero after a reversal", await issued(PN, 4000), 4000);
+
+  // ---------------------------------------------------------------------------------- WO10: C5; UNBALANCED rolls back
+  const PS = person(A, "s"), is = await issued(PS, 5000);
+  sql(`insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', 'agent/invoice:void') on conflict do nothing;
+       delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key in ('agent/case:view.all', 'agent/prospect:view.all')`);
+  const scoped = await writeOff(is, { reason: "Out of scope (Sample)" }, tO);
+  sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/invoice:void'`);
+  ok("R1.96 WO10 fail (C5): a Case Officer holding the key but seeing no case and no client → 404; nothing written", scoped.status === 404 && writeOffs(is) === 0, scoped.body);
+  const PU = person(A, "u"), iu = await issued(PU, 10000), pu = await pay(iu, 4000, "E_TRANSFER");
+  // A trust entry whose balance is not the running sum (L1), written past the triggers on the invoice's party: nothing
+  // the write-off's own database check reads, so only the ledger check stops it.
+  sql(`set session_replication_role = replica; insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, payment_id, created_by) values ('${A}', '${PU}', 'DEPOSIT', 500, 'CAD', 1, 700, '${pu}', 'seed:R1.96')`);
+  const events = () => Number(sql(`select count(*) from module_event where type = 'invoice.written_off'`)), [a0, e0] = [audits(), events()];
+  const unb = await writeOff(iu, { reason: "On a broken ledger (Sample)" });
+  ok("R1.96 WO10 fail: a write-off on an invoice whose ledger does not balance → 409 UNBALANCED naming the rule; no write-off, audit line or event is kept",
+    unb.status === 409 && unb.body.code === "UNBALANCED" && unb.body.problems?.some((x: string) => x.startsWith("L1 ")) && writeOffs(iu) === 0 && audits() === a0 && events() === e0, unb.body);
+  ok("R1.96 WO3 pass: every write-off wrote one invoice.written_off event naming its invoice", events() === Number(sql(`select count(*) from money_write_off where firm_id = '${A}'`))
+    && sql(`select count(*) from module_event e join money_write_off w on w.invoice_id::text = e.payload->>'invoiceId' where e.type = 'invoice.written_off'`) === String(events()));
+  const surrogate = await writeOff(is, { reason: "Small \ud800 balance" }, tR), newline = await writeOff(is, { reason: "Two\nlines" }, tR), nul = await writeOff(is, { reason: "N\u0000UL" }, tR);
+  ok("R1.96 WO1 fail (review M3): a reason with a broken character, a line break or a NUL (breaker m3) → 422 naming the reason, never a 500", surrogate.status === 422 && Boolean(surrogate.body.fields?.reason) && newline.status === 422 && Boolean(newline.body.fields?.reason) && /One line/.test(String(newline.body.detail)) && nul.status === 422, [surrogate.status, surrogate.body.fields, newline.status, newline.body.fields]);
+
   // ---------------------------------------------------------------------------------- L: the ledger check finds what is wrong
   // Rows written past the database's own triggers (replica role) stand for a ledger gone wrong; the check must name each.
   const PZ = person(A, "z"), iz = await issued(PZ, 10000), pz = await pay(iz, 10000);
@@ -164,6 +235,19 @@ try {
   ok("R1.96 L pass: the check of a sound invoice is balanced", before.balanced && before.problems.length === 0, before.problems);
   ok("R1.96 L fail: an over-refund (L4), an over-credit (L3) and a trust balance that is not the running sum (L1) are each named",
     !after.balanced && ["L1 ", "L3 ", "L4 "].every((p) => after.problems.some((x) => x.startsWith(p))), after.problems);
+  // One broken row per remaining rule, each on its own invoice or party, each named by its rule alone.
+  const PL = person(A, "l"), dl = await draft(PL, 10000), il5 = await issued(PL, 10000), il6 = await issued(PL, 10000);
+  await deposit(PL, 10000); await apply(il5, 10000);
+  broken(`set session_replication_role = replica;
+    insert into money_write_off (firm_id, invoice_id, amount_minor, currency, reason, created_by) values ('${A}', '${dl}', 100, 'CAD', 'On a draft (Sample)', 'seed:R1.96');
+    insert into money_write_off (firm_id, invoice_id, amount_minor, currency, reason, created_by) values ('${A}', '${il5}', 5000, 'CAD', 'Past trust (Sample)', 'seed:R1.96');
+    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${A}', '${il6}', 'E_TRANSFER', 100, 'USD', 'OPERATING', now(), 'r196-usd', 'seed:R1.96');
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, seq, balance_after_minor, created_by) values ('${A}', '${PL}', 'KEPT', 100, 'CAD', '${pz}', 1, 900, 'seed:R1.96')`);
+  const only = async (inv: string, rule: string) => { const c = await ledgerCheck(owner, A, inv); return c.problems.some((x) => x.startsWith(rule)) && c.problems.filter((x) => !x.startsWith("L2 ")).every((x) => x.startsWith(rule)); };
+  ok("R1.96 L fail: a write-off on a draft is named (L3)", await only(dl, "L3 "), (await ledgerCheck(owner, A, dl)).problems);
+  ok("R1.96 L fail: a write-off of what trust paid is named (L5), though credit + write-off stay under the total", await only(il5, "L5 "), (await ledgerCheck(owner, A, il5)).problems);
+  ok("R1.96 L fail: a payment in another currency is named (L6)", await only(il6, "L6 "), (await ledgerCheck(owner, A, il6)).problems);
+  ok("R1.96 L fail: a credit balance that is not the running sum is named (L2)", (await ledgerCheck(owner, A, il6)).problems.some((x) => x.startsWith("L2 ")), (await ledgerCheck(owner, A, il6)).problems);
   const firmB = await ledgerCheck(owner, B);
   ok("R1.96 L pass: firm B's check never sees firm A's broken rows", firmB.balanced, firmB.problems);
   ok("R1.96: no write-off ever reached firm B", Number(sql(`select count(*) from money_write_off where firm_id = '${B}'`)) === 0 && PB.length > 0);

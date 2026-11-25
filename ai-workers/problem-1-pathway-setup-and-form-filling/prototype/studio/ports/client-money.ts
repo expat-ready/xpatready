@@ -105,6 +105,9 @@ export const PaymentIn = z.strictObject({
 export type PaymentIn = z.infer<typeof PaymentIn>;
 /** POST …/invoices/:id/credit-notes: `full` credits all that is left (a cancel, AG-6-48 rule 2), else `amountMinor`: the
  *  gross amount (Lead B (Track B) ruling 3: any tax split is Sample. Unconfirmed: no accountant). */
+/** POST …/invoices/:id/write-off (R1.96 part 1; AG-6-76): only the reason; the amount is what is still due. */
+export const WriteOffIn = z.strictObject({ reason: words("The reason", 200) });
+export type WriteOffIn = z.infer<typeof WriteOffIn>;
 export const CreditNoteIn = z.strictObject({ full: z.boolean().optional(), amountMinor: whole("The amount (in cents)", 1, MINOR_MAX).optional(), reason: words("The reason", 200) })
   .refine((c) => (c.full === true) !== (c.amountMinor !== undefined), { message: "Give an amount, or choose a full credit note: one of the two.", path: ["amountMinor"] });
 
@@ -142,6 +145,8 @@ export const MONEY_EVENT = {
   PAYMENT_SUCCEEDED: "payment.succeeded",
   /** A payment was refunded (AG-6-23 rule 9; FO-7b part 1c: offline refunds only, card refunds are FO-7c). */
   PAYMENT_REFUNDED: "payment.refunded",
+  /** What was still due on an issued invoice was written off (R1.96 part 1; AG-6-76 rule 9). */
+  INVOICE_WRITTEN_OFF: "invoice.written_off",
 } as const;
 const uuid = z.string().regex(UUID);
 /** invoice.*: ids and the stored figures only (no name, no email). The tax and total are the stored lines' sums (R9). */
