@@ -56,3 +56,34 @@ That is the one-day window the header describes ("changed after its export").
   * The recorded client is refused in production and staging.
 
 Breaker verdict: Changes 2e20bdf93e17a3c89b1ac3f2c1f699816c105d02
+
+## Round 2 (b9922aa3)
+
+Head `b9922aa38a44ed7fdb94ef86cc6046e5357fb84d`. Isolated copy `p3brk2` on :4642, started and stopped. The scratch scripts `r2.ts`, `r2b.ts` and `s3r2.ts` use the real `ledger`/`check`/`run`, the verifier, and the recorded S3 bucket, with the same owner and `xr_app` attacker as round 1.
+
+**Round-1 Majors, re-run:**
+* **M1 fixed:**
+  * An anchor named seq 11 holding seq 10's forged hash is caught as `anchor`. Its range reads `11-10` (from after to): `toSeq: head ?? a.fromSeq`, verify.ts:121.
+  * A second anchor for the same seq under another day's name is a finding.
+* **M2 fixed.** The tamper route gives 409 on replace and 423 on delete of an archived key. A new key gives 404 (replace and delete). `../etc`, `AUDIT/X`, a bad `how` and `{}` give 400.
+* **M3 fixed.** I put `junk.txt` under the first chain: only that chain failed (`not whole`), the chains after it were exported (`13-13`), and the checker marks it BROKEN.
+* **M4 fixed.** Lockless recorded bucket, three runs:
+  * Run 1 fails with LockNotApplied.
+  * Runs 2 and 3 fail with "not kept until a future date". Nothing is reported as exported.
+
+**New or remaining:**
+
+| # | Sev | Attempt | Expected | Actual | Where |
+|---|---|---|---|---|---|
+| R1 | Major | Count archive reads per pass for one chain with 120 daily exports (fake), and S3 requests per `get` (recorded bucket). | A 30-minute pass costs about the same in year 7 as in week 1. | Each incremental pass reads **every** anchor: 120 gets for 120 anchors, 240 on a full pass. Each S3 `get` is 2 requests (`ListObjectVersions` + `GetObject`), a put is 3, and `chains()` lists every version under `audit/` on each pass. After 7 years that is about 5,100 sequential S3 requests per chain per pass, inside the checker's 120 s transaction (verify.ts:66). At 15-25 ms per request (my estimate, not measured), that is 77-128 s per chain: chains time out, the pass throws, and there is no heartbeat. At 1 year with 100 firms it is about 18 min per 30-minute pass, and roughly 1.7 M LIST-class requests a day. The daily export pays the same per chain, inside a 10-minute transaction (daily-export.ts:78-81). | daily-export.ts:89-121, s3-archive.ts versionsOf |
+| R2 | Minor | Forged whole pair: owner rewrites exported line 5 and recomputes to 12, moves the check row as `xr_app`, and puts a valid `<day>-11-12.jsonl` plus its anchor 12 (digest and hash right). | Caught on every pass. | **The incremental pass misses it**; the weekly full pass catches it (`anchor` 11-12). This leaves up to 7 days undetected. `ledger(k,false)` already fetches every anchor, so comparing them all with the database would cost only database reads. | daily-export.ts:174, verify.ts:120 |
+| R3 | Minor | S3-only attacker (no database access) puts a crafted pending `11-12.jsonl` whose lines verify from anchor 10's hash. | The export compares a resumed file with the database. | It is **resumed and anchored** (`resumed:true`, failed 0), so crafted content is archived under lock. The checker then raises `anchor` 12-12, and every later export of that chain is refused (`does not verify from seq 13`). Detected, but it cannot be undone for 7 years. Any stray object under a chain's prefix does the same (`not whole`), with no recovery path. | daily-export.ts:129-134, 96 |
+| R4 | Minor | Round 1's "not caught" cases, re-run: delete unexported 13-14, or rewrite unexported 12 **and recompute its hashes**, plus move the check row. | The claim (daily-export.ts:14-16): "a chain altered after its anchor is never archived as if it were whole". | **Still not caught**, on incremental or full passes. The next export archives `11-12` and `11-14` (the forged one). Only a rewrite *without* recomputing is refused (e'), and the round-1 checker already found that. The window is inherent; the header comment overstates the guarantee. | daily-export.ts:14-16, 144-145 |
+
+**What held in round 2:**
+* No false alarm on an anchor seq passed by 7 new lines, on a chain never exported, or on the demo export and check (full and incremental, 0 breaks).
+* A pending file with no anchor does not alarm.
+* The routes keep their actor rules.
+* `get` reads a key's first version, so a later version or a delete marker cannot hide the original.
+
+Breaker verdict: Changes b9922aa38a44ed7fdb94ef86cc6046e5357fb84d

@@ -5,16 +5,20 @@
 // (each line's chained fields as text, as the chain hashes them, with prev_hash and entry_hash in hex) and then its anchor
 //   audit/<chainKey>/anchors/<day>-<toSeq>.json   { chainKey, seq, entryHash, file, fileSha256 }
 // both kept for the activity log's keep period (AUD-5: 7 years, SA-11-14) and never replaced.
-// The archive of a chain is a LEDGER, read whole (ledger()): its files run from seq 1 with no hole or overlap, each file
-// but a pending last one has exactly its anchor, every anchor names its own chain, seq and file, and nothing else is
-// under the chain's prefix (break M1, review M3/M4). A full check also reads every file: its digest is its anchor's,
-// its lines run on from the previous anchor's hash and end on its anchor's. The checker compares the anchors with the
+// The archive of a chain is a LEDGER (ledger()): from the one listing of its prefix, its files run from seq 1 with no
+// hole or overlap, each file but a pending last one has exactly its anchor, and nothing else is under the chain's prefix
+// (break M1, review M3/M4). The 30-minute check then reads only the newest anchor (break R1: its cost stays flat as the
+// archive grows); the weekly check reads every anchor and re-reads the files of the last FULL_FILE_DAYS days (each
+// file's digest is its anchor's, its lines run on from the previous anchor's hash and end on its anchor's). Every
+// anchor read must name its own chain, seq and file. The checker compares the anchors with the
 // database (AuditChainVerifier), so a line changed after its export, or exported lines removed, are found even when the
 // chain was recomputed after them and the checker's own record moved.
 // The export: one chain at a time under that chain's lock (two runners never write one chain); the lines are verified
-// from the last anchor before they are exported, so a chain altered after its anchor is never archived as if it were
-// whole (break "not caught"); a file put whose anchor did not follow (a crash) is finished on the next run, whatever the
-// day, never written twice; every object reused must still be kept until a future date (break M4: a bucket that did not
+// from the last anchor before they are exported, so lines whose links no longer hold are refused. Lines after the last
+// anchor that were rewritten AND re-hashed cannot be told from real ones until they are anchored (break R4: the window
+// between two exports is inherent; the daily export keeps it to one day). A file put whose anchor did not follow (a
+// crash) is finished on the next run, whatever the day, after its lines are compared with the database (break R3),
+// never written twice; every object reused must still be kept until a future date (break M4: a bucket that did not
 // lock it is refused). One chain's failure stops no other chain (break M3): run() returns the failures and the job
 // fails on any.
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -26,6 +30,9 @@ import { sha256Of } from "./sha256.ts";
 export const EXPORT_QUEUE = "audit.archive_export";
 /** Daily at 06:20 UTC (01:20 Toronto; the hour Sample). */
 export const EXPORT_CRON = "20 6 * * *", EXPORT_ZONE = "UTC";
+/** The weekly check re-reads the files of this many recent days (older files were re-read by earlier weekly checks and
+ *  are locked; every anchor is still read and compared with the database). Sample. */
+export const FULL_FILE_DAYS = 8;
 
 type Db = Pick<PrismaClient, "$queryRaw" | "$transaction">;
 type Q = Pick<Prisma.TransactionClient, "$queryRaw">;
@@ -96,6 +103,8 @@ export class AuditChainExport {
       else return { ok: false, fromSeq: "1", why: `an object that is no export of this chain: ${n.slice(0, 80)}` };
     }
     files.sort((p, q) => (p.from < q.from ? -1 : 1));
+    // The newest anchored file: the last one, or the one before a pending last file (it has no anchor yet).
+    const lastAnchored = files.length && anchors.has(files.at(-1)!.to) ? files.length - 1 : files.length - 2;
     const out: Anchor[] = []; let due = 1n, prev = ZERO_HASH.toString("hex"), pending: { file: string; from: bigint; to: bigint } | null = null;
     for (let i = 0; i < files.length; i++) {
       const f = files[i]!, key = `${base}${f.name}`;
@@ -103,11 +112,13 @@ export class AuditChainExport {
       const an = anchors.get(f.to);
       if (!an) { if (i === files.length - 1) { pending = { file: key, from: f.from, to: f.to }; break; } return { ok: false, fromSeq: String(f.from), why: `file ${f.name} has no anchor` }; }
       anchors.delete(f.to);
+      if (!full && i !== lastAnchored) { due = f.to + 1n; continue; }   // the 30-minute check: names only, but for the newest anchor
       const o = await archive.get(`${base}${an}`); let a: Anchor | null = null;
       try { a = o ? (JSON.parse(o.bytes.toString("utf8")) as Anchor) : null; } catch { a = null; }
       if (!a || a.chainKey !== k || a.seq !== String(f.to) || a.file !== key || !HEX.test(a.entryHash ?? "") || !HEX.test(a.fileSha256 ?? ""))
         return { ok: false, fromSeq: String(f.from), why: `the anchor of file ${f.name} does not name it` };
-      if (full) {
+      const recent = full && (Date.parse(an.slice(8, 18)) >= this.d.now().getTime() - FULL_FILE_DAYS * 86_400_000 || i >= files.length - 2);
+      if (recent) {
         const fo = await archive.get(key);
         if (!fo || fo.sha256 !== a.fileSha256) return { ok: false, fromSeq: String(f.from), why: `file ${f.name} is not the one its anchor names` };
         const lines = parseLines(fo.bytes), bad = linesVerify(k, lines, f.from, prev);
@@ -131,7 +142,11 @@ export class AuditChainExport {
       if (!o) throw new ArchiveRefused(String(from), `${L.pending.file} was listed but cannot be read`);
       this.locked(o.retainUntil, L.pending.file);
       file = L.pending.file; body = o.bytes; to = L.pending.to; resumed = true;
-      if (linesVerify(k, parseLines(body), from, lastHash)) throw new ArchiveRefused(String(from), `${file} does not verify`);
+      const pl = parseLines(body);
+      if (linesVerify(k, pl, from, lastHash)) throw new ArchiveRefused(String(from), `${file} does not verify`);
+      // break R3: a pending file is anchored only when its lines are the database's own.
+      const db = await tx.$queryRaw<{ seq: string; h: Uint8Array }[]>`select seq::text seq, entry_hash h from audit_event where chain_key = ${k} and seq between ${from} and ${to} order by audit_event.seq`;
+      if (db.length !== pl.length || db.some((r, i) => hex(r.h) !== pl[i]!.entryHash)) throw new ArchiveRefused(String(from), `${file} is not the database's lines`);
     } else {
       const rows: Row[] = [];
       for (let after = lastSeq; ;) {

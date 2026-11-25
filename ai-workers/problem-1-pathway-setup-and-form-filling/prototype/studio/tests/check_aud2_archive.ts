@@ -179,6 +179,33 @@ try {
   const r1 = await lx.run(), r2 = await lx.run(), r3 = await lx.run();
   ok("AUD-2 DW10 fail (break M4): with a bucket that does not lock, every run refuses every chain (LockNotApplied, then 'not kept until a future date'); no anchor is ever written",
     [r1, r2, r3].every((r) => r.exports.length === 0 && r.failed.length > 0) && !lk.bucket.seen.some((y) => y.method === "PUT" && y.key.includes("/anchors/")), [r1.failed.slice(0, 2), r3.failed.slice(0, 2)]);
+
+  // break R3: a pending file planted in the archive (it links on from the last anchor) is anchored only if it is the
+  // database's own lines.
+  add(E, 2); c.advance(86_400_000);
+  const eAnchor = JSON.parse((await store.get((await store.list(`audit/${E}/anchors/`)).at(-1)!))!.bytes.toString()) as { seq: string; entryHash: string };
+  const eReal = await db.$queryRaw<{ seq: string; id: string; at: string; detail: string | null }[]>`select seq::text seq, id::text id, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at, detail::text detail from audit_event where chain_key = ${E} and seq > ${BigInt(eAnchor.seq)} order by audit_event.seq`;
+  let ph = eAnchor.entryHash;
+  const planted = eReal.map((r) => {
+    const l = { chainKey: E, seq: r.seq, id: r.id, at: r.at, workspaceId: WS, firmId: E, caseId: null, combinationId: null, actor: "system:aud2", actorType: "SYSTEM", action: "check.line", entity: "aud2", entityKey: null, summary: "Planted (Sample)", correlationId: null, supportSessionId: null, detail: r.detail, prevHash: ph, entryHash: "" };
+    l.entryHash = entryHash(Buffer.from(ph, "hex"), l).toString("hex"); ph = l.entryHash; return l;
+  });
+  const pKey = `audit/${E}/2026-11-20-${eReal[0]!.seq}-${eReal.at(-1)!.seq}.jsonl`;
+  await store.put(pKey, Buffer.from(planted.map((l) => `${JSON.stringify(l)}\n`).join("")), new Date(Date.now() + 86_400_000 * 400));
+  const r3x = await x.run();
+  ok("AUD-2 DW10 fail (break R3): a pending file planted in the archive that links on from the last anchor, but is not the database's lines, is never anchored",
+    r3x.failed.some((y) => y.chainKey === E && /is not the database's lines/.test(y.why)) && !(await store.list(`audit/${E}/anchors/`)).some((n) => n.endsWith(`-${eReal.at(-1)!.seq}.json`)), r3x.failed);
+
+  // break R1: the 30-minute check's archive reads do not grow with the archive: one listing and the newest anchor a chain.
+  let gets = 0, lists = 0;
+  const counted: AuditArchivePort = { put: (k, b, u) => store.put(k, b, u), get: (k) => { gets++; return store.get(k); }, list: (p) => { lists++; return store.list(p); }, remove: (k) => store.remove(k) };
+  const cx = new AuditChainExport({ db, archive: counted, now: c.now }), cv = new AuditChainVerifier({ db, alerts: fakeAlerts(), now: c.now, anchors: cx });
+  const anchorsNow = (await store.list("audit/")).filter((k) => k.includes("/anchors/")).length;
+  await cv.pass("incremental");
+  const incGets = gets, incLists = lists, chainsArchived = new Set((await store.list("audit/")).map((k) => k.split("/")[1])).size;
+  gets = 0; lists = 0; await cv.pass("full");
+  ok(`AUD-2 DW10 pass (break R1): the 30-minute check reads at most one anchor and makes one listing per archived chain (${incGets} reads, ${incLists} listings for ${chainsArchived} chains and ${anchorsNow} anchors); the weekly one reads every anchor`,
+    incGets <= chainsArchived && incLists <= chainsArchived && gets >= anchorsNow, { incGets, incLists, chainsArchived, anchorsNow, fullGets: gets });
 } finally {
   await db.$disconnect();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);

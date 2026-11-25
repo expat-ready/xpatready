@@ -59,13 +59,15 @@ export class AuditChainVerifier {
    *  pass throws and writes no heartbeat, so the job fails and the heartbeat's absence alarms. */
   async pass(mode: Mode): Promise<PassResult> {
     const keys = [...new Set([...(await this.d.db.$queryRaw<{ k: string }[]>`select chain_key k from audit_event group by chain_key
-      union select chain_key from aud_chain_check order by 1`).map((r) => r.k), ...(await this.d.anchors?.chains() ?? [])])].sort();
+      union select chain_key from aud_chain_check order by 1`).map((r) => r.k), ...(mode === "full" ? await this.d.anchors?.chains() ?? [] : [])])].sort();   // the archive's own chain list: weekly (break R1: its cost grows with the archive)
     const out: PassResult = { mode, chains: 0, linesRead: 0, findings: [] };
     let failed = 0;
     for (const k of keys) {
       if (!CHAIN_KEY.test(k)) { failed++; log().trusted("error", "audit_chain_bad_check_row", { rule: "BR-2" }); continue; }
       try {
-        const r = await this.d.db.$transaction((tx) => this.chain(tx, k, mode), { timeout: 120_000, maxWait: 10_000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+        // The archive is read before the chain's transaction, so its requests never count against the 120 s (break R1).
+        const archived = k.startsWith("sample:") ? null : await this.d.anchors?.check(k, mode === "full") ?? null;
+        const r = await this.d.db.$transaction((tx) => this.chain(tx, k, mode, archived), { timeout: 120_000, maxWait: 10_000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
         out.chains++; out.linesRead += r.read;
         if (r.finding) out.findings.push(r.finding);
       } catch (e) { failed++; log().write("error", "audit_chain_check_failed", { rule: "BR-2", error: e }); }
@@ -76,7 +78,7 @@ export class AuditChainVerifier {
     return out;
   }
 
-  private async chain(tx: Tx, k: string, mode: Mode): Promise<{ read: number; finding: Finding | null }> {
+  private async chain(tx: Tx, k: string, mode: Mode, a: Awaited<ReturnType<Anchors["check"]>>): Promise<{ read: number; finding: Finding | null }> {
     await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended('aud_chain_check:' || ${k}, 0))`;
     const [c] = await tx.$queryRaw<CheckRow[]>`select verified_seq::text verified_seq, verified_hash, status::text status, failing_from_seq::text failing_from_seq
       from aud_chain_check where chain_key = ${k}`;
@@ -117,8 +119,7 @@ export class AuditChainVerifier {
     // AUD-2 part 2: the archive's ledger must be whole, and each anchor compared must still be the database's line at its
     // seq. This finds a line changed after its export even when the chain after it was recomputed and the checker's own
     // record moved, exported lines removed, a chain removed whole, and an archive altered or added to.
-    const a = sample ? null : await this.d.anchors?.check(k, mode === "full");
-    if (a && !a.ok) return this.found(tx, k, c, { chainKey: k, fromSeq: a.fromSeq, toSeq: head ?? a.fromSeq, why: "anchor" }, read);
+    if (a && !a.ok) return this.found(tx, k, c, { chainKey: k, fromSeq: a.fromSeq, toSeq: head !== null && BigInt(head) > BigInt(a.fromSeq) ? head : a.fromSeq, why: "anchor" }, read);
     for (const an of a?.ok ? a.anchors : []) {
       const at = BigInt(an.seq), [l] = await tx.$queryRaw<{ h: Uint8Array }[]>`select entry_hash h from audit_event where chain_key = ${k} and seq = ${at}`;
       if (!l || Buffer.from(l.h).toString("hex") !== an.entryHash)

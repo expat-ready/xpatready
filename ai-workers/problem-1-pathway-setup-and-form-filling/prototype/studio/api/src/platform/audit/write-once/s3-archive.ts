@@ -33,6 +33,10 @@ const rethrow = (e: unknown): never => { const m = meta(e); throw new S3AuditArc
 export class S3AuditArchive implements AuditArchivePort {
   readonly bucket: string; readonly region: string;
   private readonly s3: S3Client; private readonly kms: string | null; private readonly now: () => Date;
+  /** Each key's first version, as the last listing saw it (break R1: a get right after a list costs one request, not
+   *  two). A version never changes, so the only risk of an old entry is a key removed after its keep period: removal
+   *  drops it. Kept for a minute. */
+  private readonly first = new Map<string, { version: string; at: number }>();
 
   constructor(o: S3AuditArchiveOptions) {
     if (!BUCKET_NAME.test(o.bucket)) throw new Error("audit archive (S3): the bucket name is not one S3 serves on its own host");
@@ -65,7 +69,8 @@ export class S3AuditArchive implements AuditArchivePort {
   }
 
   async get(key: string): Promise<ArchivedObject | null> {
-    const k = ArchiveKey.parse(key), first = (await this.versionsOf(k))[0];
+    const k = ArchiveKey.parse(key), known = this.first.get(k);
+    const first = known && Date.now() - known.at < 60_000 ? known : (await this.versionsOf(k))[0];
     if (!first) return null;
     try {
       const r = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: k, VersionId: first.version }));
@@ -89,6 +94,7 @@ export class S3AuditArchive implements AuditArchivePort {
     for (const v of await this.versionsOf(k)) {
       try { await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: k, VersionId: v.version })); } catch (e) { rethrow(e); }
     }
+    this.first.delete(k);   // after the listing above, which refilled it
   }
 
   /** The object versions of exactly this key, oldest first (delete markers left out). S3 lists a key's versions newest
@@ -100,10 +106,12 @@ export class S3AuditArchive implements AuditArchivePort {
       for (let km: string | undefined, vm: string | undefined; ;) {
         const r = await this.s3.send(new ListObjectVersionsCommand({ Bucket: this.bucket, Prefix: prefix, KeyMarker: km, VersionIdMarker: vm }));
         for (const v of r.Versions ?? []) if (v.Key && v.VersionId) out.push({ key: v.Key, version: v.VersionId });
-        if (!r.IsTruncated) break;
+        if (!r.IsTruncated) break;   // (each key's versions come newest first: the last one seen is its first)
         km = r.NextKeyMarker; vm = r.NextVersionIdMarker;
       }
     } catch (e) { rethrow(e); }
+    const at = Date.now();
+    for (const v of out) this.first.set(v.key, { version: v.version, at });
     return out;
   }
 

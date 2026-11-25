@@ -21,3 +21,7 @@
 * the error a bucket without Object Lock gives for the lock headers. Here, `lockless: true` ignores them, and the adapter's own check after the put catches it.
 
 Bucket names and keys are made up (`aud2-recorded-…`), never real.
+
+**Rules for AUD-2c's real bucket** (review round 2, m3). The archive check reads a chain's files from seq 1 for ever, so:
+* the bucket has **no expiry rule** that removes an export, even after its keep period. An export removed would read as a hole in every later check. Moving exports to a cheaper storage class is fine;
+* there is **one bucket per environment and per database**. A database rebuilt from nothing against a bucket that already holds locked exports would conflict with them on every chain.

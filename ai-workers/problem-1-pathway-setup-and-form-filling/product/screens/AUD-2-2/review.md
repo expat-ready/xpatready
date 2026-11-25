@@ -72,3 +72,36 @@ Not a screen: concept fit, keyboard/zoom, D1-D20 and BIC-01..20 are N/A. The rea
 A live bucket (P-821). Whether S3 keeps the retain-until milliseconds. The 404 outside the demo was read in the code, not run.
 
 **Verdict: Block.** To fix: Majors 1-4. Minors 1-3 are cheap to fix in the same round.
+
+## Round 2 (diff-only, b9922aa3)
+* **Runs** (from `/home/user/wt-p3`): `check_aud2_archive.ts` 41/41; `check_aud1c_verify.ts` 20/20; `tsc` 15 errors, none in our files.
+* **Mutations:** each fix reverted, one at a time, in a scratch copy, then the new suite run.
+
+**Round-1 Majors: all fixed.**
+* M1: versions and delete markers in the fake; the adapter lists versions and reads the first. Old adapter: DW1 fails.
+* M2: `verify.ts:62` adds `chains()`. Without it, DW10 fails.
+* M3: the pending file is found on any day. Today-only fails DW6, DW7 and DW8.
+* M4, by direct controller calls: 409 replace, 423 delete, 404 for an unwritten key (nothing written), 400 for `../X` and no key. No test.
+
+**Breaker's Majors: fixed.** Each revert fails its case: extra anchors ignored (DW9), the verify skipped (DW9), both `locked()` calls removed (DW10), one chain's failure (the test throws).
+
+**Minors:** m1 and m2 fixed (m2 at `daily-export.ts:152`). m3, m5 and m6 fixed in code but untested (each revert still gives 41/41).
+
+### New Major
+1. **The 30-minute pass reads every anchor of every chain from S3, inside the chain's 120 s transaction, and gains one anchor a day for 7 years.**
+   * `verify.ts:120` calls `check(k, false)`, whose `ledger()` gets every anchor (`daily-export.ts:106`). On S3 each `get` is a ListObjectVersions plus a GetObject (`s3-archive.ts:68-71`). `chains()` (`verify.ts:62`) also lists every version in the archive.
+   * Measured (recorded bucket, one chain, one export a day): 4, 62 and 242 requests a pass after 1, 30 and 120 days. That is 2N+2, about 5,100 by year 7.
+   * At 50 firms in year 3: about 110,000 serial requests a pass (close to 30 minutes at 15 ms each, about 33 s per chain), about 5 million a day, half LIST-priced (about US$400 a month). Older anchors are locked first versions: reading them again finds nothing new.
+   * **Fix:**
+     * Every pass and the export: the ledger's shape from key names only, plus the newest anchor (version ids from that one listing).
+     * The weekly pass only: every anchor, every file, and `chains()`.
+     * A test that counts the requests per pass.
+
+### Minor
+1. **No failing case:** the full pass's file re-verify (`daily-export.ts:110-115`; switched off, 41/41), m3, m5, m6, and the route's 404/400.
+2. The fake's ListObjectVersions never truncates, so `s3-archive.ts:100-105` paging is not exercised.
+3. The ledger needs files from seq 1 forever, so a 7-year lifecycle expiry or a database rebuilt against a locked bucket breaks every chain. For AUD-2c, in the README: one bucket per environment and database, and no expiry rule.
+
+**Journey re-score** (controller calls and the suite, not a browser): 9.4/10, Pass. J6 now 400, J8 404, P1-P3 fixed; error recovery, feedback and correct data at 1; J1b still ½.
+
+**Verdict: Block.** To fix: new Major 1. Minor 1 is cheap in the same round.
