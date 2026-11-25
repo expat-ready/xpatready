@@ -48,6 +48,10 @@ export const PAYMENTS_HOME = "/money/payments";
 /** One key per opening of the panel (AG-6-19 r3): every submit of that opening sends it, so a double click or a retry is one payment. */
 export const newKey = () => `pay-${crypto.randomUUID()}`;
 
+/** Break M3, m6: a reference is compared by its letters, so the screen sends it without invisible marks (zero-width, direction
+ *  marks, soft hyphen) and with look-alike widths folded (NFKC): "Ab‏-4471" and "Ａｂ-4471" are the reference Ab-4471. */
+export const cleanReference = (t: string) => t.normalize("NFKC").replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "").trim();
+
 /** The receipt line after a success, in words (concept (c) "R-0012 recorded · Receipt emailed to Client B"). */
 export function recordedWords(r: Recorded, party: string): string {
   const mail = r.receiptEmail === "SENT" ? `Receipt emailed to ${party}` : r.receiptEmail === "NO_ADDRESS" ? `No email address on file for ${party}: the receipt was not emailed` : "The receipt email could not be sent now";

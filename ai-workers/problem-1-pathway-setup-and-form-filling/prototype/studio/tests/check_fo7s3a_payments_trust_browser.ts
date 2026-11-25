@@ -24,7 +24,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { chromium, type Browser, type Locator, type Page } from "playwright";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
-import { METHODS, paymentStatus } from "../web/src/modules/client-money/payments/contract.ts";
+import { cleanReference, METHODS, paymentStatus } from "../web/src/modules/client-money/payments/contract.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
@@ -175,6 +175,40 @@ try {
   await pb.locator("[data-pay-anyway]").click(); await pb.locator("[data-pay-done]").waitFor({ timeout: 15_000 });
   ok("FO-7s3a DW5 pass: Record anyway records it: two payments with reference 4471, one receipt each", pays(INV) === "2" && sql(`select count(distinct r.number) from money_payment p join money_receipt r on r.payment_id = p.id where p.invoice_id = '${INV}' and p.reference = '4471'`) === "2");
   await pb.locator("[data-pay-close]").click(); await pb.locator('[role="dialog"]').waitFor({ state: "detached" });
+
+  // ---------------------------------------------------------------------------------------------- B: the breaker's round 1
+  ok("FO-7s3a B-M3 pass/fail: a reference is sent without invisible marks and with look-alike widths folded: \"Ab‏-4471\", \"A­b-4471\" and \"Ａｂ-4471\" are Ab-4471; a plain one is kept",
+    ["Ab‏-4471", "A­b-4471", "Ａｂ-4471", " Ab-4471​ "].every((t) => cleanReference(t) === "Ab-4471") && cleanReference("4471 / cheque") === "4471 / cheque");
+  await detail(pb, INV); await open(pb); await fill(pb, "CHEQUE", "1.00", "4471‏");
+  await pb.locator("[data-pay-save]").click(); await pb.locator("[data-pay-ask]").waitFor({ timeout: 15_000 });
+  ok("FO-7s3a B-M3 fail: 4471 with a right-to-left mark still asks \"Record anyway?\" (nothing recorded), and focus is on Record anyway (m4)",
+    pays(INV) === "2" && (await pb.locator("[data-pay-anyway]").evaluate((el) => el === document.activeElement)));
+  let asked = 0; const count = () => { asked++; }; pb.on("dialog", count);
+  await pb.locator('[role="dialog"]').getByRole("button", { name: "Close", exact: true }).last().click();
+  await pb.locator('[role="dialog"]').waitFor({ state: "detached", timeout: 5_000 }); pb.off("dialog", count);
+  ok("FO-7s3a B-m1 fail: the footer's Close with typed data asks \"Discard this payment?\" first (as Escape and the X do)", asked === 1 && pays(INV) === "2", { asked });
+  await open(pb); await fill(pb, "CASH", "21,474,836.48"); await pb.locator("[data-pay-save]").click();
+  ok("FO-7s3a B-m2 fail: an amount above FO-7b's limit is refused on the field before anything is sent", (await pb.locator("[data-pay-amount]").getAttribute("aria-invalid")) === "true" && /too large/.test(await pb.locator('[role="dialog"]').innerText()) && pays(INV) === "2");
+  // M1: the POST reaches the API and its answer is lost on the way back
+  await fill(pb, "CASH", "1.00", `M1-${run}`);
+  await pb.route(`**/api${M}/invoices/${INV}/payments`, async (r) => { await r.fetch(); await r.abort("connectionreset"); }, { times: 1 });
+  await pb.locator("[data-pay-save]").click(); await pb.locator("[data-pay-unsure]").waitFor({ timeout: 15_000 });
+  ok("FO-7s3a B-M1 fail: an answer lost after the payment was recorded never says \"Not recorded\": \"No answer came back … recorded once at most\", the fields held as sent",
+    pays(INV) === "3" && (await pb.locator("[data-pay-problem]").count()) === 0 && (await pb.locator("[data-pay-amount]").getAttribute("readonly")) !== null && (await pb.locator("[data-pay-method]").isDisabled()));
+  await pb.locator("[data-pay-save]").click(); await pb.locator("[data-pay-done]").waitFor({ timeout: 15_000 });
+  ok("FO-7s3a B-M1 pass: Record again answers the payment already recorded (\"not recorded twice\"): still one payment for it", pays(INV) === "3" && (await pb.locator("[data-pay-replayed]").count()) === 1 && sql(`select count(*) from money_payment where invoice_id = '${INV}' and reference = 'M1-${run}'`) === "1");
+  await pb.locator("[data-pay-close]").click(); await pb.locator('[role="dialog"]').waitFor({ state: "detached" });
+  // M2: west of UTC in the evening the person's day is still today, not the UTC tomorrow
+  const west = await (async () => { const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: "America/Vancouver", deviceScaleFactor: 1 });
+    await ctx.addInitScript((t) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, TBILL);
+    const p = await ctx.newPage(); p.on("dialog", (d) => void d.accept().catch(() => undefined)); return p; })();
+  const utcDay = new Date().toISOString().slice(0, 10);
+  await west.clock.setFixedTime(new Date(`${utcDay}T05:30:00Z`));   // 21:30 the evening before in Vancouver
+  await detail(west, INV2); await open(west);
+  const prev = new Date(Date.parse(`${utcDay}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+  const dflt = await west.locator("[data-pay-date]").inputValue(), max = await west.locator("[data-pay-date]").getAttribute("max");
+  ok("FO-7s3a B-M2 fail: at 21:30 in Vancouver (05:30 UTC) the date defaults to the person's day, not the UTC tomorrow; the latest day offered is FO-7b's", dflt === prev && max === utcDay, { dflt, max, prev });
+  await west.context().close();
 
   // ---------------------------------------------------------------------------------------------- DW4 double submit
   await detail(pb, INV2); await open(pb); await fill(pb, "E_TRANSFER", "100.00", `DW4-${run}`);
