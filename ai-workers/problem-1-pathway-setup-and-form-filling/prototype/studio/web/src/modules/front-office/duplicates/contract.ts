@@ -4,7 +4,7 @@
 // that they may not (never how many, never named; AG-2-68 rule 11).
 import { z } from "zod";
 
-const Reason = z.discriminatedUnion("key", [
+export const Reason = z.discriminatedUnion("key", [
   z.object({ key: z.literal("EMAIL") }),
   z.object({ key: z.literal("PHONE") }),
   z.object({ key: z.literal("NAME"), similarity: z.number() }),
