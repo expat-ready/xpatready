@@ -57,7 +57,7 @@ try {
   const fns = [...migSql.matchAll(/CREATE (?:OR REPLACE )?FUNCTION\s+"?([a-z0-9_]+)/gi)].map((m) => m[1]!);
   const trg = [...migSql.matchAll(/CREATE TRIGGER\s+"?([a-z0-9_]+)/gi)].map((m) => m[1]!).filter((n) => n !== "0_pf12_firm_first");
   ok(`PF-19m (P-600 (3)): every function and trigger it creates is prefixed msg_ (PF-12's shared first-gate trigger aside; ${fns.length} functions, ${trg.length} triggers)`,
-    fns.length === 2 && trg.length === 2 && [...fns, ...trg].every((n) => n.startsWith("msg_")), [...fns, ...trg]);
+    fns.length === 3 && trg.length === 5 && [...fns, ...trg].every((n) => n.startsWith("msg_")), [...fns, ...trg]);
   ok("PF-19m (P-600 (2)): additive on its own tables only: it alters no other table and drops nothing",
     [...migSql.matchAll(/ALTER\s+TABLE\s+"?([a-z0-9_]+)/gi)].every((m) => TABLES.includes(m[1]!)) && !/\bDROP\s+(TABLE|TYPE|FUNCTION|INDEX|COLUMN)\b/i.test(migSql.replace(/^--.*$/gm, "")));
 
@@ -86,7 +86,7 @@ try {
   const staffR = sql(DEMO, `select id from platform_staff where actor_id='user-R'`), staffS = sql(DEMO, `select id from platform_staff where actor_id='user-S'`);
   sql(DEMO, `insert into msg_firm (firm_id) values ('${firmA}'), ('${firmB}') on conflict do nothing`);
   const mailbox = (firm: string, address: string, extra = "", vals = "") =>
-    `insert into msg_mailbox (id, firm_id, provider, address, status, credential, connected_by, updated_at${extra}) values (gen_random_uuid(), '${firm}', 'GOOGLE', '${address}', 'CONNECTED', '${SEALED}', 'staff:x', now()${vals}) returning id`;
+    `insert into msg_mailbox (id, firm_id, provider, address, status, credential, connected_by, updated_at${extra}) values (gen_random_uuid(), '${firm}', 'GOOGLE', '${address}', 'CONNECTED', '${SEALED}', 'staff:${staffR}', now()${vals}) returning id`;
   const info = sql(DEMO, mailbox(firmA, "info@sample-firm.example.com", ", is_main", ", true")).split("\n")[0]!;
   const own = sql(DEMO, mailbox(firmA, "rep@sample-firm.example.com", ", owner_staff_id", `, '${staffR}'`)).split("\n")[0]!;
 
@@ -117,13 +117,13 @@ try {
   ok("PF-19m DW4 pass: firm A's session reads its own mailbox and email", asApp(DEMO, firmA, `select count(*) from msg_mailbox where id = '${info}'`) === "1" && asApp(DEMO, firmA, `select count(*) from msg_email where id = '${e1}'`) === "1");
   ok("PF-19m DW4 fail: firm B's session reads none of firm A's mailboxes or email, even by id",
     asApp(DEMO, firmB, `select count(*) from msg_mailbox where firm_id = '${firmA}'`) === "0" && asApp(DEMO, firmB, `select count(*) from msg_email where id = '${e1}'`) === "0");
-  ok("PF-19m DW4 fail: firm B's session cannot write a row for firm A (the wall's WITH CHECK or the first gate)",
-    asAppCode(DEMO, firmB, `insert into msg_address_link (id, firm_id, address, record_kind, record_id, created_by) values (gen_random_uuid(), '${firmA}', 'x@example.com', 'fo-lead', gen_random_uuid(), 'staff:x')`) !== "");
+  ok("PF-19m DW4 fail: firm B's session cannot write a row for firm A (the first gate, 42501; review m8)",
+    asAppCode(DEMO, firmB, `insert into msg_address_link (id, firm_id, address, record_kind, record_id, created_by) values (gen_random_uuid(), '${firmA}', 'x@example.com', 'fo-lead', gen_random_uuid(), 'staff:${staffR}')`) === "42501");
   ok("PF-19m DW4: every table has its forced policy and the first gate; its trigger functions run as xr_wall_reader",
     sql(DEMO, `select count(*) from pg_class c where c.relname = any('{${TABLES.join(",")}}') and c.relrowsecurity and c.relforcerowsecurity
       and exists (select 1 from pg_policy p where p.polrelid = c.oid and pg_get_expr(p.polqual, p.polrelid) ~ 'platform_session_firm')
       and exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname = '0_pf12_firm_first')`) === "4"
-    && sql(DEMO, `select count(*) from pg_proc where proname in ('msg_mailbox_write', 'msg_email_write') and prosecdef and pg_get_userbyid(proowner) = 'xr_wall_reader'`) === "2");
+    && sql(DEMO, `select count(*) from pg_proc where proname in ('msg_mailbox_write', 'msg_email_write', 'msg_unmatched_write') and prosecdef and pg_get_userbyid(proowner) = 'xr_wall_reader'`) === "3");
 
   // DW5 the message never changes; only unfiled email is purged (AG-10-4)
   ok("PF-19m DW5 fail: an email's subject, sender or thread never changes after insert (23514)",
@@ -133,12 +133,33 @@ try {
   ok("PF-19m DW5 fail: half a filing (a kind with no id, or a staff filing with a rule name) is refused (23514)",
     code(DEMO, email(firmA, info, "half", ", 'fo-lead', null, 'RULE', 'thread', now()")) === "23514" && code(DEMO, email(firmA, info, "half2", ", 'fo-lead', gen_random_uuid(), 'STAFF', 'thread', now()")) === "23514");
   ok("PF-19m DW5 fail: a filed email is kept: delete refused (23514)", code(DEMO, `delete from msg_email where id = '${e1}'`) === "23514");
+  // Break M1, m2: in a live mailbox an email is never deleted, so a filed one cannot be un-filed, deleted and re-inserted.
   const e2 = sql(DEMO, email(firmA, info, "unfiled1")).split("\n")[0]!;
   sql(DEMO, `insert into msg_unmatched (id, firm_id, email_id, suggestions) values (gen_random_uuid(), '${firmA}', '${e2}', '[{"kind":"fo-prospect","id":"00000000-0000-4000-8000-000000000001"}]')`);
-  ok("PF-19m DW5 pass: an unfiled email is purged, and its Unmatched entry goes with it", code(DEMO, `delete from msg_email where id = '${e2}'`) === "" && sql(DEMO, `select count(*) from msg_unmatched where email_id = '${e2}'`) === "0");
+  ok("PF-19m DW5 fail (break m2): an open Unmatched email of a live mailbox cannot be deleted (23514); its entry stays",
+    code(DEMO, `delete from msg_email where id = '${e2}'`) === "23514" && sql(DEMO, `select count(*) from msg_unmatched where email_id = '${e2}'`) === "1");
+  ok("PF-19m DW5 fail (break M1): un-filing a filed email and deleting it in one transaction is refused (23514); its words stay",
+    code(DEMO, `begin; update msg_email set filed_kind = null, filed_id = null, filed_by = null, filed_rule = null, filed_at = null where id = '${e1}'; delete from msg_email where id = '${e1}'; commit;`) === "23514"
+    && sql(DEMO, `select filed_id is not null from msg_email where id = '${e1}'`) === "t");
+  // The purge (AG-10-4): disconnect a mailbox, then its unfiled email goes, its filed email stays.
+  const purge = sql(DEMO, mailbox(firmA, "purge@sample-firm.example.com")).split("\n")[0]!;
+  const pf = sql(DEMO, email(firmA, purge, "pf1", ", 'fo-lead', gen_random_uuid(), 'RULE', 'thread', now()")).split("\n")[0]!;
+  const pu = sql(DEMO, email(firmA, purge, "pu1")).split("\n")[0]!;
+  sql(DEMO, `insert into msg_unmatched (id, firm_id, email_id) values (gen_random_uuid(), '${firmA}', '${pu}')`);
+  sql(DEMO, `update msg_mailbox set status = 'DISCONNECTED', credential = null where id = '${purge}'`);
+  ok("PF-19m DW5 pass: after the disconnect, the purge as the app removes the unfiled email and its Unmatched entry with it",
+    asAppCode(DEMO, firmA, `delete from msg_email where mailbox_id = '${purge}' and filed_id is null`) === "" && sql(DEMO, `select count(*) from msg_email where id = '${pu}'`) === "0" && sql(DEMO, `select count(*) from msg_unmatched where email_id = '${pu}'`) === "0");
+  ok("PF-19m DW5 fail: the purge keeps the filed email of the disconnected mailbox (delete refused, 23514)", code(DEMO, `delete from msg_email where id = '${pf}'`) === "23514");
+  ok("PF-19m DW5 fail (break M2): a disconnected mailbox takes no new email, its emails' filing does not change, and its cursor and last check stay (23514)",
+    code(DEMO, email(firmA, purge, "late1")) === "23514" && code(DEMO, `update msg_email set filed_kind = 'fo-prospect' where id = '${pf}'`) === "23514"
+    && code(DEMO, `update msg_mailbox set sync_cursor = '99' where id = '${purge}'`) === "23514" && code(DEMO, `update msg_mailbox set last_checked_at = now() where id = '${purge}'`) === "23514");
+  ok("PF-19m DW5 fail (review m10): msg_mailbox and msg_email refuse TRUNCATE (23001)", code(DEMO, `truncate msg_email cascade`) === "23001" && code(DEMO, `truncate msg_mailbox cascade`) === "23001");
   ok("PF-19m DW5 fail: suggestions must be a list; a resolved entry names who resolved it (23514)",
     code(DEMO, `insert into msg_unmatched (id, firm_id, email_id, suggestions) values (gen_random_uuid(), '${firmA}', '${e1}', '{"kind":"x"}')`) === "23514"
     && code(DEMO, `insert into msg_unmatched (id, firm_id, email_id, state) values (gen_random_uuid(), '${firmA}', '${e1}', 'LINKED')`) === "23514");
+  ok("PF-19m DW5 fail (break m4): an open Unmatched entry for a filed email, or suggestions over 4,000 characters, are refused (23514)",
+    code(DEMO, `insert into msg_unmatched (id, firm_id, email_id) values (gen_random_uuid(), '${firmA}', '${e1}')`) === "23514"
+    && code(DEMO, `update msg_unmatched set suggestions = jsonb_build_array(repeat('x', 5000)) where email_id = '${e2}'`) === "23514");
 
   // DW6 the mailbox's own rules
   ok("PF-19m DW6 fail: a mailbox's owner or address never changes, and a mailbox is never deleted (23514)",
@@ -151,6 +172,16 @@ try {
     code(DEMO, `update msg_mailbox set status = 'DISCONNECTED', credential = null where id = '${own}'`) === "" && code(DEMO, mailbox(firmA, "rep@sample-firm.example.com", ", owner_staff_id", `, '${staffR}'`)) === "");
   ok("PF-19m DW6 fail: a disconnected mailbox stays disconnected, and keeps no credential (23514)",
     code(DEMO, `update msg_mailbox set status = 'CONNECTED', credential = '${SEALED}' where id = '${own}'`) === "23514" && code(DEMO, `update msg_mailbox set credential = '${SEALED}' where id = '${own}'`) === "23514");
+  ok("PF-19m DW6 fail (review m8): a disconnected mailbox can never be the main one (23514)", code(DEMO, `update msg_mailbox set is_main = false where id = '${info}'`) === "" && code(DEMO, `insert into msg_mailbox (id, firm_id, provider, address, status, is_main, connected_by, updated_at) values (gen_random_uuid(), '${firmA}', 'GOOGLE', 'old@sample-firm.example.com', 'DISCONNECTED', true, 'staff:${staffR}', now())`) === "23514");
+  ok("PF-19m DW6 fail (break m1): a credential of the real box's prefix around a raw token, a sync cursor or a 'by' holding free text are refused (23514)",
+    code(DEMO, `update msg_mailbox set credential = 'sb1.v1.plain-access-value-not-sealed-at-all' where id = '${info}'`) === "23514"
+    && code(DEMO, `update msg_mailbox set sync_cursor = 'plain-access-value-not-sealed' where id = '${info}'`) === "23514"
+    && code(DEMO, mailbox(firmA, "by@sample-firm.example.com").replace(`'staff:${staffR}'`, "'staff:plain.access.value.not.sealed'")) === "23514"
+    && code(DEMO, `update msg_mailbox set sync_cursor = '4815162342' where id = '${info}'`) === "");
+  ok("PF-19m DW6 fail (break m3): an address with an invisible space or a look-alike letter, a link address or a to-address in capitals is refused (23514)",
+    code(DEMO, mailbox(firmA, "info\u200b@sample-firm.example.com")) === "23514" && code(DEMO, mailbox(firmA, "inf\u043e@sample-firm.example.com")) === "23514"
+    && code(DEMO, `insert into msg_address_link (id, firm_id, address, record_kind, record_id, created_by) values (gen_random_uuid(), '${firmA}', 'Lead@Example.com', 'fo-lead', gen_random_uuid(), 'staff:${staffR}')`) === "23514"
+    && code(DEMO, `insert into msg_email (id, firm_id, mailbox_id, direction, provider_message_id, thread_key, from_address, to_addresses, sent_at) values (gen_random_uuid(), '${firmA}', '${info}', 'INBOUND', 'caps1', 't', 'a@example.com', '{Info@A.Example}', now())`) === "23514");
   ok("PF-19m DW6 fail: an address in capitals, or an error code in words, is refused (23514)",
     code(DEMO, mailbox(firmA, "Caps@Sample-Firm.example.com")) === "23514" && code(DEMO, `update msg_mailbox set last_error_code = 'Token has been expired or revoked.' where id = '${info}'`) === "23514");
 } finally {

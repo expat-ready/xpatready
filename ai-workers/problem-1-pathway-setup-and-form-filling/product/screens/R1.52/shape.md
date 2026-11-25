@@ -1,4 +1,12 @@
-# R1.52 — shape (P-526), for the tech lead's approval
+# R1.52 — shape (P-526), approved
+
+**Approved by Lead 5 on #3653, 25 Nov 11:17 IST, with three changes; the founder ruled Q4 at 11:22 IST:**
+- (a) The OAuth helper and the Google loader entries belong to R1.43 (#3659: its part 0 adds `PLATFORM_GOOGLE_CLIENT_ID`/`_SECRET`; its part 2 builds `api/src/platform/oauth/`). **Part R1.52-2 below is dropped**; R1.52-3 builds on R1.43's helper, with no second copy.
+- (b) **Q4, the founder's ruling:** only the firm's Owner and Admins send as a shared firm mailbox; everyone else sends from their own mailbox. No setting per mailbox; it can be widened later. This replaces the recommendation in Q4 below.
+- (c) Part 4 splits if it goes over 800 lines.
+- Q1 to Q3: later, as recommended. Q5: yes, j_52 exits 0 on the mailbox half. Q6: the Google test user from the accounts sitting. Q7: part 1 is add-only and waits its turn in the migration slot (P-600).
+
+The text below is the shape as it was posted for approval.
 
 Item: R1.52 "Connected mailbox; WhatsApp (no SMS)" (Platform + front office). Runtime lane, cloud builder, 25 Nov IST. Written from `origin/main` 63f5cc913.
 
