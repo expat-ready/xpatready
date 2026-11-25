@@ -1,0 +1,60 @@
+// platform-client-identity.prisma — clients' own sign-in (the client portal's pool). Owner: Lead B (platform); built by the
+// screens lane for R1.62 (PF-4p part 1, map row 62; P-584 (4); amendment B, P-600 condition 1: its own area file).
+//
+// A third sign-in group, walled from the firm's staff (platform.prisma) and from ExpatReady's own staff
+// (platform-system.prisma): a client account belongs to one firm and names that firm's front-office person (fo_person),
+// whose cases (case_client.fo_person_id) are the only ones the client reads. No Prisma relation to platform.prisma or
+// front-office-sales.prisma (their files are other owners'; no back-relation lines are needed): the person rule (the
+// firm's own fo_person, never changed; a trigger) and the invitation's key (firm_id, account_id) → the account are in the migration
+// 20261125100000_platform-client-identity__pf4p_client_identity, with PF-12's firm wall on both tables and the rules Prisma cannot say.
+
+/// AG-15-3, AG-15-4, AG-15-6: an account's life. Only ACTIVE signs in.
+enum PlatClientAccountStatus {
+  NOT_INVITED
+  PENDING_ACTIVATION
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+/// One client's portal account in one firm: one per person per firm, one per email per firm.
+model PlatClientAccount {
+  id              String                  @id @default(uuid()) @db.Uuid
+  firmId          String                  @map("firm_id") @db.Uuid
+  /// The firm's front-office person this account is (fo_person.id); never changes.
+  personId        String                  @map("person_id") @db.Uuid
+  /// Lower case, trimmed (the database checks it).
+  email           String
+  status          PlatClientAccountStatus @default(NOT_INVITED)
+  lastSignInAt    DateTime?               @map("last_sign_in_at") @db.Timestamptz
+  /// Every session signed in at or before this moment is refused (sign-out, suspend, revoke): the client plane's
+  /// revocation, one column instead of the staff plane's revocation rows.
+  sessionsEndedAt DateTime?               @map("sessions_ended_at") @db.Timestamptz
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz
+
+  invitations PlatClientInvitation[]
+
+  @@unique([firmId, id])
+  @@unique([firmId, personId])
+  @@unique([firmId, email])
+  @@map("platform_client_account")
+}
+
+/// AG-15-1, AG-15-2: an invitation link (its SHA-256 only), 7 days, used once; a resend voids the earlier one. Written by
+/// part 2 (PF-4pw); born here so the area has one schema migration.
+model PlatClientInvitation {
+  id        String    @id @default(uuid()) @db.Uuid
+  firmId    String    @map("firm_id") @db.Uuid
+  accountId String    @map("account_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  voidedAt  DateTime? @map("voided_at") @db.Timestamptz
+  createdBy String    @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  account PlatClientAccount @relation(fields: [firmId, accountId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([firmId, accountId])
+  @@map("platform_client_invitation")
+}
