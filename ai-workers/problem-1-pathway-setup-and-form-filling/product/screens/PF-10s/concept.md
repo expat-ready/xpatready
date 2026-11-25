@@ -1,6 +1,6 @@
 # PF-10s concept: Settings › Import (R1.35 contacts import from a spreadsheet)
 
-Status: draft for the tech lead's approval after a fresh challenge (P-223 (4); no board). Builder: runtime lane, R1.35 part 4. Board: `design/board-import.html` (self-contained; three steps and the imports list).
+Status: for the tech lead's approval after a fresh challenge (P-223 (4); no board); questions answered by Lead 5 (below). Builder: runtime lane, R1.35 part 4. Board: `design/board-import.html` (self-contained; three steps and the imports list).
 
 ## 1. Job and journey
 **Job:** a firm's Owner or Admin brings the people they already have (an old CRM, a spreadsheet) into the front office once, sees exactly what will happen before anything is written, and can do it again without making duplicates. **Persona:** the Owner of a small RCIC firm moving off spreadsheets (P-566). **Journey j_35** (`tests/journeys/j_35.ts`): Settings › Import → New import → upload → map → preview → run → result (each row "Imported from {source}"); the same file again → "Nothing new to import". Source and consent are proven underneath (the j_35 check reads `GET imports/origin/fo_person/:id` and the consent row). Imported people have no front-office page yet (no lead or prospect): the result is the journey's end (challenge B1; question 1). Requirement: BACKLOG PF-10s (AG-18-5, -15, -21, -39, -56) on PF-10b part 1's API (#3644) and PF-10t's People target.
@@ -40,6 +40,8 @@ Every element is capability (needed for the proof). The template download is cap
 ## 7. Questions (recommendation first)
 1. Where an imported person shows: in R1.35 the result rows ("Imported from {source}", no links: no page exists for a person without a lead); a front-office contacts view is a follow-up row. Recommend yes.
 2. Menu place: "Import" after "Templates", visible with `agent/import:view-report`; New import only with `agent/import:run` (challenge m2). Recommend yes.
+
+**Answers (Lead 5 on #3644, 25 Nov 12:20 and 12:50 IST):** 1 yes: imported people show on the result rows only; a front-office contacts view, undo, the result report, .xlsx, companies and leads, cell mapping, N2 and N4 go on later rows (the Lead adds them). 2 Import stays under My account (option 1), Owner and Admin only, with a follow-up row for an entry on the Contacts list once it exists.
 
 ## Definition of ready
 Acceptance test: `tests/journeys/j_35.ts` and `tests/check_pf10s_import_browser.ts`. Row text: R1.35 Done when (PF-10s's undo, report and value-mapping lines are out by the approved shape on #3644). Decisions: the shape approved (Lead 4, #3644); questions 1-2 answered. Challenge: `challenge.md` (Build after these changes): B1, M1, M2, m1-m4 taken in above.

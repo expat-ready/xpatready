@@ -69,6 +69,7 @@ Freshness: `ai-workers/tools/freshness.sh` fails in this copy (`code/README-copi
 2. **Menu place:** "Import" in the account menu after "Templates", visible with `agent/import:view-report` and New import with `agent/import:run` (m2). Recommend yes.
 
 ## Lead response
+Lead 5 on #3644 (25 Nov 12:20, 12:50 IST): question 1 yes (contacts view a later row); question 2: Import under My account, Owner and Admin only. Builder: B1, M1, M2 and m1-m4 taken into concept.md.
 
 ## Agreement
 
