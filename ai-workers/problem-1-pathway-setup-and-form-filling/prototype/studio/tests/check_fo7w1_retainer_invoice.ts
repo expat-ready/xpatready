@@ -117,18 +117,29 @@ try {
   sql(`update money_payment_settings set tax_registered = false, tax_number = null where firm_id = '${B}'`);
   const rNo = retainer(B, staffB, PB, "SIGNED", [{ amount: 100000, when: "WHEN_DONE" }]), dNo = await call(tB, "POST", M, { personId: PB, currency: "CAD", retainerId: rNo.id });
   sql(`update money_payment_settings set tax_registered = true, tax_number = '123456789RT0001' where firm_id = '${B}'`);
+  sql(`update platform_firm set business_address = jsonb_build_object('street_name', 'Sample St', 'city', 'Toronto', 'province_state', 'ON', 'country', 'CA') where id = '${B}'`);   // back to ON (re-review nit)
   ok("FO-7w1 R1 pass: the line takes the draft's default as a typed line does: a BC firm's 5 % GST, an unregistered firm's 0",
     dBC.status === 201 && lines(dBC.body.id) === `FEE:100000:${T.BC.ratePpm}:${taxForLine(100000, T.BC.ratePpm)}:${rBC.rows[0]}` && T.BC.ratePpm !== ON && dNo.status === 201 && lines(dNo.body.id) === `FEE:100000:0:0:${rNo.rows[0]}`, [dBC.body, dNo.body]);
   // A row larger than one line holds (fee rows go to 1e10 minor; a line to MINOR_MAX): refused, nothing written (review m3).
   const rBig = retainer(A, staffA, PA, "SIGNED", [{ amount: 2_147_483_648, when: "WHEN_DONE" }]), cBig = drafts(), dBig = await start({ retainerId: rBig.id });
   ok("FO-7w1 R1 fail: a fee row above what one line holds (21,474,836.47) → 422 at feeRowIds, nothing written", dBig.status === 422 && dBig.body.fields?.feeRowIds && drafts() === cBig, dBig.body);
-  // Break m3: one row, or rows together, whose total with tax is more than issue accepts → refused, so no draft can never be issued.
+  // Break m3: one row, or rows together, whose total with tax is more than issue accepts → refused, so no draft is made that could never be issued.
   const rTot = retainer(A, staffA, PA, "SIGNED", [{ amount: 1_100_000_000, when: "WHEN_DONE" }, { amount: 1_000_000_000, when: "WHEN_DONE" }]), cTot = drafts(), dTot = await start({ retainerId: rTot.id });
   ok("FO-7w1 R1 fail (break m3): rows that together with tax pass 21,474,836.47 → 422 at feeRowIds, nothing written; one of them alone is billed", dTot.status === 422 && dTot.body.fields?.feeRowIds && drafts() === cTot
     && (await start({ retainerId: rTot.id, feeRowIds: [rTot.rows[1]] })).status === 201, dTot.body);
   // Break m2: a label with an invisible direction mark (the fee row's own check accepts it) is copied without the mark.
   const rMark = retainer(A, staffA, PA, "SIGNED", [{ label: "Fee \u202eSample", amount: 10000, when: "WHEN_DONE" }]), dMark = await start({ retainerId: rMark.id });
   ok("FO-7w1 R1 pass (break m2): a label holding a direction mark is copied without it (\"Fee Sample\"), not refused", dMark.status === 201 && dMark.body.lines[0]?.description === "Fee Sample", dMark.body);
+  // Re-review r1: what money_text_ok accepts is copied as signed: a Persian zero-width non-joiner, an emoji's joiners, a soft hyphen.
+  const signed = "حق\u200cالزحمه 👨\u200d👩\u200d👧 fee\u00ad (Sample)";
+  const rKeep = retainer(A, staffA, PA, "SIGNED", [{ label: signed, amount: 10000, when: "WHEN_DONE" }]), dKeep = await start({ retainerId: rKeep.id });
+  ok("FO-7w1 R1 pass (re-review r1): a label's zero-width non-joiner, emoji joiners and soft hyphen are kept, exactly as signed", dKeep.status === 201 && dKeep.body.lines[0]?.description === signed, dKeep.body);
+  // Re-review r2: a C1 control (which money_text_ok refuses) becomes a space, not a refusal of the whole bill.
+  const rC1 = retainer(A, staffA, PA, "SIGNED", [{ label: "Fee\u0085Sample", amount: 10000, when: "WHEN_DONE" }]), dC1 = await start({ retainerId: rC1.id });
+  ok("FO-7w1 R1 pass (re-review r2): a C1 control in a label becomes a space (\"Fee Sample\")", dC1.status === 201 && dC1.body.lines[0]?.description === "Fee Sample", dC1.body);
+  // Re-review r3: a label with nothing printable left is refused, naming its row (position), nothing written.
+  const rBlank = retainer(A, staffA, PA, "SIGNED", [{ amount: 10000, when: "WHEN_DONE" }, { label: "\u0085\u202e\u0085", amount: 20000, when: "WHEN_DONE" }]), cBlank = drafts(), dBlank = await start({ retainerId: rBlank.id });
+  ok("FO-7w1 R1 fail (re-review r3): a label with nothing printable left → 422 at feeRowIds naming \"Fee row 2\", nothing written", dBlank.status === 422 && dBlank.body.fields?.feeRowIds?.startsWith("Fee row 2 ") && drafts() === cBlank, dBlank.body);
   // Break m4: a firm whose default is USD, no currency sent → the retainer's CAD, never a refusal at a field not sent.
   sql(`update money_payment_settings set default_currency = 'USD' where firm_id = '${A}'`);
   const rCur = retainer(A, staffA, PA, "SIGNED", [{ amount: 10000, when: "WHEN_DONE" }]), dCur = await call(tA, "POST", M, { personId: PA, retainerId: rCur.id }), dPlain = await call(tA, "POST", M, { personId: PA });
@@ -176,6 +187,17 @@ try {
   const again = await start({});   // a draft typed by hand, for the index and line cases below
   const c7 = drafts(), named = await start({ retainerId: r1.id, feeRowIds: [r1.rows[1]] });
   ok("FO-7w1 R7 fail: a billed row named again → 409 ROW_ON_INVOICE, nothing written", named.status === 409 && named.body.code === "ROW_ON_INVOICE" && drafts() === c7, named.body);
+  // Re-review r3 (review m8): a line written by another writer while this start waits on the unique index → 409
+  // ROW_ON_INVOICE naming the row (the index's refusal, after the lock: the outside writer takes no lock).
+  const rIdx = retainer(A, staffA, PA, "SIGNED", [{ amount: 33300, when: "WHEN_DONE" }]), hand = await start({});
+  let inserted!: () => void; const ready = new Promise<void>((r) => { inserted = r; });
+  const outside = owner.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`insert into money_invoice_line (firm_id, invoice_id, position, kind, description, unit_amount_minor, amount_minor, currency, source_fee_row_id) values ('${A}', '${hand.body.id}', 1, 'FEE', 'Outside (Sample)', 33300, 33300, 'CAD', '${rIdx.rows[0]}')`);
+    inserted(); await new Promise((r) => setTimeout(r, 1500));
+  }, { timeout: 10_000 });
+  await ready; const raced = await start({ retainerId: rIdx.id }); await outside;
+  ok("FO-7w1 R7 fail (review m8): a row taken by another writer meanwhile → 409 ROW_ON_INVOICE naming that row, the row on one line only",
+    raced.status === 409 && raced.body.code === "ROW_ON_INVOICE" && JSON.stringify(raced.body.feeRowIds) === JSON.stringify([rIdx.rows[0]]) && Number(sql(`select count(*) from money_invoice_line where source_fee_row_id = '${rIdx.rows[0]}'`)) === 1, raced.body);
   const r7 = retainer(A, staffA, PA, "SIGNED", [{ amount: 12345, when: "WHEN_DONE" }]);
   // Five rounds of three at once (two unnamed, one named): with the retainer's lock, an unnamed start waits and then
   // skips a billed row (201, empty); without it, it would collide on the unique index and answer 409 (review m2).

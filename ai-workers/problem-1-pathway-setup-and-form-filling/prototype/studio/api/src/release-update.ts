@@ -4,6 +4,8 @@
 // revision, insert only, under the case's row lock that Fill also takes). Case staff of the case's firm only: a client
 // and configuration people 403, another firm 404 (Runtime.reach). Rules only, identical with AI off; no model call (US$0).
 // The rules are engine/runtime/release-update.ts; the case side is api/src/release-context.ts.
+import { assessmentOnlyRelease } from "../../engine/eligibility/gates.ts";
+import { ASSESSMENT_ONLY_CASE_WORDS } from "../../engine/programs.ts";
 import { releaseForms } from "../../engine/runtime/forms.ts"; // C7.8: a form the new release holds replaces an added one
 import { Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Param, Post } from "@nestjs/common";
 import { problemFromZod } from "../../contracts/programs.ts";
@@ -123,6 +125,8 @@ export class ReleaseUpdates {
 
   /** BR-7: why the move is refused now (null: it may go ahead), read from the database as it is. */
   private async refusal(c: Reached | { id: string }, st: CaseState, diff: ReleaseDiff, to: Snapshot, currentLabel: string, names: Map<string, string>, asked: Set<string>, tx: Pick<Db, "filingRecord" | "formInstance" | "filing"> = this.db) {
+    // AS-2a, break B2 on 6f71259ea: no case moves onto an assessment-only release (P-650 (2)), as none opens on one.
+    if (assessmentOnlyRelease(to)) return { code: "assessment_only", reason: `Can't move: ${ASSESSMENT_ONLY_CASE_WORDS} This case stays on ${currentLabel}. Nothing was changed.`, item: undefined as string | undefined };
     const recorded = await tx.filingRecord.findMany({ where: { caseId: c.id, filing: { stage: { state: "CURRENT" } } }, select: { filingId: true } }); // C6.17 (challenge B1): a record of an ended stage never freezes the current one
     const owners = recorded.length ? await tx.filing.findMany({ where: { id: { in: recorded.map((x) => x.filingId) } }, select: { subjectId: true } }) : [];
     const running = await tx.formInstance.findMany({ where: { caseId: c.id, status: { in: ["QUEUED", "RUNNING"] } }, select: { formNumber: true, subjectId: true } });
