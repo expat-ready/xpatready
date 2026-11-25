@@ -170,3 +170,79 @@ Done: `find/routes.ts:3` and `:14` now say 422 (QUERY_LENGTH). The check's Q lin
 **Verdict: Approve** — commit 2c7df159581e5ac483681731089063e113f4299d. No open Blocker or Major.
 
 Reviewer: Approve 2c7df159581e5ac483681731089063e113f4299d
+# Round 3 (diff only): check_forms_qa53 after merge-queue batch #3564
+
+Head **ba5a294d6926eef1fa4acc4d686beac63476797f** (branch `claude/runtime-pf28-a2-booking`). Reviewer: Opus 5.5, 25 Nov. I did not write it and changed no code. Round 2 (Approve, 2c7df1595) is on `claude/runtime-pf28-a2-review-records`; this branch's copy holds round 1 only, so this section follows it.
+- Scope: `git show ba5a294d6`, 3 files: the booking page's controller and the web-address doors' (decorators moved), and `tests/check_forms_qa53.ts` (the open-mark regex, 9 reads on REVIEWED, 3 writes on PUBLIC_WRITES).
+- b7da25098 is a pure merge of main (parents 2c7df1595, e0be451c4). It does not touch the two controllers; it brings main's copy of the check (#3460, the signing door's writes).
+- Live AI off; cost US$0. Ports: run-suites.sh at each usage line's port +14000, and one copy of mine on :4436. Never :4400.
+
+## (1) Does the decorator move change anything? No.
+- **Reflect metadata.** I loaded both files on this head and on 2c7df1595 (a scratch worktree, removed after), then dumped every metadata key on every controller in them: `BookingPublicController`, `WebAddressController`, `SystemWebAddressController`. For each class I took the class keys, each method's keys, and each method's `__routeArguments__` on the class. The two dumps are **identical (505 lines, `diff` empty)**. They cover:
+  - path and method for all 13 routes;
+  - `studio:read-scope` "open" on exactly the 9 GETs;
+  - `__httpCode__` 200 on reschedule, cancel and the system change;
+  - `__responsePassthrough__` on ics;
+  - every argument's index, type and `data` (firmKey, slug, token, id);
+  - `self:paramtypes`;
+  - the system change's access, firm-data and reason keys.
+- **Reasons.** OpenRead keeps only "open" at run time (`core.ts:86`), so I compared the reason text in the source. The (reason, path) pairs are identical in both files: 9 and 4 pairs, the same order and the same text.
+- **Body and behaviour.** Each file's whitespace-split token multiset is identical between b7da25098 and ba5a294d6. Only the order of decorators and lines changed. Nothing in a method body moved, and one trailing comment moved to the end of its line.
+- Order: `@OpenRead` and `@Get` set different keys on the same method, so applying them in the other order cannot change either.
+
+## (2) Does the new regex weaken the check? No. It reads more marks, never fewer.
+- It is linear. The two choices, a quoted string or any character other than `)` and `"`, can never start on the same character, so no input backtracks. 100k-character lines took 1.5 ms.
+- **The planted fail lines pass on this head:**
+  - "QA-53 fail (B120)": the unmarked planted GET is found.
+  - "QA-65 fail (B120)": the planted write that names nobody is caught.
+  - "C6.16 fail": `/api/link/bare` stays unmarked, and `/api/link/sneaky` is read as open but is not on OWN_GUARD.
+  - "C6.16 fail": the sneaky write is caught.
+  - "PF-4t pass/fail": `/api/platformx/…`.
+- **Planted lines run through the file's own regex** (taken from the source) and the old one:
+  - an unmarked GET: null under both;
+  - `@OpenRead("planted (QA-1)") @Get(…)`: open under the new regex, null under the old;
+  - an identifier reason: open under both;
+  - a mark that is not right before `@Get`: null under both;
+  - round 2's form, `@Get(…) @OpenRead(…)`: null under both;
+  - `@CaseRead()`: case under both;
+  - a controller-level mark: open under both.
+  - The only difference is a reason with parentheses, now read as open. That route must then also be on REVIEWED, so a planted open mark that is not on the list still fails "exactly the reviewed list".
+- **It bites.** I put the old regex back in a scratch worktree of ba5a294d6 and ran the check by its usage line on :4436 (`rvr3m`, stopped after): **46/48, exit 1**.
+  - "exactly the reviewed list" fails.
+  - "every configuration read (101) refuses nobody…" fails: booking-site, book, slots, bookings/:token and ics answer 404, not 401. The head's count is 96.
+
+## (3) Are the 9 reads and 3 writes open by design, with accurate reasons? Yes.
+- **Booking (FO-3, FO-3pa; contracts §0.6).** Each of the 6 reads and 3 writes starts with its own per-IP limit (`service.ts:266,284,293,316,347,359,372,382,392`), and the booking form also has a per-firm limit (`:325`). Each answers the one `notFound()` (`:88`) for an unknown firm, slug, inactive type, held firm or bad link.
+  - `check_fo3_booking.ts` asserts this, for example "FO-3 http fail: unknown firm, unknown slug, inactive type and a bad link → 404 with the identical body", and the token, cancel and hold lines.
+  - The comment's "asked in check_fo3_booking.ts, check_fo3pa_public_answers.ts" is true.
+- **QA-756 `site`, and the sign-up lookups `availability` and `suggestion`.** These are public by design. On a firm's address the lookups answer the plain not-found; `site` answers it everywhere else (`routes.ts:70,78,86-89`).
+  - They have **no rate limit**. That is PF-25 review m4, already known and still the PF-25 PR's Question 3, and it is not this diff. The new comment does not claim a limit for them.
+- These are the same 9 routes that carried OpenRead at round 2. The PR adds no open door; it only makes them visible to this scan.
+
+## (4) Suites (run-suites.sh --only, each by its own usage line): all pass, exit 0
+`check_forms_qa53.ts` **48/48** (found 266 = declared 266; FO-2 public writes exactly PUBLIC_WRITES), `check_fo3_booking.ts` **133/133**, `check_fo3pa_public_answers.ts` **45/45**, `check_pf25w_routes.ts` **11/11**, `check_pf1_module_routes.ts` **28/28**.
+
+## Issues (all optional; no Blocker, no Major)
+- **o1 (Should, optional): the controller-level test still swallows a pair alone on its line.**
+  - The test is `/^@OpenRead\(.*\)$/` (`check_forms_qa53.ts:42`). It still reads `@OpenRead("…") @Get("…")` on a line by itself, with the method on the next line, as a controller mark, and that GET disappears from the scan.
+  - It fails loudly ("none left unseen", the count of 266), so nothing is weakened. But the PR works around it by layout, and the next builder who writes the usual Nest layout will hit the same red batch.
+  - Fix: `/^@OpenRead\((?:"[^"]*"|[^)"])*\)$/`. I tested it: true for `@OpenRead("a (b)")`, `@OpenRead(SIGN_UP)` and `@OpenRead("planted")`; false for `@OpenRead("x") @Get("hidden")`.
+- **o2 (optional):** the 9 entries share one block comment instead of one reason each, and PUBLIC_WRITES' "per-address limits" means per IP, which reads ambiguously next to "web address". Both are accurate.
+
+## Journey score
+**8/10, pass**, carried forward from round 1 (`journey-test-reviewer-2026-11-24-part-a2.md`).
+- The metadata is identical, so no route, answer or journey changed. Only the check's reading of the code changed.
+- The booking journeys are re-covered by fo3_booking and fo3pa (178 lines).
+- The brief limits me to this file, so I wrote no new journey report.
+
+## Could not check
+- **CI on ba5a294d6:** `ci` success, CodeQL success, parts 1-12 success. But **`walk j_10` is red** (16/19), on routes outside this diff:
+  - W2 and W3: `/api/public/sign/:token/*`, main's signing door, which came in with the merge;
+  - W3: `/api/system/switches/:key`;
+  - W5: case-side runtime ids answering 400.
+  - j_10 was red on 2c7df1595 too. None of the routes it names is in ba5a294d6.
+- The merge queue's full run on this head.
+
+**Verdict: Approve** — commit ba5a294d6926eef1fa4acc4d686beac63476797f. No open Blocker or Major.
+
+Reviewer: Approve ba5a294d6926eef1fa4acc4d686beac63476797f
